@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://video-stack/schema/transcript.schema.json",
+  "title": "video-stack canonical transcript",
+  "description": "Contrato único de transcript que consumen todas las skills del repo. Unidad: segundos-float. Granularidad: palabra. Timestamps SIEMPRE relativos a la fuente cruda (nunca a un clip recortado). Ninguna skill debe ramificar según el backend ASR de origen; asr.* existe solo como procedencia.",
+  "type": "object",
+  "required": ["schema_version", "source", "language", "asr", "words", "segments"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Versión del contrato. Cambios incompatibles suben el mayor; campos opcionales nuevos suben el menor. Ver docs/SCHEMA.md."
+    },
+    "source": {
+      "type": "object",
+      "description": "La fuente cruda contra la que son relativos TODOS los timestamps.",
+      "required": ["id", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Id estable de la fuente cruda dentro del proyecto (p.ej. '0233' o 'raw'). Los artefactos del clip se nombran con este id."
+        },
+        "path": {
+          "type": "string",
+          "description": "Ruta del archivo fuente relativa al directorio del proyecto (informativa)."
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Duración de la fuente cruda en segundos-float."
+        }
+      }
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)?$",
+      "description": "Idioma detectado/declarado, BCP-47 corto ('es', 'en', 'es-419')."
+    },
+    "asr": {
+      "type": "object",
+      "description": "Procedencia del transcript. Solo informativa: ninguna skill debe cambiar su comportamiento según estos campos.",
+      "required": ["backend"],
+      "additionalProperties": true,
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": ["assemblyai", "faster-whisper"],
+          "description": "Backend que produjo el transcript original."
+        },
+        "model": {
+          "type": "string",
+          "description": "Modelo usado (p.ej. 'universal-3-5-pro', 'large-v3')."
+        }
+      }
+    },
+    "words": {
+      "type": "array",
+      "description": "Todas las palabras en orden temporal. start/end en segundos-float relativos a la fuente cruda.",
+      "items": {
+        "type": "object",
+        "required": ["text", "start", "end"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "start": { "type": "number", "minimum": 0 },
+          "end": { "type": "number", "minimum": 0 },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Opcional: no todos los backends la reportan por palabra."
+          }
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "description": "Agrupación en oraciones/turnos. Cada segmento referencia palabras por ÍNDICE en words[] (inclusive en ambos extremos) — nunca duplica timestamps.",
+      "items": {
+        "type": "object",
+        "required": ["first_word", "last_word"],
+        "additionalProperties": false,
+        "properties": {
+          "first_word": { "type": "integer", "minimum": 0 },
+          "last_word": { "type": "integer", "minimum": 0 },
+          "text": {
+            "type": "string",
+            "description": "Texto del segmento (conveniencia; derivable de words[first..last])."
+          }
+        }
+      }
+    }
+  }
+}

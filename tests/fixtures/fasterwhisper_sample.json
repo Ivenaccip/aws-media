@@ -1,0 +1,44 @@
+{
+  "language": "es",
+  "language_probability": 0.994,
+  "duration": 7.2,
+  "word_count": 12,
+  "model": "medium",
+  "device": "cuda",
+  "compute_type": "float16",
+  "transcription_time_sec": 1.8,
+  "segments": [
+    {
+      "start": 0.1,
+      "end": 2.94,
+      "text": "Este hook funciona porque abre un curiosity gap.",
+      "words": [
+        { "word": "Este", "start": 0.1, "end": 0.38 },
+        { "word": "hook", "start": 0.42, "end": 0.71 },
+        { "word": "funciona", "start": 0.75, "end": 1.32 },
+        { "word": "porque", "start": 1.36, "end": 1.7 },
+        { "word": "abre", "start": 1.74, "end": 2.02 },
+        { "word": "un", "start": 2.06, "end": 2.15 },
+        { "word": "curiosity", "start": 2.19, "end": 2.61 },
+        { "word": "gap.", "start": 2.65, "end": 2.94 }
+      ]
+    },
+    {
+      "start": 3.9,
+      "end": 6.8,
+      "text": "Y el payoff llega al final.",
+      "words": [
+        { "word": "Y", "start": 3.9, "end": 3.98 },
+        { "word": "el", "start": 4.02, "end": 4.12 },
+        { "word": "payoff", "start": 4.16, "end": 4.62 },
+        { "word": "llega", "start": 4.66, "end": 5.0 },
+        { "word": "al", "start": 5.04, "end": 5.14 },
+        { "word": "final.", "start": 5.18, "end": 5.72 }
+      ]
+    }
+  ],
+  "captions": [
+    { "text": "Este", "startMs": 100, "endMs": 380 },
+    { "text": " hook", "startMs": 420, "endMs": 710 }
+  ]
+}

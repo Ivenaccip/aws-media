@@ -1,0 +1,33 @@
+# video-stack — deps Python FIJADAS (ninguno de los dos repos upstream fija el lado
+# Python; este repo sí — handoff §9, riesgo de mantenimiento).
+# Verificadas funcionando juntas el 2026-08-03 (Python 3.10, Windows/Git Bash).
+#
+# Instalación (venv en la raíz del repo):
+#   python -m venv venv
+#   venv/Scripts/pip install -r requirements.txt      # Windows
+#   ./venv/bin/pip install -r requirements.txt        # macOS/Linux
+# En GPU NVIDIA instala antes torch con CUDA:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# También en PATH (no pip): ffmpeg + ffprobe, Node.js 18+, y en Windows Git Bash + jq.
+
+# --- núcleo (transcripción, normalizadores, schema)
+requests==2.32.5
+jsonschema==4.26.0
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+
+# --- rama shorts (detección de contenido / reframe)
+mediapipe==0.10.35
+numpy==2.2.6
+opencv-python==5.0.0.93
+
+# --- rama longform (thumbnails de /packaging, YouTube upload/stats)
+Pillow==12.2.0
+google-genai==1.5.0
+google-api-python-client==2.190.0
+google-auth==2.41.1
+google-auth-oauthlib==1.2.2
+google-auth-httplib2==0.2.1
+
+# --- tests
+pytest==9.1.1

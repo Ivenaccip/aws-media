@@ -1,0 +1,36 @@
+# Config por máquina — NUNCA se comitea (permite clonar en N máquinas sin pisarse)
+.video-stack/
+
+# Proyectos del usuario (metraje, renders, estado de trabajo)
+videos/*
+!videos/.gitkeep
+!videos/README.md
+
+# Secretos
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+remotion/out/
+
+# Repos upstream vendorizados (solo referencia de verificación; se clonan con
+# `git clone` — ver docs/DRIFT.md)
+vendor/
+
+# Scratch
+*.log
+
+remotion-longform/out/
+media/library/faces/*
+!media/library/faces/README.md
+media/projects/
+.youtube/
+
+# Chrome Headless Shell que descarga Remotion
+.remotion/

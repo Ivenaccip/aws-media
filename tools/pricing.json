@@ -1,0 +1,28 @@
+{
+  "comment": "ÚNICA fuente de precios del repo. Ninguna skill ni tool hardcodea precios: todos leen este archivo. Al actualizar, verifica en el sitio del vendor y actualiza verified_on. Regla de redacción para cualquier UI: escribir siempre '$X.XX dólares por hora' — JAMÁS 'X centavos'.",
+  "verified_on": "2026-08-03",
+  "currency": "USD",
+  "assemblyai": {
+    "billing": "por segundo",
+    "models": {
+      "universal-2": { "usd_per_hour": 0.15, "async": true },
+      "universal-3-5-pro": { "usd_per_hour": 0.21, "async": true, "languages": 18, "fallback": "universal-2", "note": "el español está entre los 18 idiomas soportados — no depende del fallback" }
+    },
+    "addons": {
+      "keyterms_prompt": { "usd_per_hour": 0.05, "note": "el add-on que usa la rama longform; total con universal-3-5-pro: $0.26 dólares por hora" }
+    },
+    "included_async": ["diarización", "sentimiento", "entidades"],
+    "free_tier": {
+      "note": "Datos en CONFLICTO entre fuentes (crédito único de $50 vs. 10 h/mes renovables). NO prometer nada del free tier en la UI: mostrar 'verifica tu crédito en el dashboard de AssemblyAI'."
+    }
+  },
+  "reference": {
+    "groq_whisper_large_v3": { "usd_per_hour": 0.02, "note": "tercera vía, solo referencia — no integrada en este repo" }
+  },
+  "local_models": {
+    "comment": "faster-whisper, costo $0. PROHIBIDO ofrecer variantes .en (tiny.en, distil-large-v3 = English-only) para contenido en español. Solo multilingües. int8 baja el consumo de memoria casi a la mitad; int8 + cpu corre en cualquier máquina sin GPU.",
+    "small": { "vram_gb_float16": 2, "spanish_ok": true },
+    "medium": { "vram_gb_float16": 5, "spanish_ok": true },
+    "large-v3": { "vram_gb_float16": 10, "spanish_ok": true, "download_gb": 3 }
+  }
+}

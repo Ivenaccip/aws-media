@@ -1,0 +1,25 @@
+{
+  "id": "fixture-aai-1",
+  "status": "completed",
+  "language_code": "es",
+  "audio_duration": 6,
+  "speech_model_used": "universal-3-5-pro",
+  "text": "Hoy vamos a configurar el deploy. Es más simple de lo que parece, en serio.",
+  "words": [
+    { "text": "Hoy", "start": 120, "end": 340, "confidence": 0.99 },
+    { "text": "vamos", "start": 360, "end": 620, "confidence": 0.98 },
+    { "text": "a", "start": 630, "end": 690, "confidence": 0.97 },
+    { "text": "configurar", "start": 700, "end": 1240, "confidence": 0.99 },
+    { "text": "el", "start": 1250, "end": 1330, "confidence": 0.98 },
+    { "text": "deploy.", "start": 1340, "end": 1890, "confidence": 0.95 },
+    { "text": "Es", "start": 2410, "end": 2550, "confidence": 0.99 },
+    { "text": "más", "start": 2560, "end": 2760, "confidence": 0.98 },
+    { "text": "simple", "start": 2770, "end": 3180, "confidence": 0.99 },
+    { "text": "de", "start": 3190, "end": 3270, "confidence": 0.97 },
+    { "text": "lo", "start": 3280, "end": 3360, "confidence": 0.98 },
+    { "text": "que", "start": 3370, "end": 3490, "confidence": 0.98 },
+    { "text": "parece,", "start": 3500, "end": 3980, "confidence": 0.96 },
+    { "text": "en", "start": 4900, "end": 5000, "confidence": 0.99 },
+    { "text": "serio.", "start": 5010, "end": 5480, "confidence": 0.98 }
+  ]
+}
