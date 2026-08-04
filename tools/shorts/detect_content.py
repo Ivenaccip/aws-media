@@ -66,6 +66,18 @@ def detect_faces(frame_paths):
     import cv2
     import numpy as np
 
+    # mediapipe >= 0.10.31 eliminó la API legacy mp.solutions (drift upstream,
+    # documentado en docs/DRIFT.md). Sin ella degradamos con gracia: cero caras
+    # detectadas -> classify() cae a "screen" y el usuario puede hacer override.
+    if not hasattr(mp, "solutions"):
+        return {
+            "avg_count": 0, "avg_size_pct": 0, "max_size_pct": 0, "size_std": 0,
+            "center_bias": 0.0, "frames_with_faces": 0,
+            "total_frames": len(frame_paths),
+            "face_detection": "unavailable (mediapipe sin API legacy mp.solutions; "
+                              "el tipo de contenido usa el default 'screen' — override manual disponible)",
+        }
+
     mp_face = mp.solutions.face_detection
     detector = mp_face.FaceDetection(
         model_selection=1,  # Full range model (works for far faces too)
