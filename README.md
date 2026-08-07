@@ -11,12 +11,21 @@ sobre un **esquema canónico de transcript** compartido.
 
 ## Arranque
 
+**¿Primera vez?** Escribe `/instalar` en Claude Code: diagnostica qué falta,
+instala deps, te guía en la decisión de transcripción y te ofrece las conexiones
+opcionales (no elegir ninguna = todo local y gratis). Lo de abajo es el
+equivalente a mano:
+
 ```bash
 python -m venv venv && venv/Scripts/pip install -r requirements.txt   # (bin/ en macOS/Linux)
 python tools/setup.py        # escanea tu hardware, CALIBRA de verdad y escribe tu config
 cd remotion && npm ci && cd ..
-python tools/project.py new video-1
 ```
+
+Con todo instalado, **cada proyecto arranca con `/empezar`**: crea `videos/video-N`,
+recibe tu metraje, transcribe UNA vez y te pregunta el camino — *¿editar un video
+para redes o convertir un video largo a shorts?* Para dudas en cualquier punto:
+`/ayuda`.
 
 `tools/setup.py` es **re-ejecutable**: cambiaste de máquina o compraste GPU → córrelo
 otra vez. Escribe `.video-stack/config.json` (gitignored — puedes clonar este repo en
@@ -37,22 +46,37 @@ cruda). Ninguna skill sabe de qué backend vino. Detalles y política de version
 `docs/SCHEMA.md`.
 
 ```
-metraje crudo ─▶ tools/transcribe.py (backend según tu config)
-                   └─▶ work/transcripts/<id>.canonical.json      ← el contrato
-                        ├─▶ rama longform: /clean-cut → cuts.json → master + edited-transcript.json
-                        └─▶ rama shorts:  /shorts → candidatos con score → Remotion → export
+/empezar ─▶ videos/video-N + tools/transcribe.py (backend según tu config)
+              └─▶ work/transcripts/<id>.canonical.json           ← el contrato
+                   ├─▶ editar para redes: /clean-cut → master + edited-transcript.json
+                   │       → /clean-audio → /subtitulos → /broll-ai ─▶ /publicar
+                   └─▶ convertir a shorts: /shorts → candidatos con score
+                           → Remotion → export validado ─────────▶ /publicar
 ```
 
 ## Skills
 
+**El flujo core** (los comandos de la capacitación):
+
 | Skill | Rama | Qué hace |
 |---|---|---|
+| `/instalar` | ambas | onboarding idempotente: diagnóstico, deps, decisión de transcripción, conexiones opcionales |
+| `/empezar` | ambas | puerta de entrada por proyecto (SOLO el comando explícito): crea video-N, transcribe una vez y bifurca edición/shorts |
 | `/clean-cut` | longform | corte del metraje crudo → master limpio (política editorial editable) |
-| `/shorts` | shorts | clips 9:16 con captions animados, aprobación interactiva |
 | `/clean-audio` | longform | denoise/aislar voz (RMS-match, niveles preservados) |
+| `/subtitulos` | longform | subtítulos quemados desde `edited-transcript.json` + `.srt` (gate de frame de muestra, estilo de tu marca) |
+| `/broll-ai` | longform | b-roll generado con IA — doble gate: momentos+costo antes de imágenes, imágenes antes de videos (Blotato / fal.ai) |
+| `/shorts` | shorts | clips 9:16 con captions animados, aprobación interactiva |
+| `/publicar` | ambas | publicar/agendar en TUS redes conectadas vía Blotato, con gate de confirmación |
+| `/ayuda` | ambas | guía del flujo: imagen guía, detecta en qué paso vas y qué sigue, responde dudas |
+
+**Avanzadas** (fuera del flujo core):
+
+| Skill | Rama | Qué hace |
+|---|---|---|
 | `/make-tsx`, `/fake-screencast`, `/vidtsx-2d-generator` | longform | beats visuales Remotion (proyecto en `remotion-longform/`) |
 | `/suggest-sfx` | longform | plan de SFX desde la librería compartida |
-| `/brand-setup`, `/packaging` | longform | identidad del canal · títulos + thumbnails |
+| `/brand-setup`, `/packaging` | longform | identidad del canal (opcional — la marca de la casa es completa) · títulos + thumbnails |
 
 **La voz editorial vive en dos archivos EDITABLES por ti** (mismos criterios,
 pensados para español LATAM con términos técnicos en inglés — el code-switching
@@ -66,15 +90,19 @@ jamás se penaliza como incoherencia):
 ## Estructura
 
 ```
-.claude/skills/       skills fusionadas (8 de L1 + flujo shorts de S1)
+.claude/skills/       skills fusionadas de L1/S1 + el flujo core (/instalar,
+                      /empezar, /subtitulos, /broll-ai, /publicar, /ayuda)
 schema/               transcript.schema.json — el contrato (docs/SCHEMA.md)
 tools/                CLIs: transcribe (doble backend), setup, project, normalizers/,
                       engine de corte de L1 (cutlib, render_cuts, verify_cut…),
+                      hwenc (cadena de encoders NVENC→QSV→AMF→CPU), make_subs
+                      (subtítulos .ass/.srt), insert_broll (inserción de b-roll),
                       shorts/ (scripts de S1), pricing.json (ÚNICA fuente de precios)
 remotion/             render de captions de S1 — fps FIJO 30 (interno a su salida)
 remotion-longform/    proyecto Remotion de L1 (beats visuales de /make-tsx)
-media/                librería SFX/música de L1 — cada clip con su procedencia en
-                      los catálogos (generados con ElevenLabs por Hasan Aboul Hasan)
+media/                librería SFX/música de L1 (procedencia por clip en catálogos;
+                      generados con ElevenLabs por Hasan Aboul Hasan), guia/ (imagen
+                      de /ayuda) y projects/<video-N>/ (assets generados por video)
 references/           rúbrica de scoring, estilos de captions, specs de plataforma
 assets/calibration/   WAV de calibración del setup (voz es-MX sintética, ~80 s)
 docs/                 SCHEMA, DECISIONES (pendientes resueltos con evidencia), DRIFT, QA

@@ -25,7 +25,7 @@ claro y sin tecnicismos innecesarios.
 ### Prepara — una sola vez
 | Qué | Comando | Para qué |
 |---|---|---|
-| Configurar transcripción | `python tools/setup.py` | Elige local (gratis, calibra TU máquina) o AssemblyAI ($0.21 dólares por hora) |
+| Instalar y configurar | `/instalar` | Diagnóstico de qué falta, deps, la decisión de transcripción (local gratis calibrada vs AssemblyAI a $0.21 dólares por hora) y el selector de conexiones opcionales |
 | Tu marca (opcional) | `/brand-setup` | **Puedes omitirlo** — la herramienta trae una marca de casa completa y funcional. Si lo corres, ten a la mano: el texto de tu wordmark, tus colores hex (si los tienes; si no, se te proponen), tus fuentes (deben existir en Google Fonts) y qué graba tu cámara (resolución y fps — el único dato obligatorio de verdad) |
 | Conexiones opcionales | — | Blotato (generación IA + publicar), fal.ai (respaldo de generación), API keys en `.env` |
 
