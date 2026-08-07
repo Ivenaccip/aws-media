@@ -1,0 +1,14 @@
+{
+  "comment": "Imagen guía del flujo, entregada por /ayuda. Al cambiar el flujo o la marca, regenerar con .claude/skills/ayuda/references/prompt-imagen-guia.md y actualizar esta entrada.",
+  "assets": [
+    {
+      "id": "ayuda",
+      "file": "ayuda.png",
+      "model": "GPT Image 2",
+      "generated_on": "2026-08-06",
+      "prompt_ref": ".claude/skills/ayuda/references/prompt-imagen-guia.md",
+      "brand": "casa (paper #FFFEF7 / ink #1A1A2E / accent #6366F1)",
+      "note": "La columna 3 lleva solo 'publicar' — correcto: /shorts es un camino aparte del flujo de edición y no va en el póster (decisión del 2026-08-06; el prompt de referencia ya lo refleja)."
+    }
+  ]
+}

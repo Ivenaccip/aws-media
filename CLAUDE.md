@@ -6,9 +6,14 @@ transcripts.**
 
 | El usuario pide… | Skill | Rama |
 |---|---|---|
+| `/empezar` (SOLO el comando explícito — sin `/` no se activa) | `/empezar` | ambas |
 | cortar metraje / quitar relleno / apretar ritmo | `/clean-cut` | longform |
 | shorts / clips verticales / tiktok-reels del video | `/shorts` | shorts |
 | limpiar audio / quitar ruido | `/clean-audio` | longform |
+| subtítulos del longform / .srt | `/subtitulos` | longform |
+| b-roll con IA / insertar clips generados | `/broll-ai` | longform |
+| guía del flujo / "¿qué sigue?" / dudas | `/ayuda` | ambas |
+| publicar / subir a redes / agendar post | `/publicar` | ambas |
 | beats visuales / overlays | `/make-tsx` (+`/fake-screencast`) | longform |
 | SFX | `/suggest-sfx` | longform |
 | marca / packaging | `/brand-setup` · `/packaging` | longform |

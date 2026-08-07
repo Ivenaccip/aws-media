@@ -4,7 +4,8 @@ Usage:
   python tools/render_cuts.py video-1 --style tight --mode preview
   python tools/render_cuts.py video-1 --style tight --mode final
 
-preview: 720p h264_nvenc, fast.  final: 4K60 10-bit hevc_nvenc, high quality.
+preview: 720p h264, fast.  final: 4K60 10-bit HEVC, high quality.  El encoder se
+autodetecta por modo con la cadena NVENC → Quick Sync → AMF → CPU (tools/hwenc.py).
 
 Segments come from cutlib.plan_clip: keeps are split into speech runs at pauses
 >= internal_gap, each run's tail is snapped to the audio floor (words finish
@@ -27,46 +28,20 @@ from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 from pathlib import Path
 
+import hwenc
 from cutlib import AudioProbe, active_keeps, load_words, plan_clip
 
 SR = 48000  # audio build sample rate
 
-
-def nvenc_works() -> bool:
-    """Prueba FUNCIONAL de NVENC (que esté listado en -encoders no basta: un driver
-    viejo frente a un ffmpeg nuevo lista el encoder y aun así falla al codificar)."""
-    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
-                        "-i", "color=black:size=64x64:rate=30:duration=0.1",
-                        "-c:v", "h264_nvenc", "-f", "null", "-"],
-                       capture_output=True)
-    return r.returncode == 0
-
-
-if nvenc_works():
-    ENC = {
-        "preview": ["-vf", "scale=1280:-2,format=yuv420p", "-c:v", "h264_nvenc", "-preset", "p4",
-                    "-rc", "vbr", "-cq", "30", "-b:v", "0"],
-        "final": ["-c:v", "hevc_nvenc", "-preset", "p5", "-profile:v", "main10",
-                  "-pix_fmt", "p010le", "-rc", "vbr", "-cq", "19", "-b:v", "0"],
-    }
-    HWACCEL = ["-hwaccel", "cuda"]
-else:
-    print("NVENC no disponible/funcional en esta máquina — usando encoders de CPU "
-          "(libx264/libx265), mismo pipeline, más lento")
-    ENC = {
-        "preview": ["-vf", "scale=1280:-2,format=yuv420p", "-c:v", "libx264",
-                    "-preset", "fast", "-crf", "26"],
-        "final": ["-c:v", "libx265", "-preset", "medium", "-profile:v", "main10",
-                  "-pix_fmt", "yuv420p10le", "-crf", "19"],
-    }
-    HWACCEL = []
+VF = {"preview": ["-vf", "scale=1280:-2,format=yuv420p"], "final": []}
 AUDIO_BITRATE = {"preview": "160k", "final": "256k"}
 
 
-def render_segment(src: Path, seg: tuple[float, float], out: Path, enc: list[str]) -> None:
+def render_segment(src: Path, seg: tuple[float, float], out: Path,
+                   enc: list[str], hwaccel: list[str]) -> None:
     start, end = seg
     dur = end - start
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", *HWACCEL,
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", *hwaccel,
            "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src),
            "-map", "0:0", "-an", *enc, str(out)]
     subprocess.run(cmd, check=True)
@@ -123,12 +98,15 @@ def main() -> None:
     total = sum(e - s for _, (s, e) in jobs)
     print(f"{args.style}/{args.mode}: {len(jobs)} segments, output ~ {total / 60:.1f} min")
 
+    enc_args, hwaccel = hwenc.select(args.mode)
+    enc = [*VF[args.mode], *enc_args]
+
     seg_dir = project / "work" / "render" / f"{args.style}-{args.mode}"
     seg_dir.mkdir(parents=True, exist_ok=True)
     outs = [seg_dir / f"seg_{i:03d}.mp4" for i in range(len(jobs))]
 
     with ThreadPoolExecutor(max_workers=3) as pool:
-        futs = [pool.submit(render_segment, src, seg, out, ENC[args.mode])
+        futs = [pool.submit(render_segment, src, seg, out, enc, hwaccel)
                 for (src, seg), out in zip(jobs, outs)]
         for i, f in enumerate(futs):
             f.result()
