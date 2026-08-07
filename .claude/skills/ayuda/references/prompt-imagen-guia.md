@@ -26,7 +26,7 @@ clips verticales del longform ya editado), no un paso de la columna 3 · PUBLICA
 > mayúsculas "TU FLUJO DE VIDEO CON IA" con la palabra "IA" en índigo. Debajo, tres
 > columnas conectadas de izquierda a derecha por flechas delgadas índigo. Columna 1,
 > encabezado "1 · PREPARA" con subtítulo pequeño "una sola vez", y debajo tres
-> renglones con icono de línea a la izquierda de cada uno: "instalar" (icono
+> renglones con icono de línea a la izquierda de cada uno: "/instalar" (icono
 > engrane), "/brand-setup · opcional" (icono paleta de pintor), "conectar
 > servicios · opcional" (icono enchufe). Columna 2, encabezado "2 · CONSTRUYE" con subtítulo "por cada video", y
 > cinco renglones: "/empezar" (icono botón de play), "/clean-cut" (icono tijeras),
