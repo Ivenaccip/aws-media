@@ -6,9 +6,10 @@
       "file": "ayuda.png",
       "model": "GPT Image 2",
       "generated_on": "2026-08-06",
+      "version": 3,
       "prompt_ref": ".claude/skills/ayuda/references/prompt-imagen-guia.md",
       "brand": "casa (paper #FFFEF7 / ink #1A1A2E / accent #6366F1)",
-      "note": "La columna 3 lleva solo 'publicar' — correcto: /shorts es un camino aparte del flujo de edición y no va en el póster (decisión del 2026-08-06; el prompt de referencia ya lo refleja)."
+      "note": "v3, flujo congelado: /instalar + opcionales en PREPARA; /empezar arriba de la bifurcación en dos tarjetas (EDITAR PARA REDES: clean-cut/clean-audio/subtitulos/broll-ai · CONVERTIR A SHORTS: /shorts); /publicar en PUBLICA. La bifurcación va SIEMPRE como tarjetas, no como llaves/líneas — los modelos de imagen dibujan mal los conectores."
     }
   ]
 }

@@ -11,8 +11,10 @@ de `brand.md` §Paleta (y el título por el wordmark del canal si se desea).
 Si el flujo cambia (se agrega `/subtitulos`, `/publicar`, etc.), actualizar el texto
 de las columnas aquí Y en la tabla de SKILL.md, y regenerar.
 
-**`/shorts` NO va en este póster**: es un camino aparte del flujo de edición (extraer
-clips verticales del longform ya editado), no un paso de la columna 3 · PUBLICA.
+**`/shorts` va dibujado como BIFURCACIÓN, no como paso**: desde que existe
+`/empezar`, la columna CONSTRUYE muestra la elección entre los dos caminos
+(edición y shorts). Nunca ponerlo como renglón de la columna 3 · PUBLICA — eso
+implicaría que todo video pasa por ahí.
 
 ---
 
@@ -28,10 +30,20 @@ clips verticales del longform ya editado), no un paso de la columna 3 · PUBLICA
 > encabezado "1 · PREPARA" con subtítulo pequeño "una sola vez", y debajo tres
 > renglones con icono de línea a la izquierda de cada uno: "/instalar" (icono
 > engrane), "/brand-setup · opcional" (icono paleta de pintor), "conectar
-> servicios · opcional" (icono enchufe). Columna 2, encabezado "2 · CONSTRUYE" con subtítulo "por cada video", y
-> cinco renglones: "/empezar" (icono botón de play), "/clean-cut" (icono tijeras),
-> "/clean-audio" (icono onda de sonido), "/subtitulos" (icono bocadillo de texto),
-> "/broll-ai" (icono chispa). Columna 3, encabezado "3 · PUBLICA", y un solo renglón:
+> servicios · opcional" (icono enchufe). Columna 2 (la más ancha), encabezado
+> "2 · CONSTRUYE" con subtítulo "por cada video": arriba centrado un renglón
+> "/empezar" (icono botón de play). Debajo, DOS tarjetas rectangulares de esquinas
+> redondeadas lado a lado, con borde delgado índigo claro y fondo apenas más claro
+> que el del póster, conectadas a "/empezar" solo por dos líneas rectas cortas en
+> diagonal. Tarjeta izquierda con título pequeño en mayúsculas "EDITAR PARA REDES"
+> y cuatro renglones: "/clean-cut" (icono tijeras), "/clean-audio" (icono onda de
+> sonido), "/subtitulos" (icono bocadillo de texto), "/broll-ai" (icono chispa).
+> Tarjeta derecha, de la MISMA altura que la izquierda, con título pequeño en
+> mayúsculas "CONVERTIR A SHORTS" y un renglón centrado verticalmente: "/shorts"
+> (icono teléfono vertical). NO dibujar llaves, corchetes, flechas curvas ni
+> líneas que crucen la composición: las únicas flechas del póster son las dos
+> flechas horizontales entre los encabezados de las columnas. Columna 3,
+> encabezado "3 · PUBLICA", y un solo renglón centrado verticalmente:
 > "/publicar" (icono cohete). Los comandos que
 > empiezan con "/" van en índigo #6366F1 y en tipografía monoespaciada; el resto del
 > texto en azul tinta. En la parte inferior, una franja delgada con borde redondeado
