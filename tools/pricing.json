@@ -19,6 +19,11 @@
   "reference": {
     "groq_whisper_large_v3": { "usd_per_hour": 0.02, "note": "tercera vía, solo referencia — no integrada en este repo" }
   },
+  "broll": {
+    "comment": "Generación de b-roll (/broll-ai). Blotato cobra en CRÉDITOS y el costo por generación depende del modelo y del plan del usuario: NO hay precio fijo que poner aquí. Política: antes de generar, consultar blotato_get_credits y presentar 'N generaciones contra tu saldo de X créditos'; tras la primera generación real, reportar los créditos consumidos y extrapolar. Para fal.ai, citar el precio del modelo desde su página de pricing con fuente — nunca de memoria.",
+    "blotato": { "billing": "créditos del plan del usuario", "models_note": "imagen: GPT Image; video: veo3.1/fast/image-to-video sin audio" },
+    "fal": { "billing": "por generación según modelo", "note": "respaldo cuando Blotato no está o se quedó sin créditos" }
+  },
   "local_models": {
     "comment": "faster-whisper, costo $0. PROHIBIDO ofrecer variantes .en (tiny.en, distil-large-v3 = English-only) para contenido en español. Solo multilingües. int8 baja el consumo de memoria casi a la mitad; int8 + cpu corre en cualquier máquina sin GPU.",
     "small": { "vram_gb_float16": 2, "spanish_ok": true },

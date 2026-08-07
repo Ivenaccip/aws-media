@@ -11,13 +11,14 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import hwenc
 
-def encode_part(src: Path, out: Path) -> None:
+
+def encode_part(src: Path, out: Path, enc: list[str], hwaccel: list[str]) -> None:
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-hwaccel", "cuda", "-i", str(src),
+        ["ffmpeg", "-y", "-loglevel", "error", *hwaccel, "-i", str(src),
          "-map", "0:0", "-map", "0:1", "-vf", "scale=1280:-2,format=yuv420p",
-         "-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "29", "-b:v", "0",
-         "-c:a", "aac", "-b:a", "160k", str(out)],
+         *enc, "-c:a", "aac", "-b:a", "160k", str(out)],
         check=True,
     )
 
@@ -39,8 +40,9 @@ def main() -> None:
     by_id = {c["id"]: c for c in data["clips"]}
     parts = [(cid, project / by_id[cid]["file"], out_dir / f"part-{cid}.mp4") for cid in data["clip_order"]]
 
+    enc, hwaccel = hwenc.select("preview")
     with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(lambda p: encode_part(p[1], p[2]), parts))
+        list(pool.map(lambda p: encode_part(p[1], p[2], enc, hwaccel), parts))
     print("parts encoded")
 
     list_file = out_dir / "list.txt"

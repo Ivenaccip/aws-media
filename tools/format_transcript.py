@@ -20,8 +20,8 @@ def fmt_time(ms: int) -> str:
     return f"{ms / 1000:.2f}"
 
 
-def clock(ms: int) -> str:
-    s = ms // 1000
+def clock(ms: float) -> str:
+    s = int(ms) // 1000  # acepta ms float (p.ej. audio_duration del backend local)
     return f"{s // 60:02d}:{s % 60:02d}"
 
 
