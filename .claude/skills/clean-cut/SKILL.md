@@ -1,6 +1,6 @@
 ---
 name: clean-cut
-description: Paso 1 de la rama longform — convertir metraje crudo de talking-head en un master limpio. Úsala cuando el usuario quiera "clean cut", "cortar el metraje", "quitar muletillas / aire muerto / malas tomas", "apretar el ritmo", producir cuts.json, o renderizar preview/master de un video-N de este repo. Cubre extracción de audio, transcripción (backend según .video-stack/config.json, al esquema canónico), autoría de cuts.json, la política de corte, QA + verify, previews tight/natural, el render final y edited-transcript.json. No construye overlays TSX (eso es /make-tsx).
+description: Paso 1 de la rama longform — convertir metraje crudo de talking-head en un master limpio. Úsala cuando el usuario quiera "clean cut", "cortar el metraje", "quitar muletillas / aire muerto / malas tomas", "apretar el ritmo", producir cuts.json, auditar el corte en el editor visual, o renderizar preview/master de un video-N de este repo. Cubre extracción de audio, transcripción (backend según .video-stack/config.json, al esquema canónico), autoría de cuts.json, la política de corte, la AUDITORÍA en el editor de cortes (transcript clickeable + flags escuchables + corrección de texto ASR), el verify único sobre el corte aprobado, el render final y edited-transcript.json por mapeo determinístico. No construye overlays TSX (eso es /make-tsx).
 ---
 
 # clean-cut — el corte de la rama longform
@@ -10,6 +10,8 @@ Convierte los clips crudos de `videos/video-N/` en un **master limpio** +
 `videos/video-N/work/analysis/cuts.json` — la escribes TÚ (Claude) leyendo el
 transcript; no hay un segundo modelo. Los tools manejan audio, encoding y QA;
 el juicio editorial es tuyo y se rige por la **política de corte** de abajo.
+La **verificación acústica es del usuario** en el editor de cortes (paso 9):
+tú no tienes oídos — no la simules con ciclos de render + ASR.
 
 ## Pipeline (en orden; P = videos/video-N)
 
@@ -32,20 +34,41 @@ el juicio editorial es tuyo y se rige por la **política de corte** de abajo.
 7. **QA**: `python tools/analyze_cut.py P [--style tight]` → `qa-report.md`;
    `python tools/make_review.py P` → `review.md`
 8. **Proxy del editor** (una vez): `python tools/make_proxy.py P`
-9. **Previews** (ambos, el usuario elige): `python tools/render_cuts.py P --style tight --mode preview` y `--style natural`
-10. **Verificación de máquina (OBLIGATORIA tras cada render, antes de mostrar):**
-    extraer WAV del preview → `python tools/transcribe.py P --clips preview --force` →
-    `python tools/verify_cut.py P --style <s>` → `verify-report.md`. Cada hallazgo se
-    explica o se corrige — no declares bueno un corte con líneas sin explicar.
-11. **AUDITORÍA DEL USUARIO** (gate duro): `python tools/editor/server.py P` →
-    http://localhost:8765 — ajusta bordes, compara raw vs editado, guarda. Itera.
-12. **Master final**: `render_cuts.py P --style <elegido> --mode final` + los dos
+9. **AUDITORÍA EN EL EDITOR (gate duro — aquí vive la verificación acústica):**
+   `python tools/editor/server.py P [puerto]` (default 8765; si está ocupado pasa
+   otro) → entrega la URL al usuario. Ahí el usuario:
+   - **lee el transcript** (panel izquierdo): lo tachado/coloreado por categoría es
+     lo que sale del corte — leer lo no tachado = leer el video final. Click en
+     palabra = seek; durante playback la palabra actual se ilumina.
+   - **escucha cada 🚩** (panel derecho): botón "▶ ±2s" reproduce a caballo del
+     empalme en modo Edited. Los flags se resuelven actuando sobre los bloques.
+   - **ajusta**: bordes por drag/nudge de frame, cortar/restaurar por bloque o por
+     selección de palabras, todo con toolbar + tooltips.
+   - **corrige texto del ASR** (doble click en la palabra): se persiste al
+     CANÓNICO con respaldo — y por el paso 12 fluye a subtítulos y b-roll.
+   - **💾 Save** y **🎬 Render preview** desde el editor para el chequeo final de
+     oído (el playback del navegador es aproximado; el render es exacto). Puede
+     comparar `tight` vs `natural` con el selector antes de renderizar.
+   TÚ (Claude) esperas su OK y el estilo elegido. NO iteres ciclos
+   render→ASR→ajuste por tu cuenta: la verificación acústica es del usuario y es
+   instantánea en el editor.
+10. **Verificación de máquina (UNA vez, sobre el corte APROBADO):** extraer WAV del
+    preview aprobado → `python tools/transcribe.py P --clips preview --force` →
+    `python tools/verify_cut.py P --style <s>` → `verify-report.md`. Cada hallazgo
+    se explica o se corrige — no declares bueno un corte con líneas sin explicar.
+    (Los renders de audición intermedios del editor no llevan verify individual;
+    ver docs/QA.md.)
+11. **Master final**: `render_cuts.py P --style <elegido> --mode final` + los dos
     pasos obligatorios post-render: gate `ffprobe` v:0 == a:0, y transcode H.264 de
     entrega con `-r <fps_fuente>` antes de `-i` (re-estampa CFR exacto — clave en
     metraje NTSC 60000/1001; ver docs/QA.md).
-13. **`edited-transcript.json`** — el spine palabra→timestamp del corte final (ms,
-    contrato interno de la rama longform): extraer WAV del master, transcribir y
-    normalizar a `{words:[{text,start,end}...]}`.
+12. **`edited-transcript.json`** — el spine palabra→timestamp del corte final (ms,
+    contrato interno de la rama longform). Se deriva SIN re-transcribir:
+    `python tools/edited_transcript.py P --style <elegido> --mode final`
+    remapea el canónico al timeline del master usando las duraciones reales del
+    render (`segments.json`, lo escribe render_cuts.py). Cero costo ASR, timestamps
+    exactos, y las correcciones de texto hechas en el editor llegan intactas a
+    subtítulos y b-roll. PROHIBIDO volver a transcribir el master para esto.
 
 ## cuts.json (lo que TÚ escribes)
 
@@ -93,7 +116,8 @@ La palanca de retención es cortar relleno y redundancia, NO aplastar el silenci
   ni "palabra rara" — y protégelos vía keyterms al transcribir.
 - **Pausas:** comprime sin aplanar. `tight` aterriza las pausas de flujo punchy;
   `natural` da más aire. Fin de sección o hueco de retake eliminado → aterrizaje
-  soft (más cola). Renderiza AMBOS estilos y que el usuario elija.
+  soft (más cola). El usuario compara ambos estilos en el editor (selector +
+  playback simulado) y renderiza a oído el que le convenza.
 - **Flags:** todo juicio dudoso se surface con un `default` — no lo resuelvas en
   silencio.
 

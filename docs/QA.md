@@ -24,8 +24,11 @@ Política verificada leyendo el código final (2026-08-03):
 
 ## QA del corte (herencia L1 — piezas únicas que no se pierden)
 
-- [ ] `python tools/verify_cut.py P --style <s>` tras CADA render: diff de palabras
-      (extra = ghost speech, faltantes = clipped), gaps interiores, drift A/V
+- [ ] `python tools/verify_cut.py P --style <s>` sobre todo corte que se declare
+      listo — mínimo el preview APROBADO en la auditoría, antes del master. (Los
+      renders de audición que el usuario dispara desde el editor mientras itera a
+      oído no llevan verify individual: el oído humano es ese gate.) Diff de
+      palabras (extra = ghost speech, faltantes = clipped), gaps interiores, drift A/V
 - [ ] Gate definitivo del master: `ffprobe stream=duration` en v:0 vs a:0 — **iguales**
       (el presupuesto creciente de verify_cut puede enmascarar drift acumulado)
 - [ ] fps NTSC fraccional (60000/1001): el transcode de entrega re-estampa con
