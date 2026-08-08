@@ -5,10 +5,12 @@ Then open http://localhost:8765
 
 Endpoints:
   GET  /                    editor UI
-  GET  /api/data            cuts.json + proxy manifest
+  GET  /api/data            cuts.json + proxy manifest + canonical words per clip
   GET  /media/proxy.mp4     raw-footage proxy (HTTP range supported)
   GET  /media/waveform.png  timeline waveform
   POST /api/save            write cuts.json (previous version backed up)
+  POST /api/words           apply text corrections to the canonical transcripts
+                            {"edits": {clip: {word_index: "new text"}}} (backed up)
   POST /api/render          run render_cuts.py  {"style": "tight"|"natural"}
   GET  /api/render/status   poll render progress
 """
@@ -24,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 EDITOR_DIR = Path(__file__).resolve().parent
-PROJECT = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "video-1")
+PROJECT = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "videos/video-1")
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
 
 CUTS = PROJECT / "work" / "analysis" / "cuts.json"
@@ -36,10 +38,26 @@ MEDIA = {
 render_state = {"running": False, "log": "", "ok": None}
 
 
+def load_canonical_words(cuts: dict) -> dict:
+    """Per-clip word lists from the canonical transcripts (seconds-float).
+    Validates schema_version before reading (docs/SCHEMA.md); a clip without a
+    readable 1.x canonical gets an empty list and the UI shows a notice."""
+    words = {}
+    for clip in cuts.get("clips", []):
+        path = PROJECT / "work" / "transcripts" / f"{clip['id']}.canonical.json"
+        words[clip["id"]] = []
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if str(data.get("schema_version", "")).startswith("1."):
+                words[clip["id"]] = data.get("words", [])
+    return words
+
+
 def run_render(style: str) -> None:
     render_state.update(running=True, log=f"rendering {style} preview...\n", ok=None)
     proc = subprocess.Popen(
-        [sys.executable, str(ROOT / "tools" / "render_cuts.py"), PROJECT.name,
+        [sys.executable, str(ROOT / "tools" / "render_cuts.py"),
+         PROJECT.relative_to(ROOT).as_posix(),
          "--style", style, "--mode", "preview"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(ROOT),
     )
@@ -89,7 +107,7 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 try:
                     self.wfile.write(chunk)
-                except (ConnectionAbortedError, BrokenPipeError):
+                except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
                     return
                 remaining -= len(chunk)
 
@@ -102,9 +120,11 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif self.path == "/api/data":
+            cuts = json.loads(CUTS.read_text(encoding="utf-8"))
             self.send_json({
-                "cuts": json.loads(CUTS.read_text(encoding="utf-8")),
+                "cuts": cuts,
                 "manifest": json.loads((PROJECT / "work" / "editor" / "manifest.json").read_text(encoding="utf-8")),
+                "words": load_canonical_words(cuts),
             })
         elif self.path == "/api/render/status":
             self.send_json(render_state)
@@ -133,6 +153,36 @@ class Handler(BaseHTTPRequestHandler):
                     for c in changes:
                         f.write(f"{stamp} {c}\n")
             self.send_json({"saved": True, "backup": f"backups/cuts-{stamp}.json"})
+        elif self.path == "/api/words":
+            # Text-only corrections to the canonical transcript (ASR typos, names).
+            # Times are never touched here; segments[].text is derived, so regenerate.
+            edits = body.get("edits") or {}
+            if not edits:
+                self.send_json({"error": "no edits"}, 400)
+                return
+            backups = PROJECT / "work" / "transcripts" / "backups"
+            backups.mkdir(exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            applied = 0
+            for clip, per_word in edits.items():
+                path = PROJECT / "work" / "transcripts" / f"{clip}.canonical.json"
+                if not path.exists():
+                    continue
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if not str(data.get("schema_version", "")).startswith("1."):
+                    continue
+                shutil.copy2(path, backups / f"{clip}.canonical-{stamp}.json")
+                words = data.get("words", [])
+                for idx, text in per_word.items():
+                    i = int(idx)
+                    if 0 <= i < len(words) and isinstance(text, str) and text.strip():
+                        words[i]["text"] = text.strip()
+                        applied += 1
+                for seg in data.get("segments", []):
+                    seg["text"] = " ".join(
+                        w["text"] for w in words[seg["first_word"]:seg["last_word"] + 1])
+                path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+            self.send_json({"saved": True, "applied": applied, "backup_stamp": stamp})
         elif self.path == "/api/render":
             if render_state["running"]:
                 self.send_json({"error": "render already running"}, 409)

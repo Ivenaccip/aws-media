@@ -87,15 +87,15 @@ def main() -> None:
     style = data["styles"][args.style]
     probe = AudioProbe(project)
 
-    jobs = []  # (source file, (start, end))
+    jobs = []  # (clip id, source file, (start, end))
     by_id = {c["id"]: c for c in data["clips"]}
     for cid in data["clip_order"]:
         clip = by_id[cid]
         words = load_words(project, cid)
         for seg in plan_clip(cid, active_keeps(clip), words, style, probe):
-            jobs.append((project / clip["file"], seg))
+            jobs.append((cid, project / clip["file"], seg))
 
-    total = sum(e - s for _, (s, e) in jobs)
+    total = sum(e - s for _, _, (s, e) in jobs)
     print(f"{args.style}/{args.mode}: {len(jobs)} segments, output ~ {total / 60:.1f} min")
 
     enc_args, hwaccel = hwenc.select(args.mode)
@@ -107,7 +107,7 @@ def main() -> None:
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         futs = [pool.submit(render_segment, src, seg, out, enc, hwaccel)
-                for (src, seg), out in zip(jobs, outs)]
+                for (_cid, src, seg), out in zip(jobs, outs)]
         for i, f in enumerate(futs):
             f.result()
             if (i + 1) % 20 == 0:
@@ -135,12 +135,19 @@ def main() -> None:
 
     # build the audio to the segments' ACTUAL video lengths (sample-exact, no drift)
     print("building drift-free audio track...")
-    wavs = []
-    for (src, (start, _end)), out in zip(jobs, outs):
+    wavs, seg_records = [], []
+    for (cid, src, (start, end)), out in zip(jobs, outs):
         dur = video_duration(out)
         wav = out.with_suffix(".wav")
         render_audio_segment(src, start, dur, wav)
         wavs.append(wav)
+        seg_records.append({"clip": cid, "s": round(start, 3), "e": round(end, 3),
+                            "dur": round(dur, 6)})
+    # la verdad del render: rango crudo por segmento + duración REAL codificada.
+    # edited_transcript.py remapea el canónico al timeline del master con esto.
+    (seg_dir / "segments.json").write_text(
+        json.dumps({"style": args.style, "mode": args.mode, "segments": seg_records},
+                   indent=1), encoding="utf-8")
     alist = seg_dir / "alist.txt"
     alist.write_text("\n".join(f"file '{w.as_posix()}'" for w in wavs), encoding="utf-8")
     audio_concat = seg_dir / "audio.wav"

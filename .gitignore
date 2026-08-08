@@ -1,5 +1,6 @@
 # Config por máquina — NUNCA se comitea (permite clonar en N máquinas sin pisarse)
 .video-stack/
+.claude/launch.json
 
 # Proyectos del usuario (metraje, renders, estado de trabajo)
 videos/*

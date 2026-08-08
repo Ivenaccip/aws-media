@@ -28,11 +28,12 @@ ROOT = Path(__file__).resolve().parent.parent
 DRIFT_TOL_S = 0.15
 
 # segmentación
-MAX_CHARS_LINE = 38
+MAX_CHARS_LINE = 38   # tope de legibilidad en 16:9; en vertical manda el ancho real
 MAX_LINES = 2
 GAP_MS = 600          # pausa que cierra el subtítulo
 MAX_DUR_MS = 5000     # duración máxima de un subtítulo
 PAD_MS = 150          # respiro tras la última palabra (recortado al siguiente inicio)
+GLYPH_W = 0.52        # ancho promedio de glifo vs fontsize (Arial y afines)
 
 
 def probe(path: Path) -> dict:
@@ -53,7 +54,7 @@ def stream_duration(path: Path, stream: str) -> float:
     return float(r.stdout.strip())
 
 
-def segment(words: list[dict]) -> list[dict]:
+def segment(words: list[dict], max_chars: int = MAX_CHARS_LINE) -> list[dict]:
     """Agrupa palabras en subtítulos de 1-2 líneas, cerrando en pausas, puntuación
     fuerte, tope de caracteres o duración. Devuelve [{start,end,lines:[str,...]}]."""
     caps: list[dict] = []
@@ -72,7 +73,7 @@ def segment(words: list[dict]) -> list[dict]:
 
     for i, w in enumerate(words):
         cur_len = len(" ".join(x["text"] for x in cur))
-        if cur and cur_len + 1 + len(w["text"]) > MAX_CHARS_LINE:
+        if cur and cur_len + 1 + len(w["text"]) > max_chars:
             lines.append(cur)
             cur = []
             if len(lines) >= MAX_LINES:
@@ -176,13 +177,18 @@ def main() -> None:
     base_path = (ROOT / args.base) if args.base else newest_base(project)
     base = probe(base_path)
 
-    caps = segment(words)
+    # el largo de línea lo limita el ANCHO real del video (clave en vertical 9:16):
+    # con fuente escalada por altura, 38 chars no caben en 1080 de ancho.
+    size_px = round(args.size * base["h"] / 1080)
+    usable_px = base["w"] - 2 * 60  # MarginL/R del estilo ASS
+    max_chars = min(MAX_CHARS_LINE, int(usable_px / (GLYPH_W * size_px)))
+    caps = segment(words, max_chars)
     subs_dir = project / "work" / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
     ass, srt = subs_dir / "subs.ass", subs_dir / "subs.srt"
     write_ass(caps, ass, base, args)
     write_srt(caps, srt)
-    print(f"{len(words)} palabras → {len(caps)} subtítulos; escritos {ass} y {srt}")
+    print(f"{len(words)} palabras -> {len(caps)} subtítulos; escritos {ass} y {srt}")
     if args.solo_archivos:
         return
 

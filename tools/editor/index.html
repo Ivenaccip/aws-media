@@ -31,19 +31,41 @@
   video { width: 100%; height: 100%; min-height: 0; object-fit: contain; background: #000; }
   #right { flex: 1; max-width: 460px; display: flex; flex-direction: column; border-left: 1px solid #000; min-height: 0; }
   .panel { background: var(--panel); padding: 10px 12px; overflow-y: auto; }
-  #inspector { flex: 0 0 auto; max-height: 45%; border-bottom: 1px solid #000; }
   #flagsPanel { flex: 1; min-height: 0; }
   .panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 8px; }
   .flag { padding: 7px 8px; border-radius: 6px; background: var(--panel2); margin-bottom: 6px; }
   .flag b { color: #e0b657; }
   .flag button { padding: 1px 8px; font-size: 12px; margin-top: 4px; }
-  .insp-text { background: var(--panel2); border-radius: 6px; padding: 8px; margin: 6px 0; font-size: 13px; }
-  .insp-note { color: #e0b657; font-size: 12px; margin-bottom: 6px; }
-  .insp-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
-  .insp-row .lbl { color: var(--dim); width: 38px; }
-  .insp-row button { padding: 2px 8px; font-size: 12px; }
-  .kbd { color: var(--dim); font-size: 11px; margin-top: 8px; }
-  .kbd b { color: var(--text); font-weight: 600; }
+  .flag.active { outline: 1px solid #e0b657; }
+  .insp-note { color: #e0b657; font-size: 12px; }
+
+  #toolbar { display: flex; gap: 6px; align-items: center; padding: 6px 12px; background: var(--panel);
+             border-bottom: 1px solid #000; flex-wrap: wrap; }
+  #toolbar button, #toolbar select { padding: 3px 9px; font-size: 12px; }
+  #toolbar .sep { width: 1px; height: 18px; background: #3a4050; margin: 0 4px; }
+  #selInfo { color: var(--dim); font-size: 12px; max-width: 300px; white-space: nowrap;
+             overflow: hidden; text-overflow: ellipsis; }
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 0;
+    background: #0d0f13; color: var(--text); border: 1px solid #3a4050; padding: 3px 8px; border-radius: 4px;
+    font-size: 11px; white-space: nowrap; z-index: 60; pointer-events: none; }
+
+  #transcript { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000;
+                display: flex; flex-direction: column; min-height: 0; }
+  #txBar { display: flex; gap: 8px; align-items: center; padding: 8px 12px 4px; }
+  #txBar .h { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); flex: 1; }
+  #txBar button { padding: 2px 8px; font-size: 12px; }
+  #txBody { flex: 1; overflow-y: auto; padding: 4px 14px 20px; font-size: 14px; line-height: 2.0; }
+  .txclip { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 10px 0 4px; }
+  .txnote { color: var(--dim); padding: 8px 0; }
+  .w { cursor: pointer; padding: 1px 2px; border-radius: 3px; }
+  .w:hover { background: #3a4050; }
+  .w.cut { text-decoration: line-through; opacity: .6; }
+  .w.current { background: var(--accent); color: #fff; }
+  .w.selw { background: color-mix(in srgb, #6fd6ce 30%, transparent); outline: 1px solid #6fd6ce; }
+  .w.editing { background: var(--panel2); outline: 1px solid var(--accent); text-decoration: none; opacity: 1; }
+  .w.edited { border-bottom: 1px dotted var(--accent); }
+  .wflag { cursor: pointer; margin: 0 2px; }
 
   #tlwrap { flex: 0 0 210px; background: var(--panel); border-top: 1px solid #000; display: flex; flex-direction: column; }
   #tlbar { display: flex; gap: 12px; align-items: center; padding: 4px 12px; color: var(--dim); }
@@ -75,27 +97,47 @@
 <body>
 <header>
   <span class="title">✂ Cut Editor</span>
-  <span>
-    <button id="modeBtn" title="Toggle edited / raw playback (E)">Mode: Edited</button>
-    <select id="styleSel" title="Pause style for edited playback + renders">
-      <option value="tight">tight</option><option value="natural">natural</option>
-    </select>
-  </span>
   <span id="timeinfo" style="min-width:230px"></span>
   <span id="editlen" style="color:var(--dim)"></span>
   <span class="grow"></span>
   <span id="status"></span>
-  <button id="saveBtn" disabled>💾 Save</button>
-  <button id="renderBtn" class="primary">🎬 Render preview</button>
+  <button id="saveBtn" disabled data-tip="Guardar cuts.json + correcciones de texto (con respaldo)">💾 Save</button>
+  <button id="renderBtn" class="primary" data-tip="Renderizar el preview real con el engine">🎬 Render preview</button>
 </header>
 
+<div id="toolbar">
+  <button id="tbPlay" data-tip="Reproducir / pausar — Espacio">▶</button>
+  <button id="modeBtn" data-tip="Playback editado / crudo — E">Mode: Edited</button>
+  <select id="styleSel" data-tip="Estilo de pausas del playback editado y los renders">
+    <option value="tight">tight</option><option value="natural">natural</option>
+  </select>
+  <span class="sep"></span>
+  <button id="tbBack" data-tip="Atrás 2s — ← (Shift+← = 10s)">⏪ 2s</button>
+  <button id="tbFrameB" data-tip="1 frame atrás — ,">−fr</button>
+  <button id="tbFrameF" data-tip="1 frame adelante — .">+fr</button>
+  <button id="tbFwd" data-tip="Adelante 2s — → (Shift+→ = 10s)">2s ⏩</button>
+  <span class="sep"></span>
+  <button id="tbIn" data-tip="Marcar inicio del rango — I">⟦ in</button>
+  <button id="tbOut" data-tip="Marcar fin del rango — O">out ⟧</button>
+  <button id="tbCut" data-tip="Cortar el rango marcado (o la selección de palabras) — C">✂ cortar</button>
+  <span class="sep"></span>
+  <button id="tbToggle" disabled data-tip="Cortar / restaurar el bloque seleccionado">❌ cortar</button>
+  <button id="tbPlayBlock" disabled data-tip="Reproducir el bloque seleccionado (desde 1s antes)">▶ bloque</button>
+  <button id="tbSm" disabled data-tip="Borde inicial −50ms">s−</button>
+  <button id="tbSp" disabled data-tip="Borde inicial +50ms">s+</button>
+  <button id="tbEm" disabled data-tip="Borde final −50ms">e−</button>
+  <button id="tbEp" disabled data-tip="Borde final +50ms">e+</button>
+  <span class="sep"></span>
+  <span id="selInfo">nada seleccionado — click en un bloque del timeline o una palabra tachada</span>
+</div>
+
 <div id="main">
+  <div id="transcript">
+    <div id="txBar"><span class="h" data-tip="click = seek · Shift+click = seleccionar rango · doble click = corregir texto (Enter guarda, Esc cancela)">Transcript ⓘ</span><button id="txCutBtn" disabled data-tip="Cortar las palabras seleccionadas — C">✂ cortar selección</button></div>
+    <div id="txBody"></div>
+  </div>
   <div id="left"><video id="vid" src="/media/proxy.mp4"></video></div>
   <div id="right">
-    <div id="inspector" class="panel"><h3>Segment</h3><div id="inspBody">Click a block on the timeline.</div>
-      <div class="kbd"><b>Space</b> play · <b>E</b> mode · <b>←/→</b> ±2s · <b>Shift+←/→</b> ±10s · <b>,/.</b> ±1 frame ·
-      <b>I/O</b> mark in/out · <b>C</b> cut marked range · <b>+/−</b> zoom</div>
-    </div>
     <div id="flagsPanel" class="panel"><h3>Flagged judgment calls</h3><div id="flagsBody"></div></div>
   </div>
 </div>
@@ -129,6 +171,14 @@ let mode = "edited";
 let plan = [];              // global [start,end] playback segments
 let selIn = null, selOut = null;
 let evSeq = 0;
+let WORDS = {};             // clip -> canonical words (seconds-float, docs/SCHEMA.md)
+let wordMeta = [];          // flattened {clip, i, gs, ge, el} sorted by global start
+let txAnchor = null;        // {clip, i} anchor word of a shift-click selection
+let txSel = null;           // {clip, a, b} selected word index range
+let rangeStop = null;       // global time where playback auto-pauses (listen ±2s)
+let curWordEl = null;
+let txEdits = {};           // clip -> {word_index: corrected text}, pending save
+let txDirty = false;
 
 const CATCOLOR = { retake: "var(--cut-retake)", false_start: "var(--cut-false_start)",
                    repeat: "var(--cut-repeat)", manual: "var(--cut-manual)" };
@@ -144,6 +194,7 @@ function fromGlobal(t) {
 async function init() {
   const r = await fetch("/api/data"); const j = await r.json();
   DATA = j.cuts; MANIFEST = j.manifest; TOTAL = MANIFEST.total;
+  WORDS = j.words || {};
   for (const p of MANIFEST.parts) OFFSETS[p.id] = p.offset;
   events = [];
   for (const c of DATA.clips) {
@@ -151,6 +202,7 @@ async function init() {
     for (const x of c.cuts)  events.push({ id: ++evSeq, clip: c.id, s: x.s, e: x.e, kind: "cut", cat: x.cat, text: x.text, note: x.note || "" });
   }
   sortEvents();
+  buildTranscript();
   renderFlags(); rebuild();
   $("styleSel").value = "tight";
 }
@@ -170,21 +222,36 @@ function computeGaps(clip) {  // kept for save(): writes each keep's gap metadat
     return { k, d: nxt.s - k.e, t: hasCut ? "cut" : "silence", nxt, cuts };
   });
 }
+function atomsFor(clip, keeps, style) {
+  // mirrors cutlib.split_atoms: keeps split into speech runs at pauses >= internal_gap
+  const ws = WORDS[clip.id] || [];
+  if (!ws.length) return keeps.map(k => [k.s, k.e]);
+  const atoms = [];
+  for (const k of keeps) {
+    const kw = ws.filter(w => w.start >= k.s - 0.02 && w.end <= k.e + 0.02);
+    if (!kw.length) { atoms.push([k.s, k.e]); continue; }
+    let runS = kw[0].start;
+    for (let i = 0; i + 1 < kw.length; i++)
+      if (kw[i+1].start - kw[i].end >= style.internal_gap) { atoms.push([runS, kw[i].end]); runS = kw[i+1].start; }
+    atoms.push([runS, kw[kw.length-1].end]);
+  }
+  return atoms;
+}
 function buildSegments(clip, style) {
   const gone = (clip.fluff_suggestions || []).filter(f => f.status === "auto_applied");
   const keeps = events.filter(v => v.clip === clip.id && v.kind === "keep"
       && !gone.some(f => v.s >= f.s - 0.05 && v.e <= f.e + 0.05)).sort((a,b) => a.s - b.s);
   if (!keeps.length) return [];
+  const atoms = atomsFor(clip, keeps, style);
   const head = style.head, segs = [];
-  let open = keeps[0].s - Math.min(0.25, head*2);
-  for (let i = 0; i < keeps.length; i++) {
-    const k = keeps[i], nxt = keeps[i+1];
-    const gap = nxt ? nxt.s - k.e : (clip.duration - k.e);
+  for (let i = 0; i < atoms.length; i++) {
+    const [s, e] = atoms[i], nxt = atoms[i+1];
+    const gap = nxt ? nxt[0] - e : (clip.duration - e);
     const soft = !nxt || gap >= style.soft_gap;
     let tail = soft ? Math.min(style.soft_max_tail, style.min_tail + 0.12) : style.min_tail;
     if (nxt) tail = Math.min(tail, Math.max(gap - head - 0.06, style.min_tail * 0.5));
-    segs.push([open, k.e + tail]);
-    if (nxt) open = nxt.s - head;
+    const openHead = i > 0 ? head : Math.min(0.25, head * 2);
+    segs.push([Math.max(s - openHead, 0), e + tail]);
   }
   return segs;
 }
@@ -197,8 +264,112 @@ function rebuildPlan() {
   $("editlen").textContent = `edited ≈ ${Math.floor(len/60)}:${String(Math.round(len%60)).padStart(2,"0")}`;
 }
 
+/* ---------- transcript panel ---------- */
+function buildTranscript() {
+  const body = $("txBody");
+  body.innerHTML = "";
+  wordMeta = [];
+  for (const cid of DATA.clip_order) {
+    const ws = WORDS[cid] || [];
+    const h = document.createElement("div"); h.className = "txclip"; h.textContent = "clip " + cid;
+    body.appendChild(h);
+    if (!ws.length) {
+      const n = document.createElement("div"); n.className = "txnote";
+      n.textContent = "sin transcript canónico — corre tools/transcribe.py para ver las palabras aquí";
+      body.appendChild(n); continue;
+    }
+    const flagsByWord = {};
+    for (const f of (DATA.flags || []).filter(f => f.clip === cid)) {
+      const m = /(\d+):(\d+)/.exec(f.at); if (!m) continue;
+      const t = (+m[1]) * 60 + (+m[2]);
+      let idx = ws.findIndex(w => w.start >= t);
+      if (idx === -1) idx = ws.length - 1;
+      (flagsByWord[idx] = flagsByWord[idx] || []).push(f);
+    }
+    const p = document.createElement("div");
+    ws.forEach((w, i) => {
+      for (const f of (flagsByWord[i] || [])) {
+        const fm = document.createElement("span"); fm.className = "wflag"; fm.textContent = "🚩";
+        fm.title = `flag ${f.id}: ${f.issue}`;
+        fm.onclick = ev => { ev.stopPropagation(); showFlag(f); };
+        p.appendChild(fm);
+      }
+      const el = document.createElement("span");
+      el.className = "w"; el.textContent = w.text;
+      el.dataset.clip = cid; el.dataset.i = i;
+      p.appendChild(el); p.appendChild(document.createTextNode(" "));
+      wordMeta.push({ clip: cid, i, gs: toGlobal(cid, w.start), ge: toGlobal(cid, w.end), el });
+    });
+    body.appendChild(p);
+  }
+  wordMeta.sort((a, b) => a.gs - b.gs);
+  classifyWords();
+}
+function coveringCut(clip, w) {  // the cut event hiding this word, if any
+  const mid = (w.start + w.end) / 2;
+  return events.find(v => v.clip === clip && v.kind === "cut" && v.s - 0.02 <= mid && mid <= v.e + 0.02);
+}
+function classifyWords() {
+  const applied = {};
+  for (const c of DATA.clips)
+    applied[c.id] = (c.fluff_suggestions || []).filter(f => f.status === "auto_applied");
+  for (const m of wordMeta) {
+    const w = WORDS[m.clip][m.i];
+    const mid = (w.start + w.end) / 2;
+    const cut = coveringCut(m.clip, w);
+    const fluff = !cut && applied[m.clip].some(f => f.s - 0.05 <= mid && mid <= f.e + 0.05);
+    m.el.className = "w" + (cut || fluff ? " cut" : "")
+      + (txSel && txSel.clip === m.clip && m.i >= txSel.a && m.i <= txSel.b ? " selw" : "");
+    m.el.style.color = cut ? (CATCOLOR[cut.cat] || "var(--cut-retake)") : (fluff ? "var(--cut-manual)" : "");
+  }
+}
+function clearWordSel() {
+  txSel = null; $("txCutBtn").disabled = true;
+}
+function updateKaraoke() {
+  const t = vid.currentTime;
+  let lo = 0, hi = wordMeta.length - 1;      // last word with gs <= t
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (wordMeta[mid].gs <= t) lo = mid + 1; else hi = mid - 1; }
+  const cand = wordMeta[hi];
+  const found = cand && t <= cand.ge + 0.15 ? cand : null;
+  if (curWordEl && curWordEl !== (found && found.el)) curWordEl.classList.remove("current");
+  if (found) {
+    found.el.classList.add("current");
+    if (!vid.paused && found.el !== curWordEl) found.el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  curWordEl = found ? found.el : null;
+}
+function playRange(from, to) { seek(Math.max(from, 0)); rangeStop = to; vid.play(); }
+function markTxDirty(msg) { txDirty = true; changes.push(msg); $("saveBtn").disabled = false; setStatus(msg); }
+function startWordEdit(el) {
+  const cid = el.dataset.clip, i = +el.dataset.i;
+  const orig = WORDS[cid][i].text;
+  el.contentEditable = "true"; el.classList.add("editing");
+  el.focus();
+  const range = document.createRange(); range.selectNodeContents(el);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  const done = commit => {
+    el.removeEventListener("keydown", onKey); el.removeEventListener("blur", onBlur);
+    el.contentEditable = "false"; el.classList.remove("editing");
+    const t = el.textContent.replace(/\s+/g, " ").trim();
+    if (!commit || !t || t === orig) { el.textContent = WORDS[cid][i].text; return; }
+    WORDS[cid][i].text = t; el.textContent = t;
+    el.classList.add("edited");
+    (txEdits[cid] = txEdits[cid] || {})[i] = t;
+    markTxDirty(`corrected ${cid}[${i}] "${orig}" → "${t}"`);
+  };
+  const onKey = ev => {
+    ev.stopPropagation();
+    if (ev.key === "Enter") { ev.preventDefault(); done(true); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done(false); }
+  };
+  const onBlur = () => done(true);
+  el.addEventListener("keydown", onKey);
+  el.addEventListener("blur", onBlur);
+}
+
 /* ---------- timeline rendering ---------- */
-function rebuild() { rebuildPlan(); renderTimeline(); }
+function rebuild() { rebuildPlan(); renderTimeline(); classifyWords(); }
 function renderTimeline() {
   inner.style.width = (TOTAL * pps) + "px";
   inner.querySelectorAll(".ev,.clipmark,.cliplabel,.flagmark,.tick,.ticklabel,.selmark").forEach(n => n.remove());
@@ -262,52 +433,57 @@ function drawSelMarks() {
   }
 }
 
-/* ---------- inspector ---------- */
+/* ---------- selection info (toolbar) + flags panel ---------- */
 function showEvent(ev) {
   selected = ev;
-  const col = ev.kind === "keep" ? "var(--keep)" : (CATCOLOR[ev.cat] || "var(--cut-retake)");
-  $("inspBody").innerHTML = `
-    <div><b style="color:${col}">${ev.kind.toUpperCase()}${ev.cat ? " · " + ev.cat : ""}</b>
-      &nbsp; clip ${ev.clip} &nbsp; <span id="evTimes">${g2(ev.s)} – ${g2(ev.e)}</span> (${(ev.e-ev.s).toFixed(2)}s)</div>
-    ${ev.note ? `<div class="insp-note">${ev.note}</div>` : ""}
-    <div class="insp-text">${ev.text}</div>
-    <div class="insp-row">
-      <button id="bPlay">▶ play this</button>
-      <button id="bToggle">${ev.kind === "keep" ? "❌ cut this" : "✅ restore"}</button>
-    </div>
-    <div class="insp-row"><span class="lbl">start</span>
-      <button data-n="s,-0.05">−50ms</button><button data-n="s,0.05">+50ms</button>
-      <span class="lbl" style="margin-left:10px">end</span>
-      <button data-n="e,-0.05">−50ms</button><button data-n="e,0.05">+50ms</button>
-    </div>`;
-  $("bPlay").onclick = () => { seek(Math.max(toGlobal(ev.clip, ev.s) - 1, 0)); vid.play(); };
-  $("bToggle").onclick = () => toggleEvent(ev);
-  document.querySelectorAll("[data-n]").forEach(b => b.onclick = () => {
-    const [f, dv] = b.dataset.n.split(","); nudge(ev, f, parseFloat(dv));
-  });
+  updateSelUI();
   renderTimeline();
 }
+function updateSelUI() {
+  const has = !!selected;
+  for (const id of ["tbToggle", "tbPlayBlock", "tbSm", "tbSp", "tbEm", "tbEp"]) $(id).disabled = !has;
+  if (!has) {
+    $("selInfo").textContent = "nada seleccionado — click en un bloque del timeline o una palabra tachada";
+    $("selInfo").title = ""; return;
+  }
+  const ev = selected;
+  $("tbToggle").textContent = ev.kind === "keep" ? "❌ cortar" : "✅ restaurar";
+  $("selInfo").textContent =
+    `${ev.kind.toUpperCase()}${ev.cat ? " · " + ev.cat : ""} ${g2(ev.s)}–${g2(ev.e)} (${(ev.e - ev.s).toFixed(2)}s) ${ev.text}`;
+  $("selInfo").title = (ev.note ? ev.note + "\n" : "") + ev.text;
+}
+function flagTime(f) {
+  const m = /(\d+):(\d+)/.exec(f.at);
+  return m ? toGlobal(f.clip, (+m[1]) * 60 + (+m[2])) : null;
+}
+function highlightFlag(id) {
+  document.querySelectorAll(".flag.active").forEach(n => n.classList.remove("active"));
+  const card = $("flagCard" + id);
+  if (card) { card.classList.add("active"); card.scrollIntoView({ block: "nearest" }); }
+}
 function showFlag(f) {
-  $("inspBody").innerHTML = `<div><b style="color:#e0b657">FLAG ${f.id}</b> · clip ${f.clip} @ ${f.at}</div>
-    <div class="insp-text">${f.issue}</div><div class="insp-note">default: ${f.default}</div>
-    <div class="kbd">Use the timeline blocks around this point to change the decision (restore a red block / cut a green one).</div>`;
+  const t = flagTime(f);
+  if (t !== null) seek(t);
+  highlightFlag(f.id);
 }
 function showFluff(clip, f) {
-  $("inspBody").innerHTML = `<div><b style="color:#d0a84e">💡 FLUFF SUGGESTION</b> · clip ${clip} · ${g2(f.s)}–${g2(f.e)}
-    &nbsp;<span style="color:var(--dim)">${f.crit||""}</span></div>
-    <div class="insp-text">${f.text}</div><div class="insp-note">${f.note||""}</div>
-    <div class="kbd">Suggest-only — nothing is removed automatically. To accept, select the block(s) this
-    covers and cut them (I/O then C, or ❌ cut this). To reject, ignore it.</div>`;
+  $("selInfo").textContent = `💡 FLUFF ${g2(f.s)}–${g2(f.e)} (suggest-only): ${f.text}`;
+  $("selInfo").title = (f.note || "") + "\nPara aceptarla: selecciona sus palabras/bloques y córtalos. Para rechazarla: ignórala.";
+  setStatus("fluff es solo sugerencia — nada se quita automáticamente");
 }
 function renderFlags() {
   $("flagsBody").innerHTML = (DATA.flags || []).map(f => `
-    <div class="flag"><b>▲${f.id}</b> clip ${f.clip} @ ${f.at}<br>${f.issue}<br>
-    <button data-f="${f.id}">jump to it</button></div>`).join("");
-  document.querySelectorAll("[data-f]").forEach(b => b.onclick = () => {
+    <div class="flag" id="flagCard${f.id}"><b>▲${f.id}</b> clip ${f.clip} @ ${f.at}<br>${f.issue}<br>
+    <span class="insp-note">default: ${f.default}</span><br>
+    <button data-f="${f.id}" data-act="jump" data-tip="Seek al punto del flag">ir ahí</button>
+    <button data-f="${f.id}" data-act="listen" data-tip="Reproduce ±2s a caballo del empalme (modo edited)">▶ ±2s</button></div>`).join("");
+  document.querySelectorAll("#flagsBody [data-f]").forEach(b => b.onclick = () => {
     const f = DATA.flags.find(x => x.id == b.dataset.f);
-    const m = /(\d+):(\d+)/.exec(f.at);
-    if (m) seek(toGlobal(f.clip, (+m[1])*60 + (+m[2])));
-    showFlag(f);
+    const t = flagTime(f);
+    highlightFlag(f.id);
+    if (t === null) return;
+    if (b.dataset.act === "listen") playRange(t - 2, t + 2);
+    else seek(t);
   });
 }
 
@@ -345,28 +521,41 @@ function cutSelection() {
   events.splice(events.indexOf(host), 1, ...parts);
   sortEvents();
   selIn = selOut = null;
+  txAnchor = null; clearWordSel();
   markDirty(`added manual cut ${host.clip} ${la.t.toFixed(2)}-${lb.t.toFixed(2)}`);
 }
 
 /* ---------- save / render ---------- */
 function setStatus(msg, cls) { const s = $("status"); s.textContent = msg; s.className = cls || ""; }
 async function save() {
-  const out = JSON.parse(JSON.stringify(DATA));
-  for (const clip of out.clips) {
-    const rows = computeGaps(clip);
-    clip.keeps = rows.map(({ k, d, t }) => {
-      const o = { s: +k.s.toFixed(3), e: +k.e.toFixed(3), text: k.text, gap: { d: +d.toFixed(2), t } };
-      if (k.note) o.note = k.note; return o;
-    });
-    clip.cuts = events.filter(v => v.clip === clip.id && v.kind === "cut").sort((x,y) => x.s - y.s)
-      .map(c => { const o = { s: +c.s.toFixed(3), e: +c.e.toFixed(3), cat: c.cat || "manual", text: c.text };
-                  if (c.note) o.note = c.note; return o; });
+  const msgs = [];
+  if (dirty) {
+    const out = JSON.parse(JSON.stringify(DATA));
+    for (const clip of out.clips) {
+      const rows = computeGaps(clip);
+      clip.keeps = rows.map(({ k, d, t }) => {
+        const o = { s: +k.s.toFixed(3), e: +k.e.toFixed(3), text: k.text, gap: { d: +d.toFixed(2), t } };
+        if (k.note) o.note = k.note; return o;
+      });
+      clip.cuts = events.filter(v => v.clip === clip.id && v.kind === "cut").sort((x,y) => x.s - y.s)
+        .map(c => { const o = { s: +c.s.toFixed(3), e: +c.e.toFixed(3), cat: c.cat || "manual", text: c.text };
+                    if (c.note) o.note = c.note; return o; });
+    }
+    const r = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cuts: out, changes }) });
+    const j = await r.json();
+    if (!j.saved) return setStatus("save failed: " + (j.error || "?"), "err");
+    dirty = false; changes = []; DATA = out; msgs.push("cuts ✓ (" + j.backup + ")");
   }
-  const r = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cuts: out, changes }) });
-  const j = await r.json();
-  if (j.saved) { dirty = false; changes = []; $("saveBtn").disabled = true; DATA = out; setStatus("saved ✓ (" + j.backup + ")", "ok"); }
-  else setStatus("save failed: " + (j.error || "?"), "err");
+  if (txDirty) {
+    const r = await fetch("/api/words", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ edits: txEdits }) });
+    const j = await r.json();
+    if (!j.saved) return setStatus("transcript save failed: " + (j.error || "?"), "err");
+    txDirty = false; txEdits = {}; changes = []; msgs.push(`transcript ✓ (${j.applied} palabras)`);
+  }
+  $("saveBtn").disabled = true;
+  setStatus("saved: " + msgs.join(" · "), "ok");
 }
 async function render() {
   if (dirty) await save();
@@ -400,8 +589,10 @@ function updatePlayhead() {
 }
 setInterval(() => {
   updatePlayhead();
-  if (mode !== "edited" || vid.paused || !plan.length) return;
+  updateKaraoke();
   const t = vid.currentTime;
+  if (rangeStop !== null && t >= rangeStop) { vid.pause(); rangeStop = null; }
+  if (mode !== "edited" || vid.paused || !plan.length) return;
   const inSeg = plan.some(([s,e]) => t >= s - 0.02 && t < e);
   if (!inSeg) {
     const nxt = plan.find(([s]) => s > t);
@@ -436,7 +627,7 @@ window.addEventListener("mouseup", () => {
   drag = null;
 });
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.isContentEditable) return;
   const k = e.key;
   if (k === " ") { e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }
   else if (k === "e" || k === "E") $("modeBtn").click();
@@ -456,11 +647,51 @@ function rebuildZoom() {
   tl.scrollLeft = center * pps - tl.clientWidth / 2;
 }
 $("zoom").oninput = e => { pps = +e.target.value; rebuildZoom(); };
+$("txBody").addEventListener("dblclick", e => {
+  const el = e.target.closest(".w"); if (!el || el.isContentEditable) return;
+  e.preventDefault();
+  startWordEdit(el);
+});
+$("txBody").addEventListener("click", e => {
+  const el = e.target.closest(".w"); if (!el || el.isContentEditable) return;
+  const cid = el.dataset.clip, i = +el.dataset.i, w = WORDS[cid][i];
+  if (e.shiftKey && txAnchor && txAnchor.clip === cid) {
+    txSel = { clip: cid, a: Math.min(txAnchor.i, i), b: Math.max(txAnchor.i, i) };
+    selIn = toGlobal(cid, WORDS[cid][txSel.a].start);
+    selOut = toGlobal(cid, WORDS[cid][txSel.b].end);
+    $("txCutBtn").disabled = false;
+    setStatus(`selección: ${txSel.b - txSel.a + 1} palabras ${g2(selIn)}–${g2(selOut)} — C o ✂ para cortar`);
+    classifyWords(); drawSelMarks();
+    return;
+  }
+  txAnchor = { clip: cid, i };
+  if (txSel) { clearWordSel(); classifyWords(); }
+  seek(toGlobal(cid, w.start));
+  const cut = coveringCut(cid, w);
+  if (cut) showEvent(cut);   // palabra tachada -> su bloque de corte (con ✅ restore)
+});
+$("txCutBtn").onclick = cutSelection;
 $("modeBtn").onclick = () => { mode = mode === "edited" ? "raw" : "edited"; $("modeBtn").textContent = "Mode: " + (mode === "edited" ? "Edited" : "Raw"); };
+$("tbPlay").onclick = () => vid.paused ? vid.play() : vid.pause();
+$("tbBack").onclick = () => seek(vid.currentTime - 2);
+$("tbFwd").onclick = () => seek(vid.currentTime + 2);
+$("tbFrameB").onclick = () => seek(vid.currentTime - 1/59.94);
+$("tbFrameF").onclick = () => seek(vid.currentTime + 1/59.94);
+$("tbIn").onclick = () => { selIn = vid.currentTime; drawSelMarks(); setStatus(`in @ ${g2(selIn)}`); };
+$("tbOut").onclick = () => { selOut = vid.currentTime; drawSelMarks(); setStatus(`out @ ${g2(selOut)}`); };
+$("tbCut").onclick = cutSelection;
+$("tbToggle").onclick = () => selected && toggleEvent(selected);
+$("tbPlayBlock").onclick = () => { if (selected) { seek(Math.max(toGlobal(selected.clip, selected.s) - 1, 0)); vid.play(); } };
+$("tbSm").onclick = () => selected && nudge(selected, "s", -0.05);
+$("tbSp").onclick = () => selected && nudge(selected, "s", 0.05);
+$("tbEm").onclick = () => selected && nudge(selected, "e", -0.05);
+$("tbEp").onclick = () => selected && nudge(selected, "e", 0.05);
+vid.addEventListener("play", () => $("tbPlay").textContent = "⏸");
+vid.addEventListener("pause", () => $("tbPlay").textContent = "▶");
 $("styleSel").onchange = rebuildPlan;
 $("saveBtn").onclick = save;
 $("renderBtn").onclick = render;
-window.addEventListener("beforeunload", e => { if (dirty) e.preventDefault(); });
+window.addEventListener("beforeunload", e => { if (dirty || txDirty) e.preventDefault(); });
 vid.addEventListener("loadedmetadata", () => { if (Math.abs(vid.duration - TOTAL) > 2) setStatus("proxy/manifest length mismatch — rebuild proxy", "err"); });
 
 init();
