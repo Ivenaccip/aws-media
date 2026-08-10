@@ -29,5 +29,9 @@ google-auth==2.41.1
 google-auth-oauthlib==1.2.2
 google-auth-httplib2==0.2.1
 
+# --- chat embebido del cut-editor (tools/editor) — opcional: sin él, el editor
+#     funciona igual y el panel de chat se muestra deshabilitado
+claude-agent-sdk==0.2.133
+
 # --- tests
 pytest==9.1.1
