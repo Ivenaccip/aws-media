@@ -30,14 +30,39 @@
   #left { flex: 1.5; display: flex; flex-direction: column; min-width: 0; background: #000; }
   video { width: 100%; height: 100%; min-height: 0; object-fit: contain; background: #000; }
   #right { flex: 1; max-width: 460px; display: flex; flex-direction: column; border-left: 1px solid #000; min-height: 0; }
-  .panel { background: var(--panel); padding: 10px 12px; overflow-y: auto; }
-  #flagsPanel { flex: 1; min-height: 0; }
-  .panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 8px; }
-  .flag { padding: 7px 8px; border-radius: 6px; background: var(--panel2); margin-bottom: 6px; }
-  .flag b { color: #e0b657; }
-  .flag button { padding: 1px 8px; font-size: 12px; margin-top: 4px; }
-  .flag.active { outline: 1px solid #e0b657; }
   .insp-note { color: #e0b657; font-size: 12px; }
+
+  #decisions { flex: 1; display: flex; flex-direction: column; background: var(--panel); min-height: 0; }
+  #decHead { padding: 10px 12px 8px; border-bottom: 1px solid #000; }
+  #decHead h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 8px; }
+  #flagChips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 12px; padding: 1px 10px; border-radius: 999px; cursor: pointer; border: 1px solid; }
+  .chip.pending { border-color: var(--cut-retake); color: #ea8c8c;
+                  background: color-mix(in srgb, var(--cut-retake) 20%, transparent); }
+  .chip.noted { border-color: #e0b657; color: #e0b657;
+                background: color-mix(in srgb, #e0b657 18%, transparent); }
+  .chip.resolved { border-color: var(--keep); color: #6fce8f;
+                   background: color-mix(in srgb, var(--keep) 18%, transparent); }
+  .chip.active { outline: 1px solid var(--sel); }
+  #flagCard { padding: 8px 12px 10px; border-bottom: 1px solid #000; background: var(--panel2); font-size: 12px; }
+  #flagCard b { color: #e0b657; }
+  #flagCard .fcClose { float: right; cursor: pointer; color: var(--dim); padding: 0 4px; }
+  #flagCard button { padding: 1px 8px; font-size: 12px; margin: 6px 5px 0 0; }
+  #flagCard .note { background: color-mix(in srgb, #e0b657 12%, transparent); border-left: 2px solid #e0b657;
+                    padding: 3px 7px; margin-top: 6px; }
+  #flagCard input { width: 100%; margin-top: 6px; background: var(--bg); color: var(--text);
+                    border: 1px solid #3a4050; border-radius: 5px; padding: 4px 7px; font: inherit; font-size: 12px; }
+  #chatLog { flex: 1; overflow-y: auto; padding: 8px 12px; min-height: 0; }
+  .cmsg { margin-bottom: 8px; white-space: pre-wrap; overflow-wrap: break-word; }
+  .cmsg.user { background: var(--panel2); border-left: 2px solid var(--accent); padding: 5px 8px; border-radius: 5px; }
+  .cmsg.tool { color: var(--dim); font-size: 11px; margin: 2px 0 2px 6px; }
+  .cmsg.error { color: #e37c7c; }
+  .cmsg.meta { color: var(--dim); font-size: 11px; border-bottom: 1px solid #2a2f3a; padding-bottom: 6px; }
+  #chatBusy { color: var(--dim); font-size: 12px; padding: 0 12px 4px; display: none; }
+  #decisions.busy #chatBusy { display: block; }
+  #chatRow { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid #2a2f3a; }
+  #chatInput { flex: 1; background: var(--panel2); color: var(--text); border: 1px solid #3a4050;
+               border-radius: 5px; padding: 6px 8px; font: inherit; }
 
   #toolbar { display: flex; gap: 6px; align-items: center; padding: 6px 12px; background: var(--panel);
              border-bottom: 1px solid #000; flex-wrap: wrap; }
@@ -138,7 +163,17 @@
   </div>
   <div id="left"><video id="vid" src="/media/proxy.mp4"></video></div>
   <div id="right">
-    <div id="flagsPanel" class="panel"><h3>Flagged judgment calls</h3><div id="flagsBody"></div></div>
+    <div id="decisions">
+      <div id="decHead">
+        <h3 data-tip="🔴 pendiente · 🟡 nota guardada · 🟢 resuelto — las notas se mandan juntas en UN envío">Decisiones ⓘ · <span id="flagCount"></span></h3>
+        <div id="flagChips"></div>
+      </div>
+      <div id="flagCard" style="display:none"></div>
+      <div id="chatLog"><div class="txnote" id="chatNote">Anota decisiones en los flags (1er click guarda la nota) y
+        mándalas juntas con ➤, o escribe libre. El primer mensaje arranca la sesión de Claude.</div></div>
+      <div id="chatBusy">⏳ Claude está trabajando…</div>
+      <div id="chatRow"><input id="chatInput" type="text" placeholder="mensaje libre (opcional si hay notas)…"><button id="chatSend" data-tip="Enviar notas + mensaje — Enter">➤</button></div>
+    </div>
   </div>
 </div>
 
@@ -195,6 +230,7 @@ async function init() {
   const r = await fetch("/api/data"); const j = await r.json();
   DATA = j.cuts; MANIFEST = j.manifest; TOTAL = MANIFEST.total;
   WORDS = j.words || {};
+  loadNotes(j.project || "proyecto");
   for (const p of MANIFEST.parts) OFFSETS[p.id] = p.offset;
   events = [];
   for (const c of DATA.clips) {
@@ -456,35 +492,104 @@ function flagTime(f) {
   const m = /(\d+):(\d+)/.exec(f.at);
   return m ? toGlobal(f.clip, (+m[1]) * 60 + (+m[2])) : null;
 }
-function highlightFlag(id) {
-  document.querySelectorAll(".flag.active").forEach(n => n.classList.remove("active"));
-  const card = $("flagCard" + id);
-  if (card) { card.classList.add("active"); card.scrollIntoView({ block: "nearest" }); }
-}
 function showFlag(f) {
   const t = flagTime(f);
   if (t !== null) seek(t);
-  highlightFlag(f.id);
+  activeFlag = f.id;
+  renderFlags();
 }
 function showFluff(clip, f) {
   $("selInfo").textContent = `💡 FLUFF ${g2(f.s)}–${g2(f.e)} (suggest-only): ${f.text}`;
   $("selInfo").title = (f.note || "") + "\nPara aceptarla: selecciona sus palabras/bloques y córtalos. Para rechazarla: ignórala.";
   setStatus("fluff es solo sugerencia — nada se quita automáticamente");
 }
+/* Semáforo por flag: 🔴 pending (sin decisión) · 🟡 noted (nota local guardada,
+   aún sin enviar) · 🟢 resolved (status en cuts.json, lo pone Claude al resolver).
+   Las notas viven en localStorage por proyecto hasta que el envío las resuelve. */
+let flagNotes = {}, NOTES_KEY = "fnotes", activeFlag = null;
+function loadNotes(project) {
+  NOTES_KEY = "fnotes:" + project;
+  try { flagNotes = JSON.parse(localStorage.getItem(NOTES_KEY)) || {}; } catch { flagNotes = {}; }
+}
+const persistNotes = () => localStorage.setItem(NOTES_KEY, JSON.stringify(flagNotes));
+function flagStatus(f) {
+  return f.status === "resolved" ? "resolved" : (flagNotes[f.id] ? "noted" : "pending");
+}
 function renderFlags() {
-  $("flagsBody").innerHTML = (DATA.flags || []).map(f => `
-    <div class="flag" id="flagCard${f.id}"><b>▲${f.id}</b> clip ${f.clip} @ ${f.at}<br>${f.issue}<br>
-    <span class="insp-note">default: ${f.default}</span><br>
-    <button data-f="${f.id}" data-act="jump" data-tip="Seek al punto del flag">ir ahí</button>
-    <button data-f="${f.id}" data-act="listen" data-tip="Reproduce ±2s a caballo del empalme (modo edited)">▶ ±2s</button></div>`).join("");
-  document.querySelectorAll("#flagsBody [data-f]").forEach(b => b.onclick = () => {
-    const f = DATA.flags.find(x => x.id == b.dataset.f);
-    const t = flagTime(f);
-    highlightFlag(f.id);
-    if (t === null) return;
-    if (b.dataset.act === "listen") playRange(t - 2, t + 2);
-    else seek(t);
-  });
+  const flags = DATA.flags || [];
+  const pend = flags.filter(f => flagStatus(f) === "pending").length;
+  const noted = flags.filter(f => flagStatus(f) === "noted").length;
+  $("flagCount").textContent = `${pend} 🔴 · ${noted} 🟡 · ${flags.length - pend - noted} 🟢`;
+  const box = $("flagChips");
+  box.innerHTML = "";
+  for (const f of flags) {
+    const c = document.createElement("span");
+    c.className = "chip " + flagStatus(f) + (activeFlag === f.id ? " active" : "");
+    c.textContent = "▲" + f.id;
+    c.title = f.issue;
+    c.onclick = () => showFlag(f);
+    box.appendChild(c);
+  }
+  renderFlagCard();
+  updateSendBtn();
+}
+function saveFlagNote(id, text) {
+  if (!text || !text.trim()) return;
+  flagNotes[id] = text.trim();
+  persistNotes();
+  renderFlags();
+  setStatus(`nota guardada en ▲${id} — se manda con ➤ (puedes juntar varias)`);
+}
+function clearFlagNote(id) { delete flagNotes[id]; persistNotes(); renderFlags(); }
+function renderFlagCard() {
+  const card = $("flagCard");
+  const f = (DATA.flags || []).find(x => x.id === activeFlag);
+  if (!f) { card.style.display = "none"; return; }
+  card.style.display = "";
+  card.innerHTML = "";
+  const st = flagStatus(f);
+  const head = document.createElement("div");
+  head.innerHTML = `<span class="fcClose" title="cerrar">✕</span><b>▲${f.id}</b> clip ${f.clip} @ ${f.at} · ` +
+    (st === "resolved" ? "🟢 resuelto" : st === "noted" ? "🟡 nota guardada" : "🔴 pendiente");
+  head.querySelector(".fcClose").onclick = () => { activeFlag = null; renderFlags(); };
+  const issue = document.createElement("div"); issue.textContent = f.issue;
+  card.append(head, issue);
+  if (f.resolution) {
+    const r = document.createElement("div"); r.className = "insp-note"; r.textContent = "resolución: " + f.resolution;
+    card.appendChild(r);
+  } else {
+    const d = document.createElement("div"); d.className = "insp-note"; d.textContent = "default: " + f.default;
+    card.appendChild(d);
+  }
+  const row = document.createElement("div");
+  const bL = document.createElement("button");
+  bL.textContent = "▶ ±2s"; bL.dataset.tip = "Reproduce ±2s a caballo del empalme";
+  bL.onclick = () => { const t = flagTime(f); if (t !== null) playRange(t - 2, t + 2); };
+  row.appendChild(bL);
+  if (st !== "resolved") {
+    const bD = document.createElement("button");
+    bD.textContent = "✓ anotar default"; bD.dataset.tip = "1er click: guarda la decisión como nota (🟡) — nada se envía aún";
+    bD.onclick = () => saveFlagNote(f.id, `aplica el default (${f.default})`);
+    row.appendChild(bD);
+  }
+  card.appendChild(row);
+  if (flagNotes[f.id]) {
+    const n = document.createElement("div"); n.className = "note";
+    n.textContent = "🟡 " + flagNotes[f.id] + " ";
+    const x = document.createElement("button"); x.textContent = "quitar";
+    x.onclick = () => clearFlagNote(f.id);
+    n.appendChild(x);
+    card.appendChild(n);
+  }
+  if (st !== "resolved") {
+    const inp = document.createElement("input");
+    inp.placeholder = "…o escribe tu decisión y Enter para anotarla";
+    inp.onkeydown = e => {
+      e.stopPropagation();
+      if (e.key === "Enter") { saveFlagNote(f.id, inp.value); }
+    };
+    card.appendChild(inp);
+  }
 }
 
 /* ---------- edits ---------- */
@@ -574,6 +679,87 @@ async function render() {
     }
   }, 1500);
 }
+
+/* ---------- chat con Claude (claude-agent-sdk en el server) ---------- */
+let chatShown = 0, chatPoll = null, chatBaselineMtime = null;
+
+function chatAppend(m) {
+  const log = $("chatLog"), d = document.createElement("div");
+  if (m.role === "user") { d.className = "cmsg user"; d.textContent = m.text; }
+  else if (m.role === "assistant") { d.className = "cmsg"; d.textContent = m.text; }
+  else if (m.role === "tool") { d.className = "cmsg tool"; d.textContent = `⚙ ${m.name}${m.detail ? " · " + m.detail : ""}`; }
+  else if (m.role === "error") { d.className = "cmsg error"; d.textContent = "⚠ " + m.text; }
+  else if (m.role === "result") {
+    d.className = "cmsg meta";
+    d.textContent = m.ok ? `✓ turno completo${m.cost ? ` · $${m.cost.toFixed(4)}` : ""}` : `⚠ turno terminó con ${m.subtype}`;
+  } else return;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+async function chatTick() {
+  let st;
+  try { st = await (await fetch("/api/chat/poll")).json(); } catch { return; }
+  for (let k = chatShown; k < st.messages.length; k++) chatAppend(st.messages[k]);
+  chatShown = st.messages.length;
+  $("decisions").classList.toggle("busy", st.busy);
+  $("chatSend").disabled = st.busy;
+  if (!st.available && st.error) { chatAppend({ role: "error", text: st.error }); $("chatInput").disabled = true; }
+  if (!st.busy && chatPoll) {
+    clearInterval(chatPoll); chatPoll = null;
+    if (chatBaselineMtime !== null && st.cuts_mtime !== chatBaselineMtime) reloadData();
+    chatBaselineMtime = null;
+  }
+}
+function updateSendBtn() {
+  const n = Object.keys(flagNotes).length;
+  $("chatSend").textContent = n ? `➤ ${n}` : "➤";
+  $("chatSend").dataset.tip = n
+    ? `Enviar las ${n} nota${n === 1 ? "" : "s"} 🟡 juntas (+ el mensaje libre) en UN turno`
+    : "Enviar mensaje — Enter";
+}
+function composeMessage(free) {
+  const notes = Object.entries(flagNotes);
+  if (!notes.length) return free;
+  let text = "Resuelve estos flags de cuts.json en UN solo pase (y pon status \"resolved\" " +
+    "+ un campo \"resolution\" corto en cada uno):\n" +
+    notes.map(([id, n]) => `▲${id}: ${n}`).join("\n");
+  if (free) text += "\nAdemás: " + free;
+  return text;
+}
+async function sendChat() {
+  const inp = $("chatInput"), free = inp.value.trim();
+  const text = composeMessage(free);
+  if (!text || chatPoll) return;
+  const note = $("chatNote"); if (note) note.remove();
+  const pre = await (await fetch("/api/chat/poll")).json();     // mtime ANTES del turno
+  chatBaselineMtime = pre.cuts_mtime;
+  const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }) });
+  const j = await r.json();
+  if (!j.sent) { chatAppend({ role: "error", text: j.error || "no se pudo enviar" }); return; }
+  inp.value = "";
+  chatPoll = setInterval(chatTick, 800);
+  chatTick();
+}
+async function reloadData() {
+  // Claude modificó cuts.json — recargar sin pisar trabajo local sin guardar
+  if (dirty || txDirty) {
+    setStatus("Claude modificó cuts.json pero tienes cambios sin guardar — guarda y recarga la página", "err");
+    return;
+  }
+  const t = vid.currentTime, style = $("styleSel").value;
+  selected = null; selIn = selOut = null; txAnchor = null; txSel = null;
+  await init();
+  // las notas 🟡 cuyos flags quedaron resueltos ya cumplieron su ciclo
+  for (const f of (DATA.flags || []))
+    if (f.status === "resolved" && flagNotes[f.id]) delete flagNotes[f.id];
+  persistNotes();
+  $("styleSel").value = style;
+  rebuild(); renderFlags(); updateSelUI(); seek(t);
+  setStatus("cuts.json recargado con los cambios de Claude ✓", "ok");
+}
+$("chatSend").onclick = sendChat;
+$("chatInput").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); sendChat(); } });
 
 /* ---------- playback ---------- */
 function seek(t) { vid.currentTime = Math.max(0, Math.min(t, TOTAL - 0.05)); updatePlayhead(); }
@@ -695,6 +881,7 @@ window.addEventListener("beforeunload", e => { if (dirty || txDirty) e.preventDe
 vid.addEventListener("loadedmetadata", () => { if (Math.abs(vid.duration - TOTAL) > 2) setStatus("proxy/manifest length mismatch — rebuild proxy", "err"); });
 
 init();
+chatTick();   // sondeo inicial: muestra si el chat está disponible sin arrancar la sesión
 </script>
 </body>
 </html>

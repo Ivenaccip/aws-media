@@ -13,6 +13,11 @@ Endpoints:
                             {"edits": {clip: {word_index: "new text"}}} (backed up)
   POST /api/render          run render_cuts.py  {"style": "tight"|"natural"}
   GET  /api/render/status   poll render progress
+  POST /api/chat            send a message to the embedded Claude session {"text": ...}
+  GET  /api/chat/poll       chat state: availability, busy, messages, cuts.json mtime
+
+The chat needs `pip install claude-agent-sdk` (optional — everything else works
+without it) and a logged-in Claude Code CLI; see chat_agent.py.
 """
 
 import json
@@ -36,6 +41,24 @@ MEDIA = {
 }
 
 render_state = {"running": False, "log": "", "ok": None}
+
+try:
+    from chat_agent import ChatAgent
+    CHAT_IMPORT_ERR = None
+except ImportError as e:
+    ChatAgent = None
+    CHAT_IMPORT_ERR = f"chat deshabilitado: {e} — pip install claude-agent-sdk"
+chat = {"agent": None}          # se crea perezosamente en el primer mensaje
+chat_lock = threading.Lock()
+
+
+def chat_state() -> dict:
+    st = (chat["agent"].state() if chat["agent"]
+          else {"available": ChatAgent is not None, "busy": False,
+                "error": CHAT_IMPORT_ERR, "messages": []})
+    # el panel usa el mtime para recargar cuts.json cuando Claude lo modifica
+    st["cuts_mtime"] = CUTS.stat().st_mtime if CUTS.exists() else 0
+    return st
 
 
 def load_canonical_words(cuts: dict) -> dict:
@@ -125,9 +148,12 @@ class Handler(BaseHTTPRequestHandler):
                 "cuts": cuts,
                 "manifest": json.loads((PROJECT / "work" / "editor" / "manifest.json").read_text(encoding="utf-8")),
                 "words": load_canonical_words(cuts),
+                "project": PROJECT.name,
             })
         elif self.path == "/api/render/status":
             self.send_json(render_state)
+        elif self.path == "/api/chat/poll":
+            self.send_json(chat_state())
         elif self.path in MEDIA:
             self.send_file_ranged(*MEDIA[self.path])
         else:
@@ -183,6 +209,25 @@ class Handler(BaseHTTPRequestHandler):
                         w["text"] for w in words[seg["first_word"]:seg["last_word"] + 1])
                 path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
             self.send_json({"saved": True, "applied": applied, "backup_stamp": stamp})
+        elif self.path == "/api/chat":
+            text = (body.get("text") or "").strip()
+            if not text:
+                self.send_json({"error": "empty message"}, 400)
+                return
+            if ChatAgent is None:
+                self.send_json({"error": CHAT_IMPORT_ERR}, 503)
+                return
+            with chat_lock:
+                if chat["agent"] is None:
+                    chat["agent"] = ChatAgent(ROOT, PROJECT)
+            agent = chat["agent"]
+            if agent.state()["busy"]:
+                self.send_json({"error": "Claude sigue trabajando — espera su respuesta"}, 409)
+                return
+            if not agent.send(text):
+                self.send_json({"error": agent.fatal or "chat no disponible"}, 503)
+                return
+            self.send_json({"sent": True})
         elif self.path == "/api/render":
             if render_state["running"]:
                 self.send_json({"error": "render already running"}, 409)

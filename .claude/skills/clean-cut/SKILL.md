@@ -40,8 +40,11 @@ tú no tienes oídos — no la simules con ciclos de render + ASR.
    - **lee el transcript** (panel izquierdo): lo tachado/coloreado por categoría es
      lo que sale del corte — leer lo no tachado = leer el video final. Click en
      palabra = seek; durante playback la palabra actual se ilumina.
-   - **escucha cada 🚩** (panel derecho): botón "▶ ±2s" reproduce a caballo del
-     empalme en modo Edited. Los flags se resuelven actuando sobre los bloques.
+   - **escucha cada 🚩** (panel derecho, "Decisiones"): botón "▶ ±2s" reproduce a
+     caballo del empalme en modo Edited. Semáforo por flag: 🔴 pendiente →
+     🟡 nota guardada → 🟢 resuelto (`status: "resolved"` en cuts.json). El usuario
+     puede anotar su decisión por flag y mandarlas JUNTAS al chat embebido, que
+     aplica todo en un pase; o resolverlas a mano actuando sobre los bloques.
    - **ajusta**: bordes por drag/nudge de frame, cortar/restaurar por bloque o por
      selección de palabras, todo con toolbar + tooltips.
    - **corrige texto del ASR** (doble click en la palabra): se persiste al
@@ -87,7 +90,8 @@ tú no tienes oídos — no la simules con ciclos de render + ASR.
                            "head": 0.11, "soft_gap": 1.2, "soft_max_tail": 0.6, "soft_margin": 3.0 },
               "natural": { "internal_gap": 0.4, "min_tail": 0.26, "max_tail": 0.45,
                            "head": 0.19, "soft_gap": 1.2, "soft_max_tail": 0.6, "soft_margin": 3.0 } },
-  "flags": [ { "id": 1, "clip": "0233", "at": "00:30", "issue": "...", "default": "keep both" } ]
+  "flags": [ { "id": 1, "clip": "0233", "at": "00:30", "issue": "...", "default": "keep both",
+               "status": "pending" } ]
 }
 ```
 
