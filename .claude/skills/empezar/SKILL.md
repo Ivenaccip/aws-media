@@ -40,7 +40,16 @@ la duración la necesitas para el preview de costo.
 
 ### 3. Transcribir — UNA vez, con costo antes si es nube
 
-Lee el backend de `.video-stack/config.json`:
+**Primero extrae el WAV que `transcribe.py` consume** (sin este paso, el primer
+intento falla con "nada que transcribir") — uno por clip:
+
+```bash
+mkdir -p videos/video-N/work/audio
+ffmpeg -i videos/video-N/<clip>.MP4 -vn -ac 1 -ar 16000 videos/video-N/work/audio/<id>.wav
+```
+
+(mismo formato que `/clean-cut` paso 2: 16 kHz mono; `<id>` = nombre del clip sin
+extensión). Luego lee el backend de `.video-stack/config.json`:
 
 - **Local**: corre directo `python tools/transcribe.py videos/video-N` (costo $0).
 - **Nube (AssemblyAI)**: ANTES de correr, muestra el preview en el chat con datos
