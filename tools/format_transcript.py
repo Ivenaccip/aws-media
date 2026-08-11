@@ -30,7 +30,7 @@ def main() -> None:
     out_dir = project / "work" / "analysis"
 
     for tpath in sorted((project / "work" / "transcripts").glob("*.json")):
-        words = json.loads(tpath.read_text()).get("words") or []
+        words = json.loads(tpath.read_text(encoding="utf-8")).get("words") or []
         lines = [f"# clip {tpath.stem} — {len(words)} words, ends {clock(words[-1]['end']) if words else '0'}"]
         seg_words, seg_start, prev_end, n = [], None, None, 0
 

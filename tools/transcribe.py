@@ -261,7 +261,14 @@ def main() -> None:
 
     jobs, out_dir = collect_jobs(project, args.clips, args.outdir, args.force)
     if not jobs:
-        print("nada que transcribir")
+        # distinguir "faltan los WAV" de "ya esta todo transcrito" (el mensaje
+        # ambiguo costo un primer intento fallido en /empezar — docs/BROLL-RUTAS.md)
+        if not any((project / "work" / "audio").glob("*.wav")):
+            sys.exit(f"no hay WAVs en {project}/work/audio — extrae el audio primero:\n"
+                     f"  ffmpeg -i {project}/<clip>.MP4 -vn -ac 1 -ar 16000 "
+                     f"{project}/work/audio/<id>.wav")
+        print("nada que transcribir: todos los clips ya tienen transcript "
+              "(usa --force para rehacer)")
         return
     if cfg["asr"] == "local":
         run_local(cfg, jobs, out_dir)

@@ -20,9 +20,21 @@
     "groq_whisper_large_v3": { "usd_per_hour": 0.02, "note": "tercera vía, solo referencia — no integrada en este repo" }
   },
   "broll": {
-    "comment": "Generación de b-roll (/broll-ai). Blotato cobra en CRÉDITOS y el costo por generación depende del modelo y del plan del usuario: NO hay precio fijo que poner aquí. Política: antes de generar, consultar blotato_get_credits y presentar 'N generaciones contra tu saldo de X créditos'; tras la primera generación real, reportar los créditos consumidos y extrapolar. Para fal.ai, citar el precio del modelo desde su página de pricing con fuente — nunca de memoria.",
-    "blotato": { "billing": "créditos del plan del usuario", "models_note": "imagen: GPT Image; video: veo3.1/fast/image-to-video sin audio" },
-    "fal": { "billing": "por generación según modelo", "note": "respaldo cuando Blotato no está o se quedó sin créditos" }
+    "comment": "Generación de b-roll (/broll-ai), TRES rutas por momento (docs/BROLL-RUTAS.md, verificado 2026-08-10 por API). Política: antes de generar, consultar blotato_get_credits y presentar 'N generaciones contra tu saldo'; tras la primera corrida real, reportar créditos consumidos y extrapolar.",
+    "blotato": {
+      "billing": "créditos del plan del usuario — 6 dólares por 1000 créditos",
+      "image": "gpt-image-1 vía plantilla image-slideshow: 25 créditos = 0.15 dólares por imagen (verificado)",
+      "motion": "Ken Burns determinista (animateAiImages): 0 créditos, 3.000 s fijos, pista aac en silencio (descartar con -an); el video_prompt NO se usa",
+      "models_note": "NINGÚN modelo image-to-video (veo/kling/runway…) es invocable por API/MCP — solo existen en my.blotato.com a mano. No prometer veo3.1 aquí.",
+      "source": "https://help.blotato.com/features/videos/ai-video-credits"
+    },
+    "remotion": { "billing": "0 dólares — beats visuales autorados en código (remotion-longform, vía /make-tsx)", "note": "texto perfecto y marca propia; no sustituye una foto (lugares, personas, texturas)" },
+    "fal": {
+      "billing": "por generación, requiere FAL_KEY en .env",
+      "image": "nanobanana ~0.08 dólares a 1080x1920 (0.0398 por MP)",
+      "video": "veo3.1 lite image-to-video 720p SIN audio: 0.03 dólares por segundo (única ruta con movimiento real automatizable — anima LA imagen aprobada)",
+      "source": "https://fal.ai/pricing y https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video"
+    }
   },
   "local_models": {
     "comment": "faster-whisper, costo $0. PROHIBIDO ofrecer variantes .en (tiny.en, distil-large-v3 = English-only) para contenido en español. Solo multilingües. int8 baja el consumo de memoria casi a la mitad; int8 + cpu corre en cualquier máquina sin GPU.",

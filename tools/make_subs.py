@@ -127,7 +127,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,{args.font},{size},{hex_to_ass(args.text_color)},&H000000FF,{hex_to_ass(args.outline_color)},&H80000000,{-1 if args.bold else 0},0,0,0,100,100,0,0,1,{args.outline},1,2,60,60,{margin_v},1
+Style: Sub,{args.font},{size},{hex_to_ass(args.text_color)},&H000000FF,{hex_to_ass(args.outline_color)},&H80000000,{-1 if args.bold else 0},0,0,0,100,100,0,0,1,{args.outline},1,2,{args.margin_h},{args.margin_h},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -163,6 +163,9 @@ def main() -> None:
     ap.add_argument("--font", default="Arial")
     ap.add_argument("--size", type=int, default=52, help="tamaño a 1080p (se escala a la resolución del base)")
     ap.add_argument("--margin-v", type=int, default=56, dest="margin_v")
+    ap.add_argument("--margin-h", type=int, default=60, dest="margin_h",
+                    help="margen lateral en px del base (no escala; en vertical 9:16 bájalo — "
+                         "60px son el 3%% de un 1920 pero el 25%% de un 478)")
     ap.add_argument("--outline", type=float, default=3.0)
     ap.add_argument("--bold", action="store_true")
     ap.add_argument("--text-color", default="FFFFFF", dest="text_color")
@@ -180,7 +183,7 @@ def main() -> None:
     # el largo de línea lo limita el ANCHO real del video (clave en vertical 9:16):
     # con fuente escalada por altura, 38 chars no caben en 1080 de ancho.
     size_px = round(args.size * base["h"] / 1080)
-    usable_px = base["w"] - 2 * 60  # MarginL/R del estilo ASS
+    usable_px = base["w"] - 2 * args.margin_h  # MarginL/R del estilo ASS
     max_chars = min(MAX_CHARS_LINE, int(usable_px / (GLYPH_W * size_px)))
     caps = segment(words, max_chars)
     subs_dir = project / "work" / "subs"

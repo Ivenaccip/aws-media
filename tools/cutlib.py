@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 def load_manifest(project: Path) -> dict:
-    return json.loads((project / "work" / "editor" / "manifest.json").read_text())
+    return json.loads((project / "work" / "editor" / "manifest.json").read_text(encoding="utf-8"))
 
 
 def offsets(project: Path) -> dict:
@@ -25,7 +25,7 @@ def load_words(project: Path, clip: str) -> list[dict]:
     for sub in ("transcripts-u35", "transcripts"):
         p = project / "work" / sub / f"{clip}.json"
         if p.exists():
-            return json.loads(p.read_text()).get("words") or []
+            return json.loads(p.read_text(encoding="utf-8")).get("words") or []
     return []
 
 
