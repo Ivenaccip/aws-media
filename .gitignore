@@ -28,6 +28,9 @@ vendor/
 *.log
 
 remotion-longform/out/
+# generados por `npm run gen` (remotion-longform) — derivados de src/shots/
+remotion-longform/src/registry.gen.tsx
+remotion-longform/src/shots.manifest.json
 media/library/faces/*
 !media/library/faces/README.md
 media/projects/
