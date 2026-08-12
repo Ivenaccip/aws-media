@@ -23,19 +23,23 @@ usuario y **no quemar el video completo sin el gate del frame de muestra**.
    DESPUÉS del feedback del corte (cambiar cortes desincroniza subtítulos) y
    después de `/broll-ai` si va a haber b-roll (así el subtítulo queda encima del
    b-roll, que es lo correcto).
-2. **Decidir el estilo — la marca primero.** Leer `brand.md` (paleta y tipografía)
-   y mapear a flags de la tool:
-   - `--text-color` = blanco puro o el `paper` de la marca (el texto SIEMPRE debe
-     ser el color más claro de la paleta — legibilidad sobre gusto);
-   - `--outline-color` = el `ink` oscuro de la marca;
-   - `--font` = la fuente de cuerpo de la marca **SI está instalada en el sistema**
-     (verifícalo en `C:\Windows\Fonts` / `fc-list`; libass NO lee
-     `@remotion/google-fonts`, son mundos separados). Si no está: decírselo y
-     ofrecer instalar el .ttf, usar la más parecida del sistema, o Arial.
-   Los defaults de la tool (blanco `FFFFFF`, contorno `14141E`, Arial, 52pt @1080p,
-   2 líneas, abajo-centro) equivalen a la marca de la casa — son el fallback si el
-   usuario no corrió `/brand-setup` o no quiere personalizar. Ajustes del usuario →
-   `--size`, `--bold`, `--margin-v`.
+2. **Decidir el estilo — precedencia clara:**
+   1. **El usuario pidió algo específico** ("más grande", "amarillos") → eso manda.
+   2. **El usuario corrió `/brand-setup`** (su `brand.md` ya no es el placeholder de
+      la casa) → SU marca manda: mapear paleta/tipografía a flags:
+      - `--text-color` = el `paper` de su marca (el texto SIEMPRE es el color más
+        claro de la paleta — legibilidad sobre gusto);
+      - `--outline-color` = el `ink` oscuro de su marca;
+      - `--font` = la fuente de cuerpo de su marca **SI está instalada en el
+        sistema** (verifícalo en `C:\Windows\Fonts` / `fc-list`; libass NO lee
+        `@remotion/google-fonts`, son mundos separados). Si no está: decírselo y
+        ofrecer instalar el .ttf, usar la más parecida del sistema, o Arial.
+   3. **Nada de lo anterior** → los defaults de la tool, que YA son el formato de
+      la casa: **Arial bold 38pt @1080p, texto `FFFEF7` (paper), contorno `1A1A2E`
+      (ink)**, 2 líneas, abajo-centro. Correr sin flags de estilo — no inventar
+      variaciones.
+   Ajustes finos en cualquier caso → `--size`, `--no-bold`, `--margin-v`,
+   `--margin-h` (bajarlo en vertical 9:16).
 3. **GATE: frame de muestra (duro).** Elegir 2-3 momentos CON texto en pantalla
    (del transcript: un subtítulo de 2 líneas, uno corto) y renderizar:
    `python tools/make_subs.py videos/video-N --frame 12.5 [estilo...]`

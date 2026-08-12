@@ -160,16 +160,20 @@ def main() -> None:
     ap.add_argument("--mode", choices=["preview", "final"], default="final")
     ap.add_argument("--frame", type=float, help="solo renderiza un frame de muestra en ese segundo (gate de estilo)")
     ap.add_argument("--solo-archivos", action="store_true", help="genera .ass y .srt sin render")
+    # Defaults = la marca de la casa (brand.md: paper FFFEF7 / ink 1A1A2E), Arial
+    # bold 38 @1080p — contenido, para que no desborde de lado. Si el usuario corrió
+    # /brand-setup, la skill pasa SU paleta/fuente por flags; estos solo son fallback.
     ap.add_argument("--font", default="Arial")
-    ap.add_argument("--size", type=int, default=52, help="tamaño a 1080p (se escala a la resolución del base)")
+    ap.add_argument("--size", type=int, default=38, help="tamaño a 1080p (se escala a la resolución del base)")
     ap.add_argument("--margin-v", type=int, default=56, dest="margin_v")
     ap.add_argument("--margin-h", type=int, default=60, dest="margin_h",
                     help="margen lateral en px del base (no escala; en vertical 9:16 bájalo — "
                          "60px son el 3%% de un 1920 pero el 25%% de un 478)")
     ap.add_argument("--outline", type=float, default=3.0)
-    ap.add_argument("--bold", action="store_true")
-    ap.add_argument("--text-color", default="FFFFFF", dest="text_color")
-    ap.add_argument("--outline-color", default="14141E", dest="outline_color")
+    ap.add_argument("--bold", action=argparse.BooleanOptionalAction, default=True,
+                    help="bold por default; apágalo con --no-bold")
+    ap.add_argument("--text-color", default="FFFEF7", dest="text_color")
+    ap.add_argument("--outline-color", default="1A1A2E", dest="outline_color")
     args = ap.parse_args()
 
     project = ROOT / args.project
