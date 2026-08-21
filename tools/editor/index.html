@@ -241,6 +241,7 @@ async function init() {
   buildTranscript();
   renderFlags(); rebuild();
   $("styleSel").value = "tight";
+  chatTick();   // avisa desde el arranque si falta la sesión de Claude
 }
 const sortEvents = () => events.sort((a,b) => toGlobal(a.clip,a.s) - toGlobal(b.clip,b.s));
 
@@ -682,6 +683,21 @@ async function render() {
 
 /* ---------- chat con Claude (claude-agent-sdk en el server) ---------- */
 let chatShown = 0, chatPoll = null, chatBaselineMtime = null;
+let loginHintShown = false, loginDone = false, loginPollTimer = null;
+
+function chatLoginPrompt() {
+  // red de seguridad: el login real vive en /instalar (onboarding) y en el
+  // pre-flight de /clean-cut — Claude entrega `claude /login` como comando
+  // clickeable antes de lanzar el editor
+  const log = $("chatLog"), d = document.createElement("div");
+  d.className = "cmsg error"; d.id = "loginPrompt";
+  d.textContent = "⚠ No hay sesión de Claude en esta máquina — este chat no va a responder. " +
+    "Pídele el login a Claude en el chat principal (te da el comando `claude /login` con botón Run) " +
+    "o córrelo tú en una terminal: se abre el navegador, autorizas con tu cuenta, y este aviso " +
+    "se actualiza solo.";
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  if (!loginPollTimer) loginPollTimer = setInterval(chatTick, 3000);  // detectar el login
+}
 
 function chatAppend(m) {
   const log = $("chatLog"), d = document.createElement("div");
@@ -704,6 +720,23 @@ async function chatTick() {
   $("decisions").classList.toggle("busy", st.busy);
   $("chatSend").disabled = st.busy;
   if (!st.available && st.error) { chatAppend({ role: "error", text: st.error }); $("chatInput").disabled = true; }
+  // login de Claude: el login real es `claude /login` ANTES de abrir el editor
+  // (lo entrega Claude como comando clickeable); aquí solo se avisa y se detecta
+  // cuando ya entró. El input queda habilitado — las credenciales se leen al
+  // crear el agente, así que tras el login basta reintentar.
+  if (st.login) {
+    if (st.login.status === "ok") {
+      if (!loginDone) {
+        loginDone = true;
+        if (loginPollTimer) { clearInterval(loginPollTimer); loginPollTimer = null; }
+        const p = $("loginPrompt"); if (p) p.remove();
+        const log = $("chatLog"), d = document.createElement("div");
+        d.className = "cmsg meta";
+        d.textContent = "✓ Sesión de Claude iniciada — el chat ya puede responder.";
+        log.appendChild(d); log.scrollTop = log.scrollHeight;
+      }
+    } else if (!loginHintShown) { loginHintShown = true; chatLoginPrompt(); }
+  }
   if (!st.busy && chatPoll) {
     clearInterval(chatPoll); chatPoll = null;
     if (chatBaselineMtime !== null && st.cuts_mtime !== chatBaselineMtime) reloadData();
