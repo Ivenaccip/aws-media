@@ -14,10 +14,12 @@ publica sin el gate de confirmación** — publicar es irreversible y de cara al
 Intenta listar las cuentas (`blotato_list_accounts`; si las tools no están en
 contexto, búscalas primero con ToolSearch).
 
-- **Sin MCP de Blotato** → detente con este mensaje: "Para publicar necesitas
-  conectar Blotato. Aquí te explico cómo: **[PENDIENTE-LIGA-VIDEO: tutorial de
-  conexión de Blotato]**. Cuando esté conectado, vuelve a escribir lo que
-  necesitas." No improvises otra vía de publicación.
+- **Sin MCP de Blotato** → detente y dale el guion de conexión de Blotato de
+  `.claude/skills/broll-ai/references/conectar.md` (textual: plan de pago, `claude
+  mcp add … https://mcp.blotato.com/mcp` con botón Run, `/mcp` → Authenticate,
+  reiniciar Claude Code) **[PENDIENTE-LIGA-VIDEO: tutorial en video]**, y cierra
+  con: "Cuando vuelvas, escribe de nuevo lo que necesitas publicar." No improvises
+  otra vía de publicación.
 - **Con MCP pero cero cuentas conectadas** → "Blotato está conectado pero no tiene
   redes vinculadas — vincúlalas en tu dashboard de Blotato y regresa."
 

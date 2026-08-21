@@ -1,6 +1,6 @@
 ---
 name: broll-ai
-description: Paso de b-roll de la rama longform — del transcript al video con clips insertados, eligiendo RUTA por momento (Blotato imagen+Ken Burns · Remotion/make-tsx · fal nanobanana+veo3.1-lite). Úsala cuando el usuario quiera "b-roll con IA", "agregar videos hechos con IA", "insertar clips generados", "broll-ai", "ilustrar momentos del video", o pida generar imágenes/videos para intercalar en un video-N de este repo. Cubre proponer momentos desde edited-transcript.json con ruta sugerida, los prompts receta (estética iPhone-real por default), el DOBLE gate de aprobación (momentos+rutas+costo antes de generar; imágenes antes de animar), la generación por ruta, el broll-plan.json y la inserción verificada con tools/insert_broll.py. No es la skill de beats visuales sobre el timeline oficial (eso es /make-tsx directo) ni la de shorts.
+description: Paso de b-roll de la rama longform — del transcript al video con clips insertados. Arranca con el MENÚ de herramientas del usuario (Remotion = gráficos y marca · fal.ai = videos con IA · Blotato = imágenes con IA, cada una marcada "activo" o "conectar" con su paso a paso), y según lo elegido propone momentos en dos familias (gráficos y marca / contenido audiovisual) con ruta por momento. Úsala cuando el usuario quiera "b-roll con IA", "agregar videos hechos con IA", "insertar clips generados", "broll-ai", "ilustrar momentos del video", o pida generar imágenes/videos para intercalar en un video-N de este repo. Cubre el menú de herramientas, proponer momentos desde edited-transcript.json, los prompts receta (estética iPhone-real por default), el DOBLE gate de aprobación (momentos+rutas+costo antes de generar; imágenes antes de animar), la generación por ruta, el broll-plan.json y la inserción verificada con tools/insert_broll.py. No es la skill de beats visuales sobre el timeline oficial (eso es /make-tsx directo) ni la de shorts.
 ---
 
 # broll-ai — del transcript al video con b-roll insertado
@@ -28,7 +28,8 @@ Mismo patrón que el resto del pipeline: **plan declarativo** (`broll-plan.json`
 generar cuesta dinero:
 
 ```
-transcript → momentos propuestos (con RUTA sugerida c/u)
+MENÚ de herramientas (activo / conectar → modo)
+          → transcript → momentos propuestos por FAMILIA (gráficos y marca / audiovisual)
           → GATE 1 (momentos + rutas + prompts + costo)
           → imágenes / shots TSX → GATE 2 (aprobar cada imagen o render)
           → movimiento según ruta → inserción → verificación
@@ -46,12 +47,9 @@ es un bug, igual que una corrida de nube sin preview de costo.
   Probar con ffprobe: **su resolución y aspecto son el destino de los clips** (nada
   de asumir 16:9; un proyecto vertical genera vertical — se decide ANTES de generar,
   nunca reencuadrar después: lección de video-2).
-- **Disponibilidad de rutas, ANTES de proponer** (ofrecer una ruta imposible = el
-  error de la sesión que originó BROLL-RUTAS.md):
-  - `blotato` → ¿MCP de Blotato conectado? (`blotato_get_credits` responde)
-  - `fal` → ¿`FAL_KEY` en `.env`? (la llave la pega el usuario en el archivo,
-    JAMÁS se pide en el chat)
-  - `remotion` → siempre disponible (solo tiempo de render local)
+- **Disponibilidad de herramientas, verificada EN VIVO** — es lo primero que ve el
+  usuario (Etapa 0). Ofrecer una ruta imposible fue el error de la sesión que
+  originó BROLL-RUTAS.md.
 - **`references/estetica-imagen.md`** — la receta de prompts (estética "foto de
   iPhone, no de cine"). Es el default; el usuario puede pedir otra estética para el
   video y entonces esa manda, conservando la estructura del prompt.
@@ -59,30 +57,98 @@ es un bug, igual que una corrida de nube sin preview de costo.
   `catalog.json` (procedencia obligatoria: modelo, backend, prompt, fecha).
 - **Precios SOLO de `tools/pricing.json` §broll** (con fuentes). Nada de memoria.
 
-## Etapa 1 — Proponer momentos CON ruta
+## Etapa 0 — Menú de herramientas (el modo)
 
-Leer el transcript completo y proponer **2-4 momentos** (no más). Criterios de
-`references/estetica-imagen.md`: apertura, personaje, acción central, contexto de
-lugar — solo donde la imagen agrega valor narrativo real.
+Lo primero que ve el usuario. Las herramientas viven en dos **familias**, y el
+registro es extensible: agregar una herramienta nueva (p. ej. Higgsfield) = agregar
+una fila aquí y en `pricing.json`, nada más.
+
+| Herramienta | Familia | Etiqueta en el menú | "Activo" si… | Si está en "(conectar)" |
+|---|---|---|---|---|
+| **Remotion** | gráficos y marca | gráficos y animaciones con tu marca · $0 | `remotion-longform/node_modules/` existe | guion en `references/conectar.md` (npm install, 1-3 min, sin cuenta) |
+| **fal.ai** | contenido audiovisual | videos con IA (clips cortos) · precio de `pricing.json` por clip | `FAL_KEY` existe en `.env` (verificar que la variable existe — JAMÁS imprimirla ni pedirla en el chat) | guion en `references/conectar.md` (key en fal.ai/dashboard/keys → `.env` → "listo") |
+| **Blotato** | contenido audiovisual | imágenes con IA (foto + zoom) · **saldo en vivo**: "N créditos ≈ M imágenes" (25 créditos por imagen, `pricing.json`) | `blotato_get_credits` **responde** (un MCP configurado que no responde = no conectado) | guion en `references/conectar.md` (MCP `mcp.blotato.com` + OAuth; plan de pago; requiere reiniciar Claude Code — retoma con `/broll-ai`) |
+
+**Los guiones completos de "(conectar)" — qué decir, paso a paso, con los comandos
+en bloque Run — viven en `references/conectar.md`. Úsalos textuales.**
+
+**Cómo se presenta** (selector de opciones, selección múltiple):
+
+- Cada herramienta como `Nombre (activo) — etiqueta` o `Nombre (conectar) — etiqueta`.
+- **Si hay ≥ 2 activas**, la primera opción es **"Recomiéndame por momento"
+  (recomendado)** = todas las activas.
+- **Si hay 1 activa**, no existe "recomiéndame": la opción es "Continuar con
+  Nombre (activo)" + las de conectar.
+- Marcar una **(conectar)** → su paso a paso (solo el de esa herramienta, no
+  `/instalar` completo) → al confirmar, re-verificar y **volver a mostrar el menú**
+  con el estado nuevo.
+- Marcar **≥ 2 herramientas** (o "recomiéndame") → Etapa 1 con las familias que
+  tengan al menos una herramienta elegida. Marcar **1** → Etapa 1 con una sola tabla.
+- La elección se guarda en `broll-plan.json` (`mode`, `tools`) para no volver a
+  preguntar al retomar la sesión.
+
+Es una **preferencia, no un candado**: en el GATE 1 la ruta sigue siendo por
+momento y el usuario puede cambiarla a mano.
+
+## Etapa 1 — Proponer momentos, por familia
+
+Leer el transcript completo. Criterios de `references/estetica-imagen.md`: solo
+donde la imagen agrega valor narrativo real. La selección es **consciente de las
+herramientas elegidas**: con solo Remotion se buscan los momentos que brillan como
+gráfico (datos, procesos, comparaciones); con solo fal/Blotato, los que piden lugar,
+persona, objeto o atmósfera; con ambas familias, el abanico completo.
+
+Se proponen **hasta 2-4 momentos por familia elegida** (menos si no hay buenos
+momentos — decir por qué), con **numeración continua** entre tablas (gráficos 1-4,
+audiovisual 5-8) para que el usuario responda "1, 3 y 6". Reglas:
+
+- **Un momento vive en UNA familia** — la que lo sirve mejor; nunca repetido.
+- **Las ventanas no se enciman** ni dentro ni entre tablas: cualquier combinación
+  aprobada debe convivir en el timeline.
+- **★ marca la recomendación real** de Claude (un conjunto total coherente, ~1
+  cutaway cada 20-30 s en longform). Proponer más es para que el usuario elija;
+  recomendar más es hacer reel.
+- El encabezado de la familia audiovisual lista **solo las herramientas conectadas**
+  ("Contenido audiovisual — fal.ai (video con IA)"; "— Blotato (imagen + zoom)"; o
+  ambas). Dentro de esa tabla la ruta sigue siendo por momento, con su porqué y su
+  costo (movimiento necesario → fal; con zoom basta → Blotato). Si solo hay una,
+  la columna de ruta colapsa.
 
 Por momento: la **cita textual**, la **ventana** `start_ms–end_ms` anclada a
-palabras (3-6 s típico; sin encimarse), la **ruta propuesta con una línea de por
-qué**, y el prompt que corresponda (imagen para blotato/fal + movimiento para fal;
-descripción del beat para remotion). Guía de selección:
+palabras (3-6 s típico), la **ruta con una línea de por qué** (en la familia
+audiovisual), y el prompt que corresponda (imagen para blotato/fal + movimiento para
+fal; descripción del beat para remotion). Guía de asignación:
 
-| El momento es… | Ruta | Por qué |
+| El momento es… | Familia / ruta | Por qué |
 |---|---|---|
-| Lugar, objeto, textura, persona, ambiente | **fal** | solo una foto con movimiento real lo resuelve |
-| Proceso, dato, comparación, UI, arquitectura | **remotion** | texto perfecto, marca propia, $0 |
-| Foto donde un zoom basta, o no hay FAL_KEY | **blotato** | imagen buena, movimiento pobre |
-| Overlay parcial (lower-third, badge) en vez de cutaway | **remotion** | única con alpha (ProRes 4444 — verificar el primer uso) |
-| Presupuesto cero | **remotion** | la única gratis de verdad |
+| Proceso, dato, comparación, UI, arquitectura | **gráficos — remotion** | texto perfecto, marca propia, $0 |
+| Overlay parcial (lower-third, badge) en vez de cutaway | **gráficos — remotion** | única con alpha (ProRes 4444 — verificar el primer uso) |
+| Lugar, objeto, textura, persona, ambiente que debe moverse | **audiovisual — fal** | solo video con IA lo resuelve |
+| Foto donde un zoom basta | **audiovisual — blotato** | imagen buena, movimiento pobre |
+| Presupuesto cero | **gráficos — remotion** | la única gratis de verdad |
+
+Formato de salida (ejemplo con ambas familias):
+
+> **Gráficos y marca — Remotion ($0)**
+> | # | Momento | Ventana | Idea |
+> | ★1 | "27 años aguantando a los mejores cerebros" | 00:31–00:35 | contador 1999 → 2026 |
+> | 2 | … | … | … |
+>
+> **Contenido audiovisual — fal.ai (video con IA) · Blotato (imagen + zoom)**
+> | # | Momento | Ventana | Ruta | Por qué | Costo |
+> | ★3 | "el terreno que nació la física cuántica" | 00:05–00:09 | fal | lugar, pide movimiento | ~$0.22 |
+> | 4 | "se va a OpenAI" | 01:56–02:00 | Blotato | un zoom basta | 25 créditos (saldo 120) |
+>
+> ★ = mi recomendación (N en total, uno cada ~30 s). Dime cuáles quieres.
 
 ## Etapa 2 — GATE 1: momentos + rutas + prompts + costo
 
-Presentar UNA tabla: momento, cita, ventana, duración, **ruta (editable)**, prompt,
-costo estimado por momento y total. El usuario aprueba la tabla completa, cambia la
-ruta de un momento, recorta o ajusta — **cero turnos extra por ruta**.
+Con los momentos que el usuario eligió de la Etapa 1, presentar UNA tabla: momento,
+cita, ventana, duración, **ruta (editable)**, prompt, costo estimado por momento y
+total. El usuario aprueba la tabla completa, cambia la ruta de un momento, recorta o
+ajusta — **cero turnos extra por ruta**. Si lo aprobado queda más denso que ~1
+cutaway cada 20 s, decirlo en una línea (es su decisión; el costo narrativo es el
+dato que le falta).
 
 Costos: blotato → consultar `blotato_get_credits` y presentar "N imágenes × 25
 créditos contra tu saldo de X" (tras la primera corrida real, reportar consumo y
@@ -168,6 +234,8 @@ duración en OK + catálogo actualizado.
   "base": "videos/video-2/output/preview-tight.mp4",   // sobre qué se inserta
   "out":  "videos/video-2/output/tight-broll.mp4",
   "aesthetic": "iphone-real",                          // default; puede ser custom por video
+  "mode": "recommend",                                 // recommend | single | custom (lo elegido en el menú)
+  "tools": ["remotion", "fal"],                        // herramientas elegidas (activas) — no volver a preguntar
   "moments": [
     {
       "id": "m1",
@@ -193,10 +261,15 @@ al retomar una sesión, el plan dice exactamente qué falta.
 - **Dos gates, sin excepciones.** GATE 1 (con rutas y costo) antes de gastar en
   imágenes; GATE 2 antes del movimiento. El usuario puede matar un momento en
   cualquiera de los dos.
-- **La ruta es POR MOMENTO** y se decide dentro del GATE 1 — nunca un gate aparte,
-  nunca una sola ruta forzada para todo el video.
-- **Disponibilidad antes de ofrecer**: no proponer fal sin `FAL_KEY` ni blotato sin
-  su MCP. Y jamás prometer image-to-video de Blotato por API: no existe.
+- **El menú (Etapa 0) elige herramientas; la ruta sigue siendo POR MOMENTO** dentro
+  de las elegidas y se ajusta en el GATE 1 — nunca un gate aparte. Restringir a una
+  sola herramienta es decisión del usuario en el menú, no de Claude.
+- **Disponibilidad verificada en vivo antes de ofrecer**: "activo" solo si la
+  verificación de la tabla de la Etapa 0 pasa en ese momento. Jamás prometer
+  image-to-video de Blotato por API: no existe.
+- **Etiquetas del menú sin jerga**: gráficos y animaciones / videos con IA /
+  imágenes con IA. Blotato muestra su saldo traducido a imágenes; fal su precio de
+  `pricing.json`. Blotato nunca se etiqueta "videos".
 - **Ventanas ancladas a palabras** de `edited-transcript.json` (ms), nunca de oído.
 - **Resolución/aspecto destino = los del base (ffprobe), fijados antes de generar.**
 - **El audio del base no se toca.** `insert_broll.py` lo copia; si alguien pide

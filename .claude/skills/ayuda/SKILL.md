@@ -26,8 +26,10 @@ claro y sin tecnicismos innecesarios.
 | Qué | Comando | Para qué |
 |---|---|---|
 | Instalar y configurar | `/instalar` | Diagnóstico de qué falta, deps, la decisión de transcripción (local gratis calibrada vs AssemblyAI a $0.21 dólares por hora) y el selector de conexiones opcionales |
+| Actualizar (cuando te avisen de versión nueva) | `/actualizar` | Te dice qué cambió en lenguaje humano, pide tu OK y actualiza sin tocar tus videos, tu `.env`, tu política de corte ni tu marca |
 | Tu marca (opcional) | `/brand-setup` | **Puedes omitirlo** — la herramienta trae una marca de casa completa y funcional. Si lo corres, ten a la mano: el texto de tu wordmark, tus colores hex (si los tienes; si no, se te proponen), tus fuentes (deben existir en Google Fonts) y qué graba tu cámara (resolución y fps — el único dato obligatorio de verdad) |
-| Conexiones opcionales | — | Blotato (generación IA + publicar), fal.ai (respaldo de generación), API keys en `.env` |
+| Conexiones opcionales | — | Todas opcionales; no conectar nada = todo local y gratis. **fal.ai** (videos con IA, pago por uso: una "llave" que se pega en tu archivo de llaves `.env`), **Blotato** (imágenes con IA + publicar en redes; plan de pago, se conecta con Claude y requiere reiniciar). No hace falta saber hacerlo: `/broll-ai` y `/instalar` las muestran como "(activo)" o "(conectar)" y, si eliges conectar, te llevan paso a paso con botones |
+| Sesión de Claude (una vez por máquina) | dentro de `/instalar` | El chat del editor de cortes la necesita. Si falta, Claude te da el comando `claude /login` con botón Run: click → autorizas en el navegador → listo |
 
 ### Construye — por cada video
 | Paso | Comando | Resultado |
@@ -35,8 +37,8 @@ claro y sin tecnicismos innecesarios.
 | 1. Iniciar proyecto | `/empezar` | Crea el proyecto, recibe tu video, transcribe UNA vez (con costo antes si es nube) y te pregunta el camino: **¿editar para redes o convertir a shorts?** |
 | 2. El corte | `/clean-cut` | Quita muletillas/aire muerto → previews tight y natural → master (con QA automático) |
 | 3. Limpiar audio (si hay ruido) | `/clean-audio` | Voz limpia sin ruido de fondo, antes de subtitular |
-| 4. Subtítulos | `/subtitulos` | Subtítulos quemados con tu estilo (frame de muestra antes de renderizar) + .srt para YouTube |
-| 5. B-roll con IA | `/broll-ai` | Momentos ilustrados con clips generados (doble aprobación: costo e imágenes) |
+| 4. B-roll con IA (opcional) | `/broll-ai` | Primero eliges con qué herramientas (Remotion = gráficos con tu marca, fal.ai = videos con IA, Blotato = imágenes con IA — cada una "activo" o "conectar"), luego te propone momentos por familia y genera con doble aprobación: costo e imágenes. Va ANTES de los subtítulos para que queden encima de los clips |
+| 5. Subtítulos | `/subtitulos` | Subtítulos quemados con tu estilo (frame de muestra antes de renderizar) + .srt para YouTube |
 
 (Por dentro, `/empezar` usa `python tools/project.py new video-N` y
 `python tools/transcribe.py videos/video-N` — se pueden correr a mano si se prefiere.)
@@ -57,8 +59,10 @@ validado para YouTube Shorts / TikTok / Reels → publicar vía Blotato.
 thumbnails para YouTube).
 
 > Mantenimiento: si una skill nueva entra al flujo (p.ej. `/subtitulos`,
-> `/publicar`), agrégala a ESTA tabla y regenera la imagen guía — este mapa es la
-> fuente de verdad de /ayuda y se desactualiza en silencio.
+> `/publicar`, `/actualizar`), agrégala a ESTA tabla y regenera la imagen guía —
+> este mapa es la fuente de verdad de /ayuda y se desactualiza en silencio. (La
+> imagen guía actual es anterior a `/actualizar`, al menú de herramientas de
+> `/broll-ai` y al orden b-roll → subtítulos: toca regenerarla.)
 
 ## Detección de estado (qué sigue para ESTE usuario)
 
@@ -66,13 +70,14 @@ Revisa `videos/` y responde según lo primero que falte:
 
 | Si… | Está en… | Dile |
 |---|---|---|
-| No hay `.video-stack/config.json` | Sin configurar | Corre `python tools/setup.py` primero |
+| No hay `.video-stack/config.json` | Sin instalar | Escribe `/instalar` — deja todo listo en una sola pasada (deps, transcripción, sesión de Claude) |
+| `python tools/check_claude_login.py` sale `[FALTA]` | Sin sesión de Claude | El chat del editor de cortes no va a responder: dale el comando `claude /login` en su propio bloque bash (botón Run) → autoriza en el navegador → "listo" |
 | No hay `videos/video-*` | Antes de empezar | Escribe `/empezar` — crea el proyecto, recibe tu video y te guía |
 | Proyecto sin `work/transcripts/*.canonical.json` | Paso 1 | Falta transcribir — retoma con `python tools/transcribe.py videos/video-N` |
 | Sin `work/analysis/cuts.json` | Paso 2 | Pide el corte: `/clean-cut` |
 | Con cuts pero sin `output/preview-*.mp4` | Paso 2 (render) | El corte está autorado pero no renderizado — sigue en `/clean-cut` |
-| Con preview/master | Paso 3-5 | Toca revisar el corte, limpiar audio si hace falta, subtítulos, o `/broll-ai` |
-| Con `work/broll/broll-plan.json` a medias | Paso 5 | El campo `status` de cada momento dice en qué gate quedó |
+| Con preview/master | Paso 3-5 | Toca revisar el corte, limpiar audio si hace falta, b-roll (`/broll-ai`, opcional) y luego subtítulos |
+| Con `work/broll/broll-plan.json` a medias | Paso 4 | El campo `status` de cada momento dice en qué gate quedó; `mode`/`tools` dicen qué herramientas eligió (no se le vuelve a preguntar) |
 | Master listo | Publicar | `/publicar` para subirlo a sus redes; y si quiere clips verticales, el camino aparte `/shorts` |
 
 Si hay varios proyectos, pregunta con cuál está trabajando.
@@ -86,7 +91,25 @@ Si hay varios proyectos, pregunta con cuál está trabajando.
   activo (o el driver está viejo — la pista sale sola).
 - **"¿Sin GPU puedo?"** — sí: transcripción local en CPU (lenta pero funciona; setup
   le muestra SU velocidad real) o AssemblyAI; los renders usan el encoder por
-  hardware de su máquina si existe; el b-roll es 100% nube.
+  hardware de su máquina si existe; el b-roll con fal.ai/Blotato es nube, y el de
+  Remotion es local y gratis (solo tarda un poco más en CPU).
+- **"¿Qué herramienta de b-roll me conviene?"** — tres palabras: **gráficos**
+  (Remotion: datos, procesos, comparaciones, con tu marca, $0), **videos con IA**
+  (fal.ai: lugares, personas, cosas que se mueven; centavos por clip), **imágenes con
+  IA** (Blotato: una foto con zoom; créditos de su plan). No tiene que elegir de
+  antemano: `/broll-ai` le muestra cuáles tiene activas y, con 2 o más, le
+  recomienda la mejor por momento. Si quiere conectar una, la skill lo guía con
+  botones — no mandes a leer documentación.
+- **"El chat del editor de cortes no me responde"** — casi siempre es que no hay
+  sesión de Claude en esa máquina: `python tools/check_claude_login.py` lo confirma;
+  la solución es el comando `claude /login` (bloque bash con botón Run), autorizar en
+  el navegador y reintentar — sin reiniciar el editor.
+- **"¿Hay versión nueva? / ¿Cómo actualizo?"** — `python tools/update.py --check`
+  responde si está al día y qué hay de nuevo (no toca nada); para aplicar, que
+  escriba `/actualizar`: pide su OK y conserva sus videos, su `.env`, su política de
+  corte y su marca. Si su copia es la `v1.0-clases` original (sin `/actualizar`), esa
+  primera vez son tres pasos a mano: `git pull origin main` →
+  `venv/Scripts/pip install -r requirements.txt` → `/instalar`.
 - **"¿Vuelvo a transcribir?"** — NO: se transcribe UNA vez por proyecto; todo
   consume el mismo canónico (`docs/SCHEMA.md`).
 - **"¿Es obligatorio /brand-setup?"** — NO, **puede omitirse**: sin él, todo sale
