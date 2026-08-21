@@ -73,8 +73,10 @@ todo local y gratis. Puedes conectarlas después en cualquier momento."**
 
 1. **Blotato** — publicar en tus redes desde aquí y generar el b-roll con IA
    (imágenes + video). Más adelante: investigación de mercado y respuestas a
-   clientes. → Conexión: MCP de Blotato — **[PENDIENTE-LIGA-VIDEO: tutorial de
-   conexión de Blotato]**.
+   clientes. → Conexión: MCP de Blotato (OAuth, plan de pago, requiere reiniciar
+   Claude Code) — guion paso a paso en
+   `.claude/skills/broll-ai/references/conectar.md` **[PENDIENTE-LIGA-VIDEO:
+   tutorial en video de la conexión de Blotato]**.
 2. **AssemblyAI** — transcripción en nube: ya no esperas a tus recursos locales;
    1 hora de video por $0.21 dólares. → `ASSEMBLYAI_API_KEY` en `.env`; si quiere
    cambiarse de backend: `python tools/setup.py --asr assemblyai`.
@@ -83,7 +85,8 @@ todo local y gratis. Puedes conectarlas después en cualquier momento."**
    usar Blotato para el b-roll. → `OPENAI_API_KEY` en `.env`.
 4. **fal.ai** — agregador de modelos: videos e imágenes a bajo costo; el respaldo
    de generación cuando Blotato se quede sin créditos. → `FAL_KEY` en `.env` (o su
-   MCP si lo conecta).
+   MCP si lo conecta); guion paso a paso en
+   `.claude/skills/broll-ai/references/conectar.md`.
 
 **Regla dura de keys: NUNCA pidas una API key en el chat.** Diles dónde
 conseguirla y que la peguen ellos en `.env` con su editor; tú solo verificas

@@ -7,6 +7,7 @@ transcripts.**
 | El usuario pide… | Skill | Rama |
 |---|---|---|
 | instalar / configurar la herramienta / "acabo de clonar" | `/instalar` | ambas |
+| actualizar la herramienta / "hay versión nueva" / bajar cambios | `/actualizar` | ambas |
 | `/empezar` (SOLO el comando explícito — sin `/` no se activa) | `/empezar` | ambas |
 | cortar metraje / quitar relleno / apretar ritmo | `/clean-cut` | longform |
 | shorts / clips verticales / tiktok-reels del video | `/shorts` | shorts |
