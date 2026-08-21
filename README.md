@@ -27,6 +27,12 @@ recibe tu metraje, transcribe UNA vez y te pregunta el camino — *¿editar un v
 para redes o convertir un video largo a shorts?* Para dudas en cualquier punto:
 `/ayuda`.
 
+**¿Hay versión nueva?** Escribe `/actualizar`: te dice qué cambió en lenguaje
+humano, pide tu OK y actualiza sin tocar tus videos, tu `.env`, tu política de corte
+ni tu marca (`python tools/update.py --check` solo mira, sin cambiar nada). Si tu
+copia es la `v1.0-clases` original, esa primera vez es a mano: `git pull origin main`
+→ `venv/Scripts/pip install -r requirements.txt` → `/instalar`.
+
 `tools/setup.py` es **re-ejecutable**: cambiaste de máquina o compraste GPU → córrelo
 otra vez. Escribe `.video-stack/config.json` (gitignored — puedes clonar este repo en
 tres máquinas y cada una tiene su config sin pisarse). Te presenta **tres rutas**:
@@ -49,7 +55,7 @@ cruda). Ninguna skill sabe de qué backend vino. Detalles y política de version
 /empezar ─▶ videos/video-N + tools/transcribe.py (backend según tu config)
               └─▶ work/transcripts/<id>.canonical.json           ← el contrato
                    ├─▶ editar para redes: /clean-cut → master + edited-transcript.json
-                   │       → /clean-audio → /subtitulos → /broll-ai ─▶ /publicar
+                   │       → /clean-audio → /broll-ai → /subtitulos ─▶ /publicar
                    └─▶ convertir a shorts: /shorts → candidatos con score
                            → Remotion → export validado ─────────▶ /publicar
 ```
@@ -60,12 +66,13 @@ cruda). Ninguna skill sabe de qué backend vino. Detalles y política de version
 
 | Skill | Rama | Qué hace |
 |---|---|---|
-| `/instalar` | ambas | onboarding idempotente: diagnóstico, deps, decisión de transcripción, conexiones opcionales |
+| `/instalar` | ambas | onboarding idempotente: diagnóstico, deps, decisión de transcripción, sesión de Claude (`claude /login` con botón Run), conexiones opcionales |
+| `/actualizar` | ambas | trae la última versión sin perder lo tuyo: `--check` informa, OK del usuario, stash → fast-forward → reaplica, deps solo si cambiaron |
 | `/empezar` | ambas | puerta de entrada por proyecto (SOLO el comando explícito): crea video-N, transcribe una vez y bifurca edición/shorts |
-| `/clean-cut` | longform | corte del metraje crudo → master limpio (política editorial editable) |
+| `/clean-cut` | longform | corte del metraje crudo → master limpio (política editorial editable) + auditoría en el editor de cortes con chat embebido |
 | `/clean-audio` | longform | denoise/aislar voz (RMS-match, niveles preservados) |
-| `/subtitulos` | longform | subtítulos quemados desde `edited-transcript.json` + `.srt` (gate de frame de muestra, estilo de tu marca) |
-| `/broll-ai` | longform | b-roll generado con IA — doble gate: momentos+costo antes de imágenes, imágenes antes de videos (Blotato / fal.ai) |
+| `/broll-ai` | longform | b-roll con IA: menú de herramientas (Remotion = gráficos y marca · fal.ai = videos con IA · Blotato = imágenes con IA, cada una "activo"/"conectar" con guía paso a paso), momentos por familia y doble gate: costo antes de imágenes, imágenes antes de videos |
+| `/subtitulos` | longform | subtítulos quemados desde `edited-transcript.json` + `.srt` (gate de frame de muestra, estilo de tu marca) — después del b-roll |
 | `/shorts` | shorts | clips 9:16 con captions animados, aprobación interactiva |
 | `/publicar` | ambas | publicar/agendar en TUS redes conectadas vía Blotato, con gate de confirmación |
 | `/ayuda` | ambas | guía del flujo: imagen guía, detecta en qué paso vas y qué sigue, responde dudas |
@@ -91,13 +98,16 @@ jamás se penaliza como incoherencia):
 
 ```
 .claude/skills/       skills fusionadas de L1/S1 + el flujo core (/instalar,
-                      /empezar, /subtitulos, /broll-ai, /publicar, /ayuda)
+                      /actualizar, /empezar, /broll-ai, /subtitulos, /publicar, /ayuda)
 schema/               transcript.schema.json — el contrato (docs/SCHEMA.md)
-tools/                CLIs: transcribe (doble backend), setup, project, normalizers/,
-                      engine de corte de L1 (cutlib, render_cuts, verify_cut…),
-                      hwenc (cadena de encoders NVENC→QSV→AMF→CPU), make_subs
-                      (subtítulos .ass/.srt), insert_broll (inserción de b-roll),
-                      shorts/ (scripts de S1), pricing.json (ÚNICA fuente de precios)
+tools/                CLIs: transcribe (doble backend), setup, update (actualizar sin
+                      perder lo tuyo), check_claude_login (sesión para el chat del
+                      editor), project, normalizers/, engine de corte de L1 (cutlib,
+                      render_cuts, verify_cut…), editor/ (cut-editor con transcript
+                      clickeable y chat embebido), hwenc (cadena de encoders
+                      NVENC→QSV→AMF→CPU), make_subs (subtítulos .ass/.srt),
+                      insert_broll (inserción de b-roll), shorts/ (scripts de S1),
+                      pricing.json (ÚNICA fuente de precios)
 remotion/             render de captions de S1 — fps FIJO 30 (interno a su salida)
 remotion-longform/    proyecto Remotion de L1 (beats visuales de /make-tsx)
 media/                librería SFX/música de L1 (procedencia por clip en catálogos;
