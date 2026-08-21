@@ -19,6 +19,10 @@ dos caminos (proyecto → video → transcript) y al final bifurca con la pregun
   elegir su backend de transcripción).
 - `/brand-setup` NO es prerrequisito — no lo menciones salvo que pregunten.
 
+(La sesión de Claude para el chat del editor NO se verifica aquí: es parte del
+onboarding de `/instalar` — una vez por máquina — y `/clean-cut` la re-verifica
+como pre-flight justo antes de abrir el editor. La rama shorts no la necesita.)
+
 ### 1. Crear el proyecto
 
 Detecta el siguiente número libre (`videos/video-N`) y créalo:

@@ -24,6 +24,7 @@ por punto):
 | Deps de Remotion | `remotion/node_modules/` y `remotion-longform/node_modules/` existen |
 | Transcripción configurada | `.video-stack/config.json` existe |
 | `.env` | existe (aunque esté vacío) |
+| Sesión de Claude (chat del editor) | `python tools/check_claude_login.py` sale `[OK]` |
 
 **Si todo está** → "Ya estás instalado" + resumen de su configuración (backend de
 transcripción, qué conexiones tiene) + "escribe `/empezar` cuando tengas tu primer
@@ -40,6 +41,13 @@ video". Fin.
   `winget install jqlang.jq`) y que el usuario apruebe — instalar software del
   sistema siempre con su OK. Tras instalar, abrir terminal nueva para el PATH.
 - **`.env`**: si no existe, copiarlo de `.env.example` (vacío está bien).
+- **Sesión de Claude ausente**: el chat embebido del editor de cortes la necesita
+  (`claude-agent-sdk` usa la sesión del CLI). Entrega `claude /login` en su
+  propio bloque ```bash``` (sale con botón Run — un click) + los pasos: click
+  en Run → autorizar en el navegador → "avísame con listo"; luego re-corre el
+  chequeo para confirmar `[OK]`. Es una vez por máquina y la sesión se refresca
+  sola. El login es SIEMPRE con el CLI oficial — nunca ligas OAuth a mano, ni
+  tokens ni códigos en el chat.
 - Reglas del repo que se explican aquí en una línea cada una: todo se corre desde
   la raíz; en Windows es Git Bash (sin WSL); `.env` jamás se comitea.
 
@@ -84,7 +92,10 @@ después que la variable existe (sin imprimir su valor).
 ## Etapa 5 — Cierre
 
 1. Smoke test: `ffmpeg -version` OK, import de `faster_whisper` OK (si backend
-   local), `.video-stack/config.json` presente.
+   local), `.video-stack/config.json` presente, y
+   `python tools/check_claude_login.py` sale `[OK]` — si salió `[FALTA]`,
+   resuélvelo aquí (Etapa 2) antes de despedirte: este es el ÚLTIMO momento
+   natural para el login; después de `/instalar` ya nadie debería toparse con él.
 2. Menciona una vez, sin insistir: `/brand-setup` existe para poner SU marca en
    todos los renders — **es opcional, puede omitirse** (la marca de la casa es
    completa) y se puede correr cuando quiera.

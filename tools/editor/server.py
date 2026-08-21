@@ -51,11 +51,37 @@ except ImportError as e:
 chat = {"agent": None}          # se crea perezosamente en el primer mensaje
 chat_lock = threading.Lock()
 
+sys.path.insert(0, str(ROOT / "tools"))
+try:
+    from check_claude_login import credential_status
+except ImportError:
+    credential_status = None
+login_seen_missing = {"flag": False}
+
+
+def login_state() -> dict | None:
+    """Estado de sesion de Claude para el panel — red de seguridad: el login
+    real vive en el onboarding (/instalar) y en el pre-flight de /clean-cut
+    (`claude /login` como comando clickeable, antes de lanzar el editor).
+    Solo aplica mientras el agente no exista: las
+    credenciales se leen al crearlo, asi que loguearse y reintentar funciona
+    sin reiniciar el server. status "missing" -> aviso; "ok" tras un missing
+    previo -> el panel confirma que ya puede responder."""
+    if chat["agent"] or ChatAgent is None or credential_status is None:
+        return None
+    if credential_status()["ok"]:
+        return {"status": "ok"} if login_seen_missing["flag"] else None
+    login_seen_missing["flag"] = True
+    return {"status": "missing"}
+
 
 def chat_state() -> dict:
     st = (chat["agent"].state() if chat["agent"]
           else {"available": ChatAgent is not None, "busy": False,
                 "error": CHAT_IMPORT_ERR, "messages": []})
+    ls = login_state()
+    if ls:
+        st["login"] = ls
     # el panel usa el mtime para recargar cuts.json cuando Claude lo modifica
     st["cuts_mtime"] = CUTS.stat().st_mtime if CUTS.exists() else 0
     return st
@@ -241,4 +267,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"Cut editor for {PROJECT.name}  ->  http://localhost:{PORT}")
+    if login_state():
+        print("AVISO: sin sesion de Claude — el chat del editor no respondera. "
+              "Corre `claude /login` (detalle: python tools/check_claude_login.py)")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

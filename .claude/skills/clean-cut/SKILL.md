@@ -35,6 +35,11 @@ tú no tienes oídos — no la simules con ciclos de render + ASR.
    `python tools/make_review.py P` → `review.md`
 8. **Proxy del editor** (una vez): `python tools/make_proxy.py P`
 9. **AUDITORÍA EN EL EDITOR (gate duro — aquí vive la verificación acústica):**
+   pre-flight: `python tools/check_claude_login.py` — si sale `[FALTA]`,
+   ANTES de abrir el editor entrégale `claude /login` en su propio bloque
+   ```bash``` (botón Run) + pasos: click → autorizar en el navegador → "listo";
+   re-corre el chequeo y recién entonces lanza el server (su chat embebido usa
+   la sesión del CLI; sin ella abre pero no responde). Luego
    `python tools/editor/server.py P [puerto]` (default 8765; si está ocupado pasa
    otro) → entrega la URL al usuario. Ahí el usuario:
    - **lee el transcript** (panel izquierdo): lo tachado/coloreado por categoría es
