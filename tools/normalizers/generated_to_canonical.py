@@ -33,8 +33,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # raíz: paquete pipeline
 from common import build_canonical, dump_json, load_json, validate_canonical  # noqa: E402
 from project import WORK_DIRS, project_dir  # noqa: E402
+
+from pipeline import overlays as overlays_mod  # noqa: E402
 
 AUDIO_OFFSET_S = 0.3   # -itsoffset del mux del generador: el audio arranca aquí dentro del clip
 SOURCE_ID = "pelicula"
@@ -169,9 +172,18 @@ def main() -> None:
     ap.add_argument("--model", default="small", choices=["small", "medium", "large-v3"])
     ap.add_argument("--device", default="auto")
     ap.add_argument("--skip-proxy", action="store_true", help="no generar proxy/manifest/waveform")
+    ap.add_argument("--solo-overlays", action="store_true",
+                    help="solo registrar overlays (pista 2) en un proyecto ya convertido")
     args = ap.parse_args()
 
     work_dir = Path(args.work_dir).resolve()
+    if args.solo_overlays:
+        proj = project_dir(args.nombre)
+        ids = orden_escenas(work_dir)
+        durs = {i: duracion_video(work_dir / f"final_{i}.mp4") for i in ids}
+        data = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
+        print(f"overlays: {len(data['overlays'])} escenas registradas en videos/{args.nombre}")
+        return
     from faster_whisper import WhisperModel
     model = WhisperModel(args.model, device=args.device)
     try:
@@ -197,6 +209,11 @@ def main() -> None:
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(proj / "pelicula.mp4"),
                     "-ar", "16000", "-ac", "1",
                     str(proj / "work" / "audio" / f"{SOURCE_ID}.wav")], check=True)
+
+    ids = orden_escenas(work_dir)
+    durs = {i: duracion_video(work_dir / f"final_{i}.mp4") for i in ids}
+    data_ov = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
+    print(f"overlays: {len(data_ov['overlays'])} escenas en la pista 2")
 
     if not args.skip_proxy:
         subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "make_proxy.py"),

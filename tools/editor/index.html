@@ -916,5 +916,200 @@ vid.addEventListener("loadedmetadata", () => { if (Math.abs(vid.duration - TOTAL
 init();
 chatTick();   // sondeo inicial: muestra si el chat está disponible sin arrancar la sesión
 </script>
+
+<!-- ===== fusión F2: pista 2 (recursos IA) · popup g1/g2 · b1 subtítulos · costes ===== -->
+<style>
+  .ovblock { position: absolute; top: 170px; height: 30px; border-radius: 4px; cursor: pointer;
+             background: color-mix(in srgb, #a259d9 26%, transparent); border: 1px solid #a259d9;
+             font-size: 10px; color: #cfa9ee; overflow: hidden; padding: 1px 4px; z-index: 6; }
+  .ovblock:hover { outline: 1px solid #fff; }
+  .ovblock.regen { border-style: dashed; background: color-mix(in srgb, #d97fb0 30%, transparent); }
+  .subblock { position: absolute; top: 204px; height: 24px; border-radius: 3px; overflow: hidden;
+              background: color-mix(in srgb, #5b8dd6 22%, transparent); border: 1px solid #5b8dd6;
+              font-size: 10px; color: #a9c6ee; padding: 1px 4px; pointer-events: none; }
+  .trklabel { position: absolute; left: 4px; font-size: 10px; color: var(--dim);
+              text-transform: uppercase; letter-spacing: .05em; z-index: 5; pointer-events: none; }
+  #g1modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100;
+             display: none; align-items: center; justify-content: center; }
+  #g1modal.abierto { display: flex; }
+  #g1card { background: var(--panel); border: 1px solid #3a4050; border-radius: 10px;
+            width: min(940px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
+  #g1card h3 { font-size: 14px; margin-bottom: 10px; }
+  #g1cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  #g1cols video, #g1cols img.base { width: 100%; border-radius: 6px; background: #000; }
+  #g1card textarea { width: 100%; background: var(--panel2); color: var(--text);
+                     border: 1px solid #3a4050; border-radius: 6px; padding: 7px; font: inherit;
+                     font-size: 12px; resize: vertical; }
+  #g1card label { display: block; font-size: 11px; color: var(--dim); margin: 8px 0 3px;
+                  text-transform: uppercase; letter-spacing: .05em; }
+  #g1precio { color: #e0b657; font-size: 12px; margin: 10px 0 6px; }
+  #g1cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+             gap: 10px; margin-top: 12px; }
+  #g1cands img { width: 100%; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
+  #g1cands img.eleg { border-color: #6fd6ce; }
+  #g1vers { margin-top: 12px; font-size: 12px; }
+  #g1vers .vfila { display: flex; gap: 8px; align-items: center; padding: 3px 0; color: var(--dim); }
+  #g1vers .vfila.activa { color: var(--text); }
+  #g1msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
+  #g1msg.err { color: #e37c7c; }
+</style>
+<div id="g1modal"><div id="g1card">
+  <h3>Recurso IA — escena <span id="g1oid"></span>
+      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="g1cerrar()">✕</span></h3>
+  <div id="g1cols">
+    <div>
+      <video id="g1video" controls muted></video>
+      <div id="g1vers"></div>
+    </div>
+    <div>
+      <label>Prompt original (con el que nació la imagen)</label>
+      <textarea id="g1orig" rows="5" readonly></textarea>
+      <label>Prompt nuevo</label>
+      <textarea id="g1nuevo" rows="5"></textarea>
+      <div id="g1precio"></div>
+      <button class="primary" id="g1generar">✨ Generar opciones de imagen</button>
+      <div id="g1msg"></div>
+    </div>
+  </div>
+  <div id="g1cands"></div>
+  <div style="margin-top:10px"><button id="g1animar" style="display:none"></button></div>
+</div></div>
+
+<script>
+"use strict";
+let OVS = null, SUBSEG = [], G1 = null, G1PRECIO = null, G1IMAGEN = null;
+const fj = (url, body) => fetch(url, body ? { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined)
+  .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status); return r.json(); });
+const usd = x => `$${x.toFixed(2)} dólares`;
+
+function fusionRender() {
+  inner.querySelectorAll(".ovblock,.subblock,.trklabel").forEach(n => n.remove());
+  if (!OVS || !OVS.overlays.length) return;
+  const lab = (top, txt) => { const l = document.createElement("div");
+    l.className = "trklabel"; l.style.top = top + "px"; l.textContent = txt; inner.appendChild(l); };
+  lab(158, "pista 2 · recursos IA");
+  for (const ov of OVS.overlays) {
+    const d = document.createElement("div");
+    d.className = "ovblock" + (ov.version_activa > 1 ? " regen" : "");
+    d.style.left = (ov.t_in * pps) + "px";
+    d.style.width = Math.max((ov.t_out - ov.t_in) * pps - 2, 6) + "px";
+    d.textContent = `🎨 ${ov.id}` + (ov.versiones.length > 1 ? ` (v${ov.version_activa})` : "");
+    d.title = `escena ${ov.id} — clic para regenerar\n${ov.narracion}`;
+    d.onclick = ev => { ev.stopPropagation(); g1abrir(ov.id); };
+    inner.appendChild(d);
+  }
+  if (SUBSEG.length) {
+    lab(196, "pista 3 · subtítulos");
+    for (const s of SUBSEG) {
+      const d = document.createElement("div");
+      d.className = "subblock";
+      d.style.left = (s.start * pps) + "px";
+      d.style.width = Math.max((s.end - s.start) * pps - 2, 4) + "px";
+      d.textContent = s.text; d.title = s.text;
+      inner.appendChild(d);
+    }
+  }
+}
+
+async function fusionInit() {
+  try { OVS = await fj("api/overlays"); } catch { return; }   // proyecto sin pista 2
+  if (!OVS.overlays.length) return;
+  document.getElementById("tlwrap").style.flexBasis = "300px";
+  try { SUBSEG = (await fj("api/subtitulos/estado")).segmentos || []; } catch {}
+  const hdr = document.querySelector("header .grow");
+  const costo = document.createElement("span");
+  costo.id = "costoBadge"; costo.style.cssText = "color:#e0b657;font-size:12px;margin-right:8px";
+  costo.textContent = `regeneraciones: ${usd(OVS.costo_overlays || 0)}`;
+  hdr.after(costo);
+  const b1 = document.createElement("button");
+  b1.textContent = "📝 Subtítulos";
+  b1.dataset.tip = "b1: frame de muestra → aprobar → quemar (make_subs)";
+  b1.onclick = b1flujo;
+  document.getElementById("renderBtn").before(b1);
+  const orig = renderTimeline;
+  renderTimeline = function () { orig(); fusionRender(); };
+  fusionRender();
+}
+
+async function g1abrir(oid) {
+  G1 = OVS.overlays.find(o => o.id === oid); G1IMAGEN = null;
+  $("g1oid").textContent = oid;
+  $("g1orig").value = G1.prompt_imagen || G1.narracion;
+  $("g1nuevo").value = G1.prompt_imagen || G1.narracion;
+  const act = G1.versiones.find(v => v.n === G1.version_activa);
+  $("g1video").src = "archivo/" + act.video;
+  $("g1cands").innerHTML = ""; $("g1animar").style.display = "none"; $("g1msg").textContent = "";
+  $("g1vers").innerHTML = G1.versiones.map(v =>
+    `<div class="vfila${v.n === G1.version_activa ? " activa" : ""}">v${v.n} · ${v.origen} · ${usd(v.costo_usd)}
+     ${v.n !== G1.version_activa ? `<button onclick="g1activar(${v.n})" style="font-size:11px;padding:1px 7px">usar esta</button>` : "(activa)"}</div>`).join("");
+  try { G1PRECIO = await fj(`api/overlays/${oid}/precios`);
+    $("g1precio").textContent = `Costo: imágenes ${usd(G1PRECIO.imagen)} + video ${usd(G1PRECIO.video)} (${G1PRECIO.veo_segundos}s de Veo, backend ${G1PRECIO.backend})`;
+  } catch (e) { $("g1precio").textContent = "precio no disponible: " + e.message; }
+  $("g1modal").classList.add("abierto");
+}
+function g1cerrar() { $("g1modal").classList.remove("abierto"); }
+
+$("g1generar").onclick = async () => {
+  const prompt = $("g1nuevo").value.trim();
+  if (!prompt || !G1PRECIO) return;
+  if (!confirm(`Generar 2 opciones de imagen costará ${usd(G1PRECIO.imagen)}. ¿Continuar?`)) return;
+  $("g1msg").className = ""; $("g1msg").textContent = "⏳ Generando imágenes con Nano Banana…";
+  try {
+    const r = await fj(`api/overlays/${G1.id}/imagen`, { confirmar: true, prompt });
+    $("g1msg").textContent = `Listo (${usd(r.costo_imagenes)}). Elige la imagen base:`;
+    $("g1cands").innerHTML = "";
+    for (const ruta of r.candidatos) {
+      const img = document.createElement("img");
+      img.src = "archivo/" + ruta;
+      img.onclick = () => { G1IMAGEN = ruta;
+        document.querySelectorAll("#g1cands img").forEach(i => i.classList.toggle("eleg", i === img));
+        const b = $("g1animar");
+        b.style.display = ""; b.className = "primary";
+        b.textContent = `🎬 Animar con Veo — ${usd(G1PRECIO.video)} (sustituye el clip, la versión anterior se conserva)`;
+      };
+      $("g1cands").appendChild(img);
+    }
+  } catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; }
+};
+
+$("g1animar").onclick = async () => {
+  if (!G1IMAGEN) return;
+  if (!confirm(`Animar con Veo costará ${usd(G1PRECIO.video)}. El clip se recorta a la duración exacta y sustituye al actual. ¿Continuar?`)) return;
+  $("g1msg").className = ""; $("g1msg").textContent = "⏳ Veo está generando el video (esto tarda minutos, no cierres)…";
+  $("g1animar").disabled = true;
+  try {
+    const r = await fj(`api/overlays/${G1.id}/video`, { confirmar: true, imagen: G1IMAGEN });
+    $("g1msg").textContent = `✅ Versión v${r.version.n} activa (${usd(r.costo_video)}). Recargando…`;
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; $("g1animar").disabled = false; }
+};
+
+async function g1activar(n) {
+  $("g1msg").textContent = "⏳ Activando versión y rearmando la película…";
+  try { await fj(`api/overlays/${G1.id}/activar`, { n }); location.reload(); }
+  catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; }
+}
+
+async function b1flujo() {
+  const frame = Math.round(vid.currentTime * 10) / 10 || 10;
+  setStatus("⏳ generando frame de muestra de subtítulos…");
+  try {
+    const r = await fj("api/subtitulos/muestra", { frame });
+    const w = window.open("archivo/" + r.muestra, "_blank");
+    if (!confirm("Se abrió el frame de muestra con el estilo de subtítulos. ¿Quemar el video completo?")) { setStatus(""); return; }
+    await fj("api/subtitulos/quemar", {});
+    setStatus("⏳ quemando subtítulos…");
+    const poll = setInterval(async () => {
+      const st = await fj("api/subtitulos/estado");
+      if (!st.running) { clearInterval(poll);
+        setStatus(st.ok ? "✅ subtítulos quemados (output/ y pista 3)" : "❌ falló el quemado", st.ok ? "ok" : "err");
+        SUBSEG = st.segmentos || []; fusionRender(); }
+    }, 3000);
+  } catch (e) { setStatus("subtítulos: " + e.message, "err"); }
+}
+
+fusionInit();
+</script>
 </body>
 </html>

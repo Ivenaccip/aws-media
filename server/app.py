@@ -23,10 +23,12 @@ from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
 from server.editor import router as editor_router
+from server.overlays_api import router as overlays_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = FastAPI(title="edicion_y_generacion")
 app.include_router(editor_router)
+app.include_router(overlays_router)
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}

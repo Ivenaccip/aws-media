@@ -18,6 +18,10 @@ GROK_EDIT_SALIDA = 0.02      # por imagen generada
 GROK_EDIT_ENTRADA = 0.002    # por imagen de referencia
 ELEVEN_V3_POR_1K_CHARS = 0.10
 
+# Backend google (Gemini API) — popup g1/g2. Fallback si el JSON no existe.
+GOOGLE_VEO_LITE_720P = 0.05          # $/s, audio incluido (se descarta en el mux)
+GOOGLE_NANO_BANANA = 0.039           # $/imagen
+
 try:
     _g = json.loads(_PRICING_JSON.read_text(encoding="utf-8"))["generacion"]
     _veo = _g["veo31_lite_usd_por_segundo"]
@@ -28,8 +32,24 @@ try:
     GROK_EDIT_SALIDA = _g["grok_edit"]["usd_por_imagen_salida"]
     GROK_EDIT_ENTRADA = _g["grok_edit"]["usd_por_imagen_referencia"]
     ELEVEN_V3_POR_1K_CHARS = _g["eleven_v3_usd_por_1k_chars"]
+    GOOGLE_VEO_LITE_720P = _g["google"]["veo31_usd_por_segundo"]["lite_720p"]
+    GOOGLE_NANO_BANANA = _g["google"]["nano_banana_usd_por_imagen"]
 except (FileNotFoundError, KeyError):
-    pass  # fallback: tarifas de arriba (2026-08-22)
+    pass  # fallback: tarifas de arriba (2026-08-22 fal / 2026-08-24 google)
+
+
+def estimar_regeneracion(duracion_clip_s: float, n_imagenes: int = 1, backend: str = "google") -> dict:
+    """Precio ANTES del botón Generar del popup g1 (PLAN-FUSION.md F2.3).
+    Veo se pide en pasos de 4/6/8 s: el primero que cubra la duración del clip."""
+    segundos = next((s for s in (4, 6, 8) if s >= duracion_clip_s), 8)
+    if backend == "google":
+        imagen, video = GOOGLE_NANO_BANANA * n_imagenes, segundos * GOOGLE_VEO_LITE_720P
+    else:
+        imagen = (GROK_EDIT_SALIDA + GROK_EDIT_ENTRADA) * n_imagenes
+        video = segundos * VEO_LITE_POR_SEGUNDO[("720p", False)]
+    return {"backend": backend, "imagenes": n_imagenes, "imagen": round(imagen, 3),
+            "veo_segundos": segundos, "video": round(video, 3),
+            "total": round(imagen + video, 3)}
 
 
 def costo_fal(app: str, args: dict) -> float | None:

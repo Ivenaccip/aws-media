@@ -42,6 +42,13 @@ class Settings:
     fal_grok: str = "xai/grok-imagine-image/edit"
     fal_veo: str = "fal-ai/veo3.1/lite/image-to-video"
 
+    # Backend de regeneración g1/g2 (PLAN-FUSION.md F2.3): google (Gemini API) | fal
+    gen_backend: str = os.getenv("GEN_BACKEND", "google")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+    gemini_veo_model: str = os.getenv("GEMINI_VEO_MODEL", "veo-3.1-lite-generate-preview")
+    veo_resolution: str = os.getenv("VEO_RESOLUTION", "720p")
+
 
 settings = Settings()
 
