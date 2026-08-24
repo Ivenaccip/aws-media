@@ -49,8 +49,10 @@ async def _preparar(p: Proyecto) -> None:
 
     _etapa(p, "clasificar")
     desc = None
+    # F3.3: el modo explícito de la UI manda; "auto" conserva el clasificador
+    forzado = {"investigacion": "idea", "idea": "historia"}.get(p.modo)
     tipo, desc = await asyncio.gather(
-        research.clasificar(p.brief),
+        asyncio.sleep(0, result=forzado) if forzado else research.clasificar(p.brief),
         character.describir_referencia(Path(p.referencias[0].path)) if p.referencias else asyncio.sleep(0),
     )
     p.tipo_brief = tipo

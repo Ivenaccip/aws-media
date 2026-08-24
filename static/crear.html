@@ -69,6 +69,16 @@
       <div class="mut" style="text-align:right"><span id="cnt">0</span>/5000</div>
     </div>
     <div class="card">
+      <h2>🧭 ¿Cómo lo trabajamos?</h2>
+      <div class="chips" id="modos">
+        <button class="chip on" data-id="auto">Detectar solo</button>
+        <button class="chip" data-id="investigacion">Investigación</button>
+        <button class="chip" data-id="idea">Tengo una idea</button>
+      </div>
+      <div class="mut" id="modonota">Detectamos si tu texto es una historia lista o una idea que investigar.</div>
+      <input type="text" id="rubro" style="margin-top:10px" placeholder="Rubro de tu canal (opcional) — p. ej. «tecnología». Validamos que el tema coincida antes de gastar.">
+    </div>
+    <div class="card">
       <h2>✨ Estilo visual</h2>
       <div class="chips" id="estilos"></div>
       <input type="text" id="estilo_custom" class="hidden" style="margin-top:10px" placeholder="Describe el estilo (en inglés funciona mejor)">
@@ -176,15 +186,35 @@ $('#files').onchange = e => {
   files = [...e.target.files].slice(0,4);
   $('#thumbs').innerHTML = files.map(f => `<img src="${URL.createObjectURL(f)}" title="${f.name}">`).join('');
 };
-$('#enviar').onclick = async () => {
+let modo = 'auto';
+const MODONOTAS = {
+  auto: 'Detectamos si tu texto es una historia lista o una idea que investigar.',
+  investigacion: 'Investigamos el tema con fuentes y escribimos el guion (≈ $0.10 extra).',
+  idea: 'Tu texto se corta en escenas tal cual — tú lo revisas antes de producir.',
+};
+$('#modos').onclick = ev => {
+  const b = ev.target.closest('.chip'); if (!b) return;
+  modo = b.dataset.id;
+  [...$('#modos').children].forEach(c => c.classList.toggle('on', c === b));
+  $('#modonota').textContent = MODONOTAS[modo];
+};
+$('#enviar').onclick = async (ev, forzar = false) => {
   $('#ferr').textContent = '';
   const fd = new FormData();
   fd.append('brief', $('#brief').value); fd.append('estilo', estilo);
   fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);
+  fd.append('modo', modo); fd.append('rubro', $('#rubro').value);
+  if (forzar) fd.append('forzar', 'true');
   files.forEach(f => fd.append('referencias', f));
   $('#enviar').disabled = true;
   const r = await fetch('/api/proyectos', {method:'POST', body:fd});
   $('#enviar').disabled = false;
+  if (r.status === 409) {  // balanceador: el tema no coincide con el rubro
+    const d = (await r.json()).detail || {};
+    if (confirm(`⚖️ ${d.balanceador || 'El tema no parece de tu rubro.'}\n\n¿Crear de todos modos?`))
+      return $('#enviar').onclick(null, true);
+    return;
+  }
   if (!r.ok) { $('#ferr').textContent = await errTxt(r); return; }
   proyecto = await r.json();
   history.replaceState(null, '', '?p=' + proyecto.id);

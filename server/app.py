@@ -22,13 +22,17 @@ from pipeline.styles import ESTILOS
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
+from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.overlays_api import router as overlays_router
+from server.publicar_api import router as publicar_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = FastAPI(title="edicion_y_generacion")
 app.include_router(editor_router)
 app.include_router(overlays_router)
+app.include_router(publicar_router)
+app.include_router(broll_router)
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}
@@ -79,12 +83,23 @@ def proyectos():
 async def crear(
     brief: str = Form(...), estilo: str = Form("animated"), estilo_custom: str = Form(""),
     duracion_s: int = Form(45), referencias: list[UploadFile] = File(default=[]),
+    modo: str = Form("auto"), rubro: str = Form(""), forzar: bool = Form(False),
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
     if len(referencias) > MAX_REFS:
         raise HTTPException(422, f"Máximo {MAX_REFS} referencias")
-    p = nuevo_proyecto(brief, estilo, estilo_custom or None, min(duracion_s, DURACION_MAX_S))
+    # F3.3 balanceador: valida tema vs rubro ANTES de crear (y de gastar en research).
+    # "forzar" = el usuario vio el aviso y decidió continuar de todos modos.
+    if rubro.strip() and modo != "idea" and not forzar:
+        from pipeline import research
+        veredicto = await research.balancear(brief, rubro.strip())
+        if not veredicto["coincide"]:
+            raise HTTPException(409, {"balanceador": veredicto["motivo"],
+                                      "aviso": "El brief no parece del rubro declarado. "
+                                               "Puedes reenviar con forzar=true."})
+    p = nuevo_proyecto(brief, estilo, estilo_custom or None, min(duracion_s, DURACION_MAX_S),
+                       modo=modo, rubro=rubro)
     refs_dir = p.workdir / "refs"
     refs_dir.mkdir(parents=True, exist_ok=True)
     for i, f in enumerate(referencias):

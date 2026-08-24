@@ -952,7 +952,35 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
   #g1vers .vfila.activa { color: var(--text); }
   #g1msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
   #g1msg.err { color: #e37c7c; }
+  .propblock { position: absolute; top: 170px; height: 30px; border-radius: 4px; cursor: pointer;
+               background: color-mix(in srgb, #d0a84e 14%, transparent); border: 1px dashed #d0a84e;
+               font-size: 10px; color: #e0c37f; overflow: hidden; padding: 1px 4px; z-index: 5; }
+  #b3modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100;
+             display: none; align-items: center; justify-content: center; }
+  #b3modal.abierto { display: flex; }
+  #b3card { background: var(--panel); border: 1px solid #3a4050; border-radius: 10px;
+            width: min(640px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
+  #b3card h3 { font-size: 14px; margin-bottom: 10px; }
+  #b3card h4 { font-size: 12px; color: var(--dim); text-transform: uppercase;
+               letter-spacing: .05em; margin: 14px 0 6px; }
+  #b3card a { color: var(--accent); }
+  #b3card select, #b3card input, #b3card textarea { width: 100%; background: var(--panel2);
+    color: var(--text); border: 1px solid #3a4050; border-radius: 6px; padding: 6px 8px;
+    font: inherit; font-size: 12px; margin-bottom: 8px; }
+  #b3titulos button { display: block; width: 100%; text-align: left; margin-bottom: 5px;
+                      font-size: 12px; white-space: normal; }
+  #b3msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
+  #b3msg.err { color: #e37c7c; }
 </style>
+<div id="b3modal"><div id="b3card">
+  <h3>📤 Publicar
+      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="$('#b3modal').classList.remove('abierto')">✕</span></h3>
+  <h4>fn1 · Descargar</h4>
+  <div id="b3descargas" style="font-size:13px"></div>
+  <h4>fn2 · Agendar en tus redes (Blotato)</h4>
+  <div id="b3fn2"></div>
+  <div id="b3msg"></div>
+</div></div>
 <div id="g1modal"><div id="g1card">
   <h3>Recurso IA — escena <span id="g1oid"></span>
       <span style="float:right;cursor:pointer;color:var(--dim)" onclick="g1cerrar()">✕</span></h3>
@@ -984,11 +1012,11 @@ const fj = (url, body) => fetch(url, body ? { method: "POST",
 const usd = x => `$${x.toFixed(2)} dólares`;
 
 function fusionRender() {
-  inner.querySelectorAll(".ovblock,.subblock,.trklabel").forEach(n => n.remove());
-  if (!OVS || !OVS.overlays.length) return;
+  inner.querySelectorAll(".ovblock,.subblock,.trklabel,.propblock").forEach(n => n.remove());
+  if (!OVS || (!OVS.overlays.length && !(OVS.propuestas || []).length && !SUBSEG.length)) return;
   const lab = (top, txt) => { const l = document.createElement("div");
     l.className = "trklabel"; l.style.top = top + "px"; l.textContent = txt; inner.appendChild(l); };
-  lab(158, "pista 2 · recursos IA");
+  if (OVS.overlays.length || (OVS.propuestas || []).length) lab(158, "pista 2 · recursos IA");
   for (const ov of OVS.overlays) {
     const d = document.createElement("div");
     d.className = "ovblock" + (ov.version_activa > 1 ? " regen" : "");
@@ -997,6 +1025,19 @@ function fusionRender() {
     d.textContent = `🎨 ${ov.id}` + (ov.versiones.length > 1 ? ` (v${ov.version_activa})` : "");
     d.title = `escena ${ov.id} — clic para regenerar\n${ov.narracion}`;
     d.onclick = ev => { ev.stopPropagation(); g1abrir(ov.id); };
+    inner.appendChild(d);
+  }
+  for (const pr of (OVS.propuestas || [])) {
+    const d = document.createElement("div");
+    d.className = "propblock";
+    d.style.left = (pr.t * pps) + "px";
+    d.style.width = Math.max(pr.dur_s * pps - 2, 6) + "px";
+    d.textContent = `💡 ${pr.titulo}`;
+    d.title = `PROPUESTA b2 (${pr.familia}): ${pr.titulo}\n${pr.motivo}` +
+              (pr.prompt_imagen ? `\n\nprompt: ${pr.prompt_imagen}` : "");
+    d.onclick = ev => { ev.stopPropagation(); seek(pr.t);
+      alert(`💡 ${pr.titulo} (${pr.familia})\n\n${pr.motivo}` +
+            (pr.prompt_imagen ? `\n\nPrompt sugerido:\n${pr.prompt_imagen}` : "")); };
     inner.appendChild(d);
   }
   if (SUBSEG.length) {
@@ -1013,23 +1054,90 @@ function fusionRender() {
 }
 
 async function fusionInit() {
-  try { OVS = await fj("api/overlays"); } catch { return; }   // proyecto sin pista 2
-  if (!OVS.overlays.length) return;
-  document.getElementById("tlwrap").style.flexBasis = "300px";
+  try { OVS = await fj("api/overlays"); } catch { OVS = { overlays: [], propuestas: [] }; }
   try { SUBSEG = (await fj("api/subtitulos/estado")).segmentos || []; } catch {}
   const hdr = document.querySelector("header .grow");
-  const costo = document.createElement("span");
-  costo.id = "costoBadge"; costo.style.cssText = "color:#e0b657;font-size:12px;margin-right:8px";
-  costo.textContent = `regeneraciones: ${usd(OVS.costo_overlays || 0)}`;
-  hdr.after(costo);
-  const b1 = document.createElement("button");
-  b1.textContent = "📝 Subtítulos";
-  b1.dataset.tip = "b1: frame de muestra → aprobar → quemar (make_subs)";
-  b1.onclick = b1flujo;
-  document.getElementById("renderBtn").before(b1);
+  const mkBtn = (txt, tip, fn) => { const b = document.createElement("button");
+    b.textContent = txt; b.dataset.tip = tip; b.onclick = fn;
+    document.getElementById("renderBtn").before(b); return b; };
+  if (OVS.overlays.length || SUBSEG.length) {
+    document.getElementById("tlwrap").style.flexBasis = "300px";
+    const costo = document.createElement("span");
+    costo.id = "costoBadge"; costo.style.cssText = "color:#e0b657;font-size:12px;margin-right:8px";
+    costo.textContent = `regeneraciones: ${usd(OVS.costo_overlays || 0)}`;
+    hdr.after(costo);
+  }
+  mkBtn("📝 Subtítulos", "b1: frame de muestra → aprobar → quemar (make_subs)", b1flujo);
+  mkBtn("🎨 B-roll IA", "b2: Claude propone momentos para recursos visuales (~$0.01)", b2flujo);
+  mkBtn("📤 Publicar", "b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)", b3abrir);
   const orig = renderTimeline;
   renderTimeline = function () { orig(); fusionRender(); };
   fusionRender();
+}
+
+async function b2flujo() {
+  if (!confirm("b2 analiza el video y propone momentos para recursos visuales (~$0.01 de LLM, no genera nada). ¿Continuar?")) return;
+  setStatus("⏳ b2 analizando el video…");
+  try {
+    const r = await fj("api/broll/sugerir", {});
+    OVS.propuestas = r.propuestas;
+    document.getElementById("tlwrap").style.flexBasis = "300px";
+    fusionRender();
+    setStatus(`💡 ${r.propuestas.length} propuestas en la pista 2 (clic para ver el detalle)`, "ok");
+  } catch (e) { setStatus("b2: " + e.message, "err"); }
+}
+
+async function b3abrir() {
+  document.getElementById("b3modal").classList.add("abierto");
+  $("b3msg").className = ""; $("b3msg").textContent = "⏳ cargando…";
+  let st;
+  try { st = await fj("api/publicar/estado"); }
+  catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; return; }
+  $("b3descargas").innerHTML = st.descargables.length
+    ? st.descargables.map(d => `<div>⬇ <a href="descarga/${d.clave}" download>${d.nombre}</a> <span style="color:var(--dim)">(${d.mb} MB)</span></div>`).join("")
+    : "<span style='color:var(--dim)'>nada para descargar aún</span>";
+  if (!st.blotato) {
+    $("b3fn2").innerHTML = "<span style='color:var(--dim)'>Para agendar desde aquí agrega <b>BLOTATO_API_KEY</b> al .env " +
+      "(dashboard de Blotato → API) y reinicia el server.</span>";
+  } else if (st.error) {
+    $("b3fn2").innerHTML = `<span style='color:#e37c7c'>${st.error}</span>`;
+  } else {
+    $("b3fn2").innerHTML = `
+      <select id="b3cuenta">${st.cuentas.map(c =>
+        `<option value="${c.id}|${c.platform}">${c.platform} · ${c.fullname || c.username}</option>`).join("")}</select>
+      <select id="b3archivo">${st.descargables.filter(d => d.nombre.endsWith(".mp4")).map(d =>
+        `<option value="${d.clave}">${d.nombre}</option>`).join("")}</select>
+      <button id="b3sugerir" style="margin-bottom:6px">✨ Sugerir títulos (~$0.01)</button>
+      <div id="b3titulos"></div>
+      <textarea id="b3texto" rows="3" placeholder="Texto del post (elige un título sugerido o escribe el tuyo)"></textarea>
+      <input type="datetime-local" id="b3cuando">
+      <div style="color:var(--dim);font-size:11px;margin-bottom:6px">Sin fecha = publicar de inmediato.</div>
+      <button class="primary" id="b3agendar">📤 Agendar / publicar</button>`;
+    $("b3sugerir").onclick = async () => {
+      $("b3msg").textContent = "⏳ pidiendo títulos…";
+      try {
+        const plat = $("b3cuenta").value.split("|")[1];
+        const r = await fj("api/publicar/titulos", { plataformas: [plat] });
+        $("b3titulos").innerHTML = r.titulos.map(t => `<button type="button">${t}</button>`).join("");
+        [...$("b3titulos").children].forEach(b => b.onclick = () => { $("b3texto").value = b.textContent; });
+        $("b3msg").textContent = "";
+      } catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; }
+    };
+    $("b3agendar").onclick = async () => {
+      const [cuenta_id, plataforma] = $("b3cuenta").value.split("|");
+      const texto = $("b3texto").value.trim();
+      if (!texto) { $("b3msg").className = "err"; $("b3msg").textContent = "Escribe o elige el texto del post."; return; }
+      const cuando = $("b3cuando").value ? new Date($("b3cuando").value).toISOString() : null;
+      if (!confirm(`Se ${cuando ? "agendará" : "publicará AHORA"} en ${plataforma}:\n\n«${texto}»\n\n¿Confirmar?`)) return;
+      $("b3msg").className = ""; $("b3msg").textContent = "⏳ subiendo video y creando el post…";
+      try {
+        await fj("api/publicar/agendar", { confirmar: true, cuenta_id, plataforma, texto,
+                                           archivo: $("b3archivo").value, cuando });
+        $("b3msg").textContent = "✅ listo — revisa tu calendario de Blotato";
+      } catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; }
+    };
+  }
+  $("b3msg").textContent = "";
 }
 
 async function g1abrir(oid) {

@@ -29,6 +29,17 @@ def interpretar_tipo(r: dict, brief: str) -> TipoBrief:
     return "historia" if len(brief.split()) > 120 else "idea"
 
 
+@observe(name="balanceador_rubro")
+async def balancear(brief: str, rubro: str) -> dict:
+    """F3.3: valida tema vs rubro ANTES de gastar en research (~$0.001).
+    Devuelve {coincide: bool, motivo: str}; ante duda del LLM, deja pasar."""
+    r = await chat_json("balanceador_rubro", load_prompt("balanceador_system"),
+                        f"Rubro del canal: {rubro}\n\nBrief del video:\n{brief}")
+    resultado = {"coincide": bool(r.get("coincide", True)), "motivo": str(r.get("motivo", ""))[:300]}
+    get_client().update_current_span(output=resultado)
+    return resultado
+
+
 @observe(name="clasificar_brief")
 async def clasificar(brief: str) -> TipoBrief:
     r = await chat_json("clasificar_brief", load_prompt("clasificar_system"), brief)

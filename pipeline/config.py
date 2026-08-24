@@ -44,6 +44,7 @@ class Settings:
 
     # Backend de regeneración g1/g2 (PLAN-FUSION.md F2.3): google (Gemini API) | fal
     gen_backend: str = os.getenv("GEN_BACKEND", "google")
+    blotato_api_key: str = os.getenv("BLOTATO_API_KEY", "")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
     gemini_veo_model: str = os.getenv("GEMINI_VEO_MODEL", "veo-3.1-lite-generate-preview")
