@@ -955,14 +955,25 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
   .propblock { position: absolute; top: 170px; height: 30px; border-radius: 4px; cursor: pointer;
                background: color-mix(in srgb, #d0a84e 14%, transparent); border: 1px dashed #d0a84e;
                font-size: 10px; color: #e0c37f; overflow: hidden; padding: 1px 4px; z-index: 5; }
-  #b3modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100;
+  #b3modal, #b1modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100;
              display: none; align-items: center; justify-content: center; }
-  #b3modal.abierto { display: flex; }
+  #b3modal.abierto, #b1modal.abierto { display: flex; }
   #b3card { background: var(--panel); border: 1px solid #3a4050; border-radius: 10px;
-            width: min(640px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
-  #b3card h3 { font-size: 14px; margin-bottom: 10px; }
-  #b3card h4 { font-size: 12px; color: var(--dim); text-transform: uppercase;
-               letter-spacing: .05em; margin: 14px 0 6px; }
+            width: min(860px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
+  #b3card h3 { font-size: 14px; margin-bottom: 12px; }
+  #b3cols { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; }
+  .b3panel { background: var(--panel2); border: 1px solid #3a4050; border-radius: 8px; padding: 14px; }
+  .b3panel h4 { font-size: 12px; color: var(--dim); text-transform: uppercase;
+                letter-spacing: .05em; margin: 0 0 10px; }
+  .b3aviso { border: 1px dashed #e0b657; border-radius: 8px; background: color-mix(in srgb, #e0b657 10%, transparent);
+             color: #e0b657; padding: 14px; font-size: 13px; text-align: center; }
+  .b3aviso small { display: block; color: var(--dim); margin-top: 8px; font-size: 11.5px; }
+  #b1card { background: var(--panel); border: 1px solid #3a4050; border-radius: 10px;
+            width: min(760px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
+  #b1card h3 { font-size: 14px; margin-bottom: 10px; }
+  #b1card img { width: 100%; border-radius: 6px; background: #000; }
+  #b1card .fila { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+  #b1msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
   #b3card a { color: var(--accent); }
   #b3card select, #b3card input, #b3card textarea { width: 100%; background: var(--panel2);
     color: var(--text); border: 1px solid #3a4050; border-radius: 6px; padding: 6px 8px;
@@ -974,12 +985,22 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
 </style>
 <div id="b3modal"><div id="b3card">
   <h3>📤 Publicar
-      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="$('#b3modal').classList.remove('abierto')">✕</span></h3>
-  <h4>fn1 · Descargar</h4>
-  <div id="b3descargas" style="font-size:13px"></div>
-  <h4>fn2 · Agendar en tus redes (Blotato)</h4>
-  <div id="b3fn2"></div>
+      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="document.getElementById('b3modal').classList.remove('abierto')">✕</span></h3>
+  <div id="b3cols">
+    <div class="b3panel"><h4>⬇ Descargar</h4><div id="b3descargas" style="font-size:13px"></div></div>
+    <div class="b3panel"><h4>🪁 Blotato</h4><div id="b3fn2"></div></div>
+  </div>
   <div id="b3msg"></div>
+</div></div>
+<div id="b1modal"><div id="b1card">
+  <h3>📝 Subtítulos — frame de muestra
+      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="document.getElementById('b1modal').classList.remove('abierto')">✕</span></h3>
+  <img id="b1img" alt="frame de muestra con subtítulos">
+  <div id="b1msg"></div>
+  <div class="fila">
+    <button onclick="document.getElementById('b1modal').classList.remove('abierto')">Cancelar</button>
+    <button class="primary" id="b1quemar">🔥 Quemar el video completo</button>
+  </div>
 </div></div>
 <div id="g1modal"><div id="g1card">
   <h3>Recurso IA — escena <span id="g1oid"></span>
@@ -1068,7 +1089,12 @@ async function fusionInit() {
     hdr.after(costo);
   }
   mkBtn("📝 Subtítulos", "b1: frame de muestra → aprobar → quemar (make_subs)", b1flujo);
-  mkBtn("🎨 B-roll IA", "b2: Claude propone momentos para recursos visuales (~$0.01)", b2flujo);
+  const cobertura = OVS.overlays.reduce((a, o) => a + (o.t_out - o.t_in), 0);
+  const todoIA = OVS.overlays.length && TOTAL && cobertura >= TOTAL * 0.95;
+  const b2 = mkBtn("🎨 B-roll IA", todoIA
+    ? "b2 no aplica: este video es 100% generado con IA — regenera escenas desde la pista 2"
+    : "b2: Claude propone momentos para recursos visuales (~$0.01)", b2flujo);
+  if (todoIA) b2.disabled = true;
   mkBtn("📤 Publicar", "b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)", b3abrir);
   const orig = renderTimeline;
   renderTimeline = function () { orig(); fusionRender(); };
@@ -1097,8 +1123,8 @@ async function b3abrir() {
     ? st.descargables.map(d => `<div>⬇ <a href="descarga/${d.clave}" download>${d.nombre}</a> <span style="color:var(--dim)">(${d.mb} MB)</span></div>`).join("")
     : "<span style='color:var(--dim)'>nada para descargar aún</span>";
   if (!st.blotato) {
-    $("b3fn2").innerHTML = "<span style='color:var(--dim)'>Para agendar desde aquí agrega <b>BLOTATO_API_KEY</b> al .env " +
-      "(dashboard de Blotato → API) y reinicia el server.</span>";
+    $("b3fn2").innerHTML = `<div class="b3aviso">🪁 Se necesita Blotato para publicar directamente
+      <small>Agrega BLOTATO_API_KEY al .env (dashboard de Blotato → API) y reinicia el server.</small></div>`;
   } else if (st.error) {
     $("b3fn2").innerHTML = `<span style='color:#e37c7c'>${st.error}</span>`;
   } else {
@@ -1204,18 +1230,34 @@ async function b1flujo() {
   setStatus("⏳ generando frame de muestra de subtítulos…");
   try {
     const r = await fj("api/subtitulos/muestra", { frame });
-    const w = window.open("archivo/" + r.muestra, "_blank");
-    if (!confirm("Se abrió el frame de muestra con el estilo de subtítulos. ¿Quemar el video completo?")) { setStatus(""); return; }
-    await fj("api/subtitulos/quemar", {});
-    setStatus("⏳ quemando subtítulos…");
-    const poll = setInterval(async () => {
-      const st = await fj("api/subtitulos/estado");
-      if (!st.running) { clearInterval(poll);
-        setStatus(st.ok ? "✅ subtítulos quemados (output/ y pista 3)" : "❌ falló el quemado", st.ok ? "ok" : "err");
-        SUBSEG = st.segmentos || []; fusionRender(); }
-    }, 3000);
+    setStatus("");
+    document.getElementById("b1img").src = "archivo/" + r.muestra + "?t=" + Date.now();
+    document.getElementById("b1msg").textContent =
+      `Frame del segundo ${frame} con el estilo de subtítulos. Si te gusta, quema el video completo.`;
+    document.getElementById("b1quemar").disabled = false;
+    document.getElementById("b1modal").classList.add("abierto");
   } catch (e) { setStatus("subtítulos: " + e.message, "err"); }
 }
+
+document.getElementById("b1quemar").onclick = async () => {
+  const btn = document.getElementById("b1quemar"), msg = document.getElementById("b1msg");
+  btn.disabled = true;
+  msg.textContent = "⏳ quemando subtítulos en todo el video (tarda un poco)…";
+  try {
+    await fj("api/subtitulos/quemar", {});
+    const poll = setInterval(async () => {
+      const st = await fj("api/subtitulos/estado");
+      if (!st.running) {
+        clearInterval(poll);
+        SUBSEG = st.segmentos || []; fusionRender();
+        if (st.ok) {
+          msg.textContent = "✅ Listo: el video subtitulado quedó en output/ (descárgalo desde 📤 Publicar) y la pista 3 se actualizó.";
+          setStatus("✅ subtítulos quemados", "ok");
+        } else { msg.textContent = "❌ Falló el quemado: " + (st.log || "").slice(-200); btn.disabled = false; }
+      }
+    }, 3000);
+  } catch (e) { msg.textContent = "❌ " + e.message; btn.disabled = false; }
+};
 
 fusionInit();
 </script>
