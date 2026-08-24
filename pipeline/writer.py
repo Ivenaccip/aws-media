@@ -1,0 +1,56 @@
+"""Guionista: historia o dossier → guion narrado en español, por escenas, con presupuesto de duración."""
+from __future__ import annotations
+
+from langfuse import get_client, observe
+
+from .config import load_prompt
+from .llm import chat_json
+from .project import EscenaGuion
+
+PALABRAS_POR_S = 2.2
+S_POR_ESCENA_MIN = 5.0
+S_POR_ESCENA_MAX = 8.0
+MAX_PALABRAS_ESCENA = 16
+
+
+def presupuesto(duracion_s: int) -> dict:
+    return {
+        "duracion_s": duracion_s,
+        "palabras_max": int(duracion_s * PALABRAS_POR_S),
+        "escenas_min": max(2, round(duracion_s / S_POR_ESCENA_MAX)),
+        "escenas_max": max(3, round(duracion_s / S_POR_ESCENA_MIN)),
+    }
+
+
+def normalizar_guion(r: dict, duracion_s: int) -> list[EscenaGuion]:
+    escenas = r.get("escenas")
+    if not isinstance(escenas, list) or not escenas:
+        raise ValueError("El guionista no devolvió escenas")
+    out: list[EscenaGuion] = []
+    for e in escenas:
+        txt = str((e.get("narracion") if isinstance(e, dict) else e) or "").strip()
+        if txt:
+            out.append(EscenaGuion(id=str(len(out) + 1), narracion=txt))
+    if not out:
+        raise ValueError("El guionista devolvió escenas vacías")
+    return out
+
+
+def estimar_segundos(escenas: list[EscenaGuion]) -> float:
+    return round(sum(len(e.narracion.split()) for e in escenas) / PALABRAS_POR_S, 1)
+
+
+@observe(name="guionista")
+async def escribir_guion(material: str, tipo: str, estilo: str, duracion_s: int, personaje: str | None) -> list[EscenaGuion]:
+    pres = presupuesto(duracion_s)
+    user = load_prompt("guionista_user").format(
+        material=material, tipo=tipo, estilo=estilo,
+        personaje=f"PROTAGONISTA (ya diseñado, úsalo como tal): {personaje}" if personaje else "",
+        **pres,
+    )
+    r = await chat_json("guionista", load_prompt("guionista_system").format(**pres), user)
+    guion = normalizar_guion(r, duracion_s)
+    get_client().update_current_span(output={
+        "titulo": r.get("titulo"), "escenas": len(guion), "segundos_estimados": estimar_segundos(guion),
+    })
+    return guion

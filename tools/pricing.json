@@ -36,6 +36,19 @@
       "source": "https://fal.ai/pricing y https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video"
     }
   },
+  "generacion": {
+    "comment": "Rama generador (pipeline/, ex video-pipeline). Tarifas fal verificadas 2026-08-22 en las páginas de cada modelo. Consumidas por pipeline/pricing.py — jamás hardcodear en skills ni UI. Coste real por película: ~1-1.5 dólares por minuto de video (Veo = 85 %).",
+    "verified_on": "2026-08-22",
+    "veo31_lite_usd_por_segundo": {
+      "720p_sin_audio": 0.03,
+      "720p_con_audio": 0.05,
+      "1080p_sin_audio": 0.05,
+      "1080p_con_audio": 0.08
+    },
+    "grok_edit": { "usd_por_imagen_salida": 0.02, "usd_por_imagen_referencia": 0.002 },
+    "eleven_v3_usd_por_1k_chars": 0.10,
+    "source": "https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video · https://fal.ai/models/xai/grok-imagine-image/edit · https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3"
+  },
   "local_models": {
     "comment": "faster-whisper, costo $0. PROHIBIDO ofrecer variantes .en (tiny.en, distil-large-v3 = English-only) para contenido en español. Solo multilingües. int8 baja el consumo de memoria casi a la mitad; int8 + cpu corre en cualquier máquina sin GPU.",
     "small": { "vram_gb_float16": 2, "spanish_ok": true },

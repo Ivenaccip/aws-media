@@ -9,6 +9,13 @@ videos/*
 
 # Secretos
 .env
+service_account.json
+oauth_client.json
+token_drive.json
+
+# Rama generador (pipeline/): producciones y venv legado
+work/
+.venv/
 
 # Python
 venv/

@@ -33,5 +33,18 @@ google-auth-httplib2==0.2.1
 #     funciona igual y el panel de chat se muestra deshabilitado
 claude-agent-sdk==0.2.133
 
+# --- rama generador (pipeline/ + server/, ex video-pipeline; versiones del venv
+#     que validó las corridas E2E del 2026-08-22/23)
+openai==3.3.1
+fal-client==1.0.1
+langfuse==4.14.4
+pydantic==2.13.4
+httpx==0.28.1
+python-dotenv==1.2.3
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+
 # --- tests
 pytest==9.1.1
+pytest-asyncio==1.4.0

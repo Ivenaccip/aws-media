@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Estudio de video</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0f0f14; --card:#1a1a22; --line:#2a2a36; --txt:#ececf1; --mut:#8b8b9a; --acc:#c93fb6; --acc2:#7b3fe4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  main { max-width:720px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:22px; margin:0 0 20px; }
+  h2 { font-size:16px; margin:22px 0 8px; display:flex; align-items:center; gap:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
+  textarea, input[type=text] { width:100%; background:#111118; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  textarea { min-height:120px; resize:vertical; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border:1px solid var(--line); border-radius:999px; padding:7px 14px; cursor:pointer; color:var(--mut); background:transparent; font:inherit; }
+  .chip.on { border-color:var(--acc); color:var(--txt); background:#2a1530; }
+  .row { display:flex; align-items:center; gap:12px; }
+  input[type=range] { flex:1; accent-color:var(--acc); }
+  .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#fff; font:inherit; font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:18px; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn.sec { background:transparent; border:1px solid var(--line); color:var(--txt); }
+  .mut { color:var(--mut); font-size:13px; }
+  .drop { border:1px dashed var(--line); border-radius:12px; padding:16px; text-align:center; color:var(--mut); cursor:pointer; }
+  .thumbs { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .thumbs img { height:64px; border-radius:8px; border:1px solid var(--line); }
+  .escena { display:flex; gap:8px; margin-bottom:8px; }
+  .escena .n { width:28px; padding-top:10px; color:var(--mut); text-align:right; }
+  .escena textarea { min-height:64px; }
+  .escena button { background:none; border:0; color:var(--mut); cursor:pointer; font-size:18px; }
+  .opciones { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .opciones img { width:100%; border-radius:12px; border:3px solid transparent; cursor:pointer; }
+  .opciones img.on { border-color:var(--acc); }
+  .err { color:#ff7b7b; white-space:pre-wrap; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); transition:width .4s; }
+  video { width:100%; border-radius:12px; margin-top:10px; }
+  details summary { cursor:pointer; color:var(--mut); }
+  a { color:#d98be0; }
+  .hidden { display:none; }
+  /* revisión a dos columnas */
+  main.wide { max-width:1180px; }
+  .cols { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); gap:14px; align-items:stretch; }
+  .cols > div { display:flex; flex-direction:column; min-height:0; }
+  .cols .card.fill { flex:1; display:flex; flex-direction:column; min-height:0; }
+  @media (max-width: 860px) { .cols { grid-template-columns:1fr; } }
+  .scroll { flex:1; min-height:200px; overflow-y:auto; padding-right:6px; }
+  .escena .meta { font-size:11px; color:var(--mut); width:48px; text-align:right; padding-top:10px; }
+  .escena .meta.warn { color:#ffb454; }
+  .voz { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .voz select { flex:1; background:#111118; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px; font:inherit; }
+  .voz button { border:1px solid var(--line); background:transparent; color:var(--txt); border-radius:10px; padding:8px 12px; cursor:pointer; font:inherit; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+  .verde { background:#3ddc84; } .amarillo { background:#ffd34d; } .rojo { background:#ff5c5c; }
+  .sticky { position:sticky; bottom:0; background:linear-gradient(180deg, transparent, var(--bg) 30%); padding:10px 0 14px; }
+  .sticky .btn { margin-top:6px; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- 1. Brief -->
+  <section id="form">
+    <div class="card">
+      <h2>📖 ¿De qué trata tu película?</h2>
+      <textarea id="brief" maxlength="5000" placeholder="Pega la historia completa o una idea breve («cómo empezó la Segunda Guerra Mundial»). Si es una idea, investigamos y escribimos el guion."></textarea>
+      <div class="mut" style="text-align:right"><span id="cnt">0</span>/5000</div>
+    </div>
+    <div class="card">
+      <h2>✨ Estilo visual</h2>
+      <div class="chips" id="estilos"></div>
+      <input type="text" id="estilo_custom" class="hidden" style="margin-top:10px" placeholder="Describe el estilo (en inglés funciona mejor)">
+    </div>
+    <div class="card">
+      <h2>⏱ Duración</h2>
+      <div class="row"><input type="range" id="dur" min="15" max="60" step="5" value="45"><b id="durv">45s</b></div>
+      <div class="mut">Máximo 60 s en esta versión de pruebas.</div>
+    </div>
+    <div class="card">
+      <h2>🧑‍🎤 Referencia del personaje</h2>
+      <div class="drop" id="drop">Sube la imagen de tu personaje (hasta 4 archivos). Te daremos 2 versiones en el estilo elegido para que escojas una.</div>
+      <input type="file" id="files" accept="image/*" multiple class="hidden">
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+    <button class="btn" id="enviar">Escribir el guion →</button>
+    <div class="err" id="ferr"></div>
+  </section>
+
+  <!-- 2. Preparando / produciendo -->
+  <section id="progreso" class="hidden">
+    <div class="card">
+      <h2 id="ptitulo">Trabajando…</h2>
+      <div class="bar"><i id="pbar" style="width:5%"></i></div>
+      <p class="mut" id="petapa"></p>
+    </div>
+  </section>
+
+  <!-- 3. Revisión -->
+  <section id="revision" class="hidden">
+    <div class="cols">
+      <div>
+        <div class="card">
+          <h2>🧑‍🎤 Elige tu personaje</h2>
+          <input type="text" id="pnombre" placeholder="Nombre del personaje" style="margin-bottom:10px">
+          <div class="opciones" id="opciones"></div>
+          <details style="margin-top:10px"><summary>Descripción detectada</summary><p class="mut" id="pdesc"></p></details>
+        </div>
+        <div class="card">
+          <h2>🎙 Voz del narrador</h2>
+          <p class="mut">Una sola voz para toda la película, ordenadas por ajuste al guion: <span class="dot verde"></span>encaja · <span class="dot amarillo"></span>tal vez · <span class="dot rojo"></span>no encaja.</p>
+          <div class="voz"><select id="voz"></select><button id="oir" title="Escuchar la escena 1 con esta voz (≈ $0.01)">▶ Escuchar</button></div>
+          <p class="mut" id="vozmotivo"></p>
+          <audio id="audio" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+        </div>
+      </div>
+      <div>
+        <div class="card fill">
+          <h2>📝 Guion (una escena por bloque)</h2>
+          <p class="mut">Edita lo que quieras. Cada bloque es una escena narrada; ~2 palabras/s. Más de 14 palabras obliga a partir la escena (cuesta más).</p>
+          <div class="scroll" id="escenas"></div>
+          <button class="btn sec" id="addesc" style="margin-top:8px">+ Añadir escena</button>
+          <p class="mut" id="estim"></p>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="dossier_card">
+      <details><summary>📚 Contexto investigado (<span id="nfuentes">0</span> fuentes)</summary>
+        <p id="dossier" style="white-space:pre-wrap"></p><ul id="fuentes"></ul></details>
+    </div>
+    <div class="sticky">
+      <button class="btn" id="producir">Producir la película →</button>
+      <div class="err" id="rerr"></div>
+    </div>
+  </section>
+
+  <!-- 4. Resultado -->
+  <section id="resultado" class="hidden">
+    <div class="card">
+      <h2>✅ Película lista</h2>
+      <video id="video" controls></video>
+      <p id="rmsg" style="white-space:pre-wrap"></p>
+      <p id="rlink"></p>
+    </div>
+    <button class="btn sec" onclick="location.href='/'">Nueva película</button>
+  </section>
+
+  <section id="error" class="hidden">
+    <div class="card"><h2>❌ Algo falló</h2><p class="err" id="emsg"></p></div>
+    <button class="btn" id="reintentar">Reintentar la producción →</button>
+    <button class="btn sec" onclick="location.href='/'">Empezar de nuevo</button>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
+const show = id => { for (const s of ['form','progreso','revision','resultado','error']) $('#'+s).classList.toggle('hidden', s!==id); };
+let estilo = 'animated', files = [], proyecto = null, poll = null;
+
+// --- formulario ---
+$('#brief').addEventListener('input', e => $('#cnt').textContent = e.target.value.length);
+$('#dur').addEventListener('input', e => $('#durv').textContent = e.target.value + 's');
+fetch('/api/estilos').then(r => r.json()).then(list => {
+  $('#estilos').innerHTML = list.map(e => `<button class="chip ${e.id===estilo?'on':''}" data-id="${e.id}">${e.nombre}</button>`).join('');
+  $('#estilos').onclick = ev => {
+    const b = ev.target.closest('.chip'); if (!b) return;
+    estilo = b.dataset.id;
+    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c===b));
+    $('#estilo_custom').classList.toggle('hidden', estilo!=='custom');
+  };
+});
+$('#drop').onclick = () => $('#files').click();
+$('#files').onchange = e => {
+  files = [...e.target.files].slice(0,4);
+  $('#thumbs').innerHTML = files.map(f => `<img src="${URL.createObjectURL(f)}" title="${f.name}">`).join('');
+};
+$('#enviar').onclick = async () => {
+  $('#ferr').textContent = '';
+  const fd = new FormData();
+  fd.append('brief', $('#brief').value); fd.append('estilo', estilo);
+  fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);
+  files.forEach(f => fd.append('referencias', f));
+  $('#enviar').disabled = true;
+  const r = await fetch('/api/proyectos', {method:'POST', body:fd});
+  $('#enviar').disabled = false;
+  if (!r.ok) { $('#ferr').textContent = await errTxt(r); return; }
+  proyecto = await r.json();
+  history.replaceState(null, '', '?p=' + proyecto.id);
+  seguir();
+};
+
+// --- polling ---
+const ETAPAS_PREP = {inicio:5, clasificar:15, research:30, guion:50, editor:62, voz:72, personaje:85};
+const ETAPAS_PROD = {inicio:3, casting:8, director:15, tts:25, media:40, concat:90, drive:96};
+function seguir() { render(proyecto); clearInterval(poll); poll = setInterval(refrescar, 2500); }
+async function refrescar() {
+  const r = await fetch('/api/proyectos/' + proyecto.id); if (!r.ok) return;
+  proyecto = await r.json(); render(proyecto);
+  if (['revision','listo','error'].includes(proyecto.estado)) clearInterval(poll);
+}
+function render(p) {
+  if (p.estado==='creado' || p.estado==='preparando' || p.estado==='produciendo') {
+    show('progreso');
+    const prod = p.estado==='produciendo';
+    $('#ptitulo').textContent = prod ? '🎥 Produciendo la película…' : '✍️ Investigando y escribiendo el guion…';
+    let pct = (prod ? ETAPAS_PROD : ETAPAS_PREP)[p.etapa] ?? 5;
+    if (prod && p.etapa==='media' && p.progreso.escenas_total) pct = 40 + 50 * (p.progreso.escenas_listas||0) / p.progreso.escenas_total;
+    $('#pbar').style.width = pct + '%';
+    $('#petapa').textContent = (p.etapa||'') + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '');
+  } else if (p.estado==='revision') { renderRevision(p); }
+  else if (p.estado==='listo') {
+    show('resultado');
+    $('#video').src = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
+    $('#rmsg').textContent = p.resultado?.mensaje || '';
+    $('#rlink').innerHTML = p.resultado?.link ? `<a href="${p.resultado.link}" target="_blank">Abrir en Drive</a>` : '';
+  } else if (p.estado==='error') { show('error'); $('#emsg').textContent = p.error || 'Error desconocido'; $('#reintentar').classList.toggle('hidden', !(p.guion.length && p.personaje.elegida != null)); }
+}
+
+// --- revisión ---
+let revisionPintada = false;
+function renderRevision(p) {
+  show('revision');
+  if (revisionPintada) return; revisionPintada = true;
+  $('#dossier_card').classList.toggle('hidden', !p.dossier);
+  $('#dossier').textContent = p.dossier || ''; $('#nfuentes').textContent = p.fuentes.length;
+  $('#fuentes').innerHTML = p.fuentes.map(u => `<li><a href="${u}" target="_blank">${u}</a></li>`).join('');
+  $('#pnombre').value = p.personaje.nombre; $('#pdesc').textContent = p.personaje.descripcion;
+  $('#opciones').innerHTML = p.personaje.opciones.map((o,i) =>
+    `<img src="/api/proyectos/${p.id}/archivo/${o.path.split(/[\\/]/).slice(-2).join('/')}" data-i="${i}" class="${p.personaje.elegida===i?'on':''}">`).join('')
+    || '<p class="mut">No se generaron opciones de personaje (¿sin referencia?).</p>';
+  $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
+    p.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im)); };
+  $('#escenas').innerHTML = ''; p.guion.forEach(e => addEscena(e.narracion)); estimar();
+  document.querySelector('main').classList.add('wide');
+  renderVoces(p);
+}
+const ICONO = {verde:'🟢', amarillo:'🟡', rojo:'🔴'};
+function renderVoces(p) {
+  const lista = p.voces.length ? p.voces : [{id:'George', nivel:'amarillo', motivo:'sin recomendación'}];
+  const sel = $('#voz');
+  sel.innerHTML = lista.map(v => `<option value="${v.id}" data-motivo="${v.motivo}">${ICONO[v.nivel]} ${v.id}</option>`).join('');
+  sel.value = p.voz && lista.some(v => v.id===p.voz) ? p.voz : lista[0].id;
+  const motivo = () => { const o = sel.selectedOptions[0]; $('#vozmotivo').textContent = o ? o.dataset.motivo : ''; $('#audio').classList.add('hidden'); };
+  sel.onchange = motivo; motivo();
+  $('#oir').onclick = async () => {
+    const texto = escenas()[0]; if (!texto) return;
+    $('#oir').disabled = true; $('#oir').textContent = '… generando';
+    const r = await fetch(`/api/proyectos/${p.id}/voz/muestra`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({voz: sel.value, texto})});
+    $('#oir').disabled = false; $('#oir').textContent = '▶ Escuchar';
+    if (!r.ok) { $('#rerr').textContent = await errTxt(r); return; }
+    const au = $('#audio'); au.src = (await r.json()).url; au.classList.remove('hidden'); au.play();
+  };
+}
+function addEscena(txt='') {
+  const d = document.createElement('div'); d.className='escena';
+  d.innerHTML = `<div class="n"></div><textarea>${txt.replace(/</g,'&lt;')}</textarea><div class="meta"></div><button title="Quitar">✕</button>`;
+  d.querySelector('button').onclick = () => { d.remove(); renum(); };
+  d.querySelector('textarea').oninput = () => { metaEscena(d); estimar(); };
+  metaEscena(d);
+  $('#escenas').appendChild(d); renum();
+}
+function metaEscena(d) {
+  const w = d.querySelector('textarea').value.trim().split(/\s+/).filter(Boolean).length;
+  const m = d.querySelector('.meta'); m.textContent = `${w} pal · ${Math.round(w/2)} s`; m.classList.toggle('warn', w > 14);
+}
+function renum() { document.querySelectorAll('.escena .n').forEach((n,i) => n.textContent = i+1); estimar(); }
+function escenas() { return [...document.querySelectorAll('.escena textarea')].map(t => t.value.trim()).filter(Boolean); }
+let estimT = null;
+function estimar() {
+  const w = escenas().join(' ').split(/\s+/).filter(Boolean).length;
+  $('#estim').textContent = `${escenas().length} escenas · ${w} palabras · ≈ ${Math.round(w/2.3)} s de narración (objetivo ${proyecto.duracion_s} s)`;
+  clearTimeout(estimT);
+  estimT = setTimeout(async () => {
+    const r = await fetch(`/api/proyectos/${proyecto.id}/estimacion`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({escenas: escenas()})});
+    if (!r.ok) return; const c = await r.json();
+    $('#producir').textContent = `Producir la película → ≈ $${c.total.toFixed(2)} · ~${c.minutos} min`;
+  }, 400);
+}
+$('#addesc').onclick = () => addEscena('');
+$('#producir').onclick = async () => {
+  $('#rerr').textContent = '';
+  if (proyecto.personaje.elegida == null) { $('#rerr').textContent = 'Elige una opción de personaje.'; return; }
+  $('#producir').disabled = true;
+  try {
+    let r = await fetch(`/api/proyectos/${proyecto.id}/guion`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({escenas: escenas(), voz: $('#voz').value})});
+    if (!r.ok) throw new Error(await errTxt(r));
+    r = await fetch(`/api/proyectos/${proyecto.id}/personaje`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({elegida: proyecto.personaje.elegida, nombre: $('#pnombre').value})});
+    if (!r.ok) throw new Error(await errTxt(r));
+    r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
+    if (!r.ok) throw new Error(await errTxt(r));
+    proyecto = await r.json(); seguir();
+  } catch (e) { $('#rerr').textContent = e.message; }
+  $('#producir').disabled = false;
+};
+
+$('#reintentar').onclick = async () => {
+  $('#reintentar').disabled = true;
+  const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
+  $('#reintentar').disabled = false;
+  if (!r.ok) { $('#emsg').textContent = await errTxt(r); return; }
+  proyecto = await r.json(); seguir();
+};
+
+// --- reanudar por URL ---
+const pid = new URLSearchParams(location.search).get('p');
+if (pid) fetch('/api/proyectos/' + pid).then(r => r.ok ? r.json() : null).then(p => { if (p) { proyecto = p; seguir(); } });
+</script>
+</body>
+</html>
