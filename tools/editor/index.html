@@ -1096,6 +1096,19 @@ async function fusionInit() {
     : "b2: Claude propone momentos para recursos visuales (~$0.01)", b2flujo);
   if (todoIA) b2.disabled = true;
   mkBtn("📤 Publicar", "b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)", b3abrir);
+  try {
+    if ((await fetch("ver/subtitulado", { headers: { Range: "bytes=0-0" } })).ok) {
+      let viendoSub = false;
+      const t = mkBtn("▶ Ver subtitulado", "alterna el player entre el metraje de edición y el export con subtítulos", () => {
+        viendoSub = !viendoSub;
+        const pos = vid.currentTime;
+        vid.src = viendoSub ? "ver/subtitulado" : "media/proxy.mp4";
+        vid.currentTime = pos;
+        t.textContent = viendoSub ? "✂ Ver edición" : "▶ Ver subtitulado";
+        setStatus(viendoSub ? "▶ viendo el EXPORT subtitulado (solo lectura)" : "✂ de vuelta al metraje de edición", "ok");
+      });
+    }
+  } catch {}
   const orig = renderTimeline;
   renderTimeline = function () { orig(); fusionRender(); };
   fusionRender();
@@ -1251,7 +1264,19 @@ document.getElementById("b1quemar").onclick = async () => {
         clearInterval(poll);
         SUBSEG = st.segmentos || []; fusionRender();
         if (st.ok) {
-          msg.textContent = "✅ Listo: el video subtitulado quedó en output/ (descárgalo desde 📤 Publicar) y la pista 3 se actualizó.";
+          msg.innerHTML = "✅ Listo. El editor sigue mostrando el metraje de edición (sin subtítulos); " +
+            "el resultado es un export aparte, también disponible en 📤 Publicar.";
+          const fila = document.querySelector("#b1card .fila");
+          if (!document.getElementById("b1ver")) {
+            const ver = document.createElement("button");
+            ver.id = "b1ver"; ver.className = "primary"; ver.textContent = "▶ Ver el video subtitulado";
+            ver.onclick = () => {
+              document.getElementById("b1modal").classList.remove("abierto");
+              vid.src = "ver/subtitulado"; vid.currentTime = 0; vid.play();
+              setStatus("▶ viendo el EXPORT subtitulado — recarga la página para volver a editar", "ok");
+            };
+            fila.prepend(ver);
+          }
           setStatus("✅ subtítulos quemados", "ok");
         } else { msg.textContent = "❌ Falló el quemado: " + (st.log || "").slice(-200); btn.disabled = false; }
       }

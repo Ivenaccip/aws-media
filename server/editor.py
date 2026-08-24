@@ -102,6 +102,18 @@ def data(name: str):
     }
 
 
+@router.get("/{name}/ver/{clave}")
+def ver(name: str, clave: str, request: Request):
+    """Reproducir un export en el player del editor (con seek). Mismo streaming
+    con Range que media(); el archivo sale de los descargables de b3."""
+    from server.publicar_api import descargables
+    p = _proyecto(name)
+    f = descargables(p).get(clave)
+    if not f or f.suffix != ".mp4":
+        raise HTTPException(404, f"no hay export {clave!r}")
+    return _rango(f, "video/mp4", request)
+
+
 @router.get("/{name}/media/{archivo}")
 def media(name: str, archivo: str, request: Request):
     if archivo not in MEDIA:
@@ -109,6 +121,10 @@ def media(name: str, archivo: str, request: Request):
     path = _proyecto(name) / "work" / "editor" / archivo
     if not path.exists():
         raise HTTPException(404, f"{archivo} no existe — corre tools/make_proxy.py primero")
+    return _rango(path, MEDIA[archivo], request)
+
+
+def _rango(path: Path, media_type: str, request: Request):
     size = path.stat().st_size
     start, end = 0, size - 1
     rng = request.headers.get("range")
@@ -133,7 +149,7 @@ def media(name: str, archivo: str, request: Request):
     if rng:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     return StreamingResponse(stream(), status_code=206 if rng else 200,
-                             media_type=MEDIA[archivo], headers=headers)
+                             media_type=media_type, headers=headers)
 
 
 @router.post("/{name}/api/save")

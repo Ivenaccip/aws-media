@@ -50,6 +50,8 @@ def descargables(p: Path) -> dict[str, Path]:
     out: dict[str, Path] = {}
     if (p / "pelicula.mp4").is_file():
         out["pelicula"] = p / "pelicula.mp4"
+    if (p / "pelicula-subtitulado.mp4").is_file():   # make_subs escribe junto al base
+        out["subtitulado"] = p / "pelicula-subtitulado.mp4"
     for f in sorted((p / "output").glob("*.mp4")) if (p / "output").is_dir() else []:
         out[f.stem] = f
     if (p / "work" / "subs" / "subs.srt").is_file():
