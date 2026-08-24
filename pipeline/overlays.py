@@ -122,10 +122,14 @@ def _ff(*args: str) -> None:
 
 
 def mux_reemplazo(video_veo: Path, audio: Path, destino: Path, t: float) -> None:
-    """Mismo mux que la producción (pipeline/ffmpeg.py): video stream copy, el audio
-    del clip de Veo se DESCARTA (manda la narración TTS), recorte a t exactos."""
+    """Mux del clip regenerado: el audio del clip de Veo se DESCARTA (manda la
+    narración TTS) y el video se RE-ENCODEA — a diferencia del mux de producción
+    (stream copy), aquí la duración debe calzar EXACTO con la del clip original
+    para no desincronizar el canónico/subtítulos (copy corta en keyframes y se
+    pasa ~0.1s)."""
     _ff("-i", str(video_veo), "-itsoffset", MUX_ITSOFFSET, "-i", str(audio),
-        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-r", "24",
         "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-af", "apad",
         "-t", f"{t}", "-movflags", "+faststart", str(destino))
 

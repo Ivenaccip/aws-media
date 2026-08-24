@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from langfuse import get_client, propagate_attributes
 from pydantic import BaseModel
 
 from pipeline import media_google, overlays
@@ -121,11 +122,15 @@ def generar_imagenes(name: str, oid: str, body: ImagenIn):
     try:
         data = overlays.cargar(p)
         completo = f"{prompt}, {data['estilo_prompt']}" if data.get("estilo_prompt") else prompt
-        imagenes = media_google.generar_imagenes(completo, [_referencia_overlay(p, ov)], n=N_IMAGENES)
+        with propagate_attributes(session_id=f"editor-{name}", tags=["fusion", "g2"]):
+            with get_client().start_as_current_observation(
+                    name="g2_imagenes", as_type="span", input={"overlay": oid, "prompt": prompt[:300]}):
+                imagenes = media_google.generar_imagenes(completo, [_referencia_overlay(p, ov)], n=N_IMAGENES)
     except Exception as err:  # noqa: BLE001
         raise HTTPException(502, f"Nano Banana falló: {str(err)[:300]}")
     finally:
         _ocupado.pop(name, None)
+        get_client().flush()
     cand_dir = overlays.dir_overlay(p, oid) / "candidatos"
     cand_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%H%M%S")
@@ -155,8 +160,11 @@ def regenerar_video(name: str, oid: str, body: VideoIn):
     est = estimar_regeneracion(dur, n_imagenes=0, backend=settings.gen_backend)
     _marcar(name, f"video {oid}")
     try:
-        video_bytes = media_google.generar_video(imagen, prompt, est["veo_segundos"],
-                                                 negativo=ov.get("veo_negativo", ""))
+        with propagate_attributes(session_id=f"editor-{name}", tags=["fusion", "g2"]):
+            with get_client().start_as_current_observation(
+                    name="g2_video", as_type="span", input={"overlay": oid, "imagen": body.imagen}):
+                video_bytes = media_google.generar_video(imagen, prompt, est["veo_segundos"],
+                                                         negativo=ov.get("veo_negativo", ""))
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False,
                                          dir=overlays.dir_overlay(p, oid)) as tmp:
             tmp.write(video_bytes)
@@ -174,6 +182,7 @@ def regenerar_video(name: str, oid: str, body: VideoIn):
         raise HTTPException(502, f"regeneración falló: {str(err)[:300]}")
     finally:
         _ocupado.pop(name, None)
+        get_client().flush()
     return {"version": version, "duracion_pelicula": dur_total, "costo_video": est["video"]}
 
 
