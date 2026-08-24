@@ -1,7 +1,11 @@
-"""FastAPI: UI estática + API de proyectos. Arranque: uvicorn server:app --reload"""
+"""FastAPI del producto fusionado: f1/e1 + rama generador + cut-editor.
+
+Arranque (desde la raíz del repo): uvicorn server.app:app --port 8011
+Un solo worker (estado en memoria + JSON — PLAN-FUSION.md F4)."""
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -18,12 +22,30 @@ from pipeline.styles import ESTILOS
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
+from server.editor import router as editor_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-app = FastAPI(title="video-pipeline")
-ROOT = Path(__file__).resolve().parent
+app = FastAPI(title="edicion_y_generacion")
+app.include_router(editor_router)
+ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}
+
+
+@app.get("/api/edicion/proyectos")
+def proyectos_edicion():
+    """Proyectos videos/video-N para la pestaña e1: estado según qué artefactos existen."""
+    out = []
+    for d in sorted((ROOT / "videos").glob("*/")):
+        if not (d / "work").is_dir():
+            continue
+        cuts = (d / "work" / "analysis" / "cuts.json").is_file()
+        proxy = (d / "work" / "editor" / "proxy.mp4").is_file()
+        canonico = any((d / "work" / "transcripts").glob("*.canonical.json"))
+        generado = (d / "pelicula.mp4").is_file()
+        out.append({"nombre": d.name, "generado": generado, "canonico": canonico,
+                    "cuts": cuts, "editor_listo": cuts and proxy})
+    return out
 
 
 def _proyecto(id_: str) -> Proyecto:

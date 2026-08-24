@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editar · e1</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 16px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0; padding: 40px 24px; }
+  main { max-width: 860px; margin: 0 auto; }
+  a.volver { color: #9a978f; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 28px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  section { background: #1d2026; border: 1px solid #2c3038; border-radius: 14px; padding: 22px; }
+  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  section p.desc { font-size: 13px; color: #9a978f; margin-bottom: 16px; }
+  ul { list-style: none; }
+  li { margin-bottom: 8px; }
+  li a { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
+         border-radius: 9px; background: #23262d; text-decoration: none; color: inherit;
+         border: 1px solid transparent; font-size: 14px; }
+  li a:hover { border-color: #5b8dd6; }
+  li.off span.nombre { color: #6f6d66; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: #2c3038; color: #9a978f; }
+  .tag.ok { background: #1c3a2a; color: #7fd6a3; }
+  .tag.gen { background: #2a2540; color: #b4a3ec; }
+  .vacio { font-size: 13px; color: #6f6d66; padding: 8px 2px; }
+  .nota { font-size: 12.5px; color: #6f6d66; margin-top: 14px; }
+  code { background: #23262d; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← inicio</a>
+  <h1>Editar metraje</h1>
+  <div class="cols">
+    <section>
+      <h2>Reel para redes</h2>
+      <p class="desc">Corte del metraje en el editor: quitar relleno, apretar ritmo, subtítulos.</p>
+      <ul id="lista-reel"><li class="vacio">Cargando proyectos…</li></ul>
+      <p class="nota">¿Proyecto nuevo con metraje propio? Corre <code>/empezar</code> en Claude Code
+      y aparecerá aquí cuando tenga su corte.</p>
+    </section>
+    <section>
+      <h2>Shorts (s1)</h2>
+      <p class="desc">Clips verticales 9:16 con captions animados a partir de un video largo.</p>
+      <ul id="lista-shorts"><li class="vacio">Cargando proyectos…</li></ul>
+      <p class="nota">El flujo de shorts corre con <code>/shorts</code> en Claude Code sobre el
+      transcript del proyecto (aprobación clip por clip).</p>
+    </section>
+  </div>
+</main>
+<script>
+async function cargar() {
+  const reel = document.getElementById("lista-reel");
+  const shorts = document.getElementById("lista-shorts");
+  let ps = [];
+  try { ps = await (await fetch("/api/edicion/proyectos")).json(); }
+  catch { reel.innerHTML = '<li class="vacio">No pude cargar los proyectos.</li>'; return; }
+  const conCanonico = ps.filter(p => p.canonico);
+  const editables = ps.filter(p => p.editor_listo);
+  const fila = (p, href) => `<li${href ? "" : ' class="off"'}>` +
+    (href ? `<a href="${href}">` : '<a>') +
+    `<span class="nombre">${p.nombre}</span>` +
+    `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
+    `<span class="tag ${href ? "ok" : ""}">${href ? "abrir editor" : "sin corte aún"}</span></span></a></li>`;
+  reel.innerHTML = ps.length
+    ? ps.map(p => fila(p, p.editor_listo ? `/editor/${p.nombre}/` : null)).join("")
+    : '<li class="vacio">Sin proyectos todavía.</li>';
+  shorts.innerHTML = conCanonico.length
+    ? conCanonico.map(p => `<li><a><span class="nombre">${p.nombre}</span>` +
+        `<span class="tag">transcript listo — usa /shorts</span></a></li>`).join("")
+    : '<li class="vacio">Ningún proyecto con transcript todavía.</li>';
+}
+cargar();
+</script>
+</body>
+</html>

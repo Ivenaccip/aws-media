@@ -161,7 +161,7 @@
     <div id="txBar"><span class="h" data-tip="click = seek · Shift+click = seleccionar rango · doble click = corregir texto (Enter guarda, Esc cancela)">Transcript ⓘ</span><button id="txCutBtn" disabled data-tip="Cortar las palabras seleccionadas — C">✂ cortar selección</button></div>
     <div id="txBody"></div>
   </div>
-  <div id="left"><video id="vid" src="/media/proxy.mp4"></video></div>
+  <div id="left"><video id="vid" src="media/proxy.mp4"></video></div>
   <div id="right">
     <div id="decisions">
       <div id="decHead">
@@ -187,7 +187,7 @@
       &nbsp;— <span style="color:var(--dim)">live playback is approximate; rendered preview is exact</span></span>
   </div>
   <div id="timeline"><div id="tl-inner">
-    <img id="wave" src="/media/waveform.png" draggable="false">
+    <img id="wave" src="media/waveform.png" draggable="false">
     <div class="ruler" id="ruler"></div>
     <div id="playhead"></div>
   </div></div>
@@ -227,7 +227,7 @@ function fromGlobal(t) {
 }
 
 async function init() {
-  const r = await fetch("/api/data"); const j = await r.json();
+  const r = await fetch("api/data"); const j = await r.json();
   DATA = j.cuts; MANIFEST = j.manifest; TOTAL = MANIFEST.total;
   WORDS = j.words || {};
   loadNotes(j.project || "proyecto");
@@ -647,14 +647,14 @@ async function save() {
         .map(c => { const o = { s: +c.s.toFixed(3), e: +c.e.toFixed(3), cat: c.cat || "manual", text: c.text };
                     if (c.note) o.note = c.note; return o; });
     }
-    const r = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" },
+    const r = await fetch("api/save", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cuts: out, changes }) });
     const j = await r.json();
     if (!j.saved) return setStatus("save failed: " + (j.error || "?"), "err");
     dirty = false; changes = []; DATA = out; msgs.push("cuts ✓ (" + j.backup + ")");
   }
   if (txDirty) {
-    const r = await fetch("/api/words", { method: "POST", headers: { "Content-Type": "application/json" },
+    const r = await fetch("api/words", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edits: txEdits }) });
     const j = await r.json();
     if (!j.saved) return setStatus("transcript save failed: " + (j.error || "?"), "err");
@@ -666,12 +666,12 @@ async function save() {
 async function render() {
   if (dirty) await save();
   const style = $("styleSel").value;
-  const r = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" },
+  const r = await fetch("api/render", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ style }) });
   if (!r.ok) { setStatus("render busy", "err"); return; }
   $("renderBtn").disabled = true;
   const poll = setInterval(async () => {
-    const s = await (await fetch("/api/render/status")).json();
+    const s = await (await fetch("api/render/status")).json();
     const tail = s.log.trim().split("\n").pop() || "";
     if (s.running) setStatus("rendering… " + tail);
     else {
@@ -714,7 +714,7 @@ function chatAppend(m) {
 }
 async function chatTick() {
   let st;
-  try { st = await (await fetch("/api/chat/poll")).json(); } catch { return; }
+  try { st = await (await fetch("api/chat/poll")).json(); } catch { return; }
   for (let k = chatShown; k < st.messages.length; k++) chatAppend(st.messages[k]);
   chatShown = st.messages.length;
   $("decisions").classList.toggle("busy", st.busy);
@@ -764,9 +764,9 @@ async function sendChat() {
   const text = composeMessage(free);
   if (!text || chatPoll) return;
   const note = $("chatNote"); if (note) note.remove();
-  const pre = await (await fetch("/api/chat/poll")).json();     // mtime ANTES del turno
+  const pre = await (await fetch("api/chat/poll")).json();     // mtime ANTES del turno
   chatBaselineMtime = pre.cuts_mtime;
-  const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+  const r = await fetch("api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }) });
   const j = await r.json();
   if (!j.sent) { chatAppend({ role: "error", text: j.error || "no se pudo enviar" }); return; }

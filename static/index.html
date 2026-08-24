@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edición y generación</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 16px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0;
+         min-height: 100vh; display: grid; place-items: center; }
+  main { text-align: center; padding: 24px; }
+  h1 { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
+  p.sub { color: #9a978f; margin-bottom: 36px; }
+  .opciones { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+  a.card { display: block; width: 260px; padding: 32px 24px; border-radius: 14px;
+           background: #1d2026; border: 1px solid #2c3038; text-decoration: none;
+           color: inherit; transition: border-color .15s, transform .15s; }
+  a.card:hover { border-color: #5b8dd6; transform: translateY(-2px); }
+  .card h2 { font-size: 19px; font-weight: 600; margin-bottom: 8px; }
+  .card p { font-size: 14px; color: #9a978f; }
+  .card .icono { font-size: 34px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>¿Qué vamos a hacer hoy?</h1>
+  <p class="sub">Un solo editor, dos fuentes de material.</p>
+  <div class="opciones">
+    <a class="card" href="/e1.html">
+      <div class="icono">✂️</div>
+      <h2>Editar</h2>
+      <p>Metraje real: reel para redes o shorts de un video largo.</p>
+    </a>
+    <a class="card" href="/crear.html">
+      <div class="icono">🎬</div>
+      <h2>Crear</h2>
+      <p>Película animada desde una historia o una idea, narrada con IA.</p>
+    </a>
+  </div>
+</main>
+</body>
+</html>

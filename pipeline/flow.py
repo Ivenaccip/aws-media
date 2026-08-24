@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
 from pathlib import Path
 
 from langfuse import get_client, observe, propagate_attributes
@@ -94,6 +96,8 @@ async def producir(p: Proyecto) -> None:
     try:
         with propagate_attributes(session_id=p.id, tags=["video-pipeline", "producir"], trace_name="pelicula"):
             await _producir(p)
+        _etapa(p, "puente")
+        await _puente_editor(p)
         p.estado, p.etapa = "listo", None
     except Exception as err:  # noqa: BLE001
         log.exception("producir %s falló", p.id)
@@ -101,6 +105,32 @@ async def producir(p: Proyecto) -> None:
     finally:
         p.guardar()
         get_client().flush()
+
+
+async def _puente_editor(p: Proyecto) -> None:
+    """F1.3: al terminar la producción, la película se vuelve proyecto editable
+    (videos/gen-<id>) vía el normalizador generated_to_canonical. NO fatal: si el
+    puente falla, la película ya está lista y el error queda en progreso."""
+    raiz = Path(__file__).resolve().parent.parent
+    script = raiz / "tools" / "normalizers" / "generated_to_canonical.py"
+    if not script.is_file() or os.getenv("PUENTE_EDITOR", "1") in ("0", "false", "no"):
+        return
+    nombre = f"gen-{p.id[:8]}"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(script), str(p.workdir), nombre,
+            "--model", os.getenv("PUENTE_MODEL", "small"),
+            cwd=str(raiz), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await proc.communicate()
+        if proc.returncode == 0:
+            p.progreso["editor"] = nombre
+            log.info("%s: puente al editor listo → videos/%s", p.id, nombre)
+        else:
+            p.progreso["editor_error"] = out.decode(errors="replace")[-400:]
+            log.warning("%s: puente al editor falló:\n%s", p.id, out.decode(errors="replace")[-1000:])
+    except Exception as err:  # noqa: BLE001
+        p.progreso["editor_error"] = f"{type(err).__name__}: {str(err)[:200]}"
+        log.warning("%s: puente al editor no disponible: %s", p.id, err)
 
 
 def guion_numerado(p: Proyecto) -> str:
