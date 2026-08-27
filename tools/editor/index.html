@@ -19,16 +19,24 @@
   button:disabled { opacity: .45; cursor: default; }
   select, input[type=range] { background: var(--panel2); color: var(--text); border: 1px solid #3a4050; border-radius: 5px; padding: 4px; }
 
-  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel);
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel);
            border-bottom: 1px solid #000; flex-wrap: wrap; }
   header .title { font-weight: 600; margin-right: 6px; }
-  header .grow { flex: 1; }
+  .grow { flex: 1; }
+  header .tab { background: transparent; border-color: transparent; color: var(--dim); }
+  header .tab:hover { border-color: var(--accent); color: var(--text); }
+  header .tab.active { background: var(--panel2); border-color: #3a4050; color: var(--text); }
+  span[data-tip] { display: inline-block; }
   #status { color: var(--dim); max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #status.ok { color: #6fce8f; } #status.err { color: #e37c7c; }
 
   #main { flex: 1; display: flex; min-height: 0; }
   #left { flex: 1.5; display: flex; flex-direction: column; min-width: 0; background: #000; }
-  video { width: 100%; height: 100%; min-height: 0; object-fit: contain; background: #000; }
+  video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
+  #playerbar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--panel);
+               border-top: 1px solid #000; }
+  #playerbar button, #playerbar select { padding: 3px 9px; font-size: 12px; }
+  #timeinfo { font-variant-numeric: tabular-nums; }
   #right { flex: 1; max-width: 460px; display: flex; flex-direction: column; border-left: 1px solid #000; min-height: 0; }
   .insp-note { color: #e0b657; font-size: 12px; }
 
@@ -64,16 +72,17 @@
   #chatInput { flex: 1; background: var(--panel2); color: var(--text); border: 1px solid #3a4050;
                border-radius: 5px; padding: 6px 8px; font: inherit; }
 
-  #toolbar { display: flex; gap: 6px; align-items: center; padding: 6px 12px; background: var(--panel);
+  #tltools { display: flex; gap: 6px; align-items: center; padding: 5px 12px; background: var(--panel);
              border-bottom: 1px solid #000; flex-wrap: wrap; }
-  #toolbar button, #toolbar select { padding: 3px 9px; font-size: 12px; }
-  #toolbar .sep { width: 1px; height: 18px; background: #3a4050; margin: 0 4px; }
+  #tltools button, #tltools select { padding: 3px 9px; font-size: 12px; }
+  .sep { width: 1px; height: 18px; background: #3a4050; margin: 0 4px; }
   #selInfo { color: var(--dim); font-size: 12px; max-width: 300px; white-space: nowrap;
              overflow: hidden; text-overflow: ellipsis; }
   [data-tip] { position: relative; }
   [data-tip]:hover::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 0;
     background: #0d0f13; color: var(--text); border: 1px solid #3a4050; padding: 3px 8px; border-radius: 4px;
     font-size: 11px; white-space: nowrap; z-index: 60; pointer-events: none; }
+  [data-tip].tipR:hover::after { left: auto; right: 0; }
 
   #transcript { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000;
                 display: flex; flex-direction: column; min-height: 0; }
@@ -92,76 +101,68 @@
   .w.edited { border-bottom: 1px dotted var(--accent); }
   .wflag { cursor: pointer; margin: 0 2px; }
 
-  #tlwrap { flex: 0 0 210px; background: var(--panel); border-top: 1px solid #000; display: flex; flex-direction: column; }
-  #tlbar { display: flex; gap: 12px; align-items: center; padding: 4px 12px; color: var(--dim); }
-  #timeline { flex: 1; overflow-x: scroll; overflow-y: hidden; position: relative; }
+  /* orden de pistas estilo CapCut (arriba → abajo): texto · video · audio */
+  #tlwrap { flex: 0 0 auto; background: var(--panel); border-top: 1px solid #000; display: flex; flex-direction: column; }
+  #timeline { height: 266px; overflow-x: scroll; overflow-y: hidden; position: relative; }
   #tl-inner { position: relative; height: 100%; }
-  #wave { position: absolute; top: 38px; height: 96px; width: 100%; opacity: .55; pointer-events: none; }
-  .ev { position: absolute; top: 38px; height: 96px; border-radius: 3px; cursor: pointer; }
+  #wave { position: absolute; top: 136px; height: 96px; width: 100%; opacity: .55; pointer-events: none; }
+  .ev { position: absolute; top: 136px; height: 96px; border-radius: 3px; cursor: pointer; }
   .ev.keep { background: color-mix(in srgb, var(--keep) 32%, transparent); border: 1px solid var(--keep); }
   .ev.cut { border-width: 1px; border-style: solid; }
   .ev.selected { outline: 2px solid var(--sel); z-index: 5; }
   .ev .edge { position: absolute; top: 0; width: 7px; height: 100%; cursor: ew-resize; }
   .ev .edge.l { left: -3px; } .ev .edge.r { right: -3px; }
   .clipmark { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #566; pointer-events: none; }
-  .cliplabel { position: absolute; top: 20px; font-size: 11px; color: var(--dim); pointer-events: none; }
-  .flagmark { position: absolute; top: 2px; font-size: 12px; cursor: pointer; color: #e0b657; z-index: 6; }
-  .fluffband { position: absolute; top: 38px; height: 22px; border: 1px dashed #d0a84e;
+  .cliplabel { position: absolute; top: 234px; font-size: 11px; color: var(--dim); pointer-events: none; }
+  .flagmark { position: absolute; top: 22px; font-size: 12px; cursor: pointer; color: #e0b657; z-index: 6; }
+  .fluffband { position: absolute; top: 136px; height: 22px; border: 1px dashed #d0a84e;
                background: color-mix(in srgb, #d0a84e 16%, transparent); border-radius: 3px; cursor: pointer; z-index: 6; }
   .fluffband.applied { border-style: solid; border-color: var(--cut-manual);
                background: color-mix(in srgb, var(--cut-manual) 22%, transparent); }
-  .fluffmark { position: absolute; top: 16px; font-size: 12px; cursor: pointer; z-index: 7; }
+  .fluffmark { position: absolute; top: 120px; font-size: 12px; cursor: pointer; z-index: 7; }
   #playhead { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; z-index: 8; pointer-events: none; }
-  .selmark { position: absolute; top: 30px; bottom: 60px; width: 2px; background: #6fd6ce; z-index: 7; pointer-events: none; }
-  .ruler { position: absolute; top: 136px; height: 30px; width: 100%; }
-  .tick { position: absolute; top: 0; height: 6px; border-left: 1px solid #4a5160; }
-  .tick.major { height: 10px; border-color: #6a7284; }
-  .ticklabel { position: absolute; top: 12px; font-size: 10px; color: var(--dim); transform: translateX(-50%); }
+  .selmark { position: absolute; top: 22px; bottom: 14px; width: 2px; background: #6fd6ce; z-index: 7; pointer-events: none; }
+  .ruler { position: absolute; top: 0; height: 22px; width: 100%; }
+  .tick { position: absolute; top: 16px; height: 6px; border-left: 1px solid #4a5160; }
+  .tick.major { top: 12px; height: 10px; border-color: #6a7284; }
+  .ticklabel { position: absolute; top: 1px; font-size: 10px; color: var(--dim); transform: translateX(-50%); }
 </style>
 </head>
 <body>
 <header>
   <span class="title">✂ Cut Editor</span>
-  <span id="timeinfo" style="min-width:230px"></span>
-  <span id="editlen" style="color:var(--dim)"></span>
-  <span class="grow"></span>
   <span id="status"></span>
-  <button id="saveBtn" disabled data-tip="Guardar cuts.json + correcciones de texto (con respaldo)">💾 Save</button>
-  <button id="renderBtn" class="primary" data-tip="Renderizar el preview real con el engine">🎬 Render preview</button>
+  <span class="grow"></span>
+  <span id="costoBadge" style="display:none;color:#e0b657;font-size:12px;margin-right:4px"></span>
+  <span data-tip="próximamente: importar metraje y mezclar videos (edición multivideo)"><button class="tab" id="hdrImportar" disabled>📥 Importar</button></span>
+  <button class="tab active" id="hdrTranscript" data-tip="mostrar / ocultar el panel de transcript">📃 Transcript</button>
+  <span class="tipR" data-tip="próximamente: pista de audio y música"><button class="tab" id="hdrAudio" disabled>🎵 Audio</button></span>
+  <button class="tab tipR" id="hdrSubs" data-tip="b1: frame de muestra → aprobar → quemar (make_subs)">📝 Subtítulos</button>
+  <span class="sep"></span>
+  <button id="saveBtn" class="tipR" disabled data-tip="Guardar cuts.json + correcciones de texto (con respaldo)">💾 Guardar</button>
+  <button id="renderBtn" class="tipR" data-tip="Renderizar el preview real con el engine">🎬 Render</button>
+  <button id="hdrPublicar" class="primary tipR" data-tip="b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)">📤 Publicar</button>
 </header>
-
-<div id="toolbar">
-  <button id="tbPlay" data-tip="Reproducir / pausar — Espacio">▶</button>
-  <button id="modeBtn" data-tip="Playback editado / crudo — E">Mode: Edited</button>
-  <select id="styleSel" data-tip="Estilo de pausas del playback editado y los renders">
-    <option value="tight">tight</option><option value="natural">natural</option>
-  </select>
-  <span class="sep"></span>
-  <button id="tbBack" data-tip="Atrás 2s — ← (Shift+← = 10s)">⏪ 2s</button>
-  <button id="tbFrameB" data-tip="1 frame atrás — ,">−fr</button>
-  <button id="tbFrameF" data-tip="1 frame adelante — .">+fr</button>
-  <button id="tbFwd" data-tip="Adelante 2s — → (Shift+→ = 10s)">2s ⏩</button>
-  <span class="sep"></span>
-  <button id="tbIn" data-tip="Marcar inicio del rango — I">⟦ in</button>
-  <button id="tbOut" data-tip="Marcar fin del rango — O">out ⟧</button>
-  <button id="tbCut" data-tip="Cortar el rango marcado (o la selección de palabras) — C">✂ cortar</button>
-  <span class="sep"></span>
-  <button id="tbToggle" disabled data-tip="Cortar / restaurar el bloque seleccionado">❌ cortar</button>
-  <button id="tbPlayBlock" disabled data-tip="Reproducir el bloque seleccionado (desde 1s antes)">▶ bloque</button>
-  <button id="tbSm" disabled data-tip="Borde inicial −50ms">s−</button>
-  <button id="tbSp" disabled data-tip="Borde inicial +50ms">s+</button>
-  <button id="tbEm" disabled data-tip="Borde final −50ms">e−</button>
-  <button id="tbEp" disabled data-tip="Borde final +50ms">e+</button>
-  <span class="sep"></span>
-  <span id="selInfo">nada seleccionado — click en un bloque del timeline o una palabra tachada</span>
-</div>
 
 <div id="main">
   <div id="transcript">
     <div id="txBar"><span class="h" data-tip="click = seek · Shift+click = seleccionar rango · doble click = corregir texto (Enter guarda, Esc cancela)">Transcript ⓘ</span><button id="txCutBtn" disabled data-tip="Cortar las palabras seleccionadas — C">✂ cortar selección</button></div>
     <div id="txBody"></div>
   </div>
-  <div id="left"><video id="vid" src="media/proxy.mp4"></video></div>
+  <div id="left">
+    <video id="vid" src="media/proxy.mp4"></video>
+    <div id="playerbar">
+      <button id="tbPlay" data-tip="Reproducir / pausar — Espacio">▶</button>
+      <span id="timeinfo"></span>
+      <span id="editlen" style="color:var(--dim)"></span>
+      <span class="grow"></span>
+      <button id="modeBtn" data-tip="Playback editado / crudo — E">Mode: Edited</button>
+      <select id="styleSel" data-tip="Estilo de pausas del playback editado y los renders">
+        <option value="tight">tight</option><option value="natural">natural</option>
+      </select>
+      <button id="verSubBtn" class="tipR" style="display:none" data-tip="alterna el player entre el metraje de edición y el export con subtítulos">▶ Ver subtitulado</button>
+    </div>
+  </div>
   <div id="right">
     <div id="decisions">
       <div id="decHead">
@@ -178,15 +179,34 @@
 </div>
 
 <div id="tlwrap">
-  <div id="tlbar">
-    <span>zoom <input id="zoom" type="range" min="4" max="40" value="7" style="width:120px"></span>
-    <span style="color:var(--dim)">green = keep · <span style="color:var(--cut-retake)">retake</span> ·
-      <span style="color:var(--cut-false_start)">false start</span> ·
-      <span style="color:var(--cut-repeat)">repeat</span> ·
-      <span style="color:var(--cut-manual)">manual</span> · ▲ flag · <span style="color:#d0a84e">💡 fluff (suggest-only)</span>
-      &nbsp;— <span style="color:var(--dim)">live playback is approximate; rendered preview is exact</span></span>
+  <div id="tltools">
+    <button id="tbBack" data-tip="Atrás 2s — ← (Shift+← = 10s)">⏪ 2s</button>
+    <button id="tbFrameB" data-tip="1 frame atrás — ,">−fr</button>
+    <button id="tbFrameF" data-tip="1 frame adelante — .">+fr</button>
+    <button id="tbFwd" data-tip="Adelante 2s — → (Shift+→ = 10s)">2s ⏩</button>
+    <span class="sep"></span>
+    <button id="tbIn" data-tip="Marcar inicio del rango — I">⟦ in</button>
+    <button id="tbOut" data-tip="Marcar fin del rango — O">out ⟧</button>
+    <button id="tbCut" data-tip="Cortar el rango marcado (o la selección de palabras) — C">✂ cortar</button>
+    <span class="sep"></span>
+    <button id="tbHome" data-tip="Ir al inicio de la escena (bloque seleccionado o el actual)">⏮ escena</button>
+    <button id="tbToggle" disabled data-tip="Cortar / restaurar el bloque seleccionado">❌ cortar</button>
+    <button id="tbPlayBlock" disabled data-tip="Reproducir el bloque seleccionado (desde 1s antes)">▶ bloque</button>
+    <button id="tbSm" disabled data-tip="Borde inicial −50ms">s−</button>
+    <button id="tbSp" disabled data-tip="Borde inicial +50ms">s+</button>
+    <button id="tbEm" disabled data-tip="Borde final −50ms">e−</button>
+    <button id="tbEp" disabled data-tip="Borde final +50ms">e+</button>
+    <span id="selInfo">nada seleccionado — click en un bloque del timeline o una palabra tachada</span>
+    <span class="grow"></span>
+    <span class="tipR" style="color:var(--dim);cursor:help" data-tip="verde = keep · rojo = retake · naranja = false start · ocre = repeat · morado = manual · ▲ flag · 💡 fluff (solo sugerencia) — el playback en vivo es aproximado; el render es exacto">ⓘ</span>
+    <span class="tipR" id="brollWrap" data-tip="b2: Claude propone momentos para recursos visuales (~$0.01)"><button id="tbBroll">🎨 B-roll IA</button></span>
+    <span class="sep"></span>
+    <span style="color:var(--dim)">🔍</span><input id="zoom" type="range" min="4" max="40" value="7" style="width:120px">
   </div>
   <div id="timeline"><div id="tl-inner">
+    <div class="trklabel" style="top:36px">subtítulos</div>
+    <div class="trklabel" style="top:76px">recursos IA</div>
+    <div class="trklabel" style="top:122px">clips · audio</div>
     <img id="wave" src="media/waveform.png" draggable="false">
     <div class="ruler" id="ruler"></div>
     <div id="playhead"></div>
@@ -797,6 +817,7 @@ $("chatInput").addEventListener("keydown", e => { if (e.key === "Enter") { e.pre
 /* ---------- playback ---------- */
 function seek(t) { vid.currentTime = Math.max(0, Math.min(t, TOTAL - 0.05)); updatePlayhead(); }
 function updatePlayhead() {
+  if (!MANIFEST) return;    // el interval de 60ms puede ganarle al fetch de init()
   const t = vid.currentTime;
   $("playhead").style.left = (t * pps) + "px";
   const loc = fromGlobal(t);
@@ -901,6 +922,22 @@ $("tbOut").onclick = () => { selOut = vid.currentTime; drawSelMarks(); setStatus
 $("tbCut").onclick = cutSelection;
 $("tbToggle").onclick = () => selected && toggleEvent(selected);
 $("tbPlayBlock").onclick = () => { if (selected) { seek(Math.max(toGlobal(selected.clip, selected.s) - 1, 0)); vid.play(); } };
+$("tbHome").onclick = () => {
+  if (selected) return seek(toGlobal(selected.clip, selected.s));
+  const t = vid.currentTime - 0.05;      // ya en el inicio → salta a la escena anterior
+  let last = 0;
+  for (const v of events) { const gs = toGlobal(v.clip, v.s); if (gs <= t) last = Math.max(last, gs); else break; }
+  // en proyectos generados el clip es un solo keep: las escenas son los recursos IA
+  if (typeof OVS !== "undefined" && OVS)
+    for (const o of OVS.overlays) if (o.t_in <= t) last = Math.max(last, o.t_in);
+  seek(last);
+};
+$("hdrTranscript").onclick = () => {
+  const tx = $("transcript");
+  const ocultar = tx.style.display !== "none";
+  tx.style.display = ocultar ? "none" : "";
+  $("hdrTranscript").classList.toggle("active", !ocultar);
+};
 $("tbSm").onclick = () => selected && nudge(selected, "s", -0.05);
 $("tbSp").onclick = () => selected && nudge(selected, "s", 0.05);
 $("tbEm").onclick = () => selected && nudge(selected, "e", -0.05);
@@ -919,12 +956,12 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
 
 <!-- ===== fusión F2: pista 2 (recursos IA) · popup g1/g2 · b1 subtítulos · costes ===== -->
 <style>
-  .ovblock { position: absolute; top: 170px; height: 30px; border-radius: 4px; cursor: pointer;
+  .ovblock { position: absolute; top: 88px; height: 30px; border-radius: 4px; cursor: pointer;
              background: color-mix(in srgb, #a259d9 26%, transparent); border: 1px solid #a259d9;
              font-size: 10px; color: #cfa9ee; overflow: hidden; padding: 1px 4px; z-index: 6; }
   .ovblock:hover { outline: 1px solid #fff; }
   .ovblock.regen { border-style: dashed; background: color-mix(in srgb, #d97fb0 30%, transparent); }
-  .subblock { position: absolute; top: 204px; height: 24px; border-radius: 3px; overflow: hidden;
+  .subblock { position: absolute; top: 48px; height: 24px; border-radius: 3px; overflow: hidden;
               background: color-mix(in srgb, #5b8dd6 22%, transparent); border: 1px solid #5b8dd6;
               font-size: 10px; color: #a9c6ee; padding: 1px 4px; pointer-events: none; }
   .trklabel { position: absolute; left: 4px; font-size: 10px; color: var(--dim);
@@ -952,7 +989,7 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
   #g1vers .vfila.activa { color: var(--text); }
   #g1msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
   #g1msg.err { color: #e37c7c; }
-  .propblock { position: absolute; top: 170px; height: 30px; border-radius: 4px; cursor: pointer;
+  .propblock { position: absolute; top: 88px; height: 30px; border-radius: 4px; cursor: pointer;
                background: color-mix(in srgb, #d0a84e 14%, transparent); border: 1px dashed #d0a84e;
                font-size: 10px; color: #e0c37f; overflow: hidden; padding: 1px 4px; z-index: 5; }
   #b3modal, #b1modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100;
@@ -1033,11 +1070,8 @@ const fj = (url, body) => fetch(url, body ? { method: "POST",
 const usd = x => `$${x.toFixed(2)} dólares`;
 
 function fusionRender() {
-  inner.querySelectorAll(".ovblock,.subblock,.trklabel,.propblock").forEach(n => n.remove());
-  if (!OVS || (!OVS.overlays.length && !(OVS.propuestas || []).length && !SUBSEG.length)) return;
-  const lab = (top, txt) => { const l = document.createElement("div");
-    l.className = "trklabel"; l.style.top = top + "px"; l.textContent = txt; inner.appendChild(l); };
-  if (OVS.overlays.length || (OVS.propuestas || []).length) lab(158, "pista 2 · recursos IA");
+  inner.querySelectorAll(".ovblock,.subblock,.propblock").forEach(n => n.remove());
+  if (!OVS) return;
   for (const ov of OVS.overlays) {
     const d = document.createElement("div");
     d.className = "ovblock" + (ov.version_activa > 1 ? " regen" : "");
@@ -1061,52 +1095,47 @@ function fusionRender() {
             (pr.prompt_imagen ? `\n\nPrompt sugerido:\n${pr.prompt_imagen}` : "")); };
     inner.appendChild(d);
   }
-  if (SUBSEG.length) {
-    lab(196, "pista 3 · subtítulos");
-    for (const s of SUBSEG) {
-      const d = document.createElement("div");
-      d.className = "subblock";
-      d.style.left = (s.start * pps) + "px";
-      d.style.width = Math.max((s.end - s.start) * pps - 2, 4) + "px";
-      d.textContent = s.text; d.title = s.text;
-      inner.appendChild(d);
-    }
+  for (const s of SUBSEG) {
+    const d = document.createElement("div");
+    d.className = "subblock";
+    d.style.left = (s.start * pps) + "px";
+    d.style.width = Math.max((s.end - s.start) * pps - 2, 4) + "px";
+    d.textContent = s.text; d.title = s.text;
+    inner.appendChild(d);
   }
 }
 
 async function fusionInit() {
   try { OVS = await fj("api/overlays"); } catch { OVS = { overlays: [], propuestas: [] }; }
   try { SUBSEG = (await fj("api/subtitulos/estado")).segmentos || []; } catch {}
-  const hdr = document.querySelector("header .grow");
-  const mkBtn = (txt, tip, fn) => { const b = document.createElement("button");
-    b.textContent = txt; b.dataset.tip = tip; b.onclick = fn;
-    document.getElementById("renderBtn").before(b); return b; };
   if (OVS.overlays.length || SUBSEG.length) {
-    document.getElementById("tlwrap").style.flexBasis = "300px";
-    const costo = document.createElement("span");
-    costo.id = "costoBadge"; costo.style.cssText = "color:#e0b657;font-size:12px;margin-right:8px";
+    const costo = document.getElementById("costoBadge");
+    costo.style.display = "";
     costo.textContent = `regeneraciones: ${usd(OVS.costo_overlays || 0)}`;
-    hdr.after(costo);
   }
-  mkBtn("📝 Subtítulos", "b1: frame de muestra → aprobar → quemar (make_subs)", b1flujo);
+  document.getElementById("hdrSubs").onclick = b1flujo;
+  document.getElementById("hdrPublicar").onclick = b3abrir;
   const cobertura = OVS.overlays.reduce((a, o) => a + (o.t_out - o.t_in), 0);
   const todoIA = OVS.overlays.length && TOTAL && cobertura >= TOTAL * 0.95;
-  const b2 = mkBtn("🎨 B-roll IA", todoIA
-    ? "b2 no aplica: este video es 100% generado con IA — regenera escenas desde la pista 2"
-    : "b2: Claude propone momentos para recursos visuales (~$0.01)", b2flujo);
-  if (todoIA) b2.disabled = true;
-  mkBtn("📤 Publicar", "b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)", b3abrir);
+  const b2 = document.getElementById("tbBroll");
+  if (todoIA) {
+    b2.disabled = true;
+    document.getElementById("brollWrap").dataset.tip =
+      "b2 no aplica: este video es 100% generado con IA — regenera escenas desde la pista de recursos";
+  } else b2.onclick = b2flujo;
   try {
     if ((await fetch("ver/subtitulado", { headers: { Range: "bytes=0-0" } })).ok) {
       let viendoSub = false;
-      const t = mkBtn("▶ Ver subtitulado", "alterna el player entre el metraje de edición y el export con subtítulos", () => {
+      const t = document.getElementById("verSubBtn");
+      t.style.display = "";
+      t.onclick = () => {
         viendoSub = !viendoSub;
         const pos = vid.currentTime;
         vid.src = viendoSub ? "ver/subtitulado" : "media/proxy.mp4";
         vid.currentTime = pos;
         t.textContent = viendoSub ? "✂ Ver edición" : "▶ Ver subtitulado";
         setStatus(viendoSub ? "▶ viendo el EXPORT subtitulado (solo lectura)" : "✂ de vuelta al metraje de edición", "ok");
-      });
+      };
     }
   } catch {}
   const orig = renderTimeline;
@@ -1120,7 +1149,6 @@ async function b2flujo() {
   try {
     const r = await fj("api/broll/sugerir", {});
     OVS.propuestas = r.propuestas;
-    document.getElementById("tlwrap").style.flexBasis = "300px";
     fusionRender();
     setStatus(`💡 ${r.propuestas.length} propuestas en la pista 2 (clic para ver el detalle)`, "ok");
   } catch (e) { setStatus("b2: " + e.message, "err"); }
