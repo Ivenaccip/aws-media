@@ -24,12 +24,14 @@ from pipeline import fal
 from pipeline.config import settings
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
+from server.importar_api import router as importar_router
 from server.overlays_api import router as overlays_router
 from server.publicar_api import router as publicar_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = FastAPI(title="edicion_y_generacion")
 app.include_router(editor_router)
+app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
 app.include_router(broll_router)

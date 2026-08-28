@@ -85,8 +85,23 @@
 
   #transcript { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000;
                 display: flex; flex-direction: column; min-height: 0; }
-  #importPanel { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000; padding: 12px 14px; }
+  #importPanel { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000; padding: 12px 14px;
+                 overflow-y: auto; }
   #importPanel .h { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 12px; }
+  #impLista { display: flex; gap: 10px; flex-wrap: wrap; }
+  .imptile { position: relative; width: 104px; cursor: pointer; }
+  .imptile img { width: 104px; height: 58px; object-fit: cover; border-radius: 6px; background: #000;
+                 border: 1px solid #3a4050; display: block; }
+  .imptile.sel img { border-color: #6fd6ce; outline: 1px solid #6fd6ce; }
+  .imptile .chk { position: absolute; top: 4px; left: 4px; width: 16px; height: 16px; border-radius: 4px;
+                  border: 1px solid #cfd4dd; background: rgba(13,15,19,.7); display: flex; align-items: center;
+                  justify-content: center; font-size: 11px; color: #6fd6ce; }
+  .imptile .nom { font-size: 10.5px; color: var(--dim); margin-top: 3px; overflow: hidden;
+                  text-overflow: ellipsis; white-space: nowrap; }
+  #impAcciones { display: flex; gap: 8px; margin-top: 12px; }
+  #impAcciones button { flex: 1; }
+  #impMsg { font-size: 12px; color: var(--dim); margin-top: 8px; white-space: pre-wrap; }
+  #impMsg.err { color: #e37c7c; }
   #impTiles { display: flex; gap: 12px; flex-wrap: wrap; }
   button.tile { width: 96px; height: 96px; display: flex; flex-direction: column; align-items: center;
                 justify-content: center; gap: 7px; border-radius: 8px; padding: 0; }
@@ -152,9 +167,16 @@
   <div id="importPanel" style="display:none">
     <div class="h">Importar</div>
     <div id="impTiles">
-      <span data-tip="abre la carpeta videos/ del proyecto en el explorador"><button class="tile" id="impAbrir"><span class="ico">＋</span><span class="lbl">Metraje</span></button></span>
+      <span data-tip="abre la carpeta videos/ del proyecto en el explorador — deja ahí tus MP4s"><button class="tile" id="impAbrir"><span class="ico">＋</span><span class="lbl">Metraje</span></button></span>
       <span id="brollWrap" data-tip="b2: Claude propone momentos para recursos visuales (~$0.01)"><button class="tile" id="tbBroll"><span class="ico">🎨</span><span class="lbl">B-roll IA</span></button></span>
     </div>
+    <div class="h" id="impListaH" style="display:none;margin-top:16px">En videos/ — selecciona e incorpora</div>
+    <div id="impLista"></div>
+    <div id="impAcciones" style="display:none">
+      <button id="impManual" disabled data-tip="incorpora los seleccionados al timeline (transcripción local, $0) para cortarlos tú">✂ Editar manualmente</button>
+      <button id="impIA" class="primary tipR" disabled data-tip="incorpora y le encarga el corte a Claude (chat de Decisiones)">🤖 Editor IA</button>
+    </div>
+    <div id="impMsg"></div>
   </div>
   <div id="transcript">
     <div id="txBar"><span class="h" data-tip="click = seek · Shift+click = seleccionar rango · doble click = corregir texto (Enter guarda, Esc cancela)">Transcript ⓘ</span><button id="txCutBtn" disabled data-tip="Cortar las palabras seleccionadas — C">✂ cortar selección</button></div>
@@ -1159,6 +1181,78 @@ function fusionRender() {
   }
 }
 
+/* ---------- panel Importar: incorporar metraje al timeline (F3.5) ---------- */
+const IMPSEL = new Set();
+function impBotones() {
+  const n = IMPSEL.size;
+  $("impManual").disabled = !n; $("impIA").disabled = !n;
+}
+async function impCargar() {
+  let data;
+  try { data = await fj("api/importables"); } catch { return; }
+  const lista = $("impLista"); lista.innerHTML = ""; IMPSEL.clear();
+  const hay = data.archivos.length > 0;
+  $("impListaH").style.display = hay ? "" : "none";
+  $("impAcciones").style.display = hay ? "" : "none";
+  impBotones();
+  for (const a of data.archivos) {
+    const d = document.createElement("div");
+    d.className = "imptile"; d.title = `${a.nombre} (${a.mb} MB)`;
+    const img = document.createElement("img");
+    img.src = "api/importables/miniatura/" + encodeURIComponent(a.nombre);
+    img.onerror = () => img.removeAttribute("src");
+    const chk = document.createElement("div"); chk.className = "chk";
+    const nom = document.createElement("div"); nom.className = "nom"; nom.textContent = a.nombre;
+    d.append(img, chk, nom);
+    d.onclick = () => {
+      const el = IMPSEL.has(a.nombre);
+      el ? IMPSEL.delete(a.nombre) : IMPSEL.add(a.nombre);
+      d.classList.toggle("sel", !el); chk.textContent = el ? "" : "✓";
+      impBotones();
+    };
+    lista.appendChild(d);
+  }
+  if (data.job && data.job.running) impSeguir();   // job en curso (p.ej. tras recargar)
+}
+async function impIncorporar(modo) {
+  const archivos = [...IMPSEL];
+  $("impManual").disabled = $("impIA").disabled = true;
+  $("impMsg").className = ""; $("impMsg").textContent = "⏳ iniciando…";
+  try { await fj("api/importar", { archivos }); }
+  catch (e) { $("impMsg").className = "err"; $("impMsg").textContent = e.message; impBotones(); return; }
+  impSeguir(modo, archivos);
+}
+function impSeguir(modo, archivos) {
+  const poll = setInterval(async () => {
+    let st; try { st = await fj("api/importar/estado"); } catch { return; }
+    if (st.running) {
+      $("impMsg").className = "";
+      $("impMsg").textContent = "⏳ " + ((st.log || "").trim().split("\n").pop() || "incorporando…");
+      return;
+    }
+    clearInterval(poll);
+    if (!st.ok) {
+      $("impMsg").className = "err";
+      $("impMsg").textContent = "❌ falló:\n" + (st.log || "").slice(-400);
+      impBotones(); return;
+    }
+    if (modo === "ia") {
+      $("impMsg").textContent = "✅ incorporados — encargando el corte al editor IA…";
+      try {
+        await fj("api/chat", { text:
+          `Acabo de incorporar ${archivos.length} clip(s) nuevos al proyecto: ${archivos.join(", ")}. ` +
+          "Haz un pase de corte estilo clean-cut SOLO sobre esos clips (los demás no se tocan): " +
+          "marca retakes, false starts, repeticiones y muletillas como cuts en cuts.json, " +
+          "y deja flags donde tengas dudas." });
+      } catch (e) {
+        alert("Se incorporaron, pero el editor IA no está disponible: " + e.message +
+              "\nPuedes pedir el corte desde el chat de Decisiones.");
+      }
+    }
+    location.reload();
+  }, 1500);
+}
+
 async function fusionInit() {
   try { OVS = await fj("api/overlays"); } catch { OVS = { overlays: [], propuestas: [] }; }
   try { SUBSEG = (await fj("api/subtitulos/estado")).segmentos || []; } catch {}
@@ -1177,6 +1271,11 @@ async function fusionInit() {
     document.getElementById("brollWrap").dataset.tip =
       "b2 no aplica: este video es 100% generado con IA — regenera escenas desde la pista de recursos";
   } else b2.onclick = b2flujo;
+  $("impManual").onclick = () => impIncorporar("manual");
+  $("impIA").onclick = () => impIncorporar("ia");
+  const origImpTab = $("hdrImportar").onclick;
+  $("hdrImportar").onclick = () => { origImpTab(); if (panelActual === "importar") impCargar(); };
+  impCargar();
   const orig = renderTimeline;
   renderTimeline = function () { orig(); fusionRender(); };
   fusionRender();
