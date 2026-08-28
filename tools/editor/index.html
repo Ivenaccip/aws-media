@@ -131,17 +131,15 @@
 <body>
 <header>
   <span class="title">✂ Cut Editor</span>
+  <span data-tip="próximamente: importar metraje y mezclar videos (edición multivideo)"><button class="tab" id="hdrImportar" disabled>📥 Importar</button></span>
+  <button class="tab active" id="hdrTranscript" data-tip="mostrar / ocultar el panel de transcript">📃 Transcript</button>
+  <span data-tip="próximamente: pista de audio y música"><button class="tab" id="hdrAudio" disabled>🎵 Audio</button></span>
+  <button class="tab" id="hdrSubs" data-tip="b1: frame de muestra → aprobar → quemar (make_subs)">📝 Subtítulos</button>
   <span id="status"></span>
   <span class="grow"></span>
   <span id="costoBadge" style="display:none;color:#e0b657;font-size:12px;margin-right:4px"></span>
-  <span data-tip="próximamente: importar metraje y mezclar videos (edición multivideo)"><button class="tab" id="hdrImportar" disabled>📥 Importar</button></span>
-  <button class="tab active" id="hdrTranscript" data-tip="mostrar / ocultar el panel de transcript">📃 Transcript</button>
-  <span class="tipR" data-tip="próximamente: pista de audio y música"><button class="tab" id="hdrAudio" disabled>🎵 Audio</button></span>
-  <button class="tab tipR" id="hdrSubs" data-tip="b1: frame de muestra → aprobar → quemar (make_subs)">📝 Subtítulos</button>
-  <span class="sep"></span>
   <button id="saveBtn" class="tipR" disabled data-tip="Guardar cuts.json + correcciones de texto (con respaldo)">💾 Guardar</button>
-  <button id="renderBtn" class="tipR" data-tip="Renderizar el preview real con el engine">🎬 Render</button>
-  <button id="hdrPublicar" class="primary tipR" data-tip="b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)">📤 Publicar</button>
+  <button id="renderBtn" class="primary tipR" data-tip="Renderizar el preview real con el engine">🎬 Render</button>
 </header>
 
 <div id="main">
@@ -154,13 +152,11 @@
     <div id="playerbar">
       <button id="tbPlay" data-tip="Reproducir / pausar — Espacio">▶</button>
       <span id="timeinfo"></span>
-      <span id="editlen" style="color:var(--dim)"></span>
       <span class="grow"></span>
       <button id="modeBtn" data-tip="Playback editado / crudo — E">Mode: Edited</button>
-      <select id="styleSel" data-tip="Estilo de pausas del playback editado y los renders">
+      <select id="styleSel" class="tipR" data-tip="Estilo de pausas del playback editado y los renders">
         <option value="tight">tight</option><option value="natural">natural</option>
       </select>
-      <button id="verSubBtn" class="tipR" style="display:none" data-tip="alterna el player entre el metraje de edición y el export con subtítulos">▶ Ver subtitulado</button>
     </div>
   </div>
   <div id="right">
@@ -180,26 +176,18 @@
 
 <div id="tlwrap">
   <div id="tltools">
-    <button id="tbBack" data-tip="Atrás 2s — ← (Shift+← = 10s)">⏪ 2s</button>
-    <button id="tbFrameB" data-tip="1 frame atrás — ,">−fr</button>
-    <button id="tbFrameF" data-tip="1 frame adelante — .">+fr</button>
-    <button id="tbFwd" data-tip="Adelante 2s — → (Shift+→ = 10s)">2s ⏩</button>
+    <button id="tbUndo" disabled data-tip="Deshacer — Ctrl+Z">↩</button>
+    <button id="tbRedo" disabled data-tip="Rehacer — Ctrl+Shift+Z">↪</button>
     <span class="sep"></span>
-    <button id="tbIn" data-tip="Marcar inicio del rango — I">⟦ in</button>
-    <button id="tbOut" data-tip="Marcar fin del rango — O">out ⟧</button>
-    <button id="tbCut" data-tip="Cortar el rango marcado (o la selección de palabras) — C">✂ cortar</button>
-    <span class="sep"></span>
-    <button id="tbHome" data-tip="Ir al inicio de la escena (bloque seleccionado o el actual)">⏮ escena</button>
-    <button id="tbToggle" disabled data-tip="Cortar / restaurar el bloque seleccionado">❌ cortar</button>
-    <button id="tbPlayBlock" disabled data-tip="Reproducir el bloque seleccionado (desde 1s antes)">▶ bloque</button>
-    <button id="tbSm" disabled data-tip="Borde inicial −50ms">s−</button>
-    <button id="tbSp" disabled data-tip="Borde inicial +50ms">s+</button>
-    <button id="tbEm" disabled data-tip="Borde final −50ms">e−</button>
-    <button id="tbEp" disabled data-tip="Borde final +50ms">e+</button>
+    <button id="tbSplit" data-tip="Dividir el bloque en el cursor">][</button>
+    <button id="tbTrimL" data-tip="Eliminar del inicio del bloque al cursor">⌫[</button>
+    <button id="tbTrimR" data-tip="Eliminar del cursor al fin del bloque">]⌫</button>
+    <button id="tbToggle" disabled data-tip="Eliminar / restaurar el bloque seleccionado">🗑</button>
     <span id="selInfo">nada seleccionado — click en un bloque del timeline o una palabra tachada</span>
     <span class="grow"></span>
-    <span class="tipR" style="color:var(--dim);cursor:help" data-tip="verde = keep · rojo = retake · naranja = false start · ocre = repeat · morado = manual · ▲ flag · 💡 fluff (solo sugerencia) — el playback en vivo es aproximado; el render es exacto">ⓘ</span>
+    <span class="tipR" style="color:var(--dim);cursor:help" data-tip="verde = keep · rojo = retake · naranja = false start · ocre = repeat · morado = manual · ▲ flag · 💡 fluff (solo sugerencia) — atajos: ←→ saltar · ,. frame · I/O/C rango · el playback en vivo es aproximado; el render es exacto">ⓘ</span>
     <span class="tipR" id="brollWrap" data-tip="b2: Claude propone momentos para recursos visuales (~$0.01)"><button id="tbBroll">🎨 B-roll IA</button></span>
+    <span class="tipR" data-tip="b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)"><button id="hdrPublicar">📤 Publicar</button></span>
     <span class="sep"></span>
     <span style="color:var(--dim)">🔍</span><input id="zoom" type="range" min="4" max="40" value="7" style="width:120px">
   </div>
@@ -317,8 +305,6 @@ function rebuildPlan() {
   plan = [];
   for (const c of DATA.clips) for (const [s,e] of buildSegments(c, style)) plan.push([toGlobal(c.id,s), toGlobal(c.id,e)]);
   plan.sort((a,b) => a[0]-b[0]);
-  const len = plan.reduce((a,[s,e]) => a+e-s, 0);
-  $("editlen").textContent = `edited ≈ ${Math.floor(len/60)}:${String(Math.round(len%60)).padStart(2,"0")}`;
 }
 
 /* ---------- transcript panel ---------- */
@@ -498,13 +484,16 @@ function showEvent(ev) {
 }
 function updateSelUI() {
   const has = !!selected;
-  for (const id of ["tbToggle", "tbPlayBlock", "tbSm", "tbSp", "tbEm", "tbEp"]) $(id).disabled = !has;
+  $("tbToggle").disabled = !has;
   if (!has) {
+    $("tbToggle").textContent = "🗑";
+    $("tbToggle").dataset.tip = "Eliminar / restaurar el bloque seleccionado";
     $("selInfo").textContent = "nada seleccionado — click en un bloque del timeline o una palabra tachada";
     $("selInfo").title = ""; return;
   }
   const ev = selected;
-  $("tbToggle").textContent = ev.kind === "keep" ? "❌ cortar" : "✅ restaurar";
+  $("tbToggle").textContent = ev.kind === "keep" ? "🗑" : "♻";
+  $("tbToggle").dataset.tip = ev.kind === "keep" ? "Eliminar el bloque seleccionado" : "Restaurar el bloque eliminado";
   $("selInfo").textContent =
     `${ev.kind.toUpperCase()}${ev.cat ? " · " + ev.cat : ""} ${g2(ev.s)}–${g2(ev.e)} (${(ev.e - ev.s).toFixed(2)}s) ${ev.text}`;
   $("selInfo").title = (ev.note ? ev.note + "\n" : "") + ev.text;
@@ -615,7 +604,37 @@ function renderFlagCard() {
 
 /* ---------- edits ---------- */
 function markDirty(msg) { dirty = true; changes.push(msg); $("saveBtn").disabled = false; setStatus(msg); rebuild(); }
+
+/* deshacer/rehacer: snapshots de `events` (solo cortes del timeline; las
+   correcciones de texto del transcript van aparte y no entran aquí) */
+let undoStack = [], redoStack = [];
+const snapEvents = () => JSON.stringify(events);
+function pushUndo(pre) {
+  undoStack.push(pre || snapEvents());
+  if (undoStack.length > 100) undoStack.shift();
+  redoStack = []; updateUndoUI();
+}
+function restoreSnap(json) {
+  events = JSON.parse(json);
+  evSeq = events.reduce((a, v) => Math.max(a, v.id), evSeq);
+  selected = null; selIn = selOut = null;
+  dirty = true; $("saveBtn").disabled = false;
+  updateSelUI(); rebuild();
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapEvents()); restoreSnap(undoStack.pop());
+  setStatus("deshecho"); updateUndoUI();
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapEvents()); restoreSnap(redoStack.pop());
+  setStatus("rehecho"); updateUndoUI();
+}
+function updateUndoUI() { $("tbUndo").disabled = !undoStack.length; $("tbRedo").disabled = !redoStack.length; }
+
 function toggleEvent(ev) {
+  pushUndo();
   if (ev.kind === "keep") { ev.kind = "cut"; ev.cat = "manual"; markDirty(`cut keep ${ev.clip} ${ev.s.toFixed(2)}-${ev.e.toFixed(2)} "${ev.text.slice(0,50)}"`); }
   else { ev.kind = "keep"; markDirty(`restored ${ev.cat} cut ${ev.clip} ${ev.s.toFixed(2)}-${ev.e.toFixed(2)}`); ev.cat = ""; }
   showEvent(ev);
@@ -625,12 +644,34 @@ function neighbors(ev) {
   const i = same.indexOf(ev);
   return [same[i-1], same[i+1]];
 }
-function nudge(ev, field, dv) {
-  const [prev, next] = neighbors(ev);
-  if (field === "s") ev.s = Math.min(Math.max(ev.s + dv, prev ? prev.e : 0), ev.e - 0.05);
-  else ev.e = Math.max(Math.min(ev.e + dv, next ? next.s : ev.e + dv), ev.s + 0.05);
-  markDirty(`adjusted ${ev.kind} ${ev.clip} -> ${ev.s.toFixed(2)}-${ev.e.toFixed(2)}`);
-  showEvent(ev);
+function eventAtCursor() {   // bloque que contiene el playhead (con margen divisible)
+  const loc = fromGlobal(vid.currentTime);
+  return { loc, ev: events.find(v => v.clip === loc.clip && v.s + 0.05 < loc.t && loc.t < v.e - 0.05) };
+}
+function splitAt() {
+  const { loc, ev } = eventAtCursor();
+  if (!ev) return setStatus("el cursor no está dentro de un bloque divisible", "err");
+  pushUndo();
+  const right = { id: ++evSeq, clip: ev.clip, s: loc.t, e: ev.e, kind: ev.kind, cat: ev.cat, text: ev.text, note: ev.note };
+  ev.e = loc.t;
+  events.push(right); sortEvents();
+  markDirty(`split ${ev.kind} ${ev.clip} @ ${loc.t.toFixed(2)}`);
+  showEvent(right);
+}
+function trimAt(side) {   // "l": elimina del inicio del bloque al cursor · "r": del cursor al fin
+  const { loc, ev } = eventAtCursor();
+  if (!ev) return setStatus("el cursor no está dentro de un bloque", "err");
+  if (ev.kind !== "keep") return setStatus("solo aplica sobre bloques verdes (keep)", "err");
+  pushUndo();
+  const a = side === "l" ? ev.s : loc.t, b = side === "l" ? loc.t : ev.e;
+  const mkKeep = (s, e) => ({ id: ++evSeq, clip: ev.clip, s, e, kind: "keep", cat: "", text: ev.text, note: "" });
+  const parts = [];
+  if (a - ev.s > 0.05) parts.push(mkKeep(ev.s, a));
+  parts.push({ id: ++evSeq, clip: ev.clip, s: a, e: b, kind: "cut", cat: "manual", text: ev.text, note: "user trim" });
+  if (ev.e - b > 0.05) parts.push(mkKeep(b, ev.e));
+  events.splice(events.indexOf(ev), 1, ...parts);
+  sortEvents();
+  markDirty(`trim ${side === "l" ? "inicio→cursor" : "cursor→fin"} ${ev.clip} ${a.toFixed(2)}-${b.toFixed(2)}`);
 }
 function cutSelection() {
   if (selIn === null || selOut === null) return setStatus("set I and O first", "err");
@@ -639,6 +680,7 @@ function cutSelection() {
   if (la.clip !== lb.clip) return setStatus("selection crosses clips — not supported", "err");
   const host = events.find(v => v.kind === "keep" && v.clip === la.clip && v.s <= la.t + 0.01 && v.e >= lb.t - 0.01);
   if (!host) return setStatus("selection must be inside one green keep block", "err");
+  pushUndo();
   const mkKeep = (s, e) => ({ id: ++evSeq, clip: host.clip, s, e, kind: "keep", cat: "", text: host.text, note: "" });
   const parts = [];
   if (la.t - host.s > 0.08) parts.push(mkKeep(host.s, la.t));
@@ -845,7 +887,7 @@ let drag = null;
 inner.addEventListener("mousedown", e => {
   const evEl = e.target.closest(".ev");
   if (e.target.classList.contains("edge") && evEl) {
-    drag = { ev: events.find(v => v.id == evEl.dataset.id), side: e.target.classList.contains("l") ? "s" : "e", moved: false };
+    drag = { ev: events.find(v => v.id == evEl.dataset.id), side: e.target.classList.contains("l") ? "s" : "e", moved: false, pre: snapEvents() };
     e.preventDefault(); return;
   }
   if (evEl) { showEvent(events.find(v => v.id == evEl.dataset.id)); return; }
@@ -863,12 +905,17 @@ window.addEventListener("mousemove", e => {
   drag.moved = true; renderTimeline();
 });
 window.addEventListener("mouseup", () => {
-  if (drag && drag.moved) { markDirty(`dragged ${drag.ev.kind} ${drag.ev.clip} -> ${drag.ev.s.toFixed(2)}-${drag.ev.e.toFixed(2)}`); showEvent(drag.ev); }
+  if (drag && drag.moved) {
+    pushUndo(drag.pre);
+    markDirty(`dragged ${drag.ev.kind} ${drag.ev.clip} -> ${drag.ev.s.toFixed(2)}-${drag.ev.e.toFixed(2)}`); showEvent(drag.ev);
+  }
   drag = null;
 });
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.isContentEditable) return;
   const k = e.key;
+  if ((e.ctrlKey || e.metaKey) && (k === "z" || k === "Z")) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); return; }
   if (k === " ") { e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }
   else if (k === "e" || k === "E") $("modeBtn").click();
   else if (k === "ArrowLeft") seek(vid.currentTime - (e.shiftKey ? 10 : 2));
@@ -913,35 +960,18 @@ $("txBody").addEventListener("click", e => {
 $("txCutBtn").onclick = cutSelection;
 $("modeBtn").onclick = () => { mode = mode === "edited" ? "raw" : "edited"; $("modeBtn").textContent = "Mode: " + (mode === "edited" ? "Edited" : "Raw"); };
 $("tbPlay").onclick = () => vid.paused ? vid.play() : vid.pause();
-$("tbBack").onclick = () => seek(vid.currentTime - 2);
-$("tbFwd").onclick = () => seek(vid.currentTime + 2);
-$("tbFrameB").onclick = () => seek(vid.currentTime - 1/59.94);
-$("tbFrameF").onclick = () => seek(vid.currentTime + 1/59.94);
-$("tbIn").onclick = () => { selIn = vid.currentTime; drawSelMarks(); setStatus(`in @ ${g2(selIn)}`); };
-$("tbOut").onclick = () => { selOut = vid.currentTime; drawSelMarks(); setStatus(`out @ ${g2(selOut)}`); };
-$("tbCut").onclick = cutSelection;
+$("tbUndo").onclick = undo;
+$("tbRedo").onclick = redo;
+$("tbSplit").onclick = splitAt;
+$("tbTrimL").onclick = () => trimAt("l");
+$("tbTrimR").onclick = () => trimAt("r");
 $("tbToggle").onclick = () => selected && toggleEvent(selected);
-$("tbPlayBlock").onclick = () => { if (selected) { seek(Math.max(toGlobal(selected.clip, selected.s) - 1, 0)); vid.play(); } };
-$("tbHome").onclick = () => {
-  if (selected) return seek(toGlobal(selected.clip, selected.s));
-  const t = vid.currentTime - 0.05;      // ya en el inicio → salta a la escena anterior
-  let last = 0;
-  for (const v of events) { const gs = toGlobal(v.clip, v.s); if (gs <= t) last = Math.max(last, gs); else break; }
-  // en proyectos generados el clip es un solo keep: las escenas son los recursos IA
-  if (typeof OVS !== "undefined" && OVS)
-    for (const o of OVS.overlays) if (o.t_in <= t) last = Math.max(last, o.t_in);
-  seek(last);
-};
 $("hdrTranscript").onclick = () => {
   const tx = $("transcript");
   const ocultar = tx.style.display !== "none";
   tx.style.display = ocultar ? "none" : "";
   $("hdrTranscript").classList.toggle("active", !ocultar);
 };
-$("tbSm").onclick = () => selected && nudge(selected, "s", -0.05);
-$("tbSp").onclick = () => selected && nudge(selected, "s", 0.05);
-$("tbEm").onclick = () => selected && nudge(selected, "e", -0.05);
-$("tbEp").onclick = () => selected && nudge(selected, "e", 0.05);
 vid.addEventListener("play", () => $("tbPlay").textContent = "⏸");
 vid.addEventListener("pause", () => $("tbPlay").textContent = "▶");
 $("styleSel").onchange = rebuildPlan;
@@ -1123,21 +1153,6 @@ async function fusionInit() {
     document.getElementById("brollWrap").dataset.tip =
       "b2 no aplica: este video es 100% generado con IA — regenera escenas desde la pista de recursos";
   } else b2.onclick = b2flujo;
-  try {
-    if ((await fetch("ver/subtitulado", { headers: { Range: "bytes=0-0" } })).ok) {
-      let viendoSub = false;
-      const t = document.getElementById("verSubBtn");
-      t.style.display = "";
-      t.onclick = () => {
-        viendoSub = !viendoSub;
-        const pos = vid.currentTime;
-        vid.src = viendoSub ? "ver/subtitulado" : "media/proxy.mp4";
-        vid.currentTime = pos;
-        t.textContent = viendoSub ? "✂ Ver edición" : "▶ Ver subtitulado";
-        setStatus(viendoSub ? "▶ viendo el EXPORT subtitulado (solo lectura)" : "✂ de vuelta al metraje de edición", "ok");
-      };
-    }
-  } catch {}
   const orig = renderTimeline;
   renderTimeline = function () { orig(); fusionRender(); };
   fusionRender();
