@@ -66,10 +66,18 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 
 **Validado en CI** (run 33147068085, 2m41s, verde a la primera): build OK; **78 tests verdes DENTRO del contenedor**; server arranca **sin `.env`** y responde `/api/estilos`, `/api/edicion/proyectos` (vacío → `[]`) y f1 estático; runtimes presentes (node v20.20.2, ffmpeg 5.1.9, Chromium 151). Sin gotchas de Windows adentro: whisper = CPU o AssemblyAI (A2).
 
-### A5. Validación E2E final ($1-3 — SOLO con confirmación explícita del usuario)
-Flujo completo en local (idealmente contra el contenedor de A4): crear → producir (ya calibrado por A3) → editar → regenerar g2 → subtítulos → publicar fn1. Si para entonces existe `BLOTATO_API_KEY` real, probar fn2 (pendiente de Fase 3).
+### ✅ A5. Validación E2E final — CORRIDA 2026-08-28 (verde salvo g2, bloqueado por Google)
 
-- **Criterio de salida del Bloque A:** flujo completo verde en contenedor Linux, costos trazados en Langfuse, presupuesto vs real dentro de ±10 %.
+**Corrida real** (brief Tambora/Karl Drais del usuario, gasto autorizado, driver por API contra el server local, `MEDIA_ROOT` al almacén de adquisition, guarda dura de $2.00 antes de producir):
+
+- **Crear → revisión** (modo idea, 30 s, animated, referencia de época): guion 5 escenas / 56 palabras, voz George, 2 opciones de personaje. Estimación **$1.36**.
+- **Producción completa en ~5 min** con el gate de A3 activo: película **32.79 s para objetivo 30 s (+9 %, dentro del ±10 %)** — antes de A3 habría salido ~+35 %. El estimador clavó: **costo real $1.35** (pelicula $1.28 + preparar $0.075, Langfuse).
+- **Puente automático** → `gen-a44db907` en e1 (`editor_listo: true`, 50 palabras canónicas).
+- **b1 subtítulos**: muestra + quemado → `pelicula` 19.5 MB, `subtitulado` 23.5 MB, `.srt`. **b3 fn1**: descarga 200 OK. **Títulos**: 3 sugeridos.
+- **g2 BLOQUEADO por Google**: `503 UNAVAILABLE` sostenido de Nano Banana (>15 min, 5 intentos, **$0.00 cobrados** — el manejo de error y el gate funcionaron). No es bug: mismas llamadas verdes el 2026-08-24. **Pendiente: reintentar g2 sobre `gen-a44db907` cuando Google se recupere** (el flujo g2 ya tiene validación previa con gasto real ~$0.68 en Fase 2).
+- Nota de entorno: subida a Drive no-fatal falló (falta `token_drive.json` en la copia nueva — correr `python auth_google.py` si se quiere entrega a Drive).
+
+**Criterio del Bloque A:** cumplido en flujo y costos (trazado completo en Langfuse, desvío +9 %); el "verde en contenedor" quedó cubierto por CI (A4). Bloque A CERRADO salvo el reintento g2.
 
 ---
 
