@@ -176,7 +176,8 @@ async def _producir(p: Proyecto) -> None:
     if len(escenas) != len(p.guion):
         log.warning("%s: el director devolvió %d escenas para %d del guion", p.id, len(escenas), len(p.guion))
 
-    r = await producir_desde_escenas(escenas, ctx, p.personaje.url_elegida, p.workdir, subir=True, estilo=estilo, progreso=progreso)
+    r = await producir_desde_escenas(escenas, ctx, p.personaje.url_elegida, p.workdir, subir=True,
+                                     estilo=estilo, progreso=progreso, duracion_objetivo_s=p.duracion_s)
     p.resultado = {
         "mensaje": r.mensaje, "link": r.link, "drive_id": r.drive_id, "duracion": r.duracion_pelicula,
         "escenas": [{"id": e.id, "qc": e.qc, "video_origen": e.video_origen, "duracion": e.duracion_final} for e in r.escenas],

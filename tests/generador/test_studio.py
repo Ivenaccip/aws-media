@@ -30,10 +30,11 @@ def test_resolver_estilo():
 
 def test_presupuesto_y_normalizar_guion():
     p = presupuesto(60)
-    assert p["palabras_max"] == 132 and p["escenas_min"] == 8 and p["escenas_max"] == 12
+    # A3: 1.7 palabras por segundo DE PELÍCULA (medido en gen-tesla, ver writer.py)
+    assert p["palabras_max"] == 102 and p["escenas_min"] == 8 and p["escenas_max"] == 12
     g = normalizar_guion({"escenas": [{"narracion": " uno "}, {"narracion": ""}, "dos"]}, 30)
     assert [e.id for e in g] == ["1", "2"] and g[1].narracion == "dos"
-    assert estimar_segundos(g) == 0.9
+    assert estimar_segundos(g) == 1.2
     with pytest.raises(ValueError):
         normalizar_guion({"escenas": []}, 30)
 

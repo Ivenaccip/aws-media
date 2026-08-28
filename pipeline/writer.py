@@ -7,7 +7,12 @@ from .config import load_prompt
 from .llm import chat_json
 from .project import EscenaGuion
 
-PALABRAS_POR_S = 2.2
+# A3: palabras por segundo DE PELÍCULA (no de habla). Medido en gen-tesla
+# (2026-08-27): la voz lee 1.98 pal/s, pero los slots de video (4/6/8 s)
+# rellenan ~20% sobre el audio → 1.63 pal/s relativo a la película final.
+# 1.7 = ese valor + margen (escenas más cortas rellenan menos). El gate
+# post-TTS (pipeline/duracion.py) es quien garantiza el objetivo.
+PALABRAS_POR_S = 1.7
 S_POR_ESCENA_MIN = 5.0
 S_POR_ESCENA_MAX = 8.0
 MAX_PALABRAS_ESCENA = 16

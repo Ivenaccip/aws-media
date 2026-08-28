@@ -9,7 +9,7 @@ Responde ÚNICAMENTE un JSON válido, sin backticks ni texto adicional:
 }}
 
 Reglas de duración (OBLIGATORIAS):
-- El narrador lee ~2,2 palabras por segundo. El guion completo debe tener como máximo {palabras_max} palabras en total.
+- El narrador lee ~2 palabras por segundo y el video añade pausas visuales entre escenas; el presupuesto ya lo considera. El guion completo debe tener como máximo {palabras_max} palabras en total — este límite es estricto.
 - Escribe entre {escenas_min} y {escenas_max} escenas. Cada narración tiene entre 8 y 16 palabras (≈ 4-7 segundos). Nunca más de 16.
 - Cada escena debe ser UN plano visualizable: un lugar, una acción, uno o dos personajes. Si una idea necesita dos planos, son dos escenas.
 

@@ -37,6 +37,20 @@ VOCES: dict[str, str] = {
 VOZ_DEFAULT = "George"
 STABILITY_DEFAULT = 0.7  # 0 = Creative, 0.5 = Natural, 1 = Robust
 
+# A3: tasa de HABLA medida por voz (palabras/segundo de audio TTS, sin contar
+# el relleno de los slots de video). Se mide de corridas reales (canónico del
+# puente = timestamps whisper sobre el TTS); las voces sin medir usan el
+# default conservador. El log del gate en Langfuse acumula datos para calibrar
+# las demás. George: gen-tesla 2026-08-27, 133 palabras / 67.2 s hablados.
+TASA_HABLA: dict[str, float] = {
+    "George": 1.98,
+}
+TASA_HABLA_DEFAULT = 1.9
+
+
+def tasa_habla(voz: str | None) -> float:
+    return TASA_HABLA.get(voz or VOZ_DEFAULT, TASA_HABLA_DEFAULT)
+
 
 class VozRank(BaseModel):
     id: str

@@ -47,15 +47,16 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 
 **Validado:** 72 tests (67 + 5 en `tests/test_asr_backend.py`: selección por config, key faltante → error claro, procedencia en el canónico). E2E local con `agregar_video.py` sobre un clip de 10 s bajo un MEDIA_ROOT de prueba: selector → `faster-whisper (small)`, canónico válido con `asr={faster-whisper, small}`, cuts.json actualizado con respaldo, proxy regenerado (NVENC). **Ruta AssemblyAI probada EN VIVO** (2026-08-27, con la key del usuario, $0.0006): clip de 10 s vía `agregar_video.py` con config `asr=assemblyai` → canónico válido con `asr={assemblyai, universal-3-5-pro}` (15 palabras vs 10 de whisper small). **Trazada en Langfuse**: generation `assemblyai_transcript` con `cost_details` ($0.000588), mismo patrón que `nano_banana`/`veo`; fallos van como `level=ERROR`; opcional (sin claves Langfuse la transcripción sigue igual). El config temporal se retiró: el dev local sigue en whisper $0; para nube, `tools/setup.py --asr assemblyai`. Free tier AssemblyAI: crédito único ~$50 para cuentas nuevas (≈238 h a $0.21/h) — política del repo: no prometerlo en UI, "verifica tu crédito en el dashboard".
 
-### A3. Calibración ElevenLabs (nuevo, antes de la validación E2E)
-En orden de esfuerzo:
+### ✅ A3. Calibración ElevenLabs — COMPLETADA 2026-08-27
 
-1. **Constante (5 min):** `pipeline/writer.py:10` `PALABRAS_POR_S = 2.2` → tasa medida (~1.9).
-2. **Tasa por voz (gratis):** medir palabras/segundo real de cada voz de `voices.py` con los audios ya generados (muestras + corridas como gen-tesla); guardar la tasa junto a la voz.
-3. **Gate post-TTS (el que ahorra dinero):** tras generar el audio de cada escena y ANTES de imágenes/video, comparar duración real vs objetivo; si se pasa >10 %, recortar el guion de esa escena y regenerar solo su TTS. El sobrecosto del ~25 % desaparece donde duele.
-4. **Mantenerla honesta:** loggear presupuesto vs real en Langfuse en cada corrida para detectar deriva (cambio de modelo de voz, etc.).
+**Hallazgo de la medición** (canónico de gen-tesla, timestamps whisper del TTS real): la voz lee **1.98 pal/s de habla**, pero los slots de video (4/6/8 s) rellenan ~20% sobre el audio → **1.63 pal/s relativo a la película final**. La constante correcta para presupuestar película no era ~1.9 sino menos:
 
-- **Validación:** tests unitarios del gate con duraciones sintéticas ($0); la verificación con gasto real queda absorbida por A5.
+1. **Constante:** `writer.py` `PALABRAS_POR_S = 2.2 → 1.7` (película-relativa, con margen porque escenas más cortas rellenan menos); el prompt del guionista ya no dice "2,2 palabras por segundo" y marca el límite como estricto.
+2. **Tasa por voz:** `voices.py` `TASA_HABLA = {George: 1.98}` (única voz con corrida real disponible — los audios de las demás se borraron con `work/`) + default conservador 1.9 y helper `tasa_habla(voz)`. Las demás voces se calibran con los datos que acumule el log del gate.
+3. **Gate post-TTS:** `pipeline/duracion.py` — tras `tts_todas` y ANTES de imágenes/video (`run.py`, solo si el caller pasa `duracion_objetivo_s`; `flow.producir` pasa `p.duracion_s`): si `sum(slots)` excede el objetivo en >10%, elige las escenas más largas (las de 4 s no bajan más), un LLM recorta su narración al presupuesto de SU voz (prompts `recorte_system/user`) y solo esas regeneran TTS. Red de seguridad: respuesta vacía → narración original; pasada del límite → corte duro.
+4. **Honestidad:** span `gate_duracion` en Langfuse registra SIEMPRE objetivo vs estimado (y `WARNING` si tras recortar sigue fuera); la película final loggea `objetivo_s` junto a la duración real.
+
+**Validado:** 78 tests (6 nuevos en `test_duracion.py`, lógica pura con duraciones sintéticas, $0). La verificación del gate con gasto real queda absorbida por A5 (E2E con confirmación).
 
 ### A4. Dockerfile único (Fase 4.4)
 Imagen Linux con Python + ffmpeg + Node/Chromium (Remotion). Es la misma imagen que luego vive en ECR y corre en Lambda-contenedor y Fargate: validarla local es validar el 70 % del despliegue.

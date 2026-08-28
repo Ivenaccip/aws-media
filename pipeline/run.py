@@ -10,7 +10,7 @@ from typing import Callable
 
 from langfuse import get_client, observe, propagate_attributes
 
-from . import ffmpeg, media
+from . import duracion, ffmpeg, media
 from .casting import hacer_casting, mensaje_faltantes
 from .config import settings
 from .deliver import mensaje_final, subir_drive
@@ -96,13 +96,17 @@ async def _generar_pelicula(historia: str, subir: bool, run_id: str) -> Resultad
 async def producir_desde_escenas(
     escenas: list[Scene], ctx: Casting, estilo_url: str | None, workdir: Path, subir: bool,
     estilo: Estilo | None = None, progreso: Progreso | None = None,
+    duracion_objetivo_s: int | None = None,
 ) -> Resultado:
-    """TTS → imagen/video/mux por cadenas → concat → Drive. Compartido por el CLI y por el servidor."""
+    """TTS → gate de duración → imagen/video/mux por cadenas → concat → Drive.
+    Compartido por el CLI y por el servidor."""
     lf = get_client()
     if progreso:
         progreso("tts", {})
-    # 3. TTS (paralelo) + orden + cadenas
+    # 3. TTS (paralelo) + gate de duración (A3.3: corregir ANTES de gastar en Veo) + orden + cadenas
     escenas = await tts_todas(escenas, workdir)
+    if duracion_objetivo_s:
+        escenas = await duracion.aplicar_gate(escenas, duracion_objetivo_s, workdir)
     escenas = [asignar_rutas(e, workdir) for e in ordenar_cola(escenas)]
     cadenas = partir_en_cadenas(escenas)
     _guardar_estado(workdir, "tts", escenas)
@@ -134,7 +138,7 @@ async def producir_desde_escenas(
 
     msg = mensaje_final(nombre, link or str(pelicula), dur, escenas)
     lf.update_current_span(output={
-        "mensaje": msg, "duracion": dur, "n_escenas": len(escenas),
+        "mensaje": msg, "duracion": dur, "objetivo_s": duracion_objetivo_s, "n_escenas": len(escenas),
         "n_fallback": sum(1 for e in escenas if e.es_fallback), "drive_id": drive_id,
     })
     return Resultado(pelicula_path=pelicula, drive_id=drive_id, link=link, duracion_pelicula=dur, escenas=escenas, mensaje=msg)
