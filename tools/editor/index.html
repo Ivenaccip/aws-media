@@ -86,6 +86,13 @@
 
   #transcript { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000;
                 display: flex; flex-direction: column; min-height: 0; }
+  #importPanel { flex: 0 0 380px; background: var(--panel); border-right: 1px solid #000; padding: 12px 14px; }
+  #importPanel .h { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 12px; }
+  #impTiles { display: flex; gap: 12px; flex-wrap: wrap; }
+  button.tile { width: 96px; height: 96px; display: flex; flex-direction: column; align-items: center;
+                justify-content: center; gap: 7px; border-radius: 8px; padding: 0; }
+  .tile .ico { font-size: 30px; line-height: 1; }
+  .tile .lbl { font-size: 11px; color: var(--dim); }
   #txBar { display: flex; gap: 8px; align-items: center; padding: 8px 12px 4px; }
   #txBar .h { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); flex: 1; }
   #txBar button { padding: 2px 8px; font-size: 12px; }
@@ -131,7 +138,7 @@
 <body>
 <header>
   <span class="title">✂ Cut Editor</span>
-  <span data-tip="próximamente: importar metraje y mezclar videos (edición multivideo)"><button class="tab" id="hdrImportar" disabled>📥 Importar</button></span>
+  <button class="tab" id="hdrImportar" data-tip="metraje y recursos IA">📥 Importar</button>
   <button class="tab active" id="hdrTranscript" data-tip="mostrar / ocultar el panel de transcript">📃 Transcript</button>
   <span data-tip="próximamente: pista de audio y música"><button class="tab" id="hdrAudio" disabled>🎵 Audio</button></span>
   <button class="tab" id="hdrSubs" data-tip="b1: frame de muestra → aprobar → quemar (make_subs)">📝 Subtítulos</button>
@@ -140,9 +147,17 @@
   <span id="costoBadge" style="display:none;color:#e0b657;font-size:12px;margin-right:4px"></span>
   <button id="saveBtn" class="tipR" disabled data-tip="Guardar cuts.json + correcciones de texto (con respaldo)">💾 Guardar</button>
   <button id="renderBtn" class="primary tipR" data-tip="Renderizar el preview real con el engine">🎬 Render</button>
+  <button id="hdrPublicar" class="tipR" data-tip="b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)">📤 Publicar</button>
 </header>
 
 <div id="main">
+  <div id="importPanel" style="display:none">
+    <div class="h">Importar</div>
+    <div id="impTiles">
+      <span data-tip="abre la carpeta videos/ del proyecto en el explorador"><button class="tile" id="impAbrir"><span class="ico">＋</span><span class="lbl">Metraje</span></button></span>
+      <span id="brollWrap" data-tip="b2: Claude propone momentos para recursos visuales (~$0.01)"><button class="tile" id="tbBroll"><span class="ico">🎨</span><span class="lbl">B-roll IA</span></button></span>
+    </div>
+  </div>
   <div id="transcript">
     <div id="txBar"><span class="h" data-tip="click = seek · Shift+click = seleccionar rango · doble click = corregir texto (Enter guarda, Esc cancela)">Transcript ⓘ</span><button id="txCutBtn" disabled data-tip="Cortar las palabras seleccionadas — C">✂ cortar selección</button></div>
     <div id="txBody"></div>
@@ -183,11 +198,9 @@
     <button id="tbTrimL" data-tip="Eliminar del inicio del bloque al cursor">⌫[</button>
     <button id="tbTrimR" data-tip="Eliminar del cursor al fin del bloque">]⌫</button>
     <button id="tbToggle" disabled data-tip="Eliminar / restaurar el bloque seleccionado">🗑</button>
-    <span id="selInfo">nada seleccionado — click en un bloque del timeline o una palabra tachada</span>
+    <span id="selInfo"></span>
     <span class="grow"></span>
     <span class="tipR" style="color:var(--dim);cursor:help" data-tip="verde = keep · rojo = retake · naranja = false start · ocre = repeat · morado = manual · ▲ flag · 💡 fluff (solo sugerencia) — atajos: ←→ saltar · ,. frame · I/O/C rango · el playback en vivo es aproximado; el render es exacto">ⓘ</span>
-    <span class="tipR" id="brollWrap" data-tip="b2: Claude propone momentos para recursos visuales (~$0.01)"><button id="tbBroll">🎨 B-roll IA</button></span>
-    <span class="tipR" data-tip="b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)"><button id="hdrPublicar">📤 Publicar</button></span>
     <span class="sep"></span>
     <span style="color:var(--dim)">🔍</span><input id="zoom" type="range" min="4" max="40" value="7" style="width:120px">
   </div>
@@ -488,7 +501,7 @@ function updateSelUI() {
   if (!has) {
     $("tbToggle").textContent = "🗑";
     $("tbToggle").dataset.tip = "Eliminar / restaurar el bloque seleccionado";
-    $("selInfo").textContent = "nada seleccionado — click en un bloque del timeline o una palabra tachada";
+    $("selInfo").textContent = "";
     $("selInfo").title = ""; return;
   }
   const ev = selected;
@@ -674,12 +687,12 @@ function trimAt(side) {   // "l": elimina del inicio del bloque al cursor · "r"
   markDirty(`trim ${side === "l" ? "inicio→cursor" : "cursor→fin"} ${ev.clip} ${a.toFixed(2)}-${b.toFixed(2)}`);
 }
 function cutSelection() {
-  if (selIn === null || selOut === null) return setStatus("set I and O first", "err");
+  if (selIn === null || selOut === null) return setStatus("marca el rango primero: tecla I = inicio, O = fin (o selecciona palabras con Shift+click)", "err");
   const [a, b] = [Math.min(selIn, selOut), Math.max(selIn, selOut)];
   const la = fromGlobal(a), lb = fromGlobal(b);
-  if (la.clip !== lb.clip) return setStatus("selection crosses clips — not supported", "err");
+  if (la.clip !== lb.clip) return setStatus("la selección cruza dos clips — no soportado", "err");
   const host = events.find(v => v.kind === "keep" && v.clip === la.clip && v.s <= la.t + 0.01 && v.e >= lb.t - 0.01);
-  if (!host) return setStatus("selection must be inside one green keep block", "err");
+  if (!host) return setStatus("la selección debe caer dentro de un solo bloque verde (keep)", "err");
   pushUndo();
   const mkKeep = (s, e) => ({ id: ++evSeq, clip: host.clip, s, e, kind: "keep", cat: "", text: host.text, note: "" });
   const parts = [];
@@ -966,11 +979,24 @@ $("tbSplit").onclick = splitAt;
 $("tbTrimL").onclick = () => trimAt("l");
 $("tbTrimR").onclick = () => trimAt("r");
 $("tbToggle").onclick = () => selected && toggleEvent(selected);
-$("hdrTranscript").onclick = () => {
-  const tx = $("transcript");
-  const ocultar = tx.style.display !== "none";
-  tx.style.display = ocultar ? "none" : "";
-  $("hdrTranscript").classList.toggle("active", !ocultar);
+/* panel izquierdo estilo CapCut: los tabs lo conmutan; clic al activo lo oculta */
+let panelActual = "transcript";
+const PANELES = { transcript: ["transcript", "hdrTranscript"], importar: ["importPanel", "hdrImportar"] };
+function mostrarPanel(cual) {
+  panelActual = cual;
+  for (const [k, [panel, tab]] of Object.entries(PANELES)) {
+    $(panel).style.display = cual === k ? "" : "none";
+    $(tab).classList.toggle("active", cual === k);
+  }
+}
+$("hdrTranscript").onclick = () => mostrarPanel(panelActual === "transcript" ? null : "transcript");
+$("hdrImportar").onclick = () => mostrarPanel(panelActual === "importar" ? null : "importar");
+$("impAbrir").onclick = async () => {
+  try {
+    const r = await fetch("api/abrir-carpeta", { method: "POST" });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    setStatus("carpeta videos/ abierta en el explorador — deja ahí tu metraje", "ok");
+  } catch (e) { setStatus("no se pudo abrir la carpeta: " + e.message, "err"); }
 };
 vid.addEventListener("play", () => $("tbPlay").textContent = "⏸");
 vid.addEventListener("pause", () => $("tbPlay").textContent = "▶");

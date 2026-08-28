@@ -9,6 +9,7 @@ misma limitación conocida que el resto del server (PLAN-FUSION.md F4).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -112,6 +113,24 @@ def ver(name: str, clave: str, request: Request):
     if not f or f.suffix != ".mp4":
         raise HTTPException(404, f"no hay export {clave!r}")
     return _rango(f, "video/mp4", request)
+
+
+@router.post("/{name}/api/abrir-carpeta")
+def abrir_carpeta(name: str):
+    """Importar (＋): abre la carpeta videos/ en el explorador del sistema —
+    el server es local, así que importar metraje = dejar archivos ahí."""
+    _proyecto(name)
+    carpeta = ROOT / "videos"
+    try:
+        if sys.platform == "win32":
+            os.startfile(carpeta)  # noqa: S606
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(carpeta)])
+        else:
+            subprocess.Popen(["xdg-open", str(carpeta)])
+    except Exception as err:  # noqa: BLE001
+        raise HTTPException(500, f"no se pudo abrir {carpeta}: {err}")
+    return {"abierto": str(carpeta)}
 
 
 @router.get("/{name}/media/{archivo}")
