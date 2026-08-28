@@ -74,10 +74,10 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 - **Producción completa en ~5 min** con el gate de A3 activo: película **32.79 s para objetivo 30 s (+9 %, dentro del ±10 %)** — antes de A3 habría salido ~+35 %. El estimador clavó: **costo real $1.35** (pelicula $1.28 + preparar $0.075, Langfuse).
 - **Puente automático** → `gen-a44db907` en e1 (`editor_listo: true`, 50 palabras canónicas).
 - **b1 subtítulos**: muestra + quemado → `pelicula` 19.5 MB, `subtitulado` 23.5 MB, `.srt`. **b3 fn1**: descarga 200 OK. **Títulos**: 3 sugeridos.
-- **g2 BLOQUEADO por Google**: `503 UNAVAILABLE` sostenido de Nano Banana (>15 min, 5 intentos, **$0.00 cobrados** — el manejo de error y el gate funcionaron). No es bug: mismas llamadas verdes el 2026-08-24. **Pendiente: reintentar g2 sobre `gen-a44db907` cuando Google se recupere** (el flujo g2 ya tiene validación previa con gasto real ~$0.68 en Fase 2).
+- **g2 COMPLETADO en el reintento** (mismo día, tras un 503 sostenido de Nano Banana de ~1 h en el que el producto respondió siempre con error limpio y $0 cobrados): 2 candidatos nano banana ($0.078) → Veo i2v → **v2 activa, película rearmada 32.83 s** ($0.40) → subtítulos re-quemados sobre la versión nueva. Libro de costes del proyecto: $0.478.
 - Nota de entorno: subida a Drive no-fatal falló (falta `token_drive.json` en la copia nueva — correr `python auth_google.py` si se quiere entrega a Drive).
 
-**Criterio del Bloque A:** cumplido en flujo y costos (trazado completo en Langfuse, desvío +9 %); el "verde en contenedor" quedó cubierto por CI (A4). Bloque A CERRADO salvo el reintento g2.
+**Criterio del Bloque A: CUMPLIDO — Bloque A CERRADO al 100 %.** Gasto total de A5: **$1.83** ($1.35 producción+preparación por Langfuse + $0.478 g2), dentro del ~$1-2 autorizado. Desvío de duración +9 % (gate A3 en vivo); "verde en contenedor" cubierto por CI (A4).
 
 ---
 
