@@ -41,14 +41,11 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 
 **Validado:** 67 tests verdes (62 + 5 nuevos en `tests/test_storage_paths.py`); smoke con TestClient: default lista `gen-tesla` (comportamiento intacto), `MEDIA_ROOT` a dir vacío → lista vacía sin crash, y con `MEDIA_ROOT` a una raíz externa (junction) `gen-tesla` abre completo: data (cuts+manifest), proxy con Range 206, overlays.
 
-### A2. Backend de transcripción configurable en puente e importador (nuevo, requisito AWS)
-`tools/normalizers/generated_to_canonical.py:187` y `tools/agregar_video.py:78` instancian `WhisperModel` directo, ignorando el doble backend ya normalizado (`.video-stack/config.json`, normalizadores `fasterwhisper_to_canonical.py` / `assemblyai_to_canonical.py`).
+### ✅ A2. Backend de transcripción configurable en puente e importador — COMPLETADA 2026-08-27
 
-1. Extraer la selección de backend a una función compartida (leer config → faster-whisper local o AssemblyAI).
-2. Usarla en el puente y en `agregar_video.py`; mantener el fallback CUDA→CPU del caso local.
-3. Respetar la regla del repo: preview de costo antes de cada corrida en nube (aunque sea <$0.01).
+**Implementado:** `tools/normalizers/asr_backend.py` (nuevo) = selección compartida: `crear_transcriptor(model, device)` → `(transcribe_fn, backend, modelo)`. `.video-stack/config.json` decide `asr: local | assemblyai` (mismo contrato que `tools/transcribe.py`); **sin config = faster-whisper local con los args del caller** (comportamiento de siempre, fallback CUDA→CPU encapsulado). Ruta nube: sin prompt (los flujos corren desatendidos) pero SIEMPRE imprime el preview de costo desde `pricing.json` (~<$0.01 por película). El puente (`convertir()` ganó params `backend`/`model` para registrar la procedencia real en el canónico — el esquema ya tenía ambos en el enum) y `agregar_video.py` lo usan; el whisper directo desapareció de ambos.
 
-- **Validación:** una corrida del puente con backend AssemblyAI produce `canonical.json` válido contra `schema/transcript.schema.json` y `make_subs` funciona sobre él. Aguas abajo nadie distingue el backend (ya es así por diseño).
+**Validado:** 72 tests (67 + 5 en `tests/test_asr_backend.py`: selección por config, key faltante → error claro, procedencia en el canónico). E2E local con `agregar_video.py` sobre un clip de 10 s bajo un MEDIA_ROOT de prueba: selector → `faster-whisper (small)`, canónico válido con `asr={faster-whisper, small}`, cuts.json actualizado con respaldo, proxy regenerado (NVENC). **Pendiente de prueba en vivo:** ruta AssemblyAI (no hay `ASSEMBLYAI_API_KEY` en `.env` — mismo estatus que fn2/Blotato; el código replica el flujo verificado de `transcribe.py`).
 
 ### A3. Calibración ElevenLabs (nuevo, antes de la validación E2E)
 En orden de esfuerzo:

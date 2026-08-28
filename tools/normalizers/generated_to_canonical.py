@@ -101,15 +101,6 @@ def ensamblar_palabras(escenas: list[tuple[str, float, list[dict]]]) -> list[dic
     return words
 
 
-def transcribir(audio: Path, model) -> list[dict]:
-    segments, _info = model.transcribe(str(audio), language="es", word_timestamps=True)
-    out = []
-    for seg in segments:
-        for w in seg.words or []:
-            out.append({"text": w.word, "start": w.start, "end": w.end, "confidence": w.probability})
-    return out
-
-
 def cuts_keep_all(nombre: str, duracion: float) -> dict:
     return {
         "project": nombre,
@@ -130,7 +121,8 @@ def edited_transcript_ms(words: list[dict]) -> dict:
                        "end": round(w["end"] * 1000)} for w in words]}
 
 
-def convertir(work_dir: Path, nombre: str, transcribe_fn) -> dict:
+def convertir(work_dir: Path, nombre: str, transcribe_fn,
+              backend: str = "faster-whisper", model: str | None = None) -> dict:
     """Núcleo puro-orquestable (transcribe_fn inyectable para tests): arma el
     canónico desde los audios/finales de una producción del generador."""
     ids = orden_escenas(work_dir)
@@ -145,7 +137,7 @@ def convertir(work_dir: Path, nombre: str, transcribe_fn) -> dict:
     words = ensamblar_palabras(escenas)
     total = round(sum(d for _, d, _ in escenas), 3)
     return build_canonical(source_id=SOURCE_ID, duration=total, language="es",
-                           backend="faster-whisper", model=None, words=words,
+                           backend=backend, model=model, words=words,
                            source_path="pelicula.mp4")
 
 
@@ -184,18 +176,12 @@ def main() -> None:
         data = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
         print(f"overlays: {len(data['overlays'])} escenas registradas en videos/{args.nombre}")
         return
-    from faster_whisper import WhisperModel
-    model = WhisperModel(args.model, device=args.device)
-    try:
-        doc = convertir(work_dir, args.nombre, lambda a: transcribir(a, model))
-    except RuntimeError as err:
-        # device=auto eligió CUDA pero faltan las DLLs (cublas/cudnn) → CPU
-        if args.device != "auto" or not any(s in str(err) for s in ("cublas", "cudnn", "CUDA")):
-            raise
-        print(f"CUDA no disponible ({err}) — reintentando en CPU")
-        model = WhisperModel(args.model, device="cpu", compute_type="int8")
-        doc = convertir(work_dir, args.nombre, lambda a: transcribir(a, model))
-    doc["asr"]["model"] = args.model
+    # A2: el backend sale de .video-stack/config.json (local | assemblyai);
+    # sin config = faster-whisper local con --model/--device, como siempre.
+    from asr_backend import crear_transcriptor
+    transcribe_fn, backend, modelo = crear_transcriptor(args.model, args.device)
+    print(f"transcripción: {backend} ({modelo})", flush=True)
+    doc = convertir(work_dir, args.nombre, transcribe_fn, backend=backend, model=modelo)
     validate_canonical(doc)
 
     proj = project_dir(args.nombre)
