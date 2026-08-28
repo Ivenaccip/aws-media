@@ -108,22 +108,39 @@ def duracion_audio_s(path: Path) -> float:
     return float(r.stdout.strip())
 
 
-def preview_costo(path: Path) -> float:
+def preview_costo(path: Path) -> tuple[float, float]:
+    """→ (costo_usd, duracion_s). Precios SOLO de tools/pricing.json."""
     pricing = json.loads((REPO / "tools" / "pricing.json").read_text(encoding="utf-8"))
     rate = pricing["assemblyai"]["models"]["universal-3-5-pro"]["usd_per_hour"]
     dur = duracion_audio_s(path)
     costo = dur / 3600 * rate
     print(f"  nube AssemblyAI: {path.name} dura {dur:.0f} s ≈ ${costo:.4f} dólares "
           f"(${rate:.2f}/hora, facturación por segundo)", flush=True)
-    return costo
+    return costo, dur
+
+
+def _langfuse():
+    """Cliente Langfuse si hay claves en el entorno o el .env (mismas trazas que
+    el resto del editor); sin claves o sin paquete → None y todo sigue igual."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(REPO / ".env")
+    except ImportError:
+        pass
+    if not os.getenv("LANGFUSE_PUBLIC_KEY"):
+        return None
+    try:
+        from langfuse import get_client
+        return get_client()
+    except Exception:  # noqa: BLE001 — trazar nunca debe tumbar la transcripción
+        return None
 
 
 def _transcriptor_assemblyai():
     import requests
     headers = {"authorization": _api_key()}
 
-    def fn(audio: Path) -> list[dict]:
-        preview_costo(audio)
+    def _llamar(audio: Path) -> tuple[list[dict], str]:
         with open(audio, "rb") as f:
             up = requests.post(f"{API_BASE}/upload", headers=headers, data=f, timeout=300)
         up.raise_for_status()
@@ -148,6 +165,29 @@ def _transcriptor_assemblyai():
             if w.get("confidence") is not None:
                 item["confidence"] = round(w["confidence"], 4)
             out.append(item)
+        modelo = data.get("speech_model_used") or data.get("speech_model") or SPEECH_MODELS[0]
+        return out, modelo
+
+    def fn(audio: Path) -> list[dict]:
+        costo, dur = preview_costo(audio)
+        lf = _langfuse()
+        if lf is None:
+            return _llamar(audio)[0]
+        with lf.start_as_current_observation(
+            name="assemblyai_transcript", as_type="generation", model=SPEECH_MODELS[0],
+            input={"audio": audio.name, "duracion_s": round(dur, 1)},
+            metadata={"backend": "assemblyai"},
+        ) as span:
+            try:
+                out, modelo = _llamar(audio)
+            except Exception as e:  # noqa: BLE001
+                span.update(level="ERROR", status_message=str(e)[:500])
+                lf.flush()
+                raise
+            span.update(output={"palabras": len(out), "modelo": modelo},
+                        usage_details={"audio_s": int(dur)},
+                        cost_details={"total": round(costo, 6)})
+        lf.flush()   # proceso corto (CLI): sin flush la traza se pierde
         return out
 
     return fn
