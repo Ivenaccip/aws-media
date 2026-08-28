@@ -21,7 +21,6 @@
 
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel);
            border-bottom: 1px solid #000; flex-wrap: wrap; }
-  header .title { font-weight: 600; margin-right: 6px; }
   .grow { flex: 1; }
   header .tab { background: transparent; border-color: transparent; color: var(--dim); }
   header .tab:hover { border-color: var(--accent); color: var(--text); }
@@ -137,7 +136,6 @@
 </head>
 <body>
 <header>
-  <span class="title">✂ Cut Editor</span>
   <button class="tab" id="hdrImportar" data-tip="metraje y recursos IA">📥 Importar</button>
   <button class="tab active" id="hdrTranscript" data-tip="mostrar / ocultar el panel de transcript">📃 Transcript</button>
   <span data-tip="próximamente: pista de audio y música"><button class="tab" id="hdrAudio" disabled>🎵 Audio</button></span>
