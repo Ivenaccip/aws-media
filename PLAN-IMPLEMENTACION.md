@@ -58,16 +58,13 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 
 **Validado:** 78 tests (6 nuevos en `test_duracion.py`, lógica pura con duraciones sintéticas, $0). La verificación del gate con gasto real queda absorbida por A5 (E2E con confirmación).
 
-### A4. Dockerfile único (Fase 4.4)
-Imagen Linux con Python + ffmpeg + Node/Chromium (Remotion). Es la misma imagen que luego vive en ECR y corre en Lambda-contenedor y Fargate: validarla local es validar el 70 % del despliegue.
+### ✅ A4. Dockerfile único — COMPLETADA 2026-08-28 (Ruta B: CI, sin Docker local)
 
-0. **Prerequisito:** Docker Desktop + WSL2 en esta máquina (verificar/instalar).
-1. Multi-stage: base Python slim + ffmpeg de apt + Node LTS + Chromium para Remotion; `requirements.txt` fijado (ya está).
-2. **`media/library/` excluida** vía `.dockerignore` (decisión D2). Excluir también `venv/`, `work/`, `videos/`, `.env`.
-3. Sin gotchas de Windows dentro del contenedor (el event loop y las DLLs cublas son problemas solo del dev local; whisper en contenedor = CPU o AssemblyAI vía A2).
-4. Arranque: `uvicorn server.app:app` parametrizado por env (`PORT`, `MEDIA_ROOT`, `GEN_BACKEND`…).
+**Decisión (2026-08-28):** sin Docker Desktop en esta máquina; la validación Linux corre en **GitHub Actions** (`.github/workflows/docker.yml`, runners gratis del repo privado) — el mismo workflow que en Fase 5 ganará el push a ECR. La E2E de A5 correrá local en Windows (el gate de confirmación de gasto no vive bien en CI); CI garantiza que el mismo código funciona en Linux.
 
-- **Validación:** `docker build` + levantar el contenedor con `MEDIA_ROOT` montado como volumen; f1/e1/editor abren y la suite de tests corre verde DENTRO del contenedor Linux.
+**Imagen** (`Dockerfile`): `python:3.10-slim-bookworm` + ffmpeg 5.1 + Chromium 151 + Node 20 + deps fijadas de `requirements.txt` + `npm ci` de ambos proyectos Remotion. `MEDIA_ROOT=/data` (los media NUNCA viajan en la imagen), `CMD uvicorn server.app:app` con `PORT` parametrizado. `.dockerignore`: `media/` (decisión D2), `.env`, `venv/`, `videos/`, `work/`, credenciales.
+
+**Validado en CI** (run 33147068085, 2m41s, verde a la primera): build OK; **78 tests verdes DENTRO del contenedor**; server arranca **sin `.env`** y responde `/api/estilos`, `/api/edicion/proyectos` (vacío → `[]`) y f1 estático; runtimes presentes (node v20.20.2, ffmpeg 5.1.9, Chromium 151). Sin gotchas de Windows adentro: whisper = CPU o AssemblyAI (A2).
 
 ### A5. Validación E2E final ($1-3 — SOLO con confirmación explícita del usuario)
 Flujo completo en local (idealmente contra el contenedor de A4): crear → producir (ya calibrado por A3) → editar → regenerar g2 → subtítulos → publicar fn1. Si para entonces existe `BLOTATO_API_KEY` real, probar fn2 (pendiente de Fase 3).
