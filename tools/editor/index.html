@@ -1072,9 +1072,13 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
              display: none; align-items: center; justify-content: center; }
   #b3modal.abierto, #b1modal.abierto { display: flex; }
   #b3card { background: var(--panel); border: 1px solid #3a4050; border-radius: 10px;
-            width: min(860px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
+            width: min(600px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
   #b3card h3 { font-size: 14px; margin-bottom: 12px; }
-  #b3cols { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; }
+  #b3cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px; }
+  #b3mascota { display: block; width: 88px; margin: 0 auto 10px; }
+  .b3peli { display: block; text-align: center; background: var(--accent); color: #fff !important;
+            border-radius: 6px; padding: 10px 8px; text-decoration: none; font-size: 13px; }
+  .b3peli:hover { filter: brightness(1.1); }
   .b3panel { background: var(--panel2); border: 1px solid #3a4050; border-radius: 8px; padding: 14px; }
   .b3panel h4 { font-size: 12px; color: var(--dim); text-transform: uppercase;
                 letter-spacing: .05em; margin: 0 0 10px; }
@@ -1101,7 +1105,9 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
       <span style="float:right;cursor:pointer;color:var(--dim)" onclick="document.getElementById('b3modal').classList.remove('abierto')">✕</span></h3>
   <div id="b3cols">
     <div class="b3panel"><h4>⬇ Descargar</h4><div id="b3descargas" style="font-size:13px"></div></div>
-    <div class="b3panel"><h4>🪁 Blotato</h4><div id="b3fn2"></div></div>
+    <div class="b3panel"><h4>🪁 Blotato</h4>
+      <img id="b3mascota" src="asset/blotato-mascota.png" alt="" onerror="this.style.display='none'">
+      <div id="b3fn2"></div></div>
   </div>
   <div id="b3msg"></div>
 </div></div>
@@ -1298,11 +1304,16 @@ async function b3abrir() {
   let st;
   try { st = await fj("api/publicar/estado"); }
   catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; return; }
-  $("b3descargas").innerHTML = st.descargables.length
-    ? st.descargables.map(d => `<div>⬇ <a href="descarga/${d.clave}" download>${d.nombre}</a> <span style="color:var(--dim)">(${d.mb} MB)</span></div>`).join("")
-    : "<span style='color:var(--dim)'>nada para descargar aún</span>";
+  // solo la película finalizada: la subtitulada si existe, si no la base
+  const peli = st.descargables.find(d => d.clave === "subtitulado")
+            || st.descargables.find(d => d.clave === "pelicula")
+            || st.descargables.find(d => d.nombre.endsWith(".mp4"));
+  $("b3descargas").innerHTML = peli
+    ? `<a class="b3peli" href="descarga/${peli.clave}" download>⬇ Descargar película</a>
+       <div style="color:var(--dim);font-size:11px;margin-top:8px;text-align:center">${peli.nombre} · ${peli.mb} MB</div>`
+    : "<span style='color:var(--dim)'>aún no hay película final</span>";
   if (!st.blotato) {
-    $("b3fn2").innerHTML = `<div class="b3aviso">🪁 Se necesita Blotato para publicar directamente
+    $("b3fn2").innerHTML = `<div class="b3aviso">Se necesita Blotato para publicar directamente
       <small>Agrega BLOTATO_API_KEY al .env (dashboard de Blotato → API) y reinicia el server.</small></div>`;
   } else if (st.error) {
     $("b3fn2").innerHTML = `<span style='color:#e37c7c'>${st.error}</span>`;
@@ -1310,7 +1321,8 @@ async function b3abrir() {
     $("b3fn2").innerHTML = `
       <select id="b3cuenta">${st.cuentas.map(c =>
         `<option value="${c.id}|${c.platform}">${c.platform} · ${c.fullname || c.username}</option>`).join("")}</select>
-      <select id="b3archivo">${st.descargables.filter(d => d.nombre.endsWith(".mp4")).map(d =>
+      <select id="b3archivo">${st.descargables.filter(d => d.nombre.endsWith(".mp4"))
+        .sort((a, b) => (b.clave === "subtitulado") - (a.clave === "subtitulado")).map(d =>
         `<option value="${d.clave}">${d.nombre}</option>`).join("")}</select>
       <button id="b3sugerir" style="margin-bottom:6px">✨ Sugerir títulos (~$0.01)</button>
       <div id="b3titulos"></div>

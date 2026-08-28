@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 
 ROOT = Path(__file__).resolve().parent.parent
 EDITOR_DIR = ROOT / "tools" / "editor"
@@ -113,6 +113,16 @@ def ver(name: str, clave: str, request: Request):
     if not f or f.suffix != ".mp4":
         raise HTTPException(404, f"no hay export {clave!r}")
     return _rango(f, "video/mp4", request)
+
+
+@router.get("/{name}/asset/{archivo}")
+def asset(name: str, archivo: str):
+    """Imágenes estáticas de la UI (p.ej. la mascota de Blotato en b3)."""
+    _proyecto(name)
+    f = EDITOR_DIR / Path(archivo).name
+    if f.suffix.lower() not in {".png", ".jpg", ".jpeg", ".svg", ".webp"} or not f.is_file():
+        raise HTTPException(404, "asset no existe")
+    return FileResponse(f)
 
 
 @router.post("/{name}/api/abrir-carpeta")
