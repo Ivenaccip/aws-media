@@ -1,0 +1,41 @@
+# A4 (plan AWS): valida en cada push que la imagen única construye en Linux,
+# que la suite completa corre verde DENTRO del contenedor y que el server
+# arranca y responde sin .env (las keys solo hacen falta al usar cada API).
+# En Fase 5 este mismo workflow gana el paso de push a ECR.
+name: docker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  imagen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build de la imagen
+        run: docker build -t aws-media:ci .
+
+      - name: Suite de tests dentro del contenedor
+        run: docker run --rm aws-media:ci python -m pytest tests -q
+
+      - name: Smoke del server (sin .env, MEDIA_ROOT vacío)
+        run: |
+          docker run -d --name app -p 8011:8011 aws-media:ci
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8011/api/estilos > /dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then echo "el server no respondió"; docker logs app; exit 1; fi
+          echo "— /api/estilos:"; curl -fs http://localhost:8011/api/estilos
+          echo "— /api/edicion/proyectos (MEDIA_ROOT vacío → []):"
+          curl -fs http://localhost:8011/api/edicion/proyectos
+          echo "— f1 (static):"; curl -fs http://localhost:8011/ | head -c 200; echo
+          docker logs app
+
+      - name: Runtimes de render presentes (Node/Chromium/ffmpeg)
+        run: |
+          docker run --rm aws-media:ci sh -c "node --version && ffmpeg -version | head -1 && chromium --version"

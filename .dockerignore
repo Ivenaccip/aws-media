@@ -1,0 +1,24 @@
+# secretos y entorno local — JAMÁS a la imagen
+.env
+.env.*
+!.env.example
+.video-stack/
+
+# media del usuario y librería SFX (decisión D2: no se redistribuye)
+media/
+videos/
+work/
+
+# entornos y caches
+venv/
+**/node_modules/
+**/__pycache__/
+.pytest_cache/
+.git/
+.github/
+
+# artefactos locales
+*.log
+oauth_client.json
+token_drive.json
+service_account.json
