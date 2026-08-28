@@ -2,6 +2,7 @@
 
 **Fecha:** 2026-08-27 · **Estado:** A1 completada (commit 5c20215)
 **Repo de esta versión:** github.com/Ivenaccip/**aws-media** (PRIVADO) = `D:\aws-project`, con toda la historia de edicion_y_generacion (remote local `source` = `D:\adquisition\video-stack`, para traer cambios futuros de allá). El working copy de adquisition conserva los cambios de A1 SIN commitear — la fusión original no se toca.
+**Copia de desarrollo activa (desde 2026-08-27):** `D:\aws-project`, con venv propio (Python 3.10) y `.env` con `MEDIA_ROOT=D:\adquisition\video-stack` — los proyectos (`videos/`, `work/`) se leen del working copy original sin duplicarlos (primer uso real de A1). 67 tests verdes y gen-tesla abre en el editor desde aquí. Mover los media físicamente queda para cuando convenga (solo cambiar esa línea del `.env`).
 **Fuente:** `D:\adquisition\HANDOFF-fusion-aws.md` (Fases 0-3 y F3.5 caso B completadas en local) + decisiones de riesgos acordadas el 2026-08-27.
 **Código del producto:** `D:\adquisition\video-stack` (repo privado `edicion_y_generacion`, main = fusión). **No se crea un fork AWS**: la app es una sola; esta carpeta (`D:\aws-project`) contiene el plan y, más adelante, la infraestructura (IaC) si se decide repo aparte.
 
