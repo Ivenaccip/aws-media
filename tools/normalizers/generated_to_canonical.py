@@ -217,9 +217,9 @@ def main() -> None:
 
     if not args.skip_proxy:
         subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "make_proxy.py"),
-                        f"videos/{args.nombre}"], check=True)
+                        str(proj)], check=True)
 
-    print(f"proyecto listo: videos/{args.nombre} · {len(doc['words'])} palabras · "
+    print(f"proyecto listo: {proj} · {len(doc['words'])} palabras · "
           f"{doc['source']['duration']:.1f}s · {len(doc['segments'])} segmentos")
     if chequeo := verificar_contra_guion(work_dir, doc):
         print(f"verificación: {chequeo}")

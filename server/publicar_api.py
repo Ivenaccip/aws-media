@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from pipeline import blotato
 from pipeline.config import load_prompt
 from pipeline.llm import chat_json
-from pipeline.storage import escribir_json, leer_json
+from pipeline.storage import escribir_json, leer_json, ruta_proyecto
 
 log = logging.getLogger("publicar_api")
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,9 +37,10 @@ class AgendarIn(BaseModel):
 
 
 def _proyecto(name: str) -> Path:
-    if not name.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(422, f"nombre inválido: {name}")
-    p = ROOT / "videos" / name
+    try:
+        p = ruta_proyecto(name)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     if not p.is_dir():
         raise HTTPException(404, f"proyecto {name} no existe")
     return p

@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from pipeline.storage import work_root
 
 load_dotenv()
 
@@ -24,7 +26,8 @@ def _env(name: str, default: str | None = None) -> str:
 class Settings:
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5-mini")
     ffmpeg_bin: str = os.getenv("FFMPEG_BIN", "ffmpeg")
-    work_dir: Path = Path(os.getenv("WORK_DIR", "./work"))
+    # F4.3: WORK_DIR explícito manda; si no, MEDIA_ROOT/work (default = ./work del repo)
+    work_dir: Path = field(default_factory=work_root)
     fal_concurrency: int = int(os.getenv("FAL_CONCURRENCY", "4"))
     grok_timeout_s: int = int(os.getenv("GROK_TIMEOUT_S", "300"))
     veo_timeout_s: int = int(os.getenv("VEO_TIMEOUT_S", "720"))

@@ -22,6 +22,7 @@ usuario a mano.
   └── output/                ← masters, previews y shorts exportados
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -32,7 +33,10 @@ WORK_DIRS = ["work/audio", "work/transcripts", "work/analysis",
 
 
 def project_dir(name: str) -> Path:
-    p = REPO / "videos" / name
+    # F4.3: MEDIA_ROOT redirige dónde viven los proyectos; default = raíz del repo.
+    # Mismo contrato que pipeline/storage.py (los tools no importan pipeline).
+    media_root = Path(os.environ.get("MEDIA_ROOT", str(REPO))).resolve()
+    p = media_root / "videos" / name
     if not name.replace("-", "").replace("_", "").isalnum():
         sys.exit(f"nombre de proyecto inválido: {name}")
     return p
@@ -46,7 +50,7 @@ def new(name: str) -> None:
     p = project_dir(name)
     for d in WORK_DIRS:
         (p / d).mkdir(parents=True, exist_ok=True)
-    print(f"proyecto listo: {p.relative_to(REPO)}")
+    print(f"proyecto listo: {p}")
     print(f"SHORTS_TMP del proyecto: {shorts_tmp(name)}")
 
 

@@ -20,6 +20,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 
+from pipeline.storage import ruta_proyecto, videos_root
+
 ROOT = Path(__file__).resolve().parent.parent
 EDITOR_DIR = ROOT / "tools" / "editor"
 
@@ -47,9 +49,10 @@ MEDIA = {"proxy.mp4": "video/mp4", "waveform.png": "image/png"}
 
 
 def _proyecto(name: str) -> Path:
-    if not name.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(422, f"nombre de proyecto inválido: {name}")
-    p = ROOT / "videos" / name
+    try:
+        p = ruta_proyecto(name)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     if not (p / "work" / "analysis" / "cuts.json").is_file():
         raise HTTPException(404, f"{name}: sin work/analysis/cuts.json — corre /clean-cut o el puente del generador")
     return p
@@ -130,7 +133,7 @@ def abrir_carpeta(name: str):
     """Importar (＋): abre la carpeta videos/ en el explorador del sistema —
     el server es local, así que importar metraje = dejar archivos ahí."""
     _proyecto(name)
-    carpeta = ROOT / "videos"
+    carpeta = videos_root()
     try:
         if sys.platform == "win32":
             os.startfile(carpeta)  # noqa: S606
@@ -235,7 +238,7 @@ def _run_render(name: str, style: str) -> None:
     st = _render[name]
     st.update(running=True, log=f"rendering {style} preview...\n", ok=None)
     proc = subprocess.Popen(
-        [sys.executable, str(ROOT / "tools" / "render_cuts.py"), f"videos/{name}",
+        [sys.executable, str(ROOT / "tools" / "render_cuts.py"), str(ruta_proyecto(name)),
          "--style", style, "--mode", "preview"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(ROOT),
     )

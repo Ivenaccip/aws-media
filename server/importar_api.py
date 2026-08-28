@@ -15,9 +15,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from pipeline.storage import ruta_proyecto, videos_root
+
 ROOT = Path(__file__).resolve().parent.parent
-VIDEOS = ROOT / "videos"
-MINIATURAS = VIDEOS / ".miniaturas"
 EXTS = {".mp4", ".mov", ".m4v"}
 
 router = APIRouter(prefix="/editor")
@@ -35,7 +35,7 @@ def _proyecto(name: str) -> Path:
 
 def _sueltos() -> list[Path]:
     """MP4s directamente en videos/ (no dentro de proyectos) = staging del ＋."""
-    return sorted(f for f in VIDEOS.iterdir() if f.is_file() and f.suffix.lower() in EXTS)
+    return sorted(f for f in videos_root().iterdir() if f.is_file() and f.suffix.lower() in EXTS)
 
 
 @router.get("/{name}/api/importables")
@@ -49,11 +49,12 @@ def importables(name: str):
 @router.get("/{name}/api/importables/miniatura/{archivo}")
 def miniatura(name: str, archivo: str):
     _proyecto(name)
-    src = VIDEOS / Path(archivo).name
+    src = videos_root() / Path(archivo).name
     if not src.is_file() or src.suffix.lower() not in EXTS:
         raise HTTPException(404, "no existe")
-    MINIATURAS.mkdir(exist_ok=True)
-    jpg = MINIATURAS / (src.stem + ".jpg")
+    miniaturas = videos_root() / ".miniaturas"
+    miniaturas.mkdir(exist_ok=True)
+    jpg = miniaturas / (src.stem + ".jpg")
     if not jpg.is_file() or jpg.stat().st_mtime < src.stat().st_mtime:
         r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1", "-i", str(src),
                             "-frames:v", "1", "-vf", "scale=180:-2", str(jpg)],
@@ -67,7 +68,7 @@ def _run_importar(name: str, archivos: list[str]) -> None:
     st = _jobs[name]
     st.update(running=True, log="", ok=None)
     proc = subprocess.Popen(
-        [sys.executable, str(ROOT / "tools" / "agregar_video.py"), f"videos/{name}", *archivos],
+        [sys.executable, str(ROOT / "tools" / "agregar_video.py"), str(ruta_proyecto(name)), *archivos],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         encoding="utf-8", errors="replace", cwd=str(ROOT))
     for line in proc.stdout:

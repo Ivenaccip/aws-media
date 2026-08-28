@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from langfuse import get_client, propagate_attributes
 from pydantic import BaseModel
 
-from pipeline import media_google, overlays
+from pipeline import media_google, overlays, storage
 from pipeline.config import settings
 from pipeline.pricing import estimar_regeneracion
 
@@ -49,9 +49,10 @@ N_IMAGENES = 2
 
 
 def _proyecto(name: str) -> Path:
-    if not name.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(422, f"nombre inválido: {name}")
-    p = ROOT / "videos" / name
+    try:
+        p = storage.ruta_proyecto(name)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     if not p.is_dir():
         raise HTTPException(404, f"proyecto {name} no existe")
     return p
@@ -227,7 +228,7 @@ def subs_muestra(name: str, body: MuestraIn):
     p = _proyecto(name)
     frame = body.frame
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "make_subs.py"),
-                        f"videos/{name}", "--base", str(p / "pelicula.mp4"),
+                        str(p), "--base", str(p / "pelicula.mp4"),
                         "--frame", str(frame)],
                        capture_output=True, text=True, cwd=str(ROOT))
     if r.returncode != 0:
@@ -238,7 +239,7 @@ def subs_muestra(name: str, body: MuestraIn):
 def _quemar(name: str, p: Path) -> None:
     st = _subs[name]
     proc = subprocess.Popen([sys.executable, str(ROOT / "tools" / "make_subs.py"),
-                             f"videos/{name}", "--base", str(p / "pelicula.mp4"), "--mode", "final"],
+                             str(p), "--base", str(p / "pelicula.mp4"), "--mode", "final"],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(ROOT))
     for line in proc.stdout:
         st["log"] += line

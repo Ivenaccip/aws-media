@@ -22,6 +22,7 @@ from pipeline.styles import ESTILOS
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
+from pipeline.storage import videos_root
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
@@ -44,7 +45,7 @@ _tareas: dict[str, asyncio.Task] = {}
 def proyectos_edicion():
     """Proyectos videos/video-N para la pestaña e1: estado según qué artefactos existen."""
     out = []
-    for d in sorted((ROOT / "videos").glob("*/")):
+    for d in sorted(videos_root().glob("*/")):
         if not (d / "work").is_dir():
             continue
         cuts = (d / "work" / "analysis" / "cuts.json").is_file()

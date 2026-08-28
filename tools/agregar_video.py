@@ -69,7 +69,8 @@ def main() -> None:
     for a in args.archivos:
         p = Path(a)
         if not p.is_absolute():
-            p = (ROOT / "videos" / a).resolve()
+            # los sueltos viven en la raíz videos/ que contiene al proyecto
+            p = (proj.parent / a).resolve()
         if not p.is_file():
             sys.exit(f"no existe: {p}")
         rutas.append(p)
@@ -123,10 +124,9 @@ def main() -> None:
     print("cuts.json actualizado (con respaldo)", flush=True)
 
     print("regenerando proxy del editor…", flush=True)
-    rel = proj.relative_to(ROOT).as_posix()
-    subprocess.run([sys.executable, str(ROOT / "tools" / "make_proxy.py"), rel],
+    subprocess.run([sys.executable, str(ROOT / "tools" / "make_proxy.py"), str(proj)],
                    check=True, cwd=str(ROOT))
-    print(f"✓ listo: {len(rutas)} clip(s) incorporados a {rel}", flush=True)
+    print(f"✓ listo: {len(rutas)} clip(s) incorporados a {proj.name}", flush=True)
 
 
 if __name__ == "__main__":

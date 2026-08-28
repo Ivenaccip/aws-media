@@ -185,8 +185,11 @@ def rearmar_pelicula(project: Path, con_proxy: bool = True) -> float:
         str(project / "work" / "audio" / "pelicula.wav"))
     if con_proxy:
         import sys
-        subprocess.run([sys.executable, str(project.parent.parent / "tools" / "make_proxy.py"),
-                        f"videos/{project.name}"], check=True, cwd=str(project.parent.parent))
+        # la raíz del repo sale de ESTE archivo, no del proyecto: con MEDIA_ROOT
+        # configurado el proyecto puede vivir fuera del repo
+        raiz = Path(__file__).resolve().parent.parent
+        subprocess.run([sys.executable, str(raiz / "tools" / "make_proxy.py"),
+                        str(project)], check=True, cwd=str(raiz))
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                         "-of", "csv=p=0", str(destino)], capture_output=True, text=True, check=True)
     return float(r.stdout.strip())

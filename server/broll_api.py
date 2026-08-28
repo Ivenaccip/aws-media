@@ -21,7 +21,7 @@ from langfuse import get_client, propagate_attributes
 from pipeline import overlays
 from pipeline.config import load_prompt
 from pipeline.llm import chat_json
-from pipeline.storage import leer_json
+from pipeline.storage import leer_json, ruta_proyecto
 
 log = logging.getLogger("broll_api")
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,9 +31,10 @@ MAX_PROPUESTAS = 5
 
 
 def _proyecto(name: str) -> Path:
-    if not name.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(422, f"nombre inválido: {name}")
-    p = ROOT / "videos" / name
+    try:
+        p = ruta_proyecto(name)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     if not p.is_dir():
         raise HTTPException(404, f"proyecto {name} no existe")
     return p
