@@ -4,7 +4,12 @@ import aws_cdk as cdk
 from aws_cdk import Stack, aws_ecr as ecr, aws_iam as iam
 from constructs import Construct
 
-REPO_GITHUB = "Ivenaccip/aws-media"
+# GitHub emite el sub con IDs inmutables (owner@id/repo@id) — verificado en el
+# run 33540172983; se aceptan ambos formatos por robustez.
+SUB_PATTERNS = [
+    "repo:Ivenaccip/aws-media:*",
+    "repo:Ivenaccip@45603061/aws-media@1349232464:*",
+]
 
 
 class BaseStack(Stack):
@@ -23,7 +28,7 @@ class BaseStack(Stack):
                 provider.open_id_connect_provider_arn,
                 conditions={
                     "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
-                    "StringLike": {"token.actions.githubusercontent.com:sub": f"repo:{REPO_GITHUB}:*"},
+                    "StringLike": {"token.actions.githubusercontent.com:sub": SUB_PATTERNS},
                 },
             ),
             max_session_duration=cdk.Duration.hours(1),
