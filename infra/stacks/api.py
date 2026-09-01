@@ -10,12 +10,14 @@ from aws_cdk import (
     aws_cognito as cognito,
     aws_ecr as ecr,
     aws_lambda as lambda_,
+    aws_rds as rds,
 )
 from constructs import Construct
 
 
 class ApiStack(Stack):
-    def __init__(self, scope: Construct, id_: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, id_: str, *,
+                 cluster: rds.DatabaseCluster, **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
 
         repo = ecr.Repository.from_repository_name(self, "Repo", "aws-media")
@@ -32,12 +34,21 @@ class ApiStack(Stack):
                 "MEDIA_ROOT": "/data",       # horneado vacío en la imagen (C3 lo lleva a S3)
                 "PYTHONIOENCODING": "utf-8",
                 "HOME": "/tmp",              # único directorio escribible en Lambda
+                # C2: la verdad de los proyectos vive en Aurora vía Data API;
+                # el workdir cae en /tmp (artefactos efímeros hasta C3/S3).
+                "STATE_BACKEND": "postgres",
+                "WORK_DIR": "/tmp/work",
+                "DB_CLUSTER_ARN": cluster.cluster_arn,
+                "DB_SECRET_ARN": cluster.secret.secret_arn,
+                "DB_NAME": "media",
             },
             # La regla single-worker se protege aquí cuando la cuota de la
             # cuenta lo permita (las cuentas nuevas traen 10 concurrentes y
             # reservar 1 rompe el mínimo no-reservado; aumento ya solicitado).
             # En C1 no hay estado que proteger: FS de solo lectura y sin datos.
         )
+
+        cluster.grant_data_api_access(fn)   # rds-data + leer el secreto del clúster
 
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name="aws-media",

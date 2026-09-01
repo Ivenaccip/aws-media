@@ -1,4 +1,6 @@
-"""Proyecto = una sesión de la UI. Estado persistido en work/<id>/proyecto.json."""
+"""Proyecto = una sesión de la UI. Estado persistido en work/<id>/proyecto.json;
+con STATE_BACKEND=postgres (C2) la fuente de verdad es Aurora vía pipeline.db y
+el JSON del workdir queda como artefacto efímero (en Lambda, /tmp)."""
 from __future__ import annotations
 
 import json
@@ -9,6 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from . import db
 from .config import settings
 
 Estado = Literal["creado", "preparando", "revision", "produciendo", "listo", "error"]
@@ -81,8 +84,13 @@ class Proyecto(BaseModel):
         return self.workdir / "proyecto.json"
 
     def guardar(self) -> None:
+        # El archivo se escribe SIEMPRE: el pipeline trabaja sobre el workdir
+        # (con backend postgres es artefacto efímero; la verdad vive en Aurora).
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.archivo.write_text(self.model_dump_json(indent=2), encoding="utf-8")
+        if db.backend() == "postgres":
+            db.guardar_proyecto(db.usuario_actual(), self.id, self.creado,
+                                self.estado, self.brief, self.model_dump_json())
 
     def texto_guion(self) -> str:
         return "\n\n".join(e.narracion for e in self.guion)
@@ -102,6 +110,9 @@ def nuevo_proyecto(brief: str, estilo: str, estilo_custom: str | None, duracion_
 
 
 def cargar_proyecto(id_: str) -> Proyecto | None:
+    if db.backend() == "postgres":
+        doc = db.cargar_proyecto(db.usuario_actual(), id_)
+        return Proyecto.model_validate(doc) if doc else None
     f = settings.work_dir / id_ / "proyecto.json"
     if not f.exists():
         return None
@@ -109,6 +120,9 @@ def cargar_proyecto(id_: str) -> Proyecto | None:
 
 
 def listar_proyectos() -> list[Proyecto]:
+    if db.backend() == "postgres":
+        return [Proyecto.model_validate(d)
+                for d in db.listar_proyectos(db.usuario_actual())]
     out = []
     for f in settings.work_dir.glob("*/proyecto.json"):
         try:
