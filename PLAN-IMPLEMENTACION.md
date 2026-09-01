@@ -98,9 +98,13 @@ Repositorio creado: `191241816158.dkr.ecr.us-east-1.amazonaws.com/aws-media` (sc
 
 Arquitectura objetivo (sin cambios, §3 del HANDOFF): API Gateway + Lambda (Mangum, **fuera de VPC**) · Aurora Serverless v2 (0 ACU, **Data API**) · SQS + Lambda-contenedor/Fargate/Step Functions · S3 + CloudFront con subidas prefirmadas · Cognito · Parameter Store · CloudWatch + Langfuse. **Exclusiones deliberadas:** sin NAT Gateway, sin OpenSearch, sin SageMaker.
 
-### C1. Rebanada "API viva"
-API Gateway HTTP + Lambda con Mangum sirviendo `server/app.py` + Cognito (login email) + Route 53/dominio.
-- **Criterio:** f1 abre desde una URL de AWS tras login, aunque sin datos. La latencia de arranque en frío y de reanudación de Aurora (~15 s) se enmascara con la pantalla de carga de f1.
+### ✅ C1. Rebanada "API viva" — DESPLEGADA 2026-09-01
+
+**URL:** `https://2ecset5i94.execute-api.us-east-1.amazonaws.com` — f1 abre, `/api/estilos` y `/api/edicion/proyectos` responden (arranque frío 26.8 s con la imagen de 1.2 GB — se enmascara con la pantalla de carga de f1; caliente 0.13 s).
+
+**Cómo quedó:** `server/lambda_handler.py` (Mangum sobre la MISMA app) · Lambda contenedor con la imagen de A4 (`latest` de ECR, entrypoint sobreescrito a `awslambdaric`) · API Gateway HTTP · CI empuja la imagen validada vía **rol OIDC** `aws-media-github-ecr` (gotcha real: GitHub ahora emite el `sub` con IDs inmutables `owner@id/repo@id` — la trust acepta ambos formatos) · Cognito pool `us-east-1_WyPvxnj1V` + client + dominio `media-ivenaccip` creados.
+
+**Deudas registradas de la rebanada:** (1) la **exigencia de login** se cablea cuando el frontend tenga pantalla de auth (pool listo, endpoints hoy abiertos — no publicar la URL); (2) `reserved_concurrency=1` no cupo en la cuota inicial de la cuenta (10 concurrentes; se auto-eleva) — restaurar cuando crezca; hoy no hay estado que proteger (FS solo lectura, sin datos); (3) actualizar la Lambda a una imagen nueva = `cdk deploy` (toma el `latest` del momento) — CD automático vendrá después. Gotchas aprendidos: dominio Cognito no admite la palabra "aws"; un CREATE fallido con RETAIN deja pools huérfanos (limpiados).
 
 ### C2. Rebanada "estado"
 Aurora Sv2 Postgres (mín 0 ACU auto-pause, Data API) + migrar `pipeline/storage.py` de JSON a Postgres: proyectos, clips, versiones, libro de costes — **`user_id` en todo** desde el primer esquema.

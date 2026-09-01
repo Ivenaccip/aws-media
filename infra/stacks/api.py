@@ -33,9 +33,10 @@ class ApiStack(Stack):
                 "PYTHONIOENCODING": "utf-8",
                 "HOME": "/tmp",              # único directorio escribible en Lambda
             },
-            # regla dura del plan: single-worker hasta que el estado viva en
-            # Postgres (C2) y los trabajos en colas (C4)
-            reserved_concurrent_executions=1,
+            # La regla single-worker se protege aquí cuando la cuota de la
+            # cuenta lo permita (las cuentas nuevas traen 10 concurrentes y
+            # reservar 1 rompe el mínimo no-reservado; aumento ya solicitado).
+            # En C1 no hay estado que proteger: FS de solo lectura y sin datos.
         )
 
         http_api = apigwv2.HttpApi(
@@ -57,8 +58,9 @@ class ApiStack(Stack):
                 callback_urls=["https://localhost/callback"],
             ),
         )
+        # ojo: los prefijos de dominio Cognito no admiten la palabra reservada "aws"
         pool.add_domain("Domain", cognito_domain=cognito.CognitoDomainOptions(
-            domain_prefix="aws-media-ivenaccip"))
+            domain_prefix="media-ivenaccip"))
 
         cdk.CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)
