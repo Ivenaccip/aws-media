@@ -84,7 +84,7 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 ## ✅ BLOQUE B — Cuenta AWS preparada (COMPLETADO 2026-08-28)
 
 ### ✅ B1. Cuenta y seguridad
-Cuenta `191241816158` creada por el usuario con MFA en root (root no se usa más); usuario IAM `admin-cli` (AdministratorAccess, solo CLI) configurado con `aws configure` local (región `us-east-1`). **AWS Budgets activo ANTES que cualquier servicio:** presupuesto mensual `aws-media-mensual` de $50 con avisos a ivenaccip@gmail.com al 20 % ($10), 50 % ($25), 100 % ($50) reales + pronóstico >100 %.
+Cuenta `191241816158` creada por el usuario con MFA en root (root no se usa más); usuario IAM `admin-cli` (AdministratorAccess, solo CLI) configurado con `aws configure` local (región `us-east-1`). **AWS Budgets activo ANTES que cualquier servicio:** presupuesto mensual `aws-media-mensual` de $50 con avisos a ivenaccip@gmail.com al 20 % ($10), 50 % ($25), 100 % ($50) y $75 absoluto (última alarma de escalada) reales + pronóstico >100 %.
 
 ### ✅ B2. IaC
 CDK elegido (constructos de alto nivel para Lambda contenedor + Fargate + Step Functions; stack del producto ya es Python). AWS CLI 2.36 + CDK 2.1139 instalados en la máquina; **`cdk bootstrap` hecho** en `aws://191241816158/us-east-1` (stack CDKToolkit). Ubicación de la infra: carpeta `infra/` en este repo (se crea en C1).
