@@ -1,0 +1,4 @@
+# deps de la infraestructura (CDK Python) — se instalan en el venv del repo:
+#   venv/Scripts/pip install -r infra/requirements.txt
+aws-cdk-lib==2.221.0
+constructs>=10.0.0,<11.0.0

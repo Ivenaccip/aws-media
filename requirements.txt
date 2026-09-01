@@ -44,6 +44,7 @@ python-dotenv==1.2.3
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 python-multipart==0.0.32
+mangum==0.19.0          # adaptador API Gateway→ASGI (Fase 5 C1; inocuo en local)
 
 # --- tests
 pytest==9.1.1

@@ -28,6 +28,9 @@ ENV PYTHONUNBUFFERED=1 \
 # deps Python fijadas (cache de capa: solo se reinstala si cambia requirements)
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+# runtime interface client de Lambda (C1): el default CMD sigue siendo uvicorn;
+# la Lambda sobreescribe entrypoint/cmd a awslambdaric + server.lambda_handler
+RUN pip install --no-cache-dir "awslambdaric>=2,<4"
 
 # deps de los dos proyectos Remotion (shorts captions / beats longform)
 COPY remotion/package.json remotion/package-lock.json remotion/

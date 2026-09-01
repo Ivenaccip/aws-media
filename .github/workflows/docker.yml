@@ -9,6 +9,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  id-token: write   # OIDC hacia AWS (rol aws-media-github-ecr, sin access keys)
+  contents: read
+
 jobs:
   imagen:
     runs-on: ubuntu-latest
@@ -39,3 +43,21 @@ jobs:
       - name: Runtimes de render presentes (Node/Chromium/ffmpeg)
         run: |
           docker run --rm aws-media:ci sh -c "node --version && ffmpeg -version | head -1 && chromium --version"
+
+      # Solo si TODO lo anterior pasó: la imagen validada se publica en ECR
+      # (C1 — la Lambda del API la consume por el tag latest).
+      - name: Credenciales AWS (OIDC)
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::191241816158:role/aws-media-github-ecr
+          aws-region: us-east-1
+
+      - name: Push a ECR (latest + sha)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          ECR=191241816158.dkr.ecr.us-east-1.amazonaws.com
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
+          docker tag aws-media:ci $ECR/aws-media:latest
+          docker tag aws-media:ci $ECR/aws-media:${{ github.sha }}
+          docker push --all-tags $ECR/aws-media
