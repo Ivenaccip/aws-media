@@ -45,3 +45,6 @@ media/projects/
 
 # Chrome Headless Shell que descarga Remotion
 .remotion/
+
+# CDK synth output
+infra/cdk.out/
