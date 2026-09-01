@@ -106,10 +106,15 @@ Arquitectura objetivo (sin cambios, §3 del HANDOFF): API Gateway + Lambda (Mang
 
 **Deudas registradas de la rebanada:** (1) la **exigencia de login** se cablea cuando el frontend tenga pantalla de auth (pool listo, endpoints hoy abiertos — no publicar la URL); (2) `reserved_concurrency=1` no cupo en la cuota inicial de la cuenta (10 concurrentes; se auto-eleva) — restaurar cuando crezca; hoy no hay estado que proteger (FS solo lectura, sin datos); (3) actualizar la Lambda a una imagen nueva = `cdk deploy` (toma el `latest` del momento) — CD automático vendrá después. Gotchas aprendidos: dominio Cognito no admite la palabra "aws"; un CREATE fallido con RETAIN deja pools huérfanos (limpiados).
 
-### C2. Rebanada "estado"
-Aurora Sv2 Postgres (mín 0 ACU auto-pause, Data API) + migrar `pipeline/storage.py` de JSON a Postgres: proyectos, clips, versiones, libro de costes — **`user_id` en todo** desde el primer esquema.
-- **Criterio:** crear/listar proyectos desde la UI en AWS; los datos sobreviven al pause/resume de Aurora.
-- Gracias a A1/F4.1, esto es cambiar un módulo, no cazar `open()`.
+### ✅ C2. Rebanada "estado" — DESPLEGADA 2026-09-01
+
+**Cómo quedó:** stack `aws-media-db` = Aurora Serverless v2 **PG 16.14** (mín 0 ACU con auto-pausa, máx 1, Data API, `RemovalPolicy.SNAPSHOT`) en VPC aislada sin NAT — la Lambda sigue FUERA de la VPC y habla por rds-data (HTTPS). `pipeline/db.py` = cliente Data API + esquema con **`user_id` en toda fila** (`usuarios`, `proyectos_gen`, `proyectos_editor`, `clip_versiones`, `costes`) + repo de proyectos; `pipeline/project.py` elige backend por `STATE_BACKEND` (json = dev local intacto; postgres = AWS, doc Pydantic entero como JSONB). Esquema idempotente con `tools/db_migrate.py`. Suite 90 tests.
+
+**Criterio verificado en vivo:** POST `/api/proyectos` → fila en Aurora con `user_id=piloto` (y la actualización de estado del pipeline también viajó); GET lista desde Postgres; auto-pausa real a 0 ACU a los ~8 min y **primera petición tras la pausa: 200 en 25.0 s con datos intactos** (reintento ante `DatabaseResuming` en `db.ejecutar`).
+
+**Gotchas reales:** (1) CloudFormation NO actualiza el código de la Lambda si la cadena ImageUri no cambia — `repo:latest` dejó la función con la imagen de C1; ahora `infra/app.py` fija el **digest real** de `:latest` en cada synth (cierra la deuda 3 de C1: actualizar imagen = `cdk deploy`, ahora sí). (2) Las versiones menores de RDS rotan más rápido que el enum del CDK (16.6 ya no existía) → `AuroraPostgresEngineVersion.of()`. (3) Los artefactos del workdir caen en `/tmp/work` (efímeros hasta C3/S3): comprobado que sin Postgres el proyecto "desaparecía" con el contenedor.
+
+**Deudas de la rebanada:** (1) reanudar tras pausa consume ~25 de los 29 s del timeout — una petición muy temprana puede dar 504; lo enmascara la pantalla de carga de f1 y desaparece si C4 calienta el clúster antes de encolar; (2) `usuario piloto` fijo (`DEFAULT_USER_ID`) hasta exigir login Cognito (deuda C1); (3) `proyectos_editor`/`clip_versiones`/`costes` creadas pero se cablean en C3/C4/C5. Coste en reposo: ~$0.50/mes (secreto $0.40 + storage).
 
 ### C3. Rebanada "media"
 S3 (bucket por entorno) + CloudFront + subidas prefirmadas directo navegador↔S3. `MEDIA_ROOT` (A1) apunta al layout S3.
