@@ -22,8 +22,10 @@ class DbStack(Stack):
         )
         self.cluster = rds.DatabaseCluster(
             self, "Db",
+            # of(): las versiones menores rotan en RDS más rápido que el enum
+            # del CDK (16.6 ya no existía al desplegar — verificado por API)
             engine=rds.DatabaseClusterEngine.aurora_postgres(
-                version=rds.AuroraPostgresEngineVersion.VER_16_6),
+                version=rds.AuroraPostgresEngineVersion.of("16.14", "16")),
             writer=rds.ClusterInstance.serverless_v2("writer"),
             serverless_v2_min_capacity=0,   # 0 = auto-pausa (requiere PG >= 16.3)
             serverless_v2_max_capacity=1,

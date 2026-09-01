@@ -17,14 +17,17 @@ from constructs import Construct
 
 class ApiStack(Stack):
     def __init__(self, scope: Construct, id_: str, *,
-                 cluster: rds.DatabaseCluster, **kwargs) -> None:
+                 cluster: rds.DatabaseCluster, image_ref: str = "latest",
+                 **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
 
         repo = ecr.Repository.from_repository_name(self, "Repo", "aws-media")
         fn = lambda_.DockerImageFunction(
             self, "Api",
+            # image_ref = digest resuelto en app.py (nunca el tag "latest":
+            # CloudFormation no ve cambios en esa cadena y no actualiza el código)
             code=lambda_.DockerImageCode.from_ecr(
-                repo, tag_or_digest="latest",
+                repo, tag_or_digest=image_ref,
                 entrypoint=["/usr/local/bin/python", "-m", "awslambdaric"],
                 cmd=["server.lambda_handler.handler"],
             ),

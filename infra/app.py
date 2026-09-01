@@ -17,6 +17,8 @@ Deploy (desde infra/, con el venv del repo en PATH):
   cdk deploy aws-media-api      # requiere la imagen :latest ya en ECR (CI)
 Tras el primer deploy de db: python tools/db_migrate.py (esquema idempotente).
 """
+import sys
+
 import aws_cdk as cdk
 
 from stacks.base import BaseStack
@@ -25,8 +27,26 @@ from stacks.db import DbStack
 
 ENV = cdk.Environment(account="191241816158", region="us-east-1")
 
+
+def _digest_latest() -> str:
+    """CloudFormation solo actualiza el código de la Lambda si cambia la cadena
+    ImageUri — y "repo:latest" nunca cambia como cadena, así que un cdk deploy
+    tras subir imagen nueva NO la despliega (mordió en C2: la función siguió con
+    la imagen de C1). Por eso cada synth fija el digest REAL del :latest."""
+    try:
+        import boto3
+        img = boto3.client("ecr", region_name="us-east-1").describe_images(
+            repositoryName="aws-media", imageIds=[{"imageTag": "latest"}])
+        return img["imageDetails"][0]["imageDigest"]
+    except Exception as e:  # noqa: BLE001 — synth sin credenciales sigue funcionando
+        print(f"AVISO: sin digest de :latest ({e}); se usa el tag 'latest' y "
+              "CloudFormation puede NO actualizar el código", file=sys.stderr)
+        return "latest"
+
+
 app = cdk.App()
 BaseStack(app, "aws-media-base", env=ENV)
 db = DbStack(app, "aws-media-db", env=ENV)
-ApiStack(app, "aws-media-api", env=ENV, cluster=db.cluster)
+ApiStack(app, "aws-media-api", env=ENV, cluster=db.cluster,
+         image_ref=_digest_latest())
 app.synth()
