@@ -81,20 +81,16 @@ Todo el trabajo de este bloque ocurre en `D:\adquisition\video-stack`. Criterio 
 
 ---
 
-## BLOQUE B — Preparar la cuenta AWS (1-2 días, en paralelo al Bloque A)
+## ✅ BLOQUE B — Cuenta AWS preparada (COMPLETADO 2026-08-28)
 
-### B1. Cuenta y seguridad
-1. Cuenta AWS (o cuenta nueva dentro de una Organization). MFA en root; root no se usa más.
-2. Usuario/rol IAM de administración con permisos mínimos para el desarrollo.
-3. **Alarmas de presupuesto desde el día uno** (AWS Budgets: alerta a $10, $25, $50). Las APIs de video queman dinero; esto NO es opcional.
+### ✅ B1. Cuenta y seguridad
+Cuenta `191241816158` creada por el usuario con MFA en root (root no se usa más); usuario IAM `admin-cli` (AdministratorAccess, solo CLI) configurado con `aws configure` local (región `us-east-1`). **AWS Budgets activo ANTES que cualquier servicio:** presupuesto mensual `aws-media-mensual` de $50 con avisos a ivenaccip@gmail.com al 20 % ($10), 50 % ($25), 100 % ($50) reales + pronóstico >100 %.
 
-### B2. Herramienta de IaC
-**Decisión recomendada: CDK en Python** — todo el stack del producto es Python y CDK tiene constructos de alto nivel para exactamente esta combinación (Lambda contenedor + Fargate + Step Functions).
-- Ubicación pendiente de decidir: carpeta `infra/` dentro del repo (recomendado: el deploy siempre corresponde a un commit del producto) o repo aparte en `D:\aws-project`.
-- Bootstrap: `cdk bootstrap` en la región elegida (recomendado `us-east-1`: Langfuse US ya está ahí y es donde antes llegan los servicios nuevos).
+### ✅ B2. IaC
+CDK elegido (constructos de alto nivel para Lambda contenedor + Fargate + Step Functions; stack del producto ya es Python). AWS CLI 2.36 + CDK 2.1139 instalados en la máquina; **`cdk bootstrap` hecho** en `aws://191241816158/us-east-1` (stack CDKToolkit). Ubicación de la infra: carpeta `infra/` en este repo (se crea en C1).
 
-### B3. ECR
-Repositorio para la imagen de A4; primer push manual para validar que la imagen corre en la nube tal cual.
+### ✅ B3. ECR
+Repositorio creado: `191241816158.dkr.ecr.us-east-1.amazonaws.com/aws-media` (scan on push activado). Sin Docker local (decisión de A4), el push de la imagen lo hará el workflow de CI — se cablea en C1/C4 con un rol OIDC GitHub→AWS (sin access keys en GitHub).
 
 ---
 
