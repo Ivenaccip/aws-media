@@ -136,6 +136,21 @@ ESQUEMA: list[str] = [
         traza       text,
         creado      timestamptz NOT NULL DEFAULT now()
     )""",
+    # C5 — monedero: saldo materializado + libro mayor de movimientos.
+    # El gate duro es el UPDATE condicionado de cobrar_creditos (atómico).
+    """CREATE TABLE IF NOT EXISTS monedero (
+        user_id     text PRIMARY KEY REFERENCES usuarios(id),
+        saldo       int  NOT NULL DEFAULT 0 CHECK (saldo >= 0),
+        actualizado timestamptz NOT NULL DEFAULT now()
+    )""",
+    """CREATE TABLE IF NOT EXISTS monedero_movimientos (
+        id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        user_id    text NOT NULL,
+        creditos   int  NOT NULL,
+        tipo       text NOT NULL,
+        referencia text,
+        creado     timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
@@ -189,6 +204,57 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
         "SELECT nombre, doc::text AS doc FROM proyectos_editor "
         "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
+
+
+# ---------------------------------------------------------------------------
+# monedero de créditos (C5 — lo consume pipeline/creditos.py)
+
+def saldo_creditos(user_id: str) -> int:
+    filas = ejecutar("SELECT saldo FROM monedero WHERE user_id = :u", {"u": user_id})
+    return int(filas[0]["saldo"]) if filas else 0
+
+
+def abonar_creditos(user_id: str, creditos: int, tipo: str,
+                    referencia: str | None = None) -> int:
+    """Suma créditos (cortesía, compra, devolución o ajuste admin — puede ser
+    negativo en ajustes). Devuelve el saldo resultante."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """INSERT INTO monedero (user_id, saldo) VALUES (:u, :n)
+           ON CONFLICT (user_id) DO UPDATE
+             SET saldo = monedero.saldo + :n, actualizado = now()
+           RETURNING saldo""",
+        {"u": user_id, "n": creditos})
+    ejecutar(
+        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+           VALUES (:u, :n, :t, :r)""",
+        {"u": user_id, "n": creditos, "t": tipo, "r": referencia})
+    return int(filas[0]["saldo"])
+
+
+def cobrar_creditos(user_id: str, creditos: int,
+                    referencia: str | None = None) -> int | None:
+    """EL gate duro: UPDATE condicionado — si el saldo no alcanza (o no hay
+    monedero) no toca nada y devuelve None. Atómico aunque haya concurrencia."""
+    filas = ejecutar(
+        """UPDATE monedero SET saldo = saldo - :n, actualizado = now()
+           WHERE user_id = :u AND saldo >= :n RETURNING saldo""",
+        {"u": user_id, "n": creditos})
+    if not filas:
+        return None
+    ejecutar(
+        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+           VALUES (:u, :n, 'cargo', :r)""",
+        {"u": user_id, "n": -creditos, "r": referencia})
+    return int(filas[0]["saldo"])
+
+
+def movimientos_creditos(user_id: str, limite: int = 20) -> list[dict]:
+    return ejecutar(
+        "SELECT creditos, tipo, referencia, creado FROM monedero_movimientos "
+        "WHERE user_id = :u ORDER BY id DESC LIMIT :l",
+        {"u": user_id, "l": limite})
 
 
 def cargar_proyecto(user_id: str, id_: str) -> dict | None:

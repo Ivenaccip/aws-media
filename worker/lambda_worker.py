@@ -17,7 +17,7 @@ import json
 import logging
 import os
 
-from worker.env_ssm import cargar_env_ssm
+from worker.env_ssm import cargar_env_ssm, cargar_env_usuario
 
 cargar_env_ssm()
 
@@ -29,7 +29,8 @@ log = logging.getLogger("worker")
 
 def _preparar(user_id: str, proyecto_id: str) -> None:
     os.environ["DEFAULT_USER_ID"] = user_id
-    from pipeline import flow, media_sync
+    cargar_env_usuario(user_id)   # C5: claves por-usuario pisan a las de plataforma
+    from pipeline import creditos, flow, media_sync
     from pipeline.project import cargar_proyecto
 
     p = cargar_proyecto(proyecto_id)
@@ -45,6 +46,9 @@ def _preparar(user_id: str, proyecto_id: str) -> None:
         # el estado ya quedó registrado en Postgres para la UI; no relanzamos
         # el mensaje (un guion fallido no mejora por reintentarse en la DLQ)
         log.error("%s: preparar terminó en error: %s", proyecto_id, p.error)
+        if creditos.activo():   # C5: fallo nuestro = créditos de vuelta
+            creditos.devolver(creditos.costo_preparar(), f"preparar:{proyecto_id}")
+            log.info("%s: %d créditos devueltos", proyecto_id, creditos.costo_preparar())
 
 
 def _smoke() -> None:

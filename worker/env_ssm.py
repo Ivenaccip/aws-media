@@ -27,3 +27,24 @@ def cargar_env_ssm() -> int:
                 os.environ[nombre] = p["Value"]
                 n += 1
     return n
+
+
+def cargar_env_usuario(user_id: str) -> int:
+    """C5 (decisión D4) — claves POR-USUARIO: SecureString bajo
+    SSM_USUARIOS_PREFIX/<user_id>/CLAVE (las sube tools/ssm_env.py --usuario).
+    A diferencia de las de plataforma, estas PISAN el entorno: la clave del
+    usuario (p. ej. su BLOTATO_API_KEY) manda sobre la de la casa. Llamar
+    después de fijar DEFAULT_USER_ID y antes de importar pipeline."""
+    prefijo = os.getenv("SSM_USUARIOS_PREFIX", "")
+    if not prefijo or not user_id:
+        return 0
+    import boto3
+    ssm = boto3.client("ssm")
+    n = 0
+    pag = ssm.get_paginator("get_parameters_by_path")
+    ruta = f"{prefijo.rstrip('/')}/{user_id}/"
+    for pagina in pag.paginate(Path=ruta, Recursive=True, WithDecryption=True):
+        for p in pagina["Parameters"]:
+            os.environ[p["Name"].rsplit("/", 1)[-1]] = p["Value"]
+            n += 1
+    return n

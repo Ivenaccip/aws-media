@@ -1,0 +1,23 @@
+{
+  "comment": "ÚNICA fuente de la tarifa en CRÉDITOS de la plataforma (spec: docs/ECONOMIA.md). Es tarifa de NEGOCIO — los costos en dólares de los vendors siguen viviendo SOLO en tools/pricing.json. Regla de redacción en UI: los créditos se escriben como enteros ('100 créditos') y los dólares como '$X.XX dólares'. Cada herramienta futura (RAG, CRM) agrega aquí su sección con el mismo formato.",
+  "verified_on": "2026-09-02",
+  "video": {
+    "preparar": 10,
+    "por_segundo": 3,
+    "por_segundo_premium": 4,
+    "imagen": 2,
+    "imagen_pro": 10,
+    "nota": "producir se cobra por duración OBJETIVO del proyecto (la estimación redondeada hacia arriba, gate 428); re-generar una escena = por_segundo × segundos de la escena. Lo que no quema dinero (editar, subtítulos, re-renders locales) = 0 créditos."
+  },
+  "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
+  "packs_usd": [
+    { "creditos": 100, "usd": 1.99 },
+    { "creditos": 500, "usd": 8.5 },
+    { "creditos": 1200, "usd": 18.0 }
+  ],
+  "economia": {
+    "costo_interno_usd_por_credito": 0.0135,
+    "piso_venta_usd_por_credito": 0.015,
+    "nota": "costo interno medido en el E2E de C4 (película 30 s = $1.35 = 100 créditos); bajo el piso, una subida de fal nos deja en pérdida"
+  }
+}

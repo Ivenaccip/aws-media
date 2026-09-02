@@ -32,6 +32,7 @@ from aws_cdk import (
 from constructs import Construct
 
 SSM_PREFIX = "/media-ivenaccip/env"   # "aws*" es prefijo reservado en SSM
+SSM_USUARIOS = "/media-ivenaccip/usuarios"   # C5: claves POR-USUARIO (D4)
 
 
 class JobsStack(Stack):
@@ -49,6 +50,8 @@ class JobsStack(Stack):
             "MEDIA_BUCKET": media_bucket.bucket_name,
             "CDN_BASE": f"https://{cdn_domain}",
             "SSM_ENV_PREFIX": SSM_PREFIX,
+            "SSM_USUARIOS_PREFIX": SSM_USUARIOS,
+            "CREDITOS_BACKEND": "postgres",   # C5: monedero + devoluciones
             "WORK_DIR": "/tmp/work",
             "MEDIA_ROOT": "/tmp/media",
             "HOME": "/tmp",
@@ -62,7 +65,8 @@ class JobsStack(Stack):
             role.add_to_principal_policy(iam.PolicyStatement(
                 actions=["ssm:GetParameter", "ssm:GetParameters",
                          "ssm:GetParametersByPath"],
-                resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{SSM_PREFIX}*"]))
+                resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{SSM_PREFIX}*",
+                           f"arn:aws:ssm:{self.region}:{self.account}:parameter{SSM_USUARIOS}*"]))
 
         # --- 1) cola + worker de trabajos cortos -----------------------------
         dlq = sqs.Queue(self, "JobsDlq", retention_period=Duration.days(14))

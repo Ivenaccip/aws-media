@@ -24,7 +24,7 @@ from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import videos_root
-from pipeline import db, jobs, media_sync
+from pipeline import creditos, db, jobs, media_sync
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
@@ -130,13 +130,25 @@ async def crear(
         destino.write_bytes(await f.read())
         p.referencias.append(Referencia(nombre_archivo=f.filename, path=str(destino)))
     p.guardar()
-    if jobs.backend() == "aws":
-        # C4: preparar corre en el worker SQS. Las refs viajan por S3 (este /tmp
-        # no es el del worker); ambos comparten WORK_DIR, así que el path coincide.
-        media_sync.subir_dir(p.workdir, media_sync.prefijo_work(db.usuario_actual(), p.id))
-        jobs.encolar_preparar(db.usuario_actual(), p.id)
-    else:
-        _lanzar(p, flow.preparar(p))
+    # C5 gate duro: sin saldo no se lanza nada que cueste dinero. El cobro es
+    # atómico en Postgres; si algo truena DESPUÉS del cobro, se devuelve.
+    if creditos.activo():
+        try:
+            creditos.cobrar(creditos.costo_preparar(), f"preparar:{p.id}")
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    try:
+        if jobs.backend() == "aws":
+            # C4: preparar corre en el worker SQS. Las refs viajan por S3 (este /tmp
+            # no es el del worker); ambos comparten WORK_DIR, así que el path coincide.
+            media_sync.subir_dir(p.workdir, media_sync.prefijo_work(db.usuario_actual(), p.id))
+            jobs.encolar_preparar(db.usuario_actual(), p.id)
+        else:
+            _lanzar(p, flow.preparar(p))
+    except Exception:
+        if creditos.activo():
+            creditos.devolver(creditos.costo_preparar(), f"preparar:{p.id}")
+        raise
     return p
 
 
@@ -223,8 +235,25 @@ class EstimacionIn(BaseModel):
 
 @app.post("/api/proyectos/{id_}/estimacion")
 def estimacion(id_: str, body: EstimacionIn):
-    _proyecto(id_)
-    return estimar_produccion([t for t in body.escenas if t.strip()])
+    p = _proyecto(id_)
+    est = estimar_produccion([t for t in body.escenas if t.strip()])
+    if creditos.activo():
+        # el cobro real de producir es por duración OBJETIVO (docs/ECONOMIA.md)
+        est["creditos"] = creditos.costo_producir(p.duracion_s)
+        est["creditos_saldo"] = creditos.saldo()
+    return est
+
+
+@app.get("/api/creditos")
+def creditos_estado():
+    """Saldo y movimientos del monedero (C5). Sin backend: {"activo": False}."""
+    if not creditos.activo():
+        return {"activo": False}
+    u = db.usuario_actual()
+    return {"activo": True, "saldo": creditos.saldo(u),
+            "tarifas": {"preparar": creditos.costo_preparar(),
+                        "video_por_segundo": creditos.VIDEO_CR_POR_SEGUNDO},
+            "movimientos": db.movimientos_creditos(u, 20)}
 
 
 @app.post("/api/proyectos/{id_}/producir")
@@ -237,14 +266,27 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
         raise HTTPException(422, "El guion está vacío")
     if p.personaje.url_elegida is None:
         raise HTTPException(422, "Elige una opción de personaje")
-    if jobs.backend() == "aws":
-        # C4 regla dura: producciones SIEMPRE por Step Functions (→ Fargate).
-        # Marcar produciendo aquí evita el doble arranque por doble clic.
-        p.estado, p.etapa = "produciendo", "encolado"
-        p.guardar()
-        jobs.lanzar_produccion(db.usuario_actual(), p.id)
-    else:
-        _lanzar(p, flow.producir(p))
+    # C5: se cobra la duración objetivo ANTES de lanzar (estimación hacia
+    # arriba); si la producción falla, el worker devuelve los créditos.
+    costo_cr = creditos.costo_producir(p.duracion_s)
+    if creditos.activo():
+        try:
+            creditos.cobrar(costo_cr, f"producir:{p.id}")
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    try:
+        if jobs.backend() == "aws":
+            # C4 regla dura: producciones SIEMPRE por Step Functions (→ Fargate).
+            # Marcar produciendo aquí evita el doble arranque por doble clic.
+            p.estado, p.etapa = "produciendo", "encolado"
+            p.guardar()
+            jobs.lanzar_produccion(db.usuario_actual(), p.id)
+        else:
+            _lanzar(p, flow.producir(p))
+    except Exception:
+        if creditos.activo():
+            creditos.devolver(costo_cr, f"producir:{p.id}")
+        raise
     return p
 
 

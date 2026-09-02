@@ -58,6 +58,9 @@ class ApiStack(Stack):
                 "JOBS_QUEUE_URL": jobs_queue.queue_url,
                 "PRODUCIR_SM_ARN": producir_sm.state_machine_arn,
                 "SSM_ENV_PREFIX": "/media-ivenaccip/env",   # "aws*" reservado en SSM
+                # C5: monedero de créditos (gates 402 en crear/producir)
+                "CREDITOS_BACKEND": "postgres",
+                "SSM_USUARIOS_PREFIX": "/media-ivenaccip/usuarios",
             },
             # La regla single-worker se protege aquí cuando la cuota de la
             # cuenta lo permita (las cuentas nuevas traen 10 concurrentes y
@@ -73,7 +76,8 @@ class ApiStack(Stack):
         producir_sm.grant_start_execution(fn)
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
-            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*"]))
+            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*",
+                       f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/usuarios*"]))
 
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name="aws-media",

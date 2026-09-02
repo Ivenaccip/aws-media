@@ -23,6 +23,11 @@ CLAVES = [
 ]
 PREFIJO = "/media-ivenaccip/env/"
 
+# C5 (D4): claves que un usuario puede aportar como propias — van bajo
+# /media-ivenaccip/usuarios/<user_id>/ y PISAN a las de plataforma en el worker.
+CLAVES_USUARIO = ["BLOTATO_API_KEY"]
+PREFIJO_USUARIOS = "/media-ivenaccip/usuarios/"
+
 
 def leer_env(path: Path) -> dict[str, str]:
     valores: dict[str, str] = {}
@@ -39,11 +44,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry", action="store_true", help="solo listar nombres, sin subir")
     ap.add_argument("--env", default=str(Path(__file__).resolve().parent.parent / ".env"))
+    ap.add_argument("--usuario", help="subir las CLAVES_USUARIO bajo el prefijo de ese user_id")
     args = ap.parse_args()
 
+    claves, prefijo = ((CLAVES_USUARIO, PREFIJO_USUARIOS + args.usuario + "/")
+                       if args.usuario else (CLAVES, PREFIJO))
     valores = leer_env(Path(args.env))
-    presentes = [c for c in CLAVES if valores.get(c)]
-    faltan = [c for c in CLAVES if not valores.get(c)]
+    presentes = [c for c in claves if valores.get(c)]
+    faltan = [c for c in claves if not valores.get(c)]
     print("A subir:", ", ".join(presentes) or "(ninguna)")
     if faltan:
         print("Sin valor en .env (se omiten):", ", ".join(faltan))
@@ -54,10 +62,10 @@ def main() -> None:
     import boto3
     ssm = boto3.client("ssm")
     for clave in presentes:
-        ssm.put_parameter(Name=PREFIJO + clave, Value=valores[clave],
+        ssm.put_parameter(Name=prefijo + clave, Value=valores[clave],
                           Type="SecureString", Overwrite=True)
-        print(f"  {PREFIJO}{clave} OK")
-    print(f"{len(presentes)} parámetros en {PREFIJO}")
+        print(f"  {prefijo}{clave} OK")
+    print(f"{len(presentes)} parámetros en {prefijo}")
 
 
 if __name__ == "__main__":

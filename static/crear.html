@@ -305,7 +305,9 @@ function estimar() {
   estimT = setTimeout(async () => {
     const r = await fetch(`/api/proyectos/${proyecto.id}/estimacion`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({escenas: escenas()})});
     if (!r.ok) return; const c = await r.json();
-    $('#producir').textContent = `Producir la película → ≈ $${c.total.toFixed(2)} · ~${c.minutos} min`;
+    // C5: con el monedero activo se enseña también el costo en créditos y el saldo
+    const cr = c.creditos != null ? ` · ${c.creditos} créditos (saldo ${c.creditos_saldo})` : '';
+    $('#producir').textContent = `Producir la película → ≈ $${c.total.toFixed(2)} · ~${c.minutos} min${cr}`;
   }, 400);
 }
 $('#addesc').onclick = () => addEscena('');

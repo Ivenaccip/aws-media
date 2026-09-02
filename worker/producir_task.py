@@ -17,7 +17,7 @@ import json
 import logging
 import sys
 
-from worker.env_ssm import cargar_env_ssm
+from worker.env_ssm import cargar_env_ssm, cargar_env_usuario
 
 cargar_env_ssm()
 
@@ -28,7 +28,8 @@ log = logging.getLogger("producir_task")
 def main(user_id: str, proyecto_id: str) -> int:
     import os
     os.environ["DEFAULT_USER_ID"] = user_id
-    from pipeline import db, flow, media_sync
+    cargar_env_usuario(user_id)   # C5: claves por-usuario pisan a las de plataforma
+    from pipeline import creditos, db, flow, media_sync
     from pipeline.project import cargar_proyecto
     from pipeline.storage import videos_root
 
@@ -67,6 +68,12 @@ def main(user_id: str, proyecto_id: str) -> int:
         db.guardar_proyecto_editor(user_id, nombre, json.dumps(doc, ensure_ascii=False))
 
     log.info("%s: estado final %s", proyecto_id, p.estado)
+    if p.estado != "listo" and creditos.activo():
+        # C5: fallo nuestro = créditos de vuelta (el cobro fue por duración
+        # objetivo en el API; se recalcula con la misma tarifa)
+        n = creditos.costo_producir(p.duracion_s)
+        creditos.devolver(n, f"producir:{proyecto_id}", user_id)
+        log.info("%s: %d créditos devueltos por producción fallida", proyecto_id, n)
     return 0 if p.estado == "listo" else 1
 
 
