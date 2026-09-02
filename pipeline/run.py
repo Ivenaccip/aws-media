@@ -10,7 +10,7 @@ from typing import Callable
 
 from langfuse import get_client, observe, propagate_attributes
 
-from . import duracion, ffmpeg, media
+from . import db, duracion, ffmpeg, media
 from .casting import hacer_casting, mensaje_faltantes
 from .config import settings
 from .deliver import mensaje_final, subir_drive
@@ -66,7 +66,8 @@ async def _procesar_escena(e: Scene, ctx: Casting, estilo_url: str | None, prev_
 
 async def generar_pelicula(historia: str, subir: bool = True, run_id: str | None = None) -> Resultado:
     run_id = run_id or uuid.uuid4().hex[:8]
-    with propagate_attributes(session_id=run_id, tags=["video-pipeline"], trace_name="pelicula"):
+    with propagate_attributes(session_id=run_id, user_id=db.usuario_actual(),
+                              tags=["video-pipeline"], trace_name="pelicula"):
         return await _generar_pelicula(historia, subir, run_id)
 
 

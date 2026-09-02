@@ -9,7 +9,7 @@ from pathlib import Path
 
 from langfuse import get_client, observe, propagate_attributes
 
-from . import character, editor, ffmpeg, research, voices, writer
+from . import character, db, editor, ffmpeg, research, voices, writer
 from .casting import hacer_casting
 from .director import dirigir
 from .models import Biblioteca, Casting, Entidad
@@ -25,7 +25,9 @@ async def preparar(p: Proyecto) -> None:
     p.estado, p.etapa = "preparando", "inicio"
     p.guardar()
     try:
-        with propagate_attributes(session_id=p.id, tags=["video-pipeline", "preparar"], trace_name="preparar"):
+        # user_id en la traza = base de la facturación por usuario (C6)
+        with propagate_attributes(session_id=p.id, user_id=db.usuario_actual(),
+                                  tags=["video-pipeline", "preparar"], trace_name="preparar"):
             await _preparar(p)
         p.estado, p.etapa = "revision", None
     except Exception as err:  # noqa: BLE001
@@ -96,7 +98,8 @@ async def producir(p: Proyecto) -> None:
     p.estado, p.etapa = "produciendo", "inicio"
     p.guardar()
     try:
-        with propagate_attributes(session_id=p.id, tags=["video-pipeline", "producir"], trace_name="pelicula"):
+        with propagate_attributes(session_id=p.id, user_id=db.usuario_actual(),
+                                  tags=["video-pipeline", "producir"], trace_name="pelicula"):
             await _producir(p)
         _etapa(p, "puente")
         await _puente_editor(p)

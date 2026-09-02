@@ -11,6 +11,7 @@ from aws_cdk import (
     aws_ecr as ecr,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_logs as logs,
     aws_rds as rds,
     aws_s3 as s3,
     aws_sqs as sqs,
@@ -39,6 +40,8 @@ class ApiStack(Stack):
             ),
             memory_size=1536,
             timeout=Duration.seconds(29),   # API Gateway corta a los 30 s
+            # C6: retención corta — el log group auto-creado vive para siempre
+            log_retention=logs.RetentionDays.ONE_WEEK,
             environment={
                 "MEDIA_ROOT": "/data",       # horneado vacío en la imagen (C3 lo lleva a S3)
                 "PYTHONIOENCODING": "utf-8",

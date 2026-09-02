@@ -85,6 +85,8 @@ class JobsStack(Stack):
             memory_size=3008,
             timeout=Duration.minutes(15),
             environment=env_comun,
+            # C6: retención corta — el log group auto-creado vive para siempre
+            log_retention=logs.RetentionDays.ONE_WEEK,
         )
         # max_concurrency=2: pocos workers a la vez (la cuota de la cuenta es 10
         # y preparar pega a APIs con rate limits)
