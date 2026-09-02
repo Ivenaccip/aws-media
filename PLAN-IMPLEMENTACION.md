@@ -144,9 +144,14 @@ Arquitectura objetivo (sin cambios, §3 del HANDOFF): API Gateway + Lambda (Mang
 
 **Deudas de la rebanada:** (1) compra de packs = pasarela de pago pendiente — hoy los abonos son por CLI admin; (2) cortesía mensual manual (CLI) — automatizar cuando haya más usuarios; (3) un crash DURO del worker (excepción → DLQ) no devuelve créditos — solo los caminos limpios (estado error / SFN FAILED); (4) doble clic ultrarrápido en producir podría cobrar dos veces (ventana entre el check de estado y guardar) — edge de piloto; (5) UI de monedero mínima (saldo en el botón) — falta sección de créditos con movimientos y packs; (6) rate-limit por miembro pendiente (importará con las acciones de 1 cr del RAG); (7) la Lambda desplegada va un commit detrás del fix GREATEST (solo afecta ajustes admin negativos, ruta CLI local — viaja en el próximo deploy); (8) el proyecto barato `fcab9e66` quedó en revisión con 0 opciones de personaje (sin refs, modo idea) — revisar si el casting sin referencias es camino soportado antes de producirlo.
 
-### C6. Observabilidad y cierre
+### C6. Observabilidad y cierre — ✅ DESPLEGADA Y VERIFICADA 2026-09-02
 CloudWatch (retención corta) + Langfuse con `user_id` en cada traza — el coste por proyecto es la base de facturación.
-- **Criterio de salida de Fase 5 (= del plan):** flujo E2E completo (crear → editar → regenerar → publicar) corriendo en AWS, con presupuesto limitado y costes visibles por usuario.
+
+**Hecho:** (1) `user_id` (=`DEFAULT_USER_ID`) viaja en los TRES puntos de entrada de traza (`flow.preparar`, `flow.producir`, `run.generar_pelicula`) vía `propagate_attributes`; (2) retención **7 días** en los log groups de las dos Lambdas (`log_retention=ONE_WEEK`; Fargate ya estaba desde C4); (3) `tools/costes.py`: resumen del coste real por usuario/proyecto desde Langfuse (`resumen --dias N [--user U]`) y volcado idempotente a la tabla `costes` (`sync`, dedup por trace id en la columna `traza`). Suite 127 tests.
+
+**Verificado en vivo (llamada barata $0.02):** proyecto `19fde9f1` → preparar en el worker → traza en Langfuse con **`userId=piloto`** y costo $0.0170; el monedero cobró sus 10 cr (saldo 80). Retención confirmada por `describe_log_groups` (7 días ambas Lambdas). `sync`: 13 trazas persistidas en `costes`; segunda corrida = 0 nuevas (dedup OK). Las trazas previas a C6 quedan como usuario `?` ($3.31 de los smokes/E2E) — esperado, sin dueño retroactivo.
+
+- **Criterio de salida de Fase 5 (= del plan) — PENDIENTE, no es de esta rebanada:** flujo E2E completo (crear → editar → regenerar → **publicar**) corriendo en AWS, con presupuesto limitado y costes visibles por usuario. Lo que falta para poder correrlo: `BLOTATO_API_KEY` real (gate de fn2, ahora entra por usuario vía `/media-ivenaccip/usuarios/<id>/` de C5), el cut-editor sobre S3 para el paso "editar" (deuda C4), y confirmación de gasto del usuario para la producción del E2E. "Presupuesto limitado" ✅ (budget $50/mes de Bloque B) y "costes visibles por usuario" ✅ (esta rebanada).
 
 ---
 
