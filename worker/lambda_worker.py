@@ -21,7 +21,9 @@ from worker.env_ssm import cargar_env_ssm
 
 cargar_env_ssm()
 
-logging.basicConfig(level=logging.INFO)
+# force=True: el runtime de Lambda ya instala un handler en el root logger y
+# sin esto basicConfig es no-op (los INFO quedaban invisibles bajo WARNING)
+logging.basicConfig(level=logging.INFO, force=True)
 log = logging.getLogger("worker")
 
 
