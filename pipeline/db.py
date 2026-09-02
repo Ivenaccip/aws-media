@@ -165,6 +165,32 @@ def guardar_proyecto(user_id: str, id_: str, creado: str, estado: str,
     )
 
 
+def guardar_proyecto_editor(user_id: str, nombre: str, doc: str) -> None:
+    """Upsert del proyecto del editor (C3: registra las subidas a S3)."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    ejecutar(
+        """INSERT INTO proyectos_editor (user_id, nombre, doc)
+           VALUES (:u, :n, :doc::jsonb)
+           ON CONFLICT (user_id, nombre) DO UPDATE SET doc = EXCLUDED.doc""",
+        {"u": user_id, "n": nombre, "doc": doc},
+    )
+
+
+def cargar_proyecto_editor(user_id: str, nombre: str) -> dict | None:
+    filas = ejecutar(
+        "SELECT doc::text AS doc FROM proyectos_editor "
+        "WHERE user_id = :u AND nombre = :n", {"u": user_id, "n": nombre})
+    return json.loads(filas[0]["doc"]) if filas else None
+
+
+def listar_proyectos_editor(user_id: str) -> list[dict]:
+    filas = ejecutar(
+        "SELECT nombre, doc::text AS doc FROM proyectos_editor "
+        "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
+    return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
+
+
 def cargar_proyecto(user_id: str, id_: str) -> dict | None:
     filas = ejecutar(
         "SELECT doc::text AS doc FROM proyectos_gen WHERE user_id = :u AND id = :i",

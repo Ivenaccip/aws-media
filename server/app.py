@@ -23,9 +23,11 @@ from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import videos_root
+from pipeline import db
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
+from server.media_api import router as media_router
 from server.overlays_api import router as overlays_router
 from server.publicar_api import router as publicar_router
 
@@ -36,6 +38,7 @@ app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
 app.include_router(broll_router)
+app.include_router(media_router)
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}
@@ -43,7 +46,8 @@ _tareas: dict[str, asyncio.Task] = {}
 
 @app.get("/api/edicion/proyectos")
 def proyectos_edicion():
-    """Proyectos videos/video-N para la pestaña e1: estado según qué artefactos existen."""
+    """Proyectos videos/video-N para la pestaña e1: estado según qué artefactos existen.
+    Con backend postgres (C2/C3) se suman los proyectos registrados por subidas a S3."""
     out = []
     for d in sorted(videos_root().glob("*/")):
         if not (d / "work").is_dir():
@@ -53,7 +57,15 @@ def proyectos_edicion():
         canonico = any((d / "work" / "transcripts").glob("*.canonical.json"))
         generado = (d / "pelicula.mp4").is_file()
         out.append({"nombre": d.name, "generado": generado, "canonico": canonico,
-                    "cuts": cuts, "editor_listo": cuts and proxy})
+                    "cuts": cuts, "editor_listo": cuts and proxy, "subidas": []})
+    if db.backend() == "postgres":
+        en_fs = {p["nombre"] for p in out}
+        for fila in db.listar_proyectos_editor(db.usuario_actual()):
+            if fila["nombre"] in en_fs:
+                continue
+            out.append({"nombre": fila["nombre"], "generado": False, "canonico": False,
+                        "cuts": False, "editor_listo": False,
+                        "subidas": fila["doc"].get("subidas", [])})
     return out
 
 

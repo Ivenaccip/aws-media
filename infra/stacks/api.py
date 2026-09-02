@@ -11,13 +11,15 @@ from aws_cdk import (
     aws_ecr as ecr,
     aws_lambda as lambda_,
     aws_rds as rds,
+    aws_s3 as s3,
 )
 from constructs import Construct
 
 
 class ApiStack(Stack):
     def __init__(self, scope: Construct, id_: str, *,
-                 cluster: rds.DatabaseCluster, image_ref: str = "latest",
+                 cluster: rds.DatabaseCluster, media_bucket: s3.Bucket,
+                 cdn_domain: str, image_ref: str = "latest",
                  **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
 
@@ -44,6 +46,9 @@ class ApiStack(Stack):
                 "DB_CLUSTER_ARN": cluster.cluster_arn,
                 "DB_SECRET_ARN": cluster.secret.secret_arn,
                 "DB_NAME": "media",
+                # C3: subidas prefirmadas a S3, servidas por CloudFront
+                "MEDIA_BUCKET": media_bucket.bucket_name,
+                "CDN_BASE": f"https://{cdn_domain}",
             },
             # La regla single-worker se protege aquí cuando la cuota de la
             # cuenta lo permita (las cuentas nuevas traen 10 concurrentes y
@@ -52,6 +57,9 @@ class ApiStack(Stack):
         )
 
         cluster.grant_data_api_access(fn)   # rds-data + leer el secreto del clúster
+        # presign PUT + head_object; SIN delete a propósito (las versiones no se borran)
+        media_bucket.grant_put(fn)
+        media_bucket.grant_read(fn)
 
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name="aws-media",

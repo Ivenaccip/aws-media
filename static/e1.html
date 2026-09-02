@@ -35,6 +35,18 @@
 <main>
   <a class="volver" href="/">← inicio</a>
   <h1>Editar metraje</h1>
+  <section id="subir" hidden style="margin-bottom:24px">
+    <h2>Subir metraje</h2>
+    <p class="desc">El video sube directo a la nube (no pasa por el servidor) y queda listo para editar.</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+      <input id="sub-proyecto" placeholder="nombre del proyecto (ej. video-1)"
+             style="flex:1; min-width:180px; padding:9px 12px; border-radius:9px; border:1px solid #2c3038; background:#23262d; color:inherit; font-size:14px">
+      <input id="sub-archivo" type="file" accept=".mp4,.mov,.m4v" style="font-size:13px">
+      <button id="sub-btn" style="padding:9px 18px; border-radius:9px; border:0; background:#5b8dd6; color:#fff; font-size:14px; cursor:pointer">Subir</button>
+    </div>
+    <p id="sub-estado" class="nota"></p>
+    <video id="sub-player" controls hidden style="width:100%; margin-top:12px; border-radius:9px; background:#000"></video>
+  </section>
   <div class="cols">
     <section>
       <h2>Reel para redes</h2>
@@ -61,11 +73,18 @@ async function cargar() {
   catch { reel.innerHTML = '<li class="vacio">No pude cargar los proyectos.</li>'; return; }
   const conCanonico = ps.filter(p => p.canonico);
   const editables = ps.filter(p => p.editor_listo);
-  const fila = (p, href) => `<li${href ? "" : ' class="off"'}>` +
-    (href ? `<a href="${href}">` : '<a>') +
-    `<span class="nombre">${p.nombre}</span>` +
-    `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
-    `<span class="tag ${href ? "ok" : ""}">${href ? "abrir editor" : "sin corte aún"}</span></span></a></li>`;
+  const fila = (p, href) => {
+    // proyecto solo-nube (C3): la subida se ve servida por CloudFront
+    if (!href && p.subidas && p.subidas.length)
+      return `<li><a href="${p.subidas[p.subidas.length - 1].cdn}" target="_blank">` +
+        `<span class="nombre">${p.nombre}</span>` +
+        `<span><span class="tag ok">ver subida</span></span></a></li>`;
+    return `<li${href ? "" : ' class="off"'}>` +
+      (href ? `<a href="${href}">` : '<a>') +
+      `<span class="nombre">${p.nombre}</span>` +
+      `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
+      `<span class="tag ${href ? "ok" : ""}">${href ? "abrir editor" : "sin corte aún"}</span></span></a></li>`;
+  };
   reel.innerHTML = ps.length
     ? ps.map(p => fila(p, p.editor_listo ? `/editor/${p.nombre}/` : null)).join("")
     : '<li class="vacio">Sin proyectos todavía.</li>';
@@ -75,6 +94,49 @@ async function cargar() {
     : '<li class="vacio">Ningún proyecto con transcript todavía.</li>';
 }
 cargar();
+
+// --- Subida prefirmada a S3 (C3) — solo se muestra si el servicio la ofrece
+async function initSubir() {
+  try {
+    const cfg = await (await fetch("/api/media/config")).json();
+    if (!cfg.activo) return;
+  } catch { return; }
+  document.getElementById("subir").hidden = false;
+  document.getElementById("sub-btn").onclick = subir;
+}
+async function subir() {
+  const estado = document.getElementById("sub-estado");
+  const proyecto = document.getElementById("sub-proyecto").value.trim();
+  const f = document.getElementById("sub-archivo").files[0];
+  if (!proyecto || !f) { estado.textContent = "Falta el nombre del proyecto o el archivo."; return; }
+  const btn = document.getElementById("sub-btn");
+  btn.disabled = true;
+  try {
+    estado.textContent = "Pidiendo permiso de subida…";
+    let r = await fetch("/api/media/presign", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proyecto, archivo: f.name, content_type: f.type || "video/mp4", bytes: f.size }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    const { url, key, content_type } = await r.json();
+    estado.textContent = `Subiendo ${f.name} (${(f.size / 1e6).toFixed(1)} MB) directo a la nube…`;
+    const put = await fetch(url, { method: "PUT", headers: { "Content-Type": content_type }, body: f });
+    if (!put.ok) throw new Error(`la subida a S3 falló (${put.status})`);
+    estado.textContent = "Confirmando…";
+    r = await fetch("/api/media/confirmar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proyecto, key }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    const sub = await r.json();
+    estado.textContent = `Listo: ${sub.archivo} ya está en tu proyecto ${proyecto}.`;
+    const player = document.getElementById("sub-player");
+    player.src = sub.cdn; player.hidden = false;
+    cargar();
+  } catch (e) { estado.textContent = "Error: " + e.message; }
+  finally { btn.disabled = false; }
+}
+initSubir();
 </script>
 </body>
 </html>
