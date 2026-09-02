@@ -146,7 +146,61 @@ de Meta, cobrarlo a 1 crédito sería perder dinero en cada envío).
 5. **Criterio duro de C5:** un usuario sin saldo no puede lanzar nada que
    cueste dinero.
 
-## 8. Base de los números (para auditar este reporte)
+## 8. Recarga de créditos: la pasarela (análisis 2026-09-02 — DECISIÓN PENDIENTE)
+
+> Contexto: la LLC está en USA. Recomendación técnica: **Stripe US con Payment
+> Links**. La decisión final espera la consulta con el contador (ver "el tema
+> fiscal"). Mientras tanto opera el modo concierge: pago manual → abono por
+> `tools/creditos.py abonar N --tipo compra`.
+
+### Opciones evaluadas
+
+| Opción | Comisión aprox. | Lectura |
+|---|---|---|
+| **Stripe US + Payment Links** (recomendada) | 2.9 % + $0.30 (+~1.5 % tarjeta internacional) | Mínimo código; cobra en USD (la moneda de toda la economía); OJO: **sin OXXO/SPEI** — esos solo existen en cuentas Stripe México |
+| PayPal (respaldo) | similar | Común en LATAM, funciona con entidad US; segunda opción para quien no tiene tarjeta |
+| Paddle / Lemon Squeezy (Merchant of Record) | ~5 % + $0.50 | Ellos son el vendedor de registro y declaran impuestos globales; el fijo de $0.50 obliga a matar el pack de $1.99 y arrancar en ~$4.99 |
+| Mercado Pago | — | Descartada: pide entidad local por país |
+| Stripe Tax (punto medio) | extra sobre Stripe | Calcula y cobra el impuesto, pero declararlo sigue siendo nuestro |
+
+### Lo que las comisiones le hacen a los packs (Stripe US, tarjeta MX ~4.4 % + $0.30)
+
+| Pack | Precio | Comisión | Se come | Margen neto |
+|---|---|---|---|---|
+| 100 cr | $1.99 | ~$0.39 | ~20 % | ~27 % — vive como gancho |
+| 500 cr | $8.50 | ~$0.67 | ~8 % | ~18 % — el pack a empujar |
+| 1 200 cr | $18.00 | ~$1.09 | ~6 % | **~5 % — demasiado fino** |
+
+**Ajuste propuesto (pendiente de decidir):** subir el pack grande a **$19.99
+dólares** ($0.0167/cr, margen ~17 % neto de comisión), o mantener precio y
+actualizar el piso de venta en `tools/tarifas.json` a **$0.0165 neto de
+pasarela**. La regla 3 cr/s no cambia — solo se reconoce que el piso se mide
+*después* de la comisión.
+
+### El tema fiscal (bloqueante de la decisión)
+
+Una LLC de USA vendiendo servicios digitales a consumidores en México toca el
+régimen de IVA del SAT para plataformas digitales extranjeras, y las ventas en
+USA pueden generar sales tax según el estado. **Es terreno del contador.** Si
+su respuesta es "ni te metas", se cambia a Paddle/Lemon Squeezy sin tocar el
+monedero: el webhook de abono es idéntico en ambos.
+
+### La rebanada de implementación (cuando se decida; ~media jornada)
+
+1. Tres Payment Links (uno por pack) con `user_id` en `client_reference_id`.
+2. Endpoint `POST /api/pagos/stripe` en la Lambda existente: verificar firma;
+   en `checkout.session.completed` → `abonar_creditos(user, pack, "compra",
+   referencia=session_id)`.
+3. **Idempotencia por el libro mayor**: si ya existe un movimiento con esa
+   `referencia`, no abonar (Stripe reintenta webhooks).
+4. Reembolso = ajuste negativo con referencia al refund.
+5. La sección "más créditos" de la UI = tres botones que abren los links.
+   Jamás manejamos tarjetas nosotros (PCI es problema de la pasarela).
+
+Lanzamiento por etapas: concierge hoy → webhook cuando haya más de un puñado
+de recargas semanales, con datos reales de qué pack compra la gente.
+
+## 9. Base de los números (para auditar este reporte)
 
 - Nuestro lado: E2E de C4 medido en Langfuse (proyecto `84de6b8c`: real $1.31
   vs estimado $1.36; película 31.13 s) + infra AWS ~$0.04 por producción +
