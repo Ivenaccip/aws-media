@@ -124,14 +124,13 @@ Arquitectura objetivo (sin cambios, §3 del HANDOFF): API Gateway + Lambda (Mang
 
 **Deudas de la rebanada:** (1) CORS del bucket con origen `*` mientras no se exige login — restringir al dominio de la app cuando haya auth (misma deuda C1); (2) las subidas aún no alimentan el pipeline de edición (transcribir/cortar sobre S3 = C4: los ejecutores bajan por prefijo); (3) CloudFront sirve con caché por defecto — si algún día se re-sube la misma key, invalidar o versionar la key.
 
-### C4. Rebanada "trabajos"
-SQS (estándar + DLQ) y los tres ejecutores con la imagen de ECR:
-1. **Lambda contenedor** — trabajos <10 min: mux, recortes g2, subtítulos.
-2. **ECS Fargate** (4 vCPU/8 GB) — renders largos: masters, Remotion.
-3. **Step Functions Standard** — producciones completas (esperas de video de 4-8 min en wait states, que no cobran cómputo).
-- **Regla dura:** producciones SIEMPRE por Step Functions, renders largos SIEMPRE por Fargate (límites Lambda: 15 min, 10 GB /tmp).
-- **Regla dura:** nada multi-worker antes de que el estado viva en Postgres (C2) — el candado `_ocupado` y las tareas en memoria son single-worker por diseño.
-- **Criterio:** una producción completa lanzada desde la UI en AWS termina y aparece en el editor.
+### 🟡 C4. Rebanada "trabajos" — DESPLEGADA 2026-09-01 (E2E con gasto pendiente de confirmación)
+
+**Cómo quedó:** stack `aws-media-jobs` = SQS+DLQ (`maxReceiveCount=2`) → **worker Lambda** contenedor (3 GB/15 min, `max_concurrency=2`, corre `preparar` y `smoke`) · **Fargate 4 vCPU/8 GB** en VPC propia SOLO pública (IP pública por tarea = internet sin NAT; habla con Aurora por Data API, no toca la VPC de la DB) · **Step Functions Standard** `aws-media-producir` (RunTask.sync, timeout 2 h; el comando viaja en el input — SFN no interpola JsonPath en arrays). `pipeline/jobs.py` despacha por `JOBS_BACKEND` (local = dev intacto); `pipeline/media_sync.py` mueve artefactos por el layout S3 de C3; `worker/producir_task.py` corre `flow.producir` completo + puente y registra el proyecto en `proyectos_editor` (flags + película vía CDN); `server/app.py` cae al CDN cuando el artefacto lo escribió otro ejecutor. Claves de API en SSM `/media-ivenaccip/env` (SecureString, `tools/ssm_env.py` — **"aws\*" es prefijo reservado de SSM**, mismo gotcha que Cognito); los tres procesos las cargan al arrancar. Reglas duras respetadas: producciones SIEMPRE por SFN, Fargate para lo largo, sin delete en IAM. Suite 108.
+
+**Verificado en vivo (barato):** job `smoke` por SQS → "postgres respondió, s3 accesible" (43 s con frío); ejecución SFN con proyecto inexistente → Fargate arrancó, cargó claves, consultó Postgres y salió con exit 1 → SFN FAILED limpio en 77 s. Gotcha: el runtime Lambda ya instala handler de logging — `basicConfig(force=True)`.
+
+**PENDIENTE (cierra el criterio):** producción completa desde la UI (~$1.5-2 en APIs + ~$0.10 Fargate) — requiere confirmación de gasto del usuario. **Deudas:** descomponer la SFN en pasos con wait states (hoy Fargate corre toda la producción; a escala piloto son centavos) · los renders del cut-editor (masters/Remotion) siguen en el server local, no encolados · el cut-editor interactivo sobre artefactos S3 · muestra de voz cacheada por instancia (miss entre instancias) · calentar Aurora antes de encolar (mata el 504 post-pausa).
 
 ### C5. Rebanada "dinero y secretos"
 1. Claves de usuarios (Blotato, etc.) en SSM Parameter Store SecureString — nunca en frontend (decisión D4).
