@@ -47,7 +47,7 @@ def main() -> None:
         if args.creditos is None:
             ap.error("abonar necesita la cantidad de créditos")
         nuevo = db.abonar_creditos(args.user, args.creditos, args.tipo, args.ref)
-        print(f"{args.user}: {args.creditos:+d} ({args.tipo}) → saldo {nuevo}")
+        print(f"{args.user}: {args.creditos:+d} ({args.tipo}) -> saldo {nuevo}")
     else:
         for m in db.movimientos_creditos(args.user, args.n):
             ref = f" · {m['referencia']}" if m.get("referencia") else ""
