@@ -116,9 +116,13 @@ Arquitectura objetivo (sin cambios, §3 del HANDOFF): API Gateway + Lambda (Mang
 
 **Deudas de la rebanada:** (1) reanudar tras pausa consume ~25 de los 29 s del timeout — una petición muy temprana puede dar 504; lo enmascara la pantalla de carga de f1 y desaparece si C4 calienta el clúster antes de encolar; (2) `usuario piloto` fijo (`DEFAULT_USER_ID`) hasta exigir login Cognito (deuda C1); (3) `proyectos_editor`/`clip_versiones`/`costes` creadas pero se cablean en C3/C4/C5. Coste en reposo: ~$0.50/mes (secreto $0.40 + storage).
 
-### C3. Rebanada "media"
-S3 (bucket por entorno) + CloudFront + subidas prefirmadas directo navegador↔S3. `MEDIA_ROOT` (A1) apunta al layout S3.
-- **Criterio:** subir un MP4 desde el navegador, verlo servido por CloudFront en el editor.
+### ✅ C3. Rebanada "media" — DESPLEGADA 2026-09-01
+
+**Cómo quedó:** stack `aws-media-media` = bucket S3 privado (`BLOCK_ALL` + `RETAIN` + CORS para el PUT del navegador) + CloudFront `d8bfm82hs0s6a.cloudfront.net` con OAC. `server/media_api.py`: presign PUT 15 min (Content-Type dentro de la firma), `confirmar` verifica con `head_object` y registra en `proyectos_editor` (esquema C2), guard 409 sin `MEDIA_BUCKET` (local intacto: archivos en `videos/`). El video NUNCA pasa por la Lambda (API Gateway corta payloads en 10 MB): navegador→S3 directo. Layout de claves espeja MEDIA_ROOT (`videos/<proyecto>/subidas/…`) para que los ejecutores de C4 sincronicen por prefijo. UI: sección "Subir metraje" en e1.html (solo si `/api/media/config` está activo) + fila "ver subida"; `/api/edicion/proyectos` fusiona los proyectos solo-nube desde Postgres. Suite 110 tests. IAM de la Lambda: `grant_put`+`grant_read` SIN delete (las versiones no se borran).
+
+**Criterio verificado en vivo (doble):** (1) por API: presign→PUT 200 (0.7 s)→confirmar→GET CloudFront 200 bytes idénticos + **Range 206** (el seek del player); (2) **desde el navegador real** (UI e1 desplegada): elección de archivo→subida con preflight CORS→player visible con src de CloudFront. Proyectos de prueba: `video-nube-1`/`video-nube-2` (artefactos de smoke, sin coste apreciable).
+
+**Deudas de la rebanada:** (1) CORS del bucket con origen `*` mientras no se exige login — restringir al dominio de la app cuando haya auth (misma deuda C1); (2) las subidas aún no alimentan el pipeline de edición (transcribir/cortar sobre S3 = C4: los ejecutores bajan por prefijo); (3) CloudFront sirve con caché por defecto — si algún día se re-sube la misma key, invalidar o versionar la key.
 
 ### C4. Rebanada "trabajos"
 SQS (estándar + DLQ) y los tres ejecutores con la imagen de ECR:
