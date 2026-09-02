@@ -7,10 +7,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -23,7 +24,7 @@ from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import videos_root
-from pipeline import db
+from pipeline import db, jobs, media_sync
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
@@ -63,8 +64,12 @@ def proyectos_edicion():
         for fila in db.listar_proyectos_editor(db.usuario_actual()):
             if fila["nombre"] in en_fs:
                 continue
-            out.append({"nombre": fila["nombre"], "generado": False, "canonico": False,
-                        "cuts": False, "editor_listo": False,
+            flags = fila["doc"].get("flags", {})   # los pone el puente (C4)
+            out.append({"nombre": fila["nombre"],
+                        "generado": flags.get("generado", False),
+                        "canonico": flags.get("canonico", False),
+                        "cuts": flags.get("cuts", False),
+                        "editor_listo": False,     # el cut-editor sobre S3 es deuda C4
                         "subidas": fila["doc"].get("subidas", [])})
     return out
 
@@ -125,7 +130,13 @@ async def crear(
         destino.write_bytes(await f.read())
         p.referencias.append(Referencia(nombre_archivo=f.filename, path=str(destino)))
     p.guardar()
-    _lanzar(p, flow.preparar(p))
+    if jobs.backend() == "aws":
+        # C4: preparar corre en el worker SQS. Las refs viajan por S3 (este /tmp
+        # no es el del worker); ambos comparten WORK_DIR, así que el path coincide.
+        media_sync.subir_dir(p.workdir, media_sync.prefijo_work(db.usuario_actual(), p.id))
+        jobs.encolar_preparar(db.usuario_actual(), p.id)
+    else:
+        _lanzar(p, flow.preparar(p))
     return p
 
 
@@ -226,7 +237,14 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
         raise HTTPException(422, "El guion está vacío")
     if p.personaje.url_elegida is None:
         raise HTTPException(422, "Elige una opción de personaje")
-    _lanzar(p, flow.producir(p))
+    if jobs.backend() == "aws":
+        # C4 regla dura: producciones SIEMPRE por Step Functions (→ Fargate).
+        # Marcar produciendo aquí evita el doble arranque por doble clic.
+        p.estado, p.etapa = "produciendo", "encolado"
+        p.guardar()
+        jobs.lanzar_produccion(db.usuario_actual(), p.id)
+    else:
+        _lanzar(p, flow.producir(p))
     return p
 
 
@@ -234,9 +252,16 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
 def archivo(id_: str, nombre: str):
     p = _proyecto(id_)
     f = (p.workdir / nombre).resolve()
-    if p.workdir.resolve() not in f.parents or not f.is_file():
+    if p.workdir.resolve() not in f.parents:
         raise HTTPException(404, "Archivo no encontrado")
-    return FileResponse(f)
+    if f.is_file():
+        return FileResponse(f)
+    # C4: el archivo puede haberlo escrito OTRO ejecutor — está en S3 vía CDN
+    cdn = os.getenv("CDN_BASE", "").rstrip("/")
+    if cdn:
+        prefijo = media_sync.prefijo_work(db.usuario_actual(), p.id)
+        return RedirectResponse(f"{cdn}/{prefijo}{nombre}")
+    raise HTTPException(404, "Archivo no encontrado")
 
 
 app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")

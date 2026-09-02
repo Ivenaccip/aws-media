@@ -9,9 +9,12 @@ from aws_cdk import (
     aws_apigatewayv2_integrations as apigw_int,
     aws_cognito as cognito,
     aws_ecr as ecr,
+    aws_iam as iam,
     aws_lambda as lambda_,
     aws_rds as rds,
     aws_s3 as s3,
+    aws_sqs as sqs,
+    aws_stepfunctions as sfn,
 )
 from constructs import Construct
 
@@ -19,7 +22,8 @@ from constructs import Construct
 class ApiStack(Stack):
     def __init__(self, scope: Construct, id_: str, *,
                  cluster: rds.DatabaseCluster, media_bucket: s3.Bucket,
-                 cdn_domain: str, image_ref: str = "latest",
+                 cdn_domain: str, jobs_queue: sqs.Queue,
+                 producir_sm: sfn.StateMachine, image_ref: str = "latest",
                  **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
 
@@ -49,6 +53,11 @@ class ApiStack(Stack):
                 # C3: subidas prefirmadas a S3, servidas por CloudFront
                 "MEDIA_BUCKET": media_bucket.bucket_name,
                 "CDN_BASE": f"https://{cdn_domain}",
+                # C4: preparar → SQS, producir → Step Functions; claves en SSM
+                "JOBS_BACKEND": "aws",
+                "JOBS_QUEUE_URL": jobs_queue.queue_url,
+                "PRODUCIR_SM_ARN": producir_sm.state_machine_arn,
+                "SSM_ENV_PREFIX": "/media-ivenaccip/env",   # "aws*" reservado en SSM
             },
             # La regla single-worker se protege aquí cuando la cuota de la
             # cuenta lo permita (las cuentas nuevas traen 10 concurrentes y
@@ -60,6 +69,11 @@ class ApiStack(Stack):
         # presign PUT + head_object; SIN delete a propósito (las versiones no se borran)
         media_bucket.grant_put(fn)
         media_bucket.grant_read(fn)
+        jobs_queue.grant_send_messages(fn)
+        producir_sm.grant_start_execution(fn)
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
+            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*"]))
 
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name="aws-media",
