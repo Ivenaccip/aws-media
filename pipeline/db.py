@@ -220,8 +220,11 @@ def abonar_creditos(user_id: str, creditos: int, tipo: str,
     negativo en ajustes). Devuelve el saldo resultante."""
     ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
              {"u": user_id})
+    # GREATEST: el CHECK (saldo >= 0) se evalúa sobre la fila PROPUESTA antes
+    # de resolver ON CONFLICT — un abono negativo (ajuste admin) tronaría aunque
+    # la fila exista. Sin monedero previo, un ajuste negativo deja saldo 0.
     filas = ejecutar(
-        """INSERT INTO monedero (user_id, saldo) VALUES (:u, :n)
+        """INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))
            ON CONFLICT (user_id) DO UPDATE
              SET saldo = monedero.saldo + :n, actualizado = now()
            RETURNING saldo""",
