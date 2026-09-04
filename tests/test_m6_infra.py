@@ -39,6 +39,23 @@ def test_costo_lambda_preparar_medido(monkeypatch):
     assert costes_infra.costo_lambda(100) == round(100 * costes_infra.LAMBDA_USD_GB_SEGUNDO, 4)
 
 
+def test_segundos_estimados_deshace_el_costo(monkeypatch):
+    """Ida y vuelta: los 407 s de Fargate y los 137 s de Lambda medidos en C4
+    se recuperan del costo con ±2 s (redondeo a $0.0001)."""
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", raising=False)
+    s = costes_infra.segundos_estimados("infra-producir", costes_infra.costo_fargate(407))
+    assert abs(s - 407) < 2
+    s = costes_infra.segundos_estimados("infra-render", costes_infra.costo_fargate(90))
+    assert abs(s - 90) < 2
+    s = costes_infra.segundos_estimados("infra-preparar", costes_infra.costo_lambda(137))
+    assert abs(s - 137) < 2
+
+
+def test_segundos_estimados_solo_para_infra():
+    assert costes_infra.segundos_estimados("run-llm", 1.05) is None
+    assert costes_infra.segundos_estimados("infra-producir", 0) is None
+
+
 # ---------------------------------------------------------------------------
 # registrar: solo postgres, nunca propaga, filas con proveedor aws
 

@@ -47,8 +47,9 @@
 <main>
   <a class="volver" href="/">← inicio</a>
   <h1>Costes y margen</h1>
-  <p class="sub">Cuánto gasta, cuánto cuesta y cuánto deja cada usuario. La infra AWS no se
-    atribuye por usuario (es &lt;2% del variable): para eso están el
+  <p class="sub">Cuánto gasta, cuánto cuesta y cuánto deja cada usuario. El cómputo
+    (Fargate/Lambda) se estima por corrida y por usuario; Aurora/CloudFront son compartidos:
+    para el total están el
     <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" style="color:#8ab4e8">presupuesto de $50/mes</a>
     y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" style="color:#8ab4e8">Cost Explorer</a>.</p>
 
@@ -71,15 +72,16 @@
       <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
       <div class="tabla-scroll"><table>
         <thead><tr><th>Usuario</th><th>Saldo</th><th>Cortesía</th><th>Comprados</th>
-          <th>Quemados</th><th>Películas</th><th>S3</th><th>Costo</th><th>Margen</th></tr></thead>
+          <th>Quemados</th><th>Películas</th><th>S3</th><th>Fargate</th><th>Costo</th><th>Margen</th></tr></thead>
         <tbody id="cuerpo"></tbody>
       </table></div>
       <p class="mut" style="margin-top:10px">Margen = créditos quemados × <span id="piso"></span>
         por crédito (piso de venta de tarifas.json) − costo directo. El costo directo suma la tabla
         <code>costes</code>: las trazas de IA (Langfuse — sync diario 06:00 UTC + el botón de arriba)
         y la línea estimada de infra AWS por corrida (segundos reales de Fargate/Lambda × tarifas de
-        <code>pricing.json</code>). S3 se muestra aparte; Aurora/CloudFront son compartidos
-        (Cost Explorer para el total).</p>
+        <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa cuenta (costo ÷ tarifa =
+        tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte; Aurora/CloudFront son
+        compartidos (Cost Explorer para el total).</p>
     </section>
 
     <section id="detalle" hidden>
@@ -95,6 +97,7 @@ const $ = s => document.querySelector(s);
 const usd = x => `$${x.toFixed(2)} dólares`;
 const usd4 = x => `$${x.toFixed(4)}`;
 const mb = b => b == null ? '—' : (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6).toFixed(1) + ' MB');
+const tiempo = s => !s ? '—' : (s >= 90 ? (s / 60).toFixed(1) + ' min' : Math.round(s) + ' s');
 let LFBASE = '';
 
 async function cargar() {
@@ -121,6 +124,7 @@ async function cargar() {
       <td title="${u.user_id}">${u.email || u.user_id}</td>
       <td>${u.saldo}</td><td>${u.cortesia}</td><td>${u.comprados}</td>
       <td>${u.gastados}</td><td>${u.peliculas}</td><td>${mb(u.s3_bytes)}</td>
+      <td title="tiempo estimado de cómputo en Fargate (derivado del costo)">${tiempo(u.fargate_s)}</td>
       <td>${usd4(u.costo_usd)}</td>
       <td class="${u.margen_usd >= 0 ? 'pos' : 'neg'}">${usd4(u.margen_usd)}</td>
     </tr>`).join('');
@@ -138,6 +142,7 @@ async function detalle(uid, nombre) {
   if (!r.ok) { $('#detalle-cuerpo').innerHTML = `<p class="mut">Error ${r.status}.</p>`; return; }
   const d = await r.json();
   const traza = t => `<div>· ${t.concepto} — ${usd4(t.costo_usd)}` +
+    (t.segundos ? ` · ~${tiempo(t.segundos)} de cómputo` : '') +
     (t.traza ? ` <a href="${LFBASE}/trace/${t.traza}" target="_blank" rel="noopener">traza ↗</a>` : '') + `</div>`;
   $('#detalle-cuerpo').innerHTML = (d.proyectos.map(p => `
     <div class="proyecto">

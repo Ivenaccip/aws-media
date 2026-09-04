@@ -61,7 +61,9 @@ def _ejecutar_resumen(sql, p=None):
     if "FROM proyectos_gen" in sql:
         return [{"user_id": "a", "n": 3}]
     if "FROM costes" in sql:
-        return [{"user_id": "a", "usd": 1.05}]
+        # el resumen agrupa por concepto: IA + la línea de infra de M6.1
+        return [{"user_id": "a", "concepto": "run-llm", "usd": 1.0277},
+                {"user_id": "a", "concepto": "infra-producir", "usd": 0.0223}]
     if "FROM usuarios" in sql:
         return [{"id": "a", "email": "a@x.com"}]
     raise AssertionError(f"query inesperada: {sql}")
@@ -93,7 +95,10 @@ def test_resumen_agrega_y_calcula_margen(cliente, monkeypatch):
     assert u["comprados"] == 500 and u["cortesia"] == 200 and u["peliculas"] == 3
     assert u["costo_usd"] == 1.05
     assert u["margen_usd"] == round(90 * d["piso_venta_usd"] - 1.05, 4)
+    # el tiempo de Fargate se deriva de la línea infra-producir ($0.0223 ≈ 407 s)
+    assert 400 <= u["fargate_s"] <= 410
     assert d["totales"]["gastados"] == 90
+    assert d["totales"]["fargate_s"] == u["fargate_s"]
 
 
 def test_trazas_sin_usuario_se_muestran_como_claude(cliente, monkeypatch):
@@ -125,14 +130,19 @@ def test_detalle_por_corrida(cliente, monkeypatch):
         if "FROM costes" in sql:
             return [{"proyecto_id": "p1", "concepto": "run", "costo_usd": 0.9,
                      "traza": "tr-1", "creado": "2026-09-01"},
+                    {"proyecto_id": "p1", "concepto": "infra-producir",
+                     "costo_usd": 0.0223, "traza": None, "creado": "2026-09-01"},
                     {"proyecto_id": None, "concepto": "suelta", "costo_usd": 0.1,
                      "traza": "tr-2", "creado": "2026-09-01"}]
         raise AssertionError(sql)
     monkeypatch.setattr(db, "ejecutar", ejecutar)
     d = cliente.get("/api/admin/usuarios/a").json()
     p = d["proyectos"][0]
-    assert p["creditos"] == 100 and p["costo_usd"] == 0.9
+    assert p["creditos"] == 100 and p["costo_usd"] == 0.9223
     assert p["trazas"][0]["traza"] == "tr-1"
+    # la línea de infra trae el tiempo de cómputo de ESTA tarea; las de IA no
+    assert p["trazas"][0]["segundos"] is None
+    assert 400 <= p["trazas"][1]["segundos"] <= 410
     assert d["sin_proyecto"][0]["traza"] == "tr-2"
 
 
