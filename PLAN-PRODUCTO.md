@@ -378,10 +378,11 @@ Hecho 2026-09-04 (M8): `server/shorts_api.py` (estado/costo/analizar/render,
 despacho `shorts_analizar` en lambda_worker, `jobs.encolar_shorts_analizar` +
 `jobs.lanzar_shorts_render`, conceptos infra-shorts[-analizar] en el dashboard.
 Sin migración de DB (todo vive en doc jsonb). Deploy: imagen del CI +
-`cdk deploy aws-media-api aws-media-jobs`; para transcribir subidas falta
-ASSEMBLYAI_API_KEY en `.env` + `tools/ssm_env.py` (sin ella el flujo lo dice
-y los gen-* funcionan completos). Tests: 21 nuevos en tests/test_m8_shorts.py
-(248 en total, verdes); smoke local de e1 y shorts.html.
+`cdk deploy aws-media-api aws-media-jobs`. ASSEMBLYAI_API_KEY ya está en
+`.env` Y en SSM (verificado 2026-09-04): la transcripción de subidas queda
+activa desde el primer deploy; si algún día falta, la UI lo avisa y no cobra.
+Tests: 21 nuevos en tests/test_m8_shorts.py (248 en total, verdes); smoke
+local de e1 y shorts.html.
 
 ## Fase M9 — Automatización de membresías (bot en VPS)
 
