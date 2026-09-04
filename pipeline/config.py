@@ -60,5 +60,44 @@ class Settings:
 settings = Settings()
 
 
+class PromptTexto(str):
+    """M10: un str normal que además recuerda de qué prompt de Langfuse salió.
+    Sobrevive al .format() de los call sites, así llm.chat_json puede enlazar
+    la generation a la versión del prompt sin cambiar ninguna firma."""
+    objeto = None   # TextPromptClient de Langfuse, o None (texto local)
+
+    def format(self, *args, **kwargs):  # noqa: A003 — mismo contrato que str
+        s = PromptTexto(str.format(self, *args, **kwargs))
+        s.objeto = self.objeto
+        return s
+
+
+def _prompt_langfuse(name: str, local: str):
+    """El prompt `production` desde Langfuse (caché con TTL del SDK), o None.
+    Solo con LANGFUSE_PROMPTS=1 (lo cablea la infra; dev local y tests siguen
+    leyendo los .md del repo) — y JAMÁS tumba al caller."""
+    if os.getenv("LANGFUSE_PROMPTS", "") not in ("1", "true", "yes"):
+        return None
+    if not os.getenv("LANGFUSE_PUBLIC_KEY"):
+        return None
+    try:
+        from langfuse import get_client
+        obj = get_client().get_prompt(name, label="production", type="text",
+                                      fallback=local, max_retries=1,
+                                      fetch_timeout_seconds=3)
+        # fallback usado = Langfuse no respondió o el prompt no existe allá:
+        # manda el .md local y no se enlaza una versión que no se sirvió
+        return None if getattr(obj, "is_fallback", False) else obj
+    except Exception:  # noqa: BLE001 — el pipeline jamás se cae por un prompt
+        return None
+
+
 def load_prompt(name: str) -> str:
-    return (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    """Texto del prompt: Langfuse (label `production`) primero, con fallback al
+    .md del repo. El templating sigue siendo el .format() local de Python — los
+    placeholders {var} no cambian aunque el texto viva en Langfuse."""
+    local = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    obj = _prompt_langfuse(name, local)
+    texto = PromptTexto(obj.prompt if obj else local)
+    texto.objeto = obj
+    return texto

@@ -66,6 +66,10 @@ class ApiStack(Stack):
                 # C5: monedero de créditos (gates 402 en crear/producir)
                 "CREDITOS_BACKEND": "postgres",
                 "SSM_USUARIOS_PREFIX": "/media-ivenaccip/usuarios",
+                # M10: los prompts se sirven desde Langfuse (label production)
+                # con fallback a los .md de la imagen; sin este flag (dev
+                # local, tests) siempre se leen los .md del repo.
+                "LANGFUSE_PROMPTS": "1",
             },
             # La regla single-worker se protege aquí cuando la cuota de la
             # cuenta lo permita (las cuentas nuevas traen 10 concurrentes y

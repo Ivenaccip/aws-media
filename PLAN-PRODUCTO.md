@@ -404,21 +404,29 @@ los toma al hacer la llamada. La arquitectura ayuda: los ~10 prompts ya son
 `.md` cargados por nombre vía `pipeline/config.py::load_prompt`, y todas las
 llamadas LLM pasan por `pipeline/llm.py::chat_json(name, system, user)`.
 
-- [ ] `tools/prompts_sync.py`: sube los `.md` actuales a Langfuse como versión
-      inicial (mismo nombre que usa `load_prompt`).
-- [ ] `load_prompt` intenta Langfuse primero (`get_prompt(name,
-      label="production")`, caché con TTL del SDK) con **fallback al `.md`
-      local** si Langfuse no responde — el pipeline jamás se cae por un prompt.
-- [ ] Conservar el templating actual de Python (`.format(**datos)` en
-      guionista/editor): se trae el texto crudo y se formatea local — los
-      placeholders `{var}` no cambian.
-- [ ] Enlazar la versión del prompt a cada generation (el wrapper de Langfuse
-      acepta `langfuse_prompt=`): así el dashboard de Langfuse cruza **versión
-      de prompt × costo × calidad** — ideal para iterar tras cada focus group.
-- [ ] Riesgo a vigilar: un prompt editado en producción sin pasar por tests.
-      Mitigación: los tests corren contra los `.md` del repo, y el label
-      `production` solo se mueve a mano en Langfuse; documentar "editar →
-      probar en una película propia → promover label".
+- [x] `tools/prompts_sync.py`: siembra idempotente de los 24 `.md` en Langfuse
+      (mismo nombre que `load_prompt`, label `production`, `--dry`/`--solo`).
+      SEMBRADO 2026-09-04: 24/24 versiones v1; segunda pasada = 0 cambios.
+- [x] `load_prompt` intenta Langfuse primero (`get_prompt(label="production")`,
+      caché con TTL del SDK, `fetch_timeout_seconds=3`, `max_retries=1`) con
+      fallback al `.md` local — gate por env `LANGFUSE_PROMPTS=1` (lo cablean
+      los dos stacks; dev local y tests siguen leyendo los .md del repo) y
+      cualquier excepción cae al .md: el pipeline jamás se cae por un prompt.
+- [x] Templating intacto: se trae el texto crudo y el `.format(**datos)` de
+      Python sigue local — los placeholders `{var}` no cambian.
+- [x] Enlace versión×generation: `load_prompt` devuelve `PromptTexto` (str que
+      carga el objeto del prompt y lo conserva tras `.format()`) y `chat_json`
+      pasa `langfuse_prompt=` cuando existe — Langfuse cruza versión × costo ×
+      calidad sin tocar ningún call site. (Las 2 llamadas directas fuera de
+      chat_json —qc y describir_referencia— quedan sin enlace por ahora.)
+- [x] Riesgo documentado en prompts_sync: los tests corren contra los `.md`
+      del repo y el label `production` solo se mueve a mano en Langfuse —
+      flujo "editar en la UI → probar en una película propia → promover".
+
+Hecho 2026-09-04 (M10): verificado en vivo (load_prompt sirvió la v1 remota
+con el enlace intacto tras .format). Deploy: imagen del CI + `cdk deploy
+aws-media-api aws-media-jobs` (solo por la env LANGFUSE_PROMPTS=1). Tests:
+10 nuevos en tests/test_m10_prompts.py (258 en total, verdes).
 
 ## Fase M11 — Narración primero (guion continuo → TTS → escenas)
 
