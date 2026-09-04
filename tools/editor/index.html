@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Cut Editor</title>
+<title>Estudio de video · Editor</title>
 <style>
   :root {
     --bg: #16181d; --panel: #1f2229; --panel2: #262a33; --text: #d8dce4; --dim: #8a92a0;
@@ -147,20 +147,41 @@
   .tick { position: absolute; top: 16px; height: 6px; border-left: 1px solid #4a5160; }
   .tick.major { top: 12px; height: 10px; border-color: #6a7284; }
   .ticklabel { position: absolute; top: 1px; font-size: 10px; color: var(--dim); transform: translateX(-50%); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #miga { color: var(--dim); font-size: 12px; white-space: nowrap; }
+  #miga a { color: var(--dim); text-decoration: none; }
+  #miga a:hover { color: var(--text); }
+  #miga b { color: var(--text); font-weight: 600; }
+  #ayudaModal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100;
+                display: none; align-items: center; justify-content: center; }
+  #ayudaModal.abierto { display: flex; }
+  #ayudaCard { background: var(--panel); border: 1px solid #3a4050; border-radius: 10px;
+               width: min(560px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; font-size: 13px; }
+  #ayudaCard h3 { font-size: 14px; margin-bottom: 10px; }
+  #ayudaCard h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+                  color: var(--dim); margin: 14px 0 6px; }
+  #ayudaCard table { border-collapse: collapse; width: 100%; }
+  #ayudaCard td { padding: 3px 8px 3px 0; vertical-align: top; }
+  #ayudaCard td:first-child { white-space: nowrap; color: var(--dim); }
+  #ayudaCard kbd { background: var(--panel2); border: 1px solid #3a4050; border-radius: 4px;
+                   padding: 1px 6px; font: 11px monospace; }
+  .leyswatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+               margin-right: 6px; vertical-align: -1px; border: 1px solid transparent; }
 </style>
 </head>
 <body>
 <header>
+  <span id="miga"><a id="migaVolver" href="/e1.html" style="display:none">← Editar</a> <b id="projName"></b></span>
   <button class="tab" id="hdrImportar" data-tip="metraje y recursos IA">📥 Importar</button>
   <button class="tab active" id="hdrTranscript" data-tip="mostrar / ocultar el panel de transcript">📃 Transcript</button>
   <span data-tip="próximamente: pista de audio y música"><button class="tab" id="hdrAudio" disabled>🎵 Audio</button></span>
-  <button class="tab" id="hdrSubs" data-tip="b1: frame de muestra → aprobar → quemar (make_subs)">📝 Subtítulos</button>
-  <span id="status"></span>
+  <button class="tab" id="hdrSubs" data-tip="frame de muestra → aprobar → quemar los subtítulos en un export">📝 Subtítulos</button>
+  <span id="status" role="status" aria-live="polite"></span>
   <span class="grow"></span>
   <span id="costoBadge" style="display:none;color:#e0b657;font-size:12px;margin-right:4px"></span>
-  <button id="saveBtn" class="tipR" disabled data-tip="Guardar cuts.json + correcciones de texto (con respaldo)">💾 Guardar</button>
-  <button id="renderBtn" class="primary tipR" data-tip="Renderizar el preview real con el engine">🎬 Render</button>
-  <button id="hdrPublicar" class="tipR" data-tip="b3: descargar (fn1) o agendar en tus redes vía Blotato (fn2)">📤 Publicar</button>
+  <button id="saveBtn" class="tipR" disabled data-tip="Guardar los cortes + correcciones de texto (con respaldo)">💾 Guardar</button>
+  <button id="renderBtn" class="primary tipR" data-tip="Renderizar el preview real del corte">🎬 Render</button>
+  <button id="hdrPublicar" class="tipR" data-tip="descargar la película o agendarla en tus redes vía Blotato">📤 Publicar</button>
 </header>
 
 <div id="main">
@@ -168,7 +189,7 @@
     <div class="h">Importar</div>
     <div id="impTiles">
       <span data-tip="abre la carpeta videos/ del proyecto en el explorador — deja ahí tus MP4s"><button class="tile" id="impAbrir"><span class="ico">＋</span><span class="lbl">Metraje</span></button></span>
-      <span id="brollWrap" data-tip="b2: Claude propone momentos para recursos visuales (~$0.01)"><button class="tile" id="tbBroll"><span class="ico">🎨</span><span class="lbl">B-roll IA</span></button></span>
+      <span id="brollWrap" data-tip="Claude propone momentos para recursos visuales (~$0.01 dólares)"><button class="tile" id="tbBroll"><span class="ico">🎨</span><span class="lbl">B-roll IA</span></button></span>
     </div>
     <div class="h" id="impListaH" style="display:none;margin-top:16px">En videos/ — selecciona e incorpora</div>
     <div id="impLista"></div>
@@ -185,10 +206,10 @@
   <div id="left">
     <video id="vid" src="media/proxy.mp4"></video>
     <div id="playerbar">
-      <button id="tbPlay" data-tip="Reproducir / pausar — Espacio">▶</button>
+      <button id="tbPlay" aria-label="Reproducir o pausar" data-tip="Reproducir / pausar — Espacio">▶</button>
       <span id="timeinfo"></span>
       <span class="grow"></span>
-      <button id="modeBtn" data-tip="Playback editado / crudo — E">Mode: Edited</button>
+      <button id="modeBtn" data-tip="Vista editada / cruda — E">Vista: editada</button>
       <select id="styleSel" class="tipR" data-tip="Estilo de pausas del playback editado y los renders">
         <option value="tight">tight</option><option value="natural">natural</option>
       </select>
@@ -204,25 +225,25 @@
       <div id="chatLog"><div class="txnote" id="chatNote">Anota decisiones en los flags (1er click guarda la nota) y
         mándalas juntas con ➤, o escribe libre. El primer mensaje arranca la sesión de Claude.</div></div>
       <div id="chatBusy">⏳ Claude está trabajando…</div>
-      <div id="chatRow"><input id="chatInput" type="text" placeholder="mensaje libre (opcional si hay notas)…"><button id="chatSend" data-tip="Enviar notas + mensaje — Enter">➤</button></div>
+      <div id="chatRow"><input id="chatInput" type="text" aria-label="Mensaje para Claude" placeholder="mensaje libre (opcional si hay notas)…"><button id="chatSend" aria-label="Enviar" data-tip="Enviar notas + mensaje — Enter">➤</button></div>
     </div>
   </div>
 </div>
 
 <div id="tlwrap">
   <div id="tltools">
-    <button id="tbUndo" disabled data-tip="Deshacer — Ctrl+Z">↩</button>
-    <button id="tbRedo" disabled data-tip="Rehacer — Ctrl+Shift+Z">↪</button>
+    <button id="tbUndo" disabled aria-label="Deshacer" data-tip="Deshacer — Ctrl+Z">↩</button>
+    <button id="tbRedo" disabled aria-label="Rehacer" data-tip="Rehacer — Ctrl+Shift+Z">↪</button>
     <span class="sep"></span>
-    <button id="tbSplit" data-tip="Dividir el bloque en el cursor">][</button>
-    <button id="tbTrimL" data-tip="Eliminar del inicio del bloque al cursor">⌫[</button>
-    <button id="tbTrimR" data-tip="Eliminar del cursor al fin del bloque">]⌫</button>
-    <button id="tbToggle" disabled data-tip="Eliminar / restaurar el bloque seleccionado">🗑</button>
+    <button id="tbSplit" aria-label="Dividir el bloque en el cursor" data-tip="Dividir el bloque en el cursor">][</button>
+    <button id="tbTrimL" aria-label="Eliminar del inicio del bloque al cursor" data-tip="Eliminar del inicio del bloque al cursor">⌫[</button>
+    <button id="tbTrimR" aria-label="Eliminar del cursor al fin del bloque" data-tip="Eliminar del cursor al fin del bloque">]⌫</button>
+    <button id="tbToggle" disabled aria-label="Eliminar o restaurar el bloque seleccionado" data-tip="Eliminar / restaurar el bloque seleccionado">🗑</button>
     <span id="selInfo"></span>
     <span class="grow"></span>
-    <span class="tipR" style="color:var(--dim);cursor:help" data-tip="verde = keep · rojo = retake · naranja = false start · ocre = repeat · morado = manual · ▲ flag · 💡 fluff (solo sugerencia) — atajos: ←→ saltar · ,. frame · I/O/C rango · el playback en vivo es aproximado; el render es exacto">ⓘ</span>
+    <button id="tbAyuda" class="tipR" data-tip="Leyenda de colores y atajos — tecla ?">❓ Ayuda</button>
     <span class="sep"></span>
-    <span style="color:var(--dim)">🔍</span><input id="zoom" type="range" min="4" max="40" value="7" style="width:120px">
+    <span style="color:var(--dim)">🔍</span><input id="zoom" type="range" min="4" max="40" value="7" style="width:120px" aria-label="Zoom del timeline">
   </div>
   <div id="timeline"><div id="tl-inner">
     <div class="trklabel" style="top:36px">subtítulos</div>
@@ -233,6 +254,40 @@
     <div id="playhead"></div>
   </div></div>
 </div>
+
+<div id="ayudaModal"><div id="ayudaCard">
+  <h3>Leyenda y atajos
+      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="document.getElementById('ayudaModal').classList.remove('abierto')">✕</span></h3>
+  <h4>Colores del timeline</h4>
+  <table>
+    <tr><td><span class="leyswatch" style="background:color-mix(in srgb,var(--keep) 32%,transparent);border-color:var(--keep)"></span>verde</td><td>se queda en el corte</td></tr>
+    <tr><td><span class="leyswatch" style="background:color-mix(in srgb,var(--cut-retake) 38%,transparent);border-color:var(--cut-retake)"></span>rojo</td><td>retoma (se repitió la toma)</td></tr>
+    <tr><td><span class="leyswatch" style="background:color-mix(in srgb,var(--cut-false_start) 38%,transparent);border-color:var(--cut-false_start)"></span>naranja</td><td>arranque en falso</td></tr>
+    <tr><td><span class="leyswatch" style="background:color-mix(in srgb,var(--cut-repeat) 38%,transparent);border-color:var(--cut-repeat)"></span>ocre</td><td>repetición</td></tr>
+    <tr><td><span class="leyswatch" style="background:color-mix(in srgb,var(--cut-manual) 38%,transparent);border-color:var(--cut-manual)"></span>morado</td><td>corte manual (tuyo)</td></tr>
+    <tr><td>▲</td><td>flag: duda de Claude que espera tu decisión</td></tr>
+    <tr><td>💡</td><td>sugerencia de relleno — solo sugerencia, nada se quita solo</td></tr>
+  </table>
+  <h4>Atajos de teclado</h4>
+  <table>
+    <tr><td><kbd>Espacio</kbd></td><td>reproducir / pausar</td></tr>
+    <tr><td><kbd>E</kbd></td><td>vista editada / cruda</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>saltar 2 s (con <kbd>Shift</kbd>: 10 s)</td></tr>
+    <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>un frame atrás / adelante</td></tr>
+    <tr><td><kbd>I</kbd> / <kbd>O</kbd></td><td>marcar inicio / fin del rango</td></tr>
+    <tr><td><kbd>C</kbd></td><td>cortar el rango marcado (o las palabras seleccionadas)</td></tr>
+    <tr><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd></td><td>deshacer / rehacer</td></tr>
+    <tr><td><kbd>+</kbd> / <kbd>-</kbd></td><td>zoom del timeline</td></tr>
+    <tr><td><kbd>?</kbd></td><td>abrir esta ayuda</td></tr>
+  </table>
+  <h4>En el transcript</h4>
+  <table>
+    <tr><td>clic</td><td>ir a esa palabra en el video</td></tr>
+    <tr><td><kbd>Shift</kbd>+clic</td><td>seleccionar un rango de palabras</td></tr>
+    <tr><td>doble clic</td><td>corregir el texto de una palabra (<kbd>Enter</kbd> guarda, <kbd>Esc</kbd> cancela)</td></tr>
+  </table>
+  <p style="color:var(--dim);margin-top:12px">La reproducción en vivo es aproximada; el render (🎬) es exacto.</p>
+</div></div>
 
 <script>
 "use strict";
@@ -258,6 +313,10 @@ let txDirty = false;
 
 const CATCOLOR = { retake: "var(--cut-retake)", false_start: "var(--cut-false_start)",
                    repeat: "var(--cut-repeat)", manual: "var(--cut-manual)" };
+// M3: los códigos internos (keep/cut/retake/…) no salen al texto visible
+const KINDTXT = { keep: "SE QUEDA", cut: "CORTE" };
+const CATTXT = { retake: "retoma", false_start: "arranque en falso",
+                 repeat: "repetición", manual: "manual" };
 
 const g2 = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${(s%60).toFixed(1).padStart(4,"0")}`;
 const toGlobal = (clip, t) => OFFSETS[clip] + t;
@@ -272,6 +331,10 @@ async function init() {
   DATA = j.cuts; MANIFEST = j.manifest; TOTAL = MANIFEST.total;
   WORDS = j.words || {};
   loadNotes(j.project || "proyecto");
+  // M3: orientación — qué proyecto está abierto y cómo volver (el enlace solo
+  // aplica servido bajo /editor/{name}/; el server local vive en la raíz)
+  $("projName").textContent = j.project || "";
+  if (location.pathname.includes("/editor/")) $("migaVolver").style.display = "";
   for (const p of MANIFEST.parts) OFFSETS[p.id] = p.offset;
   events = [];
   for (const c of DATA.clips) {
@@ -351,7 +414,7 @@ function buildTranscript() {
     body.appendChild(h);
     if (!ws.length) {
       const n = document.createElement("div"); n.className = "txnote";
-      n.textContent = "sin transcript canónico — corre tools/transcribe.py para ver las palabras aquí";
+      n.textContent = "este clip aún no tiene transcript de palabras (se genera con tools/transcribe.py)";
       body.appendChild(n); continue;
     }
     const flagsByWord = {};
@@ -432,7 +495,7 @@ function startWordEdit(el) {
     WORDS[cid][i].text = t; el.textContent = t;
     el.classList.add("edited");
     (txEdits[cid] = txEdits[cid] || {})[i] = t;
-    markTxDirty(`corrected ${cid}[${i}] "${orig}" → "${t}"`);
+    markTxDirty(`corregida palabra ${cid}[${i}] "${orig}" → "${t}"`);
   };
   const onKey = ev => {
     ev.stopPropagation();
@@ -471,7 +534,7 @@ function renderTimeline() {
       const col = CATCOLOR[ev.cat] || "var(--cut-retake)";
       d.style.background = `color-mix(in srgb, ${col} 38%, transparent)`; d.style.borderColor = col;
     }
-    d.title = `${ev.kind.toUpperCase()} ${ev.cat} ${g2(ev.s)}–${g2(ev.e)}\n${ev.text}`;
+    d.title = `${KINDTXT[ev.kind]}${ev.cat ? " · " + (CATTXT[ev.cat] || ev.cat) : ""} ${g2(ev.s)}–${g2(ev.e)}\n${ev.text}`;
     d.dataset.id = ev.id;
     const el = document.createElement("div"); el.className = "edge l";
     const er = document.createElement("div"); er.className = "edge r";
@@ -483,7 +546,7 @@ function renderTimeline() {
     const band = document.createElement("div");
     band.className = "fluffband" + (f.status === "auto_applied" ? " applied" : "");
     band.style.left = (gs*pps) + "px"; band.style.width = Math.max((f.e - f.s)*pps, 4) + "px";
-    band.title = (f.status === "auto_applied" ? "FLUFF AUTO-REMOVED: " : "FLUFF SUGGESTION: ") + f.text;
+    band.title = (f.status === "auto_applied" ? "RELLENO QUITADO EN AUTOMÁTICO: " : "SUGERENCIA DE RELLENO: ") + f.text;
     band.onclick = ev => { ev.stopPropagation(); seek(gs); showFluff(c.id, f); };
     inner.appendChild(band);
     const mk = document.createElement("div"); mk.className = "fluffmark";
@@ -527,8 +590,9 @@ function updateSelUI() {
   const ev = selected;
   $("tbToggle").textContent = ev.kind === "keep" ? "🗑" : "♻";
   $("tbToggle").dataset.tip = ev.kind === "keep" ? "Eliminar el bloque seleccionado" : "Restaurar el bloque eliminado";
+  $("tbToggle").setAttribute("aria-label", $("tbToggle").dataset.tip);
   $("selInfo").textContent =
-    `${ev.kind.toUpperCase()}${ev.cat ? " · " + ev.cat : ""} ${g2(ev.s)}–${g2(ev.e)} (${(ev.e - ev.s).toFixed(2)}s) ${ev.text}`;
+    `${KINDTXT[ev.kind]}${ev.cat ? " · " + (CATTXT[ev.cat] || ev.cat) : ""} ${g2(ev.s)}–${g2(ev.e)} (${(ev.e - ev.s).toFixed(2)}s) ${ev.text}`;
   $("selInfo").title = (ev.note ? ev.note + "\n" : "") + ev.text;
 }
 function flagTime(f) {
@@ -542,9 +606,9 @@ function showFlag(f) {
   renderFlags();
 }
 function showFluff(clip, f) {
-  $("selInfo").textContent = `💡 FLUFF ${g2(f.s)}–${g2(f.e)} (suggest-only): ${f.text}`;
+  $("selInfo").textContent = `💡 RELLENO ${g2(f.s)}–${g2(f.e)} (solo sugerencia): ${f.text}`;
   $("selInfo").title = (f.note || "") + "\nPara aceptarla: selecciona sus palabras/bloques y córtalos. Para rechazarla: ignórala.";
-  setStatus("fluff es solo sugerencia — nada se quita automáticamente");
+  setStatus("el relleno es solo sugerencia — nada se quita en automático");
 }
 /* Semáforo por flag: 🔴 pending (sin decisión) · 🟡 noted (nota local guardada,
    aún sin enviar) · 🟢 resolved (status en cuts.json, lo pone Claude al resolver).
@@ -668,8 +732,8 @@ function updateUndoUI() { $("tbUndo").disabled = !undoStack.length; $("tbRedo").
 
 function toggleEvent(ev) {
   pushUndo();
-  if (ev.kind === "keep") { ev.kind = "cut"; ev.cat = "manual"; markDirty(`cut keep ${ev.clip} ${ev.s.toFixed(2)}-${ev.e.toFixed(2)} "${ev.text.slice(0,50)}"`); }
-  else { ev.kind = "keep"; markDirty(`restored ${ev.cat} cut ${ev.clip} ${ev.s.toFixed(2)}-${ev.e.toFixed(2)}`); ev.cat = ""; }
+  if (ev.kind === "keep") { ev.kind = "cut"; ev.cat = "manual"; markDirty(`eliminado bloque ${ev.clip} ${ev.s.toFixed(2)}-${ev.e.toFixed(2)} "${ev.text.slice(0,50)}"`); }
+  else { ev.kind = "keep"; markDirty(`restaurado corte ${CATTXT[ev.cat] || ev.cat} ${ev.clip} ${ev.s.toFixed(2)}-${ev.e.toFixed(2)}`); ev.cat = ""; }
   showEvent(ev);
 }
 function neighbors(ev) {
@@ -688,7 +752,7 @@ function splitAt() {
   const right = { id: ++evSeq, clip: ev.clip, s: loc.t, e: ev.e, kind: ev.kind, cat: ev.cat, text: ev.text, note: ev.note };
   ev.e = loc.t;
   events.push(right); sortEvents();
-  markDirty(`split ${ev.kind} ${ev.clip} @ ${loc.t.toFixed(2)}`);
+  markDirty(`dividido bloque ${ev.clip} @ ${loc.t.toFixed(2)}`);
   showEvent(right);
 }
 function trimAt(side) {   // "l": elimina del inicio del bloque al cursor · "r": del cursor al fin
@@ -704,7 +768,7 @@ function trimAt(side) {   // "l": elimina del inicio del bloque al cursor · "r"
   if (ev.e - b > 0.05) parts.push(mkKeep(b, ev.e));
   events.splice(events.indexOf(ev), 1, ...parts);
   sortEvents();
-  markDirty(`trim ${side === "l" ? "inicio→cursor" : "cursor→fin"} ${ev.clip} ${a.toFixed(2)}-${b.toFixed(2)}`);
+  markDirty(`recorte ${side === "l" ? "inicio→cursor" : "cursor→fin"} ${ev.clip} ${a.toFixed(2)}-${b.toFixed(2)}`);
 }
 function cutSelection() {
   if (selIn === null || selOut === null) return setStatus("marca el rango primero: tecla I = inicio, O = fin (o selecciona palabras con Shift+click)", "err");
@@ -723,7 +787,7 @@ function cutSelection() {
   sortEvents();
   selIn = selOut = null;
   txAnchor = null; clearWordSel();
-  markDirty(`added manual cut ${host.clip} ${la.t.toFixed(2)}-${lb.t.toFixed(2)}`);
+  markDirty(`corte manual ${host.clip} ${la.t.toFixed(2)}-${lb.t.toFixed(2)}`);
 }
 
 /* ---------- save / render ---------- */
@@ -745,33 +809,39 @@ async function save() {
     const r = await fetch("api/save", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cuts: out, changes }) });
     const j = await r.json();
-    if (!j.saved) return setStatus("save failed: " + (j.error || "?"), "err");
-    dirty = false; changes = []; DATA = out; msgs.push("cuts ✓ (" + j.backup + ")");
+    if (!j.saved) return setStatus("No se pudo guardar el corte: " + (j.error || "error desconocido") + " — intenta de nuevo", "err");
+    dirty = false; changes = []; DATA = out; msgs.push("cortes ✓ (respaldo " + j.backup + ")");
   }
   if (txDirty) {
     const r = await fetch("api/words", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edits: txEdits }) });
     const j = await r.json();
-    if (!j.saved) return setStatus("transcript save failed: " + (j.error || "?"), "err");
-    txDirty = false; txEdits = {}; changes = []; msgs.push(`transcript ✓ (${j.applied} palabras)`);
+    if (!j.saved) return setStatus("No se pudieron guardar las correcciones de texto: " + (j.error || "error desconocido") + " — intenta de nuevo", "err");
+    txDirty = false; txEdits = {}; changes = []; msgs.push(`correcciones ✓ (${j.applied} palabras)`);
   }
   $("saveBtn").disabled = true;
-  setStatus("saved: " + msgs.join(" · "), "ok");
+  setStatus("Guardado: " + msgs.join(" · "), "ok");
 }
 async function render() {
   if (dirty) await save();
   const style = $("styleSel").value;
   const r = await fetch("api/render", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ style }) });
-  if (!r.ok) { setStatus("render busy", "err"); return; }
+  if (!r.ok) {
+    const detalle = (await r.json().catch(() => ({}))).detail || "hay otro render en curso";
+    setStatus("No se pudo lanzar el render: " + detalle + " — espera a que termine y vuelve a intentarlo", "err");
+    return;
+  }
   $("renderBtn").disabled = true;
   const poll = setInterval(async () => {
     const s = await (await fetch("api/render/status")).json();
     const tail = s.log.trim().split("\n").pop() || "";
-    if (s.running) setStatus("rendering… " + tail);
+    if (s.running) setStatus("Renderizando… " + tail);
     else {
       clearInterval(poll); $("renderBtn").disabled = false;
-      setStatus(s.ok ? `render done ✓ output/preview-${style}.mp4` : "render FAILED — see server console", s.ok ? "ok" : "err");
+      setStatus(s.ok ? `Render listo ✓ output/preview-${style}.mp4`
+                     : "El render falló" + (tail ? ` (${tail.slice(0, 120)})` : "") + " — vuelve a intentarlo; si se repite, pídele ayuda a Claude en Decisiones",
+                s.ok ? "ok" : "err");
     }
   }, 1500);
 }
@@ -802,7 +872,7 @@ function chatAppend(m) {
   else if (m.role === "error") { d.className = "cmsg error"; d.textContent = "⚠ " + m.text; }
   else if (m.role === "result") {
     d.className = "cmsg meta";
-    d.textContent = m.ok ? `✓ turno completo${m.cost ? ` · $${m.cost.toFixed(4)}` : ""}` : `⚠ turno terminó con ${m.subtype}`;
+    d.textContent = m.ok ? `✓ turno completo${m.cost ? ` · $${m.cost.toFixed(4)} dólares` : ""}` : `⚠ el turno terminó con un error (${m.subtype}) — vuelve a enviar el mensaje`;
   } else return;
   log.appendChild(d);
   log.scrollTop = log.scrollHeight;
@@ -940,7 +1010,7 @@ window.addEventListener("mousemove", e => {
 window.addEventListener("mouseup", () => {
   if (drag && drag.moved) {
     pushUndo(drag.pre);
-    markDirty(`dragged ${drag.ev.kind} ${drag.ev.clip} -> ${drag.ev.s.toFixed(2)}-${drag.ev.e.toFixed(2)}`); showEvent(drag.ev);
+    markDirty(`ajustado bloque ${drag.ev.clip} -> ${drag.ev.s.toFixed(2)}-${drag.ev.e.toFixed(2)}`); showEvent(drag.ev);
   }
   drag = null;
 });
@@ -955,12 +1025,16 @@ document.addEventListener("keydown", e => {
   else if (k === "ArrowRight") seek(vid.currentTime + (e.shiftKey ? 10 : 2));
   else if (k === ",") seek(vid.currentTime - 1/59.94);
   else if (k === ".") seek(vid.currentTime + 1/59.94);
-  else if (k === "i" || k === "I") { selIn = vid.currentTime; drawSelMarks(); setStatus(`in @ ${g2(selIn)}`); }
-  else if (k === "o" || k === "O") { selOut = vid.currentTime; drawSelMarks(); setStatus(`out @ ${g2(selOut)}`); }
+  else if (k === "i" || k === "I") { selIn = vid.currentTime; drawSelMarks(); setStatus(`inicio del rango @ ${g2(selIn)}`); }
+  else if (k === "o" || k === "O") { selOut = vid.currentTime; drawSelMarks(); setStatus(`fin del rango @ ${g2(selOut)}`); }
   else if (k === "c" || k === "C") cutSelection();
   else if (k === "+" || k === "=") $("zoom").value = pps = Math.min(pps + 3, 40), rebuildZoom();
   else if (k === "-") $("zoom").value = pps = Math.max(pps - 3, 4), rebuildZoom();
+  else if (k === "?") $("ayudaModal").classList.toggle("abierto");
+  else if (k === "Escape") $("ayudaModal").classList.remove("abierto");
 });
+$("tbAyuda").onclick = () => $("ayudaModal").classList.add("abierto");
+$("ayudaModal").onclick = e => { if (e.target.id === "ayudaModal") e.target.classList.remove("abierto"); };
 function rebuildZoom() {
   const center = vid.currentTime;
   renderTimeline();
@@ -991,7 +1065,7 @@ $("txBody").addEventListener("click", e => {
   if (cut) showEvent(cut);   // palabra tachada -> su bloque de corte (con ✅ restore)
 });
 $("txCutBtn").onclick = cutSelection;
-$("modeBtn").onclick = () => { mode = mode === "edited" ? "raw" : "edited"; $("modeBtn").textContent = "Mode: " + (mode === "edited" ? "Edited" : "Raw"); };
+$("modeBtn").onclick = () => { mode = mode === "edited" ? "raw" : "edited"; $("modeBtn").textContent = "Vista: " + (mode === "edited" ? "editada" : "cruda"); };
 $("tbPlay").onclick = () => vid.paused ? vid.play() : vid.pause();
 $("tbUndo").onclick = undo;
 $("tbRedo").onclick = redo;
@@ -1024,7 +1098,7 @@ $("styleSel").onchange = rebuildPlan;
 $("saveBtn").onclick = save;
 $("renderBtn").onclick = render;
 window.addEventListener("beforeunload", e => { if (dirty || txDirty) e.preventDefault(); });
-vid.addEventListener("loadedmetadata", () => { if (Math.abs(vid.duration - TOTAL) > 2) setStatus("proxy/manifest length mismatch — rebuild proxy", "err"); });
+vid.addEventListener("loadedmetadata", () => { if (Math.abs(vid.duration - TOTAL) > 2) setStatus("El video de trabajo no coincide con el corte — pídele a Claude en Decisiones que reconstruya el proxy", "err"); });
 
 init();
 chatTick();   // sondeo inicial: muestra si el chat está disponible sin arrancar la sesión
@@ -1174,7 +1248,7 @@ function fusionRender() {
     d.style.left = (pr.t * pps) + "px";
     d.style.width = Math.max(pr.dur_s * pps - 2, 6) + "px";
     d.textContent = `💡 ${pr.titulo}`;
-    d.title = `PROPUESTA b2 (${pr.familia}): ${pr.titulo}\n${pr.motivo}` +
+    d.title = `PROPUESTA DE B-ROLL (${pr.familia}): ${pr.titulo}\n${pr.motivo}` +
               (pr.prompt_imagen ? `\n\nprompt: ${pr.prompt_imagen}` : "");
     d.onclick = ev => { ev.stopPropagation(); seek(pr.t);
       alert(`💡 ${pr.titulo} (${pr.familia})\n\n${pr.motivo}` +
@@ -1279,7 +1353,7 @@ async function fusionInit() {
   if (todoIA) {
     b2.disabled = true;
     document.getElementById("brollWrap").dataset.tip =
-      "b2 no aplica: este video es 100% generado con IA — regenera escenas desde la pista de recursos";
+      "no aplica: este video es 100% generado con IA — regenera escenas desde la pista de recursos";
   } else b2.onclick = b2flujo;
   $("impManual").onclick = () => impIncorporar("manual");
   $("impIA").onclick = () => impIncorporar("ia");
@@ -1292,14 +1366,14 @@ async function fusionInit() {
 }
 
 async function b2flujo() {
-  if (!confirm("b2 analiza el video y propone momentos para recursos visuales (~$0.01 de LLM, no genera nada). ¿Continuar?")) return;
-  setStatus("⏳ b2 analizando el video…");
+  if (!confirm("Analizamos el video y proponemos momentos para recursos visuales (~$0.01 dólares de LLM; no genera imágenes todavía). ¿Continuar?")) return;
+  setStatus("⏳ analizando el video…");
   try {
     const r = await fj("api/broll/sugerir", {});
     OVS.propuestas = r.propuestas;
     fusionRender();
-    setStatus(`💡 ${r.propuestas.length} propuestas en la pista 2 (clic para ver el detalle)`, "ok");
-  } catch (e) { setStatus("b2: " + e.message, "err"); }
+    setStatus(`💡 ${r.propuestas.length} propuestas en la pista de recursos (clic para ver el detalle)`, "ok");
+  } catch (e) { setStatus("No se pudieron pedir las propuestas: " + e.message + " — intenta de nuevo", "err"); }
 }
 
 async function b3abrir() {
@@ -1332,18 +1406,33 @@ async function b3abrir() {
   } else if (st.error) {
     $("b3fn2").innerHTML = `<span style='color:#e37c7c'>${st.error}</span>`;
   } else {
+    // M3: "Programar" es el default — publicar de inmediato es la opción
+    // explícita, y la zona horaria del navegador queda a la vista.
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "hora local";
     $("b3fn2").innerHTML = `
-      <select id="b3cuenta">${st.cuentas.map(c =>
+      <select id="b3cuenta" aria-label="Cuenta destino">${st.cuentas.map(c =>
         `<option value="${c.id}|${c.platform}">${c.platform} · ${c.fullname || c.username}</option>`).join("")}</select>
-      <select id="b3archivo">${st.descargables.filter(d => d.nombre.endsWith(".mp4"))
+      <select id="b3archivo" aria-label="Video a publicar">${st.descargables.filter(d => d.nombre.endsWith(".mp4"))
         .sort((a, b) => (b.clave === "subtitulado") - (a.clave === "subtitulado")).map(d =>
         `<option value="${d.clave}">${d.nombre}</option>`).join("")}</select>
-      <button id="b3sugerir" style="margin-bottom:6px">✨ Sugerir títulos (~$0.01)</button>
+      <button id="b3sugerir" style="margin-bottom:6px">✨ Sugerir títulos (~$0.01 dólares)</button>
       <div id="b3titulos"></div>
-      <textarea id="b3texto" rows="3" placeholder="Texto del post (elige un título sugerido o escribe el tuyo)"></textarea>
-      <input type="datetime-local" id="b3cuando">
-      <div style="color:var(--dim);font-size:11px;margin-bottom:6px">Sin fecha = publicar de inmediato.</div>
-      <button class="primary" id="b3agendar">📤 Agendar / publicar</button>`;
+      <textarea id="b3texto" rows="3" aria-label="Texto del post" placeholder="Texto del post (elige un título sugerido o escribe el tuyo)"></textarea>
+      <div style="margin-bottom:6px">
+        <label style="display:inline;margin:0;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text)">
+          <input type="radio" name="b3modo" value="programar" checked style="width:auto;margin:0 4px 0 0"> Programar</label>
+        <label style="display:inline;margin:0 0 0 12px;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text)">
+          <input type="radio" name="b3modo" value="ahora" style="width:auto;margin:0 4px 0 0"> Publicar ahora</label>
+      </div>
+      <input type="datetime-local" id="b3cuando" aria-label="Fecha y hora de publicación">
+      <div style="color:var(--dim);font-size:11px;margin-bottom:6px">La hora es de tu zona: ${tz}.</div>
+      <button class="primary" id="b3agendar">📤 Programar</button>`;
+    const b3modo = () => document.querySelector('input[name="b3modo"]:checked').value;
+    document.querySelectorAll('input[name="b3modo"]').forEach(r => r.onchange = () => {
+      const prog = b3modo() === "programar";
+      $("b3cuando").style.display = prog ? "" : "none";
+      $("b3agendar").textContent = prog ? "📤 Programar" : "📤 Publicar ahora";
+    });
     $("b3sugerir").onclick = async () => {
       $("b3msg").textContent = "⏳ pidiendo títulos…";
       try {
@@ -1358,8 +1447,14 @@ async function b3abrir() {
       const [cuenta_id, plataforma] = $("b3cuenta").value.split("|");
       const texto = $("b3texto").value.trim();
       if (!texto) { $("b3msg").className = "err"; $("b3msg").textContent = "Escribe o elige el texto del post."; return; }
-      const cuando = $("b3cuando").value ? new Date($("b3cuando").value).toISOString() : null;
-      if (!confirm(`Se ${cuando ? "agendará" : "publicará AHORA"} en ${plataforma}:\n\n«${texto}»\n\n¿Confirmar?`)) return;
+      const programar = b3modo() === "programar";
+      if (programar && !$("b3cuando").value) {
+        $("b3msg").className = "err";
+        $("b3msg").textContent = "Elige la fecha y hora, o cambia a «Publicar ahora».";
+        return;
+      }
+      const cuando = programar ? new Date($("b3cuando").value).toISOString() : null;
+      if (!confirm(`Se ${cuando ? `programará (${$("b3cuando").value.replace("T", " ")}, tu hora)` : "publicará AHORA"} en ${plataforma}:\n\n«${texto}»\n\n¿Confirmar?`)) return;
       $("b3msg").className = ""; $("b3msg").textContent = "⏳ subiendo video y creando el post…";
       try {
         await fj("api/publicar/agendar", { confirmar: true, cuenta_id, plataforma, texto,
@@ -1438,7 +1533,7 @@ async function b1flujo() {
     setStatus("");
     document.getElementById("b1img").src = "archivo/" + r.muestra + "?t=" + Date.now();
     document.getElementById("b1msg").textContent =
-      `Frame del segundo ${frame} con el estilo de subtítulos. Si te gusta, quema el video completo.`;
+      `Frame del segundo ${frame} (la posición actual del cursor) con el estilo de subtítulos. Si te gusta, quema el video completo.`;
     document.getElementById("b1quemar").disabled = false;
     document.getElementById("b1modal").classList.add("abierto");
   } catch (e) { setStatus("subtítulos: " + e.message, "err"); }

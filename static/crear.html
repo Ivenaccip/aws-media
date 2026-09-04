@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Estudio de video</title>
+<title>Estudio de video · Crear</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { --bg:#0f0f14; --card:#1a1a22; --line:#2a2a36; --txt:#ececf1; --mut:#8b8b9a; --acc:#c93fb6; --acc2:#7b3fe4; }
@@ -56,6 +56,7 @@
   .verde { background:#3ddc84; } .amarillo { background:#ffd34d; } .rojo { background:#ff5c5c; }
   .sticky { position:sticky; bottom:0; background:linear-gradient(180deg, transparent, var(--bg) 30%); padding:10px 0 14px; }
   .sticky .btn { margin-top:6px; }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
 </style>
 </head>
 <body>
@@ -259,6 +260,15 @@ $('#enviar').onclick = async (ev, forzar = false) => {
 // --- polling ---
 const ETAPAS_PREP = {inicio:5, clasificar:15, research:30, guion:50, editor:62, voz:72, personaje:85};
 const ETAPAS_PROD = {inicio:3, casting:8, director:15, tts:25, media:40, concat:90, drive:96};
+// M3: etapas con nombre humano — los códigos internos no salen a la pantalla
+const ETAPA_TXT = {
+  inicio:'Arrancando', clasificar:'Leyendo tu texto', research:'Investigando fuentes',
+  guion:'Escribiendo el guion', editor:'Puliendo las escenas', voz:'Eligiendo voces',
+  personaje:'Dibujando las opciones de personaje', casting:'Preparando la voz elegida',
+  director:'Planeando las tomas', tts:'Grabando la narración', media:'Generando las escenas',
+  concat:'Uniendo la película', drive:'Guardando el resultado',
+};
+let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
 function seguir() { render(proyecto); clearInterval(poll); poll = setInterval(refrescar, 2500); }
 async function refrescar() {
   const r = await fetch('/api/proyectos/' + proyecto.id); if (!r.ok) return;
@@ -269,11 +279,14 @@ function render(p) {
   if (p.estado==='creado' || p.estado==='preparando' || p.estado==='produciendo') {
     show('progreso');
     const prod = p.estado==='produciendo';
-    $('#ptitulo').textContent = prod ? '🎥 Produciendo la película…' : '✍️ Investigando y escribiendo el guion…';
+    $('#ptitulo').textContent = (prod ? '🎥 Produciendo la película…' : '✍️ Investigando y escribiendo el guion…')
+      + (prod && minutosProd ? ` (~${minutosProd} min)` : '');
     let pct = (prod ? ETAPAS_PROD : ETAPAS_PREP)[p.etapa] ?? 5;
     if (prod && p.etapa==='media' && p.progreso.escenas_total) pct = 40 + 50 * (p.progreso.escenas_listas||0) / p.progreso.escenas_total;
     $('#pbar').style.width = pct + '%';
-    $('#petapa').textContent = (p.etapa||'') + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '');
+    $('#petapa').textContent = (ETAPA_TXT[p.etapa] || p.etapa || '')
+      + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '')
+      + ' · puedes cerrar la pestaña: la producción sigue en la nube y este enlace te trae de vuelta';
   } else if (p.estado==='revision') { renderRevision(p); }
   else if (p.estado==='listo') {
     show('resultado');
@@ -354,7 +367,7 @@ function renderVoces(p) {
 }
 function addEscena(txt='') {
   const d = document.createElement('div'); d.className='escena';
-  d.innerHTML = `<div class="n"></div><textarea>${txt.replace(/</g,'&lt;')}</textarea><div class="meta"></div><button title="Quitar">✕</button>`;
+  d.innerHTML = `<div class="n"></div><textarea>${txt.replace(/</g,'&lt;')}</textarea><div class="meta"></div><button title="Quitar la escena">✕</button>`;
   d.querySelector('button').onclick = () => { d.remove(); renum(); };
   d.querySelector('textarea').oninput = () => { metaEscena(d); estimar(); };
   metaEscena(d);
@@ -364,7 +377,14 @@ function metaEscena(d) {
   const w = d.querySelector('textarea').value.trim().split(/\s+/).filter(Boolean).length;
   const m = d.querySelector('.meta'); m.textContent = `${w} pal · ${Math.round(w/2)} s`; m.classList.toggle('warn', w > 14);
 }
-function renum() { document.querySelectorAll('.escena .n').forEach((n,i) => n.textContent = i+1); estimar(); }
+function renum() {
+  document.querySelectorAll('.escena').forEach((d,i) => {
+    d.querySelector('.n').textContent = i+1;
+    d.querySelector('textarea').setAttribute('aria-label', `Escena ${i+1}`);
+    d.querySelector('button').setAttribute('aria-label', `Quitar escena ${i+1}`);
+  });
+  estimar();
+}
 function escenas() { return [...document.querySelectorAll('.escena textarea')].map(t => t.value.trim()).filter(Boolean); }
 let estimT = null;
 function estimar() {
@@ -376,6 +396,7 @@ function estimar() {
     if (!r.ok) return; const c = await r.json();
     // M1: UNA sola moneda de cara al usuario (créditos); los dólares, en
     // secundario. Si el saldo no alcanza, el botón se apaga ANTES del 402.
+    minutosProd = c.minutos;
     if (c.creditos != null) {
       $('#producir').textContent = `Producir la película → ${c.creditos} créditos (te quedan ${c.creditos_saldo}) · ~${c.minutos} min`;
       faltaProducir = Math.max(0, c.creditos - c.creditos_saldo);

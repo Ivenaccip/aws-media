@@ -23,17 +23,31 @@
       '\n\nLos créditos comprados no caducan.';
   }
 
-  async function refrescar() {
+  // M3: la primera petición tras la pausa de la base puede dar 503/504 mientras
+  // despierta (~15-30 s) — reintenta con backoff en vez de dejar la pastilla
+  // invisible hasta la siguiente navegación.
+  const ESPERAS_MS = [2000, 4000, 8000, 15000, 30000];
+  let reintento = 0, reintentoT = null;
+
+  function refrescar() { reintento = 0; return intentar(); }
+
+  async function intentar() {
+    clearTimeout(reintentoT);
     try {
       const r = await fetch('/api/creditos');
-      if (!r.ok) return;
+      if (!r.ok) { programarReintento(); return; }
       const d = await r.json();
       if (!d.activo) return;
+      reintento = 0;
       est.activo = true; est.saldo = d.saldo; est.tarifas = d.tarifas || {}; est.packs = d.packs || [];
       el.style.display = 'flex';
       el.querySelector('#mon-saldo').textContent = `⚡ ${d.saldo} créditos`;
       document.dispatchEvent(new CustomEvent('monedero', { detail: est }));
-    } catch { /* sin red: la cabecera simplemente no cambia */ }
+    } catch { programarReintento(); /* sin red: se reintenta igual */ }
+  }
+  function programarReintento() {
+    if (reintento >= ESPERAS_MS.length) return;   // se rinde en silencio; visibilitychange lo revive
+    reintentoT = setTimeout(intentar, ESPERAS_MS[reintento++]);
   }
 
   function montar() {

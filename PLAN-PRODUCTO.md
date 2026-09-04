@@ -121,20 +121,38 @@ Deuda M2-1: CloudFront sirve el media a quien tenga la URL exacta (el listado
 sí exige login); URLs firmadas del CDN quedan para una fase posterior.
 Tests: 21 nuevos en tests/test_m2_login.py (162 en total, verdes).
 
-## Fase M3 — UX quick wins (texto y accesibilidad, cero riesgo)
+## Fase M3 — UX quick wins (texto y accesibilidad, cero riesgo) ✅ CÓDIGO LISTO (2026-09-04, falta deploy)
 
 Tanda de la auditoría §6 "quick wins" que son texto/atributos:
 
-- [ ] `lang="es"` en el editor; `aria-label` en botones de ícono; `:focus-visible`.
-- [ ] Retirar códigos internos del texto visible (e1/s1/b1/b2/b3/g1/fn1/fn2);
+- [x] `lang="es"` en el editor; `aria-label` en botones de ícono; `:focus-visible`.
+- [x] Retirar códigos internos del texto visible (e1/s1/b1/b2/b3/g1/fn1/fn2);
       errores en español con acción ("El render falló: [causa] — reintenta").
-- [ ] Etapas humanas con minutos ("Investigando fuentes · ~3 min") usando lo que
-      ya devuelve `/estimacion`.
-- [ ] Título de producto unificado en los `<title>`; nombre del proyecto y
-      enlace de vuelta en el editor.
-- [ ] "Programar" como default en publicar + zona horaria visible.
-- [ ] Estado de error único con "Reintentar" en e1; leyenda de colores y panel
-      de atajos (`?`) en el editor.
+      En el editor: KEEP/CUT → "SE QUEDA"/"CORTE", categorías traducidas
+      (retoma, arranque en falso, repetición), fluff → "relleno", y la bitácora
+      de cambios que se guarda con el corte también quedó en español.
+- [x] Etapas humanas con minutos ("Investigando fuentes · N/M escenas") usando
+      lo que ya devuelve `/estimacion` (los ~min del último estimado se muestran
+      en el título del progreso de producción) + aviso "puedes cerrar la
+      pestaña: la producción sigue en la nube".
+- [x] Título de producto unificado en los `<title>` ("Estudio de video · …" —
+      cambiar el nombre después es un buscar/reemplazar); nombre del proyecto y
+      enlace "← Editar" en el header del editor (el enlace solo aparece servido
+      bajo /editor/{name}/, el server local de raíz no lo muestra).
+- [x] "Programar" como default en publicar (radio explícito "Publicar ahora")
+      + zona horaria del navegador visible junto al campo de fecha.
+- [x] Estado de error único con "Reintentar" en e1 (ambas columnas); leyenda de
+      colores y panel de atajos en el editor (botón "❓ Ayuda" + tecla `?`).
+- [x] Extra de e1: filas no accionables ya no parecen enlaces (son `<div>`) y la
+      columna de shorts dice la verdad ("se edita desde Claude Code" + botón
+      "Copiar /shorts") — era el pendiente de M8 para mientras.
+- [x] Extra del monedero: `monedero.js` reintenta con backoff (2s→30s) cuando
+      /api/creditos falla — la pastilla del saldo ya no queda invisible mientras
+      Aurora despierta de la pausa (el bug que viste tras tu primer login).
+
+Requiere: 1 `cdk deploy` del usuario DESPUÉS de que el CI construya la imagen
+(cambia código servido: static/ y tools/editor/index.html van dentro de la
+imagen). Tests: 162 verdes; smoke local de hub/e1/crear/editor en navegador.
 
 ## Fase M4 — Recarga con Stripe
 
@@ -235,8 +253,8 @@ reutiliza las piezas de C3/C4:
       Chromium) + `export.sh` → S3 → descargar o publicar vía Blotato.
 - [ ] Tarifas: transcripción y render de shorts queman dinero → entrada nueva en
       `tools/tarifas.json` (definir con pricing.json antes de encender).
-- [ ] Mientras M8 no llegue: la columna de shorts en e1 dice la verdad ("se
-      edita desde Claude Code con /shorts" + botón copiar comando) — eso es M3.
+- [x] Mientras M8 no llegue: la columna de shorts en e1 dice la verdad ("se
+      edita desde Claude Code con /shorts" + botón copiar comando) — hecho en M3.
 
 ## Fase M9 — Automatización de membresías (bot en VPS)
 

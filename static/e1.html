@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Editar · e1</title>
+<title>Estudio de video · Editar</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
@@ -29,6 +29,16 @@
   .vacio { font-size: 13px; color: #6f6d66; padding: 8px 2px; }
   .nota { font-size: 12.5px; color: #6f6d66; margin-top: 14px; }
   code { background: #23262d; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+  li div.fila { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
+                border-radius: 9px; background: #23262d; font-size: 14px; }
+  li div.fila span.nombre { color: #6f6d66; }
+  .copiar { margin-left: 8px; padding: 2px 10px; border-radius: 20px; border: 1px solid #2c3038;
+            background: transparent; color: #9a978f; font-size: 11px; cursor: pointer; }
+  .copiar:hover { border-color: #5b8dd6; color: #e8e6e0; }
+  .reintentar { margin-top: 6px; padding: 6px 14px; border-radius: 9px; border: 1px solid #2c3038;
+                background: #23262d; color: #e8e6e0; font-size: 13px; cursor: pointer; }
+  .reintentar:hover { border-color: #5b8dd6; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -56,43 +66,62 @@
       y aparecerá aquí cuando tenga su corte.</p>
     </section>
     <section>
-      <h2>Shorts (s1)</h2>
+      <h2>Shorts</h2>
       <p class="desc">Clips verticales 9:16 con captions animados a partir de un video largo.</p>
       <ul id="lista-shorts"><li class="vacio">Cargando proyectos…</li></ul>
       <p class="nota">El flujo de shorts corre con <code>/shorts</code> en Claude Code sobre el
       transcript del proyecto (aprobación clip por clip).</p>
-<script src="/auth.js"></script>
     </section>
   </div>
 </main>
+<script src="/auth.js"></script>
 <script>
+// M3: filas no accionables como <div> (no parecen enlaces muertos) y un solo
+// estado de error para ambas columnas, con botón Reintentar.
 async function cargar() {
   const reel = document.getElementById("lista-reel");
   const shorts = document.getElementById("lista-shorts");
+  reel.innerHTML = shorts.innerHTML = '<li class="vacio">Cargando proyectos…</li>';
   let ps = [];
-  try { ps = await (await fetch("/api/edicion/proyectos")).json(); }
-  catch { reel.innerHTML = '<li class="vacio">No pude cargar los proyectos.</li>'; return; }
+  try {
+    const r = await fetch("/api/edicion/proyectos");
+    if (!r.ok) throw new Error(r.status);
+    ps = await r.json();
+  } catch {
+    const err = '<li class="vacio">No pudimos cargar los proyectos — revisa tu conexión.<br>' +
+      '<button class="reintentar" onclick="cargar()">Reintentar</button></li>';
+    reel.innerHTML = shorts.innerHTML = err;
+    return;
+  }
   const conCanonico = ps.filter(p => p.canonico);
-  const editables = ps.filter(p => p.editor_listo);
   const fila = (p, href) => {
     // proyecto solo-nube (C3): la subida se ve servida por CloudFront
     if (!href && p.subidas && p.subidas.length)
       return `<li><a href="${p.subidas[p.subidas.length - 1].cdn}" target="_blank">` +
         `<span class="nombre">${p.nombre}</span>` +
         `<span><span class="tag ok">ver subida</span></span></a></li>`;
-    return `<li${href ? "" : ' class="off"'}>` +
-      (href ? `<a href="${href}">` : '<a>') +
+    if (!href)
+      return `<li><div class="fila"><span class="nombre">${p.nombre}</span>` +
+        `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
+        `<span class="tag">sin corte aún</span></span></div></li>`;
+    return `<li><a href="${href}">` +
       `<span class="nombre">${p.nombre}</span>` +
       `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
-      `<span class="tag ${href ? "ok" : ""}">${href ? "abrir editor" : "sin corte aún"}</span></span></a></li>`;
+      `<span class="tag ok">abrir editor</span></span></a></li>`;
   };
   reel.innerHTML = ps.length
     ? ps.map(p => fila(p, p.editor_listo ? `/editor/${p.nombre}/` : null)).join("")
     : '<li class="vacio">Sin proyectos todavía.</li>';
   shorts.innerHTML = conCanonico.length
-    ? conCanonico.map(p => `<li><a><span class="nombre">${p.nombre}</span>` +
-        `<span class="tag">transcript listo — usa /shorts</span></a></li>`).join("")
+    ? conCanonico.map(p => `<li><div class="fila"><span class="nombre">${p.nombre}</span>` +
+        `<span><span class="tag">se edita desde Claude Code</span>` +
+        `<button class="copiar" onclick="copiarComando(this)">Copiar /shorts</button></span></div></li>`).join("")
     : '<li class="vacio">Ningún proyecto con transcript todavía.</li>';
+}
+async function copiarComando(btn) {
+  try { await navigator.clipboard.writeText("/shorts"); btn.textContent = "Copiado ✓"; }
+  catch { btn.textContent = "/shorts"; }
+  setTimeout(() => { btn.textContent = "Copiar /shorts"; }, 1500);
 }
 cargar();
 
