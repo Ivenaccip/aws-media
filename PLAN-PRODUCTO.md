@@ -251,6 +251,43 @@ llamadas LLM pasan por `pipeline/llm.py::chat_json(name, system, user)`.
       `production` solo se mueve a mano en Langfuse; documentar "editar →
       probar en una película propia → promover label".
 
+## Fase M11 — Narración primero (guion continuo → TTS → escenas)
+
+Decisión del usuario 2026-09-04: invertir el orden del pipeline de Crear, como
+en un documental real — la imagen se corta SOBRE la voz, no al revés. Arregla
+de raíz la escritura entrecortada (auditoría + queja del usuario), la
+imprecisión de duración (gate A3) y la prosodia del TTS por-escena.
+
+Flujo nuevo (detrás de un flag, A/B contra el pipeline actual):
+
+1. **Guion continuo**: el guionista escribe UNA narración corrida con gancho
+   inicial y cadena causal, sin la camisa de fuerza de 8-16 palabras por
+   escena (el ajuste de gancho+causa ya se aplicó al prompt actual como
+   mejora inmediata, 2026-09-04).
+2. **Revisión sobre texto corrido**: el usuario edita un párrafo, no cajitas
+   (resuelve de paso el P2 de la auditoría sobre los textareas).
+3. **TTS único** de la narración completa → mejor prosodia y duración REAL
+   medida (el gate A3 de palabras/segundo se vuelve innecesario).
+4. **Alineado por palabra**: whisper sobre el TTS (la pieza YA existe — es lo
+   que hace el puente para medir tasa de habla).
+5. **Ventanas de 4/6/8 s** que cubren la duración total; el director escribe
+   el prompt visual de cada ventana leyendo las palabras que suenan en ella.
+   Los cortes NO necesitan caer en fin de oración.
+6. **Ensamblaje pista-única**: una sola pista de audio continua + clips de
+   video concatenados encima, recortados al tiempo exacto (reemplaza el mux
+   audio+video por escena; el "tiempo extra" del clip se corta al concatenar).
+
+- [ ] Validación: misma historia por ambos pipelines (2 películas de 15 s,
+      ~$0.70 dólares c/u, con confirmación de gasto), comparación de guion,
+      duración y costo en Langfuse.
+- [ ] Cobro: sin cambio (3 cr/s por duración objetivo); la duración real
+      medida tras el TTS abre la puerta a cobrar exacto más adelante.
+- [ ] Riesgos: toca las rutas más probadas (flow.producir, tts, splitter,
+      duracion, mux/concat) — por eso el flag y el A/B; las versiones de
+      clips por escena se conservan para regeneración granular.
+- [ ] Orden recomendado: después de M1-AWS y M2, ANTES de los focus groups —
+      cambia la calidad de lo que la gente va a evaluar.
+
 ---
 
 ## Orden y dependencias
@@ -263,6 +300,7 @@ M5 (proteger trabajo, tras M1)
 M7 (cortes nube, sin chat → medir → chat) y M8 (shorts web): tras el núcleo M1–M5
 M9 (bot membresías): cuando haya miembros reales que sincronizar
 M10 (prompts en Langfuse): independiente — puede ir en cualquier hueco tras M1
+M11 (narración primero): tras M1-AWS y M2, ANTES de los focus groups
 
 ```
 
