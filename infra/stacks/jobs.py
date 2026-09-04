@@ -58,6 +58,7 @@ class JobsStack(Stack):
             "MEDIA_ROOT": "/tmp/media",
             "HOME": "/tmp",
             "PYTHONIOENCODING": "utf-8",
+            "LANGFUSE_PROMPTS": "1",   # M10: prompts desde Langfuse + fallback
         }
 
         def dar_permisos(role: iam.IRole) -> None:
