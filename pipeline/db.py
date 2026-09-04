@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextvars import ContextVar
 from functools import lru_cache
 
 # ---------------------------------------------------------------------------
@@ -26,8 +27,19 @@ def backend() -> str:
     return os.getenv("STATE_BACKEND", "json")
 
 
+# M2 — identidad por-request: el middleware de auth fija aquí el sub del token
+# de Cognito; los workers siguen fijando DEFAULT_USER_ID (un proceso = un
+# usuario). Sin login exigido todo cae al piloto, como siempre.
+_usuario_request: ContextVar[str | None] = ContextVar("usuario_request", default=None)
+
+
 def usuario_actual() -> str:
-    return os.getenv("DEFAULT_USER_ID", "piloto")
+    return _usuario_request.get() or os.getenv("DEFAULT_USER_ID", "piloto")
+
+
+def fijar_usuario(user_id: str | None):
+    """Fija la identidad del request actual; devuelve el token para reset."""
+    return _usuario_request.set(user_id)
 
 
 # ---------------------------------------------------------------------------

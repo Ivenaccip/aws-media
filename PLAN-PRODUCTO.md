@@ -81,25 +81,45 @@ Deuda M1-1 (timeout 29 s del botón) resuelta en la práctica: con fal el
 endpoint responde en ~16 s. Gasto del smoke ~$0.28 dólares (voz $0.01 +
 3 reparaciones ~$0.09 c/u).
 
-## Fase M2 — Acceso: login y altas (cierra deuda C1)
+## Fase M2 — Acceso: login y altas (cierra deuda C1) — CÓDIGO LISTO (2026-09-04, falta deploy)
 
-- [ ] **`tools/usuarios.py`** (espejo de `tools/creditos.py`):
+- [x] **`tools/usuarios.py`** (espejo de `tools/creditos.py`):
       `alta correo --plan mensual|anual` → `admin_create_user` en Cognito
       (correo = username, contraseña provisional que Cognito envía por email,
       cambio forzado al primer login) + fila en `usuarios` + abono de cortesía
-      100/200 en el mismo comando. `suspender correo` para bajas/churn.
-- [ ] **Exigir JWT** del pool `us-east-1_WyPvxnj1V` en API Gateway (authorizer
-      en `infra/stacks/api.py`) + Hosted UI con Authorization Code + PKCE.
-      Self-signup deshabilitado en el pool.
-- [ ] **Helper de fetch** en la web: adjunta el token, 401 → redirige a login
-      conservando `?p=`, 403 → "no tienes acceso a este proyecto" (lo pide la
-      auditoría antes de encender Cognito).
-- [ ] **user_id real** end-to-end: del token al monedero, trazas Langfuse y
-      claves SSM por usuario (la plomería de C5/C6 ya está indexada así; cae el
-      `piloto` fijo).
-- [ ] Con el login exigido, **ya se puede compartir la URL**.
+      100/200 (de tools/tarifas.json) en el mismo comando. `suspender correo`
+      deshabilita Y revoca sesiones (global sign-out — lo que llamará el VPS en
+      churn); `reactivar`, `lista`, `alta --reenviar` (reenvía la provisional
+      sin re-abonar) y `adoptar correo --de piloto` (migra proyectos, versiones,
+      costes, movimientos y saldo del id viejo al sub real — sin esto, el
+      dueño perdería de vista sus 70 créditos y proyectos al encender el login).
+- [x] **Exigir JWT** del pool `us-east-1_WyPvxnj1V` + Hosted UI con
+      Authorization Code + PKCE. Self-signup sigue deshabilitado. CAMBIO sobre
+      lo planeado: la exigencia vive EN LA APP (`server/auth.py`, middleware
+      que valida RS256 contra el JWKS en /api/* y /editor/*), no en un
+      authorizer de API Gateway — los `<img>/<audio>/<video>` piden
+      /api/.../archivo/... sin poder adjuntar el header Authorization y el
+      authorizer solo lee headers; el token viaja por header (fetch) o cookie
+      (tags de media). Mismo resultado, testeable en local. El stack cablea
+      COGNITO_POOL_ID/CLIENT_ID/DOMINIO y los callback/logout URLs reales.
+- [x] **Helper de fetch** (`static/auth.js`, primer script de cada página):
+      adjunta el token, 401 → refresca el token y reintenta una vez o redirige
+      al Hosted UI conservando la URL (incluye `?p=`), 403 → "no tienes acceso
+      a este proyecto". `static/callback.html` canjea el code (PKCE) directo
+      contra Cognito. Dev local: /api/auth/config responde activo=false y nada
+      cambia.
+- [x] **user_id real** end-to-end: `db.usuario_actual()` ahora lee un
+      contextvar que fija el middleware con el `sub` del token (workers siguen
+      con DEFAULT_USER_ID por proceso); monedero, trazas y claves SSM ya
+      estaban indexadas por ese valor — cae el `piloto` fijo.
+- [ ] Con el login desplegado, **ya se puede compartir la URL**.
 
-Requiere: 1 `cdk deploy` del usuario al final.
+Requiere: 1 `cdk deploy` del usuario al final (aws-media-api; la imagen nueva
+del CI antes). Después del deploy: `alta` del dueño + `adoptar` para quedarse
+con sus proyectos/saldo, y smoke: URL sin token → login → volver con sesión.
+Deuda M2-1: CloudFront sirve el media a quien tenga la URL exacta (el listado
+sí exige login); URLs firmadas del CDN quedan para una fase posterior.
+Tests: 21 nuevos en tests/test_m2_login.py (162 en total, verdes).
 
 ## Fase M3 — UX quick wins (texto y accesibilidad, cero riesgo)
 
