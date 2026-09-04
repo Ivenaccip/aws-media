@@ -46,6 +46,36 @@ def subir_dir(dir_local: Path, prefijo: str) -> int:
     return n
 
 
+def leer_texto(key: str) -> str | None:
+    """Contenido de un objeto (UTF-8) o None si no existe / no hay bucket."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    try:
+        r = _s3().get_object(Bucket=bucket, Key=key)
+    except _s3().exceptions.NoSuchKey:
+        return None
+    return r["Body"].read().decode("utf-8")
+
+
+def escribir_texto(key: str, texto: str, tipo: str = "application/json") -> None:
+    _s3().put_object(Bucket=_bucket(), Key=key,
+                     Body=texto.encode("utf-8"), ContentType=tipo)
+
+
+def respaldar(key: str, key_respaldo: str) -> None:
+    """Copia dentro del bucket ANTES de sobreescribir (las versiones no se
+    borran: el original queda bajo el prefijo de respaldos)."""
+    bucket = _bucket()
+    _s3().copy_object(Bucket=bucket, Key=key_respaldo,
+                      CopySource={"Bucket": bucket, "Key": key})
+
+
+def subir_archivo(local: Path, key: str) -> None:
+    tipo = mimetypes.guess_type(str(local))[0] or "application/octet-stream"
+    _s3().upload_file(str(local), _bucket(), key, ExtraArgs={"ContentType": tipo})
+
+
 def bajar_prefijo(prefijo: str, dir_local: Path) -> int:
     """Baja todo lo que haya bajo el prefijo al directorio local."""
     bucket = _bucket()
