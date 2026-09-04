@@ -28,9 +28,11 @@ log = logging.getLogger("worker")
 
 
 def _preparar(user_id: str, proyecto_id: str) -> None:
+    import time
+    t0 = time.monotonic()
     os.environ["DEFAULT_USER_ID"] = user_id
     cargar_env_usuario(user_id)   # C5: claves por-usuario pisan a las de plataforma
-    from pipeline import creditos, flow, media_sync
+    from pipeline import costes_infra, creditos, flow, media_sync
     from pipeline.project import cargar_proyecto
 
     p = cargar_proyecto(proyecto_id)
@@ -42,6 +44,10 @@ def _preparar(user_id: str, proyecto_id: str) -> None:
     asyncio.run(flow.preparar(p))
     subidos = media_sync.subir_dir(p.workdir, prefijo)       # personaje, cachés
     log.info("%s: preparar -> %s (%d artefactos a S3)", proyecto_id, p.estado, subidos)
+    # M6.1: línea estimada de infra de esta corrida (la memoria la pone el
+    # runtime en AWS_LAMBDA_FUNCTION_MEMORY_SIZE)
+    costes_infra.registrar(user_id, proyecto_id, "infra-preparar",
+                           costes_infra.costo_lambda(time.monotonic() - t0))
     if p.estado == "error":
         # el estado ya quedó registrado en Postgres para la UI; no relanzamos
         # el mensaje (un guion fallido no mejora por reintentarse en la DLQ)

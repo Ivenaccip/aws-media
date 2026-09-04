@@ -27,9 +27,11 @@ log = logging.getLogger("producir_task")
 
 def main(user_id: str, proyecto_id: str) -> int:
     import os
+    import time
+    t0 = time.monotonic()
     os.environ["DEFAULT_USER_ID"] = user_id
     cargar_env_usuario(user_id)   # C5: claves por-usuario pisan a las de plataforma
-    from pipeline import creditos, db, flow, media_sync
+    from pipeline import costes_infra, creditos, db, flow, media_sync
     from pipeline.project import cargar_proyecto
     from pipeline.storage import videos_root
 
@@ -68,6 +70,10 @@ def main(user_id: str, proyecto_id: str) -> int:
         db.guardar_proyecto_editor(user_id, nombre, json.dumps(doc, ensure_ascii=False))
 
     log.info("%s: estado final %s", proyecto_id, p.estado)
+    # M6.1: línea estimada de infra — el gasto de Fargate ocurrió igual haya
+    # terminado bien o mal (los créditos sí se devuelven; la infra es nuestra)
+    costes_infra.registrar(user_id, proyecto_id, "infra-producir",
+                           costes_infra.costo_fargate(time.monotonic() - t0))
     if p.estado != "listo" and creditos.activo():
         # C5: fallo nuestro = créditos de vuelta (el cobro fue por duración
         # objetivo en el API; se recalcula con la misma tarifa)

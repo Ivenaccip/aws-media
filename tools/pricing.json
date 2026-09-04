@@ -68,5 +68,11 @@
     "small": { "vram_gb_float16": 2, "spanish_ok": true },
     "medium": { "vram_gb_float16": 5, "spanish_ok": true },
     "large-v3": { "vram_gb_float16": 10, "spanish_ok": true, "download_gb": 3 }
+  },
+  "aws_infra": {
+    "comment": "M6.1 - tarifas de computo AWS us-east-1 (x86) para la linea 'infra' estimada por corrida: la consume pipeline/costes_infra.py y aparece en la tabla costes y el dashboard admin. Verificar en https://aws.amazon.com/fargate/pricing/ y https://aws.amazon.com/lambda/pricing/.",
+    "verified_on": "2026-09-04",
+    "fargate": { "usd_por_vcpu_hora": 0.04048, "usd_por_gb_hora": 0.004445 },
+    "lambda": { "usd_por_gb_segundo": 0.0000166667 }
   }
 }
