@@ -260,6 +260,10 @@ $('#enviar').onclick = async (ev, forzar = false) => {
   fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);
   fd.append('modo', modo); fd.append('rubro', $('#rubro').value);
   if (forzar) fd.append('forzar', 'true');
+  // M11 (flag del A/B): ?pipeline=narracion en la URL activa el pipeline
+  // narración-primero para ESTE proyecto; sin el parámetro, el de siempre.
+  const pipeAB = new URLSearchParams(location.search).get('pipeline');
+  if (pipeAB) fd.append('pipeline', pipeAB);
   files.forEach(f => fd.append('referencias', f));
   $('#enviar').disabled = true;
   const r = await fetch('/api/proyectos', {method:'POST', body:fd});
@@ -280,16 +284,17 @@ $('#enviar').onclick = async (ev, forzar = false) => {
 
 // --- polling ---
 const ETAPAS_PREP = {inicio:5, clasificar:15, research:30, guion:50, editor:62, voz:72, personaje:85};
-const ETAPAS_PROD = {inicio:3, casting:8, director:15, tts:25, media:40, concat:90, drive:96};
+const ETAPAS_PROD = {inicio:3, casting:8, director:15, tts:25, alinear:30, media:40, concat:90, drive:96};
 // M3: etapas con nombre humano — los códigos internos no salen a la pantalla
 const ETAPA_TXT = {
   inicio:'Arrancando', clasificar:'Leyendo tu texto', research:'Investigando fuentes',
   guion:'Escribiendo el guion', editor:'Puliendo las escenas', voz:'Eligiendo voces',
   personaje:'Dibujando las opciones de personaje', casting:'Preparando la voz elegida',
-  director:'Planeando las tomas', tts:'Grabando la narración', media:'Generando las escenas',
+  director:'Planeando las tomas', tts:'Grabando la narración', alinear:'Sincronizando la voz', media:'Generando las escenas',
   concat:'Uniendo la película', drive:'Guardando el resultado',
 };
 let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
+let pctPrev = 0, pctEstado = '';   // M11: barra monotónica entre pipelines
 function seguir() { render(proyecto); clearInterval(poll); poll = setInterval(refrescar, 2500); }
 // M5: polling resiliente — la conexión caída ya no congela la pantalla en
 // silencio: tras 2 fallos seguidos sale el banner y se sigue reintentando.
@@ -311,6 +316,10 @@ function render(p) {
       + (prod && minutosProd ? ` (~${minutosProd} min)` : '');
     let pct = (prod ? ETAPAS_PROD : ETAPAS_PREP)[p.etapa] ?? 5;
     if (prod && p.etapa==='media' && p.progreso.escenas_total) pct = 40 + 50 * (p.progreso.escenas_listas||0) / p.progreso.escenas_total;
+    // M11: en narración-primero el TTS va antes que el director — la barra
+    // nunca retrocede aunque el orden de etapas cambie entre pipelines
+    if (p.estado !== pctEstado) { pctEstado = p.estado; pctPrev = 0; }
+    pct = Math.max(pct, pctPrev); pctPrev = pct;
     $('#pbar').style.width = pct + '%';
     $('#petapa').textContent = (ETAPA_TXT[p.etapa] || p.etapa || '')
       + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '')
@@ -351,7 +360,21 @@ function renderRevision(p) {
   $('#fuentes').innerHTML = p.fuentes.map(u => `<li><a href="${u}" target="_blank">${u}</a></li>`).join('');
   $('#pnombre').value = p.personaje.nombre; $('#pdesc').textContent = p.personaje.descripcion;
   renderOpciones(p);
-  $('#escenas').innerHTML = ''; p.guion.forEach(e => addEscena(e.narracion)); estimar();
+  if (p.pipeline === 'narracion') {
+    // M11: la revisión es UN texto corrido, no cajitas (resuelve el P2 de la
+    // auditoría de paso). El resto de la pantalla no cambia.
+    const cardGuion = $('#escenas').parentElement;
+    cardGuion.querySelector('h2').textContent = '📝 Narración (texto corrido)';
+    cardGuion.querySelector('p.mut').textContent =
+      'Edita la narración completa; el video se corta sobre la voz. ~2 palabras/s.';
+    $('#addesc').classList.add('hidden');
+    $('#escenas').innerHTML = '<textarea id="narracion" style="width:100%;min-height:220px" aria-label="Narración completa"></textarea>';
+    $('#narracion').value = p.narracion || '';
+    $('#narracion').oninput = () => { estimar(); marcaCambio(); };
+    estimar();
+  } else {
+    $('#escenas').innerHTML = ''; p.guion.forEach(e => addEscena(e.narracion)); estimar();
+  }
   document.querySelector('main').classList.add('wide');
   renderVoces(p);
 }
@@ -431,11 +454,22 @@ function renum() {
   });
   estimar();
 }
-function escenas() { return [...document.querySelectorAll('.escena textarea')].map(t => t.value.trim()).filter(Boolean); }
+const esNarracion = () => proyecto && proyecto.pipeline === 'narracion';
+function escenas() {
+  if (esNarracion()) { const t = ($('#narracion')?.value || '').trim(); return t ? [t] : []; }
+  return [...document.querySelectorAll('.escena textarea')].map(t => t.value.trim()).filter(Boolean);
+}
+// M11: el PUT del guion cambia de forma según el pipeline del proyecto
+function cuerpoGuion(voz) {
+  return esNarracion() ? {narracion: escenas()[0] || '', voz}
+                       : {escenas: escenas(), voz};
+}
 let estimT = null;
 function estimar() {
   const w = escenas().join(' ').split(/\s+/).filter(Boolean).length;
-  $('#estim').textContent = `${escenas().length} escenas · ${w} palabras · ≈ ${Math.round(w/2.3)} s de narración (objetivo ${proyecto.duracion_s} s)`;
+  $('#estim').textContent = esNarracion()
+    ? `${w} palabras · ≈ ${Math.round(w/1.9)} s de narración (objetivo ${proyecto.duracion_s} s)`
+    : `${escenas().length} escenas · ${w} palabras · ≈ ${Math.round(w/2.3)} s de narración (objetivo ${proyecto.duracion_s} s)`;
   clearTimeout(estimT);
   estimT = setTimeout(async () => {
     const r = await fetch(`/api/proyectos/${proyecto.id}/estimacion`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({escenas: escenas()})});
@@ -471,7 +505,7 @@ async function autoguardar() {
   try {
     let r = await fetch(`/api/proyectos/${proyecto.id}/guion`, {method:'PUT',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({escenas: esc, voz: $('#voz').value || null})});
+      body: JSON.stringify(cuerpoGuion($('#voz').value || null))});
     if (r.ok && proyecto.personaje.elegida != null)
       r = await fetch(`/api/proyectos/${proyecto.id}/personaje`, {method:'PUT',
         headers:{'Content-Type':'application/json'},
@@ -494,7 +528,7 @@ $('#producir').onclick = async () => {
   if (proyecto.personaje.elegida == null) { $('#rerr').textContent = 'Elige una opción de personaje.'; return; }
   $('#producir').disabled = true;
   try {
-    let r = await fetch(`/api/proyectos/${proyecto.id}/guion`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({escenas: escenas(), voz: $('#voz').value})});
+    let r = await fetch(`/api/proyectos/${proyecto.id}/guion`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpoGuion($('#voz').value))});
     if (!r.ok) throw new Error(await errTxt(r));
     r = await fetch(`/api/proyectos/${proyecto.id}/personaje`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({elegida: proyecto.personaje.elegida, nombre: $('#pnombre').value})});
     if (!r.ok) throw new Error(await errTxt(r));

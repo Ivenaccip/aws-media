@@ -97,6 +97,45 @@ async def concat(finales: list[Path], destino: Path) -> float:
     return await duracion(destino)
 
 
+# --- M11: ensamblaje pista-única (narración primero) -----------------------
+
+@observe(name="recortar_ventana")
+async def recortar_video(origen: Path, destino: Path, t: float) -> None:
+    """Recorta el clip al largo EXACTO de su ventana (solo video, re-encode a
+    los mismos parámetros del concat: el 'tiempo extra' del clip se corta)."""
+    await _run_ok(
+        "-i", str(origen), "-t", f"{t:.3f}", "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-r", "24",
+        str(destino),
+        contexto=f"recortar {destino.name} a {t:.2f}s",
+    )
+
+
+@observe(name="concat_video")
+async def concat_video(partes: list[Path], destino: Path) -> None:
+    """Concat SOLO video de segmentos ya re-encodeados con parámetros idénticos
+    (recortar_video) → stream copy, sin recomprimir dos veces."""
+    lista = destino.with_name("lista_video.txt")
+    lista.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in partes), encoding="utf-8")
+    await _run_ok("-f", "concat", "-safe", "0", "-i", str(lista),
+                  "-c", "copy", "-movflags", "+faststart", str(destino),
+                  contexto="concat de ventanas")
+
+
+@observe(name="mux_pista_unica")
+async def mux_pista_unica(video: Path, audio: Path, destino: Path) -> float:
+    """La película final: el video concatenado + UNA pista de audio continua
+    (la narración completa). -shortest empareja el sobrante de la última ventana."""
+    await _run_ok(
+        "-i", str(video), "-i", str(audio),
+        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+        "-shortest", "-movflags", "+faststart", str(destino),
+        contexto=f"mux pista única de {destino.name}",
+    )
+    return await duracion(destino)
+
+
 def comprobar_ffmpeg() -> None:
     if shutil.which(settings.ffmpeg_bin) is None and not Path(settings.ffmpeg_bin).exists():
         raise RuntimeError(f"No encuentro ffmpeg en '{settings.ffmpeg_bin}' (FFMPEG_BIN)")

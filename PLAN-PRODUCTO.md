@@ -456,14 +456,29 @@ Flujo nuevo (detrás de un flag, A/B contra el pipeline actual):
 
 - [ ] Validación: misma historia por ambos pipelines (2 películas de 15 s,
       ~$0.70 dólares c/u, con confirmación de gasto), comparación de guion,
-      duración y costo en Langfuse.
-- [ ] Cobro: sin cambio (3 cr/s por duración objetivo); la duración real
+      duración y costo en Langfuse. PENDIENTE tras el deploy.
+- [x] Cobro: sin cambio (3 cr/s por duración objetivo); la duración real
       medida tras el TTS abre la puerta a cobrar exacto más adelante.
-- [ ] Riesgos: toca las rutas más probadas (flow.producir, tts, splitter,
-      duracion, mux/concat) — por eso el flag y el A/B; las versiones de
-      clips por escena se conservan para regeneración granular.
+- [x] Riesgos acotados con el flag POR PROYECTO: `Proyecto.pipeline`
+      ("escenas" default | "narracion"); el camino de siempre no se tocó —
+      solo branches en flow._preparar/_producir. El A/B se activa con
+      `?pipeline=narracion` en crear.html (o env PIPELINE_DEFAULT).
 - [ ] Orden recomendado: después de M1-AWS y M2, ANTES de los focus groups —
       cambia la calidad de lo que la gente va a evaluar.
+
+Hecho 2026-09-04 (M11, código): `writer.escribir_narracion` (prompt narrador,
+presupuesto 1.9 pal/s de habla pura), `pipeline/narracion.py` = TTS único →
+alineado faster-whisper (ALINEADOR_MODEL=small) → `planear_ventanas`
+(n=ceil(dur/8), clip Veo 4/6/8 ≥ ventana+0.5) → `director_ventanas` (una
+escena por ventana, cortes sin atarse a fin de oración) → cadenas de
+media.py sin mux por escena → ensamblaje pista única (ffmpeg.recortar_video/
+concat_video/mux_pista_unica, -shortest). Sin gate A3 ni splitter en esta
+ruta. Revisión = un textarea de texto corrido (P2 de la auditoría);
+PUT guion acepta `narracion`; barra de progreso monotónica. Prompts nuevos
+sembrados en Langfuse (M10). Deploy: imagen del CI + `cdk deploy
+aws-media-api aws-media-jobs`. Tests: 12 nuevos en
+tests/test_m11_narracion.py (270 en total, verdes); smoke local de la
+revisión narración.
 
 ---
 
