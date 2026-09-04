@@ -93,6 +93,23 @@ class ApiStack(Stack):
             self, "Users", user_pool_name="aws-media-users",
             self_sign_up_enabled=False,      # alta manual mientras es piloto
             sign_in_aliases=cognito.SignInAliases(email=True),
+            # M2: el email que dispara tools/usuarios.py alta — {username} y
+            # {####} los rellena Cognito (correo y contraseña provisional)
+            user_invitation=cognito.UserInvitationConfig(
+                email_subject="Bienvenid@ a la demo de editor irremplazable",
+                email_body=(
+                    "<p>Hola:</p>"
+                    "<p>Ya tienes acceso a la demo. Entra aquí:<br>"
+                    f'<a href="{http_api.api_endpoint}">{http_api.api_endpoint}</a></p>'
+                    "<p>Correo: <b>{username}</b><br>"
+                    "Contraseña provisional: <b>{####}</b></p>"
+                    "<p>Al entrar por primera vez te pedirá cambiar la "
+                    "contraseña. Y un aviso: la primera carga puede tardar un "
+                    "poco (alrededor de un minuto) mientras despierta el "
+                    "servidor — si algo no aparece, espera unos segundos y "
+                    "recarga la página.</p>"
+                ),
+            ),
             removal_policy=cdk.RemovalPolicy.RETAIN,
         )
         client = pool.add_client(
