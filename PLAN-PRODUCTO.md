@@ -197,19 +197,37 @@ Deuda M4-1: reembolsos = ajuste negativo manual (`tools/creditos.py abonar -N
 --tipo ajuste --ref refund:...`); el webhook no procesa `charge.refunded`.
 Tests: 17 nuevos en tests/test_m4_stripe.py (179 en total, verdes).
 
-## Fase M5 — Proteger el trabajo del usuario
+## Fase M5 — Proteger el trabajo del usuario ✅ CÓDIGO LISTO (2026-09-04, falta deploy)
 
-- [ ] Autoguardado con debounce de guion/nombre/voz/personaje en revisión +
-      `beforeunload` (hoy solo se guarda al pulsar Producir).
-- [ ] Subida con progreso real (`XMLHttpRequest.onprogress`), cancelar,
-      `beforeunload` y validación de nombre en cliente.
-- [ ] Polling resiliente en todos los `setInterval` (contador de fallos → banner
-      "Sin conexión, reintentando…"; texto "la producción sigue en la nube").
-- [ ] Lista "Tus películas" en crear.html y el hub (`GET /api/proyectos` ya
-      existe) + botón "Descargar MP4" en resultado.
-- [ ] Pantalla de error que explique la devolución de créditos y el costo del
-      reintento antes de cobrar de nuevo.
-- [ ] Idempotencia de clic en acciones con costo (deuda C5-4).
+- [x] Autoguardado con debounce (~1 s) de guion/nombre/voz/personaje en
+      revisión + `beforeunload` con cambios pendientes; indicador
+      "Guardado ✓ HH:MM" junto a Producir. El PUT explícito de Producir sigue
+      siendo la verdad final; un guion vacío jamás se persiste; el fallo de
+      red reintenta solo cada 4 s. Verificado en vivo (persistió y restauró).
+- [x] Subida con progreso real (`XMLHttpRequest.onprogress`: % + MB + barra),
+      botón Cancelar (`abort`, sin basura a medias), `beforeunload` durante la
+      subida y validación de nombre en cliente (espejo de `_validar_nombre`).
+- [x] Polling resiliente: en crear.html 2 fallos seguidos → banner fijo
+      "Sin conexión — reintentando… Tu trabajo sigue en la nube" que
+      desaparece al recuperar; los polls de render y subtítulos del editor ya
+      no mueren con una excepción silenciosa (siguen esperando).
+- [x] Lista "Tus películas" en crear.html (hasta 8, estado humano + fecha,
+      clic → `?p=`) y "recientes" en el hub (hasta 4); botón "⬇ Descargar
+      MP4" en la pantalla de resultado; "Nueva película" ahora vuelve a
+      /crear.html (no al hub).
+- [x] Pantalla de error: explica que un fallo nuestro devuelve los créditos
+      solos (con el saldo actual) y el botón de reintento muestra el costo
+      ANTES de cobrar de nuevo ("Reintentar → 90 créditos (se cobran de
+      nuevo)").
+- [x] Idempotencia de clic (deuda C5-4 CERRADA): `db.reclamar_produccion` =
+      UPDATE condicionado atómico de la columna estado ANTES de cobrar — el
+      segundo clic recibe 409 sin cobro; el 402 y el fallo de lanzamiento
+      revierten el claim (`liberar_produccion`). Solo aplica con
+      STATE_BACKEND=postgres (dev local json sin carrera, sin cambio).
+
+Requiere: 1 `cdk deploy` del usuario tras la imagen del CI (cambia static/ y
+server/). Tests: 8 nuevos en tests/test_m5_proteger.py (187 en total, verdes);
+smoke en navegador (autoguardado end-to-end real, listas, editor sano).
 
 ## Fase M6 — Dashboard de costes (admin)
 

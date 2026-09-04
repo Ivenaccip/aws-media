@@ -53,8 +53,13 @@
              style="flex:1; min-width:180px; padding:9px 12px; border-radius:9px; border:1px solid #2c3038; background:#23262d; color:inherit; font-size:14px">
       <input id="sub-archivo" type="file" accept=".mp4,.mov,.m4v" style="font-size:13px">
       <button id="sub-btn" style="padding:9px 18px; border-radius:9px; border:0; background:#5b8dd6; color:#fff; font-size:14px; cursor:pointer">Subir</button>
+      <button id="sub-cancelar" hidden class="reintentar" style="margin-top:0">Cancelar</button>
     </div>
-    <p id="sub-estado" class="nota"></p>
+    <!-- M5: progreso real de la subida (antes: texto estático durante minutos) -->
+    <div id="sub-barra" hidden style="margin-top:12px;height:8px;background:#23262d;border-radius:4px;overflow:hidden">
+      <div id="sub-avance" style="height:100%;width:0%;background:#5b8dd6;transition:width .3s"></div>
+    </div>
+    <p id="sub-estado" class="nota" role="status" aria-live="polite"></p>
     <video id="sub-player" controls hidden style="width:100%; margin-top:12px; border-radius:9px; background:#000"></video>
   </section>
   <div class="cols">
@@ -134,13 +139,26 @@ async function initSubir() {
   document.getElementById("subir").hidden = false;
   document.getElementById("sub-btn").onclick = subir;
 }
+// M5: XHR en vez de fetch para tener progreso real (%, MB) y poder cancelar;
+// beforeunload avisa si se cierra la pestaña con la subida a medias.
+let xhrSubida = null;
+function subidaUI(subiendo) {
+  document.getElementById("sub-btn").disabled = subiendo;
+  document.getElementById("sub-cancelar").hidden = !subiendo;
+  document.getElementById("sub-barra").hidden = !subiendo;
+  if (!subiendo) document.getElementById("sub-avance").style.width = "0%";
+}
 async function subir() {
   const estado = document.getElementById("sub-estado");
   const proyecto = document.getElementById("sub-proyecto").value.trim();
   const f = document.getElementById("sub-archivo").files[0];
   if (!proyecto || !f) { estado.textContent = "Falta el nombre del proyecto o el archivo."; return; }
-  const btn = document.getElementById("sub-btn");
-  btn.disabled = true;
+  // misma regla que el backend (_validar_nombre): el 422 llega ANTES de subir
+  if (![...proyecto].every(c => /[\p{L}\p{N}_-]/u.test(c))) {
+    estado.textContent = "El nombre solo puede llevar letras, números, guion y guion bajo (ej. video-1).";
+    return;
+  }
+  subidaUI(true);
   try {
     estado.textContent = "Pidiendo permiso de subida…";
     let r = await fetch("/api/media/presign", {
@@ -149,9 +167,23 @@ async function subir() {
     });
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     const { url, key, content_type } = await r.json();
-    estado.textContent = `Subiendo ${f.name} (${(f.size / 1e6).toFixed(1)} MB) directo a la nube…`;
-    const put = await fetch(url, { method: "PUT", headers: { "Content-Type": content_type }, body: f });
-    if (!put.ok) throw new Error(`la subida a S3 falló (${put.status})`);
+    const mbTotal = (f.size / 1e6).toFixed(1);
+    await new Promise((resolver, rechazar) => {
+      xhrSubida = new XMLHttpRequest();
+      xhrSubida.open("PUT", url);
+      xhrSubida.setRequestHeader("Content-Type", content_type);
+      xhrSubida.upload.onprogress = ev => {
+        if (!ev.lengthComputable) return;
+        const pct = Math.round(100 * ev.loaded / ev.total);
+        document.getElementById("sub-avance").style.width = pct + "%";
+        estado.textContent = `Subiendo ${f.name} — ${pct}% (${(ev.loaded / 1e6).toFixed(1)} de ${mbTotal} MB)`;
+      };
+      xhrSubida.onload = () => xhrSubida.status < 300 ? resolver()
+        : rechazar(new Error(`la subida a la nube falló (${xhrSubida.status}) — intenta de nuevo`));
+      xhrSubida.onerror = () => rechazar(new Error("la subida falló — revisa tu conexión e intenta de nuevo"));
+      xhrSubida.onabort = () => rechazar(new Error("subida cancelada — nada quedó a medias en tu proyecto"));
+      xhrSubida.send(f);
+    });
     estado.textContent = "Confirmando…";
     r = await fetch("/api/media/confirmar", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -164,8 +196,10 @@ async function subir() {
     player.src = sub.cdn; player.hidden = false;
     cargar();
   } catch (e) { estado.textContent = "Error: " + e.message; }
-  finally { btn.disabled = false; }
+  finally { xhrSubida = null; subidaUI(false); }
 }
+document.getElementById("sub-cancelar").onclick = () => xhrSubida && xhrSubida.abort();
+window.addEventListener("beforeunload", e => { if (xhrSubida) e.preventDefault(); });
 initSubir();
 </script>
 <script src="/monedero.js"></script>
