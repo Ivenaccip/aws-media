@@ -1,7 +1,9 @@
 """C1 — API viva: la app completa (f1/e1/APIs) servida por Lambda contenedor
-detrás de API Gateway HTTP. Cognito queda CREADO (pool + client + dominio
-hosted UI) pero sin exigirse aún: el frontend no tiene pantalla de login —
-ese cableado es una rebanada posterior y está registrado en el plan."""
+detrás de API Gateway HTTP. M2: el login se EXIGE — la app (server/auth.py)
+valida el id_token del pool en /api/* y /editor/* usando las envs COGNITO_*
+que se cablean aquí. La exigencia vive en la app y no en un authorizer del
+gateway a propósito: los <img>/<audio> piden /api/.../archivo/... sin header
+Authorization (viajan con cookie) y el authorizer solo lee headers."""
 import aws_cdk as cdk
 from aws_cdk import (
     Duration, Stack,
@@ -97,13 +99,25 @@ class ApiStack(Stack):
             "web",
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),
-                # placeholder: se apunta a la URL real cuando el frontend tenga login
-                callback_urls=["https://localhost/callback"],
+                scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
+                # M2: el Hosted UI vuelve a callback.html (PKCE, sin secret);
+                # localhost habilita probar el flujo con el server de dev
+                callback_urls=[f"{http_api.api_endpoint}/callback.html",
+                               "http://localhost:8011/callback.html"],
+                logout_urls=[f"{http_api.api_endpoint}/",
+                             "http://localhost:8011/"],
             ),
         )
         # ojo: los prefijos de dominio Cognito no admiten la palabra reservada "aws"
         pool.add_domain("Domain", cognito_domain=cognito.CognitoDomainOptions(
             domain_prefix="media-ivenaccip"))
+
+        # M2: con estas envs presentes, server/auth.py exige el JWT
+        fn.add_environment("COGNITO_POOL_ID", pool.user_pool_id)
+        fn.add_environment("COGNITO_CLIENT_ID", client.user_pool_client_id)
+        fn.add_environment(
+            "COGNITO_DOMINIO",
+            f"media-ivenaccip.auth.{self.region}.amazoncognito.com")
 
         cdk.CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)

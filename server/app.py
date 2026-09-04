@@ -25,6 +25,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
+from server import auth
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
@@ -34,6 +35,7 @@ from server.publicar_api import router as publicar_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = FastAPI(title="edicion_y_generacion")
+app.middleware("http")(auth.middleware)   # M2: exige el JWT en /api/* y /editor/*
 app.include_router(editor_router)
 app.include_router(importar_router)
 app.include_router(overlays_router)
@@ -87,6 +89,15 @@ def _lanzar(p: Proyecto, coro) -> None:
         coro.close()
         raise HTTPException(409, "El proyecto ya tiene una tarea en curso")
     _tareas[p.id] = asyncio.create_task(coro)
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    """Público: lo que auth.js necesita para mandar al Hosted UI (PKCE).
+    En dev local (sin Cognito) devuelve activo=False y la web no exige login."""
+    return {"activo": auth.activo(),
+            "dominio": os.getenv("COGNITO_DOMINIO", ""),
+            "client_id": os.getenv("COGNITO_CLIENT_ID", "")}
 
 
 @app.get("/api/estilos")
