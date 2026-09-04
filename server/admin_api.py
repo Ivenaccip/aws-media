@@ -26,6 +26,11 @@ from server import auth
 log = logging.getLogger("admin")
 router = APIRouter()
 
+# Nombres para ids sin fila en `usuarios`: "?" son las trazas previas a C6
+# (cuando Langfuse aún no llevaba user_id) — nuestras corridas de desarrollo
+# con Claude. Decisión del usuario 2026-09-04: mostrarlas como "Claude IA".
+ALIAS = {"?": "Claude IA (desarrollo)"}
+
 
 def _exigir_admin() -> None:
     if not auth.es_admin():
@@ -84,7 +89,7 @@ def resumen():
         gastados = int(m.get("cargos") or 0) - int(m.get("devoluciones") or 0)
         costo = round(costos.get(u, 0.0), 4)
         usuarios.append({
-            "user_id": u, "email": emails.get(u),
+            "user_id": u, "email": emails.get(u) or ALIAS.get(u),
             "saldo": int(saldos.get(u, 0)),
             "cortesia": int(m.get("cortesia") or 0),
             "comprados": int(m.get("comprados") or 0),

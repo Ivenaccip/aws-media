@@ -96,6 +96,18 @@ def test_resumen_agrega_y_calcula_margen(cliente, monkeypatch):
     assert d["totales"]["gastados"] == 90
 
 
+def test_trazas_sin_usuario_se_muestran_como_claude(cliente, monkeypatch):
+    """Las trazas pre-C6 (user '?') son nuestras corridas de desarrollo."""
+    def ejecutar(sql, p=None):
+        if "FROM costes" in sql:
+            return [{"user_id": "?", "usd": 3.31}]
+        return []
+    monkeypatch.setattr(db, "ejecutar", ejecutar)
+    u = cliente.get("/api/admin/resumen").json()["usuarios"][0]
+    assert u["user_id"] == "?" and u["email"] == "Claude IA (desarrollo)"
+    assert u["margen_usd"] == -3.31          # puro costo nuestro, sin créditos
+
+
 def test_resumen_403_sin_grupo(cliente, monkeypatch):
     monkeypatch.setattr(auth, "es_admin", lambda: False)
     assert cliente.get("/api/admin/resumen").status_code == 403
