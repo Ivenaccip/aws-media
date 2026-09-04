@@ -40,17 +40,15 @@ def test_preparar_personaje_sin_ref_genera_2_opciones(tmp_path, monkeypatch):
     monkeypatch.setattr(project, "settings", SimpleNamespace(work_dir=tmp_path))
     prompts = []
 
-    def falsa_imagen(prompt, refs, n):
-        assert refs == [] and n == 1
+    async def falsa_imagen(prompt, destino, referencia=None, meta=None):
+        assert referencia is None  # sin imagen de referencia: texto puro
         prompts.append(prompt)
-        return [b"jpgdata"]
+        Path(destino).parent.mkdir(parents=True, exist_ok=True)
+        Path(destino).write_bytes(b"jpgdata")
+        return f"http://fal/{Path(destino).name}"
 
-    async def falso_subir(path):
-        return f"http://fal/{Path(path).name}"
-
-    from pipeline import media_google
-    monkeypatch.setattr(media_google, "generar_imagenes", falsa_imagen)
-    monkeypatch.setattr(character.fal, "subir_archivo", falso_subir)
+    from pipeline import media_fal
+    monkeypatch.setattr(media_fal, "imagen_nano", falsa_imagen)
     p = Proyecto(id="m1a", creado="2026-09-03T00:00:00", brief="x")
     d = Descripcion(nombre="semmelweis", descripcion="a Hungarian doctor")
     per = asyncio.run(character.preparar_personaje_sin_ref(p, resolver_estilo("animated"), d))
@@ -244,3 +242,24 @@ def test_tarifa_imagen_y_packs_de_tarifas_json():
     datos = json.loads((REPO / "tools" / "tarifas.json").read_text(encoding="utf-8"))
     assert creditos.costo_imagen() == datos["video"]["imagen"] == 2
     assert creditos.PACKS == datos["packs_usd"] and len(creditos.PACKS) == 3
+
+
+# ---------------------------------------------------------------------------
+# backend fal (2026-09-03: se agotaron los créditos del Studio de Google)
+
+def test_gen_backend_default_es_fal(monkeypatch):
+    monkeypatch.delenv("GEN_BACKEND", raising=False)
+    from pipeline.config import Settings
+    assert Settings().gen_backend == "fal"
+
+
+def test_costo_fal_nano_banana():
+    from pipeline.pricing import costo_fal, estimar_regeneracion, unidades_fal
+    assert costo_fal("fal-ai/nano-banana", {"prompt": "x", "num_images": 1}) == 0.04
+    assert costo_fal("fal-ai/nano-banana/edit",
+                     {"prompt": "x", "num_images": 2, "image_urls": ["u"]}) == 0.08
+    assert unidades_fal("fal-ai/nano-banana/edit",
+                        {"num_images": 1, "image_urls": ["u"]}) == {"images": 1, "reference_images": 1}
+    est = estimar_regeneracion(6.5, n_imagenes=2, backend="fal")
+    assert est["imagen"] == pytest.approx(0.08)          # 2 × $0.04 nano banana fal
+    assert est["video"] == pytest.approx(0.24)           # 8 s × $0.03 veo lite 720p

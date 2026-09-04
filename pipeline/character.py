@@ -130,14 +130,10 @@ def prompt_opcion_sin_ref(d: Descripcion, estilo: Estilo, variante: str) -> str:
 
 
 async def _opcion_sin_ref(p: Proyecto, prompt: str, i: int) -> OpcionPersonaje | None:
-    from . import media_google  # genai se importa perezoso dentro del módulo
+    from . import media_fal  # nano banana en fal (GEN_BACKEND=fal desde 2026-09-03)
     try:
-        datos = await asyncio.to_thread(media_google.generar_imagenes, prompt, [], 1)
         destino = p.workdir / "personaje" / f"opcion_{i}.jpg"
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_bytes(datos[0])
-        # URL en fal: aguas abajo el pipeline referencia al personaje por URL
-        url = await fal.subir_archivo(destino)
+        url = await media_fal.imagen_nano(prompt, destino, meta={"personaje_opcion": i})
         return OpcionPersonaje(url=url, path=str(destino))
     except Exception as err:  # noqa: BLE001
         log.warning("Opción sin referencia %d falló: %s", i, err)

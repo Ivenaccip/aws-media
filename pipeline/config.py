@@ -44,9 +44,12 @@ class Settings:
     fal_tts: str = "fal-ai/elevenlabs/tts/eleven-v3"
     fal_grok: str = "xai/grok-imagine-image/edit"
     fal_veo: str = "fal-ai/veo3.1/lite/image-to-video"
+    fal_nano: str = "fal-ai/nano-banana"            # texto → imagen (M1 sin referencia)
+    fal_nano_edit: str = "fal-ai/nano-banana/edit"  # imagen + referencia (g2)
 
-    # Backend de regeneración g1/g2 (PLAN-FUSION.md F2.3): google (Gemini API) | fal
-    gen_backend: str = os.getenv("GEN_BACKEND", "google")
+    # Backend de regeneración g1/g2 y M1: fal (default desde 2026-09-03 — los
+    # créditos del Studio de Google se agotaron) | google (Gemini API)
+    gen_backend: str = os.getenv("GEN_BACKEND", "fal")
     blotato_api_key: str = os.getenv("BLOTATO_API_KEY", "")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
