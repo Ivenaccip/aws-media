@@ -229,27 +229,42 @@ Requiere: 1 `cdk deploy` del usuario tras la imagen del CI (cambia static/ y
 server/). Tests: 8 nuevos en tests/test_m5_proteger.py (187 en total, verdes);
 smoke en navegador (autoguardado end-to-end real, listas, editor sano).
 
-## Fase M6 — Dashboard de costes (admin)
+## Fase M6 — Dashboard de costes (admin) ✅ CÓDIGO LISTO (2026-09-04, falta deploy)
 
 Página `static/admin.html` + `GET /api/admin/resumen`, visibles solo para el
 grupo `admin` de Cognito (por eso va después de M2):
 
-- [ ] **Por usuario**: créditos gastados/comprados (tablas `monedero_movimientos`),
-      costo de inferencia en dólares (tabla `costes`, alimentada por
-      `tools/costes.py sync` — programar el sync, p. ej. EventBridge diario),
-      almacenamiento S3 por prefijo de usuario, nº de películas, y el **margen**
-      (créditos cobrados × precio − costo IA).
-- [ ] **Por corrida**: drill-down usuario → proyecto/sesión con su costo real,
-      créditos cobrados y duración (la tabla `costes` ya guarda proyecto + traza;
-      el detalle fino enlaza a la traza en Langfuse). Insumo directo de los
-      focus groups: qué costó exactamente cada sesión de prueba.
-- [ ] **General**: totales del periodo, top usuarios, curva de gasto.
-- [ ] **Infra AWS**: no se atribuye por usuario (no es posible nativamente y es
-      <2% del variable); enlace al presupuesto de $50/mes y Cost Explorer por
-      servicio. Si algún día hace falta el número fino: línea estimada de infra
-      por producción (segundos Fargate × tarifa) en la tabla `costes`.
+- [x] **Gate por grupo**: `cognito.CfnUserPoolGroup` "admin" en el stack;
+      auth.py guarda `cognito:groups` del id_token en un contextvar y
+      `es_admin()` lo exige (dev local sin Cognito = admin, pero el dashboard
+      responde 503 explicado sin Postgres). Alta de admins:
+      `tools/usuarios.py admin <correo>` (+ re-login para refrescar el token).
+- [x] **Por usuario** (`GET /api/admin/resumen`, `server/admin_api.py`):
+      saldo/cortesía/comprados/quemados netos (cargos − devoluciones) del
+      libro mayor, nº de películas, S3 por prefijo work/{user}/, costo IA en
+      dólares (tabla `costes`) y **margen** = quemados × piso de venta
+      (tarifas.json, expuesto como `creditos.PISO_VENTA_USD`) − costo IA.
+- [x] **Por corrida** (`GET /api/admin/usuarios/{id}`): cada proyecto con sus
+      créditos netos (split_part de la referencia del movimiento), costo real
+      y trazas enlazadas a Langfuse ({base}/trace/{id}). El insumo de los
+      focus groups.
+- [x] **Sync programado**: EventBridge diario 06:00 UTC → worker Lambda con
+      `{"tipo":"sync_costes","dias":3}` (tools/costes.py refactorizado a
+      `sincronizar()` importable, idempotente por trace id) + botón
+      "Sincronizar costes (7 días)" en la página (POST /api/admin/costes/sync).
+- [x] **General**: KPIs de totales (costo, margen, créditos, películas) y la
+      tabla ordenada por costo (top usuarios). La curva de gasto queda para
+      cuando haya más de un puñado de puntos.
+- [x] **Infra AWS**: no se atribuye por usuario (deliberado, <2% del
+      variable); la página enlaza al presupuesto de $50/mes y a Cost Explorer.
 - [ ] Si el volumen crece y la página se queda corta: evaluar QuickSight o
       Metabase (requeriría abrir acceso a Aurora — hoy no lo vale).
+
+Post-deploy del usuario: `tools/usuarios.py admin ivenaccip@gmail.com` +
+cerrar sesión y volver a entrar; deploy = imagen del CI + `cdk deploy
+aws-media-api aws-media-jobs` (jobs cambia por la regla de EventBridge).
+Tests: 11 nuevos en tests/test_m6_admin.py (198 en total, verdes); synth
+verificado (grupo admin + cron) y smoke del dashboard en navegador.
 
 ## Fase M7 — Editor de cortes en la nube (deuda C4)
 

@@ -26,6 +26,7 @@ from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
 from server import auth
+from server.admin_api import router as admin_router
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
@@ -45,6 +46,7 @@ app.include_router(publicar_router)
 app.include_router(broll_router)
 app.include_router(media_router)
 app.include_router(pagos_router)
+app.include_router(admin_router)
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}

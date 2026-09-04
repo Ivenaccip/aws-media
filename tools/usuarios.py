@@ -103,6 +103,16 @@ def adoptar(pool: str, correo: str, de: str) -> None:
     print(f"{correo}: adoptó lo de '{de}' (+{saldo_viejo} créditos, saldo {db.saldo_creditos(sub)})")
 
 
+def admin(pool: str, correo: str) -> None:
+    """M6: mete al usuario al grupo `admin` de Cognito — con eso su id_token
+    trae cognito:groups=[admin] y puede abrir /admin.html. OJO: el token
+    vigente no cambia; tiene que cerrar sesión y volver a entrar."""
+    _cognito(pool).admin_add_user_to_group(
+        UserPoolId=pool, Username=correo, GroupName="admin")
+    print(f"{correo}: agregado al grupo admin — que cierre sesión y vuelva a "
+          "entrar para que su token traiga el grupo")
+
+
 def lista(pool: str) -> None:
     con_db = bool(os.getenv("DB_CLUSTER_ARN") and os.getenv("DB_SECRET_ARN"))
     if con_db:
@@ -119,7 +129,7 @@ def lista(pool: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("accion", choices=["alta", "suspender", "reactivar", "adoptar", "lista"])
+    ap.add_argument("accion", choices=["alta", "suspender", "reactivar", "adoptar", "admin", "lista"])
     ap.add_argument("correo", nargs="?")
     ap.add_argument("--plan", default="mensual", choices=["mensual", "anual"])
     ap.add_argument("--reenviar", action="store_true")
@@ -145,6 +155,8 @@ def main() -> None:
         reactivar(args.pool, args.correo)
     elif args.accion == "adoptar":
         adoptar(args.pool, args.correo, args.de)
+    elif args.accion == "admin":
+        admin(args.pool, args.correo)
     else:
         lista(args.pool)
 

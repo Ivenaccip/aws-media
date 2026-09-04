@@ -67,6 +67,30 @@ def resumen(trazas: list[dict]) -> dict[str, dict[str, float]]:
     return por_usuario
 
 
+def sincronizar(dias: int = 3, user: str | None = None,
+                trazas: list[dict] | None = None) -> int:
+    """Vuelca a la tabla `costes` las trazas nuevas del periodo. Idempotente
+    (la columna traza evita duplicar), así que la ventana puede solaparse.
+    M6: también lo corre el worker (EventBridge diario) y el botón del admin."""
+    from pipeline import db
+
+    if trazas is None:
+        trazas = traer_trazas(dias, user)
+    ya = {f["traza"] for f in db.ejecutar("SELECT traza FROM costes WHERE traza IS NOT NULL")}
+    nuevas = 0
+    for t in trazas:
+        costo = t.get("totalCost") or 0
+        if not costo or t["id"] in ya:
+            continue
+        db.ejecutar(
+            """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd, traza)
+               VALUES (:u, :p, :c, 'langfuse', :usd, :t)""",
+            {"u": t.get("userId") or "?", "p": t.get("sessionId"),
+             "c": t.get("name") or "traza", "usd": round(costo, 4), "t": t["id"]})
+        nuevas += 1
+    return nuevas
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("accion", choices=["resumen", "sync"])
@@ -96,21 +120,9 @@ def main() -> None:
     os.environ["DB_SECRET_ARN"] = args.secret_arn
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
-    from pipeline import db
-
-    ya = {f["traza"] for f in db.ejecutar("SELECT traza FROM costes WHERE traza IS NOT NULL")}
-    nuevas = 0
-    for t in trazas:
-        costo = t.get("totalCost") or 0
-        if not costo or t["id"] in ya:
-            continue
-        db.ejecutar(
-            """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd, traza)
-               VALUES (:u, :p, :c, 'langfuse', :usd, :t)""",
-            {"u": t.get("userId") or "?", "p": t.get("sessionId"),
-             "c": t.get("name") or "traza", "usd": round(costo, 4), "t": t["id"]})
-        nuevas += 1
-    print(f"sync: {nuevas} trazas nuevas en la tabla costes ({len(ya)} ya estaban)")
+    nuevas = sincronizar(args.dias, args.user, trazas=trazas)
+    print(f"sync: {nuevas} trazas nuevas en la tabla costes "
+          f"({len(trazas) - nuevas} ya estaban o no tienen costo)")
 
 
 if __name__ == "__main__":

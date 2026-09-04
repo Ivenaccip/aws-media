@@ -19,6 +19,8 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_ecr as ecr,
     aws_ecs as ecs,
+    aws_events as events,
+    aws_events_targets as targets,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_lambda_event_sources as event_sources,
@@ -93,6 +95,17 @@ class JobsStack(Stack):
         worker.add_event_source(event_sources.SqsEventSource(
             self.queue, batch_size=1, max_concurrency=2))
         dar_permisos(worker.role)
+
+        # M6: sync diario de costes Langfuse → tabla `costes` (la base del
+        # dashboard admin). El worker detecta el input sin "Records" y corre
+        # tools/costes.sincronizar; es idempotente por trace id.
+        events.Rule(
+            self, "SyncCostes",
+            schedule=events.Schedule.cron(minute="0", hour="6"),   # 06:00 UTC diario
+            targets=[targets.LambdaFunction(
+                worker, event=events.RuleTargetInput.from_object(
+                    {"tipo": "sync_costes", "dias": 3}))],
+        )
 
         # --- 2) Fargate para producciones/renders largos ---------------------
         vpc = ec2.Vpc(
