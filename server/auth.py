@@ -25,7 +25,8 @@ from pipeline import db
 # al Hosted UI). /api/auth/config es público: el frontend lo necesita ANTES
 # de tener token para saber a dónde ir a loguearse.
 PREFIJOS_PROTEGIDOS = ("/api/", "/editor/")
-RUTAS_PUBLICAS = {"/api/auth/config"}
+# /api/pagos/stripe: Stripe no trae JWT — su gate es la firma HMAC del webhook
+RUTAS_PUBLICAS = {"/api/auth/config", "/api/pagos/stripe"}
 
 
 def activo() -> bool:
