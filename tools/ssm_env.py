@@ -20,6 +20,9 @@ CLAVES = [
     "FAL_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "ASSEMBLYAI_API_KEY",
     "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL",
     "OPENAI_MODEL", "GEN_BACKEND",
+    # M4 — Stripe: el whsec_ del webhook y los 3 Payment Links (los links no
+    # son secretos, pero viajan por aquí para no hornearlos en la infra)
+    "STRIPE_WEBHOOK_SECRET", "STRIPE_LINK_100", "STRIPE_LINK_500", "STRIPE_LINK_1200",
 ]
 PREFIJO = "/media-ivenaccip/env/"
 

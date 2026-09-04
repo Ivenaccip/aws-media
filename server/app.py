@@ -31,6 +31,8 @@ from server.editor import router as editor_router
 from server.importar_api import router as importar_router
 from server.media_api import router as media_router
 from server.overlays_api import router as overlays_router
+from server.pagos_api import router as pagos_router
+from server import pagos_api
 from server.publicar_api import router as publicar_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -42,6 +44,7 @@ app.include_router(overlays_router)
 app.include_router(publicar_router)
 app.include_router(broll_router)
 app.include_router(media_router)
+app.include_router(pagos_router)
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}
@@ -353,11 +356,16 @@ def creditos_estado():
     if not creditos.activo():
         return {"activo": False}
     u = db.usuario_actual()
+    # M4: cada pack lleva su Payment Link con el user_id incrustado (si el
+    # dueño ya configuró los links); sin links la UI cae al modo concierge
+    links = pagos_api.links_packs(u)
+    packs = [{**p, **({"link": links[p["creditos"]]} if p["creditos"] in links else {})}
+             for p in creditos.PACKS]
     return {"activo": True, "saldo": creditos.saldo(u),
             "tarifas": {"preparar": creditos.costo_preparar(),
                         "video_por_segundo": creditos.VIDEO_CR_POR_SEGUNDO,
                         "imagen": creditos.costo_imagen()},
-            "packs": creditos.PACKS,  # M1: la UI arma el CTA de recarga con esto
+            "packs": packs,  # M1: la UI arma el CTA de recarga con esto
             "movimientos": db.movimientos_creditos(u, 20)}
 
 

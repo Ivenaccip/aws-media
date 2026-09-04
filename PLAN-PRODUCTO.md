@@ -154,18 +154,48 @@ Requiere: 1 `cdk deploy` del usuario DESPUÉS de que el CI construya la imagen
 (cambia código servido: static/ y tools/editor/index.html van dentro de la
 imagen). Tests: 162 verdes; smoke local de hub/e1/crear/editor en navegador.
 
-## Fase M4 — Recarga con Stripe
+## Fase M4 — Recarga con Stripe ✅ CÓDIGO LISTO (2026-09-04; falta la parte Stripe del usuario + deploy)
 
 Prerrequisito: cuenta Stripe de la LLC; **las claves las crea y coloca el
 usuario** en .env/SSM (nunca por chat). Diseño ya escrito en docs/ECONOMIA.md §8:
 
-- [ ] 3 Payment Links (packs 100/500/1,200) con `client_reference_id` = user_id.
-- [ ] Webhook `checkout.session.completed` → endpoint en la API → abono
-      idempotente por referencia en `monedero_movimientos` (Stripe reintenta).
-- [ ] Página/sección "Recargar" enlazada desde la cabecera del saldo y del 402.
+- [x] Webhook `POST /api/pagos/stripe` (`server/pagos_api.py`): ruta pública
+      (su gate es la firma), verificación HMAC-SHA256 manual del header
+      Stripe-Signature (sin fijar la librería de Stripe), solo
+      `checkout.session.completed` pagado; mapea `amount_total` → pack de
+      tarifas.json y abona al `client_reference_id`. Casos raros (sin usuario,
+      monto sin pack) responden 200 con motivo + ERROR en el log → abono
+      manual concierge con `tools/creditos.py`.
+- [x] **Abono idempotente por el libro mayor**: `db.abonar_compra` inserta el
+      movimiento contra un índice único de compras (`monedero_mov_compra_ref`,
+      nuevo en el ESQUEMA — correr `tools/db_migrate.py`) ANTES de tocar el
+      saldo; un reintento de Stripe (aun concurrente) no puede doble-abonar.
+- [x] Panel "Recargar" en la cabecera del saldo (monedero.js): packs con
+      Payment Link = botones de compra (abren Stripe en otra pestaña; al
+      volver, visibilitychange + retry de M3 refrescan el saldo solo); packs
+      sin link se muestran en gris y sin envs cae al aviso concierge de
+      siempre. El 402 ya apuntaba a este CTA desde M1.
+- [x] `/api/creditos` incrusta el user_id en cada link
+      (`?client_reference_id=`); envs `STRIPE_WEBHOOK_SECRET` +
+      `STRIPE_LINK_100/500/1200` viajan por SSM (`tools/ssm_env.py`, lista
+      blanca ampliada; también en `.env.example`).
+- [ ] **Parte del usuario** (sin esto opera concierge, nada se rompe):
+      crear los 3 Payment Links en Stripe con los precios EXACTOS de
+      tarifas.json ($1.99/$8.50/$18.00 — el webhook mapea por monto), crear el
+      webhook endpoint apuntando a `{api}/api/pagos/stripe` con el evento
+      `checkout.session.completed`, poner el whsec_ y las 3 URLs en `.env`,
+      correr `python tools/ssm_env.py`, correr `tools/db_migrate.py` (índice
+      nuevo) y el deploy (imagen del CI primero). Probar en modo test de
+      Stripe antes de encender el modo live.
 - [ ] Decidir el ajuste del pack grande ($19.99 o piso $0.0165 neto) al ver las
       comisiones reales del primer mes.
-- [ ] Etapas: concierge → webhook automático (lanzamiento gradual).
+- [x] Etapas: concierge → webhook automático (lanzamiento gradual) — el código
+      cubre ambas: sin envs concierge, con envs automático, y se pueden
+      encender links pack por pack.
+
+Deuda M4-1: reembolsos = ajuste negativo manual (`tools/creditos.py abonar -N
+--tipo ajuste --ref refund:...`); el webhook no procesa `charge.refunded`.
+Tests: 17 nuevos en tests/test_m4_stripe.py (179 en total, verdes).
 
 ## Fase M5 — Proteger el trabajo del usuario
 

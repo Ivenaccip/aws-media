@@ -163,6 +163,10 @@ ESQUEMA: list[str] = [
         referencia text,
         creado     timestamptz NOT NULL DEFAULT now()
     )""",
+    # M4 — idempotencia de compras: Stripe reintenta webhooks, así que una
+    # misma referencia de compra solo puede entrar UNA vez al libro mayor.
+    """CREATE UNIQUE INDEX IF NOT EXISTS monedero_mov_compra_ref
+       ON monedero_movimientos (referencia) WHERE tipo = 'compra'""",
 ]
 
 
@@ -245,6 +249,32 @@ def abonar_creditos(user_id: str, creditos: int, tipo: str,
         """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
            VALUES (:u, :n, :t, :r)""",
         {"u": user_id, "n": creditos, "t": tipo, "r": referencia})
+    return int(filas[0]["saldo"])
+
+
+def abonar_compra(user_id: str, creditos: int, referencia: str) -> int | None:
+    """Abono de COMPRA idempotente (M4 — el webhook de Stripe reintenta).
+
+    El libro mayor manda: primero se intenta el movimiento contra el índice
+    único de compras; si la referencia ya existe no se toca el saldo y se
+    devuelve None. Solo cuando el movimiento entró se materializa el saldo —
+    así ni dos reintentos concurrentes pueden abonar doble."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+           VALUES (:u, :n, 'compra', :r)
+           ON CONFLICT (referencia) WHERE tipo = 'compra' DO NOTHING
+           RETURNING id""",
+        {"u": user_id, "n": creditos, "r": referencia})
+    if not filas:
+        return None          # referencia ya abonada: reintento de Stripe
+    filas = ejecutar(
+        """INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))
+           ON CONFLICT (user_id) DO UPDATE
+             SET saldo = monedero.saldo + :n, actualizado = now()
+           RETURNING saldo""",
+        {"u": user_id, "n": creditos})
     return int(filas[0]["saldo"])
 
 
