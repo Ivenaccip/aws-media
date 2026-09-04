@@ -95,6 +95,7 @@
       <div class="thumbs" id="thumbs"></div>
     </div>
     <button class="btn" id="enviar">Escribir el guion →</button>
+    <p class="mut" id="saldoform"></p>
     <div class="err" id="ferr"></div>
   </section>
 
@@ -115,12 +116,16 @@
           <h2>🧑‍🎤 Elige tu personaje</h2>
           <input type="text" id="pnombre" placeholder="Nombre del personaje" style="margin-bottom:10px">
           <div class="opciones" id="opciones"></div>
+          <div id="pmodfila" class="hidden" style="margin-top:10px">
+            <div class="row"><input type="text" id="pmod" placeholder="Pide un cambio a la opción elegida — p. ej. «ponle lentes»"><button class="chip" id="pmodbtn">Cambiar</button></div>
+            <p class="mut" id="pmodmsg"></p>
+          </div>
           <details style="margin-top:10px"><summary>Descripción detectada</summary><p class="mut" id="pdesc"></p></details>
         </div>
         <div class="card">
           <h2>🎙 Voz del narrador</h2>
           <p class="mut">Una sola voz para toda la película, ordenadas por ajuste al guion: <span class="dot verde"></span>encaja · <span class="dot amarillo"></span>tal vez · <span class="dot rojo"></span>no encaja.</p>
-          <div class="voz"><select id="voz"></select><button id="oir" title="Escuchar la escena 1 con esta voz (≈ $0.01)">▶ Escuchar</button></div>
+          <div class="voz"><select id="voz"></select><button id="oir" title="Muestra fija de la voz — sin costo">▶ Escuchar</button></div>
           <p class="mut" id="vozmotivo"></p>
           <audio id="audio" controls class="hidden" style="width:100%;margin-top:8px"></audio>
         </div>
@@ -141,6 +146,7 @@
     </div>
     <div class="sticky">
       <button class="btn" id="producir">Producir la película →</button>
+      <p class="mut" id="saldoaviso"></p>
       <div class="err" id="rerr"></div>
     </div>
   </section>
@@ -163,11 +169,37 @@
   </section>
 </main>
 
+<script src="/monedero.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
 const show = id => { for (const s of ['form','progreso','revision','resultado','error']) $('#'+s).classList.toggle('hidden', s!==id); };
 let estilo = 'animated', files = [], proyecto = null, poll = null;
+
+// --- monedero (M1): saldo y costo visibles ANTES de gastar, nunca después del 402 ---
+let mon = null, faltaProducir = 0;
+const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+function msg402(t) { return `${t} ${CTA}`; }
+document.addEventListener('monedero', e => { mon = e.detail; pintaCostos(); });
+function pintaCostos() {
+  if (!mon || !mon.activo) return;
+  const prep = mon.tarifas.preparar;
+  if (prep != null) {
+    $('#enviar').textContent = `Escribir el guion → · ${prep} créditos`;
+    const falta = prep - mon.saldo;
+    $('#enviar').disabled = falta > 0;
+    $('#saldoform').textContent = falta > 0
+      ? `Te faltan ${falta} créditos para empezar (saldo: ${mon.saldo}). ${CTA}` : '';
+  }
+  if (mon.tarifas.imagen != null) $('#pmodbtn').textContent = `Cambiar · ${mon.tarifas.imagen} créditos`;
+  pintaProducir();
+}
+function pintaProducir() {
+  if (!mon || !mon.activo) return;
+  $('#producir').disabled = faltaProducir > 0;
+  $('#saldoaviso').textContent = faltaProducir > 0
+    ? `Te faltan ${faltaProducir} créditos para producir (saldo: ${mon.saldo}). ${CTA}` : '';
+}
 
 // --- formulario ---
 $('#brief').addEventListener('input', e => $('#cnt').textContent = e.target.value.length);
@@ -189,7 +221,7 @@ $('#files').onchange = e => {
 let modo = 'auto';
 const MODONOTAS = {
   auto: 'Detectamos si tu texto es una historia lista o una idea que investigar.',
-  investigacion: 'Investigamos el tema con fuentes y escribimos el guion (≈ $0.10 extra).',
+  investigacion: 'Investigamos el tema con fuentes y escribimos el guion (≈ $0.10 dólares extra).',
   idea: 'Tu texto se corta en escenas tal cual — tú lo revisas antes de producir.',
 };
 $('#modos').onclick = ev => {
@@ -215,8 +247,10 @@ $('#enviar').onclick = async (ev, forzar = false) => {
       return $('#enviar').onclick(null, true);
     return;
   }
+  if (r.status === 402) { $('#ferr').textContent = msg402(await errTxt(r)); return; }
   if (!r.ok) { $('#ferr').textContent = await errTxt(r); return; }
   proyecto = await r.json();
+  window.monedero?.refrescar();
   history.replaceState(null, '', '?p=' + proyecto.id);
   seguir();
 };
@@ -257,14 +291,46 @@ function renderRevision(p) {
   $('#dossier').textContent = p.dossier || ''; $('#nfuentes').textContent = p.fuentes.length;
   $('#fuentes').innerHTML = p.fuentes.map(u => `<li><a href="${u}" target="_blank">${u}</a></li>`).join('');
   $('#pnombre').value = p.personaje.nombre; $('#pdesc').textContent = p.personaje.descripcion;
-  $('#opciones').innerHTML = p.personaje.opciones.map((o,i) =>
-    `<img src="/api/proyectos/${p.id}/archivo/${o.path.split(/[\\/]/).slice(-2).join('/')}" data-i="${i}" class="${p.personaje.elegida===i?'on':''}">`).join('')
-    || '<p class="mut">No se generaron opciones de personaje (¿sin referencia?).</p>';
-  $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
-    p.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im)); };
+  renderOpciones(p);
   $('#escenas').innerHTML = ''; p.guion.forEach(e => addEscena(e.narracion)); estimar();
   document.querySelector('main').classList.add('wide');
   renderVoces(p);
+}
+// M1: las opciones se re-pintan solas (generar/modificar) sin tocar el guion
+// que el usuario pueda estar editando.
+function renderOpciones(p) {
+  $('#opciones').innerHTML = p.personaje.opciones.map((o,i) =>
+    `<img src="/api/proyectos/${p.id}/archivo/${o.path.split(/[\\/]/).slice(-2).join('/')}" data-i="${i}" class="${p.personaje.elegida===i?'on':''}" alt="Opción ${i+1} del personaje">`).join('')
+    || `<div style="grid-column:1/-1"><p class="mut">Aún no hay opciones de personaje.</p>
+        <button class="btn sec" id="genop">Crear 2 opciones con IA (incluido) →</button>
+        <p class="mut" id="genopmsg"></p></div>`;
+  $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
+    proyecto.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im)); };
+  $('#pmodfila').classList.toggle('hidden', !p.personaje.opciones.length);
+  pintaCostos();
+  // Proyecto sin opciones (modo idea sin referencias) ya NO es un callejón sin
+  // salida: los créditos de preparar pagan las opciones, generarlas es gratis.
+  if ($('#genop')) $('#genop').onclick = async () => {
+    $('#genop').disabled = true; $('#genopmsg').textContent = '⏳ Generando las 2 opciones (~30 s)…';
+    const r = await fetch(`/api/proyectos/${p.id}/personaje/generar`, {method:'POST'});
+    if (!r.ok) { $('#genop').disabled = false; $('#genopmsg').textContent = await errTxt(r); return; }
+    proyecto = await r.json(); renderOpciones(proyecto);
+  };
+  $('#pmodbtn').onclick = async () => {
+    const instruccion = $('#pmod').value.trim();
+    if (!instruccion) { $('#pmodmsg').textContent = 'Escribe qué quieres cambiar.'; return; }
+    if (proyecto.personaje.elegida == null) { $('#pmodmsg').textContent = 'Primero elige la opción a modificar.'; return; }
+    $('#pmodbtn').disabled = true; $('#pmodmsg').textContent = '⏳ Modificando la imagen…';
+    const r = await fetch(`/api/proyectos/${p.id}/personaje/modificar`, {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({instruccion, opcion: proyecto.personaje.elegida})});
+    $('#pmodbtn').disabled = false;
+    if (r.status === 402) { $('#pmodmsg').textContent = msg402(await errTxt(r)); return; }
+    if (!r.ok) { $('#pmodmsg').textContent = await errTxt(r); return; }
+    proyecto = await r.json(); $('#pmod').value = ''; $('#pmodmsg').textContent = '';
+    window.monedero?.refrescar();
+    renderOpciones(proyecto);
+  };
 }
 const ICONO = {verde:'🟢', amarillo:'🟡', rojo:'🔴'};
 function renderVoces(p) {
@@ -274,13 +340,15 @@ function renderVoces(p) {
   sel.value = p.voz && lista.some(v => v.id===p.voz) ? p.voz : lista[0].id;
   const motivo = () => { const o = sel.selectedOptions[0]; $('#vozmotivo').textContent = o ? o.dataset.motivo : ''; $('#audio').classList.add('hidden'); };
   sel.onchange = motivo; motivo();
-  $('#oir').onclick = async () => {
-    const texto = escenas()[0]; if (!texto) return;
-    $('#oir').disabled = true; $('#oir').textContent = '… generando';
-    const r = await fetch(`/api/proyectos/${p.id}/voz/muestra`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({voz: sel.value, texto})});
-    $('#oir').disabled = false; $('#oir').textContent = '▶ Escuchar';
-    if (!r.ok) { $('#rerr').textContent = await errTxt(r); return; }
-    const au = $('#audio'); au.src = (await r.json()).url; au.classList.remove('hidden'); au.play();
+  // M1: muestra fija por voz, cacheada global en el servidor — escuchar es gratis
+  $('#oir').onclick = () => {
+    const au = $('#audio');
+    $('#oir').disabled = true; $('#oir').textContent = '… cargando';
+    const listo = () => { $('#oir').disabled = false; $('#oir').textContent = '▶ Escuchar'; };
+    au.oncanplay = () => { listo(); au.play(); };
+    au.onerror = () => { listo(); $('#rerr').textContent = 'No se pudo cargar la muestra de voz — intenta de nuevo.'; };
+    au.src = `/api/voces/${encodeURIComponent(sel.value)}/muestra`;
+    au.classList.remove('hidden');
   };
 }
 function addEscena(txt='') {
@@ -305,9 +373,15 @@ function estimar() {
   estimT = setTimeout(async () => {
     const r = await fetch(`/api/proyectos/${proyecto.id}/estimacion`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({escenas: escenas()})});
     if (!r.ok) return; const c = await r.json();
-    // C5: con el monedero activo se enseña también el costo en créditos y el saldo
-    const cr = c.creditos != null ? ` · ${c.creditos} créditos (saldo ${c.creditos_saldo})` : '';
-    $('#producir').textContent = `Producir la película → ≈ $${c.total.toFixed(2)} · ~${c.minutos} min${cr}`;
+    // M1: UNA sola moneda de cara al usuario (créditos); los dólares, en
+    // secundario. Si el saldo no alcanza, el botón se apaga ANTES del 402.
+    if (c.creditos != null) {
+      $('#producir').textContent = `Producir la película → ${c.creditos} créditos (te quedan ${c.creditos_saldo}) · ~${c.minutos} min`;
+      faltaProducir = Math.max(0, c.creditos - c.creditos_saldo);
+      pintaProducir();
+    } else {
+      $('#producir').textContent = `Producir la película → ≈ $${c.total.toFixed(2)} dólares · ~${c.minutos} min`;
+    }
   }, 400);
 }
 $('#addesc').onclick = () => addEscena('');
@@ -321,18 +395,20 @@ $('#producir').onclick = async () => {
     r = await fetch(`/api/proyectos/${proyecto.id}/personaje`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({elegida: proyecto.personaje.elegida, nombre: $('#pnombre').value})});
     if (!r.ok) throw new Error(await errTxt(r));
     r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
+    if (r.status === 402) throw new Error(msg402(await errTxt(r)));
     if (!r.ok) throw new Error(await errTxt(r));
-    proyecto = await r.json(); seguir();
+    proyecto = await r.json(); window.monedero?.refrescar(); seguir();
   } catch (e) { $('#rerr').textContent = e.message; }
-  $('#producir').disabled = false;
+  $('#producir').disabled = false; pintaProducir();
 };
 
 $('#reintentar').onclick = async () => {
   $('#reintentar').disabled = true;
   const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
   $('#reintentar').disabled = false;
+  if (r.status === 402) { $('#emsg').textContent = msg402(await errTxt(r)); return; }
   if (!r.ok) { $('#emsg').textContent = await errTxt(r); return; }
-  proyecto = await r.json(); seguir();
+  proyecto = await r.json(); window.monedero?.refrescar(); seguir();
 };
 
 // --- reanudar por URL ---

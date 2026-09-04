@@ -36,35 +36,47 @@ Regla de oro heredada: ningún gasto apreciable sin confirmación; tarifas SOLO 
 
 ---
 
-## Fase M1 — Dinero y desbloqueo (P0 de la auditoría)
+## Fase M1 — Dinero y desbloqueo (P0 de la auditoría) — CÓDIGO LISTO 2026-09-03
 
 Lo único que hoy cobra créditos y puede dejar al usuario sin nada a cambio.
 
-- [ ] **Personaje sin referencia** (`pipeline/flow.py`, `pipeline/character.py`):
-      en `_preparar`, cuando no hay referencias, derivar nombre + descripción del
-      protagonista desde el guion (LLM) y generar **2 opciones de imagen**
-      (mismo modelo del pipeline). Entra en los 10 cr de preparar ya cobrados.
-- [ ] **Modificar opción** en revisión (`crear.html` + endpoint nuevo): caja de
-      texto "cámbiale X" → modelo de edición de imagen sobre la opción elegida.
-      Tarifa: imagen estándar (2 cr) desde `tools/tarifas.json`.
-- [ ] **Reparar los proyectos varados** (fcab9e66, 19fde9f1): con el punto 1,
-      re-lanzar solo la etapa de personaje sin volver a cobrar.
-- [ ] **Monedero visible**: cabecera compartida en hub/crear/e1 con saldo de
-      `GET /api/creditos`, refrescada tras cada acción con costo y al recuperar
-      el foco de la pestaña.
-- [ ] **Costo encima de cada botón que cobra** ("Escribir el guion · 10
-      créditos", "Producir · 90 créditos"), deshabilitado con "te faltan N
-      créditos" si el saldo no alcanza. Una sola moneda de cara al usuario
-      (créditos; dólares en secundario con la palabra "dólares").
-- [ ] **402 humano**: mensaje con saldo, costo y CTA de recarga (concierge
-      "escríbenos" hasta M4).
-- [ ] **Muestra de voz cacheada** (`server/app.py::muestra_voz`): texto fijo
-      "Hola, mi nombre es {nombre} y seré tu locutor.", caché global por voz en
-      S3/`media/voces/` (hoy es por proyecto en `work/<id>/voces/`). Generación
-      inicial: una corrida por las voces del catálogo (~$0.01 c/u, una vez).
-      Botón visible "▶ Escuchar" ya sin costo.
+- [x] **Personaje sin referencia** (`pipeline/flow.py`, `pipeline/character.py`):
+      en `_preparar`, sin referencias, `describir_desde_guion` (LLM, prompt
+      `personaje_guion_system.md`) + `preparar_personaje_sin_ref` (2 opciones
+      con Nano Banana, subidas a fal para el pipeline). Entra en los 10 cr de
+      preparar; si falla NO tumba preparar — la UI ofrece reintentarlo gratis
+      con `POST /personaje/generar`. Validado en vivo (local, ~$0.09 dólares).
+- [x] **Modificar opción** en revisión: `POST /personaje/modificar`
+      {instruccion} → grok edit sobre la elegida; cobra imagen estándar (2 cr de
+      `tarifas.json`), devuelve en fallo, y la versión nueva se AGREGA (nunca se
+      borra). UI: caja "pide un cambio" + botón "Cambiar · 2 créditos".
+- [ ] **Reparar los proyectos varados** (fcab9e66, 19fde9f1): correr la
+      generación de opciones contra Aurora (script local con STATE_BACKEND=
+      postgres) — pendiente de confirmación de gasto (~$0.18 dólares por los 2)
+      y del deploy.
+- [x] **Monedero visible**: `static/monedero.js` compartido en hub/crear/e1 —
+      saldo de `GET /api/creditos`, refresco al volver el foco y tras cada
+      acción con costo; CTA "Recargar" con los packs de `tarifas.json` (el API
+      ahora también devuelve `packs` y la tarifa `imagen`).
+- [x] **Costo encima de cada botón**: "Escribir el guion → · 10 créditos",
+      "Producir → N créditos (te quedan M)"; deshabilitado con "te faltan N
+      créditos" ANTES del 402. Una sola moneda (créditos); dólares en
+      secundario con la palabra "dólares".
+- [x] **402 humano**: el mensaje del monedero + CTA de recarga en crear,
+      producir, reintentar y modificar.
+- [x] **Muestra de voz cacheada**: `GET /api/voces/{voz}/muestra`, texto fijo
+      "Hola, mi nombre es {nombre} y seré tu locutor.", caché global (S3
+      `voces/<voz>.mp3` en AWS, `media/voces/` local). Validado en vivo:
+      1ª llamada genera (3.1 s), 2ª sale del caché (4 ms). El endpoint viejo
+      por-proyecto (que regeneraba por texto) se retiró.
 
-Validación: 1 llamada barata (personaje sin referencia sobre 19fde9f1) + tests.
+Validación hecha (2026-09-03, local): 139 tests verdes; opciones sin referencia
+E2E (guion de Karl Drais → inventor de época, 2 opciones) y voz cacheada.
+**Deuda M1-1**: Nano Banana tardó ~90 s — en AWS `POST /personaje/generar`
+puede exceder los 29 s de API Gateway. Mitiga: el camino normal es el worker
+(preparar, 15 min); si el botón de reparación 504ea en AWS, moverlo a SQS.
+**Pendiente**: merge → CI construye imagen → `cdk deploy` del usuario →
+smoke en AWS + reparar los 2 proyectos varados.
 
 ## Fase M2 — Acceso: login y altas (cierra deuda C1)
 

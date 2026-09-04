@@ -27,12 +27,16 @@ VIDEO_CR_POR_SEGUNDO = 3
 VIDEO_PREMIUM_CR_POR_SEGUNDO = 4
 IMAGEN_CR = 2
 
+PACKS: list[dict] = []  # M1: la UI enseña los packs en el CTA de recarga
+
 try:
-    _v = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))["video"]
+    _t = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))
+    _v = _t["video"]
     PREPARAR_CR = _v["preparar"]
     VIDEO_CR_POR_SEGUNDO = _v["por_segundo"]
     VIDEO_PREMIUM_CR_POR_SEGUNDO = _v["por_segundo_premium"]
     IMAGEN_CR = _v["imagen"]
+    PACKS = _t.get("packs_usd", [])
 except (FileNotFoundError, KeyError):
     pass  # fallback: tarifa de arriba (2026-09-02)
 
@@ -65,6 +69,11 @@ def costo_preparar() -> int:
 def costo_producir(duracion_s: int | float) -> int:
     """Producir se cobra por duración OBJETIVO: la estimación hacia arriba."""
     return math.ceil(VIDEO_CR_POR_SEGUNDO * float(duracion_s))
+
+
+def costo_imagen() -> int:
+    """Imagen estándar (M1: modificar la opción de personaje)."""
+    return IMAGEN_CR
 
 
 # ---------------------------------------------------------------------------
