@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de video · Admin</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 15px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0; padding: 40px 24px; }
+  main { max-width: 1080px; margin: 0 auto; }
+  a.volver { color: #9a978f; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
+  p.sub { color: #9a978f; font-size: 14px; margin-bottom: 24px; }
+  section { background: #1d2026; border: 1px solid #2c3038; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
+  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
+  .fila-top { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 24px; }
+  .kpi { background: #1d2026; border: 1px solid #2c3038; border-radius: 12px; padding: 12px 18px; }
+  .kpi b { display: block; font-size: 19px; }
+  .kpi span { color: #9a978f; font-size: 12.5px; }
+  button { padding: 9px 16px; border-radius: 9px; border: 1px solid #2c3038; background: #23262d;
+           color: #e8e6e0; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover { border-color: #5b8dd6; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th { text-align: right; color: #9a978f; font-weight: 500; font-size: 12px; text-transform: uppercase;
+       letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid #2c3038; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #23262d; font-variant-numeric: tabular-nums; }
+  tr.usuario { cursor: pointer; }
+  tr.usuario:hover td { background: #23262d; }
+  .pos { color: #7fd6a3; } .neg { color: #e88; }
+  .mut { color: #9a978f; font-size: 13px; }
+  .tabla-scroll { overflow-x: auto; }
+  #estado-sync { font-size: 13px; color: #9a978f; }
+  .proyecto { border: 1px solid #2c3038; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+  .proyecto .cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .proyecto .brief { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+  .trazas { margin-top: 8px; font-size: 12.5px; color: #9a978f; }
+  .trazas a { color: #8ab4e8; text-decoration: none; }
+  code { background: #23262d; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  #noacceso, #cargando { text-align: center; padding: 60px 0; color: #9a978f; }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← inicio</a>
+  <h1>Costes y margen</h1>
+  <p class="sub">Cuánto gasta, cuánto cuesta y cuánto deja cada usuario. La infra AWS no se
+    atribuye por usuario (es &lt;2% del variable): para eso están el
+    <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" style="color:#8ab4e8">presupuesto de $50/mes</a>
+    y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" style="color:#8ab4e8">Cost Explorer</a>.</p>
+
+  <div id="cargando">Cargando…</div>
+  <div id="noacceso" hidden>🔒 Esta página es solo para administradores.<br>
+    <span class="mut">Se otorga con <code>tools/usuarios.py admin &lt;correo&gt;</code> (y un re-login).</span></div>
+
+  <div id="panel" hidden>
+    <div class="fila-top">
+      <div class="kpi"><b id="t-costo"></b><span>costo IA total</span></div>
+      <div class="kpi"><b id="t-margen"></b><span>margen total</span></div>
+      <div class="kpi"><b id="t-gastados"></b><span>créditos quemados</span></div>
+      <div class="kpi"><b id="t-pelis"></b><span>películas</span></div>
+      <span style="flex:1"></span>
+      <div><button id="sync">⟳ Sincronizar costes (7 días)</button>
+        <div id="estado-sync"></div></div>
+    </div>
+
+    <section>
+      <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
+      <div class="tabla-scroll"><table>
+        <thead><tr><th>Usuario</th><th>Saldo</th><th>Cortesía</th><th>Comprados</th>
+          <th>Quemados</th><th>Películas</th><th>S3</th><th>Costo IA</th><th>Margen</th></tr></thead>
+        <tbody id="cuerpo"></tbody>
+      </table></div>
+      <p class="mut" style="margin-top:10px">Margen = créditos quemados × <span id="piso"></span>
+        por crédito (piso de venta de tarifas.json) − costo IA. El costo IA viene de la tabla
+        <code>costes</code>, alimentada por Langfuse (sync diario a las 06:00 UTC + el botón de arriba).</p>
+    </section>
+
+    <section id="detalle" hidden>
+      <h2 id="detalle-titulo"></h2>
+      <div id="detalle-cuerpo"></div>
+    </section>
+  </div>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const usd = x => `$${x.toFixed(2)} dólares`;
+const usd4 = x => `$${x.toFixed(4)}`;
+const mb = b => b == null ? '—' : (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6).toFixed(1) + ' MB');
+let LFBASE = '';
+
+async function cargar() {
+  let r;
+  try { r = await fetch('/api/admin/resumen'); }
+  catch { $('#cargando').textContent = 'No se pudo cargar — revisa tu conexión y recarga.'; return; }
+  if (r.status === 403) { $('#cargando').hidden = true; $('#noacceso').hidden = false; return; }
+  if (!r.ok) {
+    const detalle = (await r.json().catch(() => ({}))).detail;
+    $('#cargando').textContent = detalle || `Error ${r.status} — recarga la página.`;
+    return;
+  }
+  const d = await r.json();
+  LFBASE = d.langfuse_base;
+  $('#cargando').hidden = true; $('#panel').hidden = false;
+  $('#t-costo').textContent = usd(d.totales.costo_usd);
+  $('#t-margen').textContent = usd(d.totales.margen_usd);
+  $('#t-margen').className = d.totales.margen_usd >= 0 ? 'pos' : 'neg';
+  $('#t-gastados').textContent = d.totales.gastados;
+  $('#t-pelis').textContent = d.totales.peliculas;
+  $('#piso').textContent = `$${d.piso_venta_usd} dólares`;
+  $('#cuerpo').innerHTML = d.usuarios.map(u => `
+    <tr class="usuario" data-uid="${u.user_id}" tabindex="0">
+      <td title="${u.user_id}">${u.email || u.user_id}</td>
+      <td>${u.saldo}</td><td>${u.cortesia}</td><td>${u.comprados}</td>
+      <td>${u.gastados}</td><td>${u.peliculas}</td><td>${mb(u.s3_bytes)}</td>
+      <td>${usd4(u.costo_usd)}</td>
+      <td class="${u.margen_usd >= 0 ? 'pos' : 'neg'}">${usd4(u.margen_usd)}</td>
+    </tr>`).join('');
+  document.querySelectorAll('tr.usuario').forEach(tr => {
+    tr.onclick = () => detalle(tr.dataset.uid, tr.cells[0].textContent);
+    tr.onkeydown = e => { if (e.key === 'Enter') tr.onclick(); };
+  });
+}
+
+async function detalle(uid, nombre) {
+  $('#detalle').hidden = false;
+  $('#detalle-titulo').textContent = `Corridas de ${nombre}`;
+  $('#detalle-cuerpo').innerHTML = '<p class="mut">Cargando…</p>';
+  const r = await fetch('/api/admin/usuarios/' + encodeURIComponent(uid));
+  if (!r.ok) { $('#detalle-cuerpo').innerHTML = `<p class="mut">Error ${r.status}.</p>`; return; }
+  const d = await r.json();
+  const traza = t => `<div>· ${t.concepto} — ${usd4(t.costo_usd)}` +
+    (t.traza ? ` <a href="${LFBASE}/trace/${t.traza}" target="_blank" rel="noopener">traza ↗</a>` : '') + `</div>`;
+  $('#detalle-cuerpo').innerHTML = (d.proyectos.map(p => `
+    <div class="proyecto">
+      <div class="cab">
+        <span class="brief" title="${(p.brief || '').replace(/"/g,'&quot;')}">${(p.brief || p.id).replace(/</g,'&lt;')}</span>
+        <span class="mut">${p.estado} · ${p.duracion_s ? p.duracion_s + ' s · ' : ''}${new Date(p.creado).toLocaleDateString()}</span>
+      </div>
+      <div style="margin-top:4px"><b>${p.creditos}</b> <span class="mut">créditos netos</span> ·
+        <b>${usd4(p.costo_usd)}</b> <span class="mut">de IA</span></div>
+      ${p.trazas.length ? `<div class="trazas">${p.trazas.map(traza).join('')}</div>` : ''}
+    </div>`).join('') || '<p class="mut">Sin proyectos.</p>') +
+    (d.sin_proyecto.length ? `<div class="proyecto"><div class="cab"><span class="brief">Sin proyecto asociado</span></div>
+      <div class="trazas">${d.sin_proyecto.map(traza).join('')}</div></div>` : '');
+  $('#detalle').scrollIntoView({ behavior: 'smooth' });
+}
+
+$('#sync').onclick = async () => {
+  $('#sync').disabled = true;
+  $('#estado-sync').textContent = '⏳ trayendo trazas de Langfuse…';
+  try {
+    const r = await fetch('/api/admin/costes/sync?dias=7', { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    const d = await r.json();
+    $('#estado-sync').textContent = `✓ ${d.nuevas} trazas nuevas — recargando…`;
+    setTimeout(() => location.reload(), 900);
+  } catch (e) { $('#estado-sync').textContent = 'Error: ' + e.message; $('#sync').disabled = false; }
+};
+
+cargar();
+</script>
+</body>
+</html>

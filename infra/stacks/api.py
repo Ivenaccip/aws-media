@@ -129,6 +129,13 @@ class ApiStack(Stack):
         pool.add_domain("Domain", cognito_domain=cognito.CognitoDomainOptions(
             domain_prefix="media-ivenaccip"))
 
+        # M6: el dashboard admin exige pertenecer a este grupo (el id_token lo
+        # trae en cognito:groups); miembros por CLI: tools/usuarios.py admin
+        cognito.CfnUserPoolGroup(
+            self, "AdminGroup", user_pool_id=pool.user_pool_id,
+            group_name="admin",
+            description="Acceso al dashboard de costes (/admin.html)")
+
         # M2: con estas envs presentes, server/auth.py exige el JWT
         fn.add_environment("COGNITO_POOL_ID", pool.user_pool_id)
         fn.add_environment("COGNITO_CLIENT_ID", client.user_pool_client_id)

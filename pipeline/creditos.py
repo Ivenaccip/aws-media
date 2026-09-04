@@ -28,6 +28,7 @@ VIDEO_PREMIUM_CR_POR_SEGUNDO = 4
 IMAGEN_CR = 2
 
 PACKS: list[dict] = []  # M1: la UI enseña los packs en el CTA de recarga
+PISO_VENTA_USD = 0.015  # M6: valor de venta por crédito — base del margen
 
 try:
     _t = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))
@@ -37,6 +38,7 @@ try:
     VIDEO_PREMIUM_CR_POR_SEGUNDO = _v["por_segundo_premium"]
     IMAGEN_CR = _v["imagen"]
     PACKS = _t.get("packs_usd", [])
+    PISO_VENTA_USD = _t.get("economia", {}).get("piso_venta_usd_por_credito", PISO_VENTA_USD)
 except (FileNotFoundError, KeyError):
     pass  # fallback: tarifa de arriba (2026-09-02)
 

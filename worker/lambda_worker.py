@@ -61,7 +61,19 @@ def _smoke() -> None:
              filas[0]["n"], "accesible" if ok_s3 else "sin bucket")
 
 
+def _sync_costes(dias: int) -> None:
+    # M6: EventBridge diario (y el botón del dashboard vía API) — trazas de
+    # Langfuse → tabla costes; idempotente por trace id, la ventana se solapa
+    from tools.costes import sincronizar
+    nuevas = sincronizar(dias=dias)
+    log.info("sync_costes: %d trazas nuevas (%d días)", nuevas, dias)
+
+
 def handler(event, context):  # noqa: ANN001 — firma de Lambda
+    # M6: el evento programado de EventBridge llega directo, sin Records de SQS
+    if event.get("tipo") == "sync_costes":
+        _sync_costes(int(event.get("dias") or 3))
+        return {"ok": True}
     for rec in event.get("Records", []):
         j = json.loads(rec["body"])
         log.info("trabajo: %s", j.get("tipo"))

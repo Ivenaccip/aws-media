@@ -14,11 +14,22 @@ como DEFAULT_USER_ID, igual que siempre.
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from functools import lru_cache
 
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from pipeline import db
+
+# M6 — grupos de Cognito del token del request (p. ej. "admin"); los fija el
+# middleware junto con el sub. En dev local (sin Cognito) el dueño es admin.
+_grupos_request: ContextVar[tuple] = ContextVar("grupos_request", default=())
+
+
+def es_admin() -> bool:
+    if not activo():
+        return True
+    return "admin" in _grupos_request.get()
 
 # rutas con datos → token obligatorio; el cascarón estático queda público
 # (no revela nada: la primera llamada a /api devuelve 401 y auth.js manda
@@ -68,8 +79,8 @@ def _token_del_request(request) -> str | None:
 
 
 async def middleware(request, call_next):
-    """Fija la identidad del request (sub del token) antes de entrar a la app."""
-    marca = None
+    """Fija la identidad del request (sub y grupos del token) antes de entrar."""
+    marca = marca_g = None
     if activo():
         ruta = request.url.path
         if ruta.startswith(PREFIJOS_PROTEGIDOS) and ruta not in RUTAS_PUBLICAS:
@@ -81,11 +92,14 @@ async def middleware(request, call_next):
             except Exception:  # noqa: BLE001 — firma/exp/aud inválidos: da igual cuál
                 return _rechazo(request, "Tu sesión venció — vuelve a iniciar sesión")
             marca = db.fijar_usuario(claims["sub"])
+            marca_g = _grupos_request.set(tuple(claims.get("cognito:groups") or ()))
     try:
         return await call_next(request)
     finally:
         if marca is not None:
             db._usuario_request.reset(marca)
+        if marca_g is not None:
+            _grupos_request.reset(marca_g)
 
 
 def _rechazo(request, detalle: str):
