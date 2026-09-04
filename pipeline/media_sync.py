@@ -46,6 +46,18 @@ def subir_dir(dir_local: Path, prefijo: str) -> int:
     return n
 
 
+def listar_prefijo(prefijo: str) -> list[str]:
+    """Claves bajo el prefijo (vacío sin bucket)."""
+    bucket = _bucket()
+    if not bucket:
+        return []
+    claves = []
+    pag = _s3().get_paginator("list_objects_v2")
+    for pagina in pag.paginate(Bucket=bucket, Prefix=prefijo):
+        claves += [obj["Key"] for obj in pagina.get("Contents", [])]
+    return claves
+
+
 def leer_texto(key: str) -> str | None:
     """Contenido de un objeto (UTF-8) o None si no existe / no hay bucket."""
     bucket = _bucket()

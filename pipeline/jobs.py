@@ -44,6 +44,29 @@ def encolar_preparar(user_id: str, proyecto_id: str) -> None:
         MessageBody=json.dumps(mensaje_preparar(user_id, proyecto_id)))
 
 
+def encolar_shorts_analizar(user_id: str, proyecto: str) -> None:
+    """M8: transcripción (si falta) + candidatos LLM — trabajo corto en el
+    worker Lambda; el progreso viaja por proyectos_editor.doc.shorts."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "shorts_analizar",
+                                "user_id": user_id, "proyecto": proyecto}))
+
+
+def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
+    """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
+    misma state machine que la producción, otro comando. Los segmentos
+    aprobados viajan por Postgres (doc.shorts.render), no por el input."""
+    r = _sfn().start_execution(
+        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+        name=f"shorts-{proyecto}-{int(time.time())}",
+        input=json.dumps({
+            "user_id": user_id, "proyecto_id": proyecto,
+            "command": ["python", "-m", "worker.shorts_task", user_id, proyecto],
+        }))
+    return r["executionArn"]
+
+
 def lanzar_render(user_id: str, nombre: str, estilo: str) -> str:
     """M7: render de un corte del editor — misma state machine y misma imagen
     que la producción (regla dura: renders largos por Fargate, nada de ffmpeg

@@ -233,15 +233,24 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
 
 
-def fijar_render_editor(user_id: str, nombre: str, render: str) -> None:
-    """M7: estado del render en curso dentro del doc del proyecto del editor
+# Campos del doc que los jobs actualizan con jsonb_set (lista cerrada: la ruta
+# va interpolada en el SQL, así que jamás sale de aquí)
+_CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}"}
+
+
+def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:
+    """M7/M8: estado de un job dentro del doc del proyecto del editor
     (jsonb_set: no pisa las subidas/flags que registró el puente)."""
     ejecutar(
-        """UPDATE proyectos_editor
-           SET doc = jsonb_set(doc, '{render}', :r::jsonb)
-           WHERE user_id = :u AND nombre = :n""",
-        {"u": user_id, "n": nombre, "r": render},
+        f"""UPDATE proyectos_editor
+            SET doc = jsonb_set(doc, '{_CAMPOS_EDITOR[campo]}', :v::jsonb)
+            WHERE user_id = :u AND nombre = :n""",
+        {"u": user_id, "n": nombre, "v": valor},
     )
+
+
+def fijar_render_editor(user_id: str, nombre: str, render: str) -> None:
+    fijar_campo_editor(user_id, nombre, "render", render)
 
 
 # ---------------------------------------------------------------------------

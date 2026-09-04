@@ -35,6 +35,7 @@ from server.overlays_api import router as overlays_router
 from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
+from server.shorts_api import router as shorts_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = FastAPI(title="edicion_y_generacion")
@@ -47,6 +48,7 @@ app.include_router(broll_router)
 app.include_router(media_router)
 app.include_router(pagos_router)
 app.include_router(admin_router)
+app.include_router(shorts_router)
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}

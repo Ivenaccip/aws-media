@@ -40,8 +40,8 @@ except (FileNotFoundError, KeyError):
 
 # Qué ejecutor hay detrás de cada concepto (los escriben los workers): con esto
 # el dashboard convierte el costo de vuelta a segundos de cómputo.
-CONCEPTOS_FARGATE = {"infra-producir", "infra-render"}
-CONCEPTOS_LAMBDA = {"infra-preparar"}
+CONCEPTOS_FARGATE = {"infra-producir", "infra-render", "infra-shorts"}
+CONCEPTOS_LAMBDA = {"infra-preparar", "infra-shorts-analizar"}
 
 
 def costo_fargate(segundos: float, vcpu: float = 4.0, gb: float = 8.0) -> float:
