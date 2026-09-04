@@ -255,8 +255,16 @@ grupo `admin` de Cognito (por eso va después de M2):
 - [x] **General**: KPIs de totales (costo, margen, créditos, películas) y la
       tabla ordenada por costo (top usuarios). La curva de gasto queda para
       cuando haya más de un puñado de puntos.
-- [x] **Infra AWS**: no se atribuye por usuario (deliberado, <2% del
-      variable); la página enlaza al presupuesto de $50/mes y a Cost Explorer.
+- [x] **Infra AWS** (M6.1, pedido del usuario 2026-09-04): línea estimada de
+      cómputo por corrida en la tabla `costes` — `pipeline/costes_infra.py`
+      calcula segundos reales × tarifas de `pricing.json` §aws_infra
+      (Fargate 4 vCPU/8 GB ≈ $0.02 por producción; Lambda 3 GB ≈ $0.007 por
+      preparar) y los ejecutores la registran al terminar (proveedor 'aws',
+      también en corridas fallidas — la infra se gastó igual; jamás tumba una
+      corrida). El dashboard la suma solo: la columna pasó de "costo IA" a
+      "costo directo". Lo que sigue compartido y sin atribuir (Aurora,
+      CloudFront, API GW — centavos): presupuesto de $50/mes y Cost Explorer,
+      enlazados desde la página. S3 ya sale aparte por prefijo.
 - [ ] Si el volumen crece y la página se queda corta: evaluar QuickSight o
       Metabase (requeriría abrir acceso a Aurora — hoy no lo vale).
 

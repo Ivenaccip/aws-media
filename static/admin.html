@@ -58,7 +58,7 @@
 
   <div id="panel" hidden>
     <div class="fila-top">
-      <div class="kpi"><b id="t-costo"></b><span>costo IA total</span></div>
+      <div class="kpi"><b id="t-costo"></b><span>costo directo total</span></div>
       <div class="kpi"><b id="t-margen"></b><span>margen total</span></div>
       <div class="kpi"><b id="t-gastados"></b><span>créditos quemados</span></div>
       <div class="kpi"><b id="t-pelis"></b><span>películas</span></div>
@@ -71,12 +71,15 @@
       <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
       <div class="tabla-scroll"><table>
         <thead><tr><th>Usuario</th><th>Saldo</th><th>Cortesía</th><th>Comprados</th>
-          <th>Quemados</th><th>Películas</th><th>S3</th><th>Costo IA</th><th>Margen</th></tr></thead>
+          <th>Quemados</th><th>Películas</th><th>S3</th><th>Costo</th><th>Margen</th></tr></thead>
         <tbody id="cuerpo"></tbody>
       </table></div>
       <p class="mut" style="margin-top:10px">Margen = créditos quemados × <span id="piso"></span>
-        por crédito (piso de venta de tarifas.json) − costo IA. El costo IA viene de la tabla
-        <code>costes</code>, alimentada por Langfuse (sync diario a las 06:00 UTC + el botón de arriba).</p>
+        por crédito (piso de venta de tarifas.json) − costo directo. El costo directo suma la tabla
+        <code>costes</code>: las trazas de IA (Langfuse — sync diario 06:00 UTC + el botón de arriba)
+        y la línea estimada de infra AWS por corrida (segundos reales de Fargate/Lambda × tarifas de
+        <code>pricing.json</code>). S3 se muestra aparte; Aurora/CloudFront son compartidos
+        (Cost Explorer para el total).</p>
     </section>
 
     <section id="detalle" hidden>
@@ -143,7 +146,7 @@ async function detalle(uid, nombre) {
         <span class="mut">${p.estado} · ${p.duracion_s ? p.duracion_s + ' s · ' : ''}${new Date(p.creado).toLocaleDateString()}</span>
       </div>
       <div style="margin-top:4px"><b>${p.creditos}</b> <span class="mut">créditos netos</span> ·
-        <b>${usd4(p.costo_usd)}</b> <span class="mut">de IA</span></div>
+        <b>${usd4(p.costo_usd)}</b> <span class="mut">de costo directo</span></div>
       ${p.trazas.length ? `<div class="trazas">${p.trazas.map(traza).join('')}</div>` : ''}
     </div>`).join('') || '<p class="mut">Sin proyectos.</p>') +
     (d.sin_proyecto.length ? `<div class="proyecto"><div class="cab"><span class="brief">Sin proyecto asociado</span></div>
