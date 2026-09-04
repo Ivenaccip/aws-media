@@ -15,15 +15,15 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from pipeline import flow
-from pipeline.project import (DURACION_MAX_S, EscenaGuion, Proyecto, Referencia, cargar_proyecto,
-                              listar_proyectos, nuevo_proyecto)
+from pipeline import character, flow
+from pipeline.project import (DURACION_MAX_S, EscenaGuion, OpcionPersonaje, Proyecto, Referencia,
+                              cargar_proyecto, listar_proyectos, nuevo_proyecto)
 from pipeline.pricing import estimar_produccion
-from pipeline.styles import ESTILOS
+from pipeline.styles import ESTILOS, resolver_estilo
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
-from pipeline.storage import videos_root
+from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
 from server.broll_api import router as broll_router
 from server.editor import router as editor_router
@@ -181,33 +181,48 @@ def voces():
     return [{"id": v, "caracter": d} for v, d in VOCES.items()]
 
 
-class MuestraIn(BaseModel):
-    voz: str
-    texto: str
+# M1: muestra de voz con TEXTO FIJO, cacheada GLOBAL por voz — se genera una
+# sola vez en la vida (≈ $0.01) y de ahí en adelante escuchar voces es gratis.
+TEXTO_MUESTRA_VOZ = "Hola, mi nombre es {nombre} y seré tu locutor."
 
 
-@app.post("/api/proyectos/{id_}/voz/muestra")
-async def muestra_voz(id_: str, body: MuestraIn):
-    """Sintetiza un texto corto con la voz pedida (≈ $0.01) y lo cachea en work/<id>/voces/."""
-    p = _proyecto(id_)
-    if body.voz not in VOCES:
-        raise HTTPException(422, "Voz desconocida")
-    texto = body.texto.strip()[:300]
-    if not texto:
-        raise HTTPException(422, "Texto vacío")
-    import hashlib
-    nombre = f"voces/{body.voz}_{hashlib.md5(texto.encode()).hexdigest()[:8]}.mp3"
-    destino = p.workdir / nombre
-    if not destino.exists():
-        destino.parent.mkdir(parents=True, exist_ok=True)
+async def _generar_muestra_voz(destino: Path, voz: str) -> None:
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    texto = TEXTO_MUESTRA_VOZ.format(nombre=voz)
+    try:
+        res = await fal.llamar(settings.fal_tts, {"text": texto, "voice": voz, "stability": STABILITY_DEFAULT,
+                                                  "similarity_boost": 0.75, "language_code": "es"},
+                               timeout_s=120, nombre="tts", meta={"muestra_voz": voz})
+        await fal.descargar(res["audio"]["url"], destino)
+    except Exception as err:  # noqa: BLE001
+        raise HTTPException(502, f"TTS falló: {str(err)[:200]}")
+
+
+@app.get("/api/voces/{voz}/muestra")
+async def muestra_voz(voz: str):
+    """Audio de muestra de una voz. Caché: S3 (`voces/<voz>.mp3`) en AWS, media/voces/ en local."""
+    if voz not in VOCES:
+        raise HTTPException(404, "Voz desconocida")
+    bucket = os.getenv("MEDIA_BUCKET", "")
+    if bucket:
+        import boto3
+        import tempfile
+        s3, key = boto3.client("s3"), f"voces/{voz}.mp3"
         try:
-            res = await fal.llamar(settings.fal_tts, {"text": texto, "voice": body.voz, "stability": STABILITY_DEFAULT,
-                                                      "similarity_boost": 0.75, "language_code": "es"},
-                                   timeout_s=120, nombre="tts", meta={"muestra_voz": body.voz, "proyecto": p.id})
-            await fal.descargar(res["audio"]["url"], destino)
-        except Exception as err:  # noqa: BLE001
-            raise HTTPException(502, f"TTS falló: {str(err)[:200]}")
-    return {"url": f"/api/proyectos/{p.id}/archivo/{nombre}"}
+            s3.head_object(Bucket=bucket, Key=key)
+        except Exception:  # noqa: BLE001 — no existe aún: generar una vez
+            tmp = Path(tempfile.gettempdir()) / f"muestra_{voz}.mp3"
+            await _generar_muestra_voz(tmp, voz)
+            s3.put_object(Bucket=bucket, Key=key, Body=tmp.read_bytes(), ContentType="audio/mpeg")
+        cdn = os.getenv("CDN_BASE", "").rstrip("/")
+        if cdn:
+            return RedirectResponse(f"{cdn}/{key}")
+        return RedirectResponse(s3.generate_presigned_url(
+            "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=3600))
+    destino = media_root() / "media" / "voces" / f"{voz}.mp3"
+    if not destino.exists():
+        await _generar_muestra_voz(destino, voz)
+    return FileResponse(destino, media_type="audio/mpeg")
 
 
 class PersonajeIn(BaseModel):
@@ -226,6 +241,83 @@ def elegir_personaje(id_: str, body: PersonajeIn):
     if body.nombre:
         p.personaje.nombre = body.nombre.strip()
     p.guardar()
+    return p
+
+
+def _sync_workdir(p: Proyecto) -> None:
+    """C4: en AWS los archivos generados por la API viajan a S3 (el /tmp de la
+    Lambda es efímero); /archivo/{nombre} los sirve por CDN si ya no están."""
+    if jobs.backend() == "aws":
+        media_sync.subir_dir(p.workdir, media_sync.prefijo_work(db.usuario_actual(), p.id))
+
+
+@app.post("/api/proyectos/{id_}/personaje/generar")
+async def generar_personaje(id_: str):
+    """M1: 2 opciones SIN imagen de referencia, derivadas del guion. Gratis —
+    está incluido en los créditos de preparar (repara proyectos varados)."""
+    p = _proyecto(id_)
+    if p.estado != "revision":
+        raise HTTPException(409, f"Solo en revisión (estado: {p.estado})")
+    if p.personaje.opciones:
+        raise HTTPException(409, "Este proyecto ya tiene opciones de personaje")
+    if not p.guion:
+        raise HTTPException(422, "El guion está vacío")
+    d = await character.describir_desde_guion(flow.guion_numerado(p))
+    per = await character.preparar_personaje_sin_ref(p, resolver_estilo(p.estilo, p.estilo_custom), d)
+    if not per.opciones:
+        raise HTTPException(502, "No se pudieron generar las opciones — vuelve a intentarlo")
+    p.personaje = per
+    p.guardar()
+    _sync_workdir(p)
+    return p
+
+
+class ModificarPersonajeIn(BaseModel):
+    instruccion: str
+    opcion: int | None = None  # default: la elegida
+
+
+@app.post("/api/proyectos/{id_}/personaje/modificar")
+async def modificar_personaje(id_: str, body: ModificarPersonajeIn):
+    """M1: edita una opción con una instrucción («ponle lentes»). Tarifa de
+    imagen estándar; la versión nueva se AGREGA (las versiones no se borran)."""
+    p = _proyecto(id_)
+    if p.estado != "revision":
+        raise HTTPException(409, f"Solo en revisión (estado: {p.estado})")
+    idx = body.opcion if body.opcion is not None else p.personaje.elegida
+    if idx is None or not 0 <= idx < len(p.personaje.opciones):
+        raise HTTPException(422, "Elige primero la opción que quieres modificar")
+    instruccion = body.instruccion.strip()
+    if not instruccion:
+        raise HTTPException(422, "Escribe qué quieres cambiar")
+    base = p.personaje.opciones[idx]
+    costo_cr = creditos.costo_imagen()
+    if creditos.activo():
+        try:
+            creditos.cobrar(costo_cr, f"imagen:{p.id}")
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    try:
+        prompt = (f"{instruccion}. Keep the same character identity as the reference image. "
+                  f"{resolver_estilo(p.estilo, p.estilo_custom).prompt}. Clean neutral background, no text.")
+        res = await fal.llamar(settings.fal_grok,
+                               {"prompt": prompt, "image_urls": [base.url], "aspect_ratio": "1:1"},
+                               timeout_s=settings.grok_timeout_s, nombre="grok",
+                               meta={"personaje_mod": p.id})
+        url = ((res.get("images") or [{}])[0]).get("url")
+        if not url:
+            raise RuntimeError("el modelo no devolvió imagen")
+        i = len(p.personaje.opciones)
+        destino = p.workdir / "personaje" / f"opcion_{i}.jpg"
+        await fal.descargar(url, destino)
+        p.personaje.opciones.append(OpcionPersonaje(url=url, path=str(destino)))
+        p.personaje.elegida = i
+        p.guardar()
+        _sync_workdir(p)
+    except Exception as err:  # noqa: BLE001 — fallo nuestro = créditos de vuelta
+        if creditos.activo():
+            creditos.devolver(costo_cr, f"imagen:{p.id}")
+        raise HTTPException(502, f"No se pudo modificar la imagen: {str(err)[:200]}")
     return p
 
 
@@ -252,7 +344,9 @@ def creditos_estado():
     u = db.usuario_actual()
     return {"activo": True, "saldo": creditos.saldo(u),
             "tarifas": {"preparar": creditos.costo_preparar(),
-                        "video_por_segundo": creditos.VIDEO_CR_POR_SEGUNDO},
+                        "video_por_segundo": creditos.VIDEO_CR_POR_SEGUNDO,
+                        "imagen": creditos.costo_imagen()},
+            "packs": creditos.PACKS,  # M1: la UI arma el CTA de recarga con esto
             "movimientos": db.movimientos_creditos(u, 20)}
 
 

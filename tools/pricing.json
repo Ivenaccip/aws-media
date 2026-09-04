@@ -46,6 +46,8 @@
       "1080p_con_audio": 0.08
     },
     "grok_edit": { "usd_por_imagen_salida": 0.02, "usd_por_imagen_referencia": 0.002 },
+    "nano_banana_fal_usd_por_imagen": 0.04,
+    "nano_banana_fal_nota": "fal cobra $0.0398 por MP (fal.ai/pricing, verificado 2026-08-10 en docs/BROLL-RUTAS.md); a 1:1 (~1 MP) ≈ $0.04 dólares. Usado por M1 (personaje sin referencia) y g2 con GEN_BACKEND=fal.",
     "eleven_v3_usd_por_1k_chars": 0.10,
     "source": "https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video · https://fal.ai/models/xai/grok-imagine-image/edit · https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3",
     "google": {

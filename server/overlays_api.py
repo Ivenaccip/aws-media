@@ -7,6 +7,7 @@ clic en Generar ES la confirmación. Nada se genera sin ese campo.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import subprocess
 import sys
@@ -20,7 +21,7 @@ from fastapi.responses import FileResponse
 from langfuse import get_client, propagate_attributes
 from pydantic import BaseModel
 
-from pipeline import media_google, overlays, storage
+from pipeline import media_fal, media_google, overlays, storage
 from pipeline.config import settings
 from pipeline.pricing import estimar_regeneracion
 
@@ -117,30 +118,37 @@ def generar_imagenes(name: str, oid: str, body: ImagenIn):
     prompt = body.prompt.strip()
     if not prompt:
         raise HTTPException(422, "prompt vacío")
-    if settings.gen_backend != "google":
-        raise HTTPException(501, f"backend {settings.gen_backend}: solo google implementado en g2")
     _marcar(name, f"imagen {oid}")
+    cand_dir = overlays.dir_overlay(p, oid) / "candidatos"
+    cand_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%H%M%S")
+    rutas = []
     try:
         data = overlays.cargar(p)
         completo = f"{prompt}, {data['estilo_prompt']}" if data.get("estilo_prompt") else prompt
+        ref = _referencia_overlay(p, ov)
         with propagate_attributes(session_id=f"editor-{name}", tags=["fusion", "g2"]):
             with get_client().start_as_current_observation(
                     name="g2_imagenes", as_type="span", input={"overlay": oid, "prompt": prompt[:300]}):
-                imagenes = media_google.generar_imagenes(completo, [_referencia_overlay(p, ov)], n=N_IMAGENES)
+                if settings.gen_backend == "google":
+                    for k, img in enumerate(media_google.generar_imagenes(completo, [ref], n=N_IMAGENES)):
+                        f = cand_dir / f"{stamp}-{k}.jpg"
+                        f.write_bytes(img)
+                        rutas.append(f"overlays/{oid}/candidatos/{f.name}")
+                else:
+                    # fal (default): nano banana edit con la misma ancla visual.
+                    # asyncio.run es válido aquí: endpoint def → threadpool sin loop.
+                    for k in range(N_IMAGENES):
+                        f = cand_dir / f"{stamp}-{k}.jpg"
+                        asyncio.run(media_fal.imagen_nano(completo, f, referencia=ref,
+                                                          meta={"overlay": oid, "candidato": k}))
+                        rutas.append(f"overlays/{oid}/candidatos/{f.name}")
     except Exception as err:  # noqa: BLE001
         raise HTTPException(502, f"Nano Banana falló: {str(err)[:300]}")
     finally:
         _ocupado.pop(name, None)
         get_client().flush()
-    cand_dir = overlays.dir_overlay(p, oid) / "candidatos"
-    cand_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%H%M%S")
-    rutas = []
-    for k, img in enumerate(imagenes):
-        f = cand_dir / f"{stamp}-{k}.jpg"
-        f.write_bytes(img)
-        rutas.append(f"overlays/{oid}/candidatos/{f.name}")
-    costo = estimar_regeneracion(0, n_imagenes=len(imagenes))["imagen"]
+    costo = estimar_regeneracion(0, n_imagenes=len(rutas), backend=settings.gen_backend)["imagen"]
     overlays.registrar_gasto(p, "imagenes", oid, costo)
     return {"candidatos": rutas, "prompt": prompt, "costo_imagenes": costo}
 
@@ -161,15 +169,20 @@ def regenerar_video(name: str, oid: str, body: VideoIn):
     est = estimar_regeneracion(dur, n_imagenes=0, backend=settings.gen_backend)
     _marcar(name, f"video {oid}")
     try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False,
+                                         dir=overlays.dir_overlay(p, oid)) as tmp:
+            crudo = Path(tmp.name)
         with propagate_attributes(session_id=f"editor-{name}", tags=["fusion", "g2"]):
             with get_client().start_as_current_observation(
                     name="g2_video", as_type="span", input={"overlay": oid, "imagen": body.imagen}):
-                video_bytes = media_google.generar_video(imagen, prompt, est["veo_segundos"],
-                                                         negativo=ov.get("veo_negativo", ""))
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False,
-                                         dir=overlays.dir_overlay(p, oid)) as tmp:
-            tmp.write(video_bytes)
-            crudo = Path(tmp.name)
+                if settings.gen_backend == "google":
+                    crudo.write_bytes(media_google.generar_video(
+                        imagen, prompt, est["veo_segundos"], negativo=ov.get("veo_negativo", "")))
+                else:
+                    # fal (default): veo3.1 lite 720p sin audio (el audio original manda)
+                    asyncio.run(media_fal.video_veo(imagen, prompt, est["veo_segundos"], crudo,
+                                                    negativo=ov.get("veo_negativo", ""),
+                                                    meta={"overlay": oid}))
         mux = crudo.with_suffix(".mux.mp4")
         overlays.mux_reemplazo(crudo, overlays.dir_overlay(p, oid) / "audio.mp3", mux, dur)
         crudo.unlink()

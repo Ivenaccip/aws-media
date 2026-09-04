@@ -88,6 +88,16 @@ async def _preparar(p: Proyecto) -> None:
 
     await asyncio.gather(guion(), personaje())
     _etapa(p, "personaje")
+    # M1: sin imagen de referencia el protagonista sale del guion (2 opciones
+    # generadas). Si falla no se tumba preparar: la UI ofrece reintentarlo
+    # gratis con POST /personaje/generar — nunca más un proyecto varado.
+    if not desc and not p.personaje.opciones and p.guion:
+        try:
+            d2 = await character.describir_desde_guion(guion_numerado(p))
+            p.personaje = await character.preparar_personaje_sin_ref(p, estilo, d2)
+            p.guardar()
+        except Exception:  # noqa: BLE001
+            log.exception("%s: opciones de personaje sin referencia fallaron", p.id)
     get_client().update_current_span(output={
         "tipo": tipo, "escenas": len(p.guion), "fuentes": len(p.fuentes), "opciones": len(p.personaje.opciones),
     })
