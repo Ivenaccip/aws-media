@@ -265,6 +265,12 @@ grupo `admin` de Cognito (por eso va después de M2):
       "costo directo". Lo que sigue compartido y sin atribuir (Aurora,
       CloudFront, API GW — centavos): presupuesto de $50/mes y Cost Explorer,
       enlazados desde la página. S3 ya sale aparte por prefijo.
+- [x] **Tiempo de Fargate visible** (M6.3, pedido del usuario 2026-09-04): el
+      costo de infra es función lineal del tiempo, así que el dashboard lo
+      deshace (`costes_infra.segundos_estimados`: costo ÷ tarifa, ±2 s por el
+      redondeo a $0.0001) — sin columna nueva y retroactivo a lo ya registrado.
+      Columna "Fargate" por usuario (suma de infra-producir + infra-render) y
+      "~N s de cómputo" en cada línea de infra del drill-down (Lambda incluida).
 - [ ] Si el volumen crece y la página se queda corta: evaluar QuickSight o
       Metabase (requeriría abrir acceso a Aurora — hoy no lo vale).
 

@@ -10,8 +10,10 @@ La verdad viene de tres tablas de Postgres (todas indexadas por user_id):
   costes                           →  dólares de inferencia (sync de Langfuse)
   proyectos_gen                    →  películas
 Más S3 (bytes por prefijo work/{user}/) y el margen = créditos cobrados ×
-piso de venta (tarifas.json) − costo IA. La infra AWS no se atribuye por
-usuario a propósito (<2% del variable): para eso está Cost Explorer.
+piso de venta (tarifas.json) − costo directo. Desde M6.1 el costo incluye la
+línea estimada de infra por corrida (Fargate/Lambda), y de esas mismas filas
+se deriva el TIEMPO de cómputo (costo ÷ tarifa de pricing.json — sin columna
+nueva y retroactivo). Aurora/CloudFront siguen en Cost Explorer.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import os
 
 from fastapi import APIRouter, HTTPException
 
-from pipeline import creditos, db
+from pipeline import costes_infra, creditos, db
 from server import auth
 
 log = logging.getLogger("admin")
@@ -75,8 +77,18 @@ def resumen():
     saldos = {f["user_id"]: f["saldo"] for f in db.ejecutar("SELECT user_id, saldo FROM monedero")}
     pelis = {f["user_id"]: f["n"] for f in db.ejecutar(
         "SELECT user_id, count(*) AS n FROM proyectos_gen GROUP BY user_id")}
-    costos = {f["user_id"]: float(f["usd"]) for f in db.ejecutar(
-        "SELECT user_id, SUM(costo_usd) AS usd FROM costes GROUP BY user_id")}
+    # por concepto: el total va al costo directo y de los conceptos de infra
+    # se deriva el tiempo de cómputo en Fargate (costo ÷ tarifa)
+    costos: dict[str, float] = {}
+    fargate_s: dict[str, float] = {}
+    for f in db.ejecutar(
+            "SELECT user_id, concepto, SUM(costo_usd) AS usd "
+            "FROM costes GROUP BY user_id, concepto"):
+        u, usd = f["user_id"], float(f["usd"])
+        costos[u] = costos.get(u, 0.0) + usd
+        if (f.get("concepto") or "") in costes_infra.CONCEPTOS_FARGATE:
+            fargate_s[u] = fargate_s.get(u, 0.0) + \
+                (costes_infra.segundos_estimados(f["concepto"], usd) or 0.0)
     emails = {f["id"]: f["email"] for f in db.ejecutar("SELECT id, email FROM usuarios")}
     s3 = _bytes_s3_por_usuario()
 
@@ -96,6 +108,7 @@ def resumen():
             "gastados": gastados,
             "peliculas": int(pelis.get(u, 0)),
             "s3_bytes": s3.get(u),
+            "fargate_s": round(fargate_s.get(u, 0.0)),
             "costo_usd": costo,
             # créditos cobrados a valor de venta menos lo que nos costó la IA
             "margen_usd": round(gastados * creditos.PISO_VENTA_USD - costo, 4),
@@ -109,6 +122,7 @@ def resumen():
             "margen_usd": round(sum(u["margen_usd"] for u in usuarios), 4),
             "gastados": sum(u["gastados"] for u in usuarios),
             "peliculas": sum(u["peliculas"] for u in usuarios),
+            "fargate_s": sum(u["fargate_s"] for u in usuarios),
         },
         "langfuse_base": os.getenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com").rstrip("/"),
     }
@@ -134,8 +148,11 @@ def detalle_usuario(uid: str):
            FROM costes WHERE user_id = :u ORDER BY creado DESC LIMIT 300""", {"u": uid})
     por_proyecto: dict[str, list] = {}
     for t in trazas:
+        costo_t = float(t["costo_usd"])
         por_proyecto.setdefault(t["proyecto_id"] or "?", []).append(
-            {"concepto": t["concepto"], "costo_usd": float(t["costo_usd"]),
+            {"concepto": t["concepto"], "costo_usd": costo_t,
+             # líneas de infra: el tiempo de cómputo que implicó esta tarea
+             "segundos": costes_infra.segundos_estimados(t["concepto"], costo_t),
              "traza": t["traza"], "creado": t["creado"]})
     return {
         "user_id": uid,

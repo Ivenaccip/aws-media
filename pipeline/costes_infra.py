@@ -38,6 +38,12 @@ except (FileNotFoundError, KeyError):
     pass
 
 
+# Qué ejecutor hay detrás de cada concepto (los escriben los workers): con esto
+# el dashboard convierte el costo de vuelta a segundos de cómputo.
+CONCEPTOS_FARGATE = {"infra-producir", "infra-render"}
+CONCEPTOS_LAMBDA = {"infra-preparar"}
+
+
 def costo_fargate(segundos: float, vcpu: float = 4.0, gb: float = 8.0) -> float:
     """La tarea de producción corre en 4 vCPU / 8 GB (infra/stacks/jobs.py)."""
     horas = segundos / 3600
@@ -48,6 +54,22 @@ def costo_lambda(segundos: float, mb: int | None = None) -> float:
     """El runtime expone la memoria configurada; fallback = el worker (3008 MB)."""
     mb = mb or int(os.getenv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE") or 3008)
     return round((mb / 1024) * segundos * LAMBDA_USD_GB_SEGUNDO, 4)
+
+
+def segundos_estimados(concepto: str, costo_usd: float) -> float | None:
+    """Inversa de costo_*: cuánto cómputo implica una línea de infra. El costo
+    es función lineal del tiempo, así que se deriva sin columna nueva y aplica
+    retroactivo a las filas ya registradas (±2 s por el redondeo a $0.0001).
+    None para conceptos que no son de infra."""
+    if costo_usd <= 0:
+        return None
+    if concepto in CONCEPTOS_FARGATE:
+        usd_por_s = (4.0 * FARGATE_USD_VCPU_HORA + 8.0 * FARGATE_USD_GB_HORA) / 3600
+        return costo_usd / usd_por_s
+    if concepto in CONCEPTOS_LAMBDA:
+        mb = int(os.getenv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE") or 3008)
+        return costo_usd / ((mb / 1024) * LAMBDA_USD_GB_SEGUNDO)
+    return None
 
 
 def registrar(user_id: str, proyecto_id: str, concepto: str, costo_usd: float) -> None:
