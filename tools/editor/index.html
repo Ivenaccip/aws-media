@@ -834,7 +834,10 @@ async function render() {
   }
   $("renderBtn").disabled = true;
   const poll = setInterval(async () => {
-    const s = await (await fetch("api/render/status")).json();
+    let s;
+    // M5: la conexión caída no mata el poll — se sigue intentando en silencio
+    try { s = await (await fetch("api/render/status")).json(); }
+    catch { setStatus("Renderizando… (sin conexión, reintentando)"); return; }
     const tail = s.log.trim().split("\n").pop() || "";
     if (s.running) setStatus("Renderizando… " + tail);
     else {
@@ -1546,7 +1549,9 @@ document.getElementById("b1quemar").onclick = async () => {
   try {
     await fj("api/subtitulos/quemar", {});
     const poll = setInterval(async () => {
-      const st = await fj("api/subtitulos/estado");
+      let st;
+      // M5: perder la conexión no interrumpe el quemado — solo se espera
+      try { st = await fj("api/subtitulos/estado"); } catch { return; }
       if (!st.running) {
         clearInterval(poll);
         SUBSEG = st.segmentos || []; fusionRender();

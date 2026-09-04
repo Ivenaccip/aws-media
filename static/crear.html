@@ -20,6 +20,13 @@
   .row { display:flex; align-items:center; gap:12px; }
   input[type=range] { flex:1; accent-color:var(--acc); }
   .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#fff; font:inherit; font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:18px; }
+  a.btn { text-align:center; text-decoration:none; box-sizing:border-box; }
+  #lista-pelis a { display:flex; justify-content:space-between; gap:10px; padding:9px 12px; margin-bottom:6px;
+                   border-radius:10px; background:#111118; border:1px solid var(--line); text-decoration:none;
+                   color:var(--txt); font-size:14px; }
+  #lista-pelis a:hover { border-color:var(--acc); }
+  #lista-pelis .peli-brief { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  #lista-pelis .peli-meta { color:var(--mut); font-size:12px; white-space:nowrap; }
   .btn:disabled { opacity:.45; cursor:default; }
   .btn.sec { background:transparent; border:1px solid var(--line); color:var(--txt); }
   .mut { color:var(--mut); font-size:13px; }
@@ -98,6 +105,11 @@
     <button class="btn" id="enviar">Escribir el guion →</button>
     <p class="mut" id="saldoform"></p>
     <div class="err" id="ferr"></div>
+    <!-- M5: volver a una película sin tener que guardar la URL -->
+    <div class="card" id="mispelis" hidden style="margin-top:24px">
+      <h2>🎞 Tus películas</h2>
+      <ul id="lista-pelis" style="list-style:none;padding:0;margin:0"></ul>
+    </div>
   </section>
 
   <!-- 2. Preparando / produciendo -->
@@ -147,7 +159,7 @@
     </div>
     <div class="sticky">
       <button class="btn" id="producir">Producir la película →</button>
-      <p class="mut" id="saldoaviso"></p>
+      <p class="mut" id="saldoaviso"><span id="autosave"></span></p>
       <div class="err" id="rerr"></div>
     </div>
   </section>
@@ -160,15 +172,23 @@
       <p id="rmsg" style="white-space:pre-wrap"></p>
       <p id="rlink"></p>
     </div>
-    <button class="btn sec" onclick="location.href='/'">Nueva película</button>
+    <a class="btn sec" id="descargar" download="pelicula.mp4">⬇ Descargar MP4</a>
+    <button class="btn sec" onclick="location.href='/crear.html'">Nueva película</button>
   </section>
 
   <section id="error" class="hidden">
-    <div class="card"><h2>❌ Algo falló</h2><p class="err" id="emsg"></p></div>
+    <div class="card"><h2>❌ Algo falló</h2><p class="err" id="emsg"></p>
+      <p class="mut" id="edevol"></p></div>
     <button class="btn" id="reintentar">Reintentar la producción →</button>
-    <button class="btn sec" onclick="location.href='/'">Empezar de nuevo</button>
+    <button class="btn sec" onclick="location.href='/crear.html'">Empezar de nuevo</button>
   </section>
 </main>
+<!-- M5: aviso de conexión del polling — el trabajo sigue en la nube -->
+<div id="conexion" hidden style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  background:#3a2530;border:1px solid #c95f5f;border-radius:999px;padding:9px 18px;
+  font-size:13px;color:#ffb4b4;z-index:1000">
+  📡 Sin conexión — reintentando… Tu trabajo sigue en la nube, no cierres nada por nosotros.
+</div>
 
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
@@ -195,6 +215,7 @@ function pintaCostos() {
   }
   if (mon.tarifas.imagen != null) $('#pmodbtn').textContent = `Cambiar · ${mon.tarifas.imagen} créditos`;
   pintaProducir();
+  if (proyecto && !$('#error').classList.contains('hidden')) pintaError(proyecto);
 }
 function pintaProducir() {
   if (!mon || !mon.activo) return;
@@ -270,10 +291,17 @@ const ETAPA_TXT = {
 };
 let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
 function seguir() { render(proyecto); clearInterval(poll); poll = setInterval(refrescar, 2500); }
+// M5: polling resiliente — la conexión caída ya no congela la pantalla en
+// silencio: tras 2 fallos seguidos sale el banner y se sigue reintentando.
+let fallosPoll = 0;
 async function refrescar() {
-  const r = await fetch('/api/proyectos/' + proyecto.id); if (!r.ok) return;
-  proyecto = await r.json(); render(proyecto);
-  if (['revision','listo','error'].includes(proyecto.estado)) clearInterval(poll);
+  try {
+    const r = await fetch('/api/proyectos/' + proyecto.id);
+    if (!r.ok) throw new Error(r.status);
+    fallosPoll = 0; $('#conexion').hidden = true;
+    proyecto = await r.json(); render(proyecto);
+    if (['revision','listo','error'].includes(proyecto.estado)) clearInterval(poll);
+  } catch { if (++fallosPoll >= 2) $('#conexion').hidden = false; }
 }
 function render(p) {
   if (p.estado==='creado' || p.estado==='preparando' || p.estado==='produciendo') {
@@ -291,9 +319,26 @@ function render(p) {
   else if (p.estado==='listo') {
     show('resultado');
     $('#video').src = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
+    $('#descargar').href = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
     $('#rmsg').textContent = p.resultado?.mensaje || '';
     $('#rlink').innerHTML = p.resultado?.link ? `<a href="${p.resultado.link}" target="_blank">Abrir en Drive</a>` : '';
-  } else if (p.estado==='error') { show('error'); $('#emsg').textContent = p.error || 'Error desconocido'; $('#reintentar').classList.toggle('hidden', !(p.guion.length && p.personaje.elegida != null)); }
+  } else if (p.estado==='error') {
+    show('error');
+    $('#emsg').textContent = p.error || 'Error desconocido';
+    $('#reintentar').classList.toggle('hidden', !(p.guion.length && p.personaje.elegida != null));
+    pintaError(p);
+  }
+}
+// M5: la pantalla de error explica qué pasó con los créditos y qué cuesta
+// reintentar ANTES de cobrar de nuevo (se re-pinta cuando llega el monedero)
+function pintaError(p) {
+  if (!mon || !mon.activo) return;
+  $('#edevol').textContent = 'Si el fallo fue nuestro, los créditos de esta producción se ' +
+    `devolvieron solos — tu saldo de arriba ya lo refleja (tienes ${mon.saldo} créditos).`;
+  if (mon.tarifas.video_por_segundo && p.duracion_s) {
+    const costo = Math.ceil(mon.tarifas.video_por_segundo * p.duracion_s);
+    $('#reintentar').textContent = `Reintentar la producción → ${costo} créditos (se cobran de nuevo)`;
+  }
 }
 
 // --- revisión ---
@@ -319,7 +364,8 @@ function renderOpciones(p) {
         <button class="btn sec" id="genop">Crear 2 opciones con IA (incluido) →</button>
         <p class="mut" id="genopmsg"></p></div>`;
   $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
-    proyecto.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im)); };
+    proyecto.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im));
+    marcaCambio(); };
   $('#pmodfila').classList.toggle('hidden', !p.personaje.opciones.length);
   pintaCostos();
   // Proyecto sin opciones (modo idea sin referencias) ya NO es un callejón sin
@@ -353,7 +399,7 @@ function renderVoces(p) {
   sel.innerHTML = lista.map(v => `<option value="${v.id}" data-motivo="${v.motivo}">${ICONO[v.nivel]} ${v.id}</option>`).join('');
   sel.value = p.voz && lista.some(v => v.id===p.voz) ? p.voz : lista[0].id;
   const motivo = () => { const o = sel.selectedOptions[0]; $('#vozmotivo').textContent = o ? o.dataset.motivo : ''; $('#audio').classList.add('hidden'); };
-  sel.onchange = motivo; motivo();
+  sel.onchange = () => { motivo(); marcaCambio(); }; motivo();
   // M1: muestra fija por voz, cacheada global en el servidor — escuchar es gratis
   $('#oir').onclick = () => {
     const au = $('#audio');
@@ -368,8 +414,8 @@ function renderVoces(p) {
 function addEscena(txt='') {
   const d = document.createElement('div'); d.className='escena';
   d.innerHTML = `<div class="n"></div><textarea>${txt.replace(/</g,'&lt;')}</textarea><div class="meta"></div><button title="Quitar la escena">✕</button>`;
-  d.querySelector('button').onclick = () => { d.remove(); renum(); };
-  d.querySelector('textarea').oninput = () => { metaEscena(d); estimar(); };
+  d.querySelector('button').onclick = () => { d.remove(); renum(); marcaCambio(); };
+  d.querySelector('textarea').oninput = () => { metaEscena(d); estimar(); marcaCambio(); };
   metaEscena(d);
   $('#escenas').appendChild(d); renum();
 }
@@ -406,7 +452,43 @@ function estimar() {
     }
   }, 400);
 }
-$('#addesc').onclick = () => addEscena('');
+// --- M5: autoguardado en revisión — un refresh o un cierre ya no destruyen
+// el guion editado. Debounce ~1 s; el PUT de Producir sigue siendo la verdad
+// final (garantiza el estado exacto al lanzar).
+let autoT = null, autoEnVuelo = false, sinGuardar = false;
+function marcaCambio() {
+  if (!proyecto || proyecto.estado !== 'revision') return;
+  sinGuardar = true;
+  $('#autosave').textContent = '● guardando…';
+  clearTimeout(autoT);
+  autoT = setTimeout(autoguardar, 1000);
+}
+async function autoguardar() {
+  if (autoEnVuelo || !proyecto || proyecto.estado !== 'revision') return;
+  const esc = escenas();
+  if (!esc.length) return;               // jamás persistir un guion vacío
+  autoEnVuelo = true;
+  try {
+    let r = await fetch(`/api/proyectos/${proyecto.id}/guion`, {method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({escenas: esc, voz: $('#voz').value || null})});
+    if (r.ok && proyecto.personaje.elegida != null)
+      r = await fetch(`/api/proyectos/${proyecto.id}/personaje`, {method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({elegida: proyecto.personaje.elegida, nombre: $('#pnombre').value})});
+    if (!r.ok) throw new Error(r.status);
+    sinGuardar = false;
+    $('#autosave').textContent = `Guardado ✓ ${new Date().toTimeString().slice(0,5)}`;
+  } catch {
+    $('#autosave').textContent = '● sin guardar — reintentando…';
+    clearTimeout(autoT); autoT = setTimeout(autoguardar, 4000);
+  }
+  autoEnVuelo = false;
+}
+window.addEventListener('beforeunload', e => { if (sinGuardar) e.preventDefault(); });
+$('#pnombre').addEventListener('input', marcaCambio);
+
+$('#addesc').onclick = () => { addEscena(''); marcaCambio(); };
 $('#producir').onclick = async () => {
   $('#rerr').textContent = '';
   if (proyecto.personaje.elegida == null) { $('#rerr').textContent = 'Elige una opción de personaje.'; return; }
@@ -419,6 +501,7 @@ $('#producir').onclick = async () => {
     r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
     if (r.status === 402) throw new Error(msg402(await errTxt(r)));
     if (!r.ok) throw new Error(await errTxt(r));
+    sinGuardar = false; clearTimeout(autoT);
     proyecto = await r.json(); window.monedero?.refrescar(); seguir();
   } catch (e) { $('#rerr').textContent = e.message; }
   $('#producir').disabled = false; pintaProducir();
@@ -433,9 +516,28 @@ $('#reintentar').onclick = async () => {
   proyecto = await r.json(); window.monedero?.refrescar(); seguir();
 };
 
+// --- M5: tus películas — volver a cualquiera sin tener que guardar la URL ---
+const ESTADO_PELI = {creado:'en preparación', preparando:'en preparación',
+  revision:'en revisión — te espera', produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
+async function cargarPeliculas() {
+  try {
+    const r = await fetch('/api/proyectos');
+    if (!r.ok) return;
+    const ps = await r.json();
+    if (!ps.length) return;
+    $('#lista-pelis').innerHTML = ps.slice(0, 8).map(p =>
+      `<li><a href="?p=${p.id}">` +
+      `<span class="peli-brief">${(p.brief || '(sin brief)').replace(/</g,'&lt;')}</span>` +
+      `<span class="peli-meta">${ESTADO_PELI[p.estado] || p.estado} · ${new Date(p.creado).toLocaleDateString()}</span>` +
+      `</a></li>`).join('');
+    $('#mispelis').hidden = false;
+  } catch { /* la lista es cortesía: sin ella el formulario sigue completo */ }
+}
+
 // --- reanudar por URL ---
 const pid = new URLSearchParams(location.search).get('p');
 if (pid) fetch('/api/proyectos/' + pid).then(r => r.ok ? r.json() : null).then(p => { if (p) { proyecto = p; seguir(); } });
+else cargarPeliculas();
 </script>
 </body>
 </html>

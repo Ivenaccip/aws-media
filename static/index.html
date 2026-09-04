@@ -38,7 +38,39 @@
       <p>Película animada desde una historia o una idea, narrada con IA.</p>
     </a>
   </div>
+  <!-- M5: lo que dejaste en curso, a un clic -->
+  <div id="recientes" hidden style="margin-top:40px;text-align:left;max-width:560px;margin-left:auto;margin-right:auto">
+    <p class="sub" style="margin-bottom:10px;text-align:center">Tus películas recientes</p>
+    <ul id="lista-recientes" style="list-style:none;padding:0;margin:0;font-size:14px"></ul>
+  </div>
 </main>
+<style>
+  #lista-recientes a { display:flex; justify-content:space-between; gap:10px; padding:9px 14px;
+    margin-bottom:6px; border-radius:9px; background:#1d2026; border:1px solid #2c3038;
+    text-decoration:none; color:inherit; }
+  #lista-recientes a:hover { border-color:#5b8dd6; }
+  #lista-recientes .brief { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  #lista-recientes .meta { color:#9a978f; font-size:12px; white-space:nowrap; }
+</style>
+<script>
+// corre en DOMContentLoaded: para entonces auth.js (al final del body) ya
+// envolvió fetch y adjunta el token
+addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await fetch('/api/proyectos');
+    if (!r.ok) return;
+    const ps = await r.json();
+    if (!ps.length) return;
+    const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión',
+                    produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
+    document.getElementById('lista-recientes').innerHTML = ps.slice(0, 4).map(p =>
+      `<li><a href="/crear.html?p=${p.id}">` +
+      `<span class="brief">${(p.brief || '(sin brief)').replace(/</g,'&lt;')}</span>` +
+      `<span class="meta">${ESTADO[p.estado] || p.estado}</span></a></li>`).join('');
+    document.getElementById('recientes').hidden = false;
+  } catch { /* cortesía: sin lista el hub sigue completo */ }
+});
+</script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
 </body>

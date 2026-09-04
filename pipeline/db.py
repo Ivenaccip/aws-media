@@ -302,6 +302,28 @@ def movimientos_creditos(user_id: str, limite: int = 20) -> list[dict]:
         {"u": user_id, "l": limite})
 
 
+def reclamar_produccion(user_id: str, id_: str) -> bool:
+    """M5 (deuda C5-4) — cierra la ventana de doble cobro en producir: UPDATE
+    condicionado sobre la COLUMNA estado (atómico en Postgres). Solo un clic
+    gana el claim; el perdedor recibe False y el endpoint responde 409 sin
+    cobrar. El doc jsonb se sincroniza después con p.guardar()."""
+    filas = ejecutar(
+        """UPDATE proyectos_gen SET estado = 'produciendo', actualizado = now()
+           WHERE user_id = :u AND id = :i AND estado IN ('revision', 'error')
+           RETURNING id""",
+        {"u": user_id, "i": id_})
+    return bool(filas)
+
+
+def liberar_produccion(user_id: str, id_: str, estado: str) -> None:
+    """Revierte el claim (402 al cobrar, o el lanzamiento tronó antes de
+    guardar): la columna vuelve al estado previo para permitir otro intento."""
+    ejecutar(
+        """UPDATE proyectos_gen SET estado = :e, actualizado = now()
+           WHERE user_id = :u AND id = :i AND estado = 'produciendo'""",
+        {"u": user_id, "i": id_, "e": estado})
+
+
 def cargar_proyecto(user_id: str, id_: str) -> dict | None:
     filas = ejecutar(
         "SELECT doc::text AS doc FROM proyectos_gen WHERE user_id = :u AND id = :i",

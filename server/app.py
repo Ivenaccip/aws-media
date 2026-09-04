@@ -379,6 +379,14 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
         raise HTTPException(422, "El guion está vacío")
     if p.personaje.url_elegida is None:
         raise HTTPException(422, "Elige una opción de personaje")
+    # M5 (deuda C5-4): claim ATÓMICO del estado antes de cobrar — dos clics
+    # ultrarrápidos ya no pueden pasar ambos el check y cobrar dos veces.
+    # Solo aplica con estado en Postgres; en dev local (json) no hay carrera
+    # que importe (un solo usuario, un solo proceso).
+    estado_previo = p.estado
+    reclamado = db.backend() == "postgres"
+    if reclamado and not db.reclamar_produccion(db.usuario_actual(), p.id):
+        raise HTTPException(409, "Esta película ya se está produciendo")
     # C5: se cobra la duración objetivo ANTES de lanzar (estimación hacia
     # arriba); si la producción falla, el worker devuelve los créditos.
     costo_cr = creditos.costo_producir(p.duracion_s)
@@ -386,11 +394,12 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
         try:
             creditos.cobrar(costo_cr, f"producir:{p.id}")
         except creditos.SinSaldo as e:
+            if reclamado:
+                db.liberar_produccion(db.usuario_actual(), p.id, estado_previo)
             raise HTTPException(402, str(e))
     try:
         if jobs.backend() == "aws":
             # C4 regla dura: producciones SIEMPRE por Step Functions (→ Fargate).
-            # Marcar produciendo aquí evita el doble arranque por doble clic.
             p.estado, p.etapa = "produciendo", "encolado"
             p.guardar()
             jobs.lanzar_produccion(db.usuario_actual(), p.id)
@@ -399,6 +408,8 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
     except Exception:
         if creditos.activo():
             creditos.devolver(costo_cr, f"producir:{p.id}")
+        if reclamado:
+            db.liberar_produccion(db.usuario_actual(), p.id, estado_previo)
         raise
     return p
 
