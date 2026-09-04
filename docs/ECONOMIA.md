@@ -146,11 +146,12 @@ de Meta, cobrarlo a 1 crédito sería perder dinero en cada envío).
 5. **Criterio duro de C5:** un usuario sin saldo no puede lanzar nada que
    cueste dinero.
 
-## 8. Recarga de créditos: la pasarela (análisis 2026-09-02 — DECISIÓN PENDIENTE)
+## 8. Recarga de créditos: la pasarela (análisis 2026-09-02)
 
-> Contexto: la LLC está en USA. Recomendación técnica: **Stripe US con Payment
-> Links**. La decisión final espera la consulta con el contador (ver "el tema
-> fiscal"). Mientras tanto opera el modo concierge: pago manual → abono por
+> **DECISIÓN 2026-09-03: arrancamos con Stripe US + Payment Links**, revisable
+> más adelante (p. ej. migrar a un MoR si el frente fiscal se vuelve un dolor —
+> ver "el tema fiscal", que sigue en manos del contador). Mientras se implementa
+> opera el modo concierge: pago manual → abono por
 > `tools/creditos.py abonar N --tipo compra`.
 
 ### Opciones evaluadas
