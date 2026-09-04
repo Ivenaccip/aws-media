@@ -340,18 +340,49 @@ Hoy shorts es solo terminal (`/shorts`: transcribe → Claude puntúa candidatos
 el usuario elige → Remotion quema captions → export 9:16). La versión web
 reutiliza las piezas de C3/C4:
 
-- [ ] **Subir longform** (ya existe: presign → S3) → **job de transcripción**
-      (worker SQS; backend según config, con preview de costo si es nube).
-- [ ] **Job de candidatos**: LLM puntúa segmentos y guarda la lista en Postgres.
-- [ ] **UI de selección** en e1: lista de candidatos con transcript, ajustar
-      inicio/fin, elegir estilo de caption — la parte interactiva del skill,
-      ahora con botones.
-- [ ] **Render en Fargate**: Remotion headless (la imagen de A4 ya trae Node y
-      Chromium) + `export.sh` → S3 → descargar o publicar vía Blotato.
-- [ ] Tarifas: transcripción y render de shorts queman dinero → entrada nueva en
-      `tools/tarifas.json` (definir con pricing.json antes de encender).
+- [x] **Job de análisis** (`worker/shorts_analizar.py`, cola SQS): si el
+      proyecto no trae canónico, extrae el audio del CDN con ffmpeg (16 kHz
+      mono — nunca baja el video al /tmp de la Lambda) y transcribe con
+      AssemblyAI (asr_backend, con preview de costo y traza Langfuse); el
+      canónico se sube a S3. Los **candidatos** los puntúa el LLM
+      (`prompts/shorts_candidatos_system.md`, ponderación de la rúbrica:
+      hook 0.30 / coherencia 0.25 / emoción 0.20 / densidad 0.15 / payoff
+      0.10; el code-switching no se penaliza) y quedan saneados (15–55 s,
+      dentro del video) en `proyectos_editor.doc.shorts`. Tope 90 min.
+- [x] **UI de selección** (`static/shorts.html`, enlazada desde la columna de
+      shorts de e1): candidatos con score/razón/gancho editables, ajustar
+      inicio/fin, estilo (bold/bounce/clean), plataforma y tipo de contenido;
+      polling de análisis y render; salidas con enlace CDN.
+- [x] **Render en Fargate** (`worker/shorts_task.py`, la MISMA state machine
+      con otro comando — cero infra nueva): snap_boundaries → extract con
+      STREAM COPY (regla dura) → compute_reframe → Remotion con el Chromium
+      del sistema (render.mjs ahora respeta CHROMIUM_PATH) → `export.sh`
+      (la única pasada de loudnorm) → `validate.sh` → S3
+      `videos/<n>/output/shorts/`. Línea "infra-shorts" de M6.1; fallo
+      devuelve créditos.
+- [x] **Tarifas** en `tools/tarifas.json` §shorts (con pricing.json):
+      transcripción 2 cr por cada 5 min empezados (AssemblyAI $0.21
+      dólares/hora), análisis 2 cr (LLM), render 2 cr por short (Fargate).
+      Cobro ANTES de encolar/lanzar con preview en la UI; los gen-* ya traen
+      canónico → su transcripción es 0.
 - [x] Mientras M8 no llegue: la columna de shorts en e1 dice la verdad ("se
-      edita desde Claude Code con /shorts" + botón copiar comando) — hecho en M3.
+      edita desde Claude Code con /shorts" + botón copiar comando) — hecho en
+      M3; ahora esa fila queda solo para proyectos locales sin flujo web.
+- [ ] Publicar vía Blotato desde la web (hoy: descargar por CDN y publicar
+      desde el editor local o a mano).
+- [ ] Deuda M8-1: la limpieza LLM de muletillas en captions (paso 4 del skill)
+      no viaja a la web — los captions salen del transcript crudo.
+
+Hecho 2026-09-04 (M8): `server/shorts_api.py` (estado/costo/analizar/render,
+409 con caducidad, 402 humano, devolución si no se pudo encolar/lanzar),
+despacho `shorts_analizar` en lambda_worker, `jobs.encolar_shorts_analizar` +
+`jobs.lanzar_shorts_render`, conceptos infra-shorts[-analizar] en el dashboard.
+Sin migración de DB (todo vive en doc jsonb). Deploy: imagen del CI +
+`cdk deploy aws-media-api aws-media-jobs`. ASSEMBLYAI_API_KEY ya está en
+`.env` Y en SSM (verificado 2026-09-04): la transcripción de subidas queda
+activa desde el primer deploy; si algún día falta, la UI lo avisa y no cobra.
+Tests: 21 nuevos en tests/test_m8_shorts.py (248 en total, verdes); smoke
+local de e1 y shorts.html.
 
 ## Fase M9 — Automatización de membresías (bot en VPS)
 

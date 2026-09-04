@@ -95,7 +95,10 @@ async function main() {
   console.log(JSON.stringify({ action: "bundle", status: "complete", time_sec: bundleTime }));
 
   // Open shared browser instance
-  const browser = await openBrowser("chrome");
+  // M8: en la imagen del servicio Remotion usa el Chromium del sistema
+  // (CHROMIUM_PATH, Dockerfile) en vez de descargar Chrome al vuelo.
+  const browser = await openBrowser("chrome", process.env.CHROMIUM_PATH
+    ? { browserExecutable: process.env.CHROMIUM_PATH } : {});
 
   const results = [];
 

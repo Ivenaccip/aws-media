@@ -9,6 +9,12 @@
     "imagen_pro": 10,
     "nota": "producir se cobra por duración OBJETIVO del proyecto (la estimación redondeada hacia arriba, gate 428); re-generar una escena = por_segundo × segundos de la escena. Lo que no quema dinero (editar, subtítulos, re-renders locales) = 0 créditos."
   },
+  "shorts": {
+    "transcripcion_por_5min": 2,
+    "analisis": 2,
+    "render_por_short": 2,
+    "nota": "M8 (flujo web). Transcripción solo si el proyecto no trae canónico (AssemblyAI $0.21 dólares/hora en pricing.json → 2 cr/5 min lo cubre con margen); análisis = la puntuación LLM de candidatos (~$0.02 dólares); render = Remotion+export en Fargate por short. Los gen-* ya traen canónico: su transcripción es 0."
+  },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [
     { "creditos": 100, "usd": 1.99 },

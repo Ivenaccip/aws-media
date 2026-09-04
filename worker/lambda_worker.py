@@ -85,6 +85,11 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
         log.info("trabajo: %s", j.get("tipo"))
         if j["tipo"] == "preparar":
             _preparar(j["user_id"], j["proyecto_id"])
+        elif j["tipo"] == "shorts_analizar":
+            # M8: transcript (si falta) + candidatos LLM; estado por Postgres.
+            # No se relanza en la DLQ: el propio job marca error y devuelve.
+            from worker.shorts_analizar import analizar
+            analizar(j["user_id"], j["proyecto"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:

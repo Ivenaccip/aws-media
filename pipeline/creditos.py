@@ -30,6 +30,11 @@ IMAGEN_CR = 2
 PACKS: list[dict] = []  # M1: la UI enseña los packs en el CTA de recarga
 PISO_VENTA_USD = 0.015  # M6: valor de venta por crédito — base del margen
 
+# M8 — shorts en la web (fallbacks espejo de tarifas.json §shorts)
+SHORTS_TRANSCRIPCION_CR_5MIN = 2
+SHORTS_ANALISIS_CR = 2
+SHORTS_RENDER_CR = 2
+
 try:
     _t = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))
     _v = _t["video"]
@@ -39,6 +44,10 @@ try:
     IMAGEN_CR = _v["imagen"]
     PACKS = _t.get("packs_usd", [])
     PISO_VENTA_USD = _t.get("economia", {}).get("piso_venta_usd_por_credito", PISO_VENTA_USD)
+    _s = _t.get("shorts", {})
+    SHORTS_TRANSCRIPCION_CR_5MIN = _s.get("transcripcion_por_5min", SHORTS_TRANSCRIPCION_CR_5MIN)
+    SHORTS_ANALISIS_CR = _s.get("analisis", SHORTS_ANALISIS_CR)
+    SHORTS_RENDER_CR = _s.get("render_por_short", SHORTS_RENDER_CR)
 except (FileNotFoundError, KeyError):
     pass  # fallback: tarifa de arriba (2026-09-02)
 
@@ -76,6 +85,20 @@ def costo_producir(duracion_s: int | float) -> int:
 def costo_imagen() -> int:
     """Imagen estándar (M1: modificar la opción de personaje)."""
     return IMAGEN_CR
+
+
+def costo_shorts_analizar(duracion_s: float, con_transcript: bool) -> int:
+    """M8: análisis de candidatos (LLM) + transcripción si el proyecto no trae
+    canónico — 2 cr por cada 5 min empezados (cubre AssemblyAI de pricing.json)."""
+    costo = SHORTS_ANALISIS_CR
+    if not con_transcript:
+        costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(float(duracion_s) / 300)
+    return costo
+
+
+def costo_shorts_render(n_shorts: int) -> int:
+    """M8: Remotion + export en Fargate, por short aprobado."""
+    return SHORTS_RENDER_CR * int(n_shorts)
 
 
 # ---------------------------------------------------------------------------

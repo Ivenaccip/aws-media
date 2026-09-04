@@ -117,11 +117,17 @@ async function cargar() {
   reel.innerHTML = ps.length
     ? ps.map(p => fila(p, p.editor_listo ? `/editor/${p.nombre}/` : null)).join("")
     : '<li class="vacio">Sin proyectos todavía.</li>';
-  shorts.innerHTML = conCanonico.length
-    ? conCanonico.map(p => `<li><div class="fila"><span class="nombre">${p.nombre}</span>` +
-        `<span><span class="tag">se edita desde Claude Code</span>` +
-        `<button class="copiar" onclick="copiarComando(this)">Copiar /shorts</button></span></div></li>`).join("")
-    : '<li class="vacio">Ningún proyecto con transcript todavía.</li>';
+  // M8: con metraje (subida o película generada) el flujo web ya corre solo;
+  // el resto conserva la ruta de Claude Code
+  const conMetraje = ps.filter(p => (p.subidas && p.subidas.length) || p.generado);
+  const soloLocal = conCanonico.filter(p => !conMetraje.includes(p));
+  shorts.innerHTML = (conMetraje.map(p => `<li><a href="/shorts.html?p=${encodeURIComponent(p.nombre)}">` +
+      `<span class="nombre">${p.nombre}</span>` +
+      `<span><span class="tag ok">sacar shorts</span></span></a></li>`).join("") +
+    soloLocal.map(p => `<li><div class="fila"><span class="nombre">${p.nombre}</span>` +
+      `<span><span class="tag">se edita desde Claude Code</span>` +
+      `<button class="copiar" onclick="copiarComando(this)">Copiar /shorts</button></span></div></li>`).join(""))
+    || '<li class="vacio">Ningún proyecto con metraje todavía.</li>';
 }
 async function copiarComando(btn) {
   try { await navigator.clipboard.writeText("/shorts"); btn.textContent = "Copiado ✓"; }
