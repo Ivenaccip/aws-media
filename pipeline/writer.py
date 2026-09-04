@@ -17,6 +17,11 @@ S_POR_ESCENA_MIN = 5.0
 S_POR_ESCENA_MAX = 8.0
 MAX_PALABRAS_ESCENA = 16
 
+# M11 — narración primero: la película dura EXACTAMENTE lo que dura la voz
+# (pista única), así que el presupuesto usa la tasa de habla pura medida en
+# gen-tesla (1.98 pal/s) sin el relleno de los slots de video.
+PALABRAS_POR_S_HABLA = 1.9
+
 
 def presupuesto(duracion_s: int) -> dict:
     return {
@@ -43,6 +48,30 @@ def normalizar_guion(r: dict, duracion_s: int) -> list[EscenaGuion]:
 
 def estimar_segundos(escenas: list[EscenaGuion]) -> float:
     return round(sum(len(e.narracion.split()) for e in escenas) / PALABRAS_POR_S, 1)
+
+
+@observe(name="narrador")
+async def escribir_narracion(material: str, tipo: str, estilo: str, duracion_s: int,
+                             personaje: str | None) -> str:
+    """M11: UNA narración corrida (gancho inicial + cadena causal), sin la
+    camisa de fuerza de 8-16 palabras por escena. El texto ES la película:
+    la imagen se corta sobre la voz después."""
+    palabras_max = int(duracion_s * PALABRAS_POR_S_HABLA)
+    user = load_prompt("narrador_user").format(
+        material=material, tipo=tipo, estilo=estilo,
+        personaje=f"PROTAGONISTA (ya diseñado, úsalo como tal): {personaje}" if personaje else "",
+        duracion_s=duracion_s, palabras_max=palabras_max,
+    )
+    r = await chat_json("narrador", load_prompt("narrador_system").format(
+        duracion_s=duracion_s, palabras_max=palabras_max), user)
+    texto = " ".join(str(r.get("narracion") or "").split())
+    if len(texto.split()) < 10:
+        raise ValueError("El narrador no devolvió una narración utilizable")
+    get_client().update_current_span(output={
+        "titulo": r.get("titulo"), "palabras": len(texto.split()),
+        "segundos_estimados": round(len(texto.split()) / PALABRAS_POR_S_HABLA, 1),
+    })
+    return texto
 
 
 @observe(name="guionista")

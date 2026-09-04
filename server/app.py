@@ -124,6 +124,7 @@ async def crear(
     brief: str = Form(...), estilo: str = Form("animated"), estilo_custom: str = Form(""),
     duracion_s: int = Form(45), referencias: list[UploadFile] = File(default=[]),
     modo: str = Form("auto"), rubro: str = Form(""), forzar: bool = Form(False),
+    pipeline: str = Form(""),
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
@@ -138,8 +139,12 @@ async def crear(
             raise HTTPException(409, {"balanceador": veredicto["motivo"],
                                       "aviso": "El brief no parece del rubro declarado. "
                                                "Puedes reenviar con forzar=true."})
+    # M11 (flag del A/B): "narracion" invierte el pipeline; sin el campo manda
+    # PIPELINE_DEFAULT del entorno y el default sigue siendo el de siempre.
+    if pipeline not in ("escenas", "narracion"):
+        pipeline = os.getenv("PIPELINE_DEFAULT", "escenas")
     p = nuevo_proyecto(brief, estilo, estilo_custom or None, min(duracion_s, DURACION_MAX_S),
-                       modo=modo, rubro=rubro)
+                       modo=modo, rubro=rubro, pipeline=pipeline)
     refs_dir = p.workdir / "refs"
     refs_dir.mkdir(parents=True, exist_ok=True)
     for i, f in enumerate(referencias):
@@ -178,7 +183,8 @@ def ver(id_: str):
 
 
 class GuionIn(BaseModel):
-    escenas: list[str]
+    escenas: list[str] = []
+    narracion: str | None = None   # M11: pipeline narración = un solo texto
     voz: str | None = None
 
 
@@ -187,7 +193,12 @@ def guardar_guion(id_: str, body: GuionIn):
     p = _proyecto(id_)
     if p.estado != "revision":
         raise HTTPException(409, f"El guion solo se edita en revisión (estado: {p.estado})")
-    p.guion = [EscenaGuion(id=str(i + 1), narracion=t.strip()) for i, t in enumerate(body.escenas) if t.strip()]
+    if p.pipeline == "narracion":
+        # M5: un texto vacío jamás pisa lo que hay
+        if (body.narracion or "").strip():
+            p.narracion = body.narracion.strip()
+    else:
+        p.guion = [EscenaGuion(id=str(i + 1), narracion=t.strip()) for i, t in enumerate(body.escenas) if t.strip()]
     if body.voz:
         if body.voz not in VOCES:
             raise HTTPException(422, f"Voz desconocida: {body.voz}")
@@ -280,7 +291,7 @@ async def generar_personaje(id_: str):
         raise HTTPException(409, f"Solo en revisión (estado: {p.estado})")
     if p.personaje.opciones:
         raise HTTPException(409, "Este proyecto ya tiene opciones de personaje")
-    if not p.guion:
+    if not p.tiene_guion():
         raise HTTPException(422, "El guion está vacío")
     d = await character.describir_desde_guion(flow.guion_numerado(p))
     per = await character.preparar_personaje_sin_ref(p, resolver_estilo(p.estilo, p.estilo_custom), d)
@@ -381,7 +392,7 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
     if p.estado not in ("revision", "error"):  # error → reintento con el mismo guion y personaje
         raise HTTPException(409, f"Solo se produce desde revisión (estado: {p.estado})")
     p.error, p.progreso = None, {}
-    if not p.guion:
+    if not p.tiene_guion():
         raise HTTPException(422, "El guion está vacío")
     if p.personaje.url_elegida is None:
         raise HTTPException(422, "Elige una opción de personaje")

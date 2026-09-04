@@ -68,13 +68,18 @@ async def _preparar(p: Proyecto) -> None:
             d = await research.investigar(p.brief)
             p.dossier, p.fuentes, material = d.texto, d.fuentes, d.texto
         _etapa(p, "guion")
-        p.guion = await writer.escribir_guion(
-            material, tipo, estilo.nombre, p.duracion_s,
-            f"{desc.nombre} — {desc.descripcion}" if desc else None,
-        )
-        p.guion_original = list(p.guion)
-        _etapa(p, "editor")
-        p.guion = await editor.editar_continuidad(p.guion, p.duracion_s)
+        quien = f"{desc.nombre} — {desc.descripcion}" if desc else None
+        if p.pipeline == "narracion":
+            # M11: UNA narración corrida — sin escenas ni editor de continuidad
+            # (la continuidad la da el propio texto corrido)
+            p.narracion = await writer.escribir_narracion(
+                material, tipo, estilo.nombre, p.duracion_s, quien)
+        else:
+            p.guion = await writer.escribir_guion(
+                material, tipo, estilo.nombre, p.duracion_s, quien)
+            p.guion_original = list(p.guion)
+            _etapa(p, "editor")
+            p.guion = await editor.editar_continuidad(p.guion, p.duracion_s)
         _etapa(p, "voz")
         rank = await voices.recomendar_voces(p.texto_guion(), estilo.nombre)
         p.voces = [v.model_dump() for v in rank]
@@ -91,7 +96,7 @@ async def _preparar(p: Proyecto) -> None:
     # M1: sin imagen de referencia el protagonista sale del guion (2 opciones
     # generadas). Si falla no se tumba preparar: la UI ofrece reintentarlo
     # gratis con POST /personaje/generar — nunca más un proyecto varado.
-    if not desc and not p.personaje.opciones and p.guion:
+    if not desc and not p.personaje.opciones and p.tiene_guion():
         try:
             d2 = await character.describir_desde_guion(guion_numerado(p))
             p.personaje = await character.preparar_personaje_sin_ref(p, estilo, d2)
@@ -149,6 +154,8 @@ async def _puente_editor(p: Proyecto) -> None:
 
 
 def guion_numerado(p: Proyecto) -> str:
+    if p.pipeline == "narracion":
+        return p.texto_guion()   # M11: la historia ES el texto corrido
     return "\n".join(f"{e.id}. {e.narracion}" for e in p.guion)
 
 
@@ -184,13 +191,18 @@ async def _producir(p: Proyecto) -> None:
                                  "descriptor": p.personaje.descripcion, "url": p.personaje.url_elegida}], estilo_url=None)
     ctx = casting_con_personaje(await hacer_casting(historia, bib), p)
 
-    _etapa(p, "director")
-    escenas = [e.model_copy(update={"voz": p.voz}) for e in await dirigir(historia, ctx)]
-    if len(escenas) != len(p.guion):
-        log.warning("%s: el director devolvió %d escenas para %d del guion", p.id, len(escenas), len(p.guion))
+    if p.pipeline == "narracion":
+        # M11: TTS único → alinear → ventanas → director por ventana → pista única
+        from . import narracion as narr
+        r = await narr.producir_pelicula(p, ctx, estilo, progreso)
+    else:
+        _etapa(p, "director")
+        escenas = [e.model_copy(update={"voz": p.voz}) for e in await dirigir(historia, ctx)]
+        if len(escenas) != len(p.guion):
+            log.warning("%s: el director devolvió %d escenas para %d del guion", p.id, len(escenas), len(p.guion))
 
-    r = await producir_desde_escenas(escenas, ctx, p.personaje.url_elegida, p.workdir, subir=True,
-                                     estilo=estilo, progreso=progreso, duracion_objetivo_s=p.duracion_s)
+        r = await producir_desde_escenas(escenas, ctx, p.personaje.url_elegida, p.workdir, subir=True,
+                                         estilo=estilo, progreso=progreso, duracion_objetivo_s=p.duracion_s)
     p.resultado = {
         "mensaje": r.mensaje, "link": r.link, "drive_id": r.drive_id, "duracion": r.duracion_pelicula,
         "escenas": [{"id": e.id, "qc": e.qc, "video_origen": e.video_origen, "duracion": e.duracion_final} for e in r.escenas],

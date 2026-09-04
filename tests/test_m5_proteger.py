@@ -42,7 +42,8 @@ def test_liberar_produccion_solo_desde_produciendo(monkeypatch):
 def _proyecto_falso():
     return SimpleNamespace(
         id="p1", estado="revision", etapa="", error=None, progreso={},
-        duracion_s=30, guion=[{"n": 1}],
+        duracion_s=30, guion=[{"n": 1}], pipeline="escenas",
+        tiene_guion=lambda: True,   # M11: el gate ahora pregunta por el método
         personaje=SimpleNamespace(url_elegida="opciones/a.png"),
         guardar=lambda: None)
 

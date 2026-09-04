@@ -62,6 +62,11 @@ class Proyecto(BaseModel):
     rubro: Optional[str] = None                              # rubro del canal (balanceador)
     referencias: list[Referencia] = Field(default_factory=list)
 
+    # M11 — "narracion" invierte el orden: guion continuo → TTS único →
+    # ventanas de video sobre la voz. "escenas" = el pipeline de siempre.
+    pipeline: Literal["escenas", "narracion"] = "escenas"
+    narracion: Optional[str] = None   # el guion corrido (solo pipeline narracion)
+
     dossier: Optional[str] = None
     fuentes: list[str] = Field(default_factory=list)
     guion: list[EscenaGuion] = Field(default_factory=list)
@@ -93,17 +98,26 @@ class Proyecto(BaseModel):
                                 self.estado, self.brief, self.model_dump_json())
 
     def texto_guion(self) -> str:
+        """El texto narrado completo, venga de donde venga (M11: la narración
+        corrida manda cuando existe)."""
+        if self.pipeline == "narracion" and (self.narracion or "").strip():
+            return self.narracion.strip()
         return "\n\n".join(e.narracion for e in self.guion)
+
+    def tiene_guion(self) -> bool:
+        return bool(self.texto_guion().strip())
 
 
 def nuevo_proyecto(brief: str, estilo: str, estilo_custom: str | None, duracion_s: int,
-                   modo: str = "auto", rubro: str | None = None) -> Proyecto:
+                   modo: str = "auto", rubro: str | None = None,
+                   pipeline: str = "escenas") -> Proyecto:
     duracion_s = max(DURACION_MIN_S, min(DURACION_MAX_S, int(duracion_s)))
     p = Proyecto(
         id=uuid.uuid4().hex[:8], creado=datetime.now().isoformat(timespec="seconds"),
         brief=brief.strip(), estilo=estilo, estilo_custom=estilo_custom, duracion_s=duracion_s,
         modo=modo if modo in ("auto", "investigacion", "idea") else "auto",
         rubro=(rubro or "").strip() or None,
+        pipeline=pipeline if pipeline in ("escenas", "narracion") else "escenas",
     )
     p.guardar()
     return p
