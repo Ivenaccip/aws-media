@@ -76,7 +76,9 @@ def proyectos_edicion():
                         "generado": flags.get("generado", False),
                         "canonico": flags.get("canonico", False),
                         "cuts": flags.get("cuts", False),
-                        "editor_listo": False,     # el cut-editor sobre S3 es deuda C4
+                        # M7: con cuts.json en S3 el editor en nube ya abre (el
+                        # puente genera proxy+manifest junto con los cortes)
+                        "editor_listo": flags.get("cuts", False),
                         "subidas": fila["doc"].get("subidas", [])})
     return out
 

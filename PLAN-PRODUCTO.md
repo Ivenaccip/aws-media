@@ -280,21 +280,29 @@ Cómo funciona hoy: el editor (`tools/editor/index.html`) lo sirve el FastAPI
 **local** leyendo del disco (proxy MP4, `cuts.json`, transcript), y el chat
 editorial es Claude Code corriendo en la máquina del usuario. En la nube:
 
-- [ ] **Artefactos a S3**: proxy MP4 y transcript por CloudFront (ya hay bucket
-      + OAC de C3); `cuts.json` versionado en Postgres (o S3 con versión) por
-      proyecto/usuario.
-- [ ] **UI servida por la API Lambda** (es estática, igual que crear.html) con
-      los endpoints de load/save apuntando a S3/Postgres.
-- [ ] **Save con control de concurrencia**: la UI manda la versión base y el
-      server responde 409 si cambió (resuelve también el P1 "Claude vs usuario"
-      de la auditoría).
-- [ ] **Render del corte = job**: SQS → worker/Fargate con ffmpeg (la imagen de
-      A4 ya trae ffmpeg), resultado a S3, la UI hace poll. Nada de render en la
-      Lambda de 29 s.
+- [x] **Artefactos a S3**: proxy MP4 y waveform por CloudFront (302 desde
+      `/editor/{n}/media/*`; la cookie de M2 autentica la página); `cuts.json`
+      versionado en Postgres — tabla `cortes_versiones`, la v1 se siembra desde
+      S3 en la primera apertura y las versiones jamás se borran. Las
+      correcciones de palabras reescriben el canónico en S3 con respaldo previo.
+- [x] **UI servida por la API Lambda**: el router `/editor/{name}/` ya viajaba
+      en la imagen; ahora todos sus endpoints tienen rama nube (gate
+      `db.backend() == "postgres"`, dev local intacto). e1 enciende "Abrir
+      editor" cuando el puente dejó cuts.json en S3.
+- [x] **Save con control de concurrencia**: la UI manda `base` (la versión que
+      abrió) y el server inserta base+1 SOLO si sigue siendo la última (el
+      PRIMARY KEY corta la carrera); si no, 409 y la UI pide recargar (resuelve
+      el P1 "Claude vs usuario" de la auditoría).
+- [x] **Render del corte = job**: reusa la state machine de producción con otro
+      comando (`worker/render_task.py` — cero infra nueva): baja videos/<n>/ de
+      S3, pisa cuts.json con la última versión de Postgres, corre render_cuts
+      preview en Fargate y sube el MP4 + segments.json; estado por
+      `proyectos_editor.doc.render` (candado con caducidad de 2 h = timeout de
+      la SM), la UI hace poll y al final muestra el enlace CDN. Línea
+      "infra-render" de M6.1 registrada aunque falle. Nada corre en la Lambda.
 - [ ] **El chat editorial en nube** es la pieza nueva de verdad y va DESPUÉS
-      (decisión 2026-09-03): el editor sale primero sin chat (cortar/guardar/
-      render), y el chat sigue siendo exclusivo de quien corre Claude Code
-      local — el copy lo dice tal cual.
+      (decisión 2026-09-03): el editor salió sin chat (cortar/guardar/render) y
+      el panel en nube lo dice tal cual: el chat vive en Claude Code local.
 - [ ] **Chat, etapa 2 — medir antes de tarifar**: prototipo con backend de
       agente (nuestra key), corridas de prueba medidas en Langfuse (tokens y
       dólares por turno) y con eso se fija el precio en créditos por turno.
@@ -307,6 +315,18 @@ editorial es Claude Code corriendo en la máquina del usuario. En la nube:
       pricing.json) + renders Fargate $0.10–0.30 + CloudFront/S3/Aurora
       ~$0.20–0.45. Solo la transcripción quema dinero por acción → entrada
       nueva en `tarifas.json` (~2 cr por cada 5 min de metraje la cubre).
+      NOTA M7: los proyectos gen-* ya traen canónico del puente, así que el
+      editor en nube NO cobra créditos hoy; la tarifa de transcripción aplica
+      al metraje subido (se enciende con M8).
+
+Hecho 2026-09-04 (M7, sin chat): tabla `cortes_versiones` + `guardar_cortes`/
+`cortes_ultima` (candado por PK), rama nube en TODOS los endpoints de
+server/editor.py, `jobs.lanzar_render` por la SM existente,
+`worker/render_task.py`, `editor_listo` real en e1, UI con `base`/409 y enlace
+CDN del preview. Deploy: `python tools/db_migrate.py` (tabla nueva) + imagen
+del CI + `cdk deploy aws-media-api aws-media-jobs` (ambos fijan el digest).
+Tests: 18 nuevos en tests/test_m7_editor_nube.py (225 en total, verdes);
+smoke local del editor con gen-tesla (sin regresiones).
 
 ## Fase M8 — Shorts en la web
 

@@ -20,6 +20,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 
+from pipeline import db, jobs, media_sync
 from pipeline.storage import ruta_proyecto, videos_root
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -58,6 +59,45 @@ def _proyecto(name: str) -> Path:
     return p
 
 
+# ---------------------------------------------------------------------------
+# M7 — modo nube: los artefactos viven en S3 (los subió el puente de C4), el
+# corte versionado en Postgres y el render corre como job en Fargate. El chat
+# editorial NO viaja: sigue siendo exclusivo de quien corre Claude Code local.
+
+CHAT_NUBE = ("El chat editorial vive en Claude Code local — aquí puedes cortar, "
+             "guardar y renderizar. Para editar conversando, corre /clean-cut "
+             "desde Claude Code en tu máquina.")
+
+
+def _nube() -> bool:
+    return db.backend() == "postgres"
+
+
+def _proyecto_nube(name: str) -> dict:
+    """Valida nombre y pertenencia (el proyecto debe estar registrado para el
+    usuario del request) y devuelve su doc de proyectos_editor."""
+    try:
+        ruta_proyecto(name)   # misma validación de nombre que en local
+    except ValueError as err:
+        raise HTTPException(422, str(err))
+    doc = db.cargar_proyecto_editor(db.usuario_actual(), name)
+    if doc is None:
+        raise HTTPException(404, f"{name}: no está entre tus proyectos")
+    return doc
+
+
+def _cdn(key: str) -> str:
+    base = os.getenv("CDN_BASE", "").rstrip("/")
+    if not base:
+        raise HTTPException(503, "CDN_BASE no configurada — sin ella no hay media en nube")
+    return f"{base}/{key}"
+
+
+def _leer_json_s3(key: str) -> dict | None:
+    crudo = media_sync.leer_texto(key)
+    return json.loads(crudo) if crudo else None
+
+
 def _cuts_path(project: Path) -> Path:
     return project / "work" / "analysis" / "cuts.json"
 
@@ -90,12 +130,17 @@ def editor_sin_barra(name: str):
 
 @router.get("/{name}/", response_class=HTMLResponse)
 def editor_ui(name: str):
-    _proyecto(name)
+    if _nube():
+        _proyecto_nube(name)
+    else:
+        _proyecto(name)
     return (EDITOR_DIR / "index.html").read_text(encoding="utf-8")
 
 
 @router.get("/{name}/api/data")
 def data(name: str):
+    if _nube():
+        return _data_nube(name)
     p = _proyecto(name)
     cuts = json.loads(_cuts_path(p).read_text(encoding="utf-8"))
     return {
@@ -106,11 +151,37 @@ def data(name: str):
     }
 
 
+def _data_nube(name: str) -> dict:
+    user = db.usuario_actual()
+    _proyecto_nube(name)
+    fila = db.cortes_ultima(user, name)
+    if fila is None:
+        # primera apertura: sembrar la v1 con el cuts.json que subió el puente
+        crudo = media_sync.leer_texto(f"videos/{name}/work/analysis/cuts.json")
+        if crudo is None:
+            raise HTTPException(404, f"{name}: sin cuts.json en S3 — el puente del generador no lo dejó listo")
+        db.guardar_cortes(user, name, 0, crudo)   # si otra pestaña ganó, da igual
+        fila = db.cortes_ultima(user, name)
+    manifest = _leer_json_s3(f"videos/{name}/work/editor/manifest.json")
+    if manifest is None:
+        raise HTTPException(404, f"{name}: sin manifest.json en S3 — el proxy del editor no está listo")
+    cuts = fila["doc"]
+    words = {}
+    for clip in cuts.get("clips", []):
+        doc = _leer_json_s3(f"videos/{name}/work/transcripts/{clip['id']}.canonical.json")
+        ok = doc and str(doc.get("schema_version", "")).startswith("1.")
+        words[clip["id"]] = doc.get("words", []) if ok else []
+    return {"cuts": cuts, "manifest": manifest, "words": words,
+            "project": name, "version": fila["version"]}
+
+
 @router.get("/{name}/ver/{clave}")
 def ver(name: str, clave: str, request: Request):
     """Reproducir un export en el player del editor (con seek). Mismo streaming
     con Range que media(); el archivo sale de los descargables de b3."""
     from server.publicar_api import descargables
+    if _nube():
+        raise HTTPException(404, "en la nube los exports se abren por su enlace de CDN")
     p = _proyecto(name)
     f = descargables(p).get(clave)
     if not f or f.suffix != ".mp4":
@@ -121,7 +192,7 @@ def ver(name: str, clave: str, request: Request):
 @router.get("/{name}/asset/{archivo}")
 def asset(name: str, archivo: str):
     """Imágenes estáticas de la UI (p.ej. la mascota de Blotato en b3)."""
-    _proyecto(name)
+    _proyecto_nube(name) if _nube() else _proyecto(name)
     f = EDITOR_DIR / Path(archivo).name
     if f.suffix.lower() not in {".png", ".jpg", ".jpeg", ".svg", ".webp"} or not f.is_file():
         raise HTTPException(404, "asset no existe")
@@ -132,6 +203,8 @@ def asset(name: str, archivo: str):
 def abrir_carpeta(name: str):
     """Importar (＋): abre la carpeta videos/ en el explorador del sistema —
     el server es local, así que importar metraje = dejar archivos ahí."""
+    if _nube():
+        raise HTTPException(400, "El editor corre en la nube — el metraje se sube desde e1 (botón Subir)")
     _proyecto(name)
     carpeta = videos_root()
     try:
@@ -150,6 +223,11 @@ def abrir_carpeta(name: str):
 def media(name: str, archivo: str, request: Request):
     if archivo not in MEDIA:
         raise HTTPException(404, "not found")
+    if _nube():
+        # CloudFront sirve el rango (seek) directo del bucket; el navegador
+        # llegó aquí autenticado por la cookie de M2 y se va con un 302
+        _proyecto_nube(name)
+        return RedirectResponse(_cdn(f"videos/{name}/work/editor/{archivo}"))
     path = _proyecto(name) / "work" / "editor" / archivo
     if not path.exists():
         raise HTTPException(404, f"{archivo} no existe — corre tools/make_proxy.py primero")
@@ -186,11 +264,21 @@ def _rango(path: Path, media_type: str, request: Request):
 
 @router.post("/{name}/api/save")
 async def save(name: str, request: Request):
-    p = _proyecto(name)
     body = await request.json()
     data_ = body.get("cuts")
     if not data_ or "clips" not in data_:
         raise HTTPException(400, "invalid cuts payload")
+    if _nube():
+        # control de concurrencia: la UI manda la versión que abrió y solo se
+        # guarda si sigue siendo la última (resuelve el P1 "Claude vs usuario")
+        _proyecto_nube(name)
+        base = int(body.get("base") or 0)
+        nueva = db.guardar_cortes(db.usuario_actual(), name,
+                                  base, json.dumps(data_, ensure_ascii=False))
+        if nueva is None:
+            raise HTTPException(409, "El corte cambió en otra pestaña o dispositivo — recarga la página para traer la última versión")
+        return {"saved": True, "version": nueva, "backup": f"versión {nueva}"}
+    p = _proyecto(name)
     cuts = _cuts_path(p)
     backups = p / "work" / "analysis" / "backups"
     backups.mkdir(exist_ok=True)
@@ -206,10 +294,12 @@ async def save(name: str, request: Request):
 
 @router.post("/{name}/api/words")
 async def words(name: str, request: Request):
-    p = _proyecto(name)
     edits = (await request.json()).get("edits") or {}
     if not edits:
         raise HTTPException(400, "no edits")
+    if _nube():
+        return _words_nube(name, edits)
+    p = _proyecto(name)
     backups = p / "work" / "transcripts" / "backups"
     backups.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -234,6 +324,31 @@ async def words(name: str, request: Request):
     return {"saved": True, "applied": applied, "backup_stamp": stamp}
 
 
+def _words_nube(name: str, edits: dict) -> dict:
+    """Correcciones de texto sobre los canónicos en S3: respaldo del objeto
+    (las versiones no se borran) y reescritura. Mismo contrato que en local."""
+    _proyecto_nube(name)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    applied = 0
+    for clip, per_word in edits.items():
+        clip = Path(clip).name
+        key = f"videos/{name}/work/transcripts/{clip}.canonical.json"
+        doc = _leer_json_s3(key)
+        if not doc or not str(doc.get("schema_version", "")).startswith("1."):
+            continue
+        media_sync.respaldar(key, f"videos/{name}/work/transcripts/backups/{clip}.canonical-{stamp}.json")
+        ws = doc.get("words", [])
+        for idx, text in per_word.items():
+            i = int(idx)
+            if 0 <= i < len(ws) and isinstance(text, str) and text.strip():
+                ws[i]["text"] = text.strip()
+                applied += 1
+        for seg in doc.get("segments", []):
+            seg["text"] = " ".join(w["text"] for w in ws[seg["first_word"]:seg["last_word"] + 1])
+        media_sync.escribir_texto(key, json.dumps(doc, ensure_ascii=False, indent=1))
+    return {"saved": True, "applied": applied, "backup_stamp": stamp}
+
+
 def _run_render(name: str, style: str) -> None:
     st = _render[name]
     st.update(running=True, log=f"rendering {style} preview...\n", ok=None)
@@ -250,22 +365,69 @@ def _run_render(name: str, style: str) -> None:
 
 @router.post("/{name}/api/render")
 async def render(name: str, request: Request):
+    style = (await request.json()).get("style", "tight")
+    if _nube():
+        return _render_nube(name, style)
     _proyecto(name)
     st = _render.setdefault(name, {"running": False, "log": "", "ok": None})
     if st["running"]:
         raise HTTPException(409, "render already running")
-    style = (await request.json()).get("style", "tight")
     threading.Thread(target=_run_render, args=(name, style), daemon=True).start()
+    return {"started": True}
+
+
+def _render_caducado(r: dict) -> bool:
+    """Un "corriendo" de hace más de 2 h está muerto (timeout de la state
+    machine): no puede bloquear renders nuevos para siempre."""
+    from datetime import datetime, timedelta, timezone
+    try:
+        inicio = datetime.fromisoformat(r["inicio"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    return datetime.now(timezone.utc) - inicio > timedelta(hours=2)
+
+
+def _render_nube(name: str, style: str) -> dict:
+    from datetime import datetime, timezone
+    user = db.usuario_actual()
+    doc = _proyecto_nube(name)
+    r = doc.get("render") or {}
+    if r.get("estado") == "corriendo" and not _render_caducado(r):
+        raise HTTPException(409, "render already running")
+    fila = db.cortes_ultima(user, name)
+    if fila and style not in (fila["doc"].get("styles") or {}):
+        raise HTTPException(400, f"estilo desconocido: {style!r}")
+    db.fijar_render_editor(user, name, json.dumps(
+        {"estilo": style, "estado": "corriendo",
+         "inicio": datetime.now(timezone.utc).isoformat(timespec="seconds")}))
+    try:
+        jobs.lanzar_render(user, name, style)
+    except Exception as err:  # noqa: BLE001 — sin SFN a mano, el estado no puede quedar "corriendo"
+        db.fijar_render_editor(user, name, json.dumps(
+            {"estilo": style, "estado": "error",
+             "log": f"no se pudo lanzar el job: {err}"[:400]}))
+        raise HTTPException(502, f"No se pudo lanzar el render: {str(err)[:200]}")
     return {"started": True}
 
 
 @router.get("/{name}/api/render/status")
 def render_status(name: str):
+    if _nube():
+        r = _proyecto_nube(name).get("render") or {}
+        estado = r.get("estado")
+        return {"running": estado == "corriendo" and not _render_caducado(r),
+                "log": r.get("log", ""),
+                "ok": True if estado == "listo" else False if estado == "error" else None,
+                "url": r.get("url")}
     return _render.get(name, {"running": False, "log": "", "ok": None})
 
 
 @router.get("/{name}/api/chat/poll")
 def chat_poll(name: str):
+    if _nube():
+        _proyecto_nube(name)
+        return {"available": False, "busy": False, "messages": [],
+                "error": CHAT_NUBE, "cuts_mtime": 0}
     p = _proyecto(name)
     agent = _chat.get(name)
     st = (agent.state() if agent
@@ -280,6 +442,8 @@ def chat_poll(name: str):
 
 @router.post("/{name}/api/chat")
 async def chat(name: str, request: Request):
+    if _nube():
+        raise HTTPException(503, CHAT_NUBE)
     p = _proyecto(name)
     text = ((await request.json()).get("text") or "").strip()
     if not text:

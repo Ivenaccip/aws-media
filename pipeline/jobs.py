@@ -44,6 +44,20 @@ def encolar_preparar(user_id: str, proyecto_id: str) -> None:
         MessageBody=json.dumps(mensaje_preparar(user_id, proyecto_id)))
 
 
+def lanzar_render(user_id: str, nombre: str, estilo: str) -> str:
+    """M7: render de un corte del editor — misma state machine y misma imagen
+    que la producción (regla dura: renders largos por Fargate, nada de ffmpeg
+    en la Lambda del API), solo cambia el comando."""
+    r = _sfn().start_execution(
+        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+        name=f"render-{nombre}-{int(time.time())}",
+        input=json.dumps({
+            "user_id": user_id, "proyecto_id": nombre,
+            "command": ["python", "-m", "worker.render_task", user_id, nombre, estilo],
+        }))
+    return r["executionArn"]
+
+
 def lanzar_produccion(user_id: str, proyecto_id: str) -> str:
     """Arranca la state machine. El nombre lleva timestamp: reintentar tras un
     error crea una ejecución nueva (los nombres de SFN son únicos 90 días)."""

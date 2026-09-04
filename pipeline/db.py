@@ -167,6 +167,17 @@ ESQUEMA: list[str] = [
     # misma referencia de compra solo puede entrar UNA vez al libro mayor.
     """CREATE UNIQUE INDEX IF NOT EXISTS monedero_mov_compra_ref
        ON monedero_movimientos (referencia) WHERE tipo = 'compra'""",
+    # M7 — cuts.json versionado por proyecto del editor. Las versiones jamás se
+    # borran (misma regla que clip_versiones); el PRIMARY KEY es el candado de
+    # concurrencia: dos saves sobre la misma base chocan y el segundo recibe 409.
+    """CREATE TABLE IF NOT EXISTS cortes_versiones (
+        user_id  text NOT NULL,
+        proyecto text NOT NULL,
+        version  int  NOT NULL,
+        doc      jsonb NOT NULL,
+        creado   timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, proyecto, version)
+    )""",
 ]
 
 
@@ -220,6 +231,48 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
         "SELECT nombre, doc::text AS doc FROM proyectos_editor "
         "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
+
+
+def fijar_render_editor(user_id: str, nombre: str, render: str) -> None:
+    """M7: estado del render en curso dentro del doc del proyecto del editor
+    (jsonb_set: no pisa las subidas/flags que registró el puente)."""
+    ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{render}', :r::jsonb)
+           WHERE user_id = :u AND nombre = :n""",
+        {"u": user_id, "n": nombre, "r": render},
+    )
+
+
+# ---------------------------------------------------------------------------
+# M7 — cuts.json versionado (editor de cortes en la nube)
+
+def cortes_ultima(user_id: str, proyecto: str) -> dict | None:
+    """Última versión del corte: {"version": n, "doc": {...}} o None si nunca
+    se ha guardado (el primer /api/data siembra la v1 desde S3)."""
+    filas = ejecutar(
+        """SELECT version, doc::text AS doc FROM cortes_versiones
+           WHERE user_id = :u AND proyecto = :p
+           ORDER BY version DESC LIMIT 1""", {"u": user_id, "p": proyecto})
+    if not filas:
+        return None
+    return {"version": int(filas[0]["version"]), "doc": json.loads(filas[0]["doc"])}
+
+
+def guardar_cortes(user_id: str, proyecto: str, base: int, doc: str) -> int | None:
+    """Guarda la versión base+1 SOLO si `base` sigue siendo la última (control
+    de concurrencia: otra pestaña/dispositivo guardó → None y el caller da 409).
+    El WHERE valida contra la última versión y el PRIMARY KEY corta la carrera
+    de dos saves simultáneos sobre la misma base."""
+    filas = ejecutar(
+        """INSERT INTO cortes_versiones (user_id, proyecto, version, doc)
+           SELECT :u, :p, :v, :doc::jsonb
+           WHERE (SELECT COALESCE(MAX(version), 0) FROM cortes_versiones
+                  WHERE user_id = :u AND proyecto = :p) = :base
+           ON CONFLICT (user_id, proyecto, version) DO NOTHING
+           RETURNING version""",
+        {"u": user_id, "p": proyecto, "v": int(base) + 1, "base": int(base), "doc": doc})
+    return int(filas[0]["version"]) if filas else None
 
 
 # ---------------------------------------------------------------------------

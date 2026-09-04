@@ -295,6 +295,7 @@ const $ = id => document.getElementById(id);
 const vid = $("vid"), tl = $("timeline"), inner = $("tl-inner");
 
 let DATA = null, MANIFEST = null, OFFSETS = {}, TOTAL = 0;
+let VERSION = 0;   // M7: versión del corte en el server (0 = server local sin versionar)
 let events = [];            // {id, clip, s, e, kind, cat, text, note} local times
 let selected = null, dirty = false, changes = [];
 let pps = 7;                // pixels per second
@@ -329,6 +330,7 @@ function fromGlobal(t) {
 async function init() {
   const r = await fetch("api/data"); const j = await r.json();
   DATA = j.cuts; MANIFEST = j.manifest; TOTAL = MANIFEST.total;
+  VERSION = j.version || 0;
   WORDS = j.words || {};
   loadNotes(j.project || "proyecto");
   // M3: orientación — qué proyecto está abierto y cómo volver (el enlace solo
@@ -807,9 +809,15 @@ async function save() {
                     if (c.note) o.note = c.note; return o; });
     }
     const r = await fetch("api/save", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cuts: out, changes }) });
+      body: JSON.stringify({ cuts: out, changes, base: VERSION }) });
+    // M7 (nube): 409 = otra pestaña o dispositivo guardó sobre esta versión
+    if (r.status === 409) {
+      const j9 = await r.json().catch(() => ({}));
+      return setStatus(j9.detail || "El corte cambió en otro lado — recarga la página antes de guardar", "err");
+    }
     const j = await r.json();
-    if (!j.saved) return setStatus("No se pudo guardar el corte: " + (j.error || "error desconocido") + " — intenta de nuevo", "err");
+    if (!j.saved) return setStatus("No se pudo guardar el corte: " + (j.error || j.detail || "error desconocido") + " — intenta de nuevo", "err");
+    if (j.version) VERSION = j.version;
     dirty = false; changes = []; DATA = out; msgs.push("cortes ✓ (respaldo " + j.backup + ")");
   }
   if (txDirty) {
@@ -845,6 +853,13 @@ async function render() {
       setStatus(s.ok ? `Render listo ✓ output/preview-${style}.mp4`
                      : "El render falló" + (tail ? ` (${tail.slice(0, 120)})` : "") + " — vuelve a intentarlo; si se repite, pídele ayuda a Claude en Decisiones",
                 s.ok ? "ok" : "err");
+      // M7 (nube): el preview quedó en S3 — enlace directo por CDN
+      if (s.ok && s.url) {
+        const a = document.createElement("a");
+        a.href = s.url; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = "abrir / descargar";
+        $("status").append(" — ", a);
+      }
     }
   }, 1500);
 }
