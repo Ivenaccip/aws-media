@@ -50,10 +50,13 @@ Lo único que hoy cobra créditos y puede dejar al usuario sin nada a cambio.
       {instruccion} → grok edit sobre la elegida; cobra imagen estándar (2 cr de
       `tarifas.json`), devuelve en fallo, y la versión nueva se AGREGA (nunca se
       borra). UI: caja "pide un cambio" + botón "Cambiar · 2 créditos".
-- [ ] **Reparar los proyectos varados** (fcab9e66, 19fde9f1): correr la
-      generación de opciones contra Aurora (script local con STATE_BACKEND=
-      postgres) — pendiente de confirmación de gasto (~$0.18 dólares por los 2)
-      y del deploy.
+- [x] **Reparar los proyectos varados** — HECHO 2026-09-04: 19fde9f1
+      (semmelweis, script local contra Aurora) y f0afcc84 (limoncito) +
+      fcab9e66 (tucidides) vía `POST /personaje/generar` EN AWS — el endpoint
+      respondió en ~16-17 s, dentro de los 29 s de API Gateway: la deuda M1-1
+      queda resuelta en la práctica con fal (Google tardaba ~90 s). Los tres
+      proyectos quedaron en revisión con 2 opciones, imágenes servidas por
+      CDN, saldo intacto (70 cr — gratis como promete la tarifa).
 - [x] **Monedero visible**: `static/monedero.js` compartido en hub/crear/e1 —
       saldo de `GET /api/creditos`, refresco al volver el foco y tras cada
       acción con costo; CTA "Recargar" con los packs de `tarifas.json` (el API
@@ -70,13 +73,13 @@ Lo único que hoy cobra créditos y puede dejar al usuario sin nada a cambio.
       1ª llamada genera (3.1 s), 2ª sale del caché (4 ms). El endpoint viejo
       por-proyecto (que regeneraba por texto) se retiró.
 
-Validación hecha (2026-09-03, local): 139 tests verdes; opciones sin referencia
-E2E (guion de Karl Drais → inventor de época, 2 opciones) y voz cacheada.
-**Deuda M1-1**: Nano Banana tardó ~90 s — en AWS `POST /personaje/generar`
-puede exceder los 29 s de API Gateway. Mitiga: el camino normal es el worker
-(preparar, 15 min); si el botón de reparación 504ea en AWS, moverlo a SQS.
-**Pendiente**: merge → CI construye imagen → `cdk deploy` del usuario →
-smoke en AWS + reparar los 2 proyectos varados.
+**M1 DESPLEGADA Y VERIFICADA EN AWS (2026-09-04)**. Smoke: /api/creditos con
+tarifa imagen + 3 packs; muestra de voz George generada una vez (4.3 s) y
+servida de caché S3/CDN (0.4 s); tres proyectos varados reparados con 2
+opciones cada uno (ver arriba); imágenes por CDN; saldo 70 cr intacto.
+Deuda M1-1 (timeout 29 s del botón) resuelta en la práctica: con fal el
+endpoint responde en ~16 s. Gasto del smoke ~$0.28 dólares (voz $0.01 +
+3 reparaciones ~$0.09 c/u).
 
 ## Fase M2 — Acceso: login y altas (cierra deuda C1)
 
