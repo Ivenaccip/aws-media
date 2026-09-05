@@ -197,6 +197,16 @@ Deuda M4-1: reembolsos = ajuste negativo manual (`tools/creditos.py abonar -N
 --tipo ajuste --ref refund:...`); el webhook no procesa `charge.refunded`.
 Tests: 17 nuevos en tests/test_m4_stripe.py (179 en total, verdes).
 
+Claves puestas 2026-09-04 (modo test, verificado): whsec_ + 3 links en `.env`
+y SSM; webhook en vivo pasó de 503 a 400 "Firma inválida" = armado. Hallazgos
+del testeo: (a) los links traen precios ADAPTATIVOS (Stripe deja pagar en MXN
+→ amount_total llega en pesos) — arreglado en pagos_api: `_monto_usd` usa
+`currency_conversion.amount_total` (el USD origen) y una divisa desconocida
+sin conversión cae a abono manual (+2 tests, 272 verdes); (b) los links de
+500 y 1200 cobran $9.99 dólares — deben ser exactos $8.50 y $18.00 (o se
+ajustan tarifas.json y los precios de la UI): corregir en Stripe ANTES de la
+compra de prueba.
+
 ## Fase M5 — Proteger el trabajo del usuario ✅ CÓDIGO LISTO (2026-09-04, falta deploy)
 
 - [x] Autoguardado con debounce (~1 s) de guion/nombre/voz/personaje en

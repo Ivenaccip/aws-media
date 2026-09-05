@@ -55,6 +55,26 @@ def test_firma_valida_abona(cliente, abonos):
     assert abonos == [("sub-abc", 100, "stripe:cs_prueba_1")]
 
 
+def test_pago_en_mxn_abona_por_el_monto_origen_usd(cliente, abonos):
+    """Los Payment Links con precios adaptativos dejan pagar en MXN:
+    amount_total llega en pesos y el USD real viaja en currency_conversion."""
+    payload = _evento(amount_total=3495, currency="mxn",
+                      currency_conversion={"amount_total": 199, "fx_rate": "17.5628",
+                                           "source_currency": "usd"})
+    r = cliente.post("/api/pagos/stripe", content=payload,
+                     headers={"stripe-signature": _firmar(payload)})
+    assert r.status_code == 200 and r.json()["creditos"] == 100
+    assert abonos == [("sub-abc", 100, "stripe:cs_prueba_1")]
+
+
+def test_divisa_desconocida_sin_conversion_es_abono_manual(cliente, abonos):
+    payload = _evento(amount_total=199, currency="eur")
+    r = cliente.post("/api/pagos/stripe", content=payload,
+                     headers={"stripe-signature": _firmar(payload)})
+    assert r.status_code == 200 and "abono manual" in r.json()["motivo"]
+    assert abonos == []
+
+
 def test_firma_invalida_400(cliente, abonos):
     payload = _evento()
     r = cliente.post("/api/pagos/stripe", content=payload,
