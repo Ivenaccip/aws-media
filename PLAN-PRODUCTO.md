@@ -493,6 +493,86 @@ aws-media-api aws-media-jobs`. Tests: 12 nuevos en
 tests/test_m11_narracion.py (270 en total, verdes); smoke local de la
 revisión narración.
 
+## Fase M12 — Hub tipo LLM, slots de proyectos y archivo a Glacier
+
+Decisiones del usuario 2026-09-05 (mock en Miro de "Irremplazables App"):
+
+1. **La página de inicio se rediseña como hub tipo LLM**: prompt central
+   "¿Qué vamos a crear hoy?" con botones "Investigación" / "Tengo una idea",
+   sidebar de secciones (navega O crea directo — no compiten) y el grid
+   "Mis Proyectos". Créditos + Recargar arriba a la derecha (ya existe:
+   `monedero.js`).
+2. **Semántica del sidebar**: *Reels* = crear un video desde cero (pipeline de
+   crear.html); *Shorts* = destilar los mejores momentos de un video que ya
+   existe (flujo M8). Cada card lo dice en una línea ("Reels — crea un video
+   desde una idea" / "Shorts — saca los mejores momentos de tu video").
+   Lo que aún no existe (*Investiga tu competencia*, *Crear imágenes*, *Ver
+   mis métricas*) va en gris con "próximamente" — un botón muerto es peor que
+   uno gris. Esas tres son el mapa de milestones futuros.
+3. **Máximo 6 proyectos ACTIVOS por perfil** (encaja con el grid 2×3 — la
+   página nunca scrollea). No hay plan free; el plan **anual incluye slots
+   ilimitados** = 6 calientes + archivo congelado sin límite. El tope vive
+   como columna por usuario (no constante) para dejar esa palanca abierta.
+4. **Liberar slot = archivar, no borrar** (borrar es irreversible y va a
+   doler): el doc en Postgres —guion, personaje, historial— se conserva
+   siempre (centavos); los binarios de S3 se congelan. La regla del repo
+   "las versiones de clips nunca se borran" aplica dentro del proyecto vivo
+   y no se contradice.
+5. **Frío automático a los 10 días**: lifecycle rule del bucket → S3 Glacier
+   Instant Retrieval, SOLO objetos grandes (>1 MB: MP4/WAV — GIR factura
+   mínimo 128 KB/objeto y encarecería los jsons chicos). GIR se sirve
+   instantáneo por el CDN: **cero cambio de UX**, guardar cuesta ~6× menos
+   (~$0.004 vs $0.023 dólares/GB-mes) y cada lectura ~$0.03/GB. Matiz
+   aceptado: la regla cuenta días desde la SUBIDA del objeto, no desde el
+   último uso — un proyecto aún en edición paga la lectura GIR, tolerable.
+   La página de "descongelando" NO hace falta en esta etapa (eso es
+   Flexible/Deep, no GIR).
+
+- [x] **index.html como hub**: prompt central que precarga la idea en
+      crear.html (`?brief=` + `?modo=` — los botones del prompt SON los modos
+      que ya existían: "Investigación"/"Tengo una idea"); sidebar con lo real
+      (Reels y Crear contenido → crear.html, Shorts → e1.html) y
+      "próximamente" en gris; grid de proyectos con contador "N de X slots"
+      (o "N activos · slots ilimitados"), card "＋ Nueva película" solo con
+      slot libre, y sección plegable de archivados con "Restaurar".
+- [x] **Slots**: columna `slots` en `usuarios` (default 6; NULL = ilimitado
+      — `alta --plan anual` lo fija solo, y `usuarios.py slots correo
+      N|ilimitado` lo cambia), gate en el POST de crear ANTES de cobrar o
+      investigar (409 con aviso humano + CTA de archivar; crear.html lo
+      distingue del 409 del balanceador — forzar no aplica). El candado vive
+      solo en la nube (postgres), como los de M5/M7: dev local sin límite.
+- [x] **Archivar/desarchivar**: `POST /api/proyectos/{id}/archivar` (409 si
+      hay tarea en curso) y `/desarchivar` (409 sin slot libre); el flag
+      viaja en el doc del Proyecto (`archivado`) — sin migración de tabla
+      nueva. Confirmación en UI aunque sea reversible.
+- [x] **Lifecycle en CDK**: transición a GLACIER_IR a los 10 días con filtro
+      `object_size_greater_than=1_000_000` en el bucket de media (synth
+      verificado: `GLACIER_IR / TransitionInDays: 10`).
+- [ ] Verificar los precios de lista S3 en la calculadora AWS y asentarlos
+      en `pricing.json` §aws_infra antes de citarlos en ECONOMIA.md.
+- [ ] **Etapa 2 (cuando el archivo acumulado pese)**: proyectos archivados
+      viejos → Deep Archive (~23× más barato que Standard) + botón
+      "Restaurar proyecto" → restore + página "Descongelando tu proyecto, te
+      avisamos en unas horas" con polling (mismo patrón de estado que el
+      render de M7). Ojo mínimos de permanencia: GIR/Flexible 90 días, Deep
+      180 — archivar/desarchivar el mismo mes no ahorra.
+
+Referencia de costos (lista us-east-1, POR VERIFICAR antes de pricing.json):
+proyecto típico ~1–2 GB → Standard ~$0.046/mes, GIR ~$0.008, Deep ~$0.002.
+Con GIR a los 10 días la factura S3 de proyectos viejos baja ~80% y "slots
+ilimitados" del anual cuesta prácticamente nada.
+
+Hecho 2026-09-05 (M12 etapa 1): hub nuevo en static/index.html, columna
+`slots` (ALTER idempotente en el ESQUEMA — correr `tools/db_migrate.py`),
+gate + `GET /api/slots` + archivar/desarchivar en server/app.py, prefill
+`?brief=`/`?modo=` y 409-slots en crear.html, `usuarios.py` (anual →
+ilimitado, comando `slots`), lifecycle GIR en infra/stacks/media.py.
+Deuda M12-1: el tope cuenta solo proyectos de crear (proyectos_gen); las
+subidas del editor (proyectos_editor) no tienen slot ni archivado aún.
+Deploy: `tools/db_migrate.py` + imagen del CI + `cdk deploy aws-media-media
+aws-media-api`. Tests: 12 nuevos en tests/test_m12_hub.py (284 en total,
+verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
+
 ---
 
 ## Orden y dependencias
@@ -506,11 +586,13 @@ M7 (cortes nube, sin chat → medir → chat) y M8 (shorts web): tras el núcleo
 M9 (bot membresías): cuando haya miembros reales que sincronizar
 M10 (prompts en Langfuse): independiente — puede ir en cualquier hueco tras M1
 M11 (narración primero): tras M1-AWS y M2, ANTES de los focus groups
+M12 (hub + slots + Glacier): la lifecycle puede salir sola cuando sea; el hub
+    y los slots, tras M8 (necesita los flujos Reels/Shorts ya en la web)
 
 ```
 
-Lo que corre el usuario: `cdk deploy` (M2, M4, M6, M7, M8), claves Stripe (M4),
-cuenta/secretos del VPS (M9), y toda confirmación de gasto.
+Lo que corre el usuario: `cdk deploy` (M2, M4, M6, M7, M8, M12), claves Stripe
+(M4), cuenta/secretos del VPS (M9), y toda confirmación de gasto.
 
 ## Preguntas abiertas
 
@@ -521,3 +603,7 @@ cuenta/secretos del VPS (M9), y toda confirmación de gasto.
    comisiones reales.
 4. Chat editorial en la nube (Agent SDK): ¿se cobra en créditos por turno? Se
    diseña al abrir M7.
+5. M12: ¿"Reels" y "Crear contenido" del sidebar son el mismo flujo con
+   formato distinto (9:16 vs película) o secciones separadas? ¿Y qué hace
+   exactamente el botón "Investigación" del prompt central? Se decide al
+   maquetar el hub.

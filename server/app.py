@@ -116,7 +116,54 @@ def estilos():
 
 @app.get("/api/proyectos")
 def proyectos():
-    return [{"id": p.id, "creado": p.creado, "estado": p.estado, "brief": p.brief[:80]} for p in listar_proyectos()]
+    return [{"id": p.id, "creado": p.creado, "estado": p.estado,
+             "brief": p.brief[:80], "archivado": p.archivado}
+            for p in listar_proyectos()]
+
+
+# --- M12: slots de proyectos activos --------------------------------------
+# El candado vive solo en la nube (postgres), como los demás de M5/M7: el dev
+# local con JSON no limita nada. None = ilimitado (plan anual).
+
+def _slots() -> int | None:
+    if db.backend() != "postgres":
+        return None
+    return db.slots_usuario(db.usuario_actual())
+
+
+def _activos() -> int:
+    return sum(1 for p in listar_proyectos() if not p.archivado)
+
+
+@app.get("/api/slots")
+def slots():
+    return {"slots": _slots(), "activos": _activos()}
+
+
+@app.post("/api/proyectos/{id_}/archivar")
+def archivar(id_: str):
+    """Libera el slot sin borrar NADA: el doc queda entero y los binarios se
+    enfrían solos con la lifecycle del bucket (Glacier IR a los 10 días)."""
+    p = _proyecto(id_)
+    if p.estado in ("preparando", "produciendo"):
+        raise HTTPException(409, "El proyecto tiene una tarea en curso — espera a que termine para archivarlo")
+    if not p.archivado:
+        p.archivado = True
+        p.guardar()
+    return p
+
+
+@app.post("/api/proyectos/{id_}/desarchivar")
+def desarchivar(id_: str):
+    p = _proyecto(id_)
+    if p.archivado:
+        tope = _slots()
+        if tope is not None and _activos() >= tope:
+            raise HTTPException(409, f"No tienes slots libres ({tope} proyectos activos). "
+                                     "Archiva otro proyecto para restaurar este.")
+        p.archivado = False
+        p.guardar()
+    return p
 
 
 @app.post("/api/proyectos")
@@ -130,6 +177,14 @@ async def crear(
         raise HTTPException(422, "El brief está vacío")
     if len(referencias) > MAX_REFS:
         raise HTTPException(422, f"Máximo {MAX_REFS} referencias")
+    # M12: tope de proyectos activos ANTES de gastar en nada (ni research).
+    tope = _slots()
+    if tope is not None and _activos() >= tope:
+        raise HTTPException(409, {
+            "slots": tope,
+            "aviso": f"Ya tienes {tope} proyectos activos — es el máximo de tu plan. "
+                     "Archiva alguno desde la página de inicio para liberar un slot "
+                     "(no se borra nada: un proyecto archivado se puede restaurar)."})
     # F3.3 balanceador: valida tema vs rubro ANTES de crear (y de gastar en research).
     # "forzar" = el usuario vio el aviso y decidió continuar de todos modos.
     if rubro.strip() and modo != "idea" and not forzar:

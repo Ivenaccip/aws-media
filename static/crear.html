@@ -268,8 +268,11 @@ $('#enviar').onclick = async (ev, forzar = false) => {
   $('#enviar').disabled = true;
   const r = await fetch('/api/proyectos', {method:'POST', body:fd});
   $('#enviar').disabled = false;
-  if (r.status === 409) {  // balanceador: el tema no coincide con el rubro
+  if (r.status === 409) {
     const d = (await r.json()).detail || {};
+    // M12: sin slots libres — forzar no aplica, hay que archivar primero
+    if (d.slots) { $('#ferr').textContent = d.aviso; return; }
+    // balanceador: el tema no coincide con el rubro
     if (confirm(`⚖️ ${d.balanceador || 'El tema no parece de tu rubro.'}\n\n¿Crear de todos modos?`))
       return $('#enviar').onclick(null, true);
     return;
@@ -557,7 +560,7 @@ async function cargarPeliculas() {
   try {
     const r = await fetch('/api/proyectos');
     if (!r.ok) return;
-    const ps = await r.json();
+    const ps = (await r.json()).filter(p => !p.archivado);   // M12
     if (!ps.length) return;
     $('#lista-pelis').innerHTML = ps.slice(0, 8).map(p =>
       `<li><a href="?p=${p.id}">` +
@@ -571,7 +574,19 @@ async function cargarPeliculas() {
 // --- reanudar por URL ---
 const pid = new URLSearchParams(location.search).get('p');
 if (pid) fetch('/api/proyectos/' + pid).then(r => r.ok ? r.json() : null).then(p => { if (p) { proyecto = p; seguir(); } });
-else cargarPeliculas();
+else {
+  cargarPeliculas();
+  // M12: el hub precarga la idea aquí (?brief=...&modo=idea|investigacion)
+  const q = new URLSearchParams(location.search);
+  const briefQ = (q.get('brief') || '').slice(0, 5000);
+  if (briefQ) { $('#brief').value = briefQ; $('#cnt').textContent = briefQ.length; }
+  const modoQ = q.get('modo');
+  if (modoQ && MODONOTAS[modoQ]) {
+    modo = modoQ;
+    [...$('#modos').children].forEach(c => c.classList.toggle('on', c.dataset.id === modoQ));
+    $('#modonota').textContent = MODONOTAS[modoQ];
+  }
+}
 </script>
 </body>
 </html>

@@ -67,6 +67,10 @@ class Proyecto(BaseModel):
     pipeline: Literal["escenas", "narracion"] = "escenas"
     narracion: Optional[str] = None   # el guion corrido (solo pipeline narracion)
 
+    # M12 — archivado libera el slot sin borrar nada: el doc se queda entero
+    # (los binarios de S3 se enfrían solos con la lifecycle del bucket).
+    archivado: bool = False
+
     dossier: Optional[str] = None
     fuentes: list[str] = Field(default_factory=list)
     guion: list[EscenaGuion] = Field(default_factory=list)

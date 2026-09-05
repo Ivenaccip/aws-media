@@ -6,6 +6,7 @@
     python tools/usuarios.py suspender correo@x.com            # churn: no entra más (sus datos quedan)
     python tools/usuarios.py reactivar correo@x.com
     python tools/usuarios.py adoptar correo@x.com --de piloto  # migra proyectos+saldo del id viejo
+    python tools/usuarios.py slots correo@x.com 10             # tope de proyectos activos (o `ilimitado`)
     python tools/usuarios.py lista
 
 `alta` crea el usuario en Cognito (correo = username; Cognito envía la
@@ -68,7 +69,13 @@ def alta(pool: str, correo: str, plan: str, reenviar: bool = False) -> str:
                    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email""",
                 {"i": sub, "e": correo})
     saldo = db.abonar_creditos(sub, cortesia(plan), "cortesia", f"alta-{plan}")
-    print(f"{correo}: alta OK (id {sub}) — {cortesia(plan)} créditos de cortesía, saldo {saldo}")
+    # M12: el plan anual incluye slots ilimitados (6 activos es el default de
+    # la columna para el mensual; el archivo congelado no cuenta nunca)
+    if plan == "anual":
+        db.fijar_slots(sub, None)
+    tope = "ilimitados" if plan == "anual" else "6"
+    print(f"{correo}: alta OK (id {sub}) — {cortesia(plan)} créditos de cortesía, "
+          f"saldo {saldo}, slots de proyectos: {tope}")
     print("Cognito le envió la contraseña provisional por email; el primer login fuerza el cambio.")
     return sub
 
@@ -113,6 +120,15 @@ def admin(pool: str, correo: str) -> None:
           "entrar para que su token traiga el grupo")
 
 
+def slots(pool: str, correo: str, valor: str) -> None:
+    """M12: cambia el tope de proyectos activos (`ilimitado` o un número)."""
+    from pipeline import db
+    sub = _sub(_cognito(pool).admin_get_user(UserPoolId=pool, Username=correo))
+    n = None if valor == "ilimitado" else int(valor)
+    db.fijar_slots(sub, n)
+    print(f"{correo}: slots de proyectos → {valor}")
+
+
 def lista(pool: str) -> None:
     con_db = bool(os.getenv("DB_CLUSTER_ARN") and os.getenv("DB_SECRET_ARN"))
     if con_db:
@@ -129,8 +145,9 @@ def lista(pool: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("accion", choices=["alta", "suspender", "reactivar", "adoptar", "admin", "lista"])
+    ap.add_argument("accion", choices=["alta", "suspender", "reactivar", "adoptar", "admin", "slots", "lista"])
     ap.add_argument("correo", nargs="?")
+    ap.add_argument("valor", nargs="?", help="para slots: un número o `ilimitado`")
     ap.add_argument("--plan", default="mensual", choices=["mensual", "anual"])
     ap.add_argument("--reenviar", action="store_true")
     ap.add_argument("--de", default="piloto", help="id viejo que adopta el usuario")
@@ -140,7 +157,7 @@ def main() -> None:
     args = ap.parse_args()
     if args.accion != "lista" and not args.correo:
         ap.error(f"{args.accion} necesita el correo")
-    if args.accion in ("alta", "adoptar"):
+    if args.accion in ("alta", "adoptar", "slots"):
         if not args.cluster_arn or not args.secret_arn:
             ap.error("faltan --cluster-arn/--secret-arn (o DB_CLUSTER_ARN/DB_SECRET_ARN)")
         os.environ["DB_CLUSTER_ARN"] = args.cluster_arn
@@ -157,6 +174,10 @@ def main() -> None:
         adoptar(args.pool, args.correo, args.de)
     elif args.accion == "admin":
         admin(args.pool, args.correo)
+    elif args.accion == "slots":
+        if not args.valor or (args.valor != "ilimitado" and not args.valor.isdigit()):
+            ap.error("slots necesita un número o `ilimitado`")
+        slots(args.pool, args.correo, args.valor)
     else:
         lista(args.pool)
 
