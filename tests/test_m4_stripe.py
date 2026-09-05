@@ -55,6 +55,26 @@ def test_firma_valida_abona(cliente, abonos):
     assert abonos == [("sub-abc", 100, "stripe:cs_prueba_1")]
 
 
+def test_pago_en_mxn_abona_por_el_monto_origen_usd(cliente, abonos):
+    """Los Payment Links con precios adaptativos dejan pagar en MXN:
+    amount_total llega en pesos y el USD real viaja en currency_conversion."""
+    payload = _evento(amount_total=3495, currency="mxn",
+                      currency_conversion={"amount_total": 199, "fx_rate": "17.5628",
+                                           "source_currency": "usd"})
+    r = cliente.post("/api/pagos/stripe", content=payload,
+                     headers={"stripe-signature": _firmar(payload)})
+    assert r.status_code == 200 and r.json()["creditos"] == 100
+    assert abonos == [("sub-abc", 100, "stripe:cs_prueba_1")]
+
+
+def test_divisa_desconocida_sin_conversion_es_abono_manual(cliente, abonos):
+    payload = _evento(amount_total=199, currency="eur")
+    r = cliente.post("/api/pagos/stripe", content=payload,
+                     headers={"stripe-signature": _firmar(payload)})
+    assert r.status_code == 200 and "abono manual" in r.json()["motivo"]
+    assert abonos == []
+
+
 def test_firma_invalida_400(cliente, abonos):
     payload = _evento()
     r = cliente.post("/api/pagos/stripe", content=payload,
@@ -149,17 +169,17 @@ def test_abonar_compra_duplicado_no_toca_saldo(monkeypatch):
 
 def test_links_packs_incrusta_usuario(monkeypatch):
     monkeypatch.setenv("STRIPE_LINK_100", "https://buy.stripe.com/aaa")
-    monkeypatch.setenv("STRIPE_LINK_500", "https://buy.stripe.com/bbb")
+    monkeypatch.setenv("STRIPE_LINK_550", "https://buy.stripe.com/bbb")
     monkeypatch.delenv("STRIPE_LINK_1200", raising=False)
     links = pagos_api.links_packs("sub-abc")
     assert links[100] == "https://buy.stripe.com/aaa?client_reference_id=sub-abc"
-    assert links[500].endswith("sub-abc") and 1200 not in links
+    assert links[550].endswith("sub-abc") and 1200 not in links
 
 
 def test_api_creditos_lleva_links(monkeypatch):
     monkeypatch.setenv("CREDITOS_BACKEND", "postgres")
     monkeypatch.setenv("STRIPE_LINK_100", "https://buy.stripe.com/aaa")
-    monkeypatch.delenv("STRIPE_LINK_500", raising=False)
+    monkeypatch.delenv("STRIPE_LINK_550", raising=False)
     monkeypatch.delenv("STRIPE_LINK_1200", raising=False)
     monkeypatch.setattr(db, "saldo_creditos", lambda u: 42)
     monkeypatch.setattr(db, "movimientos_creditos", lambda u, n=20: [])
@@ -167,7 +187,7 @@ def test_api_creditos_lleva_links(monkeypatch):
     d = TestClient(app).get("/api/creditos").json()
     por_creditos = {p["creditos"]: p for p in d["packs"]}
     assert por_creditos[100]["link"].endswith("client_reference_id=piloto")
-    assert "link" not in por_creditos[500]      # sin env → sin link (concierge)
+    assert "link" not in por_creditos[550]      # sin env → sin link (concierge)
 
 
 def test_webhook_es_publico_con_login_activo(monkeypatch):

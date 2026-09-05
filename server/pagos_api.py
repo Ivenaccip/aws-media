@@ -85,6 +85,19 @@ def _pack_por_monto(centavos: int) -> dict | None:
     return None
 
 
+def _monto_usd(sesion: dict) -> int | None:
+    """Centavos de DÓLAR de la sesión. Los Payment Links con precios
+    adaptativos dejan pagar en la divisa local (p. ej. MXN): ahí amount_total
+    viene en esa divisa y el monto origen en USD viaja en currency_conversion
+    (documentado por Stripe). Divisa desconocida → None = abono manual."""
+    conversion = sesion.get("currency_conversion") or {}
+    if str(conversion.get("source_currency", "")).lower() == "usd":
+        return int(conversion.get("amount_total") or 0)
+    if str(sesion.get("currency") or "usd").lower() == "usd":
+        return int(sesion.get("amount_total") or 0)
+    return None
+
+
 @router.post("/api/pagos/stripe")
 async def webhook_stripe(request: Request):
     """Ruta PÚBLICA (Stripe no trae JWT — está en RUTAS_PUBLICAS de auth.py).
@@ -115,11 +128,13 @@ async def webhook_stripe(request: Request):
                   sesion.get("id"), sesion.get("amount_total"))
         return {"ok": True, "motivo": "sin client_reference_id — abono manual"}
 
-    pack = _pack_por_monto(int(sesion.get("amount_total") or 0))
+    centavos_usd = _monto_usd(sesion)
+    pack = _pack_por_monto(centavos_usd) if centavos_usd is not None else None
     if not pack:
-        log.error("monto %s no corresponde a ningún pack de tarifas.json — "
-                  "abonar a mano (sesión %s, usuario %s)",
-                  sesion.get("amount_total"), sesion.get("id"), user_id)
+        log.error("monto %s %s (≈%s centavos USD) no corresponde a ningún pack "
+                  "de tarifas.json — abonar a mano (sesión %s, usuario %s)",
+                  sesion.get("amount_total"), sesion.get("currency"),
+                  centavos_usd, sesion.get("id"), user_id)
         return {"ok": True, "motivo": "monto sin pack — abono manual"}
 
     referencia = f"stripe:{sesion.get('id')}"
