@@ -61,8 +61,12 @@ regla no se rompe con duraciones raras.
 | Pack | Precio | $/crédito | Margen sobre costo | Se lee como |
 |---|---|---|---|---|
 | 100 cr | $1.99 dólares | $0.0199 | ~47 % | "una película más" |
-| 500 cr | $8.50 dólares | $0.0170 | ~26 % | "un mes de práctica" |
-| 1 200 cr | $18.00 dólares | $0.0150 | ~11 % | "modo creador" |
+| 550 cr | $9.99 dólares | $0.0182 | ~35 % | "un mes de práctica" |
+| 1 200 cr | $18.00 dólares | $0.0150 | ~11 % | "modo creador" (sin link aún) |
+
+(2026-09-05: el pack medio pasó de 500/$8.50 a **550/$9.99** — decisión del
+dueño al crear los Payment Links; mantiene el rol del pack a empujar con ~20 %
+de margen neto de comisión y descuento real frente al pack chico.)
 
 Sin pack gigante tipo OpenArt Wonder: a nuestra escala, vender volumen barato
 regala el margen que financia el mantenimiento.
@@ -169,7 +173,7 @@ de Meta, cobrarlo a 1 crédito sería perder dinero en cada envío).
 | Pack | Precio | Comisión | Se come | Margen neto |
 |---|---|---|---|---|
 | 100 cr | $1.99 | ~$0.39 | ~20 % | ~27 % — vive como gancho |
-| 500 cr | $8.50 | ~$0.67 | ~8 % | ~18 % — el pack a empujar |
+| 550 cr | $9.99 | ~$0.74 | ~7 % | ~20 % — el pack a empujar |
 | 1 200 cr | $18.00 | ~$1.09 | ~6 % | **~5 % — demasiado fino** |
 
 **Ajuste propuesto (pendiente de decidir):** subir el pack grande a **$19.99

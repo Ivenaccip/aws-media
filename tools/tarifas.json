@@ -18,7 +18,7 @@
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [
     { "creditos": 100, "usd": 1.99 },
-    { "creditos": 500, "usd": 8.5 },
+    { "creditos": 550, "usd": 9.99 },
     { "creditos": 1200, "usd": 18.0 }
   ],
   "economia": {

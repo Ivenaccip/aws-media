@@ -22,7 +22,7 @@ CLAVES = [
     "OPENAI_MODEL", "GEN_BACKEND",
     # M4 — Stripe: el whsec_ del webhook y los 3 Payment Links (los links no
     # son secretos, pero viajan por aquí para no hornearlos en la infra)
-    "STRIPE_WEBHOOK_SECRET", "STRIPE_LINK_100", "STRIPE_LINK_500", "STRIPE_LINK_1200",
+    "STRIPE_WEBHOOK_SECRET", "STRIPE_LINK_100", "STRIPE_LINK_550", "STRIPE_LINK_1200",
 ]
 PREFIJO = "/media-ivenaccip/env/"
 
