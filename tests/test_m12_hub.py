@@ -186,3 +186,20 @@ def test_retry_db_despertando(monkeypatch):
     monkeypatch.setattr(_t, "sleep", lambda s: None)
     assert db.ejecutar("SELECT 1") == []
     assert len(intentos) == 3
+
+
+def test_listado_trae_miniatura(cliente, monkeypatch, tmp_path):
+    """La card del hub muestra la opción de personaje ELEGIDA (o la primera)."""
+    from pipeline.project import OpcionPersonaje
+    monkeypatch.setattr(project, "settings", SimpleNamespace(work_dir=tmp_path))
+    p = _p("m12m")
+    p.personaje.opciones = [
+        OpcionPersonaje(url="u", path=r"videos\x\personaje\opcion_0.jpg"),
+        OpcionPersonaje(url="u", path="videos/x/personaje/opcion_1.jpg")]
+    p.personaje.elegida = 1
+    p.guardar()
+    fila = cliente.get("/api/proyectos").json()[0]
+    assert fila["miniatura"] == "personaje/opcion_1.jpg"
+    p.personaje.elegida = None
+    p.guardar()
+    assert cliente.get("/api/proyectos").json()[0]["miniatura"] == "personaje/opcion_0.jpg"

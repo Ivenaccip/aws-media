@@ -116,10 +116,21 @@ def estilos():
             "descripcion": "Descríbelo tú con tus palabras (en inglés funciona mejor)."}]
 
 
+def _miniatura(p) -> str | None:
+    """Ruta relativa (para /archivo/) de la imagen que representa la obra:
+    la opción de personaje elegida, o la primera si aún no eligió."""
+    ops = p.personaje.opciones
+    if not ops:
+        return None
+    i = p.personaje.elegida if p.personaje.elegida is not None and p.personaje.elegida < len(ops) else 0
+    return "/".join(ops[i].path.replace("\\", "/").split("/")[-2:])
+
+
 @app.get("/api/proyectos")
 def proyectos():
     return [{"id": p.id, "creado": p.creado, "estado": p.estado,
-             "brief": p.brief[:80], "archivado": p.archivado}
+             "brief": p.brief[:80], "archivado": p.archivado,
+             "miniatura": _miniatura(p)}
             for p in listar_proyectos()]
 
 

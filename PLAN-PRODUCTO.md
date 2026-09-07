@@ -607,6 +607,21 @@ prompts de opciones. 3 tests nuevos (287 verdes). Pendiente decisión de
 gasto: generar las 5 imágenes de ejemplo con nano banana ≈ $0.20 dólares
 en total.
 
+Hecho 2026-09-07 c (iteración sobre feedback, rama m12-admin-3-partes):
+(1) la vista de configuración de crear.html es ANCHA (main.wide) al venir
+del hub — «Editar la idea» vuelve a la columna; el costo va PRIMERO en el
+botón («10 créditos — escribir el guion →»; en dev local sin monedero
+sigue sin costo). (2) Cards del hub como OBRAS (mock 4): miniatura 16:10
+arriba (campo `miniatura` nuevo en GET /api/proyectos = la opción de
+personaje elegida o la primera; placeholder 🎬 si no hay), título +
+estado en el pie, y la ✕ arriba a la derecha = archivar (mismo confirm;
+oculta con tarea en curso). (3) admin.html en 3 partes: KPIs «1 ·
+Ingresos de créditos» (quemados × piso, calculado en el front), «2 ·
+Costos de usuario» (IA + infra AWS) y «3 · Flujo total» (ingresos −
+costos = el margen que ya calculaba el server — CERO cambio de backend en
+admin); la tabla agrupa columnas bajo Cuenta / Ingresos (con USD nuevo
+por usuario) / Costos / Flujo. 1 test nuevo (288 verdes).
+
 ---
 
 ## Orden y dependencias
