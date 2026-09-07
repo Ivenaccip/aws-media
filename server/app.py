@@ -111,7 +111,9 @@ def auth_config():
 
 @app.get("/api/estilos")
 def estilos():
-    return [{"id": e.id, "nombre": e.nombre} for e in ESTILOS.values()] + [{"id": "custom", "nombre": "Custom"}]
+    return [{"id": e.id, "nombre": e.nombre, "descripcion": e.descripcion} for e in ESTILOS.values()] \
+        + [{"id": "custom", "nombre": "Custom",
+            "descripcion": "Descríbelo tú con tus palabras (en inglés funciona mejor)."}]
 
 
 @app.get("/api/proyectos")

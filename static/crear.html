@@ -47,6 +47,10 @@
   details summary { cursor:pointer; color:var(--mut); }
   a { color:#d98be0; }
   .hidden { display:none; }
+  /* M12: estilo (izq) + referencia (der) en dos columnas; duración debajo */
+  .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; align-items:stretch; }
+  .cols2 .card { margin-bottom:0; }
+  @media (max-width: 640px) { .cols2 { grid-template-columns:1fr; } }
   /* revisión a dos columnas */
   main.wide { max-width:1180px; }
   .cols { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); gap:14px; align-items:stretch; }
@@ -71,12 +75,12 @@
 
   <!-- 1. Brief -->
   <section id="form">
-    <div class="card">
+    <div class="card" id="card-brief">
       <h2>📖 ¿De qué trata tu película?</h2>
       <textarea id="brief" maxlength="5000" placeholder="Pega la historia completa o una idea breve («cómo empezó la Segunda Guerra Mundial»). Si es una idea, investigamos y escribimos el guion."></textarea>
       <div class="mut" style="text-align:right"><span id="cnt">0</span>/5000</div>
     </div>
-    <div class="card">
+    <div class="card" id="card-modo">
       <h2>🧭 ¿Cómo lo trabajamos?</h2>
       <div class="chips" id="modos">
         <button class="chip on" data-id="auto">Detectar solo</button>
@@ -86,21 +90,30 @@
       <div class="mut" id="modonota">Detectamos si tu texto es una historia lista o una idea que investigar.</div>
       <input type="text" id="rubro" style="margin-top:10px" placeholder="Rubro de tu canal (opcional) — p. ej. «tecnología». Validamos que el tema coincida antes de gastar.">
     </div>
-    <div class="card">
-      <h2>✨ Estilo visual</h2>
-      <div class="chips" id="estilos"></div>
-      <input type="text" id="estilo_custom" class="hidden" style="margin-top:10px" placeholder="Describe el estilo (en inglés funciona mejor)">
+    <!-- M12: la idea puede venir ya escrita desde el hub — se muestra plegada -->
+    <div class="card hidden" id="card-idea">
+      <h2>💡 Tu idea <span class="mut" id="idea-modo" style="font-size:13px;font-weight:400"></span></h2>
+      <p class="mut" id="idea-txt" style="margin:0 0 8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden"></p>
+      <a href="#" id="idea-editar" style="font-size:13px">✏️ Editar la idea o el modo</a>
+    </div>
+    <div class="cols2">
+      <div class="card">
+        <h2>✨ Estilo visual</h2>
+        <div class="chips" id="estilos"></div>
+        <p class="mut" id="estilo_ej" style="margin-bottom:0"></p>
+        <input type="text" id="estilo_custom" class="hidden" style="margin-top:10px" placeholder="Describe el estilo (en inglés funciona mejor)">
+      </div>
+      <div class="card">
+        <h2>🧑‍🎤 Referencia del personaje</h2>
+        <div class="drop" id="drop">Sube la imagen de tu personaje (hasta 4 archivos). Te daremos 2 versiones en el estilo elegido para que escojas una.</div>
+        <input type="file" id="files" accept="image/*" multiple class="hidden">
+        <div class="thumbs" id="thumbs"></div>
+      </div>
     </div>
     <div class="card">
       <h2>⏱ Duración</h2>
       <div class="row"><input type="range" id="dur" min="15" max="60" step="5" value="45"><b id="durv">45s</b></div>
       <div class="mut">Máximo 60 s en esta versión de pruebas.</div>
-    </div>
-    <div class="card">
-      <h2>🧑‍🎤 Referencia del personaje</h2>
-      <div class="drop" id="drop">Sube la imagen de tu personaje (hasta 4 archivos). Te daremos 2 versiones en el estilo elegido para que escojas una.</div>
-      <input type="file" id="files" accept="image/*" multiple class="hidden">
-      <div class="thumbs" id="thumbs"></div>
     </div>
     <button class="btn" id="enviar">Escribir el guion →</button>
     <p class="mut" id="saldoform"></p>
@@ -227,13 +240,18 @@ function pintaProducir() {
 // --- formulario ---
 $('#brief').addEventListener('input', e => $('#cnt').textContent = e.target.value.length);
 $('#dur').addEventListener('input', e => $('#durv').textContent = e.target.value + 's');
+const DESCR_ESTILO = {};   // M12: ejemplo en palabras del estilo elegido
+const pintaEjemplo = () => $('#estilo_ej').textContent = DESCR_ESTILO[estilo] || '';
 fetch('/api/estilos').then(r => r.json()).then(list => {
+  list.forEach(e => DESCR_ESTILO[e.id] = e.descripcion || '');
   $('#estilos').innerHTML = list.map(e => `<button class="chip ${e.id===estilo?'on':''}" data-id="${e.id}">${e.nombre}</button>`).join('');
+  pintaEjemplo();
   $('#estilos').onclick = ev => {
     const b = ev.target.closest('.chip'); if (!b) return;
     estilo = b.dataset.id;
-    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c===b));
+    $('#estilos').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c===b));
     $('#estilo_custom').classList.toggle('hidden', estilo!=='custom');
+    pintaEjemplo();
   };
 });
 $('#drop').onclick = () => $('#files').click();
@@ -575,7 +593,6 @@ async function cargarPeliculas() {
 const pid = new URLSearchParams(location.search).get('p');
 if (pid) fetch('/api/proyectos/' + pid).then(r => r.ok ? r.json() : null).then(p => { if (p) { proyecto = p; seguir(); } });
 else {
-  cargarPeliculas();
   // M12: el hub precarga la idea aquí (?brief=...&modo=idea|investigacion)
   const q = new URLSearchParams(location.search);
   const briefQ = (q.get('brief') || '').slice(0, 5000);
@@ -586,6 +603,26 @@ else {
     [...$('#modos').children].forEach(c => c.classList.toggle('on', c.dataset.id === modoQ));
     $('#modonota').textContent = MODONOTAS[modoQ];
   }
+  if (briefQ) {
+    // La idea ya se escribió en el hub: la parte inicial se pliega a un resumen
+    // editable y la lista de películas no se repite (el hub ya la mostró).
+    // Entrar por «Reels» (sin query) sigue mostrando el formulario completo.
+    const NOMBRE_MODO = {auto:'Detectar solo', investigacion:'Investigación', idea:'Tengo una idea'};
+    $('#card-brief').classList.add('hidden');
+    $('#card-modo').classList.add('hidden');
+    $('#card-idea').classList.remove('hidden');
+    $('#idea-txt').textContent = briefQ;
+    $('#idea-modo').textContent = '· modo ' + (NOMBRE_MODO[modo] || modo);
+    $('#idea-editar').onclick = ev => {
+      ev.preventDefault();
+      $('#card-idea').classList.add('hidden');
+      $('#card-brief').classList.remove('hidden');
+      $('#card-modo').classList.remove('hidden');
+      $('#brief').focus();
+    };
+    // el textarea oculto sigue siendo la fuente del envío; si edita, se re-refleja
+    $('#brief').addEventListener('input', () => $('#idea-txt').textContent = $('#brief').value);
+  } else cargarPeliculas();
 }
 </script>
 </body>
