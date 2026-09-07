@@ -178,6 +178,10 @@ ESQUEMA: list[str] = [
         creado   timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (user_id, proyecto, version)
     )""",
+    # M12 — tope de proyectos ACTIVOS por usuario (los archivados no cuentan).
+    # NULL = ilimitado (plan anual). Es columna, no constante: la palanca de
+    # slots por plan queda abierta sin migrar de nuevo.
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS slots int DEFAULT 6",
 ]
 
 
@@ -398,3 +402,20 @@ def listar_proyectos(user_id: str) -> list[dict]:
         "SELECT doc::text AS doc FROM proyectos_gen WHERE user_id = :u "
         "ORDER BY creado DESC", {"u": user_id})
     return [json.loads(f["doc"]) for f in filas]
+
+
+# ---------------------------------------------------------------------------
+# M12 — slots de proyectos activos
+
+def slots_usuario(user_id: str) -> int | None:
+    """Tope de proyectos activos del usuario; None = ilimitado (plan anual).
+    Usuario sin fila aún = el default de la columna (6)."""
+    filas = ejecutar("SELECT slots FROM usuarios WHERE id = :u", {"u": user_id})
+    return filas[0]["slots"] if filas else 6
+
+
+def fijar_slots(user_id: str, slots: int | None) -> None:
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    ejecutar("UPDATE usuarios SET slots = :s WHERE id = :u",
+             {"u": user_id, "s": slots})

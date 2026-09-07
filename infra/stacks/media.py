@@ -32,6 +32,20 @@ class MediaStack(Stack):
                                  s3.HttpMethods.HEAD],
                 allowed_origins=["*"], allowed_headers=["*"], max_age=3600)],
             removal_policy=cdk.RemovalPolicy.RETAIN,
+            # M12: a los 10 días los binarios pasan a Glacier Instant Retrieval
+            # (~6× más barato de guardar; lectura instantánea por el CDN, así
+            # que la UX no cambia). Solo objetos grandes: GIR factura mínimo
+            # 128 KB/objeto y encarecería los json/transcripts chicos. La regla
+            # cuenta días desde la SUBIDA (no el último uso) — asumido en el
+            # plan: un proyecto aún en edición paga ~$0.03/GB por relectura.
+            lifecycle_rules=[s3.LifecycleRule(
+                id="frio-glacier-ir-10d",
+                object_size_greater_than=1_000_000,
+                transitions=[s3.Transition(
+                    storage_class=s3.StorageClass.GLACIER_INSTANT_RETRIEVAL,
+                    transition_after=cdk.Duration.days(10),
+                )],
+            )],
         )
         self.cdn = cloudfront.Distribution(
             self, "Cdn",

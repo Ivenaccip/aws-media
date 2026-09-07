@@ -5,71 +5,216 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: dark; --bg:#14161a; --card:#1d2026; --line:#2c3038;
+          --txt:#e8e6e0; --mut:#9a978f; --acc:#5b8dd6; }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 16px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0;
-         min-height: 100vh; display: grid; place-items: center; }
-  main { text-align: center; padding: 24px; }
-  h1 { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
-  p.sub { color: #9a978f; margin-bottom: 36px; }
-  .opciones { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
-  a.card { display: block; width: 260px; padding: 32px 24px; border-radius: 14px;
-           background: #1d2026; border: 1px solid #2c3038; text-decoration: none;
-           color: inherit; transition: border-color .15s, transform .15s; }
-  a.card:hover { border-color: #5b8dd6; transform: translateY(-2px); }
-  .card h2 { font-size: 19px; font-weight: 600; margin-bottom: 8px; }
-  .card p { font-size: 14px; color: #9a978f; }
-  .card .icono { font-size: 34px; margin-bottom: 12px; }
+  body { font: 15px/1.6 system-ui, sans-serif; background: var(--bg); color: var(--txt);
+         min-height: 100vh; }
+  .layout { display: grid; grid-template-columns: 230px 1fr; gap: 28px;
+            max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  /* --- sidebar --- */
+  aside h1 { font-size: 17px; font-weight: 600; padding: 10px 12px 18px; }
+  nav a, nav .prox { display: block; padding: 11px 12px; margin-bottom: 6px;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+    text-decoration: none; color: inherit; }
+  nav a:hover { border-color: var(--acc); }
+  nav b { display: block; font-size: 14px; font-weight: 600; }
+  nav small { color: var(--mut); font-size: 12px; line-height: 1.35; display: block; }
+  nav .prox { opacity: .45; cursor: default; }
+  nav .prox small::after { content: " · próximamente"; color: var(--mut); }
+
+  /* --- prompt central --- */
+  .prompt { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+            padding: 18px; margin-bottom: 34px; }
+  .prompt h2 { font-size: 20px; font-weight: 600; margin-bottom: 10px; }
+  .prompt textarea { width: 100%; min-height: 88px; resize: vertical; border: 0;
+    background: transparent; color: var(--txt); font: inherit; outline: none; }
+  .prompt .acciones { display: flex; gap: 10px; margin-top: 8px; }
+  .prompt button { border: 1px solid var(--line); background: #23262d; color: var(--txt);
+    border-radius: 10px; padding: 9px 16px; cursor: pointer; font: inherit; font-size: 14px; }
+  .prompt button:hover { border-color: var(--acc); }
+  .prompt button.primario { background: var(--acc); border-color: var(--acc); color: #10131a;
+    font-weight: 600; }
+  .prompt .nota { color: var(--mut); font-size: 12.5px; margin-top: 10px; }
+
+  /* --- grid de proyectos --- */
+  .cabecera-grid { display: flex; align-items: baseline; justify-content: space-between;
+                   margin-bottom: 14px; }
+  .cabecera-grid h2 { font-size: 17px; font-weight: 600; }
+  #slots-info { color: var(--mut); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .proy { position: relative; display: block; min-height: 118px; padding: 14px;
+    border-radius: 12px; background: var(--card); border: 1px solid var(--line);
+    text-decoration: none; color: inherit; cursor: pointer; }
+  .proy:hover { border-color: var(--acc); }
+  .proy .brief { font-size: 14px; font-weight: 600; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
+  .proy .meta { color: var(--mut); font-size: 12.5px; }
+  .proy .arch { position: absolute; right: 10px; bottom: 10px; border: 0; background: none;
+    color: var(--mut); font-size: 12px; cursor: pointer; padding: 2px 4px; }
+  .proy .arch:hover { color: var(--txt); }
+  .proy.vacio { display: grid; place-items: center; color: var(--mut); border-style: dashed;
+    cursor: pointer; font-size: 14px; }
+  .proy.vacio:hover { border-color: var(--acc); color: var(--txt); }
+
+  /* --- archivados --- */
+  #archivados { margin-top: 34px; }
+  #archivados summary { cursor: pointer; color: var(--mut); font-size: 14px; }
+  #lista-arch { list-style: none; padding: 0; margin: 12px 0 0; }
+  #lista-arch li { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 14px; margin-bottom: 6px; border-radius: 9px; background: var(--card);
+    border: 1px solid var(--line); font-size: 13.5px; }
+  #lista-arch .brief { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    color: var(--mut); }
+  #lista-arch button { border: 1px solid var(--line); background: transparent; color: var(--txt);
+    border-radius: 8px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12.5px; }
+  #lista-arch button:hover { border-color: var(--acc); }
+  .err { color: #ff8f8f; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    aside nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+    nav a, nav .prox { flex: 0 0 auto; margin-bottom: 0; }
+    nav small { display: none; }
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>¿Qué vamos a hacer hoy?</h1>
-  <p class="sub">Un solo editor, dos fuentes de material.</p>
-  <div class="opciones">
-    <a class="card" href="/e1.html">
-      <div class="icono">✂️</div>
-      <h2>Editar</h2>
-      <p>Metraje real: reel para redes o shorts de un video largo.</p>
-    </a>
-    <a class="card" href="/crear.html">
-      <div class="icono">🎬</div>
-      <h2>Crear</h2>
-      <p>Película animada desde una historia o una idea, narrada con IA.</p>
-    </a>
-  </div>
-  <!-- M5: lo que dejaste en curso, a un clic -->
-  <div id="recientes" hidden style="margin-top:40px;text-align:left;max-width:560px;margin-left:auto;margin-right:auto">
-    <p class="sub" style="margin-bottom:10px;text-align:center">Tus películas recientes</p>
-    <ul id="lista-recientes" style="list-style:none;padding:0;margin:0;font-size:14px"></ul>
-  </div>
-</main>
-<style>
-  #lista-recientes a { display:flex; justify-content:space-between; gap:10px; padding:9px 14px;
-    margin-bottom:6px; border-radius:9px; background:#1d2026; border:1px solid #2c3038;
-    text-decoration:none; color:inherit; }
-  #lista-recientes a:hover { border-color:#5b8dd6; }
-  #lista-recientes .brief { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
-  #lista-recientes .meta { color:#9a978f; font-size:12px; white-space:nowrap; }
-</style>
+<div class="layout">
+
+  <aside>
+    <h1>🎬 Estudio de video</h1>
+    <nav aria-label="Secciones">
+      <a href="/crear.html"><b>Reels</b><small>Crea un video desde una idea, narrado con IA.</small></a>
+      <a href="/e1.html"><b>Shorts</b><small>Saca los mejores momentos de tu video.</small></a>
+      <div class="prox"><b>Investiga tu competencia</b><small>Qué está funcionando en tu rubro</small></div>
+      <a href="/crear.html"><b>Crear contenido</b><small>Tu película narrada desde cero.</small></a>
+      <div class="prox"><b>Crear imágenes</b><small>Portadas y miniaturas</small></div>
+      <div class="prox"><b>Ver mis métricas</b><small>Cómo rinden tus publicaciones</small></div>
+    </nav>
+  </aside>
+
+  <main>
+    <section class="prompt">
+      <h2>¿Qué vamos a crear hoy?</h2>
+      <textarea id="idea" maxlength="5000"
+        placeholder="Cuéntanos tu idea o pega tu historia completa. Ejemplo: «cómo empezó la Segunda Guerra Mundial»."></textarea>
+      <div class="acciones">
+        <button id="btn-inv">Investigación</button>
+        <button id="btn-idea" class="primario">Tengo una idea</button>
+      </div>
+      <p class="nota">«Investigación» busca fuentes y escribe el guion por ti; «Tengo una idea»
+        usa tu texto tal cual. En ambos casos revisas todo antes de producir.</p>
+    </section>
+
+    <section>
+      <div class="cabecera-grid">
+        <h2>Mis proyectos</h2>
+        <span id="slots-info"></span>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="err" id="err"></div>
+      <details id="archivados" hidden>
+        <summary>Proyectos archivados (<span id="n-arch">0</span>) — no se borran, se pueden restaurar</summary>
+        <ul id="lista-arch"></ul>
+      </details>
+    </section>
+  </main>
+
+</div>
 <script>
-// corre en DOMContentLoaded: para entonces auth.js (al final del body) ya
-// envolvió fetch y adjunta el token
-addEventListener('DOMContentLoaded', async () => {
+const $ = s => document.querySelector(s);
+const esc = t => (t || '').replace(/</g, '&lt;');
+const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión — te espera',
+                produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
+// proyectos viejos pueden traer `creado` en un formato raro: sin fecha antes que "Invalid Date"
+const fecha = c => { const d = new Date(c); return isNaN(d) ? '' : ' · ' + d.toLocaleDateString(); };
+
+// El prompt navega a crear.html con la idea precargada; los dos botones son
+// los mismos modos del flujo de crear (investigacion | idea).
+function irACrear(modo) {
+  const q = new URLSearchParams();
+  const texto = $('#idea').value.trim();
+  if (texto) q.set('brief', texto);
+  q.set('modo', modo);
+  location.href = '/crear.html?' + q.toString();
+}
+$('#btn-inv').onclick = () => irACrear('investigacion');
+$('#btn-idea').onclick = () => irACrear('idea');
+
+let slots = null;   // null = ilimitado (o dev local)
+
+async function cargar() {
+  $('#err').textContent = '';
   try {
-    const r = await fetch('/api/proyectos');
-    if (!r.ok) return;
-    const ps = await r.json();
-    if (!ps.length) return;
-    const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión',
-                    produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
-    document.getElementById('lista-recientes').innerHTML = ps.slice(0, 4).map(p =>
-      `<li><a href="/crear.html?p=${p.id}">` +
-      `<span class="brief">${(p.brief || '(sin brief)').replace(/</g,'&lt;')}</span>` +
-      `<span class="meta">${ESTADO[p.estado] || p.estado}</span></a></li>`).join('');
-    document.getElementById('recientes').hidden = false;
-  } catch { /* cortesía: sin lista el hub sigue completo */ }
-});
+    const [rp, rs] = await Promise.all([fetch('/api/proyectos'), fetch('/api/slots')]);
+    if (!rp.ok) return;
+    const ps = await rp.json();
+    if (rs.ok) slots = (await rs.json()).slots;
+    render(ps);
+  } catch { /* cortesía: el hub sigue completo sin la lista */ }
+}
+
+function render(ps) {
+  const activos = ps.filter(p => !p.archivado);
+  const arch = ps.filter(p => p.archivado);
+
+  $('#slots-info').textContent = slots == null
+    ? (activos.length ? `${activos.length} activos · slots ilimitados` : '')
+    : `${activos.length} de ${slots} slots`;
+
+  const cards = activos.map(p =>
+    `<div class="proy" data-p="${p.id}" role="link" tabindex="0" aria-label="Abrir proyecto">` +
+    `<div class="brief">${esc(p.brief) || '(sin brief)'}</div>` +
+    `<div class="meta">${ESTADO[p.estado] || p.estado}${fecha(p.creado)}</div>` +
+    (['preparando', 'produciendo'].includes(p.estado) ? '' :
+      `<button class="arch" data-id="${p.id}" aria-label="Archivar proyecto">📦 Archivar</button>`) +
+    `</div>`);
+  if (slots == null || activos.length < slots)
+    cards.push('<div class="proy vacio" id="nuevo" role="button" tabindex="0">＋ Nueva película</div>');
+  $('#grid').innerHTML = cards.join('');
+
+  const nuevo = $('#nuevo');
+  if (nuevo) nuevo.onclick = () => { $('#idea').focus(); scrollTo({top: 0, behavior: 'smooth'}); };
+
+  document.querySelectorAll('.proy[data-p]').forEach(c => {
+    const abrir = () => location.href = '/crear.html?p=' + c.dataset.p;
+    c.onclick = abrir;
+    c.onkeydown = ev => { if (ev.key === 'Enter') abrir(); };
+  });
+
+  document.querySelectorAll('.arch').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation();
+    if (!confirm('¿Archivar este proyecto?\n\nNo se borra nada: sale de tus slots y ' +
+                 'lo puedes restaurar cuando quieras desde «Proyectos archivados».')) return;
+    await accion(b.dataset.id, 'archivar');
+  });
+
+  $('#n-arch').textContent = arch.length;
+  $('#archivados').hidden = !arch.length;
+  $('#lista-arch').innerHTML = arch.map(p =>
+    `<li><span class="brief">${esc(p.brief) || '(sin brief)'}</span>` +
+    `<button data-id="${p.id}">Restaurar</button></li>`).join('');
+  document.querySelectorAll('#lista-arch button').forEach(b =>
+    b.onclick = () => accion(b.dataset.id, 'desarchivar'));
+}
+
+async function accion(id, verbo) {
+  try {
+    const r = await fetch(`/api/proyectos/${id}/${verbo}`, {method: 'POST'});
+    if (!r.ok) {
+      const d = (await r.json()).detail;
+      $('#err').textContent = typeof d === 'string' ? d : (d?.aviso || 'No se pudo — intenta de nuevo.');
+      return;
+    }
+    cargar();
+  } catch { $('#err').textContent = 'Sin conexión — intenta de nuevo.'; }
+}
+
+addEventListener('DOMContentLoaded', cargar);
 </script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
