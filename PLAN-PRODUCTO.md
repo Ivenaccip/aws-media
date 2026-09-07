@@ -622,6 +622,11 @@ costos = el margen que ya calculaba el server — CERO cambio de backend en
 admin); la tabla agrupa columnas bajo Cuenta / Ingresos (con USD nuevo
 por usuario) / Costos / Flujo. 1 test nuevo (288 verdes).
 
+Hecho 2026-09-07 d (rama m12-imagenes-estilos): las 5 imágenes de ejemplo
+GENERADAS con nano banana en fal ($0.20 dólares, gasto confirmado por el
+dueño) — la misma escena (zorro camino a un faro al atardecer) en los 5
+estilos, comprimidas a 1200px (~1 MB total) en static/estilos/.
+
 ---
 
 ## Orden y dependencias
