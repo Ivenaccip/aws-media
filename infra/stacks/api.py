@@ -130,8 +130,13 @@ class ApiStack(Stack):
             ),
         )
         # ojo: los prefijos de dominio Cognito no admiten la palabra reservada "aws"
+        # Managed Login (v2): el branding con la paleta del producto vive FUERA
+        # de CloudFormation (create-managed-login-branding / editor de la
+        # consola) — aquí solo se fija la versión para que un deploy no
+        # regrese el dominio al Hosted UI clásico.
         pool.add_domain("Domain", cognito_domain=cognito.CognitoDomainOptions(
-            domain_prefix="media-ivenaccip"))
+            domain_prefix="media-ivenaccip"),
+            managed_login_version=cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN)
 
         # M6: el dashboard admin exige pertenecer a este grupo (el id_token lo
         # trae en cognito:groups); miembros por CLI: tools/usuarios.py admin

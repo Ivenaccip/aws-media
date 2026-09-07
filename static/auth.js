@@ -35,7 +35,8 @@
     location.href = 'https://' + c.dominio + '/oauth2/authorize' +
       '?client_id=' + c.client_id + '&response_type=code&scope=openid+email' +
       '&redirect_uri=' + encodeURIComponent(location.origin + '/callback.html') +
-      '&code_challenge_method=S256&code_challenge=' + reto;
+      '&code_challenge_method=S256&code_challenge=' + reto +
+      '&lang=es';   // Managed Login: fuerza la pantalla en español
   }
 
   async function refrescar() {
