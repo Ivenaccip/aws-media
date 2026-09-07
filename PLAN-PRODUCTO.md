@@ -586,6 +586,27 @@ De paso: elegir estilo ya no des-selecciona visualmente el chip del modo
 (el toggle barría todos los .chip de la página). Ejemplos con imagen real
 por estilo quedan para cuando haya assets (generarlos costaría dinero).
 
+Hecho 2026-09-07 (M12, mock v2 del formulario + fix 500 en producción):
+el usuario DESPLEGÓ M12 (el traceback de CloudWatch ya corre app.py con
+/api/slots). El 500 de admin/hub tenía DOS causas: (1) Aurora auto-pausada
+(mín 0 ACU) responde DatabaseUnavailableException con mensaje VACÍO y el
+retry de db.ejecutar solo filtraba "resum" → ahora filtra también por el
+nombre de la clase/"unavailable"; (2) la migración no se corrió — la
+columna `usuarios.slots` NO existe (verificado por Data API; a mí el
+clasificador me bloquea db_migrate: lo corre el usuario con los ARNs del
+stack aws-media-db). Formulario según el mock de Miro: card Estilo visual
+con chips VERTICALES en español (styles.py renombrado: Cinemático/Animado/
+Monocromático/Experimental/Artístico/Personalizado — el id no cambia) y
+muestra grande al lado que intenta `/estilos/<id>.jpg` (static/estilos/,
+vacío aún) con fallback al texto; card Personaje con la imagen subida en
+grande + campo «Información extra» cableado end-to-end:
+`Proyecto.personaje_extra` (Form en POST crear, tope 500 chars) →
+`flow._con_extra` lo anexa a la descripción del personaje en los dos
+caminos (referencia y desde-guion) → llega al guionista (quien) y a los
+prompts de opciones. 3 tests nuevos (287 verdes). Pendiente decisión de
+gasto: generar las 5 imágenes de ejemplo con nano banana ≈ $0.20 dólares
+en total.
+
 ---
 
 ## Orden y dependencias

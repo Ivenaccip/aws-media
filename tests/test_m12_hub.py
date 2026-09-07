@@ -138,3 +138,51 @@ def test_fijar_slots_acepta_none(monkeypatch):
     db.fijar_slots("u1", None)
     assert "UPDATE usuarios SET slots" in llamadas[1][0]
     assert llamadas[1][1]["s"] is None
+
+
+# ---------------------------------------------------------------------------
+# «Información extra» del personaje (mock del formulario, 2026-09-07)
+
+def test_personaje_extra_viaja_al_proyecto(cliente, srv, monkeypatch, tmp_path):
+    monkeypatch.setattr(project, "settings", SimpleNamespace(work_dir=tmp_path))
+    monkeypatch.setattr(srv, "_lanzar", lambda p, coro: coro.close())
+    r = cliente.post("/api/proyectos", data={
+        "brief": "una idea", "personaje_extra": "  lleva sombrero  "})
+    assert r.status_code == 200
+    assert r.json()["personaje_extra"] == "lleva sombrero"
+
+
+def test_con_extra_anexa_a_la_descripcion():
+    from pipeline import flow
+    p = _p("x1"); p.personaje_extra = "lleva sombrero"
+    d = SimpleNamespace(descripcion="un pato")
+    assert flow._con_extra(p, d).descripcion == "un pato. lleva sombrero"
+    assert flow._con_extra(p, None) is None                    # sin referencia
+    d2 = SimpleNamespace(descripcion="")
+    assert flow._con_extra(p, d2).descripcion == "lleva sombrero"
+    d3 = SimpleNamespace(descripcion="un pato")
+    assert flow._con_extra(_p("x2"), d3).descripcion == "un pato"   # sin extra
+
+
+def test_retry_db_despertando(monkeypatch):
+    """DatabaseUnavailableException (mensaje vacío) también se reintenta."""
+    import time as _t
+    intentos = []
+
+    class _Falla(Exception):
+        pass
+
+    _Falla.__name__ = "DatabaseUnavailableException"
+
+    class _Cli:
+        def execute_statement(self, **kw):
+            intentos.append(1)
+            if len(intentos) < 3:
+                raise _Falla("")
+            return {"formattedRecords": "[]"}
+
+    monkeypatch.setattr(db, "_cliente", lambda: _Cli())
+    monkeypatch.setattr(db, "_cfg", lambda: {"resourceArn": "x", "secretArn": "y", "database": "z"})
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    assert db.ejecutar("SELECT 1") == []
+    assert len(intentos) == 3

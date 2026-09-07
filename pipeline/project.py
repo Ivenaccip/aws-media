@@ -61,6 +61,9 @@ class Proyecto(BaseModel):
     modo: Literal["auto", "investigacion", "idea"] = "auto"  # F3.3: elección explícita del usuario
     rubro: Optional[str] = None                              # rubro del canal (balanceador)
     referencias: list[Referencia] = Field(default_factory=list)
+    # M12 (mock del formulario): notas libres del usuario sobre su personaje —
+    # se anexan a la descripción detectada antes de guion y opciones.
+    personaje_extra: str = ""
 
     # M11 — "narracion" invierte el orden: guion continuo → TTS único →
     # ventanas de video sobre la voz. "escenas" = el pipeline de siempre.

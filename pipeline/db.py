@@ -74,9 +74,12 @@ def _param(nombre: str, valor) -> dict:
 
 
 # Tras la auto-pausa (mín 0 ACU) la primera llamada despierta el clúster:
-# rds-data responde DatabaseResumingException ~15 s. Reintentamos dentro del
-# presupuesto del timeout de la Lambda (29 s).
+# rds-data responde DatabaseResumingException o DatabaseUnavailableException
+# (esta última con el mensaje VACÍO — filtrar por el nombre de la clase)
+# durante ~15 s. Reintentamos dentro del presupuesto del timeout de la
+# Lambda (29 s).
 _ESPERA_RESUME_S = 24
+_DESPERTANDO = ("resum", "unavailable")
 
 
 def ejecutar(sql: str, params: dict | None = None) -> list[dict]:
@@ -91,7 +94,8 @@ def ejecutar(sql: str, params: dict | None = None) -> list[dict]:
             r = _cliente().execute_statement(**kwargs)
             break
         except Exception as e:  # noqa: BLE001 — filtramos por mensaje abajo
-            if "resum" not in str(e).lower() or time.monotonic() > limite:
+            texto = f"{type(e).__name__} {e}".lower()
+            if not any(m in texto for m in _DESPERTANDO) or time.monotonic() > limite:
                 raise
             time.sleep(2)
     return json.loads(r.get("formattedRecords") or "[]")

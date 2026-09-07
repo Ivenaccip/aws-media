@@ -112,7 +112,7 @@ def auth_config():
 @app.get("/api/estilos")
 def estilos():
     return [{"id": e.id, "nombre": e.nombre, "descripcion": e.descripcion} for e in ESTILOS.values()] \
-        + [{"id": "custom", "nombre": "Custom",
+        + [{"id": "custom", "nombre": "Personalizado",
             "descripcion": "Descríbelo tú con tus palabras (en inglés funciona mejor)."}]
 
 
@@ -173,7 +173,7 @@ async def crear(
     brief: str = Form(...), estilo: str = Form("animated"), estilo_custom: str = Form(""),
     duracion_s: int = Form(45), referencias: list[UploadFile] = File(default=[]),
     modo: str = Form("auto"), rubro: str = Form(""), forzar: bool = Form(False),
-    pipeline: str = Form(""),
+    pipeline: str = Form(""), personaje_extra: str = Form(""),
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
@@ -202,6 +202,7 @@ async def crear(
         pipeline = os.getenv("PIPELINE_DEFAULT", "escenas")
     p = nuevo_proyecto(brief, estilo, estilo_custom or None, min(duracion_s, DURACION_MAX_S),
                        modo=modo, rubro=rubro, pipeline=pipeline)
+    p.personaje_extra = personaje_extra.strip()[:500]
     refs_dir = p.workdir / "refs"
     refs_dir.mkdir(parents=True, exist_ok=True)
     for i, f in enumerate(referencias):
