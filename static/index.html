@@ -23,6 +23,15 @@
   nav small { color: var(--mut); font-size: 12px; line-height: 1.35; display: block; }
   nav .prox { opacity: .45; cursor: default; }
   nav .prox small::after { content: " · próximamente"; color: var(--mut); }
+  /* grupos del sidebar: Estudio de Contenido / Blotato + */
+  nav .grupo { display: flex; align-items: center; justify-content: space-between;
+    color: var(--mut); font-size: 12px; font-weight: 600; letter-spacing: .4px;
+    text-transform: uppercase; margin: 16px 2px 8px; }
+  nav .grupo:first-child { margin-top: 0; }
+  nav .grupo .mas { border: 1px solid var(--line); background: transparent; color: var(--mut);
+    border-radius: 8px; width: 22px; height: 22px; line-height: 1; cursor: pointer;
+    font: 15px/1 system-ui; }
+  nav .grupo .mas:hover { border-color: var(--acc); color: var(--txt); }
 
   /* --- prompt central --- */
   .prompt { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -94,10 +103,15 @@
   <aside>
     <h1>🎬 Estudio de video</h1>
     <nav aria-label="Secciones">
+      <div class="grupo">Estudio de Contenido</div>
+      <a href="/crear-imagenes.html"><b>Crear imágenes</b><small>Una imagen en el estilo que elijas.</small></a>
       <a href="/crear.html"><b>Crear contenido</b><small>Crea un video desde una idea, narrado con IA.</small></a>
       <a href="/e1.html"><b>Shorts</b><small>Saca los mejores momentos de tu video.</small></a>
+      <div class="grupo">Blotato
+        <button class="mas" id="blotato-mas" title="Conecta tus credenciales de Blotato"
+          aria-label="Conectar Blotato">+</button>
+      </div>
       <div class="prox"><b>Investiga tu competencia</b><small>Qué está funcionando en tu rubro</small></div>
-      <a href="/crear-imagenes.html"><b>Crear imágenes</b><small>Una imagen en el estilo que elijas.</small></a>
       <div class="prox"><b>Ver mis métricas</b><small>Cómo rinden tus publicaciones</small></div>
     </nav>
   </aside>
@@ -134,6 +148,9 @@
 <script>
 const $ = s => document.querySelector(s);
 const esc = t => (t || '').replace(/</g, '&lt;');
+// Blotato: el «+» conectará las credenciales del usuario (por diseñar)
+$('#blotato-mas').onclick = () =>
+  alert('Aquí vas a conectar tus credenciales de Blotato para publicar y medir tus redes.\n\nMuy pronto.');
 const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión — te espera',
                 produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
 // proyectos viejos pueden traer `creado` en un formato raro: sin fecha antes que "Invalid Date"

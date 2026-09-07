@@ -637,6 +637,11 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       `db.DespertandoError` + handler 503 con Retry-After 10 (monedero ya
       reintenta con backoff); la otra causa sigue siendo la migración de
       `slots` pendiente (la corre el dueño). Tests: 294 verdes.
+- [x] **Sidebar en dos grupos** (rama m12-sidebar-grupos): «Estudio de
+      Contenido» (Crear imágenes / Crear contenido / Shorts) y «Blotato»
+      con botón «+» — el futuro punto para conectar las credenciales de
+      Blotato del usuario (por diseñar; hoy avisa «muy pronto») — con
+      Investiga tu competencia y Ver mis métricas (próximamente) debajo.
 
 ---
 
