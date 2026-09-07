@@ -87,7 +87,13 @@ def test_preparar_sin_refs_saca_personaje_del_guion(tmp_path, monkeypatch):
                                    OpcionPersonaje(url="http://f/1.jpg", path="p1")])
     monkeypatch.setattr(character, "describir_desde_guion", falso_describir)
     monkeypatch.setattr(character, "preparar_personaje_sin_ref", falso_sin_ref)
-    # modo idea → forzado "historia": sin clasificador ni research (sin red)
+    # M14: el clasificador corre SIEMPRE (elige el formato aunque el modo
+    # fuerce el tipo) — aquí se finge para que el test siga sin red
+    async def falso_clasificar(brief):
+        return "idea", "cuento"
+    from pipeline import research
+    monkeypatch.setattr(research, "clasificar", falso_clasificar)
+    # modo idea → forzado "historia": sin research (sin red)
     p = Proyecto(id="m1b", creado="2026-09-03T00:00:00", brief="Semmelweis", modo="idea")
     asyncio.run(flow._preparar(p))
     assert len(p.personaje.opciones) == 2 and p.personaje.nombre == "semmelweis"
