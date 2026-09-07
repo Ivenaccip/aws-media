@@ -125,6 +125,12 @@ async def producir(p: Proyecto) -> None:
         with propagate_attributes(session_id=p.id, user_id=db.usuario_actual(),
                                   tags=["video-pipeline", "producir"], trace_name="pelicula"):
             await _producir(p)
+        # portada = un frame de la película, la miniatura de la obra en el hub
+        # (no fatal: sin portada la card cae al placeholder)
+        try:
+            await ffmpeg.portada(p.workdir / "pelicula.mp4", p.workdir / "portada.jpg")
+        except Exception as err:  # noqa: BLE001
+            log.warning("%s: portada no disponible: %s", p.id, err)
         _etapa(p, "puente")
         await _puente_editor(p)
         p.estado, p.etapa = "listo", None

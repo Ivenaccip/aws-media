@@ -573,65 +573,58 @@ Deploy: `tools/db_migrate.py` + imagen del CI + `cdk deploy aws-media-media
 aws-media-api`. Tests: 12 nuevos en tests/test_m12_hub.py (284 en total,
 verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 
-Hecho 2026-09-07 (M12, iteración de UI sobre el mismo PR #18): el cuadro del
-hub ES la entrada del flujo — si llegas a crear.html desde el hub
-(`?brief=`), las cards de brief/modos se pliegan a un resumen «💡 Tu idea ·
-modo X» con «✏️ Editar» (y la lista "Tus películas" no se repite); entrar
-por «Reels»/«Crear contenido» (sin query) muestra el formulario completo.
-El hub exige texto antes de navegar. Configuración compactada a una
-pantalla: Estilo visual (izquierda, con ejemplo en palabras del estilo
-elegido — campo `descripcion` en pipeline/styles.py, viaja por
-/api/estilos) + Referencia del personaje (derecha) y Duración abajo.
-De paso: elegir estilo ya no des-selecciona visualmente el chip del modo
-(el toggle barría todos los .chip de la página). Ejemplos con imagen real
-por estilo quedan para cuando haya assets (generarlos costaría dinero).
+### Refinando detalles
 
-Hecho 2026-09-07 (M12, mock v2 del formulario + fix 500 en producción):
-el usuario DESPLEGÓ M12 (el traceback de CloudWatch ya corre app.py con
-/api/slots). El 500 de admin/hub tenía DOS causas: (1) Aurora auto-pausada
-(mín 0 ACU) responde DatabaseUnavailableException con mensaje VACÍO y el
-retry de db.ejecutar solo filtraba "resum" → ahora filtra también por el
-nombre de la clase/"unavailable"; (2) la migración no se corrió — la
-columna `usuarios.slots` NO existe (verificado por Data API; a mí el
-clasificador me bloquea db_migrate: lo corre el usuario con los ARNs del
-stack aws-media-db). Formulario según el mock de Miro: card Estilo visual
-con chips VERTICALES en español (styles.py renombrado: Cinemático/Animado/
-Monocromático/Experimental/Artístico/Personalizado — el id no cambia) y
-muestra grande al lado que intenta `/estilos/<id>.jpg` (static/estilos/,
-vacío aún) con fallback al texto; card Personaje con la imagen subida en
-grande + campo «Información extra» cableado end-to-end:
-`Proyecto.personaje_extra` (Form en POST crear, tope 500 chars) →
-`flow._con_extra` lo anexa a la descripción del personaje en los dos
-caminos (referencia y desde-guion) → llega al guionista (quien) y a los
-prompts de opciones. 3 tests nuevos (287 verdes). Pendiente decisión de
-gasto: generar las 5 imágenes de ejemplo con nano banana ≈ $0.20 dólares
-en total.
+Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
+desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
-Hecho 2026-09-07 c (iteración sobre feedback, rama m12-admin-3-partes):
-(1) la vista de configuración de crear.html es ANCHA (main.wide) al venir
-del hub — «Editar la idea» vuelve a la columna; el costo va PRIMERO en el
-botón («10 créditos — escribir el guion →»; en dev local sin monedero
-sigue sin costo). (2) Cards del hub como OBRAS (mock 4): miniatura 16:10
-arriba (campo `miniatura` nuevo en GET /api/proyectos = la opción de
-personaje elegida o la primera; placeholder 🎬 si no hay), título +
-estado en el pie, y la ✕ arriba a la derecha = archivar (mismo confirm;
-oculta con tarea en curso). (3) admin.html en 3 partes: KPIs «1 ·
-Ingresos de créditos» (quemados × piso, calculado en el front), «2 ·
-Costos de usuario» (IA + infra AWS) y «3 · Flujo total» (ingresos −
-costos = el margen que ya calculaba el server — CERO cambio de backend en
-admin); la tabla agrupa columnas bajo Cuenta / Ingresos (con USD nuevo
-por usuario) / Costos / Flujo. 1 test nuevo (288 verdes).
-
-Hecho 2026-09-07 e (rama m12-admin-vistas — el feedback fue que los KPIs no
-bastaban): el admin ahora son 3 VISTAS con pestañas, cada una con sus KPIs y
-su propia tabla por usuario. «1 · Ingresos»: USD por créditos quemados,
-comprados, cortesía, saldo. «2 · Costos»: la IA (APIs/Langfuse) POR UN LADO
-y la infra AWS POR OTRO — el backend (admin_api.resumen) ahora desglosa
-costo_ia_usd/costo_aws_usd por el prefijo "infra-" del concepto, más
-ingresos_usd por usuario y en totales; aquí viven el sync y el drill-down
-por corrida. «3 · Flujo»: ingresos − costos, total y por usuario. El front
-es compatible si el server viejo no manda el desglose (?? fallbacks).
-1 test nuevo (289 verdes).
+- [x] **El cuadro del hub ES la entrada** (PR #19): crear.html con `?brief=`
+      pliega brief/modos a un resumen «💡 Tu idea · modo X» con «✏️ Editar»
+      y no repite "Tus películas"; sin query, formulario completo. El hub
+      exige texto antes de navegar. Campo `descripcion` por estilo en
+      pipeline/styles.py → /api/estilos → ejemplo bajo los chips. Fix: el
+      toggle de estilo barría todos los .chip y apagaba el del modo.
+      Tests: 285 verdes; smoke plegado/editar/prefill.
+- [x] **Mock v2 del formulario + fix del 500** (PR #20): retry de
+      db.ejecutar también con DatabaseUnavailableException (Aurora
+      despertando responde con mensaje VACÍO — filtrar por el nombre de la
+      clase); chips de estilo VERTICALES en español (Cinemático/Animado/
+      Monocromático/Experimental/Artístico/Personalizado, ids intactos) con
+      muestra grande de `/estilos/<id>.jpg` y fallback a texto; campo
+      «Información extra» end-to-end (`Proyecto.personaje_extra` → 
+      `flow._con_extra` → guionista y prompts de opciones, tope 500 chars).
+      HALLAZGO: el 500 de producción era Aurora pausada + la migración de
+      `slots` sin correr (el clasificador me bloquea db_migrate — la corre
+      el dueño con los ARNs del stack aws-media-db). 287 tests.
+- [x] **Config ancha + cards-obra + admin 3 partes** (PR #21): vista de
+      configuración a lo ancho (main.wide) con el costo PRIMERO en el botón;
+      cards del hub como obras (miniatura del personaje elegido vía campo
+      `miniatura` en GET /api/proyectos, título en pie, ✕ = archivar);
+      admin con 3 KPIs. 288 tests.
+- [x] **Imágenes de ejemplo de estilos** (PR #22): las 5 generadas con nano
+      banana en fal ($0.20 dólares, gasto confirmado) — la MISMA escena
+      (zorro camino a un faro al atardecer) en los 5 estilos; 1200px, ~1 MB
+      total en static/estilos/.
+- [x] **Admin en 3 VISTAS de verdad** (PR #23 — los 3 KPIs no bastaban):
+      pestañas «1 · Ingresos» (quemados × piso, comprados, cortesía),
+      «2 · Costos» con IA (Langfuse) SEPARADA de infra AWS (admin_api
+      desglosa costo_ia_usd/costo_aws_usd por el prefijo "infra-" +
+      ingresos_usd; el sync y el drill-down viven aquí) y «3 · Flujo»
+      (ingresos − costos). Front con fallbacks si el server viejo no manda
+      el desglose. 289 tests.
+- [x] **Portada real + Modificar + Crear imágenes** (rama
+      m12-portada-imagenes): `ffmpeg.portada` extrae un frame (t≈1 s,
+      640px) al terminar producir (no fatal) y `_miniatura` lo usa para
+      películas listas (onerror → placeholder en cards viejas); resultado
+      según el mock (← volver, video con poster, Descargar | Modificar —
+      `POST /reabrir` regresa listo→revision gratis, producir recobra);
+      sidebar: fuera el «Crear contenido» duplicado, «Reels» se llama
+      «Crear contenido», y «Crear imágenes» ACTIVO → crear-imagenes.html
+      (estilo a la izquierda + prompt libre a la derecha) sobre
+      `POST /api/imagenes` (cobra la tarifa `imagen` de tarifas.json,
+      nano banana, guarda en `_imagenes/` local o `imagenes/{user}/` en
+      S3, sirve por `GET /api/imagenes/{nombre}` con redirect al CDN;
+      devuelve créditos si falla). Tests: 5 nuevos (293 verdes).
 
 ---
 

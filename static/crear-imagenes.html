@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Estudio de video · Crear imágenes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0f0f14; --card:#1a1a22; --line:#2a2a36; --txt:#ececf1; --mut:#8b8b9a; --acc:#c93fb6; --acc2:#7b3fe4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  main { max-width:1180px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  h2 { font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
+  textarea { width:100%; min-height:150px; resize:vertical; background:#111118; color:var(--txt);
+             border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  input[type=text] { width:100%; background:#111118; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  .chip { border:1px solid var(--line); border-radius:10px; padding:7px 14px; cursor:pointer;
+          color:var(--mut); background:transparent; font:inherit; text-align:left; white-space:nowrap; }
+  .chip.on { border-color:var(--acc); color:var(--txt); background:#2a1530; }
+  .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#fff; font:inherit;
+         font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:14px; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .mut { color:var(--mut); font-size:13px; }
+  .err { color:#ff7b7b; white-space:pre-wrap; }
+  .hidden { display:none; }
+  a { color:#d98be0; }
+  .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:stretch; }
+  .cols2 .card { margin-bottom:0; display:flex; flex-direction:column; }
+  .estilo-flex { display:flex; gap:12px; flex:1; }
+  .chips-v { display:flex; flex-direction:column; gap:8px; }
+  .muestra { flex:1; min-height:260px; border:1px solid var(--line); border-radius:12px;
+             display:grid; place-items:center; padding:14px; position:relative; overflow:hidden; }
+  .muestra img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .muestra p { margin:0; text-align:center; }
+  #resultado img { width:100%; border-radius:12px; border:1px solid var(--line); }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  @media (max-width: 860px) {
+    .cols2 { grid-template-columns:1fr; }
+    .estilo-flex { flex-direction:column; }
+    .chips-v { flex-direction:row; flex-wrap:wrap; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p style="margin:0 0 12px"><a href="/" style="text-decoration:none">← Volver al inicio</a></p>
+  <h1>🎨 Crear imágenes</h1>
+  <p class="mut" style="margin:0 0 18px">Elige un estilo, cuéntanos qué quieres ver, y te damos la imagen.</p>
+
+  <div class="cols2">
+    <div class="card">
+      <h2>✨ Estilo visual</h2>
+      <div class="estilo-flex">
+        <div class="chips-v" id="estilos"></div>
+        <div class="muestra">
+          <img id="muestra-img" alt="Ejemplo del estilo elegido" hidden>
+          <p class="mut" id="estilo_ej"></p>
+        </div>
+      </div>
+      <input type="text" id="estilo_custom" class="hidden" style="margin-top:10px"
+             placeholder="Describe el estilo (en inglés funciona mejor)">
+    </div>
+    <div class="card">
+      <h2>🖼 ¿Qué imagen quieres?</h2>
+      <textarea id="prompt" maxlength="2000"
+        placeholder="Escribe lo que quieras ver — p. ej. «un mercado flotante al amanecer, con lanchas llenas de frutas»."></textarea>
+      <button class="btn" id="generar">Crear la imagen →</button>
+      <p class="mut" id="saldoform"></p>
+      <div class="err" id="gerr"></div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="resultado" style="margin-top:14px">
+    <h2>✅ Tu imagen</h2>
+    <img id="img-final" alt="Imagen generada">
+    <a class="btn" id="descargar" download="imagen.jpg" style="text-align:center;text-decoration:none">⬇ Descargar</a>
+  </div>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
+let estilo = 'animated';
+
+// misma muestra que crear.html: imagen guardada del estilo, o el texto
+const DESCR_ESTILO = {};
+function pintaEjemplo() {
+  const img = $('#muestra-img');
+  $('#estilo_ej').textContent = DESCR_ESTILO[estilo] || '';
+  img.hidden = true;
+  if (estilo === 'custom') { img.removeAttribute('src'); return; }
+  img.onload = () => { img.hidden = false; };
+  img.onerror = () => { img.hidden = true; };
+  img.src = `/estilos/${estilo}.jpg`;
+}
+fetch('/api/estilos').then(r => r.json()).then(list => {
+  list.forEach(e => DESCR_ESTILO[e.id] = e.descripcion || '');
+  $('#estilos').innerHTML = list.map(e => `<button class="chip ${e.id===estilo?'on':''}" data-id="${e.id}">${e.nombre}</button>`).join('');
+  pintaEjemplo();
+  $('#estilos').onclick = ev => {
+    const b = ev.target.closest('.chip'); if (!b) return;
+    estilo = b.dataset.id;
+    $('#estilos').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c===b));
+    $('#estilo_custom').classList.toggle('hidden', estilo!=='custom');
+    pintaEjemplo();
+  };
+});
+
+// costo visible ANTES de gastar, como en todo el producto
+const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+document.addEventListener('monedero', e => {
+  const mon = e.detail;
+  if (!mon.activo || mon.tarifas.imagen == null) return;
+  $('#generar').textContent = `${mon.tarifas.imagen} créditos — crear la imagen →`;
+  const falta = mon.tarifas.imagen - mon.saldo;
+  $('#generar').disabled = falta > 0;
+  $('#saldoform').textContent = falta > 0
+    ? `Te faltan ${falta} créditos (saldo: ${mon.saldo}). ${CTA}` : '';
+});
+
+$('#generar').onclick = async () => {
+  $('#gerr').textContent = '';
+  const prompt = $('#prompt').value.trim();
+  if (!prompt) { $('#gerr').textContent = 'Escribe qué imagen quieres.'; $('#prompt').focus(); return; }
+  $('#generar').disabled = true;
+  const antes = $('#generar').textContent;
+  $('#generar').textContent = '⏳ Creando la imagen (~20 s)…';
+  try {
+    const r = await fetch('/api/imagenes', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prompt, estilo, estilo_custom: $('#estilo_custom').value})});
+    if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
+    if (!r.ok) throw new Error(await errTxt(r));
+    const d = await r.json();
+    $('#img-final').src = d.url;
+    $('#descargar').href = d.url;
+    $('#resultado').classList.remove('hidden');
+    window.monedero?.refrescar();
+    $('#resultado').scrollIntoView({behavior:'smooth'});
+  } catch (e) { $('#gerr').textContent = e.message; }
+  $('#generar').disabled = false;
+  $('#generar').textContent = antes;
+};
+</script>
+</body>
+</html>

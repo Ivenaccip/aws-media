@@ -197,16 +197,21 @@
     </div>
   </section>
 
-  <!-- 4. Resultado -->
+  <!-- 4. Resultado (mock: ← volver, frame grande, Descargar | Modificar) -->
   <section id="resultado" class="hidden">
+    <p style="margin:0 0 12px"><a href="/" style="text-decoration:none;font-size:15px">← Volver al inicio</a></p>
     <div class="card">
       <h2>✅ Película lista</h2>
       <video id="video" controls></video>
       <p id="rmsg" style="white-space:pre-wrap"></p>
       <p id="rlink"></p>
     </div>
-    <a class="btn sec" id="descargar" download="pelicula.mp4">⬇ Descargar MP4</a>
-    <button class="btn sec" onclick="location.href='/crear.html'">Nueva película</button>
+    <div style="display:flex;gap:12px">
+      <a class="btn sec" id="descargar" download="pelicula.mp4" style="flex:1;margin-top:18px">⬇ Descargar</a>
+      <button class="btn sec" id="modificar" style="flex:1"
+        title="Vuelve a revisión para ajustar guion, voz o personaje (producir de nuevo cobra como siempre)">✏️ Modificar</button>
+    </div>
+    <div class="err" id="modif-err"></div>
   </section>
 
   <section id="error" class="hidden">
@@ -386,6 +391,8 @@ function render(p) {
   else if (p.estado==='listo') {
     show('resultado');
     $('#video').src = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
+    // el frame de portada como poster: se VE la película antes de dar play
+    $('#video').poster = `/api/proyectos/${p.id}/archivo/portada.jpg`;
     $('#descargar').href = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
     $('#rmsg').textContent = p.resultado?.mensaje || '';
     $('#rlink').innerHTML = p.resultado?.link ? `<a href="${p.resultado.link}" target="_blank">Abrir en Drive</a>` : '';
@@ -599,6 +606,19 @@ $('#producir').onclick = async () => {
   $('#producir').disabled = false; pintaProducir();
 };
 
+// mock del resultado: «Modificar» reabre la película lista a revisión (gratis;
+// producir de nuevo cobra y el botón lo avisa como siempre)
+$('#modificar').onclick = async () => {
+  $('#modif-err').textContent = '';
+  $('#modificar').disabled = true;
+  const r = await fetch(`/api/proyectos/${proyecto.id}/reabrir`, {method: 'POST'});
+  $('#modificar').disabled = false;
+  if (!r.ok) { $('#modif-err').textContent = await errTxt(r); return; }
+  proyecto = await r.json();
+  revisionPintada = false;
+  seguir();
+};
+
 $('#reintentar').onclick = async () => {
   $('#reintentar').disabled = true;
   const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
@@ -643,7 +663,7 @@ else {
   if (briefQ) {
     // La idea ya se escribió en el hub: la parte inicial se pliega a un resumen
     // editable y la lista de películas no se repite (el hub ya la mostró).
-    // Entrar por «Reels» (sin query) sigue mostrando el formulario completo.
+    // Entrar por «Crear contenido» (sin query) muestra el formulario completo.
     // La vista de configuración es ANCHA, como el mock (main.wide = 1180px).
     document.querySelector('main').classList.add('wide');
     const NOMBRE_MODO = {auto:'Detectar solo', investigacion:'Investigación', idea:'Tengo una idea'};

@@ -203,3 +203,58 @@ def test_listado_trae_miniatura(cliente, monkeypatch, tmp_path):
     p.personaje.elegida = None
     p.guardar()
     assert cliente.get("/api/proyectos").json()[0]["miniatura"] == "personaje/opcion_0.jpg"
+
+
+# ---------------------------------------------------------------------------
+# Refinando detalles (2026-09-07): portada, reabrir y crear imágenes
+
+def test_miniatura_de_pelicula_lista_es_la_portada(cliente, monkeypatch, tmp_path):
+    monkeypatch.setattr(project, "settings", SimpleNamespace(work_dir=tmp_path))
+    _p("m12p", estado="listo").guardar()
+    assert cliente.get("/api/proyectos").json()[0]["miniatura"] == "portada.jpg"
+
+
+def test_reabrir_vuelve_a_revision(cliente, monkeypatch, tmp_path):
+    monkeypatch.setattr(project, "settings", SimpleNamespace(work_dir=tmp_path))
+    _p("m12r", estado="listo").guardar()
+    r = cliente.post("/api/proyectos/m12r/reabrir")
+    assert r.status_code == 200 and r.json()["estado"] == "revision"
+    # ya en revisión, reabrir de nuevo no aplica
+    assert cliente.post("/api/proyectos/m12r/reabrir").status_code == 409
+
+
+def test_crear_imagen_genera_y_sirve(cliente, srv, monkeypatch, tmp_path):
+    from pipeline import media_fal
+
+    async def fake_nano(prompt, destino, **kw):
+        assert "un dragón" in prompt and "No text" in prompt
+        destino.write_bytes(b"jpg-falso")
+        return "https://fal/x.jpg"
+
+    monkeypatch.setattr(media_fal, "imagen_nano", fake_nano)
+    monkeypatch.setattr(srv, "_dir_imagenes", lambda: tmp_path / "_imagenes")
+    r = cliente.post("/api/imagenes", json={"prompt": "un dragón", "estilo": "cinematic"})
+    assert r.status_code == 200
+    url = r.json()["url"]
+    assert url.startswith("/api/imagenes/")
+    r2 = cliente.get(url)
+    assert r2.status_code == 200 and r2.content == b"jpg-falso"
+
+
+def test_crear_imagen_valida_y_devuelve_en_fallo(cliente, srv, monkeypatch, tmp_path):
+    from pipeline import creditos, media_fal
+    assert cliente.post("/api/imagenes", json={"prompt": "  "}).status_code == 422
+
+    async def nano_roto(prompt, destino, **kw):
+        raise RuntimeError("fal caído")
+
+    movimientos = []
+    monkeypatch.setattr(media_fal, "imagen_nano", nano_roto)
+    monkeypatch.setattr(srv, "_dir_imagenes", lambda: tmp_path / "_imagenes")
+    monkeypatch.setattr(creditos, "activo", lambda: True)
+    monkeypatch.setattr(creditos, "costo_imagen", lambda: 2)
+    monkeypatch.setattr(creditos, "cobrar", lambda c, ref: movimientos.append(("cobro", c, ref)))
+    monkeypatch.setattr(creditos, "devolver", lambda c, ref: movimientos.append(("devolucion", c, ref)))
+    r = cliente.post("/api/imagenes", json={"prompt": "un dragón"})
+    assert r.status_code == 502
+    assert movimientos == [("cobro", 2, "imagen:estudio"), ("devolucion", 2, "imagen:estudio")]
