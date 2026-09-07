@@ -116,9 +116,73 @@ def estilos():
             "descripcion": "Descríbelo tú con tus palabras (en inglés funciona mejor)."}]
 
 
+# --- M12: crear imágenes sueltas (sidebar «Crear imágenes») -----------------
+# Mismo selector de estilo que crear + un prompt libre. Cobra la tarifa de
+# imagen (la misma del cambio de personaje) y guarda bajo _imagenes/ del
+# usuario (S3 en la nube, work_dir local en dev).
+
+def _dir_imagenes() -> Path:
+    return Path(settings.work_dir) / "_imagenes"
+
+
+class PedidoImagen(BaseModel):
+    prompt: str
+    estilo: str = "animated"
+    estilo_custom: str = ""
+
+
+@app.post("/api/imagenes")
+async def crear_imagen(body: PedidoImagen):
+    from uuid import uuid4
+    from pipeline import media_fal
+    prompt = body.prompt.strip()[:2000]
+    if not prompt:
+        raise HTTPException(422, "Escribe qué imagen quieres")
+    estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo == "custom"
+                             else "animated", body.estilo_custom or None)
+    costo = creditos.costo_imagen()
+    if creditos.activo():
+        try:
+            creditos.cobrar(costo, "imagen:estudio")
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    nombre = f"{uuid4().hex[:12]}.jpg"
+    destino = _dir_imagenes() / nombre
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        await media_fal.imagen_nano(f"{prompt}. {estilo.prompt}. No text, no watermark.",
+                                    destino, meta={"imagen_estudio": nombre})
+        if jobs.backend() == "aws":
+            media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
+    except HTTPException:
+        raise
+    except Exception as err:  # noqa: BLE001
+        if creditos.activo():
+            creditos.devolver(costo, "imagen:estudio")
+        raise HTTPException(502, f"No se pudo generar la imagen: {str(err)[:200]}")
+    return {"nombre": nombre, "url": f"/api/imagenes/{nombre}"}
+
+
+@app.get("/api/imagenes/{nombre}")
+def ver_imagen(nombre: str):
+    if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
+        raise HTTPException(404, "Imagen no encontrada")
+    f = _dir_imagenes() / nombre
+    if f.is_file():
+        return FileResponse(f)
+    cdn = os.getenv("CDN_BASE", "").rstrip("/")
+    if cdn:
+        return RedirectResponse(f"{cdn}/imagenes/{db.usuario_actual()}/{nombre}")
+    raise HTTPException(404, "Imagen no encontrada")
+
+
 def _miniatura(p) -> str | None:
     """Ruta relativa (para /archivo/) de la imagen que representa la obra:
+    película lista → el frame de portada (lo extrae producir; si el proyecto
+    es viejo y no lo tiene, la card cae al placeholder con onerror); si no,
     la opción de personaje elegida, o la primera si aún no eligió."""
+    if p.estado == "listo":
+        return "portada.jpg"
     ops = p.personaje.opciones
     if not ops:
         return None
@@ -151,6 +215,19 @@ def _activos() -> int:
 @app.get("/api/slots")
 def slots():
     return {"slots": _slots(), "activos": _activos()}
+
+
+@app.post("/api/proyectos/{id_}/reabrir")
+def reabrir(id_: str):
+    """El botón «Modificar» del resultado: la película lista vuelve a revisión
+    para ajustar guion, voz o personaje. Reabrir es gratis; producir de nuevo
+    cobra como siempre (el botón lo avisa antes)."""
+    p = _proyecto(id_)
+    if p.estado != "listo":
+        raise HTTPException(409, "Solo una película lista se puede modificar")
+    p.estado = "revision"
+    p.guardar()
+    return p
 
 
 @app.post("/api/proyectos/{id_}/archivar")

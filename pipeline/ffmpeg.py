@@ -44,6 +44,12 @@ async def ultimo_frame(video: Path, destino: Path) -> None:
                   contexto=f"extraer último frame de {video.name}")
 
 
+async def portada(video: Path, destino: Path, t: float = 1.0) -> None:
+    """Un frame representativo (t≈1 s, 640px) — la miniatura de la obra en el hub."""
+    await _run_ok("-ss", str(t), "-i", str(video), "-frames:v", "1", "-q:v", "3",
+                  "-vf", "scale=640:-2", str(destino), contexto=f"portada de {video.name}")
+
+
 async def descargar_imagen(url: str, destino: Path) -> None:
     """Imagen por HTTP a disco usando ffmpeg (sin curl)."""
     await _run_ok("-i", url, "-frames:v", "1", "-q:v", "2", str(destino),

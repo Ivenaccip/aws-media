@@ -94,11 +94,10 @@
   <aside>
     <h1>🎬 Estudio de video</h1>
     <nav aria-label="Secciones">
-      <a href="/crear.html"><b>Reels</b><small>Crea un video desde una idea, narrado con IA.</small></a>
+      <a href="/crear.html"><b>Crear contenido</b><small>Crea un video desde una idea, narrado con IA.</small></a>
       <a href="/e1.html"><b>Shorts</b><small>Saca los mejores momentos de tu video.</small></a>
       <div class="prox"><b>Investiga tu competencia</b><small>Qué está funcionando en tu rubro</small></div>
-      <a href="/crear.html"><b>Crear contenido</b><small>Tu película narrada desde cero.</small></a>
-      <div class="prox"><b>Crear imágenes</b><small>Portadas y miniaturas</small></div>
+      <a href="/crear-imagenes.html"><b>Crear imágenes</b><small>Una imagen en el estilo que elijas.</small></a>
       <div class="prox"><b>Ver mis métricas</b><small>Cómo rinden tus publicaciones</small></div>
     </nav>
   </aside>
@@ -146,7 +145,7 @@ const fecha = c => { const d = new Date(c); return isNaN(d) ? '' : ' · ' + d.to
 function irACrear(modo) {
   const texto = $('#idea').value.trim();
   if (!texto) {
-    $('#perr').textContent = 'Cuéntanos tu idea primero — o entra por «Reels» en el menú para ver el formulario completo.';
+    $('#perr').textContent = 'Cuéntanos tu idea primero — o entra por «Crear contenido» en el menú para ver el formulario completo.';
     $('#idea').focus();
     return;
   }
@@ -196,6 +195,13 @@ function render(ps) {
   if (slots == null || activos.length < slots)
     cards.push('<div class="proy vacio" id="nuevo" role="button" tabindex="0">＋ Nueva película</div>');
   $('#grid').innerHTML = cards.join('');
+
+  // portada rota (proyecto viejo sin portada.jpg) → placeholder, sin ícono roto
+  document.querySelectorAll('img.thumb').forEach(im => im.onerror = () => {
+    const d = document.createElement('div');
+    d.className = 'thumb vacia'; d.textContent = '🎬';
+    im.replaceWith(d);
+  });
 
   const nuevo = $('#nuevo');
   if (nuevo) nuevo.onclick = () => { $('#idea').focus(); scrollTo({top: 0, behavior: 'smooth'}); };
