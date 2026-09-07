@@ -642,6 +642,22 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       con botón «+» — el futuro punto para conectar las credenciales de
       Blotato del usuario (por diseñar; hoy avisa «muy pronto») — con
       Investiga tu competencia y Ver mis métricas (próximamente) debajo.
+- [x] **Guardrails del brief + migración de slots corrida** (rama
+      m13-guardrails): `pipeline/moderacion.py` (`revisar` → chat_json con
+      prompts/moderar_system.md; falla ABIERTO si el LLM no responde) +
+      `POST /api/moderar` gratis; static/guardrail.js muestra el popup
+      «🛑 Revisa tu texto» con el motivo del LLM y NO manda la petición
+      que cobra — cableado en crear.html (brief + Información extra, se
+      salta al reintentar con `forzar`) y crear-imagenes.html (prompt).
+      La migración de `usuarios.slots` YA corrió contra Aurora (esta vez
+      el comando pasó desde el chat): `/api/slots` deja de dar 500.
+      HALLAZGO del pago sin abonar: el webhook de Stripe NUNCA llegó al
+      API (cero requests en CloudWatch) — el pago fue en modo TEST y el
+      endpoint de webhook de test no existe o apunta mal; se configura en
+      el dashboard de Stripe (Developers → Webhooks, modo test, evento
+      checkout.session.completed → /api/pagos/stripe). Tests: 5 nuevos
+      (299 verdes); smoke real del filtro en local (bloquea gore, permite
+      texto sano).
 
 ---
 

@@ -79,6 +79,7 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
@@ -125,6 +126,7 @@ $('#generar').onclick = async () => {
   const prompt = $('#prompt').value.trim();
   if (!prompt) { $('#gerr').textContent = 'Escribe qué imagen quieres.'; $('#prompt').focus(); return; }
   $('#generar').disabled = true;
+  if (!await guardrail(prompt)) { $('#generar').disabled = false; return; }   // M13
   const antes = $('#generar').textContent;
   $('#generar').textContent = '⏳ Creando la imagen (~20 s)…';
   try {
