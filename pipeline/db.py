@@ -253,7 +253,8 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
 
 # Campos del doc que los jobs actualizan con jsonb_set (lista cerrada: la ruta
 # va interpolada en el SQL, así que jamás sale de aquí)
-_CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}"}
+_CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
+                  "editar": "{editar}", "flags": "{flags}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:

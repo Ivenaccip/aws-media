@@ -15,6 +15,10 @@
     "render_por_short": 2,
     "nota": "M8 (flujo web). Transcripción solo si el proyecto no trae canónico (AssemblyAI $0.21 dólares/hora en pricing.json → 2 cr/5 min lo cubre con margen); análisis = la puntuación LLM de candidatos (~$0.02 dólares); render = Remotion+export en Fargate por short. Los gen-* ya traen canónico: su transcripción es 0."
   },
+  "editar": {
+    "sugerencias": 2,
+    "nota": "M14 (Editar en la web): la corrida que propone el corte (LLM sobre el transcript, ~$0.02 dólares). Si el metraje no trae canónico se suma la transcripción con la MISMA tarifa de shorts.transcripcion_por_5min (mismo vendor AssemblyAI). Editar en el editor visual, guardar versiones y aceptar/rechazar sugerencias = 0 créditos; el render del corte usa la infra propia (línea infra-render de M6.1)."
+  },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [
     { "creditos": 100, "usd": 1.99 },

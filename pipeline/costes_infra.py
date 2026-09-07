@@ -40,7 +40,7 @@ except (FileNotFoundError, KeyError):
 
 # Qué ejecutor hay detrás de cada concepto (los escriben los workers): con esto
 # el dashboard convierte el costo de vuelta a segundos de cómputo.
-CONCEPTOS_FARGATE = {"infra-producir", "infra-render", "infra-shorts"}
+CONCEPTOS_FARGATE = {"infra-producir", "infra-render", "infra-shorts", "infra-editar"}
 CONCEPTOS_LAMBDA = {"infra-preparar", "infra-shorts-analizar"}
 
 

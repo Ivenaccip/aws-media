@@ -59,13 +59,17 @@ async def _preparar(p: Proyecto) -> None:
 
     _etapa(p, "clasificar")
     desc = None
-    # F3.3: el modo explícito de la UI manda; "auto" conserva el clasificador
+    # F3.3: el modo explícito de la UI manda sobre el TIPO; el clasificador
+    # corre siempre porque además elige el FORMATO del guion (balanceador
+    # 2026-09-07: lista/cuento/explicador según lo que pidió el brief)
     forzado = {"investigacion": "idea", "idea": "historia"}.get(p.modo)
-    tipo, desc = await asyncio.gather(
-        asyncio.sleep(0, result=forzado) if forzado else research.clasificar(p.brief),
+    (tipo_llm, formato), desc = await asyncio.gather(
+        research.clasificar(p.brief),
         character.describir_referencia(Path(p.referencias[0].path)) if p.referencias else asyncio.sleep(0),
     )
+    tipo = forzado or tipo_llm
     p.tipo_brief = tipo
+    p.progreso["formato"] = formato
     desc = _con_extra(p, desc)
     if desc:
         p.personaje.nombre, p.personaje.descripcion = desc.nombre, desc.descripcion
@@ -82,10 +86,10 @@ async def _preparar(p: Proyecto) -> None:
             # M11: UNA narración corrida — sin escenas ni editor de continuidad
             # (la continuidad la da el propio texto corrido)
             p.narracion = await writer.escribir_narracion(
-                material, tipo, estilo.nombre, p.duracion_s, quien)
+                material, tipo, estilo.nombre, p.duracion_s, quien, formato)
         else:
             p.guion = await writer.escribir_guion(
-                material, tipo, estilo.nombre, p.duracion_s, quien)
+                material, tipo, estilo.nombre, p.duracion_s, quien, formato)
             p.guion_original = list(p.guion)
             _etapa(p, "editor")
             p.guion = await editor.editar_continuidad(p.guion, p.duracion_s)

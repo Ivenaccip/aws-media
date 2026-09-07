@@ -62,79 +62,105 @@
     <p id="sub-estado" class="nota" role="status" aria-live="polite"></p>
     <video id="sub-player" controls hidden style="width:100%; margin-top:12px; border-radius:9px; background:#000"></video>
   </section>
-  <div class="cols">
-    <section>
-      <h2>Reel para redes</h2>
-      <p class="desc">Corte del metraje en el editor: quitar relleno, apretar ritmo, subtítulos.</p>
-      <ul id="lista-reel"><li class="vacio">Cargando proyectos…</li></ul>
-      <p class="nota">¿Proyecto nuevo con metraje propio? Corre <code>/empezar</code> en Claude Code
-      y aparecerá aquí cuando tenga su corte.</p>
-    </section>
-    <section>
-      <h2>Shorts</h2>
-      <p class="desc">Clips verticales 9:16 con captions animados a partir de un video largo.</p>
-      <ul id="lista-shorts"><li class="vacio">Cargando proyectos…</li></ul>
-      <p class="nota">El flujo de shorts corre con <code>/shorts</code> en Claude Code sobre el
-      transcript del proyecto (aprobación clip por clip).</p>
-    </section>
-  </div>
+  <!-- M14: la corrida de sugerencias — la IA propone el corte y tú apruebas
+       cada sugerencia en el editor, como era el flujo local de /clean-cut -->
+  <section id="corte" hidden>
+    <h2>✂️ Corte con IA <span id="corte-proy" style="color:#9a978f;font-weight:400"></span></h2>
+    <p class="desc">La IA revisa tu metraje y propone el corte: muletillas, retakes, aire muerto y
+      relleno sugerido. Nada se aplica solo — tú aceptas o rechazas cada sugerencia en el editor.</p>
+    <p id="corte-estado" class="nota" role="status" aria-live="polite"></p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
+      <button id="corte-btn" hidden style="padding:10px 18px; border-radius:9px; border:0;
+        background:#5b8dd6; color:#fff; font-size:14px; cursor:pointer"></button>
+      <a id="corte-editor" hidden style="padding:10px 18px; border-radius:9px; background:#1c3a2a;
+        color:#7fd6a3; font-size:14px; text-decoration:none">Abrir editor →</a>
+      <a id="corte-shorts" hidden style="padding:10px 18px; border-radius:9px; background:#23262d;
+        border:1px solid #2c3038; color:#e8e6e0; font-size:14px; text-decoration:none">Sacar shorts</a>
+    </div>
+  </section>
 </main>
 <script src="/auth.js"></script>
 <script>
-// M3: filas no accionables como <div> (no parecen enlaces muertos) y un solo
-// estado de error para ambas columnas, con botón Reintentar.
-async function cargar() {
-  const reel = document.getElementById("lista-reel");
-  const shorts = document.getElementById("lista-shorts");
-  reel.innerHTML = shorts.innerHTML = '<li class="vacio">Cargando proyectos…</li>';
-  let ps = [];
+// M14: e1 = subir metraje + pedir la corrida de sugerencias. Las listas de
+// proyectos viven en «Mis ediciones» del inicio; esta página trabaja UN
+// proyecto (?p=nombre, o el que se acaba de subir).
+const P = new URLSearchParams(location.search).get("p") || "";
+let proyectoCorte = P;
+let pollTimer = null;
+
+function ui(id) { return document.getElementById(id); }
+
+async function initCorte() {
+  if (!proyectoCorte) return;
+  ui("corte").hidden = false;
+  ui("corte-proy").textContent = "· " + proyectoCorte;
+  ui("corte-btn").hidden = true;
+  ui("corte-editor").hidden = true;
+  ui("corte-shorts").hidden = true;
+  let st;
   try {
-    const r = await fetch("/api/edicion/proyectos");
-    if (!r.ok) throw new Error(r.status);
-    ps = await r.json();
-  } catch {
-    const err = '<li class="vacio">No pudimos cargar los proyectos — revisa tu conexión.<br>' +
-      '<button class="reintentar" onclick="cargar()">Reintentar</button></li>';
-    reel.innerHTML = shorts.innerHTML = err;
+    const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}`);
+    if (r.status === 503) {
+      ui("corte-estado").textContent = "En esta instalación local el corte se hace con /clean-cut desde Claude Code.";
+      return;
+    }
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    st = await r.json();
+  } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; return; }
+
+  ui("corte-shorts").href = "/shorts.html?p=" + encodeURIComponent(proyectoCorte);
+  const ed = st.editar || {};
+  if (ed.estado === "corriendo") {
+    ui("corte-estado").textContent = "⏳ La IA está revisando tu metraje (transcribir + proponer el corte, unos minutos)…";
+    pollTimer = setTimeout(initCorte, 10000);
     return;
   }
-  const conCanonico = ps.filter(p => p.canonico);
-  const fila = (p, href) => {
-    // proyecto solo-nube (C3): la subida se ve servida por CloudFront
-    if (!href && p.subidas && p.subidas.length)
-      return `<li><a href="${p.subidas[p.subidas.length - 1].cdn}" target="_blank">` +
-        `<span class="nombre">${p.nombre}</span>` +
-        `<span><span class="tag ok">ver subida</span></span></a></li>`;
-    if (!href)
-      return `<li><div class="fila"><span class="nombre">${p.nombre}</span>` +
-        `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
-        `<span class="tag">sin corte aún</span></span></div></li>`;
-    return `<li><a href="${href}">` +
-      `<span class="nombre">${p.nombre}</span>` +
-      `<span>${p.generado ? '<span class="tag gen">generado</span> ' : ""}` +
-      `<span class="tag ok">abrir editor</span></span></a></li>`;
-  };
-  reel.innerHTML = ps.length
-    ? ps.map(p => fila(p, p.editor_listo ? `/editor/${p.nombre}/` : null)).join("")
-    : '<li class="vacio">Sin proyectos todavía.</li>';
-  // M8: con metraje (subida o película generada) el flujo web ya corre solo;
-  // el resto conserva la ruta de Claude Code
-  const conMetraje = ps.filter(p => (p.subidas && p.subidas.length) || p.generado);
-  const soloLocal = conCanonico.filter(p => !conMetraje.includes(p));
-  shorts.innerHTML = (conMetraje.map(p => `<li><a href="/shorts.html?p=${encodeURIComponent(p.nombre)}">` +
-      `<span class="nombre">${p.nombre}</span>` +
-      `<span><span class="tag ok">sacar shorts</span></span></a></li>`).join("") +
-    soloLocal.map(p => `<li><div class="fila"><span class="nombre">${p.nombre}</span>` +
-      `<span><span class="tag">se edita desde Claude Code</span>` +
-      `<button class="copiar" onclick="copiarComando(this)">Copiar /shorts</button></span></div></li>`).join(""))
-    || '<li class="vacio">Ningún proyecto con metraje todavía.</li>';
+  if (st.editor_listo) {
+    const resumen = ed.estado === "listo"
+      ? ` La corrida propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas.`
+      : "";
+    ui("corte-estado").textContent = "✂️ Corte propuesto." + resumen + " Acepta o rechaza cada sugerencia en el editor.";
+    ui("corte-editor").href = `/editor/${encodeURIComponent(proyectoCorte)}/`;
+    ui("corte-editor").hidden = false;
+    ui("corte-shorts").hidden = false;
+    return;
+  }
+  if (ed.estado === "error") {
+    ui("corte-estado").textContent = "❌ La corrida falló y tus créditos se devolvieron: " +
+      (ed.error || "") + " — puedes intentarlo de nuevo.";
+  }
+  if (!st.fuente) {
+    ui("corte-estado").textContent = ui("corte-estado").textContent ||
+      "Sube tu metraje arriba y aquí pedimos el corte.";
+    return;
+  }
+  // costo ANTES del botón (regla dura: nube sin preview = bug)
+  try {
+    const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/costo`);
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    const c = await r.json();
+    if (!c.backend_listo) { ui("corte-estado").textContent = c.aviso; return; }
+    ui("corte-btn").textContent = `${c.creditos} créditos — que la IA proponga el corte →`;
+    ui("corte-btn").hidden = false;
+    if (!ed.estado) ui("corte-estado").textContent =
+      `Metraje de ${(c.duracion_s / 60).toFixed(1)} min` +
+      (c.con_transcript ? " (ya trae transcript)." : " (incluye la transcripción).");
+    ui("corte-shorts").hidden = false;
+  } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; }
 }
-async function copiarComando(btn) {
-  try { await navigator.clipboard.writeText("/shorts"); btn.textContent = "Copiado ✓"; }
-  catch { btn.textContent = "/shorts"; }
-  setTimeout(() => { btn.textContent = "Copiar /shorts"; }, 1500);
-}
-cargar();
+
+document.addEventListener("click", async ev => {
+  if (ev.target.id !== "corte-btn") return;
+  ev.target.disabled = true;
+  try {
+    const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/sugerir`, {method: "POST"});
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    window.monedero?.refrescar();
+    initCorte();
+  } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; }
+  ev.target.disabled = false;
+});
+initCorte();
 
 // --- Subida prefirmada a S3 (C3) — solo se muestra si el servicio la ofrece
 async function initSubir() {
@@ -144,6 +170,7 @@ async function initSubir() {
   } catch { return; }
   document.getElementById("subir").hidden = false;
   document.getElementById("sub-btn").onclick = subir;
+  if (P) document.getElementById("sub-proyecto").value = P;
 }
 // M5: XHR en vez de fetch para tener progreso real (%, MB) y poder cancelar;
 // beforeunload avisa si se cierra la pestaña con la subida a medias.
@@ -200,7 +227,11 @@ async function subir() {
     estado.textContent = `Listo: ${sub.archivo} ya está en tu proyecto ${proyecto}.`;
     const player = document.getElementById("sub-player");
     player.src = sub.cdn; player.hidden = false;
-    cargar();
+    // M14: el metraje recién subido pasa directo a la sección de corte
+    proyectoCorte = proyecto;
+    history.replaceState(null, "", "?p=" + encodeURIComponent(proyecto));
+    clearTimeout(pollTimer);
+    initCorte();
   } catch (e) { estado.textContent = "Error: " + e.message; }
   finally { xhrSubida = null; subidaUI(false); }
 }
