@@ -28,6 +28,7 @@ from pipeline import creditos, db, jobs, media_sync
 from server import auth
 from server.admin_api import router as admin_router
 from server.broll_api import router as broll_router
+from server.editar_api import router as editar_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
 from server.media_api import router as media_router
@@ -49,6 +50,7 @@ app.include_router(media_router)
 app.include_router(pagos_router)
 app.include_router(admin_router)
 app.include_router(shorts_router)
+app.include_router(editar_router)
 
 
 # Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto
@@ -92,6 +94,8 @@ def proyectos_edicion():
                         # M7: con cuts.json en S3 el editor en nube ya abre (el
                         # puente genera proxy+manifest junto con los cortes)
                         "editor_listo": flags.get("cuts", False),
+                        # M14: estado de la corrida de sugerencias (poll de e1)
+                        "editar": fila["doc"].get("editar"),
                         "subidas": fila["doc"].get("subidas", [])})
     return out
 

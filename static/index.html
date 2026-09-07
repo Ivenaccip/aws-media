@@ -39,12 +39,17 @@
   .prompt h2 { font-size: 20px; font-weight: 600; margin-bottom: 10px; }
   .prompt textarea { width: 100%; min-height: 88px; resize: vertical; border: 0;
     background: transparent; color: var(--txt); font: inherit; outline: none; }
-  .prompt .acciones { display: flex; gap: 10px; margin-top: 8px; }
-  .prompt button { border: 1px solid var(--line); background: #23262d; color: var(--txt);
-    border-radius: 10px; padding: 9px 16px; cursor: pointer; font: inherit; font-size: 14px; }
-  .prompt button:hover { border-color: var(--acc); }
-  .prompt button.primario { background: var(--acc); border-color: var(--acc); color: #10131a;
-    font-weight: 600; }
+  /* mock 2026-09-07: los modos son CHIPS de selección y el envío es un botón
+     redondo ↑ (como el de Claude) con nuestro acento */
+  .prompt .acciones { display: flex; gap: 10px; margin-top: 8px; align-items: center; }
+  .prompt button.modo { border: 1px solid var(--line); background: transparent; color: var(--mut);
+    border-radius: 999px; padding: 8px 16px; cursor: pointer; font: inherit; font-size: 14px; }
+  .prompt button.modo:hover { border-color: var(--acc); }
+  .prompt button.modo.on { border-color: var(--acc); color: var(--txt); background: #1c2634; }
+  .prompt .enviar { margin-left: auto; width: 40px; height: 40px; border-radius: 50%;
+    border: 0; background: var(--acc); color: #10131a; font-size: 19px; font-weight: 700;
+    cursor: pointer; display: grid; place-items: center; line-height: 1; }
+  .prompt .enviar:hover { filter: brightness(1.12); }
   .prompt .nota { color: var(--mut); font-size: 12.5px; margin-top: 10px; }
 
   /* --- grid de proyectos --- */
@@ -106,7 +111,8 @@
       <div class="grupo">Estudio de Contenido</div>
       <a href="/crear-imagenes.html"><b>Crear imágenes</b><small>Una imagen en el estilo que elijas.</small></a>
       <a href="/crear.html"><b>Crear contenido</b><small>Crea un video desde una idea, narrado con IA.</small></a>
-      <a href="/e1.html"><b>Shorts</b><small>Saca los mejores momentos de tu video.</small></a>
+      <a href="/e1.html"><b>Editar</b><small>Sube tu metraje y la IA te propone el corte.</small></a>
+      <a href="/shorts.html"><b>Shorts</b><small>Sube un video largo y te daremos los mejores momentos.</small></a>
       <div class="grupo">Blotato
         <button class="mas" id="blotato-mas" title="Conecta tus credenciales de Blotato"
           aria-label="Conectar Blotato">+</button>
@@ -122,11 +128,13 @@
       <textarea id="idea" maxlength="5000"
         placeholder="Cuéntanos tu idea o pega tu historia completa. Ejemplo: «cómo empezó la Segunda Guerra Mundial»."></textarea>
       <div class="acciones">
-        <button id="btn-inv">Investigación</button>
-        <button id="btn-idea" class="primario">Tengo una idea</button>
+        <button id="btn-inv" class="modo" aria-pressed="false">Investigación</button>
+        <button id="btn-idea" class="modo" aria-pressed="false">Tengo una idea</button>
+        <button id="btn-enviar" class="enviar" title="Crear" aria-label="Crear">↑</button>
       </div>
       <p class="nota">«Investigación» busca fuentes y escribe el guion por ti; «Tengo una idea»
-        usa tu texto tal cual. En ambos casos revisas todo antes de producir.</p>
+        usa tu texto tal cual. Sin elegir, lo detectamos solos. En todos los casos revisas
+        antes de producir.</p>
       <div class="err" id="perr"></div>
     </section>
 
@@ -137,6 +145,11 @@
       </div>
       <div class="grid" id="grid"></div>
       <div class="err" id="err"></div>
+      <!-- M14: las ediciones de metraje viven aquí (antes eran las cards de e1) -->
+      <div id="ediciones" hidden style="margin-top:26px">
+        <div class="cabecera-grid"><h2>Mis ediciones</h2></div>
+        <div class="grid" id="grid-ed"></div>
+      </div>
       <details id="archivados" hidden>
         <summary>Proyectos archivados (<span id="n-arch">0</span>) — no se borran, se pueden restaurar</summary>
         <ul id="lista-arch"></ul>
@@ -159,7 +172,19 @@ const fecha = c => { const d = new Date(c); return isNaN(d) ? '' : ' · ' + d.to
 // El prompt navega a crear.html con la idea precargada; los dos botones son
 // los mismos modos del flujo de crear (investigacion | idea). Sin texto no hay
 // nada que precargar: crear.html abriría plegado con la idea vacía.
-function irACrear(modo) {
+let modoHub = 'auto';   // chips de selección; sin elegir = detectar solo
+function marcaModo(id) {
+  modoHub = modoHub === id ? 'auto' : id;   // segundo clic = deseleccionar
+  const sel = {investigacion: 'btn-inv', idea: 'btn-idea'}[modoHub];
+  ['btn-inv', 'btn-idea'].forEach(b => {
+    const on = b === sel;
+    document.getElementById(b).classList.toggle('on', on);
+    document.getElementById(b).setAttribute('aria-pressed', on);
+  });
+}
+$('#btn-inv').onclick = () => marcaModo('investigacion');
+$('#btn-idea').onclick = () => marcaModo('idea');
+$('#btn-enviar').onclick = () => {
   const texto = $('#idea').value.trim();
   if (!texto) {
     $('#perr').textContent = 'Cuéntanos tu idea primero — o entra por «Crear contenido» en el menú para ver el formulario completo.';
@@ -169,22 +194,47 @@ function irACrear(modo) {
   $('#perr').textContent = '';
   const q = new URLSearchParams();
   q.set('brief', texto);
-  q.set('modo', modo);
+  q.set('modo', modoHub);
   location.href = '/crear.html?' + q.toString();
-}
-$('#btn-inv').onclick = () => irACrear('investigacion');
-$('#btn-idea').onclick = () => irACrear('idea');
+};
 
 let slots = null;   // null = ilimitado (o dev local)
+
+// M14: las ediciones de metraje (subidas + gen-*) como obras — reemplazan las
+// listas que vivían en e1; la card abre e1.html?p= (estado + corrida + editor)
+function renderEdiciones(ps) {
+  if (!ps.length) return;
+  const estadoEd = p => {
+    const st = p.editar || {};
+    if (st.estado === 'corriendo') return '⏳ sugerencias en curso…';
+    if (st.estado === 'error') return '❌ la corrida falló';
+    if (p.editor_listo) return '✂️ corte listo — ábrelo en el editor';
+    if (p.subidas && p.subidas.length) return 'metraje subido — pide el corte';
+    return p.generado ? 'película generada' : 'sin metraje aún';
+  };
+  $('#grid-ed').innerHTML = ps.map(p =>
+    `<div class="proy" data-e="${esc(p.nombre)}" role="link" tabindex="0" aria-label="Abrir edición">` +
+    `<div class="thumb vacia">🎞</div>` +
+    `<div class="pie"><div class="brief">${esc(p.nombre)}</div>` +
+    `<div class="meta">${estadoEd(p)}</div></div></div>`).join('');
+  $('#ediciones').hidden = false;
+  document.querySelectorAll('.proy[data-e]').forEach(c => {
+    const abrir = () => location.href = '/e1.html?p=' + encodeURIComponent(c.dataset.e);
+    c.onclick = abrir;
+    c.onkeydown = ev => { if (ev.key === 'Enter') abrir(); };
+  });
+}
 
 async function cargar() {
   $('#err').textContent = '';
   try {
-    const [rp, rs] = await Promise.all([fetch('/api/proyectos'), fetch('/api/slots')]);
+    const [rp, rs, re] = await Promise.all([
+      fetch('/api/proyectos'), fetch('/api/slots'), fetch('/api/edicion/proyectos')]);
     if (!rp.ok) return;
     const ps = await rp.json();
     if (rs.ok) slots = (await rs.json()).slots;
     render(ps);
+    if (re.ok) renderEdiciones(await re.json());
   } catch { /* cortesía: el hub sigue completo sin la lista */ }
 }
 

@@ -658,8 +658,65 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       checkout.session.completed → /api/pagos/stripe). Tests: 5 nuevos
       (299 verdes); smoke real del filtro en local (bloquea gore, permite
       texto sano).
+- [x] **Login con la marca del producto** (rama m13-login-branding, PR #28):
+      dominio Cognito subido a Managed Login v2 EN VIVO (update-user-pool-domain
+      + create-managed-login-branding, paleta del hub, colorSchemeMode DARK);
+      infra fija managed_login_version=NEWER (synth = no-op contra lo
+      desplegado); auth.js manda `&lang=es` (¡el parámetro existe en Managed
+      Login!) → login y cambio de contraseña de primera vez en español,
+      verificado en vivo. El branding vive FUERA de CFN: se retoca en el
+      editor visual de la consola de Cognito.
+- [x] **Balanceador de formato del guionista + cuadro del hub** (rama
+      m14-editar-web): «3 curiosidades de los flamencos» salía como cuento de
+      un polluelo (el guionista forzaba protagonista+arco a TODO brief) → el
+      clasificador ahora también elige `formato` (cuento | lista | explicador,
+      respetando lo que PIDIÓ el usuario) y `{formato_reglas}` entra al system
+      del guionista Y del narrador (M11); el clasificador corre siempre (el
+      modo forzado de la UI solo pisa el tipo). En el hub, «Investigación» y
+      «Tengo una idea» son CHIPS de selección (segundo clic = deseleccionar,
+      sin elegir = detectar solo) y el envío es un botón redondo ↑ con el
+      acento del producto, como el de Claude.
+- [x] **Sidebar**: entra «Editar» (metraje propio → corte con IA), «Shorts»
+      apunta a shorts.html («Sube un video largo y te daremos los mejores
+      momentos») y shorts.html sin `?p` ofrece elegir el proyecto (antes
+      vivía en las cards de e1).
 
 ---
+
+## Fase M14 — Editar en la web (el flujo local de /clean-cut, con botones)
+
+Pedido del dueño 2026-09-07: subir metraje propio, que la IA proponga el corte
+(«una corrida en el que salgan las sugerencias de cómo lo editaría la IA») y
+aceptar/rechazar en el editor — como era el proyecto local. Las cards de listas
+de e1 se van: «Mis ediciones» vive en el hub.
+
+Hecho 2026-09-07 (rama m14-editar-web):
+- [x] **Worker de sugerencias en Fargate** (`worker/editar_task.py`, misma
+      state machine con otro comando — cero infra nueva): baja el metraje de
+      S3 → canónico con AssemblyAI si falta → el LLM propone el corte con
+      `prompts/cortes_system.md` (la política de /clean-cut: corta muletillas/
+      retakes/aire muerto, SUGIERE fluff, marca dudas en flags; code-switching
+      no es error) → `construir_cuts` arma cuts.json donde los keeps son el
+      COMPLEMENTO de los cortes (el material jamás se pierde; LLM que corta
+      todo = se conserva completo) → `tools/make_proxy.py` genera proxy/
+      manifest/waveform → todo a S3, flags cuts/canonico → editor_listo (el
+      editor de M7 siembra cortes_versiones v1 y el usuario audita).
+- [x] **API** `server/editar_api.py` (calcada de shorts_api): GET estado,
+      GET costo (preview ANTES de cobrar), POST sugerir (409 si corre, 413
+      >90 min, cobrar antes de lanzar, devolver si no lanza o si el worker
+      falla). Tarifa nueva §editar en tarifas.json: sugerencias 2 cr +
+      transcripción a la tarifa de shorts si el metraje no trae canónico.
+      Concepto `infra-editar` en CONCEPTOS_FARGATE (drill-down del admin).
+- [x] **UI**: e1.html = subir (C3, igual) + sección «Corte con IA» del
+      proyecto actual (?p=, costo → botón con créditos → poll → Abrir editor /
+      Sacar shorts); el hub gana la sección «Mis ediciones» (cards 🎞 con
+      estado, click → e1.html?p=). En dev local el corte sigue siendo
+      /clean-cut (503 amable).
+- [ ] Deploy: imagen del CI + `cdk deploy aws-media-api aws-media-jobs` y
+      probar la corrida con un metraje real (gasto: transcripción según
+      duración + ~$0.02 dólares del LLM — pedir confirmación).
+- [ ] Pendiente de diseño: cuando el corte se apruebe y renderice, el paso a
+      subtítulos/publicar desde la web (hoy termina en el preview del editor).
 
 ## Orden y dependencias
 

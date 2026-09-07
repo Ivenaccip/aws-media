@@ -35,6 +35,9 @@ SHORTS_TRANSCRIPCION_CR_5MIN = 2
 SHORTS_ANALISIS_CR = 2
 SHORTS_RENDER_CR = 2
 
+# M14 — editar en la web (fallback espejo de tarifas.json §editar)
+EDITAR_SUGERENCIAS_CR = 2
+
 try:
     _t = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))
     _v = _t["video"]
@@ -48,6 +51,7 @@ try:
     SHORTS_TRANSCRIPCION_CR_5MIN = _s.get("transcripcion_por_5min", SHORTS_TRANSCRIPCION_CR_5MIN)
     SHORTS_ANALISIS_CR = _s.get("analisis", SHORTS_ANALISIS_CR)
     SHORTS_RENDER_CR = _s.get("render_por_short", SHORTS_RENDER_CR)
+    EDITAR_SUGERENCIAS_CR = _t.get("editar", {}).get("sugerencias", EDITAR_SUGERENCIAS_CR)
 except (FileNotFoundError, KeyError):
     pass  # fallback: tarifa de arriba (2026-09-02)
 
@@ -91,6 +95,15 @@ def costo_shorts_analizar(duracion_s: float, con_transcript: bool) -> int:
     """M8: análisis de candidatos (LLM) + transcripción si el proyecto no trae
     canónico — 2 cr por cada 5 min empezados (cubre AssemblyAI de pricing.json)."""
     costo = SHORTS_ANALISIS_CR
+    if not con_transcript:
+        costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(float(duracion_s) / 300)
+    return costo
+
+
+def costo_editar_sugerencias(duracion_s: float, con_transcript: bool) -> int:
+    """M14: corrida de sugerencias de corte (LLM) + transcripción si el metraje
+    no trae canónico — misma tarifa de transcripción que shorts (mismo vendor)."""
+    costo = EDITAR_SUGERENCIAS_CR
     if not con_transcript:
         costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(float(duracion_s) / 300)
     return costo

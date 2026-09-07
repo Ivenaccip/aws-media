@@ -98,8 +98,23 @@ async function fj(url, body) {
   return j;
 }
 
+// M14: sin ?p, la página misma ofrece elegir el proyecto (antes vivía en e1)
+async function elegirProyecto() {
+  $("aviso").textContent = "Cargando tus proyectos con metraje…";
+  let ps = [];
+  try {
+    const r = await fetch("/api/edicion/proyectos");
+    if (r.ok) ps = await r.json();
+  } catch { /* cae al aviso de abajo */ }
+  const conMetraje = ps.filter(p => (p.subidas && p.subidas.length) || p.generado);
+  $("aviso").innerHTML = conMetraje.length
+    ? "¿De qué video sacamos los shorts?<br><br>" + conMetraje.map(p =>
+        `<a href="/shorts.html?p=${encodeURIComponent(p.nombre)}" style="color:#8ab4e8;display:inline-block;margin:3px 10px 3px 0">▸ ${p.nombre}</a>`).join("")
+    : 'Todavía no tienes videos con metraje — sube uno en <a href="/e1.html" style="color:#8ab4e8">Editar</a> y vuelve aquí.';
+}
+
 async function cargar() {
-  if (!P) { $("aviso").innerHTML = 'Falta el proyecto — vuelve a <a href="/e1.html" style="color:#8ab4e8">Editar</a>.'; return; }
+  if (!P) { elegirProyecto(); return; }
   try { EST = await fj(`/api/shorts/${encodeURIComponent(P)}`); }
   catch (e) { $("aviso").textContent = e.message; $("aviso").className = "err"; return; }
   $("aviso").hidden = true;

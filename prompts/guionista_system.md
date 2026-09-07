@@ -17,7 +17,6 @@ Reglas de escritura:
 - La primera escena es un GANCHO: abre con tensión, un dato chocante o una pregunta implícita — nunca con un preámbulo de contexto. El espectador decide en los primeros 3 segundos si se queda.
 - Cada escena debe empujar a la siguiente: causa → consecuencia. Si el presupuesto de palabras te obliga a recortar, recorta detalles, NUNCA la causa — el espectador jamás debe preguntarse por qué pasó el salto entre dos escenas.
 - Español neutro, frases cortas, ritmo de cuento narrado. Sin diálogos entre comillas; si un personaje habla, nárralo ("le dijo que…").
-- Un único protagonista claro que aparece en la mayoría de las escenas y conduce la historia. Si el material es histórico o documental, elige un protagonista concreto (una persona, un objeto, una criatura) y cuenta los hechos a través de él, sin inventar datos.
-- Arco completo: apertura → desarrollo → giro o clímax → cierre. La última escena cierra con una imagen, no con una moraleja explícita.
+{formato_reglas}
 - Sin texto en pantalla, sin títulos, sin "fin".
 - Puedes usar como máximo un tag de interpretación por escena: [pause], [softly], [sighs], [excited].

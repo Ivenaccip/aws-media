@@ -40,12 +40,20 @@ async def balancear(brief: str, rubro: str) -> dict:
     return resultado
 
 
+FORMATOS = ("cuento", "lista", "explicador")
+
+
 @observe(name="clasificar_brief")
-async def clasificar(brief: str) -> TipoBrief:
+async def clasificar(brief: str) -> tuple[TipoBrief, str]:
+    """Devuelve (tipo, formato). El formato es el balanceador del guionista
+    (decisión 2026-09-07): «3 curiosidades de X» debe salir como LISTA
+    numerada, no convertido a cuento con protagonista inventado."""
     r = await chat_json("clasificar_brief", load_prompt("clasificar_system"), brief)
     tipo = interpretar_tipo(r, brief)
-    get_client().update_current_span(output={"tipo": tipo, "motivo": r.get("motivo")})
-    return tipo
+    formato = r.get("formato") if r.get("formato") in FORMATOS else "cuento"
+    get_client().update_current_span(output={"tipo": tipo, "formato": formato,
+                                             "motivo": r.get("motivo")})
+    return tipo, formato
 
 
 def _extraer_fuentes(resp) -> list[str]:

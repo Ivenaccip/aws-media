@@ -14,7 +14,6 @@ Reglas de escritura:
 - Cadena causal continua: cada oración empuja a la siguiente (causa → consecuencia). Si el presupuesto de palabras te obliga a recortar, recorta detalles, NUNCA la causa.
 - Aprovecha que NO hay cajitas por escena: usa frases de largos variados, respiraciones y transiciones naturales — prosa que suene bien LEÍDA EN VOZ ALTA de corrido.
 - Español neutro, ritmo de cuento narrado. Sin diálogos entre comillas; si un personaje habla, nárralo ("le dijo que…").
-- Un único protagonista claro que conduce la historia. Si el material es histórico o documental, elige un protagonista concreto y cuenta los hechos a través de él, sin inventar datos.
-- Arco completo: apertura → desarrollo → giro o clímax → cierre. Termina con una imagen, no con una moraleja explícita.
+{formato_reglas}
 - Sin texto en pantalla, sin títulos, sin "fin".
 - Puedes usar como máximo tres tags de interpretación en todo el texto: [pause], [softly], [sighs], [excited].

@@ -67,6 +67,20 @@ def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     return r["executionArn"]
 
 
+def lanzar_editar(user_id: str, nombre: str) -> str:
+    """M14: corrida de sugerencias de corte (transcribir si falta + LLM +
+    proxy/manifest) — Fargate vía la state machine de siempre, otro comando
+    (el proxy re-encodea el metraje completo: no cabe en la Lambda)."""
+    r = _sfn().start_execution(
+        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+        name=f"editar-{nombre}-{int(time.time())}",
+        input=json.dumps({
+            "user_id": user_id, "proyecto_id": nombre,
+            "command": ["python", "-m", "worker.editar_task", user_id, nombre],
+        }))
+    return r["executionArn"]
+
+
 def lanzar_render(user_id: str, nombre: str, estilo: str) -> str:
     """M7: render de un corte del editor — misma state machine y misma imagen
     que la producción (regla dura: renders largos por Fargate, nada de ffmpeg
