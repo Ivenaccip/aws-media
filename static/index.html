@@ -108,6 +108,7 @@
       </div>
       <p class="nota">«Investigación» busca fuentes y escribe el guion por ti; «Tengo una idea»
         usa tu texto tal cual. En ambos casos revisas todo antes de producir.</p>
+      <div class="err" id="perr"></div>
     </section>
 
     <section>
@@ -134,11 +135,18 @@ const ESTADO = {creado:'en preparación', preparando:'en preparación', revision
 const fecha = c => { const d = new Date(c); return isNaN(d) ? '' : ' · ' + d.toLocaleDateString(); };
 
 // El prompt navega a crear.html con la idea precargada; los dos botones son
-// los mismos modos del flujo de crear (investigacion | idea).
+// los mismos modos del flujo de crear (investigacion | idea). Sin texto no hay
+// nada que precargar: crear.html abriría plegado con la idea vacía.
 function irACrear(modo) {
-  const q = new URLSearchParams();
   const texto = $('#idea').value.trim();
-  if (texto) q.set('brief', texto);
+  if (!texto) {
+    $('#perr').textContent = 'Cuéntanos tu idea primero — o entra por «Reels» en el menú para ver el formulario completo.';
+    $('#idea').focus();
+    return;
+  }
+  $('#perr').textContent = '';
+  const q = new URLSearchParams();
+  q.set('brief', texto);
   q.set('modo', modo);
   location.href = '/crear.html?' + q.toString();
 }

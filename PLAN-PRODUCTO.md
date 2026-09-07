@@ -573,6 +573,19 @@ Deploy: `tools/db_migrate.py` + imagen del CI + `cdk deploy aws-media-media
 aws-media-api`. Tests: 12 nuevos en tests/test_m12_hub.py (284 en total,
 verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 
+Hecho 2026-09-07 (M12, iteración de UI sobre el mismo PR #18): el cuadro del
+hub ES la entrada del flujo — si llegas a crear.html desde el hub
+(`?brief=`), las cards de brief/modos se pliegan a un resumen «💡 Tu idea ·
+modo X» con «✏️ Editar» (y la lista "Tus películas" no se repite); entrar
+por «Reels»/«Crear contenido» (sin query) muestra el formulario completo.
+El hub exige texto antes de navegar. Configuración compactada a una
+pantalla: Estilo visual (izquierda, con ejemplo en palabras del estilo
+elegido — campo `descripcion` en pipeline/styles.py, viaja por
+/api/estilos) + Referencia del personaje (derecha) y Duración abajo.
+De paso: elegir estilo ya no des-selecciona visualmente el chip del modo
+(el toggle barría todos los .chip de la página). Ejemplos con imagen real
+por estilo quedan para cuando haya assets (generarlos costaría dinero).
+
 ---
 
 ## Orden y dependencias
