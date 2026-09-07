@@ -224,6 +224,7 @@
 
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
@@ -317,6 +318,12 @@ $('#modos').onclick = ev => {
 };
 $('#enviar').onclick = async (ev, forzar = false) => {
   $('#ferr').textContent = '';
+  if (!forzar) {   // M13: guardrail ANTES de mandar (y de cobrar); forzar ya pasó una vez
+    $('#enviar').disabled = true;
+    const pasa = await guardrail($('#brief').value + '\n' + $('#pextra').value);
+    $('#enviar').disabled = false;
+    if (!pasa) return;
+  }
   const fd = new FormData();
   fd.append('brief', $('#brief').value); fd.append('estilo', estilo);
   fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);

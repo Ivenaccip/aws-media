@@ -127,6 +127,22 @@ def estilos():
             "descripcion": "Descríbelo tú con tus palabras (en inglés funciona mejor)."}]
 
 
+# --- M13: guardrail del brief ------------------------------------------------
+# La UI modera el texto ANTES de mandar la petición que cobra: si no pasa, un
+# popup pide reformular y no se gasta nada. Revisar es gratis para el usuario.
+
+class PedidoModerar(BaseModel):
+    texto: str
+
+
+@app.post("/api/moderar")
+async def moderar(body: PedidoModerar):
+    from pipeline import moderacion
+    v = await moderacion.revisar(body.texto)
+    return {"permitido": v.permitido, "motivo": v.motivo,
+            "mensaje": moderacion.MENSAJE_BASE}
+
+
 # --- M12: crear imágenes sueltas (sidebar «Crear imágenes») -----------------
 # Mismo selector de estilo que crear + un prompt libre. Cobra la tarifa de
 # imagen (la misma del cambio de personaje) y guarda bajo _imagenes/ del
