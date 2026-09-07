@@ -240,7 +240,8 @@ function pintaCostos() {
   if (!mon || !mon.activo) return;
   const prep = mon.tarifas.preparar;
   if (prep != null) {
-    $('#enviar').textContent = `Escribir el guion → · ${prep} créditos`;
+    // mock: el costo en créditos ES el protagonista del botón
+    $('#enviar').textContent = `${prep} créditos — escribir el guion →`;
     const falta = prep - mon.saldo;
     $('#enviar').disabled = falta > 0;
     $('#saldoform').textContent = falta > 0
@@ -643,6 +644,8 @@ else {
     // La idea ya se escribió en el hub: la parte inicial se pliega a un resumen
     // editable y la lista de películas no se repite (el hub ya la mostró).
     // Entrar por «Reels» (sin query) sigue mostrando el formulario completo.
+    // La vista de configuración es ANCHA, como el mock (main.wide = 1180px).
+    document.querySelector('main').classList.add('wide');
     const NOMBRE_MODO = {auto:'Detectar solo', investigacion:'Investigación', idea:'Tengo una idea'};
     $('#card-brief').classList.add('hidden');
     $('#card-modo').classList.add('hidden');
@@ -651,6 +654,7 @@ else {
     $('#idea-modo').textContent = '· modo ' + (NOMBRE_MODO[modo] || modo);
     $('#idea-editar').onclick = ev => {
       ev.preventDefault();
+      document.querySelector('main').classList.remove('wide');   // volver a columna
       $('#card-idea').classList.add('hidden');
       $('#card-brief').classList.remove('hidden');
       $('#card-modo').classList.remove('hidden');

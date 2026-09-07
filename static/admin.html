@@ -18,6 +18,8 @@
   .kpi { background: #1d2026; border: 1px solid #2c3038; border-radius: 12px; padding: 12px 18px; }
   .kpi b { display: block; font-size: 19px; }
   .kpi span { color: #9a978f; font-size: 12.5px; }
+  .kpi .paso { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  th.grupo { text-align: center; color: #e8e6e0; border-bottom: 0; padding-top: 0; }
   button { padding: 9px 16px; border-radius: 9px; border: 1px solid #2c3038; background: #23262d;
            color: #e8e6e0; font: inherit; font-size: 13px; cursor: pointer; }
   button:hover { border-color: #5b8dd6; }
@@ -59,9 +61,12 @@
 
   <div id="panel" hidden>
     <div class="fila-top">
-      <div class="kpi"><b id="t-costo"></b><span>costo directo total</span></div>
-      <div class="kpi"><b id="t-margen"></b><span>margen total</span></div>
-      <div class="kpi"><b id="t-gastados"></b><span>créditos quemados</span></div>
+      <div class="kpi"><span class="paso">1 · Ingresos de créditos</span>
+        <b id="t-ingresos"></b><span id="t-gastados"></span></div>
+      <div class="kpi"><span class="paso">2 · Costos de usuario</span>
+        <b id="t-costo"></b><span>IA + infra AWS</span></div>
+      <div class="kpi"><span class="paso">3 · Flujo total</span>
+        <b id="t-margen"></b><span>ingresos − costos</span></div>
       <div class="kpi"><b id="t-pelis"></b><span>películas</span></div>
       <span style="flex:1"></span>
       <div><button id="sync">⟳ Sincronizar costes (7 días)</button>
@@ -71,12 +76,18 @@
     <section>
       <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
       <div class="tabla-scroll"><table>
-        <thead><tr><th>Usuario</th><th>Saldo</th><th>Cortesía</th><th>Comprados</th>
-          <th>Quemados</th><th>Películas</th><th>S3</th><th>Fargate</th><th>Costo</th><th>Margen</th></tr></thead>
+        <thead>
+          <tr><th></th><th class="grupo" colspan="4">Cuenta</th>
+            <th class="grupo" colspan="2">1 · Ingresos</th>
+            <th class="grupo" colspan="3">2 · Costos</th>
+            <th class="grupo">3 · Flujo</th></tr>
+          <tr><th>Usuario</th><th>Saldo</th><th>Cortesía</th><th>Comprados</th><th>Películas</th>
+            <th>Quemados</th><th>USD</th><th>S3</th><th>Fargate</th><th>Costo</th><th>Margen</th></tr>
+        </thead>
         <tbody id="cuerpo"></tbody>
       </table></div>
-      <p class="mut" style="margin-top:10px">Margen = créditos quemados × <span id="piso"></span>
-        por crédito (piso de venta de tarifas.json) − costo directo. El costo directo suma la tabla
+      <p class="mut" style="margin-top:10px">Flujo = ingresos (créditos quemados × <span id="piso"></span>
+        por crédito, el piso de venta de tarifas.json) − costos. El costo directo suma la tabla
         <code>costes</code>: las trazas de IA (Langfuse — sync diario 06:00 UTC + el botón de arriba)
         y la línea estimada de infra AWS por corrida (segundos reales de Fargate/Lambda × tarifas de
         <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa cuenta (costo ÷ tarifa =
@@ -112,18 +123,24 @@ async function cargar() {
   }
   const d = await r.json();
   LFBASE = d.langfuse_base;
+  const piso = d.piso_venta_usd;
   $('#cargando').hidden = true; $('#panel').hidden = false;
+  // 1 · ingresos = créditos quemados valuados al piso de venta
+  $('#t-ingresos').textContent = usd(d.totales.gastados * piso);
+  $('#t-gastados').textContent = `${d.totales.gastados} créditos quemados × $${piso}`;
+  // 2 · costos = IA (trazas) + infra AWS estimada por corrida
   $('#t-costo').textContent = usd(d.totales.costo_usd);
+  // 3 · flujo = ingresos − costos
   $('#t-margen').textContent = usd(d.totales.margen_usd);
   $('#t-margen').className = d.totales.margen_usd >= 0 ? 'pos' : 'neg';
-  $('#t-gastados').textContent = d.totales.gastados;
   $('#t-pelis').textContent = d.totales.peliculas;
-  $('#piso').textContent = `$${d.piso_venta_usd} dólares`;
+  $('#piso').textContent = `$${piso} dólares`;
   $('#cuerpo').innerHTML = d.usuarios.map(u => `
     <tr class="usuario" data-uid="${u.user_id}" tabindex="0">
       <td title="${u.user_id}">${u.email || u.user_id}</td>
-      <td>${u.saldo}</td><td>${u.cortesia}</td><td>${u.comprados}</td>
-      <td>${u.gastados}</td><td>${u.peliculas}</td><td>${mb(u.s3_bytes)}</td>
+      <td>${u.saldo}</td><td>${u.cortesia}</td><td>${u.comprados}</td><td>${u.peliculas}</td>
+      <td>${u.gastados}</td><td>${usd4(u.gastados * piso)}</td>
+      <td>${mb(u.s3_bytes)}</td>
       <td title="tiempo estimado de cómputo en Fargate (derivado del costo)">${tiempo(u.fargate_s)}</td>
       <td>${usd4(u.costo_usd)}</td>
       <td class="${u.margen_usd >= 0 ? 'pos' : 'neg'}">${usd4(u.margen_usd)}</td>
