@@ -80,13 +80,18 @@ def resumen():
     # por concepto: el total va al costo directo y de los conceptos de infra
     # se deriva el tiempo de cómputo en Fargate (costo ÷ tarifa)
     costos: dict[str, float] = {}
+    # desglose para la vista de Costos: infra AWS (conceptos "infra-*") vs IA
+    costos_aws: dict[str, float] = {}
     fargate_s: dict[str, float] = {}
     for f in db.ejecutar(
             "SELECT user_id, concepto, SUM(costo_usd) AS usd "
             "FROM costes GROUP BY user_id, concepto"):
         u, usd = f["user_id"], float(f["usd"])
         costos[u] = costos.get(u, 0.0) + usd
-        if (f.get("concepto") or "") in costes_infra.CONCEPTOS_FARGATE:
+        concepto = f.get("concepto") or ""
+        if concepto.startswith("infra-"):
+            costos_aws[u] = costos_aws.get(u, 0.0) + usd
+        if concepto in costes_infra.CONCEPTOS_FARGATE:
             fargate_s[u] = fargate_s.get(u, 0.0) + \
                 (costes_infra.segundos_estimados(f["concepto"], usd) or 0.0)
     emails = {f["id"]: f["email"] for f in db.ejecutar("SELECT id, email FROM usuarios")}
@@ -100,6 +105,7 @@ def resumen():
         # neto realmente quemado por el usuario: cargos menos devoluciones
         gastados = int(m.get("cargos") or 0) - int(m.get("devoluciones") or 0)
         costo = round(costos.get(u, 0.0), 4)
+        aws = round(costos_aws.get(u, 0.0), 4)
         usuarios.append({
             "user_id": u, "email": emails.get(u) or ALIAS.get(u),
             "saldo": int(saldos.get(u, 0)),
@@ -110,6 +116,9 @@ def resumen():
             "s3_bytes": s3.get(u),
             "fargate_s": round(fargate_s.get(u, 0.0)),
             "costo_usd": costo,
+            "costo_aws_usd": aws,
+            "costo_ia_usd": round(costo - aws, 4),
+            "ingresos_usd": round(gastados * creditos.PISO_VENTA_USD, 4),
             # créditos cobrados a valor de venta menos lo que nos costó la IA
             "margen_usd": round(gastados * creditos.PISO_VENTA_USD - costo, 4),
         })
@@ -119,6 +128,9 @@ def resumen():
         "piso_venta_usd": creditos.PISO_VENTA_USD,
         "totales": {
             "costo_usd": round(sum(u["costo_usd"] for u in usuarios), 4),
+            "costo_aws_usd": round(sum(u["costo_aws_usd"] for u in usuarios), 4),
+            "costo_ia_usd": round(sum(u["costo_ia_usd"] for u in usuarios), 4),
+            "ingresos_usd": round(sum(u["ingresos_usd"] for u in usuarios), 4),
             "margen_usd": round(sum(u["margen_usd"] for u in usuarios), 4),
             "gastados": sum(u["gastados"] for u in usuarios),
             "peliculas": sum(u["peliculas"] for u in usuarios),

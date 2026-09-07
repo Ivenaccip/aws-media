@@ -622,10 +622,16 @@ costos = el margen que ya calculaba el server — CERO cambio de backend en
 admin); la tabla agrupa columnas bajo Cuenta / Ingresos (con USD nuevo
 por usuario) / Costos / Flujo. 1 test nuevo (288 verdes).
 
-Hecho 2026-09-07 d (rama m12-imagenes-estilos): las 5 imágenes de ejemplo
-GENERADAS con nano banana en fal ($0.20 dólares, gasto confirmado por el
-dueño) — la misma escena (zorro camino a un faro al atardecer) en los 5
-estilos, comprimidas a 1200px (~1 MB total) en static/estilos/.
+Hecho 2026-09-07 e (rama m12-admin-vistas — el feedback fue que los KPIs no
+bastaban): el admin ahora son 3 VISTAS con pestañas, cada una con sus KPIs y
+su propia tabla por usuario. «1 · Ingresos»: USD por créditos quemados,
+comprados, cortesía, saldo. «2 · Costos»: la IA (APIs/Langfuse) POR UN LADO
+y la infra AWS POR OTRO — el backend (admin_api.resumen) ahora desglosa
+costo_ia_usd/costo_aws_usd por el prefijo "infra-" del concepto, más
+ingresos_usd por usuario y en totales; aquí viven el sync y el drill-down
+por corrida. «3 · Flujo»: ingresos − costos, total y por usuario. El front
+es compatible si el server viejo no manda el desglose (?? fallbacks).
+1 test nuevo (289 verdes).
 
 ---
 

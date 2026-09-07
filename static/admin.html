@@ -11,19 +11,22 @@
   main { max-width: 1080px; margin: 0 auto; }
   a.volver { color: #9a978f; text-decoration: none; font-size: 14px; }
   h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #9a978f; font-size: 14px; margin-bottom: 24px; }
+  p.sub { color: #9a978f; font-size: 14px; margin-bottom: 20px; }
   section { background: #1d2026; border: 1px solid #2c3038; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
   section h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
-  .fila-top { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 24px; }
-  .kpi { background: #1d2026; border: 1px solid #2c3038; border-radius: 12px; padding: 12px 18px; }
-  .kpi b { display: block; font-size: 19px; }
+  /* 3 vistas: Ingresos / Costos / Flujo */
+  .tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .tabs button { padding: 10px 18px; border-radius: 10px; border: 1px solid #2c3038;
+    background: #1d2026; color: #9a978f; font: inherit; font-size: 14px; cursor: pointer; }
+  .tabs button.on { border-color: #5b8dd6; color: #e8e6e0; background: #212a38; font-weight: 600; }
+  .fila-kpi { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; margin-bottom: 22px; }
+  .kpi { background: #1d2026; border: 1px solid #2c3038; border-radius: 12px; padding: 14px 20px; min-width: 170px; }
+  .kpi b { display: block; font-size: 22px; }
   .kpi span { color: #9a978f; font-size: 12.5px; }
-  .kpi .paso { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-  th.grupo { text-align: center; color: #e8e6e0; border-bottom: 0; padding-top: 0; }
-  button { padding: 9px 16px; border-radius: 9px; border: 1px solid #2c3038; background: #23262d;
+  button.accion { padding: 9px 16px; border-radius: 9px; border: 1px solid #2c3038; background: #23262d;
            color: #e8e6e0; font: inherit; font-size: 13px; cursor: pointer; }
-  button:hover { border-color: #5b8dd6; }
-  button:disabled { opacity: .5; cursor: default; }
+  button.accion:hover { border-color: #5b8dd6; }
+  button.accion:disabled { opacity: .5; cursor: default; }
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
   th { text-align: right; color: #9a978f; font-weight: 500; font-size: 12px; text-transform: uppercase;
        letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid #2c3038; }
@@ -48,10 +51,10 @@
 <body>
 <main>
   <a class="volver" href="/">← inicio</a>
-  <h1>Costes y margen</h1>
-  <p class="sub">Cuánto gasta, cuánto cuesta y cuánto deja cada usuario. El cómputo
-    (Fargate/Lambda) se estima por corrida y por usuario; Aurora/CloudFront son compartidos:
-    para el total están el
+  <h1>Panel del negocio</h1>
+  <p class="sub">Tres vistas: <b>1 · Ingresos</b> (lo que los usuarios gastan en créditos),
+    <b>2 · Costos</b> (la IA por un lado y AWS por el otro) y <b>3 · Flujo</b>
+    (ingresos − costos). Aurora/CloudFront son compartidos: para el total están el
     <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" style="color:#8ab4e8">presupuesto de $50/mes</a>
     y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" style="color:#8ab4e8">Cost Explorer</a>.</p>
 
@@ -60,45 +63,81 @@
     <span class="mut">Se otorga con <code>tools/usuarios.py admin &lt;correo&gt;</code> (y un re-login).</span></div>
 
   <div id="panel" hidden>
-    <div class="fila-top">
-      <div class="kpi"><span class="paso">1 · Ingresos de créditos</span>
-        <b id="t-ingresos"></b><span id="t-gastados"></span></div>
-      <div class="kpi"><span class="paso">2 · Costos de usuario</span>
-        <b id="t-costo"></b><span>IA + infra AWS</span></div>
-      <div class="kpi"><span class="paso">3 · Flujo total</span>
-        <b id="t-margen"></b><span>ingresos − costos</span></div>
-      <div class="kpi"><b id="t-pelis"></b><span>películas</span></div>
-      <span style="flex:1"></span>
-      <div><button id="sync">⟳ Sincronizar costes (7 días)</button>
-        <div id="estado-sync"></div></div>
+    <nav class="tabs" aria-label="Vistas">
+      <button data-v="ingresos" class="on">1 · Ingresos</button>
+      <button data-v="costos">2 · Costos</button>
+      <button data-v="flujo">3 · Flujo</button>
+    </nav>
+
+    <!-- ================= 1 · INGRESOS ================= -->
+    <div id="v-ingresos">
+      <div class="fila-kpi">
+        <div class="kpi"><b id="i-usd"></b><span>ingresos por créditos quemados</span></div>
+        <div class="kpi"><b id="i-quemados"></b><span>créditos quemados (× <span id="i-piso"></span>/cr)</span></div>
+        <div class="kpi"><b id="i-comprados"></b><span>créditos comprados</span></div>
+        <div class="kpi"><b id="i-cortesia"></b><span>créditos de cortesía regalados</span></div>
+      </div>
+      <section>
+        <h2>Por usuario</h2>
+        <div class="tabla-scroll"><table>
+          <thead><tr><th>Usuario</th><th>Cortesía</th><th>Comprados</th><th>Quemados</th>
+            <th>Ingresos USD</th><th>Saldo</th><th>Películas</th></tr></thead>
+          <tbody id="cuerpo-ingresos"></tbody>
+        </table></div>
+        <p class="mut" style="margin-top:10px">Los ingresos se reconocen cuando el crédito se QUEMA
+          (créditos quemados × el piso de venta de tarifas.json), no cuando se compra:
+          un crédito comprado sin usar todavía no nos costó nada.</p>
+      </section>
     </div>
 
-    <section>
-      <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
-      <div class="tabla-scroll"><table>
-        <thead>
-          <tr><th></th><th class="grupo" colspan="4">Cuenta</th>
-            <th class="grupo" colspan="2">1 · Ingresos</th>
-            <th class="grupo" colspan="3">2 · Costos</th>
-            <th class="grupo">3 · Flujo</th></tr>
-          <tr><th>Usuario</th><th>Saldo</th><th>Cortesía</th><th>Comprados</th><th>Películas</th>
-            <th>Quemados</th><th>USD</th><th>S3</th><th>Fargate</th><th>Costo</th><th>Margen</th></tr>
-        </thead>
-        <tbody id="cuerpo"></tbody>
-      </table></div>
-      <p class="mut" style="margin-top:10px">Flujo = ingresos (créditos quemados × <span id="piso"></span>
-        por crédito, el piso de venta de tarifas.json) − costos. El costo directo suma la tabla
-        <code>costes</code>: las trazas de IA (Langfuse — sync diario 06:00 UTC + el botón de arriba)
-        y la línea estimada de infra AWS por corrida (segundos reales de Fargate/Lambda × tarifas de
-        <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa cuenta (costo ÷ tarifa =
-        tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte; Aurora/CloudFront son
-        compartidos (Cost Explorer para el total).</p>
-    </section>
+    <!-- ================= 2 · COSTOS ================= -->
+    <div id="v-costos" hidden>
+      <div class="fila-kpi">
+        <div class="kpi"><b id="c-ia"></b><span>IA (APIs — Langfuse)</span></div>
+        <div class="kpi"><b id="c-aws"></b><span>infra AWS (Fargate/Lambda)</span></div>
+        <div class="kpi"><b id="c-total"></b><span>costo directo total</span></div>
+        <span style="flex:1"></span>
+        <div><button class="accion" id="sync">⟳ Sincronizar costes (7 días)</button>
+          <div id="estado-sync"></div></div>
+      </div>
+      <section>
+        <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
+        <div class="tabla-scroll"><table>
+          <thead><tr><th>Usuario</th><th>IA (APIs)</th><th>AWS</th><th>S3</th>
+            <th>Fargate</th><th>Costo total</th></tr></thead>
+          <tbody id="cuerpo-costos"></tbody>
+        </table></div>
+        <p class="mut" style="margin-top:10px">La IA sale de las trazas de Langfuse (sync diario
+          06:00 UTC + el botón de arriba); AWS es la línea estimada por corrida (segundos reales de
+          Fargate/Lambda × tarifas de <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa
+          cuenta (costo ÷ tarifa = tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte y
+          Aurora/CloudFront son compartidos (Cost Explorer para el total).</p>
+      </section>
+      <section id="detalle" hidden>
+        <h2 id="detalle-titulo"></h2>
+        <div id="detalle-cuerpo"></div>
+      </section>
+    </div>
 
-    <section id="detalle" hidden>
-      <h2 id="detalle-titulo"></h2>
-      <div id="detalle-cuerpo"></div>
-    </section>
+    <!-- ================= 3 · FLUJO ================= -->
+    <div id="v-flujo" hidden>
+      <div class="fila-kpi">
+        <div class="kpi"><b id="f-total"></b><span>flujo total (ingresos − costos)</span></div>
+        <div class="kpi"><b id="f-ingresos"></b><span>1 · ingresos</span></div>
+        <div class="kpi"><b id="f-costos"></b><span>2 · costos</span></div>
+        <div class="kpi"><b id="f-pelis"></b><span>películas producidas</span></div>
+      </div>
+      <section>
+        <h2>Por usuario</h2>
+        <div class="tabla-scroll"><table>
+          <thead><tr><th>Usuario</th><th>Ingresos</th><th>Costos</th><th>Flujo</th></tr></thead>
+          <tbody id="cuerpo-flujo"></tbody>
+        </table></div>
+        <p class="mut" style="margin-top:10px">Flujo = créditos quemados × <span id="f-piso"></span>
+          por crédito − costo directo (IA + AWS) de ese usuario. Un flujo negativo en
+          «Claude IA (desarrollo)» es normal: son nuestras corridas de prueba, sin créditos detrás.</p>
+      </section>
+    </div>
   </div>
 </main>
 <script src="/auth.js"></script>
@@ -110,6 +149,12 @@ const usd4 = x => `$${x.toFixed(4)}`;
 const mb = b => b == null ? '—' : (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6).toFixed(1) + ' MB');
 const tiempo = s => !s ? '—' : (s >= 90 ? (s / 60).toFixed(1) + ' min' : Math.round(s) + ' s');
 let LFBASE = '';
+
+// --- pestañas ---
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  for (const v of ['ingresos', 'costos', 'flujo']) $('#v-' + v).hidden = v !== b.dataset.v;
+});
 
 async function cargar() {
   let r;
@@ -123,32 +168,50 @@ async function cargar() {
   }
   const d = await r.json();
   LFBASE = d.langfuse_base;
-  const piso = d.piso_venta_usd;
+  const t = d.totales, piso = d.piso_venta_usd;
+  // compat: si el server aún no manda el desglose, se deriva lo que se pueda
+  const ingresos = u => u.ingresos_usd ?? u.gastados * piso;
   $('#cargando').hidden = true; $('#panel').hidden = false;
-  // 1 · ingresos = créditos quemados valuados al piso de venta
-  $('#t-ingresos').textContent = usd(d.totales.gastados * piso);
-  $('#t-gastados').textContent = `${d.totales.gastados} créditos quemados × $${piso}`;
-  // 2 · costos = IA (trazas) + infra AWS estimada por corrida
-  $('#t-costo').textContent = usd(d.totales.costo_usd);
-  // 3 · flujo = ingresos − costos
-  $('#t-margen').textContent = usd(d.totales.margen_usd);
-  $('#t-margen').className = d.totales.margen_usd >= 0 ? 'pos' : 'neg';
-  $('#t-pelis').textContent = d.totales.peliculas;
-  $('#piso').textContent = `$${piso} dólares`;
-  $('#cuerpo').innerHTML = d.usuarios.map(u => `
+
+  // 1 · ingresos
+  $('#i-usd').textContent = usd(t.ingresos_usd ?? t.gastados * piso);
+  $('#i-quemados').textContent = t.gastados;
+  $('#i-piso').textContent = `$${piso}`;
+  $('#i-comprados').textContent = d.usuarios.reduce((s, u) => s + u.comprados, 0);
+  $('#i-cortesia').textContent = d.usuarios.reduce((s, u) => s + u.cortesia, 0);
+  $('#cuerpo-ingresos').innerHTML = d.usuarios.map(u => `
+    <tr><td title="${u.user_id}">${u.email || u.user_id}</td>
+      <td>${u.cortesia}</td><td>${u.comprados}</td><td>${u.gastados}</td>
+      <td>${usd4(ingresos(u))}</td><td>${u.saldo}</td><td>${u.peliculas}</td></tr>`).join('');
+
+  // 2 · costos (IA por un lado, AWS por el otro)
+  $('#c-ia').textContent = usd(t.costo_ia_usd ?? t.costo_usd);
+  $('#c-aws').textContent = usd(t.costo_aws_usd ?? 0);
+  $('#c-total').textContent = usd(t.costo_usd);
+  $('#cuerpo-costos').innerHTML = d.usuarios.map(u => `
     <tr class="usuario" data-uid="${u.user_id}" tabindex="0">
       <td title="${u.user_id}">${u.email || u.user_id}</td>
-      <td>${u.saldo}</td><td>${u.cortesia}</td><td>${u.comprados}</td><td>${u.peliculas}</td>
-      <td>${u.gastados}</td><td>${usd4(u.gastados * piso)}</td>
+      <td>${usd4(u.costo_ia_usd ?? u.costo_usd)}</td>
+      <td>${usd4(u.costo_aws_usd ?? 0)}</td>
       <td>${mb(u.s3_bytes)}</td>
       <td title="tiempo estimado de cómputo en Fargate (derivado del costo)">${tiempo(u.fargate_s)}</td>
-      <td>${usd4(u.costo_usd)}</td>
-      <td class="${u.margen_usd >= 0 ? 'pos' : 'neg'}">${usd4(u.margen_usd)}</td>
-    </tr>`).join('');
+      <td>${usd4(u.costo_usd)}</td></tr>`).join('');
   document.querySelectorAll('tr.usuario').forEach(tr => {
     tr.onclick = () => detalle(tr.dataset.uid, tr.cells[0].textContent);
     tr.onkeydown = e => { if (e.key === 'Enter') tr.onclick(); };
   });
+
+  // 3 · flujo
+  $('#f-total').textContent = usd(t.margen_usd);
+  $('#f-total').className = t.margen_usd >= 0 ? 'pos' : 'neg';
+  $('#f-ingresos').textContent = usd(t.ingresos_usd ?? t.gastados * piso);
+  $('#f-costos').textContent = usd(t.costo_usd);
+  $('#f-pelis').textContent = t.peliculas;
+  $('#f-piso').textContent = `$${piso} dólares`;
+  $('#cuerpo-flujo').innerHTML = d.usuarios.map(u => `
+    <tr><td title="${u.user_id}">${u.email || u.user_id}</td>
+      <td>${usd4(ingresos(u))}</td><td>${usd4(u.costo_usd)}</td>
+      <td class="${u.margen_usd >= 0 ? 'pos' : 'neg'}">${usd4(u.margen_usd)}</td></tr>`).join('');
 }
 
 async function detalle(uid, nombre) {

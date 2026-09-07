@@ -196,3 +196,16 @@ def test_usuarios_admin_agrega_al_grupo(monkeypatch):
     mod.admin("us-east-1_TESTPOOL", "x@y.com")
     assert llamadas == [{"UserPoolId": "us-east-1_TESTPOOL",
                          "Username": "x@y.com", "GroupName": "admin"}]
+
+
+def test_resumen_desglosa_ia_vs_aws(cliente, monkeypatch):
+    """La vista 2 (Costos) separa la IA (trazas) de la infra AWS (infra-*)."""
+    monkeypatch.setattr(db, "ejecutar", _ejecutar_resumen)
+    d = cliente.get("/api/admin/resumen").json()
+    u = d["usuarios"][0]
+    assert u["costo_aws_usd"] + u["costo_ia_usd"] == u["costo_usd"]
+    assert u["costo_aws_usd"] > 0                    # la línea infra-producir
+    assert u["ingresos_usd"] == round(u["gastados"] * d["piso_venta_usd"], 4)
+    t = d["totales"]
+    assert t["costo_aws_usd"] + t["costo_ia_usd"] == t["costo_usd"]
+    assert t["ingresos_usd"] == round(t["gastados"] * d["piso_venta_usd"], 4)
