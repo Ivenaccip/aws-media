@@ -625,6 +625,18 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       nano banana, guarda en `_imagenes/` local o `imagenes/{user}/` en
       S3, sirve por `GET /api/imagenes/{nombre}` con redirect al CDN;
       devuelve créditos si falla). Tests: 5 nuevos (293 verdes).
+- [x] **Miniatura con respaldo + costo por duración + 503 amable** (rama
+      m12-pulido): el listado manda `miniatura` Y `miniatura_alt` — película
+      lista sin portada.jpg (anterior al frame) cae al personaje elegido en
+      la card, y solo al final al placeholder; viniendo del hub ya NO hay
+      card «Tu idea» (para cambiar la idea se vuelve al inicio); bajo el
+      slider de Duración el costo de producir se re-pinta en vivo
+      («≈ N créditos (3 por segundo)» de las tarifas del monedero — el
+      botón sigue cobrando solo preparar). HALLAZGO del 500: Aurora tarda
+      a veces MÁS que la ventana de retry (24 s, tope API Gateway 29 s) →
+      `db.DespertandoError` + handler 503 con Retry-After 10 (monedero ya
+      reintenta con backoff); la otra causa sigue siendo la migración de
+      `slots` pendiente (la corre el dueño). Tests: 294 verdes.
 
 ---
 

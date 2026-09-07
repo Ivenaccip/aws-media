@@ -188,6 +188,37 @@ def test_retry_db_despertando(monkeypatch):
     assert len(intentos) == 3
 
 
+def test_despertando_agotado_da_503(cliente, monkeypatch):
+    """Si la base no despierta dentro del presupuesto, el API responde 503 con
+    Retry-After (el frontend reintenta solo) — nunca un 500 pelado."""
+    import time as _t
+
+    class _Falla(Exception):
+        pass
+
+    _Falla.__name__ = "DatabaseUnavailableException"
+
+    class _Cli:
+        def execute_statement(self, **kw):
+            raise _Falla("")
+
+    monkeypatch.setattr(db, "_cliente", lambda: _Cli())
+    monkeypatch.setattr(db, "_cfg", lambda: {"resourceArn": "x", "secretArn": "y", "database": "z"})
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    monkeypatch.setattr(db, "_ESPERA_RESUME_S", 0)
+    with pytest.raises(db.DespertandoError):
+        db.ejecutar("SELECT 1")
+    # y el handler del API la convierte en 503 (raise_server_exceptions=False
+    # no aplica: el handler registrado responde antes de reventar)
+    from fastapi.testclient import TestClient
+    import server.app as srv
+    monkeypatch.setattr(srv, "listar_proyectos", lambda: (_ for _ in ()).throw(db.DespertandoError("zzz")))
+    with TestClient(srv.app) as c2:
+        r = c2.get("/api/proyectos")
+    assert r.status_code == 503
+    assert r.headers.get("retry-after") == "10"
+
+
 def test_listado_trae_miniatura(cliente, monkeypatch, tmp_path):
     """La card del hub muestra la opción de personaje ELEGIDA (o la primera)."""
     from pipeline.project import OpcionPersonaje
@@ -210,8 +241,15 @@ def test_listado_trae_miniatura(cliente, monkeypatch, tmp_path):
 
 def test_miniatura_de_pelicula_lista_es_la_portada(cliente, monkeypatch, tmp_path):
     monkeypatch.setattr(project, "settings", SimpleNamespace(work_dir=tmp_path))
-    _p("m12p", estado="listo").guardar()
-    assert cliente.get("/api/proyectos").json()[0]["miniatura"] == "portada.jpg"
+    from pipeline.project import OpcionPersonaje
+    p = _p("m12p", estado="listo")
+    p.personaje.opciones = [OpcionPersonaje(url="u", path="videos/x/personaje/opcion_0.jpg")]
+    p.personaje.elegida = 0
+    p.guardar()
+    fila = cliente.get("/api/proyectos").json()[0]
+    assert fila["miniatura"] == "portada.jpg"
+    # película anterior a la portada: el frontend cae al personaje (onerror)
+    assert fila["miniatura_alt"] == "personaje/opcion_0.jpg"
 
 
 def test_reabrir_vuelve_a_revision(cliente, monkeypatch, tmp_path):

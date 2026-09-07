@@ -182,7 +182,8 @@ function render(ps) {
   const cards = activos.map(p =>
     `<div class="proy" data-p="${p.id}" role="link" tabindex="0" aria-label="Abrir proyecto">` +
     (p.miniatura
-      ? `<img class="thumb" src="/api/proyectos/${p.id}/archivo/${p.miniatura}" alt="" loading="lazy">`
+      ? `<img class="thumb" src="/api/proyectos/${p.id}/archivo/${p.miniatura}" alt="" loading="lazy"` +
+        (p.miniatura_alt ? ` data-alt="/api/proyectos/${p.id}/archivo/${p.miniatura_alt}"` : '') + `>`
       : `<div class="thumb vacia">🎬</div>`) +
     `<div class="pie">` +
     `<div class="brief" title="${esc(p.brief)}">${esc(p.brief) || '(sin título)'}</div>` +
@@ -196,8 +197,10 @@ function render(ps) {
     cards.push('<div class="proy vacio" id="nuevo" role="button" tabindex="0">＋ Nueva película</div>');
   $('#grid').innerHTML = cards.join('');
 
-  // portada rota (proyecto viejo sin portada.jpg) → placeholder, sin ícono roto
+  // portada rota (película anterior al frame de portada) → cae al personaje
+  // elegido (data-alt) y solo al final al placeholder, sin ícono roto
   document.querySelectorAll('img.thumb').forEach(im => im.onerror = () => {
+    if (im.dataset.alt) { im.src = im.dataset.alt; delete im.dataset.alt; return; }
     const d = document.createElement('div');
     d.className = 'thumb vacia'; d.textContent = '🎬';
     im.replaceWith(d);

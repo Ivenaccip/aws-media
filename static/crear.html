@@ -103,12 +103,6 @@
       <div class="mut" id="modonota">Detectamos si tu texto es una historia lista o una idea que investigar.</div>
       <input type="text" id="rubro" style="margin-top:10px" placeholder="Rubro de tu canal (opcional) — p. ej. «tecnología». Validamos que el tema coincida antes de gastar.">
     </div>
-    <!-- M12: la idea puede venir ya escrita desde el hub — se muestra plegada -->
-    <div class="card hidden" id="card-idea">
-      <h2>💡 Tu idea <span class="mut" id="idea-modo" style="font-size:13px;font-weight:400"></span></h2>
-      <p class="mut" id="idea-txt" style="margin:0 0 8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden"></p>
-      <a href="#" id="idea-editar" style="font-size:13px">✏️ Editar la idea o el modo</a>
-    </div>
     <div class="cols2">
       <div class="card">
         <h2>✨ Estilo visual</h2>
@@ -133,7 +127,7 @@
     <div class="card">
       <h2>⏱ Duración</h2>
       <div class="row"><input type="range" id="dur" min="15" max="60" step="5" value="45"><b id="durv">45s</b></div>
-      <div class="mut">Máximo 60 s en esta versión de pruebas.</div>
+      <div class="mut">Máximo 60 s en esta versión de pruebas. <span id="durcosto"></span></div>
     </div>
     <button class="btn" id="enviar">Escribir el guion →</button>
     <p class="mut" id="saldoform"></p>
@@ -253,6 +247,7 @@ function pintaCostos() {
       ? `Te faltan ${falta} créditos para empezar (saldo: ${mon.saldo}). ${CTA}` : '';
   }
   if (mon.tarifas.imagen != null) $('#pmodbtn').textContent = `Cambiar · ${mon.tarifas.imagen} créditos`;
+  pintaDurCosto();
   pintaProducir();
   if (proyecto && !$('#error').classList.contains('hidden')) pintaError(proyecto);
 }
@@ -265,7 +260,15 @@ function pintaProducir() {
 
 // --- formulario ---
 $('#brief').addEventListener('input', e => $('#cnt').textContent = e.target.value.length);
-$('#dur').addEventListener('input', e => $('#durv').textContent = e.target.value + 's');
+$('#dur').addEventListener('input', e => { $('#durv').textContent = e.target.value + 's'; pintaDurCosto(); });
+// el costo de producir SÍ depende de la duración — se re-pinta con el slider
+// (el botón de abajo cobra solo el guion; producir se confirma en revisión)
+function pintaDurCosto() {
+  const porSeg = mon?.tarifas?.video_por_segundo;
+  if (!porSeg) { $('#durcosto').textContent = ''; return; }
+  $('#durcosto').textContent =
+    `Producir esta duración costará ≈ ${Math.ceil(porSeg * +$('#dur').value)} créditos (${porSeg} por segundo).`;
+}
 // M12 (mock): la muestra intenta la imagen guardada del estilo
 // (/estilos/<id>.jpg); si no existe cae al ejemplo en palabras.
 const DESCR_ESTILO = {};
@@ -661,27 +664,14 @@ else {
     $('#modonota').textContent = MODONOTAS[modoQ];
   }
   if (briefQ) {
-    // La idea ya se escribió en el hub: la parte inicial se pliega a un resumen
-    // editable y la lista de películas no se repite (el hub ya la mostró).
-    // Entrar por «Crear contenido» (sin query) muestra el formulario completo.
-    // La vista de configuración es ANCHA, como el mock (main.wide = 1180px).
+    // La idea ya se escribió en el hub: aquí solo se configura la película
+    // (sin resumen de la idea — para cambiarla se vuelve al inicio) y la lista
+    // de películas no se repite (el hub ya la mostró). Entrar por «Crear
+    // contenido» (sin query) muestra el formulario completo. La vista de
+    // configuración es ANCHA, como el mock (main.wide = 1180px).
     document.querySelector('main').classList.add('wide');
-    const NOMBRE_MODO = {auto:'Detectar solo', investigacion:'Investigación', idea:'Tengo una idea'};
     $('#card-brief').classList.add('hidden');
     $('#card-modo').classList.add('hidden');
-    $('#card-idea').classList.remove('hidden');
-    $('#idea-txt').textContent = briefQ;
-    $('#idea-modo').textContent = '· modo ' + (NOMBRE_MODO[modo] || modo);
-    $('#idea-editar').onclick = ev => {
-      ev.preventDefault();
-      document.querySelector('main').classList.remove('wide');   // volver a columna
-      $('#card-idea').classList.add('hidden');
-      $('#card-brief').classList.remove('hidden');
-      $('#card-modo').classList.remove('hidden');
-      $('#brief').focus();
-    };
-    // el textarea oculto sigue siendo la fuente del envío; si edita, se re-refleja
-    $('#brief').addEventListener('input', () => $('#idea-txt').textContent = $('#brief').value);
   } else cargarPeliculas();
 }
 </script>

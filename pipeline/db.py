@@ -82,6 +82,12 @@ _ESPERA_RESUME_S = 24
 _DESPERTANDO = ("resum", "unavailable")
 
 
+class DespertandoError(RuntimeError):
+    """La base sigue despertando tras agotar la espera del request. El API la
+    convierte en 503 con Retry-After (el frontend reintenta solo); jamás debe
+    salir como 500 a la pantalla del usuario."""
+
+
 def ejecutar(sql: str, params: dict | None = None) -> list[dict]:
     """Corre UNA sentencia (el Data API no acepta varias por llamada) y devuelve
     las filas como lista de dicts. Valores jsonb: selecciónalos como ::text."""
@@ -95,8 +101,12 @@ def ejecutar(sql: str, params: dict | None = None) -> list[dict]:
             break
         except Exception as e:  # noqa: BLE001 — filtramos por mensaje abajo
             texto = f"{type(e).__name__} {e}".lower()
-            if not any(m in texto for m in _DESPERTANDO) or time.monotonic() > limite:
+            if not any(m in texto for m in _DESPERTANDO):
                 raise
+            if time.monotonic() > limite:
+                # el despertar puede tardar más que el presupuesto del request
+                # (API Gateway corta a los 29 s): señal tipada para el 503
+                raise DespertandoError("la base de datos sigue despertando") from e
             time.sleep(2)
     return json.loads(r.get("formattedRecords") or "[]")
 
