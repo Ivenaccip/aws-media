@@ -44,6 +44,14 @@ def _etapa(p: Proyecto, etapa: str) -> None:
     log.info("%s → %s", p.id, etapa)
 
 
+def _con_extra(p: Proyecto, d):
+    """Anexa las notas del usuario («Información extra» del formulario) a la
+    descripción del personaje — llegan al guionista y a las opciones."""
+    if d and p.personaje_extra:
+        d.descripcion = f"{d.descripcion}. {p.personaje_extra}" if d.descripcion else p.personaje_extra
+    return d
+
+
 @observe(name="preparar", capture_output=False)
 async def _preparar(p: Proyecto) -> None:
     estilo = resolver_estilo(p.estilo, p.estilo_custom)
@@ -58,6 +66,7 @@ async def _preparar(p: Proyecto) -> None:
         character.describir_referencia(Path(p.referencias[0].path)) if p.referencias else asyncio.sleep(0),
     )
     p.tipo_brief = tipo
+    desc = _con_extra(p, desc)
     if desc:
         p.personaje.nombre, p.personaje.descripcion = desc.nombre, desc.descripcion
 
@@ -98,7 +107,7 @@ async def _preparar(p: Proyecto) -> None:
     # gratis con POST /personaje/generar — nunca más un proyecto varado.
     if not desc and not p.personaje.opciones and p.tiene_guion():
         try:
-            d2 = await character.describir_desde_guion(guion_numerado(p))
+            d2 = _con_extra(p, await character.describir_desde_guion(guion_numerado(p)))
             p.personaje = await character.preparar_personaje_sin_ref(p, estilo, d2)
             p.guardar()
         except Exception:  # noqa: BLE001
