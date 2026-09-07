@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -49,6 +49,17 @@ app.include_router(media_router)
 app.include_router(pagos_router)
 app.include_router(admin_router)
 app.include_router(shorts_router)
+
+
+# Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto
+# del request: 503 con Retry-After en vez de un 500 pelado — el monedero y las
+# páginas ya reintentan solos.
+@app.exception_handler(db.DespertandoError)
+async def _despertando(request, exc):
+    return JSONResponse({"detail": "El servicio está despertando — reintenta en unos segundos."},
+                        status_code=503, headers={"Retry-After": "10"})
+
+
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}
@@ -176,13 +187,7 @@ def ver_imagen(nombre: str):
     raise HTTPException(404, "Imagen no encontrada")
 
 
-def _miniatura(p) -> str | None:
-    """Ruta relativa (para /archivo/) de la imagen que representa la obra:
-    película lista → el frame de portada (lo extrae producir; si el proyecto
-    es viejo y no lo tiene, la card cae al placeholder con onerror); si no,
-    la opción de personaje elegida, o la primera si aún no eligió."""
-    if p.estado == "listo":
-        return "portada.jpg"
+def _minia_personaje(p) -> str | None:
     ops = p.personaje.opciones
     if not ops:
         return None
@@ -190,12 +195,26 @@ def _miniatura(p) -> str | None:
     return "/".join(ops[i].path.replace("\\", "/").split("/")[-2:])
 
 
+def _miniatura(p) -> tuple[str | None, str | None]:
+    """(principal, respaldo) — rutas relativas (para /archivo/) de la imagen que
+    representa la obra. Película lista → el frame de portada, con el personaje
+    elegido de respaldo (las películas anteriores a la portada no tienen el
+    frame: la card cae al personaje y solo al final al placeholder); si no está
+    lista → el personaje elegido, o la primera opción si aún no eligió."""
+    per = _minia_personaje(p)
+    if p.estado == "listo":
+        return "portada.jpg", per
+    return per, None
+
+
 @app.get("/api/proyectos")
 def proyectos():
-    return [{"id": p.id, "creado": p.creado, "estado": p.estado,
-             "brief": p.brief[:80], "archivado": p.archivado,
-             "miniatura": _miniatura(p)}
-            for p in listar_proyectos()]
+    def fila(p):
+        mini, alt = _miniatura(p)
+        return {"id": p.id, "creado": p.creado, "estado": p.estado,
+                "brief": p.brief[:80], "archivado": p.archivado,
+                "miniatura": mini, "miniatura_alt": alt}
+    return [fila(p) for p in listar_proyectos()]
 
 
 # --- M12: slots de proyectos activos --------------------------------------
