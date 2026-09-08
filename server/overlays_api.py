@@ -79,6 +79,15 @@ class MuestraIn(BaseModel):
 
 @router.get("/{name}/api/overlays")
 def ver_overlays(name: str):
+    from server.editor import _leer_json_s3, _nube, _proyecto_nube
+    if _nube():
+        # M16.2: la pista 2 se lee de S3 (la subió el puente); sin overlays.json
+        # el editor simplemente no pinta recursos
+        _proyecto_nube(name)
+        data = _leer_json_s3(f"videos/{name}/work/overlays.json") or \
+            {"version": 1, "estilo_prompt": "", "overlays": []}
+        return {**data, "costo_overlays": overlays.costo_total(data),
+                "backend": settings.gen_backend}
     p = _proyecto(name)
     data = overlays.cargar(p)
     return {**data, "costo_overlays": overlays.costo_total(data),
@@ -184,7 +193,12 @@ def regenerar_video(name: str, oid: str, body: VideoIn):
                                                     negativo=ov.get("veo_negativo", ""),
                                                     meta={"overlay": oid}))
         mux = crudo.with_suffix(".mux.mp4")
-        overlays.mux_reemplazo(crudo, overlays.dir_overlay(p, oid) / "audio.mp3", mux, dur)
+        if overlays.cargar(p).get("pista_unica"):
+            # M16.2 (narración): el clip va sin audio — la voz continua la
+            # muxea el rearmado, así regenerar una ventana conserva la voz
+            overlays.recorte_reemplazo(crudo, mux, dur)
+        else:
+            overlays.mux_reemplazo(crudo, overlays.dir_overlay(p, oid) / "audio.mp3", mux, dur)
         crudo.unlink()
         version = overlays.agregar_version(p, oid, mux, imagen, est["video"])
         overlays.registrar_gasto(p, "video", oid, est["video"])

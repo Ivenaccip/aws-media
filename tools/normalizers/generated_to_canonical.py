@@ -205,7 +205,9 @@ def main() -> None:
         proj = project_dir(args.nombre)
         ids = orden_escenas(work_dir)
         durs = {i: duracion_video(work_dir / f"final_{i}.mp4") for i in ids}
-        data = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
+        data = overlays_mod.crear_desde_produccion(
+            proj, work_dir, ids, durs,
+            pista_unica=(work_dir / "narracion.mp3").is_file())
         print(f"overlays: {len(data['overlays'])} escenas registradas en videos/{args.nombre}")
         return
     # A2: el backend sale de .video-stack/config.json (local | assemblyai);
@@ -228,15 +230,18 @@ def main() -> None:
                     "-ar", "16000", "-ac", "1",
                     str(proj / "work" / "audio" / f"{SOURCE_ID}.wav")], check=True)
 
-    if (work_dir / "narracion.mp3").is_file():
-        # M11: pista única — no hay audio_N.mp3 por escena, así que la pista 2
-        # de overlays (regenerar escenas con su audio) no aplica en esta ruta
-        print("overlays: ruta narración (pista única) — sin pista 2")
-    else:
-        ids = orden_escenas(work_dir)
+    # M16.2: la ruta narración también arma la pista 2 — clips video-only por
+    # ventana (final_N.mp4) con la voz continua aparte (pista_unica)
+    pista_unica = (work_dir / "narracion.mp3").is_file()
+    ids = orden_escenas(work_dir)
+    if ids:
         durs = {i: duracion_video(work_dir / f"final_{i}.mp4") for i in ids}
-        data_ov = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
-        print(f"overlays: {len(data_ov['overlays'])} escenas en la pista 2")
+        data_ov = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs,
+                                                      pista_unica=pista_unica)
+        print(f"overlays: {len(data_ov['overlays'])} escenas en la pista 2"
+              + (" (pista única)" if pista_unica else ""))
+    else:
+        print("overlays: sin final_*.mp4 — pista 2 vacía")
 
     if not args.skip_proxy:
         subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "make_proxy.py"),

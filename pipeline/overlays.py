@@ -84,22 +84,36 @@ def _stamp() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def ruta_narracion(project: Path) -> Path:
+    """M16.2 (pista única): la narración continua vive junto a los overlays —
+    el rearmado la muxea encima del concat de clips."""
+    return project / "work" / "overlays" / "narracion.mp3"
+
+
 def crear_desde_produccion(project: Path, work_dir: Path, orden: list[str],
-                           duraciones: dict[str, float]) -> dict:
+                           duraciones: dict[str, float],
+                           pista_unica: bool = False) -> dict:
     """El puente registra cada escena generada como overlay v1: clip y audio se
-    copian al proyecto (autocontenido), prompts reales desde estado.json si existe."""
+    copian al proyecto (autocontenido), prompts reales desde estado.json si existe.
+    Con pista_unica (M11/M16.2): los clips son video-only y la voz es UNA pista
+    (narracion.mp3) — no hay audio.mp3 por overlay."""
     estado = {e["id"]: e for e in leer_json(work_dir / "estado.json", default={}).get("escenas", [])}
     proyecto = leer_json(work_dir / "proyecto.json", default={})
     narraciones = {e["id"]: e["narracion"] for e in proyecto.get("guion", [])}
     primera = next(iter(estado.values()), {})
 
     data = {"version": 1, "estilo_prompt": primera.get("estilo_prompt", ""), "overlays": []}
+    if pista_unica:
+        data["pista_unica"] = True
+        ruta_narracion(project).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(work_dir / "narracion.mp3", ruta_narracion(project))
     t = 0.0
     for oid in orden:
         d = dir_overlay(project, oid)
         d.mkdir(parents=True, exist_ok=True)
         shutil.copy2(work_dir / f"final_{oid}.mp4", d / "v1.mp4")
-        shutil.copy2(work_dir / f"audio_{oid}.mp3", d / "audio.mp3")
+        if not pista_unica:
+            shutil.copy2(work_dir / f"audio_{oid}.mp3", d / "audio.mp3")
         e = estado.get(oid, {})
         dur = duraciones[oid]
         data["overlays"].append({
@@ -132,6 +146,15 @@ def mux_reemplazo(video_veo: Path, audio: Path, destino: Path, t: float) -> None
         "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-r", "24",
         "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-af", "apad",
         "-t", f"{t}", "-movflags", "+faststart", str(destino))
+
+
+def recorte_reemplazo(video_veo: Path, destino: Path, t: float) -> None:
+    """M16.2 (pista única): el reemplazo NO lleva audio — la narración continua
+    va aparte y el rearmado la muxea encima. Mismo recorte exacto y mismos
+    parámetros que pipeline/ffmpeg.recortar_video (concat por stream copy)."""
+    _ff("-i", str(video_veo), "-t", f"{t:.3f}", "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-r", "24", str(destino))
 
 
 def agregar_version(project: Path, oid: str, video_mux: Path, imagen_base: Path | None,
@@ -177,10 +200,22 @@ def rearmar_pelicula(project: Path, con_proxy: bool = True) -> float:
         f"file '{(project / 'work' / version_activa(ov)['video']).resolve().as_posix()}'"
         for ov in data["overlays"]), encoding="utf-8")
     destino = project / "pelicula.mp4"
-    _ff("-f", "concat", "-safe", "0", "-i", str(lista),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-r", "24",
-        "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
-        "-movflags", "+faststart", str(destino))
+    if data.get("pista_unica"):
+        # M16.2: clips video-only + la narración continua muxeada encima
+        # (-shortest empareja el sobrante, igual que ffmpeg.mux_pista_unica)
+        video = project / "work" / "overlays" / "video_ventanas.mp4"
+        _ff("-f", "concat", "-safe", "0", "-i", str(lista),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-r", "24",
+            "-an", "-movflags", "+faststart", str(video))
+        _ff("-i", str(video), "-i", str(ruta_narracion(project)),
+            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+            "-shortest", "-movflags", "+faststart", str(destino))
+    else:
+        _ff("-f", "concat", "-safe", "0", "-i", str(lista),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-r", "24",
+            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+            "-movflags", "+faststart", str(destino))
     _ff("-i", str(destino), "-ar", "16000", "-ac", "1",
         str(project / "work" / "audio" / "pelicula.wav"))
     if con_proxy:

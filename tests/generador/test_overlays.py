@@ -43,6 +43,55 @@ def test_crear_desde_produccion(tmp_path):
     assert overlays.costo_total(data) == 0.0   # la producción original no suma al libro
 
 
+def _produccion_narracion(tmp_path):
+    """M16.2: la ruta narración no tiene audio_N.mp3 — clips video-only por
+    ventana + la voz continua en narracion.mp3."""
+    work = tmp_path / "work_gen"
+    work.mkdir()
+    for oid in ("1", "2"):
+        (work / f"final_{oid}.mp4").write_bytes(b"v")
+    (work / "narracion.mp3").write_bytes(b"voz")
+    (work / "estado.json").write_text(json.dumps({"escenas": [
+        {"id": "1", "narracion": "uno", "prompt_visual": "llama on hill",
+         "estilo_prompt": "flat cartoon"},
+        {"id": "2", "narracion": "dos", "prompt_visual": "llama drinking"},
+    ]}), encoding="utf-8")
+    proj = tmp_path / "videos" / "gen-n"
+    (proj / "work").mkdir(parents=True)
+    return work, proj
+
+
+def test_crear_pista_unica_sin_audio_por_overlay(tmp_path):
+    work, proj = _produccion_narracion(tmp_path)
+    data = overlays.crear_desde_produccion(proj, work, ["1", "2"],
+                                           {"1": 7.0, "2": 7.0}, pista_unica=True)
+    assert data["pista_unica"] is True
+    assert overlays.ruta_narracion(proj).read_bytes() == b"voz"
+    o1 = data["overlays"][0]
+    assert o1["prompt_imagen"] == "llama on hill"   # cae a prompt_visual
+    assert (proj / "work" / "overlays" / "1" / "v1.mp4").is_file()
+    assert not (proj / "work" / "overlays" / "1" / "audio.mp3").exists()
+
+
+def test_rearmar_pista_unica_muxea_la_narracion(tmp_path, monkeypatch):
+    work, proj = _produccion_narracion(tmp_path)
+    overlays.crear_desde_produccion(proj, work, ["1", "2"],
+                                    {"1": 7.0, "2": 7.0}, pista_unica=True)
+    (proj / "work" / "audio").mkdir()
+    llamadas = []
+    monkeypatch.setattr(overlays, "_ff", lambda *a: llamadas.append(a))
+
+    class Probe:
+        returncode, stdout, stderr = 0, "14.0\n", ""
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Probe())
+    assert overlays.rearmar_pelicula(proj, con_proxy=False) == 14.0
+    # concat video-only (-an) + mux con la narración continua + wav de análisis
+    assert len(llamadas) == 3
+    assert "-an" in llamadas[0]
+    assert str(overlays.ruta_narracion(proj)) in llamadas[1] and "-shortest" in llamadas[1]
+
+
 def test_versionado_y_gastos(tmp_path):
     work, proj = _produccion(tmp_path)
     overlays.crear_desde_produccion(proj, work, ["1"], {"1": 5.0})

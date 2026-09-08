@@ -184,6 +184,10 @@ async def producir_pelicula(p, ctx: Casting, estilo: Estilo | None, progreso) ->
         _procesar_cadena(c, ctx, p.personaje.url_elegida, estilo, ventanas, progreso)
         for c in cadenas))
     escenas = sorted((e for lote in lotes for e in lote), key=lambda s: s.orden)
+    # M16.2: el puente arma la pista 2 del editor con los prompts REALES de
+    # cada ventana — misma persistencia que la ruta escenas
+    from .run import _guardar_estado
+    _guardar_estado(workdir, "ventanas_listas", escenas)
 
     if progreso:
         progreso("concat", {})
