@@ -58,10 +58,20 @@ def costos_por_proveedor(trace_id: str) -> dict[str, float]:
     Dict vacío si no se pudo desglosar — el caller cae a la fila única."""
     import requests
 
+    import time
+
     base, auth = _conexion()
     try:
-        r = requests.get(f"{base}/api/public/traces/{trace_id}", auth=auth, timeout=60)
-        r.raise_for_status()
+        # Langfuse ratelimita esta API con muchas trazas seguidas (visto en la
+        # reparación 2026-09-08: 76 de 103 cayeron al fallback): ante 429 se
+        # espera y reintenta en vez de degradar el desglose en silencio.
+        for intento in range(4):
+            r = requests.get(f"{base}/api/public/traces/{trace_id}", auth=auth, timeout=60)
+            if r.status_code == 429 and intento < 3:
+                time.sleep(5 * (intento + 1))
+                continue
+            r.raise_for_status()
+            break
         obs = r.json().get("observations") or []
     except Exception:  # noqa: BLE001 — sin detalle no hay desglose, no un sync roto
         return {}
