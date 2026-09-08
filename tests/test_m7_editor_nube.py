@@ -170,13 +170,12 @@ def test_render_502_si_no_se_pudo_lanzar(nube, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# chat — en nube dice la verdad y no acepta mensajes
+# chat — desde M16.4 el chat en nube SÍ está disponible (consejero con la API
+# de Claude); el detalle vive en test_m16_chat_nube.py
 
-def test_chat_en_nube_no_disponible_con_copy(nube):
+def test_chat_en_nube_disponible(nube):
     st = nube.get("/editor/gen-abc/api/chat/poll").json()
-    assert st["available"] is False and "Claude Code local" in st["error"]
-    r = nube.post("/editor/gen-abc/api/chat", json={"text": "hola"})
-    assert r.status_code == 503
+    assert st["available"] is True and st["error"] is None
 
 
 # ---------------------------------------------------------------------------

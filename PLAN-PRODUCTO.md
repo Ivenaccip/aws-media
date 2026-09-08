@@ -863,15 +863,22 @@ a propósito desde M7; el dueño ya tiene API key de Claude para habilitarlo.
          = 0 cr. `/precios` en nube agrega `creditos` y la UI muestra
          créditos en vez de USD; g1 hace poll de `/api/overlays/job`;
          `infra-overlay` en costes. 20 tests (test_m16_broll_nube.py).
-4. - [ ] **Chat editorial en nube**: endpoint de chat que llama la API de
-         Anthropic (Claude) directamente — la clave del dueño va por SSM
-         (`/media-ivenaccip/usuarios/<id>/ANTHROPIC_API_KEY`, D4: claves
-         por-usuario que ya pisan plataforma), prompts nuevos como
-         `prompts/*.md` sembrados en Langfuse (regla M10) y CADA llamada
-         trazada en Langfuse con user_id. Tarifa: 0 cr al inicio con tope de
-         turnos/día, midiendo gasto real en Langfuse antes de tarifar
-         (decisión M7: ~2-7 cr/turno estimado). Cargar la referencia del
-         API de Claude al implementar.
+4. - [x] **Chat editorial en nube** (PR #42): CONSEJERO con la API de Claude
+         (SDK `anthropic==1.4.0` pinado, modelo `claude-opus-5` con effort
+         low + fallback de refusal en la misma llamada) —
+         `pipeline/chat_nube.py`: clave por-usuario D4 en SSM
+         `/media-ivenaccip/usuarios/<id>/CLAUDE_API_KEY` (nueva en
+         CLAVES_USUARIO de ssm_env.py; pisa a la de plataforma, fallback al
+         entorno), system = `prompts/chat_editor_system.md` (sembrable M10,
+         con cache_control) + transcript condensado de S3, historial en
+         `doc.chat` (campo nuevo), CADA turno trazado como generation en
+         Langfuse con user_id y tokens. Tarifa 0 cr con tope
+         `CHAT_TURNOS_DIA` (40) — medir gasto real en Langfuse antes de
+         tarifar. Smoke real: 1 turno ≈ $0.01 dólares (543 in / 287 out).
+         La v1 aconseja anclada en segundos y NO edita cuts.json (eso sigue
+         en el chat local con claude-agent-sdk; darle herramientas es la
+         siguiente iteración si el dueño la quiere). 10 tests
+         (test_m16_chat_nube.py).
 5. - [ ] Orden sugerido: 1 (subtítulos: lo que el dueño intentó y falló) →
          2 (recursos) → 3 (b-roll) → 4 (chat). Deploy por iteración:
          imagen del CI + `cdk deploy aws-media-api aws-media-jobs`.

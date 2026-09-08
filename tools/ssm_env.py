@@ -28,7 +28,10 @@ PREFIJO = "/media-ivenaccip/env/"
 
 # C5 (D4): claves que un usuario puede aportar como propias — van bajo
 # /media-ivenaccip/usuarios/<user_id>/ y PISAN a las de plataforma en el worker.
-CLAVES_USUARIO = ["BLOTATO_API_KEY"]
+CLAVES_USUARIO = ["BLOTATO_API_KEY",
+                  # M16.4 — chat editorial: la clave de la API de Claude del
+                  # usuario (pisa a la de plataforma en el server y los workers)
+                  "CLAUDE_API_KEY"]
 PREFIJO_USUARIOS = "/media-ivenaccip/usuarios/"
 
 

@@ -186,7 +186,7 @@ def test_producir_sin_backend_no_toca_monedero(tmp_path, monkeypatch):
 
 def test_claves_usuario_lista_blanca():
     from tools.ssm_env import CLAVES_USUARIO, PREFIJO_USUARIOS
-    assert CLAVES_USUARIO == ["BLOTATO_API_KEY"]
+    assert CLAVES_USUARIO == ["BLOTATO_API_KEY", "CLAUDE_API_KEY"]   # M16.4: chat
     assert PREFIJO_USUARIOS.startswith("/media-ivenaccip/")   # "aws*" reservado
 
 
