@@ -91,3 +91,41 @@ def test_cuts_keep_all_formato():
 def test_edited_transcript_en_ms():
     out = g.edited_transcript_ms([{"text": "hola", "start": 0.3, "end": 0.712}])
     assert out == {"words": [{"text": "hola", "start": 300, "end": 712}]}
+
+
+# --- M11: ruta narración (pista única, sin audio_N.mp3 por escena) ---
+
+def test_convertir_narracion_usa_alineado_persistido(tmp_path, monkeypatch):
+    import json
+    (tmp_path / "alineado.json").write_text(json.dumps({"words": [
+        {"text": "hola", "start": 0.0, "end": 0.4},
+        {"text": "kusi", "start": 0.5, "end": 27.9, "confidence": 0.9},
+        {"text": "  ", "start": 1.0, "end": 1.2},
+    ]}), encoding="utf-8")
+    (tmp_path / "pelicula.mp4").touch()
+    monkeypatch.setattr(g, "duracion_video", lambda _p: 27.5)
+
+    def jamas(_a):
+        raise AssertionError("con alineado.json no se transcribe nada")
+    doc = g.convertir(tmp_path, "gen-x", jamas)
+    validate_canonical(doc)
+    assert doc["source"]["duration"] == 27.5
+    assert [w["text"] for w in doc["words"]] == ["hola", "kusi"]
+    assert doc["words"][1]["end"] == 27.5      # recortada a la película
+    assert doc["asr"]["backend"] == "faster-whisper"
+
+
+def test_convertir_narracion_sin_alineado_transcribe_pista_unica(tmp_path, monkeypatch):
+    (tmp_path / "narracion.mp3").touch()
+    (tmp_path / "pelicula.mp4").touch()
+    monkeypatch.setattr(g, "duracion_video", lambda _p: 28.0)
+    llamadas = []
+
+    def transcribe(audio):
+        llamadas.append(audio.name)
+        return [{"text": "una", "start": 0.0, "end": 0.3},
+                {"text": "sola", "start": 0.4, "end": 0.8}]
+    doc = g.convertir(tmp_path, "gen-x", transcribe)
+    validate_canonical(doc)
+    assert llamadas == ["narracion.mp3"]       # UNA transcripción, sin offsets
+    assert doc["words"][1]["start"] == 0.4
