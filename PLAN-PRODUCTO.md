@@ -706,6 +706,12 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       sin deploy por el TTL del SDK). **REGLA NUEVA de deploy: todo PR que
       toque `prompts/*.md` termina con `python tools/prompts_sync.py` tras
       el merge — sin eso producción sigue sirviendo el prompt viejo.**
+- [x] **Caché de las imágenes de estilo** (rama cache-estilos): en producción
+      cada clic de estilo re-descargaba la muestra (hasta ~370 KB) por
+      Lambda + API Gateway — StaticFiles no manda Cache-Control. Ahora las
+      respuestas image/* de static llevan `public, max-age=86400` (cambian
+      solo con deploy; el ETag revalida al vencer); HTML/JS quedan con
+      revalidación por ETag para que los fixes de UI lleguen solos.
 - [x] **Puente al editor roto en la ruta narración** (rama puente-narracion):
       la primera película M11 en producción (canguro ee202e1a) salió con el
       botón «Editor» deshabilitado — `progreso.editor_error: «escena 1: falta
