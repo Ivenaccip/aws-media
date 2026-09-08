@@ -706,6 +706,13 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       sin deploy por el TTL del SDK). **REGLA NUEVA de deploy: todo PR que
       toque `prompts/*.md` termina con `python tools/prompts_sync.py` tras
       el merge — sin eso producción sigue sirviendo el prompt viejo.**
+- [x] **Hub: tooltips en los modos + prompt alineado** (rama hub-tooltips):
+      la nota fija bajo los chips se retira — cada botón (Investigación /
+      Tengo una idea / enviar ↑) explica lo suyo en un tooltip `data-tip`
+      al pasar el cursor o con foco, ANTES de hacer click; y el cuadro
+      «¿Qué vamos a crear hoy?» baja 82px para arrancar a la altura de la
+      card «Crear imágenes» del sidebar (mock con línea roja del dueño;
+      en columna única el margen se quita).
 
 ---
 
