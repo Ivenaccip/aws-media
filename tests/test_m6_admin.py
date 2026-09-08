@@ -163,13 +163,16 @@ def test_sincronizar_idempotente(monkeypatch):
         insertadas.append(p)
         return []
     monkeypatch.setattr(db, "ejecutar", ejecutar)
+    # sin desglose por vendor (M16): cae a la fila única 'langfuse' de siempre
+    monkeypatch.setattr(costes_mod, "costos_por_proveedor", lambda tid: {})
     trazas = [
         {"id": "vieja", "totalCost": 1.0, "userId": "a"},        # ya en la tabla
         {"id": "gratis", "totalCost": 0, "userId": "a"},         # sin costo
         {"id": "nueva", "totalCost": 0.5, "userId": "a", "sessionId": "p1", "name": "run"},
     ]
     assert costes_mod.sincronizar(trazas=trazas) == 1
-    assert insertadas == [{"u": "a", "p": "p1", "c": "run", "usd": 0.5, "t": "nueva"}]
+    assert insertadas == [{"u": "a", "p": "p1", "c": "run", "prov": "langfuse",
+                           "usd": 0.5, "t": "nueva"}]
 
 
 def test_worker_despacha_sync_costes(monkeypatch):

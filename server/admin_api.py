@@ -80,17 +80,26 @@ def resumen():
     # por concepto: el total va al costo directo y de los conceptos de infra
     # se deriva el tiempo de cómputo en Fargate (costo ÷ tarifa)
     costos: dict[str, float] = {}
-    # desglose para la vista de Costos: infra AWS (conceptos "infra-*") vs IA
+    # desglose para la vista de Costos: infra AWS (conceptos "infra-*") vs IA,
+    # y la IA por vendor (openai / fal / claude — el sync desglosa por el
+    # modelo de cada generation; lo sincronizado antes queda sin vendor)
     costos_aws: dict[str, float] = {}
+    costos_prov: dict[str, dict[str, float]] = {}
     fargate_s: dict[str, float] = {}
     for f in db.ejecutar(
-            "SELECT user_id, concepto, SUM(costo_usd) AS usd "
-            "FROM costes GROUP BY user_id, concepto"):
+            "SELECT user_id, concepto, proveedor, SUM(costo_usd) AS usd "
+            "FROM costes GROUP BY user_id, concepto, proveedor"):
         u, usd = f["user_id"], float(f["usd"])
         costos[u] = costos.get(u, 0.0) + usd
         concepto = f.get("concepto") or ""
         if concepto.startswith("infra-"):
             costos_aws[u] = costos_aws.get(u, 0.0) + usd
+        else:
+            prov = f.get("proveedor") or "langfuse"
+            if prov not in ("openai", "fal", "claude"):
+                prov = "otros"   # filas de antes del desglose (proveedor 'langfuse')
+            d = costos_prov.setdefault(u, {})
+            d[prov] = d.get(prov, 0.0) + usd
         if concepto in costes_infra.CONCEPTOS_FARGATE:
             fargate_s[u] = fargate_s.get(u, 0.0) + \
                 (costes_infra.segundos_estimados(f["concepto"], usd) or 0.0)
@@ -118,6 +127,8 @@ def resumen():
             "costo_usd": costo,
             "costo_aws_usd": aws,
             "costo_ia_usd": round(costo - aws, 4),
+            "costo_ia_prov": {p: round(v, 4)
+                              for p, v in (costos_prov.get(u) or {}).items()},
             "ingresos_usd": round(gastados * creditos.PISO_VENTA_USD, 4),
             # créditos cobrados a valor de venta menos lo que nos costó la IA
             "margen_usd": round(gastados * creditos.PISO_VENTA_USD - costo, 4),
@@ -130,6 +141,9 @@ def resumen():
             "costo_usd": round(sum(u["costo_usd"] for u in usuarios), 4),
             "costo_aws_usd": round(sum(u["costo_aws_usd"] for u in usuarios), 4),
             "costo_ia_usd": round(sum(u["costo_ia_usd"] for u in usuarios), 4),
+            "costo_ia_prov": {p: round(sum(u["costo_ia_prov"].get(p, 0.0)
+                                           for u in usuarios), 4)
+                              for p in ("openai", "fal", "claude", "otros")},
             "ingresos_usd": round(sum(u["ingresos_usd"] for u in usuarios), 4),
             "margen_usd": round(sum(u["margen_usd"] for u in usuarios), 4),
             "gastados": sum(u["gastados"] for u in usuarios),

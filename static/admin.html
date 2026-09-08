@@ -94,6 +94,9 @@
     <div id="v-costos" hidden>
       <div class="fila-kpi">
         <div class="kpi"><b id="c-ia"></b><span>IA (APIs — Langfuse)</span></div>
+        <div class="kpi"><b id="c-openai"></b><span>· OpenAI</span></div>
+        <div class="kpi"><b id="c-fal"></b><span>· fal</span></div>
+        <div class="kpi"><b id="c-claude"></b><span>· Claude</span></div>
         <div class="kpi"><b id="c-aws"></b><span>infra AWS (Fargate/Lambda)</span></div>
         <div class="kpi"><b id="c-total"></b><span>costo directo total</span></div>
         <span style="flex:1"></span>
@@ -103,11 +106,15 @@
       <section>
         <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
         <div class="tabla-scroll"><table>
-          <thead><tr><th>Usuario</th><th>IA (APIs)</th><th>AWS</th><th>S3</th>
+          <thead><tr><th>Usuario</th><th>OpenAI</th><th>fal</th><th>Claude</th>
+            <th>IA total</th><th>AWS</th><th>S3</th>
             <th>Fargate</th><th>Costo total</th></tr></thead>
           <tbody id="cuerpo-costos"></tbody>
         </table></div>
-        <p class="mut" style="margin-top:10px">La IA sale de las trazas de Langfuse (sync diario
+        <p class="mut" style="margin-top:10px">El desglose OpenAI / fal / Claude sale del modelo
+          de cada generación; lo sincronizado ANTES de este desglose no trae vendor y solo
+          aparece en <b>IA total</b> (re-aparece desglosado si borras esas filas y re-sincronizas
+          el periodo). La IA sale de las trazas de Langfuse (sync diario
           06:00 UTC + el botón de arriba); AWS es la línea estimada por corrida (segundos reales de
           Fargate/Lambda × tarifas de <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa
           cuenta (costo ÷ tarifa = tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte y
@@ -184,13 +191,20 @@ async function cargar() {
       <td>${u.cortesia}</td><td>${u.comprados}</td><td>${u.gastados}</td>
       <td>${usd4(ingresos(u))}</td><td>${u.saldo}</td><td>${u.peliculas}</td></tr>`).join('');
 
-  // 2 · costos (IA por un lado, AWS por el otro)
+  // 2 · costos (IA por vendor + AWS por el otro)
+  const prov = (x, p) => (x.costo_ia_prov || {})[p] ?? 0;
   $('#c-ia').textContent = usd(t.costo_ia_usd ?? t.costo_usd);
+  $('#c-openai').textContent = usd(prov(t, 'openai'));
+  $('#c-fal').textContent = usd(prov(t, 'fal'));
+  $('#c-claude').textContent = usd(prov(t, 'claude'));
   $('#c-aws').textContent = usd(t.costo_aws_usd ?? 0);
   $('#c-total').textContent = usd(t.costo_usd);
   $('#cuerpo-costos').innerHTML = d.usuarios.map(u => `
     <tr class="usuario" data-uid="${u.user_id}" tabindex="0">
       <td title="${u.user_id}">${u.email || u.user_id}</td>
+      <td>${usd4(prov(u, 'openai'))}</td>
+      <td>${usd4(prov(u, 'fal'))}</td>
+      <td>${usd4(prov(u, 'claude'))}</td>
       <td>${usd4(u.costo_ia_usd ?? u.costo_usd)}</td>
       <td>${usd4(u.costo_aws_usd ?? 0)}</td>
       <td>${mb(u.s3_bytes)}</td>
