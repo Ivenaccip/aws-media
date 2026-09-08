@@ -581,6 +581,42 @@ verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
+- [ ] **Plan del editor en nube (feedback 2026-09-08)** — pasos en orden:
+      - [ ] Paso 0 (dueño): deploy de la imagen CI + `cdk deploy aws-media-api
+            aws-media-jobs` + `python tools/prompts_sync.py` — hipótesis: la
+            Lambda corre imagen vieja y por eso 404/500 en subtítulos y
+            «Claude no puede conectarse» (endpoints de PRs #39-#42 ausentes).
+      - [ ] Paso 1: si los 404/500 de subtítulos sobreviven al deploy,
+            diagnóstico por CloudWatch.
+      - [ ] Paso 2: chat lento — indicador «Claude está escribiendo…» primero;
+            streaming/poll solo si sigue sintiéndose lento.
+      - [ ] Paso 3: verificar conexión de Claude tras el deploy
+            (SinClave/429/timeout).
+      - [ ] Paso 4: rediseñar la UI del editor alineada al hub (pendiente:
+            ¿mock de Miro o me baso en el hub?).
+      - [ ] Paso 5: placas numeradas («Número 1/2/3») manuales hoy; iteración
+            futura: el chat dispara la generación de b-roll.
+- [ ] **Economía de tokens del chat editorial** (decidido 2026-09-08 — Claude
+      es hoy 0.3% del gasto pero es lo único que escala por turno de usuario;
+      optimizar ANTES de abrir a 50-100):
+      - [ ] Fix de caché: `cache_control` está en el bloque del system y el
+            CONTEXTO (transcript, miles de tokens) va después SIN marcador —
+            moverlo al bloque del contexto cachea system + transcript
+            (cache read = 10% del input). `pipeline/chat_nube.py`.
+      - [ ] Tope de historial: mandar solo los últimos ~20 turnos para poner
+            techo al input en sesiones largas.
+      - [x] Eval 1 Opus 5 vs Sonnet 5 (2026-09-08): re-corridos los 3 turnos
+            reales de gen-ee202e1a con Sonnet — ancla igual de bien
+            (8.5/17.8/23.5s, pista 2, B-roll IA) a $0.0053 vs $0.0166 por
+            turno (~68% menos); Opus solo aporta matices finos. DECISIÓN del
+            dueño: Opus sigue de default durante las pruebas, trackeando
+            usage/caché en Langfuse.
+      - [ ] Eval 2 con evaluador (LLM juez) sobre más turnos acumulados de
+            pruebas reales: si sale similar, cambiar CHAT_MODEL a
+            claude-sonnet-5 (revertible por env).
+      - Descartado a este tamaño: cascada con Haiku, batching, caché
+        semántica (chat interactivo y personalizado); thinking ya va en
+        effort low y max_tokens=1500 ya acota la salida.
 - [x] **M15 — Editor de imágenes (inpainting) + sidebar reordenado** (PR #45,
       2026-09-08): «Editor de imágenes» ya no apunta a crear-imagenes.html —
       página propia `editor-imagenes.html` (subes tu imagen, pintas la zona

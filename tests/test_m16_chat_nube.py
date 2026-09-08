@@ -152,12 +152,89 @@ def test_responder_llama_a_claude_con_historial(monkeypatch):
         "gen-abc", "u1", "Duración: 30 s",
         [{"role": "user", "text": "hola"}, {"role": "assistant", "text": "hola, dime"}],
         "¿dónde corto?")
-    assert respuesta == "Corta en el 12.4s." and usage == {"input": 900, "output": 40}
+    assert respuesta == "Corta en el 12.4s." and usage == {
+        "input": 900, "output": 40, "cache_write": 0, "cache_read": 0}
     assert visto["api_key"] == "sk-test" and visto["model"] == chat_nube.MODELO
     assert visto["fallbacks"] == "default"
     assert [m["content"] for m in visto["messages"]] == ["hola", "hola, dime", "¿dónde corto?"]
     assert "Duración: 30 s" in visto["system"][1]["text"]
-    assert visto["system"][0]["cache_control"] == {"type": "ephemeral"}
+    # el marcador de caché va en el ÚLTIMO bloque estable (el contexto), para
+    # cachear system + transcript juntos — no solo el prompt chico
+    assert visto["system"][1]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in visto["system"][0]
+    chat_nube.clave_claude.cache_clear()
+
+
+def test_responder_acota_historial(monkeypatch):
+    """Sesiones largas: solo los últimos CHAT_HISTORIAL_MAX turnos viajan."""
+    chat_nube.clave_claude.cache_clear()
+    monkeypatch.setenv("SSM_USUARIOS_PREFIX", "")
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-test")
+    visto = {}
+
+    class Uso:
+        input_tokens, output_tokens = 900, 40
+
+    class Bloque:
+        type, text = "text", "ok"
+
+    class Resp:
+        content, usage, stop_reason = [Bloque()], Uso(), "end_turn"
+
+    class Mensajes:
+        def create(self, **kw):
+            visto.update(kw)
+            return Resp()
+
+    class Beta:
+        messages = Mensajes()
+
+    class Cliente:
+        def __init__(self, api_key):
+            self.beta = Beta()
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", Cliente)
+    historial = [{"role": "user", "text": f"m{i}"} for i in range(30)]
+    chat_nube.responder("gen-abc", "u1", "ctx", historial, "¿dónde corto?")
+    textos = [m["content"] for m in visto["messages"]]
+    assert len(textos) == chat_nube.HISTORIAL_MAX + 1  # historial acotado + turno nuevo
+    assert textos[-1] == "¿dónde corto?" and textos[0] == f"m{30 - chat_nube.HISTORIAL_MAX}"
+    chat_nube.clave_claude.cache_clear()
+
+
+def test_responder_sin_fallbacks_fuera_de_opus(monkeypatch):
+    """El parámetro fallbacks solo existe en Opus — con CHAT_MODEL=sonnet la
+    llamada no debe mandarlo (Sonnet responde 400 si viaja)."""
+    chat_nube.clave_claude.cache_clear()
+    monkeypatch.setenv("SSM_USUARIOS_PREFIX", "")
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-test")
+    monkeypatch.setattr(chat_nube, "MODELO", "claude-sonnet-5")
+    visto = {}
+
+    class Uso:
+        input_tokens, output_tokens = 10, 5
+
+    class Bloque:
+        type, text = "text", "ok"
+
+    class Resp:
+        content, usage, stop_reason = [Bloque()], Uso(), "end_turn"
+
+    class Mensajes:
+        def create(self, **kw):
+            visto.update(kw)
+            return Resp()
+
+    class Beta:
+        messages = Mensajes()
+
+    class Cliente:
+        def __init__(self, api_key):
+            self.beta = Beta()
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", Cliente)
+    chat_nube.responder("gen-abc", "u1", "ctx", [], "hola")
+    assert "fallbacks" not in visto and "betas" not in visto
     chat_nube.clave_claude.cache_clear()
 
 
