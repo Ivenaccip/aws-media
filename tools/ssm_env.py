@@ -23,6 +23,9 @@ CLAVES = [
     # M4 — Stripe: el whsec_ del webhook y los 3 Payment Links (los links no
     # son secretos, pero viajan por aquí para no hornearlos en la infra)
     "STRIPE_WEBHOOK_SECRET", "STRIPE_LINK_100", "STRIPE_LINK_550", "STRIPE_LINK_1200",
+    # M16.4+: la API de Claude como BASE de plataforma — todos los usuarios
+    # tienen el chat editorial configurado; una clave por-usuario (D4) la pisa
+    "CLAUDE_API_KEY",
 ]
 PREFIJO = "/media-ivenaccip/env/"
 

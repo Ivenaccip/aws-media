@@ -581,6 +581,17 @@ verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
+- [x] **Plan de escalamiento + Claude como base de plataforma** (PR #44,
+      2026-09-08): `docs/ESCALAMIENTO.md` — el runbook de 6 testers →
+      50-100 activos/día: Fase 1 antes de abrir (Aurora min 0.5 ACU, retry
+      ante rate limits en fal.llamar + semáforo por-proceso documentado,
+      candado g2 a Postgres), Fase 2 con datos (cold starts medidos, sync de
+      costes cada 4-6 h, tarifar el chat con la medición de Langfuse),
+      operativo (alarmas de presupuesto y 5xx) y lo que NO se toca.
+      `CLAUDE_API_KEY` entró a CLAVES de plataforma en ssm_env.py y quedó
+      SUBIDA a /media-ivenaccip/env/ — todos los usuarios tienen el chat
+      configurado de fábrica; una clave por-usuario (D4) la pisa. El tope
+      CHAT_TURNOS_DIA=40 acota el gasto mientras el chat es 0 cr.
 - [x] **Costos IA por vendor en el admin** (PR #43, 2026-09-08): la pestaña
       2·Costos divide la IA en OpenAI / fal / Claude. El sync
       (`tools/costes.py`) abre cada traza NUEVA y reparte su costo por el
