@@ -582,14 +582,15 @@ Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
 - [ ] **Plan del editor en nube (feedback 2026-09-08)** — pasos en orden:
-      - [ ] Paso 0 (dueño): deploy de la imagen CI + `cdk deploy aws-media-api
-            aws-media-jobs` + `python tools/prompts_sync.py` — hipótesis: la
-            Lambda corre imagen vieja y por eso 404/500 en subtítulos y
-            «Claude no puede conectarse» (endpoints de PRs #39-#42 ausentes).
+      - [x] Paso 0 (dueño, 2026-09-08): deploy hecho (api 19:24 UTC, jobs
+            19:23) + prompts_sync. Verificado: las rutas de chat/subtítulos/
+            overlays responden 401 sin auth (existen — antes 404) y CloudWatch
+            sin errores. La hipótesis de la imagen vieja era correcta.
       - [ ] Paso 1: si los 404/500 de subtítulos sobreviven al deploy,
             diagnóstico por CloudWatch.
-      - [ ] Paso 2: chat lento — indicador «Claude está escribiendo…» primero;
-            streaming/poll solo si sigue sintiéndose lento.
+      - [x] Paso 2 (PR #49, 2026-09-08): envío optimista + «Claude está
+            escribiendo…» en el chat del editor; streaming/poll solo si tras
+            probarlo sigue sintiéndose lento.
       - [ ] Paso 3: verificar conexión de Claude tras el deploy
             (SinClave/429/timeout).
       - [ ] Paso 4: rediseñar la UI del editor alineada al hub (pendiente:
