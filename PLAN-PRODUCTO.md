@@ -776,6 +776,76 @@ Hecho 2026-09-07 (rama m14-editar-web):
 - [ ] Pendiente de diseño: cuando el corte se apruebe y renderice, el paso a
       subtítulos/publicar desde la web (hoy termina en el preview del editor).
 
+## Fase M15 — Editor de imágenes con FLUX Fill (Crear imágenes v2)
+
+Decisión del usuario 2026-09-08 (revisada el mismo día): **FLUX Fill con
+máscara real, para experimentar** — aunque el benchmark favorece al nano
+banana en edición por instrucción (Artificial Analysis: nano 981 vs Kontext
+pro 876), Fill es inpainting quirúrgico con máscara y el dueño quiere probar
+esa experiencia. La anotación con nano banana queda como plan B si la calidad
+de Fill decepciona (los dos comparten la UI de señalar).
+
+1. - [ ] `tools/pricing.json`: asentar `fal-ai/flux-pro/v1/fill` $0.05
+         dólares/megapixel, facturado redondeando el MP hacia arriba
+         (verificado en vivo 2026-09-08 → imagen 1024×1024 = 2 MP = $0.10).
+         Tarifa: la edición cobra `imagen_pro` (10 cr) de tarifas.json —
+         cubre el peor caso con margen sobre el piso de $0.015/cr.
+2. - [ ] `pipeline/media_fal.py`: `imagen_fill(imagen, mascara, prompt)` →
+         flux-pro/v1/fill (imagen + máscara binaria PNG + prompt).
+3. - [ ] API `POST /api/imagenes/{nombre}/editar` {prompt, mascara_b64}:
+         cobra 10 cr, guardrail del prompt, devuelve en fallo, y la versión
+         nueva SE AGREGA (regla: versiones jamás se pisan) —
+         `_imagenes/<base>-v2.jpg`… con lista de versiones en el GET.
+4. - [ ] UI crear-imagenes.html: bajo «Tu imagen» entra «✏️ Modificar» —
+         canvas de PINCEL sobre la imagen (pintas la zona a cambiar; grosor
+         + deshacer + borrar), la máscara se exporta a la RESOLUCIÓN REAL de
+         la imagen (mapeo CSS→píxeles, el punto delicado), prompt del cambio
+         y costo en el botón. Tirita de versiones para volver a cualquiera.
+5. - [ ] Tests + smoke navegador + deploy `aws-media-api`. Primera edición
+         real ~$0.10 dólares — pedir confirmación de gasto.
+6. - [ ] Evaluación del experimento: 3-5 ediciones reales comparando Fill
+         vs el mismo cambio por instrucción (nano banana) antes de decidir
+         el default definitivo.
+
+## Fase M16 — Editor en la nube COMPLETO (hallazgos de gen-ee202e1a, 2026-09-08)
+
+Los 4 síntomas del dueño comparten raíz: `overlays_api`/`broll_api` resuelven
+el proyecto con `ruta_proyecto()` (disco local) y corren
+`make_subs.py`/ffmpeg como subproceso — en Lambda no hay proyecto ni deben
+correr renders (regla C4: renders largos por Fargate). El chat está bloqueado
+a propósito desde M7; el dueño ya tiene API key de Claude para habilitarlo.
+
+1. - [ ] **Subtítulos en nube**: rama nube en overlays_api — la MUESTRA
+         (1 frame) puede correr en la Lambda contenedor (rápida) bajando lo
+         mínimo de S3; el QUEMADO va a Fargate por la SM de siempre
+         (`worker/subtitulos_task.py`: bajar gen-* → make_subs final → subir
+         master subtitulado + .srt a S3 → flag en proyectos_editor).
+         Tarifa 0 cr (no quema vendors); registrar `infra-subtitulos`.
+2. - [ ] **Recursos IA de la ruta narración**: el puente sube los recortes
+         por ventana (`final_N.mp4`, ya existen en el work del generador)
+         como pista 2 del editor SIN audio propio (variante narración de
+         overlays: regenerar imagen/video de una ventana conserva la voz —
+         la película es pista única, el remux es barato). Esto separa
+         video/audio en el timeline, que hoy solo muestra el waveform.
+3. - [ ] **B-roll IA en nube**: broll_api lee `edited-transcript.json` de S3
+         (helper `_leer_json_s3` del editor ya existe) y propone momentos
+         (~$0.01 dólares LLM); generar/insertar reusa la pista 2 del punto 2.
+         Aquí el editor gana «crear VIDEO con IA», no solo imágenes: la ruta
+         imagen→Veo de overlays expuesta por ventana, con preview de costo
+         de pricing.json y confirmación.
+4. - [ ] **Chat editorial en nube**: endpoint de chat que llama la API de
+         Anthropic (Claude) directamente — la clave del dueño va por SSM
+         (`/media-ivenaccip/usuarios/<id>/ANTHROPIC_API_KEY`, D4: claves
+         por-usuario que ya pisan plataforma), prompts nuevos como
+         `prompts/*.md` sembrados en Langfuse (regla M10) y CADA llamada
+         trazada en Langfuse con user_id. Tarifa: 0 cr al inicio con tope de
+         turnos/día, midiendo gasto real en Langfuse antes de tarifar
+         (decisión M7: ~2-7 cr/turno estimado). Cargar la referencia del
+         API de Claude al implementar.
+5. - [ ] Orden sugerido: 1 (subtítulos: lo que el dueño intentó y falló) →
+         2 (recursos) → 3 (b-roll) → 4 (chat). Deploy por iteración:
+         imagen del CI + `cdk deploy aws-media-api aws-media-jobs`.
+
 ## Orden y dependencias
 
 ```
