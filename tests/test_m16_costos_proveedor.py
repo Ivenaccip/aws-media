@@ -33,6 +33,8 @@ def test_costos_por_proveedor_reparte(monkeypatch):
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
 
     class R:
+        status_code = 200
+
         def raise_for_status(self):
             pass
 
@@ -48,6 +50,39 @@ def test_costos_por_proveedor_reparte(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: R())
     assert costes.costos_por_proveedor("t1") == \
         {"openai": 0.011, "fal": 0.439, "claude": 0.0099}
+
+
+def test_costos_por_proveedor_reintenta_429(monkeypatch):
+    """Rate limit de Langfuse (visto 2026-09-08: 76/103 trazas al fallback):
+    el 429 se reintenta con espera en vez de degradar el desglose."""
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+    import time
+
+    import requests
+
+    llamadas = []
+    esperas = []
+
+    class R:
+        def __init__(self, status):
+            self.status_code = status
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"observations": [
+                {"model": "claude-opus-5", "calculatedTotalCost": 0.0099}]}
+
+    def get(*a, **k):
+        llamadas.append(1)
+        return R(429 if len(llamadas) < 3 else 200)
+
+    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(time, "sleep", lambda s: esperas.append(s))
+    assert costes.costos_por_proveedor("t1") == {"claude": 0.0099}
+    assert len(llamadas) == 3 and esperas == [5, 10]
 
 
 def test_costos_por_proveedor_sin_detalle_vacio(monkeypatch):
