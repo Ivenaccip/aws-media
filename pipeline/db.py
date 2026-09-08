@@ -256,7 +256,7 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
                   "editar": "{editar}", "flags": "{flags}",
                   "subtitulos": "{subtitulos}", "overlay_job": "{overlay_job}",
-                  "chat": "{chat}"}
+                  "chat": "{chat}", "importar": "{importar}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:

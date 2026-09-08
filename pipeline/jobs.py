@@ -53,6 +53,15 @@ def encolar_shorts_analizar(user_id: str, proyecto: str) -> None:
                                 "user_id": user_id, "proyecto": proyecto}))
 
 
+def encolar_shorts_importar(user_id: str, proyecto: str, url: str) -> None:
+    """M17: bajar un video de YouTube (Apify) a S3 como subida del proyecto —
+    trabajo corto en el worker Lambda; el progreso viaja por doc.importar."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "shorts_importar", "user_id": user_id,
+                                "proyecto": proyecto, "url": url}))
+
+
 def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
     misma state machine que la producción, otro comando. Los segmentos

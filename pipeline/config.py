@@ -47,6 +47,10 @@ class Settings:
     fal_nano: str = "fal-ai/nano-banana"            # texto → imagen (M1 sin referencia)
     fal_nano_edit: str = "fal-ai/nano-banana/edit"  # imagen + referencia (g2, editor de imágenes)
 
+    # M17 — actores Apify (formato usuario~nombre, como pide su API REST)
+    apify_yt_info: str = "thenetaji~youtube-video-details-scraper"   # cotizar: título+duración
+    apify_yt_descarga: str = "thenetaji~youtube-video-downloader"    # bajar el MP4 (por MB)
+
     # Backend de regeneración g1/g2 y M1: fal (default desde 2026-09-03 — los
     # créditos del Studio de Google se agotaron) | google (Gemini API)
     gen_backend: str = os.getenv("GEN_BACKEND", "fal")

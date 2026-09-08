@@ -13,6 +13,8 @@
     "transcripcion_por_5min": 2,
     "analisis": 2,
     "render_por_short": 2,
+    "importar_por_min": 2,
+    "nota_importar": "M17: traer un video de YouTube por liga (descarga vía Apify thenetaji/youtube-video-downloader, ~$0.002 dólares/MB ≈ $0.02/min a 720p en pricing.json) — 2 cr por minuto EMPEZADO del video fuente lo cubre con margen al piso. La transcripción y el análisis se cobran aparte con las tarifas de arriba al correr 'analizar'.",
     "nota": "M8 (flujo web). Transcripción solo si el proyecto no trae canónico (AssemblyAI $0.21 dólares/hora en pricing.json → 2 cr/5 min lo cubre con margen); análisis = la puntuación LLM de candidatos (~$0.02 dólares); render = Remotion+export en Fargate por short. Los gen-* ya traen canónico: su transcripción es 0."
   },
   "editar": {

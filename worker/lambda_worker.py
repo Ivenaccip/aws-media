@@ -90,6 +90,10 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # No se relanza en la DLQ: el propio job marca error y devuelve.
             from worker.shorts_analizar import analizar
             analizar(j["user_id"], j["proyecto"])
+        elif j["tipo"] == "shorts_importar":
+            # M17: descarga de YouTube (Apify) → S3 como subida del proyecto.
+            from worker.shorts_importar import importar
+            importar(j["user_id"], j["proyecto"], j["url"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:
