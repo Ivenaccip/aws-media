@@ -191,7 +191,7 @@
     </div>
   </section>
 
-  <!-- 4. Resultado (mock: ← volver, frame grande, Descargar | Modificar) -->
+  <!-- 4. Resultado: ← volver, frame grande, Descargar | Editor | Rehacer -->
   <section id="resultado" class="hidden">
     <p style="margin:0 0 12px"><a href="/" style="text-decoration:none;font-size:15px">← Volver al inicio</a></p>
     <div class="card">
@@ -200,10 +200,12 @@
       <p id="rmsg" style="white-space:pre-wrap"></p>
       <p id="rlink"></p>
     </div>
-    <div style="display:flex;gap:12px">
-      <a class="btn sec" id="descargar" download="pelicula.mp4" style="flex:1;margin-top:18px">⬇ Descargar</a>
+    <div style="display:flex;gap:12px;margin-top:18px">
+      <a class="btn sec" id="descargar" download="pelicula.mp4" style="flex:1">⬇ Descargar</a>
+      <a class="btn sec" id="abrir-editor" style="flex:1"
+        title="Abre la película en el editor de cortes: recorta, ajusta y guarda versiones ahí mismo (gratis)">✂️ Editor</a>
       <button class="btn sec" id="modificar" style="flex:1"
-        title="Vuelve a revisión para ajustar guion, voz o personaje (producir de nuevo cobra como siempre)">✏️ Modificar</button>
+        title="Vuelve a revisión para ajustar guion, voz o personaje (producir de nuevo cobra como siempre)">🔁 Rehacer</button>
     </div>
     <div class="err" id="modif-err"></div>
   </section>
@@ -406,6 +408,18 @@ function render(p) {
     $('#descargar').href = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
     $('#rmsg').textContent = p.resultado?.mensaje || '';
     $('#rlink').innerHTML = p.resultado?.link ? `<a href="${p.resultado.link}" target="_blank">Abrir en Drive</a>` : '';
+    // «Editor» abre el proyecto editable del puente (videos/gen-<id>); si el
+    // puente falló, el botón lo explica en vez de mandar a subir metraje
+    const gen = p.progreso?.editor;
+    const be = $('#abrir-editor');
+    if (gen) {
+      be.href = `/editor/${encodeURIComponent(gen)}/`;
+      be.style.opacity = ''; be.style.pointerEvents = '';
+    } else {
+      be.removeAttribute('href');
+      be.style.opacity = .45; be.style.pointerEvents = 'none';
+      be.title = 'El editor de esta película aún no está listo (el puente al editor falló o sigue corriendo)';
+    }
   } else if (p.estado==='error') {
     show('error');
     $('#emsg').textContent = p.error || 'Error desconocido';
@@ -616,8 +630,8 @@ $('#producir').onclick = async () => {
   $('#producir').disabled = false; pintaProducir();
 };
 
-// mock del resultado: «Modificar» reabre la película lista a revisión (gratis;
-// producir de nuevo cobra y el botón lo avisa como siempre)
+// «Rehacer» reabre la película lista a revisión (gratis; producir de nuevo
+// cobra y el botón lo avisa como siempre)
 $('#modificar').onclick = async () => {
   $('#modif-err').textContent = '';
   $('#modificar').disabled = true;

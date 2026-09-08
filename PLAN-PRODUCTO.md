@@ -706,6 +706,14 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       sin deploy por el TTL del SDK). **REGLA NUEVA de deploy: todo PR que
       toque `prompts/*.md` termina con `python tools/prompts_sync.py` tras
       el merge — sin eso producción sigue sirviendo el prompt viejo.**
+- [x] **Resultado con 3 botones: Descargar · Editor · Rehacer** (rama
+      resultado-3-botones): el dueño quería pasar la película terminada al
+      editor de cortes SIN pasar por e1 a «subir metraje» — el botón «Editor»
+      del resultado abre `/editor/<gen-id>/` leyendo `progreso.editor` (el
+      puente F1.3 que producir ya registra); si el puente falló o sigue
+      corriendo, el botón se atenúa y lo explica. «Modificar» se renombra
+      «Rehacer» (mismo POST /reabrir gratis). Smoke: click en Editor abre
+      gen-a44db907 con su transcript.
 
 ---
 
