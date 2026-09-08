@@ -32,21 +32,29 @@ async def imagen_nano(prompt: str, destino: Path, referencia: Path | None = None
     return url
 
 
-async def imagen_fill(prompt: str, imagen: Path, mascara: Path, destino: Path,
-                      meta: dict | None = None) -> str:
-    """Inpainting con Flux Fill: cambia SOLO la zona blanca de la máscara según
-    el prompt («Editor de imágenes» del sidebar). Descarga a `destino`."""
+async def imagen_pincel(prompt: str, imagen: Path, marcada: Path, destino: Path,
+                        meta: dict | None = None) -> str:
+    """«Editor de imágenes» del sidebar con Nano Banana edit (decisión del
+    usuario 2026-09-08: el resultado de Flux Fill no convenció). Recibe la
+    imagen original y una copia con la zona a cambiar resaltada en rosa (la
+    pinta el front); la instrucción le pide tocar SOLO esa zona. Descarga a
+    `destino`."""
+    instruccion = (
+        "You get two images: the FIRST is the original photo, the SECOND is the same "
+        "photo with a pink highlight marking the only region to edit. Apply this change "
+        f"to the highlighted region: {prompt}. Keep every other part of the original "
+        "pixel-identical. Return the full edited image with no pink marking, no text, "
+        "no watermark.")
     args = {
-        "prompt": prompt,
-        "image_url": await fal.subir_archivo(imagen),
-        "mask_url": await fal.subir_archivo(mascara),
+        "prompt": instruccion,
+        "image_urls": [await fal.subir_archivo(imagen), await fal.subir_archivo(marcada)],
         "num_images": 1,
     }
-    res = await fal.llamar(settings.fal_fill, args, timeout_s=settings.grok_timeout_s,
-                           nombre="flux_fill", meta=meta or {})
+    res = await fal.llamar(settings.fal_nano_edit, args, timeout_s=settings.grok_timeout_s,
+                           nombre="nano_banana_pincel", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")
     if not url:
-        raise RuntimeError("Flux Fill (fal) no devolvió imagen")
+        raise RuntimeError("Nano Banana (fal) no devolvió imagen")
     await fal.descargar(url, destino)
     return url
 

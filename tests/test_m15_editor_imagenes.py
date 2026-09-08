@@ -22,20 +22,20 @@ def _fd(prompt="quita el letrero"):
 
 def _files():
     return {"imagen": ("imagen.jpg", b"jpg-original", "image/jpeg"),
-            "mascara": ("mascara.png", b"png-mascara", "image/png")}
+            "marcada": ("marcada.jpg", b"jpg-marcada", "image/jpeg")}
 
 
 def test_editar_imagen_genera_y_sirve(cliente, srv, monkeypatch, tmp_path):
     from pipeline import media_fal
 
-    async def fake_fill(prompt, imagen, mascara, destino, **kw):
+    async def fake_fill(prompt, imagen, marcada, destino, **kw):
         assert "quita el letrero" in prompt
         assert imagen.read_bytes() == b"jpg-original"
-        assert mascara.read_bytes() == b"png-mascara"
+        assert marcada.read_bytes() == b"jpg-marcada"
         destino.write_bytes(b"jpg-editado")
         return "https://fal/x.jpg"
 
-    monkeypatch.setattr(media_fal, "imagen_fill", fake_fill)
+    monkeypatch.setattr(media_fal, "imagen_pincel", fake_fill)
     monkeypatch.setattr(srv, "_dir_imagenes", lambda: tmp_path / "_imagenes")
     r = cliente.post("/api/imagenes/editar", data=_fd(), files=_files())
     assert r.status_code == 200
@@ -53,23 +53,23 @@ def test_editar_imagen_valida_entradas(cliente, srv, monkeypatch, tmp_path):
     # imagen vacía
     r = cliente.post("/api/imagenes/editar", data=_fd(),
                      files={"imagen": ("i.jpg", b"", "image/jpeg"),
-                            "mascara": ("m.png", b"png", "image/png")})
+                            "marcada": ("m.jpg", b"jpg", "image/jpeg")})
     assert r.status_code == 422
     # imagen demasiado grande
     r = cliente.post("/api/imagenes/editar", data=_fd(),
                      files={"imagen": ("i.jpg", b"x" * (15 * 1024 * 1024 + 1), "image/jpeg"),
-                            "mascara": ("m.png", b"png", "image/png")})
+                            "marcada": ("m.jpg", b"jpg", "image/jpeg")})
     assert r.status_code == 422
 
 
 def test_editar_imagen_cobra_y_devuelve_en_fallo(cliente, srv, monkeypatch, tmp_path):
     from pipeline import creditos, media_fal
 
-    async def fill_roto(prompt, imagen, mascara, destino, **kw):
+    async def fill_roto(prompt, imagen, marcada, destino, **kw):
         raise RuntimeError("fal caído")
 
     movimientos = []
-    monkeypatch.setattr(media_fal, "imagen_fill", fill_roto)
+    monkeypatch.setattr(media_fal, "imagen_pincel", fill_roto)
     monkeypatch.setattr(srv, "_dir_imagenes", lambda: tmp_path / "_imagenes")
     monkeypatch.setattr(creditos, "activo", lambda: True)
     monkeypatch.setattr(creditos, "costo_imagen", lambda: 2)
