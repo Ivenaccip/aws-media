@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pipeline.config  # noqa: E402,F401 — carga el .env (DB_CLUSTER_ARN/DB_SECRET_ARN)
 
 POOL_DEFAULT = os.getenv("COGNITO_POOL_ID", "us-east-1_WyPvxnj1V")
 
@@ -139,7 +140,9 @@ def lista(pool: str) -> None:
             correo = next((a["Value"] for a in u["Attributes"] if a["Name"] == "email"), "?")
             estado = "activo" if u["Enabled"] else "SUSPENDIDO"
             extra = f"  saldo {db.saldo_creditos(_sub(u))}" if con_db else ""
-            print(f"  {correo:35s} {estado:10s} {u['UserStatus']:20s}{extra}")
+            # el sub es el user_id de la base — es lo que piden creditos.py
+            # --user y el drill-down del admin
+            print(f"  {correo:35s} {estado:10s} {u['UserStatus']:20s}{extra}  id {_sub(u)}")
 
 
 def main() -> None:
