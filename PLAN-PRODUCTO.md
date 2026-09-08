@@ -829,18 +829,24 @@ el proyecto con `ruta_proyecto()` (disco local) y corren
 correr renders (regla C4: renders largos por Fargate). El chat está bloqueado
 a propósito desde M7; el dueño ya tiene API key de Claude para habilitarlo.
 
-1. - [ ] **Subtítulos en nube**: rama nube en overlays_api — la MUESTRA
-         (1 frame) puede correr en la Lambda contenedor (rápida) bajando lo
-         mínimo de S3; el QUEMADO va a Fargate por la SM de siempre
-         (`worker/subtitulos_task.py`: bajar gen-* → make_subs final → subir
-         master subtitulado + .srt a S3 → flag en proyectos_editor).
-         Tarifa 0 cr (no quema vendors); registrar `infra-subtitulos`.
-2. - [ ] **Recursos IA de la ruta narración**: el puente sube los recortes
-         por ventana (`final_N.mp4`, ya existen en el work del generador)
-         como pista 2 del editor SIN audio propio (variante narración de
-         overlays: regenerar imagen/video de una ventana conserva la voz —
-         la película es pista única, el remux es barato). Esto separa
-         video/audio en el timeline, que hoy solo muestra el waveform.
+1. - [x] **Subtítulos en nube** (PR #39): rama nube en overlays_api — la
+         MUESTRA (1 frame) corre en la Lambda contenedor bajando solo
+         pelicula.mp4 + edited-transcript.json (`media_sync.bajar_archivo`);
+         `/archivo/…` en nube redirige al CDN; el QUEMADO va a Fargate por la
+         SM de siempre (`worker/subtitulos_task.py` → pelicula-subtitulado
+         + .srt/.ass a S3 → `doc.subtitulos` con candado de 2 h). Tarifa
+         0 cr; registra `infra-subtitulos`. 12 tests.
+2. - [x] **Recursos IA de la ruta narración** (PR #40): narracion.py persiste
+         `estado.json` (prompts reales por ventana, como la ruta escenas) y
+         el puente registra los `final_N.mp4` como pista 2 con
+         `pista_unica=True` (variante de `crear_desde_produccion`: sin
+         audio.mp3 por overlay, la voz continua se copia a
+         `work/overlays/narracion.mp3`). Regenerar una ventana usa
+         `recorte_reemplazo` (video-only) y `rearmar_pelicula` concatena
+         video y muxea la narración encima (-shortest) — la voz se conserva.
+         `GET /api/overlays` gana rama nube (lee overlays.json de S3), así
+         el editor pinta los recursos; los modales g1/g2 en nube muestran
+         versiones pero regenerar sigue local hasta M16.3. 8 tests.
 3. - [ ] **B-roll IA en nube**: broll_api lee `edited-transcript.json` de S3
          (helper `_leer_json_s3` del editor ya existe) y propone momentos
          (~$0.01 dólares LLM); generar/insertar reusa la pista 2 del punto 2.
