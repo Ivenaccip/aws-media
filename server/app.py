@@ -633,4 +633,18 @@ def archivo(id_: str, nombre: str):
     raise HTTPException(404, "Archivo no encontrado")
 
 
-app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
+class _StaticCacheado(StaticFiles):
+    """Los assets pesados (imágenes de muestra de /estilos/) viajan por Lambda —
+    sin Cache-Control el navegador los re-descarga en cada clic de estilo
+    (hasta ~370 KB por imagen). Un día de caché basta: solo cambian con deploy
+    y el ETag de StaticFiles revalida al vencer. El HTML/JS queda como estaba
+    (revalidación por ETag en cada carga — así los fixes de UI llegan solos)."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        if str(getattr(resp, "media_type", "")).startswith("image/"):
+            resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+
+
+app.mount("/", _StaticCacheado(directory=ROOT / "static", html=True), name="static")
