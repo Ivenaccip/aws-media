@@ -18,6 +18,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 log = logging.getLogger("shorts_importar")
 
@@ -28,16 +29,73 @@ def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _precios() -> tuple[float, float]:
-    """(usd_por_video, usd_por_mb) desde pricing.json — jamás hardcodeados."""
-    from pathlib import Path
+def _precios() -> tuple[float, float, float]:
+    """(usd_por_video, usd_por_mb, usd_transcript) de pricing.json — jamás
+    hardcodeados."""
     raiz = Path(__file__).resolve().parent.parent
     try:
-        p = json.loads((raiz / "tools" / "pricing.json").read_text(encoding="utf-8"))
-        d = p["apify"]["youtube_video_downloader"]
-        return float(d["usd_por_video"]), float(d["usd_por_mb"])
+        p = json.loads((raiz / "tools" / "pricing.json").read_text(encoding="utf-8"))["apify"]
+        d = p["youtube_video_downloader"]
+        return (float(d["usd_por_video"]), float(d["usd_por_mb"]),
+                float(p["youtube_transcript"]["usd_por_video"]))
     except (FileNotFoundError, KeyError, ValueError):
-        return 0.01, 0.002   # espejo de pricing.json §apify (2026-09-08)
+        return 0.01, 0.002, 0.01   # espejo de pricing.json §apify (2026-09-08)
+
+
+def _ts_a_segundos(ts: str) -> float:
+    """'M:SS' o 'H:MM:SS' → segundos."""
+    partes = [int(p) for p in str(ts).split(":")]
+    s = 0
+    for p in partes:
+        s = s * 60 + p
+    return float(s)
+
+
+def _canonico_youtube(nombre: str, url: str, fuente_key: str, dur_total: float) -> bool:
+    """Mejor esfuerzo: el transcript que YouTube ya tiene (actor topaz, precio
+    fijo en pricing.json §apify) se convierte al canónico — así «Analizar» no
+    re-transcribe y la transcripción le sale en 0 créditos al usuario. Las
+    palabras se reparten proporcionalmente dentro de cada segmento (los
+    timestamps de YouTube son por segmento, a segundo redondo): suficiente
+    para proponer momentos; el snap a palabra/silencio afina antes de cortar.
+    Si no hay transcript (video sin captions), False — AssemblyAI de siempre."""
+    from pipeline import apify, media_sync
+    from pipeline.config import settings
+    from tools.normalizers import common
+
+    try:
+        item = apify.correr(settings.apify_yt_transcript,
+                            {"startUrls": [url], "timestamps": True},
+                            timeout_s=120)[0]
+        segmentos = item.get("transcript") or []
+        palabras = []
+        for i, seg in enumerate(segmentos):
+            texto = str(seg.get("text") or "").strip()
+            if not texto:
+                continue
+            ini = _ts_a_segundos(seg.get("timestamp") or 0)
+            fin = (_ts_a_segundos(segmentos[i + 1]["timestamp"])
+                   if i + 1 < len(segmentos) else (dur_total or ini + 4))
+            fin = max(fin, ini + 0.2)
+            trozos = texto.split()
+            paso = (fin - ini) / len(trozos)
+            for k, t in enumerate(trozos):
+                palabras.append({"text": t, "start": round(ini + k * paso, 3),
+                                 "end": round(ini + (k + 1) * paso, 3)})
+        if not palabras:
+            return False
+        stem = Path(fuente_key).stem
+        doc = common.build_canonical(stem, dur_total or palabras[-1]["end"], "es",
+                                     "youtube", "captions", palabras,
+                                     source_path=fuente_key)
+        media_sync.escribir_texto(
+            f"videos/{nombre}/work/transcripts/{stem}.canonical.json",
+            json.dumps(doc, ensure_ascii=False, indent=1))
+        log.info("%s: transcript de YouTube guardado (%d palabras)", nombre, len(palabras))
+        return True
+    except Exception as err:  # noqa: BLE001 — sin transcript no se cae el importe
+        log.warning("%s: sin transcript de YouTube (%s) — Analizar transcribirá", nombre, err)
+        return False
 
 
 def importar(user_id: str, nombre: str, url: str) -> None:
@@ -69,17 +127,19 @@ def importar(user_id: str, nombre: str, url: str) -> None:
             {"key": key, "bytes": octetos, "cuando": _ahora()}]
         db.guardar_proyecto_editor(user_id, nombre, json.dumps(doc, ensure_ascii=False))
 
-        st.update(estado="listo", key=key, bytes=octetos,
+        dur = float(item.get("durationSeconds") or 0)
+        con_tx = _canonico_youtube(nombre, url, key, dur)
+        st.update(estado="listo", key=key, bytes=octetos, transcript=con_tx,
                   titulo=str(item.get("title") or "")[:120],
-                  duracion_s=float(item.get("durationSeconds") or 0), listo=_ahora())
+                  duracion_s=dur, listo=_ahora())
         db.fijar_campo_editor(user_id, nombre, "importar",
                               json.dumps(st, ensure_ascii=False))
         log.info("%s: importado %s (%.1f MB)", nombre, key, octetos / 1e6)
 
-        # costo real del vendor (Apify cobra por video + por MB facturado)
-        por_video, por_mb = _precios()
+        # costo real del vendor (descarga por video + por MB; transcript fijo)
+        por_video, por_mb, por_tx = _precios()
         mb = float(archivo.get("billedMb") or 0) or octetos / 1e6
-        usd = round(por_video + mb * por_mb, 4)
+        usd = round(por_video + mb * por_mb + (por_tx if con_tx else 0), 4)
         if db.backend() == "postgres" and usd > 0:
             try:
                 db.ejecutar(

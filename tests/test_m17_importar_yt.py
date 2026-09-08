@@ -158,19 +158,67 @@ def test_worker_importa_a_s3_y_registra_subida(monkeypatch):
     monkeypatch.setattr(db, "ejecutar", lambda sql, p=None: filas.append(p) or [])
     monkeypatch.setattr(db, "backend", lambda: "postgres")
     monkeypatch.setattr(costes_infra, "registrar", lambda *a: None)
-    monkeypatch.setattr(apify, "correr", lambda actor, entrada, timeout_s=780: [
-        {"title": "Me at the zoo", "durationSeconds": 19,
-         "savedFile": {"url": "https://api.apify.com/kv/x.mp4", "billedMb": 1}}])
-    subido = {}
+    def correr(actor, entrada, timeout_s=780):
+        if "downloader" in actor:
+            return [{"title": "Me at the zoo", "durationSeconds": 19,
+                     "savedFile": {"url": "https://api.apify.com/kv/x.mp4", "billedMb": 1}}]
+        # actor de transcript: los captions que YouTube ya tiene
+        return [{"transcript": [{"text": "hola a todos", "timestamp": "0:01"},
+                                {"text": "y adiós", "timestamp": "0:10"}]}]
+    monkeypatch.setattr(apify, "correr", correr)
+    subido, escritos = {}, {}
     monkeypatch.setattr(apify, "descargar_a_s3",
                         lambda url, bucket, key: subido.update(url=url, bucket=bucket, key=key) or 629172)
+    from pipeline import media_sync
+    monkeypatch.setattr(media_sync, "escribir_texto",
+                        lambda key, texto: escritos.update({key: json.loads(texto)}))
 
     shorts_importar.importar("u1", "yt-abc", URL)
 
     assert subido["bucket"] == "bucket-x" and subido["key"] == "videos/yt-abc/subidas/yt-abc.mp4"
     assert docs["yt-abc"]["subidas"][0]["key"] == "videos/yt-abc/subidas/yt-abc.mp4"
+    assert campos["importar"]["estado"] == "listo" and campos["importar"]["transcript"] is True
+    # el canónico quedó en S3: Analizar no re-transcribe (transcripción 0 cr)
+    canon = escritos["videos/yt-abc/work/transcripts/yt-abc.canonical.json"]
+    assert canon["asr"]["backend"] == "youtube" and len(canon["words"]) == 5
+    assert canon["words"][0]["start"] == 1.0 and canon["words"][-1]["end"] == 19.0
+    # costo real: descarga (0.01 + 1 MB × 0.002) + transcript (0.01)
+    assert filas and filas[0]["usd"] == round(0.01 + 1 * 0.002 + 0.01, 4)
+
+
+def test_worker_sin_captions_no_marca_transcript(monkeypatch):
+    """Video sin captions: el importe NO se cae y Analizar transcribirá."""
+    monkeypatch.setenv("MEDIA_BUCKET", "bucket-x")
+    monkeypatch.setenv("STATE_BACKEND", "postgres")
+    monkeypatch.setenv("DEFAULT_USER_ID", "u1")
+    from pipeline import apify, costes_infra, db
+    from worker import shorts_importar
+
+    docs = {"yt-abc": {"subidas": [], "importar": {"estado": "descargando", "creditos": 4}}}
+    campos = {}
+    monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: docs.get(n))
+    monkeypatch.setattr(db, "guardar_proyecto_editor",
+                        lambda u, n, s: docs.update({n: json.loads(s)}))
+    monkeypatch.setattr(db, "fijar_campo_editor",
+                        lambda u, n, c, v: campos.update({c: json.loads(v)}))
+    filas = []
+    monkeypatch.setattr(db, "ejecutar", lambda sql, p=None: filas.append(p) or [])
+    monkeypatch.setattr(db, "backend", lambda: "postgres")
+    monkeypatch.setattr(costes_infra, "registrar", lambda *a: None)
+
+    def correr(actor, entrada, timeout_s=780):
+        if "downloader" in actor:
+            return [{"title": "x", "durationSeconds": 19,
+                     "savedFile": {"url": "https://api.apify.com/kv/x.mp4", "billedMb": 1}}]
+        raise apify.ApifyError("sin resultados")
+    monkeypatch.setattr(apify, "correr", correr)
+    monkeypatch.setattr(apify, "descargar_a_s3", lambda url, bucket, key: 629172)
+
+    shorts_importar.importar("u1", "yt-abc", URL)
+
     assert campos["importar"]["estado"] == "listo"
-    assert filas and filas[0]["usd"] == round(0.01 + 1 * 0.002, 4)   # pricing.json §apify
+    assert campos["importar"]["transcript"] is False
+    assert filas[0]["usd"] == round(0.01 + 1 * 0.002, 4)   # sin el fijo del transcript
 
 
 def test_worker_error_devuelve_creditos(monkeypatch):

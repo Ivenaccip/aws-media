@@ -73,7 +73,8 @@
     "comment": "M17 — importar videos por liga (APIFY_TOKEN en .env/SSM). Verificado 2026-09-08 con corridas reales. OJO: marielise.dev/youtube-video-downloader quedó DESCARTADO — su ruta gratis da LOGIN_REQUIRED desde la nube de Apify y el fallback residencial cobra $0.05 dólares/MB (un video de 20 min saldría $8-12 dólares).",
     "verified_on": "2026-09-08",
     "youtube_video_details": { "actor": "thenetaji/youtube-video-details-scraper", "usd_por_resultado": 0.00095, "usd_actor_start": 0.00005, "note": "cotizador: título + duración en ~2 s" },
-    "youtube_video_downloader": { "actor": "thenetaji/youtube-video-downloader", "usd_por_video": 0.01, "usd_por_mb": 0.002, "note": "a 720p ~10 MB/min → ~$0.02 dólares por minuto; el campo billedMb del dataset trae los MB cobrados" }
+    "youtube_video_downloader": { "actor": "thenetaji/youtube-video-downloader", "usd_por_video": 0.01, "usd_por_mb": 0.002, "note": "a 720p ~10 MB/min → ~$0.02 dólares por minuto; el campo billedMb del dataset trae los MB cobrados" },
+    "youtube_transcript": { "actor": "topaz_sharingan/Youtube-Transcript-Scraper-1", "usd_por_video": 0.01, "note": "captions que YouTube ya tiene, por segmento con timestamp a segundo — con esto Analizar no re-transcribe (transcripción 0 cr para el usuario); sin captions cae a AssemblyAI" }
   },
   "aws_infra": {
     "comment": "M6.1 - tarifas de computo AWS us-east-1 (x86) para la linea 'infra' estimada por corrida: la consume pipeline/costes_infra.py y aparece en la tabla costes y el dashboard admin. Verificar en https://aws.amazon.com/fargate/pricing/ y https://aws.amazon.com/lambda/pricing/.",
