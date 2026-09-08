@@ -33,12 +33,52 @@ def _cargar_env() -> None:
             os.environ.setdefault(k.strip(), v.strip().strip('"'))
 
 
+def _conexion() -> tuple[str, tuple[str, str]]:
+    base = os.environ.get("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com").rstrip("/")
+    return base, (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
+
+
+def proveedor_de_modelo(model: str | None) -> str | None:
+    """El vendor detrás de una generation, por su modelo: gpt-* = OpenAI,
+    claude-* = Claude (Anthropic), el resto (veo, nano banana, elevenlabs…)
+    corre por fal. None = observación sin modelo (spans)."""
+    m = (model or "").lower()
+    if not m:
+        return None
+    if m.startswith(("gpt", "o1", "o3", "o4", "text-")):
+        return "openai"
+    if "claude" in m:
+        return "claude"
+    return "fal"
+
+
+def costos_por_proveedor(trace_id: str) -> dict[str, float]:
+    """Desglose del costo de UNA traza por vendor, leyendo sus observations
+    (una traza de producción mezcla OpenAI en el guion y fal en la media).
+    Dict vacío si no se pudo desglosar — el caller cae a la fila única."""
+    import requests
+
+    base, auth = _conexion()
+    try:
+        r = requests.get(f"{base}/api/public/traces/{trace_id}", auth=auth, timeout=60)
+        r.raise_for_status()
+        obs = r.json().get("observations") or []
+    except Exception:  # noqa: BLE001 — sin detalle no hay desglose, no un sync roto
+        return {}
+    por_prov: dict[str, float] = {}
+    for o in obs:
+        costo = o.get("calculatedTotalCost") or o.get("totalCost") or 0
+        prov = proveedor_de_modelo(o.get("model"))
+        if costo and prov:
+            por_prov[prov] = por_prov.get(prov, 0.0) + float(costo)
+    return {p: round(c, 4) for p, c in por_prov.items() if round(c, 4) > 0}
+
+
 def traer_trazas(dias: int, user: str | None) -> list[dict]:
     """Trazas con coste del periodo (paginado). Devuelve dicts crudos de Langfuse."""
     import requests
 
-    base = os.environ.get("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com").rstrip("/")
-    auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
+    base, auth = _conexion()
     desde = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
     trazas, pagina = [], 1
     while True:
@@ -83,11 +123,16 @@ def sincronizar(dias: int = 3, user: str | None = None,
         costo = t.get("totalCost") or 0
         if not costo or t["id"] in ya:
             continue
-        db.ejecutar(
-            """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd, traza)
-               VALUES (:u, :p, :c, 'langfuse', :usd, :t)""",
-            {"u": t.get("userId") or "?", "p": t.get("sessionId"),
-             "c": t.get("name") or "traza", "usd": round(costo, 4), "t": t["id"]})
+        # desglose por vendor (OpenAI / fal / Claude) leyendo las observations;
+        # si no se pudo, una fila única con proveedor 'langfuse' como siempre
+        partes = costos_por_proveedor(t["id"]) or {"langfuse": round(costo, 4)}
+        for prov, usd in partes.items():
+            db.ejecutar(
+                """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd, traza)
+                   VALUES (:u, :p, :c, :prov, :usd, :t)""",
+                {"u": t.get("userId") or "?", "p": t.get("sessionId"),
+                 "c": t.get("name") or "traza", "prov": prov,
+                 "usd": usd, "t": t["id"]})
         nuevas += 1
     return nuevas
 

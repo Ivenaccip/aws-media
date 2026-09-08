@@ -581,6 +581,17 @@ verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
+- [x] **Costos IA por vendor en el admin** (PR #43, 2026-09-08): la pestaña
+      2·Costos divide la IA en OpenAI / fal / Claude. El sync
+      (`tools/costes.py`) abre cada traza NUEVA y reparte su costo por el
+      modelo de sus observations (`proveedor_de_modelo`: gpt→openai,
+      claude→claude, resto→fal), insertando una fila por vendor en `costes`
+      (misma columna `proveedor`; sin detalle cae a la fila única 'langfuse'
+      de siempre). `/api/admin/resumen` agrega `costo_ia_prov` por usuario y
+      en totales; el front pinta 3 KPIs y 3 columnas nuevas. Lo sincronizado
+      ANTES del cambio no trae vendor y solo aparece en «IA total» (nota en
+      la UI: borrar esas filas y re-sincronizar el periodo lo desglosa).
+      7 tests (test_m16_costos_proveedor.py) + el de idempotencia adaptado.
 - [x] **M16.1 Subtítulos del editor en la nube** (PR #39, 2026-09-08): rama
       nube en los 3 endpoints b1 de overlays_api. La MUESTRA (1 frame) corre
       en la Lambda contenedor bajando solo pelicula.mp4 +
