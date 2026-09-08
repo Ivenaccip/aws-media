@@ -58,24 +58,21 @@ venv/Scripts/python tools/usuarios.py reactivar correo@ejemplo.com
 
 ## Créditos (`tools/creditos.py`)
 
-OJO: `--user` NO es el correo — es el **sub de Cognito** (el UUID que imprime
-`usuarios.py lista` como id, o el que muestra el dashboard admin). Con el
-correo se crea un monedero huérfano que la web jamás ve.
+`--user` acepta el **correo**: el tool lo resuelve al sub de Cognito (el
+user_id real de la base) antes de tocar el monedero, y truena con aviso si el
+correo no existe en el pool. También acepta el sub directo (el id que imprime
+`usuarios.py lista`).
 
 ```bash
-venv/Scripts/python tools/usuarios.py lista
+venv/Scripts/python tools/creditos.py saldo --user correo@ejemplo.com
 ```
 
 ```bash
-venv/Scripts/python tools/creditos.py saldo --user <sub>
+venv/Scripts/python tools/creditos.py abonar 100 --user correo@ejemplo.com --tipo cortesia --ref regalo-bienvenida
 ```
 
 ```bash
-venv/Scripts/python tools/creditos.py abonar 100 --user <sub> --tipo cortesia --ref regalo-bienvenida
-```
-
-```bash
-venv/Scripts/python tools/creditos.py movimientos --user <sub> -n 20
+venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 20
 ```
 
 - `--tipo` ∈ `cortesia | compra | ajuste` (ajuste acepta negativos).

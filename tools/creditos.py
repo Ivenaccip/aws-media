@@ -36,6 +36,17 @@ def main() -> None:
     if not args.cluster_arn or not args.secret_arn:
         ap.error("faltan --cluster-arn/--secret-arn (o DB_CLUSTER_ARN/DB_SECRET_ARN)")
 
+    # --user acepta el correo: se resuelve al sub de Cognito (el user_id real
+    # de la base — abonar al correo crearía un monedero huérfano)
+    if "@" in args.user:
+        from tools.usuarios import POOL_DEFAULT, _cognito, _sub
+        try:
+            u = _cognito().admin_get_user(UserPoolId=POOL_DEFAULT, Username=args.user)
+        except Exception as err:  # noqa: BLE001
+            sys.exit(f"{args.user}: no existe en Cognito ({type(err).__name__}) — "
+                     "¿ya corriste usuarios.py alta?")
+        args.user = _sub(u)
+
     os.environ["DB_CLUSTER_ARN"] = args.cluster_arn
     os.environ["DB_SECRET_ARN"] = args.secret_arn
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
