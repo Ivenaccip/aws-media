@@ -23,6 +23,7 @@ log = logging.getLogger("chat_nube")
 MODELO = os.getenv("CHAT_MODEL", "claude-opus-5")
 MAX_TOKENS = 1500          # respuestas de chat, cortas — y bajo el timeout del API GW
 TURNOS_DIA = int(os.getenv("CHAT_TURNOS_DIA", "40"))
+HISTORIAL_MAX = int(os.getenv("CHAT_HISTORIAL_MAX", "20"))  # turnos que viajan por llamada
 
 
 class SinClave(Exception):
@@ -57,12 +58,17 @@ def responder(name: str, user_id: str, contexto: str,
     import anthropic
 
     system = [
-        {"type": "text", "text": str(load_prompt("chat_editor_system")),
+        {"type": "text", "text": str(load_prompt("chat_editor_system"))},
+        # el marcador de caché va en el ÚLTIMO bloque estable: cachea el
+        # prefijo completo (system + transcript, miles de tokens) — con el
+        # marcador en el primer bloque el transcript se pagaba entero por turno
+        {"type": "text", "text": f"Contexto del proyecto «{name}»:\n{contexto}",
          "cache_control": {"type": "ephemeral"}},
-        {"type": "text", "text": f"Contexto del proyecto «{name}»:\n{contexto}"},
     ]
     mensajes = [{"role": m["role"], "content": m["text"]}
                 for m in historial if m.get("role") in ("user", "assistant") and m.get("text")]
+    # techo al input en sesiones largas: solo los últimos turnos viajan
+    mensajes = mensajes[-HISTORIAL_MAX:]
     mensajes.append({"role": "user", "content": texto})
 
     cliente = anthropic.Anthropic(api_key=clave_claude(user_id))
@@ -84,7 +90,10 @@ def responder(name: str, user_id: str, contexto: str,
                              "pregúntame sobre la edición de tu video.")
             else:
                 respuesta = "".join(b.text for b in r.content if b.type == "text").strip()
-            usage = {"input": r.usage.input_tokens, "output": r.usage.output_tokens}
+            usage = {"input": r.usage.input_tokens, "output": r.usage.output_tokens,
+                     # medir que la caché de verdad pega (0/0 = no cacheó nada)
+                     "cache_write": getattr(r.usage, "cache_creation_input_tokens", 0) or 0,
+                     "cache_read": getattr(r.usage, "cache_read_input_tokens", 0) or 0}
             gen.update(output=respuesta[:1000], usage_details=usage)
     get_client().flush()
     return respuesta, usage
