@@ -694,6 +694,18 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       cada tarea Fargate habría bajado ~460 MB de HuggingFace al vuelo).
       El A/B formal de M11 queda sin correr: el default se decidió por
       calidad visible del texto. Tests: 310 verdes (uno nuevo del escape).
+- [x] **La llama «Fluffy» — prompts de Langfuse desincronizados** (rama
+      m10-siembra-prompts): «3 curiosidades sobre las llamas» volvió a salir
+      como cuento con protagonista bautizado A PESAR del balanceador ya
+      desplegado. Causa: en la nube LANGFUSE_PROMPTS=1 sirve el label
+      `production` de Langfuse (M10), y la siembra nunca corrió tras el PR
+      #29 — guionista/narrador/clasificar seguían en la versión vieja con
+      «elige un protagonista concreto» hardcodeado (y cortes/moderar de
+      M13-M14 ni existían allá). Arreglo: `tools/prompts_sync.py` corrido
+      2026-09-07 (5 sembrados, verificado --dry = 0 pendientes; surte efecto
+      sin deploy por el TTL del SDK). **REGLA NUEVA de deploy: todo PR que
+      toque `prompts/*.md` termina con `python tools/prompts_sync.py` tras
+      el merge — sin eso producción sigue sirviendo el prompt viejo.**
 
 ---
 
