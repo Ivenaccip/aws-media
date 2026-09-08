@@ -38,6 +38,9 @@ SHORTS_RENDER_CR = 2
 # M14 — editar en la web (fallback espejo de tarifas.json §editar)
 EDITAR_SUGERENCIAS_CR = 2
 
+# M16.3 — b-roll del editor en la web (fallback espejo de tarifas.json §editar)
+BROLL_SUGERENCIAS_CR = 2
+
 try:
     _t = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))
     _v = _t["video"]
@@ -52,6 +55,7 @@ try:
     SHORTS_ANALISIS_CR = _s.get("analisis", SHORTS_ANALISIS_CR)
     SHORTS_RENDER_CR = _s.get("render_por_short", SHORTS_RENDER_CR)
     EDITAR_SUGERENCIAS_CR = _t.get("editar", {}).get("sugerencias", EDITAR_SUGERENCIAS_CR)
+    BROLL_SUGERENCIAS_CR = _t.get("editar", {}).get("broll_sugerencias", BROLL_SUGERENCIAS_CR)
 except (FileNotFoundError, KeyError):
     pass  # fallback: tarifa de arriba (2026-09-02)
 
@@ -107,6 +111,22 @@ def costo_editar_sugerencias(duracion_s: float, con_transcript: bool) -> int:
     if not con_transcript:
         costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(float(duracion_s) / 300)
     return costo
+
+
+def costo_broll_sugerencias() -> int:
+    """M16.3: propuestas de recursos visuales (LLM, no genera nada)."""
+    return BROLL_SUGERENCIAS_CR
+
+
+def costo_regen_imagenes(n: int) -> int:
+    """M16.3: candidatos de imagen del popup g2 — tarifa de imagen × candidato."""
+    return IMAGEN_CR * int(n)
+
+
+def costo_regen_video(veo_segundos: int | float) -> int:
+    """M16.3: animar una ventana con Veo — la regla de tarifas.json §video:
+    're-generar una escena = por_segundo × segundos' (del clip de Veo 4/6/8)."""
+    return math.ceil(VIDEO_CR_POR_SEGUNDO * float(veo_segundos))
 
 
 def costo_shorts_render(n_shorts: int) -> int:

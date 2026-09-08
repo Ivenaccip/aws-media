@@ -17,6 +17,8 @@
   },
   "editar": {
     "sugerencias": 2,
+    "broll_sugerencias": 2,
+    "nota_broll": "M16.3: propuestas de recursos visuales del editor (LLM sobre el transcript, ~$0.01 dólares; no genera nada). Generar sí cobra: imágenes = video.imagen × candidatos; animar con Veo = video.por_segundo × segundos del clip de Veo (4/6/8) — la misma regla de 're-generar una escena' de §video. Activar otra versión y rearmar la película = 0 créditos (infra propia, línea infra-overlay).",
     "nota": "M14 (Editar en la web): la corrida que propone el corte (LLM sobre el transcript, ~$0.02 dólares). Si el metraje no trae canónico se suma la transcripción con la MISMA tarifa de shorts.transcripcion_por_5min (mismo vendor AssemblyAI). Editar en el editor visual, guardar versiones y aceptar/rechazar sugerencias = 0 créditos; el render del corte usa la infra propia (línea infra-render de M6.1)."
   },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },

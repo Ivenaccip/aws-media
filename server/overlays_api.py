@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from langfuse import get_client, propagate_attributes
 from pydantic import BaseModel
 
-from pipeline import db, jobs, media_fal, media_google, media_sync, overlays, storage
+from pipeline import creditos, db, jobs, media_fal, media_google, media_sync, overlays, storage
 from pipeline.config import settings
 from pipeline.pricing import estimar_regeneracion
 
@@ -87,15 +87,61 @@ def ver_overlays(name: str):
         data = _leer_json_s3(f"videos/{name}/work/overlays.json") or \
             {"version": 1, "estilo_prompt": "", "overlays": []}
         return {**data, "costo_overlays": overlays.costo_total(data),
-                "backend": settings.gen_backend}
+                "backend": settings.gen_backend,
+                "tarifa_broll": creditos.costo_broll_sugerencias()}
     p = _proyecto(name)
     data = overlays.cargar(p)
     return {**data, "costo_overlays": overlays.costo_total(data),
             "backend": settings.gen_backend}
 
 
+def _data_nube_ov(name: str) -> dict:
+    """M16.3: overlays.json desde S3 (validando pertenencia del proyecto)."""
+    from server.editor import _leer_json_s3, _proyecto_nube
+    _proyecto_nube(name)
+    return _leer_json_s3(f"videos/{name}/work/overlays.json") or \
+        {"version": 1, "estilo_prompt": "", "overlays": []}
+
+
+def _overlay_de(data: dict, oid: str) -> dict:
+    try:
+        return overlays.obtener(data, oid)
+    except KeyError as err:
+        raise HTTPException(404, str(err))
+
+
+def _guardar_nube_ov(name: str, data: dict) -> None:
+    import json as _json
+    media_sync.escribir_texto(f"videos/{name}/work/overlays.json",
+                              _json.dumps(data, ensure_ascii=False, indent=1))
+
+
+@router.get("/{name}/api/overlays/job")
+def overlay_job(name: str):
+    """M16.3: poll del job de regeneración/activación (solo nube)."""
+    from server.editor import _nube, _proyecto_nube, _render_caducado
+    if not _nube():
+        raise HTTPException(404, "solo aplica en la nube")
+    j = _proyecto_nube(name).get("overlay_job") or {}
+    estado = j.get("estado")
+    return {"running": estado == "corriendo" and not _render_caducado(j),
+            "ok": True if estado == "listo" else False if estado == "error" else None,
+            "log": j.get("log", ""), "version": j.get("version"),
+            "overlay": j.get("overlay")}
+
+
 @router.get("/{name}/api/overlays/{oid}/precios")
 def precios(name: str, oid: str):
+    from server.editor import _nube
+    if _nube():
+        data = _data_nube_ov(name)
+        ov = _overlay_de(data, oid)
+        est = estimar_regeneracion(overlays.duracion_clip(ov), n_imagenes=N_IMAGENES,
+                                   backend=settings.gen_backend)
+        # en la nube el usuario paga créditos — la UI los muestra en vez de USD
+        est["creditos"] = {"imagen": creditos.costo_regen_imagenes(N_IMAGENES),
+                           "video": creditos.costo_regen_video(est["veo_segundos"])}
+        return est
     p = _proyecto(name)
     _, ov = _overlay(p, oid)
     return estimar_regeneracion(overlays.duracion_clip(ov), n_imagenes=N_IMAGENES,
@@ -116,10 +162,81 @@ def _referencia_overlay(p: Path, ov: dict) -> Path:
     return destino
 
 
+def _imagenes_nube(name: str, oid: str, body: ImagenIn) -> dict:
+    """M16.3: candidatos de imagen en la Lambda (nano banana tarda segundos) —
+    la referencia baja de S3, los candidatos suben y el gasto queda en el
+    overlays.json de S3. Cobra créditos ANTES; el vendor en fallo los devuelve."""
+    import tempfile
+    data = _data_nube_ov(name)
+    ov = _overlay_de(data, oid)
+    if body.confirmar is not True:
+        raise HTTPException(428, "Falta confirmar:true — el gate de gasto es obligatorio")
+    prompt = body.prompt.strip()
+    if not prompt:
+        raise HTTPException(422, "prompt vacío")
+    user = db.usuario_actual()
+    n_cr = creditos.costo_regen_imagenes(N_IMAGENES)
+    if creditos.activo():
+        try:
+            creditos.cobrar(n_cr, f"overlay-imagen:{name}:{oid}", user)
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    _marcar(name, f"imagen {oid}")
+    tmp = Path(tempfile.mkdtemp(prefix="g2-"))
+    stamp = time.strftime("%H%M%S")
+    rutas = []
+    try:
+        # ancla visual: la imagen base activa si existe; si no, un frame del clip
+        act = overlays.version_activa(ov)
+        if act.get("imagen_base"):
+            ref = tmp / Path(act["imagen_base"]).name
+            ok = media_sync.bajar_archivo(f"videos/{name}/work/{act['imagen_base']}", ref)
+        else:
+            clip = tmp / "clip.mp4"
+            ok = media_sync.bajar_archivo(f"videos/{name}/work/{act['video']}", clip)
+            ref = tmp / "ref_frame.jpg"
+            if ok:
+                subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "0.5",
+                                "-i", str(clip), "-frames:v", "1", "-q:v", "2",
+                                str(ref)], check=True)
+        if not ok:
+            raise RuntimeError("no encontré la referencia visual del overlay en S3")
+        completo = f"{prompt}, {data['estilo_prompt']}" if data.get("estilo_prompt") else prompt
+        with propagate_attributes(session_id=f"editor-{name}", tags=["fusion", "g2", "nube"]):
+            with get_client().start_as_current_observation(
+                    name="g2_imagenes", as_type="span", input={"overlay": oid, "prompt": prompt[:300]}):
+                for k in range(N_IMAGENES):
+                    f = tmp / f"{stamp}-{k}.jpg"
+                    asyncio.run(media_fal.imagen_nano(completo, f, referencia=ref,
+                                                      meta={"overlay": oid, "candidato": k}))
+                    rel = f"overlays/{oid}/candidatos/{f.name}"
+                    media_sync.subir_archivo(f, f"videos/{name}/work/{rel}")
+                    rutas.append(rel)
+    except HTTPException:
+        raise
+    except Exception as err:  # noqa: BLE001 — cobrado y sin imágenes: devolver
+        if creditos.activo():
+            creditos.devolver(n_cr, f"overlay-imagen:{name}:{oid}", user)
+        raise HTTPException(502, f"Nano Banana falló: {str(err)[:300]}")
+    finally:
+        _ocupado.pop(name, None)
+        get_client().flush()
+    costo = estimar_regeneracion(0, n_imagenes=len(rutas), backend="fal")["imagen"]
+    data.setdefault("gastos", []).append(
+        {"tipo": "imagenes", "overlay": oid, "usd": round(costo, 3),
+         "creado": time.strftime("%Y-%m-%d %H:%M:%S")})
+    _guardar_nube_ov(name, data)
+    return {"candidatos": rutas, "prompt": prompt, "costo_imagenes": costo,
+            "creditos": n_cr}
+
+
 @router.post("/{name}/api/overlays/{oid}/imagen")
 def generar_imagenes(name: str, oid: str, body: ImagenIn):
     """g2 paso 1: opciones de imagen base nueva con el prompt editado (Nano Banana).
     def (threadpool): la generación bloquea y no debe congelar el event loop."""
+    from server.editor import _nube
+    if _nube():
+        return _imagenes_nube(name, oid, body)
     p = _proyecto(name)
     _, ov = _overlay(p, oid)
     if body.confirmar is not True:
@@ -162,10 +279,61 @@ def generar_imagenes(name: str, oid: str, body: ImagenIn):
     return {"candidatos": rutas, "prompt": prompt, "costo_imagenes": costo}
 
 
+def _job_nube(name: str, job: dict, n_cr: int = 0) -> dict:
+    """M16.3: fija doc.overlay_job y lanza el Fargate (candado de caducidad como
+    el render). En fallo del lanzamiento devuelve los créditos cobrados."""
+    import json as _json
+    from datetime import datetime, timezone
+
+    from server.editor import _proyecto_nube, _render_caducado
+    user = db.usuario_actual()
+    j = _proyecto_nube(name).get("overlay_job") or {}
+    if j.get("estado") == "corriendo" and not _render_caducado(j):
+        if creditos.activo() and n_cr:
+            creditos.devolver(n_cr, f"overlay:{name}", user)
+        raise HTTPException(409, "ya hay una regeneración en curso — espera a que termine")
+    job.update(estado="corriendo", creditos=n_cr,
+               inicio=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    db.fijar_overlay_job_editor(user, name, _json.dumps(job, ensure_ascii=False))
+    try:
+        jobs.lanzar_overlay(user, name)
+    except Exception as err:  # noqa: BLE001 — cobrado y sin job: revertir
+        if creditos.activo() and n_cr:
+            creditos.devolver(n_cr, f"overlay:{name}", user)
+        job.update(estado="error", log=f"no se pudo lanzar: {err}"[:300])
+        db.fijar_overlay_job_editor(user, name, _json.dumps(job, ensure_ascii=False))
+        raise HTTPException(502, f"No se pudo lanzar el job: {str(err)[:200]}")
+    return {"started": True, "creditos": n_cr}
+
+
+def _video_nube(name: str, oid: str, body: VideoIn) -> dict:
+    data = _data_nube_ov(name)
+    ov = _overlay_de(data, oid)
+    if body.confirmar is not True:
+        raise HTTPException(428, "Falta confirmar:true — el gate de gasto es obligatorio")
+    imagen = body.imagen.strip()
+    if ".." in imagen or Path(imagen).suffix.lower() not in (".jpg", ".jpeg", ".png"):
+        raise HTTPException(422, f"imagen no válida: {body.imagen}")
+    est = estimar_regeneracion(overlays.duracion_clip(ov), n_imagenes=0, backend="fal")
+    n_cr = creditos.costo_regen_video(est["veo_segundos"])
+    user = db.usuario_actual()
+    if creditos.activo():
+        try:
+            creditos.cobrar(n_cr, f"overlay-video:{name}:{oid}", user)
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    return _job_nube(name, {"accion": "generar", "overlay": oid, "imagen": imagen,
+                            "prompt": (body.prompt_movimiento or "").strip()}, n_cr)
+
+
 @router.post("/{name}/api/overlays/{oid}/video")
 def regenerar_video(name: str, oid: str, body: VideoIn):
     """g2 paso 2: Veo anima la imagen elegida → mux con el audio original →
-    versión nueva activa → película rearmada. def (threadpool): Veo tarda minutos."""
+    versión nueva activa → película rearmada. def (threadpool): Veo tarda minutos.
+    En nube el trabajo va a Fargate y la UI hace poll de /api/overlays/job."""
+    from server.editor import _nube
+    if _nube():
+        return _video_nube(name, oid, body)
     p = _proyecto(name)
     _, ov = _overlay(p, oid)
     if body.confirmar is not True:
@@ -216,6 +384,15 @@ def regenerar_video(name: str, oid: str, body: VideoIn):
 
 @router.post("/{name}/api/overlays/{oid}/activar")
 def activar(name: str, oid: str, body: ActivarIn):
+    from server.editor import _nube
+    if _nube():
+        # M16.3: activar también rearma la película (ffmpeg largo) → Fargate;
+        # cuesta 0 créditos (el deshacer que no quema vendors)
+        data = _data_nube_ov(name)
+        ov = _overlay_de(data, oid)
+        if not any(v["n"] == body.n for v in ov["versiones"]):
+            raise HTTPException(404, f"overlay {oid}: versión {body.n} no existe")
+        return _job_nube(name, {"accion": "activar", "overlay": oid, "n": body.n})
     p = _proyecto(name)
     n = body.n
     _marcar(name, f"activar {oid}")
