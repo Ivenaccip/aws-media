@@ -95,6 +95,19 @@ def lanzar_render(user_id: str, nombre: str, estilo: str) -> str:
     return r["executionArn"]
 
 
+def lanzar_subtitulos(user_id: str, nombre: str) -> str:
+    """M16.1: quemado de subtítulos del editor — el re-encode del video completo
+    va a Fargate (regla dura: nada de ffmpeg largo en la Lambda del API)."""
+    r = _sfn().start_execution(
+        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+        name=f"subs-{nombre}-{int(time.time())}",
+        input=json.dumps({
+            "user_id": user_id, "proyecto_id": nombre,
+            "command": ["python", "-m", "worker.subtitulos_task", user_id, nombre],
+        }))
+    return r["executionArn"]
+
+
 def lanzar_produccion(user_id: str, proyecto_id: str) -> str:
     """Arranca la state machine. El nombre lleva timestamp: reintentar tras un
     error crea una ejecución nueva (los nombres de SFN son únicos 90 días)."""

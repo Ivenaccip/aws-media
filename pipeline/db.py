@@ -254,7 +254,8 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
 # Campos del doc que los jobs actualizan con jsonb_set (lista cerrada: la ruta
 # va interpolada en el SQL, así que jamás sale de aquí)
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
-                  "editar": "{editar}", "flags": "{flags}"}
+                  "editar": "{editar}", "flags": "{flags}",
+                  "subtitulos": "{subtitulos}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:
@@ -270,6 +271,11 @@ def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> Non
 
 def fijar_render_editor(user_id: str, nombre: str, render: str) -> None:
     fijar_campo_editor(user_id, nombre, "render", render)
+
+
+def fijar_subtitulos_editor(user_id: str, nombre: str, estado: str) -> None:
+    """M16.1: estado del quemado de subtítulos en nube (doc.subtitulos)."""
+    fijar_campo_editor(user_id, nombre, "subtitulos", estado)
 
 
 # ---------------------------------------------------------------------------

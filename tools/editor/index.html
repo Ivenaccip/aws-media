@@ -1579,7 +1579,8 @@ document.getElementById("b1quemar").onclick = async () => {
             ver.id = "b1ver"; ver.className = "primary"; ver.textContent = "▶ Ver el video subtitulado";
             ver.onclick = () => {
               document.getElementById("b1modal").classList.remove("abierto");
-              vid.src = "ver/subtitulado"; vid.currentTime = 0; vid.play();
+              // en nube el estado trae la URL del CDN; en local el streaming del server
+              vid.src = st.url || "ver/subtitulado"; vid.currentTime = 0; vid.play();
               setStatus("▶ viendo el EXPORT subtitulado — recarga la página para volver a editar", "ok");
             };
             fila.prepend(ver);
