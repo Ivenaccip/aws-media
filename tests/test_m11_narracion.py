@@ -199,7 +199,14 @@ def test_crear_con_pipeline_narracion(cliente):
 
 
 def test_crear_pipeline_invalido_cae_al_default(cliente):
+    # default 2026-09-07: narración primero (el guion no nace en cajitas)
     r = cliente.post("/api/proyectos", data={"brief": "un pato", "pipeline": "raro"})
+    assert r.json()["pipeline"] == "narracion"
+
+
+def test_pipeline_default_del_entorno_regresa_a_escenas(cliente, monkeypatch):
+    monkeypatch.setenv("PIPELINE_DEFAULT", "escenas")
+    r = cliente.post("/api/proyectos", data={"brief": "un pato"})
     assert r.json()["pipeline"] == "escenas"
 
 

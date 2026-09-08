@@ -467,15 +467,18 @@ Flujo nuevo (detrás de un flag, A/B contra el pipeline actual):
    video concatenados encima, recortados al tiempo exacto (reemplaza el mux
    audio+video por escena; el "tiempo extra" del clip se corta al concatenar).
 
-- [ ] Validación: misma historia por ambos pipelines (2 películas de 15 s,
-      ~$0.70 dólares c/u, con confirmación de gasto), comparación de guion,
-      duración y costo en Langfuse. PENDIENTE tras el deploy.
+- [x] Validación: el A/B formal no se corrió — el 2026-09-07 el dueño decidió
+      por calidad visible del texto (las cajitas producían prosa telegráfica)
+      y «narracion» pasó a ser el DEFAULT de la web (rama
+      m11-narracion-default). La primera película real por esta ruta sirve de
+      validación en producción.
 - [x] Cobro: sin cambio (3 cr/s por duración objetivo); la duración real
       medida tras el TTS abre la puerta a cobrar exacto más adelante.
 - [x] Riesgos acotados con el flag POR PROYECTO: `Proyecto.pipeline`
-      ("escenas" default | "narracion"); el camino de siempre no se tocó —
-      solo branches en flow._preparar/_producir. El A/B se activa con
-      `?pipeline=narracion` en crear.html (o env PIPELINE_DEFAULT).
+      ("escenas" | "narracion"); el camino de siempre no se tocó — solo
+      branches en flow._preparar/_producir. Desde 2026-09-07 la web crea con
+      "narracion" por default; el camino de cajitas sigue vivo vía
+      `?pipeline=escenas` o env PIPELINE_DEFAULT=escenas.
 - [ ] Orden recomendado: después de M1-AWS y M2, ANTES de los focus groups —
       cambia la calidad de lo que la gente va a evaluar.
 
@@ -680,6 +683,17 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       apunta a shorts.html («Sube un video largo y te daremos los mejores
       momentos») y shorts.html sin `?p` ofrece elegir el proyecto (antes
       vivía en las cards de e1).
+- [x] **Narración primero como default de la web** (rama
+      m11-narracion-default): el dueño vio otro guion en cajitas (Kusi la
+      cría, 5 escenas de ~11 palabras, prosa telegráfica) y preguntó por qué
+      el guionista no escribía libre para partir escenas DESPUÉS — eso es
+      exactamente M11, que seguía apagado esperando el A/B. Decisión: se
+      enciende como default (`PIPELINE_DEFAULT` cae a "narracion" en
+      server/app.py; escape `?pipeline=escenas` o la env). El alineador
+      faster-whisper "small" ahora viaja HORNEADO en el Dockerfile (antes
+      cada tarea Fargate habría bajado ~460 MB de HuggingFace al vuelo).
+      El A/B formal de M11 queda sin correr: el default se decidió por
+      calidad visible del texto. Tests: 310 verdes (uno nuevo del escape).
 
 ---
 
