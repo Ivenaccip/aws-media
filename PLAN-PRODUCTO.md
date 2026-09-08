@@ -770,31 +770,36 @@ Hecho 2026-09-07 (rama m14-editar-web):
 - [ ] Pendiente de diseño: cuando el corte se apruebe y renderice, el paso a
       subtítulos/publicar desde la web (hoy termina en el preview del editor).
 
-## Fase M15 — Editor de imágenes por anotación (Crear imágenes v2)
+## Fase M15 — Editor de imágenes con FLUX Fill (Crear imágenes v2)
 
-Decisión del usuario 2026-09-08 tras comparar benchmarks (Artificial Analysis:
-nano banana Elo 981 > toda la familia FLUX en edición; FLUX Fill = máscara de
-generación vieja y $0.05-0.10 dólares/edición vs $0.04 del nano actual). Nada
-de máscara binaria: **anotación visual** — el usuario dibuja sobre la imagen y
-la anotación viaja aplanada en el mismo PNG.
+Decisión del usuario 2026-09-08 (revisada el mismo día): **FLUX Fill con
+máscara real, para experimentar** — aunque el benchmark favorece al nano
+banana en edición por instrucción (Artificial Analysis: nano 981 vs Kontext
+pro 876), Fill es inpainting quirúrgico con máscara y el dueño quiere probar
+esa experiencia. La anotación con nano banana queda como plan B si la calidad
+de Fill decepciona (los dos comparten la UI de señalar).
 
-1. - [ ] `tools/pricing.json`: asentar `fal-ai/nano-banana-2/edit` $0.08
-         dólares/imagen (verificado en vivo 2026-09-08; 2K/4K = 1.5x/2x) —
-         mapea a la tarifa `imagen_pro: 10` que ya existe en tarifas.json y
-         nunca se cableó.
-2. - [ ] `pipeline/media_fal.py`: `imagen_editar(url_o_bytes, prompt,
-         pro=False)` → nano-banana/edit o nano-banana-2/edit.
-3. - [ ] API `POST /api/imagenes/{nombre}/editar` {prompt, pro, anotada?}:
-         cobra 2 cr (10 con pro), guardrail del prompt, devuelve en fallo, y
-         la versión nueva SE AGREGA (regla: versiones jamás se pisan) —
+1. - [ ] `tools/pricing.json`: asentar `fal-ai/flux-pro/v1/fill` $0.05
+         dólares/megapixel, facturado redondeando el MP hacia arriba
+         (verificado en vivo 2026-09-08 → imagen 1024×1024 = 2 MP = $0.10).
+         Tarifa: la edición cobra `imagen_pro` (10 cr) de tarifas.json —
+         cubre el peor caso con margen sobre el piso de $0.015/cr.
+2. - [ ] `pipeline/media_fal.py`: `imagen_fill(imagen, mascara, prompt)` →
+         flux-pro/v1/fill (imagen + máscara binaria PNG + prompt).
+3. - [ ] API `POST /api/imagenes/{nombre}/editar` {prompt, mascara_b64}:
+         cobra 10 cr, guardrail del prompt, devuelve en fallo, y la versión
+         nueva SE AGREGA (regla: versiones jamás se pisan) —
          `_imagenes/<base>-v2.jpg`… con lista de versiones en el GET.
 4. - [ ] UI crear-imagenes.html: bajo «Tu imagen» entra «✏️ Modificar» —
-         canvas de anotación (recuadro arrastrando; el pincel libre después
-         si el recuadro queda corto), prompt del cambio, toggle «✨ Calidad
-         pro» con costo en el botón, y tirita de versiones para volver a
-         cualquiera. El prompt al modelo antepone «aplica el cambio SOLO en
-         la zona marcada en rojo y elimina la marca».
-5. - [ ] Tests + smoke navegador + deploy `aws-media-api`.
+         canvas de PINCEL sobre la imagen (pintas la zona a cambiar; grosor
+         + deshacer + borrar), la máscara se exporta a la RESOLUCIÓN REAL de
+         la imagen (mapeo CSS→píxeles, el punto delicado), prompt del cambio
+         y costo en el botón. Tirita de versiones para volver a cualquiera.
+5. - [ ] Tests + smoke navegador + deploy `aws-media-api`. Primera edición
+         real ~$0.10 dólares — pedir confirmación de gasto.
+6. - [ ] Evaluación del experimento: 3-5 ediciones reales comparando Fill
+         vs el mismo cambio por instrucción (nano banana) antes de decidir
+         el default definitivo.
 
 ## Fase M16 — Editor en la nube COMPLETO (hallazgos de gen-ee202e1a, 2026-09-08)
 
