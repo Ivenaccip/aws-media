@@ -58,21 +58,27 @@ venv/Scripts/python tools/usuarios.py reactivar correo@ejemplo.com
 
 ## Créditos (`tools/creditos.py`)
 
+OJO: `--user` NO es el correo — es el **sub de Cognito** (el UUID que imprime
+`usuarios.py lista` como id, o el que muestra el dashboard admin). Con el
+correo se crea un monedero huérfano que la web jamás ve.
+
 ```bash
-venv/Scripts/python tools/creditos.py saldo --user correo@ejemplo.com
+venv/Scripts/python tools/usuarios.py lista
 ```
 
 ```bash
-venv/Scripts/python tools/creditos.py abonar 100 --user correo@ejemplo.com --tipo cortesia --ref regalo-bienvenida
+venv/Scripts/python tools/creditos.py saldo --user <sub>
 ```
 
 ```bash
-venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 20
+venv/Scripts/python tools/creditos.py abonar 100 --user <sub> --tipo cortesia --ref regalo-bienvenida
+```
+
+```bash
+venv/Scripts/python tools/creditos.py movimientos --user <sub> -n 20
 ```
 
 - `--tipo` ∈ `cortesia | compra | ajuste` (ajuste acepta negativos).
-- El `--user` es el **sub de Cognito o el id interno** que muestra
-  `usuarios.py lista` / el dashboard admin.
 - Tarifa (de `tools/tarifas.json`, única fuente): preparar película 10 cr,
   producir 3 cr/s, imagen 2 cr (pro 10), shorts transcripción 2 cr/5 min +
   análisis 2 + render 2 por short, Editar sugerencias 2 cr.
@@ -130,8 +136,9 @@ ARNs del stack `aws-media-db` (también salen en sus outputs de CloudFormation):
 venv/Scripts/python tools/db_migrate.py --cluster-arn arn:aws:rds:us-east-1:191241816158:cluster:aws-media-db-db5d02a0a9-luualrjywhm7 --secret-arn "arn:aws:secretsmanager:us-east-1:191241816158:secret:DbSecretCF6D79B0-OCMXnjHbEOrM-LAYvNT"
 ```
 
-`usuarios.py`, `creditos.py` y `costes.py` aceptan los mismos
-`--cluster-arn/--secret-arn` (o las envs `DB_CLUSTER_ARN`/`DB_SECRET_ARN`).
+Los cuatro tools (`db_migrate`, `usuarios`, `creditos`, `costes`) cargan el
+`.env` del repo — con `DB_CLUSTER_ARN`/`DB_SECRET_ARN` ahí (ya están en el
+del dueño), los flags `--cluster-arn/--secret-arn` sobran.
 Gotcha: Aurora se auto-pausa a 0 ACU — la primera llamada tras un rato puede
 tardar ~25 s o dar 503/timeout; reintenta.
 
