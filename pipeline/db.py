@@ -255,7 +255,8 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
 # va interpolada en el SQL, así que jamás sale de aquí)
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
                   "editar": "{editar}", "flags": "{flags}",
-                  "subtitulos": "{subtitulos}", "overlay_job": "{overlay_job}"}
+                  "subtitulos": "{subtitulos}", "overlay_job": "{overlay_job}",
+                  "chat": "{chat}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:
@@ -281,6 +282,11 @@ def fijar_subtitulos_editor(user_id: str, nombre: str, estado: str) -> None:
 def fijar_overlay_job_editor(user_id: str, nombre: str, estado: str) -> None:
     """M16.3: job de regeneración/activación de un overlay (doc.overlay_job)."""
     fijar_campo_editor(user_id, nombre, "overlay_job", estado)
+
+
+def fijar_chat_editor(user_id: str, nombre: str, chat: str) -> None:
+    """M16.4: historial del chat editorial en nube (doc.chat.mensajes)."""
+    fijar_campo_editor(user_id, nombre, "chat", chat)
 
 
 # ---------------------------------------------------------------------------

@@ -952,7 +952,7 @@ async function sendChat() {
   const r = await fetch("api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }) });
   const j = await r.json();
-  if (!j.sent) { chatAppend({ role: "error", text: j.error || "no se pudo enviar" }); return; }
+  if (!j.sent) { chatAppend({ role: "error", text: j.error || j.detail || "no se pudo enviar" }); return; }
   inp.value = "";
   chatPoll = setInterval(chatTick, 800);
   chatTick();

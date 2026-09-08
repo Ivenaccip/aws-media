@@ -64,9 +64,10 @@ def _proyecto(name: str) -> Path:
 # corte versionado en Postgres y el render corre como job en Fargate. El chat
 # editorial NO viaja: sigue siendo exclusivo de quien corre Claude Code local.
 
-CHAT_NUBE = ("El chat editorial vive en Claude Code local — aquí puedes cortar, "
-             "guardar y renderizar. Para editar conversando, corre /clean-cut "
-             "desde Claude Code en tu máquina.")
+# M16.4: el chat editorial en nube es un CONSEJERO con la API de Claude — no
+# edita cuts.json (eso sigue siendo del chat local con claude-agent-sdk)
+CHAT_NUBE_NOTA = ("Consejero editorial: te digo QUÉ cortar y con qué botón — "
+                  "los cambios los aplicas tú en el timeline.")
 
 
 def _nube() -> bool:
@@ -422,12 +423,56 @@ def render_status(name: str):
     return _render.get(name, {"running": False, "log": "", "ok": None})
 
 
+def _chat_contexto(name: str) -> str:
+    """Transcript condensado + duración, desde S3 — lo que el consejero lee."""
+    from server.broll_api import _condensar
+    manifest = _leer_json_s3(f"videos/{name}/work/editor/manifest.json") or {}
+    et = _leer_json_s3(f"videos/{name}/work/edited-transcript.json")
+    try:
+        transcript = _condensar(et, max_chars=4000)
+    except HTTPException:
+        transcript = "(sin transcript disponible)"
+    return f"Duración del video: {manifest.get('total', '?')} s\nTranscript:\n{transcript}"
+
+
+def _chat_nube(name: str, texto: str) -> dict:
+    from datetime import datetime, timezone
+
+    from pipeline import chat_nube
+    user = db.usuario_actual()
+    doc = _proyecto_nube(name)
+    mensajes = (doc.get("chat") or {}).get("mensajes") or []
+    hoy = datetime.now(timezone.utc).date().isoformat()
+    turnos_hoy = sum(1 for m in mensajes
+                     if m.get("role") == "user" and str(m.get("ts", "")).startswith(hoy))
+    if turnos_hoy >= chat_nube.TURNOS_DIA:
+        raise HTTPException(429, f"Llegaste al tope de {chat_nube.TURNOS_DIA} turnos de chat "
+                                 "por día — mañana se renueva")
+    try:
+        respuesta, usage = chat_nube.responder(
+            name, user, _chat_contexto(name), mensajes, texto)
+    except chat_nube.SinClave as err:
+        raise HTTPException(503, str(err))
+    except Exception as err:  # noqa: BLE001 — el turno falló: nada se persiste
+        raise HTTPException(502, f"El chat no pudo responder: {str(err)[:200]}")
+    ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    mensajes += [{"role": "user", "text": texto, "ts": ts},
+                 {"role": "assistant", "text": respuesta, "ts": ts,
+                  "usage": usage}]
+    db.fijar_chat_editor(user, name, json.dumps({"mensajes": mensajes}, ensure_ascii=False))
+    return {"sent": True}
+
+
 @router.get("/{name}/api/chat/poll")
 def chat_poll(name: str):
     if _nube():
-        _proyecto_nube(name)
-        return {"available": False, "busy": False, "messages": [],
-                "error": CHAT_NUBE, "cuts_mtime": 0}
+        doc = _proyecto_nube(name)
+        mensajes = (doc.get("chat") or {}).get("mensajes") or []
+        vista = [{"role": m["role"], "text": m["text"]} for m in mensajes]
+        if not vista:
+            vista = [{"role": "assistant", "text": CHAT_NUBE_NOTA}]
+        return {"available": True, "busy": False, "messages": vista,
+                "error": None, "cuts_mtime": 0}
     p = _proyecto(name)
     agent = _chat.get(name)
     st = (agent.state() if agent
@@ -442,12 +487,15 @@ def chat_poll(name: str):
 
 @router.post("/{name}/api/chat")
 async def chat(name: str, request: Request):
-    if _nube():
-        raise HTTPException(503, CHAT_NUBE)
-    p = _proyecto(name)
     text = ((await request.json()).get("text") or "").strip()
     if not text:
         raise HTTPException(400, "empty message")
+    if _nube():
+        # def-in-thread no aplica: el handler es async — la llamada a Claude
+        # bloquea, así que va a un thread para no congelar el event loop
+        import asyncio
+        return await asyncio.to_thread(_chat_nube, name, text)
+    p = _proyecto(name)
     if ChatAgent is None:
         raise HTTPException(503, CHAT_IMPORT_ERR)
     with _chat_lock:
