@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from langfuse import get_client, propagate_attributes
 from pydantic import BaseModel
 
-from pipeline import media_fal, media_google, overlays, storage
+from pipeline import db, jobs, media_fal, media_google, media_sync, overlays, storage
 from pipeline.config import settings
 from pipeline.pricing import estimar_regeneracion
 
@@ -225,6 +225,15 @@ def costes(name: str):
 
 @router.get("/{name}/archivo/{ruta:path}")
 def archivo(name: str, ruta: str):
+    from server.editor import _cdn, _nube, _proyecto_nube
+    if _nube():
+        # los artefactos viven en S3 — CloudFront los sirve tras un 302
+        _proyecto_nube(name)
+        if Path(ruta).suffix.lower() not in (".jpg", ".png", ".mp4", ".srt", ".ass") \
+                or ".." in ruta:
+            raise HTTPException(404, "no encontrado")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(_cdn(f"videos/{name}/work/{ruta}"))
     p = _proyecto(name)
     f = (p / "work" / ruta).resolve()
     if (p / "work").resolve() not in f.parents:
@@ -236,10 +245,34 @@ def archivo(name: str, ruta: str):
 
 # ---------- b1: subtítulos ----------
 
+def _subs_muestra_nube(name: str, frame: float) -> dict:
+    """M16.1: la muestra (1 frame) sí cabe en la Lambda contenedor — baja lo
+    mínimo de S3 al FS efímero, corre make_subs --frame y sube el PNG (la UI lo
+    pide por /archivo/…, que en nube redirige al CDN)."""
+    import tempfile
+    base_dir = Path(tempfile.mkdtemp(prefix="subs-")) / name
+    for rel in ("pelicula.mp4", "work/edited-transcript.json"):
+        if not media_sync.bajar_archivo(f"videos/{name}/{rel}", base_dir / rel):
+            raise HTTPException(404, f"{name}: falta {rel} en S3 — el puente del generador no lo dejó listo")
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "make_subs.py"),
+                        str(base_dir), "--base", str(base_dir / "pelicula.mp4"),
+                        "--frame", str(frame)],
+                       capture_output=True, text=True, cwd=str(ROOT))
+    if r.returncode != 0:
+        raise HTTPException(502, f"make_subs falló: {(r.stdout + r.stderr)[-300:]}")
+    for f in (base_dir / "work" / "subs").iterdir():
+        media_sync.subir_archivo(f, f"videos/{name}/work/subs/{f.name}")
+    return {"muestra": f"subs/muestra-{frame}s.png"}
+
+
 @router.post("/{name}/api/subtitulos/muestra")
 def subs_muestra(name: str, body: MuestraIn):
-    p = _proyecto(name)
+    from server.editor import _nube, _proyecto_nube
     frame = body.frame
+    if _nube():
+        _proyecto_nube(name)
+        return _subs_muestra_nube(name, frame)
+    p = _proyecto(name)
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "make_subs.py"),
                         str(p), "--base", str(p / "pelicula.mp4"),
                         "--frame", str(frame)],
@@ -260,8 +293,35 @@ def _quemar(name: str, p: Path) -> None:
     st.update(running=False, ok=proc.returncode == 0)
 
 
+def _subs_quemar_nube(name: str) -> dict:
+    """M16.1: el quemado re-encodea el video completo — a Fargate por la state
+    machine de siempre; el estado viaja por proyectos_editor.doc.subtitulos."""
+    import json as _json
+    from datetime import datetime, timezone
+
+    from server.editor import _proyecto_nube, _render_caducado
+    user = db.usuario_actual()
+    doc = _proyecto_nube(name)
+    s = doc.get("subtitulos") or {}
+    if s.get("estado") == "corriendo" and not _render_caducado(s):
+        raise HTTPException(409, "quemado en curso")
+    db.fijar_subtitulos_editor(user, name, _json.dumps(
+        {"estado": "corriendo",
+         "inicio": datetime.now(timezone.utc).isoformat(timespec="seconds")}))
+    try:
+        jobs.lanzar_subtitulos(user, name)
+    except Exception as err:  # noqa: BLE001 — sin SFN a mano, no puede quedar "corriendo"
+        db.fijar_subtitulos_editor(user, name, _json.dumps(
+            {"estado": "error", "log": f"no se pudo lanzar el job: {err}"[:400]}))
+        raise HTTPException(502, f"No se pudo lanzar el quemado: {str(err)[:200]}")
+    return {"started": True}
+
+
 @router.post("/{name}/api/subtitulos/quemar")
 def subs_quemar(name: str):
+    from server.editor import _nube
+    if _nube():
+        return _subs_quemar_nube(name)
     p = _proyecto(name)
     st = _subs.setdefault(name, {"running": False, "log": "", "ok": None})
     if st["running"]:
@@ -271,23 +331,36 @@ def subs_quemar(name: str):
     return {"started": True}
 
 
+def _parsear_srt(crudo: str) -> list[dict]:
+    segmentos, bloque = [], {}
+    for linea in crudo.splitlines() + [""]:
+        linea = linea.strip()
+        if "-->" in linea:
+            a, _, b = linea.partition("-->")
+            bloque = {"start": _srt_s(a), "end": _srt_s(b), "text": ""}
+        elif linea and bloque:
+            bloque["text"] = (bloque["text"] + " " + linea).strip()
+        elif not linea and bloque:
+            segmentos.append(bloque)
+            bloque = {}
+    return segmentos
+
+
 @router.get("/{name}/api/subtitulos/estado")
 def subs_estado(name: str):
+    from server.editor import _nube, _proyecto_nube, _render_caducado
+    if _nube():
+        s = _proyecto_nube(name).get("subtitulos") or {}
+        estado = s.get("estado")
+        crudo = media_sync.leer_texto(f"videos/{name}/work/subs/subs.srt")
+        return {"running": estado == "corriendo" and not _render_caducado(s),
+                "log": s.get("log", ""),
+                "ok": True if estado == "listo" else False if estado == "error" else None,
+                "url": s.get("url"),
+                "segmentos": _parsear_srt(crudo) if crudo else []}
     p = _proyecto(name)
     srt = p / "work" / "subs" / "subs.srt"
-    segmentos = []
-    if srt.is_file():
-        bloque: dict = {}
-        for linea in srt.read_text(encoding="utf-8").splitlines() + [""]:
-            linea = linea.strip()
-            if "-->" in linea:
-                a, _, b = linea.partition("-->")
-                bloque = {"start": _srt_s(a), "end": _srt_s(b), "text": ""}
-            elif linea and bloque:
-                bloque["text"] = (bloque["text"] + " " + linea).strip()
-            elif not linea and bloque:
-                segmentos.append(bloque)
-                bloque = {}
+    segmentos = _parsear_srt(srt.read_text(encoding="utf-8")) if srt.is_file() else []
     return {**_subs.get(name, {"running": False, "log": "", "ok": None}), "segmentos": segmentos}
 
 

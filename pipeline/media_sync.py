@@ -83,6 +83,22 @@ def respaldar(key: str, key_respaldo: str) -> None:
                       CopySource={"Bucket": bucket, "Key": key})
 
 
+def bajar_archivo(key: str, destino: Path) -> bool:
+    """Baja UN objeto a un archivo local (para jobs que no necesitan el
+    prefijo completo, p.ej. la muestra de subtítulos en la Lambda).
+    Devuelve False si no existe o no hay bucket."""
+    bucket = _bucket()
+    if not bucket:
+        return False
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _s3().download_file(bucket, key, str(destino))
+    except Exception:  # noqa: BLE001 — 404 de S3 llega como ClientError
+        return False
+    return True
+
+
 def subir_archivo(local: Path, key: str) -> None:
     tipo = mimetypes.guess_type(str(local))[0] or "application/octet-stream"
     _s3().upload_file(str(local), _bucket(), key, ExtraArgs={"ContentType": tipo})

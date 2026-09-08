@@ -581,6 +581,20 @@ verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
+- [x] **M16.1 Subtítulos del editor en la nube** (PR #39, 2026-09-08): rama
+      nube en los 3 endpoints b1 de overlays_api. La MUESTRA (1 frame) corre
+      en la Lambda contenedor bajando solo pelicula.mp4 +
+      edited-transcript.json de S3 (`media_sync.bajar_archivo` nuevo) y sube
+      el PNG; `/editor/{n}/archivo/…` en nube redirige al CDN. El QUEMADO va
+      a Fargate por la state machine de siempre
+      (`worker/subtitulos_task.py`: bajar gen-* → make_subs --mode final
+      sobre pelicula.mp4 → subir pelicula-subtitulado.mp4 + subs.srt/.ass →
+      `doc.subtitulos` vía `db.fijar_subtitulos_editor`, con candado de
+      caducidad 2 h como el render). Tarifa 0 cr (no quema vendors);
+      registra `infra-subtitulos` en costes. La UI reproduce el resultado
+      por la URL de CDN que trae el estado. 12 tests
+      (test_m16_subtitulos_nube.py); fuente en el contenedor:
+      fonts-liberation sustituye a Arial vía fontconfig.
 - [x] **El cuadro del hub ES la entrada** (PR #19): crear.html con `?brief=`
       pliega brief/modos a un resumen «💡 Tu idea · modo X» con «✏️ Editar»
       y no repite "Tus películas"; sin query, formulario completo. El hub
