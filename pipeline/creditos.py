@@ -35,6 +35,9 @@ SHORTS_TRANSCRIPCION_CR_5MIN = 2
 SHORTS_ANALISIS_CR = 2
 SHORTS_RENDER_CR = 2
 
+# M17 — importar de YouTube (fallback espejo de tarifas.json §shorts)
+SHORTS_IMPORTAR_CR_MIN = 2
+
 # M14 — editar en la web (fallback espejo de tarifas.json §editar)
 EDITAR_SUGERENCIAS_CR = 2
 
@@ -54,6 +57,7 @@ try:
     SHORTS_TRANSCRIPCION_CR_5MIN = _s.get("transcripcion_por_5min", SHORTS_TRANSCRIPCION_CR_5MIN)
     SHORTS_ANALISIS_CR = _s.get("analisis", SHORTS_ANALISIS_CR)
     SHORTS_RENDER_CR = _s.get("render_por_short", SHORTS_RENDER_CR)
+    SHORTS_IMPORTAR_CR_MIN = _s.get("importar_por_min", SHORTS_IMPORTAR_CR_MIN)
     EDITAR_SUGERENCIAS_CR = _t.get("editar", {}).get("sugerencias", EDITAR_SUGERENCIAS_CR)
     BROLL_SUGERENCIAS_CR = _t.get("editar", {}).get("broll_sugerencias", BROLL_SUGERENCIAS_CR)
 except (FileNotFoundError, KeyError):
@@ -127,6 +131,12 @@ def costo_regen_video(veo_segundos: int | float) -> int:
     """M16.3: animar una ventana con Veo — la regla de tarifas.json §video:
     're-generar una escena = por_segundo × segundos' (del clip de Veo 4/6/8)."""
     return math.ceil(VIDEO_CR_POR_SEGUNDO * float(veo_segundos))
+
+
+def costo_shorts_importar(duracion_s: float) -> int:
+    """M17: traer un video de YouTube al proyecto (descarga vía Apify, que
+    cobra por MB ≈ por minuto) — tarifa por minuto EMPEZADO del video fuente."""
+    return SHORTS_IMPORTAR_CR_MIN * max(1, math.ceil(float(duracion_s) / 60))
 
 
 def costo_shorts_render(n_shorts: int) -> int:

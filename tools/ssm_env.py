@@ -26,6 +26,8 @@ CLAVES = [
     # M16.4+: la API de Claude como BASE de plataforma — todos los usuarios
     # tienen el chat editorial configurado; una clave por-usuario (D4) la pisa
     "CLAUDE_API_KEY",
+    # M17 — importar videos por liga (actores de Apify, pricing.json §apify)
+    "APIFY_TOKEN",
 ]
 PREFIJO = "/media-ivenaccip/env/"
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timedelta, timezone
 
@@ -97,12 +98,102 @@ def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# ---------------------------------------------------------------------------
+# M17 — importar un video de YouTube por liga (van ANTES de /{nombre}: FastAPI
+# matchearía "importar" como nombre de proyecto)
+
+_YT_ID = re.compile(
+    r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|live/)|youtu\.be/)"
+    r"([A-Za-z0-9_-]{11})")
+
+
+def _video_id(url: str) -> str:
+    m = _YT_ID.search(url or "")
+    if not m:
+        raise HTTPException(422, "Pega una liga de YouTube válida "
+                                 "(youtube.com/watch?v=…, youtu.be/… o /shorts/…)")
+    return m.group(1)
+
+
+def _info_youtube(video_id: str) -> dict:
+    """Título + duración vía el actor cotizador (~$0.001 dólares, ~5 s)."""
+    from pipeline import apify
+    from pipeline.config import settings
+    try:
+        item = apify.correr(settings.apify_yt_info,
+                            {"videoIds": [video_id]}, timeout_s=60)[0]
+    except apify.ApifyError as err:
+        raise HTTPException(502, f"No se pudo leer el video de YouTube: {str(err)[:200]}")
+    dur = float(item.get("lengthSeconds") or 0)
+    if not dur:
+        raise HTTPException(422, "Ese video no reporta duración — ¿es un directo o está privado?")
+    return {"titulo": str(item.get("title") or "")[:120], "duracion_s": dur}
+
+
+class PedidoImportar(BaseModel):
+    url: str = Field(min_length=10, max_length=300)
+
+
+@router.post("/importar/cotizar")
+def importar_cotizar(pedido: PedidoImportar):
+    """Preview de costo ANTES de cobrar (regla dura): título, minutos y créditos."""
+    _nube()
+    vid = _video_id(pedido.url)
+    info = _info_youtube(vid)
+    if info["duracion_s"] > MAX_DURACION_S:
+        raise HTTPException(413, f"El video dura {info['duracion_s']/60:.0f} min — "
+                                 f"el máximo del flujo web es {MAX_DURACION_S//60} min")
+    return {**info, "nombre": f"yt-{vid}",
+            "creditos": creditos.costo_shorts_importar(info["duracion_s"])}
+
+
+@router.post("/importar")
+def importar(pedido: PedidoImportar):
+    """Cobra y encola la descarga; el progreso viaja por doc.importar."""
+    _nube()
+    user = db.usuario_actual()
+    vid = _video_id(pedido.url)
+    nombre = f"yt-{vid}"
+    doc = db.cargar_proyecto_editor(user, nombre) or {}
+    st = doc.get("importar") or {}
+    if st.get("estado") == "descargando" and not _caducado(st, 0.5):
+        raise HTTPException(409, "Ese video ya se está importando — espera a que termine")
+    if st.get("estado") == "listo":
+        raise HTTPException(409, f"Ese video ya está importado como «{nombre}» — "
+                                 "elígelo en la lista y corre el análisis")
+    info = _info_youtube(vid)
+    if info["duracion_s"] > MAX_DURACION_S:
+        raise HTTPException(413, f"El video dura {info['duracion_s']/60:.0f} min — "
+                                 f"el máximo del flujo web es {MAX_DURACION_S//60} min")
+    n = creditos.costo_shorts_importar(info["duracion_s"])
+    if creditos.activo():
+        try:
+            creditos.cobrar(n, f"shorts-importar:{nombre}", user)
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    nuevo = {"estado": "descargando", "url": pedido.url, "titulo": info["titulo"],
+             "duracion_s": info["duracion_s"], "creditos": n, "inicio": _ahora()}
+    doc.setdefault("subidas", [])
+    doc["importar"] = nuevo
+    db.guardar_proyecto_editor(user, nombre, json.dumps(doc, ensure_ascii=False))
+    try:
+        jobs.encolar_shorts_importar(user, nombre, pedido.url)
+    except Exception as err:  # noqa: BLE001 — cobrado y sin job = lo peor: revertir
+        if creditos.activo():
+            creditos.devolver(n, f"shorts-importar:{nombre}", user)
+        nuevo.update(estado="error", error=f"no se pudo encolar: {err}"[:300])
+        db.fijar_campo_editor(user, nombre, "importar", json.dumps(nuevo, ensure_ascii=False))
+        raise HTTPException(502, f"No se pudo lanzar la importación: {str(err)[:200]}")
+    return {"lanzado": True, "nombre": nombre, "creditos": n}
+
+
 @router.get("/{nombre}")
 def estado(nombre: str):
     """Poll barato de la UI: solo lo que ya está en Postgres."""
     _nube()
     doc = _proyecto(nombre)
     return {"shorts": doc.get("shorts"), "fuente": _fuente(doc, nombre),
+            "importar": doc.get("importar"),
             "creditos_por_short": creditos.SHORTS_RENDER_CR,
             "cdn": os.getenv("CDN_BASE", "").rstrip("/")}
 
