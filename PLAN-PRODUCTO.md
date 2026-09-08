@@ -582,14 +582,15 @@ Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
 - [ ] **Plan del editor en nube (feedback 2026-09-08)** — pasos en orden:
-      - [ ] Paso 0 (dueño): deploy de la imagen CI + `cdk deploy aws-media-api
-            aws-media-jobs` + `python tools/prompts_sync.py` — hipótesis: la
-            Lambda corre imagen vieja y por eso 404/500 en subtítulos y
-            «Claude no puede conectarse» (endpoints de PRs #39-#42 ausentes).
+      - [x] Paso 0 (dueño, 2026-09-08): deploy hecho (api 19:24 UTC, jobs
+            19:23) + prompts_sync. Verificado: las rutas de chat/subtítulos/
+            overlays responden 401 sin auth (existen — antes 404) y CloudWatch
+            sin errores. La hipótesis de la imagen vieja era correcta.
       - [ ] Paso 1: si los 404/500 de subtítulos sobreviven al deploy,
             diagnóstico por CloudWatch.
-      - [ ] Paso 2: chat lento — indicador «Claude está escribiendo…» primero;
-            streaming/poll solo si sigue sintiéndose lento.
+      - [x] Paso 2 (PR #49, 2026-09-08): envío optimista + «Claude está
+            escribiendo…» en el chat del editor; streaming/poll solo si tras
+            probarlo sigue sintiéndose lento.
       - [ ] Paso 3: verificar conexión de Claude tras el deploy
             (SinClave/429/timeout).
       - [ ] Paso 4: rediseñar la UI del editor alineada al hub (pendiente:
@@ -617,6 +618,42 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       - Descartado a este tamaño: cascada con Haiku, batching, caché
         semántica (chat interactivo y personalizado); thinking ya va en
         effort low y max_tokens=1500 ya acota la salida.
+- [ ] **M17 — Shorts desde fuera** (decidido 2026-09-08; orden: Ruta A →
+      Ruta B → M18). Hoy shorts en nube solo come proyectos propios (subida
+      e1 o gen-*); el análisis ya usa gpt-5-mini (`openai_model`). Apify entra
+      al backend por API REST con `APIFY_TOKEN` en .env/SSM (clave del dueño).
+      OJO ToS: descargar de YT/IG/TikTok va contra los términos de esas
+      plataformas — riesgo aceptado por el dueño.
+      - [ ] **Ruta A — liga de YouTube**: campo en shorts.html + preview de
+            costo → job en worker: descarga vía Apify
+            `marielise.dev/youtube-video-downloader` (cobra POR MINUTO:
+            $0.02/min a 720p, $0.03/min a 1080p — encaja con tarifar por
+            minuto) → MP4 a S3 como subida de un proyecto nuevo → de ahí la
+            tubería M8 existente sin tocarse (transcribe → candidatos
+            gpt-5-mini → render Fargate). Tope 90 min. El actor que el dueño
+            había visto (`topaz_sharingan/Youtube-Transcript-Scraper-1`,
+            $0.01/video) NO baja video — solo transcript: se usa en Ruta B.
+      - [ ] **Ruta B — sin video**: (a) pegar liga de YT y proponer shorts
+            SOLO del transcript (actor topaz con timestamps, $0.01/video) —
+            barato, sin render; (b) subir documento: .srt/.vtt (con tiempos)
+            → candidatos con timestamps; .txt → solo temas/ganchos. La UI
+            dice claro que sin video no hay render; si luego llega el video
+            (liga o e1) se conecta con la Ruta A.
+      - Tarifas: por MINUTO del video fuente (redondeo hacia arriba) para la
+        Ruta A — descarga + transcripción + análisis escalan por duración;
+        Ruta B tarifa fija chica. Números en tarifas.json y costos reales en
+        pricing.json (propuesta pendiente de OK del dueño).
+- [ ] **M18 — Copiadora de estilos** (después de M17): liga de IG o TikTok →
+      descarga vía Apify (IG: `apify/instagram-scraper` oficial,
+      ~$0.003/resultado, trae videoUrl del reel y el worker baja el MP4;
+      TikTok: `clockworks/tiktok-scraper` con add-on de descarga,
+      ~$0.005/video) → ffmpeg extrae ~10 frames + detección de cortes →
+      análisis en 2 capas: determinístico gratis (paleta k-means, aspecto,
+      duración, cadencia) + gpt-5-mini visión (tipografía/posición de
+      captions, iluminación, estética, tono) → perfil de estilo (JSON +
+      tarjeta en la UI) guardado por usuario, que alimenta los prompts de
+      Crear imágenes/Crear contenido y estilos de subtítulos. Copiar estilo,
+      nunca clonar contenido.
 - [x] **M15 — Editor de imágenes (inpainting) + sidebar reordenado** (PR #45,
       2026-09-08): «Editor de imágenes» ya no apunta a crear-imagenes.html —
       página propia `editor-imagenes.html` (subes tu imagen, pintas la zona
