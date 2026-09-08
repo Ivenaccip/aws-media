@@ -224,7 +224,7 @@
       <div id="flagCard" style="display:none"></div>
       <div id="chatLog"><div class="txnote" id="chatNote">Anota decisiones en los flags (1er click guarda la nota) y
         mándalas juntas con ➤, o escribe libre. El primer mensaje arranca la sesión de Claude.</div></div>
-      <div id="chatBusy">⏳ Claude está trabajando…</div>
+      <div id="chatBusy">⏳ Claude está escribiendo…</div>
       <div id="chatRow"><input id="chatInput" type="text" aria-label="Mensaje para Claude" placeholder="mensaje libre (opcional si hay notas)…"><button id="chatSend" aria-label="Enviar" data-tip="Enviar notas + mensaje — Enter">➤</button></div>
     </div>
   </div>
@@ -865,7 +865,7 @@ async function render() {
 }
 
 /* ---------- chat con Claude (claude-agent-sdk en el server) ---------- */
-let chatShown = 0, chatPoll = null, chatBaselineMtime = null;
+let chatShown = 0, chatPoll = null, chatBaselineMtime = null, chatEnviando = false;
 let loginHintShown = false, loginDone = false, loginPollTimer = null;
 
 function chatLoginPrompt() {
@@ -900,8 +900,8 @@ async function chatTick() {
   try { st = await (await fetch("api/chat/poll")).json(); } catch { return; }
   for (let k = chatShown; k < st.messages.length; k++) chatAppend(st.messages[k]);
   chatShown = st.messages.length;
-  $("decisions").classList.toggle("busy", st.busy);
-  $("chatSend").disabled = st.busy;
+  $("decisions").classList.toggle("busy", !!st.busy || chatEnviando);
+  $("chatSend").disabled = !!st.busy || chatEnviando;
   if (!st.available && st.error) { chatAppend({ role: "error", text: st.error }); $("chatInput").disabled = true; }
   // login de Claude: el login real es `claude /login` ANTES de abrir el editor
   // (lo entrega Claude como comando clickeable); aquí solo se avisa y se detecta
@@ -945,15 +945,37 @@ function composeMessage(free) {
 async function sendChat() {
   const inp = $("chatInput"), free = inp.value.trim();
   const text = composeMessage(free);
-  if (!text || chatPoll) return;
+  if (!text || chatPoll || chatEnviando) return;
   const note = $("chatNote"); if (note) note.remove();
-  const pre = await (await fetch("api/chat/poll")).json();     // mtime ANTES del turno
-  chatBaselineMtime = pre.cuts_mtime;
-  const r = await fetch("api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }) });
-  const j = await r.json();
-  if (!j.sent) { chatAppend({ role: "error", text: j.error || j.detail || "no se pudo enviar" }); return; }
+  // feedback INMEDIATO: el POST en nube es síncrono (~10-20 s) y sin esto la
+  // UI parece muerta — el mensaje aparece ya, el input se limpia y se ve
+  // «Claude está escribiendo…» hasta que llega la respuesta
+  chatEnviando = true;
+  chatAppend({ role: "user", text });
+  chatShown += 1;                          // el poll lo traerá persistido: no duplicar
   inp.value = "";
+  $("decisions").classList.add("busy");
+  $("chatSend").disabled = true;
+  let j = null;
+  try {
+    const pre = await (await fetch("api/chat/poll")).json();   // mtime ANTES del turno
+    chatBaselineMtime = pre.cuts_mtime;
+    const r = await fetch("api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }) });
+    j = await r.json();
+  } catch {
+    j = { sent: false, error: "sin conexión — revisa tu red y vuelve a enviar" };
+  } finally {
+    chatEnviando = false;
+    $("decisions").classList.remove("busy");
+    $("chatSend").disabled = false;
+  }
+  if (!j.sent) {
+    chatShown -= 1;                        // el server no lo persistió: re-alinear
+    chatAppend({ role: "error", text: j.error || j.detail || "no se pudo enviar" });
+    inp.value = free;                      // que no se pierda lo escrito
+    return;
+  }
   chatPoll = setInterval(chatTick, 800);
   chatTick();
 }
