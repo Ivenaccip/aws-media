@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Estudio de video · Editor de imágenes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0f0f14; --card:#1a1a22; --line:#2a2a36; --txt:#ececf1; --mut:#8b8b9a; --acc:#c93fb6; --acc2:#7b3fe4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  main { max-width:1180px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  h2 { font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
+  textarea { width:100%; min-height:110px; resize:vertical; background:#111118; color:var(--txt);
+             border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#fff; font:inherit;
+         font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:14px; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn2 { border:1px solid var(--line); background:transparent; color:var(--txt); border-radius:10px;
+          padding:8px 14px; cursor:pointer; font:inherit; font-size:13.5px; }
+  .btn2:hover { border-color:var(--acc); }
+  .mut { color:var(--mut); font-size:13px; }
+  .err { color:#ff7b7b; white-space:pre-wrap; }
+  .hidden { display:none; }
+  a { color:#d98be0; }
+  .cols2 { display:grid; grid-template-columns:1.4fr 1fr; gap:14px; align-items:start; }
+  /* zona de subida / lienzo */
+  #drop { border:2px dashed var(--line); border-radius:12px; min-height:300px; display:grid;
+          place-items:center; text-align:center; padding:20px; cursor:pointer; }
+  #drop:hover, #drop.arrastrando { border-color:var(--acc); }
+  #lienzo-wrap { position:relative; display:none; line-height:0; border-radius:12px; overflow:hidden;
+                 border:1px solid var(--line); }
+  #lienzo-wrap canvas { width:100%; height:auto; display:block; }
+  #mask-canvas { position:absolute; inset:0; cursor:crosshair; opacity:.55; }
+  .barra { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .barra.hidden { display:none; }
+  .barra input[type=range] { accent-color:var(--acc); }
+  #resultado img { width:100%; border-radius:12px; border:1px solid var(--line); }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  @media (max-width: 860px) { .cols2 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <p style="margin:0 0 12px"><a href="/" style="text-decoration:none">← Volver al inicio</a></p>
+  <h1>🖌 Editor de imágenes</h1>
+  <p class="mut" style="margin:0 0 18px">Sube tu imagen, pinta la zona que quieres cambiar y describe el cambio. Solo esa zona se toca — el resto queda intacto.</p>
+
+  <div class="cols2">
+    <div class="card">
+      <h2>1 · Tu imagen</h2>
+      <div id="drop" tabindex="0" role="button" aria-label="Subir imagen">
+        <div>
+          <p style="font-size:30px;margin:0">🖼</p>
+          <p style="margin:6px 0 2px"><b>Arrastra tu imagen aquí</b> o haz clic para elegirla</p>
+          <p class="mut" style="margin:0">JPG, PNG o WebP · máximo 15 MB</p>
+        </div>
+      </div>
+      <input type="file" id="archivo" accept="image/png,image/jpeg,image/webp" hidden>
+      <div id="lienzo-wrap">
+        <canvas id="img-canvas"></canvas>
+        <canvas id="mask-canvas"></canvas>
+      </div>
+      <div class="barra hidden" id="herramientas">
+        <span class="mut">Pincel:</span>
+        <input type="range" id="grosor" min="10" max="120" value="46" aria-label="Grosor del pincel">
+        <button class="btn2" id="borrar">Borrar lo pintado</button>
+        <button class="btn2" id="otra">Cambiar de imagen</button>
+        <span class="mut">La zona rosada es la que se va a cambiar.</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2 · ¿Qué cambiamos?</h2>
+      <textarea id="prompt" maxlength="2000"
+        placeholder="Describe qué quieres en la zona pintada — p. ej. «reemplaza el letrero por una ventana con plantas»."></textarea>
+      <button class="btn" id="editar">Aplicar el cambio →</button>
+      <p class="mut" id="saldoform"></p>
+      <div class="err" id="gerr"></div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="resultado" style="margin-top:14px">
+    <h2>✅ Tu imagen editada</h2>
+    <img id="img-final" alt="Imagen editada">
+    <a class="btn" id="descargar" download="imagen-editada.jpg" style="text-align:center;text-decoration:none">⬇ Descargar</a>
+  </div>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script src="/guardrail.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
+
+// --- subir imagen y pintarla en el lienzo -----------------------------------
+const imgC = $('#img-canvas'), maskC = $('#mask-canvas');
+const imgX = imgC.getContext('2d'), maskX = maskC.getContext('2d');
+let archivo = null, hayTrazo = false;
+const MAX_LADO = 1600;   // se reduce en el navegador: sube rápido y a fal le basta
+
+function cargarImagen(f) {
+  if (!f || !/^image\/(png|jpeg|webp)$/.test(f.type)) {
+    $('#gerr').textContent = 'Elige una imagen JPG, PNG o WebP.'; return;
+  }
+  if (f.size > 15 * 1024 * 1024) { $('#gerr').textContent = 'La imagen pasa de 15 MB.'; return; }
+  $('#gerr').textContent = '';
+  const img = new Image();
+  img.onload = () => {
+    const k = Math.min(1, MAX_LADO / Math.max(img.width, img.height));
+    imgC.width = maskC.width = Math.round(img.width * k);
+    imgC.height = maskC.height = Math.round(img.height * k);
+    imgX.drawImage(img, 0, 0, imgC.width, imgC.height);
+    maskX.clearRect(0, 0, maskC.width, maskC.height);
+    hayTrazo = false;
+    archivo = f;
+    $('#drop').style.display = 'none';
+    $('#lienzo-wrap').style.display = 'block';
+    $('#herramientas').classList.remove('hidden');
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(f);
+}
+$('#drop').onclick = () => $('#archivo').click();
+$('#drop').onkeydown = e => { if (e.key === 'Enter') $('#archivo').click(); };
+$('#archivo').onchange = () => cargarImagen($('#archivo').files[0]);
+['dragover', 'dragleave', 'drop'].forEach(ev => $('#drop').addEventListener(ev, e => {
+  e.preventDefault();
+  $('#drop').classList.toggle('arrastrando', ev === 'dragover');
+  if (ev === 'drop') cargarImagen(e.dataTransfer.files[0]);
+}));
+$('#otra').onclick = () => {
+  archivo = null; hayTrazo = false;
+  $('#lienzo-wrap').style.display = 'none';
+  $('#herramientas').classList.add('hidden');
+  $('#drop').style.display = 'grid';
+  $('#archivo').value = '';
+};
+$('#borrar').onclick = () => { maskX.clearRect(0, 0, maskC.width, maskC.height); hayTrazo = false; };
+
+// --- pincel de máscara (rosado en pantalla; al enviar se vuelve blanco/negro)
+let pintando = false, ultimo = null;
+function puntoDe(e) {
+  const r = maskC.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return {x: (t.clientX - r.left) * maskC.width / r.width,
+          y: (t.clientY - r.top) * maskC.height / r.height};
+}
+function traza(p) {
+  maskX.strokeStyle = maskX.fillStyle = '#ff4fd8';
+  maskX.lineWidth = +$('#grosor').value; maskX.lineCap = maskX.lineJoin = 'round';
+  maskX.beginPath();
+  if (ultimo) { maskX.moveTo(ultimo.x, ultimo.y); maskX.lineTo(p.x, p.y); maskX.stroke(); }
+  maskX.arc(p.x, p.y, maskX.lineWidth / 2, 0, Math.PI * 2); maskX.fill();
+  ultimo = p; hayTrazo = true;
+}
+maskC.addEventListener('pointerdown', e => { pintando = true; ultimo = null; traza(puntoDe(e)); maskC.setPointerCapture(e.pointerId); });
+maskC.addEventListener('pointermove', e => { if (pintando) traza(puntoDe(e)); });
+['pointerup', 'pointercancel'].forEach(ev => maskC.addEventListener(ev, () => { pintando = false; ultimo = null; }));
+
+// máscara real para el modelo: blanco = lo pintado (cambiar), negro = conservar
+function mascaraBlob() {
+  const c = document.createElement('canvas');
+  c.width = maskC.width; c.height = maskC.height;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+  const datos = maskX.getImageData(0, 0, maskC.width, maskC.height);
+  const out = x.getImageData(0, 0, c.width, c.height);
+  for (let i = 3; i < datos.data.length; i += 4)
+    if (datos.data[i] > 0) out.data[i-3] = out.data[i-2] = out.data[i-1] = 255;
+  x.putImageData(out, 0, 0);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+// la imagen también viaja reescalada (mismo tamaño que la máscara)
+function imagenBlob() {
+  return new Promise(res => imgC.toBlob(res, 'image/jpeg', 0.92));
+}
+
+// --- costo visible ANTES de gastar, como en todo el producto ----------------
+const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+document.addEventListener('monedero', e => {
+  const mon = e.detail;
+  if (!mon.activo || mon.tarifas.imagen == null) return;
+  $('#editar').textContent = `${mon.tarifas.imagen} créditos — aplicar el cambio →`;
+  const falta = mon.tarifas.imagen - mon.saldo;
+  $('#editar').disabled = falta > 0;
+  $('#saldoform').textContent = falta > 0
+    ? `Te faltan ${falta} créditos (saldo: ${mon.saldo}). ${CTA}` : '';
+});
+
+$('#editar').onclick = async () => {
+  $('#gerr').textContent = '';
+  const prompt = $('#prompt').value.trim();
+  if (!archivo) { $('#gerr').textContent = 'Sube primero la imagen que quieres editar.'; return; }
+  if (!hayTrazo) { $('#gerr').textContent = 'Pinta sobre la imagen la zona que quieres cambiar.'; return; }
+  if (!prompt) { $('#gerr').textContent = 'Describe qué quieres en la zona pintada.'; $('#prompt').focus(); return; }
+  $('#editar').disabled = true;
+  if (!await guardrail(prompt)) { $('#editar').disabled = false; return; }   // M13
+  const antes = $('#editar').textContent;
+  $('#editar').textContent = '⏳ Editando la imagen (~20 s)…';
+  try {
+    const fd = new FormData();
+    fd.append('prompt', prompt);
+    fd.append('imagen', await imagenBlob(), 'imagen.jpg');
+    fd.append('mascara', await mascaraBlob(), 'mascara.png');
+    const r = await fetch('/api/imagenes/editar', {method: 'POST', body: fd});
+    if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
+    if (!r.ok) throw new Error(await errTxt(r));
+    const d = await r.json();
+    $('#img-final').src = d.url;
+    $('#descargar').href = d.url;
+    $('#resultado').classList.remove('hidden');
+    window.monedero?.refrescar();
+    $('#resultado').scrollIntoView({behavior: 'smooth'});
+  } catch (e) { $('#gerr').textContent = e.message; }
+  $('#editar').disabled = false;
+  $('#editar').textContent = antes;
+};
+</script>
+</body>
+</html>

@@ -32,6 +32,25 @@ async def imagen_nano(prompt: str, destino: Path, referencia: Path | None = None
     return url
 
 
+async def imagen_fill(prompt: str, imagen: Path, mascara: Path, destino: Path,
+                      meta: dict | None = None) -> str:
+    """Inpainting con Flux Fill: cambia SOLO la zona blanca de la máscara según
+    el prompt («Editor de imágenes» del sidebar). Descarga a `destino`."""
+    args = {
+        "prompt": prompt,
+        "image_url": await fal.subir_archivo(imagen),
+        "mask_url": await fal.subir_archivo(mascara),
+        "num_images": 1,
+    }
+    res = await fal.llamar(settings.fal_fill, args, timeout_s=settings.grok_timeout_s,
+                           nombre="flux_fill", meta=meta or {})
+    url = ((res.get("images") or [{}])[0]).get("url")
+    if not url:
+        raise RuntimeError("Flux Fill (fal) no devolvió imagen")
+    await fal.descargar(url, destino)
+    return url
+
+
 async def video_veo(imagen: Path, prompt: str, segundos: int, destino: Path,
                     negativo: str = "", meta: dict | None = None) -> None:
     """Veo 3.1 lite image-to-video en fal (720p sin audio — la tarifa del popup;

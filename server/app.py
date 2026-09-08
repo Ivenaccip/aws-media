@@ -194,6 +194,53 @@ async def crear_imagen(body: PedidoImagen):
     return {"nombre": nombre, "url": f"/api/imagenes/{nombre}"}
 
 
+@app.post("/api/imagenes/editar")
+async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
+                        mascara: UploadFile = File(...)):
+    """M15 — «Editor de imágenes»: inpainting con Flux Fill. El usuario sube su
+    imagen, pinta la zona a cambiar (la máscara la arma el front: blanco =
+    cambiar, negro = conservar) y describe el cambio. Misma tarifa de imagen."""
+    import tempfile
+    from uuid import uuid4
+    from pipeline import media_fal
+    prompt = prompt.strip()[:2000]
+    if not prompt:
+        raise HTTPException(422, "Describe qué quieres cambiar")
+    datos_img = await imagen.read()
+    datos_mask = await mascara.read()
+    if not datos_img or not datos_mask:
+        raise HTTPException(422, "Sube una imagen y marca la zona a cambiar")
+    if len(datos_img) > 15 * 1024 * 1024:
+        raise HTTPException(422, "La imagen es muy grande (máximo 15 MB)")
+    costo = creditos.costo_imagen()
+    if creditos.activo():
+        try:
+            creditos.cobrar(costo, "imagen:editor")
+        except creditos.SinSaldo as e:
+            raise HTTPException(402, str(e))
+    nombre = f"{uuid4().hex[:12]}.jpg"
+    destino = _dir_imagenes() / nombre
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            ext = Path(imagen.filename or "").suffix.lower()
+            f_img = Path(td) / f"original{ext if ext in ('.png', '.jpg', '.jpeg', '.webp') else '.png'}"
+            f_mask = Path(td) / "mascara.png"
+            f_img.write_bytes(datos_img)
+            f_mask.write_bytes(datos_mask)
+            await media_fal.imagen_fill(prompt, f_img, f_mask, destino,
+                                        meta={"imagen_editor": nombre})
+        if jobs.backend() == "aws":
+            media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
+    except HTTPException:
+        raise
+    except Exception as err:  # noqa: BLE001
+        if creditos.activo():
+            creditos.devolver(costo, "imagen:editor")
+        raise HTTPException(502, f"No se pudo editar la imagen: {str(err)[:200]}")
+    return {"nombre": nombre, "url": f"/api/imagenes/{nombre}"}
+
+
 @app.get("/api/imagenes/{nombre}")
 def ver_imagen(nombre: str):
     if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
