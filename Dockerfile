@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # runtime interface client de Lambda (C1): el default CMD sigue siendo uvicorn;
 # la Lambda sobreescribe entrypoint/cmd a awslambdaric + server.lambda_handler
 RUN pip install --no-cache-dir "awslambdaric>=2,<4"
+# M11 default: el alineador de la ruta narración (faster-whisper "small") viaja
+# horneado — sin esto cada tarea Fargate bajaría ~460 MB de HuggingFace al vuelo
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
 
 # deps de los dos proyectos Remotion (shorts captions / beats longform)
 COPY remotion/package.json remotion/package-lock.json remotion/

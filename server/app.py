@@ -323,10 +323,11 @@ async def crear(
             raise HTTPException(409, {"balanceador": veredicto["motivo"],
                                       "aviso": "El brief no parece del rubro declarado. "
                                                "Puedes reenviar con forzar=true."})
-    # M11 (flag del A/B): "narracion" invierte el pipeline; sin el campo manda
-    # PIPELINE_DEFAULT del entorno y el default sigue siendo el de siempre.
+    # M11 (default 2026-09-07): la web escribe la narración corrida PRIMERO y
+    # las escenas se planean después sobre la voz — el guion deja de nacer en
+    # cajitas de 8-16 palabras. Escape: ?pipeline=escenas o PIPELINE_DEFAULT.
     if pipeline not in ("escenas", "narracion"):
-        pipeline = os.getenv("PIPELINE_DEFAULT", "escenas")
+        pipeline = os.getenv("PIPELINE_DEFAULT", "narracion")
     p = nuevo_proyecto(brief, estilo, estilo_custom or None, min(duracion_s, DURACION_MAX_S),
                        modo=modo, rubro=rubro, pipeline=pipeline)
     p.personaje_extra = personaje_extra.strip()[:500]
