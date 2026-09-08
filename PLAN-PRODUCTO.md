@@ -581,6 +581,14 @@ verdes); smoke en navegador (hub, prefill, archivar/restaurar end-to-end).
 Iteraciones sobre feedback del dueño (mocks de Miro y screenshots de la URL
 desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
 
+- [x] **M15 — Editor de imágenes (inpainting) + sidebar reordenado** (PR #45,
+      2026-09-08): «Editor de imágenes» ya no apunta a crear-imagenes.html —
+      página propia `editor-imagenes.html` (subes tu imagen, pintas la zona
+      con pincel y describes el cambio) contra `POST /api/imagenes/editar`
+      (Flux Fill en fal `fal-ai/flux-pro/v1/fill`, misma tarifa de imagen,
+      cobro antes + devolución en fallo). Sidebar en el orden pedido, con
+      «Copiadora de estilos» y «Agenda tus publicaciones» (Blotato) como
+      próximamente.
 - [x] **Plan de escalamiento + Claude como base de plataforma** (PR #44,
       2026-09-08): `docs/ESCALAMIENTO.md` — el runbook de 6 testers →
       50-100 activos/día: Fase 1 antes de abrir (Aurora min 0.5 ACU, retry

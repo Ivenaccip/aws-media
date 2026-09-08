@@ -46,6 +46,7 @@ class Settings:
     fal_veo: str = "fal-ai/veo3.1/lite/image-to-video"
     fal_nano: str = "fal-ai/nano-banana"            # texto → imagen (M1 sin referencia)
     fal_nano_edit: str = "fal-ai/nano-banana/edit"  # imagen + referencia (g2)
+    fal_fill: str = "fal-ai/flux-pro/v1/fill"       # inpainting con máscara (editor de imágenes)
 
     # Backend de regeneración g1/g2 y M1: fal (default desde 2026-09-03 — los
     # créditos del Studio de Google se agotaron) | google (Gemini API)
