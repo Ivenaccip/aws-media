@@ -706,6 +706,17 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       sin deploy por el TTL del SDK). **REGLA NUEVA de deploy: todo PR que
       toque `prompts/*.md` termina con `python tools/prompts_sync.py` tras
       el merge — sin eso producción sigue sirviendo el prompt viejo.**
+- [x] **Puente al editor roto en la ruta narración** (rama puente-narracion):
+      la primera película M11 en producción (canguro ee202e1a) salió con el
+      botón «Editor» deshabilitado — `progreso.editor_error: «escena 1: falta
+      audio_1.mp3»`: el puente F1.3 asumía audio POR ESCENA y la ruta
+      narración tiene UNA pista (narracion.mp3). Fix: la producción persiste
+      el alineado (workdir/alineado.json) y generated_to_canonical lo usa
+      directo (gratis, sin re-transcribir; fallback: transcribir
+      narracion.mp3 completo); la pista 2 de overlays se salta con aviso (no
+      aplica sin audio por escena). ee202e1a REPARADO a mano con el mismo
+      flujo ($0, whisper local): gen-ee202e1a en S3 + proyectos_editor +
+      progreso.editor — su botón ya abre. 312 tests (2 nuevos del puente).
 - [x] **Hub: tooltips en los modos + prompt alineado** (rama hub-tooltips):
       la nota fija bajo los chips se retira — cada botón (Investigación /
       Tengo una idea / enviar ↑) explica lo suyo en un tooltip `data-tip`

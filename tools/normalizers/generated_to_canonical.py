@@ -121,10 +121,42 @@ def edited_transcript_ms(words: list[dict]) -> dict:
                        "end": round(w["end"] * 1000)} for w in words]}
 
 
+def _palabras_norm(crudas: list[dict], tope: float) -> list[dict]:
+    """Palabras ya ABSOLUTAS sobre la película (ruta narración: pista única que
+    arranca en 0) → formato del canónico, recortadas a la duración."""
+    words = []
+    for w in crudas:
+        start = min(float(w["start"]), tope)
+        end = min(float(w["end"]), tope)
+        item = {"text": str(w["text"]).strip(), "start": round(start, 3),
+                "end": round(max(end, start), 3)}
+        if w.get("confidence") is not None:
+            item["confidence"] = round(float(w["confidence"]), 4)
+        if item["text"]:
+            words.append(item)
+    return words
+
+
 def convertir(work_dir: Path, nombre: str, transcribe_fn,
               backend: str = "faster-whisper", model: str | None = None) -> dict:
     """Núcleo puro-orquestable (transcribe_fn inyectable para tests): arma el
     canónico desde los audios/finales de una producción del generador."""
+    # M11 (narración primero): NO hay audio_N.mp3 por escena — la voz es una
+    # pista única. Preferencia: el alineado que la producción ya persistió
+    # (alineado.json, gratis); si falta, se transcribe narracion.mp3 completo.
+    alineado, narracion = work_dir / "alineado.json", work_dir / "narracion.mp3"
+    if alineado.is_file() or narracion.is_file():
+        total = round(duracion_video(work_dir / "pelicula.mp4"), 3)
+        if alineado.is_file():
+            crudas = json.loads(alineado.read_text(encoding="utf-8"))["words"]
+            # procedencia real: el alineado lo hizo faster-whisper (ALINEADOR_MODEL)
+            backend, model = "faster-whisper", model or "small"
+        else:
+            crudas = transcribe_fn(narracion)
+        return build_canonical(source_id=SOURCE_ID, duration=total, language="es",
+                               backend=backend, model=model,
+                               words=_palabras_norm(crudas, total),
+                               source_path="pelicula.mp4")
     ids = orden_escenas(work_dir)
     if not ids:
         sys.exit(f"{work_dir}: no hay final_*.mp4 ni lista.txt — ¿es una producción terminada?")
@@ -196,10 +228,15 @@ def main() -> None:
                     "-ar", "16000", "-ac", "1",
                     str(proj / "work" / "audio" / f"{SOURCE_ID}.wav")], check=True)
 
-    ids = orden_escenas(work_dir)
-    durs = {i: duracion_video(work_dir / f"final_{i}.mp4") for i in ids}
-    data_ov = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
-    print(f"overlays: {len(data_ov['overlays'])} escenas en la pista 2")
+    if (work_dir / "narracion.mp3").is_file():
+        # M11: pista única — no hay audio_N.mp3 por escena, así que la pista 2
+        # de overlays (regenerar escenas con su audio) no aplica en esta ruta
+        print("overlays: ruta narración (pista única) — sin pista 2")
+    else:
+        ids = orden_escenas(work_dir)
+        durs = {i: duracion_video(work_dir / f"final_{i}.mp4") for i in ids}
+        data_ov = overlays_mod.crear_desde_produccion(proj, work_dir, ids, durs)
+        print(f"overlays: {len(data_ov['overlays'])} escenas en la pista 2")
 
     if not args.skip_proxy:
         subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "make_proxy.py"),

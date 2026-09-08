@@ -162,6 +162,12 @@ async def producir_pelicula(p, ctx: Casting, estilo: Estilo | None, progreso) ->
     if progreso:
         progreso("alinear", {})
     palabras = await asyncio.to_thread(alinear_palabras, audio)
+    # el alineado se PERSISTE: el puente al editor (generated_to_canonical)
+    # arma el canónico de aquí — esta ruta no tiene audio_N.mp3 por escena y
+    # los tiempos ya son absolutos sobre la pista única
+    import json as _json
+    (workdir / "alineado.json").write_text(
+        _json.dumps({"words": palabras}, ensure_ascii=False), encoding="utf-8")
     ventanas = planear_ventanas(dur)
     textos = texto_por_ventana(palabras, ventanas)
 
