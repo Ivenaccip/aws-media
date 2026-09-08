@@ -585,8 +585,9 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
       2026-09-08): «Editor de imágenes» ya no apunta a crear-imagenes.html —
       página propia `editor-imagenes.html` (subes tu imagen, pintas la zona
       con pincel y describes el cambio) contra `POST /api/imagenes/editar`
-      (Flux Fill en fal `fal-ai/flux-pro/v1/fill`, misma tarifa de imagen,
-      cobro antes + devolución en fallo). Sidebar en el orden pedido, con
+      (Nano Banana edit: original + copia con la zona resaltada en rosa —
+      el resultado de Flux Fill no convenció al dueño; misma tarifa de
+      imagen, cobro antes + devolución en fallo). Sidebar en el orden pedido, con
       «Copiadora de estilos» y «Agenda tus publicaciones» (Blotato) como
       próximamente.
 - [x] **Plan de escalamiento + Claude como base de plataforma** (PR #44,

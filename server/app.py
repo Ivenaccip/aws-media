@@ -196,10 +196,11 @@ async def crear_imagen(body: PedidoImagen):
 
 @app.post("/api/imagenes/editar")
 async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
-                        mascara: UploadFile = File(...)):
-    """M15 — «Editor de imágenes»: inpainting con Flux Fill. El usuario sube su
-    imagen, pinta la zona a cambiar (la máscara la arma el front: blanco =
-    cambiar, negro = conservar) y describe el cambio. Misma tarifa de imagen."""
+                        marcada: UploadFile = File(...)):
+    """M15 — «Editor de imágenes» con Nano Banana edit. El usuario sube su
+    imagen, pinta la zona a cambiar (el front manda la original + una copia
+    con esa zona resaltada en rosa) y describe el cambio. Misma tarifa de
+    imagen."""
     import tempfile
     from uuid import uuid4
     from pipeline import media_fal
@@ -207,8 +208,8 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
     if not prompt:
         raise HTTPException(422, "Describe qué quieres cambiar")
     datos_img = await imagen.read()
-    datos_mask = await mascara.read()
-    if not datos_img or not datos_mask:
+    datos_marca = await marcada.read()
+    if not datos_img or not datos_marca:
         raise HTTPException(422, "Sube una imagen y marca la zona a cambiar")
     if len(datos_img) > 15 * 1024 * 1024:
         raise HTTPException(422, "La imagen es muy grande (máximo 15 MB)")
@@ -225,11 +226,11 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
         with tempfile.TemporaryDirectory() as td:
             ext = Path(imagen.filename or "").suffix.lower()
             f_img = Path(td) / f"original{ext if ext in ('.png', '.jpg', '.jpeg', '.webp') else '.png'}"
-            f_mask = Path(td) / "mascara.png"
+            f_marca = Path(td) / "marcada.jpg"
             f_img.write_bytes(datos_img)
-            f_mask.write_bytes(datos_mask)
-            await media_fal.imagen_fill(prompt, f_img, f_mask, destino,
-                                        meta={"imagen_editor": nombre})
+            f_marca.write_bytes(datos_marca)
+            await media_fal.imagen_pincel(prompt, f_img, f_marca, destino,
+                                          meta={"imagen_editor": nombre})
         if jobs.backend() == "aws":
             media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
     except HTTPException:

@@ -159,18 +159,16 @@ maskC.addEventListener('pointerdown', e => { pintando = true; ultimo = null; tra
 maskC.addEventListener('pointermove', e => { if (pintando) traza(puntoDe(e)); });
 ['pointerup', 'pointercancel'].forEach(ev => maskC.addEventListener(ev, () => { pintando = false; ultimo = null; }));
 
-// máscara real para el modelo: blanco = lo pintado (cambiar), negro = conservar
-function mascaraBlob() {
+// para el modelo (nano banana edit): la imagen con la zona pintada resaltada
+// en rosa semitransparente — junto con la original, entiende qué zona tocar
+function marcadaBlob() {
   const c = document.createElement('canvas');
   c.width = maskC.width; c.height = maskC.height;
   const x = c.getContext('2d');
-  x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
-  const datos = maskX.getImageData(0, 0, maskC.width, maskC.height);
-  const out = x.getImageData(0, 0, c.width, c.height);
-  for (let i = 3; i < datos.data.length; i += 4)
-    if (datos.data[i] > 0) out.data[i-3] = out.data[i-2] = out.data[i-1] = 255;
-  x.putImageData(out, 0, 0);
-  return new Promise(res => c.toBlob(res, 'image/png'));
+  x.drawImage(imgC, 0, 0);
+  x.globalAlpha = 0.55;
+  x.drawImage(maskC, 0, 0);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
 }
 // la imagen también viaja reescalada (mismo tamaño que la máscara)
 function imagenBlob() {
@@ -203,7 +201,7 @@ $('#editar').onclick = async () => {
     const fd = new FormData();
     fd.append('prompt', prompt);
     fd.append('imagen', await imagenBlob(), 'imagen.jpg');
-    fd.append('mascara', await mascaraBlob(), 'mascara.png');
+    fd.append('marcada', await marcadaBlob(), 'marcada.jpg');
     const r = await fetch('/api/imagenes/editar', {method: 'POST', body: fd});
     if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
     if (!r.ok) throw new Error(await errTxt(r));
