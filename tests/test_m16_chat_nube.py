@@ -202,6 +202,42 @@ def test_responder_acota_historial(monkeypatch):
     chat_nube.clave_claude.cache_clear()
 
 
+def test_responder_sin_fallbacks_fuera_de_opus(monkeypatch):
+    """El parámetro fallbacks solo existe en Opus — con CHAT_MODEL=sonnet la
+    llamada no debe mandarlo (Sonnet responde 400 si viaja)."""
+    chat_nube.clave_claude.cache_clear()
+    monkeypatch.setenv("SSM_USUARIOS_PREFIX", "")
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-test")
+    monkeypatch.setattr(chat_nube, "MODELO", "claude-sonnet-5")
+    visto = {}
+
+    class Uso:
+        input_tokens, output_tokens = 10, 5
+
+    class Bloque:
+        type, text = "text", "ok"
+
+    class Resp:
+        content, usage, stop_reason = [Bloque()], Uso(), "end_turn"
+
+    class Mensajes:
+        def create(self, **kw):
+            visto.update(kw)
+            return Resp()
+
+    class Beta:
+        messages = Mensajes()
+
+    class Cliente:
+        def __init__(self, api_key):
+            self.beta = Beta()
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", Cliente)
+    chat_nube.responder("gen-abc", "u1", "ctx", [], "hola")
+    assert "fallbacks" not in visto and "betas" not in visto
+    chat_nube.clave_claude.cache_clear()
+
+
 def test_responder_refusal_da_respuesta_amable(monkeypatch):
     chat_nube.clave_claude.cache_clear()
     monkeypatch.setenv("SSM_USUARIOS_PREFIX", "")

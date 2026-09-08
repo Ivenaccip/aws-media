@@ -77,14 +77,18 @@ def responder(name: str, user_id: str, contexto: str,
         with get_client().start_as_current_observation(
                 as_type="generation", name="chat_editor",
                 model=MODELO, input={"texto": texto[:500], "turnos": len(mensajes)}) as gen:
+            extra = {}
+            if "opus" in MODELO:
+                # recomendación del API: si el clasificador declina, otro modelo
+                # de la casa completa el turno en la misma llamada — el parámetro
+                # solo existe en Opus (Sonnet responde 400 si se manda)
+                extra = {"betas": ["server-side-fallback-2026-07-01"],
+                         "fallbacks": "default"}
             r = cliente.beta.messages.create(
                 model=MODELO, max_tokens=MAX_TOKENS,
                 # respuestas de chat: rápidas y baratas — el system pide brevedad
                 output_config={"effort": "low"},
-                # recomendación del API: si el clasificador declina, otro modelo
-                # de la casa completa el turno en la misma llamada
-                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-                system=system, messages=mensajes)
+                system=system, messages=mensajes, **extra)
             if r.stop_reason == "refusal":
                 respuesta = ("No puedo ayudar con eso desde este chat — "
                              "pregúntame sobre la edición de tu video.")
