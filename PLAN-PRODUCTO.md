@@ -605,10 +605,15 @@ desplegada), todas el 2026-09-07. Cada punto sigue el formato de la etapa 1.
             (cache read = 10% del input). `pipeline/chat_nube.py`.
       - [ ] Tope de historial: mandar solo los últimos ~20 turnos para poner
             techo al input en sesiones largas.
-      - [ ] Eval Opus 5 vs Sonnet 5 en Langfuse: re-correr turnos reales
-            trazados con `CHAT_MODEL=claude-sonnet-5`, comparar calidad de
-            consejo (ancla en segundos, formato) y costo; si aprueba, cambiar
-            el default (~60% de ahorro por turno: $2/$10 vs $5/$25 MTok).
+      - [x] Eval 1 Opus 5 vs Sonnet 5 (2026-09-08): re-corridos los 3 turnos
+            reales de gen-ee202e1a con Sonnet — ancla igual de bien
+            (8.5/17.8/23.5s, pista 2, B-roll IA) a $0.0053 vs $0.0166 por
+            turno (~68% menos); Opus solo aporta matices finos. DECISIÓN del
+            dueño: Opus sigue de default durante las pruebas, trackeando
+            usage/caché en Langfuse.
+      - [ ] Eval 2 con evaluador (LLM juez) sobre más turnos acumulados de
+            pruebas reales: si sale similar, cambiar CHAT_MODEL a
+            claude-sonnet-5 (revertible por env).
       - Descartado a este tamaño: cascada con Haiku, batching, caché
         semántica (chat interactivo y personalizado); thinking ya va en
         effort low y max_tokens=1500 ya acota la salida.
