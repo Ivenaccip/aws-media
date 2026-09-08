@@ -108,6 +108,20 @@ def lanzar_subtitulos(user_id: str, nombre: str) -> str:
     return r["executionArn"]
 
 
+def lanzar_overlay(user_id: str, nombre: str) -> str:
+    """M16.3: regenerar/activar una versión de la pista 2 — Veo tarda minutos y
+    rearmar la película es ffmpeg largo: Fargate por la SM de siempre. Los
+    parámetros del job viajan por proyectos_editor.doc.overlay_job."""
+    r = _sfn().start_execution(
+        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+        name=f"overlay-{nombre}-{int(time.time())}",
+        input=json.dumps({
+            "user_id": user_id, "proyecto_id": nombre,
+            "command": ["python", "-m", "worker.overlay_task", user_id, nombre],
+        }))
+    return r["executionArn"]
+
+
 def lanzar_produccion(user_id: str, proyecto_id: str) -> str:
     """Arranca la state machine. El nombre lleva timestamp: reintentar tras un
     error crea una ejecución nueva (los nombres de SFN son únicos 90 días)."""

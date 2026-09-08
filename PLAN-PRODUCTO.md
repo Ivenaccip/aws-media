@@ -847,12 +847,22 @@ a propósito desde M7; el dueño ya tiene API key de Claude para habilitarlo.
          `GET /api/overlays` gana rama nube (lee overlays.json de S3), así
          el editor pinta los recursos; los modales g1/g2 en nube muestran
          versiones pero regenerar sigue local hasta M16.3. 8 tests.
-3. - [ ] **B-roll IA en nube**: broll_api lee `edited-transcript.json` de S3
-         (helper `_leer_json_s3` del editor ya existe) y propone momentos
-         (~$0.01 dólares LLM); generar/insertar reusa la pista 2 del punto 2.
-         Aquí el editor gana «crear VIDEO con IA», no solo imágenes: la ruta
-         imagen→Veo de overlays expuesta por ventana, con preview de costo
-         de pricing.json y confirmación.
+3. - [x] **B-roll IA + regeneración en nube** (PR #41): sugerir lee
+         transcript/manifest/overlays de S3, cobra `editar.broll_sugerencias`
+         (2 cr, tarifas.json nuevo) con devolución si el LLM falla y guarda
+         las propuestas en el overlays.json de S3. Candidatos de imagen (g2
+         paso 1) corren en la Lambda: referencia de S3 (imagen base activa o
+         frame del clip), 2 × nano banana → S3, tarifa `imagen`×2 = 4 cr con
+         devolución en fallo del vendor. Animar con Veo y activar versión
+         van a Fargate (`worker/overlay_task.py`, params por
+         `doc.overlay_job`, campo nuevo del jsonb_set): Veo → recorte (pista
+         única) o mux (escenas) → versión nueva → `rearmar_pelicula` con
+         proxy → subir proyecto; tarifa = `video.por_segundo` × segundos de
+         Veo (12/18/24 cr — la regla «re-generar una escena» de tarifas.json)
+         cobrada al lanzar y DEVUELTA por el worker si el job falla; activar
+         = 0 cr. `/precios` en nube agrega `creditos` y la UI muestra
+         créditos en vez de USD; g1 hace poll de `/api/overlays/job`;
+         `infra-overlay` en costes. 20 tests (test_m16_broll_nube.py).
 4. - [ ] **Chat editorial en nube**: endpoint de chat que llama la API de
          Anthropic (Claude) directamente — la clave del dueño va por SSM
          (`/media-ivenaccip/usuarios/<id>/ANTHROPIC_API_KEY`, D4: claves

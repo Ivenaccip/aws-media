@@ -12,6 +12,7 @@ con sus gates de gasto.
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -42,6 +43,10 @@ def _proyecto(name: str) -> Path:
 
 def _transcript_condensado(p: Path, max_chars: int = 3000) -> str:
     et = leer_json(p / "work" / "edited-transcript.json", default=None)
+    return _condensar(et, max_chars)
+
+
+def _condensar(et: dict | None, max_chars: int = 3000) -> str:
     if not et or not et.get("words"):
         raise HTTPException(409, "sin edited-transcript.json — corre el corte o el puente primero")
     lineas, actual, inicio = [], [], 0
@@ -82,20 +87,51 @@ def filtrar_propuestas(crudas: list, duracion_s: float, ocupados: list[tuple[flo
     return limpias
 
 
-@router.post("/{name}/api/broll/sugerir")
-async def sugerir(name: str):
-    p = _proyecto(name)
-    data = overlays.cargar(p)
+async def _proponer(name: str, data: dict, manifest: dict, contexto: str) -> list[dict]:
+    """El cerebro compartido local/nube: LLM con los criterios de /broll-ai."""
     ocupados = [(ov["t_in"], ov["t_out"]) for ov in data["overlays"]]
-    manifest = leer_json(p / "work" / "editor" / "manifest.json", default={"total": 0})
-    contexto = _transcript_condensado(p)
     existentes = ("Recursos IA ya en el timeline (NO proponer encima): "
                   + ", ".join(f"{a:.1f}-{b:.1f}s" for a, b in ocupados)) if ocupados else "Timeline sin recursos IA."
     with propagate_attributes(session_id=f"editor-{name}", tags=["fusion", "b2"]):
         r = await chat_json("broll_sugerir", load_prompt("broll_system"),
                             f"Duración del video: {manifest['total']}s\n{existentes}\n\nTranscript:\n{contexto}")
     get_client().flush()
-    propuestas = filtrar_propuestas(r.get("propuestas") or [], float(manifest["total"]), ocupados)
+    return filtrar_propuestas(r.get("propuestas") or [], float(manifest["total"]), ocupados)
+
+
+@router.post("/{name}/api/broll/sugerir")
+async def sugerir(name: str):
+    from server.editor import _leer_json_s3, _nube, _proyecto_nube
+    if _nube():
+        # M16.3: todo desde S3; cuesta créditos (LLM) — cobrar antes, devolver
+        # si el LLM falla (el except del framework devuelve 500 y la UI avisa)
+        from pipeline import creditos, db, media_sync
+        _proyecto_nube(name)
+        user = db.usuario_actual()
+        data = _leer_json_s3(f"videos/{name}/work/overlays.json") or \
+            {"version": 1, "estilo_prompt": "", "overlays": []}
+        contexto = _condensar(_leer_json_s3(f"videos/{name}/work/edited-transcript.json"))
+        manifest = _leer_json_s3(f"videos/{name}/work/editor/manifest.json") or {"total": 0}
+        n = creditos.costo_broll_sugerencias()
+        if creditos.activo():
+            try:
+                creditos.cobrar(n, f"broll-sugerir:{name}", user)
+            except creditos.SinSaldo as e:
+                raise HTTPException(402, str(e))
+        try:
+            propuestas = await _proponer(name, data, manifest, contexto)
+        except Exception:
+            if creditos.activo():
+                creditos.devolver(n, f"broll-sugerir:{name}", user)
+            raise
+        data["propuestas"] = propuestas
+        media_sync.escribir_texto(f"videos/{name}/work/overlays.json",
+                                  json.dumps(data, ensure_ascii=False, indent=1))
+        return {"propuestas": propuestas, "creditos": n}
+    p = _proyecto(name)
+    data = overlays.cargar(p)
+    manifest = leer_json(p / "work" / "editor" / "manifest.json", default={"total": 0})
+    propuestas = await _proponer(name, data, manifest, _transcript_condensado(p))
     data["propuestas"] = propuestas
     overlays.guardar(p, data)
     return {"propuestas": propuestas}

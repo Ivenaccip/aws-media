@@ -1384,7 +1384,9 @@ async function fusionInit() {
 }
 
 async function b2flujo() {
-  if (!confirm("Analizamos el video y proponemos momentos para recursos visuales (~$0.01 dólares de LLM; no genera imágenes todavía). ¿Continuar?")) return;
+  // tarifa_broll solo viaja en la nube — ahí cuesta créditos, en local ~$0.01
+  const costoTxt = OVS.tarifa_broll ? `${OVS.tarifa_broll} créditos` : "~$0.01 dólares de LLM";
+  if (!confirm(`Analizamos el video y proponemos momentos para recursos visuales (${costoTxt}; no genera imágenes todavía). ¿Continuar?`)) return;
   setStatus("⏳ analizando el video…");
   try {
     const r = await fj("api/broll/sugerir", {});
@@ -1496,16 +1498,29 @@ async function g1abrir(oid) {
     `<div class="vfila${v.n === G1.version_activa ? " activa" : ""}">v${v.n} · ${v.origen} · ${usd(v.costo_usd)}
      ${v.n !== G1.version_activa ? `<button onclick="g1activar(${v.n})" style="font-size:11px;padding:1px 7px">usar esta</button>` : "(activa)"}</div>`).join("");
   try { G1PRECIO = await fj(`api/overlays/${oid}/precios`);
-    $("g1precio").textContent = `Costo: imágenes ${usd(G1PRECIO.imagen)} + video ${usd(G1PRECIO.video)} (${G1PRECIO.veo_segundos}s de Veo, backend ${G1PRECIO.backend})`;
+    $("g1precio").textContent = `Costo: imágenes ${g1txtImg()} + video ${g1txtVid()} (${G1PRECIO.veo_segundos}s de Veo)`;
   } catch (e) { $("g1precio").textContent = "precio no disponible: " + e.message; }
   $("g1modal").classList.add("abierto");
 }
 function g1cerrar() { $("g1modal").classList.remove("abierto"); }
 
+// M16.3: en la nube el usuario paga créditos (los manda /precios); en local, dólares
+const g1txtImg = () => G1PRECIO.creditos ? `${G1PRECIO.creditos.imagen} créditos` : usd(G1PRECIO.imagen);
+const g1txtVid = () => G1PRECIO.creditos ? `${G1PRECIO.creditos.video} créditos` : usd(G1PRECIO.video);
+
+// M16.3: en la nube el video va a un job (Fargate) — poll hasta que termine
+function g1esperarJob() {
+  return new Promise(res => { const t = setInterval(async () => {
+    let st;
+    try { st = await fj("api/overlays/job"); } catch { return; }
+    if (!st.running) { clearInterval(t); res(st); }
+  }, 4000); });
+}
+
 $("g1generar").onclick = async () => {
   const prompt = $("g1nuevo").value.trim();
   if (!prompt || !G1PRECIO) return;
-  if (!confirm(`Generar 2 opciones de imagen costará ${usd(G1PRECIO.imagen)}. ¿Continuar?`)) return;
+  if (!confirm(`Generar 2 opciones de imagen costará ${g1txtImg()}. ¿Continuar?`)) return;
   $("g1msg").className = ""; $("g1msg").textContent = "⏳ Generando imágenes con Nano Banana…";
   try {
     const r = await fj(`api/overlays/${G1.id}/imagen`, { confirmar: true, prompt });
@@ -1518,7 +1533,7 @@ $("g1generar").onclick = async () => {
         document.querySelectorAll("#g1cands img").forEach(i => i.classList.toggle("eleg", i === img));
         const b = $("g1animar");
         b.style.display = ""; b.className = "primary";
-        b.textContent = `🎬 Animar con Veo — ${usd(G1PRECIO.video)} (sustituye el clip, la versión anterior se conserva)`;
+        b.textContent = `🎬 Animar con Veo — ${g1txtVid()} (sustituye el clip, la versión anterior se conserva)`;
       };
       $("g1cands").appendChild(img);
     }
@@ -1527,19 +1542,32 @@ $("g1generar").onclick = async () => {
 
 $("g1animar").onclick = async () => {
   if (!G1IMAGEN) return;
-  if (!confirm(`Animar con Veo costará ${usd(G1PRECIO.video)}. El clip se recorta a la duración exacta y sustituye al actual. ¿Continuar?`)) return;
+  if (!confirm(`Animar con Veo costará ${g1txtVid()}. El clip se recorta a la duración exacta y sustituye al actual. ¿Continuar?`)) return;
   $("g1msg").className = ""; $("g1msg").textContent = "⏳ Veo está generando el video (esto tarda minutos, no cierres)…";
   $("g1animar").disabled = true;
   try {
     const r = await fj(`api/overlays/${G1.id}/video`, { confirmar: true, imagen: G1IMAGEN });
-    $("g1msg").textContent = `✅ Versión v${r.version.n} activa (${usd(r.costo_video)}). Recargando…`;
+    if (r.started) {                    // nube: job en Fargate — esperar el poll
+      const st = await g1esperarJob();
+      if (!st.ok) throw new Error(st.log || "el job de regeneración falló — los créditos se devolvieron");
+      $("g1msg").textContent = `✅ Versión v${st.version} activa. Recargando…`;
+    } else {
+      $("g1msg").textContent = `✅ Versión v${r.version.n} activa (${usd(r.costo_video)}). Recargando…`;
+    }
     setTimeout(() => location.reload(), 1200);
   } catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; $("g1animar").disabled = false; }
 };
 
 async function g1activar(n) {
   $("g1msg").textContent = "⏳ Activando versión y rearmando la película…";
-  try { await fj(`api/overlays/${G1.id}/activar`, { n }); location.reload(); }
+  try {
+    const r = await fj(`api/overlays/${G1.id}/activar`, { n });
+    if (r.started) {                    // nube: el rearmado corre en Fargate
+      const st = await g1esperarJob();
+      if (!st.ok) throw new Error(st.log || "no se pudo activar la versión");
+    }
+    location.reload();
+  }
   catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; }
 }
 
