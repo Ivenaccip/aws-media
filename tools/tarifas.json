@@ -17,6 +17,10 @@
     "nota_importar": "M17: traer un video de YouTube por liga (descarga vía Apify thenetaji/youtube-video-downloader, ~$0.002 dólares/MB ≈ $0.02/min a 720p en pricing.json) — 2 cr por minuto EMPEZADO del video fuente lo cubre con margen al piso. La transcripción y el análisis se cobran aparte con las tarifas de arriba al correr 'analizar'.",
     "nota": "M8 (flujo web). Transcripción solo si el proyecto no trae canónico (AssemblyAI $0.21 dólares/hora en pricing.json → 2 cr/5 min lo cubre con margen); análisis = la puntuación LLM de candidatos (~$0.02 dólares); render = Remotion+export en Fargate por short. Los gen-* ya traen canónico: su transcripción es 0."
   },
+  "estilos": {
+    "analizar": 3,
+    "nota": "M18 — copiadora de estilos: perfil visual de un reel de IG o un TikTok (Apify ~$0.005 dólares + gpt-5-mini visión sobre ~8 frames ~$0.01 + infra). Tarifa fija: los reels son cortos por diseño. Copiar estilo, nunca clonar contenido."
+  },
   "editar": {
     "sugerencias": 2,
     "broll_sugerencias": 2,

@@ -94,6 +94,10 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # M17: descarga de YouTube (Apify) → S3 como subida del proyecto.
             from worker.shorts_importar import importar
             importar(j["user_id"], j["proyecto"], j["url"])
+        elif j["tipo"] == "estilo_analizar":
+            # M18: perfil de estilo de un reel/TikTok (Apify + ffmpeg + visión).
+            from worker.estilo_analizar import analizar as estilo
+            estilo(j["user_id"], j["estilo_id"], j["url"], j["plataforma"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:

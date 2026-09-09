@@ -36,6 +36,7 @@ from server.overlays_api import router as overlays_router
 from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
+from server.estilos_api import router as estilos_router
 from server.shorts_api import router as shorts_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -50,6 +51,7 @@ app.include_router(media_router)
 app.include_router(pagos_router)
 app.include_router(admin_router)
 app.include_router(shorts_router)
+app.include_router(estilos_router)
 app.include_router(editar_router)
 
 

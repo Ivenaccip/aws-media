@@ -62,6 +62,17 @@ def encolar_shorts_importar(user_id: str, proyecto: str, url: str) -> None:
                                 "proyecto": proyecto, "url": url}))
 
 
+def encolar_estilo_analizar(user_id: str, estilo_id: str, url: str,
+                            plataforma: str) -> None:
+    """M18: perfil de estilo de un reel/TikTok (Apify + ffmpeg + visión) —
+    trabajo corto en el worker Lambda; el progreso viaja por el doc en S3."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "estilo_analizar", "user_id": user_id,
+                                "estilo_id": estilo_id, "url": url,
+                                "plataforma": plataforma}))
+
+
 def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
     misma state machine que la producción, otro comando. Los segmentos
