@@ -10,18 +10,21 @@
   body { font: 16px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0; padding: 40px 24px; }
   main { max-width: 1000px; margin: 0 auto; }
   /* Paso 4: mock del dueño — video a la izquierda, los dos caminos a la derecha */
-  .panel { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start; }
+  .panel { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: stretch; }
   @media (max-width: 760px) { .panel { grid-template-columns: 1fr; } }
   .lado { display: grid; gap: 24px; }
+  /* el video de muestra llena la columna hasta la base de Editor IA */
+  #muestra { display: flex; flex-direction: column; }
+  #muestra video { flex: 1; min-height: 240px; width: 100%; margin-top: 12px;
+                   border-radius: 9px; background: #000; object-fit: contain; }
+  /* la tarjeta ENTERA es el botón del camino */
+  .tarjeta { cursor: pointer; transition: border-color .15s; }
+  .tarjeta:hover, .tarjeta:focus-visible { border-color: #5b8dd6; }
   .tarjeta h2 { display: flex; align-items: center; gap: 8px; }
+  .tarjeta .ir { color: #8ab4e8; font-size: 14px; margin-top: 12px; display: block; }
   .anim { position: relative; height: 110px; border-radius: 10px; background: #14161a;
           border: 1px solid #2c3038; margin: 14px 0; overflow: hidden; }
-  .cta { display: inline-block; padding: 10px 18px; border-radius: 9px; border: 0;
-         background: #5b8dd6; color: #fff; font-size: 14px; cursor: pointer;
-         text-decoration: none; text-align: center; }
-  .cta.sec { background: #23262d; border: 1px solid #2c3038; color: #e8e6e0; }
-  .cta.ok { background: #1c3a2a; color: #7fd6a3; }
-  [hidden] { display: none !important; }  /* el display de .cta no debe ganarle */
+  [hidden] { display: none !important; }
   /* animación shorts: del metraje horizontal saltan 3 clips verticales */
   .anim-shorts .cinta { position: absolute; left: 10%; top: 22px; width: 34%; height: 56px;
                         border-radius: 6px; background: #23262d; border: 1px solid #3a4050; }
@@ -99,14 +102,13 @@
   <!-- Paso 4 (mock del dueño): tras subir, el video queda a la izquierda y a la
        derecha los DOS caminos — sacar shorts o entrar al editor con IA -->
   <div class="panel" id="panel" hidden>
-    <section>
+    <section id="muestra">
       <h2>🎬 Tu video <span id="corte-proy" style="color:#9a978f;font-weight:400"></span></h2>
-      <video id="sub-player" controls style="width:100%; margin-top:12px; border-radius:9px;
-        background:#000; aspect-ratio:16/9"></video>
+      <video id="sub-player" controls></video>
       <p id="corte-estado" class="nota" role="status" aria-live="polite"></p>
     </section>
     <div class="lado">
-      <section class="tarjeta">
+      <section class="tarjeta" id="card-shorts" role="button" tabindex="0">
         <h2>✂️ Cortes IA</h2>
         <p class="desc">La IA encuentra los mejores momentos de tu video y los convierte en
           clips verticales con captions, listos para TikTok, Reels y Shorts.</p>
@@ -114,9 +116,9 @@
           <div class="cinta"></div>
           <div class="clip c1"></div><div class="clip c2"></div><div class="clip c3"></div>
         </div>
-        <a id="corte-shorts" class="cta" hidden>Sacar Shorts</a>
+        <span class="ir" id="shorts-nota">Sacar Shorts →</span>
       </section>
-      <section class="tarjeta">
+      <section class="tarjeta" id="card-editor" role="button" tabindex="0">
         <h2>🎛️ Editor IA</h2>
         <p class="desc">La IA propone el corte de tu metraje — muletillas, retakes, aire muerto —
           y tú apruebas cada sugerencia en el editor. Nada se aplica solo.</p>
@@ -125,11 +127,7 @@
           <div class="seg s1"></div><div class="seg s2"></div><div class="seg s3"></div>
           <div class="cabezal"></div>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <button id="corte-btn" class="cta" hidden></button>
-          <a id="corte-editor" class="cta ok" hidden>Editar el video →</a>
-        </div>
-        <p id="editor-nota" class="nota" role="status" aria-live="polite"></p>
+        <span class="ir" id="editor-nota" role="status" aria-live="polite"></span>
       </section>
     </div>
   </div>
@@ -152,13 +150,16 @@ function muestra(fuente) {
   if (fuente && CDN && !v.src) v.src = CDN + "/" + fuente;
 }
 
+// La tarjeta entera es el botón (pedido del dueño): su acción vigente vive aquí
+let EDITOR = { modo: "off", costo: 0 };   // off | corriendo | listo | cobrar
+let CON_FUENTE = false;
+
 async function initCorte() {
   if (!proyectoCorte) return;
   ui("panel").hidden = false;
   ui("corte-proy").textContent = "· " + proyectoCorte;
-  ui("corte-btn").hidden = true;
-  ui("corte-editor").hidden = true;
-  ui("corte-shorts").hidden = true;
+  EDITOR = { modo: "off", costo: 0 };
+  CON_FUENTE = false;
   let st;
   try {
     const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}`);
@@ -170,57 +171,65 @@ async function initCorte() {
     st = await r.json();
   } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; return; }
 
-  ui("corte-shorts").href = "/shorts.html?p=" + encodeURIComponent(proyectoCorte);
   muestra(st.fuente);
+  CON_FUENTE = !!st.fuente;
+  ui("shorts-nota").textContent = CON_FUENTE ? "Sacar Shorts →" : "Sube tu metraje primero";
   const ed = st.editar || {};
-  if (st.fuente) ui("corte-shorts").hidden = false;   // el camino de shorts siempre está
   if (ed.estado === "corriendo") {
+    EDITOR.modo = "corriendo";
     ui("editor-nota").textContent = "⏳ La IA está revisando tu metraje (transcribir + proponer el corte, unos minutos)…";
     pollTimer = setTimeout(initCorte, 10000);
     return;
   }
   if (st.editor_listo) {
+    EDITOR.modo = "listo";
     const resumen = ed.estado === "listo"
-      ? ` La corrida propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas.`
+      ? `propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas — `
       : "";
-    ui("editor-nota").textContent = "✂️ Corte propuesto." + resumen + " Acepta o rechaza cada sugerencia en el editor.";
-    ui("corte-editor").href = `/editor/${encodeURIComponent(proyectoCorte)}/`;
-    ui("corte-editor").hidden = false;
+    ui("editor-nota").textContent = `✂️ Corte propuesto: ${resumen}Editar el video →`;
     return;
-  }
-  if (ed.estado === "error") {
-    ui("editor-nota").textContent = "❌ La corrida falló y tus créditos se devolvieron: " +
-      (ed.error || "") + " — puedes intentarlo de nuevo.";
   }
   if (!st.fuente) {
     ui("corte-estado").textContent = "Sube tu metraje arriba y aquí aparecen tus dos caminos.";
+    ui("editor-nota").textContent = "Sube tu metraje primero";
     return;
   }
-  // costo ANTES del botón (regla dura: nube sin preview = bug)
+  // costo ANTES de habilitar el camino (regla dura: nube sin preview = bug)
   try {
     const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/costo`);
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     const c = await r.json();
     if (!c.backend_listo) { ui("editor-nota").textContent = c.aviso; return; }
-    ui("corte-btn").textContent = `${c.creditos} créditos — que la IA proponga el corte →`;
-    ui("corte-btn").hidden = false;
+    EDITOR = { modo: "cobrar", costo: c.creditos };
+    ui("editor-nota").textContent = (ed.estado === "error"
+      ? "❌ La corrida falló y tus créditos se devolvieron. " : "") +
+      `Proponer el corte — ${c.creditos} créditos →`;
     if (!ed.estado) ui("corte-estado").textContent =
       `Metraje de ${(c.duracion_s / 60).toFixed(1)} min` +
       (c.con_transcript ? " (ya trae transcript)." : " (la corrida del editor incluye la transcripción).");
   } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
 }
 
-document.addEventListener("click", async ev => {
-  if (ev.target.id !== "corte-btn") return;
-  ev.target.disabled = true;
+function irShorts() {
+  if (CON_FUENTE) location.href = "/shorts.html?p=" + encodeURIComponent(proyectoCorte);
+}
+async function irEditor() {
+  if (EDITOR.modo === "listo") { location.href = `/editor/${encodeURIComponent(proyectoCorte)}/`; return; }
+  if (EDITOR.modo !== "cobrar") return;   // corriendo o sin metraje: nada que hacer
+  // la tarjeta ya enseña el precio; el confirm evita el cobro por clic accidental
+  if (!confirm(`La IA va a revisar tu metraje y proponer el corte por ${EDITOR.costo} créditos. ¿Continuar?`)) return;
+  EDITOR.modo = "off";
   try {
-    const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/sugerir`, {method: "POST"});
+    const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/sugerir`, { method: "POST" });
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     window.monedero?.refrescar();
-    initCorte();
-  } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; }
-  ev.target.disabled = false;
-});
+  } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
+  initCorte();
+}
+for (const [id, fn] of [["card-shorts", irShorts], ["card-editor", irEditor]]) {
+  ui(id).onclick = fn;
+  ui(id).onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
+}
 
 // --- Subida prefirmada a S3 (C3) — solo se muestra si el servicio la ofrece.
 // El arranque pasa por aquí: primero el config (trae la base del CDN para el
