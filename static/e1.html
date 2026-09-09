@@ -8,7 +8,42 @@
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
   body { font: 16px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0; padding: 40px 24px; }
-  main { max-width: 860px; margin: 0 auto; }
+  main { max-width: 1000px; margin: 0 auto; }
+  /* Paso 4: mock del dueño — video a la izquierda, los dos caminos a la derecha */
+  .panel { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 760px) { .panel { grid-template-columns: 1fr; } }
+  .lado { display: grid; gap: 24px; }
+  .tarjeta h2 { display: flex; align-items: center; gap: 8px; }
+  .anim { position: relative; height: 110px; border-radius: 10px; background: #14161a;
+          border: 1px solid #2c3038; margin: 14px 0; overflow: hidden; }
+  .cta { display: inline-block; padding: 10px 18px; border-radius: 9px; border: 0;
+         background: #5b8dd6; color: #fff; font-size: 14px; cursor: pointer;
+         text-decoration: none; text-align: center; }
+  .cta.sec { background: #23262d; border: 1px solid #2c3038; color: #e8e6e0; }
+  .cta.ok { background: #1c3a2a; color: #7fd6a3; }
+  [hidden] { display: none !important; }  /* el display de .cta no debe ganarle */
+  /* animación shorts: del metraje horizontal saltan 3 clips verticales */
+  .anim-shorts .cinta { position: absolute; left: 10%; top: 22px; width: 34%; height: 56px;
+                        border-radius: 6px; background: #23262d; border: 1px solid #3a4050; }
+  .anim-shorts .clip { position: absolute; top: 18px; width: 36px; height: 64px; border-radius: 7px;
+                       background: #2b4a75; border: 1px solid #5b8dd6; opacity: 0;
+                       animation: brota 3.6s infinite; }
+  .anim-shorts .c1 { left: 52%; animation-delay: 0s; }
+  .anim-shorts .c2 { left: 66%; animation-delay: .6s; }
+  .anim-shorts .c3 { left: 80%; animation-delay: 1.2s; }
+  @keyframes brota { 0% { opacity: 0; transform: translateY(14px) scale(.7); }
+                     18%, 78% { opacity: 1; transform: none; } 95%, 100% { opacity: 0; } }
+  /* animación editor: línea de tiempo con un tramo que se corta y cabezal que avanza */
+  .anim-editor .pista { position: absolute; left: 8%; right: 8%; top: 46px; height: 18px;
+                        border-radius: 5px; background: #23262d; }
+  .anim-editor .seg { position: absolute; top: 46px; height: 18px; border-radius: 5px; background: #2b4a75; }
+  .anim-editor .s1 { left: 8%; width: 26%; }
+  .anim-editor .s2 { left: 36%; width: 14%; background: #7a3d44; animation: corta 3.6s infinite; }
+  .anim-editor .s3 { left: 52%; width: 40%; }
+  .anim-editor .cabezal { position: absolute; top: 34px; width: 2px; height: 42px;
+                          background: #e8e6e0; left: 8%; animation: avanza 3.6s linear infinite; }
+  @keyframes corta { 0%, 40% { opacity: 1; } 55%, 100% { opacity: .12; } }
+  @keyframes avanza { from { left: 8%; } to { left: 92%; } }
   a.volver { color: #9a978f; text-decoration: none; font-size: 14px; }
   h1 { font-size: 24px; font-weight: 600; margin: 10px 0 28px; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
@@ -60,24 +95,44 @@
       <div id="sub-avance" style="height:100%;width:0%;background:#5b8dd6;transition:width .3s"></div>
     </div>
     <p id="sub-estado" class="nota" role="status" aria-live="polite"></p>
-    <video id="sub-player" controls hidden style="width:100%; margin-top:12px; border-radius:9px; background:#000"></video>
   </section>
-  <!-- M14: la corrida de sugerencias — la IA propone el corte y tú apruebas
-       cada sugerencia en el editor, como era el flujo local de /clean-cut -->
-  <section id="corte" hidden>
-    <h2>✂️ Corte con IA <span id="corte-proy" style="color:#9a978f;font-weight:400"></span></h2>
-    <p class="desc">La IA revisa tu metraje y propone el corte: muletillas, retakes, aire muerto y
-      relleno sugerido. Nada se aplica solo — tú aceptas o rechazas cada sugerencia en el editor.</p>
-    <p id="corte-estado" class="nota" role="status" aria-live="polite"></p>
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
-      <button id="corte-btn" hidden style="padding:10px 18px; border-radius:9px; border:0;
-        background:#5b8dd6; color:#fff; font-size:14px; cursor:pointer"></button>
-      <a id="corte-editor" hidden style="padding:10px 18px; border-radius:9px; background:#1c3a2a;
-        color:#7fd6a3; font-size:14px; text-decoration:none">Abrir editor →</a>
-      <a id="corte-shorts" hidden style="padding:10px 18px; border-radius:9px; background:#23262d;
-        border:1px solid #2c3038; color:#e8e6e0; font-size:14px; text-decoration:none">Sacar shorts</a>
+  <!-- Paso 4 (mock del dueño): tras subir, el video queda a la izquierda y a la
+       derecha los DOS caminos — sacar shorts o entrar al editor con IA -->
+  <div class="panel" id="panel" hidden>
+    <section>
+      <h2>🎬 Tu video <span id="corte-proy" style="color:#9a978f;font-weight:400"></span></h2>
+      <video id="sub-player" controls style="width:100%; margin-top:12px; border-radius:9px;
+        background:#000; aspect-ratio:16/9"></video>
+      <p id="corte-estado" class="nota" role="status" aria-live="polite"></p>
+    </section>
+    <div class="lado">
+      <section class="tarjeta">
+        <h2>✂️ Cortes IA</h2>
+        <p class="desc">La IA encuentra los mejores momentos de tu video y los convierte en
+          clips verticales con captions, listos para TikTok, Reels y Shorts.</p>
+        <div class="anim anim-shorts" aria-hidden="true">
+          <div class="cinta"></div>
+          <div class="clip c1"></div><div class="clip c2"></div><div class="clip c3"></div>
+        </div>
+        <a id="corte-shorts" class="cta" hidden>Sacar Shorts</a>
+      </section>
+      <section class="tarjeta">
+        <h2>🎛️ Editor IA</h2>
+        <p class="desc">La IA propone el corte de tu metraje — muletillas, retakes, aire muerto —
+          y tú apruebas cada sugerencia en el editor. Nada se aplica solo.</p>
+        <div class="anim anim-editor" aria-hidden="true">
+          <div class="pista"></div>
+          <div class="seg s1"></div><div class="seg s2"></div><div class="seg s3"></div>
+          <div class="cabezal"></div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <button id="corte-btn" class="cta" hidden></button>
+          <a id="corte-editor" class="cta ok" hidden>Editar el video →</a>
+        </div>
+        <p id="editor-nota" class="nota" role="status" aria-live="polite"></p>
+      </section>
     </div>
-  </section>
+  </div>
 </main>
 <script src="/auth.js"></script>
 <script>
@@ -87,12 +142,19 @@
 const P = new URLSearchParams(location.search).get("p") || "";
 let proyectoCorte = P;
 let pollTimer = null;
+let CDN = "";   // base de CloudFront para pintar el video de muestra
 
 function ui(id) { return document.getElementById(id); }
 
+function muestra(fuente) {
+  // el video de muestra a la izquierda (mock Paso 4) — solo si aún no hay src
+  const v = ui("sub-player");
+  if (fuente && CDN && !v.src) v.src = CDN + "/" + fuente;
+}
+
 async function initCorte() {
   if (!proyectoCorte) return;
-  ui("corte").hidden = false;
+  ui("panel").hidden = false;
   ui("corte-proy").textContent = "· " + proyectoCorte;
   ui("corte-btn").hidden = true;
   ui("corte-editor").hidden = true;
@@ -109,9 +171,11 @@ async function initCorte() {
   } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; return; }
 
   ui("corte-shorts").href = "/shorts.html?p=" + encodeURIComponent(proyectoCorte);
+  muestra(st.fuente);
   const ed = st.editar || {};
+  if (st.fuente) ui("corte-shorts").hidden = false;   // el camino de shorts siempre está
   if (ed.estado === "corriendo") {
-    ui("corte-estado").textContent = "⏳ La IA está revisando tu metraje (transcribir + proponer el corte, unos minutos)…";
+    ui("editor-nota").textContent = "⏳ La IA está revisando tu metraje (transcribir + proponer el corte, unos minutos)…";
     pollTimer = setTimeout(initCorte, 10000);
     return;
   }
@@ -119,19 +183,17 @@ async function initCorte() {
     const resumen = ed.estado === "listo"
       ? ` La corrida propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas.`
       : "";
-    ui("corte-estado").textContent = "✂️ Corte propuesto." + resumen + " Acepta o rechaza cada sugerencia en el editor.";
+    ui("editor-nota").textContent = "✂️ Corte propuesto." + resumen + " Acepta o rechaza cada sugerencia en el editor.";
     ui("corte-editor").href = `/editor/${encodeURIComponent(proyectoCorte)}/`;
     ui("corte-editor").hidden = false;
-    ui("corte-shorts").hidden = false;
     return;
   }
   if (ed.estado === "error") {
-    ui("corte-estado").textContent = "❌ La corrida falló y tus créditos se devolvieron: " +
+    ui("editor-nota").textContent = "❌ La corrida falló y tus créditos se devolvieron: " +
       (ed.error || "") + " — puedes intentarlo de nuevo.";
   }
   if (!st.fuente) {
-    ui("corte-estado").textContent = ui("corte-estado").textContent ||
-      "Sube tu metraje arriba y aquí pedimos el corte.";
+    ui("corte-estado").textContent = "Sube tu metraje arriba y aquí aparecen tus dos caminos.";
     return;
   }
   // costo ANTES del botón (regla dura: nube sin preview = bug)
@@ -139,14 +201,13 @@ async function initCorte() {
     const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/costo`);
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     const c = await r.json();
-    if (!c.backend_listo) { ui("corte-estado").textContent = c.aviso; return; }
+    if (!c.backend_listo) { ui("editor-nota").textContent = c.aviso; return; }
     ui("corte-btn").textContent = `${c.creditos} créditos — que la IA proponga el corte →`;
     ui("corte-btn").hidden = false;
     if (!ed.estado) ui("corte-estado").textContent =
       `Metraje de ${(c.duracion_s / 60).toFixed(1)} min` +
-      (c.con_transcript ? " (ya trae transcript)." : " (incluye la transcripción).");
-    ui("corte-shorts").hidden = false;
-  } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; }
+      (c.con_transcript ? " (ya trae transcript)." : " (la corrida del editor incluye la transcripción).");
+  } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
 }
 
 document.addEventListener("click", async ev => {
@@ -160,17 +221,21 @@ document.addEventListener("click", async ev => {
   } catch (e) { ui("corte-estado").textContent = "Error: " + e.message; }
   ev.target.disabled = false;
 });
-initCorte();
 
-// --- Subida prefirmada a S3 (C3) — solo se muestra si el servicio la ofrece
+// --- Subida prefirmada a S3 (C3) — solo se muestra si el servicio la ofrece.
+// El arranque pasa por aquí: primero el config (trae la base del CDN para el
+// video de muestra) y LUEGO initCorte — si no, el panel pinta sin video.
 async function initSubir() {
   try {
     const cfg = await (await fetch("/api/media/config")).json();
-    if (!cfg.activo) return;
-  } catch { return; }
-  document.getElementById("subir").hidden = false;
-  document.getElementById("sub-btn").onclick = subir;
-  if (P) document.getElementById("sub-proyecto").value = P;
+    CDN = (cfg.cdn || "").replace(/\/$/, "");
+    if (cfg.activo) {
+      document.getElementById("subir").hidden = false;
+      document.getElementById("sub-btn").onclick = subir;
+      if (P) document.getElementById("sub-proyecto").value = P;
+    }
+  } catch { /* instalación local sin media API */ }
+  initCorte();
 }
 // M5: XHR en vez de fetch para tener progreso real (%, MB) y poder cancelar;
 // beforeunload avisa si se cierra la pestaña con la subida a medias.
@@ -225,9 +290,8 @@ async function subir() {
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     const sub = await r.json();
     estado.textContent = `Listo: ${sub.archivo} ya está en tu proyecto ${proyecto}.`;
-    const player = document.getElementById("sub-player");
-    player.src = sub.cdn; player.hidden = false;
-    // M14: el metraje recién subido pasa directo a la sección de corte
+    document.getElementById("sub-player").src = sub.cdn;   // el video de muestra
+    // M14: el metraje recién subido pasa directo al panel de dos caminos
     proyectoCorte = proyecto;
     history.replaceState(null, "", "?p=" + encodeURIComponent(proyecto));
     clearTimeout(pollTimer);
