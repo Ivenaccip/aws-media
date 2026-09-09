@@ -52,6 +52,23 @@
 
   <div id="aviso" class="mut">Cargando…</div>
 
+  <section id="sec-subir" hidden>
+    <h2>Subir un video</h2>
+    <p class="mut">Sube tu .mp4 y la IA lo transcribe y te propone los mejores momentos —
+      sin pasar por la página de edición.</p>
+    <div class="controles" style="margin-top:8px">
+      <input id="sub-archivo" type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime" aria-label="Archivo de video">
+      <input id="sub-proyecto" type="text" placeholder="nombre-del-proyecto" maxlength="40"
+             aria-label="Nombre del proyecto" style="width:200px">
+      <button id="sub-btn">Subir</button>
+      <button id="sub-cancelar" class="sec" hidden>Cancelar</button>
+    </div>
+    <div id="sub-barra" hidden style="height:6px;background:#23262d;border-radius:4px;margin:10px 0;overflow:hidden">
+      <div id="sub-avance" style="height:100%;width:0%;background:#5b8dd6;transition:width .3s"></div>
+    </div>
+    <p id="sub-estado" class="mut" style="margin-top:8px"></p>
+  </section>
+
   <section id="sec-importar" hidden>
     <h2>Importar de YouTube</h2>
     <p class="mut">Pega la liga de un video (máx 90 min): lo traemos al servicio y de ahí
@@ -124,9 +141,65 @@ async function elegirProyecto() {
   $("aviso").innerHTML = conMetraje.length
     ? "¿De qué video sacamos los shorts?<br><br>" + conMetraje.map(p =>
         `<a href="/shorts.html?p=${encodeURIComponent(p.nombre)}" style="color:#8ab4e8;display:inline-block;margin:3px 10px 3px 0">▸ ${p.nombre}</a>`).join("")
-    : 'Todavía no tienes videos con metraje — sube uno en <a href="/e1.html" style="color:#8ab4e8">Editar</a>, o importa uno de YouTube aquí abajo.';
+    : "Todavía no tienes videos con metraje — sube uno aquí abajo, o importa uno de YouTube.";
   $("sec-importar").hidden = false;
+  try {
+    const cfg = await fj("/api/media/config");
+    $("sec-subir").hidden = !cfg.activo;   // local sin S3: la sección no aparece
+  } catch { /* sin config = sin subidas */ }
 }
+
+/* ---------- Subir un video directo aquí (misma subida prefirmada de e1) ---------- */
+let xhrSubida = null;
+$("sub-archivo").onchange = () => {
+  const f = $("sub-archivo").files[0];
+  if (f && !$("sub-proyecto").value.trim())   // sugerir nombre desde el archivo
+    $("sub-proyecto").value = f.name.replace(/\.[^.]+$/, "")
+      .replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase().slice(0, 40) || "mi-video";
+};
+$("sub-cancelar").onclick = () => xhrSubida && xhrSubida.abort();
+window.addEventListener("beforeunload", e => { if (xhrSubida) e.preventDefault(); });
+$("sub-btn").onclick = async () => {
+  const est = $("sub-estado");
+  const proyecto = $("sub-proyecto").value.trim();
+  const f = $("sub-archivo").files[0];
+  if (!f || !proyecto) { est.textContent = "Elige el archivo y ponle nombre al proyecto."; return; }
+  if (!proyecto.replace(/[-_]/g, "").match(/^[A-Za-z0-9]+$/)) {  // misma regla que el backend
+    est.textContent = "El nombre solo puede llevar letras, números, guion y guion bajo (ej. video-1).";
+    return;
+  }
+  $("sub-btn").disabled = true; $("sub-cancelar").hidden = false; $("sub-barra").hidden = false;
+  try {
+    est.textContent = "Pidiendo permiso de subida…";
+    const p = await fj("/api/media/presign",
+      { proyecto, archivo: f.name, content_type: f.type || "video/mp4", bytes: f.size });
+    const mbTotal = (f.size / 1e6).toFixed(1);
+    await new Promise((resolver, rechazar) => {
+      xhrSubida = new XMLHttpRequest();
+      xhrSubida.open("PUT", p.url);
+      xhrSubida.setRequestHeader("Content-Type", p.content_type);
+      xhrSubida.upload.onprogress = ev => {
+        if (!ev.lengthComputable) return;
+        const pct = Math.round(100 * ev.loaded / ev.total);
+        $("sub-avance").style.width = pct + "%";
+        est.textContent = `Subiendo ${f.name} — ${pct}% (${(ev.loaded / 1e6).toFixed(1)} de ${mbTotal} MB)`;
+      };
+      xhrSubida.onload = () => xhrSubida.status < 300 ? resolver()
+        : rechazar(new Error(`la subida a la nube falló (${xhrSubida.status}) — intenta de nuevo`));
+      xhrSubida.onerror = () => rechazar(new Error("la subida falló — revisa tu conexión e intenta de nuevo"));
+      xhrSubida.onabort = () => rechazar(new Error("subida cancelada — nada quedó a medias"));
+      xhrSubida.send(f);
+    });
+    est.textContent = "Confirmando…";
+    await fj("/api/media/confirmar", { proyecto, key: p.key });
+    location.href = `/shorts.html?p=${encodeURIComponent(proyecto)}`;  // directo a Analizar
+  } catch (e) { est.textContent = "Error: " + e.message; }
+  finally {
+    xhrSubida = null;
+    $("sub-btn").disabled = false; $("sub-cancelar").hidden = true;
+    $("sub-barra").hidden = true; $("sub-avance").style.width = "0%";
+  }
+};
 
 /* ---------- M17: importar de YouTube ---------- */
 let COTIZA = null;
