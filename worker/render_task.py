@@ -69,6 +69,20 @@ def main(user_id: str, nombre: str, estilo: str) -> int:
         if segmentos.is_file():
             media_sync.subir_archivo(
                 segmentos, f"{prefijo}work/render/{estilo}-preview/segments.json")
+        # metraje SUBIDO: el corte renderizado ES el master — derivar el
+        # edited-transcript sobre su timeline (subtítulos/b-roll/publicar lo
+        # consumen). Los gen-* conservan el del puente (timeline de pelicula.mp4).
+        if not (destino / "pelicula.mp4").is_file():
+            et = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "edited_transcript.py"),
+                 str(destino), "--style", estilo, "--mode", "preview"],
+                cwd=str(ROOT), capture_output=True, text=True)
+            if et.returncode == 0:
+                media_sync.subir_archivo(destino / "work" / "edited-transcript.json",
+                                         f"{prefijo}work/edited-transcript.json")
+            else:
+                log.warning("%s: edited-transcript no derivado:\n%s", nombre,
+                            ((et.stdout or "") + (et.stderr or ""))[-400:])
         cdn = os.getenv("CDN_BASE", "").rstrip("/")
         render.update(estado="listo",
                       url=f"{cdn}/{prefijo}output/preview-{estilo}.mp4" if cdn else None)

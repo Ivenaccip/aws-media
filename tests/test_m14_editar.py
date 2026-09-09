@@ -27,6 +27,27 @@ def test_costo_editar_sugerencias():
 
 
 # ---------------------------------------------------------------------------
+# _asegurar_words: el contrato en ms que lee cutlib en el render (sin él los
+# cortes caen crudos donde el LLM los puso y rebanan palabras)
+
+def test_asegurar_words_escribe_ms(tmp_path):
+    from worker.editar_task import _asegurar_words
+    canonico = {"words": [{"text": "hola", "start": 0.12, "end": 0.5},
+                          {"text": "mundo", "start": 0.61, "end": 1.0}]}
+    _asegurar_words(tmp_path, "tape", canonico)
+    doc = json.loads((tmp_path / "work" / "transcripts" / "tape.json")
+                     .read_text(encoding="utf-8"))
+    assert doc["words"] == [{"text": "hola", "start": 120, "end": 500},
+                            {"text": "mundo", "start": 610, "end": 1000}]
+    # cutlib.load_words lo encuentra y lo entiende
+    import sys as _sys
+    from pathlib import Path as _P
+    _sys.path.insert(0, str(_P(__file__).resolve().parent.parent / "tools"))
+    from cutlib import load_words
+    assert [w["text"] for w in load_words(tmp_path, "tape")] == ["hola", "mundo"]
+
+
+# ---------------------------------------------------------------------------
 # construir_cuts: keeps = complemento (el material jamás se pierde)
 
 def _salida(cortes=(), fluff=(), flags=()):
