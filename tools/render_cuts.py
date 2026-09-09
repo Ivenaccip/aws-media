@@ -166,6 +166,9 @@ def main() -> None:
     # single mux: copied video + one continuous AAC encode
     out_name = f"{'preview' if args.mode == 'preview' else 'master'}-{args.style}.mp4"
     out_path = project / "output" / out_name
+    # en Fargate el proyecto se arma bajando S3 y output/ no existe todavía
+    # (en local lo crea el scaffolding) — sin esto el mux final truena
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error",
                     "-i", str(video_concat), "-i", str(audio_concat),
                     "-map", "0:v", "-map", "1:a", "-c:v", "copy",

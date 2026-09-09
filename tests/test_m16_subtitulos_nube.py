@@ -17,7 +17,9 @@ def nube(monkeypatch, tmp_path):
     monkeypatch.setenv("STATE_BACKEND", "postgres")
     monkeypatch.setenv("CDN_BASE", "https://cdn.example.com")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path))
-    docs = {"gen-abc": {"flags": {"cuts": True}}}
+    docs = {"gen-abc": {"flags": {"cuts": True, "generado": True}},
+            "video-2": {"flags": {"cuts": True},
+                        "subidas": [{"key": "videos/video-2/subidas/tape.mp4"}]}}
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: docs.get(n))
     from server.app import app
     cliente = TestClient(app)
@@ -72,6 +74,48 @@ def test_muestra_nube_404_sin_artefactos(nube, monkeypatch):
     monkeypatch.setattr(media_sync, "bajar_archivo", lambda key, destino: False)
     r = nube.post("/editor/gen-abc/api/subtitulos/muestra", json={"frame": 10.0})
     assert r.status_code == 404 and "puente" in r.json()["detail"]
+
+
+def test_muestra_subida_usa_el_corte_renderizado(nube, monkeypatch):
+    """Metraje SUBIDO: la base es output/preview-<estilo>.mp4 del último render."""
+    nube.docs["video-2"]["render"] = {"estado": "listo", "estilo": "tight"}
+    bajados = []
+
+    def bajar(key, destino):
+        bajados.append(key)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr(media_sync, "bajar_archivo", bajar)
+    monkeypatch.setattr(media_sync, "subir_archivo", lambda local, key: None)
+
+    def run_falso(cmd, **kw):
+        from pathlib import Path
+        base_dir = next(c for c in cmd if c.endswith("video-2"))
+        subs = Path(base_dir) / "work" / "subs"
+        subs.mkdir(parents=True, exist_ok=True)
+        (subs / "muestra-5.0s.png").write_bytes(b"png")
+
+        class Ok:
+            returncode, stdout, stderr = 0, "", ""
+        return Ok()
+
+    monkeypatch.setattr(overlays_api.subprocess, "run", run_falso)
+    r = nube.post("/editor/video-2/api/subtitulos/muestra", json={"frame": 5.0})
+    assert r.status_code == 200
+    assert "videos/video-2/output/preview-tight.mp4" in bajados
+    del nube.docs["video-2"]["render"]
+
+
+def test_muestra_subida_409_sin_render(nube):
+    r = nube.post("/editor/video-2/api/subtitulos/muestra", json={"frame": 5.0})
+    assert r.status_code == 409 and "renderiza el corte" in r.json()["detail"]
+
+
+def test_quemar_subida_409_sin_render(nube):
+    r = nube.post("/editor/video-2/api/subtitulos/quemar")
+    assert r.status_code == 409 and "renderiza el corte" in r.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +232,10 @@ def tarea(monkeypatch, tmp_path):
                         lambda u, n, s: registro.update(estado=json.loads(s)))
     monkeypatch.setattr(costes_infra, "registrar",
                         lambda u, p, c, usd: registro.update(infra=(c, usd)))
+    # la base de un gen-*: pelicula.mp4 bajada de S3 (aquí bajar_prefijo es no-op)
+    proj = tmp_path / "videos" / "gen-abc"
+    proj.mkdir(parents=True, exist_ok=True)
+    (proj / "pelicula.mp4").write_bytes(b"v")
     return subtitulos_task, registro, tmp_path
 
 
@@ -226,3 +274,35 @@ def test_subtitulos_task_fallo_fija_error_y_sale_1(tarea, monkeypatch):
     assert registro["estado"]["estado"] == "error"
     assert "edited-transcript" in registro["estado"]["log"]
     assert registro["infra"][0] == "infra-subtitulos"   # la infra se gastó igual
+
+
+def test_subtitulos_task_subida_quema_sobre_el_preview(tarea, monkeypatch):
+    """Sin pelicula.mp4 la base es el último output/preview-*.mp4."""
+    subtitulos_task, registro, tmp_path = tarea
+    import subprocess
+    proj = tmp_path / "videos" / "video-2"
+    (proj / "output").mkdir(parents=True, exist_ok=True)
+    (proj / "output" / "preview-tight.mp4").write_bytes(b"v")
+    vistos = {}
+
+    def run_falso(cmd, **kw):
+        vistos["base"] = cmd[cmd.index("--base") + 1]
+
+        class Ok:
+            returncode, stdout, stderr = 0, "", ""
+        return Ok()
+
+    monkeypatch.setattr(subprocess, "run", run_falso)
+    assert subtitulos_task.main("u1", "video-2") == 0
+    assert vistos["base"].replace("\\", "/").endswith("output/preview-tight.mp4")
+    assert "videos/video-2/output/preview-tight-subtitulado.mp4" in registro["subidos"]
+    assert registro["estado"]["url"] == \
+        "https://cdn.example.com/videos/video-2/output/preview-tight-subtitulado.mp4"
+
+
+def test_subtitulos_task_subida_sin_render_fija_error(tarea):
+    """Ni película ni preview: error claro y salida 1 sin llamar make_subs."""
+    subtitulos_task, registro, _ = tarea
+    assert subtitulos_task.main("u1", "video-2") == 1
+    assert registro["estado"]["estado"] == "error"
+    assert "renderiza el corte" in registro["estado"]["log"]

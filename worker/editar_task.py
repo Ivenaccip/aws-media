@@ -70,6 +70,20 @@ def _asegurar_canonico(destino: Path, video: Path) -> dict:
     return doc
 
 
+def _asegurar_words(destino: Path, clip_id: str, canonico: dict) -> None:
+    """work/transcripts/<clip>.json ({words} en MILISEGUNDOS): el contrato que
+    lee cutlib.load_words en el render. Sin él, render_cuts no puede partir los
+    keeps en corridas de habla ni ajustar las colas al piso de audio — los
+    cortes caen crudos donde el LLM los puso y rebanan palabras a la mitad."""
+    f = destino / "work" / "transcripts" / f"{clip_id}.json"
+    if f.is_file():
+        return
+    words = [{"text": w["text"], "start": round(float(w["start"]) * 1000),
+              "end": round(float(w["end"]) * 1000)} for w in canonico["words"]]
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"words": words}, ensure_ascii=False), encoding="utf-8")
+
+
 def _sugerencias_llm(canonico: dict) -> dict:
     from pipeline.config import load_prompt
     from pipeline.llm import chat_json
@@ -170,6 +184,7 @@ def main(user_id: str, nombre: str) -> int:
             raise RuntimeError(f"no encontré el metraje ({fuente or 'sin subida'})")
 
         canonico = _asegurar_canonico(destino, video)
+        _asegurar_words(destino, video.stem, canonico)
         salida = _sugerencias_llm(canonico)
         cuts = construir_cuts(nombre, video.stem, str(video.relative_to(destino)).replace("\\", "/"),
                               float(canonico["source"]["duration"]), salida)

@@ -46,23 +46,39 @@ def main(user_id: str, nombre: str) -> int:
     log.info("%s: %d artefactos bajados de %s", nombre,
              media_sync.bajar_prefijo(prefijo, destino), prefijo)
 
+    # la base: la película de un gen-*, o el último corte renderizado de un
+    # metraje subido (mismo criterio que _base_subs_nube en el API)
+    base = destino / "pelicula.mp4"
+    if not base.is_file():
+        previews = sorted((destino / "output").glob("preview-*.mp4"),
+                          key=lambda f: f.stat().st_mtime)
+        base = previews[-1] if previews else None
+    if base is None:
+        db.fijar_subtitulos_editor(user_id, nombre, json.dumps(
+            {"estado": "error", "fin": _ahora(),
+             "log": "sin video base: renderiza el corte primero"}, ensure_ascii=False))
+        costes_infra.registrar(user_id, nombre, "infra-subtitulos",
+                               costes_infra.costo_fargate(time.monotonic() - t0))
+        return 1
+
     proc = subprocess.run(
         [sys.executable, str(ROOT / "tools" / "make_subs.py"), str(destino),
-         "--base", str(destino / "pelicula.mp4"), "--mode", "final"],
+         "--base", str(base), "--mode", "final"],
         cwd=str(ROOT), capture_output=True, text=True)
     cola = ((proc.stdout or "") + (proc.stderr or ""))[-600:]
 
     estado = {"fin": _ahora()}
     if proc.returncode == 0:
-        salida = destino / "pelicula-subtitulado.mp4"
-        media_sync.subir_archivo(salida, f"{prefijo}pelicula-subtitulado.mp4")
+        salida = base.with_name(base.stem + "-subtitulado.mp4")
+        rel = salida.relative_to(destino).as_posix()
+        media_sync.subir_archivo(salida, f"{prefijo}{rel}")
         for ext in ("srt", "ass"):
             f = destino / "work" / "subs" / f"subs.{ext}"
             if f.is_file():
                 media_sync.subir_archivo(f, f"{prefijo}work/subs/subs.{ext}")
         cdn = os.getenv("CDN_BASE", "").rstrip("/")
         estado.update(estado="listo",
-                      url=f"{cdn}/{prefijo}pelicula-subtitulado.mp4" if cdn else None)
+                      url=f"{cdn}/{prefijo}{rel}" if cdn else None)
         log.info("%s: subtítulos quemados → %s", nombre, estado["url"])
     else:
         estado.update(estado="error", log=cola)

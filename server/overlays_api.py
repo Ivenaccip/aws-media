@@ -436,17 +436,32 @@ def archivo(name: str, ruta: str):
 
 # ---------- b1: subtítulos ----------
 
-def _subs_muestra_nube(name: str, frame: float) -> dict:
+def _base_subs_nube(name: str, doc: dict) -> str:
+    """Rel (dentro de videos/<name>/) del video BASE para quemar subtítulos:
+    la película de un gen-*, o el último corte renderizado de un metraje
+    subido — el edited-transcript vive sobre ese timeline, no sobre el crudo."""
+    if doc.get("flags", {}).get("generado"):
+        return "pelicula.mp4"
+    r = doc.get("render") or {}
+    if r.get("estado") == "listo" and r.get("estilo"):
+        return f"output/preview-{r['estilo']}.mp4"
+    raise HTTPException(409, f"{name}: renderiza el corte primero — los "
+                             "subtítulos se queman sobre el corte renderizado")
+
+
+def _subs_muestra_nube(name: str, doc: dict, frame: float) -> dict:
     """M16.1: la muestra (1 frame) sí cabe en la Lambda contenedor — baja lo
     mínimo de S3 al FS efímero, corre make_subs --frame y sube el PNG (la UI lo
     pide por /archivo/…, que en nube redirige al CDN)."""
     import tempfile
     base_dir = Path(tempfile.mkdtemp(prefix="subs-")) / name
-    for rel in ("pelicula.mp4", "work/edited-transcript.json"):
+    base_rel = _base_subs_nube(name, doc)
+    for rel in (base_rel, "work/edited-transcript.json"):
         if not media_sync.bajar_archivo(f"videos/{name}/{rel}", base_dir / rel):
-            raise HTTPException(404, f"{name}: falta {rel} en S3 — el puente del generador no lo dejó listo")
+            raise HTTPException(404, f"{name}: falta {rel} en S3 — corre el corte "
+                                     "(o el puente del generador) primero")
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "make_subs.py"),
-                        str(base_dir), "--base", str(base_dir / "pelicula.mp4"),
+                        str(base_dir), "--base", str(base_dir / base_rel),
                         "--frame", str(frame)],
                        capture_output=True, text=True, cwd=str(ROOT))
     if r.returncode != 0:
@@ -461,8 +476,7 @@ def subs_muestra(name: str, body: MuestraIn):
     from server.editor import _nube, _proyecto_nube
     frame = body.frame
     if _nube():
-        _proyecto_nube(name)
-        return _subs_muestra_nube(name, frame)
+        return _subs_muestra_nube(name, _proyecto_nube(name), frame)
     p = _proyecto(name)
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "make_subs.py"),
                         str(p), "--base", str(p / "pelicula.mp4"),
@@ -493,6 +507,7 @@ def _subs_quemar_nube(name: str) -> dict:
     from server.editor import _proyecto_nube, _render_caducado
     user = db.usuario_actual()
     doc = _proyecto_nube(name)
+    _base_subs_nube(name, doc)   # 409 antes de lanzar Fargate si no hay base
     s = doc.get("subtitulos") or {}
     if s.get("estado") == "corriendo" and not _render_caducado(s):
         raise HTTPException(409, "quemado en curso")
