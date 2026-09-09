@@ -116,7 +116,7 @@
           <div class="cinta"></div>
           <div class="clip c1"></div><div class="clip c2"></div><div class="clip c3"></div>
         </div>
-        <span class="ir" id="shorts-nota">Sacar Shorts →</span>
+        <span class="ir" id="shorts-nota" hidden></span>
       </section>
       <section class="tarjeta" id="card-editor" role="button" tabindex="0">
         <h2>🎛️ Editor IA</h2>
@@ -173,7 +173,9 @@ async function initCorte() {
 
   muestra(st.fuente);
   CON_FUENTE = !!st.fuente;
-  ui("shorts-nota").textContent = CON_FUENTE ? "Sacar Shorts →" : "Sube tu metraje primero";
+  // la tarjeta es el botón: solo habla si falta el metraje
+  ui("shorts-nota").hidden = CON_FUENTE;
+  ui("shorts-nota").textContent = CON_FUENTE ? "" : "Sube tu metraje primero";
   const ed = st.editar || {};
   if (ed.estado === "corriendo") {
     EDITOR.modo = "corriendo";
