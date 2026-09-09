@@ -52,6 +52,10 @@ class Settings:
     apify_yt_descarga: str = "thenetaji~youtube-video-downloader"    # bajar el MP4 (por MB)
     apify_yt_transcript: str = "topaz_sharingan~Youtube-Transcript-Scraper-1"  # captions de YT ($0.01)
 
+    # M18 — copiadora de estilos (actores verificados en pricing.json §apify)
+    apify_ig: str = "apify~instagram-scraper"          # oficial: videoUrl del reel
+    apify_tiktok: str = "clockworks~tiktok-scraper"    # add-on de descarga del MP4
+
     # Backend de regeneración g1/g2 y M1: fal (default desde 2026-09-03 — los
     # créditos del Studio de Google se agotaron) | google (Gemini API)
     gen_backend: str = os.getenv("GEN_BACKEND", "fal")

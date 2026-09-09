@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de video · Copiadora de estilos</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 15px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0; padding: 40px 24px; }
+  main { max-width: 900px; margin: 0 auto; }
+  a.volver { color: #9a978f; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
+  p.sub { color: #9a978f; font-size: 14px; margin-bottom: 24px; }
+  section { background: #1d2026; border: 1px solid #2c3038; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
+  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #2c3038; background: #2b4a75;
+           color: #e8e6e0; font: inherit; font-size: 14px; cursor: pointer; }
+  button:hover { border-color: #5b8dd6; }
+  button:disabled { opacity: .5; cursor: default; background: #23262d; }
+  input { background: #23262d; color: #e8e6e0; border: 1px solid #3a4050; border-radius: 8px;
+          padding: 8px 10px; font: inherit; font-size: 14px; }
+  .mut { color: #9a978f; font-size: 13px; }
+  .err { color: #e88; font-size: 14px; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .tarjeta { border: 1px solid #2c3038; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .tarjeta h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .tarjeta h3 small { color: #9a978f; font-weight: 400; margin-left: 8px; }
+  .paleta { display: flex; gap: 6px; margin: 10px 0; }
+  .paleta span { display: inline-block; width: 38px; height: 26px; border-radius: 6px;
+                 border: 1px solid #2c3038; }
+  dl { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; font-size: 13.5px; margin-top: 8px; }
+  dt { color: #9a978f; }
+  code { background: #23262d; padding: 2px 7px; border-radius: 5px; font-size: 12.5px; }
+  .copiar { font-size: 12px; padding: 4px 10px; background: #23262d; margin-left: 8px; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← Estudio</a>
+  <h1>Copiadora de estilos</h1>
+  <p class="sub">Pega la liga de un reel de Instagram o un TikTok que te guste: la IA analiza sus
+    frames y arma el perfil visual — paleta, tipografía, iluminación, tono — para que recrees
+    ese estilo en tus imágenes y videos. Se copia el estilo, nunca el contenido.</p>
+
+  <section>
+    <h2>Analizar un video</h2>
+    <div class="controles">
+      <input id="url" type="url" placeholder="https://www.instagram.com/reel/… o https://www.tiktok.com/@…/video/…"
+             aria-label="Liga de Instagram o TikTok" style="flex:1;min-width:280px">
+      <button id="btn-analizar" disabled>Analizar</button>
+    </div>
+    <p id="estado" class="mut" style="margin-top:10px"></p>
+  </section>
+
+  <section>
+    <h2>Tus perfiles de estilo</h2>
+    <div id="lista"><span class="mut">Cargando…</span></div>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let TARIFA = null, pollTimer = null;
+
+async function fj(url, body) {
+  const r = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) } : undefined);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.detail || `Error ${r.status}`), { status: r.status });
+  return j;
+}
+
+function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+function tarjeta(e) {
+  if (e.estado === "analizando")
+    return `<div class="tarjeta"><h3>${esc(e.id)}<small>${esc(e.plataforma)}</small></h3>
+      <p class="mut"><span class="spin">Analizando el estilo</span> — suele tardar 1-2 minutos; puedes cerrar la página.</p></div>`;
+  if (e.estado === "error")
+    return `<div class="tarjeta"><h3>${esc(e.id)}<small>${esc(e.plataforma)}</small></h3>
+      <p class="err">El análisis falló${e.error ? ` (${esc(e.error)})` : ""} — tus créditos se devolvieron.</p></div>`;
+  const f = e.fuente || {}, m = e.metrica || {}, p = e.perfil || {};
+  return `<div class="tarjeta">
+    <h3>${f.autor ? "@" + esc(f.autor) : esc(e.id)}<small>${esc(f.plataforma)} ·
+      ${m.duracion_s || "?"} s · ${m.cortes_por_min ?? "?"} cortes/min</small></h3>
+    <div class="paleta">${(e.paleta || []).map(c =>
+      `<span style="background:${esc(c.hex)}" title="${esc(c.hex)} · ${c.pct}%"></span>`).join("")}</div>
+    <dl>
+      <dt>Tipografía</dt><dd>${esc(p.tipografia)}</dd>
+      <dt>Captions</dt><dd>${esc(p.captions)}</dd>
+      <dt>Iluminación</dt><dd>${esc(p.iluminacion)}</dd>
+      <dt>Estética</dt><dd>${esc(p.estetica)}</dd>
+      <dt>Tono</dt><dd>${esc(p.tono)}</dd>
+      <dt>Prompt</dt><dd><code>${esc(p.prompt_estilo)}</code>
+        <button class="copiar" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent).then(()=>{this.textContent='copiado ✓'})">copiar</button></dd>
+    </dl>
+    <p class="mut" style="margin-top:8px">Pega el prompt en «Crear imágenes» o «Crear contenido»
+      para trabajar con esta estética.</p>
+  </div>`;
+}
+
+async function cargar() {
+  let j;
+  try { j = await fj("/api/estilo"); }
+  catch (e) { $("lista").innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
+  TARIFA = j.creditos;
+  $("btn-analizar").textContent = `Analizar — ${TARIFA} créditos`;
+  $("btn-analizar").disabled = false;
+  $("lista").innerHTML = j.estilos.length ? j.estilos.map(tarjeta).join("")
+    : '<span class="mut">Todavía no tienes perfiles — pega una liga arriba.</span>';
+  if (j.estilos.some(e => e.estado === "analizando") && !pollTimer)
+    pollTimer = setTimeout(() => { pollTimer = null; cargar(); }, 5000);
+}
+
+$("btn-analizar").onclick = async () => {
+  const url = $("url").value.trim();
+  if (!url) { $("estado").textContent = "Pega la liga primero."; return; }
+  $("btn-analizar").disabled = true;
+  $("estado").textContent = "";
+  try {
+    await fj("/api/estilo/analizar", { url });
+    $("url").value = "";
+    window.monedero && monedero.refrescar && monedero.refrescar();
+    cargar();
+  } catch (e) {
+    if (e.status === 402) $("estado").innerHTML = `<span class="err">${esc(e.message)}</span> <a href="/monedero.html" style="color:#8ab4e8">Recargar</a>`;
+    else $("estado").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  } finally { $("btn-analizar").disabled = false; }
+};
+
+cargar();
+</script>
+</body>
+</html>

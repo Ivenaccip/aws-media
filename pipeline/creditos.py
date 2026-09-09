@@ -44,6 +44,9 @@ EDITAR_SUGERENCIAS_CR = 2
 # M16.3 — b-roll del editor en la web (fallback espejo de tarifas.json §editar)
 BROLL_SUGERENCIAS_CR = 2
 
+# M18 — copiadora de estilos (fallback espejo de tarifas.json §estilos)
+ESTILO_ANALIZAR_CR = 3
+
 try:
     _t = json.loads(_TARIFAS_JSON.read_text(encoding="utf-8"))
     _v = _t["video"]
@@ -60,6 +63,7 @@ try:
     SHORTS_IMPORTAR_CR_MIN = _s.get("importar_por_min", SHORTS_IMPORTAR_CR_MIN)
     EDITAR_SUGERENCIAS_CR = _t.get("editar", {}).get("sugerencias", EDITAR_SUGERENCIAS_CR)
     BROLL_SUGERENCIAS_CR = _t.get("editar", {}).get("broll_sugerencias", BROLL_SUGERENCIAS_CR)
+    ESTILO_ANALIZAR_CR = _t.get("estilos", {}).get("analizar", ESTILO_ANALIZAR_CR)
 except (FileNotFoundError, KeyError):
     pass  # fallback: tarifa de arriba (2026-09-02)
 
@@ -137,6 +141,12 @@ def costo_shorts_importar(duracion_s: float) -> int:
     """M17: traer un video de YouTube al proyecto (descarga vía Apify, que
     cobra por MB ≈ por minuto) — tarifa por minuto EMPEZADO del video fuente."""
     return SHORTS_IMPORTAR_CR_MIN * max(1, math.ceil(float(duracion_s) / 60))
+
+
+def costo_estilo_analizar() -> int:
+    """M18: perfil de estilo de un reel/TikTok — tarifa fija (Apify + visión
+    gpt-5-mini cuestan centavos de dólar juntos; los reels son cortos)."""
+    return ESTILO_ANALIZAR_CR
 
 
 def costo_shorts_render(n_shorts: int) -> int:
