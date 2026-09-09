@@ -14,7 +14,11 @@
     'font:13px/1 system-ui,sans-serif;color:#e8e6e0;box-shadow:0 2px 12px rgba(0,0,0,.4)';
   el.innerHTML =
     '<span id="mon-saldo" style="font-weight:600;white-space:nowrap"></span>' +
-    '<button id="mon-cta" style="background:none;border:0;color:#8ab4e8;cursor:pointer;font:12px system-ui;padding:0">Recargar</button>';
+    '<button id="mon-cta" style="background:none;border:0;color:#8ab4e8;cursor:pointer;font:12px system-ui;padding:0">Recargar</button>' +
+    // M2: cerrar sesión (auth.salir limpia tokens y pasa por el /logout del
+    // Hosted UI — clave tras un cambio de permisos: el re-login trae los
+    // grupos nuevos en el token). Solo se pinta si el login está activo.
+    '<button id="mon-salir" hidden style="background:none;border:0;color:#9a978f;cursor:pointer;font:12px system-ui;padding:0 0 0 2px;border-left:1px solid #3a3f4a;padding-left:12px">Salir</button>';
 
   function textoRecarga() {
     const packs = est.packs.map(p => `${p.creditos} créditos — $${p.usd.toFixed(2)} dólares`).join('\n· ');
@@ -86,6 +90,14 @@
   function montar() {
     document.body.appendChild(el);
     el.querySelector('#mon-cta').onclick = togglePanel;
+    const salir = el.querySelector('#mon-salir');
+    salir.onclick = () => { if (confirm('¿Cerrar sesión?')) window.auth.salir(); };
+    if (window.auth) window.auth.config().then(c => {
+      if (!c.activo) return;
+      salir.hidden = false;
+      el.style.display = 'flex';   // con sesión, la pastilla se ve aunque el
+      refrescar();                 // monedero tarde (o no esté) — Salir siempre a mano
+    });
     refrescar();
   }
 
