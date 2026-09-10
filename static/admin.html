@@ -34,7 +34,7 @@
   td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #23262d; font-variant-numeric: tabular-nums; }
   tr.usuario { cursor: pointer; }
   tr.usuario:hover td { background: #23262d; }
-  .pos { color: #7fd6a3; } .neg { color: #e88; }
+  .pos { color: #7fd6a3; } .neg { color: #e88; } .tot { color: #8ab4e8; }
   .mut { color: #9a978f; font-size: 13px; }
   .tabla-scroll { overflow-x: auto; }
   #estado-sync { font-size: 13px; color: #9a978f; }
@@ -108,21 +108,22 @@
         <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Usuario</th><th>OpenAI</th><th>fal</th><th>Claude</th>
-            <th>IA total</th><th>AWS</th><th>Aurora ≈</th><th>S3</th>
-            <th>Fargate</th><th>Costo total</th></tr></thead>
+            <th>IA total</th><th>Aurora ≈</th><th>Fargate</th><th>S3</th>
+            <th>AWS total</th><th>Costo total</th></tr></thead>
           <tbody id="cuerpo-costos"></tbody>
         </table></div>
         <p class="mut" style="margin-top:10px">El desglose OpenAI / fal / Claude sale del modelo
           de cada generación; lo sincronizado ANTES de este desglose no trae vendor y solo
           aparece en <b>IA total</b> (re-aparece desglosado si borras esas filas y re-sincronizas
           el periodo). La IA sale de las trazas de Langfuse (sync diario
-          06:00 UTC + el botón de arriba); AWS es la línea estimada por corrida (segundos reales de
-          Fargate/Lambda × tarifas de <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa
-          cuenta (costo ÷ tarifa = tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte.
-          <b>Aurora ≈</b> es el costo REAL del mes de la base (horas-ACU medidas en CloudWatch ×
-          tarifa de <code>pricing.json</code>) prorrateado por la actividad registrada de cada
-          usuario en el mes — la base es compartida, así que el reparto es aproximado, informativo
-          y NO entra al costo directo ni al margen. CloudFront/ECR siguen solo en Cost Explorer.</p>
+          06:00 UTC + el botón de arriba). <b>Aurora ≈</b> es el costo REAL del mes de la base
+          (horas-ACU medidas en CloudWatch × tarifa de <code>pricing.json</code>) prorrateado por
+          la actividad registrada de cada usuario en el mes — la base es compartida, así que el
+          reparto es aproximado. <b>Fargate</b> es la línea estimada por corrida (segundos reales
+          de Fargate/Lambda × tarifas de <code>pricing.json</code>; el tooltip trae el tiempo de
+          cómputo). <b>AWS total</b> = Aurora ≈ + Fargate. S3 se muestra aparte, y el
+          <b>Costo total</b> (la base del margen) sigue siendo IA + Fargate — Aurora es
+          informativa y no entra. CloudFront/ECR siguen solo en Cost Explorer.</p>
       </section>
       <section id="detalle" hidden>
         <h2 id="detalle-titulo"></h2>
@@ -214,11 +215,11 @@ async function cargar() {
       <td>${usd4(prov(u, 'openai'))}</td>
       <td>${usd4(prov(u, 'fal'))}</td>
       <td>${usd4(prov(u, 'claude'))}</td>
-      <td>${usd4(u.costo_ia_usd ?? u.costo_usd)}</td>
-      <td>${usd4(u.costo_aws_usd ?? 0)}</td>
+      <td class="tot">${usd4(u.costo_ia_usd ?? u.costo_usd)}</td>
       <td title="Aurora del mes, prorrateada por la actividad registrada — informativa, no entra al costo total">${usd4(u.aurora_usd ?? 0)}</td>
+      <td title="Fargate/Lambda estimado por corrida${u.fargate_s ? ' — ' + tiempo(u.fargate_s) + ' de cómputo' : ''}">${usd4(u.costo_aws_usd ?? 0)}</td>
       <td>${mb(u.s3_bytes)}</td>
-      <td title="tiempo estimado de cómputo en Fargate (derivado del costo)">${tiempo(u.fargate_s)}</td>
+      <td class="tot" title="Aurora prorrateada + Fargate/Lambda">${usd4((u.aurora_usd ?? 0) + (u.costo_aws_usd ?? 0))}</td>
       <td>${usd4(u.costo_usd)}</td></tr>`).join('');
   document.querySelectorAll('tr.usuario').forEach(tr => {
     tr.onclick = () => detalle(tr.dataset.uid, tr.cells[0].textContent);
