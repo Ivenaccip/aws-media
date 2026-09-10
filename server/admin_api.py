@@ -13,7 +13,10 @@ Más S3 (bytes por prefijo work/{user}/) y el margen = créditos cobrados ×
 piso de venta (tarifas.json) − costo directo. Desde M6.1 el costo incluye la
 línea estimada de infra por corrida (Fargate/Lambda), y de esas mismas filas
 se deriva el TIEMPO de cómputo (costo ÷ tarifa de pricing.json — sin columna
-nueva y retroactivo). Aurora/CloudFront siguen en Cost Explorer.
+nueva y retroactivo). Aurora es base COMPARTIDA: su costo real del mes se mide
+en CloudWatch (horas-ACU × pricing.json) y se prorratea por la actividad
+registrada de cada usuario en el mes — es informativo, no entra al margen.
+CloudFront/ECR siguen solo en Cost Explorer.
 """
 from __future__ import annotations
 
@@ -64,6 +67,32 @@ def _bytes_s3_por_usuario() -> dict[str, int]:
         return {}
 
 
+def _aurora_mes() -> dict | None:
+    """Costo REAL de Aurora en lo que va del mes: horas-ACU medidas por
+    CloudWatch (ServerlessDatabaseCapacity, promedio por hora) × la tarifa de
+    pricing.json. Es la base compartida — no hay atribución directa por
+    usuario, así que el resumen la prorratea por la actividad registrada."""
+    arn = os.getenv("DB_CLUSTER_ARN", "")
+    if not arn:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        import boto3
+        ahora = datetime.now(timezone.utc)
+        inicio = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        datos = boto3.client("cloudwatch").get_metric_statistics(
+            Namespace="AWS/RDS", MetricName="ServerlessDatabaseCapacity",
+            Dimensions=[{"Name": "DBClusterIdentifier", "Value": arn.rsplit(":", 1)[-1]}],
+            StartTime=inicio, EndTime=ahora, Period=3600, Statistics=["Average"])
+        acu_horas = sum(p["Average"] for p in datos["Datapoints"])
+        return {"acu_horas": round(acu_horas, 2),
+                "usd": round(acu_horas * costes_infra.AURORA_USD_ACU_HORA, 4)}
+    except Exception as err:  # noqa: BLE001 — el dashboard vive sin esta fila
+        log.warning("no se pudo medir Aurora en CloudWatch: %s", err)
+        return None
+
+
 @router.get("/api/admin/resumen")
 def resumen():
     _exigir_admin()
@@ -106,6 +135,19 @@ def resumen():
     emails = {f["id"]: f["email"] for f in db.ejecutar("SELECT id, email FROM usuarios")}
     s3 = _bytes_s3_por_usuario()
 
+    # Aurora del MES: costo real medido, prorrateado por la parte de cada
+    # usuario en los costes registrados del mes (quien no corrió nada, 0)
+    aurora = _aurora_mes()
+    aurora_por_usuario: dict[str, float] = {}
+    if aurora and aurora["usd"] > 0:
+        mes = db.ejecutar(
+            "SELECT user_id, SUM(costo_usd) AS usd FROM costes "
+            "WHERE creado >= date_trunc('month', now()) GROUP BY user_id")
+        total_mes = sum(float(f["usd"]) for f in mes)
+        if total_mes > 0:
+            aurora_por_usuario = {f["user_id"]: round(aurora["usd"] * float(f["usd"]) / total_mes, 4)
+                                  for f in mes}
+
     todos = sorted(set().union((f["user_id"] for f in movs), saldos, pelis, costos))
     por_mov = {f["user_id"]: f for f in movs}
     usuarios = []
@@ -126,6 +168,7 @@ def resumen():
             "fargate_s": round(fargate_s.get(u, 0.0)),
             "costo_usd": costo,
             "costo_aws_usd": aws,
+            "aurora_usd": aurora_por_usuario.get(u, 0.0),
             "costo_ia_usd": round(costo - aws, 4),
             "costo_ia_prov": {p: round(v, 4)
                               for p, v in (costos_prov.get(u) or {}).items()},
@@ -136,6 +179,7 @@ def resumen():
     usuarios.sort(key=lambda x: -x["costo_usd"])
     return {
         "usuarios": usuarios,
+        "aurora": aurora,   # {acu_horas, usd} del mes, o null si no se pudo medir
         "piso_venta_usd": creditos.PISO_VENTA_USD,
         "totales": {
             "costo_usd": round(sum(u["costo_usd"] for u in usuarios), 4),

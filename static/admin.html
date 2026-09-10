@@ -98,6 +98,7 @@
         <div class="kpi"><b id="c-fal"></b><span>· fal</span></div>
         <div class="kpi"><b id="c-claude"></b><span>· Claude</span></div>
         <div class="kpi"><b id="c-aws"></b><span>infra AWS (Fargate/Lambda)</span></div>
+        <div class="kpi" id="k-aurora" hidden><b id="c-aurora"></b><span id="c-aurora-nota">Aurora del mes</span></div>
         <div class="kpi"><b id="c-total"></b><span>costo directo total</span></div>
         <span style="flex:1"></span>
         <div><button class="accion" id="sync">⟳ Sincronizar costes (7 días)</button>
@@ -107,7 +108,7 @@
         <h2>Por usuario <span class="mut">(clic en una fila para el detalle por corrida)</span></h2>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Usuario</th><th>OpenAI</th><th>fal</th><th>Claude</th>
-            <th>IA total</th><th>AWS</th><th>S3</th>
+            <th>IA total</th><th>AWS</th><th>Aurora ≈</th><th>S3</th>
             <th>Fargate</th><th>Costo total</th></tr></thead>
           <tbody id="cuerpo-costos"></tbody>
         </table></div>
@@ -117,8 +118,11 @@
           el periodo). La IA sale de las trazas de Langfuse (sync diario
           06:00 UTC + el botón de arriba); AWS es la línea estimada por corrida (segundos reales de
           Fargate/Lambda × tarifas de <code>pricing.json</code>). La columna <b>Fargate</b> deshace esa
-          cuenta (costo ÷ tarifa = tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte y
-          Aurora/CloudFront son compartidos (Cost Explorer para el total).</p>
+          cuenta (costo ÷ tarifa = tiempo de cómputo, ±2 s por redondeo). S3 se muestra aparte.
+          <b>Aurora ≈</b> es el costo REAL del mes de la base (horas-ACU medidas en CloudWatch ×
+          tarifa de <code>pricing.json</code>) prorrateado por la actividad registrada de cada
+          usuario en el mes — la base es compartida, así que el reparto es aproximado, informativo
+          y NO entra al costo directo ni al margen. CloudFront/ECR siguen solo en Cost Explorer.</p>
       </section>
       <section id="detalle" hidden>
         <h2 id="detalle-titulo"></h2>
@@ -198,6 +202,11 @@ async function cargar() {
   $('#c-fal').textContent = usd(prov(t, 'fal'));
   $('#c-claude').textContent = usd(prov(t, 'claude'));
   $('#c-aws').textContent = usd(t.costo_aws_usd ?? 0);
+  if (d.aurora) {
+    $('#k-aurora').hidden = false;
+    $('#c-aurora').textContent = usd(d.aurora.usd);
+    $('#c-aurora-nota').textContent = `Aurora del mes (${d.aurora.acu_horas} h-ACU)`;
+  }
   $('#c-total').textContent = usd(t.costo_usd);
   $('#cuerpo-costos').innerHTML = d.usuarios.map(u => `
     <tr class="usuario" data-uid="${u.user_id}" tabindex="0">
@@ -207,6 +216,7 @@ async function cargar() {
       <td>${usd4(prov(u, 'claude'))}</td>
       <td>${usd4(u.costo_ia_usd ?? u.costo_usd)}</td>
       <td>${usd4(u.costo_aws_usd ?? 0)}</td>
+      <td title="Aurora del mes, prorrateada por la actividad registrada — informativa, no entra al costo total">${usd4(u.aurora_usd ?? 0)}</td>
       <td>${mb(u.s3_bytes)}</td>
       <td title="tiempo estimado de cómputo en Fargate (derivado del costo)">${tiempo(u.fargate_s)}</td>
       <td>${usd4(u.costo_usd)}</td></tr>`).join('');
