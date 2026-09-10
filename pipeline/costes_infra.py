@@ -28,12 +28,14 @@ _PRICING_JSON = Path(__file__).resolve().parent.parent / "tools" / "pricing.json
 FARGATE_USD_VCPU_HORA = 0.04048
 FARGATE_USD_GB_HORA = 0.004445
 LAMBDA_USD_GB_SEGUNDO = 0.0000166667
+AURORA_USD_ACU_HORA = 0.12
 
 try:
     _aws = json.loads(_PRICING_JSON.read_text(encoding="utf-8"))["aws_infra"]
     FARGATE_USD_VCPU_HORA = _aws["fargate"]["usd_por_vcpu_hora"]
     FARGATE_USD_GB_HORA = _aws["fargate"]["usd_por_gb_hora"]
     LAMBDA_USD_GB_SEGUNDO = _aws["lambda"]["usd_por_gb_segundo"]
+    AURORA_USD_ACU_HORA = _aws["aurora"]["usd_por_acu_hora"]
 except (FileNotFoundError, KeyError):
     pass
 

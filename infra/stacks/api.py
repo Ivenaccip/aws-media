@@ -87,6 +87,10 @@ class ApiStack(Stack):
             actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
             resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*",
                        f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/usuarios*"]))
+        # dashboard admin: horas-ACU reales de Aurora del mes (las métricas de
+        # CloudWatch no soportan permisos por recurso — solo lectura)
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["cloudwatch:GetMetricStatistics"], resources=["*"]))
 
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name="aws-media",

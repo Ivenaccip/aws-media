@@ -101,6 +101,35 @@ def test_resumen_agrega_y_calcula_margen(cliente, monkeypatch):
     assert d["totales"]["fargate_s"] == u["fargate_s"]
 
 
+def test_resumen_prorratea_aurora_por_actividad(cliente, monkeypatch):
+    """Aurora es compartida: el costo del mes (CloudWatch × pricing.json) se
+    reparte por la parte de cada usuario en los costes del mes."""
+    from server import admin_api
+
+    def ejecutar(sql, p=None):
+        if "date_trunc('month'" in sql:
+            return [{"user_id": "a", "usd": 3.0}, {"user_id": "b", "usd": 1.0}]
+        if "FROM costes" in sql:
+            return [{"user_id": "a", "concepto": "run-llm", "usd": 3.0},
+                    {"user_id": "b", "concepto": "run-llm", "usd": 1.0}]
+        return []
+    monkeypatch.setattr(db, "ejecutar", ejecutar)
+    monkeypatch.setattr(admin_api, "_aurora_mes",
+                        lambda: {"acu_horas": 10.0, "usd": 1.2})
+    d = cliente.get("/api/admin/resumen").json()
+    assert d["aurora"] == {"acu_horas": 10.0, "usd": 1.2}
+    por_u = {u["user_id"]: u["aurora_usd"] for u in d["usuarios"]}
+    assert por_u == {"a": 0.9, "b": 0.3}   # 75% / 25% de la actividad del mes
+
+
+def test_resumen_sin_cloudwatch_vive_sin_aurora(cliente, monkeypatch):
+    monkeypatch.delenv("DB_CLUSTER_ARN", raising=False)
+    monkeypatch.setattr(db, "ejecutar", _ejecutar_resumen)
+    d = cliente.get("/api/admin/resumen").json()   # sin DB_CLUSTER_ARN → null
+    assert d["aurora"] is None
+    assert d["usuarios"][0]["aurora_usd"] == 0.0
+
+
 def test_trazas_sin_usuario_se_muestran_como_claude(cliente, monkeypatch):
     """Las trazas pre-C6 (user '?') son nuestras corridas de desarrollo."""
     def ejecutar(sql, p=None):
