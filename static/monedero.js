@@ -27,8 +27,10 @@
     '<span id="mon-ticket" hidden title="tus créditos" style="display:flex;color:#e8e6e0">' + TICKET + '</span>' +
     '<span id="mon-pill" hidden style="' + FONDO + 'display:flex;align-items:center;height:38px;' +
       'border-radius:999px">' +
-      '<button id="mon-cta" title="Recargar créditos" style="' + FONDO + 'width:44px;height:44px;' +
-        'margin:-4px 0 -4px -4px;border-radius:50%;color:#e8e6e0;cursor:pointer;font:600 22px/1 system-ui;' +
+      // el círculo del ＋ va al ras de la píldora: mismo alto que ella (su
+      // caja de 40px con bordes), sin sobresalir — feedback del dueño
+      '<button id="mon-cta" title="Recargar créditos" style="' + FONDO + 'width:40px;height:40px;' +
+        'box-sizing:border-box;margin:-1px 0 -1px -1px;border-radius:50%;color:#e8e6e0;cursor:pointer;font:600 20px/1 system-ui;' +
         'display:flex;align-items:center;justify-content:center;padding:0 0 2px 0">＋</button>' +
       '<span id="mon-saldo" style="font:600 14px system-ui;white-space:nowrap;padding:0 20px 0 14px"></span>' +
     '</span>' +
