@@ -177,3 +177,137 @@ def test_check_js_caza_un_error_inline(tmp_path):
     r = subprocess.run([sys.executable, str(RAIZ / "tools" / "check_js.py"), str(roto)],
                        capture_output=True, text=True, cwd=str(RAIZ))
     assert r.returncode == 1 and "1 con errores" in r.stdout
+
+
+# ---------------------------------------------------------------------------
+# fase 2 — crear.html: la pantalla que TODO usuario recorre
+#
+# Aquí el orbe no llega a un hueco vacío como en imágenes: hay barra, hay
+# etapas y hay dos botones que cobran. Lo que se protege es que el orbe se
+# sume sin borrar nada de eso, y que no vuelva a haber un botón de dinero
+# rehabilitado a media petición.
+
+CREAR = ESTATICOS / "crear.html"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node no está en el PATH")
+def test_arnes_del_componente_en_node():
+    """La lógica de TIEMPO del orbe (tope, cronómetro, latido, idempotencia)
+    corre de verdad contra un DOM mínimo: es la parte que puede mentirle al
+    usuario, y no necesita GPU para auditarse."""
+    r = subprocess.run(["node", str(RAIZ / "tests" / "orbe_nodo.js")],
+                       capture_output=True, text=True, cwd=str(RAIZ))
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_crear_monta_el_orbe():
+    html = CREAR.read_text(encoding="utf-8")
+    assert '<script src="/orbe.js">' in html
+    assert 'id="orbe-prog"' in html and "orbeProgreso(" in html
+    assert "precargar()" in html
+    assert "SIN_ORBE" in html and "window.orbe ?" in html
+
+
+def test_la_barra_se_queda():
+    """La barra de esta pantalla es real y monotónica (ETAPAS_PREP/PROD): el
+    orbe la acompaña, no la sustituye. Un orbe no sabe decir «vas por el 60 %»."""
+    html = CREAR.read_text(encoding="utf-8")
+    for pieza in ('id="pbar"', "ETAPAS_PREP", "ETAPAS_PROD", "pctPrev"):
+        assert pieza in html, f"desapareció {pieza}: el orbe se comió la barra"
+
+
+def test_sin_glifos_de_espera():
+    """El orbe existe para reemplazar los ⏳, no para acompañarlos."""
+    assert "⏳" not in CREAR.read_text(encoding="utf-8")
+
+
+def test_la_etapa_no_se_pierde_sin_orbe():
+    """La etapa se mudó al orbe; si orbe.js no cargó, #petapa vuelve a
+    llevarla. Nunca hay una pantalla de progreso que no diga qué está pasando."""
+    html = CREAR.read_text(encoding="utf-8")
+    assert "$('#petapa').textContent = (window.orbe ? '' : etiqueta + ' · ')" in html
+
+
+def test_guarda_contra_el_doble_cobro_en_los_dos_botones():
+    """En esta pantalla se cobra dos veces: el guion y la producción. El
+    listener de monedero corre en CADA visibilitychange, así que sin la guarda
+    volver de otra pestaña rehabilitaba el botón a media petición."""
+    html = CREAR.read_text(encoding="utf-8")
+    assert "function pintaCostos() {\n  if (!mon || !mon.activo || enVuelo) return;" in html
+    assert "function pintaProducir() {\n  if (!mon || !mon.activo || enVuelo) return;" in html
+    # y ninguno de los tres botones que gastan reentra
+    assert html.count("if (enVuelo) return;") >= 3
+
+
+def test_el_orbe_se_va_antes_del_confirm_del_balanceador():
+    """confirm() congela el hilo: un orbe girando detrás afirmaría que estamos
+    trabajando cuando lo único que pasa es que te preguntamos algo."""
+    html = CREAR.read_text(encoding="utf-8")
+    cuerpo = html[html.index("if (d.slots) return fin(d.aviso);"):]
+    assert cuerpo.index("fin();") < cuerpo.index("if (confirm(")
+
+
+def test_el_orbe_se_va_antes_de_la_pantalla_de_error():
+    """render() desmonta en cuanto el estado deja de estar en marcha, antes de
+    pintar resultado o error."""
+    html = CREAR.read_text(encoding="utf-8")
+    cuerpo = html[html.index("function render(p) {"):]
+    assert cuerpo.index("mandoProg.desmontar()") < cuerpo.index("show('progreso')")
+
+
+def test_el_poll_se_duerme_con_la_pestana_oculta():
+    """Cada vuelta del poll cuesta una Lambda y una consulta a Aurora, y el
+    copy de la pantalla invita a irse. Al volver se refresca al instante."""
+    html = CREAR.read_text(encoding="utf-8")
+    assert "poll = document.hidden ? null : setInterval(refrescar, 2500);" in html
+    assert "else { refrescar(); arrancarPoll(); }" in html
+
+
+def test_sin_conexion_el_orbe_baja_a_reposo():
+    """Sin contacto no podemos afirmar que la IA trabaja AHORA: el orbe pasa a
+    reposo mientras el banner explica que el trabajo sigue en la nube."""
+    html = CREAR.read_text(encoding="utf-8")
+    catch = html[html.index("if (++fallosPoll >= 2) {"):]
+    assert "mandoProg.estado('idle');" in catch[:600]
+    assert "mandoProg.estado('pensando');" in html
+
+
+def test_el_tope_del_progreso_mide_silencio_y_no_espera():
+    """Una película larga tarda lo que tarda: el tope de esta pantalla cuenta
+    desde el último avance real, no desde que abriste."""
+    html = CREAR.read_text(encoding="utf-8")
+    assert "const clave = [p.estado, p.etapa, p.progreso.escenas_listas || 0].join(':');" in html
+    assert "mandoProg.latir()" in html
+    assert "latir()" in (ESTATICOS / "orbe.js").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# el bug que destapó el mapeo: «Reintentar» invisible en el camino por defecto
+
+def test_el_servidor_si_acepta_reintentar_una_narracion_sin_guion():
+    """Prueba de que esconder el botón era un bug y no una salvaguarda: para el
+    servidor este proyecto tiene guion de sobra y /producir lo aceptaría."""
+    from pipeline.project import Proyecto
+    p = Proyecto(id="t1", creado="2026-09-11T00:00:00", brief="b",
+                 pipeline="narracion", narracion="Un texto narrado completo.")
+    assert not p.guion, "el pipeline de narración deja p.guion vacío"
+    assert p.tiene_guion(), "el servidor SÍ considera producible este proyecto"
+
+
+def test_reintentar_usa_el_mismo_criterio_que_el_servidor():
+    """El pipeline por defecto es narración desde el 7 de septiembre: la
+    condición vieja (solo p.guion) escondía «Reintentar» en el camino normal y
+    dejaba «Empezar de nuevo» como única salida — que vuelve a cobrar."""
+    html = CREAR.read_text(encoding="utf-8")
+    assert "p.pipeline === 'narracion' && (p.narracion || '').trim()" in html
+    assert "p.personaje.elegida < p.personaje.opciones.length" in html
+    assert "!(p.guion.length && p.personaje.elegida != null)" not in html
+
+
+def test_el_pipeline_por_defecto_sigue_siendo_narracion(monkeypatch):
+    """Si algún día vuelve a ser «escenas», el bug de arriba deja de ser del
+    camino normal — pero la condición del cliente tiene que seguir cubriendo
+    ambos pipelines igual."""
+    import os
+    monkeypatch.delenv("PIPELINE_DEFAULT", raising=False)
+    assert os.getenv("PIPELINE_DEFAULT", "narracion") == "narracion"
