@@ -18,6 +18,8 @@
 //     Chrome estrangula los timers en pestañas de fondo, justo donde nuestro
 //     copy invita a irse. Al cruzarlo el orbe se apaga: el TRABAJO sigue, no
 //     existe cancelación en el producto, y el copy jamás debe decir lo contrario.
+//     En esperas alimentadas por polling, mando.latir() reinicia ese reloj en
+//     cada avance real: lo que se mide entonces es el SILENCIO, no la espera.
 //   · Idempotente por contenedor: dos montajes no son dos orbes.
 //   · prefers-reduced-motion: sin pulso en el núcleo CSS y un frame estático
 //     en el canvas.
@@ -140,9 +142,11 @@
     pildora.appendChild(texto);
     contenedor.appendChild(pildora);
 
-    const base = o.texto || 'Trabajando…';
-    const desde = o.desde || Date.now();
-    const limite = o.tope ? desde + o.tope : 0;
+    // el cronómetro cuelga del ÚLTIMO texto puesto, no del inicial: quien
+    // espera lee «Grabando la narración · llevas 1:30», no «Trabajando…»
+    let base = o.texto || 'Trabajando…';
+    let desde = o.desde || Date.now();
+    let limite = o.tope ? desde + o.tope : 0;
     let modo = o.estado === 'idle' ? 'idle' : 'pensando';
     let gpuCtl = null, agotado = false;
 
@@ -159,7 +163,27 @@
         return mando;
       },
 
-      texto(t) { if (!mando._muerto) texto.textContent = t; return mando; },
+      texto(t) { if (!mando._muerto) { base = t; texto.textContent = t; } return mando; },
+
+      // Hubo AVANCE real del trabajo: el tope vuelve a contar desde ahora.
+      // En una espera alimentada por polling lo que importa no es cuánto
+      // llevas esperando —una película larga tarda lo que tarda— sino cuánto
+      // llevas SIN NOTICIAS. Si el orbe ya se había apagado por silencio y el
+      // trabajo vuelve a dar señales, revive.
+      latir() {
+        if (mando._muerto) return mando;
+        desde = Date.now();
+        limite = o.tope ? desde + o.tope : 0;
+        if (agotado) {
+          agotado = false;
+          pildora.classList.remove('apagado');
+          texto.textContent = base;
+          vivos.add(mando);
+          arrancarReloj();
+          pedirCanvas();
+        }
+        return mando;
+      },
 
       // se cruzó el tope, o la página perdió contacto: el orbe se apaga, el
       // trabajo NO — no existe cancelación en el producto
@@ -204,18 +228,22 @@
     // cross-fade espera al PRIMER FRAME PINTADO, no al adjuntar: montar con la
     // pestaña oculta o con la píldora fuera de la vista no pinta nada, y tapar
     // el núcleo CSS antes de tiempo deja un agujero vacío donde iba el orbe.
-    cargarMotor()
-      .then(motor => motor.adjuntar(
-        canvas, modo,
-        () => { gpuCtl = null; nucleo.classList.remove('gpu'); },  // el núcleo vuelve
-        () => { if (!mando._muerto && !agotado) nucleo.classList.add('gpu'); }))
-      .then(ctl => {
-        if (!ctl) return;
-        if (mando._muerto || agotado) { ctl.destruir(); return; }
-        gpuCtl = ctl;
-        ctl.estado(modo);
-      })
-      .catch(() => { /* sin orbe: la píldora CSS ya está puesta y es suficiente */ });
+    function pedirCanvas() {
+      if (gpuCtl) return;
+      cargarMotor()
+        .then(motor => motor.adjuntar(
+          canvas, modo,
+          () => { gpuCtl = null; nucleo.classList.remove('gpu'); },  // el núcleo vuelve
+          () => { if (!mando._muerto && !agotado) nucleo.classList.add('gpu'); }))
+        .then(ctl => {
+          if (!ctl) return;
+          if (mando._muerto || agotado) { ctl.destruir(); return; }
+          gpuCtl = ctl;
+          ctl.estado(modo);
+        })
+        .catch(() => { /* sin orbe: la píldora CSS ya está puesta y es suficiente */ });
+    }
+    pedirCanvas();
 
     return mando;
   }

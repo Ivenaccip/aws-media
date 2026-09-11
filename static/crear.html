@@ -47,6 +47,9 @@
   details summary { cursor:pointer; color:var(--mut); }
   a { color:#d98be0; }
   .hidden { display:none; }
+  /* M19: los huecos del orbe no ocupan nada mientras no hay orbe montado */
+  #orbe-form:not(:empty), #orbe-prog:not(:empty),
+  #orbe-pmod:not(:empty), #orbe-genop:not(:empty) { margin-top:12px; }
   /* M12: estilo (izq) + personaje (der) en dos columnas; duración debajo */
   .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; align-items:stretch; }
   .cols2 .card { margin-bottom:0; display:flex; flex-direction:column; }
@@ -130,6 +133,7 @@
       <div class="mut">Máximo 60 s en esta versión de pruebas. <span id="durcosto"></span></div>
     </div>
     <button class="btn" id="enviar">Escribir el guion →</button>
+    <div id="orbe-form"></div>
     <p class="mut" id="saldoform"></p>
     <div class="err" id="ferr"></div>
     <!-- M5: volver a una película sin tener que guardar la URL -->
@@ -144,6 +148,10 @@
     <div class="card">
       <h2 id="ptitulo">Trabajando…</h2>
       <div class="bar"><i id="pbar" style="width:5%"></i></div>
+      <!-- M19: la BARRA se queda (es real y monotónica: ETAPAS_PREP/PROD). El
+           orbe no la sustituye — dice que la IA sigue trabajando AHORA, que es
+           lo que una barra quieta no puede decir. -->
+      <div id="orbe-prog"></div>
       <p class="mut" id="petapa"></p>
     </div>
   </section>
@@ -158,6 +166,7 @@
           <div class="opciones" id="opciones"></div>
           <div id="pmodfila" class="hidden" style="margin-top:10px">
             <div class="row"><input type="text" id="pmod" placeholder="Pide un cambio a la opción elegida — p. ej. «ponle lentes»"><button class="chip" id="pmodbtn">Cambiar</button></div>
+            <div id="orbe-pmod"></div>
             <p class="mut" id="pmodmsg"></p>
           </div>
           <details style="margin-top:10px"><summary>Descripción detectada</summary><p class="mut" id="pdesc"></p></details>
@@ -226,6 +235,7 @@
 
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
 <script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -238,8 +248,13 @@ let mon = null, faltaProducir = 0;
 const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
 function msg402(t) { return `${t} ${CTA}`; }
 document.addEventListener('monedero', e => { mon = e.detail; pintaCostos(); });
+// M19: mientras una petición que COBRA está en vuelo, el monedero no puede
+// tocar los botones. monedero.js refresca el saldo en CADA visibilitychange,
+// así que irse a otra pestaña y volver los rehabilitaba a media petición —
+// y el segundo clic cobraba otra vez. Aquí son dos: el guion y la producción.
+let enVuelo = false;
 function pintaCostos() {
-  if (!mon || !mon.activo) return;
+  if (!mon || !mon.activo || enVuelo) return;
   const prep = mon.tarifas.preparar;
   if (prep != null) {
     // mock: el costo en créditos ES el protagonista del botón
@@ -255,7 +270,7 @@ function pintaCostos() {
   if (proyecto && !$('#error').classList.contains('hidden')) pintaError(proyecto);
 }
 function pintaProducir() {
-  if (!mon || !mon.activo) return;
+  if (!mon || !mon.activo || enVuelo) return;
   $('#producir').disabled = faltaProducir > 0;
   $('#saldoaviso').textContent = faltaProducir > 0
     ? `Te faltan ${faltaProducir} créditos para producir (saldo: ${mon.saldo}). ${CTA}` : '';
@@ -318,43 +333,73 @@ $('#modos').onclick = ev => {
   [...$('#modos').children].forEach(c => c.classList.toggle('on', c === b));
   $('#modonota').textContent = MODONOTAS[modo];
 };
+// --- M19: el orbe de «la IA está trabajando» -------------------------------
+// Un adorno que no cargó JAMÁS puede romper un botón que gasta créditos: sin
+// orbe.js el flujo entero sigue igual, solo que sin orbe.
+const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE,
+                   latir: () => SIN_ORBE, apagar: () => SIN_ORBE, desmontar() {} };
+const montarOrbe = (sel, o) => (window.orbe ? orbe.montar($(sel), o) : SIN_ORBE);
+const TOPE_MS = 180000;   // red para la promesa que nunca resuelve, no plazo del trabajo
+const TARDA = 'Esto está tardando más de lo normal. ';
+
 $('#enviar').onclick = async (ev, forzar = false) => {
+  if (enVuelo) return;
   $('#ferr').textContent = '';
-  if (!forzar) {   // M13: guardrail ANTES de mandar (y de cobrar); forzar ya pasó una vez
-    $('#enviar').disabled = true;
-    const pasa = await guardrail($('#brief').value + '\n' + $('#pextra').value);
-    $('#enviar').disabled = false;
-    if (!pasa) return;
-  }
-  const fd = new FormData();
-  fd.append('brief', $('#brief').value); fd.append('estilo', estilo);
-  fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);
-  fd.append('modo', modo); fd.append('rubro', $('#rubro').value);
-  fd.append('personaje_extra', $('#pextra').value);
-  if (forzar) fd.append('forzar', 'true');
-  // M11 (flag del A/B): ?pipeline=narracion en la URL activa el pipeline
-  // narración-primero para ESTE proyecto; sin el parámetro, el de siempre.
-  const pipeAB = new URLSearchParams(location.search).get('pipeline');
-  if (pipeAB) fd.append('pipeline', pipeAB);
-  files.forEach(f => fd.append('referencias', f));
+  enVuelo = true;
   $('#enviar').disabled = true;
-  const r = await fetch('/api/proyectos', {method:'POST', body:fd});
-  $('#enviar').disabled = false;
-  if (r.status === 409) {
-    const d = (await r.json()).detail || {};
-    // M12: sin slots libres — forzar no aplica, hay que archivar primero
-    if (d.slots) { $('#ferr').textContent = d.aviso; return; }
-    // balanceador: el tema no coincide con el rubro
-    if (confirm(`⚖️ ${d.balanceador || 'El tema no parece de tu rubro.'}\n\n¿Crear de todos modos?`))
-      return $('#enviar').onclick(null, true);
-    return;
+  const mando = montarOrbe('#orbe-form', {
+    texto: forzar ? 'Preparando tu película…' : 'Revisando tu texto…',  // el hueco mudo del guardrail
+    tope: TOPE_MS,
+    alAgotar: m => m.texto(TARDA + 'Si no arranca tu película, inténtalo otra vez; '
+      + 'si te descontaron créditos, escríbenos.'),
+  });
+  // TODA salida pasa por aquí: ni el orbe ni la bandera se quedan colgados
+  const fin = msg => {
+    mando.desmontar();
+    enVuelo = false;
+    $('#enviar').disabled = false;
+    if (msg) $('#ferr').textContent = msg;
+    pintaCostos();          // el botón recupera su precio y su saldo
+  };
+  try {
+    // M13: guardrail ANTES de mandar (y de cobrar); forzar ya pasó una vez
+    if (!forzar && !await guardrail($('#brief').value + '\n' + $('#pextra').value)) return fin();
+    mando.texto('Preparando tu película…');
+    const fd = new FormData();
+    fd.append('brief', $('#brief').value); fd.append('estilo', estilo);
+    fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);
+    fd.append('modo', modo); fd.append('rubro', $('#rubro').value);
+    fd.append('personaje_extra', $('#pextra').value);
+    if (forzar) fd.append('forzar', 'true');
+    // M11 (flag del A/B): ?pipeline=narracion en la URL activa el pipeline
+    // narración-primero para ESTE proyecto; sin el parámetro, el de siempre.
+    const pipeAB = new URLSearchParams(location.search).get('pipeline');
+    if (pipeAB) fd.append('pipeline', pipeAB);
+    files.forEach(f => fd.append('referencias', f));
+    const r = await fetch('/api/proyectos', {method:'POST', body:fd});
+    if (r.status === 409) {
+      const d = (await r.json()).detail || {};
+      // M12: sin slots libres — forzar no aplica, hay que archivar primero
+      if (d.slots) return fin(d.aviso);
+      // balanceador: el tema no coincide con el rubro. El confirm() es un modal
+      // que congela el hilo: un orbe girando detrás afirmaría que trabajamos
+      // cuando lo único que pasa es que te estamos preguntando algo.
+      fin();
+      if (confirm(`⚖️ ${d.balanceador || 'El tema no parece de tu rubro.'}\n\n¿Crear de todos modos?`))
+        return $('#enviar').onclick(null, true);
+      return;
+    }
+    if (r.status === 402) return fin(msg402(await errTxt(r)));
+    if (!r.ok) return fin(await errTxt(r));
+    proyecto = await r.json();
+    history.replaceState(null, '', '?p=' + proyecto.id);
+    fin();                        // este orbe se va; el de la barra nace en seguir()
+    window.monedero?.refrescar();
+    seguir();
+  } catch (e) {
+    // sin este catch, una red caída dejaba el botón deshabilitado y mudo
+    fin(e.message || 'No se pudo crear la película — revisa tu conexión e inténtalo otra vez.');
   }
-  if (r.status === 402) { $('#ferr').textContent = msg402(await errTxt(r)); return; }
-  if (!r.ok) { $('#ferr').textContent = await errTxt(r); return; }
-  proyecto = await r.json();
-  window.monedero?.refrescar();
-  history.replaceState(null, '', '?p=' + proyecto.id);
-  seguir();
 };
 
 // --- polling ---
@@ -370,7 +415,21 @@ const ETAPA_TXT = {
 };
 let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
 let pctPrev = 0, pctEstado = '';   // M11: barra monotónica entre pipelines
-function seguir() { render(proyecto); clearInterval(poll); poll = setInterval(refrescar, 2500); }
+const TERMINAL = ['revision', 'listo', 'error'];
+// M19: con la pestaña oculta el poll se DUERME. Chrome ya lo estrangula, pero
+// cada vuelta cuesta una invocación de Lambda y una consulta a Aurora, y el
+// copy de esta pantalla invita justamente a irte. Al volver se refresca al
+// instante: nunca te quedas mirando un estado viejo.
+function arrancarPoll() {
+  clearInterval(poll);
+  poll = document.hidden ? null : setInterval(refrescar, 2500);
+}
+function seguir() { render(proyecto); arrancarPoll(); }
+document.addEventListener('visibilitychange', () => {
+  if (!proyecto || TERMINAL.includes(proyecto.estado)) return;
+  if (document.hidden) { clearInterval(poll); poll = null; }
+  else { refrescar(); arrancarPoll(); }
+});
 // M5: polling resiliente — la conexión caída ya no congela la pantalla en
 // silencio: tras 2 fallos seguidos sale el banner y se sigue reintentando.
 let fallosPoll = 0;
@@ -379,12 +438,41 @@ async function refrescar() {
     const r = await fetch('/api/proyectos/' + proyecto.id);
     if (!r.ok) throw new Error(r.status);
     fallosPoll = 0; $('#conexion').hidden = true;
+    mandoProg.estado('pensando');
     proyecto = await r.json(); render(proyecto);
-    if (['revision','listo','error'].includes(proyecto.estado)) clearInterval(poll);
-  } catch { if (++fallosPoll >= 2) $('#conexion').hidden = false; }
+    if (TERMINAL.includes(proyecto.estado)) { clearInterval(poll); poll = null; }
+  } catch {
+    if (++fallosPoll >= 2) {
+      $('#conexion').hidden = false;
+      // M19: sin contacto no podemos AFIRMAR que la IA está trabajando ahora
+      // mismo, así que el orbe baja a reposo. El trabajo sigue en la nube —lo
+      // dice el banner—, pero el orbe solo promete lo que sabemos.
+      mandoProg.estado('idle');
+    }
+  }
+}
+// M19: el orbe de la barra. Su tope NO cuenta desde que abriste —una película
+// larga tarda lo que tarda— sino desde el último AVANCE real: etapa nueva o una
+// escena más. Doce minutos de silencio total sí significan atascado.
+const SIN_AVANCE_MS = 720000;
+let mandoProg = SIN_ORBE, progClave = '';
+function orbeProgreso(p, etiqueta) {
+  // montar() es idempotente por contenedor: esto devuelve siempre el mismo
+  // mando y NO pisa el texto de un orbe que ya se apagó por silencio.
+  mandoProg = montarOrbe('#orbe-prog', {
+    tope: SIN_AVANCE_MS,
+    alAgotar: m => m.texto('Llevamos un rato sin novedades. Tu película sigue en la nube: '
+      + 'puedes cerrar esto y volver con el mismo enlace. Si sigue igual, escríbenos.'),
+  });
+  const clave = [p.estado, p.etapa, p.progreso.escenas_listas || 0].join(':');
+  if (clave !== progClave) { progClave = clave; mandoProg.latir().texto(etiqueta); }
 }
 function render(p) {
-  if (p.estado==='creado' || p.estado==='preparando' || p.estado==='produciendo') {
+  const enMarcha = ['creado', 'preparando', 'produciendo'].includes(p.estado);
+  // el orbe se va ANTES de pintar lo que sigue: nunca acompaña a un resultado
+  // ni —sobre todo— a la pantalla de error
+  if (!enMarcha) { mandoProg.desmontar(); mandoProg = SIN_ORBE; progClave = ''; }
+  if (enMarcha) {
     show('progreso');
     const prod = p.estado==='produciendo';
     $('#ptitulo').textContent = (prod ? '🎥 Produciendo la película…' : '✍️ Investigando y escribiendo el guion…')
@@ -396,9 +484,14 @@ function render(p) {
     if (p.estado !== pctEstado) { pctEstado = p.estado; pctPrev = 0; }
     pct = Math.max(pct, pctPrev); pctPrev = pct;
     $('#pbar').style.width = pct + '%';
-    $('#petapa').textContent = (ETAPA_TXT[p.etapa] || p.etapa || '')
-      + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '')
-      + ' · puedes cerrar la pestaña: la producción sigue en la nube y este enlace te trae de vuelta';
+    const etiqueta = (ETAPA_TXT[p.etapa] || p.etapa || 'Trabajando')
+      + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '');
+    orbeProgreso(p, etiqueta);
+    // M19: la etapa viva se mudó al orbe y #petapa se queda con la nota que no
+    // cambia — antes las tres ideas iban apelmazadas en una línea. Sin orbe.js
+    // la línea vuelve a llevarlo todo: la etapa no se pierde nunca.
+    $('#petapa').textContent = (window.orbe ? '' : etiqueta + ' · ')
+      + 'Puedes cerrar la pestaña: la producción sigue en la nube y este enlace te trae de vuelta.';
   } else if (p.estado==='revision') { renderRevision(p); }
   else if (p.estado==='listo') {
     show('resultado');
@@ -423,7 +516,18 @@ function render(p) {
   } else if (p.estado==='error') {
     show('error');
     $('#emsg').textContent = p.error || 'Error desconocido';
-    $('#reintentar').classList.toggle('hidden', !(p.guion.length && p.personaje.elegida != null));
+    // M19 (bug): mismo criterio que Proyecto.tiene_guion() en el servidor. Con
+    // el pipeline de narración —el de POR DEFECTO desde el 7 de septiembre— el
+    // texto vive en p.narracion y p.guion queda vacío, así que la condición
+    // vieja (solo p.guion) escondía «Reintentar» SIEMPRE en el camino normal:
+    // una producción fallida únicamente dejaba «Empezar de nuevo», que crea
+    // otra película y vuelve a cobrar la preparación desde cero.
+    const hayTexto = p.pipeline === 'narracion' && (p.narracion || '').trim()
+      ? true : p.guion.some(e => (e.narracion || '').trim());
+    // y el servidor pide url_elegida, que además exige que el índice exista
+    const hayPersonaje = p.personaje.elegida != null
+      && p.personaje.elegida < p.personaje.opciones.length;
+    $('#reintentar').classList.toggle('hidden', !(hayTexto && hayPersonaje));
     pintaError(p);
   }
 }
@@ -474,6 +578,7 @@ function renderOpciones(p) {
     `<img src="/api/proyectos/${p.id}/archivo/${o.path.split(/[\\/]/).slice(-2).join('/')}" data-i="${i}" class="${p.personaje.elegida===i?'on':''}" alt="Opción ${i+1} del personaje">`).join('')
     || `<div style="grid-column:1/-1"><p class="mut">Aún no hay opciones de personaje.</p>
         <button class="btn sec" id="genop">Crear 2 opciones con IA (incluido) →</button>
+        <div id="orbe-genop"></div>
         <p class="mut" id="genopmsg"></p></div>`;
   $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
     proyecto.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im));
@@ -483,25 +588,55 @@ function renderOpciones(p) {
   // Proyecto sin opciones (modo idea sin referencias) ya NO es un callejón sin
   // salida: los créditos de preparar pagan las opciones, generarlas es gratis.
   if ($('#genop')) $('#genop').onclick = async () => {
-    $('#genop').disabled = true; $('#genopmsg').textContent = '⏳ Generando las 2 opciones (~30 s)…';
-    const r = await fetch(`/api/proyectos/${p.id}/personaje/generar`, {method:'POST'});
-    if (!r.ok) { $('#genop').disabled = false; $('#genopmsg').textContent = await errTxt(r); return; }
-    proyecto = await r.json(); renderOpciones(proyecto);
+    $('#genop').disabled = true; $('#genopmsg').textContent = '';
+    const mando = montarOrbe('#orbe-genop', {
+      texto: 'Dibujando 2 opciones de personaje · ~30 s',
+      tope: TOPE_MS,
+      alAgotar: m => m.texto(TARDA + 'Si no aparecen las opciones, inténtalo otra vez.'),
+    });
+    try {
+      const r = await fetch(`/api/proyectos/${p.id}/personaje/generar`, {method:'POST'});
+      if (!r.ok) throw new Error(await errTxt(r));
+      proyecto = await r.json();
+      mando.desmontar();       // antes de re-pintar: el orbe nunca ve el resultado
+      renderOpciones(proyecto);
+    } catch (e) {
+      mando.desmontar();       // ni acompaña a un error
+      $('#genop').disabled = false; $('#genopmsg').textContent = e.message;
+    }
   };
   $('#pmodbtn').onclick = async () => {
+    if (enVuelo) return;
     const instruccion = $('#pmod').value.trim();
     if (!instruccion) { $('#pmodmsg').textContent = 'Escribe qué quieres cambiar.'; return; }
     if (proyecto.personaje.elegida == null) { $('#pmodmsg').textContent = 'Primero elige la opción a modificar.'; return; }
-    $('#pmodbtn').disabled = true; $('#pmodmsg').textContent = '⏳ Modificando la imagen…';
-    const r = await fetch(`/api/proyectos/${p.id}/personaje/modificar`, {method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({instruccion, opcion: proyecto.personaje.elegida})});
-    $('#pmodbtn').disabled = false;
-    if (r.status === 402) { $('#pmodmsg').textContent = msg402(await errTxt(r)); return; }
-    if (!r.ok) { $('#pmodmsg').textContent = await errTxt(r); return; }
-    proyecto = await r.json(); $('#pmod').value = ''; $('#pmodmsg').textContent = '';
-    window.monedero?.refrescar();
-    renderOpciones(proyecto);
+    enVuelo = true;
+    $('#pmodbtn').disabled = true; $('#pmodmsg').textContent = '';
+    const mando = montarOrbe('#orbe-pmod', {
+      texto: 'Cambiando el personaje · ~20 s',
+      tope: TOPE_MS,
+      alAgotar: m => m.texto(TARDA + 'Si no cambia la imagen, inténtalo otra vez; '
+        + 'si te descontaron créditos, escríbenos.'),
+    });
+    const fin = msg => {
+      mando.desmontar();
+      enVuelo = false;
+      $('#pmodbtn').disabled = false;
+      if (msg) $('#pmodmsg').textContent = msg;
+    };
+    try {
+      const r = await fetch(`/api/proyectos/${p.id}/personaje/modificar`, {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({instruccion, opcion: proyecto.personaje.elegida})});
+      if (r.status === 402) return fin(msg402(await errTxt(r)));
+      if (!r.ok) return fin(await errTxt(r));
+      proyecto = await r.json(); $('#pmod').value = '';
+      fin();                   // el orbe se va antes de que aparezca la imagen nueva
+      window.monedero?.refrescar();
+      renderOpciones(proyecto);
+    } catch (e) {
+      fin(e.message || 'No se pudo cambiar la imagen — revisa tu conexión.');
+    }
   };
 }
 const ICONO = {verde:'🟢', amarillo:'🟡', rojo:'🔴'};
@@ -613,8 +748,10 @@ $('#pnombre').addEventListener('input', marcaCambio);
 
 $('#addesc').onclick = () => { addEscena(''); marcaCambio(); };
 $('#producir').onclick = async () => {
+  if (enVuelo) return;
   $('#rerr').textContent = '';
   if (proyecto.personaje.elegida == null) { $('#rerr').textContent = 'Elige una opción de personaje.'; return; }
+  enVuelo = true;
   $('#producir').disabled = true;
   try {
     let r = await fetch(`/api/proyectos/${proyecto.id}/guion`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpoGuion($('#voz').value))});
@@ -627,6 +764,7 @@ $('#producir').onclick = async () => {
     sinGuardar = false; clearTimeout(autoT);
     proyecto = await r.json(); window.monedero?.refrescar(); seguir();
   } catch (e) { $('#rerr').textContent = e.message; }
+  enVuelo = false;              // antes de pintaProducir(): es quien decide el disabled
   $('#producir').disabled = false; pintaProducir();
 };
 
@@ -644,12 +782,20 @@ $('#modificar').onclick = async () => {
 };
 
 $('#reintentar').onclick = async () => {
+  if (enVuelo) return;
+  enVuelo = true;
   $('#reintentar').disabled = true;
-  const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
+  try {
+    const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
+    if (r.status === 402) throw new Error(msg402(await errTxt(r)));
+    if (!r.ok) throw new Error(await errTxt(r));
+    proyecto = await r.json(); window.monedero?.refrescar(); seguir();
+  } catch (e) {
+    // sin el catch, una red caída dejaba el botón deshabilitado y sin mensaje
+    $('#emsg').textContent = e.message || 'No se pudo reintentar — revisa tu conexión.';
+  }
+  enVuelo = false;
   $('#reintentar').disabled = false;
-  if (r.status === 402) { $('#emsg').textContent = msg402(await errTxt(r)); return; }
-  if (!r.ok) { $('#emsg').textContent = await errTxt(r); return; }
-  proyecto = await r.json(); window.monedero?.refrescar(); seguir();
 };
 
 // --- M5: tus películas — volver a cualquiera sin tener que guardar la URL ---
@@ -695,6 +841,8 @@ else {
     $('#card-modo').classList.add('hidden');
   } else cargarPeliculas();
 }
+
+window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic
 </script>
 </body>
 </html>
