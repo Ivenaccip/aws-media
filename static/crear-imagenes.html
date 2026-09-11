@@ -67,7 +67,7 @@
       <h2>🖼 ¿Qué imagen quieres?</h2>
       <textarea id="prompt" maxlength="2000"
         placeholder="Escribe lo que quieras ver — p. ej. «un mercado flotante al amanecer, con lanchas llenas de frutas»."></textarea>
-      <button class="btn" id="generar">Crear la imagen →</button>
+      <button class="btn" id="generar">Generar</button>
       <div id="orbe-hueco"></div>
       <p class="mut" id="saldoform"></p>
       <div class="err" id="gerr"></div>
@@ -114,7 +114,7 @@ fetch('/api/estilos').then(r => r.json()).then(list => {
 });
 
 // costo visible ANTES de gastar, como en todo el producto
-const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+const CTA = 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.';
 // M19: a media petición este listener NO puede tocar el botón. monedero.js
 // refresca el saldo en CADA visibilitychange, así que sin esta guarda irse a
 // otra pestaña y volver rehabilitaba el botón y el segundo clic COBRABA otra vez.
@@ -122,7 +122,7 @@ let enVuelo = false;
 document.addEventListener('monedero', e => {
   const mon = e.detail;
   if (!mon.activo || mon.tarifas.imagen == null || enVuelo) return;
-  $('#generar').textContent = `${mon.tarifas.imagen} créditos — crear la imagen →`;
+  $('#generar').textContent = `Generar ✦ ${mon.tarifas.imagen}`;
   const falta = mon.tarifas.imagen - mon.saldo;
   $('#generar').disabled = falta > 0;
   $('#saldoform').textContent = falta > 0

@@ -73,8 +73,8 @@
       <div class="barra hidden" id="herramientas">
         <span class="mut">Pincel:</span>
         <input type="range" id="grosor" min="10" max="120" value="46" aria-label="Grosor del pincel">
-        <button class="btn2" id="borrar">Borrar lo pintado</button>
-        <button class="btn2" id="otra">Cambiar de imagen</button>
+        <button class="btn2" id="borrar">Borrar</button>
+        <button class="btn2" id="otra">Otra imagen</button>
         <span class="mut">La zona rosada es la que se va a cambiar.</span>
       </div>
     </div>
@@ -83,7 +83,7 @@
       <h2>2 · ¿Qué cambiamos?</h2>
       <textarea id="prompt" maxlength="2000"
         placeholder="Describe qué quieres en la zona pintada — p. ej. «reemplaza el letrero por una ventana con plantas»."></textarea>
-      <button class="btn" id="editar">Aplicar el cambio →</button>
+      <button class="btn" id="editar">Aplicar</button>
       <p class="mut" id="saldoform"></p>
       <div class="err" id="gerr"></div>
     </div>
@@ -185,7 +185,7 @@ function imagenBlob() {
 }
 
 // --- costo visible ANTES de gastar, como en todo el producto ----------------
-const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+const CTA = 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.';
 // M19: a media petición este listener NO puede tocar el botón. monedero.js
 // refresca el saldo en CADA visibilitychange, así que sin esta guarda irse a
 // otra pestaña y volver rehabilitaba el botón y el segundo clic COBRABA otra vez.
@@ -193,7 +193,7 @@ let enVuelo = false;
 document.addEventListener('monedero', e => {
   const mon = e.detail;
   if (!mon.activo || mon.tarifas.imagen == null || enVuelo) return;
-  $('#editar').textContent = `${mon.tarifas.imagen} créditos — aplicar el cambio →`;
+  $('#editar').textContent = `Aplicar ✦ ${mon.tarifas.imagen}`;
   const falta = mon.tarifas.imagen - mon.saldo;
   $('#editar').disabled = falta > 0;
   $('#saldoform').textContent = falta > 0

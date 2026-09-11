@@ -128,7 +128,7 @@
       el.style.display = 'flex';
       el.querySelector('#mon-ticket').hidden = false;
       el.querySelector('#mon-pill').hidden = false;
-      el.querySelector('#mon-saldo').textContent = `${d.saldo} créditos`;
+      el.querySelector('#mon-saldo').textContent = `${d.saldo} créditos ✦`;
       document.dispatchEvent(new CustomEvent('monedero', { detail: est }));
     } catch { programarReintento(); /* sin red: se reintenta igual */ }
   }

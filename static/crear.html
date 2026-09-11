@@ -133,7 +133,7 @@
       <div class="row"><input type="range" id="dur" min="15" max="60" step="5" value="45"><b id="durv">45s</b></div>
       <div class="mut">Máximo 60 s en esta versión de pruebas. <span id="durcosto"></span></div>
     </div>
-    <button class="btn" id="enviar">Escribir el guion →</button>
+    <button class="btn" id="enviar">Escribir</button>
     <div id="orbe-form"></div>
     <p class="mut" id="saldoform"></p>
     <div class="err" id="ferr"></div>
@@ -195,8 +195,9 @@
         <p id="dossier" style="white-space:pre-wrap"></p><ul id="fuentes"></ul></details>
     </div>
     <div class="sticky">
-      <button class="btn" id="producir">Producir la película →</button>
-      <p class="mut" id="saldoaviso"><span id="autosave"></span></p>
+      <button class="btn" id="producir">Producir</button>
+      <p class="mut"><span id="prodnota"></span> <span id="saldoaviso"></span></p>
+      <p class="mut" id="autosave"></p>
       <div class="err" id="rerr"></div>
     </div>
   </section>
@@ -223,7 +224,7 @@
   <section id="error" class="hidden">
     <div class="card"><h2>❌ Algo falló</h2><p class="err" id="emsg"></p>
       <p class="mut" id="edevol"></p></div>
-    <button class="btn" id="reintentar">Reintentar la producción →</button>
+    <button class="btn" id="reintentar">Reintentar</button>
     <button class="btn sec" onclick="location.href='/crear.html'">Empezar de nuevo</button>
   </section>
 </main>
@@ -245,8 +246,8 @@ const show = id => { for (const s of ['form','progreso','revision','resultado','
 let estilo = 'animated', files = [], proyecto = null, poll = null;
 
 // --- monedero (M1): saldo y costo visibles ANTES de gastar, nunca después del 402 ---
-let mon = null, faltaProducir = 0;
-const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+let mon = null, faltaProducir = 0, saldoProd = null;
+const CTA = 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.';
 function msg402(t) { return `${t} ${CTA}`; }
 document.addEventListener('monedero', e => { mon = e.detail; pintaCostos(); });
 // M19: mientras una petición que COBRA está en vuelo, el monedero no puede
@@ -258,14 +259,14 @@ function pintaCostos() {
   if (!mon || !mon.activo || enVuelo) return;
   const prep = mon.tarifas.preparar;
   if (prep != null) {
-    // mock: el costo en créditos ES el protagonista del botón
-    $('#enviar').textContent = `${prep} créditos — escribir el guion →`;
+    // M21: el botón dice el verbo y el precio, nada más (`Escribir ✦ 20`).
+    $('#enviar').textContent = `Escribir ✦ ${prep}`;
     const falta = prep - mon.saldo;
     $('#enviar').disabled = falta > 0;
     $('#saldoform').textContent = falta > 0
       ? `Te faltan ${falta} créditos para empezar (saldo: ${mon.saldo}). ${CTA}` : '';
   }
-  if (mon.tarifas.imagen != null) $('#pmodbtn').textContent = `Cambiar · ${mon.tarifas.imagen} créditos`;
+  if (mon.tarifas.imagen != null) $('#pmodbtn').textContent = `Cambiar ✦ ${mon.tarifas.imagen}`;
   pintaDurCosto();
   pintaProducir();
   if (proyecto && !$('#error').classList.contains('hidden')) pintaError(proyecto);
@@ -273,6 +274,11 @@ function pintaCostos() {
 function pintaProducir() {
   if (!mon || !mon.activo || enVuelo) return;
   $('#producir').disabled = faltaProducir > 0;
+  // si no alcanza manda el aviso: contar el saldo en las dos frases seguidas
+  // se lee como si fueran dos saldos distintos
+  $('#prodnota').textContent = !minutosProd ? ''
+    : faltaProducir > 0 ? `~${minutosProd} min.`
+    : `Te quedan ${saldoProd} créditos · ~${minutosProd} min.`;
   $('#saldoaviso').textContent = faltaProducir > 0
     ? `Te faltan ${faltaProducir} créditos para producir (saldo: ${mon.saldo}). ${CTA}` : '';
 }
@@ -540,7 +546,8 @@ function pintaError(p) {
     `devolvieron solos — tu saldo de arriba ya lo refleja (tienes ${mon.saldo} créditos).`;
   if (mon.tarifas.video_por_segundo && p.duracion_s) {
     const costo = Math.ceil(mon.tarifas.video_por_segundo * p.duracion_s);
-    $('#reintentar').textContent = `Reintentar la producción → ${costo} créditos (se cobran de nuevo)`;
+    $('#reintentar').textContent = `Reintentar ✦ ${costo}`;
+    $('#edevol').textContent += ` Reintentar cuesta ${costo} créditos y se cobran de nuevo.`;
   }
 }
 
@@ -578,9 +585,9 @@ function renderOpciones(p) {
   $('#opciones').innerHTML = p.personaje.opciones.map((o,i) =>
     `<img src="/api/proyectos/${p.id}/archivo/${o.path.split(/[\\/]/).slice(-2).join('/')}" data-i="${i}" class="${p.personaje.elegida===i?'on':''}" alt="Opción ${i+1} del personaje">`).join('')
     || `<div style="grid-column:1/-1"><p class="mut">Aún no hay opciones de personaje.</p>
-        <button class="btn sec" id="genop">Crear 2 opciones con IA (incluido) →</button>
+        <button class="btn sec" id="genop">Crear 2 opciones</button>
         <div id="orbe-genop"></div>
-        <p class="mut" id="genopmsg"></p></div>`;
+        <p class="mut" id="genopmsg">Sin costo: va incluido en los créditos del guion.</p></div>`;
   $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
     proyecto.personaje.elegida = +im.dataset.i; document.querySelectorAll('#opciones img').forEach(x => x.classList.toggle('on', x===im));
     marcaCambio(); };
@@ -703,11 +710,14 @@ function estimar() {
     // secundario. Si el saldo no alcanza, el botón se apaga ANTES del 402.
     minutosProd = c.minutos;
     if (c.creditos != null) {
-      $('#producir').textContent = `Producir la película → ${c.creditos} créditos (te quedan ${c.creditos_saldo}) · ~${c.minutos} min`;
+      $('#producir').textContent = `Producir ✦ ${c.creditos}`;
+      saldoProd = c.creditos_saldo;
       faltaProducir = Math.max(0, c.creditos - c.creditos_saldo);
-      pintaProducir();
+      pintaProducir();          // es quien compone la nota de abajo
     } else {
-      $('#producir').textContent = `Producir la película → ≈ $${c.total.toFixed(2)} dólares · ~${c.minutos} min`;
+      // sin monedero (dev local) no hay créditos que poner tras el ✦
+      $('#producir').textContent = 'Producir';
+      $('#prodnota').textContent = `≈ $${c.total.toFixed(2)} dólares · ~${c.minutos} min.`;
     }
   }, 400);
 }

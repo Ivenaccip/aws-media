@@ -82,7 +82,7 @@ let orbeEst = SIN_ORBE, listaFirma = null;
 function botonRecargar() {
   const b = document.createElement("button");
   b.className = "copiar";
-  b.textContent = "Recargar créditos";
+  b.textContent = "Recargar";
   b.onclick = () => window.monedero && monedero.recargar && monedero.recargar();
   return b;
 }
@@ -153,7 +153,7 @@ async function cargar() {
   $("red").hidden = true;
   orbeEst.estado("pensando");
   TARIFA = j.creditos;
-  $("btn-analizar").textContent = `Analizar — ${TARIFA} créditos`;
+  $("btn-analizar").textContent = `Analizar ✦ ${TARIFA}`;
   $("btn-analizar").disabled = false;
   // repintar sin cambios tiraba el «copiado ✓» del usuario cada 5 segundos
   const firma = JSON.stringify(j.estilos.map(e => [e.id, e.estado]));

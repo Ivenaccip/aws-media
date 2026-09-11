@@ -133,7 +133,7 @@ def test_guarda_contra_el_doble_cobro(pagina):
     html = (ESTATICOS / pagina).read_text(encoding="utf-8")
     listener = html[html.index("document.addEventListener('monedero'"):]
     guarda = listener.index("enVuelo) return")
-    toca_el_boton = listener.index(".textContent = `${mon.tarifas.imagen}")
+    toca_el_boton = listener.index("${mon.tarifas.imagen}`")
     assert guarda < toca_el_boton, "el listener toca el botón antes de mirar enVuelo"
     assert "if (enVuelo) return;" in html        # y el handler tampoco reentra
 

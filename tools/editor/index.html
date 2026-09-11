@@ -1253,7 +1253,7 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
       <label>Prompt nuevo</label>
       <textarea id="g1nuevo" rows="5"></textarea>
       <div id="g1precio"></div>
-      <button class="primary" id="g1generar">✨ Generar opciones de imagen</button>
+      <button class="primary" id="g1generar">Generar</button>
       <div id="g1msg"></div>
     </div>
   </div>
@@ -1457,7 +1457,7 @@ async function b3abrir() {
       <select id="b3archivo" aria-label="Video a publicar">${st.descargables.filter(d => d.nombre.endsWith(".mp4"))
         .sort((a, b) => (b.clave === "subtitulado") - (a.clave === "subtitulado")).map(d =>
         `<option value="${d.clave}">${d.nombre}</option>`).join("")}</select>
-      <button id="b3sugerir" style="margin-bottom:6px">✨ Sugerir títulos (~$0.01 dólares)</button>
+      <button id="b3sugerir" style="margin-bottom:6px" title="~$0.01 dólares de LLM">Sugerir títulos</button>
       <div id="b3titulos"></div>
       <textarea id="b3texto" rows="3" aria-label="Texto del post" placeholder="Texto del post (elige un título sugerido o escribe el tuyo)"></textarea>
       <div style="margin-bottom:6px">
@@ -1521,6 +1521,7 @@ async function g1abrir(oid) {
      ${v.n !== G1.version_activa ? `<button onclick="g1activar(${v.n})" style="font-size:11px;padding:1px 7px">usar esta</button>` : "(activa)"}</div>`).join("");
   try { G1PRECIO = await fj(`api/overlays/${oid}/precios`);
     $("g1precio").textContent = `Costo: imágenes ${g1txtImg()} + video ${g1txtVid()} (${G1PRECIO.veo_segundos}s de Veo)`;
+    $("g1generar").textContent = G1PRECIO.creditos ? `Generar ✦ ${G1PRECIO.creditos.imagen}` : "Generar";
   } catch (e) { $("g1precio").textContent = "precio no disponible: " + e.message; }
   $("g1modal").classList.add("abierto");
 }
@@ -1555,7 +1556,8 @@ $("g1generar").onclick = async () => {
         document.querySelectorAll("#g1cands img").forEach(i => i.classList.toggle("eleg", i === img));
         const b = $("g1animar");
         b.style.display = ""; b.className = "primary";
-        b.textContent = `🎬 Animar con Veo — ${g1txtVid()} (sustituye el clip, la versión anterior se conserva)`;
+        b.textContent = G1PRECIO.creditos ? `Animar ✦ ${G1PRECIO.creditos.video}` : "Animar";
+        b.title = "Sustituye el clip; la versión anterior se conserva";
       };
       $("g1cands").appendChild(img);
     }

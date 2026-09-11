@@ -136,7 +136,7 @@ const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE,
 function botonRecargar() {
   const b = document.createElement("button");
   b.className = "sec";
-  b.textContent = "Recargar créditos";
+  b.textContent = "Recargar";
   b.onclick = () => window.monedero && monedero.recargar && monedero.recargar();
   return b;
 }
@@ -245,7 +245,7 @@ $("btn-cotizar").onclick = async () => {
   catch (e) { $("imp-cotiza").innerHTML = `<span class="err">${e.message}</span>`; return; }
   $("imp-cotiza").innerHTML = `«${COTIZA.titulo}» · ${fmtMin(COTIZA.duracion_s)}`;
   $("btn-importar").hidden = false;
-  $("btn-importar").textContent = `Importar — ${COTIZA.creditos} créditos`;
+  $("btn-importar").textContent = `Importar ✦ ${COTIZA.creditos}`;
 };
 $("btn-importar").onclick = async () => {
   if (!COTIZA) return;
@@ -313,7 +313,7 @@ function pintar() {
     titulo("");
     if (st.estado === "error")
       $("analisis-estado").innerHTML = `<span class="err">El análisis falló${st.error ? ` (${st.error})` : ""} — tus créditos se devolvieron.</span>`;
-    botonAnalizar("Analizar el video");
+    botonAnalizar("Analizar");
   }
   pintarRender(st.render || {});
 }
@@ -326,7 +326,7 @@ async function botonAnalizar(etiqueta) {
   $("analisis-info").textContent = `El video dura ${fmtMin(COSTO.duracion_s)}. ` +
     (COSTO.con_transcript ? "Ya trae transcript: el análisis no re-transcribe."
                           : "Incluye la transcripción en nube (cobrada por duración).");
-  b.textContent = `${etiqueta} → ${COSTO.creditos_analizar} créditos`;
+  b.textContent = `${etiqueta} ✦ ${COSTO.creditos_analizar}`;
   if (!COSTO.backend_listo) { b.disabled = true; $("analisis-info").textContent += " ⚠ " + COSTO.aviso; }
   else b.disabled = false;
 }
@@ -383,8 +383,11 @@ function seleccion() {
 function actualizarBoton() {
   const n = seleccion().length;
   const b = $("btn-render");
-  b.textContent = n ? `Renderizar ${n} short${n === 1 ? "" : "s"} → ${n * (EST.creditos_por_short || 2)} créditos`
-                    : "Marca al menos un candidato";
+  b.textContent = n ? `Renderizar ✦ ${n * (EST.creditos_por_short || 2)}` : "Renderizar";
+  // cuántos shorts entran en ese precio es contexto, no etiqueta del botón
+  $("render-estado").textContent = n
+    ? `${n} short${n === 1 ? "" : "s"} marcado${n === 1 ? "" : "s"}.`
+    : "Marca al menos un candidato.";
   b.disabled = !n;
 }
 document.addEventListener("input", e => { if (e.target.closest(".cand")) actualizarBoton(); });
