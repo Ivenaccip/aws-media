@@ -6,8 +6,8 @@
 <title>Estudio de video</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root { color-scheme: dark; --bg:#14161a; --card:#1d2026; --line:#2c3038;
-          --txt:#e8e6e0; --mut:#9a978f; --acc:#5b8dd6; }
+  :root { color-scheme: dark; --bg:#0b1626; --card:#111f33; --line:#22354f;
+          --txt:#ece8e1; --mut:#93a3b8; --acc:#5b8dd6; }
   * { box-sizing: border-box; margin: 0; }
   body { font: 15px/1.6 system-ui, sans-serif; background: var(--bg); color: var(--txt);
          min-height: 100vh; }
@@ -44,7 +44,7 @@
   .prompt [data-tip] { position: relative; }
   .prompt [data-tip]::after { content: attr(data-tip); position: absolute;
     bottom: calc(100% + 10px); left: 0; width: max-content; max-width: 250px;
-    background: #23232e; border: 1px solid var(--line); border-radius: 10px;
+    background: #18293f; border: 1px solid var(--line); border-radius: 10px;
     padding: 8px 11px; font-size: 12.5px; line-height: 1.45; color: var(--txt);
     box-shadow: 0 6px 22px rgba(0,0,0,.5);
     text-align: left; white-space: normal; opacity: 0; visibility: hidden;
@@ -61,9 +61,9 @@
   .prompt button.modo { border: 1px solid var(--line); background: transparent; color: var(--mut);
     border-radius: 999px; padding: 8px 16px; cursor: pointer; font: inherit; font-size: 14px; }
   .prompt button.modo:hover { border-color: var(--acc); }
-  .prompt button.modo.on { border-color: var(--acc); color: var(--txt); background: #1c2634; }
+  .prompt button.modo.on { border-color: var(--acc); color: var(--txt); background: #18293f; }
   .prompt .enviar { margin-left: auto; width: 40px; height: 40px; border-radius: 50%;
-    border: 0; background: var(--acc); color: #10131a; font-size: 19px; font-weight: 700;
+    border: 0; background: var(--acc); color: #08111e; font-size: 19px; font-weight: 700;
     cursor: pointer; display: grid; place-items: center; line-height: 1; }
   .prompt .enviar:hover { filter: brightness(1.12); }
   .prompt .nota { color: var(--mut); font-size: 12.5px; margin-top: 10px; }
@@ -80,7 +80,7 @@
     text-decoration: none; color: inherit; cursor: pointer; }
   .proy:hover { border-color: var(--acc); }
   .proy .thumb { aspect-ratio: 16/10; width: 100%; object-fit: cover; display: block;
-    background: linear-gradient(135deg, #23262d, #2c3345); border-bottom: 1px solid var(--line); }
+    background: linear-gradient(135deg, #18293f, #22354f); border-bottom: 1px solid var(--line); }
   .proy .thumb.vacia { display: grid; place-items: center; color: var(--mut); font-size: 26px; }
   .proy .pie { padding: 10px 12px; }
   .proy .brief { font-size: 14px; font-weight: 600; overflow: hidden;
@@ -106,7 +106,7 @@
   #lista-arch button { border: 1px solid var(--line); background: transparent; color: var(--txt);
     border-radius: 8px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12.5px; }
   #lista-arch button:hover { border-color: var(--acc); }
-  .err { color: #ff8f8f; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  .err { color: #ff8080; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
   :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
   @media (max-width: 860px) {

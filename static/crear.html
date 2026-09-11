@@ -6,24 +6,24 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  :root { --bg:#0f0f14; --card:#1a1a22; --line:#2a2a36; --txt:#ececf1; --mut:#8b8b9a; --acc:#c93fb6; --acc2:#7b3fe4; }
+  :root { --bg:#0b1626; --card:#111f33; --line:#22354f; --txt:#ece8e1; --mut:#93a3b8; --acc:#da8c28; --acc2:#f0a94a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
   main { max-width:720px; margin:32px auto; padding:0 16px; }
   h1 { font-size:22px; margin:0 0 20px; }
   h2 { font-size:16px; margin:22px 0 8px; display:flex; align-items:center; gap:8px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
-  textarea, input[type=text] { width:100%; background:#111118; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  textarea, input[type=text] { width:100%; background:#18293f; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
   textarea { min-height:120px; resize:vertical; }
   .chips { display:flex; flex-wrap:wrap; gap:8px; }
   .chip { border:1px solid var(--line); border-radius:999px; padding:7px 14px; cursor:pointer; color:var(--mut); background:transparent; font:inherit; }
-  .chip.on { border-color:var(--acc); color:var(--txt); background:#2a1530; }
+  .chip.on { border-color:var(--acc); color:var(--txt); background:#2e2110; }
   .row { display:flex; align-items:center; gap:12px; }
   input[type=range] { flex:1; accent-color:var(--acc); }
-  .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#fff; font:inherit; font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:18px; }
+  .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#14100a; font:inherit; font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:18px; }
   a.btn { text-align:center; text-decoration:none; box-sizing:border-box; }
   #lista-pelis a { display:flex; justify-content:space-between; gap:10px; padding:9px 12px; margin-bottom:6px;
-                   border-radius:10px; background:#111118; border:1px solid var(--line); text-decoration:none;
+                   border-radius:10px; background:#18293f; border:1px solid var(--line); text-decoration:none;
                    color:var(--txt); font-size:14px; }
   #lista-pelis a:hover { border-color:var(--acc); }
   #lista-pelis .peli-brief { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
@@ -41,12 +41,12 @@
   .opciones { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .opciones img { width:100%; border-radius:12px; border:3px solid transparent; cursor:pointer; }
   .opciones img.on { border-color:var(--acc); }
-  .err { color:#ff7b7b; white-space:pre-wrap; }
+  .err { color:#ff8080; white-space:pre-wrap; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
   .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); transition:width .4s; }
   video { width:100%; border-radius:12px; margin-top:10px; }
   details summary { cursor:pointer; color:var(--mut); }
-  a { color:#d98be0; }
+  a { color:#5b8dd6; }
   .hidden { display:none; }
   /* M19: los huecos del orbe no ocupan nada mientras no hay orbe montado */
   #orbe-form:not(:empty), #orbe-prog:not(:empty),
@@ -76,12 +76,12 @@
   @media (max-width: 860px) { .cols { grid-template-columns:1fr; } }
   .scroll { flex:1; min-height:200px; overflow-y:auto; padding-right:6px; }
   .escena .meta { font-size:11px; color:var(--mut); width:48px; text-align:right; padding-top:10px; }
-  .escena .meta.warn { color:#ffb454; }
+  .escena .meta.warn { color:#f0a94a; }
   .voz { display:flex; gap:8px; align-items:center; margin-top:8px; }
-  .voz select { flex:1; background:#111118; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px; font:inherit; }
+  .voz select { flex:1; background:#18293f; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px; font:inherit; }
   .voz button { border:1px solid var(--line); background:transparent; color:var(--txt); border-radius:10px; padding:8px 12px; cursor:pointer; font:inherit; }
   .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
-  .verde { background:#3ddc84; } .amarillo { background:#ffd34d; } .rojo { background:#ff5c5c; }
+  .verde { background:#3dd68c; } .amarillo { background:#f2c14e; } .rojo { background:#ff8080; }
   .sticky { position:sticky; bottom:0; background:linear-gradient(180deg, transparent, var(--bg) 30%); padding:10px 0 14px; }
   .sticky .btn { margin-top:6px; }
   :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
@@ -229,7 +229,7 @@
 </main>
 <!-- M5: aviso de conexión del polling — el trabajo sigue en la nube -->
 <div id="conexion" hidden style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
-  background:#3a2530;border:1px solid #c95f5f;border-radius:999px;padding:9px 18px;
+  background:#2e1b1b;border:1px solid #8f4a4a;border-radius:999px;padding:9px 18px;
   font-size:13px;color:#ffb4b4;z-index:1000">
   📡 Sin conexión — reintentando… Tu trabajo sigue en la nube, no cierres nada por nosotros.
 </div>

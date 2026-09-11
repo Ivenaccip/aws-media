@@ -36,16 +36,16 @@
 
   const CSS = `
 .orbe-p{display:inline-flex;align-items:center;gap:11px;max-width:100%;
-  background:rgba(18,20,26,.94);border:1px solid #3a3f4a;border-radius:999px;
-  padding:4px 18px 4px 4px;font:13.5px/1.25 system-ui,sans-serif;color:#e8e6e0;
+  background:rgba(18,20,26,.94);border:1px solid #22354f;border-radius:999px;
+  padding:4px 18px 4px 4px;font:13.5px/1.25 system-ui,sans-serif;color:#ece8e1;
   box-shadow:0 2px 12px rgba(0,0,0,.35);vertical-align:middle}
 .orbe-n{position:relative;flex:0 0 auto;width:var(--orbe-lado);height:var(--orbe-lado);
   border-radius:50%;overflow:hidden}
 .orbe-css{position:absolute;inset:0;border-radius:50%;transition:opacity .18s ease;
   background:
-    radial-gradient(circle at 32% 24%, #b28cff 0%, rgba(178,140,255,0) 58%),
-    radial-gradient(circle at 68% 78%, #3ce0c0 0%, rgba(60,224,192,0) 62%),
-    radial-gradient(circle at 50% 50%, #2a1e46 0%, #0d0a18 100%);
+    radial-gradient(circle at 32% 24%, #f0a94a 0%, rgba(240,169,74,0) 58%),
+    radial-gradient(circle at 68% 78%, #5b8dd6 0%, rgba(91,141,214,0) 62%),
+    radial-gradient(circle at 50% 50%, #1e2c42 0%, #070e18 100%);
   animation:orbe-lat 2.6s ease-in-out infinite}
 .orbe-c{position:absolute;inset:0;width:100%;height:100%;display:block;
   opacity:0;transition:opacity .18s ease}
@@ -55,7 +55,7 @@
 /* héroe: el orbe manda y el texto va debajo. Solo donde la espera ES la
    pantalla —minutos, sin nada más que mirar—, nunca junto a otro orbe. */
 .orbe-h{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:10px;max-width:100%;font:13.5px/1.4 system-ui,sans-serif;color:#e8e6e0;text-align:center}
+  gap:10px;max-width:100%;font:13.5px/1.4 system-ui,sans-serif;color:#ece8e1;text-align:center}
 .orbe-h .orbe-t{white-space:normal;overflow:visible;max-width:34ch}
 .apagado{opacity:.55}
 .apagado .orbe-css{animation:none;filter:saturate(.25)}

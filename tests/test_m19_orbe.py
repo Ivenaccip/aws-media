@@ -338,10 +338,12 @@ def test_todas_las_paginas_tienen_favicon(cliente):
 
 def test_el_favicon_es_el_nucleo_del_orbe():
     """Misma firma que .orbe-css: los tres degradados, los mismos colores."""
-    svg = (ESTATICOS / "favicon.svg").read_text(encoding="utf-8")
-    for color in ("#b28cff", "#3ce0c0", "#2a1e46", "#0d0a18"):
+    svg = (ESTATICOS / "favicon.svg").read_text(encoding="utf-8").lower()
+    css = (ESTATICOS / "orbe.js").read_text(encoding="utf-8").lower()
+    for color in ("#f0a94a", "#5b8dd6", "#1e2c42", "#070e18"):
         assert color in svg, f"el favicon dejó de ser el orbe: falta {color}"
-    assert svg.count("radialGradient") == 6   # 3 abiertos + 3 cerrados
+        assert color in css, f"el núcleo CSS del orbe ya no usa {color}"
+    assert svg.count("radialgradient") == 6   # 3 abiertos + 3 cerrados
 
 
 @pytest.mark.parametrize("pagina", PAGINAS_FASE3, ids=lambda p: p.name)
