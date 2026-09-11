@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Editar</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
@@ -24,6 +25,12 @@
   .tarjeta .ir { color: #8ab4e8; font-size: 14px; margin-top: 12px; display: block; }
   .anim { position: relative; height: 110px; border-radius: 10px; background: #14161a;
           border: 1px solid #2c3038; margin: 14px 0; overflow: hidden; }
+  /* M19: mientras la IA de verdad trabaja, el orbe OCUPA la caja de la
+     animación decorativa — no se le suma. Misma caja, mismo alto mínimo: la
+     tarjeta no salta al cambiar de una a otro. */
+  #orbe-editor { display: grid; place-items: center; min-height: 110px;
+                 border-radius: 10px; background: #14161a; border: 1px solid #2c3038;
+                 margin: 14px 0; padding: 10px; }
   [hidden] { display: none !important; }
   /* animación shorts: del metraje horizontal saltan 3 clips verticales */
   .anim-shorts .cinta { position: absolute; left: 10%; top: 22px; width: 34%; height: 56px;
@@ -122,17 +129,19 @@
         <h2>🎛️ Editor IA</h2>
         <p class="desc">La IA propone el corte de tu metraje — muletillas, retakes, aire muerto —
           y tú apruebas cada sugerencia en el editor. Nada se aplica solo.</p>
-        <div class="anim anim-editor" aria-hidden="true">
+        <div class="anim anim-editor" id="anim-editor" aria-hidden="true">
           <div class="pista"></div>
           <div class="seg s1"></div><div class="seg s2"></div><div class="seg s3"></div>
           <div class="cabezal"></div>
         </div>
+        <div id="orbe-editor" hidden></div>
         <span class="ir" id="editor-nota" role="status" aria-live="polite"></span>
       </section>
     </div>
   </div>
 </main>
 <script src="/auth.js"></script>
+<script src="/orbe.js"></script>
 <script>
 // M14: e1 = subir metraje + pedir la corrida de sugerencias. Las listas de
 // proyectos viven en «Mis ediciones» del inicio; esta página trabaja UN
@@ -140,9 +149,51 @@
 const P = new URLSearchParams(location.search).get("p") || "";
 let proyectoCorte = P;
 let pollTimer = null;
+
+// M19: la pestaña también informa. Esta página dice «unos minutos» y el
+// usuario se va a otra cosa: con el estado en el título sabe si volver sin
+// tener que abrirla (y con el favicon, encuentra cuál era).
+const TITULO = document.title;
+const titulo = t => { document.title = t ? `${t} · ${TITULO}` : TITULO; };
+
+// el orbe reemplaza la animación decorativa SOLO mientras la IA trabaja de
+// verdad; si orbe.js no cargó, la animación de siempre se queda puesta
+const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE,
+                   latir: () => SIN_ORBE, apagar: () => SIN_ORBE, desmontar() {} };
+let orbeEd = SIN_ORBE;
+function orbeEditor(encendido) {
+  if (!encendido) {
+    orbeEd.desmontar(); orbeEd = SIN_ORBE;
+    ui("orbe-editor").hidden = true;
+    ui("anim-editor").hidden = false;
+    return;
+  }
+  if (!window.orbe) return;             // sin orbe: la animación decorativa basta
+  ui("anim-editor").hidden = true;      // el orbe OCUPA su sitio, no se le suma
+  ui("orbe-editor").hidden = false;
+  orbeEd = orbe.montar(ui("orbe-editor"), {
+    forma: "heroe", lado: 88,
+    texto: "Revisando tu metraje · transcribir y proponer el corte",
+    tope: 1800000,   // 30 min sin noticias: el metraje largo tarda, pero no tanto
+    alAgotar: m => m.texto("Llevamos un rato sin novedades. La corrida sigue en la nube: "
+      + "puedes cerrar esto y volver con el mismo enlace. Si sigue igual, escríbenos."),
+  });
+}
 let CDN = "";   // base de CloudFront para pintar el video de muestra
 
 function ui(id) { return document.getElementById(id); }
+
+// M19: el poll de esta página nunca se cancelaba —initCorte() se llama también
+// tras lanzar la corrida, así que los timers se acumulaban— y seguía corriendo
+// con la pestaña oculta, que es justo donde el copy invita a dejarla.
+function programarPoll(ms) {
+  clearTimeout(pollTimer);
+  pollTimer = document.hidden ? null : setTimeout(initCorte, ms);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { clearTimeout(pollTimer); pollTimer = null; }
+  else if (EDITOR.modo === "corriendo") initCorte();   // al volver, al instante
+});
 
 function muestra(fuente) {
   // el video de muestra a la izquierda (mock Paso 4) — solo si aún no hay src
@@ -179,16 +230,21 @@ async function initCorte() {
   const ed = st.editar || {};
   if (ed.estado === "corriendo") {
     EDITOR.modo = "corriendo";
-    ui("editor-nota").textContent = "⏳ La IA está revisando tu metraje (transcribir + proponer el corte, unos minutos)…";
-    pollTimer = setTimeout(initCorte, 10000);
+    orbeEditor(true);          // el orbe ya lleva el texto (role=status): sin duplicar
+    ui("editor-nota").textContent = "";
+    titulo("Revisando tu metraje");
+    programarPoll(10000);
     return;
   }
+  orbeEditor(false);           // cualquier otro estado: vuelve la animación de siempre
+  titulo("");
   if (st.editor_listo) {
     EDITOR.modo = "listo";
     const resumen = ed.estado === "listo"
       ? `propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas — `
       : "";
     ui("editor-nota").textContent = `✂️ Corte propuesto: ${resumen}Editar el video →`;
+    titulo("✓ Corte propuesto");   // se ve en la pestaña sin tener que abrirla
     return;
   }
   if (!st.fuente) {
@@ -221,11 +277,19 @@ async function irEditor() {
   // la tarjeta ya enseña el precio; el confirm evita el cobro por clic accidental
   if (!confirm(`La IA va a revisar tu metraje y proponer el corte por ${EDITOR.costo} créditos. ¿Continuar?`)) return;
   EDITOR.modo = "off";
+  orbeEditor(true);              // el POST tarda unos segundos: no dejarlos mudos
   try {
     const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/sugerir`, { method: "POST" });
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     window.monedero?.refrescar();
-  } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
+  } catch (e) {
+    // antes el error se pintaba y el initCorte() de abajo lo borraba sin que
+    // diera tiempo a leerlo, y la tarjeta quedaba muerta hasta recargar
+    orbeEditor(false);
+    ui("editor-nota").textContent = "Error: " + e.message;
+    EDITOR.modo = "cobrar";
+    return;
+  }
   initCorte();
 }
 for (const [id, fn] of [["card-shorts", irShorts], ["card-editor", irEditor]]) {
@@ -313,6 +377,7 @@ async function subir() {
 document.getElementById("sub-cancelar").onclick = () => xhrSubida && xhrSubida.abort();
 window.addEventListener("beforeunload", e => { if (xhrSubida) e.preventDefault(); });
 initSubir();
+window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic
 </script>
 <script src="/monedero.js"></script>
 </body>

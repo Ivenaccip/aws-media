@@ -31,6 +31,7 @@
 
   const MOTOR_URL = '/orbe-gpu.v1.js';
   const LADO = 40;              // diámetro del orbe; la píldora mide lado+8
+  const LADO_HEROE = 120;       // forma:'heroe' — la espera ES la pantalla
   const CRONO_MS = 60000;       // a partir de aquí la píldora dice cuánto lleva
 
   const CSS = `
@@ -51,8 +52,13 @@
 .orbe-n.gpu .orbe-c{opacity:1}
 .orbe-n.gpu .orbe-css{opacity:0}
 .orbe-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.orbe-p.apagado{opacity:.55}
-.orbe-p.apagado .orbe-css{animation:none;filter:saturate(.25)}
+/* héroe: el orbe manda y el texto va debajo. Solo donde la espera ES la
+   pantalla —minutos, sin nada más que mirar—, nunca junto a otro orbe. */
+.orbe-h{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;max-width:100%;font:13.5px/1.4 system-ui,sans-serif;color:#e8e6e0;text-align:center}
+.orbe-h .orbe-t{white-space:normal;overflow:visible;max-width:34ch}
+.apagado{opacity:.55}
+.apagado .orbe-css{animation:none;filter:saturate(.25)}
 @keyframes orbe-lat{0%,100%{transform:scale(1);filter:brightness(1)}
   50%{transform:scale(1.07);filter:brightness(1.35)}}
 @media (prefers-reduced-motion: reduce){.orbe-css{animation:none}}
@@ -120,9 +126,10 @@
     }
     ponerCss();
 
-    const lado = o.lado || LADO;
+    const heroe = o.forma === 'heroe';
+    const lado = o.lado || (heroe ? LADO_HEROE : LADO);
     const pildora = document.createElement('span');
-    pildora.className = 'orbe-p';
+    pildora.className = heroe ? 'orbe-h' : 'orbe-p';
     pildora.setAttribute('role', 'status');
     pildora.setAttribute('aria-live', 'polite');
     pildora.style.setProperty('--orbe-lado', lado + 'px');
