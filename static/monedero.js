@@ -12,8 +12,8 @@
   el.id = 'monedero';
   el.style.cssText =
     'position:fixed;top:12px;right:14px;z-index:1000;display:none;align-items:center;gap:12px;' +
-    'font:13px/1 system-ui,sans-serif;color:#e8e6e0';
-  const FONDO = 'background:rgba(18,20,26,.94);border:1px solid #3a3f4a;' +
+    'font:13px/1 system-ui,sans-serif;color:#ece8e1';
+  const FONDO = 'background:rgba(18,20,26,.94);border:1px solid #22354f;' +
     'box-shadow:0 2px 12px rgba(0,0,0,.4);';
   const TICKET =
     '<svg viewBox="0 0 26 18" width="30" height="21" fill="currentColor" aria-hidden="true">' +
@@ -24,13 +24,13 @@
     '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">' +
     '<circle cx="12" cy="8.2" r="3.6"/><path d="M4.5 19.4a7.5 7.5 0 0 1 15 0v.6h-15z"/></svg>';
   el.innerHTML =
-    '<span id="mon-ticket" hidden title="tus créditos" style="display:flex;color:#e8e6e0">' + TICKET + '</span>' +
+    '<span id="mon-ticket" hidden title="tus créditos" style="display:flex;color:#ece8e1">' + TICKET + '</span>' +
     '<span id="mon-pill" hidden style="' + FONDO + 'display:flex;align-items:center;height:38px;' +
       'border-radius:999px">' +
       // el círculo del ＋ va al ras de la píldora: mismo alto que ella (su
       // caja de 40px con bordes), sin sobresalir — feedback del dueño
       '<button id="mon-cta" title="Recargar créditos" style="' + FONDO + 'width:40px;height:40px;' +
-        'box-sizing:border-box;margin:-1px 0 -1px -1px;border-radius:50%;color:#e8e6e0;cursor:pointer;font:600 20px/1 system-ui;' +
+        'box-sizing:border-box;margin:-1px 0 -1px -1px;border-radius:50%;color:#ece8e1;cursor:pointer;font:600 20px/1 system-ui;' +
         'display:flex;align-items:center;justify-content:center;padding:0 0 2px 0">＋</button>' +
       '<span id="mon-saldo" style="font:600 14px system-ui;white-space:nowrap;padding:0 20px 0 14px"></span>' +
     '</span>' +
@@ -39,17 +39,17 @@
     // trae los grupos nuevos en el token). Solo se pinta si el login está activo.
     '<span id="mon-user" hidden style="position:relative">' +
       '<button id="mon-avatar" title="tu cuenta" style="' + FONDO + 'width:38px;height:38px;' +
-        'border-radius:50%;color:#e8e6e0;cursor:pointer;display:flex;align-items:center;' +
+        'border-radius:50%;color:#ece8e1;cursor:pointer;display:flex;align-items:center;' +
         'justify-content:center;padding:0">' + PERSONA + '</button>' +
       // OJO: sin `display` inline — un display inline le gana al atributo
       // hidden y el menú nacería abierto; toggleMenu pone flex/none
       '<span id="mon-menu" style="' + FONDO + 'position:absolute;top:46px;right:0;' +
         'border-radius:12px;padding:6px;display:none;flex-direction:column;min-width:170px">' +
-        '<span id="mon-email" style="display:block;padding:8px 12px;color:#9a978f;font-size:12px;' +
+        '<span id="mon-email" style="display:block;padding:8px 12px;color:#93a3b8;font-size:12px;' +
           'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px"></span>' +
-        '<button id="mon-salir" style="background:none;border:0;color:#e8e6e0;cursor:pointer;' +
+        '<button id="mon-salir" style="background:none;border:0;color:#ece8e1;cursor:pointer;' +
           'font:13px system-ui;display:block;width:100%;text-align:left;padding:8px 12px;' +
-          'border-radius:8px" onmouseover="this.style.background=\'#23262d\'" ' +
+          'border-radius:8px" onmouseover="this.style.background=\'#18293f\'" ' +
           'onmouseout="this.style.background=\'none\'">Cerrar sesión</button>' +
       '</span>' +
     '</span>';
@@ -71,17 +71,17 @@
     panel.id = 'mon-panel';
     panel.style.cssText =
       'position:fixed;top:60px;right:14px;z-index:1000;width:min(280px, calc(100vw - 28px));' +
-      'background:rgba(18,20,26,.97);border:1px solid #3a3f4a;border-radius:14px;padding:14px;' +
-      'font:13px/1.5 system-ui,sans-serif;color:#e8e6e0;box-shadow:0 4px 18px rgba(0,0,0,.5)';
+      'background:rgba(18,20,26,.97);border:1px solid #22354f;border-radius:14px;padding:14px;' +
+      'font:13px/1.5 system-ui,sans-serif;color:#ece8e1;box-shadow:0 4px 18px rgba(0,0,0,.5)';
     panel.innerHTML =
       '<div style="font-weight:600;margin-bottom:8px">Recargar créditos</div>' +
       est.packs.map(p => p.link
         ? `<a href="${p.link}" target="_blank" rel="noopener" style="display:block;margin-bottom:6px;` +
-          'padding:8px 12px;border-radius:9px;background:#23262d;border:1px solid #3a3f4a;' +
-          `text-decoration:none;color:#e8e6e0">⚡ ${p.creditos} créditos — $${p.usd.toFixed(2)} dólares</a>`
-        : `<div style="margin-bottom:6px;color:#9a978f">⚡ ${p.creditos} créditos — $${p.usd.toFixed(2)} dólares</div>`
+          'padding:8px 12px;border-radius:9px;background:#18293f;border:1px solid #22354f;' +
+          `text-decoration:none;color:#ece8e1">⚡ ${p.creditos} créditos — $${p.usd.toFixed(2)} dólares</a>`
+        : `<div style="margin-bottom:6px;color:#93a3b8">⚡ ${p.creditos} créditos — $${p.usd.toFixed(2)} dólares</div>`
       ).join('') +
-      '<div style="color:#9a978f;font-size:11.5px;margin-top:6px">El pago abre en Stripe. ' +
+      '<div style="color:#93a3b8;font-size:11.5px;margin-top:6px">El pago abre en Stripe. ' +
       'Al volver a esta pestaña, tu saldo se actualiza solo (puede tardar unos segundos). ' +
       'Los créditos comprados no caducan.</div>';
     document.body.appendChild(panel);

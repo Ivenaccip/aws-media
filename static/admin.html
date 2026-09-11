@@ -8,45 +8,45 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 15px/1.6 system-ui, sans-serif; background: #14161a; color: #e8e6e0; padding: 40px 24px; }
+  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
   main { max-width: 1080px; margin: 0 auto; }
-  a.volver { color: #9a978f; text-decoration: none; font-size: 14px; }
+  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
   h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #9a978f; font-size: 14px; margin-bottom: 20px; }
-  section { background: #1d2026; border: 1px solid #2c3038; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
+  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 20px; }
+  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
   section h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
   /* 3 vistas: Ingresos / Costos / Flujo */
   .tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
-  .tabs button { padding: 10px 18px; border-radius: 10px; border: 1px solid #2c3038;
-    background: #1d2026; color: #9a978f; font: inherit; font-size: 14px; cursor: pointer; }
-  .tabs button.on { border-color: #5b8dd6; color: #e8e6e0; background: #212a38; font-weight: 600; }
+  .tabs button { padding: 10px 18px; border-radius: 10px; border: 1px solid #22354f;
+    background: #111f33; color: #93a3b8; font: inherit; font-size: 14px; cursor: pointer; }
+  .tabs button.on { border-color: #5b8dd6; color: #ece8e1; background: #1b3049; font-weight: 600; }
   .fila-kpi { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; margin-bottom: 22px; }
-  .kpi { background: #1d2026; border: 1px solid #2c3038; border-radius: 12px; padding: 14px 20px; min-width: 170px; }
+  .kpi { background: #111f33; border: 1px solid #22354f; border-radius: 12px; padding: 14px 20px; min-width: 170px; }
   .kpi b { display: block; font-size: 22px; }
-  .kpi span { color: #9a978f; font-size: 12.5px; }
-  button.accion { padding: 9px 16px; border-radius: 9px; border: 1px solid #2c3038; background: #23262d;
-           color: #e8e6e0; font: inherit; font-size: 13px; cursor: pointer; }
+  .kpi span { color: #93a3b8; font-size: 12.5px; }
+  button.accion { padding: 9px 16px; border-radius: 9px; border: 1px solid #22354f; background: #18293f;
+           color: #ece8e1; font: inherit; font-size: 13px; cursor: pointer; }
   button.accion:hover { border-color: #5b8dd6; }
   button.accion:disabled { opacity: .5; cursor: default; }
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
-  th { text-align: right; color: #9a978f; font-weight: 500; font-size: 12px; text-transform: uppercase;
-       letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid #2c3038; }
+  th { text-align: right; color: #93a3b8; font-weight: 500; font-size: 12px; text-transform: uppercase;
+       letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid #22354f; }
   th:first-child, td:first-child { text-align: left; }
-  td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #23262d; font-variant-numeric: tabular-nums; }
+  td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #18293f; font-variant-numeric: tabular-nums; }
   tr.usuario { cursor: pointer; }
-  tr.usuario:hover td { background: #23262d; }
-  .pos { color: #7fd6a3; } .neg { color: #e88; } .tot { color: #8ab4e8; }
-  .mut { color: #9a978f; font-size: 13px; }
+  tr.usuario:hover td { background: #18293f; }
+  .pos { color: #3dd68c; } .neg { color: #ff8080; } .tot { color: #5b8dd6; }
+  .mut { color: #93a3b8; font-size: 13px; }
   .tabla-scroll { overflow-x: auto; }
-  #estado-sync { font-size: 13px; color: #9a978f; }
-  .proyecto { border: 1px solid #2c3038; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+  #estado-sync { font-size: 13px; color: #93a3b8; }
+  .proyecto { border: 1px solid #22354f; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
   .proyecto .cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .proyecto .brief { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
-  .trazas { margin-top: 8px; font-size: 12.5px; color: #9a978f; }
-  .trazas a { color: #8ab4e8; text-decoration: none; }
-  code { background: #23262d; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+  .trazas { margin-top: 8px; font-size: 12.5px; color: #93a3b8; }
+  .trazas a { color: #5b8dd6; text-decoration: none; }
+  code { background: #18293f; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
   :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
-  #noacceso, #cargando { text-align: center; padding: 60px 0; color: #9a978f; }
+  #noacceso, #cargando { text-align: center; padding: 60px 0; color: #93a3b8; }
 </style>
 </head>
 <body>
@@ -56,8 +56,8 @@
   <p class="sub">Tres vistas: <b>1 · Ingresos</b> (lo que los usuarios gastan en créditos),
     <b>2 · Costos</b> (la IA por un lado y AWS por el otro) y <b>3 · Flujo</b>
     (ingresos − costos). Aurora/CloudFront son compartidos: para el total están el
-    <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" style="color:#8ab4e8">presupuesto de $50/mes</a>
-    y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" style="color:#8ab4e8">Cost Explorer</a>.</p>
+    <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" style="color:#5b8dd6">presupuesto de $50/mes</a>
+    y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" style="color:#5b8dd6">Cost Explorer</a>.</p>
 
   <div id="cargando">Cargando…</div>
   <div id="noacceso" hidden>🔒 Esta página es solo para administradores.<br>

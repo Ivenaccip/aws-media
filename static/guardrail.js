@@ -7,7 +7,7 @@
     const fondo = document.createElement('div');
     fondo.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px';
     fondo.innerHTML = `
-      <div style="background:var(--card,#1c1c26);color:inherit;border:1px solid var(--borde,#33334a);border-radius:14px;max-width:460px;width:100%;padding:26px;text-align:center">
+      <div style="background:var(--card,#111f33);color:inherit;border:1px solid var(--borde,#22354f);border-radius:14px;max-width:460px;width:100%;padding:26px;text-align:center">
         <div style="font-size:38px">🛑</div>
         <h3 style="margin:10px 0 8px">Revisa tu texto</h3>
         <p style="margin:0 0 10px;opacity:.9">${mensaje}</p>
