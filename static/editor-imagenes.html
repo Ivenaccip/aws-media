@@ -33,6 +33,12 @@
                  border:1px solid var(--line); }
   #lienzo-wrap canvas { width:100%; height:auto; display:block; }
   #mask-canvas { position:absolute; inset:0; cursor:crosshair; opacity:.55; }
+  /* M19: mientras la IA trabaja sobre la máscara, el pincel no la puede mover —
+     pero la imagen y la zona pintada siguen a la vista: son la referencia para
+     juzgar el resultado. Nada de scrim ni overlay a pantalla completa. */
+  #orbe-hueco { position:absolute; left:10px; bottom:10px; z-index:3; max-width:calc(100% - 20px); }
+  #lienzo-wrap.trabajando #img-canvas { opacity:.5; }
+  #lienzo-wrap.trabajando #mask-canvas { pointer-events:none; cursor:default; }
   .barra { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   .barra.hidden { display:none; }
   .barra input[type=range] { accent-color:var(--acc); }
@@ -61,6 +67,7 @@
       <div id="lienzo-wrap">
         <canvas id="img-canvas"></canvas>
         <canvas id="mask-canvas"></canvas>
+        <div id="orbe-hueco"></div>
       </div>
       <div class="barra hidden" id="herramientas">
         <span class="mut">Pincel:</span>
@@ -89,6 +96,7 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
 <script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -177,9 +185,13 @@ function imagenBlob() {
 
 // --- costo visible ANTES de gastar, como en todo el producto ----------------
 const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+// M19: a media petición este listener NO puede tocar el botón. monedero.js
+// refresca el saldo en CADA visibilitychange, así que sin esta guarda irse a
+// otra pestaña y volver rehabilitaba el botón y el segundo clic COBRABA otra vez.
+let enVuelo = false;
 document.addEventListener('monedero', e => {
   const mon = e.detail;
-  if (!mon.activo || mon.tarifas.imagen == null) return;
+  if (!mon.activo || mon.tarifas.imagen == null || enVuelo) return;
   $('#editar').textContent = `${mon.tarifas.imagen} créditos — aplicar el cambio →`;
   const falta = mon.tarifas.imagen - mon.saldo;
   $('#editar').disabled = falta > 0;
@@ -187,17 +199,38 @@ document.addEventListener('monedero', e => {
     ? `Te faltan ${falta} créditos (saldo: ${mon.saldo}). ${CTA}` : '';
 });
 
+// M19: el botón conserva SU etiqueta con el precio y solo se deshabilita; la
+// espera la cuenta el orbe sobre el lienzo. Las herramientas se bloquean porque
+// hoy se puede borrar la propia máscara mientras la IA trabaja sobre ella.
+const HERRAMIENTAS = ['#grosor', '#borrar', '#otra'];
+function bloquearLienzo(si) {
+  $('#lienzo-wrap').classList.toggle('trabajando', si);
+  HERRAMIENTAS.forEach(s => { $(s).disabled = si; });
+}
+// si orbe.js no cargó, el botón de gastar créditos NO puede romperse por un
+// adorno: se sigue sin orbe
+const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE, desmontar() {} };
+const montarOrbe = o => (window.orbe ? orbe.montar($('#orbe-hueco'), o) : SIN_ORBE);
+
 $('#editar').onclick = async () => {
+  if (enVuelo) return;
   $('#gerr').textContent = '';
   const prompt = $('#prompt').value.trim();
   if (!archivo) { $('#gerr').textContent = 'Sube primero la imagen que quieres editar.'; return; }
   if (!hayTrazo) { $('#gerr').textContent = 'Pinta sobre la imagen la zona que quieres cambiar.'; return; }
   if (!prompt) { $('#gerr').textContent = 'Describe qué quieres en la zona pintada.'; $('#prompt').focus(); return; }
+  enVuelo = true;
   $('#editar').disabled = true;
-  if (!await guardrail(prompt)) { $('#editar').disabled = false; return; }   // M13
-  const antes = $('#editar').textContent;
-  $('#editar').textContent = '⏳ Editando la imagen (~20 s)…';
+  bloquearLienzo(true);
+  const mando = montarOrbe({
+    texto: 'Revisando tu texto…',   // cubre el hueco mudo del guardrail
+    tope: 180000,
+    alAgotar: m => m.texto('Esto está tardando más de lo normal. Si no aparece tu '
+      + 'imagen, inténtalo otra vez; si te descontaron créditos, escríbenos.'),
+  });
   try {
+    if (!await guardrail(prompt)) return;   // M13
+    mando.texto('Cambiando la zona que pintaste · ~20 s');
     const fd = new FormData();
     fd.append('prompt', prompt);
     fd.append('imagen', await imagenBlob(), 'imagen.jpg');
@@ -206,15 +239,24 @@ $('#editar').onclick = async () => {
     if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
     if (!r.ok) throw new Error(await errTxt(r));
     const d = await r.json();
+    mando.desmontar();              // el orbe se va ANTES de que aparezca el resultado
     $('#img-final').src = d.url;
     $('#descargar').href = d.url;
     $('#resultado').classList.remove('hidden');
     window.monedero?.refrescar();
     $('#resultado').scrollIntoView({behavior: 'smooth'});
-  } catch (e) { $('#gerr').textContent = e.message; }
-  $('#editar').disabled = false;
-  $('#editar').textContent = antes;
+  } catch (e) {
+    mando.desmontar();              // NUNCA un orbe girando junto a un error
+    $('#gerr').textContent = e.message;
+  } finally {
+    mando.desmontar();
+    bloquearLienzo(false);
+    enVuelo = false;
+    $('#editar').disabled = false;
+  }
 };
+
+window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic
 </script>
 </body>
 </html>

@@ -683,17 +683,31 @@ def archivo(id_: str, nombre: str):
     raise HTTPException(404, "Archivo no encontrado")
 
 
+# M19: assets con la VERSIÓN en el nombre — cambiarlos significa publicar otro
+# nombre, así que se pueden cachear a lo bruto. Son los dos pesados del orbe (el
+# motor y su shader), que viajan por Lambda sin CDN: una semana de caché los
+# saca del camino crítico. NO se listan aquí orbe.js ni ningún otro estático:
+# esos tienen que revalidar para que un fix de UI llegue con el siguiente deploy.
+INMUTABLES = {"orbe-gpu.v1.js", "orbe.v1.wgsl"}
+
+
 class _StaticCacheado(StaticFiles):
     """Los assets pesados (imágenes de muestra de /estilos/) viajan por Lambda —
     sin Cache-Control el navegador los re-descarga en cada clic de estilo
     (hasta ~370 KB por imagen). Un día de caché basta: solo cambian con deploy
     y el ETag de StaticFiles revalida al vencer. El HTML/JS queda como estaba
-    (revalidación por ETag en cada carga — así los fixes de UI llegan solos)."""
+    (revalidación por ETag en cada carga — así los fixes de UI llegan solos),
+    salvo los versionados de INMUTABLES.
+
+    El filtro de imágenes va por media_type y el de INMUTABLES por NOMBRE: todo
+    el JS del repo comparte media_type, así que ahí no se puede distinguir."""
 
     def file_response(self, *args, **kwargs):
         resp = super().file_response(*args, **kwargs)
         if str(getattr(resp, "media_type", "")).startswith("image/"):
             resp.headers["Cache-Control"] = "public, max-age=86400"
+        elif args and Path(str(args[0])).name in INMUTABLES:
+            resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
         return resp
 
 
