@@ -241,9 +241,11 @@ async function initCorte() {
   if (st.editor_listo) {
     EDITOR.modo = "listo";
     const resumen = ed.estado === "listo"
-      ? `propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas — `
+      ? `propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas.`
       : "";
-    ui("editor-nota").textContent = `✂️ Corte propuesto: ${resumen}Editar el video →`;
+    // M21: la llamada a la acción es el verbo; el detalle lo cuenta la nota
+    ui("editor-nota").textContent = "Editar →";
+    ui("corte-estado").textContent = `✂️ Corte propuesto${resumen ? ": " + resumen : "."}`;
     titulo("✓ Corte propuesto");   // se ve en la pestaña sin tener que abrirla
     return;
   }
@@ -259,10 +261,11 @@ async function initCorte() {
     const c = await r.json();
     if (!c.backend_listo) { ui("editor-nota").textContent = c.aviso; return; }
     EDITOR = { modo: "cobrar", costo: c.creditos };
-    ui("editor-nota").textContent = (ed.estado === "error"
-      ? "❌ La corrida falló y tus créditos se devolvieron. " : "") +
-      `Proponer el corte — ${c.creditos} créditos →`;
-    if (!ed.estado) ui("corte-estado").textContent =
+    ui("editor-nota").textContent = `Proponer ✦ ${c.creditos}`;
+    // el fallo anterior y el metraje son contexto, no etiqueta de la acción
+    if (ed.estado === "error")
+      ui("corte-estado").textContent = "❌ La corrida anterior falló y tus créditos se devolvieron.";
+    else if (!ed.estado) ui("corte-estado").textContent =
       `Metraje de ${(c.duracion_s / 60).toFixed(1)} min` +
       (c.con_transcript ? " (ya trae transcript)." : " (la corrida del editor incluye la transcripción).");
   } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
