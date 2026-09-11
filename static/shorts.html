@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Shorts</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
@@ -41,6 +42,7 @@
   code { background: #23262d; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
   :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+  #orbe-analisis:not(:empty) { margin: 18px 0 14px; }
 </style>
 </head>
 <body>
@@ -86,6 +88,7 @@
   <section id="sec-analisis" hidden>
     <h2>1 · Analizar el video</h2>
     <p id="analisis-info" class="mut"></p>
+    <div id="orbe-analisis"></div>
     <p id="analisis-estado" class="mut" style="margin:8px 0"></p>
     <button id="btn-analizar" hidden></button>
   </section>
@@ -113,11 +116,42 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const P = new URLSearchParams(location.search).get("p") || "";
 $("proy").textContent = P;
 let EST = null, COSTO = null, pollTimer = null;
+
+// M19 — el orbe va SOLO donde trabaja la IA. De las tres esperas largas de
+// esta página, solo una lo es: el análisis (transcript + candidatos). Traer el
+// video de YouTube es una descarga y el render es Remotion componiendo: ambas
+// tardan minutos, ninguna es la IA pensando, y las dos conservan su spinner.
+// Si el orbe también apareciera ahí, dejaría de significar algo.
+const TITULO = document.title;
+const titulo = t => { document.title = t ? `${t} · ${TITULO}` : TITULO; };
+const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE,
+                   latir: () => SIN_ORBE, apagar: () => SIN_ORBE, desmontar() {} };
+// «Recargar» abre el panel del monedero ahí mismo, sin navegar a ningún lado
+function botonRecargar() {
+  const b = document.createElement("button");
+  b.className = "sec";
+  b.textContent = "Recargar créditos";
+  b.onclick = () => window.monedero && monedero.recargar && monedero.recargar();
+  return b;
+}
+let orbeAn = SIN_ORBE;
+function orbeAnalisis(encendido) {
+  if (!encendido) { orbeAn.desmontar(); orbeAn = SIN_ORBE; return; }
+  if (!window.orbe) return;
+  orbeAn = orbe.montar($("orbe-analisis"), {
+    forma: "heroe",
+    texto: "Analizando tu video · transcript y candidatos",
+    tope: 1800000,   // 30 min sin noticias; un video largo tarda, pero no tanto
+    alAgotar: m => m.texto("Llevamos un rato sin novedades. El análisis sigue en la nube: "
+      + "puedes cerrar la página y volver. Si sigue igual, escríbenos."),
+  });
+}
 
 const fmtMin = s => s >= 90 ? (s / 60).toFixed(1) + " min" : Math.round(s) + " s";
 
@@ -222,7 +256,11 @@ $("btn-importar").onclick = async () => {
   } catch (e) {
     $("btn-importar").disabled = false;
     if (e.status === 409 && COTIZA.nombre) location.href = `/shorts.html?p=${encodeURIComponent(COTIZA.nombre)}`;
-    else if (e.status === 402) $("imp-estado").innerHTML = `<span class="err">${e.message}</span> <a href="/monedero.html" style="color:#8ab4e8">Recargar</a>`;
+    else if (e.status === 402) {
+      // /monedero.html NUNCA ha existido: este CTA llevaba a un 404 duro
+      $("imp-estado").innerHTML = `<span class="err">${e.message}</span> `;
+      $("imp-estado").appendChild(botonRecargar());
+    }
     else $("imp-estado").innerHTML = `<span class="err">${e.message}</span>`;
   }
 };
@@ -242,6 +280,8 @@ function pintar() {
     $("aviso").hidden = false;
     $("aviso").innerHTML = `<span class="spin">Trayendo «${imp.titulo || "el video"}» de YouTube</span> — suele tardar 1-3 minutos; puedes cerrar la página.`;
     $("sec-analisis").hidden = true;
+    orbeAnalisis(false);   // una descarga no es la IA pensando: aquí no hay orbe
+    titulo("Trayendo el video");
     programarPoll();
     return;
   }
@@ -249,20 +289,28 @@ function pintar() {
     $("aviso").hidden = false;
     $("aviso").innerHTML = `<span class="err">La importación falló${imp.error ? ` (${imp.error})` : ""} — tus créditos se devolvieron.</span> Vuelve a <a href="/shorts.html" style="color:#8ab4e8">intentarlo</a>.`;
     $("sec-analisis").hidden = true;
+    orbeAnalisis(false);
+    titulo("");
     return;
   }
   const st = EST.shorts || {};
   $("sec-analisis").hidden = false;
   if (st.estado === "analizando") {
     $("analisis-info").textContent = "";
-    $("analisis-estado").innerHTML = '<span class="spin">Analizando en la nube (transcript + candidatos)</span> — esto tarda unos minutos; puedes cerrar la página.';
+    orbeAnalisis(true);          // el orbe lleva el texto vivo (role=status)
+    $("analisis-estado").textContent = "Puedes cerrar la página: el análisis sigue en la nube.";
     $("btn-analizar").hidden = true;
+    titulo("Analizando tu video");
     programarPoll();
   } else if (st.estado === "candidatos") {
+    orbeAnalisis(false);
+    titulo("✓ Análisis listo");
     $("analisis-estado").innerHTML = `<span class="ok">Análisis listo ✓</span> <span class="mut">(${st.candidatos.length} candidatos${st.listo ? " · " + new Date(st.listo).toLocaleString() : ""})</span>`;
     botonAnalizar("Re-analizar");
     pintarCandidatos(st);
   } else {
+    orbeAnalisis(false);         // el orbe NUNCA acompaña a un error
+    titulo("");
     if (st.estado === "error")
       $("analisis-estado").innerHTML = `<span class="err">El análisis falló${st.error ? ` (${st.error})` : ""} — tus créditos se devolvieron.</span>`;
     botonAnalizar("Analizar el video");
@@ -362,9 +410,11 @@ function pintarRender(r) {
   if (r.estado === "corriendo") {
     $("render-estado").innerHTML = '<span class="spin">Renderizando en la nube</span> — Remotion + export tardan unos minutos por short; puedes cerrar la página.';
     $("btn-render").disabled = true;
+    titulo("Renderizando");
     programarPoll();
   } else if (r.estado === "listo" && r.salidas) {
     $("render-estado").innerHTML = '<span class="ok">Render listo ✓</span>';
+    titulo("✓ Shorts listos");
     $("sec-salidas").hidden = false;
     $("lista-salidas").innerHTML = r.salidas.map(s => `
       <div class="salida"><span>${s.archivo} <span class="mut">· ${(s.bytes / 1e6).toFixed(1)} MB</span></span>
@@ -375,7 +425,9 @@ function pintarRender(r) {
 }
 
 function programarPoll() {
-  if (pollTimer) return;
+  // M19: con la pestaña oculta no polleamos — cada vuelta cuesta Lambda y
+  // Aurora, y el copy de aquí dice literalmente «puedes cerrar la página».
+  if (pollTimer || document.hidden) return;
   pollTimer = setTimeout(async () => {
     pollTimer = null;
     try { EST = await fj(`/api/shorts/${encodeURIComponent(P)}`); } catch { programarPoll(); return; }
@@ -386,7 +438,16 @@ function programarPoll() {
   }, 5000);
 }
 
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { clearTimeout(pollTimer); pollTimer = null; return; }
+  const st = (EST || {}).shorts || {};
+  const vivo = st.estado === "analizando" || (st.render || {}).estado === "corriendo"
+    || ((EST || {}).importar || {}).estado === "descargando";
+  if (vivo) cargar();          // al volver, el estado fresco de inmediato
+});
+
 cargar();
+window.orbe && orbe.precargar();
 </script>
 </body>
 </html>

@@ -48,7 +48,7 @@ vm.runInContext(
 const orbe = caja.window.orbe;
 assert.ok(orbe && typeof orbe.montar === 'function', 'orbe.montar no quedó expuesto');
 
-const pildoras = c => c.hijos.filter(h => h.className === 'orbe-p');
+const pildoras = c => c.hijos.filter(h => h.className === 'orbe-p' || h.className === 'orbe-h');
 const leer = c => pildoras(c)[0].hijos.find(h => h.className === 'orbe-t').textContent;
 
 // 1. montar pinta la píldora completa de inmediato, con su texto
@@ -127,5 +127,15 @@ m4.estado('bailando');
 assert.strictEqual(m4.modo, 'idle', 'aceptó un estado que el shader no conoce');
 m4.desmontar();
 
-console.log('orbe: 9 comprobaciones OK');
+// 10. forma:'heroe' es otra caja, no otro componente: mismo mando, mismas reglas
+const ch = nodo('div');
+const mh = orbe.montar(ch, { texto: 'Analizando', forma: 'heroe', tope: 1000,
+                             desde: Date.now() - 5000, alAgotar: () => {} });
+assert.strictEqual(pildoras(ch)[0].className, 'orbe-h', 'el héroe no usó su propia caja');
+mh._tic(Date.now());
+assert.ok(pildoras(ch)[0].classList.contains('apagado'),
+  'el héroe no se apaga: la regla de «apagado» se quedó atada a la píldora');
+mh.desmontar();
+
+console.log('orbe: 10 comprobaciones OK');
 process.exit(0);

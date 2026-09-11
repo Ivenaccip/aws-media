@@ -311,3 +311,145 @@ def test_el_pipeline_por_defecto_sigue_siendo_narracion(monkeypatch):
     import os
     monkeypatch.delenv("PIPELINE_DEFAULT", raising=False)
     assert os.getenv("PIPELINE_DEFAULT", "narracion") == "narracion"
+
+
+# ---------------------------------------------------------------------------
+# fase 3 — e1 + shorts + estilos: las esperas de minutos
+#
+# Aquí el orbe llega a pantallas cuyo copy dice literalmente «puedes cerrar la
+# página». Eso obliga a dos cosas antes que el orbe: que la pestaña se pueda
+# encontrar (favicon) y que diga en qué va (título). Y a una regla: de las
+# esperas largas, solo llevan orbe las que de verdad son la IA pensando.
+
+E1 = ESTATICOS / "e1.html"
+SHORTS = ESTATICOS / "shorts.html"
+ESTILOS = ESTATICOS / "estilos.html"
+PAGINAS_FASE3 = [E1, SHORTS, ESTILOS]
+
+
+def test_todas_las_paginas_tienen_favicon(cliente):
+    """Media docena de pantallas invitan a cerrar la pestaña y volver. Sin
+    favicon, volver es buscar a ciegas entre veinte papeles en blanco."""
+    for html in ESTATICOS.glob("*.html"):
+        assert '<link rel="icon" href="/favicon.svg"' in html.read_text(encoding="utf-8"), html.name
+    r = cliente.get("/favicon.svg")
+    assert r.status_code == 200 and "svg" in r.headers.get("content-type", "")
+
+
+def test_el_favicon_es_el_nucleo_del_orbe():
+    """Misma firma que .orbe-css: los tres degradados, los mismos colores."""
+    svg = (ESTATICOS / "favicon.svg").read_text(encoding="utf-8")
+    for color in ("#b28cff", "#3ce0c0", "#2a1e46", "#0d0a18"):
+        assert color in svg, f"el favicon dejó de ser el orbe: falta {color}"
+    assert svg.count("radialGradient") == 6   # 3 abiertos + 3 cerrados
+
+
+@pytest.mark.parametrize("pagina", PAGINAS_FASE3, ids=lambda p: p.name)
+def test_la_pestana_dice_en_que_va(pagina):
+    html = pagina.read_text(encoding="utf-8")
+    assert "const TITULO = document.title;" in html
+    assert "document.title = t ?" in html
+    assert "titulo(" in html
+
+
+@pytest.mark.parametrize("pagina", PAGINAS_FASE3, ids=lambda p: p.name)
+def test_el_poll_se_duerme_con_la_pestana_oculta(pagina):
+    html = pagina.read_text(encoding="utf-8")
+    assert "document.hidden" in html, "el poll no mira si la pestaña está oculta"
+    assert 'addEventListener("visibilitychange"' in html, "y no se despierta al volver"
+
+
+@pytest.mark.parametrize("pagina", PAGINAS_FASE3, ids=lambda p: p.name)
+def test_sin_orbe_la_pagina_sigue_funcionando(pagina):
+    html = pagina.read_text(encoding="utf-8")
+    assert "SIN_ORBE" in html and "!window.orbe" in html
+
+
+# ---------------------------------------------------------------------------
+# la regla que mantiene al orbe significando algo
+
+def test_en_shorts_solo_lleva_orbe_el_analisis():
+    """Las tres esperas largas de shorts duran minutos, pero solo una es la IA:
+    el análisis. Traer el video de YouTube es una descarga y el render es
+    Remotion componiendo — si el orbe saliera ahí, dejaría de señalar nada."""
+    html = SHORTS.read_text(encoding="utf-8")
+    descarga = html[html.index('if (imp.estado === "descargando")'):]
+    assert "orbeAnalisis(false)" in descarga[:700], "la descarga de YouTube monta orbe"
+    render = html[html.index("function pintarRender(r) {"):]
+    assert "orbe" not in render[:900].replace("orbeAnalisis", ""), "el render monta orbe"
+    # el del análisis se fue (lo reemplazó el orbe) y quedan exactamente los
+    # dos que no son IA: la descarga de YouTube y el render de Remotion
+    assert html.count('class="spin"') == 2
+    assert "spin\">Analizando en la nube" not in html
+
+
+def test_el_orbe_no_acompana_errores_en_shorts():
+    html = SHORTS.read_text(encoding="utf-8")
+    cuerpo = html[html.index('} else {\n    orbeAnalisis(false);'):]
+    assert cuerpo.index("orbeAnalisis(false)") < cuerpo.index("El análisis falló")
+
+
+def test_estilos_un_orbe_es_un_trabajo():
+    """Con dos análisis vivos no lleva orbe ninguno: «la IA está trabajando»
+    dejaría de señalar algo concreto."""
+    html = ESTILOS.read_text(encoding="utf-8")
+    assert "vivas.length !== 1" in html
+
+
+# ---------------------------------------------------------------------------
+# los bugs que el mapeo destapó en estas tres pantallas
+
+def test_ya_no_hay_enlaces_al_monedero_inexistente():
+    """/monedero.html nunca ha existido: el CTA del 402 era un 404 duro en las
+    dos pantallas donde más duele (te acabas de quedar sin créditos)."""
+    assert not (ESTATICOS / "monedero.html").exists()
+    for html in ESTATICOS.glob("*.html"):
+        texto = html.read_text(encoding="utf-8")
+        assert 'href="/monedero.html"' not in texto, f"{html.name} sigue llevando al 404"
+    # y existe el camino de verdad
+    assert "recargar: togglePanel" in (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
+    for pagina in (SHORTS, ESTILOS):
+        assert "botonRecargar()" in pagina.read_text(encoding="utf-8"), pagina.name
+
+
+def test_estilos_sobrevive_a_un_poll_fallido():
+    """Era la condición para ponerle orbe: un solo fallo de red mataba el poll
+    para siempre y la tarjeta se quedaba en «Analizando» hasta recargar."""
+    html = ESTILOS.read_text(encoding="utf-8")
+    catch = html[html.index('catch (e) {\n    // M19 (bug)'):]
+    cuerpo = catch[:catch.index("$(\"lista\").innerHTML")]
+    assert "programarPoll();" in cuerpo, "el catch ya no reintenta"
+    assert 'orbeEst.estado("idle")' in cuerpo, "sin contacto el orbe debe bajar a reposo"
+
+
+def test_estilos_no_repinta_la_lista_sin_cambios():
+    """El repintado cada 5 s tiraba el «copiado ✓» del usuario y habría matado
+    al orbe recién montado."""
+    html = ESTILOS.read_text(encoding="utf-8")
+    assert "if (firma !== listaFirma) {" in html
+
+
+def test_e1_no_acumula_timers_de_poll():
+    """initCorte() se llama también tras lanzar la corrida y tras subir: el
+    setTimeout de antes no se cancelaba nunca."""
+    html = E1.read_text(encoding="utf-8")
+    assert "clearTimeout(pollTimer);\n  pollTimer = document.hidden ? null" in html
+    assert "pollTimer = setTimeout(initCorte, 10000)" not in html
+
+
+def test_e1_el_error_de_lanzar_ya_no_se_borra_solo():
+    """El catch pintaba el error y el initCorte() de la línea siguiente lo
+    borraba antes de que diera tiempo a leerlo."""
+    html = E1.read_text(encoding="utf-8")
+    cuerpo = html[html.index("async function irEditor()"):]
+    catch = cuerpo[cuerpo.index("} catch (e) {"):cuerpo.index("for (const [id, fn]")]
+    assert 'EDITOR.modo = "cobrar";' in catch and "return;" in catch
+
+
+def test_e1_el_orbe_reemplaza_la_animacion_no_se_le_suma():
+    """La animación de la línea de tiempo es decoración que corre siempre. El
+    orbe ocupa su sitio solo mientras la IA trabaja de verdad."""
+    html = E1.read_text(encoding="utf-8")
+    assert 'ui("anim-editor").hidden = true;' in html
+    assert 'ui("anim-editor").hidden = false;' in html
+    assert "⏳" not in html

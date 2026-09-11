@@ -163,6 +163,9 @@
   }
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescar(); });
-  window.monedero = { get: () => est, refrescar, textoRecarga };
+  // recargar(): lo mismo que pulsar el ＋ de la cabecera. Existe porque los
+  // avisos de «te faltan créditos» de otras pantallas enlazaban a
+  // /monedero.html, que NUNCA ha existido: el CTA del 402 era un 404 duro.
+  window.monedero = { get: () => est, refrescar, textoRecarga, recargar: togglePanel };
   if (document.body) montar(); else addEventListener('DOMContentLoaded', montar);
 })();
