@@ -34,6 +34,7 @@
   .muestra img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .muestra p { margin:0; text-align:center; }
   #resultado img { width:100%; border-radius:12px; border:1px solid var(--line); }
+  #orbe-hueco:not(:empty) { margin-top:12px; }
   :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
   @media (max-width: 860px) {
     .cols2 { grid-template-columns:1fr; }
@@ -66,6 +67,7 @@
       <textarea id="prompt" maxlength="2000"
         placeholder="Escribe lo que quieras ver — p. ej. «un mercado flotante al amanecer, con lanchas llenas de frutas»."></textarea>
       <button class="btn" id="generar">Crear la imagen →</button>
+      <div id="orbe-hueco"></div>
       <p class="mut" id="saldoform"></p>
       <div class="err" id="gerr"></div>
     </div>
@@ -79,6 +81,7 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
 <script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -111,9 +114,13 @@ fetch('/api/estilos').then(r => r.json()).then(list => {
 
 // costo visible ANTES de gastar, como en todo el producto
 const CTA = 'Pulsa «Recargar» arriba a la derecha para ver cómo conseguir más.';
+// M19: a media petición este listener NO puede tocar el botón. monedero.js
+// refresca el saldo en CADA visibilitychange, así que sin esta guarda irse a
+// otra pestaña y volver rehabilitaba el botón y el segundo clic COBRABA otra vez.
+let enVuelo = false;
 document.addEventListener('monedero', e => {
   const mon = e.detail;
-  if (!mon.activo || mon.tarifas.imagen == null) return;
+  if (!mon.activo || mon.tarifas.imagen == null || enVuelo) return;
   $('#generar').textContent = `${mon.tarifas.imagen} créditos — crear la imagen →`;
   const falta = mon.tarifas.imagen - mon.saldo;
   $('#generar').disabled = falta > 0;
@@ -121,29 +128,55 @@ document.addEventListener('monedero', e => {
     ? `Te faltan ${falta} créditos (saldo: ${mon.saldo}). ${CTA}` : '';
 });
 
+// M19: el botón conserva SU etiqueta con el precio (es el dato que hay que
+// poder leer) y solo se deshabilita; quien cuenta la espera es el orbe de
+// abajo. El tope de 3 min no es una fecha límite del trabajo —es la red para
+// el caso en que la promesa nunca resuelve (auth.js devuelve una promesa que
+// jamás se cumple si el re-login falla)—; a partir del minuto la píldora ya
+// dice sola cuánto lleva.
+// si orbe.js no cargó, el botón de gastar créditos NO puede romperse por un
+// adorno: se sigue sin orbe
+const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE, desmontar() {} };
+const montarOrbe = o => (window.orbe ? orbe.montar($('#orbe-hueco'), o) : SIN_ORBE);
+
 $('#generar').onclick = async () => {
+  if (enVuelo) return;
   $('#gerr').textContent = '';
   const prompt = $('#prompt').value.trim();
   if (!prompt) { $('#gerr').textContent = 'Escribe qué imagen quieres.'; $('#prompt').focus(); return; }
+  enVuelo = true;
   $('#generar').disabled = true;
-  if (!await guardrail(prompt)) { $('#generar').disabled = false; return; }   // M13
-  const antes = $('#generar').textContent;
-  $('#generar').textContent = '⏳ Creando la imagen (~20 s)…';
+  const mando = montarOrbe({
+    texto: 'Revisando tu texto…',   // cubre el hueco mudo del guardrail
+    tope: 180000,
+    alAgotar: m => m.texto('Esto está tardando más de lo normal. Si no aparece tu '
+      + 'imagen, inténtalo otra vez; si te descontaron créditos, escríbenos.'),
+  });
   try {
+    if (!await guardrail(prompt)) return;   // M13
+    mando.texto('Creando tu imagen · ~20 s');
     const r = await fetch('/api/imagenes', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({prompt, estilo, estilo_custom: $('#estilo_custom').value})});
     if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
     if (!r.ok) throw new Error(await errTxt(r));
     const d = await r.json();
+    mando.desmontar();              // el orbe se va ANTES de que aparezca el resultado
     $('#img-final').src = d.url;
     $('#descargar').href = d.url;
     $('#resultado').classList.remove('hidden');
     window.monedero?.refrescar();
     $('#resultado').scrollIntoView({behavior:'smooth'});
-  } catch (e) { $('#gerr').textContent = e.message; }
-  $('#generar').disabled = false;
-  $('#generar').textContent = antes;
+  } catch (e) {
+    mando.desmontar();              // NUNCA un orbe girando junto a un error
+    $('#gerr').textContent = e.message;
+  } finally {
+    mando.desmontar();
+    enVuelo = false;
+    $('#generar').disabled = false;
+  }
 };
+
+window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic
 </script>
 </body>
 </html>
