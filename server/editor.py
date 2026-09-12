@@ -124,6 +124,17 @@ def _login_state(name: str) -> dict | None:
     return {"status": "missing"}
 
 
+@router.get("/{name}/orbe.js")
+def orbe_js(name: str):
+    """M19 fase 4: el editor comparte el orbe con el resto del producto.
+
+    Se sirve desde AQUÍ, y no como /orbe.js absoluto, porque la UI también
+    corre bajo el server stdlib local (tools/editor/server.py, en "/") y la
+    regla del archivo es que todas sus URLs sean relativas.
+    """
+    return FileResponse(ROOT / "static" / "orbe.js", media_type="text/javascript")
+
+
 @router.get("/{name}")
 def editor_sin_barra(name: str):
     return RedirectResponse(f"/editor/{name}/")
