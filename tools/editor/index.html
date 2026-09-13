@@ -191,6 +191,7 @@
       <span data-tip="abre la carpeta videos/ del proyecto en el explorador — deja ahí tus MP4s"><button class="tile" id="impAbrir"><span class="ico">＋</span><span class="lbl">Metraje</span></button></span>
       <span id="brollWrap" data-tip="Claude propone momentos para recursos visuales (~$0.01 dólares)"><button class="tile" id="tbBroll"><span class="ico">🎨</span><span class="lbl">B-roll IA</span></button></span>
     </div>
+    <div id="orbe-broll"></div>
     <div class="h" id="impListaH" style="display:none;margin-top:16px">En videos/ — selecciona e incorpora</div>
     <div id="impLista"></div>
     <div id="impAcciones" style="display:none">
@@ -224,7 +225,7 @@
       <div id="flagCard" style="display:none"></div>
       <div id="chatLog"><div class="txnote" id="chatNote">Anota decisiones en los flags (1er click guarda la nota) y
         mándalas juntas con ➤, o escribe libre. El primer mensaje arranca la sesión de Claude.</div></div>
-      <div id="chatBusy">⏳ Claude está escribiendo…</div>
+      <div id="chatBusy"></div>
       <div id="chatRow"><input id="chatInput" type="text" aria-label="Mensaje para Claude" placeholder="mensaje libre (opcional si hay notas)…"><button id="chatSend" aria-label="Enviar" data-tip="Enviar notas + mensaje — Enter">➤</button></div>
     </div>
   </div>
@@ -289,10 +290,30 @@
   <p style="color:var(--dim);margin-top:12px">La reproducción en vivo es aproximada; el render (🎬) es exacto.</p>
 </div></div>
 
+<!-- M19 fase 4: el mismo orbe del resto del producto. Relativo a propósito:
+     la UI corre bajo /editor/<proyecto>/ en la nube y bajo "/" en el server
+     local, y ambos lo sirven. Si no carga, todo sigue funcionando igual. -->
+<script src="orbe.js"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 const vid = $("vid"), tl = $("timeline"), inner = $("tl-inner");
+
+// --- el orbe, SOLO donde trabaja la IA ------------------------------------
+// El render de Remotion, el mux de ffmpeg, la muestra de subtítulos y las
+// descargas conservan su texto de estado: son esperas mecánicas, y el orbe
+// promete que hay alguien pensando al otro lado. Prometer eso de un ffmpeg
+// es mentir.
+const ORBES = {};
+function orbeOn(hueco, opciones) {
+  const c = $(hueco);
+  if (!c || !window.orbe) return null;   // un adorno que no cargó no rompe nada
+  orbeOff(hueco);
+  return (ORBES[hueco] = window.orbe.montar(c, opciones));
+}
+function orbeOff(hueco) {
+  if (ORBES[hueco]) { ORBES[hueco].desmontar(); delete ORBES[hueco]; }
+}
 
 let DATA = null, MANIFEST = null, OFFSETS = {}, TOTAL = 0;
 let VERSION = 0;   // M7: versión del corte en el server (0 = server local sin versionar)
@@ -866,6 +887,19 @@ async function render() {
 
 /* ---------- chat con Claude (claude-agent-sdk en el server) ---------- */
 let chatShown = 0, chatPoll = null, chatBaselineMtime = null, chatEnviando = false;
+
+// El chat ES la conversación con Claude: la espera más larga del editor y la
+// única donde el usuario no sabe si le están escuchando. El tope no es una
+// fecha límite del trabajo — es la red por si el turno nunca resuelve.
+function chatOcupado(on) {
+  $("decisions").classList.toggle("busy", on);
+  if (!on) return orbeOff("chatBusy");
+  orbeOn("chatBusy", {
+    texto: "Claude está pensando",
+    tope: 300000,
+    alAgotar: m => m.texto("Claude sigue trabajando — no cierres el editor"),
+  });
+}
 let loginHintShown = false, loginDone = false, loginPollTimer = null;
 
 function chatLoginPrompt() {
@@ -900,7 +934,7 @@ async function chatTick() {
   try { st = await (await fetch("api/chat/poll")).json(); } catch { return; }
   for (let k = chatShown; k < st.messages.length; k++) chatAppend(st.messages[k]);
   chatShown = st.messages.length;
-  $("decisions").classList.toggle("busy", !!st.busy || chatEnviando);
+  chatOcupado(!!st.busy || chatEnviando);
   $("chatSend").disabled = !!st.busy || chatEnviando;
   if (!st.available && st.error) { chatAppend({ role: "error", text: st.error }); $("chatInput").disabled = true; }
   // login de Claude: el login real es `claude /login` ANTES de abrir el editor
@@ -949,12 +983,12 @@ async function sendChat() {
   const note = $("chatNote"); if (note) note.remove();
   // feedback INMEDIATO: el POST en nube es síncrono (~10-20 s) y sin esto la
   // UI parece muerta — el mensaje aparece ya, el input se limpia y se ve
-  // «Claude está escribiendo…» hasta que llega la respuesta
+  // el orbe de «Claude está pensando» hasta que llega la respuesta
   chatEnviando = true;
   chatAppend({ role: "user", text });
   chatShown += 1;                          // el poll lo traerá persistido: no duplicar
   inp.value = "";
-  $("decisions").classList.add("busy");
+  chatOcupado(true);
   $("chatSend").disabled = true;
   let j = null;
   try {
@@ -967,7 +1001,7 @@ async function sendChat() {
     j = { sent: false, error: "sin conexión — revisa tu red y vuelve a enviar" };
   } finally {
     chatEnviando = false;
-    $("decisions").classList.remove("busy");
+    chatOcupado(false);
     $("chatSend").disabled = false;
   }
   if (!j.sent) {
@@ -1179,6 +1213,9 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
   #g1vers .vfila.activa { color: var(--text); }
   #g1msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
   #g1msg.err { color: #ff8080; }
+  /* los huecos del orbe no ocupan sitio mientras no hay nadie trabajando */
+  #orbe-g1, #orbe-b3, #orbe-broll { margin-top: 8px; }
+  #orbe-g1:empty, #orbe-b3:empty, #orbe-broll:empty { display: none; }
   .propblock { position: absolute; top: 88px; height: 30px; border-radius: 4px; cursor: pointer;
                background: color-mix(in srgb, #da8c28 14%, transparent); border: 1px dashed #da8c28;
                font-size: 10px; color: #f0a94a; overflow: hidden; padding: 1px 4px; z-index: 5; }
@@ -1228,6 +1265,7 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
     </div>
   </div>
   <div id="b3msg"></div>
+  <div id="orbe-b3"></div>
 </div></div>
 <div id="b1modal"><div id="b1card">
   <h3>📝 Subtítulos — frame de muestra
@@ -1255,6 +1293,7 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
       <div id="g1precio"></div>
       <button class="primary" id="g1generar">Generar</button>
       <div id="g1msg"></div>
+      <div id="orbe-g1"></div>
     </div>
   </div>
   <div id="g1cands"></div>
@@ -1406,16 +1445,25 @@ async function fusionInit() {
 }
 
 async function b2flujo() {
+  const b = $("tbBroll");
+  if (b.disabled) return;
   // tarifa_broll solo viaja en la nube — ahí cuesta créditos, en local ~$0.01
   const costoTxt = OVS.tarifa_broll ? `${OVS.tarifa_broll} créditos` : "~$0.01 dólares de LLM";
   if (!confirm(`Analizamos el video y proponemos momentos para recursos visuales (${costoTxt}; no genera imágenes todavía). ¿Continuar?`)) return;
-  setStatus("⏳ analizando el video…");
+  b.disabled = true;            // en la nube cobra créditos: un clic, un cobro
+  setStatus("analizando el video…");   // el panel se puede cerrar; esto no
+  orbeOn("orbe-broll", {
+    texto: "Claude está viendo tu video",
+    tope: 300000,
+    alAgotar: m => m.texto("Tarda más de lo normal — sigue trabajando"),
+  });
   try {
     const r = await fj("api/broll/sugerir", {});
     OVS.propuestas = r.propuestas;
     fusionRender();
     setStatus(`💡 ${r.propuestas.length} propuestas en la pista de recursos (clic para ver el detalle)`, "ok");
   } catch (e) { setStatus("No se pudieron pedir las propuestas: " + e.message + " — intenta de nuevo", "err"); }
+  finally { orbeOff("orbe-broll"); b.disabled = false; }
 }
 
 async function b3abrir() {
@@ -1476,7 +1524,11 @@ async function b3abrir() {
       $("b3agendar").textContent = prog ? "📤 Programar" : "📤 Publicar ahora";
     });
     $("b3sugerir").onclick = async () => {
-      $("b3msg").textContent = "⏳ pidiendo títulos…";
+      if ($("b3sugerir").disabled) return;
+      $("b3sugerir").disabled = true;
+      $("b3msg").className = ""; $("b3msg").textContent = "";
+      orbeOn("orbe-b3", { texto: "Claude está escribiendo títulos", tope: 120000,
+                          alAgotar: m => m.texto("Tarda más de lo normal") });
       try {
         const plat = $("b3cuenta").value.split("|")[1];
         const r = await fj("api/publicar/titulos", { plataformas: [plat] });
@@ -1484,6 +1536,7 @@ async function b3abrir() {
         [...$("b3titulos").children].forEach(b => b.onclick = () => { $("b3texto").value = b.textContent; });
         $("b3msg").textContent = "";
       } catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; }
+      finally { orbeOff("orbe-b3"); $("b3sugerir").disabled = false; }
     };
     $("b3agendar").onclick = async () => {
       const [cuenta_id, plataforma] = $("b3cuenta").value.split("|");
@@ -1542,9 +1595,17 @@ function g1esperarJob() {
 
 $("g1generar").onclick = async () => {
   const prompt = $("g1nuevo").value.trim();
-  if (!prompt || !G1PRECIO) return;
+  if (!prompt || !G1PRECIO || $("g1generar").disabled) return;
   if (!confirm(`Generar 2 opciones de imagen costará ${g1txtImg()}. ¿Continuar?`)) return;
-  $("g1msg").className = ""; $("g1msg").textContent = "⏳ Generando imágenes con Nano Banana…";
+  // COBRA CRÉDITOS y el botón seguía vivo durante la petición: el segundo
+  // clic cobraba otra vez. El orbe cuenta la espera; el botón solo se apaga.
+  $("g1generar").disabled = true;
+  $("g1msg").className = ""; $("g1msg").textContent = "";
+  orbeOn("orbe-g1", {
+    texto: "Nano Banana está dibujando 2 opciones · ~30 s",
+    tope: 180000,
+    alAgotar: m => m.texto("Tarda más de lo normal — si no aparecen, vuelve a intentarlo"),
+  });
   try {
     const r = await fj(`api/overlays/${G1.id}/imagen`, { confirmar: true, prompt });
     $("g1msg").textContent = `Listo (${usd(r.costo_imagenes)}). Elige la imagen base:`;
@@ -1562,13 +1623,21 @@ $("g1generar").onclick = async () => {
       $("g1cands").appendChild(img);
     }
   } catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; }
+  finally { orbeOff("orbe-g1"); $("g1generar").disabled = false; }
 };
 
 $("g1animar").onclick = async () => {
   if (!G1IMAGEN) return;
   if (!confirm(`Animar con Veo costará ${g1txtVid()}. El clip se recorta a la duración exacta y sustituye al actual. ¿Continuar?`)) return;
-  $("g1msg").className = ""; $("g1msg").textContent = "⏳ Veo está generando el video (esto tarda minutos, no cierres)…";
   $("g1animar").disabled = true;
+  $("g1msg").className = ""; $("g1msg").textContent = "";
+  // la espera más larga del editor: talla héroe, como el análisis de shorts
+  orbeOn("orbe-g1", {
+    forma: "heroe",
+    texto: "Veo está generando el video · tarda minutos",
+    tope: 900000,
+    alAgotar: m => m.texto("Sigue en la nube — puedes cerrar y volver"),
+  });
   try {
     const r = await fj(`api/overlays/${G1.id}/video`, { confirmar: true, imagen: G1IMAGEN });
     if (r.started) {                    // nube: job en Fargate — esperar el poll
@@ -1580,6 +1649,9 @@ $("g1animar").onclick = async () => {
     }
     setTimeout(() => location.reload(), 1200);
   } catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; $("g1animar").disabled = false; }
+  // el botón NO se rehabilita al salir bien: ahí viene un location.reload()
+  // y 1,2 s de botón vivo son 1,2 s en los que se puede volver a cobrar
+  finally { orbeOff("orbe-g1"); }
 };
 
 async function g1activar(n) {
@@ -1596,7 +1668,12 @@ async function g1activar(n) {
 }
 
 async function b1flujo() {
+  const b = $("hdrSubs");
+  if (b.disabled) return;
   const frame = Math.round(vid.currentTime * 10) / 10 || 10;
+  // sin orbe a propósito: esto es ffmpeg quemando un frame, no la IA pensando.
+  // El botón sí se apaga — dos clics lanzaban dos ffmpeg sobre el mismo archivo.
+  b.disabled = true;
   setStatus("⏳ generando frame de muestra de subtítulos…");
   try {
     const r = await fj("api/subtitulos/muestra", { frame });
@@ -1607,6 +1684,7 @@ async function b1flujo() {
     document.getElementById("b1quemar").disabled = false;
     document.getElementById("b1modal").classList.add("abierto");
   } catch (e) { setStatus("subtítulos: " + e.message, "err"); }
+  finally { b.disabled = false; }
 }
 
 document.getElementById("b1quemar").onclick = async () => {

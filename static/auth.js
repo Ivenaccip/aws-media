@@ -83,9 +83,32 @@
       if (await refrescar()) r = await conToken(entrada, init);
       if (r.status === 401) { await login(); return new Promise(() => {}); }
     }
-    if (r.status === 403) alert('No tienes acceso a este proyecto.');
+    if (r.status === 403) avisoAcceso();
     return r;
   };
+
+  // M19 fase 4: esto era un alert(). Un alert bloquea el hilo hasta que alguien
+  // le da a Aceptar, y las pantallas que hacen poll (el editor, crear, shorts)
+  // reciben el 403 una vez cada pocos segundos: salía un modal encima de otro y
+  // la página quedaba inservible. Ahora es un aviso que se ve, no se apila y
+  // no detiene nada.
+  let aviso = null, avisoT = null;
+  function avisoAcceso() {
+    if (!document.body) return;
+    if (!aviso) {
+      aviso = document.createElement('div');
+      aviso.setAttribute('role', 'status');
+      aviso.style.cssText =
+        'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2000;' +
+        'background:#2e1b1b;border:1px solid #8f4a4a;border-radius:999px;' +
+        'padding:9px 18px;font:13px/1.4 system-ui,sans-serif;color:#ffb4b4;' +
+        'box-shadow:0 2px 12px rgba(0,0,0,.4)';
+      aviso.textContent = 'No tienes acceso a este proyecto.';
+      document.body.appendChild(aviso);
+    }
+    clearTimeout(avisoT);               // un 403 nuevo reinicia el reloj
+    avisoT = setTimeout(() => { aviso.remove(); aviso = null; }, 8000);
+  }
 
   window.auth = { login, salir, refrescar, guardarTokens, config: () => cfgPromesa };
 })();

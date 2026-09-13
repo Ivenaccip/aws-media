@@ -168,6 +168,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/orbe.js":
+            # el mismo orbe que el resto del producto (static/orbe.js); la UI
+            # lo pide relativo, así que aquí cae en "/" y en la nube bajo
+            # /editor/<proyecto>/orbe.js
+            body = (ROOT / "static" / "orbe.js").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == "/api/data":
             cuts = json.loads(CUTS.read_text(encoding="utf-8"))
             self.send_json({
