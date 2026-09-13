@@ -1,12 +1,21 @@
 # A4 (plan AWS): valida en cada push que la imagen única construye en Linux,
 # que la suite completa corre verde DENTRO del contenedor y que el server
 # arranca y responde sin .env (las keys solo hacen falta al usar cada API).
-# En Fase 5 este mismo workflow gana el paso de push a ECR.
+#
+# Dos ramas (ver docs/OPERACION.md § Ramas): «dev» integra, «main» es lo que
+# corre en AWS. El build y los tests corren en las dos y en cada PR; el push a
+# ECR corre SOLO desde main, y eso no es una preferencia de estilo:
+# la Lambda de producción consume la etiqueta «latest» de ese mismo repositorio
+# de ECR. Si dev también empujara, el siguiente «cdk deploy» — hecho desde
+# donde fuera — se llevaría código de dev a producción. Con un solo entorno
+# AWS, esa guarda es la única frontera entre lo que se prueba y lo que ven los
+# testers.
 name: docker
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -18,6 +27,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Primero, y fuera del contenedor: .dockerignore excluye .github/ (el CI no
+      # viaja en la imagen de producción), así que estos tests se saltan ahí
+      # dentro y solo pueden correr aquí. Van antes del build para fallar en
+      # segundos en vez de tras varios minutos de docker build.
+      # --noconftest: tests/conftest.py importa pipeline.config, y estas reglas
+      # solo leen dos archivos de texto — no hacen falta las deps del proyecto.
+      - name: Reglas del repo (dos ramas y frontera con producción)
+        run: |
+          pip install --quiet pytest
+          python -m pytest tests/test_flujo_ramas.py -q --noconftest
 
       - name: Build de la imagen
         run: docker build -t aws-media:ci .
@@ -44,8 +64,9 @@ jobs:
         run: |
           docker run --rm aws-media:ci sh -c "node --version && ffmpeg -version | head -1 && chromium --version"
 
-      # Solo si TODO lo anterior pasó: la imagen validada se publica en ECR
-      # (C1 — la Lambda del API la consume por el tag latest).
+      # Solo si TODO lo anterior pasó Y estamos en main: la imagen validada se
+      # publica en ECR (C1 — la Lambda del API la consume por el tag latest).
+      # Desde dev o desde un PR se construye y se prueba, pero NO se publica.
       - name: Debug claims OIDC (iss/aud/sub — no son secretos)
         if: github.ref == 'refs/heads/main'
         run: |
