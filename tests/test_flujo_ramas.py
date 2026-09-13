@@ -11,8 +11,20 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-WF = (RAIZ / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
-DOC = (RAIZ / "docs" / "OPERACION.md").read_text(encoding="utf-8")
+WF_PATH = RAIZ / ".github" / "workflows" / "docker.yml"
+DOC_PATH = RAIZ / "docs" / "OPERACION.md"
+
+# Estos tests miran el REPO, no la imagen. La suite corre también dentro del
+# contenedor, y .dockerignore excluye .github/ a propósito — el CI no tiene nada
+# que hacer en la imagen de producción. Ahí se saltan; donde de verdad importa
+# que corran es en el runner, y el propio workflow los corre en su primer paso
+# («Reglas del repo»), antes del build, para fallar en segundos y no en minutos.
+pytestmark = pytest.mark.skipif(
+    not WF_PATH.exists(),
+    reason="sin .github/ (dentro del contenedor) — corren en el runner")
+
+WF = WF_PATH.read_text(encoding="utf-8") if WF_PATH.exists() else ""
+DOC = DOC_PATH.read_text(encoding="utf-8") if DOC_PATH.exists() else ""
 
 GUARDA = "if: github.ref == 'refs/heads/main'"
 
@@ -79,3 +91,15 @@ def test_el_runbook_avisa_de_que_el_entorno_es_uno_solo():
     """El malentendido caro sería creer que dev es un lugar seguro en la nube."""
     seccion = DOC.split("## Ramas")[1].split("## Deploy")[0]
     assert "UN entorno AWS" in seccion
+
+
+def test_las_reglas_del_repo_corren_fuera_del_contenedor():
+    """Si este paso desaparece, los tests de arriba se saltan en TODAS partes:
+    dentro del contenedor por falta de .github/, y en ningún otro lado porque
+    nadie los corre. El skip dejaría de ser inofensivo y pasaría a ser un hueco."""
+    paso = _paso("Reglas del repo")
+    assert "test_flujo_ramas.py" in paso
+    assert "--noconftest" in paso, (
+        "sin --noconftest el runner tendría que instalar todas las deps del "
+        "proyecto: tests/conftest.py importa pipeline.config")
+    assert GUARDA not in paso, "las reglas del repo también valen en dev y en los PRs"

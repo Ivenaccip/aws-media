@@ -28,6 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Primero, y fuera del contenedor: .dockerignore excluye .github/ (el CI no
+      # viaja en la imagen de producción), así que estos tests se saltan ahí
+      # dentro y solo pueden correr aquí. Van antes del build para fallar en
+      # segundos en vez de tras varios minutos de docker build.
+      # --noconftest: tests/conftest.py importa pipeline.config, y estas reglas
+      # solo leen dos archivos de texto — no hacen falta las deps del proyecto.
+      - name: Reglas del repo (dos ramas y frontera con producción)
+        run: |
+          pip install --quiet pytest
+          python -m pytest tests/test_flujo_ramas.py -q --noconftest
+
       - name: Build de la imagen
         run: docker build -t aws-media:ci .
 
