@@ -98,9 +98,41 @@ venv/Scripts/python tools/costes.py resumen --dias 30
 venv/Scripts/python tools/costes.py sync --dias 3
 ```
 
+## Ramas
+
+Dos, y solo dos:
+
+| rama | qué es | qué entra |
+|---|---|---|
+| `main` | **lo que corre en AWS** — lo que ven los testers | solo merges de `dev`, cada uno seguido de su deploy |
+| `dev` | integración: el trabajo se acumula aquí | un PR por cambio, desde una rama propia |
+
+Cada cambio sale de `dev` en su rama y su PR vuelve a `dev`. Liberar es un PR
+`dev` → `main`, y el deploy va pegado al merge.
+
+**Por qué esto importa, y qué NO resuelve.** Hay UN entorno AWS: los testers usan
+la misma Aurora, el mismo Cognito y el mismo bucket donde tú pruebas. `dev` no es
+un lugar seguro donde romper cosas en la nube — un `cdk deploy` desde cualquier
+rama pisa el mismo stack. Lo que las dos ramas compran es otra cosa: saber qué
+están usando los testers sin ir a interrogar a ECR. Si la regla se cumple,
+`git log main` lo responde.
+
+Por eso `dev` se prueba **en local** — la suite, `tools/check_js.py` y el server
+en 8011 — y por eso el deploy no es "cuando se pueda": un merge a `main` sin su
+`cdk deploy` deja al repo diciendo algo falso.
+
+El día que haya testers suficientes para que no puedas permitirte romperles nada,
+lo que toca es un segundo entorno AWS, no una tercera rama. Los dos stacks con
+VPC ya van con `nat_gateways=0`, así que duplicar no arrastra el costo fijo del
+NAT; lo que falta es parametrizar cuatro nombres cableados (`aws-media-users`,
+el dominio `media-ivenaccip`, `aws-media-producir` y el rol OIDC).
+
 ## Deploy (checklist)
 
-1. Merge del PR → GitHub Actions construye la imagen y la empuja a ECR.
+1. PR `dev` → `main` y merge → GitHub Actions construye la imagen y la
+   empuja a ECR. **Solo main empuja**: desde `dev` o desde un PR se
+   construye y se prueba, pero no se publica — la Lambda de producción
+   consume el `latest` de ese mismo repositorio.
 2. En **tu terminal cmd**, desde `D:\aws-project\infra`:
 
 ```bash
@@ -121,6 +153,12 @@ venv/Scripts/python tools/prompts_sync.py
    `--dry` primero si quieres ver qué cambiaría.
 4. **Si el PR tocó el esquema** (`ESQUEMA` en `pipeline/db.py`): correr la
    migración (sección siguiente).
+5. Marcar lo que quedó en el aire, para poder responder «¿qué tenías el
+   jueves?» cuando un tester reporte algo:
+
+```bash
+git tag -a prod-$(date +%Y%m%d) -m "desplegado: <qué entró>" && git push origin --tags
+```
 
 ## Base de datos (Aurora)
 
@@ -162,3 +200,5 @@ venv/Scripts/python tools/ssm_env.py
 - Precios en dólares SOLO de `tools/pricing.json`; tarifas en créditos SOLO de
   `tools/tarifas.json` («$X.XX dólares», jamás «centavos»).
 - Versiones de clips nunca se borran; liberar slot = archivar, no borrar.
+- `main` es lo desplegado. Un merge a `main` sin su `cdk deploy` deja al
+  repo mintiendo sobre lo que usan los testers — y nada te avisa.
