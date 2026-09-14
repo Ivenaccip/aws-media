@@ -442,6 +442,64 @@ del dueño), los flags `--cluster-arn/--secret-arn` sobran.
 Gotcha: Aurora se auto-pausa a 0 ACU — la primera llamada tras un rato puede
 tardar ~25 s o dar 503/timeout; reintenta.
 
+### Que los datos sobrevivan
+
+Aquí viven los proyectos, los saldos y los movimientos de créditos. **No hay otra
+copia**: ni réplica, ni export periódico, ni un segundo entorno. Desde el 14 de
+septiembre de 2026 hay tres guardas, y cada una cubre un camino distinto:
+
+| guarda | de qué protege |
+|---|---|
+| `DeletionProtection: true` | un `delete-db-cluster` por CLI o un clic en la consola |
+| `DeletionPolicy: Snapshot` | un `cdk destroy` del stack |
+| backups de 7 días | un error de datos que se detecta días después |
+
+Las dos primeras **no son la misma cosa**, y es el malentendido caro: la política
+de CloudFormation solo actúa cuando el borrado pasa por CDK. RDS obedece igual a
+quien llame a su API directamente, y ese camino no pasa por CloudFormation. Las
+tres viven en `infra/stacks/db.py` y `tests/test_db_protegida.py` las fija.
+
+#### Snapshot manual
+
+Antes de una migración, de un cambio de esquema o de cualquier cosa que dé
+respeto:
+
+```bash
+aws rds create-db-cluster-snapshot --db-cluster-identifier aws-media-db-db5d02a0a9-luualrjywhm7 --db-cluster-snapshot-identifier aws-media-manual-AAAA-MM-DD --region us-east-1
+```
+
+```bash
+aws rds describe-db-cluster-snapshots --db-cluster-identifier aws-media-db-db5d02a0a9-luualrjywhm7 --snapshot-type manual --region us-east-1 --query "DBClusterSnapshots[].{Id:DBClusterSnapshotIdentifier,Estado:Status,Creado:SnapshotCreateTime}" --output table
+```
+
+Los manuales **no caducan**: viven hasta que los borres, al margen de la ventana
+de 7 días. El primero es `aws-media-manual-2026-09-14`.
+
+#### Hasta dónde se puede volver
+
+```bash
+aws rds describe-db-clusters --db-cluster-identifier aws-media-db-db5d02a0a9-luualrjywhm7 --region us-east-1 --query "DBClusters[0].{Desde:EarliestRestorableTime,Hasta:LatestRestorableTime}" --output table
+```
+
+**Gotcha:** `LatestRestorableTime` no avanza mientras el clúster está
+auto-pausado — sin transacciones no hay puntos nuevos que crear. Verlo horas
+atrasado es lo normal si nadie ha usado el producto en toda la mañana; no
+significa que los backups estén rotos.
+
+#### Si hay que restaurar
+
+Restaurar **no devuelve el clúster a un estado anterior: crea uno nuevo**, con
+otro identificador y otro ARN. La aplicación y los cuatro tools apuntan al ARN
+del actual (`DB_CLUSTER_ARN` en `.env`, y el stack en CDK), así que una
+restauración de verdad son tres pasos: restaurar, apuntar todo al clúster nuevo,
+y solo entonces retirar el viejo. No es un comando; planea un rato.
+
+#### Para borrarlo de verdad
+
+La protección es deliberadamente incómoda. Hay que quitar `deletion_protection`
+en `infra/stacks/db.py`, desplegar ese cambio, y solo después borrar. Si algún
+día hace falta, ese rodeo es exactamente la pausa que se busca.
+
 ## Stripe
 
 - Los 3 Payment Links viven en `.env` como `STRIPE_LINK_100/550/1200` y el
