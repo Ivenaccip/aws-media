@@ -9,7 +9,7 @@ Este archivo fija esa propiedad. Si alguien importa aquí un stack de producció
 para tomar prestada una referencia —que es la forma natural de escribirlo y la
 razón por la que está prohibido— el primer test lo dice.
 
-`aws_cdk` no viaja en la imagen Docker (Dockerfile:30 instala solo
+`aws_cdk` no viaja en la imagen Docker (Dockerfile:58 instala solo
 requirements.txt; el CDK está en infra/requirements.txt), así que dentro del
 contenedor estos tests se saltan solos.
 """
