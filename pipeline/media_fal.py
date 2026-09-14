@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import fal
 from .config import settings
+from .models import formato_de
 
 
 async def imagen_nano(prompt: str, destino: Path, referencia: Path | None = None,
@@ -95,13 +96,19 @@ async def imagen_transformar(prompt: str, imagen: Path, destino: Path,
 
 
 async def video_veo(imagen: Path, prompt: str, segundos: int, destino: Path,
-                    negativo: str = "", meta: dict | None = None) -> None:
+                    negativo: str = "", meta: dict | None = None,
+                    formato: str | None = None) -> None:
     """Veo 3.1 lite image-to-video en fal (720p sin audio — la tarifa del popup;
-    el audio original manda en el mux). Descarga el mp4 a `destino`."""
+    el audio original manda en el mux). Descarga el mp4 a `destino`.
+
+    Sin `formato`, lo deduce de la imagen de entrada: el b-roll del editor no
+    elige aspecto, lo hereda del material (M22 · F). Estaba clavado en 16:9,
+    así que sobre un video vertical devolvía un clip apaisado."""
+    from .ffmpeg import formato_de_archivo
     args = {
         "prompt": prompt,
         "image_url": await fal.subir_archivo(imagen),
-        "aspect_ratio": "16:9",
+        "aspect_ratio": formato_de(formato or formato_de_archivo(imagen))["aspecto"],
         "duration": f"{segundos}s",
         "resolution": "720p",
         "generate_audio": False,

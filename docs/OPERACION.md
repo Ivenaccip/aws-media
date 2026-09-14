@@ -102,6 +102,20 @@ Si alguien pregunta por un cobro raro, el extracto lo cuenta entero:
 venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 40
 ```
 
+### «Quiero mi video en vertical»
+
+Desde el 14 de septiembre de 2026 se elige al crear la película: horizontal
+(16:9, YouTube) o vertical (9:16, Reels/TikTok/Shorts). **No se puede cambiar
+después** — el aspecto se le pide a Grok y a Veo en cada llamada, y una
+película a medias con dos aspectos no concatena. Quien lo pida a mitad de un
+proyecto tiene que crear otro.
+
+Las películas anteriores a esa fecha son todas horizontales: el campo no existe
+en sus documentos y cae a ese default.
+
+El b-roll del editor no tiene selector porque no elige: hereda el aspecto del
+video sobre el que se inserta.
+
 ### «No me deja descargar» / «se me abre en una pestaña»
 
 Arreglado el 14 de septiembre de 2026. Lo que pasaba: el atributo `download` de

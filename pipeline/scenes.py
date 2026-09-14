@@ -13,6 +13,17 @@ ESTILO_SUFIJO = (
 )
 
 
+def con_formato(escenas: list[Scene], formato: str) -> list[Scene]:
+    """El formato del proyecto baja a cada escena (M22 · F).
+
+    Es un solo paso a propósito: el aspecto lo leen tres sitios distintos
+    —Grok, Veo y el clip de respaldo— y si una escena se quedara sin él, la
+    película saldría con un plano apaisado en medio de uno vertical y el
+    concat final, que re-encodea, lo deformaría.
+    """
+    return [e.model_copy(update={"formato": formato}) for e in escenas]
+
+
 def ordenar_cola(escenas: list[Scene]) -> list[Scene]:
     """Port de `Ordenar cola`: orden natural, prev_id, 'continua' solo si mismos personajes."""
     from .utils import natural_key
