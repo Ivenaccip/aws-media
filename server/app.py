@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -39,9 +40,58 @@ from server.publicar_api import router as publicar_router
 from server.estilos_api import router as estilos_router
 from server.shorts_api import router as shorts_router
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+def _configurar_logging() -> None:
+    """Deja el root en INFO — también dentro de Lambda, que es donde no estaba.
+
+    `basicConfig()` es no-op si el root logger ya tiene handlers, y el runtime
+    de Lambda instala el suyo antes de importar este módulo: el `level=INFO`
+    nunca se aplicaba, el root se quedaba en WARNING y cada `log.info()` de los
+    routers se tiraba en silencio. Siete días de CloudWatch sin una sola línea
+    de la aplicación, y en local todo bien — por eso nadie lo notó.
+
+    El `setLevel()` aparte sí surte efecto en los dos sitios, y conserva el
+    handler de Lambda, que es el que asocia cada línea con su requestId.
+    """
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger().setLevel(logging.INFO)
+
+
+_configurar_logging()
+log = logging.getLogger("peticiones")
+
+# API Gateway corta a los 30 s y la Lambda a los 29: a los 10 s una petición ya
+# va camino de morir. WARNING y no INFO para que siga viéndose aunque el root
+# vuelva a quedarse en su nivel por defecto.
+LENTA_MS = 10_000
+
 app = FastAPI(title="edicion_y_generacion")
 app.middleware("http")(auth.middleware)   # M2: exige el JWT en /api/* y /editor/*
+
+
+@app.middleware("http")
+async def _registrar_peticion(request, call_next):
+    """Una línea por petición: sin esto «tarda mucho» no tiene ruta ni número.
+
+    Va registrado después de auth para quedar por fuera de él —Starlette apila
+    al revés del orden de registro—, así el tiempo medido es el que espera el
+    usuario, validación del token incluida. La ruta se registra sin query
+    string a propósito: por ahí viajan tokens.
+    """
+    arranque = time.perf_counter()
+    estado = "ERROR"
+    try:
+        respuesta = await call_next(request)
+        estado = respuesta.status_code
+        return respuesta
+    finally:
+        ms = (time.perf_counter() - arranque) * 1000
+        log.log(logging.WARNING if ms >= LENTA_MS else logging.INFO,
+                "peticion %s %s -> %s en %.0f ms",
+                request.method, request.url.path, estado, ms)
+
+
 app.include_router(editor_router)
 app.include_router(importar_router)
 app.include_router(overlays_router)
