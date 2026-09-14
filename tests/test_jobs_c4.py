@@ -43,7 +43,12 @@ def test_lanzar_produccion_nombra_con_timestamp(monkeypatch):
     assert capturado["input"]["proyecto_id"] == "abc123"
     # SFN no interpola JsonPath en arrays: el comando viaja armado en el input
     assert capturado["input"]["command"] == [
-        "python", "-m", "worker.producir_task", "piloto", "abc123"]
+        "python", "-m", "worker.producir_task", "piloto", "abc123", "todo"]
+    # M22 · G: la fase es un argumento más del comando — partir la producción
+    # en dos NO toca la state machine ni el task definition, así que no pide
+    # deploy de CDK
+    assert jobs.lanzar_produccion("piloto", "abc123", "animar") == "arn:exec"
+    assert capturado["input"]["command"][-1] == "animar"
 
 
 def test_media_sync_noop_sin_bucket(tmp_path, monkeypatch):

@@ -133,6 +133,33 @@ siguen siendo solo locales.** Leen el disco del proyecto, que en el servicio no
 existe. En la nube avisan con un 503 explicado; la salida mientras tanto es
 descargar el video y subirlo a mano.
 
+### «Mi película se quedó en las imágenes y no avanza»
+
+No está atascada: está **esperando**. Desde el 14 de septiembre de 2026, en
+revisión hay dos modos — «⚡ De corrido» (el de siempre) y «🖼 Enséñame las
+imágenes antes de animar». Con el segundo la producción para al tener la imagen
+de cada toma y no sigue hasta que alguien pulse **Animar**. Puede quedarse ahí
+días sin costar nada: la tarea terminó, no hay ningún servidor esperando.
+
+De ahí se sale por tres puertas:
+
+- **Animar** — sigue la producción. No cobra: la película se pagó entera al
+  pulsar Producir.
+- **Pedir otra** en una imagen — cuesta la tarifa de imagen (`tools/tarifas.json`,
+  §video.imagen), avisada antes con un 428. Es lo único que gasta en esta
+  pantalla, y es 12 veces más barato que animar y rehacer.
+- **Mejor no** — vuelve a revisión y devuelve lo que no se gastó: la producción
+  menos las imágenes ya quemadas. En el monedero sale como `cancelar:<id>`.
+
+Se aprueban las **cabezas de cadena**, no todas las escenas: una escena que
+continúa a la anterior arranca del último frame de su clip, que todavía no
+existe. Por eso una película de 5 escenas puede enseñar solo 2 imágenes — y
+cada una dice de cuántos planos manda.
+
+Si una película aparece en `imagenes` y la pantalla sale vacía, mirar
+`estado.json` bajo `work/<user>/<id>/` en S3: es de donde salen las imágenes y
+el casting que usa la segunda mitad.
+
 ## Administración y costos
 
 - **Dashboard**: `/admin.html` (grupo admin) — 3 pestañas: Ingresos, Costos

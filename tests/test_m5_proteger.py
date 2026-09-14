@@ -18,7 +18,9 @@ def test_reclamar_produccion_es_update_condicionado(monkeypatch):
     monkeypatch.setattr(db, "ejecutar",
                         lambda s, p=None: capturado.update(sql=s, params=p) or [{"id": "x"}])
     assert db.reclamar_produccion("piloto", "x") is True
-    assert "estado IN ('revision', 'error')" in capturado["sql"]
+    assert "estado IN (:e0, :e1)" in capturado["sql"]
+    assert capturado["params"]["e0"] == "revision"
+    assert capturado["params"]["e1"] == "error"
     assert "RETURNING" in capturado["sql"]
 
 
@@ -56,7 +58,7 @@ def entorno(monkeypatch):
     monkeypatch.setattr(srv, "_proyecto", lambda id_: _proyecto_falso())
     monkeypatch.setattr(jobs, "backend", lambda: "aws")
     lanzados, cobros, devueltos, liberados = [], [], [], []
-    monkeypatch.setattr(jobs, "lanzar_produccion", lambda u, i: lanzados.append(i))
+    monkeypatch.setattr(jobs, "lanzar_produccion", lambda u, i, fase="todo": lanzados.append(i))
     monkeypatch.setattr(creditos, "activo", lambda: True)
     monkeypatch.setattr(creditos, "cobrar", lambda n, ref: cobros.append((n, ref)) or 0)
     monkeypatch.setattr(creditos, "devolver", lambda n, ref: devueltos.append((n, ref)) or n)
@@ -95,7 +97,7 @@ def test_402_revierte_el_claim(entorno, monkeypatch):
 
 def test_fallo_de_lanzamiento_devuelve_y_libera(entorno, monkeypatch):
     monkeypatch.setattr(db, "reclamar_produccion", lambda u, i: True)
-    def truena(u, i):
+    def truena(u, i, fase="todo"):
         raise RuntimeError("SFN caída")
     monkeypatch.setattr(jobs, "lanzar_produccion", truena)
     r = entorno.cliente.post("/api/proyectos/p1/producir")

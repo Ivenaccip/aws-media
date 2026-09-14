@@ -92,6 +92,12 @@ class Scene(BaseModel):
     start_image_url: Optional[str] = None  # URL http o data-URI
     start_image_origen: Optional[str] = None  # grok | frame_previo | frame_previo_fallback | fallo_grok
     start_image_path: Optional[Path] = None
+    # M22 · G — la imagen ya está decidida: la vio el usuario y la dio por
+    # buena (o pidió otra). La fase que anima NO vuelve a generarla, porque
+    # sería pagarla dos veces y entregar una distinta de la aprobada. Solo la
+    # traen las cabezas de cadena: una escena "continua" arranca del último
+    # frame del clip anterior, que no existe hasta animar.
+    imagen_fija: bool = False
     qc: Optional[str] = None  # ok | corregido | fallido | omitido
     qc_motivo: Optional[str] = None
 
