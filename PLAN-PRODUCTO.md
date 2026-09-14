@@ -397,17 +397,40 @@ activa desde el primer deploy; si algún día falta, la UI lo avisa y no cobra.
 Tests: 21 nuevos en tests/test_m8_shorts.py (248 en total, verdes); smoke
 local de e1 y shorts.html.
 
-## Fase M9 — Automatización de membresías (bot en VPS)
+## Fase M9 — Automatización de membresías (Skool → Zapier → alta)
 
-- [ ] Servicio pequeño (VPS o Lambda programada) con secretos propios que
-      consulta la plataforma de la comunidad, y por diferencia: alta de miembros
-      nuevos (`usuarios.py alta`), suspensión de bajas/churn.
-- [ ] **Pregunta abierta**: ¿en qué plataforma vive la comunidad y tiene API o
-      webhooks (Skool, Circle, Discord…)? Con API/webhook es un día de trabajo;
-      sin ella habría que raspar la lista de miembros, que es frágil — decidir
-      cuando toque.
+**Plataforma decidida (2026-09-13): Skool.** Cierra la pregunta abierta que
+tenía esta fase. No hace falta raspar la lista de miembros: Skool expone las
+altas hacia Zapier, y de ahí salen a un CRM.
+
+**Ruta de alta (evento, en el momento):**
+
+```
+Skool (alguien se suscribe) → Zapier → CRM → señal a nuestro endpoint → usuarios.py alta
+```
+
+**Ruta de churn y renovación (cron, cada X):** un programado compara la lista
+viva contra Cognito y, por diferencia, suspende a quien se dio de baja y
+reactiva a quien renovó. Va por cron y no por evento a propósito: una baja que
+se procesa una hora tarde no rompe nada, y un webhook perdido sí dejaría a
+alguien con acceso pagado por otro.
+
+- [ ] Endpoint que recibe la señal y llama a `usuarios.py alta`.
+- [ ] **Secreto compartido en ese endpoint.** Sin él, quien descubra la URL se
+      da de alta solo — y el alta regala los créditos de cortesía (`cortesia()`
+      en `tools/usuarios.py`). Es una puerta al dinero, no solo al acceso.
+- [ ] **Idempotencia por correo.** Zapier reintenta ante cualquier error, así
+      que la misma alta puede llegar dos o tres veces; la segunda no puede
+      volver a abonar cortesía. Misma regla que el webhook de Stripe (M4).
+- [ ] Cron de churn/renovación. Decidir la frecuencia — diaria basta si la
+      suscripción es mensual.
 - [ ] Política de gracia para churn (no borrar: suspender; los créditos
       comprados no caducan — regla de ECONOMIA.md).
+- [ ] **Pendiente de decidir**: qué CRM, y si el cron vive como EventBridge
+      programado (ya hay cuenta y CDK) o fuera.
+
+**Por qué importa para el lanzamiento:** con 161 altas previstas, hacerlas a
+mano no es opción — ni por el tiempo ni porque cada alta mueve créditos.
 
 ## Fase M10 — Prompts gestionados en Langfuse
 
@@ -987,6 +1010,38 @@ a propósito desde M7; el dueño ya tiene API key de Claude para habilitarlo.
 5. - [ ] Orden sugerido: 1 (subtítulos: lo que el dueño intentó y falló) →
          2 (recursos) → 3 (b-roll) → 4 (chat). Deploy por iteración:
          imagen del CI + `cdk deploy aws-media-api aws-media-jobs`.
+
+## Capacidad y escalado (medido 2026-09-13)
+
+Medición real de la infra con 5 testers, antes de abrir a 161 personas más:
+
+| qué | medido |
+|---|---|
+| Aurora, ACU consumidos | media diaria 0.01–0.19; picos que tocan el techo de 1.0 |
+| Conexiones a la base | media ~1, máximo 7 |
+| CPU de Aurora | media 1.5–8.8%, con picos sobre 400% |
+| Gasto AWS, 30 días | menos de un centavo (free tier salvo Fargate y Lambda) |
+
+Lectura: la base está dormida casi todo el tiempo y se queda corta un instante
+cuando despierta. No está ahogada; roza el techo.
+
+**Decisión del dueño (2026-09-13):** la configuración actual se queda así para
+esta tanda. De los 166 no todos usarán el producto, y menos a la vez —
+dimensionar para 166 simultáneos sería pagar por un pico que no va a ocurrir.
+
+**Antes del 23 de septiembre de 2026**, subir:
+
+- `serverless_v2_max_capacity` de 1 a 4 — `infra/stacks/db.py:31`
+- `max_concurrency` de Fargate de 2 a 4 — `infra/stacks/jobs.py:97`
+
+Y de ahí en adelante, escalar con la medición, no con la intuición: repetir
+esta tabla y mover los topes según lo que diga.
+
+**El techo de Aurora no es una reserva.** Serverless v2 cobra por ACU-hora
+consumido, así que subir el máximo de 1 a 4 no multiplica la factura — solo
+levanta el límite al que puede llegar si hace falta. Si la carga no sube, la
+factura tampoco. Lo mismo con `max_concurrency`: es un tope de paralelismo, y
+las tareas de Fargate se pagan por el tiempo que corren, no por el permiso.
 
 ## Orden y dependencias
 
