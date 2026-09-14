@@ -150,7 +150,7 @@ gh pr merge <N> --merge          # SIN --delete-branch: se llevaría dev
 ```
 
 ```bash
-set "PATH=D:ws-projectenv\Scripts;C:\Program Files
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 odejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 ```
 
@@ -299,6 +299,58 @@ aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" 
 
 Los seis ids que pueden cambiar están en la cabecera de
 `infra/stacks/alertas.py`, con la fecha en que se verificaron.
+
+## La imagen (Node, y por qué está fijado)
+
+Node entra en la imagen **copiado de la imagen oficial** y con la versión exacta
+escrita en el Dockerfile:
+
+```dockerfile
+COPY --from=node:20.20.2-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20.20.2-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+```
+
+### Qué pasó el 14 de septiembre de 2026
+
+Antes se instalaba con `curl https://deb.nodesource.com/setup_20.x | bash -`. Ese
+día el curl murió a mitad de un build («Recv failure: Connection reset by peer»)
+y **el build no se detuvo**: el script de NodeSource anuncia sus fallos y sale
+con cero —literalmente `Error: Failed to download and import the NodeSource
+signing key (Exit Code: 0)`—, así que el `&&` siguió y apt instaló el nodejs de
+Debian, 18.20.4. En Debian npm es un paquete aparte y solo «recomendado», y el
+Dockerfile instala con `--no-install-recommends`, así que npm no entró. El build
+murió cuatro pasos después con `npm: not found`.
+
+**Que muriera fue la suerte, no el diseño.** Si npm hubiera entrado igualmente,
+la imagen se habría construido entera con Node 18 —Remotion 4 arranca en 18— y
+nadie se habría enterado. La versión de Node de producción dependía de si una
+descarga de un tercero funcionaba ese día.
+
+### Los dos seguros
+
+1. **En el Dockerfile**, justo después de copiar Node: `node --version && npm
+   --version && npx --version` más un `case` que exige la línea `v20.*`. Si algo
+   no queda como se espera, el build muere ahí y dice por qué.
+2. **En el CI**, el paso «Runtimes de render presentes» pregunta también por
+   `npm`. Antes preguntaba por node, ffmpeg y chromium — npm era justo el que
+   faltaba.
+
+`tests/test_imagen_node.py` fija las dos cosas y corre en el primer paso del CI,
+antes del build, para fallar en segundos y no en minutos.
+
+### Si el build vuelve a fallar por Node
+
+No es un fallo de red que se arregle reintentando: ya no hay descarga. Mira qué
+dice el gate. Para subir de versión, cambia **las dos** líneas `COPY --from=` a
+la vez (hay un test que impide que queden en versiones distintas) y el `v20.*`
+del `case`.
+
+### Pendiente: Node 20 está fuera de soporte
+
+Terminó su mantenimiento el **30 de abril de 2026** — ya no recibe parches de
+seguridad. Node 22 va hasta abril de 2027. No se subió junto al arreglo de
+arriba a propósito: cambiar la major cambia el runtime con el que Remotion
+renderiza, y eso se valida con un render real, no con el CI.
 
 ## ECR (ciclo de vida de las imágenes)
 

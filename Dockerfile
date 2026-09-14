@@ -14,10 +14,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Node 20 LTS (los dos proyectos Remotion)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
- && apt-get install -y --no-install-recommends nodejs \
- && rm -rf /var/lib/apt/lists/*
+# Node 20 LTS (los dos proyectos Remotion), copiado de la imagen oficial.
+#
+# Esto era `curl -fsSL https://deb.nodesource.com/setup_20.x | bash -`, y el
+# 2026-09-14 ese curl murió a mitad de un build con «Recv failure: Connection
+# reset by peer». El build no se detuvo ahí: el script de NodeSource anuncia sus
+# propios fallos y sale con cero — «Failed to download and import the NodeSource
+# signing key (Exit Code: 0)» —, así que el `&&` siguió adelante y apt instaló
+# el nodejs de Debian, 18.20.4. Sin npm: en Debian npm es un paquete aparte y
+# solo «recomendado», y aquí se instala con --no-install-recommends. El build
+# siguió cuatro pasos más y reventó con `npm: not found`.
+#
+# Lo que estuvo en juego no fue esa tarde, fue la reproducibilidad: si npm
+# hubiera entrado de todos modos, la imagen se habría construido entera con Node
+# 18 y nadie se habría enterado — Remotion 4 arranca en 18. La versión de Node
+# de la imagen dependía de si una descarga de un tercero funcionaba ese día.
+#
+# Copiarla de la imagen oficial fija la versión exacta, quita esa descarga (y su
+# apt-get update) del build, y no añade un origen nuevo: bookworm-slim es la
+# misma base Debian que la imagen de Python de arriba.
+COPY --from=node:20.20.2-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20.20.2-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# El seguro contra la próxima vez: si Node o npm no quedan como se espera, el
+# build muere AQUÍ, diciendo por qué, y no cuatro pasos más abajo en un `npm ci`
+# que solo sabe responder «not found».
+RUN node --version && npm --version && npx --version \
+ && case "$(node --version)" in \
+      v20.*) ;; \
+      *) echo "Node no quedo en la linea 20 - revisa el COPY --from de arriba"; exit 1 ;; \
+    esac
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \

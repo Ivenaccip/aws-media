@@ -37,7 +37,7 @@ jobs:
       - name: Reglas del repo (dos ramas y frontera con producción)
         run: |
           pip install --quiet pytest
-          python -m pytest tests/test_flujo_ramas.py -q --noconftest
+          python -m pytest tests/test_flujo_ramas.py tests/test_imagen_node.py -q --noconftest
 
       - name: Build de la imagen
         run: docker build -t aws-media:ci .
@@ -60,9 +60,12 @@ jobs:
           echo "— f1 (static):"; curl -fs http://localhost:8011/ | head -c 200; echo
           docker logs app
 
-      - name: Runtimes de render presentes (Node/Chromium/ffmpeg)
+      # npm está en la lista por el fallo del 2026-09-14: una descarga caída
+      # dejó el nodejs de Debian sin npm, y este paso —que solo preguntaba por
+      # `node`— habría dado la imagen por buena. Ver el bloque Node del Dockerfile.
+      - name: Runtimes de render presentes (Node/npm/Chromium/ffmpeg)
         run: |
-          docker run --rm aws-media:ci sh -c "node --version && ffmpeg -version | head -1 && chromium --version"
+          docker run --rm aws-media:ci sh -c "node --version && npm --version && ffmpeg -version | head -1 && chromium --version"
 
       # Solo si TODO lo anterior pasó Y estamos en main: la imagen validada se
       # publica en ECR (C1 — la Lambda del API la consume por el tag latest).
