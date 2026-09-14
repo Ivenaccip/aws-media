@@ -27,12 +27,12 @@ if str(RAIZ / "infra") not in sys.path:
     sys.path.insert(0, str(RAIZ / "infra"))
 
 
-def _plantilla(**kwargs) -> dict:
+def _plantilla(correos=("pruebas@ejemplo.invalid",), **kwargs) -> dict:
     from stacks.alertas import AlertasStack
     app = cdk.App()
     AlertasStack(app, "aws-media-alertas",
                  env=cdk.Environment(account="191241816158", region="us-east-1"),
-                 correo="pruebas@ejemplo.invalid", **kwargs)
+                 correos=list(correos), **kwargs)
     return app.synth().get_stack_by_name("aws-media-alertas").template
 
 
@@ -149,3 +149,30 @@ def test_la_alarma_del_init_nace_desarmada():
     de nada. Solo tiene sentido como detector de regresión, tras partir la imagen."""
     assert "InitTimeoutRegresion" not in _alarmas(_plantilla())
     assert "InitTimeoutRegresion" in _alarmas(_plantilla(vigilar_init=True))
+
+
+# ---------------------------------------------------------------------------
+# los destinatarios
+
+def test_una_suscripcion_por_correo():
+    """La cuenta de AWS se dio de alta con un correo y el proyecto se sigue
+    desde otro: si solo suscribimos uno, las alarmas llegan a la bandeja que
+    nadie abre."""
+    t = _plantilla(correos=["uno@ejemplo.invalid", "dos@ejemplo.invalid"])
+    subs_ = [r["Properties"]["Endpoint"] for r in t["Resources"].values()
+             if r["Type"] == "AWS::SNS::Subscription"]
+    assert sorted(subs_) == ["dos@ejemplo.invalid", "uno@ejemplo.invalid"]
+
+
+def test_sin_destinatarios_no_se_sintetiza():
+    """Un stack de avisos sin nadie a quien avisar pasa el deploy en verde y no
+    sirve para nada: mejor que falle aquí."""
+    with pytest.raises(ValueError, match="dispar"):
+        _plantilla(correos=[])
+
+
+def test_el_despliegue_real_avisa_a_los_dos():
+    """La app que se despliega de verdad, no solo el stack en abstracto."""
+    fuente = (RAIZ / "infra" / "app_alertas.py").read_text(encoding="utf-8")
+    assert "ivenaccip@gmail.com" in fuente
+    assert "developer.leonardomedina@gmail.com" in fuente

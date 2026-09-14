@@ -24,7 +24,12 @@ app = cdk.App()
 AlertasStack(
     app, "aws-media-alertas",
     env=cdk.Environment(account="191241816158", region="us-east-1"),
-    correo="ivenaccip@gmail.com",
+    # Los dos a propósito: la cuenta de AWS y el presupuesto de $50 se dieron
+    # de alta con ivenaccip@, pero el trabajo de este proyecto se sigue desde
+    # developer.leonardomedina@. Una alarma que llega a la bandeja que nadie
+    # abre no es una alarma. Cada dirección confirma su suscripción por
+    # separado — ver el gate en docs/OPERACION.md.
+    correos=["ivenaccip@gmail.com", "developer.leonardomedina@gmail.com"],
     # True solo DESPUÉS de partir la imagen: hoy el init falla el 100% de las
     # veces y la alarma viviría en ALARM sin decir nada nuevo.
     vigilar_init=False,
