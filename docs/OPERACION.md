@@ -300,6 +300,79 @@ aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" 
 Los seis ids que pueden cambiar están en la cabecera de
 `infra/stacks/alertas.py`, con la fecha en que se verificaron.
 
+## ECR (ciclo de vida de las imágenes)
+
+El repositorio `aws-media` conserva las **20 imágenes más recientes** y expira el
+resto. La política vive en `infra/ecr-lifecycle.json`.
+
+### Por qué hace falta
+
+Medido el 14 de septiembre de 2026: **86 imágenes, 122 GB**, ninguna sin tag. Era
+el **43% de la factura** de AWS y crecía con cada merge a `main`.
+
+Y crecía de verdad, no en apariencia: **dos builds consecutivos solo comparten 4
+de sus 17 capas — 48 MB de 1.664.** El CI no cachea capas de Docker, así que cada
+build reconstruye todo desde cero y sube ~1,6 GB genuinamente nuevos. Al ritmo de
+merges de estos días, unos 4,8 GB al día.
+
+Con la política, el repositorio se estabiliza en ~33 GB en vez de subir sin techo.
+
+### El riesgo real, que no es el número
+
+**Las Lambdas apuntan a un digest, no a un tag.** Si la imagen que corre
+producción cae fuera de las 20 más recientes y se expira, la función deja de
+poder arrancar contenedores nuevos.
+
+Veinte son unos siete días de margen al ritmo actual. El peligro no es que el
+número sea bajo: es **dejar pasar 20 merges sin desplegar**. Ya ha pasado estar
+tres PRs por detrás.
+
+### Antes de tocar nada: el preview
+
+ECR sabe decir qué borraría sin borrarlo. Úsalo siempre, también al cambiar el
+número:
+
+```bash
+aws ecr start-lifecycle-policy-preview --repository-name aws-media --lifecycle-policy-text file://infra/ecr-lifecycle.json
+```
+
+```bash
+aws ecr get-lifecycle-policy-preview --repository-name aws-media --query "summary" --output json
+```
+
+Y el chequeo que importa — que ninguna de las imágenes vivas esté en la lista:
+
+```bash
+venv/Scripts/python tools/ecr_preview.py
+```
+
+Compara el resultado del preview contra los digests que corren ahora mismo la
+Lambda del API, la del worker y la task definition de Fargate. Si alguno aparece
+en la lista de expiración, **no apliques**: despliega primero, o sube el número.
+
+### Aplicarla
+
+Esto sí borra, y no se deshace:
+
+```bash
+aws ecr put-lifecycle-policy --repository-name aws-media --lifecycle-policy-text file://infra/ecr-lifecycle.json
+```
+
+ECR la evalúa cada 24 horas, así que el borrado no es instantáneo. Para ver qué
+política está aplicada:
+
+```bash
+aws ecr get-lifecycle-policy --repository-name aws-media --query "lifecyclePolicyText" --output text
+```
+
+### La causa de fondo sigue ahí
+
+La política limpia; no evita que cada build suba 1,6 GB. Eso se arregla con cache
+de capas en el CI (`cache-from` / `cache-to` sobre el propio ECR), que además
+recortaría los 162 segundos del build — 56 de ellos son el `pip install`. Queda
+pendiente; toca `.github/workflows/docker.yml` y los tests que fijan los nombres
+de sus pasos.
+
 ## Base de datos (Aurora)
 
 ARNs del stack `aws-media-db` (también salen en sus outputs de CloudFormation):
