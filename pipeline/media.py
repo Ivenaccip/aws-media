@@ -10,7 +10,7 @@ from langfuse import get_client, observe
 
 from . import fal, ffmpeg
 from .config import settings
-from .models import Casting, Scene
+from .models import Casting, Scene, formato_de
 from .qc import prompt_con_correccion, qc_imagen
 from .scenes import VEO_NEGATIVE, prompt_veo, resolver_referencias
 from .styles import Estilo
@@ -50,7 +50,8 @@ async def _grok(e: Scene, prompt: str, intento: int, image_urls: list[str] | Non
     try:
         res = await fal.llamar(
             settings.fal_grok,
-            {"prompt": prompt, "image_urls": image_urls or e.image_urls, "aspect_ratio": "16:9"},
+            {"prompt": prompt, "image_urls": image_urls or e.image_urls,
+             "aspect_ratio": formato_de(e.formato)["aspecto"]},
             timeout_s=settings.grok_timeout_s, nombre="grok",
             meta={"escena": e.id, "intento": intento, "refs_espejadas": image_urls is not None},
         )
@@ -114,7 +115,7 @@ async def _veo(e: Scene, intento: int) -> str | None:
                 "prompt": prompt_veo(e),
                 "negative_prompt": e.veo_negativo or VEO_NEGATIVE,
                 "image_url": e.start_image_url,
-                "aspect_ratio": "16:9",
+                "aspect_ratio": formato_de(e.formato)["aspecto"],
                 "duration": f"{e.duracion_video}s",
                 "resolution": "720p",
                 "generate_audio": False,
@@ -146,7 +147,7 @@ async def video_escena(e: Scene, prev_frame: Path | None) -> Scene:
             return e.model_copy(update={"video_url": url, "video_origen": "veo", "veo_intento": intento})
 
     await _guardar_imagen_inicio(e, prev_frame)
-    await ffmpeg.clip_estatico(e.start_image_path, e.video_path, e.duracion_video)
+    await ffmpeg.clip_estatico(e.start_image_path, e.video_path, e.duracion_video, e.formato)
     shutil.copy(e.start_image_path, e.last_frame_path)
     get_client().update_current_span(level="WARNING", status_message="clip estático")
     return e.model_copy(update={"video_url": None, "video_origen": "estatico", "veo_intento": settings.veo_max_attempts})

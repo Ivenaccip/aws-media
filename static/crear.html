@@ -44,13 +44,27 @@
   .err { color:#ff8080; white-space:pre-wrap; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
   .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); transition:width .4s; }
-  video { width:100%; border-radius:12px; margin-top:10px; }
+  /* max-height para que un 9:16 no ocupe tres pantallas de alto en escritorio;
+     el navegador ya respeta la proporción real del archivo (M22 · F) */
+  video { width:100%; max-height:70vh; object-fit:contain; border-radius:12px; margin-top:10px; }
   details summary { cursor:pointer; color:var(--mut); }
   a { color:#5b8dd6; }
   .hidden { display:none; }
   /* M19: los huecos del orbe no ocupan nada mientras no hay orbe montado */
   #orbe-form:not(:empty), #orbe-prog:not(:empty),
   #orbe-pmod:not(:empty), #orbe-genop:not(:empty) { margin-top:12px; }
+  /* M22 · F: los dos formatos. El icono es la proporción real dibujada, que se
+     lee de un vistazo mejor que las palabras «16:9». */
+  .formatos { display:flex; gap:10px; flex-wrap:wrap; }
+  .fmt { flex:1; min-width:180px; display:flex; flex-direction:column; align-items:center;
+         gap:4px; padding:12px; border-radius:12px; cursor:pointer; font:inherit;
+         color:inherit; background:transparent; border:1px solid var(--line); }
+  .fmt:hover { border-color:var(--acc); }
+  .fmt.on { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 12%, transparent); }
+  .fmt .mut { font-size:11px; }
+  .fmt-icono { display:block; border:2px solid currentColor; border-radius:3px; opacity:.75; margin-bottom:2px; }
+  .fmt-icono.horiz { width:44px; height:25px; }
+  .fmt-icono.vert { width:25px; height:44px; }
   /* M12: estilo (izq) + personaje (der) en dos columnas; duración debajo */
   .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; align-items:stretch; }
   .cols2 .card { margin-bottom:0; display:flex; flex-direction:column; }
@@ -127,6 +141,20 @@
         <input type="text" id="pextra" maxlength="500" style="margin-top:10px"
                placeholder="Información extra (opcional) — p. ej. «tiene una cicatriz y siempre lleva sombrero»">
       </div>
+    </div>
+    <div class="card">
+      <h2>📐 Formato</h2>
+      <div class="formatos" role="radiogroup" aria-label="Formato del video">
+        <button type="button" class="fmt on" data-fmt="horizontal" role="radio" aria-checked="true">
+          <span class="fmt-icono horiz"></span>
+          <b>Horizontal</b><span class="mut">YouTube · 16:9</span>
+        </button>
+        <button type="button" class="fmt" data-fmt="vertical" role="radio" aria-checked="false">
+          <span class="fmt-icono vert"></span>
+          <b>Vertical</b><span class="mut">Reels · TikTok · Shorts · 9:16</span>
+        </button>
+      </div>
+      <div class="mut" style="margin-top:8px">Se elige ahora y no se puede cambiar después.</div>
     </div>
     <div class="card">
       <h2>⏱ Duración</h2>
@@ -244,6 +272,19 @@ const $ = s => document.querySelector(s);
 async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
 const show = id => { for (const s of ['form','progreso','revision','resultado','error']) $('#'+s).classList.toggle('hidden', s!==id); };
 let estilo = 'animated', files = [], proyecto = null, poll = null;
+
+// M22 · F — el formato se fija al crear: media.py le pide el aspecto a Grok y a
+// Veo en cada llamada, y una película a medias con dos aspectos no concatena.
+let formato = 'horizontal';
+document.querySelector('.formatos').onclick = ev => {
+  const b = ev.target.closest('.fmt');
+  if (!b) return;
+  formato = b.dataset.fmt;
+  document.querySelectorAll('.fmt').forEach(f => {
+    f.classList.toggle('on', f === b);
+    f.setAttribute('aria-checked', String(f === b));
+  });
+};
 
 // --- monedero (M1): saldo y costo visibles ANTES de gastar, nunca después del 402 ---
 let mon = null, faltaProducir = 0, saldoProd = null;
@@ -377,6 +418,7 @@ $('#enviar').onclick = async (ev, forzar = false) => {
     fd.append('estilo_custom', $('#estilo_custom').value); fd.append('duracion_s', $('#dur').value);
     fd.append('modo', modo); fd.append('rubro', $('#rubro').value);
     fd.append('personaje_extra', $('#pextra').value);
+    fd.append('formato', formato);
     if (forzar) fd.append('forzar', 'true');
     // M11 (flag del A/B): ?pipeline=narracion en la URL activa el pipeline
     // narración-primero para ESTE proyecto; sin el parámetro, el de siempre.

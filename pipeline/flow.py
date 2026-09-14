@@ -15,6 +15,7 @@ from .director import dirigir
 from .models import Biblioteca, Casting, Entidad
 from .project import Proyecto
 from .run import producir_desde_escenas
+from .scenes import con_formato
 from .styles import resolver_estilo
 
 log = logging.getLogger("flow")
@@ -217,6 +218,7 @@ async def _producir(p: Proyecto) -> None:
     else:
         _etapa(p, "director")
         escenas = [e.model_copy(update={"voz": p.voz}) for e in await dirigir(historia, ctx)]
+        escenas = con_formato(escenas, p.formato)
         if len(escenas) != len(p.guion):
             log.warning("%s: el director devolvió %d escenas para %d del guion", p.id, len(escenas), len(p.guion))
 

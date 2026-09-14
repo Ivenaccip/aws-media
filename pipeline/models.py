@@ -8,6 +8,27 @@ from pydantic import BaseModel, Field
 
 Tipo = Literal["personaje", "prop", "lugar"]
 Transicion = Literal["corte", "continua"]
+Formato = Literal["horizontal", "vertical"]
+
+# M22 · F — el único sitio donde vive lo que significa cada formato. Estaba
+# cableado a 16:9 en cuatro puntos del pipeline, así que producir en vertical
+# —el formato de shorts y reels, que es lo que pidieron los testers— era
+# imposible sin tocar código.
+#
+# `aspecto` es lo que entienden Grok y Veo (verificado 2026-09-14 contra el
+# schema de fal: los dos aceptan exactamente 'auto', '16:9' y '9:16'); `w`/`h`
+# son el lienzo cuando el clip lo armamos nosotros, y `w_salida`/`h_salida` los
+# 720p de ese mismo lienzo.
+FORMATOS: dict[str, dict] = {
+    "horizontal": {"aspecto": "16:9", "w": 1920, "h": 1080, "w_salida": 1280, "h_salida": 720},
+    "vertical": {"aspecto": "9:16", "w": 1080, "h": 1920, "w_salida": 720, "h_salida": 1280},
+}
+
+
+def formato_de(nombre: str | None) -> dict:
+    """Los números de un formato, cayendo a horizontal ante cualquier cosa rara
+    (proyectos anteriores a M22, un doc a medio migrar, un valor inventado)."""
+    return FORMATOS.get(nombre or "", FORMATOS["horizontal"])
 
 
 class Entidad(BaseModel):
@@ -50,6 +71,11 @@ class Scene(BaseModel):
     audio_path: Optional[Path] = None
     duracion_real: Optional[float] = None
     duracion_video: Optional[int] = None
+
+    # Formato del proyecto (M22 · F). Viaja en la escena porque es lo que llega
+    # hasta Grok, Veo y el clip de respaldo; lo fija flow/narracion en un solo
+    # sitio al construir la lista.
+    formato: Formato = "horizontal"
 
     # Orden / cadenas
     orden: int = 0

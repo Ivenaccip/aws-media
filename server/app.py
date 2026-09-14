@@ -419,6 +419,7 @@ async def crear(
     duracion_s: int = Form(45), referencias: list[UploadFile] = File(default=[]),
     modo: str = Form("auto"), rubro: str = Form(""), forzar: bool = Form(False),
     pipeline: str = Form(""), personaje_extra: str = Form(""),
+    formato: str = Form("horizontal"),
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
@@ -447,7 +448,7 @@ async def crear(
     if pipeline not in ("escenas", "narracion"):
         pipeline = os.getenv("PIPELINE_DEFAULT", "narracion")
     p = nuevo_proyecto(brief, estilo, estilo_custom or None, min(duracion_s, DURACION_MAX_S),
-                       modo=modo, rubro=rubro, pipeline=pipeline)
+                       modo=modo, rubro=rubro, pipeline=pipeline, formato=formato)
     p.personaje_extra = personaje_extra.strip()[:500]
     refs_dir = p.workdir / "refs"
     refs_dir.mkdir(parents=True, exist_ok=True)

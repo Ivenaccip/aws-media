@@ -1277,13 +1277,23 @@ hacer mientras tanto.
 traducir a inglés al mandarlo al modelo, y guardar las dos versiones (el
 usuario vuelve a abrir y tiene que leer lo suyo, no lo del modelo).
 
-**F · Formato vertical.** El aspecto deja de ser una constante y pasa a ser un
-campo del proyecto, elegido al crearlo. Cuatro sitios cableados a 16:9
-(`pipeline/media.py` ×2, `pipeline/media_fal.py`, más el recorte a 1920x1080 de
-`pipeline/ffmpeg.py`); Remotion ya está resuelto por los dos lados. **Decisión
-del usuario 2026-09-14: entra antes del 23** — es el formato de shorts y reels,
-y abrir sin él limita el producto desde el día uno. Arranca en cuanto A-D estén
-cerrados y probados. Responde además la pregunta abierta 5 de este plan.
+**F · Formato vertical.** ✅ CÓDIGO LISTO (2026-09-14, falta deploy). El aspecto
+deja de ser una constante y pasa a ser un campo del proyecto, elegido al
+crearlo y fijo desde entonces (media.py pide el aspecto en cada llamada: una
+película a medias con dos aspectos no concatena). Los cuatro sitios cableados a
+16:9 —Grok, Veo, el Veo del editor y el lienzo del clip de respaldo— leen ahora
+una sola tabla en `pipeline/models.py`.
+
+Los dos valores se verificaron contra el schema de fal antes de construir nada:
+Veo 3.1 lite acepta exactamente `auto`, `16:9` y `9:16`.
+
+El b-roll del editor **no** elige: hereda. Su imagen ya se generaba desde un
+frame del video base, y ahora Veo deduce el aspecto de esa imagen en vez de
+pedir 16:9 a ciegas. Remotion estaba resuelto por los dos lados (shorts ya es
+1080x1920; el longform toma las medidas del timeline y es del flujo local).
+
+Esto responde la pregunta abierta 5 de este plan: «Reels» y «Crear contenido»
+son el mismo flujo con un formato distinto, no dos secciones.
 
 ### P2 — después del 23
 
@@ -1334,7 +1344,9 @@ Lo que corre el usuario: `cdk deploy` (M2, M4, M6, M7, M8, M12), claves Stripe
    comisiones reales.
 4. Chat editorial en la nube (Agent SDK): ¿se cobra en créditos por turno? Se
    diseña al abrir M7.
-5. M12: ¿"Reels" y "Crear contenido" del sidebar son el mismo flujo con
-   formato distinto (9:16 vs película) o secciones separadas? ¿Y qué hace
+5. ~~M12: ¿"Reels" y "Crear contenido" del sidebar son el mismo flujo con
+   formato distinto (9:16 vs película) o secciones separadas?~~ **RESUELTA en
+   M22 · F (2026-09-14): el mismo flujo.** El formato es un campo del proyecto
+   que se elige al crearlo, no una sección aparte. ¿Y qué hace
    exactamente el botón "Investigación" del prompt central? Se decide al
    maquetar el hub.

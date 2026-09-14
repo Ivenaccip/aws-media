@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from . import db
 from .config import settings
+from .models import FORMATOS, Formato
 
 Estado = Literal["creado", "preparando", "revision", "produciendo", "listo", "error"]
 
@@ -58,6 +59,9 @@ class Proyecto(BaseModel):
     estilo: str = "animated"
     estilo_custom: Optional[str] = None
     duracion_s: int = 45
+    # M22 · F — horizontal (16:9) o vertical (9:16), elegido al crear. Los
+    # proyectos anteriores no lo traen y caen al default, que es lo que eran.
+    formato: Formato = "horizontal"
     modo: Literal["auto", "investigacion", "idea"] = "auto"  # F3.3: elección explícita del usuario
     rubro: Optional[str] = None                              # rubro del canal (balanceador)
     referencias: list[Referencia] = Field(default_factory=list)
@@ -117,7 +121,7 @@ class Proyecto(BaseModel):
 
 def nuevo_proyecto(brief: str, estilo: str, estilo_custom: str | None, duracion_s: int,
                    modo: str = "auto", rubro: str | None = None,
-                   pipeline: str = "escenas") -> Proyecto:
+                   pipeline: str = "escenas", formato: str = "horizontal") -> Proyecto:
     duracion_s = max(DURACION_MIN_S, min(DURACION_MAX_S, int(duracion_s)))
     p = Proyecto(
         id=uuid.uuid4().hex[:8], creado=datetime.now().isoformat(timespec="seconds"),
@@ -125,6 +129,9 @@ def nuevo_proyecto(brief: str, estilo: str, estilo_custom: str | None, duracion_
         modo=modo if modo in ("auto", "investigacion", "idea") else "auto",
         rubro=(rubro or "").strip() or None,
         pipeline=pipeline if pipeline in ("escenas", "narracion") else "escenas",
+        # el formato NO se puede cambiar después: media.py fija el aspecto en
+        # cada llamada y una película a medias con dos aspectos no se concatena
+        formato=formato if formato in FORMATOS else "horizontal",
     )
     p.guardar()
     return p

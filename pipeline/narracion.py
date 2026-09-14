@@ -26,7 +26,7 @@ from .config import load_prompt, settings
 from .director import _elenco
 from .llm import chat_json
 from .models import Casting, Resultado, Scene
-from .scenes import asignar_rutas, ordenar_cola, partir_en_cadenas
+from .scenes import asignar_rutas, con_formato, ordenar_cola, partir_en_cadenas
 from .styles import Estilo
 from .tts import OPCIONES
 from .voices import STABILITY_DEFAULT, VOZ_DEFAULT
@@ -173,7 +173,8 @@ async def producir_pelicula(p, ctx: Casting, estilo: Estilo | None, progreso) ->
 
     if progreso:
         progreso("director", {})
-    escenas = await dirigir_ventanas(p.narracion, ventanas, textos, ctx)
+    escenas = con_formato(await dirigir_ventanas(p.narracion, ventanas, textos, ctx),
+                          p.formato)
     escenas = [asignar_rutas(e, workdir) for e in ordenar_cola(escenas)]
     cadenas = partir_en_cadenas(escenas)
     log.info("%s: %d ventanas en %d cadenas", p.id, len(escenas), len(cadenas))
