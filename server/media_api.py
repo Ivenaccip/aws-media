@@ -18,6 +18,7 @@ import re
 from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from pipeline import db
@@ -96,6 +97,54 @@ def presign(body: PresignIn):
         ExpiresIn=PRESIGN_S)
     # el navegador debe mandar el mismo Content-Type: va dentro de la firma
     return {"url": url, "key": key, "content_type": body.content_type}
+
+
+def _mio(key: str) -> None:
+    """La key la manda el navegador: sin esto, cualquiera pediría la de otro."""
+    if ".." in key or key.startswith("/"):
+        raise HTTPException(422, "key inválida")
+    partes = key.split("/")
+    if len(partes) < 3:
+        raise HTTPException(404, "no encontrado")
+    if partes[0] == "videos":
+        proyecto = _validar_nombre(partes[1])
+        if db.cargar_proyecto_editor(db.usuario_actual(), proyecto) is None:
+            raise HTTPException(404, "no encontrado")
+        return
+    if partes[0] == "imagenes" and partes[1] == db.usuario_actual():
+        return
+    raise HTTPException(404, "no encontrado")
+
+
+@router.get("/descarga")
+def descarga(key: str, nombre: str = ""):
+    """Un enlace que DESCARGA, en vez de abrirse en una pestaña.
+
+    El atributo `download` de un `<a>` lo IGNORA el navegador cuando el archivo
+    vive en otro origen, y todo lo nuestro vive en el CDN: por eso «abrir /
+    descargar» abría el mp4 en una pestaña y había que saber hacer clic derecho
+    → guardar como. Lo reportaron los testers como «no hay botón de descargar»
+    (M22 · D), y tenían razón: el botón estaba, pero no descargaba.
+
+    La instrucción no puede viajar en el enlace, así que viaja en el archivo:
+    S3 firma la URL con `Content-Disposition: attachment` y el navegador ya no
+    tiene nada que decidir.
+    """
+    _mio(key)
+    return RedirectResponse(url_firmada_descarga(key, nombre))
+
+
+def url_firmada_descarga(key: str, nombre: str = "") -> str:
+    """La URL de S3 que fuerza la descarga. NO valida pertenencia: quien llame
+    ya tiene que haber comprobado que la key es de este usuario."""
+    bucket = _bucket()
+    archivo = re.sub(r"[^A-Za-z0-9._-]+", "-",
+                     (nombre or key.rsplit("/", 1)[-1]))[:120] or "descarga"
+    return _s3().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key,
+                "ResponseContentDisposition": f'attachment; filename="{archivo}"'},
+        ExpiresIn=PRESIGN_S)
 
 
 @router.post("/confirmar")

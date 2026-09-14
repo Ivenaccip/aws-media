@@ -430,7 +430,7 @@ def render_status(name: str):
         return {"running": estado == "corriendo" and not _render_caducado(r),
                 "log": r.get("log", ""),
                 "ok": True if estado == "listo" else False if estado == "error" else None,
-                "url": r.get("url")}
+                "url": r.get("url"), "key": r.get("key")}
     return _render.get(name, {"running": False, "log": "", "ok": None})
 
 

@@ -878,8 +878,16 @@ async function render() {
       if (s.ok && s.url) {
         const a = document.createElement("a");
         a.href = s.url; a.target = "_blank"; a.rel = "noopener";
-        a.textContent = "abrir / descargar";
+        a.textContent = "ver";
         $("status").append(" — ", a);
+        // M22 · D: y uno que DESCARGA. `download` no cruza orígenes, así que
+        // el de arriba solo abría el mp4 en una pestaña.
+        if (s.key) {
+          const d = document.createElement("a");
+          d.href = "/api/media/descarga?key=" + encodeURIComponent(s.key);
+          d.textContent = "descargar ⬇";
+          $("status").append(" · ", d);
+        }
       }
     }
   }, 1500);
@@ -1208,6 +1216,11 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
              gap: 10px; margin-top: 12px; }
   #g1cands img { width: 100%; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
   #g1cands img.eleg { border-color: #5b8dd6; }
+  /* M22 · D: la imagen generada no tenía forma de guardarse. El enlace va bajo
+     cada opción y no roba el clic, que sigue siendo «elegir esta». */
+  #g1cands .cand { display: flex; flex-direction: column; gap: 4px; }
+  #g1cands .cand a { font-size: 11px; color: var(--dim); text-decoration: none; }
+  #g1cands .cand a:hover { color: #5b8dd6; text-decoration: underline; }
   #g1vers { margin-top: 12px; font-size: 12px; }
   #g1vers .vfila { display: flex; gap: 8px; align-items: center; padding: 3px 0; color: var(--dim); }
   #g1vers .vfila.activa { color: var(--text); }
@@ -1620,7 +1633,13 @@ $("g1generar").onclick = async () => {
         b.textContent = G1PRECIO.creditos ? `Animar ✦ ${G1PRECIO.creditos.video}` : "Animar";
         b.title = "Sustituye el clip; la versión anterior se conserva";
       };
-      $("g1cands").appendChild(img);
+      const caja = document.createElement("div");
+      caja.className = "cand";
+      const baja = document.createElement("a");
+      baja.href = "archivo/" + ruta + "?descargar=1";
+      baja.textContent = "descargar ⬇";
+      caja.append(img, baja);
+      $("g1cands").appendChild(caja);
     }
   } catch (e) { $("g1msg").className = "err"; $("g1msg").textContent = "Error: " + e.message; }
   finally { orbeOff("orbe-g1"); $("g1generar").disabled = false; }
