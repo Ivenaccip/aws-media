@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Conserva las 20 imagenes mas recientes. Cada build sube ~1.6 GB unicos porque el CI no cachea capas, asi que sin esto el repo crece ~4 GB al dia. El riesgo no es el numero: es no desplegar en 20 merges, porque las Lambdas van al digest. Ver OPERACION.md",
+      "selection": {
+        "tagStatus": "any",
+        "countType": "imageCountMoreThan",
+        "countNumber": 20
+      },
+      "action": { "type": "expire" }
+    }
+  ]
+}

@@ -150,7 +150,7 @@ gh pr merge <N> --merge          # SIN --delete-branch: se llevaría dev
 ```
 
 ```bash
-set "PATH=D:ws-projectenv\Scripts;C:\Program Files
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 odejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 ```
 
@@ -212,6 +212,219 @@ venv/Scripts/python tools/prompts_sync.py
 git tag -a prod-$(date +%Y%m%d) -m "desplegado: <qué entró>" && git push origin --tags
 ```
 
+## Alarmas
+
+Siete alarmas de CloudWatch mandan correo cuando algo se rompe, a
+`ivenaccip@gmail.com` y a `developer.leonardomedina@gmail.com`. Van las dos
+direcciones porque la cuenta de AWS y el presupuesto de $50 se dieron de alta
+con la primera, pero el trabajo del proyecto se sigue desde la segunda — y una
+alarma que llega a la bandeja que nadie abre no es una alarma. Viven en un stack **aparte** (`aws-media-alertas`) y en su propia app CDK
+(`infra/app_alertas.py`), por una razón concreta: `cdk deploy aws-media-api`
+arrastra la base de datos —el diff lo dice literalmente, *«Including dependency
+stacks: aws-media-db, aws-media-media»*— y desplegar unas alarmas no debería
+poder meter al clúster Aurora en el radio de una actualización.
+
+### Desplegarlas
+
+Desde `D:\aws-project\infra`, en cmd:
+
+```bash
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk --app "python app_alertas.py" deploy aws-media-alertas --require-approval never
+```
+
+Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
+
+### El paso manual sin el que nada de esto sirve
+
+La suscripción de correo nace en `PendingConfirmation` y **CloudFormation
+reporta CREATE_COMPLETE igual**. Hasta que no hagas clic en el enlace del correo
+de AWS, las siete alarmas disparan al vacío.
+
+```bash
+aws sns list-subscriptions-by-topic --topic-arn arn:aws:sns:us-east-1:191241816158:aws-media-alertas --query "Subscriptions[*].SubscriptionArn" --output text
+```
+
+**Cada dirección confirma la suya por separado.** Si alguna sale como la cadena
+literal `PendingConfirmation`, esa bandeja no recibe nada: busca ahí el correo
+«AWS Notification - Subscription Confirmation» (mira también en spam).
+
+Y una vez confirmada, comprueba que el correo llega de verdad:
+
+```bash
+aws cloudwatch set-alarm-state --alarm-name DlqConMensajes --state-value ALARM --state-reason "prueba del canal de avisos"
+```
+
+Vuelve sola a OK en cuanto CloudWatch reevalúe la métrica.
+
+### Qué significa cada una
+
+| alarma | qué mira | qué hacer |
+|---|---|---|
+| `Api5xx` | ≥5 respuestas 5xx en 5 min | mira `ApiThrottles` y `ConcurrenciaCuenta` **primero**, no Aurora |
+| `ApiThrottles` | ≥1 petición perdida por cuota | la cuota de concurrencia de la cuenta, no `max_concurrency` |
+| `ConcurrenciaCuenta` | ≥8 de 10 ejecuciones simultáneas | es el techo real del producto |
+| `AuroraTecho` | ≥80% del techo de ACU, 15 min | `db.py:31` de 1 a **2** y observar |
+| `DlqConMensajes` | ≥1 trabajo perdido | revisa el mensaje antes de reencolarlo |
+| `ColaAtascada` | el más viejo lleva >20 min | mira `ApiThrottles` antes de subir workers |
+| `ProduccionFallida` | ≥1 producción rota | logs de Step Functions |
+
+**El orden del diagnóstico importa.** Ante 5xx, la tentación es culpar a la base
+de datos porque suele estar al 100% de su techo de 1 ACU. Pero ese 100% aparece
+decenas de veces sin un solo 5xx, y los dos incidentes reales con peticiones
+perdidas tenían Aurora al **30%**. La causa estaba en la concurrencia. Mira
+throttles primero.
+
+**API y worker comparten la misma cuota de 10.** Subir `max_concurrency`
+(`infra/stacks/jobs.py:97`) para desatascar la cola le roba concurrencia al API
+y produce **más** 5xx de cara al usuario. Esa palanca solo es segura después de
+que suba la cuota de la cuenta.
+
+### Dos cosas que hay que revisar en el calendario
+
+**Los umbrales de `Api5xx`, `ConcurrenciaCuenta` y `ProduccionFallida` se
+calibraron con 5 testers.** Están pensados para 5.819 peticiones en 14 días. Con
+166 usuarios, `Api5xx` se convierte en un buscapersonas diario. **Retararlos el
+24 de septiembre**, con una semana de datos reales.
+
+**Re-verificar los ids tras cualquier deploy que reemplace un recurso.** Las
+dimensiones van cableadas como literales, y con `treat_missing_data=notBreaching`
+una alarma cuya dimensión deje de existir **no cae en INSUFFICIENT_DATA: se
+queda en OK**, ciega y en silencio. Es la contrapartida de que «sin datos» sea
+«sano» — necesaria, porque el API solo tiene tráfico en el 8% de las ventanas de
+5 minutos.
+
+```bash
+aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" --output text
+```
+
+Los seis ids que pueden cambiar están en la cabecera de
+`infra/stacks/alertas.py`, con la fecha en que se verificaron.
+
+## La imagen (Node, y por qué está fijado)
+
+Node entra en la imagen **copiado de la imagen oficial** y con la versión exacta
+escrita en el Dockerfile:
+
+```dockerfile
+COPY --from=node:20.20.2-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20.20.2-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+```
+
+### Qué pasó el 14 de septiembre de 2026
+
+Antes se instalaba con `curl https://deb.nodesource.com/setup_20.x | bash -`. Ese
+día el curl murió a mitad de un build («Recv failure: Connection reset by peer»)
+y **el build no se detuvo**: el script de NodeSource anuncia sus fallos y sale
+con cero —literalmente `Error: Failed to download and import the NodeSource
+signing key (Exit Code: 0)`—, así que el `&&` siguió y apt instaló el nodejs de
+Debian, 18.20.4. En Debian npm es un paquete aparte y solo «recomendado», y el
+Dockerfile instala con `--no-install-recommends`, así que npm no entró. El build
+murió cuatro pasos después con `npm: not found`.
+
+**Que muriera fue la suerte, no el diseño.** Si npm hubiera entrado igualmente,
+la imagen se habría construido entera con Node 18 —Remotion 4 arranca en 18— y
+nadie se habría enterado. La versión de Node de producción dependía de si una
+descarga de un tercero funcionaba ese día.
+
+### Los dos seguros
+
+1. **En el Dockerfile**, justo después de copiar Node: `node --version && npm
+   --version && npx --version` más un `case` que exige la línea `v20.*`. Si algo
+   no queda como se espera, el build muere ahí y dice por qué.
+2. **En el CI**, el paso «Runtimes de render presentes» pregunta también por
+   `npm`. Antes preguntaba por node, ffmpeg y chromium — npm era justo el que
+   faltaba.
+
+`tests/test_imagen_node.py` fija las dos cosas y corre en el primer paso del CI,
+antes del build, para fallar en segundos y no en minutos.
+
+### Si el build vuelve a fallar por Node
+
+No es un fallo de red que se arregle reintentando: ya no hay descarga. Mira qué
+dice el gate. Para subir de versión, cambia **las dos** líneas `COPY --from=` a
+la vez (hay un test que impide que queden en versiones distintas) y el `v20.*`
+del `case`.
+
+### Pendiente: Node 20 está fuera de soporte
+
+Terminó su mantenimiento el **30 de abril de 2026** — ya no recibe parches de
+seguridad. Node 22 va hasta abril de 2027. No se subió junto al arreglo de
+arriba a propósito: cambiar la major cambia el runtime con el que Remotion
+renderiza, y eso se valida con un render real, no con el CI.
+
+## ECR (ciclo de vida de las imágenes)
+
+El repositorio `aws-media` conserva las **20 imágenes más recientes** y expira el
+resto. La política vive en `infra/ecr-lifecycle.json`.
+
+### Por qué hace falta
+
+Medido el 14 de septiembre de 2026: **86 imágenes, 122 GB**, ninguna sin tag. Era
+el **43% de la factura** de AWS y crecía con cada merge a `main`.
+
+Y crecía de verdad, no en apariencia: **dos builds consecutivos solo comparten 4
+de sus 17 capas — 48 MB de 1.664.** El CI no cachea capas de Docker, así que cada
+build reconstruye todo desde cero y sube ~1,6 GB genuinamente nuevos. Al ritmo de
+merges de estos días, unos 4,8 GB al día.
+
+Con la política, el repositorio se estabiliza en ~33 GB en vez de subir sin techo.
+
+### El riesgo real, que no es el número
+
+**Las Lambdas apuntan a un digest, no a un tag.** Si la imagen que corre
+producción cae fuera de las 20 más recientes y se expira, la función deja de
+poder arrancar contenedores nuevos.
+
+Veinte son unos siete días de margen al ritmo actual. El peligro no es que el
+número sea bajo: es **dejar pasar 20 merges sin desplegar**. Ya ha pasado estar
+tres PRs por detrás.
+
+### Antes de tocar nada: el preview
+
+ECR sabe decir qué borraría sin borrarlo. Úsalo siempre, también al cambiar el
+número:
+
+```bash
+aws ecr start-lifecycle-policy-preview --repository-name aws-media --lifecycle-policy-text file://infra/ecr-lifecycle.json
+```
+
+```bash
+aws ecr get-lifecycle-policy-preview --repository-name aws-media --query "summary" --output json
+```
+
+Y el chequeo que importa — que ninguna de las imágenes vivas esté en la lista:
+
+```bash
+venv/Scripts/python tools/ecr_preview.py
+```
+
+Compara el resultado del preview contra los digests que corren ahora mismo la
+Lambda del API, la del worker y la task definition de Fargate. Si alguno aparece
+en la lista de expiración, **no apliques**: despliega primero, o sube el número.
+
+### Aplicarla
+
+Esto sí borra, y no se deshace:
+
+```bash
+aws ecr put-lifecycle-policy --repository-name aws-media --lifecycle-policy-text file://infra/ecr-lifecycle.json
+```
+
+ECR la evalúa cada 24 horas, así que el borrado no es instantáneo. Para ver qué
+política está aplicada:
+
+```bash
+aws ecr get-lifecycle-policy --repository-name aws-media --query "lifecyclePolicyText" --output text
+```
+
+### La causa de fondo sigue ahí
+
+La política limpia; no evita que cada build suba 1,6 GB. Eso se arregla con cache
+de capas en el CI (`cache-from` / `cache-to` sobre el propio ECR), que además
+recortaría los 162 segundos del build — 56 de ellos son el `pip install`. Queda
+pendiente; toca `.github/workflows/docker.yml` y los tests que fijan los nombres
+de sus pasos.
+
 ## Base de datos (Aurora)
 
 ARNs del stack `aws-media-db` (también salen en sus outputs de CloudFormation):
@@ -228,6 +441,64 @@ Los cuatro tools (`db_migrate`, `usuarios`, `creditos`, `costes`) cargan el
 del dueño), los flags `--cluster-arn/--secret-arn` sobran.
 Gotcha: Aurora se auto-pausa a 0 ACU — la primera llamada tras un rato puede
 tardar ~25 s o dar 503/timeout; reintenta.
+
+### Que los datos sobrevivan
+
+Aquí viven los proyectos, los saldos y los movimientos de créditos. **No hay otra
+copia**: ni réplica, ni export periódico, ni un segundo entorno. Desde el 14 de
+septiembre de 2026 hay tres guardas, y cada una cubre un camino distinto:
+
+| guarda | de qué protege |
+|---|---|
+| `DeletionProtection: true` | un `delete-db-cluster` por CLI o un clic en la consola |
+| `DeletionPolicy: Snapshot` | un `cdk destroy` del stack |
+| backups de 7 días | un error de datos que se detecta días después |
+
+Las dos primeras **no son la misma cosa**, y es el malentendido caro: la política
+de CloudFormation solo actúa cuando el borrado pasa por CDK. RDS obedece igual a
+quien llame a su API directamente, y ese camino no pasa por CloudFormation. Las
+tres viven en `infra/stacks/db.py` y `tests/test_db_protegida.py` las fija.
+
+#### Snapshot manual
+
+Antes de una migración, de un cambio de esquema o de cualquier cosa que dé
+respeto:
+
+```bash
+aws rds create-db-cluster-snapshot --db-cluster-identifier aws-media-db-db5d02a0a9-luualrjywhm7 --db-cluster-snapshot-identifier aws-media-manual-AAAA-MM-DD --region us-east-1
+```
+
+```bash
+aws rds describe-db-cluster-snapshots --db-cluster-identifier aws-media-db-db5d02a0a9-luualrjywhm7 --snapshot-type manual --region us-east-1 --query "DBClusterSnapshots[].{Id:DBClusterSnapshotIdentifier,Estado:Status,Creado:SnapshotCreateTime}" --output table
+```
+
+Los manuales **no caducan**: viven hasta que los borres, al margen de la ventana
+de 7 días. El primero es `aws-media-manual-2026-09-14`.
+
+#### Hasta dónde se puede volver
+
+```bash
+aws rds describe-db-clusters --db-cluster-identifier aws-media-db-db5d02a0a9-luualrjywhm7 --region us-east-1 --query "DBClusters[0].{Desde:EarliestRestorableTime,Hasta:LatestRestorableTime}" --output table
+```
+
+**Gotcha:** `LatestRestorableTime` no avanza mientras el clúster está
+auto-pausado — sin transacciones no hay puntos nuevos que crear. Verlo horas
+atrasado es lo normal si nadie ha usado el producto en toda la mañana; no
+significa que los backups estén rotos.
+
+#### Si hay que restaurar
+
+Restaurar **no devuelve el clúster a un estado anterior: crea uno nuevo**, con
+otro identificador y otro ARN. La aplicación y los cuatro tools apuntan al ARN
+del actual (`DB_CLUSTER_ARN` en `.env`, y el stack en CDK), así que una
+restauración de verdad son tres pasos: restaurar, apuntar todo al clúster nuevo,
+y solo entonces retirar el viejo. No es un comando; planea un rato.
+
+#### Para borrarlo de verdad
+
+La protección es deliberadamente incómoda. Hay que quitar `deletion_protection`
+en `infra/stacks/db.py`, desplegar ese cambio, y solo después borrar. Si algún
+día hace falta, ese rodeo es exactamente la pausa que se busca.
 
 ## Stripe
 
