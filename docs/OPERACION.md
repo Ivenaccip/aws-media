@@ -214,8 +214,11 @@ git tag -a prod-$(date +%Y%m%d) -m "desplegado: <qué entró>" && git push origi
 
 ## Alarmas
 
-Siete alarmas de CloudWatch mandan correo a `ivenaccip@gmail.com` cuando algo se
-rompe. Viven en un stack **aparte** (`aws-media-alertas`) y en su propia app CDK
+Siete alarmas de CloudWatch mandan correo cuando algo se rompe, a
+`ivenaccip@gmail.com` y a `developer.leonardomedina@gmail.com`. Van las dos
+direcciones porque la cuenta de AWS y el presupuesto de $50 se dieron de alta
+con la primera, pero el trabajo del proyecto se sigue desde la segunda — y una
+alarma que llega a la bandeja que nadie abre no es una alarma. Viven en un stack **aparte** (`aws-media-alertas`) y en su propia app CDK
 (`infra/app_alertas.py`), por una razón concreta: `cdk deploy aws-media-api`
 arrastra la base de datos —el diff lo dice literalmente, *«Including dependency
 stacks: aws-media-db, aws-media-media»*— y desplegar unas alarmas no debería
@@ -241,8 +244,9 @@ de AWS, las siete alarmas disparan al vacío.
 aws sns list-subscriptions-by-topic --topic-arn arn:aws:sns:us-east-1:191241816158:aws-media-alertas --query "Subscriptions[*].SubscriptionArn" --output text
 ```
 
-Si sale la cadena literal `PendingConfirmation`, no estás vigilado. Busca el
-correo «AWS Notification - Subscription Confirmation».
+**Cada dirección confirma la suya por separado.** Si alguna sale como la cadena
+literal `PendingConfirmation`, esa bandeja no recibe nada: busca ahí el correo
+«AWS Notification - Subscription Confirmation» (mira también en spam).
 
 Y una vez confirmada, comprueba que el correo llega de verdad:
 

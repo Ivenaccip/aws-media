@@ -49,16 +49,21 @@ class AlertasStack(Stack):
     caber en su ventana.
     """
 
-    def __init__(self, scope: Construct, id_: str, *, correo: str,
+    def __init__(self, scope: Construct, id_: str, *, correos: list[str],
                  vigilar_init: bool = False, **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
 
+        if not correos:
+            raise ValueError("sin destinatarios, las siete alarmas disparan al vacío")
+
         topic = sns.Topic(self, "Alertas", topic_name="aws-media-alertas",
                           display_name="aws-media")
-        # PASO MANUAL OBLIGATORIO: la suscripción nace en PendingConfirmation y
-        # CloudFormation reporta CREATE_COMPLETE igual. Sin el clic del correo,
-        # las alarmas disparan al vacío. El gate está en docs/OPERACION.md.
-        topic.add_subscription(subs.EmailSubscription(correo))
+        # PASO MANUAL OBLIGATORIO, y por cada dirección: la suscripción nace en
+        # PendingConfirmation y CloudFormation reporta CREATE_COMPLETE igual.
+        # Sin el clic en el correo, esa dirección no recibe nada. El gate está
+        # en docs/OPERACION.md.
+        for correo in correos:
+            topic.add_subscription(subs.EmailSubscription(correo))
         accion = cw_actions.SnsAction(topic)
 
         def alarma(cid: str, metrica: cw.Metric, *, umbral: float,
