@@ -1210,6 +1210,93 @@ Con el #73 desplegado, la pregunta que contesta el próximo `INIT_REPORT`:
   espera a después del 23 de septiembre;
 - **si sigue en `timeout`** → hay que separarla antes de abrir a 161 personas.
 
+## Fase M22 — Lo que reportaron los testers (2026-09-14)
+
+Diez reportes de la primera tanda, a nueve días de abrir a 166 usuarios. El
+orden de abajo no es el orden en que llegaron: primero va lo que cobra mal o
+impide usar algo ya pagado, luego lo que falta, y al final lo que es producto
+nuevo. Cada punto se verificó contra el código o contra la base ANTES de
+clasificarlo — varios no eran lo que parecían.
+
+### Clasificación
+
+| # | Lo que reportaron | Qué es en realidad | Prio |
+|---|---|---|---|
+| 10.2 | «Solo me devolvió la mitad de los créditos» | Cierto y medido. Un video de **6 segundos**: se cobraron 4 cr de `editar-sugerir` + 4 de `shorts-analizar`; shorts falló y devolvió, editar terminó «listo» con 0 cortes y se quedó el cobro. Hay tope de 90 min y **ningún piso** | **P0** |
+| 10.1 | «Shorts no procesó la liga de YouTube» | El campo de la liga solo existe sin proyecto abierto: `sec-importar` se revela únicamente dentro de `elegirProyecto()`, que solo corre si la URL no trae `?p=` | **P0** |
+| 1 | «El editor solo edita sobre lo pintado» | El prompt se lo prohíbe explícitamente: «Keep every other part of the original pixel-identical». Y la máscara es obligatoria en el endpoint | **P0** |
+| 4 | «No hay botón de descargar en algunos casos» | Faltan en tres sitios, y donde hay enlace al CDN el atributo `download` es **ignorado por el navegador** (cross-origin): hace falta `Content-Disposition` | **P0** |
+| 3 | «Los prompts de Grok salen en inglés» | El prompt en inglés es correcto (da mejores imágenes); el error es enseñárselo crudo al usuario y precargar con él el campo que edita | **P1** |
+| 2 | «No hay formato vertical» | 16:9 cableado en cuatro sitios del pipeline. Remotion ya está resuelto: shorts es 1080x1920 y longform es parametrizable | **P1** |
+| 5 | Paso intermedio imagen → video, auto/manual | Hoy `producir` genera imagen y video de golpe. Cambia la máquina de estados de producción, la UI y el cobro | **P2** |
+| 8 | Voces por personaje (máximo 2) | Hoy es una decisión de diseño explícita: «Una sola voz narrará TODO el guion». Toca casting, narración, TTS y UI | **P2** |
+| 6 | Efectos de sonido | No existe nada en el servicio. Existe en el flujo local (`tools/gen_sfx.py` + catálogo) sin portar | **P2** |
+| 9 | Sonido ambiente por liga de YouTube | No existe, y antes de construirlo hay que resolver de quién es esa música | **P2** |
+| 7 | ¿Cuánto cuesta una canción con Lira? | Solo investigación. Hoy la música local sale por ElevenLabs Music | **Aparte** |
+
+### P0 — antes del 23 (cobran mal o impiden usar lo pagado)
+
+**A · Piso de duración y la devolución que falta.** ✅ CÓDIGO LISTO (2026-09-14,
+falta deploy). Queda reparar a la usuaria: 4 créditos de ajuste, comando del
+dueño. `MAX_DURACION_S` tiene pareja:
+un mínimo por debajo del cual el análisis no puede dar nada. Shorts necesita
+metraje para recortar (un short dura 5-90 s, un video de 6 s no da ninguno) y
+las sugerencias de corte necesitan material del que sobre algo. El cobro se
+rechaza ANTES, en el preview de costo y en el POST, con un mensaje que diga la
+duración real y la mínima. Y la otra mitad: una corrida que termina sin
+entregar nada (0 cortes, 0 candidatos) devuelve los créditos — hoy solo
+devuelve si lanza excepción.
+
+**B · La liga de YouTube, visible siempre.** ✅ CÓDIGO LISTO (2026-09-14, falta
+deploy). El `hidden = false` de `sec-importar` sale de `elegirProyecto()`: la
+sección aparece también con un proyecto abierto, y se esconde solo mientras ESE
+proyecto se está descargando.
+
+**C · El editor de imágenes, con dos modos.** Añadir «transformar toda la
+imagen» junto al pincel actual: instrucción propia sin la cláusula
+pixel-identical, y sin exigir máscara. El modo pincel se queda como está — es
+el que funciona bien.
+
+**D · Descargas de verdad.** Los tres huecos (imágenes candidatas del editor,
+preview de render, shorts renderizados) y el arreglo de fondo: servir con
+`Content-Disposition: attachment` para que el clic descargue en vez de abrir
+una pestaña.
+
+### P1 — antes del 23 si el tiempo aguanta
+
+**E · El prompt, en español para el usuario.** Enseñar y editar en español,
+traducir a inglés al mandarlo al modelo, y guardar las dos versiones (el
+usuario vuelve a abrir y tiene que leer lo suyo, no lo del modelo).
+
+**F · Formato vertical.** El aspecto deja de ser una constante y pasa a ser un
+campo del proyecto, elegido al crearlo. Cuatro sitios cableados a 16:9
+(`pipeline/media.py` ×2, `pipeline/media_fal.py`, más el recorte a 1920x1080 de
+`pipeline/ffmpeg.py`); Remotion ya está resuelto por los dos lados. **Decisión
+del usuario 2026-09-14: entra antes del 23** — es el formato de shorts y reels,
+y abrir sin él limita el producto desde el día uno. Arranca en cuanto A-D estén
+cerrados y probados. Responde además la pregunta abierta 5 de este plan.
+
+### P2 — después del 23
+
+**G · Imagen aprobada antes de animar (auto/manual).** El argumento no es solo
+de UX: la imagen cuesta $0.02 dólares y animarla ocho segundos cuesta $0.24
+dólares. Aprobar antes de animar es doce veces más barato que rehacer después,
+y es lo que convierte «no me gustó» en algo que el usuario arregla sin pagar
+otra producción entera.
+
+**H · Dos voces.** Empezar por el máximo que pidió el usuario: dos personajes.
+
+**I · Efectos de sonido**, portando lo que ya existe en local.
+
+**J · Sonido ambiente.** Antes de diseñarlo hay que decidir la fuente: una
+liga de YouTube mete música de terceros en videos que los usuarios van a
+publicar. Una biblioteca con licencia propia evita ese problema entero.
+
+### Investigación aparte
+
+**K · Lira.** Precio por canción, duración, licencia de lo generado y si
+entrega instrumental separada.
+
 ## Orden y dependencias
 
 ```

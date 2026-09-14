@@ -82,6 +82,26 @@ venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 2
   Packs Stripe: 100/$1.99 · 550/$9.99 · 1200/$18.00 dólares — los Payment
   Links DEBEN costar el monto exacto (el webhook mapea por monto).
 
+### «Me dice que mi video es muy corto»
+
+Es a propósito, desde el 14 de septiembre de 2026. Shorts y las sugerencias de
+corte piden **entre 1 y 90 minutos**: por debajo de un minuto el video ya dura
+menos que un short, no hay nada que recortar, y antes cobrábamos igual por una
+corrida que terminaba en «no encontró candidatos válidos». El rechazo ocurre
+ANTES del cobro, así que no hay nada que devolver; el botón se apaga solo y el
+aviso dice la duración real y la mínima.
+
+La otra mitad del mismo arreglo: una corrida de sugerencias que termina bien
+pero **sin una sola propuesta** devuelve la parte del LLM (2 cr) y lo dice en
+la pantalla. La parte de transcripción no vuelve, y con razón: el canónico
+queda hecho en el proyecto y la siguiente corrida ya no lo cobra.
+
+Si alguien pregunta por un cobro raro, el extracto lo cuenta entero:
+
+```bash
+venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 40
+```
+
 ## Administración y costos
 
 - **Dashboard**: `/admin.html` (grupo admin) — 3 pestañas: Ingresos, Costos
