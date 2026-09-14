@@ -212,6 +212,90 @@ venv/Scripts/python tools/prompts_sync.py
 git tag -a prod-$(date +%Y%m%d) -m "desplegado: <qué entró>" && git push origin --tags
 ```
 
+## Alarmas
+
+Siete alarmas de CloudWatch mandan correo a `ivenaccip@gmail.com` cuando algo se
+rompe. Viven en un stack **aparte** (`aws-media-alertas`) y en su propia app CDK
+(`infra/app_alertas.py`), por una razón concreta: `cdk deploy aws-media-api`
+arrastra la base de datos —el diff lo dice literalmente, *«Including dependency
+stacks: aws-media-db, aws-media-media»*— y desplegar unas alarmas no debería
+poder meter al clúster Aurora en el radio de una actualización.
+
+### Desplegarlas
+
+Desde `D:\aws-project\infra`, en cmd:
+
+```bash
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk --app "python app_alertas.py" deploy aws-media-alertas --require-approval never
+```
+
+Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
+
+### El paso manual sin el que nada de esto sirve
+
+La suscripción de correo nace en `PendingConfirmation` y **CloudFormation
+reporta CREATE_COMPLETE igual**. Hasta que no hagas clic en el enlace del correo
+de AWS, las siete alarmas disparan al vacío.
+
+```bash
+aws sns list-subscriptions-by-topic --topic-arn arn:aws:sns:us-east-1:191241816158:aws-media-alertas --query "Subscriptions[*].SubscriptionArn" --output text
+```
+
+Si sale la cadena literal `PendingConfirmation`, no estás vigilado. Busca el
+correo «AWS Notification - Subscription Confirmation».
+
+Y una vez confirmada, comprueba que el correo llega de verdad:
+
+```bash
+aws cloudwatch set-alarm-state --alarm-name DlqConMensajes --state-value ALARM --state-reason "prueba del canal de avisos"
+```
+
+Vuelve sola a OK en cuanto CloudWatch reevalúe la métrica.
+
+### Qué significa cada una
+
+| alarma | qué mira | qué hacer |
+|---|---|---|
+| `Api5xx` | ≥5 respuestas 5xx en 5 min | mira `ApiThrottles` y `ConcurrenciaCuenta` **primero**, no Aurora |
+| `ApiThrottles` | ≥1 petición perdida por cuota | la cuota de concurrencia de la cuenta, no `max_concurrency` |
+| `ConcurrenciaCuenta` | ≥8 de 10 ejecuciones simultáneas | es el techo real del producto |
+| `AuroraTecho` | ≥80% del techo de ACU, 15 min | `db.py:31` de 1 a **2** y observar |
+| `DlqConMensajes` | ≥1 trabajo perdido | revisa el mensaje antes de reencolarlo |
+| `ColaAtascada` | el más viejo lleva >20 min | mira `ApiThrottles` antes de subir workers |
+| `ProduccionFallida` | ≥1 producción rota | logs de Step Functions |
+
+**El orden del diagnóstico importa.** Ante 5xx, la tentación es culpar a la base
+de datos porque suele estar al 100% de su techo de 1 ACU. Pero ese 100% aparece
+decenas de veces sin un solo 5xx, y los dos incidentes reales con peticiones
+perdidas tenían Aurora al **30%**. La causa estaba en la concurrencia. Mira
+throttles primero.
+
+**API y worker comparten la misma cuota de 10.** Subir `max_concurrency`
+(`infra/stacks/jobs.py:97`) para desatascar la cola le roba concurrencia al API
+y produce **más** 5xx de cara al usuario. Esa palanca solo es segura después de
+que suba la cuota de la cuenta.
+
+### Dos cosas que hay que revisar en el calendario
+
+**Los umbrales de `Api5xx`, `ConcurrenciaCuenta` y `ProduccionFallida` se
+calibraron con 5 testers.** Están pensados para 5.819 peticiones en 14 días. Con
+166 usuarios, `Api5xx` se convierte en un buscapersonas diario. **Retararlos el
+24 de septiembre**, con una semana de datos reales.
+
+**Re-verificar los ids tras cualquier deploy que reemplace un recurso.** Las
+dimensiones van cableadas como literales, y con `treat_missing_data=notBreaching`
+una alarma cuya dimensión deje de existir **no cae en INSUFFICIENT_DATA: se
+queda en OK**, ciega y en silencio. Es la contrapartida de que «sin datos» sea
+«sano» — necesaria, porque el API solo tiene tráfico en el 8% de las ventanas de
+5 minutos.
+
+```bash
+aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" --output text
+```
+
+Los seis ids que pueden cambiar están en la cabecera de
+`infra/stacks/alertas.py`, con la fecha en que se verificaron.
+
 ## Base de datos (Aurora)
 
 ARNs del stack `aws-media-db` (también salen en sus outputs de CloudFormation):
