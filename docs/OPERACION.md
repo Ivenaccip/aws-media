@@ -121,6 +121,58 @@ Por eso `dev` se prueba **en local** — la suite, `tools/check_js.py` y el serv
 en 8011 — y por eso el deploy no es "cuando se pueda": un merge a `main` sin su
 `cdk deploy` deja al repo diciendo algo falso.
 
+### Dónde se ve cada una
+
+| rama | dónde se ve |
+|---|---|
+| `main` | https://2ecset5i94.execute-api.us-east-1.amazonaws.com — **lo que usan los testers** |
+| `dev` | solo en tu máquina: `venv/Scripts/python -m uvicorn server.app:app --port 8011` → http://localhost:8011 |
+
+No hay un «dev en la nube». Con un solo entorno AWS, esa columna no existe.
+
+### Los comandos, por caso
+
+**Un cambio cualquiera** — sale de `dev` y vuelve a `dev`:
+
+```bash
+git checkout dev && git pull && git checkout -b mi-cambio
+# … trabajar, y probar en local antes de subir …
+git push -u origin mi-cambio && gh pr create --base dev --fill
+gh pr merge <N> --squash --delete-branch
+```
+
+**Liberar a producción** — `dev` → `main`, y el deploy pegado:
+
+```bash
+git checkout dev && git pull
+gh pr create --base main --head dev --title "Release: <qué entra>" --body "…"
+gh pr merge <N> --merge          # SIN --delete-branch: se llevaría dev
+```
+
+```bash
+set "PATH=D:ws-projectenv\Scripts;C:\Program Files
+odejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+```
+
+```bash
+git checkout dev && git merge origin/main && git push   # dev no se queda atrás
+```
+
+**Un arreglo urgente** que no puede esperar a que `dev` esté estable: sale de
+`main`, su PR vuelve a `main`, se despliega, y después se baja a `dev` con ese
+mismo `git merge origin/main` de arriba. Es la única excepción a «todo pasa por
+dev», y conviene que siga siendo excepción.
+
+### La trampa de `--delete-branch-on-merge`
+
+Esa opción del repo está **apagada a propósito** (2026-09-13). Borra la rama
+*head* de todo PR mergeado — y en el release el head es `dev`, así que se la
+lleva por delante. Ya pasó una vez. Lo que sí conviene es `--delete-branch` en
+el `gh pr merge` de cada rama de trabajo: hace lo mismo, pero solo en ese PR.
+
+Proteger `dev` sería la solución limpia, pero la protección de ramas pide
+GitHub Pro en repos privados.
+
 El día que haya testers suficientes para que no puedas permitirte romperles nada,
 lo que toca es un segundo entorno AWS, no una tercera rama. Los dos stacks con
 VPC ya van con `nat_gateways=0`, así que duplicar no arrastra el costo fijo del
