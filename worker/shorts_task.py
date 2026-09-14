@@ -121,7 +121,9 @@ def _pipeline(user_id: str, nombre: str, destino: Path, st: dict) -> list[dict]:
     for f in sorted(salida_dir.glob("*.mp4")):
         key = f"videos/{nombre}/output/shorts/{f.name}"
         media_sync.subir_archivo(f, key)
-        salidas.append({"archivo": f.name, "bytes": f.stat().st_size,
+        # `key` va explícita para que el botón de descargar no tenga que
+        # deshacer la URL del CDN a mano (M22 · D)
+        salidas.append({"archivo": f.name, "bytes": f.stat().st_size, "key": key,
                         "url": f"{cdn}/{key}" if cdn else None})
     if not salidas:
         raise RuntimeError("el export no produjo ningún MP4")

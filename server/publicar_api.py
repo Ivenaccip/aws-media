@@ -46,6 +46,39 @@ def _proyecto(name: str) -> Path:
     return p
 
 
+def _nube() -> bool:
+    from server.editor import _nube as n
+    return n()
+
+
+def descargables_nube(name: str) -> dict[str, tuple[str, int]]:
+    """Lo mismo que `descargables`, contra S3: clave estable → (key, bytes).
+
+    En el servicio el proyecto NO está en el disco de la Lambda, así que la
+    versión de abajo devolvía 404 «proyecto no existe» y el modal de Publicar
+    no enseñaba nada: la película estaba hecha y no había forma de bajarla.
+    Es la mitad grande de lo que los testers llamaron «no hay botón de
+    descargar» (M22 · D).
+
+    Las claves espejan las locales, incluido que `output/` NO se recorre hacia
+    dentro: los shorts tienen su propia página y su propio botón.
+    """
+    from pipeline import media_sync
+    pre = f"videos/{name}/"
+    out: dict[str, tuple[str, int]] = {}
+    for key, tam in media_sync.listar_prefijo_con_bytes(pre):
+        rel = key[len(pre):]
+        if rel == "pelicula.mp4":
+            out["pelicula"] = (key, tam)
+        elif rel == "pelicula-subtitulado.mp4":
+            out["subtitulado"] = (key, tam)
+        elif rel.startswith("output/") and rel.endswith(".mp4") and rel.count("/") == 1:
+            out[rel[len("output/"):-len(".mp4")]] = (key, tam)
+        elif rel == "work/subs/subs.srt":
+            out["srt"] = (key, tam)
+    return out
+
+
 def descargables(p: Path) -> dict[str, Path]:
     """Qué se puede descargar/publicar de un proyecto, por clave estable."""
     out: dict[str, Path] = {}
@@ -62,9 +95,16 @@ def descargables(p: Path) -> dict[str, Path]:
 
 @router.get("/{name}/api/publicar/estado")
 def estado(name: str):
-    p = _proyecto(name)
-    archivos = [{"clave": k, "nombre": v.name, "mb": round(v.stat().st_size / 1e6, 1)}
-                for k, v in descargables(p).items()]
+    if _nube():
+        from server.editor import _proyecto_nube
+        _proyecto_nube(name)        # valida que el proyecto sea de este usuario
+        archivos = [{"clave": k, "nombre": key.rsplit("/", 1)[-1],
+                     "mb": round(tam / 1e6, 1)}
+                    for k, (key, tam) in descargables_nube(name).items()]
+    else:
+        p = _proyecto(name)
+        archivos = [{"clave": k, "nombre": v.name, "mb": round(v.stat().st_size / 1e6, 1)}
+                    for k, v in descargables(p).items()]
     cuentas, error = [], None
     if blotato.disponible():
         try:
@@ -78,6 +118,18 @@ def estado(name: str):
 
 @router.get("/{name}/descarga/{clave}")
 def descargar(name: str, clave: str):
+    if _nube():
+        from fastapi.responses import RedirectResponse
+
+        from server.editor import _proyecto_nube
+        from server.media_api import url_firmada_descarga
+        _proyecto_nube(name)
+        par = descargables_nube(name).get(clave)
+        if not par:
+            raise HTTPException(404, f"no hay descargable {clave!r}")
+        key = par[0]
+        return RedirectResponse(
+            url_firmada_descarga(key, f"{name}-{key.rsplit('/', 1)[-1]}"))
     p = _proyecto(name)
     f = descargables(p).get(clave)
     if not f:
@@ -86,9 +138,21 @@ def descargar(name: str, clave: str):
                         media_type="video/mp4" if f.suffix == ".mp4" else "text/plain")
 
 
+def _solo_local(que: str) -> None:
+    """Estas dos mitades de b3 leen el disco del proyecto, que en el servicio no
+    existe: daban «proyecto no existe», un 404 que no explica nada. Antes ni se
+    llegaba a verlas porque el modal entero moría al pedir su estado; ahora que
+    la descarga funciona (M22 · D), el aviso tiene que decir la verdad."""
+    if _nube():
+        raise HTTPException(503, f"{que} todavía no está disponible en el "
+                                 "servicio — por ahora descarga el video y "
+                                 "súbelo desde tu cuenta")
+
+
 @router.post("/{name}/api/publicar/titulos")
 async def titulos(name: str, body: TitulosIn):
     """3 títulos sugeridos desde el transcript (gpt-5-mini, ~$0.001)."""
+    _solo_local("Sugerir títulos")
     p = _proyecto(name)
     et = leer_json(p / "work" / "edited-transcript.json", default=None)
     if not et or not et.get("words"):
@@ -106,6 +170,7 @@ async def titulos(name: str, body: TitulosIn):
 def agendar(name: str, body: AgendarIn):
     """fn2: sube el video a Blotato (presigned) y crea/agenda el post.
     def (threadpool): la subida del mp4 tarda. Gate confirmar obligatorio."""
+    _solo_local("Agendar en tus redes")
     p = _proyecto(name)
     if body.confirmar is not True:
         raise HTTPException(428, "Falta confirmar:true — el gate de publicación es obligatorio")

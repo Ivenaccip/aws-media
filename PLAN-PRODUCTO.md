@@ -1252,15 +1252,24 @@ deploy). El `hidden = false` de `sec-importar` sale de `elegirProyecto()`: la
 sección aparece también con un proyecto abierto, y se esconde solo mientras ESE
 proyecto se está descargando.
 
-**C · El editor de imágenes, con dos modos.** Añadir «transformar toda la
-imagen» junto al pincel actual: instrucción propia sin la cláusula
-pixel-identical, y sin exigir máscara. El modo pincel se queda como está — es
-el que funciona bien.
+**C · El editor de imágenes, con dos modos.** ✅ CÓDIGO LISTO (2026-09-14,
+falta deploy). «Transformar toda la imagen» junto al pincel: instrucción propia
+sin la cláusula pixel-identical y sin exigir máscara. El modo pincel se queda
+igual — es el que funciona bien. Misma tarifa: una llamada a Nano Banana es una
+llamada.
 
-**D · Descargas de verdad.** Los tres huecos (imágenes candidatas del editor,
-preview de render, shorts renderizados) y el arreglo de fondo: servir con
-`Content-Disposition: attachment` para que el clic descargue en vez de abrir
-una pestaña.
+**D · Descargas de verdad.** ✅ CÓDIGO LISTO (2026-09-14, falta deploy). Los
+tres huecos (imágenes candidatas del editor, preview de render, shorts) más el
+arreglo de fondo —`Content-Disposition: attachment` firmado por S3, porque
+`download` no cruza orígenes— y uno que no estaba en la lista y era el peor:
+**en el servicio, el modal de Publicar no enseñaba nada**. `descargables()` lee
+el disco del proyecto, que en la Lambda no existe, así que la película estaba
+hecha en S3 y no había forma de bajarla. Ahora se lista desde S3.
+
+Lo que sigue pendiente ahí: la otra mitad de b3 (sugerir títulos y agendar en
+Blotato) también lee ese disco. No se arregló —necesita su propio diseño, con
+la URL pública del archivo— pero ya no da un 404 críptico: dice qué pasa y qué
+hacer mientras tanto.
 
 ### P1 — antes del 23 si el tiempo aguanta
 

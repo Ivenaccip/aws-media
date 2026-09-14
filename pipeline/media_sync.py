@@ -48,13 +48,19 @@ def subir_dir(dir_local: Path, prefijo: str) -> int:
 
 def listar_prefijo(prefijo: str) -> list[str]:
     """Claves bajo el prefijo (vacío sin bucket)."""
+    return [k for k, _ in listar_prefijo_con_bytes(prefijo)]
+
+
+def listar_prefijo_con_bytes(prefijo: str) -> list[tuple[str, int]]:
+    """Igual, pero con el tamaño: la lista de descargables lo enseña y pedirlo
+    objeto por objeto serían tantos HEAD como archivos."""
     bucket = _bucket()
     if not bucket:
         return []
     claves = []
     pag = _s3().get_paginator("list_objects_v2")
     for pagina in pag.paginate(Bucket=bucket, Prefix=prefijo):
-        claves += [obj["Key"] for obj in pagina.get("Contents", [])]
+        claves += [(obj["Key"], obj["Size"]) for obj in pagina.get("Contents", [])]
     return claves
 
 

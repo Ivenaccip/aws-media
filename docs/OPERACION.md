@@ -102,6 +102,23 @@ Si alguien pregunta por un cobro raro, el extracto lo cuenta entero:
 venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 40
 ```
 
+### «No me deja descargar» / «se me abre en una pestaña»
+
+Arreglado el 14 de septiembre de 2026. Lo que pasaba: el atributo `download` de
+un enlace **lo ignora el navegador cuando el archivo vive en otro origen**, y
+todo lo nuestro vive en el CDN. Ahora la descarga pasa por
+`/api/media/descarga?key=…`, que devuelve el archivo firmado por S3 con
+`Content-Disposition: attachment` — el navegador ya no tiene nada que decidir.
+
+Si alguien vuelve a reportarlo, lo primero es mirar **de dónde** cuelga el
+enlace: uno que apunte directo a `d8bfm82hs0s6a.cloudfront.net` abre en pestaña
+por diseño y hay que cambiarlo al endpoint.
+
+Caso aparte, dentro del editor: **publicar a redes (Blotato) y sugerir títulos
+siguen siendo solo locales.** Leen el disco del proyecto, que en el servicio no
+existe. En la nube avisan con un 503 explicado; la salida mientras tanto es
+descargar el video y subirlo a mano.
+
 ## Administración y costos
 
 - **Dashboard**: `/admin.html` (grupo admin) — 3 pestañas: Ingresos, Costos

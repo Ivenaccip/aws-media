@@ -248,21 +248,35 @@ async def crear_imagen(body: PedidoImagen):
 
 @app.post("/api/imagenes/editar")
 async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
-                        marcada: UploadFile = File(...)):
-    """M15 — «Editor de imágenes» con Nano Banana edit. El usuario sube su
-    imagen, pinta la zona a cambiar (el front manda la original + una copia
-    con esa zona resaltada en rosa) y describe el cambio. Misma tarifa de
-    imagen."""
+                        marcada: UploadFile | None = File(None),
+                        modo: str = Form("pincel")):
+    """M15 — «Editor de imágenes» con Nano Banana edit. Misma tarifa de imagen.
+
+    Dos modos, porque el editor solo sabía hacer uno y los testers pedían el
+    otro (M22 · C):
+
+    - `pincel`: el usuario pinta la zona a cambiar y el front manda la original
+      + una copia con esa zona resaltada en rosa. Todo lo demás queda intacto.
+    - `todo`: sin zona pintada — cambiar estilo, época o técnica sobre la imagen
+      entera. Subían un boceto, pedían «pásalo a acuarela» y el modo pincel les
+      devolvía el mismo boceto, porque su instrucción exige que el resto quede
+      pixel-idéntico.
+    """
     import tempfile
     from uuid import uuid4
     from pipeline import media_fal
     prompt = prompt.strip()[:2000]
     if not prompt:
         raise HTTPException(422, "Describe qué quieres cambiar")
+    if modo not in ("pincel", "todo"):
+        raise HTTPException(422, f"modo desconocido: {modo!r}")
     datos_img = await imagen.read()
-    datos_marca = await marcada.read()
-    if not datos_img or not datos_marca:
-        raise HTTPException(422, "Sube una imagen y marca la zona a cambiar")
+    datos_marca = await marcada.read() if marcada is not None else b""
+    if not datos_img:
+        raise HTTPException(422, "Sube la imagen que quieres editar")
+    if modo == "pincel" and not datos_marca:
+        raise HTTPException(422, "Pinta la zona a cambiar, o usa el modo de "
+                                 "transformar toda la imagen")
     if len(datos_img) > 15 * 1024 * 1024:
         raise HTTPException(422, "La imagen es muy grande (máximo 15 MB)")
     costo = creditos.costo_imagen()
@@ -278,11 +292,15 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
         with tempfile.TemporaryDirectory() as td:
             ext = Path(imagen.filename or "").suffix.lower()
             f_img = Path(td) / f"original{ext if ext in ('.png', '.jpg', '.jpeg', '.webp') else '.png'}"
-            f_marca = Path(td) / "marcada.jpg"
             f_img.write_bytes(datos_img)
-            f_marca.write_bytes(datos_marca)
-            await media_fal.imagen_pincel(prompt, f_img, f_marca, destino,
-                                          meta={"imagen_editor": nombre})
+            if modo == "pincel":
+                f_marca = Path(td) / "marcada.jpg"
+                f_marca.write_bytes(datos_marca)
+                await media_fal.imagen_pincel(prompt, f_img, f_marca, destino,
+                                              meta={"imagen_editor": nombre})
+            else:
+                await media_fal.imagen_transformar(prompt, f_img, destino,
+                                                   meta={"imagen_editor": nombre})
         if jobs.backend() == "aws":
             media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
     except HTTPException:
