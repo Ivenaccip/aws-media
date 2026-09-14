@@ -1101,7 +1101,7 @@ comprimida en 17 capas**. Cuatro se llevan el 88%:
 | capa | comprimido | qué |
 |---|---|---|
 | 1 | 467,6 MB | `pip install -r requirements.txt` |
-| 2 | 445,9 MB | modelo faster-whisper `small` horneado (`Dockerfile:36`) |
+| 2 | 445,9 MB | modelo faster-whisper `small` horneado (`Dockerfile:64`) |
 | 3 | 354,1 MB | apt: ffmpeg + Chromium + fuentes |
 | 4 | 199,7 MB | Node 20 + los dos `npm ci` de Remotion |
 
@@ -1167,7 +1167,7 @@ dos.
 además `worker/env_ssm.py` (`server/lambda_handler.py:11`), `tools/editor/`
 (`server/editor.py:29-30`), `tools/make_subs.py`, `tools/hwenc.py`,
 `tools/costes.py` (`server/admin_api.py:245`), `static/` (`server/app.py:764`) y
-el `mkdir -p /data/videos /data/work` de `Dockerfile:46`, sin el cual
+el `mkdir -p /data/videos /data/work` de `Dockerfile:74`, sin el cual
 `videos_root()` deja de existir.
 
 **7. `requirements.txt` es monolítico** (líneas 13-57: núcleo + shorts + longform
