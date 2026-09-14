@@ -1,17 +1,27 @@
 """Llamadas a OpenAI instrumentadas con Langfuse."""
 from __future__ import annotations
 
-from langfuse.openai import AsyncOpenAI  # wrapper: cada llamada queda como `generation`
+from typing import TYPE_CHECKING
 
 from .config import settings
 from .utils import parse_llm_json
 
-_client: AsyncOpenAI | None = None
+if TYPE_CHECKING:  # solo para los type checkers — en runtime no se evalúa
+    from langfuse.openai import AsyncOpenAI
+
+_client: "AsyncOpenAI | None" = None
 
 
-def client() -> AsyncOpenAI:
+def client() -> "AsyncOpenAI":
     global _client
     if _client is None:
+        # El import vive aquí y no arriba a propósito: `langfuse.openai` arrastra
+        # el SDK de OpenAI entero (1,8 s de los 4,7 s que tardaba importar
+        # server.app), y la Lambda del API sirve miles de peticiones que jamás
+        # llaman al LLM. El init de Lambda tiene 10 s y no le sobra ninguno.
+        # wrapper: cada llamada queda como `generation` en Langfuse
+        from langfuse.openai import AsyncOpenAI
+
         _client = AsyncOpenAI()
     return _client
 

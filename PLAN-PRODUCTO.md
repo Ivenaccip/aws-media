@@ -1043,6 +1043,173 @@ levanta el límite al que puede llegar si hace falta. Si la carga no sube, la
 factura tampoco. Lo mismo con `max_concurrency`: es un tope de paralelismo, y
 las tareas de Fargate se pagan por el tiempo que corren, no por el permiso.
 
+## Arranque en frío y el tamaño de la imagen (medido 2026-09-13/14)
+
+Buscando qué endpoint se comía los 29 s del timeout apareció otra cosa: **los 70
+intentos de init de los últimos 7 días terminaron en `Status: timeout`. Los 70.**
+
+```
+INIT_REPORT  Init Duration: 10000.00 ms   Phase: init   Status: timeout
+```
+
+Lambda concede 10 segundos para inicializar. Cuando no alcanzan, aborta y repite
+la inicialización *dentro* de la invocación — y esa sí se factura. Medido contra
+producción con un `GET /api/auth/config`:
+
+| | |
+|---|---|
+| lo que esperó el cliente | **22,15 s** |
+| lo que midió el middleware (el handler) | **47 ms** |
+| lo que facturó Lambda | 11.183 ms |
+
+Un endpoint de 47 milisegundos. El resto era arrancar. Con 5 testers eso pasa
+inadvertido; con 166 y contenedores nuevos a la vez, no.
+
+**La métrica engaña, y por eso no se había visto.** `Init Duration` en el REPORT
+solo aparece cuando el init *cabe*; los que revientan salen aparte, en
+`INIT_REPORT`. La media de 3.807 ms que reporta CloudWatch es la de los que
+sobrevivieron — el peor caso no estaba en ninguna gráfica.
+
+### Lo que ya se arregló (PR #73)
+
+El culpable no era ffmpeg ni Chromium: era una línea de Python.
+
+```
+server/app.py:19  →  pipeline/character.py:15  →  pipeline/llm.py
+                                                  from langfuse.openai import AsyncOpenAI
+```
+(la línea del import, tal como estaba antes del #73)
+
+Ese import arrastra el SDK de OpenAI entero en cada arranque, en una Lambda
+donde la inmensa mayoría de las peticiones no llaman a ningún LLM. `client()` ya
+era perezoso; el import no.
+
+```
+import server.app     4.745 ms  →  1.211 ms   (-74%)
+módulos cargados      2.342     →    998      (-57%)
+```
+
+Lo que queda del arranque ya es irreducible sin romper la instrumentación:
+langfuse core 514 ms, fastapi 389 ms. `tests/test_arranque.py` lo vigila desde
+un intérprete nuevo — `sys.modules` contaminado por otros tests mentiría.
+
+### Lo que queda: separar la imagen
+
+Una sola imagen sirve a los tres runtimes (`Dockerfile`), y pesa **1.664 MB
+comprimida en 17 capas**. Cuatro se llevan el 88%:
+
+| capa | comprimido | qué |
+|---|---|---|
+| 1 | 467,6 MB | `pip install -r requirements.txt` |
+| 2 | 445,9 MB | modelo faster-whisper `small` horneado (`Dockerfile:36`) |
+| 3 | 354,1 MB | apt: ffmpeg + Chromium + fuentes |
+| 4 | 199,7 MB | Node 20 + los dos `npm ci` de Remotion |
+
+Coste hoy: el init facturado son **1.294,6 s de los 5.756,8** de Lambda en 7
+días — el **22,5%**. Poco dinero en absoluto ($0.03 dólares), pero escala con
+los usuarios.
+
+Bloques que la Lambda del API no usa y que son candidatos claros:
+
+- **El modelo faster-whisper está doblemente muerto en el API**: se hornea como
+  root (cache en `/root/.cache`) pero `infra/stacks/api.py:50` fija `HOME=/tmp`,
+  así que ni por accidente lo encontraría.
+- **`remotion-longform/` es peso muerto puro en la nube**: cero invocaciones
+  desde `worker/`, `server/` o `pipeline/` — solo lo usan `tools/bake.py` y
+  `tools/update.py`, que son herramienta local.
+- **`claude-agent-sdk`** son 275 MB (`requirements.txt:34`), de los que 274 son
+  un binario CLI embebido.
+
+### Lo que hay que saber ANTES de separarla
+
+Verificado con evidencia; cada punto habría roto producción si se hubiera hecho
+a ciegas.
+
+**1. El API sí ejecuta ffmpeg — en cuatro rutas, no en una.**
+
+| dónde | qué corre |
+|---|---|
+| `server/shorts_api.py:75` | `ffprobe` contra el CDN para el preview de costo |
+| `server/overlays_api.py:159` | `ffmpeg` |
+| `server/overlays_api.py:199` | `ffmpeg -ss` — extrae un frame de referencia |
+| `server/importar_api.py:59` | `ffmpeg` para la miniatura de un MP4 suelto |
+
+La de `shorts_api` es innegociable: sostiene el preview de costo, y *corrida en
+nube sin preview de costo = bug* es regla dura del repo.
+
+**2. Esos tres sitios hardcodean el nombre del binario e ignoran `FFMPEG_BIN`.**
+Solo `pipeline/` respeta la variable (`pipeline/config.py:28`). Instalar un
+ffmpeg estático y apuntar la variable **no serviría**. Y no hay comprobación al
+arrancar: el fallo saldría en la primera petición de un tester, no en el deploy.
+
+**3. Ningún test lo detectaría.** Los 38 archivos de `tests/` mockean el
+subproceso sistemáticamente. La separación necesita gates **nuevos** que corran
+dentro de la imagen construida: `ffprobe -version`, `ffmpeg -filters | grep ass`,
+`fc-match Arial`, `python -c "import server.lambda_handler"` y un segundo que
+fuerce los imports perezosos (`jwt`, `cryptography`, `anthropic`, `boto3`).
+
+**4. Las fuentes fallan en silencio.** `tools/make_subs.py:166` usa `Arial` por
+defecto y `:130` lo escribe literal en el `.ass`. Debian slim no lo trae: existe
+solo como alias de fontconfig que aporta `fonts-liberation` (`Dockerfile:13`).
+Sin esa fuente, ffmpeg devuelve **returncode 0** y sube un PNG mal renderizado —
+un smoke test que compruebe HTTP 200 lo da por bueno.
+
+**5. Hay dos variables que deciden "estoy en la nube", no una.**
+`STATE_BACKEND=postgres` (`infra/stacks/api.py:53`) gobierna `_nube()` en
+shorts/editar/editor, pero `server/app.py:452-458` y `:704-710` gatean con
+`JOBS_BACKEND` (`api.py:62`), cuyo default es **`local`** (`pipeline/jobs.py:21-22`).
+Si la imagen ligera se queda sin `JOBS_BACKEND`, el `else` ejecuta el pipeline
+**dentro** del proceso Lambda, arrastrando ffmpeg y el `from faster_whisper
+import WhisperModel` perezoso de `pipeline/narracion.py:86`. Hay que cablear las
+dos.
+
+**6. La imagen ligera no puede ser solo `server/` + `pipeline/`.** Necesita
+además `worker/env_ssm.py` (`server/lambda_handler.py:11`), `tools/editor/`
+(`server/editor.py:29-30`), `tools/make_subs.py`, `tools/hwenc.py`,
+`tools/costes.py` (`server/admin_api.py:245`), `static/` (`server/app.py:764`) y
+el `mkdir -p /data/videos /data/work` de `Dockerfile:46`, sin el cual
+`videos_root()` deja de existir.
+
+**7. `requirements.txt` es monolítico** (líneas 13-57: núcleo + shorts + longform
++ server + tests). Sin partirlo, la imagen ligera repite los **56,2 s de `pip`**
+que son un tercio de los 162 s del build, y buena parte del tamaño.
+
+### Cómo hacerla, cuando toque
+
+**Dos tags en el mismo repositorio ECR, no dos repositorios.** ECR deduplica las
+capas comunes dentro del repo, `docker push --all-tags`
+(`.github/workflows/docker.yml:90`) no necesita cambios, y se evita crear el repo
+a mano, ampliar el `grant_push` (`infra/stacks/base.py:36-37`) y tocar el IAM de
+pull de Fargate.
+
+Trampas del CDK, verificadas:
+
+- `_digest_latest()` (`infra/app.py:38-51`) tiene el nombre del repositorio
+  **cableado** en `:46` y un `except Exception` en `:48` que devuelve la cadena
+  `"latest"` con un aviso por stderr. Un tag mal escrito **no rompe el synth**:
+  degrada en silencio a `repo:latest`, que es justo el fallo que CloudFormation
+  no detecta porque la cadena no cambia.
+- `image_ref: str = "latest"` es valor **por defecto** en las dos firmas
+  (`api.py:29`, `jobs.py:43`). Un segundo parámetro con el mismo default se
+  desplegaría en verde apuntando a la imagen equivocada.
+- Mientras se conserven los construct ids `"Api"` y `"Worker"`, cambiar la
+  ImageUri es una actualización, no un reemplazo.
+- El push de las dos imágenes **no es atómico**: si una pasa y la otra falla, los
+  runtimes quedan en builds distintos y el `cdk deploy` los cablea sin quejarse.
+
+Y el CI: `tests/test_flujo_ramas.py` indexa los **nombres exactos** de los pasos
+del workflow (`_paso`, líneas 32-36), así que desdoblar «Build de la imagen» o
+«Suite de tests dentro del contenedor» rompe esos tests a propósito — hay que
+actualizarlos en el mismo PR.
+
+### Decisión pendiente
+
+Con el #73 desplegado, la pregunta que contesta el próximo `INIT_REPORT`:
+
+- **si pasa a `Status: success`** → la separación es optimización de coste y
+  espera a después del 23 de septiembre;
+- **si sigue en `timeout`** → hay que separarla antes de abrir a 161 personas.
+
 ## Orden y dependencias
 
 ```
