@@ -73,8 +73,8 @@
 
   <section id="sec-importar" hidden>
     <h2>Importar de YouTube</h2>
-    <p class="mut">Pega la liga de un video (máx 90 min): lo traemos al servicio y de ahí
-      salen tus shorts.</p>
+    <p class="mut">Pega la liga de un video (entre 1 y 90 min): lo traemos al servicio y de ahí
+      salen tus shorts. Llega como proyecto aparte, así que no toca el que tengas abierto.</p>
     <div class="controles" style="margin-top:8px">
       <input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…"
              aria-label="Liga de YouTube" style="flex:1;min-width:260px;background:#18293f;color:inherit;border:1px solid #55708f;border-radius:8px;padding:8px 10px">
@@ -270,6 +270,10 @@ async function cargar() {
   try { EST = await fj(`/api/shorts/${encodeURIComponent(P)}`); }
   catch (e) { $("aviso").textContent = e.message; $("aviso").className = "err"; return; }
   $("aviso").hidden = true;
+  // El campo de la liga vivía SOLO dentro de elegirProyecto(), que corre únicamente
+  // cuando la URL no trae ?p= — así que con un proyecto abierto la sección no
+  // existía y no había dónde pegar la liga. Lo reportó una tester el 2026-09-14.
+  $("sec-importar").hidden = false;
   pintar();
 }
 
@@ -280,6 +284,7 @@ function pintar() {
     $("aviso").hidden = false;
     $("aviso").innerHTML = `<span class="spin">Trayendo «${imp.titulo || "el video"}» de YouTube</span> — suele tardar 1-3 minutos; puedes cerrar la página.`;
     $("sec-analisis").hidden = true;
+    $("sec-importar").hidden = true;   // una descarga en curso ya ocupa la página
     orbeAnalisis(false);   // una descarga no es la IA pensando: aquí no hay orbe
     titulo("Trayendo el video");
     programarPoll();

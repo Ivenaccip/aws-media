@@ -163,6 +163,22 @@ def construir_cuts(nombre: str, clip_id: str, archivo: str, dur: float,
     }
 
 
+def creditos_a_devolver(st: dict) -> int:
+    """Cuántos créditos vuelven de una corrida que ya terminó bien.
+
+    Terminar sin UNA sola sugerencia no es entregar lo que se cobró: el
+    2026-09-14 una tester pagó 4 créditos por 0 cortes, 0 fluff y 0 flags y,
+    como no hubo excepción, el `except` de main() ni se enteró y nadie le
+    devolvió nada. Vuelve la parte del LLM; la de la transcripción se queda,
+    porque el canónico SÍ quedó hecho, vive en el proyecto y la próxima corrida
+    ya no lo vuelve a cobrar.
+    """
+    from pipeline import creditos
+    if st.get("cortes") or st.get("fluff") or st.get("flags"):
+        return 0
+    return min(int(st.get("creditos") or 0), creditos.EDITAR_SUGERENCIAS_CR)
+
+
 def main(user_id: str, nombre: str) -> int:
     import os
     t0 = time.monotonic()
@@ -205,6 +221,14 @@ def main(user_id: str, nombre: str) -> int:
         st.update(estado="listo", fin=_ahora(),
                   cortes=len(clip["cuts"]), fluff=len(clip["fluff_suggestions"]),
                   flags=len(cuts["flags"]))
+        # Cero sugerencias = no se entregó lo cobrado (ver creditos_a_devolver).
+        # `devueltos` lo lee la UI, así que solo se fija si el abono ocurrió de
+        # verdad: en local no hay monedero y prometerlo sería mentir.
+        n = creditos_a_devolver(st)
+        if n and creditos.activo():
+            creditos.devolver(n, f"editar-sugerir:{nombre}", user_id)
+            st["devueltos"] = n
+            log.info("%s: sin sugerencias — %d créditos devueltos", nombre, n)
         db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(st, ensure_ascii=False))
         log.info("%s: corte sugerido — %d cortes, %d fluff, %d flags",
                  nombre, st["cortes"], st["fluff"], st["flags"])

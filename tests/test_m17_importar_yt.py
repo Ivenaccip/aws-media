@@ -47,7 +47,11 @@ def cliente(monkeypatch):
     return TestClient(app)
 
 
-def _mock_info(monkeypatch, dur=19.0):
+def _mock_info(monkeypatch, dur=130.0):
+    """El default tiene que pasar el piso de duración que trajo M22: los 19 s
+    que dura «Me at the zoo» de verdad hoy se rechazan ANTES de cobrar, porque
+    un video más corto que un short no da ningún short. Eso lo fija
+    tests/test_m22_testers.py; aquí el mock representa un video normal."""
     from pipeline import apify
     monkeypatch.setattr(apify, "correr",
                         lambda actor, entrada, timeout_s=60: [
@@ -85,7 +89,7 @@ def test_importar_cobra_guarda_y_encola(cliente, monkeypatch):
     r = cliente.post("/api/shorts/importar", json={"url": URL})
     assert r.status_code == 200 and r.json()["nombre"] == "yt-jNQXAC9IVRw"
     assert encolado == [("yt-jNQXAC9IVRw", URL)]
-    assert movimientos == [("cobro", creditos.SHORTS_IMPORTAR_CR_MIN,
+    assert movimientos == [("cobro", creditos.SHORTS_IMPORTAR_CR_MIN * 3,   # 130 s = 3 min empezados
                             "shorts-importar:yt-jNQXAC9IVRw")]
     assert guardado["yt-jNQXAC9IVRw"]["importar"]["estado"] == "descargando"
 

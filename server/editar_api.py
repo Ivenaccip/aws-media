@@ -18,11 +18,15 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 
 from pipeline import creditos, db, jobs
-from server.shorts_api import _duracion_s, _fuente, _con_transcript, _proyecto
+from server.shorts_api import (_con_transcript, _duracion_s, _fuente, _proyecto,
+                              fuera_de_rango, gate_duracion)
 
 router = APIRouter(prefix="/api/editar")
 
-MAX_DURACION_S = 5400   # 90 min, mismo tope que shorts
+# Los límites son los de shorts (mismo worker, mismo vendor de transcripción):
+# viven en shorts_api para que no puedan separarse por descuido. Lo propio de
+# aquí es POR QUÉ un metraje corto no sirve — no hay relleno que quitar.
+CORTO_EDITAR = "un video tan corto no tiene relleno que recortar"
 
 
 def _nube() -> None:
@@ -63,13 +67,14 @@ def costo(nombre: str):
     dur = _duracion_s(key)
     con_tx = _con_transcript(nombre)
     falta_key = not con_tx and not os.getenv("ASSEMBLYAI_API_KEY")
+    fuera = fuera_de_rango(dur, CORTO_EDITAR)
     return {
         "fuente": key, "duracion_s": round(dur, 1), "con_transcript": con_tx,
         "creditos": creditos.costo_editar_sugerencias(dur, con_tx),
-        "backend_listo": not falta_key,
-        "aviso": None if not falta_key else
+        "backend_listo": not falta_key and fuera is None,
+        "aviso": fuera or (None if not falta_key else
             "Falta configurar la transcripción en nube (ASSEMBLYAI_API_KEY) — "
-            "este metraje no trae transcript propio",
+            "este metraje no trae transcript propio"),
     }
 
 
@@ -85,8 +90,7 @@ def sugerir(nombre: str):
     if key is None:
         raise HTTPException(404, "Este proyecto no tiene metraje: sube un video primero")
     dur = _duracion_s(key)
-    if dur > MAX_DURACION_S:
-        raise HTTPException(413, f"El video dura {dur/60:.0f} min — el máximo del flujo web es {MAX_DURACION_S//60} min")
+    gate_duracion(dur, CORTO_EDITAR)
     con_tx = _con_transcript(nombre)
     if not con_tx and not os.getenv("ASSEMBLYAI_API_KEY"):
         raise HTTPException(503, "Transcripción en nube no configurada (ASSEMBLYAI_API_KEY)")

@@ -34,6 +34,13 @@ ESTILOS = {"bold", "bounce", "clean"}
 PLATAFORMAS = {"youtube", "tiktok", "instagram", "all"}
 TIPOS = {"auto", "talking-head", "screen", "podcast"}
 MAX_DURACION_S = 5400   # 90 min: más largo no cabe en el worker de 15 min
+# El tope estaba desde M8; el piso no, y por eso el 2026-09-14 una tester
+# subió un clip de 6 s, pagó el análisis y recibió «no encontró candidatos
+# válidos»: le cobramos por una corrida que no podía salir bien. Un short
+# dura entre 5 y 90 s (lo valida /render), así que por debajo de un minuto el
+# video YA es del tamaño de un short y no hay nada que recortar.
+MIN_DURACION_S = 60
+CORTO_SHORTS = "tu video ya dura menos que un short — publícalo tal cual"
 VIDEO_EXT = (".mp4", ".mov", ".mkv", ".webm")
 
 
@@ -98,6 +105,29 @@ def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def fuera_de_rango(dur: float, corto: str) -> str | None:
+    """Por qué este metraje no da para una corrida, o None si sí da.
+
+    Devuelve texto en vez de lanzar porque los dos previos de costo lo pintan
+    como aviso (y apagan el botón) en lugar de romper la página; los POST que
+    cobran usan `gate_duracion`, que sí corta.
+    """
+    if dur > MAX_DURACION_S:
+        return (f"El video dura {dur/60:.0f} min y el máximo del flujo web es "
+                f"{MAX_DURACION_S//60} min")
+    if dur < MIN_DURACION_S:
+        return (f"El video dura {dur:.0f} s y el mínimo son {MIN_DURACION_S} s: "
+                f"{corto}")
+    return None
+
+
+def gate_duracion(dur: float, corto: str) -> None:
+    """El mismo juicio, cortando la petición ANTES de cobrar."""
+    motivo = fuera_de_rango(dur, corto)
+    if motivo:
+        raise HTTPException(413 if dur > MAX_DURACION_S else 422, motivo)
+
+
 # ---------------------------------------------------------------------------
 # M17 — importar un video de YouTube por liga (van ANTES de /{nombre}: FastAPI
 # matchearía "importar" como nombre de proyecto)
@@ -140,9 +170,7 @@ def importar_cotizar(pedido: PedidoImportar):
     _nube()
     vid = _video_id(pedido.url)
     info = _info_youtube(vid)
-    if info["duracion_s"] > MAX_DURACION_S:
-        raise HTTPException(413, f"El video dura {info['duracion_s']/60:.0f} min — "
-                                 f"el máximo del flujo web es {MAX_DURACION_S//60} min")
+    gate_duracion(info["duracion_s"], CORTO_SHORTS)
     return {**info, "nombre": f"yt-{vid}",
             "creditos": creditos.costo_shorts_importar(info["duracion_s"])}
 
@@ -162,9 +190,7 @@ def importar(pedido: PedidoImportar):
         raise HTTPException(409, f"Ese video ya está importado como «{nombre}» — "
                                  "elígelo en la lista y corre el análisis")
     info = _info_youtube(vid)
-    if info["duracion_s"] > MAX_DURACION_S:
-        raise HTTPException(413, f"El video dura {info['duracion_s']/60:.0f} min — "
-                                 f"el máximo del flujo web es {MAX_DURACION_S//60} min")
+    gate_duracion(info["duracion_s"], CORTO_SHORTS)
     n = creditos.costo_shorts_importar(info["duracion_s"])
     if creditos.activo():
         try:
@@ -209,14 +235,15 @@ def costo(nombre: str):
     dur = _duracion_s(key)
     con_tx = _con_transcript(nombre)
     falta_key = not con_tx and not os.getenv("ASSEMBLYAI_API_KEY")
+    fuera = fuera_de_rango(dur, CORTO_SHORTS)
     return {
         "fuente": key, "duracion_s": round(dur, 1), "con_transcript": con_tx,
         "creditos_analizar": creditos.costo_shorts_analizar(dur, con_tx),
         "creditos_por_short": creditos.SHORTS_RENDER_CR,
-        "backend_listo": not falta_key,
-        "aviso": None if not falta_key else
+        "backend_listo": not falta_key and fuera is None,
+        "aviso": fuera or (None if not falta_key else
             "Falta configurar la transcripción en nube (ASSEMBLYAI_API_KEY) — "
-            "este proyecto no trae transcript propio",
+            "este proyecto no trae transcript propio"),
     }
 
 
@@ -232,8 +259,7 @@ def analizar(nombre: str):
     if key is None:
         raise HTTPException(404, "Este proyecto no tiene metraje: sube un video en e1 primero")
     dur = _duracion_s(key)
-    if dur > MAX_DURACION_S:
-        raise HTTPException(413, f"El video dura {dur/60:.0f} min — el máximo del flujo web es {MAX_DURACION_S//60} min")
+    gate_duracion(dur, CORTO_SHORTS)
     con_tx = _con_transcript(nombre)
     if not con_tx and not os.getenv("ASSEMBLYAI_API_KEY"):
         raise HTTPException(503, "Transcripción en nube no configurada (ASSEMBLYAI_API_KEY)")
