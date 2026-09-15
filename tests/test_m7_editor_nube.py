@@ -148,11 +148,23 @@ def test_render_corriendo_caducado_se_relanza(nube, monkeypatch):
 
 
 def test_render_status_desde_el_doc(nube):
+    """Un render anterior a M22 no trae `key`: el status la devuelve en None y
+    el front, que solo pinta el botón de descargar si viene, no se rompe."""
     nube.docs["gen-abc"]["render"] = {
         "estado": "listo", "url": "https://cdn.example.com/x.mp4", "log": ""}
     s = nube.get("/editor/gen-abc/api/render/status").json()
     assert s == {"running": False, "log": "", "ok": True,
-                 "url": "https://cdn.example.com/x.mp4"}
+                 "url": "https://cdn.example.com/x.mp4", "key": None}
+    del nube.docs["gen-abc"]["render"]
+
+
+def test_render_status_lleva_la_key_para_descargar(nube):
+    """Los nuevos sí: es lo que el botón de descargar le pasa a /api/media."""
+    nube.docs["gen-abc"]["render"] = {
+        "estado": "listo", "log": "", "url": "https://cdn.example.com/x.mp4",
+        "key": "videos/gen-abc/output/preview-tight.mp4"}
+    s = nube.get("/editor/gen-abc/api/render/status").json()
+    assert s["key"] == "videos/gen-abc/output/preview-tight.mp4"
     del nube.docs["gen-abc"]["render"]
 
 

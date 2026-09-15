@@ -142,15 +142,19 @@ def lanzar_overlay(user_id: str, nombre: str) -> str:
     return r["executionArn"]
 
 
-def lanzar_produccion(user_id: str, proyecto_id: str) -> str:
+def lanzar_produccion(user_id: str, proyecto_id: str, fase: str = "todo") -> str:
     """Arranca la state machine. El nombre lleva timestamp: reintentar tras un
-    error crea una ejecución nueva (los nombres de SFN son únicos 90 días)."""
+    error crea una ejecución nueva (los nombres de SFN son únicos 90 días).
+
+    `fase` (M22 · G) viaja como un argumento más del comando, que se arma aquí
+    mismo: partir la producción en dos NO toca la definición de la state
+    machine ni el task definition, así que no necesita deploy de CDK."""
     r = _sfn().start_execution(
         stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
         name=f"{proyecto_id}-{int(time.time())}",
         # command viene armado desde aquí: SFN no interpola JsonPath en arrays
         input=json.dumps({
             "user_id": user_id, "proyecto_id": proyecto_id,
-            "command": ["python", "-m", "worker.producir_task", user_id, proyecto_id],
+            "command": ["python", "-m", "worker.producir_task", user_id, proyecto_id, fase],
         }))
     return r["executionArn"]

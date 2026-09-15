@@ -82,6 +82,84 @@ venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 2
   Packs Stripe: 100/$1.99 · 550/$9.99 · 1200/$18.00 dólares — los Payment
   Links DEBEN costar el monto exacto (el webhook mapea por monto).
 
+### «Me dice que mi video es muy corto»
+
+Es a propósito, desde el 14 de septiembre de 2026. Shorts y las sugerencias de
+corte piden **entre 1 y 90 minutos**: por debajo de un minuto el video ya dura
+menos que un short, no hay nada que recortar, y antes cobrábamos igual por una
+corrida que terminaba en «no encontró candidatos válidos». El rechazo ocurre
+ANTES del cobro, así que no hay nada que devolver; el botón se apaga solo y el
+aviso dice la duración real y la mínima.
+
+La otra mitad del mismo arreglo: una corrida de sugerencias que termina bien
+pero **sin una sola propuesta** devuelve la parte del LLM (2 cr) y lo dice en
+la pantalla. La parte de transcripción no vuelve, y con razón: el canónico
+queda hecho en el proyecto y la siguiente corrida ya no lo cobra.
+
+Si alguien pregunta por un cobro raro, el extracto lo cuenta entero:
+
+```bash
+venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 40
+```
+
+### «Quiero mi video en vertical»
+
+Desde el 14 de septiembre de 2026 se elige al crear la película: horizontal
+(16:9, YouTube) o vertical (9:16, Reels/TikTok/Shorts). **No se puede cambiar
+después** — el aspecto se le pide a Grok y a Veo en cada llamada, y una
+película a medias con dos aspectos no concatena. Quien lo pida a mitad de un
+proyecto tiene que crear otro.
+
+Las películas anteriores a esa fecha son todas horizontales: el campo no existe
+en sus documentos y cae a ese default.
+
+El b-roll del editor no tiene selector porque no elige: hereda el aspecto del
+video sobre el que se inserta.
+
+### «No me deja descargar» / «se me abre en una pestaña»
+
+Arreglado el 14 de septiembre de 2026. Lo que pasaba: el atributo `download` de
+un enlace **lo ignora el navegador cuando el archivo vive en otro origen**, y
+todo lo nuestro vive en el CDN. Ahora la descarga pasa por
+`/api/media/descarga?key=…`, que devuelve el archivo firmado por S3 con
+`Content-Disposition: attachment` — el navegador ya no tiene nada que decidir.
+
+Si alguien vuelve a reportarlo, lo primero es mirar **de dónde** cuelga el
+enlace: uno que apunte directo a `d8bfm82hs0s6a.cloudfront.net` abre en pestaña
+por diseño y hay que cambiarlo al endpoint.
+
+Caso aparte, dentro del editor: **publicar a redes (Blotato) y sugerir títulos
+siguen siendo solo locales.** Leen el disco del proyecto, que en el servicio no
+existe. En la nube avisan con un 503 explicado; la salida mientras tanto es
+descargar el video y subirlo a mano.
+
+### «Mi película se quedó en las imágenes y no avanza»
+
+No está atascada: está **esperando**. Desde el 14 de septiembre de 2026, en
+revisión hay dos modos — «⚡ De corrido» (el de siempre) y «🖼 Enséñame las
+imágenes antes de animar». Con el segundo la producción para al tener la imagen
+de cada toma y no sigue hasta que alguien pulse **Animar**. Puede quedarse ahí
+días sin costar nada: la tarea terminó, no hay ningún servidor esperando.
+
+De ahí se sale por tres puertas:
+
+- **Animar** — sigue la producción. No cobra: la película se pagó entera al
+  pulsar Producir.
+- **Pedir otra** en una imagen — cuesta la tarifa de imagen (`tools/tarifas.json`,
+  §video.imagen), avisada antes con un 428. Es lo único que gasta en esta
+  pantalla, y es 12 veces más barato que animar y rehacer.
+- **Mejor no** — vuelve a revisión y devuelve lo que no se gastó: la producción
+  menos las imágenes ya quemadas. En el monedero sale como `cancelar:<id>`.
+
+Se aprueban las **cabezas de cadena**, no todas las escenas: una escena que
+continúa a la anterior arranca del último frame de su clip, que todavía no
+existe. Por eso una película de 5 escenas puede enseñar solo 2 imágenes — y
+cada una dice de cuántos planos manda.
+
+Si una película aparece en `imagenes` y la pantalla sale vacía, mirar
+`estado.json` bajo `work/<user>/<id>/` en S3: es de donde salen las imágenes y
+el casting que usa la segunda mitad.
+
 ## Administración y costos
 
 - **Dashboard**: `/admin.html` (grupo admin) — 3 pestañas: Ingresos, Costos

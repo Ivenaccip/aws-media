@@ -1210,6 +1210,279 @@ Con el #73 desplegado, la pregunta que contesta el próximo `INIT_REPORT`:
   espera a después del 23 de septiembre;
 - **si sigue en `timeout`** → hay que separarla antes de abrir a 161 personas.
 
+## Fase M22 — Lo que reportaron los testers (2026-09-14)
+
+Diez reportes de la primera tanda, a nueve días de abrir a 166 usuarios. El
+orden de abajo no es el orden en que llegaron: primero va lo que cobra mal o
+impide usar algo ya pagado, luego lo que falta, y al final lo que es producto
+nuevo. Cada punto se verificó contra el código o contra la base ANTES de
+clasificarlo — varios no eran lo que parecían.
+
+### Clasificación
+
+| # | Lo que reportaron | Qué es en realidad | Prio |
+|---|---|---|---|
+| 10.2 | «Solo me devolvió la mitad de los créditos» | Cierto y medido. Un video de **6 segundos**: se cobraron 4 cr de `editar-sugerir` + 4 de `shorts-analizar`; shorts falló y devolvió, editar terminó «listo» con 0 cortes y se quedó el cobro. Hay tope de 90 min y **ningún piso** | **P0** |
+| 10.1 | «Shorts no procesó la liga de YouTube» | El campo de la liga solo existe sin proyecto abierto: `sec-importar` se revela únicamente dentro de `elegirProyecto()`, que solo corre si la URL no trae `?p=` | **P0** |
+| 1 | «El editor solo edita sobre lo pintado» | El prompt se lo prohíbe explícitamente: «Keep every other part of the original pixel-identical». Y la máscara es obligatoria en el endpoint | **P0** |
+| 4 | «No hay botón de descargar en algunos casos» | Faltan en tres sitios, y donde hay enlace al CDN el atributo `download` es **ignorado por el navegador** (cross-origin): hace falta `Content-Disposition` | **P0** |
+| 3 | «Los prompts de Grok salen en inglés» | El prompt en inglés es correcto (da mejores imágenes); el error es enseñárselo crudo al usuario y precargar con él el campo que edita | **P1** |
+| 2 | «No hay formato vertical» | 16:9 cableado en cuatro sitios del pipeline. Remotion ya está resuelto: shorts es 1080x1920 y longform es parametrizable | **P1** |
+| 5 | Paso intermedio imagen → video, auto/manual | Hoy `producir` genera imagen y video de golpe. Cambia la máquina de estados de producción, la UI y el cobro | **P2** |
+| 8 | Voces por personaje (máximo 2) | Hoy es una decisión de diseño explícita: «Una sola voz narrará TODO el guion». Toca casting, narración, TTS y UI | **P2** |
+| 6 | Efectos de sonido | No existe nada en el servicio. Existe en el flujo local (`tools/gen_sfx.py` + catálogo) sin portar | **P2** |
+| 9 | Sonido ambiente por liga de YouTube | No existe, y antes de construirlo hay que resolver de quién es esa música | **P2** |
+| 7 | ¿Cuánto cuesta una canción con Lira? | Solo investigación. Hoy la música local sale por ElevenLabs Music | **Aparte** |
+
+### P0 — antes del 23 (cobran mal o impiden usar lo pagado)
+
+**A · Piso de duración y la devolución que falta.** ✅ CÓDIGO LISTO (2026-09-14,
+falta deploy). Queda reparar a la usuaria: 4 créditos de ajuste, comando del
+dueño. `MAX_DURACION_S` tiene pareja:
+un mínimo por debajo del cual el análisis no puede dar nada. Shorts necesita
+metraje para recortar (un short dura 5-90 s, un video de 6 s no da ninguno) y
+las sugerencias de corte necesitan material del que sobre algo. El cobro se
+rechaza ANTES, en el preview de costo y en el POST, con un mensaje que diga la
+duración real y la mínima. Y la otra mitad: una corrida que termina sin
+entregar nada (0 cortes, 0 candidatos) devuelve los créditos — hoy solo
+devuelve si lanza excepción.
+
+**B · La liga de YouTube, visible siempre.** ✅ CÓDIGO LISTO (2026-09-14, falta
+deploy). El `hidden = false` de `sec-importar` sale de `elegirProyecto()`: la
+sección aparece también con un proyecto abierto, y se esconde solo mientras ESE
+proyecto se está descargando.
+
+**C · El editor de imágenes, con dos modos.** ✅ CÓDIGO LISTO (2026-09-14,
+falta deploy). «Transformar toda la imagen» junto al pincel: instrucción propia
+sin la cláusula pixel-identical y sin exigir máscara. El modo pincel se queda
+igual — es el que funciona bien. Misma tarifa: una llamada a Nano Banana es una
+llamada.
+
+**D · Descargas de verdad.** ✅ CÓDIGO LISTO (2026-09-14, falta deploy). Los
+tres huecos (imágenes candidatas del editor, preview de render, shorts) más el
+arreglo de fondo —`Content-Disposition: attachment` firmado por S3, porque
+`download` no cruza orígenes— y uno que no estaba en la lista y era el peor:
+**en el servicio, el modal de Publicar no enseñaba nada**. `descargables()` lee
+el disco del proyecto, que en la Lambda no existe, así que la película estaba
+hecha en S3 y no había forma de bajarla. Ahora se lista desde S3.
+
+Lo que sigue pendiente ahí: la otra mitad de b3 (sugerir títulos y agendar en
+Blotato) también lee ese disco. No se arregló —necesita su propio diseño, con
+la URL pública del archivo— pero ya no da un 404 críptico: dice qué pasa y qué
+hacer mientras tanto.
+
+### P1 — antes del 23 si el tiempo aguanta
+
+**E · El prompt, en español para el usuario.** Enseñar y editar en español,
+traducir a inglés al mandarlo al modelo, y guardar las dos versiones (el
+usuario vuelve a abrir y tiene que leer lo suyo, no lo del modelo).
+
+**F · Formato vertical.** ✅ CÓDIGO LISTO (2026-09-14, falta deploy). El aspecto
+deja de ser una constante y pasa a ser un campo del proyecto, elegido al
+crearlo y fijo desde entonces (media.py pide el aspecto en cada llamada: una
+película a medias con dos aspectos no concatena). Los cuatro sitios cableados a
+16:9 —Grok, Veo, el Veo del editor y el lienzo del clip de respaldo— leen ahora
+una sola tabla en `pipeline/models.py`.
+
+Los dos valores se verificaron contra el schema de fal antes de construir nada:
+Veo 3.1 lite acepta exactamente `auto`, `16:9` y `9:16`.
+
+El b-roll del editor **no** elige: hereda. Su imagen ya se generaba desde un
+frame del video base, y ahora Veo deduce el aspecto de esa imagen en vez de
+pedir 16:9 a ciegas. Remotion estaba resuelto por los dos lados (shorts ya es
+1080x1920; el longform toma las medidas del timeline y es del flujo local).
+
+Esto responde la pregunta abierta 5 de este plan: «Reels» y «Crear contenido»
+son el mismo flujo con un formato distinto, no dos secciones.
+
+### P2 — después del 23
+
+**G · Imagen aprobada antes de animar (auto/manual).** ✅ CÓDIGO LISTO
+(2026-09-14, falta deploy). El argumento no es solo
+de UX: la imagen cuesta $0.02 dólares y animarla ocho segundos cuesta $0.24
+dólares. Aprobar antes de animar es doce veces más barato que rehacer después,
+y es lo que convierte «no me gustó» en algo que el usuario arregla sin pagar
+otra producción entera.
+
+Cómo quedó: la producción se parte en DOS tareas —una llega hasta las imágenes
+y termina, la otra la retoma— en vez de pausar el contenedor. Un Fargate de 4
+vCPU parado esperando a una persona cuesta $0.198 la hora y muere a las 2 h de
+timeout; una tarea que acaba no cuesta nada, y el usuario puede tardar lo que
+quiera. La fase viaja como un argumento más del comando, así que **no toca la
+state machine ni el task definition: no pide deploy de CDK**.
+
+Lo que se aprueba son las CABEZAS de cadena, no todas las escenas: una escena
+«continua» arranca del último frame del clip anterior, que no existe hasta
+animar. Cinco escenas con dos cortes = dos imágenes. La pantalla lo dice («esta
+imagen manda en 3 planos»), porque prometer control sobre las otras sería
+mentir.
+
+El dinero: producir cobra igual (la película entera, por adelantado); animar no
+cobra nada; pedir otra imagen cuesta la tarifa de imagen con gate 428 antes; y
+cancelar devuelve lo que no se gastó —la producción menos las imágenes
+quemadas—, que es la otra mitad de la regla de A: nadie paga por lo que no
+recibió.
+
+Hay que mirar una línea en `worker/producir_task.py`: la devolución disparaba
+con `estado != "listo"`, así que una película parada a enseñar imágenes habría
+devuelto el importe completo mientras el trabajo seguía vivo. Ahora devuelve el
+FALLO, que es `"error"`.
+
+**H · Dos voces.** ⏸️ **APLAZADO (decisión del dueño, 2026-09-14): no entra en
+este ciclo.** Queda documentado aquí para no volver a mapearlo desde cero.
+
+Empezar por el máximo que pidió el usuario: dos personajes. Es más grande de lo
+que parece, y esa es la razón del aplazamiento.
+
+Media pieza ya está hecha: `Scene.voz` existe y `tts.py` la respeta
+(`e.voz or VOZ_DEFAULT`), así que el pipeline de **escenas** está a un
+`model_copy` de soportar dos voces — hoy `flow.py` pisa todas las escenas con
+la misma `p.voz`. Lo que falta no es eso:
+
+- **El pipeline por defecto es narración, y su premisa es UNA llamada de TTS**
+  con el texto completo. De ahí salen la prosodia continua y la duración real
+  medida que hicieron innecesario el gate de palabras/segundo (es el motivo de
+  ser de M11). Repartir turnos obliga a concatenar audio —no hay helper en
+  `ffmpeg.py`—, a correr todos los tiempos del alineado por offset acumulado, y
+  devuelve el problema de entonación que M11 resolvió.
+- **No existe la materia prima.** Los dos guionistas tienen el diálogo prohibido
+  por prompt: «Sin diálogos entre comillas; si un personaje habla, nárralo». No
+  hay turnos que repartir hasta que eso cambie.
+- **`Scene.personajes` significa quién APARECE, no quién habla**, y solo lo
+  consumen las referencias de imagen y la validación de transiciones. Si se
+  reusa para marcar hablantes, `ordenar_cola` degrada «continua» a «corte»: más
+  cadenas, más clips de Veo, más dinero.
+- **Dos voces implican dos caras.** `Proyecto.personaje` es singular y la UI
+  ofrece un solo juego de opciones. Entregar solo la voz da un segundo
+  personaje que habla y no tiene aspecto consistente.
+
+El dinero no es el problema: el TTS se cobra por caracteres (~$0.05 dólares en
+una narración de 45 s) y `costo_producir` va por duración objetivo, así que dos
+voces no mueven ni un crédito.
+
+De ese mapeo salió un bug vivo, arreglado aparte: `armar_sub_escenas` no
+copiaba `voz` ni `formato`, así que una escena partida por duración se narraba
+con la voz por defecto y —desde M22 · F— salía apaisada dentro de una película
+vertical, sin excepción ni devolución.
+
+**Cuando se retome, el orden es este** (cada paso se puede parar y sigue
+dejando el producto entero):
+
+1. **Permitir el diálogo en los guionistas.** Hoy está prohibido por prompt en
+   `guionista_system.md` y `narrador_system.md`. Sin turnos escritos no hay nada
+   que repartir, así que este paso va primero aunque se siga con una sola voz —
+   y solo cambiando eso ya se ve si el guion mejora o empeora.
+2. **Marcar quién habla, en un campo NUEVO.** No reusar `Scene.personajes`: hoy
+   significa «quién aparece en el plano» y `ordenar_cola` degrada las
+   transiciones «continua» cuando cambia — más cadenas, más clips de Veo, más
+   dinero por un cambio que era de audio.
+3. **Bajar las voces del proyecto a las escenas en UN solo sitio**, con un
+   `con_voces()` calcado de `con_formato()` (misma razón: si una escena se
+   queda sin ella, cae a la voz por defecto y nadie se entera). El pipeline de
+   **escenas** termina aquí: `Scene.voz` ya existe y `tts.py` ya la respeta.
+4. **Solo entonces, narración.** Es el trabajo grande: concatenar audio (no hay
+   helper en `ffmpeg.py`), correr todos los tiempos del alineado por offset
+   acumulado y seguir dejando `narracion.mp3` + `alineado.json` como los espera
+   el puente al editor. Aquí se paga el precio de M11: se pierde la prosodia
+   continua y vuelve el gate de palabras/segundo.
+5. **La segunda cara.** `Proyecto.personaje` es singular; sin esto el segundo
+   personaje habla y no tiene aspecto consistente entre planos.
+
+Compatibilidad: `Proyecto.voz` es un `str` persistido en Aurora y en
+`proyecto.json`. Convertirlo en lista rompe la carga de todos los documentos
+existentes — el camino seguro es un campo NUEVO con default, como se hizo con
+`formato` en M22 · F, y su test de regresión.
+
+**I · Efectos de sonido**, portando lo que ya existe en local. ⏸️ **APLAZADO
+(decisión del dueño, 2026-09-14): de momento no se construye con Lyria.**
+Mapeado el mismo día: **portar no es copiar, y ahí está el bloqueo.**
+
+Lo local es un subsistema completo (skill que elige los cues leyendo el
+timeline, `tools/gen_sfx.py` contra ElevenLabs, catálogo con procedencia por
+clip, `tools/mix_sfx.py` con duck y limitador). Pero la **decisión D2** ya
+declaró esa librería *descartada del producto* y el Dockerfile no la copia: los
+33 clips están licenciados «commercial use per the account's ElevenLabs plan»
+—la cuenta del autor upstream—, y 4 de ellos traen `license: null`. Servirlos a
+166 usuarios es exactamente lo que D2 prohibió.
+
+Así que quedan dos caminos, y son **la misma decisión que J**: generar por
+proyecto (cada cue cuesta dinero: tarifa nueva, endpoint de fal cuyo precio no
+está en `pricing.json`, preview antes de cobrar) o construir una biblioteca
+propia con licencia en S3, servida como ya se sirven las muestras de voz.
+
+Lo técnico ya está resuelto por lo local y hay que respetarlo: mezcla por gain
+relativo + `alimiter`, **nunca `loudnorm`** (el master alimenta a shorts, que sí
+normaliza). Y ojo con `rearmar_pelicula`: reconstruye la película cada vez que
+el usuario activa otra versión de b-roll —gratis, o sea a menudo— y borraría la
+pista de efectos en silencio.
+
+**J · Sonido ambiente.** ⏸️ **APLAZADO junto con I (2026-09-14): es la misma
+decisión de fuente, y de momento no se construye con Lyria.** Antes de
+diseñarlo hay que decidir de dónde sale el audio: una
+liga de YouTube mete música de terceros en videos que los usuarios van a
+publicar. Una biblioteca con licencia propia evita ese problema entero.
+
+Mapeado el 2026-09-14. Tres cosas que cambian el diseño:
+
+- **La liga de YouTube no está a mano.** No hay `yt_dlp` en el repo: M17 baja
+  video con un actor de Apify. Extraer el audio de una canción es otro producto
+  —y el reclamo de Content ID caería sobre el usuario, con nuestro botón en
+  medio.
+- **La película del servicio es la FUENTE de otros cuatro flujos.** Una cama
+  continua horneada ahí rompe el detector de silencios del editor (el piso de
+  ruido sale del wav de la película), ensucia el ASR de `verify_cut`,
+  desincroniza los subtítulos y llega a `export.sh` de shorts, que normaliza
+  otra vez.
+- **La biblioteca local no es reutilizable**, por lo mismo que I: seis camas
+  licenciadas a la cuenta del autor upstream, excluidas por D2.
+
+### Investigación aparte
+
+**K · Lira.** ✅ INVESTIGADO (2026-09-14). «Lira» es **Lyria**, de Google
+DeepMind. Lo que hay que saber:
+
+| | Lyria 3 Pro | ElevenLabs Music (lo de hoy) |
+|---|---|---|
+| Precio | $0.08 dólares **por pista** | $0.15 dólares **por minuto** |
+| Duración | 3 min tope, **sin parámetro** | hasta 5-10 min, exacto por `music_length_ms` |
+| Instrumental | por prompt, sin garantía | `force_instrumental: true`, garantizado |
+| Watermark | **SynthID + C2PA, siempre** | ninguno documentado |
+| Stems | no | no |
+
+Una pista de 3 minutos: **$0.08 con Lyria contra $0.45 con ElevenLabs
+directo** — y **$1.80 si se pide por fal**, que le carga 4× a ElevenLabs Music
+(a Lyria no le carga nada: cobra lo mismo que Google). Regenerar las seis camas
+de la paleta pasa de ~$2.70 a ~$0.48.
+
+Los precios son de las páginas de los proveedores, verificados el 2026-09-14.
+**No están en `tools/pricing.json` y ninguna línea de código puede usarlos
+hasta que se añadan ahí**, que es donde vive el precio en dólares.
+
+Lo que decide entre una y otra no es el precio:
+
+- Para **stingers, intros, transiciones y camas de shorts** (todo por debajo de
+  un minuto), Lyria gana sin discusión: es 5.6× más barato y entra por fal, que
+  ya tiene cliente, semáforo, timeout y traza.
+- Para **la cama continua de un longform**, ElevenLabs sigue ganando: Lyria no
+  llega a los 3 minutos ni tiene parámetro de duración —el largo se sugiere con
+  timestamps en el prompt— y `force_instrumental` importa mucho cuando la
+  música va DEBAJO de una voz.
+- El **SynthID no se puede apagar**. Es inaudible, pero marca la pista como
+  generada por IA de Google: si YouTube o TikTok leen esa firma, el video puede
+  quedar etiquetado solo. Ese es el costo real de Lyria y no se paga en dólares.
+
+Y una conclusión que vale aunque no se toque Lyria: si se queda ElevenLabs, que
+sea por su API directa y **no por fal**, donde hay 4× tirado.
+
+Sin confirmar: si Lyria entra en la indemnización de propiedad intelectual de
+Google Cloud, qué hace exactamente cada plataforma con SynthID/C2PA, y cuánto
+tarda una pista de 3 minutos (hace falta para elegir el timeout).
+
+**Decisión (2026-09-14): de momento NO se construye.** La investigación queda
+aquí para cuando toque; lo único que se aprovecha desde ya es el dato de que
+ElevenLabs Music por fal cuesta 4× lo que cuesta directo — si algún día se usa
+música en el servicio, no se pide por ahí.
+
 ## Orden y dependencias
 
 ```
@@ -1238,7 +1511,9 @@ Lo que corre el usuario: `cdk deploy` (M2, M4, M6, M7, M8, M12), claves Stripe
    comisiones reales.
 4. Chat editorial en la nube (Agent SDK): ¿se cobra en créditos por turno? Se
    diseña al abrir M7.
-5. M12: ¿"Reels" y "Crear contenido" del sidebar son el mismo flujo con
-   formato distinto (9:16 vs película) o secciones separadas? ¿Y qué hace
+5. ~~M12: ¿"Reels" y "Crear contenido" del sidebar son el mismo flujo con
+   formato distinto (9:16 vs película) o secciones separadas?~~ **RESUELTA en
+   M22 · F (2026-09-14): el mismo flujo.** El formato es un campo del proyecto
+   que se elige al crearlo, no una sección aparte. ¿Y qué hace
    exactamente el botón "Investigación" del prompt central? Se decide al
    maquetar el hub.

@@ -30,11 +30,28 @@ class FaltaProtagonista(Exception):
     pass
 
 
-def _guardar_estado(workdir: Path, etapa: str, escenas: list[Scene]) -> None:
+def _guardar_estado(workdir: Path, etapa: str, escenas: list[Scene], **extra) -> None:
     (workdir / "estado.json").write_text(
-        json.dumps({"etapa": etapa, "escenas": [e.model_dump(mode="json") for e in escenas]}, ensure_ascii=False, indent=2),
+        json.dumps({"etapa": etapa, "escenas": [e.model_dump(mode="json") for e in escenas], **extra},
+                   ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def cargar_estado(workdir: Path) -> dict:
+    """M22 · G — la pausa de aprobación parte la producción en dos tareas de
+    Fargate distintas: la segunda no hereda nada en memoria y reconstruye las
+    escenas (y el casting) desde aquí.
+
+    Las rutas se vuelven a apuntar al workdir de QUIEN lee: el archivo lo
+    escribió otra máquina (Fargate) y lo puede leer la API (Lambda, /tmp). Las
+    de dentro son absolutas, así que sin esto apuntarían a un disco ajeno.
+    """
+    d = json.loads((workdir / "estado.json").read_text(encoding="utf-8"))
+    escenas = [asignar_rutas(Scene(**e).model_copy(update={"audio_path": None}), workdir)
+               for e in d.get("escenas", [])]
+    return {"etapa": d.get("etapa"), "escenas": escenas,
+            "casting": Casting(**d["casting"]) if d.get("casting") else None}
 
 
 @observe(name="cadena")
@@ -57,7 +74,12 @@ async def _procesar_cadena(cadena: list[Scene], ctx: Casting, estilo_url: str | 
 async def _procesar_escena(e: Scene, ctx: Casting, estilo_url: str | None, prev_frame: Path | None,
                            estilo: Estilo | None = None) -> Scene:
     get_client().update_current_span(metadata={"id": e.id, "transicion": e.transicion})
-    e = await media.imagen_inicio(e, ctx, estilo_url, prev_frame, estilo)
+    # M22 · G: si la imagen ya la decidió el usuario, no se vuelve a generar —
+    # solo se repone su URL, que pudo caducar entre aprobar y animar.
+    if e.imagen_fija:
+        e = await media.reponer_imagen_fija(e)
+    else:
+        e = await media.imagen_inicio(e, ctx, estilo_url, prev_frame, estilo)
     e = await media.video_escena(e, prev_frame)
     e = await media.mux_escena(e)
     log.info("Escena %s lista: %s (qc=%s) / %s / %.2fs", e.id, e.start_image_origen, e.qc, e.video_origen, e.duracion_final)
@@ -94,23 +116,107 @@ async def _generar_pelicula(historia: str, subir: bool, run_id: str) -> Resultad
     return await producir_desde_escenas(escenas, ctx, bib.estilo_url, workdir, subir)
 
 
-async def producir_desde_escenas(
-    escenas: list[Scene], ctx: Casting, estilo_url: str | None, workdir: Path, subir: bool,
-    estilo: Estilo | None = None, progreso: Progreso | None = None,
-    duracion_objetivo_s: int | None = None,
-) -> Resultado:
-    """TTS → gate de duración → imagen/video/mux por cadenas → concat → Drive.
-    Compartido por el CLI y por el servidor."""
-    lf = get_client()
+async def preparar_cola(escenas: list[Scene], workdir: Path, duracion_objetivo_s: int | None = None,
+                        progreso: Progreso | None = None) -> list[Scene]:
+    """TTS (paralelo) + gate de duración (A3.3: corregir ANTES de gastar en
+    Veo) + orden + rutas. El tramo que comparten la producción de una pasada y
+    la de dos (M22 · G)."""
     if progreso:
         progreso("tts", {})
-    # 3. TTS (paralelo) + gate de duración (A3.3: corregir ANTES de gastar en Veo) + orden + cadenas
     escenas = await tts_todas(escenas, workdir)
     if duracion_objetivo_s:
         escenas = await duracion.aplicar_gate(escenas, duracion_objetivo_s, workdir)
-    escenas = [asignar_rutas(e, workdir) for e in ordenar_cola(escenas)]
+    return [asignar_rutas(e, workdir) for e in ordenar_cola(escenas)]
+
+
+async def _imagen_de_cabeza(e: Scene, ctx: Casting, estilo_url: str | None,
+                            estilo: Estilo | None, progreso: Progreso | None) -> Scene:
+    e = await media.imagen_inicio(e, ctx, estilo_url, None, estilo)
+    # al disco: es lo que el usuario mira, lo que sube a S3 y lo que la fase de
+    # animar vuelve a subir a fal si la URL de la generación ya caducó
+    await ffmpeg.descargar_imagen(e.start_image_url, e.start_image_path)
+    if progreso:
+        progreso("imagenes", {"imagen_lista": e.id})
+    return e.model_copy(update={"imagen_fija": True})
+
+
+async def fase_imagenes(
+    escenas: list[Scene], ctx: Casting, estilo_url: str | None, workdir: Path,
+    estilo: Estilo | None = None, progreso: Progreso | None = None,
+    duracion_objetivo_s: int | None = None, ya_preparadas: bool = False,
+) -> list[Scene]:
+    """M22 · G, primera mitad: hasta la imagen de cada cadena, y ahí para.
+
+    Solo se generan las CABEZAS de cadena porque son las únicas con imagen
+    propia: una escena "continua" arranca del último frame del clip anterior,
+    que no existe hasta animar. Es además el sitio donde una cadena entera se
+    decide — su cabeza fija el look de todos sus planos.
+
+    La imagen cuesta $0.02 dólares y animarla ocho segundos $0.24: enseñarla
+    antes es doce veces más barato que rehacer la escena después.
+
+    `ya_preparadas` es para el pipeline de narración, que hace su TTS de una
+    sola pieza mucho antes de llegar aquí.
+    """
+    # las rutas se re-asignan siempre (asignar_rutas es idempotente): sin
+    # start_image_path no hay dónde dejar la imagen que el usuario va a mirar
+    escenas = (await preparar_cola(escenas, workdir, duracion_objetivo_s, progreso)
+               if not ya_preparadas else [asignar_rutas(e, workdir) for e in escenas])
     cadenas = partir_en_cadenas(escenas)
-    _guardar_estado(workdir, "tts", escenas)
+    if progreso:
+        progreso("imagenes", {"imagenes_total": len(cadenas)})
+    cabezas = await asyncio.gather(*(
+        _imagen_de_cabeza(c[0], ctx, estilo_url, estilo, progreso) for c in cadenas))
+    hechas = {e.id: e for e in cabezas}
+    escenas = [hechas.get(e.id, e) for e in escenas]
+    # el casting viaja con las escenas: la fase de animar corre en OTRA tarea de
+    # Fargate y no hereda nada en memoria — sin esto habría que pagar otro
+    # casting, que además podría salir distinto
+    _guardar_estado(workdir, "imagenes", escenas, casting=ctx.model_dump(mode="json"))
+    log.info("%d imágenes listas para aprobar (%d escenas)", len(cabezas), len(escenas))
+    return escenas
+
+
+def resumen_imagenes(escenas: list[Scene]) -> list[dict]:
+    """Lo que la pantalla de aprobación necesita de cada imagen (M22 · G).
+
+    Viaja en el doc del proyecto, que es lo que el front ya trae con su
+    polling: así la pantalla no necesita una petición aparte ni leer
+    estado.json, que en la nube lo escribió otra máquina.
+
+    `planos` es cuántas escenas cuelgan de esa cabeza de cadena: decir «esta
+    imagen manda en 3 planos» es lo que explica por qué rechazarla importa.
+    """
+    out: list[dict] = []
+    for e in escenas:
+        if e.imagen_fija:
+            out.append({"id": e.id, "narracion": e.narracion, "prompt": e.prompt_imagen,
+                        "archivo": Path(e.start_image_path).name if e.start_image_path else None,
+                        "planos": 1})
+        elif out:
+            out[-1]["planos"] += 1
+    return out
+
+
+async def producir_desde_escenas(
+    escenas: list[Scene], ctx: Casting, estilo_url: str | None, workdir: Path, subir: bool,
+    estilo: Estilo | None = None, progreso: Progreso | None = None,
+    duracion_objetivo_s: int | None = None, ya_preparadas: bool = False,
+) -> Resultado:
+    """TTS → gate de duración → imagen/video/mux por cadenas → concat → Drive.
+    Compartido por el CLI y por el servidor.
+
+    `ya_preparadas` es la entrada de la segunda mitad de M22 · G: las escenas
+    vienen de estado.json con su TTS hecho y su imagen aprobada, así que el
+    tramo de preparación no se repite (repetirlo volvería a cobrar el TTS)."""
+    lf = get_client()
+    # 3. TTS (paralelo) + gate de duración + orden + cadenas
+    if not ya_preparadas:
+        escenas = await preparar_cola(escenas, workdir, duracion_objetivo_s, progreso)
+    cadenas = partir_en_cadenas(escenas)
+    # el casting va también aquí: así un reintento de «animar» tras un fallo
+    # encuentra en estado.json todo lo que necesita y no paga otro casting
+    _guardar_estado(workdir, "tts", escenas, casting=ctx.model_dump(mode="json"))
     log.info("%d escenas en %d cadenas: %s", len(escenas), len(cadenas), [[e.id for e in c] for c in cadenas])
     if progreso:
         progreso("media", {"escenas_total": len(escenas)})

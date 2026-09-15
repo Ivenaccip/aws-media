@@ -8,6 +8,7 @@ from pathlib import Path
 from langfuse import observe
 
 from .config import settings
+from .models import formato_de
 from .utils import parse_ffmpeg_duration
 
 
@@ -37,6 +38,25 @@ async def duracion(path: Path) -> float:
     if d is None:
         raise FfmpegError(f"No pude medir la duración de {path}: {err[-300:]}")
     return d
+
+
+def formato_de_archivo(path: Path) -> str:
+    """"horizontal" o "vertical" según lo que mida el archivo (M22 · F).
+
+    El b-roll del editor no elige formato: lo hereda del material sobre el que
+    se inserta. Antes pedía 16:9 siempre, así que en un proyecto vertical Veo
+    devolvía un clip apaisado para meterlo en una película de 1080x1920.
+    """
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(path)],
+            capture_output=True, text=True, timeout=30)
+        ancho, alto = (int(v) for v in r.stdout.strip().split("x")[:2])
+    except Exception:  # noqa: BLE001 — sin medida, el de siempre
+        return "horizontal"
+    return "vertical" if alto > ancho else "horizontal"
 
 
 async def ultimo_frame(video: Path, destino: Path) -> None:
@@ -75,10 +95,19 @@ async def mux(video: Path, audio: Path, final: Path, last_frame: Path, t: float)
 
 
 @observe(name="clip_estatico")
-async def clip_estatico(imagen: Path, destino: Path, segundos: int) -> None:
+async def clip_estatico(imagen: Path, destino: Path, segundos: int,
+                        formato: str = "horizontal") -> None:
+    """El clip de respaldo cuando Veo no da un video: zoom lento sobre la imagen.
+
+    Las medidas salen del formato del proyecto (M22 · F). Estaban cableadas a
+    1920x1080, así que en un proyecto vertical este respaldo metía un clip
+    apaisado en medio de una película de 1080x1920 — y el concat final, que
+    re-encodea, lo habría deformado o enmarcado."""
+    f = formato_de(formato)
     vf = (
-        "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
-        "zoompan=z='min(zoom+0.0006,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1280x720:fps=24,"
+        f"scale={f['w']}:{f['h']}:force_original_aspect_ratio=increase,crop={f['w']}:{f['h']},"
+        "zoompan=z='min(zoom+0.0006,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+        f":d=1:s={f['w_salida']}x{f['h_salida']}:fps=24,"
         "format=yuv420p"
     )
     await _run_ok(

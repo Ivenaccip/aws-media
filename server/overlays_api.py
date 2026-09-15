@@ -415,7 +415,11 @@ def costes(name: str):
 
 
 @router.get("/{name}/archivo/{ruta:path}")
-def archivo(name: str, ruta: str):
+def archivo(name: str, ruta: str, descargar: bool = False):
+    """Sirve un artefacto del proyecto. Con `descargar=1` el archivo se guarda
+    en vez de abrirse: en nube, S3 lo firma con Content-Disposition, porque un
+    `<a download>` hacia el CDN es otro origen y el navegador lo ignora
+    (M22 · D — las imágenes del popup no tenían forma de bajarse)."""
     from server.editor import _cdn, _nube, _proyecto_nube
     if _nube():
         # los artefactos viven en S3 — CloudFront los sirve tras un 302
@@ -424,14 +428,18 @@ def archivo(name: str, ruta: str):
                 or ".." in ruta:
             raise HTTPException(404, "no encontrado")
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(_cdn(f"videos/{name}/work/{ruta}"))
+        key = f"videos/{name}/work/{ruta}"
+        if descargar:
+            from server.media_api import url_firmada_descarga
+            return RedirectResponse(url_firmada_descarga(key, f"{name}-{Path(ruta).name}"))
+        return RedirectResponse(_cdn(key))
     p = _proyecto(name)
     f = (p / "work" / ruta).resolve()
     if (p / "work").resolve() not in f.parents:
         raise HTTPException(404, "no encontrado")
     if not f.is_file() or f.suffix.lower() not in (".jpg", ".png", ".mp4", ".srt", ".ass"):
         raise HTTPException(404, "no encontrado")
-    return FileResponse(f)
+    return FileResponse(f, filename=f"{name}-{f.name}" if descargar else None)
 
 
 # ---------- b1: subtítulos ----------

@@ -240,13 +240,20 @@ async function initCorte() {
   titulo("");
   if (st.editor_listo) {
     EDITOR.modo = "listo";
-    const resumen = ed.estado === "listo"
+    // Cero sugerencias no es un corte propuesto: decirlo así —y decir que los
+    // créditos volvieron— en vez de anunciar "propuso 0 cortes, 0 sugerencias".
+    const nada = ed.estado === "listo" && !ed.cortes && !ed.fluff && !ed.flags;
+    const resumen = ed.estado === "listo" && !nada
       ? `propuso ${ed.cortes ?? 0} cortes, ${ed.fluff ?? 0} sugerencias y ${ed.flags ?? 0} dudas.`
       : "";
     // M21: la llamada a la acción es el verbo; el detalle lo cuenta la nota
     ui("editor-nota").textContent = "Editar →";
-    ui("corte-estado").textContent = `✂️ Corte propuesto${resumen ? ": " + resumen : "."}`;
-    titulo("✓ Corte propuesto");   // se ve en la pestaña sin tener que abrirla
+    ui("corte-estado").textContent = nada
+      ? "✂️ Tu video ya está apretado: no encontramos relleno que quitar"
+        + (ed.devueltos ? ` — te devolvimos ${ed.devueltos} créditos.` : ".")
+        + " Puedes abrir el editor y cortar a mano."
+      : `✂️ Corte propuesto${resumen ? ": " + resumen : "."}`;
+    titulo(nada ? "✓ Sin relleno que quitar" : "✓ Corte propuesto");   // se ve en la pestaña sin abrirla
     return;
   }
   if (!st.fuente) {

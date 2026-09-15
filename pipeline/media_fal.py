@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import fal
 from .config import settings
+from .models import formato_de
 
 
 async def imagen_nano(prompt: str, destino: Path, referencia: Path | None = None,
@@ -59,14 +60,55 @@ async def imagen_pincel(prompt: str, imagen: Path, marcada: Path, destino: Path,
     return url
 
 
+async def imagen_transformar(prompt: str, imagen: Path, destino: Path,
+                             meta: dict | None = None) -> str:
+    """El otro modo del editor: cambiar la imagen ENTERA, sin zona pintada.
+
+    `imagen_pincel` le ordena al modelo «keep every other part pixel-identical»,
+    y esa frase es exactamente lo que impedía lo que pedían los testers: subían
+    un boceto, escribían «pásalo a acuarela» y recibían el mismo boceto con un
+    retoque local. No es que Nano Banana no supiera cambiar de estilo — se lo
+    estábamos prohibiendo, y encima el endpoint exigía pintar una zona.
+
+    Aquí la instrucción dice lo contrario: aplica el cambio a toda la imagen.
+    Lo que se conserva es el CONTENIDO (sujeto, composición, encuadre), que es
+    lo que hace que siga siendo su boceto y no un dibujo nuevo.
+    """
+    instruccion = (
+        "Transform the whole image as follows: "
+        f"{prompt}. "
+        "Apply the change across the ENTIRE picture, not to one region. Keep "
+        "the same subject, composition and framing as the original — this is a "
+        "transformation of this image, not a new one. Return the full image "
+        "with no text and no watermark.")
+    args = {
+        "prompt": instruccion,
+        "image_urls": [await fal.subir_archivo(imagen)],
+        "num_images": 1,
+    }
+    res = await fal.llamar(settings.fal_nano_edit, args, timeout_s=settings.grok_timeout_s,
+                           nombre="nano_banana_transformar", meta=meta or {})
+    url = ((res.get("images") or [{}])[0]).get("url")
+    if not url:
+        raise RuntimeError("Nano Banana (fal) no devolvió imagen")
+    await fal.descargar(url, destino)
+    return url
+
+
 async def video_veo(imagen: Path, prompt: str, segundos: int, destino: Path,
-                    negativo: str = "", meta: dict | None = None) -> None:
+                    negativo: str = "", meta: dict | None = None,
+                    formato: str | None = None) -> None:
     """Veo 3.1 lite image-to-video en fal (720p sin audio — la tarifa del popup;
-    el audio original manda en el mux). Descarga el mp4 a `destino`."""
+    el audio original manda en el mux). Descarga el mp4 a `destino`.
+
+    Sin `formato`, lo deduce de la imagen de entrada: el b-roll del editor no
+    elige aspecto, lo hereda del material (M22 · F). Estaba clavado en 16:9,
+    así que sobre un video vertical devolvía un clip apaisado."""
+    from .ffmpeg import formato_de_archivo
     args = {
         "prompt": prompt,
         "image_url": await fal.subir_archivo(imagen),
-        "aspect_ratio": "16:9",
+        "aspect_ratio": formato_de(formato or formato_de_archivo(imagen))["aspecto"],
         "duration": f"{segundos}s",
         "resolution": "720p",
         "generate_audio": False,

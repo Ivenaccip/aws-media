@@ -40,6 +40,15 @@
   #orbe-hueco { position:absolute; left:10px; bottom:10px; z-index:3; max-width:calc(100% - 20px); }
   #lienzo-wrap.trabajando #img-canvas { opacity:.5; }
   #lienzo-wrap.trabajando #mask-canvas { pointer-events:none; cursor:default; }
+  /* M22 · C — los dos modos. Botones y no <select> porque la diferencia entre
+     ellos es lo que hay que leer ANTES de elegir, no después. */
+  .modos { display:flex; gap:10px; margin:0 0 18px; flex-wrap:wrap; }
+  .modo { flex:1; min-width:210px; display:flex; flex-direction:column; gap:2px;
+          text-align:left; padding:10px 14px; border-radius:12px; cursor:pointer;
+          background:transparent; color:inherit; border:1px solid var(--line); font:inherit; }
+  .modo:hover { border-color:var(--acc); }
+  .modo.activo { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 12%, transparent); }
+  .modo span { font-size:12px; }
   .barra { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   .barra.hidden { display:none; }
   .barra input[type=range] { accent-color:var(--acc); }
@@ -52,7 +61,16 @@
 <main>
   <p style="margin:0 0 12px"><a href="/" style="text-decoration:none">← Volver al inicio</a></p>
   <h1>🖌 Editor de imágenes</h1>
-  <p class="mut" style="margin:0 0 18px">Sube tu imagen, pinta la zona que quieres cambiar y describe el cambio. Solo esa zona se toca — el resto queda intacto.</p>
+  <p class="mut" style="margin:0 0 18px" id="intro">Sube tu imagen, pinta la zona que quieres cambiar y describe el cambio. Solo esa zona se toca — el resto queda intacto.</p>
+
+  <div class="modos" role="radiogroup" aria-label="Qué quieres hacer">
+    <button type="button" class="modo activo" id="modo-pincel" role="radio" aria-checked="true">
+      <b>Cambiar una zona</b><span class="mut">Pintas dónde y el resto queda igual</span>
+    </button>
+    <button type="button" class="modo" id="modo-todo" role="radio" aria-checked="false">
+      <b>Transformar toda la imagen</b><span class="mut">Otro estilo, otra técnica, otra época</span>
+    </button>
+  </div>
 
   <div class="cols2">
     <div class="card">
@@ -71,16 +89,16 @@
         <div id="orbe-hueco"></div>
       </div>
       <div class="barra hidden" id="herramientas">
-        <span class="mut">Pincel:</span>
+        <span class="mut" id="lbl-pincel">Pincel:</span>
         <input type="range" id="grosor" min="10" max="120" value="46" aria-label="Grosor del pincel">
         <button class="btn2" id="borrar">Borrar</button>
         <button class="btn2" id="otra">Otra imagen</button>
-        <span class="mut">La zona rosada es la que se va a cambiar.</span>
+        <span class="mut" id="nota-zona">La zona rosada es la que se va a cambiar.</span>
       </div>
     </div>
 
     <div class="card">
-      <h2>2 · ¿Qué cambiamos?</h2>
+      <h2 id="titulo-cambio">2 · ¿Qué cambiamos?</h2>
       <textarea id="prompt" maxlength="2000"
         placeholder="Describe qué quieres en la zona pintada — p. ej. «reemplaza el letrero por una ventana con plantas»."></textarea>
       <button class="btn" id="editar">Aplicar</button>
@@ -107,6 +125,48 @@ async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).
 const imgC = $('#img-canvas'), maskC = $('#mask-canvas');
 const imgX = imgC.getContext('2d'), maskX = maskC.getContext('2d');
 let archivo = null, hayTrazo = false;
+
+/* ---------- M22 · C: los dos modos del editor ----------
+   Hasta hoy solo existía el pincel, y su instrucción al modelo dice «keep every
+   other part of the original pixel-identical»: por eso quien subía un boceto y
+   pedía «pásalo a acuarela» recibía el mismo boceto con un retoque. El modo
+   «todo» manda la otra instrucción y no pide zona pintada. */
+let MODO = 'pincel';
+const TEXTOS = {
+  pincel: {
+    intro: 'Sube tu imagen, pinta la zona que quieres cambiar y describe el cambio. Solo esa zona se toca — el resto queda intacto.',
+    titulo: '2 · ¿Qué cambiamos?',
+    hint: 'Describe qué quieres en la zona pintada — p. ej. «reemplaza el letrero por una ventana con plantas».',
+    trabajando: 'Cambiando la zona que pintaste · ~20 s',
+  },
+  todo: {
+    intro: 'Sube tu imagen y describe en qué quieres convertirla. Se transforma entera, conservando lo que aparece y cómo está encuadrado.',
+    titulo: '2 · ¿En qué la convertimos?',
+    hint: 'Describe el resultado — p. ej. «acuarela suave sobre papel con grano» o «fotografía nocturna con luces de neón».',
+    trabajando: 'Transformando tu imagen · ~20 s',
+  },
+};
+
+function fijarModo(m) {
+  MODO = m;
+  const t = TEXTOS[m], pincel = m === 'pincel';
+  $('#modo-pincel').classList.toggle('activo', pincel);
+  $('#modo-todo').classList.toggle('activo', !pincel);
+  $('#modo-pincel').setAttribute('aria-checked', String(pincel));
+  $('#modo-todo').setAttribute('aria-checked', String(!pincel));
+  $('#intro').textContent = t.intro;
+  $('#titulo-cambio').textContent = t.titulo;
+  $('#prompt').placeholder = t.hint;
+  // sin zona que pintar, el pincel y su rastro sobran; la imagen sigue a la vista
+  $('#mask-canvas').style.display = pincel ? '' : 'none';
+  ['#lbl-pincel', '#grosor', '#borrar'].forEach(s => { $(s).hidden = !pincel; });
+  $('#nota-zona').textContent = pincel
+    ? 'La zona rosada es la que se va a cambiar.'
+    : 'Se transforma la imagen completa.';
+  $('#gerr').textContent = '';
+}
+$('#modo-pincel').onclick = () => fijarModo('pincel');
+$('#modo-todo').onclick = () => fijarModo('todo');
 const MAX_LADO = 1600;   // se reduce en el navegador: sube rápido y a fal le basta
 
 function cargarImagen(f) {
@@ -218,8 +278,16 @@ $('#editar').onclick = async () => {
   $('#gerr').textContent = '';
   const prompt = $('#prompt').value.trim();
   if (!archivo) { $('#gerr').textContent = 'Sube primero la imagen que quieres editar.'; return; }
-  if (!hayTrazo) { $('#gerr').textContent = 'Pinta sobre la imagen la zona que quieres cambiar.'; return; }
-  if (!prompt) { $('#gerr').textContent = 'Describe qué quieres en la zona pintada.'; $('#prompt').focus(); return; }
+  if (MODO === 'pincel' && !hayTrazo) {
+    $('#gerr').textContent = 'Pinta sobre la imagen la zona que quieres cambiar, '
+      + 'o elige «Transformar toda la imagen» arriba.'; return;
+  }
+  if (!prompt) {
+    $('#gerr').textContent = MODO === 'pincel'
+      ? 'Describe qué quieres en la zona pintada.'
+      : 'Describe en qué quieres convertir la imagen.';
+    $('#prompt').focus(); return;
+  }
   enVuelo = true;
   $('#editar').disabled = true;
   bloquearLienzo(true);
@@ -231,11 +299,12 @@ $('#editar').onclick = async () => {
   });
   try {
     if (!await guardrail(prompt)) return;   // M13
-    mando.texto('Cambiando la zona que pintaste · ~20 s');
+    mando.texto(TEXTOS[MODO].trabajando);
     const fd = new FormData();
     fd.append('prompt', prompt);
+    fd.append('modo', MODO);
     fd.append('imagen', await imagenBlob(), 'imagen.jpg');
-    fd.append('marcada', await marcadaBlob(), 'marcada.jpg');
+    if (MODO === 'pincel') fd.append('marcada', await marcadaBlob(), 'marcada.jpg');
     const r = await fetch('/api/imagenes/editar', {method: 'POST', body: fd});
     if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
     if (!r.ok) throw new Error(await errTxt(r));

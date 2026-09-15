@@ -92,7 +92,7 @@ def test_registrar_jamas_propaga(monkeypatch):
 
 @pytest.fixture
 def pipeline_falso(monkeypatch, tmp_path):
-    async def nada(p):
+    async def nada(p, fase="todo"):
         return None
     monkeypatch.setattr(flow, "producir", nada)
     monkeypatch.setattr(flow, "preparar", nada)

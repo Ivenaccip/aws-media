@@ -8,6 +8,27 @@ from pydantic import BaseModel, Field
 
 Tipo = Literal["personaje", "prop", "lugar"]
 Transicion = Literal["corte", "continua"]
+Formato = Literal["horizontal", "vertical"]
+
+# M22 · F — el único sitio donde vive lo que significa cada formato. Estaba
+# cableado a 16:9 en cuatro puntos del pipeline, así que producir en vertical
+# —el formato de shorts y reels, que es lo que pidieron los testers— era
+# imposible sin tocar código.
+#
+# `aspecto` es lo que entienden Grok y Veo (verificado 2026-09-14 contra el
+# schema de fal: los dos aceptan exactamente 'auto', '16:9' y '9:16'); `w`/`h`
+# son el lienzo cuando el clip lo armamos nosotros, y `w_salida`/`h_salida` los
+# 720p de ese mismo lienzo.
+FORMATOS: dict[str, dict] = {
+    "horizontal": {"aspecto": "16:9", "w": 1920, "h": 1080, "w_salida": 1280, "h_salida": 720},
+    "vertical": {"aspecto": "9:16", "w": 1080, "h": 1920, "w_salida": 720, "h_salida": 1280},
+}
+
+
+def formato_de(nombre: str | None) -> dict:
+    """Los números de un formato, cayendo a horizontal ante cualquier cosa rara
+    (proyectos anteriores a M22, un doc a medio migrar, un valor inventado)."""
+    return FORMATOS.get(nombre or "", FORMATOS["horizontal"])
 
 
 class Entidad(BaseModel):
@@ -51,6 +72,11 @@ class Scene(BaseModel):
     duracion_real: Optional[float] = None
     duracion_video: Optional[int] = None
 
+    # Formato del proyecto (M22 · F). Viaja en la escena porque es lo que llega
+    # hasta Grok, Veo y el clip de respaldo; lo fija flow/narracion en un solo
+    # sitio al construir la lista.
+    formato: Formato = "horizontal"
+
     # Orden / cadenas
     orden: int = 0
     total: int = 0
@@ -66,6 +92,12 @@ class Scene(BaseModel):
     start_image_url: Optional[str] = None  # URL http o data-URI
     start_image_origen: Optional[str] = None  # grok | frame_previo | frame_previo_fallback | fallo_grok
     start_image_path: Optional[Path] = None
+    # M22 · G — la imagen ya está decidida: la vio el usuario y la dio por
+    # buena (o pidió otra). La fase que anima NO vuelve a generarla, porque
+    # sería pagarla dos veces y entregar una distinta de la aprobada. Solo la
+    # traen las cabezas de cadena: una escena "continua" arranca del último
+    # frame del clip anterior, que no existe hasta animar.
+    imagen_fija: bool = False
     qc: Optional[str] = None  # ok | corregido | fallido | omitido
     qc_motivo: Optional[str] = None
 
