@@ -140,10 +140,11 @@ def test_producir_cobra_90_por_30s_y_lanza(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "cobrar_creditos",
                         lambda u, n, r=None: cobros.append((u, n, r)) or 10)
     monkeypatch.setattr(srv.jobs, "lanzar_produccion",
-                        lambda u, i: lanzadas.append(i) or "arn:exec")
+                        lambda u, i, fase="todo": lanzadas.append((i, fase)) or "arn:exec")
     asyncio.run(srv.producir("abc123"))
     assert cobros == [("piloto", 90, "producir:abc123")]
-    assert lanzadas == ["abc123"] and p.estado == "produciendo"
+    # M22 · G: sin pedir aprobación se lanza la pasada entera, como siempre
+    assert lanzadas == [("abc123", "todo")] and p.estado == "produciendo"
 
 
 def test_producir_devuelve_si_lanzar_truena(tmp_path, monkeypatch):
@@ -177,7 +178,7 @@ def test_producir_sin_backend_no_toca_monedero(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "guardar_proyecto", lambda *a: None)
     monkeypatch.setattr(db, "cobrar_creditos",
                         lambda *a, **k: pytest.fail("backend off no cobra"))
-    monkeypatch.setattr(srv.jobs, "lanzar_produccion", lambda u, i: "arn:exec")
+    monkeypatch.setattr(srv.jobs, "lanzar_produccion", lambda u, i, fase="todo": "arn:exec")
     asyncio.run(srv.producir("abc123"))
 
 

@@ -123,7 +123,7 @@ async def dirigir_ventanas(narracion: str, ventanas: list[dict], textos: list[st
 
 @observe(name="cadena_ventanas")
 async def _procesar_cadena(cadena: list[Scene], ctx: Casting, estilo_url: str | None,
-                           estilo: Estilo | None, ventanas: list[dict], progreso) -> list[Scene]:
+                           estilo: Estilo | None, progreso) -> list[Scene]:
     """Como run._procesar_cadena, pero SIN mux por escena: el clip se recorta
     al largo exacto de su ventana (video-only) y de ahí sale el frame de
     continuidad — el audio es una sola pista aparte."""
@@ -131,9 +131,16 @@ async def _procesar_cadena(cadena: list[Scene], ctx: Casting, estilo_url: str | 
     hechas: list[Scene] = []
     prev_frame: Path | None = None
     for e in cadena:
-        e = await media.imagen_inicio(e, ctx, estilo_url, prev_frame, estilo)
+        # M22 · G: la imagen aprobada no se regenera; solo se repone su URL
+        if e.imagen_fija:
+            e = await media.reponer_imagen_fija(e)
+        else:
+            e = await media.imagen_inicio(e, ctx, estilo_url, prev_frame, estilo)
         e = await media.video_escena(e, prev_frame)
-        largo = ventanas[int(e.id) - 1]["t1"] - ventanas[int(e.id) - 1]["t0"]
+        # el largo de la ventana viaja EN la escena (duracion_real, que pone
+        # dirigir_ventanas): así animar puede correr en otra tarea, sin la
+        # lista de ventanas en memoria — y se va el índice por posición
+        largo = float(e.duracion_real or 0)
         await ffmpeg.recortar_video(e.video_path, e.final_path, largo)
         await ffmpeg.ultimo_frame(e.final_path, e.last_frame_path)
         e = e.model_copy(update={"duracion_final": round(largo, 3)})
@@ -145,44 +152,67 @@ async def _procesar_cadena(cadena: list[Scene], ctx: Casting, estilo_url: str | 
 
 
 @observe(name="pelicula_narracion", capture_output=False)
-async def producir_pelicula(p, ctx: Casting, estilo: Estilo | None, progreso) -> Resultado:
+async def producir_pelicula(p, ctx: Casting, estilo: Estilo | None, progreso,
+                            fase: str = "todo") -> Resultado | None:
     """La fase 4 del pipeline narración-primero. `p` es el Proyecto (con
-    narracion y voz elegidas); el casting ya viene resuelto por flow."""
+    narracion y voz elegidas); el casting ya viene resuelto por flow.
+
+    `fase` es la partición de M22 · G: "todo" es la pasada de siempre;
+    "imagenes" para al tener las imágenes y devuelve None; "animar" retoma
+    desde estado.json, con la narración y las imágenes ya hechas."""
     from .deliver import mensaje_final, subir_drive
+    from .run import cargar_estado, fase_imagenes
 
     workdir = p.workdir
     workdir.mkdir(parents=True, exist_ok=True)
     lf = get_client()
+    audio = workdir / "narracion.mp3"
 
-    if progreso:
-        progreso("tts", {})
-    audio, dur = await tts_narracion(p.narracion, p.voz, workdir)
-    log.info("%s: narración de %.1f s (objetivo %d s)", p.id, dur, p.duracion_s)
+    if fase == "animar":
+        # la narración, el alineado y las imágenes aprobadas ya están en el
+        # workdir (bajados de S3 por la tarea): no se rehace nada de eso
+        escenas = cargar_estado(workdir)["escenas"]
+        if not escenas:
+            raise RuntimeError("No encuentro las escenas aprobadas de esta película")
+        dur = await ffmpeg.duracion(audio)
+    else:
+        if progreso:
+            progreso("tts", {})
+        audio, dur = await tts_narracion(p.narracion, p.voz, workdir)
+        log.info("%s: narración de %.1f s (objetivo %d s)", p.id, dur, p.duracion_s)
 
-    if progreso:
-        progreso("alinear", {})
-    palabras = await asyncio.to_thread(alinear_palabras, audio)
-    # el alineado se PERSISTE: el puente al editor (generated_to_canonical)
-    # arma el canónico de aquí — esta ruta no tiene audio_N.mp3 por escena y
-    # los tiempos ya son absolutos sobre la pista única
-    import json as _json
-    (workdir / "alineado.json").write_text(
-        _json.dumps({"words": palabras}, ensure_ascii=False), encoding="utf-8")
-    ventanas = planear_ventanas(dur)
-    textos = texto_por_ventana(palabras, ventanas)
+        if progreso:
+            progreso("alinear", {})
+        palabras = await asyncio.to_thread(alinear_palabras, audio)
+        # el alineado se PERSISTE: el puente al editor (generated_to_canonical)
+        # arma el canónico de aquí — esta ruta no tiene audio_N.mp3 por escena y
+        # los tiempos ya son absolutos sobre la pista única
+        import json as _json
+        (workdir / "alineado.json").write_text(
+            _json.dumps({"words": palabras}, ensure_ascii=False), encoding="utf-8")
+        ventanas = planear_ventanas(dur)
+        textos = texto_por_ventana(palabras, ventanas)
 
-    if progreso:
-        progreso("director", {})
-    escenas = con_formato(await dirigir_ventanas(p.narracion, ventanas, textos, ctx),
-                          p.formato)
-    escenas = [asignar_rutas(e, workdir) for e in ordenar_cola(escenas)]
+        if progreso:
+            progreso("director", {})
+        escenas = con_formato(await dirigir_ventanas(p.narracion, ventanas, textos, ctx),
+                              p.formato)
+        escenas = [asignar_rutas(e, workdir) for e in ordenar_cola(escenas)]
+
+        if fase == "imagenes":
+            # el TTS ya está hecho (es una sola llamada, no una por escena):
+            # la fase de imágenes solo genera las cabezas de cadena
+            await fase_imagenes(escenas, ctx, p.personaje.url_elegida, workdir,
+                                estilo=estilo, progreso=progreso, ya_preparadas=True)
+            return None
+
     cadenas = partir_en_cadenas(escenas)
     log.info("%s: %d ventanas en %d cadenas", p.id, len(escenas), len(cadenas))
     if progreso:
         progreso("media", {"escenas_total": len(escenas)})
 
     lotes = await asyncio.gather(*(
-        _procesar_cadena(c, ctx, p.personaje.url_elegida, estilo, ventanas, progreso)
+        _procesar_cadena(c, ctx, p.personaje.url_elegida, estilo, progreso)
         for c in cadenas))
     escenas = sorted((e for lote in lotes for e in lote), key=lambda s: s.orden)
     # M16.2: el puente arma la pista 2 del editor con los prompts REALES de

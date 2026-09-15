@@ -15,7 +15,9 @@ from . import db
 from .config import settings
 from .models import FORMATOS, Formato
 
-Estado = Literal["creado", "preparando", "revision", "produciendo", "listo", "error"]
+# "imagenes" (M22 · G) = la producción se paró a enseñar las imágenes y espera
+# al usuario. No es un final: de ahí se sale animando o cancelando.
+Estado = Literal["creado", "preparando", "revision", "produciendo", "imagenes", "listo", "error"]
 
 DURACION_MAX_S = 60
 DURACION_MIN_S = 15

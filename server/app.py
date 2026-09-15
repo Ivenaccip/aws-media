@@ -16,9 +16,12 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from pipeline import character, flow
+from pipeline import character, flow, media
+from pipeline.models import Scene
 from pipeline.project import (DURACION_MAX_S, EscenaGuion, OpcionPersonaje, Proyecto, Referencia,
                               cargar_proyecto, listar_proyectos, nuevo_proyecto)
+from pipeline.run import resumen_imagenes
+from pipeline.scenes import asignar_rutas
 from pipeline.pricing import estimar_produccion
 from pipeline.styles import ESTILOS, resolver_estilo
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
@@ -692,7 +695,11 @@ def creditos_estado():
 
 
 @app.post("/api/proyectos/{id_}/producir")
-async def producir(id_: str):  # async: create_task necesita el loop del servidor
+async def producir(id_: str, aprobar_imagenes: bool = False):  # async: create_task necesita el loop del servidor
+    """`aprobar_imagenes` es el modo manual de M22 · G: la producción se para
+    a enseñar la imagen de cada cadena antes de animarla. El cobro no cambia —
+    la película se paga entera aquí— y lo que cuesta aparte es pedir otra
+    imagen, que sí quema dinero nuevo."""
     p = _proyecto(id_)
     if p.estado not in ("revision", "error"):  # error → reintento con el mismo guion y personaje
         raise HTTPException(409, f"Solo se produce desde revisión (estado: {p.estado})")
@@ -719,14 +726,15 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
             if reclamado:
                 db.liberar_produccion(db.usuario_actual(), p.id, estado_previo)
             raise HTTPException(402, str(e))
+    fase = "imagenes" if aprobar_imagenes else "todo"
     try:
         if jobs.backend() == "aws":
             # C4 regla dura: producciones SIEMPRE por Step Functions (→ Fargate).
             p.estado, p.etapa = "produciendo", "encolado"
             p.guardar()
-            jobs.lanzar_produccion(db.usuario_actual(), p.id)
+            jobs.lanzar_produccion(db.usuario_actual(), p.id, fase)
         else:
-            _lanzar(p, flow.producir(p))
+            _lanzar(p, flow.producir(p, fase))
     except Exception:
         if creditos.activo():
             creditos.devolver(costo_cr, f"producir:{p.id}")
@@ -734,6 +742,127 @@ async def producir(id_: str):  # async: create_task necesita el loop del servido
             db.liberar_produccion(db.usuario_actual(), p.id, estado_previo)
         raise
     return p
+
+
+# --- M22 · G: la pausa para aprobar las imágenes ---------------------------
+# La película se cobró entera al pulsar Producir, así que animar no cobra nada:
+# lo único que cuesta aquí es pedir OTRA imagen, que es lo que quema dinero
+# nuevo ($0.02 dólares contra los $0.24 de animar ocho segundos).
+
+def _estado_produccion(p: Proyecto) -> dict:
+    """estado.json de la producción. En la nube lo escribió Fargate y la Lambda
+    no tiene ese disco: la fuente de verdad es S3."""
+    if jobs.backend() == "aws":
+        key = media_sync.prefijo_work(db.usuario_actual(), p.id) + "estado.json"
+        txt = media_sync.leer_texto(key)
+        if txt is None:
+            raise HTTPException(404, "No encuentro las imágenes de esta película")
+        return json.loads(txt)
+    f = p.workdir / "estado.json"
+    if not f.is_file():
+        raise HTTPException(404, "No encuentro las imágenes de esta película")
+    return json.loads(f.read_text(encoding="utf-8"))
+
+
+def _guardar_estado_produccion(p: Proyecto, d: dict) -> None:
+    p.workdir.mkdir(parents=True, exist_ok=True)
+    texto = json.dumps(d, ensure_ascii=False, indent=2)
+    (p.workdir / "estado.json").write_text(texto, encoding="utf-8")
+    if jobs.backend() == "aws":
+        media_sync.escribir_texto(
+            media_sync.prefijo_work(db.usuario_actual(), p.id) + "estado.json", texto)
+
+
+class RegenerarImagenIn(BaseModel):
+    prompt: str | None = None
+    confirmar: bool = False
+
+
+@app.post("/api/proyectos/{id_}/imagenes/{escena}/regenerar")
+async def regenerar_imagen(id_: str, escena: str, body: RegenerarImagenIn):
+    """«Otra distinta»: una imagen nueva para esa cadena, con el mismo prompt o
+    con el que escribió el usuario. Gate 428 con el costo antes de cobrar, como
+    el popup de imágenes del editor."""
+    p = _proyecto(id_)
+    if p.estado != "imagenes":
+        raise HTTPException(409, f"Esta película no está esperando aprobación (estado: {p.estado})")
+    costo_cr = creditos.costo_imagen()
+    if not body.confirmar:
+        raise HTTPException(428, json.dumps({"creditos": costo_cr, "que": "imagen"}))
+
+    d = _estado_produccion(p)
+    escenas = [Scene(**e) for e in d.get("escenas", [])]
+    i = next((n for n, e in enumerate(escenas) if e.id == escena and e.imagen_fija), None)
+    if i is None:
+        raise HTTPException(404, "Esa imagen no es de esta película")
+    # la ruta guardada es del disco de Fargate: aquí la imagen se escribe en el
+    # workdir de esta máquina y de ahí sube a S3
+    e = asignar_rutas(escenas[i].model_copy(update={"audio_path": None}), p.workdir)
+
+    if creditos.activo():
+        try:
+            creditos.cobrar(costo_cr, f"imagen:{p.id}")
+        except creditos.SinSaldo as err:
+            raise HTTPException(402, str(err))
+    try:
+        escenas[i] = await media.regenerar_imagen(e, body.prompt)
+    except Exception as err:  # noqa: BLE001 — fallo nuestro = créditos de vuelta
+        if creditos.activo():
+            creditos.devolver(costo_cr, f"imagen:{p.id}")
+        raise HTTPException(502, f"No se pudo generar otra imagen: {str(err)[:200]}")
+
+    d["escenas"] = [x.model_dump(mode="json") for x in escenas]
+    _guardar_estado_produccion(p, d)
+    p.progreso["imagenes"] = resumen_imagenes(escenas)
+    p.guardar()
+    _sync_workdir(p)
+    return p
+
+
+@app.post("/api/proyectos/{id_}/animar")
+async def animar(id_: str):
+    """El botón «Animar»: las imágenes están decididas y arranca la segunda
+    mitad. No cobra — la película se pagó entera al pulsar Producir."""
+    p = _proyecto(id_)
+    if p.estado != "imagenes":
+        raise HTTPException(409, f"Esta película no está esperando aprobación (estado: {p.estado})")
+    # mismo claim atómico que producir: dos clics seguidos lanzan una sola vez
+    reclamado = db.backend() == "postgres"
+    if reclamado and not db.reclamar_produccion(db.usuario_actual(), p.id, ("imagenes",)):
+        raise HTTPException(409, "Esta película ya se está animando")
+    try:
+        if jobs.backend() == "aws":
+            p.estado, p.etapa = "produciendo", "encolado"
+            p.guardar()
+            jobs.lanzar_produccion(db.usuario_actual(), p.id, "animar")
+        else:
+            _lanzar(p, flow.producir(p, "animar"))
+    except Exception:
+        if reclamado:
+            db.liberar_produccion(db.usuario_actual(), p.id, "imagenes")
+        raise
+    return p
+
+
+@app.post("/api/proyectos/{id_}/cancelar")
+def cancelar(id_: str):
+    """«Mejor no»: la película vuelve a revisión y se devuelve lo que NO se
+    gastó. Se cobró la producción entera por adelantado; de eso solo se quemó
+    una imagen por cadena, así que el resto —los créditos de animar, que son
+    casi todos— vuelve al monedero. Nadie paga por una película que no existe."""
+    p = _proyecto(id_)
+    if p.estado != "imagenes":
+        raise HTTPException(409, f"Esta película no está esperando aprobación (estado: {p.estado})")
+    n = 0
+    if creditos.activo():
+        gastado = creditos.costo_imagen() * max(1, len(p.progreso.get("imagenes") or []))
+        n = max(0, creditos.costo_producir(p.duracion_s) - gastado)
+        if n:
+            creditos.devolver(n, f"cancelar:{p.id}")
+    p.estado, p.etapa = "revision", None
+    p.progreso = {}
+    p.guardar()
+    return {"proyecto": p, "devueltos": n}
 
 
 @app.get("/api/proyectos/{id_}/archivo/{nombre:path}")

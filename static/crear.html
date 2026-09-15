@@ -41,6 +41,13 @@
   .opciones { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .opciones img { width:100%; border-radius:12px; border:3px solid transparent; cursor:pointer; }
   .opciones img.on { border-color:var(--acc); }
+  /* M22 · G: las imágenes por aprobar. auto-fill para que una película de dos
+     tomas no deje media pantalla vacía y una de ocho no salga en miniatura. */
+  .imgs { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; margin-top:14px; }
+  .imgs figure { margin:0; }
+  .imgs img { width:100%; border-radius:12px; display:block; background:var(--line); }
+  .imgs figcaption { color:var(--mut); font-size:13px; margin:8px 0 6px; }
+  .imgs textarea { width:100%; min-height:56px; resize:vertical; margin-bottom:6px; }
   .err { color:#ff8080; white-space:pre-wrap; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
   .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); transition:width .4s; }
@@ -223,10 +230,35 @@
         <p id="dossier" style="white-space:pre-wrap"></p><ul id="fuentes"></ul></details>
     </div>
     <div class="sticky">
+      <!-- M22 · G: quién revisa las imágenes. Mismo patrón de radiogroup que
+           el selector de formato — una decisión, dos chips, sin menús. -->
+      <div class="chips" id="modoimg" role="radiogroup" aria-label="Cuándo revisar las imágenes" style="margin-bottom:10px">
+        <button type="button" class="chip on" data-img="auto" role="radio" aria-checked="true">⚡ De corrido</button>
+        <button type="button" class="chip" data-img="manual" role="radio" aria-checked="false">🖼 Enséñame las imágenes antes de animar</button>
+      </div>
       <button class="btn" id="producir">Producir</button>
       <p class="mut"><span id="prodnota"></span> <span id="saldoaviso"></span></p>
       <p class="mut" id="autosave"></p>
       <div class="err" id="rerr"></div>
+    </div>
+  </section>
+
+  <!-- 3.5 Imágenes por aprobar (M22 · G). La película ya está pagada: lo único
+       que cuesta aquí es pedir OTRA imagen. -->
+  <section id="imagenes" class="hidden">
+    <div class="card">
+      <h2>🖼 ¿Te gustan estas imágenes?</h2>
+      <p class="mut">Cada una es el primer cuadro de una toma: de ahí sale el movimiento.
+        Cámbiala ahora si no te convence — pedir otra cuesta una fracción de lo que
+        cuesta animarla y volver a empezar.</p>
+      <div class="imgs" id="imgrid"></div>
+    </div>
+    <div class="sticky">
+      <button class="btn" id="animar">🎬 Animar la película</button>
+      <button class="btn sec" id="cancelar"
+        title="Vuelve a revisión y te devolvemos los créditos que no se gastaron">Mejor no</button>
+      <p class="mut" id="imgnota"></p>
+      <div class="err" id="imgerr"></div>
     </div>
   </section>
 
@@ -270,7 +302,7 @@
 <script>
 const $ = s => document.querySelector(s);
 async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
-const show = id => { for (const s of ['form','progreso','revision','resultado','error']) $('#'+s).classList.toggle('hidden', s!==id); };
+const show = id => { for (const s of ['form','progreso','revision','imagenes','resultado','error']) $('#'+s).classList.toggle('hidden', s!==id); };
 let estilo = 'animated', files = [], proyecto = null, poll = null;
 
 // M22 · F — el formato se fija al crear: media.py le pide el aspecto a Grok y a
@@ -464,7 +496,9 @@ const ETAPA_TXT = {
 };
 let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
 let pctPrev = 0, pctEstado = '';   // M11: barra monotónica entre pipelines
-const TERMINAL = ['revision', 'listo', 'error'];
+// 'imagenes' (M22 · G) es terminal para el poll: la pelicula esta parada
+// esperando al usuario, y seguir preguntando cada 2.5 s no descubre nada.
+const TERMINAL = ['revision', 'imagenes', 'listo', 'error'];
 // M19: con la pestaña oculta el poll se DUERME. Chrome ya lo estrangula, pero
 // cada vuelta cuesta una invocación de Lambda y una consulta a Aurora, y el
 // copy de esta pantalla invita justamente a irte. Al volver se refresca al
@@ -542,6 +576,7 @@ function render(p) {
     $('#petapa').textContent = (window.orbe ? '' : etiqueta + ' · ')
       + 'Puedes cerrar la pestaña: la producción sigue en la nube y este enlace te trae de vuelta.';
   } else if (p.estado==='revision') { renderRevision(p); }
+  else if (p.estado==='imagenes') { renderImagenes(p); }
   else if (p.estado==='listo') {
     show('resultado');
     $('#video').src = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
@@ -799,6 +834,88 @@ async function autoguardar() {
 window.addEventListener('beforeunload', e => { if (sinGuardar) e.preventDefault(); });
 $('#pnombre').addEventListener('input', marcaCambio);
 
+// --- M22 · G: aprobar las imágenes antes de animar -------------------------
+// El chip elegido en revisión; «manual» hace que producir pare en las imágenes.
+let modoImg = 'auto';
+// Cache-buster de las imagenes. Vive FUERA del proyecto a proposito: el
+// servidor devuelve el doc sin este campo, asi que guardarlo ahi lo
+// reiniciaria en cada respuesta y la segunda imagen nueva no se veria.
+let imgVersion = 0;
+$('#modoimg').addEventListener('click', ev => {
+  const b = ev.target.closest('.chip'); if (!b) return;
+  modoImg = b.dataset.img;
+  $('#modoimg').querySelectorAll('.chip').forEach(c => {
+    const on = c === b;
+    c.classList.toggle('on', on); c.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+});
+
+function renderImagenes(p) {
+  show('imagenes');
+  const imgs = p.progreso?.imagenes || [];
+  // el cache-buster es imprescindible: al pedir «otra» la imagen NUEVA se
+  // escribe en el MISMO archivo (start_N.jpg), y sin esto el navegador
+  // seguiría enseñando la vieja y parecería que el botón no hace nada
+  $('#imgrid').innerHTML = imgs.map((im, i) => `
+    <figure data-esc="${im.id}">
+      <img src="/api/proyectos/${p.id}/archivo/${im.archivo}?v=${imgVersion}" alt="Imagen de la toma ${i + 1}">
+      <figcaption>Toma ${i + 1}${im.planos > 1 ? ` · manda en ${im.planos} planos` : ''}
+        — «${(im.narracion || '').slice(0, 90)}»</figcaption>
+      <details><summary>Describir otra imagen</summary>
+        <textarea class="imgprompt" rows="3">${(im.prompt || '').replace(/</g, '&lt;')}</textarea>
+      </details>
+      <button class="chip otra" type="button">🔄 Pedir otra</button>
+    </figure>`).join('');
+  $('#imgnota').textContent = imgs.length
+    ? `${imgs.length} ${imgs.length === 1 ? 'imagen' : 'imágenes'} · animar ya está pagado; pedir otra imagen cuesta aparte.`
+    : 'Sin imágenes que aprobar.';
+  $('#imgerr').textContent = '';
+}
+
+$('#imgrid').addEventListener('click', async ev => {
+  const b = ev.target.closest('.otra'); if (!b || enVuelo) return;
+  const fig = b.closest('figure');
+  enVuelo = true; b.disabled = true; b.textContent = 'Generando…'; $('#imgerr').textContent = '';
+  try {
+    const cuerpo = {prompt: fig.querySelector('.imgprompt').value, confirmar: true};
+    const r = await fetch(`/api/proyectos/${proyecto.id}/imagenes/${encodeURIComponent(fig.dataset.esc)}/regenerar`,
+      {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpo)});
+    if (r.status === 402) throw new Error(msg402(await errTxt(r)));
+    if (!r.ok) throw new Error(await errTxt(r));
+    proyecto = await r.json(); imgVersion++;
+    window.monedero?.refrescar();
+    renderImagenes(proyecto);
+  } catch (e) {
+    $('#imgerr').textContent = e.message;
+    b.disabled = false; b.textContent = '🔄 Pedir otra';
+  }
+  enVuelo = false;
+});
+
+$('#animar').onclick = async () => {
+  if (enVuelo) return;
+  enVuelo = true; $('#animar').disabled = true; $('#imgerr').textContent = '';
+  try {
+    const r = await fetch(`/api/proyectos/${proyecto.id}/animar`, {method:'POST'});
+    if (!r.ok) throw new Error(await errTxt(r));
+    proyecto = await r.json(); seguir();
+  } catch (e) { $('#imgerr').textContent = e.message; }
+  enVuelo = false; $('#animar').disabled = false;
+};
+
+$('#cancelar').onclick = async () => {
+  if (enVuelo) return;
+  enVuelo = true; $('#cancelar').disabled = true; $('#imgerr').textContent = '';
+  try {
+    const r = await fetch(`/api/proyectos/${proyecto.id}/cancelar`, {method:'POST'});
+    if (!r.ok) throw new Error(await errTxt(r));
+    const d = await r.json();
+    proyecto = d.proyecto; window.monedero?.refrescar(); seguir();
+    if (d.devueltos) $('#rerr').textContent = `Te devolvimos ${d.devueltos} créditos.`;
+  } catch (e) { $('#imgerr').textContent = e.message; }
+  enVuelo = false; $('#cancelar').disabled = false;
+};
+
 $('#addesc').onclick = () => { addEscena(''); marcaCambio(); };
 $('#producir').onclick = async () => {
   if (enVuelo) return;
@@ -811,7 +928,8 @@ $('#producir').onclick = async () => {
     if (!r.ok) throw new Error(await errTxt(r));
     r = await fetch(`/api/proyectos/${proyecto.id}/personaje`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({elegida: proyecto.personaje.elegida, nombre: $('#pnombre').value})});
     if (!r.ok) throw new Error(await errTxt(r));
-    r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
+    // M22 · G: con «manual» la producción para a enseñar las imágenes
+    r = await fetch(`/api/proyectos/${proyecto.id}/producir?aprobar_imagenes=${modoImg === 'manual'}`, {method:'POST'});
     if (r.status === 402) throw new Error(msg402(await errTxt(r)));
     if (!r.ok) throw new Error(await errTxt(r));
     sinGuardar = false; clearTimeout(autoT);

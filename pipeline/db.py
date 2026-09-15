@@ -400,16 +400,22 @@ def movimientos_creditos(user_id: str, limite: int = 20) -> list[dict]:
         {"u": user_id, "l": limite})
 
 
-def reclamar_produccion(user_id: str, id_: str) -> bool:
+def reclamar_produccion(user_id: str, id_: str,
+                        desde: tuple[str, ...] = ("revision", "error")) -> bool:
     """M5 (deuda C5-4) — cierra la ventana de doble cobro en producir: UPDATE
     condicionado sobre la COLUMNA estado (atómico en Postgres). Solo un clic
     gana el claim; el perdedor recibe False y el endpoint responde 409 sin
-    cobrar. El doc jsonb se sincroniza después con p.guardar()."""
+    cobrar. El doc jsonb se sincroniza después con p.guardar().
+
+    `desde` son los estados desde los que se puede reclamar. M22 · G añade
+    'imagenes' para el botón de animar: es otro lanzamiento, y dos clics
+    seguidos tienen que poder lanzar una sola vez igual que en producir."""
+    marcas = ", ".join(f":e{i}" for i in range(len(desde)))
     filas = ejecutar(
-        """UPDATE proyectos_gen SET estado = 'produciendo', actualizado = now()
-           WHERE user_id = :u AND id = :i AND estado IN ('revision', 'error')
-           RETURNING id""",
-        {"u": user_id, "i": id_})
+        f"""UPDATE proyectos_gen SET estado = 'produciendo', actualizado = now()
+            WHERE user_id = :u AND id = :i AND estado IN ({marcas})
+            RETURNING id""",
+        {"u": user_id, "i": id_, **{f"e{i}": e for i, e in enumerate(desde)}})
     return bool(filas)
 
 

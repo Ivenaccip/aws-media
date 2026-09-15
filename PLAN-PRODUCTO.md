@@ -1297,11 +1297,36 @@ son el mismo flujo con un formato distinto, no dos secciones.
 
 ### P2 — después del 23
 
-**G · Imagen aprobada antes de animar (auto/manual).** El argumento no es solo
+**G · Imagen aprobada antes de animar (auto/manual).** ✅ CÓDIGO LISTO
+(2026-09-14, falta deploy). El argumento no es solo
 de UX: la imagen cuesta $0.02 dólares y animarla ocho segundos cuesta $0.24
 dólares. Aprobar antes de animar es doce veces más barato que rehacer después,
 y es lo que convierte «no me gustó» en algo que el usuario arregla sin pagar
 otra producción entera.
+
+Cómo quedó: la producción se parte en DOS tareas —una llega hasta las imágenes
+y termina, la otra la retoma— en vez de pausar el contenedor. Un Fargate de 4
+vCPU parado esperando a una persona cuesta $0.198 la hora y muere a las 2 h de
+timeout; una tarea que acaba no cuesta nada, y el usuario puede tardar lo que
+quiera. La fase viaja como un argumento más del comando, así que **no toca la
+state machine ni el task definition: no pide deploy de CDK**.
+
+Lo que se aprueba son las CABEZAS de cadena, no todas las escenas: una escena
+«continua» arranca del último frame del clip anterior, que no existe hasta
+animar. Cinco escenas con dos cortes = dos imágenes. La pantalla lo dice («esta
+imagen manda en 3 planos»), porque prometer control sobre las otras sería
+mentir.
+
+El dinero: producir cobra igual (la película entera, por adelantado); animar no
+cobra nada; pedir otra imagen cuesta la tarifa de imagen con gate 428 antes; y
+cancelar devuelve lo que no se gastó —la producción menos las imágenes
+quemadas—, que es la otra mitad de la regla de A: nadie paga por lo que no
+recibió.
+
+Hay que mirar una línea en `worker/producir_task.py`: la devolución disparaba
+con `estado != "listo"`, así que una película parada a enseñar imágenes habría
+devuelto el importe completo mientras el trabajo seguía vivo. Ahora devuelve el
+FALLO, que es `"error"`.
 
 **H · Dos voces.** Empezar por el máximo que pidió el usuario: dos personajes.
 

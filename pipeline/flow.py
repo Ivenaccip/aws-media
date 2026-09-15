@@ -14,7 +14,7 @@ from .casting import hacer_casting
 from .director import dirigir
 from .models import Biblioteca, Casting, Entidad
 from .project import Proyecto
-from .run import producir_desde_escenas
+from .run import cargar_estado, fase_imagenes, producir_desde_escenas, resumen_imagenes
 from .scenes import con_formato
 from .styles import resolver_estilo
 
@@ -122,14 +122,28 @@ async def _preparar(p: Proyecto) -> None:
     })
 
 
-async def producir(p: Proyecto) -> None:
-    """Fase 4: guion aprobado + personaje elegido -> película."""
+async def producir(p: Proyecto, fase: str = "todo") -> None:
+    """Fase 4: guion aprobado + personaje elegido -> película.
+
+    `fase` parte la producción en dos (M22 · G, «aprobar la imagen antes de
+    animar»):
+
+    - "todo"     una sola pasada, el modo automático de siempre.
+    - "imagenes" genera la imagen de cada cadena y para: el proyecto queda en
+      `imagenes` esperando al usuario. NO es un error ni un final.
+    - "animar"   retoma desde estado.json con las imágenes ya decididas.
+    """
     p.estado, p.etapa = "produciendo", "inicio"
     p.guardar()
     try:
         with propagate_attributes(session_id=p.id, user_id=db.usuario_actual(),
                                   tags=["video-pipeline", "producir"], trace_name="pelicula"):
-            await _producir(p)
+            await _producir(p, fase)
+        if fase == "imagenes":
+            # la película no está hecha ni fallida: está esperando. El finally
+            # guarda; el resto (portada, puente) es de la película terminada.
+            p.estado, p.etapa = "imagenes", None
+            return
         # portada = un frame de la película, la miniatura de la obra en el hub
         # (no fatal: sin portada la card cae al placeholder)
         try:
@@ -193,28 +207,43 @@ def casting_con_personaje(ctx: Casting, p: Proyecto) -> Casting:
 
 
 @observe(name="pelicula", capture_output=False)
-async def _producir(p: Proyecto) -> None:
+async def _producir(p: Proyecto, fase: str = "todo") -> None:
     ffmpeg.comprobar_ffmpeg()
     estilo = resolver_estilo(p.estilo, p.estilo_custom)
     historia = guion_numerado(p)
-    get_client().update_current_span(input={"guion": historia, "estilo": estilo.id, "personaje": p.personaje.nombre})
+    get_client().update_current_span(input={"guion": historia, "estilo": estilo.id,
+                                            "personaje": p.personaje.nombre, "fase": fase})
 
     def progreso(etapa: str, datos: dict) -> None:
         if datos.get("escena_lista"):
             p.progreso["escenas_listas"] = p.progreso.get("escenas_listas", 0) + 1
+        elif datos.get("imagen_lista"):
+            p.progreso["imagenes_listas"] = p.progreso.get("imagenes_listas", 0) + 1
         else:
             p.progreso.update(datos)
         _etapa(p, etapa)
 
-    _etapa(p, "casting")
-    bib = Biblioteca(entidades=[{"nombre": p.personaje.nombre, "tipo": "personaje",
-                                 "descriptor": p.personaje.descripcion, "url": p.personaje.url_elegida}], estilo_url=None)
-    ctx = casting_con_personaje(await hacer_casting(historia, bib), p)
+    guardado = cargar_estado(p.workdir) if fase == "animar" else {}
+    if fase == "animar":
+        # el casting se guardó con las escenas: repetirlo sería otra llamada al
+        # LLM y podría devolver un reparto distinto del que produjo las imágenes
+        ctx = guardado["casting"]
+        if ctx is None:
+            raise RuntimeError("Esta película no tiene imágenes aprobadas que animar")
+    else:
+        _etapa(p, "casting")
+        bib = Biblioteca(entidades=[{"nombre": p.personaje.nombre, "tipo": "personaje",
+                                     "descriptor": p.personaje.descripcion, "url": p.personaje.url_elegida}], estilo_url=None)
+        ctx = casting_con_personaje(await hacer_casting(historia, bib), p)
 
     if p.pipeline == "narracion":
         # M11: TTS único → alinear → ventanas → director por ventana → pista única
         from . import narracion as narr
-        r = await narr.producir_pelicula(p, ctx, estilo, progreso)
+        r = await narr.producir_pelicula(p, ctx, estilo, progreso, fase)
+    elif fase == "animar":
+        r = await producir_desde_escenas(guardado["escenas"], ctx, p.personaje.url_elegida,
+                                         p.workdir, subir=True, estilo=estilo, progreso=progreso,
+                                         ya_preparadas=True)
     else:
         _etapa(p, "director")
         escenas = [e.model_copy(update={"voz": p.voz}) for e in await dirigir(historia, ctx)]
@@ -222,8 +251,18 @@ async def _producir(p: Proyecto) -> None:
         if len(escenas) != len(p.guion):
             log.warning("%s: el director devolvió %d escenas para %d del guion", p.id, len(escenas), len(p.guion))
 
-        r = await producir_desde_escenas(escenas, ctx, p.personaje.url_elegida, p.workdir, subir=True,
-                                         estilo=estilo, progreso=progreso, duracion_objetivo_s=p.duracion_s)
+        if fase == "imagenes":
+            await fase_imagenes(escenas, ctx, p.personaje.url_elegida, p.workdir, estilo=estilo,
+                                progreso=progreso, duracion_objetivo_s=p.duracion_s)
+            r = None
+        else:
+            r = await producir_desde_escenas(escenas, ctx, p.personaje.url_elegida, p.workdir, subir=True,
+                                             estilo=estilo, progreso=progreso, duracion_objetivo_s=p.duracion_s)
+    if r is None:
+        # fase "imagenes": todavía no hay película. Las escenas se releen del
+        # estado recién escrito — es el único sitio común a los dos pipelines.
+        p.progreso["imagenes"] = resumen_imagenes(cargar_estado(p.workdir)["escenas"])
+        return
     p.resultado = {
         "mensaje": r.mensaje, "link": r.link, "drive_id": r.drive_id, "duracion": r.duracion_pelicula,
         "escenas": [{"id": e.id, "qc": e.qc, "video_origen": e.video_origen, "duracion": e.duracion_final} for e in r.escenas],

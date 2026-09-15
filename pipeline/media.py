@@ -129,7 +129,51 @@ async def _veo(e: Scene, intento: int) -> str | None:
         return None
 
 
+@observe(name="regenerar_imagen")
+async def regenerar_imagen(e: Scene, prompt: str | None = None) -> Scene:
+    """M22 · G — el botón «otra distinta» de la pantalla de aprobación.
+
+    Una llamada a Grok con el mismo prompt (o con el que escribió el usuario) y
+    a disco. SIN QC a propósito: el QC de visión existe para no gastar en Veo
+    sobre una imagen mal encuadrada, y aquí el que está juzgando el encuadre es
+    el usuario, que la tiene delante. Correrlo sería pagar un juez de más.
+    """
+    prompt = (prompt or "").strip() or e.prompt_imagen
+    url = await _grok(e, prompt, 1)
+    if not url:
+        raise RuntimeError("El generador de imágenes no devolvió nada. Vuelve a intentarlo.")
+    await ffmpeg.descargar_imagen(url, e.start_image_path)
+    return e.model_copy(update={
+        "start_image_url": url, "start_image_origen": "grok", "prompt_imagen": prompt,
+        "qc": "omitido", "qc_motivo": None, "imagen_fija": True,
+    })
+
+
+@observe(name="imagen_fija")
+async def reponer_imagen_fija(e: Scene) -> Scene:
+    """M22 · G — la imagen que el usuario ya aprobó no se regenera: se re-sube.
+
+    Entre aprobar y animar pueden pasar días, y la URL con que fal devolvió la
+    imagen caduca. El archivo sí sigue ahí (workdir → S3), así que se vuelve a
+    subir: es gratis y cierra la única vía por la que animar podría entregar
+    una imagen distinta de la aprobada. Si la subida falla se sigue con la URL
+    vieja — puede estar viva, y si no, Veo cae al clip estático de siempre.
+    """
+    p = Path(e.start_image_path) if e.start_image_path else None
+    if not (p and p.is_file()):
+        return e
+    try:
+        return e.model_copy(update={"start_image_url": await fal.subir_archivo(p)})
+    except Exception as err:  # noqa: BLE001 — nunca fatal: es una reposición
+        log.warning("Escena %s: no pude re-subir la imagen aprobada: %s", e.id, err)
+        return e
+
+
 async def _guardar_imagen_inicio(e: Scene, prev_frame: Path | None) -> None:
+    # M22 · G: la imagen aprobada ya está en el workdir — bajarla otra vez de
+    # una URL que pudo caducar es justo lo que rompería el clip de respaldo
+    if e.start_image_path and Path(e.start_image_path).is_file():
+        return
     if str(e.start_image_url).startswith("data:"):
         shutil.copy(prev_frame, e.start_image_path)
     else:

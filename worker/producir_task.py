@@ -1,9 +1,14 @@
 """C4 — tarea de producción en Fargate (la lanza la state machine de SFN).
 
-    python -m worker.producir_task <user_id> <proyecto_id>
+    python -m worker.producir_task <user_id> <proyecto_id> [todo|imagenes|animar]
 
 Corre flow.producir() completo (casting → director → TTS → gate → media → mux →
 puente al editor) sobre el FS efímero de la tarea, con el estado en Postgres.
+
+La fase (M22 · G) parte esa pasada en dos cuando el usuario pidió aprobar las
+imágenes: "imagenes" llega hasta la imagen de cada cadena y termina sin
+película (código 0, proyecto en `imagenes`); "animar" la retoma desde
+estado.json. Sin argumento es "todo", el modo automático de siempre.
 Al final sube los artefactos a S3 (work/<user>/<id>/ y videos/gen-*/) y registra
 el proyecto del editor en proyectos_editor para que aparezca en e1.
 
@@ -25,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("producir_task")
 
 
-def main(user_id: str, proyecto_id: str) -> int:
+def main(user_id: str, proyecto_id: str, fase: str = "todo") -> int:
     import os
     import time
     t0 = time.monotonic()
@@ -42,10 +47,20 @@ def main(user_id: str, proyecto_id: str) -> int:
     prefijo = media_sync.prefijo_work(user_id, proyecto_id)
     log.info("%s: %d artefactos bajados", proyecto_id, media_sync.bajar_prefijo(prefijo, p.workdir))
 
-    asyncio.run(flow.producir(p))
+    asyncio.run(flow.producir(p, fase))
 
     log.info("%s: %d artefactos subidos a %s", proyecto_id,
              media_sync.subir_dir(p.workdir, prefijo), prefijo)
+
+    # M22 · G: la fase de imágenes termina BIEN sin película. Los artefactos
+    # (las imágenes y estado.json) ya subieron arriba — que es justo lo que la
+    # pantalla de aprobación y la fase de animar necesitan. Si en cambio FALLÓ,
+    # se sigue de largo hasta la devolución de créditos de abajo.
+    if p.estado == "imagenes":
+        costes_infra.registrar(user_id, proyecto_id, "infra-producir",
+                               costes_infra.costo_fargate(time.monotonic() - t0))
+        log.info("%s: imágenes listas, esperando al usuario", proyecto_id)
+        return 0
 
     nombre = p.progreso.get("editor")          # puente F1.3: videos/gen-<id>
     if nombre:
@@ -74,7 +89,10 @@ def main(user_id: str, proyecto_id: str) -> int:
     # terminado bien o mal (los créditos sí se devuelven; la infra es nuestra)
     costes_infra.registrar(user_id, proyecto_id, "infra-producir",
                            costes_infra.costo_fargate(time.monotonic() - t0))
-    if p.estado != "listo" and creditos.activo():
+    # M22 · G: la condición era `!= "listo"`, que con la pausa de aprobación
+    # habría devuelto la producción entera cada vez que un proyecto se para a
+    # enseñar imágenes. Lo que se devuelve es el FALLO, y eso es "error".
+    if p.estado == "error" and creditos.activo():
         # C5: fallo nuestro = créditos de vuelta (el cobro fue por duración
         # objetivo en el API; se recalcula con la misma tarifa)
         n = creditos.costo_producir(p.duracion_s)
@@ -84,6 +102,6 @@ def main(user_id: str, proyecto_id: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("uso: python -m worker.producir_task <user_id> <proyecto_id>")
-    sys.exit(main(sys.argv[1], sys.argv[2]))
+    if len(sys.argv) not in (3, 4):
+        sys.exit("uso: python -m worker.producir_task <user_id> <proyecto_id> [todo|imagenes|animar]")
+    sys.exit(main(*sys.argv[1:4]))
