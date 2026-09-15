@@ -1328,9 +1328,11 @@ con `estado != "listo"`, así que una película parada a enseñar imágenes habr
 devuelto el importe completo mientras el trabajo seguía vivo. Ahora devuelve el
 FALLO, que es `"error"`.
 
-**H · Dos voces.** Empezar por el máximo que pidió el usuario: dos personajes.
-Mapeado el 2026-09-14; es más grande de lo que parece y hay que decidir el
-alcance antes de escribir nada.
+**H · Dos voces.** ⏸️ **APLAZADO (decisión del dueño, 2026-09-14): no entra en
+este ciclo.** Queda documentado aquí para no volver a mapearlo desde cero.
+
+Empezar por el máximo que pidió el usuario: dos personajes. Es más grande de lo
+que parece, y esa es la razón del aplazamiento.
 
 Media pieza ya está hecha: `Scene.voz` existe y `tts.py` la respeta
 (`e.voz or VOZ_DEFAULT`), así que el pipeline de **escenas** está a un
@@ -1363,8 +1365,37 @@ copiaba `voz` ni `formato`, así que una escena partida por duración se narraba
 con la voz por defecto y —desde M22 · F— salía apaisada dentro de una película
 vertical, sin excepción ni devolución.
 
-**I · Efectos de sonido**, portando lo que ya existe en local. Mapeado el
-2026-09-14: **portar no es copiar, y ahí está el bloqueo.**
+**Cuando se retome, el orden es este** (cada paso se puede parar y sigue
+dejando el producto entero):
+
+1. **Permitir el diálogo en los guionistas.** Hoy está prohibido por prompt en
+   `guionista_system.md` y `narrador_system.md`. Sin turnos escritos no hay nada
+   que repartir, así que este paso va primero aunque se siga con una sola voz —
+   y solo cambiando eso ya se ve si el guion mejora o empeora.
+2. **Marcar quién habla, en un campo NUEVO.** No reusar `Scene.personajes`: hoy
+   significa «quién aparece en el plano» y `ordenar_cola` degrada las
+   transiciones «continua» cuando cambia — más cadenas, más clips de Veo, más
+   dinero por un cambio que era de audio.
+3. **Bajar las voces del proyecto a las escenas en UN solo sitio**, con un
+   `con_voces()` calcado de `con_formato()` (misma razón: si una escena se
+   queda sin ella, cae a la voz por defecto y nadie se entera). El pipeline de
+   **escenas** termina aquí: `Scene.voz` ya existe y `tts.py` ya la respeta.
+4. **Solo entonces, narración.** Es el trabajo grande: concatenar audio (no hay
+   helper en `ffmpeg.py`), correr todos los tiempos del alineado por offset
+   acumulado y seguir dejando `narracion.mp3` + `alineado.json` como los espera
+   el puente al editor. Aquí se paga el precio de M11: se pierde la prosodia
+   continua y vuelve el gate de palabras/segundo.
+5. **La segunda cara.** `Proyecto.personaje` es singular; sin esto el segundo
+   personaje habla y no tiene aspecto consistente entre planos.
+
+Compatibilidad: `Proyecto.voz` es un `str` persistido en Aurora y en
+`proyecto.json`. Convertirlo en lista rompe la carga de todos los documentos
+existentes — el camino seguro es un campo NUEVO con default, como se hizo con
+`formato` en M22 · F, y su test de regresión.
+
+**I · Efectos de sonido**, portando lo que ya existe en local. ⏸️ **APLAZADO
+(decisión del dueño, 2026-09-14): de momento no se construye con Lyria.**
+Mapeado el mismo día: **portar no es copiar, y ahí está el bloqueo.**
 
 Lo local es un subsistema completo (skill que elige los cues leyendo el
 timeline, `tools/gen_sfx.py` contra ElevenLabs, catálogo con procedencia por
@@ -1385,7 +1416,9 @@ normaliza). Y ojo con `rearmar_pelicula`: reconstruye la película cada vez que
 el usuario activa otra versión de b-roll —gratis, o sea a menudo— y borraría la
 pista de efectos en silencio.
 
-**J · Sonido ambiente.** Antes de diseñarlo hay que decidir la fuente: una
+**J · Sonido ambiente.** ⏸️ **APLAZADO junto con I (2026-09-14): es la misma
+decisión de fuente, y de momento no se construye con Lyria.** Antes de
+diseñarlo hay que decidir de dónde sale el audio: una
 liga de YouTube mete música de terceros en videos que los usuarios van a
 publicar. Una biblioteca con licencia propia evita ese problema entero.
 
@@ -1444,6 +1477,11 @@ sea por su API directa y **no por fal**, donde hay 4× tirado.
 Sin confirmar: si Lyria entra en la indemnización de propiedad intelectual de
 Google Cloud, qué hace exactamente cada plataforma con SynthID/C2PA, y cuánto
 tarda una pista de 3 minutos (hace falta para elegir el timeout).
+
+**Decisión (2026-09-14): de momento NO se construye.** La investigación queda
+aquí para cuando toque; lo único que se aprovecha desde ya es el dato de que
+ElevenLabs Music por fal cuesta 4× lo que cuesta directo — si algún día se usa
+música en el servicio, no se pide por ahí.
 
 ## Orden y dependencias
 
