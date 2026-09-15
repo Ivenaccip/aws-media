@@ -1329,17 +1329,121 @@ devuelto el importe completo mientras el trabajo seguía vivo. Ahora devuelve el
 FALLO, que es `"error"`.
 
 **H · Dos voces.** Empezar por el máximo que pidió el usuario: dos personajes.
+Mapeado el 2026-09-14; es más grande de lo que parece y hay que decidir el
+alcance antes de escribir nada.
 
-**I · Efectos de sonido**, portando lo que ya existe en local.
+Media pieza ya está hecha: `Scene.voz` existe y `tts.py` la respeta
+(`e.voz or VOZ_DEFAULT`), así que el pipeline de **escenas** está a un
+`model_copy` de soportar dos voces — hoy `flow.py` pisa todas las escenas con
+la misma `p.voz`. Lo que falta no es eso:
+
+- **El pipeline por defecto es narración, y su premisa es UNA llamada de TTS**
+  con el texto completo. De ahí salen la prosodia continua y la duración real
+  medida que hicieron innecesario el gate de palabras/segundo (es el motivo de
+  ser de M11). Repartir turnos obliga a concatenar audio —no hay helper en
+  `ffmpeg.py`—, a correr todos los tiempos del alineado por offset acumulado, y
+  devuelve el problema de entonación que M11 resolvió.
+- **No existe la materia prima.** Los dos guionistas tienen el diálogo prohibido
+  por prompt: «Sin diálogos entre comillas; si un personaje habla, nárralo». No
+  hay turnos que repartir hasta que eso cambie.
+- **`Scene.personajes` significa quién APARECE, no quién habla**, y solo lo
+  consumen las referencias de imagen y la validación de transiciones. Si se
+  reusa para marcar hablantes, `ordenar_cola` degrada «continua» a «corte»: más
+  cadenas, más clips de Veo, más dinero.
+- **Dos voces implican dos caras.** `Proyecto.personaje` es singular y la UI
+  ofrece un solo juego de opciones. Entregar solo la voz da un segundo
+  personaje que habla y no tiene aspecto consistente.
+
+El dinero no es el problema: el TTS se cobra por caracteres (~$0.05 dólares en
+una narración de 45 s) y `costo_producir` va por duración objetivo, así que dos
+voces no mueven ni un crédito.
+
+De ese mapeo salió un bug vivo, arreglado aparte: `armar_sub_escenas` no
+copiaba `voz` ni `formato`, así que una escena partida por duración se narraba
+con la voz por defecto y —desde M22 · F— salía apaisada dentro de una película
+vertical, sin excepción ni devolución.
+
+**I · Efectos de sonido**, portando lo que ya existe en local. Mapeado el
+2026-09-14: **portar no es copiar, y ahí está el bloqueo.**
+
+Lo local es un subsistema completo (skill que elige los cues leyendo el
+timeline, `tools/gen_sfx.py` contra ElevenLabs, catálogo con procedencia por
+clip, `tools/mix_sfx.py` con duck y limitador). Pero la **decisión D2** ya
+declaró esa librería *descartada del producto* y el Dockerfile no la copia: los
+33 clips están licenciados «commercial use per the account's ElevenLabs plan»
+—la cuenta del autor upstream—, y 4 de ellos traen `license: null`. Servirlos a
+166 usuarios es exactamente lo que D2 prohibió.
+
+Así que quedan dos caminos, y son **la misma decisión que J**: generar por
+proyecto (cada cue cuesta dinero: tarifa nueva, endpoint de fal cuyo precio no
+está en `pricing.json`, preview antes de cobrar) o construir una biblioteca
+propia con licencia en S3, servida como ya se sirven las muestras de voz.
+
+Lo técnico ya está resuelto por lo local y hay que respetarlo: mezcla por gain
+relativo + `alimiter`, **nunca `loudnorm`** (el master alimenta a shorts, que sí
+normaliza). Y ojo con `rearmar_pelicula`: reconstruye la película cada vez que
+el usuario activa otra versión de b-roll —gratis, o sea a menudo— y borraría la
+pista de efectos en silencio.
 
 **J · Sonido ambiente.** Antes de diseñarlo hay que decidir la fuente: una
 liga de YouTube mete música de terceros en videos que los usuarios van a
 publicar. Una biblioteca con licencia propia evita ese problema entero.
 
+Mapeado el 2026-09-14. Tres cosas que cambian el diseño:
+
+- **La liga de YouTube no está a mano.** No hay `yt_dlp` en el repo: M17 baja
+  video con un actor de Apify. Extraer el audio de una canción es otro producto
+  —y el reclamo de Content ID caería sobre el usuario, con nuestro botón en
+  medio.
+- **La película del servicio es la FUENTE de otros cuatro flujos.** Una cama
+  continua horneada ahí rompe el detector de silencios del editor (el piso de
+  ruido sale del wav de la película), ensucia el ASR de `verify_cut`,
+  desincroniza los subtítulos y llega a `export.sh` de shorts, que normaliza
+  otra vez.
+- **La biblioteca local no es reutilizable**, por lo mismo que I: seis camas
+  licenciadas a la cuenta del autor upstream, excluidas por D2.
+
 ### Investigación aparte
 
-**K · Lira.** Precio por canción, duración, licencia de lo generado y si
-entrega instrumental separada.
+**K · Lira.** ✅ INVESTIGADO (2026-09-14). «Lira» es **Lyria**, de Google
+DeepMind. Lo que hay que saber:
+
+| | Lyria 3 Pro | ElevenLabs Music (lo de hoy) |
+|---|---|---|
+| Precio | $0.08 dólares **por pista** | $0.15 dólares **por minuto** |
+| Duración | 3 min tope, **sin parámetro** | hasta 5-10 min, exacto por `music_length_ms` |
+| Instrumental | por prompt, sin garantía | `force_instrumental: true`, garantizado |
+| Watermark | **SynthID + C2PA, siempre** | ninguno documentado |
+| Stems | no | no |
+
+Una pista de 3 minutos: **$0.08 con Lyria contra $0.45 con ElevenLabs
+directo** — y **$1.80 si se pide por fal**, que le carga 4× a ElevenLabs Music
+(a Lyria no le carga nada: cobra lo mismo que Google). Regenerar las seis camas
+de la paleta pasa de ~$2.70 a ~$0.48.
+
+Los precios son de las páginas de los proveedores, verificados el 2026-09-14.
+**No están en `tools/pricing.json` y ninguna línea de código puede usarlos
+hasta que se añadan ahí**, que es donde vive el precio en dólares.
+
+Lo que decide entre una y otra no es el precio:
+
+- Para **stingers, intros, transiciones y camas de shorts** (todo por debajo de
+  un minuto), Lyria gana sin discusión: es 5.6× más barato y entra por fal, que
+  ya tiene cliente, semáforo, timeout y traza.
+- Para **la cama continua de un longform**, ElevenLabs sigue ganando: Lyria no
+  llega a los 3 minutos ni tiene parámetro de duración —el largo se sugiere con
+  timestamps en el prompt— y `force_instrumental` importa mucho cuando la
+  música va DEBAJO de una voz.
+- El **SynthID no se puede apagar**. Es inaudible, pero marca la pista como
+  generada por IA de Google: si YouTube o TikTok leen esa firma, el video puede
+  quedar etiquetado solo. Ese es el costo real de Lyria y no se paga en dólares.
+
+Y una conclusión que vale aunque no se toque Lyria: si se queda ElevenLabs, que
+sea por su API directa y **no por fal**, donde hay 4× tirado.
+
+Sin confirmar: si Lyria entra en la indemnización de propiedad intelectual de
+Google Cloud, qué hace exactamente cada plataforma con SynthID/C2PA, y cuánto
+tarda una pista de 3 minutos (hace falta para elegir el timeout).
 
 ## Orden y dependencias
 
