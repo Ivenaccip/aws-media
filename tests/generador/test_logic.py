@@ -117,6 +117,18 @@ def test_armar_sub_escenas():
     assert all(s.intentos == 1 and s.prompt_visual == "pv" for s in subs)
 
 
+def test_una_escena_partida_conserva_la_voz_y_el_formato():
+    """Partir una escena por duración pasa DESPUÉS de bajar la voz y el formato
+    del proyecto, y nadie los repone aguas abajo: la escena partida salía con la
+    voz por defecto —no la elegida— y apaisada dentro de una película vertical.
+    Sin excepción: la película salía mal y nadie se enteraba."""
+    orig = Scene(id="5", narracion="larga", voz="Rachel", formato="vertical")
+    subs = armar_sub_escenas(
+        {"sub_escenas": [{"id": "5a", "narracion": "x"}, {"id": "5b", "narracion": "y"}]}, orig)
+    assert [s.voz for s in subs] == ["Rachel", "Rachel"]
+    assert [s.formato for s in subs] == ["vertical", "vertical"]
+
+
 # ---------- cola / cadenas ----------
 def test_ordenar_cola_y_cadenas():
     es = [
