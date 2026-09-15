@@ -44,6 +44,16 @@ def armar_sub_escenas(r: dict, original: Scene) -> list[Scene]:
             prompt_visual=str(s.get("prompt_visual") or original.prompt_visual),
             prompt_movimiento=str(s.get("prompt_movimiento") or original.prompt_movimiento),
             personajes=list(original.personajes),
+            # Lo que NO repone nadie aguas abajo tiene que viajar aquí. El
+            # orden lo rehace ordenar_cola y el prompt de imagen lo rehace
+            # resolver_referencias, pero la VOZ y el FORMATO no: son campos del
+            # proyecto que solo se bajan una vez, antes del TTS. Sin ellos, una
+            # escena partida por duración salía narrada por la voz por defecto
+            # —no la que eligió el usuario— y, desde M22 · F, apaisada en medio
+            # de una película vertical. Sin excepción ni aviso: la película
+            # simplemente salía mal.
+            voz=original.voz,
+            formato=original.formato,
             transicion=original.transicion if i == 0 else "continua",
             intentos=original.intentos + 1,
             ya_ajustado=False,
