@@ -491,6 +491,12 @@ async def crear(
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
+    # M23 · V: cada duración tiene su precio en tarifas.json; una que no está en
+    # la tabla no tiene precio que cobrar. Antes de gastar en nada.
+    duraciones = creditos.precios_por_duracion()
+    if duracion_s not in duraciones:
+        raise HTTPException(422, "Elige una duración de la lista: "
+                                 + ", ".join(f"{s} s" for s in duraciones) + ".")
     if len(referencias) > MAX_REFS:
         raise HTTPException(422, f"Máximo {MAX_REFS} referencias")
     # M12: tope de proyectos activos ANTES de gastar en nada (ni research).
@@ -754,6 +760,9 @@ def creditos_estado():
     return {"activo": True, "saldo": creditos.saldo(u),
             "tarifas": {"preparar": creditos.costo_preparar(),
                         "video_por_segundo": creditos.VIDEO_CR_POR_SEGUNDO,
+                        # M23 · V: el total de cada duración elegible (la pantalla
+                        # de crear arma su reloj con estas llaves)
+                        "video_por_duracion": creditos.precios_por_duracion(),
                         "imagen": creditos.costo_imagen()},
             "packs": packs,  # M1: la UI arma el CTA de recarga con esto
             "movimientos": db.movimientos_creditos(u, 20)}
@@ -791,6 +800,7 @@ async def producir(id_: str, aprobar_imagenes: bool = False):  # async: create_t
             if reclamado:
                 db.liberar_produccion(db.usuario_actual(), p.id, estado_previo)
             raise HTTPException(402, str(e))
+        p.cobrado_producir = costo_cr   # lo que se devuelve si falla
     fase = "imagenes" if aprobar_imagenes else "todo"
     try:
         if jobs.backend() == "aws":
@@ -921,7 +931,7 @@ def cancelar(id_: str):
     n = 0
     if creditos.activo():
         gastado = creditos.costo_imagen() * max(1, len(p.progreso.get("imagenes") or []))
-        n = max(0, creditos.costo_producir(p.duracion_s) - gastado)
+        n = max(0, creditos.producir_cobrado(p) - gastado)
         if n:
             creditos.devolver(n, f"cancelar:{p.id}")
     p.estado, p.etapa = "revision", None

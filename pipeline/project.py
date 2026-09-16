@@ -88,6 +88,10 @@ class Proyecto(BaseModel):
     voz: Optional[str] = None
     voces: list[dict] = Field(default_factory=list)  # [{id, nivel, motivo}] ordenado, mejor primero
 
+    # M23 · V: los créditos que se cobraron al producir. La devolución de un
+    # fallo y la de «Mejor no» salen de aquí, no de la tabla de precios de hoy.
+    cobrado_producir: Optional[int] = None
+
     etapa: Optional[str] = None  # subetapa de preparando/produciendo
     progreso: dict = Field(default_factory=dict)
     resultado: Optional[dict] = None
