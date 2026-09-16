@@ -109,8 +109,62 @@
   .err { color: #ff8080; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
   :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
+  nav .grupo .mas.ok { border-color: #3dd68c; color: #3dd68c; background: #102e22; }
+
+  /* --- conectar Blotato (M23 C) --- */
+  /* margin:auto lo centra: el `* { margin: 0 }` de arriba se lo quita al <dialog> */
+  #dlg-blotato { margin: auto; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+    padding: 22px 22px 18px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--card); color: var(--txt); }
+  #dlg-blotato::backdrop { background: rgba(4, 9, 17, .72); }
+  #dlg-blotato h2 { font-size: 19px; font-weight: 600; margin: 0 28px 6px 0; }
+  #dlg-blotato .cerrar { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
+    border: 0; border-radius: 8px; background: transparent; color: var(--mut);
+    font-size: 16px; cursor: pointer; }
+  #dlg-blotato .cerrar:hover { color: var(--txt); background: #18293f; }
+  .blt-lead, .blt-nota { color: var(--mut); font-size: 13.5px; }
+  .blt-lead { margin-bottom: 14px; }
+  .blt-pasos { padding-left: 20px; margin: 0 0 12px; font-size: 14px; }
+  .blt-pasos li + li { margin-top: 4px; }
+  .blt-pasos a { color: var(--acc); }
+  .blt-aviso { border: 1px solid #a96716; background: #2e2110; color: var(--txt);
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+    margin-bottom: 14px; }
+  .blt-aviso b { color: #f0a94a; }
+  .blt-pronto { border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
+    padding: 10px 12px; font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
+  .blt-pronto b { color: var(--txt); }
+  #blt-form label { display: block; font-size: 13px; color: var(--mut); margin-bottom: 5px; }
+  #blt-clave { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--txt); font: 14px/1.3 ui-monospace, Consolas, monospace; }
+  #blt-clave:focus { border-color: var(--acc); outline: none; }
+  .blt-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .blt-acciones button { border-radius: 9px; padding: 9px 16px; font: inherit; font-size: 14px;
+    cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--txt); }
+  .blt-acciones button:hover { border-color: var(--acc); }
+  .blt-acciones button:disabled { opacity: .55; cursor: default; }
+  .blt-acciones .pri { background: var(--acc); border-color: var(--acc); color: #08111e;
+    font-weight: 600; }
+  .blt-acciones .pri:hover { filter: brightness(1.1); }
+  .blt-acciones .peligro { margin-left: auto; color: #ff8080; }
+  .blt-acciones .peligro:hover { border-color: #ff8080; }
+  .blt-ok { color: #3dd68c; font-weight: 600; margin-bottom: 8px; }
+  #blt-redes { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 6px; }
+  #blt-redes li { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px;
+    border-radius: 9px; background: var(--bg); border: 1px solid var(--line); font-size: 14px; }
+  #blt-redes .red { font-weight: 600; min-width: 84px; }
+  #blt-redes .quien { color: var(--mut); overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+
   @media (max-width: 860px) {
     .layout { grid-template-columns: 1fr; }
+    /* sin esto la fila de secciones (que no se parte) ensanchaba la columna y
+       la PÁGINA entera se desplazaba de lado; así el scroll queda en el menú */
+    .layout > * { min-width: 0; }
+    /* un tooltip oculto también cuenta para el ancho: el de «Tengo una idea»
+       salía por la derecha y dejaba la página con scroll lateral */
+    .prompt [data-tip]::after { max-width: min(250px, calc(100vw - 72px)); }
+    .prompt #btn-idea[data-tip]::after { left: 50%; transform: translateX(-50%); }
     aside nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
     nav a, nav .prox { flex: 0 0 auto; margin-bottom: 0; }
     nav small { display: none; }
@@ -133,8 +187,8 @@
       <a href="/shorts.html"><b>De videos a Shorts</b><small>Sube un video largo y te daremos los mejores momentos.</small></a>
       <a href="/estilos.html"><b>Copiadora de estilos</b><small>Recrea el estilo visual de un contenido que te guste</small></a>
       <div class="grupo">Blotato
-        <button class="mas" id="blotato-mas" title="Conecta tus credenciales de Blotato"
-          aria-label="Conectar Blotato">+</button>
+        <button class="mas" id="blotato-mas" title="Conecta tu cuenta de Blotato"
+          aria-label="Conecta tu cuenta de Blotato" aria-haspopup="dialog">+</button>
       </div>
       <div class="prox"><b>Agenda tus publicaciones</b><small>Programa tus posts en todas tus redes</small></div>
       <div class="prox"><b>Investiga tu competencia</b><small>Qué está funcionando en tu rubro</small></div>
@@ -178,16 +232,185 @@
   </main>
 
 </div>
+
+<dialog id="dlg-blotato" aria-labelledby="blt-titulo">
+  <button type="button" class="cerrar" id="blt-cerrar" aria-label="Cerrar">✕</button>
+  <h2 id="blt-titulo">Conecta tu Blotato</h2>
+  <p class="blt-lead">Con tu cuenta de Blotato conectada podrás programar tus videos y ver cómo rinden en tus redes.</p>
+
+  <p class="blt-nota" id="blt-cargando">Revisando tu conexión…</p>
+
+  <div id="blt-conectado" hidden>
+    <p class="blt-ok">✓ Tu Blotato está conectado</p>
+    <p class="blt-nota" id="blt-origen" hidden>Estás usando la clave del <code>.env</code> de esta máquina.</p>
+    <ul id="blt-redes" aria-label="Redes conectadas en tu Blotato"></ul>
+    <p class="blt-nota" id="blt-pronto-ok" hidden>Programar tus videos desde aquí llega en los próximos días. Tu cuenta ya queda lista.</p>
+    <p class="blt-nota" id="blt-sin-redes" hidden>Tu Blotato todavía no tiene redes conectadas. Agrégalas en Blotato y vuelve a abrir esta ventana.</p>
+    <div class="blt-acciones">
+      <button type="button" id="blt-cambiar">Cambiar clave</button>
+      <button type="button" class="peligro" id="blt-quitar">Desconectar</button>
+    </div>
+  </div>
+
+  <form id="blt-form" hidden novalidate>
+    <ol class="blt-pasos">
+      <li>Entra a <a href="https://my.blotato.com/settings" target="_blank" rel="noopener noreferrer">Blotato → Settings → API</a>.</li>
+      <li>Pulsa <b>Generate API Key</b> y copia la clave completa.</li>
+      <li>Pégala aquí abajo.</li>
+    </ol>
+    <p class="blt-pronto" id="blt-pronto" role="note" hidden><b>Todavía no puedes programar desde aquí:</b> llega en los próximos días. Si aún estás en la prueba gratis de Blotato, espera a que esté listo antes de generar tu clave.</p>
+    <p class="blt-aviso" role="note"><b>Antes de generarla:</b> la API no viene en la prueba gratis de Blotato. Al generar la clave, Blotato termina tu prueba y <span id="blt-precio">empieza a cobrarte su plan de pago</span>. Ese cobro es de Blotato, no nuestro.</p>
+    <label for="blt-clave">Tu clave de API de Blotato</label>
+    <input id="blt-clave" type="password" autocomplete="off" spellcheck="false"
+      autocapitalize="off" maxlength="512" placeholder="Pega aquí tu clave">
+    <div class="blt-acciones">
+      <button type="submit" class="pri" id="blt-conectar">Conectar</button>
+      <button type="button" id="blt-volver" hidden>Cancelar</button>
+    </div>
+  </form>
+
+  <p class="err" id="blt-err" role="alert"></p>
+</dialog>
 <script>
 const $ = s => document.querySelector(s);
 const esc = t => (t || '').replace(/</g, '&lt;');
-// Blotato: el «+» conectará las credenciales del usuario (por diseñar)
-$('#blotato-mas').onclick = () =>
-  alert('Aquí vas a conectar tus credenciales de Blotato para publicar y medir tus redes.\n\nMuy pronto.');
 const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión — te espera',
                 produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
 // proyectos viejos pueden traer `creado` en un formato raro: sin fecha antes que "Invalid Date"
 const fecha = c => { const d = new Date(c); return isNaN(d) ? '' : ' · ' + d.toLocaleDateString(); };
+
+// M23 C: el «+» de Blotato conecta la cuenta del usuario. La clave solo viaja
+// en el POST y el campo se vacía en cuanto sale; ninguna respuesta la trae.
+const RED = {twitter: 'X', instagram: 'Instagram', linkedin: 'LinkedIn', facebook: 'Facebook',
+             tiktok: 'TikTok', pinterest: 'Pinterest', threads: 'Threads', bluesky: 'Bluesky',
+             youtube: 'YouTube'};
+const dlgBlt = $('#dlg-blotato');
+let bltEstado = null;
+
+function marcaBlotato(conectado) {
+  const b = $('#blotato-mas');
+  b.classList.toggle('ok', conectado);
+  b.textContent = conectado ? '✓' : '+';
+  const t = conectado ? 'Blotato conectado: ver o cambiar' : 'Conecta tu cuenta de Blotato';
+  b.title = t;
+  b.setAttribute('aria-label', t);
+}
+
+async function leerBlotato(opciones) {
+  const r = await fetch('/api/blotato' + (opciones?.ligero ? '?redes=0' : ''), opciones?.init);
+  let d = null;
+  try { d = await r.json(); } catch { /* cuerpo vacío o no JSON */ }
+  if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail
+                             : 'No pudimos hablar con el servidor. Intenta de nuevo.');
+  return d;
+}
+
+function vistaBlotato(d, {formulario = false} = {}) {
+  bltEstado = d;
+  marcaBlotato(!!d.conectado);
+  $('#blt-cargando').hidden = true;
+  const verForm = formulario || !d.conectado;
+  $('#blt-conectado').hidden = verForm;
+  $('#blt-form').hidden = !verForm;
+  $('#blt-volver').hidden = !d.conectado;
+  $('#blt-titulo').textContent = verForm && d.conectado ? 'Cambia tu clave de Blotato'
+    : d.conectado ? 'Tu Blotato' : 'Conecta tu Blotato';
+  if (d.plan && d.plan.usd_por_mes != null)
+    $('#blt-precio').textContent =
+      `empieza a cobrarte su plan (desde $${d.plan.usd_por_mes} dólares al mes con ${d.plan.nombre})`;
+  $('#blt-err').textContent = verForm ? '' : (d.error || '');
+  // en el servicio, agendar aún no corre (C2): se dice antes de que genere
+  // una clave que le cuesta dinero
+  $('#blt-pronto').hidden = d.agendar !== false;
+  $('#blt-pronto-ok').hidden = d.agendar !== false;
+  if (verForm) { setTimeout(() => $('#blt-clave').focus(), 0); return; }
+  const env = d.origen === 'env';
+  $('#blt-origen').hidden = !env;
+  $('#blt-quitar').hidden = env;   // la del .env no se quita desde aquí
+  $('#blt-redes').innerHTML = (d.cuentas || []).map(c =>
+    `<li><span class="red">${esc(RED[c.platform] || c.platform)}</span>` +
+    `<span class="quien">${esc(c.fullname || c.username)}` +
+    (c.username && c.fullname ? ` · @${esc(c.username)}` : '') + `</span></li>`).join('');
+  $('#blt-sin-redes').hidden = !!(d.cuentas || []).length || !!d.error;
+}
+
+async function abrirBlotato() {
+  $('#blt-err').textContent = '';
+  $('#blt-cargando').hidden = false;
+  $('#blt-conectado').hidden = $('#blt-form').hidden = true;
+  if (!dlgBlt.open) dlgBlt.showModal();
+  try { vistaBlotato(await leerBlotato()); }
+  catch (e) { $('#blt-cargando').hidden = true; $('#blt-err').textContent = e.message; }
+}
+
+function cerrarBlotato() {
+  $('#blt-clave').value = '';
+  dlgBlt.close();
+}
+
+$('#blotato-mas').onclick = abrirBlotato;
+$('#blt-cerrar').onclick = cerrarBlotato;
+dlgBlt.addEventListener('close', () => { $('#blt-clave').value = ''; });
+// clic en el fondo oscuro = cerrar. El padding del diálogo también es el
+// diálogo, así que se mira si el puntero cayó fuera de su caja; y tiene que
+// EMPEZAR fuera: seleccionar la clave y soltar fuera no borra lo pegado.
+const fueraDe = (ev) => {
+  const r = dlgBlt.getBoundingClientRect();
+  return ev.target === dlgBlt && (ev.clientX < r.left || ev.clientX > r.right ||
+                                  ev.clientY < r.top || ev.clientY > r.bottom);
+};
+let bajoFuera = false;
+dlgBlt.addEventListener('pointerdown', ev => { bajoFuera = fueraDe(ev); });
+dlgBlt.addEventListener('click', ev => {
+  if (bajoFuera && fueraDe(ev)) cerrarBlotato();
+  bajoFuera = false;
+});
+$('#blt-cambiar').onclick = () => vistaBlotato(bltEstado, {formulario: true});
+$('#blt-volver').onclick = () => { $('#blt-clave').value = ''; vistaBlotato(bltEstado); };
+
+$('#blt-form').onsubmit = async ev => {
+  ev.preventDefault();
+  const boton = $('#blt-conectar');
+  if (boton.disabled) return;
+  const clave = $('#blt-clave').value.trim();
+  if (!clave) {
+    $('#blt-err').textContent = 'Pega tu clave de Blotato primero.';
+    $('#blt-clave').focus();
+    return;
+  }
+  boton.disabled = true;
+  boton.textContent = 'Revisando la clave…';
+  $('#blt-err').textContent = '';
+  try {
+    const d = await leerBlotato({init: {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({clave})}});
+    $('#blt-clave').value = '';
+    vistaBlotato(d);
+  } catch (e) {
+    $('#blt-err').textContent = e.message;
+    $('#blt-clave').focus();
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Conectar';
+  }
+};
+
+$('#blt-quitar').onclick = async () => {
+  if (!confirm('¿Desconectar tu cuenta de Blotato?\n\nDejaremos de guardar tu clave. ' +
+               'Tu cuenta y tus publicaciones en Blotato no cambian.')) return;
+  const boton = $('#blt-quitar');
+  boton.disabled = true;
+  $('#blt-err').textContent = '';
+  try { vistaBlotato(await leerBlotato({init: {method: 'DELETE'}})); }
+  catch (e) { $('#blt-err').textContent = e.message; }
+  finally { boton.disabled = false; }
+};
+
+// el editor manda aquí con ?blotato=conectar cuando falta la conexión
+addEventListener('DOMContentLoaded', () => {
+  if (new URLSearchParams(location.search).get('blotato') === 'conectar') abrirBlotato();
+  else leerBlotato({ligero: true}).then(d => marcaBlotato(!!d.conectado)).catch(() => {});
+});
 
 // El prompt navega a crear.html con la idea precargada; los dos botones son
 // los mismos modos del flujo de crear (investigacion | idea). Sin texto no hay

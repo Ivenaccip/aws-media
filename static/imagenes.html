@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Estudio de video · Imágenes</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0b1626; --card:#111f33; --line:#22354f; --txt:#ece8e1; --mut:#93a3b8; --acc:#da8c28; --acc2:#f0a94a;
+          --reserva:46px; }
+  * { box-sizing:border-box; }
+  /* M23 — una sola pantalla: nada de scroll en la página. El alto se reparte
+     entre la banda, la columna de ajustes y el escenario, y lo que puede
+     crecer (la imagen) se encoge en vez de empujar. */
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--txt); overflow:hidden;
+         font:15px/1.45 system-ui, Segoe UI, sans-serif; display:flex; flex-direction:column; }
+  h1 { font-size:18px; margin:0; }
+  h2 { font-size:14px; margin:0 0 10px; display:flex; align-items:center; gap:7px; }
+  a { color:#5b8dd6; }
+  .mut { color:var(--mut); font-size:13px; }
+  .err { color:#ff8080; white-space:pre-wrap; font-size:13.5px; }
+  .hidden { display:none !important; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+
+  /* el monedero es fijo arriba a la derecha (monedero.js): se le deja su hueco */
+  header { display:flex; align-items:center; gap:12px; padding:10px 290px 10px 16px; flex:0 0 auto; }
+  header .sub { color:var(--mut); font-size:13px; }
+
+  .cols { flex:1; min-height:0; display:grid; grid-template-columns:320px minmax(0,1fr);
+          gap:14px; padding:0 16px 14px; }
+  .ajustes { min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding-right:4px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+
+  /* estilo: chips en columna + muestra, como en crear.html */
+  .estilo-flex { display:flex; gap:10px; }
+  .chips-v { display:flex; flex-direction:column; gap:6px; }
+  .chip { border:1px solid var(--line); border-radius:10px; padding:6px 12px; cursor:pointer;
+          color:var(--mut); background:transparent; font:inherit; font-size:13.5px;
+          text-align:left; white-space:nowrap; }
+  .chip.on { border-color:var(--acc); color:var(--txt); background:#2e2110; }
+  .muestra { flex:1; min-height:150px; border:1px solid var(--line); border-radius:12px;
+             display:grid; place-items:center; padding:10px; position:relative; overflow:hidden; }
+  .muestra img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .muestra p { margin:0; text-align:center; font-size:12px; }
+  input[type=text] { width:100%; background:#18293f; color:var(--txt); border:1px solid var(--line);
+                     border-radius:10px; padding:9px; font:inherit; font-size:13.5px; }
+  .apagado { opacity:.45; }
+
+  /* formato: las mismas tarjetas de crear.html, más cuadrado (M23) */
+  .formatos { display:flex; gap:8px; }
+  .fmt { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:3px;
+         padding:9px 6px; border-radius:12px; cursor:pointer; font:inherit; font-size:13px;
+         color:inherit; background:transparent; border:1px solid var(--line); }
+  .fmt:hover { border-color:var(--acc); }
+  .fmt.on { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 12%, transparent); }
+  .fmt .mut { font-size:10.5px; }
+  .fmt-icono { display:block; border:2px solid currentColor; border-radius:3px; opacity:.75; }
+  .fmt-icono.horiz { width:36px; height:21px; }
+  .fmt-icono.vert { width:21px; height:36px; }
+  .fmt-icono.cuad { width:28px; height:28px; }
+  .formatos.bloqueado .fmt { cursor:default; opacity:.5; }
+  .formatos.bloqueado .fmt.on { opacity:1; }
+
+  /* escenario. Tres filas: la barra del pincel ARRIBA, la imagen, y las
+     acciones del resultado ABAJO — ninguna encima de la imagen: la barra
+     flotante tapaba la esquina y un clic para pintar ahí caía en «Borrar».
+     Nunca se ven las dos a la vez, así que la imagen reserva el alto de una
+     (--reserva) y no salta al cambiar de modo. La zona aísla sus capas: en el
+     teléfono el composer fijo tiene que quedar por encima de ellas. */
+  .escena { min-height:0; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:10px; }
+  .lienzo-zona { position:relative; min-height:0; display:grid;
+                 grid-template-rows:auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr);
+                 place-items:center; border:1px solid var(--line); border-radius:14px;
+                 background:var(--card); padding:12px; container-type:size; isolation:isolate; }
+  .lienzo-zona.arrastrando { border-color:var(--acc); }
+  #vacio, #lienzo-wrap, #final { grid-row:2; grid-column:1; }
+  #vacio { text-align:center; max-width:360px; }
+  #vacio .icono { font-size:34px; margin:0 0 6px; }
+  /* El lienzo toma la proporción de la imagen (--ar, lo pone el JS) y el
+     ancho que quepa: el menor entre todo el ancho y el alto libre × la
+     proporción. Con max-height:100% no bastaba — el envoltorio no tiene alto
+     propio, y la imagen salía RECORTADA en vez de encogida. Los dos canvas
+     llenan la misma caja, así que la máscara calca la imagen a cualquier
+     tamaño (puntoDe escala con getBoundingClientRect). */
+  #lienzo-wrap { position:relative; line-height:0; box-sizing:content-box; aspect-ratio:var(--ar, 1);
+                 width:min(100cqw - 2px, (100cqh - var(--reserva) - 2px) * var(--ar, 1));
+                 border-radius:12px; overflow:hidden; border:1px solid var(--line); }
+  #img-canvas { display:block; width:100%; height:100%; }
+  #mask-canvas { position:absolute; inset:0; width:100%; height:100%; opacity:.55;
+                 cursor:crosshair; touch-action:none; }
+  #lienzo-wrap.trabajando #img-canvas { opacity:.5; }
+  #lienzo-wrap.trabajando #mask-canvas { pointer-events:none; cursor:default; }
+  #final { display:block; width:auto; height:auto;
+           max-width:100cqw; max-height:calc(100cqh - var(--reserva));
+           border-radius:12px; border:1px solid var(--line); }
+  /* navegadores sin unidades de contenedor (Safari < 16): encogido simple */
+  @supports not (width: 1cqw) {
+    #lienzo-wrap { width:auto; height:100%; max-width:100%; }
+    #final { max-width:100%; max-height:100%; }
+  }
+  .herramientas { grid-row:1; grid-column:1; justify-self:start; display:flex; gap:8px;
+                  align-items:center; margin-bottom:8px; }
+  .herramientas input[type=range] { accent-color:var(--acc); width:110px; }
+  .acciones { grid-row:3; grid-column:1; justify-self:end; display:flex; gap:8px;
+              flex-wrap:wrap; justify-content:flex-end; margin-top:8px; }
+  /* mientras hay una petición el orbe ocupa la esquina: las acciones no se
+     pueden usar y no deben asomar debajo de él */
+  .lienzo-zona.en-vuelo .acciones { visibility:hidden; }
+  #orbe-hueco { position:absolute; left:14px; bottom:14px; z-index:3; max-width:calc(100% - 28px); }
+
+  .btn2 { border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:10px;
+          padding:7px 13px; cursor:pointer; font:inherit; font-size:13.5px; text-decoration:none; }
+  .btn2:hover { border-color:var(--acc); }
+  .btn2:disabled { opacity:.45; cursor:default; }
+
+  /* composer: imagen adjunta + modos + texto + enviar */
+  .composer { background:var(--card); border:1px solid var(--line); border-radius:14px;
+              padding:10px; position:relative; }
+  .cabeza { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  .adjunto { display:flex; align-items:center; gap:9px; }
+  .adjunto button.ver { padding:0; border:0; background:none; cursor:pointer; line-height:0; border-radius:9px; }
+  .adjunto img { width:46px; height:46px; object-fit:cover; border-radius:9px; border:1px solid var(--line); }
+  .modos { display:flex; gap:8px; flex-wrap:wrap; }
+  .modo { display:flex; flex-direction:column; gap:1px; text-align:left; padding:7px 12px;
+          border-radius:10px; cursor:pointer; background:transparent; color:inherit;
+          border:1px solid var(--line); font:inherit; font-size:13.5px; }
+  .modo:hover { border-color:var(--acc); }
+  .modo.activo { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 12%, transparent); }
+  .modo:disabled { opacity:.45; cursor:default; }
+  .modo span { font-size:11.5px; }
+  .fila { display:flex; gap:8px; align-items:flex-end; }
+  .redondo { width:38px; height:38px; flex:0 0 auto; border-radius:50%; border:1px solid var(--line);
+             background:transparent; color:var(--txt); font-size:19px; cursor:pointer; line-height:1; }
+  .redondo:hover { border-color:var(--acc); }
+  textarea { flex:1; min-width:0; height:56px; max-height:110px; resize:none; background:#18293f;
+             color:var(--txt); border:1px solid var(--line); border-radius:12px; padding:9px 11px; font:inherit; }
+  .enviar { flex:0 0 auto; padding:11px 18px; border:0; border-radius:999px; color:#14100a; font:inherit;
+            font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); }
+  .enviar:disabled { opacity:.45; cursor:default; }
+  .pie { display:flex; gap:10px; align-items:baseline; margin-top:7px; min-height:18px; }
+
+  /* paleta de «/» — atajos del navegador, no un chat */
+  .paleta { position:absolute; left:10px; right:10px; bottom:calc(100% + 6px); z-index:5;
+            background:var(--card); border:1px solid var(--acc); border-radius:12px;
+            padding:6px; max-height:230px; overflow-y:auto; }
+  .paleta div { padding:7px 10px; border-radius:9px; cursor:pointer; font-size:13.5px; }
+  .paleta div.sel, .paleta div:hover { background:#2e2110; }
+  .paleta b { color:var(--acc2); font-weight:600; }
+
+  /* pantalla ancha pero baja (portátil con Windows al 125-150 %): se quedan
+     las dos columnas — pasar a una dejaba la caja de texto bajo el pliegue —
+     y solo si de verdad no cabe la página deja hacer scroll */
+  @media (max-height: 520px) and (min-width: 901px) {
+    body { overflow:auto; }
+    .cols { min-height:460px; }
+  }
+  @media (max-width: 900px) {
+    :root { --reserva:88px; }   /* las acciones pasan a dos líneas */
+    body { overflow:auto; }
+    header { flex-wrap:wrap; row-gap:4px; padding:58px 16px 10px; }
+    header .sub { flex-basis:100%; }
+    /* en una columna la página SÍ crece: si la rejilla conservara el alto de
+       la pantalla, el escenario se montaría encima de las tarjetas */
+    .cols { flex:none; grid-template-columns:1fr; }
+    .escena { grid-template-rows:auto auto; }
+    .ajustes { overflow:visible; }
+    .estilo-flex { flex-direction:column; }
+    .chips-v { flex-direction:row; flex-wrap:wrap; }
+    /* alto DEFINIDO: sin él, las unidades de contenedor no tienen contra qué
+       medirse. Se descuenta la caja de texto fija para que imagen y barra del
+       pincel quepan juntas también en teléfonos bajos */
+    .lienzo-zona { height:min(55dvh, 100dvh - 290px); min-height:250px; }
+    .composer { position:sticky; bottom:0; z-index:2; }
+    .modo span, #nota-adjunto { display:none; }
+    .adjunto img { width:38px; height:38px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" style="text-decoration:none">← Inicio</a>
+  <h1>🎨 Imágenes</h1>
+  <span class="sub" id="sub">Escribe lo que quieres ver, o adjunta una imagen para cambiarla.</span>
+</header>
+
+<div class="cols">
+  <aside class="ajustes">
+    <div class="card">
+      <h2>✨ Estilo visual</h2>
+      <div class="estilo-flex">
+        <div class="chips-v" id="estilos"></div>
+        <div class="muestra">
+          <img id="muestra-img" alt="Ejemplo del estilo elegido" hidden>
+          <p class="mut" id="estilo_ej"></p>
+        </div>
+      </div>
+      <input type="text" id="estilo_custom" class="hidden" style="margin-top:9px"
+             placeholder="Describe el estilo (en inglés funciona mejor)">
+      <p class="mut" id="nota-estilo" style="margin:8px 0 0"></p>
+    </div>
+
+    <div class="card">
+      <h2>📐 Formato</h2>
+      <div class="formatos" id="formatos" role="radiogroup" aria-label="Formato de la imagen"
+           aria-describedby="nota-formato">
+        <button type="button" class="fmt" data-fmt="horizontal" role="radio" aria-checked="false">
+          <span class="fmt-icono horiz"></span><b>Horizontal</b><span class="mut">16:9</span>
+        </button>
+        <button type="button" class="fmt" data-fmt="vertical" role="radio" aria-checked="false">
+          <span class="fmt-icono vert"></span><b>Vertical</b><span class="mut">9:16</span>
+        </button>
+        <button type="button" class="fmt on" data-fmt="cuadrado" role="radio" aria-checked="true">
+          <span class="fmt-icono cuad"></span><b>Cuadrado</b><span class="mut">1:1</span>
+        </button>
+      </div>
+      <p class="mut" id="nota-formato" style="margin:8px 0 0">Cada imagen sale en el formato que elijas aquí.</p>
+    </div>
+  </aside>
+
+  <section class="escena">
+    <div class="lienzo-zona" id="zona">
+      <div class="herramientas hidden" id="herramientas">
+        <span>Pincel</span>
+        <input type="range" id="grosor" min="10" max="120" value="46" aria-label="Grosor del pincel">
+        <button class="btn2" id="borrar">Borrar zona</button>
+      </div>
+
+      <div id="vacio">
+        <p class="icono">🖼</p>
+        <p style="margin:0 0 4px"><b>Escribe abajo lo que quieres ver</b></p>
+        <p class="mut" style="margin:0">…o arrastra aquí una imagen tuya (o pégala) para cambiarla.
+           JPG, PNG o WebP, hasta 15 MB.</p>
+      </div>
+
+      <div id="lienzo-wrap" class="hidden">
+        <canvas id="img-canvas"></canvas>
+        <canvas id="mask-canvas"></canvas>
+      </div>
+
+      <img id="final" class="hidden" alt="Tu imagen">
+
+      <div class="acciones hidden" id="acciones">
+        <a class="btn2" id="descargar" download="imagen.jpg">⬇ Descargar</a>
+        <button class="btn2" id="seguir">✏️ Seguir editando</button>
+        <button class="btn2" id="limpiar">Empezar de nuevo</button>
+      </div>
+
+      <div id="orbe-hueco"></div>
+    </div>
+
+    <div class="composer">
+      <div class="paleta hidden" id="paleta" role="listbox" aria-label="Atajos"></div>
+      <div class="sr" id="anuncio" aria-live="polite"></div>
+
+      <div class="cabeza hidden" id="cabeza">
+        <div class="adjunto" id="adjunto">
+          <button class="ver" id="ver-original" title="Ver tu imagen" aria-label="Ver tu imagen">
+            <img id="miniatura" alt="">
+          </button>
+          <span class="mut" id="nota-adjunto"></span>
+          <button class="btn2" id="ver-resultado">Ver resultado</button>
+          <button class="btn2" id="quitar">✕ Quitar</button>
+        </div>
+
+        <div class="modos" id="modos" role="radiogroup" aria-label="Qué quieres hacer">
+          <button type="button" class="modo activo" id="modo-pincel" role="radio" aria-checked="true">
+            <b>Cambiar una zona</b><span class="mut">Pintas dónde y el resto queda igual</span>
+          </button>
+          <button type="button" class="modo" id="modo-todo" role="radio" aria-checked="false">
+            <b>Transformar toda</b><span class="mut">Otro estilo, otra técnica, otra época</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="fila">
+        <button class="redondo" id="mas" title="Adjuntar una imagen" aria-label="Adjuntar una imagen">＋</button>
+        <textarea id="prompt" maxlength="2000" rows="2" aria-label="Qué quieres"
+          aria-controls="paleta" aria-describedby="anuncio"
+          placeholder="Escribe / para ver las habilidades"></textarea>
+        <button class="enviar" id="enviar">Generar</button>
+      </div>
+
+      <div class="pie">
+        <span class="mut" id="saldoform"></span>
+        <span class="err" id="gerr" role="alert"></span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<input type="file" id="archivo" accept="image/png,image/jpeg,image/webp" hidden>
+
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
+<script src="/guardrail.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
+
+/* M23 — una sola herramienta. Crear y editar eran dos páginas con el mismo
+   monedero, el mismo guardrail y el mismo orbe; la diferencia real es si hay
+   imagen sobre la mesa. Aquí el estado manda:
+     sin imagen            → crear (el texto describe la imagen)
+     con imagen + pincel   → cambiar la zona pintada
+     con imagen + todo     → transformar la imagen entera
+   Lo que NO se deduce solo es el modo: adivinarlo por si hay trazo o no
+   cobraría una transformación que nadie pidió. */
+let estilo = 'animated';          // el estilo de CREAR
+// El de TRANSFORMAR va aparte y empieza vacío: si el chip «Animado» marcado
+// por defecto viajara, «pásala a acuarela» llegaría al modelo como
+// «acuarela… Target look: Pixar» — dos órdenes que se pisan, y se cobra.
+let estiloDestino = null;
+let formato = 'cuadrado';         // el que se ve (con imagen, el de la imagen)
+let formatoElegido = 'cuadrado';  // el que eligió el usuario para crear
+let MODO = 'pincel';
+let archivo = null, hayTrazo = false, enVuelo = false, ultimoNombre = null;
+let cargando = false, generacion = 0;
+let ESTADO = 'vacio';   // vacio | lienzo | resultado
+
+const cual = () => (archivo ? MODO : 'crear');
+const transformando = () => !!archivo && MODO === 'todo';
+
+// ---------- estilo (misma muestra que crear.html) ----------
+const sinAcentos = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const DESCR_ESTILO = {};
+let muestraDe;
+fetch('/api/estilos').then(r => r.json()).then(list => {
+  list.forEach(e => {
+    DESCR_ESTILO[e.id] = e.descripcion || '';
+    ATAJOS.push({ cmd: '/' + sinAcentos(e.nombre).replace(/\s+/g, ''),
+                  que: `Estilo ${e.nombre}`, hacer: () => fijarEstilo(e.id) });
+  });
+  $('#estilos').innerHTML = list.map(e =>
+    `<button class="chip" data-id="${e.id}" aria-pressed="false">${e.nombre}</button>`).join('');
+  muestraDe = undefined;          // ya hay descripciones: la muestra se repinta
+  pintaEstilo();
+  $('#estilos').onclick = ev => {
+    const b = ev.target.closest('.chip');
+    if (b) fijarEstilo(b.dataset.id);
+  };
+});
+function fijarEstilo(id) {
+  // al transformar, tocar el chip elegido lo suelta: se vuelve a «sin estilo»
+  if (transformando()) estiloDestino = estiloDestino === id ? null : id;
+  else estilo = id;
+  pintaEstilo();
+}
+function pintaEstilo() {
+  const id = transformando() ? estiloDestino : estilo;
+  $('#estilos').querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.id === id);
+    c.setAttribute('aria-pressed', String(c.dataset.id === id));
+  });
+  $('#estilo_custom').classList.toggle('hidden', id !== 'custom');
+  $('#nota-estilo').textContent = archivo && MODO === 'pincel'
+    ? 'Al cambiar una zona, el estilo lo pone tu imagen.'
+    : transformando()
+      ? (estiloDestino ? 'Tu imagen se convierte a este estilo. Tócalo otra vez para quitarlo.'
+                       : 'Opcional: toca un estilo para convertir tu imagen a ese look.')
+      : '';
+  if (id === muestraDe) return;   // la muestra no parpadea en cada repintado
+  muestraDe = id;
+  const img = $('#muestra-img');
+  img.hidden = true;
+  $('#estilo_ej').textContent = id ? (DESCR_ESTILO[id] || '')
+    : 'Sin estilo: tu imagen toma el look que describas.';
+  if (!id || id === 'custom') { img.removeAttribute('src'); return; }
+  img.onload = () => { img.hidden = false; };
+  img.onerror = () => { img.hidden = true; };
+  img.src = `/estilos/${id}.jpg`;
+}
+
+// ---------- formato ----------
+$('#formatos').onclick = ev => {
+  const b = ev.target.closest('.fmt');
+  if (!b || archivo) return;          // con imagen el formato lo pone ella
+  elegirFormato(b.dataset.fmt);
+};
+function elegirFormato(f) {
+  if (archivo) return;
+  formatoElegido = f;
+  fijarFormato(f);
+}
+function fijarFormato(f) {
+  formato = f;
+  document.querySelectorAll('.fmt').forEach(x => {
+    x.classList.toggle('on', x.dataset.fmt === f);
+    x.setAttribute('aria-checked', String(x.dataset.fmt === f));
+  });
+}
+
+// ---------- imagen de trabajo ----------
+const imgC = $('#img-canvas'), maskC = $('#mask-canvas');
+const imgX = imgC.getContext('2d'), maskX = maskC.getContext('2d');
+const MAX_LADO = 1600;   // se reduce en el navegador: sube rápido y a fal le basta
+
+function cargarImagen(f) {
+  if (enVuelo) return;            // no se cambia la imagen bajo una petición en curso
+  if (!f || !/^image\/(png|jpeg|webp)$/.test(f.type)) {
+    $('#gerr').textContent = 'Elige una imagen JPG, PNG o WebP.'; return;
+  }
+  if (f.size > 15 * 1024 * 1024) { $('#gerr').textContent = 'La imagen pasa de 15 MB.'; return; }
+  $('#gerr').textContent = '';
+  // cada carga invalida las anteriores, y mientras decodifica no se envía:
+  // si no, el clic veía la imagen vieja y el lienzo cambiaba bajo la petición
+  const gen = ++generacion;
+  cargando = true;
+  pintaBoton();
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  const cerrar = () => {
+    URL.revokeObjectURL(url);
+    if (gen === generacion) { cargando = false; pintaBoton(); }
+  };
+  img.onerror = () => {
+    cerrar();
+    if (gen === generacion) $('#gerr').textContent = 'No pude abrir esa imagen.';
+  };
+  img.onload = () => {
+    cerrar();
+    if (gen !== generacion || enVuelo) return;
+    const k = Math.min(1, MAX_LADO / Math.max(img.width, img.height));
+    imgC.width = maskC.width = Math.round(img.width * k);
+    imgC.height = maskC.height = Math.round(img.height * k);
+    imgX.drawImage(img, 0, 0, imgC.width, imgC.height);
+    $('#lienzo-wrap').style.setProperty('--ar', imgC.width / imgC.height);
+    maskX.clearRect(0, 0, maskC.width, maskC.height);
+    hayTrazo = false;
+    archivo = f;
+    $('#miniatura').src = imgC.toDataURL('image/jpeg', 0.6);
+    // el formato de una imagen que ya existe no se elige: se lee
+    fijarFormato(imgC.width > imgC.height * 1.15 ? 'horizontal'
+                 : imgC.height > imgC.width * 1.15 ? 'vertical' : 'cuadrado');
+    verEstado('lienzo');
+  };
+  img.src = url;
+}
+
+function soltarImagen() {
+  generacion++;                   // una carga a medias ya no cuenta
+  cargando = false;
+  archivo = null; hayTrazo = false; estiloDestino = null;
+  maskX.clearRect(0, 0, maskC.width, maskC.height);
+  fijarFormato(formatoElegido);   // vuelve la elección del usuario, no la de la foto
+}
+// «Quitar» suelta la imagen de trabajo, NO el resultado ya pagado
+function quitarAdjunto() {
+  if (enVuelo) return;
+  soltarImagen();
+  verEstado(ultimoNombre ? 'resultado' : 'vacio');
+}
+function empezarDeNuevo() {
+  if (enVuelo) return;
+  soltarImagen();
+  ultimoNombre = null;
+  verEstado('vacio');
+}
+
+$('#mas').onclick = () => { if (!enVuelo) $('#archivo').click(); };
+$('#archivo').onchange = () => {
+  const f = $('#archivo').files[0];
+  $('#archivo').value = '';       // elegir otra vez el mismo archivo vuelve a disparar change
+  cargarImagen(f);
+};
+$('#quitar').onclick = quitarAdjunto;
+$('#limpiar').onclick = empezarDeNuevo;
+$('#ver-original').onclick = () => { if (!enVuelo && archivo) verEstado('lienzo'); };
+$('#ver-resultado').onclick = () => { if (!enVuelo && ultimoNombre) verEstado('resultado'); };
+['dragover', 'dragleave', 'drop'].forEach(ev => $('#zona').addEventListener(ev, e => {
+  e.preventDefault();
+  $('#zona').classList.toggle('arrastrando', ev === 'dragover' && !enVuelo);
+  if (ev === 'drop') cargarImagen(e.dataTransfer.files[0]);
+}));
+// pegar (Ctrl+V) es como arrastrar: la gente copia imágenes del navegador.
+// Pero Excel y PowerPoint copian texto Y un dibujo de lo copiado: si viene
+// texto, gana el texto — quien pega en la caja quiere pegar sus palabras.
+document.addEventListener('paste', e => {
+  const cd = e.clipboardData;
+  if (!cd || enVuelo || [...cd.types].includes('text/plain')) return;
+  const f = [...cd.files].find(x => x.type.startsWith('image/'));
+  if (f) { e.preventDefault(); cargarImagen(f); }
+});
+
+// ---------- estados de la pantalla ----------
+// Todo lo visible sale de tres datos: qué se ve (ESTADO), si hay imagen de
+// trabajo (archivo) y el modo. Tras editar, la imagen de trabajo SIGUE siendo
+// la original: enviar otra vez es «otra versión» del mismo cambio, y por eso
+// su miniatura se queda a la vista — sin ella, el botón cobraría sobre una
+// imagen que nadie está viendo. Y del resultado siempre hay vuelta atrás.
+function verEstado(e) {
+  ESTADO = e;
+  const conImagen = !!archivo, pincel = MODO === 'pincel';
+  $('#vacio').classList.toggle('hidden', e !== 'vacio');
+  $('#lienzo-wrap').classList.toggle('hidden', e !== 'lienzo');
+  $('#final').classList.toggle('hidden', e !== 'resultado');
+  $('#acciones').classList.toggle('hidden', e !== 'resultado');
+  $('#herramientas').classList.toggle('hidden', e !== 'lienzo' || !pincel);
+  maskC.classList.toggle('hidden', !pincel);
+  $('#cabeza').classList.toggle('hidden', !conImagen);
+  $('#ver-resultado').classList.toggle('hidden', !ultimoNombre || e === 'resultado');
+  $('#nota-adjunto').textContent = e === 'resultado'
+    ? 'Enviar otra vez vuelve a aplicar el cambio sobre esta imagen.' : '';
+  $('#mas').classList.toggle('hidden', conImagen);
+  $('#formatos').classList.toggle('bloqueado', conImagen);
+  document.querySelectorAll('.fmt').forEach(x => x.setAttribute('aria-disabled', String(conImagen)));
+  $('#nota-formato').textContent = conImagen
+    ? 'Lo pone tu imagen: al cambiarla se respeta su formato.'
+    : 'Cada imagen sale en el formato que elijas aquí.';
+  const estiloFuera = conImagen && pincel;
+  $('#estilos').classList.toggle('apagado', estiloFuera);
+  $('.muestra').classList.toggle('apagado', estiloFuera);
+  pintaEstilo();
+  pintaBoton();
+}
+
+// ---------- modos ----------
+const TEXTOS = {
+  crear: { sub: 'Escribe lo que quieres ver, o adjunta una imagen para cambiarla.',
+           hint: 'Escribe / para ver las habilidades',
+           verbo: 'Generar', trabajando: 'Creando tu imagen · ~20 s',
+           vacio: 'Escribe qué imagen quieres.' },
+  pincel: { sub: 'Pinta la zona que quieres cambiar y descríbela. El resto queda intacto.',
+            hint: 'Qué quieres en la zona pintada — p. ej. «una ventana con plantas»',
+            verbo: 'Cambiar', trabajando: 'Cambiando la zona que pintaste · ~20 s',
+            vacio: 'Describe qué quieres en la zona pintada.' },
+  todo: { sub: 'Describe en qué quieres convertirla. Se transforma entera, con el mismo encuadre.',
+          hint: 'En qué la convertimos — p. ej. «acuarela sobre papel con grano»',
+          verbo: 'Transformar', trabajando: 'Transformando tu imagen · ~20 s',
+          vacio: 'Describe en qué quieres convertir la imagen.' },
+};
+
+function fijarModo(m) {
+  if (enVuelo) return;
+  MODO = m;
+  const pincel = m === 'pincel';
+  $('#modo-pincel').classList.toggle('activo', pincel);
+  $('#modo-todo').classList.toggle('activo', !pincel);
+  $('#modo-pincel').setAttribute('aria-checked', String(pincel));
+  $('#modo-todo').setAttribute('aria-checked', String(!pincel));
+  $('#gerr').textContent = '';
+  // quien elige «Cambiar una zona» va a pintar: se le enseña su imagen (el
+  // resultado sigue a un clic, en «Ver resultado»)
+  verEstado(pincel && archivo && ESTADO === 'resultado' ? 'lienzo' : ESTADO);
+}
+$('#modo-pincel').onclick = () => fijarModo('pincel');
+$('#modo-todo').onclick = () => fijarModo('todo');
+
+// ---------- pincel ----------
+let pintando = false, ultimo = null;
+function puntoDe(e) {
+  const r = maskC.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * maskC.width / r.width,
+           y: (e.clientY - r.top) * maskC.height / r.height };
+}
+function traza(p) {
+  maskX.strokeStyle = maskX.fillStyle = '#da8c28';
+  maskX.lineWidth = +$('#grosor').value; maskX.lineCap = maskX.lineJoin = 'round';
+  maskX.beginPath();
+  if (ultimo) { maskX.moveTo(ultimo.x, ultimo.y); maskX.lineTo(p.x, p.y); maskX.stroke(); }
+  maskX.arc(p.x, p.y, maskX.lineWidth / 2, 0, Math.PI * 2); maskX.fill();
+  ultimo = p; hayTrazo = true;
+}
+maskC.addEventListener('pointerdown', e => {
+  pintando = true; ultimo = null; traza(puntoDe(e)); maskC.setPointerCapture(e.pointerId);
+});
+maskC.addEventListener('pointermove', e => { if (pintando) traza(puntoDe(e)); });
+['pointerup', 'pointercancel'].forEach(ev =>
+  maskC.addEventListener(ev, () => { pintando = false; ultimo = null; }));
+$('#borrar').onclick = () => { maskX.clearRect(0, 0, maskC.width, maskC.height); hayTrazo = false; };
+
+// para el modelo: la original + una copia con la zona resaltada en rosa
+function marcadaBlob() {
+  const c = document.createElement('canvas');
+  c.width = maskC.width; c.height = maskC.height;
+  const x = c.getContext('2d');
+  x.drawImage(imgC, 0, 0);
+  x.globalAlpha = 0.55;
+  x.drawImage(maskC, 0, 0);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+}
+const imagenBlob = () => new Promise(res => imgC.toBlob(res, 'image/jpeg', 0.92));
+
+// ---------- paleta de «/» ----------
+// Atajos del navegador para lo que ya está en pantalla: no hay LLM detrás, y
+// cada envío sigue siendo UNA llamada al modelo de imagen.
+const ATAJOS = [
+  { cmd: '/zona', que: 'Cambiar solo la zona que pintes', conImagen: true, hacer: () => fijarModo('pincel') },
+  { cmd: '/transformar', que: 'Transformar la imagen entera', conImagen: true, hacer: () => fijarModo('todo') },
+  { cmd: '/subir', que: 'Adjuntar una imagen tuya', sinImagen: true, hacer: () => $('#archivo').click() },
+  { cmd: '/horizontal', que: 'Formato 16:9', sinImagen: true, hacer: () => elegirFormato('horizontal') },
+  { cmd: '/vertical', que: 'Formato 9:16', sinImagen: true, hacer: () => elegirFormato('vertical') },
+  { cmd: '/cuadrado', que: 'Formato 1:1', sinImagen: true, hacer: () => elegirFormato('cuadrado') },
+];
+// los de estilo los añade la respuesta de /api/estilos. El único que borra
+// algo va siempre al final y NUNCA sale preseleccionado: con solo «/» escrito,
+// un Enter no puede tirar la imagen ni el resultado pagado.
+const NUEVO = { cmd: '/nuevo', que: 'Empezar de nuevo (quita tu imagen y el resultado)',
+                borra: true, hacer: empezarDeNuevo };
+let visibles = [], sel = -1;
+
+function pintaPaleta() {
+  const t = $('#prompt').value;
+  // solo si «/» abre el texto: así no salta con «24/7» ni con una URL
+  const abierta = t.startsWith('/') && !/\s/.test(t);
+  const hayAlgo = archivo || ultimoNombre;
+  visibles = !abierta ? [] : [...ATAJOS, ...(hayAlgo ? [NUEVO] : [])].filter(a =>
+    a.cmd.startsWith(sinAcentos(t)) && !(a.conImagen && !archivo) && !(a.sinImagen && archivo));
+  sel = t.length > 1 ? visibles.findIndex(a => !a.borra) : -1;
+  $('#paleta').classList.toggle('hidden', !visibles.length);
+  $('#paleta').innerHTML = visibles.map((a, i) =>
+    `<div role="option" id="atajo-${i}" data-i="${i}" aria-selected="false"><b>${a.cmd}</b> · ${a.que}</div>`).join('');
+  $('#anuncio').textContent = visibles.length
+    ? `${visibles.length} atajos. Flechas para elegir, Enter para usar.` : '';
+  marcaSel();
+}
+function marcaSel() {
+  $('#paleta').querySelectorAll('[role=option]').forEach((d, i) => {
+    d.classList.toggle('sel', i === sel);
+    d.setAttribute('aria-selected', String(i === sel));
+  });
+  if (sel >= 0 && visibles.length) {
+    $('#prompt').setAttribute('aria-activedescendant', `atajo-${sel}`);
+    $(`#atajo-${sel}`).scrollIntoView({ block: 'nearest' });
+  } else {
+    $('#prompt').removeAttribute('aria-activedescendant');
+  }
+}
+function usarAtajo(i) {
+  const a = visibles[i];
+  if (!a || enVuelo) return;
+  $('#prompt').value = '';        // el comando no viaja al modelo
+  pintaPaleta();
+  a.hacer();
+  $('#prompt').focus();
+}
+$('#paleta').onclick = ev => {
+  const d = ev.target.closest('[data-i]');
+  if (d) usarAtajo(+d.dataset.i);
+};
+$('#prompt').addEventListener('input', pintaPaleta);
+$('#prompt').addEventListener('keydown', e => {
+  if (visibles.length) {
+    const n = visibles.length;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % n; marcaSel(); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); sel = sel <= 0 ? n - 1 : sel - 1; marcaSel(); return; }
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (sel >= 0) usarAtajo(sel);
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); $('#prompt').value = ''; pintaPaleta(); return; }
+    // Tab no se toca: mueve el foco, como en cualquier campo
+  }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#enviar').click(); }
+});
+
+// ---------- monedero: el costo se ve ANTES de gastar ----------
+const CTA = 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.';
+let tarifa = null, saldo = null;
+// M19: a media petición este listener NO puede tocar el botón. monedero.js
+// refresca el saldo en CADA visibilitychange, así que sin la guarda irse a otra
+// pestaña y volver rehabilitaba el botón y el segundo clic COBRABA otra vez.
+document.addEventListener('monedero', e => {
+  const mon = e.detail;
+  if (!mon.activo || mon.tarifas.imagen == null || enVuelo) return;
+  tarifa = mon.tarifas.imagen; saldo = mon.saldo;
+  pintaBoton();
+});
+// M21: un verbo y el precio. Cada etiqueta escrita entera para que el
+// guardián de botones las lea tal cual.
+const CON_PRECIO = {
+  crear: n => `Generar ✦ ${n}`,
+  pincel: n => `Cambiar ✦ ${n}`,
+  todo: n => `Transformar ✦ ${n}`,
+};
+function pintaBoton() {
+  const t = TEXTOS[cual()];
+  $('#sub').textContent = t.sub;
+  $('#prompt').placeholder = t.hint;
+  $('#enviar').textContent = tarifa == null ? t.verbo : CON_PRECIO[cual()](tarifa);
+  if (enVuelo) return;
+  const falta = tarifa == null ? 0 : tarifa - saldo;
+  $('#enviar').disabled = cargando || falta > 0;
+  $('#saldoform').textContent = falta > 0
+    ? `Te faltan ${falta} créditos (saldo: ${saldo}). ${CTA}` : '';
+}
+
+// si orbe.js no cargó, el botón de gastar créditos NO puede romperse por un
+// adorno: se sigue sin orbe
+const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE, desmontar() {} };
+const montarOrbe = o => (window.orbe ? orbe.montar($('#orbe-hueco'), o) : SIN_ORBE);
+// todo lo que puede cambiar la imagen, la zona o la vista queda quieto en vuelo
+const HERRAMIENTAS = ['#grosor', '#borrar', '#mas', '#quitar', '#ver-original', '#ver-resultado',
+                      '#seguir', '#limpiar', '#modo-pincel', '#modo-todo'];
+function bloquear(si) {
+  $('#zona').classList.toggle('en-vuelo', si);
+  $('#lienzo-wrap').classList.toggle('trabajando', si);
+  HERRAMIENTAS.forEach(s => { $(s).disabled = si; });
+}
+
+// ---------- enviar ----------
+$('#enviar').onclick = async () => {
+  if (enVuelo || cargando) return;
+  $('#gerr').textContent = '';
+  const modo = cual(), prompt = $('#prompt').value.trim();
+  if (/^\/\S*$/.test(prompt)) {
+    $('#gerr').textContent = 'Eso es un atajo: elígelo en la lista con Enter, o escribe lo que quieres.';
+    return;
+  }
+  if (modo === 'pincel' && !hayTrazo) {
+    if (ESTADO !== 'lienzo') verEstado('lienzo');   // para pintar hay que ver la imagen
+    $('#gerr').textContent = 'Pinta sobre tu imagen la zona que quieres cambiar, '
+      + 'o elige «Transformar toda».';
+    return;
+  }
+  if (!prompt) { $('#gerr').textContent = TEXTOS[modo].vacio; $('#prompt').focus(); return; }
+  enVuelo = true;
+  $('#enviar').disabled = true;
+  bloquear(true);
+  const mando = montarOrbe({
+    texto: 'Revisando tu texto…',   // cubre el hueco mudo del guardrail
+    tope: 180000,
+    alAgotar: m => m.texto('Esto está tardando más de lo normal. Si no aparece tu '
+      + 'imagen, inténtalo otra vez; si te descontaron créditos, escríbenos.'),
+  });
+  try {
+    // El pedido se arma ANTES de moderar: lo que se toque en pantalla durante
+    // la revisión ya no cambia lo que se cobra.
+    const url = modo === 'crear' ? '/api/imagenes' : '/api/imagenes/editar';
+    const pedido = modo === 'crear'
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, estilo, estilo_custom: $('#estilo_custom').value, formato }) }
+      : { method: 'POST', body: await cuerpoEditar(modo, prompt) };
+    if (!await guardrail(prompt)) return;   // M13
+    mando.texto(TEXTOS[modo].trabajando);
+    const r = await fetch(url, pedido);
+    if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
+    if (!r.ok) throw new Error(await errTxt(r));
+    const d = await r.json();
+    mando.desmontar();              // el orbe se va ANTES de que aparezca el resultado
+    ultimoNombre = d.nombre;
+    $('#final').src = d.url;
+    $('#descargar').href = `/api/imagenes/${d.nombre}/archivo`;
+    verEstado('resultado');
+    window.monedero?.refrescar();
+  } catch (e) {
+    mando.desmontar();              // NUNCA un orbe girando junto a un error
+    $('#gerr').textContent = e.message;
+  } finally {
+    mando.desmontar();
+    bloquear(false);
+    enVuelo = false;
+    $('#enviar').disabled = false;
+    pintaBoton();
+  }
+};
+
+async function cuerpoEditar(modo, prompt) {
+  const fd = new FormData();
+  fd.append('prompt', prompt);
+  fd.append('modo', modo);
+  fd.append('imagen', await imagenBlob(), 'imagen.jpg');
+  if (modo === 'pincel') fd.append('marcada', await marcadaBlob(), 'marcada.jpg');
+  // el estilo es un destino: solo al transformar, y solo si el usuario eligió uno
+  if (modo === 'todo' && estiloDestino) {
+    fd.append('estilo', estiloDestino);
+    fd.append('estilo_custom', $('#estilo_custom').value);
+  }
+  return fd;
+}
+
+// ---------- seguir editando lo que acabamos de crear ----------
+// Los bytes se piden a NUESTRO endpoint: la URL del CDN no manda cabeceras
+// CORS, y una imagen traída de ahí ensucia el canvas — `toBlob` reventaría
+// justo al mandar la máscara.
+$('#seguir').onclick = async () => {
+  if (enVuelo || !ultimoNombre) return;
+  const nombre = ultimoNombre;
+  $('#gerr').textContent = '';
+  $('#seguir').disabled = true;
+  try {
+    const r = await fetch(`/api/imagenes/${nombre}/archivo`);
+    if (!r.ok) throw new Error(await errTxt(r));
+    const b = await r.blob();
+    // si mientras bajaba salió otra petición o cambió lo que hay en pantalla,
+    // esta imagen ya es vieja: pintarla sería editar la versión anterior
+    if (enVuelo || nombre !== ultimoNombre || ESTADO !== 'resultado') return;
+    cargarImagen(new File([b], 'imagen.jpg', { type: 'image/jpeg' }));
+    $('#prompt').focus();
+  } catch (e) {
+    $('#gerr').textContent = `No pude abrir tu imagen para editarla: ${e.message}`;
+  } finally {
+    if (!enVuelo) $('#seguir').disabled = false;
+  }
+};
+
+fijarFormato(formatoElegido);
+verEstado('vacio');
+window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic
+</script>
+</body>
+</html>

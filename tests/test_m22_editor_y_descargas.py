@@ -275,6 +275,21 @@ def test_en_local_publicar_sigue_funcionando(monkeypatch):
     publicar_api._solo_local("Agendar en tus redes")   # no lanza
 
 
+def test_el_estado_de_publicar_responde_en_nube(monkeypatch, s3):
+    """El arreglo de D se quedó a medias: la rama de nube listaba bien los
+    descargables, pero la respuesta leía el registro de publicaciones con la
+    ruta del disco, que solo existe en local. En el servicio eso era un
+    UnboundLocalError → 500, y el modal de Publicar volvía a no ofrecer nada.
+    En la nube no hay registro que leer: agendar todavía no corre ahí."""
+    from server import editor
+    monkeypatch.setattr(publicar_api, "_nube", lambda: True)
+    monkeypatch.setattr(editor, "_proyecto_nube", lambda name: {"subidas": []})
+    monkeypatch.setattr(publicar_api.blotato, "clave_y_origen", lambda user: (None, None))
+    r = publicar_api.estado("v1")
+    assert {a["clave"] for a in r["descargables"]} >= {"pelicula", "subtitulado", "srt"}
+    assert r["publicadas"] == [] and r["blotato"] is False
+
+
 def test_el_front_de_shorts_ofrece_ver_y_descargar():
     from pathlib import Path
     html = Path("static/shorts.html").read_text(encoding="utf-8")

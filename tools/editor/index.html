@@ -1501,13 +1501,26 @@ async function b3abrir() {
          <div class="b3sqTxt">aún no hay<br>película final</div>
        </div>`;
   const mas = $("b3masWrap");
-  $("b3masTxt").style.display = st.blotato ? "none" : "";
-  mas.style.cursor = st.blotato ? "default" : "pointer";
-  mas.onclick = st.blotato ? null : () => window.open("https://my.blotato.com/settings/api", "_blank");
+  // M23 C: la cuenta se conecta en el inicio (el «+» de Blotato), en otra
+  // pestaña para no perder la edición; al volver, reabrir Publicar la lee.
+  // Una clave que Blotato ya no acepta (reconectar) también lleva ahí.
+  const conectar = !st.blotato || st.reconectar;
+  $("b3masTxt").style.display = conectar ? "" : "none";
+  $("b3masTxt").innerHTML = st.reconectar ? "Haz click para<br>reconectar Blotato"
+                                          : "Haz click para<br>agregar Blotato";
+  mas.style.cursor = conectar ? "pointer" : "default";
+  mas.onclick = conectar ? () => window.open("/?blotato=conectar", "_blank", "noopener") : null;
   if (!st.blotato) {
-    $("b3fn2").innerHTML = "";
+    $("b3fn2").innerHTML = st.error ? `<span style='color:#ff8080'>${st.error}</span>` : "";
   } else if (st.error) {
     $("b3fn2").innerHTML = `<span style='color:#ff8080'>${st.error}</span>`;
+  } else if (st.agendar === false) {
+    // en el servicio agendar todavía no corre (da 503): se dice, sin formulario
+    const n = st.cuentas.length;
+    $("b3fn2").innerHTML = `<div style="font-size:12px;line-height:1.5;color:var(--dim)">
+      ✓ Tu Blotato está conectado${n ? ` (${n} ${n === 1 ? "red" : "redes"})` : ""}.<br>
+      Programar desde aquí llega muy pronto. Por ahora descarga la película y
+      súbela desde Blotato.</div>`;
   } else {
     // M3: "Programar" es el default — publicar de inmediato es la opción
     // explícita, y la zona horaria del navegador queda a la vista.

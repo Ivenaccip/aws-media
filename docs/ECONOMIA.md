@@ -56,6 +56,21 @@ al mes; el anual, un minuto completo** (o 50–100 imágenes, o clips sueltos �
 misma bolsa). El costo es casi lineal en segundos (Veo = 80 %), así que la
 regla no se rompe con duraciones raras.
 
+**Precio por duración (M23 · V, 2026-09-16).** La pantalla de crear ya no usa
+un deslizador: la duración se elige en pasos fijos y el botón dice el precio
+de la película entera (`Generar ✦ 100` para 0:30). Ese precio vive en
+`tools/tarifas.json` §`video.por_duracion`, una tabla de duración → total.
+- **Qué duraciones acepta el servidor:** solo las llaves de esa tabla. Cualquier
+  otra responde 422 antes de gastar.
+- **Cómo se cobra:** `preparar` al empezar, y el resto (total − `preparar`) al
+  producir.
+- **Precios de hoy:** son exactamente la regla de arriba (10 + 3 × s: 0:15 → 55,
+  0:30 → 100, 1:00 → 190), así que la tabla no cambió ningún precio.
+- **Para cambiar un precio:** se edita la tabla, y cambian a la vez la pantalla
+  y el cobro.
+- **Duraciones fuera de la tabla:** los proyectos anteriores a ella siguen
+  cobrando por segundo.
+
 ## 3. Packs de recarga
 
 | Pack | Precio | $/crédito | Margen sobre costo | Se lee como |

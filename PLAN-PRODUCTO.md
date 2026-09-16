@@ -1483,6 +1483,147 @@ aquí para cuando toque; lo único que se aprovecha desde ya es el dato de que
 ElevenLabs Music por fal cuesta 4× lo que cuesta directo — si algún día se usa
 música en el servicio, no se pide por ahí.
 
+## Fase M23 — Imágenes en una sola herramienta, Blotato por usuario y MIX (2026-09-16)
+
+Petición del dueño: unir el creador y el editor de imágenes (la diferencia real
+es si hay imagen), añadir horizontal/vertical, una UI que quepa en la pantalla,
+conectar la clave de Blotato para las tres secciones «próximamente» y una
+función **MIX** que produzca y publique sola a la hora que se elija. El análisis
+de factibilidad (25 agentes, con verificación cruzada) dijo que todo se puede;
+estas son las decisiones que tomó el dueño y el orden que sale de ellas.
+
+### A · Imágenes en una sola herramienta ✅ CÓDIGO LISTO (2026-09-16)
+
+Decisión: empezar ya, con el modelo actual, en una página NUEVA que convive con
+las dos viejas y que **no se enlaza en el menú hasta validarla**.
+
+- `static/imagenes.html`: sin imagen = crear (estilo + **formato** horizontal,
+  vertical o cuadrado); con imagen = «Cambiar una zona» (pincel) o
+  «Transformar toda» (con el estilo como destino, **solo si el usuario lo
+  elige**: el «Animado» marcado por defecto contaminaba «pásala a acuarela»).
+  «Seguir editando», paleta «/», pegar y arrastrar. Cabe sin scroll en
+  1366×768 y se apila en el teléfono.
+- Backend compatible: `formato` en `POST /api/imagenes` (tabla propia, no
+  `FORMATOS`: Veo no acepta 1:1), `estilo` en `/editar` (solo modo `todo`) y
+  `GET /api/imagenes/{nombre}/archivo` (bytes desde nuestro origen: el CDN no
+  manda CORS y ensucia el canvas).
+- **Corrección de seguridad de paso:** en la nube, `/tmp/work/_imagenes` lo
+  comparten todos los usuarios del contenedor caliente, y `ver_imagen` servía
+  de ahí sin mirar el dueño. Ahora en la nube la copia local se borra tras
+  subirla y nada se sirve del disco.
+- [ ] Validar en producción entrando directo a `/imagenes.html`.
+- [ ] Después: una sola entrada «Imágenes» en el menú y redirigir
+      `crear-imagenes.html` y `editor-imagenes.html`.
+
+### B · Modelos a elegir, con su costo en créditos (después)
+
+Decisión: de momento se queda Nano Banana; después, que el usuario elija entre
+varios modelos viendo cuánto cuesta cada uno en créditos.
+
+**Fecha dura:** Google apaga `gemini-2.5-flash-image` el **2026-10-02**
+(tabla oficial de deprecaciones, verificada el 16-sep), y `fal-ai/nano-banana`
+es ese modelo. Dependen de él: crear y editar imágenes, las opciones de
+personaje de M1, los candidatos de b-roll (g2) y `GEMINI_IMAGE_MODEL`. Así que
+el selector, o al menos el cambio de modelo, tiene que estar antes de esa fecha.
+
+- **Tarifa por modelo** en `tools/tarifas.json`, no fija. Hoy la imagen se
+  cobra a 2 créditos y cuesta $0.04 dólares (`pricing.json`): en el pack de
+  1200 se vende a $0.03 — **se pierde dinero en cada imagen**.
+- **Trampa conocida:** `pipeline/pricing.py` reconoce el modelo con
+  `"nano-banana" in app`, y eso también casa con `nano-banana-2` y
+  `nano-banana-2-lite`: registraría mal el costo. Cada modelo necesita su clave.
+- Candidatos: Nano Banana 2 Lite para crear (público en fal; su `/edit` estaba
+  oculto y sin precio el 16-sep), Nano Banana 2, Grok edit (ya integrado,
+  `pricing.json`). Para editar hace falta un A/B pagado (pedir permiso).
+
+### C · Blotato: cada usuario trae su clave (después del 23)
+
+Decisión: cada usuario conecta SU clave (y paga su plan de Blotato).
+
+Va en entregas, cada una con su PR:
+
+- [x] **C1 · Conectar la clave** (2026-09-16, rama `blotato-clave-usuario`):
+      almacén por usuario (`pipeline/claves_usuario.py`), `GET/POST/DELETE
+      /api/blotato`, el «+» del inicio abre el modal con el aviso del cobro
+      (precio desde `pricing.json` §`blotato_suscripcion`), `pipeline/blotato.py`
+      recibe la clave en cada llamada, el permiso de escritura en la IAM de la
+      API y el arreglo de la fuga de claves entre usuarios en los workers. El
+      editor manda a conectar y, en el servicio, dice que programar llega
+      pronto en vez de enseñar un formulario que da 503. Sale con el deploy de
+      siempre (`aws-media-api` lleva el permiso nuevo).
+- [ ] **C2 · Publicar en la nube:** agendar y títulos desde un worker.
+- [ ] **C3 · Agenda** · [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
+
+Lo que pedía el análisis:
+
+- **Guardar:** SSM SecureString en `/media-ivenaccip/usuarios/<sub>/BLOTATO_API_KEY`
+  (el patrón D4 que ya usa `CLAUDE_API_KEY`). **Cambio de CDK:** la Lambda de la
+  API solo tiene `ssm:GetParameter*`; necesita `ssm:PutParameter` y
+  `ssm:DeleteParameter` restringidos a `usuarios/*/BLOTATO_API_KEY`. El `<sub>`
+  sale SIEMPRE del token, nunca del cuerpo.
+- **Endpoints:** conectar (valida con `GET /v2/users/me/accounts` antes de
+  guardar), estado (conectado sí/no y redes; jamás devuelve la clave) y
+  desconectar.
+- **Refactor:** `pipeline/blotato.py` lee `settings.blotato_api_key`, que se
+  congela al importar: cada función tiene que recibir la clave. Una
+  `clave_blotato(user_id)` que **nunca** caiga a una clave de la plataforma
+  (publicaría en la cuenta equivocada). Ojo: `cargar_env_usuario` pisa el
+  entorno del worker sin limpiarlo, así que un worker reutilizado podría
+  arrastrar la clave del usuario anterior.
+- **Avisar antes de mandar a Blotato:** generar la clave termina su prueba
+  gratis y activa el plan de pago (Starter $29 al mes, externo, por verificar).
+- **Publicar en la nube** (hoy `agendar` y `titulos` responden 503): subir el
+  video desde un worker y mandar los campos que exige cada red (TikTok:
+  `privacyLevel`, `isAiGenerated`…; YouTube: `title`, `privacyStatus`…).
+- Las tres secciones:
+  - **Agenda:** la API REST v2 la cubre (crear, listar, reprogramar, borrar).
+  - **Métricas:** solo por publicación, solo de lo publicado vía Blotato,
+    8 redes sin LinkedIn, sin seguidores.
+  - **Competencia:** Blotato no la tiene. Se hace con Apify (ya integrado) y
+    necesita tarifa nueva en `tarifas.json`; no depende de la clave.
+
+### D · MIX (después del 23)
+
+Decisión: **cada usuario elige su hora**; si varias corridas coinciden, **se
+encolan** (la capacidad se amplía después). **Una sola automatización por
+usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
+
+- **Requisitos previos** (sirven también sin MIX):
+  - delante de Fargate no hay cola: la cuota es de 30 vCPU = 7 tareas de 4
+    vCPU, compartidas con todo; una octava probablemente falla;
+  - la state machine no tiene `Retry` ni `Catch`, y la devolución de créditos
+    solo ocurre dentro del contenedor: falta un barredor de ejecuciones
+    fallidas con devolución idempotente;
+  - C (clave de Blotato), si MIX publica.
+- **Arquitectura propuesta:** tabla de programaciones (una por usuario) →
+  disparo a la hora elegida → cola SQS → despachador que lanza como mucho
+  5 a la vez (deja sitio al uso interactivo) → una tarea que prepara, decide
+  lo que hoy decide el usuario (tema de su lista, personaje y voz fijos,
+  formato vertical), produce, subtitula y deja **borrador** o agenda en
+  Blotato. Cobro antes de lanzar; sin saldo, la corrida se omite y se avisa.
+  Ojo: un barrido de Aurora cada pocos minutos le impide pausarse.
+- **Costo medido** (6 producciones reales, Langfuse + AWS): de $0.64 a $1.34
+  dólares por película de 30 s (mediana $1.09) contra 100 créditos. Hallazgo:
+  en 3 de 4 películas de 30 s la narración quedó en 15–20 s, y se cobró la
+  duración objetivo.
+- Empezar en **borrador** (el usuario aprueba con un clic) y pasar a publicar
+  directo cuando haya confianza.
+
+### Hallazgos del análisis que no esperan a M23
+
+- **Publicar en la nube respondía 500** (`publicar_api.estado`): PR #89.
+- **Token de Apify en la URL** (`pipeline/apify.py`): rotarlo y mandarlo en
+  una cabecera.
+- **Cognito:** la contraseña provisional dura 7 días; con el tope de 50
+  correos al día hay que escalonar las invitaciones antes del 23.
+- **Cuota de concurrencia de Lambda:** ya es 1000 (antes 10).
+
+### Meta Ads
+
+Extra para después. Blotato no expone anuncios: haría falta una integración
+propia con la Marketing API de Meta. Guardar desde ya el id de cada
+publicación facilitaría promocionarla más adelante.
+
 ## Orden y dependencias
 
 ```
@@ -1496,6 +1637,8 @@ M10 (prompts en Langfuse): independiente — puede ir en cualquier hueco tras M1
 M11 (narración primero): tras M1-AWS y M2, ANTES de los focus groups
 M12 (hub + slots + Glacier): la lifecycle puede salir sola cuando sea; el hub
     y los slots, tras M8 (necesita los flujos Reels/Shorts ya en la web)
+M23: A (imágenes) ya · B (modelos) antes del 2-oct · C (Blotato) ──► D (MIX),
+    y D además tras la cola delante de Fargate y el barredor de fallos
 
 ```
 
