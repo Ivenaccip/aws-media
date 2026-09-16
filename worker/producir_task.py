@@ -93,9 +93,9 @@ def main(user_id: str, proyecto_id: str, fase: str = "todo") -> int:
     # habría devuelto la producción entera cada vez que un proyecto se para a
     # enseñar imágenes. Lo que se devuelve es el FALLO, y eso es "error".
     if p.estado == "error" and creditos.activo():
-        # C5: fallo nuestro = créditos de vuelta (el cobro fue por duración
-        # objetivo en el API; se recalcula con la misma tarifa)
-        n = creditos.costo_producir(p.duracion_s)
+        # C5: fallo nuestro = créditos de vuelta. M23 · V: lo que se cobró
+        # en el API, no la tabla de precios que traiga esta imagen
+        n = creditos.producir_cobrado(p)
         creditos.devolver(n, f"producir:{proyecto_id}", user_id)
         log.info("%s: %d créditos devueltos por producción fallida", proyecto_id, n)
     return 0 if p.estado == "listo" else 1

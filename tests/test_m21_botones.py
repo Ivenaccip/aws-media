@@ -27,7 +27,8 @@ VERBOS = {
 
 # Cada botón que gasta créditos, con el verbo que le toca.
 COBRAN = [
-    ("static/crear.html", "Escribir"),
+    # M23 · V: el botón de crear dice el precio de la película entera
+    ("static/crear.html", "Generar"),
     ("static/crear.html", "Cambiar"),
     ("static/crear.html", "Producir"),
     ("static/crear.html", "Reintentar"),
