@@ -342,6 +342,20 @@ def test_lo_que_explica_el_boton_va_pegado_a_el(html):
     assert "$('#ferr').scrollIntoView({block: 'nearest'});" in html
 
 
+def test_en_escritorio_queda_centrada_en_alto(html):
+    """Filas 1fr arriba y abajo con alto FIJO (con min-height la fila de arriba
+    copia a la de abajo y todo baja), y lo que sale bajo el botón vive en la
+    fila de abajo para no mover la cuadrícula."""
+    escritorio = html[html.index("@media (min-width: 901px)"):]
+    escritorio = escritorio[:escritorio.index("\n  }\n")]
+    assert "grid-template-rows:1fr auto auto auto 1fr;" in escritorio
+    assert "height:calc(100dvh - 24px)" in escritorio and "min-height" not in escritorio
+    assert "#form > .estado-envio { grid-row:5; align-self:start; }" in escritorio
+    estado = html[html.index('<div class="estado-envio">'):html.index("</section>")]
+    for pieza in ('id="orbe-form"', 'id="saldoform"', 'id="ferr"', 'id="cobronota"'):
+        assert pieza in estado, pieza
+
+
 def test_tus_peliculas_ya_no_vive_en_crear(html):
     """Decisión del dueño: la pantalla de crear es solo configurar. Las
     películas hechas se retoman desde el inicio, que ya las lista."""

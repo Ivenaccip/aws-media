@@ -55,7 +55,23 @@
      columnas iguales y dos filas que se invierten —estilo 1 + prompt 2 arriba,
      formato 2 + duración 1 abajo— y el botón debajo. Cabe en un portátil. */
   main.wide { max-width:1180px; }
-  main:has(> #form:not(.hidden)) { margin-top:12px; }
+  main:has(> #form:not(.hidden)) { margin-block:12px; }
+  /* En escritorio, centrada también en alto. Las filas 1fr de arriba y abajo
+     reparten el espacio que sobra, y lo que aparece bajo el botón (orbe,
+     avisos, la nota del cobro) vive en la de abajo: se come ese espacio sin
+     mover la cuadrícula. El alto es fijo y no mínimo a propósito: con
+     min-height la fila de arriba copia lo que mide la de abajo y todo baja.
+     Si no cabe, las filas 1fr quedan en 0, la cuadrícula arriba como antes, y
+     lo que sobra se desborda hacia abajo y se alcanza con scroll. */
+  @media (min-width: 901px) {
+    #form:not(.hidden) { display:grid; grid-template-columns:minmax(0, 1fr);
+                         grid-template-rows:1fr auto auto auto 1fr;
+                         height:calc(100vh - 24px); height:calc(100dvh - 24px); }
+    #form > .cabeza { grid-row:2; }
+    #form > .rejilla { grid-row:3; }
+    #form > #enviar { grid-row:4; }
+    #form > .estado-envio { grid-row:5; align-self:start; }
+  }
   /* el monedero vive fijo arriba a la derecha: la cabecera le deja su franja */
   .cabeza { display:flex; align-items:center; min-height:36px; margin-bottom:10px; padding-right:300px; }
   .cabeza h1 { margin:0; }
@@ -159,10 +175,10 @@
 
   /* 5 · el botón: centrado, del ancho de una columna */
   .btn.generar { width:calc((100% - 24px) / 3); min-width:260px; margin:14px auto 0; padding:12px; }
-  .nota-cobro, #form > #saldoform, #form > #ferr { text-align:center; }
+  .estado-envio { text-align:center; }
   .nota-cobro { margin:6px 0 0; }
-  #form > #saldoform, #form > #ferr:not(:empty) { margin:6px 0 0; }
-  #form > #saldoform:empty { display:none; }
+  #saldoform, #ferr:not(:empty) { margin:6px 0 0; }
+  #saldoform:empty { display:none; }
   @media (prefers-reduced-motion: reduce) { .aro, .caja { transition:none; } }
   @media (max-width: 900px) {
     .cabeza { padding-right:0; padding-top:44px; }
@@ -282,10 +298,12 @@
     </div>
     <button class="btn generar" id="enviar">Generar</button>
     <!-- lo que explica el estado del botón va pegado a él, antes de la nota -->
-    <div id="orbe-form"></div>
-    <p class="mut" id="saldoform"></p>
-    <div class="err" id="ferr" role="alert"></div>
-    <p class="mut nota-cobro" id="cobronota"></p>
+    <div class="estado-envio">
+      <div id="orbe-form"></div>
+      <p class="mut" id="saldoform"></p>
+      <div class="err" id="ferr" role="alert"></div>
+      <p class="mut nota-cobro" id="cobronota"></p>
+    </div>
     <!-- M23 · V: «Tus películas» ya no vive aquí; la lista está en el inicio -->
   </section>
 
