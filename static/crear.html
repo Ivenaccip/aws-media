@@ -22,12 +22,6 @@
   .row { display:flex; align-items:center; gap:12px; }
   .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#14100a; font:inherit; font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:18px; }
   a.btn { text-align:center; text-decoration:none; box-sizing:border-box; }
-  #lista-pelis a { display:flex; justify-content:space-between; gap:10px; padding:9px 12px; margin-bottom:6px;
-                   border-radius:10px; background:#18293f; border:1px solid var(--line); text-decoration:none;
-                   color:var(--txt); font-size:14px; }
-  #lista-pelis a:hover { border-color:var(--acc); }
-  #lista-pelis .peli-brief { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
-  #lista-pelis .peli-meta { color:var(--mut); font-size:12px; white-space:nowrap; }
   .btn:disabled { opacity:.45; cursor:default; }
   .btn.sec { background:transparent; border:1px solid var(--line); color:var(--txt); }
   .mut { color:var(--mut); font-size:13px; }
@@ -292,11 +286,7 @@
     <p class="mut" id="saldoform"></p>
     <div class="err" id="ferr" role="alert"></div>
     <p class="mut nota-cobro" id="cobronota"></p>
-    <!-- M5: volver a una película sin tener que guardar la URL -->
-    <div class="card" id="mispelis" hidden style="margin-top:24px">
-      <h2>🎞 Tus películas</h2>
-      <ul id="lista-pelis" style="list-style:none;padding:0;margin:0"></ul>
-    </div>
+    <!-- M23 · V: «Tus películas» ya no vive aquí; la lista está en el inicio -->
   </section>
 
   <!-- 2. Preparando / produciendo -->
@@ -1224,24 +1214,6 @@ $('#reintentar').onclick = async () => {
   $('#reintentar').disabled = false;
 };
 
-// --- M5: tus películas — volver a cualquiera sin tener que guardar la URL ---
-const ESTADO_PELI = {creado:'en preparación', preparando:'en preparación',
-  revision:'en revisión — te espera', produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
-async function cargarPeliculas() {
-  try {
-    const r = await fetch('/api/proyectos');
-    if (!r.ok) return;
-    const ps = (await r.json()).filter(p => !p.archivado);   // M12
-    if (!ps.length) return;
-    $('#lista-pelis').innerHTML = ps.slice(0, 8).map(p =>
-      `<li><a href="?p=${p.id}">` +
-      `<span class="peli-brief">${(p.brief || '(sin brief)').replace(/</g,'&lt;')}</span>` +
-      `<span class="peli-meta">${ESTADO_PELI[p.estado] || p.estado} · ${new Date(p.creado).toLocaleDateString()}</span>` +
-      `</a></li>`).join('');
-    $('#mispelis').hidden = false;
-  } catch { /* la lista es cortesía: sin ella el formulario sigue completo */ }
-}
-
 // --- reanudar por URL ---
 const pid = new URLSearchParams(location.search).get('p');
 if (pid) fetch('/api/proyectos/' + pid).then(r => r.ok ? r.json() : null).then(p => { if (p) { proyecto = p; seguir(); } });
@@ -1253,9 +1225,7 @@ else {
   const modoQ = q.get('modo');
   if (modoQ) fijarModo(modoQ);
   // La idea que se escribió en el hub llega al cuadro de texto, donde se puede
-  // seguir afinando. La lista de películas no se repite (el hub ya la mostró);
-  // entrar por «Crear contenido» (sin query) sí la enseña.
-  if (!briefQ) cargarPeliculas();
+  // seguir afinando. Las películas hechas se retoman desde el inicio.
 }
 
 window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic

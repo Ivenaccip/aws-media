@@ -334,12 +334,21 @@ def test_lo_que_explica_el_boton_va_pegado_a_el(html):
     """Orbe, saldo y error bajo el botón y antes de la nota del cobro: en una
     pantalla de 657 px la nota puede quedar fuera; el motivo de un botón
     apagado, no."""
-    form = html[html.index('id="enviar"'):html.index('id="mispelis"')]
+    form = html[html.index('id="enviar"'):html.index('<section id="progreso"')]
     marcas = ('id="orbe-form"', 'id="saldoform"', 'id="ferr"', 'id="cobronota"')
     orden = [form.index(m) for m in marcas]
     assert orden == sorted(orden)
     assert 'id="ferr" role="alert"' in form
     assert "$('#ferr').scrollIntoView({block: 'nearest'});" in html
+
+
+def test_tus_peliculas_ya_no_vive_en_crear(html):
+    """Decisión del dueño: la pantalla de crear es solo configurar. Las
+    películas hechas se retoman desde el inicio, que ya las lista."""
+    for resto in ('id="mispelis"', "lista-pelis", "cargarPeliculas", "ESTADO_PELI"):
+        assert resto not in html, resto
+    inicio = (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
+    assert "'/crear.html?p=' + c.dataset.p" in inicio, "el inicio perdió el camino de vuelta"
 
 
 def test_el_estilo_personalizado_no_agranda_la_fila(html):
