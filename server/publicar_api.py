@@ -101,10 +101,14 @@ def estado(name: str):
         archivos = [{"clave": k, "nombre": key.rsplit("/", 1)[-1],
                      "mb": round(tam / 1e6, 1)}
                     for k, (key, tam) in descargables_nube(name).items()]
+        # el registro lo escribe `agendar`, que en el servicio aún no corre
+        # (_solo_local): no hay nada que leer, y la ruta del disco no existe
+        publicadas = []
     else:
         p = _proyecto(name)
         archivos = [{"clave": k, "nombre": v.name, "mb": round(v.stat().st_size / 1e6, 1)}
                     for k, v in descargables(p).items()]
+        publicadas = leer_json(p / "work" / "publicaciones.json", default=[])
     cuentas, error = [], None
     if blotato.disponible():
         try:
@@ -112,8 +116,7 @@ def estado(name: str):
         except Exception as err:  # noqa: BLE001
             error = f"Blotato no respondió: {str(err)[:200]}"
     return {"descargables": archivos, "blotato": blotato.disponible(),
-            "cuentas": cuentas, "error": error,
-            "publicadas": leer_json(p / "work" / "publicaciones.json", default=[])}
+            "cuentas": cuentas, "error": error, "publicadas": publicadas}
 
 
 @router.get("/{name}/descarga/{clave}")
