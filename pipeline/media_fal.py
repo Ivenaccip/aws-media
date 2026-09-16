@@ -15,11 +15,18 @@ from .models import formato_de
 
 
 async def imagen_nano(prompt: str, destino: Path, referencia: Path | None = None,
-                      meta: dict | None = None) -> str:
+                      meta: dict | None = None, aspecto: str | None = None) -> str:
     """Una imagen con Nano Banana en fal — texto puro, o edit si hay referencia.
     Descarga a `destino` y devuelve la URL en fal (aguas abajo el pipeline
-    referencia por URL)."""
+    referencia por URL).
+
+    `aspecto` es el que pide la herramienta de imágenes (M23). Sin él, fal cae
+    en su propio valor por defecto (1:1), que es lo que han visto hasta hoy M1
+    y el b-roll: se omite a propósito para no cambiarles el encuadre de golpe.
+    """
     args: dict = {"prompt": prompt, "num_images": 1}
+    if aspecto:
+        args["aspect_ratio"] = aspecto
     app = settings.fal_nano
     if referencia is not None:
         app = settings.fal_nano_edit

@@ -211,10 +211,29 @@ def _dir_imagenes() -> Path:
     return Path(settings.work_dir) / "_imagenes"
 
 
+def _publicar_imagen(destino: Path, nombre: str) -> None:
+    """En la nube la imagen vive en S3, bajo el usuario del token, y el archivo
+    local se BORRA: /tmp/work/_imagenes lo comparten todos los usuarios que
+    atiende el mismo contenedor caliente, y lo que se queda ahí lo sirve
+    cualquiera que conozca el nombre (M23). En local no hay S3 y el disco es
+    la única copia."""
+    if jobs.backend() == "aws":
+        media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
+        destino.unlink(missing_ok=True)
+
+
 class PedidoImagen(BaseModel):
     prompt: str
     estilo: str = "animated"
     estilo_custom: str = ""
+    formato: str = ""
+
+
+# M23 — los formatos de la herramienta de imágenes. Tabla PROPIA, y no la
+# FORMATOS de pipeline.models: esa alimenta a Veo, que no acepta 1:1, y sus
+# tests la fijan. Una imagen suelta sí puede ser cuadrada. Sin formato se
+# queda en 1:1, que es lo que ha salido siempre.
+ASPECTOS_IMAGEN = {"horizontal": "16:9", "vertical": "9:16", "cuadrado": "1:1"}
 
 
 @app.post("/api/imagenes")
@@ -224,6 +243,9 @@ async def crear_imagen(body: PedidoImagen):
     prompt = body.prompt.strip()[:2000]
     if not prompt:
         raise HTTPException(422, "Escribe qué imagen quieres")
+    if body.formato and body.formato not in ASPECTOS_IMAGEN:
+        raise HTTPException(422, f"formato desconocido: {body.formato!r}")
+    aspecto = ASPECTOS_IMAGEN[body.formato or "cuadrado"]
     estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo == "custom"
                              else "animated", body.estilo_custom or None)
     costo = creditos.costo_imagen()
@@ -237,9 +259,8 @@ async def crear_imagen(body: PedidoImagen):
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
         await media_fal.imagen_nano(f"{prompt}. {estilo.prompt}. No text, no watermark.",
-                                    destino, meta={"imagen_estudio": nombre})
-        if jobs.backend() == "aws":
-            media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
+                                    destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
+        _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
     except Exception as err:  # noqa: BLE001
@@ -252,7 +273,8 @@ async def crear_imagen(body: PedidoImagen):
 @app.post("/api/imagenes/editar")
 async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                         marcada: UploadFile | None = File(None),
-                        modo: str = Form("pincel")):
+                        modo: str = Form("pincel"),
+                        estilo: str = Form(""), estilo_custom: str = Form("")):
     """M15 — «Editor de imágenes» con Nano Banana edit. Misma tarifa de imagen.
 
     Dos modos, porque el editor solo sabía hacer uno y los testers pedían el
@@ -273,6 +295,14 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
         raise HTTPException(422, "Describe qué quieres cambiar")
     if modo not in ("pincel", "todo"):
         raise HTTPException(422, f"modo desconocido: {modo!r}")
+    # M23 — el estilo es un destino, no un filtro: solo tiene sentido cuando se
+    # transforma la imagen entera. En el pincel la zona nueva tiene que pegar
+    # con el resto de SU imagen, así que pedirle otro estilo la delataría.
+    if modo == "todo" and estilo:
+        e = resolver_estilo(estilo if estilo in ESTILOS or estilo == "custom" else "animated",
+                            estilo_custom or None)
+        if e.prompt:
+            prompt = f"{prompt}. Target look: {e.prompt}"
     datos_img = await imagen.read()
     datos_marca = await marcada.read() if marcada is not None else b""
     if not datos_img:
@@ -304,8 +334,7 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
             else:
                 await media_fal.imagen_transformar(prompt, f_img, destino,
                                                    meta={"imagen_editor": nombre})
-        if jobs.backend() == "aws":
-            media_sync.subir_archivo(destino, f"imagenes/{db.usuario_actual()}/{nombre}")
+        _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
     except Exception as err:  # noqa: BLE001
@@ -315,12 +344,48 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
     return {"nombre": nombre, "url": f"/api/imagenes/{nombre}"}
 
 
+@app.get("/api/imagenes/{nombre}/archivo")
+def bytes_imagen(nombre: str):
+    """M23 — los bytes de una de tus imágenes, servidos por NOSOTROS.
+
+    `ver_imagen` redirige al CDN, y el CDN no manda cabeceras CORS: una imagen
+    traída de ahí ensucia el canvas y `toBlob` revienta. Sin esto, «seguir
+    editando» lo que acabas de crear solo funcionaría en local, que es donde
+    no hay redirección. También lo usa el botón de descargar: `download` no
+    funciona entre orígenes.
+
+    En la nube NUNCA se sirve del disco: la carpeta de imágenes es compartida
+    por el contenedor. Cada petición baja SU copia —con la clave del usuario
+    del token— a un temporal propio que se borra al responder.
+    """
+    import tempfile
+
+    from starlette.background import BackgroundTask
+    if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
+        raise HTTPException(404, "Imagen no encontrada")
+    if jobs.backend() != "aws":
+        f = _dir_imagenes() / nombre
+        if not f.is_file():
+            raise HTTPException(404, "Imagen no encontrada")
+        return FileResponse(f, media_type="image/jpeg")
+    fd, ruta = tempfile.mkstemp(suffix=".jpg")
+    os.close(fd)
+    tmp = Path(ruta)
+    if not media_sync.bajar_archivo(f"imagenes/{db.usuario_actual()}/{nombre}", tmp):
+        tmp.unlink(missing_ok=True)
+        raise HTTPException(404, "Imagen no encontrada")
+    return FileResponse(tmp, media_type="image/jpeg",
+                        background=BackgroundTask(tmp.unlink, missing_ok=True))
+
+
 @app.get("/api/imagenes/{nombre}")
 def ver_imagen(nombre: str):
     if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
         raise HTTPException(404, "Imagen no encontrada")
     f = _dir_imagenes() / nombre
-    if f.is_file():
+    # en la nube el disco es compartido entre usuarios: solo el CDN, con la
+    # carpeta del usuario del token (M23)
+    if jobs.backend() != "aws" and f.is_file():
         return FileResponse(f)
     cdn = os.getenv("CDN_BASE", "").rstrip("/")
     if cdn:

@@ -23,6 +23,9 @@ ESTRELLA = "✦"          # ✦ BLACK FOUR POINTED STAR
 VERBOS = {
     "Escribir", "Producir", "Reintentar", "Cambiar", "Generar", "Aplicar",
     "Analizar", "Re-analizar", "Importar", "Renderizar", "Proponer", "Animar",
+    # M23: la herramienta unificada distingue el modo en el botón mismo;
+    # «Aplicar» servía cuando cada modo tenía su página, aquí no dice cuál
+    "Transformar",
 }
 
 # Cada botón que gasta créditos, con el verbo que le toca.
@@ -33,6 +36,9 @@ COBRAN = [
     ("static/crear.html", "Reintentar"),
     ("static/crear-imagenes.html", "Generar"),
     ("static/editor-imagenes.html", "Aplicar"),
+    ("static/imagenes.html", "Generar"),
+    ("static/imagenes.html", "Cambiar"),
+    ("static/imagenes.html", "Transformar"),
     ("static/estilos.html", "Analizar"),
     ("static/shorts.html", "Importar"),
     ("static/shorts.html", "Renderizar"),
