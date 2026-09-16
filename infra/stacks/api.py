@@ -87,6 +87,15 @@ class ApiStack(Stack):
             actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
             resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*",
                        f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/usuarios*"]))
+        # M23 C: el usuario conecta y quita SU clave de Blotato desde la web
+        # (server/blotato_api.py). Solo ese nombre: la API no puede escribir
+        # la CLAUDE_API_KEY de nadie ni las claves de plataforma. El cifrado
+        # usa la llave administrada aws/ssm, que ya permite a la cuenta usarla
+        # a través de SSM (igual que el GetParameter de arriba).
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["ssm:PutParameter", "ssm:DeleteParameter"],
+            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter"
+                       "/media-ivenaccip/usuarios/*/BLOTATO_API_KEY"]))
         # dashboard admin: horas-ACU reales de Aurora del mes (las métricas de
         # CloudWatch no soportan permisos por recurso — solo lectura)
         fn.add_to_role_policy(iam.PolicyStatement(

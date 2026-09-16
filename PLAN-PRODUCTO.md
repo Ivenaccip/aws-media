@@ -1540,6 +1540,22 @@ el selector, o al menos el cambio de modelo, tiene que estar antes de esa fecha.
 
 Decisión: cada usuario conecta SU clave (y paga su plan de Blotato).
 
+Va en entregas, cada una con su PR:
+
+- [x] **C1 · Conectar la clave** (2026-09-16, rama `blotato-clave-usuario`):
+      almacén por usuario (`pipeline/claves_usuario.py`), `GET/POST/DELETE
+      /api/blotato`, el «+» del inicio abre el modal con el aviso del cobro
+      (precio desde `pricing.json` §`blotato_suscripcion`), `pipeline/blotato.py`
+      recibe la clave en cada llamada, el permiso de escritura en la IAM de la
+      API y el arreglo de la fuga de claves entre usuarios en los workers. El
+      editor manda a conectar y, en el servicio, dice que programar llega
+      pronto en vez de enseñar un formulario que da 503. Sale con el deploy de
+      siempre (`aws-media-api` lleva el permiso nuevo).
+- [ ] **C2 · Publicar en la nube:** agendar y títulos desde un worker.
+- [ ] **C3 · Agenda** · [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
+
+Lo que pedía el análisis:
+
 - **Guardar:** SSM SecureString en `/media-ivenaccip/usuarios/<sub>/BLOTATO_API_KEY`
   (el patrón D4 que ya usa `CLAUDE_API_KEY`). **Cambio de CDK:** la Lambda de la
   API solo tiene `ssm:GetParameter*`; necesita `ssm:PutParameter` y

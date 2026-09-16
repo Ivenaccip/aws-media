@@ -284,7 +284,7 @@ def test_el_estado_de_publicar_responde_en_nube(monkeypatch, s3):
     from server import editor
     monkeypatch.setattr(publicar_api, "_nube", lambda: True)
     monkeypatch.setattr(editor, "_proyecto_nube", lambda name: {"subidas": []})
-    monkeypatch.setattr(publicar_api.blotato, "disponible", lambda: False)
+    monkeypatch.setattr(publicar_api.blotato, "clave_y_origen", lambda user: (None, None))
     r = publicar_api.estado("v1")
     assert {a["clave"] for a in r["descargables"]} >= {"pelicula", "subtitulado", "srt"}
     assert r["publicadas"] == [] and r["blotato"] is False

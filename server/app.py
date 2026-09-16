@@ -31,6 +31,7 @@ from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
 from server import auth
 from server.admin_api import router as admin_router
+from server.blotato_api import router as blotato_router
 from server.broll_api import router as broll_router
 from server.editar_api import router as editar_router
 from server.editor import router as editor_router
@@ -99,6 +100,7 @@ app.include_router(editor_router)
 app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
+app.include_router(blotato_router)
 app.include_router(broll_router)
 app.include_router(media_router)
 app.include_router(pagos_router)

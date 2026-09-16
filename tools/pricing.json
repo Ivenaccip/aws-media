@@ -84,5 +84,11 @@
     "fargate": { "usd_por_vcpu_hora": 0.04048, "usd_por_gb_hora": 0.004445 },
     "lambda": { "usd_por_gb_segundo": 0.0000166667 },
     "aurora": { "usd_por_acu_hora": 0.12, "nota": "Aurora Serverless v2 estandar us-east-1 - el dashboard admin multiplica las horas-ACU reales de CloudWatch por esto y prorratea entre usuarios. Verificar en https://aws.amazon.com/rds/aurora/pricing/", "verified_on": "2026-09-09" }
+  },
+  "blotato_suscripcion": {
+    "comment": "M23 C — lo que paga el USUARIO a Blotato para conectar su cuenta (cobro externo, no pasa por nosotros). La API no viene en la prueba gratis de 7 días, y generar la clave en Settings → API termina la prueba y activa el plan de pago. La pantalla de conectar lo avisa con este precio (server/blotato_api.py).",
+    "verified_on": "2026-09-16",
+    "plan_minimo": { "nombre": "Starter", "usd_por_mes": 29 },
+    "source": "https://www.blotato.com/pricing y https://help.blotato.com/api/start"
   }
 }
