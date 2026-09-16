@@ -1,8 +1,9 @@
 """b3 — publicar (PLAN-FUSION.md F3.2): fn1 descarga local · fn2 Blotato API.
 
-fn2 exige BLOTATO_API_KEY en .env; sin ella la UI muestra fn1 y el paso a paso
-para conectar. Gate duro: nada se publica ni agenda sin confirmar:true, y la
-respuesta del agendado queda registrada en work/publicaciones.json.
+fn2 usa la clave de Blotato del usuario (M23 C: la conecta desde el inicio; en
+local cae al .env); sin ella la UI muestra fn1 y cómo conectar. Gate duro:
+nada se publica ni agenda sin confirmar:true, y la respuesta del agendado
+queda registrada en work/publicaciones.json.
 """
 from __future__ import annotations
 
@@ -13,8 +14,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from pipeline import blotato
+from pipeline import blotato, claves_usuario
 from pipeline.config import load_prompt
+from pipeline.db import usuario_actual
 from pipeline.llm import chat_json
 from pipeline.storage import escribir_json, leer_json, ruta_proyecto
 
@@ -109,14 +111,23 @@ def estado(name: str):
         archivos = [{"clave": k, "nombre": v.name, "mb": round(v.stat().st_size / 1e6, 1)}
                     for k, v in descargables(p).items()]
         publicadas = leer_json(p / "work" / "publicaciones.json", default=[])
-    cuentas, error = [], None
-    if blotato.disponible():
+    cuentas, error, clave, reconectar = [], None, None, False
+    try:
+        clave = blotato.clave_de(usuario_actual())
+    except (claves_usuario.ErrorAlmacen, ValueError):
+        error = "No pudimos leer tu conexión con Blotato. Intenta de nuevo en un momento."
+    # M23 C: conectar ya funciona en el servicio, pero agendar todavía no
+    # (_solo_local); la UI lo dice en vez de enseñar un formulario que da 503.
+    # Ahí las redes no hacen falta, y preguntarle a Blotato solo arriesgaría
+    # el modal entero (con las descargas) si Blotato tarda.
+    if clave and not _nube():
         try:
-            cuentas = blotato.cuentas()
-        except Exception as err:  # noqa: BLE001
-            error = f"Blotato no respondió: {str(err)[:200]}"
-    return {"descargables": archivos, "blotato": blotato.disponible(),
-            "cuentas": cuentas, "error": error, "publicadas": publicadas}
+            cuentas = blotato.cuentas(clave, timeout=blotato.TIMEOUT_CORTO)
+        except Exception as err:  # noqa: BLE001 — el modal no se cae por Blotato
+            error, reconectar = blotato.explicar_fallo(err)
+    return {"descargables": archivos, "blotato": bool(clave), "agendar": not _nube(),
+            "reconectar": reconectar, "cuentas": cuentas, "error": error,
+            "publicadas": publicadas}
 
 
 @router.get("/{name}/descarga/{clave}")
@@ -177,20 +188,24 @@ def agendar(name: str, body: AgendarIn):
     p = _proyecto(name)
     if body.confirmar is not True:
         raise HTTPException(428, "Falta confirmar:true — el gate de publicación es obligatorio")
-    if not blotato.disponible():
-        raise HTTPException(409, "Falta BLOTATO_API_KEY en el .env")
+    clave = blotato.clave_de(usuario_actual())
+    if not clave:
+        raise HTTPException(409, "Conecta tu cuenta de Blotato primero: es el «+» "
+                                 "junto a Blotato, en el menú del inicio.")
     archivo = descargables(p).get(body.archivo)
     if not archivo or archivo.suffix != ".mp4":
         raise HTTPException(422, f"archivo no publicable: {body.archivo!r}")
     if not body.texto.strip():
         raise HTTPException(422, "texto vacío")
     try:
-        url = blotato.subir_video(archivo)
-        r = blotato.publicar(body.cuenta_id, body.plataforma, body.texto.strip(), [url],
-                             scheduled_time=body.cuando)
+        url = blotato.subir_video(clave, archivo)
+        r = blotato.publicar(clave, body.cuenta_id, body.plataforma, body.texto.strip(),
+                             [url], scheduled_time=body.cuando)
     except Exception as err:  # noqa: BLE001
-        log.exception("agendar %s falló", name)
-        raise HTTPException(502, f"Blotato falló: {str(err)[:300]}")
+        # sin traceback ni mensaje: la clave va en una cabecera
+        codigo = getattr(getattr(err, "response", None), "status_code", "")
+        log.error("agendar %s falló: %s %s", name, type(err).__name__, codigo)
+        raise HTTPException(502, blotato.explicar_fallo(err)[0])
     registro = leer_json(p / "work" / "publicaciones.json", default=[])
     registro.append({"plataforma": body.plataforma, "cuenta": body.cuenta_id,
                      "texto": body.texto.strip()[:200], "cuando": body.cuando,

@@ -59,7 +59,6 @@ class Settings:
     # Backend de regeneración g1/g2 y M1: fal (default desde 2026-09-03 — los
     # créditos del Studio de Google se agotaron) | google (Gemini API)
     gen_backend: str = os.getenv("GEN_BACKEND", "fal")
-    blotato_api_key: str = os.getenv("BLOTATO_API_KEY", "")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
     gemini_veo_model: str = os.getenv("GEMINI_VEO_MODEL", "veo-3.1-lite-generate-preview")

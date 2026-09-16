@@ -17,7 +17,7 @@ import json
 import logging
 import os
 
-from worker.env_ssm import cargar_env_ssm, cargar_env_usuario
+from worker.env_ssm import cargar_env_ssm, cargar_env_usuario, restaurar_env_base
 
 cargar_env_ssm()
 
@@ -76,6 +76,9 @@ def _sync_costes(dias: int) -> None:
 
 
 def handler(event, context):  # noqa: ANN001 — firma de Lambda
+    # cada trabajo arranca sin las claves del usuario del trabajo anterior
+    # (preparar vuelve a cargar las del suyo); M23 C
+    restaurar_env_base()
     # M6: el evento programado de EventBridge llega directo, sin Records de SQS
     if event.get("tipo") == "sync_costes":
         _sync_costes(int(event.get("dias") or 3))
@@ -83,6 +86,7 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
     for rec in event.get("Records", []):
         j = json.loads(rec["body"])
         log.info("trabajo: %s", j.get("tipo"))
+        restaurar_env_base()
         if j["tipo"] == "preparar":
             _preparar(j["user_id"], j["proyecto_id"])
         elif j["tipo"] == "shorts_analizar":
