@@ -1618,7 +1618,32 @@ Va en entregas, cada una con su PR:
         `aws-media-api`; CDK pone jobs primero.
       - Pendiente: la película horizontal no tiene salida vertical para
         Instagram/Facebook; el texto del post no pasa por moderación.
-- [ ] **C3 · Agenda** · [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
+- [x] **C3 · Agenda** (2026-09-17, rama `agenda-blotato`): pantalla propia
+      (`static/agenda.html`, el menú deja de decir «próximamente») con lo que
+      Blotato todavía no ha publicado — también lo programado desde blotato.com.
+      Decisiones del dueño: solo **cambiar la hora** y **cancelar**; al cancelar,
+      el proyecto dice «Cancelada»; nada de publicado ni fallido (eso es C4).
+      - **La fuente de verdad es Blotato:** `GET /v2/schedules` trae el id del
+        programado, que es el que viaja al PATCH y al DELETE. Crear el post NO
+        devuelve ese id, así que la Agenda no depende de nuestros registros.
+      - **El PATCH manda solo la hora.** Blotato no fusiona: un `draft` parcial
+        borraría el video y el usuario se enteraría cuando saliera el post.
+      - **Cancelar no se deshace:** exige confirmar antes de tocar nada, lee la
+        publicación antes de borrarla (después ya no hay de dónde sacar la URL
+        del video) y la tarjeta dice a qué página o tablero va, para que dos
+        publicaciones de la misma cuenta no se confundan.
+      - **El puente con nuestros registros** es la URL que Blotato acuña al
+        subir: el worker la guarda y deja un índice mínimo
+        (`usuarios/<sub>/agenda/<sha256>.json`) con el proyecto y la publicación.
+        Antes de escribir se corrobora la red y la cuenta, y solo se toca un
+        registro que la pantalla vea como «programado». Lo de antes de C3 no
+        tiene índice: se cancela igual, pero el modal dirá «No sabemos si llegó».
+      - **Blotato caído no es una agenda vacía:** la lista conserva lo que ya
+        estaba y avisa; sin poll, una llamada por carga (el límite es 60/min y
+        el modal de Publicar ya gasta 3).
+      - Sin cambios de infra ni migración. Pendiente: no se puede editar el
+        texto desde la Agenda, ni programar desde ahí (eso sigue en el editor).
+- [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
 
 Lo que pedía el análisis:
 

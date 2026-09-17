@@ -411,7 +411,12 @@ async def titulos(name: str, body: TitulosIn):
 
 # --- agendar ---------------------------------------------------------------------
 
-def _cuando(valor: str | None) -> str | None:
+def _cuando(valor: str | None, *, sugerencia: str = " o usa «Publicar ahora»") -> str | None:
+    """La fecha del usuario en UTC, o None si no eligió ninguna.
+
+    `sugerencia` es keyword-only y su default deja el texto byte-idéntico al de
+    C2. La Agenda (M23 C3) pasa '' porque ahí no existe «Publicar ahora»:
+    ofrecer un botón que no está en la pantalla deja al usuario buscándolo."""
     if not valor:
         return None
     try:
@@ -423,7 +428,7 @@ def _cuando(valor: str | None) -> str | None:
     t, ahora = dt.timestamp(), time.time()
     if t < ahora + 60:
         raise HTTPException(422, "Esa hora ya pasó o falta menos de un minuto. Elige una "
-                                 "más adelante o usa «Publicar ahora».")
+                                 f"más adelante{sugerencia}.")
     if t > ahora + HORIZONTE_S:
         raise HTTPException(422, "Blotato programa hasta 9 meses adelante. "
                                  "Elige una fecha más cercana.")

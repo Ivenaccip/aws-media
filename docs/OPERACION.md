@@ -143,6 +143,28 @@ publicación no salió:
 - Los rechazos de Blotato (422: falta la página, la privacidad, límite diario
   de la red…) llegan a la pantalla con el mensaje de Blotato.
 
+Desde C3 hay además una **Agenda** (`/agenda.html`, en el menú del inicio) con
+todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
+
+- Lo que enseña sale de Blotato, no de nosotros: también aparece lo que el
+  usuario haya programado desde blotato.com. Solo se ve lo **futuro** — en
+  cuanto pasa la hora, Blotato lo saca de esa lista.
+- Solo se puede **cambiar la hora** y **cancelar**. Cambiar el texto obligaría a
+  reenviar la publicación entera, y Blotato no la fusiona: un campo de menos
+  deja el post sin video. Para cambiar el texto, se cancela y se programa otra
+  vez desde el editor.
+- Cancelar **no se deshace**, y por eso la tarjeta dice a qué página o tablero
+  va: dos publicaciones de la misma cuenta a páginas distintas se distinguen.
+- Al cancelar, nuestro registro queda en «Cancelada» si lo encontramos. El
+  emparejamiento va por la URL del video que acuña Blotato al subirlo
+  (`usuarios/<sub>/agenda/<sha256>.json`). Lo programado **antes** de C3 no
+  tiene ese índice: se cancela igual en Blotato, pero el modal de Publicar
+  acabará diciendo «No sabemos si llegó».
+- «No pudimos traer tu agenda» no es una agenda vacía: si Blotato falla o pide
+  esperar (60 peticiones por minuto y por usuario), la lista conserva lo que ya
+  estaba y avisa. La pantalla no consulta sola: solo al abrirla, al pulsar
+  «Actualizar» y después de cada cambio.
+
 ### «Mi película se quedó en las imágenes y no avanza»
 
 No está atascada: está **esperando**. Desde el 14 de septiembre de 2026, en

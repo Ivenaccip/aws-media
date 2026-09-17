@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de video · Agenda</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  /* El molde de «página simple» (static/estilos.html), con el acento AZUL del
+     hub (#5b8dd6). El padding de arriba y el simétrico de main dejan libre la
+     franja fija del monedero (monedero.js la clava arriba a la derecha) sin
+     descentrar nada. */
+  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1;
+         padding: 64px 24px 48px; }
+  main { max-width: 900px; margin: 0 auto;
+         padding-inline: max(0px, min(24px, calc(50% - 450px))); }
+  a { color: #5b8dd6; }
+  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
+  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
+  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px;
+            margin-bottom: 24px; }
+  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
+           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
+  button:hover { border-color: #5b8dd6; }
+  button:disabled { opacity: .5; cursor: default; background: #18293f; }
+  button.sec { background: transparent; }
+  button.pri { background: #5b8dd6; border-color: #5b8dd6; color: #08111e; font-weight: 600; }
+  button.pri:hover { filter: brightness(1.1); }
+  button.peligro { color: #ff8080; }
+  button.peligro:hover { border-color: #ff8080; }
+  input { background: #18293f; color: #ece8e1; border: 1px solid #55708f; border-radius: 8px;
+          padding: 8px 10px; font: inherit; font-size: 14px; }
+  .mut { color: #93a3b8; font-size: 13px; }
+  .err { color: #ff8080; font-size: 14px; }
+  .ok { color: #3dd68c; font-size: 14px; }
+  /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM (un
+     role="status" que aparece y desaparece no lo anuncia el lector) */
+  #agEstado:empty { display: none; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .controles #agResumen { margin-right: auto; }
+  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+
+  /* --- la lista de lo programado --- */
+  #agLista { list-style: none; padding: 0; margin: 18px 0 0; }
+  #agLista .vacio { color: #93a3b8; font-size: 13px; display: block; padding: 6px 0; }
+  .agCab { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+  .agPill { margin-left: auto; color: #93a3b8; font-size: 12.5px; border: 1px solid #22354f;
+            background: #18293f; border-radius: 999px; padding: 3px 11px; white-space: nowrap; }
+  .agTxt { margin: 8px 0 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* justify-content deja los botones a la derecha también cuando la
+     publicación no lleva adjuntos y el <span> de la izquierda no se pinta */
+  .agPie { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;
+           justify-content: flex-end; }
+  .agPie .mut { margin-right: auto; }
+  .agPie button { padding: 7px 13px; font-size: 13.5px; }
+  #agMas { margin-top: 6px; }
+
+  /* --- cambiar la hora --- */
+  /* margin:auto lo centra: el `* { margin: 0 }` de arriba se lo quita al <dialog> */
+  #agDlg { margin: auto; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+    padding: 22px 22px 18px; border-radius: 14px; border: 1px solid #22354f;
+    background: #111f33; color: #ece8e1; }
+  #agDlg::backdrop { background: rgba(4, 9, 17, .72); }
+  #agDlg h2 { font-size: 19px; font-weight: 600; margin: 0 28px 6px 0; }
+  #agDlg .cerrar { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
+    padding: 0; border: 0; border-radius: 8px; background: transparent; color: #93a3b8;
+    font-size: 16px; cursor: pointer; }
+  #agDlg .cerrar:hover { color: #ece8e1; background: #18293f; }
+  #agDlgQue { margin-bottom: 14px; }
+  #agDlg label { display: block; font-size: 13px; color: #93a3b8; margin-bottom: 5px; }
+  #agHora { width: 100%; }
+  #agZonaP, #agDlgErr { margin-top: 8px; }
+  .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← Estudio</a>
+  <h1>Agenda tus publicaciones</h1>
+  <p class="sub">Lo que tienes programado en tus redes. Aquí puedes cambiarles la hora o
+    cancelarlas antes de que salgan.</p>
+
+  <section>
+    <div class="controles">
+      <p id="agResumen" class="mut">Tus publicaciones programadas</p>
+      <button type="button" id="agRefrescar" class="sec">Actualizar</button>
+    </div>
+    <p id="agErr" class="err" role="alert" hidden></p>
+    <p id="agEstado" class="ok" role="status" aria-live="polite"></p>
+    <ul id="agLista"><li class="vacio"><span class="spin">Buscando lo que tienes programado</span></li></ul>
+    <button type="button" id="agMas" class="sec" hidden>Ver más</button>
+  </section>
+</main>
+
+<dialog id="agDlg" aria-labelledby="agDlgTitulo">
+  <button type="button" class="cerrar" id="agDlgCerrar" aria-label="Cerrar">✕</button>
+  <h2 id="agDlgTitulo">Cambiar la hora</h2>
+  <p id="agDlgQue" class="mut"></p>
+  <label for="agHora">Nueva fecha y hora</label>
+  <input type="datetime-local" id="agHora" aria-label="Fecha y hora de publicación">
+  <p class="mut" id="agZonaP" hidden>La hora es de tu zona: <span id="agZona"></span>.</p>
+  <p class="err" id="agDlgErr" role="alert" hidden></p>
+  <div class="acciones">
+    <button type="button" class="pri" id="agGuardar">Guardar</button>
+    <button type="button" class="sec" id="agCerrar">Cerrar</button>
+  </div>
+</dialog>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script>
+// ── ag · Agenda (C3)
+// La Agenda es GLOBAL y su fuente de verdad es Blotato: lista SOLO lo que
+// todavía no ha salido (GET /api/agenda) y deja hacer dos cosas, cambiar la
+// hora y cancelar. Nunca manda el texto ni el video: Blotato no fusiona el
+// draft, así que un draft parcial dejaría una publicación programada SIN video
+// y el usuario no se enteraría hasta que saliera.
+"use strict";
+const $ = s => document.querySelector(s);
+
+// Todo lo que viene de Blotato (la cuenta, el texto, la red) y todo mensaje del
+// servidor pasa por aquí antes de tocar un innerHTML: la cookie `token` se lee
+// desde JavaScript, así que un ${} sin escapar regala la sesión. Escapa también
+// las comillas: sirve dentro de un atributo.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// `detail` es un string en nuestros errores, pero el 422 de pydantic trae una
+// lista de {loc, msg}: sin esto el usuario leía «[object Object]».
+function fjDetalle(d, status) {
+  const det = d && d.detail;
+  if (typeof det === "string" && det.trim()) return det;
+  const uno = x => {
+    if (!x || typeof x !== "object") return String(x ?? "");
+    const campo = Array.isArray(x.loc) && x.loc.length ? `${x.loc[x.loc.length - 1]}: ` : "";
+    return x.msg ? campo + x.msg : JSON.stringify(x);
+  };
+  if (Array.isArray(det) && det.length) return det.map(uno).filter(Boolean).join(" · ");
+  if (det && typeof det === "object") return uno(det);
+  return `el servidor respondió ${status}`;
+}
+
+// El status va pegado al Error: sin él no se distingue el 409 (falta conectar
+// Blotato) del 404 (esa publicación ya no está programada).
+const fj = (url, opciones) => {
+  const o = opciones || {};
+  const init = (o.cuerpo !== undefined || o.metodo)
+    ? { method: o.metodo || "POST", headers: { "Content-Type": "application/json" },
+        body: o.cuerpo === undefined ? undefined : JSON.stringify(o.cuerpo) }
+    : undefined;
+  return fetch(url, init).then(async r => {
+    if (!r.ok) throw Object.assign(new Error(fjDetalle(await r.json().catch(() => ({})), r.status)),
+                                   { status: r.status });
+    return r.json();
+  });
+};
+
+// ── ag · lógica
+const AGCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+const AGVACIO = '<li class="vacio">No tienes nada programado. Cuando programes un video desde ' +
+  'el editor, en Publicar, aparecerá aquí.</li>';
+const AGCAIDA = '<li class="vacio">No pudimos traer tu agenda ahora. Pulsa «Actualizar» para ' +
+  'intentarlo de nuevo.</li>';
+const AGSINRED = "No pudimos hablar con el servidor. Intenta de nuevo.";
+
+// El servidor rechaza cualquier hora a menos de 60 s (server/publicar_api.py,
+// _cuando): si la pantalla aceptara 10 s, el usuario gastaría una llamada para
+// que le contesten que no. El margen vive aquí una sola vez.
+const AGMARGEN_S = 60;
+
+let AGITEMS = [];       // lo que YA está pintado, en el orden en que llegó
+let AGCURSOR = null;    // el cursor de la última página; sin él no hay «Ver más»
+let AGCARGANDO = false; // una carga a la vez: dos tiran dos veces de Blotato
+let AGPENDIENTE = null; // la recarga que se pidió mientras había otra en curso
+let AGACTUAL = null;    // el item cuya hora se está cambiando
+let AGGEN = 0;          // generación del diálogo: sube al abrir y al cerrar
+let AGABIERTO = 0;      // cuándo se abrió (ms): el backdrop no cierra recién abierto
+
+// Siempre en la zona del navegador; los textos que la acompañan dicen «tu hora».
+function agFecha(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// El <input datetime-local> habla en hora local y sin zona; toISOString habla en
+// UTC. Correr el reloj por el desfase y cortar a los minutos es la traducción.
+function agLocal(valor) {
+  const d = new Date(valor);
+  if (isNaN(d)) return "";
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+// `total` llega como int del servidor (Blotato lo manda como texto y allá se
+// convierte); si no se pudo, viene null y no se inventa un conteo.
+function agResumen(total) {
+  if (typeof total !== "number" || !isFinite(total)) return "Tus publicaciones programadas";
+  return total === 1 ? "1 publicación programada" : `${total} publicaciones programadas`;
+}
+
+// Cuántos adjuntos trae. La doc de Blotato dice «images, videos»: no son
+// necesariamente videos, así que se llaman archivos. 0 no se pinta.
+function agAdjuntos(medios) {
+  const n = Math.trunc(Number(medios));
+  if (!isFinite(n) || n <= 0) return "";
+  return `<span class="mut">📎 ${esc(n)} ${esc(n === 1 ? "archivo" : "archivos")}</span>`;
+}
+
+function agTarjeta(it, i) {
+  // el «…» lo decide el servidor con `cortado`: un texto de 200 justos que no
+  // se recortó no lleva puntos suspensivos
+  const texto = (it.texto || "") + (it.texto && it.cortado ? "…" : "");
+  return `<li class="tarjeta">` +
+    `<div class="agCab"><b>${esc(it.red)}</b>` +
+    (it.cuenta_nombre ? `<span class="mut"> · ${esc(it.cuenta_nombre)}</span>` : "") +
+    // el destino distingue dos páginas de la MISMA cuenta: sin él se puede
+    // cancelar la publicación equivocada
+    (it.destino ? `<span class="mut"> · ${esc(it.destino)}</span>` : "") +
+    `<span class="agPill">${esc(agFecha(it.cuando))}</span></div>` +
+    (texto ? `<p class="agTxt">${esc(texto)}</p>` : `<p class="agTxt mut">Sin texto</p>`) +
+    `<div class="agPie">` + agAdjuntos(it.medios) +
+    `<button type="button" class="sec" data-ag="hora" data-i="${esc(i)}">Cambiar la hora</button>` +
+    `<button type="button" class="sec peligro" data-ag="cancelar" data-i="${esc(i)}">Cancelar</button>` +
+    `</div></li>`;
+}
+
+// Cada botón lleva SU item: así el manejador recibe el evento (para apagar ese
+// botón y no otro) sin tener que buscar nada en la lista. Mientras hay una
+// recarga en curso los botones nacen apagados: lo que muestran puede ya no
+// existir.
+function agEnlazar() {
+  document.querySelectorAll("#agLista [data-ag]").forEach(b => {
+    const it = AGITEMS[Number(b.dataset.i)];
+    if (!it) return;
+    b.disabled = AGCARGANDO;
+    b.onclick = b.dataset.ag === "hora" ? () => agAbrirHora(it) : ev => agCancelar(ev, it);
+  });
+}
+
+// Mientras se recarga no se toca nada: cancelar o reprogramar una tarjeta que
+// está a punto de cambiar es apuntar a un blanco que se mueve.
+function agOcupado(v) {
+  $("#agRefrescar").disabled = v;
+  $("#agMas").disabled = v;
+  document.querySelectorAll("#agLista [data-ag]").forEach(b => { b.disabled = v; });
+}
+
+// «Ver más» AÑADE al final: repintar la lista entera tiraría lo ya cargado.
+function agPintar(nuevos, mas) {
+  const desde = mas ? AGITEMS.length : 0;
+  AGITEMS = mas ? AGITEMS.concat(nuevos) : nuevos.slice();
+  const html = nuevos.map((it, i) => agTarjeta(it, desde + i)).join("");
+  const lista = $("#agLista");
+  if (mas) lista.insertAdjacentHTML("beforeend", html);
+  else lista.innerHTML = html || AGVACIO;
+  agEnlazar();
+}
+
+function agAviso(msg, conectar) {
+  const p = $("#agErr");
+  p.hidden = !msg;
+  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? AGCONECTAR : "") : "";
+}
+
+function agDlgAviso(msg) {
+  const p = $("#agDlgErr");
+  p.hidden = !msg;
+  p.textContent = msg || "";
+}
+
+// Lo irreversible no puede pasar en silencio: cancelar deja la pantalla igual
+// salvo por una tarjeta menos, y con el teclado ni eso se nota. El resultado se
+// escribe en una región role="status" (se lee y se ve) y el foco vuelve a un
+// sitio con nombre en vez de caer al <body>.
+function agAnunciar(msg) {
+  $("#agEstado").textContent = msg || "";
+}
+
+function agFoco(sel) {
+  if ($("#agDlg").open) return;   // con el diálogo abierto, el foco vive dentro
+  const n = $(sel);
+  if (n && typeof n.focus === "function") n.focus();
+}
+
+// El texto lo escribe el servidor (viene en `detail`): la pantalla no inventa
+// mensajes, solo decide si además ofrece conectar la cuenta de Blotato. 409 =
+// no hay clave; 428 = falta confirmar; 422 = el dato no sirve; 404 = eso ya no
+// está programado; 502/503 = Blotato o el almacén fallaron.
+// Un fallo de red (fetch rechaza con un TypeError) TIENE message, y es
+// «Failed to fetch», en inglés y del navegador: solo los errores que trae fj
+// llevan `status`, y solo esos traen un texto escrito para el usuario.
+function agTexto(e) {
+  return (e && typeof e.status === "number" && e.message) ? e.message : AGSINRED;
+}
+
+function agFallo(e) {
+  const status = (e && typeof e.status === "number") ? e.status : 0;
+  agAviso(agTexto(e), status === 409);
+  return status;
+}
+
+// Una carga a la vez (dos tiran dos veces de Blotato), pero la que se pide
+// mientras hay otra en curso se ENCOLA en vez de tirarse: cancelar dos tarjetas
+// seguidas perdía la segunda recarga y la lista seguía enseñando lo que ya no
+// existe. Solo se guarda la última, y quien esperaba se resuelve cuando esa
+// termina de pintar.
+function agCargar(mas) {
+  if (!AGCARGANDO) return agCargarYa(!!mas);
+  if (AGPENDIENTE) AGPENDIENTE.mas = !!mas;
+  else AGPENDIENTE = { mas: !!mas, listos: [] };
+  return new Promise(r => AGPENDIENTE.listos.push(r));
+}
+
+// Una llamada a Blotato por carga: sin poll y sin recargar al volver a la
+// pestaña. La lista se rehace al abrir, al pulsar «Actualizar» y después de
+// cada cambio de hora o cancelación.
+async function agCargarYa(mas) {
+  AGCARGANDO = true;
+  agAviso("");
+  agAnunciar("");
+  agOcupado(true);
+  try {
+    const j = await fj("/api/agenda" +
+      (mas && AGCURSOR ? "?cursor=" + encodeURIComponent(AGCURSOR) : ""));
+    const items = Array.isArray(j.items) ? j.items : [];
+    if (j.error) {
+      // Blotato falló pero la pantalla no se cae: el servidor responde 200 con
+      // el porqué, y con `reconectar` cuando la clave dejó de servir. Lo que ya
+      // estaba pintado SE QUEDA: decirle «no tienes nada programado» a quien
+      // tiene doce es mentirle. Y el cursor y el total no se pisan con los null
+      // de la respuesta de fallo, o un 429 al pulsar «Ver más» dejaría 20 de 45
+      // sin forma de seguir.
+      if (items.length) agPintar(items, !!mas);
+      else if (!AGITEMS.length) $("#agLista").innerHTML = AGCAIDA;
+      agAviso(j.error, !!j.reconectar);
+    } else {
+      // sin error sí manda la respuesta: una última página legítima puede venir
+      // vacía y con cursor null, y eso apaga «Ver más»
+      AGCURSOR = typeof j.cursor === "string" && j.cursor ? j.cursor : null;
+      agPintar(items, !!mas);
+      $("#agResumen").textContent = agResumen(j.total);
+    }
+  } catch (e) {
+    // lo ya pintado tampoco se tira aquí: solo se explica el hueco cuando no
+    // hay nada que enseñar
+    if (!AGITEMS.length) $("#agLista").innerHTML = AGCAIDA;
+    agFallo(e);
+  } finally {
+    AGCARGANDO = false;
+    agOcupado(false);
+    $("#agMas").hidden = !AGCURSOR;
+    const pend = AGPENDIENTE;
+    AGPENDIENTE = null;
+    if (pend) {
+      await agCargarYa(pend.mas);
+      pend.listos.forEach(r => r());
+    }
+  }
+}
+
+// La cabecera del diálogo y la del confirm dicen lo MISMO que la tarjeta,
+// destino incluido: es lo único que distingue dos páginas de la misma cuenta.
+function agAbrirHora(it) {
+  AGGEN++;
+  AGACTUAL = it;
+  agDlgAviso("");
+  $("#agDlgQue").innerHTML = `<b>${esc(it.red)}</b>` +
+    (it.cuenta_nombre ? `<span> · ${esc(it.cuenta_nombre)}</span>` : "") +
+    (it.destino ? `<span> · ${esc(it.destino)}</span>` : "") +
+    `<span> · ${esc(agFecha(it.cuando))}</span>`;
+  const campo = $("#agHora");
+  campo.min = agLocal(new Date(Date.now() + AGMARGEN_S * 1000));  // ni el pasado ni el minuto de gracia
+  campo.value = agLocal(it.cuando);
+  AGABIERTO = Date.now();
+  $("#agDlg").showModal();
+  campo.focus();
+}
+
+// Lo que impide guardar, o null. `ahora` en milisegundos (Date.now()). El
+// margen es el del servidor: una hora que él va a rechazar no gasta llamada.
+function agValidar(valor, ahora) {
+  if (!valor) return "Elige la fecha y hora.";
+  const t = new Date(valor).getTime();
+  if (isNaN(t)) return "Esa fecha no es válida.";
+  if (t <= ahora) return "Esa hora ya pasó: elige una más adelante.";
+  if (t < ahora + AGMARGEN_S * 1000)
+    return "Falta menos de un minuto para esa hora: elige una un poco más adelante.";
+  return null;
+}
+
+// ¿El diálogo sigue siendo el de la publicación que se estaba guardando? Una
+// respuesta tardía no puede cerrar el diálogo de OTRA publicación (y tirar lo
+// que el usuario acabara de escribir), ni escribir su error dentro de un
+// diálogo ya cerrado, donde nadie lo leería.
+function agVigente(gen) {
+  return gen === AGGEN && !!$("#agDlg").open;
+}
+
+async function agGuardarHora(ev) {
+  if (!AGACTUAL) return;
+  const it = AGACTUAL, gen = AGGEN;
+  const btn = (ev && ev.currentTarget) || $("#agGuardar");
+  const valor = $("#agHora").value;
+  const malo = agValidar(valor, Date.now());
+  if (malo) { agDlgAviso(malo); return; }   // cero llamadas si la fecha no sirve
+  btn.disabled = true;
+  agDlgAviso("");
+  try {
+    // la conversión local→UTC se hace UNA vez, aquí
+    const cuando = new Date(valor).toISOString();
+    await fj("/api/agenda/reprogramar", { cuerpo: { id: it.id, cuando } });
+    if (agVigente(gen)) $("#agDlg").close();
+    await agCargar();
+    agAnunciar(`Hora cambiada: ${it.red} sale el ${agFecha(cuando)} (tu hora).`);
+    agFoco("#agRefrescar");   // la tarjeta que abrió el diálogo ya se repintó
+  } catch (e) {
+    // un 404 es «ya no está programada»: el diálogo sobra y la lista miente.
+    // Primero repintar y después el aviso: agCargar limpia el aviso al empezar.
+    if (e && e.status === 404) {
+      if (agVigente(gen)) $("#agDlg").close();
+      await agCargar();
+      agFallo(e);
+      agFoco("#agRefrescar");
+    } else if (agVigente(gen)) agDlgAviso(agTexto(e));
+    // cerraron el diálogo mientras viajaba la petición: el fallo se enseña en
+    // la pantalla o no se enseña en ninguna parte
+    else agFallo(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function agConfirmarTexto(it) {
+  const corta = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+  const lineas = [`Red: ${it.red}`];
+  if (it.cuenta_nombre) lineas.push(`Cuenta: ${it.cuenta_nombre}`);
+  if (it.destino) lineas.push(`Destino: ${it.destino}`);
+  lineas.push(`Cuándo: ${agFecha(it.cuando)} (tu hora)`);
+  if (it.texto) lineas.push(`Texto: «${corta(it.texto, 140)}»`);
+  return `¿Cancelar esta publicación?\n\n${lineas.join("\n")}` +
+    "\n\nNo se puede deshacer: Blotato ya no la publicará.";
+}
+
+async function agCancelar(ev, it) {
+  // el botón se guarda ANTES del await y se apaga DESPUÉS del confirm: decir
+  // que no en el confirm no puede dejar el botón muerto
+  const btn = ev && ev.currentTarget;
+  if (!confirm(agConfirmarTexto(it))) return;
+  if (btn) btn.disabled = true;
+  agAviso("");
+  try {
+    await fj("/api/agenda/cancelar", { cuerpo: { id: it.id, confirmar: true } });
+    await agCargar();
+    // la tarjeta desapareció y el foco caía al <body>: sin esto, para el
+    // teclado y el lector de pantalla lo irreversible pasa en silencio
+    agAnunciar("Publicación cancelada.");
+    agFoco("#agRefrescar");
+  } catch (e) {
+    if (e && e.status === 404) await agCargar();   // ya no estaba: la lista mentía
+    agFallo(e);                                    // el aviso, después de repintar
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Clic en el fondo oscuro = cerrar. El padding del diálogo también es el
+// diálogo, así que se mira si el puntero cayó fuera de su caja; y tiene que
+// EMPEZAR fuera: elegir la hora y soltar fuera no cierra nada.
+const agFueraDe = ev => {
+  const dlg = $("#agDlg"), r = dlg.getBoundingClientRect();
+  return ev.target === dlg && (ev.clientX < r.left || ev.clientX > r.right ||
+                               ev.clientY < r.top || ev.clientY > r.bottom);
+};
+let agBajoFuera = false;
+
+// Doble clic en «Cambiar la hora»: el segundo clic cae sobre el backdrop del
+// diálogo que el primero acaba de abrir y lo cerraba al instante — desde fuera
+// parece un botón muerto. Los primeros instantes el fondo no cierra nada.
+const AGGRACIA_MS = 300;
+const agReciencito = () => Date.now() - AGABIERTO < AGGRACIA_MS;
+
+// ── ag · arranque
+// TODO el arranque va aquí dentro: auth.js envuelve fetch para colgarle el
+// Authorization, y una llamada lanzada en tiempo de parseo saldría sin cabecera
+// y volvería 401.
+document.addEventListener("DOMContentLoaded", () => {
+  try { $("#agZona").textContent = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; }
+  catch { /* sin Intl no se promete una zona */ }
+  $("#agZonaP").hidden = !$("#agZona").textContent;
+
+  $("#agRefrescar").onclick = () => agCargar();   // sin () llegaría el evento como `mas`
+  $("#agMas").onclick = () => agCargar(true);
+  $("#agGuardar").onclick = agGuardarHora;
+  const dlg = $("#agDlg");
+  const cerrar = () => dlg.close();
+  $("#agDlgCerrar").onclick = cerrar;
+  $("#agCerrar").onclick = cerrar;
+  dlg.addEventListener("pointerdown", ev => { agBajoFuera = agFueraDe(ev) && !agReciencito(); });
+  dlg.addEventListener("click", ev => {
+    if (agBajoFuera && agFueraDe(ev) && !agReciencito()) cerrar();
+    agBajoFuera = false;
+  });
+  // cerrar (✕, Esc, el fondo o el propio código) invalida la generación: lo que
+  // vuelva tarde de /reprogramar ya no manda sobre este diálogo
+  dlg.addEventListener("close", () => { AGACTUAL = null; AGGEN++; });
+
+  agCargar();
+});
+</script>
+</body>
+</html>
