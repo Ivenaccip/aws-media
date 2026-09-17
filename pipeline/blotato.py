@@ -11,6 +11,15 @@ help.blotato.com/api y backend.blotato.com/openapi.json:
                                         al instante
   GET  /v2/posts/{id}                   in-progress | scheduled | published | failed
 
+M23 C3 (Agenda) — lo que todavía NO ha salido, verificado 2026-09-17:
+  GET    /v2/schedules                  SOLO futuros; página con `cursor` y un
+                                        `count` que llega como STRING ("12")
+  GET    /v2/schedules/{id}             la respuesta va ENVUELTA en {"schedule": …},
+                                        al revés que /posts/{id}
+  PATCH  /v2/schedules/{id}             {"patch": {...}} → 204 SIN cuerpo; el
+                                        patch NO hace merge
+  DELETE /v2/schedules/{id}             → 204 SIN cuerpo
+
 M23 C: cada usuario conecta SU clave. Por eso ninguna función lee una clave
 global: todas la reciben, y `clave_de(user_id)` es la única forma de
 obtenerla. En el servicio NUNCA cae a una clave de la plataforma: publicaría
@@ -147,10 +156,32 @@ def _mensaje_de(resp: httpx.Response, clave: str | None) -> str:
     return msg
 
 
-def explicar_fallo(err: Exception, clave: str | None = None) -> tuple[str, bool]:
+# M23 C3 — un 404 de /schedules no es «revisa tu cuenta»: significa que eso ya
+# salió o ya no existe, y cada pantalla lo cuenta a su manera.
+CONTEXTOS = ("publicacion", "agenda", "reprogramar", "cancelar")
+
+# Ninguno manda «Actualiza la lista»: la pantalla ya recarga sola al recibir el
+# 404, así que pedirlo sería mandar a hacer algo que acaba de pasar.
+_YA_NO_ESTA = {
+    "agenda": "Esa publicación programada ya no está en Blotato: puede que ya se "
+              "haya publicado. La lista ya está al día.",
+    "reprogramar": "No pudimos cambiar la hora: esa publicación ya no está programada "
+                   "en Blotato. Puede que ya se haya publicado. La lista ya está al día.",
+    "cancelar": "Esa publicación ya no estaba programada en Blotato. Si ya se publicó, "
+                "tienes que borrarla desde la red. La lista ya está al día.",
+}
+
+
+def explicar_fallo(err: Exception, clave: str | None = None, *,
+                   contexto: str = "publicacion") -> tuple[str, bool]:
     """(mensaje para el usuario, ¿hay que reconectar?) de un fallo al hablar
     con Blotato. Nunca incluye el texto de la excepción (lleva URLs firmadas);
-    sí el `message` que Blotato explica en un 422 o un 429."""
+    sí el `message` que Blotato explica en un 422 o un 429.
+
+    `contexto` (CONTEXTOS) es keyword-only y su default deja los textos
+    byte-idénticos a los de C2: los llamadores de publicar pasan todo
+    posicional y no se tocan. En la Agenda no se publica nada, así que «espera
+    antes de publicar otra vez» ahí desconcierta."""
     if isinstance(err, SubidaRechazada) and err.codigo == 0:
         return ("La subida a Blotato se cortó antes de terminar. Intenta de nuevo; "
                 "si se repite, revisa el tamaño que permite tu plan de Blotato.", False)
@@ -165,13 +196,24 @@ def explicar_fallo(err: Exception, clave: str | None = None) -> tuple[str, bool]
                     "tu plan: conéctala de nuevo.", True)
         detalle = _mensaje_de(err.response, clave)
         if codigo == 422:
+            if contexto == "reprogramar":
+                return ("Blotato no aceptó la hora nueva"
+                        + (f": {detalle}" if detalle
+                           else ". Elige una fecha futura e intenta de nuevo."), False)
             return ("Blotato no aceptó la publicación"
                     + (f": {detalle}" if detalle else ". Revisa los datos e intenta de nuevo."),
                     False)
         if codigo == 429:
-            return ("Blotato pide esperar antes de publicar otra vez"
-                    + (f": {detalle}" if detalle else "."), False)
+            if contexto == "agenda":
+                espera = "Blotato pide esperar un momento antes de volver a consultar"
+            elif contexto in ("reprogramar", "cancelar"):
+                espera = "Blotato pide esperar un momento antes de intentarlo otra vez"
+            else:
+                espera = "Blotato pide esperar antes de publicar otra vez"
+            return espera + (f": {detalle}" if detalle else "."), False
         if codigo == 404:
+            if contexto in _YA_NO_ESTA:
+                return _YA_NO_ESTA[contexto], False
             return "Blotato no encontró lo que pedimos. Revisa tu cuenta de Blotato.", False
         return (f"Blotato respondió con un error ({codigo}). "
                 "Intenta de nuevo en un momento.", False)
@@ -231,6 +273,34 @@ def _items(r: httpx.Response) -> list[dict]:
     if not isinstance(items, list):
         raise RespuestaInvalida("Blotato respondió una lista inválida")
     return [c for c in items if isinstance(c, dict)]
+
+
+def _sub(datos, clave: str) -> dict:
+    """El sub-objeto `clave`, o {} si Blotato manda null (o cualquier otra cosa).
+
+    `account` llega NULO en muchos schedules y un item['account']['name']
+    tumbaría la pantalla entera con un TypeError."""
+    valor = datos.get(clave) if isinstance(datos, dict) else None
+    return valor if isinstance(valor, dict) else {}
+
+
+def _pagina(r: httpx.Response) -> tuple[list[dict], str | None, int | None]:
+    """(items, cursor, total) de una respuesta paginada.
+
+    _items() se queda solo con `items` y tira el resto: con él, una Agenda de
+    40 publicaciones enseñaría 20 jurando que no hay más. Y `count` llega como
+    STRING ("12"), así que compararlo con un int no falla: miente."""
+    datos = _json(r)
+    items = datos.get("items", [])
+    if not isinstance(items, list):
+        raise RespuestaInvalida("Blotato respondió una lista inválida")
+    cursor = datos.get("cursor")
+    try:
+        total = int(str(datos.get("count")))
+    except (TypeError, ValueError):
+        total = None
+    return ([c for c in items if isinstance(c, dict)],
+            cursor if isinstance(cursor, str) and cursor else None, total)
 
 
 def cuentas(clave: str, timeout: httpx.Timeout = TIMEOUT) -> list[dict]:
@@ -445,3 +515,175 @@ def estado_post(clave: str, post_id: str, timeout: httpx.Timeout = TIMEOUT_CORTO
     if datos.get("status") not in ESTADOS_POST:
         raise RespuestaInvalida("Blotato devolvió un estado desconocido")
     return {k: datos.get(k) for k in ("status", "publicUrl", "errorMessage", "scheduledTime")}
+
+
+# ---------------------------------------------------------------------------
+# M23 C3 — la Agenda: lo programado que todavía no ha salido (/v2/schedules).
+# Cada item trae su propio id sch_…, y ese mismo id viaja al PATCH y al DELETE:
+# por eso reprogramar y cancelar no necesitan ningún registro nuestro.
+
+def programados(clave: str, *, limite: int = 20, cursor: str | None = None,
+                timeout: httpx.Timeout = TIMEOUT_CORTO) -> dict:
+    """UNA página de lo que Blotato aún no ha publicado.
+
+    {'items': [… crudos …], 'cursor': str|None, 'total': int|None}. Una página
+    por llamada a propósito: TIMEOUT_CORTO son 8 s POR FASE y la Lambda de la
+    API corta a los 29 s, así que encadenar páginas aquí dentro devuelve un 502
+    mudo. Quien llama decide si pide la siguiente con el cursor."""
+    cabeceras = _headers(clave)
+    params: dict = {"limit": max(1, min(50, int(limite)))}
+    if cursor is not None:
+        if not isinstance(cursor, str) or not 1 <= len(cursor) <= 512:
+            raise ValueError("cursor de Blotato inválido")
+        params["cursor"] = cursor
+    r = httpx.get(f"{BASE}/schedules", params=params, headers=cabeceras, timeout=timeout)
+    r.raise_for_status()
+    items, siguiente, total = _pagina(r)
+    return {"items": items, "cursor": siguiente, "total": total}
+
+
+def programado(clave: str, sch_id: str, timeout: httpx.Timeout = TIMEOUT_CORTO) -> dict:
+    """Un schedule suelto. La respuesta va ENVUELTA en {"schedule": …}: copiar
+    estado_post() tal cual devolvería un dict vacío en silencio, no un error."""
+    cabeceras = _headers(clave)
+    if not id_valido(sch_id):
+        raise ValueError("publicación programada de Blotato inválida")
+    r = httpx.get(f"{BASE}/schedules/{quote(sch_id)}", headers=cabeceras, timeout=timeout)
+    r.raise_for_status()
+    sch = _json(r).get("schedule")
+    if not isinstance(sch, dict):
+        raise RespuestaInvalida("Blotato no devolvió la publicación programada")
+    return sch
+
+
+def reprogramar(clave: str, sch_id: str, *, cuando: str | None = None,
+                draft: dict | None = None, timeout: httpx.Timeout = TIMEOUT_CORTO) -> None:
+    """Cambia lo que se le mande de un schedule (la Agenda: solo la hora).
+
+    OJO: el PATCH no hace merge. Un `draft` parcial BORRA mediaUrls y target y
+    deja programada una publicación sin video, y el usuario no se entera hasta
+    que sale. Por eso ningún endpoint expone `draft`: el kwarg existe para no
+    mentir sobre lo que la API acepta, y nadie lo usa."""
+    cabeceras = _headers(clave)
+    if not id_valido(sch_id):
+        raise ValueError("publicación programada de Blotato inválida")
+    patch: dict = {}
+    if cuando:
+        patch["scheduledTime"] = cuando
+    if draft:
+        patch["draft"] = draft
+    # un patch vacío es un 422 seguro: no vale la pena gastar la red
+    if not patch:
+        raise ValueError("No hay nada que cambiar: elige una hora nueva.")
+    r = httpx.patch(f"{BASE}/schedules/{quote(sch_id)}", headers=cabeceras,
+                    json={"patch": patch}, timeout=timeout)
+    # 204 SIN cuerpo: _json(r) lanzaría RespuestaInvalida sobre un cuerpo vacío
+    r.raise_for_status()
+
+
+def cancelar(clave: str, sch_id: str, timeout: httpx.Timeout = TIMEOUT_CORTO) -> None:
+    """Blotato deja de tener esa publicación: no la publicará y no se deshace."""
+    cabeceras = _headers(clave)
+    if not id_valido(sch_id):
+        raise ValueError("publicación programada de Blotato inválida")
+    r = httpx.delete(f"{BASE}/schedules/{quote(sch_id)}", headers=cabeceras, timeout=timeout)
+    r.raise_for_status()      # 204 SIN cuerpo, igual que el PATCH: nada de _json
+
+
+def media_de(sch: dict) -> str:
+    """La publicUrl del video de un schedule, o ''.
+
+    Es lo único que empareja un schedule con NUESTRO registro: Blotato acuña
+    una URL nueva en cada subida, así que es única por publicación (el worker
+    la guarda al crear el post). Sin ella, cancelar deja el modal de Publicar
+    diciendo «programado» para algo que ya no va a salir."""
+    urls = _sub(_sub(sch, "draft"), "content").get("mediaUrls")
+    primera = urls[0] if isinstance(urls, list) and urls else None
+    return primera if isinstance(primera, str) and primera.startswith("https://") else ""
+
+
+TEXTO_MAX = 200        # lo que la Agenda enseña de cada publicación
+
+# De dónde sale el `destino` de un schedule, EN ORDEN, y con qué etiqueta.
+# Blotato no lo devuelve resuelto: lo único que suele ser un nombre legible es
+# `subaccountName`; el resto son ids opacos («1110000001»), y resolverlos
+# costaría una llamada por fila — la Agenda entera cuesta UNA.
+_DE_DESTINO = (("account", "subaccountName", ""),
+               ("account", "subaccountId", "Página "),
+               ("account", "subId", "Página "),
+               ("target", "pageId", "Página "),
+               ("target", "boardId", "Tablero "))
+DESTINO_MAX = 80
+
+
+def destino_de(item: dict) -> str:
+    """La página o el tablero al que va un schedule, listo para enseñar ("" si
+    no hay). Los ids son numéricos en Facebook: str() antes de nada."""
+    donde = {"account": _sub(item, "account"),
+             "target": _sub(_sub(item, "draft"), "target")}
+    for fuente, campo, etiqueta in _DE_DESTINO:
+        valor = donde[fuente].get(campo)
+        # bool es un int: True daría el destino «Página True». Y un 0 no es una
+        # página de nadie: sale por el `not valor`, igual que "" y que None.
+        if not valor or isinstance(valor, bool) or not isinstance(valor, (str, int)):
+            continue
+        texto = " ".join(str(valor).split())[:DESTINO_MAX]
+        if texto:
+            return etiqueta + texto
+    return ""
+
+
+def identidad_de(sch: dict) -> tuple[str, str]:
+    """(plataforma, cuenta) de un schedule: con esto se corrobora que NUESTRO
+    registro habla de esta misma publicación antes de escribirlo.
+
+    "" en lo que Blotato no mande: la ausencia no contradice nada (muchos
+    schedules llegan sin accountId)."""
+    draft = _sub(sch, "draft")
+    plataforma = _sub(draft, "content").get("platform")
+    cuenta = draft.get("accountId")
+    return (plataforma.strip().lower() if isinstance(plataforma, str) else "",
+            str(cuenta).strip() if isinstance(cuenta, (str, int))
+            and not isinstance(cuenta, bool) else "")
+
+
+def vista_programado(item: dict) -> dict:
+    """Lo que la Agenda enseña de un schedule, ya normalizado:
+    {id, cuando, plataforma, red, cuenta_nombre, destino, texto, cortado, medios}.
+
+    `destino` (destino_de) es la página o el tablero al que va. Sin él, dos
+    publicaciones de la MISMA cuenta a DOS páginas de Facebook se ven idénticas
+    en la lista y en el «¿seguro?» de cancelar: el usuario cancela la que no
+    era, y eso no se deshace.
+
+    `cortado` dice si el texto se recortó de verdad, para que la pantalla ponga
+    «…» solo cuando falta texto: con >= 200 le pondría puntos suspensivos a un
+    texto de exactamente 200 caracteres, que está entero.
+
+    `medios` es el CONTEO de adjuntos del post PRINCIPAL, no sus URLs: la
+    pantalla es pública y no tiene por qué cargar assets del CDN de Blotato. No
+    son necesariamente videos — la doc de Blotato dice «images, videos» —, así
+    que la pantalla los llama «archivos». Un hilo (`additionalPosts`) trae sus
+    propios adjuntos y aquí NO se cuentan ni se enseñan: la Agenda sirve para
+    reconocer y cancelar una publicación, no para revisarla entera.
+
+    Y nada de REDES[p] ni de revisar_texto: la lista de redes de Blotato es más
+    larga que nuestras 9 y una desconocida daría un KeyError → 500 en una
+    pantalla de solo mirar."""
+    item = item if isinstance(item, dict) else {}
+    contenido = _sub(_sub(item, "draft"), "content")
+    plataforma = str(contenido.get("platform") or "")
+    texto = contenido.get("text")
+    texto = texto if isinstance(texto, str) else ""
+    urls = contenido.get("mediaUrls")
+    cuenta = _sub(item, "account")
+    return {"id": str(item.get("id") or ""),
+            "cuando": str(item.get("scheduledAt") or ""),
+            "plataforma": plataforma,
+            "red": (REDES.get(plataforma) or {}).get("nombre") or plataforma,
+            "cuenta_nombre": str(cuenta.get("name") or cuenta.get("username") or ""),
+            "destino": destino_de(item),
+            "texto": texto[:TEXTO_MAX],
+            "cortado": len(texto) > TEXTO_MAX,
+            "medios": len([u for u in urls if isinstance(u, str)])
+            if isinstance(urls, list) else 0}
