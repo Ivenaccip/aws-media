@@ -2,8 +2,8 @@
 
 Crear y editar eran dos páginas con el mismo monedero, el mismo guardrail y el
 mismo orbe; la diferencia real es si hay una imagen sobre la mesa. La página
-nueva (static/imagenes.html) convive con las dos viejas hasta validarla, y
-por debajo usa los MISMOS dos endpoints, con tres añadidos:
+única (static/imagenes.html) reemplaza a las dos viejas —sus URLs redirigen—
+y por debajo usa los MISMOS dos endpoints, con estos añadidos:
 
 - **formato** al crear (horizontal, vertical o cuadrado): los prompts solos no
   alcanzaban para pedir una imagen apaisada o de teléfono;
@@ -11,7 +11,13 @@ por debajo usa los MISMOS dos endpoints, con tres añadidos:
   Animado») y solo si el usuario lo elige; en el pincel no, porque la zona
   nueva tiene que pegar con el resto;
 - **los bytes** de una imagen propia desde nuestro origen, para «seguir
-  editando»: la URL del CDN no manda CORS y ensucia el canvas.
+  editando»: la URL del CDN no manda CORS y ensucia el canvas;
+- **la lista** de las imágenes del usuario, para «Mis imágenes» del inicio.
+
+La pantalla copia la de «Crea tu video»: título centrado cuya primera palabra
+gira (Crea / Edita / Bocetea), estilo + texto arriba y los tres formatos
+abajo. Con imagen —subida, recién creada o pedida en el texto («edítala»)—
+pasa a editar: la imagen grande y a la derecha qué cambiar.
 
 Y una corrección que venía de antes: en la nube, la carpeta local de imágenes
 la comparten todos los usuarios del contenedor, así que ahí ya no se deja ni se
@@ -92,7 +98,7 @@ def test_crear_pide_el_aspecto_del_formato(cliente, srv, nano, formato, aspecto)
 
 
 def test_sin_formato_sigue_saliendo_cuadrada(cliente, srv, nano):
-    """Las dos páginas viejas no mandan formato: su imagen no cambia de golpe."""
+    """Una pestaña vieja abierta no manda formato: su imagen no cambia de golpe."""
     assert cliente.post("/api/imagenes", json={"prompt": "un faro"}).status_code == 200
     assert nano["aspecto"] == "1:1"
 
@@ -294,6 +300,10 @@ def test_la_pagina_se_sirve(cliente):
 # ---------------------------------------------------------------------------
 # la página
 
+CARGAR = "function cargarImagen(f, nombre = null)"
+SEGUIR = "$('#seguir').onclick = async"   # la otra mención solo lo llama
+
+
 @pytest.fixture(scope="module")
 def html():
     return PAGINA.read_text(encoding="utf-8")
@@ -329,7 +339,7 @@ def test_ofrece_los_tres_formatos_y_los_manda(html, envio):
 def test_con_imagen_el_formato_se_lee_y_no_se_elige(html):
     js = _js(html)
     assert "if (!b || archivo) return;" in _bloque(js, "$('#formatos').onclick")
-    carga = _bloque(js, "function cargarImagen(f)")
+    carga = _bloque(js, CARGAR)
     assert "fijarFormato(imgC.width > imgC.height * 1.15 ? 'horizontal'" in carga
     assert "imgC.height > imgC.width * 1.15 ? 'vertical' : 'cuadrado'" in carga
 
@@ -356,8 +366,19 @@ def test_al_transformar_el_estilo_por_defecto_no_viaja(html):
     js = _js(html)
     assert "let estiloDestino = null;" in js
     assert "estiloDestino = null" in _bloque(js, "function soltarImagen()")
-    fijar = _bloque(js, "function fijarEstilo(id)")
-    assert "if (transformando()) estiloDestino" in fijar
+    fijar = _bloque(js, "function fijarEstilo(id, destino = transformando())")
+    assert "if (destino) estiloDestino" in fijar
+    # los chips de cada tarjeta dicen a cuál estilo tocan, sin adivinarlo
+    assert "fijarEstilo(b.dataset.id, false)" in _bloque(js, "$('#estilos').onclick")
+    assert "fijarEstilo(b.dataset.id, true)" in _bloque(js, "$('#estilos-destino').onclick")
+    assert "const transformando = () => vista === 'editar' && MODO === 'todo';" in js
+
+
+def test_el_estilo_propio_de_crear_y_el_de_transformar_no_se_mezclan(html):
+    cuerpo = _bloque(_js(html), "async function cuerpoEditar")
+    assert "$('#estilo_custom_dest').value" in cuerpo
+    assert "$('#estilo_custom').value" not in cuerpo
+    assert 'id="estilo_custom_dest"' in html
 
 
 def test_el_modo_no_se_deduce_del_trazo(envio):
@@ -413,13 +434,14 @@ def test_en_vuelo_nada_cambia_la_imagen_ni_la_vista(html):
     for sel in ("#quitar", "#limpiar", "#seguir", "#ver-original", "#ver-resultado",
                 "#mas", "#borrar", "#modo-pincel", "#modo-todo"):
         assert f"'{sel}'" in herramientas, f"{sel} sigue activo en vuelo"
+    assert "'#a-crear'" in herramientas
     for f in ("function quitarAdjunto()", "function empezarDeNuevo()", "function fijarModo(m)",
-              "function cargarImagen(f)", "function usarAtajo(i)"):
+              CARGAR, "function usarAtajo(i)"):
         assert "enVuelo" in _bloque(js, f).split("\n", 3)[1] + _bloque(js, f).split("\n", 3)[2], f
 
 
 def test_una_carga_a_medias_no_se_cuela_bajo_la_peticion(html, envio):
-    carga = _bloque(_js(html), "function cargarImagen(f)")
+    carga = _bloque(_js(html), CARGAR)
     assert carga.index("if (enVuelo) return;") < carga.index("new Image()")
     onload = _bloque(carga, "img.onload")
     assert "if (gen !== generacion || enVuelo) return;" in onload
@@ -444,14 +466,18 @@ def test_seguir_editando_pide_los_bytes_a_nuestro_origen(html):
     """La URL del resultado redirige al CDN, que no manda CORS: cargarla en el
     canvas lo ensucia y la máscara ya no se puede exportar."""
     js = _js(html)
-    seguir = _bloque(js, "$('#seguir').onclick")
-    assert "fetch(`/api/imagenes/${nombre}/archivo`)" in seguir
-    assert "d.url" not in seguir
-    assert "`/api/imagenes/${d.nombre}/archivo`" in js   # la descarga, igual
+    bajar = js[js.index("const bajarPropia"):js.index(SEGUIR)]
+    assert "fetch(`/api/imagenes/${nombre}/archivo`)" in bajar
+    seguir = _bloque(js, SEGUIR)
+    assert "await bajarPropia(nombre)" in seguir
+    assert "d.url" not in seguir and "fetch(" not in seguir
+    # la descarga, igual: `download` no funciona entre orígenes
+    assert ("$('#descargar').href = `/api/imagenes/${propia}/archivo`"
+            in _bloque(js, "function verEstado(e)"))
 
 
 def test_seguir_editando_no_pinta_una_version_vieja(html):
-    seguir = _bloque(_js(html), "$('#seguir').onclick")
+    seguir = _bloque(_js(html), SEGUIR)
     guarda = "if (enVuelo || nombre !== ultimoNombre || ESTADO !== 'resultado') return;"
     assert guarda in seguir
     assert seguir.index(guarda) < seguir.index("cargarImagen(")
@@ -511,16 +537,155 @@ def test_el_formato_bloqueado_se_anuncia(html):
     assert "setAttribute('aria-disabled', String(conImagen))" in _bloque(_js(html), "function verEstado(e)")
 
 
-def test_todo_cabe_en_una_pantalla_y_hay_salida_si_no(html):
-    assert "overflow:hidden" in html[html.index("body {"):html.index("h1 {")]
-    # pantalla baja pero ancha (Windows al 125-150 %): sigue a dos columnas
-    baja = html[html.index("@media (max-height: 520px) and (min-width: 901px)"):]
-    assert "body { overflow:auto; }" in baja[:200]
-    assert "grid-template-columns:1fr" not in baja[:200]
+def _regla(html, selector):
+    """La regla de nivel superior (dos espacios): no la de un @media ni la de
+    `#form > .cabeza`."""
+    cuerpo = html[html.index("\n  " + selector + " {") + 3:]
+    return cuerpo[:cuerpo.index("}")]
+
+
+def test_la_pantalla_es_la_de_crear_video(html):
+    """Estilo (1) + texto (2) arriba y los tres formatos abajo; al editar, la
+    imagen ocupa dos columnas y dos filas y a la derecha va qué cambiar."""
+    assert '"estilo prompt prompt" "formato formato formato"' in _regla(html, ".vista-crear .rejilla")
+    editar = _regla(html, ".vista-editar .rejilla")
+    assert '"imagen imagen modos" "imagen imagen prompt"' in editar
+    assert "height:var(--alto-escena)" in editar
+    assert ".vista-crear .solo-editar, .vista-editar .solo-crear { display:none !important; }" in html
+    assert html.count('class="card p-estilo solo-crear"') == 1
+    assert html.count('class="card p-formato solo-crear"') == 1
+    assert 'class="card p-imagen lienzo-zona solo-editar"' in html
+    assert 'class="card p-modos solo-editar"' in html
+    assert 'class="card p-prompt caja"' in html        # el texto está en las dos
+    # centrada también en alto, y si no cabe la página baja (nunca se corta)
+    escritorio = html[html.index("@media (min-width: 901px)"):]
+    assert "grid-template-rows:1fr auto auto auto 1fr" in escritorio[:300]
+    assert "overflow:hidden" not in _regla(html, "body")
+    # en el teléfono todo va en una columna y la imagen tiene alto propio
     movil = html[html.index("@media (max-width: 900px)"):]
-    assert "body { overflow:auto; }" in movil
-    assert "grid-template-columns:1fr" in movil
-    assert "height:min(55dvh, 100dvh - 290px)" in movil
+    assert "grid-template-columns:minmax(0, 1fr)" in movil
+    assert '"imagen" "modos" "prompt"' in movil
+    assert "height:min(62dvh, 560px)" in movil
+
+
+def test_el_titulo_gira_entre_crea_edita_y_bocetea(html):
+    js = _js(html)
+    assert "const PALABRAS = ['Crea', 'Edita', 'Bocetea'];" in js
+    assert '<span class="palabra on">Crea</span>' in html
+    assert 'class="palabra">Edita</span>' in html and 'class="palabra">Bocetea</span>' in html
+    titulo = _bloque(js, "function pintaTitulo()")
+    # gira solo con la pantalla en blanco y si el sistema no pide menos movimiento
+    assert "vista === 'crear' && !$('#prompt').value.trim() && !reducir.matches" in titulo
+    assert "const fija = vista === 'editar' ? 1 : 0;" in titulo
+    # el lector de pantalla oye el título quieto, no las tres palabras
+    assert '<span class="sr" id="titulo-texto">Crea tu imagen</span>' in html
+    assert '<span aria-hidden="true"><span class="rotor" id="rotor">' in html
+    assert ".palabra.on, .palabra.sale, .rejilla.entrando > .card { animation:none; }" in html
+
+
+def test_tu_imagen_no_se_mueve_cuando_gira_la_palabra(html):
+    """Con el ancho de cada palabra, el título centrado se reajustaba en cada
+    giro y «tu imagen» bailaba. Las tres comparten celda: la caja mide lo que
+    la más larga, y cada una se pega a la derecha."""
+    rotor = _regla(html, ".rotor")
+    assert "display:inline-grid" in rotor and "justify-items:end" in rotor
+    assert "transition" not in rotor
+    assert "grid-area:1 / 1" in _regla(html, ".palabra")
+    assert "position:absolute" not in _regla(html, ".palabra")
+    assert ".style.width" not in _js(html)
+
+
+def test_el_titulo_esta_centrado_y_mas_grande_en_las_dos_pantallas(html):
+    crear = (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
+    for pagina in (html, crear):
+        cabeza = _regla(pagina, ".cabeza")
+        assert "justify-content:center" in cabeza
+        assert "padding-inline:max(0px, min(300px, calc(50% - 230px)))" in cabeza
+    assert "font-size:30px" in _regla(html, ".titulo")
+    assert "font-size:30px" in _regla(crear, ".cabeza h1")
+
+
+def _intencion(frases):
+    """Evalúa la expresión de la página en node, tal cual está escrita."""
+    import json
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node no está instalado")
+    js = _js(PAGINA.read_text(encoding="utf-8"))
+    ini = js.index("const QUIERE_EDITAR")
+    expr = js[ini:js.index("');", ini) + 3]
+    ini_sin = js.index("const sinAcentos")
+    sin = js[ini_sin:js.index("\n", ini_sin)]
+    codigo = (f"{expr}\n{sin}\nconsole.log(JSON.stringify("
+              f"{json.dumps(frases)}.map(t => QUIERE_EDITAR.test(sinAcentos(t)))))")
+    r = subprocess.run([node, "-e", codigo], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    return dict(zip(frases, json.loads(r.stdout)))
+
+
+def test_pedir_editar_en_el_texto_abre_el_editor():
+    si = ["Edita mi foto para que sea de noche", "edítala en blanco y negro",
+          "quiero editarla", "EDITAR el fondo", "retoca la piel", "pon mi boceto a color",
+          "mis imágenes en acuarela"]
+    no = ["un edificio al atardecer", "portada editorial de revista", "una edición especial",
+          "un gato con sombrero", "crea un retrato de mi perro", "créditos finales"]
+    v = _intencion(si + no)
+    assert all(v[t] for t in si), {t: v[t] for t in si}
+    assert not any(v[t] for t in no), {t: v[t] for t in no}
+
+
+def test_pedir_editar_sin_imagen_nunca_crea_una(envio):
+    """«Edítala» con la pantalla aún en crear: se relee el texto al enviar, y
+    sin imagen el botón se queja en vez de cobrar una imagen nueva."""
+    assert envio.index("leerIntencion();") < envio.index("const modo = cual()")
+    queja = _bloque(envio, "if (modo !== 'crear' && !archivo)")
+    assert queja.rstrip("}").rstrip().endswith("return;")
+    assert envio.index("if (modo !== 'crear' && !archivo)") < envio.index("enVuelo = true")
+    js = _js(PAGINA.read_text(encoding="utf-8"))
+    assert "const cual = () => (archivo || vista === 'editar' ? MODO : 'crear');" in js
+
+
+def test_la_vista_sale_del_estado(html):
+    js = _js(html)
+    vq = _bloque(js, "function vistaQueToca()")
+    assert "if (archivo || ultimoNombre || cargando) return 'editar';" in vq
+    assert "(intencion || pidioEditar) && !prefiereCrear" in vq
+    assert "pintaVista();" in _bloque(js, "function verEstado(e)")
+    # mientras hay una petición el texto no mueve la pantalla
+    assert "if (enVuelo) return;" in _bloque(js, "function leerIntencion()")
+    assert "setTimeout(leerIntencion, 700)" in js
+
+
+def test_lo_recien_creado_pasa_a_editarse(envio):
+    """El texto de crear ya se gastó: la caja se vacía para decir qué cambiar,
+    y la imagen nueva se abre en el lienzo — pero FUERA del vuelo: dentro,
+    «seguir» vería enVuelo y no haría nada."""
+    rama = _bloque(envio, "if (modo === 'crear')")
+    assert "promptCreado = prompt;" in rama and "$('#prompt').value = '';" in rama
+    assert envio.index("finally {") < envio.index("if (creada) $('#seguir').onclick();")
+    js = _js(PAGINA.read_text(encoding="utf-8"))
+    assert "$('#prompt').value = promptCreado;" in _bloque(js, "function empezarDeNuevo()")
+
+
+def test_el_orbe_gira_donde_se_trabaja(envio):
+    assert "montarOrbe(modo === 'crear' ? $('#orbe-form') : $('#orbe-hueco')" in envio
+
+
+def test_mis_imagenes_abre_una_imagen_validada(html):
+    js = _js(html)
+    abrir = _bloque(js, "async function abrirDesdeEnlace()")
+    assert "/^[0-9a-f]{12}\\.jpg$/.test(nombre)" in abrir
+    assert abrir.index(".test(nombre)") < abrir.index("bajarPropia(nombre)")
+    assert "cargarImagen(f, nombre)" in abrir
+    assert "if (q.has('editar') || nombre) pidioEditar = true;" in abrir
+
+
+def test_soltar_una_imagen_en_cualquier_parte_la_abre(html):
+    js = _js(html)
+    assert "document.addEventListener(ev, e => {" in js
+    assert "if (!conArchivos(e)) return;" in js      # arrastrar texto no cuenta
 
 
 def test_hay_respaldo_sin_unidades_de_contenedor(html):
@@ -536,5 +701,149 @@ def test_el_js_de_la_pagina_es_valido(html, tmp_path):
         pytest.skip("node no está instalado")
     f = tmp_path / "imagenes.js"
     f.write_text(_js(html), encoding="utf-8")
+    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+# ---------------------------------------------------------------------------
+# «Mis imágenes»: la lista, las páginas viejas y el inicio
+
+def test_en_local_la_lista_sale_del_disco_de_la_mas_nueva_a_la_mas_vieja(cliente, srv, tmp_path,
+                                                                         monkeypatch):
+    import os
+    monkeypatch.delenv("JOBS_BACKEND", raising=False)
+    d = tmp_path / "_imagenes"
+    d.mkdir()
+    for i, nombre in enumerate(["aaaaaaaaaaaa.jpg", "bbbbbbbbbbbb.jpg", "cccccccccccc.jpg"]):
+        (d / nombre).write_bytes(b"jpg")
+        os.utime(d / nombre, (1_700_000_000 + i, 1_700_000_000 + i))
+    # lo que no tiene la forma de una imagen nuestra no se enseña
+    (d / "notas.jpg").write_bytes(b"x")
+    (d / "dddddddddddd.png").write_bytes(b"x")
+    monkeypatch.setattr(media_sync, "listar_prefijo_con_fecha",
+                        lambda p: pytest.fail("en local no se consulta S3"))
+    r = cliente.get("/api/imagenes")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["total"] == 3
+    assert [i["nombre"] for i in d["imagenes"]] == [
+        "cccccccccccc.jpg", "bbbbbbbbbbbb.jpg", "aaaaaaaaaaaa.jpg"]
+    assert d["imagenes"][0] == {"nombre": "cccccccccccc.jpg", "creado": 1_700_000_002,
+                                "url": "/api/imagenes/cccccccccccc.jpg"}
+
+
+def test_sin_carpeta_la_lista_esta_vacia(cliente, srv, monkeypatch):
+    monkeypatch.delenv("JOBS_BACKEND", raising=False)
+    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": []}
+
+
+def test_en_nube_cada_quien_ve_solo_su_carpeta(cliente, srv, nube, monkeypatch):
+    pedidos = []
+    claves = {
+        "imagenes/ana/": [("imagenes/ana/aaaaaaaaaaaa.jpg", 10.0),
+                          ("imagenes/ana/bbbbbbbbbbbb.jpg", 30.0),
+                          ("imagenes/ana/sub/cccccccccccc.jpg", 99.0)],   # no es de la raíz
+    }
+
+    def listar(prefijo):
+        pedidos.append(prefijo)
+        return claves.get(prefijo, [])
+    monkeypatch.setattr(media_sync, "listar_prefijo_con_fecha", listar)
+    monkeypatch.setattr(db, "usuario_actual", lambda: "ana")
+    d = cliente.get("/api/imagenes").json()
+    assert [i["nombre"] for i in d["imagenes"]] == ["bbbbbbbbbbbb.jpg", "aaaaaaaaaaaa.jpg"]
+    monkeypatch.setattr(db, "usuario_actual", lambda: "beto")
+    assert cliente.get("/api/imagenes").json()["imagenes"] == []
+    # la barra final: «ana» no puede leer la carpeta de «ana2»
+    assert pedidos == ["imagenes/ana/", "imagenes/beto/"]
+
+
+def test_la_lista_tiene_tope_pero_dice_cuantas_hay(cliente, srv, nube, monkeypatch):
+    from server import app as srv_app
+    monkeypatch.setattr(srv_app, "MAX_IMAGENES", 2)
+    monkeypatch.setattr(db, "usuario_actual", lambda: "ana")
+    monkeypatch.setattr(media_sync, "listar_prefijo_con_fecha", lambda p: [
+        (f"{p}{c * 12}.jpg", float(i)) for i, c in enumerate("abcde")])
+    d = cliente.get("/api/imagenes").json()
+    assert d["total"] == 5
+    assert [i["nombre"] for i in d["imagenes"]] == ["eeeeeeeeeeee.jpg", "dddddddddddd.jpg"]
+
+
+def test_listar_con_fecha_lee_la_fecha_de_s3(monkeypatch):
+    from datetime import datetime, timezone
+
+    class Pag:
+        def paginate(self, Bucket, Prefix):
+            assert (Bucket, Prefix) == ("cubo", "imagenes/ana/")
+            return [{"Contents": [{"Key": "imagenes/ana/aaaaaaaaaaaa.jpg", "Size": 3,
+                                   "LastModified": datetime(2026, 9, 16, tzinfo=timezone.utc)}]},
+                    {}]
+
+    class S3:
+        def get_paginator(self, nombre):
+            assert nombre == "list_objects_v2"
+            return Pag()
+    monkeypatch.setenv("MEDIA_BUCKET", "cubo")
+    monkeypatch.setattr(media_sync, "_s3", lambda: S3())
+    assert media_sync.listar_prefijo_con_fecha("imagenes/ana/") == [
+        ("imagenes/ana/aaaaaaaaaaaa.jpg", datetime(2026, 9, 16, tzinfo=timezone.utc).timestamp())]
+    monkeypatch.delenv("MEDIA_BUCKET")
+    assert media_sync.listar_prefijo_con_fecha("imagenes/ana/") == []
+
+
+@pytest.mark.parametrize("vieja,nueva", [
+    ("/crear-imagenes.html", "/imagenes.html"),
+    ("/editor-imagenes.html", "/imagenes.html?editar=1"),
+])
+def test_las_paginas_viejas_llevan_a_la_nueva(cliente, vieja, nueva):
+    """Quien las tenga guardadas llega a la herramienta única; el editor, ya
+    en modo editar. 302: un 301 se queda para siempre en el navegador."""
+    r = cliente.get(vieja, follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == nueva
+    assert not (RAIZ / "static" / vieja.lstrip("/")).exists()
+
+
+@pytest.fixture(scope="module")
+def hub():
+    return (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
+
+
+def test_mis_imagenes_va_entre_proyectos_y_ediciones(hub):
+    assert hub.index("<h2>Mis proyectos</h2>") < hub.index("<h2>Mis imágenes</h2>") \
+        < hub.index("<h2>Mis ediciones</h2>")
+
+
+def test_cada_imagen_se_abre_para_seguir_editandola(hub):
+    js = _js(hub)
+    pinta = _bloque(js, "function renderImagenes()")
+    assert "/imagenes.html?img=${encodeURIComponent(im.nombre)}" in pinta
+    assert "src=\"${esc(im.url)}\"" in pinta and 'loading="lazy"' in pinta
+    assert '<a class="proy vacio" href="/imagenes.html">＋ Nueva imagen</a>' in pinta
+    # una imagen que no carga no deja un ícono roto
+    assert "im.onerror" in pinta
+    # la lista no rompe el inicio si falla
+    carga = _bloque(js, "async function cargar()")
+    assert "fetch('/api/imagenes').catch(() => null)" in carga
+    assert "if (ri && ri.ok)" in carga
+
+
+def test_se_ven_las_mas_nuevas_y_el_resto_con_ver_todas(hub):
+    js = _js(hub)
+    assert "const IMG_A_LA_VISTA = 5;" in js
+    pinta = _bloque(js, "function renderImagenes()")
+    assert "todasVisibles ? imagenes : imagenes.slice(0, IMG_A_LA_VISTA)" in pinta
+    assert "b.hidden = imagenes.length <= IMG_A_LA_VISTA;" in pinta
+    assert "setAttribute('aria-expanded', String(todasVisibles))" in pinta
+
+
+def test_el_js_del_inicio_es_valido(hub, tmp_path):
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node no está instalado")
+    f = tmp_path / "hub.js"
+    f.write_text(_js(hub), encoding="utf-8")
     r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr

@@ -93,6 +93,9 @@
   .proy.vacio { display: grid; place-items: center; color: var(--mut); border-style: dashed;
     cursor: pointer; font-size: 14px; min-height: 150px; }
   .proy.vacio:hover { border-color: var(--acc); color: var(--txt); }
+  .ver-todas { border: 0; background: none; color: var(--acc); cursor: pointer; font: inherit;
+    font-size: 13px; padding: 0; }
+  .ver-todas:hover { text-decoration: underline; }
 
   /* --- archivados --- */
   #archivados { margin-top: 34px; }
@@ -180,9 +183,8 @@
     <h1>🎬 Estudio de video</h1>
     <nav aria-label="Secciones">
       <div class="grupo">Estudio de Contenido</div>
-      <a href="/crear-imagenes.html"><b>Crear imágenes</b><small>Una imagen en el estilo que elijas.</small></a>
+      <a href="/imagenes.html"><b>Crear imágenes</b><small>Créala, edítala o bocetéala en el estilo que elijas.</small></a>
       <a href="/crear.html"><b>Crear contenido</b><small>Crea un video desde una idea, narrado con IA.</small></a>
-      <a href="/editor-imagenes.html"><b>Editor de imágenes</b><small>Señala la zona de tu imagen y pide el cambio.</small></a>
       <a href="/e1.html"><b>Editor de videos</b><small>Sube tu metraje y la IA te propone el corte.</small></a>
       <a href="/shorts.html"><b>De videos a Shorts</b><small>Sube un video largo y te daremos los mejores momentos.</small></a>
       <a href="/estilos.html"><b>Copiadora de estilos</b><small>Recrea el estilo visual de un contenido que te guste</small></a>
@@ -219,6 +221,14 @@
       </div>
       <div class="grid" id="grid"></div>
       <div class="err" id="err"></div>
+      <!-- M23: las imágenes sueltas (crear / editar) por fin tienen dónde verse -->
+      <div id="imagenes" hidden style="margin-top:26px">
+        <div class="cabecera-grid">
+          <h2>Mis imágenes</h2>
+          <button type="button" class="ver-todas" id="ver-todas" hidden aria-expanded="false"></button>
+        </div>
+        <div class="grid" id="grid-img"></div>
+      </div>
       <!-- M14: las ediciones de metraje viven aquí (antes eran las cards de e1) -->
       <div id="ediciones" hidden style="margin-top:26px">
         <div class="cabecera-grid"><h2>Mis ediciones</h2></div>
@@ -468,15 +478,52 @@ function renderEdiciones(ps) {
   });
 }
 
+// M23: las imágenes sueltas, de la más nueva a la más vieja. Se enseñan las
+// primeras y el resto con «Ver todas»; cada una se abre para seguir editándola.
+const IMG_A_LA_VISTA = 5;
+let imagenes = [], todasVisibles = false;
+const FORMA = (w, h) => w > h * 1.15 ? 'Horizontal' : h > w * 1.15 ? 'Vertical' : 'Cuadrada';
+function renderImagenes() {
+  const lista = todasVisibles ? imagenes : imagenes.slice(0, IMG_A_LA_VISTA);
+  $('#grid-img').innerHTML = lista.map(im => {
+    const d = new Date(im.creado * 1000);
+    const dia = isNaN(d) ? '' : d.toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'});
+    return `<a class="proy" href="/imagenes.html?img=${encodeURIComponent(im.nombre)}" ` +
+      `aria-label="Abrir tu imagen del ${esc(dia)} para editarla">` +
+      `<img class="thumb" src="${esc(im.url)}" alt="" loading="lazy" data-dia="${esc(dia)}">` +
+      `<div class="pie"><div class="meta">${esc(dia)}</div></div></a>`;
+  }).join('') + '<a class="proy vacio" href="/imagenes.html">＋ Nueva imagen</a>';
+  // la forma sale de la imagen misma: los nombres no la guardan
+  document.querySelectorAll('#grid-img img.thumb').forEach(im => {
+    im.onload = () => {
+      im.nextElementSibling.firstElementChild.textContent =
+        `${FORMA(im.naturalWidth, im.naturalHeight)} · ${im.dataset.dia}`;
+    };
+    im.onerror = () => {
+      const d = document.createElement('div');
+      d.className = 'thumb vacia'; d.textContent = '🖼';
+      im.replaceWith(d);
+    };
+  });
+  const b = $('#ver-todas');
+  b.hidden = imagenes.length <= IMG_A_LA_VISTA;
+  b.textContent = todasVisibles ? 'Ver menos' : `Ver todas (${imagenes.length})`;
+  b.setAttribute('aria-expanded', String(todasVisibles));
+  $('#imagenes').hidden = false;
+}
+$('#ver-todas').onclick = () => { todasVisibles = !todasVisibles; renderImagenes(); };
+
 async function cargar() {
   $('#err').textContent = '';
   try {
-    const [rp, rs, re] = await Promise.all([
-      fetch('/api/proyectos'), fetch('/api/slots'), fetch('/api/edicion/proyectos')]);
+    const [rp, rs, re, ri] = await Promise.all([
+      fetch('/api/proyectos'), fetch('/api/slots'), fetch('/api/edicion/proyectos'),
+      fetch('/api/imagenes').catch(() => null)]);
     if (!rp.ok) return;
     const ps = await rp.json();
     if (rs.ok) slots = (await rs.json()).slots;
     render(ps);
+    if (ri && ri.ok) { imagenes = (await ri.json()).imagenes || []; renderImagenes(); }
     if (re.ok) renderEdiciones(await re.json());
   } catch { /* cortesía: el hub sigue completo sin la lista */ }
 }

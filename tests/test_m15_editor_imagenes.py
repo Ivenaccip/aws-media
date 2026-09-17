@@ -93,10 +93,15 @@ def test_editar_imagen_sin_saldo(cliente, srv, monkeypatch, tmp_path):
     assert r.status_code == 402
 
 
-def test_sidebar_editor_de_imagenes_tiene_su_pagina():
-    """El sidebar ya no manda «Editor de imágenes» a crear-imagenes.html."""
+def test_el_menu_lleva_a_la_herramienta_unica_de_imagenes():
+    """M23: crear y editar imágenes son una sola página y una sola entrada del
+    menú; las dos páginas viejas ya no existen (sus URLs redirigen)."""
     from pathlib import Path
     html = Path("static/index.html").read_text(encoding="utf-8")
-    assert '/editor-imagenes.html' in html
-    assert html.count('/crear-imagenes.html') == 1
-    assert Path("static/editor-imagenes.html").is_file()
+    menu = html[html.index('<nav aria-label="Secciones">'):html.index("</nav>")]
+    assert menu.count('href="/imagenes.html"') == 1
+    assert "Crear imágenes" in menu
+    assert "Editor de imágenes" not in html
+    assert "/crear-imagenes.html" not in html and "/editor-imagenes.html" not in html
+    assert not Path("static/crear-imagenes.html").exists()
+    assert not Path("static/editor-imagenes.html").exists()

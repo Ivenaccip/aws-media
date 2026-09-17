@@ -64,6 +64,20 @@ def listar_prefijo_con_bytes(prefijo: str) -> list[tuple[str, int]]:
     return claves
 
 
+def listar_prefijo_con_fecha(prefijo: str) -> list[tuple[str, float]]:
+    """Claves con su última modificación (epoch): «Mis imágenes» las ordena de
+    la más nueva a la más vieja sin pedir un HEAD por objeto."""
+    bucket = _bucket()
+    if not bucket:
+        return []
+    claves = []
+    pag = _s3().get_paginator("list_objects_v2")
+    for pagina in pag.paginate(Bucket=bucket, Prefix=prefijo):
+        claves += [(obj["Key"], obj["LastModified"].timestamp())
+                   for obj in pagina.get("Contents", [])]
+    return claves
+
+
 def leer_texto(key: str) -> str | None:
     """Contenido de un objeto (UTF-8) o None si no existe / no hay bucket."""
     bucket = _bucket()
