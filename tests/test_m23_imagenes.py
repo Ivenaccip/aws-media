@@ -583,6 +583,18 @@ def test_el_titulo_gira_entre_crea_edita_y_bocetea(html):
     assert ".palabra.on, .palabra.sale, .rejilla.entrando > .card { animation:none; }" in html
 
 
+def test_tu_imagen_no_se_mueve_cuando_gira_la_palabra(html):
+    """Con el ancho de cada palabra, el título centrado se reajustaba en cada
+    giro y «tu imagen» bailaba. Las tres comparten celda: la caja mide lo que
+    la más larga, y cada una se pega a la derecha."""
+    rotor = _regla(html, ".rotor")
+    assert "display:inline-grid" in rotor and "justify-items:end" in rotor
+    assert "transition" not in rotor
+    assert "grid-area:1 / 1" in _regla(html, ".palabra")
+    assert "position:absolute" not in _regla(html, ".palabra")
+    assert ".style.width" not in _js(html)
+
+
 def test_el_titulo_esta_centrado_y_mas_grande_en_las_dos_pantallas(html):
     crear = (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
     for pagina in (html, crear):

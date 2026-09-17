@@ -50,9 +50,11 @@
             padding-inline:max(0px, min(300px, calc(50% - 230px))); }
   .titulo { margin:0; font-size:30px; line-height:1.2; font-weight:700; letter-spacing:-.01em;
             white-space:nowrap; }
-  .rotor { display:inline-block; position:relative; height:1.2em; overflow:hidden; vertical-align:top;
-           transition:width .35s ease; }
-  .palabra { position:absolute; left:0; top:0; white-space:nowrap; opacity:0;
+  /* Las tres palabras comparten la misma celda: la caja mide lo que la más
+     larga («Bocetea») y cada una se alinea a la derecha, pegada a «tu imagen».
+     Así «tu imagen» nunca se mueve; solo sube la palabra. */
+  .rotor { display:inline-grid; justify-items:end; overflow:hidden; vertical-align:top; }
+  .palabra { grid-area:1 / 1; white-space:nowrap; opacity:0;
              background:linear-gradient(90deg, var(--acc), var(--acc2));
              -webkit-background-clip:text; background-clip:text; color:transparent; }
   .palabra.on { opacity:1; animation:entra .45s cubic-bezier(.2, .7, .2, 1); }
@@ -216,7 +218,7 @@
   #saldoform:empty { display:none; }
 
   @media (prefers-reduced-motion: reduce) {
-    .rotor, .caja { transition:none; }
+    .caja { transition:none; }
     .palabra.on, .palabra.sale, .rejilla.entrando > .card { animation:none; }
   }
   @media (max-width: 900px) {
@@ -455,16 +457,13 @@ function leerIntencion() {
 const PALABRAS = ['Crea', 'Edita', 'Bocetea'];
 let palabra = 0, giro = null;
 function ponPalabra(i) {
-  const ps = $('#rotor').children;
-  if (i !== palabra) {
-    const vieja = ps[palabra];
-    vieja.classList.remove('on');
-    vieja.classList.add('sale');
-    setTimeout(() => vieja.classList.remove('sale'), 450);
-    ps[i].classList.add('on');
-    palabra = i;
-  }
-  $('#rotor').style.width = ps[i].offsetWidth + 'px';
+  if (i === palabra) return;
+  const ps = $('#rotor').children, vieja = ps[palabra];
+  vieja.classList.remove('on');
+  vieja.classList.add('sale');
+  setTimeout(() => vieja.classList.remove('sale'), 450);
+  ps[i].classList.add('on');
+  palabra = i;
 }
 function pintaTitulo() {
   const fija = vista === 'editar' ? 1 : 0;
@@ -472,15 +471,13 @@ function pintaTitulo() {
   // gira mientras la pantalla está en blanco: dice lo que se puede hacer
   const gira = vista === 'crear' && !$('#prompt').value.trim() && !reducir.matches;
   if (gira) {
-    if (!giro) giro = setInterval(() => ponPalabra((palabra + 1) % PALABRAS.length), 2600);
-    ponPalabra(palabra);          // la palabra de ahora, solo para medir su ancho
+    giro ??= setInterval(() => ponPalabra((palabra + 1) % PALABRAS.length), 2600);
   } else {
     clearInterval(giro);
     giro = null;
     ponPalabra(fija);
   }
 }
-addEventListener('resize', () => ponPalabra(palabra));
 
 // ---------- estilo (misma muestra que crear.html) ----------
 const sinAcentos = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
