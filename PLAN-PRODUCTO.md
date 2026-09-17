@@ -1511,9 +1511,30 @@ las dos viejas y que **no se enlaza en el menú hasta validarla**.
   comparten todos los usuarios del contenedor caliente, y `ver_imagen` servía
   de ahí sin mirar el dueño. Ahora en la nube la copia local se borra tras
   subirla y nada se sirve del disco.
-- [ ] Validar en producción entrando directo a `/imagenes.html`.
-- [ ] Después: una sola entrada «Imágenes» en el menú y redirigir
-      `crear-imagenes.html` y `editor-imagenes.html`.
+- [x] Validar en producción entrando directo a `/imagenes.html` (el dueño la
+      aprobó y pidió el rediseño de abajo).
+- [x] Una sola entrada en el menú («Crear imágenes» → `/imagenes.html`) y
+      las dos páginas viejas se quitaron: sus URLs redirigen (302) a la
+      nueva, la del editor con `?editar=1`.
+
+**A2 · La pantalla de «Crea tu video» (2026-09-16).** Petición del dueño tras
+ver la cuadrícula de crear video:
+
+- Misma cuadrícula: estilo (1) + texto (2) arriba y, en lugar de la
+  duración, los **tres formatos** abajo (horizontal, vertical y cuadrado).
+- Título centrado y más grande, también en «Crea tu video». En imágenes la
+  primera palabra gira: **Crea / Edita / Bocetea** (quieto si el sistema pide
+  menos movimiento).
+- **Editar sin página aparte.** Si el texto pide editar («edítala», «mi
+  foto», «retoca»…), al subir o pegar una imagen, o al terminar de crear una,
+  la cuadrícula pasa a editar: la imagen grande (2 × 2) con el pincel y a la
+  derecha «¿Qué cambiamos?» con dos botones (cambiar una zona / transformar
+  toda) y el texto. Pedir editar sin imagen nunca crea una imagen nueva.
+- **«Mis imágenes»** en el inicio, entre «Mis proyectos» y «Mis ediciones»:
+  las 5 más nuevas + «Ver todas», y cada una se abre para seguir editándola
+  (`/imagenes.html?img=<nombre>`). `GET /api/imagenes` lista la carpeta del
+  usuario del token en S3 (en local, el disco). Las imágenes creadas antes de
+  este cambio también aparecen.
 
 ### B · Modelos a elegir, con su costo en créditos (después)
 

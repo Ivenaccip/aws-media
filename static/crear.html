@@ -73,8 +73,11 @@
     #form > .estado-envio { grid-row:5; align-self:start; }
   }
   /* el monedero vive fijo arriba a la derecha: la cabecera le deja su franja */
-  .cabeza { display:flex; align-items:center; min-height:36px; margin-bottom:10px; padding-right:300px; }
-  .cabeza h1 { margin:0; }
+  /* el título va centrado; el margen simétrico le deja libre la franja del
+     monedero sin descentrarlo */
+  .cabeza { display:flex; justify-content:center; align-items:center; min-height:44px; margin-bottom:14px;
+            padding-inline:max(0px, min(300px, calc(50% - 230px))); }
+  .cabeza h1 { margin:0; font-size:30px; line-height:1.2; letter-spacing:-.01em; }
   .rejilla { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
   .rejilla > .card { margin:0; padding:16px; min-width:0; display:flex; flex-direction:column; }
   .rejilla h2 { margin:0 0 10px; }
@@ -181,7 +184,8 @@
   #saldoform:empty { display:none; }
   @media (prefers-reduced-motion: reduce) { .aro, .caja { transition:none; } }
   @media (max-width: 900px) {
-    .cabeza { padding-right:0; padding-top:44px; }
+    .cabeza { padding-inline:0; padding-top:44px; }
+    .cabeza h1 { font-size:26px; }
     .rejilla { grid-template-columns:minmax(0, 1fr); }
     .p-estilo, .p-prompt, .p-formato, .p-duracion { grid-column:auto; }
     .caja textarea { min-height:120px; }

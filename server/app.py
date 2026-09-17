@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -344,6 +345,30 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
             creditos.devolver(costo, "imagen:editor")
         raise HTTPException(502, f"No se pudo editar la imagen: {str(err)[:200]}")
     return {"nombre": nombre, "url": f"/api/imagenes/{nombre}"}
+
+
+# M23 · «Mis imágenes» del inicio: las imágenes sueltas nunca tuvieron dónde
+# verse después de cerrar la página. Solo nombres con la forma que ponen
+# crear/editar (12 hex + .jpg): lo demás del prefijo no es una de ellas.
+_NOMBRE_IMAGEN = re.compile(r"[0-9a-f]{12}\.jpg")
+MAX_IMAGENES = 200
+
+
+@app.get("/api/imagenes")
+def mis_imagenes():
+    """Las imágenes del usuario, de la más nueva a la más vieja. En la nube se
+    leen de SU carpeta de S3 (el usuario sale del token); en local, del disco."""
+    if jobs.backend() == "aws":
+        prefijo = f"imagenes/{db.usuario_actual()}/"
+        filas = [(k[len(prefijo):], t) for k, t in media_sync.listar_prefijo_con_fecha(prefijo)]
+    else:
+        d = _dir_imagenes()
+        filas = [(f.name, f.stat().st_mtime) for f in d.glob("*.jpg")] if d.is_dir() else []
+    filas = sorted(((n, t) for n, t in filas if _NOMBRE_IMAGEN.fullmatch(n)),
+                   key=lambda f: f[1], reverse=True)
+    return {"total": len(filas),
+            "imagenes": [{"nombre": n, "url": f"/api/imagenes/{n}", "creado": int(t)}
+                         for n, t in filas[:MAX_IMAGENES]]}
 
 
 @app.get("/api/imagenes/{nombre}/archivo")
@@ -984,6 +1009,19 @@ class _StaticCacheado(StaticFiles):
         elif args and Path(str(args[0])).name in INMUTABLES:
             resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
         return resp
+
+
+# M23 · crear y editar imágenes son UNA página. Las dos viejas se quitaron;
+# quien las tenga guardadas llega a la nueva (el editor, ya en modo editar).
+# 302 y no 301: un 301 se queda en la caché del navegador para siempre.
+@app.get("/crear-imagenes.html", include_in_schema=False)
+def _crear_imagenes_viejo():
+    return RedirectResponse("/imagenes.html", status_code=302)
+
+
+@app.get("/editor-imagenes.html", include_in_schema=False)
+def _editor_imagenes_viejo():
+    return RedirectResponse("/imagenes.html?editar=1", status_code=302)
 
 
 app.mount("/", _StaticCacheado(directory=ROOT / "static", html=True), name="static")

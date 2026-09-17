@@ -141,9 +141,9 @@ def test_los_dos_modos_cuestan_lo_mismo(cliente, srv, monkeypatch):
 
 def test_la_pagina_ofrece_los_dos_modos():
     from pathlib import Path
-    html = Path("static/editor-imagenes.html").read_text(encoding="utf-8")
+    html = Path("static/imagenes.html").read_text(encoding="utf-8")
     assert 'id="modo-todo"' in html and 'id="modo-pincel"' in html
-    assert "fd.append('modo', MODO)" in html, "el modo elegido no viaja al servidor"
+    assert "fd.append('modo', modo)" in html, "el modo elegido no viaja al servidor"
 
 
 # ---------------------------------------------------------------------------
