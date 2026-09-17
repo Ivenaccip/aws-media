@@ -129,9 +129,19 @@ enlace: uno que apunte directo a `d8bfm82hs0s6a.cloudfront.net` abre en pestaña
 por diseño y hay que cambiarlo al endpoint.
 
 Caso aparte, dentro del editor: **publicar a redes (Blotato) y sugerir títulos
-siguen siendo solo locales.** Leen el disco del proyecto, que en el servicio no
-existe. En la nube avisan con un 503 explicado; la salida mientras tanto es
-descargar el video y subirlo a mano.
+funcionan en el servicio desde C2** (M23). Si alguien reporta que una
+publicación no salió:
+
+- El modal de Publicar enseña cada envío con su estado. «No sabemos si llegó»
+  (`incierto`) significa que Blotato pudo haberlo recibido: que revise su
+  calendario de Blotato **antes** de reintentar, o saldrá dos veces.
+- El registro de cada envío vive en S3,
+  `usuarios/<sub>/publicaciones/<proyecto>/<id>.json` (estado, id del post en
+  Blotato, error). Nunca lleva la clave.
+- El trabajo corre en el worker SQS (`tipo: publicar`, log group del worker) y
+  nunca relanza: un fallo queda escrito en el registro, no en la DLQ.
+- Los rechazos de Blotato (422: falta la página, la privacidad, límite diario
+  de la red…) llegan a la pantalla con el mensaje de Blotato.
 
 ### «Mi película se quedó en las imágenes y no avanza»
 

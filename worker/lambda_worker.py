@@ -102,6 +102,11 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # M18: perfil de estilo de un reel/TikTok (Apify + ffmpeg + visión).
             from worker.estilo_analizar import analizar as estilo
             estilo(j["user_id"], j["estilo_id"], j["url"], j["plataforma"])
+        elif j["tipo"] == "publicar":
+            # M23 C2: película → Blotato. Nunca relanza: un reintento de la
+            # cola publicaría dos veces (la publicación se reclama con If-Match).
+            from worker.publicar_task import publicar
+            publicar(j["user_id"], j["proyecto"], j["id"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:

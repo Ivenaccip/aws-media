@@ -381,8 +381,7 @@ reutiliza las piezas de C3/C4:
 - [x] Mientras M8 no llegue: la columna de shorts en e1 dice la verdad ("se
       edita desde Claude Code con /shorts" + botón copiar comando) — hecho en
       M3; ahora esa fila queda solo para proyectos locales sin flujo web.
-- [ ] Publicar vía Blotato desde la web (hoy: descargar por CDN y publicar
-      desde el editor local o a mano).
+- [x] Publicar vía Blotato desde la web — M23 C2 (2026-09-16).
 - [ ] Deuda M8-1: la limpieza LLM de muletillas en captions (paso 4 del skill)
       no viaja a la web — los captions salen del transcript crudo.
 
@@ -1266,10 +1265,8 @@ arreglo de fondo —`Content-Disposition: attachment` firmado por S3, porque
 el disco del proyecto, que en la Lambda no existe, así que la película estaba
 hecha en S3 y no había forma de bajarla. Ahora se lista desde S3.
 
-Lo que sigue pendiente ahí: la otra mitad de b3 (sugerir títulos y agendar en
-Blotato) también lee ese disco. No se arregló —necesita su propio diseño, con
-la URL pública del archivo— pero ya no da un 404 críptico: dice qué pasa y qué
-hacer mientras tanto.
+Lo que quedó pendiente ahí (sugerir títulos y agendar en Blotato también
+leían ese disco) se resolvió en M23 C2.
 
 ### P1 — antes del 23 si el tiempo aguanta
 
@@ -1572,7 +1569,39 @@ Va en entregas, cada una con su PR:
       editor manda a conectar y, en el servicio, dice que programar llega
       pronto en vez de enseñar un formulario que da 503. Sale con el deploy de
       siempre (`aws-media-api` lleva el permiso nuevo).
-- [ ] **C2 · Publicar en la nube:** agendar y títulos desde un worker.
+- [x] **C2 · Publicar en la nube** (2026-09-16, rama `publicar-en-nube`):
+      decisiones del dueño: «Sugerir títulos» es gratis; la casilla «Hecho con
+      IA» (TikTok `isAiGenerated`, YouTube `containsSyntheticMedia`) va marcada
+      por defecto; la privacidad de TikTok y YouTube no trae valor
+      preseleccionado (sin elegirla no se envía).
+      - **Títulos** en la Lambda de la API (una llamada, tope de 20 s): leen el
+        transcript editado de S3 y, si el video aún no se renderizó, el
+        canónico. Trazados en Langfuse con el usuario.
+      - **Agendar** deja la publicación en `pendiente`
+        (`pipeline/publicaciones.py`, S3 `usuarios/<sub>/publicaciones/…`) y la
+        encola; `worker/publicar_task.py` la sube a Blotato **en streaming**
+        desde S3 (sin /tmp ni memoria) y crea el post con los campos de cada
+        red (`blotato.REDES` / `target_de`). En local corre lo mismo en
+        segundo plano.
+      - **Sin posts dobles:** la cola reintenta, así que el worker reclama la
+        publicación con If-Match, marca `creando` antes del POST y nunca
+        relanza. Un timeout o un 5xx al crear queda como «No sabemos si llegó»
+        (revisar el calendario antes de reintentar); un 4xx, como error
+        reintentable.
+      - **El resultado:** «publicar ahora» espera ~45 s la respuesta de
+        Blotato; después la pregunta la pantalla (`/publicaciones`, 3 por
+        petición). Se guarda el id del post (sirve para Meta Ads y C3).
+      - **Antes de subir:** tope de 1 GB y por red (X 512 MB/2:20 min,
+        Instagram 300 MB, LinkedIn 500 MB…); Instagram y Facebook solo
+        vertical (ffprobe sobre la URL firmada, respeta la rotación).
+      - Modal: páginas de Facebook/LinkedIn y tableros de Pinterest, título de
+        YouTube, contador por red, textos escapados (antes los títulos del LLM
+        y los nombres de las cuentas entraban crudos por innerHTML).
+      - Sin cambios de infra: el worker ya podía leer la clave del usuario y
+        escribir en S3. Se despliegan `aws-media-jobs` (tipo nuevo) y
+        `aws-media-api`; CDK pone jobs primero.
+      - Pendiente: la película horizontal no tiene salida vertical para
+        Instagram/Facebook; el texto del post no pasa por moderación.
 - [ ] **C3 · Agenda** · [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
 
 Lo que pedía el análisis:
@@ -1633,6 +1662,11 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 ### Hallazgos del análisis que no esperan a M23
 
 - **Publicar en la nube respondía 500** (`publicar_api.estado`): PR #89.
+- **Proyectos del editor sin dueño en S3** (hallado al diseñar C2): las claves
+  son `videos/<nombre>/…`, sin usuario, y el nombre lo escribe cada quien
+  («video-1»); `presign` y `confirmar` no miran si otro usuario ya lo usa. Dos
+  usuarios con el mismo nombre ven y pisan los archivos del otro. P0 antes
+  del 23 (tarea aparte).
 - **Token de Apify en la URL** (`pipeline/apify.py`): rotarlo y mandarlo en
   una cabecera.
 - **Cognito:** la contraseña provisional dura 7 días; con el tope de 50

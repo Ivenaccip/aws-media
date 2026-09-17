@@ -134,9 +134,6 @@
     border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
     margin-bottom: 14px; }
   .blt-aviso b { color: #f0a94a; }
-  .blt-pronto { border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
-    padding: 10px 12px; font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
-  .blt-pronto b { color: var(--txt); }
   #blt-form label { display: block; font-size: 13px; color: var(--mut); margin-bottom: 5px; }
   #blt-clave { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line);
     background: var(--bg); color: var(--txt); font: 14px/1.3 ui-monospace, Consolas, monospace; }
@@ -254,7 +251,6 @@
     <p class="blt-ok">✓ Tu Blotato está conectado</p>
     <p class="blt-nota" id="blt-origen" hidden>Estás usando la clave del <code>.env</code> de esta máquina.</p>
     <ul id="blt-redes" aria-label="Redes conectadas en tu Blotato"></ul>
-    <p class="blt-nota" id="blt-pronto-ok" hidden>Programar tus videos desde aquí llega en los próximos días. Tu cuenta ya queda lista.</p>
     <p class="blt-nota" id="blt-sin-redes" hidden>Tu Blotato todavía no tiene redes conectadas. Agrégalas en Blotato y vuelve a abrir esta ventana.</p>
     <div class="blt-acciones">
       <button type="button" id="blt-cambiar">Cambiar clave</button>
@@ -268,7 +264,6 @@
       <li>Pulsa <b>Generate API Key</b> y copia la clave completa.</li>
       <li>Pégala aquí abajo.</li>
     </ol>
-    <p class="blt-pronto" id="blt-pronto" role="note" hidden><b>Todavía no puedes programar desde aquí:</b> llega en los próximos días. Si aún estás en la prueba gratis de Blotato, espera a que esté listo antes de generar tu clave.</p>
     <p class="blt-aviso" role="note"><b>Antes de generarla:</b> la API no viene en la prueba gratis de Blotato. Al generar la clave, Blotato termina tu prueba y <span id="blt-precio">empieza a cobrarte su plan de pago</span>. Ese cobro es de Blotato, no nuestro.</p>
     <label for="blt-clave">Tu clave de API de Blotato</label>
     <input id="blt-clave" type="password" autocomplete="off" spellcheck="false"
@@ -329,10 +324,8 @@ function vistaBlotato(d, {formulario = false} = {}) {
     $('#blt-precio').textContent =
       `empieza a cobrarte su plan (desde $${d.plan.usd_por_mes} dólares al mes con ${d.plan.nombre})`;
   $('#blt-err').textContent = verForm ? '' : (d.error || '');
-  // en el servicio, agendar aún no corre (C2): se dice antes de que genere
-  // una clave que le cuesta dinero
-  $('#blt-pronto').hidden = d.agendar !== false;
-  $('#blt-pronto-ok').hidden = d.agendar !== false;
+  // C2: programar ya corre en local y en el servicio; antes de generar la
+  // clave solo queda por avisar el cobro de Blotato (.blt-aviso)
   if (verForm) { setTimeout(() => $('#blt-clave').focus(), 0); return; }
   const env = d.origen === 'env';
   $('#blt-origen').hidden = !env;

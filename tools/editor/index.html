@@ -1236,8 +1236,12 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
              display: none; align-items: center; justify-content: center; }
   #b3modal.abierto, #b1modal.abierto { display: flex; }
   #b3card { background: var(--panel); border: 1px solid #55708f; border-radius: 10px;
-            width: min(480px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px; }
+            width: min(520px, 94vw); max-height: 92vh; overflow-y: auto; padding: 18px;
+            overscroll-behavior: contain; }
   #b3card h3 { font-size: 14px; margin-bottom: 12px; }
+  #b3card .b3cerrar { float: right; background: transparent; border-color: transparent;
+                      color: var(--dim); padding: 0 6px; font-size: 14px; line-height: 1.3; }
+  #b3card .b3cerrar:hover { color: var(--text); }
   #b3cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .b3col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .b3sq { width: 150px; aspect-ratio: 1; background: var(--panel2); border: 1px solid #55708f;
@@ -1258,14 +1262,57 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
   #b3card select, #b3card input, #b3card textarea { width: 100%; background: var(--panel2);
     color: var(--text); border: 1px solid #55708f; border-radius: 6px; padding: 6px 8px;
     font: inherit; font-size: 12px; margin-bottom: 8px; }
+  #b3card textarea { resize: vertical; }
+  #b3card input[type=checkbox], #b3card input[type=radio] { width: auto; margin: 0 6px 0 0;
+    padding: 0; accent-color: var(--accent); }
+  #b3card select:disabled { opacity: .6; }
+  /* C2: el formulario va a lo ancho, bajo la descarga y la mascota */
+  #b3fn2 { margin-top: 12px; }
+  #b3fn2:empty { display: none; }
+  #b3fn2 .b3lbl { display: block; font-size: 11px; color: var(--dim); margin: 2px 0 3px; }
+  #b3fn2 .b3chk { display: flex; align-items: center; font-size: 12px; margin: 0 0 6px; cursor: pointer; }
+  #b3fn2 .b3nota { font-size: 11px; color: var(--dim); line-height: 1.45; margin: -4px 0 8px; }
+  #b3fn2 .b3aviso { font-size: 11px; color: #f0a94a; line-height: 1.45; margin: -4px 0 8px; }
+  #b3fn2 .b3err, #b3titulos .b3err { font-size: 12px; color: #ff8080; line-height: 1.45; margin-bottom: 8px; }
+  #b3fn2 .b3estado { font-size: 12px; color: var(--dim); line-height: 1.5; }
+  #b3contador { font-size: 11px; color: var(--dim); text-align: right; margin: -6px 0 8px;
+                font-variant-numeric: tabular-nums; }
+  #b3contador.err { color: #ff8080; }
+  #b3sugerir { margin-bottom: 6px; font-size: 12px; }
+  #b3casillas { margin: 2px 0 6px; }
+  #b3fn2 .b3modos { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 6px; }
   #b3titulos button { display: block; width: 100%; text-align: left; margin-bottom: 5px;
                       font-size: 12px; white-space: normal; }
   #b3msg { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
   #b3msg.err { color: #ff8080; }
+  /* «Tus publicaciones de este video»: el avance del worker, sin recargar */
+  #b3pubs { margin-top: 12px; border-top: 1px solid #22354f; padding-top: 10px; }
+  #b3pubs h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+               color: var(--dim); margin-bottom: 6px; }
+  #b3lista { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  #b3lista li { background: var(--panel2); border: 1px solid #22354f; border-radius: 6px;
+                padding: 6px 8px; font-size: 12px; min-width: 0; }
+  #b3lista .b3pubCab { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+  #b3lista .b3pubMeta { color: var(--dim); font-size: 11px; }
+  #b3lista .b3pubTxt { margin-top: 3px; overflow-wrap: anywhere; }
+  #b3lista .b3pubMsg { margin-top: 2px; color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+  .b3pill { display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 8px;
+            border-radius: 999px; border: 1px solid; white-space: nowrap; }
+  .b3pill.curso { border-color: var(--accent); color: #a9c6ee;
+                  background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .b3pill.ok { border-color: var(--keep); color: #3dd68c; background: #102e22; }
+  .b3pill.err { border-color: var(--cut-retake); color: #ff8080;
+                background: color-mix(in srgb, var(--cut-retake) 16%, transparent); }
+  .b3pill.aviso { border-color: #da8c28; color: #f0a94a; background: #2e2110; }
+  @media (max-width: 420px) {
+    #b3card { padding: 14px; }
+    .b3sq { width: 120px; padding: 8px; }
+    .b3sq img { width: 64px; height: 64px; }
+  }
 </style>
-<div id="b3modal"><div id="b3card">
-  <h3>📤 Publicar
-      <span style="float:right;cursor:pointer;color:var(--dim)" onclick="document.getElementById('b3modal').classList.remove('abierto')">✕</span></h3>
+<div id="b3modal"><div id="b3card" role="dialog" aria-labelledby="b3tit">
+  <h3 id="b3tit">📤 Publicar
+      <button type="button" class="b3cerrar" onclick="b3cerrar()" aria-label="Cerrar">✕</button></h3>
   <div id="b3cols">
     <div class="b3col" id="b3descargas"></div>
     <div class="b3col">
@@ -1274,11 +1321,14 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
         <img src="asset/blotato-mascota.png" alt="Blotato" onerror="this.parentElement.style.display='none'">
         <div class="b3sqTxt" id="b3masTxt">Haz click para<br>agregar Blotato</div>
       </div>
-      <div id="b3fn2" style="width:100%"></div>
     </div>
   </div>
-  <div id="b3msg"></div>
-  <div id="orbe-b3"></div>
+  <div id="b3fn2"></div>
+  <div id="b3msg" role="status" aria-live="polite"></div>
+  <section id="b3pubs" hidden aria-labelledby="b3pubsTit">
+    <h4 id="b3pubsTit">Tus publicaciones de este video</h4>
+    <ul id="b3lista"></ul>
+  </section>
 </div></div>
 <div id="b1modal"><div id="b1card">
   <h3>📝 Subtítulos — frame de muestra
@@ -1316,9 +1366,30 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
 <script>
 "use strict";
 let OVS = null, SUBSEG = [], G1 = null, G1PRECIO = null, G1IMAGEN = null;
+// Todo texto que venga del servidor, de Blotato o del LLM pasa por aquí antes
+// de tocar un innerHTML (nombres de cuentas, títulos, destinos, archivos,
+// mensajes). Escapa también las comillas: sirve dentro de un atributo.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+// `detail` es un string en nuestros errores, pero el 422 de pydantic trae una
+// lista de {loc, msg}: sin esto el usuario leía «[object Object]».
+function fjDetalle(d, status) {
+  const det = d && d.detail;
+  if (typeof det === "string" && det.trim()) return det;
+  const uno = x => {
+    if (!x || typeof x !== "object") return String(x ?? "");
+    const campo = Array.isArray(x.loc) && x.loc.length ? `${x.loc[x.loc.length - 1]}: ` : "";
+    return x.msg ? campo + x.msg : JSON.stringify(x);
+  };
+  if (Array.isArray(det) && det.length) return det.map(uno).filter(Boolean).join(" · ");
+  if (det && typeof det === "object") return uno(det);
+  return `el servidor respondió ${status}`;
+}
 const fj = (url, body) => fetch(url, body ? { method: "POST",
   headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined)
-  .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status); return r.json(); });
+  .then(async r => { if (!r.ok) throw new Error(fjDetalle(await r.json().catch(() => ({})), r.status)); return r.json(); });
 const usd = x => `$${x.toFixed(2)} dólares`;
 
 function fusionRender() {
@@ -1479,19 +1550,222 @@ async function b2flujo() {
   finally { orbeOff("orbe-broll"); b.disabled = false; }
 }
 
+// ── b3 · Publicar (C2) ──────────────────────────────────────────────────────
+// Las reglas de cada red (límites, título, privacidad, destino…) llegan del
+// servidor en st.redes: la UI no las duplica. Lo que va de aquí a b3abrir no
+// toca más DOM que la lista de publicaciones, y se prueba en node
+// (tests/test_m23_publicar_ui.py).
+let B3REDES = {}, B3CUENTAS = [], B3ARCHIVOS = [], B3PUBS = [];
+let B3GEN = 0;                 // sube al abrir y al cerrar: lo que llegue tarde no se pinta
+let B3SONDEO = null, B3SONDEANDO = false;
+let B3DESTGEN = 0, B3DEST = { estado: "ok" }, B3PLAT = null;
+const B3SONDEO_MS = 4000;
+const B3OPCIONES = {
+  comentarios:  ["Permitir comentarios", true],
+  duo:          ["Permitir dúos", true],
+  stitch:       ["Permitir stitch", true],
+  marca_propia: ["Promociono mi propia marca", false],
+  marca_pagada: ["Contenido pagado por una marca", false],
+  notificar:    ["Avisar a mis suscriptores", true],
+  para_ninos:   ["Hecho para niños", false],
+};
+const B3DESTINO = {
+  pagina:  { etiqueta: "Página", la: "la página", plural: "páginas",
+             vacio: "no tiene páginas conectadas en Blotato. Conecta tu página en Blotato y vuelve a abrir Publicar." },
+  tablero: { etiqueta: "Tablero", la: "el tablero", plural: "tableros",
+             vacio: "no tiene tableros en Blotato. Crea o conecta un tablero en Blotato y vuelve a abrir Publicar." },
+};
+const B3EN_CURSO = ["pendiente", "subiendo", "creando", "enviado"];
+const B3INCIERTO = "No sabemos si llegó: revisa tu calendario de Blotato antes de intentar de nuevo.";
+
+function b3fecha(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function b3msgPeso(red, mb) {
+  return red.mb && mb > red.mb
+    ? `Este video pesa ${mb} MB y ${red.nombre} acepta hasta ${red.mb} MB: elige otro archivo.`
+    : null;
+}
+
+// Qué impide enviar, o null. `v` son los valores del formulario (b3valores);
+// `ahora`, milisegundos (Date.now()).
+function b3validar(red, v, ahora) {
+  if (!v.cuenta_id) return "Elige la cuenta donde publicar.";
+  if (!v.archivo) return "Todavía no hay un video para publicar: termina la película y vuelve a abrir Publicar.";
+  const peso = b3msgPeso(red, v.mb);
+  if (peso) return peso;
+  if (red.destino && red.destino_obligatorio && !v.destino) {
+    const d = B3DESTINO[red.destino] || B3DESTINO.pagina;
+    if (v.estado_destinos === "cargando") return `Espera a que carguen tus ${d.plural}.`;
+    if (v.estado_destinos === "vacio") return `Tu cuenta de ${red.nombre} ${d.vacio}`;
+    if (v.estado_destinos === "error") return `No pudimos traer tus ${d.plural}: vuelve a elegir la cuenta para intentarlo de nuevo.`;
+    return `Elige ${d.la} donde publicar.`;
+  }
+  const titulo = (v.titulo || "").trim();
+  if (red.titulo && red.titulo_obligatorio && !titulo) return `Escribe el título: ${red.nombre} lo pide.`;
+  if (red.titulo && titulo.length > red.titulo) return `El título pasa de ${red.titulo} caracteres.`;
+  const texto = (v.texto || "").trim();
+  if (!texto) return red.titulo ? "Escribe la descripción." : "Escribe o elige el texto del post.";
+  if (red.texto && texto.length > red.texto)
+    return `El texto pasa del máximo de ${red.nombre}: ${texto.length} de ${red.texto} caracteres.`;
+  if (red.privacidad && !v.privacidad) return "Elige quién puede ver la publicación.";
+  if (v.modo !== "ahora") {
+    if (!v.fecha) return "Elige la fecha y hora, o cambia a «Publicar ahora».";
+    const t = new Date(v.fecha).getTime();
+    if (isNaN(t)) return "Esa fecha no es válida.";
+    if (t <= ahora) return "Esa hora ya pasó: elige una más adelante, o cambia a «Publicar ahora».";
+  }
+  return null;
+}
+
+// El cuerpo de POST api/publicar/agendar: solo los campos que aplican a la
+// red; los demás los pone el servidor con sus valores por defecto.
+function b3cuerpo(red, v) {
+  const c = {
+    confirmar: true, cuenta_id: v.cuenta_id, plataforma: v.plataforma,
+    cuenta_nombre: v.cuenta_nombre, archivo: v.archivo, texto: (v.texto || "").trim(),
+    cuando: v.modo === "ahora" ? null : new Date(v.fecha).toISOString(),
+  };
+  if (red.titulo) c.titulo = (v.titulo || "").trim() || null;
+  if (red.privacidad) c.privacidad = v.privacidad || null;
+  if (red.destino) c.destino = v.destino || null;       // LinkedIn: vacío = mi perfil
+  if (red.ia) c.ia = !!v.ia;
+  const ops = v.opciones || {};
+  for (const k of red.opciones || []) if (k in ops) c[k] = !!ops[k];
+  return c;
+}
+
+// El texto del confirm(): lo justo para reconocer QUÉ sale y DÓNDE.
+function b3resumen(red, c, destinoNombre) {
+  const corta = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+  const lineas = [`Red: ${red.nombre}`, `Cuenta: ${c.cuenta_nombre}`];
+  if (red.destino) lineas.push(`${(B3DESTINO[red.destino] || B3DESTINO.pagina).etiqueta}: ${destinoNombre || "—"}`);
+  lineas.push(c.cuando ? `Cuándo: ${b3fecha(c.cuando)} (tu hora)`
+                       : "Cuándo: AHORA, en cuanto se suba el video");
+  if (c.titulo) lineas.push(`Título: «${corta(c.titulo, 100)}»`);
+  lineas.push(`Texto: «${corta(c.texto, 140)}»`);
+  return `¿${c.cuando ? "Programar" : "Publicar"} este video?\n\n${lineas.join("\n")}`;
+}
+
+// [texto de la etiqueta, clase de color] de una publicación (Vista)
+function b3etiqueta(p) {
+  if (p.en_curso || B3EN_CURSO.includes(p.estado)) return ["Enviando…", "curso"];
+  if (p.estado === "programado") return [p.cuando ? `Programada para ${b3fecha(p.cuando)}` : "Programada", "ok"];
+  if (p.estado === "publicado") return ["Publicada", "ok"];
+  if (p.estado === "fallido") return ["Blotato la rechazó", "err"];
+  if (p.estado === "error") return ["No se envió", "err"];
+  if (p.estado === "incierto") return ["Sin confirmar", "aviso"];
+  return [p.estado || "Sin estado", ""];
+}
+
+// Una fila de «Tus publicaciones». Todo lo que trae la Vista va escapado.
+function b3fila(p, redes) {
+  const [etiqueta, clase] = b3etiqueta(p);
+  const red = (redes && redes[p.plataforma] && redes[p.plataforma].nombre) || p.plataforma || "";
+  const cuando = p.cuando && !["programado", "publicado"].includes(p.estado)
+    ? `para ${b3fecha(p.cuando)}` : "";
+  let msg = p.estado === "incierto" ? B3INCIERTO : (p.mensaje || "");
+  if (["fallido", "error"].includes(p.estado)) msg = `${msg} Puedes intentarlo de nuevo.`.trim();
+  const ver = typeof p.url === "string" && /^https?:\/\//i.test(p.url)
+    ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Ver</a>` : "";
+  const txt = p.titulo || p.texto || "";
+  return `<li><div class="b3pubCab"><span class="b3pill ${clase}">${esc(etiqueta)}</span>` +
+    `<b>${esc(red)}</b>` + (p.cuenta_nombre ? `<span>· ${esc(p.cuenta_nombre)}</span>` : "") +
+    (cuando ? `<span class="b3pubMeta">${esc(cuando)}</span>` : "") + ver + `</div>` +
+    (txt ? `<div class="b3pubTxt">${esc(txt)}</div>` : "") +
+    (msg ? `<div class="b3pubMsg">${esc(msg)}</div>` : "") + `</li>`;
+}
+
+function b3pintarPubs(lista) {
+  B3PUBS = Array.isArray(lista) ? lista : [];
+  $("b3pubs").hidden = !B3PUBS.length;
+  $("b3lista").innerHTML = B3PUBS.map(p => b3fila(p, B3REDES)).join("");
+}
+
+function b3parar() {
+  if (B3SONDEO) clearInterval(B3SONDEO);
+  B3SONDEO = null;
+}
+
+// Sigue el avance del worker mientras alguna esté en curso y el modal siga
+// abierto. Nunca dos intervalos a la vez, y la red caída no corta el sondeo.
+function b3sondear() {
+  if (B3SONDEO || !B3PUBS.some(p => p.en_curso)) return;
+  const gen = B3GEN;
+  const id = B3SONDEO = setInterval(async () => {
+    if (gen !== B3GEN) {                 // el modal se cerró (o se reabrió)
+      clearInterval(id);
+      if (B3SONDEO === id) B3SONDEO = null;
+      return;
+    }
+    if (B3SONDEANDO) return;             // la vuelta anterior sigue en camino
+    B3SONDEANDO = true;
+    let r;
+    try { r = await fj("api/publicar/publicaciones"); }
+    catch { return; }
+    finally { B3SONDEANDO = false; }
+    if (gen !== B3GEN || !r || !Array.isArray(r.publicaciones)) return;
+    b3pintarPubs(r.publicaciones);
+    if (!B3PUBS.some(p => p.en_curso)) b3parar();
+  }, B3SONDEO_MS);
+}
+
+function b3aviso(txt, err) {
+  $("b3msg").className = err ? "err" : "";
+  $("b3msg").textContent = txt || "";
+}
+
+function b3cerrar() {
+  $("b3modal").classList.remove("abierto");
+  B3GEN++;
+  b3parar();
+  orbeOff("orbe-b3");
+}
+
+function b3mascota(conectado, reconectar) {
+  // M23 C: la cuenta se conecta en el inicio (el «+» de Blotato), en otra
+  // pestaña para no perder la edición; al volver, reabrir Publicar la lee.
+  // Una clave que Blotato ya no acepta (reconectar) también lleva ahí.
+  const mas = $("b3masWrap");
+  const conectar = !conectado || reconectar;
+  $("b3masTxt").style.display = conectar ? "" : "none";
+  $("b3masTxt").innerHTML = reconectar ? "Haz click para<br>reconectar Blotato"
+                                       : "Haz click para<br>agregar Blotato";
+  mas.style.cursor = conectar ? "pointer" : "default";
+  const ir = () => window.open("/?blotato=conectar", "_blank", "noopener");
+  mas.onclick = conectar ? ir : null;
+  mas.onkeydown = conectar
+    ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ir(); } } : null;
+  if (conectar) { mas.setAttribute("role", "button"); mas.tabIndex = 0; }
+  else { mas.removeAttribute("role"); mas.removeAttribute("tabindex"); }
+}
+
+const b3cuentaActual = () => B3CUENTAS[Number($("b3cuenta").value)] || {};
+const b3redActual = () => B3REDES[b3cuentaActual().platform] || {};
+
 async function b3abrir() {
+  const gen = ++B3GEN;
+  b3parar();
   document.getElementById("b3modal").classList.add("abierto");
-  $("b3msg").className = ""; $("b3msg").textContent = "⏳ cargando…";
+  b3aviso("⏳ cargando…");
+  $("b3fn2").innerHTML = "";
   let st;
   try { st = await fj("api/publicar/estado"); }
-  catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; return; }
+  catch (e) { if (gen === B3GEN) b3aviso(e.message, true); return; }
+  if (gen !== B3GEN) return;
+  B3REDES = st.redes || {};
+  const des = st.descargables || [];
+  B3ARCHIVOS = des.filter(d => /\.mp4$/i.test(d.nombre || ""))
+    .sort((a, b) => (b.clave === "subtitulado") - (a.clave === "subtitulado"));
   // solo la película finalizada: la subtitulada si existe, si no la base
-  const peli = st.descargables.find(d => d.clave === "subtitulado")
-            || st.descargables.find(d => d.clave === "pelicula")
-            || st.descargables.find(d => d.nombre.endsWith(".mp4"));
+  const peli = des.find(d => d.clave === "subtitulado")
+            || des.find(d => d.clave === "pelicula")
+            || B3ARCHIVOS[0];
   $("b3descargas").innerHTML = peli
     ? `<div class="b3sqTit">Publicar</div>
-       <a class="b3sq" href="descarga/${peli.clave}" download>
+       <a class="b3sq" href="descarga/${esc(encodeURIComponent(peli.clave))}" download>
          <img src="asset/descarga.png" alt="">
          <div class="b3sqTxt">Haz click para<br>descargar película</div>
        </a>`
@@ -1500,91 +1774,255 @@ async function b3abrir() {
          <img src="asset/descarga.png" alt="">
          <div class="b3sqTxt">aún no hay<br>película final</div>
        </div>`;
-  const mas = $("b3masWrap");
-  // M23 C: la cuenta se conecta en el inicio (el «+» de Blotato), en otra
-  // pestaña para no perder la edición; al volver, reabrir Publicar la lee.
-  // Una clave que Blotato ya no acepta (reconectar) también lleva ahí.
-  const conectar = !st.blotato || st.reconectar;
-  $("b3masTxt").style.display = conectar ? "" : "none";
-  $("b3masTxt").innerHTML = st.reconectar ? "Haz click para<br>reconectar Blotato"
-                                          : "Haz click para<br>agregar Blotato";
-  mas.style.cursor = conectar ? "pointer" : "default";
-  mas.onclick = conectar ? () => window.open("/?blotato=conectar", "_blank", "noopener") : null;
-  if (!st.blotato) {
-    $("b3fn2").innerHTML = st.error ? `<span style='color:#ff8080'>${st.error}</span>` : "";
-  } else if (st.error) {
-    $("b3fn2").innerHTML = `<span style='color:#ff8080'>${st.error}</span>`;
-  } else if (st.agendar === false) {
-    // en el servicio agendar todavía no corre (da 503): se dice, sin formulario
-    const n = st.cuentas.length;
-    $("b3fn2").innerHTML = `<div style="font-size:12px;line-height:1.5;color:var(--dim)">
-      ✓ Tu Blotato está conectado${n ? ` (${n} ${n === 1 ? "red" : "redes"})` : ""}.<br>
-      Programar desde aquí llega muy pronto. Por ahora descarga la película y
-      súbela desde Blotato.</div>`;
-  } else {
-    // M3: "Programar" es el default — publicar de inmediato es la opción
-    // explícita, y la zona horaria del navegador queda a la vista.
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "hora local";
-    $("b3fn2").innerHTML = `
-      <select id="b3cuenta" aria-label="Cuenta destino">${st.cuentas.map(c =>
-        `<option value="${c.id}|${c.platform}">${c.platform} · ${c.fullname || c.username}</option>`).join("")}</select>
-      <select id="b3archivo" aria-label="Video a publicar">${st.descargables.filter(d => d.nombre.endsWith(".mp4"))
-        .sort((a, b) => (b.clave === "subtitulado") - (a.clave === "subtitulado")).map(d =>
-        `<option value="${d.clave}">${d.nombre}</option>`).join("")}</select>
-      <button id="b3sugerir" style="margin-bottom:6px" title="~$0.01 dólares de LLM">Sugerir títulos</button>
-      <div id="b3titulos"></div>
-      <textarea id="b3texto" rows="3" aria-label="Texto del post" placeholder="Texto del post (elige un título sugerido o escribe el tuyo)"></textarea>
-      <div style="margin-bottom:6px">
-        <label style="display:inline;margin:0;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text)">
-          <input type="radio" name="b3modo" value="programar" checked style="width:auto;margin:0 4px 0 0"> Programar</label>
-        <label style="display:inline;margin:0 0 0 12px;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text)">
-          <input type="radio" name="b3modo" value="ahora" style="width:auto;margin:0 4px 0 0"> Publicar ahora</label>
-      </div>
-      <input type="datetime-local" id="b3cuando" aria-label="Fecha y hora de publicación">
-      <div style="color:var(--dim);font-size:11px;margin-bottom:6px">La hora es de tu zona: ${tz}.</div>
-      <button class="primary" id="b3agendar">📤 Programar</button>`;
-    const b3modo = () => document.querySelector('input[name="b3modo"]:checked').value;
-    document.querySelectorAll('input[name="b3modo"]').forEach(r => r.onchange = () => {
-      const prog = b3modo() === "programar";
-      $("b3cuando").style.display = prog ? "" : "none";
-      $("b3agendar").textContent = prog ? "📤 Programar" : "📤 Publicar ahora";
-    });
-    $("b3sugerir").onclick = async () => {
-      if ($("b3sugerir").disabled) return;
-      $("b3sugerir").disabled = true;
-      $("b3msg").className = ""; $("b3msg").textContent = "";
-      orbeOn("orbe-b3", { texto: "Claude está escribiendo títulos", tope: 120000,
-                          alAgotar: m => m.texto("Tarda más de lo normal") });
-      try {
-        const plat = $("b3cuenta").value.split("|")[1];
-        const r = await fj("api/publicar/titulos", { plataformas: [plat] });
-        $("b3titulos").innerHTML = r.titulos.map(t => `<button type="button">${t}</button>`).join("");
-        [...$("b3titulos").children].forEach(b => b.onclick = () => { $("b3texto").value = b.textContent; });
-        $("b3msg").textContent = "";
-      } catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; }
-      finally { orbeOff("orbe-b3"); $("b3sugerir").disabled = false; }
-    };
-    $("b3agendar").onclick = async () => {
-      const [cuenta_id, plataforma] = $("b3cuenta").value.split("|");
-      const texto = $("b3texto").value.trim();
-      if (!texto) { $("b3msg").className = "err"; $("b3msg").textContent = "Escribe o elige el texto del post."; return; }
-      const programar = b3modo() === "programar";
-      if (programar && !$("b3cuando").value) {
-        $("b3msg").className = "err";
-        $("b3msg").textContent = "Elige la fecha y hora, o cambia a «Publicar ahora».";
-        return;
-      }
-      const cuando = programar ? new Date($("b3cuando").value).toISOString() : null;
-      if (!confirm(`Se ${cuando ? `programará (${$("b3cuando").value.replace("T", " ")}, tu hora)` : "publicará AHORA"} en ${plataforma}:\n\n«${texto}»\n\n¿Confirmar?`)) return;
-      $("b3msg").className = ""; $("b3msg").textContent = "⏳ subiendo video y creando el post…";
-      try {
-        await fj("api/publicar/agendar", { confirmar: true, cuenta_id, plataforma, texto,
-                                           archivo: $("b3archivo").value, cuando });
-        $("b3msg").textContent = "✅ listo — revisa tu calendario de Blotato";
-      } catch (e) { $("b3msg").className = "err"; $("b3msg").textContent = e.message; }
-    };
+  b3pintarPubs(st.publicaciones || []);
+  b3sondear();
+  b3aviso("");
+  if (!st.blotato || st.error) {
+    b3mascota(!!st.blotato, false);
+    $("b3fn2").innerHTML = st.error ? `<p class="b3err">${esc(st.error)}</p>` : "";
+    return;
   }
-  $("b3msg").textContent = "";
+  // las redes van aparte: un Blotato lento no tumba la descarga
+  b3mascota(true, false);
+  $("b3fn2").innerHTML = `<p class="b3estado">⏳ cargando tus redes…</p>`;
+  let cu;
+  try { cu = await fj("api/publicar/cuentas"); }
+  catch (e) {
+    if (gen === B3GEN)
+      $("b3fn2").innerHTML = `<p class="b3err">No pudimos traer tus redes: ${esc(e.message)}</p>`;
+    return;
+  }
+  if (gen !== B3GEN) return;
+  b3mascota(!!cu.conectado, !!cu.reconectar);
+  if (cu.error || !cu.conectado) {
+    $("b3fn2").innerHTML = cu.error ? `<p class="b3err">${esc(cu.error)}</p>` : "";
+    return;
+  }
+  const todas = cu.cuentas || [];
+  B3CUENTAS = todas.filter(c => B3REDES[c.platform]);   // redes sin reglas no se ofrecen
+  if (!todas.length) {
+    $("b3fn2").innerHTML = `<p class="b3estado">Tu Blotato no tiene redes conectadas todavía.
+      Conéctalas en Blotato y vuelve a abrir Publicar.</p>`;
+    return;
+  }
+  if (!B3CUENTAS.length) {
+    $("b3fn2").innerHTML = `<p class="b3estado">Ninguna de las redes de tu Blotato se puede
+      usar desde aquí todavía.</p>`;
+    return;
+  }
+  b3formulario(gen);
+}
+
+function b3formulario(gen) {
+  // M3: "Programar" es el default — publicar de inmediato es la opción
+  // explícita, y la zona horaria del navegador queda a la vista.
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "hora local";
+  B3PLAT = null;
+  $("b3fn2").innerHTML = `
+    <label class="b3lbl" for="b3cuenta">Cuenta</label>
+    <select id="b3cuenta">${B3CUENTAS.map((c, i) =>
+      `<option value="${i}">${esc(B3REDES[c.platform].nombre || c.platform)} · ${esc(c.fullname || c.username)}</option>`).join("")}</select>
+    <label class="b3lbl" for="b3archivo">Video</label>
+    <select id="b3archivo">${B3ARCHIVOS.length
+      ? B3ARCHIVOS.map((d, i) => `<option value="${i}">${esc(d.nombre)} · ${esc(d.mb)} MB</option>`).join("")
+      : `<option value="">aún no hay película final</option>`}</select>
+    <p class="b3aviso" id="b3peso" role="alert" hidden></p>
+    <p class="b3nota" id="b3vertical" hidden>Esta red solo acepta video vertical (9:16).</p>
+    <div id="b3destWrap" hidden>
+      <label class="b3lbl" for="b3destino" id="b3destLbl">Página</label>
+      <select id="b3destino"></select>
+      <p class="b3aviso" id="b3destNota" hidden></p>
+    </div>
+    <button type="button" id="b3sugerir">Sugerir títulos</button>
+    <div id="b3titulos"></div>
+    <div id="orbe-b3"></div>
+    <div id="b3titWrap" hidden>
+      <label class="b3lbl" for="b3titulo" id="b3titLbl">Título</label>
+      <input type="text" id="b3titulo" autocomplete="off">
+    </div>
+    <label class="b3lbl" for="b3texto" id="b3txtLbl">Texto del post</label>
+    <textarea id="b3texto" rows="3"></textarea>
+    <div id="b3contador" aria-live="polite"></div>
+    <div id="b3privWrap" hidden>
+      <label class="b3lbl" for="b3privacidad">Quién puede verlo</label>
+      <select id="b3privacidad"></select>
+    </div>
+    <div id="b3casillas"></div>
+    <div class="b3modos" role="radiogroup" aria-label="Cuándo publicar">
+      <label class="b3chk"><input type="radio" name="b3modo" value="programar" checked> Programar</label>
+      <label class="b3chk"><input type="radio" name="b3modo" value="ahora"> Publicar ahora</label>
+    </div>
+    <input type="datetime-local" id="b3cuando" aria-label="Fecha y hora de publicación">
+    <p class="b3nota" id="b3zona">La hora es de tu zona: ${esc(tz)}.</p>
+    <button type="button" class="primary" id="b3agendar">📤 Programar</button>`;
+  const b3modo = () => document.querySelector('input[name="b3modo"]:checked').value;
+  document.querySelectorAll('input[name="b3modo"]').forEach(r => r.onchange = () => {
+    const prog = b3modo() === "programar";
+    $("b3cuando").style.display = prog ? "" : "none";
+    $("b3zona").style.display = prog ? "" : "none";
+    $("b3agendar").textContent = prog ? "📤 Programar" : "📤 Publicar ahora";
+  });
+  const hoy = new Date();
+  hoy.setMinutes(hoy.getMinutes() - hoy.getTimezoneOffset());
+  $("b3cuando").min = hoy.toISOString().slice(0, 16);
+  $("b3cuenta").onchange = () => b3cambioCuenta(gen);
+  $("b3archivo").onchange = b3peso;
+  $("b3texto").oninput = b3contar;
+  b3cambioCuenta(gen);
+
+  $("b3sugerir").onclick = async () => {
+    if ($("b3sugerir").disabled) return;
+    $("b3sugerir").disabled = true;
+    b3aviso("");
+    // gratis, sin confirm; es espera de IA, así que lleva orbe
+    orbeOn("orbe-b3", { texto: "Escribiendo títulos", tope: 120000,
+                        alAgotar: m => m.texto("Tarda más de lo normal") });
+    try {
+      const r = await fj("api/publicar/titulos", { plataformas: [b3cuentaActual().platform] });
+      if (gen !== B3GEN) return;
+      $("b3titulos").innerHTML = (r.titulos || []).map(t => `<button type="button">${esc(t)}</button>`).join("");
+      [...$("b3titulos").children].forEach(b => b.onclick = () => b3usarTitulo(b.textContent));
+    } catch (e) {
+      if (gen === B3GEN) $("b3titulos").innerHTML = `<p class="b3err">${esc(e.message)}</p>`;
+    }
+    finally { orbeOff("orbe-b3"); $("b3sugerir").disabled = false; }
+  };
+
+  $("b3agendar").onclick = async () => {
+    if ($("b3agendar").disabled) return;
+    const red = b3redActual(), v = b3valores();
+    const falta = b3validar(red, v, Date.now());
+    if (falta) { b3aviso(falta, true); return; }
+    const cuerpo = b3cuerpo(red, v);
+    if (!confirm(b3resumen(red, cuerpo, v.destino_nombre))) return;
+    // después del confirm: un «Cancelar» no deja el botón muerto
+    $("b3agendar").disabled = true;
+    b3aviso("⏳ enviando…");
+    try {
+      const r = await fj("api/publicar/agendar", cuerpo);
+      if (gen !== B3GEN) return;
+      const p = r.publicacion;
+      if (p) b3pintarPubs([p, ...B3PUBS.filter(x => x.id !== p.id)]);
+      b3sondear();
+      b3aviso("Enviado: sigue el avance abajo");
+      $("b3pubs").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } catch (e) { if (gen === B3GEN) b3aviso(e.message, true); }
+    finally { $("b3agendar").disabled = false; }
+  };
+}
+
+// Lo que depende de la red se rehace al cambiar de plataforma; el texto y el
+// título que ya escribió el usuario se conservan.
+function b3cambioCuenta(gen) {
+  const red = b3redActual(), plat = b3cuentaActual().platform;
+  if (plat !== B3PLAT) {
+    B3PLAT = plat;
+    $("b3titWrap").hidden = !red.titulo;
+    if (red.titulo) {
+      $("b3titulo").maxLength = red.titulo;
+      $("b3titulo").required = !!red.titulo_obligatorio;
+      $("b3titLbl").textContent = red.titulo_obligatorio ? "Título (obligatorio)" : "Título (opcional)";
+    }
+    $("b3txtLbl").textContent = red.titulo ? "Descripción" : "Texto del post";
+    $("b3texto").placeholder = red.titulo ? "Descripción del video"
+      : "Texto del post (elige un título sugerido o escribe el tuyo)";
+    if (red.texto) $("b3texto").maxLength = red.texto; else $("b3texto").removeAttribute("maxlength");
+    // privacidad: sin valor elegido de antemano (decisión del dueño, 16-sep)
+    $("b3privWrap").hidden = !red.privacidad;
+    $("b3privacidad").required = !!red.privacidad;
+    $("b3privacidad").innerHTML = red.privacidad
+      ? `<option value="" selected>Elige quién puede verlo</option>` +
+        red.privacidad.map(([val, etq]) => `<option value="${esc(val)}">${esc(etq)}</option>`).join("")
+      : "";
+    // «Hecho con IA» nace marcada (decisión del dueño); el usuario la puede quitar
+    const cas = [];
+    if (red.ia) cas.push(`<label class="b3chk"><input type="checkbox" id="b3ia" checked> Hecho con IA</label>`);
+    for (const k of red.opciones || []) {
+      const o = B3OPCIONES[k];
+      if (o) cas.push(`<label class="b3chk"><input type="checkbox" data-op="${esc(k)}"${o[1] ? " checked" : ""}> ${esc(o[0])}</label>`);
+    }
+    $("b3casillas").innerHTML = cas.join("");
+    $("b3vertical").hidden = !red.vertical;
+  }
+  b3contar();
+  b3peso();
+  b3destinos(gen);
+}
+
+function b3contar() {
+  const max = b3redActual().texto, n = $("b3texto").value.length;
+  $("b3contador").textContent = max ? `${n} / ${max}` : "";
+  $("b3contador").className = max && n > max ? "err" : "";
+}
+
+function b3peso() {
+  const a = B3ARCHIVOS[Number($("b3archivo").value)];
+  const msg = a ? b3msgPeso(b3redActual(), a.mb) : null;
+  $("b3peso").textContent = msg || "";
+  $("b3peso").hidden = !msg;
+}
+
+async function b3destinos(gen) {
+  const red = b3redActual(), c = b3cuentaActual();
+  const pedido = ++B3DESTGEN;
+  const sel = $("b3destino"), nota = $("b3destNota");
+  $("b3destWrap").hidden = !red.destino;
+  nota.hidden = true;
+  nota.textContent = "";
+  if (!red.destino) { B3DEST = { estado: "ok" }; sel.innerHTML = ""; return; }
+  const d = B3DESTINO[red.destino] || B3DESTINO.pagina;
+  const personal = c.platform === "linkedin";
+  $("b3destLbl").textContent = d.etiqueta;
+  B3DEST = { estado: "cargando" };
+  sel.disabled = true;
+  sel.innerHTML = `<option value="">cargando tus ${esc(d.plural)}…</option>`;
+  let r;
+  try {
+    r = await fj(`api/publicar/destinos?cuenta_id=${encodeURIComponent(c.id)}` +
+                 `&plataforma=${encodeURIComponent(c.platform)}`);
+  } catch (e) { r = { destinos: [], error: e.message }; }
+  if (pedido !== B3DESTGEN || gen !== B3GEN) return;   // ya se eligió otra cuenta
+  const lista = Array.isArray(r.destinos) ? r.destinos : [];
+  const ops = lista.map(x => `<option value="${esc(x.id)}">${esc(x.nombre || x.id)}</option>`);
+  if (personal) ops.unshift(`<option value="">Mi perfil personal</option>`);
+  else if (!red.destino_obligatorio) ops.unshift(`<option value="">Ninguno</option>`);
+  else if (lista.length !== 1)
+    ops.unshift(`<option value="">${lista.length ? `Elige ${esc(d.la)}` : `sin ${esc(d.plural)}`}</option>`);
+  sel.innerHTML = ops.join("");
+  sel.disabled = !!red.destino_obligatorio && !lista.length;
+  B3DEST = { estado: lista.length ? "ok" : r.error ? "error" : "vacio" };
+  let aviso = "";
+  if (r.error) aviso = personal ? `${r.error} Por ahora puedes publicar en tu perfil personal.` : r.error;
+  else if (!lista.length && red.destino_obligatorio) aviso = `Tu cuenta de ${red.nombre} ${d.vacio}`;
+  nota.textContent = aviso;
+  nota.hidden = !aviso;
+}
+
+function b3usarTitulo(t) {
+  const red = b3redActual();
+  const campo = red.titulo ? $("b3titulo") : $("b3texto");
+  campo.value = red.titulo ? t.slice(0, red.titulo) : t;
+  b3contar();
+  campo.focus();
+}
+
+function b3valores() {
+  const c = b3cuentaActual(), a = B3ARCHIVOS[Number($("b3archivo").value)];
+  const dest = $("b3destino");
+  const opt = dest.selectedIndex >= 0 ? dest.options[dest.selectedIndex] : null;
+  return {
+    cuenta_id: c.id, plataforma: c.platform, cuenta_nombre: c.fullname || c.username || "",
+    archivo: a ? a.clave : "", mb: a ? a.mb : null,
+    texto: $("b3texto").value, titulo: $("b3titulo").value,
+    privacidad: $("b3privacidad").value,
+    destino: dest.value, destino_nombre: opt ? opt.textContent : "",
+    estado_destinos: B3DEST.estado,
+    ia: $("b3ia") ? $("b3ia").checked : false,
+    opciones: Object.fromEntries([...document.querySelectorAll("#b3casillas input[data-op]")]
+      .map(i => [i.dataset.op, i.checked])),
+    modo: document.querySelector('input[name="b3modo"]:checked').value,
+    fecha: $("b3cuando").value,
+  };
 }
 
 async function g1abrir(oid) {

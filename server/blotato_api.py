@@ -5,9 +5,8 @@
     POST   /api/blotato   {clave}: la prueba contra Blotato y, si sirve, la guarda
     DELETE /api/blotato   la quita
 
-Cada respuesta dice también si programar desde la web ya funciona aquí
-(`agendar`): en el servicio todavía no (C2), y la pantalla lo avisa ANTES de
-que el usuario genere una clave que le cuesta dinero.
+Cada respuesta dice también si programar desde la web funciona aquí
+(`agendar`): desde C2 funciona en local y en el servicio.
 
 La clave se guarda con el usuario del token (db.usuario_actual()), nunca con
 uno que venga en el cuerpo, y ninguna respuesta la devuelve. Tampoco se
@@ -66,8 +65,8 @@ def _limpias(cuentas: list[dict]) -> list[dict]:
 
 
 def _agendar() -> bool:
-    # el mismo criterio que publicar_api._nube: agendar solo corre en local
-    return db.backend() != "postgres"
+    # M23 C2: programar corre en local y en el servicio (worker SQS)
+    return True
 
 
 def _respuesta(conectado: bool, origen: str | None, cuentas: list[dict],
