@@ -468,10 +468,14 @@ mtVer("top");
 out.top = el("mtVentana").textContent;
 mtVer("rec");
 out.rec = el("mtVentana").textContent;
+out.jul = mtDia("2026-07-18T00:00:00Z");
 """, tmp_path)
-    # las fechas se pintan en la zona del navegador, así que se compara el mes
-    assert "de julio" not in o["top"], "los números del tramo viejo con fecha del nuevo"
-    assert "de julio" in o["rec"]
+    # El día se pinta en la zona Y EN EL IDIOMA de quien mira, así que aquí se le
+    # pregunta a la pantalla cómo escribe ese día en esta máquina en vez de dar
+    # por hecho el español: en el runner de CI node habla inglés.
+    assert o["jul"], "mtDia no devolvió nada: entonces la comparación no prueba nada"
+    assert o["jul"] not in o["top"], "los números del tramo viejo con fecha del nuevo"
+    assert o["jul"] in o["rec"]
 
 
 def test_ver_mas_no_borra_unos_numeros_que_ya_se_pagaron(tmp_path):
