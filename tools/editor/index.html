@@ -1712,6 +1712,9 @@ function b3etiqueta(p) {
   if (p.estado === "fallido") return ["Blotato la rechazó", "err"];
   if (p.estado === "error") return ["No se envió", "err"];
   if (p.estado === "incierto") return ["Sin confirmar", "aviso"];
+  // C3: la canceló desde la Agenda. Sin esta línea el fallback pintaba la
+  // palabra cruda «cancelado», sin píldora.
+  if (p.estado === "cancelado") return ["Cancelada", "aviso"];
   return [p.estado || "Sin estado", ""];
 }
 
