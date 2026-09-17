@@ -27,6 +27,12 @@ log = logging.getLogger("publicar")
 # «publicar ahora»: cuánto se espera a que Blotato diga cómo le fue
 ESPERA_RESULTADO_S = 45
 ESPERA_ENTRE_S = 5
+# mientras sube, el registro se renueva: la pantalla solo da por muerta una
+# subida sin latido (publicaciones.VENCE_TRABAJO_S)
+LATIDO_S = 60
+# antes de crear el post, lo que puede faltar para que la pantalla la dé por muerta
+MARGEN_S = 120
+REINTENTOS_RECLAMO = (0.5, 2.0)
 
 
 @dataclass
@@ -133,37 +139,112 @@ def _guardar(user_id: str, proyecto: str, reg: dict, **cambios) -> None:
             time.sleep(1)
 
 
+class _Latido:
+    """Renueva el registro cada LATIDO_S mientras httpx consume los trozos. Si
+    alguien más tocó el registro, Conflicto corta la subida."""
+
+    def __init__(self, user_id: str, proyecto: str, reg: dict, etag: str):
+        self.user_id, self.proyecto, self.reg, self.etag = user_id, proyecto, reg, etag
+        self.t = time.monotonic()
+
+    def envolver(self, partes: Iterable[bytes]) -> Iterable[bytes]:
+        for trozo in partes:
+            if time.monotonic() - self.t >= LATIDO_S:
+                self.t = time.monotonic()
+                try:
+                    self.etag = publicaciones.guardar(self.user_id, self.proyecto,
+                                                      self.reg, self.etag)
+                except publicaciones.Conflicto:
+                    raise
+                except Exception as err:  # noqa: BLE001 — sin latido, el plazo decide
+                    log.warning("latido de %s: %s", self.reg.get("id"), type(err).__name__)
+            yield trozo
+
+
+def _reclamar(user_id: str, proyecto: str, pub_id: str, relanzar: bool):
+    for espera in (*REINTENTOS_RECLAMO, None):
+        try:
+            return publicaciones.reclamar(user_id, proyecto, pub_id)
+        except ValueError as err:           # datos inválidos: reintentar no sirve
+            log.error("publicar %s/%s: %s", proyecto, pub_id, err)
+            return None
+        except Exception as err:  # noqa: BLE001
+            if espera is None:
+                log.error("publicar %s/%s: no se pudo reclamar: %s", proyecto, pub_id,
+                          type(err).__name__)
+                if relanzar:
+                    # nada se reclamó: el reintento de la cola es seguro (If-Match)
+                    raise
+                return None
+            time.sleep(espera)
+    return None
+
+
 def ejecutar(user_id: str, proyecto: str, pub_id: str,
-             video_de: Callable[[dict], Video]) -> None:
-    """El trabajo completo. Nunca lanza."""
-    try:
-        _ejecutar(user_id, proyecto, pub_id, video_de)
-    except Exception as err:  # noqa: BLE001 — relanzar = otro intento = post doble
-        log.error("publicar %s/%s: fallo inesperado %s", proyecto, pub_id, type(err).__name__)
-
-
-def _ejecutar(user_id: str, proyecto: str, pub_id: str,
-              video_de: Callable[[dict], Video]) -> None:
-    reclamo = publicaciones.reclamar(user_id, proyecto, pub_id)
+             video_de: Callable[[dict], Video], relanzar_reclamo: bool = False) -> None:
+    """El trabajo completo. Después de reclamar nunca lanza: relanzar sería
+    otro intento, y otro intento, un post doble."""
+    reclamo = _reclamar(user_id, proyecto, pub_id, relanzar_reclamo)
     if reclamo is None:
         log.info("publicar %s/%s: ya la tomó otro intento o se venció", proyecto, pub_id)
         return
-    reg, etag = reclamo
+    try:
+        _ejecutar(user_id, proyecto, *reclamo, video_de)
+    except Exception as err:  # noqa: BLE001
+        log.error("publicar %s/%s: fallo inesperado %s", proyecto, pub_id, type(err).__name__)
+
+
+def _cuenta_conectada(clave: str, reg: dict) -> None:
+    reales = blotato.cuentas(clave, timeout=blotato.TIMEOUT_CORTO)
+    if not any(str(c.get("id")) == str(reg.get("cuenta_id"))
+               and c.get("platform") == reg.get("plataforma") for c in reales):
+        raise ValueError("Esa cuenta ya no está conectada en tu Blotato. "
+                         "Vuelve a abrir Publicar y elige otra.")
+
+
+def _ejecutar(user_id: str, proyecto: str, reg: dict, etag: str,
+              video_de: Callable[[dict], Video]) -> None:
+    pub_id = reg["id"]
     plataforma = reg["plataforma"]
     clave = None
+    tam = 0
 
     # 1) todo lo que puede fallar ANTES de crear el post: no se publicó nada
     try:
+        cuando = publicaciones._fecha(reg.get("cuando"))
+        if reg.get("cuando") and (cuando is None or cuando < publicaciones.ahora() + 30):
+            raise ValueError("La hora programada pasó mientras esperaba en la fila. "
+                             "Elige otra hora e intenta de nuevo.")
         clave = blotato.clave_de(user_id)
         if not clave:
             raise ValueError("Conecta tu cuenta de Blotato primero: es el «+» junto "
                              "a Blotato, en el menú del inicio.")
         target = blotato.target_de(plataforma, reg.get("opciones") or {})
+        blotato.revisar_texto(plataforma, reg["texto"])
+        _cuenta_conectada(clave, reg)
         video = video_de(reg)
+        tam = video.tam
         revisar_video(plataforma, video)
+        latido = _Latido(user_id, proyecto, reg, etag)
         with video.abrir() as partes:
             media = blotato.subir_stream(clave, _nombre_subida(proyecto, video.nombre),
-                                         partes, video.tam)
+                                         latido.envolver(partes), video.tam)
+        etag = latido.etag
+    except publicaciones.Conflicto:
+        log.error("publicar %s/%s: otro tocó el registro durante la subida; no se publica",
+                  proyecto, pub_id)
+        return
+    except blotato.SubidaRechazada as err:
+        log.error("publicar %s/%s: Blotato rechazó la subida (%s)", proyecto, pub_id, err.codigo)
+        if tam > blotato.MAX_BYTES_STARTER:
+            mensaje = (f"Blotato no aceptó el archivo ({tam / 1e6:.0f} MB). Con el plan "
+                       f"Starter el límite es {blotato.MAX_BYTES_STARTER // 1_000_000} MB; "
+                       f"con Creator o Agency, {blotato.MAX_BYTES // 1_000_000} MB. Usa un "
+                       "archivo más liviano o cambia de plan.")
+        else:
+            mensaje = blotato.explicar_fallo(err, clave)[0]
+        _guardar(user_id, proyecto, reg, estado="error", error=mensaje)
+        return
     except ValueError as err:
         _guardar(user_id, proyecto, reg, estado="error", error=str(err))
         return
@@ -181,16 +262,30 @@ def _ejecutar(user_id: str, proyecto: str, pub_id: str,
         _guardar(user_id, proyecto, reg, estado="error", error=mensaje)
         return
 
-    # 2) «creando» con condición: si alguien tocó el registro, no se publica
+    # 2) si la pantalla ya pudo darla por muerta, no se publica: lo que dice
+    # («no se publicó nada») tiene que ser verdad
+    if (publicaciones.ahora() - float(reg.get("actualizado") or 0)
+            > publicaciones.VENCE_TRABAJO_S - MARGEN_S):
+        log.error("publicar %s/%s: la subida pasó el plazo; no se publica", proyecto, pub_id)
+        _guardar(user_id, proyecto, reg, estado="error",
+                 error="La subida tardó demasiado y no se publicó nada. Intenta de nuevo.")
+        return
+
+    # 3) «creando» con condición: si alguien tocó el registro, no se publica
     reg["estado"] = "creando"
     try:
         publicaciones.guardar(user_id, proyecto, reg, etag)
-    except Exception as err:  # noqa: BLE001 — incluye Conflicto
+    except publicaciones.Conflicto:
+        log.error("publicar %s/%s: el registro cambió; no se publica", proyecto, pub_id)
+        return
+    except Exception as err:  # noqa: BLE001 — aún no se pidió el post: error seguro
         log.error("publicar %s/%s: no se pudo marcar creando (%s); no se publica",
                   proyecto, pub_id, type(err).__name__)
+        _guardar(user_id, proyecto, reg, estado="error",
+                 error="No pudimos publicarla. Intenta de nuevo.")
         return
 
-    # 3) el punto sin retorno
+    # 4) el punto sin retorno
     try:
         r = blotato.publicar(clave, reg["cuenta_id"], plataforma, reg["texto"], [media],
                              scheduled_time=reg.get("cuando"), target=target)
@@ -222,7 +317,7 @@ def _ejecutar(user_id: str, proyecto: str, pub_id: str,
     _guardar(user_id, proyecto, reg, **cambios)
     log.info("publicar %s/%s: %s en %s", proyecto, pub_id, reg["estado"], plataforma)
 
-    # 4) «publicar ahora»: un rato para saber cómo le fue (si no, lo pregunta
+    # 5) «publicar ahora»: un rato para saber cómo le fue (si no, lo pregunta
     # la pantalla después)
     if reg.get("cuando"):
         return
@@ -261,7 +356,7 @@ def publicar(user_id: str, proyecto: str, pub_id: str) -> None:
         return video_s3(key)
 
     try:
-        ejecutar(user_id, proyecto, pub_id, video_de)
+        ejecutar(user_id, proyecto, pub_id, video_de, relanzar_reclamo=True)
     finally:
         costes_infra.registrar(user_id, proyecto, "infra-publicar",
                                costes_infra.costo_lambda(time.monotonic() - t0))

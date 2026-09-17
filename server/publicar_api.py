@@ -41,13 +41,15 @@ router = APIRouter(prefix="/editor")
 
 TITULOS_TIMEOUT_S = 20          # la Lambda de la API corta a los 29 s
 TITULOS_MAX_CHARS = 2500
-TITULO_MAX = 100
+TITULO_MAX = 100                # el campo título de YouTube y Pinterest
+TITULO_MAX_TEXTO = 200          # si la sugerencia va al texto del post
 HORIZONTE_S = 270 * 86400       # Blotato programa hasta 9 meses adelante
+MAX_EN_CAMINO = 3               # publicaciones subiéndose a la vez por usuario
 ERROR_ALMACEN = "No pudimos leer tu conexión con Blotato. Intenta de nuevo en un momento."
 
 
 class TitulosIn(BaseModel):
-    plataformas: list[str] = []
+    plataformas: list[str] = Field(default_factory=list, max_length=len(blotato.REDES))
 
 
 class AgendarIn(BaseModel):
@@ -90,13 +92,14 @@ def _nube() -> bool:
     return n()
 
 
-def _validar_proyecto(name: str) -> None:
-    """Nombre válido y proyecto de este usuario (en el servicio, su fila)."""
+def _validar_proyecto(name: str) -> dict | None:
+    """Nombre válido y proyecto de este usuario. En el servicio devuelve su
+    doc de proyectos_editor."""
     if _nube():
         from server.editor import _proyecto_nube
-        _proyecto_nube(name)
-    else:
-        _proyecto(name)
+        return _proyecto_nube(name)
+    _proyecto(name)
+    return None
 
 
 def _usuario() -> str:
@@ -157,6 +160,27 @@ def _archivos(name: str) -> dict[str, tuple[str, int, str | None]]:
             for k, f in descargables(_proyecto(name)).items()}
 
 
+def _final(name: str, doc: dict | None) -> str | None:
+    """La clave del video que es «la película»: el render del último estilo
+    con subtítulos si los tiene; en un proyecto generado, la película."""
+    if _nube():
+        claves = list(descargables_nube(name))
+    else:
+        rutas = descargables(_proyecto(name))
+        # en local no hay doc: la salida más reciente manda
+        claves = sorted(rutas, key=lambda k: rutas[k].stat().st_mtime, reverse=True)
+    videos = [k for k in claves if k != "srt"]
+    doc = doc or {}
+    preferidas = []
+    if not (doc.get("flags") or {}).get("generado"):
+        render = doc.get("render") or {}
+        if render.get("estado") == "listo" and render.get("estilo"):
+            preferidas += [f"preview-{render['estilo']}-subtitulado", f"preview-{render['estilo']}"]
+    preferidas += ["subtitulado", "pelicula"]
+    preferidas += [k for k in videos if k.endswith("-subtitulado")] + videos
+    return next((k for k in preferidas if k in videos), None)
+
+
 def _vistas(user: str, name: str) -> list[dict]:
     try:
         return [publicaciones.vista(r) for r, _ in publicaciones.listar(user, name)]
@@ -167,7 +191,7 @@ def _vistas(user: str, name: str) -> list[dict]:
 
 @router.get("/{name}/api/publicar/estado")
 def estado(name: str):
-    _validar_proyecto(name)
+    doc = _validar_proyecto(name)
     user = usuario_actual()
     archivos = [{"clave": k, "nombre": nombre, "mb": round(tam / 1e6, 1)}
                 for k, (nombre, tam, _) in _archivos(name).items()]
@@ -178,9 +202,12 @@ def estado(name: str):
         error = ERROR_ALMACEN
     # sin llamar a Blotato: las redes las pide la pantalla aparte (/cuentas),
     # para que un Blotato lento no se lleve la descarga por delante
-    return {"descargables": archivos, "blotato": bool(clave), "error": error,
+    return {"descargables": archivos, "final": _final(name, doc),
+            "blotato": bool(clave), "error": error,
             "agendar": True, "publicaciones": _vistas(user, name),
-            "redes": blotato.REDES}
+            "redes": blotato.REDES,
+            # el plan Starter de Blotato sube hasta 400 MB: la pantalla avisa
+            "max_mb_starter": blotato.MAX_BYTES_STARTER // 1_000_000}
 
 
 @router.get("/{name}/api/publicar/cuentas")
@@ -297,8 +324,15 @@ def _texto_local(p: Path) -> str:
     return ""
 
 
-def limpiar_titulo(t: str) -> str:
-    return " ".join(re.sub(r"[<>]", "", t).split())[:TITULO_MAX].rstrip()
+def limpiar_titulo(t: str, tope: int = TITULO_MAX) -> str:
+    """Sin < ni >, y si hay que recortar, sin partir palabras ni hashtags."""
+    t = " ".join(re.sub(r"[<>]", "", t).split())
+    if len(t) > tope:
+        corte = t[:tope + 1]
+        t = corte.rsplit(" ", 1)[0] if " " in corte else t[:tope]
+        while " " in t and t.rsplit(" ", 1)[-1].startswith("#"):
+            t = t.rsplit(" ", 1)[0]
+    return t.rstrip(" #:,;-")
 
 
 @router.post("/{name}/api/publicar/titulos")
@@ -310,7 +344,12 @@ async def titulos(name: str, body: TitulosIn):
     if not texto:
         raise HTTPException(409, "Este video todavía no tiene transcript. Termina el "
                                  "corte o el render y vuelve a intentarlo.")
-    redes = [blotato.REDES[p]["nombre"] for p in body.plataformas if p in blotato.REDES]
+    ids = [p for p in dict.fromkeys(body.plataformas) if p in blotato.REDES]
+    # el prompt nombra las redes por su id («twitter»)
+    redes = [f"{blotato.REDES[p]['nombre']} ({p})" for p in ids]
+    # si la sugerencia va al campo título (YouTube, Pinterest), cabe en él
+    tope = min((blotato.REDES[p]["titulo"] or TITULO_MAX_TEXTO for p in ids),
+               default=TITULO_MAX)
     from langfuse import get_client, propagate_attributes
     try:
         with propagate_attributes(user_id=usuario_actual(), session_id=f"editor-{name}",
@@ -330,7 +369,7 @@ async def titulos(name: str, body: TitulosIn):
             get_client().flush()
         except Exception:  # noqa: BLE001
             pass
-    lista = [limpiar_titulo(t) for t in (r.get("titulos") or []) if isinstance(t, str)]
+    lista = [limpiar_titulo(t, tope) for t in (r.get("titulos") or []) if isinstance(t, str)]
     lista = [t for t in lista if t][:3]
     if not lista:
         raise HTTPException(502, "No pudimos sugerir títulos. Intenta de nuevo.")
@@ -378,7 +417,7 @@ def agendar(name: str, body: AgendarIn, tareas: BackgroundTasks):
     if body.confirmar is not True:
         raise HTTPException(428, "Falta confirmar:true — el gate de publicación es obligatorio")
     user = _usuario()
-    _clave_o_error(user)
+    clave = _clave_o_error(user)
 
     red = blotato.REDES.get(body.plataforma)
     if red is None:
@@ -406,32 +445,46 @@ def agendar(name: str, body: AgendarIn, tareas: BackgroundTasks):
     texto = body.texto.strip() or target.get("title", "")
     if not texto:
         raise HTTPException(422, "Escribe el texto de la publicación.")
-    if len(texto) > red["texto"]:
-        raise HTTPException(422, f"{red['nombre']} acepta hasta {red['texto']} caracteres "
-                                 f"y el texto tiene {len(texto)}.")
+    try:
+        blotato.revisar_texto(body.plataforma, texto)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     cuando = _cuando(body.cuando)
 
+    # la cuenta tiene que ser de verdad una red conectada de este usuario: si
+    # no, el worker subiría la película entera para que Blotato la rechace
     try:
-        filas = publicaciones.listar(user, name)
+        reales = blotato.cuentas(clave, timeout=blotato.TIMEOUT_CORTO)
     except Exception as err:  # noqa: BLE001
-        log.error("listar publicaciones de %s: %s", name, type(err).__name__)
+        raise HTTPException(502, blotato.explicar_fallo(err, clave)[0])
+    cuenta = next((c for c in reales if str(c.get("id")) == body.cuenta_id
+                   and c.get("platform") == body.plataforma), None)
+    if cuenta is None:
+        raise HTTPException(422, "Esa cuenta no está conectada en tu Blotato. "
+                                 "Vuelve a abrir Publicar.")
+    try:
+        if publicaciones.en_camino(user) >= MAX_EN_CAMINO:
+            raise HTTPException(429, f"Ya tienes {MAX_EN_CAMINO} publicaciones subiéndose. "
+                                     "Espera a que terminen y vuelve a intentarlo.")
+    except HTTPException:
+        raise
+    except Exception as err:  # noqa: BLE001
+        log.error("contar publicaciones de %s: %s", name, type(err).__name__)
         raise HTTPException(503, "No pudimos revisar tus publicaciones. Intenta de nuevo.")
-    for reg, _ in filas:
-        if (reg.get("archivo"), reg.get("cuenta_id"), reg.get("plataforma")) == (
-                body.archivo, body.cuenta_id, body.plataforma) \
-                and publicaciones.vista(reg)["en_curso"]:
-            raise HTTPException(409, "Esa publicación ya se está enviando. "
-                                     "Espera a que termine.")
 
+    nombre_cuenta = str(cuenta.get("fullname") or cuenta.get("username") or body.cuenta_nombre)
     datos = {"plataforma": body.plataforma, "cuenta_id": body.cuenta_id,
-             "cuenta_nombre": " ".join(body.cuenta_nombre.split())[:80],
+             "cuenta_nombre": " ".join(nombre_cuenta.split())[:80],
              "archivo": body.archivo, "archivo_nombre": nombre, "bytes": tam,
              "texto": texto, "titulo": target.get("title"), "cuando": cuando,
              "opciones": opciones}
     if key:
         datos["archivo_key"] = key
     try:
-        reg = publicaciones.crear(user, name, datos)
+        reg = publicaciones.crear(user, name, datos,
+                                  candado=f"{body.archivo}|{body.cuenta_id}|{body.plataforma}")
+    except publicaciones.EnCurso:
+        raise HTTPException(409, "Esa publicación ya se está enviando. Espera a que termine.")
     except Exception as err:  # noqa: BLE001
         log.error("crear publicación en %s: %s", name, type(err).__name__)
         raise HTTPException(503, "No pudimos guardar la publicación. Intenta de nuevo.")

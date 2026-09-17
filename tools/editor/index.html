@@ -1096,8 +1096,14 @@ window.addEventListener("mouseup", () => {
   }
   drag = null;
 });
+// Con un modal abierto las teclas son suyas: Espacio, letras, flechas y Ctrl+Z
+// no pueden tocar el video ni los cortes que quedan detrás (el texto del post
+// de Publicar, el prompt de un recurso, sus botones, la mascota…).
+const MODALES_ABIERTOS = "#b3modal.abierto, #b1modal.abierto, #g1modal.abierto";
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.isContentEditable) return;
+  const t = e.target;
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName) || t.isContentEditable) return;
+  if (document.querySelector(MODALES_ABIERTOS)) return;
   const k = e.key;
   if ((e.ctrlKey || e.metaKey) && (k === "z" || k === "Z")) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); return; }
@@ -1273,6 +1279,7 @@ chatTick();   // sondeo inicial: muestra si el chat está disponible sin arranca
   #b3fn2 .b3chk { display: flex; align-items: center; font-size: 12px; margin: 0 0 6px; cursor: pointer; }
   #b3fn2 .b3nota { font-size: 11px; color: var(--dim); line-height: 1.45; margin: -4px 0 8px; }
   #b3fn2 .b3aviso { font-size: 11px; color: #f0a94a; line-height: 1.45; margin: -4px 0 8px; }
+  #b3destNota button { font-size: 11px; padding: 1px 8px; margin-left: 2px; }
   #b3fn2 .b3err, #b3titulos .b3err { font-size: 12px; color: #ff8080; line-height: 1.45; margin-bottom: 8px; }
   #b3fn2 .b3estado { font-size: 12px; color: var(--dim); line-height: 1.5; }
   #b3contador { font-size: 11px; color: var(--dim); text-align: right; margin: -6px 0 8px;
@@ -1553,12 +1560,14 @@ async function b2flujo() {
 // ── b3 · Publicar (C2) ──────────────────────────────────────────────────────
 // Las reglas de cada red (límites, título, privacidad, destino…) llegan del
 // servidor en st.redes: la UI no las duplica. Lo que va de aquí a b3abrir no
-// toca más DOM que la lista de publicaciones, y se prueba en node
-// (tests/test_m23_publicar_ui.py).
+// toca más DOM que la lista de publicaciones; todo el tramo se prueba en node
+// contra un DOM mínimo (tests/test_m23_publicar_ui.py).
 let B3REDES = {}, B3CUENTAS = [], B3ARCHIVOS = [], B3PUBS = [];
 let B3GEN = 0;                 // sube al abrir y al cerrar: lo que llegue tarde no se pinta
 let B3SONDEO = null, B3SONDEANDO = false;
+let B3ENVIOS = 0;              // sube al volver cada envío: una consulta que salió antes no lo conoce
 let B3DESTGEN = 0, B3DEST = { estado: "ok" }, B3PLAT = null;
+let B3STARTER = null;          // MB que sube el plan Starter de Blotato (st.max_mb_starter)
 const B3SONDEO_MS = 4000;
 const B3OPCIONES = {
   comentarios:  ["Permitir comentarios", true],
@@ -1589,6 +1598,32 @@ function b3msgPeso(red, mb) {
     : null;
 }
 
+// Aviso que NO bloquea: no sabemos qué plan de Blotato tiene el usuario.
+function b3msgStarter(mb, tope) {
+  return tope && mb > tope
+    ? `Pesa ${mb} MB: con el plan Starter de Blotato el límite es ${tope} MB (Creator y Agency: 1 GB).`
+    : null;
+}
+
+// Los mp4 que se pueden publicar, con «la película» primero: la que marca el
+// servidor (st.final) y, si no marca ninguna, la subtitulada y luego la base.
+// El resto queda en el orden en que llegó.
+function b3ordenar(des, final) {
+  const orden = [final, "subtitulado", "pelicula"].filter(Boolean);
+  const puesto = d => { const i = orden.indexOf(d.clave); return i < 0 ? orden.length : i; };
+  return (des || []).filter(d => /\.mp4$/i.test(d.nombre || ""))
+    .sort((a, b) => puesto(a) - puesto(b));
+}
+
+// Largo del texto como lo cuenta la red: YouTube lo mide en bytes UTF-8, y
+// ahí una tilde vale 2 y un emoji 4.
+function b3largo(red, t) {
+  return red.texto_bytes ? new TextEncoder().encode(t).length : t.length;
+}
+
+const B3HASHTAG = /(^|[^\p{L}\p{N}_#])#[\p{L}\p{N}_]+/gu;
+const b3hashtags = t => (t.match(B3HASHTAG) || []).length;
+
 // Qué impide enviar, o null. `v` son los valores del formulario (b3valores);
 // `ahora`, milisegundos (Date.now()).
 function b3validar(red, v, ahora) {
@@ -1596,20 +1631,34 @@ function b3validar(red, v, ahora) {
   if (!v.archivo) return "Todavía no hay un video para publicar: termina la película y vuelve a abrir Publicar.";
   const peso = b3msgPeso(red, v.mb);
   if (peso) return peso;
-  if (red.destino && red.destino_obligatorio && !v.destino) {
+  if (red.destino) {
     const d = B3DESTINO[red.destino] || B3DESTINO.pagina;
+    // también LinkedIn: mientras cargan, «Mi perfil personal» no es una elección
     if (v.estado_destinos === "cargando") return `Espera a que carguen tus ${d.plural}.`;
-    if (v.estado_destinos === "vacio") return `Tu cuenta de ${red.nombre} ${d.vacio}`;
-    if (v.estado_destinos === "error") return `No pudimos traer tus ${d.plural}: vuelve a elegir la cuenta para intentarlo de nuevo.`;
-    return `Elige ${d.la} donde publicar.`;
+    if (red.destino_obligatorio && !v.destino) {
+      if (v.estado_destinos === "vacio") return `Tu cuenta de ${red.nombre} ${d.vacio}`;
+      if (v.estado_destinos === "error")
+        return `No pudimos traer tus ${d.plural}: toca el botón «Reintentar», debajo de la lista.`;
+      return `Elige ${d.la} donde publicar.`;
+    }
   }
   const titulo = (v.titulo || "").trim();
   if (red.titulo && red.titulo_obligatorio && !titulo) return `Escribe el título: ${red.nombre} lo pide.`;
   if (red.titulo && titulo.length > red.titulo) return `El título pasa de ${red.titulo} caracteres.`;
+  if (red.titulo && /[<>]/.test(titulo)) return "El título no puede llevar los signos < ni >.";
   const texto = (v.texto || "").trim();
   if (!texto) return red.titulo ? "Escribe la descripción." : "Escribe o elige el texto del post.";
-  if (red.texto && texto.length > red.texto)
-    return `El texto pasa del máximo de ${red.nombre}: ${texto.length} de ${red.texto} caracteres.`;
+  const largo = b3largo(red, texto);
+  if (red.texto && largo > red.texto)
+    return red.texto_bytes
+      ? `El texto pasa del máximo de ${red.nombre}: ${largo} de ${red.texto} bytes (las tildes y los emojis cuentan doble o más).`
+      : `El texto pasa del máximo de ${red.nombre}: ${largo} de ${red.texto} caracteres.`;
+  if (red.sin_signos && /[<>]/.test(texto))
+    return `El texto de ${red.nombre} no puede llevar los signos < ni >.`;
+  if (red.hashtags) {
+    const n = b3hashtags(texto);
+    if (n > red.hashtags) return `${red.nombre} acepta hasta ${red.hashtags} hashtags y el texto lleva ${n}.`;
+  }
   if (red.privacidad && !v.privacidad) return "Elige quién puede ver la publicación.";
   if (v.modo !== "ahora") {
     if (!v.fecha) return "Elige la fecha y hora, o cambia a «Publicar ahora».";
@@ -1637,20 +1686,26 @@ function b3cuerpo(red, v) {
   return c;
 }
 
-// El texto del confirm(): lo justo para reconocer QUÉ sale y DÓNDE.
-function b3resumen(red, c, destinoNombre) {
+// El texto del confirm(): lo justo para reconocer QUÉ sale y DÓNDE. `c` es el
+// cuerpo (b3cuerpo) y `v`, los valores del formulario (b3valores).
+function b3resumen(red, c, v) {
   const corta = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-  const lineas = [`Red: ${red.nombre}`, `Cuenta: ${c.cuenta_nombre}`];
-  if (red.destino) lineas.push(`${(B3DESTINO[red.destino] || B3DESTINO.pagina).etiqueta}: ${destinoNombre || "—"}`);
+  const lineas = [`Red: ${red.nombre}`, `Cuenta: ${c.cuenta_nombre}`,
+                  `Video: ${v.archivo_nombre || c.archivo} (${v.mb} MB)`];
+  if (red.destino) lineas.push(`${(B3DESTINO[red.destino] || B3DESTINO.pagina).etiqueta}: ${v.destino_nombre || "—"}`);
   lineas.push(c.cuando ? `Cuándo: ${b3fecha(c.cuando)} (tu hora)`
                        : "Cuándo: AHORA, en cuanto se suba el video");
   if (c.titulo) lineas.push(`Título: «${corta(c.titulo, 100)}»`);
   lineas.push(`Texto: «${corta(c.texto, 140)}»`);
-  return `¿${c.cuando ? "Programar" : "Publicar"} este video?\n\n${lineas.join("\n")}`;
+  const starter = b3msgStarter(v.mb, B3STARTER);
+  return `¿${c.cuando ? "Programar" : "Publicar"} este video?\n\n${lineas.join("\n")}` +
+    (starter ? `\n\nOjo: ${starter}` : "");
 }
 
 // [texto de la etiqueta, clase de color] de una publicación (Vista)
 function b3etiqueta(p) {
+  // «enviado» sin seguimiento: Blotato la tiene pero no confirma (el mensaje lo explica)
+  if (p.estado === "enviado" && !p.en_curso) return ["Sin confirmar", "aviso"];
   if (p.en_curso || B3EN_CURSO.includes(p.estado)) return ["Enviando…", "curso"];
   if (p.estado === "programado") return [p.cuando ? `Programada para ${b3fecha(p.cuando)}` : "Programada", "ok"];
   if (p.estado === "publicado") return ["Publicada", "ok"];
@@ -1667,7 +1722,9 @@ function b3fila(p, redes) {
   const cuando = p.cuando && !["programado", "publicado"].includes(p.estado)
     ? `para ${b3fecha(p.cuando)}` : "";
   let msg = p.estado === "incierto" ? B3INCIERTO : (p.mensaje || "");
-  if (["fallido", "error"].includes(p.estado)) msg = `${msg} Puedes intentarlo de nuevo.`.trim();
+  // el mensaje del servidor ya dice si vale la pena reintentar (una clave
+  // revocada o un video horizontal no se arreglan reintentando)
+  if (["fallido", "error"].includes(p.estado) && !msg) msg = "Puedes intentarlo de nuevo.";
   const ver = typeof p.url === "string" && /^https?:\/\//i.test(p.url)
     ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Ver</a>` : "";
   const txt = p.titulo || p.texto || "";
@@ -1702,14 +1759,31 @@ function b3sondear() {
     }
     if (B3SONDEANDO) return;             // la vuelta anterior sigue en camino
     B3SONDEANDO = true;
+    const envios = B3ENVIOS;
     let r;
     try { r = await fj("api/publicar/publicaciones"); }
     catch { return; }
     finally { B3SONDEANDO = false; }
-    if (gen !== B3GEN || !r || !Array.isArray(r.publicaciones)) return;
+    // si volvió un envío mientras tanto, esta lista puede no traerlo: ni se
+    // pinta ni para el sondeo; la vuelta siguiente ya lo ve
+    if (gen !== B3GEN || envios !== B3ENVIOS || !r || !Array.isArray(r.publicaciones)) return;
     b3pintarPubs(r.publicaciones);
     if (!B3PUBS.some(p => p.en_curso)) b3parar();
   }, B3SONDEO_MS);
+}
+
+// Al abrir: /estado no pregunta a Blotato, así que una programada cuya hora ya
+// pasó (o un «enviado» sin confirmar) se vería vieja. Si nada está en curso
+// (el sondeo ya pregunta) y alguna pide revisión, UNA consulta y se repinta.
+async function b3revisar(gen) {
+  if (B3PUBS.some(p => p.en_curso) || !B3PUBS.some(p => p.revisar)) return;
+  const envios = B3ENVIOS;
+  let r;
+  try { r = await fj("api/publicar/publicaciones"); }
+  catch { return; }
+  if (gen !== B3GEN || envios !== B3ENVIOS || !r || !Array.isArray(r.publicaciones)) return;
+  b3pintarPubs(r.publicaciones);
+  b3sondear();                           // solo arranca si algo quedó en curso
 }
 
 function b3aviso(txt, err) {
@@ -1756,13 +1830,11 @@ async function b3abrir() {
   catch (e) { if (gen === B3GEN) b3aviso(e.message, true); return; }
   if (gen !== B3GEN) return;
   B3REDES = st.redes || {};
-  const des = st.descargables || [];
-  B3ARCHIVOS = des.filter(d => /\.mp4$/i.test(d.nombre || ""))
-    .sort((a, b) => (b.clave === "subtitulado") - (a.clave === "subtitulado"));
-  // solo la película finalizada: la subtitulada si existe, si no la base
-  const peli = des.find(d => d.clave === "subtitulado")
-            || des.find(d => d.clave === "pelicula")
-            || B3ARCHIVOS[0];
+  B3STARTER = st.max_mb_starter || null;
+  // la película final va primero: es lo que se descarga y lo que el select
+  // propone publicar (el listado de S3 viene en orden alfabético)
+  B3ARCHIVOS = b3ordenar(st.descargables, st.final);
+  const peli = B3ARCHIVOS[0];
   $("b3descargas").innerHTML = peli
     ? `<div class="b3sqTit">Publicar</div>
        <a class="b3sq" href="descarga/${esc(encodeURIComponent(peli.clave))}" download>
@@ -1776,6 +1848,7 @@ async function b3abrir() {
        </div>`;
   b3pintarPubs(st.publicaciones || []);
   b3sondear();
+  b3revisar(gen);                        // sin esperarla: las redes no dependen de ella
   b3aviso("");
   if (!st.blotato || st.error) {
     b3mascota(!!st.blotato, false);
@@ -1873,6 +1946,7 @@ function b3formulario(gen) {
   $("b3sugerir").onclick = async () => {
     if ($("b3sugerir").disabled) return;
     $("b3sugerir").disabled = true;
+    const btn = $("b3sugerir");          // el finally rehabilita ESTE, no el de un modal reabierto
     b3aviso("");
     // gratis, sin confirm; es espera de IA, así que lleva orbe
     orbeOn("orbe-b3", { texto: "Escribiendo títulos", tope: 120000,
@@ -1885,7 +1959,11 @@ function b3formulario(gen) {
     } catch (e) {
       if (gen === B3GEN) $("b3titulos").innerHTML = `<p class="b3err">${esc(e.message)}</p>`;
     }
-    finally { orbeOff("orbe-b3"); $("b3sugerir").disabled = false; }
+    finally {
+      // si el modal se cerró, b3cerrar ya lo quitó, y el de ahora es de otra petición
+      if (gen === B3GEN) orbeOff("orbe-b3");
+      btn.disabled = false;
+    }
   };
 
   $("b3agendar").onclick = async () => {
@@ -1894,12 +1972,16 @@ function b3formulario(gen) {
     const falta = b3validar(red, v, Date.now());
     if (falta) { b3aviso(falta, true); return; }
     const cuerpo = b3cuerpo(red, v);
-    if (!confirm(b3resumen(red, cuerpo, v.destino_nombre))) return;
+    if (!confirm(b3resumen(red, cuerpo, v))) return;
     // después del confirm: un «Cancelar» no deja el botón muerto
     $("b3agendar").disabled = true;
+    const btn = $("b3agendar");          // el finally rehabilita ESTE, no el de un modal reabierto
     b3aviso("⏳ enviando…");
     try {
+      // 422 (cuenta desconectada, texto), 429 (demasiadas subiendo), 409…:
+      // el detail ya viene listo para leer, y el botón vuelve en el finally
       const r = await fj("api/publicar/agendar", cuerpo);
+      B3ENVIOS++;                        // las consultas que salieron antes no conocen esta
       if (gen !== B3GEN) return;
       const p = r.publicacion;
       if (p) b3pintarPubs([p, ...B3PUBS.filter(x => x.id !== p.id)]);
@@ -1907,7 +1989,7 @@ function b3formulario(gen) {
       b3aviso("Enviado: sigue el avance abajo");
       $("b3pubs").scrollIntoView({ block: "nearest", behavior: "smooth" });
     } catch (e) { if (gen === B3GEN) b3aviso(e.message, true); }
-    finally { $("b3agendar").disabled = false; }
+    finally { btn.disabled = false; }
   };
 }
 
@@ -1926,6 +2008,8 @@ function b3cambioCuenta(gen) {
     $("b3txtLbl").textContent = red.titulo ? "Descripción" : "Texto del post";
     $("b3texto").placeholder = red.titulo ? "Descripción del video"
       : "Texto del post (elige un título sugerido o escribe el tuyo)";
+    // solo un techo: si la red cuenta bytes (texto_bytes), el límite real lo
+    // miden b3contar y b3validar, y un byte nunca es menos que un carácter
     if (red.texto) $("b3texto").maxLength = red.texto; else $("b3texto").removeAttribute("maxlength");
     // privacidad: sin valor elegido de antemano (decisión del dueño, 16-sep)
     $("b3privWrap").hidden = !red.privacidad;
@@ -1950,14 +2034,15 @@ function b3cambioCuenta(gen) {
 }
 
 function b3contar() {
-  const max = b3redActual().texto, n = $("b3texto").value.length;
-  $("b3contador").textContent = max ? `${n} / ${max}` : "";
+  const red = b3redActual(), max = red.texto, n = b3largo(red, $("b3texto").value);
+  $("b3contador").textContent = max ? `${n} / ${max}${red.texto_bytes ? " bytes" : ""}` : "";
   $("b3contador").className = max && n > max ? "err" : "";
 }
 
+// El tope de la red bloquea (b3validar lo repite); el de Starter solo avisa.
 function b3peso() {
   const a = B3ARCHIVOS[Number($("b3archivo").value)];
-  const msg = a ? b3msgPeso(b3redActual(), a.mb) : null;
+  const msg = a ? (b3msgPeso(b3redActual(), a.mb) || b3msgStarter(a.mb, B3STARTER)) : null;
   $("b3peso").textContent = msg || "";
   $("b3peso").hidden = !msg;
 }
@@ -1996,6 +2081,15 @@ async function b3destinos(gen) {
   else if (!lista.length && red.destino_obligatorio) aviso = `Tu cuenta de ${red.nombre} ${d.vacio}`;
   nota.textContent = aviso;
   nota.hidden = !aviso;
+  if (r.error && !lista.length) {
+    // volver a elegir la cuenta no sirve si hay una sola: se reintenta aquí
+    // (la próxima vuelta borra el botón junto con la nota)
+    const otra = document.createElement("button");
+    otra.type = "button";
+    otra.textContent = "Reintentar";
+    otra.onclick = () => b3destinos(gen);
+    nota.append(" ", otra);
+  }
 }
 
 function b3usarTitulo(t) {
@@ -2012,7 +2106,7 @@ function b3valores() {
   const opt = dest.selectedIndex >= 0 ? dest.options[dest.selectedIndex] : null;
   return {
     cuenta_id: c.id, plataforma: c.platform, cuenta_nombre: c.fullname || c.username || "",
-    archivo: a ? a.clave : "", mb: a ? a.mb : null,
+    archivo: a ? a.clave : "", archivo_nombre: a ? a.nombre : "", mb: a ? a.mb : null,
     texto: $("b3texto").value, titulo: $("b3titulo").value,
     privacidad: $("b3privacidad").value,
     destino: dest.value, destino_nombre: opt ? opt.textContent : "",

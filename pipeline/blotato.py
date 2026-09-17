@@ -19,6 +19,7 @@ cuenta del dueño de la máquina.
 """
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import re
@@ -29,6 +30,12 @@ from urllib.parse import quote
 import httpx
 
 from . import claves_usuario
+
+# httpx registra en INFO cada petición con la URL completa, y la URL
+# prefirmada de subida lleva su token: el worker deja el log raíz en INFO
+for _ruidoso in ("httpx", "httpcore"):
+    if logging.getLogger(_ruidoso).getEffectiveLevel() < logging.WARNING:
+        logging.getLogger(_ruidoso).setLevel(logging.WARNING)
 
 BASE = "https://backend.blotato.com/v2"
 TIMEOUT = httpx.Timeout(30, read=120)
@@ -60,22 +67,28 @@ def _red(nombre: str, texto: int, *, titulo: int | None = None,
          titulo_obligatorio: bool = False, privacidad: tuple | None = None,
          destino: str | None = None, destino_obligatorio: bool = False,
          ia: bool = False, vertical: bool = False, mb: int | None = None,
-         seg: int | None = None, opciones: tuple = ()) -> dict:
+         seg: int | None = None, opciones: tuple = (), sin_signos: bool = False,
+         texto_bytes: bool = False, hashtags: int | None = None) -> dict:
     return {"nombre": nombre, "texto": texto, "titulo": titulo,
             "titulo_obligatorio": titulo_obligatorio,
             "privacidad": [list(p) for p in privacidad] if privacidad else None,
             "destino": destino, "destino_obligatorio": destino_obligatorio,
             "ia": ia, "vertical": vertical, "mb": mb, "seg": seg,
-            "opciones": list(opciones)}
+            "opciones": list(opciones),
+            # reglas del texto: sin < ni >, límite en bytes UTF-8, tope de hashtags
+            "sin_signos": sin_signos, "texto_bytes": texto_bytes, "hashtags": hashtags}
 
 
 REDES: dict[str, dict] = {
     # `title` en TikTok solo aplica a fotos: el video no lo lleva
     "tiktok": _red("TikTok", 2200, privacidad=_PRIV_TIKTOK, ia=True, mb=4000, seg=600,
                    opciones=("comentarios", "duo", "stitch", "marca_propia", "marca_pagada")),
+    # la descripción de YouTube son 5000 BYTES y no admite < ni >
     "youtube": _red("YouTube", 5000, titulo=100, titulo_obligatorio=True,
-                    privacidad=_PRIV_YOUTUBE, ia=True, opciones=("notificar", "para_ninos")),
-    "instagram": _red("Instagram", 2200, vertical=True, mb=300, seg=900),
+                    privacidad=_PRIV_YOUTUBE, ia=True, opciones=("notificar", "para_ninos"),
+                    sin_signos=True, texto_bytes=True),
+    # Blotato corta en 5 hashtags
+    "instagram": _red("Instagram", 2200, vertical=True, mb=300, seg=900, hashtags=5),
     # todo video de Facebook es Reel (9:16)
     "facebook": _red("Facebook", 5000, destino="pagina", destino_obligatorio=True,
                      vertical=True),
@@ -97,6 +110,15 @@ class RespuestaInvalida(httpx.HTTPError):
     """Blotato respondió 2xx con algo que no es lo esperado (p. ej. una
     página de mantenimiento). Es un HTTPError: quien ya captura la red lo
     captura también."""
+
+
+class SubidaRechazada(httpx.HTTPError):
+    """El almacenamiento de Blotato rechazó el PUT del video (tamaño del plan,
+    URL vencida…). No es la clave: la clave no viaja en ese PUT."""
+
+    def __init__(self, codigo: int, detalle: str = ""):
+        super().__init__("subida rechazada")
+        self.codigo, self.detalle = codigo, detalle
 
 
 def forma_valida(clave: str | None) -> bool:
@@ -127,6 +149,10 @@ def explicar_fallo(err: Exception, clave: str | None = None) -> tuple[str, bool]
     """(mensaje para el usuario, ¿hay que reconectar?) de un fallo al hablar
     con Blotato. Nunca incluye el texto de la excepción (lleva URLs firmadas);
     sí el `message` que Blotato explica en un 422 o un 429."""
+    if isinstance(err, SubidaRechazada):
+        return ("Blotato no aceptó el archivo"
+                + (f": {err.detalle.rstrip('.')}." if err.detalle else f" ({err.codigo}).")
+                + " Intenta de nuevo; si se repite, revisa tu plan de Blotato.", False)
     if isinstance(err, httpx.HTTPStatusError):
         codigo = err.response.status_code
         if codigo in (401, 403):
@@ -274,7 +300,8 @@ def subir_stream(clave: str, nombre: str, partes: Iterable[bytes], tam: int) -> 
     subida = httpx.put(firmada, content=partes,
                        headers={"Content-Type": mime, "Content-Length": str(tam)},
                        timeout=TIMEOUT_SUBIDA)
-    subida.raise_for_status()
+    if subida.is_error:
+        raise SubidaRechazada(subida.status_code, _mensaje_de(subida, clave))
     return publica
 
 
@@ -287,6 +314,26 @@ def subir_video(clave: str, path: Path) -> str:
     _headers(clave)                       # sin clave no se abre nada
     with path.open("rb") as f:
         return subir_stream(clave, path.name, trozos(f), path.stat().st_size)
+
+
+_HASHTAG = re.compile(r"(?<![\w#])#\w+")
+
+
+def revisar_texto(plataforma: str, texto: str) -> None:
+    """ValueError (para el usuario) si el texto rompe una regla de la red que
+    solo se descubriría después de subir el video."""
+    red = REDES[plataforma]
+    nombre = red["nombre"]
+    if len(texto) > red["texto"]:
+        raise ValueError(f"{nombre} acepta hasta {red['texto']} caracteres "
+                         f"y el texto tiene {len(texto)}.")
+    if red["texto_bytes"] and len(texto.encode("utf-8")) > red["texto"]:
+        raise ValueError(f"El texto es muy largo para {nombre}: admite {red['texto']} "
+                         "bytes, y los acentos y emojis cuentan doble o más.")
+    if red["sin_signos"] and ("<" in texto or ">" in texto):
+        raise ValueError(f"El texto de {nombre} no puede llevar los signos < ni >.")
+    if red["hashtags"] and len(_HASHTAG.findall(texto)) > red["hashtags"]:
+        raise ValueError(f"{nombre} acepta hasta {red['hashtags']} hashtags.")
 
 
 def target_de(plataforma: str, datos: dict) -> dict:

@@ -1584,13 +1584,27 @@ Va en entregas, cada una con su PR:
         red (`blotato.REDES` / `target_de`). En local corre lo mismo en
         segundo plano.
       - **Sin posts dobles:** la cola reintenta, así que el worker reclama la
-        publicación con If-Match, marca `creando` antes del POST y nunca
-        relanza. Un timeout o un 5xx al crear queda como «No sabemos si llegó»
-        (revisar el calendario antes de reintentar); un 4xx, como error
-        reintentable.
+        publicación con If-Match, renueva el registro cada minuto mientras
+        sube (latido), no publica una subida que la pantalla ya pudo dar por
+        muerta, marca `creando` antes del POST y nunca relanza después de
+        reclamar. Un timeout o un 5xx al crear queda como «No sabemos si
+        llegó» (revisar el calendario antes de reintentar); un 4xx, como error
+        reintentable. Dos envíos iguales (video + cuenta + red) chocan en un
+        candado con If-None-Match, no en una lectura.
+      - **Abuso y cupo:** la cuenta se verifica contra Blotato antes de
+        encolar (y otra vez en el worker), máximo 3 publicaciones subiéndose
+        por usuario, y la lista de redes de «Sugerir títulos» tiene tope.
+      - **Reglas que fallarían tarde:** descripción de YouTube sin `<`/`>` y
+        en 5000 bytes, máximo 5 hashtags en Instagram, aviso de los 400 MB del
+        plan Starter (un rechazo del PUT ya no se explica como «clave
+        inválida»). La URL firmada de subida no llega al log (httpx en INFO).
       - **El resultado:** «publicar ahora» espera ~45 s la respuesta de
         Blotato; después la pregunta la pantalla (`/publicaciones`, 3 por
-        petición). Se guarda el id del post (sirve para Meta Ads y C3).
+        petición; con id de post nunca se deja de preguntar, pasadas 6 h solo
+        cada 10 min). Se guarda el id del post (sirve para Meta Ads y C3).
+      - **El video por defecto** es la película final (`final` en el estado:
+        el render del último estilo con subtítulos, o la película generada),
+        y el confirm lo nombra.
       - **Antes de subir:** tope de 1 GB y por red (X 512 MB/2:20 min,
         Instagram 300 MB, LinkedIn 500 MB…); Instagram y Facebook solo
         vertical (ffprobe sobre la URL firmada, respeta la rotación).

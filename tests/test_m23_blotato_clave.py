@@ -643,6 +643,8 @@ def local_v1(monkeypatch, tmp_path):
     monkeypatch.setattr(publicar_api, "_nube", lambda: False)
     monkeypatch.setattr(db, "backend", lambda: "json")
     claves_usuario.guardar("u1", "BLOTATO_API_KEY", CLAVE)
+    monkeypatch.setattr(publicar_api.blotato, "cuentas",
+                        lambda clave, timeout=None: [{"id": "11", "platform": "tiktok"}])
     from worker import publicar_task
     monkeypatch.setattr(publicar_task, "ESPERA_RESULTADO_S", 0)
     return publicar_api
