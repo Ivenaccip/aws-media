@@ -1643,7 +1643,45 @@ Va en entregas, cada una con su PR:
         el modal de Publicar ya gasta 3).
       - Sin cambios de infra ni migración. Pendiente: no se puede editar el
         texto desde la Agenda, ni programar desde ahí (eso sigue en el editor).
-- [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
+- [x] **C4 · Métricas** (2026-09-17, rama `metricas-blotato`): pantalla propia
+      (`static/metricas.html`; en el menú ya solo queda «próximamente» en
+      Competencia) con lo que YA salió, lo que NO pudo salir y cómo rinde.
+      Decisiones del dueño: publicado **y** fallido en la misma lista, más una
+      vista «Las más vistas»; cuatro números en la tarjeta y el resto al
+      abrirla; ventana de 30 días con «Ver más» hacia atrás.
+      - **Verificado contra la API real el 17-sep**, no solo contra la doc:
+        `GET /v2/posts` (qué hay: es la única con las fallidas y con cursor) y
+        `GET /v2/analytics` (cuánto rinde: trae los números y su historial
+        pegados, y sin cursor). Se juntan por `id` — que es el de Blotato y
+        **no** el `postSubmissionId` que guarda el worker: ese no sirve aquí.
+      - **Dos llamadas por carga y ninguna más.** Van con presupuesto común
+        (18 s de los 29 de la Lambda), `/v2/posts` primero: si el tiempo se
+        acaba, la pantalla degrada a «tus publicaciones, sin números» y no a
+        una pantalla en blanco. «Las más vistas» es la misma respuesta sin
+        reordenar: cambiar de vista cuesta cero.
+      - **«Sin números» son CUATRO cosas distintas** y confundirlas es el peor
+        error posible aquí: la publicación falló (nunca los tendrá), es de
+        LinkedIn (Blotato aún no recoge de esa red), Blotato respondió por todo
+        el tramo y no la tenía (no guardó nada), o **no lo sabemos** —la
+        respuesta vino recortada o no vino—, que es el único caso con botón.
+        Ese botón cuesta una llamada y resuelve los tres restantes: 200 con
+        `metrics:null` («aún no la ha medido»), 404 («no guardó nada») y
+        `lastError` («la red no se los dio»). El 404 sale como 200: no es una
+        avería, es la respuesta.
+      - **Ningún endpoint fuerza una medición nueva.** Blotato mide por tandas,
+        desde ~2 h después de publicar hasta los 90 días. Por eso el botón dice
+        «Ver números» y no «Actualizar», y por eso no hay sondeo.
+      - Los contadores llegan en texto (para no perder precisión) y salen en
+        entero; lo que no se puede convertir viaja como `null` y **nunca** como
+        0: un cero inventado le diría al usuario que no gustó a nadie. Una
+        bajada entre dos mediciones se conserva tal cual — las redes corrigen.
+      - Sin cambios de infra, sin migración, sin caché y **sin tarifa**: leer
+        números no cuesta créditos. Cero lecturas de S3 y cero Postgres.
+      - Pendiente: no enlaza cada publicación con el proyecto que la produjo
+        (se podría con el índice `sha256(media_url)` de C3, pero cuesta una
+        lectura de S3 por tarjeta y solo lo tiene lo publicado desde el 17-sep);
+        sin seguidores, sin comparar redes entre sí y sin exportar.
+- [ ] **C5 · Competencia** (Apify).
 
 Lo que pedía el análisis:
 
@@ -1669,7 +1707,9 @@ Lo que pedía el análisis:
 - Las tres secciones:
   - **Agenda:** la API REST v2 la cubre (crear, listar, reprogramar, borrar).
   - **Métricas:** solo por publicación, solo de lo publicado vía Blotato,
-    8 redes sin LinkedIn, sin seguidores.
+    8 redes sin LinkedIn, sin seguidores. (Confirmado en C4 contra la API real:
+    lo de LinkedIn sigue siendo cierto, y lo que el análisis no vio es que
+    Blotato mide por tandas y no se le puede pedir una medición nueva.)
   - **Competencia:** Blotato no la tiene. Se hace con Apify (ya integrado) y
     necesita tarifa nueva en `tarifas.json`; no depende de la clave.
 

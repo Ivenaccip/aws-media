@@ -165,6 +165,24 @@ todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
   estaba y avisa. La pantalla no consulta sola: solo al abrirla, al pulsar
   «Actualizar» y después de cada cambio.
 
+Y desde C4, **Métricas** (`/metricas.html`, también en el menú) con lo que ya
+salió y lo que no pudo salir. Las preguntas que van a llegar:
+
+- **«No me aparecen los números».** Casi siempre es que Blotato todavía no los
+  ha recogido: los junta por tandas, desde un par de horas después de publicar
+  y hasta 90 días. **Ningún endpoint fuerza una medición nueva**, así que no hay
+  nada que reintentar; por eso el botón dice «Ver números» y no «Actualizar».
+  La pantalla distingue cuatro motivos y cada uno dice el suyo en la tarjeta.
+- **LinkedIn no da números** y no es un fallo nuestro: Blotato aún no los
+  recoge de esa red. Las otras ocho sí.
+- **«Esta publicación es vieja y dice que no hay números».** Blotato solo
+  guarda lo que llegó a medir: de lo anterior a que empezara no hay nada, y no
+  se puede reconstruir.
+- Una carga cuesta **dos** llamadas a Blotato (la lista y los números) y
+  cambiar a «Las más vistas» no cuesta ninguna: es la misma respuesta. Pedir
+  los números de una publicación suelta cuesta una más.
+- La pantalla llega **hasta un año atrás**, en tramos de 30 días.
+
 ### «Mi película se quedó en las imágenes y no avanza»
 
 No está atascada: está **esperando**. Desde el 14 de septiembre de 2026, en
