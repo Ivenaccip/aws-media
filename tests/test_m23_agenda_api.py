@@ -599,6 +599,29 @@ def test_un_estado_degradado_no_se_marca_como_cancelado(con_registro, http, monk
     assert publicaciones.leer(USER_S3, "gen-abc", reg["id"])[0]["estado"] == "creando"
 
 
+@pytest.mark.parametrize("en_disco, en_pantalla, marca", [
+    ("programado", "incierto", False),   # la pantalla ya no promete nada: no se toca
+    ("creando", "programado", True),     # la pantalla sí lo promete: se marca
+])
+def test_manda_lo_que_ve_la_pantalla_no_lo_que_hay_en_disco(con_registro, http, monkeypatch,
+                                                            en_disco, en_pantalla, marca):
+    """Hoy vista() nunca convierte un 'programado' en otra cosa ni al revés, así
+    que mirar el disco daría lo mismo. La regla vale igual: lo que decide es lo
+    que el usuario está viendo. El día que vista() degrade un 'programado' cuya
+    hora ya pasó, mirar el disco marcaría «Cancelada» algo que la pantalla ya
+    daba por perdido — y al revés, dejaría prometiendo una que sí se canceló."""
+    http.respuestas["GET"] = (200, {"schedule": ITEM})
+    reg = _programada(en_disco)
+    real = publicaciones.vista
+    monkeypatch.setattr(publicaciones, "vista",
+                        lambda r, t=None: {**real(r, t), "estado": en_pantalla})
+    d = con_registro.post("/api/agenda/cancelar",
+                          json={"id": SCH, "confirmar": True}).json()
+    guardado, _ = publicaciones.leer(USER_S3, "gen-abc", reg["id"])
+    assert d["nuestra"] is marca
+    assert guardado["estado"] == ("cancelado" if marca else en_disco)
+
+
 def _sch(**draft) -> dict:
     """El schedule que devuelve Blotato, con el draft retocado."""
     return {**ITEM, "draft": {**ITEM["draft"], **draft}}
