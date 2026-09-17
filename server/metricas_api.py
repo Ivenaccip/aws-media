@@ -67,6 +67,11 @@ MEJORES = 10                # cuántas «más vistas» viajan a la pantalla
 CURSOR_MAX = 512
 VENTANA_D = 30              # el ancho de cada tramo, en días
 HISTORIA_D = 365            # hasta dónde deja retroceder «Ver más»
+# Blotato empieza a medir un par de horas después de publicar. Antes de eso,
+# que una publicación no esté en /v2/analytics no significa nada: es el caso
+# MÁS frecuente —el usuario acaba de publicar y viene a mirar— y decirle que
+# Blotato no guardó sus números sería mentirle con cara de definitivo.
+RECIENTE_H = 3
 
 # los timeouts de httpx son POR FASE (8 s cada una) y la Lambda de la API corta
 # a los 29 s: el tope de verdad es este. Aquí van DOS llamadas, así que el
@@ -94,6 +99,8 @@ MOTIVOS = {
     "sin_consultar": "Todavía no sabemos si tiene números.",
     "aun_no": "Blotato aún no la ha medido. Los recoge por tandas, desde un par de "
               "horas después de publicar: vuelve más tarde.",
+    "otros": "Esta red no informó vistas ni me gusta. Lo que sí dio está en "
+             "«Ver el resto».",
     "fallo_red": "La red no le dio los números a Blotato esta vez. Volverá a "
                  "intentarlo solo.",
 }
@@ -152,11 +159,13 @@ def _ventana(desde: str | None, hasta: str | None) -> tuple[datetime, datetime]:
         raise HTTPException(422, VENTANA_MALA)
     fin = _instante(hasta) if hasta is not None else _instante(desde)
     ini = _instante(desde) if hasta is not None else fin - timedelta(days=VENTANA_D)
-    if not ini < fin or fin - ini > timedelta(days=VENTANA_D + 1) \
-            or fin > ahora + timedelta(days=1):
-        raise HTTPException(422, VENTANA_MALA)
-    if ini < ahora - timedelta(days=HISTORIA_D):
-        raise HTTPException(422, MUY_ATRAS)
+    suelo = ahora - timedelta(days=HISTORIA_D)
+    # el suelo RECORTA el último tramo en vez de rechazarlo: con un 422 los
+    # últimos días del año quedaban inalcanzables aunque MUY_ATRAS promete
+    # llegar hasta ahí
+    ini = max(ini, suelo)
+    if not ini < fin or fin - ini > timedelta(days=VENTANA_D) or fin > ahora:
+        raise HTTPException(422, VENTANA_MALA if fin > suelo else MUY_ATRAS)
     return ini, fin
 
 
@@ -168,26 +177,42 @@ def _iso(t: datetime) -> str:
     return t.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def _medicion_de(vista: dict, numeros: dict | None, *, sabemos: bool) -> dict:
+def _medicion_de(vista: dict, numeros: dict | None, *, sabemos: bool,
+                 ahora: datetime) -> dict:
     """La tarjeta con su medición y su motivo.
 
     `sabemos` es la pregunta fina: ¿la respuesta de /v2/analytics cubría toda
     la ventana? Si venía recortada (o no llegó), que esta publicación no
     estuviera en ella NO significa que no tenga números — significa que no
     miramos, y la tarjeta ofrece preguntar. Confundir las dos cosas es enseñar
-    «sin números» a quien sí los tiene."""
+    «sin números» a quien sí los tiene.
+
+    Y antes de eso hay una pregunta más burda: ¿le ha dado tiempo a Blotato?
+    Una publicación de hace media hora no está en /v2/analytics porque todavía
+    no toca, no porque no vaya a estar."""
     fila = dict(vista)
     fila.update({"numeros": None, "detalle": [], "medido": "", "historial": []})
-    if numeros and numeros.get("numeros") is not None:
+    if numeros:
         fila.update(numeros)
+    reciente = False
+    cuando = blotato.momento(vista["cuando"])
+    if cuando is not None:
+        reciente = cuando > ahora - timedelta(hours=RECIENTE_H)
+    if fila["numeros"] is not None:
         fila["medicion"] = "medido"
     elif vista["estado"] == "fallido":
         fila["medicion"] = "no_aplica"
     elif vista["plataforma"] in SIN_METRICAS:
         fila["medicion"] = "no_disponible"
+    elif fila["detalle"]:
+        # midió, pero ninguna de las cuatro casillas: la red cuenta otras cosas
+        fila["medicion"] = "otros"
+    elif reciente:
+        fila["medicion"] = "aun_no"
     else:
         fila["medicion"] = "no_medido" if sabemos else "sin_consultar"
-    fila["motivo"] = MOTIVOS.get(fila["medicion"], "")
+    fila["motivo"] = "" if fila["medicion"] == "medido" \
+        else MOTIVOS.get(fila["medicion"], "")
     # solo tiene sentido preguntar por lo que no sabemos, y solo si Blotato va a
     # aceptar el id: un botón que garantiza un 422 es un botón roto
     fila["puede_pedir"] = (fila["medicion"] == "sin_consultar"
@@ -211,7 +236,12 @@ def listar(desde: str | None = None, hasta: str | None = None,
         # un cursor sin su ventana es un cursor de otra consulta
         raise HTTPException(422, CURSOR_MALO)
     ini, fin = _ventana(desde, hasta)
+    # el cronómetro arranca ANTES de leer la clave: esa lectura va a SSM y no
+    # tiene deadline propio, así que sin contarla el presupuesto no protege de
+    # lo único que puede tardar de verdad antes de la primera llamada
+    reloj = time.monotonic()
     clave = _clave_o_error(user)
+    ahora = datetime.now(timezone.utc)
 
     # la respuesta se arma entera aunque las dos llamadas fallen: esta pantalla
     # nunca devuelve 502, porque una lista en blanco con su motivo se puede
@@ -221,12 +251,10 @@ def listar(desde: str | None = None, hasta: str | None = None,
     # pantalla no puede calcularlo sin saber dónde ponemos el suelo
     respuesta: dict = {"items": [], "mejores": [], "cursor": None,
                        "desde": _iso(ini), "hasta": _iso(fin),
-                       "ultimo_tramo": ini - timedelta(days=VENTANA_D)
-                       < datetime.now(timezone.utc) - timedelta(days=HISTORIA_D),
+                       "ultimo_tramo": ini <= ahora - timedelta(days=HISTORIA_D),
                        "hay_lista": False, "hay_numeros": False, "truncado": False,
-                       "error": None, "reconectar": False}
+                       "aviso": None, "error": None, "reconectar": False}
 
-    reloj = time.monotonic()
     fatal = False
     try:
         pagina = _con_tope(lambda: blotato.publicadas(
@@ -248,7 +276,7 @@ def listar(desde: str | None = None, hasta: str | None = None,
 
     resto = PRESUPUESTO_S - (time.monotonic() - reloj)
     medidas: dict[str, dict] = {}
-    mejores: list[dict] = []
+    crudas_top: list[dict] = []
     if not fatal and resto >= MINIMO_SEGUNDA_S:
         try:
             datos = _con_tope(lambda: blotato.analiticas(
@@ -256,13 +284,18 @@ def listar(desde: str | None = None, hasta: str | None = None,
                 timeout=blotato.TIMEOUT_CORTO), min(TOPE_S, resto))
             respuesta["hay_numeros"] = True
             respuesta["truncado"] = datos["truncado"]
+            if datos["truncado"]:
+                respuesta["aviso"] = (
+                    f"Blotato solo nos dio los números de las {blotato.ANALITICAS_MAX} "
+                    "más vistas de este tramo. De las demás no sabemos: ábrelas con "
+                    "«Ver números».")
             for item in datos["items"]:
                 vista = blotato.vista_analitica(item)
                 if not vista["id"]:
                     continue
                 medidas[vista["id"]] = blotato.medicion_lista(item)
-                if len(mejores) < MEJORES:
-                    mejores.append(_medicion_de(vista, medidas[vista["id"]], sabemos=True))
+                if len(crudas_top) < MEJORES:
+                    crudas_top.append(vista)
         except Exception as err:  # noqa: BLE001
             log.warning("listar los números: %s", type(err).__name__)
             error, reconectar = blotato.explicar_fallo(err, clave, contexto="metricas")
@@ -272,12 +305,20 @@ def listar(desde: str | None = None, hasta: str | None = None,
     # solo cuando Blotato contestó por TODA la ventana se puede afirmar que una
     # publicación ausente no tiene números
     sabemos = respuesta["hay_numeros"] and not respuesta["truncado"]
-    respuesta["mejores"] = mejores
-    respuesta["items"] = [
-        _medicion_de(vista, medidas.get(vista["id"]), sabemos=sabemos)
-        for vista in (blotato.vista_publicada(c) for c in crudas)
-        # una `scheduled` que se cuele es cosa de la Agenda, no de aquí
-        if vista["id"] and vista["estado"] in ("publicado", "fallido")]
+    vistas = [v for v in (blotato.vista_publicada(c) for c in crudas)
+              # una `scheduled` que se cuele es cosa de la Agenda, no de aquí
+              if v["id"] and v["estado"] in ("publicado", "fallido")]
+    respuesta["items"] = [_medicion_de(v, medidas.get(v["id"]), sabemos=sabemos,
+                                       ahora=ahora) for v in vistas]
+    # «Las más vistas» se arma DESPUÉS y con el mismo `sabemos`: cableado a True
+    # la misma publicación se diagnosticaba distinto en cada pestaña. Y cuando
+    # también está en la lista manda la vista de /v2/posts, que trae la fecha en
+    # que SALIÓ: /v2/analytics manda la de creación, y lo agendado se crea días
+    # antes de publicarse.
+    por_id = {v["id"]: v for v in vistas}
+    respuesta["mejores"] = [
+        _medicion_de(por_id.get(v["id"], v), medidas.get(v["id"]), sabemos=sabemos,
+                     ahora=ahora) for v in crudas_top]
     return respuesta
 
 

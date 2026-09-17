@@ -242,11 +242,14 @@ def test_no_se_puede_retroceder_mas_de_un_ano(conectado, http):
 def test_el_ultimo_tramo_se_avisa_para_que_ver_mas_se_apague(conectado, http):
     hoy = conectado.get("/api/metricas").json()
     assert hoy["ultimo_tramo"] is False
-    # el último tramo que cabe entero dentro del año: el siguiente ya no, y por
-    # eso la pantalla tiene que apagar «Ver más» ANTES de pedirlo
-    casi = _z(datetime.now(timezone.utc) - timedelta(days=334))
+    # el tramo que toca el suelo del año se RECORTA en vez de rechazarse: con un
+    # 422 los últimos días quedaban inalcanzables aunque el mensaje promete
+    # llegar hasta ahí. Y al recortarlo, «Ver más» tiene que apagarse.
+    casi = _z(datetime.now(timezone.utc) - timedelta(days=340))
     j = conectado.get(f"/api/metricas?desde={casi}").json()
     assert j["ultimo_tramo"] is True
+    suelo = datetime.now(timezone.utc) - timedelta(days=365)
+    assert abs((blotato.momento(j["desde"]) - suelo).total_seconds()) < 60
 
 
 # ---------------------------------------------------------------------------
@@ -450,3 +453,90 @@ def test_con_el_almacen_caido_no_se_confunde_con_no_tener_clave(cliente, http, m
     r = cliente.get("/api/metricas")
     assert r.status_code == 503
     assert http.llamadas == []
+
+
+def test_un_cursor_con_media_ventana_tampoco_gasta_llamada(conectado, http):
+    """`desde` a secas significa «el tramo ANTERIOR»: el cursor vendría del
+    tramo de al lado y Blotato devolvería una página de otra ventana."""
+    primero = conectado.get("/api/metricas").json()
+    http.llamadas.clear()
+    r = conectado.get(f"/api/metricas?desde={primero['desde']}&cursor=c2")
+    assert r.status_code == 422 and http.llamadas == []
+    r = conectado.get(f"/api/metricas?hasta={primero['hasta']}&cursor=c2")
+    assert r.status_code == 422 and http.llamadas == []
+
+
+def test_una_publicacion_recien_salida_no_dice_que_no_tiene_numeros(conectado, http):
+    """Es el caso MÁS frecuente —el usuario acaba de publicar y viene a mirar—
+    y Blotato no mide hasta un par de horas después. Decirle que no guardó sus
+    números, sin botón y con cara de definitivo, es mentirle."""
+    hace_media_hora = _z(datetime.now(timezone.utc) - timedelta(minutes=30))
+    http.posts = {"items": [_post(**{"postTime": hace_media_hora})], "cursor": None}
+    it = conectado.get("/api/metricas").json()["items"][0]
+    assert it["medicion"] == "aun_no" and "vuelve más tarde" in it["motivo"]
+    assert it["puede_pedir"] is False
+
+
+def test_pasadas_unas_horas_la_ausencia_si_informa(conectado, http):
+    viejo = _z(datetime.now(timezone.utc) - timedelta(hours=metricas_api.RECIENTE_H + 1))
+    http.posts = {"items": [_post(**{"postTime": viejo})], "cursor": None}
+    assert conectado.get("/api/metricas").json()["items"][0]["medicion"] == "no_medido"
+
+
+def test_una_red_que_cuenta_otras_cosas_lo_dice_en_vez_de_quedarse_muda(conectado, http):
+    """Midió, pero ninguna de las cuatro casillas de la tarjeta. Sin este
+    estado la tarjeta salía sin un número y sin una línea que lo explicara,
+    con un botón «Ver el resto» que había que pulsar para descubrirlo."""
+    solo_perfil = {**_analitica(), "latestMetrics": {
+        "fetchedAt": "2026-09-13T01:41:40Z", "metrics": {"profileVisitsCount": "40"}},
+        "metricsHistory": []}
+    http.posts = {"items": [_post()], "cursor": None}
+    http.analytics = {"items": [solo_perfil]}
+    it = conectado.get("/api/metricas").json()["items"][0]
+    assert it["medicion"] == "otros" and it["numeros"] is None
+    assert it["detalle"] and "Ver el resto" in it["motivo"]
+
+
+def test_las_mejores_se_diagnostican_igual_que_la_lista(conectado, http):
+    """Con `sabemos` cableado a True, la MISMA publicación decía una cosa en
+    una pestaña y la contraria en la otra."""
+    sin_medir = {**_analitica(), "latestMetrics": {}, "metricsHistory": []}
+    http.posts = {"items": [_post()], "cursor": None}
+    http.analytics = {"items": [sin_medir] + [_analitica(pid=str(i)) for i in range(100)]}
+    j = conectado.get("/api/metricas").json()
+    assert j["truncado"] is True
+    top = next(it for it in j["mejores"] if it["id"] == "6098886")
+    rec = next(it for it in j["items"] if it["id"] == "6098886")
+    assert top["medicion"] == rec["medicion"] == "sin_consultar"
+    assert top["puede_pedir"] == rec["puede_pedir"] is True
+
+
+def test_las_mejores_traen_la_fecha_en_que_salio_y_no_la_de_creacion(conectado, http):
+    """/v2/analytics manda `createdAt` y /v2/posts manda `postTime`: lo
+    agendado se crea días antes de publicarse, y la misma tarjeta enseñaba dos
+    fechas distintas según la pestaña."""
+    http.posts = {"items": [_post()], "cursor": None}
+    http.analytics = {"items": [{**_analitica(), "createdAt": "2026-09-01T08:00:00Z"}]}
+    j = conectado.get("/api/metricas").json()
+    assert j["mejores"][0]["cuando"] == j["items"][0]["cuando"] == "2026-09-12T00:50:49Z"
+
+
+def test_el_aviso_del_recorte_lo_escribe_el_servidor(conectado, http):
+    """El «100» es nuestro (blotato.ANALITICAS_MAX). Si lo escribiera la
+    pantalla habría dos verdades que mantener."""
+    http.posts = {"items": [_post()], "cursor": None}
+    http.analytics = {"items": [_analitica(pid=str(i)) for i in range(100)]}
+    j = conectado.get("/api/metricas").json()
+    assert j["aviso"] and str(blotato.ANALITICAS_MAX) in j["aviso"]
+    assert conectado.get("/api/metricas").json()["aviso"] is not None
+    http.analytics = {"items": []}
+    assert conectado.get("/api/metricas").json()["aviso"] is None
+
+
+def test_el_reloj_cuenta_tambien_la_lectura_de_la_clave(conectado, http, monkeypatch):
+    """La clave se lee de SSM y esa lectura no tiene deadline propio: si el
+    cronómetro arrancara después, el presupuesto no protegería de lo único que
+    puede tardar de verdad antes de la primera llamada."""
+    import inspect
+    fuente = inspect.getsource(metricas_api.listar)
+    assert fuente.index("time.monotonic()") < fuente.index("_clave_o_error")

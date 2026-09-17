@@ -377,16 +377,37 @@ respuestas = [OK(PAGINA({items: [ITEM({id: "7", puede_pedir: true,
               OK({id: "7", medicion: "medido", numeros: NUMS, detalle: [],
                   historial: [], medido: "2026-09-13T01:41:40Z", motivo: ""})];
 await mtCargar();
-const btn = {currentTarget: new Nodo(null), disabled: false};
-await mtPedir({currentTarget: btn.currentTarget}, MTREC[0]);
+await mtPedir({}, MTREC[0]);
 out.rec = MTREC[0].numeros.vistas;
 out.top = MTTOP[0].numeros.vistas;
 out.pedir = MTREC[0].puede_pedir;
-out.apagado = btn.currentTarget.disabled;
 out.llamadas = llamadas.length;
 """, tmp_path)
     assert o["rec"] == 306 and o["top"] == 306
-    assert o["pedir"] is False and o["apagado"] is True and o["llamadas"] == 2
+    assert o["pedir"] is False and o["llamadas"] == 2
+
+
+def test_ver_numeros_no_se_puede_pulsar_dos_veces_aunque_se_repinte(tmp_path):
+    """Apagar el botón en el nodo no basta: cambiar de pestaña o desplegar otra
+    tarjeta repinta la lista y lo revivía. El usuario impaciente se ganaba un
+    429 que se había provocado él, sobre números que ya venían en camino."""
+    o = _node(r"""
+let abrir; const puerta = new Promise(r => { abrir = r; });
+respuestas = [OK(PAGINA({items: [ITEM({id: "7", puede_pedir: true,
+                                       medicion: "sin_consultar"})]})),
+              async () => { await puerta; return OK({id: "7", medicion: "medido",
+                numeros: NUMS, detalle: [], historial: [], medido: "", motivo: ""}); }];
+await mtCargar();
+const p = mtPedir({}, MTREC[0]);      // en vuelo
+mtVer("top"); mtVer("rec");           // dos repintados a mitad de camino
+out.apagado = botonesDe(el("mtLista").innerHTML).every(b => b.disabled);
+out.leyenda = el("mtLista").innerHTML.includes("Preguntando…");
+await mtPedir({}, MTREC[0]);          // un segundo clic no puede salir
+abrir(); await p;
+out.llamadas = llamadas.length;
+""", tmp_path)
+    assert o["apagado"] is True and o["leyenda"] is True
+    assert o["llamadas"] == 2, "el segundo clic gastó otra llamada"
 
 
 def test_la_pantalla_no_redacta_los_mensajes_del_servidor(tmp_path):
@@ -394,3 +415,97 @@ def test_la_pantalla_no_redacta_los_mensajes_del_servidor(tmp_path):
     los copiara, habría dos verdades que mantener."""
     for texto in ("Blotato no guardó", "aún no la ha medido", "no recoge números de LinkedIn"):
         assert texto not in PANTALLA
+
+
+def test_un_fallo_duro_tampoco_borra_lo_ya_pintado_ni_el_cursor(tmp_path):
+    """El 500 de la Lambda y el «Failed to fetch» del navegador entran por el
+    catch, no por `hay_lista`: sin prueba, ese camino podía tirar la lista."""
+    o = _node(r"""
+respuestas = [OK(PAGINA({items: [ITEM()], cursor: "c2"})),
+              FALLO(500, "Se rompió algo."),
+              new TypeError("Failed to fetch")];
+await mtCargar();
+await mtCargar();
+out.tras500 = {items: MTREC.length, cursor: MTCURSOR, aviso: el("mtErr").innerHTML};
+await mtCargar();
+out.trasRed = {items: MTREC.length, cursor: MTCURSOR, aviso: el("mtErr").innerHTML};
+""", tmp_path)
+    assert o["tras500"]["items"] == 1 and o["tras500"]["cursor"] == "c2"
+    assert "Se rompió algo." in o["tras500"]["aviso"]
+    assert o["trasRed"]["items"] == 1 and o["trasRed"]["cursor"] == "c2"
+    # el «Failed to fetch» del navegador viene en inglés: no se le enseña a nadie
+    assert "Failed to fetch" not in o["trasRed"]["aviso"]
+
+
+def test_un_fallo_de_la_lista_no_vacia_las_mas_vistas(tmp_path):
+    """Quien está mirando sus diez mejores no puede quedarse en blanco porque
+    fallara la OTRA llamada: son dos y fallan por separado."""
+    o = _node(r"""
+respuestas = [OK(PAGINA({items: [ITEM()], mejores: [ITEM({id: "9"})]})),
+              OK(PAGINA({items: [], mejores: [], hay_lista: false, hay_numeros: false,
+                         error: "Blotato no respondió."}))];
+await mtCargar();
+mtVer("top");
+await mtCargar();
+out.lista = el("mtLista").innerHTML;
+out.top = MTTOP.length;
+""", tmp_path)
+    assert o["top"] == 1
+    assert "No pudimos traer" not in o["lista"], "vació una vista que sí tenía datos"
+
+
+def test_las_mas_vistas_llevan_su_propio_tramo(tmp_path):
+    """Si los números fallan mientras la lista retrocede, el rótulo seguiría al
+    tramo nuevo y les pondría la fecha de otro mes a unos números que no son
+    de ahí."""
+    o = _node(r"""
+respuestas = [OK(PAGINA({items: [ITEM()], mejores: [ITEM({id: "9"})]})),
+              OK(PAGINA({items: [ITEM({id: "2"})], hay_numeros: false, mejores: [],
+                         desde: "2026-07-18T00:00:00Z", hasta: "2026-08-18T00:00:00Z"}))];
+await mtCargar();
+await mtCargar(true);
+mtVer("top");
+out.top = el("mtVentana").textContent;
+mtVer("rec");
+out.rec = el("mtVentana").textContent;
+""", tmp_path)
+    # las fechas se pintan en la zona del navegador, así que se compara el mes
+    assert "de julio" not in o["top"], "los números del tramo viejo con fecha del nuevo"
+    assert "de julio" in o["rec"]
+
+
+def test_ver_mas_no_borra_unos_numeros_que_ya_se_pagaron(tmp_path):
+    """La misma publicación vuelve en la página siguiente sin números (por eso
+    tenía botón). Pisarla dejaba un detalle abierto diciendo que no hay nada
+    que enseñar, y el botón para volver a pagar lo mismo."""
+    o = _node(r"""
+out.unido = mtUnir(
+  [ITEM({id: "1", numeros: {vistas: 306, me_gusta: 9, comentarios: 2, compartidos: 1},
+         medicion: "medido", motivo: "", detalle: [{etiqueta: "Vistas", valor: 306}]})],
+  [ITEM({id: "1", numeros: null, detalle: [], medicion: "sin_consultar",
+         puede_pedir: true})])
+  .map(it => [it.id, it.numeros && it.numeros.vistas, it.puede_pedir, it.medicion]);
+""", tmp_path)
+    assert o["unido"] == [["1", 306, False, "medido"]]
+
+
+def test_el_aviso_del_recorte_no_es_un_error_y_lo_escribe_el_servidor(tmp_path):
+    """Iba en rojo, con role="alert", y con el «100» escrito en la pantalla. Y
+    con un `else if` desaparecía justo cuando además había un error, que es
+    cuando más falta hace explicar por qué hay tarjetas sin números."""
+    o = _node(r"""
+respuestas = [OK(PAGINA({items: [ITEM()], truncado: true,
+                         aviso: "Blotato solo nos dio los números de las 100 más vistas.",
+                         error: "Blotato pide esperar un momento."}))];
+await mtCargar();
+out.nota = el("mtNota").textContent;
+out.err = el("mtErr").innerHTML;
+""", tmp_path)
+    assert "100 más vistas" in o["nota"]
+    assert "esperar" in o["err"] and "100" not in o["err"]
+
+
+def test_la_pantalla_no_escribe_el_tope_de_blotato():
+    """El 100 es del servidor (blotato.ANALITICAS_MAX). Duplicarlo aquí deja dos
+    verdades que mantener."""
+    assert "100 más vistas" not in _codigo(MT)

@@ -98,6 +98,7 @@
       <button type="button" id="mtRefrescar" class="sec">Actualizar</button>
     </div>
     <p id="mtVentana" class="mut"></p>
+    <p id="mtNota" class="mut" hidden></p>
     <p id="mtErr" class="err" role="alert" hidden></p>
     <p id="mtEstado" class="ok" role="status" aria-live="polite"></p>
     <ul id="mtLista"><li class="vacio"><span class="spin">Buscando tus publicaciones</span></li></ul>
@@ -142,8 +143,10 @@ function fjDetalle(d, status) {
   return `el servidor respondió ${status}`;
 }
 
-// El status va pegado al Error: sin él no se distingue el 409 (falta conectar
-// Blotato) del 429 (Blotato pide esperar).
+// El status va pegado al Error: es lo que distingue el 409 (falta conectar
+// Blotato, y entonces el aviso ofrece el enlace) de cualquier otro fallo, y
+// también lo que separa un error del servidor —que trae texto escrito para el
+// usuario— de un «Failed to fetch» del navegador, que viene en inglés.
 const fj = url => fetch(url).then(async r => {
   if (!r.ok) throw Object.assign(new Error(fjDetalle(await r.json().catch(() => ({})), r.status)),
                                  { status: r.status });
@@ -170,6 +173,8 @@ let MTTOP = [];          // las más vistas del último tramo que respondió
 let MTVISTA = "rec";     // cuál de las dos se está viendo
 let MTDESDE = null;      // el borde viejo del tramo pintado: «Ver más» retrocede desde aquí
 let MTHASTA = null;      // el borde nuevo; con el cursor viaja igual, o Blotato pagina otra cosa
+let MTTOPDESDE = null;   // el tramo de LAS MÁS VISTAS, que puede quedarse atrás
+let MTTOPHASTA = null;   // si los números fallan mientras la lista avanza
 let MTCURSOR = null;
 let MTULTIMO = false;    // ya no se puede retroceder más
 let MTCARGANDO = false;
@@ -274,9 +279,14 @@ function mtBoton(it, i) {
       ` aria-expanded="${abierto ? "true" : "false"}">` +
       `${abierto ? "Ocultar el resto" : "Ver el resto"}</button>`;
   }
+  // «pidiendo» vive en el DATO y no en el nodo: cambiar de pestaña o desplegar
+  // otra tarjeta repinta la lista, y un botón apagado a mano revivía ahí mismo.
+  // El usuario impaciente pulsaba dos y tres veces la misma consulta hasta
+  // ganarse un 429 que se había provocado él.
   if (it.puede_pedir)
-    return `<button type="button" class="sec" data-mt="pedir" data-i="${esc(i)}">` +
-      `Ver números</button>`;
+    return `<button type="button" class="sec" data-mt="pedir" data-i="${esc(i)}"` +
+      `${it.pidiendo ? " disabled" : ""}>` +
+      `${it.pidiendo ? "Preguntando…" : "Ver números"}</button>`;
   return "";
 }
 
@@ -315,7 +325,7 @@ function mtEnlazar() {
   document.querySelectorAll("#mtLista [data-mt]").forEach(b => {
     const it = items[Number(b.dataset.i)];
     if (!it) return;
-    b.disabled = MTCARGANDO;
+    b.disabled = MTCARGANDO || !!it.pidiendo;
     b.onclick = b.dataset.mt === "detalle" ? () => mtAbrir(it) : ev => mtPedir(ev, it);
   });
 }
@@ -344,6 +354,14 @@ function mtAviso(msg, conectar) {
   p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? MTCONECTAR : "") : "";
 }
 
+// Una nota que no es un error: va en gris y sin role="alert". El texto lo
+// escribe el servidor —también el «100», que es suyo y no de la pantalla.
+function mtNota(msg) {
+  const p = $("#mtNota");
+  p.hidden = !msg;
+  p.textContent = msg || "";
+}
+
 function mtAnunciar(msg) {
   $("#mtEstado").textContent = msg || "";
 }
@@ -355,10 +373,14 @@ function mtTexto(e) {
   return (e && typeof e.status === "number" && e.message) ? e.message : MTSINRED;
 }
 
+// Cada vista dice SU tramo: los números pueden ser de uno anterior al de la
+// lista, y ponerles la fecha de esta sería atribuirlos a un mes que no es suyo.
 function mtVentana() {
-  if (!MTDESDE || !MTHASTA) return "";
-  return `Del ${mtDia(MTDESDE)} al ${mtDia(MTHASTA)}` +
-    (MTULTIMO && !MTCURSOR ? ` · ${MTTOPE}` : "");
+  const desde = MTVISTA === "top" ? MTTOPDESDE : MTDESDE;
+  const hasta = MTVISTA === "top" ? MTTOPHASTA : MTHASTA;
+  if (!desde || !hasta) return "";
+  return `Del ${mtDia(desde)} al ${mtDia(hasta)}` +
+    (MTVISTA === "rec" && MTULTIMO && !MTCURSOR ? ` · ${MTTOPE}` : "");
 }
 
 function mtOcupado(v) {
@@ -407,17 +429,23 @@ async function mtCargarYa(mas) {
       MTHASTA = j.hasta || MTHASTA;
       MTULTIMO = !!j.ultimo_tramo;
     }
-    if (j.hay_numeros) MTTOP = Array.isArray(j.mejores) ? j.mejores : [];
-    if (!MTREC.length && !j.hay_lista) $("#mtLista").innerHTML = MTCAIDA;
-    else mtPintar();
-    $("#mtVentana").textContent = (MTVISTA === "top" ? MTTOPQUE : MTRECQUE) +
-      (mtVentana() ? " " + mtVentana() + "." : "");
-    if (j.error) mtAviso(j.error, !!j.reconectar);
-    else if (j.truncado) mtAviso("Blotato solo nos dio los números de las 100 más vistas " +
-      "de este tramo. Las demás dicen «Ver números».", false);
+    // «Las más vistas» lleva su PROPIO tramo: si los números fallan mientras la
+    // lista avanza, el rótulo seguiría al tramo nuevo y les pondría fecha de
+    // otro mes a unos números que son del anterior
+    if (j.hay_numeros) {
+      MTTOP = Array.isArray(j.mejores) ? j.mejores : [];
+      MTTOPDESDE = j.desde || null;
+      MTTOPHASTA = j.hasta || null;
+    }
+    mtCaida(j.hay_lista, j.hay_numeros);
+    mtRotulo();
+    // el aviso del recorte NO es un error y lo redacta el servidor: va en gris y
+    // aparte, para que pueda convivir con un error de verdad
+    mtAviso(j.error, !!j.reconectar);
+    mtNota(j.aviso);
   } catch (e) {
     // lo ya pintado no se tira: solo se explica el hueco cuando no hay nada
-    if (!MTREC.length) $("#mtLista").innerHTML = MTCAIDA;
+    mtCaida(false, false);
     mtAviso(mtTexto(e), e && e.status === 409);
   } finally {
     MTCARGANDO = false;
@@ -431,16 +459,41 @@ async function mtCargarYa(mas) {
   }
 }
 
+// ¿La caída se enseña o no? Depende de la vista que se está mirando: quien
+// está en «Las más vistas» con diez tarjetas no puede quedarse en blanco
+// porque fallara la OTRA llamada.
+function mtCaida(hayLista, hayNumeros) {
+  const vacia = MTVISTA === "rec" ? (!MTREC.length && !hayLista)
+                                  : (!MTTOP.length && !hayNumeros);
+  mtPintar();                                       // deja «Ver más» coherente
+  if (vacia) $("#mtLista").innerHTML = MTCAIDA;
+}
+
+function mtRotulo() {
+  $("#mtVentana").textContent = (MTVISTA === "top" ? MTTOPQUE : MTRECQUE) +
+    (mtVentana() ? " " + mtVentana() + "." : "");
+}
+
 // Los tramos se encadenan por fecha y Blotato reordena por `postTime`: una
 // misma publicación puede llegar dos veces. La segunda ACTUALIZA a la primera
-// en su sitio, no se añade otra tarjeta igual debajo.
+// en su sitio, no se añade otra tarjeta igual debajo — pero NO borra unos
+// números que el usuario ya pagó con una llamada: la tarjeta que vuelve en la
+// página siguiente sigue sin estar en el top de números, así que llega vacía, y
+// pisarla dejaba un detalle abierto diciendo que no hay nada que enseñar.
 function mtUnir(viejos, nuevos) {
   const por = new Map(viejos.map((it, i) => [it.id, i]));
   const fuera = viejos.slice();
   nuevos.forEach(it => {
     const i = por.get(it.id);
     if (i === undefined) { por.set(it.id, fuera.length); fuera.push(it); }
-    else fuera[i] = it;
+    else if (!it.numeros && !(it.detalle || []).length
+             && (fuera[i].numeros || (fuera[i].detalle || []).length)) {
+      // lo nuevo es la misma publicación sin números: se queda lo que ya sabemos
+      fuera[i] = Object.assign({}, it, {
+        numeros: fuera[i].numeros, detalle: fuera[i].detalle,
+        historial: fuera[i].historial, medido: fuera[i].medido,
+        medicion: fuera[i].medicion, motivo: fuera[i].motivo, puede_pedir: false});
+    } else fuera[i] = it;
   });
   return fuera;
 }
@@ -450,8 +503,9 @@ function mtUnir(viejos, nuevos) {
 // encender: la respuesta ya está en la tarjeta, y Blotato no mide de nuevo
 // porque se lo pidamos.
 async function mtPedir(ev, it) {
-  const btn = ev && ev.currentTarget;
-  if (btn) btn.disabled = true;
+  if (it.pidiendo) return;
+  it.pidiendo = true;
+  mtPintar();          // el botón nace apagado del DATO y sobrevive al repintado
   mtAviso("");
   try {
     const j = await fj(`/api/metricas/${encodeURIComponent(it.id)}/numeros`);
@@ -466,14 +520,18 @@ async function mtPedir(ev, it) {
         o.medicion = j.medicion || o.medicion;
         o.motivo = j.motivo || "";
         o.puede_pedir = false;
+        o.pidiendo = false;
       });
     if (it.numeros) MTABIERTO.add(it.id);
     mtPintar();
-    mtAnunciar(it.numeros ? `${it.red}: ${mtNum(it.numeros.vistas)} vistas.`
-                          : `${it.red}: ${it.motivo}`);
+    // «X:  vistas.» era lo que se leía cuando esa red no informa vistas
+    const vistas = it.numeros && mtNum(it.numeros.vistas);
+    mtAnunciar(vistas ? `${it.red}: ${vistas} vistas.` : `${it.red}: ${it.motivo}`);
   } catch (e) {
+    // lo que falló de verdad sí se puede reintentar
+    it.pidiendo = false;
+    mtPintar();
     mtAviso(mtTexto(e), e && e.status === 409);
-    if (btn) btn.disabled = false;   // se puede reintentar lo que falló de verdad
   }
 }
 
@@ -481,8 +539,7 @@ function mtVer(cual) {
   MTVISTA = cual;
   $("#mtVerRec").setAttribute("aria-pressed", cual === "rec" ? "true" : "false");
   $("#mtVerTop").setAttribute("aria-pressed", cual === "top" ? "true" : "false");
-  $("#mtVentana").textContent = (cual === "top" ? MTTOPQUE : MTRECQUE) +
-    (mtVentana() ? " " + mtVentana() + "." : "");
+  mtRotulo();
   mtPintar();   // cambiar de vista NO gasta llamada: las dos vienen de la misma
 }
 

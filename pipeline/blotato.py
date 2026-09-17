@@ -63,10 +63,13 @@ import httpx
 from . import claves_usuario
 
 # httpx registra en INFO cada petición con la URL completa, y la URL
-# prefirmada de subida lleva su token: el worker deja el log raíz en INFO
+# prefirmada de subida lleva su token: el worker deja el log raíz en INFO.
+# Sin condición a propósito: la que había ("solo si el root ya está en INFO")
+# dependía del ORDEN de los imports y en la Lambda de la API no llegaba a
+# dispararse — server/app.py importa los routers antes de configurar el log, así
+# que httpx se quedaba en NOTSET y heredaba el INFO de después.
 for _ruidoso in ("httpx", "httpcore"):
-    if logging.getLogger(_ruidoso).getEffectiveLevel() < logging.WARNING:
-        logging.getLogger(_ruidoso).setLevel(logging.WARNING)
+    logging.getLogger(_ruidoso).setLevel(logging.WARNING)
 
 BASE = "https://backend.blotato.com/v2"
 TIMEOUT = httpx.Timeout(30, read=120)
@@ -804,17 +807,27 @@ def analitica_de(clave: str, post_id: str,
 def _entero(valor) -> int | None:
     if isinstance(valor, bool) or valor is None:
         return None
+    # un float redondo (0.0, 2.0) es un entero que llegó como número JSON:
+    # int("0.0") revienta, y perderlo convertiría un 0 real en «no lo informa»
+    if isinstance(valor, float):
+        return int(valor) if valor.is_integer() else None
     try:
         return int(str(valor).strip())
     except (TypeError, ValueError):
         return None
 
 
-# Los cuatro de la tarjeta. El resto va al detalle, y lo que no esté aquí se
-# enseña con su nombre crudo: la lista de contadores de Blotato crece, y una
-# clave desconocida no puede tumbar una pantalla de solo mirar.
-NUMEROS = (("vistas", "viewsCount"), ("me_gusta", "likesCount"),
-           ("comentarios", "commentsCount"), ("compartidos", "sharesCount"))
+# Los cuatro de la tarjeta, cada uno con los contadores que valen, EN ORDEN.
+# No todas las redes cuentan lo mismo: X informa impresiones y respuestas, no
+# vistas y comentarios. Con un solo nombre por casilla, una publicación de X
+# salía sin un número en la tarjeta aunque Blotato hubiera medido de sobra.
+# El resto va al detalle, y lo que no esté en ETIQUETAS se enseña con su nombre
+# crudo: la lista de contadores de Blotato crece, y una clave desconocida no
+# puede tumbar una pantalla de solo mirar.
+NUMEROS = (("vistas", ("viewsCount", "impressionsCount", "playsCount", "reachCount")),
+           ("me_gusta", ("likesCount",)),
+           ("comentarios", ("commentsCount", "repliesCount")),
+           ("compartidos", ("sharesCount",)))
 
 # `tipo` dice cómo se pinta: unos milisegundos no son un número que enseñar.
 ETIQUETAS: dict[str, tuple[str, str]] = {
@@ -841,9 +854,23 @@ ETIQUETAS: dict[str, tuple[str, str]] = {
 def numeros_de(metricas) -> dict:
     """Los cuatro de la tarjeta, ya en int (o None). Siempre las cuatro claves:
     que falte una o que valga None es lo mismo para la pantalla, pero un dict de
-    forma fija se prueba mejor."""
+    forma fija se prueba mejor.
+
+    De cada casilla gana el PRIMER contador que la red informó: las impresiones
+    de X ocupan el sitio de las vistas, que X no da."""
     metricas = metricas if isinstance(metricas, dict) else {}
-    return {nuestro: _entero(metricas.get(suyo)) for nuestro, suyo in NUMEROS}
+    fuera = {}
+    for nuestro, suyos in NUMEROS:
+        fuera[nuestro] = next((v for v in (_entero(metricas.get(s)) for s in suyos)
+                               if v is not None), None)
+    return fuera
+
+
+def hay_numeros(numeros) -> bool:
+    """¿Alguna de las cuatro casillas tiene algo que enseñar? Un dict con las
+    cuatro en None es tan «sin números» como un None, pero en JavaScript es
+    verdadero: la tarjeta salía muda y sin motivo."""
+    return isinstance(numeros, dict) and any(v is not None for v in numeros.values())
 
 
 def detalle_de(metricas) -> list[dict]:
@@ -857,8 +884,10 @@ def detalle_de(metricas) -> list[dict]:
     for clave in sorted(metricas):
         etiqueta, tipo = ETIQUETAS.get(clave, (clave, "entero"))
         valor = metricas.get(clave)
-        if (isinstance(valor, float) and not isinstance(valor, bool)
-                and not valor.is_integer()):
+        # un ratio se reconoce por su TIPO, no por tener decimales: clasificar
+        # por el valor hacía desaparecer el 0.0 —una cuenta nueva sin
+        # interacción— mientras el 0.53 sí salía
+        if isinstance(valor, float) and not isinstance(valor, bool):
             fuera.append({"clave": clave, "etiqueta": etiqueta, "tipo": "ratio",
                           "valor": valor})
             continue
@@ -882,13 +911,12 @@ def momento(iso) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
-def historial_de(bruto) -> list[dict]:
-    """Las mediciones ordenadas de la más vieja a la más nueva, sin repetidas.
+def _mediciones(bruto) -> list[tuple[str, dict]]:
+    """(fecha, contadores crudos) de cada medición, de la más vieja a la más
+    nueva y sin repetidas.
 
     Una medición sin fecha legible se tira: sin fecha no se puede ordenar, y
-    dejarla al final la haría pasar por la última. Y los números NUNCA se
-    tocan: un contador puede BAJAR entre dos mediciones (las redes corrigen sus
-    conteos), y recortar esa bajada sería enseñar algo que la red no dijo."""
+    dejarla al final la haría pasar por la última."""
     if not isinstance(bruto, list):
         return []
     vistos: dict[str, dict] = {}
@@ -898,28 +926,45 @@ def historial_de(bruto) -> list[dict]:
         t = momento(fila.get("fetchedAt"))
         if t is None:
             continue
-        clave = t.astimezone(timezone.utc).isoformat()
-        vistos[clave] = {"cuando": clave, "numeros": numeros_de(fila.get("metrics"))}
-    return [vistos[k] for k in sorted(vistos)]
+        metricas = fila.get("metrics")
+        vistos[t.astimezone(timezone.utc).isoformat()] = \
+            metricas if isinstance(metricas, dict) else {}
+    return [(k, vistos[k]) for k in sorted(vistos)]
+
+
+def historial_de(bruto) -> list[dict]:
+    """Las mediciones para la pantalla: {cuando, numeros}.
+
+    Los números NUNCA se tocan: un contador puede BAJAR entre dos mediciones
+    (las redes corrigen sus conteos), y recortar esa bajada sería enseñar algo
+    que la red no dijo."""
+    return [{"cuando": c, "numeros": numeros_de(m)} for c, m in _mediciones(bruto)]
 
 
 def _medicion(metricas, cuando, historial) -> dict:
     """La forma única de unos números, vengan de la lista o del detalle.
 
-    El número grande es el de la medición MÁS NUEVA: si el historial trae una
-    posterior a la que Blotato marca como última (pasa cuando mide mientras nos
-    responde), manda la del historial."""
-    filas = historial_de(historial)
-    ultima = filas[-1] if filas else None
-    t = momento(cuando)
-    numeros = numeros_de(metricas)
-    marca = t.astimezone(timezone.utc).isoformat() if t else ""
-    if ultima and (not marca or ultima["cuando"] > marca):
-        numeros, marca = ultima["numeros"], ultima["cuando"]
-    hay = isinstance(metricas, dict) and bool(metricas)
-    return {"numeros": numeros if (hay or ultima) else None,
-            "detalle": detalle_de(metricas) if hay else [],
-            "medido": marca, "historial": filas}
+    La última medición entra en el historial en vez de vivir aparte, y de esa
+    ÚNICA fila salen el número grande, el detalle, la fecha y la tabla. Antes
+    el número grande podía venir del historial y el detalle de `metricas`, y la
+    tarjeta decía 1.000 vistas mientras «Ver el resto» decía 900.
+
+    `numeros` es None cuando no hay ni una casilla que enseñar: un dict con las
+    cuatro en None es verdadero en JavaScript y dejaba la tarjeta muda y sin
+    motivo. El detalle sí viaja —puede que la red informara otras cosas."""
+    bruto = list(historial) if isinstance(historial, list) else []
+    if isinstance(metricas, dict) and metricas:
+        bruto = bruto + [{"fetchedAt": cuando, "metrics": metricas}]
+    filas = _mediciones(bruto)
+    # una medición sin fecha legible no entra en el historial, pero sus números
+    # siguen siendo los últimos que Blotato dio: se enseñan sin fecha
+    ultima = filas[-1] if filas else (("", metricas) if isinstance(metricas, dict)
+                                      and metricas else None)
+    numeros = numeros_de(ultima[1]) if ultima else None
+    return {"numeros": numeros if hay_numeros(numeros) else None,
+            "detalle": detalle_de(ultima[1]) if ultima else [],
+            "medido": ultima[0] if ultima else "",
+            "historial": [{"cuando": c, "numeros": numeros_de(m)} for c, m in filas]}
 
 
 def medicion_lista(item: dict) -> dict:

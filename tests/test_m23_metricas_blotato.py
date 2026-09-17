@@ -361,3 +361,77 @@ def test_ningun_texto_de_metricas_repite_la_clave():
     for codigo in (401, 403, 404, 422, 429, 500):
         texto, _ = blotato.explicar_fallo(_fallo(codigo), CLAVE, contexto="metricas")
         assert CLAVE not in texto
+
+
+def test_un_estado_que_no_pedimos_viaja_tal_cual_y_no_como_fallido():
+    """Pedimos dos estados. Si Blotato colara un tercero (`scheduled`, o uno
+    nuevo), llamarlo «fallido» le diría al usuario que algo no salió cuando
+    todavía no le tocaba salir."""
+    assert blotato.vista_publicada(
+        {**ITEM_POST, "state": {"type": "scheduled"}})["estado"] == "scheduled"
+    assert blotato.vista_publicada({**ITEM_POST, "state": {}})["estado"] == ""
+
+
+def test_cada_casilla_acepta_el_contador_que_use_esa_red():
+    """X no informa vistas ni comentarios: informa impresiones y respuestas. Con
+    un solo nombre por casilla, una publicación de X salía sin un número en la
+    tarjeta aunque Blotato hubiera medido de sobra."""
+    n = blotato.numeros_de({"impressionsCount": "1200", "likesCount": "3",
+                            "repliesCount": "1"})
+    assert n == {"vistas": 1200, "me_gusta": 3, "comentarios": 1, "compartidos": None}
+
+
+def test_el_contador_propio_de_la_casilla_gana_al_de_respaldo():
+    n = blotato.numeros_de({"viewsCount": "306", "impressionsCount": "9999",
+                            "commentsCount": "2", "repliesCount": "77"})
+    assert n["vistas"] == 306 and n["comentarios"] == 2
+
+
+def test_sin_ninguna_casilla_los_numeros_son_none_y_el_detalle_no():
+    """Un dict con las cuatro en None es verdadero en JavaScript: la tarjeta
+    salía muda, sin un número y sin una línea que explicara por qué."""
+    med = blotato._medicion({"profileVisitsCount": "40"}, "2026-09-13T01:41:40Z", [])
+    assert med["numeros"] is None
+    assert [d["clave"] for d in med["detalle"]] == ["profileVisitsCount"]
+    assert blotato.hay_numeros({"vistas": None, "me_gusta": None,
+                                "comentarios": None, "compartidos": None}) is False
+
+
+def test_un_ratio_en_cero_no_desaparece():
+    """0.0 es un dato: «esta red informó 0 %» y «esta red no lo informa» son
+    cosas distintas, y clasificar por el valor las confundía."""
+    filas = {f["clave"]: f for f in blotato.detalle_de({"pinterestSaveRate": 0.0})}
+    assert filas["pinterestSaveRate"]["tipo"] == "ratio"
+    assert filas["pinterestSaveRate"]["valor"] == 0.0
+
+
+def test_un_contador_que_llega_como_numero_redondo_se_conserva():
+    assert blotato.numeros_de({"viewsCount": 1234.0})["vistas"] == 1234
+    assert blotato.numeros_de({"viewsCount": 1234})["vistas"] == 1234
+
+
+def test_el_numero_grande_y_el_detalle_salen_de_la_misma_medicion():
+    """La tarjeta decía 1.000 vistas y «Ver el resto» decía 900: el número
+    venía del historial y el detalle de la última medición."""
+    med = blotato._medicion({"viewsCount": "900"}, "2026-09-16T00:00:00Z",
+                            [{"fetchedAt": "2026-09-17T00:00:00Z",
+                              "metrics": {"viewsCount": "1000"}}])
+    assert med["numeros"]["vistas"] == 1000
+    assert [(d["etiqueta"], d["valor"]) for d in med["detalle"]] == [("Vistas", 1000)]
+    assert med["medido"].startswith("2026-09-17")
+
+
+def test_la_ultima_medicion_entra_en_el_historial():
+    """La delta y la tabla salen del historial: si la última medición vive
+    aparte, el titular dice un número y la tabla termina en otro."""
+    med = blotato._medicion({"viewsCount": "1200"}, "2026-09-17T10:00:00Z",
+                            [{"fetchedAt": "2026-09-14T00:00:00Z",
+                              "metrics": {"viewsCount": "900"}}])
+    assert [f["numeros"]["vistas"] for f in med["historial"]] == [900, 1200]
+
+
+def test_una_medicion_sin_fecha_sigue_enseñando_sus_numeros():
+    """No entra en el historial —no se puede ordenar— pero son los últimos
+    números que Blotato dio: tirarlos sería enseñar una tarjeta vacía."""
+    med = blotato._medicion({"viewsCount": "306"}, None, [])
+    assert med["numeros"]["vistas"] == 306 and med["medido"] == ""
