@@ -331,10 +331,10 @@ def test_estado_sin_conectar_trae_el_precio_de_pricing_json(cliente):
                  "plan": {"nombre": plan["nombre"], "usd_por_mes": plan["usd_por_mes"]}}
 
 
-def test_en_el_servicio_el_estado_avisa_que_agendar_no_corre(cliente, monkeypatch):
-    # la pantalla lo dice ANTES de que el usuario genere una clave que cuesta
+def test_en_el_servicio_agendar_ya_corre(cliente, monkeypatch):
+    # M23 C2: programar funciona también en el servicio (worker SQS)
     monkeypatch.setattr(db, "backend", lambda: "postgres")
-    assert cliente.get("/api/blotato?redes=0").json()["agendar"] is False
+    assert cliente.get("/api/blotato?redes=0").json()["agendar"] is True
 
 
 def test_conectar_prueba_guarda_y_no_devuelve_la_clave(cliente, blotato_http):
@@ -533,37 +533,42 @@ def test_la_ruta_exige_login_en_el_servicio():
 # ---------------------------------------------------------------------------
 # publicar usa la clave del usuario
 
-def test_publicar_estado_usa_la_clave_del_usuario(monkeypatch, blotato_http, tmp_path):
+def test_publicar_cuentas_usa_la_clave_del_usuario(monkeypatch, blotato_http, tmp_path):
     from server import publicar_api
     (tmp_path / "v1").mkdir()
     monkeypatch.setenv("DEFAULT_USER_ID", "u1")
     monkeypatch.setattr(publicar_api, "_proyecto", lambda name: tmp_path / name)
     monkeypatch.setattr(publicar_api, "_nube", lambda: False)
-    r = publicar_api.estado("v1")
-    assert r["blotato"] is False and r["cuentas"] == [] and blotato_http.cabeceras == []
+    assert publicar_api.estado("v1")["blotato"] is False
+    r = publicar_api.cuentas("v1")
+    assert r["conectado"] is False and r["cuentas"] == [] and blotato_http.cabeceras == []
     claves_usuario.guardar("u1", "BLOTATO_API_KEY", CLAVE)
     r = publicar_api.estado("v1")
-    assert r["blotato"] is True and r["agendar"] is True and len(r["cuentas"]) == 2
+    assert r["blotato"] is True and r["agendar"] is True and "cuentas" not in r
+    assert blotato_http.cabeceras == []          # el estado no le pregunta a Blotato
+    r = publicar_api.cuentas("v1")
+    assert r["conectado"] is True and len(r["cuentas"]) == 2
     assert blotato_http.cabeceras == [{"blotato-api-key": CLAVE}]
 
 
-def test_publicar_estado_en_nube_avisa_y_no_le_pregunta_a_blotato(monkeypatch, blotato_http, ssm):
-    """Ahí las redes no hacen falta (agendar no corre), y un Blotato colgado
-    tumbaría el modal entero, con el botón de descargar incluido."""
+def test_publicar_estado_en_nube_no_le_pregunta_a_blotato(monkeypatch, blotato_http, ssm):
+    """Un Blotato colgado tumbaría el modal entero, con el botón de descargar
+    incluido: las redes se piden aparte (/cuentas)."""
     from server import editor, publicar_api
     monkeypatch.setenv("DEFAULT_USER_ID", "u1")
     monkeypatch.setattr(publicar_api, "_nube", lambda: True)
     monkeypatch.setattr(editor, "_proyecto_nube", lambda name: {})
     monkeypatch.setattr(publicar_api, "descargables_nube", lambda name: {})
+    monkeypatch.setattr(publicar_api.publicaciones, "listar", lambda u, n: [])
     claves_usuario.guardar("u1", "BLOTATO_API_KEY", CLAVE)
     r = publicar_api.estado("v1")
-    assert r["blotato"] is True and r["agendar"] is False and r["error"] is None
+    assert r["blotato"] is True and r["agendar"] is True and r["error"] is None
     assert blotato_http.cabeceras == []
 
 
 @pytest.mark.parametrize("codigo, reconectar", [(401, True), (403, True), (502, False)])
-def test_publicar_estado_explica_y_pide_reconectar(monkeypatch, blotato_http, tmp_path,
-                                                   codigo, reconectar):
+def test_publicar_cuentas_explica_y_pide_reconectar(monkeypatch, blotato_http, tmp_path,
+                                                    codigo, reconectar):
     from server import publicar_api
     (tmp_path / "v1").mkdir()
     monkeypatch.setenv("DEFAULT_USER_ID", "u1")
@@ -571,8 +576,8 @@ def test_publicar_estado_explica_y_pide_reconectar(monkeypatch, blotato_http, tm
     monkeypatch.setattr(publicar_api, "_nube", lambda: False)
     claves_usuario.guardar("u1", "BLOTATO_API_KEY", CLAVE)
     blotato_http.codigo = codigo
-    r = publicar_api.estado("v1")
-    assert r["blotato"] is True and r["reconectar"] is reconectar
+    r = publicar_api.cuentas("v1")
+    assert r["conectado"] is True and r["reconectar"] is reconectar and r["cuentas"] == []
     assert "backend.blotato.com" not in r["error"] and "Client error" not in r["error"]
 
 
@@ -606,6 +611,17 @@ def _proyecto_con_pelicula(tmp_path) -> Path:
     return p
 
 
+def _agendar_local(publicar_api, **cambios):
+    from fastapi import BackgroundTasks
+    tareas = BackgroundTasks()
+    cuerpo = {"confirmar": True, "cuenta_id": "11", "plataforma": "tiktok", "texto": "hola",
+              "archivo": "pelicula", "privacidad": "SELF_ONLY", **cambios}
+    r = publicar_api.agendar("v1", publicar_api.AgendarIn(**cuerpo), tareas)
+    for t in tareas.tasks:                 # lo que FastAPI corre tras responder
+        t.func(*t.args, **t.kwargs)
+    return r
+
+
 def test_agendar_sin_conectar_dice_donde_conectar(monkeypatch, tmp_path):
     from fastapi import HTTPException
     from server import publicar_api
@@ -613,46 +629,54 @@ def test_agendar_sin_conectar_dice_donde_conectar(monkeypatch, tmp_path):
     monkeypatch.setattr(publicar_api, "_proyecto", lambda name: p)
     monkeypatch.setattr(publicar_api, "_nube", lambda: False)
     with pytest.raises(HTTPException) as e:
-        publicar_api.agendar("v1", publicar_api.AgendarIn(
-            confirmar=True, cuenta_id="11", plataforma="tiktok", texto="hola", archivo="pelicula"))
+        _agendar_local(publicar_api)
     assert e.value.status_code == 409 and "Blotato" in e.value.detail
 
 
-def test_agendar_sube_y_publica_con_la_clave_del_usuario(monkeypatch, tmp_path):
+@pytest.fixture
+def local_v1(monkeypatch, tmp_path):
+    from pipeline import storage
     from server import publicar_api
+    monkeypatch.setattr(storage, "videos_root", lambda: tmp_path)
     p = _proyecto_con_pelicula(tmp_path)
     monkeypatch.setenv("DEFAULT_USER_ID", "u1")
-    monkeypatch.setattr(publicar_api, "_proyecto", lambda name: p)
     monkeypatch.setattr(publicar_api, "_nube", lambda: False)
+    monkeypatch.setattr(db, "backend", lambda: "json")
     claves_usuario.guardar("u1", "BLOTATO_API_KEY", CLAVE)
+    monkeypatch.setattr(publicar_api.blotato, "cuentas",
+                        lambda clave, timeout=None: [{"id": "11", "platform": "tiktok"}])
+    from worker import publicar_task
+    monkeypatch.setattr(publicar_task, "ESPERA_RESULTADO_S", 0)
+    return publicar_api
+
+
+def test_agendar_sube_y_publica_con_la_clave_del_usuario(local_v1, monkeypatch):
+    publicar_api = local_v1
     usadas = []
-    monkeypatch.setattr(publicar_api.blotato, "subir_video",
-                        lambda clave, path: usadas.append(("subir", clave)) or "https://cdn/v.mp4")
+    monkeypatch.setattr(publicar_api.blotato, "subir_stream",
+                        lambda clave, nombre, partes, tam:
+                        usadas.append(("subir", clave, b"".join(partes))) or "https://cdn/v.mp4")
     monkeypatch.setattr(publicar_api.blotato, "publicar",
-                        lambda clave, *a, **k: usadas.append(("publicar", clave)) or {"id": "p1"})
-    r = publicar_api.agendar("v1", publicar_api.AgendarIn(
-        confirmar=True, cuenta_id="11", plataforma="tiktok", texto="hola", archivo="pelicula"))
-    assert r["agendado"] is True
-    assert usadas == [("subir", CLAVE), ("publicar", CLAVE)]
+                        lambda clave, *a, **k: usadas.append(("publicar", clave))
+                        or {"postSubmissionId": "p1"})
+    r = _agendar_local(publicar_api)
+    assert r["publicacion"]["estado"] == "pendiente"
+    assert usadas == [("subir", CLAVE, b"mp4"), ("publicar", CLAVE)]
+    [pub] = publicar_api.estado("v1")["publicaciones"]
+    assert pub["estado"] == "enviado"
 
 
-def test_agendar_fallido_no_repite_la_excepcion(monkeypatch, tmp_path, caplog):
-    from fastapi import HTTPException
-    from server import publicar_api
-    p = _proyecto_con_pelicula(tmp_path)
-    monkeypatch.setenv("DEFAULT_USER_ID", "u1")
-    monkeypatch.setattr(publicar_api, "_proyecto", lambda name: p)
-    monkeypatch.setattr(publicar_api, "_nube", lambda: False)
-    claves_usuario.guardar("u1", "BLOTATO_API_KEY", CLAVE)
+def test_agendar_fallido_no_repite_la_excepcion(local_v1, monkeypatch, caplog):
+    publicar_api = local_v1
 
-    def revienta(clave, path):
+    def revienta(clave, nombre, partes, tam):
         raise RuntimeError(f"cabecera ilegal {clave}")
-    monkeypatch.setattr(publicar_api.blotato, "subir_video", revienta)
-    with caplog.at_level(logging.DEBUG), pytest.raises(HTTPException) as e:
-        publicar_api.agendar("v1", publicar_api.AgendarIn(
-            confirmar=True, cuenta_id="11", plataforma="tiktok", texto="hola", archivo="pelicula"))
-    assert e.value.status_code == 502
-    assert CLAVE not in e.value.detail and CLAVE not in caplog.text
+    monkeypatch.setattr(publicar_api.blotato, "subir_stream", revienta)
+    with caplog.at_level(logging.DEBUG):
+        _agendar_local(publicar_api)
+    [pub] = publicar_api.estado("v1")["publicaciones"]
+    assert pub["estado"] == "error"
+    assert CLAVE not in pub["mensaje"] and CLAVE not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -828,11 +852,14 @@ def test_las_tres_secciones_siguen_proximamente():
         assert 'class="prox"' in linea
 
 
-def test_el_modal_avisa_que_programar_aun_no_corre_antes_del_cobro():
+def test_el_modal_ya_no_dice_que_programar_llega_pronto():
+    """C2: programar corre en local y en el servicio. El único aviso antes de
+    generar la clave es el cobro de Blotato."""
+    assert "blt-pronto" not in INICIO
+    assert "d.agendar" not in INICIO
+    assert "llega en los próximos días" not in INICIO
     form = INICIO[INICIO.index('<form id="blt-form"'):]
-    assert form.index('id="blt-pronto"') < form.index('class="blt-aviso"')
-    assert "$('#blt-pronto').hidden = d.agendar !== false;" in INICIO
-    assert "$('#blt-pronto-ok').hidden = d.agendar !== false;" in INICIO
+    assert form.index('class="blt-aviso"') < form.index('id="blt-clave"')
 
 
 def test_arrastrar_desde_el_campo_no_cierra_el_modal():
@@ -841,7 +868,9 @@ def test_arrastrar_desde_el_campo_no_cierra_el_modal():
 
 
 def test_el_editor_deja_reconectar_una_clave_revocada():
-    assert "const conectar = !st.blotato || st.reconectar;" in EDITOR
+    # C2: conectado/reconectar salen de api/publicar/cuentas, no del estado
+    assert "const conectar = !conectado || reconectar;" in EDITOR
+    assert "b3mascota(!!cu.conectado, !!cu.reconectar);" in EDITOR
     assert "reconectar Blotato" in EDITOR
 
 
@@ -850,11 +879,11 @@ def test_el_editor_manda_a_conectar_en_el_inicio():
     assert "my.blotato.com/settings/api" not in EDITOR
 
 
-def test_el_editor_no_ofrece_programar_donde_no_corre():
-    assert "st.agendar === false" in EDITOR
-    rama = EDITOR[EDITOR.index("st.agendar === false"):]
-    rama = rama[:rama.index("} else {")]
-    assert "b3agendar" not in rama and "descarga la película" in rama
+def test_el_editor_ofrece_programar_en_todas_partes():
+    """C2: ya no hay rama «llega muy pronto» que esconda el formulario."""
+    assert "st.agendar" not in EDITOR
+    assert "llega muy pronto" not in EDITOR
+    assert 'id="b3agendar"' in EDITOR
 
 
 def test_pricing_json_trae_el_plan_de_blotato():

@@ -44,7 +44,7 @@ except (FileNotFoundError, KeyError):
 # el dashboard convierte el costo de vuelta a segundos de cómputo.
 CONCEPTOS_FARGATE = {"infra-producir", "infra-render", "infra-shorts", "infra-editar",
                      "infra-subtitulos", "infra-overlay"}
-CONCEPTOS_LAMBDA = {"infra-preparar", "infra-shorts-analizar"}
+CONCEPTOS_LAMBDA = {"infra-preparar", "infra-shorts-analizar", "infra-publicar"}
 
 
 def costo_fargate(segundos: float, vcpu: float = 4.0, gb: float = 8.0) -> float:
