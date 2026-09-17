@@ -43,6 +43,7 @@ def test_presign_key_y_content_type(monkeypatch):
             capturado.update(op=op, params=Params, expira=ExpiresIn)
             return "https://s3/presigned"
     monkeypatch.setattr(media_api, "_s3", lambda: S3())
+    monkeypatch.setattr(media_api.db, "reservar_nombre_editor", lambda u, n: True)
     r = media_api.presign(media_api.PresignIn(
         proyecto="video-1", archivo="Clip Uno.mp4", content_type="video/mp4", bytes=123))
     assert r["key"] == "videos/video-1/subidas/Clip_Uno.mp4"
@@ -66,6 +67,7 @@ def test_confirmar_registra_en_db(monkeypatch):
             return {"ContentLength": 999}
     guardado = {}
     monkeypatch.setattr(media_api, "_s3", lambda: S3())
+    monkeypatch.setattr(media_api.db, "reservar_nombre_editor", lambda u, n: True)
     monkeypatch.setattr(media_api.db, "cargar_proyecto_editor", lambda u, n: None)
     monkeypatch.setattr(media_api.db, "guardar_proyecto_editor",
                         lambda u, n, doc: guardado.update(u=u, n=n, doc=json.loads(doc)))

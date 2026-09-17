@@ -1678,16 +1678,25 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 ### Hallazgos del análisis que no esperan a M23
 
 - **Publicar en la nube respondía 500** (`publicar_api.estado`): PR #89.
-- **Proyectos del editor sin dueño en S3** (hallado al diseñar C2): las claves
-  son `videos/<nombre>/…`, sin usuario, y el nombre lo escribe cada quien
-  («video-1»); `presign` y `confirmar` no miran si otro usuario ya lo usa. Dos
-  usuarios con el mismo nombre ven y pisan los archivos del otro. P0 antes
-  del 23 (tarea aparte).
-- **Token de Apify en la URL** (`pipeline/apify.py`): rotarlo y mandarlo en
-  una cabecera.
+- **Token de Apify en la URL** (`pipeline/apify.py`): ya va en la cabecera
+  `Authorization`, y los errores se guardan, registran y muestran tachados
+  (`apify.tachar`). El token que se filtró el 2026-09-13 ya está muerto.
 - **Cognito:** la contraseña provisional dura 7 días; con el tope de 50
   correos al día hay que escalonar las invitaciones antes del 23.
 - **Cuota de concurrencia de Lambda:** ya es 1000 (antes 10).
+- **Proyectos del editor compartidos entre cuentas** (P0, PR #96). En S3
+  viven en `videos/<nombre>/`, sin el usuario. Dos cuentas con el mismo nombre
+  («video-1») o que importaban el mismo video de YouTube (`yt-<id>`) se veían,
+  se descargaban y se pisaban el trabajo. Ahora el nombre es único entre
+  cuentas:
+  - la tabla `nombres_editor` hace de reserva atómica;
+  - pedir la subida con un nombre de otra cuenta da 409, antes de subir nada;
+  - los importados se llaman `yt-<id>-<4hex>`, con un sufijo distinto por
+    cuenta.
+
+  El 2026-09-16 no había ningún nombre repetido en producción (17 proyectos,
+  4 cuentas). **Antes del deploy:** correr `tools/db_migrate.py`. Meter el
+  usuario en el prefijo (`videos/<sub>/<nombre>/`) queda para después del 23.
 
 ### Meta Ads
 

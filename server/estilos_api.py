@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from pipeline import creditos, db, jobs, media_sync
+from pipeline import apify, creditos, db, jobs, media_sync
 
 # OJO: /api/estilos ya existe en app.py (los estilos de imagen de crear) —
 # esta herramienta vive en /api/estilo
@@ -81,6 +81,8 @@ def listar():
         except ValueError:
             continue
         doc["id"] = key.rsplit("/", 1)[-1][:-len(".json")]
+        if doc.get("error"):   # los guardados antes del tachado también
+            doc["error"] = apify.tachar(doc["error"])
         perfiles.append(doc)
     perfiles.sort(key=lambda d: str(d.get("inicio") or ""), reverse=True)
     return {"estilos": perfiles, "creditos": creditos.costo_estilo_analizar()}

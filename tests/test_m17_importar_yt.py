@@ -47,6 +47,16 @@ def cliente(monkeypatch):
     return TestClient(app)
 
 
+def _nombres_libres(monkeypatch) -> str:
+    """Ninguna otra cuenta tiene el nombre: devuelve el que le toca al usuario
+    de los tests (yt-<id>-<sufijo estable>, ver test_nombres_editor)."""
+    from pipeline import db
+    monkeypatch.setattr(db, "reservar_nombre_editor", lambda u, n: True)
+    monkeypatch.setattr(db, "nombre_editor_ajeno", lambda u, n: False)
+    base = "yt-jNQXAC9IVRw"
+    return f"{base}-{db.sufijo_estable(db.usuario_actual(), base, 0)}"
+
+
 def _mock_info(monkeypatch, dur=130.0):
     """El default tiene que pasar el piso de duración que trajo M22: los 19 s
     que dura «Me at the zoo» de verdad hoy se rechazan ANTES de cobrar, porque
@@ -59,12 +69,14 @@ def _mock_info(monkeypatch, dur=130.0):
 
 
 def test_cotizar_devuelve_titulo_minutos_y_creditos(cliente, monkeypatch):
-    from pipeline import creditos
+    from pipeline import creditos, db
     _mock_info(monkeypatch, dur=130.0)
+    monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: None)
+    nombre = _nombres_libres(monkeypatch)
     r = cliente.post("/api/shorts/importar/cotizar", json={"url": URL})
     assert r.status_code == 200
     d = r.json()
-    assert d["titulo"] == "Me at the zoo" and d["nombre"] == "yt-jNQXAC9IVRw"
+    assert d["titulo"] == "Me at the zoo" and d["nombre"] == nombre
     assert d["creditos"] == creditos.SHORTS_IMPORTAR_CR_MIN * 3   # 130 s = 3 min empezados
 
 
@@ -78,6 +90,7 @@ def test_importar_cobra_guarda_y_encola(cliente, monkeypatch):
     from pipeline import creditos, db, jobs
     _mock_info(monkeypatch)
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: None)
+    nombre = _nombres_libres(monkeypatch)
     guardado, encolado, movimientos = {}, [], []
     monkeypatch.setattr(db, "guardar_proyecto_editor",
                         lambda u, n, s: guardado.update({n: json.loads(s)}))
@@ -87,17 +100,18 @@ def test_importar_cobra_guarda_y_encola(cliente, monkeypatch):
     monkeypatch.setattr(creditos, "cobrar",
                         lambda n, ref, user=None: movimientos.append(("cobro", n, ref)))
     r = cliente.post("/api/shorts/importar", json={"url": URL})
-    assert r.status_code == 200 and r.json()["nombre"] == "yt-jNQXAC9IVRw"
-    assert encolado == [("yt-jNQXAC9IVRw", URL)]
+    assert r.status_code == 200 and r.json()["nombre"] == nombre
+    assert encolado == [(nombre, URL)]
     assert movimientos == [("cobro", creditos.SHORTS_IMPORTAR_CR_MIN * 3,   # 130 s = 3 min empezados
-                            "shorts-importar:yt-jNQXAC9IVRw")]
-    assert guardado["yt-jNQXAC9IVRw"]["importar"]["estado"] == "descargando"
+                            f"shorts-importar:{nombre}")]
+    assert guardado[nombre]["importar"]["estado"] == "descargando"
 
 
 def test_importar_devuelve_si_no_encola(cliente, monkeypatch):
     from pipeline import creditos, db, jobs
     _mock_info(monkeypatch)
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: None)
+    _nombres_libres(monkeypatch)
     monkeypatch.setattr(db, "guardar_proyecto_editor", lambda u, n, s: None)
     monkeypatch.setattr(db, "fijar_campo_editor", lambda u, n, c, v: None)
     movimientos = []
@@ -119,6 +133,7 @@ def test_importar_402_sin_saldo(cliente, monkeypatch):
     from pipeline import creditos, db
     _mock_info(monkeypatch)
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: None)
+    _nombres_libres(monkeypatch)
     monkeypatch.setattr(creditos, "activo", lambda: True)
 
     def sin_saldo(n, ref, user=None):
