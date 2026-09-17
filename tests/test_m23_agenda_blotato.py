@@ -531,7 +531,9 @@ def test_un_contexto_desconocido_cae_en_los_textos_de_publicar():
 def test_contexto_es_keyword_only_y_su_default_es_el_de_publicar():
     p = inspect.signature(blotato.explicar_fallo).parameters["contexto"]
     assert p.kind is inspect.Parameter.KEYWORD_ONLY and p.default == "publicacion"
-    assert blotato.CONTEXTOS == ("publicacion", "agenda", "reprogramar", "cancelar")
+    # C4 añadió «metricas» AL FINAL: los de C3 no se mueven de sitio
+    assert blotato.CONTEXTOS == ("publicacion", "agenda", "reprogramar", "cancelar",
+                                 "metricas")
 
 
 def test_los_llamadores_de_c2_siguen_pasando_todo_posicional():

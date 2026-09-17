@@ -871,12 +871,11 @@ def test_el_inicio_abre_el_modal_si_viene_del_editor():
     assert "get('blotato') === 'conectar'" in INICIO
 
 
-def test_las_dos_secciones_que_quedan_siguen_proximamente():
-    """C3 estrenó la Agenda: ya solo quedan dos «próximamente» (el « ·
-    próximamente» lo pone el CSS de nav .prox small::after, no el HTML)."""
-    for texto in ("Investiga tu competencia", "Ver mis métricas"):
-        linea = next(l for l in INICIO.splitlines() if texto in l)
-        assert 'class="prox"' in linea
+def test_la_seccion_que_queda_sigue_proximamente():
+    """C3 estrenó la Agenda y C4 las Métricas: ya solo queda Competencia (el
+    « · próximamente» lo pone el CSS de nav .prox small::after, no el HTML)."""
+    linea = next(l for l in INICIO.splitlines() if "Investiga tu competencia" in l)
+    assert 'class="prox"' in linea
 
 
 def test_la_agenda_es_un_enlace_y_ya_no_dice_proximamente():
