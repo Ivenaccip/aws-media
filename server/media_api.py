@@ -9,6 +9,10 @@ Solo está activo con MEDIA_BUCKET en el env (el servicio en AWS). En local el
 flujo de importar sigue siendo el de siempre: archivos en videos/ (F3.5).
 El layout de claves espeja MEDIA_ROOT: videos/<proyecto>/subidas/<archivo> —
 en C4 los ejecutores sincronizan ese prefijo a su FS local.
+
+Ese prefijo NO lleva el usuario, así que el nombre del proyecto es único entre
+todas las cuentas: presign y confirmar lo reservan (db.reservar_nombre_editor)
+y responden 409 si ya es de otra.
 """
 from __future__ import annotations
 
@@ -65,6 +69,16 @@ def _sanear_archivo(archivo: str) -> str:
     return raiz + ext.lower()
 
 
+def _reservar(proyecto: str) -> None:
+    """El proyecto tiene que ser del usuario o estar libre, y queda suyo.
+
+    Va ANTES de firmar: si solo se comprobara al confirmar, dos cuentas que
+    eligen «video-1» a la vez subirían a la misma key y una pisaría el video
+    de la otra durante la subida."""
+    if not db.reservar_nombre_editor(db.usuario_actual(), proyecto):
+        raise HTTPException(409, str(db.NombreAjeno(proyecto)))
+
+
 class PresignIn(BaseModel):
     proyecto: str
     archivo: str
@@ -90,6 +104,7 @@ def presign(body: PresignIn):
     archivo = _sanear_archivo(body.archivo)
     if body.bytes > MAX_BYTES:
         raise HTTPException(422, "archivo demasiado grande (máx 5 GB por subida)")
+    _reservar(proyecto)
     key = f"videos/{proyecto}/subidas/{archivo}"
     url = _s3().generate_presigned_url(
         "put_object",
@@ -154,6 +169,7 @@ def confirmar(body: ConfirmarIn):
     prefijo = f"videos/{proyecto}/subidas/"
     if not body.key.startswith(prefijo) or "/" in body.key[len(prefijo):]:
         raise HTTPException(422, "key fuera del proyecto declarado")
+    _reservar(proyecto)
     try:
         head = _s3().head_object(Bucket=bucket, Key=body.key)
     except Exception:  # noqa: BLE001 — NoSuchKey/403 dan lo mismo hacia la UI

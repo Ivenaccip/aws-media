@@ -14,6 +14,7 @@ exija el login de Cognito (deuda C1) todo corre como DEFAULT_USER_ID.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -196,6 +197,16 @@ ESQUEMA: list[str] = [
     # NULL = ilimitado (plan anual). Es columna, no constante: la palanca de
     # slots por plan queda abierta sin migrar de nuevo.
     "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS slots int DEFAULT 6",
+    # Los proyectos del editor viven en S3 bajo videos/<nombre>/, SIN el
+    # usuario: el nombre tiene que ser único entre todas las cuentas. El
+    # PRIMARY KEY es el candado (dos reservas simultáneas: gana una sola).
+    # Aparte de proyectos_editor para que pedir la subida reserve el nombre
+    # sin crear un proyecto vacío en la lista del usuario.
+    """CREATE TABLE IF NOT EXISTS nombres_editor (
+        nombre  text PRIMARY KEY,
+        user_id text NOT NULL,
+        creado  timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
@@ -225,10 +236,84 @@ def guardar_proyecto(user_id: str, id_: str, creado: str, estado: str,
     )
 
 
+class NombreAjeno(Exception):
+    """El nombre de proyecto del editor ya es de otra cuenta. El texto va
+    tal cual a la pantalla (el API lo convierte en 409)."""
+
+    def __init__(self, nombre: str):
+        self.nombre = nombre
+        super().__init__(
+            f"El nombre «{nombre}» ya lo usa otra cuenta. Elige otro nombre para "
+            "tu proyecto (por ejemplo, agrégale tu nombre o un número).")
+
+
+def nombre_editor_ajeno(user_id: str, nombre: str) -> bool:
+    """¿Otra cuenta tiene ya este nombre? Solo mira, no reserva.
+
+    Mira también proyectos_editor: los proyectos de antes de la reserva no
+    tienen fila en nombres_editor y siguen siendo de quien los creó."""
+    return bool(ejecutar(
+        """SELECT 1 AS ajeno FROM nombres_editor WHERE nombre = :n AND user_id <> :u
+           UNION ALL
+           SELECT 1 FROM proyectos_editor WHERE nombre = :n AND user_id <> :u
+           LIMIT 1""", {"u": user_id, "n": nombre}))
+
+
+def reservar_nombre_editor(user_id: str, nombre: str) -> bool:
+    """Reserva el nombre para el usuario. True si ya es suyo o estaba libre.
+
+    Atómico: el PRIMARY KEY de nombres_editor decide quién gana, y el
+    perdedor cae en DO NOTHING. El NOT EXISTS impide reservar un nombre que
+    otra cuenta ya usaba antes de que existiera la tabla. La comprobación va
+    en otra sentencia (otra transacción del Data API) para ver la fila que
+    haya escrito una reserva simultánea.
+    Una reserva no se suelta: el nombre queda del usuario aunque abandone la
+    subida, y el mismo nombre le vuelve a servir."""
+    ejecutar(
+        """INSERT INTO nombres_editor (nombre, user_id)
+           SELECT :n, :u
+           WHERE NOT EXISTS (SELECT 1 FROM proyectos_editor
+                             WHERE nombre = :n AND user_id <> :u)
+           ON CONFLICT (nombre) DO NOTHING""", {"u": user_id, "n": nombre})
+    return not nombre_editor_ajeno(user_id, nombre)
+
+
+def sufijo_estable(user_id: str, base: str, intento: int) -> str:
+    """4 hex que dependen solo de (usuario, base, intento). El mismo usuario
+    cae siempre en el mismo nombre, y otro usuario en otro."""
+    return hashlib.sha256(f"{user_id}:{base}:{intento}".encode()).hexdigest()[:4]
+
+
+def reservar_nombre_derivado(user_id: str, base: str, *, con_base: bool = True,
+                             reservar: bool = True, intentos: int = 8) -> str | None:
+    """Nombre libre para un proyecto que nombra el sistema (yt-<id>, gen-<id>).
+
+    Prueba `base` (si `con_base`) y luego base-<sufijo_estable>, y se queda
+    con el primero que sea del usuario o esté libre. Como los sufijos son
+    estables, repetir la llamada da el mismo nombre: un reintento no abre un
+    proyecto nuevo. Con `reservar=False` solo calcula (la cotización no debe
+    apartar nombres). None si todos los candidatos son de otras cuentas."""
+    candidatos = [base] if con_base else []
+    candidatos += [f"{base}-{sufijo_estable(user_id, base, i)}" for i in range(intentos)]
+    for nombre in candidatos:
+        libre = (reservar_nombre_editor(user_id, nombre) if reservar
+                 else not nombre_editor_ajeno(user_id, nombre))
+        if libre:
+            return nombre
+    return None
+
+
 def guardar_proyecto_editor(user_id: str, nombre: str, doc: str) -> None:
-    """Upsert del proyecto del editor (C3: registra las subidas a S3)."""
+    """Upsert del proyecto del editor (C3: registra las subidas a S3).
+
+    Reserva el nombre antes de escribir: si es de otra cuenta lanza
+    NombreAjeno y no toca nada. Así ningún camino que cree proyectos
+    (subida, YouTube, puente del generador) puede compartir el prefijo
+    videos/<nombre>/ con otro usuario."""
     ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
              {"u": user_id})
+    if not reservar_nombre_editor(user_id, nombre):
+        raise NombreAjeno(nombre)
     ejecutar(
         """INSERT INTO proyectos_editor (user_id, nombre, doc)
            VALUES (:u, :n, :doc::jsonb)

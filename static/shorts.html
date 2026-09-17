@@ -191,6 +191,12 @@ $("sub-archivo").onchange = () => {
     $("sub-proyecto").value = f.name.replace(/\.[^.]+$/, "")
       .replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase().slice(0, 40) || "mi-video";
 };
+// El nombre es único entre TODAS las cuentas (misma regla que e1): si otra
+// ya lo usa (409), el campo se queda con una variante casi seguro libre.
+function nombreAlterno(nombre) {
+  const sufijo = crypto.getRandomValues(new Uint16Array(1))[0].toString(16).padStart(4, "0");
+  return `${nombre.slice(0, 35)}-${sufijo}`;
+}
 $("sub-cancelar").onclick = () => xhrSubida && xhrSubida.abort();
 window.addEventListener("beforeunload", e => { if (xhrSubida) e.preventDefault(); });
 $("sub-btn").onclick = async () => {
@@ -199,14 +205,22 @@ $("sub-btn").onclick = async () => {
   const f = $("sub-archivo").files[0];
   if (!f || !proyecto) { est.textContent = "Elige el archivo y ponle nombre al proyecto."; return; }
   if (!proyecto.replace(/[-_]/g, "").match(/^[A-Za-z0-9]+$/)) {  // misma regla que el backend
-    est.textContent = "El nombre solo puede llevar letras, números, guion y guion bajo (ej. video-1).";
+    est.textContent = "El nombre solo puede llevar letras, números, guion y guion bajo (ej. entrevista-marzo).";
     return;
   }
   $("sub-btn").disabled = true; $("sub-cancelar").hidden = false; $("sub-barra").hidden = false;
   try {
     est.textContent = "Pidiendo permiso de subida…";
     const p = await fj("/api/media/presign",
-      { proyecto, archivo: f.name, content_type: f.type || "video/mp4", bytes: f.size });
+      { proyecto, archivo: f.name, content_type: f.type || "video/mp4", bytes: f.size })
+      .catch(e => {
+        if (e.status === 409) {                // nada se subió todavía
+          const otro = nombreAlterno(proyecto);
+          $("sub-proyecto").value = otro;
+          e.message += ` Te dejamos «${otro}» en el nombre: pulsa Subir para usarlo.`;
+        }
+        throw e;
+      });
     const mbTotal = (f.size / 1e6).toFixed(1);
     await new Promise((resolver, rechazar) => {
       xhrSubida = new XMLHttpRequest();

@@ -171,6 +171,25 @@ class PedidoImportar(BaseModel):
     url: str = Field(min_length=10, max_length=300)
 
 
+def _nombre_yt(user: str, vid: str, reservar: bool) -> str:
+    """Nombre del proyecto de un video de YouTube: yt-<id>-<4hex>.
+
+    El prefijo videos/<nombre>/ lo comparten todas las cuentas. Con yt-<id>
+    a secas, dos usuarios que importaban el mismo video leían y pisaban los
+    mismos archivos. El sufijo depende del usuario (db.sufijo_estable): el
+    mismo usuario vuelve a caer en su proyecto, así que el 409 de «ya
+    importado» sigue funcionando, y otro usuario cae en otro. Los importados
+    de antes se llaman yt-<id> y se siguen usando."""
+    heredado = f"yt-{vid}"
+    if db.cargar_proyecto_editor(user, heredado) is not None:
+        return heredado
+    nombre = db.reservar_nombre_derivado(user, heredado, con_base=False, reservar=reservar)
+    if nombre is None:
+        raise HTTPException(409, "No encontramos un nombre libre para este video. "
+                                 "Inténtalo de nuevo en un momento o escríbenos.")
+    return nombre
+
+
 @router.post("/importar/cotizar")
 def importar_cotizar(pedido: PedidoImportar):
     """Preview de costo ANTES de cobrar (regla dura): título, minutos y créditos."""
@@ -178,7 +197,8 @@ def importar_cotizar(pedido: PedidoImportar):
     vid = _video_id(pedido.url)
     info = _info_youtube(vid)
     gate_duracion(info["duracion_s"], CORTO_SHORTS)
-    return {**info, "nombre": f"yt-{vid}",
+    # solo calcula el nombre: cotizar no aparta nada
+    return {**info, "nombre": _nombre_yt(db.usuario_actual(), vid, reservar=False),
             "creditos": creditos.costo_shorts_importar(info["duracion_s"])}
 
 
@@ -188,7 +208,7 @@ def importar(pedido: PedidoImportar):
     _nube()
     user = db.usuario_actual()
     vid = _video_id(pedido.url)
-    nombre = f"yt-{vid}"
+    nombre = _nombre_yt(user, vid, reservar=True)   # antes de cobrar
     doc = db.cargar_proyecto_editor(user, nombre) or {}
     st = doc.get("importar") or {}
     if st.get("estado") == "descargando" and not _caducado(st, 0.5):

@@ -282,7 +282,9 @@ venv/Scripts/python tools/prompts_sync.py
    siembra, producción sigue con el prompt viejo aunque el código sea nuevo.
    `--dry` primero si quieres ver qué cambiaría.
 4. **Si el PR tocó el esquema** (`ESQUEMA` en `pipeline/db.py`): correr la
-   migración (sección siguiente).
+   migración (sección «Base de datos») **antes del paso 2**. Una tabla o
+   columna nueva no le estorba al código viejo, pero el código nuevo falla
+   sin ella. Por ejemplo, sin `nombres_editor` cada subida de video daría 500.
 5. Marcar lo que quedó en el aire, para poder responder «¿qué tenías el
    jueves?» cuando un tester reporte algo:
 

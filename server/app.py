@@ -120,6 +120,14 @@ async def _despertando(request, exc):
                         status_code=503, headers={"Retry-After": "10"})
 
 
+# Red de seguridad: los endpoints ya reservan el nombre antes de crear nada,
+# pero cualquier guardar_proyecto_editor sobre un nombre de otra cuenta sale
+# como 409 con el mensaje para elegir otro, no como 500.
+@app.exception_handler(db.NombreAjeno)
+async def _nombre_ajeno(request, exc):
+    return JSONResponse({"detail": str(exc)}, status_code=409)
+
+
 ROOT = Path(__file__).resolve().parent.parent  # raíz del repo
 MAX_REFS = 4
 _tareas: dict[str, asyncio.Task] = {}
