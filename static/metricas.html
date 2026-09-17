@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de video · Métricas</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  /* El mismo molde de «página simple» que la Agenda (static/agenda.html), con
+     el acento AZUL del hub. El padding de arriba deja libre la franja fija del
+     monedero. */
+  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1;
+         padding: 64px 24px 48px; }
+  main { max-width: 900px; margin: 0 auto;
+         padding-inline: max(0px, min(24px, calc(50% - 450px))); }
+  a { color: #5b8dd6; }
+  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
+  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
+  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px;
+            margin-bottom: 24px; }
+  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
+           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
+  button:hover { border-color: #5b8dd6; }
+  button:disabled { opacity: .5; cursor: default; background: #18293f; }
+  button.sec { background: transparent; }
+  .mut { color: #93a3b8; font-size: 13px; }
+  .err { color: #ff8080; font-size: 14px; }
+  .ok { color: #3dd68c; font-size: 14px; }
+  /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM */
+  #mtEstado:empty { display: none; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .controles .conmutador { margin-right: auto; display: flex; gap: 6px; }
+  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+
+  /* el conmutador: el que está puesto se ve hundido, no solo distinto */
+  .conmutador button[aria-pressed="true"] { background: #5b8dd6; border-color: #5b8dd6;
+    color: #08111e; font-weight: 600; }
+
+  /* --- la lista --- */
+  #mtLista { list-style: none; padding: 0; margin: 18px 0 0; }
+  #mtLista .vacio { color: #93a3b8; font-size: 13px; display: block; padding: 6px 0; }
+  .mtCab { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+  .mtPill { color: #93a3b8; font-size: 12.5px; border: 1px solid #22354f;
+            background: #18293f; border-radius: 999px; padding: 3px 11px; white-space: nowrap; }
+  .mtCab .mtPill:last-child { margin-left: auto; }
+  .mtFallo { border-color: #8f4a4a; }
+  .mtFallo .mtEtiq { color: #ff8080; border-color: #8f4a4a; }
+  .mtTxt { margin: 8px 0 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mtPie { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;
+           justify-content: flex-end; }
+  .mtPie .mut, .mtPie a { margin-right: auto; }
+  .mtPie button { padding: 7px 13px; font-size: 13.5px; }
+  #mtMas { margin-top: 6px; }
+
+  /* --- los números --- */
+  /* tabular-nums alinea las cifras en columna aunque cambien de ancho */
+  .mtNums { display: flex; gap: 22px; flex-wrap: wrap; margin: 12px 0 0;
+            font-variant-numeric: tabular-nums; }
+  .mtNums div { min-width: 74px; }
+  .mtNums b { display: block; font-size: 20px; font-weight: 600; line-height: 1.25; }
+  .mtNums span { color: #93a3b8; font-size: 12.5px; }
+  .mtDelta { color: #93a3b8; font-size: 12px; }
+  .mtDet { margin-top: 12px; border-top: 1px solid #22354f; padding-top: 12px; }
+  .mtDet h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .mtDet dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; margin: 0 0 14px;
+              font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .mtDet dt { color: #93a3b8; }
+  .mtDet dd { margin: 0; text-align: right; }
+  /* una tabla de mediciones no cabe en un teléfono: que ruede ella, no la página */
+  .mtScroll { overflow-x: auto; }
+  .mtDet table { border-collapse: collapse; font-size: 13px; width: 100%;
+                 font-variant-numeric: tabular-nums; }
+  .mtDet th, .mtDet td { text-align: right; padding: 4px 10px 4px 0; white-space: nowrap; }
+  .mtDet th:first-child, .mtDet td:first-child { text-align: left; }
+  .mtDet thead th { color: #93a3b8; font-weight: 500; border-bottom: 1px solid #22354f; }
+  .mtRank { color: #93a3b8; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← Estudio</a>
+  <h1>Cómo rinden tus publicaciones</h1>
+  <p class="sub">Todo lo que salió de tu cuenta de Blotato —y lo que no pudo salir—, aunque lo
+    hayas publicado desde otro lado. Blotato recoge los números por tandas, desde un par de
+    horas después de publicar: no se pueden pedir antes de que los recoja.</p>
+
+  <section>
+    <div class="controles">
+      <div class="conmutador" role="group" aria-label="Qué lista ver">
+        <button type="button" id="mtVerRec" aria-pressed="true">Recientes</button>
+        <button type="button" id="mtVerTop" aria-pressed="false">Las más vistas</button>
+      </div>
+      <button type="button" id="mtRefrescar" class="sec">Actualizar</button>
+    </div>
+    <p id="mtVentana" class="mut"></p>
+    <p id="mtErr" class="err" role="alert" hidden></p>
+    <p id="mtEstado" class="ok" role="status" aria-live="polite"></p>
+    <ul id="mtLista"><li class="vacio"><span class="spin">Buscando tus publicaciones</span></li></ul>
+    <button type="button" id="mtMas" class="sec" hidden>Ver más</button>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script>
+// ── mt · Métricas (C4)
+// Hermana de la Agenda: la Agenda enseña lo que TODAVÍA no ha salido y esta lo
+// que YA salió (y lo que no pudo). La fuente de verdad vuelve a ser Blotato.
+//
+// Lo que esta pantalla no puede hacer nunca: decir «sin números» de algo que sí
+// los tiene. Por eso el servidor manda un `medicion` por tarjeta con CUATRO
+// motivos distintos, y solo uno de ellos («sin_consultar», o sea «no lo
+// sabemos») ofrece preguntar. Ningún endpoint de Blotato fuerza una medición
+// nueva, así que aquí no hay «Actualizar los números»: hay «Ver números».
+"use strict";
+const $ = s => document.querySelector(s);
+
+// Todo lo que viene de Blotato (el texto, la red, el error que redactó la red
+// social) pasa por aquí antes de tocar un innerHTML: la cookie `token` se lee
+// desde JavaScript, así que un ${} sin escapar regala la sesión.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// `detail` es un string en nuestros errores, pero el 422 de pydantic trae una
+// lista de {loc, msg}: sin esto el usuario leía «[object Object]».
+function fjDetalle(d, status) {
+  const det = d && d.detail;
+  if (typeof det === "string" && det.trim()) return det;
+  const uno = x => {
+    if (!x || typeof x !== "object") return String(x ?? "");
+    const campo = Array.isArray(x.loc) && x.loc.length ? `${x.loc[x.loc.length - 1]}: ` : "";
+    return x.msg ? campo + x.msg : JSON.stringify(x);
+  };
+  if (Array.isArray(det) && det.length) return det.map(uno).filter(Boolean).join(" · ");
+  if (det && typeof det === "object") return uno(det);
+  return `el servidor respondió ${status}`;
+}
+
+// El status va pegado al Error: sin él no se distingue el 409 (falta conectar
+// Blotato) del 429 (Blotato pide esperar).
+const fj = url => fetch(url).then(async r => {
+  if (!r.ok) throw Object.assign(new Error(fjDetalle(await r.json().catch(() => ({})), r.status)),
+                                 { status: r.status });
+  return r.json();
+});
+
+// ── mt · textos de la pantalla
+const MTCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+const MTVACIO = '<li class="vacio">En este tramo no publicaste nada. Prueba con «Ver más» ' +
+  'para mirar más atrás.</li>';
+const MTVACIOTOP = '<li class="vacio">Todavía no hay ninguna publicación medida en este ' +
+  'tramo.</li>';
+const MTCAIDA = '<li class="vacio">No pudimos traer tus publicaciones ahora. Pulsa ' +
+  '«Actualizar» para intentarlo de nuevo.</li>';
+const MTSINRED = "No pudimos hablar con el servidor. Intenta de nuevo.";
+const MTTOPE = "Métricas llega hasta un año atrás.";
+// el orden de «las más vistas» se nombra UNA vez: la lista viene ordenada por
+// vistas y por nada más, y reordenarla aquí sería inventar un criterio
+const MTTOPQUE = "Ordenadas por vistas, de lo que Blotato ya midió en este tramo.";
+const MTRECQUE = "De lo más nuevo a lo más viejo.";
+
+let MTREC = [];          // las recientes ya pintadas, en el orden en que llegaron
+let MTTOP = [];          // las más vistas del último tramo que respondió
+let MTVISTA = "rec";     // cuál de las dos se está viendo
+let MTDESDE = null;      // el borde viejo del tramo pintado: «Ver más» retrocede desde aquí
+let MTHASTA = null;      // el borde nuevo; con el cursor viaja igual, o Blotato pagina otra cosa
+let MTCURSOR = null;
+let MTULTIMO = false;    // ya no se puede retroceder más
+let MTCARGANDO = false;
+let MTPENDIENTE = null;
+let MTABIERTO = new Set();   // ids con el detalle desplegado: por id y NUNCA por posición
+
+// Siempre en la zona del navegador; los textos que la acompañan dicen «tu hora».
+function mtFecha(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function mtDia(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "long" });
+}
+
+// Los contadores vienen del servidor ya como número (Blotato los manda en
+// texto para no perder precisión). Lo que no se pudo convertir viaja como null
+// y NO como 0: «no lo informa» y «cero» son cosas distintas.
+// String.prototype.toLocaleString ignora el locale, así que Number() primero.
+function mtNum(v) {
+  return (typeof v === "number" && isFinite(v)) ? Number(v).toLocaleString("es-MX") : "";
+}
+
+// Los tiempos vienen en milisegundos: enseñarlos así no le dice nada a nadie.
+function mtDuracion(ms) {
+  if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60), r = s % 60;
+  if (m < 60) return r ? `${m} min ${r} s` : `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h} h ${m % 60} min`;
+}
+
+function mtValor(d) {
+  if (d.tipo === "ms") return mtDuracion(d.valor);
+  if (d.tipo === "ratio") return (typeof d.valor === "number" && isFinite(d.valor))
+    ? Number(d.valor).toLocaleString("es-MX", { maximumFractionDigits: 2 }) : "";
+  return mtNum(d.valor);
+}
+
+// Cuánto cambió desde la medición anterior. Puede BAJAR: las redes corrigen sus
+// conteos, y recortar esa bajada sería enseñar algo que la red no dijo.
+function mtDelta(it) {
+  const h = Array.isArray(it.historial) ? it.historial : [];
+  if (h.length < 2) return h.length === 1 ? "Una sola medición." : "";
+  const antes = h[h.length - 2], ahora = h[h.length - 1];
+  const a = antes.numeros && antes.numeros.vistas, b = ahora.numeros && ahora.numeros.vistas;
+  if (typeof a !== "number" || typeof b !== "number") return `${h.length} mediciones.`;
+  const d = b - a;
+  const signo = d > 0 ? "+" : d < 0 ? "−" : "";
+  return `${signo}${mtNum(Math.abs(d))} vistas desde el ${mtDia(antes.cuando)}` +
+    ` · ${h.length} mediciones.`;
+}
+
+const MTETIQ = [["vistas", "Vistas"], ["me_gusta", "Me gusta"],
+                ["comentarios", "Comentarios"], ["compartidos", "Compartidos"]];
+
+// Solo se pintan los que la red informó: una casilla vacía con un guion parece
+// un cero, y un cero es un dato que esa red no dio.
+function mtNumeros(it) {
+  const n = it.numeros;
+  if (!n) return "";
+  const casillas = MTETIQ.filter(([k]) => typeof n[k] === "number" && isFinite(n[k]))
+    .map(([k, et]) => `<div><b>${esc(mtNum(n[k]))}</b><span>${esc(et)}</span></div>`).join("");
+  if (!casillas) return "";
+  const cuando = it.medido ? `Medido el ${esc(mtFecha(it.medido))} (tu hora). ` : "";
+  const delta = mtDelta(it);
+  return `<div class="mtNums">${casillas}</div>` +
+    `<p class="mtDelta">${cuando}${esc(delta)}</p>`;
+}
+
+function mtTabla(historial) {
+  if (!Array.isArray(historial) || historial.length < 2) return "";
+  const filas = historial.slice().reverse().map(f => {
+    const n = f.numeros || {};
+    return `<tr><td>${esc(mtFecha(f.cuando))}</td>` +
+      MTETIQ.map(([k]) => `<td>${esc(mtNum(n[k]))}</td>`).join("") + "</tr>";
+  }).join("");
+  return `<h3>Cómo fue cambiando</h3><div class="mtScroll"><table>` +
+    `<thead><tr><th>Medido</th>` +
+    MTETIQ.map(([, et]) => `<th>${esc(et)}</th>`).join("") + "</tr></thead>" +
+    `<tbody>${filas}</tbody></table></div>`;
+}
+
+function mtDetalle(it) {
+  const lista = Array.isArray(it.detalle) ? it.detalle : [];
+  const pares = lista.map(d => `<dt>${esc(d.etiqueta)}</dt><dd>${esc(mtValor(d))}</dd>`).join("");
+  const todo = (pares ? `<h3>Todo lo que informó ${esc(it.red)}</h3><dl>${pares}</dl>` : "") +
+    mtTabla(it.historial);
+  return todo || `<p class="mut">No hay nada más que enseñar de esta publicación.</p>`;
+}
+
+// El botón: solo para lo que NO sabemos. Lo demás ya trae su respuesta, y un
+// botón que garantiza un «no hay nada» es un botón roto.
+function mtBoton(it, i) {
+  if (it.numeros || (Array.isArray(it.detalle) && it.detalle.length)) {
+    const abierto = MTABIERTO.has(it.id);
+    return `<button type="button" class="sec" data-mt="detalle" data-i="${esc(i)}"` +
+      ` aria-expanded="${abierto ? "true" : "false"}">` +
+      `${abierto ? "Ocultar el resto" : "Ver el resto"}</button>`;
+  }
+  if (it.puede_pedir)
+    return `<button type="button" class="sec" data-mt="pedir" data-i="${esc(i)}">` +
+      `Ver números</button>`;
+  return "";
+}
+
+function mtTarjeta(it, i, rango) {
+  const texto = (it.texto || "") + (it.texto && it.cortado ? "…" : "");
+  const fallida = it.estado === "fallido";
+  const abierto = MTABIERTO.has(it.id);
+  return `<li class="tarjeta${fallida ? " mtFallo" : ""}">` +
+    `<div class="mtCab">` +
+    (rango ? `<span class="mtRank">${esc(rango)}.</span> ` : "") +
+    `<b>${esc(it.red)}</b>` +
+    `<span class="mtPill mtEtiq">${esc(fallida ? "No salió" : "Publicada")}</span>` +
+    `<span class="mtPill">${esc(mtFecha(it.cuando))}</span></div>` +
+    (texto ? `<p class="mtTxt">${esc(texto)}</p>` : `<p class="mtTxt mut">Sin texto</p>`) +
+    // el error lo redacta la red social, no Blotato: es el texto menos fiable
+    // de toda la pantalla y por eso va escapado como todo lo demás
+    (fallida && it.error_red ? `<p class="err">${esc(it.error_red)}</p>` : "") +
+    mtNumeros(it) +
+    (!it.numeros && it.motivo ? `<p class="mut">${esc(it.motivo)}</p>` : "") +
+    `<div class="mtPie">` +
+    (it.enlace ? `<a href="${esc(it.enlace)}" target="_blank" rel="noopener noreferrer">` +
+      `Ver la publicación ↗</a>` : "") +
+    (it.medios ? `<span class="mut">📎 ${esc(it.medios)} ` +
+      `${esc(it.medios === 1 ? "archivo" : "archivos")}</span>` : "") +
+    mtBoton(it, i) + `</div>` +
+    (abierto ? `<div class="mtDet">${mtDetalle(it)}</div>` : "") +
+    `</li>`;
+}
+
+function mtActivas() {
+  return MTVISTA === "rec" ? MTREC : MTTOP;
+}
+
+function mtEnlazar() {
+  const items = mtActivas();
+  document.querySelectorAll("#mtLista [data-mt]").forEach(b => {
+    const it = items[Number(b.dataset.i)];
+    if (!it) return;
+    b.disabled = MTCARGANDO;
+    b.onclick = b.dataset.mt === "detalle" ? () => mtAbrir(it) : ev => mtPedir(ev, it);
+  });
+}
+
+function mtPintar() {
+  const items = mtActivas();
+  const top = MTVISTA === "top";
+  const html = items.map((it, i) => mtTarjeta(it, i, top ? i + 1 : 0)).join("");
+  $("#mtLista").innerHTML = html || (top ? MTVACIOTOP : MTVACIO);
+  $("#mtMas").hidden = top || !(MTCURSOR || !MTULTIMO);
+  $("#mtMas").textContent = MTCURSOR ? "Ver más" : "Ver 30 días más atrás";
+  mtEnlazar();
+}
+
+// Desplegar es cosa de la pantalla: los datos ya están. Cerrar y abrir otra vez
+// no gasta ninguna llamada.
+function mtAbrir(it) {
+  if (MTABIERTO.has(it.id)) MTABIERTO.delete(it.id);
+  else MTABIERTO.add(it.id);
+  mtPintar();
+}
+
+function mtAviso(msg, conectar) {
+  const p = $("#mtErr");
+  p.hidden = !msg;
+  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? MTCONECTAR : "") : "";
+}
+
+function mtAnunciar(msg) {
+  $("#mtEstado").textContent = msg || "";
+}
+
+// Un fallo de red (fetch rechaza con un TypeError) TIENE message, y es «Failed
+// to fetch», en inglés y del navegador: solo los errores que trae fj llevan
+// `status`, y solo esos traen un texto escrito para el usuario.
+function mtTexto(e) {
+  return (e && typeof e.status === "number" && e.message) ? e.message : MTSINRED;
+}
+
+function mtVentana() {
+  if (!MTDESDE || !MTHASTA) return "";
+  return `Del ${mtDia(MTDESDE)} al ${mtDia(MTHASTA)}` +
+    (MTULTIMO && !MTCURSOR ? ` · ${MTTOPE}` : "");
+}
+
+function mtOcupado(v) {
+  $("#mtRefrescar").disabled = v;
+  $("#mtMas").disabled = v;
+  $("#mtVerRec").disabled = v;
+  $("#mtVerTop").disabled = v;
+  document.querySelectorAll("#mtLista [data-mt]").forEach(b => { b.disabled = v; });
+}
+
+// Una carga a la vez (dos tiran cuatro veces de Blotato, no dos), y la que se
+// pide mientras hay otra en curso se ENCOLA en vez de tirarse.
+function mtCargar(mas) {
+  if (!MTCARGANDO) return mtCargarYa(!!mas);
+  if (MTPENDIENTE) MTPENDIENTE.mas = !!mas;
+  else MTPENDIENTE = { mas: !!mas, listos: [] };
+  return new Promise(r => MTPENDIENTE.listos.push(r));
+}
+
+// Sin poll y sin recargar al volver a la pestaña: la lista se rehace al abrir,
+// al pulsar «Actualizar» y al pedir más.
+async function mtCargarYa(mas) {
+  MTCARGANDO = true;
+  mtAviso("");
+  mtAnunciar("");
+  mtOcupado(true);
+  try {
+    // «Ver más» primero agota el cursor del tramo que se está viendo, y solo
+    // cuando se acaba retrocede otros 30 días. El tramo viaja entero (desde y
+    // hasta): un cursor con otra ventana devuelve cualquier cosa.
+    let url = "/api/metricas";
+    if (mas && MTCURSOR) url += `?desde=${encodeURIComponent(MTDESDE)}` +
+      `&hasta=${encodeURIComponent(MTHASTA)}&cursor=${encodeURIComponent(MTCURSOR)}`;
+    else if (mas && MTDESDE) url += `?desde=${encodeURIComponent(MTDESDE)}`;
+    const j = await fj(url);
+    const items = Array.isArray(j.items) ? j.items : [];
+    // lo que sí respondió se pinta aunque lo otro fallara: la lista y los
+    // números son dos llamadas distintas y fallan por separado
+    if (j.hay_lista) {
+      MTREC = mas ? mtUnir(MTREC, items) : items;
+      MTCURSOR = typeof j.cursor === "string" && j.cursor ? j.cursor : null;
+      // el tramo que manda es SIEMPRE el de la última página que llegó: con
+      // cursor, «Ver más» vuelve a este mismo; sin cursor, el servidor toma
+      // este `desde` como el borde desde el que retroceder
+      MTDESDE = j.desde || MTDESDE;
+      MTHASTA = j.hasta || MTHASTA;
+      MTULTIMO = !!j.ultimo_tramo;
+    }
+    if (j.hay_numeros) MTTOP = Array.isArray(j.mejores) ? j.mejores : [];
+    if (!MTREC.length && !j.hay_lista) $("#mtLista").innerHTML = MTCAIDA;
+    else mtPintar();
+    $("#mtVentana").textContent = (MTVISTA === "top" ? MTTOPQUE : MTRECQUE) +
+      (mtVentana() ? " " + mtVentana() + "." : "");
+    if (j.error) mtAviso(j.error, !!j.reconectar);
+    else if (j.truncado) mtAviso("Blotato solo nos dio los números de las 100 más vistas " +
+      "de este tramo. Las demás dicen «Ver números».", false);
+  } catch (e) {
+    // lo ya pintado no se tira: solo se explica el hueco cuando no hay nada
+    if (!MTREC.length) $("#mtLista").innerHTML = MTCAIDA;
+    mtAviso(mtTexto(e), e && e.status === 409);
+  } finally {
+    MTCARGANDO = false;
+    mtOcupado(false);
+    const pend = MTPENDIENTE;
+    MTPENDIENTE = null;
+    if (pend) {
+      await mtCargarYa(pend.mas);
+      pend.listos.forEach(r => r());
+    }
+  }
+}
+
+// Los tramos se encadenan por fecha y Blotato reordena por `postTime`: una
+// misma publicación puede llegar dos veces. La segunda ACTUALIZA a la primera
+// en su sitio, no se añade otra tarjeta igual debajo.
+function mtUnir(viejos, nuevos) {
+  const por = new Map(viejos.map((it, i) => [it.id, i]));
+  const fuera = viejos.slice();
+  nuevos.forEach(it => {
+    const i = por.get(it.id);
+    if (i === undefined) { por.set(it.id, fuera.length); fuera.push(it); }
+    else fuera[i] = it;
+  });
+  return fuera;
+}
+
+// Preguntar por UNA publicación: una llamada, y solo para las que el servidor
+// marcó como «no lo sabemos». El botón se apaga antes de salir y no se vuelve a
+// encender: la respuesta ya está en la tarjeta, y Blotato no mide de nuevo
+// porque se lo pidamos.
+async function mtPedir(ev, it) {
+  const btn = ev && ev.currentTarget;
+  if (btn) btn.disabled = true;
+  mtAviso("");
+  try {
+    const j = await fj(`/api/metricas/${encodeURIComponent(it.id)}/numeros`);
+    // la misma publicación puede estar en las dos listas: lo que costó una
+    // llamada se escribe en las dos, o cambiar de vista la enseñaría sin números
+    [it].concat(MTREC.concat(MTTOP).filter(o => o !== it && o.id === it.id))
+      .forEach(o => {
+        o.numeros = j.numeros || null;
+        o.detalle = Array.isArray(j.detalle) ? j.detalle : [];
+        o.historial = Array.isArray(j.historial) ? j.historial : [];
+        o.medido = j.medido || "";
+        o.medicion = j.medicion || o.medicion;
+        o.motivo = j.motivo || "";
+        o.puede_pedir = false;
+      });
+    if (it.numeros) MTABIERTO.add(it.id);
+    mtPintar();
+    mtAnunciar(it.numeros ? `${it.red}: ${mtNum(it.numeros.vistas)} vistas.`
+                          : `${it.red}: ${it.motivo}`);
+  } catch (e) {
+    mtAviso(mtTexto(e), e && e.status === 409);
+    if (btn) btn.disabled = false;   // se puede reintentar lo que falló de verdad
+  }
+}
+
+function mtVer(cual) {
+  MTVISTA = cual;
+  $("#mtVerRec").setAttribute("aria-pressed", cual === "rec" ? "true" : "false");
+  $("#mtVerTop").setAttribute("aria-pressed", cual === "top" ? "true" : "false");
+  $("#mtVentana").textContent = (cual === "top" ? MTTOPQUE : MTRECQUE) +
+    (mtVentana() ? " " + mtVentana() + "." : "");
+  mtPintar();   // cambiar de vista NO gasta llamada: las dos vienen de la misma
+}
+
+// ── mt · arranque
+// TODO el arranque va aquí dentro: auth.js envuelve fetch para colgarle el
+// Authorization, y una llamada lanzada en tiempo de parseo saldría sin cabecera
+// y volvería 401.
+document.addEventListener("DOMContentLoaded", () => {
+  $("#mtRefrescar").onclick = () => mtCargar();
+  $("#mtMas").onclick = () => mtCargar(true);
+  $("#mtVerRec").onclick = () => mtVer("rec");
+  $("#mtVerTop").onclick = () => mtVer("top");
+  mtCargar();
+});
+</script>
+</body>
+</html>
