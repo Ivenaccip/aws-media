@@ -1633,8 +1633,9 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 ### Hallazgos del análisis que no esperan a M23
 
 - **Publicar en la nube respondía 500** (`publicar_api.estado`): PR #89.
-- **Token de Apify en la URL** (`pipeline/apify.py`): rotarlo y mandarlo en
-  una cabecera.
+- **Token de Apify en la URL** (`pipeline/apify.py`): ya va en la cabecera
+  `Authorization`, y los errores se guardan, registran y muestran tachados
+  (`apify.tachar`). El token que se filtró el 2026-09-13 ya está muerto.
 - **Cognito:** la contraseña provisional dura 7 días; con el tope de 50
   correos al día hay que escalonar las invitaciones antes del 23.
 - **Cuota de concurrencia de Lambda:** ya es 1000 (antes 10).

@@ -17,6 +17,7 @@ local el camino sigue siendo /shorts desde Claude Code.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -29,6 +30,7 @@ from pipeline import creditos, db, jobs, media_sync
 from pipeline.storage import ruta_proyecto
 
 router = APIRouter(prefix="/api/shorts")
+log = logging.getLogger("shorts_api")
 
 ESTILOS = {"bold", "bounce", "clean"}
 PLATAFORMAS = {"youtube", "tiktok", "instagram", "all"}
@@ -147,13 +149,18 @@ def _video_id(url: str) -> str:
 
 def _info_youtube(video_id: str) -> dict:
     """Título + duración vía el actor cotizador (~$0.001 dólares, ~5 s)."""
+    import requests
+
     from pipeline import apify
     from pipeline.config import settings
     try:
         item = apify.correr(settings.apify_yt_info,
                             {"videoIds": [video_id]}, timeout_s=60)[0]
-    except apify.ApifyError as err:
-        raise HTTPException(502, f"No se pudo leer el video de YouTube: {str(err)[:200]}")
+    except (apify.ApifyError, requests.RequestException) as err:
+        # un HTTPError sin atrapar era un 500 con su URL en la traza
+        apify.registrar_fallo(log, err, "cotizar %s: Apify falló", video_id)
+        raise HTTPException(502, "No se pudo leer el video de YouTube: "
+                                 f"{apify.tachar(err)[:200]}") from None
     dur = float(item.get("lengthSeconds") or 0)
     if not dur:
         raise HTTPException(422, "Ese video no reporta duración — ¿es un directo o está privado?")
@@ -216,8 +223,12 @@ def importar(pedido: PedidoImportar):
 @router.get("/{nombre}")
 def estado(nombre: str):
     """Poll barato de la UI: solo lo que ya está en Postgres."""
+    from pipeline import apify
     _nube()
     doc = _proyecto(nombre)
+    for campo in ("shorts", "importar"):   # los guardados antes del tachado también
+        if (doc.get(campo) or {}).get("error"):
+            doc[campo]["error"] = apify.tachar(doc[campo]["error"])
     return {"shorts": doc.get("shorts"), "fuente": _fuente(doc, nombre),
             "importar": doc.get("importar"),
             "creditos_por_short": creditos.SHORTS_RENDER_CR,

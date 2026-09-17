@@ -175,7 +175,7 @@ async def _perfil_llm(frames: list[Path]) -> dict:
 def analizar(user_id: str, estilo_id: str, url: str, plataforma: str) -> None:
     t0 = time.monotonic()
     os.environ["DEFAULT_USER_ID"] = user_id
-    from pipeline import costes_infra, creditos, db, media_sync
+    from pipeline import apify, costes_infra, creditos, db, media_sync
 
     key_doc = f"usuarios/{user_id}/estilos/{estilo_id}.json"
     doc = json.loads(media_sync.leer_texto(key_doc) or "{}")
@@ -213,8 +213,9 @@ def analizar(user_id: str, estilo_id: str, url: str, plataforma: str) -> None:
             except Exception as err:  # noqa: BLE001 — el costo no tumba el análisis
                 log.warning("%s: no se pudo registrar el costo Apify: %s", estilo_id, err)
     except Exception as err:  # noqa: BLE001 — estado y devolución quedan registrados
-        log.exception("%s: análisis de estilo falló", estilo_id)
-        doc.update(estado="error", error=f"{type(err).__name__}: {str(err)[:300]}")
+        # el mensaje de un HTTPError trae la URL: tachado en log y en doc
+        apify.registrar_fallo(log, err, "%s: análisis de estilo falló", estilo_id)
+        doc.update(estado="error", error=apify.describir_error(err))
         media_sync.escribir_texto(key_doc, json.dumps(doc, ensure_ascii=False, indent=1))
         n = int(doc.get("creditos") or 0)
         if n and creditos.activo():   # fallo nuestro = créditos de vuelta

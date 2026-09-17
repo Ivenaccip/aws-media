@@ -94,7 +94,8 @@ def _canonico_youtube(nombre: str, url: str, fuente_key: str, dur_total: float) 
         log.info("%s: transcript de YouTube guardado (%d palabras)", nombre, len(palabras))
         return True
     except Exception as err:  # noqa: BLE001 — sin transcript no se cae el importe
-        log.warning("%s: sin transcript de YouTube (%s) — Analizar transcribirá", nombre, err)
+        log.warning("%s: sin transcript de YouTube (%s) — Analizar transcribirá",
+                    nombre, apify.resumen_error(err))
         return False
 
 
@@ -149,8 +150,9 @@ def importar(user_id: str, nombre: str, url: str) -> None:
             except Exception as err:  # noqa: BLE001 — el costo no tumba el importe
                 log.warning("%s: no se pudo registrar el costo Apify: %s", nombre, err)
     except Exception as err:  # noqa: BLE001 — estado y devolución van a Postgres
-        log.exception("%s: importar de YouTube falló", nombre)
-        st.update(estado="error", error=f"{type(err).__name__}: {str(err)[:300]}")
+        # el mensaje de un HTTPError trae la URL: tachado en log y en doc
+        apify.registrar_fallo(log, err, "%s: importar de YouTube falló", nombre)
+        st.update(estado="error", error=apify.describir_error(err))
         db.fijar_campo_editor(user_id, nombre, "importar",
                               json.dumps(st, ensure_ascii=False))
         n = int(st.get("creditos") or 0)
