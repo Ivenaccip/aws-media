@@ -161,6 +161,20 @@ async def producir(p: Proyecto, fase: str = "todo") -> None:
         get_client().flush()
 
 
+def _nombre_puente(p: Proyecto) -> str:
+    """videos/gen-<id>. En la nube el nombre se reserva: videos/ lo comparten
+    todas las cuentas y p.id son solo 8 hex al azar. Si otra cuenta ya tiene
+    gen-<id> (raro), el proyecto cae en gen-<id>-<4hex> en vez de mezclarse
+    con el suyo. El sufijo es estable: rehacer la producción da el mismo."""
+    base = f"gen-{p.id[:8]}"
+    if db.backend() != "postgres":
+        return base
+    nombre = db.reservar_nombre_derivado(db.usuario_actual(), base)
+    if nombre is None:
+        raise RuntimeError(f"sin nombre libre para el proyecto del editor ({base})")
+    return nombre
+
+
 async def _puente_editor(p: Proyecto) -> None:
     """F1.3: al terminar la producción, la película se vuelve proyecto editable
     (videos/gen-<id>) vía el normalizador generated_to_canonical. NO fatal: si el
@@ -169,8 +183,8 @@ async def _puente_editor(p: Proyecto) -> None:
     script = raiz / "tools" / "normalizers" / "generated_to_canonical.py"
     if not script.is_file() or os.getenv("PUENTE_EDITOR", "1") in ("0", "false", "no"):
         return
-    nombre = f"gen-{p.id[:8]}"
     try:
+        nombre = _nombre_puente(p)
         proc = await asyncio.create_subprocess_exec(
             sys.executable, str(script), str(p.workdir), nombre,
             "--model", os.getenv("PUENTE_MODEL", "small"),

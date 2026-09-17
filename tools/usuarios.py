@@ -100,8 +100,10 @@ def adoptar(pool: str, correo: str, de: str) -> None:
     sub = _sub(_cognito(pool).admin_get_user(UserPoolId=pool, Username=correo))
     db.ejecutar("INSERT INTO usuarios (id, email) VALUES (:i, :e) ON CONFLICT (id) DO NOTHING",
                 {"i": sub, "e": correo})
-    for tabla in ("proyectos_gen", "proyectos_editor", "clip_versiones",
-                  "costes", "monedero_movimientos"):
+    # nombres_editor va con proyectos_editor: sin ella, el usuario real
+    # recibiría 409 al subir a los proyectos que acaba de adoptar
+    for tabla in ("proyectos_gen", "proyectos_editor", "nombres_editor",
+                  "clip_versiones", "costes", "monedero_movimientos"):
         db.ejecutar(f"UPDATE {tabla} SET user_id = :n WHERE user_id = :v",  # noqa: S608 — tablas fijas
                     {"n": sub, "v": de})
     saldo_viejo = db.saldo_creditos(de)

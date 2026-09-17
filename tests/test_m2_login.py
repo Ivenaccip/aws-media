@@ -216,7 +216,9 @@ def test_adoptar_migra_tablas_y_saldo(usuarios_mod, monkeypatch):
                         lambda u, n, t, r=None: abonos.append((u, n, t, r)) or n)
     usuarios_mod.adoptar(POOL, "ivenaccip@gmail.com", "piloto")
     actualizadas = [p for s, p in sqls if s.startswith("UPDATE")]
-    assert len(actualizadas) == 5 and all(p == {"n": "sub-nuevo", "v": "piloto"} for p in actualizadas)
+    assert len(actualizadas) == 6 and all(p == {"n": "sub-nuevo", "v": "piloto"} for p in actualizadas)
+    # las reservas de nombre viajan con los proyectos del editor
+    assert any("UPDATE nombres_editor" in s for s, _ in sqls)
     assert ("sub-nuevo", 70, "ajuste", "adopcion:piloto") in abonos
     assert ("piloto", -70, "ajuste", "adopcion:sub-nuevo") in abonos
 

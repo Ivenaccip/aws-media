@@ -35,8 +35,6 @@ COBRAN = [
     ("static/crear.html", "Cambiar"),
     ("static/crear.html", "Producir"),
     ("static/crear.html", "Reintentar"),
-    ("static/crear-imagenes.html", "Generar"),
-    ("static/editor-imagenes.html", "Aplicar"),
     ("static/imagenes.html", "Generar"),
     ("static/imagenes.html", "Cambiar"),
     ("static/imagenes.html", "Transformar"),

@@ -3,8 +3,8 @@
 Lo que se protege aquí es lo que no se puede ver en esta máquina: no hay WebGPU
 en el entorno de pruebas, así que estos tests cuidan el CONTRATO — que el motor
 no se cuele en la carga inicial, que el shader siga siendo el que los ajustes
-seleccionan, que la caché no congele lo que debe revalidar, y que las dos
-pantallas de imágenes no vuelvan a rehabilitar su botón a media petición.
+seleccionan, que la caché no congele lo que debe revalidar, y que la
+pantalla de imágenes no vuelva a rehabilitar su botón a media petición.
 """
 import json
 import re
@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = RAIZ / "static"
-PAGINAS_IMAGENES = ["crear-imagenes.html", "editor-imagenes.html"]
+PAGINA_IMAGENES = "imagenes.html"
 
 
 @pytest.fixture
@@ -104,58 +104,15 @@ def test_los_dos_ajustes_cuadran_con_la_struct():
 
 
 # ---------------------------------------------------------------------------
-# las dos pantallas de imágenes
+# la pantalla de imágenes (M23: crear y editar son una sola). Montaje, desmontaje
+# antes del error y la guarda del doble cobro se prueban en test_m23_imagenes.py.
 
-@pytest.mark.parametrize("pagina", PAGINAS_IMAGENES)
-def test_la_pagina_monta_el_orbe(pagina):
-    html = (ESTATICOS / pagina).read_text(encoding="utf-8")
-    assert '<script src="/orbe.js">' in html
-    assert "orbe.montar(" in html and 'id="orbe-hueco"' in html
-    assert "precargar()" in html                 # no se paga el motor al hacer clic
-    assert "alAgotar:" in html                   # todo montaje lleva tope
-    # un adorno que no cargó no puede romper el botón que gasta créditos
-    assert "SIN_ORBE" in html and "window.orbe ?" in html
-
-
-@pytest.mark.parametrize("pagina", PAGINAS_IMAGENES)
-def test_el_orbe_se_desmonta_antes_del_error(pagina):
-    html = (ESTATICOS / pagina).read_text(encoding="utf-8")
-    cuerpo = html[html.index("} catch (e) {"):]
-    desmonta = cuerpo.index("mando.desmontar()")
-    pinta = cuerpo.index("$('#gerr').textContent = e.message")
-    assert desmonta < pinta, "el orbe sigue girando cuando se pinta el fallo"
-
-
-@pytest.mark.parametrize("pagina", PAGINAS_IMAGENES)
-def test_guarda_contra_el_doble_cobro(pagina):
-    """monedero.js refresca en cada visibilitychange: sin la guarda, volver de
-    otra pestaña rehabilitaba el botón y el segundo clic cobraba otra vez."""
-    html = (ESTATICOS / pagina).read_text(encoding="utf-8")
-    listener = html[html.index("document.addEventListener('monedero'"):]
-    guarda = listener.index("enVuelo) return")
-    toca_el_boton = listener.index("${mon.tarifas.imagen}`")
-    assert guarda < toca_el_boton, "el listener toca el botón antes de mirar enVuelo"
-    assert "if (enVuelo) return;" in html        # y el handler tampoco reentra
-
-
-@pytest.mark.parametrize("pagina", PAGINAS_IMAGENES)
-def test_el_boton_conserva_su_precio(pagina):
+def test_el_boton_conserva_su_precio():
     """El precio en créditos es el dato que hay que poder leer: el botón ya no
     se convierte en un indicador de carga."""
-    html = (ESTATICOS / pagina).read_text(encoding="utf-8")
+    html = (ESTATICOS / PAGINA_IMAGENES).read_text(encoding="utf-8")
     assert "⏳" not in html
     assert "const antes = $(" not in html
-
-
-def test_el_resultado_no_se_revela_antes_de_tiempo():
-    """#resultado contiene un <a download> SIN href hasta que llega la url:
-    revelarlo al hacer clic dejaría un botón grande y mentiroso durante la
-    espera. Solo se revela después de leer la respuesta."""
-    for pagina in PAGINAS_IMAGENES:
-        html = (ESTATICOS / pagina).read_text(encoding="utf-8")
-        revela = html.index("$('#resultado').classList.remove('hidden')")
-        respuesta = html.index("const d = await r.json()")
-        assert respuesta < revela, f"{pagina}: se revela el resultado antes de tenerlo"
 
 
 # ---------------------------------------------------------------------------

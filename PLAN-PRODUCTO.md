@@ -381,8 +381,7 @@ reutiliza las piezas de C3/C4:
 - [x] Mientras M8 no llegue: la columna de shorts en e1 dice la verdad ("se
       edita desde Claude Code con /shorts" + botón copiar comando) — hecho en
       M3; ahora esa fila queda solo para proyectos locales sin flujo web.
-- [ ] Publicar vía Blotato desde la web (hoy: descargar por CDN y publicar
-      desde el editor local o a mano).
+- [x] Publicar vía Blotato desde la web — M23 C2 (2026-09-16).
 - [ ] Deuda M8-1: la limpieza LLM de muletillas en captions (paso 4 del skill)
       no viaja a la web — los captions salen del transcript crudo.
 
@@ -1266,10 +1265,8 @@ arreglo de fondo —`Content-Disposition: attachment` firmado por S3, porque
 el disco del proyecto, que en la Lambda no existe, así que la película estaba
 hecha en S3 y no había forma de bajarla. Ahora se lista desde S3.
 
-Lo que sigue pendiente ahí: la otra mitad de b3 (sugerir títulos y agendar en
-Blotato) también lee ese disco. No se arregló —necesita su propio diseño, con
-la URL pública del archivo— pero ya no da un 404 críptico: dice qué pasa y qué
-hacer mientras tanto.
+Lo que quedó pendiente ahí (sugerir títulos y agendar en Blotato también
+leían ese disco) se resolvió en M23 C2.
 
 ### P1 — antes del 23 si el tiempo aguanta
 
@@ -1511,9 +1508,30 @@ las dos viejas y que **no se enlaza en el menú hasta validarla**.
   comparten todos los usuarios del contenedor caliente, y `ver_imagen` servía
   de ahí sin mirar el dueño. Ahora en la nube la copia local se borra tras
   subirla y nada se sirve del disco.
-- [ ] Validar en producción entrando directo a `/imagenes.html`.
-- [ ] Después: una sola entrada «Imágenes» en el menú y redirigir
-      `crear-imagenes.html` y `editor-imagenes.html`.
+- [x] Validar en producción entrando directo a `/imagenes.html` (el dueño la
+      aprobó y pidió el rediseño de abajo).
+- [x] Una sola entrada en el menú («Crear imágenes» → `/imagenes.html`) y
+      las dos páginas viejas se quitaron: sus URLs redirigen (302) a la
+      nueva, la del editor con `?editar=1`.
+
+**A2 · La pantalla de «Crea tu video» (2026-09-16).** Petición del dueño tras
+ver la cuadrícula de crear video:
+
+- Misma cuadrícula: estilo (1) + texto (2) arriba y, en lugar de la
+  duración, los **tres formatos** abajo (horizontal, vertical y cuadrado).
+- Título centrado y más grande, también en «Crea tu video». En imágenes la
+  primera palabra gira: **Crea / Edita / Bocetea** (quieto si el sistema pide
+  menos movimiento).
+- **Editar sin página aparte.** Si el texto pide editar («edítala», «mi
+  foto», «retoca»…), al subir o pegar una imagen, o al terminar de crear una,
+  la cuadrícula pasa a editar: la imagen grande (2 × 2) con el pincel y a la
+  derecha «¿Qué cambiamos?» con dos botones (cambiar una zona / transformar
+  toda) y el texto. Pedir editar sin imagen nunca crea una imagen nueva.
+- **«Mis imágenes»** en el inicio, entre «Mis proyectos» y «Mis ediciones»:
+  las 5 más nuevas + «Ver todas», y cada una se abre para seguir editándola
+  (`/imagenes.html?img=<nombre>`). `GET /api/imagenes` lista la carpeta del
+  usuario del token en S3 (en local, el disco). Las imágenes creadas antes de
+  este cambio también aparecen.
 
 ### B · Modelos a elegir, con su costo en créditos (después)
 
@@ -1551,7 +1569,55 @@ Va en entregas, cada una con su PR:
       editor manda a conectar y, en el servicio, dice que programar llega
       pronto en vez de enseñar un formulario que da 503. Sale con el deploy de
       siempre (`aws-media-api` lleva el permiso nuevo).
-- [ ] **C2 · Publicar en la nube:** agendar y títulos desde un worker.
+- [x] **C2 · Publicar en la nube** (2026-09-16, rama `publicar-en-nube`):
+      decisiones del dueño: «Sugerir títulos» es gratis; la casilla «Hecho con
+      IA» (TikTok `isAiGenerated`, YouTube `containsSyntheticMedia`) va marcada
+      por defecto; la privacidad de TikTok y YouTube no trae valor
+      preseleccionado (sin elegirla no se envía).
+      - **Títulos** en la Lambda de la API (una llamada, tope de 20 s): leen el
+        transcript editado de S3 y, si el video aún no se renderizó, el
+        canónico. Trazados en Langfuse con el usuario.
+      - **Agendar** deja la publicación en `pendiente`
+        (`pipeline/publicaciones.py`, S3 `usuarios/<sub>/publicaciones/…`) y la
+        encola; `worker/publicar_task.py` la sube a Blotato **en streaming**
+        desde S3 (sin /tmp ni memoria) y crea el post con los campos de cada
+        red (`blotato.REDES` / `target_de`). En local corre lo mismo en
+        segundo plano.
+      - **Sin posts dobles:** la cola reintenta, así que el worker reclama la
+        publicación con If-Match, renueva el registro cada minuto mientras
+        sube (latido), no publica una subida que la pantalla ya pudo dar por
+        muerta, marca `creando` antes del POST y nunca relanza después de
+        reclamar. Un timeout o un 5xx al crear queda como «No sabemos si
+        llegó» (revisar el calendario antes de reintentar); un 4xx, como error
+        reintentable. Dos envíos iguales (video + cuenta + red) chocan en un
+        candado con If-None-Match, no en una lectura.
+      - **Abuso y cupo:** la cuenta se verifica contra Blotato antes de
+        encolar (y otra vez en el worker), máximo 3 publicaciones subiéndose
+        por usuario, y la lista de redes de «Sugerir títulos» tiene tope.
+      - **Reglas que fallarían tarde:** descripción de YouTube sin `<`/`>` y
+        en 5000 bytes, máximo 5 hashtags en Instagram, aviso de los 400 MB del
+        plan Starter (un rechazo del PUT ya no se explica como «clave
+        inválida»). La URL firmada de subida no llega al log (httpx en INFO).
+      - **El resultado:** «publicar ahora» espera ~45 s la respuesta de
+        Blotato; después la pregunta la pantalla (`/publicaciones`, 3 por
+        petición; con id de post nunca se deja de preguntar, pasadas 6 h solo
+        cada 10 min). Se guarda el id del post (sirve para Meta Ads y C3).
+      - **El video por defecto** es la película final (`final` en el estado:
+        el render del último estilo, o la película generada; con subtítulos
+        solo si se quemaron después de ese render), y el confirm lo nombra.
+      - En local no hay tope de publicaciones a la vez (sube la máquina del
+        dueño), y `agendar` no espera a Blotato si ya no le alcanzan los 29 s.
+      - **Antes de subir:** tope de 1 GB y por red (X 512 MB/2:20 min,
+        Instagram 300 MB, LinkedIn 500 MB…); Instagram y Facebook solo
+        vertical (ffprobe sobre la URL firmada, respeta la rotación).
+      - Modal: páginas de Facebook/LinkedIn y tableros de Pinterest, título de
+        YouTube, contador por red, textos escapados (antes los títulos del LLM
+        y los nombres de las cuentas entraban crudos por innerHTML).
+      - Sin cambios de infra: el worker ya podía leer la clave del usuario y
+        escribir en S3. Se despliegan `aws-media-jobs` (tipo nuevo) y
+        `aws-media-api`; CDK pone jobs primero.
+      - Pendiente: la película horizontal no tiene salida vertical para
+        Instagram/Facebook; el texto del post no pasa por moderación.
 - [ ] **C3 · Agenda** · [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
 
 Lo que pedía el análisis:
@@ -1612,11 +1678,25 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 ### Hallazgos del análisis que no esperan a M23
 
 - **Publicar en la nube respondía 500** (`publicar_api.estado`): PR #89.
-- **Token de Apify en la URL** (`pipeline/apify.py`): rotarlo y mandarlo en
-  una cabecera.
+- **Token de Apify en la URL** (`pipeline/apify.py`): ya va en la cabecera
+  `Authorization`, y los errores se guardan, registran y muestran tachados
+  (`apify.tachar`). El token que se filtró el 2026-09-13 ya está muerto.
 - **Cognito:** la contraseña provisional dura 7 días; con el tope de 50
   correos al día hay que escalonar las invitaciones antes del 23.
 - **Cuota de concurrencia de Lambda:** ya es 1000 (antes 10).
+- **Proyectos del editor compartidos entre cuentas** (P0, PR #96). En S3
+  viven en `videos/<nombre>/`, sin el usuario. Dos cuentas con el mismo nombre
+  («video-1») o que importaban el mismo video de YouTube (`yt-<id>`) se veían,
+  se descargaban y se pisaban el trabajo. Ahora el nombre es único entre
+  cuentas:
+  - la tabla `nombres_editor` hace de reserva atómica;
+  - pedir la subida con un nombre de otra cuenta da 409, antes de subir nada;
+  - los importados se llaman `yt-<id>-<4hex>`, con un sufijo distinto por
+    cuenta.
+
+  El 2026-09-16 no había ningún nombre repetido en producción (17 proyectos,
+  4 cuentas). **Antes del deploy:** correr `tools/db_migrate.py`. Meter el
+  usuario en el prefijo (`videos/<sub>/<nombre>/`) queda para después del 23.
 
 ### Meta Ads
 

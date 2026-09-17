@@ -141,9 +141,9 @@ def test_los_dos_modos_cuestan_lo_mismo(cliente, srv, monkeypatch):
 
 def test_la_pagina_ofrece_los_dos_modos():
     from pathlib import Path
-    html = Path("static/editor-imagenes.html").read_text(encoding="utf-8")
+    html = Path("static/imagenes.html").read_text(encoding="utf-8")
     assert 'id="modo-todo"' in html and 'id="modo-pincel"' in html
-    assert "fd.append('modo', MODO)" in html, "el modo elegido no viaja al servidor"
+    assert "fd.append('modo', modo)" in html, "el modo elegido no viaja al servidor"
 
 
 # ---------------------------------------------------------------------------
@@ -259,20 +259,10 @@ def test_tu_propio_proyecto_si_se_descarga(monkeypatch):
     media_api._mio("videos/v1/output/preview-tight.mp4")   # no lanza
 
 
-def test_publicar_a_redes_dice_la_verdad_en_nube(monkeypatch):
-    """La otra mitad de b3 lee el disco del proyecto, que en el servicio no
-    existe. Antes ni se llegaba a verla (el modal moría al pedir su estado);
-    ahora que la descarga funciona, el aviso tiene que explicarse."""
-    from fastapi import HTTPException
-    monkeypatch.setattr(publicar_api, "_nube", lambda: True)
-    with pytest.raises(HTTPException) as e:
-        publicar_api._solo_local("Agendar en tus redes")
-    assert e.value.status_code == 503 and "descarga el video" in e.value.detail
-
-
-def test_en_local_publicar_sigue_funcionando(monkeypatch):
-    monkeypatch.setattr(publicar_api, "_nube", lambda: False)
-    publicar_api._solo_local("Agendar en tus redes")   # no lanza
+def test_publicar_a_redes_ya_no_esta_bloqueado_en_nube():
+    """Hasta C2 (M23), títulos y agendar respondían 503 en el servicio porque
+    leían el disco del proyecto. Ahora leen S3 y publican desde el worker."""
+    assert not hasattr(publicar_api, "_solo_local")
 
 
 def test_el_estado_de_publicar_responde_en_nube(monkeypatch, s3):
@@ -280,14 +270,16 @@ def test_el_estado_de_publicar_responde_en_nube(monkeypatch, s3):
     descargables, pero la respuesta leía el registro de publicaciones con la
     ruta del disco, que solo existe en local. En el servicio eso era un
     UnboundLocalError → 500, y el modal de Publicar volvía a no ofrecer nada.
-    En la nube no hay registro que leer: agendar todavía no corre ahí."""
+    Desde C2 el registro vive en S3, por usuario."""
     from server import editor
     monkeypatch.setattr(publicar_api, "_nube", lambda: True)
     monkeypatch.setattr(editor, "_proyecto_nube", lambda name: {"subidas": []})
+    monkeypatch.setattr(publicar_api, "usuario_actual", lambda: "yo")
     monkeypatch.setattr(publicar_api.blotato, "clave_y_origen", lambda user: (None, None))
+    monkeypatch.setattr(publicar_api.publicaciones, "listar", lambda u, n: [])
     r = publicar_api.estado("v1")
     assert {a["clave"] for a in r["descargables"]} >= {"pelicula", "subtitulado", "srt"}
-    assert r["publicadas"] == [] and r["blotato"] is False
+    assert r["publicaciones"] == [] and r["blotato"] is False and r["agendar"] is True
 
 
 def test_el_front_de_shorts_ofrece_ver_y_descargar():

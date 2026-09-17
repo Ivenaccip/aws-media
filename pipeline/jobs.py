@@ -73,6 +73,16 @@ def encolar_estilo_analizar(user_id: str, estilo_id: str, url: str,
                                 "plataforma": plataforma}))
 
 
+def encolar_publicar(user_id: str, proyecto: str, pub_id: str) -> None:
+    """M23 C2: subir la película a Blotato y crear el post. El mensaje solo
+    lleva ids: la clave del usuario la lee el worker, y el texto vive en la
+    publicación (pipeline/publicaciones.py)."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "publicar", "user_id": user_id,
+                                "proyecto": proyecto, "id": pub_id}))
+
+
 def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
     misma state machine que la producción, otro comando. Los segmentos

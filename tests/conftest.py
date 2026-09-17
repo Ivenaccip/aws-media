@@ -59,3 +59,18 @@ def _sin_red_real(monkeypatch):
 
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", bloqueado)
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", bloqueado_async)
+
+
+@pytest.fixture(autouse=True)
+def _sin_aurora_real(monkeypatch):
+    """Ningún test habla con la base de producción. load_dotenv() sube por los
+    directorios hasta el .env del dueño, que trae los ARN de Aurora, y boto3
+    encuentra sus credenciales: un db.ejecutar sin mockear escribiría de
+    verdad. Desde la reserva de nombres del editor (2026-09-16) hay más
+    caminos que tocan la base; los tests que la necesitan mockean
+    db.ejecutar o db._cliente, y su monkeypatch manda sobre este."""
+    from pipeline import db
+
+    def bloqueado():
+        raise RuntimeError("un test intentó hablar con Aurora de verdad")
+    monkeypatch.setattr(db, "_cliente", bloqueado)

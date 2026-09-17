@@ -44,6 +44,8 @@ def nube(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: docs.get(n))
     monkeypatch.setattr(db, "fijar_campo_editor", lambda u, n, c, v: None)
     monkeypatch.setattr(db, "guardar_proyecto_editor", lambda u, n, v: None)
+    monkeypatch.setattr(db, "reservar_nombre_editor", lambda u, n: True)
+    monkeypatch.setattr(db, "nombre_editor_ajeno", lambda u, n: False)
     monkeypatch.setattr(media_sync, "listar_prefijo",
                         lambda pre: [f"{pre}charla.canonical.json"])
     monkeypatch.setattr(creditos, "activo", lambda: True)
