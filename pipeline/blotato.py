@@ -20,6 +20,27 @@ M23 C3 (Agenda) — lo que todavía NO ha salido, verificado 2026-09-17:
                                         patch NO hace merge
   DELETE /v2/schedules/{id}             → 204 SIN cuerpo
 
+M23 C4 (Métricas) — lo que YA salió y lo que no, verificado 2026-09-17 contra
+la doc y contra una cuenta real:
+  GET /v2/posts                         since/until OBLIGATORIOS en la práctica
+                                        (sin ellos son 7 días atrás y 7
+                                        adelante); página con `cursor` y SIN
+                                        `count`; `state` es {type, postUrl} o
+                                        {type, errorMessage}, no un `status` en
+                                        la raíz como /v2/posts/{id}
+  GET /v2/analytics                      las publicaciones que YA tienen números,
+                                        ordenadas por una métrica; trae
+                                        latestMetrics e historial pegados, y NO
+                                        tiene cursor (limit 1..100)
+  GET /v2/posts/{id}/analytics           los números de UNA, con su historial.
+                                        El id es el de /v2/posts, NO el
+                                        postSubmissionId que guarda el worker
+
+  Y hay tres «sin números» distintos, los tres normales: 200 con metrics:null
+  (Blotato aún no ha recogido: lo hace por tandas, desde un par de horas
+  después de publicar), 404 (de esa publicación no guardó nada) y lastError
+  (la red le negó los números). Ningún endpoint fuerza una nueva medición.
+
 M23 C: cada usuario conecta SU clave. Por eso ninguna función lee una clave
 global: todas la reciben, y `clave_de(user_id)` es la única forma de
 obtenerla. En el servicio NUNCA cae a una clave de la plataforma: publicaría
@@ -33,6 +54,7 @@ import mimetypes
 import os
 import re
 from collections.abc import Iterable
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -158,7 +180,7 @@ def _mensaje_de(resp: httpx.Response, clave: str | None) -> str:
 
 # M23 C3 — un 404 de /schedules no es «revisa tu cuenta»: significa que eso ya
 # salió o ya no existe, y cada pantalla lo cuenta a su manera.
-CONTEXTOS = ("publicacion", "agenda", "reprogramar", "cancelar")
+CONTEXTOS = ("publicacion", "agenda", "reprogramar", "cancelar", "metricas")
 
 # Ninguno manda «Actualiza la lista»: la pantalla ya recarga sola al recibir el
 # 404, así que pedirlo sería mandar a hacer algo que acaba de pasar.
@@ -169,6 +191,11 @@ _YA_NO_ESTA = {
                    "en Blotato. Puede que ya se haya publicado. La lista ya está al día.",
     "cancelar": "Esa publicación ya no estaba programada en Blotato. Si ya se publicó, "
                 "tienes que borrarla desde la red. La lista ya está al día.",
+    # M23 C4 — en Métricas un 404 NO es un error: es la respuesta. Blotato
+    # guarda números de lo que midió, y de lo demás no tiene nada que dar.
+    "metricas": "De esta publicación no hay números en Blotato: puede ser anterior a "
+                "que empezara a guardarlos, o su red no se los da. La publicación "
+                "sigue en tu lista.",
 }
 
 
@@ -200,11 +227,15 @@ def explicar_fallo(err: Exception, clave: str | None = None, *,
                 return ("Blotato no aceptó la hora nueva"
                         + (f": {detalle}" if detalle
                            else ". Elige una fecha futura e intenta de nuevo."), False)
+            if contexto == "metricas":
+                return ("Blotato no aceptó la consulta de los números"
+                        + (f": {detalle}" if detalle
+                           else ". Vuelve a abrir Métricas e intenta de nuevo."), False)
             return ("Blotato no aceptó la publicación"
                     + (f": {detalle}" if detalle else ". Revisa los datos e intenta de nuevo."),
                     False)
         if codigo == 429:
-            if contexto == "agenda":
+            if contexto in ("agenda", "metricas"):
                 espera = "Blotato pide esperar un momento antes de volver a consultar"
             elif contexto in ("reprogramar", "cancelar"):
                 espera = "Blotato pide esperar un momento antes de intentarlo otra vez"
@@ -683,6 +714,295 @@ def vista_programado(item: dict) -> dict:
             "red": (REDES.get(plataforma) or {}).get("nombre") or plataforma,
             "cuenta_nombre": str(cuenta.get("name") or cuenta.get("username") or ""),
             "destino": destino_de(item),
+            "texto": texto[:TEXTO_MAX],
+            "cortado": len(texto) > TEXTO_MAX,
+            "medios": len([u for u in urls if isinstance(u, str)])
+            if isinstance(urls, list) else 0}
+
+
+# ---------------------------------------------------------------------------
+# M23 C4 — Métricas: lo que YA salió, lo que no salió, y cómo rinde.
+#
+# Dos fuentes que no se pueden fundir en una: /v2/posts sabe QUÉ hay (y es la
+# única que trae las fallidas y el cursor), y /v2/analytics sabe CUÁNTO rinde
+# (y trae los números pegados, sin gastar una llamada por publicación). Se
+# juntan por id, que es el mismo en las dos.
+
+ORDENES = ("views_count", "likes_count", "comments_count", "reach_count")
+ANALITICAS_MAX = 100       # tope de /v2/analytics; /v2/posts admite 250
+
+
+def publicadas(clave: str, *, desde: str, hasta: str, limite: int = 20,
+               cursor: str | None = None,
+               timeout: httpx.Timeout = TIMEOUT_CORTO) -> dict:
+    """UNA página de lo que ya salió y de lo que Blotato no pudo publicar.
+
+    `desde` y `hasta` van SIEMPRE: sin ellos Blotato asume los últimos 7 días y
+    los 7 siguientes, así que una pantalla que los omita enseña una ventana que
+    nadie eligió. `status` viaja repetido (status=published&status=failed), que
+    es como httpx serializa una lista.
+
+    Lo programado se pediría igual (`scheduled`) y aquí NO se pide: eso es la
+    Agenda. {'items': […crudos…], 'cursor': str|None, 'total': int|None}; el
+    total es siempre None porque esta ruta no manda `count`."""
+    params: dict = {"limit": max(1, min(250, int(limite))),
+                    "status": ["published", "failed"],
+                    "since": desde, "until": hasta}
+    if cursor is not None:
+        if not isinstance(cursor, str) or not 1 <= len(cursor) <= 512:
+            raise ValueError("cursor de Blotato inválido")
+        params["cursor"] = cursor
+    r = httpx.get(f"{BASE}/posts", params=params, headers=_headers(clave), timeout=timeout)
+    r.raise_for_status()
+    items, siguiente, total = _pagina(r)
+    return {"items": items, "cursor": siguiente, "total": total}
+
+
+def analiticas(clave: str, *, desde: str, hasta: str, limite: int = ANALITICAS_MAX,
+               orden: str = "views_count",
+               timeout: httpx.Timeout = TIMEOUT_CORTO) -> dict:
+    """Las publicaciones de la ventana que YA tienen números, con su historial.
+
+    Una sola llamada da dos cosas: los números de la lista principal (se juntan
+    por id) y «las más vistas», que es esta misma respuesta sin reordenar. No
+    tiene cursor: si devuelve `limite` items, hay más que no vimos, y eso hay
+    que decirlo — `truncado`. Sin él, una publicación con números que no entró
+    en el tope se enseñaría como «sin números», que es mentira.
+
+    OJO: `_items` y no `_pagina`. Esta ruta no manda ni `cursor` ni `count`, y
+    _pagina devolvería (items, None, None) sin que nadie se entere."""
+    if orden not in ORDENES:
+        raise ValueError("orden de Blotato inválido")
+    tope = max(1, min(ANALITICAS_MAX, int(limite)))
+    r = httpx.get(f"{BASE}/analytics", headers=_headers(clave), timeout=timeout,
+                  params={"since": desde, "until": hasta, "limit": tope, "sortBy": orden})
+    r.raise_for_status()
+    items = _items(r)
+    return {"items": items, "truncado": len(items) >= tope}
+
+
+def analitica_de(clave: str, post_id: str,
+                 timeout: httpx.Timeout = TIMEOUT_CORTO) -> dict:
+    """Los números de UNA publicación, crudos.
+
+    Tres respuestas son normales y ninguna es un fallo: 200 con `metrics` nulo
+    (Blotato todavía no ha medido), 200 con `lastError` (la red le negó los
+    números) y 404 (de esa no guardó nada). El 404 sale por raise_for_status y
+    lo traduce explicar_fallo(contexto="metricas")."""
+    if not id_valido(post_id):
+        raise ValueError("publicación de Blotato inválida")
+    r = httpx.get(f"{BASE}/posts/{quote(post_id)}/analytics",
+                  headers=_headers(clave), timeout=timeout)
+    r.raise_for_status()
+    return _json(r)
+
+
+# Los contadores llegan como STRING a propósito (los de una red grande no caben
+# en un número de JavaScript sin perder precisión). Aquí se convierten UNA vez,
+# y lo que no se pueda convertir es None y NO cero: «no lo informa» y «cero» son
+# cosas distintas, y la pantalla las pinta distinto.
+def _entero(valor) -> int | None:
+    if isinstance(valor, bool) or valor is None:
+        return None
+    try:
+        return int(str(valor).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+# Los cuatro de la tarjeta. El resto va al detalle, y lo que no esté aquí se
+# enseña con su nombre crudo: la lista de contadores de Blotato crece, y una
+# clave desconocida no puede tumbar una pantalla de solo mirar.
+NUMEROS = (("vistas", "viewsCount"), ("me_gusta", "likesCount"),
+           ("comentarios", "commentsCount"), ("compartidos", "sharesCount"))
+
+# `tipo` dice cómo se pinta: unos milisegundos no son un número que enseñar.
+ETIQUETAS: dict[str, tuple[str, str]] = {
+    "viewsCount": ("Vistas", "entero"),
+    "impressionsCount": ("Impresiones", "entero"),
+    "reachCount": ("Alcance", "entero"),
+    "likesCount": ("Me gusta", "entero"),
+    "commentsCount": ("Comentarios", "entero"),
+    "repliesCount": ("Respuestas", "entero"),
+    "sharesCount": ("Compartidos", "entero"),
+    "savesCount": ("Guardados", "entero"),
+    "clicksCount": ("Clics", "entero"),
+    "followsCount": ("Te siguieron desde aquí", "entero"),
+    "playsCount": ("Reproducciones", "entero"),
+    "profileVisitsCount": ("Visitas a tu perfil", "entero"),
+    "profileActivityCount": ("Acciones en tu perfil", "entero"),
+    "navigationsCount": ("Navegaciones", "entero"),
+    "interactionsSum": ("Interacciones", "entero"),
+    "viewTimeMsSum": ("Tiempo visto en total", "ms"),
+    "watchTimeMsAvg": ("Tiempo visto de media", "ms"),
+}
+
+
+def numeros_de(metricas) -> dict:
+    """Los cuatro de la tarjeta, ya en int (o None). Siempre las cuatro claves:
+    que falte una o que valga None es lo mismo para la pantalla, pero un dict de
+    forma fija se prueba mejor."""
+    metricas = metricas if isinstance(metricas, dict) else {}
+    return {nuestro: _entero(metricas.get(suyo)) for nuestro, suyo in NUMEROS}
+
+
+def detalle_de(metricas) -> list[dict]:
+    """TODO lo que la red informó, en orden estable, para el detalle.
+
+    Los ratios (`…Rate`) llegan como número de verdad y no son contadores; se
+    distinguen por tener decimales, no por su nombre. Una clave que no
+    conocemos se enseña tal cual: inventarle una traducción sería adivinar."""
+    metricas = metricas if isinstance(metricas, dict) else {}
+    fuera = []
+    for clave in sorted(metricas):
+        etiqueta, tipo = ETIQUETAS.get(clave, (clave, "entero"))
+        valor = metricas.get(clave)
+        if (isinstance(valor, float) and not isinstance(valor, bool)
+                and not valor.is_integer()):
+            fuera.append({"clave": clave, "etiqueta": etiqueta, "tipo": "ratio",
+                          "valor": valor})
+            continue
+        entero = _entero(valor)
+        if entero is None:
+            continue
+        fuera.append({"clave": clave, "etiqueta": etiqueta, "tipo": tipo, "valor": entero})
+    return fuera
+
+
+def momento(iso) -> datetime | None:
+    """El instante de una fecha de Blotato (o de la pantalla), o None si no se
+    entiende. Vienen en UTC con Z, que fromisoformat no aceptaba antes de 3.11:
+    se sustituye a mano. Sin zona se asume UTC, que es lo que manda Blotato."""
+    if not isinstance(iso, str) or not iso.strip():
+        return None
+    try:
+        t = datetime.fromisoformat(iso.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def historial_de(bruto) -> list[dict]:
+    """Las mediciones ordenadas de la más vieja a la más nueva, sin repetidas.
+
+    Una medición sin fecha legible se tira: sin fecha no se puede ordenar, y
+    dejarla al final la haría pasar por la última. Y los números NUNCA se
+    tocan: un contador puede BAJAR entre dos mediciones (las redes corrigen sus
+    conteos), y recortar esa bajada sería enseñar algo que la red no dijo."""
+    if not isinstance(bruto, list):
+        return []
+    vistos: dict[str, dict] = {}
+    for fila in bruto:
+        if not isinstance(fila, dict):
+            continue
+        t = momento(fila.get("fetchedAt"))
+        if t is None:
+            continue
+        clave = t.astimezone(timezone.utc).isoformat()
+        vistos[clave] = {"cuando": clave, "numeros": numeros_de(fila.get("metrics"))}
+    return [vistos[k] for k in sorted(vistos)]
+
+
+def _medicion(metricas, cuando, historial) -> dict:
+    """La forma única de unos números, vengan de la lista o del detalle.
+
+    El número grande es el de la medición MÁS NUEVA: si el historial trae una
+    posterior a la que Blotato marca como última (pasa cuando mide mientras nos
+    responde), manda la del historial."""
+    filas = historial_de(historial)
+    ultima = filas[-1] if filas else None
+    t = momento(cuando)
+    numeros = numeros_de(metricas)
+    marca = t.astimezone(timezone.utc).isoformat() if t else ""
+    if ultima and (not marca or ultima["cuando"] > marca):
+        numeros, marca = ultima["numeros"], ultima["cuando"]
+    hay = isinstance(metricas, dict) and bool(metricas)
+    return {"numeros": numeros if (hay or ultima) else None,
+            "detalle": detalle_de(metricas) if hay else [],
+            "medido": marca, "historial": filas}
+
+
+def medicion_lista(item: dict) -> dict:
+    """Los números de un item de /v2/analytics (latestMetrics / metricsHistory)."""
+    item = item if isinstance(item, dict) else {}
+    ultima = _sub(item, "latestMetrics")
+    return _medicion(ultima.get("metrics"), ultima.get("fetchedAt"),
+                     item.get("metricsHistory"))
+
+
+def medicion_post(datos: dict) -> dict:
+    """Los números de /v2/posts/{id}/analytics (metrics / history), más el
+    `lastError` de la red. Blotato usa nombres distintos para lo mismo en las
+    dos rutas: usar una función en lugar de la otra devuelve silencio, no un
+    error, y eso es lo que hay que evitar."""
+    datos = datos if isinstance(datos, dict) else {}
+    medicion = _medicion(datos.get("metrics"), datos.get("lastFetchedAt"),
+                         datos.get("history"))
+    fallo = datos.get("lastError")
+    medicion["fallo_red"] = " ".join(fallo.split())[:TEXTO_MAX] \
+        if isinstance(fallo, str) and fallo.strip() else ""
+    return medicion
+
+
+def vista_publicada(item: dict) -> dict:
+    """Lo que Métricas enseña de un item de /v2/posts, ya normalizado:
+    {id, plataforma, red, cuando, estado, enlace, error_red, texto, cortado, medios}.
+
+    Aquí el estado vive en `state.type` y el enlace en `state.postUrl`, mientras
+    que /v2/posts/{id} los llama `status` y `publicUrl` en la raíz: son dos
+    esquemas distintos para la misma idea, y copiar estado_post() aquí devuelve
+    una pantalla muda.
+
+    `error_red` es lo más sucio que llega a esta pantalla —lo redacta la red
+    social, no Blotato—, así que se recorta como el texto y la pantalla lo
+    escapa. `medios` es el CONTEO de adjuntos, no sus URLs: igual que en la
+    Agenda, aquí no se carga nada del CDN de Blotato."""
+    item = item if isinstance(item, dict) else {}
+    estado = _sub(item, "state")
+    tipo = str(estado.get("type") or "")
+    plataforma = str(item.get("platform") or "")
+    texto = item.get("text")
+    texto = texto if isinstance(texto, str) else ""
+    urls = item.get("mediaUrls")
+    enlace = estado.get("postUrl")
+    fallo = estado.get("errorMessage")
+    return {"id": str(item.get("id") or ""),
+            "plataforma": plataforma,
+            "red": (REDES.get(plataforma) or {}).get("nombre") or plataforma,
+            "cuando": str(item.get("postTime") or ""),
+            # un tipo que no conocemos viaja TAL CUAL y no como «fallido»: lo
+            # que pedimos son dos estados, y si Blotato colara un tercero
+            # (`scheduled`, o uno nuevo), llamarlo fallido sería decirle al
+            # usuario que algo no salió cuando aún no le tocaba salir
+            "estado": {"published": "publicado", "failed": "fallido"}.get(tipo, tipo),
+            "enlace": enlace if isinstance(enlace, str)
+            and enlace.startswith("https://") else "",
+            "error_red": " ".join(fallo.split())[:TEXTO_MAX]
+            if isinstance(fallo, str) else "",
+            "texto": texto[:TEXTO_MAX],
+            "cortado": len(texto) > TEXTO_MAX,
+            "medios": len([u for u in urls if isinstance(u, str)])
+            if isinstance(urls, list) else 0}
+
+
+def vista_analitica(item: dict) -> dict:
+    """Lo mismo, pero de un item de /v2/analytics, que usa OTROS nombres para
+    los mismos campos (`content` y no `text`, `createdAt` y no `postTime`,
+    `postUrl` en la raíz) y nunca trae estado: si está aquí, se publicó."""
+    item = item if isinstance(item, dict) else {}
+    plataforma = str(item.get("platform") or "")
+    texto = item.get("content")
+    texto = texto if isinstance(texto, str) else ""
+    urls = item.get("mediaUrls")
+    enlace = item.get("postUrl")
+    return {"id": str(item.get("id") or ""),
+            "plataforma": plataforma,
+            "red": (REDES.get(plataforma) or {}).get("nombre") or plataforma,
+            "cuando": str(item.get("createdAt") or ""),
+            "estado": "publicado",
+            "enlace": enlace if isinstance(enlace, str)
+            and enlace.startswith("https://") else "",
+            "error_red": "",
             "texto": texto[:TEXTO_MAX],
             "cortado": len(texto) > TEXTO_MAX,
             "medios": len([u for u in urls if isinstance(u, str)])
