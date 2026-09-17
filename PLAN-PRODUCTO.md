@@ -1638,6 +1638,19 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 - **Cognito:** la contraseña provisional dura 7 días; con el tope de 50
   correos al día hay que escalonar las invitaciones antes del 23.
 - **Cuota de concurrencia de Lambda:** ya es 1000 (antes 10).
+- **Proyectos del editor compartidos entre cuentas** (P0, PR #96). En S3
+  viven en `videos/<nombre>/`, sin el usuario. Dos cuentas con el mismo nombre
+  («video-1») o que importaban el mismo video de YouTube (`yt-<id>`) se veían,
+  se descargaban y se pisaban el trabajo. Ahora el nombre es único entre
+  cuentas:
+  - la tabla `nombres_editor` hace de reserva atómica;
+  - pedir la subida con un nombre de otra cuenta da 409, antes de subir nada;
+  - los importados se llaman `yt-<id>-<4hex>`, con un sufijo distinto por
+    cuenta.
+
+  El 2026-09-16 no había ningún nombre repetido en producción (17 proyectos,
+  4 cuentas). **Antes del deploy:** correr `tools/db_migrate.py`. Meter el
+  usuario en el prefijo (`videos/<sub>/<nombre>/`) queda para después del 23.
 
 ### Meta Ads
 

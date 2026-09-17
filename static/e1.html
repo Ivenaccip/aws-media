@@ -94,7 +94,7 @@
     <h2>Subir metraje</h2>
     <p class="desc">El video sube directo a la nube (no pasa por el servidor) y queda listo para editar.</p>
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-      <input id="sub-proyecto" placeholder="nombre del proyecto (ej. video-1)"
+      <input id="sub-proyecto" placeholder="nombre del proyecto (ej. entrevista-marzo)"
              style="flex:1; min-width:180px; padding:9px 12px; border-radius:9px; border:1px solid #22354f; background:#18293f; color:inherit; font-size:14px">
       <input id="sub-archivo" type="file" accept=".mp4,.mov,.m4v" style="font-size:13px">
       <button id="sub-btn" style="padding:9px 18px; border-radius:9px; border:0; background:#2b4a75; color:#ece8e1; font-size:14px; cursor:pointer">Subir</button>
@@ -331,6 +331,13 @@ function subidaUI(subiendo) {
   document.getElementById("sub-barra").hidden = !subiendo;
   if (!subiendo) document.getElementById("sub-avance").style.width = "0%";
 }
+// El nombre es único entre TODAS las cuentas: el video vive en la nube bajo
+// ese nombre. Si otra ya lo usa (409), el campo se queda con una variante
+// casi seguro libre y basta con volver a pulsar Subir.
+function nombreAlterno(nombre) {
+  const sufijo = crypto.getRandomValues(new Uint16Array(1))[0].toString(16).padStart(4, "0");
+  return `${nombre.slice(0, 35)}-${sufijo}`;
+}
 async function subir() {
   const estado = document.getElementById("sub-estado");
   const proyecto = document.getElementById("sub-proyecto").value.trim();
@@ -338,7 +345,7 @@ async function subir() {
   if (!proyecto || !f) { estado.textContent = "Falta el nombre del proyecto o el archivo."; return; }
   // misma regla que el backend (_validar_nombre): el 422 llega ANTES de subir
   if (![...proyecto].every(c => /[\p{L}\p{N}_-]/u.test(c))) {
-    estado.textContent = "El nombre solo puede llevar letras, números, guion y guion bajo (ej. video-1).";
+    estado.textContent = "El nombre solo puede llevar letras, números, guion y guion bajo (ej. entrevista-marzo).";
     return;
   }
   subidaUI(true);
@@ -348,7 +355,13 @@ async function subir() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ proyecto, archivo: f.name, content_type: f.type || "video/mp4", bytes: f.size }),
     });
-    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    if (!r.ok) {
+      const detalle = (await r.json()).detail || r.status;
+      if (r.status !== 409) throw new Error(detalle);
+      const otro = nombreAlterno(proyecto);   // nada se subió todavía
+      document.getElementById("sub-proyecto").value = otro;
+      throw new Error(`${detalle} Te dejamos «${otro}» en el nombre: pulsa Subir para usarlo.`);
+    }
     const { url, key, content_type } = await r.json();
     const mbTotal = (f.size / 1e6).toFixed(1);
     await new Promise((resolver, rechazar) => {
