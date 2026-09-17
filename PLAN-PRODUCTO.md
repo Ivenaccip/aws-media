@@ -1603,8 +1603,10 @@ Va en entregas, cada una con su PR:
         petición; con id de post nunca se deja de preguntar, pasadas 6 h solo
         cada 10 min). Se guarda el id del post (sirve para Meta Ads y C3).
       - **El video por defecto** es la película final (`final` en el estado:
-        el render del último estilo con subtítulos, o la película generada),
-        y el confirm lo nombra.
+        el render del último estilo, o la película generada; con subtítulos
+        solo si se quemaron después de ese render), y el confirm lo nombra.
+      - En local no hay tope de publicaciones a la vez (sube la máquina del
+        dueño), y `agendar` no espera a Blotato si ya no le alcanzan los 29 s.
       - **Antes de subir:** tope de 1 GB y por red (X 512 MB/2:20 min,
         Instagram 300 MB, LinkedIn 500 MB…); Instagram y Facebook solo
         vertical (ffprobe sobre la URL firmada, respeta la rotación).

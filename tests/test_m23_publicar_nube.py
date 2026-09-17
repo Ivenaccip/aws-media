@@ -81,10 +81,12 @@ def nube(monkeypatch, s3):
     monkeypatch.setenv("JOBS_QUEUE_URL", "https://sqs/cola")
     docs = {"gen-abc": {"flags": {"generado": True}}}
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: docs.get(n) if u == USER else None)
+    videos = {"videos/gen-abc/pelicula.mp4": (40_000_000, 1000.0),
+              "videos/gen-abc/pelicula-subtitulado.mp4": (600_000_000, 2000.0)}
     monkeypatch.setattr(media_sync, "listar_prefijo_con_bytes", lambda pre: [
-        (k, t) for k, t in [("videos/gen-abc/pelicula.mp4", 40_000_000),
-                            ("videos/gen-abc/pelicula-subtitulado.mp4", 600_000_000)]
-        if k.startswith(pre)])
+        (k, tam) for k, (tam, _) in videos.items() if k.startswith(pre)])
+    monkeypatch.setattr(media_sync, "listar_prefijo_con_fecha", lambda pre: [
+        (k, t) for k, (_, t) in videos.items() if k.startswith(pre)] + s3.listar(pre))
     monkeypatch.setattr(blotato, "clave_de", lambda u: CLAVE if u == USER else None)
     monkeypatch.setattr(blotato, "cuentas", _cuentas_reales)
     enviados = []
@@ -98,6 +100,7 @@ def nube(monkeypatch, s3):
     cliente = TestClient(app)
     cliente.enviados = enviados
     cliente.s3 = s3
+    cliente.videos = videos
     return cliente
 
 
@@ -320,6 +323,50 @@ def test_en_una_carrera_el_candado_lo_gana_uno_solo(en_s3, monkeypatch):
     assert orden == ["a" * 12, "b" * 12]
     estados = {r["id"]: r["estado"] for r in _json_s3(en_s3, "usuarios/u-1/publicaciones/")}
     assert estados == {"a" * 12: "duplicado", "b" * 12: "pendiente"}
+    assert [r["id"] for r, _ in publicaciones.listar(USER, "gen-abc")] == ["b" * 12]
+
+
+def test_el_candado_reconoce_su_propia_escritura(en_s3, monkeypatch):
+    original = en_s3.put_object
+    veces = []
+
+    def put(**k):
+        r = original(**k)
+        if "publicaciones-candados" in k["Key"] and not veces:
+            veces.append(1)           # se guardó y el reintento de botocore da 412
+            raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
+        return r
+
+    monkeypatch.setattr(en_s3, "put_object", put)
+    reg = publicaciones.crear(USER, "gen-abc", {}, candado="k")
+    assert publicaciones.leer(USER, "gen-abc", reg["id"])[0]["estado"] == "pendiente"
+
+
+def test_si_el_candado_falla_la_publicacion_no_queda_colgada(en_s3, monkeypatch):
+    original = en_s3.put_object
+    fallar = [True]
+
+    def put(**k):
+        if "publicaciones-candados" in k["Key"] and fallar[0]:
+            raise ClientError({"Error": {"Code": "SlowDown"}}, "PutObject")
+        return original(**k)
+
+    monkeypatch.setattr(en_s3, "put_object", put)
+    with pytest.raises(ClientError):
+        publicaciones.crear(USER, "gen-abc", {}, candado="k")
+    assert publicaciones.listar(USER, "gen-abc") == []
+    assert publicaciones.en_camino(USER) == 0
+    fallar[0] = False
+    publicaciones.crear(USER, "gen-abc", {}, candado="k")        # el siguiente intento pasa
+
+
+def test_un_doble_clic_no_escribe_un_registro_nuevo(en_s3):
+    publicaciones.crear(USER, "gen-abc", {}, candado="k")
+    antes = len(en_s3.puts)
+    for _ in range(5):
+        with pytest.raises(publicaciones.EnCurso):
+            publicaciones.crear(USER, "gen-abc", {}, candado="k")
+    assert len(en_s3.puts) == antes
 
 
 def test_crear_sobrevive_al_reintento_de_botocore(en_s3, monkeypatch):
@@ -790,6 +837,29 @@ def test_el_latido_mantiene_viva_una_subida_larga(worker, monkeypatch):
     assert len(worker["publicar"]) == 1
 
 
+def test_un_latido_que_no_se_guarda_no_renueva_el_plazo(worker, monkeypatch):
+    """Si el latido falla (disco, S3), la pantalla ve la hora vieja: el worker
+    tiene que medir el plazo desde la misma."""
+    reloj = {"t": time.time()}
+    monkeypatch.setattr(publicaciones, "ahora", lambda: reloj["t"])
+    monkeypatch.setattr(publicar_task, "LATIDO_S", 0)
+    reg = _pendiente()
+    original = publicaciones._escribir
+    reclamado = []
+
+    def escribir(user, proyecto, r, etag=None, nuevo=False):
+        if r.get("estado") == "subiendo" and etag:
+            if reclamado:                       # el reclamo pasa; los latidos, no
+                raise PermissionError(5, "en uso")
+            reclamado.append(1)
+        return original(user, proyecto, r, etag, nuevo)
+
+    monkeypatch.setattr(publicaciones, "_escribir", escribir)
+    publicar_task.ejecutar(USER, "gen-abc", reg["id"], _video_lento(25, 60, reloj))
+    assert worker["publicar"] == []
+    assert "tardó demasiado" in _estado(reg["id"])["error"]
+
+
 def test_si_otro_toca_el_registro_durante_la_subida_se_corta(worker, monkeypatch):
     monkeypatch.setattr(publicar_task, "LATIDO_S", 0)
     reg = _pendiente()
@@ -827,6 +897,9 @@ def test_si_no_se_puede_marcar_creando_queda_en_error(worker, monkeypatch):
     (413, 600_000_000, "400 MB", "clave"),
     (403, 600_000_000, "400 MB", "conéctala"),
     (403, 6, "no aceptó el archivo", "conéctala"),
+    (0, 600_000_000, "400 MB", "conéctala"),            # conexión cortada
+    (0, 6, "se cortó", "400 MB"),
+    (503, 600_000_000, "(503)", "400 MB"),              # un 5xx pasajero no es el plan
 ])
 def test_un_rechazo_de_la_subida_no_culpa_a_la_clave(worker, monkeypatch, codigo, tam, parte, no):
     reg = _pendiente()
@@ -858,6 +931,27 @@ def test_subir_stream_distingue_el_rechazo_del_put(monkeypatch):
     assert e.value.codigo == 413
     msg, reconectar = blotato.explicar_fallo(e.value)
     assert "maximum upload size" in msg and reconectar is False
+
+
+@pytest.mark.parametrize("respuesta,codigo", [
+    (lambda url: httpx.Response(307, headers={"location": "https://otra"},
+                                request=httpx.Request("PUT", url)), 307),
+    ("corte", 0),
+])
+def test_subir_stream_no_toma_por_buena_una_subida_que_no_termino(monkeypatch, respuesta, codigo):
+    monkeypatch.setattr(blotato.httpx, "post", lambda *a, **k: httpx.Response(
+        201, json={"presignedUrl": "https://sube/aqui", "publicUrl": "https://pub/v.mp4"},
+        request=httpx.Request("POST", "https://x")))
+
+    def put(url, **k):
+        if respuesta == "corte":
+            raise httpx.ReadError("cerrada")
+        return respuesta(url)
+
+    monkeypatch.setattr(blotato.httpx, "put", put)
+    with pytest.raises(blotato.SubidaRechazada) as e:
+        blotato.subir_stream(CLAVE, "v.mp4", iter([b"x"]), 1)
+    assert e.value.codigo == codigo
 
 
 def test_la_url_firmada_no_llega_al_log_del_worker(tmp_path):
@@ -1006,6 +1100,25 @@ def test_agendar_tiene_tope_por_usuario(nube):
     assert len(nube.enviados) == 3
 
 
+def test_agendar_no_espera_a_blotato_mas_de_la_cuenta(nube, monkeypatch):
+    monkeypatch.setattr(publicar_api, "TOPE_AGENDAR_S", 2.5)
+
+    def lento(clave, timeout=None):
+        time.sleep(6)
+        return _cuentas_reales(clave)
+
+    monkeypatch.setattr(blotato, "cuentas", lento)
+    t0 = time.monotonic()
+    r = nube.post("/editor/gen-abc/api/publicar/agendar", json=TIKTOK)
+    assert r.status_code == 503 and time.monotonic() - t0 < 2      # ni siquiera lo intenta
+    monkeypatch.setattr(publicar_api, "TOPE_AGENDAR_S", 5)
+    t0 = time.monotonic()
+    r = nube.post("/editor/gen-abc/api/publicar/agendar", json=TIKTOK)
+    assert r.status_code == 502 and "no respondió" in r.json()["detail"]
+    assert time.monotonic() - t0 < 5
+    assert nube.enviados == [] and nube.s3.objetos == {}
+
+
 def test_agendar_programado_guarda_la_hora_en_utc(nube):
     r = nube.post("/editor/gen-abc/api/publicar/agendar",
                   json=dict(TIKTOK, cuando="2027-01-10T09:30:00.000-06:00"))
@@ -1066,21 +1179,46 @@ def test_el_estado_no_llama_a_blotato(nube, monkeypatch):
     assert "cuentas" not in r
 
 
+TIGHT = {"render": {"estado": "listo", "estilo": "tight"}}
+
+
 @pytest.mark.parametrize("doc,claves,final", [
-    ({"render": {"estado": "listo", "estilo": "tight"}},
-     ["output/preview-natural.mp4", "output/preview-tight-subtitulado.mp4",
-      "output/preview-tight.mp4"], "preview-tight-subtitulado"),
+    # (archivo, fecha): la subtitulada solo gana si se quemó después del render
+    (TIGHT, [("output/preview-natural.mp4", 1), ("output/preview-tight.mp4", 2),
+             ("output/preview-tight-subtitulado.mp4", 3)], "preview-tight-subtitulado"),
+    (TIGHT, [("output/preview-tight-subtitulado.mp4", 1), ("output/preview-tight.mp4", 2)],
+     "preview-tight"),                                  # se corrigió el corte y se re-renderizó
     ({"render": {"estado": "listo", "estilo": "natural"}},
-     ["output/preview-natural.mp4", "output/preview-tight-subtitulado.mp4"], "preview-natural"),
-    ({"flags": {"generado": True}}, ["output/preview-tight.mp4", "pelicula.mp4"], "pelicula"),
-    ({}, ["output/preview-a.mp4", "output/preview-b-subtitulado.mp4"], "preview-b-subtitulado"),
-    ({}, ["work/subs/subs.srt"], None),
+     [("output/preview-natural.mp4", 1), ("output/preview-tight-subtitulado.mp4", 2)],
+     "preview-natural"),
+    ({"flags": {"generado": True}}, [("output/preview-tight.mp4", 3), ("pelicula.mp4", 1)],
+     "pelicula"),
+    ({"flags": {"generado": True}}, [("pelicula-subtitulado.mp4", 1), ("pelicula.mp4", 2)],
+     "pelicula"),                                       # la película se rearmó
+    ({}, [("output/preview-a.mp4", 1), ("output/preview-b-subtitulado.mp4", 2)],
+     "preview-b-subtitulado"),
+    ({}, [("output/preview-natural-subtitulado.mp4", 1), ("output/preview-natural.mp4", 2),
+          ("output/preview-tight.mp4", 3)], "preview-tight"),   # el render más nuevo
+    ({}, [("work/subs/subs.srt", 1)], None),
 ])
 def test_el_estado_dice_cual_es_la_pelicula(nube, monkeypatch, doc, claves, final):
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: doc)
-    monkeypatch.setattr(media_sync, "listar_prefijo_con_bytes",
-                        lambda pre: [(f"videos/v9/{c}", 10) for c in claves])
+    nube.videos.clear()
+    nube.videos.update({f"videos/v9/{c}": (10, float(t)) for c, t in claves})
     assert nube.get("/editor/v9/api/publicar/estado").json()["final"] == final
+
+
+def test_en_local_la_pelicula_final_es_el_render_mas_nuevo(local):
+    import os
+    cliente, p = local
+    (p / "output").mkdir()
+    for nombre, t in [("preview-natural-subtitulado.mp4", 1), ("preview-natural.mp4", 2),
+                      ("preview-tight.mp4", 3)]:
+        f = p / "output" / nombre
+        f.write_bytes(b"x")
+        os.utime(f, (1_000_000 + t, 1_000_000 + t))
+    os.utime(p / "pelicula.mp4", (1_000_000, 1_000_000))
+    assert cliente.get("/editor/v1/api/publicar/estado").json()["final"] == "preview-tight"
 
 
 def test_cuentas_limpias_y_errores(nube, monkeypatch):
@@ -1187,6 +1325,7 @@ def test_limpiar_titulo_no_parte_palabras_ni_hashtags():
     assert limpio.endswith("paso a paso")
     assert publicar_api.limpiar_titulo("uno dos #tres", 9) == "uno dos"
     assert publicar_api.limpiar_titulo("uno dos tres cuatro", 10) == "uno dos"
+    assert publicar_api.limpiar_titulo("Aprende C#") == "Aprende C#"   # sin recorte, intacto
     assert publicar_api.limpiar_titulo("x" * 150) == "x" * 100
 
 
@@ -1240,6 +1379,7 @@ def local(monkeypatch, tmp_path):
     monkeypatch.setenv("STATE_BACKEND", "json")
     monkeypatch.setenv("DEFAULT_USER_ID", USER)
     monkeypatch.setattr(storage, "videos_root", lambda: tmp_path)
+    monkeypatch.setattr(publicaciones, "videos_root", lambda: tmp_path)
     p = tmp_path / "v1"
     (p / "work").mkdir(parents=True)
     (p / "pelicula.mp4").write_bytes(b"0123456789")
@@ -1257,6 +1397,16 @@ def test_en_local_agendar_corre_en_segundo_plano(local, worker, monkeypatch):
     [pub] = cliente.get("/editor/v1/api/publicar/estado").json()["publicaciones"]
     assert pub["estado"] == "publicado" and pub["url"] == "https://x.com/v/1"
     assert list((p / "work" / "publicaciones").glob("*.json"))
+
+
+def test_en_local_no_hay_tope_de_publicaciones(local, monkeypatch):
+    cliente, _ = local
+    monkeypatch.setattr(blotato, "cuentas", _cuentas_reales)
+    monkeypatch.setattr(publicar_api, "_publicar_local", lambda *a: None)   # quedan en la fila
+    codigos = [cliente.post("/editor/v1/api/publicar/agendar",
+                            json=dict(TIKTOK, plataforma=red)).status_code
+               for red in ("tiktok", "twitter", "threads", "bluesky")]
+    assert codigos == [202, 202, 202, 202]
 
 
 def test_en_local_el_estado_no_pide_cuentas(local, monkeypatch):

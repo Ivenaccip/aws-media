@@ -114,7 +114,9 @@ class RespuestaInvalida(httpx.HTTPError):
 
 class SubidaRechazada(httpx.HTTPError):
     """El almacenamiento de Blotato rechazó el PUT del video (tamaño del plan,
-    URL vencida…). No es la clave: la clave no viaja en ese PUT."""
+    URL vencida…). No es la clave: la clave no viaja en ese PUT. `codigo` 0 =
+    la conexión se cortó a mitad (un almacenamiento que rechaza un archivo
+    grande suele cerrar sin esperar el cuerpo, y el 413 nunca llega)."""
 
     def __init__(self, codigo: int, detalle: str = ""):
         super().__init__("subida rechazada")
@@ -149,6 +151,9 @@ def explicar_fallo(err: Exception, clave: str | None = None) -> tuple[str, bool]
     """(mensaje para el usuario, ¿hay que reconectar?) de un fallo al hablar
     con Blotato. Nunca incluye el texto de la excepción (lleva URLs firmadas);
     sí el `message` que Blotato explica en un 422 o un 429."""
+    if isinstance(err, SubidaRechazada) and err.codigo == 0:
+        return ("La subida a Blotato se cortó antes de terminar. Intenta de nuevo; "
+                "si se repite, revisa el tamaño que permite tu plan de Blotato.", False)
     if isinstance(err, SubidaRechazada):
         return ("Blotato no aceptó el archivo"
                 + (f": {err.detalle.rstrip('.')}." if err.detalle else f" ({err.codigo}).")
@@ -297,10 +302,15 @@ def subir_stream(clave: str, nombre: str, partes: Iterable[bytes], tam: int) -> 
             and isinstance(publica, str) and publica.startswith("https://")):
         raise RespuestaInvalida("Blotato no devolvió dónde subir el video")
     mime = mimetypes.guess_type(nombre)[0] or "video/mp4"
-    subida = httpx.put(firmada, content=partes,
-                       headers={"Content-Type": mime, "Content-Length": str(tam)},
-                       timeout=TIMEOUT_SUBIDA)
-    if subida.is_error:
+    try:
+        subida = httpx.put(firmada, content=partes,
+                           headers={"Content-Type": mime, "Content-Length": str(tam)},
+                           timeout=TIMEOUT_SUBIDA)
+    except (httpx.WriteError, httpx.ReadError, httpx.RemoteProtocolError):
+        raise SubidaRechazada(0) from None
+    # un 3xx tampoco es una subida: httpx no sigue redirecciones (ni podría
+    # reenviar un cuerpo en streaming)
+    if not subida.is_success:
         raise SubidaRechazada(subida.status_code, _mensaje_de(subida, clave))
     return publica
 

@@ -22,6 +22,7 @@ import asyncio
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,7 +45,10 @@ TITULOS_MAX_CHARS = 2500
 TITULO_MAX = 100                # el campo título de YouTube y Pinterest
 TITULO_MAX_TEXTO = 200          # si la sugerencia va al texto del post
 HORIZONTE_S = 270 * 86400       # Blotato programa hasta 9 meses adelante
-MAX_EN_CAMINO = 3               # publicaciones subiéndose a la vez por usuario
+MAX_EN_CAMINO = 3               # publicaciones subiéndose a la vez por usuario (servicio)
+# agendar hace hasta ~6 operaciones de S3 después de preguntarle a Blotato: lo
+# anterior no puede comerse los 29 s de la Lambda (Aurora despertando tarda 24)
+TOPE_AGENDAR_S = 20
 ERROR_ALMACEN = "No pudimos leer tu conexión con Blotato. Intenta de nuevo en un momento."
 
 
@@ -109,6 +113,19 @@ def _usuario() -> str:
     return user
 
 
+def _clave_de(rel: str) -> str | None:
+    """La clave estable de un archivo del proyecto (ruta relativa a su raíz)."""
+    if rel == "pelicula.mp4":
+        return "pelicula"
+    if rel == "pelicula-subtitulado.mp4":
+        return "subtitulado"
+    if rel.startswith("output/") and rel.endswith(".mp4") and rel.count("/") == 1:
+        return rel[len("output/"):-len(".mp4")]
+    if rel == "work/subs/subs.srt":
+        return "srt"
+    return None
+
+
 def descargables_nube(name: str) -> dict[str, tuple[str, int]]:
     """Lo mismo que `descargables`, contra S3: clave estable → (key, bytes).
 
@@ -125,15 +142,9 @@ def descargables_nube(name: str) -> dict[str, tuple[str, int]]:
     pre = f"videos/{name}/"
     out: dict[str, tuple[str, int]] = {}
     for key, tam in media_sync.listar_prefijo_con_bytes(pre):
-        rel = key[len(pre):]
-        if rel == "pelicula.mp4":
-            out["pelicula"] = (key, tam)
-        elif rel == "pelicula-subtitulado.mp4":
-            out["subtitulado"] = (key, tam)
-        elif rel.startswith("output/") and rel.endswith(".mp4") and rel.count("/") == 1:
-            out[rel[len("output/"):-len(".mp4")]] = (key, tam)
-        elif rel == "work/subs/subs.srt":
-            out["srt"] = (key, tam)
+        clave = _clave_de(key[len(pre):])
+        if clave:
+            out[clave] = (key, tam)
     return out
 
 
@@ -160,25 +171,46 @@ def _archivos(name: str) -> dict[str, tuple[str, int, str | None]]:
             for k, f in descargables(_proyecto(name)).items()}
 
 
+def _con_subtitulos(base: str) -> str:
+    return "subtitulado" if base == "pelicula" else f"{base}-subtitulado"
+
+
+def _base(clave: str) -> str:
+    if clave == "subtitulado":
+        return "pelicula"
+    return clave[:-len("-subtitulado")] if clave.endswith("-subtitulado") else clave
+
+
 def _final(name: str, doc: dict | None) -> str | None:
     """La clave del video que es «la película»: el render del último estilo
-    con subtítulos si los tiene; en un proyecto generado, la película."""
+    (o la película generada), con subtítulos solo si se quemaron DESPUÉS de
+    ese render. Un render nuevo no borra la subtitulada vieja, que tiene el
+    corte anterior."""
     if _nube():
-        claves = list(descargables_nube(name))
+        from pipeline import media_sync
+        pre = f"videos/{name}/"
+        fechas = {c: t for k, t in media_sync.listar_prefijo_con_fecha(pre)
+                  if (c := _clave_de(k[len(pre):])) and c != "srt"}
     else:
         rutas = descargables(_proyecto(name))
-        # en local no hay doc: la salida más reciente manda
-        claves = sorted(rutas, key=lambda k: rutas[k].stat().st_mtime, reverse=True)
-    videos = [k for k in claves if k != "srt"]
+        fechas = {c: f.stat().st_mtime for c, f in rutas.items() if c != "srt"}
     doc = doc or {}
-    preferidas = []
-    if not (doc.get("flags") or {}).get("generado"):
+    bases = []
+    if (doc.get("flags") or {}).get("generado"):
+        bases.append("pelicula")
+    else:
         render = doc.get("render") or {}
         if render.get("estado") == "listo" and render.get("estilo"):
-            preferidas += [f"preview-{render['estilo']}-subtitulado", f"preview-{render['estilo']}"]
-    preferidas += ["subtitulado", "pelicula"]
-    preferidas += [k for k in videos if k.endswith("-subtitulado")] + videos
-    return next((k for k in preferidas if k in videos), None)
+            bases.append(f"preview-{render['estilo']}")
+    # sin doc (o sin ese archivo): lo más reciente manda
+    bases += [_base(c) for c in sorted(fechas, key=lambda c: fechas[c], reverse=True)]
+    for base in bases:
+        sub = _con_subtitulos(base)
+        if sub in fechas and (base not in fechas or fechas[sub] >= fechas[base]):
+            return sub
+        if base in fechas:
+            return base
+    return None
 
 
 def _vistas(user: str, name: str) -> list[dict]:
@@ -332,7 +364,8 @@ def limpiar_titulo(t: str, tope: int = TITULO_MAX) -> str:
         t = corte.rsplit(" ", 1)[0] if " " in corte else t[:tope]
         while " " in t and t.rsplit(" ", 1)[-1].startswith("#"):
             t = t.rsplit(" ", 1)[0]
-    return t.rstrip(" #:,;-")
+        t = t.rstrip(" #:,;-")     # solo lo que dejó el corte («C#» se queda)
+    return t
 
 
 @router.post("/{name}/api/publicar/titulos")
@@ -397,6 +430,16 @@ def _cuando(valor: str | None) -> str | None:
     return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
+def _con_tope(fn, segundos: float):
+    """El resultado de fn(), o TimeoutError si tarda más de `segundos` en total
+    (los timeouts de httpx son por fase, no por petición)."""
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        return ex.submit(fn).result(timeout=segundos)
+    finally:
+        ex.shutdown(wait=False)
+
+
 def _publicar_local(user: str, name: str, pub_id: str) -> None:
     from worker.publicar_task import ejecutar, video_local
 
@@ -413,6 +456,7 @@ def _publicar_local(user: str, name: str, pub_id: str) -> None:
 def agendar(name: str, body: AgendarIn, tareas: BackgroundTasks):
     """Valida, deja la publicación en `pendiente` y la encola. La subida y el
     post los hace worker/publicar_task.py."""
+    t0 = time.monotonic()
     _validar_proyecto(name)
     if body.confirmar is not True:
         raise HTTPException(428, "Falta confirmar:true — el gate de publicación es obligatorio")
@@ -453,17 +497,23 @@ def agendar(name: str, body: AgendarIn, tareas: BackgroundTasks):
 
     # la cuenta tiene que ser de verdad una red conectada de este usuario: si
     # no, el worker subiría la película entera para que Blotato la rechace
+    restante = TOPE_AGENDAR_S - (time.monotonic() - t0)
+    if restante < 3:
+        raise HTTPException(503, "El servicio tardó en responder y no se envió nada. "
+                                 "Intenta de nuevo.")
     try:
-        reales = blotato.cuentas(clave, timeout=blotato.TIMEOUT_CORTO)
-    except Exception as err:  # noqa: BLE001
+        reales = _con_tope(lambda: blotato.cuentas(clave, timeout=blotato.TIMEOUT_CORTO),
+                           min(8.0, restante - 1))
+    except Exception as err:  # noqa: BLE001 — TimeoutError incluido: «no respondió»
         raise HTTPException(502, blotato.explicar_fallo(err, clave)[0])
     cuenta = next((c for c in reales if str(c.get("id")) == body.cuenta_id
                    and c.get("platform") == body.plataforma), None)
     if cuenta is None:
         raise HTTPException(422, "Esa cuenta no está conectada en tu Blotato. "
                                  "Vuelve a abrir Publicar.")
+    # el tope cuida los pocos workers del servicio; en local sube la máquina del dueño
     try:
-        if publicaciones.en_camino(user) >= MAX_EN_CAMINO:
+        if _nube() and publicaciones.en_camino(user) >= MAX_EN_CAMINO:
             raise HTTPException(429, f"Ya tienes {MAX_EN_CAMINO} publicaciones subiéndose. "
                                      "Espera a que terminen y vuelve a intentarlo.")
     except HTTPException:

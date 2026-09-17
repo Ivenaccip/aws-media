@@ -44,6 +44,8 @@ log = logging.getLogger("publicaciones")
 
 EN_CURSO = ("pendiente", "subiendo", "creando", "enviado")
 TRABAJANDO = ("pendiente", "subiendo", "creando")     # ocupan el worker
+# nunca se encolaron (otra igual iba en camino, o el candado falló): no se muestran
+OCULTOS = ("duplicado", "descartado")
 VENCE_PENDIENTE_S = 30 * 60
 VENCE_TRABAJO_S = 20 * 60            # > timeout del worker (15 min); el latido es cada 60 s
 SIN_RESPUESTA_S = 6 * 3600           # tras esto se pregunta a Blotato mucho menos
@@ -166,10 +168,25 @@ def _escribir(user_id: str, proyecto: str, reg: dict, etag: str | None = None,
     return _escribir_en(_ubicacion(user_id, proyecto, reg["id"]), reg, etag, nuevo)
 
 
+def _ubic_candado(user_id: str, proyecto: str, candado: str) -> str | Path:
+    nombre = hashlib.sha256(candado.encode("utf-8")).hexdigest()
+    return _ubicacion(user_id, proyecto, nombre, carpeta="publicaciones-candados")
+
+
+def ocupado(user_id: str, proyecto: str, candado: str) -> bool:
+    """Lectura rápida (sin garantía) de si otra igual va en camino: evita
+    escribir un registro para cada doble clic que igual va a chocar."""
+    actual, _ = _leer_en(_ubic_candado(user_id, proyecto, candado))
+    otro_id = str((actual or {}).get("id") or "")
+    if not _ID.fullmatch(otro_id):
+        return False
+    otro, _ = _leer(user_id, proyecto, otro_id)
+    return otro is not None and vista(otro)["en_curso"]
+
+
 def _tomar_candado(user_id: str, proyecto: str, candado: str, pub_id: str) -> None:
     """EnCurso si otra publicación con el mismo candado sigue en camino."""
-    nombre = hashlib.sha256(candado.encode("utf-8")).hexdigest()
-    ubic = _ubicacion(user_id, proyecto, nombre, carpeta="publicaciones-candados")
+    ubic = _ubic_candado(user_id, proyecto, candado)
     try:
         _escribir_en(ubic, {"id": pub_id}, nuevo=True)
         return
@@ -177,6 +194,8 @@ def _tomar_candado(user_id: str, proyecto: str, candado: str, pub_id: str) -> No
         pass
     actual, etag = _leer_en(ubic)
     otro_id = str((actual or {}).get("id") or "")
+    if otro_id == pub_id:
+        return          # un reintento de botocore: el candado ya es nuestro
     if _ID.fullmatch(otro_id):
         otro, _ = _leer(user_id, proyecto, otro_id)
         if otro is not None and vista(otro)["en_curso"]:
@@ -189,8 +208,10 @@ def _tomar_candado(user_id: str, proyecto: str, candado: str, pub_id: str) -> No
 
 def crear(user_id: str, proyecto: str, datos: dict, candado: str | None = None) -> dict:
     """Guarda la publicación en `pendiente`. Con `candado`, EnCurso si otra
-    igual sigue en camino (la nueva queda como `duplicado`, oculta)."""
+    igual sigue en camino (la nueva queda oculta, `duplicado`)."""
     _validar(user_id, proyecto)
+    if candado and ocupado(user_id, proyecto, candado):
+        raise EnCurso("")
     t = ahora()
     reg = {**datos, "id": nuevo_id(), "proyecto": proyecto, "estado": "pendiente",
            "creado": t, "actualizado": t}
@@ -208,12 +229,14 @@ def crear(user_id: str, proyecto: str, datos: dict, candado: str | None = None) 
     if candado:
         try:
             _tomar_candado(user_id, proyecto, candado, reg["id"])
-        except EnCurso:
-            reg["estado"] = "duplicado"
+        except Exception as err:
+            # no se va a encolar: que no quede «pendiente» para siempre, ni
+            # contando para el tope, ni dueña del candado
+            reg["estado"] = "duplicado" if isinstance(err, EnCurso) else "descartado"
             try:
                 _escribir(user_id, proyecto, reg)
-            except Exception as err:  # noqa: BLE001 — sin candado el worker igual la descarta
-                log.error("marcar duplicado %s: %s", reg["id"], type(err).__name__)
+            except Exception as err2:  # noqa: BLE001
+                log.error("ocultar %s: %s", reg["id"], type(err2).__name__)
             raise
     return reg
 
@@ -273,7 +296,7 @@ def listar(user_id: str, proyecto: str) -> list[tuple[dict, str]]:
     filas = []
     for pub_id in ids:
         reg, etag = _leer(user_id, proyecto, pub_id)
-        if reg is not None and reg.get("estado") != "duplicado":
+        if reg is not None and reg.get("estado") not in OCULTOS:
             filas.append((reg, etag))
     filas.sort(key=lambda f: float(f[0].get("creado") or 0), reverse=True)
     return filas[:MAX_LISTA]

@@ -151,12 +151,16 @@ class _Latido:
         for trozo in partes:
             if time.monotonic() - self.t >= LATIDO_S:
                 self.t = time.monotonic()
+                previo = self.reg.get("actualizado")
                 try:
                     self.etag = publicaciones.guardar(self.user_id, self.proyecto,
                                                       self.reg, self.etag)
                 except publicaciones.Conflicto:
                     raise
                 except Exception as err:  # noqa: BLE001 — sin latido, el plazo decide
+                    # el plazo tiene que medir desde el último latido GUARDADO,
+                    # que es lo que ve la pantalla
+                    self.reg["actualizado"] = previo
                     log.warning("latido de %s: %s", self.reg.get("id"), type(err).__name__)
             yield trozo
 
@@ -236,13 +240,14 @@ def _ejecutar(user_id: str, proyecto: str, reg: dict, etag: str,
         return
     except blotato.SubidaRechazada as err:
         log.error("publicar %s/%s: Blotato rechazó la subida (%s)", proyecto, pub_id, err.codigo)
-        if tam > blotato.MAX_BYTES_STARTER:
+        mensaje = blotato.explicar_fallo(err, clave)[0]
+        # solo lo que puede deberse al tamaño: un 5xx pasajero no es el plan
+        if tam > blotato.MAX_BYTES_STARTER and err.codigo in (0, 400, 403, 413):
             mensaje = (f"Blotato no aceptó el archivo ({tam / 1e6:.0f} MB). Con el plan "
                        f"Starter el límite es {blotato.MAX_BYTES_STARTER // 1_000_000} MB; "
                        f"con Creator o Agency, {blotato.MAX_BYTES // 1_000_000} MB. Usa un "
-                       "archivo más liviano o cambia de plan.")
-        else:
-            mensaje = blotato.explicar_fallo(err, clave)[0]
+                       "archivo más liviano o cambia de plan. Si tu plan permite ese "
+                       "tamaño, intenta de nuevo.")
         _guardar(user_id, proyecto, reg, estado="error", error=mensaje)
         return
     except ValueError as err:
