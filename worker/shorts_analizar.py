@@ -99,7 +99,7 @@ def _candidatos_llm(canonico: dict) -> list[dict]:
 def analizar(user_id: str, nombre: str) -> None:
     t0 = time.monotonic()
     os.environ["DEFAULT_USER_ID"] = user_id
-    from pipeline import costes_infra, creditos, db
+    from pipeline import apify, costes_infra, creditos, db
 
     doc = db.cargar_proyecto_editor(user_id, nombre) or {}
     st = doc.get("shorts") or {}
@@ -113,8 +113,9 @@ def analizar(user_id: str, nombre: str) -> None:
                               json.dumps(st, ensure_ascii=False))
         log.info("%s: %d candidatos listos", nombre, len(candidatos))
     except Exception as err:  # noqa: BLE001 — el estado y la devolución van a Postgres
-        log.exception("%s: análisis de shorts falló", nombre)
-        st.update(estado="error", error=f"{type(err).__name__}: {str(err)[:300]}")
+        # este error también sale en pantalla: tachado como los de Apify
+        apify.registrar_fallo(log, err, "%s: análisis de shorts falló", nombre)
+        st.update(estado="error", error=apify.describir_error(err))
         db.fijar_campo_editor(user_id, nombre, "shorts",
                               json.dumps(st, ensure_ascii=False))
         n = int(st.get("creditos") or 0)
