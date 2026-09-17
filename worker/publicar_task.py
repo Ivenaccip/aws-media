@@ -315,11 +315,21 @@ def _ejecutar(user_id: str, proyecto: str, reg: dict, etag: str,
         log.error("publicar %s/%s: Blotato respondió sin postSubmissionId", proyecto, pub_id)
         _guardar(user_id, proyecto, reg, estado="incierto")
         return
-    cambios = {"post_id": post_id,
+    # `media` (la publicUrl que acuñó Blotato al subir) se guarda porque es lo
+    # único que empareja este registro con lo que la Agenda lista desde Blotato:
+    # el postSubmissionId no sirve para /v2/schedules
+    cambios = {"post_id": post_id, "media_url": media,
                "estado": "programado" if reg.get("cuando") else "enviado"}
     if reg.get("cuando") and isinstance(r.get("scheduledTime"), str):
         cambios["cuando"] = r["scheduledTime"]
     _guardar(user_id, proyecto, reg, **cambios)
+    try:
+        publicaciones.enlazar(user_id, proyecto, pub_id, media)
+    except Exception as err:  # noqa: BLE001 — el post YA está creado
+        # sin el enlace, cancelar desde la Agenda borra en Blotato igual; solo
+        # se pierde el «Cancelada» en Publicar. Relanzar aquí haría que SQS
+        # reintentara el trabajo y el post saliera dos veces
+        log.warning("enlazar %s/%s con la Agenda: %s", proyecto, pub_id, type(err).__name__)
     log.info("publicar %s/%s: %s en %s", proyecto, pub_id, reg["estado"], plataforma)
 
     # 5) «publicar ahora»: un rato para saber cómo le fue (si no, lo pregunta

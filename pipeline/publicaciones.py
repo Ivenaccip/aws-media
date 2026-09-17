@@ -327,6 +327,53 @@ def en_camino(user_id: str) -> int:
     return n
 
 
+# --- el enlace con la Agenda ---------------------------------------------------
+# La Agenda (M23 C3) lista lo programado desde Blotato, y de ahí solo conoce la
+# URL del video. Al cancelar hay que marcar TAMBIÉN nuestro registro, pero
+# nuestro post_id no sirve para buscarlo y emparejar por cuenta + hora es
+# ambiguo. Blotato acuña una publicUrl nueva en cada subida, así que sirve de
+# llave: el worker deja aquí un objeto minúsculo con el proyecto y el id.
+
+def _ubic_enlace(user_id: str, media_url: str) -> str | Path:
+    """Dónde vive el enlace de una URL de video.
+
+    No puede usar _ubicacion(): esa mete el proyecto en la ruta, y no saber el
+    proyecto es justo lo que este índice resuelve. El nombre es el sha256 de la
+    URL (siempre válido en una ruta, y no filtra la URL en el nombre)."""
+    if not claves_usuario.id_valido(user_id):
+        raise ValueError("usuario inválido")
+    if not isinstance(media_url, str) or not media_url:
+        raise ValueError("url de video inválida")
+    nombre = hashlib.sha256(media_url.encode("utf-8")).hexdigest()
+    if _nube():
+        return f"usuarios/{user_id}/agenda/{nombre}.json"
+    return videos_root() / "_agenda" / f"{nombre}.json"
+
+
+def enlazar(user_id: str, proyecto: str, pub_id: str, media_url: str) -> None:
+    """Apunta la URL del video a la publicación que la usó.
+
+    Escritura ciega a propósito: si el mismo video se vuelve a subir, Blotato da
+    otra URL; si por lo que sea se repitiera, la última publicación es la que
+    manda, que es la que el usuario está mirando."""
+    _validar(user_id, proyecto, pub_id)
+    _escribir_en(_ubic_enlace(user_id, media_url), {"proyecto": proyecto, "id": pub_id})
+
+
+def enlace(user_id: str, media_url: str) -> tuple[str, str] | None:
+    """(proyecto, publicación) de una URL de video, o None si no hay enlace: las
+    publicaciones anteriores a C3 nunca lo escribieron y no se puede reconstruir
+    (su publicUrl no se guardó)."""
+    datos, _ = _leer_en(_ubic_enlace(user_id, media_url))
+    proyecto = (datos or {}).get("proyecto")
+    pub_id = (datos or {}).get("id")
+    if not isinstance(proyecto, str) or not proyecto:
+        return None
+    if not isinstance(pub_id, str) or not _ID.fullmatch(pub_id):
+        return None
+    return proyecto, pub_id
+
+
 # --- lo que sabe Blotato -------------------------------------------------------
 
 def _fecha(iso: str | None) -> float | None:
@@ -423,6 +470,11 @@ MENSAJES = {
     "enviado": "Blotato la está publicando…",
     "incierto": ("No sabemos si llegó a Blotato. Revisa tu calendario de Blotato "
                  "antes de intentarlo de nuevo."),
+    # la canceló el usuario desde la Agenda: Blotato ya no la tiene programada.
+    # No entra en OCULTOS (la fila se sigue viendo), cae en el else de vista()
+    # (en_curso False: el candado queda libre y se puede volver a programar) y
+    # por_consultar ya devuelve False (no gasta el cupo de 60/min de Blotato).
+    "cancelado": "La cancelaste desde tu Agenda. No se publicó.",
 }
 
 
