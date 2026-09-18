@@ -83,6 +83,13 @@ class ApiStack(Stack):
         media_bucket.grant_read(fn)
         jobs_queue.grant_send_messages(fn)
         producir_sm.grant_start_execution(fn)
+        # M23 · D (prerrequisito): el freno de capacidad cuenta las ejecuciones
+        # vivas antes de arrancar otra (pipeline/jobs.py `_hay_sitio`). Sin este
+        # permiso el conteo revienta y el freno falla ABIERTO — que es lo que
+        # debe hacer, pero entonces no frena nada y solo se ve en los logs.
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["states:ListExecutions"],
+            resources=[producir_sm.state_machine_arn]))
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
             resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*",

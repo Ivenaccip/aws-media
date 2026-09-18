@@ -355,6 +355,42 @@ def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> Non
     )
 
 
+# M23 · D (prerrequisito) — dónde vive el estado de cada trabajo de Fargate
+# dentro del doc del editor, para el claim del barredor. Whitelist por la misma
+# razón que _CAMPOS_EDITOR: va interpolada en el SQL y jamás sale de aquí.
+# `render` y `subtitulos` no están porque no cobran créditos: no hay nada que
+# reclamar. El de shorts va dos niveles adentro (doc.shorts.render), que es lo
+# que impide reescribir el campo entero — al lado viven los candidatos.
+_TRABAJOS_FARGATE = {
+    "shorts":     ("{shorts,render}", "{shorts,render,estado}", "{shorts,render,error}"),
+    "editar":     ("{editar}", "{editar,estado}", "{editar,error}"),
+    "overlay_job": ("{overlay_job}", "{overlay_job,estado}", "{overlay_job,error}"),
+}
+
+
+def reclamar_fallo_editor(user_id: str, nombre: str, campo: str,
+                          mensaje: str) -> dict | None:
+    """El claim del barredor para los trabajos del editor (`worker/barredor.py`).
+
+    Mismo trato que `reclamar_fallo_produccion`, sobre otra tabla: gana solo si
+    el trabajo SIGUE 'corriendo', que es el caso en el que la tarea murió sin
+    que su código llegara a correr. Devuelve el trabajo (con sus `creditos`, que
+    quedaron escritos al cobrar) o None si ya lo cerró alguien.
+
+    Estado y motivo se escriben en la MISMA sentencia: un trabajo en 'error' sin
+    decir por qué manda al usuario a adivinar."""
+    base, estado, error = _TRABAJOS_FARGATE[campo]
+    filas = ejecutar(
+        f"""UPDATE proyectos_editor
+            SET doc = jsonb_set(jsonb_set(doc, '{estado}', '"error"'::jsonb),
+                                '{error}', :m::jsonb)
+            WHERE user_id = :u AND nombre = :n
+              AND doc #>> '{estado}' = 'corriendo'
+            RETURNING (doc #> '{base}')::text AS trabajo""",
+        {"u": user_id, "n": nombre, "m": json.dumps(mensaje)})
+    return json.loads(filas[0]["trabajo"]) if filas else None
+
+
 def fijar_render_editor(user_id: str, nombre: str, render: str) -> None:
     fijar_campo_editor(user_id, nombre, "render", render)
 
@@ -511,6 +547,23 @@ def liberar_produccion(user_id: str, id_: str, estado: str) -> None:
         """UPDATE proyectos_gen SET estado = :e, actualizado = now()
            WHERE user_id = :u AND id = :i AND estado = 'produciendo'""",
         {"u": user_id, "i": id_, "e": estado})
+
+
+def reclamar_fallo_produccion(user_id: str, id_: str) -> bool:
+    """M23 · D (prerrequisito) — el claim del BARREDOR (`worker/barredor.py`).
+
+    Gana solo si el proyecto SIGUE en 'produciendo', que es justo el caso en el
+    que la tarea de Fargate murió sin que su código llegara a correr. Si el
+    contenedor sí arrancó, él ya movió el proyecto a 'error' (devolviendo),
+    'listo' o 'imagenes', y aquí no se devuelve nada. Ese UPDATE condicionado
+    es toda la idempotencia del barredor: sin él, un fallo que el contenedor SÍ
+    alcanzó a manejar devolvería los créditos dos veces."""
+    filas = ejecutar(
+        """UPDATE proyectos_gen SET estado = 'error', actualizado = now()
+           WHERE user_id = :u AND id = :i AND estado = 'produciendo'
+           RETURNING id""",
+        {"u": user_id, "i": id_})
+    return bool(filas)
 
 
 def cargar_proyecto(user_id: str, id_: str) -> dict | None:

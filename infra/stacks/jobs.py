@@ -150,5 +150,23 @@ class JobsStack(Stack):
             timeout=Duration.hours(2),
         )
 
+        # M23 · D (prerrequisito) — el barredor. Esta máquina de estados no
+        # tiene `Catch`, y el `creditos.devolver` de cada tarea vive DENTRO del
+        # contenedor: si la tarea no llega a arrancar (imagen que no se pudo
+        # bajar, sin capacidad para 4 vCPU, timeout de 2 h) la ejecución muere
+        # sin devolver nada y el usuario queda cobrado y sin película.
+        # El evento va SIN transformar: `detail.input` ya es JSON y meterlo en
+        # una plantilla de EventBridge deja comillas sin escapar.
+        events.Rule(
+            self, "ProduccionCaida",
+            event_pattern=events.EventPattern(
+                source=["aws.states"],
+                detail_type=["Step Functions Execution Status Change"],
+                detail={"status": ["FAILED", "TIMED_OUT", "ABORTED"],
+                        "stateMachineArn": [self.state_machine.state_machine_arn]},
+            ),
+            targets=[targets.LambdaFunction(worker)],
+        )
+
         cdk.CfnOutput(self, "QueueUrl", value=self.queue.queue_url)
         cdk.CfnOutput(self, "StateMachineArn", value=self.state_machine.state_machine_arn)

@@ -83,6 +83,13 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
     if event.get("tipo") == "sync_costes":
         _sync_costes(int(event.get("dias") or 3))
         return {"ok": True}
+    # M23 · D (prerrequisito): una ejecución de Step Functions terminó mal. El
+    # evento llega ENTERO, sin transformar a propósito: `detail.input` ya es
+    # JSON, y meterlo dentro de una plantilla de EventBridge deja comillas sin
+    # escapar. El barredor devuelve los créditos que el contenedor no pudo.
+    if event.get("detail-type") == "Step Functions Execution Status Change":
+        from worker.barredor import barrer
+        return barrer(event.get("detail") or {})
     for rec in event.get("Records", []):
         j = json.loads(rec["body"])
         log.info("trabajo: %s", j.get("tipo"))
