@@ -48,7 +48,7 @@ def test_preparar_personaje_sin_ref_genera_2_opciones(tmp_path, monkeypatch):
         return f"http://fal/{Path(destino).name}"
 
     from pipeline import media_fal
-    monkeypatch.setattr(media_fal, "imagen_nano", falsa_imagen)
+    monkeypatch.setattr(media_fal, "imagen_fal", falsa_imagen)
     p = Proyecto(id="m1a", creado="2026-09-03T00:00:00", brief="x")
     d = Descripcion(nombre="semmelweis", descripcion="a Hungarian doctor")
     per = asyncio.run(character.preparar_personaje_sin_ref(p, resolver_estilo("animated"), d))
@@ -259,13 +259,21 @@ def test_gen_backend_default_es_fal(monkeypatch):
     assert Settings().gen_backend == "fal"
 
 
-def test_costo_fal_nano_banana():
+def test_costo_fal_del_modelo_de_imagen():
+    """M23 · B (18-sep): las imágenes las hace Grok. Las dos llaves de esta
+    familia cobran la misma salida y solo el de editar suma referencias, así
+    que una lista vacía da el precio de crear."""
+    from pipeline.config import settings
     from pipeline.pricing import costo_fal, estimar_regeneracion, unidades_fal
-    assert costo_fal("fal-ai/nano-banana", {"prompt": "x", "num_images": 1}) == 0.04
-    assert costo_fal("fal-ai/nano-banana/edit",
-                     {"prompt": "x", "num_images": 2, "image_urls": ["u"]}) == 0.08
-    assert unidades_fal("fal-ai/nano-banana/edit",
+    assert costo_fal(settings.fal_imagen, {"prompt": "x", "num_images": 1}) == 0.02
+    assert costo_fal(settings.fal_imagen_edit,
+                     {"prompt": "x", "num_images": 1, "image_urls": ["u", "v"]}) == 0.024
+    # num_images ya multiplica: Grok admite hasta 4 por llamada y hasta hoy
+    # esta rama las registraba todas como una
+    assert costo_fal(settings.fal_imagen, {"prompt": "x", "num_images": 3}) == 0.06
+    assert unidades_fal(settings.fal_imagen_edit,
                         {"num_images": 1, "image_urls": ["u"]}) == {"images": 1, "reference_images": 1}
+    # el b-roll manda SIEMPRE una referencia, así que la entrada va en el precio
     est = estimar_regeneracion(6.5, n_imagenes=2, backend="fal")
-    assert est["imagen"] == pytest.approx(0.08)          # 2 × $0.04 nano banana fal
+    assert est["imagen"] == pytest.approx(0.044)         # 2 × ($0.02 + $0.002)
     assert est["video"] == pytest.approx(0.24)           # 8 s × $0.03 veo lite 720p

@@ -149,7 +149,7 @@ def precios(name: str, oid: str):
 
 
 def _referencia_overlay(p: Path, ov: dict) -> Path:
-    """Ancla visual para Nano Banana: la imagen base de la versión activa si existe;
+    """Ancla visual para el modelo de imagen: la imagen base de la versión activa si existe;
     si no, un frame del clip activo (mantiene personaje y estilo)."""
     act = overlays.version_activa(ov)
     if act.get("imagen_base"):
@@ -207,7 +207,7 @@ def _imagenes_nube(name: str, oid: str, body: ImagenIn) -> dict:
                     name="g2_imagenes", as_type="span", input={"overlay": oid, "prompt": prompt[:300]}):
                 for k in range(N_IMAGENES):
                     f = tmp / f"{stamp}-{k}.jpg"
-                    asyncio.run(media_fal.imagen_nano(completo, f, referencia=ref,
+                    asyncio.run(media_fal.imagen_fal(completo, f, referencia=ref,
                                                       meta={"overlay": oid, "candidato": k}))
                     rel = f"overlays/{oid}/candidatos/{f.name}"
                     media_sync.subir_archivo(f, f"videos/{name}/work/{rel}")
@@ -217,7 +217,7 @@ def _imagenes_nube(name: str, oid: str, body: ImagenIn) -> dict:
     except Exception as err:  # noqa: BLE001 — cobrado y sin imágenes: devolver
         if creditos.activo():
             creditos.devolver(n_cr, f"overlay-imagen:{name}:{oid}", user)
-        raise HTTPException(502, f"Nano Banana falló: {str(err)[:300]}")
+        raise HTTPException(502, f"El modelo de imagen falló: {str(err)[:300]}")
     finally:
         _ocupado.pop(name, None)
         get_client().flush()
@@ -232,7 +232,7 @@ def _imagenes_nube(name: str, oid: str, body: ImagenIn) -> dict:
 
 @router.post("/{name}/api/overlays/{oid}/imagen")
 def generar_imagenes(name: str, oid: str, body: ImagenIn):
-    """g2 paso 1: opciones de imagen base nueva con el prompt editado (Nano Banana).
+    """g2 paso 1: opciones de imagen base nueva con el prompt editado.
     def (threadpool): la generación bloquea y no debe congelar el event loop."""
     from server.editor import _nube
     if _nube():
@@ -266,11 +266,11 @@ def generar_imagenes(name: str, oid: str, body: ImagenIn):
                     # asyncio.run es válido aquí: endpoint def → threadpool sin loop.
                     for k in range(N_IMAGENES):
                         f = cand_dir / f"{stamp}-{k}.jpg"
-                        asyncio.run(media_fal.imagen_nano(completo, f, referencia=ref,
+                        asyncio.run(media_fal.imagen_fal(completo, f, referencia=ref,
                                                           meta={"overlay": oid, "candidato": k}))
                         rutas.append(f"overlays/{oid}/candidatos/{f.name}")
     except Exception as err:  # noqa: BLE001
-        raise HTTPException(502, f"Nano Banana falló: {str(err)[:300]}")
+        raise HTTPException(502, f"El modelo de imagen falló: {str(err)[:300]}")
     finally:
         _ocupado.pop(name, None)
         get_client().flush()

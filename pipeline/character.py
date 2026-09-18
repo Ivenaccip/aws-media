@@ -73,7 +73,7 @@ def prompt_opcion(d: Descripcion, estilo: Estilo, variante: str) -> str:
 async def _opcion(p: Proyecto, ref_url: str, prompt: str, i: int) -> OpcionPersonaje | None:
     try:
         res = await fal.llamar(
-            settings.fal_grok, {"prompt": prompt, "image_urls": [ref_url], "aspect_ratio": "1:1"},
+            settings.fal_imagen_edit, {"prompt": prompt, "image_urls": [ref_url], "aspect_ratio": "1:1"},
             timeout_s=settings.grok_timeout_s, nombre="grok", meta={"personaje_opcion": i},
         )
         url = ((res.get("images") or [{}])[0]).get("url")
@@ -130,10 +130,13 @@ def prompt_opcion_sin_ref(d: Descripcion, estilo: Estilo, variante: str) -> str:
 
 
 async def _opcion_sin_ref(p: Proyecto, prompt: str, i: int) -> OpcionPersonaje | None:
-    from . import media_fal  # nano banana en fal (GEN_BACKEND=fal desde 2026-09-03)
+    # sin referencia: imagen_fal va al modelo de CREAR. Ojo con el except de
+    # abajo — se traga TODO, así que un fallo aquí no se ve como error sino
+    # como un proyecto varado sin opciones (M23 · B)
+    from . import media_fal
     try:
         destino = p.workdir / "personaje" / f"opcion_{i}.jpg"
-        url = await media_fal.imagen_nano(prompt, destino, meta={"personaje_opcion": i})
+        url = await media_fal.imagen_fal(prompt, destino, meta={"personaje_opcion": i})
         return OpcionPersonaje(url=url, path=str(destino))
     except Exception as err:  # noqa: BLE001
         log.warning("Opción sin referencia %d falló: %s", i, err)
@@ -142,7 +145,8 @@ async def _opcion_sin_ref(p: Proyecto, prompt: str, i: int) -> OpcionPersonaje |
 
 @observe(name="personaje_sin_ref")
 async def preparar_personaje_sin_ref(p: Proyecto, estilo: Estilo, d: Descripcion) -> Personaje:
-    """2 opciones generadas desde la descripción (Nano Banana, sin referencia)."""
+    """2 opciones generadas desde la descripción (sin referencia: va al modelo
+    de CREAR, no al de editar — ver pipeline/media_fal.imagen_fal)."""
     opciones = await asyncio.gather(*(
         _opcion_sin_ref(p, prompt_opcion_sin_ref(d, estilo, v), i)
         for i, v in enumerate(VARIANTES[:N_OPCIONES])

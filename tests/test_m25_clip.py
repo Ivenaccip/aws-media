@@ -133,7 +133,7 @@ def test_dos_o_tres_imagenes_pasan_por_grok_antes_de_animar(falso_fal, falso_llm
     from pipeline.config import settings
     r = _generar(urls=["a.jpg", "b.jpg", "c.jpg"])
     apps = [c["app"] for c in falso_fal.llamadas]
-    assert apps == [settings.fal_grok, settings.fal_veo]
+    assert apps == [settings.fal_imagen_edit, settings.fal_veo]
     assert falso_fal.llamadas[0]["args"]["image_urls"] == ["a.jpg", "b.jpg", "c.jpg"]
     # la composición ES el cuadro inicial del video
     assert falso_fal.llamadas[1]["args"]["image_url"] == "https://fal.test/compuesta.png"

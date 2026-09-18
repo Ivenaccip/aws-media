@@ -49,14 +49,29 @@ class Settings:
 
     # Endpoints fal (mismos que en n8n v9)
     fal_tts: str = "fal-ai/elevenlabs/tts/eleven-v3"
-    fal_grok: str = "xai/grok-imagine-image/edit"
+    # M23 · B — el modelo de imagen, en dos ids y por variable de entorno.
+    #
+    # Dos y no uno porque son DOS endpoints distintos y cruzarlos rompe en
+    # silencio: el de edición define su encuadre como «el de la primera imagen
+    # de entrada», así que sin imagen de entrada no tiene encuadre definido, y
+    # el camino que más lo sufre —las opciones de personaje sin referencia—
+    # atrapa toda excepción y devuelve None (pipeline/character.py), dejando el
+    # proyecto sin opciones y sin error visible.
+    #
+    # Por env porque el selector de modelos que viene después tiene que ser
+    # configuración y no otro deploy: entre el lanzamiento del 23 y el apagón
+    # de Nano Banana del 2-oct hay nueve días.
+    fal_imagen: str = os.getenv("FAL_IMAGEN", "xai/grok-imagine-image")
+    fal_imagen_edit: str = os.getenv("FAL_IMAGEN_EDIT", "xai/grok-imagine-image/edit")
     fal_veo: str = "fal-ai/veo3.1/lite/image-to-video"
     # M25 A: el clip sin imagen. Misma familia y MISMO precio que el de arriba
     # (720p con audio $0.05/s, verificado en fal el 2026-09-18), así que
     # pricing.json no necesita una entrada nueva: costo_fal ya casa "veo3.1".
     fal_veo_t2v: str = "fal-ai/veo3.1/lite"
-    fal_nano: str = "fal-ai/nano-banana"            # texto → imagen (M1 sin referencia)
-    fal_nano_edit: str = "fal-ai/nano-banana/edit"  # imagen + referencia (g2, editor de imágenes)
+    # `fal-ai/nano-banana` y su `/edit` estaban aquí hasta el 2026-09-18. Son
+    # `gemini-2.5-flash-image`, que Google apaga el 2026-10-02: se fueron antes
+    # de tiempo a propósito, para no desplegar el cambio con 182 usuarios
+    # dentro. Su precio sigue anotado en pricing.json, que es el histórico.
 
     # M17 — actores Apify (formato usuario~nombre, como pide su API REST)
     apify_yt_info: str = "thenetaji~youtube-video-details-scraper"   # cotizar: título+duración
