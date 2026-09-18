@@ -1618,7 +1618,113 @@ Va en entregas, cada una con su PR:
         `aws-media-api`; CDK pone jobs primero.
       - Pendiente: la película horizontal no tiene salida vertical para
         Instagram/Facebook; el texto del post no pasa por moderación.
-- [ ] **C3 · Agenda** · [ ] **C4 · Métricas** · [ ] **C5 · Competencia** (Apify).
+- [x] **C3 · Agenda** (2026-09-17, rama `agenda-blotato`): pantalla propia
+      (`static/agenda.html`, el menú deja de decir «próximamente») con lo que
+      Blotato todavía no ha publicado — también lo programado desde blotato.com.
+      Decisiones del dueño: solo **cambiar la hora** y **cancelar**; al cancelar,
+      el proyecto dice «Cancelada»; nada de publicado ni fallido (eso es C4).
+      - **La fuente de verdad es Blotato:** `GET /v2/schedules` trae el id del
+        programado, que es el que viaja al PATCH y al DELETE. Crear el post NO
+        devuelve ese id, así que la Agenda no depende de nuestros registros.
+      - **El PATCH manda solo la hora.** Blotato no fusiona: un `draft` parcial
+        borraría el video y el usuario se enteraría cuando saliera el post.
+      - **Cancelar no se deshace:** exige confirmar antes de tocar nada, lee la
+        publicación antes de borrarla (después ya no hay de dónde sacar la URL
+        del video) y la tarjeta dice a qué página o tablero va, para que dos
+        publicaciones de la misma cuenta no se confundan.
+      - **El puente con nuestros registros** es la URL que Blotato acuña al
+        subir: el worker la guarda y deja un índice mínimo
+        (`usuarios/<sub>/agenda/<sha256>.json`) con el proyecto y la publicación.
+        Antes de escribir se corrobora la red y la cuenta, y solo se toca un
+        registro que la pantalla vea como «programado». Lo de antes de C3 no
+        tiene índice: se cancela igual, pero el modal dirá «No sabemos si llegó».
+      - **Blotato caído no es una agenda vacía:** la lista conserva lo que ya
+        estaba y avisa; sin poll, una llamada por carga (el límite es 60/min y
+        el modal de Publicar ya gasta 3).
+      - Sin cambios de infra ni migración. Pendiente: no se puede editar el
+        texto desde la Agenda, ni programar desde ahí (eso sigue en el editor).
+- [x] **C4 · Métricas** (2026-09-17, rama `metricas-blotato`): pantalla propia
+      (`static/metricas.html`; en el menú ya solo queda «próximamente» en
+      Competencia) con lo que YA salió, lo que NO pudo salir y cómo rinde.
+      Decisiones del dueño: publicado **y** fallido en la misma lista, más una
+      vista «Las más vistas»; cuatro números en la tarjeta y el resto al
+      abrirla; ventana de 30 días con «Ver más» hacia atrás.
+      - **Verificado contra la API real el 17-sep**, no solo contra la doc:
+        `GET /v2/posts` (qué hay: es la única con las fallidas y con cursor) y
+        `GET /v2/analytics` (cuánto rinde: trae los números y su historial
+        pegados, y sin cursor). Se juntan por `id` — que es el de Blotato y
+        **no** el `postSubmissionId` que guarda el worker: ese no sirve aquí.
+      - **Dos llamadas por carga y ninguna más.** Van con presupuesto común
+        (18 s de los 29 de la Lambda), `/v2/posts` primero: si el tiempo se
+        acaba, la pantalla degrada a «tus publicaciones, sin números» y no a
+        una pantalla en blanco. «Las más vistas» es la misma respuesta sin
+        reordenar: cambiar de vista cuesta cero.
+      - **«Sin números» son CUATRO cosas distintas** y confundirlas es el peor
+        error posible aquí: la publicación falló (nunca los tendrá), es de
+        LinkedIn (Blotato aún no recoge de esa red), Blotato respondió por todo
+        el tramo y no la tenía (no guardó nada), o **no lo sabemos** —la
+        respuesta vino recortada o no vino—, que es el único caso con botón.
+        Ese botón cuesta una llamada y resuelve los tres restantes: 200 con
+        `metrics:null` («aún no la ha medido»), 404 («no guardó nada») y
+        `lastError` («la red no se los dio»). El 404 sale como 200: no es una
+        avería, es la respuesta.
+      - **Ningún endpoint fuerza una medición nueva.** Blotato mide por tandas,
+        desde ~2 h después de publicar hasta los 90 días. Por eso el botón dice
+        «Ver números» y no «Actualizar», y por eso no hay sondeo.
+      - Los contadores llegan en texto (para no perder precisión) y salen en
+        entero; lo que no se puede convertir viaja como `null` y **nunca** como
+        0: un cero inventado le diría al usuario que no gustó a nadie. Una
+        bajada entre dos mediciones se conserva tal cual — las redes corrigen.
+      - Sin cambios de infra, sin migración, sin caché y **sin tarifa**: leer
+        números no cuesta créditos. Cero lecturas de S3 y cero Postgres.
+      - Pendiente: no enlaza cada publicación con el proyecto que la produjo
+        (se podría con el índice `sha256(media_url)` de C3, pero cuesta una
+        lectura de S3 por tarjeta y solo lo tiene lo publicado desde el 17-sep);
+        sin seguidores, sin comparar redes entre sí y sin exportar.
+- [x] **C5 · Competencia** (2026-09-17, rama `competencia-apify`): pantalla
+      propia (`static/competencia.html`; con esto **no queda ninguna sección en
+      «próximamente»**) con lo que le está funcionando a las cuentas que el
+      usuario vigila. Decisiones del dueño: **cuentas concretas** que él elige
+      (no un rubro o un hashtag), las **tres redes** (Instagram, TikTok y
+      YouTube), lista **más lectura con IA**, **3 créditos por cuenta** y las
+      **10 últimas** publicaciones de cada una.
+      - **Los tres actores se eligieron corriéndolos**, no leyendo su ficha
+        ($0.14 dólares de verificación el 17-sep): Instagram con el oficial que
+        ya usa la copiadora de estilos ($0.0027 por publicación), TikTok con
+        `apidojo/tiktok-profile-scraper` ($0.0003 — diez veces más barato que
+        el de clockworks y con los mismos datos) y YouTube con
+        `grow_media/youtube-channel-video-scraper` ($0.001, el único que da la
+        fecha exacta, las vistas sin redondear y los me gusta).
+      - **Dos cosas que solo se ven pagando** y quedan escritas en
+        `pricing.json`: el `usageTotalUsd` de una corrida **no es definitivo al
+        terminar** (un actor marcaba $0.00005 y acabó en $0.01005), y hay
+        actores que **cobran por lo que raspan y no por lo que entregan** (uno
+        cobró 24 publicaciones para devolver 10 — descartado).
+      - **El orden es el producto.** Ordenar por vistas habría puesto arriba a
+        la cuenta más grande siempre, que no enseña nada. Cada publicación
+        lleva un `indice` = sus vistas ÷ **la mediana de su propia cuenta**, y
+        la lista va por ahí: así un éxito real de una cuenta chica le gana a un
+        día normal de una grande. Con menos de 3 publicaciones medidas no hay
+        mediana y el índice **no se calcula** en vez de inventarse.
+      - **Una cuenta caída no tumba el informe:** se cobró por cuenta, así que
+        la que no trajo nada **devuelve sus 3 créditos** y el informe sale con
+        las demás diciendo cuál faltó y por qué (privada, vacía o renombrada).
+        Si no llega ninguna, es error y se devuelve todo. Un fallo del LLM
+        tampoco devuelve: los números son lo que se pagó, la lectura es el extra.
+      - **El LLM tiene prohibido rellenar:** un patrón necesita al menos dos
+        publicaciones que lo sostengan y que rindan por encima de su cuenta, y
+        cada afirmación tiene que poder señalarlas por id. Puede devolver cero
+        patrones y decir en `advertencia` qué no se puede concluir.
+      - **Freno de gasto nuevo en `pipeline/apify.py`:** `correr()` acepta
+        `tope_usd` (el `maxTotalChargeUsd` de Apify) y competencia lo usa en
+        cada corrida. Hasta ahora nada limitaba lo que podía cobrar un actor de
+        un tercero corriendo por cuenta de un usuario.
+      - Sin cambios de infra, sin migración y sin permisos nuevos:
+        `APIFY_TOKEN` ya llega al worker por SSM desde M17.
+      - Pendiente: no enlaza cada publicación con la copiadora de estilos
+        (el dato está —`enlace` es justo lo que `/api/estilo` sabe analizar—,
+        falta el botón); sin seguidores, sin hashtags ni rubro, y las cuentas
+        vigiladas no se comparan con las del propio usuario.
 
 Lo que pedía el análisis:
 
@@ -1644,9 +1750,13 @@ Lo que pedía el análisis:
 - Las tres secciones:
   - **Agenda:** la API REST v2 la cubre (crear, listar, reprogramar, borrar).
   - **Métricas:** solo por publicación, solo de lo publicado vía Blotato,
-    8 redes sin LinkedIn, sin seguidores.
+    8 redes sin LinkedIn, sin seguidores. (Confirmado en C4 contra la API real:
+    lo de LinkedIn sigue siendo cierto, y lo que el análisis no vio es que
+    Blotato mide por tandas y no se le puede pedir una medición nueva.)
   - **Competencia:** Blotato no la tiene. Se hace con Apify (ya integrado) y
     necesita tarifa nueva en `tarifas.json`; no depende de la clave.
+    (Hecho en C5, y lo de «no depende de la clave» resultó ser lo importante:
+    es la única sección de Blotato que funciona sin haberla conectado.)
 
 ### D · MIX (después del 23)
 

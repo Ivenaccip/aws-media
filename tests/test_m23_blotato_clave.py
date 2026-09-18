@@ -86,19 +86,40 @@ REDES = [{"id": "11", "platform": "tiktok", "fullname": "Ana", "username": "ana.
 
 @pytest.fixture
 def blotato_http(monkeypatch):
-    """httpx.get simulado: guarda las cabeceras y responde lo que se le diga."""
-    estado = SimpleNamespace(codigo=200, cuerpo={"items": REDES}, cabeceras=[], error=None)
+    """httpx simulado: guarda las cabeceras y responde lo que se le diga.
 
-    def get(url, headers, timeout):
+    C3 añadió el cursor (get con `params=`) y los dos verbos de la Agenda. Sin
+    taparlos aquí, una prueba que llame a reprogramar()/cancelar() saldría a la
+    red de verdad — y con la firma vieja get(url, headers, timeout) el doble
+    reventaba con un TypeError que se lee como cualquier otra cosa."""
+    estado = SimpleNamespace(codigo=200, cuerpo={"items": REDES}, cabeceras=[], error=None,
+                             params=[], verbos=[])
+
+    def get(url, headers, timeout, params=None):
+        estado.params.append(params)
+        return _responder("GET", url, headers)
+
+    def patch(url, headers, timeout, json=None):
+        return _responder("PATCH", url, headers)
+
+    def delete(url, headers, timeout):
+        return _responder("DELETE", url, headers)
+
+    def _responder(verbo, url, headers):
+        estado.verbos.append(verbo)
         estado.cabeceras.append(dict(headers))
         if estado.error:
             raise estado.error
         if estado.cuerpo is None:   # una página de error en vez de JSON
             return httpx.Response(estado.codigo, content=b"<html>",
-                                  request=httpx.Request("GET", url))
+                                  request=httpx.Request(verbo, url))
+        if verbo != "GET":          # PATCH y DELETE contestan 204 SIN cuerpo
+            return httpx.Response(204, request=httpx.Request(verbo, url))
         return _respuesta(estado.codigo, estado.cuerpo)
 
     monkeypatch.setattr(blotato.httpx, "get", get)
+    monkeypatch.setattr(blotato.httpx, "patch", patch)
+    monkeypatch.setattr(blotato.httpx, "delete", delete)
     return estado
 
 
@@ -255,6 +276,10 @@ def test_cada_llamada_lleva_la_clave_que_recibe(blotato_http):
     lambda: blotato.cuentas(""),
     lambda: blotato.subir_video("", Path("x.mp4")),
     lambda: blotato.publicar(None, "1", "tiktok", "hola", []),
+    lambda: blotato.programados(""),                          # C3: la Agenda
+    lambda: blotato.programado("", "sch_1"),
+    lambda: blotato.reprogramar("", "sch_1", cuando="2026-10-01T10:00:00+00:00"),
+    lambda: blotato.cancelar("", "sch_1"),
 ])
 def test_sin_clave_no_sale_nada(blotato_http, llamada):
     with pytest.raises(blotato.ClaveInvalida):
@@ -846,10 +871,25 @@ def test_el_inicio_abre_el_modal_si_viene_del_editor():
     assert "get('blotato') === 'conectar'" in INICIO
 
 
-def test_las_tres_secciones_siguen_proximamente():
-    for texto in ("Agenda tus publicaciones", "Investiga tu competencia", "Ver mis métricas"):
-        linea = next(l for l in INICIO.splitlines() if texto in l)
-        assert 'class="prox"' in linea
+def test_ya_no_queda_ninguna_seccion_proximamente():
+    """C5 estrenó Competencia, la última que quedaba: el menú de Blotato ya no
+    promete nada que no exista (el « · próximamente» lo pone el CSS de
+    nav .prox small::after, así que basta con que no quede ningún .prox)."""
+    assert 'class="prox"' not in INICIO, "una sección del menú sigue sin existir"
+
+
+def test_la_competencia_es_un_enlace_y_ya_no_dice_proximamente():
+    linea = next(l for l in INICIO.splitlines() if "Investiga tu competencia" in l)
+    assert 'class="prox"' not in linea, "el CSS le seguiría poniendo « · próximamente»"
+    assert 'href="/competencia.html"' in linea
+    assert linea.lstrip().startswith("<a ")
+
+
+def test_la_agenda_es_un_enlace_y_ya_no_dice_proximamente():
+    linea = next(l for l in INICIO.splitlines() if "Agenda tus publicaciones" in l)
+    assert 'class="prox"' not in linea, "el CSS le seguiría poniendo « · próximamente»"
+    assert 'href="/agenda.html"' in linea
+    assert linea.lstrip().startswith("<a ")
 
 
 def test_el_modal_ya_no_dice_que_programar_llega_pronto():

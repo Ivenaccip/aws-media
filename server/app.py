@@ -32,6 +32,8 @@ from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
 from server import auth
 from server.admin_api import router as admin_router
+from server.agenda_api import router as agenda_router
+from server.metricas_api import router as metricas_router
 from server.blotato_api import router as blotato_router
 from server.broll_api import router as broll_router
 from server.editar_api import router as editar_router
@@ -43,6 +45,7 @@ from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
 from server.estilos_api import router as estilos_router
+from server.competencia_api import router as competencia_router
 from server.shorts_api import router as shorts_router
 
 
@@ -102,12 +105,17 @@ app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
 app.include_router(blotato_router)
+# antes del mount de static/ de más abajo: si no, /api/agenda cae en StaticFiles
+# y devuelve su 404 en HTML
+app.include_router(agenda_router)
+app.include_router(metricas_router)
 app.include_router(broll_router)
 app.include_router(media_router)
 app.include_router(pagos_router)
 app.include_router(admin_router)
 app.include_router(shorts_router)
 app.include_router(estilos_router)
+app.include_router(competencia_router)
 app.include_router(editar_router)
 
 

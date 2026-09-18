@@ -143,6 +143,68 @@ publicación no salió:
 - Los rechazos de Blotato (422: falta la página, la privacidad, límite diario
   de la red…) llegan a la pantalla con el mensaje de Blotato.
 
+Desde C3 hay además una **Agenda** (`/agenda.html`, en el menú del inicio) con
+todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
+
+- Lo que enseña sale de Blotato, no de nosotros: también aparece lo que el
+  usuario haya programado desde blotato.com. Solo se ve lo **futuro** — en
+  cuanto pasa la hora, Blotato lo saca de esa lista.
+- Solo se puede **cambiar la hora** y **cancelar**. Cambiar el texto obligaría a
+  reenviar la publicación entera, y Blotato no la fusiona: un campo de menos
+  deja el post sin video. Para cambiar el texto, se cancela y se programa otra
+  vez desde el editor.
+- Cancelar **no se deshace**, y por eso la tarjeta dice a qué página o tablero
+  va: dos publicaciones de la misma cuenta a páginas distintas se distinguen.
+- Al cancelar, nuestro registro queda en «Cancelada» si lo encontramos. El
+  emparejamiento va por la URL del video que acuña Blotato al subirlo
+  (`usuarios/<sub>/agenda/<sha256>.json`). Lo programado **antes** de C3 no
+  tiene ese índice: se cancela igual en Blotato, pero el modal de Publicar
+  acabará diciendo «No sabemos si llegó».
+- «No pudimos traer tu agenda» no es una agenda vacía: si Blotato falla o pide
+  esperar (60 peticiones por minuto y por usuario), la lista conserva lo que ya
+  estaba y avisa. La pantalla no consulta sola: solo al abrirla, al pulsar
+  «Actualizar» y después de cada cambio.
+
+Y desde C4, **Métricas** (`/metricas.html`, también en el menú) con lo que ya
+salió y lo que no pudo salir. Las preguntas que van a llegar:
+
+- **«No me aparecen los números».** Casi siempre es que Blotato todavía no los
+  ha recogido: los junta por tandas, desde un par de horas después de publicar
+  y hasta 90 días. **Ningún endpoint fuerza una medición nueva**, así que no hay
+  nada que reintentar; por eso el botón dice «Ver números» y no «Actualizar».
+  La pantalla distingue cuatro motivos y cada uno dice el suyo en la tarjeta.
+- **LinkedIn no da números** y no es un fallo nuestro: Blotato aún no los
+  recoge de esa red. Las otras ocho sí.
+- **«Esta publicación es vieja y dice que no hay números».** Blotato solo
+  guarda lo que llegó a medir: de lo anterior a que empezara no hay nada, y no
+  se puede reconstruir.
+- Una carga cuesta **dos** llamadas a Blotato (la lista y los números) y
+  cambiar a «Las más vistas» no cuesta ninguna: es la misma respuesta. Pedir
+  los números de una publicación suelta cuesta una más.
+- La pantalla llega **hasta un año atrás**, en tramos de 30 días.
+
+Y desde C5, **Investiga tu competencia** (`/competencia.html`). Es la única
+sección del grupo de Blotato que **no usa Blotato**: mira cuentas públicas de
+Instagram, TikTok y YouTube con Apify, así que funciona aunque el usuario no
+haya conectado su clave. Lo que va a preguntar:
+
+- **«¿Por qué esta publicación está arriba si tiene menos vistas?»** Porque la
+  lista no va por vistas: va por cuánto rindió **comparada con lo normal de su
+  propia cuenta** («3× lo normal»). Ordenar por vistas pondría siempre arriba a
+  la cuenta más grande, que no enseña nada. Si una cuenta trajo menos de tres
+  publicaciones con vistas, no hay mediana y esa etiqueta no aparece.
+- **«Me cobró menos de lo que decía el botón».** Se cobra por cuenta (3
+  créditos) y la cuenta que no devolvió nada **se devuelve**: el informe lo
+  dice arriba, con el motivo. Pasa con cuentas privadas, vacías o renombradas.
+- **«Faltan los compartidos».** Instagram y YouTube no los informan. Un hueco
+  («—») es eso y nunca un cero.
+- **«No me deja agregar la cuenta».** Hay que pegar la liga del **perfil**
+  (`instagram.com/lacuenta`), no la de una publicación. Se vigilan hasta 5
+  cuentas y solo se puede lanzar una revisión a la vez.
+- Una revisión cuesta **una corrida de Apify por cuenta**, con tope de gasto
+  por corrida. Guardar o quitar cuentas y volver a abrir un informe ya hecho
+  no cuesta nada.
+
 ### «Mi película se quedó en las imágenes y no avanza»
 
 No está atascada: está **esperando**. Desde el 14 de septiembre de 2026, en

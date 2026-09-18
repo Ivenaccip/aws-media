@@ -52,6 +52,9 @@ BROLL_SUGERENCIAS_CR = 2
 # M18 — copiadora de estilos (fallback espejo de tarifas.json §estilos)
 ESTILO_ANALIZAR_CR = 3
 
+# M23 C5 — competencia (fallback espejo de tarifas.json §competencia)
+COMPETENCIA_POR_CUENTA_CR = 3
+
 def _tabla_de(crudo: dict) -> dict[int, int]:
     """§video.por_duracion → {segundos: total}. Se queda solo con lo que el
     pipeline sabe producir: una llave fuera del rango se cobraría con su precio y
@@ -85,6 +88,8 @@ try:
     EDITAR_SUGERENCIAS_CR = _t.get("editar", {}).get("sugerencias", EDITAR_SUGERENCIAS_CR)
     BROLL_SUGERENCIAS_CR = _t.get("editar", {}).get("broll_sugerencias", BROLL_SUGERENCIAS_CR)
     ESTILO_ANALIZAR_CR = _t.get("estilos", {}).get("analizar", ESTILO_ANALIZAR_CR)
+    COMPETENCIA_POR_CUENTA_CR = _t.get("competencia", {}).get(
+        "por_cuenta", COMPETENCIA_POR_CUENTA_CR)
 except (FileNotFoundError, KeyError, ValueError, TypeError):
     pass  # fallback: tarifa de arriba (2026-09-02); una llave mal escrita no tumba la API
 
@@ -192,6 +197,14 @@ def costo_estilo_analizar() -> int:
     """M18: perfil de estilo de un reel/TikTok — tarifa fija (Apify + visión
     gpt-5-mini cuestan centavos de dólar juntos; los reels son cortos)."""
     return ESTILO_ANALIZAR_CR
+
+
+def costo_competencia(n_cuentas: int) -> int:
+    """M23 C5: revisar la competencia — tarifa POR CUENTA vigilada que entra en
+    la corrida. Igual en las tres redes (Instagram cuesta nueve veces más que
+    TikTok, pero un botón que cambia de precio según a quién vigilas no se
+    puede explicar). Volver a ver un informe ya hecho no cuesta."""
+    return COMPETENCIA_POR_CUENTA_CR * max(0, int(n_cuentas))
 
 
 def costo_shorts_render(n_shorts: int) -> int:
