@@ -1562,6 +1562,106 @@ el selector, o al menos el cambio de modelo, tiene que estar antes de esa fecha.
   oculto y sin precio el 16-sep), Nano Banana 2, Grok edit (ya integrado,
   `pricing.json`). Para editar hace falta un A/B pagado (pedir permiso).
 
+**Decisión del dueño (2026-09-18): Grok de momento, y el selector después.**
+Es decir, la fase se parte en dos y cambia de orden: primero **un solo modelo
+nuevo por defecto** —Grok, que ya está integrado y cuesta $0.02 dólares por
+imagen de salida contra los $0.04 de Nano Banana (`pricing.json`)— y después la
+pantalla donde el usuario elige entre varios viendo el precio de cada uno.
+
+Por qué ese orden y no el del plan original:
+
+- la fecha manda. El 2 de octubre es una fecha de Google, no nuestra, y son
+  nueve días después del lanzamiento: cambiar el modelo por defecto es
+  obligatorio, mientras que elegir modelo es una mejora;
+- **MIX (D) empuja en la misma dirección.** Rediseñado, publica una imagen
+  diaria a 5 créditos, y a ese precio el margen con Nano Banana es estrecho y
+  con Grok es holgado;
+- un selector obliga a decidir la tarifa de CADA modelo antes de tener a nadie
+  usándolos. Con uno solo, la tarifa es una.
+
+### Lo construido (2026-09-18) — las imágenes las hace Grok
+
+Un solo modelo nuevo por defecto, y el selector después.
+
+| Pieza | Qué |
+|---|---|
+| `pipeline/config.py` | `fal_imagen` y `fal_imagen_edit`, **por variable de entorno** |
+| `pipeline/media_fal.py` | `imagen_nano` → `imagen_fal`; sin referencia va al de crear, con referencia al de editar |
+| `pipeline/pricing.py` | `estimar_regeneracion` cotiza el modelo que de verdad se llama; `num_images` deja de ignorarse |
+| `tools/pricing.json` | el precio del texto→imagen, con su fuente; Nano Banana queda marcado como histórico |
+| `tools/ssm_env.py` | los dos ids viajan a SSM: cambiar de modelo ya no necesita deploy |
+| `tests/test_m23_modelo_imagen.py` | 11 tests nuevos — la red que no existía |
+
+**Son DOS ids y no uno, y eso es lo que más importa del cambio.** El endpoint de
+editar define su encuadre como «el de la primera imagen de entrada»: sin imagen
+de entrada no tiene encuadre que copiar. Quien lo sufriría no es la pantalla de
+imágenes, que se vería enseguida, sino **las dos opciones de personaje sin
+referencia** — `_opcion_sin_ref` atrapa TODA excepción y devuelve `None`, así
+que un fallo ahí no sale como error: sale como un proyecto varado en revisión
+con cero opciones, que es exactamente el bug que M1 existió para arreglar. Un
+buscar-y-reemplazar de `fal_nano` → `fal_grok` habría hecho justo eso, y por eso
+hay un test que lo fija.
+
+**El aspecto ahora viaja siempre escrito.** M1 y el b-roll recibían imágenes
+cuadradas porque ese era el valor por defecto de Nano Banana, no porque nadie lo
+hubiera decidido. Con el modelo nuevo el encuadre se habría movido solo y nadie
+lo habría visto hasta mirar las imágenes.
+
+**El precio que se enseña mentía.** `estimar_regeneracion` multiplicaba por los
+$0.04 de Nano Banana, y ese número no solo se muestra en el popup del b-roll:
+se guarda en el libro de gastos del proyecto. Habría seguido cotizando el doble
+de lo que cuesta. Falla hacia arriba, que es la dirección que parece inofensiva.
+
+#### La prueba pagada (2026-09-18, ~$0.18 dólares, autorizada por el dueño)
+
+Ocho llamadas con los prompts **reales** del repo — probar con otra redacción no
+habría probado nada. Salieron las ocho.
+
+- **El pincel funciona.** No hay máscara en ninguno de los dos modelos y nunca
+  la hubo: el navegador aplana la foto y los trazos en un JPEG y se mandan dos
+  imágenes con la instrucción de tocar solo esa zona. Medido sobre la imagen de
+  salida, fuera de la zona marcada la diferencia media es de **3.5 sobre 255**
+  en un cambio local y **4.5** en otro — eso es ruido de recompresión, no
+  edición. Dentro: 6.3 y 20.7. Sin marca de color residual.
+- **El filtro de xAI no rechazó personas**, ni al generar un retrato ni al
+  editarle la ropa. Aviso: Grok **no expone `safety_tolerance`** y Nano Banana
+  sí. Si algún día el filtro empieza a rechazar fotos de usuarios, ya no hay
+  palanca que ajustar — es política de xAI.
+- **El encuadre se respeta exacto**: 1280×720, 1024×1024 y 720×1280 para los
+  tres formatos de la herramienta.
+- **~1 MP, igual que Nano Banana**: el b-roll no pierde resolución antes de que
+  Veo lo anime.
+- **13–29 s por imagen** (mediana 16). La pantalla promete «~20 s» y sigue
+  siendo honesto, aunque el vertical se fue a 28.7 s.
+- **Devuelve JPEG nativo.** Nano Banana devolvía PNG y el repo lo guardaba en un
+  archivo `.jpg`: el nombre llevaba meses mintiendo y deja de hacerlo.
+
+Lo que la prueba **no** contesta, y conviene no olvidar: la consistencia del
+personaje entre escenas de una película (eso cuesta una película, no centavos),
+y no hay comparación contra Nano Banana — se eligió la prueba de solo-Grok, así
+que lo que se sabe es que Grok hace el trabajo, no que lo haga mejor.
+
+#### Lo que queda abierto
+
+- **`GEN_BACKEND` en producción.** Si vale `google`, el popup de b-roll empieza
+  a dar 502 el 2-oct por su cuenta: `gemini_image_model` apunta al modelo
+  apagado y ese camino no lo toca este cambio. El repo no puede saber qué vale
+  —viaja por SSM—, así que **hay que leer el parámetro**. El default del código
+  es `fal`.
+- **Cuatro referencias contra un tope de tres.** `resolver_referencias` arma
+  hasta 4 imágenes (`pipeline/scenes.py`) y el endpoint de edición documenta un
+  máximo de 3. Es anterior a este cambio y **no está comprobado que se dispare**
+  en alguna película real: se puede mirar en los proyectos ya producidos sin
+  gastar un centavo, y ese es el paso previo a tocarlo.
+- **Con qué modelo se generó cada imagen no se guarda en ninguna parte.** En
+  Langfuse sí queda (`model=app` en cada generación), pero no en el proyecto.
+  Después del 23, entre 182 personas, eso es lo que separa «se ve peor» de «es
+  otro modelo».
+- **El selector** (la parte que el dueño dejó para después): la tarifa sigue
+  siendo una sola (`tarifas.json §video.imagen`, 2 créditos) y no depende del
+  modelo. Con Grok esa tarifa pasa de vender a pérdida a vender con margen —
+  pero eso es una decisión de negocio que el cambio de modelo no toma solo.
+
 ### C · Blotato: cada usuario trae su clave (después del 23)
 
 Decisión: cada usuario conecta SU clave (y paga su plan de Blotato).

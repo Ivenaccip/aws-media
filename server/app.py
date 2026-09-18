@@ -291,8 +291,8 @@ async def crear_imagen(body: PedidoImagen):
     destino = _dir_imagenes() / nombre
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
-        await media_fal.imagen_nano(f"{prompt}. {estilo.prompt}. No text, no watermark.",
-                                    destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
+        await media_fal.imagen_fal(f"{prompt}. {estilo.prompt}. No text, no watermark.",
+                                   destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
@@ -308,7 +308,7 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                         marcada: UploadFile | None = File(None),
                         modo: str = Form("pincel"),
                         estilo: str = Form(""), estilo_custom: str = Form("")):
-    """M15 — «Editor de imágenes» con Nano Banana edit. Misma tarifa de imagen.
+    """M15 — «Editor de imágenes». Misma tarifa de imagen.
 
     Dos modos, porque el editor solo sabía hacer uno y los testers pedían el
     otro (M22 · C):
@@ -767,7 +767,7 @@ async def modificar_personaje(id_: str, body: ModificarPersonajeIn):
     try:
         prompt = (f"{instruccion}. Keep the same character identity as the reference image. "
                   f"{resolver_estilo(p.estilo, p.estilo_custom).prompt}. Clean neutral background, no text.")
-        res = await fal.llamar(settings.fal_grok,
+        res = await fal.llamar(settings.fal_imagen_edit,
                                {"prompt": prompt, "image_urls": [base.url], "aspect_ratio": "1:1"},
                                timeout_s=settings.grok_timeout_s, nombre="grok",
                                meta={"personaje_mod": p.id})
