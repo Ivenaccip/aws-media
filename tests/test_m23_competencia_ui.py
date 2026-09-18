@@ -46,7 +46,10 @@ def test_la_pantalla_arranca_despues_de_auth():
 
 
 def test_el_menu_del_estudio_enlaza_la_pantalla():
-    linea = next(l for l in HUB.splitlines() if "Investiga tu competencia" in l)
+    # la línea del <a>, no la primera que mencione el nombre: los comentarios
+    # del menú también lo nombran (M25 · B)
+    linea = next(l for l in HUB.splitlines()
+                 if "Investiga tu competencia" in l and l.lstrip().startswith("<a "))
     assert 'href="/competencia.html"' in linea
     assert 'class="prox"' not in linea
 
