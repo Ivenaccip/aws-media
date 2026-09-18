@@ -1786,17 +1786,135 @@ Lo que pedía el análisis:
 
 ### D · MIX (después del 23)
 
+**El diseño cambió el 18-sep.** Lo de abajo está en dos partes: primero lo que
+el dueño decidió ese día, que es lo que se va a construir, y después el diseño
+de septiembre 16 con el que se abrió la fase, que se conserva porque explica de
+dónde salen los prerrequisitos y porque la versión «película» sigue siendo el
+destino si la de imágenes funciona.
+
+#### El rediseño del dueño (2026-09-18)
+
+La imagen mental es un asistente al que le encargas que publique por ti y no le
+revisas el trabajo: *«solo quiere publicidad que salga para traer cosas»*.
+
+- **Imágenes, no películas.** MIX publica una imagen al día. Si funciona, se
+  extiende a video. Eso lo cambia todo: una imagen no pasa por Fargate ni por
+  la máquina de estados, así que MIX cabe entero en el worker Lambda.
+- **La entrada es el negocio, no el tema.** El usuario describe **qué quiere
+  que salga esta semana**, y se le pregunta si tiene alguna **fecha cercana**
+  con promoción. De ahí salen los temas de cada día: los propone el sistema.
+- **Publica directo**, sin pantalla de aprobación. Es la decisión que define el
+  producto: el dueño no quiere revisar nada.
+- **Duración de la campaña:** 3 días · 1 semana · 2 semanas · 1 mes · a medida.
+  El usuario elige también el horario.
+- **Antes de arrancar se enseña cuánto va a costar** la campaña completa.
+- **Tarifa: 5 créditos por publicación** — 2 de la imagen y 3 de la
+  automatización, la subida y los recursos de AWS.
+- **Una sola automatización y un solo canal** por ahora.
+- **Si los créditos no alcanzan, se avisa por correo** de que el flujo está en
+  peligro de apagarse.
+
+**Lo que se deriva de eso y no hace falta volver a decidir:**
+
+- **Se cobra cada corrida, no la campaña por adelantado.** El aviso de «tu
+  flujo se va a apagar» solo existe si el saldo puede acabarse a mitad; cobrar
+  el mes entero el primer día lo haría imposible y además cobraría por
+  publicaciones que quizá nadie llegue a querer.
+- **La hora va en punto y el disparo corre una vez por hora.** Un barrido cada
+  pocos minutos le impide a Aurora pausarse, y esa pausa es la que mantiene el
+  piso de la cuenta cerca de cero.
+- **MIX exige la clave de Blotato conectada**, porque publica. Nace apagado
+  para casi todos los 182, igual que las otras tres entradas de su grupo.
+
+#### Lo que se encontró al mapear (2026-09-18)
+
+Cuatro cosas que el rediseño necesita saber, y que no estaban en el diseño de
+septiembre 16:
+
+- **Blotato no tiene borrador.** El único `draft` del código es un kwarg de
+  `reprogramar()` que nadie usa a propósito: el PATCH no hace merge y un draft
+  parcial borra `mediaUrls` y `target` (`pipeline/blotato.py`). Lo que sí sabe
+  hacer, y está en producción, es **subir el archivo y agendar**
+  (`publicar(..., scheduled_time=...)`, `worker/publicar_task.py`). Así que
+  «dejar en borrador» nunca fue una opción de Blotato: habría tenido que ser
+  una pantalla nuestra. Como el dueño eligió publicar directo, deja de
+  importar — pero si algún día se vuelve al borrador, es trabajo nuestro.
+- **No hay dónde guardar lo que MIX necesita recordar.** No existe ninguna
+  preferencia de usuario persistida —ni voz, ni personaje, ni formato, ni
+  estilo: la tabla `usuarios` tiene `id`, `email`, `creado` y `slots`— **ni
+  lista de temas**. Cada película empieza de cero hoy porque siempre hay
+  alguien delante eligiendo. MIX no tiene a nadie delante: **tabla nueva, y
+  por tanto una migración que corre el dueño.**
+- **La imagen depende de un modelo que se apaga el 2026-10-02.** `fal-ai/nano-banana`
+  es `gemini-2.5-flash-image`, y cuesta $0.04 dólares por imagen
+  (`pricing.json §generacion.nano_banana_fal_usd_por_imagen`). **Grok edit
+  cuesta $0.02** por imagen de salida y no tiene fecha de muerte. Con MIX
+  publicando una imagen diaria, **M23 · B (el reemplazo de modelo) pasa a ser
+  prerrequisito de MIX**, no una tarea paralela.
+- **El correo del aviso no se puede dar por hecho.** Hoy los correos salen del
+  remitente por defecto de Cognito y caen en spam; eso es justo lo que arregla
+  M26, que espera el acceso a producción de SES. El aviso de saldo tiene que
+  existir **también dentro del producto**, no solo en el correo.
+
+**La economía de los 5 créditos** (para cerrarla cuando se construya): al piso
+de venta —`tarifas.json §economia.piso_venta_usd_por_credito`, $0.015— cinco
+créditos son $0.075 dólares, y el costo interno que la spec admite son $0.0675.
+La imagen se lleva $0.04 con Nano Banana o $0.02 con Grok; lo que quede paga el
+texto del post y la infra. Falta **medir el LLM del texto** antes de fijarla:
+con Nano Banana el margen es estrecho y con Grok es holgado, lo que empuja en
+la misma dirección que la fecha del 2 de octubre.
+
+#### Los prerrequisitos — construidos el 2026-09-18
+
+Los dos primeros se listaron aquí como requisitos de MIX, pero sirven **sin
+MIX** y por eso se hicieron primero, antes del lanzamiento del 23.
+
+- **El barredor de ejecuciones caídas** (`worker/barredor.py`). La máquina de
+  estados tiene un estado y ningún `Catch`, y el `creditos.devolver` de cada
+  tarea vive DENTRO del contenedor. Si la tarea no llega a arrancar —imagen de
+  ECR que no se pudo bajar, sin capacidad para 4 vCPU, el timeout de 2 h— la
+  ejecución muere y ese código nunca corre: el usuario se queda sin resultado
+  **y sin créditos**. Ahora EventBridge avisa de cada final malo y el worker
+  cierra el trabajo y devuelve.
+  - **La idempotencia no es una marca nueva: es un UPDATE condicionado.** Se
+    gana el derecho a devolver solo si el trabajo sigue en marcha
+    (`estado = 'produciendo'`, o `'corriendo'` en el doc del editor). Si el
+    contenedor sí corrió, él ya cerró y devolvió, y el claim pierde. Hacía
+    falta ese cuidado: el libro mayor **no deduplica devoluciones** —su índice
+    único es solo para compras— así que una devolución doble entra sin
+    protestar, y son créditos regalados que nadie compró.
+  - Cubre los cuatro trabajos que cobran: `producir_task`, `shorts_task`,
+    `editar_task` y `overlay_task`. `render_task` y `subtitulos_task` no cobran
+    créditos y se saltan a propósito.
+  - **Lo que se descubrió al hacerlo:** en los tres trabajos del editor, un
+    trabajo atascado se quedaba `corriendo` para siempre y lo único que lo
+    destrababa era la caducidad de 2 h de su pantalla — que deja lanzar otro,
+    **y el otro vuelve a cobrar**. El usuario acababa pagando dos veces por una
+    tarea que nunca corrió.
+- **El freno de capacidad** (`pipeline/jobs.py`). Los seis lanzadores pasan
+  ahora por un solo sitio que cuenta las ejecuciones vivas antes de arrancar
+  otra. Tope 6 de las 7 que caben en la cuota (30 vCPU ÷ 4 por tarea): una
+  tarea que acaba de terminar puede seguir contada unos segundos.
+  - **No es la cola que pedía el diseño, es un freno**, y la diferencia
+    importa: una cola sirve cuando el trabajo puede esperar sin que nadie mire
+    —MIX, cuando exista— y es lo peor que se le puede hacer a alguien que está
+    frente a la pantalla esperando su película. Prefiere un «ahorita no»
+    inmediato (503, sin cobrar) a un «encolado» de duración desconocida.
+  - **Falla abierto:** si no se puede contar (permisos, throttling) se deja
+    pasar y se registra. Cerrar dejaría el producto entero apagado por un
+    permiso mal puesto; abierto, lo peor que pasa es que una tarea no arranque
+    y el barredor devuelva.
+- **Falta el tercero:** la clave de Blotato (C) ya está, pero MIX la exige
+  conectada para publicar.
+
+#### El diseño de septiembre 16 (la versión «película»)
+
+Se conserva porque es a donde vuelve MIX si la versión de imágenes funciona.
+
 Decisión: **cada usuario elige su hora**; si varias corridas coinciden, **se
 encolan** (la capacidad se amplía después). **Una sola automatización por
 usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 
-- **Requisitos previos** (sirven también sin MIX):
-  - delante de Fargate no hay cola: la cuota es de 30 vCPU = 7 tareas de 4
-    vCPU, compartidas con todo; una octava probablemente falla;
-  - la state machine no tiene `Retry` ni `Catch`, y la devolución de créditos
-    solo ocurre dentro del contenedor: falta un barredor de ejecuciones
-    fallidas con devolución idempotente;
-  - C (clave de Blotato), si MIX publica.
 - **Arquitectura propuesta:** tabla de programaciones (una por usuario) →
   disparo a la hora elegida → cola SQS → despachador que lanza como mucho
   5 a la vez (deja sitio al uso interactivo) → una tarea que prepara, decide
@@ -1809,7 +1927,8 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
   en 3 de 4 películas de 30 s la narración quedó en 15–20 s, y se cobró la
   duración objetivo.
 - Empezar en **borrador** (el usuario aprueba con un clic) y pasar a publicar
-  directo cuando haya confianza.
+  directo cuando haya confianza. (Muerto por dos lados: Blotato no tiene
+  borrador, y el dueño eligió publicar directo desde el primer día.)
 
 ### Hallazgos del análisis que no esperan a M23
 
@@ -2494,8 +2613,10 @@ M10 (prompts en Langfuse): independiente — puede ir en cualquier hueco tras M1
 M11 (narración primero): tras M1-AWS y M2, ANTES de los focus groups
 M12 (hub + slots + Glacier): la lifecycle puede salir sola cuando sea; el hub
     y los slots, tras M8 (necesita los flujos Reels/Shorts ya en la web)
-M23: A (imágenes) ya · B (modelos) antes del 2-oct · C (Blotato) ──► D (MIX),
-    y D además tras la cola delante de Fargate y el barredor de fallos
+M23: A (imágenes) ya · C (Blotato) ya ──► D (MIX). Los dos prerrequisitos de
+    infra —el barredor de fallos y el freno delante de Fargate— están hechos
+    (18-sep). Y B (modelos) deja de ir en paralelo: MIX rediseñado publica una
+    IMAGEN diaria y Nano Banana se apaga el 2-oct, así que B ──► D
 M24 (ver los servicios): tras el 23. A no depende de nada; C es una decisión
     de red que revierte el aislamiento de Aurora
 M25 (la entrada): tras el 23. A (clip) es independiente; B (dos botones) ──►

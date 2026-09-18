@@ -13,6 +13,7 @@ UI lo ve con el mismo polling de /api/proyectos/{id} de siempre.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from functools import lru_cache
@@ -32,6 +33,62 @@ def _sqs():
 def _sfn():
     import boto3
     return boto3.client("stepfunctions")
+
+
+# M23 · D (prerrequisito) — el freno de capacidad.
+#
+# La cuota es de 30 vCPU de Fargate on-demand y cada tarea pide 4, así que
+# caben 7. El tope es 6 a propósito: una tarea que acaba de terminar puede
+# seguir contando unos segundos, y pasarse del filo no falla suave — falla al
+# ARRANCAR, que es justo el caso en el que el `creditos.devolver` vive dentro
+# de un contenedor que nunca corrió (lo cura `worker/barredor.py`, pero curar
+# es peor que no cortarse).
+#
+# Esto NO es la cola que pide el plan: es un freno. La diferencia importa. Una
+# cola sirve cuando el trabajo puede esperar sin que nadie mire —MIX, cuando
+# exista— y es lo peor que se le puede hacer a alguien que está frente a la
+# pantalla esperando su película: prefiere un «ahorita no» inmediato a un
+# «encolado» que no sabe cuánto dura.
+TOPE_TAREAS = int(os.getenv("FARGATE_TOPE_TAREAS", "6"))
+
+
+class SinCapacidad(RuntimeError):
+    """No hay sitio en Fargate ahora mismo. `server/app.py` la traduce a 503."""
+
+
+def _hay_sitio() -> bool:
+    """Cuenta las ejecuciones vivas. Falla ABIERTO: si no se puede contar
+    (throttling de SFN, permisos), se deja pasar. Bloquear a quien sí pagó
+    porque una llamada de control no respondió es peor que pasarse del tope —
+    y si se pasa, el barredor devuelve el dinero."""
+    try:
+        r = _sfn().list_executions(
+            stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+            statusFilter="RUNNING", maxResults=TOPE_TAREAS + 1)
+        return len(r.get("executions", [])) < TOPE_TAREAS
+    except Exception as e:
+        # que se vea: un freno que falla abierto para siempre (permisos, por
+        # ejemplo) no frena nada y desde fuera se comporta igual que uno sano
+        logging.getLogger("jobs").warning("no se pudo contar la capacidad: %s", e)
+        return True
+
+
+def _arrancar(nombre: str, user_id: str, proyecto_id: str,
+              command: list[str]) -> str:
+    """Todo lo que va a Fargate pasa por aquí: una sola máquina de estados, un
+    solo freno. El nombre lleva timestamp — reintentar tras un error crea una
+    ejecución nueva (los nombres de SFN son únicos 90 días)."""
+    if not _hay_sitio():
+        raise SinCapacidad(
+            "Ahorita hay mucha gente produciendo y no se te cobró. "
+            "Vuelve a intentarlo en unos minutos.")
+    r = _sfn().start_execution(
+        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
+        name=f"{nombre}-{int(time.time())}",
+        # command viene armado desde aquí: SFN no interpola JsonPath en arrays
+        input=json.dumps({"user_id": user_id, "proyecto_id": proyecto_id,
+                          "command": command}))
+    return r["executionArn"]
 
 
 def mensaje_preparar(user_id: str, proyecto_id: str) -> dict:
@@ -109,69 +166,39 @@ def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
     misma state machine que la producción, otro comando. Los segmentos
     aprobados viajan por Postgres (doc.shorts.render), no por el input."""
-    r = _sfn().start_execution(
-        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
-        name=f"shorts-{proyecto}-{int(time.time())}",
-        input=json.dumps({
-            "user_id": user_id, "proyecto_id": proyecto,
-            "command": ["python", "-m", "worker.shorts_task", user_id, proyecto],
-        }))
-    return r["executionArn"]
+    return _arrancar(f"shorts-{proyecto}", user_id, proyecto,
+                     ["python", "-m", "worker.shorts_task", user_id, proyecto])
 
 
 def lanzar_editar(user_id: str, nombre: str) -> str:
     """M14: corrida de sugerencias de corte (transcribir si falta + LLM +
     proxy/manifest) — Fargate vía la state machine de siempre, otro comando
     (el proxy re-encodea el metraje completo: no cabe en la Lambda)."""
-    r = _sfn().start_execution(
-        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
-        name=f"editar-{nombre}-{int(time.time())}",
-        input=json.dumps({
-            "user_id": user_id, "proyecto_id": nombre,
-            "command": ["python", "-m", "worker.editar_task", user_id, nombre],
-        }))
-    return r["executionArn"]
+    return _arrancar(f"editar-{nombre}", user_id, nombre,
+                     ["python", "-m", "worker.editar_task", user_id, nombre])
 
 
 def lanzar_render(user_id: str, nombre: str, estilo: str) -> str:
     """M7: render de un corte del editor — misma state machine y misma imagen
     que la producción (regla dura: renders largos por Fargate, nada de ffmpeg
     en la Lambda del API), solo cambia el comando."""
-    r = _sfn().start_execution(
-        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
-        name=f"render-{nombre}-{int(time.time())}",
-        input=json.dumps({
-            "user_id": user_id, "proyecto_id": nombre,
-            "command": ["python", "-m", "worker.render_task", user_id, nombre, estilo],
-        }))
-    return r["executionArn"]
+    return _arrancar(f"render-{nombre}", user_id, nombre,
+                     ["python", "-m", "worker.render_task", user_id, nombre, estilo])
 
 
 def lanzar_subtitulos(user_id: str, nombre: str) -> str:
     """M16.1: quemado de subtítulos del editor — el re-encode del video completo
     va a Fargate (regla dura: nada de ffmpeg largo en la Lambda del API)."""
-    r = _sfn().start_execution(
-        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
-        name=f"subs-{nombre}-{int(time.time())}",
-        input=json.dumps({
-            "user_id": user_id, "proyecto_id": nombre,
-            "command": ["python", "-m", "worker.subtitulos_task", user_id, nombre],
-        }))
-    return r["executionArn"]
+    return _arrancar(f"subs-{nombre}", user_id, nombre,
+                     ["python", "-m", "worker.subtitulos_task", user_id, nombre])
 
 
 def lanzar_overlay(user_id: str, nombre: str) -> str:
     """M16.3: regenerar/activar una versión de la pista 2 — Veo tarda minutos y
     rearmar la película es ffmpeg largo: Fargate por la SM de siempre. Los
     parámetros del job viajan por proyectos_editor.doc.overlay_job."""
-    r = _sfn().start_execution(
-        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
-        name=f"overlay-{nombre}-{int(time.time())}",
-        input=json.dumps({
-            "user_id": user_id, "proyecto_id": nombre,
-            "command": ["python", "-m", "worker.overlay_task", user_id, nombre],
-        }))
-    return r["executionArn"]
+    return _arrancar(f"overlay-{nombre}", user_id, nombre,
+                     ["python", "-m", "worker.overlay_task", user_id, nombre])
 
 
 def lanzar_produccion(user_id: str, proyecto_id: str, fase: str = "todo") -> str:
@@ -181,12 +208,5 @@ def lanzar_produccion(user_id: str, proyecto_id: str, fase: str = "todo") -> str
     `fase` (M22 · G) viaja como un argumento más del comando, que se arma aquí
     mismo: partir la producción en dos NO toca la definición de la state
     machine ni el task definition, así que no necesita deploy de CDK."""
-    r = _sfn().start_execution(
-        stateMachineArn=os.environ["PRODUCIR_SM_ARN"],
-        name=f"{proyecto_id}-{int(time.time())}",
-        # command viene armado desde aquí: SFN no interpola JsonPath en arrays
-        input=json.dumps({
-            "user_id": user_id, "proyecto_id": proyecto_id,
-            "command": ["python", "-m", "worker.producir_task", user_id, proyecto_id, fase],
-        }))
-    return r["executionArn"]
+    return _arrancar(proyecto_id, user_id, proyecto_id,
+                     ["python", "-m", "worker.producir_task", user_id, proyecto_id, fase])

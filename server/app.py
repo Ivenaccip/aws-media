@@ -79,6 +79,18 @@ app = FastAPI(title="edicion_y_generacion")
 app.middleware("http")(auth.middleware)   # M2: exige el JWT en /api/* y /editor/*
 
 
+@app.exception_handler(jobs.SinCapacidad)
+async def _sin_capacidad(request, exc: jobs.SinCapacidad):
+    """M23 · D (prerrequisito) — Fargate está lleno.
+
+    Va aquí y no en cada endpoint porque son SEIS los que lanzan a la máquina
+    de estados, en cinco archivos. Todos ya envuelven su lanzamiento en un
+    try/except que devuelve los créditos y relanza, así que basta con traducir
+    lo que sale: 503 con el motivo en claro. Un 500 diría «se rompió algo» de
+    una situación en la que no se rompió nada — solo hay que volver luego."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
 @app.middleware("http")
 async def _registrar_peticion(request, call_next):
     """Una línea por petición: sin esto «tarda mucho» no tiene ruta ni número.
