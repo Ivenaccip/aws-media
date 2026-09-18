@@ -77,6 +77,14 @@ def test_toda_etiqueta_con_estrella_respeta_la_forma(archivo):
     for plantilla in re.findall(r"`([^`\n]*" + ESTRELLA + r"[^`\n]*)`", texto):
         if plantilla.startswith("${d.saldo}"):
             continue                       # el saldo de la cabecera, más abajo
+        if plantilla.startswith('<span class="cr">'):
+            # M25 · B — la etiqueta de precio del desplegable del inicio. La
+            # regla de arriba es para BOTONES: un botón es una acción, y por eso
+            # empieza por un verbo. Una fila del desplegable es una ELECCIÓN
+            # («Un video corto», «Creador de cuentos»), y ponerle un verbo
+            # delante diría que el clic ya cobra, que es exactamente lo que no
+            # hace. El verbo sigue viviendo donde toca: en el botón de enviar.
+            continue
         m = FORMA.match(plantilla)
         assert m, f"{archivo.name}: «{plantilla}» no es «Verbo {ESTRELLA} ${{precio}}»"
         verbo = m.group("verbo")

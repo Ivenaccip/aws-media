@@ -32,6 +32,13 @@ class Settings:
     grok_timeout_s: int = int(os.getenv("GROK_TIMEOUT_S", "300"))
     veo_timeout_s: int = int(os.getenv("VEO_TIMEOUT_S", "720"))
     veo_max_attempts: int = int(os.getenv("VEO_MAX_ATTEMPTS", "2"))
+    # M25 A: el clip NO hereda los números de arriba. 720 s × 2 intentos son
+    # hasta 24 minutos y la Lambda del worker muere a los 15 (infra/stacks/
+    # jobs.py:89): heredarlos manda clips sanos a la DLQ. Un clip de 8 s sale
+    # en un par de minutos; el peor caso aquí (componer + 2 intentos) son 10.
+    clip_timeout_s: int = int(os.getenv("CLIP_TIMEOUT_S", "240"))
+    clip_max_attempts: int = int(os.getenv("CLIP_MAX_ATTEMPTS", "2"))
+    clip_componer_timeout_s: int = int(os.getenv("CLIP_COMPONER_TIMEOUT_S", "120"))
     qc_enabled: bool = os.getenv("QC_ENABLED", "1") not in ("0", "false", "no")
     qc_model: str = os.getenv("QC_MODEL", "gpt-5")  # mini confunde izquierda/derecha
     qc_max_retries: int = int(os.getenv("QC_MAX_RETRIES", "1"))
@@ -44,6 +51,10 @@ class Settings:
     fal_tts: str = "fal-ai/elevenlabs/tts/eleven-v3"
     fal_grok: str = "xai/grok-imagine-image/edit"
     fal_veo: str = "fal-ai/veo3.1/lite/image-to-video"
+    # M25 A: el clip sin imagen. Misma familia y MISMO precio que el de arriba
+    # (720p con audio $0.05/s, verificado en fal el 2026-09-18), así que
+    # pricing.json no necesita una entrada nueva: costo_fal ya casa "veo3.1".
+    fal_veo_t2v: str = "fal-ai/veo3.1/lite"
     fal_nano: str = "fal-ai/nano-banana"            # texto → imagen (M1 sin referencia)
     fal_nano_edit: str = "fal-ai/nano-banana/edit"  # imagen + referencia (g2, editor de imágenes)
 

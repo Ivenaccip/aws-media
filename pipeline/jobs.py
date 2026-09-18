@@ -83,6 +83,18 @@ def encolar_competencia(user_id: str, informe_id: str, cuentas: list[dict]) -> N
                                 "informe_id": informe_id, "cuentas": cuentas}))
 
 
+def encolar_clip(user_id: str, clip_id: str) -> None:
+    """M25 A: el clip de 8 s — trabajo corto en el worker Lambda, NO una
+    producción de Fargate. Así no consume slot de proyecto (nadie se topa con
+    el 409 de server/app.py por pedir un clip), no hay estado `revision` ni
+    Step Functions, y el cobro y la devolución son uno solo. El mensaje lleva
+    solo ids: el pedido vive en el doc del clip en S3."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "clip", "user_id": user_id,
+                                "clip_id": clip_id}))
+
+
 def encolar_publicar(user_id: str, proyecto: str, pub_id: str) -> None:
     """M23 C2: subir la película a Blotato y crear el post. El mensaje solo
     lleva ids: la clave del usuario la lee el worker, y el texto vive en la

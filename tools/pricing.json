@@ -45,11 +45,13 @@
       "1080p_sin_audio": 0.05,
       "1080p_con_audio": 0.08
     },
+    "veo31_lite_nota": "M25 · A (2026-09-18): la MISMA tabla sirve para los dos endpoints de la familia. `fal-ai/veo3.1/lite/image-to-video` (la película, y el clip cuando trae imagen) y `fal-ai/veo3.1/lite` (text-to-video, el clip sin imagen) cobran idéntico — los cuatro números de arriba se releyeron ese día en las dos páginas y no habían cambiado. Por eso el clip no necesitó una entrada nueva: pipeline/pricing.py casa por «veo3.1» y el precio depende de la resolución y de generate_audio, no del endpoint. OJO con el clip: va a 720p CON audio ($0.05/s, el doble que la película, que lo lleva apagado).",
+    "veo31_multi_imagen_nota": "Descartado el 2026-09-18 para el clip: `bytedance/seedance-2.0/us/reference-to-video` acepta hasta 9 imágenes con audio nativo, pero a ~$0.37 dólares por segundo a 720p un clip de 8 s costaría $2.96 contra los $0.45 que deja la tarifa de 30 créditos. Ese precio se leyó en la página de fal y NO está anotado en este archivo: si algún día se evalúa, verificarlo y anotarlo aquí es el primer paso.",
     "grok_edit": { "usd_por_imagen_salida": 0.02, "usd_por_imagen_referencia": 0.002 },
     "nano_banana_fal_usd_por_imagen": 0.04,
     "nano_banana_fal_nota": "fal cobra $0.0398 por MP (fal.ai/pricing, verificado 2026-08-10 en docs/BROLL-RUTAS.md); a 1:1 (~1 MP) ≈ $0.04 dólares. Usado por M1 (personaje sin referencia) y g2 con GEN_BACKEND=fal.",
     "eleven_v3_usd_por_1k_chars": 0.10,
-    "source": "https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video · https://fal.ai/models/xai/grok-imagine-image/edit · https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3",
+    "source": "https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video · https://fal.ai/models/fal-ai/veo3.1/lite · https://fal.ai/models/xai/grok-imagine-image/edit · https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3",
     "google": {
       "comment": "Backend GEN_BACKEND=google (Gemini API, popup g1/g2). Verificado 2026-08-24 en ai.google.dev/gemini-api/docs/pricing. Veo en Gemini incluye audio (se descarta en el mux: manda el TTS) y solo cobra si el video se genera con éxito.",
       "verified_on": "2026-08-24",

@@ -55,6 +55,10 @@ ESTILO_ANALIZAR_CR = 3
 # M23 C5 — competencia (fallback espejo de tarifas.json §competencia)
 COMPETENCIA_POR_CUENTA_CR = 3
 
+# M25 A/F — clip de 8 s (fallback espejo de tarifas.json §clip)
+CLIP_CR = 30
+CLIP_COMPONER_CR = 2
+
 def _tabla_de(crudo: dict) -> dict[int, int]:
     """§video.por_duracion → {segundos: total}. Se queda solo con lo que el
     pipeline sabe producir: una llave fuera del rango se cobraría con su precio y
@@ -90,6 +94,9 @@ try:
     ESTILO_ANALIZAR_CR = _t.get("estilos", {}).get("analizar", ESTILO_ANALIZAR_CR)
     COMPETENCIA_POR_CUENTA_CR = _t.get("competencia", {}).get(
         "por_cuenta", COMPETENCIA_POR_CUENTA_CR)
+    _c = _t.get("clip", {})
+    CLIP_CR = _c.get("video_8s", CLIP_CR)
+    CLIP_COMPONER_CR = _c.get("componer_imagenes", CLIP_COMPONER_CR)
 except (FileNotFoundError, KeyError, ValueError, TypeError):
     pass  # fallback: tarifa de arriba (2026-09-02); una llave mal escrita no tumba la API
 
@@ -205,6 +212,16 @@ def costo_competencia(n_cuentas: int) -> int:
     TikTok, pero un botón que cambia de precio según a quién vigilas no se
     puede explicar). Volver a ver un informe ya hecho no cuesta."""
     return COMPETENCIA_POR_CUENTA_CR * max(0, int(n_cuentas))
+
+
+def costo_clip(n_imagenes: int = 0) -> int:
+    """M25 A/F: el clip de 8 segundos con audio — una sola llamada a Veo.
+
+    Tarifa plana (no por segundo: la duración es fija). El extra de componer
+    solo aparece con DOS o TRES imágenes, que es cuando hay que juntarlas con
+    Grok antes de animar: con cero es text-to-video y con una se anima directo,
+    y en ninguno de esos casos se paga Grok. El usuario paga lo que usa."""
+    return CLIP_CR + (CLIP_COMPONER_CR if int(n_imagenes) >= 2 else 0)
 
 
 def costo_shorts_render(n_shorts: int) -> int:

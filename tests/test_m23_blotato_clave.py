@@ -879,7 +879,10 @@ def test_ya_no_queda_ninguna_seccion_proximamente():
 
 
 def test_la_competencia_es_un_enlace_y_ya_no_dice_proximamente():
-    linea = next(l for l in INICIO.splitlines() if "Investiga tu competencia" in l)
+    # la línea del <a>, no la primera que mencione el nombre: los comentarios
+    # del menú también lo nombran (M25 · B)
+    linea = next(l for l in INICIO.splitlines()
+                 if "Investiga tu competencia" in l and l.lstrip().startswith("<a "))
     assert 'class="prox"' not in linea, "el CSS le seguiría poniendo « · próximamente»"
     assert 'href="/competencia.html"' in linea
     assert linea.lstrip().startswith("<a ")
@@ -941,7 +944,12 @@ def test_en_el_telefono_el_inicio_no_se_desplaza_de_lado():
     movil = INICIO[INICIO.index("@media (max-width: 860px)"):]
     movil = movil[:movil.index("</style>")]
     assert ".layout > * { min-width: 0; }" in movil
-    assert "#btn-idea[data-tip]::after { left: 50%; transform: translateX(-50%); }" in movil
+    # M25 · B: «Tengo una idea» ya no existe — el botón de en medio de la fila
+    # es ahora el desplegable, y hereda el mismo tooltip que se salía.
+    assert "#btn-opcion[data-tip]::after { left: 50%; transform: translateX(-50%); }" in movil
+    # Y la fila se parte antes que apretarse: apretada, el rótulo del botón se
+    # cortaba en dos líneas y el ▾ quedaba suelto debajo (visto 2026-09-18).
+    assert ".prompt .acciones { flex-wrap: wrap; row-gap: 10px; }" in movil
     assert "max-width: min(250px, calc(100vw - 72px))" in movil
 
 

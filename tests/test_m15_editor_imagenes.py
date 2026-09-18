@@ -93,14 +93,19 @@ def test_editar_imagen_sin_saldo(cliente, srv, monkeypatch, tmp_path):
     assert r.status_code == 402
 
 
-def test_el_menu_lleva_a_la_herramienta_unica_de_imagenes():
-    """M23: crear y editar imágenes son una sola página y una sola entrada del
-    menú; las dos páginas viejas ya no existen (sus URLs redirigen)."""
+def test_el_inicio_lleva_a_la_herramienta_unica_de_imagenes():
+    """M23: crear y editar imágenes son una sola página, con UNA sola entrada;
+    las dos páginas viejas ya no existen (sus URLs redirigen).
+
+    M25 · B: esa entrada se mudó del menú de la izquierda a la caja de arriba —
+    escribes lo que quieres y eliges «Imágenes». Lo que este test defiende no
+    cambió: una sola puerta, no dos. Solo cambió dónde está."""
     from pathlib import Path
     html = Path("static/index.html").read_text(encoding="utf-8")
     menu = html[html.index('<nav aria-label="Secciones">'):html.index("</nav>")]
-    assert menu.count('href="/imagenes.html"') == 1
-    assert "Crear imágenes" in menu
+    assert menu.count('href="/imagenes.html"') == 0, "volvió a duplicarse en el menú"
+    assert html.count("destino: '/imagenes.html'") == 2   # crear y editar, un destino
+    assert "rotulo: 'Crear una imagen'" in html and "rotulo: 'Editar una imagen'" in html
     assert "Editor de imágenes" not in html
     assert "/crear-imagenes.html" not in html and "/editor-imagenes.html" not in html
     assert not Path("static/crear-imagenes.html").exists()

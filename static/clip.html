@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de video · Clip de 8 segundos</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
+  main { max-width: 860px; margin: 0 auto; }
+  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
+  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
+  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
+  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
+           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
+  button:hover { border-color: #5b8dd6; }
+  button:disabled { opacity: .5; cursor: default; background: #18293f; }
+  textarea { width: 100%; background: #18293f; color: #ece8e1; border: 1px solid #55708f;
+             border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 14px;
+             resize: vertical; min-height: 84px; }
+  .mut { color: #93a3b8; font-size: 13px; }
+  .err { color: #ff8080; font-size: 14px; }
+  .aviso { color: #f0a94a; font-size: 13.5px; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .formatos { display: inline-flex; border: 1px solid #22354f; border-radius: 9px; overflow: hidden; }
+  .formatos button { border: 0; border-radius: 0; background: #18293f; font-size: 13.5px; padding: 8px 14px; }
+  .formatos button[aria-pressed="true"] { background: #2b4a75; }
+  .fotos { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .foto { position: relative; width: 92px; height: 92px; border-radius: 10px; overflow: hidden;
+          border: 1px solid #22354f; background: #18293f; }
+  .foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .foto .quitar { position: absolute; top: 3px; right: 3px; padding: 1px 7px; font-size: 12px;
+                  background: #0b1626cc; border-radius: 999px; }
+  .foto.subiendo { display: flex; align-items: center; justify-content: center; font-size: 12px; color: #93a3b8; }
+  .agregar { width: 92px; height: 92px; border: 1px dashed #55708f; border-radius: 10px;
+             background: #18293f; color: #93a3b8; font-size: 12px; line-height: 1.3; }
+  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .tarjeta video { width: 100%; border-radius: 10px; margin-top: 10px; background: #000; }
+  .tarjeta .pedido { font-size: 14px; margin-bottom: 4px; }
+  .generando { min-height: 40px; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← Estudio</a>
+  <h1>Clip de 8 segundos</h1>
+  <p class="sub">Escribe qué quieres ver y te lo entregamos en un video corto <b>con sonido</b>.
+    Sin guion, sin escenas y sin pantalla de revisión: es una sola toma. Si subes fotos, salen
+    en el video; si no subes ninguna, se inventa la imagen.</p>
+
+  <section>
+    <h2>Qué quieres ver</h2>
+    <textarea id="texto" maxlength="2000" placeholder="Mi perro corriendo en la playa al atardecer, con la cámara siguiéndolo"></textarea>
+    <div class="fotos" id="fotos"></div>
+    <input type="file" id="archivo" accept="image/*,.heic,.heif" hidden>
+    <p id="est-foto" class="mut"></p>
+    <div class="controles" style="margin-top:14px">
+      <div class="formatos" id="formatos">
+        <button type="button" data-formato="horizontal" aria-pressed="true">Horizontal</button>
+        <button type="button" data-formato="vertical" aria-pressed="false">Vertical</button>
+      </div>
+      <button id="btn-generar">Generar</button>
+      <span id="precio" class="mut"></span>
+    </div>
+    <p id="estado" class="mut" style="margin-top:8px"></p>
+  </section>
+
+  <section>
+    <h2>Tus clips</h2>
+    <div id="clips"><span class="mut">Cargando…</span></div>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
+<script>
+// ── cl · Clip de 8 segundos (M25 · A/F)
+const $ = id => document.getElementById(id);
+let CLCFG = null, clPoll = null, clFirma = null, clFormato = "horizontal";
+const CLFOTOS = [];   // { key, url (local, para la miniatura), subiendo }
+
+const CLTITULO = document.title;
+const clTitulo = t => { document.title = t ? `${t} · ${CLTITULO}` : CLTITULO; };
+const CLSINORBE = { texto: () => CLSINORBE, estado: () => CLSINORBE,
+                    latir: () => CLSINORBE, apagar: () => CLSINORBE, desmontar() {} };
+let clOrbe = CLSINORBE;
+
+// El texto lo escribe el usuario y se vuelve a pintar en su lista de clips:
+// sin escapar, pegar `<img onerror=...>` en la petición sería código propio
+// corriendo en su sesión la próxima vez que abra la página.
+const CLESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function clEsc(s) {
+  return String(s === 0 ? 0 : (s || "")).replace(/[&<>"']/g, c => CLESCAPES[c]);
+}
+
+async function clFj(url, opciones) {
+  const r = await fetch(url, opciones);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.detail || `Error ${r.status}`), { status: r.status });
+  return j;
+}
+const clPost = (url, body) => clFj(url, { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+// Las fotos del iPhone llegan como .heic y MUCHOS navegadores mandan file.type
+// vacío para ese formato: sin esto la firma se pediría con un tipo que luego no
+// coincide con el del PUT, y S3 rechaza la subida con un 403 que no explica nada.
+const CLTIPOS = { ".heic": "image/heic", ".heif": "image/heif", ".jpg": "image/jpeg",
+                  ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
+                  ".gif": "image/gif", ".avif": "image/avif" };
+function clTipo(archivo) {
+  if (archivo.type) return archivo.type;
+  const punto = archivo.name.lastIndexOf(".");
+  return CLTIPOS[archivo.name.slice(punto).toLowerCase()] || "application/octet-stream";
+}
+
+function clPrecio() {
+  if (!CLCFG) return;
+  const n = CLFOTOS.length;
+  const cr = n >= 2 ? CLCFG.creditos_con_composicion : CLCFG.creditos;
+  $("btn-generar").textContent = `Generar ✦ ${cr}`;
+  $("precio").textContent = n >= 2
+    ? `${CLCFG.creditos} créditos + ${cr - CLCFG.creditos} por juntar tus ${n} fotos en una`
+    : `${CLCFG.creditos} créditos · ${CLCFG.segundos} segundos con sonido`;
+}
+
+function clPintarFotos() {
+  const tope = CLCFG ? CLCFG.max_imagenes : 3;
+  $("fotos").innerHTML = CLFOTOS.map((f, i) => f.subiendo
+    ? '<div class="foto subiendo"><span class="spin">Subiendo</span></div>'
+    : `<div class="foto"><img src="${clEsc(f.url)}" alt="">
+       <button class="quitar" data-quitar="${i}" title="Quitar">✕</button></div>`).join("")
+    + (CLFOTOS.length < tope
+       ? `<button type="button" class="agregar" id="btn-foto">+ Foto<br><span class="mut">${
+            CLFOTOS.length} de ${tope}</span></button>`
+       : "");
+  for (const b of $("fotos").querySelectorAll("[data-quitar]"))
+    b.onclick = () => { CLFOTOS.splice(Number(b.dataset.quitar), 1); clPintarFotos(); clPrecio(); };
+  const mas = $("btn-foto");
+  if (mas) mas.onclick = () => $("archivo").click();
+  clPrecio();
+}
+
+$("archivo").onchange = async () => {
+  const archivo = $("archivo").files[0];
+  $("archivo").value = "";
+  if (!archivo) return;
+  $("est-foto").textContent = "";
+  if (CLCFG && archivo.size > CLCFG.max_bytes) {
+    $("est-foto").innerHTML = '<span class="err">Esa foto pesa demasiado (máximo 20 MB).</span>';
+    return;
+  }
+  const marca = { subiendo: true };
+  CLFOTOS.push(marca);
+  clPintarFotos();
+  try {
+    const tipo = clTipo(archivo);
+    const firma = await clPost("/api/clip/presign",
+      { archivo: archivo.name, content_type: tipo, bytes: archivo.size });
+    const r = await fetch(firma.url, { method: "PUT", body: archivo,
+                                       headers: { "Content-Type": tipo } });
+    if (!r.ok) throw new Error("No se pudo subir la foto — inténtalo otra vez.");
+    marca.subiendo = false;
+    marca.key = firma.key;
+    marca.url = URL.createObjectURL(archivo);
+  } catch (e) {
+    CLFOTOS.splice(CLFOTOS.indexOf(marca), 1);
+    $("est-foto").innerHTML = `<span class="err">${clEsc(e.message)}</span>`;
+  }
+  clPintarFotos();
+};
+
+for (const b of $("formatos").querySelectorAll("[data-formato]")) {
+  b.onclick = () => {
+    clFormato = b.dataset.formato;
+    for (const otro of $("formatos").querySelectorAll("[data-formato]"))
+      otro.setAttribute("aria-pressed", String(otro === b));
+  };
+}
+
+function clTarjeta(c) {
+  if (c.estado === "generando")
+    return `<div class="tarjeta"><p class="pedido">${clEsc(c.texto)}</p>
+      <div class="generando" data-vivo="1"><span class="mut spin">Generando tu clip</span></div></div>`;
+  if (c.estado === "error")
+    return `<div class="tarjeta"><p class="pedido">${clEsc(c.texto)}</p>
+      <p class="err">${clEsc(c.error || "No se pudo generar.")}</p>
+      <p class="mut">Los créditos volvieron a tu saldo.</p></div>`;
+  return `<div class="tarjeta"><p class="pedido">${clEsc(c.texto)}</p>
+    <p class="mut">${clEsc(c.segundos)} s · ${c.imagenes
+      ? clEsc(c.imagenes) + (c.imagenes === 1 ? " foto tuya" : " fotos tuyas") : "sin fotos"}
+    · ✦ ${clEsc(c.creditos)}</p>
+    ${c.recorte ? `<p class="aviso">${clEsc(c.recorte)}</p>` : ""}
+    <video src="${clEsc(c.video)}" controls preload="metadata"></video></div>`;
+}
+
+function clPonerOrbe() {
+  clOrbe.desmontar(); clOrbe = CLSINORBE;
+  const vivas = [...$("clips").querySelectorAll("[data-vivo]")];
+  clTitulo(vivas.length ? "Generando tu clip" : "");
+  if (!window.orbe || vivas.length !== 1) return;
+  vivas[0].innerHTML = "";
+  clOrbe = orbe.montar(vivas[0], {
+    texto: "Generando tu clip · 1-2 min",
+    tope: 600000,
+    alAgotar: m => m.texto("Llevamos un rato sin novedades. El clip sigue en la nube: "
+      + "puedes cerrar la página y volver. Si sigue igual, escríbenos."),
+  });
+}
+
+async function clCargar() {
+  try {
+    if (!CLCFG) { CLCFG = await clFj("/api/clip/config"); clPintarFotos(); }
+    const j = await clFj("/api/clip");
+    const clips = j.clips || [];
+    const firma = JSON.stringify(clips.map(c => [c.id, c.estado]));
+    if (firma !== clFirma) {
+      clFirma = firma;
+      $("clips").innerHTML = clips.length ? clips.map(clTarjeta).join("")
+        : '<span class="mut">Todavía no has hecho ninguno.</span>';
+      clPonerOrbe();
+    }
+    const vivos = clips.some(c => c.estado === "generando");
+    clearTimeout(clPoll);
+    if (vivos) clPoll = setTimeout(clCargar, 5000);
+    else {
+      $("btn-generar").disabled = false;
+      window.monedero && monedero.refrescar && monedero.refrescar();
+    }
+  } catch (e) {
+    $("clips").innerHTML = `<span class="err">${clEsc(e.message)}</span>`;
+    clearTimeout(clPoll);
+    clPoll = setTimeout(clCargar, 15000);
+  }
+}
+
+$("btn-generar").onclick = async () => {
+  const texto = $("texto").value.trim();
+  if (!texto) { $("estado").textContent = "Escribe qué quieres ver primero."; return; }
+  if (CLFOTOS.some(f => f.subiendo)) {
+    $("estado").textContent = "Espera a que terminen de subir tus fotos.";
+    return;
+  }
+  $("btn-generar").disabled = true;
+  $("estado").textContent = "";
+  try {
+    await clPost("/api/clip/generar", { texto, formato: clFormato,
+                                        imagenes: CLFOTOS.map(f => f.key) });
+    $("texto").value = "";
+    CLFOTOS.length = 0;
+    clPintarFotos();
+    window.monedero && monedero.refrescar && monedero.refrescar();
+    clFirma = null;
+    await clCargar();
+  } catch (e) {
+    $("estado").innerHTML = `<span class="err">${clEsc(e.message)}</span>`;
+    $("btn-generar").disabled = false;
+  }
+};
+
+// M25 · B: la caja del inicio manda aquí con lo que ya escribió el usuario.
+// Volver a pedírselo sería hacerle escribir dos veces lo mismo.
+const CLBRIEF = new URLSearchParams(location.search).get("brief");
+if (CLBRIEF) {
+  $("texto").value = CLBRIEF.slice(0, 2000);
+  history.replaceState(null, "", location.pathname);
+}
+
+clPintarFotos();
+clCargar();
+window.orbe && orbe.precargar();
+</script>
+</body>
+</html>
