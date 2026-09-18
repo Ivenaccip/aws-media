@@ -871,11 +871,18 @@ def test_el_inicio_abre_el_modal_si_viene_del_editor():
     assert "get('blotato') === 'conectar'" in INICIO
 
 
-def test_la_seccion_que_queda_sigue_proximamente():
-    """C3 estrenó la Agenda y C4 las Métricas: ya solo queda Competencia (el
-    « · próximamente» lo pone el CSS de nav .prox small::after, no el HTML)."""
+def test_ya_no_queda_ninguna_seccion_proximamente():
+    """C5 estrenó Competencia, la última que quedaba: el menú de Blotato ya no
+    promete nada que no exista (el « · próximamente» lo pone el CSS de
+    nav .prox small::after, así que basta con que no quede ningún .prox)."""
+    assert 'class="prox"' not in INICIO, "una sección del menú sigue sin existir"
+
+
+def test_la_competencia_es_un_enlace_y_ya_no_dice_proximamente():
     linea = next(l for l in INICIO.splitlines() if "Investiga tu competencia" in l)
-    assert 'class="prox"' in linea
+    assert 'class="prox"' not in linea, "el CSS le seguiría poniendo « · próximamente»"
+    assert 'href="/competencia.html"' in linea
+    assert linea.lstrip().startswith("<a ")
 
 
 def test_la_agenda_es_un_enlace_y_ya_no_dice_proximamente():

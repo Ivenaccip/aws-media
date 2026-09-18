@@ -56,6 +56,13 @@ class Settings:
     apify_ig: str = "apify~instagram-scraper"          # oficial: videoUrl del reel
     apify_tiktok: str = "clockworks~tiktok-scraper"    # add-on de descarga del MP4
 
+    # M23 C5 — competencia: las últimas publicaciones de una CUENTA. El de
+    # Instagram es el mismo de arriba (cambia la entrada, no el actor); los
+    # otros dos son los más baratos de los que traen vistas, me gusta y fecha
+    # exacta (comparados con corridas reales el 2026-09-17, ver pricing.json).
+    apify_tiktok_perfil: str = "apidojo~tiktok-profile-scraper"      # $0.0003/video
+    apify_yt_canal: str = "grow_media~youtube-channel-video-scraper"  # $0.001/video
+
     # Backend de regeneración g1/g2 y M1: fal (default desde 2026-09-03 — los
     # créditos del Studio de Google se agotaron) | google (Gemini API)
     gen_backend: str = os.getenv("GEN_BACKEND", "fal")

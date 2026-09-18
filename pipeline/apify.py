@@ -76,14 +76,23 @@ def registrar_fallo(logger: logging.Logger, err: BaseException, msg: str, *args)
     logger.error(msg + " — %s\n%s", *args, resumen_error(err), tachar(traza))
 
 
-def correr(actor: str, entrada: dict, timeout_s: int = 900) -> list[dict]:
+def correr(actor: str, entrada: dict, timeout_s: int = 900,
+           tope_usd: float | None = None) -> list[dict]:
     """Corre un actor y devuelve los items de su dataset. El actor va en
-    formato usuario~nombre (la API no acepta '/'). Espera con poll de 5 s."""
+    formato usuario~nombre (la API no acepta '/'). Espera con poll de 5 s.
+
+    `tope_usd` es el freno de gasto de la corrida (maxTotalChargeUsd): Apify la
+    corta al llegar ahí. Sin él, lo que se paga depende de cuántos resultados
+    decida devolver un actor de un tercero — y un actor puede cobrar por lo que
+    raspa y no por lo que entrega (visto 2026-09-17, ver pricing.json §apify).
+    Todo lo que corra por cuenta de un usuario debería pasarlo.
+    """
     import requests
 
     cab = _cabeceras()
+    params = {"maxTotalChargeUsd": tope_usd} if tope_usd else None
     r = requests.post(f"{BASE}/acts/{actor}/runs", headers=cab,
-                      json=entrada, timeout=60)
+                      json=entrada, params=params, timeout=60)
     r.raise_for_status()
     run = r.json()["data"]
     run_id, inicio = run["id"], time.time()

@@ -26,6 +26,10 @@ VERBOS = {
     # M23: la herramienta unificada distingue el modo en el botón mismo;
     # «Aplicar» servía cuando cada modo tenía su página, aquí no dice cuál
     "Transformar",
+    # M23 C5: «Analizar» es de la copiadora de estilos y mira UN video por
+    # dentro; competencia mira lo que ya publicaron varias cuentas, y eso el
+    # usuario lo llama revisar
+    "Revisar",
 }
 
 # Cada botón que gasta créditos, con el verbo que le toca.

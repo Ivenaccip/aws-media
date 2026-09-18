@@ -1681,7 +1681,50 @@ Va en entregas, cada una con su PR:
         (se podría con el índice `sha256(media_url)` de C3, pero cuesta una
         lectura de S3 por tarjeta y solo lo tiene lo publicado desde el 17-sep);
         sin seguidores, sin comparar redes entre sí y sin exportar.
-- [ ] **C5 · Competencia** (Apify).
+- [x] **C5 · Competencia** (2026-09-17, rama `competencia-apify`): pantalla
+      propia (`static/competencia.html`; con esto **no queda ninguna sección en
+      «próximamente»**) con lo que le está funcionando a las cuentas que el
+      usuario vigila. Decisiones del dueño: **cuentas concretas** que él elige
+      (no un rubro o un hashtag), las **tres redes** (Instagram, TikTok y
+      YouTube), lista **más lectura con IA**, **3 créditos por cuenta** y las
+      **10 últimas** publicaciones de cada una.
+      - **Los tres actores se eligieron corriéndolos**, no leyendo su ficha
+        ($0.14 dólares de verificación el 17-sep): Instagram con el oficial que
+        ya usa la copiadora de estilos ($0.0027 por publicación), TikTok con
+        `apidojo/tiktok-profile-scraper` ($0.0003 — diez veces más barato que
+        el de clockworks y con los mismos datos) y YouTube con
+        `grow_media/youtube-channel-video-scraper` ($0.001, el único que da la
+        fecha exacta, las vistas sin redondear y los me gusta).
+      - **Dos cosas que solo se ven pagando** y quedan escritas en
+        `pricing.json`: el `usageTotalUsd` de una corrida **no es definitivo al
+        terminar** (un actor marcaba $0.00005 y acabó en $0.01005), y hay
+        actores que **cobran por lo que raspan y no por lo que entregan** (uno
+        cobró 24 publicaciones para devolver 10 — descartado).
+      - **El orden es el producto.** Ordenar por vistas habría puesto arriba a
+        la cuenta más grande siempre, que no enseña nada. Cada publicación
+        lleva un `indice` = sus vistas ÷ **la mediana de su propia cuenta**, y
+        la lista va por ahí: así un éxito real de una cuenta chica le gana a un
+        día normal de una grande. Con menos de 3 publicaciones medidas no hay
+        mediana y el índice **no se calcula** en vez de inventarse.
+      - **Una cuenta caída no tumba el informe:** se cobró por cuenta, así que
+        la que no trajo nada **devuelve sus 3 créditos** y el informe sale con
+        las demás diciendo cuál faltó y por qué (privada, vacía o renombrada).
+        Si no llega ninguna, es error y se devuelve todo. Un fallo del LLM
+        tampoco devuelve: los números son lo que se pagó, la lectura es el extra.
+      - **El LLM tiene prohibido rellenar:** un patrón necesita al menos dos
+        publicaciones que lo sostengan y que rindan por encima de su cuenta, y
+        cada afirmación tiene que poder señalarlas por id. Puede devolver cero
+        patrones y decir en `advertencia` qué no se puede concluir.
+      - **Freno de gasto nuevo en `pipeline/apify.py`:** `correr()` acepta
+        `tope_usd` (el `maxTotalChargeUsd` de Apify) y competencia lo usa en
+        cada corrida. Hasta ahora nada limitaba lo que podía cobrar un actor de
+        un tercero corriendo por cuenta de un usuario.
+      - Sin cambios de infra, sin migración y sin permisos nuevos:
+        `APIFY_TOKEN` ya llega al worker por SSM desde M17.
+      - Pendiente: no enlaza cada publicación con la copiadora de estilos
+        (el dato está —`enlace` es justo lo que `/api/estilo` sabe analizar—,
+        falta el botón); sin seguidores, sin hashtags ni rubro, y las cuentas
+        vigiladas no se comparan con las del propio usuario.
 
 Lo que pedía el análisis:
 
@@ -1712,6 +1755,8 @@ Lo que pedía el análisis:
     Blotato mide por tandas y no se le puede pedir una medición nueva.)
   - **Competencia:** Blotato no la tiene. Se hace con Apify (ya integrado) y
     necesita tarifa nueva en `tarifas.json`; no depende de la clave.
+    (Hecho en C5, y lo de «no depende de la clave» resultó ser lo importante:
+    es la única sección de Blotato que funciona sin haberla conectado.)
 
 ### D · MIX (después del 23)
 
