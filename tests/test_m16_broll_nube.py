@@ -137,7 +137,7 @@ def test_imagen_nube_genera_y_sube(nube, monkeypatch, monedero):
     async def nano(prompt, destino, referencia=None, meta=None):
         destino.write_bytes(b"img")
         return "url"
-    monkeypatch.setattr(overlays_api.media_fal, "imagen_nano", nano)
+    monkeypatch.setattr(overlays_api.media_fal, "imagen_fal", nano)
     r = nube.post("/editor/gen-abc/api/overlays/1/imagen",
                   json={"confirmar": True, "prompt": "un mapa"})
     assert r.status_code == 200
@@ -158,7 +158,7 @@ def test_imagen_nube_devuelve_si_vendor_falla(nube, monkeypatch, monedero):
 
     async def truena(*a, **k):
         raise RuntimeError("fal caído")
-    monkeypatch.setattr(overlays_api.media_fal, "imagen_nano", truena)
+    monkeypatch.setattr(overlays_api.media_fal, "imagen_fal", truena)
     r = nube.post("/editor/gen-abc/api/overlays/1/imagen",
                   json={"confirmar": True, "prompt": "x"})
     assert r.status_code == 502

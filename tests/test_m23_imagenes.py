@@ -82,7 +82,7 @@ def nano(monkeypatch):
         vistos.update(prompt=prompt, **kw)
         destino.write_bytes(b"jpg-creada")
         return "https://fal/x.jpg"
-    monkeypatch.setattr(media_fal, "imagen_nano", fake)
+    monkeypatch.setattr(media_fal, "imagen_fal", fake)
     return vistos
 
 
@@ -138,13 +138,16 @@ def _espiar_fal(monkeypatch):
     return vistos
 
 
-def test_nano_solo_manda_aspecto_si_se_lo_piden(monkeypatch, tmp_path):
-    """M1 (personaje) y el b-roll del editor también llaman a imagen_nano y no
-    eligen formato: para ellos fal sigue decidiendo, como hasta hoy."""
+def test_quien_no_elige_formato_recibe_cuadrada_por_escrito(monkeypatch, tmp_path):
+    """M1 (personaje) y el b-roll del editor también llaman aquí y no eligen
+    formato. Recibían cuadrada porque ese era el valor por defecto de Nano
+    Banana, no porque nadie lo hubiera decidido: al cambiar de modelo (M23 · B)
+    el encuadre se habría movido solo y no lo habría visto nadie hasta ver las
+    imágenes. Ahora va escrito y ya no depende del modelo de turno."""
     vistos = _espiar_fal(monkeypatch)
-    asyncio.run(media_fal.imagen_nano("un faro", tmp_path / "a.jpg"))
-    assert "aspect_ratio" not in vistos["args"]
-    asyncio.run(media_fal.imagen_nano("un faro", tmp_path / "b.jpg", aspecto="9:16"))
+    asyncio.run(media_fal.imagen_fal("un faro", tmp_path / "a.jpg"))
+    assert vistos["args"]["aspect_ratio"] == "1:1"
+    asyncio.run(media_fal.imagen_fal("un faro", tmp_path / "b.jpg", aspecto="9:16"))
     assert vistos["args"]["aspect_ratio"] == "9:16"
 
 

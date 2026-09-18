@@ -20,6 +20,11 @@ CLAVES = [
     "FAL_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "ASSEMBLYAI_API_KEY",
     "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL",
     "OPENAI_MODEL", "GEN_BACKEND",
+    # M23 · B — los dos ids del modelo de imagen. No son secretos: viajan por
+    # aquí para poder cambiar de modelo SIN desplegar, que es justo lo que hace
+    # falta entre el lanzamiento del 23-sep y el apagón de Nano Banana del
+    # 2-oct, y lo que convierte el selector de modelos en configuración.
+    "FAL_IMAGEN", "FAL_IMAGEN_EDIT",
     # M4 — Stripe: el whsec_ del webhook y los 3 Payment Links (los links no
     # son secretos, pero viajan por aquí para no hornearlos en la infra)
     "STRIPE_WEBHOOK_SECRET", "STRIPE_LINK_100", "STRIPE_LINK_550", "STRIPE_LINK_1200",

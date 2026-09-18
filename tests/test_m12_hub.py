@@ -269,7 +269,7 @@ def test_crear_imagen_genera_y_sirve(cliente, srv, monkeypatch, tmp_path):
         destino.write_bytes(b"jpg-falso")
         return "https://fal/x.jpg"
 
-    monkeypatch.setattr(media_fal, "imagen_nano", fake_nano)
+    monkeypatch.setattr(media_fal, "imagen_fal", fake_nano)
     monkeypatch.setattr(srv, "_dir_imagenes", lambda: tmp_path / "_imagenes")
     r = cliente.post("/api/imagenes", json={"prompt": "un dragón", "estilo": "cinematic"})
     assert r.status_code == 200
@@ -287,7 +287,7 @@ def test_crear_imagen_valida_y_devuelve_en_fallo(cliente, srv, monkeypatch, tmp_
         raise RuntimeError("fal caído")
 
     movimientos = []
-    monkeypatch.setattr(media_fal, "imagen_nano", nano_roto)
+    monkeypatch.setattr(media_fal, "imagen_fal", nano_roto)
     monkeypatch.setattr(srv, "_dir_imagenes", lambda: tmp_path / "_imagenes")
     monkeypatch.setattr(creditos, "activo", lambda: True)
     monkeypatch.setattr(creditos, "costo_imagen", lambda: 2)

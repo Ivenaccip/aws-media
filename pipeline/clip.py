@@ -103,7 +103,7 @@ async def componer(image_urls: list[str], prompt: str,
         raise ClipError("No hay imágenes que componer")
     try:
         res = await fal.llamar(
-            settings.fal_grok,
+            settings.fal_imagen_edit,
             {"prompt": prompt or "Combine the subjects of the reference images "
                                  "into a single natural scene, keeping each one "
                                  "exactly as it looks.",
