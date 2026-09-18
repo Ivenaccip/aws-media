@@ -73,6 +73,16 @@ def encolar_estilo_analizar(user_id: str, estilo_id: str, url: str,
                                 "plataforma": plataforma}))
 
 
+def encolar_competencia(user_id: str, informe_id: str, cuentas: list[dict]) -> None:
+    """M23 C5: traer las últimas publicaciones de las cuentas vigiladas (Apify,
+    una corrida por cuenta) y leerlas con el LLM — trabajo corto en el worker
+    Lambda; el progreso viaja por el doc del informe en S3."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "competencia", "user_id": user_id,
+                                "informe_id": informe_id, "cuentas": cuentas}))
+
+
 def encolar_publicar(user_id: str, proyecto: str, pub_id: str) -> None:
     """M23 C2: subir la película a Blotato y crear el post. El mensaje solo
     lleva ids: la clave del usuario la lee el worker, y el texto vive en la

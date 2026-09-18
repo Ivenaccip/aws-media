@@ -183,6 +183,28 @@ salió y lo que no pudo salir. Las preguntas que van a llegar:
   los números de una publicación suelta cuesta una más.
 - La pantalla llega **hasta un año atrás**, en tramos de 30 días.
 
+Y desde C5, **Investiga tu competencia** (`/competencia.html`). Es la única
+sección del grupo de Blotato que **no usa Blotato**: mira cuentas públicas de
+Instagram, TikTok y YouTube con Apify, así que funciona aunque el usuario no
+haya conectado su clave. Lo que va a preguntar:
+
+- **«¿Por qué esta publicación está arriba si tiene menos vistas?»** Porque la
+  lista no va por vistas: va por cuánto rindió **comparada con lo normal de su
+  propia cuenta** («3× lo normal»). Ordenar por vistas pondría siempre arriba a
+  la cuenta más grande, que no enseña nada. Si una cuenta trajo menos de tres
+  publicaciones con vistas, no hay mediana y esa etiqueta no aparece.
+- **«Me cobró menos de lo que decía el botón».** Se cobra por cuenta (3
+  créditos) y la cuenta que no devolvió nada **se devuelve**: el informe lo
+  dice arriba, con el motivo. Pasa con cuentas privadas, vacías o renombradas.
+- **«Faltan los compartidos».** Instagram y YouTube no los informan. Un hueco
+  («—») es eso y nunca un cero.
+- **«No me deja agregar la cuenta».** Hay que pegar la liga del **perfil**
+  (`instagram.com/lacuenta`), no la de una publicación. Se vigilan hasta 5
+  cuentas y solo se puede lanzar una revisión a la vez.
+- Una revisión cuesta **una corrida de Apify por cuenta**, con tope de gasto
+  por corrida. Guardar o quitar cuentas y volver a abrir un informe ya hecho
+  no cuesta nada.
+
 ### «Mi película se quedó en las imágenes y no avanza»
 
 No está atascada: está **esperando**. Desde el 14 de septiembre de 2026, en

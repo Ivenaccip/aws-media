@@ -23,6 +23,10 @@
     "analizar": 3,
     "nota": "M18 — copiadora de estilos: perfil visual de un reel de IG o un TikTok (Apify ~$0.005 dólares + gpt-5-mini visión sobre ~8 frames ~$0.01 + infra). Tarifa fija: los reels son cortos por diseño. Copiar estilo, nunca clonar contenido."
   },
+  "competencia": {
+    "por_cuenta": 3,
+    "nota": "M23 C5 — investiga tu competencia: las 10 últimas publicaciones de cada cuenta vigilada, con sus números, más una lectura del LLM sobre todas juntas. Se cobra POR CUENTA analizada (decisión del dueño, 2026-09-17), igual en las tres redes aunque cuesten distinto: con 10 publicaciones, Instagram sale a $0.027 dólares, YouTube a $0.010 y TikTok a $0.003 (pricing.json §apify), más ~$0.02 de gpt-5-mini repartido entre las cuentas de la corrida. El peor caso (todas de Instagram) queda en ~$0.033 contra $0.045 de venta al piso. Agregar, quitar y volver a ver un informe ya hecho = 0 créditos: solo se cobra traer publicaciones nuevas."
+  },
   "editar": {
     "sugerencias": 2,
     "broll_sugerencias": 2,

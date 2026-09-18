@@ -44,7 +44,10 @@ except (FileNotFoundError, KeyError):
 # el dashboard convierte el costo de vuelta a segundos de cómputo.
 CONCEPTOS_FARGATE = {"infra-producir", "infra-render", "infra-shorts", "infra-editar",
                      "infra-subtitulos", "infra-overlay"}
-CONCEPTOS_LAMBDA = {"infra-preparar", "infra-shorts-analizar", "infra-publicar"}
+CONCEPTOS_LAMBDA = {"infra-preparar", "infra-shorts-analizar", "infra-publicar",
+                    # «infra-estilo» lo escribe el worker desde M18 pero nunca
+                    # entró aquí: sus filas salían sin segundos en el dashboard
+                    "infra-estilo", "infra-competencia"}
 
 
 def costo_fargate(segundos: float, vcpu: float = 4.0, gb: float = 8.0) -> float:

@@ -45,6 +45,7 @@ from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
 from server.estilos_api import router as estilos_router
+from server.competencia_api import router as competencia_router
 from server.shorts_api import router as shorts_router
 
 
@@ -114,6 +115,7 @@ app.include_router(pagos_router)
 app.include_router(admin_router)
 app.include_router(shorts_router)
 app.include_router(estilos_router)
+app.include_router(competencia_router)
 app.include_router(editar_router)
 
 
