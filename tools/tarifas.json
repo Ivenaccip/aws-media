@@ -27,6 +27,12 @@
     "por_cuenta": 3,
     "nota": "M23 C5 — investiga tu competencia: las 10 últimas publicaciones de cada cuenta vigilada, con sus números, más una lectura del LLM sobre todas juntas. Se cobra POR CUENTA analizada (decisión del dueño, 2026-09-17), igual en las tres redes aunque cuesten distinto: con 10 publicaciones, Instagram sale a $0.027 dólares, YouTube a $0.010 y TikTok a $0.003 (pricing.json §apify), más ~$0.02 de gpt-5-mini repartido entre las cuentas de la corrida. El peor caso (todas de Instagram) queda en ~$0.033 contra $0.045 de venta al piso. Agregar, quitar y volver a ver un informe ya hecho = 0 créditos: solo se cobra traer publicaciones nuevas."
   },
+  "clip": {
+    "video_8s": 30,
+    "componer_imagenes": 2,
+    "nota": "M25 · A/F — clip de 8 segundos con audio: UNA llamada a Veo, sin guionista, TTS ni whisper. Los 30 salen de la economía, no del gusto: 8 s con audio son $0.40 dólares de Veo (pricing.json §generacion.veo31_lite_usd_por_segundo, 720p con audio) y el piso de venta es $0.015 dólares por crédito, así que a 20 se vendería en $0.30 y se perdería dinero en cada clip. Por segundo entregado el clip es MÁS caro que la película ($0.05 contra $0.045): no amortiza nada, y «es más sencillo, cobremos menos» no aplica. Los 2 de componer se cobran SOLO cuando el usuario sube 2 o 3 imágenes y hay que juntarlas con Grok antes de animar (~$0.026 dólares, misma tarifa que video.imagen); con cero imágenes (text-to-video) o con una (se anima directo) no se cobran.",
+    "nota_mudo": "Sin audio el clip cuesta $0.24 dólares y el número correcto sería 18-20 créditos. Hoy no se ofrece: la decisión del dueño (17-sep) fue un solo producto, con sonido."
+  },
   "editar": {
     "sugerencias": 2,
     "broll_sugerencias": 2,

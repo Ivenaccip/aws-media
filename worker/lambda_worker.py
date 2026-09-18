@@ -108,6 +108,13 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # parte de los créditos y el informe sale con las demás.
             from worker.competencia_analizar import analizar as competencia
             competencia(j["user_id"], j["informe_id"], j["cuentas"])
+        elif j["tipo"] == "clip":
+            # M25 A/F: el clip de 8 s con audio — una llamada a Veo (más Grok
+            # si hay que juntar varias imágenes). Nunca relanza: el trabajo
+            # marca su propio error y devuelve los créditos, y un reintento de
+            # la cola cobraría un segundo video que nadie pidió.
+            from worker.clip_generar import generar as clip
+            clip(j["user_id"], j["clip_id"])
         elif j["tipo"] == "publicar":
             # M23 C2: película → Blotato. Nunca relanza: un reintento de la
             # cola publicaría dos veces (la publicación se reclama con If-Match).
