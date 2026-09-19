@@ -343,7 +343,10 @@ set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk
 
    (agrega `aws-media-media` o `aws-media-db` solo si el PR tocó esos stacks;
    el synth fija el digest real de `:latest` — nunca deployar sin imagen nueva
-   si cambió `static/` o código, porque viajan dentro de la imagen).
+   si cambió `static/` o código, porque viajan dentro de la imagen). El synth
+   imprime qué imagen pone (`imagen: latest -> sha256:…`): esa línea es la
+   única forma de comprobar que desplegaste lo que querías, porque el tag no
+   aparece en el diff de CDK.
 3. **Si el PR tocó `prompts/*.md`** (regla que nació con la llama «Fluffy»):
 
 ```bash
@@ -363,6 +366,38 @@ venv/Scripts/python tools/prompts_sync.py
 ```bash
 git tag -a prod-$(date +%Y%m%d) -m "desplegado: <qué entró>" && git push origin --tags
 ```
+
+### Desplegar UN commit concreto, y volver atrás
+
+`cdk deploy` a secas significa «pon lo que haya en `:latest`»: **todo** lo
+mergeado desde el último deploy, lo haya probado alguien o no. Es todo o nada,
+y muerde justo cuando más duele — un arreglo urgente el día del lanzamiento se
+lleva con él cualquier cosa que estuviera esperando en `main`.
+
+El CI etiqueta cada imagen con el sha de su commit además de con `latest`, así
+que se puede pedir una por su nombre:
+
+```bash
+set "PATH=D:ws-projectenv\Scripts;C:\Program Files
+odejs;%PATH%" && set IMAGE_TAG=<sha> && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+```
+
+Eso sirve para las dos cosas:
+
+- **desplegar solo lo tuyo** cuando hay cosas más nuevas mergeadas que todavía
+  no quieres en producción;
+- **volver atrás**, que antes no se podía pedir — solo esperar a que el CI
+  reconstruyera el commit viejo. El sha que corría antes sale de
+  `aws lambda get-function --function-name <la Lambda> --query Code.ImageUri`,
+  o de la lista del ECR por fecha.
+
+Un tag que no exista **para el deploy** con un mensaje claro; no cae a
+`latest`. Desplegar una imagen distinta de la que pediste, y en silencio, es el
+peor final posible para una vuelta atrás.
+
+Ojo con el margen de la retención: la política conserva 20 imágenes, así que
+una imagen vieja se puede haber borrado ya. Si la necesitas y no está, la única
+salida es reconstruirla desde su commit.
 
 ## Alarmas
 
