@@ -66,3 +66,35 @@ def test_existe_la_herramienta_de_comprobacion():
     """El runbook manda correrla antes de aplicar; si desaparece, el
     procedimiento documentado deja de poder seguirse."""
     assert (RAIZ / "tools" / "ecr_preview.py").exists()
+
+
+# ---------------------------------------------------------------------------
+# Qué imagen se despliega (19-sep). El synth no se puede importar en un test
+# —`infra/app.py` sintetiza los cinco stacks al importarse— así que estas tres
+# decisiones se fijan leyendo el archivo, como ya se hace con el worker.
+
+APP = (RAIZ / "infra" / "app.py").read_text(encoding="utf-8")
+
+
+def test_se_puede_nombrar_la_imagen_que_se_despliega():
+    """Sin esto, `cdk deploy` significa «pon lo que haya en :latest»: todo lo
+    mergeado desde el último deploy, lo haya probado alguien o no. Un arreglo
+    urgente arrastraba con él cualquier cosa que estuviera esperando."""
+    assert 'IMAGE_TAG = os.getenv("IMAGE_TAG", "latest")' in APP
+    assert "_digest_de(IMAGE_TAG)" in APP
+
+
+def test_un_tag_que_no_existe_para_el_deploy_en_vez_de_caer_a_latest():
+    """El peor final posible de una vuelta atrás es desplegar OTRA imagen sin
+    avisar. Si el tag lo pidió una persona y no se resuelve, se para."""
+    cuerpo = APP[APP.index("def _digest_de"):APP.index("app = cdk.App()")]
+    assert "raise SystemExit" in cuerpo
+    assert 'if ref != "latest"' in cuerpo, (
+        "solo el default puede caer a 'latest': es lo que deja sintetizar sin "
+        "credenciales")
+
+
+def test_el_deploy_dice_en_voz_alta_que_imagen_pone():
+    """El digest es ilegible y el tag no sale en el diff de CDK: si no se
+    imprime, nadie puede comprobar que desplegó lo que quería."""
+    assert 'print(f"imagen: {IMAGE_TAG} -> {digest}"' in APP
