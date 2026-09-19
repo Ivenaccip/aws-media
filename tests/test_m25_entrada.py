@@ -148,19 +148,25 @@ def test_lo_que_ya_esta_en_la_caja_no_se_repite_en_el_menu():
         assert f'href="{queda}"' in menu
 
 
-def test_las_tres_de_blotato_se_apagan_sin_clave():
+def test_las_de_blotato_se_apagan_sin_clave():
     """Decisión del dueño (18-sep): el grupo se comporta como un BLOQUE.
 
     «Investiga tu competencia» lleva el atributo a propósito aunque corra con
     Apify y funcionaría sin ninguna clave — se tomó sabiendo el costo, y se
-    prefiere eso a que una de las tres se comporte distinta que sus vecinas.
-    Si alguien le quita el atributo «arreglando» la dependencia, este test lo
-    para: es una decisión de producto, no un error."""
+    prefiere eso a que una se comporte distinta que sus vecinas. Si alguien le
+    quita el atributo «arreglando» la dependencia, este test lo para: es una
+    decisión de producto, no un error.
+
+    MIX vive en su PROPIO grupo desde el 19-sep («Publicidad Automática»:
+    decisión del dueño, porque no es una pantalla que se abre sino algo que
+    trabaja solo), pero conserva el atributo y por eso siguen siendo cuatro. En
+    su caso el apagado no es coherencia sino necesidad: publica una imagen al
+    día en la cuenta del usuario, así que sin clave no hay dónde publicar."""
     menu = _menu()
-    for href in ("/agenda.html", "/competencia.html", "/metricas.html"):
+    for href in ("/mix.html", "/agenda.html", "/competencia.html", "/metricas.html"):
         bloque = menu[menu.index(f'href="{href}"'):]
         assert bloque.startswith(f'href="{href}" data-blotato'), f"{href} sin apagar"
-    assert menu.count(' data-blotato>') == 3   # solo el atributo, no el comentario
+    assert menu.count(' data-blotato>') == 4   # solo el atributo, no el comentario
 
 
 def test_el_apagado_ofrece_conectar_en_vez_de_dejar_un_callejon():
@@ -206,3 +212,25 @@ def test_cada_opcion_cambia_el_ejemplo_del_hueco():
                    "Crear una imagen", "Editar una imagen"):
         assert "hueco:" in _opcion(rotulo)
     assert "$('#idea').placeholder = opcionHub.hueco;" in INICIO
+
+
+def test_mix_tiene_su_propio_grupo_en_el_menu():
+    """Decisión del dueño (19-sep). Las otras entradas son herramientas que uno
+    ABRE; MIX se enciende una vez y trabaja mientras el dueño no está, así que
+    no puede parecer una pantalla más de la lista."""
+    menu = _menu()
+    assert '<div class="grupo">Publicidad Automática</div>' in menu
+    # y va ANTES que MIX, que es lo que la convierte en su sección
+    assert menu.index("Publicidad Automática") < menu.index('href="/mix.html"')
+    # el nombre de la sección no se repite dentro de la entrada
+    assert "MIX · publicidad automática" not in menu
+
+
+def test_mix_va_debajo_de_blotato_porque_blotato_es_su_requisito():
+    """Decisión del dueño (19-sep). MIX no funciona sin la cuenta de Blotato,
+    así que el menú no puede ofrecerla antes que la puerta donde se conecta:
+    leído de arriba abajo, primero se conecta y después se usa. El «+» vive en
+    el grupo de Blotato."""
+    menu = _menu()
+    assert menu.index('<div class="grupo">Blotato') < menu.index("Publicidad Automática")
+    assert menu.index('href="/metricas.html"') < menu.index('href="/mix.html"')

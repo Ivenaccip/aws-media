@@ -83,6 +83,13 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
     if event.get("tipo") == "sync_costes":
         _sync_costes(int(event.get("dias") or 3))
         return {"ok": True}
+    # M23 · D: el reloj de MIX. EventBridge lo despierta cada hora en punto y
+    # el evento llega como este objeto literal (RuleTargetInput.from_object),
+    # no con la forma nativa de un evento programado: sin `tipo` esta rama no
+    # se dispararía y el reloj correría cada hora sin hacer nada ni fallar.
+    if event.get("tipo") == "mix_reloj":
+        from worker.mix_reloj import despachar
+        return despachar()
     # M23 · D (prerrequisito): una ejecución de Step Functions terminó mal. El
     # evento llega ENTERO, sin transformar a propósito: `detail.input` ya es
     # JSON, y meterlo dentro de una plantilla de EventBridge deja comillas sin
@@ -127,6 +134,13 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # cola publicaría dos veces (la publicación se reclama con If-Match).
             from worker.publicar_task import publicar
             publicar(j["user_id"], j["proyecto"], j["id"])
+        elif j["tipo"] == "mix_dia":
+            # M23 · D: la publicación de un día de campaña. Nunca relanza (el
+            # trabajo se traga sus errores y los escribe en la fila del día):
+            # un reintento de la cola publicaría dos veces en la cuenta de un
+            # cliente, que es lo único que MIX no puede deshacer.
+            from worker.mix_dia import correr
+            correr(j["user_id"], j["campana"], j["dia"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:
