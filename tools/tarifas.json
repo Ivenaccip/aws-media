@@ -39,6 +39,11 @@
     "nota_broll": "M16.3: propuestas de recursos visuales del editor (LLM sobre el transcript, ~$0.01 dólares; no genera nada). Generar sí cobra: imágenes = video.imagen × candidatos; animar con Veo = video.por_segundo × segundos del clip de Veo (4/6/8) — la misma regla de 're-generar una escena' de §video. Activar otra versión y rearmar la película = 0 créditos (infra propia, línea infra-overlay).",
     "nota": "M14 (Editar en la web): la corrida que propone el corte (LLM sobre el transcript, ~$0.02 dólares). Si el metraje no trae canónico se suma la transcripción con la MISMA tarifa de shorts.transcripcion_por_5min (mismo vendor AssemblyAI). Editar en el editor visual, guardar versiones y aceptar/rechazar sugerencias = 0 créditos; el render del corte usa la infra propia (línea infra-render de M6.1)."
   },
+  "mix": {
+    "por_publicacion": 5,
+    "nota": "M23 · D — publicidad automática: UNA imagen al día en UNA sola cuenta, sin que el dueño del negocio la revise. Los 5 son 2 de la imagen y 3 de la automatización, la subida y la infra (decisión del dueño, 2026-09-18). La campaña se cobra COMPLETA por adelantado (días × 5) y se devuelve por DÍA lo que no salga: al apagar a mitad se regresan los días que no se publicaron, y un día que falla devuelve sus 5. Economía: al piso de venta ($0.015 dólares/crédito) son $0.075 contra ~$0.04 de costo real. La imagen NO se inventa de cero — parte de la foto que sube el usuario, así que es el endpoint de EDITAR de Grok ($0.02 de salida + $0.002 por referencia, pricing.json §generacion.grok_edit), más el tema del día con el LLM y la subida a Blotato. A diferencia de video.imagen (2 créditos), aquí la tarifa sí deja margen.",
+    "nota_ejemplo": "El ejemplo del día 1 que se enseña ANTES de encender no se cobra, y no se regenera: si la enciende, ese mismo ejemplo ES la publicación del primer día. Cuesta una imagen real (~$0.022 dólares), así que quien pide ejemplos y nunca enciende sale gratis — se aceptó a cambio de que nadie pague sin ver (decisión del dueño, 2026-09-18)."
+  },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [
     { "creditos": 100, "usd": 1.99 },

@@ -371,7 +371,11 @@ def test_la_regla_despierta_al_worker(reglas):
 
 
 def test_el_sync_diario_sigue_en_pie(reglas):
-    """La regla vieja no se toca: son dos reglas distintas sobre el mismo worker."""
-    cron = [r for r in reglas if "ScheduleExpression" in r]
-    assert len(cron) == 1
-    assert cron[0]["ScheduleExpression"] == "cron(0 6 * * ? *)"
+    """La regla vieja no se toca: son reglas distintas sobre el mismo worker.
+
+    Se busca por expresión y no por conteo a propósito. Este test se escribió
+    contando las reglas de cron y se rompió en cuanto MIX añadió la suya, que
+    es justo lo que NO queremos: que añadir un cron nuevo obligue a tocar la
+    comprobación del viejo. Lo que importa es que el sync diario siga ahí."""
+    cron = {r["ScheduleExpression"] for r in reglas if "ScheduleExpression" in r}
+    assert "cron(0 6 * * ? *)" in cron

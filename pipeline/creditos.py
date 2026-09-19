@@ -59,6 +59,9 @@ COMPETENCIA_POR_CUENTA_CR = 3
 CLIP_CR = 30
 CLIP_COMPONER_CR = 2
 
+# M23 · D — MIX, publicidad automática (fallback espejo de tarifas.json §mix)
+MIX_POR_PUBLICACION_CR = 5
+
 def _tabla_de(crudo: dict) -> dict[int, int]:
     """§video.por_duracion → {segundos: total}. Se queda solo con lo que el
     pipeline sabe producir: una llave fuera del rango se cobraría con su precio y
@@ -97,6 +100,8 @@ try:
     _c = _t.get("clip", {})
     CLIP_CR = _c.get("video_8s", CLIP_CR)
     CLIP_COMPONER_CR = _c.get("componer_imagenes", CLIP_COMPONER_CR)
+    MIX_POR_PUBLICACION_CR = _t.get("mix", {}).get(
+        "por_publicacion", MIX_POR_PUBLICACION_CR)
 except (FileNotFoundError, KeyError, ValueError, TypeError):
     pass  # fallback: tarifa de arriba (2026-09-02); una llave mal escrita no tumba la API
 
@@ -227,6 +232,17 @@ def costo_clip(n_imagenes: int = 0) -> int:
 def costo_shorts_render(n_shorts: int) -> int:
     """M8: Remotion + export en Fargate, por short aprobado."""
     return SHORTS_RENDER_CR * int(n_shorts)
+
+
+def costo_mix(dias: int) -> int:
+    """M23 · D: la campaña de publicidad automática, COMPLETA y por adelantado.
+
+    Días × tarifa, porque sale UNA publicación al día. Se cobra entera al
+    encender (decisión del dueño, 18-sep) y se devuelve por DÍA lo que no
+    salga: un día que falla devuelve sus créditos, y apagar a mitad devuelve
+    los días que no se publicaron. El ejemplo del primer día NO entra en esta
+    cuenta: se enseña antes de cobrar y es gratis."""
+    return MIX_POR_PUBLICACION_CR * max(0, int(dias))
 
 
 # ---------------------------------------------------------------------------

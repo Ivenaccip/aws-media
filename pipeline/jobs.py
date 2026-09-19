@@ -162,6 +162,27 @@ def encolar_publicar(user_id: str, proyecto: str, pub_id: str) -> None:
                                 "proyecto": proyecto, "id": pub_id}))
 
 
+def encolar_mix_dia(user_id: str, campana_id: str, dia: str) -> None:
+    """M23 · D: la publicación de UN día de una campaña de MIX.
+
+    Lo encola el reloj (worker/mix_reloj.py), que corre en el mismo worker: es
+    el primer sitio del repo donde el worker se encola a sí mismo, y por eso el
+    stack tuvo que darle JOBS_QUEUE_URL y permiso de escribir en la cola.
+
+    Va por la cola y no en línea por dos motivos. Uno: cada día tarda entre
+    treinta segundos y dos minutos (tema, imagen, subida, post), y hacerlos
+    todos seguidos dentro del reloj se come los quince minutos de la Lambda en
+    cuanto haya veinte campañas — y las últimas del día no saldrían. Dos: un
+    día que falla no debe poder tumbar los demás.
+
+    El mensaje lleva solo ids: la campaña vive en Postgres, y lo que se
+    publica se decide al correr, no al despachar."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "mix_dia", "user_id": user_id,
+                                "campana": campana_id, "dia": dia}))
+
+
 def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
     misma state machine que la producción, otro comando. Los segmentos
