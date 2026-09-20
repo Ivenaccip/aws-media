@@ -657,7 +657,20 @@ def fijar_slots(user_id: str, slots: int | None) -> None:
 
 CAMPOS_CAMPANA = ("motivo", "tono", "imagen_key", "canal_id", "canal_red",
                   "canal_nombre", "hora", "zona", "empieza", "termina")
+# De esas diez, dos son `date` en la tabla. El Data API manda TODOS los
+# parámetros como texto (`_param`) y Postgres no convierte text→date solo
+# dentro de un INSERT: sin el cast la petición muere con «column "empieza" is
+# of type date but expression is of type text» y la pantalla recibe un 500
+# (visto en producción el 19-sep-2026, al guardar el primer borrador). El
+# resto de las consultas de MIX escriben `:d::date` a mano; aquí los
+# marcadores salen de un bucle, así que el cast tiene que ir en el molde.
+FECHAS_CAMPANA = ("empieza", "termina")
 _VIVA = "('borrador', 'activa', 'pausada')"
+
+
+def _marcador(campo: str) -> str:
+    """El `:campo` que va en el SQL, con el cast puesto si la columna es fecha."""
+    return f":{campo}::date" if campo in FECHAS_CAMPANA else f":{campo}"
 
 
 def mix_campana(user_id: str) -> dict | None:
@@ -686,7 +699,7 @@ def mix_guardar_borrador(user_id: str, id_: str, **campos) -> str:
         return str(viva["id"])
     datos = {k: campos.get(k) for k in CAMPOS_CAMPANA}
     if viva:
-        sets = ", ".join(f"{k} = :{k}" for k in CAMPOS_CAMPANA)
+        sets = ", ".join(f"{k} = {_marcador(k)}" for k in CAMPOS_CAMPANA)
         ejecutar(f"UPDATE mix_campanas SET {sets}, actualizado = now() "
                  "WHERE user_id = :u AND id = :i AND estado = 'borrador'",
                  {**datos, "u": user_id, "i": viva["id"]})
@@ -703,7 +716,7 @@ def mix_guardar_borrador(user_id: str, id_: str, **campos) -> str:
                  {"u": user_id, "i": viva["id"], "d": datos["empieza"]})
         return str(viva["id"])
     columnas = ", ".join(CAMPOS_CAMPANA)
-    valores = ", ".join(f":{k}" for k in CAMPOS_CAMPANA)
+    valores = ", ".join(_marcador(k) for k in CAMPOS_CAMPANA)
     ejecutar(f"INSERT INTO mix_campanas (user_id, id, {columnas}) "
              f"VALUES (:u, :i, {valores})",
              {**datos, "u": user_id, "i": id_})
