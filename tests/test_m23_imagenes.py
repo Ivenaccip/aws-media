@@ -288,11 +288,50 @@ def test_sin_imagen_en_ningun_lado_es_404(cliente, srv, nube):
     assert cliente.get("/api/imagenes/abc123.jpg/archivo").status_code == 404
 
 
-@pytest.mark.parametrize("nombre", ["abc.png", "a-b.jpg", "..jpg", "abc.jpg.exe"])
+@pytest.mark.parametrize("nombre", ["abc.png", "..jpg", "abc.jpg.exe",
+                                   "abc..jpg", "-abc.jpg", "abc-.jpg"])
 def test_un_nombre_raro_no_llega_a_s3(cliente, srv, nube, monkeypatch, nombre):
     monkeypatch.setattr(media_sync, "bajar_archivo",
                         lambda k, d: pytest.fail(f"{nombre!r} llegó a S3"))
     assert cliente.get(f"/api/imagenes/{nombre}/archivo").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# MIX no bautiza como el editor
+
+def test_las_imagenes_de_mix_se_sirven(cliente, srv, nube, monkeypatch):
+    """El editor pone 12 hex; MIX pone `mix-<hex>-base.jpg` (la foto que sube
+    el usuario) y `mix-<campaña>-<fecha>.jpg` (la de cada día). El guarda pedía
+    `isalnum()`, así que el guion las tumbaba TODAS y la pantalla recibía 404
+    al pedir SU PROPIA foto, en 4 ms, sin llegar a mirar S3.
+
+    Los nombres los arman los mismos ayudantes que en producción, y la URL sale
+    del mismo `_url` que se le manda a la pantalla: si alguien cambia cómo se
+    bautizan y no toca el guarda, esto falla aquí y no en casa de un cliente."""
+    from datetime import date
+
+    from pipeline import mix
+    from server import mix_api
+    monkeypatch.setattr(db, "usuario_actual", lambda: "ana")
+    campana = "mix-e348a935c769"
+    for nombre in (f"{campana}-base.jpg", mix.nombre_del_dia(campana, date(2026, 9, 21))):
+        nube[f"imagenes/ana/{nombre}"] = b"jpg-de-mix"
+        r = cliente.get(mix_api._url(nombre))
+        assert r.status_code == 200 and r.content == b"jpg-de-mix", nombre
+
+
+@pytest.mark.parametrize("nombre", [
+    "../otro/abc.jpg",
+    "/etc/passwd.jpg",
+    "a/b.jpg",
+    "..\\otro\\abc.jpg",
+    "ABC123.JPG",
+])
+def test_ningun_nombre_se_sale_de_la_carpeta_del_usuario(srv, nombre):
+    """Lo que el guarda tiene que impedir no son los guiones: es salir de
+    `imagenes/<usuario>/`. La regla nombra lo permitido, así que no depende de
+    acordarse de todas las formas de escribir `..`."""
+    assert not srv._servible(nombre)
 
 
 def test_la_pagina_se_sirve(cliente):
