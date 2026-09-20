@@ -383,6 +383,22 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
 # verse después de cerrar la página. Solo nombres con la forma que ponen
 # crear/editar (12 hex + .jpg): lo demás del prefijo no es una de ellas.
 _NOMBRE_IMAGEN = re.compile(r"[0-9a-f]{12}\.jpg")
+
+# M23 · D — qué nombre aceptamos SERVIR. Es más ancho que el de arriba: por
+# aquí pasan también las de MIX, que no son 12 hex sino `mix-<hex>-base.jpg`
+# (la foto que sube el usuario) y `mix-<campaña>-<fecha>.jpg` (la de cada
+# día). El guarda anterior pedía `isalnum()`, así que el guion las tumbaba
+# TODAS: la pantalla pedía su propia foto y le contestábamos 404 en 4 ms, sin
+# llegar a mirar S3. Lo que hay que impedir no son los guiones, es salirse de
+# la carpeta del usuario — así que la regla nombra lo permitido en vez de
+# adivinar lo prohibido: sin barras, sin `..`, y un solo `.jpg` al final.
+_NOMBRE_SERVIBLE = re.compile(r"[0-9a-z]+(-[0-9a-z]+)*\.jpg")
+
+
+def _servible(nombre: str) -> bool:
+    return bool(_NOMBRE_SERVIBLE.fullmatch(nombre))
+
+
 MAX_IMAGENES = 200
 
 
@@ -420,7 +436,7 @@ def bytes_imagen(nombre: str):
     import tempfile
 
     from starlette.background import BackgroundTask
-    if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
+    if not _servible(nombre):
         raise HTTPException(404, "Imagen no encontrada")
     if jobs.backend() != "aws":
         f = _dir_imagenes() / nombre
@@ -439,7 +455,7 @@ def bytes_imagen(nombre: str):
 
 @app.get("/api/imagenes/{nombre}")
 def ver_imagen(nombre: str):
-    if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
+    if not _servible(nombre):
         raise HTTPException(404, "Imagen no encontrada")
     f = _dir_imagenes() / nombre
     # en la nube el disco es compartido entre usuarios: solo el CDN, con la
