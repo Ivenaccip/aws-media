@@ -179,6 +179,39 @@ def test_el_dia_uno_se_despacha_aunque_ya_tenga_fila_de_ejemplo(reloj, monkeypat
     assert reloj == [(USER, "mix-1", "2026-09-20")]
 
 
+def test_el_dia_uno_se_despacha_aunque_el_ejemplo_se_quedara_a_medias(
+        reloj, monkeypatch):
+    """La otra mitad del test de arriba, y ya se escapó una vez.
+
+    Desde que el ejemplo se prepara en la cola, la fila del día 1 también puede
+    estar en 'preparando': basta pedir otro ejemplo y encender la campaña en el
+    mismo minuto. Con el filtro mirando solo 'ejemplo', ese día quedaba
+    cobrado, sin publicar y sin un error que leer, y sus créditos retenidos
+    hasta que la campaña venciera semanas después. `db.mix_reclamar_ejemplo`
+    sabe reclamar esa fila —con imagen la reusa, sin ella genera la del día—
+    pero solo si el reloj llega a despacharla.
+
+    Por eso el filtro lee `db.ESTADOS_EJEMPLO` y no una lista escrita a mano:
+    que alguien añada un estado y este archivo no se entere es justo lo que
+    pasó."""
+    _ahora(monkeypatch, "2026-09-20T09:00")
+    monkeypatch.setattr(db, "mix_dias_tomados", lambda desde: [
+        {"user_id": USER, "campana_id": "mix-1", "dia": "2026-09-20",
+         "estado": "preparando"}])
+    assert mix_reloj.despachar()["despachadas"] == 1
+    assert reloj == [(USER, "mix-1", "2026-09-20")]
+
+
+def test_el_filtro_de_dias_tomados_y_el_reclamo_miran_la_misma_lista():
+    """Si se separan, o el día 1 no sale nunca (el filtro de más) o se despacha
+    un trabajo que va a perder el candado y no hace nada (el filtro de menos).
+    Los dos leen `db.ESTADOS_EJEMPLO`."""
+    import inspect
+    assert "db.ESTADOS_EJEMPLO" in inspect.getsource(mix_reloj._dias_tomados)
+    for estado in db.ESTADOS_EJEMPLO:
+        assert f"'{estado}'" in db.EJEMPLO_VIVO
+
+
 def test_una_campana_pausada_no_publica(reloj, monkeypatch):
     _ahora(monkeypatch, "2026-09-21T09:00")
     monkeypatch.setattr(db, "mix_encendidas", lambda: [campana(estado="pausada")])
@@ -702,7 +735,12 @@ def test_el_ejemplo_no_puede_resucitar_un_dia_ya_publicado(monkeypatch):
     Pedir otro ejemplo tarda hasta dos minutos. Si en ese rato el usuario
     enciende y el reloj publica el día 1, al terminar el ejemplo devolvía esa
     fila a 'ejemplo' —borrando el post_id— y el reloj la veía libre otra vez.
-    Una fila que ya no es un ejemplo no se toca nunca más."""
+    Una fila que ya no es un ejemplo no se toca nunca más.
+
+    Desde que el ejemplo se prepara en la cola, el WHERE admite además la fila
+    'preparando' que apartó `mix_pedir_ejemplo` —es el ejemplo a medias, no una
+    publicación— y ni una más: lo que este test defiende es que la lista siga
+    sin 'corriendo', 'publicada', 'incierta' ni 'error'."""
     vistas = []
     monkeypatch.setattr(db, "ejecutar",
                         lambda sql, params=None: vistas.append(sql) or [])
@@ -710,7 +748,9 @@ def test_el_ejemplo_no_puede_resucitar_un_dia_ya_publicado(monkeypatch):
                            media_key="k.jpg")
     sql = " ".join(vistas[0].split())
     assert "ON CONFLICT" in sql.upper()
-    assert "WHERE mix_corridas.estado = 'ejemplo'" in sql
+    assert "WHERE mix_corridas.estado IN ('ejemplo', 'preparando')" in sql
+    for real in ("corriendo", "publicada", "incierta"):
+        assert real not in sql
 
 
 def test_cambiar_las_fechas_borra_el_ejemplo_que_quedo_huerfano(monkeypatch):
@@ -731,7 +771,9 @@ def test_cambiar_las_fechas_borra_el_ejemplo_que_quedo_huerfano(monkeypatch):
                             empieza="2026-09-20", termina="2026-09-29")
     borrados = [(s, p) for s, p in vistas if s.startswith("DELETE")]
     assert len(borrados) == 1
-    assert "estado = 'ejemplo'" in borrados[0][0]
+    # se lleva también el ejemplo a medias: una fila 'preparando' huérfana
+    # bloquearía ese día para siempre, igual que una 'ejemplo'
+    assert "estado IN ('ejemplo', 'preparando')" in borrados[0][0]
     assert "dia <> :d::date" in borrados[0][0]
     assert borrados[0][1]["d"] == "2026-09-20"
 

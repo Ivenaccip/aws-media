@@ -28,7 +28,7 @@ import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from pipeline import blotato, claves_usuario, creditos, db, jobs, media_fal
+from pipeline import blotato, claves_usuario, creditos, db, jobs
 from pipeline import media_sync, mix
 from pipeline.config import settings
 
@@ -42,6 +42,10 @@ YA_ENCENDIDA = ("Ya tienes una campaña encendida. Apágala antes de crear otra:
 SIN_BORRADOR = "No hay ninguna campaña a medias. Empieza por subir una imagen."
 SIN_EJEMPLO = ("Primero mira el ejemplo del primer día. Así ves qué va a salir "
                "antes de que te cobremos.")
+YA_PREPARANDO = ("Ya estamos preparando tu ejemplo. Aparece aquí solo — puedes "
+                 "cerrar esta pantalla si quieres.")
+NO_ENCOLO = ("No pudimos poner tu ejemplo a preparar. Inténtalo otra vez en un "
+             "momento.")
 RED_FUERA = ("Por ahora MIX publica en Instagram, LinkedIn, Threads, X y "
              "Bluesky. Elige una cuenta de esas.")
 IMAGEN_MALA = ("Esa imagen no se pudo leer. Sube una foto de tu producto o de "
@@ -90,18 +94,6 @@ def _guardar(destino: Path, nombre: str) -> None:
     if jobs.backend() == "aws":
         media_sync.subir_archivo(destino, mix.clave_imagen(db.usuario_actual(), nombre))
         destino.unlink(missing_ok=True)
-
-
-def _traer(nombre: str) -> Path:
-    """La imagen base en disco, lista para mandarla a Grok como referencia."""
-    local = _dir() / nombre
-    if local.exists():
-        return local
-    local.parent.mkdir(parents=True, exist_ok=True)
-    if jobs.backend() == "aws" and media_sync.bajar_archivo(
-            mix.clave_imagen(db.usuario_actual(), nombre), local):
-        return local
-    raise HTTPException(409, "Perdimos la imagen de la campaña. Vuelve a subirla.")
 
 
 def _url(nombre: str) -> str:
@@ -256,12 +248,24 @@ async def guardar_borrador(
 
 
 @router.post("/ejemplo")
-async def ejemplo():
-    """La publicación del primer día, para verla ANTES de pagar.
+def ejemplo():
+    """Pide la publicación del primer día, para verla ANTES de pagar.
 
     No cobra (decisión del dueño). Si enciende, esta misma imagen es la del día
     1: se guarda en la corrida de ese día en estado 'ejemplo' y el reloj la
-    reclama en vez de generar otra."""
+    reclama en vez de generar otra.
+
+    **Contesta en el acto y deja el trabajo en la cola**, y no es una
+    preferencia de arquitectura. El LLM y Grok tardan de treinta segundos a dos
+    minutos; API Gateway corta toda petición a los 29 s y ese tope no es de la
+    Lambda, así que no hay timeout que subir. Generado aquí dentro, este
+    endpoint se moría SIEMPRE en la nube con un 500 (producción, 20-sep-2026) y
+    en el server local funcionaba, que es por lo que llegó tan lejos.
+
+    La pantalla se entera mirando `GET /api/mix`: la corrida del día 1 pasa a
+    'ejemplo' cuando está, o se queda en 'preparando' con `error` si no pudo.
+    Como vive en la base y no en esta petición, cerrar la pantalla dejó de
+    costar el ejemplo."""
     _exige_postgres()
     user = _usuario()
     campana = db.mix_campana(user)
@@ -270,36 +274,23 @@ async def ejemplo():
     if campana["estado"] != "borrador":
         raise HTTPException(409, YA_ENCENDIDA)
 
-    dias = mix.dias_de_campana(campana)
-    base = _traer(campana["imagen_key"])
-    plan = await mix.tema_y_texto(campana, 1, len(dias))
-
-    nombre = f"mix-{campana['id']}-{dias[0].isoformat()}.jpg"
-    destino = _dir() / nombre
-    destino.parent.mkdir(parents=True, exist_ok=True)
+    dia = mix.dias_de_campana(campana)[0].isoformat()
+    # El candado va ANTES de encolar, no después: dos clics seguidos —o dos
+    # pestañas abiertas— no pueden poner dos trabajos a generar la misma
+    # imagen. El ejemplo es gratis para el usuario, pero la imagen la pagamos
+    # nosotros. Si pierde, es que ya hay uno en camino o que ese día ya es una
+    # publicación de verdad.
+    if not db.mix_pedir_ejemplo(user, campana["id"], dia):
+        raise HTTPException(409, YA_PREPARANDO)
     try:
-        await media_fal.imagen_fal(
-            mix.prompt_imagen(plan["tema"]), destino, referencia=base,
-            meta={"mix": campana["id"], "dia": dias[0].isoformat()},
-            aspecto="1:1")
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001 — el modelo falló, no el usuario
-        log.warning("el ejemplo de MIX no salió: %s", e)
-        raise HTTPException(502, "No pudimos preparar el ejemplo. Inténtalo otra vez.") from e
-    _guardar(destino, nombre)
-    # Entre el gate de arriba y esta línea pasaron el LLM y Grok: hasta dos
-    # minutos en los que el usuario pudo pulsar «Encender» y el reloj pudo
-    # publicar el día 1 de verdad. Guardar el ejemplo encima sería devolver esa
-    # fila a 'ejemplo' y dejar que el reloj la publicara por segunda vez. La
-    # base ya no lo permite (el upsert está condicionado), pero se comprueba
-    # aquí también para poder DECIRLO en vez de fallar en silencio.
-    if (db.mix_campana(user) or {}).get("estado") != "borrador":
-        raise HTTPException(409, "Encendiste la campaña mientras preparábamos "
-                                 "el ejemplo. Ábrela para ver cómo va.")
-    db.mix_guardar_ejemplo(user, campana["id"], dias[0].isoformat(),
-                           tema=plan["tema"], texto=plan["texto"], media_key=nombre)
-    return {"dia": dias[0].isoformat(), "texto": plan["texto"], "imagen": _url(nombre)}
+        jobs.encolar_mix_ejemplo(user, campana["id"], dia)
+    except Exception as err:  # noqa: BLE001 — apartado y sin trabajo = colgado
+        # la fila se quedaría en 'preparando' hasta que caduque y la pantalla
+        # girando por un trabajo que no existe: se marca fallida en el acto
+        db.mix_fallar_ejemplo(user, campana["id"], dia, NO_ENCOLO)
+        log.error("no se pudo encolar el ejemplo de MIX: %s", err)
+        raise HTTPException(502, NO_ENCOLO) from err
+    return {"dia": dia, "estado": "preparando"}
 
 
 class EncenderIn(BaseModel):
@@ -316,7 +307,17 @@ def encender(body: EncenderIn):
         raise HTTPException(409, SIN_BORRADOR if not campana else YA_ENCENDIDA)
     if body.id and body.id != campana["id"]:
         raise HTTPException(409, "Esa campaña ya cambió. Vuelve a abrir la pantalla.")
-    if not db.mix_corridas(user, campana["id"]):
+    # «Hay corridas» dejó de bastar el día que el ejemplo pasó a la cola: la
+    # fila del día 1 existe desde que se PIDE, y cobrar con ella a medias sería
+    # cobrar por algo que el usuario todavía no ha visto.
+    #
+    # Y tiene que ser la del día 1 de AHORA, no una cualquiera: si movió el
+    # arranque, el ejemplo que vio es el de un rango que descartó. El borrador
+    # borra esas filas al guardar, pero el derecho a cobrar no puede apoyarse
+    # en que ese borrado haya ocurrido — se comprueba el día que toca.
+    dia1 = mix.dias_de_campana(campana)[0].isoformat()
+    if not any(str(c.get("dia"))[:10] == dia1 and c.get("estado") == "ejemplo"
+               for c in db.mix_corridas(user, campana["id"])):
         raise HTTPException(409, SIN_EJEMPLO)
 
     dias = len(mix.dias_de_campana(campana))

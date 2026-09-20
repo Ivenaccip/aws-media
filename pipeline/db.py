@@ -667,6 +667,20 @@ CAMPOS_CAMPANA = ("motivo", "tono", "imagen_key", "canal_id", "canal_red",
 FECHAS_CAMPANA = ("empieza", "termina")
 _VIVA = "('borrador', 'activa', 'pausada')"
 
+# Los dos estados en los que la fila del día 1 todavía NO es una publicación:
+# nadie ha pagado por ella y el reloj no la ha tocado.
+#
+#   'preparando' — el trabajo está en la cola o corriendo. Si además tiene
+#                  `error`, ese intento murió y se puede pedir otro.
+#   'ejemplo'    — el resultado, que el usuario ya vio y aprobó.
+#
+# Solo estas dos se pueden pisar. Cualquier otro estado ya es un día de verdad
+# —publicado, corriendo o cerrado— y una fila así no se toca nunca más: pisarla
+# la devolvería a la cola del reloj y publicaría dos veces en la cuenta de un
+# cliente, que es lo único que MIX no puede deshacer.
+ESTADOS_EJEMPLO = ("ejemplo", "preparando")
+EJEMPLO_VIVO = "('" + "', '".join(ESTADOS_EJEMPLO) + "')"
+
 
 def _marcador(campo: str) -> str:
     """El `:campo` que va en el SQL, con el cast puesto si la columna es fecha."""
@@ -711,7 +725,7 @@ def mix_guardar_borrador(user_id: str, id_: str, **campos) -> str:
         # otro estado tampoco vale: una fila cualquiera en ese día lo bloquea
         # para siempre.
         ejecutar("DELETE FROM mix_corridas WHERE user_id = :u "
-                 "AND campana_id = :i AND estado = 'ejemplo' "
+                 f"AND campana_id = :i AND estado IN {EJEMPLO_VIVO} "
                  "AND dia <> :d::date",
                  {"u": user_id, "i": viva["id"], "d": datos["empieza"]})
         return str(viva["id"])
@@ -821,14 +835,81 @@ def mix_reclamar_ejemplo(user_id: str, campana_id: str, dia: str) -> dict | None
 
     Cuando el reloj llega a ese día, `mix_reclamar_dia` pierde (la fila ya
     existe) y en vez de generar otra imagen —y cobrar otra vez— se reclama la
-    que hay. UPDATE condicionado sobre 'ejemplo': gana uno solo."""
+    que hay. UPDATE condicionado: gana uno solo.
+
+    Reclama TAMBIÉN una fila en 'preparando', y eso no es laxitud: es lo que
+    impide que el día 1 se quede sin publicar. Entre que la pantalla aparta la
+    fila para pedir otro ejemplo y el worker la termina, el usuario puede
+    encender la campaña; si el reloj solo mirara 'ejemplo', esa fila lo
+    bloquearía para siempre —el día no saldría y nadie devolvería sus
+    créditos—. Reclamada, pasa lo que tiene que pasar: si trae media_key se
+    reusa esa imagen (es la que el usuario aprobó al encender), y si no trae
+    nada `worker/mix_dia.py` genera la del día como cualquier otro. El ejemplo
+    que siguiera corriendo ya no puede pisarla: el upsert de
+    `mix_guardar_ejemplo` solo toca filas que aún son un ejemplo."""
     filas = ejecutar(
-        """UPDATE mix_corridas SET estado = 'corriendo', actualizado = now()
+        f"""UPDATE mix_corridas SET estado = 'corriendo', actualizado = now()
             WHERE user_id = :u AND campana_id = :c AND dia = :d::date
-              AND estado = 'ejemplo'
+              AND estado IN {EJEMPLO_VIVO}
         RETURNING tema, texto, media_key""",
         {"u": user_id, "c": campana_id, "d": dia})
     return filas[0] if filas else None
+
+
+# Cuánto puede tardar un ejemplo antes de darlo por muerto. El trabajo corre en
+# el worker (900 s de tope) y la parte lenta son el LLM y Grok: dos minutos de
+# los malos. Diez es holgura, no una promesa — pasado ese rato se deja pedir
+# otro, porque una pantalla que dice «preparando» para siempre es peor que un
+# segundo intento que quizá cueste una imagen de más.
+MINUTOS_EJEMPLO = 10
+
+
+def mix_pedir_ejemplo(user_id: str, campana_id: str, dia: str) -> bool:
+    """Aparta la fila del día 1 para preparar un ejemplo, y dice si se pudo.
+
+    Es el candado del ejemplo, hermano del de `mix_reclamar_dia`: el trabajo se
+    encola DESPUÉS de ganar esta fila, así que dos clics seguidos —o dos
+    pestañas— no pueden poner dos trabajos a generar la misma imagen. El
+    ejemplo es gratis para el usuario, pero la imagen la pagamos nosotros.
+
+    Se puede pisar una fila que sea un ejemplo (pedir otro es legítimo: cambió
+    el motivo o el tono) o un intento que ya murió —con `error` puesto— o que
+    lleva demasiado rato sin dar señales. Lo que no se puede pisar es un día de
+    verdad, y de eso se encarga el WHERE.
+
+    El tema, el texto y la imagen del intento anterior se CONSERVAN a
+    propósito: mientras el nuevo se cocina, la pantalla sigue enseñando el que
+    el usuario ya había visto en vez de quedarse en blanco."""
+    filas = ejecutar(
+        """INSERT INTO mix_corridas (user_id, campana_id, dia, estado)
+           VALUES (:u, :c, :d::date, 'preparando')
+           ON CONFLICT (user_id, campana_id, dia) DO UPDATE
+             SET estado = 'preparando', error = NULL, actualizado = now()
+           WHERE mix_corridas.estado = 'ejemplo'
+              OR (mix_corridas.estado = 'preparando'
+                  AND (mix_corridas.error IS NOT NULL
+                       OR mix_corridas.actualizado < now() - :viejo::interval))
+        RETURNING dia""",
+        {"u": user_id, "c": campana_id, "d": dia,
+         "viejo": f"{MINUTOS_EJEMPLO} minutes"})
+    return bool(filas)
+
+
+def mix_fallar_ejemplo(user_id: str, campana_id: str, dia: str,
+                       error: str) -> None:
+    """Deja escrito por qué no salió el ejemplo, sin sacar la fila de
+    'preparando'.
+
+    El estado no cambia porque no hay ningún otro que sirva: 'error' es el de
+    un día de campaña que no se publicó —cuenta para la devolución y lo lee la
+    lista de días—, y un ejemplo no es un día que falló, es un intento que
+    murió. Con el `error` puesto, la pantalla sabe que puede ofrecer otro y
+    `mix_pedir_ejemplo` sabe que puede pisarlo."""
+    ejecutar(
+        "UPDATE mix_corridas SET error = :err, actualizado = now() "
+        "WHERE user_id = :u AND campana_id = :c AND dia = :d::date "
+        "AND estado = 'preparando'",
+        {"u": user_id, "c": campana_id, "d": dia, "err": (error or "")[:400]})
 
 
 def mix_guardar_ejemplo(user_id: str, campana_id: str, dia: str, *, tema: str,
@@ -845,14 +926,19 @@ def mix_guardar_ejemplo(user_id: str, campana_id: str, dia: str, *, tema: str,
     # devolvía esa fila a 'ejemplo' borrando el post_id. El reloj la volvía a
     # ver libre y PUBLICABA OTRA VEZ en la cuenta del cliente. Una fila que ya
     # no es un ejemplo no se toca nunca más.
+    #
+    # Desde que el ejemplo se prepara en la cola, la fila que este UPDATE pisa
+    # casi siempre es la 'preparando' que apartó `mix_pedir_ejemplo` — pero el
+    # INSERT sigue haciendo falta: si el usuario movió las fechas mientras se
+    # generaba, aquella fila se borró y esta es la primera del día nuevo.
     ejecutar(
-        """INSERT INTO mix_corridas (user_id, campana_id, dia, estado, tema,
-                                     texto, media_key)
+        f"""INSERT INTO mix_corridas (user_id, campana_id, dia, estado, tema,
+                                      texto, media_key)
            VALUES (:u, :c, :d::date, 'ejemplo', :tema, :texto, :media)
            ON CONFLICT (user_id, campana_id, dia) DO UPDATE
              SET estado = 'ejemplo', tema = :tema, texto = :texto,
                  media_key = :media, error = NULL, actualizado = now()
-           WHERE mix_corridas.estado = 'ejemplo'""",
+           WHERE mix_corridas.estado IN {EJEMPLO_VIVO}""",
         {"u": user_id, "c": campana_id, "d": dia, "tema": tema,
          "texto": texto, "media": media_key})
 

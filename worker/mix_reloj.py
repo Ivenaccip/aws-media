@@ -45,10 +45,19 @@ def _dias_tomados() -> set:
     """Los días que ya tienen fila, para no despachar trabajos que solo van a
     perder el candado.
 
-    Se dejan FUERA los que están en 'ejemplo': esa fila es la del día 1, la del
-    ejemplo que el usuario vio antes de pagar, y existe desde antes de
+    Se dejan FUERA los de `db.ESTADOS_EJEMPLO`: esa fila es la del día 1, la
+    del ejemplo que el usuario vio antes de pagar, y existe desde antes de
     encender. Contarla como tomada sería la forma silenciosa de que el primer
-    día de todas las campañas no saliera nunca."""
+    día de todas las campañas no saliera nunca.
+
+    La lista sale de `db` y no se escribe aquí porque ya se desincronizó una
+    vez: cuando el ejemplo pasó a prepararse en la cola apareció el estado
+    'preparando' y este filtro se quedó mirando solo 'ejemplo'. Bastaba con que
+    alguien pidiera otro ejemplo y encendiera la campaña en el mismo minuto
+    para que su día 1 se quedara ahí: cobrado, sin publicar, sin un solo error
+    que leer, y con los créditos retenidos hasta que la campaña venciera.
+    `db.mix_reclamar_ejemplo` ya sabe reclamar esa fila —con imagen la reusa y
+    sin ella genera la del día— pero solo si el reloj llega a despacharla."""
     from pipeline import db
 
     # dos días de margen: entre Kiritimati y Midway hay 25 horas, así que
@@ -56,7 +65,7 @@ def _dias_tomados() -> set:
     desde = (date.today() - timedelta(days=2)).isoformat()
     return {(f["user_id"], f["campana_id"], str(f["dia"]))
             for f in db.mix_dias_tomados(desde)
-            if f.get("estado") != "ejemplo"}
+            if f.get("estado") not in db.ESTADOS_EJEMPLO}
 
 
 def rescatar_colgadas(minutos: int = VENCE_CORRIDA_MIN) -> int:

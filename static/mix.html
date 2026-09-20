@@ -733,6 +733,110 @@ async function mxGuardar() {
   return j;
 }
 
+// El ejemplo se PIDE y se espera; ya no viene en la respuesta del POST.
+//
+// Generarlo son de treinta segundos a dos minutos (el texto y la imagen), y
+// API Gateway corta toda petición a los 29 s: hecho dentro del POST, en la
+// nube era un 500 seguro. Ahora el servidor lo encola y contesta al momento,
+// y esta pantalla mira GET /api/mix hasta que la corrida del día 1 pasa a
+// 'ejemplo' —o se queda en 'preparando' con un error, que es como se avisa de
+// que ese intento murió—.
+//
+// Lo que se gana además de no morir: el trabajo vive en la nube y no en esta
+// pestaña, así que cerrarla dejó de costar el ejemplo. Al volver se retoma.
+// El sondeo empieza rápido y se va frenando: los primeros segundos es cuando
+// puede estar a punto, y a partir del minuto preguntar cada cinco solo carga
+// la base. GET /api/mix no es barato —campaña, corridas, saldo, Blotato— y
+// Aurora está en una sola ACU con 182 personas por llegar.
+const MXEJ_PASOS = [5000, 5000, 5000, 10000, 10000, 20000];
+const MXEJ_AVISO = 120000;   // cuándo se dice que está tardando más de lo normal
+const MXEJ_TOPE = 240000;    // hasta cuándo se espera MIRANDO (el trabajo sigue)
+const mxEjPausa = n => MXEJ_PASOS[Math.min(n, MXEJ_PASOS.length - 1)];
+
+// Espera a que esté el ejemplo del día `dia`. Devuelve la corrida cuando está
+// lista, `null` si dejó de tener sentido esperarla, y levanta con el texto que
+// el usuario tiene que leer si no salió.
+async function mxEsperarEjemplo(dia) {
+  const hasta = Date.now() + MXEJ_TOPE;
+  for (let vuelta = 0; ; vuelta++) {
+    await new Promise(r => setTimeout(r, mxEjPausa(vuelta)));
+    let j;
+    try {
+      // con plazo propio: una petición que se queda colgada sin contestar ni
+      // fallar congelaría la espera entera, y con ella el botón de pedir otro
+      j = await mxFj("/api/mix", { signal: AbortSignal.timeout(20000) });
+    } catch (e) {
+      // Un tropiezo no cancela la espera: el trabajo sigue en la nube y el
+      // siguiente vistazo puede ir bien. Sin red (sin `status`) y un 5xx son
+      // pasajeros —Aurora se duerme sola y el primer despertar tarda—; lo que
+      // sí cancela es un 4xx, que no va a mejorar por insistir: la sesión
+      // caducó, o esta campaña ya no es de quien pregunta.
+      const st = (e && typeof e.status === "number") ? e.status : 0;
+      if (st >= 400 && st < 500) throw e;
+      if (Date.now() > hasta) throw e;
+      continue;
+    }
+    // encendió mientras esperábamos: desde aquí manda el reloj y esta pantalla
+    // ya no es el formulario de un borrador, es el panel de una campaña viva
+    if (j.campana && j.campana.estado !== "borrador") return null;
+    const fila = (j.corridas || []).find(x => String(x.dia).slice(0, 10) === dia);
+    // la fila desapareció: movió las fechas y el servidor tiró el ejemplo que
+    // quedó huérfano. No es un error, es que ya no vale la pena esperarlo
+    if (!fila) return null;
+    if (fila.estado === "ejemplo") return fila;
+    // cualquier otro estado quiere decir que ese día ya es una publicación de
+    // verdad: encendió la campaña mientras esperaba, y desde ahí manda el reloj
+    if (fila.estado !== "preparando") return null;
+    // sigue en 'preparando' pero con algo escrito: ese intento murió. El texto
+    // lo escribió el servidor para leerse aquí — `status` va puesto porque sin
+    // él mxTexto lo cambia por el aviso de «sin conexión»
+    if (fila.error)
+      throw Object.assign(new Error(fila.error), { status: 502 });
+    if (Date.now() > hasta)
+      throw Object.assign(new Error("Tu ejemplo sigue preparándose en la nube. " +
+        "Vuelve a abrir esta pantalla en un par de minutos y estará aquí."),
+        { status: 504 });
+  }
+}
+
+// La espera, igual la pida el botón que la retome una pantalla recién abierta.
+// `firma` es lo que el usuario tenía escrito cuando lo pidió: se guarda desde
+// fuera porque durante estos minutos puede cambiar el motivo, y entonces lo
+// que llegue ya no es lo que va a salir.
+async function mxSeguirEjemplo(dia, firma) {
+  mxTrabajando = true;
+  $("#mxVer").disabled = true;
+  const hueco = $("#mxEspera");
+  hueco.innerHTML = "";
+  hueco.hidden = false;
+  const mando = window.orbe ? orbe.montar(hueco, {
+    texto: "Preparando tu ejemplo · hasta 2 min",
+    tope: MXEJ_AVISO,
+    alAgotar: m => m.texto("Está tardando más de lo normal. Sigue trabajando en la nube: " +
+      "puedes cerrar esta pantalla y volver, aquí estará."),
+  }) : { desmontar() {} };
+  let fallo = null, fila = null;
+  try { fila = await mxEsperarEjemplo(dia); } catch (e) { fallo = e; }
+  // el orbe se desmonta ANTES de pintar el fallo: nunca gira junto a un error
+  mando.desmontar();
+  hueco.hidden = true;
+  mxTrabajando = false;
+  if (fila) {
+    mxEjemplo = { dia: String(fila.dia).slice(0, 10), texto: fila.texto,
+                  imagen: fila.imagen };
+    mxFirmaEjemplo = firma;
+    mxAnunciar("Listo: abajo está la publicación del primer día.");
+  } else {
+    mxEjemplo = null;
+    // el anuncio verde de «lo estamos preparando» no puede quedarse al lado
+    // del error, ni encima de un ejemplo que se descartó sin fallar
+    mxAnunciar(fallo ? "" : "Descartamos ese ejemplo porque la campaña " +
+      "cambió. Pide otro cuando quieras: verlo no cuesta nada.");
+    if (fallo) mxFallo(fallo);
+  }
+  mxCambio();
+}
+
 async function mxVerEjemplo() {
   const falta = mxQueFalta();
   if (falta) { mxAviso(falta); return; }
@@ -740,29 +844,41 @@ async function mxVerEjemplo() {
   mxAnunciar("");
   mxTrabajando = true;
   $("#mxVer").disabled = true;
-  const hueco = $("#mxEspera");
-  hueco.innerHTML = "";
-  hueco.hidden = false;
-  const mando = window.orbe ? orbe.montar(hueco, {
-    texto: "Preparando tu ejemplo · ~20 s",
-    tope: 120000,
-    alAgotar: m => m.texto("Está tardando más de lo normal. Sigue trabajando en la nube: " +
-      "no cierres esta pantalla todavía."),
-  }) : { desmontar() {} };
-  let fallo = null;
+  let dia = null, firma = null, fallo = null;
   try {
     await mxGuardar();
-    const j = await mxPost("/api/mix/ejemplo");
-    mxEjemplo = { dia: j.dia, texto: j.texto, imagen: j.imagen };
-    mxFirmaEjemplo = mxFirmaContenido();
+    // la firma se toma aquí, con lo que el servidor acaba de guardar: es lo
+    // que el ejemplo va a contar cuando llegue
+    firma = mxFirmaContenido();
+    dia = (await mxPost("/api/mix/ejemplo")).dia;
   } catch (e) { fallo = e; }
-  // el orbe se desmonta ANTES de pintar el fallo: nunca gira junto a un error
-  mando.desmontar();
-  hueco.hidden = true;
-  mxTrabajando = false;
-  if (fallo) { mxEjemplo = null; mxFallo(fallo); }
-  else mxAnunciar("Listo: abajo está la publicación del primer día.");
-  mxCambio();
+  if (fallo) {
+    mxTrabajando = false;
+    // Un 409 aquí siempre significa lo mismo: lo que esta pantalla creía ya no
+    // es verdad. O hay otro ejemplo en camino —el servidor lo respeta diez
+    // minutos y aquí se deja de mirar a los cuatro, así que en ese hueco el
+    // botón sería un callejón— o la campaña ya está encendida. Recargar pinta
+    // la verdad en los dos casos, y de paso mxRestaurar reengancha la espera
+    // del ejemplo que ya existe. Es lo que hace mxEncender desde siempre.
+    if (fallo.status === 409) {
+      mxAviso("");
+      await mxCargar();
+      return;
+    }
+    mxEjemplo = null;
+    mxFallo(fallo);
+    mxCambio();
+    return;
+  }
+  // El ejemplo anterior deja de valer en cuanto se pide otro: el servidor ya
+  // devolvió su fila a 'preparando' y con ella /encender contesta 409. Dejarlo
+  // en la pantalla sería enseñar el costo y el botón de encender durante los
+  // dos minutos en que pulsarlo no puede funcionar.
+  mxEjemplo = null;
+  mxFirmaEjemplo = null;
+  mxCambio();      // mxTrabajando sigue en true: el botón no se reactiva
+  mxAnunciar("Estamos preparando tu ejemplo. Aparece aquí solo.");
+  await mxSeguirEjemplo(dia, firma);
 }
 
 async function mxEncender() {
@@ -810,6 +926,10 @@ const MXPILLS = {
   publicada: ["buena", "Publicada"],
   corriendo: ["viva", "Preparándose"],
   ejemplo: ["viva", "Lista"],
+  // el ejemplo del día 1 mientras se cocina en la cola. Aquí casi nunca se ve
+  // —se enciende DESPUÉS de verlo— pero la carrera existe: puede encender
+  // justo mientras pide otro, y entonces el día 1 llega a esta lista así
+  preparando: ["viva", "Preparándose"],
   error: ["mala", "No salió"],
   // se mandó a Blotato y no confirmó: por eso no se devuelven sus créditos
   incierta: ["", "Sin confirmar"],
@@ -844,7 +964,7 @@ function mxProxima(c, porDia) {
     const iso = mxSuma(c.empieza, i);
     if (iso < hoy) continue;
     const x = porDia[iso];
-    if (x && x.estado !== "ejemplo") continue;
+    if (x && x.estado !== "ejemplo" && x.estado !== "preparando") continue;
     return `La próxima sale ${mxFechaFila(iso)} a las ${mxHoraTexto(c.hora)}.`;
   }
   return "Ya salieron todos los días. La campaña se cierra sola.";
@@ -993,13 +1113,26 @@ function mxRestaurar(c) {
   if (c.imagen) mxPintarFoto(c.imagen);
   mxPintarHoras(c.hora);
   // el ejemplo que ya vio sigue valiendo al recargar la página: volver a
-  // pedirlo serían otros veinte segundos mirando el orbe para ver lo mismo
+  // pedirlo serían otros dos minutos mirando el orbe para ver lo mismo
   const guardado = (MX.corridas || []).find(x => x.estado === "ejemplo");
   if (guardado) {
     mxEjemplo = { dia: String(guardado.dia).slice(0, 10), texto: guardado.texto,
                   imagen: guardado.imagen };
     mxFirmaEjemplo = mxFirmaContenido();
+    return;
   }
+  // Y si dejó uno a medias —lo pidió y cerró la pantalla— se retoma la espera
+  // donde estaba. Esto es lo que compra haberlo pasado a la cola: el trabajo
+  // siguió en la nube sin esta pestaña.
+  const aMedias = (MX.corridas || []).find(x => x.estado === "preparando");
+  if (!aMedias) return;
+  // Con error escrito, ese intento murió mientras no había nadie mirando, y
+  // este es el único sitio donde puede leerse: sin esto el usuario vuelve y se
+  // encuentra la pantalla como si nunca hubiera pedido nada, sin ejemplo y sin
+  // motivo. mxCargar ya limpió el aviso de la carga anterior antes de llegar aquí.
+  if (aMedias.error) { mxAviso(aMedias.error); return; }
+  if (!mxTrabajando)
+    mxSeguirEjemplo(String(aMedias.dia).slice(0, 10), mxFirmaContenido());
 }
 
 // La campaña anterior, cuando el reloj ya la cerró. Sin esta línea el dueño
@@ -1158,8 +1291,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { clearTimeout(mxPollT); mxPollT = null; return; }
     // al volver se recarga: el reloj publica solo, así que una pestaña dejada
-    // abierta toda la tarde estaría enseñando un «ya salieron 3 de 14» viejo
-    if (MX && MX.campana) mxCargar();
+    // abierta toda la tarde estaría enseñando un «ya salieron 3 de 14» viejo.
+    // Con un ejemplo en marcha NO se recarga: mxCargar vacía el formulario y
+    // lo vuelve a restaurar, y eso arrancaría una segunda espera del mismo
+    if (MX && MX.campana && !mxTrabajando) mxCargar();
   });
 
   mxCargar();

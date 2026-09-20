@@ -183,6 +183,24 @@ def encolar_mix_dia(user_id: str, campana_id: str, dia: str) -> None:
                                 "campana": campana_id, "dia": dia}))
 
 
+def encolar_mix_ejemplo(user_id: str, campana_id: str, dia: str) -> None:
+    """M23 · D: el ejemplo del día 1, el que se mira ANTES de pagar.
+
+    Va por la cola por una razón de transporte, no de gusto: entre el LLM y
+    Grok pasan de treinta segundos a dos minutos, y API Gateway corta toda
+    petición a los 29 s — sin excepción, y sin que subir el timeout de la
+    Lambda cambie nada. Hecho en línea, este ejemplo se moría SIEMPRE en la
+    nube con un 500 (visto en producción el 20-sep-2026); en el server local,
+    que no tiene ese tope, funcionaba, y por eso llegó tan lejos.
+
+    La fila del día 1 se aparta ANTES con `db.mix_pedir_ejemplo`: ese es el
+    candado, no esta función. Aquí solo se despacha."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "mix_ejemplo", "user_id": user_id,
+                                "campana": campana_id, "dia": dia}))
+
+
 def lanzar_shorts_render(user_id: str, proyecto: str) -> str:
     """M8: render de shorts (snap → extract → Remotion → export) en Fargate —
     misma state machine que la producción, otro comando. Los segmentos
