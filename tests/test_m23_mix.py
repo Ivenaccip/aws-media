@@ -142,8 +142,12 @@ def test_el_ejemplo_del_dia_uno_se_reclama_en_vez_de_generar_otra_imagen(monkeyp
     monkeypatch.setattr(db, "ejecutar", falso)
 
     assert db.mix_reclamar_ejemplo(USER, "mix-1", "2026-09-20")["media_key"] == "m.jpg"
-    sql = " ".join(vistas[0].split()).upper()
-    assert "UPDATE MIX_CORRIDAS" in sql and "ESTADO = 'EJEMPLO'" in sql
+    sql = " ".join(vistas[0].split())
+    assert "UPDATE mix_corridas" in sql
+    # reclama el ejemplo terminado Y el que se quedó a medias: si solo mirara
+    # 'ejemplo', una fila 'preparando' dejaría el día 1 sin publicar para
+    # siempre (ver el test de la carrera en test_m23_mix_ejemplo.py)
+    assert "estado IN ('ejemplo', 'preparando')" in sql
 
 
 def test_solo_hay_una_campana_viva_y_lo_impone_la_base():
@@ -266,7 +270,10 @@ def test_encender_sin_haber_visto_el_ejemplo_no_cobra(cliente, monkeypatch):
 def test_sin_saldo_devuelve_402_y_no_enciende(cliente, monkeypatch):
     encendidas = []
     monkeypatch.setattr(mix_api.db, "mix_campana", lambda u: dict(CAMPANA))
-    monkeypatch.setattr(mix_api.db, "mix_corridas", lambda u, c: [{"dia": "2026-09-20"}])
+    # con el ejemplo TERMINADO: desde que se prepara en la cola, la fila del
+    # día 1 existe desde que se pide y una a medias ya no da derecho a cobrar
+    monkeypatch.setattr(mix_api.db, "mix_corridas",
+                        lambda u, c: [{"dia": "2026-09-20", "estado": "ejemplo"}])
     monkeypatch.setattr(mix_api.db, "mix_encender",
                         lambda *a: encendidas.append(a) or True)
 
@@ -580,30 +587,3 @@ def test_apagar_usa_los_numeros_del_claim_y_no_los_que_leyo_al_entrar(
     r = cliente.post("/api/mix/apagar", json={"confirmar": True})
     assert r.json()["devueltos"] == 50
     assert devueltos == [50]
-
-
-def test_si_enciende_mientras_se_prepara_el_ejemplo_no_se_guarda(
-        cliente, monkeypatch):
-    """Generar un ejemplo tarda hasta dos minutos. Si en ese rato el usuario
-    enciende y el reloj publica el día 1, guardar el ejemplo encima devolvería
-    esa fila a 'ejemplo' y el reloj la publicaría OTRA VEZ en la cuenta del
-    cliente. La base ya no lo permite; el endpoint además lo dice."""
-    estados = iter([dict(CAMPANA, estado="borrador"),
-                    dict(CAMPANA, estado="activa")])
-    monkeypatch.setattr(mix_api.db, "mix_campana", lambda u: next(estados))
-    monkeypatch.setattr(mix_api.db, "mix_guardar_ejemplo",
-                        lambda *a, **k: pytest.fail("no se debía guardar"))
-    monkeypatch.setattr(mix_api, "_traer", lambda n: RAIZ / "tools" / "tarifas.json")
-    monkeypatch.setattr(mix_api, "_guardar", lambda d, n: None)
-
-    async def plan(*a, **k):
-        return {"tema": "t", "texto": "x"}
-    monkeypatch.setattr(mix_api.mix, "tema_y_texto", plan)
-
-    async def imagen(*a, **k):
-        return "https://fal/x.jpg"
-    monkeypatch.setattr(mix_api.media_fal, "imagen_fal", imagen)
-
-    r = cliente.post("/api/mix/ejemplo")
-    assert r.status_code == 409
-    assert "Encendiste" in r.json()["detail"]

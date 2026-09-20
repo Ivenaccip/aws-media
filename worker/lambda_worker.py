@@ -141,6 +141,13 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # cliente, que es lo único que MIX no puede deshacer.
             from worker.mix_dia import correr
             correr(j["user_id"], j["campana"], j["dia"])
+        elif j["tipo"] == "mix_ejemplo":
+            # M23 · D: el ejemplo del día 1, el que se mira antes de pagar. No
+            # publica ni cobra, pero tampoco relanza: un reintento de la cola
+            # sería otra imagen de Grok pagada por nosotros para enseñar lo
+            # mismo. El trabajo escribe su propio error en la fila del día.
+            from worker.mix_ejemplo import preparar as mix_ejemplo
+            mix_ejemplo(j["user_id"], j["campana"], j["dia"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:

@@ -21,6 +21,10 @@ días de una campaña rota son treinta imágenes tiradas.
 GANÓ el cierre del día (`db.mix_cerrar_dia`, condicionado a 'corriendo'). El
 libro mayor no protege contra devolver dos veces: su índice único solo cubre
 las compras.
+
+`dir_imagenes`, `limpiar`, `bajar_imagen` y `tema_e_imagen` no llevan guion
+bajo porque no son privadas: las usa también `worker/mix_ejemplo.py`, que
+prepara el día 1 antes de cobrar con exactamente el mismo código.
 """
 from __future__ import annotations
 
@@ -60,12 +64,12 @@ TEXTO_MALO = ("El texto de ese día no lo aceptaba la red. Te devolvimos sus "
 APAGADA = "La campaña se apagó mientras ese día se preparaba."
 
 
-def _dir() -> Path:
+def dir_imagenes() -> Path:
     from pipeline.config import settings
     return Path(settings.work_dir) / "_imagenes"
 
 
-def _limpiar(ruta: Path | None) -> None:
+def limpiar(ruta: Path | None) -> None:
     """/tmp lo comparten todas las invocaciones del mismo contenedor caliente,
     así que una imagen a medias de una corrida que falló se queda ahí hasta que
     la Lambda muera."""
@@ -76,7 +80,7 @@ def _limpiar(ruta: Path | None) -> None:
             pass
 
 
-def _bajar(user_id: str, nombre: str) -> Path:
+def bajar_imagen(user_id: str, nombre: str) -> Path:
     """La imagen en disco, lista para mandarla a Grok o a Blotato.
 
     La clave se arma con el dueño de la CAMPAÑA, no con `usuario_actual()`:
@@ -84,7 +88,7 @@ def _bajar(user_id: str, nombre: str) -> Path:
     usuario— sin que nada fallara de forma visible."""
     from pipeline import media_sync, mix
 
-    local = _dir() / nombre
+    local = dir_imagenes() / nombre
     if local.exists():
         return local
     local.parent.mkdir(parents=True, exist_ok=True)
@@ -155,11 +159,15 @@ def _fallar(user_id: str, campana_id: str, dia: str, mensaje: str,
             "error": mensaje}
 
 
-async def _preparar(campana: dict, dia: date, ruta: Path, base: Path,
-                    ya_usados: list[str]) -> dict:
+async def tema_e_imagen(campana: dict, dia: date, ruta: Path, base: Path,
+                        ya_usados: list[str]) -> dict:
     """El tema y el texto del día, y la imagen hecha con la foto del usuario
     como referencia. Las dos llamadas en el mismo bucle: son la parte lenta de
-    la corrida y no hay razón para abrir dos."""
+    la corrida y no hay razón para abrir dos.
+
+    La comparte `worker/mix_ejemplo.py`, y eso no es ahorro de líneas: el
+    ejemplo del día 1 ES la publicación del día 1. Si cada uno generara a su
+    manera, el usuario aprobaría una cosa y saldría otra."""
     from pipeline import media_fal, mix
 
     total = len(mix.dias_de_campana(campana))
@@ -259,22 +267,22 @@ def _correr(user_id: str, campana_id: str, dia: str) -> dict:
         if listo and listo.get("media_key"):
             tema, texto = listo.get("tema") or "", listo.get("texto") or ""
             media_key = listo["media_key"]
-            ruta = _bajar(user_id, media_key)
+            ruta = bajar_imagen(user_id, media_key)
         else:
-            base = _bajar(user_id, campana["imagen_key"])
+            base = bajar_imagen(user_id, campana["imagen_key"])
             media_key = mix.nombre_del_dia(campana_id, dia)
-            ruta = _dir() / media_key
+            ruta = dir_imagenes() / media_key
             ruta.parent.mkdir(parents=True, exist_ok=True)
             usados = [c.get("tema") or ""
                       for c in db.mix_corridas(user_id, campana_id)]
-            plan = asyncio.run(_preparar(campana, fecha, ruta, base, usados))
+            plan = asyncio.run(tema_e_imagen(campana, fecha, ruta, base, usados))
             tema, texto = plan["tema"], plan["texto"]
             media_sync.subir_archivo(ruta, mix.clave_imagen(user_id, media_key))
     except FileNotFoundError:
-        _limpiar(ruta)
+        limpiar(ruta)
         return _fallar(user_id, campana_id, dia, SIN_IMAGEN, pausar=SIN_IMAGEN)
     except Exception as err:  # noqa: BLE001 — el modelo, la red o el CDN
-        _limpiar(ruta)
+        limpiar(ruta)
         log.error("mix %s/%s día %s: no se pudo preparar (%s)", user_id,
                   campana_id, dia, type(err).__name__)
         return _fallar(user_id, campana_id, dia, SIN_MODELO)
@@ -295,7 +303,7 @@ def _correr(user_id: str, campana_id: str, dia: str) -> dict:
         return _fallar(user_id, campana_id, dia, NO_SUBIO,
                        tema=tema, texto=texto, media_key=media_key)
     finally:
-        _limpiar(ruta)
+        limpiar(ruta)
 
     # Último vistazo antes del punto sin retorno. Entre el candado y aquí
     # pasaron el tema y la imagen —hasta un par de minutos— y en ese rato el
