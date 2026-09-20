@@ -734,3 +734,47 @@ def test_cambiar_las_fechas_borra_el_ejemplo_que_quedo_huerfano(monkeypatch):
     assert "estado = 'ejemplo'" in borrados[0][0]
     assert "dia <> :d::date" in borrados[0][0]
     assert borrados[0][1]["d"] == "2026-09-20"
+
+
+def test_el_borrador_manda_las_fechas_como_fecha_y_no_como_texto(monkeypatch):
+    """El 500 del 19-sep-2026, la primera vez que alguien guardó un borrador
+    contra la base de verdad.
+
+    El Data API manda TODOS los parámetros como texto, y Postgres no convierte
+    text→date solo dentro de un INSERT: la petición moría con «column
+    "empieza" is of type date but expression is of type text». Aquí el SQL se
+    arma en bucle sobre `CAMPOS_CAMPANA`, así que el cast no puede escribirse a
+    mano como en el resto del archivo — va en el molde, y este test es lo que
+    lo sujeta. Las columnas de texto NO lo llevan: un `::date` de más rompe
+    igual de fuerte, solo que en la otra dirección."""
+    def sql_de(columna_viva):
+        vistas = []
+
+        def falso(sql, params=None):
+            vistas.append(" ".join(sql.split()))
+            return [{"id": "mix-1", "estado": "borrador"}] if columna_viva and \
+                   sql.lstrip().startswith("SELECT") else []
+        monkeypatch.setattr(db, "ejecutar", falso)
+        db.mix_guardar_borrador(USER, "nuevo", motivo="Pan", tono="vender",
+                                imagen_key="f.jpg", canal_id="c1",
+                                canal_red="instagram", canal_nombre="@p",
+                                hora="09:00", zona="America/Guayaquil",
+                                empieza="2026-09-20", termina="2026-09-29")
+        return vistas
+
+    # sin borrador previo: se inserta la campaña entera
+    inserts = [s for s in sql_de(False) if s.startswith("INSERT INTO mix_campanas")]
+    assert len(inserts) == 1
+    assert ":empieza::date" in inserts[0] and ":termina::date" in inserts[0]
+
+    # con borrador previo: se actualiza, y el UPDATE tiene el mismo problema
+    updates = [s for s in sql_de(True) if s.startswith("UPDATE mix_campanas")]
+    assert len(updates) == 1
+    assert "empieza = :empieza::date" in updates[0]
+    assert "termina = :termina::date" in updates[0]
+
+    # y las de texto siguen siendo texto
+    for sql in inserts + updates:
+        for campo in ("motivo", "tono", "imagen_key", "canal_id", "canal_red",
+                      "canal_nombre", "hora", "zona"):
+            assert f":{campo}::date" not in sql
