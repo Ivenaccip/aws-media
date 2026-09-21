@@ -299,9 +299,18 @@ gh pr create --base main --head dev --title "Release: <qué entra>" --body "…"
 gh pr merge <N> --merge          # SIN --delete-branch: se llevaría dev
 ```
 
+En cmd:
+
 ```bash
 set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
-odejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+```
+
+En PowerShell (5.1 **no tiene `&&`**: la línea de cmd ahí es un error de
+sintaxis, no un comando que falla):
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 ```
 
 ```bash
@@ -335,10 +344,17 @@ el dominio `media-ivenaccip`, `aws-media-producir` y el rol OIDC).
    empuja a ECR. **Solo main empuja**: desde `dev` o desde un PR se
    construye y se prueba, pero no se publica — la Lambda de producción
    consume el `latest` de ese mismo repositorio.
-2. En **tu terminal cmd**, desde `D:\aws-project\infra`:
+2. En tu terminal, desde `D:\aws-project\infra` — en cmd:
 
 ```bash
 set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+```
+
+   o en PowerShell, que es la que suele estar abierta y **no entiende `&&`**:
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 ```
 
    (agrega `aws-media-media` o `aws-media-db` solo si el PR tocó esos stacks;
@@ -377,9 +393,24 @@ lleva con él cualquier cosa que estuviera esperando en `main`.
 El CI etiqueta cada imagen con el sha de su commit además de con `latest`, así
 que se puede pedir una por su nombre:
 
+En cmd. El `& set IMAGE_TAG=` del final no sobra: es lo que impide que la
+variable sobreviva al comando (ver la trampa, justo debajo).
+
 ```bash
-set "PATH=D:ws-projectenv\Scripts;C:\Program Files
-odejs;%PATH%" && set IMAGE_TAG=<sha> && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set IMAGE_TAG=<sha> && npx cdk deploy aws-media-api aws-media-jobs --require-approval never & set IMAGE_TAG=
+```
+
+En PowerShell, donde el `finally` hace ese mismo trabajo y encima aguanta que
+canceles con Ctrl-C:
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+try {
+  $env:IMAGE_TAG = "<sha>"
+  npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+} finally {
+  Remove-Item Env:IMAGE_TAG -ErrorAction SilentlyContinue
+}
 ```
 
 Eso sirve para las dos cosas:
@@ -399,6 +430,43 @@ Ojo con el margen de la retención: la política conserva 20 imágenes, así que
 una imagen vieja se puede haber borrado ya. Si la necesitas y no está, la única
 salida es reconstruirla desde su commit.
 
+### La trampa de `IMAGE_TAG`: el deploy que no despliega
+
+`set IMAGE_TAG=<sha>` **dura lo que dure la ventana, no lo que dure el
+comando**. Un rato después, en esa misma ventana, un `cdk deploy` normal ya no
+significa «pon lo último»: significa «pon otra vez aquel sha». Y como esa
+imagen ya está puesta, CloudFormation contesta lo que de verdad ve:
+
+```
+✅  aws-media-api (no changes)
+```
+
+Eso pasó el 20 de septiembre de 2026. El deploy que debía llevar el arreglo de
+MIX a producción no llevó nada, los cuatro stacks dijeron «no changes», y la
+lectura natural —«ya estaba todo al día»— era exactamente la contraria de lo
+que había ocurrido. Peor todavía: si en esa ventana heredada despliegas después
+de mergear algo nuevo, no es que no avance, es que **revierte**.
+
+Tres cosas, por orden de utilidad:
+
+1. **Usa las formas de arriba.** El `& set IMAGE_TAG=` de cmd y el `finally` de
+   PowerShell existen para que la variable no sobreviva al comando. No son
+   adorno.
+2. **Lee la línea `imagen:`.** Cada synth imprime qué está poniendo, y es la
+   única prueba de lo que desplegaste:
+
+   ```
+   imagen: 8f8f7f5c6fb264b9c2079fc41cd519d584dc7435 -> sha256:b71d7c58…
+   ```
+
+   Si esperabas `latest` y ves un sha, la variable viene heredada: cierra la
+   ventana (o `Remove-Item Env:IMAGE_TAG`) y repite. Desde el 21-sep el synth
+   además **grita con un recuadro** cuando la imagen fijada no es la más nueva
+   del ECR, que es el caso en el que el deploy vuelve atrás sin querer.
+3. **`(no changes)` justo después de un merge es una alarma, no un alivio.**
+   Si acabas de mergear y desplegar, algo tuvo que cambiar. Cuando no cambia
+   nada, empieza por la línea `imagen:`.
+
 ## Alarmas
 
 Siete alarmas de CloudWatch mandan correo cuando algo se rompe, a
@@ -417,6 +485,13 @@ Desde `D:\aws-project\infra`, en cmd:
 
 ```bash
 set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk --app "python app_alertas.py" deploy aws-media-alertas --require-approval never
+```
+
+O en PowerShell:
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+npx cdk --app "python app_alertas.py" deploy aws-media-alertas --require-approval never
 ```
 
 Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.

@@ -32,6 +32,18 @@ class MediaStack(Stack):
                                  s3.HttpMethods.HEAD],
                 allowed_origins=["*"], allowed_headers=["*"], max_age=3600)],
             removal_policy=cdk.RemovalPolicy.RETAIN,
+            # 21-sep-2026 — versionado. RETAIN protege el bucket de CDK, pero no
+            # protegía su contenido de nosotros mismos: una clave sobrescrita
+            # por un reintento, o un `delete-object` a mano, se llevaba el
+            # trabajo del usuario sin dejar nada que restaurar. Con versionado,
+            # S3 guarda la anterior y volver atrás es un comando.
+            #
+            # Aquí es casi gratis: hoy no hay UN SOLO borrado de S3 en server/,
+            # worker/ ni pipeline/ (`limpiar` borra de /tmp, y el único
+            # `delete_parameter` es de SSM), y las claves llevan id o fecha, así
+            # que no se pisan. O sea que una versión no-actual solo aparece
+            # cuando algo salió mal — que es justo la que queremos conservar.
+            versioned=True,
             # M12: a los 10 días los binarios pasan a Glacier Instant Retrieval
             # (~6× más barato de guardar; lectura instantánea por el CDN, así
             # que la UX no cambia). Solo objetos grandes: GIR factura mínimo
@@ -42,6 +54,14 @@ class MediaStack(Stack):
                 id="frio-glacier-ir-10d",
                 object_size_greater_than=1_000_000,
                 transitions=[s3.Transition(
+                    storage_class=s3.StorageClass.GLACIER_INSTANT_RETRIEVAL,
+                    transition_after=cdk.Duration.days(10),
+                )],
+                # Las versiones viejas siguen el mismo camino al frío, y NO se
+                # expiran: la regla dura del repo es que las versiones no se
+                # borran, y una copia de seguridad con fecha de caducidad no es
+                # una copia de seguridad. A los 10 días cuestan ~6× menos.
+                noncurrent_version_transitions=[s3.NoncurrentVersionTransition(
                     storage_class=s3.StorageClass.GLACIER_INSTANT_RETRIEVAL,
                     transition_after=cdk.Duration.days(10),
                 )],
