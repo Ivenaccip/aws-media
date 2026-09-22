@@ -78,6 +78,26 @@ def test_borrar_el_stack_sigue_dejando_un_snapshot():
         "un cambio que obligue a reemplazar el clúster se llevaría los datos")
 
 
+def test_el_techo_de_acu_sigue_siendo_el_freno_de_gasto():
+    """El otro «no hay otra copia»: no hay otro freno de gasto.
+
+    El Budget de la cuenta AVISA, no frena. `serverless_v2_max_capacity` es hoy
+    lo único que pone un techo duro a lo que puede costar esta base en una
+    noche. Subió de 1 a 2 el 2026-09-21 porque con 7 usuarios el clúster ya
+    pegaba en el techo a diario (p95 de 17.9 s en /api/creditos contra el muro
+    de 29 s de API Gateway). Lo que este test impide es el siguiente paso dado
+    por inercia: nadie ha medido lo que cuestan 4 u 8 ACU sostenidas, y el día
+    que alguien las necesite tiene que ser una decisión, no un descuido.
+    """
+    cfg = PROPS.get("ServerlessV2ScalingConfiguration", {})
+    assert cfg.get("MaxCapacity") == 2, (
+        f"techo en {cfg.get('MaxCapacity')} ACU: subirlo es una decisión de "
+        "gasto sin medir, y este tope es el único freno duro que existe")
+    assert cfg.get("MinCapacity") == 0.5, (
+        "min 0 reactiva la auto-pausa: la primera petición tras ~5 min sin "
+        "tráfico paga ~25 s de despertar, o un 503 dentro del muro de 29 s")
+
+
 def test_el_data_api_sigue_encendido():
     """La Lambda está FUERA de la VPC a propósito y habla por el endpoint HTTPS
     de rds-data; las subredes son aisladas y no hay NAT. Sin Data API no queda

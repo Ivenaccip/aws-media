@@ -17,10 +17,17 @@ de cambios puntuales, en orden, con su disparador.
 
 ## Fase 1 — ANTES de abrir a 50–100 (los tres que se notan)
 
-1. **Aurora siempre activa** — `infra/stacks/db.py`:
-   `serverless_v2_min_capacity` de `0` → `0.5`. Elimina la clase entera de
-   503 «despertando» que hoy pega al primer usuario del valle. Costo fijo:
-   ~$44 dólares/mes (0.5 ACU × $0.12/h). Deploy: `cdk deploy aws-media-db`.
+1. ~~**Aurora siempre activa**~~ — **HECHO el 2026-09-21.**
+   `serverless_v2_min_capacity` de `0` → `0.5` y, en la misma pasada,
+   `serverless_v2_max_capacity` de `1` → `2`: con 7 usuarios el clúster ya
+   pegaba a diario en el techo de 1 ACU (CPU con máximos de 432-497%) y la
+   primera pantalla daba p95 de 17.9 s en `/api/creditos` contra el muro de
+   29 s de API Gateway — el usuario veía un 504, no una espera. Elimina además
+   la clase entera de 503 «despertando» que pegaba al primer usuario del valle.
+   Costo fijo: ~$44 dólares/mes (0.5 ACU × $0.12/h). Verificado tras el deploy:
+   `available`, `0.5 / 2.0`, sin reemplazo del clúster ni caída.
+   El techo de 2 queda fijado por `tests/test_db_protegida.py` — es el único
+   freno duro de gasto del producto, porque el Budget avisa pero no frena.
 2. **Reintentos ante rate limits de fal** — `pipeline/fal.py::llamar` no
    reintenta: un 429 truena la escena. Además `FAL_CONCURRENCY` es POR
    PROCESO: 10 producciones simultáneas en Fargate = 10 semáforos = hasta 10×
@@ -51,6 +58,32 @@ de cambios puntuales, en orden, con su disparador.
    en Langfuse con tokens por turno. Con $0.0099/turno medido, 1 crédito por
    turno ya cubre con margen (la estimación M7 era 2-7 cr/turno; decidir con
    una semana de datos).
+7. **Recuperar parte de los ~$44/mes de Aurora, con horas medidas** — el
+   `min 0.5` del punto 1 es deliberadamente lo más caro y lo más predecible:
+   la base ya no se auto-pausa nunca (verificado: con `min 0.5` el campo
+   `SecondsUntilAutoPause` desaparece del clúster). Hay dos formas de bajarlo
+   y **solo una merece el riesgo**:
+   - **Reloj fijo** (dos EventBridge Scheduler + un rol con
+     `rds:ModifyDBCluster`, bajando a `min 0` de noche): ahorra ~$14.60/mes —
+     487 h en vez de 730 — a cambio de dos piezas móviles, un rol nuevo y
+     **drift contra CloudFormation**: la plantilla diría `0.5`, la realidad
+     `0`, y el siguiente `cdk deploy` que toque el clúster pelearía con el
+     schedule sin que nadie sepa cuál mandó. **No vale los 50 centavos al día.**
+   - **`serverless_v2_auto_pause_duration`** (property real del CDK
+     instalado; el rango válido es 300 s – 86.400 s): volver a `min 0` y subir
+     el umbral de inactividad a 1-4 h. Se pausa **guiada por el tráfico real
+     en vez de por un reloj**, sin infra nueva, sin rol y sin drift, en una
+     sola línea de `db.py`. Gana en los dos extremos frente al reloj: un
+     domingo muerto hasta las 11 am ahorra horas que el schedule habría
+     pagado, y si alguien entra a las 2 am se despierta igual.
+   **Disparador: NO antes del 2026-09-24.** Ninguno de los dos se puede
+   validar con el tráfico de 7 personas — hace falta ver ACUUtilization con
+   3-4 días de 182 usuarios para saber cuáles son de verdad las horas muertas
+   y poner el umbral con un número medido, no adivinado. Si resulta que a las
+   23:00 hay gente editando, cablearlo a un reloj que dice 22:00 habría sido
+   el error. Contra a tener presente en ambos esquemas: el primer usuario de
+   la mañana vuelve a pagar el despertar (~25 s), salvo que se pre-caliente a
+   propósito.
 
 ## Operativo (cuando se abra)
 

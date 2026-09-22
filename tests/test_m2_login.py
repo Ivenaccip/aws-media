@@ -228,3 +228,184 @@ def test_cortesia_sale_de_tarifas_json(usuarios_mod):
     tarifas = json.loads((REPO / "tools" / "tarifas.json").read_text(encoding="utf-8"))
     assert usuarios_mod.cortesia("mensual") == tarifas["cortesia_mensual"]["mensual"]
     assert usuarios_mod.cortesia("anual") == tarifas["cortesia_mensual"]["anual"]
+
+
+# ---------------------------------------------------------------------------
+# B2 — altas en tanda. Lo que se prueba aquí no es «que funcione»: es que los
+# tres fallos caros de una tanda de 50 sean imposibles. Un rebote duro gasta
+# reputación del remitente (10 malas de 182 = 5.5%, por encima del umbral de
+# revisión), un usuario creado sin correo enviado espera una clave que no
+# existe, y un `alta` repetido re-abonaría cortesía porque el índice único del
+# monedero solo cubre `tipo='compra'`.
+
+def test_revisar_normaliza(usuarios_mod):
+    """La misma persona escrita de tres formas es una sola dirección."""
+    for crudo in ("  Correo@Gmail.COM ", "<correo@gmail.com>", "CORREO@GMAIL.COM"):
+        correo, rechazo, sospecha = usuarios_mod.revisar(crudo)
+        assert (correo, rechazo, sospecha) == ("correo@gmail.com", None, None)
+
+
+@pytest.mark.parametrize("basura", [
+    "", "   ", "sin-arroba", "dos@@arrobas.com", "sin@dominio",
+    "espacio en@medio.com", "@gmail.com", "termina@gmail.",
+])
+def test_revisar_rechaza_lo_que_reboteria(usuarios_mod, basura):
+    _correo, rechazo, _sospecha = usuarios_mod.revisar(basura)
+    assert rechazo, f"{basura!r} pasó el filtro y habría rebotado"
+
+
+@pytest.mark.parametrize("dedazo,sugerido", [
+    ("gmial.com", "gmail.com"),      # TRANSPOSICIÓN: el más común de todos
+    ("gmai.com", "gmail.com"),
+    ("gmail.con", "gmail.com"),
+    ("hotmial.com", "hotmail.com"),
+    ("outlok.com", "outlook.com"),
+    ("yaho.com", "yahoo.com"),
+])
+def test_revisar_caza_el_dedazo_de_dominio(usuarios_mod, dedazo, sugerido):
+    """`gmial.com` está a distancia 2 en Levenshtein puro: sin contar la
+    transposición como un paso, el dedazo más frecuente se cuela entero."""
+    _correo, rechazo, sospecha = usuarios_mod.revisar(f"quien@{dedazo}")
+    assert not rechazo                      # tiene forma válida, el fallo es el dominio
+    assert sospecha and sugerido in sospecha
+
+
+@pytest.mark.parametrize("legitimo", [
+    "mail.com",          # a un paso de gmail.com y es un proveedor real
+    "me.com", "live.com", "prodigy.net.mx", "miempresa.com.mx",
+])
+def test_revisar_no_marca_dominios_buenos(usuarios_mod, legitimo):
+    """Un falso positivo aquí manda a preguntarle a alguien cuyo correo estaba
+    bien: el filtro tiene que ser silencioso con lo que no es un dedazo."""
+    _correo, rechazo, sospecha = usuarios_mod.revisar(f"quien@{legitimo}")
+    assert not rechazo and not sospecha
+
+
+def test_leer_lista_anota_comenta_y_lleva_plan_por_linea(usuarios_mod, tmp_path):
+    lista = tmp_path / "tanda1.txt"
+    lista.write_text("# tanda 1 — lunes\n\nuno@gmail.com\n"
+                     "dos@gmail.com, anual\ntres@gmail.com  anual  # VIP\n",
+                     encoding="utf-8")
+    filas = usuarios_mod.leer_lista(lista, "mensual")
+    assert [(c, p) for _n, c, p in filas] == [
+        ("uno@gmail.com", "mensual"),        # cae al --plan de la corrida
+        ("dos@gmail.com", "anual"),
+        ("tres@gmail.com", "anual"),         # y el `#` de la cola no estorba
+    ]
+
+
+@pytest.fixture
+def lote(usuarios_mod, monkeypatch, tmp_path):
+    """Devuelve (correr, falso) — `correr` toma el texto de la lista y kwargs."""
+    falso = CognitoFalso()
+    monkeypatch.setattr(usuarios_mod, "_cognito", lambda pool=None: falso)
+    monkeypatch.setattr(db, "ejecutar", lambda sql, p=None: [])
+    monkeypatch.setattr(db, "abonar_creditos", lambda u, n, t, r=None: n)
+    monkeypatch.setattr(db, "fijar_slots", lambda u, s: None)
+
+    def correr(texto, **kw):
+        lista = tmp_path / "tanda.txt"
+        lista.write_text(texto, encoding="utf-8")
+        kw.setdefault("pausa", 0)
+        return usuarios_mod.alta_lote(POOL, lista, "mensual", **kw), lista
+    return correr, falso
+
+
+def test_el_ensayo_es_el_default_y_no_toca_nada(lote):
+    """LA propiedad de seguridad. Un comando que crea 50 personas reales en
+    Cognito no puede dispararse por escribirlo bien la primera vez."""
+    correr, falso = lote
+    hechas, _lista = correr("uno@gmail.com\ndos@gmail.com\n")
+    assert hechas == 0
+    assert falso.llamadas == [], "el ensayo llamó a Cognito"
+
+
+def test_ejecutar_da_de_alta_y_deja_bitacora(lote):
+    correr, falso = lote
+    hechas, lista = correr("uno@gmail.com\ndos@gmail.com, anual\n", ejecutar=True)
+    assert hechas == 2
+    assert [kw["Username"] for n, kw in falso.llamadas if n == "create"] \
+        == ["uno@gmail.com", "dos@gmail.com"]
+    bitacora = lista.with_suffix(".txt.altas.tsv")
+    lineas = bitacora.read_text(encoding="utf-8").strip().splitlines()
+    assert lineas[0].startswith("cuando\tcorreo")
+    assert [l.split("\t")[1:3] for l in lineas[1:]] == [
+        ["uno@gmail.com", "mensual"], ["dos@gmail.com", "anual"]]
+
+
+def test_una_direccion_repetida_no_se_da_de_alta_dos_veces(lote):
+    """Dos veces en el archivo = dos altas = cortesía duplicada."""
+    correr, falso = lote
+    hechas, _ = correr("uno@gmail.com\nUNO@gmail.com\n uno@GMAIL.com \n",
+                       ejecutar=True)
+    assert hechas == 1
+
+
+def test_las_sospechosas_se_quedan_fuera_salvo_que_se_pidan(lote):
+    correr, _falso = lote
+    assert correr("bien@gmail.com\ndedazo@gmial.com\n", ejecutar=True)[0] == 1
+    assert correr("bien@gmail.com\ndedazo@gmial.com\n", ejecutar=True,
+                  con_sospechosos=True)[0] == 2
+
+
+def test_pasarse_del_tope_aborta_antes_de_crear_a_nadie(lote):
+    """El pool manda ~50 correos al día: la 51 se crea y no recibe clave. El
+    tope frena la corrida ENTERA en vez de truncarla en silencio, para que la
+    decisión de a quién le toca hoy sea visible y no un efecto de borde."""
+    correr, falso = lote
+    texto = "".join(f"u{i}@gmail.com\n" for i in range(60))
+    hechas, _ = correr(texto, ejecutar=True, tope=50)
+    assert hechas == 0 and falso.llamadas == []
+
+
+def test_quien_ya_existe_se_salta_sin_re_abonar_cortesia(usuarios_mod, monkeypatch, tmp_path):
+    """`admin_create_user` sobre alguien existente truena, y `alta` abona DESPUÉS
+    de crear — pero en una tanda ese error no puede ni matar la corrida ni
+    convertirse en un segundo abono."""
+    class YaExiste(Exception):
+        pass
+
+    class Falso(CognitoFalso):
+        def admin_create_user(self, **kw):
+            if kw["Username"] == "repetido@gmail.com":
+                e = YaExiste("ya existe")
+                e.response = {"Error": {"Code": "UsernameExistsException"}}
+                raise e
+            return super().admin_create_user(**kw)
+
+    monkeypatch.setattr(usuarios_mod, "_cognito", lambda pool=None: Falso())
+    monkeypatch.setattr(db, "ejecutar", lambda sql, p=None: [])
+    monkeypatch.setattr(db, "abonar_creditos",
+                        lambda u, n, t, r=None: (abonos.append(u), n)[1])
+    abonos = []
+    lista = tmp_path / "t.txt"
+    lista.write_text("repetido@gmail.com\nnuevo@gmail.com\n", encoding="utf-8")
+    hechas = usuarios_mod.alta_lote(POOL, lista, "mensual", ejecutar=True, pausa=0)
+    assert hechas == 1                      # la corrida siguió
+    assert abonos == ["sub-nuevo"], "se re-abonó cortesía a quien ya existía"
+
+
+def test_el_tope_de_correo_de_cognito_aborta_la_corrida(usuarios_mod, monkeypatch, tmp_path):
+    """El fallo silencioso que hay que hacer imposible: si Cognito ya no manda
+    más correo hoy, seguir creando usuarios los deja con fila en `usuarios` y
+    créditos abonados esperando una clave que nunca salió."""
+    class Falso(CognitoFalso):
+        def admin_create_user(self, **kw):
+            if kw["Username"] != "uno@gmail.com":
+                e = Exception("daily message limit")
+                e.response = {"Error": {"Code": "LimitExceededException"}}
+                raise e
+            return super().admin_create_user(**kw)
+
+    monkeypatch.setattr(usuarios_mod, "_cognito", lambda pool=None: Falso())
+    monkeypatch.setattr(db, "ejecutar", lambda sql, p=None: [])
+    monkeypatch.setattr(db, "abonar_creditos", lambda u, n, t, r=None: n)
+    lista = tmp_path / "t.txt"
+    lista.write_text("uno@gmail.com\ndos@gmail.com\ntres@gmail.com\n"
+                     "cuatro@gmail.com\n", encoding="utf-8")
+    hechas = usuarios_mod.alta_lote(POOL, lista, "mensual", ejecutar=True, pausa=0)
+    assert hechas == 1
+    # la de «dos» aborta: «tres» y «cuatro» no se intentan siquiera
+    filas = (lista.with_suffix(".txt.altas.tsv")
+             .read_text(encoding="utf-8").strip().splitlines()[1:])
+    assert [f.split("\t")[1] for f in filas] == ["uno@gmail.com", "dos@gmail.com"]
