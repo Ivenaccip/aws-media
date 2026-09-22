@@ -100,22 +100,31 @@ class AlertasStack(Stack):
             dimensions_map={"FunctionName": FN_API}, statistic="Sum", period=P5),
             umbral=1, periodos=1,
             desc="Throttle del API = peticion perdida. Causa: la cuota de "
-                 "concurrencia de la CUENTA (L-B99A9384), hoy en 10. NO subir "
-                 "max_concurrency de jobs.py:97 como remedio: el worker come de "
-                 "esa misma cuota y le roba concurrencia al API, empeorando los "
-                 "5xx. Medido: 5 throttles en 14 dias con 5 testers.")
+                 "concurrencia de la CUENTA (L-B99A9384), hoy en 1000 "
+                 "(verificado por API el 2026-09-21; estuvo en 10 y esta "
+                 "descripcion lo siguio citando). NO subir max_concurrency de "
+                 "jobs.py:97 como remedio sin mirar antes esta alarma: el "
+                 "worker come de esa misma cuota y le roba concurrencia al API. "
+                 "Medido: 5 throttles en 14 dias con 5 testers y cuota 10.")
 
-        # 3) El aviso PREVIO al throttle. `1 de 1` a proposito: los 4 toques de
-        #    >=8 en 14 dias nunca tuvieron dos periodos seguidos, asi que con
-        #    `2 de 2` esta alarma no dispararia nunca, por construccion.
+        # 3) El aviso PREVIO al throttle, y por eso se tara CONTRA LA CUOTA, no
+        #    contra un numero absoluto. Con cuota 10 el umbral era 8; con la
+        #    cuota en 1000 ese mismo 8 disparo 23 veces en 7 dias con 7 usuarios
+        #    —ruido puro, y ruido que entrena la bandeja a ignorar el remitente
+        #    justo antes de abrir a 182. 650 = 65% de la cuota: deja margen para
+        #    reaccionar y hoy no lo toca ni de lejos.
+        #    `1 de 1` se conserva: un pico de concurrencia dura segundos, y con
+        #    `2 de 2` esta alarma no dispararia nunca por construccion.
         alarma("ConcurrenciaCuenta", cw.Metric(
             namespace="AWS/Lambda", metric_name="ConcurrentExecutions",
             statistic="Maximum", period=P5),        # sin dimensiones = la cuenta
-            umbral=8, periodos=1,
-            desc="Concurrencia de CUENTA >=8 de 10. Es el techo real del "
+            umbral=650, periodos=1,
+            desc="Concurrencia de CUENTA >=650 de 1000. Es el techo real del "
                  "producto: API y worker comparten esa cuota, y cada arranque "
-                 "en frio ocupa un hueco 16 s. Medido: 4 toques de >=8 en 14 "
-                 "dias, 3 de ellos con throttles. RETARAR cuando suba la cuota.")
+                 "en frio ocupa un hueco 16 s. Al recibirla: mira ApiThrottles "
+                 "de la MISMA ventana y la profundidad de la cola. Retarada el "
+                 "2026-09-21 al subir la cuota de 10 a 1000. RETARAR de nuevo "
+                 "tras la primera semana con 182 usuarios.")
 
         # 4) Average y no Maximum: con Maximum rompe el 80% en 229 de 3.587
         #    periodos. Y 3 de 3 por un pico diario de UN solo datapoint hacia
@@ -127,9 +136,11 @@ class AlertasStack(Stack):
             umbral=80, periodos=3,
             desc="Aurora >=80% de su techo durante 15 min. ACUUtilization se "
                  "autonormaliza contra serverless_v2_max_capacity, asi que el "
-                 "80% sigue significando 'pegada al techo' si el techo sube. "
-                 "Accion: db.py:31 de 1 a 2 y observar. NO directo a 4: cuatro "
-                 "ACU sostenidas son ~350 dolares al mes.")
+                 "80% sigue significando 'pegada al techo' si el techo sube. El "
+                 "techo ya subio de 1 a 2 ACU el 2026-09-21. NO subirlo a 4 sin "
+                 "medir antes el coste: ese tope es el unico freno duro de gasto "
+                 "que existe, y cuatro ACU sostenidas rondan los ~350 dolares al "
+                 "mes. Mira primero si el consumo viene de una ruta concreta.")
 
         # 5) Cero mensajes en 14 dias: cualquiera que aparezca es real.
         alarma("DlqConMensajes", cw.Metric(

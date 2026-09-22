@@ -105,14 +105,30 @@ def test_todas_explican_su_umbral():
 # las decisiones de diseño que costaron medirse
 
 def test_la_concurrencia_se_mide_en_toda_la_cuenta():
-    """Sin dimensiones a propósito: la cuota de 10 es de la CUENTA, y el worker
-    la comparte con el API. Con FunctionName solo veríamos media película."""
+    """Sin dimensiones a propósito: la cuota es de la CUENTA, y el worker la
+    comparte con el API. Con FunctionName solo veríamos media película."""
     a = _alarmas(_plantilla())["ConcurrenciaCuenta"]["Properties"]
     assert not a.get("Dimensions"), "con dimensiones deja de medir la cuota real"
-    assert a["Threshold"] == 8, "8 de 10: el aviso llega antes del throttle"
     assert a["DatapointsToAlarm"] == 1, (
-        "con 2 de 2 no dispara nunca: los 4 toques de >=8 en 14 días jamás "
-        "tuvieron dos periodos consecutivos")
+        "con 2 de 2 no dispara nunca: un pico de concurrencia dura segundos")
+
+
+def test_el_umbral_de_concurrencia_va_tarado_a_la_cuota_vigente():
+    """Este umbral es una FRACCIÓN de la cuota, no un número absoluto.
+
+    Nació como «8 de 10». La cuota pasó a 1000 (verificado por API el
+    2026-09-21) y el 8 se quedó: disparó 23 veces en 7 días con 7 usuarios,
+    mientras Api5xx, ApiThrottles y AuroraTecho llevaban 0. El daño de una
+    alarma así no es el ruido, es que entrena la bandeja a ignorar el remitente
+    —y el 5xx de verdad llega a un buzón ya sordo.
+
+    El rango de abajo es el que mantiene el aviso ANTES del throttle sin que
+    suene a diario. Si vuelve a caer fuera, la cuota cambió y toca retarar.
+    """
+    umbral = _alarmas(_plantilla())["ConcurrenciaCuenta"]["Properties"]["Threshold"]
+    assert 500 <= umbral <= 800, (
+        f"umbral {umbral} sobre una cuota de 1000: fuera del 50-80% no es un "
+        "aviso previo al throttle, es ruido (si es bajo) o llega tarde (si es alto)")
 
 
 def test_aurora_se_mide_en_media_no_en_maximo():
