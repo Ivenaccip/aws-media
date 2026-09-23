@@ -39,6 +39,19 @@ PREFIJOS_PROTEGIDOS = ("/api/", "/editor/")
 # /api/pagos/stripe: Stripe no trae JWT — su gate es la firma HMAC del webhook
 RUTAS_PUBLICAS = {"/api/auth/config", "/api/pagos/stripe"}
 
+# M26 — la sección pública de /automatizacion (abre el 2026-10-10) necesita rutas
+# con identificador (/estado/{corrida}, /descarga/{corrida}), y RUTAS_PUBLICAS es
+# un conjunto de cadenas EXACTAS: no sabe de parámetros. Por eso un prefijo.
+#
+# La barra final NO es cosmética: es el gate. Sin ella "/api/publico-admin/x"
+# también empieza por "/api/publico" y quedaría abierto a internet sin que nadie
+# lo escribiera. Con ella, solo cuelga de aquí lo que está separado por "/".
+#
+# REGLA: colgar un endpoint de este prefijo lo publica en internet sin login.
+# No hay forma de añadir uno "por dentro". tests/test_m26_publico.py lleva el
+# inventario de lo que puede colgar de aquí y falla en CI si aparece algo más.
+PREFIJOS_PUBLICOS = ("/api/publico/",)
+
 
 def activo() -> bool:
     return bool(os.getenv("COGNITO_POOL_ID"))
@@ -83,7 +96,9 @@ async def middleware(request, call_next):
     marca = marca_g = None
     if activo():
         ruta = request.url.path
-        if ruta.startswith(PREFIJOS_PROTEGIDOS) and ruta not in RUTAS_PUBLICAS:
+        if (ruta.startswith(PREFIJOS_PROTEGIDOS)
+                and ruta not in RUTAS_PUBLICAS
+                and not ruta.startswith(PREFIJOS_PUBLICOS)):
             token = _token_del_request(request)
             if not token:
                 return _rechazo(request, "Inicia sesión para continuar")
@@ -105,6 +120,10 @@ async def middleware(request, call_next):
 def _rechazo(request, detalle: str):
     # navegación directa (p. ej. /editor/x en la barra) → a la portada, donde
     # auth.js arranca el login; llamadas fetch → 401 y auth.js lo maneja
+    #
+    # OJO: el día que "/" pase a ser la portada pública, este destino deja de
+    # arrancar el login y hay que mandarlo al cascarón de la app privada. Ese
+    # cambio SOLO puede entrar en el mismo commit que cree static/app.html.
     if "text/html" in request.headers.get("accept", ""):
         return RedirectResponse("/")
     return JSONResponse({"detail": detalle}, status_code=401)

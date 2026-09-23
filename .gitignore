@@ -48,3 +48,6 @@ media/projects/
 
 # CDK synth output
 infra/cdk.out/
+
+# Volcados de Cygwin cuando un .exe revienta en Git Bash (mordió el 22-sep-2026)
+*.stackdump
