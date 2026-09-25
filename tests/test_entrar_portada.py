@@ -183,9 +183,11 @@ globalThis.sessionStorage = { getItem: k => ss.get(k) ?? null,
   setItem: (k, v) => { if (k === 'auth_verifier') cuenta.verifier++; ss.set(k, v); },
   removeItem: k => ss.delete(k) };
 const loc = { origin: 'https://irremplazables.xyz', pathname: '/estudio/', search: '', protocol: 'https:' };
-Object.defineProperty(loc, 'href', { set: u => { if (u.includes('/oauth2/authorize')) cuenta.authorize++; } });
+Object.defineProperty(loc, 'href', { get: () => 'https://irremplazables.xyz/estudio/',
+  set: u => { if (u.includes('/oauth2/authorize')) cuenta.authorize++; } });
 globalThis.location = loc;
-globalThis.document = { cookie: '', body: null };
+globalThis.document = { cookie: '', body: null, visibilityState: 'visible', addEventListener: () => {} };
+globalThis.setInterval = () => 0;   // la renovación en segundo plano (UI·9) no entra aquí
 globalThis.window = globalThis;
 globalThis.addEventListener = () => {};
 const espera = ms => new Promise(r => setTimeout(r, ms));

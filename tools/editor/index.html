@@ -294,6 +294,11 @@
      la UI corre bajo /editor/<proyecto>/ en la nube y bajo "/" en el server
      local, y ambos lo sirven. Si no carga, todo sigue funcionando igual. -->
 <script src="orbe.js"></script>
+<!-- UI·9: el login. Absoluto a propósito (vive en la raíz del sitio). En la
+     nube mantiene viva la sesión y, si tiene que mandar a entrar, avisa antes
+     para apartar lo no guardado. En el server local no existe: da 404 y el
+     editor sigue igual, sin login, como siempre. -->
+<script src="/auth.js"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -369,6 +374,7 @@ async function init() {
   renderFlags(); rebuild();
   $("styleSel").value = "tight";
   chatTick();   // avisa desde el arranque si falta la sesión de Claude
+  recuperarPendiente();
 }
 const sortEvents = () => events.sort((a,b) => toGlobal(a.clip,a.s) - toGlobal(b.clip,b.s));
 
@@ -819,20 +825,25 @@ function cutSelection() {
 
 /* ---------- save / render ---------- */
 function setStatus(msg, cls) { const s = $("status"); s.textContent = msg; s.className = cls || ""; }
+// El cuts.json tal como se guarda, armado desde lo que hay en pantalla.
+function cortesParaGuardar() {
+  const out = JSON.parse(JSON.stringify(DATA));
+  for (const clip of out.clips) {
+    const rows = computeGaps(clip);
+    clip.keeps = rows.map(({ k, d, t }) => {
+      const o = { s: +k.s.toFixed(3), e: +k.e.toFixed(3), text: k.text, gap: { d: +d.toFixed(2), t } };
+      if (k.note) o.note = k.note; return o;
+    });
+    clip.cuts = events.filter(v => v.clip === clip.id && v.kind === "cut").sort((x,y) => x.s - y.s)
+      .map(c => { const o = { s: +c.s.toFixed(3), e: +c.e.toFixed(3), cat: c.cat || "manual", text: c.text };
+                  if (c.note) o.note = c.note; return o; });
+  }
+  return out;
+}
 async function save() {
   const msgs = [];
   if (dirty) {
-    const out = JSON.parse(JSON.stringify(DATA));
-    for (const clip of out.clips) {
-      const rows = computeGaps(clip);
-      clip.keeps = rows.map(({ k, d, t }) => {
-        const o = { s: +k.s.toFixed(3), e: +k.e.toFixed(3), text: k.text, gap: { d: +d.toFixed(2), t } };
-        if (k.note) o.note = k.note; return o;
-      });
-      clip.cuts = events.filter(v => v.clip === clip.id && v.kind === "cut").sort((x,y) => x.s - y.s)
-        .map(c => { const o = { s: +c.s.toFixed(3), e: +c.e.toFixed(3), cat: c.cat || "manual", text: c.text };
-                    if (c.note) o.note = c.note; return o; });
-    }
+    const out = cortesParaGuardar();
     const r = await fetch("api/save", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cuts: out, changes, base: VERSION }) });
     // M7 (nube): 409 = otra pestaña o dispositivo guardó sobre esta versión
@@ -855,6 +866,52 @@ async function save() {
   $("saveBtn").disabled = true;
   setStatus("Guardado: " + msgs.join(" · "), "ok");
 }
+/* ---------- UI·9: la sesión vence a mitad de la edición ----------
+   auth.js renueva el token antes de que venza, pero si no puede (el refresh
+   también venció o se revocó) manda a entrar y la página se va. Antes de irse
+   avisa con «auth:saliendo»: lo no guardado se aparta en sessionStorage y, al
+   volver, se reenvía tal cual con la versión en la que se editó. Si en el
+   camino alguien más guardó (otra versión), no se pisa: se dice y ya. */
+const PENDIENTE = "editor_pendiente:" + location.pathname;
+addEventListener("auth:saliendo", () => {
+  if (!dirty && !txDirty) return;
+  try {
+    sessionStorage.setItem(PENDIENTE, JSON.stringify({ base: VERSION,
+      cuts: dirty ? cortesParaGuardar() : null, changes, edits: txDirty ? txEdits : null }));
+  } catch {}
+});
+async function recuperarPendiente() {
+  if (sessionStorage.getItem(PENDIENTE + ":ok")) {
+    sessionStorage.removeItem(PENDIENTE + ":ok");
+    setStatus("Tu sesión se renovó y guardamos los cambios que habían quedado pendientes.", "ok");
+  }
+  let p = null;
+  try { p = JSON.parse(sessionStorage.getItem(PENDIENTE) || "null"); } catch {}
+  if (!p) return;
+  sessionStorage.removeItem(PENDIENTE);
+  if (p.base !== VERSION)
+    return setStatus("Mientras volvías a entrar, el corte cambió en otro lado: tus últimos cambios sin guardar no se aplicaron.", "err");
+  const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) }).then(r => r.json());
+  try {
+    if (p.cuts) {
+      const j = await post("api/save", { cuts: p.cuts, changes: p.changes, base: p.base });
+      if (!j.saved) throw new Error(j.error || j.detail || "error desconocido");
+    }
+    if (p.edits) {
+      const j = await post("api/words", { edits: p.edits });
+      if (!j.saved) throw new Error(j.error || "error desconocido");
+    }
+  } catch (e) {
+    try { sessionStorage.setItem(PENDIENTE, JSON.stringify(p)); } catch {}
+    return setStatus("No pudimos guardar los cambios que habían quedado pendientes: " + e.message + " — recarga para intentarlo de nuevo", "err");
+  }
+  // recargar en vez de rehacer la pantalla a mano: así lo que se ve es lo que
+  // quedó guardado, palabras corregidas incluidas
+  sessionStorage.setItem(PENDIENTE + ":ok", "1");
+  location.reload();
+}
+
 async function render() {
   if (dirty) await save();
   const style = $("styleSel").value;
