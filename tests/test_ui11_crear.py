@@ -54,12 +54,11 @@ def test_la_espera_tiene_pasos_y_lo_que_falta():
     assert "Puedes cerrar esta pestaña" in CREAR
 
 
-def test_el_filtro_ambar_de_los_emojis_no_toca_los_iconos():
-    """crear ya tenía .ico: un emoji de título con filtro sepia → ámbar. Si el
-    filtro alcanza al SVG, la palomita verde y el aviso rojo salen ámbar."""
-    assert "span.ico { filter:" in CREAR
-    assert not re.search(r"(?<![\w.])\.ico \{ filter", CREAR)
-    assert "svg.ico { width" in CREAR
+def test_ningun_filtro_tine_los_iconos():
+    """crear tuvo un .ico con filtro sepia (emojis de título → ámbar) que
+    alcanzaba al SVG: la palomita verde y el aviso rojo salían ámbar. UI·13
+    quitó los emojis y con ellos el filtro."""
+    assert "sepia(" not in CREAR
 
 
 def test_sin_emojis_en_la_espera_ni_en_el_error():
@@ -75,9 +74,10 @@ def test_el_error_llega_en_tres_partes():
     assert "<h3>Qué sigue</h3>" in error and 'id="esigue"' in error
     assert "<summary>Detalles técnicos</summary>" in error
     # un solo principal: «Empezar de nuevo» es secundario mientras se pueda reintentar
-    assert 'class="btn" id="reintentar"' in error and 'class="btn sec" id="denuevo"' in error
+    assert 'class="btn btn-pri" id="reintentar"' in error and 'class="btn btn-sec" id="denuevo"' in error
     js = _bloque(_js(CREAR), "function pintaError(p)")
-    assert "$('#denuevo').classList.toggle('sec', fallaProducir);" in js
+    assert "$('#denuevo').classList.toggle('btn-sec', fallaProducir);" in js
+    assert "$('#denuevo').classList.toggle('btn-pri', !fallaProducir);" in js
 
 
 def test_el_error_de_reintentar_no_pisa_lo_que_paso():
@@ -143,13 +143,13 @@ pintaError({...base, etapa: 'media', error: 'RuntimeError: veo 503', duracion_s:
 out.prod = {titulo: $('#etitulo').innerHTML, msg: $('#emsg').textContent,
   devol: $('#edevol').textContent, sigue: $('#esigue').textContent,
   boton: $('#reintentar').textContent, tecnico: $('#etecnico').textContent,
-  denuevoSec: $('#denuevo').classList.c.has('sec'), creditosOcultos: $('#ecreditos').hidden};
+  denuevoSec: $('#denuevo').classList.c.has('btn-sec'), creditosOcultos: $('#ecreditos').hidden};
 // error al preparar
 fallaProducir = false;
 pintaError({...base, etapa: 'research', error: '', duracion_s: 30});
 out.prep = {titulo: $('#etitulo').innerHTML, msg: $('#emsg').textContent,
   devol: $('#edevol').textContent, sigue: $('#esigue').textContent, href: $('#denuevo').href,
-  denuevoSec: $('#denuevo').classList.c.has('sec'), tecnicoOculto: $('#etecnico-caja').hidden};
+  denuevoSec: $('#denuevo').classList.c.has('btn-sec'), denuevoPri: $('#denuevo').classList.c.has('btn-pri'), tecnicoOculto: $('#etecnico-caja').hidden};
 // sin monedero (dev local): no se habla de créditos
 mon = {activo: false};
 pintaError({...base, etapa: 'research'});
@@ -217,7 +217,7 @@ def test_error_al_preparar(corrida):
     assert e["devol"] == "Te devolvimos ✦ 10: no pagas por un guion que no salió."
     assert e["href"] == "/crear.html?brief=Un%20faro"
     # sin nada que reintentar, «Empezar de nuevo» es el principal
-    assert e["denuevoSec"] is False
+    assert e["denuevoSec"] is False and e["denuevoPri"] is True
     assert e["tecnicoOculto"] is True
 
 
