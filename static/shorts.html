@@ -155,6 +155,7 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 <script src="/orbe.js"></script>
 <script src="/iconos.js"></script>
 <script>
@@ -282,6 +283,10 @@ $("sub-btn").onclick = async () => {
         const pct = Math.round(100 * ev.loaded / ev.total);
         $("sub-avance").style.width = pct + "%";
         est.textContent = `Subiendo ${f.name} — ${pct}% (${(ev.loaded / 1e6).toFixed(1)} de ${mbTotal} MB)`;
+        // UI·15: también en el cuadro de tus trabajos. La subida la hace este
+        // navegador, así que ahí se pide no cerrar la pestaña.
+        window.trabajos?.local("subida", {titulo: `Subiendo «${f.name}»`, progreso: pct,
+          detalle: `${pct} % · ${(ev.loaded / 1e6).toFixed(1)} de ${mbTotal} MB · no cierres esta pestaña`});
       };
       xhrSubida.onload = () => xhrSubida.status < 300 ? resolver()
         : rechazar(new Error(`la subida a la nube falló (${xhrSubida.status}) — intenta de nuevo`));
@@ -295,6 +300,7 @@ $("sub-btn").onclick = async () => {
   } catch (e) { est.textContent = "Error: " + e.message; }
   finally {
     xhrSubida = null;
+    window.trabajos?.local("subida", null);
     $("sub-btn").disabled = false; $("sub-cancelar").hidden = true;
     $("sub-barra").hidden = true; $("sub-avance").style.width = "0%";
   }

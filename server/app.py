@@ -48,6 +48,7 @@ from server.publicar_api import router as publicar_router
 from server.estilos_api import router as estilos_router
 from server.competencia_api import router as competencia_router
 from server.mix_api import router as mix_router
+from server.trabajos_api import router as trabajos_router
 from server.clip_api import router as clip_router
 from server.shorts_api import router as shorts_router
 
@@ -134,6 +135,7 @@ app.include_router(competencia_router)
 app.include_router(clip_router)
 app.include_router(editar_router)
 app.include_router(mix_router)
+app.include_router(trabajos_router)
 
 
 # Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto

@@ -400,6 +400,10 @@ async function subir() {
         const pct = Math.round(100 * ev.loaded / ev.total);
         document.getElementById("sub-avance").style.width = pct + "%";
         estado.textContent = `Subiendo ${f.name} — ${pct}% (${(ev.loaded / 1e6).toFixed(1)} de ${mbTotal} MB)`;
+        // UI·15: también en el cuadro de tus trabajos. La subida la hace este
+        // navegador, así que ahí se pide no cerrar la pestaña.
+        window.trabajos?.local("subida", {titulo: `Subiendo «${f.name}»`, progreso: pct,
+          detalle: `${pct} % · ${(ev.loaded / 1e6).toFixed(1)} de ${mbTotal} MB · no cierres esta pestaña`});
       };
       xhrSubida.onload = () => xhrSubida.status < 300 ? resolver()
         : rechazar(new Error(`la subida a la nube falló (${xhrSubida.status}) — intenta de nuevo`));
@@ -422,7 +426,7 @@ async function subir() {
     clearTimeout(pollTimer);
     initCorte();
   } catch (e) { estado.textContent = "Error: " + e.message; }
-  finally { xhrSubida = null; subidaUI(false); }
+  finally { xhrSubida = null; subidaUI(false); window.trabajos?.local("subida", null); }
 }
 document.getElementById("sub-cancelar").onclick = () => xhrSubida && xhrSubida.abort();
 window.addEventListener("beforeunload", e => { if (xhrSubida) e.preventDefault(); });
@@ -430,5 +434,6 @@ initSubir();
 window.orbe?.precargar();   // el motor se baja en tiempo muerto, no al hacer clic
 </script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 </body>
 </html>

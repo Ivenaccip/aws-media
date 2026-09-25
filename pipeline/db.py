@@ -391,6 +391,16 @@ def listar_proyectos_editor(user_id: str) -> list[dict]:
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
 
 
+def corridas_editor(user_id: str) -> list[dict]:
+    """El cuadro de «tus trabajos» sondea mientras algo corre: solo trae las tres
+    corridas que enseña, no el doc entero (cortes, chat, subtítulos…)."""
+    filas = ejecutar(
+        "SELECT nombre, jsonb_build_object('editar', doc->'editar', 'importar', doc->'importar', "
+        "'shorts', doc->'shorts')::text AS doc FROM proyectos_editor "
+        "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
+    return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
+
+
 # Campos del doc que los jobs actualizan con jsonb_set (lista cerrada: la ruta
 # va interpolada en el SQL, así que jamás sale de aquí)
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
@@ -633,6 +643,18 @@ def listar_proyectos(user_id: str) -> list[dict]:
         "SELECT doc::text AS doc FROM proyectos_gen WHERE user_id = :u "
         "ORDER BY creado DESC", {"u": user_id})
     return [json.loads(f["doc"]) for f in filas]
+
+
+def proyectos_recientes(user_id: str, horas: float) -> list[tuple[dict, float]]:
+    """El cuadro de «tus trabajos»: las películas que siguen en marcha y las que
+    cambiaron de estado en las últimas `horas`, con la hora del cambio (epoch)."""
+    filas = ejecutar(
+        "SELECT doc::text AS doc, extract(epoch FROM actualizado)::float8 AS t FROM proyectos_gen "
+        "WHERE user_id = :u AND (estado IN ('preparando', 'produciendo') "
+        # make_interval solo existe con int4 y _param manda los int como bigint
+        "OR actualizado > now() - make_interval(mins => :m::int)) ORDER BY actualizado DESC",
+        {"u": user_id, "m": int(horas * 60)})
+    return [(json.loads(f["doc"]), float(f["t"])) for f in filas]
 
 
 # ---------------------------------------------------------------------------
