@@ -644,7 +644,9 @@ def test_el_titulo_esta_centrado_y_mas_grande_en_las_dos_pantallas(html):
         assert "justify-content:center" in cabeza
         assert "padding-inline:max(0px, min(300px, calc(50% - 230px)))" in cabeza
     assert "font-size:30px" in _regla(html, ".titulo")
-    assert "font-size:30px" in _regla(crear, ".cabeza h1")
+    # UI·13: crear adoptó la carta — su título es el de pantalla (32 px, Bricolage)
+    assert "font:800 var(--t-titulo-lg)/1.1 var(--f-titulo)" in _regla(crear, "h1")
+    assert "--t-titulo-lg: 32px" in (RAIZ / "static" / "carta.css").read_text(encoding="utf-8")
 
 
 def _intencion(frases):
@@ -861,7 +863,8 @@ def test_cada_imagen_se_abre_para_seguir_editandola(hub):
     pinta = _bloque(js, "function renderImagenes()")
     assert "/imagenes.html?img=${encodeURIComponent(im.nombre)}" in pinta
     assert "src=\"${esc(im.url)}\"" in pinta and 'loading="lazy"' in pinta
-    assert '<a class="proy vacio" href="/imagenes.html">＋ Nueva imagen</a>' in pinta
+    # UI·10: el ＋ pasó a ser el icono «mas» de la carta; la tarjeta sigue ahí
+    assert '<a class="proy vacio" href="/imagenes.html"><span>${icono(\'mas\')}Nueva imagen</span></a>' in pinta
     # una imagen que no carga no deja un ícono roto
     assert "im.onerror" in pinta
     # la lista no rompe el inicio si falla

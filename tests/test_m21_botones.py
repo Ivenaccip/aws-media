@@ -85,6 +85,11 @@ def test_toda_etiqueta_con_estrella_respeta_la_forma(archivo):
             # delante diría que el clic ya cobra, que es exactamente lo que no
             # hace. El verbo sigue viviendo donde toca: en el botón de enviar.
             continue
+        if plantilla.startswith("Te devolvimos " + ESTRELLA + " "):
+            # UI·11 — la parte «Tus créditos» de la pantalla de error (carta
+            # §8: «Te devolvimos ✦ 90»). No es un botón ni cobra: dice cuánto
+            # regresó, con la misma estrella que el saldo.
+            continue
         m = FORMA.match(plantilla)
         assert m, f"{archivo.name}: «{plantilla}» no es «Verbo {ESTRELLA} ${{precio}}»"
         verbo = m.group("verbo")
@@ -138,7 +143,8 @@ def test_el_aviso_de_que_reintentar_vuelve_a_cobrar_no_se_perdio():
     aviso de que ese dinero se cobra OTRA vez."""
     html = (ESTATICOS / "crear.html").read_text(encoding="utf-8")
     assert "se cobran de nuevo" in html
-    assert "#edevol" in html[html.index("se cobran de nuevo") - 400:
+    # UI·11: el aviso vive en «Qué sigue», junto al botón que vuelve a cobrar
+    assert "#esigue" in html[html.index("se cobran de nuevo") - 400:
                              html.index("se cobran de nuevo")], \
         "el aviso ya no cuelga de la nota de la pantalla de error"
 

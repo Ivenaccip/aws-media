@@ -5,38 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·10: la carta de diseño (docs/DISENO.md). Fuentes, colores, botones e
+     iconos salen de aquí; este archivo solo decide cómo se acomodan. -->
+<link rel="stylesheet" href="/carta.css">
+<script src="/iconos.js"></script>
 <style>
-  :root { color-scheme: dark; --bg:#0b1626; --card:#111f33; --line:#22354f;
-          --txt:#ece8e1; --mut:#93a3b8; --acc:#5b8dd6; }
+  /* Los nombres cortos de siempre, ahora apuntando a la carta. --acc es el
+     ámbar: el ÚNICO color que dice «haz algo». Los bordes al pasar el ratón
+     van en gris (--hover), no en ámbar: con un acento en cada tarjeta, el
+     botón que de verdad importa dejaba de resaltar. */
+  :root { --bg: var(--c-fondo); --card: var(--c-superficie); --line: var(--c-linea);
+          --txt: var(--c-texto); --mut: var(--c-secundario); --acc: var(--c-ambar);
+          --hover: var(--c-campo); }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 15px/1.6 system-ui, sans-serif; background: var(--bg); color: var(--txt);
+  body { font: var(--t-sm)/1.6 var(--f-texto); background: var(--bg); color: var(--txt);
          min-height: 100vh; }
   .layout { display: grid; grid-template-columns: 230px 1fr; gap: 28px;
             max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
 
   /* --- sidebar --- */
-  aside h1 { font-size: 17px; font-weight: 600; padding: 10px 12px 18px; }
-  nav a, nav .prox { display: block; padding: 11px 12px; margin-bottom: 6px;
-    border-radius: 10px; border: 1px solid var(--line); background: var(--card);
-    text-decoration: none; color: inherit; }
-  nav a:hover { border-color: var(--acc); }
-  nav b { display: block; font-size: 14px; font-weight: 600; }
-  nav small { color: var(--mut); font-size: 12px; line-height: 1.35; display: block; }
+  aside h1 { display: flex; align-items: center; gap: 10px; padding: 10px 12px 18px;
+    font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); }
+  aside h1 .ico { color: var(--c-ambar-claro); }
+  /* cada entrada: icono a la izquierda, nombre y descripción a la derecha */
+  nav a, nav .prox { display: grid; grid-template-columns: auto 1fr; column-gap: 10px;
+    align-items: start; padding: 11px 12px; margin-bottom: 6px;
+    border-radius: var(--r-medio); border: 1px solid var(--line); background: var(--card);
+    text-decoration: none; color: inherit;
+    transition: border-color var(--m-rapido) ease-out, background-color var(--m-rapido) ease-out; }
+  nav a:hover { border-color: var(--hover); background: var(--c-elevada); }
+  nav a .ico { margin-top: 1px; color: var(--mut); }
+  nav a:hover .ico { color: var(--txt); }
+  nav b { display: block; font-size: var(--t-sm); font-weight: 600; line-height: 1.4; }
+  nav small { color: var(--mut); font-size: var(--t-xs); line-height: 1.4; display: block; }
   nav .prox { opacity: .45; cursor: default; }
   nav .prox small::after { content: " · próximamente"; color: var(--mut); }
   /* grupos del sidebar: Estudio de Contenido / Blotato + */
   nav .grupo { display: flex; align-items: center; justify-content: space-between;
-    color: var(--mut); font-size: 12px; font-weight: 600; letter-spacing: .4px;
+    color: var(--mut); font-size: var(--t-xs); font-weight: 600; letter-spacing: .4px;
     text-transform: uppercase; margin: 16px 2px 8px; }
   nav .grupo:first-child { margin-top: 0; }
-  nav .grupo .mas { border: 1px solid var(--line); background: transparent; color: var(--mut);
-    border-radius: 8px; width: 22px; height: 22px; line-height: 1; cursor: pointer;
-    font: 15px/1 system-ui; }
-  nav .grupo .mas:hover { border-color: var(--acc); color: var(--txt); }
+  /* 32 px a la vista, 44 para el dedo: el ::before agranda el área que se toca */
+  nav .grupo .mas { position: relative; display: grid; place-items: center; width: 32px;
+    height: 32px; padding: 0; border: 1px solid var(--hover); background: transparent;
+    color: var(--mut); border-radius: var(--r-medio); cursor: pointer; }
+  nav .grupo .mas::before { content: ""; position: absolute; inset: -6px; }
+  nav .grupo .mas:hover { border-color: var(--mut); color: var(--txt); background: var(--c-elevada); }
   /* M23 · C — apagada: la herramienta existe pero necesita la clave del
      usuario. Se apaga a la vista en vez de esconderse: escondida, nadie
      descubre que el producto sabe hacerlo. */
-  nav a .bloqueo { display: none; color: var(--acc); }
+  nav a .bloqueo { display: none; color: var(--c-ambar-claro); }
   nav a.apagada { opacity: .6; }
   nav a.apagada small { display: none; }
   nav a.apagada .bloqueo { display: block; }
@@ -44,7 +62,7 @@
   /* --- prompt central --- */
   /* margin-top: el cuadro arranca a la altura de la card «Crear imágenes»
      del sidebar (mock 2026-09-07), no del título "Estudio de video" */
-  .prompt { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  .prompt { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-grande);
             padding: 18px; margin: 82px 0 34px; }
   /* tooltips de los botones: qué hace cada uno, visible al pasar el cursor
      (la nota fija de abajo se retiró — mock 2026-09-07) */
@@ -52,14 +70,14 @@
   .prompt [data-tip]::after { content: attr(data-tip); position: absolute;
     bottom: calc(100% + 10px); left: 0; width: max-content; max-width: 250px;
     background: #18293f; border: 1px solid var(--line); border-radius: 10px;
-    padding: 8px 11px; font-size: 12.5px; line-height: 1.45; color: var(--txt);
+    padding: 8px 11px; font-size: var(--t-xs); line-height: 1.45; color: var(--txt);
     box-shadow: 0 6px 22px rgba(0,0,0,.5);
     text-align: left; white-space: normal; opacity: 0; visibility: hidden;
     transition: opacity .15s; pointer-events: none; z-index: 5; }
   .prompt .enviar[data-tip]::after { left: auto; right: 0; }
   .prompt [data-tip]:hover::after, .prompt [data-tip]:focus-visible::after {
     opacity: 1; visibility: visible; }
-  .prompt h2 { font-size: 20px; font-weight: 600; margin-bottom: 10px; }
+  .prompt h2 { font: 700 var(--t-titulo-md)/1.2 var(--f-titulo); margin-bottom: 10px; }
   .prompt textarea { width: 100%; min-height: 88px; resize: vertical; border: 0;
     background: transparent; color: var(--txt); font: inherit; outline: none; }
   /* mock 2026-09-07: los modos son CHIPS de selección y el envío es un botón
@@ -70,7 +88,7 @@
     overflow: hidden; }
   .prompt .familias { flex: 0 0 auto; }
   .prompt .familias button { border: 0; border-radius: 0; background: transparent;
-    color: var(--mut); font: inherit; font-size: 13.5px; padding: 7px 14px; cursor: pointer;
+    color: var(--mut); font: inherit; font-size: var(--t-sm); padding: 9px 14px; cursor: pointer;
     white-space: nowrap; }
   .prompt .familias button:hover { color: var(--txt); }
   .prompt .familias button[aria-pressed="true"] { background: #18293f; color: var(--txt); }
@@ -78,9 +96,9 @@
   /* nowrap: apretado, el rótulo se partía en dos líneas y el ▾ quedaba solo
      abajo, como una cajita suelta. El botón se queda en una línea siempre. */
   .prompt button.opcion { border: 1px solid var(--line); background: transparent; color: var(--txt);
-    border-radius: 9px; padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer;
+    border-radius: 9px; padding: 9px 14px; font: inherit; font-size: var(--t-sm); cursor: pointer;
     white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .prompt button.opcion:hover { border-color: var(--acc); }
+  .prompt button.opcion:hover { border-color: var(--hover); }
   .prompt button.opcion .cr { color: var(--mut); }
   .prompt button.opcion .ca { color: var(--mut); }
   /* hacia ABAJO: hacia arriba tapaba el texto que el usuario acaba de escribir,
@@ -93,62 +111,83 @@
     border: 1px solid var(--line); border-radius: 11px; box-shadow: 0 10px 28px #0008; }
   .prompt #opciones li { border-radius: 8px; padding: 8px 10px; cursor: pointer; }
   .prompt #opciones li:hover, .prompt #opciones li.marcada { background: #18293f; }
-  .prompt #opciones b { font-weight: 600; font-size: 14px; }
-  .prompt #opciones .cr { color: var(--mut); font-size: 13px; float: right; }
-  .prompt #opciones small { display: block; color: var(--mut); font-size: 12.5px; line-height: 1.35; }
+  .prompt #opciones b { font-weight: 600; font-size: var(--t-sm); }
+  .prompt #opciones .cr { color: var(--mut); font-size: var(--t-xs); float: right; }
+  .prompt #opciones small { display: block; color: var(--mut); font-size: var(--t-xs); line-height: 1.4; }
   .prompt button.modo { border: 1px solid var(--line); background: transparent; color: var(--mut);
-    border-radius: 999px; padding: 8px 16px; cursor: pointer; font: inherit; font-size: 14px; }
-  .prompt button.modo:hover { border-color: var(--acc); }
-  .prompt button.modo.on { border-color: var(--acc); color: var(--txt); background: #18293f; }
-  .prompt .enviar { margin-left: auto; width: 40px; height: 40px; border-radius: 50%;
-    border: 0; background: var(--acc); color: #08111e; font-size: 19px; font-weight: 700;
-    cursor: pointer; display: grid; place-items: center; line-height: 1; }
-  .prompt .enviar:hover { filter: brightness(1.12); }
-  .prompt .nota { color: var(--mut); font-size: 12.5px; margin-top: 10px; }
+    border-radius: 999px; padding: 8px 16px; cursor: pointer; font: inherit; font-size: var(--t-sm); }
+  .prompt button.modo:hover { border-color: var(--hover); }
+  .prompt button.modo.on { border-color: var(--mut); color: var(--txt); background: #18293f; }
+  /* el botón principal de la pantalla: el único ámbar (carta §5) */
+  .prompt .enviar { margin-left: auto; width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: var(--c-ambar); color: var(--c-tinta); font-size: 20px;
+    cursor: pointer; display: grid; place-items: center; line-height: 1;
+    transition: background-color var(--m-rapido) ease-out, transform var(--m-rapido) ease-out; }
+  .prompt .enviar .ico { stroke-width: 2.2; }
+  .prompt .enviar:hover { background: var(--c-ambar-claro); }
+  .prompt .enviar:active { transform: scale(0.96); }
+  .prompt .nota { color: var(--mut); font-size: var(--t-xs); margin-top: 10px; }
+
+  /* --- los tres caminos: el inicio de alguien que todavía no tiene nada --- */
+  .caminos { margin: 0 0 34px; }
+  .caminos h2 { font: 700 var(--t-titulo-md)/1.2 var(--f-titulo); margin-bottom: 6px; }
+  .caminos-lead { color: var(--mut); font-size: var(--t-md); line-height: 1.55;
+    max-width: 60ch; margin-bottom: 18px; }
+  .caminos-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .camino { display: flex; flex-direction: column; gap: 10px; padding: 20px;
+    border-radius: var(--r-grande); background: var(--card); border: 1px solid var(--line); }
+  .camino > .ico { width: 28px; height: 28px; color: var(--c-ambar-claro); }
+  .camino h3 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); }
+  .camino p { color: var(--mut); line-height: 1.5; flex-grow: 1; }
+  .camino .btn { align-self: flex-start; }
 
   /* --- grid de proyectos --- */
   .cabecera-grid { display: flex; align-items: baseline; justify-content: space-between;
                    margin-bottom: 14px; }
-  .cabecera-grid h2 { font-size: 17px; font-weight: 600; }
-  #slots-info { color: var(--mut); font-size: 13px; }
+  .cabecera-grid h2 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); }
+  #slots-info { color: var(--mut); font-size: var(--t-xs); }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
   /* mock: cada proyecto es una OBRA — imagen grande + título abajo + X para archivar */
   .proy { position: relative; display: flex; flex-direction: column; overflow: hidden;
-    border-radius: 12px; background: var(--card); border: 1px solid var(--line);
-    text-decoration: none; color: inherit; cursor: pointer; }
-  .proy:hover { border-color: var(--acc); }
+    border-radius: var(--r-boton); background: var(--card); border: 1px solid var(--line);
+    text-decoration: none; color: inherit; cursor: pointer;
+    transition: border-color var(--m-rapido) ease-out; }
+  .proy:hover { border-color: var(--hover); }
   .proy .thumb { aspect-ratio: 16/10; width: 100%; object-fit: cover; display: block;
     background: linear-gradient(135deg, #18293f, #22354f); border-bottom: 1px solid var(--line); }
-  .proy .thumb.vacia { display: grid; place-items: center; color: var(--mut); font-size: 26px; }
+  .proy .thumb.vacia { display: grid; place-items: center; color: var(--mut); font-size: 28px; }
   .proy .pie { padding: 10px 12px; }
-  .proy .brief { font-size: 14px; font-weight: 600; overflow: hidden;
+  .proy .brief { font-size: var(--t-sm); font-weight: 600; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
-  .proy .meta { color: var(--mut); font-size: 12px; }
-  .proy .arch { position: absolute; right: 6px; top: 6px; border: 0; cursor: pointer;
-    background: rgba(20, 22, 26, .72); color: var(--txt); font-size: 13px; line-height: 1;
-    border-radius: 8px; padding: 6px 8px; }
+  .proy .meta { display: flex; align-items: center; gap: 6px; color: var(--mut);
+    font-size: var(--t-xs); }
+  .proy .meta .ok { color: var(--c-exito); }
+  .proy .meta .mal { color: var(--c-error); }
+  .proy .arch { position: absolute; right: 4px; top: 4px; border: 0; cursor: pointer;
+    background: rgba(20, 22, 26, .72); color: var(--txt); font-size: var(--t-sm); line-height: 1;
+    border-radius: var(--r-medio); width: 44px; height: 44px; display: grid; place-items: center; }
   .proy .arch:hover { background: rgba(20, 22, 26, .95); }
   .proy.vacio { display: grid; place-items: center; color: var(--mut); border-style: dashed;
-    cursor: pointer; font-size: 14px; min-height: 150px; }
-  .proy.vacio:hover { border-color: var(--acc); color: var(--txt); }
-  .ver-todas { border: 0; background: none; color: var(--acc); cursor: pointer; font: inherit;
-    font-size: 13px; padding: 0; }
+    cursor: pointer; font-size: var(--t-sm); min-height: 150px; }
+  .proy.vacio span { display: flex; align-items: center; gap: 8px; }
+  .proy.vacio:hover { border-color: var(--hover); color: var(--txt); }
+  .ver-todas { border: 0; background: none; color: var(--c-enlace); cursor: pointer; font: inherit;
+    font-size: var(--t-xs); padding: 0; }
   .ver-todas:hover { text-decoration: underline; }
 
   /* --- archivados --- */
   #archivados { margin-top: 34px; }
-  #archivados summary { cursor: pointer; color: var(--mut); font-size: 14px; }
+  #archivados summary { cursor: pointer; color: var(--mut); font-size: var(--t-sm); }
   #lista-arch { list-style: none; padding: 0; margin: 12px 0 0; }
   #lista-arch li { display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 9px 14px; margin-bottom: 6px; border-radius: 9px; background: var(--card);
-    border: 1px solid var(--line); font-size: 13.5px; }
+    border: 1px solid var(--line); font-size: var(--t-sm); }
   #lista-arch .brief { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
     color: var(--mut); }
   #lista-arch button { border: 1px solid var(--line); background: transparent; color: var(--txt);
-    border-radius: 8px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12.5px; }
-  #lista-arch button:hover { border-color: var(--acc); }
-  .err { color: #ff8080; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
-  :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+    border-radius: 8px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: var(--t-xs); }
+  #lista-arch button:hover { border-color: var(--hover); }
+  .err { color: var(--c-error); font-size: var(--t-xs); margin-top: 10px; white-space: pre-wrap; }
 
   nav .grupo .mas.ok { border-color: #3dd68c; color: #3dd68c; background: #102e22; }
 
@@ -158,44 +197,48 @@
     padding: 22px 22px 18px; border-radius: 14px; border: 1px solid var(--line);
     background: var(--card); color: var(--txt); }
   #dlg-blotato::backdrop { background: rgba(4, 9, 17, .72); }
-  #dlg-blotato h2 { font-size: 19px; font-weight: 600; margin: 0 28px 6px 0; }
-  #dlg-blotato .cerrar { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
-    border: 0; border-radius: 8px; background: transparent; color: var(--mut);
-    font-size: 16px; cursor: pointer; }
+  #dlg-blotato h2 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin: 0 40px 6px 0; }
+  #dlg-blotato .cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px;
+    border: 0; border-radius: var(--r-medio); background: transparent; color: var(--mut);
+    font-size: var(--t-md); cursor: pointer; display: grid; place-items: center; }
   #dlg-blotato .cerrar:hover { color: var(--txt); background: #18293f; }
-  .blt-lead, .blt-nota { color: var(--mut); font-size: 13.5px; }
+  .blt-lead, .blt-nota { color: var(--mut); font-size: var(--t-sm); }
   .blt-lead { margin-bottom: 14px; }
-  .blt-pasos { padding-left: 20px; margin: 0 0 12px; font-size: 14px; }
+  .blt-pasos { padding-left: 20px; margin: 0 0 12px; font-size: var(--t-sm); }
   .blt-pasos li + li { margin-top: 4px; }
-  .blt-pasos a { color: var(--acc); }
+  .blt-pasos a { color: var(--c-enlace); }
   .blt-aviso { border: 1px solid #a96716; background: #2e2110; color: var(--txt);
-    border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+    border-radius: 10px; padding: 10px 12px; font-size: var(--t-xs); line-height: 1.5;
     margin-bottom: 14px; }
   .blt-aviso b { color: #f0a94a; }
-  #blt-form label { display: block; font-size: 13px; color: var(--mut); margin-bottom: 5px; }
+  #blt-form label { display: block; font-size: var(--t-xs); color: var(--mut); margin-bottom: 5px; }
   #blt-clave { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--txt); font: 14px/1.3 ui-monospace, Consolas, monospace; }
-  #blt-clave:focus { border-color: var(--acc); outline: none; }
+    background: var(--bg); color: var(--txt); font: var(--t-sm)/1.3 ui-monospace, Consolas, monospace; }
+  #blt-clave:focus { border-color: var(--c-ambar-claro); outline: none; }
   .blt-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  .blt-acciones button { border-radius: 9px; padding: 9px 16px; font: inherit; font-size: 14px;
-    cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--txt); }
-  .blt-acciones button:hover { border-color: var(--acc); }
+  .blt-acciones button { min-height: 44px; border-radius: var(--r-boton); padding: 9px 16px;
+    font: inherit; font-size: var(--t-sm); cursor: pointer; border: 1px solid var(--hover);
+    background: transparent; color: var(--txt); }
+  .blt-acciones button:hover { border-color: var(--mut); background: var(--c-elevada); }
   .blt-acciones button:disabled { opacity: .55; cursor: default; }
-  .blt-acciones .pri { background: var(--acc); border-color: var(--acc); color: #08111e;
-    font-weight: 600; }
-  .blt-acciones .pri:hover { filter: brightness(1.1); }
+  .blt-acciones .pri { background: var(--c-ambar); border-color: var(--c-ambar);
+    color: var(--c-tinta); font-weight: 600; }
+  .blt-acciones .pri:hover { background: var(--c-ambar-claro); border-color: var(--c-ambar-claro); }
   .blt-acciones .peligro { margin-left: auto; color: #ff8080; }
   .blt-acciones .peligro:hover { border-color: #ff8080; }
-  .blt-ok { color: #3dd68c; font-weight: 600; margin-bottom: 8px; }
+  .blt-ok { display: flex; align-items: center; gap: 8px; color: var(--c-exito); font-weight: 600;
+    margin-bottom: 8px; }
   #blt-redes { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 6px; }
   #blt-redes li { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px;
-    border-radius: 9px; background: var(--bg); border: 1px solid var(--line); font-size: 14px; }
+    border-radius: 9px; background: var(--bg); border: 1px solid var(--line); font-size: var(--t-sm); }
   #blt-redes .red { font-weight: 600; min-width: 84px; }
   #blt-redes .quien { color: var(--mut); overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; }
 
   @media (max-width: 860px) {
-    .layout { grid-template-columns: 1fr; }
+    /* UI·12: sin sidebar el título «Estudio de video» subía a la franja de la
+       píldora del monedero (fija arriba a la derecha, acaba a 52 px) */
+    .layout { grid-template-columns: 1fr; padding-top: 68px; }
     /* sin esto la fila de secciones (que no se parte) ensanchaba la columna y
        la PÁGINA entera se desplazaba de lado; así el scroll queda en el menú */
     .layout > * { min-width: 0; }
@@ -213,6 +256,7 @@
     nav small { display: none; }
     .prompt { margin-top: 0; }   /* en columna única no hay sidebar que alinear */
     .grid { grid-template-columns: repeat(2, 1fr); }
+    .caminos-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -220,19 +264,19 @@
 <div class="layout">
 
   <aside>
-    <h1>🎬 Estudio de video</h1>
+    <h1><i data-icono="video"></i>Estudio de video</h1>
     <nav aria-label="Secciones">
       <!-- M25 · B: «Crear imágenes» y «Crear contenido» salieron de aquí — la
            caja de arriba ya es su puerta, y tenerlos en los dos sitios repetía
            la misma entrada. El menú se queda con lo que empieza con algo tuyo
            (un archivo, una liga) más lo de publicar. -->
       <div class="grupo">Estudio de Contenido</div>
-      <a href="/e1.html"><b>Editor de videos</b><small>Sube tu metraje y la IA te propone el corte.</small></a>
-      <a href="/shorts.html"><b>De videos a Shorts</b><small>Sube un video largo y te daremos los mejores momentos.</small></a>
-      <a href="/estilos.html"><b>Copiadora de estilos</b><small>Recrea el estilo visual de un contenido que te guste</small></a>
+      <a href="/e1.html"><i data-icono="cortar"></i><span><b>Editor de videos</b><small>Sube tu metraje y la IA te propone el corte.</small></span></a>
+      <a href="/shorts.html"><i data-icono="shorts"></i><span><b>De videos a Shorts</b><small>Sube un video largo y te daremos los mejores momentos.</small></span></a>
+      <a href="/estilos.html"><i data-icono="estilo"></i><span><b>Copiadora de estilos</b><small>Recrea el estilo visual de un contenido que te guste</small></span></a>
       <div class="grupo">Blotato
         <button class="mas" id="blotato-mas" title="Conecta tu cuenta de Blotato"
-          aria-label="Conecta tu cuenta de Blotato" aria-haspopup="dialog">+</button>
+          aria-label="Conecta tu cuenta de Blotato" aria-haspopup="dialog"><i data-icono="mas"></i></button>
       </div>
       <!-- data-blotato = la entrada se apaga sin la clave del usuario (M23 · C).
            Hasta que la ponga, el clic ofrece conectarla en vez de llevarlo a una
@@ -244,15 +288,15 @@
            como un bloque, y se prefiere eso a que una de las entradas se
            comporte distinta que sus vecinas. No es un error que haya que
            arreglar quitándole el atributo. -->
-      <a href="/agenda.html" data-blotato><b>Agenda tus publicaciones</b>
+      <a href="/agenda.html" data-blotato><i data-icono="agenda"></i><span><b>Agenda tus publicaciones</b>
         <small>Programa tus posts en todas tus redes</small>
-        <small class="bloqueo">Conecta tu Blotato para usarlo</small></a>
-      <a href="/competencia.html" data-blotato><b>Investiga tu competencia</b>
+        <small class="bloqueo">Conecta tu Blotato para usarlo</small></span></a>
+      <a href="/competencia.html" data-blotato><i data-icono="competencia"></i><span><b>Investiga tu competencia</b>
         <small>Qué le está funcionando a quien vigilas</small>
-        <small class="bloqueo">Conecta tu Blotato para usarlo</small></a>
-      <a href="/metricas.html" data-blotato><b>Ver mis métricas</b>
+        <small class="bloqueo">Conecta tu Blotato para usarlo</small></span></a>
+      <a href="/metricas.html" data-blotato><i data-icono="metricas"></i><span><b>Ver mis métricas</b>
         <small>Cómo rinden tus publicaciones</small>
-        <small class="bloqueo">Conecta tu Blotato para usarlo</small></a>
+        <small class="bloqueo">Conecta tu Blotato para usarlo</small></span></a>
       <!-- M23 · D: MIX tiene grupo propio, y no es cosmética. Las otras
            entradas son herramientas que el dueño del negocio ABRE y usa; MIX
            es lo contrario — se enciende una vez y trabaja solo mientras él no
@@ -265,9 +309,9 @@
            lleva a conectarla en vez de a una pantalla que solo sabe decir
            «conéctala». -->
       <div class="grupo">Publicidad Automática</div>
-      <a href="/mix.html" data-blotato><b>MIX</b>
+      <a href="/mix.html" data-blotato><i data-icono="automatico"></i><span><b>MIX</b>
         <small>Una publicación al día, sola, desde una foto tuya</small>
-        <small class="bloqueo">Conecta tu Blotato para usarlo</small></a>
+        <small class="bloqueo">Conecta tu Blotato para usarlo</small></span></a>
     </nav>
   </aside>
 
@@ -291,17 +335,47 @@
           <ul id="opciones" role="listbox" aria-label="Opciones" hidden></ul>
         </div>
         <button id="btn-enviar" class="enviar" aria-label="Crear"
-          data-tip="Crear. Puedes cambiar de opción arriba antes de enviar.">↑</button>
+          data-tip="Crear. Puedes cambiar de opción arriba antes de enviar."><i data-icono="enviar"></i></button>
       </div>
       <div class="err" id="perr"></div>
     </section>
 
+    <!-- UI·10 · carta §8: quien todavía no tiene nada no ve una lista vacía,
+         ve por dónde empezar. Se enciende solo cuando las cuatro listas
+         llegaron bien y vacías; si alguna falla, se queda como estaba. -->
+    <section class="caminos" id="caminos" hidden aria-labelledby="caminos-titulo">
+      <h2 id="caminos-titulo">Tu primer video, en tres caminos</h2>
+      <p class="caminos-lead">Elige por dónde empezar. Todo lo que hagas va a aparecer aquí, listo para seguir editando.</p>
+      <div class="caminos-grid">
+        <article class="camino">
+          <i data-icono="idea"></i>
+          <h3>Desde una idea</h3>
+          <p>Escribe el tema: buscamos las fuentes y escribimos el guion. Lo revisas antes de producir.</p>
+          <button type="button" class="btn btn-sec" id="camino-idea">Crear un video</button>
+        </article>
+        <article class="camino">
+          <i data-icono="shorts"></i>
+          <h3>Desde un video largo</h3>
+          <p>Sube tu video o pega la liga de YouTube: te proponemos los mejores momentos como shorts.</p>
+          <a class="btn btn-sec" href="/shorts.html">Hacer shorts</a>
+        </article>
+        <article class="camino">
+          <i data-icono="cortar"></i>
+          <h3>Desde tu metraje</h3>
+          <p>Sube lo que grabaste y la IA te propone el corte: quita muletillas, tomas repetidas y aire muerto.</p>
+          <a class="btn btn-sec" href="/e1.html">Subir metraje</a>
+        </article>
+      </div>
+    </section>
+
     <section>
+      <div id="mis-proyectos">
       <div class="cabecera-grid">
         <h2>Mis proyectos</h2>
         <span id="slots-info"></span>
       </div>
       <div class="grid" id="grid"></div>
+      </div>
       <div class="err" id="err"></div>
       <!-- M23: las imágenes sueltas (crear / editar) por fin tienen dónde verse -->
       <div id="imagenes" hidden style="margin-top:26px">
@@ -326,14 +400,14 @@
 </div>
 
 <dialog id="dlg-blotato" aria-labelledby="blt-titulo">
-  <button type="button" class="cerrar" id="blt-cerrar" aria-label="Cerrar">✕</button>
+  <button type="button" class="cerrar" id="blt-cerrar" aria-label="Cerrar"><i data-icono="cerrar"></i></button>
   <h2 id="blt-titulo">Conecta tu Blotato</h2>
   <p class="blt-lead">Con tu cuenta de Blotato conectada podrás programar tus videos y ver cómo rinden en tus redes.</p>
 
   <p class="blt-nota" id="blt-cargando">Revisando tu conexión…</p>
 
   <div id="blt-conectado" hidden>
-    <p class="blt-ok">✓ Tu Blotato está conectado</p>
+    <p class="blt-ok"><i data-icono="listo"></i>Tu Blotato está conectado</p>
     <p class="blt-nota" id="blt-origen" hidden>Estás usando la clave del <code>.env</code> de esta máquina.</p>
     <ul id="blt-redes" aria-label="Redes conectadas en tu Blotato"></ul>
     <p class="blt-nota" id="blt-sin-redes" hidden>Tu Blotato todavía no tiene redes conectadas. Agrégalas en Blotato y vuelve a abrir esta ventana.</p>
@@ -367,8 +441,16 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
-const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión — te espera',
-                produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
+// UI·10: cada estado con su icono de trazo (carta §6) en vez del emoji.
+// El color solo marca los dos finales: listo (verde) y con error (rojo).
+const ESTADO = {creado: ['reloj', 'en preparación'], preparando: ['reloj', 'en preparación'],
+                revision: ['guion', 'en revisión — te espera'],
+                produciendo: ['reloj', 'produciéndose…'],
+                listo: ['listo', 'lista', 'ok'], error: ['aviso', 'con error', 'mal']};
+const estadoHTML = e => {
+  const [ico, texto, tono] = ESTADO[e] || [null, e];
+  return (ico ? icono(ico, tono) : '') + esc(texto);
+};
 // proyectos viejos pueden traer `creado` en un formato raro: sin fecha antes que "Invalid Date"
 const fecha = c => { const d = new Date(c); return isNaN(d) ? '' : ' · ' + d.toLocaleDateString(); };
 
@@ -383,7 +465,7 @@ let bltEstado = null;
 function marcaBlotato(conectado) {
   const b = $('#blotato-mas');
   b.classList.toggle('ok', conectado);
-  b.textContent = conectado ? '✓' : '+';
+  b.innerHTML = icono(conectado ? 'listo' : 'mas');
   const t = conectado ? 'Blotato conectado: ver o cambiar' : 'Conecta tu cuenta de Blotato';
   b.title = t;
   b.setAttribute('aria-label', t);
@@ -645,6 +727,19 @@ $('#btn-enviar').onclick = () => {
 
 pintaOpcion();
 
+// UI·10: «Desde una idea» es la caja de arriba, ya puesta en el creador de
+// cuentos (el que investiga el tema). No cobra nada: solo elige y enfoca;
+// el precio se ve en el desplegable antes de enviar, como siempre.
+$('#camino-idea').onclick = () => {
+  familiaHub = 'videos';
+  opcionHub = OPCIONES.videos.find(o => o.id === 'investigacion');
+  for (const b of $('#familias').querySelectorAll('[data-familia]'))
+    b.setAttribute('aria-pressed', String(b.dataset.familia === 'videos'));
+  pintaOpcion();
+  $('#idea').focus();
+  scrollTo({top: 0, behavior: 'smooth'});
+};
+
 let slots = null;   // null = ilimitado (o dev local)
 
 // M14: las ediciones de metraje (subidas + gen-*) como obras — reemplazan las
@@ -653,15 +748,15 @@ function renderEdiciones(ps) {
   if (!ps.length) return;
   const estadoEd = p => {
     const st = p.editar || {};
-    if (st.estado === 'corriendo') return '⏳ sugerencias en curso…';
-    if (st.estado === 'error') return '❌ la corrida falló';
-    if (p.editor_listo) return '✂️ corte listo — ábrelo en el editor';
+    if (st.estado === 'corriendo') return icono('reloj') + 'sugerencias en curso…';
+    if (st.estado === 'error') return icono('aviso', 'mal') + 'la corrida falló';
+    if (p.editor_listo) return icono('cortar', 'ok') + 'corte listo — ábrelo en el editor';
     if (p.subidas && p.subidas.length) return 'metraje subido — pide el corte';
     return p.generado ? 'película generada' : 'sin metraje aún';
   };
   $('#grid-ed').innerHTML = ps.map(p =>
     `<div class="proy" data-e="${esc(p.nombre)}" role="link" tabindex="0" aria-label="Abrir edición">` +
-    `<div class="thumb vacia">🎞</div>` +
+    `<div class="thumb vacia">${icono('cortar')}</div>` +
     `<div class="pie"><div class="brief">${esc(p.nombre)}</div>` +
     `<div class="meta">${estadoEd(p)}</div></div></div>`).join('');
   $('#ediciones').hidden = false;
@@ -686,7 +781,7 @@ function renderImagenes() {
       `aria-label="Abrir tu imagen del ${esc(dia)} para editarla">` +
       `<img class="thumb" src="${esc(im.url)}" alt="" loading="lazy" data-dia="${esc(dia)}">` +
       `<div class="pie"><div class="meta">${esc(dia)}</div></div></a>`;
-  }).join('') + '<a class="proy vacio" href="/imagenes.html">＋ Nueva imagen</a>';
+  }).join('') + `<a class="proy vacio" href="/imagenes.html"><span>${icono('mas')}Nueva imagen</span></a>`;
   // la forma sale de la imagen misma: los nombres no la guardan
   document.querySelectorAll('#grid-img img.thumb').forEach(im => {
     im.onload = () => {
@@ -695,7 +790,7 @@ function renderImagenes() {
     };
     im.onerror = () => {
       const d = document.createElement('div');
-      d.className = 'thumb vacia'; d.textContent = '🖼';
+      d.className = 'thumb vacia'; d.innerHTML = icono('imagen');
       im.replaceWith(d);
     };
   });
@@ -718,7 +813,15 @@ async function cargar() {
     if (rs.ok) slots = (await rs.json()).slots;
     render(ps);
     if (ri && ri.ok) { imagenes = (await ri.json()).imagenes || []; renderImagenes(); }
-    if (re.ok) renderEdiciones(await re.json());
+    const eds = re.ok ? await re.json() : null;
+    if (eds) renderEdiciones(eds);
+    // UI·10: los tres caminos, solo si las cuatro listas respondieron y las
+    // cuatro vienen vacías. Una que falló no cuenta como vacía: a quien ya
+    // tiene cosas no se le enseña el inicio de alguien nuevo por un fetch.
+    const nuevo = !ps.length && ri && ri.ok && !imagenes.length && eds && !eds.length;
+    $('#caminos').hidden = !nuevo;
+    $('#mis-proyectos').hidden = !!nuevo;
+    $('#imagenes').hidden = !!nuevo || $('#imagenes').hidden;
   } catch { /* cortesía: el hub sigue completo sin la lista */ }
 }
 
@@ -735,17 +838,17 @@ function render(ps) {
     (p.miniatura
       ? `<img class="thumb" src="/api/proyectos/${p.id}/archivo/${p.miniatura}" alt="" loading="lazy"` +
         (p.miniatura_alt ? ` data-alt="/api/proyectos/${p.id}/archivo/${p.miniatura_alt}"` : '') + `>`
-      : `<div class="thumb vacia">🎬</div>`) +
+      : `<div class="thumb vacia">${icono('video')}</div>`) +
     `<div class="pie">` +
     `<div class="brief" title="${esc(p.brief)}">${esc(p.brief) || '(sin título)'}</div>` +
-    `<div class="meta">${ESTADO[p.estado] || p.estado}${fecha(p.creado)}</div>` +
+    `<div class="meta">${estadoHTML(p.estado)}${esc(fecha(p.creado))}</div>` +
     `</div>` +
     (['preparando', 'produciendo'].includes(p.estado) ? '' :
       `<button class="arch" data-id="${p.id}" title="Archivar (no se borra nada)"
-        aria-label="Archivar proyecto">✕</button>`) +
+        aria-label="Archivar proyecto">${icono('cerrar')}</button>`) +
     `</div>`);
   if (slots == null || activos.length < slots)
-    cards.push('<div class="proy vacio" id="nuevo" role="button" tabindex="0">＋ Nueva película</div>');
+    cards.push(`<div class="proy vacio" id="nuevo" role="button" tabindex="0"><span>${icono('mas')}Nueva película</span></div>`);
   $('#grid').innerHTML = cards.join('');
 
   // portada rota (película anterior al frame de portada) → cae al personaje
@@ -753,7 +856,7 @@ function render(ps) {
   document.querySelectorAll('img.thumb').forEach(im => im.onerror = () => {
     if (im.dataset.alt) { im.src = im.dataset.alt; delete im.dataset.alt; return; }
     const d = document.createElement('div');
-    d.className = 'thumb vacia'; d.textContent = '🎬';
+    d.className = 'thumb vacia'; d.innerHTML = icono('video');
     im.replaceWith(d);
   });
 

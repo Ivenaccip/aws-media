@@ -5,39 +5,46 @@
 <title>Estudio de video · Crear</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- UI·13: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { --bg:#0b1626; --card:#111f33; --line:#22354f; --txt:#ece8e1; --mut:#93a3b8; --acc:#da8c28; --acc2:#f0a94a;
+  :root { --bg:#0b1626; --card:#111f33; --line:#22354f; --txt:#ece8e1; --mut:#93a3b8; --acc:var(--c-ambar); --acc2:var(--c-ambar-claro);
           --hundido:#08111e; --elev:#18293f; --campo:#55708f; }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:var(--t-sm)/1.5 var(--f-texto); }
   main { max-width:720px; margin:32px auto; padding:0 16px; }
-  h1 { font-size:22px; margin:0 0 20px; }
-  h2 { font-size:16px; margin:22px 0 8px; display:flex; align-items:center; gap:8px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
-  textarea, input[type=text] { width:100%; background:#18293f; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  /* carta §2: títulos en Bricolage, escala de seis tamaños */
+  h1 { font:800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing:-.02em; margin:0 0 20px; }
+  h2 { font:700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin:22px 0 8px; display:flex; align-items:center; gap:8px; }
+  h2 .ico { color:var(--mut); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r-grande); padding:18px; margin-bottom:14px; }
+  textarea, input[type=text] { width:100%; background:var(--elev); color:var(--txt); border:1px solid var(--campo); border-radius:var(--r-medio); padding:10px; font:inherit; }
   textarea { min-height:120px; resize:vertical; }
   .chips { display:flex; flex-wrap:wrap; gap:8px; }
-  .chip { border:1px solid var(--line); border-radius:999px; padding:7px 14px; cursor:pointer; color:var(--mut); background:transparent; font:inherit; }
-  .chip.on { border-color:var(--acc); color:var(--txt); background:#2e2110; }
+  .chip { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border:1px solid var(--campo); border-radius:999px; padding:7px 14px; cursor:pointer; color:var(--mut); background:transparent; font:inherit; }
+  .chip:hover:not(:disabled) { color:var(--txt); border-color:var(--mut); }
+  /* carta §3: elegir no es «hacer»: lo elegido se marca en blanco, no en ámbar */
+  .chip.on { border-color:var(--txt); color:var(--txt); background:var(--elev); }
   .row { display:flex; align-items:center; gap:12px; }
-  .btn { display:block; width:100%; padding:14px; border:0; border-radius:999px; color:#14100a; font:inherit; font-weight:600; cursor:pointer; background:linear-gradient(90deg,var(--acc),var(--acc2)); margin-top:18px; }
-  a.btn { text-align:center; text-decoration:none; box-sizing:border-box; }
-  .btn:disabled { opacity:.45; cursor:default; }
-  .btn.sec { background:transparent; border:1px solid var(--line); color:var(--txt); }
-  .mut { color:var(--mut); font-size:13px; }
+  /* carta §5: la forma y los cinco estados los pone carta.css (.btn-pri,
+     .btn-sec). Aquí solo el acomodo: a lo ancho y de 48 px. */
+  .btn { display:flex; width:100%; min-height:48px; margin-top:18px; }
+  .mut { color:var(--mut); font-size:var(--t-xs); }
   .escena { display:flex; gap:8px; margin-bottom:8px; }
-  .escena .n { width:28px; padding-top:10px; color:var(--mut); text-align:right; }
+  .escena .n { width:28px; font-variant-numeric:tabular-nums; padding-top:10px; color:var(--mut); text-align:right; }
   .escena textarea { min-height:64px; }
-  .escena button { background:none; border:0; color:var(--mut); cursor:pointer; font-size:18px; }
+  .escena button { width:44px; height:44px; flex:none; display:grid; place-items:center; padding:0;
+                   background:none; border:0; border-radius:var(--r-medio); color:var(--mut); cursor:pointer; }
+  .escena button:hover { color:var(--txt); background:var(--elev); }
   .opciones { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .opciones img { width:100%; border-radius:12px; border:3px solid transparent; cursor:pointer; }
-  .opciones img.on { border-color:var(--acc); }
+  .opciones img.on { border-color:var(--txt); }
   /* M22 · G: las imágenes por aprobar. auto-fill para que una película de dos
      tomas no deje media pantalla vacía y una de ocho no salga en miniatura. */
   .imgs { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; margin-top:14px; }
   .imgs figure { margin:0; }
   .imgs img { width:100%; border-radius:12px; display:block; background:var(--line); }
-  .imgs figcaption { color:var(--mut); font-size:13px; margin:8px 0 6px; }
+  .imgs figcaption { color:var(--mut); font-size:var(--t-xs); margin:8px 0 6px; }
   .imgs textarea { width:100%; min-height:56px; resize:vertical; margin-bottom:6px; }
   .err { color:#ff8080; white-space:pre-wrap; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
@@ -46,7 +53,38 @@
      el navegador ya respeta la proporción real del archivo (M22 · F) */
   video { width:100%; max-height:70vh; object-fit:contain; border-radius:12px; margin-top:10px; }
   details summary { cursor:pointer; color:var(--mut); }
-  a { color:#5b8dd6; }
+
+  /* UI·11 · carta §8, espera larga: pasos con nombre, lo que falta y «puedes
+     cerrar esta pestaña». La barra y el orbe se quedan. */
+  #progreso h2, #error h2 { margin:0 0 6px; }
+  .falta { margin:0 0 12px; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .pasos { list-style:none; margin:16px 0 4px; padding:0; display:grid; gap:12px; }
+  .pasos li { display:grid; grid-template-columns:24px 1fr; gap:10px; align-items:start; color:var(--mut); }
+  .pasos .marca { width:24px; height:24px; display:grid; place-items:center; }
+  .pasos .marca::before { content:""; width:10px; height:10px; border-radius:50%; border:2px solid var(--campo); }
+  .pasos .hecho .marca::before, .pasos .activo .marca::before { content:none; }
+  .pasos .hecho { color:var(--txt); }
+  .pasos .hecho .ico, #resultado h2 .ico { color:#3dd68c; }
+  .pasos .activo { color:var(--txt); font-weight:600; }
+  .pasos .activo .marca::after { content:""; width:12px; height:12px; border-radius:50%;
+    background:var(--acc2); animation:latido 1.4s ease-out infinite; }
+  @keyframes latido { 0% { box-shadow:0 0 0 0 color-mix(in srgb, var(--acc2) 55%, transparent); }
+                      100% { box-shadow:0 0 0 10px transparent; } }
+  @media (prefers-reduced-motion: reduce) { .pasos .activo .marca::after { animation:none; } }
+
+  /* UI·11 · carta §8, error: qué pasó, qué pasó con tus créditos y qué sigue */
+  #error h2 { display:flex; align-items:center; gap:10px; }
+  #error h2 .ico { color:#ff8080; }
+  .partes { display:grid; gap:14px; margin-top:16px; }
+  .partes h3 { margin:0 0 4px; font-size:var(--t-xs); font-weight:600; letter-spacing:.06em;
+               text-transform:uppercase; color:var(--mut); }
+  .partes p { margin:0; }
+  .tecnico { margin-top:16px; }
+  .tecnico pre { margin:8px 0 0; padding:10px; border-radius:10px; background:var(--hundido);
+                 color:var(--mut); font-size:var(--t-xs); white-space:pre-wrap; word-break:break-word; }
+  a { color:var(--c-enlace); }
+  .volver { display:inline-flex; align-items:center; gap:6px; min-height:44px; text-decoration:none; }
+  #conexion .ico { vertical-align:-0.3em; }
   .hidden { display:none; }
   /* M19: los huecos del orbe no ocupan nada mientras no hay orbe montado */
   #orbe-form:not(:empty), #orbe-prog:not(:empty),
@@ -73,11 +111,15 @@
     #form > .estado-envio { grid-row:5; align-self:start; }
   }
   /* el monedero vive fijo arriba a la derecha: la cabecera le deja su franja */
+  /* UI·12: los demás estados no tienen cabecera y su primera tarjeta quedaba
+     debajo de la píldora (en revisión, hasta en escritorio: main es ancho).
+     La píldora acaba a 52 px (top 12 + 40); main ya baja 32 → 36 más. */
+  #progreso, #revision, #imagenes, #resultado, #error { padding-top:36px; }
   /* el título va centrado; el margen simétrico le deja libre la franja del
      monedero sin descentrarlo */
   .cabeza { display:flex; justify-content:center; align-items:center; min-height:44px; margin-bottom:14px;
             padding-inline:max(0px, min(300px, calc(50% - 230px))); }
-  .cabeza h1 { margin:0; font-size:30px; line-height:1.2; letter-spacing:-.01em; }
+  .cabeza h1 { margin:0; }
   .rejilla { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
   .rejilla > .card { margin:0; padding:16px; min-width:0; display:flex; flex-direction:column; }
   .rejilla h2 { margin:0 0 10px; }
@@ -85,9 +127,9 @@
   .p-prompt { grid-column:2 / 4; }
   .p-formato { grid-column:1 / 3; }
   .p-duracion { grid-column:3 / 4; }
-  /* el icono del título, llevado al ámbar sin perder su dibujo (el ⏱ nativo
-     es gris; ✨ y 📐 ya son amarillos y solo se calientan un poco) */
-  .ico { filter:sepia(1) saturate(5) hue-rotate(-8deg); }
+  /* UI·13: los emojis de los títulos pasaron a iconos de trazo, en gris
+     (h2 .ico; decisión del dueño, 25-sep). Solo los de estado llevan color:
+     verde en «Película lista», rojo en el error. */
 
   /* 1 · estilo: columna de botones del mismo ancho + la muestra a su altura */
   .estilo-flex { display:flex; gap:12px; align-items:stretch; }
@@ -104,7 +146,7 @@
   /* 2 · el cuadro de texto, al estilo del de Claude: texto e imagen conviven */
   .caja { gap:10px; transition:border-color .15s; }
   .caja:focus-within { border-color:var(--campo); }
-  .caja.soltando { border-color:var(--acc); border-style:dashed; }
+  .caja.soltando { border-color:var(--txt); border-style:dashed; }
   .adjuntos { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .adjuntos[hidden] { display:none; }
   .miniaturas { display:flex; gap:8px; flex-wrap:wrap; }
@@ -112,26 +154,27 @@
                overflow:hidden; border:1px solid var(--line); background:var(--elev); }
   .miniatura img { display:block; width:100%; height:100%; object-fit:cover; }
   .miniatura button { position:absolute; top:4px; right:4px; width:24px; height:24px; padding:0;
+                      display:grid; place-items:center;
                       border-radius:50%; border:1px solid var(--line); cursor:pointer; font:inherit;
-                      font-size:15px; line-height:1; color:var(--txt);
+                      font-size:var(--t-sm); line-height:1; color:var(--txt);
                       background:color-mix(in srgb, var(--hundido) 85%, transparent); }
-  .miniatura button:hover { border-color:var(--acc); }
-  .caja input[type=text] { width:auto; padding:7px 10px; font-size:13px; }
+  .miniatura button:hover { border-color:var(--mut); }
+  .caja input[type=text] { width:auto; padding:7px 10px; font-size:var(--t-xs); }
   #pextra { flex:1; min-width:200px; }
   .caja textarea { flex:1; min-height:72px; resize:none; border:0; padding:4px 2px;
-                   background:transparent; font-size:16px; outline:none; }
+                   background:transparent; font-size:var(--t-md); outline:none; }
   .nota-modo { margin:0; }
   .nota-modo[hidden] { display:none; }
   .barra { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .mas { width:34px; height:34px; flex:none; padding:0; border-radius:50%; cursor:pointer;
-         border:1px solid var(--line); background:transparent; color:var(--txt);
-         font:inherit; font-size:20px; line-height:1; }
-  .mas:hover:not(:disabled) { border-color:var(--acc); }
+  .mas { width:44px; height:44px; flex:none; padding:0; border-radius:50%; cursor:pointer;
+         display:grid; place-items:center;
+         border:1px solid var(--campo); background:transparent; color:var(--txt); }
+  .mas:hover:not(:disabled) { border-color:var(--mut); background:var(--elev); }
   .mas:disabled { opacity:.4; cursor:default; }
   .modos { display:flex; gap:6px; }
-  .modos .chip { padding:5px 12px; font-size:13px; }
+  .modos .chip { padding:5px 12px; font-size:var(--t-xs); }
   #rubro { flex:1; min-width:150px; max-width:240px; margin-left:auto; }
-  .contador { color:var(--mut); font-size:12px; font-variant-numeric:tabular-nums; }
+  .contador { color:var(--mut); font-size:var(--t-xs); font-variant-numeric:tabular-nums; }
 
   /* 3 · formato. El icono es la proporción real dibujada (M22 · F) y vive en un
      hueco de altura fija: así los títulos de las dos tarjetas quedan parejos.
@@ -143,7 +186,7 @@
   .fmt { grid-row:1 / -1; min-width:0; display:grid; grid-template-rows:subgrid; justify-items:center;
          align-items:start; padding:10px; border-radius:12px; cursor:pointer;
          font:inherit; text-align:center; color:var(--mut); background:transparent;
-         border:1px solid var(--line); }
+         border:1px solid var(--campo); }
   .fmt-hueco { grid-row:2; }
   .fmt b { grid-row:3; }
   .fmt > .mut { grid-row:4; margin-top:2px; }
@@ -151,10 +194,9 @@
     .formatos { display:flex; gap:12px; }
     .fmt { flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   }
-  .fmt:hover { border-color:var(--acc); }
-  .fmt.on { color:var(--txt); border-color:var(--acc);
-            background:color-mix(in srgb, var(--acc) 12%, transparent); }
-  .fmt .mut { font-size:11px; }
+  .fmt:hover { border-color:var(--mut); }
+  .fmt.on { color:var(--txt); border-color:var(--txt); background:var(--elev); }
+  .fmt .mut { font-size:var(--t-xs); }
   .fmt-hueco { height:40px; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
   .fmt-icono { display:block; border:2px solid currentColor; border-radius:3px; opacity:.75; }
   .fmt-icono.horiz { width:40px; height:23px; }
@@ -162,22 +204,22 @@
 
   /* 4 · duración: un temporizador. El aro se llena hasta la duración máxima. */
   .temporizador { flex:1; display:flex; align-items:center; justify-content:center; gap:14px; }
-  .paso { width:38px; height:38px; flex:none; padding:0; border-radius:50%; cursor:pointer;
-          border:1px solid var(--line); background:var(--elev); color:var(--txt);
-          font:inherit; font-size:20px; line-height:1; }
-  .paso:hover:not(:disabled) { border-color:var(--acc); }
+  .paso { width:44px; height:44px; flex:none; padding:0; border-radius:50%; cursor:pointer;
+          display:grid; place-items:center;
+          border:1px solid var(--campo); background:var(--elev); color:var(--txt); }
+  .paso:hover:not(:disabled) { border-color:var(--mut); }
   .paso:disabled { opacity:.35; cursor:default; }
   .reloj { position:relative; width:100px; height:100px; flex:none; border-radius:50%; }
   .reloj svg { display:block; width:100%; height:100%; }
   .aro-fondo { fill:none; stroke:var(--line); stroke-width:8; }
   .aro { fill:none; stroke:url(#aro-color); stroke-width:8; stroke-linecap:round; transition:stroke-dasharray .25s; }
   .reloj .tiempo { position:absolute; inset:0; display:grid; place-items:center;
-                  font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
-  .costo { margin:10px 0 0; text-align:center; color:var(--mut); font-size:14px; }
+                  font-size:var(--t-titulo-md); font-weight:600; font-variant-numeric:tabular-nums; }
+  .costo { margin:10px 0 0; text-align:center; color:var(--mut); font-size:var(--t-sm); }
   .costo b { color:var(--txt); font-variant-numeric:tabular-nums; }
 
   /* 5 · el botón: centrado, del ancho de una columna */
-  .btn.generar { width:calc((100% - 24px) / 3); min-width:260px; margin:14px auto 0; padding:12px; }
+  .btn.generar { width:calc((100% - 24px) / 3); min-width:260px; margin:14px auto 0; }
   .estado-envio { text-align:center; }
   .nota-cobro { margin:6px 0 0; }
   #saldoform, #ferr:not(:empty) { margin:6px 0 0; }
@@ -185,7 +227,7 @@
   @media (prefers-reduced-motion: reduce) { .aro, .caja { transition:none; } }
   @media (max-width: 900px) {
     .cabeza { padding-inline:0; padding-top:44px; }
-    .cabeza h1 { font-size:26px; }
+    .cabeza h1 { font-size:var(--t-titulo-md); }
     .rejilla { grid-template-columns:minmax(0, 1fr); }
     .p-estilo, .p-prompt, .p-formato, .p-duracion { grid-column:auto; }
     .caja textarea { min-height:120px; }
@@ -202,16 +244,16 @@
   .cols .card.fill { flex:1; display:flex; flex-direction:column; min-height:0; }
   @media (max-width: 860px) { .cols { grid-template-columns:1fr; } }
   .scroll { flex:1; min-height:200px; overflow-y:auto; padding-right:6px; }
-  .escena .meta { font-size:11px; color:var(--mut); width:48px; text-align:right; padding-top:10px; }
+  .escena .meta { font-size:var(--t-xs); color:var(--mut); width:64px; font-variant-numeric:tabular-nums; text-align:right; padding-top:10px; }
   .escena .meta.warn { color:#f0a94a; }
   .voz { display:flex; gap:8px; align-items:center; margin-top:8px; }
-  .voz select { flex:1; background:#18293f; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px; font:inherit; }
-  .voz button { border:1px solid var(--line); background:transparent; color:var(--txt); border-radius:10px; padding:8px 12px; cursor:pointer; font:inherit; }
+  .voz select { flex:1; min-height:44px; background:var(--elev); color:var(--txt); border:1px solid var(--campo); border-radius:var(--r-medio); padding:9px; font:inherit; }
+    .voz .btn { width:auto; min-height:44px; margin-top:0; flex:none; }
   .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
   .verde { background:#3dd68c; } .amarillo { background:#f2c14e; } .rojo { background:#ff8080; }
   .sticky { position:sticky; bottom:0; background:linear-gradient(180deg, transparent, var(--bg) 30%); padding:10px 0 14px; }
   .sticky .btn { margin-top:6px; }
-  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  /* el foco lo pone carta.css: el mismo anillo en todas las pantallas */
 </style>
 </head>
 <body>
@@ -222,7 +264,7 @@
     <header class="cabeza"><h1>Crea tu video</h1></header>
     <div class="rejilla">
       <div class="card p-estilo">
-        <h2><span class="ico" aria-hidden="true">✨</span> Estilo visual</h2>
+        <h2><i data-icono="estilo"></i>Estilo visual</h2>
         <div class="estilo-flex">
           <div class="chips-v" id="estilos" role="radiogroup" aria-label="Estilo visual"></div>
           <div class="muestra">
@@ -249,7 +291,7 @@
         <p class="mut nota-modo" id="modonota" hidden></p>
         <div class="barra">
           <button type="button" class="mas" id="mas" aria-label="Subir la imagen de tu personaje"
-                  title="Sube la imagen de tu personaje (hasta 4). Te damos 2 versiones en el estilo elegido.">+</button>
+                  title="Sube la imagen de tu personaje (hasta 4). Te damos 2 versiones en el estilo elegido."><i data-icono="mas"></i></button>
           <input type="file" id="files" accept="image/*" multiple class="hidden">
           <!-- sin ninguno marcado = detectamos solos si es historia o idea -->
           <div class="modos" id="modos" role="group" aria-label="Cómo lo trabajamos">
@@ -263,7 +305,7 @@
       </div>
 
       <div class="card p-formato">
-        <h2><span class="ico" aria-hidden="true">📐</span> Formato</h2>
+        <h2><i data-icono="formato"></i>Formato</h2>
         <div class="formatos" role="radiogroup" aria-label="Formato del video">
           <button type="button" class="fmt on" data-fmt="horizontal" role="radio" aria-checked="true">
             <span class="fmt-hueco"><span class="fmt-icono horiz"></span></span>
@@ -278,9 +320,9 @@
       </div>
 
       <div class="card p-duracion">
-        <h2><span class="ico" aria-hidden="true">⏱</span> Duración</h2>
+        <h2><i data-icono="reloj"></i>Duración</h2>
         <div class="temporizador">
-          <button type="button" class="paso" id="dur-menos" aria-label="Quitar 5 segundos">−</button>
+          <button type="button" class="paso" id="dur-menos" aria-label="Quitar 5 segundos"><i data-icono="menos"></i></button>
           <div class="reloj" id="reloj" role="spinbutton" tabindex="0" aria-label="Duración del video">
             <svg viewBox="0 0 120 120" aria-hidden="true">
               <defs>
@@ -295,12 +337,12 @@
             </svg>
             <span class="tiempo" id="durv">0:30</span>
           </div>
-          <button type="button" class="paso" id="dur-mas" aria-label="Sumar 5 segundos">+</button>
+          <button type="button" class="paso" id="dur-mas" aria-label="Sumar 5 segundos"><i data-icono="mas"></i></button>
         </div>
         <p class="costo" id="costo-fila" hidden>Costo aprox.: <b>✦ <span id="durcosto"></span></b></p>
       </div>
     </div>
-    <button class="btn generar" id="enviar">Generar</button>
+    <button class="btn btn-pri generar" id="enviar">Generar</button>
     <!-- lo que explica el estado del botón va pegado a él, antes de la nota -->
     <div class="estado-envio">
       <div id="orbe-form"></div>
@@ -315,11 +357,13 @@
   <section id="progreso" class="hidden">
     <div class="card">
       <h2 id="ptitulo">Trabajando…</h2>
+      <p class="falta" id="pfalta" hidden></p>
       <div class="bar"><i id="pbar" style="width:5%"></i></div>
       <!-- M19: la BARRA se queda (es real y monotónica: ETAPAS_PREP/PROD). El
            orbe no la sustituye — dice que la IA sigue trabajando AHORA, que es
            lo que una barra quieta no puede decir. -->
       <div id="orbe-prog"></div>
+      <ol class="pasos" id="ppasos" aria-label="Pasos"></ol>
       <p class="mut" id="petapa"></p>
     </div>
   </section>
@@ -329,7 +373,7 @@
     <div class="cols">
       <div>
         <div class="card">
-          <h2>🧑‍🎤 Elige tu personaje</h2>
+          <h2><i data-icono="personaje"></i>Elige tu personaje</h2>
           <input type="text" id="pnombre" placeholder="Nombre del personaje" style="margin-bottom:10px">
           <div class="opciones" id="opciones"></div>
           <div id="pmodfila" class="hidden" style="margin-top:10px">
@@ -340,35 +384,35 @@
           <details style="margin-top:10px"><summary>Descripción detectada</summary><p class="mut" id="pdesc"></p></details>
         </div>
         <div class="card">
-          <h2>🎙 Voz del narrador</h2>
+          <h2><i data-icono="voz"></i>Voz del narrador</h2>
           <p class="mut">Una sola voz para toda la película, ordenadas por ajuste al guion: <span class="dot verde"></span>encaja · <span class="dot amarillo"></span>tal vez · <span class="dot rojo"></span>no encaja.</p>
-          <div class="voz"><select id="voz"></select><button id="oir" title="Muestra fija de la voz — sin costo">▶ Escuchar</button></div>
+          <div class="voz"><select id="voz"></select><button class="btn btn-sec" id="oir" title="Muestra fija de la voz — sin costo"><i data-icono="escuchar"></i>Escuchar</button></div>
           <p class="mut" id="vozmotivo"></p>
           <audio id="audio" controls class="hidden" style="width:100%;margin-top:8px"></audio>
         </div>
       </div>
       <div>
         <div class="card fill">
-          <h2>📝 Guion (una escena por bloque)</h2>
+          <h2><i data-icono="guion"></i>Guion (una escena por bloque)</h2>
           <p class="mut">Edita lo que quieras. Cada bloque es una escena narrada; ~2 palabras/s. Más de 14 palabras obliga a partir la escena (cuesta más).</p>
           <div class="scroll" id="escenas"></div>
-          <button class="btn sec" id="addesc" style="margin-top:8px">+ Añadir escena</button>
+          <button class="btn btn-sec" id="addesc" style="margin-top:8px"><i data-icono="mas"></i>Añadir escena</button>
           <p class="mut" id="estim"></p>
         </div>
       </div>
     </div>
     <div class="card" id="dossier_card">
-      <details><summary>📚 Contexto investigado (<span id="nfuentes">0</span> fuentes)</summary>
+      <details><summary><i data-icono="contexto"></i> Contexto investigado (<span id="nfuentes">0</span> fuentes)</summary>
         <p id="dossier" style="white-space:pre-wrap"></p><ul id="fuentes"></ul></details>
     </div>
     <div class="sticky">
       <!-- M22 · G: quién revisa las imágenes. Mismo patrón de radiogroup que
            el selector de formato — una decisión, dos chips, sin menús. -->
       <div class="chips" id="modoimg" role="radiogroup" aria-label="Cuándo revisar las imágenes" style="margin-bottom:10px">
-        <button type="button" class="chip on" data-img="auto" role="radio" aria-checked="true">⚡ De corrido</button>
-        <button type="button" class="chip" data-img="manual" role="radio" aria-checked="false">🖼 Enséñame las imágenes antes de animar</button>
+        <button type="button" class="chip on" data-img="auto" role="radio" aria-checked="true"><i data-icono="rapido"></i>De corrido</button>
+        <button type="button" class="chip" data-img="manual" role="radio" aria-checked="false"><i data-icono="imagen"></i>Enséñame las imágenes antes de animar</button>
       </div>
-      <button class="btn" id="producir">Producir</button>
+      <button class="btn btn-pri" id="producir">Producir</button>
       <p class="mut"><span id="prodnota"></span> <span id="saldoaviso"></span></p>
       <p class="mut" id="autosave"></p>
       <div class="err" id="rerr"></div>
@@ -379,15 +423,15 @@
        que cuesta aquí es pedir OTRA imagen. -->
   <section id="imagenes" class="hidden">
     <div class="card">
-      <h2>🖼 ¿Te gustan estas imágenes?</h2>
+      <h2><i data-icono="imagen"></i>¿Te gustan estas imágenes?</h2>
       <p class="mut">Cada una es el primer cuadro de una toma: de ahí sale el movimiento.
         Cámbiala ahora si no te convence — pedir otra cuesta una fracción de lo que
         cuesta animarla y volver a empezar.</p>
       <div class="imgs" id="imgrid"></div>
     </div>
     <div class="sticky">
-      <button class="btn" id="animar">🎬 Animar la película</button>
-      <button class="btn sec" id="cancelar"
+      <button class="btn btn-pri" id="animar"><i data-icono="video"></i>Animar la película</button>
+      <button class="btn btn-sec" id="cancelar"
         title="Vuelve a revisión y te devolvemos los créditos que no se gastaron">Mejor no</button>
       <p class="mut" id="imgnota"></p>
       <div class="err" id="imgerr"></div>
@@ -396,40 +440,50 @@
 
   <!-- 4. Resultado: ← volver, frame grande, Descargar | Editor | Rehacer -->
   <section id="resultado" class="hidden">
-    <p style="margin:0 0 12px"><a href="/" style="text-decoration:none;font-size:15px">← Volver al inicio</a></p>
+    <p style="margin:0 0 12px"><a class="btn-enlace volver" href="/"><i data-icono="volver"></i>Volver al inicio</a></p>
     <div class="card">
-      <h2>✅ Película lista</h2>
+      <h2><i data-icono="listo"></i>Película lista</h2>
       <video id="video" controls></video>
       <p id="rmsg" style="white-space:pre-wrap"></p>
       <p id="rlink"></p>
     </div>
     <div style="display:flex;gap:12px;margin-top:18px">
-      <a class="btn sec" id="descargar" download="pelicula.mp4" style="flex:1">⬇ Descargar</a>
-      <a class="btn sec" id="abrir-editor" style="flex:1"
-        title="Abre la película en el editor de cortes: recorta, ajusta y guarda versiones ahí mismo (gratis)">✂️ Editor</a>
-      <button class="btn sec" id="modificar" style="flex:1"
-        title="Vuelve a revisión para ajustar guion, voz o personaje (producir de nuevo cobra como siempre)">🔁 Rehacer</button>
+      <a class="btn btn-sec" id="descargar" download="pelicula.mp4" style="flex:1"><i data-icono="descargar"></i>Descargar</a>
+      <a class="btn btn-sec" id="abrir-editor" style="flex:1"
+        title="Abre la película en el editor de cortes: recorta, ajusta y guarda versiones ahí mismo (gratis)"><i data-icono="cortar"></i>Editor</a>
+      <button class="btn btn-sec" id="modificar" style="flex:1"
+        title="Vuelve a revisión para ajustar guion, voz o personaje (producir de nuevo cobra como siempre)"><i data-icono="rehacer"></i>Rehacer</button>
     </div>
     <div class="err" id="modif-err"></div>
   </section>
 
   <section id="error" class="hidden">
-    <div class="card"><h2>❌ Algo falló</h2><p class="err" id="emsg"></p>
-      <p class="mut" id="edevol"></p></div>
-    <button class="btn" id="reintentar">Reintentar</button>
-    <button class="btn sec" onclick="location.href='/crear.html'">Empezar de nuevo</button>
+    <!-- UI·11 · carta §8: tres partes y lo técnico plegado -->
+    <div class="card">
+      <h2 id="etitulo">No pudimos terminar tu película</h2>
+      <p id="emsg"></p>
+      <div class="partes">
+        <div id="ecreditos" hidden><h3>Tus créditos</h3><p id="edevol"></p></div>
+        <div><h3>Qué sigue</h3><p id="esigue"></p></div>
+      </div>
+      <details class="tecnico" id="etecnico-caja" hidden><summary>Detalles técnicos</summary><pre id="etecnico"></pre></details>
+    </div>
+    <button class="btn btn-pri" id="reintentar">Reintentar</button>
+    <a class="btn btn-sec" id="denuevo" href="/crear.html">Empezar de nuevo</a>
+    <div class="err" id="eerr" role="alert"></div>
   </section>
 </main>
 <!-- M5: aviso de conexión del polling — el trabajo sigue en la nube -->
 <div id="conexion" hidden style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
   background:#2e1b1b;border:1px solid #8f4a4a;border-radius:999px;padding:9px 18px;
-  font-size:13px;color:#ffb4b4;z-index:1000">
-  📡 Sin conexión — reintentando… Tu trabajo sigue en la nube, no cierres nada por nosotros.
+  font-size:var(--t-xs);color:#ffb4b4;z-index:1000">
+  <i data-icono="sinred"></i> Sin conexión — reintentando… Tu trabajo sigue en la nube, no cierres nada por nosotros.
 </div>
 
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
 <script src="/orbe.js"></script>
+<script src="/iconos.js"></script>
 <script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -617,7 +671,7 @@ function pintaAdjuntos() {
   $('#miniaturas').innerHTML = files.map((f, i) => `
     <div class="miniatura">
       <img src="${urlDe.get(f)}" alt="Imagen ${i + 1} de tu personaje">
-      <button type="button" data-i="${i}" aria-label="Quitar ${esc(f.name)}" title="Quitar">×</button>
+      <button type="button" data-i="${i}" aria-label="Quitar ${esc(f.name)}" title="Quitar">${icono('cerrar')}</button>
     </div>`).join('');
   $('#adjuntos').hidden = !files.length;     // sin imagen, la fila no existe y el texto sube
   $('#mas').disabled = files.length >= MAX_REFS;
@@ -740,7 +794,7 @@ $('#enviar').onclick = async (ev, forzar = false) => {
       // que congela el hilo: un orbe girando detrás afirmaría que trabajamos
       // cuando lo único que pasa es que te estamos preguntando algo.
       fin();
-      if (confirm(`⚖️ ${d.balanceador || 'El tema no parece de tu rubro.'}\n\n¿Crear de todos modos?`))
+      if (confirm(`${d.balanceador || 'El tema no parece de tu rubro.'}\n\n¿Crear de todos modos?`))
         return $('#enviar').onclick(null, true);
       return;
     }
@@ -768,6 +822,70 @@ const ETAPA_TXT = {
   director:'Planeando las tomas', tts:'Grabando la narración', alinear:'Sincronizando la voz', media:'Generando las escenas',
   concat:'Uniendo la película', drive:'Guardando el resultado',
 };
+// UI·11 · carta §8: los pasos que se ven durante la espera. Cada uno agrupa
+// etapas del pipeline, así que el orden distinto de narración (tts antes del
+// director) no mueve nada: todas caen en el mismo paso. Tres textos por paso:
+// lo que falta, lo que está pasando y lo que ya pasó.
+const PASOS_PREP = [
+  {falta: 'Entender tu idea', activo: 'Entendiendo tu idea', hecho: 'Idea entendida',
+   etapas: ['inicio', 'clasificar', 'research']},
+  {falta: 'Escribir el guion', activo: 'Escribiendo el guion', hecho: 'Guion escrito',
+   etapas: ['guion', 'editor']},
+  {falta: 'Elegir voz y personaje', activo: 'Eligiendo voz y personaje', hecho: 'Voz y personaje listos',
+   etapas: ['voz', 'personaje']},
+  {falta: 'Tú revisas el guion', etapas: []},
+];
+const PASOS_PROD = [
+  {falta: 'Aprobar el guion', hecho: 'Guion aprobado', etapas: []},
+  {falta: 'Grabar la voz', activo: 'Grabando la voz', hecho: 'Voz grabada',
+   etapas: ['encolado', 'inicio', 'casting', 'director', 'tts', 'alinear']},
+  {falta: 'Animar las escenas', activo: 'Animando las escenas', hecho: 'Escenas animadas',
+   etapas: ['imagenes', 'media']},
+  {falta: 'Unir el video', activo: 'Uniendo el video', hecho: 'Video unido',
+   etapas: ['concat', 'drive', 'puente']},
+];
+// el paso de una etapa; -1 si no la conocemos (quien llama decide qué hacer)
+const pasoDe = (pasos, etapa) => pasos.findIndex(x => x.etapas.includes(etapa));
+let pasoPrev = 0;   // como la barra: los pasos nunca retroceden
+function pintaPasos(p, prod) {
+  const pasos = prod ? PASOS_PROD : PASOS_PREP;
+  let i = pasoDe(pasos, p.etapa);
+  i = Math.max(i < 0 ? (prod ? 1 : 0) : i, pasoPrev); pasoPrev = i;
+  const escenas = p.progreso.escenas_total
+    ? ` · ${p.progreso.escenas_listas || 0} de ${p.progreso.escenas_total}` : '';
+  $('#ppasos').innerHTML = pasos.map((x, k) => {
+    if (k < i) return `<li class="hecho"><span class="marca">${icono('listo')}</span><span>${x.hecho}</span></li>`;
+    if (k > i) return `<li><span class="marca"></span><span>${x.falta}</span></li>`;
+    // la etapa fina («Planeando las tomas») la dice el orbe, o #petapa sin orbe
+    return `<li class="activo" aria-current="step"><span class="marca"></span>`
+      + `<span>${x.activo}${pasos === PASOS_PROD && k === 2 ? escenas : ''}</span></li>`;
+  }).join('');
+}
+// «faltan unos N min»: la estimación de /estimacion (gratis, no cobra)
+// repartida según la barra. Es aproximado y así lo dice; sin estimación no se
+// inventa ninguna cifra.
+function pintaFalta(pct) {
+  const f = $('#pfalta');
+  if (!minutosProd) { f.hidden = true; return; }
+  const n = Math.round(minutosProd * (100 - pct) / 100);
+  f.textContent = n <= 1 ? 'Falta alrededor de un minuto.' : `Faltan unos ${n} min.`;
+  f.hidden = false;
+}
+// al volver con el enlace a media producción no hay estimación en memoria:
+// se pide una vez con el texto que ya aprobaste
+let pidiendoMin = false;
+async function pedirMinutos(p) {
+  if (minutosProd || pidiendoMin) return;
+  pidiendoMin = true;
+  const textos = (p.pipeline === 'narracion' ? [p.narracion || ''] : p.guion.map(e => e.narracion || ''))
+    .filter(t => t.trim());
+  try {
+    const r = await fetch(`/api/proyectos/${p.id}/estimacion`, {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({escenas: textos})});
+    if (r.ok) minutosProd = (await r.json()).minutos || null;
+  } catch { /* sin cifra: la pantalla ya no la promete */ }
+  if (proyecto && proyecto.estado === 'produciendo') pintaFalta(pctPrev);
+}
 let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
 let pctPrev = 0, pctEstado = '';   // M11: barra monotónica entre pipelines
 // 'imagenes' (M22 · G) es terminal para el poll: la pelicula esta parada
@@ -832,15 +950,16 @@ function render(p) {
   if (enMarcha) {
     show('progreso');
     const prod = p.estado==='produciendo';
-    $('#ptitulo').textContent = (prod ? '🎥 Produciendo la película…' : '✍️ Investigando y escribiendo el guion…')
-      + (prod && minutosProd ? ` (~${minutosProd} min)` : '');
+    $('#ptitulo').textContent = prod ? 'Produciendo tu película' : 'Escribiendo tu guion';
     let pct = (prod ? ETAPAS_PROD : ETAPAS_PREP)[p.etapa] ?? 5;
     if (prod && p.etapa==='media' && p.progreso.escenas_total) pct = 40 + 50 * (p.progreso.escenas_listas||0) / p.progreso.escenas_total;
     // M11: en narración-primero el TTS va antes que el director — la barra
     // nunca retrocede aunque el orden de etapas cambie entre pipelines
-    if (p.estado !== pctEstado) { pctEstado = p.estado; pctPrev = 0; }
+    if (p.estado !== pctEstado) { pctEstado = p.estado; pctPrev = 0; pasoPrev = 0; }
     pct = Math.max(pct, pctPrev); pctPrev = pct;
     $('#pbar').style.width = pct + '%';
+    pintaPasos(p, prod);
+    if (prod) { pintaFalta(pct); pedirMinutos(p); } else $('#pfalta').hidden = true;
     const etiqueta = (ETAPA_TXT[p.etapa] || p.etapa || 'Trabajando')
       + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '');
     orbeProgreso(p, etiqueta);
@@ -848,7 +967,7 @@ function render(p) {
     // cambia — antes las tres ideas iban apelmazadas en una línea. Sin orbe.js
     // la línea vuelve a llevarlo todo: la etapa no se pierde nunca.
     $('#petapa').textContent = (window.orbe ? '' : etiqueta + ' · ')
-      + 'Puedes cerrar la pestaña: la producción sigue en la nube y este enlace te trae de vuelta.';
+      + 'Puedes cerrar esta pestaña: el trabajo sigue en la nube y este enlace te trae de vuelta.';
   } else if (p.estado==='revision') { renderRevision(p); }
   else if (p.estado==='imagenes') { renderImagenes(p); }
   else if (p.estado==='listo') {
@@ -872,8 +991,10 @@ function render(p) {
       be.title = 'El editor de esta película aún no está listo (el puente al editor falló o sigue corriendo)';
     }
   } else if (p.estado==='error') {
+    // el saldo se refresca al llegar: la devolución la hace el worker justo
+    // después de marcar el error, y la píldora de arriba tiene que verla
+    if ($('#error').classList.contains('hidden')) setTimeout(() => window.monedero?.refrescar(), 4000);
     show('error');
-    $('#emsg').textContent = p.error || 'Error desconocido';
     // M19 (bug): mismo criterio que Proyecto.tiene_guion() en el servidor. Con
     // el pipeline de narración —el de POR DEFECTO desde el 7 de septiembre— el
     // texto vive en p.narracion y p.guion queda vacío, así que la condición
@@ -885,20 +1006,53 @@ function render(p) {
     // y el servidor pide url_elegida, que además exige que el índice exista
     const hayPersonaje = p.personaje.elegida != null
       && p.personaje.elegida < p.personaje.opciones.length;
-    $('#reintentar').classList.toggle('hidden', !(hayTexto && hayPersonaje));
+    // con guion y personaje el fallo fue al PRODUCIR (el servidor reintenta
+    // con lo mismo); sin ellos, al preparar, y lo único es empezar de nuevo
+    fallaProducir = !!(hayTexto && hayPersonaje);
+    $('#reintentar').classList.toggle('hidden', !fallaProducir);
     pintaError(p);
   }
 }
-// M5: la pantalla de error explica qué pasó con los créditos y qué cuesta
-// reintentar ANTES de cobrar de nuevo (se re-pinta cuando llega el monedero)
+// UI·11 · carta §8: el error en tres partes — qué pasó (sin culpar a nadie),
+// qué pasó con tus créditos y qué sigue, con UN solo botón ámbar. El texto
+// técnico no desaparece: queda plegado en «Detalles técnicos».
+let fallaProducir = false;
 function pintaError(p) {
+  const pasos = fallaProducir ? PASOS_PROD : PASOS_PREP;
+  const paso = pasos[pasoDe(pasos, p.etapa)];
+  $('#etitulo').innerHTML = icono('aviso') + (fallaProducir
+    ? 'No pudimos terminar tu película' : 'No pudimos terminar tu guion');
+  $('#emsg').textContent = (paso ? `Se detuvo en «${paso.activo}». ` : '') + (fallaProducir
+    ? 'Tu guion, tu voz y tu personaje siguen guardados.'
+    : 'Tu idea no se perdió: «Empezar de nuevo» la trae escrita.');
+  $('#etecnico').textContent = p.error || '';
+  $('#etecnico-caja').hidden = !p.error;
+  // «Empezar de nuevo» se lleva la idea (crear.html ya lee ?brief=) y, si no
+  // hay nada que reintentar, pasa a ser el botón principal
+  $('#denuevo').href = '/crear.html' + (p.brief ? '?brief=' + encodeURIComponent(p.brief.slice(0, 5000)) : '');
+  $('#denuevo').classList.toggle('btn-sec', fallaProducir);
+  $('#denuevo').classList.toggle('btn-pri', !fallaProducir);
+  $('#esigue').textContent = fallaProducir
+    ? 'Reintentar vuelve a producir con lo mismo que aprobaste.'
+    : 'Empieza de nuevo con la misma idea.';
+  // M5: los créditos y lo que cuesta reintentar, ANTES de cobrar de nuevo
+  // (se re-pinta cuando llega el monedero). Sin monedero no hay nada que decir.
+  $('#ecreditos').hidden = !(mon && mon.activo);
   if (!mon || !mon.activo) return;
-  $('#edevol').textContent = 'Si el fallo fue nuestro, los créditos de esta producción se ' +
-    `devolvieron solos — tu saldo de arriba ya lo refleja (tienes ${mon.saldo} créditos).`;
-  const costo = p.duracion_s ? costoProducir(p.duracion_s) : null;
+  // la cifra es la misma que devuelve el worker: el guion (lambda_worker) o lo
+  // que se cobró al producir (producir_task → creditos.producir_cobrado)
+  const devuelto = fallaProducir
+    ? (p.cobrado_producir ?? (p.duracion_s ? costoProducir(p.duracion_s) : null))
+    : mon.tarifas.preparar;
+  $('#edevol').textContent = devuelto != null
+    ? `Te devolvimos ✦ ${devuelto}: no pagas por ${fallaProducir ? 'una película' : 'un guion'} que no salió.`
+    : 'Te devolvimos lo que se cobró: no pagas por lo que no salió.';
+  const costo = fallaProducir && p.duracion_s ? costoProducir(p.duracion_s) : null;
   if (costo != null) {
     $('#reintentar').textContent = `Reintentar ✦ ${costo}`;
-    $('#edevol').textContent += ` Reintentar cuesta ${costo} créditos y se cobran de nuevo.`;
+    $('#esigue').textContent += ` Cuesta ${costo} créditos y se cobran de nuevo.`;
+  } else if (!fallaProducir && mon.tarifas.preparar != null) {
+    $('#esigue').textContent += ` El guion cuesta ${mon.tarifas.preparar} créditos, como la primera vez.`;
   }
 }
 
@@ -917,7 +1071,7 @@ function renderRevision(p) {
     // M11: la revisión es UN texto corrido, no cajitas (resuelve el P2 de la
     // auditoría de paso). El resto de la pantalla no cambia.
     const cardGuion = $('#escenas').parentElement;
-    cardGuion.querySelector('h2').textContent = '📝 Narración (texto corrido)';
+    cardGuion.querySelector('h2').innerHTML = icono('guion') + 'Narración (texto corrido)';
     cardGuion.querySelector('p.mut').textContent =
       'Edita la narración completa; el video se corta sobre la voz. ~2 palabras/s.';
     $('#addesc').classList.add('hidden');
@@ -936,7 +1090,7 @@ function renderOpciones(p) {
   $('#opciones').innerHTML = p.personaje.opciones.map((o,i) =>
     `<img src="/api/proyectos/${p.id}/archivo/${o.path.split(/[\\/]/).slice(-2).join('/')}" data-i="${i}" class="${p.personaje.elegida===i?'on':''}" alt="Opción ${i+1} del personaje">`).join('')
     || `<div style="grid-column:1/-1"><p class="mut">Aún no hay opciones de personaje.</p>
-        <button class="btn sec" id="genop">Crear 2 opciones</button>
+        <button class="btn btn-sec" id="genop">Crear 2 opciones</button>
         <div id="orbe-genop"></div>
         <p class="mut" id="genopmsg">Sin costo: va incluido en los créditos del guion.</p></div>`;
   $('#opciones').onclick = ev => { const im = ev.target.closest('img'); if (!im) return;
@@ -998,19 +1152,21 @@ function renderOpciones(p) {
     }
   };
 }
-const ICONO = {verde:'🟢', amarillo:'🟡', rojo:'🔴'};
+// UI·13: un <option> no lleva SVG ni color; el nivel va en palabras (la
+// leyenda de colores sigue arriba del selector)
+const NIVEL = {verde:'Encaja', amarillo:'Tal vez', rojo:'No encaja'};
 function renderVoces(p) {
   const lista = p.voces.length ? p.voces : [{id:'George', nivel:'amarillo', motivo:'sin recomendación'}];
   const sel = $('#voz');
-  sel.innerHTML = lista.map(v => `<option value="${esc(v.id)}" data-motivo="${esc(v.motivo)}">${ICONO[v.nivel]} ${esc(v.id)}</option>`).join('');
+  sel.innerHTML = lista.map(v => `<option value="${esc(v.id)}" data-motivo="${esc(v.motivo)}">${esc(v.id)} · ${NIVEL[v.nivel] || ''}</option>`).join('');
   sel.value = p.voz && lista.some(v => v.id===p.voz) ? p.voz : lista[0].id;
   const motivo = () => { const o = sel.selectedOptions[0]; $('#vozmotivo').textContent = o ? o.dataset.motivo : ''; $('#audio').classList.add('hidden'); };
   sel.onchange = () => { motivo(); marcaCambio(); }; motivo();
   // M1: muestra fija por voz, cacheada global en el servidor — escuchar es gratis
   $('#oir').onclick = () => {
     const au = $('#audio');
-    $('#oir').disabled = true; $('#oir').textContent = '… cargando';
-    const listo = () => { $('#oir').disabled = false; $('#oir').textContent = '▶ Escuchar'; };
+    $('#oir').disabled = true; $('#oir').textContent = 'Cargando…';
+    const listo = () => { $('#oir').disabled = false; $('#oir').innerHTML = icono('escuchar') + 'Escuchar'; };
     au.oncanplay = () => { listo(); au.play(); };
     au.onerror = () => { listo(); $('#rerr').textContent = 'No se pudo cargar la muestra de voz — intenta de nuevo.'; };
     au.src = `/api/voces/${encodeURIComponent(sel.value)}/muestra`;
@@ -1019,7 +1175,7 @@ function renderVoces(p) {
 }
 function addEscena(txt='') {
   const d = document.createElement('div'); d.className='escena';
-  d.innerHTML = `<div class="n"></div><textarea>${esc(txt)}</textarea><div class="meta"></div><button title="Quitar la escena">✕</button>`;
+  d.innerHTML = `<div class="n"></div><textarea>${esc(txt)}</textarea><div class="meta"></div><button type="button" aria-label="Quitar la escena" title="Quitar la escena">${icono('cerrar')}</button>`;
   d.querySelector('button').onclick = () => { d.remove(); renum(); marcaCambio(); };
   d.querySelector('textarea').oninput = () => { metaEscena(d); estimar(); marcaCambio(); };
   metaEscena(d);
@@ -1079,7 +1235,7 @@ let autoT = null, autoEnVuelo = false, sinGuardar = false;
 function marcaCambio() {
   if (!proyecto || proyecto.estado !== 'revision') return;
   sinGuardar = true;
-  $('#autosave').textContent = '● guardando…';
+  $('#autosave').textContent = 'Guardando…';
   clearTimeout(autoT);
   autoT = setTimeout(autoguardar, 1000);
 }
@@ -1098,9 +1254,9 @@ async function autoguardar() {
         body: JSON.stringify({elegida: proyecto.personaje.elegida, nombre: $('#pnombre').value})});
     if (!r.ok) throw new Error(r.status);
     sinGuardar = false;
-    $('#autosave').textContent = `Guardado ✓ ${new Date().toTimeString().slice(0,5)}`;
+    $('#autosave').textContent = `Guardado a las ${new Date().toTimeString().slice(0,5)}`;
   } catch {
-    $('#autosave').textContent = '● sin guardar — reintentando…';
+    $('#autosave').textContent = 'Sin guardar — reintentando…';
     clearTimeout(autoT); autoT = setTimeout(autoguardar, 4000);
   }
   autoEnVuelo = false;
@@ -1138,7 +1294,7 @@ function renderImagenes(p) {
       <details><summary>Describir otra imagen</summary>
         <textarea class="imgprompt" rows="3">${esc(im.prompt)}</textarea>
       </details>
-      <button class="chip otra" type="button">🔄 Pedir otra</button>
+      <button class="chip otra" type="button">${icono('rehacer')}Pedir otra</button>
     </figure>`).join('');
   $('#imgnota').textContent = imgs.length
     ? `${imgs.length} ${imgs.length === 1 ? 'imagen' : 'imágenes'} · animar ya está pagado; pedir otra imagen cuesta aparte.`
@@ -1161,7 +1317,7 @@ $('#imgrid').addEventListener('click', async ev => {
     renderImagenes(proyecto);
   } catch (e) {
     $('#imgerr').textContent = e.message;
-    b.disabled = false; b.textContent = '🔄 Pedir otra';
+    b.disabled = false; b.innerHTML = icono('rehacer') + 'Pedir otra';
   }
   enVuelo = false;
 });
@@ -1230,6 +1386,7 @@ $('#reintentar').onclick = async () => {
   if (enVuelo) return;
   enVuelo = true;
   $('#reintentar').disabled = true;
+  $('#eerr').textContent = '';
   try {
     const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
     if (r.status === 402) throw new Error(msg402(await errTxt(r)));
@@ -1237,7 +1394,8 @@ $('#reintentar').onclick = async () => {
     proyecto = await r.json(); window.monedero?.refrescar(); seguir();
   } catch (e) {
     // sin el catch, una red caída dejaba el botón deshabilitado y sin mensaje
-    $('#emsg').textContent = e.message || 'No se pudo reintentar — revisa tu conexión.';
+    // va aparte: «qué pasó» sigue contando el fallo original
+    $('#eerr').textContent = e.message || 'No se pudo reintentar — revisa tu conexión.';
   }
   enVuelo = false;
   $('#reintentar').disabled = false;
