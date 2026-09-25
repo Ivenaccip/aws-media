@@ -123,6 +123,8 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   `currentColor`. SVG en línea o en un sprite propio; sin fuentes de iconos
   ni CDNs.
 - Los iconos acompañan una palabra; solos, solo si llevan `aria-label`.
+- Los iconos de los títulos van en **gris** (`#93a3b8`). Solo los de estado
+  llevan color: verde para «listo», rojo para error (dueño, 25-sep).
 - Los emojis quedan solo dentro del contenido del usuario, nunca como
   iconos de la interfaz. El ✦ de créditos **no** es un emoji: se queda.
 - Iconos del lienzo (propuesta 4): Video, Imagen, Cortar, Shorts, Guion,

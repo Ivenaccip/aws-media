@@ -644,7 +644,9 @@ def test_el_titulo_esta_centrado_y_mas_grande_en_las_dos_pantallas(html):
         assert "justify-content:center" in cabeza
         assert "padding-inline:max(0px, min(300px, calc(50% - 230px)))" in cabeza
     assert "font-size:30px" in _regla(html, ".titulo")
-    assert "font-size:30px" in _regla(crear, ".cabeza h1")
+    # UI·13: crear adoptó la carta — su título es el de pantalla (32 px, Bricolage)
+    assert "font:800 var(--t-titulo-lg)/1.1 var(--f-titulo)" in _regla(crear, "h1")
+    assert "--t-titulo-lg: 32px" in (RAIZ / "static" / "carta.css").read_text(encoding="utf-8")
 
 
 def _intencion(frases):
