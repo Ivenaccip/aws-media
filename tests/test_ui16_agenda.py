@@ -38,7 +38,7 @@ def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
     assert "else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};" in f
     assert "window.avisos?.mostrar(msg, op);" in f
     # el destino de «Conectar Blotato» es el mismo que tenía el enlace
-    assert 'const AGCONECTAR = "/?blotato=conectar";' in AGENDA
+    assert 'const AGCONECTAR = "/estudio/?blotato=conectar";' in AGENDA
     # el texto va plano: el cuadro lo escapa, aquí no se arma HTML
     assert "innerHTML" not in f
 

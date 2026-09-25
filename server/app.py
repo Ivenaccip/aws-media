@@ -13,7 +13,7 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -1079,6 +1079,37 @@ def _crear_imagenes_viejo():
 @app.get("/editor-imagenes.html", include_in_schema=False)
 def _editor_imagenes_viejo():
     return RedirectResponse("/imagenes.html?editar=1", status_code=302)
+
+
+# Tarjetas 37 y 38 · «/» es la portada pública y el estudio vive en /estudio/.
+# /estudio/ sirve el MISMO index.html (no se mueve: sus tests lo leen ahí).
+# Cualquier «/?algo» es un enlace viejo al estudio (?p=, ?blotato=conectar…):
+# 302 conservando el query. 302 y no 301, igual que arriba.
+# no-cache en los tres: son HTML y un cambio de portada tiene que llegar solo.
+_SIN_CACHE = {"Cache-Control": "no-cache"}
+
+
+@app.get("/", include_in_schema=False)
+def _portada(request: Request):
+    if request.url.query:
+        return RedirectResponse(f"/estudio/?{request.url.query}", status_code=302)
+    return FileResponse(ROOT / "static" / "portada.html", headers=_SIN_CACHE)
+
+
+@app.get("/estudio", include_in_schema=False)
+def _estudio_sin_barra(request: Request):
+    q = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(f"/estudio/{q}", status_code=302)
+
+
+@app.get("/estudio/", include_in_schema=False)
+def _estudio():
+    return FileResponse(ROOT / "static" / "index.html", headers=_SIN_CACHE)
+
+
+@app.get("/entrar", include_in_schema=False)
+def _entrar():
+    return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
 
 app.mount("/", _StaticCacheado(directory=ROOT / "static", html=True), name="static")

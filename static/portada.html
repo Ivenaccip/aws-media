@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<!-- Portada pública en «/» (tarjeta 38, opción 1 del dueño, 25-sep: «la
+     puerta del club»). La sirve server/app.py; el estudio vive en /estudio/.
+
+     NO carga auth.js ni monedero.js: los dos llaman a la API, un 401 manda a
+     Cognito y un visitante acabaría en el login sin haber tocado nada. Por la
+     misma razón tampoco hay fetch aquí.
+
+     Quien ya tiene sesión en este navegador salta directo al estudio (decisión
+     del dueño): los usuarios con «/» guardado no notan la mudanza. Se mira solo
+     si HAY tokens; si ya vencieron, el estudio refresca o pide login. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  try {
+    if (localStorage.getItem('auth_refresh_token') || localStorage.getItem('auth_id_token'))
+      location.replace('/estudio/');
+  } catch {}
+</script>
+<title>Irremplazables · Tu historia, convertida en película</title>
+<meta name="description" content="Un estudio para la comunidad Irremplazables: escribes la idea, eliges personaje y voz, y te entregamos el video listo para publicar.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Irremplazables">
+<meta property="og:title" content="Tu historia, convertida en película">
+<meta property="og:description" content="Un estudio para la comunidad Irremplazables: escribes la idea, eliges personaje y voz, y te entregamos el video listo para publicar.">
+<meta property="og:locale" content="es_MX">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { min-height: 100%; }
+  body { font: var(--t-sm)/1.55 var(--f-texto); background: var(--c-fondo); color: var(--c-texto);
+         display: flex; flex-direction: column; min-height: 100vh; padding: 0 16px; }
+  .ancho { max-width: 1040px; width: 100%; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+           padding: 20px 0; }
+  .marca { font: 800 var(--t-titulo-sm)/1 var(--f-titulo); letter-spacing: -0.01em;
+           color: var(--c-texto); text-decoration: none; }
+  main { flex: 1; display: flex; align-items: center; }
+  .hero { display: flex; flex-direction: column; gap: 24px; padding: 48px 0 96px; max-width: 720px; }
+  /* el único tamaño fuera de la escala de la app: la portada es cartel, no
+     pantalla de trabajo (taste-v2 aplica aquí, DISENO.md §alcance) */
+  h1 { font: 800 clamp(40px, 8vw, 76px)/1.02 var(--f-titulo); letter-spacing: -0.035em;
+       text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--c-ambar-claro); }
+  .lead { font-size: var(--t-md); line-height: 1.6; color: var(--c-secundario); max-width: 52ch; }
+  .acciones { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+  .btn-pri { min-height: 48px; padding: 0 24px; }
+  .sin-cuenta { color: var(--c-secundario); font-size: var(--t-xs); }
+  .sin-cuenta a { color: var(--c-enlace); }
+  .sin-cuenta a:hover { color: var(--c-texto); }
+  footer { padding: 24px 0 32px; border-top: 1px solid var(--c-linea); color: var(--c-secundario);
+           font-size: var(--t-xs); }
+</style>
+</head>
+<body>
+<header class="ancho">
+  <a class="marca" href="/">Irremplazables</a>
+  <a class="btn btn-sec" href="/entrar">Entrar</a>
+</header>
+<main class="ancho">
+  <section class="hero">
+    <h1>Tu historia, convertida en <em>película</em>.</h1>
+    <p class="lead">Un estudio para la comunidad Irremplazables: escribes la idea, eliges personaje y voz, y te entregamos el video listo para publicar.</p>
+    <div class="acciones">
+      <a class="btn btn-pri" href="/entrar">Entrar a mi estudio</a>
+      <p class="sin-cuenta">Las cuentas son para miembros de la comunidad.<span data-enlace-envoltura hidden> <a data-enlace="comunidad" hidden>Cómo unirte</a></span></p>
+    </div>
+  </section>
+</main>
+<footer class="ancho">Irremplazables</footer>
+<script src="/enlaces.js"></script>
+</body>
+</html>

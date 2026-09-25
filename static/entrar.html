@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+<!-- La puerta de entrada (tarjeta 37). Llegan aquí el botón «Entrar» de la
+     portada y el servidor, cuando alguien abre una pantalla sin sesión
+     (server/auth.py → /entrar?volver=<ruta>).
+
+     Antes de mostrar nada intenta recuperar la sesión en silencio:
+       1. el id_token aún sirve más de 60 s → rehace la cookie y vuelve;
+       2. si no, refresca con el refresh_token y vuelve;
+       3. si tampoco, muestra la bienvenida (opción B del dueño, 25-sep).
+     La cookie `token` es de sesión: al reabrir el navegador se pierde aunque el
+     token siga vivo, y el middleware rechaza /editor/x. Sin el paso 1, /entrar
+     vería «hay token», volvería a /editor/x y el servidor lo mandaría aquí otra
+     vez, sin fin. Por si algo más produce ese rebote, a la tercera visita en
+     30 s ya no se reintenta: se muestra la bienvenida. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar · Irremplazables</title>
+<meta name="description" content="Entra a tu estudio de Irremplazables.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { font: var(--t-sm)/1.55 var(--f-texto); background: var(--c-fondo); color: var(--c-texto);
+         display: flex; flex-direction: column; padding: 0 16px; }
+  header { max-width: 440px; width: 100%; margin: 0 auto; padding: 20px 0; }
+  .marca { font: 800 var(--t-titulo-sm)/1 var(--f-titulo); letter-spacing: -0.01em;
+           color: var(--c-texto); text-decoration: none; }
+  main { flex: 1; display: flex; align-items: center; }
+  .puerta { max-width: 440px; width: 100%; margin: 0 auto; padding: 32px 0 64px;
+            display: flex; flex-direction: column; gap: 16px; }
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; text-wrap: balance; }
+  .lead { font-size: var(--t-md); color: var(--c-secundario); }
+  .btn-pri { min-height: 48px; width: 100%; margin-top: 8px; }
+  .sin-cuenta { color: var(--c-secundario); font-size: var(--t-xs); }
+  .sin-cuenta a { color: var(--c-enlace); }
+  .sin-cuenta a:hover { color: var(--c-texto); }
+  /* mientras decide si puede volver solo, no se enseña la bienvenida: así
+     quien tiene sesión no la ve parpadear */
+  body.decidiendo main .puerta > :not(#espera) { visibility: hidden; }
+  #espera { color: var(--c-secundario); }
+  body:not(.decidiendo) #espera { display: none; }
+</style>
+</head>
+<body class="decidiendo">
+<header><a class="marca" href="/">Irremplazables</a></header>
+<main>
+  <div class="puerta">
+    <p id="espera" role="status">Entrando…</p>
+    <h1>Entra a tu estudio</h1>
+    <p class="lead" id="lead">Usa el correo con el que te dieron de alta en la comunidad.</p>
+    <p class="aviso-caja" id="rebote" hidden>No pudimos recuperar tu sesión. Entra de nuevo con tu correo.</p>
+    <button class="btn btn-pri" id="entrar" type="button">Entrar</button>
+    <p class="sin-cuenta">¿Todavía no tienes cuenta? Las cuentas son para miembros de la comunidad.<span data-enlace-envoltura hidden> <a data-enlace="comunidad" hidden>Cómo unirte</a></span></p>
+  </div>
+</main>
+<script src="/auth.js"></script>
+<script src="/enlaces.js"></script>
+<script>
+(() => {
+  const ESTUDIO = '/estudio/';
+  // `volver` solo puede ser una ruta de ESTE dominio: si aceptáramos
+  // cualquiera, un enlace armado usaría nuestro login para mandar a alguien
+  // a una página falsa. Tampoco puede ser esta página ni el callback.
+  function destino() {
+    const v = new URLSearchParams(location.search).get('volver');
+    if (!v) return ESTUDIO;
+    try {
+      const u = new URL(v, location.origin);
+      if (u.origin !== location.origin) return ESTUDIO;
+      if (['/', '/entrar', '/entrar.html', '/callback.html'].includes(u.pathname)) return ESTUDIO;
+      return u.pathname + u.search + u.hash;
+    } catch { return ESTUDIO; }
+  }
+
+  // guarda anti-bucle: tres visitas en 30 s = algo rebota; se deja de reintentar
+  function rebotando() {
+    let v = [];
+    try { v = JSON.parse(sessionStorage.getItem('entrar_visitas') || '[]'); } catch {}
+    const ahora = Date.now();
+    v = v.filter(t => ahora - t < 30000).concat(ahora);
+    try { sessionStorage.setItem('entrar_visitas', JSON.stringify(v)); } catch {}
+    return v.length >= 3;
+  }
+
+  const volver = destino();
+  if (volver !== ESTUDIO) document.getElementById('lead').textContent =
+    'Entra para seguir donde estabas. Usa el correo con el que te dieron de alta en la comunidad.';
+
+  function mostrar(rebote) {
+    document.getElementById('rebote').hidden = !rebote;
+    document.body.classList.remove('decidiendo');
+    document.getElementById('entrar').focus();
+  }
+
+  document.getElementById('entrar').addEventListener('click', e => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    b.textContent = 'Entrando…';
+    window.auth.login(volver);
+  });
+
+  // «atrás» desde Cognito restaura la página con el botón en «Entrando…»
+  addEventListener('pageshow', e => {
+    if (!e.persisted) return;
+    const b = document.getElementById('entrar');
+    b.disabled = false;
+    b.textContent = 'Entrar';
+  });
+
+  (async () => {
+    const c = await window.auth.config();
+    if (!c.activo) { location.replace(volver); return; }   // dev local: sin login
+    const rebote = rebotando();
+    if (!rebote) {
+      if (window.auth.segundosRestantes() > 60) {
+        window.auth.guardarTokens({ id_token: localStorage.getItem('auth_id_token') });
+        location.replace(volver);
+        return;
+      }
+      if (localStorage.getItem('auth_refresh_token') && await window.auth.refrescar()) {
+        location.replace(volver);
+        return;
+      }
+    }
+    mostrar(rebote);
+  })();
+})();
+</script>
+</body>
+</html>

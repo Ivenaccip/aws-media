@@ -183,7 +183,7 @@ def test_el_409_es_lo_unico_que_ofrece_conectar_blotato():
     """La pantalla no decide QUÉ decir (eso es del servidor), solo si además
     ofrece el enlace para conectar la cuenta."""
     assert "status === 409" in LOGICA
-    assert '/?blotato=conectar' in LOGICA
+    assert '/estudio/?blotato=conectar' in LOGICA
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +443,7 @@ await agCargar();
 out.otro = aviso("agenda-error");
 out.otraAccion = vivos["agenda-error"].accion && vivos["agenda-error"].accion.texto;
 """, tmp_path)
-    assert o["accion"] == "Conectar Blotato" and o["destino"] == "/?blotato=conectar"
+    assert o["accion"] == "Conectar Blotato" and o["destino"] == "/estudio/?blotato=conectar"
     assert "Conecta tu cuenta de Blotato primero." in o["aviso"]
     assert "Pulsa «Actualizar»" in o["lista"]
     assert o["otraAccion"] != "Conectar Blotato", "un fallo de Blotato no es una clave que falte"

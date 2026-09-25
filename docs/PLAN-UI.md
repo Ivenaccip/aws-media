@@ -175,6 +175,20 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
    El orden (crear, imágenes y MIX al final) y la regla de retiro (7 días
    en `todos` sin incidentes de dinero) siguen como propuesta.
 
+6. **Entrada y portada (25-sep, tarjetas 37 y 38):** ✅ las construye esta
+   línea (antes iban a otro agente), juntas, porque sin `/entrar` la portada
+   deja sin puerta a los usuarios.
+   - `/entrar` es una **pantalla de bienvenida** (opción B): primero intenta
+     recuperar la sesión en silencio y solo si no puede muestra «Entra a tu
+     estudio».
+   - Portada **opción 1, «la puerta del club»**: dos frases y «Entrar». Las
+     obras reales (opción 3) llegan cuando haya películas con permiso.
+   - Quien no tiene cuenta ve un **enlace a la comunidad** (`static/enlaces.js`;
+     vacío = no se muestra).
+   - Con sesión, «/» **salta directo** a `/estudio/`.
+   - Lo público que viene: **`/automatiza`**, con el RAG público (antes
+     llamado `/automatizacion` en este plan).
+
 **Ramas:** los PRs van a `dev`, nunca a `main`. Cada commit de una tarjeta
 empieza con `UI·N:` para poder correlacionar los cambios de la interfaz
 con su tarjeta (`git log --grep "^UI·"`).

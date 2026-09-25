@@ -28,7 +28,7 @@ def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
             "al: () => { location.href = MTCONECTAR; }};") in f
     assert "else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};" in f
     assert "window.avisos?.mostrar(msg, op);" in f
-    assert 'const MTCONECTAR = "/?blotato=conectar";' in MT
+    assert 'const MTCONECTAR = "/estudio/?blotato=conectar";' in MT
     assert "innerHTML" not in f
 
 

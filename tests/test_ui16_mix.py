@@ -42,7 +42,7 @@ def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
     assert ("if (conectar) op.accion = {texto:'Conectar Blotato', "
             "al: () => { location.href = MXCONECTAR_A; }};") in f
     assert "window.avisos?.mostrar(msg, op);" in f
-    assert 'const MXCONECTAR_A = "/?blotato=conectar";' in MIX
+    assert 'const MXCONECTAR_A = "/estudio/?blotato=conectar";' in MIX
     # #mxCuentaErr sigue con su enlace de siempre
     assert 'const MXCONECTAR = ` <a href="${MXCONECTAR_A}">Conectar Blotato</a>`;' in MIX
     assert 'id="mxCuentaErr"' in MIX
@@ -111,7 +111,7 @@ const vivos = {};
 const location = {href: ""};
 const window = {avisos: {mostrar(t, op) { vivos[op.clave] = {t, ...op}; },
                          quitar(c) { delete vivos[c]; }}};
-const MXCONECTAR_A = "/?blotato=conectar";
+const MXCONECTAR_A = "/estudio/?blotato=conectar";
 const mxTexto = e => (e && typeof e.status === "number" && e.message) ? e.message : "SINRED";
 """ + js + r"""
 const out = {};
@@ -135,7 +135,7 @@ console.log(JSON.stringify(out));
     r = subprocess.run([nodo, str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     o = json.loads(r.stdout)
-    assert o["a409"] == "Conectar Blotato" and o["destino"] == "/?blotato=conectar"
+    assert o["a409"] == "Conectar Blotato" and o["destino"] == "/estudio/?blotato=conectar"
     assert o["red"] == ["SINRED", "mal", "Reintentar"]
     assert o["limpio"] is True
     assert o["falta"] == ["Falta la foto de tu producto.", False, 0]

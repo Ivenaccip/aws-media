@@ -156,7 +156,7 @@
 </head>
 <body>
 <main>
-  <a class="volver" href="/"><i data-icono="volver"></i>Estudio</a>
+  <a class="volver" href="/estudio/"><i data-icono="volver"></i>Estudio</a>
   <h1>MIX · publicidad automática</h1>
   <p class="sub">Sube una foto de tu producto, cuéntanos para qué es la campaña y marca los días.
     A partir de ahí sale <b>una publicación al día</b>, sola, sin que tengas que revisarla.
@@ -166,7 +166,7 @@
     <h2>Conecta tu Blotato para usar MIX</h2>
     <p class="ayuda" style="margin-bottom:0">MIX publica por ti en tus redes, y para eso necesita
       tu cuenta de Blotato conectada. Es la cuenta donde van a salir las publicaciones.
-      <a href="/?blotato=conectar">Conectar Blotato</a></p>
+      <a href="/estudio/?blotato=conectar">Conectar Blotato</a></p>
   </section>
 
   <p id="mxCargando" class="mut"><span class="spin">Abriendo tu campaña</span></p>
@@ -357,7 +357,7 @@ function mxRotulo(mapa, clave, porDefecto) {
 const MXTIPOS = ["image/jpeg", "image/png", "image/webp"];
 const MXMAXBYTES = 12 * 1024 * 1024;
 // adónde lleva «Conectar Blotato»: el enlace de #mxCuentaErr y la acción del aviso
-const MXCONECTAR_A = "/?blotato=conectar";
+const MXCONECTAR_A = "/estudio/?blotato=conectar";
 const MXCONECTAR = ` <a href="${MXCONECTAR_A}">Conectar Blotato</a>`;
 
 let MX = null;              // la última respuesta de GET /api/mix
@@ -1321,7 +1321,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#mxCapa").addEventListener("click", e => {
     if (!$("#mxCapa").classList.contains("apagada")) return;
     e.preventDefault();
-    location.href = "/?blotato=conectar";
+    location.href = "/estudio/?blotato=conectar";
   });
 
   $("#mxRefrescar").onclick = () => mxCargar();
