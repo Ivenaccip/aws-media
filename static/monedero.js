@@ -88,7 +88,8 @@
     setTimeout(() => addEventListener('click', cerrarFuera), 0);
   }
   function cerrarFuera(e) {
-    if (panel && !panel.contains(e.target) && !el.contains(e.target)) {
+    const enMenu = slot && slot.contains(e.target);
+    if (panel && !panel.contains(e.target) && !el.contains(e.target) && !enMenu) {
       panel.remove(); panel = null;
     }
     if (!panel) removeEventListener('click', cerrarFuera);
@@ -125,9 +126,17 @@
       if (!d.activo) return;
       reintento = 0;
       est.activo = true; est.saldo = d.saldo; est.tarifas = d.tarifas || {}; est.packs = d.packs || [];
-      el.style.display = 'flex';
-      el.querySelector('#mon-ticket').hidden = false;
-      el.querySelector('#mon-pill').hidden = false;
+      if (slot) {
+        // UI·10: la página trae su hueco en el menú lateral (carta de diseño
+        // §7). El saldo vive ahí y la píldora flotante no se enciende: era la
+        // que tapaba el título en el celular. El avatar sigue flotando.
+        slot.hidden = false;
+        slot.querySelector('#saldo-n').textContent = `${d.saldo} créditos ✦`;
+      } else {
+        el.style.display = 'flex';
+        el.querySelector('#mon-ticket').hidden = false;
+        el.querySelector('#mon-pill').hidden = false;
+      }
       el.querySelector('#mon-saldo').textContent = `${d.saldo} créditos ✦`;
       document.dispatchEvent(new CustomEvent('monedero', { detail: est }));
     } catch { programarReintento(); /* sin red: se reintenta igual */ }
@@ -145,8 +154,13 @@
     } catch { return ''; }
   }
 
+  // El hueco del saldo en el menú lateral, si la página lo trae (UI·10).
+  let slot = null;
+
   function montar() {
     document.body.appendChild(el);
+    slot = document.getElementById('saldo-menu');
+    if (slot) slot.querySelector('#saldo-recargar').onclick = togglePanel;
     el.querySelector('#mon-cta').onclick = togglePanel;
     el.querySelector('#mon-avatar').onclick = toggleMenu;
     el.querySelector('#mon-salir').onclick = () => {
