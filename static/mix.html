@@ -5,135 +5,151 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · MIX</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { color-scheme: dark; }
+  /* Los nombres de siempre de esta pantalla, ahora apuntando a la carta. El
+     acento deja de ser el azul del hub: el único color que dice «haz algo» es
+     el ámbar (carta §3). */
+  :root { --bg: var(--c-fondo); --card: var(--c-superficie); --elev: var(--c-elevada);
+          --line: var(--c-linea); --campo: var(--c-campo); --txt: var(--c-texto);
+          --mut: var(--c-secundario); --acc: var(--c-ambar); --acc2: var(--c-ambar-claro); }
   * { box-sizing: border-box; margin: 0; }
-  /* El molde de «página simple» (static/estilos.html) con el acento AZUL del
-     hub (#5b8dd6). El padding de arriba deja libre la franja fija del monedero
-     (monedero.js la clava arriba a la derecha). */
-  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1;
-         padding: 64px 20px 48px; }
+  /* .btn (carta) y .soltar ponen display: sin esto un botón con el atributo
+     hidden (Reanudar, la zona de soltar con la foto ya puesta) se seguía viendo */
+  [hidden] { display: none !important; }
+  /* El padding de arriba deja libre la franja fija del monedero (monedero.js
+     clava la píldora arriba a la derecha y termina en ~52 px). */
+  body { font: var(--t-sm)/1.5 var(--f-texto); background: var(--bg); color: var(--txt);
+         padding: 64px 24px 48px; }
   main { max-width: 860px; margin: 0 auto; }
-  a { color: #5b8dd6; }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px;
-            margin-bottom: 18px; }
-  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-  section h2 .n { color: #5b8dd6; }
-  p.ayuda { color: #93a3b8; font-size: 13.5px; margin-bottom: 14px; }
-  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
-           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
-  button:hover { border-color: #5b8dd6; }
-  button:disabled { opacity: .5; cursor: default; background: #18293f; }
-  button.sec { background: transparent; }
-  button.pri { background: #5b8dd6; border-color: #5b8dd6; color: #08111e; font-weight: 600; }
-  button.pri:hover { filter: brightness(1.1); }
-  button.pri:disabled { background: #18293f; color: #ece8e1; border-color: #22354f; }
-  button.peligro { color: #ff8080; }
-  button.peligro:hover { border-color: #ff8080; }
-  button.chico { padding: 6px 13px; font-size: 13px; }
-  select, textarea { background: #18293f; color: #ece8e1; border: 1px solid #55708f;
-    border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; max-width: 100%; }
+  a { color: var(--c-enlace); }
+  a.volver { display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+             color: var(--mut); text-decoration: none; }
+  a.volver:hover { color: var(--txt); }
+  /* carta §2: títulos en Bricolage, escala de seis tamaños */
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0 8px; }
+  p.sub { color: var(--mut); font-size: var(--t-md); line-height: 1.55; max-width: 65ch; margin-bottom: 24px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-grande);
+            padding: 24px; margin-bottom: 16px; }
+  section h2 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin-bottom: 4px; }
+  section h2 .n { color: var(--mut); font-variant-numeric: tabular-nums; }
+  p.ayuda { color: var(--mut); font-size: var(--t-sm); margin-bottom: 16px; max-width: 65ch; }
+  button { font: inherit; }
+  /* carta §5: la forma y los cinco estados los pone carta.css (.btn-pri,
+     .btn-sec, .btn-peligro). Aquí solo el acomodo. */
+  .btn.chico { padding: 0 14px; }
+  select, textarea { background: var(--elev); color: var(--txt); border: 1px solid var(--campo);
+    border-radius: var(--r-medio); padding: 8px 12px; font: inherit; font-size: var(--t-sm); max-width: 100%; }
+  select { min-height: 44px; }
   textarea { width: 100%; resize: vertical; min-height: 92px; }
-  label { display: block; font-size: 13px; color: #93a3b8; margin-bottom: 5px; }
-  .mut { color: #93a3b8; font-size: 13px; }
-  .err { color: #ff8080; font-size: 14px; }
-  .ok { color: #3dd68c; font-size: 14px; }
-  .aviso { color: #f0a94a; font-size: 13.5px; }
+  label { display: block; font-size: var(--t-xs); color: var(--mut); margin-bottom: 4px; }
+  .mut { color: var(--mut); font-size: var(--t-xs); }
+  .err { color: var(--c-error); font-size: var(--t-sm); }
+  .ok { color: var(--c-exito); font-size: var(--t-sm); }
+  /* aviso de estado (ejemplo viejo, campaña en pausa): es un estado, no una
+     acción, pero no hay otro color de advertencia en la paleta */
+  .aviso { color: var(--acc2); font-size: var(--t-sm); }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM (un
      role="status" que aparece y desaparece no lo anuncia el lector) */
   #mxEstado:empty { display: none; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
 
   /* --- 1. la foto --- */
   .zona { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
-  .soltar { flex: 1 1 240px; min-height: 140px; border: 1px dashed #55708f; border-radius: 12px;
-            background: #18293f; color: #93a3b8; font: inherit; font-size: 13px; line-height: 1.45;
+  .soltar { flex: 1 1 240px; min-height: 140px; border: 1px dashed var(--campo); border-radius: var(--r-boton);
+            background: var(--elev); color: var(--mut); font: inherit; font-size: var(--t-xs); line-height: 1.45;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 5px; padding: 16px; text-align: center; }
-  .soltar:hover, .soltar.encima { border-color: #5b8dd6; color: #ece8e1; }
-  .soltar b { color: #ece8e1; font-weight: 600; font-size: 14.5px; }
+            gap: 4px; padding: 16px; text-align: center; cursor: pointer;
+            transition: border-color var(--m-rapido) ease-out, color var(--m-rapido) ease-out; }
+  .soltar .ico { width: 24px; height: 24px; margin-bottom: 4px; }
+  .soltar:hover, .soltar.encima { border-color: var(--mut); color: var(--txt); }
+  .soltar b { color: var(--txt); font-weight: 600; font-size: var(--t-sm); }
   .previa { flex: 0 0 auto; width: 140px; }
-  .previa img { width: 140px; height: 140px; object-fit: cover; border-radius: 12px;
-                border: 1px solid #22354f; background: #18293f; display: block; }
-  .previa button { width: 100%; margin-top: 8px; }
+  .previa img { width: 140px; height: 140px; object-fit: cover; border-radius: var(--r-boton);
+                border: 1px solid var(--line); background: var(--elev); display: block; }
+  .previa .btn { width: 100%; margin-top: 8px; }
 
   /* --- 3. el tono --- */
   .tonos { display: flex; gap: 8px; flex-wrap: wrap; }
-  .tonos button { flex: 1 1 110px; background: #18293f; }
-  .tonos button[aria-pressed="true"] { background: #2b4a75; border-color: #5b8dd6; }
+  .tonos .btn { flex: 1 1 110px; }
+  /* carta §3: elegir no es «hacer»: el tono elegido se marca en blanco, no en ámbar */
+  .tonos .btn[aria-pressed="true"] { background: var(--elev); border-color: var(--txt); font-weight: 600; }
 
   /* --- 4. el calendario de rango --- */
   .atajos { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-  .atajos button { border-radius: 999px; background: #18293f; }
+  .atajos .btn { border-radius: 999px; }
   .calCab { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .calCab .hueco { margin-right: auto; }
-  .meses { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .calCab .flecha { width: 44px; padding: 0; }
+  .meses { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   /* el navegador escribe «septiembre de 2026» en minúscula; capitalize a secas
      lo dejaba en «Septiembre De 2026» — solo sube la primera letra */
-  .mes h3 { font-size: 13.5px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+  .mes h3 { font-size: var(--t-sm); font-weight: 600; text-align: center; margin-bottom: 8px; }
   .mes h3::first-letter { text-transform: uppercase; }
   .semana, .dias { display: grid; grid-template-columns: repeat(7, 1fr); }
-  .semana span { font-size: 11px; color: #93a3b8; text-align: center; padding-bottom: 6px; }
+  .semana span { font-size: var(--t-xs); color: var(--mut); text-align: center; padding-bottom: 4px; }
   /* la celda ES el botón: con gap entre celdas el rango se ve a rayas, así que
      el aire va por dentro y las esquinas las ponen .ini y .fin */
-  .dia { background: transparent; border: 0; border-radius: 0; padding: 0; min-height: 40px;
-         font: inherit; font-size: 13.5px; color: #ece8e1; cursor: pointer; }
+  .dia { background: transparent; border: 0; border-radius: 0; padding: 0; min-height: 44px;
+         font: inherit; font-size: var(--t-sm); font-variant-numeric: tabular-nums; color: var(--txt); cursor: pointer; }
   .dia:disabled { color: #6b7a8f; background: transparent; opacity: 1; cursor: default; }
-  .dia:not(:disabled):hover { box-shadow: inset 0 0 0 1px #5b8dd6; }
+  .dia:not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--mut); }
   .dia.hoy { text-decoration: underline; text-underline-offset: 3px; }
-  .dia.dentro { background: #1b3049; }
-  .dia.ini, .dia.fin { background: #5b8dd6; color: #08111e; font-weight: 700; }
+  /* carta §3: el rango elegido es una selección, así que va en neutro: la
+     banda en la superficie activa y los extremos con el borde blanco */
+  .dia.dentro, .dia.ini, .dia.fin { background: var(--c-activa); }
+  .dia.ini, .dia.fin { box-shadow: inset 0 0 0 2px var(--txt); font-weight: 700; }
   .dia.ini { border-radius: 10px 0 0 10px; }
   .dia.fin { border-radius: 0 10px 10px 0; }
   .dia.ini.fin { border-radius: 10px; }
-  .hueco-dia { min-height: 40px; }
-  .rango { margin-top: 14px; font-size: 14px; }
+  .hueco-dia { min-height: 44px; }
+  .rango { margin-top: 16px; font-size: var(--t-sm); }
 
   /* --- 5. el ejemplo y el costo --- */
   .ejemplo { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start;
-             border: 1px solid #22354f; border-radius: 12px; padding: 14px; margin-top: 14px; }
-  .ejemplo img { width: 230px; max-width: 100%; border-radius: 10px; display: block;
-                 background: #18293f; }
+             border: 1px solid var(--line); border-radius: var(--r-boton); padding: 16px; margin-top: 16px; }
+  .ejemplo img { width: 230px; max-width: 100%; border-radius: var(--r-medio); display: block;
+                 background: var(--elev); }
   .ejemplo .texto { flex: 1 1 210px; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .costo { border: 1px solid #22354f; background: #18293f; border-radius: 12px;
-           padding: 15px 17px; margin-top: 16px; }
+  .costo { border: 1px solid var(--line); background: var(--elev); border-radius: var(--r-boton);
+           padding: 16px; margin-top: 16px; }
   .costo p + p { margin-top: 8px; }
 
   /* --- la campaña encendida --- */
-  .ficha { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin: 14px 0 4px; }
-  .ficha img { width: 110px; height: 110px; object-fit: cover; border-radius: 12px;
-               border: 1px solid #22354f; background: #18293f; display: block; }
-  .ficha .datos { flex: 1 1 220px; min-width: 0; font-size: 14px; }
+  .ficha { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin: 16px 0 4px; }
+  .ficha img { width: 112px; height: 112px; object-fit: cover; border-radius: var(--r-boton);
+               border: 1px solid var(--line); background: var(--elev); display: block; }
+  .ficha .datos { flex: 1 1 220px; min-width: 0; font-size: var(--t-sm); }
   .ficha .datos b { font-weight: 600; }
-  .dias-lista { margin-top: 18px; border-top: 1px solid #22354f; }
+  .dias-lista { margin-top: 16px; border-top: 1px solid var(--line); }
   /* wrap obligatorio: en un teléfono la fecha se lleva la línea entera y sin
      esto el texto de la publicación se quedaba en una columna de una letra */
   .fila { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;
-          border-bottom: 1px solid #22354f; padding: 11px 0; }
-  .fila .cuando { flex: 0 0 104px; font-size: 13px; color: #93a3b8; }
+          border-bottom: 1px solid var(--line); padding: 12px 0; }
+  .fila .cuando { flex: 0 0 104px; font-size: var(--t-xs); color: var(--mut); font-variant-numeric: tabular-nums; }
   .fila .cuerpo { flex: 1 1 180px; min-width: 0; }
-  .fila .texto { font-size: 13.5px; margin-top: 4px; white-space: pre-wrap;
+  .fila .texto { font-size: var(--t-sm); margin-top: 4px; white-space: pre-wrap;
                  overflow-wrap: anywhere; }
-  .fila img { width: 54px; height: 54px; object-fit: cover; border-radius: 8px; flex: 0 0 auto;
-              border: 1px solid #22354f; }
-  .pill { font-size: 12.5px; border: 1px solid #22354f; background: #111f33; color: #93a3b8;
-          border-radius: 999px; padding: 1px 10px; white-space: nowrap; }
-  .pill.buena { border-color: #3dd68c; color: #3dd68c; background: #102e22; }
-  .pill.mala { border-color: #ff8080; color: #ff8080; background: none; }
-  .pill.viva { border-color: #5b8dd6; color: #5b8dd6; background: none; }
+  .fila img { width: 56px; height: 56px; object-fit: cover; border-radius: var(--r-medio); flex: 0 0 auto;
+              border: 1px solid var(--line); }
+  .pill { font-size: var(--t-xs); border: 1px solid var(--line); background: var(--card); color: var(--mut);
+          border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  /* verde y rojo solo para estados (carta §3); lo que está en marcha, en neutro */
+  .pill.buena { border-color: var(--c-exito); color: var(--c-exito); background: #102e22; }
+  .pill.mala { border-color: var(--c-error); color: var(--c-error); background: none; }
+  .pill.viva { border-color: var(--campo); color: var(--txt); background: none; }
+  #mxViva h2 { display: flex; align-items: center; gap: 8px; }
+  #mxViva h2 .ico { color: var(--mut); }
 
   /* --- sin la clave de Blotato (mismo trato que el menú del hub) --- */
   #mxCapa.apagada { cursor: pointer; }
   #mxCapa.apagada #mxPasos { opacity: .45; filter: saturate(.4); pointer-events: none; }
 
   @media (max-width: 640px) {
-    body { padding: 60px 14px 40px; }
-    section { padding: 18px 15px; }
+    body { padding: 64px 16px 40px; }
+    section { padding: 20px 16px; }
     /* dos meses apilados en un teléfono son media pantalla de scroll para
        elegir una fecha: en estrecho manda uno y se navega con las flechas */
     .meses { grid-template-columns: 1fr; }
@@ -144,7 +160,7 @@
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← Estudio</a>
+  <a class="volver" href="/"><i data-icono="volver"></i>Estudio</a>
   <h1>MIX · publicidad automática</h1>
   <p class="sub">Sube una foto de tu producto, cuéntanos para qué es la campaña y marca los días.
     A partir de ahí sale <b>una publicación al día</b>, sola, sin que tengas que revisarla.
@@ -173,17 +189,18 @@
         ver lo tuyo. JPG, PNG o WebP, hasta 12 MB.</p>
       <div class="zona">
         <button type="button" class="soltar" id="mxSoltar">
+          <i data-icono="subir"></i>
           <b>Arrastra tu foto aquí</b>
           <span>o pulsa para elegirla desde tu teléfono</span>
         </button>
         <div class="previa" id="mxPrevia" hidden>
           <img id="mxPreviaImg" alt="La foto de tu producto">
-          <button type="button" class="sec chico" id="mxCambiarFoto">Cambiar la foto</button>
+          <button type="button" class="btn btn-sec chico" id="mxCambiarFoto">Cambiar la foto</button>
         </div>
       </div>
       <input type="file" id="mxArchivo" hidden
              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
-      <p id="mxFotoErr" class="err" style="margin-top:10px" hidden></p>
+      <p id="mxFotoErr" class="err" style="margin-top:8px" hidden></p>
     </section>
 
     <section>
@@ -193,7 +210,7 @@
       <textarea id="mxMotivo" maxlength="2000"
         placeholder="Quiero que la gente del barrio sepa que ya abrimos y que venga a probar el menú del día."></textarea>
 
-      <h2 style="margin-top:22px"><span class="n">3.</span> El tono</h2>
+      <h2 style="margin-top:24px"><span class="n">3.</span> El tono</h2>
       <p class="ayuda">Cambia de verdad lo que se dice y lo que se ve cada día.</p>
       <div class="tonos" id="mxTonos" role="group" aria-label="El tono de la campaña"></div>
     </section>
@@ -204,10 +221,10 @@
         rellenan el rango desde hoy: el calendario manda.</p>
       <div class="atajos" id="mxAtajos"></div>
       <div class="calCab">
-        <button type="button" class="sec chico" id="mxMesAntes" aria-label="Mes anterior">‹</button>
-        <button type="button" class="sec chico" id="mxMesDespues" aria-label="Mes siguiente">›</button>
+        <button type="button" class="btn btn-sec flecha" id="mxMesAntes" aria-label="Mes anterior"><i data-icono="izquierda"></i></button>
+        <button type="button" class="btn btn-sec flecha" id="mxMesDespues" aria-label="Mes siguiente"><i data-icono="derecha"></i></button>
         <span class="hueco"></span>
-        <button type="button" class="sec chico" id="mxLimpiar">Borrar las fechas</button>
+        <button type="button" class="btn btn-sec chico" id="mxLimpiar">Borrar las fechas</button>
       </div>
       <div class="meses" id="mxMeses"></div>
       <p class="rango" id="mxRango"></p>
@@ -236,7 +253,7 @@
       <p class="ayuda">Te preparamos la publicación del primer día para que la veas tal cual va
         a salir. <b>Verla no cuesta nada.</b></p>
       <div class="controles">
-        <button type="button" class="pri" id="mxVer">Ver un ejemplo</button>
+        <button type="button" class="btn btn-pri" id="mxVer">Ver un ejemplo</button>
         <span class="mut" id="mxFalta"></span>
       </div>
       <div id="mxEspera" hidden style="margin-top:16px"></div>
@@ -250,23 +267,24 @@
   <!-- ── la campaña ya encendida ── -->
   <section id="mxViva" hidden>
     <div class="controles">
-      <h2 style="margin:0">Tu campaña</h2>
-      <button type="button" class="sec chico" id="mxRefrescar"
-              style="margin-left:auto">Actualizar</button>
+      <h2 style="margin:0"><i data-icono="automatico"></i>Tu campaña</h2>
+      <button type="button" class="btn btn-sec chico" id="mxRefrescar"
+              style="margin-left:auto"><i data-icono="rehacer"></i>Actualizar</button>
     </div>
-    <p id="mxVivaEstado" style="margin-top:10px"></p>
+    <p id="mxVivaEstado" style="margin-top:12px"></p>
     <div class="ficha" id="mxVivaFicha"></div>
     <div class="dias-lista" id="mxVivaDias"></div>
-    <div class="controles" style="margin-top:18px">
+    <div class="controles" style="margin-top:16px">
       <p class="mut" id="mxDevolucion" style="flex:1 1 260px;margin-right:auto"></p>
-      <button type="button" class="sec" id="mxReanudar" hidden>Reanudar</button>
-      <button type="button" class="sec peligro" id="mxApagar">Apagar la campaña</button>
+      <button type="button" class="btn btn-sec" id="mxReanudar" hidden>Reanudar</button>
+      <button type="button" class="btn btn-peligro" id="mxApagar">Apagar la campaña</button>
     </div>
   </section>
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
 <script src="/orbe.js"></script>
+<script src="/iconos.js"></script>
 <script>
 // ── mx · MIX: publicidad automática, una imagen al día (M23 · D)
 //
@@ -453,7 +471,7 @@ function mxPintarTonos() {
   const tonos = (MX && Array.isArray(MX.tonos) && MX.tonos.length)
     ? MX.tonos : Object.keys(MXTONOS);
   $("#mxTonos").innerHTML = tonos.map(t =>
-    `<button type="button" data-tono="${esc(t)}" aria-pressed="${t === mxTono}">${
+    `<button type="button" class="btn btn-sec" data-tono="${esc(t)}" aria-pressed="${t === mxTono}">${
       esc(mxRotulo(MXTONOS, t, t))}</button>`).join("");
   for (const b of $("#mxTonos").querySelectorAll("[data-tono]")) {
     b.onclick = () => {
@@ -472,7 +490,7 @@ function mxPintarTonos() {
 function mxPintarAtajos() {
   const atajos = (MX && MX.atajos && typeof MX.atajos === "object") ? MX.atajos : {};
   $("#mxAtajos").innerHTML = Object.keys(atajos).map(k =>
-    `<button type="button" class="sec chico" data-atajo="${esc(k)}">${esc(k)}</button>`).join("");
+    `<button type="button" class="btn btn-sec chico" data-atajo="${esc(k)}">${esc(k)}</button>`).join("");
   for (const b of $("#mxAtajos").querySelectorAll("[data-atajo]")) {
     b.onclick = () => {
       const n = Math.max(1, Math.min(MXMAXD, Math.trunc(Number(atajos[b.dataset.atajo])) || 1));
@@ -596,7 +614,7 @@ async function mxCargarCuentas(preferido) {
     mxCanal = null;
     sel.innerHTML = '<option value="">No pudimos traer tus cuentas</option>';
     aviso.innerHTML = esc(mxTexto(e)) +
-      (e && e.status === 409 ? MXCONECTAR : ' <button type="button" class="sec chico" ' +
+      (e && e.status === 409 ? MXCONECTAR : ' <button type="button" class="btn btn-sec chico" ' +
         'id="mxReintentarCuentas">Reintentar</button>');
     aviso.hidden = false;
     const re = $("#mxReintentarCuentas");
@@ -669,15 +687,18 @@ function mxPintarEjemplo() {
         <p>${esc(mxEjemplo.texto || "")}</p>
       </div></div>` +
     (viejo
-      ? '<p class="aviso" style="margin-top:10px">Cambiaste la campaña después de ver esto. ' +
+      ? '<p class="aviso" style="margin-top:12px">Cambiaste la campaña después de ver esto. ' +
         'Mira otro ejemplo antes de encenderla: verlo no cuesta nada.</p>'
-      : '<p class="mut" style="margin-top:10px">Así se vería tu primera publicación. ' +
+      : '<p class="mut" style="margin-top:12px">Así se vería tu primera publicación. ' +
         'Verla no cuesta nada.</p>');
   caja.hidden = false;
 }
 
 function mxPintarCosto() {
   const caja = $("#mxCostoCaja");
+  // carta §3: un solo ámbar por vista. Mientras se enseña el costo, el
+  // principal es «Encender la campaña» y «Ver otro ejemplo» pasa a secundario
+  $("#mxVer").className = (mxEjemploVigente() && mxCosto) ? "btn btn-sec" : "btn btn-pri";
   // el costo NO se enseña antes del ejemplo: es el orden que pidió el dueño
   if (!mxEjemploVigente() || !mxCosto) { caja.hidden = true; caja.innerHTML = ""; return; }
   const c = mxCosto;
@@ -695,9 +716,9 @@ function mxPintarCosto() {
   html += "</p>";
   if (!alcanza)
     html += `<p class="err">Te faltan ${mxPl(c.faltan, "crédito", "créditos")} para esta ` +
-      'campaña. <button type="button" class="sec chico" id="mxRecargar">Recargar</button></p>';
+      'campaña. <button type="button" class="btn btn-sec chico" id="mxRecargar">Recargar</button></p>';
   html += '<div class="controles" style="margin-top:14px">' +
-    `<button type="button" class="pri" id="mxEncender"${alcanza ? "" : " disabled"}>` +
+    `<button type="button" class="btn btn-pri" id="mxEncender"${alcanza ? "" : " disabled"}>` +
     "Encender la campaña</button>" +
     '<span class="mut">A partir de ahí sale sola, sin que la revises.</span></div>';
   caja.innerHTML = html;
