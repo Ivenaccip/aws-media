@@ -158,8 +158,8 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
 
 1. **Stack:** ✅ Vite + React + TS + Tailwind + Radix en MPA.
 2. **Invariantes de diseño:** ✅ se mantienen la paleta M20, solo modo
-   oscuro, «Verbo ✦ N», el orbe y el menú lateral. **Abiertos:** el acento
-   único y la fuente. Se deciden con el lienzo de propuestas de diseño.
+   oscuro, «Verbo ✦ N», el orbe y el menú lateral. La fuente se decidió
+   en el lienzo (ver §8). **Abierto:** el acento único.
 3. **10-oct:** 🔀 la sección pública (`/automatizacion`, fase 2) y la
    portada (fase 6) las lleva **otro agente**. Esta línea (etiqueta
    «Claude Code Online») se dedica a mejorar la UI/UX de las pantallas que
@@ -176,3 +176,20 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
 **Ramas:** los PRs van a `dev`, nunca a `main`. Cada commit de una tarjeta
 empieza con `UI·N:` para poder correlacionar los cambios de la interfaz
 con su tarjeta (`git log --grep "^UI·"`).
+
+## 8. Propuestas de diseño elegidas (lienzo del 25-sep)
+
+Lienzo: https://claude.ai/artifact/AHYpxmhtur9e528hAjgHmv
+
+| # | Propuesta | Decisión |
+|---|---|---|
+| 1 | Tipografía | ✅ **C: Bricolage Grotesque (títulos) + Geist (texto)** |
+| 2 | Botones | ✅ tres niveles (principal ámbar, secundario, discreto), cinco estados |
+| 3 | Menú lateral | ✅ la versión de escritorio, pero el centro del inicio sigue siendo el bloque de crear imagen/video que ya existe (`.prompt` en `static/index.html`). Móvil: sin decidir |
+| 4 | Iconos | ✅ un juego de iconos en lugar de los emojis |
+| 5 | Pantallas vacías | ✅ los tres caminos iniciales |
+| 6 | Esperas | ✅ **solo la espera larga** (pasos + tiempo restante al producir). Los skeletons de las esperas cortas quedan fuera por ahora; la propuesta se puede mejorar después |
+| 7 | Errores | ✅ qué pasó / qué pasó con tus créditos / qué sigue, más la validación en línea |
+| 8 | Confirmar vs deshacer | ⏸ en pausa, se platica después |
+| 9 | Costo en un solo lugar | ❌ rechazada: la pantalla se queda como está. El problema de conteo («Generar ✦ 100» cuando el primer cobro es ✦ 10) quedó anotado en Trello |
+| 10 | Accesibilidad | ❓ por explicar al dueño |
