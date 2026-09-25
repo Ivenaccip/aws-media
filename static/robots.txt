@@ -1,0 +1,12 @@
+# Tarjeta 38: a los buscadores solo les interesa lo público (la portada y la
+# entrada). El estudio y sus pantallas piden sesión: indexarlos daría
+# resultados que llevan a un login. Lo público nuevo (p. ej. /automatiza) se
+# agrega aquí con su Allow.
+User-agent: *
+Allow: /$
+Allow: /entrar$
+Allow: /carta.css
+Allow: /enlaces.js
+Allow: /fuentes/
+Allow: /favicon.svg
+Disallow: /

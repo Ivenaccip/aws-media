@@ -5,79 +5,103 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Clip de 8 segundos</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { color-scheme: dark; }
+  /* los nombres de siempre, ahora apuntando a los tokens de la carta */
+  :root { --bg:var(--c-fondo); --card:var(--c-superficie); --line:var(--c-linea); --txt:var(--c-texto);
+          --mut:var(--c-secundario); --acc:var(--c-ambar); --acc2:var(--c-ambar-claro);
+          --hundido:var(--c-hundido); --elev:var(--c-elevada); --campo:var(--c-campo); }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
+  /* 64 arriba: la píldora del monedero acaba a 52 px (UI·12) */
+  body { font: var(--t-sm)/1.5 var(--f-texto); background: var(--bg); color: var(--txt); padding: 64px 16px 48px; }
   main { max-width: 860px; margin: 0 auto; }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
-  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
-  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
-           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
-  button:hover { border-color: #5b8dd6; }
-  button:disabled { opacity: .5; cursor: default; background: #18293f; }
-  textarea { width: 100%; background: #18293f; color: #ece8e1; border: 1px solid #55708f;
-             border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 14px;
-             resize: vertical; min-height: 84px; }
-  .mut { color: #93a3b8; font-size: 13px; }
-  .err { color: #ff8080; font-size: 14px; }
-  .aviso { color: #f0a94a; font-size: 13.5px; }
-  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .formatos { display: inline-flex; border: 1px solid #22354f; border-radius: 9px; overflow: hidden; }
-  .formatos button { border: 0; border-radius: 0; background: #18293f; font-size: 13.5px; padding: 8px 14px; }
-  .formatos button[aria-pressed="true"] { background: #2b4a75; }
-  .fotos { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
-  .foto { position: relative; width: 92px; height: 92px; border-radius: 10px; overflow: hidden;
-          border: 1px solid #22354f; background: #18293f; }
+  a { color: var(--c-enlace); }
+  .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }
+  .volver:hover { color: var(--txt); }
+  /* carta §2: títulos en Bricolage, escala de seis tamaños */
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0 12px; }
+  p.sub { color: var(--mut); font-size: var(--t-md); line-height: 1.55; max-width: 65ch; margin-bottom: 24px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-grande); padding: 24px; margin-bottom: 24px; }
+  section h2 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin-bottom: 12px;
+               display: flex; align-items: center; gap: 8px; }
+  /* carta §6: los iconos de los títulos van en gris */
+  h2 .ico { color: var(--mut); }
+  button { font: inherit; }
+  textarea { width: 100%; background: var(--elev); color: var(--txt); border: 1px solid var(--campo);
+             border-radius: var(--r-medio); padding: 12px; font: inherit;
+             resize: vertical; min-height: 88px; }
+  .mut { color: var(--mut); font-size: var(--t-xs); }
+  .err { color: var(--c-error); font-size: var(--t-sm); }
+  /* el aviso del recorte va en la caja de aviso de la carta (§3) */
+  .aviso { font-size: var(--t-xs); margin-top: 4px; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+  /* elegir no es «hacer»: lo elegido en blanco, el hover en gris (carta §3) */
+  .formatos { display: inline-flex; gap: 8px; }
+  .formatos button { min-height: 44px; padding: 0 16px; border: 1px solid var(--campo); border-radius: var(--r-medio);
+                     background: transparent; color: var(--mut); cursor: pointer;
+                     transition: border-color var(--m-rapido) ease-out, color var(--m-rapido) ease-out; }
+  .formatos button:hover { border-color: var(--mut); color: var(--txt); }
+  .formatos button[aria-pressed="true"] { border-color: var(--txt); background: var(--elev); color: var(--txt); }
+  /* carta §5: la forma y los estados los pone carta.css; aquí solo el alto */
+  #btn-generar { min-height: 48px; }
+  .fotos { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+  .foto { position: relative; width: 92px; height: 92px; border-radius: var(--r-medio); overflow: hidden;
+          border: 1px solid var(--line); background: var(--elev); }
   .foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .foto .quitar { position: absolute; top: 3px; right: 3px; padding: 1px 7px; font-size: 12px;
-                  background: #0b1626cc; border-radius: 999px; }
-  .foto.subiendo { display: flex; align-items: center; justify-content: center; font-size: 12px; color: #93a3b8; }
-  .agregar { width: 92px; height: 92px; border: 1px dashed #55708f; border-radius: 10px;
-             background: #18293f; color: #93a3b8; font-size: 12px; line-height: 1.3; }
-  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-  .tarjeta video { width: 100%; border-radius: 10px; margin-top: 10px; background: #000; }
-  .tarjeta .pedido { font-size: 14px; margin-bottom: 4px; }
+  /* quitar: 44 px que se tocan, un círculo de 24 que se ve */
+  .foto .quitar { position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 0;
+                  display: grid; place-items: center; border: 0; background: none; color: var(--txt); cursor: pointer; }
+  .foto .quitar .ico { width: 24px; height: 24px; padding: 4px; border-radius: 50%; border: 1px solid var(--line);
+                       background: color-mix(in srgb, var(--hundido) 85%, transparent); }
+  .foto .quitar:hover .ico { border-color: var(--mut); }
+  .foto.subiendo { display: flex; align-items: center; justify-content: center; font-size: var(--t-xs); color: var(--mut); }
+  .agregar { width: 92px; height: 92px; border: 1px dashed var(--campo); border-radius: var(--r-medio);
+             background: var(--elev); color: var(--txt); font-size: var(--t-xs); line-height: 1.45; cursor: pointer;
+             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .agregar:hover { border-color: var(--mut); }
+  .agregar .ico { color: var(--mut); }
+  .tarjeta { border: 1px solid var(--line); border-radius: var(--r-grande); padding: 16px; margin-bottom: 16px; }
+  .tarjeta video { width: 100%; border-radius: var(--r-medio); margin-top: 12px; background: var(--hundido); }
+  .tarjeta .pedido { font-size: var(--t-sm); margin-bottom: 4px; }
   .generando { min-height: 40px; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
 </style>
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← Estudio</a>
+  <a class="volver" href="/estudio/"><i data-icono="volver"></i>Estudio</a>
   <h1>Clip de 8 segundos</h1>
   <p class="sub">Escribe qué quieres ver y te lo entregamos en un video corto <b>con sonido</b>.
     Sin guion, sin escenas y sin pantalla de revisión: es una sola toma. Si subes fotos, salen
     en el video; si no subes ninguna, se inventa la imagen.</p>
 
   <section>
-    <h2>Qué quieres ver</h2>
+    <h2><i data-icono="idea"></i>Qué quieres ver</h2>
     <textarea id="texto" maxlength="2000" placeholder="Mi perro corriendo en la playa al atardecer, con la cámara siguiéndolo"></textarea>
     <div class="fotos" id="fotos"></div>
     <input type="file" id="archivo" accept="image/*,.heic,.heif" hidden>
     <p id="est-foto" class="mut"></p>
-    <div class="controles" style="margin-top:14px">
+    <div class="controles">
       <div class="formatos" id="formatos">
         <button type="button" data-formato="horizontal" aria-pressed="true">Horizontal</button>
         <button type="button" data-formato="vertical" aria-pressed="false">Vertical</button>
       </div>
-      <button id="btn-generar">Generar</button>
+      <button id="btn-generar" class="btn btn-pri">Generar</button>
       <span id="precio" class="mut"></span>
     </div>
     <p id="estado" class="mut" style="margin-top:8px"></p>
   </section>
 
   <section>
-    <h2>Tus clips</h2>
+    <h2><i data-icono="video"></i>Tus clips</h2>
     <div id="clips"><span class="mut">Cargando…</span></div>
   </section>
 </main>
+<script src="/iconos.js"></script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 <script src="/orbe.js"></script>
 <script>
 // ── cl · Clip de 8 segundos (M25 · A/F)
@@ -135,9 +159,9 @@ function clPintarFotos() {
   $("fotos").innerHTML = CLFOTOS.map((f, i) => f.subiendo
     ? '<div class="foto subiendo"><span class="spin">Subiendo</span></div>'
     : `<div class="foto"><img src="${clEsc(f.url)}" alt="">
-       <button class="quitar" data-quitar="${i}" title="Quitar">✕</button></div>`).join("")
+       <button type="button" class="quitar" data-quitar="${i}" title="Quitar" aria-label="Quitar foto">${icono('cerrar')}</button></div>`).join("")
     + (CLFOTOS.length < tope
-       ? `<button type="button" class="agregar" id="btn-foto">+ Foto<br><span class="mut">${
+       ? `<button type="button" class="agregar" id="btn-foto">${icono('mas')}<span>Foto</span><span class="mut">${
             CLFOTOS.length} de ${tope}</span></button>`
        : "");
   for (const b of $("fotos").querySelectorAll("[data-quitar]"))
@@ -196,7 +220,7 @@ function clTarjeta(c) {
     <p class="mut">${clEsc(c.segundos)} s · ${c.imagenes
       ? clEsc(c.imagenes) + (c.imagenes === 1 ? " foto tuya" : " fotos tuyas") : "sin fotos"}
     · ✦ ${clEsc(c.creditos)}</p>
-    ${c.recorte ? `<p class="aviso">${clEsc(c.recorte)}</p>` : ""}
+    ${c.recorte ? `<p class="aviso aviso-caja">${icono('aviso')}<span>${clEsc(c.recorte)}</span></p>` : ""}
     <video src="${clEsc(c.video)}" controls preload="metadata"></video></div>`;
 }
 
@@ -226,6 +250,7 @@ async function clCargar() {
         : '<span class="mut">Todavía no has hecho ninguno.</span>';
       clPonerOrbe();
     }
+    window.avisos?.quitar("clip-carga");
     const vivos = clips.some(c => c.estado === "generando");
     clearTimeout(clPoll);
     if (vivos) clPoll = setTimeout(clCargar, 5000);
@@ -234,7 +259,11 @@ async function clCargar() {
       window.monedero && monedero.refrescar && monedero.refrescar();
     }
   } catch (e) {
-    $("clips").innerHTML = `<span class="err">${clEsc(e.message)}</span>`;
+    // UI·16: el fallo va al cuadro de avisos, no dentro de la lista; si nunca
+    // cargó, se quita el «Cargando…». El reintento solo de 15 s sigue.
+    window.avisos?.mostrar("No pudimos traer tus clips. Lo volvemos a intentar en unos segundos.",
+      { tipo: "mal", clave: "clip-carga", accion: { texto: "Reintentar", al: clCargar } });
+    if ($("clips").textContent.trim() === "Cargando…") $("clips").innerHTML = "";
     clearTimeout(clPoll);
     clPoll = setTimeout(clCargar, 15000);
   }

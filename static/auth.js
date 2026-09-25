@@ -24,34 +24,66 @@
     if (d.refresh_token) localStorage.setItem('auth_refresh_token', d.refresh_token);
   }
 
-  async function login() {
-    const c = await cfgPromesa;
-    if (!c.activo) return;
-    const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
-    sessionStorage.setItem('auth_verifier', verifier);
-    sessionStorage.setItem('auth_volver', location.pathname + location.search);
-    const reto = b64url(new Uint8Array(
-      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
-    location.href = 'https://' + c.dominio + '/oauth2/authorize' +
-      '?client_id=' + c.client_id + '&response_type=code&scope=openid+email' +
-      '&redirect_uri=' + encodeURIComponent(location.origin + '/callback.html') +
-      '&code_challenge_method=S256&code_challenge=' + reto +
-      '&lang=es';   // Managed Login: fuerza la pantalla en español
+  // /entrar valida `volver` y lo pasa; el 401 dentro de la app usa la página
+  // actual. Single-flight: si llegan siete 401 juntos, solo el primero genera
+  // el verifier y navega; los demás esperan la misma promesa. Antes cada uno
+  // pisaba auth_verifier en sessionStorage y el canje de callback.html podía
+  // quedarse con uno que no era el del código de Cognito.
+  let loginEnCurso = null;
+  function login(volver) {
+    loginEnCurso = loginEnCurso || (async () => {
+      const c = await cfgPromesa;
+      if (!c.activo) return;
+      const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+      sessionStorage.setItem('auth_verifier', verifier);
+      sessionStorage.setItem('auth_volver', volver || (location.pathname + location.search));
+      const reto = b64url(new Uint8Array(
+        await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+      location.href = 'https://' + c.dominio + '/oauth2/authorize' +
+        '?client_id=' + c.client_id + '&response_type=code&scope=openid+email' +
+        '&redirect_uri=' + encodeURIComponent(location.origin + '/callback.html') +
+        '&code_challenge_method=S256&code_challenge=' + reto +
+        '&lang=es';   // Managed Login: fuerza la pantalla en español
+    })();
+    return loginEnCurso;
+  }
+  // Si vuelven con «atrás» desde Cognito, el navegador restaura la página con
+  // su JS tal cual (bfcache) y la promesa ya resuelta: el siguiente login no
+  // navegaría. Se suelta al volver.
+  window.addEventListener('pageshow', e => { if (e.persisted) loginEnCurso = null; });
+
+  // Single-flight también: un refresh_token de Cognito se puede usar varias
+  // veces, pero siete POST a /oauth2/token por un solo vencimiento son seis de
+  // más. Los que llegan mientras uno está en vuelo esperan su resultado.
+  let refrescoEnCurso = null;
+  function refrescar() {
+    refrescoEnCurso = refrescoEnCurso || (async () => {
+      const c = await cfgPromesa;
+      const rt = localStorage.getItem('auth_refresh_token');
+      if (!c.activo || !rt) return false;
+      try {
+        const r = await fetchReal('https://' + c.dominio + '/oauth2/token', {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'grant_type=refresh_token&client_id=' + c.client_id + '&refresh_token=' + encodeURIComponent(rt),
+        });
+        if (!r.ok) return false;
+        guardarTokens(await r.json());
+        return true;
+      } catch { return false; }
+    })().finally(() => { refrescoEnCurso = null; });
+    return refrescoEnCurso;
   }
 
-  async function refrescar() {
-    const c = await cfgPromesa;
-    const rt = localStorage.getItem('auth_refresh_token');
-    if (!c.activo || !rt) return false;
+  // Segundos que le quedan al id_token guardado (0 si no hay o no se lee).
+  // Lo usa /entrar para decidir si basta con rehacer la cookie —que es de
+  // sesión y se pierde al cerrar el navegador— o hay que refrescar.
+  function segundosRestantes() {
+    const t = localStorage.getItem('auth_id_token');
+    if (!t) return 0;
     try {
-      const r = await fetchReal('https://' + c.dominio + '/oauth2/token', {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'grant_type=refresh_token&client_id=' + c.client_id + '&refresh_token=' + encodeURIComponent(rt),
-      });
-      if (!r.ok) return false;
-      guardarTokens(await r.json());
-      return true;
-    } catch { return false; }
+      const b = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      return Math.max(0, JSON.parse(atob(b)).exp - Date.now() / 1000);
+    } catch { return 0; }
   }
 
   function salir() {
@@ -78,9 +110,13 @@
     const url = typeof entrada === 'string' ? entrada : entrada.url;
     const propia = url.startsWith('/') || url.startsWith(location.origin);
     if (!propia) return fetchReal(entrada, init);
+    const usado = localStorage.getItem('auth_id_token');
     let r = await conToken(entrada, init);
     if (r.status === 401 && (await cfgPromesa).activo) {
-      if (await refrescar()) r = await conToken(entrada, init);
+      // si otro fetch ya refrescó mientras este volaba con el token viejo,
+      // basta reintentar con el nuevo: no hace falta otro refresh
+      const ahora = localStorage.getItem('auth_id_token');
+      if ((ahora && ahora !== usado) || await refrescar()) r = await conToken(entrada, init);
       if (r.status === 401) { await login(); return new Promise(() => {}); }
     }
     if (r.status === 403) avisoAcceso();
@@ -110,5 +146,6 @@
     avisoT = setTimeout(() => { aviso.remove(); aviso = null; }, 8000);
   }
 
-  window.auth = { login, salir, refrescar, guardarTokens, config: () => cfgPromesa };
+  window.auth = { login, salir, refrescar, guardarTokens, segundosRestantes,
+                  config: () => cfgPromesa };
 })();

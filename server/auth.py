@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 from contextvars import ContextVar
 from functools import lru_cache
+from urllib.parse import quote
 
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -103,8 +104,10 @@ async def middleware(request, call_next):
 
 
 def _rechazo(request, detalle: str):
-    # navegación directa (p. ej. /editor/x en la barra) → a la portada, donde
-    # auth.js arranca el login; llamadas fetch → 401 y auth.js lo maneja
+    # navegación directa (p. ej. /editor/x en la barra) → a /entrar, que
+    # recupera la sesión o pide login y luego vuelve aquí (tarjeta 37; antes
+    # iba a «/», que ahora es la portada pública); fetch → 401 y auth.js lo maneja
     if "text/html" in request.headers.get("accept", ""):
-        return RedirectResponse("/")
+        ruta = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse("/entrar?volver=" + quote(ruta, safe=""))
     return JSONResponse({"detail": detalle}, status_code=401)

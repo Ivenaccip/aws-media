@@ -170,8 +170,8 @@ def test_los_caminos_solo_con_las_cuatro_listas_bien_y_vacias():
     js = _js(INICIO)
     carga = js[js.index("async function cargar()"):js.index("function render(ps)")]
     assert "const nuevo = !ps.length && ri && ri.ok && !imagenes.length && eds && !eds.length;" in carga
-    assert "if (!rp.ok) return;" in carga
-    assert carga.index("if (!rp.ok) return;") < carga.index("const nuevo")
+    assert "if (!rp.ok) { avisarCarga(); return; }" in carga
+    assert carga.index("if (!rp.ok) { avisarCarga(); return; }") < carga.index("const nuevo")
 
 
 def test_desde_una_idea_no_cobra_solo_elige():

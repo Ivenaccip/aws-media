@@ -300,7 +300,8 @@ def test_el_temporizador(html):
     assert 'id="dur-menos"' in duracion and 'id="dur-mas"' in duracion
     assert 'role="spinbutton"' in duracion and 'id="durv">0:30<' in duracion
     assert 'pathLength="100"' in duracion
-    assert "Costo aprox.: <b>✦ <span id=\"durcosto\">" in duracion
+    # opción A: el total vive junto a la duración
+    assert 'Película de <span id="durcostov">0:30</span>: <b>✦ <span id="durcosto"></span> en total</b>' in duracion
     js = _js(html)
     assert "let dur = 30;" in js
     assert "const DUR_BASE = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60];" in js
@@ -310,9 +311,10 @@ def test_el_boton_dice_el_precio_de_la_duracion(html):
     js = _js(html)
     costos = _bloque(js, "function pintaCostos()")
     assert "total = precioDe(dur)" in costos
-    assert "`Generar ✦ ${total}`" in costos
+    # opción A (dueño, 25-sep): el botón dice lo que se cobra al tocarlo
+    assert "`Generar ✦ ${prep}`" in costos and "`Generar ✦ ${total}`" not in costos
     # y explica que se cobra en dos partes
-    assert "al empezar y ${total - prep} al producir" in costos
+    assert "Ahora se cobran ${prep} créditos por la historia y el personaje; los otros ${total - prep}, al producir" in costos
     # al empezar solo tiene que alcanzar el guion
     assert "const falta = prep - mon.saldo;" in costos
     # la duración se ajusta a la tabla ANTES de leer su precio
@@ -465,3 +467,12 @@ def test_el_temporizador_en_node(html, tmp_path):
     assert o["recortada"]["menos"] and not o["recortada"]["mas"]
     # en vuelo el reloj no se mueve
     assert o["enVuelo"] == {"dur": 20, "pintados": 0}
+
+
+def test_producir_recuerda_que_con_el_guion_suma_el_total(html):
+    """Opción A (dueño, 25-sep): «Producir ✦ 90» no se lee como un segundo
+    precio completo: la nota suma lo del guion y da el total de la tabla."""
+    js = _js(html)
+    prod = _bloque(js, "function pintaProducir()")
+    assert "precioDe(proyecto.duracion_s)" in prod
+    assert "`Con los ${mon.tarifas.preparar} créditos del guion, tu película suma ${total}. `" in prod

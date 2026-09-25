@@ -184,7 +184,16 @@ const document = {
     ? botonesDe(el("mtLista").innerHTML) : [],
   addEventListener: (tipo, fn) => { if (tipo === "DOMContentLoaded") arranque = fn; },
 };
-const window = {};
+// el cuadro de avisos de trabajos.js (UI·16): se guarda lo último por clave
+// y todo lo que se mostró, en orden
+const vivos = {}, mostrados = [];
+const location = {href: ""};
+const window = {avisos: {
+  mostrar(texto, op = {}) { const a = {texto, ...op}; mostrados.push(a);
+                            if (a.clave) vivos[a.clave] = a; return mostrados.length; },
+  quitar(c) { delete vivos[c]; },
+}};
+const aviso = c => (vivos[c] ? vivos[c].texto : "");
 let respuestas = [], llamadas = [];
 const OK = cuerpo => ({status: 200, cuerpo});
 const FALLO = (status, detail) => ({status, cuerpo: {detail}});
@@ -332,7 +341,7 @@ respuestas = [OK(PAGINA({items: [ITEM()], cursor: "c2"})),
 await mtCargar();
 await mtCargar();
 out.items = MTREC.length; out.cursor = MTCURSOR;
-out.aviso = el("mtErr").innerHTML;
+out.aviso = aviso("metricas-error");
 """, tmp_path)
     assert o["items"] == 1 and o["cursor"] == "c2"
     assert "Blotato no respondió." in o["aviso"]
@@ -426,9 +435,9 @@ respuestas = [OK(PAGINA({items: [ITEM()], cursor: "c2"})),
               new TypeError("Failed to fetch")];
 await mtCargar();
 await mtCargar();
-out.tras500 = {items: MTREC.length, cursor: MTCURSOR, aviso: el("mtErr").innerHTML};
+out.tras500 = {items: MTREC.length, cursor: MTCURSOR, aviso: aviso("metricas-error")};
 await mtCargar();
-out.trasRed = {items: MTREC.length, cursor: MTCURSOR, aviso: el("mtErr").innerHTML};
+out.trasRed = {items: MTREC.length, cursor: MTCURSOR, aviso: aviso("metricas-error")};
 """, tmp_path)
     assert o["tras500"]["items"] == 1 and o["tras500"]["cursor"] == "c2"
     assert "Se rompió algo." in o["tras500"]["aviso"]
@@ -503,7 +512,7 @@ respuestas = [OK(PAGINA({items: [ITEM()], truncado: true,
                          error: "Blotato pide esperar un momento."}))];
 await mtCargar();
 out.nota = el("mtNota").textContent;
-out.err = el("mtErr").innerHTML;
+out.err = aviso("metricas-error");
 """, tmp_path)
     assert "100 más vistas" in o["nota"]
     assert "esperar" in o["err"] and "100" not in o["err"]

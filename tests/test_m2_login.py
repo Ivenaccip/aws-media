@@ -119,9 +119,10 @@ def test_api_token_invalido_401(cliente):
     assert r.status_code == 401 and "venció" in r.json()["detail"]
 
 
-def test_navegacion_html_sin_token_redirige_a_portada(cliente):
+def test_navegacion_html_sin_token_redirige_a_entrar(cliente):
+    # tarjeta 37: ya no a «/» (la portada pública), sino a /entrar con la ruta
     r = cliente.get("/editor/x", headers={"Accept": "text/html"}, follow_redirects=False)
-    assert r.status_code in (302, 307) and r.headers["location"] == "/"
+    assert r.status_code in (302, 307) and r.headers["location"] == "/entrar?volver=%2Feditor%2Fx"
 
 
 def test_auth_config_es_publico(cliente, monkeypatch):
