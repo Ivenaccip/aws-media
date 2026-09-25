@@ -35,7 +35,6 @@
   .err .ico { margin-right: 4px; }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
   .nota { margin-top: 8px; }
-  #red .ico { margin-right: 4px; }
   .cuenta { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line);
             border-radius: var(--r-medio); padding: 8px 8px 8px 12px; margin-bottom: 8px; }
   .cuenta b { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
@@ -102,7 +101,6 @@
       <span id="precio" class="mut"></span>
     </div>
     <p id="estado" class="mut nota"></p>
-    <p id="red" class="mut nota" hidden><i data-icono="sinred"></i>Sin conexión — reintentando… Tu revisión sigue en la nube.</p>
   </section>
 
   <section>
@@ -292,29 +290,46 @@ async function cpAbrir(id) {
   cpFirma = null;
   if (!CPDETALLE[id]) {
     cpCargar();   // pinta «Abriendo…» mientras llega
-    try { CPDETALLE[id] = await cpFj(`/api/competencia/informes/${encodeURIComponent(id)}`); }
-    catch (e) { CPDETALLE[id] = { publicaciones: [], lectura: {}, fallidas: [] }; }
+    try {
+      CPDETALLE[id] = await cpFj(`/api/competencia/informes/${encodeURIComponent(id)}`);
+      window.avisos?.quitar("competencia-abrir");
+    } catch (e) {
+      // UI·16: antes se guardaba un informe vacío y callaba; ahora se cierra
+      // (así el próximo «Ver» lo vuelve a pedir) y se dice.
+      if (cpAbierto === id) cpAbierto = null;
+      window.avisos?.mostrar("No pudimos abrir ese informe. Inténtalo de nuevo.",
+        { tipo: "mal", clave: "competencia-abrir", accion: { texto: "Reintentar", al: () => { if (cpAbierto !== id) cpAbrir(id); } } });
+    }
     cpFirma = null;
   }
   cpCargar();
 }
 
+let cpRedPuesto = false;
 async function cpCargar() {
   let j;
   try { j = await cpFj("/api/competencia"); }
   catch (e) {
     // un fallo de red no puede matar el poll de una revisión viva (M19)
     if (cpFirma && cpFirma.includes("analizando")) {
-      $("red").hidden = false;
+      cpRedPuesto = true;
+      window.avisos?.mostrar("Sin conexión — reintentando… Tu revisión sigue en la nube.",
+                             { tipo: "info", clave: "red" });
       cpOrbe.estado("idle");
       cpProgramarPoll();
       return;
     }
-    $("informes").innerHTML = `<span class="err">${cpEsc(e.message)}</span>`;
-    $("cuentas").innerHTML = "";
+    // UI·16: el fallo va al cuadro de avisos, no dentro de la lista; si nunca
+    // cargó, se quita el «Cargando…» para que no mienta.
+    window.avisos?.mostrar("No pudimos traer tus cuentas y revisiones. Revisa tu conexión e inténtalo de nuevo.",
+      { tipo: "mal", clave: "competencia-carga", accion: { texto: "Reintentar", al: cpCargar } });
+    if (CPTARIFA === null) { $("informes").innerHTML = ""; $("cuentas").innerHTML = ""; }
     return;
   }
-  $("red").hidden = true;
+  // solo se quita el aviso de red que puso esta pantalla (misma clave que
+  // trabajos.js: su «Conexión recuperada» no debe borrarse al sondear)
+  if (cpRedPuesto) { cpRedPuesto = false; window.avisos?.quitar("red"); }
+  window.avisos?.quitar("competencia-carga");
   CPTARIFA = j.credito_por_cuenta;
   cpPintarCuentas(j.cuentas || [], j.max_cuentas);
   const firma = JSON.stringify((j.informes || []).map(r => [r.id, r.estado, cpAbierto === r.id]));
@@ -350,7 +365,12 @@ async function cpQuitar(id) {
     const j = await cpFj(`/api/competencia/cuentas/${encodeURIComponent(id)}`, { method: "DELETE" });
     cpPintarCuentas(j.cuentas || [], j.max_cuentas || 5);
     $("est-cuenta").textContent = "";
-  } catch (e) { $("est-cuenta").innerHTML = `<span class="err">${cpEsc(e.message)}</span>`; }
+    window.avisos?.quitar("competencia-quitar");
+  } catch (e) {
+    // UI·16: quitar no es el campo de agregar; el fallo va al cuadro de avisos
+    window.avisos?.mostrar("No pudimos quitar esa cuenta. Inténtalo de nuevo.",
+      { tipo: "mal", clave: "competencia-quitar", accion: { texto: "Reintentar", al: () => cpQuitar(id) } });
+  }
 }
 
 $("btn-agregar").onclick = async () => {

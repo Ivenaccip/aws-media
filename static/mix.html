@@ -46,14 +46,10 @@
   label { display: block; font-size: var(--t-xs); color: var(--mut); margin-bottom: 4px; }
   .mut { color: var(--mut); font-size: var(--t-xs); }
   .err { color: var(--c-error); font-size: var(--t-sm); }
-  .ok { color: var(--c-exito); font-size: var(--t-sm); }
   /* aviso de estado (ejemplo viejo, campaña en pausa): va en la caja de aviso
      de la carta (§3), no en ámbar suelto */
   .aviso { font-size: var(--t-sm); }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM (un
-     role="status" que aparece y desaparece no lo anuncia el lector) */
-  #mxEstado:empty { display: none; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
 
   /* --- 1. la foto --- */
@@ -166,9 +162,6 @@
     A partir de ahí sale <b>una publicación al día</b>, sola, sin que tengas que revisarla.
     Tu foto es la base de todas las imágenes.</p>
 
-  <p id="mxErr" class="err" role="alert" hidden></p>
-  <p id="mxEstado" class="ok" role="status" aria-live="polite"></p>
-
   <section id="mxSinBlotato" hidden>
     <h2>Conecta tu Blotato para usar MIX</h2>
     <p class="ayuda" style="margin-bottom:0">MIX publica por ti en tus redes, y para eso necesita
@@ -256,6 +249,7 @@
         <button type="button" class="btn btn-pri" id="mxVer">Ver un ejemplo</button>
         <span class="mut" id="mxFalta"></span>
       </div>
+      <p class="err" id="mxVerErr" role="alert" style="margin-top:8px" hidden></p>
       <div id="mxEspera" hidden style="margin-top:16px"></div>
       <div id="mxEjemploCaja" hidden></div>
       <div id="mxCostoCaja" hidden></div>
@@ -362,7 +356,9 @@ function mxRotulo(mapa, clave, porDefecto) {
 }
 const MXTIPOS = ["image/jpeg", "image/png", "image/webp"];
 const MXMAXBYTES = 12 * 1024 * 1024;
-const MXCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+// adónde lleva «Conectar Blotato»: el enlace de #mxCuentaErr y la acción del aviso
+const MXCONECTAR_A = "/?blotato=conectar";
+const MXCONECTAR = ` <a href="${MXCONECTAR_A}">Conectar Blotato</a>`;
 
 let MX = null;              // la última respuesta de GET /api/mix
 let MXCUENTAS = [];
@@ -424,19 +420,30 @@ const mxN = v => String(Math.trunc(Number(v) || 0));
 const mxPl = (v, uno, varios) => `${mxN(v)} ${Math.trunc(Number(v) || 0) === 1 ? uno : varios}`;
 
 // ── avisos ──────────────────────────────────────────────────────────────────
-function mxAviso(msg, conectar) {
-  const p = $("#mxErr");
-  p.hidden = !msg;
-  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? MXCONECTAR : "") : "";
-  if (msg) p.scrollIntoView({ block: "nearest" });
+// Los fallos de red o del servidor no son de ningún campo: van al cuadro de
+// avisos de trabajos.js, que escapa el texto y lleva el role="alert"/"status"
+// que antes llevaba la línea de la pantalla. Sin mensaje, se quita el que hubiera.
+function mxAviso(msg, conectar, reintentar) {
+  if (!msg) { window.avisos?.quitar('mix-error'); return; }
+  const op = {tipo:'mal', clave:'mix-error'};
+  if (conectar) op.accion = {texto:'Conectar Blotato', al: () => { location.href = MXCONECTAR_A; }};
+  else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};
+  window.avisos?.mostrar(msg, op);
 }
-function mxAnunciar(msg) { $("#mxEstado").textContent = msg || ""; }
+// Lo que falta para pedir el ejemplo SÍ es de la pantalla (es validación, lo
+// mismo que dice #mxFalta): se queda junto al botón, no va al cuadro de avisos.
+function mxAvisoFalta(msg) {
+  const p = $("#mxVerErr");
+  p.hidden = !msg;
+  p.textContent = msg || "";
+}
 
-function mxFallo(e) {
+// `reintentar`: lo que falló, para ofrecerlo en el aviso (si no es conectar)
+function mxFallo(e, reintentar) {
   // 409 en MIX significa dos cosas distintas y solo una se arregla conectando:
   // el mensaje del servidor es el que distingue, no el status.
   const status = (e && typeof e.status === "number") ? e.status : 0;
-  mxAviso(mxTexto(e), status === 409 && /Blotato/i.test(e.message || ""));
+  mxAviso(mxTexto(e), status === 409 && /Blotato/i.test(e.message || ""), reintentar);
   return status;
 }
 
@@ -667,6 +674,7 @@ function mxQueFalta() {
 function mxCambio() {
   const falta = mxQueFalta();
   $("#mxFalta").textContent = falta;
+  if (!falta) mxAvisoFalta("");
   $("#mxVer").disabled = !!falta || mxTrabajando;
   $("#mxVer").textContent = mxEjemplo ? "Ver otro ejemplo" : "Ver un ejemplo";
   mxPintarEjemplo();
@@ -851,23 +859,28 @@ async function mxSeguirEjemplo(dia, firma) {
     mxEjemplo = { dia: String(fila.dia).slice(0, 10), texto: fila.texto,
                   imagen: fila.imagen };
     mxFirmaEjemplo = firma;
-    mxAnunciar("Listo: abajo está la publicación del primer día.");
+    window.avisos?.mostrar("Listo: abajo está la publicación del primer día.",
+      {tipo:'ok', clave:'mix-ejemplo'});
   } else {
     mxEjemplo = null;
-    // el anuncio verde de «lo estamos preparando» no puede quedarse al lado
-    // del error, ni encima de un ejemplo que se descartó sin fallar
-    mxAnunciar(fallo ? "" : "Descartamos ese ejemplo porque la campaña " +
-      "cambió. Pide otro cuando quieras: verlo no cuesta nada.");
-    if (fallo) mxFallo(fallo);
+    // el aviso de «lo estamos preparando» no puede quedarse al lado del
+    // error, ni encima de un ejemplo que se descartó sin fallar (misma clave)
+    if (fallo) {
+      window.avisos?.quitar('mix-ejemplo');
+      mxFallo(fallo);
+    } else window.avisos?.mostrar("Descartamos ese ejemplo porque la campaña " +
+      "cambió. Pide otro cuando quieras: verlo no cuesta nada.",
+      {tipo:'info', segundos: 8, clave:'mix-ejemplo'});
   }
   mxCambio();
 }
 
 async function mxVerEjemplo() {
   const falta = mxQueFalta();
-  if (falta) { mxAviso(falta); return; }
+  if (falta) { mxAvisoFalta(falta); return; }   // validación: junto al botón
+  mxAvisoFalta("");
   mxAviso("");
-  mxAnunciar("");
+  window.avisos?.quitar('mix-ejemplo');
   mxTrabajando = true;
   $("#mxVer").disabled = true;
   let dia = null, firma = null, fallo = null;
@@ -903,7 +916,8 @@ async function mxVerEjemplo() {
   mxEjemplo = null;
   mxFirmaEjemplo = null;
   mxCambio();      // mxTrabajando sigue en true: el botón no se reactiva
-  mxAnunciar("Estamos preparando tu ejemplo. Aparece aquí solo.");
+  window.avisos?.mostrar("Estamos preparando tu ejemplo. Aparece aquí solo.",
+    {tipo:'info', segundos: 8, clave:'mix-ejemplo'});
   await mxSeguirEjemplo(dia, firma);
 }
 
@@ -915,8 +929,8 @@ async function mxEncender() {
   try {
     const j = await mxPost("/api/mix/encender", { id: mxId || "" });
     if (window.monedero && monedero.refrescar) monedero.refrescar();
-    mxAnunciar(`Campaña encendida: ${mxPl(j.dias, "publicación", "publicaciones")}, ` +
-      `una cada día a las ${mxHoraTexto($("#mxHora").value)}.`);
+    window.avisos?.mostrar(`Campaña encendida: ${mxPl(j.dias, "publicación", "publicaciones")}, ` +
+      `una cada día a las ${mxHoraTexto($("#mxHora").value)}.`, {tipo:'ok'});
     await mxCargar();
   } catch (e) {
     mxFallo(e);
@@ -1076,9 +1090,9 @@ async function mxApagar() {
     const j = await mxPost("/api/mix/apagar", { confirmar: true });
     if (window.monedero && monedero.refrescar) monedero.refrescar();
     const devueltos = Math.trunc(Number(j.devueltos) || 0);
-    mxAnunciar(devueltos
+    window.avisos?.mostrar(devueltos
       ? `Campaña apagada. Te devolvimos ${mxPl(devueltos, "crédito", "créditos")}.`
-      : "Campaña apagada.");
+      : "Campaña apagada.", {tipo:'ok'});
     await mxCargar();
   } catch (e) {
     mxFallo(e);
@@ -1095,7 +1109,7 @@ async function mxReanudar() {
   mxAviso("");
   try {
     await mxPost("/api/mix/reanudar", { id: (MX.campana || {}).id || "" });
-    mxAnunciar("Campaña reanudada. La próxima sale a su hora.");
+    window.avisos?.mostrar("Campaña reanudada. La próxima sale a su hora.", {tipo:'ok'});
   } catch (e) {
     mxFallo(e);
   } finally {
@@ -1183,7 +1197,7 @@ async function mxCargar() {
     MX = await mxFj("/api/mix");
   } catch (e) {
     $("#mxCargando").hidden = true;
-    mxFallo(e);
+    mxFallo(e, mxCargar);
     return;
   }
   $("#mxCargando").hidden = true;

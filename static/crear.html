@@ -84,7 +84,6 @@
                  color:var(--mut); font-size:var(--t-xs); white-space:pre-wrap; word-break:break-word; }
   a { color:var(--c-enlace); }
   .volver { display:inline-flex; align-items:center; gap:6px; min-height:44px; text-decoration:none; }
-  #conexion .ico { vertical-align:-0.3em; }
   .hidden { display:none; }
   /* M19: los huecos del orbe no ocupan nada mientras no hay orbe montado */
   #orbe-form:not(:empty), #orbe-prog:not(:empty),
@@ -473,12 +472,6 @@
     <div class="err" id="eerr" role="alert"></div>
   </section>
 </main>
-<!-- M5: aviso de conexión del polling — el trabajo sigue en la nube -->
-<div id="conexion" hidden style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
-  background:#2e1b1b;border:1px solid #8f4a4a;border-radius:999px;padding:9px 18px;
-  font-size:var(--t-xs);color:#ffb4b4;z-index:1000">
-  <i data-icono="sinred"></i> Sin conexión — reintentando… Tu trabajo sigue en la nube, no cierres nada por nosotros.
-</div>
 
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
@@ -907,22 +900,27 @@ document.addEventListener('visibilitychange', () => {
   else { refrescar(); arrancarPoll(); }
 });
 // M5: polling resiliente — la conexión caída ya no congela la pantalla en
-// silencio: tras 2 fallos seguidos sale el banner y se sigue reintentando.
+// silencio: tras 2 fallos seguidos sale el aviso de red (UI·16: el cuadro de
+// avisos compartido, clave 'red', el mismo que usa trabajos.js) y se sigue
+// reintentando.
 let fallosPoll = 0;
 async function refrescar() {
   try {
     const r = await fetch('/api/proyectos/' + proyecto.id);
     if (!r.ok) throw new Error(r.status);
-    fallosPoll = 0; $('#conexion').hidden = true;
+    // solo quitamos el aviso si lo pusimos nosotros (no repintar el cuadro en
+    // cada sondeo ni borrar el «Conexión recuperada» de trabajos.js)
+    if (fallosPoll >= 2) window.avisos?.quitar('red');
+    fallosPoll = 0;
     mandoProg.estado('pensando');
     proyecto = await r.json(); render(proyecto);
     if (TERMINAL.includes(proyecto.estado)) { clearInterval(poll); poll = null; }
   } catch {
     if (++fallosPoll >= 2) {
-      $('#conexion').hidden = false;
+      window.avisos?.mostrar('Sin conexión — reintentando… Tu trabajo sigue en la nube.', {tipo:'info', clave:'red'});
       // M19: sin contacto no podemos AFIRMAR que la IA está trabajando ahora
       // mismo, así que el orbe baja a reposo. El trabajo sigue en la nube —lo
-      // dice el banner—, pero el orbe solo promete lo que sabemos.
+      // dice el aviso—, pero el orbe solo promete lo que sabemos.
       mandoProg.estado('idle');
     }
   }
@@ -1168,8 +1166,8 @@ function renderVoces(p) {
     const au = $('#audio');
     $('#oir').disabled = true; $('#oir').textContent = 'Cargando…';
     const listo = () => { $('#oir').disabled = false; $('#oir').innerHTML = icono('escuchar') + 'Escuchar'; };
-    au.oncanplay = () => { listo(); au.play(); };
-    au.onerror = () => { listo(); $('#rerr').textContent = 'No se pudo cargar la muestra de voz — intenta de nuevo.'; };
+    au.oncanplay = () => { listo(); window.avisos?.quitar('crear-voz'); au.play(); };
+    au.onerror = () => { listo(); window.avisos?.mostrar('No se pudo cargar la muestra de voz — intenta de nuevo.', {tipo:'mal', clave:'crear-voz'}); };
     au.src = `/api/voces/${encodeURIComponent(sel.value)}/muestra`;
     au.classList.remove('hidden');
   };
@@ -1342,7 +1340,7 @@ $('#cancelar').onclick = async () => {
     if (!r.ok) throw new Error(await errTxt(r));
     const d = await r.json();
     proyecto = d.proyecto; window.monedero?.refrescar(); seguir();
-    if (d.devueltos) $('#rerr').textContent = `Te devolvimos ${d.devueltos} créditos.`;
+    if (d.devueltos) window.avisos?.mostrar(`Te devolvimos ${d.devueltos} créditos.`, {tipo:'ok'});
   } catch (e) { $('#imgerr').textContent = e.message; }
   enVuelo = false; $('#cancelar').disabled = false;
 };
@@ -1374,8 +1372,17 @@ $('#producir').onclick = async () => {
 // cobra y el botón lo avisa como siempre)
 $('#modificar').onclick = async () => {
   $('#modif-err').textContent = '';
+  window.avisos?.quitar('crear-modif');
   $('#modificar').disabled = true;
-  const r = await fetch(`/api/proyectos/${proyecto.id}/reabrir`, {method: 'POST'});
+  let r;
+  try { r = await fetch(`/api/proyectos/${proyecto.id}/reabrir`, {method: 'POST'}); }
+  catch {
+    // UI·16: la red caída ya no lanza en silencio; el error del servidor
+    // sigue en #modif-err, junto al botón
+    $('#modificar').disabled = false;
+    window.avisos?.mostrar('No se pudo volver a revisión — revisa tu conexión.', {tipo:'mal', clave:'crear-modif'});
+    return;
+  }
   $('#modificar').disabled = false;
   if (!r.ok) { $('#modif-err').textContent = await errTxt(r); return; }
   proyecto = await r.json();
@@ -1404,7 +1411,15 @@ $('#reintentar').onclick = async () => {
 
 // --- reanudar por URL ---
 const pid = new URLSearchParams(location.search).get('p');
-if (pid) fetch('/api/proyectos/' + pid).then(r => r.ok ? r.json() : null).then(p => { if (p) { proyecto = p; seguir(); } });
+if (pid) {
+  // UI·16: si no se pudo abrir la película, ya no callamos
+  const noAbrio = () => window.avisos?.mostrar('No pudimos abrir esa película. Revisa tu conexión e inténtalo de nuevo.',
+    {tipo:'mal', clave:'crear-carga', accion:{texto:'Reintentar', al: () => location.reload()}});
+  fetch('/api/proyectos/' + pid)
+    .then(r => r.ok ? r.json() : null)
+    .then(p => { if (p) { window.avisos?.quitar('crear-carga'); proyecto = p; seguir(); } else noAbrio(); })
+    .catch(noAbrio);
+}
 else {
   // M12: el hub precarga la idea aquí (?brief=...&modo=idea|investigacion)
   const q = new URLSearchParams(location.search);

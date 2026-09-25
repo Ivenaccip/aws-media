@@ -250,6 +250,7 @@ async function clCargar() {
         : '<span class="mut">Todavía no has hecho ninguno.</span>';
       clPonerOrbe();
     }
+    window.avisos?.quitar("clip-carga");
     const vivos = clips.some(c => c.estado === "generando");
     clearTimeout(clPoll);
     if (vivos) clPoll = setTimeout(clCargar, 5000);
@@ -258,7 +259,11 @@ async function clCargar() {
       window.monedero && monedero.refrescar && monedero.refrescar();
     }
   } catch (e) {
-    $("clips").innerHTML = `<span class="err">${clEsc(e.message)}</span>`;
+    // UI·16: el fallo va al cuadro de avisos, no dentro de la lista; si nunca
+    // cargó, se quita el «Cargando…». El reintento solo de 15 s sigue.
+    window.avisos?.mostrar("No pudimos traer tus clips. Lo volvemos a intentar en unos segundos.",
+      { tipo: "mal", clave: "clip-carga", accion: { texto: "Reintentar", al: clCargar } });
+    if ($("clips").textContent.trim() === "Cargando…") $("clips").innerHTML = "";
     clearTimeout(clPoll);
     clPoll = setTimeout(clCargar, 15000);
   }

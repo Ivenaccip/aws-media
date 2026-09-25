@@ -267,9 +267,20 @@ async function detalle(uid, nombre) {
   $('#detalle').hidden = false;
   $('#detalle-titulo').textContent = `Corridas de ${nombre}`;
   $('#detalle-cuerpo').innerHTML = '<p class="mut">Cargando…</p>';
-  const r = await fetch('/api/admin/usuarios/' + encodeURIComponent(uid));
+  // UI·16: sin red el detalle se quedaba en «Cargando…» para siempre; ahora
+  // se cierra y el aviso va al cuadro de trabajos.js, con Reintentar
+  let r, d;
+  try {
+    r = await fetch('/api/admin/usuarios/' + encodeURIComponent(uid));
+    if (r.ok) d = await r.json();
+  } catch {
+    $('#detalle').hidden = true;
+    window.avisos?.mostrar('No se pudo abrir el detalle — revisa tu conexión.',
+                           {tipo: 'mal', clave: 'admin-detalle', accion: {texto: 'Reintentar', al: () => detalle(uid, nombre)}});
+    return;
+  }
+  window.avisos?.quitar('admin-detalle');
   if (!r.ok) { $('#detalle-cuerpo').innerHTML = `<p class="mut">Error ${r.status}.</p>`; return; }
-  const d = await r.json();
   const traza = t => `<div>· ${esc(t.concepto)} — ${usd4(t.costo_usd)}` +
     (t.segundos ? ` · ~${tiempo(t.segundos)} de cómputo` : '') +
     (t.traza ? ` <a href="${esc(LFBASE)}/trace/${esc(encodeURIComponent(t.traza))}" target="_blank" rel="noopener">traza ${icono('externo')}</a>` : '') + `</div>`;

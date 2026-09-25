@@ -118,7 +118,6 @@
     </div>
     <p id="mtVentana" class="mut"></p>
     <p id="mtNota" class="mut" hidden></p>
-    <p id="mtErr" class="err" role="alert" hidden></p>
     <p id="mtEstado" class="ok" role="status" aria-live="polite"></p>
     <ul id="mtLista"><li class="vacio"><span class="spin">Buscando tus publicaciones</span></li></ul>
     <button type="button" id="mtMas" class="btn btn-sec" hidden>Ver más</button>
@@ -175,7 +174,8 @@ const fj = url => fetch(url).then(async r => {
 });
 
 // ── mt · textos de la pantalla
-const MTCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+// adónde lleva «Conectar Blotato» cuando el servidor responde 409
+const MTCONECTAR = "/?blotato=conectar";
 const MTVACIO = '<li class="vacio">En este tramo no publicaste nada. Prueba con «Ver más» ' +
   'para mirar más atrás.</li>';
 const MTVACIOTOP = '<li class="vacio">Todavía no hay ninguna publicación medida en este ' +
@@ -371,10 +371,15 @@ function mtAbrir(it) {
   mtPintar();
 }
 
-function mtAviso(msg, conectar) {
-  const p = $("#mtErr");
-  p.hidden = !msg;
-  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? MTCONECTAR : "") : "";
+// Los fallos de red o del servidor no son de ningún campo: van al cuadro de
+// avisos de trabajos.js (escapa el texto él). Sin mensaje, se quita el que
+// hubiera; con 409, el aviso ofrece conectar la cuenta.
+function mtAviso(msg, conectar, reintentar) {
+  if (!msg) { window.avisos?.quitar('metricas-error'); return; }
+  const op = {tipo:'mal', clave:'metricas-error'};
+  if (conectar) op.accion = {texto:'Conectar Blotato', al: () => { location.href = MTCONECTAR; }};
+  else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};
+  window.avisos?.mostrar(msg, op);
 }
 
 // Una nota que no es un error: va en gris y sin role="alert". El texto lo
@@ -464,12 +469,12 @@ async function mtCargarYa(mas) {
     mtRotulo();
     // el aviso del recorte NO es un error y lo redacta el servidor: va en gris y
     // aparte, para que pueda convivir con un error de verdad
-    mtAviso(j.error, !!j.reconectar);
+    mtAviso(j.error, !!j.reconectar, () => mtCargar(mas));
     mtNota(j.aviso);
   } catch (e) {
     // lo ya pintado no se tira: solo se explica el hueco cuando no hay nada
     mtCaida(false, false);
-    mtAviso(mtTexto(e), e && e.status === 409);
+    mtAviso(mtTexto(e), e && e.status === 409, () => mtCargar(mas));
   } finally {
     MTCARGANDO = false;
     mtOcupado(false);

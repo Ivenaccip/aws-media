@@ -40,11 +40,6 @@
           border-radius: var(--r-medio); padding: 8px 12px; font: inherit; }
   .mut { color: var(--mut); font-size: var(--t-xs); }
   .err { color: var(--c-error); font-size: var(--t-sm); }
-  .ok { color: var(--c-exito); font-size: var(--t-sm); }
-  /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM (un
-     role="status" que aparece y desaparece no lo anuncia el lector) */
-  #agEstado:empty { display: none; }
-  #agErr, #agEstado { margin-top: 12px; }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   .controles #agResumen { margin-right: auto; }
   .tarjeta { border: 1px solid var(--line); border-radius: var(--r-grande); padding: 16px 20px;
@@ -112,8 +107,6 @@
       <p id="agResumen" class="mut">Tus publicaciones programadas</p>
       <button type="button" id="agRefrescar" class="btn btn-sec"><i data-icono="rehacer"></i>Actualizar</button>
     </div>
-    <p id="agErr" class="err" role="alert" hidden></p>
-    <p id="agEstado" class="ok" role="status" aria-live="polite"></p>
     <ul id="agLista"><li class="vacio"><span class="spin">Buscando lo que tienes programado</span></li></ul>
     <button type="button" id="agMas" class="btn btn-sec" hidden>Ver más</button>
   </section>
@@ -186,7 +179,8 @@ const fj = (url, opciones) => {
 };
 
 // ── ag · lógica
-const AGCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+// adónde lleva «Conectar Blotato» cuando el servidor responde 409
+const AGCONECTAR = "/?blotato=conectar";
 const AGVACIO = '<li class="vacio">No tienes nada programado. Cuando programes un video desde ' +
   'el editor, en Publicar, aparecerá aquí.</li>';
 const AGCAIDA = '<li class="vacio">No pudimos traer tu agenda ahora. Pulsa «Actualizar» para ' +
@@ -288,10 +282,15 @@ function agPintar(nuevos, mas) {
   agEnlazar();
 }
 
-function agAviso(msg, conectar) {
-  const p = $("#agErr");
-  p.hidden = !msg;
-  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? AGCONECTAR : "") : "";
+// Los fallos de red o del servidor no son de ningún campo: van al cuadro de
+// avisos de trabajos.js (escapa el texto él). Sin mensaje, se quita el que
+// hubiera; con 409, el aviso ofrece conectar la cuenta.
+function agAviso(msg, conectar, reintentar) {
+  if (!msg) { window.avisos?.quitar('agenda-error'); return; }
+  const op = {tipo:'mal', clave:'agenda-error'};
+  if (conectar) op.accion = {texto:'Conectar Blotato', al: () => { location.href = AGCONECTAR; }};
+  else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};
+  window.avisos?.mostrar(msg, op);
 }
 
 function agDlgAviso(msg) {
@@ -301,12 +300,9 @@ function agDlgAviso(msg) {
 }
 
 // Lo irreversible no puede pasar en silencio: cancelar deja la pantalla igual
-// salvo por una tarjeta menos, y con el teclado ni eso se nota. El resultado se
-// escribe en una región role="status" (se lee y se ve) y el foco vuelve a un
-// sitio con nombre en vez de caer al <body>.
-function agAnunciar(msg) {
-  $("#agEstado").textContent = msg || "";
-}
+// salvo por una tarjeta menos, y con el teclado ni eso se nota. El resultado va
+// al cuadro de avisos de trabajos.js, que lleva el role="status" (se lee y se
+// ve), y el foco vuelve a un sitio con nombre en vez de caer al <body>.
 
 function agFoco(sel) {
   if ($("#agDlg").open) return;   // con el diálogo abierto, el foco vive dentro
@@ -325,9 +321,10 @@ function agTexto(e) {
   return (e && typeof e.status === "number" && e.message) ? e.message : AGSINRED;
 }
 
-function agFallo(e) {
+// `reintentar`: la carga que falló, para ofrecerla en el aviso (si no es 409)
+function agFallo(e, reintentar) {
   const status = (e && typeof e.status === "number") ? e.status : 0;
-  agAviso(agTexto(e), status === 409);
+  agAviso(agTexto(e), status === 409, reintentar);
   return status;
 }
 
@@ -349,7 +346,6 @@ function agCargar(mas) {
 async function agCargarYa(mas) {
   AGCARGANDO = true;
   agAviso("");
-  agAnunciar("");
   agOcupado(true);
   try {
     const j = await fj("/api/agenda" +
@@ -364,7 +360,7 @@ async function agCargarYa(mas) {
       // sin forma de seguir.
       if (items.length) agPintar(items, !!mas);
       else if (!AGITEMS.length) $("#agLista").innerHTML = AGCAIDA;
-      agAviso(j.error, !!j.reconectar);
+      agAviso(j.error, !!j.reconectar, () => agCargar(mas));
     } else {
       // sin error sí manda la respuesta: una última página legítima puede venir
       // vacía y con cursor null, y eso apaga «Ver más»
@@ -376,7 +372,7 @@ async function agCargarYa(mas) {
     // lo ya pintado tampoco se tira aquí: solo se explica el hueco cuando no
     // hay nada que enseñar
     if (!AGITEMS.length) $("#agLista").innerHTML = AGCAIDA;
-    agFallo(e);
+    agFallo(e, () => agCargar(mas));
   } finally {
     AGCARGANDO = false;
     agOcupado(false);
@@ -443,7 +439,7 @@ async function agGuardarHora(ev) {
     await fj("/api/agenda/reprogramar", { cuerpo: { id: it.id, cuando } });
     if (agVigente(gen)) $("#agDlg").close();
     await agCargar();
-    agAnunciar(`Hora cambiada: ${it.red} sale el ${agFecha(cuando)} (tu hora).`);
+    window.avisos?.mostrar(`Hora cambiada: ${it.red} sale el ${agFecha(cuando)} (tu hora).`, {tipo:'ok'});
     agFoco("#agRefrescar");   // la tarjeta que abrió el diálogo ya se repintó
   } catch (e) {
     // un 404 es «ya no está programada»: el diálogo sobra y la lista miente.
@@ -485,7 +481,7 @@ async function agCancelar(ev, it) {
     await agCargar();
     // la tarjeta desapareció y el foco caía al <body>: sin esto, para el
     // teclado y el lector de pantalla lo irreversible pasa en silencio
-    agAnunciar("Publicación cancelada.");
+    window.avisos?.mostrar("Publicación cancelada.", {tipo:'ok'});
     agFoco("#agRefrescar");
   } catch (e) {
     if (e && e.status === 404) await agCargar();   // ya no estaba: la lista mentía

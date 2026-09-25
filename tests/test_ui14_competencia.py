@@ -62,7 +62,8 @@ def test_sin_emojis_como_iconos():
 def test_los_iconos_que_usa_existen():
     nombres = (set(re.findall(r'data-icono="([a-z]+)"', PANTALLA))
                | set(re.findall(r'cpIco\("([a-z]+)"\)', PANTALLA)))
-    assert {"volver", "sinred", "externo", "aviso"} <= nombres
+    # UI·16: el aviso de «sin red» se fue al cuadro de avisos (trabajos.js)
+    assert {"volver", "externo", "aviso"} <= nombres
     for n in nombres:
         assert f"    {n}: '" in ICONOS, n
 

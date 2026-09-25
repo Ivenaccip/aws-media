@@ -490,7 +490,12 @@ function pintaTitulo() {
 const sinAcentos = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const DESCR_ESTILO = {};
 let muestraDe;
-fetch('/api/estilos').then(r => r.json()).then(list => {
+// UI·16: si la lista no llega, la pantalla sigue con el estilo que ya tenía y
+// se avisa en el cuadro de trabajos.js (antes el fallo se tragaba en silencio)
+fetch('/api/estilos').then(r => {
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}).then(list => {
   list.forEach(e => {
     DESCR_ESTILO[e.id] = e.descripcion || '';
     ATAJOS.push({ cmd: '/' + sinAcentos(e.nombre).replace(/\s+/g, ''),
@@ -510,6 +515,9 @@ fetch('/api/estilos').then(r => r.json()).then(list => {
     const b = ev.target.closest('.chip');
     if (b && !enVuelo) fijarEstilo(b.dataset.id, true);
   };
+}).catch(() => {
+  window.avisos?.mostrar('No pudimos cargar los estilos. Recarga la página para elegir otro.',
+                         {tipo: 'mal', clave: 'imagenes-estilos'});
 });
 function fijarEstilo(id, destino = transformando()) {
   // al transformar, tocar el chip elegido lo suelta: se vuelve a «sin estilo»
@@ -576,6 +584,8 @@ function cargarImagen(f, nombre = null) {
   }
   if (f.size > 15 * 1024 * 1024) { $('#gerr').textContent = 'La imagen pasa de 15 MB.'; return; }
   $('#gerr').textContent = '';
+  // UI·16: ya hay imagen en el lienzo — el aviso de «no pude abrir» sobra
+  window.avisos?.quitar('imagenes-abrir');
   // cada carga invalida las anteriores, y mientras decodifica no se envía:
   // si no, el clic veía la imagen vieja y el lienzo cambiaba bajo la petición
   const gen = ++generacion;
@@ -1050,7 +1060,9 @@ async function abrirDesdeEnlace() {
     const f = await bajarPropia(nombre);
     if (!archivo && !enVuelo) cargarImagen(f, nombre);
   } catch (e) {
-    $('#gerr').textContent = `No pude abrir tu imagen: ${e.message}`;
+    // UI·16: no es error del formulario (nadie envió nada): va al cuadro
+    window.avisos?.mostrar(`No pude abrir tu imagen: ${e.message}`,
+                           {tipo: 'mal', clave: 'imagenes-abrir'});
   } finally {
     $('#vacio-titulo').textContent = 'Sube la imagen o el boceto que quieres editar';
   }

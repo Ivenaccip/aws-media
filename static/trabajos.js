@@ -104,15 +104,20 @@
 #bandeja .bj-ver:hover { color: var(--c-texto, #ece8e1); text-decoration: underline; text-underline-offset: 4px; }
 #bandeja .bj-item.corriendo .bj-ver { grid-column: 3; grid-row: 1; min-height: 24px; padding-right: 12px; }
 #bandeja .bj-item .bj-ic { grid-column: 3; grid-row: 1 / span 3; margin-top: -10px; }
-#bandeja .bj-aviso { display: flex; align-items: center; gap: 12px; padding: 4px 4px 4px 16px; min-height: 48px; }
+/* icono · texto · cerrar; el botón de acción va en su propia fila, debajo del
+   texto, para que un aviso largo no quede en una columna angosta */
+#bandeja .bj-aviso { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+  column-gap: 12px; row-gap: 4px; padding: 4px 4px 4px 16px; min-height: 48px; }
 #bandeja .bj-aviso > .ico { color: var(--c-exito, #3dd68c); flex: none; }
 #bandeja .bj-aviso.mal > .ico { color: var(--c-error, #ff8080); }
 #bandeja .bj-aviso.info > .ico { color: var(--c-secundario, #93a3b8); }
-#bandeja .bj-aviso span { flex: 1; overflow-wrap: anywhere; }
+#bandeja .bj-aviso span { grid-column: 2; grid-row: 1; overflow-wrap: anywhere; }
+#bandeja .bj-aviso .bj-ic { grid-column: 3; grid-row: 1; }
 /* las pantallas tienen sus propios .btn y button (crear les da ancho completo):
    dentro del cuadro no mandan */
 #bandeja button { margin: 0; width: auto; box-sizing: border-box; }
-#bandeja .bj-aviso .btn { display: inline-flex; flex: none; min-height: 36px; padding: 0 12px; }
+#bandeja .bj-aviso .btn { display: inline-flex; grid-column: 2; grid-row: 2; justify-self: start;
+  min-height: 36px; padding: 0 12px; margin-bottom: 8px; }
 #bandeja .bj-pildora { display: flex; align-items: center; gap: 12px; min-height: 48px; width: auto;
   padding: 0 4px 0 16px; border-radius: 999px; cursor: pointer; font: inherit; color: inherit; text-align: left; }
 #bandeja .bj-pildora > .ico { color: var(--c-secundario, #93a3b8); flex: none; }

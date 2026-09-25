@@ -21,7 +21,7 @@ Lo que este archivo defiende:
     (server/publicar_api.py): aceptar una hora que él rechaza gasta una llamada
     para nada;
   * que lo irreversible no pase en silencio: tras cancelar o cambiar la hora se
-    anuncia en una región role="status" y el foco vuelve a un sitio con nombre;
+    anuncia en el cuadro de avisos (role="status") y el foco vuelve a un sitio con nombre;
   * que los textos que el usuario lee los escriba el servidor: la pantalla no
     copia ni un mensaje de pipeline.blotato ni de pipeline.publicaciones.
 
@@ -241,7 +241,16 @@ const document = {
   querySelectorAll: sel => sel === "#agLista [data-ag]" ? botonesDe(el("agLista").innerHTML) : [],
   addEventListener: (tipo, fn) => { if (tipo === "DOMContentLoaded") arranque = fn; },
 };
-const window = {};
+// el cuadro de avisos de trabajos.js (UI·16): se guarda lo último por clave
+// y todo lo que se mostró, en orden
+const vivos = {}, mostrados = [];
+const location = {href: ""};
+const window = {avisos: {
+  mostrar(texto, op = {}) { const a = {texto, ...op}; mostrados.push(a);
+                            if (a.clave) vivos[a.clave] = a; return mostrados.length; },
+  quitar(c) { delete vivos[c]; },
+}};
+const aviso = c => (vivos[c] ? vivos[c].texto : "");
 let confirmar = true;
 const confirmados = [];
 function confirm(texto) { confirmados.push(texto); return confirmar; }
@@ -406,13 +415,13 @@ rutas["/api/agenda/reprogramar"] = [FALLO(404, {json.dumps(real)})];
 rutas["/api/agenda"] = [OK({{items: [], cursor: null, total: 0}})];
 await agGuardarHora({{currentTarget: els.agGuardar}});
 out.cerrado = !els.agDlg.abierto;
-out.aviso = els.agErr.innerHTML;
+out.aviso = aviso("agenda-error");
 out.avisoDlg = els.agDlgErr.textContent;
 out.cuerpo = cuerpos[llamadas.indexOf("/api/agenda/reprogramar")];
 out.recargas = llamadas.filter(u => u === "/api/agenda").length;
 """, tmp_path)
     assert o["abierto"] is True and o["cerrado"] is True
-    assert o["aviso"] == f"<span>{real}</span>", "la pantalla reescribió el mensaje del servidor"
+    assert o["aviso"] == real, "la pantalla reescribió el mensaje del servidor"
     assert o["avisoDlg"] == "", "el aviso va en la pantalla, no en un diálogo ya cerrado"
     assert set(o["cuerpo"]) == {"id", "cuando"}, "el PATCH llevaría algo más que la hora"
     assert o["cuerpo"]["id"] == "sch_1"
@@ -424,16 +433,20 @@ def test_el_409_ofrece_conectar_blotato(tmp_path):
     o = _node(r"""
 rutas["/api/agenda"] = [FALLO(409, "Conecta tu cuenta de Blotato primero.")];
 await agCargar();
-out.aviso = els.agErr.innerHTML;
+out.aviso = aviso("agenda-error");
+out.accion = vivos["agenda-error"].accion.texto;
+vivos["agenda-error"].accion.al();
+out.destino = location.href;
 out.lista = els.agLista.innerHTML;
 rutas["/api/agenda"] = [FALLO(502, "Blotato no respondió a tiempo.")];
 await agCargar();
-out.otro = els.agErr.innerHTML;
+out.otro = aviso("agenda-error");
+out.otraAccion = vivos["agenda-error"].accion && vivos["agenda-error"].accion.texto;
 """, tmp_path)
-    assert 'href="/?blotato=conectar"' in o["aviso"]
+    assert o["accion"] == "Conectar Blotato" and o["destino"] == "/?blotato=conectar"
     assert "Conecta tu cuenta de Blotato primero." in o["aviso"]
     assert "Pulsa «Actualizar»" in o["lista"]
-    assert "blotato=conectar" not in o["otro"], "un fallo de Blotato no es una clave que falte"
+    assert o["otraAccion"] != "Conectar Blotato", "un fallo de Blotato no es una clave que falte"
 
 
 def test_el_404_al_cancelar_recarga_y_luego_avisa(tmp_path):
@@ -447,11 +460,11 @@ const btn = document.querySelectorAll("#agLista [data-ag]").find(b => b.dataset.
 rutas["/api/agenda/cancelar"] = [FALLO(404, {json.dumps(real)})];
 rutas["/api/agenda"] = [OK({{items: [], cursor: null, total: 0}})];
 await btn.onclick({{currentTarget: btn}});
-out.aviso = els.agErr.innerHTML;
+out.aviso = aviso("agenda-error");
 out.recargas = llamadas.filter(u => u === "/api/agenda").length;
 out.lista = els.agLista.innerHTML;
 """, tmp_path)
-    assert o["aviso"] == f"<span>{real}</span>", "el repintado se comió el aviso"
+    assert o["aviso"] == real, "el repintado se comió el aviso"
     assert o["recargas"] == 2
     assert "No tienes nada programado" in o["lista"]
 
@@ -481,7 +494,7 @@ out.items = AGITEMS.map(i => i.id);
 out.resumen = els.agResumen.textContent;
 out.cursor = AGCURSOR;
 out.mas = !els.agMas.hidden;
-out.aviso = els.agErr.innerHTML;
+out.aviso = aviso("agenda-error");
 """, tmp_path)
     assert o["despues"] == o["antes"], "el fallo blando repintó (y borró) la lista"
     assert "No tienes nada programado" not in o["despues"]
@@ -498,7 +511,7 @@ def test_el_fallo_blando_con_la_lista_vacia_pinta_la_caida_no_el_vacio(tmp_path)
     o = _node("rutas[\"/api/agenda\"] = [" + FALLO_BLANDO + r"""];
 await agCargar();
 out.lista = els.agLista.innerHTML;
-out.aviso = els.agErr.innerHTML;
+out.aviso = aviso("agenda-error");
 """, tmp_path)
     assert "Pulsa «Actualizar»" in o["lista"]
     assert "No tienes nada programado" not in o["lista"], \
@@ -528,7 +541,7 @@ out.duroCursor = AGCURSOR;
 out.duroMas = !els.agMas.hidden;
 out.duroTarjetas = (els.agLista.innerHTML.match(/<li class="tarjeta">/g) || []).length;
 out.duroResumen = els.agResumen.textContent;
-out.duroAviso = els.agErr.innerHTML;
+out.duroAviso = aviso("agenda-error");
 
 // 3) y la página siguiente de verdad sigue estando a un clic
 rutas["/api/agenda"] = [OK({items: [ITEM({id: "b"})], cursor: null, total: 45})];
@@ -684,7 +697,7 @@ els.agDlg.close();            // la ✕ / Esc / el fondo, mientras viaja
 p.abrir();
 await guardando;
 out.dlg = els.agDlgErr.textContent;
-out.pantalla = els.agErr.innerHTML;
+out.pantalla = aviso("agenda-error");
 out.abierto = !!els.agDlg.open;
 out.boton = els.agGuardar.disabled;
 """, tmp_path)
@@ -763,10 +776,10 @@ rutas["/api/agenda/cancelar"] = [OK({})];
 rutas["/api/agenda"] = [OK({items: [], cursor: null, total: 0})];
 foco = null;
 await btn.onclick({currentTarget: btn});
-out.estado = els.agEstado.textContent;
+out.estado = mostrados[mostrados.length - 1];
 out.foco = foco;
 """, tmp_path)
-    assert o["estado"] == "Publicación cancelada."
+    assert o["estado"] == {"texto": "Publicación cancelada.", "tipo": "ok"}
     assert o["foco"] == "agRefrescar", "el foco se fue al <body>: la acción pasó en silencio"
 
 
@@ -780,22 +793,20 @@ rutas["/api/agenda/reprogramar"] = [OK({})];
 rutas["/api/agenda"] = [OK({items: [ITEM({cuando: "2031-02-01T10:00:00Z"})], cursor: null, total: 1})];
 foco = null;
 await agGuardarHora({currentTarget: els.agGuardar});
-out.estado = els.agEstado.textContent;
+out.estado = mostrados[mostrados.length - 1];
 out.foco = foco;
 out.cerrado = !els.agDlg.open;
-// y una recarga posterior no se queda con el anuncio viejo pegado
-rutas["/api/agenda"] = [OK({items: [ITEM()], cursor: null, total: 1})];
-await agCargar();
-out.trasRecargar = els.agEstado.textContent;
 """, tmp_path)
-    assert o["estado"].startswith("Hora cambiada:") and "TikTok" in o["estado"]
+    assert o["estado"]["texto"].startswith("Hora cambiada:") and "TikTok" in o["estado"]["texto"]
+    # 'ok' se va solo a los 5 s: el anuncio viejo no se queda pegado
+    assert o["estado"]["tipo"] == "ok" and "clave" not in o["estado"]
     assert o["foco"] == "agRefrescar" and o["cerrado"] is True
-    assert o["trasRecargar"] == ""
 
 
 def test_la_region_viva_existe_en_el_html():
-    assert 'id="agEstado"' in AGENDA and 'role="status"' in AGENDA
-    assert 'aria-live="polite"' in AGENDA
+    # UI·16: el anuncio va al cuadro de avisos de trabajos.js, que lleva el role
+    assert 'src="/trabajos.js"' in AGENDA
+    assert 'id="agEstado"' not in AGENDA
 
 
 def test_sin_conexion_el_mensaje_esta_en_espanol(tmp_path):
@@ -804,7 +815,7 @@ def test_sin_conexion_el_mensaje_esta_en_espanol(tmp_path):
     o = _node(r"""
 rutas["/api/agenda"] = [new TypeError("Failed to fetch")];
 await agCargar();
-out.lista = els.agErr.innerHTML;
+out.lista = aviso("agenda-error");
 
 // y dentro del diálogo, igual
 rutas["/api/agenda"] = [OK({items: [ITEM()], cursor: null, total: 1})];

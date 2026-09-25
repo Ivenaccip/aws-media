@@ -217,16 +217,25 @@ async function fj(url, body) {
 // M14: sin ?p, la página misma ofrece elegir el proyecto (antes vivía en e1)
 async function elegirProyecto() {
   $("aviso").textContent = "Cargando tus proyectos con metraje…";
-  let ps = [];
+  // UI·16: un fallo de red o del servidor NO es «no tienes videos». Ese texto
+  // sale solo cuando la lista llegó bien y vacía; el fallo va al cuadro.
+  let ps = null;
   try {
     const r = await fetch("/api/edicion/proyectos");
     if (r.ok) ps = await r.json();
-  } catch { /* cae al aviso de abajo */ }
-  const conMetraje = ps.filter(p => (p.subidas && p.subidas.length) || p.generado);
-  $("aviso").innerHTML = conMetraje.length
-    ? "¿De qué video sacamos los shorts?<span class=\"proyectos\">" + conMetraje.map(p =>
-        `<a href="/shorts.html?p=${encodeURIComponent(p.nombre)}">${icono('video')} ${esc(p.nombre)}</a>`).join("") + "</span>"
-    : "Todavía no tienes videos con metraje — sube uno aquí abajo, o importa uno de YouTube.";
+  } catch { /* ps sigue en null: se avisa abajo */ }
+  if (!Array.isArray(ps)) {
+    $("aviso").textContent = "";
+    window.avisos?.mostrar("No pudimos traer tus proyectos. Revisa tu conexión e inténtalo de nuevo.",
+                           { tipo: "mal", clave: "shorts-carga", accion: { texto: "Reintentar", al: cargar } });
+  } else {
+    window.avisos?.quitar("shorts-carga");
+    const conMetraje = ps.filter(p => (p.subidas && p.subidas.length) || p.generado);
+    $("aviso").innerHTML = conMetraje.length
+      ? "¿De qué video sacamos los shorts?<span class=\"proyectos\">" + conMetraje.map(p =>
+          `<a href="/shorts.html?p=${encodeURIComponent(p.nombre)}">${icono('video')} ${esc(p.nombre)}</a>`).join("") + "</span>"
+      : "Todavía no tienes videos con metraje — sube uno aquí abajo, o importa uno de YouTube.";
+  }
   $("sec-importar").hidden = false;
   $("btn-importar").className = "btn btn-pri";   // sin proyecto, importar es LA acción
   try {
@@ -339,7 +348,17 @@ $("btn-importar").onclick = async () => {
 async function cargar() {
   if (!P) { elegirProyecto(); return; }
   try { EST = await fj(`/api/shorts/${encodeURIComponent(P)}`); }
-  catch (e) { $("aviso").textContent = e.message; $("aviso").className = "err"; return; }
+  catch (e) {
+    // UI·16: el fallo de carga va al cuadro de trabajos.js, con Reintentar.
+    // Si ya había un proyecto pintado (vuelta de pestaña), se queda como está.
+    if (!EST) $("aviso").hidden = true;
+    const delServidor = e.status && !/^Error \d+$/.test(e.message);
+    window.avisos?.mostrar(delServidor ? e.message
+                             : "No pudimos cargar tu proyecto. Revisa tu conexión e inténtalo de nuevo.",
+                           { tipo: "mal", clave: "shorts-carga", accion: { texto: "Reintentar", al: cargar } });
+    return;
+  }
+  window.avisos?.quitar("shorts-carga");
   $("aviso").hidden = true;
   // El campo de la liga vivía SOLO dentro de elegirProyecto(), que corre únicamente
   // cuando la URL no trae ?p= — así que con un proyecto abierto la sección no

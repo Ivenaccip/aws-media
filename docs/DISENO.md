@@ -164,7 +164,7 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 | **Error** | Tres partes: **qué pasó** (sin culpar), **qué pasó con tus créditos** («Te devolvimos ✦ 90») y **qué sigue** (un botón). Lo técnico va plegado en «Detalles técnicos». |
 | **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. |
 | **Tus trabajos** (`static/trabajos.js`) | Cuadro abajo a la derecha en todas las pantallas: lo que corre (paso, avance, «Ver»), lo que terminó en las últimas **24 h** con su enlace y lo que falló con «Te devolvimos ✦ N». Va **plegado**; se abre solo cuando algo termina o falla y no lo habías visto. Lo cerrado no vuelve en ese navegador. En celular, abajo a todo lo ancho (dueño, 25-sep). |
-| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. |
+| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
 
 ## 9. Fuera de alcance por ahora
 

@@ -48,7 +48,8 @@ def test_sin_emojis_como_iconos():
 
 def test_los_iconos_que_usa_existen():
     nombres = set(re.findall(r'data-icono="([a-z]+)"', ESTILOS)) | set(re.findall(r"icono\('([a-z]+)'", ESTILOS))
-    assert nombres == {"volver", "sinred", "listo"}
+    # UI·16: «sin red» y «copiado» se fueron al cuadro de avisos (trabajos.js)
+    assert nombres == {"volver"}
     for n in nombres:
         assert f"    {n}: '" in ICONOS, n
 
