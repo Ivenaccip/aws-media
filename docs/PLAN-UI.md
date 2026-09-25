@@ -159,7 +159,9 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
 1. **Stack:** ✅ Vite + React + TS + Tailwind + Radix en MPA.
 2. **Invariantes de diseño:** ✅ se mantienen la paleta M20, solo modo
    oscuro, «Verbo ✦ N», el orbe y el menú lateral. La fuente se decidió
-   en el lienzo (ver §8). **Abierto:** el acento único.
+   en el lienzo (ver §8). ✅ **Acento único: ámbar** (`#da8c28`) para la
+   acción; el azul claro solo para enlaces; verde y rojo solo para estados.
+   La carta completa está en `docs/DISENO.md`.
 3. **10-oct:** 🔀 la sección pública (`/automatizacion`, fase 2) y la
    portada (fase 6) las lleva **otro agente**. Esta línea (etiqueta
    «Claude Code Online») se dedica a mejorar la UI/UX de las pantallas que

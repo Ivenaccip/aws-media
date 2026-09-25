@@ -19,6 +19,7 @@ transcripts.**
 | beats visuales / overlays | `/make-tsx` (+`/fake-screencast`) | longform |
 | SFX | `/suggest-sfx` | longform |
 | marca / packaging | `/brand-setup` · `/packaging` | longform |
+| rediseñar / auditar / migrar UI web (SOLO el comando explícito) | `/diseno-ui` | web |
 
 ## Reglas duras del repo
 
