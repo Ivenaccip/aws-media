@@ -5,7 +5,7 @@ Lo que se defiende aquí:
 - el ámbar es el único acento y queda en un solo botón: el de enviar;
 - los emojis de la interfaz pasaron a iconos de trazo;
 - quien no tiene nada ve los tres caminos, y solo cuando las listas llegaron bien;
-- el saldo vive en el menú lateral.
+- el saldo se queda arriba, en la píldora de monedero.js (decisión del dueño).
 """
 import re
 import shutil
@@ -147,16 +147,12 @@ def test_los_iconos_que_usa_el_inicio_existen():
         assert f"    {n}: '" in ICONOS, n
 
 
-def test_el_menu_trae_el_saldo_y_monedero_lo_usa():
-    aside = INICIO[INICIO.index("<aside>"):INICIO.index("</aside>")]
-    assert 'id="saldo-menu" hidden' in aside and 'id="saldo-recargar"' in aside
-    assert "document.getElementById('saldo-menu')" in MONEDERO
-    assert "slot.querySelector('#saldo-recargar').onclick = togglePanel;" in MONEDERO
-    # con hueco, la píldora flotante no se enciende; sin hueco, como siempre
-    rama = MONEDERO[MONEDERO.index("if (slot) {\n        // UI·10"):]
-    rama = rama[:rama.index("el.querySelector('#mon-saldo')")]
-    assert "} else {" in rama and "#mon-pill').hidden = false" in rama.split("} else {")[1]
-
+def test_el_saldo_se_queda_en_la_pildora_de_arriba():
+    """El dueño probó el saldo al pie del menú y prefirió la píldora de arriba
+    (25-sep). El inicio no trae hueco propio y monedero.js pinta como siempre."""
+    assert "saldo-menu" not in INICIO
+    assert "saldo-menu" not in MONEDERO
+    assert "el.querySelector('#mon-pill').hidden = false;" in MONEDERO
 
 def test_los_tres_caminos():
     caminos = INICIO[INICIO.index('<section class="caminos"'):INICIO.index("</section>", INICIO.index('<section class="caminos"'))]

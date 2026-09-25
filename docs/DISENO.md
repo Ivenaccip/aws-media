@@ -134,8 +134,9 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   **Crear** (Video, Imagen, Clip de 8 segundos, Copiar un estilo),
   **Editar** (Mis videos, Shorts), **Publicar** (Agenda, Publicidad
   automática) y **Analizar** (Métricas, Competencia).
-- El **saldo** vive al pie del menú con «Recargar créditos», no en una
-  píldora flotante encima del contenido.
+- El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
+  con su «＋» para recargar. Se probó al pie del menú (UI·10) y el dueño
+  prefirió la píldora (25-sep).
 - En el inicio, el centro sigue siendo el bloque de crear imagen y video
   que ya existe (`.prompt` en `static/index.html`).
 - Celular: **sin decidir** (el lienzo proponía pestañas abajo).
