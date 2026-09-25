@@ -5,11 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Editar</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { color-scheme: dark; }
+  /* colores locales = tokens de la carta (§3) */
+  :root { --bg:var(--c-fondo); --card:var(--c-superficie); --line:var(--c-linea); --txt:var(--c-texto);
+          --mut:var(--c-secundario); --acc:var(--c-ambar); --acc2:var(--c-ambar-claro);
+          --elev:var(--c-elevada); --campo:var(--c-campo); --azul:#5b8dd6; --relleno:#2b4a75; }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 16px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
+  body { background: var(--bg); color: var(--txt); font: var(--t-sm)/1.5 var(--f-texto); padding: 40px 24px; }
   main { max-width: 1000px; margin: 0 auto; }
+  a { color: var(--c-enlace); }
+  /* carta §2: títulos en Bricolage, escala de seis tamaños */
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0 28px; }
+  section h2 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin-bottom: 4px;
+               display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  /* carta §6: los iconos de los títulos van en gris */
+  section h2 .ico { color: var(--mut); }
+  #corte-proy { color: var(--mut); font: 400 var(--t-sm)/1.5 var(--f-texto); }
+  .volver { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; text-decoration: none; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-grande); padding: 24px; }
+  section p.desc { color: var(--mut); margin-bottom: 16px; }
+  .nota { font-size: var(--t-xs); color: var(--mut); margin-top: 12px; }
+  /* estado del corte: el icono es gris; el de error, rojo (carta §6) */
+  #corte-estado .ico { color: var(--mut); margin-right: 4px; }
+  #corte-estado .ico.mal { color: var(--c-error); }
+  [hidden] { display: none !important; }
+
+  /* subir metraje */
+  #subir { margin-bottom: 24px; }
+  .fila-subir { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  #sub-proyecto { flex: 1; min-width: 180px; min-height: 44px; padding: 8px 12px; font: inherit;
+                  border-radius: var(--r-medio); border: 1px solid var(--campo); background: var(--elev); color: inherit; }
+  #sub-archivo { font-size: var(--t-xs); color: var(--mut); max-width: 100%; }
+  /* el botón del selector de archivo, con el aspecto del secundario de la carta */
+  #sub-archivo::file-selector-button { min-height: 44px; margin-right: 12px; padding: 0 16px; cursor: pointer;
+    border: 1px solid var(--campo); border-radius: var(--r-boton); background: transparent; color: var(--txt);
+    font: 500 var(--t-sm)/1.2 var(--f-texto); }
+  #sub-archivo::file-selector-button:hover { background: var(--elev); border-color: var(--mut); }
+  /* M5: la barra de progreso real de la subida (relleno azul de datos) */
+  #sub-barra { margin-top: 12px; height: 8px; background: var(--elev); border-radius: 4px; overflow: hidden; }
+  #sub-avance { height: 100%; width: 0%; background: var(--azul); transition: width .3s; }
+
   /* Paso 4: mock del dueño — video a la izquierda, los dos caminos a la derecha */
   .panel { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: stretch; }
   @media (max-width: 760px) { .panel { grid-template-columns: 1fr; } }
@@ -17,26 +54,24 @@
   /* el video de muestra llena la columna hasta la base de Editor IA */
   #muestra { display: flex; flex-direction: column; }
   #muestra video { flex: 1; min-height: 240px; width: 100%; margin-top: 12px;
-                   border-radius: 9px; background: #000; object-fit: contain; }
-  /* la tarjeta ENTERA es el botón del camino */
-  .tarjeta { cursor: pointer; transition: border-color .15s; }
-  .tarjeta:hover, .tarjeta:focus-visible { border-color: #5b8dd6; }
-  .tarjeta h2 { display: flex; align-items: center; gap: 8px; }
-  .tarjeta .ir { color: #5b8dd6; font-size: 14px; margin-top: 12px; display: block; }
-  .anim { position: relative; height: 110px; border-radius: 10px; background: #0b1626;
-          border: 1px solid #22354f; margin: 14px 0; overflow: hidden; }
+                   border-radius: var(--r-medio); background: #000; object-fit: contain; }
+  /* la tarjeta ENTERA es el botón del camino; el hover, en gris (carta §3) */
+  .tarjeta { cursor: pointer; transition: border-color var(--m-rapido) ease-out; }
+  .tarjeta:hover, .tarjeta:focus-visible { border-color: var(--mut); }
+  .tarjeta .ir { color: var(--c-enlace); font-weight: 500; margin-top: 12px; display: block; }
+  .anim { position: relative; height: 110px; border-radius: var(--r-medio); background: var(--bg);
+          border: 1px solid var(--line); margin: 16px 0; overflow: hidden; }
   /* M19: mientras la IA de verdad trabaja, el orbe OCUPA la caja de la
      animación decorativa — no se le suma. Misma caja, mismo alto mínimo: la
      tarjeta no salta al cambiar de una a otro. */
   #orbe-editor { display: grid; place-items: center; min-height: 110px;
-                 border-radius: 10px; background: #0b1626; border: 1px solid #22354f;
-                 margin: 14px 0; padding: 10px; }
-  [hidden] { display: none !important; }
+                 border-radius: var(--r-medio); background: var(--bg); border: 1px solid var(--line);
+                 margin: 16px 0; padding: 12px; }
   /* animación shorts: del metraje horizontal saltan 3 clips verticales */
   .anim-shorts .cinta { position: absolute; left: 10%; top: 22px; width: 34%; height: 56px;
-                        border-radius: 6px; background: #18293f; border: 1px solid #55708f; }
+                        border-radius: var(--r-chico); background: var(--elev); border: 1px solid var(--campo); }
   .anim-shorts .clip { position: absolute; top: 18px; width: 36px; height: 64px; border-radius: 7px;
-                       background: #2b4a75; border: 1px solid #5b8dd6; opacity: 0;
+                       background: var(--relleno); border: 1px solid var(--azul); opacity: 0;
                        animation: brota 3.6s infinite; }
   .anim-shorts .c1 { left: 52%; animation-delay: 0s; }
   .anim-shorts .c2 { left: 66%; animation-delay: .6s; }
@@ -45,64 +80,34 @@
                      18%, 78% { opacity: 1; transform: none; } 95%, 100% { opacity: 0; } }
   /* animación editor: línea de tiempo con un tramo que se corta y cabezal que avanza */
   .anim-editor .pista { position: absolute; left: 8%; right: 8%; top: 46px; height: 18px;
-                        border-radius: 5px; background: #18293f; }
-  .anim-editor .seg { position: absolute; top: 46px; height: 18px; border-radius: 5px; background: #2b4a75; }
+                        border-radius: 5px; background: var(--elev); }
+  .anim-editor .seg { position: absolute; top: 46px; height: 18px; border-radius: 5px; background: var(--relleno); }
   .anim-editor .s1 { left: 8%; width: 26%; }
   .anim-editor .s2 { left: 36%; width: 14%; background: #73353a; animation: corta 3.6s infinite; }
   .anim-editor .s3 { left: 52%; width: 40%; }
   .anim-editor .cabezal { position: absolute; top: 34px; width: 2px; height: 42px;
-                          background: #ece8e1; left: 8%; animation: avanza 3.6s linear infinite; }
+                          background: var(--txt); left: 8%; animation: avanza 3.6s linear infinite; }
   @keyframes corta { 0%, 40% { opacity: 1; } 55%, 100% { opacity: .12; } }
   @keyframes avanza { from { left: 8%; } to { left: 92%; } }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 28px; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; }
-  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-  section p.desc { font-size: 13px; color: #93a3b8; margin-bottom: 16px; }
-  ul { list-style: none; }
-  li { margin-bottom: 8px; }
-  li a { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
-         border-radius: 9px; background: #18293f; text-decoration: none; color: inherit;
-         border: 1px solid transparent; font-size: 14px; }
-  li a:hover { border-color: #5b8dd6; }
-  li.off span.nombre { color: #6b7a8f; }
-  .tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: #22354f; color: #93a3b8; }
-  .tag.ok { background: #102e22; color: #3dd68c; }
-  .tag.gen { background: #2e2110; color: #f0a94a; }
-  .vacio { font-size: 13px; color: #6b7a8f; padding: 8px 2px; }
-  .nota { font-size: 12.5px; color: #6b7a8f; margin-top: 14px; }
-  code { background: #18293f; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
-  li div.fila { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
-                border-radius: 9px; background: #18293f; font-size: 14px; }
-  li div.fila span.nombre { color: #6b7a8f; }
-  .copiar { margin-left: 8px; padding: 2px 10px; border-radius: 20px; border: 1px solid #22354f;
-            background: transparent; color: #93a3b8; font-size: 11px; cursor: pointer; }
-  .copiar:hover { border-color: #5b8dd6; color: #ece8e1; }
-  .reintentar { margin-top: 6px; padding: 6px 14px; border-radius: 9px; border: 1px solid #22354f;
-                background: #18293f; color: #ece8e1; font-size: 13px; cursor: pointer; }
-  .reintentar:hover { border-color: #5b8dd6; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
 </style>
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← inicio</a>
+  <a class="btn-enlace volver" href="/"><i data-icono="volver"></i>Inicio</a>
   <h1>Editar metraje</h1>
-  <section id="subir" hidden style="margin-bottom:24px">
-    <h2>Subir metraje</h2>
+  <section id="subir" hidden>
+    <h2><i data-icono="subir"></i>Subir metraje</h2>
     <p class="desc">El video sube directo a la nube (no pasa por el servidor) y queda listo para editar.</p>
-    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+    <div class="fila-subir">
       <input id="sub-proyecto" placeholder="nombre del proyecto (ej. entrevista-marzo)"
-             style="flex:1; min-width:180px; padding:9px 12px; border-radius:9px; border:1px solid #22354f; background:#18293f; color:inherit; font-size:14px">
-      <input id="sub-archivo" type="file" accept=".mp4,.mov,.m4v" style="font-size:13px">
-      <button id="sub-btn" style="padding:9px 18px; border-radius:9px; border:0; background:#2b4a75; color:#ece8e1; font-size:14px; cursor:pointer">Subir</button>
-      <button id="sub-cancelar" hidden class="reintentar" style="margin-top:0">Cancelar</button>
+             aria-label="Nombre del proyecto">
+      <input id="sub-archivo" type="file" accept=".mp4,.mov,.m4v" aria-label="Archivo de video">
+      <button id="sub-btn" class="btn btn-pri">Subir</button>
+      <button id="sub-cancelar" hidden class="btn btn-sec">Cancelar</button>
     </div>
     <!-- M5: progreso real de la subida (antes: texto estático durante minutos) -->
-    <div id="sub-barra" hidden style="margin-top:12px;height:8px;background:#18293f;border-radius:4px;overflow:hidden">
-      <div id="sub-avance" style="height:100%;width:0%;background:#5b8dd6;transition:width .3s"></div>
+    <div id="sub-barra" hidden>
+      <div id="sub-avance"></div>
     </div>
     <p id="sub-estado" class="nota" role="status" aria-live="polite"></p>
   </section>
@@ -110,13 +115,13 @@
        derecha los DOS caminos — sacar shorts o entrar al editor con IA -->
   <div class="panel" id="panel" hidden>
     <section id="muestra">
-      <h2>🎬 Tu video <span id="corte-proy" style="color:#93a3b8;font-weight:400"></span></h2>
+      <h2><i data-icono="video"></i>Tu video <span id="corte-proy"></span></h2>
       <video id="sub-player" controls></video>
       <p id="corte-estado" class="nota" role="status" aria-live="polite"></p>
     </section>
     <div class="lado">
       <section class="tarjeta" id="card-shorts" role="button" tabindex="0">
-        <h2>✂️ Cortes IA</h2>
+        <h2><i data-icono="shorts"></i>Cortes IA</h2>
         <p class="desc">La IA encuentra los mejores momentos de tu video y los convierte en
           clips verticales con captions, listos para TikTok, Reels y Shorts.</p>
         <div class="anim anim-shorts" aria-hidden="true">
@@ -126,7 +131,7 @@
         <span class="ir" id="shorts-nota" hidden></span>
       </section>
       <section class="tarjeta" id="card-editor" role="button" tabindex="0">
-        <h2>🎛️ Editor IA</h2>
+        <h2><i data-icono="cortar"></i>Editor IA</h2>
         <p class="desc">La IA propone el corte de tu metraje — muletillas, retakes, aire muerto —
           y tú apruebas cada sugerencia en el editor. Nada se aplica solo.</p>
         <div class="anim anim-editor" id="anim-editor" aria-hidden="true">
@@ -140,6 +145,7 @@
     </div>
   </div>
 </main>
+<script src="/iconos.js"></script>
 <script src="/auth.js"></script>
 <script src="/orbe.js"></script>
 <script>
@@ -182,6 +188,12 @@ function orbeEditor(encendido) {
 let CDN = "";   // base de CloudFront para pintar el video de muestra
 
 function ui(id) { return document.getElementById(id); }
+// UI·14 · carta §6: el icono de trazo va delante del estado ya escrito como
+// texto (el texto sigue entrando por textContent; el SVG es constante). Si
+// iconos.js no cargó, el estado se queda solo con su texto.
+function iconoEstado(nombre, clase) {
+  if (window.icono) ui("corte-estado").insertAdjacentHTML("afterbegin", icono(nombre, clase));
+}
 
 // M19: el poll de esta página nunca se cancelaba —initCorte() se llama también
 // tras lanzar la corrida, así que los timers se acumulaban— y seguía corriendo
@@ -249,10 +261,11 @@ async function initCorte() {
     // M21: la llamada a la acción es el verbo; el detalle lo cuenta la nota
     ui("editor-nota").textContent = "Editar →";
     ui("corte-estado").textContent = nada
-      ? "✂️ Tu video ya está apretado: no encontramos relleno que quitar"
+      ? "Tu video ya está apretado: no encontramos relleno que quitar"
         + (ed.devueltos ? ` — te devolvimos ${ed.devueltos} créditos.` : ".")
         + " Puedes abrir el editor y cortar a mano."
-      : `✂️ Corte propuesto${resumen ? ": " + resumen : "."}`;
+      : `Corte propuesto${resumen ? ": " + resumen : "."}`;
+    iconoEstado("cortar");
     titulo(nada ? "✓ Sin relleno que quitar" : "✓ Corte propuesto");   // se ve en la pestaña sin abrirla
     return;
   }
@@ -270,9 +283,10 @@ async function initCorte() {
     EDITOR = { modo: "cobrar", costo: c.creditos };
     ui("editor-nota").textContent = `Proponer ✦ ${c.creditos}`;
     // el fallo anterior y el metraje son contexto, no etiqueta de la acción
-    if (ed.estado === "error")
-      ui("corte-estado").textContent = "❌ La corrida anterior falló y tus créditos se devolvieron.";
-    else if (!ed.estado) ui("corte-estado").textContent =
+    if (ed.estado === "error") {
+      ui("corte-estado").textContent = "La corrida anterior falló y tus créditos se devolvieron.";
+      iconoEstado("aviso", "mal");
+    } else if (!ed.estado) ui("corte-estado").textContent =
       `Metraje de ${(c.duracion_s / 60).toFixed(1)} min` +
       (c.con_transcript ? " (ya trae transcript)." : " (la corrida del editor incluye la transcripción).");
   } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
