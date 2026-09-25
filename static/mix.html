@@ -47,9 +47,9 @@
   .mut { color: var(--mut); font-size: var(--t-xs); }
   .err { color: var(--c-error); font-size: var(--t-sm); }
   .ok { color: var(--c-exito); font-size: var(--t-sm); }
-  /* aviso de estado (ejemplo viejo, campaña en pausa): es un estado, no una
-     acción, pero no hay otro color de advertencia en la paleta */
-  .aviso { color: var(--acc2); font-size: var(--t-sm); }
+  /* aviso de estado (ejemplo viejo, campaña en pausa): va en la caja de aviso
+     de la carta (§3), no en ámbar suelto */
+  .aviso { font-size: var(--t-sm); }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM (un
      role="status" que aparece y desaparece no lo anuncia el lector) */
@@ -300,6 +300,9 @@
 // o el día de inicio, el ejemplo deja de valer y hay que pedir otro (es gratis).
 "use strict";
 const $ = s => document.querySelector(s);
+
+// el icono del aviso; en las pruebas de node no hay iconos.js
+function mxIcoAviso() { return typeof icono === "function" ? icono("aviso") : ""; }
 
 // Todo lo que viene del servidor o de Blotato —el nombre de la cuenta lo
 // escribe la red, el texto de la publicación lo escribe el modelo— pasa por
@@ -687,8 +690,9 @@ function mxPintarEjemplo() {
         <p>${esc(mxEjemplo.texto || "")}</p>
       </div></div>` +
     (viejo
-      ? '<p class="aviso" style="margin-top:12px">Cambiaste la campaña después de ver esto. ' +
-        'Mira otro ejemplo antes de encenderla: verlo no cuesta nada.</p>'
+      ? '<p class="aviso aviso-caja" style="margin-top:12px">' + mxIcoAviso() +
+        '<span>Cambiaste la campaña después de ver esto. ' +
+        'Mira otro ejemplo antes de encenderla: verlo no cuesta nada.</span></p>'
       : '<p class="mut" style="margin-top:12px">Así se vería tu primera publicación. ' +
         'Verla no cuesta nada.</p>');
   caja.hidden = false;
@@ -1002,7 +1006,7 @@ function mxPintarViva() {
   // en pausa se dice POR QUÉ: la pausa la pone MIX solo (se desconectó
   // Blotato, se fue la cuenta), y sin el motivo el dueño no sabe qué arreglar
   $("#mxVivaEstado").innerHTML = c.estado === "pausada"
-    ? `<span class="aviso">Campaña en pausa. Ya salieron ${mxN(salieron)} de ${mxN(total)}.</span>` +
+    ? `<span class="aviso aviso-caja">${mxIcoAviso()}<span>Campaña en pausa. Ya salieron ${mxN(salieron)} de ${mxN(total)}.</span></span>` +
       (c.nota ? `<br><span class="mut">${esc(c.nota)}</span>` : "")
     : `Publicando todos los días a las ${esc(hora)}. ` +
       `Ya salieron <b>${mxN(salieron)} de ${mxN(total)}</b>.` +

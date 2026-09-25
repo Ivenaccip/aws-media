@@ -2,8 +2,10 @@
 
 Subir metraje y el panel de los dos caminos: carta.css (Bricolage + Geist,
 botones de tres niveles, foco), iconos de trazo en vez de emojis, la escala de
-seis tamaños y un solo botón ámbar (Subir). Las tarjetas de camino se marcan
-en gris al pasar encima: el ámbar solo dice «haz algo».
+seis tamaños y un solo botón ámbar: Subir mientras no hay metraje y la acción
+del Editor IA (Proponer ✦ N o Editar) cuando ya lo hay (dueño, 25-sep). Las
+tarjetas de camino se marcan en gris al pasar encima: el ámbar solo dice
+«haz algo».
 """
 import re
 from pathlib import Path
@@ -61,8 +63,7 @@ def test_los_iconos_que_usa_e1_existen():
         assert f"    {n}: '" in ICONOS, n
 
 
-def test_un_solo_principal_y_es_subir():
-    assert E1.count("btn-pri") == 1
+def test_sin_metraje_el_principal_es_subir():
     assert '<button id="sub-btn" class="btn btn-pri">Subir</button>' in E1
     assert '<button id="sub-cancelar" hidden class="btn btn-sec">Cancelar</button>' in E1
     # sin botones con color propio en línea
@@ -72,7 +73,9 @@ def test_un_solo_principal_y_es_subir():
 
 def test_elegir_y_pasar_encima_no_es_ambar():
     assert "border-color: var(--mut);" in _regla(".tarjeta:hover")
-    assert "--acc" not in _estilo().split(":root")[1].split("}", 1)[1]
+    # el ámbar de la página es solo la barra de subida, como en crear y shorts
+    resto = _estilo().split(":root")[1].split("}", 1)[1]
+    assert resto.count("--acc") == 1 and "background: var(--acc)" in _regla("#sub-avance {")
 
 
 def test_enlaces_campos_y_tarjetas_de_la_carta():
@@ -87,7 +90,8 @@ def test_enlaces_campos_y_tarjetas_de_la_carta():
 def test_lo_que_se_toca_mide_44():
     assert "min-height: 44px" in _regla(".volver {")
     assert "min-height: 44px" in _regla("#sub-proyecto {")
-    assert "min-height: 44px" in _regla("#sub-archivo::file-selector-button {")
+    carta = (RAIZ / "static" / "carta.css").read_text(encoding="utf-8")
+    assert "min-height: 44px" in carta[carta.index("input[type=file]::file-selector-button {"):]
 
 
 def test_los_iconos_de_los_titulos_van_en_gris():
@@ -101,3 +105,43 @@ def test_el_estado_sigue_entrando_como_texto():
     assert 'insertAdjacentHTML("afterbegin", icono(nombre, clase))' in E1
     assert "corte-estado\").innerHTML" not in E1
     assert "`Proponer ✦ ${c.creditos}`" in E1
+
+
+# ---------------------------------------------------------------------------
+# quién es el principal, corriendo principal() en node
+
+NODO = r"""
+const nodos = {};
+const ui = id => nodos[id] || (nodos[id] = {classList: {c: new Set(["btn", "btn-pri"]),
+  toggle(n, v) { v ? this.c.add(n) : this.c.delete(n); }, has(n) { return this.c.has(n); }}});
+nodos["editor-nota"] = {classList: {c: new Set(["ir"]), toggle(n, v) { v ? this.c.add(n) : this.c.delete(n); }}};
+let CON_FUENTE = false, EDITOR = {modo: "off"};
+__CODIGO__
+const out = {};
+const foto = () => ({subir: [...ui("sub-btn").classList.c].sort(), nota: [...ui("editor-nota").classList.c].sort()});
+principal(); out.sin = foto();
+CON_FUENTE = true; EDITOR.modo = "cobrar"; principal(); out.cobrar = foto();
+EDITOR.modo = "corriendo"; principal(); out.corriendo = foto();
+EDITOR.modo = "listo"; principal(); out.listo = foto();
+console.log(JSON.stringify(out));
+"""
+
+
+def test_con_metraje_el_principal_es_el_editor(tmp_path):
+    import json, shutil, subprocess
+    import pytest
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node no está instalado")
+    i = E1.index("function principal()")
+    codigo = E1[i:E1.index("\n}\n", i) + 3]
+    f = tmp_path / "p.js"
+    f.write_text(NODO.replace("__CODIGO__", codigo), encoding="utf-8")
+    r = subprocess.run([node, str(f)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    o = json.loads(r.stdout)
+    assert o["sin"] == {"subir": ["btn", "btn-pri"], "nota": ["ir"]}
+    assert o["cobrar"] == {"subir": ["btn", "btn-sec"], "nota": ["btn", "btn-pri", "ir"]}
+    # trabajando no hay nada que apretar: ningún ámbar
+    assert o["corriendo"] == {"subir": ["btn", "btn-sec"], "nota": ["ir"]}
+    assert o["listo"]["nota"] == ["btn", "btn-pri", "ir"]

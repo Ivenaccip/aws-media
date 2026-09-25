@@ -38,14 +38,10 @@
   #sub-proyecto { flex: 1; min-width: 180px; min-height: 44px; padding: 8px 12px; font: inherit;
                   border-radius: var(--r-medio); border: 1px solid var(--campo); background: var(--elev); color: inherit; }
   #sub-archivo { font-size: var(--t-xs); color: var(--mut); max-width: 100%; }
-  /* el botón del selector de archivo, con el aspecto del secundario de la carta */
-  #sub-archivo::file-selector-button { min-height: 44px; margin-right: 12px; padding: 0 16px; cursor: pointer;
-    border: 1px solid var(--campo); border-radius: var(--r-boton); background: transparent; color: var(--txt);
-    font: 500 var(--t-sm)/1.2 var(--f-texto); }
-  #sub-archivo::file-selector-button:hover { background: var(--elev); border-color: var(--mut); }
-  /* M5: la barra de progreso real de la subida (relleno azul de datos) */
+  /* M5: la barra de progreso real de la subida; en ámbar como la de crear y
+     la de shorts (dueño, 25-sep) */
   #sub-barra { margin-top: 12px; height: 8px; background: var(--elev); border-radius: 4px; overflow: hidden; }
-  #sub-avance { height: 100%; width: 0%; background: var(--azul); transition: width .3s; }
+  #sub-avance { height: 100%; width: 0%; background: var(--acc); transition: width .3s; }
 
   /* Paso 4: mock del dueño — video a la izquierda, los dos caminos a la derecha */
   .panel { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: stretch; }
@@ -59,6 +55,8 @@
   .tarjeta { cursor: pointer; transition: border-color var(--m-rapido) ease-out; }
   .tarjeta:hover, .tarjeta:focus-visible { border-color: var(--mut); }
   .tarjeta .ir { color: var(--c-enlace); font-weight: 500; margin-top: 12px; display: block; }
+  /* con metraje, la acción del Editor IA es el principal (dueño, 25-sep) */
+  .tarjeta .ir.btn { display: inline-flex; width: fit-content; margin-top: 16px; color: var(--c-tinta); }
   .anim { position: relative; height: 110px; border-radius: var(--r-medio); background: var(--bg);
           border: 1px solid var(--line); margin: 16px 0; overflow: hidden; }
   /* M19: mientras la IA de verdad trabaja, el orbe OCUPA la caja de la
@@ -223,6 +221,7 @@ async function initCorte() {
   ui("corte-proy").textContent = "· " + proyectoCorte;
   EDITOR = { modo: "off", costo: 0 };
   CON_FUENTE = false;
+  principal();
   let st;
   try {
     const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}`);
@@ -236,6 +235,7 @@ async function initCorte() {
 
   muestra(st.fuente);
   CON_FUENTE = !!st.fuente;
+  principal();
   // la tarjeta es el botón: solo habla si falta el metraje
   ui("shorts-nota").hidden = CON_FUENTE;
   ui("shorts-nota").textContent = CON_FUENTE ? "" : "Sube tu metraje primero";
@@ -260,6 +260,7 @@ async function initCorte() {
       : "";
     // M21: la llamada a la acción es el verbo; el detalle lo cuenta la nota
     ui("editor-nota").textContent = "Editar →";
+    principal();
     ui("corte-estado").textContent = nada
       ? "Tu video ya está apretado: no encontramos relleno que quitar"
         + (ed.devueltos ? ` — te devolvimos ${ed.devueltos} créditos.` : ".")
@@ -281,6 +282,7 @@ async function initCorte() {
     const c = await r.json();
     if (!c.backend_listo) { ui("editor-nota").textContent = c.aviso; return; }
     EDITOR = { modo: "cobrar", costo: c.creditos };
+    principal();
     ui("editor-nota").textContent = `Proponer ✦ ${c.creditos}`;
     // el fallo anterior y el metraje son contexto, no etiqueta de la acción
     if (ed.estado === "error") {
@@ -292,6 +294,16 @@ async function initCorte() {
   } catch (e) { ui("editor-nota").textContent = "Error: " + e.message; }
 }
 
+// Un solo ámbar (carta §3). Sin metraje, lo que sigue es subirlo; con metraje,
+// la acción del Editor IA (Proponer ✦ N o Editar) y Subir pasa a secundario.
+function principal() {
+  const editor = CON_FUENTE && (EDITOR.modo === "cobrar" || EDITOR.modo === "listo");
+  ui("sub-btn").classList.toggle("btn-pri", !CON_FUENTE);
+  ui("sub-btn").classList.toggle("btn-sec", CON_FUENTE);
+  ui("editor-nota").classList.toggle("btn", editor);
+  ui("editor-nota").classList.toggle("btn-pri", editor);
+}
+
 function irShorts() {
   if (CON_FUENTE) location.href = "/shorts.html?p=" + encodeURIComponent(proyectoCorte);
 }
@@ -301,6 +313,7 @@ async function irEditor() {
   // la tarjeta ya enseña el precio; el confirm evita el cobro por clic accidental
   if (!confirm(`La IA va a revisar tu metraje y proponer el corte por ${EDITOR.costo} créditos. ¿Continuar?`)) return;
   EDITOR.modo = "off";
+  principal();                   // mientras trabaja no hay nada que apretar
   orbeEditor(true);              // el POST tarda unos segundos: no dejarlos mudos
   try {
     const r = await fetch(`/api/editar/${encodeURIComponent(proyectoCorte)}/sugerir`, { method: "POST" });

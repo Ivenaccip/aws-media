@@ -47,6 +47,8 @@
   --c-enlace: #a9c6ee;
   --c-exito: #3dd68c;
   --c-error: #ff8080;
+  --c-aviso-fondo: #2e2110;
+  --c-aviso-borde: #a96716;
 
   /* letra: seis tamaños y ninguno más (§2) */
   --f-texto: 'Geist', system-ui, sans-serif;
@@ -101,6 +103,20 @@
 .btn-peligro { border: 1px solid #8f4a4a; background: #2e1b1b; color: #ffb4b4; font-weight: 600; }
 .btn-peligro:hover:not(:disabled) { border-color: var(--c-error); }
 .btn-peligro:active:not(:disabled) { background: #8f4a4a; color: var(--c-texto); }
+
+/* el botón nativo de «elegir archivo» con el aspecto del secundario */
+input[type=file]::file-selector-button { min-height: 44px; margin-right: 12px; padding: 0 16px;
+  cursor: pointer; border: 1px solid var(--c-campo); border-radius: var(--r-boton);
+  background: transparent; color: var(--c-texto); font: 500 var(--t-sm)/1.2 var(--f-texto); }
+input[type=file]::file-selector-button:hover { background: var(--c-elevada); border-color: var(--c-secundario); }
+
+/* --- aviso (§3): informa algo que conviene notar; no es acción ni error.
+   Caja apagada en ámbar hondo para que no se confunda con el botón principal,
+   que es ámbar sólido (dueño, 25-sep). --- */
+.aviso-caja { display: flex; align-items: flex-start; gap: 8px; width: fit-content; max-width: 100%;
+  padding: 8px 12px; border-radius: var(--r-medio); background: var(--c-aviso-fondo);
+  border: 1px solid var(--c-aviso-borde); color: var(--c-texto); }
+.aviso-caja .ico { color: var(--c-ambar-claro); margin-top: 0.1em; }
 
 /* --- iconos de trazo (§6): los dibuja static/iconos.js --- */
 .ico { width: 1.25em; height: 1.25em; flex-shrink: 0; fill: none; stroke: currentColor;

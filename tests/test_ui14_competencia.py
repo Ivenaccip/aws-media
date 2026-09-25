@@ -84,7 +84,8 @@ def test_el_ambar_solo_dice_haz_algo():
     e = _estilo()
     assert "#f0a94a" not in e and "#da8c28" not in e
     assert "var(--acc" not in e.split(":root", 1)[1].split("}", 1)[1]
-    assert "color: var(--mut)" in _regla(".aviso")
+    # la advertencia va en la caja de aviso de la carta (dueño, 25-sep)
+    assert '<p class="aviso aviso-caja">' in PANTALLA
 
 
 def test_enlaces_campos_y_tarjetas():

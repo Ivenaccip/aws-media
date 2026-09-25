@@ -33,9 +33,8 @@
              resize: vertical; min-height: 88px; }
   .mut { color: var(--mut); font-size: var(--t-xs); }
   .err { color: var(--c-error); font-size: var(--t-sm); }
-  /* el aviso del recorte informa, no pide nada: sin ámbar (carta §3) */
-  .aviso { display: flex; align-items: center; gap: 8px; color: var(--txt); font-size: var(--t-xs); margin-top: 4px; }
-  .aviso .ico { color: var(--mut); }
+  /* el aviso del recorte va en la caja de aviso de la carta (§3) */
+  .aviso { font-size: var(--t-xs); margin-top: 4px; }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
   /* elegir no es «hacer»: lo elegido en blanco, el hover en gris (carta §3) */
   .formatos { display: inline-flex; gap: 8px; }
@@ -220,7 +219,7 @@ function clTarjeta(c) {
     <p class="mut">${clEsc(c.segundos)} s · ${c.imagenes
       ? clEsc(c.imagenes) + (c.imagenes === 1 ? " foto tuya" : " fotos tuyas") : "sin fotos"}
     · ✦ ${clEsc(c.creditos)}</p>
-    ${c.recorte ? `<p class="aviso">${icono('aviso')}<span>${clEsc(c.recorte)}</span></p>` : ""}
+    ${c.recorte ? `<p class="aviso aviso-caja">${icono('aviso')}<span>${clEsc(c.recorte)}</span></p>` : ""}
     <video src="${clEsc(c.video)}" controls preload="metadata"></video></div>`;
 }
 

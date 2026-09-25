@@ -54,8 +54,8 @@
   .lectura h4 + ul, .lectura ul { margin: 0 0 12px 20px; padding: 0; }
   .lectura li { margin-bottom: 4px; }
   .lectura .probar { margin-top: 12px; }
-  /* un aviso no es una acción: gris con su icono, sin ámbar (§3) */
-  .aviso { color: var(--mut); font-size: var(--t-xs); }
+  /* la advertencia va en la caja de aviso de la carta (§3); lo que falló, en rojo */
+  .aviso { font-size: var(--t-xs); }
   .aviso .ico { margin-right: 4px; }
   .aviso.fallo { color: var(--c-error); }
   .pub { border-top: 1px solid var(--line); padding: 12px 0; }
@@ -248,7 +248,7 @@ function cpLectura(l, publicaciones) {
     ${l.formato ? `<p><b>Formato:</b> ${cpEsc(l.formato)}</p>` : ""}
     ${(l.probar || []).length ? `<h4 class="probar">Qué puedes probar</h4>
       <ul>${l.probar.map(x => `<li>${cpEsc(x)}</li>`).join("")}</ul>` : ""}
-    ${l.advertencia ? `<p class="aviso">${cpIco("aviso")}${cpEsc(l.advertencia)}</p>` : ""}
+    ${l.advertencia ? `<p class="aviso aviso-caja">${cpIco("aviso")}${cpEsc(l.advertencia)}</p>` : ""}
   </div>`;
 }
 
