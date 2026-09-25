@@ -46,6 +46,40 @@
      el navegador ya respeta la proporción real del archivo (M22 · F) */
   video { width:100%; max-height:70vh; object-fit:contain; border-radius:12px; margin-top:10px; }
   details summary { cursor:pointer; color:var(--mut); }
+  /* UI·11 · carta §6: los iconos de trazo de iconos.js (sin carta.css todavía:
+     su .btn chocaría con el de esta pantalla). svg.ico: el span.ico de los
+     títulos del formulario es otro (un emoji con filtro ámbar). */
+  svg.ico { width:1.25em; height:1.25em; flex:none; fill:none; stroke:currentColor;
+         stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* UI·11 · carta §8, espera larga: pasos con nombre, lo que falta y «puedes
+     cerrar esta pestaña». La barra y el orbe se quedan. */
+  #progreso h2, #error h2 { font-size:20px; margin:0 0 6px; }
+  .falta { margin:0 0 12px; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .pasos { list-style:none; margin:16px 0 4px; padding:0; display:grid; gap:12px; }
+  .pasos li { display:grid; grid-template-columns:24px 1fr; gap:10px; align-items:start; color:var(--mut); }
+  .pasos .marca { width:24px; height:24px; display:grid; place-items:center; }
+  .pasos .marca::before { content:""; width:10px; height:10px; border-radius:50%; border:2px solid var(--campo); }
+  .pasos .hecho .marca::before, .pasos .activo .marca::before { content:none; }
+  .pasos .hecho { color:var(--txt); }
+  .pasos .hecho .ico { color:#3dd68c; }
+  .pasos .activo { color:var(--txt); font-weight:600; }
+  .pasos .activo .marca::after { content:""; width:12px; height:12px; border-radius:50%;
+    background:var(--acc2); animation:latido 1.4s ease-out infinite; }
+  @keyframes latido { 0% { box-shadow:0 0 0 0 color-mix(in srgb, var(--acc2) 55%, transparent); }
+                      100% { box-shadow:0 0 0 10px transparent; } }
+  @media (prefers-reduced-motion: reduce) { .pasos .activo .marca::after { animation:none; } }
+
+  /* UI·11 · carta §8, error: qué pasó, qué pasó con tus créditos y qué sigue */
+  #error h2 { display:flex; align-items:center; gap:10px; }
+  #error h2 .ico { color:#ff8080; }
+  .partes { display:grid; gap:14px; margin-top:16px; }
+  .partes h3 { margin:0 0 4px; font-size:13px; font-weight:600; letter-spacing:.06em;
+               text-transform:uppercase; color:var(--mut); }
+  .partes p { margin:0; }
+  .tecnico { margin-top:16px; }
+  .tecnico pre { margin:8px 0 0; padding:10px; border-radius:10px; background:var(--hundido);
+                 color:var(--mut); font-size:13px; white-space:pre-wrap; word-break:break-word; }
   a { color:#5b8dd6; }
   .hidden { display:none; }
   /* M19: los huecos del orbe no ocupan nada mientras no hay orbe montado */
@@ -87,7 +121,7 @@
   .p-duracion { grid-column:3 / 4; }
   /* el icono del título, llevado al ámbar sin perder su dibujo (el ⏱ nativo
      es gris; ✨ y 📐 ya son amarillos y solo se calientan un poco) */
-  .ico { filter:sepia(1) saturate(5) hue-rotate(-8deg); }
+  span.ico { filter:sepia(1) saturate(5) hue-rotate(-8deg); }
 
   /* 1 · estilo: columna de botones del mismo ancho + la muestra a su altura */
   .estilo-flex { display:flex; gap:12px; align-items:stretch; }
@@ -315,11 +349,13 @@
   <section id="progreso" class="hidden">
     <div class="card">
       <h2 id="ptitulo">Trabajando…</h2>
+      <p class="falta" id="pfalta" hidden></p>
       <div class="bar"><i id="pbar" style="width:5%"></i></div>
       <!-- M19: la BARRA se queda (es real y monotónica: ETAPAS_PREP/PROD). El
            orbe no la sustituye — dice que la IA sigue trabajando AHORA, que es
            lo que una barra quieta no puede decir. -->
       <div id="orbe-prog"></div>
+      <ol class="pasos" id="ppasos" aria-label="Pasos"></ol>
       <p class="mut" id="petapa"></p>
     </div>
   </section>
@@ -414,10 +450,19 @@
   </section>
 
   <section id="error" class="hidden">
-    <div class="card"><h2>❌ Algo falló</h2><p class="err" id="emsg"></p>
-      <p class="mut" id="edevol"></p></div>
+    <!-- UI·11 · carta §8: tres partes y lo técnico plegado -->
+    <div class="card">
+      <h2 id="etitulo">No pudimos terminar tu película</h2>
+      <p id="emsg"></p>
+      <div class="partes">
+        <div id="ecreditos" hidden><h3>Tus créditos</h3><p id="edevol"></p></div>
+        <div><h3>Qué sigue</h3><p id="esigue"></p></div>
+      </div>
+      <details class="tecnico" id="etecnico-caja" hidden><summary>Detalles técnicos</summary><pre id="etecnico"></pre></details>
+    </div>
     <button class="btn" id="reintentar">Reintentar</button>
-    <button class="btn sec" onclick="location.href='/crear.html'">Empezar de nuevo</button>
+    <a class="btn sec" id="denuevo" href="/crear.html">Empezar de nuevo</a>
+    <div class="err" id="eerr" role="alert"></div>
   </section>
 </main>
 <!-- M5: aviso de conexión del polling — el trabajo sigue en la nube -->
@@ -430,6 +475,7 @@
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
 <script src="/orbe.js"></script>
+<script src="/iconos.js"></script>
 <script src="/guardrail.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -768,6 +814,70 @@ const ETAPA_TXT = {
   director:'Planeando las tomas', tts:'Grabando la narración', alinear:'Sincronizando la voz', media:'Generando las escenas',
   concat:'Uniendo la película', drive:'Guardando el resultado',
 };
+// UI·11 · carta §8: los pasos que se ven durante la espera. Cada uno agrupa
+// etapas del pipeline, así que el orden distinto de narración (tts antes del
+// director) no mueve nada: todas caen en el mismo paso. Tres textos por paso:
+// lo que falta, lo que está pasando y lo que ya pasó.
+const PASOS_PREP = [
+  {falta: 'Entender tu idea', activo: 'Entendiendo tu idea', hecho: 'Idea entendida',
+   etapas: ['inicio', 'clasificar', 'research']},
+  {falta: 'Escribir el guion', activo: 'Escribiendo el guion', hecho: 'Guion escrito',
+   etapas: ['guion', 'editor']},
+  {falta: 'Elegir voz y personaje', activo: 'Eligiendo voz y personaje', hecho: 'Voz y personaje listos',
+   etapas: ['voz', 'personaje']},
+  {falta: 'Tú revisas el guion', etapas: []},
+];
+const PASOS_PROD = [
+  {falta: 'Aprobar el guion', hecho: 'Guion aprobado', etapas: []},
+  {falta: 'Grabar la voz', activo: 'Grabando la voz', hecho: 'Voz grabada',
+   etapas: ['encolado', 'inicio', 'casting', 'director', 'tts', 'alinear']},
+  {falta: 'Animar las escenas', activo: 'Animando las escenas', hecho: 'Escenas animadas',
+   etapas: ['imagenes', 'media']},
+  {falta: 'Unir el video', activo: 'Uniendo el video', hecho: 'Video unido',
+   etapas: ['concat', 'drive', 'puente']},
+];
+// el paso de una etapa; -1 si no la conocemos (quien llama decide qué hacer)
+const pasoDe = (pasos, etapa) => pasos.findIndex(x => x.etapas.includes(etapa));
+let pasoPrev = 0;   // como la barra: los pasos nunca retroceden
+function pintaPasos(p, prod) {
+  const pasos = prod ? PASOS_PROD : PASOS_PREP;
+  let i = pasoDe(pasos, p.etapa);
+  i = Math.max(i < 0 ? (prod ? 1 : 0) : i, pasoPrev); pasoPrev = i;
+  const escenas = p.progreso.escenas_total
+    ? ` · ${p.progreso.escenas_listas || 0} de ${p.progreso.escenas_total}` : '';
+  $('#ppasos').innerHTML = pasos.map((x, k) => {
+    if (k < i) return `<li class="hecho"><span class="marca">${icono('listo')}</span><span>${x.hecho}</span></li>`;
+    if (k > i) return `<li><span class="marca"></span><span>${x.falta}</span></li>`;
+    // la etapa fina («Planeando las tomas») la dice el orbe, o #petapa sin orbe
+    return `<li class="activo" aria-current="step"><span class="marca"></span>`
+      + `<span>${x.activo}${pasos === PASOS_PROD && k === 2 ? escenas : ''}</span></li>`;
+  }).join('');
+}
+// «faltan unos N min»: la estimación de /estimacion (gratis, no cobra)
+// repartida según la barra. Es aproximado y así lo dice; sin estimación no se
+// inventa ninguna cifra.
+function pintaFalta(pct) {
+  const f = $('#pfalta');
+  if (!minutosProd) { f.hidden = true; return; }
+  const n = Math.round(minutosProd * (100 - pct) / 100);
+  f.textContent = n <= 1 ? 'Falta alrededor de un minuto.' : `Faltan unos ${n} min.`;
+  f.hidden = false;
+}
+// al volver con el enlace a media producción no hay estimación en memoria:
+// se pide una vez con el texto que ya aprobaste
+let pidiendoMin = false;
+async function pedirMinutos(p) {
+  if (minutosProd || pidiendoMin) return;
+  pidiendoMin = true;
+  const textos = (p.pipeline === 'narracion' ? [p.narracion || ''] : p.guion.map(e => e.narracion || ''))
+    .filter(t => t.trim());
+  try {
+    const r = await fetch(`/api/proyectos/${p.id}/estimacion`, {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({escenas: textos})});
+    if (r.ok) minutosProd = (await r.json()).minutos || null;
+  } catch { /* sin cifra: la pantalla ya no la promete */ }
+  if (proyecto && proyecto.estado === 'produciendo') pintaFalta(pctPrev);
+}
 let minutosProd = null;   // lo devuelve /estimacion; se muestra durante la producción
 let pctPrev = 0, pctEstado = '';   // M11: barra monotónica entre pipelines
 // 'imagenes' (M22 · G) es terminal para el poll: la pelicula esta parada
@@ -832,15 +942,16 @@ function render(p) {
   if (enMarcha) {
     show('progreso');
     const prod = p.estado==='produciendo';
-    $('#ptitulo').textContent = (prod ? '🎥 Produciendo la película…' : '✍️ Investigando y escribiendo el guion…')
-      + (prod && minutosProd ? ` (~${minutosProd} min)` : '');
+    $('#ptitulo').textContent = prod ? 'Produciendo tu película' : 'Escribiendo tu guion';
     let pct = (prod ? ETAPAS_PROD : ETAPAS_PREP)[p.etapa] ?? 5;
     if (prod && p.etapa==='media' && p.progreso.escenas_total) pct = 40 + 50 * (p.progreso.escenas_listas||0) / p.progreso.escenas_total;
     // M11: en narración-primero el TTS va antes que el director — la barra
     // nunca retrocede aunque el orden de etapas cambie entre pipelines
-    if (p.estado !== pctEstado) { pctEstado = p.estado; pctPrev = 0; }
+    if (p.estado !== pctEstado) { pctEstado = p.estado; pctPrev = 0; pasoPrev = 0; }
     pct = Math.max(pct, pctPrev); pctPrev = pct;
     $('#pbar').style.width = pct + '%';
+    pintaPasos(p, prod);
+    if (prod) { pintaFalta(pct); pedirMinutos(p); } else $('#pfalta').hidden = true;
     const etiqueta = (ETAPA_TXT[p.etapa] || p.etapa || 'Trabajando')
       + (p.progreso.escenas_total ? ` · ${p.progreso.escenas_listas||0}/${p.progreso.escenas_total} escenas` : '');
     orbeProgreso(p, etiqueta);
@@ -848,7 +959,7 @@ function render(p) {
     // cambia — antes las tres ideas iban apelmazadas en una línea. Sin orbe.js
     // la línea vuelve a llevarlo todo: la etapa no se pierde nunca.
     $('#petapa').textContent = (window.orbe ? '' : etiqueta + ' · ')
-      + 'Puedes cerrar la pestaña: la producción sigue en la nube y este enlace te trae de vuelta.';
+      + 'Puedes cerrar esta pestaña: el trabajo sigue en la nube y este enlace te trae de vuelta.';
   } else if (p.estado==='revision') { renderRevision(p); }
   else if (p.estado==='imagenes') { renderImagenes(p); }
   else if (p.estado==='listo') {
@@ -872,8 +983,10 @@ function render(p) {
       be.title = 'El editor de esta película aún no está listo (el puente al editor falló o sigue corriendo)';
     }
   } else if (p.estado==='error') {
+    // el saldo se refresca al llegar: la devolución la hace el worker justo
+    // después de marcar el error, y la píldora de arriba tiene que verla
+    if ($('#error').classList.contains('hidden')) setTimeout(() => window.monedero?.refrescar(), 4000);
     show('error');
-    $('#emsg').textContent = p.error || 'Error desconocido';
     // M19 (bug): mismo criterio que Proyecto.tiene_guion() en el servidor. Con
     // el pipeline de narración —el de POR DEFECTO desde el 7 de septiembre— el
     // texto vive en p.narracion y p.guion queda vacío, así que la condición
@@ -885,20 +998,52 @@ function render(p) {
     // y el servidor pide url_elegida, que además exige que el índice exista
     const hayPersonaje = p.personaje.elegida != null
       && p.personaje.elegida < p.personaje.opciones.length;
-    $('#reintentar').classList.toggle('hidden', !(hayTexto && hayPersonaje));
+    // con guion y personaje el fallo fue al PRODUCIR (el servidor reintenta
+    // con lo mismo); sin ellos, al preparar, y lo único es empezar de nuevo
+    fallaProducir = !!(hayTexto && hayPersonaje);
+    $('#reintentar').classList.toggle('hidden', !fallaProducir);
     pintaError(p);
   }
 }
-// M5: la pantalla de error explica qué pasó con los créditos y qué cuesta
-// reintentar ANTES de cobrar de nuevo (se re-pinta cuando llega el monedero)
+// UI·11 · carta §8: el error en tres partes — qué pasó (sin culpar a nadie),
+// qué pasó con tus créditos y qué sigue, con UN solo botón ámbar. El texto
+// técnico no desaparece: queda plegado en «Detalles técnicos».
+let fallaProducir = false;
 function pintaError(p) {
+  const pasos = fallaProducir ? PASOS_PROD : PASOS_PREP;
+  const paso = pasos[pasoDe(pasos, p.etapa)];
+  $('#etitulo').innerHTML = icono('aviso') + (fallaProducir
+    ? 'No pudimos terminar tu película' : 'No pudimos terminar tu guion');
+  $('#emsg').textContent = (paso ? `Se detuvo en «${paso.activo}». ` : '') + (fallaProducir
+    ? 'Tu guion, tu voz y tu personaje siguen guardados.'
+    : 'Tu idea no se perdió: «Empezar de nuevo» la trae escrita.');
+  $('#etecnico').textContent = p.error || '';
+  $('#etecnico-caja').hidden = !p.error;
+  // «Empezar de nuevo» se lleva la idea (crear.html ya lee ?brief=) y, si no
+  // hay nada que reintentar, pasa a ser el botón principal
+  $('#denuevo').href = '/crear.html' + (p.brief ? '?brief=' + encodeURIComponent(p.brief.slice(0, 5000)) : '');
+  $('#denuevo').classList.toggle('sec', fallaProducir);
+  $('#esigue').textContent = fallaProducir
+    ? 'Reintentar vuelve a producir con lo mismo que aprobaste.'
+    : 'Empieza de nuevo con la misma idea.';
+  // M5: los créditos y lo que cuesta reintentar, ANTES de cobrar de nuevo
+  // (se re-pinta cuando llega el monedero). Sin monedero no hay nada que decir.
+  $('#ecreditos').hidden = !(mon && mon.activo);
   if (!mon || !mon.activo) return;
-  $('#edevol').textContent = 'Si el fallo fue nuestro, los créditos de esta producción se ' +
-    `devolvieron solos — tu saldo de arriba ya lo refleja (tienes ${mon.saldo} créditos).`;
-  const costo = p.duracion_s ? costoProducir(p.duracion_s) : null;
+  // la cifra es la misma que devuelve el worker: el guion (lambda_worker) o lo
+  // que se cobró al producir (producir_task → creditos.producir_cobrado)
+  const devuelto = fallaProducir
+    ? (p.cobrado_producir ?? (p.duracion_s ? costoProducir(p.duracion_s) : null))
+    : mon.tarifas.preparar;
+  $('#edevol').textContent = devuelto != null
+    ? `Te devolvimos ✦ ${devuelto}: no pagas por ${fallaProducir ? 'una película' : 'un guion'} que no salió.`
+    : 'Te devolvimos lo que se cobró: no pagas por lo que no salió.';
+  const costo = fallaProducir && p.duracion_s ? costoProducir(p.duracion_s) : null;
   if (costo != null) {
     $('#reintentar').textContent = `Reintentar ✦ ${costo}`;
-    $('#edevol').textContent += ` Reintentar cuesta ${costo} créditos y se cobran de nuevo.`;
+    $('#esigue').textContent += ` Cuesta ${costo} créditos y se cobran de nuevo.`;
+  } else if (!fallaProducir && mon.tarifas.preparar != null) {
+    $('#esigue').textContent += ` El guion cuesta ${mon.tarifas.preparar} créditos, como la primera vez.`;
   }
 }
 
@@ -1230,6 +1375,7 @@ $('#reintentar').onclick = async () => {
   if (enVuelo) return;
   enVuelo = true;
   $('#reintentar').disabled = true;
+  $('#eerr').textContent = '';
   try {
     const r = await fetch(`/api/proyectos/${proyecto.id}/producir`, {method:'POST'});
     if (r.status === 402) throw new Error(msg402(await errTxt(r)));
@@ -1237,7 +1383,8 @@ $('#reintentar').onclick = async () => {
     proyecto = await r.json(); window.monedero?.refrescar(); seguir();
   } catch (e) {
     // sin el catch, una red caída dejaba el botón deshabilitado y sin mensaje
-    $('#emsg').textContent = e.message || 'No se pudo reintentar — revisa tu conexión.';
+    // va aparte: «qué pasó» sigue contando el fallo original
+    $('#eerr').textContent = e.message || 'No se pudo reintentar — revisa tu conexión.';
   }
   enVuelo = false;
   $('#reintentar').disabled = false;
