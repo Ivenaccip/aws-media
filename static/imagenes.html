@@ -5,31 +5,35 @@
 <title>Estudio de video · Imágenes</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { --bg:#0b1626; --card:#111f33; --line:#22354f; --txt:#ece8e1; --mut:#93a3b8; --acc:#da8c28; --acc2:#f0a94a;
-          --hundido:#08111e; --elev:#18293f; --campo:#55708f;
+  /* los nombres de siempre, ahora apuntando a los tokens de la carta */
+  :root { --bg:var(--c-fondo); --card:var(--c-superficie); --line:var(--c-linea); --txt:var(--c-texto);
+          --mut:var(--c-secundario); --acc:var(--c-ambar); --acc2:var(--c-ambar-claro);
+          --hundido:var(--c-hundido); --elev:var(--c-elevada); --campo:var(--c-campo);
           /* alto de la escena de editar: lo que deja libre el título y el botón */
           --alto-escena:clamp(420px, calc(100dvh - 205px), 700px); }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:var(--t-sm)/1.5 var(--f-texto); }
   main { max-width:1180px; margin:0 auto; padding:12px 16px; }
-  h2 { font-size:16px; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
-  a { color:#5b8dd6; }
-  .mut { color:var(--mut); font-size:13px; }
-  .err { color:#ff8080; white-space:pre-wrap; font-size:13.5px; }
+  /* carta §2: títulos en Bricolage, escala de seis tamaños */
+  h1 { font:800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing:-.02em; }
+  h2 { font:700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+  /* carta §6: los iconos de los títulos van en gris */
+  h2 .ico { color:var(--mut); }
+  a { color:var(--c-enlace); }
+  .mut { color:var(--mut); font-size:var(--t-xs); }
+  .err { color:var(--c-error); white-space:pre-wrap; font-size:var(--t-sm); }
   .hidden { display:none !important; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
-  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
-  .inicio { position:fixed; top:20px; left:18px; z-index:5; text-decoration:none; font-size:14px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px;
+  /* el foco lo pone carta.css (ámbar claro, 3 px) */
+  .inicio { position:fixed; top:8px; left:16px; z-index:5; display:inline-flex; align-items:center; gap:4px;
+            min-height:44px; text-decoration:none; }
+  .inicio:hover { color:var(--txt); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r-grande); padding:16px;
           min-width:0; display:flex; flex-direction:column; }
-  .ico { filter:sepia(1) saturate(5) hue-rotate(-8deg); }
-  .btn2 { border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:10px;
-          padding:7px 13px; cursor:pointer; font:inherit; font-size:13.5px; text-decoration:none;
-          display:inline-flex; align-items:center; gap:7px; }
-  .btn2:hover { border-color:var(--acc); }
-  .btn2:disabled { opacity:.45; cursor:default; }
-  .enlace { border:0; background:none; padding:0; color:#5b8dd6; cursor:pointer; font:inherit; text-decoration:underline; }
+  /* carta §5: la forma y los estados de .btn-sec los pone carta.css */
 
   /* M23 — la misma pantalla que «Crea tu video»: título centrado, una
      cuadrícula de tres columnas y el botón debajo. En escritorio se centra
@@ -48,8 +52,7 @@
      simétrico deja libre la franja del monedero sin descentrar el título. */
   .cabeza { display:flex; justify-content:center; align-items:center; min-height:44px; margin-bottom:14px;
             padding-inline:max(0px, min(300px, calc(50% - 230px))); }
-  .titulo { margin:0; font-size:30px; line-height:1.2; font-weight:700; letter-spacing:-.01em;
-            white-space:nowrap; }
+  .titulo { margin:0; white-space:nowrap; }
   /* Las tres palabras comparten la misma celda: la caja mide lo que la más
      larga («Bocetea») y cada una se alinea a la derecha, pegada a «tu imagen».
      Así «tu imagen» nunca se mueve; solo sube la palabra. */
@@ -82,10 +85,11 @@
   .estilo-flex { flex:1; display:flex; gap:12px; align-items:stretch; }
   .estilo-flex:has(.chips-v:empty) { min-height:220px; }
   .chips-v { display:flex; flex-direction:column; gap:5px; flex:none; }
-  .chip { border:1px solid var(--line); border-radius:10px; padding:4px 14px; cursor:pointer;
+  .chip { border:1px solid var(--campo); border-radius:var(--r-medio); padding:4px 14px; cursor:pointer;
           color:var(--mut); background:transparent; font:inherit; text-align:left; white-space:nowrap; }
-  .chip:hover { border-color:var(--acc); }
-  .chip.on { border-color:var(--acc); color:var(--txt); background:#2e2110; }
+  .chip:hover { color:var(--txt); border-color:var(--mut); }
+  /* carta §3: elegir no es «hacer»: lo elegido se marca en blanco, no en ámbar */
+  .chip.on { border-color:var(--txt); color:var(--txt); background:var(--elev); }
   .muestra { flex:1; min-width:0; min-height:200px; border:1px solid var(--line); border-radius:12px;
              display:grid; place-items:center; padding:12px; position:relative; overflow:hidden; }
   .muestra img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
@@ -94,28 +98,28 @@
                       padding:12px; background:var(--elev); color:var(--txt); font:inherit; }
 
   /* 2 · el cuadro de texto, al estilo del de Claude */
-  .caja { position:relative; gap:10px; transition:border-color .15s; }
+  .caja { position:relative; gap:12px; transition:border-color var(--m-rapido) ease-out; }
   .caja:focus-within { border-color:var(--campo); }
-  .caja.arrastrando { border-color:var(--acc); border-style:dashed; }
+  .caja.arrastrando { border-color:var(--txt); border-style:dashed; }
   .caja textarea { flex:1; min-height:96px; resize:none; border:0; padding:4px 2px; background:transparent;
-                   color:var(--txt); font:inherit; font-size:16px; outline:none; }
+                   color:var(--txt); font:inherit; font-size:var(--t-md); outline:none; }
   .barra { display:flex; align-items:center; gap:8px; }
-  .mas { width:34px; height:34px; flex:none; padding:0; border-radius:50%; cursor:pointer;
-         border:1px solid var(--line); background:transparent; color:var(--txt);
-         font:inherit; font-size:20px; line-height:1; }
-  .mas:hover:not(:disabled) { border-color:var(--acc); }
+  .mas { width:44px; height:44px; flex:none; padding:0; border-radius:50%; cursor:pointer;
+         display:grid; place-items:center;
+         border:1px solid var(--campo); background:transparent; color:var(--txt); }
+  .mas:hover:not(:disabled) { border-color:var(--mut); background:var(--elev); }
   .mas:disabled { opacity:.4; cursor:default; }
-  .barra .mut { font-size:12.5px; }
   #nota-adjunto { flex:1; min-width:0; }
-  .contador { margin-left:auto; color:var(--mut); font-size:12px; font-variant-numeric:tabular-nums; }
+  .contador { margin-left:auto; color:var(--mut); font-size:var(--t-xs); font-variant-numeric:tabular-nums; }
 
   /* paleta de «/» — atajos del navegador, no un chat */
-  .paleta { position:absolute; left:10px; right:10px; bottom:calc(100% + 6px); z-index:5;
-            background:var(--card); border:1px solid var(--acc); border-radius:12px;
-            padding:6px; max-height:230px; overflow-y:auto; }
-  .paleta div { padding:7px 10px; border-radius:9px; cursor:pointer; font-size:13.5px; }
-  .paleta div.sel, .paleta div:hover { background:#2e2110; }
-  .paleta b { color:var(--acc2); font-weight:600; }
+  .paleta { position:absolute; left:12px; right:12px; bottom:calc(100% + 8px); z-index:5;
+            background:var(--card); border:1px solid var(--campo); border-radius:var(--r-boton);
+            padding:4px; max-height:232px; overflow-y:auto; }
+  /* 12 + 20 + 12: cada atajo mide 44 px */
+  .paleta div { padding:12px; line-height:20px; border-radius:var(--r-medio); cursor:pointer; font-size:var(--t-sm); }
+  .paleta div.sel, .paleta div:hover { background:var(--elev); }
+  .paleta b { color:var(--txt); font-weight:600; }
 
   /* 3 · formato: las tarjetas de crear video, más la cuadrada. Comparten filas
      (subgrid) para que los títulos queden parejos aunque un subtítulo se parta. */
@@ -124,16 +128,16 @@
   .fmt { grid-row:1 / -1; min-width:0; display:grid; grid-template-rows:subgrid; justify-items:center;
          align-items:start; padding:10px; border-radius:12px; cursor:pointer;
          font:inherit; text-align:center; color:var(--mut); background:transparent;
-         border:1px solid var(--line); }
+         border:1px solid var(--campo); }
   .fmt-hueco { grid-row:2; height:40px; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
   .fmt b { grid-row:3; }
-  .fmt > .mut { grid-row:4; margin-top:2px; font-size:11px; }
+  .fmt > .mut { grid-row:4; margin-top:4px; font-size:var(--t-xs); }
   @supports not (grid-template-rows: subgrid) {
     .formatos { display:flex; gap:12px; }
     .fmt { flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   }
-  .fmt:hover { border-color:var(--acc); }
-  .fmt.on { color:var(--txt); border-color:var(--acc); background:color-mix(in srgb, var(--acc) 12%, transparent); }
+  .fmt:hover { border-color:var(--mut); }
+  .fmt.on { color:var(--txt); border-color:var(--txt); background:var(--elev); }
   .fmt-icono { display:block; border:2px solid currentColor; border-radius:3px; opacity:.75; }
   .fmt-icono.horiz { width:40px; height:23px; }
   .fmt-icono.vert { width:23px; height:40px; }
@@ -149,18 +153,18 @@
      en el teléfono el texto tiene que quedar por encima de ellas. */
   .lienzo-zona { position:relative; display:grid; grid-template-rows:auto minmax(0, 1fr) auto;
                  grid-template-columns:minmax(0, 1fr); padding:12px; isolation:isolate; }
-  .lienzo-zona.arrastrando { border-color:var(--acc); border-style:dashed; }
+  .lienzo-zona.arrastrando { border-color:var(--txt); border-style:dashed; }
   .herramientas { grid-row:1; display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-  .herramientas input[type=range] { accent-color:var(--acc); width:120px; }
+  .herramientas input[type=range] { accent-color:var(--txt); width:120px; min-height:44px; }
   .lienzo-caja { grid-row:2; position:relative; min-height:0; display:grid; place-items:center;
                  container-type:size; }
   #vacio, #lienzo-wrap, #final { grid-area:1 / 1; }
   #vacio { width:100%; height:100%; display:grid; place-content:center; justify-items:center; gap:6px;
            text-align:center; padding:20px; border:2px dashed var(--line); border-radius:12px; cursor:pointer; }
-  #vacio:hover { border-color:var(--acc); }
+  #vacio:hover { border-color:var(--mut); }
   #vacio p { margin:0; max-width:420px; }
-  #vacio .icono { font-size:34px; }
-  #vacio .enlace { font-size:13px; margin-top:8px; }
+  #vacio .icono .ico { width:36px; height:36px; color:var(--mut); }
+  #vacio .btn-enlace { font-size:var(--t-xs); min-height:44px; margin-top:4px; }
   /* El lienzo toma la proporción de la imagen (--ar, lo pone el JS) y el
      ancho que quepa: el menor entre todo el ancho y el alto × la proporción.
      Con max-height:100% no bastaba — el envoltorio no tiene alto propio, y la
@@ -184,6 +188,9 @@
   .acciones { grid-row:3; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;
               align-items:center; margin-top:10px; }
   .acciones .izq { margin-right:auto; display:flex; gap:8px; }
+  /* los secundarios de la barra, un poco más estrechos: en el teléfono
+     «Quitar imagen» y «Nueva imagen» caben en una fila */
+  .acciones .btn, .herramientas .btn { padding:0 14px; }
   #ver-original img { width:24px; height:24px; object-fit:cover; border-radius:5px; margin:-3px 0; }
   /* mientras hay una petición el orbe ocupa la esquina: las acciones no se
      pueden usar y no deben asomar debajo de él */
@@ -192,25 +199,24 @@
 
   /* 5 · qué cambiamos: dos botones grandes y, al transformar, el estilo */
   .modos { display:flex; flex-direction:column; gap:8px; }
-  .modo { display:flex; flex-direction:column; gap:1px; text-align:left; padding:9px 13px;
-          border-radius:12px; cursor:pointer; background:transparent; color:inherit;
-          border:1px solid var(--line); font:inherit; font-size:14px; }
-  .modo:hover { border-color:var(--acc); }
-  .modo.activo { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 12%, transparent); }
+  .modo { display:flex; flex-direction:column; gap:0; text-align:left; padding:8px 12px; min-height:44px;
+          border-radius:var(--r-boton); cursor:pointer; background:transparent; color:inherit;
+          border:1px solid var(--campo); font:inherit; font-size:var(--t-sm); }
+  .modo:hover { border-color:var(--mut); }
+  /* lo elegido en blanco, como los chips (carta §3) */
+  .modo.activo { border-color:var(--txt); background:var(--elev); }
   .modo:disabled { opacity:.45; cursor:default; }
-  .modo span { font-size:12px; }
-  .destino { margin-top:10px; }
-  .chips-w { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
-  .chips-w .chip { padding:3px 10px; font-size:13px; }
-  input[type=text] { width:100%; background:var(--elev); color:var(--txt); border:1px solid var(--line);
-                     border-radius:10px; padding:8px 10px; font:inherit; font-size:13.5px; margin-top:8px; }
+  .modo span { font-size:var(--t-xs); }
+  .destino { margin-top:12px; }
+  .chips-w { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  .chips-w .chip { padding:4px 12px; font-size:var(--t-xs); }
+  input[type=text] { width:100%; background:var(--elev); color:var(--txt); border:1px solid var(--campo);
+                     border-radius:var(--r-medio); padding:8px 12px; font:inherit; font-size:var(--t-sm); margin-top:8px; }
   #nota-estilo { margin:8px 0 0; }
 
-  /* 6 · el botón: centrado, del ancho de una columna */
-  .generar { display:block; width:calc((100% - 24px) / 3); min-width:260px; margin:14px auto 0; padding:12px;
-             border:0; border-radius:999px; color:#14100a; font:inherit; font-weight:600; cursor:pointer;
-             background:linear-gradient(90deg, var(--acc), var(--acc2)); }
-  .generar:disabled { opacity:.45; cursor:default; }
+  /* 6 · el botón: centrado, del ancho de una columna. La forma y los cinco
+     estados son de .btn-pri (carta.css); aquí solo el acomodo, de 48 px. */
+  .generar { display:flex; width:calc((100% - 24px) / 3); min-width:260px; min-height:48px; margin:16px auto 0; }
   .estado-envio { text-align:center; }
   #orbe-form { display:flex; justify-content:center; }
   #orbe-form:not(:empty) { margin-top:12px; }
@@ -222,11 +228,10 @@
     .palabra.on, .palabra.sale, .rejilla.entrando > .card { animation:none; }
   }
   @media (max-width: 900px) {
-    main { padding-top:62px; }
-    .inicio { top:22px; }
+    main { padding-top:64px; }
+    .inicio { top:10px; }
     .cabeza { padding-inline:0; }
-    .titulo { font-size:26px; }
-    .rejilla { grid-template-columns:minmax(0, 1fr); }
+      .rejilla { grid-template-columns:minmax(0, 1fr); }
     .vista-crear .rejilla { grid-template-areas:"estilo" "prompt" "formato"; }
     /* en una columna la página SÍ crece; la imagen tiene un alto DEFINIDO,
        sin él las unidades de contenedor no tienen contra qué medirse */
@@ -243,7 +248,7 @@
 </style>
 </head>
 <body>
-<a class="inicio" href="/">← Inicio</a>
+<a class="inicio" href="/"><i data-icono="volver"></i>Inicio</a>
 <main>
 <section id="form" class="vista-crear">
   <header class="cabeza">
@@ -257,7 +262,7 @@
   <div class="rejilla" id="rejilla">
     <!-- crear: el mismo selector de estilo que crear video -->
     <div class="card p-estilo solo-crear">
-      <h2><span class="ico" aria-hidden="true">✨</span> Estilo visual</h2>
+      <h2><i data-icono="estilo"></i>Estilo visual</h2>
       <div class="estilo-flex">
         <div class="chips-v" id="estilos" role="radiogroup" aria-label="Estilo visual"></div>
         <div class="muestra">
@@ -275,16 +280,16 @@
       <div class="herramientas hidden" id="herramientas">
         <span>Pincel</span>
         <input type="range" id="grosor" min="10" max="120" value="46" aria-label="Grosor del pincel">
-        <button class="btn2" id="borrar">Borrar zona</button>
+        <button class="btn btn-sec" id="borrar">Borrar zona</button>
         <span class="mut">Pinta lo que quieres cambiar.</span>
       </div>
 
       <div class="lienzo-caja">
         <div id="vacio" role="button" tabindex="0" aria-label="Subir la imagen que quieres editar">
-          <p class="icono" aria-hidden="true">🖼</p>
+          <p class="icono" aria-hidden="true"><i data-icono="imagen"></i></p>
           <p><b id="vacio-titulo">Sube la imagen o el boceto que quieres editar</b></p>
           <p class="mut">Arrástrala aquí, pégala o haz clic para elegirla. JPG, PNG o WebP, hasta 15 MB.</p>
-          <button type="button" class="enlace" id="a-crear">No, quiero crear una imagen nueva</button>
+          <button type="button" class="btn-enlace" id="a-crear">No, quiero crear una imagen nueva</button>
         </div>
 
         <div id="lienzo-wrap" class="hidden">
@@ -298,19 +303,19 @@
 
       <div class="acciones hidden" id="acciones">
         <div class="izq">
-          <button class="btn2" id="ver-original" title="Ver tu imagen"><img id="miniatura" alt="">Tu imagen</button>
-          <button class="btn2" id="ver-resultado">Ver resultado</button>
-          <button class="btn2" id="quitar">✕ Quitar imagen</button>
+          <button class="btn btn-sec" id="ver-original" title="Ver tu imagen"><img id="miniatura" alt="">Tu imagen</button>
+          <button class="btn btn-sec" id="ver-resultado">Ver resultado</button>
+          <button class="btn btn-sec" id="quitar"><i data-icono="cerrar"></i>Quitar imagen</button>
         </div>
-        <a class="btn2" id="descargar" download="imagen.jpg">⬇ Descargar</a>
-        <button class="btn2" id="seguir">✏️ Seguir editando</button>
-        <button class="btn2" id="limpiar">＋ Nueva imagen</button>
+        <a class="btn btn-sec" id="descargar" download="imagen.jpg"><i data-icono="descargar"></i>Descargar</a>
+        <button class="btn btn-sec" id="seguir"><i data-icono="editar"></i>Seguir editando</button>
+        <button class="btn btn-sec" id="limpiar"><i data-icono="mas"></i>Nueva imagen</button>
       </div>
     </div>
 
     <!-- editar: qué cambiamos -->
     <div class="card p-modos solo-editar">
-      <h2><span class="ico" aria-hidden="true">🖌</span> ¿Qué cambiamos?</h2>
+      <h2><i data-icono="pincel"></i>¿Qué cambiamos?</h2>
       <div class="modos" id="modos" role="radiogroup" aria-label="Qué quieres hacer">
         <button type="button" class="modo activo" id="modo-pincel" role="radio" aria-checked="true">
           <b>Cambiar una zona</b><span class="mut">Pintas dónde y el resto queda igual</span>
@@ -337,7 +342,7 @@
         placeholder="Describe tu imagen…"></textarea>
       <div class="barra">
         <button type="button" class="mas" id="mas" aria-label="Subir una imagen para editarla"
-                title="Sube una imagen o un boceto para editarlo">+</button>
+                title="Sube una imagen o un boceto para editarlo"><i data-icono="mas"></i></button>
         <span class="mut" id="nota-adjunto"></span>
         <span class="contador"><span id="cnt">0</span>/2000</span>
       </div>
@@ -345,7 +350,7 @@
 
     <!-- crear: formato -->
     <div class="card p-formato solo-crear">
-      <h2><span class="ico" aria-hidden="true">📐</span> Formato</h2>
+      <h2><i data-icono="formato"></i>Formato</h2>
       <div class="formatos" id="formatos" role="radiogroup" aria-label="Formato de la imagen"
            aria-describedby="nota-formato">
         <button type="button" class="fmt" data-fmt="horizontal" role="radio" aria-checked="false">
@@ -365,7 +370,7 @@
     </div>
   </div>
 
-  <button class="generar" id="enviar">Generar</button>
+  <button class="btn btn-pri generar" id="enviar">Generar</button>
   <div class="estado-envio">
     <div id="orbe-form"></div>
     <p class="mut" id="saldoform"></p>
@@ -376,6 +381,7 @@
 
 <input type="file" id="archivo" accept="image/png,image/jpeg,image/webp" hidden>
 
+<script src="/iconos.js"></script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
 <script src="/orbe.js"></script>
