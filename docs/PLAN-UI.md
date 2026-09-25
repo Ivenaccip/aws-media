@@ -154,21 +154,25 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
 - **Costo sin tope en dólares:** `pricing.json` no tiene sección para
   RAG/n8n. `docs/ECONOMIA.md` estima entre $0.20 y $0.35 dólares por flujo.
 
-## 7. Decisiones del dueño
+## 7. Decisiones del dueño (tomadas el 25-sep)
 
-1. **Stack:** Vite + React + TS + Tailwind + Radix en MPA (recomendado) o TS vanilla.
-2. **Invariantes de diseño:**
-   - se mantienen la paleta M20, solo modo oscuro, «Verbo ✦ N», el orbe y el menú lateral;
-   - un solo acento ámbar;
-   - fuente Geist (OFL, autoalojada).
-3. **10-oct:** la sección pública sale en HTML estático y la tubería nueva
-   después del lanzamiento (recomendado).
-4. **URLs:**
+1. **Stack:** ✅ Vite + React + TS + Tailwind + Radix en MPA.
+2. **Invariantes de diseño:** ✅ se mantienen la paleta M20, solo modo
+   oscuro, «Verbo ✦ N», el orbe y el menú lateral. **Abiertos:** el acento
+   único y la fuente. Se deciden con el lienzo de propuestas de diseño.
+3. **10-oct:** 🔀 la sección pública (`/automatizacion`, fase 2) y la
+   portada (fase 6) las lleva **otro agente**. Esta línea (etiqueta
+   «Claude Code Online») se dedica a mejorar la UI/UX de las pantallas que
+   ya existen.
+4. **URLs:** ✅
    - la app en `/estudio/`;
-   - `/entrar` el 19-oct;
-   - la portada el 2-nov;
-   - 302 que conservan el query;
+   - login en `/entrar`;
+   - los enlaces viejos redirigen con 302 y conservan el query;
    - la configuración de Cognito no se toca.
-5. **Alcance:** se migra todo salvo callback, orbe y el editor. Crear,
-   imágenes y MIX van al final. Retiro tras 7 días en `todos` sin incidentes
-   de dinero.
+5. **Alcance:** ✅ quedan fuera callback, el orbe y el editor de cortes.
+   El orden (crear, imágenes y MIX al final) y la regla de retiro (7 días
+   en `todos` sin incidentes de dinero) siguen como propuesta.
+
+**Ramas:** los PRs van a `dev`, nunca a `main`. Cada commit de una tarjeta
+empieza con `UI·N:` para poder correlacionar los cambios de la interfaz
+con su tarjeta (`git log --grep "^UI·"`).
