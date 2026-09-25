@@ -363,7 +363,10 @@
 </dialog>
 <script>
 const $ = s => document.querySelector(s);
-const esc = t => (t || '').replace(/</g, '&lt;');
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
 const ESTADO = {creado:'en preparación', preparando:'en preparación', revision:'en revisión — te espera',
                 produciendo:'produciéndose…', listo:'✅ lista', error:'❌ con error'};
 // proyectos viejos pueden traer `creado` en un formato raro: sin fecha antes que "Invalid Date"

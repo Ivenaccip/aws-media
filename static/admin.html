@@ -162,6 +162,12 @@ const usd4 = x => `$${x.toFixed(4)}`;
 const mb = b => b == null ? '—' : (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6).toFixed(1) + ' MB');
 const tiempo = s => !s ? '—' : (s >= 90 ? (s / 60).toFixed(1) + ' min' : Math.round(s) + ' s');
 let LFBASE = '';
+// El panel pinta datos de TODOS los usuarios (emails, ids, conceptos de
+// Langfuse): cualquier texto del servidor pasa por aquí antes de un innerHTML.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
 
 // --- pestañas ---
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
@@ -193,7 +199,7 @@ async function cargar() {
   $('#i-comprados').textContent = d.usuarios.reduce((s, u) => s + u.comprados, 0);
   $('#i-cortesia').textContent = d.usuarios.reduce((s, u) => s + u.cortesia, 0);
   $('#cuerpo-ingresos').innerHTML = d.usuarios.map(u => `
-    <tr><td title="${u.user_id}">${u.email || u.user_id}</td>
+    <tr><td title="${esc(u.user_id)}">${esc(u.email || u.user_id)}</td>
       <td>${u.cortesia}</td><td>${u.comprados}</td><td>${u.gastados}</td>
       <td>${usd4(ingresos(u))}</td><td>${u.saldo}</td><td>${u.peliculas}</td></tr>`).join('');
 
@@ -211,8 +217,8 @@ async function cargar() {
   }
   $('#c-total').textContent = usd(t.costo_usd);
   $('#cuerpo-costos').innerHTML = d.usuarios.map(u => `
-    <tr class="usuario" data-uid="${u.user_id}" tabindex="0">
-      <td title="${u.user_id}">${u.email || u.user_id}</td>
+    <tr class="usuario" data-uid="${esc(u.user_id)}" tabindex="0">
+      <td title="${esc(u.user_id)}">${esc(u.email || u.user_id)}</td>
       <td>${usd4(prov(u, 'openai'))}</td>
       <td>${usd4(prov(u, 'fal'))}</td>
       <td>${usd4(prov(u, 'claude'))}</td>
@@ -235,7 +241,7 @@ async function cargar() {
   $('#f-pelis').textContent = t.peliculas;
   $('#f-piso').textContent = `$${piso} dólares`;
   $('#cuerpo-flujo').innerHTML = d.usuarios.map(u => `
-    <tr><td title="${u.user_id}">${u.email || u.user_id}</td>
+    <tr><td title="${esc(u.user_id)}">${esc(u.email || u.user_id)}</td>
       <td>${usd4(ingresos(u))}</td><td>${usd4(u.costo_usd)}</td>
       <td class="${u.margen_usd >= 0 ? 'pos' : 'neg'}">${usd4(u.margen_usd)}</td></tr>`).join('');
 }
@@ -247,13 +253,13 @@ async function detalle(uid, nombre) {
   const r = await fetch('/api/admin/usuarios/' + encodeURIComponent(uid));
   if (!r.ok) { $('#detalle-cuerpo').innerHTML = `<p class="mut">Error ${r.status}.</p>`; return; }
   const d = await r.json();
-  const traza = t => `<div>· ${t.concepto} — ${usd4(t.costo_usd)}` +
+  const traza = t => `<div>· ${esc(t.concepto)} — ${usd4(t.costo_usd)}` +
     (t.segundos ? ` · ~${tiempo(t.segundos)} de cómputo` : '') +
-    (t.traza ? ` <a href="${LFBASE}/trace/${t.traza}" target="_blank" rel="noopener">traza ↗</a>` : '') + `</div>`;
+    (t.traza ? ` <a href="${esc(LFBASE)}/trace/${esc(encodeURIComponent(t.traza))}" target="_blank" rel="noopener">traza ↗</a>` : '') + `</div>`;
   $('#detalle-cuerpo').innerHTML = (d.proyectos.map(p => `
     <div class="proyecto">
       <div class="cab">
-        <span class="brief" title="${(p.brief || '').replace(/"/g,'&quot;')}">${(p.brief || p.id).replace(/</g,'&lt;')}</span>
+        <span class="brief" title="${esc(p.brief)}">${esc(p.brief || p.id)}</span>
         <span class="mut">${p.estado} · ${p.duracion_s ? p.duracion_s + ' s · ' : ''}${new Date(p.creado).toLocaleDateString()}</span>
       </div>
       <div style="margin-top:4px"><b>${p.creditos}</b> <span class="mut">créditos netos</span> ·

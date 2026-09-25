@@ -119,6 +119,14 @@
 <script src="/orbe.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+// Todo texto que venga del servidor (títulos de YouTube, errores de Apify, logs
+// del render) pasa por aquí antes de tocar un innerHTML: la cookie `token` se
+// lee desde JavaScript, así que un ${} sin escapar regala la sesión. Escapa
+// también las comillas: sirve dentro de un atributo.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
 const P = new URLSearchParams(location.search).get("p") || "";
 $("proy").textContent = P;
 let EST = null, COSTO = null, pollTimer = null;
@@ -174,7 +182,7 @@ async function elegirProyecto() {
   const conMetraje = ps.filter(p => (p.subidas && p.subidas.length) || p.generado);
   $("aviso").innerHTML = conMetraje.length
     ? "¿De qué video sacamos los shorts?<br><br>" + conMetraje.map(p =>
-        `<a href="/shorts.html?p=${encodeURIComponent(p.nombre)}" style="color:#5b8dd6;display:inline-block;margin:3px 10px 3px 0">▸ ${p.nombre}</a>`).join("")
+        `<a href="/shorts.html?p=${encodeURIComponent(p.nombre)}" style="color:#5b8dd6;display:inline-block;margin:3px 10px 3px 0">▸ ${esc(p.nombre)}</a>`).join("")
     : "Todavía no tienes videos con metraje — sube uno aquí abajo, o importa uno de YouTube.";
   $("sec-importar").hidden = false;
   try {
@@ -256,8 +264,8 @@ $("btn-cotizar").onclick = async () => {
   if (!url) return;
   $("imp-cotiza").textContent = "Cotizando…"; $("btn-importar").hidden = true; COTIZA = null;
   try { COTIZA = await fj("/api/shorts/importar/cotizar", { url }); }
-  catch (e) { $("imp-cotiza").innerHTML = `<span class="err">${e.message}</span>`; return; }
-  $("imp-cotiza").innerHTML = `«${COTIZA.titulo}» · ${fmtMin(COTIZA.duracion_s)}`;
+  catch (e) { $("imp-cotiza").innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
+  $("imp-cotiza").innerHTML = `«${esc(COTIZA.titulo)}» · ${fmtMin(COTIZA.duracion_s)}`;
   $("btn-importar").hidden = false;
   $("btn-importar").textContent = `Importar ✦ ${COTIZA.creditos}`;
 };
@@ -272,10 +280,10 @@ $("btn-importar").onclick = async () => {
     if (e.status === 409 && COTIZA.nombre) location.href = `/shorts.html?p=${encodeURIComponent(COTIZA.nombre)}`;
     else if (e.status === 402) {
       // /monedero.html NUNCA ha existido: este CTA llevaba a un 404 duro
-      $("imp-estado").innerHTML = `<span class="err">${e.message}</span> `;
+      $("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span> `;
       $("imp-estado").appendChild(botonRecargar());
     }
-    else $("imp-estado").innerHTML = `<span class="err">${e.message}</span>`;
+    else $("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span>`;
   }
 };
 
@@ -296,7 +304,7 @@ function pintar() {
   const imp = EST.importar || {};
   if (imp.estado === "descargando") {
     $("aviso").hidden = false;
-    $("aviso").innerHTML = `<span class="spin">Trayendo «${imp.titulo || "el video"}» de YouTube</span> — suele tardar 1-3 minutos; puedes cerrar la página.`;
+    $("aviso").innerHTML = `<span class="spin">Trayendo «${esc(imp.titulo || "el video")}» de YouTube</span> — suele tardar 1-3 minutos; puedes cerrar la página.`;
     $("sec-analisis").hidden = true;
     $("sec-importar").hidden = true;   // una descarga en curso ya ocupa la página
     orbeAnalisis(false);   // una descarga no es la IA pensando: aquí no hay orbe
@@ -306,7 +314,7 @@ function pintar() {
   }
   if (imp.estado === "error" && !EST.fuente) {
     $("aviso").hidden = false;
-    $("aviso").innerHTML = `<span class="err">La importación falló${imp.error ? ` (${imp.error})` : ""} — tus créditos se devolvieron.</span> Vuelve a <a href="/shorts.html" style="color:#5b8dd6">intentarlo</a>.`;
+    $("aviso").innerHTML = `<span class="err">La importación falló${imp.error ? ` (${esc(imp.error)})` : ""} — tus créditos se devolvieron.</span> Vuelve a <a href="/shorts.html" style="color:#5b8dd6">intentarlo</a>.`;
     $("sec-analisis").hidden = true;
     orbeAnalisis(false);
     titulo("");
@@ -331,7 +339,7 @@ function pintar() {
     orbeAnalisis(false);         // el orbe NUNCA acompaña a un error
     titulo("");
     if (st.estado === "error")
-      $("analisis-estado").innerHTML = `<span class="err">El análisis falló${st.error ? ` (${st.error})` : ""} — tus créditos se devolvieron.</span>`;
+      $("analisis-estado").innerHTML = `<span class="err">El análisis falló${st.error ? ` (${esc(st.error)})` : ""} — tus créditos se devolvieron.</span>`;
     botonAnalizar("Analizar");
   }
   pintarRender(st.render || {});
@@ -355,7 +363,7 @@ $("btn-analizar").onclick = async () => {
   b.disabled = true;
   try { await fj(`/api/shorts/${encodeURIComponent(P)}/analizar`, {}); }
   catch (e) {
-    $("analisis-estado").innerHTML = `<span class="err">${e.message}</span>`;
+    $("analisis-estado").innerHTML = `<span class="err">${esc(e.message)}</span>`;
     b.disabled = false;
     return;
   }
@@ -372,13 +380,13 @@ function pintarCandidatos(st) {
         <input type="checkbox" ${i < 3 ? "checked" : ""} onchange="marcar(this)">
         <span class="score">${c.score.toFixed(1)}</span></label>
       <div>
-        <div class="texto">${(c.texto || "").replace(/</g, "&lt;")}</div>
-        <div class="razon">${(c.razon || "").replace(/</g, "&lt;")}</div>
+        <div class="texto">${esc(c.texto)}</div>
+        <div class="razon">${esc(c.razon)}</div>
         <div class="ajustes">
           <label>inicio <input type="number" step="0.1" value="${c.start}" data-k="start"></label>
           <label>fin <input type="number" step="0.1" value="${c.end}" data-k="end"></label>
-          <label>gancho <input type="text" value="${(c.hook_line1 || "").replace(/"/g, "&quot;")}" data-k="h1" maxlength="40"></label>
-          <label>línea 2 <input type="text" value="${(c.hook_line2 || "").replace(/"/g, "&quot;")}" data-k="h2" maxlength="40"></label>
+          <label>gancho <input type="text" value="${esc(c.hook_line1)}" data-k="h1" maxlength="40"></label>
+          <label>línea 2 <input type="text" value="${esc(c.hook_line2)}" data-k="h2" maxlength="40"></label>
         </div>
       </div>
     </div>`).join("");
@@ -419,7 +427,7 @@ $("btn-render").onclick = async () => {
       shorts: seleccion(), estilo: $("estilo").value,
       plataforma: $("plataforma").value, tipo: $("tipo").value });
   } catch (e) {
-    $("render-estado").innerHTML = `<span class="err">${e.message}</span>`;
+    $("render-estado").innerHTML = `<span class="err">${esc(e.message)}</span>`;
     b.disabled = false;
     return;
   }
@@ -454,11 +462,11 @@ function pintarRender(r) {
     titulo("✓ Shorts listos");
     $("sec-salidas").hidden = false;
     $("lista-salidas").innerHTML = r.salidas.map(s => `
-      <div class="salida"><span>${s.archivo} <span class="mut">· ${(s.bytes / 1e6).toFixed(1)} MB</span></span>
-        ${s.url ? `<a href="${s.url}" target="_blank" rel="noopener">ver ↗</a>` : ""}
+      <div class="salida"><span>${esc(s.archivo)} <span class="mut">· ${(s.bytes / 1e6).toFixed(1)} MB</span></span>
+        ${/^https?:\/\//i.test(s.url || "") ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">ver ↗</a>` : ""}
         ${keyDe(s) ? `<a href="${urlDescarga(keyDe(s), s.archivo)}">descargar ⬇</a>` : ""}</div>`).join("");
   } else if (r.estado === "error") {
-    $("render-estado").innerHTML = `<span class="err">El render falló${r.log ? ` (${r.log.slice(0, 160)})` : ""} — tus créditos se devolvieron. Ajusta y vuelve a intentar.</span>`;
+    $("render-estado").innerHTML = `<span class="err">El render falló${r.log ? ` (${esc(r.log.slice(0, 160))})` : ""} — tus créditos se devolvieron. Ajusta y vuelve a intentar.</span>`;
   }
 }
 

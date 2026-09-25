@@ -434,7 +434,13 @@
 <script>
 const $ = s => document.querySelector(s);
 async function errTxt(r) { const t = await r.text(); try { return JSON.parse(t).detail || t; } catch { return `${r.status} ${t.slice(0,200)}`; } }
-const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+// Un href con javascript: se ejecuta al hacer clic: los enlaces que llegan del
+// servidor (fuentes de la web, Drive) solo se pintan si son http(s).
+const esHttp = u => typeof u === "string" && /^https?:\/\//i.test(u);
 const show = id => {
   for (const s of ['form','progreso','revision','imagenes','resultado','error']) $('#'+s).classList.toggle('hidden', s!==id);
   // la configuración y la revisión son anchas; el progreso y el resultado, no
@@ -570,7 +576,7 @@ function pintaEjemplo() {
 }
 fetch('/api/estilos').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(list => {
   list.forEach(e => DESCR_ESTILO[e.id] = e.descripcion || '');
-  $('#estilos').innerHTML = list.map(e => `<button type="button" class="chip ${e.id===estilo?'on':''}" data-id="${e.id}" role="radio" aria-checked="${e.id===estilo}">${e.nombre}</button>`).join('');
+  $('#estilos').innerHTML = list.map(e => `<button type="button" class="chip ${e.id===estilo?'on':''}" data-id="${e.id}" role="radio" aria-checked="${e.id===estilo}">${esc(e.nombre)}</button>`).join('');
   pintaEjemplo();
   $('#estilos').onclick = ev => {
     const b = ev.target.closest('.chip'); if (!b) return;
@@ -852,7 +858,7 @@ function render(p) {
     $('#video').poster = `/api/proyectos/${p.id}/archivo/portada.jpg`;
     $('#descargar').href = `/api/proyectos/${p.id}/archivo/pelicula.mp4`;
     $('#rmsg').textContent = p.resultado?.mensaje || '';
-    $('#rlink').innerHTML = p.resultado?.link ? `<a href="${p.resultado.link}" target="_blank">Abrir en Drive</a>` : '';
+    $('#rlink').innerHTML = esHttp(p.resultado?.link) ? `<a href="${esc(p.resultado.link)}" target="_blank" rel="noopener noreferrer">Abrir en Drive</a>` : '';
     // «Editor» abre el proyecto editable del puente (videos/gen-<id>); si el
     // puente falló, el botón lo explica en vez de mandar a subir metraje
     const gen = p.progreso?.editor;
@@ -903,7 +909,8 @@ function renderRevision(p) {
   if (revisionPintada) return; revisionPintada = true;
   $('#dossier_card').classList.toggle('hidden', !p.dossier);
   $('#dossier').textContent = p.dossier || ''; $('#nfuentes').textContent = p.fuentes.length;
-  $('#fuentes').innerHTML = p.fuentes.map(u => `<li><a href="${u}" target="_blank">${u}</a></li>`).join('');
+  $('#fuentes').innerHTML = p.fuentes.map(u => esHttp(u)
+    ? `<li><a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a></li>` : `<li>${esc(u)}</li>`).join('');
   $('#pnombre').value = p.personaje.nombre; $('#pdesc').textContent = p.personaje.descripcion;
   renderOpciones(p);
   if (p.pipeline === 'narracion') {
@@ -995,7 +1002,7 @@ const ICONO = {verde:'🟢', amarillo:'🟡', rojo:'🔴'};
 function renderVoces(p) {
   const lista = p.voces.length ? p.voces : [{id:'George', nivel:'amarillo', motivo:'sin recomendación'}];
   const sel = $('#voz');
-  sel.innerHTML = lista.map(v => `<option value="${v.id}" data-motivo="${v.motivo}">${ICONO[v.nivel]} ${v.id}</option>`).join('');
+  sel.innerHTML = lista.map(v => `<option value="${esc(v.id)}" data-motivo="${esc(v.motivo)}">${ICONO[v.nivel]} ${esc(v.id)}</option>`).join('');
   sel.value = p.voz && lista.some(v => v.id===p.voz) ? p.voz : lista[0].id;
   const motivo = () => { const o = sel.selectedOptions[0]; $('#vozmotivo').textContent = o ? o.dataset.motivo : ''; $('#audio').classList.add('hidden'); };
   sel.onchange = () => { motivo(); marcaCambio(); }; motivo();
@@ -1012,7 +1019,7 @@ function renderVoces(p) {
 }
 function addEscena(txt='') {
   const d = document.createElement('div'); d.className='escena';
-  d.innerHTML = `<div class="n"></div><textarea>${txt.replace(/</g,'&lt;')}</textarea><div class="meta"></div><button title="Quitar la escena">✕</button>`;
+  d.innerHTML = `<div class="n"></div><textarea>${esc(txt)}</textarea><div class="meta"></div><button title="Quitar la escena">✕</button>`;
   d.querySelector('button').onclick = () => { d.remove(); renum(); marcaCambio(); };
   d.querySelector('textarea').oninput = () => { metaEscena(d); estimar(); marcaCambio(); };
   metaEscena(d);
@@ -1124,12 +1131,12 @@ function renderImagenes(p) {
   // escribe en el MISMO archivo (start_N.jpg), y sin esto el navegador
   // seguiría enseñando la vieja y parecería que el botón no hace nada
   $('#imgrid').innerHTML = imgs.map((im, i) => `
-    <figure data-esc="${im.id}">
-      <img src="/api/proyectos/${p.id}/archivo/${im.archivo}?v=${imgVersion}" alt="Imagen de la toma ${i + 1}">
+    <figure data-esc="${esc(im.id)}">
+      <img src="/api/proyectos/${p.id}/archivo/${esc(im.archivo)}?v=${imgVersion}" alt="Imagen de la toma ${i + 1}">
       <figcaption>Toma ${i + 1}${im.planos > 1 ? ` · manda en ${im.planos} planos` : ''}
-        — «${(im.narracion || '').slice(0, 90)}»</figcaption>
+        — «${esc((im.narracion || '').slice(0, 90))}»</figcaption>
       <details><summary>Describir otra imagen</summary>
-        <textarea class="imgprompt" rows="3">${(im.prompt || '').replace(/</g, '&lt;')}</textarea>
+        <textarea class="imgprompt" rows="3">${esc(im.prompt)}</textarea>
       </details>
       <button class="chip otra" type="button">🔄 Pedir otra</button>
     </figure>`).join('');
