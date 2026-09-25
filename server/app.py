@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import re
 import time
@@ -1036,7 +1037,13 @@ def archivo(id_: str, nombre: str):
 # motor y su shader), que viajan por Lambda sin CDN: una semana de caché los
 # saca del camino crítico. NO se listan aquí orbe.js ni ningún otro estático:
 # esos tienen que revalidar para que un fix de UI llegue con el siguiente deploy.
-INMUTABLES = {"orbe-gpu.v1.js", "orbe.v1.wgsl"}
+# UI·10: las fuentes de la carta de diseño también: llevan versión en el
+# nombre (.v1.woff2) y pesan 30-40 KB cada una.
+INMUTABLES = {"orbe-gpu.v1.js", "orbe.v1.wgsl",
+              "geist-latin.v1.woff2", "bricolage-latin.v1.woff2"}
+# python:3.10-slim no trae /etc/mime.types y la tabla interna de Python no
+# conoce .woff2: sin esto la fuente saldría como text/plain.
+mimetypes.add_type("font/woff2", ".woff2")
 
 
 class _StaticCacheado(StaticFiles):

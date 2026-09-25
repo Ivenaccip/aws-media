@@ -1,0 +1,115 @@
+/* Carta de diseño — docs/DISENO.md hecho CSS. Lo comparten las pantallas que
+   ya la adoptaron (UI·10: el inicio primero). Solo define: no le cambia nada
+   a una página que la cargue sin usar sus variables ni sus clases.
+
+   Las fuentes son OFL y se sirven desde el propio dominio (sin Google Fonts).
+   Solo el subconjunto latino: cubre el español entero (á, ñ, ¿, ¡…). El ✦ cae
+   a la fuente del sistema, como hoy. Los .woff2 llevan versión en el nombre
+   y van en INMUTABLES (server/app.py): si cambian, cambia el nombre. */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/fuentes/geist-latin.v1.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/fuentes/bricolage-latin.v1.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* color: el papel de cada uno está en docs/DISENO.md §3 */
+  --c-fondo: #0b1626;
+  --c-hundido: #08111e;
+  --c-superficie: #111f33;
+  --c-elevada: #18293f;
+  --c-activa: #1b3049;
+  --c-linea: #22354f;
+  --c-campo: #55708f;
+  --c-texto: #ece8e1;
+  --c-secundario: #93a3b8;
+  --c-ambar: #da8c28;
+  --c-ambar-claro: #f0a94a;
+  --c-tinta: #14100a;
+  --c-enlace: #a9c6ee;
+  --c-exito: #3dd68c;
+  --c-error: #ff8080;
+
+  /* letra: seis tamaños y ninguno más (§2) */
+  --f-texto: 'Geist', system-ui, sans-serif;
+  --f-titulo: 'Bricolage Grotesque', 'Geist', system-ui, sans-serif;
+  --t-xs: 13px;
+  --t-sm: 15px;
+  --t-md: 17px;
+  --t-titulo-sm: 20px;
+  --t-titulo-md: 24px;
+  --t-titulo-lg: 32px;
+
+  /* forma y movimiento (§4) */
+  --r-chico: 6px;
+  --r-medio: 10px;
+  --r-boton: 12px;
+  --r-grande: 16px;
+  --m-rapido: 120ms;
+  --m-normal: 200ms;
+}
+
+/* --- botones: tres niveles, cinco estados (§5) --- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 18px; border-radius: var(--r-boton);
+  font: 500 var(--t-sm)/1.2 var(--f-texto); text-decoration: none; cursor: pointer;
+  transition: background-color var(--m-rapido) ease-out, border-color var(--m-rapido) ease-out,
+    color var(--m-rapido) ease-out, transform var(--m-rapido) ease-out;
+}
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn:disabled { cursor: default; }
+
+/* principal: UNO por pantalla, el que hace (y casi siempre cobra) */
+.btn-pri { border: 0; background: var(--c-ambar); color: var(--c-tinta); font-weight: 600; }
+.btn-pri:hover:not(:disabled) { background: var(--c-ambar-claro); }
+/* al apretar se queda en #da8c28: el ámbar hondo con la tinta da 4.19:1 */
+.btn-pri:disabled { border: 1px dashed var(--c-campo); background: var(--c-superficie);
+  color: var(--c-secundario); }
+
+.btn-sec { border: 1px solid var(--c-campo); background: transparent; color: var(--c-texto); }
+.btn-sec:hover:not(:disabled) { background: var(--c-elevada); border-color: var(--c-secundario); }
+.btn-sec:active:not(:disabled) { background: var(--c-activa); }
+.btn-sec:disabled { color: var(--c-secundario); }
+
+.btn-enlace { border: 0; background: none; padding: 0; min-height: 0; color: var(--c-enlace);
+  font-family: var(--f-texto); font-size: inherit; font-weight: 500; cursor: pointer; }
+.btn-enlace:hover { color: var(--c-texto); text-decoration: underline;
+  text-underline-offset: 4px; }
+
+.btn-peligro { border: 1px solid #8f4a4a; background: #2e1b1b; color: #ffb4b4; font-weight: 600; }
+.btn-peligro:hover:not(:disabled) { border-color: var(--c-error); }
+.btn-peligro:active:not(:disabled) { background: #8f4a4a; color: var(--c-texto); }
+
+/* --- iconos de trazo (§6): los dibuja static/iconos.js --- */
+.ico { width: 1.25em; height: 1.25em; flex-shrink: 0; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.25em; }
+
+/* --- el mismo foco en todas partes (§4) --- */
+:focus-visible { outline: 2px solid var(--c-ambar-claro); outline-offset: 3px; }
+
+/* --- «reducir movimiento» del sistema: todo quieto --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}

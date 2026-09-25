@@ -52,6 +52,8 @@ PALETA = {
 
 ARCHIVOS = sorted(
     list(ESTATICOS.glob("*.html")) + list(ESTATICOS.glob("*.js"))
+    # UI·10: la carta de diseño hecha CSS también se vigila
+    + list(ESTATICOS.glob("*.css"))
     + list((RAIZ / "tools" / "editor").glob("*.html"))
 )
 
