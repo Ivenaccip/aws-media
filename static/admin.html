@@ -5,62 +5,77 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Admin</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
+  /* carta §2: Geist para el texto, Bricolage para los títulos, seis tamaños */
+  body { font: var(--t-sm)/1.5 var(--f-texto); background: var(--c-fondo); color: var(--c-texto); padding: 40px 24px; }
   main { max-width: 1080px; margin: 0 auto; }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 20px; }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
-  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
-  /* 3 vistas: Ingresos / Costos / Flujo */
-  .tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
-  .tabs button { padding: 10px 18px; border-radius: 10px; border: 1px solid #22354f;
-    background: #111f33; color: #93a3b8; font: inherit; font-size: 14px; cursor: pointer; }
-  .tabs button.on { border-color: #5b8dd6; color: #ece8e1; background: #1b3049; font-weight: 600; }
-  .fila-kpi { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; margin-bottom: 22px; }
-  .kpi { background: #111f33; border: 1px solid #22354f; border-radius: 12px; padding: 14px 20px; min-width: 170px; }
-  .kpi b { display: block; font-size: 22px; }
-  .kpi span { color: #93a3b8; font-size: 12.5px; }
-  button.accion { padding: 9px 16px; border-radius: 9px; border: 1px solid #22354f; background: #18293f;
-           color: #ece8e1; font: inherit; font-size: 13px; cursor: pointer; }
-  button.accion:hover { border-color: #5b8dd6; }
-  button.accion:disabled { opacity: .5; cursor: default; }
-  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
-  th { text-align: right; color: #93a3b8; font-weight: 500; font-size: 12px; text-transform: uppercase;
-       letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid #22354f; }
+  a { color: var(--c-enlace); }
+  .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0 8px; }
+  p.sub { color: var(--c-secundario); max-width: 75ch; margin-bottom: 24px; }
+  section { background: var(--c-superficie); border: 1px solid var(--c-linea); border-radius: var(--r-grande);
+    padding: 24px; margin-bottom: 24px; }
+  section h2 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin-bottom: 12px; overflow-wrap: anywhere; }
+  h2 .mut { font-family: var(--f-texto); font-weight: 400; }
+  /* 3 vistas: Ingresos / Costos / Flujo. Carta §3: la vista elegida se marca
+     en blanco, no en ámbar (el ámbar solo dice «haz algo») */
+  .tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .tabs button { min-height: 44px; padding: 0 16px; border-radius: var(--r-medio); border: 1px solid var(--c-campo);
+    background: transparent; color: var(--c-secundario); font: 500 var(--t-sm)/1.2 var(--f-texto); cursor: pointer;
+    transition: border-color var(--m-rapido) ease-out, color var(--m-rapido) ease-out; }
+  .tabs button:hover { border-color: var(--c-secundario); color: var(--c-texto); }
+  .tabs button.on { border-color: var(--c-texto); color: var(--c-texto); background: var(--c-elevada); font-weight: 600; }
+  .fila-kpi { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; margin-bottom: 24px; }
+  .kpi { flex: 1 1 160px; background: var(--c-superficie); border: 1px solid var(--c-linea); border-radius: var(--r-grande);
+    padding: 16px 20px; }
+  /* carta §2: los números que cambian van en Geist con cifras tabulares */
+  .kpi b { display: block; font: 600 var(--t-titulo-sm)/1.3 var(--f-texto); font-variant-numeric: tabular-nums;
+    margin-bottom: 4px; }
+  .kpi span { color: var(--c-secundario); font-size: var(--t-xs); }
+  .sync { display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+  /* carta §5: la forma y los estados del botón los pone carta.css */
+  table { border-collapse: collapse; width: 100%; font-size: var(--t-xs); }
+  th { text-align: right; color: var(--c-secundario); font-weight: 500; font-size: var(--t-xs); text-transform: uppercase;
+       letter-spacing: .05em; padding: 8px 12px; border-bottom: 1px solid var(--c-linea); white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
-  td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #18293f; font-variant-numeric: tabular-nums; }
+  td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--c-elevada); font-variant-numeric: tabular-nums;
+       white-space: nowrap; }
+  /* lo que se toca mide 44 px (carta §4) */
   tr.usuario { cursor: pointer; }
-  tr.usuario:hover td { background: #18293f; }
-  .pos { color: #3dd68c; } .neg { color: #ff8080; } .tot { color: #5b8dd6; }
-  .mut { color: #93a3b8; font-size: 13px; }
+  tr.usuario td { height: 44px; }
+  tr.usuario:hover td { background: var(--c-elevada); }
+  /* verde y rojo son estados (flujo a favor / en contra); los totales, en blanco */
+  .pos { color: var(--c-exito); } .neg { color: var(--c-error); } .tot { color: var(--c-texto); font-weight: 600; }
+  .mut { color: var(--c-secundario); font-size: var(--t-xs); }
   .tabla-scroll { overflow-x: auto; }
-  #estado-sync { font-size: 13px; color: #93a3b8; }
-  .proyecto { border: 1px solid #22354f; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+  #estado-sync { font-size: var(--t-xs); color: var(--c-secundario); }
+  #estado-sync .ok { color: var(--c-exito); }
+  .proyecto { border: 1px solid var(--c-linea); border-radius: var(--r-medio); padding: 12px 16px; margin-bottom: 12px; }
   .proyecto .cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .proyecto .brief { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
-  .trazas { margin-top: 8px; font-size: 12.5px; color: #93a3b8; }
-  .trazas a { color: #5b8dd6; text-decoration: none; }
-  code { background: #18293f; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
-  #noacceso, #cargando { text-align: center; padding: 60px 0; color: #93a3b8; }
+  .trazas { margin-top: 8px; font-size: var(--t-xs); color: var(--c-secundario); }
+  .trazas a { text-decoration: none; }
+  .trazas a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  code { background: var(--c-elevada); padding: 1px 6px; border-radius: var(--r-chico); font-size: var(--t-xs); }
+  #noacceso, #cargando { text-align: center; padding: 64px 0; color: var(--c-secundario); }
+  #noacceso > .ico { color: var(--c-secundario); }
 </style>
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← inicio</a>
+  <a class="btn-enlace volver" href="/"><i data-icono="volver"></i>inicio</a>
   <h1>Panel del negocio</h1>
   <p class="sub">Tres vistas: <b>1 · Ingresos</b> (lo que los usuarios gastan en créditos),
     <b>2 · Costos</b> (la IA por un lado y AWS por el otro) y <b>3 · Flujo</b>
     (ingresos − costos). Aurora/CloudFront son compartidos: para el total están el
-    <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" style="color:#5b8dd6">presupuesto de $50/mes</a>
-    y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" style="color:#5b8dd6">Cost Explorer</a>.</p>
+    <a href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" rel="noopener">presupuesto de $50/mes</a>
+    y <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer" target="_blank" rel="noopener">Cost Explorer</a>.</p>
 
   <div id="cargando">Cargando…</div>
-  <div id="noacceso" hidden>🔒 Esta página es solo para administradores.<br>
+  <div id="noacceso" hidden><i data-icono="candado"></i> Esta página es solo para administradores.<br>
     <span class="mut">Se otorga con <code>tools/usuarios.py admin &lt;correo&gt;</code> (y un re-login).</span></div>
 
   <div id="panel" hidden>
@@ -85,7 +100,7 @@
             <th>Ingresos USD</th><th>Saldo</th><th>Películas</th></tr></thead>
           <tbody id="cuerpo-ingresos"></tbody>
         </table></div>
-        <p class="mut" style="margin-top:10px">Los ingresos se reconocen cuando el crédito se QUEMA
+        <p class="mut" style="margin-top:12px">Los ingresos se reconocen cuando el crédito se QUEMA
           (créditos quemados × el piso de venta de tarifas.json), no cuando se compra:
           un crédito comprado sin usar todavía no nos costó nada.</p>
       </section>
@@ -102,7 +117,7 @@
         <div class="kpi" id="k-aurora" hidden><b id="c-aurora"></b><span id="c-aurora-nota">Aurora del mes</span></div>
         <div class="kpi"><b id="c-total"></b><span>costo directo total</span></div>
         <span style="flex:1"></span>
-        <div><button class="accion" id="sync">⟳ Sincronizar costes (7 días)</button>
+        <div class="sync"><button class="btn btn-pri" id="sync"><i data-icono="rehacer"></i>Sincronizar costes (7 días)</button>
           <div id="estado-sync"></div></div>
       </div>
       <section>
@@ -113,7 +128,7 @@
             <th>AWS total</th><th>Costo total</th></tr></thead>
           <tbody id="cuerpo-costos"></tbody>
         </table></div>
-        <p class="mut" style="margin-top:10px">El desglose OpenAI / fal / Claude sale del modelo
+        <p class="mut" style="margin-top:12px">El desglose OpenAI / fal / Claude sale del modelo
           de cada generación; lo sincronizado ANTES de este desglose no trae vendor y solo
           aparece en <b>IA total</b> (re-aparece desglosado si borras esas filas y re-sincronizas
           el periodo). La IA sale de las trazas de Langfuse (sync diario
@@ -146,7 +161,7 @@
           <thead><tr><th>Usuario</th><th>Ingresos</th><th>Costos</th><th>Flujo</th></tr></thead>
           <tbody id="cuerpo-flujo"></tbody>
         </table></div>
-        <p class="mut" style="margin-top:10px">Flujo = créditos quemados × <span id="f-piso"></span>
+        <p class="mut" style="margin-top:12px">Flujo = créditos quemados × <span id="f-piso"></span>
           por crédito − costo directo (IA + AWS) de ese usuario. Un flujo negativo en
           «Claude IA (desarrollo)» es normal: son nuestras corridas de prueba, sin créditos detrás.</p>
       </section>
@@ -155,6 +170,7 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/iconos.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const usd = x => `$${x.toFixed(2)} dólares`;
@@ -255,7 +271,7 @@ async function detalle(uid, nombre) {
   const d = await r.json();
   const traza = t => `<div>· ${esc(t.concepto)} — ${usd4(t.costo_usd)}` +
     (t.segundos ? ` · ~${tiempo(t.segundos)} de cómputo` : '') +
-    (t.traza ? ` <a href="${esc(LFBASE)}/trace/${esc(encodeURIComponent(t.traza))}" target="_blank" rel="noopener">traza ↗</a>` : '') + `</div>`;
+    (t.traza ? ` <a href="${esc(LFBASE)}/trace/${esc(encodeURIComponent(t.traza))}" target="_blank" rel="noopener">traza ${icono('externo')}</a>` : '') + `</div>`;
   $('#detalle-cuerpo').innerHTML = (d.proyectos.map(p => `
     <div class="proyecto">
       <div class="cab">
@@ -273,12 +289,12 @@ async function detalle(uid, nombre) {
 
 $('#sync').onclick = async () => {
   $('#sync').disabled = true;
-  $('#estado-sync').textContent = '⏳ trayendo trazas de Langfuse…';
+  $('#estado-sync').innerHTML = icono('espera') + ' trayendo trazas de Langfuse…';
   try {
     const r = await fetch('/api/admin/costes/sync?dias=7', { method: 'POST' });
     if (!r.ok) throw new Error((await r.json()).detail || r.status);
     const d = await r.json();
-    $('#estado-sync').textContent = `✓ ${d.nuevas} trazas nuevas — recargando…`;
+    $('#estado-sync').innerHTML = `${icono('listo', 'ok')} ${esc(d.nuevas)} trazas nuevas — recargando…`;
     setTimeout(() => location.reload(), 900);
   } catch (e) { $('#estado-sync').textContent = 'Error: ' + e.message; $('#sync').disabled = false; }
 };
