@@ -104,7 +104,10 @@ async function fj(url, body) {
   return j;
 }
 
-function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
 
 function tarjeta(e) {
   if (e.estado === "analizando")
