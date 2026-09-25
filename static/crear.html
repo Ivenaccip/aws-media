@@ -338,7 +338,7 @@
           </div>
           <button type="button" class="paso" id="dur-mas" aria-label="Sumar 5 segundos"><i data-icono="mas"></i></button>
         </div>
-        <p class="costo" id="costo-fila" hidden>Costo aprox.: <b>✦ <span id="durcosto"></span></b></p>
+        <p class="costo" id="costo-fila" hidden>Película de <span id="durcostov">0:30</span>: <b>✦ <span id="durcosto"></span> en total</b></p>
       </div>
     </div>
     <button class="btn btn-pri generar" id="enviar">Generar</button>
@@ -524,11 +524,13 @@ function pintaCostos() {
   pintaDur();   // primero: una tabla nueva puede mover la duración elegida
   const prep = mon.tarifas.preparar, total = precioDe(dur);
   if (prep != null && total != null) {
-    // M21: el botón dice el verbo y el precio, nada más (`Generar ✦ 100`).
-    // M23 · V: el precio es el de la película entera y sigue a la duración.
-    $('#enviar').textContent = `Generar ✦ ${total}`;
+    // M21: el botón dice el verbo y el precio, nada más (`Generar ✦ 10`).
+    // Decisión del dueño (opción A, 25-sep): el número del botón es lo que se
+    // cobra al tocarlo. Con el total en el botón («Generar ✦ 100») y luego
+    // «Producir ✦ 90» se leía como 190. El total vive junto a la duración.
+    $('#enviar').textContent = `Generar ✦ ${prep}`;
     $('#cobronota').textContent =
-      `Se cobran ${prep} créditos al empezar y ${total - prep} al producir, cuando apruebes el guion.`;
+      `Ahora se cobran ${prep} créditos por la historia y el personaje; los otros ${total - prep}, al producir, cuando apruebes el guion.`;
     // al empezar solo se cobra el guion: eso es lo que tiene que alcanzar
     const falta = prep - mon.saldo;
     $('#enviar').disabled = falta > 0;
@@ -547,9 +549,14 @@ function pintaProducir() {
   $('#producir').disabled = faltaProducir > 0;
   // si no alcanza manda el aviso: contar el saldo en las dos frases seguidas
   // se lee como si fueran dos saldos distintos
-  $('#prodnota').textContent = !minutosProd ? ''
+  // opción A: «Producir ✦ 90» recuerda que con el guion ya pagado suman el
+  // total que se vio al empezar (la misma tabla de duraciones)
+  const total = proyecto?.duracion_s ? precioDe(proyecto.duracion_s) : null;
+  const suma = total != null && mon.tarifas.preparar != null
+    ? `Con los ${mon.tarifas.preparar} créditos del guion, tu película suma ${total}. ` : '';
+  $('#prodnota').textContent = suma + (!minutosProd ? ''
     : faltaProducir > 0 ? `~${minutosProd} min.`
-    : `Te quedan ${saldoProd} créditos · ~${minutosProd} min.`;
+    : `Te quedan ${saldoProd} créditos · ~${minutosProd} min.`);
   $('#saldoaviso').textContent = faltaProducir > 0
     ? `Te faltan ${faltaProducir} créditos para producir (saldo: ${mon.saldo}). ${CTA}` : '';
 }
@@ -593,6 +600,7 @@ function pintaDur() {
   const total = precioDe(dur);
   $('#costo-fila').hidden = total == null;
   $('#durcosto').textContent = total ?? '';
+  $('#durcostov').textContent = mss(dur);
 }
 function moverDur(pasos) {
   if (enVuelo) return;
