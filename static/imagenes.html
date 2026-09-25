@@ -1034,6 +1034,9 @@ async function abrirDesdeEnlace() {
   const q = new URLSearchParams(location.search);
   const nombre = q.get('img');
   if (q.has('editar') || nombre) pidioEditar = true;
+  // M25 · B: la caja del inicio manda aquí con lo que ya escribió el usuario
+  const texto = q.get('prompt');
+  if (texto) { $('#prompt').value = texto.slice(0, 2000); verEstado(ESTADO); }
   if (!nombre || !/^[0-9a-f]{12}\.jpg$/.test(nombre)) return;
   $('#vacio-titulo').textContent = 'Abriendo tu imagen…';
   try {

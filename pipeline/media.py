@@ -49,7 +49,7 @@ async def imagen_inicio(e: Scene, ctx: Casting, estilo_url: str | None, prev_fra
 async def _grok(e: Scene, prompt: str, intento: int, image_urls: list[str] | None = None) -> str | None:
     try:
         res = await fal.llamar(
-            settings.fal_grok,
+            settings.fal_imagen_edit,
             {"prompt": prompt, "image_urls": image_urls or e.image_urls,
              "aspect_ratio": formato_de(e.formato)["aspecto"]},
             timeout_s=settings.grok_timeout_s, nombre="grok",

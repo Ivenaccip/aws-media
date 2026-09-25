@@ -679,8 +679,12 @@ function renderFlagCard() {
   card.innerHTML = "";
   const st = flagStatus(f);
   const head = document.createElement("div");
-  head.innerHTML = `<span class="fcClose" title="cerrar">✕</span><b>▲${f.id}</b> clip ${f.clip} @ ${f.at} · ` +
-    (st === "resolved" ? "🟢 resuelto" : st === "noted" ? "🟡 nota guardada" : "🔴 pendiente");
+  // id, clip y at vienen de cuts.json, que escribe Claude y guarda api/save sin
+  // validar: van como TEXTO, nunca dentro del innerHTML
+  head.innerHTML = `<span class="fcClose" title="cerrar">✕</span><b></b>`;
+  head.querySelector("b").textContent = "▲" + f.id;
+  head.append(` clip ${f.clip} @ ${f.at} · ` +
+    (st === "resolved" ? "🟢 resuelto" : st === "noted" ? "🟡 nota guardada" : "🔴 pendiente"));
   head.querySelector(".fcClose").onclick = () => { activeFlag = null; renderFlags(); };
   const issue = document.createElement("div"); issue.textContent = f.issue;
   card.append(head, issue);
@@ -875,7 +879,8 @@ async function render() {
                      : "El render falló" + (tail ? ` (${tail.slice(0, 120)})` : "") + " — vuelve a intentarlo; si se repite, pídele ayuda a Claude en Decisiones",
                 s.ok ? "ok" : "err");
       // M7 (nube): el preview quedó en S3 — enlace directo por CDN
-      if (s.ok && s.url) {
+      // solo http(s): un href con javascript: se ejecuta al hacer clic
+      if (s.ok && typeof s.url === "string" && /^https?:\/\//i.test(s.url)) {
         const a = document.createElement("a");
         a.href = s.url; a.target = "_blank"; a.rel = "noopener";
         a.textContent = "ver";
@@ -2131,8 +2136,8 @@ async function g1abrir(oid) {
   $("g1video").src = "archivo/" + act.video;
   $("g1cands").innerHTML = ""; $("g1animar").style.display = "none"; $("g1msg").textContent = "";
   $("g1vers").innerHTML = G1.versiones.map(v =>
-    `<div class="vfila${v.n === G1.version_activa ? " activa" : ""}">v${v.n} · ${v.origen} · ${usd(v.costo_usd)}
-     ${v.n !== G1.version_activa ? `<button onclick="g1activar(${v.n})" style="font-size:11px;padding:1px 7px">usar esta</button>` : "(activa)"}</div>`).join("");
+    `<div class="vfila${v.n === G1.version_activa ? " activa" : ""}">v${esc(v.n)} · ${esc(v.origen)} · ${usd(v.costo_usd)}
+     ${v.n !== G1.version_activa ? `<button onclick="g1activar(${Number(v.n)})" style="font-size:11px;padding:1px 7px">usar esta</button>` : "(activa)"}</div>`).join("");
   try { G1PRECIO = await fj(`api/overlays/${oid}/precios`);
     $("g1precio").textContent = `Costo: imágenes ${g1txtImg()} + video ${g1txtVid()} (${G1PRECIO.veo_segundos}s de Veo)`;
     $("g1generar").textContent = G1PRECIO.creditos ? `Generar ✦ ${G1PRECIO.creditos.imagen}` : "Generar";

@@ -46,6 +46,8 @@ from server import pagos_api
 from server.publicar_api import router as publicar_router
 from server.estilos_api import router as estilos_router
 from server.competencia_api import router as competencia_router
+from server.mix_api import router as mix_router
+from server.clip_api import router as clip_router
 from server.shorts_api import router as shorts_router
 
 
@@ -76,6 +78,18 @@ LENTA_MS = 10_000
 
 app = FastAPI(title="edicion_y_generacion")
 app.middleware("http")(auth.middleware)   # M2: exige el JWT en /api/* y /editor/*
+
+
+@app.exception_handler(jobs.SinCapacidad)
+async def _sin_capacidad(request, exc: jobs.SinCapacidad):
+    """M23 · D (prerrequisito) — Fargate está lleno.
+
+    Va aquí y no en cada endpoint porque son SEIS los que lanzan a la máquina
+    de estados, en cinco archivos. Todos ya envuelven su lanzamiento en un
+    try/except que devuelve los créditos y relanza, así que basta con traducir
+    lo que sale: 503 con el motivo en claro. Un 500 diría «se rompió algo» de
+    una situación en la que no se rompió nada — solo hay que volver luego."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.middleware("http")
@@ -116,7 +130,9 @@ app.include_router(admin_router)
 app.include_router(shorts_router)
 app.include_router(estilos_router)
 app.include_router(competencia_router)
+app.include_router(clip_router)
 app.include_router(editar_router)
+app.include_router(mix_router)
 
 
 # Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto
@@ -277,8 +293,8 @@ async def crear_imagen(body: PedidoImagen):
     destino = _dir_imagenes() / nombre
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
-        await media_fal.imagen_nano(f"{prompt}. {estilo.prompt}. No text, no watermark.",
-                                    destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
+        await media_fal.imagen_fal(f"{prompt}. {estilo.prompt}. No text, no watermark.",
+                                   destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
@@ -294,7 +310,7 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                         marcada: UploadFile | None = File(None),
                         modo: str = Form("pincel"),
                         estilo: str = Form(""), estilo_custom: str = Form("")):
-    """M15 — «Editor de imágenes» con Nano Banana edit. Misma tarifa de imagen.
+    """M15 — «Editor de imágenes». Misma tarifa de imagen.
 
     Dos modos, porque el editor solo sabía hacer uno y los testers pedían el
     otro (M22 · C):
@@ -367,6 +383,22 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
 # verse después de cerrar la página. Solo nombres con la forma que ponen
 # crear/editar (12 hex + .jpg): lo demás del prefijo no es una de ellas.
 _NOMBRE_IMAGEN = re.compile(r"[0-9a-f]{12}\.jpg")
+
+# M23 · D — qué nombre aceptamos SERVIR. Es más ancho que el de arriba: por
+# aquí pasan también las de MIX, que no son 12 hex sino `mix-<hex>-base.jpg`
+# (la foto que sube el usuario) y `mix-<campaña>-<fecha>.jpg` (la de cada
+# día). El guarda anterior pedía `isalnum()`, así que el guion las tumbaba
+# TODAS: la pantalla pedía su propia foto y le contestábamos 404 en 4 ms, sin
+# llegar a mirar S3. Lo que hay que impedir no son los guiones, es salirse de
+# la carpeta del usuario — así que la regla nombra lo permitido en vez de
+# adivinar lo prohibido: sin barras, sin `..`, y un solo `.jpg` al final.
+_NOMBRE_SERVIBLE = re.compile(r"[0-9a-z]+(-[0-9a-z]+)*\.jpg")
+
+
+def _servible(nombre: str) -> bool:
+    return bool(_NOMBRE_SERVIBLE.fullmatch(nombre))
+
+
 MAX_IMAGENES = 200
 
 
@@ -404,7 +436,7 @@ def bytes_imagen(nombre: str):
     import tempfile
 
     from starlette.background import BackgroundTask
-    if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
+    if not _servible(nombre):
         raise HTTPException(404, "Imagen no encontrada")
     if jobs.backend() != "aws":
         f = _dir_imagenes() / nombre
@@ -423,7 +455,7 @@ def bytes_imagen(nombre: str):
 
 @app.get("/api/imagenes/{nombre}")
 def ver_imagen(nombre: str):
-    if not nombre.replace(".jpg", "").isalnum() or not nombre.endswith(".jpg"):
+    if not _servible(nombre):
         raise HTTPException(404, "Imagen no encontrada")
     f = _dir_imagenes() / nombre
     # en la nube el disco es compartido entre usuarios: solo el CDN, con la
@@ -753,7 +785,7 @@ async def modificar_personaje(id_: str, body: ModificarPersonajeIn):
     try:
         prompt = (f"{instruccion}. Keep the same character identity as the reference image. "
                   f"{resolver_estilo(p.estilo, p.estilo_custom).prompt}. Clean neutral background, no text.")
-        res = await fal.llamar(settings.fal_grok,
+        res = await fal.llamar(settings.fal_imagen_edit,
                                {"prompt": prompt, "image_urls": [base.url], "aspect_ratio": "1:1"},
                                timeout_s=settings.grok_timeout_s, nombre="grok",
                                meta={"personaje_mod": p.id})

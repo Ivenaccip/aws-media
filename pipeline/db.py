@@ -207,6 +207,61 @@ ESQUEMA: list[str] = [
         user_id text NOT NULL,
         creado  timestamptz NOT NULL DEFAULT now()
     )""",
+    # M23 · D (MIX) — publicidad automática: una imagen al día en una sola
+    # cuenta, sin que el dueño del negocio la revise. La imagen que sube es la
+    # BASE de todas (decisión del dueño, 18-sep): cada día Grok parte de ella,
+    # así que siempre sale su producto y no una foto genérica inventada.
+    #
+    # UNA campaña viva por usuario, y eso lo impone el índice parcial de abajo
+    # y no el código: un endpoint se puede saltar, un índice no. Es parcial
+    # para que las campañas terminadas se conserven — las versiones de este
+    # repo no se borran nunca, y aquí además son el recibo de lo que se cobró.
+    """CREATE TABLE IF NOT EXISTS mix_campanas (
+        user_id            text NOT NULL REFERENCES usuarios(id),
+        id                 text NOT NULL,
+        motivo             text NOT NULL,
+        tono               text NOT NULL DEFAULT 'vender',
+        imagen_key         text NOT NULL,
+        canal_id           text NOT NULL,
+        canal_red          text NOT NULL,
+        canal_nombre       text,
+        hora               text NOT NULL,
+        zona               text NOT NULL,
+        empieza            date NOT NULL,
+        termina            date NOT NULL,
+        estado             text NOT NULL DEFAULT 'borrador',
+        nota               text,
+        creditos_cobrados  int  NOT NULL DEFAULT 0,
+        creditos_devueltos int  NOT NULL DEFAULT 0,
+        creado             timestamptz NOT NULL DEFAULT now(),
+        actualizado        timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, id)
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS mix_campana_viva
+       ON mix_campanas (user_id)
+       WHERE estado IN ('borrador', 'activa', 'pausada')""",
+    # por si la tabla ya existe en alguna base: el CREATE de arriba no la toca
+    "ALTER TABLE mix_campanas ADD COLUMN IF NOT EXISTS nota text",
+    # Una fila por DÍA de campaña, y el PRIMARY KEY es el candado que la hace
+    # posible: el reloj mira cada hora, así que sin él una campaña publicaría
+    # veinticuatro veces al día. El día se RECLAMA con un INSERT ... ON
+    # CONFLICT DO NOTHING RETURNING: gana exactamente uno, igual que
+    # nombres_editor reserva un nombre. Aquí también es dinero — cada fila son
+    # 5 créditos ya cobrados por adelantado.
+    """CREATE TABLE IF NOT EXISTS mix_corridas (
+        user_id     text NOT NULL,
+        campana_id  text NOT NULL,
+        dia         date NOT NULL,
+        estado      text NOT NULL DEFAULT 'corriendo',
+        tema        text,
+        texto       text,
+        media_key   text,
+        post_id     text,
+        error       text,
+        creado      timestamptz NOT NULL DEFAULT now(),
+        actualizado timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, campana_id, dia)
+    )""",
 ]
 
 
@@ -353,6 +408,42 @@ def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> Non
             WHERE user_id = :u AND nombre = :n""",
         {"u": user_id, "n": nombre, "v": valor},
     )
+
+
+# M23 · D (prerrequisito) — dónde vive el estado de cada trabajo de Fargate
+# dentro del doc del editor, para el claim del barredor. Whitelist por la misma
+# razón que _CAMPOS_EDITOR: va interpolada en el SQL y jamás sale de aquí.
+# `render` y `subtitulos` no están porque no cobran créditos: no hay nada que
+# reclamar. El de shorts va dos niveles adentro (doc.shorts.render), que es lo
+# que impide reescribir el campo entero — al lado viven los candidatos.
+_TRABAJOS_FARGATE = {
+    "shorts":     ("{shorts,render}", "{shorts,render,estado}", "{shorts,render,error}"),
+    "editar":     ("{editar}", "{editar,estado}", "{editar,error}"),
+    "overlay_job": ("{overlay_job}", "{overlay_job,estado}", "{overlay_job,error}"),
+}
+
+
+def reclamar_fallo_editor(user_id: str, nombre: str, campo: str,
+                          mensaje: str) -> dict | None:
+    """El claim del barredor para los trabajos del editor (`worker/barredor.py`).
+
+    Mismo trato que `reclamar_fallo_produccion`, sobre otra tabla: gana solo si
+    el trabajo SIGUE 'corriendo', que es el caso en el que la tarea murió sin
+    que su código llegara a correr. Devuelve el trabajo (con sus `creditos`, que
+    quedaron escritos al cobrar) o None si ya lo cerró alguien.
+
+    Estado y motivo se escriben en la MISMA sentencia: un trabajo en 'error' sin
+    decir por qué manda al usuario a adivinar."""
+    base, estado, error = _TRABAJOS_FARGATE[campo]
+    filas = ejecutar(
+        f"""UPDATE proyectos_editor
+            SET doc = jsonb_set(jsonb_set(doc, '{estado}', '"error"'::jsonb),
+                                '{error}', :m::jsonb)
+            WHERE user_id = :u AND nombre = :n
+              AND doc #>> '{estado}' = 'corriendo'
+            RETURNING (doc #> '{base}')::text AS trabajo""",
+        {"u": user_id, "n": nombre, "m": json.dumps(mensaje)})
+    return json.loads(filas[0]["trabajo"]) if filas else None
 
 
 def fijar_render_editor(user_id: str, nombre: str, render: str) -> None:
@@ -513,6 +604,23 @@ def liberar_produccion(user_id: str, id_: str, estado: str) -> None:
         {"u": user_id, "i": id_, "e": estado})
 
 
+def reclamar_fallo_produccion(user_id: str, id_: str) -> bool:
+    """M23 · D (prerrequisito) — el claim del BARREDOR (`worker/barredor.py`).
+
+    Gana solo si el proyecto SIGUE en 'produciendo', que es justo el caso en el
+    que la tarea de Fargate murió sin que su código llegara a correr. Si el
+    contenedor sí arrancó, él ya movió el proyecto a 'error' (devolviendo),
+    'listo' o 'imagenes', y aquí no se devuelve nada. Ese UPDATE condicionado
+    es toda la idempotencia del barredor: sin él, un fallo que el contenedor SÍ
+    alcanzó a manejar devolvería los créditos dos veces."""
+    filas = ejecutar(
+        """UPDATE proyectos_gen SET estado = 'error', actualizado = now()
+           WHERE user_id = :u AND id = :i AND estado = 'produciendo'
+           RETURNING id""",
+        {"u": user_id, "i": id_})
+    return bool(filas)
+
+
 def cargar_proyecto(user_id: str, id_: str) -> dict | None:
     filas = ejecutar(
         "SELECT doc::text AS doc FROM proyectos_gen WHERE user_id = :u AND id = :i",
@@ -542,3 +650,403 @@ def fijar_slots(user_id: str, slots: int | None) -> None:
              {"u": user_id})
     ejecutar("UPDATE usuarios SET slots = :s WHERE id = :u",
              {"u": user_id, "s": slots})
+
+
+# ---------------------------------------------------------------------------
+# M23 · D — MIX: la campaña de publicidad automática y sus corridas por día
+
+CAMPOS_CAMPANA = ("motivo", "tono", "imagen_key", "canal_id", "canal_red",
+                  "canal_nombre", "hora", "zona", "empieza", "termina")
+# De esas diez, dos son `date` en la tabla. El Data API manda TODOS los
+# parámetros como texto (`_param`) y Postgres no convierte text→date solo
+# dentro de un INSERT: sin el cast la petición muere con «column "empieza" is
+# of type date but expression is of type text» y la pantalla recibe un 500
+# (visto en producción el 19-sep-2026, al guardar el primer borrador). El
+# resto de las consultas de MIX escriben `:d::date` a mano; aquí los
+# marcadores salen de un bucle, así que el cast tiene que ir en el molde.
+FECHAS_CAMPANA = ("empieza", "termina")
+_VIVA = "('borrador', 'activa', 'pausada')"
+
+# Los dos estados en los que la fila del día 1 todavía NO es una publicación:
+# nadie ha pagado por ella y el reloj no la ha tocado.
+#
+#   'preparando' — el trabajo está en la cola o corriendo. Si además tiene
+#                  `error`, ese intento murió y se puede pedir otro.
+#   'ejemplo'    — el resultado, que el usuario ya vio y aprobó.
+#
+# Solo estas dos se pueden pisar. Cualquier otro estado ya es un día de verdad
+# —publicado, corriendo o cerrado— y una fila así no se toca nunca más: pisarla
+# la devolvería a la cola del reloj y publicaría dos veces en la cuenta de un
+# cliente, que es lo único que MIX no puede deshacer.
+ESTADOS_EJEMPLO = ("ejemplo", "preparando")
+EJEMPLO_VIVO = "('" + "', '".join(ESTADOS_EJEMPLO) + "')"
+
+
+def _marcador(campo: str) -> str:
+    """El `:campo` que va en el SQL, con el cast puesto si la columna es fecha."""
+    return f":{campo}::date" if campo in FECHAS_CAMPANA else f":{campo}"
+
+
+def mix_campana(user_id: str) -> dict | None:
+    """La campaña viva del usuario (borrador, activa o pausada). Como mucho hay
+    una: lo garantiza el índice parcial mix_campana_viva."""
+    filas = ejecutar(
+        f"SELECT * FROM mix_campanas WHERE user_id = :u AND estado IN {_VIVA}",
+        {"u": user_id})
+    return filas[0] if filas else None
+
+
+def mix_guardar_borrador(user_id: str, id_: str, **campos) -> str:
+    """Crea o actualiza EL borrador del usuario y devuelve su id.
+
+    Se reutiliza el id del borrador que ya hubiera en vez de crear otro: la
+    corrida del día 1 —el ejemplo que se le enseña antes de cobrar— cuelga de
+    ese id, y cambiarlo dejaría el ejemplo huérfano.
+
+    Si la campaña viva ya está encendida no se toca nada y se devuelve su id:
+    quien decide qué contestar es el endpoint, que tiene con qué explicarlo.
+    """
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    viva = mix_campana(user_id)
+    if viva and viva["estado"] != "borrador":
+        return str(viva["id"])
+    datos = {k: campos.get(k) for k in CAMPOS_CAMPANA}
+    if viva:
+        sets = ", ".join(f"{k} = {_marcador(k)}" for k in CAMPOS_CAMPANA)
+        ejecutar(f"UPDATE mix_campanas SET {sets}, actualizado = now() "
+                 "WHERE user_id = :u AND id = :i AND estado = 'borrador'",
+                 {**datos, "u": user_id, "i": viva["id"]})
+        # Si mueve las fechas, el ejemplo que vio para el arranque anterior
+        # queda huérfano DENTRO del rango nuevo, y ahí deja de ser inofensivo:
+        # el reloj lo reclamaría como si fuera el día 1 y publicaría el mensaje
+        # de un rango que el usuario descartó. Se borran porque un ejemplo es
+        # borrador —nadie lo pagó, no es recibo de nada— y porque dejarlo en
+        # otro estado tampoco vale: una fila cualquiera en ese día lo bloquea
+        # para siempre.
+        ejecutar("DELETE FROM mix_corridas WHERE user_id = :u "
+                 f"AND campana_id = :i AND estado IN {EJEMPLO_VIVO} "
+                 "AND dia <> :d::date",
+                 {"u": user_id, "i": viva["id"], "d": datos["empieza"]})
+        return str(viva["id"])
+    columnas = ", ".join(CAMPOS_CAMPANA)
+    valores = ", ".join(_marcador(k) for k in CAMPOS_CAMPANA)
+    ejecutar(f"INSERT INTO mix_campanas (user_id, id, {columnas}) "
+             f"VALUES (:u, :i, {valores})",
+             {**datos, "u": user_id, "i": id_})
+    return id_
+
+
+def mix_encender(user_id: str, id_: str, creditos: int) -> bool:
+    """borrador → activa, con lo que se cobró por adelantado anotado encima.
+
+    UPDATE condicionado, como todos los claims de este repo: dos clics en el
+    botón de encender y solo uno gana, así que solo uno cobra."""
+    filas = ejecutar(
+        """UPDATE mix_campanas
+              SET estado = 'activa', creditos_cobrados = :c, actualizado = now()
+            WHERE user_id = :u AND id = :i AND estado = 'borrador'
+        RETURNING id""",
+        {"u": user_id, "i": id_, "c": creditos})
+    return bool(filas)
+
+
+def mix_apagar(user_id: str, id_: str, estado: str = "cancelada") -> dict | None:
+    """Gana el derecho a apagar Y a devolver, en una sola operación.
+
+    Devuelve la campaña con lo cobrado y los días que ya salieron, que es
+    justo lo que hace falta para calcular la devolución. Si alguien ya la
+    apagó, devuelve None y quien llama no devuelve nada: esa es toda la
+    protección contra devolver dos veces, porque el libro mayor solo tiene
+    índice único para las compras."""
+    filas = ejecutar(
+        """UPDATE mix_campanas SET estado = :e, actualizado = now()
+            WHERE user_id = :u AND id = :i AND estado IN ('activa', 'pausada')
+        RETURNING id, creditos_cobrados, creditos_devueltos, empieza, termina""",
+        {"u": user_id, "i": id_, "e": estado})
+    return filas[0] if filas else None
+
+
+def mix_reclamar_dia(user_id: str, campana_id: str, dia: str) -> bool:
+    """EL candado de MIX. El reloj mira cada hora; sin esto, una campaña
+    publicaría veinticuatro veces al día y cobraría veinticuatro veces.
+
+    Gana exactamente quien consigue insertar la fila del día. Los demás
+    reciben False y se van sin hacer nada ni cobrar."""
+    filas = ejecutar(
+        """INSERT INTO mix_corridas (user_id, campana_id, dia)
+           VALUES (:u, :c, :d::date)
+           ON CONFLICT (user_id, campana_id, dia) DO NOTHING
+           RETURNING dia""",
+        {"u": user_id, "c": campana_id, "d": dia})
+    return bool(filas)
+
+
+def mix_cerrar_dia(user_id: str, campana_id: str, dia: str, estado: str,
+                   **campos) -> bool:
+    """Cierra la corrida del día con lo que salió (o con el error), y dice si
+    fue ESTA llamada la que la cerró.
+
+    Condicionado a 'corriendo' —el estado que deja el candado— por la misma
+    razón que todo lo demás aquí: cerrar el día es lo que da derecho a devolver
+    sus créditos, y el libro mayor no sabe frenar una devolución repetida (su
+    índice único solo cubre las compras). Quien no gane el cierre, no devuelve.
+    """
+    permitidos = ("tema", "texto", "media_key", "post_id", "error")
+    extra = {k: campos.get(k) for k in permitidos if k in campos}
+    sets = "".join(f", {k} = :{k}" for k in extra)
+    filas = ejecutar(
+        f"UPDATE mix_corridas SET estado = :e{sets}, actualizado = now() "
+        "WHERE user_id = :u AND campana_id = :c AND dia = :d::date "
+        "AND estado = 'corriendo' RETURNING dia",
+        {**extra, "u": user_id, "c": campana_id, "d": dia, "e": estado})
+    return bool(filas)
+
+
+def mix_corridas(user_id: str, campana_id: str) -> list[dict]:
+    return ejecutar(
+        "SELECT dia, estado, tema, texto, media_key, post_id, error "
+        "FROM mix_corridas WHERE user_id = :u AND campana_id = :c "
+        "ORDER BY dia", {"u": user_id, "c": campana_id})
+
+
+# Días que ya no deben devolución: los que salieron y los que PUEDE que
+# salieran. Un 5xx o un timeout de Blotato después de mandar el post no
+# significa que no se publicara —el precedente del worker de video lo llama
+# 'incierto' y tampoco devuelve—, así que devolverlos sería regalar la
+# publicación y el dinero. Es la otra cara de la regla del barredor: devolver
+# de más es tan malo como no devolver.
+LIQUIDADOS = ("publicada", "incierta")
+
+
+def mix_dias_liquidados(user_id: str, campana_id: str) -> int:
+    """Días que ya están saldados. Es la base de la devolución: la campaña se
+    paga por adelantado, así que lo que no salió se regresa — y lo que sí
+    salió, o pudo salir, no."""
+    filas = ejecutar(
+        "SELECT count(*) AS n FROM mix_corridas WHERE user_id = :u "
+        "AND campana_id = :c AND estado IN ('publicada', 'incierta')",
+        {"u": user_id, "c": campana_id})
+    return int(filas[0]["n"]) if filas else 0
+
+
+def mix_reclamar_ejemplo(user_id: str, campana_id: str, dia: str) -> dict | None:
+    """El día 1 ya tiene imagen: la del ejemplo que se le enseñó antes de cobrar.
+
+    Cuando el reloj llega a ese día, `mix_reclamar_dia` pierde (la fila ya
+    existe) y en vez de generar otra imagen —y cobrar otra vez— se reclama la
+    que hay. UPDATE condicionado: gana uno solo.
+
+    Reclama TAMBIÉN una fila en 'preparando', y eso no es laxitud: es lo que
+    impide que el día 1 se quede sin publicar. Entre que la pantalla aparta la
+    fila para pedir otro ejemplo y el worker la termina, el usuario puede
+    encender la campaña; si el reloj solo mirara 'ejemplo', esa fila lo
+    bloquearía para siempre —el día no saldría y nadie devolvería sus
+    créditos—. Reclamada, pasa lo que tiene que pasar: si trae media_key se
+    reusa esa imagen (es la que el usuario aprobó al encender), y si no trae
+    nada `worker/mix_dia.py` genera la del día como cualquier otro. El ejemplo
+    que siguiera corriendo ya no puede pisarla: el upsert de
+    `mix_guardar_ejemplo` solo toca filas que aún son un ejemplo."""
+    filas = ejecutar(
+        f"""UPDATE mix_corridas SET estado = 'corriendo', actualizado = now()
+            WHERE user_id = :u AND campana_id = :c AND dia = :d::date
+              AND estado IN {EJEMPLO_VIVO}
+        RETURNING tema, texto, media_key""",
+        {"u": user_id, "c": campana_id, "d": dia})
+    return filas[0] if filas else None
+
+
+# Cuánto puede tardar un ejemplo antes de darlo por muerto. El trabajo corre en
+# el worker (900 s de tope) y la parte lenta son el LLM y Grok: dos minutos de
+# los malos. Diez es holgura, no una promesa — pasado ese rato se deja pedir
+# otro, porque una pantalla que dice «preparando» para siempre es peor que un
+# segundo intento que quizá cueste una imagen de más.
+MINUTOS_EJEMPLO = 10
+
+
+def mix_pedir_ejemplo(user_id: str, campana_id: str, dia: str) -> bool:
+    """Aparta la fila del día 1 para preparar un ejemplo, y dice si se pudo.
+
+    Es el candado del ejemplo, hermano del de `mix_reclamar_dia`: el trabajo se
+    encola DESPUÉS de ganar esta fila, así que dos clics seguidos —o dos
+    pestañas— no pueden poner dos trabajos a generar la misma imagen. El
+    ejemplo es gratis para el usuario, pero la imagen la pagamos nosotros.
+
+    Se puede pisar una fila que sea un ejemplo (pedir otro es legítimo: cambió
+    el motivo o el tono) o un intento que ya murió —con `error` puesto— o que
+    lleva demasiado rato sin dar señales. Lo que no se puede pisar es un día de
+    verdad, y de eso se encarga el WHERE.
+
+    El tema, el texto y la imagen del intento anterior se CONSERVAN a
+    propósito: mientras el nuevo se cocina, la pantalla sigue enseñando el que
+    el usuario ya había visto en vez de quedarse en blanco."""
+    filas = ejecutar(
+        """INSERT INTO mix_corridas (user_id, campana_id, dia, estado)
+           VALUES (:u, :c, :d::date, 'preparando')
+           ON CONFLICT (user_id, campana_id, dia) DO UPDATE
+             SET estado = 'preparando', error = NULL, actualizado = now()
+           WHERE mix_corridas.estado = 'ejemplo'
+              OR (mix_corridas.estado = 'preparando'
+                  AND (mix_corridas.error IS NOT NULL
+                       OR mix_corridas.actualizado < now() - :viejo::interval))
+        RETURNING dia""",
+        {"u": user_id, "c": campana_id, "d": dia,
+         "viejo": f"{MINUTOS_EJEMPLO} minutes"})
+    return bool(filas)
+
+
+def mix_fallar_ejemplo(user_id: str, campana_id: str, dia: str,
+                       error: str) -> None:
+    """Deja escrito por qué no salió el ejemplo, sin sacar la fila de
+    'preparando'.
+
+    El estado no cambia porque no hay ningún otro que sirva: 'error' es el de
+    un día de campaña que no se publicó —cuenta para la devolución y lo lee la
+    lista de días—, y un ejemplo no es un día que falló, es un intento que
+    murió. Con el `error` puesto, la pantalla sabe que puede ofrecer otro y
+    `mix_pedir_ejemplo` sabe que puede pisarlo."""
+    ejecutar(
+        "UPDATE mix_corridas SET error = :err, actualizado = now() "
+        "WHERE user_id = :u AND campana_id = :c AND dia = :d::date "
+        "AND estado = 'preparando'",
+        {"u": user_id, "c": campana_id, "d": dia, "err": (error or "")[:400]})
+
+
+def mix_guardar_ejemplo(user_id: str, campana_id: str, dia: str, *, tema: str,
+                        texto: str, media_key: str) -> None:
+    """Guarda (o reemplaza) el ejemplo del primer día. Se reemplaza porque el
+    usuario puede cambiar el motivo o el tono y volver a pedirlo: lo que se
+    enseña y lo que se publicaría tienen que ser lo mismo."""
+    # El WHERE del DO UPDATE es lo que impide RESUCITAR un día.
+    #
+    # Sin él, este era el único write de MIX sin condición, y pisaba la fila
+    # del día fuera cual fuera su estado. El camino: el usuario pide otro
+    # ejemplo (Grok tarda hasta dos minutos), enciende la campaña mientras se
+    # genera, el reloj publica el día 1 de verdad… y al terminar, el ejemplo
+    # devolvía esa fila a 'ejemplo' borrando el post_id. El reloj la volvía a
+    # ver libre y PUBLICABA OTRA VEZ en la cuenta del cliente. Una fila que ya
+    # no es un ejemplo no se toca nunca más.
+    #
+    # Desde que el ejemplo se prepara en la cola, la fila que este UPDATE pisa
+    # casi siempre es la 'preparando' que apartó `mix_pedir_ejemplo` — pero el
+    # INSERT sigue haciendo falta: si el usuario movió las fechas mientras se
+    # generaba, aquella fila se borró y esta es la primera del día nuevo.
+    ejecutar(
+        f"""INSERT INTO mix_corridas (user_id, campana_id, dia, estado, tema,
+                                      texto, media_key)
+           VALUES (:u, :c, :d::date, 'ejemplo', :tema, :texto, :media)
+           ON CONFLICT (user_id, campana_id, dia) DO UPDATE
+             SET estado = 'ejemplo', tema = :tema, texto = :texto,
+                 media_key = :media, error = NULL, actualizado = now()
+           WHERE mix_corridas.estado IN {EJEMPLO_VIVO}""",
+        {"u": user_id, "c": campana_id, "d": dia, "tema": tema,
+         "texto": texto, "media": media_key})
+
+
+def mix_anotar_devolucion(user_id: str, id_: str, creditos: int) -> None:
+    """Deja escrito en la campaña lo que se devolvió. No es el libro mayor —ese
+    es monedero_movimientos— pero es lo que la pantalla puede enseñar sin
+    cruzar dos tablas, y el recibo que queda cuando alguien pregunta por qué le
+    cobraron 70 y le volvieron 50."""
+    ejecutar("UPDATE mix_campanas SET creditos_devueltos = creditos_devueltos + :n, "
+             "actualizado = now() WHERE user_id = :u AND id = :i",
+             {"u": user_id, "i": id_, "n": int(creditos)})
+
+
+def mix_campana_de(user_id: str, id_: str) -> dict | None:
+    """La campaña por id, viva o no. El reloj la necesita así: entre que
+    despacha el día y lo corre, el usuario pudo apagarla."""
+    filas = ejecutar(
+        "SELECT * FROM mix_campanas WHERE user_id = :u AND id = :i",
+        {"u": user_id, "i": id_})
+    return filas[0] if filas else None
+
+
+def mix_encendidas() -> list[dict]:
+    """TODAS las campañas encendidas, de todos los usuarios.
+
+    Es la única consulta de MIX sin user_id, y tiene que serlo: el reloj no
+    atiende un request, así que no hay «usuario actual» — `usuario_actual()`
+    caería al piloto y publicaría una sola campaña, la equivocada, sin que
+    nadie viera un error. Van las pausadas también: no publican, pero cuando
+    se les pasa la fecha hay que cerrarlas igual para que el usuario pueda
+    crear otra."""
+    return ejecutar(
+        "SELECT user_id, id, hora, zona, empieza, termina, estado, "
+        "creditos_cobrados, creditos_devueltos FROM mix_campanas "
+        "WHERE estado IN ('activa', 'pausada') ORDER BY user_id, id")
+
+
+def mix_dias_tomados(desde: str) -> list[dict]:
+    """Los días ya reclamados desde una fecha, de todos los usuarios.
+
+    Con esto el reloj sabe de una sola consulta qué campañas ya publicaron hoy.
+    No es lo que impide publicar dos veces —eso es el PRIMARY KEY— sino lo que
+    evita despachar cada hora un trabajo que solo va a perder el candado: con
+    182 campañas serían más de cuatro mil arranques al día para nada."""
+    return ejecutar(
+        "SELECT user_id, campana_id, dia, estado FROM mix_corridas "
+        "WHERE dia >= :d::date", {"d": desde})
+
+
+def mix_corridas_colgadas(minutos: int = 60) -> list[dict]:
+    """Corridas reclamadas que nunca se cerraron.
+
+    La Lambda que corre un día muere a los quince minutos como mucho, así que
+    una corrida que lleva una hora 'corriendo' no va lenta: está muerta. Nadie
+    la va a reintentar —el candado del día ya está puesto— y ese día se cobró
+    por adelantado, así que sin esto el usuario paga una publicación que no
+    existe y no hay nadie mirando."""
+    # `:m::int` no es adorno. El Data API tipa los parámetros y manda todo int
+    # de Python como bigint (`_param`), y make_interval solo existe con int4:
+    # la resolución de funciones de Postgres únicamente usa casts implícitos, y
+    # bigint→int4 es de asignación. Sin el cast, esta consulta responde
+    # «function make_interval(mins => bigint) does not exist» — y como es lo
+    # PRIMERO que hace el reloj, se caería entero cada hora, con las campañas
+    # ya cobradas y sin publicar una sola vez.
+    return ejecutar(
+        "SELECT user_id, campana_id, dia FROM mix_corridas "
+        "WHERE estado = 'corriendo' "
+        "AND actualizado < now() - make_interval(mins => :m::int)",
+        {"m": int(minutos)})
+
+
+def mix_pausar(user_id: str, id_: str, nota: str) -> bool:
+    """activa → pausada, con el motivo escrito para que la pantalla lo diga.
+
+    Pausar no es cosmético: si la cuenta de Blotato se desconectó, cada día
+    siguiente gastaría una imagen de verdad (dinero nuestro) para fallar al
+    final. Mejor parar y decirlo."""
+    filas = ejecutar(
+        """UPDATE mix_campanas SET estado = 'pausada', nota = :n,
+                  actualizado = now()
+            WHERE user_id = :u AND id = :i AND estado = 'activa'
+        RETURNING id""",
+        {"u": user_id, "i": id_, "n": nota[:500]})
+    return bool(filas)
+
+
+def mix_reanudar(user_id: str, id_: str) -> bool:
+    """pausada → activa. Sin esto, una campaña que MIX pausó sola no tiene
+    salida: el usuario arregla lo que la paró y sigue sin publicar."""
+    filas = ejecutar(
+        """UPDATE mix_campanas SET estado = 'activa', nota = NULL,
+                  actualizado = now()
+            WHERE user_id = :u AND id = :i AND estado = 'pausada'
+        RETURNING id""",
+        {"u": user_id, "i": id_})
+    return bool(filas)
+
+
+def mix_ultima(user_id: str) -> dict | None:
+    """La última campaña que YA no está viva (terminada o cancelada).
+
+    Cuando el reloj cierra una campaña vencida, `mix_campana` deja de verla y
+    la pantalla vuelve al formulario en blanco: el dueño abre MIX y no queda ni
+    rastro de lo que pagó. Con esto se le puede decir cómo acabó."""
+    filas = ejecutar(
+        f"SELECT id, empieza, termina, estado, creditos_cobrados, "
+        f"creditos_devueltos FROM mix_campanas WHERE user_id = :u "
+        f"AND estado NOT IN {_VIVA} ORDER BY actualizado DESC LIMIT 1",
+        {"u": user_id})
+    return filas[0] if filas else None

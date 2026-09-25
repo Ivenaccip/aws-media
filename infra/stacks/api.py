@@ -21,6 +21,19 @@ from aws_cdk import (
 )
 from constructs import Construct
 
+# El nombre público del producto. Vive en una constante y no cableado en tres
+# f-strings porque aparece en tres sitios que TIENEN que decir lo mismo: los
+# callbacks de Cognito, los logout y la liga del correo de invitación. Si uno se
+# queda atrás, el síntoma es un `redirect_mismatch` del Hosted UI que no apunta
+# a ningún lado.
+#
+# El dominio personalizado de API Gateway que sirve este nombre NO se declara
+# aquí: vive en el stack aislado `aws-media-dominio` (stacks/dominio.py), porque
+# cada synth de infra/app.py re-fija el ImageUri de las Lambdas al digest de
+# `:latest` y un `cdk deploy aws-media-api` arrastra además a aws-media-db,
+# aws-media-media y aws-media-jobs.
+DOMINIO_PUBLICO = "https://irremplazables.xyz"
+
 
 class ApiStack(Stack):
     def __init__(self, scope: Construct, id_: str, *,
@@ -83,6 +96,13 @@ class ApiStack(Stack):
         media_bucket.grant_read(fn)
         jobs_queue.grant_send_messages(fn)
         producir_sm.grant_start_execution(fn)
+        # M23 · D (prerrequisito): el freno de capacidad cuenta las ejecuciones
+        # vivas antes de arrancar otra (pipeline/jobs.py `_hay_sitio`). Sin este
+        # permiso el conteo revienta y el freno falla ABIERTO — que es lo que
+        # debe hacer, pero entonces no frena nada y solo se ve en los logs.
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["states:ListExecutions"],
+            resources=[producir_sm.state_machine_arn]))
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
             resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*",
@@ -117,7 +137,13 @@ class ApiStack(Stack):
                 email_body=(
                     "<p>Hola:</p>"
                     "<p>Ya tienes acceso a la demo. Entra aquí:<br>"
-                    f'<a href="{http_api.api_endpoint}">{http_api.api_endpoint}</a></p>'
+                    # La invitación manda al nombre propio, no al execute-api.
+                    # ORDEN OBLIGATORIO: este texto solo cambia con un deploy, y
+                    # ese deploy va DESPUÉS de que irremplazables.xyz resuelva y
+                    # conteste 200 — si no, el correo invita a un dominio que no
+                    # existe. Las invitaciones ya enviadas siguen apuntando al
+                    # execute-api, que sigue vivo y sirviendo.
+                    f'<a href="{DOMINIO_PUBLICO}">{DOMINIO_PUBLICO}</a></p>'
                     "<p>Correo: <b>{username}</b><br>"
                     "Contraseña provisional: <b>{####}</b></p>"
                     "<p>Al entrar por primera vez te pedirá cambiar la "
@@ -136,9 +162,19 @@ class ApiStack(Stack):
                 scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
                 # M2: el Hosted UI vuelve a callback.html (PKCE, sin secret);
                 # localhost habilita probar el flujo con el server de dev
-                callback_urls=[f"{http_api.api_endpoint}/callback.html",
+                #
+                # Las TRES conviven a propósito. static/auth.js:37 y
+                # static/callback.html:27 arman el redirect_uri con
+                # location.origin + "/callback.html", así que esta lista tiene
+                # que cubrir CADA origen desde el que alguien pueda entrar: el
+                # nombre propio, el execute-api (donde están los usuarios que ya
+                # tienen su liga) y localhost:8011. Quitar el execute-api de
+                # aquí es exactamente lo que los deja fuera.
+                callback_urls=[f"{DOMINIO_PUBLICO}/callback.html",
+                               f"{http_api.api_endpoint}/callback.html",
                                "http://localhost:8011/callback.html"],
-                logout_urls=[f"{http_api.api_endpoint}/",
+                logout_urls=[f"{DOMINIO_PUBLICO}/",
+                             f"{http_api.api_endpoint}/",
                              "http://localhost:8011/"],
             ),
         )
@@ -166,5 +202,9 @@ class ApiStack(Stack):
             f"media-ivenaccip.auth.{self.region}.amazoncognito.com")
 
         cdk.CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
+        # El nombre propio al lado del técnico, para que el output del deploy
+        # diga las dos verdades: por dónde entra la gente y por dónde sigue
+        # entrando quien tenga la liga vieja.
+        cdk.CfnOutput(self, "DominioPublico", value=DOMINIO_PUBLICO)
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)
         cdk.CfnOutput(self, "UserPoolClientId", value=client.user_pool_client_id)

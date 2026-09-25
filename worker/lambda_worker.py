@@ -83,6 +83,20 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
     if event.get("tipo") == "sync_costes":
         _sync_costes(int(event.get("dias") or 3))
         return {"ok": True}
+    # M23 · D: el reloj de MIX. EventBridge lo despierta cada hora en punto y
+    # el evento llega como este objeto literal (RuleTargetInput.from_object),
+    # no con la forma nativa de un evento programado: sin `tipo` esta rama no
+    # se dispararía y el reloj correría cada hora sin hacer nada ni fallar.
+    if event.get("tipo") == "mix_reloj":
+        from worker.mix_reloj import despachar
+        return despachar()
+    # M23 · D (prerrequisito): una ejecución de Step Functions terminó mal. El
+    # evento llega ENTERO, sin transformar a propósito: `detail.input` ya es
+    # JSON, y meterlo dentro de una plantilla de EventBridge deja comillas sin
+    # escapar. El barredor devuelve los créditos que el contenedor no pudo.
+    if event.get("detail-type") == "Step Functions Execution Status Change":
+        from worker.barredor import barrer
+        return barrer(event.get("detail") or {})
     for rec in event.get("Records", []):
         j = json.loads(rec["body"])
         log.info("trabajo: %s", j.get("tipo"))
@@ -108,11 +122,32 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # parte de los créditos y el informe sale con las demás.
             from worker.competencia_analizar import analizar as competencia
             competencia(j["user_id"], j["informe_id"], j["cuentas"])
+        elif j["tipo"] == "clip":
+            # M25 A/F: el clip de 8 s con audio — una llamada a Veo (más Grok
+            # si hay que juntar varias imágenes). Nunca relanza: el trabajo
+            # marca su propio error y devuelve los créditos, y un reintento de
+            # la cola cobraría un segundo video que nadie pidió.
+            from worker.clip_generar import generar as clip
+            clip(j["user_id"], j["clip_id"])
         elif j["tipo"] == "publicar":
             # M23 C2: película → Blotato. Nunca relanza: un reintento de la
             # cola publicaría dos veces (la publicación se reclama con If-Match).
             from worker.publicar_task import publicar
             publicar(j["user_id"], j["proyecto"], j["id"])
+        elif j["tipo"] == "mix_dia":
+            # M23 · D: la publicación de un día de campaña. Nunca relanza (el
+            # trabajo se traga sus errores y los escribe en la fila del día):
+            # un reintento de la cola publicaría dos veces en la cuenta de un
+            # cliente, que es lo único que MIX no puede deshacer.
+            from worker.mix_dia import correr
+            correr(j["user_id"], j["campana"], j["dia"])
+        elif j["tipo"] == "mix_ejemplo":
+            # M23 · D: el ejemplo del día 1, el que se mira antes de pagar. No
+            # publica ni cobra, pero tampoco relanza: un reintento de la cola
+            # sería otra imagen de Grok pagada por nosotros para enseñar lo
+            # mismo. El trabajo escribe su propio error en la fila del día.
+            from worker.mix_ejemplo import preparar as mix_ejemplo
+            mix_ejemplo(j["user_id"], j["campana"], j["dia"])
         elif j["tipo"] == "smoke":
             _smoke()
         else:

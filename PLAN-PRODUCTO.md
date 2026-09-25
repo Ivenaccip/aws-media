@@ -398,6 +398,12 @@ local de e1 y shorts.html.
 
 ## Fase M9 — Automatización de membresías (Skool → Zapier → alta)
 
+> **Pretrabajo obligatorio: M26 (entregabilidad del correo).** Cada alta que
+> haga el bot dispara un correo de Cognito. Hoy salen del remitente compartido
+> de AWS y caen en spam, así que el bot mandaría invitaciones que nadie ve, al
+> ritmo que entren los miembros y sin nadie mirando la tasa de rebote. Con SES
+> configurado el bot además deja de chocar con el límite de 50 correos al día.
+
 **Plataforma decidida (2026-09-13): Skool.** Cierra la pregunta abierta que
 tenía esta fase. No hace falta raspar la lista de miembros: Skool expone las
 altas hacia Zapier, y de ahí salen a un CRM.
@@ -414,6 +420,8 @@ reactiva a quien renovó. Va por cron y no por evento a propósito: una baja que
 se procesa una hora tarde no rompe nada, y un webhook perdido sí dejaría a
 alguien con acceso pagado por otro.
 
+- [ ] **M26 cerrada antes de encender el bot** (SES en producción, rebotes y
+      quejas vigilados).
 - [ ] Endpoint que recibe la señal y llama a `usuarios.py alta`.
 - [ ] **Secreto compartido en ese endpoint.** Sin él, quien descubra la URL se
       da de alta solo — y el alta regala los créditos de cortesía (`cortesia()`
@@ -1554,9 +1562,127 @@ el selector, o al menos el cambio de modelo, tiene que estar antes de esa fecha.
   oculto y sin precio el 16-sep), Nano Banana 2, Grok edit (ya integrado,
   `pricing.json`). Para editar hace falta un A/B pagado (pedir permiso).
 
+**Decisión del dueño (2026-09-18): Grok de momento, y el selector después.**
+Es decir, la fase se parte en dos y cambia de orden: primero **un solo modelo
+nuevo por defecto** —Grok, que ya está integrado y cuesta $0.02 dólares por
+imagen de salida contra los $0.04 de Nano Banana (`pricing.json`)— y después la
+pantalla donde el usuario elige entre varios viendo el precio de cada uno.
+
+Por qué ese orden y no el del plan original:
+
+- la fecha manda. El 2 de octubre es una fecha de Google, no nuestra, y son
+  nueve días después del lanzamiento: cambiar el modelo por defecto es
+  obligatorio, mientras que elegir modelo es una mejora;
+- **MIX (D) empuja en la misma dirección.** Rediseñado, publica una imagen
+  diaria a 5 créditos, y a ese precio el margen con Nano Banana es estrecho y
+  con Grok es holgado;
+- un selector obliga a decidir la tarifa de CADA modelo antes de tener a nadie
+  usándolos. Con uno solo, la tarifa es una.
+
+### Lo construido (2026-09-18) — las imágenes las hace Grok
+
+Un solo modelo nuevo por defecto, y el selector después.
+
+| Pieza | Qué |
+|---|---|
+| `pipeline/config.py` | `fal_imagen` y `fal_imagen_edit`, **por variable de entorno** |
+| `pipeline/media_fal.py` | `imagen_nano` → `imagen_fal`; sin referencia va al de crear, con referencia al de editar |
+| `pipeline/pricing.py` | `estimar_regeneracion` cotiza el modelo que de verdad se llama; `num_images` deja de ignorarse |
+| `tools/pricing.json` | el precio del texto→imagen, con su fuente; Nano Banana queda marcado como histórico |
+| `tools/ssm_env.py` | los dos ids viajan a SSM: cambiar de modelo ya no necesita deploy |
+| `tests/test_m23_modelo_imagen.py` | 11 tests nuevos — la red que no existía |
+
+**Son DOS ids y no uno, y eso es lo que más importa del cambio.** El endpoint de
+editar define su encuadre como «el de la primera imagen de entrada»: sin imagen
+de entrada no tiene encuadre que copiar. Quien lo sufriría no es la pantalla de
+imágenes, que se vería enseguida, sino **las dos opciones de personaje sin
+referencia** — `_opcion_sin_ref` atrapa TODA excepción y devuelve `None`, así
+que un fallo ahí no sale como error: sale como un proyecto varado en revisión
+con cero opciones, que es exactamente el bug que M1 existió para arreglar. Un
+buscar-y-reemplazar de `fal_nano` → `fal_grok` habría hecho justo eso, y por eso
+hay un test que lo fija.
+
+**El aspecto ahora viaja siempre escrito.** M1 y el b-roll recibían imágenes
+cuadradas porque ese era el valor por defecto de Nano Banana, no porque nadie lo
+hubiera decidido. Con el modelo nuevo el encuadre se habría movido solo y nadie
+lo habría visto hasta mirar las imágenes.
+
+**El precio que se enseña mentía.** `estimar_regeneracion` multiplicaba por los
+$0.04 de Nano Banana, y ese número no solo se muestra en el popup del b-roll:
+se guarda en el libro de gastos del proyecto. Habría seguido cotizando el doble
+de lo que cuesta. Falla hacia arriba, que es la dirección que parece inofensiva.
+
+#### La prueba pagada (2026-09-18, ~$0.18 dólares, autorizada por el dueño)
+
+Ocho llamadas con los prompts **reales** del repo — probar con otra redacción no
+habría probado nada. Salieron las ocho.
+
+- **El pincel funciona.** No hay máscara en ninguno de los dos modelos y nunca
+  la hubo: el navegador aplana la foto y los trazos en un JPEG y se mandan dos
+  imágenes con la instrucción de tocar solo esa zona. Medido sobre la imagen de
+  salida, fuera de la zona marcada la diferencia media es de **3.5 sobre 255**
+  en un cambio local y **4.5** en otro — eso es ruido de recompresión, no
+  edición. Dentro: 6.3 y 20.7. Sin marca de color residual.
+- **El filtro de xAI no rechazó personas**, ni al generar un retrato ni al
+  editarle la ropa. Aviso: Grok **no expone `safety_tolerance`** y Nano Banana
+  sí. Si algún día el filtro empieza a rechazar fotos de usuarios, ya no hay
+  palanca que ajustar — es política de xAI.
+- **El encuadre se respeta exacto**: 1280×720, 1024×1024 y 720×1280 para los
+  tres formatos de la herramienta.
+- **~1 MP, igual que Nano Banana**: el b-roll no pierde resolución antes de que
+  Veo lo anime.
+- **13–29 s por imagen** (mediana 16). La pantalla promete «~20 s» y sigue
+  siendo honesto, aunque el vertical se fue a 28.7 s.
+- **Devuelve JPEG nativo.** Nano Banana devolvía PNG y el repo lo guardaba en un
+  archivo `.jpg`: el nombre llevaba meses mintiendo y deja de hacerlo.
+
+Lo que la prueba **no** contesta, y conviene no olvidar: la consistencia del
+personaje entre escenas de una película (eso cuesta una película, no centavos),
+y no hay comparación contra Nano Banana — se eligió la prueba de solo-Grok, así
+que lo que se sabe es que Grok hace el trabajo, no que lo haga mejor.
+
+#### Lo que queda abierto
+
+- **`GEN_BACKEND` en producción.** Si vale `google`, el popup de b-roll empieza
+  a dar 502 el 2-oct por su cuenta: `gemini_image_model` apunta al modelo
+  apagado y ese camino no lo toca este cambio. El repo no puede saber qué vale
+  —viaja por SSM—, así que **hay que leer el parámetro**. El default del código
+  es `fal`.
+- **Cuatro referencias contra un tope de tres.** `resolver_referencias` arma
+  hasta 4 imágenes (`pipeline/scenes.py`) y el endpoint de edición documenta un
+  máximo de 3. Es anterior a este cambio y **no está comprobado que se dispare**
+  en alguna película real: se puede mirar en los proyectos ya producidos sin
+  gastar un centavo, y ese es el paso previo a tocarlo.
+- **Con qué modelo se generó cada imagen no se guarda en ninguna parte.** En
+  Langfuse sí queda (`model=app` en cada generación), pero no en el proyecto.
+  Después del 23, entre 182 personas, eso es lo que separa «se ve peor» de «es
+  otro modelo».
+- **El selector** (la parte que el dueño dejó para después): la tarifa sigue
+  siendo una sola (`tarifas.json §video.imagen`, 2 créditos) y no depende del
+  modelo. Con Grok esa tarifa pasa de vender a pérdida a vender con margen —
+  pero eso es una decisión de negocio que el cambio de modelo no toma solo.
+
 ### C · Blotato: cada usuario trae su clave (después del 23)
 
 Decisión: cada usuario conecta SU clave (y paga su plan de Blotato).
+
+**Sin clave, el grupo del menú se apaga entero** (decisión del dueño, 18-sep).
+El día del lanzamiento casi ninguno de los 182 va a tener clave, así que tres
+entradas del menú serían callejón sin salida: se ven apagadas, dicen por qué y
+el clic abre el diálogo de conectar en vez de llevar a una pantalla que solo
+sabe responder «conéctala». **No se esconden**: escondidas, nadie descubre que
+el producto sabe agendar y medir.
+
+Dos cosas que se decidieron a sabiendas y no hay que «arreglar»:
+
+- **«Investiga tu competencia» se apaga con las otras dos aunque NO use
+  Blotato** — corre con Apify y funcionaría sin ninguna clave. Se eligió que el
+  grupo se comporte como un bloque antes que tener una entrada portándose
+  distinta que sus vecinas. Un test lo fija para que nadie le quite el atributo
+  creyendo que es un error.
+- **Si `/api/blotato` falla, no se apaga nada.** Dejar sin sus herramientas a
+  quien sí pagó, porque un fetch no respondió, es peor que dejar entrar a quien
+  no: el backend responde 409 igual.
 
 Va en entregas, cada una con su PR:
 
@@ -1760,17 +1886,135 @@ Lo que pedía el análisis:
 
 ### D · MIX (después del 23)
 
+**El diseño cambió el 18-sep.** Lo de abajo está en dos partes: primero lo que
+el dueño decidió ese día, que es lo que se va a construir, y después el diseño
+de septiembre 16 con el que se abrió la fase, que se conserva porque explica de
+dónde salen los prerrequisitos y porque la versión «película» sigue siendo el
+destino si la de imágenes funciona.
+
+#### El rediseño del dueño (2026-09-18)
+
+La imagen mental es un asistente al que le encargas que publique por ti y no le
+revisas el trabajo: *«solo quiere publicidad que salga para traer cosas»*.
+
+- **Imágenes, no películas.** MIX publica una imagen al día. Si funciona, se
+  extiende a video. Eso lo cambia todo: una imagen no pasa por Fargate ni por
+  la máquina de estados, así que MIX cabe entero en el worker Lambda.
+- **La entrada es el negocio, no el tema.** El usuario describe **qué quiere
+  que salga esta semana**, y se le pregunta si tiene alguna **fecha cercana**
+  con promoción. De ahí salen los temas de cada día: los propone el sistema.
+- **Publica directo**, sin pantalla de aprobación. Es la decisión que define el
+  producto: el dueño no quiere revisar nada.
+- **Duración de la campaña:** 3 días · 1 semana · 2 semanas · 1 mes · a medida.
+  El usuario elige también el horario.
+- **Antes de arrancar se enseña cuánto va a costar** la campaña completa.
+- **Tarifa: 5 créditos por publicación** — 2 de la imagen y 3 de la
+  automatización, la subida y los recursos de AWS.
+- **Una sola automatización y un solo canal** por ahora.
+- **Si los créditos no alcanzan, se avisa por correo** de que el flujo está en
+  peligro de apagarse.
+
+**Lo que se deriva de eso y no hace falta volver a decidir:**
+
+- **Se cobra cada corrida, no la campaña por adelantado.** El aviso de «tu
+  flujo se va a apagar» solo existe si el saldo puede acabarse a mitad; cobrar
+  el mes entero el primer día lo haría imposible y además cobraría por
+  publicaciones que quizá nadie llegue a querer.
+- **La hora va en punto y el disparo corre una vez por hora.** Un barrido cada
+  pocos minutos le impide a Aurora pausarse, y esa pausa es la que mantiene el
+  piso de la cuenta cerca de cero.
+- **MIX exige la clave de Blotato conectada**, porque publica. Nace apagado
+  para casi todos los 182, igual que las otras tres entradas de su grupo.
+
+#### Lo que se encontró al mapear (2026-09-18)
+
+Cuatro cosas que el rediseño necesita saber, y que no estaban en el diseño de
+septiembre 16:
+
+- **Blotato no tiene borrador.** El único `draft` del código es un kwarg de
+  `reprogramar()` que nadie usa a propósito: el PATCH no hace merge y un draft
+  parcial borra `mediaUrls` y `target` (`pipeline/blotato.py`). Lo que sí sabe
+  hacer, y está en producción, es **subir el archivo y agendar**
+  (`publicar(..., scheduled_time=...)`, `worker/publicar_task.py`). Así que
+  «dejar en borrador» nunca fue una opción de Blotato: habría tenido que ser
+  una pantalla nuestra. Como el dueño eligió publicar directo, deja de
+  importar — pero si algún día se vuelve al borrador, es trabajo nuestro.
+- **No hay dónde guardar lo que MIX necesita recordar.** No existe ninguna
+  preferencia de usuario persistida —ni voz, ni personaje, ni formato, ni
+  estilo: la tabla `usuarios` tiene `id`, `email`, `creado` y `slots`— **ni
+  lista de temas**. Cada película empieza de cero hoy porque siempre hay
+  alguien delante eligiendo. MIX no tiene a nadie delante: **tabla nueva, y
+  por tanto una migración que corre el dueño.**
+- **La imagen depende de un modelo que se apaga el 2026-10-02.** `fal-ai/nano-banana`
+  es `gemini-2.5-flash-image`, y cuesta $0.04 dólares por imagen
+  (`pricing.json §generacion.nano_banana_fal_usd_por_imagen`). **Grok edit
+  cuesta $0.02** por imagen de salida y no tiene fecha de muerte. Con MIX
+  publicando una imagen diaria, **M23 · B (el reemplazo de modelo) pasa a ser
+  prerrequisito de MIX**, no una tarea paralela.
+- **El correo del aviso no se puede dar por hecho.** Hoy los correos salen del
+  remitente por defecto de Cognito y caen en spam; eso es justo lo que arregla
+  M26, que espera el acceso a producción de SES. El aviso de saldo tiene que
+  existir **también dentro del producto**, no solo en el correo.
+
+**La economía de los 5 créditos** (para cerrarla cuando se construya): al piso
+de venta —`tarifas.json §economia.piso_venta_usd_por_credito`, $0.015— cinco
+créditos son $0.075 dólares, y el costo interno que la spec admite son $0.0675.
+La imagen se lleva $0.04 con Nano Banana o $0.02 con Grok; lo que quede paga el
+texto del post y la infra. Falta **medir el LLM del texto** antes de fijarla:
+con Nano Banana el margen es estrecho y con Grok es holgado, lo que empuja en
+la misma dirección que la fecha del 2 de octubre.
+
+#### Los prerrequisitos — construidos el 2026-09-18
+
+Los dos primeros se listaron aquí como requisitos de MIX, pero sirven **sin
+MIX** y por eso se hicieron primero, antes del lanzamiento del 23.
+
+- **El barredor de ejecuciones caídas** (`worker/barredor.py`). La máquina de
+  estados tiene un estado y ningún `Catch`, y el `creditos.devolver` de cada
+  tarea vive DENTRO del contenedor. Si la tarea no llega a arrancar —imagen de
+  ECR que no se pudo bajar, sin capacidad para 4 vCPU, el timeout de 2 h— la
+  ejecución muere y ese código nunca corre: el usuario se queda sin resultado
+  **y sin créditos**. Ahora EventBridge avisa de cada final malo y el worker
+  cierra el trabajo y devuelve.
+  - **La idempotencia no es una marca nueva: es un UPDATE condicionado.** Se
+    gana el derecho a devolver solo si el trabajo sigue en marcha
+    (`estado = 'produciendo'`, o `'corriendo'` en el doc del editor). Si el
+    contenedor sí corrió, él ya cerró y devolvió, y el claim pierde. Hacía
+    falta ese cuidado: el libro mayor **no deduplica devoluciones** —su índice
+    único es solo para compras— así que una devolución doble entra sin
+    protestar, y son créditos regalados que nadie compró.
+  - Cubre los cuatro trabajos que cobran: `producir_task`, `shorts_task`,
+    `editar_task` y `overlay_task`. `render_task` y `subtitulos_task` no cobran
+    créditos y se saltan a propósito.
+  - **Lo que se descubrió al hacerlo:** en los tres trabajos del editor, un
+    trabajo atascado se quedaba `corriendo` para siempre y lo único que lo
+    destrababa era la caducidad de 2 h de su pantalla — que deja lanzar otro,
+    **y el otro vuelve a cobrar**. El usuario acababa pagando dos veces por una
+    tarea que nunca corrió.
+- **El freno de capacidad** (`pipeline/jobs.py`). Los seis lanzadores pasan
+  ahora por un solo sitio que cuenta las ejecuciones vivas antes de arrancar
+  otra. Tope 6 de las 7 que caben en la cuota (30 vCPU ÷ 4 por tarea): una
+  tarea que acaba de terminar puede seguir contada unos segundos.
+  - **No es la cola que pedía el diseño, es un freno**, y la diferencia
+    importa: una cola sirve cuando el trabajo puede esperar sin que nadie mire
+    —MIX, cuando exista— y es lo peor que se le puede hacer a alguien que está
+    frente a la pantalla esperando su película. Prefiere un «ahorita no»
+    inmediato (503, sin cobrar) a un «encolado» de duración desconocida.
+  - **Falla abierto:** si no se puede contar (permisos, throttling) se deja
+    pasar y se registra. Cerrar dejaría el producto entero apagado por un
+    permiso mal puesto; abierto, lo peor que pasa es que una tarea no arranque
+    y el barredor devuelva.
+- **Falta el tercero:** la clave de Blotato (C) ya está, pero MIX la exige
+  conectada para publicar.
+
+#### El diseño de septiembre 16 (la versión «película»)
+
+Se conserva porque es a donde vuelve MIX si la versión de imágenes funciona.
+
 Decisión: **cada usuario elige su hora**; si varias corridas coinciden, **se
 encolan** (la capacidad se amplía después). **Una sola automatización por
 usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
 
-- **Requisitos previos** (sirven también sin MIX):
-  - delante de Fargate no hay cola: la cuota es de 30 vCPU = 7 tareas de 4
-    vCPU, compartidas con todo; una octava probablemente falla;
-  - la state machine no tiene `Retry` ni `Catch`, y la devolución de créditos
-    solo ocurre dentro del contenedor: falta un barredor de ejecuciones
-    fallidas con devolución idempotente;
-  - C (clave de Blotato), si MIX publica.
 - **Arquitectura propuesta:** tabla de programaciones (una por usuario) →
   disparo a la hora elegida → cola SQS → despachador que lanza como mucho
   5 a la vez (deja sitio al uso interactivo) → una tarea que prepara, decide
@@ -1783,7 +2027,8 @@ usuario** para las pruebas; en el plan anual quizá dos (por evaluar).
   en 3 de 4 películas de 30 s la narración quedó en 15–20 s, y se cobró la
   duración objetivo.
 - Empezar en **borrador** (el usuario aprueba con un clic) y pasar a publicar
-  directo cuando haya confianza.
+  directo cuando haya confianza. (Muerto por dos lados: Blotato no tiene
+  borrador, y el dueño eligió publicar directo desde el primer día.)
 
 ### Hallazgos del análisis que no esperan a M23
 
@@ -1814,6 +2059,646 @@ Extra para después. Blotato no expone anuncios: haría falta una integración
 propia con la Marketing API de Meta. Guardar desde ya el id de cada
 publicación facilitaría promocionarla más adelante.
 
+## Fase M24 — Ver los servicios en un solo lugar (2026-09-17)
+
+Petición del dueño: un tablero tipo Langfuse donde se vea todo en una sola
+plataforma — qué está corriendo, qué se está gastando y cómo van los recursos.
+Al mapear lo que hay salió que **la arquitectura ya decidió casi todo**, así que
+esta fase documenta las opciones reales y por qué se descartan las obvias.
+
+### El dato que manda
+
+Aurora vive en subredes `PRIVATE_ISOLATED` con **cero NAT Gateways**, y la
+Lambda le habla por el **Data API** (HTTPS de `rds-data`), no por conexión
+Postgres. Es una decisión deliberada y está escrita en `infra/stacks/db.py:1-4`.
+
+Consecuencia: **nada de fuera puede abrir una conexión Postgres a la base.**
+Eso descarta de golpe a Grafana Cloud, Metabase, Retool y Superset — todos
+hablan el protocolo de Postgres y ninguno habla Data API. No es una limitación
+de esas herramientas: es que la base no está donde ellas pueden verla.
+
+Lo que sí hay, y juega a favor:
+
+- **Ya existe medio tablero**: `static/admin.html` + `server/admin_api.py`
+  (M6) — margen por usuario y costo por corrida. Funciona *precisamente*
+  porque corre dentro de la Lambda del API, que es lo único que llega a la base.
+- **La Lambda del API ya puede leer métricas**: `cloudwatch:GetMetricStatistics`
+  en `infra/stacks/api.py:101`. El panel de infraestructura no necesita
+  permisos nuevos ni red nueva.
+- **Postgres ya es el punto de unión de los tres mundos**: el trabajo
+  `sync_costes` baja los costos de Langfuse a la tabla `costes`, donde ya
+  están los de infra y los movimientos de créditos. Cualquier tablero que se
+  elija se apunta ahí primero.
+
+Los tres mundos y dónde viven hoy: **LLM** → Langfuse (`@observe`);
+**infraestructura** → CloudWatch (las ocho alarmas de `infra/stacks/alertas.py`);
+**negocio** → Postgres (`costes`, `monedero_movimientos`).
+
+### A · Extender `admin.html` — recomendado
+
+Un panel de infraestructura dentro de la página que ya existe, leyendo
+CloudWatch desde `admin_api.py` con boto3. Cero cambios de red, cero
+proveedores nuevos, y queda **una sola pantalla de verdad**: créditos, margen
+y salud del sistema en la misma vista.
+
+- `GetMetricStatistics` ya está concedido; `GetMetricData` (una llamada para
+  varias métricas, en vez de una por métrica) sería una línea más de IAM.
+- Si más adelante se quiere Grafana igual: exponer `/api/admin/metricas` en
+  JSON y apuntar ahí el plugin **Infinity** de Grafana, que lee HTTP en vez de
+  Postgres. La red sigue sin tocarse.
+- **Lo que se pierde: SQL libre.** Se consulta lo que los endpoints expongan,
+  no lo que se le ocurra a uno a media noche. Para un tablero fijo da igual;
+  para explorar «¿por qué este usuario gastó tanto el martes?» se queda corto.
+  Si eso pasa dos o tres veces al mes, vale la pena; si pasa dos veces por
+  semana, la opción C empieza a tener sentido.
+
+### B · Dashboard de CloudWatch en el CDK
+
+Un `cw.Dashboard` junto a las alarmas de `infra/stacks/alertas.py`: las ocho
+métricas que ya se vigilan, ahora dibujadas. Se despliega con el `cdk deploy`
+de siempre y no agrega proveedores.
+
+Es la mitad de infraestructura sola, en pantalla aparte. Sirve como paso
+intermedio si A se retrasa. **Antes de hacerlo:** verificar el precio por
+tablero y anotarlo en `tools/pricing.json` con su `verified_on`.
+
+### C · Abrir la red a Aurora — NO ahora
+
+La única opción que da «una plataforma» de verdad, y la que revierte una
+decisión documentada. Se deja escrita para cuando toque.
+
+**Consecuencia económica — no es el monto, es el piso.** El sistema hoy no
+cuesta nada en reposo: Aurora se autopausa a 0 ACU, las Lambdas cobran solo
+mientras ejecutan, Fargate solo mientras corre una tarea. NAT Gateway y los
+endpoints de interfaz de VPC son la línea contraria: **cobran por hora estén o
+no en uso**, más un cargo por GB procesado. Se convertiría un sistema con piso
+cercano a cero en uno con renta fija mensual, para mirar un tablero.
+
+**Esos precios NO están en `pricing.json`.** Verificarlos y anotarlos ahí es el
+primer paso de cualquier evaluación de C; sin eso la decisión se toma a ciegas.
+
+**Consecuencia de infraestructura — esa sí es grande.** Hoy no existe ruta
+desde internet hasta la base. Eso no es una configuración que se pueda
+equivocar: es una ausencia. Abrirla agrega, todas a la vez, una ruta, un grupo
+de seguridad que mantener bien, algo que guarda credenciales y algo que
+parchar. Y como dice el docstring de `db.py`: «Aquí viven los datos de los
+usuarios: proyectos, saldos y movimientos de créditos. **No hay otra copia.**»
+
+También cambian los modos de falla. Hoy todos viven dentro de servicios
+administrados de AWS; un NAT agrega uno propio, y si cae su zona el tablero
+deja de ver la base — de madrugada, que es cuando uno no quiere estar
+averiguando si el problema es la base o la ruta a la base.
+
+**Cuándo sí:** cuando varias personas necesiten el tablero sin pasar por el
+API. Ese día llega al contratar a alguien, no antes.
+
+**Lo que no se hace nunca:** `publiclyAccessible=true` en el clúster. Es el
+camino más barato en dólares y el más caro en todo lo demás.
+
+Variante intermedia, si algún día se quiere SQL a mano sin renta permanente:
+tres endpoints de interfaz (`ssm`, `ssmmessages`, `ec2messages`) más un bastión
+chico, **creados y borrados cuando se ocupan**. Sin NAT y sin endpoints no hay
+forma de que una máquina de la VPC hable con SSM, así que este camino también
+tiene reloj — pero la red queda cerrada el resto del tiempo.
+
+### Lo que no entra
+
+- **Datadog / New Relic**: agentes en el API y en el worker, más tarifa por
+  host. A 166 usuarios se paga por lo que no se usa.
+- **Langfuse se queda donde está**, haciendo lo que hace bien: las llamadas al
+  LLM, traza por traza. No sabe de colas ni de ACUs y no tiene por qué.
+
+### Decisión (2026-09-17)
+
+**A primero**, después del 23. B si se quiere el detalle crudo de CloudWatch en
+pantalla aparte. C queda documentada como la conversación de otro día.
+
+- [ ] Panel de infraestructura en `admin.html` (cola, Lambdas, Aurora, Step
+      Functions) leyendo CloudWatch desde `admin_api.py`.
+- [ ] Decidir si se agrega `cloudwatch:GetMetricData` al rol del API.
+- [ ] Si algún día se evalúa C: precios de NAT Gateway y de endpoints de
+      interfaz verificados y anotados en `tools/pricing.json`.
+
+## Fase M25 — La entrada: imágenes, clip y las dos historias (2026-09-17)
+
+Petición del dueño, salida de ver a usuarios reales: la interfaz está armada
+para historias y con todo el flujo detrás, pero **hay gente que quiere una
+petición sencilla** — sube imágenes y que le entreguen un video. Esta fase
+separa esa petición del flujo largo sin construir un segundo producto.
+
+La idea inicial era un balanceador que adivinara qué quiere el usuario. Se
+descartó como puerta: en el momento de crear se puede **preguntar**, que es
+gratis y acierta siempre, y equivocarse cuesta una película cobrada. El
+clasificador se queda para sugerir, nunca para enrutar — que es justo la forma
+que ya tiene el balanceador de rubro (`server/app.py:555`).
+
+### A · El clip de 8 segundos
+
+Decisión del dueño (17-sep): **un solo video de 8 segundos, con audio**,
+llamando a fal con el contexto y la imagen del usuario. Sin guionista, sin TTS
+y sin whisper.
+
+Ocho segundos no es un recorte arbitrario: es el slot máximo de Veo
+(`OPCIONES = (4, 6, 8)` en `pipeline/tts.py:18`), así que **un clip es una sola
+llamada**. Con eso desaparecen guionista, TTS, alineado, `planear_ventanas`,
+director, casting, personaje, `concat`, `mux`, el gate de duración, la pantalla
+de revisión y el mínimo de 2 escenas de `pipeline/narracion.py:44`.
+
+- **Dónde vive: un tipo de trabajo nuevo en la cola SQS**, hermano de
+  `competencia` y `estilo_analizar` (`worker/lambda_worker.py:105`), **no** una
+  producción de Fargate. Así no consume slot de proyecto (nadie se topa con el
+  409 de `server/app.py:546` por pedir un clip), no hay estado `revision` ni
+  Step Functions, y el cobro y la devolución son uno solo.
+- **Timeout propio, obligatorio.** La Lambda del worker tiene 15 minutos duros
+  (`infra/stacks/jobs.py:89`) y la configuración de Veo de la película permite
+  720 s × 2 intentos (`pipeline/config.py:33-34`) = hasta 24 minutos. Heredar
+  esos números manda clips sanos a la DLQ. Un clip de 8 s sale en un par de
+  minutos.
+- **NO reusar `prompt_veo` ni `VEO_NEGATIVE`** (`pipeline/scenes.py:98-113`).
+  Están hechos para el producto de cortos animados y prohíben explícitamente
+  `photorealistic, humans, people, person, face`: con la foto de un producto,
+  de un perro o de una cara, el prompt negativo le pelea al modelo. El clip
+  necesita su propia construcción, casi vacía.
+- **Un prompt nuevo y chico**: contexto del usuario → prompt de Veo, traducido
+  y ordenado (sujeto, acción, cámara). Todo el pipeline le habla a Veo en
+  inglés y estructurado; los usuarios van a escribir en español y suelto.
+  Cuesta ~$0.001 dólares. **Medirlo contra pasar el texto crudo** antes de
+  darlo por bueno.
+- La fontanería ya existe: `image_url` recibe `start_image_url`, que ya viaja
+  como data URI para el frame previo (`pipeline/media.py:21`). Lo que no existe
+  es una ruta por la que la imagen **del usuario** llegue ahí: `imagen_inicio`
+  solo tiene dos ramas, frame previo o Grok (`pipeline/media.py:33`). Y no hay
+  subida de imágenes: el presignado solo acepta `.mp4/.mov/.m4v`
+  (`server/media_api.py:32`).
+
+**Tarifa: 30 créditos** (decisión del dueño, 17-sep), más 2 si hay que
+componer varias imágenes — ver el bloque F. El número sale de la
+economía, no del gusto: 8 s con audio son **$0.40 dólares** de Veo
+(`pricing.json`: 720p con audio a $0.05 por segundo, contra $0.03 sin audio), y
+el piso de venta es **$0.015 dólares por crédito** (`tarifas.json §economia`).
+A 20 créditos se vendería en $0.30 y se perdería $0.10 por clip; a 30 se vende
+en $0.45. Con la razón interna de hoy ($0.0135 por crédito cobrado) el cálculo
+da 30 con audio y 18 sin él — **20 créditos habría sido el precio correcto del
+clip mudo**, y es la salida si algún día se quiere ese número.
+
+Dos cosas a tener presentes al fijarlo:
+
+- **Por segundo entregado el clip es más caro que la película** ($0.05 contra
+  $0.045): amortiza nada. «Es más sencillo, cobremos menos» no aplica.
+- **La cortesía son 100 créditos al mes.** A 30 por clip cada usuario puede
+  quemar $1.20 dólares gratis; con 166 usuarios eso es ~$200 al mes en el peor
+  caso.
+- El audio de Veo es **generado por el modelo** (ambiente, efectos, a veces
+  voces): no es un narrador que lea el texto del usuario. Hoy está cableado en
+  `generate_audio: False` (`pipeline/media.py:121`), así que esa tarifa nunca
+  se ha pagado. **Generar dos o tres clips de prueba y oírlos** antes de
+  prometer «con sonido».
+
+### B · La entrada: dos botones y un desplegable
+
+Decisión del dueño (17-sep): un control segmentado con **dos posiciones,
+Imágenes y Videos** —como el Chat/Cowork de Claude— y dentro, un desplegable
+con las opciones. Así el clic de arriba y la selección de abajo son dos señales
+separadas en vez de una revuelta.
+
+La lista de hoy («video sencillo, cuento, tengo una idea») mezclaba dos ejes:
+qué te llevas y cómo se investiga. Se separan: el desplegable dice **qué**, y
+las fichas de investigación viven dentro de la opción que las necesita.
+
+- «Imágenes» le da por fin una puerta a `static/imagenes.html`, que hoy solo se
+  alcanza desde una lista del inicio (`static/index.html:514`).
+- **El valor por defecto del desplegable decide la calidad del dato.** Lo que
+  arranque seleccionado se lo lleva todo el que no lo abra, y eso contamina
+  justo el conjunto que se quiere recoger. Arrancar en el clip —lo más barato,
+  el menor daño si se equivocan— y **registrar aparte si lo abrieron**: esa
+  diferencia separa «eligió» de «no le importó».
+
+### C · Las dos historias y los prompts
+
+Nombres que eligió el dueño (17-sep): **«Creador de cuentos»** para la
+investigada y **«Crea tu historia»** para la que trae el usuario.
+
+El reparto ya existe en el código, con etiquetas que suenan al revés de lo que
+hacen (`pipeline/flow.py:66`):
+
+| Ficha en pantalla | `tipo` interno | ¿Corre research? |
+|---|---|---|
+| Investigación → «Creador de cuentos» | `idea` | **sí** |
+| Tengo una idea → «Crea tu historia» | `historia` | no, usa el brief tal cual |
+
+Nota de nomenclatura: `cuento` **ya es un valor de `FORMATOS`**
+(`pipeline/research.py:43`, junto a `lista` y `explicador`), así que el nombre
+interno de la puerta no debe reusar esa palabra aunque el rótulo visible sí la
+use.
+
+**El hueco real no es `formato`, es `tipo`.** Hoy el tipo entra al prompt como
+una palabra suelta dentro de una etiqueta (`MATERIAL ({tipo}):` en
+`prompts/narrador_user.md`) y `narrador_system.md` da **las mismas
+instrucciones para los dos casos**: gancho, cadena causal, prosa de corrido. O
+sea que cuando alguien pega su historia completa, **el narrador se la
+reescribe**. Son dos trabajos distintos compartiendo un prompt:
+
+- **Escribir desde cero** (dossier → narración): inventa estructura, elige el
+  gancho, decide qué queda fuera.
+- **Adaptar lo que trajeron** (su texto → 30 s): preserva su voz, sus nombres,
+  sus datos y su orden; solo condensa.
+
+Solución: un slot `{reglas_material}` en `narrador_system.md`, inyectado desde
+Python igual que el `{formato_reglas}` que ya existe (`pipeline/writer.py:95`).
+Mismo patrón, ya probado, sin cambiar la forma del prompt.
+
+**`formato` solo en la investigada** (decisión del dueño, 17-sep). El material
+ya *es* la forma: en investigación el dossier son datos crudos y alguien tiene
+que elegirla; en «Crea tu historia» la forma está literalmente dentro del
+prompt, y poner encima la adivinanza de un clasificador solo agrega una manera
+de equivocarse. En el clip no aplica: no hay guionista.
+
+> **Trampa al implementarlo.** `escribir_narracion(..., formato: str =
+> "cuento")` y `FORMATO_REGLAS.get(formato, FORMATO_REGLAS["cuento"])`
+> (`pipeline/writer.py:83` y `:95`) caen **dos veces** a `cuento`. «Dejar de
+> pasar el formato» da reglas de cuento en silencio — el bug exacto que se
+> quiere evitar. El slot tiene que recibir el bloque de adaptación de forma
+> explícita. Y `clasificar` sigue corriendo igual, porque de ahí sale el `tipo`
+> que alimenta el aviso de D.
+
+### D · El aviso que ofrece cambiar de puerta
+
+Petición del dueño: una nota abajo a la derecha que diga qué está mal y cómo
+arreglarlo. Ejemplo suyo: *«"3 curiosidades de los pulpos" se ajusta a Creador
+de cuentos. ¿Quieres moverlo?»* [aceptar] [cancelar].
+
+**La señal ya se calcula y se tira.** En `pipeline/flow.py:73`,
+`tipo = forzado or tipo_llm`: el clasificador siempre opina, pero en cuanto el
+usuario eligió puerta su opinión se descarta en silencio. Ese desacuerdo **es**
+el aviso.
+
+- **Problema de momento**: `clasificar` corre dentro de `preparar`, o sea
+  después de cobrar los 10 créditos y encolar. El aviso tiene que salir antes,
+  y para eso está el molde del balanceador de rubro (`server/app.py:555`):
+  corre antes de crear nada, devuelve 409 con el motivo y acepta `forzar=true`.
+  El [aceptar]/[cancelar] es literalmente ese `forzar`.
+- **En los dos sentidos.** El error contrario cuesta más: pegar un cuento
+  terminado de 600 palabras en la puerta de investigación paga research para
+  investigar algo ya escrito, y luego se lo reescribe encima.
+- **El detector no es el formato, es si trae material.** «3 curiosidades de los
+  pulpos» no está mal puesto por ser lista, sino porque seis palabras no son un
+  texto; una lista pegada de 400 palabras pertenece a «Crea tu historia» y ahí
+  se queda. La heurística de respaldo ya lo dice así: más de 120 palabras es
+  material (`pipeline/research.py:29`).
+- **Cambiar de puerta no cambia el precio** (`preparar` son 10 fijos y
+  `producir` depende solo de la duración), así que puede ser un aviso chico y
+  no una pantalla de confirmación.
+
+### E · Registrar los clics — va en el mismo PR que las puertas
+
+Idea del dueño: recoger primero los prompts que la gente escribe en cada
+puerta, y **solo después** ajustar el balanceador. Es el orden correcto: cada
+clic deja un par `(texto, puerta elegida)` — un conjunto etiquetado, gratis,
+escrito por los usuarios, con el que evaluar el clasificador antes de dejarlo
+decidir.
+
+- Las filas que más van a servir son las contradicciones: quien elige «clip» y
+  escribe 400 palabras, y quien elige «Creador de cuentos» y escribe seis.
+- **Tabla propia** (la décima, junto a las nueve de `pipeline/db.py`), escrita
+  al mandar el formulario, no al terminar el trabajo: `usuario · cuándo · puerta
+  · opción del desplegable · si lo abrió · texto · palabras · si llegó a pagar ·
+  qué se cobró`.
+- **No sirve `p.modo`**: el clip no crea proyecto, así que no hay fila de
+  proyecto que leer después. Sin la tabla, el dato simplemente no existe.
+- Descartado **OTEL** para esto: es telemetría de operación —muestreada, con
+  caducidad, consultada en agregado—, y esto es un conjunto de producto que se
+  va a leer fila por fila meses después. Además el texto del brief es contenido
+  del usuario: una tubería de telemetría es otra postura de privacidad.
+
+### F · Las imágenes del clip: de 0 a 3, compuestas antes de animar (2026-09-18)
+
+Decisiones del dueño: el clip **acepta de 0 a 3 imágenes**, **ninguna es
+obligatoria**, y **el formato lo sigue eligiendo el usuario** (no se deriva de
+la foto).
+
+Verificado en fal el 18-sep — los precios de Veo coinciden con `pricing.json`,
+así que su `verified_on` aguanta:
+
+- `veo3.1/lite/image-to-video` recibe **UNA** imagen, y ahí es obligatoria. El
+  límite de 3 no es implementable en ese endpoint tal cual.
+- **La misma familia hace text-to-video**, así que el caso «sin imagen» es un
+  endpoint hermano y no otro proveedor. Falta configurarlo y anotar su precio.
+- Acepta `jpg, png, webp, gif, avif, heic, heif`. **El `heic` importa**: es el
+  formato con el que salen las fotos de iPhone, y un validador de subidas que
+  no lo contemple rechaza fotos perfectamente buenas.
+- Sí existen modelos multi-imagen —`bytedance/seedance-2.0/us/reference-to-video`
+  acepta hasta 9 con audio nativo— pero a ~$0.37 dólares por segundo a 720p un
+  clip de 8 s costaría $2.96 contra los $0.45 que deja la tarifa. Fuera de
+  presupuesto: sería otro producto, no el clip sencillo. (Precio leído en la
+  página de fal el 18-sep; **no está en `pricing.json`** y no debe usarse hasta
+  anotarlo ahí.)
+
+**La solución (idea del dueño): componer antes de animar.** Las 2 o 3 imágenes
+se juntan en una sola con Grok —que decide cómo colocar a cada sujeto— y esa
+composición es el cuadro inicial de Veo.
+
+**La máquina ya existe, en las dos mitades:**
+
+- `_grok` recibe `image_urls` en **plural** (`pipeline/media.py:49`): componer
+  varias referencias en una imagen es lo que esa llamada ya hace.
+- Para las historias, la separación por escena también está construida:
+  `resolver_referencias` (`pipeline/scenes.py:71`) decide **por escena** qué
+  personajes aparecen, junta sus referencias —con tope `[:4]`, así que 3 cabe
+  sin tocar nada— y se lo dice a Grok en el prompt. El LLM que hace esa
+  separación es `hacer_casting` (`pipeline/casting.py:71`), en producción desde
+  hace meses.
+
+**Tarifa: 30 el clip, +2 si subió 2 o 3 imágenes.** Componer solo corre cuando
+hay más de una: con cero es text-to-video y con una se anima directo, y en
+ninguno de esos casos se paga Grok. La llamada extra aparece solo cuando el
+usuario usa la función. Grok cuesta $0.02 dólares de salida más $0.002 por
+imagen de referencia (`pricing.json §generacion.grok_edit`) = **$0.026**
+componiendo tres, y la tarifa `video.imagen` que ya existe son 2 créditos
+($0.03 al piso), que lo cubre casi exacto.
+
+| Caso | Costo real | Cobro | Margen |
+|---|---|---|---|
+| Sin imagen (text-to-video) | $0.40 | 30 cr = $0.45 | 11 % |
+| Una imagen | $0.40 | 30 cr = $0.45 | 11 % |
+| Dos o tres (con Grok) | $0.426 | 32 cr = $0.48 | 11 % |
+
+Sin el +2, el caso de tres imágenes cae a 5 % de margen. Cobrarlo con una
+tarifa que ya existe deja los tres casos parejos y al usuario pagando solo lo
+que usa.
+
+**Por probar, no por suponer:** que Grok componga bien **fotografía real**.
+Tres fotos de un producto desde ángulos distintos casi seguro salen; un perro,
+un gato y una sala pueden salir en collage. Grok está afinado para el estilo
+animado del corto, no para foto. Se resuelve como se resolvieron los actores de
+Apify: corriéndolo con fotos de verdad, no leyendo la ficha.
+
+**Tampoco se reusan los prompts del corto animado.** `resolver_referencias`
+cuelga `ESTILO_SUFIJO`, «Keep EXACTLY the same character design» y el estilo
+visual del proyecto (`pipeline/scenes.py:80-91`). Para el clip estorban igual
+que `VEO_NEGATIVE`: la composición necesita su propio prompt, corto y sin
+estilo impuesto.
+
+### Lo construido (2026-09-18) — bloques A, F y B
+
+No toca el flujo de la película ni `crear.html`: lo nuevo es el clip entero y
+la caja del inicio que reparte. Quedan fuera **D** (el aviso que ofrece cambiar
+de puerta), **E** (el registro de clics) y **C** (los prompts de las dos
+historias), que va en su propio PR porque sí edita al narrador en producción.
+
+| Pieza | Dónde |
+|---|---|
+| Tarifa 30 + 2 | `tools/tarifas.json §clip` → `creditos.costo_clip(n)` |
+| Los tres caminos | `pipeline/clip.py` |
+| El prompt | `prompts/clip_system.md` (español suelto → inglés ordenado) |
+| El trabajo | `worker/clip_generar.py` + rama `clip` del despachador |
+| La API | `server/clip_api.py` (`/api/clip/*`) |
+| La pantalla del clip | `static/clip.html` |
+| La entrada | `static/index.html` (segmentado + desplegable + rutas) |
+| Tests | `tests/test_m25_clip.py` (30) · `tests/test_m25_entrada.py` (13) |
+
+**Los rótulos, que eran la pregunta abierta 1** (decisión del dueño, 18-sep):
+el clip se llama **«Un video corto»** — no promete imágenes, que son
+opcionales, y va en el mismo tono de sustantivo que los otros dos.
+
+**Y los precios: sí, los cinco, escritos y no calculados.** El dueño preguntó
+si convenía correr el balanceador antes de generar y enseñar una ruedita
+mientras calcula el precio. No hace falta, y el balanceador tampoco es la pieza
+que responde eso: **los tres precios se saben sin llamar a nada.** El clip es
+plano (30) y las historias dependen de la duración que el usuario elige
+*después*, en `crear.html` — o sea del rango completo de `§video.por_duracion`,
+**55–190**. Pedirle el número a un clasificador sería pagar una llamada y hacer
+esperar al usuario por algo que ya está en `tarifas.json`, y además el
+clasificador responde otra pregunta: *qué puerta*, no *cuánto*. Esa respuesta
+suya sí tiene dónde ir, y es el bloque D.
+
+El desplegable enseña un rango y no un número exacto a propósito: prometer
+«145» cuando el usuario todavía no eligió duración sería inventarlo. Un test
+ata los cinco precios a `tarifas.json`, porque un desplegable que promete 30 y
+cobra 35 es peor que uno sin precios.
+
+**El clip no va en la lista de la izquierda** (decisión del dueño, 18-sep): su
+puerta es el desplegable. Tenerlo en los dos sitios repetía la misma entrada y
+le quitaba el sentido a haber hecho la caja — que existe justo para que no haya
+que buscar la herramienta en un menú. `/clip.html` sigue siendo una página
+normal, con su dirección, para quien la guarde o llegue por un enlace.
+
+Decisiones que se tomaron al construir, y por qué:
+
+- **El text-to-video es `fal-ai/veo3.1/lite`** —la base, sin sufijo— y cobra
+  **exactamente igual** que el de imagen. Verificado en fal el 18-sep: los
+  cuatro números de `veo31_lite_usd_por_segundo` no habían cambiado. Por eso
+  `pricing.json` no necesitó entrada nueva (`costo_fal` casa por «veo3.1»), y
+  lo que se anotó ahí fue la nota que explica que la tabla sirve para los dos.
+- **Las imágenes suben prefirmadas a S3**, no por el formulario: tres fotos de
+  teléfono pasan de los 10 MB de payload que admite API Gateway. La subida
+  tiene prefijo propio por usuario y el servidor rechaza una key ajena — sin
+  eso, cualquiera animaría (y pagaría) las fotos de otra cuenta.
+- **El `.heic` tiene una trampa de más**: muchos navegadores mandan `file.type`
+  vacío para ese formato, así que la página deriva el tipo de la extensión. Si
+  no, la firma se pide con un tipo que no coincide con el del PUT y S3 responde
+  403 sin explicar nada.
+- **El worker atrapa TODO y nunca relanza.** Un reintento de la cola generaría
+  un segundo video —otros $0.40 dólares— que nadie pidió y que el usuario no
+  vería. El error genérico tampoco se le enseña crudo: lo que necesita saber es
+  que no se le cobró.
+- **Tope de 3 clips en marcha por usuario.** No es una regla de producto: es
+  que un bug de la UI no pueda encolar veinte videos cobrados.
+
+### G · La tercera familia y el sitio de los controles (hablado el 18-sep, sin construir)
+
+Idea del dueño: una tercera posición, **Edición**, junto a Imágenes y Videos, y
+meter dentro «De videos a Shorts» y «Copiadora de estilos».
+
+**La objeción, y cómo la resolvió el dueño.** Imágenes y Videos dicen *qué te
+llevas*; Edición dice *qué traes tú*. Son dos ejes distintos en un mismo
+control — el error exacto que se quitó al jubilar «Investigación» y «Tengo una
+idea». La prueba que lo enseña sin discutir de teoría es si **escribir en la
+caja hace algo**: en imágenes y video, el texto ES la petición; en el editor se
+sube un archivo y en la copiadora se pega una liga, y ahí el texto sobra o es
+otra cosa.
+
+La salida del dueño (18-sep) parte el problema por donde hay que partirlo:
+**el balanceador solo corre para imagen y video; en Edición no interviene.** No
+es una excepción de conveniencia, es la consecuencia de lo anterior — el
+balanceador lee TEXTO para adivinar la intención, y en Edición no hay texto que
+leer: hay un archivo o una liga, y eso ya dice qué quieres sin ambigüedad. Una
+puerta donde no se puede uno equivocar no necesita quien la vigile.
+
+Con eso, la caja tiene dos mitades con reglas distintas:
+
+| | Entrada | Balanceador | Aviso de D |
+|---|---|---|---|
+| Imágenes · Videos | texto | **sí** | sí |
+| Edición | archivo o liga | **no** | no aplica |
+
+Queda **la copiadora de estilos como el caso raro**, y no por el eje sino por lo
+que entrega: no sale un video, sale un *estilo* que luego se usa en otra
+herramienta. Su sitio natural es junto al selector de estilo de `crear.html` —
+donde sirve— y no como puerta de creación.
+
+**Dónde van los controles.** El dueño propone pegarlos a la flecha, como
+ChatGPT y Claude. Las dos referencias que enseñó usan convenciones distintas: el
+modelo («Opus 5 Máx») va a la izquierda porque es un ajuste permanente, y
+«Pensar» va pegado al enviar porque modifica ESTE mensaje. Lo nuestro es lo
+segundo. Pero la razón buena es otra: **nuestro chip lleva precio**, y «✦ 30»
+pegado a la flecha se lee como *esto es lo que cuesta apretar* — a la izquierda
+es información, pegado al botón es advertencia, y es el sitio honesto.
+
+El costo es el ancho. A 390 px la fila ya se parte con **dos** controles (visto
+el 18-sep); con tres familias, el desplegable y la flecha todos a la derecha no
+cabe. Las dos salidas:
+
+1. Las familias como iconos en pantalla angosta y con rótulo en escritorio.
+2. **Un solo desplegable** con las familias como encabezados de sección.
+
+La segunda cabe siempre, pero **cuesta el diseño de dos señales**: las dos
+posiciones existen para que el clic de arriba y la elección de abajo sean datos
+separados, que es lo que el bloque E iba a recoger. Con un solo menú se sigue
+sabiendo de qué sección eligieron, pero se pierde la diferencia entre «eligió» y
+«ni lo abrió». Con dos familias no valía la pena pagarlo; con tres y pegado a la
+flecha, probablemente sí.
+
+### Preguntas abiertas de M25
+
+1. **Las dos pruebas que no se pueden leer en una ficha** — y que cuestan
+   dinero, así que las corre el dueño:
+   - **Oír el audio.** `generate_audio` nunca se ha pagado (la película lo
+     lleva en `False`), y «con sonido» es la mitad de lo que se promete. Dos o
+     tres clips y oírlos, antes de prometerlo en la pantalla.
+   - **Grok componiendo fotografía real.** Tres fotos de un producto casi
+     seguro salen; un perro, un gato y una sala pueden salir en collage. Grok
+     está afinado para el estilo animado del corto.
+
+## Fase M26 — Que la invitación llegue a la bandeja (2026-09-17)
+
+**Pretrabajo obligatorio de M9.** El bot de membresías da de alta solo, y cada
+alta dispara un correo de Cognito: si la entregabilidad no está resuelta, el
+bot manda invitaciones que nadie ve, de forma automática, al ritmo que entren
+los miembros y **sin nadie mirando la tasa de rebote**. Lo que hoy es una
+molestia (alguien revisa spam) con el bot se vuelve invisible.
+
+Reportado por el dueño: la invitación llega de un `no-reply` y cae en spam.
+
+### Por qué cae en spam
+
+El `UserPool` no tiene configuración de correo (`infra/stacks/api.py:109`).
+Sin el parámetro `email`, Cognito usa su remitente por defecto: las
+invitaciones salen de **`no-reply@verificationemail.com`**, un dominio de AWS
+compartido por todos los user pools del mundo, incluidos los que se usan para
+abusar. SES no aparece en el repo.
+
+Cinco señales, y están las cinco:
+
+1. **El dominio remitente no es nuestro** — ninguna reputación asociada.
+2. **No hay alineación DMARC con nuestra marca**: SPF y DKIM pasan, pero para
+   `verificationemail.com`.
+3. **El enlace es una URL cruda de API Gateway** (`infra/stacks/api.py:120`) —
+   patrón clásico de phishing.
+4. **Hay una contraseña provisional en el cuerpo** — señal fuerte para los
+   filtros de contenido.
+5. **Envío frío** a direcciones que nunca pidieron nada, sin historial.
+
+De paso: el límite de 50 correos al día que obliga a escalonar es justo el del
+remitente por defecto de Cognito. Con SES desaparece.
+
+### Estado de la cuenta (verificado 2026-09-17, us-east-1)
+
+| | |
+|---|---|
+| Acceso de producción de SES | **No** — sandbox |
+| Cuota | 200 al día, 1 por segundo |
+| Identidades verificadas | **ninguna** |
+| Reputación | `HEALTHY` — hoja limpia, nada que reparar |
+
+**Trampa de orden:** cambiar Cognito a SES estando en sandbox no manda los
+correos a spam — **no los entrega**, porque el sandbox solo llega a direcciones
+verificadas una por una. Es peor que el problema original.
+
+### El orden
+
+1. **Verificar el dominio en SES**, en us-east-1 (misma región del pool). Se
+   hace antes de pedir producción: AWS revisa mejor una cuenta ya configurada.
+   El dueño tiene dominio propio, con el **DNS fuera de Route 53**, así que los
+   registros se pegan a mano en su panel.
+2. **DNS**: los tres CNAME de DKIM que genera SES, un TXT de SPF
+   (`v=spf1 include:amazonses.com ~all` — **fusionado** con el SPF existente si
+   lo hay, porque solo puede haber uno) y un TXT de DMARC en `_dmarc`
+   (`p=none` al principio, para observar sin rechazar).
+3. **Pedir acceso de producción** — ticket de soporte, ~24 h y a veces más.
+   **Es el paso largo y solo lo puede abrir el dueño.** Describir el caso como
+   transaccional: invitaciones y recuperación de contraseña, lista cerrada de
+   una comunidad de pago, sin marketing, con manejo de rebotes y quejas.
+4. **Cuando lo concedan**: `cognito.UserPoolEmail.with_ses(...)` en el
+   `UserPool` y `cdk deploy`. Es actualización en sitio, no reemplaza el pool
+   ni toca a los usuarios existentes — confirmar igual con `cdk diff`.
+5. **Cambiar el enlace** del correo por uno del dominio propio, no el de API
+   Gateway.
+
+**Extra que sí vale la pena:** un MAIL FROM propio (`mail.<dominio>`, con su MX
+y su SPF). Sin él, SPF alinea con `amazonses.com`; con él alinea con nuestro
+dominio, que es lo que DMARC realmente mira.
+
+### El escalonado, y por qué
+
+Pregunta del dueño: ¿182 el primer día no es demasiado para la reputación? Sí,
+pero el riesgo que importa no es el volumen. En orden de lo que puede tumbar la
+cuenta:
+
+1. **Rebotes duros.** SES pone la cuenta bajo revisión por encima de ~5%. Con
+   182 direcciones, **diez malas son 5.5%**. No hay forma de saberlo antes de
+   mandar: por eso se manda por tandas y se mira entre una y otra.
+2. **Quejas.** El umbral sano es 0.1%. Con 182 envíos, **una sola marca de
+   spam es 0.55%** — cinco veces por encima. En volúmenes chicos no hay de
+   dónde diluir; de ahí que avisarles antes pese tanto.
+3. **El pico de volumen.** Real pero el menor: 182 es minúsculo en absoluto, y
+   lo que incomoda es la razón (cero → 182), no el número. A favor: una
+   invitación que la gente espera es el mejor tráfico de calentamiento que
+   existe — abren, hacen clic y entran.
+
+Plan: cuatro tandas de ~20, ~40, ~60 y el resto. **La condición no es el
+calendario, es el semáforo**: no sale la siguiente hasta ver la anterior. La
+primera va a testers conocidos y a la gente más activa — siembra señal buena y
+destapa problemas con el radio de explosión chico.
+
+(El número creció: M9 se escribió con 161 altas previstas, hoy son 182.)
+
+Tener cuota grande no es tener el dominio caliente. Cuando AWS conceda
+producción va a dar decenas de miles al día, y eso no protege de nada de lo
+anterior.
+
+### Antes de mandar el primero
+
+- **Vigilancia de rebotes y quejas.** Hoy no hay ninguna: nos enteraríamos
+  cuando SES pause la cuenta. Un configuration set con destino de eventos
+  (`BOUNCE`, `COMPLAINT`, `DELIVERY`, `REJECT`) y sus alarmas, con el estilo
+  del helper `alarma()` de `infra/stacks/alertas.py`. **Se puede montar ya, sin
+  esperar el acceso de producción.**
+- **Validar la lista.** `tools/usuarios.py` da de alta una dirección por
+  corrida y no valida nada. Una revisión de sintaxis y de dominios mal escritos
+  (`gmial.com`, `hotmial.com`, `outlok.com`) quita buena parte de los rebotes
+  antes de que existan.
+
+### La señal que ya tenemos en casa
+
+En el pool hay **7 usuarios: 5 confirmados y 2 en `FORCE_CHANGE_PASSWORD`** —
+invitados que nunca entraron (29% de no activación con la configuración de
+hoy). Puede ser desinterés o puede ser que el correo nunca se viera.
+**Preguntarles**: es la única muestra real antes de multiplicar por 26.
+
+### Checklist
+
+- [ ] **Ticket de acceso de producción de SES** — lo abre el dueño, es el paso
+      largo, va primero.
+- [ ] Identidad de dominio verificada en SES us-east-1.
+- [ ] DKIM (3 CNAME), SPF fusionado y DMARC `p=none` en el DNS del dueño.
+- [ ] MAIL FROM propio con su MX.
+- [ ] Configuration set + eventos de rebote/queja + alarmas.
+- [ ] Validador de direcciones en `tools/`.
+- [ ] `UserPoolEmail.with_ses(...)` — **preparado pero sin desplegar** hasta que
+      llegue el acceso de producción.
+- [ ] Enlace del correo apuntando al dominio propio.
+- [ ] Preguntar a los 2 invitados que nunca entraron si vieron el correo.
+
 ## Orden y dependencias
 
 ```
@@ -1822,13 +2707,21 @@ M1 (dinero) ──► M2 (login) ──► M4 (Stripe)   M6 (dashboard, tras M2)
 M3 (quick wins, en paralelo con todo)
 M5 (proteger trabajo, tras M1)
 M7 (cortes nube, sin chat → medir → chat) y M8 (shorts web): tras el núcleo M1–M5
-M9 (bot membresías): cuando haya miembros reales que sincronizar
+M26 (entregabilidad) ──► M9 (bot membresías): el bot no se enciende con el
+    correo cayendo en spam; M26 corre ya, antes del 23
 M10 (prompts en Langfuse): independiente — puede ir en cualquier hueco tras M1
 M11 (narración primero): tras M1-AWS y M2, ANTES de los focus groups
 M12 (hub + slots + Glacier): la lifecycle puede salir sola cuando sea; el hub
     y los slots, tras M8 (necesita los flujos Reels/Shorts ya en la web)
-M23: A (imágenes) ya · B (modelos) antes del 2-oct · C (Blotato) ──► D (MIX),
-    y D además tras la cola delante de Fargate y el barredor de fallos
+M23: A (imágenes) ya · C (Blotato) ya ──► D (MIX). Los dos prerrequisitos de
+    infra —el barredor de fallos y el freno delante de Fargate— están hechos
+    (18-sep). Y B (modelos) deja de ir en paralelo: MIX rediseñado publica una
+    IMAGEN diaria y Nano Banana se apaga el 2-oct, así que B ──► D
+M24 (ver los servicios): tras el 23. A no depende de nada; C es una decisión
+    de red que revierte el aislamiento de Aurora
+M25 (la entrada): tras el 23. A (clip) es independiente; B (dos botones) ──►
+    E (registro de clics), que va en el MISMO PR; C (prompts) y D (aviso) se
+    apoyan en el clasificador que ya corre
 
 ```
 

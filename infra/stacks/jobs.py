@@ -87,7 +87,13 @@ class JobsStack(Stack):
             ),
             memory_size=3008,
             timeout=Duration.minutes(15),
-            environment=env_comun,
+            # M23 · D: el worker es el único que se encola A SÍ MISMO — el
+            # reloj de MIX mira cada hora y manda a la cola el día de cada
+            # campaña que toca. Sin estas dos variables `pipeline/jobs.py`
+            # revienta con KeyError, y sin el grant de abajo con AccessDenied:
+            # las dos, en una corrida que nadie mira.
+            environment={**env_comun, "JOBS_BACKEND": "aws",
+                         "JOBS_QUEUE_URL": self.queue.queue_url},
             # C6: retención corta — el log group auto-creado vive para siempre
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
@@ -96,6 +102,8 @@ class JobsStack(Stack):
         worker.add_event_source(event_sources.SqsEventSource(
             self.queue, batch_size=1, max_concurrency=2))
         dar_permisos(worker.role)
+        # add_event_source solo da permiso de CONSUMIR. El reloj de MIX escribe.
+        self.queue.grant_send_messages(worker)
 
         # M6: sync diario de costes Langfuse → tabla `costes` (la base del
         # dashboard admin). El worker detecta el input sin "Records" y corre
@@ -106,6 +114,20 @@ class JobsStack(Stack):
             targets=[targets.LambdaFunction(
                 worker, event=events.RuleTargetInput.from_object(
                     {"tipo": "sync_costes", "dias": 3}))],
+        )
+
+        # M23 · D — el reloj de MIX, cada hora en punto. Cada hora y no una vez
+        # al día porque la hora de publicar es la del USUARIO: las nueve de la
+        # mañana en Quito y en Madrid no son el mismo instante, y con una zona
+        # por campaña no hay un cron que las cubra a todas. El despachador mira
+        # cuáles tocan en SU reloj y encola solo esas; publicar dos veces lo
+        # impide el PRIMARY KEY de mix_corridas, no esta regla.
+        events.Rule(
+            self, "MixReloj",
+            schedule=events.Schedule.cron(minute="0"),   # :00 de cada hora
+            targets=[targets.LambdaFunction(
+                worker, event=events.RuleTargetInput.from_object(
+                    {"tipo": "mix_reloj"}))],
         )
 
         # --- 2) Fargate para producciones/renders largos ---------------------
@@ -148,6 +170,24 @@ class JobsStack(Stack):
             self, "ProducirSm", state_machine_name="aws-media-producir",
             definition_body=sfn.DefinitionBody.from_chainable(correr),
             timeout=Duration.hours(2),
+        )
+
+        # M23 · D (prerrequisito) — el barredor. Esta máquina de estados no
+        # tiene `Catch`, y el `creditos.devolver` de cada tarea vive DENTRO del
+        # contenedor: si la tarea no llega a arrancar (imagen que no se pudo
+        # bajar, sin capacidad para 4 vCPU, timeout de 2 h) la ejecución muere
+        # sin devolver nada y el usuario queda cobrado y sin película.
+        # El evento va SIN transformar: `detail.input` ya es JSON y meterlo en
+        # una plantilla de EventBridge deja comillas sin escapar.
+        events.Rule(
+            self, "ProduccionCaida",
+            event_pattern=events.EventPattern(
+                source=["aws.states"],
+                detail_type=["Step Functions Execution Status Change"],
+                detail={"status": ["FAILED", "TIMED_OUT", "ABORTED"],
+                        "stateMachineArn": [self.state_machine.state_machine_arn]},
+            ),
+            targets=[targets.LambdaFunction(worker)],
         )
 
         cdk.CfnOutput(self, "QueueUrl", value=self.queue.queue_url)

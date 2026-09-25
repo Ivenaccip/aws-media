@@ -1,0 +1,1305 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de video · MIX</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  /* El molde de «página simple» (static/estilos.html) con el acento AZUL del
+     hub (#5b8dd6). El padding de arriba deja libre la franja fija del monedero
+     (monedero.js la clava arriba a la derecha). */
+  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1;
+         padding: 64px 20px 48px; }
+  main { max-width: 860px; margin: 0 auto; }
+  a { color: #5b8dd6; }
+  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
+  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
+  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px;
+            margin-bottom: 18px; }
+  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  section h2 .n { color: #5b8dd6; }
+  p.ayuda { color: #93a3b8; font-size: 13.5px; margin-bottom: 14px; }
+  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
+           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
+  button:hover { border-color: #5b8dd6; }
+  button:disabled { opacity: .5; cursor: default; background: #18293f; }
+  button.sec { background: transparent; }
+  button.pri { background: #5b8dd6; border-color: #5b8dd6; color: #08111e; font-weight: 600; }
+  button.pri:hover { filter: brightness(1.1); }
+  button.pri:disabled { background: #18293f; color: #ece8e1; border-color: #22354f; }
+  button.peligro { color: #ff8080; }
+  button.peligro:hover { border-color: #ff8080; }
+  button.chico { padding: 6px 13px; font-size: 13px; }
+  select, textarea { background: #18293f; color: #ece8e1; border: 1px solid #55708f;
+    border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; max-width: 100%; }
+  textarea { width: 100%; resize: vertical; min-height: 92px; }
+  label { display: block; font-size: 13px; color: #93a3b8; margin-bottom: 5px; }
+  .mut { color: #93a3b8; font-size: 13px; }
+  .err { color: #ff8080; font-size: 14px; }
+  .ok { color: #3dd68c; font-size: 14px; }
+  .aviso { color: #f0a94a; font-size: 13.5px; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM (un
+     role="status" que aparece y desaparece no lo anuncia el lector) */
+  #mxEstado:empty { display: none; }
+  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+
+  /* --- 1. la foto --- */
+  .zona { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .soltar { flex: 1 1 240px; min-height: 140px; border: 1px dashed #55708f; border-radius: 12px;
+            background: #18293f; color: #93a3b8; font: inherit; font-size: 13px; line-height: 1.45;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 5px; padding: 16px; text-align: center; }
+  .soltar:hover, .soltar.encima { border-color: #5b8dd6; color: #ece8e1; }
+  .soltar b { color: #ece8e1; font-weight: 600; font-size: 14.5px; }
+  .previa { flex: 0 0 auto; width: 140px; }
+  .previa img { width: 140px; height: 140px; object-fit: cover; border-radius: 12px;
+                border: 1px solid #22354f; background: #18293f; display: block; }
+  .previa button { width: 100%; margin-top: 8px; }
+
+  /* --- 3. el tono --- */
+  .tonos { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tonos button { flex: 1 1 110px; background: #18293f; }
+  .tonos button[aria-pressed="true"] { background: #2b4a75; border-color: #5b8dd6; }
+
+  /* --- 4. el calendario de rango --- */
+  .atajos { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .atajos button { border-radius: 999px; background: #18293f; }
+  .calCab { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .calCab .hueco { margin-right: auto; }
+  .meses { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  /* el navegador escribe «septiembre de 2026» en minúscula; capitalize a secas
+     lo dejaba en «Septiembre De 2026» — solo sube la primera letra */
+  .mes h3 { font-size: 13.5px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+  .mes h3::first-letter { text-transform: uppercase; }
+  .semana, .dias { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .semana span { font-size: 11px; color: #93a3b8; text-align: center; padding-bottom: 6px; }
+  /* la celda ES el botón: con gap entre celdas el rango se ve a rayas, así que
+     el aire va por dentro y las esquinas las ponen .ini y .fin */
+  .dia { background: transparent; border: 0; border-radius: 0; padding: 0; min-height: 40px;
+         font: inherit; font-size: 13.5px; color: #ece8e1; cursor: pointer; }
+  .dia:disabled { color: #6b7a8f; background: transparent; opacity: 1; cursor: default; }
+  .dia:not(:disabled):hover { box-shadow: inset 0 0 0 1px #5b8dd6; }
+  .dia.hoy { text-decoration: underline; text-underline-offset: 3px; }
+  .dia.dentro { background: #1b3049; }
+  .dia.ini, .dia.fin { background: #5b8dd6; color: #08111e; font-weight: 700; }
+  .dia.ini { border-radius: 10px 0 0 10px; }
+  .dia.fin { border-radius: 0 10px 10px 0; }
+  .dia.ini.fin { border-radius: 10px; }
+  .hueco-dia { min-height: 40px; }
+  .rango { margin-top: 14px; font-size: 14px; }
+
+  /* --- 5. el ejemplo y el costo --- */
+  .ejemplo { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start;
+             border: 1px solid #22354f; border-radius: 12px; padding: 14px; margin-top: 14px; }
+  .ejemplo img { width: 230px; max-width: 100%; border-radius: 10px; display: block;
+                 background: #18293f; }
+  .ejemplo .texto { flex: 1 1 210px; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .costo { border: 1px solid #22354f; background: #18293f; border-radius: 12px;
+           padding: 15px 17px; margin-top: 16px; }
+  .costo p + p { margin-top: 8px; }
+
+  /* --- la campaña encendida --- */
+  .ficha { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin: 14px 0 4px; }
+  .ficha img { width: 110px; height: 110px; object-fit: cover; border-radius: 12px;
+               border: 1px solid #22354f; background: #18293f; display: block; }
+  .ficha .datos { flex: 1 1 220px; min-width: 0; font-size: 14px; }
+  .ficha .datos b { font-weight: 600; }
+  .dias-lista { margin-top: 18px; border-top: 1px solid #22354f; }
+  /* wrap obligatorio: en un teléfono la fecha se lleva la línea entera y sin
+     esto el texto de la publicación se quedaba en una columna de una letra */
+  .fila { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;
+          border-bottom: 1px solid #22354f; padding: 11px 0; }
+  .fila .cuando { flex: 0 0 104px; font-size: 13px; color: #93a3b8; }
+  .fila .cuerpo { flex: 1 1 180px; min-width: 0; }
+  .fila .texto { font-size: 13.5px; margin-top: 4px; white-space: pre-wrap;
+                 overflow-wrap: anywhere; }
+  .fila img { width: 54px; height: 54px; object-fit: cover; border-radius: 8px; flex: 0 0 auto;
+              border: 1px solid #22354f; }
+  .pill { font-size: 12.5px; border: 1px solid #22354f; background: #111f33; color: #93a3b8;
+          border-radius: 999px; padding: 1px 10px; white-space: nowrap; }
+  .pill.buena { border-color: #3dd68c; color: #3dd68c; background: #102e22; }
+  .pill.mala { border-color: #ff8080; color: #ff8080; background: none; }
+  .pill.viva { border-color: #5b8dd6; color: #5b8dd6; background: none; }
+
+  /* --- sin la clave de Blotato (mismo trato que el menú del hub) --- */
+  #mxCapa.apagada { cursor: pointer; }
+  #mxCapa.apagada #mxPasos { opacity: .45; filter: saturate(.4); pointer-events: none; }
+
+  @media (max-width: 640px) {
+    body { padding: 60px 14px 40px; }
+    section { padding: 18px 15px; }
+    /* dos meses apilados en un teléfono son media pantalla de scroll para
+       elegir una fecha: en estrecho manda uno y se navega con las flechas */
+    .meses { grid-template-columns: 1fr; }
+    .mes.segundo { display: none; }
+    .fila .cuando { flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" href="/">← Estudio</a>
+  <h1>MIX · publicidad automática</h1>
+  <p class="sub">Sube una foto de tu producto, cuéntanos para qué es la campaña y marca los días.
+    A partir de ahí sale <b>una publicación al día</b>, sola, sin que tengas que revisarla.
+    Tu foto es la base de todas las imágenes.</p>
+
+  <p id="mxErr" class="err" role="alert" hidden></p>
+  <p id="mxEstado" class="ok" role="status" aria-live="polite"></p>
+
+  <section id="mxSinBlotato" hidden>
+    <h2>Conecta tu Blotato para usar MIX</h2>
+    <p class="ayuda" style="margin-bottom:0">MIX publica por ti en tus redes, y para eso necesita
+      tu cuenta de Blotato conectada. Es la cuenta donde van a salir las publicaciones.
+      <a href="/?blotato=conectar">Conectar Blotato</a></p>
+  </section>
+
+  <p id="mxCargando" class="mut"><span class="spin">Abriendo tu campaña</span></p>
+  <p id="mxUltima" class="mut" hidden></p>
+
+  <!-- ── el formulario: el orden de los pasos es el que pidió el dueño ── -->
+  <div id="mxCapa" hidden>
+   <div id="mxPasos">
+
+    <section>
+      <h2><span class="n">1.</span> La foto de tu producto</h2>
+      <p class="ayuda">De aquí salen todas las imágenes de la campaña, así que siempre se va a
+        ver lo tuyo. JPG, PNG o WebP, hasta 12 MB.</p>
+      <div class="zona">
+        <button type="button" class="soltar" id="mxSoltar">
+          <b>Arrastra tu foto aquí</b>
+          <span>o pulsa para elegirla desde tu teléfono</span>
+        </button>
+        <div class="previa" id="mxPrevia" hidden>
+          <img id="mxPreviaImg" alt="La foto de tu producto">
+          <button type="button" class="sec chico" id="mxCambiarFoto">Cambiar la foto</button>
+        </div>
+      </div>
+      <input type="file" id="mxArchivo" hidden
+             accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+      <p id="mxFotoErr" class="err" style="margin-top:10px" hidden></p>
+    </section>
+
+    <section>
+      <h2><span class="n">2.</span> ¿Para qué es esta campaña?</h2>
+      <p class="ayuda">Cuéntanos qué quieres lograr estos días. Por ejemplo: dar a conocer el
+        menú nuevo, llenar los martes, o que la gente sepa que abriste.</p>
+      <textarea id="mxMotivo" maxlength="2000"
+        placeholder="Quiero que la gente del barrio sepa que ya abrimos y que venga a probar el menú del día."></textarea>
+
+      <h2 style="margin-top:22px"><span class="n">3.</span> El tono</h2>
+      <p class="ayuda">Cambia de verdad lo que se dice y lo que se ve cada día.</p>
+      <div class="tonos" id="mxTonos" role="group" aria-label="El tono de la campaña"></div>
+    </section>
+
+    <section>
+      <h2><span class="n">4.</span> Los días</h2>
+      <p class="ayuda">Marca en el calendario el primer día y el último. Los atajos solo te
+        rellenan el rango desde hoy: el calendario manda.</p>
+      <div class="atajos" id="mxAtajos"></div>
+      <div class="calCab">
+        <button type="button" class="sec chico" id="mxMesAntes" aria-label="Mes anterior">‹</button>
+        <button type="button" class="sec chico" id="mxMesDespues" aria-label="Mes siguiente">›</button>
+        <span class="hueco"></span>
+        <button type="button" class="sec chico" id="mxLimpiar">Borrar las fechas</button>
+      </div>
+      <div class="meses" id="mxMeses"></div>
+      <p class="rango" id="mxRango"></p>
+      <p class="mut" id="mxTarifa"></p>
+    </section>
+
+    <section>
+      <h2><span class="n">5.</span> La hora y dónde sale</h2>
+      <p class="ayuda">Todos los días a la misma hora, en la misma cuenta.</p>
+      <div class="controles" style="align-items:flex-end">
+        <div>
+          <label for="mxHora">La hora de cada día</label>
+          <select id="mxHora"></select>
+        </div>
+        <div style="flex:1 1 260px;min-width:0">
+          <label for="mxCuenta">La cuenta de Blotato</label>
+          <select id="mxCuenta" style="width:100%"><option value="">Cargando…</option></select>
+        </div>
+      </div>
+      <p class="mut" id="mxZona" style="margin-top:8px" hidden></p>
+      <p class="err" id="mxCuentaErr" style="margin-top:8px" hidden></p>
+    </section>
+
+    <section>
+      <h2><span class="n">6.</span> Míralo antes de encenderla</h2>
+      <p class="ayuda">Te preparamos la publicación del primer día para que la veas tal cual va
+        a salir. <b>Verla no cuesta nada.</b></p>
+      <div class="controles">
+        <button type="button" class="pri" id="mxVer">Ver un ejemplo</button>
+        <span class="mut" id="mxFalta"></span>
+      </div>
+      <div id="mxEspera" hidden style="margin-top:16px"></div>
+      <div id="mxEjemploCaja" hidden></div>
+      <div id="mxCostoCaja" hidden></div>
+    </section>
+
+   </div>
+  </div>
+
+  <!-- ── la campaña ya encendida ── -->
+  <section id="mxViva" hidden>
+    <div class="controles">
+      <h2 style="margin:0">Tu campaña</h2>
+      <button type="button" class="sec chico" id="mxRefrescar"
+              style="margin-left:auto">Actualizar</button>
+    </div>
+    <p id="mxVivaEstado" style="margin-top:10px"></p>
+    <div class="ficha" id="mxVivaFicha"></div>
+    <div class="dias-lista" id="mxVivaDias"></div>
+    <div class="controles" style="margin-top:18px">
+      <p class="mut" id="mxDevolucion" style="flex:1 1 260px;margin-right:auto"></p>
+      <button type="button" class="sec" id="mxReanudar" hidden>Reanudar</button>
+      <button type="button" class="sec peligro" id="mxApagar">Apagar la campaña</button>
+    </div>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/monedero.js"></script>
+<script src="/orbe.js"></script>
+<script>
+// ── mx · MIX: publicidad automática, una imagen al día (M23 · D)
+//
+// La pantalla no decide NADA de dinero. El costo que enseña sale siempre de la
+// respuesta de /api/mix/borrador, que es el mismo `mix.resumen_costo` que
+// después cobra /encender; y lo que se devolvería al apagar sale de
+// `devolucion`, que manda GET /api/mix ya topado en lo que de verdad se cobró.
+// Aquí no se multiplica ni se resta un solo crédito: si ese campo no viene, se
+// enseña el aviso SIN cifra antes que inventar una.
+//
+// La otra regla de la pantalla: lo que el usuario VIO en el ejemplo tiene que
+// ser lo que va a salir. Si después de verlo cambia el motivo, el tono, la foto
+// o el día de inicio, el ejemplo deja de valer y hay que pedir otro (es gratis).
+"use strict";
+const $ = s => document.querySelector(s);
+
+// Todo lo que viene del servidor o de Blotato —el nombre de la cuenta lo
+// escribe la red, el texto de la publicación lo escribe el modelo— pasa por
+// aquí antes de tocar un innerHTML: la cookie `token` se lee desde JavaScript,
+// así que un ${} sin escapar regala la sesión. Escapa también las comillas:
+// sirve dentro de un atributo (src, data-dia).
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// `detail` es un string en nuestros errores, pero el 422 de pydantic trae una
+// lista de {loc, msg}: sin esto el usuario leía «[object Object]».
+function fjDetalle(d, status) {
+  const det = d && d.detail;
+  if (typeof det === "string" && det.trim()) return det;
+  const uno = x => {
+    if (!x || typeof x !== "object") return String(x ?? "");
+    const campo = Array.isArray(x.loc) && x.loc.length ? `${x.loc[x.loc.length - 1]}: ` : "";
+    return x.msg ? campo + x.msg : JSON.stringify(x);
+  };
+  if (Array.isArray(det) && det.length) return det.map(uno).filter(Boolean).join(" · ");
+  if (det && typeof det === "object") return uno(det);
+  return `el servidor respondió ${status}`;
+}
+
+// El status va pegado al Error: sin él no se distingue el 409 (falta conectar
+// Blotato) del 402 (no alcanza el saldo).
+async function mxFj(url, init) {
+  const r = await fetch(url, init);
+  let d = null;
+  try { d = await r.json(); } catch { /* cuerpo vacío o no JSON */ }
+  if (!r.ok) throw Object.assign(new Error(fjDetalle(d, r.status)), { status: r.status });
+  return d || {};
+}
+const mxPost = (url, cuerpo) => mxFj(url, { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo || {}) });
+
+// Un fallo de red (fetch rechaza con TypeError) TIENE message, y es «Failed to
+// fetch», en inglés y del navegador: solo los errores que trae mxFj llevan
+// `status`, y solo esos traen un texto escrito para el usuario.
+const MXSINRED = "No pudimos hablar con el servidor. Intenta de nuevo.";
+const mxTexto = e => (e && typeof e.status === "number" && e.message) ? e.message : MXSINRED;
+
+const MXRED = { twitter: "X", instagram: "Instagram", linkedin: "LinkedIn", facebook: "Facebook",
+                tiktok: "TikTok", pinterest: "Pinterest", threads: "Threads",
+                bluesky: "Bluesky", youtube: "YouTube" };
+const MXTONOS = { vender: "Vender", informar: "Informar", recordar: "Recordar" };
+
+// El estado y la red los escribe el servidor: buscarlos con obj[clave] a secas
+// haría que un valor llamado «constructor» devolviera una función en vez de un
+// rótulo, y eso acabaría pintado en la pantalla.
+function mxRotulo(mapa, clave, porDefecto) {
+  const k = String(clave ?? "");
+  return Object.prototype.hasOwnProperty.call(mapa, k) ? mapa[k] : porDefecto;
+}
+const MXTIPOS = ["image/jpeg", "image/png", "image/webp"];
+const MXMAXBYTES = 12 * 1024 * 1024;
+const MXCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+
+let MX = null;              // la última respuesta de GET /api/mix
+let MXCUENTAS = [];
+let MXMAXD = 60;            // lo manda el servidor (mix.MAX_DIAS)
+let mxMes = null;           // primer día del mes de la IZQUIERDA del calendario
+let mxIni = null, mxFin = null, mxHover = null;   // fechas ISO locales
+let mxTono = "vender";
+let mxCanal = null;         // la cuenta elegida, tal como la manda Blotato
+let mxArchivo = null;       // el File recién elegido
+let mxPendiente = false;    // ¿falta mandar ese File al servidor?
+let mxImagenId = "";        // identidad de la foto, para saber si cambió
+let mxId = null, mxCosto = null;
+let mxEjemplo = null, mxFirmaEjemplo = null;
+let mxTrabajando = false;
+let mxGuardaTok = 0, mxGuardaT = null;
+let mxPollT = null;
+
+// ── fechas: SIEMPRE en la zona del navegador ────────────────────────────────
+// toISOString habla en UTC y a las 7 de la tarde en México devuelve el día
+// siguiente: un calendario que se corre un día no es un detalle, es elegir mal
+// la campaña. Por eso el ISO se arma a mano con getFullYear/getMonth/getDate.
+function mxISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${
+    String(d.getDate()).padStart(2, "0")}`;
+}
+function mxDe(iso) {
+  const p = String(iso || "").slice(0, 10).split("-").map(Number);
+  return new Date(p[0], (p[1] || 1) - 1, p[2] || 1);
+}
+// se recalcula en cada pintada: una pestaña abierta toda la noche no puede
+// seguir creyendo que «hoy» es ayer
+const mxHoy = () => mxISO(new Date());
+function mxSuma(iso, n) {
+  const d = mxDe(iso);
+  d.setDate(d.getDate() + n);
+  return mxISO(d);
+}
+// Cuenta los DOS extremos, igual que mix.dias_de: del 1 al 3 son tres días.
+// El redondeo cubre el cambio de horario, donde un día mide 23 o 25 horas.
+const mxDias = (a, b) => Math.round((mxDe(b) - mxDe(a)) / 86400000) + 1;
+const mxPrimero = iso => { const d = mxDe(iso); d.setDate(1); return d; };
+const mxMesMas = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
+
+const mxFechaLarga = iso => mxDe(iso).toLocaleDateString(undefined,
+  { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const mxFechaCorta = iso => mxDe(iso).toLocaleDateString(undefined,
+  { day: "numeric", month: "long" });
+const mxFechaFila = iso => mxDe(iso).toLocaleDateString(undefined,
+  { weekday: "short", day: "numeric", month: "short" });
+
+// «09:00» se lee «las 9:00»: el cero de delante es del <select>, no del habla.
+function mxHoraTexto(hhmm) {
+  const p = String(hhmm || "09:00").split(":");
+  return `${Number(p[0]) || 0}:${p[1] || "00"}`;
+}
+
+// Los créditos se escriben SIEMPRE como enteros.
+const mxN = v => String(Math.trunc(Number(v) || 0));
+const mxPl = (v, uno, varios) => `${mxN(v)} ${Math.trunc(Number(v) || 0) === 1 ? uno : varios}`;
+
+// ── avisos ──────────────────────────────────────────────────────────────────
+function mxAviso(msg, conectar) {
+  const p = $("#mxErr");
+  p.hidden = !msg;
+  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? MXCONECTAR : "") : "";
+  if (msg) p.scrollIntoView({ block: "nearest" });
+}
+function mxAnunciar(msg) { $("#mxEstado").textContent = msg || ""; }
+
+function mxFallo(e) {
+  // 409 en MIX significa dos cosas distintas y solo una se arregla conectando:
+  // el mensaje del servidor es el que distingue, no el status.
+  const status = (e && typeof e.status === "number") ? e.status : 0;
+  mxAviso(mxTexto(e), status === 409 && /Blotato/i.test(e.message || ""));
+  return status;
+}
+
+// ── 1. la foto ──────────────────────────────────────────────────────────────
+function mxPintarFoto(url) {
+  $("#mxPrevia").hidden = !url;
+  $("#mxSoltar").hidden = !!url;
+  if (url) $("#mxPreviaImg").src = url;
+}
+
+function mxTomarFoto(archivo) {
+  const err = $("#mxFotoErr");
+  err.hidden = true;
+  if (!archivo) return;
+  // iOS convierte solo el HEIC a JPEG cuando el accept no lo incluye, así que
+  // aquí casi siempre llega algo servible; lo que no, se explica sin jerga.
+  if (!MXTIPOS.includes(archivo.type)) {
+    err.textContent = "Esa foto no la podemos leer. Tiene que ser JPG, PNG o WebP.";
+    err.hidden = false;
+    return;
+  }
+  if (archivo.size > MXMAXBYTES) {
+    err.textContent = "Esa foto pesa demasiado: el máximo son 12 MB.";
+    err.hidden = false;
+    return;
+  }
+  mxArchivo = archivo;
+  mxPendiente = true;
+  mxImagenId = `nueva:${archivo.name}:${archivo.size}:${archivo.lastModified || 0}`;
+  mxPintarFoto(URL.createObjectURL(archivo));
+  mxCambio();
+}
+
+// ── 3. el tono ──────────────────────────────────────────────────────────────
+function mxPintarTonos() {
+  const tonos = (MX && Array.isArray(MX.tonos) && MX.tonos.length)
+    ? MX.tonos : Object.keys(MXTONOS);
+  $("#mxTonos").innerHTML = tonos.map(t =>
+    `<button type="button" data-tono="${esc(t)}" aria-pressed="${t === mxTono}">${
+      esc(mxRotulo(MXTONOS, t, t))}</button>`).join("");
+  for (const b of $("#mxTonos").querySelectorAll("[data-tono]")) {
+    b.onclick = () => {
+      mxTono = b.dataset.tono;
+      for (const otro of $("#mxTonos").querySelectorAll("[data-tono]"))
+        otro.setAttribute("aria-pressed", String(otro === b));
+      mxCambio();
+    };
+  }
+}
+
+// ── 4. el calendario ────────────────────────────────────────────────────────
+// Estilo Airbnb: un clic marca el inicio, el siguiente el fin, y en medio se
+// pinta la banda. Un clic sobre un día anterior al inicio no es un error: es
+// que cambió de idea, así que vuelve a empezar desde ahí.
+function mxPintarAtajos() {
+  const atajos = (MX && MX.atajos && typeof MX.atajos === "object") ? MX.atajos : {};
+  $("#mxAtajos").innerHTML = Object.keys(atajos).map(k =>
+    `<button type="button" class="sec chico" data-atajo="${esc(k)}">${esc(k)}</button>`).join("");
+  for (const b of $("#mxAtajos").querySelectorAll("[data-atajo]")) {
+    b.onclick = () => {
+      const n = Math.max(1, Math.min(MXMAXD, Math.trunc(Number(atajos[b.dataset.atajo])) || 1));
+      mxIni = mxHoy();
+      mxFin = mxSuma(mxIni, n - 1);
+      mxHover = null;
+      mxMes = mxPrimero(mxIni);
+      mxPintarCalendario();
+      mxCambio();
+    };
+  }
+}
+
+// Lunes primero, que es como se lee un calendario en español. Los rótulos los
+// pone el navegador con su propio idioma, no una lista escrita a mano.
+function mxCabeceraSemana() {
+  const lunes = new Date(2024, 0, 1);   // un lunes cualquiera
+  let html = "";
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + i);
+    html += `<span>${esc(d.toLocaleDateString(undefined, { weekday: "short" })
+      .replace(/\.$/, ""))}</span>`;
+  }
+  return html;
+}
+
+function mxMesHtml(primero, indice) {
+  const y = primero.getFullYear(), m = primero.getMonth();
+  const cuantos = new Date(y, m + 1, 0).getDate();
+  const arranque = (new Date(y, m, 1).getDay() + 6) % 7;   // 0 = lunes
+  let celdas = "";
+  for (let i = 0; i < arranque; i++) celdas += '<span class="hueco-dia"></span>';
+  for (let d = 1; d <= cuantos; d++) {
+    const iso = mxISO(new Date(y, m, d));
+    celdas += `<button type="button" class="dia" data-dia="${esc(iso)}" ` +
+      `aria-label="${esc(mxFechaLarga(iso))}">${d}</button>`;
+  }
+  return `<div class="mes${indice ? " segundo" : ""}">
+    <h3>${esc(primero.toLocaleDateString(undefined, { month: "long", year: "numeric" }))}</h3>
+    <div class="semana" aria-hidden="true">${mxCabeceraSemana()}</div>
+    <div class="dias">${celdas}</div></div>`;
+}
+
+function mxPintarCalendario() {
+  if (!mxMes) mxMes = mxPrimero(mxIni || mxHoy());
+  $("#mxMeses").innerHTML = mxMesHtml(mxMes, 0) + mxMesHtml(mxMesMas(mxMes, 1), 1);
+  // no se puede retroceder más allá del mes en curso: ahí ya no hay nada que
+  // elegir y el botón muerto se explica solo
+  $("#mxMesAntes").disabled = mxISO(mxMes) <= mxISO(mxPrimero(mxHoy()));
+  mxPintarSeleccion();
+}
+
+function mxPintarSeleccion() {
+  const hoy = mxHoy();
+  const a = mxIni;
+  let b = mxFin;
+  if (a && !b) b = (mxHover && mxHover > a) ? mxHover : a;
+  // mientras falta el día de fin, lo que pasa del tope no se puede pulsar: es
+  // más honesto que dejarlo elegir y contestarle «son 74 días» después
+  const tope = (a && !mxFin) ? mxSuma(a, MXMAXD - 1) : null;
+  for (const n of $("#mxMeses").querySelectorAll(".dia[data-dia]")) {
+    const iso = n.dataset.dia;
+    n.disabled = iso < hoy || (!!tope && iso > tope);
+    const ini = !!a && iso === a, fin = !!b && iso === b;
+    const dentro = !!a && !!b && iso > a && iso < b;
+    n.classList.toggle("hoy", iso === hoy);
+    n.classList.toggle("ini", ini);
+    n.classList.toggle("fin", fin);
+    n.classList.toggle("dentro", dentro);
+    n.setAttribute("aria-pressed", String(ini || fin || dentro));
+  }
+  mxPintarRango();
+}
+
+function mxPintarRango() {
+  const p = $("#mxRango");
+  if (!mxIni) { p.innerHTML = '<span class="mut">Marca el primer día de la campaña.</span>'; return; }
+  if (!mxFin) {
+    p.innerHTML = `<span class="mut">Empieza el ${esc(mxFechaCorta(mxIni))}. ` +
+      "Ahora marca el último día.</span>";
+    return;
+  }
+  const dias = mxDias(mxIni, mxFin);
+  p.innerHTML = `Del <b>${esc(mxFechaCorta(mxIni))}</b> al <b>${esc(mxFechaCorta(mxFin))}</b>` +
+    ` · ${esc(mxPl(dias, "día", "días"))}, ${esc(mxPl(dias, "publicación", "publicaciones"))}.`;
+}
+
+function mxClicDia(iso) {
+  if (!mxIni || mxFin || iso < mxIni) { mxIni = iso; mxFin = null; }
+  else mxFin = iso;                 // el mismo día dos veces = campaña de un día
+  mxHover = null;
+  mxPintarSeleccion();
+  mxCambio();
+}
+
+// ── 5. la hora y la cuenta ──────────────────────────────────────────────────
+function mxPintarHoras(valor) {
+  let html = "";
+  for (let h = 0; h < 24; h++) {
+    const v = `${String(h).padStart(2, "0")}:00`;
+    html += `<option value="${v}">${v}</option>`;
+  }
+  $("#mxHora").innerHTML = html;
+  $("#mxHora").value = /^\d{2}:\d{2}$/.test(valor || "") ? valor : "09:00";
+  if (!$("#mxHora").value) $("#mxHora").value = "09:00";
+}
+
+const mxNombreCuenta = c => String(c.fullname || c.username || c.id || "");
+const mxEtiquetaCuenta = c =>
+  `${mxRotulo(MXRED, c.platform, c.platform || "Red")} · ${mxNombreCuenta(c)}`;
+
+async function mxCargarCuentas(preferido) {
+  const sel = $("#mxCuenta"), aviso = $("#mxCuentaErr");
+  sel.disabled = true;
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  try {
+    const j = await mxFj("/api/mix/cuentas");
+    MXCUENTAS = Array.isArray(j.cuentas) ? j.cuentas : [];
+  } catch (e) {
+    MXCUENTAS = [];
+    mxCanal = null;
+    sel.innerHTML = '<option value="">No pudimos traer tus cuentas</option>';
+    aviso.innerHTML = esc(mxTexto(e)) +
+      (e && e.status === 409 ? MXCONECTAR : ' <button type="button" class="sec chico" ' +
+        'id="mxReintentarCuentas">Reintentar</button>');
+    aviso.hidden = false;
+    const re = $("#mxReintentarCuentas");
+    if (re) re.onclick = () => mxCargarCuentas(preferido);
+    mxCambio();
+    return;
+  }
+  aviso.hidden = true;
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Elige dónde va a salir</option>' + MXCUENTAS.map(c =>
+    `<option value="${esc(c.id)}">${esc(mxEtiquetaCuenta(c))}</option>`).join("");
+  if (preferido && MXCUENTAS.some(c => String(c.id) === String(preferido)))
+    sel.value = String(preferido);
+  else if (preferido) {
+    aviso.textContent = "La cuenta que habías elegido ya no está conectada en Blotato. " +
+      "Elige otra.";
+    aviso.hidden = false;
+  }
+  mxElegirCuenta();
+}
+
+function mxElegirCuenta() {
+  const id = $("#mxCuenta").value;
+  mxCanal = MXCUENTAS.find(c => String(c.id) === String(id)) || null;
+  mxCambio();
+}
+
+// ── 6. el ejemplo, el costo y el botón de encender ──────────────────────────
+// La firma dice qué vio el usuario. Cambiar la hora o el último día cambia el
+// COSTO pero no la publicación; cambiar el motivo, el tono, la foto o el día de
+// inicio cambia lo que va a salir, y entonces el ejemplo ya no vale.
+function mxFirmaContenido() {
+  return JSON.stringify([$("#mxMotivo").value.trim(), mxTono, mxIni, mxImagenId]);
+}
+const mxEjemploVigente = () => !!mxEjemplo && mxFirmaEjemplo === mxFirmaContenido();
+
+// Lo primero que falta, con el nombre que el dueño le da en la pantalla.
+function mxQueFalta() {
+  if (!mxArchivo && !mxImagenId) return "Falta la foto de tu producto.";
+  if (!$("#mxMotivo").value.trim()) return "Falta contarnos para qué es la campaña.";
+  if (!mxIni || !mxFin) return "Faltan las fechas: marca el primer día y el último.";
+  if (!mxCanal) return "Falta elegir en qué cuenta va a salir.";
+  return "";
+}
+
+function mxCambio() {
+  const falta = mxQueFalta();
+  $("#mxFalta").textContent = falta;
+  $("#mxVer").disabled = !!falta || mxTrabajando;
+  $("#mxVer").textContent = mxEjemplo ? "Ver otro ejemplo" : "Ver un ejemplo";
+  mxPintarEjemplo();
+  mxPintarCosto();
+  // el costo solo se vuelve a pedir cuando YA hay un ejemplo vivo: antes de eso
+  // no se enseña ningún número, así que no hay nada que refrescar
+  clearTimeout(mxGuardaT);
+  if (!falta && mxEjemploVigente())
+    mxGuardaT = setTimeout(() => {
+      mxGuardar().then(mxPintarCosto).catch(e => { mxCosto = null; mxFallo(e); mxPintarCosto(); });
+    }, 700);
+}
+
+function mxPintarEjemplo() {
+  const caja = $("#mxEjemploCaja");
+  if (!mxEjemplo) { caja.hidden = true; caja.innerHTML = ""; return; }
+  const viejo = !mxEjemploVigente();
+  caja.innerHTML = `<div class="ejemplo">
+      ${mxEjemplo.imagen ? `<img src="${esc(mxEjemplo.imagen)}" alt="La publicación del primer día">` : ""}
+      <div class="texto">
+        <p class="mut">${esc(mxEjemplo.dia ? `Día 1 · ${mxFechaCorta(mxEjemplo.dia)}` : "Día 1")}</p>
+        <p>${esc(mxEjemplo.texto || "")}</p>
+      </div></div>` +
+    (viejo
+      ? '<p class="aviso" style="margin-top:10px">Cambiaste la campaña después de ver esto. ' +
+        'Mira otro ejemplo antes de encenderla: verlo no cuesta nada.</p>'
+      : '<p class="mut" style="margin-top:10px">Así se vería tu primera publicación. ' +
+        'Verla no cuesta nada.</p>');
+  caja.hidden = false;
+}
+
+function mxPintarCosto() {
+  const caja = $("#mxCostoCaja");
+  // el costo NO se enseña antes del ejemplo: es el orden que pidió el dueño
+  if (!mxEjemploVigente() || !mxCosto) { caja.hidden = true; caja.innerHTML = ""; return; }
+  const c = mxCosto;
+  const hora = mxHoraTexto($("#mxHora").value);
+  // saldo null = el monedero está apagado en este despliegue (creditos.activo()
+  // es False): no hay nada que cobrar, así que tampoco hay nada que prometer
+  const conCreditos = !(MX && MX.saldo === null);
+  const alcanza = !conCreditos || !!c.alcanza;
+  let html = `<p>Van a salir <b>${mxPl(c.publicaciones, "publicación", "publicaciones")}</b>, ` +
+    `una cada día a las ${esc(hora)}.`;
+  if (conCreditos) {
+    html += ` Son <b>${mxPl(c.creditos, "crédito", "créditos")}</b> y se te cobran ahora.`;
+    if (alcanza) html += ` Te quedarían ${mxN(Number(c.saldo) - Number(c.creditos))}.`;
+  }
+  html += "</p>";
+  if (!alcanza)
+    html += `<p class="err">Te faltan ${mxPl(c.faltan, "crédito", "créditos")} para esta ` +
+      'campaña. <button type="button" class="sec chico" id="mxRecargar">Recargar</button></p>';
+  html += '<div class="controles" style="margin-top:14px">' +
+    `<button type="button" class="pri" id="mxEncender"${alcanza ? "" : " disabled"}>` +
+    "Encender la campaña</button>" +
+    '<span class="mut">A partir de ahí sale sola, sin que la revises.</span></div>';
+  caja.innerHTML = html;
+  caja.hidden = false;
+  const rec = $("#mxRecargar");
+  if (rec) rec.onclick = () => window.monedero && monedero.recargar && monedero.recargar();
+  $("#mxEncender").onclick = mxEncender;
+}
+
+// Guarda el borrador y se queda con el costo que devuelve. Se puede llamar
+// muchas veces: el servidor reutiliza SIEMPRE el mismo borrador, así que el
+// ejemplo del día 1 no se queda huérfano.
+async function mxGuardar() {
+  const tok = ++mxGuardaTok;
+  const fd = new FormData();
+  fd.append("motivo", $("#mxMotivo").value.trim());
+  fd.append("tono", mxTono);
+  fd.append("canal_id", mxCanal ? String(mxCanal.id) : "");
+  fd.append("canal_red", mxCanal ? String(mxCanal.platform || "") : "");
+  fd.append("canal_nombre", mxCanal ? mxNombreCuenta(mxCanal) : "");
+  fd.append("hora", $("#mxHora").value || "09:00");
+  fd.append("zona", MXZONA);
+  fd.append("empieza", mxIni || "");
+  fd.append("termina", mxFin || mxIni || "");
+  // la foto viaja UNA vez: después vive en el servidor y volver a subirla en
+  // cada cambio de fecha sería gastarle los datos del teléfono
+  if (mxArchivo && mxPendiente) fd.append("imagen", mxArchivo, mxArchivo.name || "foto.jpg");
+  const j = await mxFj("/api/mix/borrador", { method: "POST", body: fd });
+  if (tok !== mxGuardaTok) return j;   // llegó tarde: manda la última
+  mxId = j.id || mxId;
+  mxCosto = j.costo || null;
+  if (mxArchivo) mxPendiente = false;
+  return j;
+}
+
+// El ejemplo se PIDE y se espera; ya no viene en la respuesta del POST.
+//
+// Generarlo son de treinta segundos a dos minutos (el texto y la imagen), y
+// API Gateway corta toda petición a los 29 s: hecho dentro del POST, en la
+// nube era un 500 seguro. Ahora el servidor lo encola y contesta al momento,
+// y esta pantalla mira GET /api/mix hasta que la corrida del día 1 pasa a
+// 'ejemplo' —o se queda en 'preparando' con un error, que es como se avisa de
+// que ese intento murió—.
+//
+// Lo que se gana además de no morir: el trabajo vive en la nube y no en esta
+// pestaña, así que cerrarla dejó de costar el ejemplo. Al volver se retoma.
+// El sondeo empieza rápido y se va frenando: los primeros segundos es cuando
+// puede estar a punto, y a partir del minuto preguntar cada cinco solo carga
+// la base. GET /api/mix no es barato —campaña, corridas, saldo, Blotato— y
+// Aurora está en una sola ACU con 182 personas por llegar.
+const MXEJ_PASOS = [5000, 5000, 5000, 10000, 10000, 20000];
+const MXEJ_AVISO = 120000;   // cuándo se dice que está tardando más de lo normal
+const MXEJ_TOPE = 240000;    // hasta cuándo se espera MIRANDO (el trabajo sigue)
+const mxEjPausa = n => MXEJ_PASOS[Math.min(n, MXEJ_PASOS.length - 1)];
+
+// Espera a que esté el ejemplo del día `dia`. Devuelve la corrida cuando está
+// lista, `null` si dejó de tener sentido esperarla, y levanta con el texto que
+// el usuario tiene que leer si no salió.
+async function mxEsperarEjemplo(dia) {
+  const hasta = Date.now() + MXEJ_TOPE;
+  for (let vuelta = 0; ; vuelta++) {
+    await new Promise(r => setTimeout(r, mxEjPausa(vuelta)));
+    let j;
+    try {
+      // con plazo propio: una petición que se queda colgada sin contestar ni
+      // fallar congelaría la espera entera, y con ella el botón de pedir otro
+      j = await mxFj("/api/mix", { signal: AbortSignal.timeout(20000) });
+    } catch (e) {
+      // Un tropiezo no cancela la espera: el trabajo sigue en la nube y el
+      // siguiente vistazo puede ir bien. Sin red (sin `status`) y un 5xx son
+      // pasajeros —Aurora se duerme sola y el primer despertar tarda—; lo que
+      // sí cancela es un 4xx, que no va a mejorar por insistir: la sesión
+      // caducó, o esta campaña ya no es de quien pregunta.
+      const st = (e && typeof e.status === "number") ? e.status : 0;
+      if (st >= 400 && st < 500) throw e;
+      if (Date.now() > hasta) throw e;
+      continue;
+    }
+    // encendió mientras esperábamos: desde aquí manda el reloj y esta pantalla
+    // ya no es el formulario de un borrador, es el panel de una campaña viva
+    if (j.campana && j.campana.estado !== "borrador") return null;
+    const fila = (j.corridas || []).find(x => String(x.dia).slice(0, 10) === dia);
+    // la fila desapareció: movió las fechas y el servidor tiró el ejemplo que
+    // quedó huérfano. No es un error, es que ya no vale la pena esperarlo
+    if (!fila) return null;
+    if (fila.estado === "ejemplo") return fila;
+    // cualquier otro estado quiere decir que ese día ya es una publicación de
+    // verdad: encendió la campaña mientras esperaba, y desde ahí manda el reloj
+    if (fila.estado !== "preparando") return null;
+    // sigue en 'preparando' pero con algo escrito: ese intento murió. El texto
+    // lo escribió el servidor para leerse aquí — `status` va puesto porque sin
+    // él mxTexto lo cambia por el aviso de «sin conexión»
+    if (fila.error)
+      throw Object.assign(new Error(fila.error), { status: 502 });
+    if (Date.now() > hasta)
+      throw Object.assign(new Error("Tu ejemplo sigue preparándose en la nube. " +
+        "Vuelve a abrir esta pantalla en un par de minutos y estará aquí."),
+        { status: 504 });
+  }
+}
+
+// La espera, igual la pida el botón que la retome una pantalla recién abierta.
+// `firma` es lo que el usuario tenía escrito cuando lo pidió: se guarda desde
+// fuera porque durante estos minutos puede cambiar el motivo, y entonces lo
+// que llegue ya no es lo que va a salir.
+async function mxSeguirEjemplo(dia, firma) {
+  mxTrabajando = true;
+  $("#mxVer").disabled = true;
+  const hueco = $("#mxEspera");
+  hueco.innerHTML = "";
+  hueco.hidden = false;
+  const mando = window.orbe ? orbe.montar(hueco, {
+    texto: "Preparando tu ejemplo · hasta 2 min",
+    tope: MXEJ_AVISO,
+    alAgotar: m => m.texto("Está tardando más de lo normal. Sigue trabajando en la nube: " +
+      "puedes cerrar esta pantalla y volver, aquí estará."),
+  }) : { desmontar() {} };
+  let fallo = null, fila = null;
+  try { fila = await mxEsperarEjemplo(dia); } catch (e) { fallo = e; }
+  // el orbe se desmonta ANTES de pintar el fallo: nunca gira junto a un error
+  mando.desmontar();
+  hueco.hidden = true;
+  mxTrabajando = false;
+  if (fila) {
+    mxEjemplo = { dia: String(fila.dia).slice(0, 10), texto: fila.texto,
+                  imagen: fila.imagen };
+    mxFirmaEjemplo = firma;
+    mxAnunciar("Listo: abajo está la publicación del primer día.");
+  } else {
+    mxEjemplo = null;
+    // el anuncio verde de «lo estamos preparando» no puede quedarse al lado
+    // del error, ni encima de un ejemplo que se descartó sin fallar
+    mxAnunciar(fallo ? "" : "Descartamos ese ejemplo porque la campaña " +
+      "cambió. Pide otro cuando quieras: verlo no cuesta nada.");
+    if (fallo) mxFallo(fallo);
+  }
+  mxCambio();
+}
+
+async function mxVerEjemplo() {
+  const falta = mxQueFalta();
+  if (falta) { mxAviso(falta); return; }
+  mxAviso("");
+  mxAnunciar("");
+  mxTrabajando = true;
+  $("#mxVer").disabled = true;
+  let dia = null, firma = null, fallo = null;
+  try {
+    await mxGuardar();
+    // la firma se toma aquí, con lo que el servidor acaba de guardar: es lo
+    // que el ejemplo va a contar cuando llegue
+    firma = mxFirmaContenido();
+    dia = (await mxPost("/api/mix/ejemplo")).dia;
+  } catch (e) { fallo = e; }
+  if (fallo) {
+    mxTrabajando = false;
+    // Un 409 aquí siempre significa lo mismo: lo que esta pantalla creía ya no
+    // es verdad. O hay otro ejemplo en camino —el servidor lo respeta diez
+    // minutos y aquí se deja de mirar a los cuatro, así que en ese hueco el
+    // botón sería un callejón— o la campaña ya está encendida. Recargar pinta
+    // la verdad en los dos casos, y de paso mxRestaurar reengancha la espera
+    // del ejemplo que ya existe. Es lo que hace mxEncender desde siempre.
+    if (fallo.status === 409) {
+      mxAviso("");
+      await mxCargar();
+      return;
+    }
+    mxEjemplo = null;
+    mxFallo(fallo);
+    mxCambio();
+    return;
+  }
+  // El ejemplo anterior deja de valer en cuanto se pide otro: el servidor ya
+  // devolvió su fila a 'preparando' y con ella /encender contesta 409. Dejarlo
+  // en la pantalla sería enseñar el costo y el botón de encender durante los
+  // dos minutos en que pulsarlo no puede funcionar.
+  mxEjemplo = null;
+  mxFirmaEjemplo = null;
+  mxCambio();      // mxTrabajando sigue en true: el botón no se reactiva
+  mxAnunciar("Estamos preparando tu ejemplo. Aparece aquí solo.");
+  await mxSeguirEjemplo(dia, firma);
+}
+
+async function mxEncender() {
+  if (!mxCosto) return;
+  const btn = $("#mxEncender");
+  btn.disabled = true;
+  mxAviso("");
+  try {
+    const j = await mxPost("/api/mix/encender", { id: mxId || "" });
+    if (window.monedero && monedero.refrescar) monedero.refrescar();
+    mxAnunciar(`Campaña encendida: ${mxPl(j.dias, "publicación", "publicaciones")}, ` +
+      `una cada día a las ${mxHoraTexto($("#mxHora").value)}.`);
+    await mxCargar();
+  } catch (e) {
+    mxFallo(e);
+    btn.disabled = false;
+    if (e && e.status === 409) await mxCargar();   // el estado de la pantalla mentía
+  }
+}
+
+// ── la campaña encendida ────────────────────────────────────────────────────
+// Lo que se devolvería al apagar AHORA. Los créditos los manda el servidor en
+// `devolucion` (ya topados en lo cobrado); los días que no salieron sí se
+// cuentan aquí, porque son las corridas que la pantalla ya tiene delante.
+// `creditos: null` significa «el servidor no lo dijo», no «cero».
+function mxDevolucion() {
+  const c = MX && MX.campana;
+  if (!c) return { dias: 0, creditos: null };
+  const total = mxDias(c.empieza, c.termina);
+  const salieron = (MX.corridas || []).filter(x => x.estado === "publicada").length;
+  const crudo = MX.devolucion;
+  const hay = crudo !== null && crudo !== undefined && crudo !== "" && isFinite(Number(crudo));
+  const cr = hay ? Math.trunc(Number(crudo)) : null;
+  // Los días salen de los créditos cuando el servidor los dijo. Desde que el
+  // reloj devuelve en el acto cada día que falla, «los que no salieron» y «los
+  // que quedan por devolver» dejaron de ser lo mismo: ese día no salió, pero
+  // ya se pagó de vuelta. Contarlo otra vez aquí haría que la frase prometiera
+  // más días de los que el número de créditos respalda.
+  const tarifa = Math.max(1, Math.trunc(Number(MX.tarifa) || 0));
+  return { dias: cr === null ? Math.max(0, total - salieron) : Math.round(cr / tarifa),
+           creditos: cr };
+}
+
+const MXPILLS = {
+  publicada: ["buena", "Publicada"],
+  corriendo: ["viva", "Preparándose"],
+  ejemplo: ["viva", "Lista"],
+  // el ejemplo del día 1 mientras se cocina en la cola. Aquí casi nunca se ve
+  // —se enciende DESPUÉS de verlo— pero la carrera existe: puede encender
+  // justo mientras pide otro, y entonces el día 1 llega a esta lista así
+  preparando: ["viva", "Preparándose"],
+  error: ["mala", "No salió"],
+  // se mandó a Blotato y no confirmó: por eso no se devuelven sus créditos
+  incierta: ["", "Sin confirmar"],
+};
+
+function mxFilaDia(iso, n, corrida) {
+  const est = corrida ? String(corrida.estado || "") : "";
+  const pill = mxRotulo(MXPILLS, est, ["", "Pendiente"]);
+  const cuerpo = [`<span class="pill ${pill[0]}">${esc(pill[1])}</span>`];
+  if (corrida && corrida.texto)
+    cuerpo.push(`<p class="texto">${esc(corrida.texto)}</p>`);
+  if (est === "ejemplo")
+    cuerpo.push('<p class="mut">Es la que viste antes de encenderla.</p>');
+  if (est === "error" && corrida.error)
+    cuerpo.push(`<p class="err">${esc(corrida.error)}</p>`);
+  return `<div class="fila">
+    <div class="cuando">Día ${n} · ${esc(mxFechaFila(iso))}</div>
+    <div class="cuerpo">${cuerpo.join("")}</div>
+    ${corrida && corrida.imagen ? `<img src="${esc(corrida.imagen)}" alt="">` : ""}
+  </div>`;
+}
+
+// La próxima que va a salir: el primer día del rango, desde hoy, que todavía no
+// tiene corrida propia. El día del ejemplo NO cuenta como hecho — esa fila
+// existe desde antes de encender y es justo la que el reloj va a reclamar para
+// no generar (ni cobrar) otra imagen.
+function mxProxima(c, porDia) {
+  if (c.estado !== "activa") return "";
+  const hoy = mxHoy();
+  const total = mxDias(c.empieza, c.termina);
+  for (let i = 0; i < total; i++) {
+    const iso = mxSuma(c.empieza, i);
+    if (iso < hoy) continue;
+    const x = porDia[iso];
+    if (x && x.estado !== "ejemplo" && x.estado !== "preparando") continue;
+    return `La próxima sale ${mxFechaFila(iso)} a las ${mxHoraTexto(c.hora)}.`;
+  }
+  return "Ya salieron todos los días. La campaña se cierra sola.";
+}
+
+function mxPintarViva() {
+  const c = MX.campana;
+  const total = mxDias(c.empieza, c.termina);
+  const salieron = (MX.corridas || []).filter(x => x.estado === "publicada").length;
+  const hora = mxHoraTexto(c.hora);
+  const porDia = Object.create(null);
+  for (const x of (MX.corridas || [])) porDia[String(x.dia).slice(0, 10)] = x;
+  const proxima = mxProxima(c, porDia);
+  // en pausa se dice POR QUÉ: la pausa la pone MIX solo (se desconectó
+  // Blotato, se fue la cuenta), y sin el motivo el dueño no sabe qué arreglar
+  $("#mxVivaEstado").innerHTML = c.estado === "pausada"
+    ? `<span class="aviso">Campaña en pausa. Ya salieron ${mxN(salieron)} de ${mxN(total)}.</span>` +
+      (c.nota ? `<br><span class="mut">${esc(c.nota)}</span>` : "")
+    : `Publicando todos los días a las ${esc(hora)}. ` +
+      `Ya salieron <b>${mxN(salieron)} de ${mxN(total)}</b>.` +
+      (proxima ? `<br><span class="mut">${esc(proxima)}</span>` : "");
+  $("#mxReanudar").hidden = c.estado !== "pausada";
+
+  const devueltos = Math.trunc(Number(c.creditos_devueltos) || 0);
+  $("#mxVivaFicha").innerHTML =
+    (c.imagen ? `<img src="${esc(c.imagen)}" alt="La foto de tu producto">` : "") +
+    `<div class="datos">
+      <p>${esc(c.motivo || "")}</p>
+      <p class="mut">Tono: ${esc(mxRotulo(MXTONOS, c.tono, c.tono || ""))}
+        · ${esc(mxFechaCorta(c.empieza))} al ${esc(mxFechaCorta(c.termina))}
+        ${c.canal_nombre || c.canal_red
+          ? `· ${esc(mxRotulo(MXRED, c.canal_red, c.canal_red || ""))} ${esc(c.canal_nombre || "")}` : ""}</p>
+      <p class="mut">Pagaste ${mxPl(c.creditos_cobrados, "crédito", "créditos")} por adelantado.${
+        devueltos ? ` Te devolvimos ${mxPl(devueltos, "crédito", "créditos")} de los días que no salieron.` : ""}</p>
+    </div>`;
+
+  let filas = "";
+  for (let i = 0; i < total; i++) {
+    const iso = mxSuma(c.empieza, i);
+    filas += mxFilaDia(iso, i + 1, porDia[iso]);
+  }
+  $("#mxVivaDias").innerHTML = filas;
+
+  $("#mxDevolucion").innerHTML = mxFraseDevolucion(mxDevolucion(), true);
+
+  // una corrida a medias es lo único que cambia solo: se mira de vez en cuando
+  // y se deja de mirar en cuanto termina
+  clearTimeout(mxPollT);
+  if ((MX.corridas || []).some(x => x.estado === "corriendo") && !document.hidden)
+    mxPollT = setTimeout(mxCargar, 60000);
+}
+
+// La MISMA verdad en los dos sitios donde se enseña: el pie del panel y el
+// confirm. Con `negrita` el número va resaltado (va a un innerHTML); sin ella
+// sale en texto plano para el confirm del navegador.
+function mxFraseDevolucion(dev, negrita) {
+  const dias = mxPl(dev.dias, "día", "días");
+  const cr = mxPl(dev.creditos, "crédito", "créditos");
+  if (dev.creditos === null)
+    return dev.dias
+      ? `Si la apagas ahora dejan de salir los ${dias} que faltan y te devolvemos sus créditos.`
+      : "Ya salieron todas las publicaciones de esta campaña.";
+  if (dev.creditos <= 0)
+    return "Ya salieron todas las publicaciones que pagaste: apagarla no devuelve nada.";
+  const cifra = negrita ? `<b>${cr}</b>` : cr;
+  return dev.dias
+    ? `Si la apagas ahora te devolvemos ${cifra}, los ${dias} que no salieron.`
+    : `Si la apagas ahora te devolvemos ${cifra}.`;
+}
+
+function mxTextoApagar(dev) {
+  return `¿Apagar la campaña?\n\n${mxFraseDevolucion(dev, false)}\n\n` +
+    "No se puede deshacer: deja de publicar desde hoy.";
+}
+
+async function mxApagar() {
+  const dev = mxDevolucion();
+  if (!confirm(mxTextoApagar(dev))) return;
+  const btn = $("#mxApagar");
+  btn.disabled = true;
+  mxAviso("");
+  try {
+    const j = await mxPost("/api/mix/apagar", { confirmar: true });
+    if (window.monedero && monedero.refrescar) monedero.refrescar();
+    const devueltos = Math.trunc(Number(j.devueltos) || 0);
+    mxAnunciar(devueltos
+      ? `Campaña apagada. Te devolvimos ${mxPl(devueltos, "crédito", "créditos")}.`
+      : "Campaña apagada.");
+    await mxCargar();
+  } catch (e) {
+    mxFallo(e);
+    btn.disabled = false;
+    if (e && e.status === 409) await mxCargar();
+  }
+}
+
+// Sin esto, la pausa sería una trampa: MIX para la campaña porque la cuenta de
+// Blotato se desconectó, el dueño la reconecta… y no vuelve a publicar nunca.
+async function mxReanudar() {
+  const btn = $("#mxReanudar");
+  btn.disabled = true;
+  mxAviso("");
+  try {
+    await mxPost("/api/mix/reanudar", { id: (MX.campana || {}).id || "" });
+    mxAnunciar("Campaña reanudada. La próxima sale a su hora.");
+  } catch (e) {
+    mxFallo(e);
+  } finally {
+    btn.disabled = false;
+    await mxCargar();
+  }
+}
+
+// ── arranque y carga ────────────────────────────────────────────────────────
+// Al apagar una campaña el servidor deja de mandar campana y la pantalla vuelve
+// al formulario: si no se vacía aquí, el dueño vería la foto y el motivo de la
+// campaña que acaba de apagar como si fueran los de la siguiente.
+function mxVaciar() {
+  $("#mxMotivo").value = "";
+  mxTono = "vender";
+  mxIni = mxFin = mxHover = null;
+  mxId = null;
+  mxCosto = null;
+  mxEjemplo = null;
+  mxFirmaEjemplo = null;
+  mxArchivo = null;
+  mxPendiente = false;
+  mxImagenId = "";
+  mxCanal = null;
+  mxMes = mxPrimero(mxHoy());
+  mxPintarFoto("");
+  $("#mxFotoErr").hidden = true;
+  mxPintarHoras("09:00");
+}
+
+function mxRestaurar(c) {
+  $("#mxMotivo").value = c.motivo || "";
+  mxTono = (c.tono && MXTONOS[c.tono]) ? c.tono : "vender";
+  mxIni = c.empieza ? String(c.empieza).slice(0, 10) : null;
+  mxFin = c.termina ? String(c.termina).slice(0, 10) : null;
+  mxId = c.id || null;
+  mxImagenId = c.imagen || "";
+  mxArchivo = null;
+  mxPendiente = false;
+  mxMes = mxPrimero(mxIni && mxIni >= mxHoy() ? mxIni : mxHoy());
+  if (c.imagen) mxPintarFoto(c.imagen);
+  mxPintarHoras(c.hora);
+  // el ejemplo que ya vio sigue valiendo al recargar la página: volver a
+  // pedirlo serían otros dos minutos mirando el orbe para ver lo mismo
+  const guardado = (MX.corridas || []).find(x => x.estado === "ejemplo");
+  if (guardado) {
+    mxEjemplo = { dia: String(guardado.dia).slice(0, 10), texto: guardado.texto,
+                  imagen: guardado.imagen };
+    mxFirmaEjemplo = mxFirmaContenido();
+    return;
+  }
+  // Y si dejó uno a medias —lo pidió y cerró la pantalla— se retoma la espera
+  // donde estaba. Esto es lo que compra haberlo pasado a la cola: el trabajo
+  // siguió en la nube sin esta pestaña.
+  const aMedias = (MX.corridas || []).find(x => x.estado === "preparando");
+  if (!aMedias) return;
+  // Con error escrito, ese intento murió mientras no había nadie mirando, y
+  // este es el único sitio donde puede leerse: sin esto el usuario vuelve y se
+  // encuentra la pantalla como si nunca hubiera pedido nada, sin ejemplo y sin
+  // motivo. mxCargar ya limpió el aviso de la carga anterior antes de llegar aquí.
+  if (aMedias.error) { mxAviso(aMedias.error); return; }
+  if (!mxTrabajando)
+    mxSeguirEjemplo(String(aMedias.dia).slice(0, 10), mxFirmaContenido());
+}
+
+// La campaña anterior, cuando el reloj ya la cerró. Sin esta línea el dueño
+// abre MIX el día después de que acabe y se encuentra un formulario en blanco,
+// sin rastro de lo que pagó ni de lo que salió.
+function mxPintarUltima(u) {
+  const caja = $("#mxUltima");
+  caja.hidden = !u;
+  if (!u) return;
+  const total = mxDias(u.empieza, u.termina);
+  const salieron = Math.trunc(Number(u.salieron) || 0);
+  const devueltos = Math.trunc(Number(u.creditos_devueltos) || 0);
+  const fin = u.estado === "cancelada" ? "Apagaste tu campaña" : "Tu campaña terminó";
+  caja.innerHTML = `${esc(fin)}: salieron ${mxN(salieron)} de ${mxN(total)} días.` +
+    (devueltos ? ` Te devolvimos ${mxPl(devueltos, "crédito", "créditos")}.` : "") +
+    " Puedes crear otra cuando quieras.";
+}
+
+async function mxCargar() {
+  clearTimeout(mxPollT);
+  try {
+    MX = await mxFj("/api/mix");
+  } catch (e) {
+    $("#mxCargando").hidden = true;
+    mxFallo(e);
+    return;
+  }
+  $("#mxCargando").hidden = true;
+  mxAviso("");   // el aviso de la carga anterior no puede sobrevivir a una buena
+  MXMAXD = Math.max(1, Math.trunc(Number(MX.max_dias)) || 60);
+  const c = MX.campana;
+  const encendida = !!c && c.estado !== "borrador";
+
+  $("#mxViva").hidden = !encendida;
+  $("#mxCapa").hidden = encendida;
+  // sin la clave el aviso se queda a la vista aunque la campaña esté encendida:
+  // una campaña viva sin Blotato es justo la que no va a poder publicar
+  $("#mxSinBlotato").hidden = !!MX.tiene_blotato;
+
+  if (encendida) { $("#mxUltima").hidden = true; mxPintarViva(); return; }
+  mxPintarUltima(MX.ultima);
+
+  // sin la clave, la herramienta se ve pero no se usa, y el clic lleva a
+  // conectarla en vez de dejar al usuario en un callejón sin salida (M23 · C)
+  const capa = $("#mxCapa");
+  capa.classList.toggle("apagada", !MX.tiene_blotato);
+  if (MX.tiene_blotato) $("#mxPasos").removeAttribute("inert");
+  else $("#mxPasos").setAttribute("inert", "");
+
+  mxPintarAtajos();
+  $("#mxTarifa").textContent =
+    `Cada publicación cuesta ${mxPl(MX.tarifa, "crédito", "créditos")}. ` +
+    `Verás el total antes de encenderla. Una campaña puede durar hasta ${mxN(MXMAXD)} días.`;
+  mxVaciar();
+  if (c) mxRestaurar(c);
+  mxPintarTonos();      // después de restaurar: el botón marcado es el suyo
+  mxPintarCalendario();
+
+  if (MX.tiene_blotato) await mxCargarCuentas(c ? c.canal_id : null);
+  else mxCambio();
+
+  // al volver con un borrador entero y su ejemplo ya visto, el costo se pide
+  // otra vez al servidor: ese número no se calcula aquí nunca
+  if (mxEjemploVigente() && !mxQueFalta()) {
+    try { await mxGuardar(); } catch (e) { mxCosto = null; mxFallo(e); }
+    mxPintarCosto();
+  }
+}
+
+// La zona del navegador, que es donde vive el negocio. Si no hay Intl no se
+// promete ninguna: el servidor pone la suya por defecto.
+let MXZONA = "";
+try { MXZONA = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* sin Intl */ }
+
+// TODO el arranque va aquí dentro: auth.js envuelve fetch para colgarle el
+// Authorization, y una llamada lanzada en tiempo de parseo saldría sin cabecera
+// y volvería 401.
+document.addEventListener("DOMContentLoaded", () => {
+  if (MXZONA) {
+    $("#mxZona").textContent = `La hora es la de tu zona: ${MXZONA}.`;
+    $("#mxZona").hidden = false;
+  }
+  mxPintarHoras("09:00");
+
+  // 1. la foto
+  const soltar = $("#mxSoltar");
+  soltar.onclick = () => $("#mxArchivo").click();
+  $("#mxCambiarFoto").onclick = () => $("#mxArchivo").click();
+  $("#mxArchivo").onchange = () => {
+    const f = $("#mxArchivo").files[0];
+    $("#mxArchivo").value = "";        // elegir la MISMA foto otra vez tiene que disparar el change
+    mxTomarFoto(f);
+  };
+  for (const ev of ["dragenter", "dragover"])
+    soltar.addEventListener(ev, e => { e.preventDefault(); soltar.classList.add("encima"); });
+  for (const ev of ["dragleave", "dragend"])
+    soltar.addEventListener(ev, () => soltar.classList.remove("encima"));
+  soltar.addEventListener("drop", e => {
+    e.preventDefault();
+    soltar.classList.remove("encima");
+    mxTomarFoto(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+
+  // 2. el motivo
+  $("#mxMotivo").addEventListener("input", mxCambio);
+
+  // 4. el calendario
+  const meses = $("#mxMeses");
+  meses.addEventListener("click", e => {
+    const b = e.target.closest(".dia[data-dia]");
+    if (b && !b.disabled) mxClicDia(b.dataset.dia);
+  });
+  // la banda tentativa mientras se elige el último día. Solo repinta cuando el
+  // día bajo el cursor cambia de verdad: un mouseover por píxel no puede
+  // rehacer dos meses de botones.
+  meses.addEventListener("mouseover", e => {
+    if (!mxIni || mxFin) return;
+    const b = e.target.closest(".dia[data-dia]");
+    const iso = b && !b.disabled ? b.dataset.dia : null;
+    if (iso === mxHover) return;
+    mxHover = iso;
+    mxPintarSeleccion();
+  });
+  meses.addEventListener("mouseleave", () => {
+    if (mxHover === null) return;
+    mxHover = null;
+    mxPintarSeleccion();
+  });
+  $("#mxMesAntes").onclick = () => { mxMes = mxMesMas(mxMes, -1); mxPintarCalendario(); };
+  $("#mxMesDespues").onclick = () => { mxMes = mxMesMas(mxMes, 1); mxPintarCalendario(); };
+  $("#mxLimpiar").onclick = () => {
+    mxIni = mxFin = mxHover = null;
+    mxPintarSeleccion();
+    mxCambio();
+  };
+
+  // 5. la hora y la cuenta
+  $("#mxHora").addEventListener("change", mxCambio);
+  $("#mxCuenta").addEventListener("change", mxElegirCuenta);
+
+  // 6. el ejemplo
+  $("#mxVer").onclick = mxVerEjemplo;
+
+  // sin la clave de Blotato el formulario es inerte, así que el clic lo recoge
+  // la capa de fuera y lo convierte en el arreglo
+  $("#mxCapa").addEventListener("click", e => {
+    if (!$("#mxCapa").classList.contains("apagada")) return;
+    e.preventDefault();
+    location.href = "/?blotato=conectar";
+  });
+
+  $("#mxRefrescar").onclick = () => mxCargar();
+  $("#mxApagar").onclick = mxApagar;
+  $("#mxReanudar").onclick = mxReanudar;
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { clearTimeout(mxPollT); mxPollT = null; return; }
+    // al volver se recarga: el reloj publica solo, así que una pestaña dejada
+    // abierta toda la tarde estaría enseñando un «ya salieron 3 de 14» viejo.
+    // Con un ejemplo en marcha NO se recarga: mxCargar vacía el formulario y
+    // lo vuelve a restaurar, y eso arrancaría una segunda espera del mismo
+    if (MX && MX.campana && !mxTrabajando) mxCargar();
+  });
+
+  mxCargar();
+  if (window.orbe) orbe.precargar();
+});
+</script>
+</body>
+</html>

@@ -9,8 +9,8 @@ Aurora necesitan los ARNs (sección «Base de datos»).
 
 | Qué | Liga |
 |---|---|
-| **Producto (API + web)** | https://2ecset5i94.execute-api.us-east-1.amazonaws.com |
-| **Dashboard admin** | https://2ecset5i94.execute-api.us-east-1.amazonaws.com/admin.html |
+| **Producto (API + web)** | https://irremplazables.xyz — el endpoint viejo sigue vivo: https://2ecset5i94.execute-api.us-east-1.amazonaws.com |
+| **Dashboard admin** | https://irremplazables.xyz/admin.html |
 | **Login (Hosted UI Cognito)** | https://media-ivenaccip.auth.us-east-1.amazoncognito.com — la misma pantalla cubre el cambio de contraseña del primer login; el branding se retoca en el editor visual de la consola Cognito (vive FUERA de CloudFormation) |
 | **CDN de media** | https://d8bfm82hs0s6a.cloudfront.net |
 | **Langfuse (trazas y prompts)** | https://us.cloud.langfuse.com |
@@ -20,7 +20,11 @@ Aurora necesitan los ARNs (sección «Base de datos»).
 
 Identificadores fijos: Cognito pool `us-east-1_WyPvxnj1V`, client
 `2kf9frusv9ae4fndns5f5nt9h9`; bucket `aws-media-media-mediaa721a567-bat5i0pvqczo`;
-ECR `191241816158.dkr.ecr.us-east-1.amazonaws.com/aws-media`.
+ECR `191241816158.dkr.ecr.us-east-1.amazonaws.com/aws-media`; API HTTP
+`2ecset5i94`; dominio personalizado apuntando a
+`d-hyornda8q1.execute-api.us-east-1.amazonaws.com`; certificado ACM
+`arn:aws:acm:us-east-1:191241816158:certificate/2a234253-9f81-4338-b93a-20a2a935457d`
+(vence el 2027-04-08).
 
 ## Usuarios (`tools/usuarios.py`)
 
@@ -275,7 +279,7 @@ en 8011 — y por eso el deploy no es "cuando se pueda": un merge a `main` sin s
 
 | rama | dónde se ve |
 |---|---|
-| `main` | https://2ecset5i94.execute-api.us-east-1.amazonaws.com — **lo que usan los testers** |
+| `main` | https://irremplazables.xyz — **lo que usan los testers** |
 | `dev` | solo en tu máquina: `venv/Scripts/python -m uvicorn server.app:app --port 8011` → http://localhost:8011 |
 
 No hay un «dev en la nube». Con un solo entorno AWS, esa columna no existe.
@@ -299,9 +303,18 @@ gh pr create --base main --head dev --title "Release: <qué entra>" --body "…"
 gh pr merge <N> --merge          # SIN --delete-branch: se llevaría dev
 ```
 
+En cmd:
+
 ```bash
 set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
-odejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+```
+
+En PowerShell (5.1 **no tiene `&&`**: la línea de cmd ahí es un error de
+sintaxis, no un comando que falla):
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 ```
 
 ```bash
@@ -335,15 +348,25 @@ el dominio `media-ivenaccip`, `aws-media-producir` y el rol OIDC).
    empuja a ECR. **Solo main empuja**: desde `dev` o desde un PR se
    construye y se prueba, pero no se publica — la Lambda de producción
    consume el `latest` de ese mismo repositorio.
-2. En **tu terminal cmd**, desde `D:\aws-project\infra`:
+2. En tu terminal, desde `D:\aws-project\infra` — en cmd:
 
 ```bash
 set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never
 ```
 
+   o en PowerShell, que es la que suele estar abierta y **no entiende `&&`**:
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+```
+
    (agrega `aws-media-media` o `aws-media-db` solo si el PR tocó esos stacks;
    el synth fija el digest real de `:latest` — nunca deployar sin imagen nueva
-   si cambió `static/` o código, porque viajan dentro de la imagen).
+   si cambió `static/` o código, porque viajan dentro de la imagen). El synth
+   imprime qué imagen pone (`imagen: latest -> sha256:…`): esa línea es la
+   única forma de comprobar que desplegaste lo que querías, porque el tag no
+   aparece en el diff de CDK.
 3. **Si el PR tocó `prompts/*.md`** (regla que nació con la llama «Fluffy»):
 
 ```bash
@@ -364,6 +387,172 @@ venv/Scripts/python tools/prompts_sync.py
 git tag -a prod-$(date +%Y%m%d) -m "desplegado: <qué entró>" && git push origin --tags
 ```
 
+### Desplegar UN commit concreto, y volver atrás
+
+`cdk deploy` a secas significa «pon lo que haya en `:latest`»: **todo** lo
+mergeado desde el último deploy, lo haya probado alguien o no. Es todo o nada,
+y muerde justo cuando más duele — un arreglo urgente el día del lanzamiento se
+lleva con él cualquier cosa que estuviera esperando en `main`.
+
+El CI etiqueta cada imagen con el sha de su commit además de con `latest`, así
+que se puede pedir una por su nombre:
+
+En cmd, y las comillas NO son adorno. Sin ellas, `set IMAGE_TAG=<sha> &&`
+asigna tambien el espacio que hay antes del `&&`: el tag queda con un espacio
+al final y el ECR lo rechaza por no cumplir `^[a-zA-Z0-9-_.]{1,300}$`. Mordio
+el 2026-09-22, con este mismo runbook delante, en un deploy que no era ni
+urgente. El `& set "IMAGE_TAG="` del final tampoco sobra: es lo que impide
+que la variable sobreviva al comando (ver la trampa, justo debajo).
+
+```bash
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IMAGE_TAG=<sha>" && npx cdk deploy aws-media-api aws-media-jobs --require-approval never & set "IMAGE_TAG="
+```
+
+En PowerShell, donde el `finally` hace ese mismo trabajo y encima aguanta que
+canceles con Ctrl-C:
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+try {
+  $env:IMAGE_TAG = "<sha>"
+  npx cdk deploy aws-media-api aws-media-jobs --require-approval never
+} finally {
+  Remove-Item Env:IMAGE_TAG -ErrorAction SilentlyContinue
+}
+```
+
+Eso sirve para las dos cosas:
+
+- **desplegar solo lo tuyo** cuando hay cosas más nuevas mergeadas que todavía
+  no quieres en producción;
+- **volver atrás**, que antes no se podía pedir — solo esperar a que el CI
+  reconstruyera el commit viejo. El sha que corría antes sale de
+  `aws lambda get-function --function-name <la Lambda> --query Code.ImageUri`,
+  o de la lista del ECR por fecha.
+
+Un tag que no exista **para el deploy** con un mensaje claro; no cae a
+`latest`. Desplegar una imagen distinta de la que pediste, y en silencio, es el
+peor final posible para una vuelta atrás.
+
+Ojo con el margen de la retención: la política conserva 20 imágenes, así que
+una imagen vieja se puede haber borrado ya. Si la necesitas y no está, la única
+salida es reconstruirla desde su commit.
+
+### La trampa de `IMAGE_TAG`: el deploy que no despliega
+
+`set IMAGE_TAG=<sha>` **dura lo que dure la ventana, no lo que dure el
+comando**. Un rato después, en esa misma ventana, un `cdk deploy` normal ya no
+significa «pon lo último»: significa «pon otra vez aquel sha». Y como esa
+imagen ya está puesta, CloudFormation contesta lo que de verdad ve:
+
+```
+✅  aws-media-api (no changes)
+```
+
+Eso pasó el 20 de septiembre de 2026. El deploy que debía llevar el arreglo de
+MIX a producción no llevó nada, los cuatro stacks dijeron «no changes», y la
+lectura natural —«ya estaba todo al día»— era exactamente la contraria de lo
+que había ocurrido. Peor todavía: si en esa ventana heredada despliegas después
+de mergear algo nuevo, no es que no avance, es que **revierte**.
+
+Tres cosas, por orden de utilidad:
+
+1. **Usa las formas de arriba.** El `& set IMAGE_TAG=` de cmd y el `finally` de
+   PowerShell existen para que la variable no sobreviva al comando. No son
+   adorno.
+2. **Lee la línea `imagen:`.** Cada synth imprime qué está poniendo, y es la
+   única prueba de lo que desplegaste:
+
+   ```
+   imagen: 8f8f7f5c6fb264b9c2079fc41cd519d584dc7435 -> sha256:b71d7c58…
+   ```
+
+   Si esperabas `latest` y ves un sha, la variable viene heredada: cierra la
+   ventana (o `Remove-Item Env:IMAGE_TAG`) y repite. Desde el 21-sep el synth
+   además **grita con un recuadro** cuando la imagen fijada no es la más nueva
+   del ECR, que es el caso en el que el deploy vuelve atrás sin querer.
+3. **`(no changes)` justo después de un merge es una alarma, no un alivio.**
+   Si acabas de mergear y desplegar, algo tuvo que cambiar. Cuando no cambia
+   nada, empieza por la línea `imagen:`.
+
+## El dominio propio (`aws-media-dominio`)
+
+El producto se sirve en **https://irremplazables.xyz** desde el 2026-09-23. La
+cadena completa, de fuera hacia dentro: Cloudflare (proxy, TLS del visitante) →
+dominio personalizado de API Gateway (TLS con el certificado de ACM) → el mismo
+API `2ecset5i94` de siempre → la Lambda.
+
+El `execute-api` **sigue vivo y sirviendo** (`DisableExecuteApiEndpoint = False`)
+y las dos URLs están en los callbacks de Cognito. No se apaga: hay usuarios con
+esa liga, y correos de invitación ya enviados que apuntan ahí.
+
+Vive en un stack **aparte** y en su propia app CDK (`infra/app_dominio.py`), por
+la misma razón que las alarmas: poner un CNAME no puede costar estrenar una
+imagen sin probar en el API, el worker y Fargate a la vez.
+
+### Los tres hostnames que se confunden
+
+| Cuál | Qué es |
+|---|---|
+| `irremplazables.xyz` | El nombre público. Lo que teclea la gente. |
+| `2ecset5i94.execute-api.us-east-1.amazonaws.com` | El endpoint del API. Sigue vivo. |
+| `d-hyornda8q1.execute-api.us-east-1.amazonaws.com` | **Al que apunta el CNAME de Cloudflare.** |
+
+El tercero es el que nadie adivina. Apuntar Cloudflare al segundo resuelve
+perfecto y el TLS ni siquiera llega a validar: ese endpoint presenta el
+certificado de `*.execute-api.us-east-1.amazonaws.com`, que no cubre nuestro
+nombre. Se saca con:
+
+```bash
+aws apigatewayv2 get-domain-name --domain-name irremplazables.xyz --region us-east-1 --query "DomainNameConfigurations[0].ApiGatewayDomainName" --output text
+```
+
+### Desplegarlo
+
+Desde `D:\aws-project\infra`, en cmd, y **solo con el certificado en ISSUED**:
+
+```bash
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "CERT_ARN=arn:aws:acm:us-east-1:191241816158:certificate/2a234253-9f81-4338-b93a-20a2a935457d" && npx cdk --app "python app_dominio.py" deploy aws-media-dominio & set "CERT_ARN="
+```
+
+Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
+
+### Cloudflare: los dos ajustes que importan
+
+- **SSL/TLS = Full (strict).** Con `Flexible`, Cloudflare habla HTTP a un origen
+  que solo escucha en 443: da 5xx o bucle de redirecciones, y se ve idéntico a
+  «la app está caída». Verificado el 2026-09-23 que `Full (strict)` funciona —
+  Cloudflare manda el hostname del visitante como SNI, cosa que su propia
+  documentación no dice en ningún sitio.
+- **El CNAME del ápice va PROXEADO (nube naranja).** En el ápice no existe el
+  CNAME plano, así que Cloudflare lo aplana siempre; en gris eso publicaría las
+  IP del endpoint de API Gateway, que no son estables.
+
+### Lo que NO se puede borrar nunca
+
+El CNAME `_181ee3334b127307304e024ff9aefc56` de la zona es el de validación de
+ACM, y ACM **lo relee para renovar**. El certificado vence el **2027-04-08** y
+la renovación arranca 45 días antes: son dos ciclos al año, no uno. Borrar ese
+registro no rompe nada hoy y rompe todo en medio año, cuando nadie se acuerde
+de este trabajo.
+
+### La trampa que se cobró media hora el día del cambio
+
+Un dominio recién registrado arrastra respuestas negativas cacheadas: quien
+preguntó por él antes de que existiera el registro se guarda ese «no existe»
+hasta el mínimo del SOA de la zona (1800 s). Y el resolver de casa resultó ser
+el **router** (`fe80::1`), que caduca peor y al que `ipconfig /flushdns` no
+toca. Síntoma: `DNS_PROBE_FINISHED_NXDOMAIN` en tu navegador mientras el sitio
+responde 200 para el resto del mundo. Se confirma preguntando a dos resolvers
+públicos distintos — si Google y Cloudflare lo resuelven, el problema es local:
+
+```bash
+curl -s -H "accept: application/dns-json" "https://dns.google/resolve?name=irremplazables.xyz&type=A"
+```
+
+Salidas, de más rápida a más lenta: DNS seguro en el navegador (salta router y
+proveedor), reiniciar el router, o esperar.
+
 ## Alarmas
 
 Siete alarmas de CloudWatch mandan correo cuando algo se rompe, a
@@ -373,7 +562,8 @@ con la primera, pero el trabajo del proyecto se sigue desde la segunda — y una
 alarma que llega a la bandeja que nadie abre no es una alarma. Viven en un stack **aparte** (`aws-media-alertas`) y en su propia app CDK
 (`infra/app_alertas.py`), por una razón concreta: `cdk deploy aws-media-api`
 arrastra la base de datos —el diff lo dice literalmente, *«Including dependency
-stacks: aws-media-db, aws-media-media»*— y desplegar unas alarmas no debería
+stacks: aws-media-db, aws-media-media, aws-media-jobs»* (TRES: `app.py` le
+pasa a ApiStack el `jobs_queue` y el `producir_sm`, que salen de JobsStack)— y desplegar unas alarmas no debería
 poder meter al clúster Aurora en el radio de una actualización.
 
 ### Desplegarlas
@@ -382,6 +572,13 @@ Desde `D:\aws-project\infra`, en cmd:
 
 ```bash
 set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && npx cdk --app "python app_alertas.py" deploy aws-media-alertas --require-approval never
+```
+
+O en PowerShell:
+
+```powershell
+$env:PATH = "D:\aws-project\venv\Scripts;C:\Program Files\nodejs;$env:PATH"
+npx cdk --app "python app_alertas.py" deploy aws-media-alertas --require-approval never
 ```
 
 Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
@@ -662,8 +859,10 @@ venv/Scripts/python tools/ssm_env.py
 ```
 
 - Webhook (test Y live por separado): endpoint
-  `https://2ecset5i94.execute-api.us-east-1.amazonaws.com/api/pagos/stripe`,
-  evento `checkout.session.completed`. Un pago que no abona casi siempre es
+  `https://irremplazables.xyz/api/pagos/stripe`. El del `execute-api` sigue
+  funcionando: **se agrega el nuevo antes de quitar el viejo, nunca al revés**
+  — un webhook mal apuntado no da error visible, solo pagos que no se abonan.
+  Evento: `checkout.session.completed`. Un pago que no abona casi siempre es
   el webhook del modo equivocado (revisar requests en CloudWatch).
 - Pago raro (sin usuario, monto sin pack) → queda 200 con ERROR en CloudWatch
   → abonar a mano con `creditos.py abonar --tipo compra --ref <session_id>`.

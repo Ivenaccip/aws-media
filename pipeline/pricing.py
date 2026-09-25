@@ -47,8 +47,14 @@ def estimar_regeneracion(duracion_clip_s: float, n_imagenes: int = 1, backend: s
     if backend == "google":
         imagen, video = GOOGLE_NANO_BANANA * n_imagenes, segundos * GOOGLE_VEO_LITE_720P
     else:
-        # fal (default desde 2026-09-03): nano banana edit + veo lite 720p sin audio
-        imagen = NANO_BANANA_FAL * n_imagenes
+        # fal (default desde 2026-09-03): el modelo de imagen + veo lite 720p
+        # sin audio. M23 · B (18-sep): esto decía NANO_BANANA_FAL y se quedó
+        # ahí cuando las imágenes pasaron a Grok — el popup habría seguido
+        # cotizando $0.04 de un modelo que ya no se llama, y ese número no solo
+        # se enseña: se guarda en el libro de gastos del proyecto. El b-roll
+        # manda SIEMPRE una referencia (server/overlays_api.py), así que la
+        # entrada va en el precio.
+        imagen = (GROK_EDIT_SALIDA + GROK_EDIT_ENTRADA) * n_imagenes
         video = segundos * VEO_LITE_POR_SEGUNDO[("720p", False)]
     return {"backend": backend, "imagenes": n_imagenes, "imagen": round(imagen, 3),
             "veo_segundos": segundos, "video": round(video, 3),
@@ -61,7 +67,11 @@ def costo_fal(app: str, args: dict) -> float | None:
         tarifa = VEO_LITE_POR_SEGUNDO.get((args.get("resolution", "720p"), bool(args.get("generate_audio"))), 0.03)
         return round(seg * tarifa, 4)
     if "grok-imagine-image" in app:
-        return round(GROK_EDIT_SALIDA + GROK_EDIT_ENTRADA * len(args.get("image_urls") or []), 4)
+        # casa los dos endpoints de la familia (crear y editar): la salida
+        # cuesta igual y las referencias se cuentan de los argumentos, así que
+        # una lista vacía da el precio de crear
+        return round(GROK_EDIT_SALIDA * int(args.get("num_images", 1))
+                     + GROK_EDIT_ENTRADA * len(args.get("image_urls") or []), 4)
     if "nano-banana" in app:
         return round(NANO_BANANA_FAL * int(args.get("num_images", 1)), 4)
     if "elevenlabs/tts" in app:
@@ -74,7 +84,8 @@ def unidades_fal(app: str, args: dict) -> dict | None:
     if "veo3.1" in app:
         return {"video_seconds": int(float(str(args.get("duration", "0")).rstrip("s") or 0))}
     if "grok-imagine-image" in app:
-        return {"images": 1, "reference_images": len(args.get("image_urls") or [])}
+        return {"images": int(args.get("num_images", 1)),
+                "reference_images": len(args.get("image_urls") or [])}
     if "nano-banana" in app:
         return {"images": int(args.get("num_images", 1)),
                 "reference_images": len(args.get("image_urls") or [])}
