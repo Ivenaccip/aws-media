@@ -73,6 +73,7 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 | `#5b8dd6` | azul | gráficas, relleno azul de datos | texto sobre `#18293f` |
 | `#3dd68c` | éxito | estados «listo» | acciones |
 | `#ff8080` | error | textos y bordes de error | acciones normales |
+| `#2e2110` + `#a96716` | aviso | la **caja de aviso** (`.aviso-caja`): fondo, borde e icono en ámbar claro | texto suelto en ámbar |
 
 El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 `#ffb4b4`, los del orbe…) conserva el papel que le da el test.
@@ -84,6 +85,16 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - El **azul claro** es solo para **enlaces** que llevan a otra parte.
 - **Verde y rojo** son solo para **estados** (salió bien, salió mal), nunca
   para acciones normales.
+- Un **aviso** (algo que conviene notar, sin ser error: «recortamos tu foto»,
+  «campaña en pausa») va en la **caja de aviso** de `carta.css`: fondo
+  `#2e2110`, borde `#a96716` y el icono en ámbar claro. Nunca como texto
+  ámbar suelto, que se confunde con la acción (dueño, 25-sep).
+- Las **barras de progreso** van en ámbar, igual en crear, shorts y editar
+  metraje (dueño, 25-sep). El azul de datos queda para gráficas.
+- **El principal cambia con el estado.** En editar metraje, sin metraje el
+  ámbar es «Subir»; con metraje pasa a «Proponer ✦ N» (o «Editar») y Subir
+  queda secundario. En el panel del negocio, «Sincronizar costes» es el ámbar
+  aunque la pantalla sea de consulta (dueño, 25-sep).
 - Todo lo demás es gris: botón secundario con borde `#55708f`.
 
 ## 4. Espacio, forma y movimiento
@@ -152,6 +163,8 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 | **Espera corta** | Por ahora como hoy. Los «esqueletos» quedan para después. |
 | **Error** | Tres partes: **qué pasó** (sin culpar), **qué pasó con tus créditos** («Te devolvimos ✦ 90») y **qué sigue** (un botón). Lo técnico va plegado en «Detalles técnicos». |
 | **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. |
+| **Tus trabajos** (`static/trabajos.js`) | Cuadro abajo a la derecha en todas las pantallas: lo que corre (paso, avance, «Ver»), lo que terminó en las últimas **24 h** con su enlace y lo que falló con «Te devolvimos ✦ N». Va **plegado**; se abre solo cuando algo termina o falla y no lo habías visto. Lo cerrado no vuelve en ese navegador. En celular, abajo a todo lo ancho (dueño, 25-sep). |
+| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
 
 ## 9. Fuera de alcance por ahora
 

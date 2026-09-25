@@ -5,55 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Investiga tu competencia</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { color-scheme: dark; }
+  /* los nombres de siempre, ahora apuntando a los tokens de la carta */
+  :root { --bg:var(--c-fondo); --card:var(--c-superficie); --elev:var(--c-elevada);
+          --line:var(--c-linea); --campo:var(--c-campo); --txt:var(--c-texto);
+          --mut:var(--c-secundario); --acc:var(--c-ambar); --acc2:var(--c-ambar-claro); }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
+  /* UI·12: la píldora del saldo acaba a 52 px; el contenido empieza a 72 */
+  body { font: var(--t-sm)/1.5 var(--f-texto); background: var(--bg); color: var(--txt);
+         padding: 72px 24px 48px; }
   main { max-width: 960px; margin: 0 auto; }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
-  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
-  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
-           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
-  button:hover { border-color: #5b8dd6; }
-  button:disabled { opacity: .5; cursor: default; background: #18293f; }
-  input { background: #18293f; color: #ece8e1; border: 1px solid #55708f; border-radius: 8px;
-          padding: 8px 10px; font: inherit; font-size: 14px; }
-  .mut { color: #93a3b8; font-size: 13px; }
-  .err { color: #ff8080; font-size: 14px; }
-  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .cuenta { display: flex; align-items: center; gap: 10px; border: 1px solid #22354f;
-            border-radius: 10px; padding: 9px 12px; margin-bottom: 8px; }
-  .cuenta b { font-weight: 600; }
-  .quitar { font-size: 12px; padding: 4px 10px; background: #18293f; margin-left: auto; }
-  .red { font-size: 12px; color: #93a3b8; border: 1px solid #22354f; border-radius: 999px;
-         padding: 1px 9px; }
-  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-  .tarjeta h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-  .lectura { background: #18293f; border-radius: 10px; padding: 14px 16px; margin: 12px 0 16px; }
-  .lectura h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-  .lectura ul { margin: 0 0 10px 18px; }
+  a { color: var(--c-enlace); }
+  .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+            text-decoration: none; }
+  .volver:hover { color: var(--txt); }
+  /* carta §2: títulos en Bricolage, escala de seis tamaños */
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0 12px; }
+  p.sub { color: var(--mut); font-size: var(--t-md); line-height: 1.55; max-width: 65ch; margin-bottom: 32px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-grande);
+            padding: 24px; margin-bottom: 24px; }
+  section h2 { font: 700 var(--t-titulo-md)/1.2 var(--f-titulo); margin-bottom: 16px; }
+  input { min-height: 44px; background: var(--elev); color: var(--txt); border: 1px solid var(--campo);
+          border-radius: var(--r-medio); padding: 8px 12px; font: inherit; }
+  #url { flex: 1; min-width: min(100%, 280px); }
+  .mut { color: var(--mut); font-size: var(--t-xs); }
+  .err { color: var(--c-error); font-size: var(--t-sm); }
+  .err .ico { margin-right: 4px; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+  .nota { margin-top: 8px; }
+  .cuenta { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line);
+            border-radius: var(--r-medio); padding: 8px 8px 8px 12px; margin-bottom: 8px; }
+  .cuenta b { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  /* carta §5: la forma y los estados son de carta.css (.btn-*); aquí solo el
+     acomodo de los botones chicos de cada fila (Quitar, Ver/Cerrar, Recargar) */
+  .quitar { padding: 0 16px; margin-left: auto; flex: none; }
+  /* etiqueta de la red: radio de chip (§4) */
+  .red { font-size: var(--t-xs); color: var(--mut); border: 1px solid var(--line);
+         border-radius: var(--r-chico); padding: 0 8px; white-space: nowrap; }
+  .tarjeta { border: 1px solid var(--line); border-radius: var(--r-grande); padding: 16px 20px; margin-bottom: 16px; }
+  .tarjeta h3 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin-bottom: 4px; }
+  .tarjeta h3 .mut { font-family: var(--f-texto); font-weight: 400; }
+  .resumen { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .lectura { background: var(--elev); border-radius: var(--r-medio); padding: 16px; margin: 12px 0 16px; }
+  .lectura h4 { font: 600 var(--t-sm)/1.4 var(--f-texto); margin-bottom: 8px; }
+  .lectura h4 + ul, .lectura ul { margin: 0 0 12px 20px; padding: 0; }
   .lectura li { margin-bottom: 4px; }
-  .aviso { color: #f0a94a; font-size: 13.5px; }
-  .pub { border-top: 1px solid #22354f; padding: 11px 0; }
+  .lectura .probar { margin-top: 12px; }
+  /* la advertencia va en la caja de aviso de la carta (§3); lo que falló, en rojo */
+  .aviso { font-size: var(--t-xs); }
+  .aviso .ico { margin-right: 4px; }
+  .aviso.fallo { color: var(--c-error); }
+  .pub { border-top: 1px solid var(--line); padding: 12px 0; }
   .pub:first-child { border-top: 0; }
-  .pub .linea1 { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-  .pub .texto { color: #ece8e1; font-size: 14px; margin: 3px 0; }
-  .nums { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: #93a3b8; }
-  .nums b { color: #ece8e1; font-weight: 600; }
-  .indice { font-size: 12.5px; border-radius: 999px; padding: 1px 9px; border: 1px solid #3dd68c;
-            background: #102e22; color: #3dd68c; }
-  .indice.bajo { border-color: #22354f; background: none; color: #93a3b8; }
-  a.ver { color: #5b8dd6; text-decoration: none; font-size: 13px; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .pub .linea1 { display: flex; gap: 4px 12px; align-items: center; flex-wrap: wrap; }
+  .pub .texto { color: var(--txt); font-size: var(--t-sm); margin: 4px 0; }
+  .nums { display: flex; gap: 4px 16px; flex-wrap: wrap; font-size: var(--t-xs); color: var(--mut);
+          font-variant-numeric: tabular-nums; }
+  .nums b { color: var(--txt); font-weight: 600; }
+  /* el índice alto es un estado («rindió»): verde de éxito, como una etiqueta */
+  .indice { font-size: var(--t-xs); border-radius: var(--r-chico); padding: 0 8px; border: 1px solid #3dd68c;
+            background: #102e22; color: #3dd68c; white-space: nowrap; }
+  .indice.bajo { border-color: var(--line); background: none; color: var(--mut); }
+  a.ver { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 4px;
+          font-size: var(--t-xs); font-weight: 500; text-decoration: none; }
+  a.ver:hover { color: var(--txt); text-decoration: underline; text-underline-offset: 4px; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+  @media (max-width: 480px) {
+    body { padding-inline: 16px; }
+    section { padding: 16px; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← Estudio</a>
+  <a class="volver" href="/estudio/"><i data-icono="volver"></i>Estudio</a>
   <h1>Investiga tu competencia</h1>
   <p class="sub">Guarda las cuentas que quieres vigilar y, cuando quieras, revisa qué les está
     funcionando: sus últimas publicaciones con sus números, ordenadas por lo que rindieron
@@ -63,19 +90,17 @@
   <section>
     <h2>Las cuentas que vigilas</h2>
     <div id="cuentas"><span class="mut">Cargando…</span></div>
-    <div class="controles" style="margin-top:14px">
+    <div class="controles">
       <input id="url" type="url" aria-label="Liga del perfil que quieres vigilar"
-             placeholder="instagram.com/lacuenta · tiktok.com/@lacuenta · youtube.com/@lacuenta"
-             style="flex:1;min-width:300px">
-      <button id="btn-agregar">Agregar</button>
+             placeholder="instagram.com/lacuenta · tiktok.com/@lacuenta · youtube.com/@lacuenta">
+      <button id="btn-agregar" class="btn btn-sec">Agregar</button>
     </div>
-    <p id="est-cuenta" class="mut" style="margin-top:8px"></p>
-    <div class="controles" style="margin-top:14px">
-      <button id="btn-revisar" disabled>Revisar</button>
+    <p id="est-cuenta" class="mut nota"></p>
+    <div class="controles">
+      <button id="btn-revisar" class="btn btn-pri" disabled>Revisar</button>
       <span id="precio" class="mut"></span>
     </div>
-    <p id="estado" class="mut" style="margin-top:8px"></p>
-    <p id="red" class="mut" hidden>📡 Sin conexión — reintentando… Tu revisión sigue en la nube.</p>
+    <p id="estado" class="mut nota"></p>
   </section>
 
   <section>
@@ -85,12 +110,17 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 <script src="/orbe.js"></script>
+<script src="/iconos.js"></script>
 <script>
 // ── cp · Competencia (C5)
 const $ = id => document.getElementById(id);
 let CPTARIFA = null, cpPoll = null, cpFirma = null, cpAbierto = null;
 const CPDETALLE = {};   // id de informe → doc completo ya pedido
+// UI·14: los iconos de trazo de iconos.js; sin él (p. ej. en los tests en
+// node) se pinta solo el texto
+const cpIco = n => window.icono ? window.icono(n) : "";
 
 const CPTITULO = document.title;
 const cpTitulo = t => { document.title = t ? `${t} · ${CPTITULO}` : CPTITULO; };
@@ -144,7 +174,7 @@ function cpIndice(v) {
 
 function cpBotonRecargar() {
   const b = document.createElement("button");
-  b.className = "quitar";
+  b.className = "btn btn-sec quitar";
   b.textContent = "Recargar";
   b.onclick = () => window.monedero && monedero.recargar && monedero.recargar();
   return b;
@@ -173,7 +203,7 @@ function cpPintarCuentas(cuentas, max) {
     `<div class="cuenta"><span class="red">${cpEsc(c.red === "instagram" ? "Instagram"
       : c.red === "tiktok" ? "TikTok" : "YouTube")}</span>
      <b>@${cpEsc(c.cuenta)}</b>
-     <button class="quitar" data-quitar="${cpEsc(c.id)}">Quitar</button></div>`).join("")
+     <button class="btn btn-peligro quitar" data-quitar="${cpEsc(c.id)}">Quitar</button></div>`).join("")
     : '<span class="mut">Todavía no vigilas a nadie — pega la liga de un perfil abajo.</span>';
   for (const b of $("cuentas").querySelectorAll("[data-quitar]"))
     b.onclick = () => cpQuitar(b.dataset.quitar);
@@ -191,7 +221,7 @@ function cpPublicacion(p) {
     <div class="linea1"><span class="red">${cpEsc(nombre)}</span> <b>@${cpEsc(p.cuenta)}</b>
       <span class="mut">${cpEsc(cpDia(p.cuando))}${p.duracion_s ? " · " + cpEsc(cpDuracion(p.duracion_s)) : ""}</span>
       ${cpIndice(p.indice)}
-      ${cpHref(p.enlace) ? `<a class="ver" href="${cpEsc(cpHref(p.enlace))}" target="_blank" rel="noopener">Ver ↗</a>` : ""}</div>
+      ${cpHref(p.enlace) ? `<a class="ver" href="${cpEsc(cpHref(p.enlace))}" target="_blank" rel="noopener">Ver${cpIco("externo")}</a>` : ""}</div>
     ${p.texto ? `<p class="texto">${cpEsc(p.texto.slice(0, 180))}${p.texto.length > 180 ? "…" : ""}</p>` : ""}
     <div class="nums">
       <span>Vistas <b>${cpNum(p.vistas)}</b></span>
@@ -215,9 +245,9 @@ function cpLectura(l, publicaciones) {
     ${patrones ? `<ul>${patrones}</ul>` : '<p class="mut">No hay un patrón que estos datos sostengan.</p>'}
     ${l.ganchos ? `<p><b>Ganchos:</b> ${cpEsc(l.ganchos)}</p>` : ""}
     ${l.formato ? `<p><b>Formato:</b> ${cpEsc(l.formato)}</p>` : ""}
-    ${(l.probar || []).length ? `<h4 style="margin-top:10px">Qué puedes probar</h4>
+    ${(l.probar || []).length ? `<h4 class="probar">Qué puedes probar</h4>
       <ul>${l.probar.map(x => `<li>${cpEsc(x)}</li>`).join("")}</ul>` : ""}
-    ${l.advertencia ? `<p class="aviso">${cpEsc(l.advertencia)}</p>` : ""}
+    ${l.advertencia ? `<p class="aviso aviso-caja">${cpIco("aviso")}${cpEsc(l.advertencia)}</p>` : ""}
   </div>`;
 }
 
@@ -227,7 +257,7 @@ function cpFallidas(doc) {
   const cuales = f.map(c => `@${cpEsc(c.cuenta)}`).join(", ");
   const devueltos = doc.devueltos
     ? ` Te devolvimos ${doc.devueltos} crédito${doc.devueltos === 1 ? "" : "s"}.` : "";
-  return `<p class="aviso">No se pudo traer ${cuales}: ${cpEsc(f[0].motivo || "")}${devueltos}</p>`;
+  return `<p class="aviso fallo">${cpIco("aviso")}No se pudo traer ${cuales}: ${cpEsc(f[0].motivo || "")}${devueltos}</p>`;
 }
 
 function cpInforme(r) {
@@ -238,7 +268,7 @@ function cpInforme(r) {
       <span class="spin">Revisando a la competencia</span> — suele tardar un par de minutos;
       puedes cerrar la página.</p></div></div>`;
   if (r.estado === "error")
-    return `<div class="tarjeta">${cab}<p class="err">La revisión falló${
+    return `<div class="tarjeta">${cab}<p class="err">${cpIco("aviso")}La revisión falló${
       r.error ? ` (${cpEsc(r.error)})` : ""} — tus créditos se devolvieron.</p></div>`;
   const doc = CPDETALLE[r.id];
   const abierto = cpAbierto === r.id;
@@ -247,10 +277,10 @@ function cpInforme(r) {
             + (doc.publicaciones || []).map(cpPublicacion).join("")
       : '<p class="mut">Abriendo…</p>';
   return `<div class="tarjeta">${cab}
-    <p class="mut">${r.n_publicaciones} publicaci${r.n_publicaciones === 1 ? "ón" : "ones"}
+    <p class="mut resumen">${r.n_publicaciones} publicaci${r.n_publicaciones === 1 ? "ón" : "ones"}
       · ${r.creditos} crédito${r.creditos === 1 ? "" : "s"}${
         r.devueltos ? ` (${r.devueltos} devuelto${r.devueltos === 1 ? "" : "s"})` : ""}
-      <button class="quitar" data-abrir="${cpEsc(r.id)}">${abierto ? "Cerrar" : "Ver"}</button></p>
+      <button class="btn btn-sec quitar" data-abrir="${cpEsc(r.id)}">${abierto ? "Cerrar" : "Ver"}</button></p>
     ${cuerpo}</div>`;
 }
 
@@ -260,29 +290,46 @@ async function cpAbrir(id) {
   cpFirma = null;
   if (!CPDETALLE[id]) {
     cpCargar();   // pinta «Abriendo…» mientras llega
-    try { CPDETALLE[id] = await cpFj(`/api/competencia/informes/${encodeURIComponent(id)}`); }
-    catch (e) { CPDETALLE[id] = { publicaciones: [], lectura: {}, fallidas: [] }; }
+    try {
+      CPDETALLE[id] = await cpFj(`/api/competencia/informes/${encodeURIComponent(id)}`);
+      window.avisos?.quitar("competencia-abrir");
+    } catch (e) {
+      // UI·16: antes se guardaba un informe vacío y callaba; ahora se cierra
+      // (así el próximo «Ver» lo vuelve a pedir) y se dice.
+      if (cpAbierto === id) cpAbierto = null;
+      window.avisos?.mostrar("No pudimos abrir ese informe. Inténtalo de nuevo.",
+        { tipo: "mal", clave: "competencia-abrir", accion: { texto: "Reintentar", al: () => { if (cpAbierto !== id) cpAbrir(id); } } });
+    }
     cpFirma = null;
   }
   cpCargar();
 }
 
+let cpRedPuesto = false;
 async function cpCargar() {
   let j;
   try { j = await cpFj("/api/competencia"); }
   catch (e) {
     // un fallo de red no puede matar el poll de una revisión viva (M19)
     if (cpFirma && cpFirma.includes("analizando")) {
-      $("red").hidden = false;
+      cpRedPuesto = true;
+      window.avisos?.mostrar("Sin conexión — reintentando… Tu revisión sigue en la nube.",
+                             { tipo: "info", clave: "red" });
       cpOrbe.estado("idle");
       cpProgramarPoll();
       return;
     }
-    $("informes").innerHTML = `<span class="err">${cpEsc(e.message)}</span>`;
-    $("cuentas").innerHTML = "";
+    // UI·16: el fallo va al cuadro de avisos, no dentro de la lista; si nunca
+    // cargó, se quita el «Cargando…» para que no mienta.
+    window.avisos?.mostrar("No pudimos traer tus cuentas y revisiones. Revisa tu conexión e inténtalo de nuevo.",
+      { tipo: "mal", clave: "competencia-carga", accion: { texto: "Reintentar", al: cpCargar } });
+    if (CPTARIFA === null) { $("informes").innerHTML = ""; $("cuentas").innerHTML = ""; }
     return;
   }
-  $("red").hidden = true;
+  // solo se quita el aviso de red que puso esta pantalla (misma clave que
+  // trabajos.js: su «Conexión recuperada» no debe borrarse al sondear)
+  if (cpRedPuesto) { cpRedPuesto = false; window.avisos?.quitar("red"); }
+  window.avisos?.quitar("competencia-carga");
   CPTARIFA = j.credito_por_cuenta;
   cpPintarCuentas(j.cuentas || [], j.max_cuentas);
   const firma = JSON.stringify((j.informes || []).map(r => [r.id, r.estado, cpAbierto === r.id]));
@@ -318,7 +365,12 @@ async function cpQuitar(id) {
     const j = await cpFj(`/api/competencia/cuentas/${encodeURIComponent(id)}`, { method: "DELETE" });
     cpPintarCuentas(j.cuentas || [], j.max_cuentas || 5);
     $("est-cuenta").textContent = "";
-  } catch (e) { $("est-cuenta").innerHTML = `<span class="err">${cpEsc(e.message)}</span>`; }
+    window.avisos?.quitar("competencia-quitar");
+  } catch (e) {
+    // UI·16: quitar no es el campo de agregar; el fallo va al cuadro de avisos
+    window.avisos?.mostrar("No pudimos quitar esa cuenta. Inténtalo de nuevo.",
+      { tipo: "mal", clave: "competencia-quitar", accion: { texto: "Reintentar", al: () => cpQuitar(id) } });
+  }
 }
 
 $("btn-agregar").onclick = async () => {

@@ -5,42 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Copiadora de estilos</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
 <style>
-  :root { color-scheme: dark; }
+  /* UI·14 — la copiadora adopta la carta (docs/DISENO.md): colores, letra,
+     forma y foco vienen de carta.css; aquí solo el acomodo de la pantalla. */
+  :root { --bg:var(--c-fondo); --card:var(--c-superficie); --line:var(--c-linea); --campo:var(--c-campo);
+          --txt:var(--c-texto); --mut:var(--c-secundario); }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1; padding: 40px 24px; }
+  body { background: var(--bg); color: var(--txt); font: var(--t-sm)/1.5 var(--f-texto);
+         padding: 64px 24px 40px; }
   main { max-width: 900px; margin: 0 auto; }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px; margin-bottom: 24px; }
-  section h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
-  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
-           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
-  button:hover { border-color: #5b8dd6; }
-  button:disabled { opacity: .5; cursor: default; background: #18293f; }
-  input { background: #18293f; color: #ece8e1; border: 1px solid #55708f; border-radius: 8px;
-          padding: 8px 10px; font: inherit; font-size: 14px; }
-  .mut { color: #93a3b8; font-size: 13px; }
-  .err { color: #ff8080; font-size: 14px; }
+  a { color: var(--c-enlace); }
+  .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0; }
+  p.sub { color: var(--mut); font-size: var(--t-md); line-height: 1.55; max-width: 65ch; margin-bottom: 24px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-grande);
+            padding: 24px; margin-bottom: 24px; }
+  section h2 { font: 700 var(--t-titulo-md)/1.2 var(--f-titulo); margin-bottom: 16px; }
+  input { min-height: 44px; background: var(--c-elevada); color: var(--txt); border: 1px solid var(--campo);
+          border-radius: var(--r-medio); padding: 8px 12px; font: inherit; }
+  #url { flex: 1; min-width: 0; flex-basis: 280px; }
+  .mut { color: var(--mut); font-size: var(--t-xs); }
+  .err { color: var(--c-error); }
   .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-  .tarjeta h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-  .tarjeta h3 small { color: #93a3b8; font-weight: 400; margin-left: 8px; }
-  .paleta { display: flex; gap: 6px; margin: 10px 0; }
-  .paleta span { display: inline-block; width: 38px; height: 26px; border-radius: 6px;
-                 border: 1px solid #22354f; }
-  dl { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; font-size: 13.5px; margin-top: 8px; }
-  dt { color: #93a3b8; }
-  code { background: #18293f; padding: 2px 7px; border-radius: 5px; font-size: 12.5px; }
-  .copiar { font-size: 12px; padding: 4px 10px; background: #18293f; margin-left: 8px; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .tarjeta { border: 1px solid var(--line); border-radius: var(--r-grande); padding: 16px 20px; margin-bottom: 16px; }
+  .tarjeta:last-child { margin-bottom: 0; }
+  .tarjeta h3 { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin-bottom: 8px; overflow-wrap: anywhere; }
+  .tarjeta h3 small { color: var(--mut); font: 400 var(--t-sm)/1.5 var(--f-texto); margin-left: 8px;
+                      font-variant-numeric: tabular-nums; }
+  .paleta { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .paleta span { display: inline-block; width: 40px; height: 28px; border-radius: var(--r-chico);
+                 border: 1px solid var(--line); }
+  dl { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; margin-top: 8px; }
+  dt { color: var(--mut); }
+  dd { min-width: 0; overflow-wrap: anywhere; }
+  code { background: var(--c-elevada); padding: 2px 8px; border-radius: var(--r-chico); font-size: var(--t-xs);
+         -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  /* botones chicos junto al texto (copiar, Recargar): forma y color de .btn-sec */
+  .copiar { padding: 0 12px; margin-left: 8px; font-size: var(--t-xs); vertical-align: middle; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
+  @media (max-width: 520px) {
+    section { padding: 16px; }
+    .tarjeta { padding: 16px; }
+    dl { grid-template-columns: 1fr; gap: 0; }
+    dd { margin-bottom: 8px; }
+    #btn-analizar { width: 100%; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← Estudio</a>
+  <a class="volver" href="/estudio/"><i data-icono="volver"></i> Estudio</a>
   <h1>Copiadora de estilos</h1>
   <p class="sub">Pega la liga de un reel de Instagram o un TikTok que te guste: la IA analiza sus
     frames y arma el perfil visual — paleta, tipografía, iluminación, tono — para que recrees
@@ -50,11 +65,10 @@
     <h2>Analizar un video</h2>
     <div class="controles">
       <input id="url" type="url" placeholder="https://www.instagram.com/reel/… o https://www.tiktok.com/@…/video/…"
-             aria-label="Liga de Instagram o TikTok" style="flex:1;min-width:280px">
-      <button id="btn-analizar" disabled>Analizar</button>
+             aria-label="Liga de Instagram o TikTok">
+      <button id="btn-analizar" class="btn btn-pri" disabled>Analizar</button>
     </div>
-    <p id="estado" class="mut" style="margin-top:10px"></p>
-    <p id="red" class="mut" hidden>📡 Sin conexión — reintentando… Tu análisis sigue en la nube.</p>
+    <p id="estado" class="mut" style="margin-top:8px"></p>
   </section>
 
   <section>
@@ -62,8 +76,10 @@
     <div id="lista"><span class="mut">Cargando…</span></div>
   </section>
 </main>
+<script src="/iconos.js"></script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 <script src="/orbe.js"></script>
 <script>
 const $ = id => document.getElementById(id);
@@ -81,7 +97,7 @@ let orbeEst = SIN_ORBE, listaFirma = null;
 // «Recargar» abre el panel del monedero ahí mismo: /monedero.html no existe
 function botonRecargar() {
   const b = document.createElement("button");
-  b.className = "copiar";
+  b.className = "btn btn-sec copiar";
   b.textContent = "Recargar";
   b.onclick = () => window.monedero && monedero.recargar && monedero.recargar();
   return b;
@@ -129,13 +145,14 @@ function tarjeta(e) {
       <dt>Estética</dt><dd>${esc(p.estetica)}</dd>
       <dt>Tono</dt><dd>${esc(p.tono)}</dd>
       <dt>Prompt</dt><dd><code>${esc(p.prompt_estilo)}</code>
-        <button class="copiar" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent).then(()=>{this.textContent='copiado ✓'})">copiar</button></dd>
+        <button class="btn btn-sec copiar" data-copiar>copiar</button></dd>
     </dl>
     <p class="mut" style="margin-top:8px">Pega el prompt en «Crear imágenes» o «Crear contenido»
       para trabajar con esta estética.</p>
   </div>`;
 }
 
+let redPuesto = false;
 async function cargar() {
   let j;
   try { j = await fj("/api/estilo"); }
@@ -145,20 +162,29 @@ async function cargar() {
     // análisis vivo se sigue reintentando y el aviso lo dice; el error duro
     // solo se pinta cuando no había nada que esperar.
     if (listaFirma && listaFirma.includes("analizando")) {
-      $("red").hidden = false;
+      redPuesto = true;
+      window.avisos?.mostrar("Sin conexión — reintentando… Tu análisis sigue en la nube.",
+                             { tipo: "info", clave: "red" });
       orbeEst.estado("idle");   // sin contacto no afirmamos que la IA trabaja
       programarPoll();
       return;
     }
-    $("lista").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    // UI·16: el fallo no es de ninguna tarjeta, va al cuadro de avisos; la
+    // lista se queda con lo que ya enseñaba (o vacía si nunca cargó).
+    window.avisos?.mostrar("No pudimos traer tus perfiles de estilo. Revisa tu conexión e inténtalo de nuevo.",
+      { tipo: "mal", clave: "estilos-carga", accion: { texto: "Reintentar", al: cargar } });
+    if (listaFirma === null) $("lista").innerHTML = "";
     return;
   }
-  $("red").hidden = true;
+  // solo se quita el aviso de red que puso esta pantalla: la clave es la misma
+  // que usa trabajos.js, y su «Conexión recuperada» no debe borrarse al sondear
+  if (redPuesto) { redPuesto = false; window.avisos?.quitar("red"); }
+  window.avisos?.quitar("estilos-carga");
   orbeEst.estado("pensando");
   TARIFA = j.creditos;
   $("btn-analizar").textContent = `Analizar ✦ ${TARIFA}`;
   $("btn-analizar").disabled = false;
-  // repintar sin cambios tiraba el «copiado ✓» del usuario cada 5 segundos
+  // repintar sin cambios tiraba la selección del usuario y el orbe cada 5 segundos
   const firma = JSON.stringify(j.estilos.map(e => [e.id, e.estado]));
   if (firma !== listaFirma) {
     listaFirma = firma;
@@ -186,6 +212,19 @@ function ponerOrbe() {
       + "puedes cerrar la página y volver. Si sigue igual, escríbenos."),
   });
 }
+
+// UI·16: «copiar» por delegación (las tarjetas se repintan). La confirmación
+// va al cuadro de avisos y el botón sigue diciendo «copiar».
+$("lista").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-copiar]");
+  if (!b) return;
+  const texto = b.previousElementSibling.textContent;
+  // sin contexto seguro navigator.clipboard no existe: también es un fallo
+  Promise.resolve().then(() => navigator.clipboard.writeText(texto)).then(
+    () => window.avisos?.mostrar("Copiado", { tipo: "ok", clave: "copiado" }),
+    () => window.avisos?.mostrar("No se pudo copiar. Selecciona el texto y cópialo a mano.",
+                                 { tipo: "mal", clave: "copiado" }));
+});
 
 $("btn-analizar").onclick = async () => {
   const url = $("url").value.trim();

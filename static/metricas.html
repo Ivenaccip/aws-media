@@ -5,85 +5,104 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de video · Métricas</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- UI·14: la carta de diseño (docs/DISENO.md) — fuentes, tokens, botones, foco -->
+<link rel="stylesheet" href="/carta.css">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
-  /* El mismo molde de «página simple» que la Agenda (static/agenda.html), con
-     el acento AZUL del hub. El padding de arriba deja libre la franja fija del
-     monedero. */
-  body { font: 15px/1.6 system-ui, sans-serif; background: #0b1626; color: #ece8e1;
+  /* El mismo molde de «página simple» que la Agenda (static/agenda.html). El
+     padding de arriba (64 px) deja libre la franja fija del monedero, que
+     acaba a 52 px. Carta §2: Geist para el texto, Bricolage para los títulos,
+     y solo los seis tamaños de la escala. */
+  body { font: var(--t-sm)/1.5 var(--f-texto); background: var(--c-fondo); color: var(--c-texto);
          padding: 64px 24px 48px; }
   main { max-width: 900px; margin: 0 auto;
          padding-inline: max(0px, min(24px, calc(50% - 450px))); }
-  a { color: #5b8dd6; }
-  a.volver { color: #93a3b8; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 10px 0 6px; }
-  p.sub { color: #93a3b8; font-size: 14px; margin-bottom: 24px; }
-  section { background: #111f33; border: 1px solid #22354f; border-radius: 14px; padding: 22px;
-            margin-bottom: 24px; }
-  button { padding: 10px 18px; border-radius: 9px; border: 1px solid #22354f; background: #2b4a75;
-           color: #ece8e1; font: inherit; font-size: 14px; cursor: pointer; }
-  button:hover { border-color: #5b8dd6; }
-  button:disabled { opacity: .5; cursor: default; background: #18293f; }
-  button.sec { background: transparent; }
-  .mut { color: #93a3b8; font-size: 13px; }
-  .err { color: #ff8080; font-size: 14px; }
-  .ok { color: #3dd68c; font-size: 14px; }
+  a { color: var(--c-enlace); }
+  a.volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+             color: var(--c-secundario); text-decoration: none; font-size: var(--t-sm); }
+  a.volver:hover { color: var(--c-texto); }
+  h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; margin: 8px 0 8px; }
+  p.sub { color: var(--c-secundario); font-size: var(--t-md); line-height: 1.55; max-width: 65ch;
+          margin-bottom: 24px; }
+  section { background: var(--c-superficie); border: 1px solid var(--c-linea);
+            border-radius: var(--r-grande); padding: 24px; margin-bottom: 24px; }
+  .mut { color: var(--c-secundario); font-size: var(--t-xs); }
+  .err { color: var(--c-error); font-size: var(--t-sm); }
+  .ok { color: var(--c-exito); font-size: var(--t-sm); }
   /* la región viva: vacía no ocupa nada, pero NUNCA se quita del DOM */
   #mtEstado:empty { display: none; }
-  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .controles .conmutador { margin-right: auto; display: flex; gap: 6px; }
-  .tarjeta { border: 1px solid #22354f; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-  :focus-visible { outline: 2px solid #5b8dd6; outline-offset: 2px; }
+  .controles { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .controles .conmutador { margin-right: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .tarjeta { border: 1px solid var(--c-linea); border-radius: var(--r-grande); padding: 16px;
+             margin-bottom: 12px; }
   .spin::after { content: "…"; animation: p 1.2s infinite; } @keyframes p { 50% { opacity: .3; } }
 
-  /* el conmutador: el que está puesto se ve hundido, no solo distinto */
-  .conmutador button[aria-pressed="true"] { background: #5b8dd6; border-color: #5b8dd6;
-    color: #08111e; font-weight: 600; }
+  /* carta §5: la forma y los estados de los botones los pone carta.css
+     (.btn-sec). Esta pantalla no cobra ni «hace» nada: no lleva principal. */
+  .btn:disabled { opacity: .6; }
+  /* .btn es inline-flex y le ganaría al [hidden] del navegador: «Ver más» se esconde */
+  .btn[hidden] { display: none; }
+
+  /* el conmutador: carta §3, elegir no es ámbar. El que está puesto se marca
+     en blanco sobre la elevada; el hover, en gris (el de .btn-sec). */
+  .conmutador .btn[aria-pressed="true"] { border-color: var(--c-texto); background: var(--c-elevada);
+    color: var(--c-texto); font-weight: 600; }
 
   /* --- la lista --- */
-  #mtLista { list-style: none; padding: 0; margin: 18px 0 0; }
-  #mtLista .vacio { color: #93a3b8; font-size: 13px; display: block; padding: 6px 0; }
-  .mtCab { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
-  .mtPill { color: #93a3b8; font-size: 12.5px; border: 1px solid #22354f;
-            background: #18293f; border-radius: 999px; padding: 3px 11px; white-space: nowrap; }
+  #mtLista { list-style: none; padding: 0; margin: 16px 0 0; }
+  #mtLista .vacio { color: var(--c-secundario); font-size: var(--t-xs); display: block; padding: 8px 0; }
+  .mtCab { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  /* la red es el título de la tarjeta */
+  .mtCab b { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); }
+  .mtPill { color: var(--c-secundario); font-size: var(--t-xs); border: 1px solid var(--c-linea);
+            background: var(--c-elevada); border-radius: var(--r-chico); padding: 4px 12px;
+            white-space: nowrap; font-variant-numeric: tabular-nums; }
   .mtCab .mtPill:last-child { margin-left: auto; }
   .mtFallo { border-color: #8f4a4a; }
-  .mtFallo .mtEtiq { color: #ff8080; border-color: #8f4a4a; }
-  .mtTxt { margin: 8px 0 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .mtPie { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;
+  .mtFallo .mtEtiq { color: var(--c-error); border-color: #8f4a4a; }
+  .mtTxt { margin: 8px 0 0; font-size: var(--t-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mtPie { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px;
            justify-content: flex-end; }
   .mtPie .mut, .mtPie a { margin-right: auto; }
-  .mtPie button { padding: 7px 13px; font-size: 13.5px; }
-  #mtMas { margin-top: 6px; }
+  .mtPie .mut { display: inline-flex; align-items: center; gap: 4px; }
+  /* el enlace a la red también se toca: 44 px de alto */
+  .mtPie a { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
+  #mtMas { margin-top: 8px; }
 
   /* --- los números --- */
   /* tabular-nums alinea las cifras en columna aunque cambien de ancho */
-  .mtNums { display: flex; gap: 22px; flex-wrap: wrap; margin: 12px 0 0;
+  .mtNums { display: flex; gap: 24px; flex-wrap: wrap; margin: 12px 0 0;
             font-variant-numeric: tabular-nums; }
-  .mtNums div { min-width: 74px; }
-  .mtNums b { display: block; font-size: 20px; font-weight: 600; line-height: 1.25; }
-  .mtNums span { color: #93a3b8; font-size: 12.5px; }
-  .mtDelta { color: #93a3b8; font-size: 12px; }
-  .mtDet { margin-top: 12px; border-top: 1px solid #22354f; padding-top: 12px; }
-  .mtDet h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
-  .mtDet dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; margin: 0 0 14px;
-              font-size: 13.5px; font-variant-numeric: tabular-nums; }
-  .mtDet dt { color: #93a3b8; }
+  .mtNums div { min-width: 76px; }
+  .mtNums b { display: block; font: 600 var(--t-titulo-sm)/1.25 var(--f-texto);
+              font-variant-numeric: tabular-nums; }
+  .mtNums span { color: var(--c-secundario); font-size: var(--t-xs); }
+  .mtDelta { color: var(--c-secundario); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+  .mtDet { margin-top: 12px; border-top: 1px solid var(--c-linea); padding-top: 12px; }
+  .mtDet h3 { font: 600 var(--t-sm)/1.3 var(--f-texto); margin: 0 0 8px; }
+  .mtDet dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; margin: 0 0 16px;
+              font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+  .mtDet dt { color: var(--c-secundario); }
   .mtDet dd { margin: 0; text-align: right; }
   /* una tabla de mediciones no cabe en un teléfono: que ruede ella, no la página */
   .mtScroll { overflow-x: auto; }
-  .mtDet table { border-collapse: collapse; font-size: 13px; width: 100%;
+  .mtDet table { border-collapse: collapse; font-size: var(--t-xs); width: 100%;
                  font-variant-numeric: tabular-nums; }
-  .mtDet th, .mtDet td { text-align: right; padding: 4px 10px 4px 0; white-space: nowrap; }
+  .mtDet th, .mtDet td { text-align: right; padding: 4px 12px 4px 0; white-space: nowrap; }
   .mtDet th:first-child, .mtDet td:first-child { text-align: left; }
-  .mtDet thead th { color: #93a3b8; font-weight: 500; border-bottom: 1px solid #22354f; }
-  .mtRank { color: #93a3b8; font-size: 12.5px; }
+  .mtDet thead th { color: var(--c-secundario); font-weight: 500; border-bottom: 1px solid var(--c-linea); }
+  .mtRank { color: var(--c-secundario); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+  /* en el teléfono, el margen de 16 px de la carta: más ancho para la tabla */
+  @media (max-width: 520px) {
+    body { padding-inline: 16px; }
+    section { padding: 16px; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <a class="volver" href="/">← Estudio</a>
+  <a class="volver" href="/estudio/"><i data-icono="volver"></i>Estudio</a>
   <h1>Cómo rinden tus publicaciones</h1>
   <p class="sub">Todo lo que salió de tu cuenta de Blotato —y lo que no pudo salir—, aunque lo
     hayas publicado desde otro lado. Blotato recoge los números por tandas, desde un par de
@@ -92,21 +111,22 @@
   <section>
     <div class="controles">
       <div class="conmutador" role="group" aria-label="Qué lista ver">
-        <button type="button" id="mtVerRec" aria-pressed="true">Recientes</button>
-        <button type="button" id="mtVerTop" aria-pressed="false">Las más vistas</button>
+        <button type="button" id="mtVerRec" class="btn btn-sec" aria-pressed="true">Recientes</button>
+        <button type="button" id="mtVerTop" class="btn btn-sec" aria-pressed="false">Las más vistas</button>
       </div>
-      <button type="button" id="mtRefrescar" class="sec">Actualizar</button>
+      <button type="button" id="mtRefrescar" class="btn btn-sec">Actualizar</button>
     </div>
     <p id="mtVentana" class="mut"></p>
     <p id="mtNota" class="mut" hidden></p>
-    <p id="mtErr" class="err" role="alert" hidden></p>
     <p id="mtEstado" class="ok" role="status" aria-live="polite"></p>
     <ul id="mtLista"><li class="vacio"><span class="spin">Buscando tus publicaciones</span></li></ul>
-    <button type="button" id="mtMas" class="sec" hidden>Ver más</button>
+    <button type="button" id="mtMas" class="btn btn-sec" hidden>Ver más</button>
   </section>
 </main>
+<script src="/iconos.js"></script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 <script>
 // ── mt · Métricas (C4)
 // Hermana de la Agenda: la Agenda enseña lo que TODAVÍA no ha salido y esta lo
@@ -154,7 +174,8 @@ const fj = url => fetch(url).then(async r => {
 });
 
 // ── mt · textos de la pantalla
-const MTCONECTAR = ' <a href="/?blotato=conectar">Conectar Blotato</a>';
+// adónde lleva «Conectar Blotato» cuando el servidor responde 409
+const MTCONECTAR = "/estudio/?blotato=conectar";
 const MTVACIO = '<li class="vacio">En este tramo no publicaste nada. Prueba con «Ver más» ' +
   'para mirar más atrás.</li>';
 const MTVACIOTOP = '<li class="vacio">Todavía no hay ninguna publicación medida en este ' +
@@ -275,7 +296,7 @@ function mtDetalle(it) {
 function mtBoton(it, i) {
   if (it.numeros || (Array.isArray(it.detalle) && it.detalle.length)) {
     const abierto = MTABIERTO.has(it.id);
-    return `<button type="button" class="sec" data-mt="detalle" data-i="${esc(i)}"` +
+    return `<button type="button" class="btn btn-sec" data-mt="detalle" data-i="${esc(i)}"` +
       ` aria-expanded="${abierto ? "true" : "false"}">` +
       `${abierto ? "Ocultar el resto" : "Ver el resto"}</button>`;
   }
@@ -284,7 +305,7 @@ function mtBoton(it, i) {
   // El usuario impaciente pulsaba dos y tres veces la misma consulta hasta
   // ganarse un 429 que se había provocado él.
   if (it.puede_pedir)
-    return `<button type="button" class="sec" data-mt="pedir" data-i="${esc(i)}"` +
+    return `<button type="button" class="btn btn-sec" data-mt="pedir" data-i="${esc(i)}"` +
       `${it.pidiendo ? " disabled" : ""}>` +
       `${it.pidiendo ? "Preguntando…" : "Ver números"}</button>`;
   return "";
@@ -308,8 +329,8 @@ function mtTarjeta(it, i, rango) {
     (!it.numeros && it.motivo ? `<p class="mut">${esc(it.motivo)}</p>` : "") +
     `<div class="mtPie">` +
     (it.enlace ? `<a href="${esc(it.enlace)}" target="_blank" rel="noopener noreferrer">` +
-      `Ver la publicación ↗</a>` : "") +
-    (it.medios ? `<span class="mut">📎 ${esc(it.medios)} ` +
+      `Ver la publicación<i data-icono="externo"></i></a>` : "") +
+    (it.medios ? `<span class="mut"><i data-icono="adjunto"></i>${esc(it.medios)} ` +
       `${esc(it.medios === 1 ? "archivo" : "archivos")}</span>` : "") +
     mtBoton(it, i) + `</div>` +
     (abierto ? `<div class="mtDet">${mtDetalle(it)}</div>` : "") +
@@ -337,6 +358,8 @@ function mtPintar() {
   $("#mtLista").innerHTML = html || (top ? MTVACIOTOP : MTVACIO);
   $("#mtMas").hidden = top || !(MTCURSOR || !MTULTIMO);
   $("#mtMas").textContent = MTCURSOR ? "Ver más" : "Ver 30 días más atrás";
+  // los iconos de trazo de las tarjetas (iconos.js; en las pruebas de node no está)
+  if (window.iconos) window.iconos.pintar($("#mtLista"));
   mtEnlazar();
 }
 
@@ -348,10 +371,15 @@ function mtAbrir(it) {
   mtPintar();
 }
 
-function mtAviso(msg, conectar) {
-  const p = $("#mtErr");
-  p.hidden = !msg;
-  p.innerHTML = msg ? `<span>${esc(msg)}</span>` + (conectar ? MTCONECTAR : "") : "";
+// Los fallos de red o del servidor no son de ningún campo: van al cuadro de
+// avisos de trabajos.js (escapa el texto él). Sin mensaje, se quita el que
+// hubiera; con 409, el aviso ofrece conectar la cuenta.
+function mtAviso(msg, conectar, reintentar) {
+  if (!msg) { window.avisos?.quitar('metricas-error'); return; }
+  const op = {tipo:'mal', clave:'metricas-error'};
+  if (conectar) op.accion = {texto:'Conectar Blotato', al: () => { location.href = MTCONECTAR; }};
+  else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};
+  window.avisos?.mostrar(msg, op);
 }
 
 // Una nota que no es un error: va en gris y sin role="alert". El texto lo
@@ -441,12 +469,12 @@ async function mtCargarYa(mas) {
     mtRotulo();
     // el aviso del recorte NO es un error y lo redacta el servidor: va en gris y
     // aparte, para que pueda convivir con un error de verdad
-    mtAviso(j.error, !!j.reconectar);
+    mtAviso(j.error, !!j.reconectar, () => mtCargar(mas));
     mtNota(j.aviso);
   } catch (e) {
     // lo ya pintado no se tira: solo se explica el hueco cuando no hay nada
     mtCaida(false, false);
-    mtAviso(mtTexto(e), e && e.status === 409);
+    mtAviso(mtTexto(e), e && e.status === 409, () => mtCargar(mas));
   } finally {
     MTCARGANDO = false;
     mtOcupado(false);

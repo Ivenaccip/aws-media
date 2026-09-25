@@ -918,7 +918,7 @@ def test_el_editor_deja_reconectar_una_clave_revocada():
 
 
 def test_el_editor_manda_a_conectar_en_el_inicio():
-    assert 'window.open("/?blotato=conectar"' in EDITOR
+    assert 'window.open("/estudio/?blotato=conectar"' in EDITOR
     assert "my.blotato.com/settings/api" not in EDITOR
 
 

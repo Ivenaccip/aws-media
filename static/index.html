@@ -376,7 +376,6 @@
       </div>
       <div class="grid" id="grid"></div>
       </div>
-      <div class="err" id="err"></div>
       <!-- M23: las imágenes sueltas (crear / editar) por fin tienen dónde verse -->
       <div id="imagenes" hidden style="margin-top:26px">
         <div class="cabecera-grid">
@@ -802,14 +801,22 @@ function renderImagenes() {
 }
 $('#ver-todas').onclick = () => { todasVisibles = !todasVisibles; renderImagenes(); };
 
+// UI·16: si la lista de proyectos no llega, se avisa en el cuadro de
+// trabajos.js (con Reintentar) y el hub se queda con lo que ya tenía. La
+// clave reemplaza el aviso anterior, así que llamar de nuevo no lo repite.
+function avisarCarga() {
+  window.avisos?.mostrar('No pudimos traer tus proyectos. Revisa tu conexión e inténtalo de nuevo.',
+                         {tipo: 'mal', clave: 'inicio-carga', accion: {texto: 'Reintentar', al: cargar}});
+}
+
 async function cargar() {
-  $('#err').textContent = '';
   try {
     const [rp, rs, re, ri] = await Promise.all([
       fetch('/api/proyectos'), fetch('/api/slots'), fetch('/api/edicion/proyectos'),
       fetch('/api/imagenes').catch(() => null)]);
-    if (!rp.ok) return;
+    if (!rp.ok) { avisarCarga(); return; }
     const ps = await rp.json();
+    window.avisos?.quitar('inicio-carga');
     if (rs.ok) slots = (await rs.json()).slots;
     render(ps);
     if (ri && ri.ok) { imagenes = (await ri.json()).imagenes || []; renderImagenes(); }
@@ -822,7 +829,7 @@ async function cargar() {
     $('#caminos').hidden = !nuevo;
     $('#mis-proyectos').hidden = !!nuevo;
     $('#imagenes').hidden = !!nuevo || $('#imagenes').hidden;
-  } catch { /* cortesía: el hub sigue completo sin la lista */ }
+  } catch { avisarCarga(); /* el hub sigue completo sin la lista */ }
 }
 
 function render(ps) {
@@ -885,21 +892,27 @@ function render(ps) {
     b.onclick = () => accion(b.dataset.id, 'desarchivar'));
 }
 
+// UI·16: archivar/restaurar no es de ningún campo — el resultado va al cuadro
 async function accion(id, verbo) {
   try {
     const r = await fetch(`/api/proyectos/${id}/${verbo}`, {method: 'POST'});
     if (!r.ok) {
-      const d = (await r.json()).detail;
-      $('#err').textContent = typeof d === 'string' ? d : (d?.aviso || 'No se pudo — intenta de nuevo.');
+      const d = (await r.json().catch(() => ({}))).detail;
+      window.avisos?.mostrar(typeof d === 'string' ? d : (d?.aviso || 'No se pudo — intenta de nuevo.'),
+                             {tipo: 'mal', clave: 'inicio-accion'});
       return;
     }
+    window.avisos?.quitar('inicio-accion');
     cargar();
-  } catch { $('#err').textContent = 'Sin conexión — intenta de nuevo.'; }
+  } catch {
+    window.avisos?.mostrar('Sin conexión — intenta de nuevo.', {tipo: 'mal', clave: 'inicio-accion'});
+  }
 }
 
 addEventListener('DOMContentLoaded', cargar);
 </script>
 <script src="/auth.js"></script>
 <script src="/monedero.js"></script>
+<script src="/trabajos.js"></script>
 </body>
 </html>

@@ -1816,7 +1816,7 @@ function b3mascota(conectado, reconectar) {
   $("b3masTxt").innerHTML = reconectar ? "Haz click para<br>reconectar Blotato"
                                        : "Haz click para<br>agregar Blotato";
   mas.style.cursor = conectar ? "pointer" : "default";
-  const ir = () => window.open("/?blotato=conectar", "_blank", "noopener");
+  const ir = () => window.open("/estudio/?blotato=conectar", "_blank", "noopener");
   mas.onclick = conectar ? ir : null;
   mas.onkeydown = conectar
     ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ir(); } } : null;
