@@ -91,3 +91,11 @@ def test_lo_que_se_toca_mide_44():
 
 def test_las_voces_dicen_su_nivel_en_palabras():
     assert "const NIVEL = {verde:'Encaja', amarillo:'Tal vez', rojo:'No encaja'};" in CREAR
+
+
+def test_los_iconos_de_los_titulos_van_en_gris():
+    """Decisión del dueño (25-sep). El color queda para los estados."""
+    e = _estilo()
+    assert "  h2 .ico { color:var(--mut); }" in e
+    assert "#resultado h2 .ico { color:#3dd68c; }" in e
+    assert "#error h2 .ico { color:#ff8080; }" in e

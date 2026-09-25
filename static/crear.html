@@ -16,7 +16,7 @@
   /* carta §2: títulos en Bricolage, escala de seis tamaños */
   h1 { font:800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing:-.02em; margin:0 0 20px; }
   h2 { font:700 var(--t-titulo-sm)/1.3 var(--f-titulo); margin:22px 0 8px; display:flex; align-items:center; gap:8px; }
-  h2 .ico { color:var(--acc2); }
+  h2 .ico { color:var(--mut); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r-grande); padding:18px; margin-bottom:14px; }
   textarea, input[type=text] { width:100%; background:var(--elev); color:var(--txt); border:1px solid var(--campo); border-radius:var(--r-medio); padding:10px; font:inherit; }
   textarea { min-height:120px; resize:vertical; }
@@ -127,8 +127,9 @@
   .p-prompt { grid-column:2 / 4; }
   .p-formato { grid-column:1 / 3; }
   .p-duracion { grid-column:3 / 4; }
-  /* UI·13: los emojis de los títulos pasaron a iconos de trazo; siguen en
-     ámbar claro, como cuando eran emojis con filtro (h2 .ico) */
+  /* UI·13: los emojis de los títulos pasaron a iconos de trazo, en gris
+     (h2 .ico; decisión del dueño, 25-sep). Solo los de estado llevan color:
+     verde en «Película lista», rojo en el error. */
 
   /* 1 · estilo: columna de botones del mismo ancho + la muestra a su altura */
   .estilo-flex { display:flex; gap:12px; align-items:stretch; }
