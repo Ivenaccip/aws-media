@@ -107,6 +107,10 @@
     #form > .estado-envio { grid-row:5; align-self:start; }
   }
   /* el monedero vive fijo arriba a la derecha: la cabecera le deja su franja */
+  /* UI·12: los demás estados no tienen cabecera y su primera tarjeta quedaba
+     debajo de la píldora (en revisión, hasta en escritorio: main es ancho).
+     La píldora acaba a 52 px (top 12 + 40); main ya baja 32 → 36 más. */
+  #progreso, #revision, #imagenes, #resultado, #error { padding-top:36px; }
   /* el título va centrado; el margen simétrico le deja libre la franja del
      monedero sin descentrarlo */
   .cabeza { display:flex; justify-content:center; align-items:center; min-height:44px; margin-bottom:14px;

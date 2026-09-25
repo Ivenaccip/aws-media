@@ -236,7 +236,9 @@
     white-space: nowrap; }
 
   @media (max-width: 860px) {
-    .layout { grid-template-columns: 1fr; }
+    /* UI·12: sin sidebar el título «Estudio de video» subía a la franja de la
+       píldora del monedero (fija arriba a la derecha, acaba a 52 px) */
+    .layout { grid-template-columns: 1fr; padding-top: 68px; }
     /* sin esto la fila de secciones (que no se parte) ensanchaba la columna y
        la PÁGINA entera se desplazaba de lado; así el scroll queda en el menú */
     .layout > * { min-width: 0; }
