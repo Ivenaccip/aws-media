@@ -76,6 +76,9 @@
     color var(--m-rapido) ease-out, transform var(--m-rapido) ease-out;
 }
 .btn:active:not(:disabled) { transform: scale(0.98); }
+/* el inline-flex de arriba le gana al atributo hidden: un botón oculto por JS
+   seguía a la vista (UI·14 lo vio en agenda, métricas, shorts y MIX) */
+.btn[hidden] { display: none; }
 .btn:disabled { cursor: default; }
 
 /* principal: UNO por pantalla, el que hace (y casi siempre cobra) */
