@@ -238,3 +238,13 @@ def test_la_caja_de_aviso_respeta_hidden():
     # enseñaba «No pudimos recuperar tu sesión» en la primera visita
     css = (STATIC / "carta.css").read_text(encoding="utf-8")
     assert ".aviso-caja[hidden] { display: none; }" in css
+
+
+def test_si_no_carga_la_configuracion_no_manda_al_estudio_sin_sesion():
+    # en producción, un fallo de red al pedir /api/auth/config se leía como
+    # «no hay login» y /entrar mandaba al estudio; ahora muestra la entrada
+    auth_js = (STATIC / "auth.js").read_text(encoding="utf-8")
+    assert "{ activo: false, fallo: true }" in auth_js
+    assert "if (c.fallo) { sinConexion = true; mostrar(false); return; }" in ENTRAR
+    assert ENTRAR.index("if (c.fallo)") < ENTRAR.index("if (!c.activo) { location.replace(volver)")
+    assert 'id="sin-conexion" hidden' in ENTRAR

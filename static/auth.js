@@ -8,9 +8,13 @@
 // En dev local /api/auth/config responde activo=false y este archivo no hace nada.
 (function () {
   const fetchReal = window.fetch.bind(window);
+  // `fallo` distingue «no hay login» (dev local: el server dice activo=false)
+  // de «no pude preguntar» (red caída, 5xx). Las pantallas siguen mirando solo
+  // `activo`; /entrar usa `fallo` para no mandar al estudio a alguien que en
+  // producción necesita iniciar sesión.
   const cfgPromesa = fetchReal('/api/auth/config')
-    .then(r => (r.ok ? r.json() : { activo: false }))
-    .catch(() => ({ activo: false }));
+    .then(r => (r.ok ? r.json() : { activo: false, fallo: true }))
+    .catch(() => ({ activo: false, fallo: true }));
 
   const b64url = bytes => btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
