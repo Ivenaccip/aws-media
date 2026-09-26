@@ -119,6 +119,11 @@ def test_enlace_de_la_comunidad_se_esconde_si_esta_vacio():
         assert re.search(r'<span data-enlace-envoltura hidden> <a data-enlace="comunidad" hidden>', html)
 
 
+def test_enlace_de_la_comunidad_apunta_a_skool():
+    js = (STATIC / "enlaces.js").read_text(encoding="utf-8")
+    assert "comunidad: 'https://www.skool.com/irremplazables'" in js
+
+
 # ---------------------------------------------------------------------------
 # /entrar y callback
 
