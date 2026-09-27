@@ -511,7 +511,9 @@ document.querySelector('.formatos').onclick = ev => {
 
 // --- monedero (M1): saldo y costo visibles ANTES de gastar, nunca después del 402 ---
 let mon = null, faltaProducir = 0, saldoProd = null;
-const CTA = 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.';
+// El texto lo decide monedero.js (se carga antes que este script): con la
+// recarga cerrada no menciona el ＋, que no se pinta, sino el canal.
+const CTA = (window.monedero && window.monedero.cta) || '';
 function msg402(t) { return `${t} ${CTA}`; }
 document.addEventListener('monedero', e => { mon = e.detail; pintaCostos(); });
 // M19: mientras una petición que COBRA está en vuelo, el monedero no puede

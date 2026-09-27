@@ -729,7 +729,9 @@ function mxPintarCosto() {
   html += "</p>";
   if (!alcanza)
     html += `<p class="err">Te faltan ${mxPl(c.faltan, "crédito", "créditos")} para esta ` +
-      'campaña. <button type="button" class="btn btn-sec chico" id="mxRecargar">Recargar</button></p>';
+      'campaña. ' + (window.monedero && window.monedero.recarga
+        ? '<button type="button" class="btn btn-sec chico" id="mxRecargar">Recargar</button>'
+        : (window.monedero ? window.monedero.cta : "")) + '</p>';
   html += '<div class="controles" style="margin-top:14px">' +
     `<button type="button" class="btn btn-pri" id="mxEncender"${alcanza ? "" : " disabled"}>` +
     "Encender la campaña</button>" +
