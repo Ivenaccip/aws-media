@@ -84,6 +84,10 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
     # subida es la misma de editar metraje (marca/SubirVideo)
     "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
+    # UI·8.6: las dos hermanas de Blotato (lo programado y lo que ya salió).
+    # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto
+    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/agenda/", etapa="nueva"),
+    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="nueva"),
 }
 
 

@@ -1,6 +1,6 @@
 // Botones: tres niveles y cinco estados (docs/DISENO.md §5). El principal va
 // UNO por pantalla; el que cobra es <BotonCobro>, que se apoya en este.
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 
 import { unir } from './unir';
 
@@ -48,6 +48,8 @@ export interface PropsBoton extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Texto mientras trabaja («Generando…»). Mientras haya, no acepta clics. */
   trabajando?: string | false;
   icono?: ReactNode;
+  /** React 19: la ref es una prop más y llega al <button>. */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Boton({

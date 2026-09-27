@@ -2,7 +2,7 @@
 // a mano (docs/PLAN-UI.md §2). Sin sombra: la profundidad la dan el velo y la
 // superficie (docs/DISENO.md §4).
 import * as D from '@radix-ui/react-dialog';
-import { useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode, type RefObject } from 'react';
 
 import { Icono } from './Icono';
 
@@ -20,6 +20,8 @@ export interface PropsDialogo {
   children?: ReactNode;
   /** Botones del pie, de menos a más importante (el principal a la derecha). */
   acciones?: ReactNode;
+  /** Dónde cae el foco al abrir; sin él, en lo primero que se toca (la equis). */
+  focoInicial?: RefObject<HTMLElement | null>;
 }
 
 // Radix devuelve el foco a su <Trigger> al cerrar; aquí los diálogos se abren
@@ -39,13 +41,45 @@ export function useFocoDeVuelta() {
   };
 }
 
-export function Dialogo({ abierto, alCambiar, titulo, descripcion, children, acciones }: PropsDialogo) {
+// El doble clic en el botón que abre el diálogo: el segundo clic caía sobre
+// el velo que el primero acababa de pintar y lo cerraba al instante — desde
+// fuera parece un botón muerto (static/agenda.html, AGGRACIA_MS). Los primeros
+// GRACIA_MS el velo no cierra nada. (La confirmación no lo necesita: su velo
+// nunca cierra.)
+export const GRACIA_MS = 300;
+
+function useGraciaDelVelo() {
+  const abierto = useRef(0);
+  return {
+    marcar: () => {
+      abierto.current = performance.now();
+    },
+    onPointerDownOutside: (e: Event) => {
+      if (performance.now() - abierto.current < GRACIA_MS) e.preventDefault();
+    },
+  };
+}
+
+export function Dialogo({ abierto, alCambiar, titulo, descripcion, children, acciones, focoInicial }: PropsDialogo) {
   const foco = useFocoDeVuelta();
+  const gracia = useGraciaDelVelo();
   return (
     <D.Root open={abierto} onOpenChange={alCambiar}>
       <D.Portal>
         <D.Overlay className={VELO} />
-        <D.Content className={CAJA} {...foco} {...(descripcion ? {} : { 'aria-describedby': undefined })}>
+        <D.Content
+          className={CAJA}
+          onOpenAutoFocus={e => {
+            gracia.marcar();
+            foco.onOpenAutoFocus();
+            if (focoInicial?.current) {
+              e.preventDefault();
+              focoInicial.current.focus();
+            }
+          }}
+          onCloseAutoFocus={foco.onCloseAutoFocus}
+          onPointerDownOutside={gracia.onPointerDownOutside}
+          {...(descripcion ? {} : { 'aria-describedby': undefined })}>
           <div className="flex items-start justify-between gap-4">
             <D.Title className="m-0 font-titulo text-titulo-sm font-bold">{titulo}</D.Title>
             <D.Close

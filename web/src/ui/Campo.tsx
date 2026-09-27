@@ -1,7 +1,7 @@
 // Un campo con su etiqueta, su ayuda y su error (docs/DISENO.md §8: el error
 // va junto al campo, antes de mandar y sin gastar créditos, y dice cómo
 // arreglarlo).
-import { useId, type InputHTMLAttributes } from 'react';
+import { useId, type InputHTMLAttributes, type Ref } from 'react';
 
 import { unir } from './unir';
 
@@ -9,6 +9,8 @@ export interface PropsCampo extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   etiqueta: string;
   ayuda?: string;
   error?: string | null;
+  /** React 19: la ref es una prop más y llega al <input>. */
+  ref?: Ref<HTMLInputElement>;
 }
 
 export function Campo({ etiqueta, ayuda, error, className, ...resto }: PropsCampo) {
