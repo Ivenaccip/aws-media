@@ -71,6 +71,9 @@ PANTALLAS: dict[str, Pantalla] = {
     # sondea mientras la IA trabaja» (nucleo/useListaViva.ts)
     "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="nueva"),
     "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/competencia/", etapa="nueva"),
+    # UI·8.3: editar metraje (e1). Sube con progreso real y cobra una cosa,
+    # «Proponer ✦ N»; la URL nueva dice lo que se hace en ella
+    "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),
 }
 
 
