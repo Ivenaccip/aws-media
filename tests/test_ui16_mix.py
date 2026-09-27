@@ -5,7 +5,6 @@ línea role="status" #mxEstado). Lo que falta para pedir el ejemplo es
 validación y se queda en la página, junto al botón; el confirm() de apagar y
 #mxCuentaErr también se quedan.
 """
-import functools
 import json
 import re
 import shutil
@@ -15,29 +14,25 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _mix() -> str:
-    return (RAIZ / "static" / "mix.html").read_text(encoding="utf-8")
+MIX = (RAIZ / "static" / "mix.html").read_text(encoding="utf-8")
 
 
 def _cuerpo(inicio, largo=900):
-    i = _mix().index(inicio)
-    return _mix()[i:i + largo]
+    i = MIX.index(inicio)
+    return MIX[i:i + largo]
 
 
 def _estilo():
-    return _mix()[_mix().index("<style>"):_mix().index("</style>")]
+    return MIX[MIX.index("<style>"):MIX.index("</style>")]
 
 
 def test_la_caja_de_error_y_la_linea_de_estado_ya_no_existen():
     for id_ in ("mxErr", "mxEstado"):
-        assert f'id="{id_}"' not in _mix(), id_
-        assert f"#{id_}" not in _mix(), id_
-    assert "mxAnunciar" not in _mix()
+        assert f'id="{id_}"' not in MIX, id_
+        assert f"#{id_}" not in MIX, id_
+    assert "mxAnunciar" not in MIX
     assert ".ok {" not in _estilo()
-    assert "scrollIntoView" not in _mix()
+    assert "scrollIntoView" not in MIX
 
 
 def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
@@ -47,23 +42,23 @@ def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
     assert ("if (conectar) op.accion = {texto:'Conectar Blotato', "
             "al: () => { location.href = MXCONECTAR_A; }};") in f
     assert "window.avisos?.mostrar(msg, op);" in f
-    assert 'const MXCONECTAR_A = "/estudio/?blotato=conectar";' in _mix()
+    assert 'const MXCONECTAR_A = "/estudio/?blotato=conectar";' in MIX
     # #mxCuentaErr sigue con su enlace de siempre
-    assert 'const MXCONECTAR = ` <a href="${MXCONECTAR_A}">Conectar Blotato</a>`;' in _mix()
-    assert 'id="mxCuentaErr"' in _mix()
+    assert 'const MXCONECTAR = ` <a href="${MXCONECTAR_A}">Conectar Blotato</a>`;' in MIX
+    assert 'id="mxCuentaErr"' in MIX
 
 
 def test_cada_llamador_de_mxaviso_esta_clasificado():
     # validación: se queda en la página, junto a #mxFalta
-    assert '<p class="err" id="mxVerErr" role="alert" style="margin-top:8px" hidden></p>' in _mix()
-    assert _mix().index('id="mxFalta"') < _mix().index('id="mxVerErr"')
-    assert "if (falta) { mxAvisoFalta(falta); return; }" in _mix()
-    assert "mxAviso(falta)" not in _mix()
+    assert '<p class="err" id="mxVerErr" role="alert" style="margin-top:8px" hidden></p>' in MIX
+    assert MIX.index('id="mxFalta"') < MIX.index('id="mxVerErr"')
+    assert "if (falta) { mxAvisoFalta(falta); return; }" in MIX
+    assert "mxAviso(falta)" not in MIX
     assert "if (!falta) mxAvisoFalta(\"\");" in _cuerpo("function mxCambio() {", 300)
     # servidor: el error del ejemplo que murió sin nadie mirando
-    assert "if (aMedias.error) { mxAviso(aMedias.error); return; }" in _mix()
+    assert "if (aMedias.error) { mxAviso(aMedias.error); return; }" in MIX
     # los que quedan son limpiezas o pasan por mxFallo (red/servidor)
-    llamadas = set(re.findall(r"mxAviso\(([^,)]*)", _mix()))
+    llamadas = set(re.findall(r"mxAviso\(([^,)]*)", MIX))
     assert llamadas == {'""', "aMedias.error", "mxTexto(e", "msg"}
 
 
@@ -74,19 +69,19 @@ def test_la_carga_fallida_ofrece_reintentar():
 
 
 def test_las_confirmaciones_van_como_ok():
-    assert ("`una cada día a las ${mxHoraTexto($(\"#mxHora\").value)}.`, {tipo:'ok'});") in _mix()
+    assert ("`una cada día a las ${mxHoraTexto($(\"#mxHora\").value)}.`, {tipo:'ok'});") in MIX
     f = _cuerpo("async function mxApagar() {", 900)
     assert "`Campaña apagada. Te devolvimos ${mxPl(devueltos, \"crédito\", \"créditos\")}.`" in f
     assert ': "Campaña apagada.", {tipo:\'ok\'});' in f
     assert ('window.avisos?.mostrar("Campaña reanudada. La próxima sale a su hora.", '
-            "{tipo:'ok'});") in _mix()
+            "{tipo:'ok'});") in MIX
     assert ('window.avisos?.mostrar("Listo: abajo está la publicación del primer día.",\n'
-            "      {tipo:'ok', clave:'mix-ejemplo'});") in _mix()
+            "      {tipo:'ok', clave:'mix-ejemplo'});") in MIX
 
 
 def test_los_avisos_del_ejemplo_son_info_de_ocho_segundos():
     assert ('window.avisos?.mostrar("Estamos preparando tu ejemplo. Aparece aquí solo.",\n'
-            "    {tipo:'info', segundos: 8, clave:'mix-ejemplo'});") in _mix()
+            "    {tipo:'info', segundos: 8, clave:'mix-ejemplo'});") in MIX
     f = _cuerpo("    if (fallo) {\n      window.avisos?.quitar('mix-ejemplo');", 400)
     assert "mxFallo(fallo);" in f
     assert "Descartamos ese ejemplo porque la campaña " in f
@@ -94,21 +89,21 @@ def test_los_avisos_del_ejemplo_son_info_de_ocho_segundos():
 
 
 def test_confirm_de_apagar_sigue():
-    assert "if (!confirm(mxTextoApagar(dev))) return;" in _mix()
+    assert "if (!confirm(mxTextoApagar(dev))) return;" in MIX
 
 
 def test_siempre_con_encadenamiento_opcional():
-    assert not re.search(r"window\.avisos\.(mostrar|quitar)", _mix())
-    assert _mix().count("window.avisos?.mostrar(") == 7
-    assert _mix().count("window.avisos?.quitar(") == 3
+    assert not re.search(r"window\.avisos\.(mostrar|quitar)", MIX)
+    assert MIX.count("window.avisos?.mostrar(") == 7
+    assert MIX.count("window.avisos?.quitar(") == 3
 
 
 def test_en_node_los_avisos_llegan_con_su_clave(tmp_path):
     nodo = shutil.which("node")
     if not nodo:
         pytest.skip("node no está en el PATH")
-    i = _mix().index("// ── avisos ─")
-    js = _mix()[i:_mix().index("// ── 1. la foto", i)]
+    i = MIX.index("// ── avisos ─")
+    js = MIX[i:MIX.index("// ── 1. la foto", i)]
     codigo = r"""
 const nodos = {};
 const $ = s => (nodos[s] = nodos[s] || {hidden: true, textContent: ""});

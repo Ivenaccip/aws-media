@@ -5,25 +5,16 @@ botones de tres niveles, foco), iconos de trazo en vez de emojis, la escala
 de seis tamaños y un solo botón ámbar (Generar ✦ N). Cambia el aspecto, no
 el comportamiento.
 """
-import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _clip() -> str:
-    return (RAIZ / "static" / "clip.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _iconos() -> str:
-    return (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
+CLIP = (RAIZ / "static" / "clip.html").read_text(encoding="utf-8")
+ICONOS = (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
 
 
 def _estilo():
-    return _clip()[_clip().index("<style>"):_clip().index("</style>")]
+    return CLIP[CLIP.index("<style>"):CLIP.index("</style>")]
 
 
 def _regla(selector):
@@ -33,10 +24,10 @@ def _regla(selector):
 
 
 def test_carga_la_carta_y_los_iconos():
-    assert _clip().index('href="/carta.css"') < _clip().index("<style>")
+    assert CLIP.index('href="/carta.css"') < CLIP.index("<style>")
     # iconos.js antes del script principal, que llama a icono()
-    assert _clip().index('<script src="/iconos.js"></script>') < _clip().index("<script>\n")
-    assert "--acc:var(--c-ambar); --acc2:var(--c-ambar-claro);" in _clip()
+    assert CLIP.index('<script src="/iconos.js"></script>') < CLIP.index("<script>\n")
+    assert "--acc:var(--c-ambar); --acc2:var(--c-ambar-claro);" in CLIP
 
 
 def test_titulos_en_bricolage_y_texto_en_geist():
@@ -47,9 +38,9 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
-    assert not re.findall(r"font-size:\s*[\d.]+(px|em|rem)", _clip())
-    assert not re.search(r"font:\s*(\d+\s+)?[\d.]+px", _clip())
-    for t in re.findall(r"font-size:\s*([^;]+);", _clip()):
+    assert not re.findall(r"font-size:\s*[\d.]+(px|em|rem)", CLIP)
+    assert not re.search(r"font:\s*(\d+\s+)?[\d.]+px", CLIP)
+    for t in re.findall(r"font-size:\s*([^;]+);", CLIP):
         assert t.strip() in {"var(--t-xs)", "var(--t-sm)", "var(--t-md)",
                              "var(--t-titulo-sm)", "var(--t-titulo-md)", "var(--t-titulo-lg)"}, t
 
@@ -59,26 +50,26 @@ EMOJIS = "✨📐⏱🧑🎙📝📚⚡🖼🎬✅⬇✂🔁▶📡🟢🟡🔴�
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in _clip(), f"quedó {e} en clip"
-    assert "sepia(" not in _clip()
+        assert e not in CLIP, f"quedó {e} en clip"
+    assert "sepia(" not in CLIP
 
 
 def test_los_iconos_que_usa_clip_existen():
-    nombres = set(re.findall(r'data-icono="([a-z]+)"', _clip())) | set(re.findall(r"icono\('([a-z]+)'", _clip()))
+    nombres = set(re.findall(r'data-icono="([a-z]+)"', CLIP)) | set(re.findall(r"icono\('([a-z]+)'", CLIP))
     assert {"volver", "cerrar", "mas"} <= nombres
     for n in nombres:
-        assert f"    {n}: '" in _iconos(), n
+        assert f"    {n}: '" in ICONOS, n
 
 
 def test_un_solo_principal_y_es_generar():
-    assert _clip().count("btn-pri") == 1
-    assert '<button id="btn-generar" class="btn btn-pri">Generar</button>' in _clip()
+    assert CLIP.count("btn-pri") == 1
+    assert '<button id="btn-generar" class="btn btn-pri">Generar</button>' in CLIP
     # el precio sigue diciéndose «Verbo ✦ N» (M21)
-    assert "`Generar ✦ ${cr}`" in _clip()
+    assert "`Generar ✦ ${cr}`" in CLIP
 
 
 def test_sin_el_azul_viejo_de_los_botones():
-    assert "#2b4a75" not in _clip() and "#5b8dd6" not in _clip()
+    assert "#2b4a75" not in CLIP and "#5b8dd6" not in CLIP
 
 
 def test_elegir_no_es_ambar():
@@ -91,11 +82,11 @@ def test_elegir_no_es_ambar():
 
 
 def test_quitar_foto_es_un_icono_con_nombre():
-    assert 'aria-label="Quitar foto">${icono(\'cerrar\')}</button>' in _clip()
+    assert 'aria-label="Quitar foto">${icono(\'cerrar\')}</button>' in CLIP
 
 
 def test_enlaces_y_campos_con_los_tokens():
-    assert "a { color: var(--c-enlace); }" in _clip()
+    assert "a { color: var(--c-enlace); }" in CLIP
     t = _regla("textarea {")
     assert "border: 1px solid var(--campo)" in t and "var(--r-medio)" in t
 

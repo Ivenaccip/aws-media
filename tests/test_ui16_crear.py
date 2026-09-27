@@ -4,27 +4,22 @@ la muestra de voz que no cargó, la película que no se pudo abrir y la vuelta a
 revisión que falló por red. La validación y los errores junto al botón que
 cobra se quedan donde estaban.
 """
-import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _crear() -> str:
-    return (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
+CREAR = (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
 
 
 def _cuerpo(inicio, largo=900):
-    i = _crear().index(inicio)
-    return _crear()[i:i + largo]
+    i = CREAR.index(inicio)
+    return CREAR[i:i + largo]
 
 
 def test_el_banner_local_de_conexion_ya_no_existe():
-    assert 'id="conexion"' not in _crear()
-    assert "#conexion" not in _crear()
-    assert "$('#conexion')" not in _crear()
+    assert 'id="conexion"' not in CREAR
+    assert "#conexion" not in CREAR
+    assert "$('#conexion')" not in CREAR
 
 
 def test_el_sondeo_usa_el_aviso_de_red_compartido():
@@ -40,7 +35,7 @@ def test_el_sondeo_usa_el_aviso_de_red_compartido():
 def test_creditos_devueltos_al_cancelar_van_como_confirmacion():
     f = _cuerpo("$('#cancelar').onclick")
     assert "window.avisos?.mostrar(`Te devolvimos ${d.devueltos} créditos.`, {tipo:'ok'});" in f
-    assert "$('#rerr').textContent = `Te devolvimos" not in _crear()
+    assert "$('#rerr').textContent = `Te devolvimos" not in CREAR
     # el fallo de cancelar sigue junto a su tarjeta
     assert "$('#imgerr').textContent = e.message;" in f
 
@@ -49,9 +44,9 @@ def test_muestra_de_voz_fallida_va_al_cuadro_de_avisos():
     f = _cuerpo("au.onerror")
     assert ("window.avisos?.mostrar('No se pudo cargar la muestra de voz — intenta de nuevo.', "
             "{tipo:'mal', clave:'crear-voz'})") in f
-    assert "$('#rerr').textContent = 'No se pudo cargar la muestra" not in _crear()
+    assert "$('#rerr').textContent = 'No se pudo cargar la muestra" not in CREAR
     # al cargar bien la siguiente muestra, el aviso de fallo se va
-    assert "au.oncanplay = () => { listo(); window.avisos?.quitar('crear-voz');" in _crear()
+    assert "au.oncanplay = () => { listo(); window.avisos?.quitar('crear-voz');" in CREAR
 
 
 def test_modificar_avisa_si_falla_la_red_y_deja_modif_err_para_el_servidor():
@@ -76,19 +71,19 @@ def test_reanudar_por_url_ya_no_calla():
 
 
 def test_siempre_con_encadenamiento_opcional():
-    assert not re.search(r"window\.avisos\.(mostrar|quitar)", _crear())
-    assert _crear().count("window.avisos?.mostrar(") == 5
+    assert not re.search(r"window\.avisos\.(mostrar|quitar)", CREAR)
+    assert CREAR.count("window.avisos?.mostrar(") == 5
 
 
 def test_la_validacion_y_los_errores_de_campo_siguen_en_su_sitio():
-    assert "$('#rerr').textContent = 'Elige una opción de personaje.'" in _crear()
-    assert "} catch (e) { $('#rerr').textContent = e.message; }" in _crear()
+    assert "$('#rerr').textContent = 'Elige una opción de personaje.'" in CREAR
+    assert "} catch (e) { $('#rerr').textContent = e.message; }" in CREAR
     for id_ in ("rerr", "modif-err", "eerr", "ferr", "autosave", "pmodmsg", "estilo_ej"):
-        assert f'id="{id_}"' in _crear(), id_
+        assert f'id="{id_}"' in CREAR, id_
     # el botón que cobra no se tocó
     for id_ in ("enviar", "cobronota", "costo-fila"):
-        assert f'id="{id_}"' in _crear(), id_
+        assert f'id="{id_}"' in CREAR, id_
 
 
 def test_el_confirm_del_balanceador_sigue():
-    assert "if (confirm(`${d.balanceador || 'El tema no parece de tu rubro.'}\\n\\n¿Crear de todos modos?`))" in _crear()
+    assert "if (confirm(`${d.balanceador || 'El tema no parece de tu rubro.'}\\n\\n¿Crear de todos modos?`))" in CREAR

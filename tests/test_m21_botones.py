@@ -50,33 +50,10 @@ COBRAN = [
     ("tools/editor/index.html", "Animar"),
 ]
 
-
-def _web(*patrones: str) -> list[Path]:
-    """Los fuentes de web/ (Fase 3 de docs/PLAN-UI.md) que casan con los patrones.
-
-    Si web/ todavía no existe no hay nada que vigilar: lista vacía, no error.
-    node_modules/ (de terceros) y dist/ (compilado de estos mismos fuentes) no
-    se miran."""
-    web = RAIZ / "web"
-    if not web.is_dir():
-        return []
-    return [p for patron in patrones for p in web.glob(patron)
-            if not {"node_modules", "dist"} & set(p.relative_to(web).parts)]
-
-
 ARCHIVOS = sorted(
     list(ESTATICOS.glob("*.html")) + list(ESTATICOS.glob("*.js"))
     + list((RAIZ / "tools" / "editor").glob("*.html"))
-    # UI·1: y las pantallas nuevas, antes de que exista la primera
-    + _web("**/*.html", "src/**/*.ts", "src/**/*.tsx", "src/**/*.css")
 )
-
-
-def _id(p: Path) -> str:
-    """El nombre, como siempre; en web/ la ruta, porque allí casi todo es index.html."""
-    web = RAIZ / "web"
-    return str(p.relative_to(RAIZ)) if web in p.parents else p.name
-
 
 # `Escribir ✦ ${prep}` / `Proponer ✦ ${c.creditos}` / `${etiqueta} ✦ ${n}`
 FORMA = re.compile(
@@ -93,7 +70,7 @@ def test_cada_boton_que_cobra_dice_verbo_y_precio(rel, verbo):
     )
 
 
-@pytest.mark.parametrize("archivo", ARCHIVOS, ids=_id)
+@pytest.mark.parametrize("archivo", ARCHIVOS, ids=lambda p: p.name)
 def test_toda_etiqueta_con_estrella_respeta_la_forma(archivo):
     """Un verbo, la estrella, el número. Nada de «Renderizar 2 shorts ✦ 4»."""
     texto = archivo.read_text(encoding="utf-8")
@@ -123,7 +100,7 @@ def test_toda_etiqueta_con_estrella_respeta_la_forma(archivo):
             )
 
 
-@pytest.mark.parametrize("archivo", ARCHIVOS, ids=_id)
+@pytest.mark.parametrize("archivo", ARCHIVOS, ids=lambda p: p.name)
 def test_ningun_boton_dice_la_palabra_creditos(archivo):
     """La estrella ES la unidad: repetir «créditos» en el botón la contradice."""
     texto = archivo.read_text(encoding="utf-8")
@@ -136,7 +113,7 @@ def test_ningun_boton_dice_la_palabra_creditos(archivo):
             f"{archivo.name}: un botón sigue diciendo «créditos» → {linea.strip()[:90]}"
 
 
-@pytest.mark.parametrize("archivo", ARCHIVOS, ids=_id)
+@pytest.mark.parametrize("archivo", ARCHIVOS, ids=lambda p: p.name)
 def test_la_estrella_es_siempre_la_misma(archivo):
     """♦ (U+2666) y ◆ (U+25C6) se parecen a ✦ de un vistazo, y ♦ además se
     dibuja como emoji rojo en iOS/Android. ✨ sí vale como icono de título —

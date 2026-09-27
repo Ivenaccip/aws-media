@@ -21,7 +21,6 @@ Lo que este archivo defiende:
 Sin red: el HTML se lee como texto y la lógica corre en node con un DOM mínimo
 (se salta si no hay node).
 """
-import functools
 import json
 import re
 import shutil
@@ -31,17 +30,8 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _pantalla() -> str:
-    return (RAIZ / "static" / "metricas.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _hub() -> str:
-    return (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
-
+PANTALLA = (RAIZ / "static" / "metricas.html").read_text(encoding="utf-8")
+HUB = (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
 
 INICIO = "// ── mt · Métricas (C4)"
 
@@ -51,19 +41,9 @@ def _tramo(desde: str, hasta: str, texto: str) -> str:
     return texto[i:texto.index(hasta, i)]
 
 
-@functools.lru_cache(maxsize=None)
-def _mt() -> str:
-    return _tramo(INICIO, "</script>", _pantalla())
-
-
-@functools.lru_cache(maxsize=None)
-def _ayudantes() -> str:
-    return _tramo("function esc(s)", "// ── mt · textos", _mt())
-
-
-@functools.lru_cache(maxsize=None)
-def _arranque() -> str:
-    return _mt()[_mt().index("// ── mt · arranque"):]
+MT = _tramo(INICIO, "</script>", PANTALLA)
+AYUDANTES = _tramo("function esc(s)", "// ── mt · textos", MT)
+ARRANQUE = MT[MT.index("// ── mt · arranque"):]
 
 
 def _plano(s: str) -> str:
@@ -74,15 +54,15 @@ def _plano(s: str) -> str:
 # XSS
 
 def test_existe_esc_y_escapa_los_cinco_caracteres():
-    assert "function esc(s)" in _pantalla()
+    assert "function esc(s)" in PANTALLA
     for par in ('"&": "&amp;"', '"<": "&lt;"', '">": "&gt;"', "'\"': \"&quot;\"",
                 "\"'\": \"&#39;\""):
-        assert par in _ayudantes(), f"esc no escapa {par}"
+        assert par in AYUDANTES, f"esc no escapa {par}"
 
 
 def _plantillas_html() -> list[str]:
-    fuera = [m.group(0) for m in re.finditer(r"\.innerHTML\s*=.*?;\n", _mt(), re.S)]
-    fuera += [linea for linea in _mt().splitlines() if re.search(r"<[a-z]", linea)]
+    fuera = [m.group(0) for m in re.finditer(r"\.innerHTML\s*=.*?;\n", MT, re.S)]
+    fuera += [linea for linea in MT.splitlines() if re.search(r"<[a-z]", linea)]
     return fuera
 
 
@@ -110,37 +90,37 @@ def test_ningun_innerhtml_interpola_datos_sin_escapar():
 def test_el_error_que_redacta_la_red_va_escapado():
     """Es el texto menos fiable de la pantalla: no lo escribe Blotato, lo
     escribe la red social."""
-    assert "${esc(it.error_red)}" in _mt()
+    assert "${esc(it.error_red)}" in MT
 
 
 def test_la_pantalla_no_carga_nada_del_cdn_de_blotato():
     """El servidor manda el CONTEO de adjuntos, nunca sus URLs."""
-    assert "mediaUrl" not in _pantalla()
-    assert "<img" not in _pantalla()
+    assert "mediaUrl" not in PANTALLA
+    assert "<img" not in PANTALLA
 
 
 def test_el_enlace_a_la_publicacion_no_le_regala_la_pestaña_a_nadie():
-    assert 'rel="noopener noreferrer"' in _pantalla()
+    assert 'rel="noopener noreferrer"' in PANTALLA
 
 
 # ---------------------------------------------------------------------------
 # el orden de carga y el cupo
 
 def test_auth_js_va_antes_del_script_inline():
-    assert _pantalla().index('src="/auth.js"') < _pantalla().index(INICIO)
-    assert _pantalla().index('src="/monedero.js"') < _pantalla().index(INICIO)
+    assert PANTALLA.index('src="/auth.js"') < PANTALLA.index(INICIO)
+    assert PANTALLA.index('src="/monedero.js"') < PANTALLA.index(INICIO)
 
 
 def test_todo_el_arranque_va_dentro_de_domcontentloaded():
-    assert 'document.addEventListener("DOMContentLoaded"' in _arranque()
-    assert re.search(r"^mtCargar\(", _mt(), re.M) is None
+    assert 'document.addEventListener("DOMContentLoaded"' in ARRANQUE
+    assert re.search(r"^mtCargar\(", MT, re.M) is None
 
 
 def test_la_pantalla_no_hace_poll():
     """Sin sondeo: el cupo son 60 llamadas por minuto y esta pantalla no tiene
     nada que esperar — Blotato mide por tandas, no porque se lo pidamos."""
-    assert "setInterval" not in _mt()
-    assert "setTimeout" not in _mt()
+    assert "setInterval" not in MT
+    assert "setTimeout" not in MT
 
 
 def _codigo(js: str) -> str:
@@ -152,15 +132,15 @@ def _codigo(js: str) -> str:
 def test_el_boton_no_promete_actualizar_los_numeros():
     """Ningún endpoint de Blotato fuerza una medición nueva: un botón que
     dijera «Actualizar los números» mentiría."""
-    assert "Ver números" in _mt()
-    assert "Actualizar los números" not in _codigo(_mt())
+    assert "Ver números" in MT
+    assert "Actualizar los números" not in _codigo(MT)
 
 
 # ---------------------------------------------------------------------------
 # el menú del hub
 
 def test_el_hub_enlaza_metricas_y_ya_no_dice_proximamente():
-    linea = next(l for l in _hub().splitlines() if "Ver mis métricas" in l)
+    linea = next(l for l in HUB.splitlines() if "Ver mis métricas" in l)
     assert 'href="/metricas.html"' in linea
     assert 'class="prox"' not in linea
 
@@ -246,7 +226,7 @@ def _node(escenario: str, tmp_path: Path) -> dict:
     nodo = shutil.which("node")
     if not nodo:
         pytest.skip("node no está en el PATH")
-    codigo = (PRELUDIO + _mt() +
+    codigo = (PRELUDIO + MT +
               "\n(async () => {\nconst out = {};\n" + escenario +
               "\nconsole.log(JSON.stringify(out));\n})()"
               ".catch(e => { console.error(e); process.exit(1); });\n")
@@ -443,7 +423,7 @@ def test_la_pantalla_no_redacta_los_mensajes_del_servidor(tmp_path):
     """Los motivos los escribe server/metricas_api.py (MOTIVOS). Si la pantalla
     los copiara, habría dos verdades que mantener."""
     for texto in ("Blotato no guardó", "aún no la ha medido", "no recoge números de LinkedIn"):
-        assert texto not in _pantalla()
+        assert texto not in PANTALLA
 
 
 def test_un_fallo_duro_tampoco_borra_lo_ya_pintado_ni_el_cursor(tmp_path):
@@ -541,4 +521,4 @@ out.err = aviso("metricas-error");
 def test_la_pantalla_no_escribe_el_tope_de_blotato():
     """El 100 es del servidor (blotato.ANALITICAS_MAX). Duplicarlo aquí deja dos
     verdades que mantener."""
-    assert "100 más vistas" not in _codigo(_mt())
+    assert "100 más vistas" not in _codigo(MT)

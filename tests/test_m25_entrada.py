@@ -16,7 +16,6 @@ Lo que este archivo defiende:
     volver a pedírselo es hacerle escribir dos veces lo mismo.
 
 Sin navegador: se lee el HTML, como el resto de los tests de interfaz."""
-import functools
 import json
 import re
 import sys
@@ -25,21 +24,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _inicio() -> str:
-    return (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _clip() -> str:
-    return (RAIZ / "static" / "clip.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _imagenes() -> str:
-    return (RAIZ / "static" / "imagenes.html").read_text(encoding="utf-8")
+INICIO = (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
+CLIP = (RAIZ / "static" / "clip.html").read_text(encoding="utf-8")
+IMAGENES = (RAIZ / "static" / "imagenes.html").read_text(encoding="utf-8")
 
 
 def _tarifas() -> dict:
@@ -48,7 +35,7 @@ def _tarifas() -> dict:
 
 def _opcion(rotulo: str) -> str:
     """El bloque `{ ... }` de una opción del desplegable, por su rótulo."""
-    m = re.search(r"\{[^{}]*rotulo: '" + re.escape(rotulo) + r"'[^{}]*\}", _inicio())
+    m = re.search(r"\{[^{}]*rotulo: '" + re.escape(rotulo) + r"'[^{}]*\}", INICIO)
     assert m, f"no encuentro la opción «{rotulo}» en el desplegable del inicio"
     return m.group(0)
 
@@ -83,27 +70,27 @@ def test_el_precio_de_las_imagenes_sale_de_tarifas_json():
 def test_arranca_en_el_clip():
     """Lo que esté seleccionado se lo lleva todo el que no abra el menú, así que
     arranca en lo más barato: equivocarse cuesta 30 y no 145."""
-    assert "let familiaHub = 'videos', opcionHub = OPCIONES.videos[0];" in _inicio()
-    videos = _inicio()[_inicio().index("videos: ["):_inicio().index("imagenes: [")]
+    assert "let familiaHub = 'videos', opcionHub = OPCIONES.videos[0];" in INICIO
+    videos = INICIO[INICIO.index("videos: ["):INICIO.index("imagenes: [")]
     assert videos.index("Un video corto") < videos.index("Creador de cuentos")
     assert videos.index("Creador de cuentos") < videos.index("Crea tu historia")
 
 
 def test_los_rotulos_son_los_que_eligio_el_dueno():
     for rotulo in ("Un video corto", "Creador de cuentos", "Crea tu historia"):
-        assert f"rotulo: '{rotulo}'" in _inicio()
+        assert f"rotulo: '{rotulo}'" in INICIO
 
 
 def test_los_chips_viejos_ya_no_estan():
     """«Investigación» y «Tengo una idea» describían CÓMO se investiga, no qué
     te llevas — y dejaban a las imágenes sin puerta en el inicio."""
-    assert "btn-inv" not in _inicio() and "btn-idea" not in _inicio()
-    assert ">Investigación<" not in _inicio() and ">Tengo una idea<" not in _inicio()
+    assert "btn-inv" not in INICIO and "btn-idea" not in INICIO
+    assert ">Investigación<" not in INICIO and ">Tengo una idea<" not in INICIO
 
 
 def test_las_imagenes_por_fin_tienen_puerta():
     """Hasta ahora solo se llegaba por la lista del menú de la izquierda."""
-    assert 'data-familia="imagenes"' in _inicio()
+    assert 'data-familia="imagenes"' in INICIO
     assert "destino: '/imagenes.html'" in _opcion("Crear una imagen")
 
 
@@ -130,24 +117,24 @@ def test_las_etiquetas_internas_van_al_reves_de_lo_que_suenan():
 
 def test_el_inicio_manda_el_texto_con_el_nombre_que_espera_cada_pantalla():
     """crear.html y clip.html leen `brief`; imagenes.html lee `prompt`."""
-    assert "q.set(opcionHub.destino === '/imagenes.html' ? 'prompt' : 'brief', texto);" in _inicio()
+    assert "q.set(opcionHub.destino === '/imagenes.html' ? 'prompt' : 'brief', texto);" in INICIO
 
 
 def test_el_clip_recoge_el_texto_que_ya_escribieron():
-    assert 'new URLSearchParams(location.search).get("brief")' in _clip()
-    assert '$("texto").value = CLBRIEF' in _clip()
+    assert 'new URLSearchParams(location.search).get("brief")' in CLIP
+    assert '$("texto").value = CLBRIEF' in CLIP
 
 
 def test_las_imagenes_recogen_el_texto_que_ya_escribieron():
-    assert "q.get('prompt')" in _imagenes()
-    assert "$('#prompt').value = texto" in _imagenes()
+    assert "q.get('prompt')" in IMAGENES
+    assert "$('#prompt').value = texto" in IMAGENES
 
 
 # ---------------------------------------------------------------------------
 # el menú de la izquierda
 
 def _menu() -> str:
-    return _inicio()[_inicio().index('<nav aria-label="Secciones">'):_inicio().index("</nav>")]
+    return INICIO[INICIO.index('<nav aria-label="Secciones">'):INICIO.index("</nav>")]
 
 
 def test_lo_que_ya_esta_en_la_caja_no_se_repite_en_el_menu():
@@ -183,15 +170,15 @@ def test_las_de_blotato_se_apagan_sin_clave():
 
 
 def test_el_apagado_ofrece_conectar_en_vez_de_dejar_un_callejon():
-    assert "a.classList.toggle('apagada', !conectado)" in _inicio()
-    assert "abrirBlotato();" in _inicio()[_inicio().index("e.preventDefault();"):]
+    assert "a.classList.toggle('apagada', !conectado)" in INICIO
+    assert "abrirBlotato();" in INICIO[INICIO.index("e.preventDefault();"):]
 
 
 def test_si_no_se_sabe_si_hay_clave_no_se_apaga_nada():
     """`leerBlotato` falla → se quedan encendidas. Dejar sin sus herramientas a
     quien sí pagó, porque un fetch no respondió, es peor que dejar entrar a
     quien no: el backend responde 409 de todos modos."""
-    assert ".catch(() => {})" in _inicio()
+    assert ".catch(() => {})" in INICIO
     assert "apagada" not in _menu()   # el estado inicial del HTML es encendido
 
 
@@ -202,21 +189,21 @@ def test_el_triangulo_es_contenido_del_boton_y_va_a_la_derecha():
     """Como `::after` se quedaba huérfano en su propia línea cuando la fila se
     apretaba, y parecía una cajita suelta encima del botón (visto 2026-09-18).
     Va al final: a la derecha del rótulo y del precio."""
-    assert ".prompt button.opcion::after" not in _inicio()
-    assert '<span class="ca">▾</span>`' in _inicio()
-    assert "white-space: nowrap" in _inicio()[_inicio().index(".prompt button.opcion {"):
-                                           _inicio().index(".prompt button.opcion:hover")]
+    assert ".prompt button.opcion::after" not in INICIO
+    assert '<span class="ca">▾</span>`' in INICIO
+    assert "white-space: nowrap" in INICIO[INICIO.index(".prompt button.opcion {"):
+                                           INICIO.index(".prompt button.opcion:hover")]
 
 
 def test_el_menu_se_sujeta_dentro_de_la_ventana():
     """El menú es más ancho que su botón y el botón está a media fila: anclado
     a la izquierda se salía por la derecha, y anclado a la derecha se salía por
     la izquierda. Ninguna de las dos sirve a todos los anchos — se mide."""
-    assert "function ubicaMenu()" in _inicio()
-    assert "Math.max(margen, Math.min(boton.left, tope))" in _inicio()
-    assert "ubicaMenu();" in _inicio()[_inicio().index("lista.hidden = false;"):]
+    assert "function ubicaMenu()" in INICIO
+    assert "Math.max(margen, Math.min(boton.left, tope))" in INICIO
+    assert "ubicaMenu();" in INICIO[INICIO.index("lista.hidden = false;"):]
     # y si la ventana cambia de tamaño con el menú abierto, se recoloca
-    assert "addEventListener('resize'" in _inicio()
+    assert "addEventListener('resize'" in INICIO
 
 
 def test_cada_opcion_cambia_el_ejemplo_del_hueco():
@@ -224,7 +211,7 @@ def test_cada_opcion_cambia_el_ejemplo_del_hueco():
     for rotulo in ("Un video corto", "Creador de cuentos", "Crea tu historia",
                    "Crear una imagen", "Editar una imagen"):
         assert "hueco:" in _opcion(rotulo)
-    assert "$('#idea').placeholder = opcionHub.hueco;" in _inicio()
+    assert "$('#idea').placeholder = opcionHub.hueco;" in INICIO
 
 
 def test_mix_tiene_su_propio_grupo_en_el_menu():

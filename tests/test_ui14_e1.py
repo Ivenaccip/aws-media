@@ -7,25 +7,16 @@ del Editor IA (Proponer ✦ N o Editar) cuando ya lo hay (dueño, 25-sep). Las
 tarjetas de camino se marcan en gris al pasar encima: el ámbar solo dice
 «haz algo».
 """
-import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _e1() -> str:
-    return (RAIZ / "static" / "e1.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _iconos() -> str:
-    return (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
+E1 = (RAIZ / "static" / "e1.html").read_text(encoding="utf-8")
+ICONOS = (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
 
 
 def _estilo():
-    return _e1()[_e1().index("<style>"):_e1().index("</style>")]
+    return E1[E1.index("<style>"):E1.index("</style>")]
 
 
 def _regla(selector):
@@ -35,10 +26,10 @@ def _regla(selector):
 
 
 def test_carga_la_carta_y_los_iconos():
-    assert _e1().index('href="/carta.css"') < _e1().index("<style>")
+    assert E1.index('href="/carta.css"') < E1.index("<style>")
     # iconos.js antes del script principal de la página
-    assert _e1().index('<script src="/iconos.js"></script>') < _e1().index("<script>\n")
-    assert "--acc:var(--c-ambar); --acc2:var(--c-ambar-claro);" in _e1()
+    assert E1.index('<script src="/iconos.js"></script>') < E1.index("<script>\n")
+    assert "--acc:var(--c-ambar); --acc2:var(--c-ambar-claro);" in E1
 
 
 def test_titulos_en_bricolage_y_texto_en_geist():
@@ -50,9 +41,9 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
-    assert not re.findall(r"font-size:\s*[\d.]+px", _e1())
-    assert not re.search(r"font:\s*(\d+ )?[\d.]+px", _e1())
-    for t in re.findall(r"var\(--t-([a-z-]+)\)", _e1()):
+    assert not re.findall(r"font-size:\s*[\d.]+px", E1)
+    assert not re.search(r"font:\s*(\d+ )?[\d.]+px", E1)
+    for t in re.findall(r"var\(--t-([a-z-]+)\)", E1):
         assert t in {"xs", "sm", "md", "titulo-sm", "titulo-md", "titulo-lg"}, t
 
 
@@ -61,23 +52,23 @@ EMOJIS = "🎬✂🎛❌⏳✅✕🔄📡"
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in _e1(), f"quedó {e} en e1"
-    assert "sepia(" not in _e1()
+        assert e not in E1, f"quedó {e} en e1"
+    assert "sepia(" not in E1
 
 
 def test_los_iconos_que_usa_e1_existen():
-    nombres = set(re.findall(r'data-icono="([a-z]+)"', _e1())) | set(re.findall(r'iconoEstado\("([a-z]+)"', _e1()))
+    nombres = set(re.findall(r'data-icono="([a-z]+)"', E1)) | set(re.findall(r'iconoEstado\("([a-z]+)"', E1))
     assert {"volver", "subir", "video", "shorts", "cortar", "aviso"} <= nombres
     for n in nombres:
-        assert f"    {n}: '" in _iconos(), n
+        assert f"    {n}: '" in ICONOS, n
 
 
 def test_sin_metraje_el_principal_es_subir():
-    assert '<button id="sub-btn" class="btn btn-pri">Subir</button>' in _e1()
-    assert '<button id="sub-cancelar" hidden class="btn btn-sec">Cancelar</button>' in _e1()
+    assert '<button id="sub-btn" class="btn btn-pri">Subir</button>' in E1
+    assert '<button id="sub-cancelar" hidden class="btn btn-sec">Cancelar</button>' in E1
     # sin botones con color propio en línea
-    assert "<button" not in _e1().split('id="sub-cancelar"')[1].split("</main>")[0]
-    assert 'style="' not in _e1()[_e1().index("<body>"):_e1().index("</main>")]
+    assert "<button" not in E1.split('id="sub-cancelar"')[1].split("</main>")[0]
+    assert 'style="' not in E1[E1.index("<body>"):E1.index("</main>")]
 
 
 def test_elegir_y_pasar_encima_no_es_ambar():
@@ -88,7 +79,7 @@ def test_elegir_y_pasar_encima_no_es_ambar():
 
 
 def test_enlaces_campos_y_tarjetas_de_la_carta():
-    assert "a { color: var(--c-enlace); }" in _e1()
+    assert "a { color: var(--c-enlace); }" in E1
     campo = _regla("#sub-proyecto {")
     assert "border: 1px solid var(--campo)" in campo and "background: var(--elev)" in campo
     assert "border-radius: var(--r-medio)" in campo
@@ -111,9 +102,9 @@ def test_los_iconos_de_los_titulos_van_en_gris():
 def test_el_estado_sigue_entrando_como_texto():
     """El icono se añade con un SVG constante; lo que llega del servidor sigue
     por textContent."""
-    assert 'insertAdjacentHTML("afterbegin", icono(nombre, clase))' in _e1()
-    assert "corte-estado\").innerHTML" not in _e1()
-    assert "`Proponer ✦ ${c.creditos}`" in _e1()
+    assert 'insertAdjacentHTML("afterbegin", icono(nombre, clase))' in E1
+    assert "corte-estado\").innerHTML" not in E1
+    assert "`Proponer ✦ ${c.creditos}`" in E1
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +133,8 @@ def test_con_metraje_el_principal_es_el_editor(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node no está instalado")
-    i = _e1().index("function principal()")
-    codigo = _e1()[i:_e1().index("\n}\n", i) + 3]
+    i = E1.index("function principal()")
+    codigo = E1[i:E1.index("\n}\n", i) + 3]
     f = tmp_path / "p.js"
     f.write_text(NODO.replace("__CODIGO__", codigo), encoding="utf-8")
     r = subprocess.run([node, str(f)], capture_output=True, text=True)
