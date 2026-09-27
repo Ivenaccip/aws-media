@@ -65,6 +65,8 @@ class Pantalla:
 PANTALLAS: dict[str, Pantalla] = {
     # el piloto: solo la usa el dueño (grupo admin de Cognito)
     "admin": Pantalla(vieja="/admin.html", nueva="/estudio/admin/", etapa="nueva"),
+    # UI·8.1: la primera con usuarios reales; cobra una sola cosa
+    "clip": Pantalla(vieja="/clip.html", nueva="/estudio/clip/", etapa="nueva"),
 }
 
 
