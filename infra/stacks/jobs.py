@@ -33,15 +33,20 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-SSM_PREFIX = "/media-ivenaccip/env"   # "aws*" es prefijo reservado en SSM
-SSM_USUARIOS = "/media-ivenaccip/usuarios"   # C5: claves POR-USUARIO (D4)
+from entornos import PROD, Entorno
 
 
 class JobsStack(Stack):
     def __init__(self, scope: Construct, id_: str, *,
                  cluster_db: rds.DatabaseCluster, media_bucket: s3.Bucket,
-                 cdn_domain: str, image_ref: str = "latest", **kwargs) -> None:
+                 cdn_domain: str, image_ref: str = "latest",
+                 entorno: Entorno = PROD, **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
+        # Nombres físicos desde infra/entornos.py; el default reproduce prod.
+        # "aws*" es prefijo reservado en SSM; ssm_usuarios = claves
+        # POR-USUARIO (C5, D4).
+        ssm_env = entorno.ssm_env
+        ssm_usuarios = entorno.ssm_usuarios
 
         repo = ecr.Repository.from_repository_name(self, "Repo", "aws-media")
         env_comun = {
@@ -51,8 +56,8 @@ class JobsStack(Stack):
             "DB_NAME": "media",
             "MEDIA_BUCKET": media_bucket.bucket_name,
             "CDN_BASE": f"https://{cdn_domain}",
-            "SSM_ENV_PREFIX": SSM_PREFIX,
-            "SSM_USUARIOS_PREFIX": SSM_USUARIOS,
+            "SSM_ENV_PREFIX": ssm_env,
+            "SSM_USUARIOS_PREFIX": ssm_usuarios,
             "CREDITOS_BACKEND": "postgres",   # C5: monedero + devoluciones
             "WORK_DIR": "/tmp/work",
             "MEDIA_ROOT": "/tmp/media",
@@ -68,8 +73,8 @@ class JobsStack(Stack):
             role.add_to_principal_policy(iam.PolicyStatement(
                 actions=["ssm:GetParameter", "ssm:GetParameters",
                          "ssm:GetParametersByPath"],
-                resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{SSM_PREFIX}*",
-                           f"arn:aws:ssm:{self.region}:{self.account}:parameter{SSM_USUARIOS}*"]))
+                resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{ssm_env}*",
+                           f"arn:aws:ssm:{self.region}:{self.account}:parameter{ssm_usuarios}*"]))
 
         # --- 1) cola + worker de trabajos cortos -----------------------------
         dlq = sqs.Queue(self, "JobsDlq", retention_period=Duration.days(14))
@@ -167,7 +172,7 @@ class JobsStack(Stack):
             )],
         )
         self.state_machine = sfn.StateMachine(
-            self, "ProducirSm", state_machine_name="aws-media-producir",
+            self, "ProducirSm", state_machine_name=entorno.maquina_producir,
             definition_body=sfn.DefinitionBody.from_chainable(correr),
             timeout=Duration.hours(2),
         )

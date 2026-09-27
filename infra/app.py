@@ -8,8 +8,9 @@ Stacks:
                    la exigencia de login se cablea cuando el frontend tenga
                    pantalla de auth). reserved_concurrency=1: la app sigue
                    siendo single-worker hasta C2/C4 (regla dura del plan).
-  aws-media-db   : C2 "estado" — Aurora Serverless v2 Postgres (mín 0 ACU con
-                   auto-pausa, Data API). La Lambda queda fuera de la VPC.
+  aws-media-db   : C2 "estado" — Aurora Serverless v2 Postgres (suelo de 0.5
+                   ACU, sin auto-pausa desde el 21-sep; Data API). La Lambda
+                   queda fuera de la VPC.
   aws-media-media: C3 "media" — bucket S3 privado (subidas prefirmadas) +
                    CloudFront con OAC para servirlo.
   aws-media-jobs : C4 "trabajos" — SQS + worker Lambda (preparar), Fargate
@@ -23,6 +24,11 @@ Deploy (desde infra/, con el venv del repo en PATH):
 Para desplegar un commit CONCRETO (o volver atrás), nómbralo por su sha:
   IMAGE_TAG=<sha> cdk deploy aws-media-api aws-media-jobs
 Tras el primer deploy de db: python tools/db_migrate.py (esquema idempotente).
+
+Importar este módulo NO sintetiza nada ni habla con AWS: todo eso vive bajo
+`if __name__ == "__main__"`, que es como lo corre `cdk` (cdk.json: "python
+app.py"). Así los tests pueden llamar a `construir()` con la composición REAL
+de producción y comprobar sus nombres físicos (tests/test_entornos.py).
 """
 import os
 import sys
@@ -138,21 +144,35 @@ def _avisar_si_no_es_la_mas_nueva(ref: str, digest: str) -> None:
         print(linea, file=sys.stderr)
 
 
-app = cdk.App()
-digest = _digest_de(IMAGE_TAG)
-# que el deploy diga en voz alta qué está poniendo: el digest es ilegible y el
-# tag no aparece en ninguna parte del diff
-print(f"imagen: {IMAGE_TAG} -> {digest}", file=sys.stderr)
-# y el aviso DESPUÉS, para que sea lo último que se lee antes del deploy
-if IMAGE_TAG != "latest":
-    _avisar_si_no_es_la_mas_nueva(IMAGE_TAG, digest)
-BaseStack(app, "aws-media-base", env=ENV)
-db = DbStack(app, "aws-media-db", env=ENV)
-media = MediaStack(app, "aws-media-media", env=ENV)
-jobs = JobsStack(app, "aws-media-jobs", env=ENV, cluster_db=db.cluster,
-                 media_bucket=media.bucket,
-                 cdn_domain=media.cdn.distribution_domain_name, image_ref=digest)
-ApiStack(app, "aws-media-api", env=ENV, cluster=db.cluster,
-         media_bucket=media.bucket, cdn_domain=media.cdn.distribution_domain_name,
-         jobs_queue=jobs.queue, producir_sm=jobs.state_machine, image_ref=digest)
-app.synth()
+def construir(app: cdk.App, image_ref: str) -> None:
+    """Los cinco stacks de PRODUCCIÓN, tal como se despliegan.
+
+    No se le pasa `entorno` a ninguno a propósito: el default de ApiStack y
+    JobsStack es PROD, y escribir aquí `entorno=DEV` no crearía un dev, le
+    cambiaría el pool de Cognito al stack vivo por uno vacío. Dev tendrá su
+    propia app (paso 8 del plan del entorno), sin base, alertas ni dominio."""
+    BaseStack(app, "aws-media-base", env=ENV)
+    db = DbStack(app, "aws-media-db", env=ENV)
+    media = MediaStack(app, "aws-media-media", env=ENV)
+    jobs = JobsStack(app, "aws-media-jobs", env=ENV, cluster_db=db.cluster,
+                     media_bucket=media.bucket,
+                     cdn_domain=media.cdn.distribution_domain_name,
+                     image_ref=image_ref)
+    ApiStack(app, "aws-media-api", env=ENV, cluster=db.cluster,
+             media_bucket=media.bucket,
+             cdn_domain=media.cdn.distribution_domain_name,
+             jobs_queue=jobs.queue, producir_sm=jobs.state_machine,
+             image_ref=image_ref)
+
+
+if __name__ == "__main__":
+    app = cdk.App()
+    digest = _digest_de(IMAGE_TAG)
+    # que el deploy diga en voz alta qué está poniendo: el digest es ilegible
+    # y el tag no aparece en ninguna parte del diff
+    print(f"imagen: {IMAGE_TAG} -> {digest}", file=sys.stderr)
+    # y el aviso DESPUÉS, para que sea lo último que se lee antes del deploy
+    if IMAGE_TAG != "latest":
+        _avisar_si_no_es_la_mas_nueva(IMAGE_TAG, digest)
+    construir(app, digest)
+    app.synth()
