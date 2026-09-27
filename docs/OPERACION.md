@@ -560,6 +560,33 @@ Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
   CNAME plano, así que Cloudflare lo aplana siempre; en gris eso publicaría las
   IP del endpoint de API Gateway, que no son estables.
 
+### La caché de los estáticos (UI·3)
+
+La decide el servidor (`_StaticCacheado` en `server/app.py`), no Cloudflare:
+
+| Qué | `Cache-Control` | Borde |
+|---|---|---|
+| HTML | `no-cache` | no se cachea (DYNAMIC) |
+| JS y CSS | `no-cache` | `Cloudflare-CDN-Cache-Control: max-age=60` |
+| Imágenes | `public, max-age=86400` | lo que decida Cloudflare |
+| Versionados (`*.v1.*`) | `public, max-age=604800, immutable` | ídem |
+
+Antes del 27-sep el JS y el CSS salían sin cabecera y Cloudflare les ponía
+`max-age=14400`: un fix de UI tardaba hasta 4 h en llegar. Con la tabla, un
+deploy llega al borde en ≤ 60 s y el navegador lo ve en su siguiente carga,
+**sin purgar nada**.
+
+Comprobación después de cada deploy que toque esto:
+
+```bash
+curl -s -D - -o /dev/null https://irremplazables.xyz/auth.js | grep -iE "cache-control|cf-cache-status|^age"
+```
+
+Lo esperado: `cache-control: no-cache`, `cf-cache-status` en HIT a la segunda
+petición y `age` ≤ 60. Si sale `max-age=14400`, es que Cloudflare está pisando
+la cabecera: en **Caching → Configuration → Browser Cache TTL**, elige
+«Respect Existing Headers».
+
 ### Lo que NO se puede borrar nunca
 
 El CNAME `_181ee3334b127307304e024ff9aefc56` de la zona es el de validación de
@@ -680,6 +707,51 @@ aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" 
 
 Los seis ids que pueden cambiar están en la cabecera de
 `infra/stacks/alertas.py`, con la fecha en que se verificaron.
+
+## La UI nueva (`web/`, UI·6)
+
+Vite 8 + React 19 + TS estricto + Tailwind v4 + Radix, multipágina
+(docs/PLAN-UI.md §3). Cada carpeta `web/estudio/<p>/index.html` es una
+pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
+(noindex): todos los componentes en todos sus estados.
+
+**Del código a producción:**
+1. La etapa `web` del Dockerfile corre `npm run verificar`, que hace tipos,
+   lint, vitest y build. Si algo falla, **falla el build** y no sale imagen.
+2. `web/dist` se copia a la imagen.
+3. `server/web.py` lo monta si existe. Sin `dist` no se monta nada y el resto
+   sigue igual.
+
+**Caché:** los assets de `/estudio/assets/` llevan hash y son `immutable`
+por un año. El HTML va con `no-cache`.
+
+**Local:**
+
+```bash
+cd web && npm ci
+npm run dev                    # Vite en 8011 (el origen registrado en Cognito)
+uvicorn server.app:app --port 8012   # desde la raíz, en otra terminal
+```
+
+Vite manda a uvicorn todo lo que no es suyo: la API, `auth.js` y las
+pantallas viejas. Pide Node 20.19 o más nuevo. `/instalar` y `/actualizar`
+lo comprueban y compilan `web/`.
+
+**Reglas que vigilan `tests/test_web_tuberia.py` y `eslint.config.js`:**
+- La etapa web usa el mismo Node que la imagen. `.nvmrc` dice lo mismo.
+- Las versiones son exactas.
+- No entran `next`, `gsap`, `axios` ni `motion`.
+- Sin `dangerouslySetInnerHTML`.
+- **`pricing.json` nunca llega al navegador.** Las tarifas se importan de
+  `tools/tarifas.json` con nombre, y el plugin `tarifasSinNotas` de
+  `vite.config.ts` les quita las notas (citan costos de proveedor) y `economia`.
+
+**Para añadir una dependencia**, usa `npx npm@11 install -D paquete@x.y.z`
+dentro de `web/`. El npm 10 del Node 20 se cae con «Cannot read properties
+of null (reading 'edgesOut')» al resolver los peers opcionales de vitest
+4.1. `npm ci` con el lockfile sí funciona en npm 10, que es lo que corre el
+build. `engine-strict` rechaza cualquier paquete que pida Node 22; ya pasó
+con `@testing-library/jest-dom@6.10`, y por eso está fijado a 6.9.1.
 
 ## La imagen (Node, y por qué está fijado)
 

@@ -18,6 +18,8 @@ venv/
 .github/
 
 # artefactos locales
+# el dist lo construye la etapa web del Dockerfile; uno local viejo no se cuela
+web/dist/
 *.log
 oauth_client.json
 token_drive.json
