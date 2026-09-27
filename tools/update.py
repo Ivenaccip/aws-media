@@ -23,6 +23,7 @@ Exit code: 0 = al dia / actualizado; 2 = actualizacion disponible (solo --check)
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -119,6 +120,7 @@ def inspect(branch: str) -> dict:
         "commits": commits, "changed": changed,
         "deps_changed": [f for f in changed if f in DEPS],
         "shots_changed": any(f.startswith("remotion-longform/src/shots/") for f in changed),
+        "web_changed": any(f.startswith("web/") for f in changed),
         "local_mods": local_mods,
         "local_mods_editable": [f for f in local_mods if f in USER_EDITABLE],
         "local_mods_other": [f for f in local_mods if f not in USER_EDITABLE],
@@ -150,6 +152,8 @@ def report(info: dict) -> None:
         if info["deps_changed"]:
             print(f"[DEPS] Cambiaron dependencias: {', '.join(info['deps_changed'])} — "
                   "se instalaran al aplicar.")
+        if info.get("web_changed"):
+            print("[WEB] Cambio la UI nueva (web/) — se compila al aplicar (pide Node 20.19+).")
         if info["upstream_touches_user_files"]:
             print("[AVISO] La version nueva trae cambios en archivos que TU puedes haber editado: "
                   + ", ".join(f"{f} ({USER_EDITABLE[f]})" for f in info["upstream_touches_user_files"]))
@@ -173,6 +177,38 @@ def run_step(label: str, cmd: list[str], cwd: Path) -> bool:
         print(f"   [ERROR] {label} fallo:\n      " + "\n      ".join(tail))
         return False
     return True
+
+
+# UI·6: la UI nueva (web/) compila con Vite 8, que pide Node ^20.19 o 22.12+.
+NODE_MINIMO_WEB = (20, 19)
+
+
+def problema_de_node_para_web() -> str | None:
+    """None si el Node del PATH compila web/; si no, qué le pasa, en humano."""
+    node = shutil.which("node") or shutil.which("node.exe")
+    if not node:
+        return "Node no esta en el PATH"
+    r = subprocess.run([node, "--version"], capture_output=True, text=True)
+    m = re.match(r"v(\d+)\.(\d+)", r.stdout.strip())
+    if not m:
+        return f"no entiendo la version de Node: {r.stdout.strip()!r}"
+    if (int(m.group(1)), int(m.group(2))) < NODE_MINIMO_WEB:
+        return (f"tu Node es {r.stdout.strip()} y la UI nueva pide "
+                f"{NODE_MINIMO_WEB[0]}.{NODE_MINIMO_WEB[1]} o mas nuevo")
+    return None
+
+
+def construir_web(npm: str | None) -> bool:
+    """npm ci + build de web/. Sin dist, el server sigue funcionando: solo no
+    aparecen las pantallas nuevas (server/web.py monta lo que haya)."""
+    problema = problema_de_node_para_web() or (None if npm else "npm no esta en el PATH")
+    if problema:
+        print(f"   [AVISO] {problema} — la UI nueva (web/) no se compilo; "
+              "corre /instalar para arreglarlo")
+        return False
+    web = ROOT / "web"
+    return (run_step("deps de la UI nueva", [npm, "ci", "--silent"], web)
+            and run_step("UI nueva (web/)", [npm, "run", "build", "--silent"], web))
 
 
 def apply(info: dict) -> int:
@@ -237,6 +273,8 @@ def apply(info: dict) -> int:
             ok = False
     if info["shots_changed"] and npm:
         ok &= run_step("registry de shots", [npm, "run", "gen", "--silent"], ROOT / "remotion-longform")
+    if info["web_changed"]:
+        ok &= construir_web(npm)
 
     # diagnostico de cierre
     print("Diagnostico:")

@@ -31,7 +31,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
-from server import auth
+from server import auth, web
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
@@ -1144,5 +1144,9 @@ def _estudio():
 def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
+
+# UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje
+# se queda con todo lo que venga detrás.
+web.montar(app)
 
 app.mount("/", _StaticCacheado(directory=ROOT / "static", html=True), name="static")
