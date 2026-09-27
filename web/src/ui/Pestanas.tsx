@@ -1,4 +1,5 @@
-// Pestañas con flechas, Inicio/Fin y ARIA de Radix.
+// Pestañas con flechas, Inicio/Fin y ARIA de Radix. La elegida se marca en
+// blanco, no en ámbar: el ámbar solo dice «haz algo» (docs/DISENO.md §3).
 import * as T from '@radix-ui/react-tabs';
 import type { ReactNode } from 'react';
 
@@ -27,7 +28,7 @@ export function Pestanas({ pestanas, etiqueta, inicial }: PropsPestanas) {
             className={
               'min-h-11 cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-4 ' +
               'text-sm font-medium text-secundario hover:text-texto ' +
-              'data-[state=active]:border-ambar data-[state=active]:text-texto'
+              'data-[state=active]:border-texto data-[state=active]:text-texto data-[state=active]:font-semibold'
             }
           >
             {p.titulo}
