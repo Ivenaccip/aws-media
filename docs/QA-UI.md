@@ -92,3 +92,24 @@ teléfono (390 px) y en el escritorio. Nada de esto cobra.
 | 12 | Modo avión y recargar | «No pudimos traer tus proyectos» con Reintentar; no aparecen los tres caminos |
 | 13 | «Tus trabajos» con un render en curso | El cuadro de siempre, abajo a la derecha |
 | 14 | «Usar la versión anterior» | Llega a `/estudio/`; en `todos`, `/estudio/` ya no redirige para ti durante 7 días |
+
+## shorts · `/estudio/shorts/`
+
+Con un video de YouTube de 2-5 minutos, en el teléfono (390 px) y en el
+escritorio. Precios de `tarifas.json` §shorts: importar 2 por minuto;
+analizar 2, más 2 por cada 5 min sin transcript; renderizar 2 por short.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar sin `?p=` | Tus proyectos con metraje como enlaces; subir y la liga de YouTube |
+| 2 | Pegar una liga y Cotizar | «título» · duración y «Importar ✦ N» = 2 × minutos |
+| 3 | Cambiar una letra de la liga | «Importar» desaparece hasta volver a cotizar |
+| 4 | 💳 Doble clic en Importar | **Un** cobro; la URL gana `?p=`; «Trayendo… de YouTube» sin orbe; la pestaña lo dice |
+| 5 | Al terminar la descarga | «Analizar ✦ N» con la duración |
+| 6 | 💳 Analizar; durante el análisis, modo avión 20 s | El orbe; «Sin conexión — reintentando…»; con red, sigue solo |
+| 7 | Con candidatos: poner fin < inicio + 5 en uno marcado | El error junto al campo y «Renderizar» apagado |
+| 8 | Ajustar un gancho, desmarcar uno, y 💳 Renderizar con doble clic | **Un** cobro de 2 × marcados; el spinner (no el orbe) |
+| 9 | Durante el render, esperar 1 min | Lo marcado y ajustado sigue igual |
+| 10 | Al terminar | «3 · Tus shorts» con Ver y Descargar; Descargar baja el archivo (no abre otra pestaña) |
+| 11 | Pegar la liga de un video ya importado e Importar | Abre ese proyecto en vez de un error |
+| 12 | «Usar la versión anterior» | Llega a `/shorts.html`; en `todos`, `/shorts.html` ya no redirige para ti durante 7 días |

@@ -81,6 +81,9 @@ PANTALLAS: dict[str, Pantalla] = {
     # la nueva vive al lado, en /estudio/inicio/, y en `todos` /estudio/
     # redirige ahí. No cobra: reparte a las pantallas que cobran.
     "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="nueva", fichero="index.html"),
+    # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
+    # subida es la misma de editar metraje (marca/SubirVideo)
+    "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
 }
 
 

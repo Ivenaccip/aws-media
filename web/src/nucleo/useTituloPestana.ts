@@ -11,4 +11,12 @@ export function useTituloPestana(estado: string | null): void {
     base.current ??= document.title;
     document.title = estado ? `${estado} · ${base.current}` : base.current;
   }, [estado]);
+  // al desmontar, el título de siempre: si no, quien monte después (otro
+  // proyecto en shorts) tomaría «Analizando… · Estudio…» como su base
+  useEffect(
+    () => () => {
+      if (base.current !== null) document.title = base.current;
+    },
+    [],
+  );
 }
