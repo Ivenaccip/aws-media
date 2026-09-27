@@ -13,6 +13,7 @@ Lo que este archivo defiende:
 
 Sin red: el HTML se lee como texto y la lógica corre en node con un DOM mínimo
 (se salta si no hay node)."""
+import functools
 import json
 import shutil
 import subprocess
@@ -21,8 +22,17 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-PANTALLA = (RAIZ / "static" / "competencia.html").read_text(encoding="utf-8")
-HUB = (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _pantalla() -> str:
+    return (RAIZ / "static" / "competencia.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _hub() -> str:
+    return (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
+
 
 INICIO = "// ── cp · Competencia (C5)"
 
@@ -32,7 +42,9 @@ def _tramo(desde: str, hasta: str, texto: str) -> str:
     return texto[i:texto.index(hasta, i)]
 
 
-CP = _tramo(INICIO, "</script>", PANTALLA)
+@functools.lru_cache(maxsize=None)
+def _cp() -> str:
+    return _tramo(INICIO, "</script>", _pantalla())
 
 
 # ---------------------------------------------------------------------------
@@ -41,14 +53,14 @@ CP = _tramo(INICIO, "</script>", PANTALLA)
 def test_la_pantalla_arranca_despues_de_auth():
     """Sin /auth.js cargado, el primer fetch saldría sin Authorization y el
     servidor devolvería 401 antes de pintar nada."""
-    assert PANTALLA.index('src="/auth.js"') < PANTALLA.index(INICIO)
-    assert PANTALLA.index('src="/monedero.js"') < PANTALLA.index(INICIO)
+    assert _pantalla().index('src="/auth.js"') < _pantalla().index(INICIO)
+    assert _pantalla().index('src="/monedero.js"') < _pantalla().index(INICIO)
 
 
 def test_el_menu_del_estudio_enlaza_la_pantalla():
     # la línea del <a>, no la primera que mencione el nombre: los comentarios
     # del menú también lo nombran (M25 · B)
-    linea = next(l for l in HUB.splitlines()
+    linea = next(l for l in _hub().splitlines()
                  if "Investiga tu competencia" in l and l.lstrip().startswith("<a "))
     assert 'href="/competencia.html"' in linea
     assert 'class="prox"' not in linea
@@ -57,14 +69,14 @@ def test_el_menu_del_estudio_enlaza_la_pantalla():
 def test_no_hay_sondeo_ciego():
     """El poll solo se programa si hay una revisión viva, y se apaga con la
     pestaña oculta: una pantalla abierta no puede llamar sola para siempre."""
-    assert "document.hidden ? null : setTimeout" in CP
-    assert 'r.estado === "analizando"' in CP
-    assert 'addEventListener("visibilitychange"' in CP
+    assert "document.hidden ? null : setTimeout" in _cp()
+    assert 'r.estado === "analizando"' in _cp()
+    assert 'addEventListener("visibilitychange"' in _cp()
 
 
 def test_el_boton_dice_el_precio_antes_de_cobrar():
-    assert "Revisar ✦ ${CPTARIFA * n}" in CP
-    assert "créditos por cuenta" in CP
+    assert "Revisar ✦ ${CPTARIFA * n}" in _cp()
+    assert "créditos por cuenta" in _cp()
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +120,7 @@ def _node(escenario: str, tmp_path: Path) -> dict:
     nodo = shutil.which("node")
     if not nodo:
         pytest.skip("node no está en el PATH")
-    codigo = (PRELUDIO + CP +
+    codigo = (PRELUDIO + _cp() +
               "\n(async () => {\nconst out = {};\n" + escenario +
               "\nconsole.log(JSON.stringify(out));\n})()"
               ".catch(e => { console.error(e); process.exit(1); });\n")

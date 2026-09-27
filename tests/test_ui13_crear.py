@@ -4,26 +4,35 @@ Formulario, revisión, imágenes y resultado: carta.css (Bricolage + Geist,
 botones de tres niveles, foco), iconos de trazo en vez de emojis, la escala
 de seis tamaños y un solo botón ámbar por estado de la pantalla.
 """
+import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-CREAR = (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
-ICONOS = (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _crear() -> str:
+    return (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _iconos() -> str:
+    return (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
 
 
 def _estilo():
-    return CREAR[CREAR.index("<style>"):CREAR.index("</style>")]
+    return _crear()[_crear().index("<style>"):_crear().index("</style>")]
 
 
 def _seccion(id_):
-    i = CREAR.index(f'<section id="{id_}"')
-    return CREAR[i:CREAR.index("</section>", i)]
+    i = _crear().index(f'<section id="{id_}"')
+    return _crear()[i:_crear().index("</section>", i)]
 
 
 def test_carga_la_carta_antes_que_su_estilo():
-    assert CREAR.index('href="/carta.css"') < CREAR.index("<style>")
-    assert "--acc:var(--c-ambar); --acc2:var(--c-ambar-claro);" in CREAR
+    assert _crear().index('href="/carta.css"') < _crear().index("<style>")
+    assert "--acc:var(--c-ambar); --acc2:var(--c-ambar-claro);" in _crear()
 
 
 def test_titulos_en_bricolage_y_texto_en_geist():
@@ -34,8 +43,8 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
-    assert not re.findall(r"font-size:\s*[\d.]+px", CREAR)
-    assert not re.search(r"font:\s*[\d.]+px", CREAR)
+    assert not re.findall(r"font-size:\s*[\d.]+px", _crear())
+    assert not re.search(r"font:\s*[\d.]+px", _crear())
 
 
 EMOJIS = "✨📐⏱🧑🎙📝📚⚡🖼🎬✅⬇✂🔁▶📡🟢🟡🔴✕🔄⚖●✓×"
@@ -43,19 +52,19 @@ EMOJIS = "✨📐⏱🧑🎙📝📚⚡🖼🎬✅⬇✂🔁▶📡🟢🟡🔴�
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in CREAR, f"quedó {e} en crear"
+        assert e not in _crear(), f"quedó {e} en crear"
 
 
 def test_los_iconos_que_usa_crear_existen():
-    nombres = set(re.findall(r'data-icono="([a-z]+)"', CREAR)) | set(re.findall(r"icono\('([a-z]+)'", CREAR))
+    nombres = set(re.findall(r'data-icono="([a-z]+)"', _crear())) | set(re.findall(r"icono\('([a-z]+)'", _crear()))
     assert len(nombres) >= 15
     for n in nombres:
-        assert f"    {n}: '" in ICONOS, n
+        assert f"    {n}: '" in _iconos(), n
 
 
 def test_botones_con_los_niveles_de_la_carta():
-    assert 'class="btn sec"' not in CREAR and "class=\"btn\"" not in CREAR
-    assert "linear-gradient(90deg,var(--acc),var(--acc2)); margin-top" not in CREAR
+    assert 'class="btn sec"' not in _crear() and "class=\"btn\"" not in _crear()
+    assert "linear-gradient(90deg,var(--acc),var(--acc2)); margin-top" not in _crear()
     # la forma y los estados son de carta.css; aquí solo el acomodo
     assert ".btn { display:flex; width:100%; min-height:48px; margin-top:18px; }" in _estilo()
 
@@ -79,8 +88,8 @@ def test_elegir_no_es_ambar():
 
 
 def test_enlaces_en_azul_claro():
-    assert "a { color:var(--c-enlace); }" in CREAR
-    assert "#5b8dd6" not in CREAR
+    assert "a { color:var(--c-enlace); }" in _crear()
+    assert "#5b8dd6" not in _crear()
 
 
 def test_lo_que_se_toca_mide_44():
@@ -90,7 +99,7 @@ def test_lo_que_se_toca_mide_44():
 
 
 def test_las_voces_dicen_su_nivel_en_palabras():
-    assert "const NIVEL = {verde:'Encaja', amarillo:'Tal vez', rojo:'No encaja'};" in CREAR
+    assert "const NIVEL = {verde:'Encaja', amarillo:'Tal vez', rojo:'No encaja'};" in _crear()
 
 
 def test_los_iconos_de_los_titulos_van_en_gris():

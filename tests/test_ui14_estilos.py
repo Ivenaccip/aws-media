@@ -4,22 +4,31 @@ Retoque en su sitio: carta.css (Bricolage + Geist, botones de tres niveles,
 foco), iconos de trazo en vez de emojis, la escala de seis tamaños y un solo
 botón ámbar («Analizar ✦ N»). El comportamiento no cambia.
 """
+import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-ESTILOS = (RAIZ / "static" / "estilos.html").read_text(encoding="utf-8")
-ICONOS = (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _estilos() -> str:
+    return (RAIZ / "static" / "estilos.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _iconos() -> str:
+    return (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
 
 
 def _estilo():
-    return ESTILOS[ESTILOS.index("<style>"):ESTILOS.index("</style>")]
+    return _estilos()[_estilos().index("<style>"):_estilos().index("</style>")]
 
 
 def test_carga_la_carta_y_los_iconos():
-    assert ESTILOS.index('href="/carta.css"') < ESTILOS.index("<style>")
-    i = ESTILOS.index('<script src="/iconos.js"></script>')
-    assert i < ESTILOS.index("<script>\n")   # antes del script de la página
+    assert _estilos().index('href="/carta.css"') < _estilos().index("<style>")
+    i = _estilos().index('<script src="/iconos.js"></script>')
+    assert i < _estilos().index("<script>\n")   # antes del script de la página
     assert "--mut:var(--c-secundario);" in _estilo()
 
 
@@ -32,9 +41,9 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
-    assert not re.findall(r"font-size:\s*[\d.]+(px|em|rem)", ESTILOS)
-    assert not re.search(r"font:\s*[^;]*\d+(\.\d+)?px", ESTILOS)
-    for t in re.findall(r"var\(--t-([a-z-]+)\)", ESTILOS):
+    assert not re.findall(r"font-size:\s*[\d.]+(px|em|rem)", _estilos())
+    assert not re.search(r"font:\s*[^;]*\d+(\.\d+)?px", _estilos())
+    for t in re.findall(r"var\(--t-([a-z-]+)\)", _estilos()):
         assert t in {"xs", "sm", "md", "titulo-sm", "titulo-md", "titulo-lg"}, t
 
 
@@ -43,28 +52,28 @@ EMOJIS = "📡✓✔←✕✨🎨📋"
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in ESTILOS, f"quedó {e} en estilos"
+        assert e not in _estilos(), f"quedó {e} en estilos"
 
 
 def test_los_iconos_que_usa_existen():
-    nombres = set(re.findall(r'data-icono="([a-z]+)"', ESTILOS)) | set(re.findall(r"icono\('([a-z]+)'", ESTILOS))
+    nombres = set(re.findall(r'data-icono="([a-z]+)"', _estilos())) | set(re.findall(r"icono\('([a-z]+)'", _estilos()))
     # UI·16: «sin red» y «copiado» se fueron al cuadro de avisos (trabajos.js)
     assert nombres == {"volver"}
     for n in nombres:
-        assert f"    {n}: '" in ICONOS, n
+        assert f"    {n}: '" in _iconos(), n
 
 
 def test_un_solo_principal_y_es_el_que_cobra():
-    assert ESTILOS.count("btn-pri") == 1
-    assert '<button id="btn-analizar" class="btn btn-pri" disabled>' in ESTILOS
-    assert "$(\"btn-analizar\").textContent = `Analizar ✦ ${TARIFA}`;" in ESTILOS
+    assert _estilos().count("btn-pri") == 1
+    assert '<button id="btn-analizar" class="btn btn-pri" disabled>' in _estilos()
+    assert "$(\"btn-analizar\").textContent = `Analizar ✦ ${TARIFA}`;" in _estilos()
     # copiar y Recargar son secundarios; el viejo relleno azul se fue
-    assert ESTILOS.count("btn btn-sec copiar") == 2
-    assert "#2b4a75" not in ESTILOS and "#5b8dd6" not in ESTILOS
+    assert _estilos().count("btn btn-sec copiar") == 2
+    assert "#2b4a75" not in _estilos() and "#5b8dd6" not in _estilos()
 
 
 def test_sin_filtro_sepia():
-    assert "sepia(" not in ESTILOS
+    assert "sepia(" not in _estilos()
 
 
 def test_enlaces_campos_y_tarjetas_de_la_carta():

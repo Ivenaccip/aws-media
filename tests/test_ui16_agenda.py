@@ -4,27 +4,32 @@ enlace «Conectar Blotato» en 409) y las confirmaciones de cancelar y cambiar l
 hora (antes la línea role="status" #agEstado). El error del diálogo sigue junto
 a su campo, el confirm() sigue y la caída de la lista (AGCAIDA) se queda.
 """
+import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-AGENDA = (RAIZ / "static" / "agenda.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _agenda() -> str:
+    return (RAIZ / "static" / "agenda.html").read_text(encoding="utf-8")
 
 
 def _cuerpo(inicio, largo=900):
-    i = AGENDA.index(inicio)
-    return AGENDA[i:i + largo]
+    i = _agenda().index(inicio)
+    return _agenda()[i:i + largo]
 
 
 def _estilo():
-    return AGENDA[AGENDA.index("<style>"):AGENDA.index("</style>")]
+    return _agenda()[_agenda().index("<style>"):_agenda().index("</style>")]
 
 
 def test_la_caja_de_error_y_la_linea_de_estado_ya_no_existen():
     for id_ in ("agErr", "agEstado"):
-        assert f'id="{id_}"' not in AGENDA, id_
-        assert f"#{id_}" not in AGENDA, id_
-    assert "function agAnunciar" not in AGENDA and "agAnunciar(" not in AGENDA
+        assert f'id="{id_}"' not in _agenda(), id_
+        assert f"#{id_}" not in _agenda(), id_
+    assert "function agAnunciar" not in _agenda() and "agAnunciar(" not in _agenda()
     # sin la línea verde, la clase .ok ya no la usa nadie
     assert ".ok {" not in _estilo()
 
@@ -38,7 +43,7 @@ def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
     assert "else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};" in f
     assert "window.avisos?.mostrar(msg, op);" in f
     # el destino de «Conectar Blotato» es el mismo que tenía el enlace
-    assert 'const AGCONECTAR = "/estudio/?blotato=conectar";' in AGENDA
+    assert 'const AGCONECTAR = "/estudio/?blotato=conectar";' in _agenda()
     # el texto va plano: el cuadro lo escapa, aquí no se arma HTML
     assert "innerHTML" not in f
 
@@ -50,33 +55,33 @@ def test_la_carga_ofrece_reintentar_y_limpia_al_empezar():
     assert "agFallo(e, () => agCargar(mas));" in f
     # la caída de la lista sigue: sin nada pintado se explica el hueco
     assert f.count('$("#agLista").innerHTML = AGCAIDA;') == 2
-    assert "No pudimos traer tu agenda ahora. Pulsa «Actualizar»" in AGENDA
+    assert "No pudimos traer tu agenda ahora. Pulsa «Actualizar»" in _agenda()
 
 
 def test_las_confirmaciones_van_como_ok():
     assert ("window.avisos?.mostrar(`Hora cambiada: ${it.red} sale el ${agFecha(cuando)} "
-            "(tu hora).`, {tipo:'ok'});") in AGENDA
-    assert 'window.avisos?.mostrar("Publicación cancelada.", {tipo:\'ok\'});' in AGENDA
+            "(tu hora).`, {tipo:'ok'});") in _agenda()
+    assert 'window.avisos?.mostrar("Publicación cancelada.", {tipo:\'ok\'});' in _agenda()
     # y el foco sigue volviendo a un sitio con nombre
-    assert AGENDA.count('agFoco("#agRefrescar");') >= 3
+    assert _agenda().count('agFoco("#agRefrescar");') >= 3
 
 
 def test_el_comentario_dice_quien_lleva_el_role():
-    assert "cuadro de avisos de trabajos.js, que lleva el role=\"status\"" in AGENDA
-    assert 'src="/trabajos.js"' in AGENDA
+    assert "cuadro de avisos de trabajos.js, que lleva el role=\"status\"" in _agenda()
+    assert 'src="/trabajos.js"' in _agenda()
 
 
 def test_siempre_con_encadenamiento_opcional():
-    assert not re.search(r"window\.avisos\.(mostrar|quitar)", AGENDA)
-    assert AGENDA.count("window.avisos?.mostrar(") == 3
-    assert AGENDA.count("window.avisos?.quitar(") == 1
+    assert not re.search(r"window\.avisos\.(mostrar|quitar)", _agenda())
+    assert _agenda().count("window.avisos?.mostrar(") == 3
+    assert _agenda().count("window.avisos?.quitar(") == 1
 
 
 def test_confirm_y_el_error_del_dialogo_siguen_en_su_sitio():
-    assert "if (!confirm(agConfirmarTexto(it))) return;" in AGENDA
-    assert '<p class="err" id="agDlgErr" role="alert" hidden></p>' in AGENDA
-    assert "if (malo) { agDlgAviso(malo); return; }" in AGENDA
-    assert "} else if (agVigente(gen)) agDlgAviso(agTexto(e));" in AGENDA
+    assert "if (!confirm(agConfirmarTexto(it))) return;" in _agenda()
+    assert '<p class="err" id="agDlgErr" role="alert" hidden></p>' in _agenda()
+    assert "if (malo) { agDlgAviso(malo); return; }" in _agenda()
+    assert "} else if (agVigente(gen)) agDlgAviso(agTexto(e));" in _agenda()
 
 
 def test_en_node_reintentar_recarga_y_el_aviso_se_quita_al_recuperarse(tmp_path):
