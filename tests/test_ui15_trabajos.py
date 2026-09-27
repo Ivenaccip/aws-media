@@ -8,7 +8,6 @@ Lo que se defiende aquí:
 - el cuadro va en las doce pantallas, plegado, y no repite lo que la pantalla
   ya enseña.
 """
-import functools
 import json
 import os
 import shutil
@@ -26,13 +25,7 @@ from pipeline.project import EscenaGuion, OpcionPersonaje, Personaje, Proyecto
 from server import trabajos_api as tj
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _js() -> str:
-    return (RAIZ / "static" / "trabajos.js").read_text(encoding="utf-8")
-
-
+JS = (RAIZ / "static" / "trabajos.js").read_text(encoding="utf-8")
 AHORA = time.time()
 
 
@@ -213,11 +206,11 @@ def test_las_subidas_salen_en_el_cuadro(nombre):
 
 
 def test_plegado_por_defecto_y_lo_del_servidor_escapado():
-    assert "abierto = false" in _js()
+    assert "abierto = false" in JS
     # títulos y detalles traen el brief del usuario: siempre por esc()
-    assert "${esc(t.titulo)}" in _js() and "esc(t.detalle" in _js()
+    assert "${esc(t.titulo)}" in JS and "esc(t.detalle" in JS
     # solo sondea mientras algo corre y la pestaña se ve
-    assert "remotos.some(t => t.estado === 'corriendo') && !document.hidden" in _js()
+    assert "remotos.some(t => t.estado === 'corriendo') && !document.hidden" in JS
 
 
 NODO = r"""
@@ -251,7 +244,7 @@ def corrida(tmp_path_factory):
     if not node:
         pytest.skip("node no está instalado")
     f = tmp_path_factory.mktemp("ui15") / "p.js"
-    f.write_text(NODO.replace("__CODIGO__", _js()), encoding="utf-8")
+    f.write_text(NODO.replace("__CODIGO__", JS), encoding="utf-8")
     r = subprocess.run([node, str(f)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)

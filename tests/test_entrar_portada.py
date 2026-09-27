@@ -10,7 +10,6 @@ no llama a la API, esa puerta desaparece. Estos tests fijan la nueva:
   · /entrar solo acepta `volver` del propio dominio y no rebota sin fin.
   · auth.js hace UNA ida a Cognito aunque lleguen varios 401 juntos.
 """
-import functools
 import json
 import re
 import shutil
@@ -24,23 +23,9 @@ from server import auth
 
 RAIZ = Path(__file__).resolve().parent.parent
 STATIC = RAIZ / "static"
-
-
-@functools.lru_cache(maxsize=None)
-def _portada() -> str:
-    return (STATIC / "portada.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _entrar() -> str:
-    return (STATIC / "entrar.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _callback() -> str:
-    return (STATIC / "callback.html").read_text(encoding="utf-8")
-
-
+PORTADA = (STATIC / "portada.html").read_text(encoding="utf-8")
+ENTRAR = (STATIC / "entrar.html").read_text(encoding="utf-8")
+CALLBACK = (STATIC / "callback.html").read_text(encoding="utf-8")
 NODE = shutil.which("node")
 
 
@@ -111,26 +96,26 @@ def test_fetch_sin_sesion_sigue_siendo_401(nube):
 
 def test_portada_no_toca_la_api():
     # un 401 desde la portada mandaría a Cognito a un visitante que no tocó nada
-    codigo = re.sub(r"<!--.*?-->", "", _portada(), flags=re.S)   # el comentario los cita
+    codigo = re.sub(r"<!--.*?-->", "", PORTADA, flags=re.S)   # el comentario los cita
     assert "auth.js" not in codigo and "monedero.js" not in codigo
     assert "fetch(" not in codigo and "/api/" not in codigo
 
 
 def test_portada_con_sesion_salta_al_estudio():
-    cab = _portada().split("</head>")[0]
+    cab = PORTADA.split("</head>")[0]
     assert "location.replace('/estudio/')" in cab
     assert "auth_refresh_token" in cab
 
 
 def test_portada_lleva_a_entrar_y_tiene_vista_previa():
-    assert _portada().count('href="/entrar"') == 2
-    assert 'property="og:title"' in _portada() and 'property="og:description"' in _portada()
+    assert PORTADA.count('href="/entrar"') == 2
+    assert 'property="og:title"' in PORTADA and 'property="og:description"' in PORTADA
 
 
 def test_enlace_de_la_comunidad_se_esconde_si_esta_vacio():
     js = (STATIC / "enlaces.js").read_text(encoding="utf-8")
     assert "comunidad:" in js and "^https:" in js
-    for html in (_portada(), _entrar()):
+    for html in (PORTADA, ENTRAR):
         assert re.search(r'<span data-enlace-envoltura hidden> <a data-enlace="comunidad" hidden>', html)
 
 
@@ -143,8 +128,8 @@ def test_enlace_de_la_comunidad_apunta_a_skool():
 # /entrar y callback
 
 def test_callback_ya_no_vuelve_a_la_portada():
-    assert "|| '/estudio/'" in _callback()
-    assert "location.replace('/')" not in _callback()
+    assert "|| '/estudio/'" in CALLBACK
+    assert "location.replace('/')" not in CALLBACK
 
 
 def test_las_pantallas_vuelven_al_estudio_no_a_la_portada():
@@ -158,7 +143,7 @@ def test_las_pantallas_vuelven_al_estudio_no_a_la_portada():
 
 def _destino():
     """La función destino() de entrar.html, para correrla en node."""
-    m = re.search(r"(  function destino\(\) \{.*?\n  \})", _entrar(), re.S)
+    m = re.search(r"(  function destino\(\) \{.*?\n  \})", ENTRAR, re.S)
     return "const ESTUDIO = '/estudio/';\n" + m.group(1)
 
 
@@ -183,10 +168,10 @@ def test_entrar_solo_vuelve_al_propio_dominio(volver, esperado):
 
 
 def test_entrar_tiene_guarda_contra_el_bucle():
-    assert "entrar_visitas" in _entrar() and "30000" in _entrar() and ">= 3" in _entrar()
+    assert "entrar_visitas" in ENTRAR and "30000" in ENTRAR and ">= 3" in ENTRAR
     # rehace la cookie (que es de sesión) antes de volver: sin eso, el bucle
-    assert "segundosRestantes() > 60" in _entrar()
-    assert "guardarTokens({ id_token:" in _entrar()
+    assert "segundosRestantes() > 60" in ENTRAR
+    assert "guardarTokens({ id_token:" in ENTRAR
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +250,6 @@ def test_si_no_carga_la_configuracion_no_manda_al_estudio_sin_sesion():
     # «no hay login» y /entrar mandaba al estudio; ahora muestra la entrada
     auth_js = (STATIC / "auth.js").read_text(encoding="utf-8")
     assert "{ activo: false, fallo: true }" in auth_js
-    assert "if (c.fallo) { sinConexion = true; mostrar(false); return; }" in _entrar()
-    assert _entrar().index("if (c.fallo)") < _entrar().index("if (!c.activo) { location.replace(volver)")
-    assert 'id="sin-conexion" hidden' in _entrar()
+    assert "if (c.fallo) { sinConexion = true; mostrar(false); return; }" in ENTRAR
+    assert ENTRAR.index("if (c.fallo)") < ENTRAR.index("if (!c.activo) { location.replace(volver)")
+    assert 'id="sin-conexion" hidden' in ENTRAR

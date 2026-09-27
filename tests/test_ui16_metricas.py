@@ -3,26 +3,21 @@ red o de Blotato de la página (antes #mtErr, con su enlace «Conectar Blotato»
 en 409). El anuncio por tarjeta (mtAnunciar / #mtEstado), la nota del recorte
 (#mtNota) y la caída de la lista (MTCAIDA) se quedan.
 """
-import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _mt() -> str:
-    return (RAIZ / "static" / "metricas.html").read_text(encoding="utf-8")
+MT = (RAIZ / "static" / "metricas.html").read_text(encoding="utf-8")
 
 
 def _cuerpo(inicio, largo=900):
-    i = _mt().index(inicio)
-    return _mt()[i:i + largo]
+    i = MT.index(inicio)
+    return MT[i:i + largo]
 
 
 def test_la_caja_de_error_ya_no_existe():
-    assert 'id="mtErr"' not in _mt()
-    assert "#mtErr" not in _mt()
+    assert 'id="mtErr"' not in MT
+    assert "#mtErr" not in MT
 
 
 def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
@@ -33,7 +28,7 @@ def test_el_aviso_de_pagina_va_al_cuadro_con_su_clave():
             "al: () => { location.href = MTCONECTAR; }};") in f
     assert "else if (reintentar) op.accion = {texto:'Reintentar', al: reintentar};" in f
     assert "window.avisos?.mostrar(msg, op);" in f
-    assert 'const MTCONECTAR = "/estudio/?blotato=conectar";' in _mt()
+    assert 'const MTCONECTAR = "/estudio/?blotato=conectar";' in MT
     assert "innerHTML" not in f
 
 
@@ -43,20 +38,20 @@ def test_la_carga_ofrece_reintentar():
     assert "mtAviso(j.error, !!j.reconectar, () => mtCargar(mas));" in f
     assert "mtAviso(mtTexto(e), e && e.status === 409, () => mtCargar(mas));" in f
     assert "mtCaida(false, false);" in f
-    assert "No pudimos traer tus publicaciones ahora. Pulsa" in _mt()
+    assert "No pudimos traer tus publicaciones ahora. Pulsa" in MT
 
 
 def test_el_anuncio_por_tarjeta_y_la_nota_se_quedan():
-    assert '<p id="mtEstado" class="ok" role="status" aria-live="polite"></p>' in _mt()
-    assert '<p id="mtNota" class="mut" hidden></p>' in _mt()
-    assert "function mtAnunciar(msg) {" in _mt()
-    assert "mtAnunciar(vistas ? `${it.red}: ${vistas} vistas.` : `${it.red}: ${it.motivo}`);" in _mt()
+    assert '<p id="mtEstado" class="ok" role="status" aria-live="polite"></p>' in MT
+    assert '<p id="mtNota" class="mut" hidden></p>' in MT
+    assert "function mtAnunciar(msg) {" in MT
+    assert "mtAnunciar(vistas ? `${it.red}: ${vistas} vistas.` : `${it.red}: ${it.motivo}`);" in MT
     # pedir los números de una tarjeta sigue limpiando y avisando igual
     f = _cuerpo("async function mtPedir(ev, it) {", 2000)
     assert 'mtAviso("");' in f and "mtAviso(mtTexto(e), e && e.status === 409);" in f
 
 
 def test_siempre_con_encadenamiento_opcional():
-    assert not re.search(r"window\.avisos\.(mostrar|quitar)", _mt())
-    assert _mt().count("window.avisos?.mostrar(") == 1
-    assert _mt().count("window.avisos?.quitar(") == 1
+    assert not re.search(r"window\.avisos\.(mostrar|quitar)", MT)
+    assert MT.count("window.avisos?.mostrar(") == 1
+    assert MT.count("window.avisos?.quitar(") == 1

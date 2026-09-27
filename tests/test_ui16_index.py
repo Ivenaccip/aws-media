@@ -6,7 +6,6 @@ existe) y el fallo al traer la lista de proyectos (antes se callaba). Se
 quedan: #perr junto a la caja de la idea, #blt-err del diálogo de Blotato y
 el confirm() de archivar.
 """
-import functools
 import json
 import shutil
 import subprocess
@@ -15,34 +14,26 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _inicio() -> str:
-    return (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _js() -> str:
-    return _inicio()[_inicio().rindex("<script>\n"):_inicio().rindex("</script>")]
+INICIO = (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
+JS = INICIO[INICIO.rindex("<script>\n"):INICIO.rindex("</script>")]
 
 
 def _funcion(firma):
-    i = _js().index(firma)
-    return _js()[i:_js().index("\n}\n", i) + 2]
+    i = JS.index(firma)
+    return JS[i:JS.index("\n}\n", i) + 2]
 
 
 def test_el_err_suelto_ya_no_existe():
-    assert 'id="err"' not in _inicio()
-    assert "$('#err')" not in _inicio()
+    assert 'id="err"' not in INICIO
+    assert "$('#err')" not in INICIO
 
 
 def test_lo_que_se_queda_en_su_sitio():
-    assert 'id="perr"' in _inicio() and 'id="blt-err"' in _inicio()
-    assert "$('#perr').textContent = 'Cuéntanos qué quieres primero" in _js()
-    assert "$('#blt-err').textContent = 'Pega tu clave de Blotato primero.';" in _js()
-    assert "if (!confirm('¿Archivar este proyecto?" in _js()
-    assert "if (!confirm('¿Desconectar tu cuenta de Blotato?" in _js()
+    assert 'id="perr"' in INICIO and 'id="blt-err"' in INICIO
+    assert "$('#perr').textContent = 'Cuéntanos qué quieres primero" in JS
+    assert "$('#blt-err').textContent = 'Pega tu clave de Blotato primero.';" in JS
+    assert "if (!confirm('¿Archivar este proyecto?" in JS
+    assert "if (!confirm('¿Desconectar tu cuenta de Blotato?" in JS
 
 
 def test_accion_va_al_cuadro_con_su_clave():

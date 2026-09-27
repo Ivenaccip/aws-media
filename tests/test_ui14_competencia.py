@@ -5,25 +5,16 @@ botones de tres niveles, foco ámbar), iconos de trazo en vez de emojis, la
 escala de seis tamaños y un solo botón ámbar («Revisar ✦ N»). El
 comportamiento no cambia: mismos ids, mismas funciones, mismos endpoints.
 """
-import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _pantalla() -> str:
-    return (RAIZ / "static" / "competencia.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _iconos() -> str:
-    return (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
+PANTALLA = (RAIZ / "static" / "competencia.html").read_text(encoding="utf-8")
+ICONOS = (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
 
 
 def _estilo():
-    return _pantalla()[_pantalla().index("<style>"):_pantalla().index("</style>")]
+    return PANTALLA[PANTALLA.index("<style>"):PANTALLA.index("</style>")]
 
 
 def _regla(selector):
@@ -33,9 +24,9 @@ def _regla(selector):
 
 
 def test_carga_la_carta_y_los_iconos():
-    assert _pantalla().index('href="/carta.css"') < _pantalla().index("<style>")
+    assert PANTALLA.index('href="/carta.css"') < PANTALLA.index("<style>")
     # iconos.js antes del script principal, que usa icono()
-    assert _pantalla().index('<script src="/iconos.js"></script>') < _pantalla().index("// ── cp · Competencia (C5)")
+    assert PANTALLA.index('<script src="/iconos.js"></script>') < PANTALLA.index("// ── cp · Competencia (C5)")
 
 
 def test_las_variables_locales_son_tokens_de_la_carta():
@@ -53,9 +44,9 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
-    assert not re.findall(r"font-size:\s*[\d.]+(px|rem|em)", _pantalla())
-    assert not re.search(r"font:\s*(\d{3}\s+)?[\d.]+px", _pantalla())
-    for valor in re.findall(r"font-size:\s*([^;}]+)", _pantalla()):
+    assert not re.findall(r"font-size:\s*[\d.]+(px|rem|em)", PANTALLA)
+    assert not re.search(r"font:\s*(\d{3}\s+)?[\d.]+px", PANTALLA)
+    for valor in re.findall(r"font-size:\s*([^;}]+)", PANTALLA):
         assert re.fullmatch(r"var\(--t-(xs|sm|md|titulo-sm|titulo-md|titulo-lg)\)", valor.strip()), valor
 
 
@@ -64,30 +55,30 @@ EMOJIS = "📡↗←✕✓✅⚠🔄👁📊🔍"
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in _pantalla(), f"quedó {e} en competencia"
-    assert "sepia(" not in _pantalla()
+        assert e not in PANTALLA, f"quedó {e} en competencia"
+    assert "sepia(" not in PANTALLA
 
 
 def test_los_iconos_que_usa_existen():
-    nombres = (set(re.findall(r'data-icono="([a-z]+)"', _pantalla()))
-               | set(re.findall(r'cpIco\("([a-z]+)"\)', _pantalla())))
+    nombres = (set(re.findall(r'data-icono="([a-z]+)"', PANTALLA))
+               | set(re.findall(r'cpIco\("([a-z]+)"\)', PANTALLA)))
     # UI·16: el aviso de «sin red» se fue al cuadro de avisos (trabajos.js)
     assert {"volver", "externo", "aviso"} <= nombres
     for n in nombres:
-        assert f"    {n}: '" in _iconos(), n
+        assert f"    {n}: '" in ICONOS, n
 
 
 def test_un_solo_principal_y_es_el_que_cobra():
-    assert _pantalla().count("btn-pri") == 1
-    assert '<button id="btn-revisar" class="btn btn-pri" disabled>Revisar</button>' in _pantalla()
-    assert '<button id="btn-agregar" class="btn btn-sec">Agregar</button>' in _pantalla()
+    assert PANTALLA.count("btn-pri") == 1
+    assert '<button id="btn-revisar" class="btn btn-pri" disabled>Revisar</button>' in PANTALLA
+    assert '<button id="btn-agregar" class="btn btn-sec">Agregar</button>' in PANTALLA
     # quitar una cuenta es borrar: peligro; ver y recargar, secundarios
-    assert 'class="btn btn-peligro quitar" data-quitar=' in _pantalla()
-    assert 'class="btn btn-sec quitar" data-abrir=' in _pantalla()
-    assert 'b.className = "btn btn-sec quitar";' in _pantalla()
+    assert 'class="btn btn-peligro quitar" data-quitar=' in PANTALLA
+    assert 'class="btn btn-sec quitar" data-abrir=' in PANTALLA
+    assert 'b.className = "btn btn-sec quitar";' in PANTALLA
     # sin botones propios con color: la forma y los estados son de carta.css
     assert not re.search(r"^\s*button\s*\{", _estilo(), re.M)
-    assert "#2b4a75" not in _pantalla()
+    assert "#2b4a75" not in PANTALLA
 
 
 def test_el_ambar_solo_dice_haz_algo():
@@ -95,12 +86,12 @@ def test_el_ambar_solo_dice_haz_algo():
     assert "#f0a94a" not in e and "#da8c28" not in e
     assert "var(--acc" not in e.split(":root", 1)[1].split("}", 1)[1]
     # la advertencia va en la caja de aviso de la carta (dueño, 25-sep)
-    assert '<p class="aviso aviso-caja">' in _pantalla()
+    assert '<p class="aviso aviso-caja">' in PANTALLA
 
 
 def test_enlaces_campos_y_tarjetas():
     assert "color: var(--c-enlace)" in _regla("a")
-    assert "#5b8dd6" not in _pantalla()
+    assert "#5b8dd6" not in PANTALLA
     campo = _regla("input")
     assert "var(--campo)" in campo and "var(--elev)" in campo and "var(--r-medio)" in campo
     tarjeta = _regla("section")

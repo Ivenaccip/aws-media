@@ -6,7 +6,6 @@ el fallo al abrir un informe (antes callaba) y el fallo al quitar una cuenta
 (antes se escribía en la nota del campo de agregar). Se quedan: la validación
 y el error de «Agregar» en #est-cuenta, y el 402 junto a «Revisar».
 """
-import functools
 import json
 import re
 import shutil
@@ -16,28 +15,20 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _pantalla() -> str:
-    return (RAIZ / "static" / "competencia.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _cp() -> str:
-    return _pantalla()[_pantalla().index("// ── cp · Competencia (C5)"):_pantalla().rindex("</script>")]
+PANTALLA = (RAIZ / "static" / "competencia.html").read_text(encoding="utf-8")
+CP = PANTALLA[PANTALLA.index("// ── cp · Competencia (C5)"):PANTALLA.rindex("</script>")]
 
 
 def _funcion(nombre):
-    i = _cp().index(f"async function {nombre}(")
-    return _cp()[i:_cp().index("\n}\n", i)]
+    i = CP.index(f"async function {nombre}(")
+    return CP[i:CP.index("\n}\n", i)]
 
 
 def test_el_banner_local_de_sin_red_ya_no_existe():
-    assert 'id="red"' not in _pantalla()
-    assert "#red" not in _pantalla()
-    assert '$("red")' not in _pantalla()
-    assert "sinred" not in _pantalla()
+    assert 'id="red"' not in PANTALLA
+    assert "#red" not in PANTALLA
+    assert '$("red")' not in PANTALLA
+    assert "sinred" not in PANTALLA
 
 
 def test_sin_red_va_al_cuadro_con_la_clave_red():
@@ -53,7 +44,7 @@ def test_el_fallo_de_carga_va_al_cuadro_con_reintentar():
     assert re.search(r'window\.avisos\?\.mostrar\("No pudimos traer tus cuentas y revisiones\.[^"]*",\s*'
                      r'\{ tipo: "mal", clave: "competencia-carga", accion: \{ texto: "Reintentar", al: cpCargar \} \}\);', c)
     assert 'window.avisos?.quitar("competencia-carga");' in c
-    assert '$("informes").innerHTML = `<span class="err">' not in _pantalla()
+    assert '$("informes").innerHTML = `<span class="err">' not in PANTALLA
 
 
 def test_abrir_un_informe_ya_no_calla():
@@ -73,15 +64,15 @@ def test_quitar_una_cuenta_avisa_en_el_cuadro_y_no_en_el_campo():
 
 
 def test_la_validacion_y_el_402_siguen_en_su_sitio():
-    assert 'if (!url) { $("est-cuenta").textContent = "Pega la liga del perfil primero."; return; }' in _cp()
-    assert "} catch (e) { $(\"est-cuenta\").innerHTML = `<span class=\"err\">${cpEsc(e.message)}</span>`; }" in _cp()
+    assert 'if (!url) { $("est-cuenta").textContent = "Pega la liga del perfil primero."; return; }' in CP
+    assert "} catch (e) { $(\"est-cuenta\").innerHTML = `<span class=\"err\">${cpEsc(e.message)}</span>`; }" in CP
     # el botón puede no existir (M4: recarga cerrada), pero si existe sigue
     # pintándose JUNTO al error, que es lo que este test protege
-    assert 'if (rec) $("estado").appendChild(rec);' in _cp()
+    assert 'if (rec) $("estado").appendChild(rec);' in CP
 
 
 def test_todas_las_llamadas_usan_encadenamiento_opcional():
-    assert not re.search(r"window\.avisos\.(mostrar|quitar)", _pantalla())
+    assert not re.search(r"window\.avisos\.(mostrar|quitar)", PANTALLA)
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +110,7 @@ def _node(escenario, tmp_path):
     if not nodo:
         pytest.skip("node no está en el PATH")
     f = tmp_path / "cp.js"
-    f.write_text(PRELUDIO + _cp() + "\n(async () => {\nconst out = {};\n" + escenario
+    f.write_text(PRELUDIO + CP + "\n(async () => {\nconst out = {};\n" + escenario
                  + "\nout.avisos = AVISOS;\nconsole.log(JSON.stringify(out));\n})()"
                  ".catch(e => { console.error(e); process.exit(1); });\n", encoding="utf-8")
     r = subprocess.run([nodo, str(f)], capture_output=True, text=True, encoding="utf-8")

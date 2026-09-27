@@ -19,10 +19,9 @@ por punto):
 | Python 3.10+ | `python --version` |
 | venv con deps | existe `venv/` y `venv/Scripts/python -c "import faster_whisper"` sale bien |
 | ffmpeg + ffprobe | `ffmpeg -version` |
-| Node 20.19+ (la UI nueva, `web/`, compila con Vite 8) | `node --version` |
+| Node 18+ | `node --version` |
 | jq (Windows/Git Bash) | `jq --version` |
 | Deps de Remotion | `remotion/node_modules/` y `remotion-longform/node_modules/` existen |
-| UI nueva compilada | `web/dist/estudio/` existe |
 | Transcripción configurada | `.video-stack/config.json` existe |
 | `.env` | existe (aunque esté vacío) |
 | Sesión de Claude (chat del editor) | `python tools/check_claude_login.py` sale `[OK]` |
@@ -37,10 +36,6 @@ video". Fin.
   `python -m venv venv` → `venv/Scripts/pip install -r requirements.txt`.
   Con GPU NVIDIA, ANTES: `pip install torch --index-url https://download.pytorch.org/whl/cu128`.
 - **Remotion**: `npm install` en `remotion/` y en `remotion-longform/`.
-- **UI nueva** (`web/`, docs/PLAN-UI.md): `cd web && npm ci && npm run build`. Pide
-  Node 20.19 o más nuevo; con uno más viejo, actualizar Node primero (winget,
-  abajo). Sin `web/dist` el server funciona igual, solo no aparecen las
-  pantallas nuevas.
 - **ffmpeg / Node / jq ausentes**: proponer los comandos de winget
   (`winget install Gyan.FFmpeg`, `winget install OpenJS.NodeJS.LTS`,
   `winget install jqlang.jq`) y que el usuario apruebe — instalar software del

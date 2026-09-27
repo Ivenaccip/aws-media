@@ -17,7 +17,6 @@ Lo que este archivo defiende:
 Sin red y sin gastar: el HTML se lee como texto y la lógica corre en node con
 un DOM mínimo (se salta si no hay node).
 """
-import functools
 import json
 import re
 import shutil
@@ -28,45 +27,20 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _html() -> str:
-    return (RAIZ / "tools" / "editor" / "index.html").read_text(encoding="utf-8")
-
+HTML = (RAIZ / "tools" / "editor" / "index.html").read_text(encoding="utf-8")
 
 INICIO_B3 = "// ── b3 · Publicar (C2)"
 
 
-def _tramo(desde: str, hasta: str, texto: str | None = None) -> str:
-    if texto is None:
-        texto = _html()
+def _tramo(desde: str, hasta: str, texto: str = HTML) -> str:
     i = texto.index(desde)
     return texto[i:texto.index(hasta, i)]
 
 
-# todo el JS del modal (corre en node)
-@functools.lru_cache(maxsize=None)
-def _b3() -> str:
-    return _tramo(INICIO_B3, "async function g1abrir(")
-
-
-# el marcado fijo
-@functools.lru_cache(maxsize=None)
-def _modal() -> str:
-    return _tramo('<div id="b3modal">', '<div id="b1modal">')
-
-
-# esc y fjDetalle
-@functools.lru_cache(maxsize=None)
-def _ayudantes() -> str:
-    return _tramo("function esc(s)", "const fj =")
-
-
-# los atajos del editor
-@functools.lru_cache(maxsize=None)
-def _teclado() -> str:
-    return _tramo("const MODALES_ABIERTOS", '$("tbAyuda").onclick')
+B3 = _tramo(INICIO_B3, "async function g1abrir(")          # todo el JS del modal (corre en node)
+MODAL = _tramo('<div id="b3modal">', '<div id="b1modal">')  # el marcado fijo
+AYUDANTES = _tramo("function esc(s)", "const fj =")         # esc y fjDetalle
+TECLADO = _tramo("const MODALES_ABIERTOS", '$("tbAyuda").onclick')  # los atajos del editor
 
 
 def _plano(s: str) -> str:
@@ -75,18 +49,18 @@ def _plano(s: str) -> str:
 
 def _funcion(nombre: str) -> str:
     """El cuerpo de una función del tramo b3, hasta la siguiente de primer nivel."""
-    i = _b3().index(nombre)
-    m = re.search(r"\n(?:async )?function |\nconst ", _b3()[i + 1:])
-    return _b3()[i:i + 1 + m.start()] if m else _b3()[i:]
+    i = B3.index(nombre)
+    m = re.search(r"\n(?:async )?function |\nconst ", B3[i + 1:])
+    return B3[i:i + 1 + m.start()] if m else B3[i:]
 
 
 # ---------------------------------------------------------------------------
 # XSS: todo dato externo que llega a un innerHTML pasa por esc()
 
 def test_existe_esc_y_escapa_los_cinco_caracteres():
-    assert "function esc(s)" in _html()
+    assert "function esc(s)" in HTML
     for par in ('"&": "&amp;"', '"<": "&lt;"', '">": "&gt;"', "'\"': \"&quot;\"", "\"'\": \"&#39;\""):
-        assert par in _ayudantes(), f"esc no escapa {par}"
+        assert par in AYUDANTES, f"esc no escapa {par}"
 
 
 @pytest.mark.parametrize("uso,que", [
@@ -109,7 +83,7 @@ def test_existe_esc_y_escapa_los_cinco_caracteres():
     ('href="${esc(p.url)}"', "enlace «Ver»"),
 ])
 def test_cada_dato_externo_pasa_por_esc(uso, que):
-    assert uso in _b3(), f"{que} se pinta sin escapar"
+    assert uso in B3, f"{que} se pinta sin escapar"
 
 
 # Interpolaciones que NO son datos externos: índices y constantes internas.
@@ -119,8 +93,8 @@ INTERNAS = {"i", "clase", 'o[1] ? " checked" : ""'}
 def _plantillas_html() -> list[str]:
     """Cada `x.innerHTML = …;` del tramo b3, y cada línea que arma una etiqueta
     fuera de esa asignación (las filas de b3fila, las <option> de destinos)."""
-    fuera = [m.group(0) for m in re.finditer(r"\.innerHTML\s*=.*?;\n", _b3(), re.S)]
-    fuera += [linea for linea in _b3().splitlines() if re.search(r"<[a-z]", linea)]
+    fuera = [m.group(0) for m in re.finditer(r"\.innerHTML\s*=.*?;\n", B3, re.S)]
+    fuera += [linea for linea in B3.splitlines() if re.search(r"<[a-z]", linea)]
     return fuera
 
 
@@ -135,12 +109,12 @@ def test_ningun_innerhtml_interpola_datos_sin_escapar():
 
 
 def test_el_enlace_ver_solo_acepta_http():
-    assert r"/^https?:\/\//i.test(p.url)" in _b3()
+    assert r"/^https?:\/\//i.test(p.url)" in B3
     assert 'rel="noopener noreferrer"' in _funcion("function b3fila(")
 
 
 def test_fj_explica_el_422_de_pydantic():
-    fj = _html()[_html().index("const fj = (url, body)"):]
+    fj = HTML[HTML.index("const fj = (url, body)"):]
     fj = fj[:fj.index("\n", fj.index(".then("))]
     assert "fjDetalle(await r.json()" in fj
     assert ".detail ||" not in fj, "vuelve el «[object Object]»"
@@ -150,14 +124,14 @@ def test_fj_explica_el_422_de_pydantic():
 # lo que ya no está, y lo que no se cobra
 
 def test_programar_ya_no_llega_pronto():
-    assert "llega muy pronto" not in _html()
-    assert "st.agendar === false" not in _html()
-    assert "st.agendar" not in _html()
+    assert "llega muy pronto" not in HTML
+    assert "st.agendar === false" not in HTML
+    assert "st.agendar" not in HTML
 
 
 @pytest.mark.parametrize("tramo", ["modal", "js"])
 def test_sugerir_titulos_es_gratis(tramo):
-    texto = _modal() if tramo == "modal" else _b3()
+    texto = MODAL if tramo == "modal" else B3
     assert "$0.0" not in texto
     assert "dólares" not in texto
     assert "~$" not in texto
@@ -165,22 +139,22 @@ def test_sugerir_titulos_es_gratis(tramo):
 
 
 def test_el_boton_de_titulos_no_trae_tooltip_de_costo():
-    boton = re.search(r'<button[^>]*id="b3sugerir"[^>]*>', _b3()).group(0)
+    boton = re.search(r'<button[^>]*id="b3sugerir"[^>]*>', B3).group(0)
     assert "title=" not in boton
 
 
 def test_el_orbe_de_titulos_no_dice_claude():
     """Los títulos no los escribe Claude: el orbe no puede decir que sí."""
-    llamada = _b3()[_b3().index('orbeOn("orbe-b3"'):]
+    llamada = B3[B3.index('orbeOn("orbe-b3"'):]
     llamada = llamada[:llamada.index(");")]
     assert "Claude" not in llamada
     assert "Escribiendo títulos" in llamada
-    assert "api/publicar/titulos" in _b3()
+    assert "api/publicar/titulos" in B3
 
 
 def test_enviar_no_lleva_orbe():
     """Subir el mp4 es espera mecánica: el orbe promete que hay alguien pensando."""
-    handler = _b3()[_b3().index('$("b3agendar").onclick'):]
+    handler = B3[B3.index('$("b3agendar").onclick'):]
     handler = handler[:handler.index("\n  };")]
     assert "orbeOn(" not in handler
 
@@ -189,7 +163,7 @@ def test_enviar_no_lleva_orbe():
 # el botón de enviar
 
 def _handler_agendar() -> str:
-    h = _b3()[_b3().index('$("b3agendar").onclick'):]
+    h = B3[B3.index('$("b3agendar").onclick'):]
     return h[:h.index("\n  };")]
 
 
@@ -223,7 +197,7 @@ def test_enviar_hace_el_post_del_contrato_y_sigue_el_avance():
 
 
 def test_sugerir_titulos_no_toca_el_boton_ni_el_orbe_de_otro_modal():
-    h = _b3()[_b3().index('$("b3sugerir").onclick'):]
+    h = B3[B3.index('$("b3sugerir").onclick'):]
     h = h[:h.index("\n  };")]
     fin = h[h.index("finally {"):]
     assert "btn.disabled = false" in fin and '$("b3sugerir")' not in fin
@@ -241,7 +215,7 @@ def test_abrir_pide_estado_y_cuentas_por_separado():
     assert abrir.index("b3pintarPubs(") < abrir.index('fj("api/publicar/cuentas")')
     assert abrir.index('$("b3descargas").innerHTML') < abrir.index('fj("api/publicar/cuentas")')
     assert "cargando tus redes…" in abrir
-    assert "st.cuentas" not in _b3() and "st.reconectar" not in _b3()
+    assert "st.cuentas" not in B3 and "st.reconectar" not in B3
     # la revisión de lo viejo no se espera: las redes no dependen de ella
     assert "\n  b3revisar(gen);" in abrir
     assert "B3ARCHIVOS = b3ordenar(st.descargables, st.final);" in abrir
@@ -257,7 +231,7 @@ def test_blotato_sin_redes_lo_dice_y_no_muestra_formulario():
 
 
 def test_solo_se_ofrecen_redes_con_reglas():
-    assert "B3CUENTAS = todas.filter(c => B3REDES[c.platform]);" in _b3()
+    assert "B3CUENTAS = todas.filter(c => B3REDES[c.platform]);" in B3
 
 
 def test_destinos_se_piden_al_cambiar_de_cuenta():
@@ -268,7 +242,7 @@ def test_destinos_se_piden_al_cambiar_de_cuenta():
     # una respuesta vieja no pisa la cuenta que se eligió después
     assert "pedido !== B3DESTGEN" in dest
     assert "b3destinos(gen);" in _funcion("function b3cambioCuenta(")
-    assert '$("b3cuenta").onchange = () => b3cambioCuenta(gen);' in _b3()
+    assert '$("b3cuenta").onchange = () => b3cambioCuenta(gen);' in B3
 
 
 def test_el_formulario_sigue_las_reglas_de_la_red():
@@ -279,7 +253,7 @@ def test_el_formulario_sigue_las_reglas_de_la_red():
     assert '<input type="checkbox" id="b3ia" checked> Hecho con IA' in red
     assert "B3OPCIONES[k]" in red
     assert '$("b3vertical").hidden = !red.vertical;' in red
-    assert "Esta red solo acepta video vertical (9:16)." in _b3()
+    assert "Esta red solo acepta video vertical (9:16)." in B3
     assert '${n} / ${max}' in _funcion("function b3contar(")
     assert "b3largo(red, " in _funcion("function b3contar(")
 
@@ -298,14 +272,14 @@ def test_programar_sigue_siendo_el_default_con_la_zona_a_la_vista():
 def test_el_sondeo_consulta_publicaciones_cada_4_segundos():
     sondeo = _funcion("function b3sondear(")
     assert 'fj("api/publicar/publicaciones")' in sondeo
-    assert "const B3SONDEO_MS = 4000;" in _b3()
+    assert "const B3SONDEO_MS = 4000;" in B3
     assert "if (B3SONDEO ||" in sondeo, "podría haber dos intervalos a la vez"
     assert "catch { return; }" in sondeo, "la red caída cortaría el sondeo"
 
 
 def test_cerrar_el_modal_para_el_sondeo():
-    assert 'onclick="b3cerrar()"' in _modal()
-    assert "classList.remove('abierto')" not in _modal(), "el ✕ cierra sin parar el sondeo"
+    assert 'onclick="b3cerrar()"' in MODAL
+    assert "classList.remove('abierto')" not in MODAL, "el ✕ cierra sin parar el sondeo"
     cerrar = _funcion("function b3cerrar(")
     assert "b3parar();" in cerrar and "B3GEN++" in cerrar
     abrir = _funcion("async function b3abrir()")
@@ -316,21 +290,21 @@ def test_cerrar_el_modal_para_el_sondeo():
 # el marcado: pantallas chicas y foco
 
 def test_el_modal_cabe_en_pantallas_chicas():
-    regla = _html()[_html().index("#b3card {"):]
+    regla = HTML[HTML.index("#b3card {"):]
     regla = regla[:regla.index("}")]
     assert "max-height: 92vh" in regla and "overflow-y: auto" in regla
-    assert "@media (max-width: 420px)" in _html()
+    assert "@media (max-width: 420px)" in HTML
 
 
 def test_cerrar_es_un_boton_con_foco():
-    assert '<button type="button" class="b3cerrar" onclick="b3cerrar()" aria-label="Cerrar">' in _modal()
-    assert ":focus-visible { outline: 2px solid var(--accent)" in _html()
+    assert '<button type="button" class="b3cerrar" onclick="b3cerrar()" aria-label="Cerrar">' in MODAL
+    assert ":focus-visible { outline: 2px solid var(--accent)" in HTML
 
 
 def test_la_lista_de_publicaciones_tiene_su_titulo():
-    assert "Tus publicaciones de este video" in _modal()
-    assert 'id="b3lista"' in _modal()
-    assert 'role="status"' in _modal()
+    assert "Tus publicaciones de este video" in MODAL
+    assert 'id="b3lista"' in MODAL
+    assert 'role="status"' in MODAL
 
 
 # ---------------------------------------------------------------------------
@@ -471,7 +445,7 @@ def _node(escenario: str, tmp_path: Path, redes: dict | None = None):
     nodo = shutil.which("node")
     if not nodo:
         pytest.skip("node no está en el PATH")
-    codigo = (PRELUDIO + _ayudantes() + _b3() +
+    codigo = (PRELUDIO + AYUDANTES + B3 +
               f"\nB3REDES = {json.dumps(redes if redes is not None else REDES)};\n" +
               "(async () => {\nconst out = {};\n" + FLUJO + escenario +
               "\nconsole.log(JSON.stringify(out));\n})().catch(e => { console.error(e); process.exit(1); });\n")
@@ -1456,9 +1430,9 @@ def test_el_teclado_respeta_los_campos_y_los_modales(tmp_path):
     if not nodo:
         pytest.skip("node no está en el PATH")
     assert ('const MODALES_ABIERTOS = "#b3modal.abierto, #b1modal.abierto, #g1modal.abierto";'
-            in _teclado())
+            in TECLADO)
     f = tmp_path / "teclado.js"
-    f.write_text(TECLADO_STUBS + _teclado() + TECLADO_ESCENARIO, encoding="utf-8")
+    f.write_text(TECLADO_STUBS + TECLADO + TECLADO_ESCENARIO, encoding="utf-8")
     r = subprocess.run([nodo, str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     o = json.loads(r.stdout)

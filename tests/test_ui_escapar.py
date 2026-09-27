@@ -213,24 +213,3 @@ def test_editor_flags_y_versiones_sin_html_crudo():
     assert "g1activar(${Number(v.n)})" in e
     # el preview de la nube: solo un enlace http(s)
     assert 'if (s.ok && typeof s.url === "string" && /^https?:\\/\\//i.test(s.url))' in e
-
-
-def _luminancia(hexa: str) -> float:
-    r, g, b = (int(hexa.lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4))
-    lin = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-
-
-def _contraste(a: str, b: str) -> float:
-    la, lb = sorted((_luminancia(a), _luminancia(b)), reverse=True)
-    return (la + 0.05) / (lb + 0.05)
-
-
-def test_editor_texto_de_los_cuadros_blotato_se_lee():
-    # El extra de UI·2: «Haz click para agregar Blotato» iba en tinta (#14100a,
-    # la del texto sobre ámbar) encima de --panel2: 1.29:1, invisible.
-    e = _texto("tools/editor/index.html")
-    regla = re.search(r"\.b3sqTxt \{[^}]*\}", e).group(0)
-    assert "color: var(--text)" in regla, regla
-    variables = dict(re.findall(r"--(text|panel2): (#[0-9a-fA-F]{6})", e))
-    assert _contraste(variables["text"], variables["panel2"]) >= 4.5

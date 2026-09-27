@@ -31,7 +31,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
-from server import auth, web
+from server import auth
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
@@ -1048,42 +1048,13 @@ INMUTABLES = {"orbe-gpu.v1.js", "orbe.v1.wgsl",
 mimetypes.add_type("font/woff2", ".woff2")
 
 
-_SIN_CACHE = {"Cache-Control": "no-cache"}
-_REVALIDA_BORDE = {"Cache-Control": "no-cache",
-                   "Cloudflare-CDN-Cache-Control": "max-age=60"}
-
-
-def _tipo(resp) -> str:
-    return str(getattr(resp, "media_type", "") or "").split(";")[0].strip()
-
-
-def _es_codigo(resp) -> bool:
-    return _tipo(resp) in {"application/javascript", "text/javascript", "text/css"}
-
-
-def _es_html(resp) -> bool:
-    return _tipo(resp) == "text/html"
-
-
 class _StaticCacheado(StaticFiles):
     """Los assets pesados (imágenes de muestra de /estilos/) viajan por Lambda —
     sin Cache-Control el navegador los re-descarga en cada clic de estilo
     (hasta ~370 KB por imagen). Un día de caché basta: solo cambian con deploy
-    y el ETag de StaticFiles revalida al vencer.
-
-    UI·3 · HTML, JS y CSS revalidan en cada carga (así un fix de UI llega con
-    el siguiente deploy; tarjeta congelada «Cache-Control para auth.js y
-    monedero.js»). Antes no llevaban cabecera y Cloudflare les ponía la suya:
-    medido el 27-sep, /auth.js, /monedero.js y /carta.css salían con
-    `max-age=14400` y HIT — un fix tardaba hasta 4 h en llegar. Ahora:
-      · Cache-Control: no-cache — el navegador pregunta siempre. Cloudflare lo
-        deja pasar tal cual (medido en «/», que ya lo llevaba).
-      · Cloudflare-CDN-Cache-Control: max-age=60 — SOLO para el borde, que no
-        lo reenvía. El JS y el CSS siguen saliendo del borde: una carga del
-        estudio pide ~8 a la vez y, sin esto, cada una despertaría una Lambda
-        del techo de 10 que el API comparte con el worker. Un deploy llega al
-        borde en ≤ 60 s sin purgar nada.
-    El HTML no se cachea en el borde por defecto (sale DYNAMIC): solo no-cache.
+    y el ETag de StaticFiles revalida al vencer. El HTML/JS queda como estaba
+    (revalidación por ETag en cada carga — así los fixes de UI llegan solos),
+    salvo los versionados de INMUTABLES.
 
     El filtro de imágenes va por media_type y el de INMUTABLES por NOMBRE: todo
     el JS del repo comparte media_type, así que ahí no se puede distinguir."""
@@ -1094,10 +1065,6 @@ class _StaticCacheado(StaticFiles):
             resp.headers["Cache-Control"] = "public, max-age=86400"
         elif args and Path(str(args[0])).name in INMUTABLES:
             resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
-        elif _es_codigo(resp):
-            resp.headers.update(_REVALIDA_BORDE)
-        elif _es_html(resp):
-            resp.headers.update(_SIN_CACHE)
         return resp
 
 
@@ -1118,8 +1085,8 @@ def _editor_imagenes_viejo():
 # /estudio/ sirve el MISMO index.html (no se mueve: sus tests lo leen ahí).
 # Cualquier «/?algo» es un enlace viejo al estudio (?p=, ?blotato=conectar…):
 # 302 conservando el query. 302 y no 301, igual que arriba.
-# no-cache en los tres (_SIN_CACHE, arriba): son HTML y un cambio de portada
-# tiene que llegar solo.
+# no-cache en los tres: son HTML y un cambio de portada tiene que llegar solo.
+_SIN_CACHE = {"Cache-Control": "no-cache"}
 
 
 @app.get("/", include_in_schema=False)
@@ -1144,9 +1111,5 @@ def _estudio():
 def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
-
-# UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje
-# se queda con todo lo que venga detrás.
-web.montar(app)
 
 app.mount("/", _StaticCacheado(directory=ROOT / "static", html=True), name="static")

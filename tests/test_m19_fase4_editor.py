@@ -9,24 +9,19 @@ Dos reglas que este archivo defiende:
    #tbBroll) seguían vivos durante la petición, y cada uno cobra créditos: el
    segundo clic cobraba otra vez.
 """
-import functools
 from pathlib import Path
 
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 EDITOR = RAIZ / "tools" / "editor" / "index.html"
-
-
-@functools.lru_cache(maxsize=None)
-def _html() -> str:
-    return EDITOR.read_text(encoding="utf-8")
+HTML = EDITOR.read_text(encoding="utf-8")
 
 
 def _preambulo(marca: str) -> str:
     """Lo que corre entre que se pulsa el botón y la primera espera."""
-    i = _html().index(marca)
-    return _html()[i:_html().index("await", i)]
+    i = HTML.index(marca)
+    return HTML[i:HTML.index("await", i)]
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +30,8 @@ def _preambulo(marca: str) -> str:
 def test_el_editor_carga_el_orbe_con_ruta_relativa():
     """La UI corre bajo /editor/<proyecto>/ en la nube y bajo «/» en el server
     local. Una ruta absoluta /orbe.js funcionaría solo en uno de los dos."""
-    assert '<script src="orbe.js"></script>' in _html()
-    assert '"/orbe.js"' not in _html() and "'/orbe.js'" not in _html()
+    assert '<script src="orbe.js"></script>' in HTML
+    assert '"/orbe.js"' not in HTML and "'/orbe.js'" not in HTML
 
 
 def test_los_dos_servidores_sirven_el_orbe():
@@ -50,7 +45,7 @@ def test_los_dos_servidores_sirven_el_orbe():
 
 def test_un_orbe_que_no_carga_no_rompe_el_editor():
     """orbe.js es un adorno; los botones que gastan dinero no dependen de él."""
-    assert "if (!c || !window.orbe) return null;" in _html()
+    assert "if (!c || !window.orbe) return null;" in HTML
 
 
 # ---------------------------------------------------------------------------
@@ -66,13 +61,13 @@ IA = [
 
 @pytest.mark.parametrize("hueco,que", IA, ids=[h for h, _ in IA])
 def test_el_orbe_acompana_cada_espera_de_ia(hueco, que):
-    assert f'orbeOn("{hueco}"' in _html(), f"{que} se quedó sin orbe"
-    assert f'orbeOff("{hueco}")' in _html(), f"{que} monta el orbe y no lo desmonta"
+    assert f'orbeOn("{hueco}"' in HTML, f"{que} se quedó sin orbe"
+    assert f'orbeOff("{hueco}")' in HTML, f"{que} monta el orbe y no lo desmonta"
 
 
 def test_el_chat_ya_no_anuncia_con_un_reloj_de_arena():
-    assert "⏳ Claude está escribiendo" not in _html()
-    assert '<div id="chatBusy"></div>' in _html()
+    assert "⏳ Claude está escribiendo" not in HTML
+    assert '<div id="chatBusy"></div>' in HTML
 
 
 MECANICAS = [
@@ -86,8 +81,8 @@ MECANICAS = [
                          ids=["render", "subtitulos", "activar-version"])
 def test_las_esperas_mecanicas_no_llevan_orbe(marca, que):
     """El orbe promete que hay alguien pensando. En un ffmpeg eso es mentira."""
-    i = _html().index(marca)
-    tramo = _html()[i:i + 1400]
+    i = HTML.index(marca)
+    tramo = HTML[i:i + 1400]
     assert "orbeOn(" not in tramo, f"{que} no debería llevar orbe"
 
 
@@ -126,8 +121,8 @@ def test_el_confirm_de_gasto_sigue_yendo_primero():
 def test_veo_no_revive_el_boton_al_salir_bien():
     """Tras el éxito viene un location.reload() con 1,2 s de espera. Rehabilitar
     ahí son 1,2 s en los que se puede volver a cobrar un video de Veo."""
-    i = _html().index('$("g1animar").onclick')
-    cuerpo = _html()[i:_html().index('async function g1activar', i)]
+    i = HTML.index('$("g1animar").onclick')
+    cuerpo = HTML[i:HTML.index('async function g1activar', i)]
     assert 'finally { orbeOff("orbe-g1"); }' in cuerpo, \
         "el finally de Veo rehabilita el botón (o dejó de apagar el orbe)"
 
@@ -136,8 +131,8 @@ def test_veo_no_revive_el_boton_al_salir_bien():
                                    '$("b3sugerir").onclick', "async function b1flujo()"])
 def test_el_boton_vuelve_a_la_vida_aunque_falle(marca):
     """Lo contrario del caso de Veo: si falla, el botón NO puede quedar muerto."""
-    i = _html().index(marca)
-    tramo = _html()[i:i + 2200]
+    i = HTML.index(marca)
+    tramo = HTML[i:i + 2200]
     assert "finally {" in tramo and "disabled = false" in tramo, \
         f"{marca} puede quedarse muerto tras un error"
 

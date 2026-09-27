@@ -28,7 +28,6 @@ Lo que este archivo defiende:
 Sin red: el HTML se lee como texto y la lógica corre en node con un DOM mínimo
 (se salta si no hay node).
 """
-import functools
 import json
 import re
 import shutil
@@ -38,17 +37,8 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-
-
-@functools.lru_cache(maxsize=None)
-def _agenda() -> str:
-    return (RAIZ / "static" / "agenda.html").read_text(encoding="utf-8")
-
-
-@functools.lru_cache(maxsize=None)
-def _editor() -> str:
-    return (RAIZ / "tools" / "editor" / "index.html").read_text(encoding="utf-8")
-
+AGENDA = (RAIZ / "static" / "agenda.html").read_text(encoding="utf-8")
+EDITOR = (RAIZ / "tools" / "editor" / "index.html").read_text(encoding="utf-8")
 
 INICIO_AG = "// ── ag · Agenda (C3)"
 
@@ -58,25 +48,10 @@ def _tramo(desde: str, hasta: str, texto: str) -> str:
     return texto[i:texto.index(hasta, i)]
 
 
-# todo el JS de la pantalla
-@functools.lru_cache(maxsize=None)
-def _ag() -> str:
-    return _tramo(INICIO_AG, "</script>", _agenda())
-
-
-@functools.lru_cache(maxsize=None)
-def _ayudantes() -> str:
-    return _tramo("function esc(s)", "// ── ag · lógica", _ag())
-
-
-@functools.lru_cache(maxsize=None)
-def _logica() -> str:
-    return _tramo("// ── ag · lógica", "// ── ag · arranque", _ag())
-
-
-@functools.lru_cache(maxsize=None)
-def _arranque() -> str:
-    return _ag()[_ag().index("// ── ag · arranque"):]
+AG = _tramo(INICIO_AG, "</script>", AGENDA)              # todo el JS de la pantalla
+AYUDANTES = _tramo("function esc(s)", "// ── ag · lógica", AG)
+LOGICA = _tramo("// ── ag · lógica", "// ── ag · arranque", AG)
+ARRANQUE = AG[AG.index("// ── ag · arranque"):]
 
 
 def _plano(s: str) -> str:
@@ -87,9 +62,9 @@ def _plano(s: str) -> str:
 # XSS: todo dato externo que llega a un innerHTML pasa por esc()
 
 def test_existe_esc_y_escapa_los_cinco_caracteres():
-    assert "function esc(s)" in _agenda()
+    assert "function esc(s)" in AGENDA
     for par in ('"&": "&amp;"', '"<": "&lt;"', '">": "&gt;"', "'\"': \"&quot;\"", "\"'\": \"&#39;\""):
-        assert par in _ayudantes(), f"esc no escapa {par}"
+        assert par in AYUDANTES, f"esc no escapa {par}"
 
 
 # Interpolaciones que NO son datos externos: el índice del botón es un número
@@ -100,8 +75,8 @@ INTERNAS: set[str] = set()
 def _plantillas_html() -> list[str]:
     """Cada `x.innerHTML = …;` del JS, y cada línea que arma una etiqueta fuera
     de esa asignación (las tarjetas de agTarjeta, la fila del diálogo)."""
-    fuera = [m.group(0) for m in re.finditer(r"\.innerHTML\s*=.*?;\n", _ag(), re.S)]
-    fuera += [linea for linea in _ag().splitlines() if re.search(r"<[a-z]", linea)]
+    fuera = [m.group(0) for m in re.finditer(r"\.innerHTML\s*=.*?;\n", AG, re.S)]
+    fuera += [linea for linea in AG.splitlines() if re.search(r"<[a-z]", linea)]
     return fuera
 
 
@@ -117,9 +92,9 @@ def test_ningun_innerhtml_interpola_datos_sin_escapar():
 def test_la_pantalla_no_carga_nada_del_cdn_de_blotato():
     """El servidor manda el CONTEO de adjuntos, nunca sus URLs: una pantalla
     pública no tiene por qué pedirle assets a Blotato."""
-    assert "profileImageUrl" not in _agenda()
-    assert "mediaUrl" not in _agenda()
-    assert "<img" not in _agenda()
+    assert "profileImageUrl" not in AGENDA
+    assert "mediaUrl" not in AGENDA
+    assert "<img" not in AGENDA
 
 
 # ---------------------------------------------------------------------------
@@ -128,29 +103,29 @@ def test_la_pantalla_no_carga_nada_del_cdn_de_blotato():
 def test_auth_js_va_antes_del_script_inline():
     """auth.js envuelve fetch para colgarle el Authorization. Si el script
     inline va antes, su primera llamada sale sin cabecera y vuelve 401."""
-    assert _agenda().index('src="/auth.js"') < _agenda().index(INICIO_AG)
-    assert _agenda().index('src="/monedero.js"') < _agenda().index(INICIO_AG)
+    assert AGENDA.index('src="/auth.js"') < AGENDA.index(INICIO_AG)
+    assert AGENDA.index('src="/monedero.js"') < AGENDA.index(INICIO_AG)
 
 
 def test_todo_el_arranque_va_dentro_de_domcontentloaded():
-    assert 'document.addEventListener("DOMContentLoaded"' in _arranque()
+    assert 'document.addEventListener("DOMContentLoaded"' in ARRANQUE
     # la única carga inicial vive dentro del manejador, no suelta en el script
-    assert re.search(r"^agCargar\(", _ag(), re.M) is None
+    assert re.search(r"^agCargar\(", AG, re.M) is None
 
 
 def test_el_dialogo_lleva_margin_auto():
     """El `* { margin: 0 }` del reset se lo quita al <dialog>: sin margin:auto
     el diálogo se pega a la esquina de arriba a la izquierda."""
-    estilo = _tramo("#agDlg {", "}", _agenda())
+    estilo = _tramo("#agDlg {", "}", AGENDA)
     assert "margin: auto" in estilo
-    assert "#agDlg::backdrop" in _agenda()
+    assert "#agDlg::backdrop" in AGENDA
 
 
 def test_la_agenda_no_hace_poll():
     """Una llamada a Blotato por carga: el modal de Publicar ya gasta hasta 3
     GET /posts y el límite es 60/min por usuario."""
-    assert "setInterval" not in _ag()
-    assert "setTimeout" not in _ag()
+    assert "setInterval" not in AG
+    assert "setTimeout" not in AG
 
 
 # ---------------------------------------------------------------------------
@@ -165,17 +140,17 @@ def _codigo(js: str) -> str:
 def test_cambiar_la_hora_nunca_manda_draft():
     """El PATCH de Blotato no fusiona: un draft parcial borra mediaUrls y deja
     programada una publicación sin video."""
-    assert "draft" not in _codigo(_ag())
-    cuerpo = _tramo("await fj(\"/api/agenda/reprogramar\"", ");", _logica())
+    assert "draft" not in _codigo(AG)
+    cuerpo = _tramo("await fj(\"/api/agenda/reprogramar\"", ");", LOGICA)
     # `it` es el item capturado AL ABRIR el diálogo, no el AGACTUAL del momento:
     # abrir otra publicación mientras esta viaja no puede reprogramar la otra
     assert "id: it.id" in cuerpo and "cuando" in cuerpo
-    assert "const it = AGACTUAL" in _logica()
+    assert "const it = AGACTUAL" in LOGICA
     assert cuerpo.count(":") == 2          # cuerpo: { id, cuando } y nada más
 
 
 def test_cancelar_manda_el_confirmar_del_gate():
-    assert "confirmar: true" in _logica()
+    assert "confirmar: true" in LOGICA
 
 
 # ---------------------------------------------------------------------------
@@ -201,14 +176,14 @@ def test_la_pantalla_no_copia_los_mensajes_del_servidor():
     Copiarlos aquí los dejaría desincronizados en cuanto cambie uno."""
     for clave, mensaje in _mensajes_reales().items():
         assert mensaje, f"{clave} se quedó sin texto"
-        assert mensaje not in _agenda(), f"la pantalla copió el mensaje de {clave}"
+        assert mensaje not in AGENDA, f"la pantalla copió el mensaje de {clave}"
 
 
 def test_el_409_es_lo_unico_que_ofrece_conectar_blotato():
     """La pantalla no decide QUÉ decir (eso es del servidor), solo si además
     ofrece el enlace para conectar la cuenta."""
-    assert "status === 409" in _logica()
-    assert '/estudio/?blotato=conectar' in _logica()
+    assert "status === 409" in LOGICA
+    assert '/estudio/?blotato=conectar' in LOGICA
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +292,7 @@ def _node(escenario: str, tmp_path: Path, cabeza: str = "") -> dict:
     nodo = shutil.which("node")
     if not nodo:
         pytest.skip("node no está en el PATH")
-    codigo = (PRELUDIO + cabeza + _ag() +
+    codigo = (PRELUDIO + cabeza + AG +
               "\n(async () => {\nconst out = {};\n" + escenario +
               "\nconsole.log(JSON.stringify(out));\n})()"
               ".catch(e => { console.error(e); process.exit(1); });\n")
@@ -667,7 +642,7 @@ def test_la_pantalla_no_acepta_una_hora_que_el_servidor_rechaza(tmp_path):
     """La pantalla aceptaba una hora a 10 segundos vista y el servidor la
     rechazaba: una llamada gastada para que le digan que no."""
     margen = _margen_servidor()
-    assert f"const AGMARGEN_S = {margen};" in _ag(), \
+    assert f"const AGMARGEN_S = {margen};" in AG, \
         f"el servidor exige {margen} s de margen y la pantalla usa otro"
     o = _node(f"""
 const ahora = Date.parse("2026-09-17T12:00:00Z");
@@ -830,8 +805,8 @@ out.cerrado = !els.agDlg.open;
 
 def test_la_region_viva_existe_en_el_html():
     # UI·16: el anuncio va al cuadro de avisos de trabajos.js, que lleva el role
-    assert 'src="/trabajos.js"' in _agenda()
-    assert 'id="agEstado"' not in _agenda()
+    assert 'src="/trabajos.js"' in AGENDA
+    assert 'id="agEstado"' not in AGENDA
 
 
 def test_sin_conexion_el_mensaje_esta_en_espanol(tmp_path):
@@ -949,8 +924,8 @@ def test_b3etiqueta_cancelado_en_node(tmp_path):
     nodo = shutil.which("node")
     if not nodo:
         pytest.skip("node no está en el PATH")
-    trozo = _tramo("const B3EN_CURSO", ";", _editor()) + ";\n" + \
-        _tramo("function b3etiqueta(p)", "\n// Una fila", _editor())
+    trozo = _tramo("const B3EN_CURSO", ";", EDITOR) + ";\n" + \
+        _tramo("function b3etiqueta(p)", "\n// Una fila", EDITOR)
     codigo = (trozo + "\nconst out = {};\n"
               'out.cancelado = b3etiqueta({estado: "cancelado", en_curso: false});\n'
               'out.enCurso = b3etiqueta({estado: "creando", en_curso: true});\n'
@@ -969,8 +944,8 @@ def test_b3etiqueta_cancelado_en_node(tmp_path):
 def test_la_pildora_aviso_existe_en_el_editor():
     """«aviso» tiene que ser una clase de verdad: una inventada se pinta sin
     color y nadie se entera."""
-    assert ".b3pill.aviso {" in _editor()
-    assert '["Cancelada", "aviso"]' in _editor()
+    assert ".b3pill.aviso {" in EDITOR
+    assert '["Cancelada", "aviso"]' in EDITOR
 
 
 # ---------------------------------------------------------------------------

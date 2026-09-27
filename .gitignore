@@ -48,6 +48,3 @@ media/projects/
 
 # CDK synth output
 infra/cdk.out/
-
-# UI·6: lo compila `npm run build` (y la etapa web del Dockerfile)
-web/dist/
