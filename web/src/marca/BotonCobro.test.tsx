@@ -32,15 +32,28 @@ describe('BotonCobro', () => {
 
   it('cobro.sin_saldo_no_cobra: deshabilitado y dice cuánto falta', async () => {
     const alCobrar = vi.fn(async () => {});
-    const alRecargar = vi.fn();
-    render(<BotonCobro verbo="Generar" costo={100} saldo={30} alCobrar={alCobrar} alRecargar={alRecargar} />);
+    const recargar = vi.fn();
+    window.monedero = { get: () => null, refrescar: vi.fn(), recargar, recarga: true, cta: '' };
+    render(<BotonCobro verbo="Generar" costo={100} saldo={30} alCobrar={alCobrar} />);
     const b = screen.getByRole('button', { name: /Generar/ });
     expect(b).toBeDisabled();
     await userEvent.click(b);
     expect(alCobrar).not.toHaveBeenCalled();
     expect(screen.getByText(/Te faltan ✦ 70/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Recargar' }));
-    expect(alRecargar).toHaveBeenCalledOnce();
+    expect(recargar).toHaveBeenCalledOnce();
+    delete window.monedero;
+  });
+
+  it('cobro.recarga_cerrada_no_ofrece_un_boton_muerto', () => {
+    window.monedero = {
+      get: () => null, refrescar: vi.fn(), recargar: vi.fn(), recarga: false,
+      cta: 'Escríbenos por el canal de la comunidad para conseguir más.',
+    };
+    render(<BotonCobro verbo="Generar" costo={100} saldo={30} alCobrar={async () => {}} />);
+    expect(screen.queryByRole('button', { name: 'Recargar' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Escríbenos por el canal de la comunidad/)).toBeInTheDocument();
+    delete window.monedero;
   });
 
   it('si el cobro falla, el botón se suelta para reintentar', async () => {

@@ -4,6 +4,8 @@
 // Ese enlace va a /ui/clasica, que decide server/migracion.py: deja la cookie
 // `ui=clasica` y lleva a la URL vieja. Si la pantalla ya está `retirada`, el
 // server lo devuelve aquí mismo; por eso el enlace no necesita saber la etapa.
+// 64 px arriba: la píldora del monedero (fija, arriba a la derecha) acaba a
+// 52 px y taparía «Usar la versión anterior» (UI·12).
 import type { ReactNode } from 'react';
 
 import { Icono } from '../ui/Icono';
@@ -27,7 +29,7 @@ export function enlaceClasica(pantalla: string): string {
 
 export function Marco({ pantalla, titulo, bajada, children }: PropsMarco) {
   return (
-    <div className="mx-auto max-w-[1080px] px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-[1080px] px-4 pt-16 pb-10 sm:px-6">
       <nav aria-label="Navegación" className="flex flex-wrap items-center justify-between gap-x-6">
         <a className={ENLACE} href="/estudio/">
           <Icono nombre="volver" />

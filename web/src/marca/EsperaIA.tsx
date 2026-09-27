@@ -13,9 +13,11 @@ export interface PropsEsperaIA {
   /** Cambia cada vez que hay avance real: el orbe «late» y el tope reinicia. */
   latido?: number;
   heroe?: boolean;
+  /** Lo que dice el orbe cuando se agota el tope (el trabajo sigue). */
+  textoAlAgotar?: string;
 }
 
-export function EsperaIA({ texto, tope, latido, heroe = false }: PropsEsperaIA) {
+export function EsperaIA({ texto, tope, latido, heroe = false, textoAlAgotar }: PropsEsperaIA) {
   const hueco = useRef<HTMLSpanElement>(null);
   const mando = useRef<MandoOrbe | null>(null);
   const hayOrbe = typeof window !== 'undefined' && Boolean(window.orbe);
@@ -26,6 +28,7 @@ export function EsperaIA({ texto, tope, latido, heroe = false }: PropsEsperaIA) 
       texto,
       ...(tope ? { tope } : {}),
       ...(heroe ? { forma: 'heroe' as const } : {}),
+      ...(textoAlAgotar ? { alAgotar: () => mando.current?.texto(textoAlAgotar) } : {}),
     });
     mando.current = m;
     return () => { m.desmontar(); mando.current = null; };
