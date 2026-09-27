@@ -1,0 +1,49 @@
+/* Las dos animaciones decorativas de static/e1.html, tal cual. Son decoración
+   que corre siempre: mientras la IA trabaja de verdad, el orbe OCUPA la caja
+   del editor (no se le suma). «Reducir movimiento» las para (tokens.css). */
+
+.anim {
+  position: relative;
+  height: 110px;
+  margin: 16px 0;
+  overflow: hidden;
+  border: 1px solid var(--color-linea);
+  border-radius: var(--radius-medio);
+  background: var(--color-fondo);
+}
+
+/* shorts: del metraje horizontal saltan 3 clips verticales */
+.anim-shorts .cinta {
+  position: absolute; left: 10%; top: 22px; width: 34%; height: 56px;
+  border: 1px solid var(--color-campo); border-radius: var(--radius-chico);
+  background: var(--color-elevada);
+}
+.anim-shorts .clip {
+  position: absolute; top: 18px; width: 36px; height: 64px; border-radius: 7px;
+  border: 1px solid var(--color-azul); background: #2b4a75; opacity: 0;
+  animation: subir-brota 3.6s infinite;
+}
+.anim-shorts .c1 { left: 52%; animation-delay: 0s; }
+.anim-shorts .c2 { left: 66%; animation-delay: 0.6s; }
+.anim-shorts .c3 { left: 80%; animation-delay: 1.2s; }
+@keyframes subir-brota {
+  0% { opacity: 0; transform: translateY(14px) scale(0.7); }
+  18%, 78% { opacity: 1; transform: none; }
+  95%, 100% { opacity: 0; }
+}
+
+/* editor: línea de tiempo con un tramo que se corta y el cabezal que avanza */
+.anim-editor .pista {
+  position: absolute; left: 8%; right: 8%; top: 46px; height: 18px;
+  border-radius: 5px; background: var(--color-elevada);
+}
+.anim-editor .seg { position: absolute; top: 46px; height: 18px; border-radius: 5px; background: #2b4a75; }
+.anim-editor .s1 { left: 8%; width: 26%; }
+.anim-editor .s2 { left: 36%; width: 14%; background: #73353a; animation: subir-corta 3.6s infinite; }
+.anim-editor .s3 { left: 52%; width: 40%; }
+.anim-editor .cabezal {
+  position: absolute; top: 34px; left: 8%; width: 2px; height: 42px;
+  background: var(--color-texto); animation: subir-avanza 3.6s linear infinite;
+}
+@keyframes subir-corta { 0%, 40% { opacity: 1; } 55%, 100% { opacity: 0.12; } }
+@keyframes subir-avanza { from { left: 8%; } to { left: 92%; } }

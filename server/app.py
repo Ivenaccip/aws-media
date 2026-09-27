@@ -1135,9 +1135,8 @@ def _estudio_sin_barra(request: Request):
     return RedirectResponse(f"/estudio/{q}", status_code=302)
 
 
-@app.get("/estudio/", include_in_schema=False)
-def _estudio():
-    return FileResponse(ROOT / "static" / "index.html", headers=_SIN_CACHE)
+# /estudio/ (el mismo index.html, no-cache) lo sirve server/migracion.py:
+# es la URL vieja del inicio, que se migra a /estudio/inicio/ (UI·8.4).
 
 
 @app.get("/entrar", include_in_schema=False)

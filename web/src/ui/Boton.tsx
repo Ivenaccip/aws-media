@@ -31,6 +31,16 @@ const NIVEL: Record<Nivel, string> = {
     'active:enabled:text-texto',
 };
 
+function clases(nivel: Nivel, denso: boolean): string {
+  const alto = nivel === 'enlace' ? '' : denso ? 'min-h-10 px-4' : 'min-h-12 px-5';
+  return unir(BASE, NIVEL[nivel], alto);
+}
+
+/** Las clases de un botón para un <a>: navegar es un enlace, no un botón. */
+export function claseBoton(nivel: Nivel = 'secundario', denso = false): string {
+  return unir(clases(nivel, denso), 'no-underline');
+}
+
 export interface PropsBoton extends ButtonHTMLAttributes<HTMLButtonElement> {
   nivel?: Nivel;
   /** Barras densas: 40 px en vez de 48. */
@@ -51,7 +61,6 @@ export function Boton({
   type = 'button',
   ...resto
 }: PropsBoton) {
-  const alto = nivel === 'enlace' ? '' : denso ? 'min-h-10 px-4' : 'min-h-12 px-5';
   // Trabajando NO es deshabilitado: el deshabilitado del principal se pinta
   // gris y discontinuo («te faltan créditos») y confundiría. Se queda con su
   // aspecto, dice «Generando…» y se traga los clics.
@@ -59,7 +68,7 @@ export function Boton({
   return (
     <button
       type={type}
-      className={unir(BASE, NIVEL[nivel], alto, ocupado && 'cursor-progress', className)}
+      className={unir(clases(nivel, denso), ocupado && 'cursor-progress', className)}
       aria-busy={ocupado || undefined}
       aria-disabled={ocupado || undefined}
       onClick={ocupado ? undefined : onClick}
