@@ -75,7 +75,9 @@ def test_quitar_una_cuenta_avisa_en_el_cuadro_y_no_en_el_campo():
 def test_la_validacion_y_el_402_siguen_en_su_sitio():
     assert 'if (!url) { $("est-cuenta").textContent = "Pega la liga del perfil primero."; return; }' in _cp()
     assert "} catch (e) { $(\"est-cuenta\").innerHTML = `<span class=\"err\">${cpEsc(e.message)}</span>`; }" in _cp()
-    assert '$("estado").appendChild(cpBotonRecargar());' in _cp()
+    # el botón puede no existir (M4: recarga cerrada), pero si existe sigue
+    # pintándose JUNTO al error, que es lo que este test protege
+    assert 'if (rec) $("estado").appendChild(rec);' in _cp()
 
 
 def test_todas_las_llamadas_usan_encadenamiento_opcional():
