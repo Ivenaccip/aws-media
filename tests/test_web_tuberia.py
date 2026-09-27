@@ -165,6 +165,11 @@ def test_el_dist_no_trae_nada_de_pricing_json():
     pricing = json.loads((RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8"))
     tarifas = json.loads((RAIZ / "tools" / "tarifas.json").read_text(encoding="utf-8"))
     solo_pricing = {k for k in _claves(pricing) - _claves(tarifas) if "_" in k and len(k) >= 8}
+    # UI·8.4: `usd_por_mes` es también el NOMBRE de un campo de /api/blotato
+    # (`plan`): el server manda a propósito el precio del plan de Blotato para
+    # avisar ANTES de pedir la clave, y la pantalla lo lee por su nombre. El
+    # valor llega en la respuesta, no en el dist.
+    solo_pricing -= {"usd_por_mes"}
     assert solo_pricing, "la prueba se quedó sin claves que buscar"
     coladas = sorted(k for k in solo_pricing if k in texto)
     assert not coladas, f"claves de pricing.json en web/dist: {coladas[:10]}"

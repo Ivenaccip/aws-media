@@ -56,10 +56,13 @@ class Pantalla:
     vieja: str       # la URL de siempre, p. ej. /admin.html
     nueva: str       # /estudio/<p>/
     etapa: str
+    # el HTML viejo en static/, si no se llama como la URL (el inicio vive en
+    # /estudio/ y su archivo es index.html)
+    fichero: str = ""
 
     @property
     def archivo(self) -> str:
-        return self.vieja.lstrip("/")
+        return self.fichero or self.vieja.lstrip("/")
 
 
 PANTALLAS: dict[str, Pantalla] = {
@@ -74,6 +77,10 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.3: editar metraje (e1). Sube con progreso real y cobra una cosa,
     # «Proponer ✦ N»; la URL nueva dice lo que se hace en ella
     "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),
+    # UI·8.4: el inicio. Su URL vieja es /estudio/ misma (tarjetas 37 y 38):
+    # la nueva vive al lado, en /estudio/inicio/, y en `todos` /estudio/
+    # redirige ahí. No cobra: reparte a las pantallas que cobran.
+    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="nueva", fichero="index.html"),
 }
 
 

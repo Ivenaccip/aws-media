@@ -70,3 +70,25 @@ y en el escritorio.
 | 12 | Al terminar | «Corte propuesto: …», «Editar» abre `/editor/<p>/`; la pestaña dice «✓ Corte propuesto»; la píldora con el saldo nuevo |
 | 13 | Abrir `/estudio/subir/?p=<proyecto ya editado>` | Directo a «Editar», sin pedir precio |
 | 14 | «Usar la versión anterior» | Llega a `/e1.html`; en `todos`, `/e1.html` ya no redirige para ti durante 7 días |
+
+## inicio · `/estudio/inicio/`
+
+(antes `/estudio/`). Con una cuenta que ya tiene cosas y con una nueva, en el
+teléfono (390 px) y en el escritorio. Nada de esto cobra.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Cuenta nueva | «Tu primer video, en tres caminos»; «Crear un video» pone «Creador de cuentos» y enfoca la caja |
+| 2 | Abrir el desplegable con el teclado (Tab, ↓, ↓, Enter) | Cambia la opción; los precios coinciden con `tarifas.json` (clip 30, historias 55–190, imágenes 2) |
+| 3 | En el teléfono, abrir el desplegable | No se sale de la pantalla; la página no se desplaza de lado |
+| 4 | Escribir algo y «Crear» en cada opción | Llega a la pantalla correcta con el texto ya puesto |
+| 5 | Con proyectos: clic en una película, en una imagen y en una edición | Abren `crear`, `imagenes` y `e1` con su proyecto |
+| 6 | Archivar una película → Cancelar → Archivar | Nada con Cancelar; con Archivar pasa a «Proyectos archivados» |
+| 7 | Restaurar con los slots llenos | El motivo del server en un aviso |
+| 8 | Cuenta sin Blotato | Agenda, competencia, métricas y MIX en gris; el clic abre «Conecta tu Blotato» con el aviso del cobro antes del campo |
+| 9 | Pegar una clave mala, luego una buena | El error en el diálogo; con la buena, «Tu Blotato está conectado» con las redes y el menú se enciende |
+| 10 | Pegar una clave y cerrar con la X o con el fondo | Al volver a abrir, el campo está vacío |
+| 11 | Desde el editor, «conectar Blotato» | Llega con el diálogo abierto |
+| 12 | Modo avión y recargar | «No pudimos traer tus proyectos» con Reintentar; no aparecen los tres caminos |
+| 13 | «Tus trabajos» con un render en curso | El cuadro de siempre, abajo a la derecha |
+| 14 | «Usar la versión anterior» | Llega a `/estudio/`; en `todos`, `/estudio/` ya no redirige para ti durante 7 días |

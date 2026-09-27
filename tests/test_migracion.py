@@ -166,4 +166,42 @@ def test_las_pantallas_reales_estan_bien_escritas():
     for nombre, p in migracion.PANTALLAS.items():
         assert p.etapa in migracion.ETAPAS
         assert p.nueva == f"/estudio/{nombre}/"
-        assert p.vieja.startswith("/") and p.vieja.endswith(".html")
+        assert p.vieja.startswith("/")
+        # la única URL vieja que no es un .html es el inicio: /estudio/
+        assert p.vieja.endswith(".html") or (nombre == "inicio" and p.vieja == "/estudio/")
+        assert p.archivo.endswith(".html")
+
+
+# ---------- el inicio: su URL vieja es un directorio ----------
+
+def _app_inicio(tmp_path, monkeypatch, etapa):
+    static = tmp_path / "static"
+    static.mkdir(exist_ok=True)
+    (static / "index.html").write_text("<!doctype html><title>inicio viejo</title>", encoding="utf-8")
+    pantallas = {"inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa=etapa,
+                                    fichero="index.html")}
+    monkeypatch.setattr(migracion, "PANTALLAS", pantallas)
+    app = FastAPI()
+    migracion.montar(app, ["/estudio/assets", "/estudio/inicio"], static)
+    return TestClient(app, follow_redirects=False)
+
+
+def test_el_inicio_en_nueva_sirve_su_index_sin_cache(tmp_path, monkeypatch):
+    r = _app_inicio(tmp_path, monkeypatch, "nueva").get("/estudio/")
+    assert r.status_code == 200 and "inicio viejo" in r.text
+    assert r.headers["cache-control"] == "no-cache"
+
+
+def test_el_inicio_en_todos_lleva_el_query_a_la_nueva(tmp_path, monkeypatch):
+    # ?blotato=conectar (lo manda el editor) no se puede perder en el 302
+    c = _app_inicio(tmp_path, monkeypatch, "todos")
+    r = c.get("/estudio/?blotato=conectar")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/?blotato=conectar"
+    c.cookies.set("ui", "clasica")
+    assert c.get("/estudio/").status_code == 200
+
+
+def test_la_version_anterior_del_inicio_vuelve_a_estudio(tmp_path, monkeypatch):
+    r = _app_inicio(tmp_path, monkeypatch, "todos").get("/ui/clasica?pantalla=inicio")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/"
+    assert "ui=clasica" in r.headers["set-cookie"]
