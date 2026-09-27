@@ -113,3 +113,38 @@ analizar 2, más 2 por cada 5 min sin transcript; renderizar 2 por short.
 | 10 | Al terminar | «3 · Tus shorts» con Ver y Descargar; Descargar baja el archivo (no abre otra pestaña) |
 | 11 | Pegar la liga de un video ya importado e Importar | Abre ese proyecto en vez de un error |
 | 12 | «Usar la versión anterior» | Llega a `/shorts.html`; en `todos`, `/shorts.html` ya no redirige para ti durante 7 días |
+
+## agenda · `/estudio/agenda/`
+
+No cobra. Hace falta al menos una publicación programada de prueba, con
+destino si la red lo pide (una página de Facebook, por ejemplo). Hazlo en el
+teléfono (390 px) y en el escritorio.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar | «N publicaciones programadas» y una tarjeta por publicación: red · cuenta · destino, la fecha en español y los archivos |
+| 2 | Doble clic en «Cambiar la hora» | El diálogo se abre y **no** se cierra con el segundo clic; el foco cae en la fecha |
+| 3 | Poner una hora dentro del próximo minuto y Guardar | «Falta menos de un minuto…» junto al campo, sin llamada |
+| 4 | Poner mañana a esta hora y Guardar | Se cierra; «Hora cambiada: … (tu hora)»; la tarjeta dice la hora nueva; en Blotato también |
+| 5 | «Cancelar» en una tarjeta y pulsar Enter | La confirmación nombra red, cuenta, cuándo y texto; Enter = «No, dejarla» (no cancela) |
+| 6 | «Cancelar» → «Sí, cancelarla» | «Publicación cancelada.»; la tarjeta se va; el foco queda en Actualizar; en Blotato ya no está |
+| 7 | Con más de 20 programadas: «Ver más» | Se añaden al final; sin más páginas, el botón se va |
+| 8 | Desconectar Blotato en el inicio y volver | Aviso con «Conectar Blotato», que lleva al diálogo del inicio |
+| 9 | «Usar la versión anterior» | Llega a `/agenda.html`; en `todos`, `/agenda.html` ya no redirige para ti durante 7 días |
+
+## métricas · `/estudio/metricas/`
+
+No cobra. Necesita publicaciones que hayan salido por Blotato. Lo ideal:
+una de hace más de 3 horas, una fallida y una de LinkedIn. Hazlo en el
+teléfono (390 px) y en el escritorio.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar | «De lo más nuevo a lo más viejo. Del … al ….» y las tarjetas; la fallida con borde rojo, «No salió» y el error de la red |
+| 2 | En una con números: «Ver el resto» | Despliega todo lo que informó la red y «Cómo fue cambiando»; la tabla rueda sola en el teléfono |
+| 3 | «Las más vistas» | Numeradas 1., 2., …; «Ordenadas por vistas…»; sin «Ver más»; no hubo recarga (sin «Buscando…») |
+| 4 | En una con «Ver números»: doble clic | «Preguntando…» y **una** consulta; luego sus números o el motivo, anunciados |
+| 5 | «Ver más» hasta el final | Primero «Ver más», luego «Ver 30 días más atrás», y al llegar al año, «Métricas llega hasta un año atrás.» |
+| 6 | «Ver la publicación» | Abre la red en otra pestaña |
+| 7 | La de LinkedIn | Dice que Blotato todavía no recoge números de LinkedIn, sin botón |
+| 8 | «Usar la versión anterior» | Llega a `/metricas.html`; en `todos`, `/metricas.html` ya no redirige para ti durante 7 días |
