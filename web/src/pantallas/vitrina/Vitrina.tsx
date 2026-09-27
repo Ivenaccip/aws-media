@@ -170,8 +170,7 @@ export function Vitrina() {
               alCobrar={async () => { setCobros(n => n + 1); await esperar(1500); }} />
             <NotaSaldo saldo={320} costo={costoPelicula} />
           </span>
-          <BotonCobro verbo="Generar" costo={clip.video_8s} saldo={12} alCobrar={async () => {}}
-            alRecargar={() => setDialogo(true)} />
+          <BotonCobro verbo="Generar" costo={clip.video_8s} saldo={12} alCobrar={async () => {}} />
         </Fila>
       </Seccion>
 

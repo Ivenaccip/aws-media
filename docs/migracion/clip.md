@@ -36,7 +36,8 @@ ese nombre exacto.
 | `clip.cobro.sin_texto_no_cobra` | sin texto, dice qué falta y no hay POST |
 | `clip.cobro.fotos_subiendo_no_cobra` | con una foto subiendo, pide esperar y no hay POST |
 | `clip.cobro.error_junto_al_boton_y_se_puede_reintentar` | el error del server (409 y otros) junto al botón; el texto se queda y el botón vuelve a funcionar |
-| `clip.cobro.sin_saldo_402_ofrece_recargar` | un 402 enseña su detalle y «Recargar» abre el panel del monedero |
+| `clip.cobro.sin_saldo_402_ofrece_recargar` | con la recarga abierta, un 402 enseña su detalle y «Recargar» abre el panel del monedero |
+| `clip.cobro.recarga_cerrada_dice_a_quien_escribir` | con la recarga cerrada (`monedero.js`, hoy), el 402 dice a quién escribir en vez de ofrecer un «Recargar» que no hace nada |
 | `clip.cobro.saldo_conocido_que_no_alcanza_no_cobra` | si la píldora sabe que no alcanza, el botón se apaga y dice cuánto falta (nuevo, de `BotonCobro`) |
 | `clip.cobro.refresca_el_saldo_y_limpia_tras_cobrar` | tras cobrar: texto y fotos vacíos, `monedero.refrescar()` |
 | `clip.cobro.espera_a_que_termine_antes_de_otro` | tras generar, el botón espera a que ese clip termine |

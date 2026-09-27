@@ -76,7 +76,13 @@ async function subir(f: File) {
   });
 }
 
-const monedero = { get: vi.fn(() => ({ saldo: 100 })), refrescar: vi.fn(), recargar: vi.fn() };
+const monedero = {
+  get: vi.fn(() => ({ saldo: 100 as number | null })),
+  refrescar: vi.fn(),
+  recargar: vi.fn(),
+  recarga: true,
+  cta: 'Escríbenos por el canal de la comunidad para conseguir más.',
+};
 
 beforeEach(() => {
   vi.unstubAllGlobals();
@@ -86,6 +92,7 @@ beforeEach(() => {
   monedero.refrescar.mockClear();
   monedero.recargar.mockClear();
   monedero.get.mockReturnValue({ saldo: 100 });
+  monedero.recarga = true;
   history.replaceState(null, '', '/estudio/clip/');
 });
 
@@ -184,6 +191,16 @@ describe('clip', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Te faltan 10 créditos');
     await userEvent.click(screen.getByRole('button', { name: 'Recargar' }));
     expect(monedero.recargar).toHaveBeenCalled();
+  });
+
+  it('clip.cobro.recarga_cerrada_dice_a_quien_escribir', async () => {
+    monedero.recarga = false;
+    servidor({ '/api/clip/generar': () => json({ detail: 'Te faltan 10 créditos' }, 402) });
+    render(<Clip />);
+    await escribir('Un gato');
+    await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Escríbenos por el canal de la comunidad');
+    expect(screen.queryByRole('button', { name: 'Recargar' })).not.toBeInTheDocument();
   });
 
   it('clip.cobro.saldo_conocido_que_no_alcanza_no_cobra', async () => {

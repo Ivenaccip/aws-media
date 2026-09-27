@@ -47,6 +47,7 @@ INVARIANTES = {
         "clip.cobro.fotos_subiendo_no_cobra",
         "clip.cobro.error_junto_al_boton_y_se_puede_reintentar",
         "clip.cobro.sin_saldo_402_ofrece_recargar",
+        "clip.cobro.recarga_cerrada_dice_a_quien_escribir",
         "clip.cobro.saldo_conocido_que_no_alcanza_no_cobra",
         "clip.cobro.refresca_el_saldo_y_limpia_tras_cobrar",
         "clip.cobro.espera_a_que_termine_antes_de_otro",

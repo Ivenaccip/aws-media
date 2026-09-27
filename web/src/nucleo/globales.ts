@@ -29,9 +29,13 @@ declare global {
       precargar(): void;
     };
     monedero?: {
-      get(): { saldo?: number } | null;
+      get(): { saldo?: number | null } | null;
       refrescar(): void;
       recargar(): void;
+      /** El único interruptor de la recarga (monedero.js). Hoy, false. */
+      recarga?: boolean;
+      /** Qué decir en vez del botón cuando la recarga está cerrada. */
+      cta?: string;
     };
   }
 }

@@ -8,6 +8,7 @@ import { BotonCobro } from '../../marca/BotonCobro';
 import { EsperaIA } from '../../marca/EsperaIA';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
+import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi, recuperarApartado } from '../../nucleo/api';
 import { creditos } from '../../nucleo/formato';
@@ -299,9 +300,7 @@ export function Clip() {
               {estado.sinSaldo && (
                 <>
                   {' '}
-                  <Boton nivel="enlace" onClick={() => window.monedero?.recargar()}>
-                    Recargar
-                  </Boton>
+                  <Recarga />
                 </>
               )}
             </p>

@@ -4,12 +4,13 @@
 //   · cobro.boton_apagado_antes_de_await — el candado se cierra en el MISMO
 //     tic del clic, antes de cualquier await: un doble clic es UNA petición.
 //   · cobro.sin_saldo_no_cobra — si el saldo conocido no alcanza, el botón se
-//     deshabilita y dice cuánto falta, con «Recargar» a mano.
+//     deshabilita y dice cuánto falta, con <Recarga> al lado.
 import { useRef, useState } from 'react';
 
 import { Boton } from '../ui/Boton';
 import { ESTRELLA } from '../nucleo/estrella';
 import { entero } from '../nucleo/formato';
+import { Recarga } from './Recarga';
 import type { Verbo } from './verbos';
 
 export interface PropsBotonCobro {
@@ -22,8 +23,6 @@ export interface PropsBotonCobro {
   /** Texto mientras trabaja. */
   trabajando?: string;
   deshabilitado?: boolean;
-  /** Abre la recarga; por defecto, la de monedero.js. */
-  alRecargar?: () => void;
 }
 
 export function BotonCobro({
@@ -33,7 +32,6 @@ export function BotonCobro({
   alCobrar,
   trabajando = 'Trabajando…',
   deshabilitado = false,
-  alRecargar,
 }: PropsBotonCobro) {
   const candado = useRef(false);
   const [ocupado, setOcupado] = useState(false);
@@ -51,8 +49,6 @@ export function BotonCobro({
     }
   }
 
-  const recargar = alRecargar ?? (() => window.monedero?.recargar());
-
   return (
     <span className="inline-flex flex-col items-start gap-1">
       <Boton
@@ -65,10 +61,7 @@ export function BotonCobro({
       </Boton>
       {faltan > 0 && (
         <span className="text-xs text-secundario">
-          Te faltan {ESTRELLA} {entero(faltan)} ·{' '}
-          <Boton nivel="enlace" className="text-xs" onClick={recargar}>
-            Recargar
-          </Boton>
+          Te faltan {ESTRELLA} {entero(faltan)} · <Recarga className="text-xs" />
         </span>
       )}
     </span>
