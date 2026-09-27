@@ -560,6 +560,33 @@ Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
   CNAME plano, así que Cloudflare lo aplana siempre; en gris eso publicaría las
   IP del endpoint de API Gateway, que no son estables.
 
+### La caché de los estáticos (UI·3)
+
+La decide el servidor (`_StaticCacheado` en `server/app.py`), no Cloudflare:
+
+| Qué | `Cache-Control` | Borde |
+|---|---|---|
+| HTML | `no-cache` | no se cachea (DYNAMIC) |
+| JS y CSS | `no-cache` | `Cloudflare-CDN-Cache-Control: max-age=60` |
+| Imágenes | `public, max-age=86400` | lo que decida Cloudflare |
+| Versionados (`*.v1.*`) | `public, max-age=604800, immutable` | ídem |
+
+Antes del 27-sep el JS y el CSS salían sin cabecera y Cloudflare les ponía
+`max-age=14400`: un fix de UI tardaba hasta 4 h en llegar. Con la tabla, un
+deploy llega al borde en ≤ 60 s y el navegador lo ve en su siguiente carga,
+**sin purgar nada**.
+
+Comprobación después de cada deploy que toque esto:
+
+```bash
+curl -s -D - -o /dev/null https://irremplazables.xyz/auth.js | grep -iE "cache-control|cf-cache-status|^age"
+```
+
+Lo esperado: `cache-control: no-cache`, `cf-cache-status` en HIT a la segunda
+petición y `age` ≤ 60. Si sale `max-age=14400`, es que Cloudflare está pisando
+la cabecera: en **Caching → Configuration → Browser Cache TTL**, elige
+«Respect Existing Headers».
+
 ### Lo que NO se puede borrar nunca
 
 El CNAME `_181ee3334b127307304e024ff9aefc56` de la zona es el de validación de
