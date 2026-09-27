@@ -23,6 +23,8 @@ export interface PropsBotonCobro {
   /** Texto mientras trabaja. */
   trabajando?: string;
   deshabilitado?: boolean;
+  /** Un solo principal por pantalla: el resto de lo que cobra va en secundario. */
+  nivel?: 'principal' | 'secundario';
 }
 
 export function BotonCobro({
@@ -32,6 +34,7 @@ export function BotonCobro({
   alCobrar,
   trabajando = 'Trabajando…',
   deshabilitado = false,
+  nivel = 'principal',
 }: PropsBotonCobro) {
   const candado = useRef(false);
   const [ocupado, setOcupado] = useState(false);
@@ -52,7 +55,7 @@ export function BotonCobro({
   return (
     <span className="inline-flex flex-col items-start gap-1">
       <Boton
-        nivel="principal"
+        nivel={nivel}
         onClick={() => void cobrar()}
         disabled={deshabilitado || faltan > 0}
         trabajando={ocupado && trabajando}

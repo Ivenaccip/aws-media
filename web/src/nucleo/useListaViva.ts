@@ -22,6 +22,8 @@ export interface ListaViva<T> {
   error: boolean;
   /** Falló la carga con algo vivo: se sigue reintentando solo. */
   sinRed: boolean;
+  /** El último fallo (p. ej. un ErrorApi con el detalle del server); null al cargar bien. */
+  fallo: unknown;
   /** Trae la lista ya (tras cobrar, tras Reintentar). */
   actualizar: () => Promise<void>;
   /** Cambiar los datos a mano (p. ej. con lo que devolvió un POST). */
@@ -41,6 +43,7 @@ export function useListaViva<T>(
   const [datos, setDatos] = useState<T | null>(null);
   const [error, setError] = useState(false);
   const [sinRed, setSinRed] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
   const ref = useRef({ cargar, vivo, op, datos });
   useEffect(() => {
     ref.current = { cargar, vivo, op, datos };
@@ -52,12 +55,14 @@ export function useListaViva<T>(
     setDatos(d);
     setError(false);
     setSinRed(false);
+    setFallo(null);
     const sigue = ref.current.vivo(d);
     if (!sigue && antes !== null && ref.current.vivo(antes)) ref.current.op.alTerminar?.();
     return !sigue;
   }, []);
 
-  const fallar = useCallback(() => {
+  const fallar = useCallback((e: unknown) => {
+    setFallo(e);
     const d = ref.current.datos;
     if (d !== null && ref.current.vivo(d)) setSinRed(true);
     else setError(true);
@@ -67,7 +72,7 @@ export function useListaViva<T>(
     let vigente = true;
     ref.current.cargar().then(
       d => vigente && aplicar(d),
-      () => vigente && fallar(),
+      (e: unknown) => vigente && fallar(e),
     );
     return () => {
       vigente = false;
@@ -77,7 +82,7 @@ export function useListaViva<T>(
   const tarea = useCallback(
     () =>
       ref.current.cargar().then(aplicar, (e: unknown) => {
-        fallar();
+        fallar(e);
         throw e;
       }),
     [aplicar, fallar],
@@ -88,5 +93,5 @@ export function useListaViva<T>(
   const actualizar = useCallback(() => tarea().then(() => undefined, () => undefined), [tarea]);
   const poner = useCallback((d: T) => void aplicar(d), [aplicar]);
 
-  return { datos, error, sinRed, actualizar, poner };
+  return { datos, error, sinRed, fallo, actualizar, poner };
 }

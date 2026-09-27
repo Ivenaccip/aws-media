@@ -1,5 +1,5 @@
 // /estudio/subir/ — editar metraje (UI·8.3). Sube el video directo a S3 con
-// progreso real y, con el metraje arriba, enseña los dos caminos: Cortes IA
+// progreso real (<SubirVideo>, compartida con shorts) y, con el metraje arriba, enseña los dos caminos: Cortes IA
 // (shorts) y Editor IA, que cobra una cosa: «Proponer ✦ N».
 // Paridad con static/e1.html: mismas llamadas, mismo precio (del server),
 // mismas validaciones. Qué pasó con cada aserción vieja: docs/migracion/subir.md.
@@ -10,13 +10,13 @@ import { EsperaIA } from '../../marca/EsperaIA';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
+import { SubirVideo } from '../../marca/SubirVideo';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { useSondeo } from '../../nucleo/useSondeo';
 import { useTituloPestana } from '../../nucleo/useTituloPestana';
 import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
-import { Campo } from '../../ui/Campo';
 import { Confirmar } from '../../ui/Confirmar';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
@@ -26,17 +26,10 @@ import {
   cargarConfig,
   cargarCosto,
   cargarEstado,
-  confirmar,
   corriendo,
-  firmar,
-  mb,
-  nombreAlterno,
-  nombreValido,
   notaMetraje,
   resumenListo,
-  subirConProgreso,
   sugerir,
-  type Avance,
   type ConfigMedia,
   type Costo,
   type EstadoEditar,
@@ -69,10 +62,6 @@ export function Subir() {
   const [sinRed, setSinRed] = useState(false);
   const [vuelta, setVuelta] = useState(0);
 
-  const [nombre, setNombre] = useState(proyecto);
-  const [archivo, setArchivo] = useState<File | null>(null);
-  const [avance, setAvance] = useState<Avance | null>(null);
-  const [notaSubida, setNotaSubida] = useState<Nota | null>(null);
   const [videoSubido, setVideoSubido] = useState<string | null>(null);
 
   const [notaEditor, setNotaEditor] = useState<Nota | null>(null);
@@ -80,8 +69,6 @@ export function Subir() {
   const [confirmando, setConfirmando] = useState(false);
 
   const saldo = useSaldo();
-  const candadoSubida = useRef(false);
-  const cancelar = useRef<(() => void) | null>(null);
   const respuesta = useRef<((si: boolean) => void) | null>(null);
   const ultimo = useRef<EstadoEditar | null>(null);
   const actual = useRef(proyecto);
@@ -156,68 +143,6 @@ export function Subir() {
     vivo ? 'Revisando tu metraje' : listo ? (listo.nada ? '✓ Sin relleno que quitar' : '✓ Corte propuesto') : null,
   );
 
-  // M5: cerrar la pestaña con la subida a medias la pierde; el navegador avisa
-  const subiendo = avance !== null;
-  useEffect(() => {
-    if (!subiendo) return;
-    const avisar = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', avisar);
-    return () => window.removeEventListener('beforeunload', avisar);
-  }, [subiendo]);
-
-  async function alSubir() {
-    if (candadoSubida.current) return;
-    const p = nombre.trim();
-    if (!p || !archivo) {
-      setNotaSubida({ texto: 'Falta el nombre del proyecto o el archivo.' });
-      return;
-    }
-    if (!nombreValido(p)) {
-      setNotaSubida({
-        texto: 'El nombre solo puede llevar letras, números, guion y guion bajo (ej. entrevista-marzo).',
-        error: true,
-      });
-      return;
-    }
-    candadoSubida.current = true; // antes de cualquier await: doble clic = una subida
-    const f = archivo;
-    setAvance({ pct: 0, cargados: 0, total: f.size });
-    try {
-      setNotaSubida({ texto: 'Pidiendo permiso de subida…' });
-      let firma;
-      try {
-        firma = await firmar(p, f);
-      } catch (e) {
-        if (!(e instanceof ErrorApi && e.estado === 409)) throw e;
-        const otro = nombreAlterno(p); // nada se subió todavía
-        setNombre(otro);
-        throw new Error(`${e.message} Te dejamos «${otro}» en el nombre: pulsa Subir para usarlo.`, { cause: e });
-      }
-      const s = subirConProgreso(firma, f, a => {
-        setAvance(a);
-        setNotaSubida({ texto: `Subiendo ${f.name} — ${a.pct}% (${mb(a.cargados)} de ${mb(f.size)} MB)` });
-      });
-      cancelar.current = s.cancelar;
-      await s.hecho;
-      cancelar.current = null;
-      setNotaSubida({ texto: 'Confirmando…' });
-      const sub = await confirmar(p, firma.key);
-      setNotaSubida({ texto: `Listo: ${sub.archivo} ya está en tu proyecto ${p}.` });
-      setVideoSubido(sub.cdn);
-      // M14: el metraje recién subido pasa directo al panel de los dos caminos
-      history.replaceState(null, '', '?p=' + encodeURIComponent(p));
-      setNotaEditor(null);
-      setProyecto(p);
-      setVuelta(v => v + 1);
-    } catch (e) {
-      setNotaSubida({ texto: mensaje(e), error: true });
-    } finally {
-      cancelar.current = null;
-      candadoSubida.current = false;
-      setAvance(null);
-    }
-  }
-
   // «Proponer ✦ N»: el precio ya está en el botón; la confirmación evita el
   // cobro por un clic accidental. El candado de <BotonCobro> sigue cerrado
   // mientras el diálogo está abierto: un doble clic no abre dos.
@@ -263,66 +188,20 @@ export function Subir() {
       )}
 
       {cfg?.activo && (
-        <section className="mb-6 rounded-grande border border-linea bg-superficie p-6">
-          <h2 className="m-0 mb-1 flex items-center gap-2 text-titulo-sm font-bold">
-            <Icono nombre="subir" className="text-secundario" />
-            Subir metraje
-          </h2>
-          <p className="m-0 mb-4 text-secundario">
-            El video sube directo a la nube (no pasa por el servidor) y queda listo para editar.
-          </p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[180px] flex-1">
-              <Campo
-                etiqueta="Nombre del proyecto"
-                placeholder="ej. entrevista-marzo"
-                value={nombre}
-                onChange={e => setNombre(e.target.value)}
-                disabled={subiendo}
-              />
-            </div>
-            <label className="flex max-w-full flex-col gap-1 text-sm font-medium">
-              Archivo de video
-              <input
-                type="file"
-                accept=".mp4,.mov,.m4v"
-                disabled={subiendo}
-                onChange={e => setArchivo(e.target.files?.[0] ?? null)}
-                className="max-w-full text-xs font-normal text-secundario file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-boton file:border file:border-solid file:border-campo file:bg-transparent file:px-4 file:text-sm file:text-texto"
-              />
-            </label>
-            <Boton
-              nivel={conFuente ? 'secundario' : 'principal'}
-              onClick={() => void alSubir()}
-              disabled={subiendo}
-            >
-              Subir
-            </Boton>
-            {subiendo && (
-              <Boton nivel="secundario" onClick={() => cancelar.current?.()}>
-                Cancelar
-              </Boton>
-            )}
-          </div>
-          {avance && (
-            <div
-              role="progressbar"
-              aria-label="Avance de la subida"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={avance.pct}
-              className="mt-3 h-2 overflow-hidden rounded-chico bg-elevada"
-            >
-              <div className="h-full bg-ambar transition-[width] duration-300" style={{ width: `${avance.pct}%` }} />
-            </div>
-          )}
-          <p
-            role={notaSubida?.error ? 'alert' : 'status'}
-            className={unir('mb-0 text-xs', notaSubida && 'mt-3', notaSubida?.error ? 'text-error' : 'text-secundario')}
-          >
-            {notaSubida?.texto}
-          </p>
-        </section>
+        <SubirVideo
+          titulo="Subir metraje"
+          descripcion="El video sube directo a la nube (no pasa por el servidor) y queda listo para editar."
+          nombreInicial={proyecto}
+          principal={!conFuente}
+          alSubir={(p, sub) => {
+            setVideoSubido(sub.cdn);
+            // M14: el metraje recién subido pasa directo al panel de los dos caminos
+            history.replaceState(null, '', '?p=' + encodeURIComponent(p));
+            setNotaEditor(null);
+            setProyecto(p);
+            setVuelta(v => v + 1);
+          }}
+        />
       )}
 
       {proyecto && (
