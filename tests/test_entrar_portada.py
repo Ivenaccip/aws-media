@@ -119,6 +119,11 @@ def test_enlace_de_la_comunidad_se_esconde_si_esta_vacio():
         assert re.search(r'<span data-enlace-envoltura hidden> <a data-enlace="comunidad" hidden>', html)
 
 
+def test_enlace_de_la_comunidad_apunta_a_skool():
+    js = (STATIC / "enlaces.js").read_text(encoding="utf-8")
+    assert "comunidad: 'https://www.skool.com/irremplazables'" in js
+
+
 # ---------------------------------------------------------------------------
 # /entrar y callback
 
@@ -183,9 +188,11 @@ globalThis.sessionStorage = { getItem: k => ss.get(k) ?? null,
   setItem: (k, v) => { if (k === 'auth_verifier') cuenta.verifier++; ss.set(k, v); },
   removeItem: k => ss.delete(k) };
 const loc = { origin: 'https://irremplazables.xyz', pathname: '/estudio/', search: '', protocol: 'https:' };
-Object.defineProperty(loc, 'href', { set: u => { if (u.includes('/oauth2/authorize')) cuenta.authorize++; } });
+Object.defineProperty(loc, 'href', { get: () => 'https://irremplazables.xyz/estudio/',
+  set: u => { if (u.includes('/oauth2/authorize')) cuenta.authorize++; } });
 globalThis.location = loc;
-globalThis.document = { cookie: '', body: null };
+globalThis.document = { cookie: '', body: null, visibilityState: 'visible', addEventListener: () => {} };
+globalThis.setInterval = () => 0;   // la renovación en segundo plano (UI·9) no entra aquí
 globalThis.window = globalThis;
 globalThis.addEventListener = () => {};
 const espera = ms => new Promise(r => setTimeout(r, ms));
@@ -236,3 +243,13 @@ def test_la_caja_de_aviso_respeta_hidden():
     # enseñaba «No pudimos recuperar tu sesión» en la primera visita
     css = (STATIC / "carta.css").read_text(encoding="utf-8")
     assert ".aviso-caja[hidden] { display: none; }" in css
+
+
+def test_si_no_carga_la_configuracion_no_manda_al_estudio_sin_sesion():
+    # en producción, un fallo de red al pedir /api/auth/config se leía como
+    # «no hay login» y /entrar mandaba al estudio; ahora muestra la entrada
+    auth_js = (STATIC / "auth.js").read_text(encoding="utf-8")
+    assert "{ activo: false, fallo: true }" in auth_js
+    assert "if (c.fallo) { sinConexion = true; mostrar(false); return; }" in ENTRAR
+    assert ENTRAR.index("if (c.fallo)") < ENTRAR.index("if (!c.activo) { location.replace(volver)")
+    assert 'id="sin-conexion" hidden' in ENTRAR

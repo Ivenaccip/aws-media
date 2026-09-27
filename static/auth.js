@@ -8,9 +8,13 @@
 // En dev local /api/auth/config responde activo=false y este archivo no hace nada.
 (function () {
   const fetchReal = window.fetch.bind(window);
+  // `fallo` distingue «no hay login» (dev local: el server dice activo=false)
+  // de «no pude preguntar» (red caída, 5xx). Las pantallas siguen mirando solo
+  // `activo`; /entrar usa `fallo` para no mandar al estudio a alguien que en
+  // producción necesita iniciar sesión.
   const cfgPromesa = fetchReal('/api/auth/config')
-    .then(r => (r.ok ? r.json() : { activo: false }))
-    .catch(() => ({ activo: false }));
+    .then(r => (r.ok ? r.json() : { activo: false, fallo: true }))
+    .catch(() => ({ activo: false, fallo: true }));
 
   const b64url = bytes => btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -34,6 +38,9 @@
     loginEnCurso = loginEnCurso || (async () => {
       const c = await cfgPromesa;
       if (!c.activo) return;
+      // la página se va: quien tenga algo sin guardar lo aparta ahora (UI·9,
+      // el editor de cortes lo guarda en sessionStorage y lo reenvía al volver)
+      try { window.dispatchEvent(new Event('auth:saliendo')); } catch {}
       const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
       sessionStorage.setItem('auth_verifier', verifier);
       sessionStorage.setItem('auth_volver', volver || (location.pathname + location.search));
@@ -86,6 +93,20 @@
     } catch { return 0; }
   }
 
+  // UI·9: el id_token dura 60 min (default de Cognito) y la cookie `token`
+  // con la que viajan <img>, <video> y el editor vence con él. En vez de
+  // esperar al 401 —que en un POST de guardar llega tarde—, se renueva
+  // cuando le quedan menos de 5 min. Cada minuto y al volver a la pestaña;
+  // con la pestaña oculta no, para no refrescar sesiones que nadie usa.
+  async function mantener() {
+    const c = await cfgPromesa;
+    if (!c.activo || !localStorage.getItem('auth_refresh_token')) return;
+    if (document.visibilityState === 'hidden') return;
+    if (segundosRestantes() < 300) refrescar();
+  }
+  setInterval(mantener, 60000);
+  document.addEventListener('visibilitychange', mantener);
+
   function salir() {
     localStorage.removeItem('auth_id_token');
     localStorage.removeItem('auth_refresh_token');
@@ -108,7 +129,11 @@
 
   window.fetch = async function (entrada, init) {
     const url = typeof entrada === 'string' ? entrada : entrada.url;
-    const propia = url.startsWith('/') || url.startsWith(location.origin);
+    // UI·9: también las relativas. El editor de cortes pide "api/save" (corre
+    // bajo /editor/<proyecto>/ en la nube y bajo «/» en el server local) y
+    // antes el envoltorio no lo tomaba: sin token, sin refresco, 401 seco.
+    let propia = false;
+    try { propia = new URL(url, location.href).origin === location.origin; } catch {}
     if (!propia) return fetchReal(entrada, init);
     const usado = localStorage.getItem('auth_id_token');
     let r = await conToken(entrada, init);

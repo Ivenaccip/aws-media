@@ -342,6 +342,38 @@ VPC ya van con `nat_gateways=0`, así que duplicar no arrastra el costo fijo del
 NAT; lo que falta es parametrizar cuatro nombres cableados (`aws-media-users`,
 el dominio `media-ivenaccip`, `aws-media-producir` y el rol OIDC).
 
+## Entornos (prod y dev)
+
+Decisión del 24-sep: dos entornos, y dev con su **propio** pool de Cognito. Hoy
+solo existe prod; dev llega con su propia app de CDK (paso 8 del plan, después
+del 10-oct).
+
+- Los nombres físicos de cada entorno viven en `infra/entornos.py` (`PROD` y
+  `DEV`): pool y dominio de Cognito, prefijos de SSM, máquina de estados y
+  nombre del API. `ApiStack` y `JobsStack` reciben `entorno=` y su default es
+  `PROD`.
+- **Nunca** se pasa `entorno=DEV` a los stacks de `infra/app.py`: eso no crea un
+  dev, le cambia el pool al stack vivo por uno vacío (el viejo queda huérfano
+  con los usuarios dentro y el `client_id` cambia).
+- `tests/test_entornos.py` sintetiza la composición real con
+  `app.construir()` y fija los nombres de prod, los ids lógicos de Cognito y
+  de la máquina de estados, las variables de SSM y los permisos de IAM. El CI
+  lo corre en el paso «Nombres de producción (CDK)», antes del build.
+- Importar `infra/app.py` ya no sintetiza ni consulta el ECR: eso vive bajo
+  `if __name__ == "__main__"`. `cdk` lo corre igual que antes.
+
+Cuando un PR toque `infra/app.py`, `infra/entornos.py` o `infra/stacks/`, el
+`cdk diff` de los stacks de prod contra la imagen que ya corre tiene que salir
+vacío salvo lo que el PR diga que cambia:
+
+```bash
+cd infra
+IMAGE_TAG=<sha completo de lo desplegado> npx cdk diff aws-media-db aws-media-media aws-media-jobs aws-media-api
+```
+
+Con `IMAGE_TAG` y no con `latest`: en cuanto algo nuevo llegue a main, el diff
+contra `:latest` sale con el `ImageUri` cambiado aunque la infra sea la misma.
+
 ## Deploy (checklist)
 
 1. PR `dev` → `main` y merge → GitHub Actions construye la imagen y la
@@ -788,8 +820,10 @@ venv/Scripts/python tools/db_migrate.py --cluster-arn arn:aws:rds:us-east-1:1912
 Los cuatro tools (`db_migrate`, `usuarios`, `creditos`, `costes`) cargan el
 `.env` del repo — con `DB_CLUSTER_ARN`/`DB_SECRET_ARN` ahí (ya están en el
 del dueño), los flags `--cluster-arn/--secret-arn` sobran.
-Gotcha: Aurora se auto-pausa a 0 ACU — la primera llamada tras un rato puede
-tardar ~25 s o dar 503/timeout; reintenta.
+Gotcha: desde el 21-sep el clúster de producción tiene suelo de 0.5 ACU y NO se
+auto-pausa (infra/stacks/db.py). Si algún día vuelve a 0 ACU —o en un clúster de
+dev, que irá con auto-pausa—, la primera llamada tras un rato puede tardar ~25 s
+o dar 503/timeout; reintenta.
 
 ### Que los datos sobrevivan
 
@@ -831,7 +865,8 @@ aws rds describe-db-clusters --db-cluster-identifier aws-media-db-db5d02a0a9-luu
 ```
 
 **Gotcha:** `LatestRestorableTime` no avanza mientras el clúster está
-auto-pausado — sin transacciones no hay puntos nuevos que crear. Verlo horas
+auto-pausado (hoy producción no se pausa: suelo de 0.5 ACU; aplica a un clúster
+con mínimo 0) — sin transacciones no hay puntos nuevos que crear. Verlo horas
 atrasado es lo normal si nadie ha usado el producto en toda la mañana; no
 significa que los backups estén rotos.
 

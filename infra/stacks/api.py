@@ -21,6 +21,8 @@ from aws_cdk import (
 )
 from constructs import Construct
 
+from entornos import PROD, Entorno
+
 # El nombre público del producto. Vive en una constante y no cableado en tres
 # f-strings porque aparece en tres sitios que TIENEN que decir lo mismo: los
 # callbacks de Cognito, los logout y la liga del correo de invitación. Si uno se
@@ -32,7 +34,9 @@ from constructs import Construct
 # cada synth de infra/app.py re-fija el ImageUri de las Lambdas al digest de
 # `:latest` y un `cdk deploy aws-media-api` arrastra además a aws-media-db,
 # aws-media-media y aws-media-jobs.
-DOMINIO_PUBLICO = "https://irremplazables.xyz"
+#
+# El valor vive en infra/entornos.py (PROD.dominio_publico); dev no tiene.
+DOMINIO_PUBLICO = PROD.dominio_publico
 
 
 class ApiStack(Stack):
@@ -40,8 +44,13 @@ class ApiStack(Stack):
                  cluster: rds.DatabaseCluster, media_bucket: s3.Bucket,
                  cdn_domain: str, jobs_queue: sqs.Queue,
                  producir_sm: sfn.StateMachine, image_ref: str = "latest",
-                 **kwargs) -> None:
+                 entorno: Entorno = PROD, **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
+        # Todos los nombres físicos salen de `entorno`. El default es PROD y
+        # reproduce los nombres de hoy; pasar DEV a ESTE stack (el vivo) no
+        # lo convierte en dev: le cambia el pool por uno vacío. Ver
+        # infra/entornos.py y tests/test_entornos.py.
+        e = entorno
 
         repo = ecr.Repository.from_repository_name(self, "Repo", "aws-media")
         fn = lambda_.DockerImageFunction(
@@ -75,10 +84,10 @@ class ApiStack(Stack):
                 "JOBS_BACKEND": "aws",
                 "JOBS_QUEUE_URL": jobs_queue.queue_url,
                 "PRODUCIR_SM_ARN": producir_sm.state_machine_arn,
-                "SSM_ENV_PREFIX": "/media-ivenaccip/env",   # "aws*" reservado en SSM
+                "SSM_ENV_PREFIX": e.ssm_env,   # "aws*" reservado en SSM
                 # C5: monedero de créditos (gates 402 en crear/producir)
                 "CREDITOS_BACKEND": "postgres",
-                "SSM_USUARIOS_PREFIX": "/media-ivenaccip/usuarios",
+                "SSM_USUARIOS_PREFIX": e.ssm_usuarios,
                 # M10: los prompts se sirven desde Langfuse (label production)
                 # con fallback a los .md de la imagen; sin este flag (dev
                 # local, tests) siempre se leen los .md del repo.
@@ -105,8 +114,8 @@ class ApiStack(Stack):
             resources=[producir_sm.state_machine_arn]))
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
-            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/env*",
-                       f"arn:aws:ssm:{self.region}:{self.account}:parameter/media-ivenaccip/usuarios*"]))
+            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{e.ssm_env}*",
+                       f"arn:aws:ssm:{self.region}:{self.account}:parameter{e.ssm_usuarios}*"]))
         # M23 C: el usuario conecta y quita SU clave de Blotato desde la web
         # (server/blotato_api.py). Solo ese nombre: la API no puede escribir
         # la CLAUDE_API_KEY de nadie ni las claves de plataforma. El cifrado
@@ -115,25 +124,29 @@ class ApiStack(Stack):
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:PutParameter", "ssm:DeleteParameter"],
             resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter"
-                       "/media-ivenaccip/usuarios/*/BLOTATO_API_KEY"]))
+                       f"{e.ssm_usuarios}/*/BLOTATO_API_KEY"]))
         # dashboard admin: horas-ACU reales de Aurora del mes (las métricas de
         # CloudWatch no soportan permisos por recurso — solo lectura)
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["cloudwatch:GetMetricStatistics"], resources=["*"]))
 
         http_api = apigwv2.HttpApi(
-            self, "HttpApi", api_name="aws-media",
+            self, "HttpApi", api_name=e.api,
             default_integration=apigw_int.HttpLambdaIntegration("Fn", fn),
         )
 
+        # Sin dominio propio (dev), la liga de la invitación y los callbacks
+        # van al execute-api de ESTE stack: nunca a los de producción.
+        entrada = e.dominio_publico or http_api.api_endpoint
         pool = cognito.UserPool(
-            self, "Users", user_pool_name="aws-media-users",
+            self, "Users", user_pool_name=e.pool,
             self_sign_up_enabled=False,      # alta manual mientras es piloto
             sign_in_aliases=cognito.SignInAliases(email=True),
             # M2: el email que dispara tools/usuarios.py alta — {username} y
             # {####} los rellena Cognito (correo y contraseña provisional)
             user_invitation=cognito.UserInvitationConfig(
-                email_subject="Bienvenid@ a la demo de editor irremplazable",
+                email_subject=("" if e.es_prod else f"[{e.nombre}] ")
+                + "Bienvenid@ a la demo de editor irremplazable",
                 email_body=(
                     "<p>Hola:</p>"
                     "<p>Ya tienes acceso a la demo. Entra aquí:<br>"
@@ -143,7 +156,7 @@ class ApiStack(Stack):
                     # conteste 200 — si no, el correo invita a un dominio que no
                     # existe. Las invitaciones ya enviadas siguen apuntando al
                     # execute-api, que sigue vivo y sirviendo.
-                    f'<a href="{DOMINIO_PUBLICO}">{DOMINIO_PUBLICO}</a></p>'
+                    f'<a href="{entrada}">{entrada}</a></p>'
                     "<p>Correo: <b>{username}</b><br>"
                     "Contraseña provisional: <b>{####}</b></p>"
                     "<p>Al entrar por primera vez te pedirá cambiar la "
@@ -155,6 +168,8 @@ class ApiStack(Stack):
             ),
             removal_policy=cdk.RemovalPolicy.RETAIN,
         )
+        origenes = ([e.dominio_publico] if e.dominio_publico else []) + [
+            http_api.api_endpoint, "http://localhost:8011"]
         client = pool.add_client(
             "web",
             o_auth=cognito.OAuthSettings(
@@ -170,12 +185,8 @@ class ApiStack(Stack):
                 # nombre propio, el execute-api (donde están los usuarios que ya
                 # tienen su liga) y localhost:8011. Quitar el execute-api de
                 # aquí es exactamente lo que los deja fuera.
-                callback_urls=[f"{DOMINIO_PUBLICO}/callback.html",
-                               f"{http_api.api_endpoint}/callback.html",
-                               "http://localhost:8011/callback.html"],
-                logout_urls=[f"{DOMINIO_PUBLICO}/",
-                             f"{http_api.api_endpoint}/",
-                             "http://localhost:8011/"],
+                callback_urls=[f"{o}/callback.html" for o in origenes],
+                logout_urls=[f"{o}/" for o in origenes],
             ),
         )
         # ojo: los prefijos de dominio Cognito no admiten la palabra reservada "aws"
@@ -184,7 +195,7 @@ class ApiStack(Stack):
         # consola) — aquí solo se fija la versión para que un deploy no
         # regrese el dominio al Hosted UI clásico.
         pool.add_domain("Domain", cognito_domain=cognito.CognitoDomainOptions(
-            domain_prefix="media-ivenaccip"),
+            domain_prefix=e.dominio_cognito),
             managed_login_version=cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN)
 
         # M6: el dashboard admin exige pertenecer a este grupo (el id_token lo
@@ -197,14 +208,19 @@ class ApiStack(Stack):
         # M2: con estas envs presentes, server/auth.py exige el JWT
         fn.add_environment("COGNITO_POOL_ID", pool.user_pool_id)
         fn.add_environment("COGNITO_CLIENT_ID", client.user_pool_client_id)
+        # Cadena armada y no el recurso del dominio (así era antes y así se
+        # queda: cambiarlo movería el template de prod). Sale del MISMO campo
+        # que el domain_prefix de arriba: si solo se parametrizara aquel, dev
+        # mandaría a su gente al Hosted UI de producción y «funcionaría».
         fn.add_environment(
             "COGNITO_DOMINIO",
-            f"media-ivenaccip.auth.{self.region}.amazoncognito.com")
+            f"{e.dominio_cognito}.auth.{self.region}.amazoncognito.com")
 
         cdk.CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
         # El nombre propio al lado del técnico, para que el output del deploy
         # diga las dos verdades: por dónde entra la gente y por dónde sigue
         # entrando quien tenga la liga vieja.
-        cdk.CfnOutput(self, "DominioPublico", value=DOMINIO_PUBLICO)
+        if e.dominio_publico:
+            cdk.CfnOutput(self, "DominioPublico", value=e.dominio_publico)
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)
         cdk.CfnOutput(self, "UserPoolClientId", value=client.user_pool_client_id)

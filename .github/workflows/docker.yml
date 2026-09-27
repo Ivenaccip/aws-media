@@ -39,6 +39,19 @@ jobs:
           pip install --quiet pytest
           python -m pytest tests/test_flujo_ramas.py tests/test_imagen_node.py -q --noconftest
 
+      # Los nombres físicos de producción (pool y dominio de Cognito, prefijos
+      # de SSM, máquina de estados) sintetizados desde la composición REAL de
+      # infra/app.py. Aquí y no en la suite del contenedor: aws_cdk no viaja
+      # en la imagen, y ahí estos tests se saltan. EXIGIR_CDK convierte ese
+      # skip en fallo, para que una instalación rota no deje la red sin poner.
+      # Contexto: tests/test_entornos.py e infra/entornos.py.
+      - name: Nombres de producción (CDK)
+        env:
+          EXIGIR_CDK: "1"
+        run: |
+          pip install --quiet pytest -r infra/requirements.txt
+          python -m pytest tests/test_entornos.py -q --noconftest
+
       - name: Build de la imagen
         run: docker build -t aws-media:ci .
 

@@ -69,9 +69,10 @@ def test_existe_la_herramienta_de_comprobacion():
 
 
 # ---------------------------------------------------------------------------
-# Qué imagen se despliega (19-sep). El synth no se puede importar en un test
-# —`infra/app.py` sintetiza los cinco stacks al importarse— así que estas tres
-# decisiones se fijan leyendo el archivo, como ya se hace con el worker.
+# Qué imagen se despliega (19-sep). Estas tres decisiones se fijan leyendo el
+# archivo, como ya se hace con el worker: viven bajo `if __name__ ==
+# "__main__"` de `infra/app.py`, que es justo lo que un import no ejecuta (la
+# composición de los stacks, que sí se importa, la prueba test_entornos.py).
 
 APP = (RAIZ / "infra" / "app.py").read_text(encoding="utf-8")
 
