@@ -885,7 +885,9 @@ $('#prompt').addEventListener('keydown', e => {
 });
 
 // ---------- monedero: el costo se ve ANTES de gastar ----------
-const CTA = 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.';
+// El texto lo decide monedero.js (se carga antes que este script): con la
+// recarga cerrada no menciona el ＋, que no se pinta, sino el canal.
+const CTA = (window.monedero && window.monedero.cta) || '';
 let tarifa = null, saldo = null;
 // M19: a media petición este listener NO puede tocar el botón. monedero.js
 // refresca el saldo en CADA visibilitychange, así que sin la guarda irse a otra

@@ -71,4 +71,6 @@ def test_la_validacion_y_el_402_siguen_junto_al_boton():
     s = _script()
     assert 'if (!url) { $("estado").textContent = "Pega la liga primero."; return; }' in s
     assert "$(\"estado\").innerHTML = `<span class=\"err\">${esc(e.message)}</span> `;" in s
-    assert '$("estado").appendChild(botonRecargar());' in s
+    # el botón puede no existir (M4: recarga cerrada), pero si existe sigue
+    # pintándose JUNTO al error, que es lo que este test protege
+    assert 'if (rec) $("estado").appendChild(rec);' in s
