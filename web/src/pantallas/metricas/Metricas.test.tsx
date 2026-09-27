@@ -110,7 +110,7 @@ describe('metricas', () => {
     expect(num(NaN)).toBe('');
     expect(num(0)).toBe('0');
     expect(num(12345)).toBe('12,345');
-    expect(casillas({ vistas: 5, me_gusta: null, comentarios: undefined, compartidos: 0 })).toEqual([
+    expect(casillas({ vistas: 5, me_gusta: null, compartidos: 0 })).toEqual([
       ['5', 'Vistas'],
       ['0', 'Compartidos'],
     ]);
