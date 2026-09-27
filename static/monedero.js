@@ -6,6 +6,22 @@
 (function () {
   const est = { activo: false, saldo: null, tarifas: {}, packs: [] };
 
+  // M4 · recarga CERRADA (decisión del dueño, 2026-09-26). Mientras los
+  // Payment Links de Stripe no estén firmes, NADA de la interfaz manda a
+  // comprar: ni el ＋ de la píldora ni los botones «Recargar» de las pantallas
+  // se pintan, y el aviso de «te faltan créditos» manda al canal de la
+  // comunidad en vez de a una liga. Un botón que lleva a una liga que falla es
+  // peor que no tener botón.
+  //
+  // Este es el ÚNICO interruptor: ponerlo en true vuelve a encender de golpe
+  // los siete puntos de entrada (el ＋, los cuatro botones «Recargar» de
+  // competencia/estilos/mix/shorts y los avisos de crear/imágenes). Las
+  // pantallas lo leen en window.monedero.recarga; el texto, en .cta
+  const RECARGA = false;
+  const CTA = RECARGA
+    ? 'Pulsa ＋ arriba a la derecha para ver cómo conseguir más.'
+    : 'Escríbenos por el canal de la comunidad para conseguir más.';
+
   // Mock del dueño (Miro, 2026-09-10): boleto · píldora [＋ | N créditos] · avatar.
   // El ＋ abre la recarga; el avatar despliega el menú con «Salir».
   const el = document.createElement('div');
@@ -23,16 +39,23 @@
   const PERSONA =
     '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">' +
     '<circle cx="12" cy="8.2" r="3.6"/><path d="M4.5 19.4a7.5 7.5 0 0 1 15 0v.6h-15z"/></svg>';
+  // el círculo del ＋ va al ras de la píldora: mismo alto que ella (su caja de
+  // 40px con bordes), sin sobresalir — feedback del dueño. Con la recarga
+  // cerrada no se pinta en absoluto: marcarlo `hidden` NO bastaría, porque su
+  // display:flex inline le gana al atributo (la misma trampa que documenta
+  // #mon-menu más abajo) y el ＋ nacería visible igual.
+  const MAS = RECARGA
+    ? '<button id="mon-cta" title="Recargar créditos" style="' + FONDO + 'width:40px;height:40px;' +
+        'box-sizing:border-box;margin:-1px 0 -1px -1px;border-radius:50%;color:#ece8e1;cursor:pointer;font:600 20px/1 system-ui;' +
+        'display:flex;align-items:center;justify-content:center;padding:0 0 2px 0">＋</button>'
+    : '';
+  // sin el ＋ pegado a la izquierda, el saldo se centra en la píldora
+  const PAD_SALDO = RECARGA ? '0 20px 0 14px' : '0 18px';
   el.innerHTML =
     '<span id="mon-ticket" hidden title="tus créditos" style="display:flex;color:#ece8e1">' + TICKET + '</span>' +
     '<span id="mon-pill" hidden style="' + FONDO + 'display:flex;align-items:center;height:38px;' +
-      'border-radius:999px">' +
-      // el círculo del ＋ va al ras de la píldora: mismo alto que ella (su
-      // caja de 40px con bordes), sin sobresalir — feedback del dueño
-      '<button id="mon-cta" title="Recargar créditos" style="' + FONDO + 'width:40px;height:40px;' +
-        'box-sizing:border-box;margin:-1px 0 -1px -1px;border-radius:50%;color:#ece8e1;cursor:pointer;font:600 20px/1 system-ui;' +
-        'display:flex;align-items:center;justify-content:center;padding:0 0 2px 0">＋</button>' +
-      '<span id="mon-saldo" style="font:600 14px system-ui;white-space:nowrap;padding:0 20px 0 14px"></span>' +
+      'border-radius:999px">' + MAS +
+      '<span id="mon-saldo" style="font:600 14px system-ui;white-space:nowrap;padding:' + PAD_SALDO + '"></span>' +
     '</span>' +
     // M2: el avatar despliega «Salir» (auth.salir limpia tokens y pasa por el
     // /logout del Hosted UI — clave tras un cambio de permisos: el re-login
@@ -65,6 +88,7 @@
   // sin links (dev local o Stripe aún no configurado) cae al aviso concierge.
   let panel = null;
   function togglePanel() {
+    if (!RECARGA) return;   // recarga cerrada: ni panel ni aviso concierge
     if (panel) { panel.remove(); panel = null; return; }
     if (!est.packs.some(p => p.link)) { alert(textoRecarga()); return; }
     panel = document.createElement('div');
@@ -147,7 +171,8 @@
 
   function montar() {
     document.body.appendChild(el);
-    el.querySelector('#mon-cta').onclick = togglePanel;
+    const mas = el.querySelector('#mon-cta');
+    if (mas) mas.onclick = togglePanel;   // no existe con la recarga cerrada
     el.querySelector('#mon-avatar').onclick = toggleMenu;
     el.querySelector('#mon-salir').onclick = () => {
       if (confirm('¿Cerrar sesión?')) window.auth.salir();
@@ -166,6 +191,7 @@
   // recargar(): lo mismo que pulsar el ＋ de la cabecera. Existe porque los
   // avisos de «te faltan créditos» de otras pantallas enlazaban a
   // /monedero.html, que NUNCA ha existido: el CTA del 402 era un 404 duro.
-  window.monedero = { get: () => est, refrescar, textoRecarga, recargar: togglePanel };
+  window.monedero = { get: () => est, refrescar, textoRecarga, recargar: togglePanel,
+                      recarga: RECARGA, cta: CTA };
   if (document.body) montar(); else addEventListener('DOMContentLoaded', montar);
 })();

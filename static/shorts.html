@@ -185,6 +185,8 @@ const SIN_ORBE = { texto: () => SIN_ORBE, estado: () => SIN_ORBE,
                    latir: () => SIN_ORBE, apagar: () => SIN_ORBE, desmontar() {} };
 // «Recargar» abre el panel del monedero ahí mismo, sin navegar a ningún lado
 function botonRecargar() {
+  // null con la recarga cerrada: quien llama comprueba antes de pintar
+  if (!(window.monedero && window.monedero.recarga)) return null;
   const b = document.createElement("button");
   b.className = "btn btn-sec";
   b.textContent = "Recargar";
@@ -339,7 +341,9 @@ $("btn-importar").onclick = async () => {
     else if (e.status === 402) {
       // /monedero.html NUNCA ha existido: este CTA llevaba a un 404 duro
       $("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span> `;
-      $("imp-estado").appendChild(botonRecargar());
+      const rec = botonRecargar();         // null con la recarga cerrada
+      if (rec) $("imp-estado").appendChild(rec);
+      else $("imp-estado").append(window.monedero ? window.monedero.cta : "");
     }
     else $("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span>`;
   }

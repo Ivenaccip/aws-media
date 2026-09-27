@@ -173,6 +173,8 @@ function cpIndice(v) {
 }
 
 function cpBotonRecargar() {
+  // null con la recarga cerrada: quien llama comprueba antes de pintar
+  if (!(window.monedero && window.monedero.recarga)) return null;
   const b = document.createElement("button");
   b.className = "btn btn-sec quitar";
   b.textContent = "Recargar";
@@ -398,7 +400,9 @@ $("btn-revisar").onclick = async () => {
   } catch (e) {
     if (e.status === 402) {
       $("estado").innerHTML = `<span class="err">${cpEsc(e.message)}</span> `;
-      $("estado").appendChild(cpBotonRecargar());
+      const rec = cpBotonRecargar();       // null con la recarga cerrada
+      if (rec) $("estado").appendChild(rec);
+      else $("estado").append(window.monedero ? window.monedero.cta : "");
     } else $("estado").innerHTML = `<span class="err">${cpEsc(e.message)}</span>`;
     $("btn-revisar").disabled = false;
   }

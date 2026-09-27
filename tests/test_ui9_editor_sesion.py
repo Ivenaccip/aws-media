@@ -11,6 +11,7 @@ El id_token dura 60 min y el editor no cargaba auth.js: sus fetch relativos
 
 Los tests corren el código real en node con el navegador simulado.
 """
+import functools
 import json
 import re
 import shutil
@@ -21,7 +22,13 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 AUTH = RAIZ / "static" / "auth.js"
-EDITOR = (RAIZ / "tools" / "editor" / "index.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _texto_editor() -> str:
+    return (RAIZ / "tools" / "editor" / "index.html").read_text(encoding="utf-8")
+
+
 NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(not NODE, reason="sin node")
 
@@ -113,14 +120,14 @@ def test_avisa_antes_de_irse_a_entrar():
 # el editor: apartar lo no guardado y reenviarlo al volver
 
 def test_el_editor_carga_auth_js():
-    assert '<script src="/auth.js"></script>' in EDITOR
-    assert EDITOR.index('src="/auth.js"') < EDITOR.index('"use strict"')
+    assert '<script src="/auth.js"></script>' in _texto_editor()
+    assert _texto_editor().index('src="/auth.js"') < _texto_editor().index('"use strict"')
 
 
 def _bloque_pendiente():
-    ini = EDITOR.index('const PENDIENTE = ')
-    fin = EDITOR.index('async function render()')
-    return EDITOR[ini:fin]
+    ini = _texto_editor().index('const PENDIENTE = ')
+    fin = _texto_editor().index('async function render()')
+    return _texto_editor()[ini:fin]
 
 
 _EDITOR_JS = r"""

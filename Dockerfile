@@ -5,6 +5,27 @@
 # Exclusiones deliberadas (.dockerignore): media/ NO viaja (decisión D2 — la
 # librería SFX no se redistribuye), ni .env, ni venv/, ni proyectos del usuario
 # (videos/, work/): los media viven bajo MEDIA_ROOT (volumen local o S3).
+# --- Etapa web: la UI nueva (web/, docs/PLAN-UI.md §3) ----------------------
+# Compila web/ a web/dist con el MISMO Node que la imagen de abajo (lo vigila
+# tests/test_web_tuberia.py). Antes de compilar corre tipos, lint y vitest:
+# si algo falla, falla el build y no sale imagen. En runtime no hay Node para
+# la web: FastAPI sirve el dist (server/web.py).
+FROM node:20.20.2-bookworm-slim AS web
+RUN node --version && npm --version \
+ && case "$(node --version)" in \
+      v20.*) ;; \
+      *) echo "Node no quedo en la linea 20 - revisa el FROM de la etapa web"; exit 1 ;; \
+    esac
+WORKDIR /repo/web
+COPY web/package.json web/package-lock.json web/.npmrc ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+# las tarifas en créditos viven fuera de web/ (tools/tarifas.json es la única
+# fuente); pricing.json NO se copia: no tiene nada que hacer en el cliente
+COPY tools/tarifas.json /repo/tools/tarifas.json
+RUN npm run verificar
+
+# --- Imagen del producto ----------------------------------------------------
 FROM python:3.10-slim-bookworm
 
 # ffmpeg + Chromium (Remotion renderiza con --browser-executable=$CHROMIUM_PATH)
@@ -70,6 +91,8 @@ COPY remotion-longform/package.json remotion-longform/package-lock.json remotion
 RUN cd remotion-longform && npm ci --no-audit --no-fund
 
 COPY . .
+# la UI nueva ya compilada (etapa web de arriba); sin Node en runtime
+COPY --from=web /repo/web/dist web/dist
 
 RUN mkdir -p /data/videos /data/work
 

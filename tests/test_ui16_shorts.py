@@ -7,6 +7,7 @@ se disfrazaba de «Todavía no tienes videos con metraje…». #aviso sigue con 
 usos legítimos: el selector de proyectos, «Cargando…», la descarga de YouTube
 en curso y la importación fallida con sus créditos devueltos.
 """
+import functools
 import json
 import shutil
 import subprocess
@@ -15,20 +16,30 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-SHORTS = (RAIZ / "static" / "shorts.html").read_text(encoding="utf-8")
-JS = SHORTS[SHORTS.rindex("<script>\n"):SHORTS.rindex("</script>")]
+
+
+@functools.lru_cache(maxsize=None)
+def _shorts() -> str:
+    return (RAIZ / "static" / "shorts.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _js() -> str:
+    return _shorts()[_shorts().rindex("<script>\n"):_shorts().rindex("</script>")]
+
+
 RED = "No pudimos traer tus proyectos. Revisa tu conexión e inténtalo de nuevo."
 
 
 def _funcion(firma):
-    i = JS.index(firma)
-    return JS[i:JS.index("\n}\n", i) + 2]
+    i = _js().index(firma)
+    return _js()[i:_js().index("\n}\n", i) + 2]
 
 
 def test_cargar_ya_no_pinta_el_error_en_el_aviso():
     c = _funcion("async function cargar()")
-    assert '$("aviso").className = "err"' not in SHORTS
-    assert '$("aviso").textContent = e.message' not in SHORTS
+    assert '$("aviso").className = "err"' not in _shorts()
+    assert '$("aviso").textContent = e.message' not in _shorts()
     assert ('{ tipo: "mal", clave: "shorts-carga", accion: { texto: "Reintentar", al: cargar } });') in c
     assert '"No pudimos cargar tu proyecto. Revisa tu conexión e inténtalo de nuevo."' in c
     assert c.index('window.avisos?.quitar("shorts-carga");') < c.index("pintar();")
@@ -37,15 +48,17 @@ def test_cargar_ya_no_pinta_el_error_en_el_aviso():
 
 
 def test_los_otros_usos_de_aviso_siguen():
-    assert '<div id="aviso" class="mut">Cargando…</div>' in SHORTS
-    assert "Trayendo «${esc(imp.titulo" in SHORTS
-    assert "La importación falló${imp.error ? ` (${esc(imp.error)})` : \"\"} — tus créditos se devolvieron." in SHORTS
+    assert '<div id="aviso" class="mut">Cargando…</div>' in _shorts()
+    assert "Trayendo «${esc(imp.titulo" in _shorts()
+    assert "La importación falló${imp.error ? ` (${esc(imp.error)})` : \"\"} — tus créditos se devolvieron." in _shorts()
 
 
 def test_los_errores_junto_a_su_boton_se_quedan():
-    assert '$("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span> `;' in SHORTS
-    assert '$("imp-estado").appendChild(botonRecargar());' in SHORTS
-    assert '$("analisis-info").className = "err";' in SHORTS
+    assert '$("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span> `;' in _shorts()
+    # el botón puede no existir (M4: recarga cerrada), pero si existe sigue
+    # pintándose JUNTO al error, que es lo que este test protege
+    assert 'if (rec) $("imp-estado").appendChild(rec);' in _shorts()
+    assert '$("analisis-info").className = "err";' in _shorts()
 
 
 PRELUDIO = r"""

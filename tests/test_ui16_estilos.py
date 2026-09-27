@@ -5,15 +5,20 @@ Se mueve lo que no es de ningún campo ni tarjeta: el «sin conexión» del poll
 el «copiado» del prompt y el fallo al traer la lista. Se queda en su sitio lo
 que sí es de un campo o del botón que cobra (#estado junto a «Analizar»).
 """
+import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-ESTILOS = (RAIZ / "static" / "estilos.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _estilos() -> str:
+    return (RAIZ / "static" / "estilos.html").read_text(encoding="utf-8")
 
 
 def _script():
-    return ESTILOS[ESTILOS.index("<script>\n"):ESTILOS.rindex("</script>")]
+    return _estilos()[_estilos().index("<script>\n"):_estilos().rindex("</script>")]
 
 
 def _cargar():
@@ -23,10 +28,10 @@ def _cargar():
 
 
 def test_el_banner_local_de_sin_red_ya_no_existe():
-    assert 'id="red"' not in ESTILOS
-    assert "#red" not in ESTILOS
-    assert '$("red")' not in ESTILOS
-    assert "sinred" not in ESTILOS
+    assert 'id="red"' not in _estilos()
+    assert "#red" not in _estilos()
+    assert '$("red")' not in _estilos()
+    assert "sinred" not in _estilos()
 
 
 def test_sin_red_va_al_cuadro_con_la_clave_red():
@@ -46,29 +51,31 @@ def test_el_fallo_de_carga_va_al_cuadro_con_reintentar():
     assert 'window.avisos?.quitar("estilos-carga");' in c
     # la lista no se queda con el error pintado adentro
     assert '<span class="err">${esc(e.message)}</span>' not in c
-    assert '$("lista").innerHTML = `<span class="err">' not in ESTILOS
+    assert '$("lista").innerHTML = `<span class="err">' not in _estilos()
 
 
 def test_copiar_por_delegacion_y_aviso_ok():
     s = _script()
-    assert "onclick=\"navigator.clipboard" not in ESTILOS
-    assert '<button class="btn btn-sec copiar" data-copiar>copiar</button>' in ESTILOS
+    assert "onclick=\"navigator.clipboard" not in _estilos()
+    assert '<button class="btn btn-sec copiar" data-copiar>copiar</button>' in _estilos()
     assert '$("lista").addEventListener("click", ev => {' in s
     assert 'ev.target.closest("[data-copiar]")' in s
     assert 'window.avisos?.mostrar("Copiado", { tipo: "ok", clave: "copiado" })' in s
     assert ('window.avisos?.mostrar("No se pudo copiar. Selecciona el texto y cópialo a mano.",\n'
             '                                 { tipo: "mal", clave: "copiado" })') in s
     # el botón ya no cambia a «copiado» para siempre
-    assert "' copiado'" not in ESTILOS and "icono('listo')" not in ESTILOS
+    assert "' copiado'" not in _estilos() and "icono('listo')" not in _estilos()
 
 
 def test_todas_las_llamadas_usan_encadenamiento_opcional():
-    assert not re.search(r"window\.avisos\.(mostrar|quitar)", ESTILOS)
-    assert not re.search(r"(?<![\w.?])avisos\.(mostrar|quitar)", ESTILOS)
+    assert not re.search(r"window\.avisos\.(mostrar|quitar)", _estilos())
+    assert not re.search(r"(?<![\w.?])avisos\.(mostrar|quitar)", _estilos())
 
 
 def test_la_validacion_y_el_402_siguen_junto_al_boton():
     s = _script()
     assert 'if (!url) { $("estado").textContent = "Pega la liga primero."; return; }' in s
     assert "$(\"estado\").innerHTML = `<span class=\"err\">${esc(e.message)}</span> `;" in s
-    assert '$("estado").appendChild(botonRecargar());' in s
+    # el botón puede no existir (M4: recarga cerrada), pero si existe sigue
+    # pintándose JUNTO al error, que es lo que este test protege
+    assert 'if (rec) $("estado").appendChild(rec);' in s

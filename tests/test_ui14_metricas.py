@@ -5,16 +5,25 @@ en vez de emojis, la escala de seis tamaños y ningún botón ámbar: esta
 pantalla no cobra ni «hace» nada, solo enseña. Lo elegido (el conmutador) se
 marca en neutro, no en ámbar.
 """
+import functools
 import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-METRICAS = (RAIZ / "static" / "metricas.html").read_text(encoding="utf-8")
-ICONOS = (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _metricas() -> str:
+    return (RAIZ / "static" / "metricas.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _iconos() -> str:
+    return (RAIZ / "static" / "iconos.js").read_text(encoding="utf-8")
 
 
 def _estilo():
-    return METRICAS[METRICAS.index("<style>"):METRICAS.index("</style>")]
+    return _metricas()[_metricas().index("<style>"):_metricas().index("</style>")]
 
 
 def _regla(selector):
@@ -24,9 +33,9 @@ def _regla(selector):
 
 
 def test_carga_la_carta_y_los_iconos():
-    assert METRICAS.index('href="/carta.css"') < METRICAS.index("<style>")
-    inicio = METRICAS.index("// ── mt · Métricas (C4)")
-    assert METRICAS.index('src="/iconos.js"') < METRICAS.index('src="/auth.js"') < inicio
+    assert _metricas().index('href="/carta.css"') < _metricas().index("<style>")
+    inicio = _metricas().index("// ── mt · Métricas (C4)")
+    assert _metricas().index('src="/iconos.js"') < _metricas().index('src="/auth.js"') < inicio
 
 
 def test_titulos_en_bricolage_y_texto_en_geist():
@@ -37,8 +46,8 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
-    assert not re.findall(r"font-size:\s*[\d.]+(px|rem|em)", METRICAS)
-    assert not re.search(r"font:\s*[^;]*\d+(\.\d+)?px", METRICAS)
+    assert not re.findall(r"font-size:\s*[\d.]+(px|rem|em)", _metricas())
+    assert not re.search(r"font:\s*[^;]*\d+(\.\d+)?px", _metricas())
     tamanos = set(re.findall(r"var\(--t-([a-z-]+)\)", _estilo()))
     assert tamanos <= {"xs", "sm", "md", "titulo-sm", "titulo-md", "titulo-lg"}
 
@@ -53,37 +62,37 @@ EMOJIS = "📎↗←✕✓×⚠🔄📊📈"
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in METRICAS, f"quedó {e} en métricas"
+        assert e not in _metricas(), f"quedó {e} en métricas"
 
 
 def test_los_iconos_que_usa_existen():
-    nombres = set(re.findall(r'data-icono="([a-z]+)"', METRICAS)) | \
-        set(re.findall(r"icono\('([a-z]+)'", METRICAS))
+    nombres = set(re.findall(r'data-icono="([a-z]+)"', _metricas())) | \
+        set(re.findall(r"icono\('([a-z]+)'", _metricas()))
     assert {"volver", "externo", "adjunto"} <= nombres
     for n in nombres:
-        assert f"    {n}: '" in ICONOS, n
+        assert f"    {n}: '" in _iconos(), n
 
 
 def test_los_iconos_de_la_lista_se_pintan_tras_el_innerhtml():
     """La lista se rehace con innerHTML: sus <i data-icono> se dibujan ahí."""
-    assert 'if (window.iconos) window.iconos.pintar($("#mtLista"));' in METRICAS
+    assert 'if (window.iconos) window.iconos.pintar($("#mtLista"));' in _metricas()
 
 
 def test_botones_con_los_niveles_de_la_carta():
-    assert 'class="sec"' not in METRICAS
+    assert 'class="sec"' not in _metricas()
     assert "button {" not in _estilo()
     for id_ in ("mtVerRec", "mtVerTop", "mtRefrescar", "mtMas"):
-        i = METRICAS.index(f'id="{id_}"')
-        assert 'class="btn btn-sec"' in METRICAS[i:i + 60], id_
-    assert METRICAS.count('class="btn btn-sec" data-mt=') == 2
+        i = _metricas().index(f'id="{id_}"')
+        assert 'class="btn btn-sec"' in _metricas()[i:i + 60], id_
+    assert _metricas().count('class="btn btn-sec" data-mt=') == 2
     # «Ver más» se esconde con [hidden]; .btn es inline-flex y le ganaría
     assert ".btn[hidden] { display: none; }" in _estilo()
 
 
 def test_ningun_boton_ambar():
     """Nada aquí cobra: a lo sumo un principal, y hoy ninguno."""
-    assert METRICAS.count("btn-pri") <= 1
-    assert "btn-pri" not in METRICAS
+    assert _metricas().count("btn-pri") <= 1
+    assert "btn-pri" not in _metricas()
 
 
 def test_elegir_no_es_ambar():
@@ -95,8 +104,8 @@ def test_elegir_no_es_ambar():
 
 def test_enlaces_en_azul_claro_y_sin_el_azul_de_datos():
     assert "a { color: var(--c-enlace); }" in _estilo()
-    assert "#5b8dd6" not in METRICAS   # no hay gráficas: el azul de datos no hace falta
-    assert "#2b4a75" not in METRICAS
+    assert "#5b8dd6" not in _metricas()   # no hay gráficas: el azul de datos no hace falta
+    assert "#2b4a75" not in _metricas()
 
 
 def test_tarjetas_de_la_carta():
@@ -116,4 +125,4 @@ def test_deja_libre_la_franja_de_la_pildora():
 
 
 def test_sin_sepia():
-    assert "sepia(" not in METRICAS
+    assert "sepia(" not in _metricas()

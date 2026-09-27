@@ -6,6 +6,7 @@ try/catch y el detalle se quedaba en «Cargando…»). Se quedan: #cargando (el
 estado de la pantalla entera), #estado-sync junto a su botón y el «Error N»
 del servidor dentro de la tarjeta de detalle.
 """
+import functools
 import json
 import shutil
 import subprocess
@@ -14,13 +15,21 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-ADMIN = (RAIZ / "static" / "admin.html").read_text(encoding="utf-8")
-JS = ADMIN[ADMIN.rindex("<script>\n"):ADMIN.rindex("</script>")]
+
+
+@functools.lru_cache(maxsize=None)
+def _admin() -> str:
+    return (RAIZ / "static" / "admin.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _js() -> str:
+    return _admin()[_admin().rindex("<script>\n"):_admin().rindex("</script>")]
 
 
 def _funcion(firma):
-    i = JS.index(firma)
-    return JS[i:JS.index("\n}\n", i) + 2]
+    i = _js().index(firma)
+    return _js()[i:_js().index("\n}\n", i) + 2]
 
 
 def test_detalle_envuelve_el_fetch_y_avisa_en_el_cuadro():
@@ -37,8 +46,8 @@ def test_detalle_envuelve_el_fetch_y_avisa_en_el_cuadro():
 def test_lo_que_se_queda_en_su_sitio():
     c = _funcion("async function cargar()")
     assert "$('#cargando').textContent = 'No se pudo cargar — revisa tu conexión y recarga.';" in c
-    assert "$('#estado-sync').textContent = 'Error: ' + e.message;" in JS
-    assert 'id="cargando"' in ADMIN and 'id="estado-sync"' in ADMIN
+    assert "$('#estado-sync').textContent = 'Error: ' + e.message;" in _js()
+    assert 'id="cargando"' in _admin() and 'id="estado-sync"' in _admin()
 
 
 PRELUDIO = r"""

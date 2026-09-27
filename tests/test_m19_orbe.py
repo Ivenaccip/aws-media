@@ -21,6 +21,31 @@ ESTATICOS = RAIZ / "static"
 PAGINA_IMAGENES = "imagenes.html"
 
 
+def _web(*patrones: str) -> list[Path]:
+    """Los fuentes de web/ (Fase 3 de docs/PLAN-UI.md) que casan con los patrones.
+
+    Si web/ todavía no existe no hay nada que vigilar: lista vacía, no error.
+    node_modules/ (de terceros) y dist/ (compilado de estos mismos fuentes) no
+    se miran."""
+    web = RAIZ / "web"
+    if not web.is_dir():
+        return []
+    return [p for patron in patrones for p in web.glob(patron)
+            if not {"node_modules", "dist"} & set(p.relative_to(web).parts)]
+
+
+def _nombre(p: Path) -> str:
+    """El nombre, como siempre; en web/ la ruta, porque allí casi todo es index.html."""
+    web = RAIZ / "web"
+    return str(p.relative_to(RAIZ)) if web in p.parents else p.name
+
+
+# UI·1: las pantallas nuevas de web/ entran a los guardianes antes de que exista
+# la primera. El favicon solo se le pide a un HTML; lo demás, a todo el fuente.
+WEB_HTML = ("**/*.html",)
+WEB_FUENTES = ("**/*.html", "src/**/*.ts", "src/**/*.tsx", "src/**/*.css")
+
+
 @pytest.fixture
 def cliente(monkeypatch):
     monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
@@ -56,9 +81,10 @@ def test_orbe_js_no_carga_el_motor_ni_el_shader():
 
 
 def test_ningun_html_carga_el_motor_directo():
-    for html in list(ESTATICOS.glob("*.html")) + [RAIZ / "tools" / "editor" / "index.html"]:
+    for html in (list(ESTATICOS.glob("*.html")) + [RAIZ / "tools" / "editor" / "index.html"]
+                 + _web(*WEB_FUENTES)):
         texto = html.read_text(encoding="utf-8")
-        assert "orbe-gpu" not in texto, f"{html.name} carga el motor sin pereza"
+        assert "orbe-gpu" not in texto, f"{_nombre(html)} carga el motor sin pereza"
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +313,8 @@ PAGINAS_FASE3 = [E1, SHORTS, ESTILOS]
 def test_todas_las_paginas_tienen_favicon(cliente):
     """Media docena de pantallas invitan a cerrar la pestaña y volver. Sin
     favicon, volver es buscar a ciegas entre veinte papeles en blanco."""
-    for html in ESTATICOS.glob("*.html"):
-        assert '<link rel="icon" href="/favicon.svg"' in html.read_text(encoding="utf-8"), html.name
+    for html in list(ESTATICOS.glob("*.html")) + _web(*WEB_HTML):
+        assert '<link rel="icon" href="/favicon.svg"' in html.read_text(encoding="utf-8"), _nombre(html)
     r = cliente.get("/favicon.svg")
     assert r.status_code == 200 and "svg" in r.headers.get("content-type", "")
 
@@ -362,9 +388,9 @@ def test_ya_no_hay_enlaces_al_monedero_inexistente():
     """/monedero.html nunca ha existido: el CTA del 402 era un 404 duro en las
     dos pantallas donde más duele (te acabas de quedar sin créditos)."""
     assert not (ESTATICOS / "monedero.html").exists()
-    for html in ESTATICOS.glob("*.html"):
+    for html in list(ESTATICOS.glob("*.html")) + _web(*WEB_FUENTES):
         texto = html.read_text(encoding="utf-8")
-        assert 'href="/monedero.html"' not in texto, f"{html.name} sigue llevando al 404"
+        assert 'href="/monedero.html"' not in texto, f"{_nombre(html)} sigue llevando al 404"
     # y existe el camino de verdad
     assert "recargar: togglePanel" in (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
     for pagina in (SHORTS, ESTILOS):
