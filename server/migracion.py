@@ -88,6 +88,9 @@ PANTALLAS: dict[str, Pantalla] = {
     # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto
     "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/agenda/", etapa="nueva"),
     "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="nueva"),
+    # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
+    # y modera el texto antes de cobrar
+    "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),
 }
 
 
