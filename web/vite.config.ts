@@ -56,11 +56,18 @@ const tarifasSinNotas: Plugin = {
 };
 
 // Todo lo que no es de Vite va a uvicorn: la API, auth.js, monedero.js, las
-// fuentes y las pantallas viejas. 8011 es el origen registrado en Cognito,
-// por eso Vite se queda con él y el server baja a 8012.
+// fuentes, /ui/clasica y las pantallas viejas. 8011 es el origen registrado
+// en Cognito, por eso Vite se queda con él y el server baja a 8012.
+// Las pantallas de Vite son las carpetas de estudio/ con index.html: una
+// nueva entra sola (cambiarla pide reiniciar `npm run dev`).
 // (una clave que empieza por ^ es una regex para Vite)
+const PANTALLAS = paginas(resolve(RAIZ, 'estudio'));
+const CARPETAS = Object.values(PANTALLAS)
+  .map(html => relative(resolve(RAIZ, 'estudio'), dirname(html)).split(sep).join('/'))
+  .concat('assets')
+  .map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 const TODO_MENOS_LO_DE_VITE =
-  '^/(?!estudio/(?:_vitrina|assets)(?:/|$)|@|src/|node_modules/|__vite)';
+  `^/(?!estudio/(?:${CARPETAS.join('|')})(?:/|$)|@|src/|node_modules/|__vite)`;
 
 export default defineConfig({
   root: RAIZ,
@@ -70,7 +77,7 @@ export default defineConfig({
     emptyOutDir: true,
     // los assets con hash viven junto a las pantallas: /estudio/assets/*
     assetsDir: 'estudio/assets',
-    rollupOptions: { input: paginas(resolve(RAIZ, 'estudio')) },
+    rollupOptions: { input: PANTALLAS },
   },
   server: {
     port: 8011,

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- UI·7: el panel del negocio, piloto de la migración. Privada: carga
+       /auth.js clásico ANTES del módulo, para que el fetch de api.ts ya vaya
+       con el token (docs/PLAN-UI.md §3). No lleva monedero.js: el panel no
+       cobra ni enseña saldo propio. -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>Estudio de video · Admin</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/auth.js"></script>
+</head>
+<body>
+  <div id="raiz"></div>
+  <script type="module" src="/src/pantallas/admin/principal.tsx"></script>
+</body>
+</html>

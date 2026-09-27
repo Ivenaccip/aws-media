@@ -20,7 +20,8 @@ export interface PropsTablaDatos<F> {
 
 export function TablaDatos<F>({ titulo, columnas, filas, claveFila, vacio }: PropsTablaDatos<F>) {
   if (!filas.length && vacio) return <>{vacio}</>;
-  const alinear = (c: Columna<F>) => (c.numerica ? 'text-right tabular-nums' : 'text-left');
+  // las cifras y los encabezados no se parten: «2.5 MB» en dos renglones no se lee
+  const alinear = (c: Columna<F>) => (c.numerica ? 'text-right tabular-nums whitespace-nowrap' : 'text-left');
   return (
     <div className="overflow-x-auto rounded-grande border border-linea">
       <table className="w-full border-collapse text-sm">
@@ -28,7 +29,7 @@ export function TablaDatos<F>({ titulo, columnas, filas, claveFila, vacio }: Pro
         <thead className="bg-superficie">
           <tr>
             {columnas.map(c => (
-              <th key={c.clave} scope="col" className={'px-4 py-3 font-semibold text-secundario ' + alinear(c)}>
+              <th key={c.clave} scope="col" className={'px-3 py-3 font-semibold whitespace-nowrap text-secundario ' + alinear(c)}>
                 {c.titulo}
               </th>
             ))}
@@ -38,7 +39,7 @@ export function TablaDatos<F>({ titulo, columnas, filas, claveFila, vacio }: Pro
           {filas.map(f => (
             <tr key={claveFila(f)} className="border-t border-linea">
               {columnas.map(c => (
-                <td key={c.clave} className={'px-4 py-3 ' + alinear(c)}>{c.celda(f)}</td>
+                <td key={c.clave} className={'px-3 py-3 ' + alinear(c)}>{c.celda(f)}</td>
               ))}
             </tr>
           ))}

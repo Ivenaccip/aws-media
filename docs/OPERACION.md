@@ -10,7 +10,7 @@ Aurora necesitan los ARNs (sección «Base de datos»).
 | Qué | Liga |
 |---|---|
 | **Producto (API + web)** | https://irremplazables.xyz — el endpoint viejo sigue vivo: https://2ecset5i94.execute-api.us-east-1.amazonaws.com |
-| **Dashboard admin** | https://irremplazables.xyz/admin.html |
+| **Dashboard admin** | https://irremplazables.xyz/admin.html (la nueva, en prueba: `/estudio/admin/`) |
 | **Login (Hosted UI Cognito)** | https://media-ivenaccip.auth.us-east-1.amazoncognito.com — la misma pantalla cubre el cambio de contraseña del primer login; el branding se retoca en el editor visual de la consola Cognito (vive FUERA de CloudFormation) |
 | **CDN de media** | https://d8bfm82hs0s6a.cloudfront.net |
 | **Langfuse (trazas y prompts)** | https://us.cloud.langfuse.com |
@@ -752,6 +752,37 @@ of null (reading 'edgesOut')» al resolver los peers opcionales de vitest
 4.1. `npm ci` con el lockfile sí funciona en npm 10, que es lo que corre el
 build. `engine-strict` rechaza cualquier paquete que pida Node 22; ya pasó
 con `@testing-library/jest-dom@6.10`, y por eso está fijado a 6.9.1.
+
+### El interruptor de migración (UI·7)
+
+`server/migracion.py` es lo único que decide qué versión de una pantalla ve
+cada quien. Cada pantalla migrada tiene una etapa en `PANTALLAS`:
+
+| Etapa | URL vieja (`/admin.html`) | URL nueva (`/estudio/admin/`) |
+|---|---|---|
+| `nueva` | la vieja, igual que siempre | existe; solo se llega tecleándola |
+| `todos` | 302 a la nueva, **salvo** la cookie `ui=clasica` | la ven todos |
+| `retirada` | 302 siempre; el HTML viejo ya no existe | la ven todos |
+
+- El 302 **conserva el query** y lleva `Cache-Control: no-store`.
+- Si una pantalla nueva falla, el usuario pulsa **«Usar la versión anterior»**
+  (arriba a la derecha). Eso va a `/ui/clasica?pantalla=<p>`, deja la cookie
+  7 días y lo lleva a la vieja, **sin desplegar**. Para volver antes:
+  `/ui/nueva?pantalla=<p>`.
+- **Cambiar de etapa** = editar `etapa=` en `PANTALLAS` y desplegar (lo
+  corres tú). Rollback: desplegar el sha anterior.
+- **Medir el retiro** (≥ 3 de 5 usuarios pasaron por la nueva, 7 días sin
+  incidentes): cada 302 deja en CloudWatch una línea como
+  `migracion 302 pantalla=admin etapa=todos sub=<sub>`, y cada elección de la
+  clásica `migracion clasica …`. El sub se lee de la cookie **sin verificar**
+  la firma: sirve para contar, nunca para dar acceso.
+- **Antes de `retirada`:** `tests/test_migracion_ui.py` exige que cada
+  invariante del registro exista como test en `web/` y que haya un
+  `docs/migracion/<p>.md` con cada aserción vieja y su destino. En `retirada`
+  exige que el HTML viejo ya no exista.
+
+Piloto: **admin** (solo lo usa el dueño), hoy en `nueva`. Su mapa está en
+`docs/migracion/admin.md`.
 
 ## La imagen (Node, y por qué está fijado)
 
