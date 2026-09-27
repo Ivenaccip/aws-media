@@ -708,51 +708,6 @@ aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" 
 Los seis ids que pueden cambiar están en la cabecera de
 `infra/stacks/alertas.py`, con la fecha en que se verificaron.
 
-## La UI nueva (`web/`, UI·6)
-
-Vite 8 + React 19 + TS estricto + Tailwind v4 + Radix, multipágina
-(docs/PLAN-UI.md §3). Cada carpeta `web/estudio/<p>/index.html` es una
-pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
-(noindex): todos los componentes en todos sus estados.
-
-**Del código a producción:**
-1. La etapa `web` del Dockerfile corre `npm run verificar`, que hace tipos,
-   lint, vitest y build. Si algo falla, **falla el build** y no sale imagen.
-2. `web/dist` se copia a la imagen.
-3. `server/web.py` lo monta si existe. Sin `dist` no se monta nada y el resto
-   sigue igual.
-
-**Caché:** los assets de `/estudio/assets/` llevan hash y son `immutable`
-por un año. El HTML va con `no-cache`.
-
-**Local:**
-
-```bash
-cd web && npm ci
-npm run dev                    # Vite en 8011 (el origen registrado en Cognito)
-uvicorn server.app:app --port 8012   # desde la raíz, en otra terminal
-```
-
-Vite manda a uvicorn todo lo que no es suyo: la API, `auth.js` y las
-pantallas viejas. Pide Node 20.19 o más nuevo. `/instalar` y `/actualizar`
-lo comprueban y compilan `web/`.
-
-**Reglas que vigilan `tests/test_web_tuberia.py` y `eslint.config.js`:**
-- La etapa web usa el mismo Node que la imagen. `.nvmrc` dice lo mismo.
-- Las versiones son exactas.
-- No entran `next`, `gsap`, `axios` ni `motion`.
-- Sin `dangerouslySetInnerHTML`.
-- **`pricing.json` nunca llega al navegador.** Las tarifas se importan de
-  `tools/tarifas.json` con nombre, y el plugin `tarifasSinNotas` de
-  `vite.config.ts` les quita las notas (citan costos de proveedor) y `economia`.
-
-**Para añadir una dependencia**, usa `npx npm@11 install -D paquete@x.y.z`
-dentro de `web/`. El npm 10 del Node 20 se cae con «Cannot read properties
-of null (reading 'edgesOut')» al resolver los peers opcionales de vitest
-4.1. `npm ci` con el lockfile sí funciona en npm 10, que es lo que corre el
-build. `engine-strict` rechaza cualquier paquete que pida Node 22; ya pasó
-con `@testing-library/jest-dom@6.10`, y por eso está fijado a 6.9.1.
-
 ## La imagen (Node, y por qué está fijado)
 
 Node entra en la imagen **copiado de la imagen oficial** y con la versión exacta
