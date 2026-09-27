@@ -112,8 +112,11 @@ class SinSaldo(Exception):
     def __init__(self, costo: int, saldo: int):
         self.costo, self.saldo = costo, saldo
         super().__init__(
+            # sin instrucción a propósito: la salida la añade la interfaz
+            # (monedero.js .cta), que sabe si la recarga está abierta o no.
+            # Decirlo aquí también duplicaba la frase en imágenes y crear.
             f"Créditos insuficientes: esta acción cuesta {costo} créditos "
-            f"y tu saldo es {saldo}. Recarga créditos para continuar.")
+            f"y tu saldo es {saldo}.")
 
 
 def backend() -> str:

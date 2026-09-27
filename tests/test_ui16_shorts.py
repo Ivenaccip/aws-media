@@ -44,7 +44,9 @@ def test_los_otros_usos_de_aviso_siguen():
 
 def test_los_errores_junto_a_su_boton_se_quedan():
     assert '$("imp-estado").innerHTML = `<span class="err">${esc(e.message)}</span> `;' in SHORTS
-    assert '$("imp-estado").appendChild(botonRecargar());' in SHORTS
+    # el botón puede no existir (M4: recarga cerrada), pero si existe sigue
+    # pintándose JUNTO al error, que es lo que este test protege
+    assert 'if (rec) $("imp-estado").appendChild(rec);' in SHORTS
     assert '$("analisis-info").className = "err";' in SHORTS
 
 

@@ -96,6 +96,8 @@ let orbeEst = SIN_ORBE, listaFirma = null;
 
 // «Recargar» abre el panel del monedero ahí mismo: /monedero.html no existe
 function botonRecargar() {
+  // null con la recarga cerrada: quien llama comprueba antes de pintar
+  if (!(window.monedero && window.monedero.recarga)) return null;
   const b = document.createElement("button");
   b.className = "btn btn-sec copiar";
   b.textContent = "Recargar";
@@ -239,7 +241,9 @@ $("btn-analizar").onclick = async () => {
   } catch (e) {
     if (e.status === 402) {
       $("estado").innerHTML = `<span class="err">${esc(e.message)}</span> `;
-      $("estado").appendChild(botonRecargar());
+      const rec = botonRecargar();         // null con la recarga cerrada
+      if (rec) $("estado").appendChild(rec);
+      else $("estado").append(window.monedero ? window.monedero.cta : "");
     }
     else $("estado").innerHTML = `<span class="err">${esc(e.message)}</span>`;
   } finally { $("btn-analizar").disabled = false; }
