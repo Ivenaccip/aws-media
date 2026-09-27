@@ -25,3 +25,26 @@ y en el escritorio.
 | 9 | 409: lanzar tres clips seguidos y un cuarto | «Ya tienes 3 clips generándose — espera a que terminen.» junto al botón |
 | 10 | Modo avión y recargar | «No pudimos traer tus clips…» con Reintentar; sin «Cargando…» colgado |
 | 11 | «Usar la versión anterior» | Llega a `/clip.html`; en `todos`, `/clip.html` ya no redirige para ti durante 7 días |
+
+## estilos · `/estudio/estilos/`
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar con la liga vacía y pulsar Analizar | «Pega la liga primero.» y ningún cobro |
+| 2 | 💳 Pegar un reel real y hacer doble clic rápido en Analizar | **Un** cobro; una tarjeta «Analizando…» con el orbe |
+| 3 | Mientras analiza, modo avión 20 s y volver | «Sin conexión — reintentando…»; al volver la red, sigue sola y termina |
+| 4 | Pegar el mismo reel otra vez | 409 junto al botón: «Ese video ya tiene su perfil de estilo…» |
+| 5 | Copiar el prompt | «Copiado»; pegarlo en crear imágenes funciona |
+| 6 | 402 con un usuario de prueba sin saldo | el botón apagado dice «Te faltan ✦ N · Escríbenos por el canal…» (recarga cerrada) |
+
+## competencia · `/estudio/competencia/`
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Agregar una cuenta de Instagram y otra de TikTok | aparecen; «Revisar ✦ N» con N = tarifa × 2; nada cobrado |
+| 2 | Agregar la misma otra vez | 409 junto al campo |
+| 3 | Quitar una | desaparece y el precio baja |
+| 4 | 💳 Doble clic en Revisar | **Un** cobro; «Revisando…» con el orbe; la pestaña lo dice |
+| 5 | Al terminar, Ver | lectura, publicaciones con «N× lo normal» y sus números; «—» donde no vino un número |
+| 6 | Cerrar y volver a Ver | abre al instante (no lo vuelve a pedir) |
+| 7 | Una cuenta privada en la revisión | «No se pudo traer @…» con los créditos devueltos |

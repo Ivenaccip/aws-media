@@ -67,6 +67,10 @@ PANTALLAS: dict[str, Pantalla] = {
     "admin": Pantalla(vieja="/admin.html", nueva="/estudio/admin/", etapa="nueva"),
     # UI·8.1: la primera con usuarios reales; cobra una sola cosa
     "clip": Pantalla(vieja="/clip.html", nueva="/estudio/clip/", etapa="nueva"),
+    # UI·8.2: las dos cobran una cosa y comparten el patrón «lista que se
+    # sondea mientras la IA trabaja» (nucleo/useListaViva.ts)
+    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="nueva"),
+    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/competencia/", etapa="nueva"),
 }
 
 
