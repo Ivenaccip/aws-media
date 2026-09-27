@@ -169,3 +169,24 @@ en el teléfono (390 px) y en el escritorio.
 | 10 | Pegar una celda de Excel en la caja | Pega el texto, no una imagen |
 | 11 | Desde el inicio, «Mis imágenes» → una imagen | Se abre aquí, lista para editar |
 | 12 | «Usar la versión anterior» | Llega a `/imagenes.html`; en `todos`, `/imagenes.html` ya no redirige para ti durante 7 días |
+
+## MIX · `/estudio/mix/`
+
+Ver el ejemplo es gratis. **Encender cobra días × 5 créditos** (`tarifas.json`
+§mix): la prueba más barata es una campaña de 1 día, y apagarla antes de que
+salga devuelve lo cobrado. Hazla en el teléfono (390 px) y en el escritorio.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar | Los 6 pasos; «Ver un ejemplo» apagado y «Falta la foto de tu producto.» |
+| 2 | Subir un GIF | «Tiene que ser JPG, PNG o WebP.», sin subir nada |
+| 3 | Foto, motivo, «3 días» y una cuenta | Rango «Del … al … · 3 días, 3 publicaciones.»; aún **ningún** número de costo |
+| 4 | Ver un ejemplo | El orbe «Preparando tu ejemplo · hasta 2 min»; cerrar la pestaña y volver: retoma la espera |
+| 5 | Con el ejemplo | La publicación del día 1 y debajo «Son N créditos y se te cobran ahora» = días × 5 |
+| 6 | Cambiar la hora | El costo sigue; el ejemplo sigue valiendo |
+| 7 | Cambiar una letra del motivo | «Cambiaste la campaña después de ver esto…» y «Encender» desaparece |
+| 8 | Ver otro ejemplo, y 💳 marcar 1 solo día y doble clic en «Encender la campaña» | **Un** cobro de 5; «Campaña encendida…»; el panel «Tu campaña» |
+| 9 | Apagar la campaña → Enter | La confirmación dice cuánto se devuelve; Enter = «No, dejarla» |
+| 10 | Apagar → «Sí, apagarla» | «Te devolvimos 5 créditos» (si aún no salió); la píldora del saldo lo refleja |
+| 11 | Desconectar Blotato y volver a MIX | El aviso y el formulario apagado; un clic lleva a conectar |
+| 12 | «Usar la versión anterior» | Llega a `/mix.html`; en `todos`, `/mix.html` ya no redirige para ti durante 7 días |

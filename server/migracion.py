@@ -91,6 +91,8 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
     # y modera el texto antes de cobrar
     "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),
+    # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día
+    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/mix/", etapa="nueva"),
 }
 
 
