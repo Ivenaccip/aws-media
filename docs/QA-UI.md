@@ -148,3 +148,24 @@ teléfono (390 px) y en el escritorio.
 | 6 | «Ver la publicación» | Abre la red en otra pestaña |
 | 7 | La de LinkedIn | Dice que Blotato todavía no recoge números de LinkedIn, sin botón |
 | 8 | «Usar la versión anterior» | Llega a `/metricas.html`; en `todos`, `/metricas.html` ya no redirige para ti durante 7 días |
+
+## imágenes · `/estudio/imagenes/`
+
+Cobra `video.imagen` de `tarifas.json` (2 créditos) por cada envío. La
+corrida completa son 3 envíos: crear, cambiar una zona y transformar. Hazla
+en el teléfono (390 px) y en el escritorio.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar | «Crea tu imagen» con la primera palabra girando; estilos con su muestra; formatos; «Generar ✦ 2» |
+| 2 | Escribir «/» | La lista de atajos, sin ninguno marcado; flechas para moverse; Escape la cierra |
+| 3 | Escribir algo que el moderador rechace y Generar | «Revisa tu texto» con el motivo; **no** se descuenta nada; al cerrar, el cursor en la caja |
+| 4 | 💳 Elegir Vertical y un estilo, escribir y hacer doble clic en Generar | **Un** cobro; «Revisando tu texto…» y luego el orbe; la imagen sale vertical y queda abierta para editarla |
+| 5 | Sin pintar nada, «Cambiar» | Pide que pintes la zona; no cobra |
+| 6 | 💳 Pintar una zona con el dedo o el mouse, escribir y Cambiar | Un cobro; solo cambia lo pintado; «Tu imagen» vuelve a la original |
+| 7 | «Quitar imagen» | El resultado sigue ahí, con «Seguir editando» y «Descargar» |
+| 8 | 💳 «Seguir editando» → «Transformar toda la imagen» → Acuarela → Transformar | Un cobro; la imagen entera cambia de estilo |
+| 9 | Descargar | Baja el archivo (no abre otra pestaña) |
+| 10 | Pegar una celda de Excel en la caja | Pega el texto, no una imagen |
+| 11 | Desde el inicio, «Mis imágenes» → una imagen | Se abre aquí, lista para editar |
+| 12 | «Usar la versión anterior» | Llega a `/imagenes.html`; en `todos`, `/imagenes.html` ya no redirige para ti durante 7 días |

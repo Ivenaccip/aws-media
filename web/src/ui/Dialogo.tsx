@@ -22,6 +22,8 @@ export interface PropsDialogo {
   acciones?: ReactNode;
   /** Dónde cae el foco al abrir; sin él, en lo primero que se toca (la equis). */
   focoInicial?: RefObject<HTMLElement | null>;
+  /** Dónde vuelve el foco al cerrar; sin él, a lo que tenía el foco al abrir. */
+  focoAlCerrar?: RefObject<HTMLElement | null>;
 }
 
 // Radix devuelve el foco a su <Trigger> al cerrar; aquí los diálogos se abren
@@ -60,7 +62,9 @@ function useGraciaDelVelo() {
   };
 }
 
-export function Dialogo({ abierto, alCambiar, titulo, descripcion, children, acciones, focoInicial }: PropsDialogo) {
+export function Dialogo({
+  abierto, alCambiar, titulo, descripcion, children, acciones, focoInicial, focoAlCerrar,
+}: PropsDialogo) {
   const foco = useFocoDeVuelta();
   const gracia = useGraciaDelVelo();
   return (
@@ -77,7 +81,12 @@ export function Dialogo({ abierto, alCambiar, titulo, descripcion, children, acc
               focoInicial.current.focus();
             }
           }}
-          onCloseAutoFocus={foco.onCloseAutoFocus}
+          onCloseAutoFocus={e => {
+            if (focoAlCerrar?.current) {
+              e.preventDefault();
+              focoAlCerrar.current.focus();
+            } else foco.onCloseAutoFocus(e);
+          }}
           onPointerDownOutside={gracia.onPointerDownOutside}
           {...(descripcion ? {} : { 'aria-describedby': undefined })}>
           <div className="flex items-start justify-between gap-4">

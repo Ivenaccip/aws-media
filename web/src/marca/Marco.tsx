@@ -13,7 +13,8 @@ import { Icono } from '../ui/Icono';
 export interface PropsMarco {
   /** El nombre de la pantalla en server/migracion.py (p. ej. «admin»). */
   pantalla: string;
-  titulo: string;
+  /** Casi siempre un texto; imágenes pasa su título con la palabra que gira. */
+  titulo: ReactNode;
   /** Una línea bajo el título: qué hay en esta pantalla. */
   bajada?: ReactNode;
   children: ReactNode;
