@@ -74,7 +74,9 @@ def _param(nombre: str, valor) -> dict:
     return {"name": nombre, "value": {"stringValue": str(valor)}}
 
 
-# Tras la auto-pausa (mín 0 ACU) la primera llamada despierta el clúster:
+# Tras una auto-pausa la primera llamada despierta el clúster. Producción ya no
+# se pausa (suelo de 0.5 ACU desde el 21-sep, infra/stacks/db.py), pero un
+# clúster con mínimo 0 —el de dev irá así— sí, y entonces
 # rds-data responde DatabaseResumingException o DatabaseUnavailableException
 # (esta última con el mensaje VACÍO — filtrar por el nombre de la clase)
 # durante ~15 s. Reintentamos dentro del presupuesto del timeout de la

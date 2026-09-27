@@ -52,6 +52,7 @@
     <h1>Entra a tu estudio</h1>
     <p class="lead" id="lead">Usa el correo con el que te dieron de alta en la comunidad.</p>
     <p class="aviso-caja" id="rebote" hidden>No pudimos recuperar tu sesión. Entra de nuevo con tu correo.</p>
+    <p class="aviso-caja" id="sin-conexion" hidden>No pudimos conectar con el servidor. Revisa tu conexión y toca «Entrar» para intentarlo de nuevo.</p>
     <button class="btn btn-pri" id="entrar" type="button">Entrar</button>
     <p class="sin-cuenta">¿Todavía no tienes cuenta? Las cuentas son para miembros de la comunidad.<span data-enlace-envoltura hidden> <a data-enlace="comunidad" hidden>Cómo unirte</a></span></p>
   </div>
@@ -89,8 +90,10 @@
   if (volver !== ESTUDIO) document.getElementById('lead').textContent =
     'Entra para seguir donde estabas. Usa el correo con el que te dieron de alta en la comunidad.';
 
+  let sinConexion = false;
   function mostrar(rebote) {
     document.getElementById('rebote').hidden = !rebote;
+    document.getElementById('sin-conexion').hidden = !sinConexion;
     document.body.classList.remove('decidiendo');
     document.getElementById('entrar').focus();
   }
@@ -99,7 +102,9 @@
     const b = e.currentTarget;
     b.disabled = true;
     b.textContent = 'Entrando…';
-    window.auth.login(volver);
+    // sin la configuración, login() no sabe a dónde ir: se vuelve a preguntar
+    if (sinConexion) location.reload();
+    else window.auth.login(volver);
   });
 
   // «atrás» desde Cognito restaura la página con el botón en «Entrando…»
@@ -112,6 +117,9 @@
 
   (async () => {
     const c = await window.auth.config();
+    // no se pudo preguntar (red, 5xx): se muestra la entrada con el aviso. Antes
+    // esto contaba como «sin login» y mandaba al estudio sin sesión.
+    if (c.fallo) { sinConexion = true; mostrar(false); return; }
     if (!c.activo) { location.replace(volver); return; }   // dev local: sin login
     const rebote = rebotando();
     if (!rebote) {

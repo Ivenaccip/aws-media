@@ -2,7 +2,7 @@
 // Los pone el dueño. Vacío = el enlace no se muestra: mejor nada que un
 // enlace inventado. Solo se aceptan direcciones https://.
 window.ENLACES = {
-  comunidad: '',     // dónde se unen: las cuentas se dan a miembros de la comunidad
+  comunidad: 'https://www.skool.com/irremplazables',  // dónde se unen: las cuentas se dan a miembros de la comunidad
 };
 
 // <a data-enlace="comunidad" hidden> → le pone el href y lo muestra si hay
