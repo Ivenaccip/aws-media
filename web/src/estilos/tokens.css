@@ -110,6 +110,37 @@
   @keyframes velo-sale { to { opacity: 0; } }
   @keyframes caja-entra { from { opacity: 0; scale: 0.96; } }
   @keyframes caja-sale { to { opacity: 0; scale: 0.96; } }
+
+  /* UI·24: el «no» y el «listo» de los formularios, sin toasts.
+     · ui/Campo.tsx: el campo que PASA a tener error tiembla tres veces en
+       240 ms (±6 px, 80 ms cada ida y vuelta). Corto a propósito: quien lo ve
+       ya va a corregir y no hay que hacerlo esperar. Lineal: es un vaivén,
+       no algo que llega. Va en `translate`, que no pisa ningún transform.
+     · ui/Icono.tsx con `dibujar` (la palomita de ui/Guardado.tsx y del
+       Aviso): el trazo se dibuja en 300 ms. pathLength=1 hace que el guion
+       mida lo que el trazo; el guion vive solo en los keyframes, así que
+       quieto (o sin animación) el trazo es entero. Hueco de 2 y arranque en
+       1.05, no en 1: con remates redondos, un guion que apenas toca el
+       inicio del camino es un punto en algunos motores.
+     · ui/Guardado.tsx: el texto llega con el resorte (--curva-resorte) en
+       --dur-media, a la vez que la palomita: sin retraso, porque la regla de
+       «reducir movimiento» acorta la duración pero no el retraso.
+     En las tres el reposo es el estilo natural del elemento (ninguna lo
+     fija con fill-mode): lo que no anima, se ve terminado. Y las tres se
+     ponen con motion-safe:, así que con «reducir movimiento» ni arrancan
+     (la regla global de abajo las aplanaría igual). */
+  --animate-campo-tiembla: campo-tiembla 240ms linear;
+  --animate-trazo-se-dibuja: trazo-se-dibuja 300ms var(--ease-salida);
+  --animate-guardado-llega: guardado-llega var(--dur-media) var(--curva-resorte);
+  @keyframes campo-tiembla {
+    8.33%, 41.67%, 75% { translate: -6px 0; }
+    25%, 58.33%, 91.67% { translate: 6px 0; }
+  }
+  @keyframes trazo-se-dibuja {
+    from { stroke-dasharray: 1 2; stroke-dashoffset: 1.05; }
+    to { stroke-dasharray: 1 2; stroke-dashoffset: 0; }
+  }
+  @keyframes guardado-llega { from { opacity: 0; translate: -0.5em 0; } }
 }
 
 /* UI·18: los tokens de movimiento. Van fuera de @theme porque Tailwind no

@@ -1019,3 +1019,29 @@ describe('UI·18 · la miniatura que llega del inicio', () => {
     await waitFor(() => expect(sessionStorage.getItem('vt:miniatura')).toBeNull());
   });
 });
+
+describe('UI·24 · el autoguardado dice «listo» con la palomita', () => {
+  it('UI·24: «Guardado a las…» se dibuja en la misma región que anunció «Guardando…»; el fallo no lleva palomita', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    abrir(P, { '/api/proyectos/p1/guion': () => (n++ === 0 ? sinRed() : json(P)) });
+    fireEvent.change(await screen.findByLabelText('Escena 1'), { target: { value: 'Otro comienzo.' } });
+    const nota = screen.getByText('Guardando…');
+    expect(nota).toHaveAttribute('role', 'status');
+    expect(nota.querySelector('svg')).toBeNull();
+    await avanzar(1000);
+    await screen.findByText('Sin guardar, reintentando…');
+    expect(nota.querySelector('svg')).toBeNull();
+    await avanzar(4000);
+    await screen.findByText(/^Guardado a las \d\d:\d\d$/);
+    // la misma nota (no una nueva) y sin otra región dentro: se lee una vez
+    expect(nota).toBeInTheDocument();
+    expect(nota).toHaveTextContent(/^Guardado a las \d\d:\d\d$/);
+    expect(nota.querySelector('[role="status"]')).toBeNull();
+    expect(nota.querySelector('svg path')!.getAttribute('class')).toBe('motion-safe:animate-trazo-se-dibuja');
+    // escribir otra vez vuelve a «Guardando…», sin palomita
+    fireEvent.change(screen.getByLabelText('Escena 1'), { target: { value: 'Otro comienzo, otra vez.' } });
+    expect(nota).toHaveTextContent('Guardando…');
+    expect(nota.querySelector('svg')).toBeNull();
+  });
+});

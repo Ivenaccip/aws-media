@@ -640,3 +640,40 @@ describe('UI·18 · la miniatura se agranda hasta su película', () => {
     expect(miniaturaQueLlega('p1')).toBeNull();
   });
 });
+
+describe('UI·24 · conectar Blotato dice «listo» con la palomita', () => {
+  const abrir = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ }));
+  };
+  const palomita = (texto: HTMLElement) => texto.parentElement!.querySelector('svg path')!;
+
+  it('UI·24: la clave recién guardada dibuja la palomita y se anuncia; al volver a abrir, quieta y callada', async () => {
+    let estado = SIN_CLAVE;
+    montar({
+      rutas: {
+        '/api/blotato': (_u, init) => {
+          if (init?.method === 'POST') estado = CONECTADO;
+          return json(estado);
+        },
+      },
+    });
+    pintar();
+    await abrir();
+    await userEvent.type(await screen.findByLabelText('Tu clave de API de Blotato'), 'buena');
+    await userEvent.click(screen.getByRole('button', { name: 'Conectar' }));
+    const listo = await screen.findByText('Tu Blotato está conectado');
+    expect(listo.closest('[role="status"]')).not.toBeNull();
+    expect(palomita(listo).getAttribute('class')).toBe('motion-safe:animate-trazo-se-dibuja');
+    // «Guardado» no se lleva el foco: sigue dentro del diálogo
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    // Cambiar clave y Cancelar no guardó nada nuevo: quieta
+    await userEvent.click(screen.getByRole('button', { name: 'Cambiar clave' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(palomita(screen.getByText('Tu Blotato está conectado'))).not.toHaveAttribute('class');
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    await abrir();
+    const quieta = await screen.findByText('Tu Blotato está conectado');
+    expect(quieta.closest('[role="status"]')).toBeNull();
+    expect(palomita(quieta)).not.toHaveAttribute('class');
+  });
+});

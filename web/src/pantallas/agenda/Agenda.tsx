@@ -39,6 +39,8 @@ import {
 interface Nota {
   tipo: 'error' | 'exito';
   texto: string;
+  /** UI·24: el éxito de algo que se acaba de guardar: la palomita se dibuja. */
+  guardado?: boolean;
   conectar?: boolean;
   reintentar?: () => void;
 }
@@ -183,7 +185,7 @@ export function Agenda() {
       await reprogramar(it.id, cuando);
       if (vigente()) cerrarHora();
       await cargarLista();
-      setNota({ tipo: 'exito', texto: `Hora cambiada: ${it.red} sale el ${fecha(cuando)} (tu hora).` });
+      setNota({ tipo: 'exito', texto: `Hora cambiada: ${it.red} sale el ${fecha(cuando)} (tu hora).`, guardado: true });
       focoSinDueno();
     } catch (e) {
       if (estado(e) === 404) {
@@ -254,7 +256,7 @@ export function Agenda() {
 
           {nota && (
             <div className="mt-4">
-              <Aviso tipo={nota.tipo}>
+              <Aviso tipo={nota.tipo} dibujar={!!nota.guardado}>
                 {nota.texto}
                 {nota.conectar ? (
                   <>

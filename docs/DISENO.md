@@ -117,8 +117,10 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     que se va); el saldo que baja rueda 700 ms, la píldora se tiñe 900 ms y
     el «−N» vuela 600 ms; lo que llega a una lista abre su espacio en 240 ms
     y lo que se reordena viaja 300 ms; el calendario sale en 180 ms y entra
-    en 250 ms con 24 px de desplazamiento; el punto del buzón llega en 300 ms
-    con el resorte y suelta una sola onda de 900 ms.
+    en 250 ms con 24 px de desplazamiento; un campo tiembla 240 ms cuando
+    aparece su error y la palomita de «Guardado» se dibuja en 300 ms; el
+    punto del buzón llega en 300 ms con el resorte y suelta una sola onda de
+    900 ms.
   - Nada anima por defecto lo que ya estaba al abrir la pantalla: la primera
     carga no rueda, no se enciende y no entra animada.
   - Entre pantallas hay View Transition (fundido; la píldora del saldo se
@@ -184,9 +186,9 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 | **Espera larga** (producir) | Pasos con nombre en español (Guion aprobado → Voz grabada → Animando las escenas · 2 de 6 → Uniendo el video), el tiempo que falta y «puedes cerrar esta pestaña». |
 | **Espera corta** | Por ahora como hoy. Los «esqueletos» quedan para después. |
 | **Error** | Tres partes: **qué pasó** (sin culpar), **qué pasó con tus créditos** («Te devolvimos ✦ 90») y **qué sigue** (un botón). Lo técnico va plegado en «Detalles técnicos». |
-| **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. |
+| **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. Al aparecer, el campo tiembla una vez (`ui/Campo.tsx`, UI·24). |
 | **Tus trabajos** (`static/trabajos.js`) | Cuadro abajo a la derecha en todas las pantallas: lo que corre (paso, avance, «Ver»), lo que terminó en las últimas **24 h** con su enlace y lo que falló con «Te devolvimos ✦ N». Va **plegado**; se abre solo cuando algo termina o falla y no lo habías visto. Lo cerrado no vuelve en ese navegador. En celular, abajo a todo lo ancho (dueño, 25-sep). |
-| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
+| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo; en las pantallas de `web/` el «Guardado» va donde se guardó, con su palomita: `ui/Guardado.tsx`, UI·24), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
 
 ## 9. Fuera de alcance por ahora
 

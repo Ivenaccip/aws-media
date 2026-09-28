@@ -9,7 +9,7 @@ import { useId, useState } from 'react';
 import { Boton } from '../../ui/Boton';
 import { Confirmar } from '../../ui/Confirmar';
 import { Dialogo } from '../../ui/Dialogo';
-import { Icono } from '../../ui/Icono';
+import { Guardado } from '../../ui/Guardado';
 import { conectarBlotato, quitarBlotato, RED, type EstadoBlotato } from './logica';
 
 const mensaje = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -31,6 +31,9 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
   const [error, setError] = useState('');
   const [trabajando, setTrabajando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
+  // UI·24: la clave se acaba de guardar AQUÍ. Solo entonces la palomita se
+  // dibuja y se anuncia; al abrir con Blotato ya conectado, está quieta
+  const [recien, setRecien] = useState(false);
   const idClave = useId();
 
   const cargando = abierto && estado === null && !errorCarga;
@@ -43,6 +46,7 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
       setClave('');
       setFormulario(false);
       setError('');
+      setRecien(false);
     }
     alCambiar(a);
   }
@@ -61,6 +65,7 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
       const d = await conectarBlotato(limpia);
       setClave('');
       setFormulario(false);
+      setRecien(d.conectado);
       alSaber(d);
     } catch (err) {
       setError(mensaje(err));
@@ -72,6 +77,7 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
   async function quitar() {
     setTrabajando(true);
     setError('');
+    setRecien(false);
     try {
       alSaber(await quitarBlotato());
     } catch (err) {
@@ -93,9 +99,10 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
 
         {estado && !verForm && (
           <div className="mt-4">
-            <p className="m-0 mb-2 flex items-center gap-2 font-semibold text-exito">
-              <Icono nombre="listo" />
-              Tu Blotato está conectado
+            <p className="m-0 mb-2 flex items-center font-semibold text-exito">
+              <Guardado quieto={!recien}>
+                Tu Blotato está conectado
+              </Guardado>
             </p>
             {env && (
               <p className="m-0 mb-2 text-sm text-secundario">
@@ -129,7 +136,13 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
               </p>
             )}
             <div className="mt-4 flex flex-wrap gap-2">
-              <Boton nivel="secundario" onClick={() => setFormulario(true)}>
+              <Boton
+                nivel="secundario"
+                onClick={() => {
+                  setFormulario(true);
+                  setRecien(false);
+                }}
+              >
                 Cambiar clave
               </Boton>
               {/* la del .env no se quita desde aquí */}
