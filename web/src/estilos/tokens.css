@@ -215,9 +215,9 @@
    entre dos páginas que lo piden (las de web/ y, con static/carta.css, las
    viejas) y solo si el sistema no pide reducir movimiento. Donde el
    navegador no lo sabe hacer (antes de Chrome 126 o Safari 18.2), se navega
-   exactamente como antes. Y donde lo hace pero no espera al módulo de la
-   pantalla (blocking="render", que Safari no respeta), monedero.js se la
-   salta: fundirse hacia una página vacía sería el mismo parpadeo, animado. */
+   exactamente como antes. Los que lo hacen esperan al módulo de la pantalla
+   (blocking="render"); por si alguno no esperara, monedero.js se la salta
+   con la pantalla vacía: fundirse hacia nada sería el mismo parpadeo. */
 @media (prefers-reduced-motion: no-preference) {
   @view-transition { navigation: auto; }
 }

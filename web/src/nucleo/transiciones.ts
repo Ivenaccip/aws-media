@@ -105,8 +105,8 @@ export function olvidarMiniatura(): void {
 // agrandarla. Se escucha desde que se carga este módulo, antes del primer
 // cuadro (el módulo bloquea el pintado, vite.config.ts): si llega
 // `pagereveal`, trae la transición o null; si antes llega un cuadro sin él,
-// la página ya se había revelado (Safari sin blocking="render", o un
-// navegador sin el evento) y no hay nada que esperar.
+// la página ya se había revelado (un navegador sin el evento, o que no
+// esperó al módulo) y no hay nada que esperar.
 const revelada: Promise<ViewTransition | null> = new Promise(listo => {
   if (typeof window === 'undefined') return listo(null);
   addEventListener('pagereveal', e => listo((e as ConTransicion).viewTransition ?? null), { once: true });

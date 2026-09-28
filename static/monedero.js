@@ -462,10 +462,10 @@
   }
 
   // UI·18: la transición entre pantallas fotografía la nueva en pagereveal.
-  // Chromium espera al módulo (blocking="render") y #raiz ya trae la
-  // pantalla; donde no se espera (Safari), #raiz sigue vacío y el fundido
-  // iría hacia una página en blanco: mejor navegar como antes. Las viejas
-  // no tienen #raiz
+  // Los navegadores que la hacen (Chrome 126+, Safari 18.2+) esperan al
+  // módulo (blocking="render") y #raiz ya trae la pantalla. Por si alguno
+  // no esperara: con #raiz vacío el fundido iría hacia una página en
+  // blanco, y mejor navegar como antes. Las viejas no tienen #raiz
   addEventListener('pagereveal', e => {
     const raiz = document.getElementById('raiz');
     if (e.viewTransition && raiz && !raiz.firstElementChild) e.viewTransition.skipTransition();
