@@ -12,6 +12,12 @@ from pipeline.storage import work_root
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
+# Paso 0 del entorno dev: el cableado de AWS (pool de Cognito, Data API, bucket)
+# lo genera tools/env_local.py en .env.local, y se carga DESPUÉS del .env y con
+# override para que el generado gane sin que nadie edite el .env a mano. Sin ese
+# archivo no cambia nada: el dev local de siempre, sin login y todo como
+# DEFAULT_USER_ID.
+load_dotenv(ROOT / ".env.local", override=True)
 PROMPTS_DIR = ROOT / "prompts"
 
 
