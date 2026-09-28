@@ -12,9 +12,13 @@ import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi, recuperarApartado } from '../../nucleo/api';
 import { creditos } from '../../nucleo/formato';
+import { nombreVT } from '../../nucleo/transiciones';
+import { diferencia, NINGUNO } from '../../nucleo/useListaViva';
+import { useLlegada } from '../../nucleo/useLlegada';
 import { useSondeo } from '../../nucleo/useSondeo';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { FilaViva } from '../../ui/FilaViva';
 import { Icono } from '../../ui/Icono';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
@@ -55,6 +59,8 @@ function textoInicial(): string {
 export function Clip() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [clips, setClips] = useState<FichaClip[] | null>(null);
+  const [nuevos, setNuevos] = useState<ReadonlySet<string>>(NINGUNO);
+  const vistos = useRef<string[] | null>(null);
   const [falloCarga, setFalloCarga] = useState(false);
   const [texto, setTexto] = useState(textoInicial);
   const [formato, setFormato] = useState<Formato>('horizontal');
@@ -69,6 +75,11 @@ export function Clip() {
   const idTexto = useId();
 
   const aplicar = useCallback((lista: FichaClip[]): boolean => {
+    // UI·21: el clip que acaba de pedirse entra abriendo su espacio; en la
+    // primera carga buena nada entra animado (un fallo no cuenta como vista)
+    const ids = lista.map(c => c.id);
+    setNuevos(diferencia(vistos.current, ids).nuevos);
+    vistos.current = ids;
     setClips(lista);
     setFalloCarga(false);
     const vivos = generando(lista).length > 0;
@@ -328,7 +339,9 @@ export function Clip() {
             <p className="m-0 text-xs text-secundario">Todavía no has hecho ninguno.</p>
           )}
           {clips?.map(c => (
-            <TarjetaClip key={c.id} clip={c} conOrbe={vivos.length === 1} />
+            <FilaViva key={c.id} nombre={nombreVT('clip', c.id)} nueva={nuevos.has(c.id)}>
+              <TarjetaClip clip={c} conOrbe={vivos.length === 1} />
+            </FilaViva>
           ))}
         </Tarjeta>
       </div>
@@ -337,6 +350,8 @@ export function Clip() {
 }
 
 function TarjetaClip({ clip: c, conOrbe }: { clip: FichaClip; conOrbe: boolean }) {
+  // UI·21: al quedar listo (con la pantalla abierta) su detalle se enciende
+  const [encendido, apagar] = useLlegada(c.estado !== 'generando' && c.estado !== 'error');
   return (
     <article className="mb-4 rounded-grande border border-linea p-4">
       <p className="m-0 mb-1 text-sm [overflow-wrap:anywhere]">{c.texto}</p>
@@ -366,7 +381,7 @@ function TarjetaClip({ clip: c, conOrbe }: { clip: FichaClip; conOrbe: boolean }
       )}
       {c.estado !== 'generando' && c.estado !== 'error' && (
         <>
-          <p className="m-0 text-xs text-secundario">
+          <p className={unir('m-0 text-xs text-secundario', encendido && 'destello')} onAnimationEnd={apagar}>
             {detalleClip(c)} · {creditos(c.creditos)}
           </p>
           {c.recorte && (

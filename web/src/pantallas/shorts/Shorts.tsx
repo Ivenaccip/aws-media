@@ -17,9 +17,11 @@ import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { cargarConfig } from '../../nucleo/subida';
 import { useListaViva } from '../../nucleo/useListaViva';
+import { useLlegada } from '../../nucleo/useLlegada';
 import { useTituloPestana } from '../../nucleo/useTituloPestana';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { FilaViva } from '../../ui/FilaViva';
 import { Icono } from '../../ui/Icono';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
@@ -313,6 +315,9 @@ function ProyectoShorts({ p, alAbrir }: { p: string; alAbrir: (nombre: string) =
   const st: EstadoShorts = d?.shorts ?? {};
   const render = st.render ?? {};
   const descargando = imp.estado === 'descargando';
+  // UI·21: los shorts que acaban de salir entran abriendo su espacio (no
+  // los que ya estaban al abrir la página)
+  const [salidasNuevas] = useLlegada(d === null ? null : render.estado === 'listo' && !!render.salidas);
 
   useTituloPestana(
     descargando
@@ -390,7 +395,11 @@ function ProyectoShorts({ p, alAbrir }: { p: string; alAbrir: (nombre: string) =
               }
             />
           )}
-          {render.estado === 'listo' && render.salidas && <Salidas salidas={render.salidas} cdn={d.cdn} />}
+          {render.estado === 'listo' && render.salidas && (
+            <FilaViva nombre="salidas" nueva={salidasNuevas}>
+              <Salidas salidas={render.salidas} cdn={d.cdn} />
+            </FilaViva>
+          )}
         </>
       )}
 
@@ -406,6 +415,8 @@ function Analisis({ p, st, alLanzar }: { p: string; st: EstadoShorts; alLanzar: 
   const saldo = useSaldo();
   const analizando = st.estado === 'analizando';
   const conCandidatos = st.estado === 'candidatos';
+  // UI·21: «Análisis listo» se enciende un instante al terminar con la página abierta
+  const [encendido, apagar] = useLlegada(conCandidatos);
 
   // el precio ANTES del botón (regla dura: nube sin preview = bug); una vez basta
   const hacePrecio = !analizando && costo === null && !errorCosto;
@@ -449,7 +460,7 @@ function Analisis({ p, st, alLanzar }: { p: string; st: EstadoShorts; alLanzar: 
         <>
           {conCandidatos && (
             <p className="m-0 mb-2 text-sm">
-              <span className="text-exito">
+              <span className={unir('text-exito', encendido && 'destello')} onAnimationEnd={apagar}>
                 <Icono nombre="listo" className="mr-1 align-[-0.15em]" />
                 Análisis listo
               </span>{' '}
@@ -555,6 +566,8 @@ function Candidatos({
 }) {
   // lo que eliges y ajustas vive aquí: el sondeo ya no lo borra en cada vuelta
   const [eleccion, setEleccion] = useState<Eleccion[]>(() => candidatos.map(inicial));
+  // UI·21: «Render listo» se enciende un instante al terminar con la página abierta
+  const [renderEncendido, apagarRender] = useLlegada(render.estado === 'listo' && !!render.salidas);
   const [estilo, setEstilo] = useState<string>('bold');
   const [plataforma, setPlataforma] = useState<string>('all');
   const [tipo, setTipo] = useState<string>('auto');
@@ -710,8 +723,10 @@ function Candidatos({
         )}
         {render.estado === 'listo' && render.salidas && !corriendo && (
           <p className="mt-2 mb-0 text-sm text-exito">
-            <Icono nombre="listo" className="mr-1 align-[-0.15em]" />
-            Render listo
+            <span className={unir(renderEncendido && 'destello')} onAnimationEnd={apagarRender}>
+              <Icono nombre="listo" className="mr-1 align-[-0.15em]" />
+              Render listo
+            </span>
           </p>
         )}
         {render.estado === 'error' && !corriendo && (

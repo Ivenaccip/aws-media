@@ -13,6 +13,8 @@
 // Donde no hay View Transitions nada de esto se nota: la miniatura se pinta
 // igual como «cargando», que es mejor que una línea de texto.
 
+import { flushSync } from 'react-dom';
+
 export const NOMBRE_MINIATURA = 'miniatura';
 
 const CLAVE = 'vt:miniatura';
@@ -121,4 +123,48 @@ export function trasLaLlegada(): Promise<void> {
       () => undefined,
       () => undefined,
     );
+}
+
+// ── UI·21 y UI·22: transiciones dentro de una misma pantalla ──────────────
+
+/** ¿El sistema pide reducir movimiento? (jsdom no tiene matchMedia) */
+export function reduceMovimiento(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Chrome 125+ y Safari 18.2+ aceptan startViewTransition({ update, types }).
+// Los que solo aceptan una función (Chrome 111-124) lanzarían con el
+// objeto: ahí, como donde no hay nada, el cambio va al instante.
+function conTipos(): boolean {
+  return (
+    typeof document.startViewTransition === 'function' &&
+    typeof ViewTransition === 'function' &&
+    'types' in ViewTransition.prototype
+  );
+}
+
+/** Aplica `cambio` dentro de una View Transition con esos tipos: la CSS
+ *  elige la animación con :active-view-transition-type(). El cambio corre
+ *  dentro de flushSync, para que el navegador fotografíe el DOM ya nuevo.
+ *  Sin soporte, con la pestaña oculta o con «reducir movimiento», lo aplica
+ *  al instante y devuelve null. */
+export function transicionar(cambio: () => void, tipos: readonly string[]): ViewTransition | null {
+  if (!conTipos() || document.hidden || reduceMovimiento()) {
+    cambio();
+    return null;
+  }
+  const vt = document.startViewTransition({ update: () => flushSync(cambio), types: [...tipos] });
+  // si se salta (otra la pisó, un nombre repetido), el cambio corre igual:
+  // que ningún rechazo quede sin atender
+  for (const p of [vt.ready, vt.finished, vt.updateCallbackDone]) p.catch(() => undefined);
+  return vt;
+}
+
+/** Un view-transition-name válido y distinto para cada id: lo que no es
+ *  [A-Za-z0-9-] va como _<hex>_ (un id de cuenta puede traer «.»), así que
+ *  «a.b» y «a_b» no chocan. */
+export function nombreVT(prefijo: string, id: string): string {
+  let s = prefijo + '-';
+  for (const c of id) s += /[A-Za-z0-9-]/.test(c) ? c : '_' + c.codePointAt(0)!.toString(16) + '_';
+  return s;
 }

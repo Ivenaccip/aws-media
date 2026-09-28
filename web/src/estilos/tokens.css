@@ -178,3 +178,31 @@
   height: 100%;
   object-fit: cover;
 }
+
+/* UI·21: las listas vivas (nucleo/useListaViva.ts, ui/FilaViva.tsx). Lo que
+   llega nuevo abre su espacio de 0 a su altura en 240 ms, en vez de empujar
+   todo de golpe (con interpolate-size, Chrome 129+; en los demás solo se
+   funde). Lo que acaba de quedar listo se enciende un instante (600 ms). En
+   @layer components: las utilidades de Tailwind siguen ganando. */
+@keyframes fila-entra { from { opacity: 0; } }
+@keyframes fila-abre { from { opacity: 0; height: 0; } }
+@keyframes destello { from { background-color: var(--color-exito-fondo); } }
+@layer components {
+  /* el margen de la tarjeta queda dentro de la fila: no salta al final */
+  .fila-viva { display: flow-root; }
+  .fila-entra { animation: fila-entra 240ms var(--ease-salida); }
+  @supports (interpolate-size: allow-keywords) {
+    .fila-entra { interpolate-size: allow-keywords; overflow: clip; animation-name: fila-abre; }
+  }
+  .destello { border-radius: var(--radius-chico); animation: destello 600ms var(--ease-salida); }
+}
+/* Al reordenar (transiciones.ts → transicionar(…, ['reordenar'])) cada fila
+   viaja de su lugar viejo al nuevo en 300 ms. La página no se fotografía
+   entera: queda viva y los clics pasan; solo vuelan las filas. */
+html:active-view-transition-type(reordenar) {
+  view-transition-name: none;
+  & .fila-viva { view-transition-name: var(--vt-nombre); }
+  & #monedero { view-transition-name: none !important; }
+}
+html:active-view-transition-type(reordenar)::view-transition { pointer-events: none; }
+html:active-view-transition-type(reordenar)::view-transition-group(*) { animation-duration: 300ms; }

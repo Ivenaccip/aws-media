@@ -12,10 +12,13 @@ import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
+import { nombreVT } from '../../nucleo/transiciones';
 import { useListaViva } from '../../nucleo/useListaViva';
+import { useLlegada } from '../../nucleo/useLlegada';
 import { useTituloPestana } from '../../nucleo/useTituloPestana';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { FilaViva } from '../../ui/FilaViva';
 import { Icono } from '../../ui/Icono';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
@@ -69,7 +72,11 @@ const mensajeDe = (e: unknown, error = true): Mensaje => ({
 });
 
 export function Competencia() {
-  const lista = useListaViva<Listado>(cargar, l => vivos(l).length > 0, { alTerminar: refrescarSaldo });
+  const lista = useListaViva<Listado>(cargar, l => vivos(l).length > 0, {
+    alTerminar: refrescarSaldo,
+    // UI·21: la cuenta que se agrega y la revisión que llega entran abriendo su espacio
+    claves: l => [...l.cuentas.map(c => 'c:' + c.id), ...l.informes.map(r => 'i:' + r.id)],
+  });
   const [url, setUrl] = useState('');
   const [agregando, setAgregando] = useState(false);
   const [notaCuenta, setNotaCuenta] = useState<Mensaje>(null);
@@ -160,19 +167,21 @@ export function Competencia() {
           {d && n > 0 && (
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {d.cuentas.map(c => (
-                <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-medio border border-linea px-3 py-1">
-                  <span className="text-xs text-secundario">{nombreRed(c.red)}</span>
-                  <b className="[overflow-wrap:anywhere]">@{c.cuenta}</b>
-                  <Boton
-                    nivel="peligro"
-                    denso
-                    className="ml-auto"
-                    aria-label={`Quitar @${c.cuenta}`}
-                    onClick={() => void alQuitar(c.id)}
-                  >
-                    Quitar
-                  </Boton>
-                </li>
+                <FilaViva key={c.id} como="li" nombre={nombreVT('cuenta', c.id)} nueva={lista.nuevos.has('c:' + c.id)}>
+                  <div className="flex flex-wrap items-center gap-3 rounded-medio border border-linea px-3 py-1">
+                    <span className="text-xs text-secundario">{nombreRed(c.red)}</span>
+                    <b className="[overflow-wrap:anywhere]">@{c.cuenta}</b>
+                    <Boton
+                      nivel="peligro"
+                      denso
+                      className="ml-auto"
+                      aria-label={`Quitar @${c.cuenta}`}
+                      onClick={() => void alQuitar(c.id)}
+                    >
+                      Quitar
+                    </Boton>
+                  </div>
+                </FilaViva>
               ))}
             </ul>
           )}
@@ -234,7 +243,9 @@ export function Competencia() {
           {d === null && !lista.error && <p className="m-0 text-xs text-secundario">Cargando…</p>}
           {d && !d.informes.length && <p className="m-0 text-xs text-secundario">Todavía no has revisado a nadie.</p>}
           {d?.informes.map(r => (
-            <TarjetaInforme key={r.id} r={r} conOrbe={enMarcha.length === 1} />
+            <FilaViva key={r.id} nombre={nombreVT('informe', r.id)} nueva={lista.nuevos.has('i:' + r.id)}>
+              <TarjetaInforme r={r} conOrbe={enMarcha.length === 1} />
+            </FilaViva>
           ))}
         </Tarjeta>
       </div>
@@ -248,6 +259,8 @@ function TarjetaInforme({ r, conOrbe }: { r: Resumen; conOrbe: boolean }) {
   const [detalle, setDetalle] = useState<EstadoDetalle>({ tipo: 'cerrado' });
   // el informe ya pedido no se vuelve a pedir al cerrar y abrir
   const cache = useRef<Informe | null>(null);
+  // UI·21: al quedar lista (con la pantalla abierta) su resumen se enciende
+  const [encendida, apagar] = useLlegada(r.estado !== 'analizando' && r.estado !== 'error');
 
   const cab = (
     <h3 className="m-0 mb-1 text-md font-semibold [overflow-wrap:anywhere]">
@@ -305,7 +318,10 @@ function TarjetaInforme({ r, conOrbe }: { r: Resumen; conOrbe: boolean }) {
   return (
     <article className="mb-4 rounded-grande border border-linea p-4">
       {cab}
-      <p className="m-0 flex flex-wrap items-center gap-x-2 text-xs text-secundario">
+      <p
+        className={unir('m-0 flex flex-wrap items-center gap-x-2 text-xs text-secundario', encendida && 'destello')}
+        onAnimationEnd={e => e.target === e.currentTarget && apagar()}
+      >
         {pubs} {plural(pubs, 'publicación', 'publicaciones')} · {cr} {plural(cr, 'crédito', 'créditos')}
         {r.devueltos ? ` (${r.devueltos} ${plural(r.devueltos, 'devuelto', 'devueltos')})` : ''}
         <Boton nivel="secundario" denso aria-expanded={abierto} onClick={() => void alternar()}>
