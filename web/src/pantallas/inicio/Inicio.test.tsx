@@ -9,7 +9,7 @@ import { clip, video } from '../../nucleo/tarifas';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Inicio } from './Inicio';
-import type { Edicion, EstadoBlotato, Imagen, Proyecto } from './logica';
+import type { ClipCorto, Edicion, EstadoBlotato, Imagen, Proyecto } from './logica';
 
 const P1: Proyecto = {
   id: 'p1',
@@ -25,6 +25,22 @@ const ARCH: Proyecto = { ...P1, id: 'p9', archivado: true, brief: 'Un proyecto v
 
 const img = (i: number): Imagen => ({ nombre: `img-${i}.jpg`, url: `/api/imagenes/img-${i}.jpg`, creado: 1758000000 + i });
 const ED: Edicion = { nombre: 'podcast', generado: false, editor_listo: true, editar: { estado: 'listo' }, subidas: [{}] };
+// UI·26: un clip de 8 s y unos shorts sacados de YouTube
+const C1: ClipCorto = {
+  id: 'clip-20260925-100000-ab',
+  estado: 'listo',
+  texto: 'Mi perro en la playa',
+  video: '/api/clip/clip-20260925-100000-ab/video',
+  inicio: '2026-09-25T10:00:00Z',
+};
+const S1: Edicion = {
+  nombre: 'yt-charla',
+  generado: false,
+  editor_listo: false,
+  subidas: [{}],
+  creado: '2026-09-21T10:00:00Z',
+  shorts: { estado: 'listo', titulo: 'Mi charla en el foro', inicio: '2026-09-22T10:00:00Z', cuantos: 3 },
+};
 
 const CONECTADO: EstadoBlotato = {
   conectado: true,
@@ -40,16 +56,28 @@ interface Mundo {
   slots?: number | null;
   imagenes?: Imagen[] | null;
   ediciones?: Edicion[] | null;
+  /** 'local': el 503 de «corre en el servicio». */
+  clips?: ClipCorto[] | null | 'local';
   blotato?: EstadoBlotato | null;
   rutas?: Record<string, Ruta>;
 }
 
-function montar({ proyectos = [P1], slots = null, imagenes = [], ediciones = [], blotato = CONECTADO, rutas = {} }: Mundo = {}) {
+function montar({
+  proyectos = [P1],
+  slots = null,
+  imagenes = [],
+  ediciones = [],
+  clips = [],
+  blotato = CONECTADO,
+  rutas = {},
+}: Mundo = {}) {
   return servidor({
     '/api/proyectos': () => (typeof proyectos === 'function' ? proyectos() : json(proyectos)),
     '/api/slots': () => json({ slots, activos: 0 }),
     '/api/imagenes': () => (imagenes ? json({ total: imagenes.length, imagenes }) : json({ detail: 'x' }, 500)),
     '/api/edicion/proyectos': () => (ediciones ? json(ediciones) : sinRed()),
+    '/api/clip': () =>
+      clips === 'local' ? json({ detail: 'corre en el servicio' }, 503) : clips ? json({ clips }) : sinRed(),
     '/api/blotato': () => (blotato ? json(blotato) : sinRed()),
     ...rutas,
   });
@@ -175,22 +203,24 @@ describe('la caja', () => {
 });
 
 describe('los tres caminos', () => {
-  it('inicio.caminos.solo_con_las_cuatro_listas_bien_y_vacias', async () => {
+  it('inicio.caminos.solo_con_todas_las_listas_bien_y_vacias', async () => {
     montar({ proyectos: [] });
     const { unmount } = pintar();
     expect(await screen.findByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Mis proyectos' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Mis videos' })).toBeNull();
     unmount();
     // una lista que falló no cuenta como vacía
-    montar({ proyectos: [], imagenes: null });
-    const { unmount: fuera } = pintar();
-    expect(await screen.findByRole('heading', { name: 'Mis proyectos' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /tres caminos/ })).toBeNull();
-    fuera();
-    montar({ proyectos: [], ediciones: null });
+    for (const falla of [{ imagenes: null }, { ediciones: null }, { clips: null }] as const) {
+      montar({ proyectos: [], ...falla });
+      const { unmount: fuera } = pintar();
+      expect(await screen.findByRole('heading', { name: 'Mis videos' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /tres caminos/ })).toBeNull();
+      fuera();
+    }
+    // en local los clips no corren (503): no hay ninguno, y eso sí es vacío
+    montar({ proyectos: [], clips: 'local' });
     pintar();
-    expect(await screen.findByRole('heading', { name: 'Mis proyectos' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /tres caminos/ })).toBeNull();
+    expect(await screen.findByRole('heading', { name: /tres caminos/ })).toBeInTheDocument();
   });
 
   it('inicio.caminos.desde_una_idea_no_cobra_solo_elige', async () => {
@@ -216,13 +246,13 @@ describe('las listas', () => {
     let red = false;
     montar({ proyectos: () => (red ? json([P1]) : (sinRed() as Promise<Response>)) });
     pintar();
-    expect(await screen.findByText(/No pudimos traer tus proyectos/)).toBeInTheDocument();
+    expect(await screen.findByText(/No pudimos traer tus videos/)).toBeInTheDocument();
     // no se concluye que es alguien nuevo
     expect(screen.queryByRole('heading', { name: /tres caminos/ })).toBeNull();
     red = true;
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByText('La historia del café')).toBeInTheDocument();
-    expect(screen.queryByText(/No pudimos traer tus proyectos/)).toBeNull();
+    expect(screen.queryByText(/No pudimos traer tus videos/)).toBeNull();
   });
 
   it('inicio.proyectos.cada_tarjeta_lleva_a_crear', async () => {
@@ -230,21 +260,24 @@ describe('las listas', () => {
     pintar();
     expect(await screen.findByRole('link', { name: 'La historia del café' })).toHaveAttribute('href', '/crear.html?p=p1');
     expect(screen.getByText('2 de 3 slots')).toBeInTheDocument();
-    expect(screen.getByText('lista')).toBeInTheDocument();
+    // UI·26: la lista ya no dice «lista»; la que produce sí dice su estado
+    expect(screen.queryByText('lista')).toBeNull();
     expect(screen.getByText('produciéndose…')).toBeInTheDocument();
   });
 
-  it('inicio.proyectos.nueva_pelicula_solo_si_hay_slot', async () => {
+  it('inicio.videos.nuevo_video_aun_sin_slots', async () => {
+    // con los slots llenos todavía caben un clip y unos shorts
     montar({ proyectos: [P1, P2], slots: 2 });
     const { unmount } = pintar();
     await screen.findByText('La historia del café');
-    expect(screen.queryByRole('button', { name: 'Nueva película' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Nuevo video' })).toBeInTheDocument();
     unmount();
     montar({ proyectos: [P1], slots: null });
     pintar();
     expect(await screen.findByText('1 activos · slots ilimitados')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Nueva película' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo video' }));
     expect(caja()).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Videos' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('inicio.proyectos.miniatura_rota_cae_al_personaje_y_al_hueco', async () => {
@@ -364,23 +397,140 @@ describe('las listas', () => {
     expect(screen.getByText('sugerencias en curso…')).toBeInTheDocument();
   });
 
-  it('inicio.listas.orden_proyectos_imagenes_ediciones', async () => {
+  it('inicio.listas.orden_videos_imagenes_ediciones', async () => {
     montar({ imagenes: [img(1)], ediciones: [ED] });
     pintar();
     await screen.findByRole('heading', { name: 'Mis ediciones' });
     const titulos = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
-    expect(titulos.filter(t => t?.startsWith('Mis '))).toEqual(['Mis proyectos', 'Mis imágenes', 'Mis ediciones']);
+    expect(titulos.filter(t => t?.startsWith('Mis '))).toEqual(['Mis videos', 'Mis imágenes', 'Mis ediciones']);
   });
 
   it('inicio.listas.textos_del_server_como_texto', async () => {
     const malo = '<img src=x onerror=alert(1)>';
     montar({
       proyectos: [{ ...P1, brief: malo, miniatura: null, miniatura_alt: null }, { ...ARCH, brief: malo }],
-      ediciones: [{ ...ED, nombre: malo }],
+      ediciones: [{ ...ED, nombre: malo }, { ...S1, shorts: { ...S1.shorts!, titulo: malo } }],
+      clips: [{ ...C1, texto: malo }],
     });
     const { container } = pintar();
-    expect(await screen.findAllByText(malo)).toHaveLength(3);
+    expect(await screen.findAllByText(malo)).toHaveLength(5);
     expect(container.querySelector('img[src="x"]')).toBeNull();
+  });
+});
+
+describe('Mis videos', () => {
+  const titulos = () =>
+    screen
+      .getAllByRole('article')
+      .map(a => within(a).queryByRole('link')?.textContent)
+      .filter(Boolean);
+
+  it('inicio.videos.mezcla_peliculas_clips_y_shorts_lo_mas_nuevo_primero', async () => {
+    montar({ proyectos: [P1], clips: [C1], ediciones: [S1] });
+    pintar();
+    await screen.findByText('Mi perro en la playa');
+    // clip 25-sep, shorts 22-sep, película 20-sep
+    expect(titulos()).toEqual(['Mi perro en la playa', 'Mi charla en el foro', 'La historia del café']);
+  });
+
+  it('inicio.videos.las_cuatro_etiquetas', async () => {
+    montar({
+      proyectos: [
+        { ...P1, id: 'a', brief: 'Idea', modo: 'idea' },
+        { ...P1, id: 'b', brief: 'Vieja', modo: 'auto' },
+        { ...P1, id: 'c', brief: 'Sin modo' },
+        { ...P1, id: 'd', brief: 'Investigada', modo: 'investigacion' },
+      ],
+      clips: [C1],
+      ediciones: [S1],
+    });
+    pintar();
+    const etiqueta = async (titulo: string) =>
+      (await screen.findByRole('link', { name: titulo })).closest('article')!.querySelector('p')!.textContent;
+    expect(await etiqueta('Idea')).toMatch(/^Video largo · /);
+    expect(await etiqueta('Vieja')).toMatch(/^Video largo · /);
+    expect(await etiqueta('Sin modo')).toMatch(/^Video largo · /);
+    expect(await etiqueta('Investigada')).toMatch(/^Cuento · /);
+    expect(await etiqueta('Mi perro en la playa')).toMatch(/^Video corto · /);
+    expect(await etiqueta('Mi charla en el foro')).toMatch(/^Shorts · /);
+  });
+
+  it('inicio.videos.el_estado_solo_si_no_esta_listo', async () => {
+    montar({
+      proyectos: [{ ...P1, estado: 'revision', modo: 'investigacion' }],
+      clips: [
+        { ...C1, id: 'c1', texto: 'Generándose', estado: 'generando' },
+        { ...C1, id: 'c2', texto: 'Fallido', estado: 'error' },
+        { ...C1, id: 'c3', texto: 'Listo' },
+      ],
+      ediciones: [
+        { ...S1, nombre: 's1', shorts: { ...S1.shorts!, titulo: 'Corriendo', estado: 'corriendo' } },
+        { ...S1, nombre: 's2', shorts: { ...S1.shorts!, titulo: 'Esperando', estado: 'espera' } },
+        { ...S1, nombre: 's3', shorts: { ...S1.shorts!, titulo: 'Listos' } },
+      ],
+    });
+    pintar();
+    const leyenda = async (titulo: string) =>
+      (await screen.findByRole('link', { name: titulo })).closest('article')!.querySelector('p')!.textContent ?? '';
+    expect(await leyenda('La historia del café')).toMatch(/^Cuento · en revisión — te espera · /);
+    expect(await leyenda('Generándose')).toMatch(/^Video corto · generándose… · /);
+    expect(await leyenda('Fallido')).toMatch(/^Video corto · con error · /);
+    expect(await leyenda('Listo')).toMatch(/^Video corto · \d/);
+    expect(await leyenda('Corriendo')).toMatch(/^Shorts · en proceso… · /);
+    expect(await leyenda('Esperando')).toMatch(/^Shorts · te espera · /);
+    expect(await leyenda('Listos')).toMatch(/^Shorts · \d/);
+  });
+
+  it('inicio.videos.cada_uno_abre_su_pantalla', async () => {
+    montar({ proyectos: [P1], clips: [C1, { ...C1, id: 'c-gen', texto: 'En camino', estado: 'generando', video: '' }], ediciones: [S1] });
+    const { container } = pintar();
+    expect(await screen.findByRole('link', { name: 'Mi perro en la playa' })).toHaveAttribute(
+      'href',
+      '/clip.html?c=clip-20260925-100000-ab',
+    );
+    expect(screen.getByRole('link', { name: 'Mi charla en el foro' })).toHaveAttribute('href', '/shorts.html?p=yt-charla');
+    expect(screen.getByRole('link', { name: 'La historia del café' })).toHaveAttribute('href', '/crear.html?p=p1');
+    // el clip listo enseña su primer cuadro, callado y fuera del tabulador; el que se genera, el hueco
+    const videos = container.querySelectorAll('article video');
+    expect(videos).toHaveLength(1);
+    expect(videos[0]).toHaveAttribute('src', C1.video + '#t=0.5');
+    expect((videos[0] as HTMLVideoElement).muted).toBe(true);
+    expect(videos[0]).toHaveAttribute('tabindex', '-1');
+    // un video que no carga cae al hueco
+    fireEvent.error(videos[0]!);
+    expect(container.querySelectorAll('article video')).toHaveLength(0);
+  });
+
+  it('inicio.videos.los_slots_cuentan_solo_peliculas', async () => {
+    montar({ proyectos: [P1], slots: 3, clips: [C1, { ...C1, id: 'otro' }], ediciones: [S1] });
+    pintar();
+    expect(await screen.findByText('1 de 3 slots')).toBeInTheDocument();
+    // archivar sigue siendo solo de películas
+    expect(screen.getAllByRole('button', { name: /^Archivar/ })).toHaveLength(1);
+  });
+
+  it('inicio.videos.las_ediciones_sin_shorts_no_entran', async () => {
+    montar({ ediciones: [ED, S1] });
+    pintar();
+    const seccion = (await screen.findByRole('heading', { name: 'Mis videos' })).closest('section')!;
+    expect(within(seccion).queryByText('podcast')).toBeNull();
+    expect(within(seccion).getByText('Mi charla en el foro')).toBeInTheDocument();
+    // la edición sigue en su sección
+    const ediciones = screen.getByRole('heading', { name: 'Mis ediciones' }).closest('section')!;
+    expect(within(ediciones).getByText('podcast')).toBeInTheDocument();
+  });
+
+  it('inicio.videos.sin_los_clips_avisa_y_reintenta', async () => {
+    let red = false;
+    montar({ rutas: { '/api/clip': () => (red ? json({ clips: [C1] }) : (sinRed() as Promise<Response>)) } });
+    pintar();
+    expect(await screen.findByText(/No pudimos traer tus videos cortos/)).toBeInTheDocument();
+    // las películas sí se ven
+    expect(screen.getByText('La historia del café')).toBeInTheDocument();
+    red = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByText('Mi perro en la playa')).toBeInTheDocument();
+    expect(screen.queryByText(/No pudimos traer tus videos cortos/)).toBeNull();
   });
 });
 

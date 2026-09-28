@@ -372,6 +372,32 @@ describe('imagenes', () => {
     expect(screen.queryByText('Creando tu imagen · ~20 s')).toBeNull();
   });
 
+  it('UI·27: la imagen que se cobró y falló (502) se cuenta en tres partes; el texto se queda', async () => {
+    montar({ '/api/imagenes': () => json({ detail: 'No se pudo generar la imagen: fal caído' }, 502) });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóNo pudimos crear tu imagen.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos ✦ ' + video.imagen + ': no pagas por una imagen que no salió.');
+    expect(falla).toHaveTextContent('Qué sigueTu texto sigue en la caja: vuelve a pulsar «Generar».');
+    expect(screen.getByText('No se pudo generar la imagen: fal caído').closest('details')).not.toBeNull();
+    expect(caja()).toHaveValue('un faro');
+  });
+
+  it('UI·27: lo que no cobró (402) no habla de devolver: sigue en una línea', async () => {
+    montar({ '/api/imagenes': () => json({ detail: 'Créditos insuficientes: esta acción cuesta 2 créditos y tu saldo es 1.' }, 402) });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    const a = await screen.findByRole('alert');
+    expect(a).toHaveTextContent('Créditos insuficientes');
+    expect(screen.queryByText('Qué pasó')).toBeNull();
+    expect(screen.queryByText(/Te devolvimos/)).toBeNull();
+  });
+
   it('imagenes.resultado.lo_creado_pasa_a_editarse', async () => {
     const f = montar();
     render(<Imagenes />);

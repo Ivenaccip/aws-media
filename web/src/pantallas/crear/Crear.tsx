@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
+import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
 import { EsperaPasos } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { Recarga } from '../../marca/Recarga';
@@ -536,7 +537,7 @@ function Falla({ proyecto: p, alCambiar }: { proyecto: Proyecto; alCambiar: (p: 
   const alProducir = fallaAlProducir(p);
   const pasos = alProducir ? PASOS_PROD : PASOS_PREP;
   const paso = pasos[pasoDe(pasos, p.etapa)];
-  const conCreditos = saldo !== null; // sin monedero no se habla de créditos
+  const conCreditos = saldo !== null; // sin monedero no se habla de créditos (ni aquí ni en ErrorTresPartes)
   const dev = devuelto(p, alProducir);
   const costo = alProducir ? costoProducir(p.duracion_s) : null;
   const candado = useRef(false); // el de BotonCobro, también para el botón sin precio
@@ -564,40 +565,21 @@ function Falla({ proyecto: p, alCambiar }: { proyecto: Proyecto; alCambiar: (p: 
 
   return (
     <div className="max-w-[720px]">
-      <section className="rounded-grande border border-linea bg-superficie p-5">
-        <h2 className="m-0 flex items-center gap-2.5 font-titulo text-titulo-sm font-bold">
-          <Icono nombre="aviso" className="text-error" />
-          Qué pasó
-        </h2>
-        <p className="mb-0 mt-1.5">
-          {(paso?.activo ? 'Se detuvo en «' + paso.activo + '». ' : '') +
-            (alProducir
-              ? 'Tu guion, tu voz y tu personaje siguen guardados.'
-              : 'Tu idea no se perdió: «Empezar de nuevo» la trae escrita.')}
-        </p>
-        <div className="mt-4 grid gap-3.5">
-          {conCreditos && (
-            <div>
-              <h3 className="m-0 mb-1 text-xs font-semibold uppercase tracking-[0.06em] text-secundario">Tus créditos</h3>
-              <p className="m-0">
-                {dev != null
-                  ? 'Te devolvimos ' + ESTRELLA + ' ' + dev + ': no pagas por ' + (alProducir ? 'una película' : 'un guion') + ' que no salió.'
-                  : 'Te devolvimos lo que se cobró: no pagas por lo que no salió.'}
-              </p>
-            </div>
-          )}
-          <div>
-            <h3 className="m-0 mb-1 text-xs font-semibold uppercase tracking-[0.06em] text-secundario">Qué sigue</h3>
-            <p className="m-0">{sigue}</p>
-          </div>
-        </div>
-        {p.error && (
-          <details className="mt-4">
-            <summary className="flex min-h-11 cursor-pointer items-center text-secundario">Detalles técnicos</summary>
-            <pre className="m-0 mt-2 whitespace-pre-wrap break-words rounded-medio bg-hundido p-2.5 text-xs text-secundario">{p.error}</pre>
-          </details>
-        )}
-      </section>
+      <ErrorTresPartes
+        paso={
+          (paso?.activo ? 'Se detuvo en «' + paso.activo + '». ' : '') +
+          (alProducir
+            ? 'Tu guion, tu voz y tu personaje siguen guardados.'
+            : 'Tu idea no se perdió: «Empezar de nuevo» la trae escrita.')
+        }
+        creditos={
+          dev != null
+            ? 'Te devolvimos ' + ESTRELLA + ' ' + dev + ': no pagas por ' + (alProducir ? 'una película' : 'un guion') + ' que no salió.'
+            : 'Te devolvimos lo que se cobró: no pagas por lo que no salió.'
+        }
+        sigue={sigue}
+        detalle={p.error}
+      />
       <div className="mt-4 flex flex-wrap items-start gap-3">
         {alProducir &&
           (costo != null ? (

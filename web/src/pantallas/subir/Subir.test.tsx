@@ -499,7 +499,12 @@ describe('el panel de los dos caminos', () => {
   it('subir.panel.corrida_fallida_dice_que_los_creditos_volvieron', async () => {
     montar({ estado: () => ({ ...CON_FUENTE, editar: { estado: 'error', error: 'boom' } }) });
     render(<Subir />);
-    expect(await screen.findByText('La corrida anterior falló y tus créditos se devolvieron.')).toBeInTheDocument();
+    // UI·27: en tres partes, como crear, junto a «Proponer»
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóLa corrida anterior se detuvo antes de proponer el corte.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos lo que se cobró');
+    expect(falla).toHaveTextContent('Qué sigueTu metraje sigue guardado: vuelve a pulsar «Proponer».');
+    expect(screen.getByText('boom').closest('details')).not.toBeNull();
     // y se puede volver a pedir
     expect(screen.getByRole('button', { name: 'Proponer ✦ 17' })).toBeInTheDocument();
   });

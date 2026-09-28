@@ -16,6 +16,7 @@ import { DialogoBlotato } from './Blotato';
 import { Caja, type MandoCaja } from './Caja';
 import {
   archivar,
+  cargarClips,
   cargarEdiciones,
   cargarImagenes,
   cargarProyectos,
@@ -23,13 +24,15 @@ import {
   desarchivar,
   IMG_A_LA_VISTA,
   leerBlotato,
+  mezclar,
   textoSlots,
+  type ClipCorto,
   type Edicion,
   type EstadoBlotato,
   type Imagen,
   type Proyecto,
 } from './logica';
-import { TarjetaEdicion, TarjetaImagen, TarjetaNueva, TarjetaProyecto } from './Obras';
+import { TarjetaEdicion, TarjetaImagen, TarjetaNueva, TarjetaVideo } from './Obras';
 
 interface Listas {
   proyectos: Proyecto[];
@@ -37,6 +40,8 @@ interface Listas {
   /** null = no llegaron: la sección no se enseña (y no cuenta como vacía). */
   imagenes: Imagen[] | null;
   ediciones: Edicion[] | null;
+  /** UI·26: los clips de 8 s también son «Mis videos». null = no llegaron. */
+  clips: ClipCorto[] | null;
 }
 
 const mensaje = (e: unknown) => {
@@ -69,11 +74,12 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const caja = useRef<MandoCaja>(null);
 
   const cargar = useCallback(async () => {
-    const [ps, sl, im, ed] = await Promise.allSettled([
+    const [ps, sl, im, ed, cl] = await Promise.allSettled([
       cargarProyectos(),
       cargarSlots(),
       cargarImagenes(),
       cargarEdiciones(),
+      cargarClips(),
     ]);
     // sin la lista de proyectos se avisa y el inicio se queda con lo que tenía
     if (ps.status === 'rejected') {
@@ -86,6 +92,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
       slots: sl.status === 'fulfilled' ? sl.value.slots : null,
       imagenes: im.status === 'fulfilled' ? im.value : null,
       ediciones: ed.status === 'fulfilled' ? ed.value : null,
+      clips: cl.status === 'fulfilled' ? cl.value : null,
     });
   }, []);
 
@@ -128,17 +135,19 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
 
   const activos = listas?.proyectos.filter(p => !p.archivado) ?? [];
   const archivados = listas?.proyectos.filter(p => p.archivado) ?? [];
-  // Los tres caminos, solo si las cuatro listas respondieron y las cuatro
-  // vienen vacías. Una que falló no cuenta como vacía: a quien ya tiene cosas
-  // no se le enseña el inicio de alguien nuevo por un fetch (UI·10).
+  // Los tres caminos, solo si todas las listas respondieron y todas vienen
+  // vacías. Una que falló no cuenta como vacía: a quien ya tiene cosas no se
+  // le enseña el inicio de alguien nuevo por un fetch (UI·10).
   const nuevo =
     listas !== null &&
     !listas.proyectos.length &&
     listas.imagenes !== null &&
     !listas.imagenes.length &&
     listas.ediciones !== null &&
-    !listas.ediciones.length;
-  const cabeHoja = listas !== null && (listas.slots === null || activos.length < listas.slots);
+    !listas.ediciones.length &&
+    listas.clips !== null &&
+    !listas.clips.length;
+  const videos = listas ? mezclar(listas.proyectos, listas.clips, listas.ediciones) : [];
   const imagenes = listas?.imagenes ?? null;
   const aLaVista = imagenes && !todasImg ? imagenes.slice(0, IMG_A_LA_VISTA) : imagenes;
 
@@ -159,7 +168,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           {falloCarga && (
             <div className="mb-6">
               <Aviso tipo="error">
-                No pudimos traer tus proyectos. Revisa tu conexión e inténtalo de nuevo.{' '}
+                No pudimos traer tus videos. Revisa tu conexión e inténtalo de nuevo.{' '}
                 <Boton nivel="enlace" onClick={() => void cargar()}>
                   Reintentar
                 </Boton>
@@ -176,17 +185,26 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             <Caminos alIdea={() => caja.current?.elegir('videos', 'investigacion')} />
           )}
 
-          {listas === null && !falloCarga && <p className="m-0 text-xs text-secundario">Cargando tus proyectos…</p>}
+          {listas === null && !falloCarga && <p className="m-0 text-xs text-secundario">Cargando tus videos…</p>}
 
+          {/* UI·26: películas, clips y shorts juntos. Los slots siguen
+              contando solo películas: un clip o unos shorts no ocupan lugar */}
           {listas && !nuevo && (
-            <Seccion titulo="Mis proyectos" extra={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}>
-              {activos.map(p => (
-                <TarjetaProyecto key={p.id} p={p} alArchivar={setAArchivar} />
+            <Seccion titulo="Mis videos" extra={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}>
+              {videos.map(v => (
+                <TarjetaVideo key={v.clave} v={v} alArchivar={setAArchivar} />
               ))}
-              {cabeHoja && (
-                <TarjetaNueva texto="Nueva película" alPulsar={() => caja.current?.elegir('videos')} />
-              )}
+              {/* siempre: con los slots llenos todavía caben un clip y unos shorts */}
+              <TarjetaNueva texto="Nuevo video" alPulsar={() => caja.current?.elegir('videos')} />
             </Seccion>
+          )}
+          {listas && !nuevo && listas.clips === null && (
+            <p className="-mt-4 mb-7 text-xs text-secundario">
+              No pudimos traer tus videos cortos.{' '}
+              <Boton nivel="enlace" className="text-xs" onClick={() => void cargar()}>
+                Reintentar
+              </Boton>
+            </p>
           )}
 
           {aLaVista && !nuevo && (

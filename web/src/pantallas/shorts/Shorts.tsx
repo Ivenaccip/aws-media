@@ -8,6 +8,7 @@
 import { useEffect, useId, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
+import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
 import { EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
@@ -421,12 +422,23 @@ function ProyectoShorts({ p, alAbrir }: { p: string; alAbrir: (nombre: string) =
       )}
 
       {d && !descargando && imp.estado === 'error' && !d.fuente && (
-        <div className="mb-6">
-          <Aviso tipo="error">
-            La importación falló{imp.error ? ` (${imp.error})` : ''} — tus créditos se devolvieron. Vuelve a{' '}
-            <a href="?">intentarlo</a>.
-          </Aviso>
-        </div>
+        // UI·27: el mismo error en tres partes que crear (UI·11)
+        <ErrorTresPartes
+          anunciar
+          className="mb-6"
+          paso="No pudimos traer el video de YouTube."
+          creditos="Te devolvimos lo que se cobró por importarlo: no pagas por un video que no llegó."
+          sigue={
+            <>
+              Revisa que la liga abra en YouTube y{' '}
+              <a href="?" className="text-enlace underline underline-offset-4 hover:text-texto">
+                vuelve a intentarlo
+              </a>
+              . Se cobra como la primera vez.
+            </>
+          }
+          detalle={imp.error}
+        />
       )}
 
       {d && !descargando && !(imp.estado === 'error' && !d.fuente) && (
@@ -517,10 +529,17 @@ function Analisis({ p, st, alLanzar }: { p: string; st: EstadoShorts; alLanzar: 
             </p>
           )}
           {st.estado === 'error' && (
-            // el orbe NUNCA acompaña a un error
-            <p role="alert" className="m-0 mb-2 text-sm text-error">
-              El análisis falló{st.error ? ` (${st.error})` : ''} — tus créditos se devolvieron.
-            </p>
+            // el orbe NUNCA acompaña a un error; UI·27: en tres partes, como crear
+            <ErrorTresPartes
+              plano
+              nivel={3}
+              anunciar
+              className="mb-4"
+              paso="El análisis de tu video se detuvo."
+              creditos="Te devolvimos lo que se cobró por el análisis: no pagas por lo que no salió."
+              sigue={`Vuelve a pulsar «${verbo}». Se cobra como la primera vez.`}
+              detalle={st.error}
+            />
           )}
           {errorCosto && (
             <p role="alert" className="m-0 text-sm text-error">
@@ -776,10 +795,16 @@ function Candidatos({
           </p>
         )}
         {render.estado === 'error' && !corriendo && (
-          <p role="alert" className="mt-2 mb-0 text-sm text-error">
-            El render falló{render.log ? ` (${render.log.slice(0, 160)})` : ''} — tus créditos se devolvieron. Ajusta y vuelve a
-            intentar.
-          </p>
+          <ErrorTresPartes
+            plano
+            nivel={3}
+            anunciar
+            className="mt-3"
+            paso="El render de tus shorts se detuvo."
+            creditos="Te devolvimos lo que se cobró por el render: no pagas por shorts que no salieron."
+            sigue="Ajusta tus cortes si quieres y vuelve a renderizar. Se cobra como la primera vez."
+            detalle={render.log}
+          />
         )}
         <NotaLinea nota={nota} className="mt-2" />
       </div>
