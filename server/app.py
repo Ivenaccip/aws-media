@@ -189,8 +189,39 @@ def proyectos_edicion():
                         "editor_listo": flags.get("cuts", False),
                         # M14: estado de la corrida de sugerencias (poll de e1)
                         "editar": fila["doc"].get("editar"),
-                        "subidas": fila["doc"].get("subidas", [])})
+                        "subidas": fila["doc"].get("subidas", []),
+                        # UI·26: «Mis videos» del inicio enseña los shorts
+                        "creado": fila.get("creado"),
+                        "shorts": resumen_shorts(fila["doc"])})
     return out
+
+
+def resumen_shorts(doc: dict) -> dict | None:
+    """UI·26 — lo que «Mis videos» necesita de los shorts de un proyecto del
+    editor, no el doc entero (candidatos, logs, URLs que caducan). None si el
+    proyecto nunca pasó por shorts: ni se importó de YouTube ni se analizó.
+
+    estado: `corriendo` (descarga, análisis o render en curso), `listo` (ya
+    hay shorts), `error`, o `espera` (te toca: analizar o elegir)."""
+    imp = doc.get("importar") or {}
+    st = doc.get("shorts") or {}
+    if not imp and not st:
+        return None
+    ren = st.get("render") or {}
+    estados = (imp.get("estado"), st.get("estado"), ren.get("estado"))
+    if (imp.get("estado") == "descargando" or st.get("estado") == "analizando"
+            or ren.get("estado") == "corriendo"):
+        estado = "corriendo"
+    elif ren.get("estado") == "listo":
+        estado = "listo"
+    elif "error" in estados:
+        estado = "error"
+    else:
+        estado = "espera"
+    inicios = [x for x in (imp.get("inicio"), st.get("inicio")) if isinstance(x, str)]
+    return {"estado": estado, "titulo": imp.get("titulo") or "",
+            "inicio": min(inicios) if inicios else None,
+            "cuantos": len(ren.get("salidas") or []) if estado == "listo" else 0}
 
 
 def _proyecto(id_: str) -> Proyecto:
@@ -497,6 +528,8 @@ def proyectos():
         mini, alt = _miniatura(p)
         return {"id": p.id, "creado": p.creado, "estado": p.estado,
                 "brief": p.brief[:80], "archivado": p.archivado,
+                # UI·26: el tipo de «Mis videos» (idea/auto = Video largo, investigacion = Cuento)
+                "modo": p.modo,
                 "miniatura": mini, "miniatura_alt": alt}
     return [fila(p) for p in listar_proyectos()]
 

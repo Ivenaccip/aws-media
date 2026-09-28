@@ -2,6 +2,10 @@
 // con usuarios reales: cobra una sola cosa, «Generar ✦ N».
 // Paridad con static/clip.html: mismas llamadas, mismo precio (del server),
 // mismas validaciones. Qué pasó con cada aserción vieja: docs/migracion/clip.md.
+//
+// UI·26: el historial «Tus clips» se fue a «Mis videos» del inicio. Aquí
+// solo se ve el que se genera, el que acaba de terminar y el que se abrió
+// desde el inicio con `?c=`.
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
@@ -23,8 +27,11 @@ import { Icono } from '../../ui/Icono';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
 import {
+  aLaVista,
+  cargarClip,
   cargarClips,
   cargarConfig,
+  clipPedido,
   costo,
   detalleClip,
   ESTIMADO_CLIP_MS,
@@ -75,21 +82,32 @@ export function Clip() {
   const [estado, setEstado] = useState<{ texto: string; error: boolean; sinSaldo?: boolean } | null>(null);
   // tras generar, el botón espera a que ese clip termine (como la vieja)
   const [esperando, setEsperando] = useState(false);
+  // UI·26: el abierto desde «Mis videos» y los que se generaron con la
+  // pantalla abierta; el resto de los clips vive en el inicio
+  const [abierto] = useState(() => clipPedido());
+  const [vistos, setVistos] = useState<ReadonlySet<string>>(() => new Set());
+  // el abierto que ya no viene en la lista (el servidor lista los más nuevos)
+  const [suelto, setSuelto] = useState<FichaClip | null>(null);
   const saldo = useSaldo();
   const archivo = useRef<HTMLInputElement>(null);
   const siguienteId = useRef(0);
   const idTexto = useId();
 
+  const recordar = useCallback((ids: string[]) => {
+    setVistos(v => (ids.every(id => v.has(id)) ? v : new Set([...v, ...ids])));
+  }, []);
+
   const aplicar = useCallback((lista: FichaClip[]): boolean => {
     setClips(lista);
     setFalloCarga(false);
+    recordar(generando(lista).map(c => c.id));
     const vivos = generando(lista).length > 0;
     if (!vivos) {
       setEsperando(false);
       refrescarSaldo();
     }
     return !vivos;
-  }, []);
+  }, [recordar]);
 
   const fallar = useCallback(() => {
     setFalloCarga(true);
@@ -122,6 +140,19 @@ export function Clip() {
   useSondeo(hayVivos || falloCarga, traer);
 
   const vivos = clips ? generando(clips) : [];
+  const faltaAbierto = abierto !== null && clips !== null && !falloCarga && !clips.some(c => c.id === abierto);
+  useEffect(() => {
+    if (!faltaAbierto) return;
+    let vigente = true;
+    cargarClip(abierto).then(c => vigente && setSuelto(c), () => undefined);
+    return () => {
+      vigente = false;
+    };
+  }, [faltaAbierto, abierto]);
+  const visibles = [
+    ...(clips ? aLaVista(clips, vistos, abierto) : []),
+    ...(faltaAbierto && suelto ? [suelto] : []),
+  ];
   useEffect(() => {
     document.title = vivos.length ? `Generando tu clip · ${TITULO}` : TITULO;
   }, [vivos.length]);
@@ -170,7 +201,8 @@ export function Clip() {
     }
     setEstado(null);
     try {
-      await generar(limpio, formato, listas.map(f => f.key!));
+      const r = await generar(limpio, formato, listas.map(f => f.key!));
+      recordar([r.id]);
       setTexto('');
       fotos.forEach(f => f.url && URL.revokeObjectURL(f.url));
       setFotos([]);
@@ -321,31 +353,36 @@ export function Clip() {
           )}
         </section>
 
-        <Tarjeta>
-          <h2 className="m-0 mb-3 flex items-center gap-2 text-titulo-sm font-bold">
-            <Icono nombre="video" className="text-secundario" />
-            Tus clips
-          </h2>
-          {falloCarga && (
-            <div className="mb-3">
-              <Aviso tipo="error">
-                No pudimos traer tus clips. Lo volvemos a intentar en unos segundos.{' '}
-                <Boton nivel="enlace" onClick={() => void traer().catch(() => undefined)}>
-                  Reintentar
-                </Boton>
-              </Aviso>
-            </div>
-          )}
-          {clips === null && <p className="m-0 text-xs text-secundario">Cargando…</p>}
-          {clips !== null && !clips.length && !falloCarga && (
-            <p className="m-0 text-xs text-secundario">Todavía no has hecho ninguno.</p>
-          )}
-          {clips?.map(c => (
-            <FilaViva key={c.id} nombre={nombreVT('clip', c.id)} nueva={nuevos.has(c.id)}>
-              <TarjetaClip clip={c} conOrbe={vivos.length === 1} />
-            </FilaViva>
-          ))}
-        </Tarjeta>
+        {(visibles.length > 0 || falloCarga) && (
+          <Tarjeta className="mb-4">
+            <h2 className="m-0 mb-3 flex items-center gap-2 text-titulo-sm font-bold">
+              <Icono nombre="video" className="text-secundario" />
+              {visibles.length > 1 ? 'Tus clips' : 'Tu clip'}
+            </h2>
+            {falloCarga && (
+              <div className="mb-3">
+                <Aviso tipo="error">
+                  No pudimos traer tus clips. Lo volvemos a intentar en unos segundos.{' '}
+                  <Boton nivel="enlace" onClick={() => void traer().catch(() => undefined)}>
+                    Reintentar
+                  </Boton>
+                </Aviso>
+              </div>
+            )}
+            {visibles.map(c => (
+              <FilaViva key={c.id} nombre={nombreVT('clip', c.id)} nueva={nuevos.has(c.id)}>
+                <TarjetaClip clip={c} conOrbe={vivos.length === 1} />
+              </FilaViva>
+            ))}
+          </Tarjeta>
+        )}
+        <p className="m-0 text-sm text-secundario">
+          Todos tus clips se guardan en{' '}
+          <a href="/estudio/" className="text-enlace underline underline-offset-4 hover:text-texto">
+            «Mis videos»
+          </a>{' '}
+          del inicio.
+        </p>
       </div>
     </Marco>
   );

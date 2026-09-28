@@ -102,6 +102,9 @@ afterEach(() => {
   delete window.monedero;
 });
 
+/** UI·26: la pantalla abre un clip viejo solo con `?c=` (desde «Mis videos»). */
+const abrir = (id: string) => history.replaceState(null, '', '/estudio/clip/?c=' + id);
+
 async function escribir(t: string) {
   await userEvent.type(screen.getByLabelText('Qué quieres ver'), t);
 }
@@ -331,6 +334,7 @@ describe('clip', () => {
   });
 
   it('clip.lista.textos_del_usuario_como_texto', async () => {
+    abrir('clip-1');
     servidor({ '/api/clip': () => json({ clips: [{ ...LISTO, texto: '<img src=x onerror=alert(1)>', video: '' }] }) });
     const { container } = render(<Clip />);
     expect(await screen.findByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
@@ -338,6 +342,7 @@ describe('clip', () => {
   });
 
   it('clip.lista.listo_con_video_detalle_y_recorte', async () => {
+    abrir('clip-1');
     servidor({ '/api/clip': () => json({ clips: [{ ...LISTO, recorte: 'Recortamos tu foto al formato.' }] }) });
     const { container } = render(<Clip />);
     expect(await screen.findByText('8 s · 1 foto tuya · ✦ 30')).toBeInTheDocument();
@@ -346,16 +351,62 @@ describe('clip', () => {
   });
 
   it('clip.lista.error_dice_que_los_creditos_volvieron', async () => {
+    abrir('clip-1');
     servidor({ '/api/clip': () => json({ clips: [{ ...LISTO, estado: 'error', error: 'Veo no respondió' }] }) });
     render(<Clip />);
     expect(await screen.findByText('Veo no respondió')).toBeInTheDocument();
     expect(screen.getByText('Los créditos volvieron a tu saldo.')).toBeInTheDocument();
   });
 
-  it('clip.lista.vacia_invita_al_primero', async () => {
-    servidor({});
+  it('clip.lista.sin_historial_manda_a_mis_videos', async () => {
+    // UI·26: los clips ya hechos viven en «Mis videos» del inicio, no aquí
+    const f = servidor({ '/api/clip': () => json({ clips: [LISTO] }) });
     render(<Clip />);
-    expect(await screen.findByText('Todavía no has hecho ninguno.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '«Mis videos»' })).toHaveAttribute('href', '/estudio/');
+    await waitFor(() => expect(f.mock.calls.some(c => c[0] === '/api/clip')).toBe(true));
+    await screen.findByRole('button', { name: /Generar ✦/ });
+    expect(screen.queryByText('Un perro en la playa')).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Tus? clips?/ })).toBeNull();
+  });
+
+  it('clip.lista.abre_el_de_mis_videos_con_c', async () => {
+    abrir('clip-1');
+    const OTRO: FichaClip = { ...LISTO, id: 'clip-0', texto: 'Una ola rompiendo' };
+    servidor({ '/api/clip': () => json({ clips: [LISTO, OTRO] }) });
+    const { container } = render(<Clip />);
+    expect(await screen.findByRole('heading', { name: 'Tu clip' })).toBeInTheDocument();
+    expect(screen.getByText('Un perro en la playa')).toBeInTheDocument();
+    expect(container.querySelector('video')).toHaveAttribute('src', '/api/clip/clip-1/video');
+    expect(screen.queryByText('Una ola rompiendo')).toBeNull();
+    // se queda en la URL: al recargar sigue abierto
+    expect(location.search).toBe('?c=clip-1');
+  });
+
+  it('clip.lista.el_abierto_que_ya_no_esta_en_la_lista_se_pide_solo', async () => {
+    abrir('clip-viejo');
+    const f = servidor({
+      '/api/clip/clip-viejo': () => json({ ...LISTO, id: 'clip-viejo', texto: 'Un clip de hace meses' }),
+      '/api/clip': () => json({ clips: [LISTO] }),
+    });
+    render(<Clip />);
+    expect(await screen.findByText('Un clip de hace meses')).toBeInTheDocument();
+    expect(f.mock.calls.filter(c => c[0] === '/api/clip/clip-viejo')).toHaveLength(1);
+    expect(screen.queryByText('Un perro en la playa')).toBeNull();
+  });
+
+  it('clip.lista.el_que_termina_con_la_pantalla_abierta_se_queda', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO, LISTO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    render(<Clip />);
+    await screen.findByRole('heading', { name: 'Tu clip' });
+    lista = [{ ...VIVO, estado: 'listo', video: '/api/clip/clip-2/video' }, LISTO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    // el recién hecho se ve con su video; el viejo sigue sin verse
+    expect(await screen.findByText('8 s · 1 foto tuya · ✦ 30')).toBeInTheDocument();
+    expect(screen.getAllByText('Un perro en la playa')).toHaveLength(1);
   });
 
   it('UI·27: el clip que se genera enseña sus pasos, lo que lleva y que puedes cerrar la pestaña', async () => {
@@ -399,6 +450,7 @@ describe('clip', () => {
   });
 
   it('clip.lista.fallo_de_carga_avisa_reintenta_y_sigue_solo', async () => {
+    abrir('clip-1');
     let red = false;
     servidor({ '/api/clip': () => (red ? json({ clips: [LISTO] }) : sinRed()) });
     render(<Clip />);
@@ -431,8 +483,11 @@ describe('UI·21 · la lista de clips', () => {
   const OTRO: FichaClip = { ...LISTO, id: 'clip-0', texto: 'Una ola rompiendo', imagenes: 0, video: '' };
   const fila = (texto: string) => screen.getByText(texto).closest('.fila-viva');
 
+  // UI·26: solo se ven los que se generan (y el abierto con ?c=)
+  const VIVO2: FichaClip = { ...VIVO, id: 'clip-4', texto: 'Una ola rompiendo' };
+
   it('UI·21: en la primera carga ningún clip entra animado', async () => {
-    servidor({ '/api/clip': () => json({ clips: [LISTO, OTRO] }) });
+    servidor({ '/api/clip': () => json({ clips: [VIVO, VIVO2] }) });
     const { container } = render(<Clip />);
     await screen.findByText('Una ola rompiendo');
     expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
@@ -441,10 +496,10 @@ describe('UI·21 · la lista de clips', () => {
 
   it('UI·21: tras generar, solo el clip nuevo entra abriendo su espacio', async () => {
     const NUEVO: FichaClip = { ...VIVO, id: 'clip-3', texto: 'Un gato en la luna' };
-    let lista: FichaClip[] = [LISTO, OTRO];
+    let lista: FichaClip[] = [VIVO, VIVO2];
     servidor({
       '/api/clip/generar': () => {
-        lista = [NUEVO, LISTO, OTRO];
+        lista = [NUEVO, VIVO, VIVO2];
         return json({ lanzado: true, id: NUEVO.id, creditos: 30 });
       },
       '/api/clip': () => json({ clips: lista }),
@@ -456,6 +511,7 @@ describe('UI·21 · la lista de clips', () => {
     await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(3));
     expect(fila('Un gato en la luna')).toHaveClass('fila-entra');
     expect(fila('Un perro en la playa')).not.toHaveClass('fila-entra');
+    expect(fila('Una ola rompiendo')).not.toHaveClass('fila-entra');
     expect(fila('Una ola rompiendo')).not.toHaveClass('fila-entra');
     // la clase se va al terminar su animación
     fireEvent.animationEnd(fila('Un gato en la luna')!);
@@ -469,7 +525,7 @@ describe('UI·21 · la lista de clips', () => {
     const { container } = render(<Clip />);
     await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(1));
     // desde otra pestaña se pidió otro: llega en la siguiente vuelta
-    lista = [OTRO, VIVO];
+    lista = [VIVO2, VIVO];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
@@ -480,7 +536,7 @@ describe('UI·21 · la lista de clips', () => {
 
   it('UI·21: tras un fallo de carga, la primera carga buena tampoco anima', async () => {
     let red = false;
-    servidor({ '/api/clip': () => (red ? json({ clips: [LISTO, OTRO] }) : sinRed()) });
+    servidor({ '/api/clip': () => (red ? json({ clips: [VIVO, VIVO2] }) : sinRed()) });
     const { container } = render(<Clip />);
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos traer tus clips.');
     red = true;
@@ -491,6 +547,7 @@ describe('UI·21 · la lista de clips', () => {
   });
 
   it('UI·21: el clip que queda listo con la página abierta enciende su detalle; el que ya estaba listo no', async () => {
+    abrir('clip-0');
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let lista: FichaClip[] = [VIVO, OTRO];
     servidor({ '/api/clip': () => json({ clips: lista }) });
@@ -510,6 +567,7 @@ describe('UI·21 · la lista de clips', () => {
   });
 
   it('UI·21: un clip que ya estaba listo al entrar no enciende su detalle', async () => {
+    abrir('clip-1');
     servidor({ '/api/clip': () => json({ clips: [LISTO] }) });
     render(<Clip />);
     expect(await screen.findByText('8 s · 1 foto tuya · ✦ 30')).not.toHaveClass('destello');

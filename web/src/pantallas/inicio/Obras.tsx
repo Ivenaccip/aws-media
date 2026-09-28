@@ -1,6 +1,9 @@
 // Cada proyecto es una OBRA (mock): imagen grande, título abajo y, en las
 // películas, la X para archivar. La tarjeta entera es el enlace; la X va por
 // encima (un botón dentro de un <a> no es HTML válido).
+//
+// UI·26: en «Mis videos» la leyenda de abajo dice QUÉ es (Video largo, Video
+// corto, Shorts, Cuento); el estado solo se agrega si todavía no está listo.
 import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
 import { tocarMiniatura } from '../../nucleo/transiciones';
@@ -11,13 +14,15 @@ import {
   archivable,
   archivo,
   diaImagen,
-  ESTADO,
   estadoEdicion,
+  estadoVideo,
+  ETIQUETA,
   fechaCorta,
   forma,
   type Edicion,
   type Imagen,
   type Proyecto,
+  type Video,
 } from './logica';
 
 const TARJETA =
@@ -38,13 +43,52 @@ function Tono({ tono, children }: { tono?: 'ok' | 'mal' | undefined; children: R
   return <span className={tono === 'ok' ? 'text-exito' : tono === 'mal' ? 'text-error' : undefined}>{children}</span>;
 }
 
-export function TarjetaProyecto({ p, alArchivar }: { p: Proyecto; alArchivar: (p: Proyecto) => void }) {
+/** «Cuento · en revisión — te espera · 28/9/2026»; lista, «Video largo · 28/9/2026». */
+function Leyenda({ v, fecha }: { v: Video; fecha: string }) {
+  const e = estadoVideo(v);
+  return (
+    <p className="m-0 text-xs text-secundario">
+      <span className="font-semibold text-texto">{ETIQUETA[v.tipo]}</span>
+      {e && (
+        <>
+          {' · '}
+          <Tono tono={e.tono}>
+            <Icono nombre={e.icono} className="mr-1 align-[-0.15em]" />
+            {e.texto}
+          </Tono>
+        </>
+      )}
+      {fecha && ` · ${fecha}`}
+    </p>
+  );
+}
+
+function Titulo({ href, texto, alAbrir }: { href: string; texto: string; alAbrir?: ((e: MouseEvent) => void) | undefined }) {
+  return (
+    <a href={href} className={ESTIRADO} title={texto} onClick={alAbrir}>
+      <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap">
+        {texto || '(sin título)'}
+      </span>
+    </a>
+  );
+}
+
+type De<T extends Video['tipo']> = Extract<Video, { tipo: T }>;
+
+/** UI·26: la tarjeta de cada cosa de «Mis videos». */
+export function TarjetaVideo({ v, alArchivar }: { v: Video; alArchivar: (p: Proyecto) => void }) {
+  if (v.tipo === 'corto') return <TarjetaClip v={v} />;
+  if (v.tipo === 'shorts') return <TarjetaShorts v={v} />;
+  return <TarjetaProyecto v={v} alArchivar={alArchivar} />;
+}
+
+function TarjetaProyecto({ v, alArchivar }: { v: De<'largo' | 'cuento'>; alArchivar: (p: Proyecto) => void }) {
+  const { p } = v;
   // portada rota (película anterior al frame de portada) → cae al personaje
   // elegido y solo al final al hueco, sin icono roto
   const fuentes = [p.miniatura, p.miniatura_alt].filter((x): x is string => Boolean(x)).map(n => archivo(p.id, n));
   const [intento, setIntento] = useState(0);
   const src = fuentes[intento];
-  const e = ESTADO[p.estado];
   const fecha = fechaCorta(p.creado);
   const img = useRef<HTMLImageElement>(null);
   // UI·18: una película lista abre en su reproductor, y esta miniatura se
@@ -66,22 +110,8 @@ export function TarjetaProyecto({ p, alArchivar }: { p: Proyecto; alArchivar: (p
         <Hueco icono="video" />
       )}
       <div className="px-3 py-2.5">
-        <a href={'/crear.html?p=' + encodeURIComponent(p.id)} className={ESTIRADO} title={p.brief} onClick={alAbrir}>
-          <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap">
-            {p.brief || '(sin título)'}
-          </span>
-        </a>
-        <p className="m-0 text-xs text-secundario">
-          {e ? (
-            <Tono tono={e.tono}>
-              <Icono nombre={e.icono} className="mr-1 align-[-0.15em]" />
-              {e.texto}
-            </Tono>
-          ) : (
-            p.estado
-          )}
-          {fecha && ` · ${fecha}`}
-        </p>
+        <Titulo href={'/crear.html?p=' + encodeURIComponent(p.id)} texto={p.brief} alAbrir={alAbrir} />
+        <Leyenda v={v} fecha={fecha} />
       </div>
       {archivable(p) && (
         <button
@@ -94,6 +124,52 @@ export function TarjetaProyecto({ p, alArchivar }: { p: Proyecto; alArchivar: (p
           <Icono nombre="cerrar" />
         </button>
       )}
+    </article>
+  );
+}
+
+/** UI·26 — un clip de 8 s. Listo, su primer cuadro hace de miniatura (el
+ *  video mismo, sin sonido ni controles); abre en su pantalla con `?c=`. */
+function TarjetaClip({ v }: { v: De<'corto'> }) {
+  const { c } = v;
+  const [roto, setRoto] = useState(false);
+  const fecha = fechaCorta(c.inicio ?? '');
+  return (
+    <article className={TARJETA}>
+      {c.estado === 'listo' && c.video && !roto ? (
+        // #t: que el navegador pinte un cuadro de adentro y no el negro del inicio
+        <video
+          src={c.video + '#t=0.5'}
+          muted
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+          tabIndex={-1}
+          className={unir(MINIATURA, 'bg-hundido')}
+          onError={() => setRoto(true)}
+        />
+      ) : (
+        <Hueco icono="video" />
+      )}
+      <div className="px-3 py-2.5">
+        <Titulo href={'/clip.html?c=' + encodeURIComponent(c.id)} texto={c.texto} />
+        <Leyenda v={v} fecha={fecha} />
+      </div>
+    </article>
+  );
+}
+
+/** UI·26 — los shorts sacados de un video largo: abren en su pantalla con `?p=`. */
+function TarjetaShorts({ v }: { v: De<'shorts'> }) {
+  const { e } = v;
+  const fecha = fechaCorta(e.shorts.inicio ?? e.creado ?? '');
+  return (
+    <article className={TARJETA}>
+      <Hueco icono="shorts" />
+      <div className="px-3 py-2.5">
+        <Titulo href={'/shorts.html?p=' + encodeURIComponent(e.nombre)} texto={e.shorts.titulo || e.nombre} />
+        <Leyenda v={v} fecha={fecha} />
+      </div>
     </article>
   );
 }
@@ -143,7 +219,7 @@ export function TarjetaEdicion({ e }: { e: Edicion }) {
   );
 }
 
-/** La tarjeta punteada del final: «Nueva película», «Nueva imagen». */
+/** La tarjeta punteada del final: «Nuevo video», «Nueva imagen». */
 export function TarjetaNueva({ texto, href, alPulsar }: { texto: string; href?: string; alPulsar?: () => void }) {
   const clase =
     'grid min-h-[150px] cursor-pointer place-items-center rounded-boton border border-dashed border-linea bg-superficie text-sm text-secundario no-underline transition-colors hover:border-campo hover:text-texto';

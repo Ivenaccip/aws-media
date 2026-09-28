@@ -39,6 +39,20 @@ export interface Firma {
 
 export const cargarConfig = () => pedir<Config>('/api/clip/config');
 export const cargarClips = () => pedir<{ clips: Clip[] }>('/api/clip').then(r => r.clips ?? []);
+export const cargarClip = (id: string) => pedir<Clip>('/api/clip/' + encodeURIComponent(id));
+
+/** UI·26: `?c=` es el clip que se abrió desde «Mis videos» del inicio. Se
+ *  queda en la URL: al recargar sigue abierto. */
+export function clipPedido(loc: Location = location): string | null {
+  return new URLSearchParams(loc.search).get('c') || null;
+}
+
+/** UI·26: la pantalla ya no es un historial (ese vive en «Mis videos»). Se ven
+ *  los que se generan, los que se generaron con ella abierta (para ver cómo
+ *  quedaron) y el que se abrió con `?c=`. */
+export function aLaVista(clips: Clip[], vistos: ReadonlySet<string>, abierto: string | null): Clip[] {
+  return clips.filter(c => c.estado === 'generando' || vistos.has(c.id) || c.id === abierto);
+}
 
 export const firmar = (archivo: File, tipo: string) =>
   pedir<Firma>('/api/clip/presign', {

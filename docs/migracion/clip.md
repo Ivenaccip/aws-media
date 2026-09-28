@@ -51,7 +51,10 @@ ese nombre exacto.
 | `clip.lista.textos_del_usuario_como_texto` | un texto con HTML se lee como texto, nunca se ejecuta |
 | `clip.lista.listo_con_video_detalle_y_recorte` | el clip listo: «8 s · 1 foto tuya · ✦ 30», el aviso de recorte y el video |
 | `clip.lista.error_dice_que_los_creditos_volvieron` | el clip fallido lo dice y aclara que los créditos volvieron |
-| `clip.lista.vacia_invita_al_primero` | «Todavía no has hecho ninguno.» |
+| `clip.lista.sin_historial_manda_a_mis_videos` | UI·26 (dueño, 28-sep): ya no hay historial «Tus clips». Los clips ya hechos no se ven aquí: viven en «Mis videos» del inicio, y un enlace lo dice. Reemplaza a `clip.lista.vacia_invita_al_primero` («Todavía no has hecho ninguno.»), que no tiene sentido sin historial |
+| `clip.lista.abre_el_de_mis_videos_con_c` | `?c=<id>` (lo pone «Mis videos») abre ese clip con su video; se queda en la URL |
+| `clip.lista.el_abierto_que_ya_no_esta_en_la_lista_se_pide_solo` | si el abierto ya no viene en `/api/clip` (lista solo los más nuevos), se pide con `/api/clip/<id>` |
+| `clip.lista.el_que_termina_con_la_pantalla_abierta_se_queda` | el que se generaba con la pantalla abierta se sigue viendo al quedar listo (o fallar) |
 | `clip.lista.sondea_mientras_genera_y_para_al_terminar` | sondea mientras hay uno generándose, para al terminar y refresca el saldo |
 | `clip.lista.fallo_de_carga_avisa_reintenta_y_sigue_solo` | sin red: aviso con «Reintentar», sin «Cargando…» colgado, y el sondeo sigue solo |
 | `clip.espera.titulo_de_la_pestana_dice_generando` | la pestaña dice «Generando tu clip · …» mientras se genera |
@@ -109,3 +112,7 @@ Al pasar a `retirada` se borran estos tests junto con `static/clip.html`.
 - **Sin `trabajos.js`:** los avisos van dentro de la pantalla. «Tus trabajos»
   sigue en el resto del estudio.
 - **Orbe:** igual que la vieja, solo con UN clip generándose; con más, texto.
+- **Sin historial (UI·26):** la vieja listaba todos tus clips. La nueva solo
+  enseña el que se genera, el que terminó con la pantalla abierta y el que se
+  abrió desde «Mis videos» (`?c=`). Nada se borra: los clips siguen en
+  `/api/clip` y se ven en el inicio con la etiqueta «Video corto».

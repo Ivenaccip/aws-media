@@ -1,11 +1,11 @@
 // El inicio del estudio sin React: los tipos de /api/proyectos, /api/slots,
-// /api/edicion/proyectos, /api/imagenes y /api/blotato, y lo que
+// /api/edicion/proyectos, /api/clip, /api/imagenes y /api/blotato, y lo que
 // static/index.html calculaba en línea.
 //
 // Los precios del desplegable salen de tools/tarifas.json (nucleo/tarifas):
 // la vieja los tenía ESCRITOS («30», «55–190», «2») y un test comprobaba que
 // coincidieran. Aquí no hay número que pueda desfasarse.
-import { pedir } from '../../nucleo/api';
+import { ErrorApi, pedir } from '../../nucleo/api';
 import { clip, video } from '../../nucleo/tarifas';
 
 // ---------------------------------------------------------------------------
@@ -100,6 +100,16 @@ export interface Proyecto {
   archivado: boolean;
   miniatura: string | null;
   miniatura_alt: string | null;
+  /** UI·26: `investigacion` es un Cuento; `idea` y el viejo `auto`, un Video largo. */
+  modo?: 'auto' | 'investigacion' | 'idea' | string;
+}
+
+/** UI·26: lo que el server resume de los shorts de un proyecto del editor. */
+export interface ResumenShorts {
+  estado: 'corriendo' | 'listo' | 'error' | 'espera' | string;
+  titulo: string;
+  inicio: string | null;
+  cuantos: number;
 }
 
 export interface Edicion {
@@ -108,6 +118,18 @@ export interface Edicion {
   editor_listo: boolean;
   editar?: { estado?: string } | null;
   subidas?: unknown[];
+  creado?: string | null;
+  /** null o ausente: el proyecto nunca pasó por shorts. */
+  shorts?: ResumenShorts | null;
+}
+
+/** Un clip de 8 s tal como lo lista /api/clip (solo lo que usa el inicio). */
+export interface ClipCorto {
+  id: string;
+  estado: 'generando' | 'listo' | 'error' | string;
+  texto: string;
+  video?: string;
+  inicio?: string | null;
 }
 
 export interface Imagen {
@@ -120,6 +142,16 @@ export interface Imagen {
 export const cargarProyectos = () => pedir<Proyecto[]>('/api/proyectos');
 export const cargarSlots = () => pedir<{ slots: number | null }>('/api/slots');
 export const cargarEdiciones = () => pedir<Edicion[]>('/api/edicion/proyectos');
+// En local los clips no corren (503, «corre en el servicio»): ahí no hay
+// ninguno, que no es lo mismo que no poder traerlos
+export const cargarClips = () =>
+  pedir<{ clips?: ClipCorto[] }>('/api/clip').then(
+    r => r.clips ?? [],
+    (e: unknown) => {
+      if (e instanceof ErrorApi && e.estado === 503) return [];
+      throw e;
+    },
+  );
 export const cargarImagenes = () => pedir<{ imagenes?: Imagen[] }>('/api/imagenes').then(r => r.imagenes ?? []);
 
 export const archivar = (id: string) =>
@@ -140,6 +172,71 @@ export const ESTADO: Record<string, { icono: 'reloj' | 'guion' | 'listo' | 'avis
   listo: { icono: 'listo', texto: 'lista', tono: 'ok' },
   error: { icono: 'aviso', texto: 'con error', tono: 'mal' },
 };
+
+// ---------------------------------------------------------------------------
+// UI·26 — «Mis videos»: películas, clips y shorts en una sola lista, lo más
+// nuevo primero, con su tipo abajo en vez del estado.
+
+export type Tipo = 'largo' | 'corto' | 'shorts' | 'cuento';
+
+export const ETIQUETA: Record<Tipo, string> = {
+  largo: 'Video largo',
+  corto: 'Video corto',
+  shorts: 'Shorts',
+  cuento: 'Cuento',
+};
+
+export type Video =
+  | { tipo: 'largo' | 'cuento'; clave: string; fecha: number; p: Proyecto }
+  | { tipo: 'corto'; clave: string; fecha: number; c: ClipCorto }
+  | { tipo: 'shorts'; clave: string; fecha: number; e: Edicion & { shorts: ResumenShorts } };
+
+export const tipoPelicula = (p: Proyecto): 'largo' | 'cuento' => (p.modo === 'investigacion' ? 'cuento' : 'largo');
+
+// sin fecha que se entienda, al final (y entre ellas, en el orden en que llegaron)
+const cuando = (iso: string | null | undefined) => {
+  const t = iso ? Date.parse(iso) : NaN;
+  return isNaN(t) ? -Infinity : t;
+};
+
+/** Las tres listas en una: las películas activas (las archivadas van aparte),
+ *  los clips y los proyectos del editor que pasaron por shorts. */
+export function mezclar(proyectos: Proyecto[], clips: ClipCorto[] | null, ediciones: Edicion[] | null): Video[] {
+  const todos: Video[] = [
+    ...proyectos
+      .filter(p => !p.archivado)
+      .map(p => ({ tipo: tipoPelicula(p), clave: 'p:' + p.id, fecha: cuando(p.creado), p })),
+    ...(clips ?? []).map(c => ({ tipo: 'corto' as const, clave: 'c:' + c.id, fecha: cuando(c.inicio), c })),
+    ...(ediciones ?? []).flatMap(e =>
+      e.shorts
+        ? [{ tipo: 'shorts' as const, clave: 's:' + e.nombre, fecha: cuando(e.shorts.inicio ?? e.creado), e: { ...e, shorts: e.shorts } }]
+        : [],
+    ),
+  ];
+  // sort es estable: a la misma fecha se queda el orden de llegada
+  return todos.sort((a, b) => (a.fecha === b.fecha ? 0 : b.fecha > a.fecha ? 1 : -1));
+}
+
+type Estado = { icono: 'reloj' | 'guion' | 'listo' | 'aviso'; texto: string; tono?: 'ok' | 'mal' };
+
+/** El estado que va junto a la etiqueta, o null si ya está listo (lista = solo
+ *  la etiqueta). */
+export function estadoVideo(v: Video): Estado | null {
+  if (v.tipo === 'corto') {
+    if (v.c.estado === 'generando') return { icono: 'reloj', texto: 'generándose…' };
+    if (v.c.estado === 'error') return { icono: 'aviso', texto: 'con error', tono: 'mal' };
+    return null;
+  }
+  if (v.tipo === 'shorts') {
+    const e = v.e.shorts.estado;
+    if (e === 'listo') return null;
+    if (e === 'corriendo') return { icono: 'reloj', texto: 'en proceso…' };
+    if (e === 'error') return { icono: 'aviso', texto: 'con error', tono: 'mal' };
+    return { icono: 'guion', texto: 'te espera' };
+  }
+  if (v.p.estado === 'listo') return null;
+  return ESTADO[v.p.estado] ?? { icono: 'reloj', texto: v.p.estado };
+}
 
 /** Mientras corre una tarea el server no deja archivar (409): ni se ofrece. */
 export const archivable = (p: Proyecto) => !['preparando', 'produciendo'].includes(p.estado);
