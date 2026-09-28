@@ -178,7 +178,7 @@ def test_entrar_solo_vuelve_al_propio_dominio(volver, esperado):
     q = "" if volver is None else "?volver=" + __import__("urllib.parse").parse.quote(volver, safe="")
     js = (f"const location = new URL('https://irremplazables.xyz/entrar{q}');\n"
           + _destino() + "\nconsole.log(destino());")
-    out = subprocess.run([NODE, "-e", js], capture_output=True, text=True, check=True)
+    out = subprocess.run([NODE, "-e", js], capture_output=True, text=True, encoding="utf-8", check=True)
     assert out.stdout.strip() == esperado
 
 
@@ -237,7 +237,7 @@ require(process.argv[1]);
 def _correr(refresca):
     js = _ARNES % {"refresca": "true" if refresca else "false"}
     out = subprocess.run([NODE, "-e", js, str(STATIC / "auth.js")],
-                         capture_output=True, text=True, check=True, timeout=30)
+                         capture_output=True, text=True, encoding="utf-8", check=True, timeout=30)
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 

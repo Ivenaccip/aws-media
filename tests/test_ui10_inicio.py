@@ -205,7 +205,7 @@ def test_el_js_del_inicio_y_los_iconos_son_validos(tmp_path):
     for nombre, codigo in (("inicio.js", _js(_inicio())), ("iconos.js", _iconos())):
         f = tmp_path / nombre
         f.write_text(codigo, encoding="utf-8")
-        r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+        r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == 0, (nombre, r.stderr)
 
 
@@ -224,5 +224,5 @@ def test_los_iconos_escapan_nada_porque_no_reciben_texto(tmp_path):
         "let lanzo = false; try { window.icono('<img>'); } catch { lanzo = true; }\n"
         "if (!lanzo) throw new Error('aceptó un nombre desconocido');\n",
         encoding="utf-8")
-    r = subprocess.run([node, str(prueba)], capture_output=True, text=True)
+    r = subprocess.run([node, str(prueba)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr

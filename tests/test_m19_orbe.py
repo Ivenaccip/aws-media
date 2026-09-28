@@ -147,7 +147,7 @@ def test_el_boton_conserva_su_precio():
 @pytest.mark.skipif(shutil.which("node") is None, reason="node no está en el PATH")
 def test_check_js_pasa_en_todo_el_repo():
     r = subprocess.run([sys.executable, str(RAIZ / "tools" / "check_js.py")],
-                       capture_output=True, text=True, cwd=str(RAIZ))
+                       capture_output=True, text=True, encoding="utf-8", cwd=str(RAIZ))
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -158,7 +158,7 @@ def test_check_js_caza_un_error_inline(tmp_path):
     roto.write_text("<html><body>\n<script>\nfunction x( {\n</script>\n</body></html>",
                     encoding="utf-8")
     r = subprocess.run([sys.executable, str(RAIZ / "tools" / "check_js.py"), str(roto)],
-                       capture_output=True, text=True, cwd=str(RAIZ))
+                       capture_output=True, text=True, encoding="utf-8", cwd=str(RAIZ))
     assert r.returncode == 1 and "1 con errores" in r.stdout
 
 
@@ -179,7 +179,7 @@ def test_arnes_del_componente_en_node():
     corre de verdad contra un DOM mínimo: es la parte que puede mentirle al
     usuario, y no necesita GPU para auditarse."""
     r = subprocess.run(["node", str(RAIZ / "tests" / "orbe_nodo.js")],
-                       capture_output=True, text=True, cwd=str(RAIZ))
+                       capture_output=True, text=True, encoding="utf-8", cwd=str(RAIZ))
     assert r.returncode == 0, r.stdout + r.stderr
 
 
