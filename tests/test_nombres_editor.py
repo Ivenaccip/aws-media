@@ -21,7 +21,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from pipeline import db
+from pipeline import db, media_sync
 
 URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
 VID = "jNQXAC9IVRw"
@@ -188,6 +188,12 @@ def s3(monkeypatch):
             registro.consultados.append(Key)
             return {"ContentLength": 10}
     monkeypatch.setattr(media_api, "_s3", lambda: S3())
+    # También el de media_sync: desde la lista blanca del CDN, `confirmar`
+    # devuelve la subida FIRMADA (vive en `videos/`, que el CDN ya no sirve) y
+    # esa firma sale por media_sync.url_media. Sin este mock el test pasa en
+    # una máquina con credenciales de AWS y revienta en el contenedor, que no
+    # las tiene — que es exactamente lo que pasó.
+    monkeypatch.setattr(media_sync, "_s3", lambda: S3())
     return registro
 
 
@@ -213,7 +219,11 @@ def test_dos_cuentas_con_el_mismo_nombre(base, s3):
         assert e.value.status_code == 404
         media_api.presign(PresignIn(proyecto="video-1-beto", archivo="a.mp4"))
 
-    assert s3.firmados == [key, "videos/video-1-beto/subidas/a.mp4"]
+    # La clave de ana sale firmada DOS veces: el PUT de `presign` y, desde la
+    # lista blanca del CDN, el GET que `confirmar` devuelve para el <video> de
+    # muestra de e1 — esa subida vive en `videos/`, que el CDN ya no sirve.
+    assert s3.firmados == [key, key, "videos/video-1-beto/subidas/a.mp4"]
+    assert s3.firmados.count(key) == 2   # las dos de ana; beto no firmó ninguna
     assert s3.consultados == [key]                   # el confirmar de beto ni llegó a S3
     assert db.cargar_proyecto_editor("ana", "video-1")["subidas"][0]["key"] == key
     assert db.cargar_proyecto_editor("beto", "video-1") is None

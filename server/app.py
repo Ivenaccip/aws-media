@@ -465,9 +465,9 @@ def ver_imagen(nombre: str):
     # carpeta del usuario del token (M23)
     if jobs.backend() != "aws" and f.is_file():
         return FileResponse(f)
-    cdn = os.getenv("CDN_BASE", "").rstrip("/")
-    if cdn:
-        return RedirectResponse(f"{cdn}/imagenes/{db.usuario_actual()}/{nombre}")
+    url = media_sync.url_media(f"imagenes/{db.usuario_actual()}/{nombre}")
+    if url:
+        return RedirectResponse(url)
     raise HTTPException(404, "Imagen no encontrada")
 
 
@@ -702,11 +702,9 @@ async def muestra_voz(voz: str):
             tmp = Path(tempfile.gettempdir()) / f"muestra_{voz}.mp3"
             await _generar_muestra_voz(tmp, voz)
             s3.put_object(Bucket=bucket, Key=key, Body=tmp.read_bytes(), ContentType="audio/mpeg")
-        cdn = os.getenv("CDN_BASE", "").rstrip("/")
-        if cdn:
-            return RedirectResponse(f"{cdn}/{key}")
-        return RedirectResponse(s3.generate_presigned_url(
-            "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=3600))
+        # `voces/` sí lo sirve el CDN (son muestras del catálogo, de nadie);
+        # url_media resuelve las dos ramas que había aquí a mano.
+        return RedirectResponse(media_sync.url_media(key))
     destino = media_root() / "media" / "voces" / f"{voz}.mp3"
     if not destino.exists():
         await _generar_muestra_voz(destino, voz)
@@ -1027,10 +1025,10 @@ def archivo(id_: str, nombre: str):
     if f.is_file():
         return FileResponse(f)
     # C4: el archivo puede haberlo escrito OTRO ejecutor — está en S3 vía CDN
-    cdn = os.getenv("CDN_BASE", "").rstrip("/")
-    if cdn:
-        prefijo = media_sync.prefijo_work(db.usuario_actual(), p.id)
-        return RedirectResponse(f"{cdn}/{prefijo}{nombre}")
+    prefijo = media_sync.prefijo_work(db.usuario_actual(), p.id)
+    url = media_sync.url_media(f"{prefijo}{nombre}")
+    if url:
+        return RedirectResponse(url)
     raise HTTPException(404, "Archivo no encontrado")
 
 

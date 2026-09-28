@@ -14,6 +14,8 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from pipeline import media_rutas
+
 
 def _bucket() -> str | None:
     return os.getenv("MEDIA_BUCKET") or None
@@ -27,6 +29,87 @@ def _s3():
 
 def prefijo_work(user_id: str, proyecto_id: str) -> str:
     return f"work/{user_id}/{proyecto_id}/"
+
+
+def url_media(key: str, expira: int = 3600) -> str | None:
+    """La URL con la que alguien de fuera —el navegador, ffmpeg, Blotato— puede
+    leer `key`.
+
+    CDN si el prefijo está en la lista blanca de `media_rutas`; si no, una URL
+    firmada de S3 que caduca. Devuelve None cuando no hay ni CDN ni bucket, que
+    es la instalación local: ahí los archivos se sirven del disco y quien llama
+    ya tiene ese camino.
+
+    **Nadie debería armar `f"{CDN_BASE}/{key}"` a mano.** Esa es justo la forma
+    que dejó ocho sitios sirviendo `videos/` sin login, y la que ahora devolvería
+    403 sin que nada avise.
+
+    OJO CON GUARDARLA: la firmada caduca. Lo que se persiste es la `key`, y la
+    URL se arma al leer. Una URL firmada dentro de Postgres es una liga que
+    funciona hasta que un día deja de funcionar y nadie sabe por qué.
+    """
+    key = key.lstrip("/")
+    base = os.getenv("CDN_BASE", "").rstrip("/")
+    if base and media_rutas.servible_por_cdn(key):
+        return f"{base}/{key}"
+    bucket = _bucket()
+    if not bucket:
+        return None
+    return _s3().generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expira)
+
+
+# Los campos donde los ejecutores dejaban una URL absoluta del CDN dentro del
+# documento del editor. `cdn` es el de producir_task; `url` el de render,
+# subtítulos y shorts.
+_CAMPOS_URL = ("url", "cdn")
+
+
+def refrescar_urls(doc):
+    """Reescribe, sobre una COPIA, las URLs de media del documento del editor.
+
+    Existe por una razón concreta: hasta hoy tres ejecutores guardaban en
+    Postgres la URL absoluta del CDN (`f"{cdn}/videos/..."`). Con la lista
+    blanca esas URLs pasan a contestar 403 — y son filas que ya existen, así
+    que no basta con dejar de escribirlas.
+
+    La regla es: **la clave se persiste, la URL se arma al leer.** Para las
+    filas viejas que solo guardaron la URL, la clave se recupera destripándola
+    (`media_rutas.clave_desde_url`), que es lo que el navegador ya hacía a mano
+    en shorts.html.
+
+    Se aplica al ENTREGAR el documento al navegador, nunca al cargarlo de la
+    base: los ejecutores hacen cargar → modificar → guardar, y meter aquí una
+    URL firmada la dejaría persistida con su caducidad dentro.
+    """
+    base = os.getenv("CDN_BASE", "").rstrip("/")
+
+    def paso(nodo):
+        if isinstance(nodo, list):
+            return [paso(x) for x in nodo]
+        if not isinstance(nodo, dict):
+            return nodo
+        fuera = {k: paso(v) for k, v in nodo.items()}
+        key = fuera.get("key")
+        if not key:
+            # fila vieja sin `key`: la que guardaba subtitulos_task
+            for campo in _CAMPOS_URL:
+                key = media_rutas.clave_desde_url(fuera.get(campo) or "", base)
+                if key:
+                    break
+        if not key or not isinstance(key, str):
+            return fuera
+        # la clave rescatada se deja puesta: `shorts.html` la prefiere sobre la
+        # URL, y así las filas viejas dejan de depender de destriparla en JS
+        fuera.setdefault("key", key)
+        fresca = url_media(key)
+        if fresca:
+            for campo in _CAMPOS_URL:
+                if fuera.get(campo):
+                    fuera[campo] = fresca
+        return fuera
+
+    return paso(doc)
 
 
 def subir_dir(dir_local: Path, prefijo: str) -> int:

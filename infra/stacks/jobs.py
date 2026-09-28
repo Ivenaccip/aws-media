@@ -113,13 +113,22 @@ class JobsStack(Stack):
         # M6: sync diario de costes Langfuse → tabla `costes` (la base del
         # dashboard admin). El worker detecta el input sin "Records" y corre
         # tools/costes.sincronizar; es idempotente por trace id.
-        events.Rule(
-            self, "SyncCostes",
-            schedule=events.Schedule.cron(minute="0", hour="6"),   # 06:00 UTC diario
-            targets=[targets.LambdaFunction(
-                worker, event=events.RuleTargetInput.from_object(
-                    {"tipo": "sync_costes", "dias": 3}))],
-        )
+        #
+        # Solo en prod: dev NO comparte el proyecto de Langfuse a propósito
+        # (probar un prompt ahí exigiría mover el label `production`, o sea
+        # cambiar producción en caliente y sin PR), y `tools/ssm_env.py` se
+        # niega a subir esas claves a dev. Sin claves, este reloj fallaría
+        # todos los días a las 06:00 UTC contra una base sin costes que
+        # sincronizar: ruido diario en los logs de un entorno donde nadie mira
+        # los logs, que es exactamente cómo se aprende a ignorarlos.
+        if entorno.es_prod:
+            events.Rule(
+                self, "SyncCostes",
+                schedule=events.Schedule.cron(minute="0", hour="6"),   # 06:00 UTC diario
+                targets=[targets.LambdaFunction(
+                    worker, event=events.RuleTargetInput.from_object(
+                        {"tipo": "sync_costes", "dias": 3}))],
+            )
 
         # M23 · D — el reloj de MIX, cada hora en punto. Cada hora y no una vez
         # al día porque la hora de publicar es la del USUARIO: las nueve de la
@@ -127,6 +136,15 @@ class JobsStack(Stack):
         # por campaña no hay un cron que las cubra a todas. El despachador mira
         # cuáles tocan en SU reloj y encola solo esas; publicar dos veces lo
         # impide el PRIMARY KEY de mix_corridas, no esta regla.
+        #
+        # Este SÍ va también en dev, al revés que el de costes, porque MIX es
+        # algo que hay que poder probar. Para que fuera peligroso tendrían que
+        # darse DOS cosas a la vez: campañas activas en la base de dev y la
+        # clave de Blotato de un cliente real bajo `SSM_USUARIOS_PREFIX`. Lo
+        # primero solo pasa si alguien siembra dev con una copia de producción
+        # —por eso la tarjeta dice que no se hace— y lo segundo no puede pasar:
+        # el prefijo de dev es `/media-ivenaccip-dev/usuarios` y ahí no hay
+        # claves de nadie. Con la base vacía el despachador recoge cero.
         events.Rule(
             self, "MixReloj",
             schedule=events.Schedule.cron(minute="0"),   # :00 de cada hora

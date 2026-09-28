@@ -76,9 +76,9 @@ def main(user_id: str, nombre: str) -> int:
             f = destino / "work" / "subs" / f"subs.{ext}"
             if f.is_file():
                 media_sync.subir_archivo(f, f"{prefijo}work/subs/subs.{ext}")
-        cdn = os.getenv("CDN_BASE", "").rstrip("/")
-        estado.update(estado="listo",
-                      url=f"{cdn}/{prefijo}{rel}" if cdn else None)
+        # Este era el único que guardaba SOLO la URL, sin `key`: las filas
+        # viejas hay que destriparlas al leer. De aquí en adelante, la clave.
+        estado.update(estado="listo", key=f"{prefijo}{rel}", url=None)
         log.info("%s: subtítulos quemados → %s", nombre, estado["url"])
     else:
         estado.update(estado="error", log=cola)
