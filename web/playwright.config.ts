@@ -8,7 +8,9 @@
 // instalado en la máquina, sin descargar nada.
 import { defineConfig, devices } from '@playwright/test';
 
-const PUERTO = 4173;
+// PW_PUERTO: para correr dos copias del repo a la vez sin que una use el
+// servidor (y el dist) de la otra
+const PUERTO = Number(process.env.PW_PUERTO ?? 4173);
 const canal = process.env.PW_CANAL;
 
 export default defineConfig({
