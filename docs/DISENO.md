@@ -125,6 +125,10 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     queda quieta; la miniatura de una película lista se agranda hasta su
     reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con
     «reducir movimiento» nada se quede moviéndose en las 12 pantallas.
+  - Las gráficas de Métricas (UI·23) se dibujan la primera vez que entran en
+    pantalla: 500 ms cada barra, 50 ms entre una y la siguiente, y la cifra de
+    cada barra asoma al final. Una sola vez; sin JS, al volver o con «reducir
+    movimiento» ya están completas. Las barras son del azul de datos.
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
   sea más chico.
 - **Foco:** `outline: 2px solid #f0a94a; outline-offset: 3px` en todo lo

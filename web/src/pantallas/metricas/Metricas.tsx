@@ -13,7 +13,9 @@ import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import { unir as clases } from '../../ui/unir';
+import { GraficaVistas } from './Grafica';
 import {
+  barrasVistas,
   cargar,
   casillas,
   CONECTAR,
@@ -418,6 +420,7 @@ function TarjetaPublicacion({
 function Detalle({ it }: { it: Publicacion }) {
   const datos = Array.isArray(it.detalle) ? it.detalle : [];
   const h = Array.isArray(it.historial) ? it.historial : [];
+  const g = barrasVistas(h);
   if (!datos.length && h.length < 2)
     return <p className="m-0 text-xs text-secundario">No hay nada más que enseñar de esta publicación.</p>;
   return (
@@ -438,6 +441,8 @@ function Detalle({ it }: { it: Publicacion }) {
       {h.length >= 2 && (
         <>
           <h3 className="m-0 mb-2 text-sm font-semibold">Cómo fue cambiando</h3>
+          {/* UI·23: la gráfica va encima; la tabla se queda, con todo */}
+          {g && <GraficaVistas id={it.id} barras={g.barras} de={g.de} />}
           {/* una tabla de mediciones no cabe en un teléfono: rueda ella, no la página.
               Lo que rueda se tiene que poder rodar con el teclado (axe:
               scrollable-region-focusable), por eso lleva tabIndex */}

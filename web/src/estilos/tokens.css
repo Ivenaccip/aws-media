@@ -125,6 +125,28 @@
      llegan (el «Guardado», el punto del buzón), nunca para las que se van */
   --curva-resorte: linear(0, 0.074, 0.244, 0.45, 0.649, 0.817, 0.944, 1.028, 1.075, 1.094,
     1.092, 1.078, 1.06, 1.04, 1.023, 1.009, 1, 0.994, 0.992, 0.991, 0.992, 0.994, 0.996, 0.997, 1);
+  /* UI·23: las barras de las gráficas de Métricas. Medio segundo se lee como
+     «se dibuja» y no como «tarda»; 50 ms entre una barra y la siguiente hacen
+     la ola sin alargarla (son seis como mucho: la última arranca a los 250) */
+  --dur-grafica: 500ms;
+  --escalon-grafica: 50ms;
+}
+
+/* UI·23: las gráficas de Métricas (pantallas/metricas/Grafica.tsx). Cada
+   barra crece desde la base con el retraso de su --i, y su cifra asoma
+   cuando la barra termina. Es `inline` porque el retraso lee el --i de CADA
+   barra: en un @theme normal, var(--i) se resolvería una sola vez en :root
+   (a 0) y crecerían todas a la vez. Solo corren con la marca data-entra de
+   nucleo/useAparecerUnaVez.ts y con motion-safe: la regla de «reducir
+   movimiento» acorta la duración pero NO el retraso, y con `both` las cifras
+   se quedarían escondidas hasta 750 ms */
+@theme inline {
+  --animate-barra-crece: barra-crece var(--dur-grafica) var(--ease-salida)
+    calc(var(--i, 0) * var(--escalon-grafica)) both;
+  --animate-cifra-asoma: cifra-asoma var(--dur-media) var(--ease-salida)
+    calc(var(--dur-grafica) + var(--i, 0) * var(--escalon-grafica)) both;
+  @keyframes barra-crece { from { scale: 1 0; } }
+  @keyframes cifra-asoma { from { opacity: 0; } }
 }
 
 @layer base {

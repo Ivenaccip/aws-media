@@ -148,6 +148,7 @@ teléfono (390 px) y en el escritorio.
 | 6 | «Ver la publicación» | Abre la red en otra pestaña |
 | 7 | La de LinkedIn | Dice que Blotato todavía no recoge números de LinkedIn, sin botón |
 | 8 | «Usar la versión anterior» | Llega a `/metricas.html`; en `todos`, `/metricas.html` ya no redirige para ti durante 7 días |
+| 9 | En una con varias mediciones: «Ver el resto» | Sobre la tabla, las barras de vistas crecen desde la base una detrás de otra y cada cifra sale al final; «Ocultar el resto» y «Ver el resto» otra vez: ya no crecen. En el teléfono, si la gráfica queda abajo, crece cuando llegas con el scroll. Con «reducir movimiento», completa desde el principio |
 
 ## imágenes · `/estudio/imagenes/`
 
