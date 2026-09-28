@@ -178,7 +178,7 @@ def corrida(tmp_path_factory):
     ])
     f = tmp_path_factory.mktemp("ui11") / "prueba.js"
     f.write_text(NODO.replace("__CODIGO__", codigo), encoding="utf-8")
-    r = subprocess.run([node, str(f)], capture_output=True, text=True)
+    r = subprocess.run([node, str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 

@@ -24,6 +24,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Mismo idiom que tools/usuarios.py y tools/env_local.py. Aquí no es cosmético:
+# esta herramienta la capturan por un pipe (tests/test_m19_orbe.py y el CI), y sin
+# esto lo que escribe sale en cp1252 — quien lo lea como UTF-8 se queda sin stdout.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 RAIZ = Path(__file__).resolve().parent.parent
 OBJETIVOS = ["static/*.js", "static/*.html", "tools/editor/*.js", "tools/editor/index.html"]
 
@@ -58,7 +64,12 @@ def _revisar(nodo: str, etiqueta: str, codigo: str, linea_base: int) -> str | No
         f.write("\n" * (linea_base - 1) + codigo)
         tmp = f.name
     try:
-        r = subprocess.run([nodo, "--check", tmp], capture_output=True, text=True)
+        # encoding explícito: node reporta en UTF-8 y sin esto se lee en cp1252
+        # en Windows. El error de sintaxis llega con los acentos partidos, y si
+        # alguien captura ESTA salida por un pipe, lo que sale ya no es UTF-8
+        # válido y el decodificado de quien lee revienta (tests/test_m19_orbe.py).
+        r = subprocess.run([nodo, "--check", tmp], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
         if r.returncode == 0:
             return None
         return f"{etiqueta}\n{(r.stderr or r.stdout).replace(tmp, etiqueta).strip()}"

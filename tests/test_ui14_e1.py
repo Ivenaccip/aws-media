@@ -146,7 +146,7 @@ def test_con_metraje_el_principal_es_el_editor(tmp_path):
     codigo = _e1()[i:_e1().index("\n}\n", i) + 3]
     f = tmp_path / "p.js"
     f.write_text(NODO.replace("__CODIGO__", codigo), encoding="utf-8")
-    r = subprocess.run([node, str(f)], capture_output=True, text=True)
+    r = subprocess.run([node, str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     o = json.loads(r.stdout)
     assert o["sin"] == {"subir": ["btn", "btn-pri"], "nota": ["ir"]}

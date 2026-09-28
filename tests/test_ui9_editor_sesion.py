@@ -35,7 +35,7 @@ pytestmark = pytest.mark.skipif(not NODE, reason="sin node")
 
 def _node(js, *args):
     out = subprocess.run([NODE, "-e", js, *map(str, args)], capture_output=True,
-                         text=True, check=True, timeout=30)
+                         text=True, encoding="utf-8", check=True, timeout=30)
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
