@@ -224,6 +224,12 @@ class ApiStack(Stack):
             "COGNITO_DOMINIO",
             f"{e.dominio_cognito}.auth.{self.region}.amazoncognito.com")
 
+        # UI·18 (dev): las URLs viejas mandan a las pantallas nuevas en dev,
+        # sin tocar las etapas de server/migracion.py (esas llegan a main con
+        # el código). Solo fuera de prod: el template de prod no cambia.
+        if not e.es_prod:
+            fn.add_environment("UI_ETAPA_MINIMA", "todos")
+
         cdk.CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
         # El nombre propio al lado del técnico, para que el output del deploy
         # diga las dos verdades: por dónde entra la gente y por dónde sigue
