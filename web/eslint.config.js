@@ -33,7 +33,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ['vite.config.ts', 'eslint.config.js'],
+    files: ['vite.config.ts', 'eslint.config.js', 'playwright.config.ts', 'e2e/**'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  // Las pruebas de navegador no son React: el `use` de los fixtures de
+  // Playwright no es el hook de React, aunque se llame igual.
+  {
+    files: ['e2e/**'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: { 'react-hooks/rules-of-hooks': 'off' },
   },
 );

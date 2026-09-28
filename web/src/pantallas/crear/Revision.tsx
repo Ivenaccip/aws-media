@@ -17,6 +17,7 @@ import { ErrorApi } from '../../nucleo/api';
 import { dolares } from '../../nucleo/formato';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { Guardado } from '../../ui/Guardado';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import { TARDA, TOPE_MS } from './Formulario';
@@ -64,6 +65,7 @@ const nuevaClave = (l: Escena[]) => l.reduce((m, e) => Math.max(m, e.k), -1) + 1
 export const ESPERA_ESTIMAR_MS = 400;
 export const ESPERA_GUARDAR_MS = 1000;
 export const REINTENTO_GUARDAR_MS = 4000;
+const GUARDADO = 'Guardado a las ';
 
 export function Revision({
   proyecto,
@@ -144,7 +146,7 @@ export function Revision({
         await guardarGuion(id, cuerpoGuion(narracion, v.escenas, v.voz || null));
         if (v.elegida != null) await guardarPersonaje(id, v.elegida, v.nombre);
         sinGuardar.current = false;
-        setGuardado('Guardado a las ' + new Date().toTimeString().slice(0, 5));
+        setGuardado(GUARDADO + new Date().toTimeString().slice(0, 5));
       } catch {
         setGuardado('Sin guardar, reintentando…');
         clearTimeout(reloj.current);
@@ -195,6 +197,7 @@ export function Revision({
       sinGuardar.current = false;
       refrescarSaldo();
       alCambiar(p);
+      return true; // UI·19: se cobró
     } catch (e) {
       setFalla({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });
     } finally {
@@ -394,7 +397,13 @@ export function Revision({
           </p>
           )}
         </div>
-        {guardado && <p className="m-0 mt-1 text-xs text-secundario" role="status">{guardado}</p>}
+        {guardado && (
+          <p className="m-0 mt-1 text-xs text-secundario" role="status">
+            {/* UI·24: lo que sí se guardó lleva su palomita, en la misma nota
+                que ya anuncia «Guardando…» (una sola región) */}
+            {guardado.startsWith(GUARDADO) ? <Guardado anuncia={false}>{guardado}</Guardado> : guardado}
+          </p>
+        )}
         {falla && (
           <p role="alert" className="m-0 mt-1 whitespace-pre-wrap text-sm text-error">
             {falla.texto}
@@ -475,6 +484,7 @@ function Personaje({
       setCambiando(false); // el orbe se va antes de que aparezca la imagen nueva
       refrescarSaldo();
       alCambiar(p);
+      return true; // UI·19: se cobró
     } catch (e) {
       setMsgCambio({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });
     } finally {

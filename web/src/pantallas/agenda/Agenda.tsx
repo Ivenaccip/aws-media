@@ -7,7 +7,7 @@
 // Una carga a la vez: dos tiran dos veces de Blotato, y la que se pide
 // mientras hay otra en curso se ENCOLA (cancelar dos seguidas perdía la
 // segunda recarga y la lista enseñaba lo que ya no existe).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { Marco } from '../../marca/Marco';
 import { Aviso } from '../../ui/Aviso';
@@ -39,6 +39,8 @@ import {
 interface Nota {
   tipo: 'error' | 'exito';
   texto: string;
+  /** UI·24: el éxito de algo que se acaba de guardar: la palomita se dibuja. */
+  guardado?: boolean;
   conectar?: boolean;
   reintentar?: () => void;
 }
@@ -132,10 +134,21 @@ export function Agenda() {
     Promise.resolve().then(() => cargarLista());
   }, [cargarLista]);
 
-  // la tarjeta que tenía el foco pudo desaparecer: el foco no cae al <body>
-  const focoSinDueno = () => {
+  // la tarjeta que tenía el foco pudo desaparecer: el foco no cae al <body>.
+  // Se mira DESPUÉS de pintar y sin carga en curso: «Actualizar» está
+  // deshabilitado mientras carga, y un botón deshabilitado no toma el foco
+  // (con la red de verdad, la lista vuelve después de cerrar el diálogo)
+  const focoPendiente = useRef(false);
+  const [, pedirFoco] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (!focoPendiente.current || ocupado) return;
+    focoPendiente.current = false;
     const a = document.activeElement;
     if (!a || a === document.body) actualizar.current?.focus();
+  });
+  const focoSinDueno = () => {
+    focoPendiente.current = true;
+    pedirFoco();
   };
 
   // ── cambiar la hora
@@ -183,7 +196,7 @@ export function Agenda() {
       await reprogramar(it.id, cuando);
       if (vigente()) cerrarHora();
       await cargarLista();
-      setNota({ tipo: 'exito', texto: `Hora cambiada: ${it.red} sale el ${fecha(cuando)} (tu hora).` });
+      setNota({ tipo: 'exito', texto: `Hora cambiada: ${it.red} sale el ${fecha(cuando)} (tu hora).`, guardado: true });
       focoSinDueno();
     } catch (e) {
       if (estado(e) === 404) {
@@ -254,7 +267,7 @@ export function Agenda() {
 
           {nota && (
             <div className="mt-4">
-              <Aviso tipo={nota.tipo}>
+              <Aviso tipo={nota.tipo} dibujar={!!nota.guardado}>
                 {nota.texto}
                 {nota.conectar ? (
                   <>
@@ -314,6 +327,9 @@ export function Agenda() {
         }}
         titulo="Cambiar la hora"
         focoInicial={campo}
+        // UI·20: el foco vuelve 100 ms después de cerrar; si la tarjeta que
+        // abrió ya no está, va a «Actualizar»
+        focoDeRespaldo={actualizar}
         acciones={
           <>
             <Boton nivel="secundario" onClick={cerrarHora}>
@@ -359,6 +375,7 @@ export function Agenda() {
         }}
         titulo="¿Cancelar esta publicación?"
         descripcion={aCancelar ? confirmacion(aCancelar) : ''}
+        focoDeRespaldo={actualizar}
         confirmar="Sí, cancelarla"
         cancelar="No, dejarla"
         peligro

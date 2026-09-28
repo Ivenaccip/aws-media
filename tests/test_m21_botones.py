@@ -55,13 +55,14 @@ def _web(*patrones: str) -> list[Path]:
     """Los fuentes de web/ (Fase 3 de docs/PLAN-UI.md) que casan con los patrones.
 
     Si web/ todavía no existe no hay nada que vigilar: lista vacía, no error.
-    node_modules/ (de terceros) y dist/ (compilado de estos mismos fuentes) no
+    node_modules/ (de terceros), dist/ (compilado de estos mismos fuentes) y lo
+    que dejan las pruebas de navegador (playwright-report/, test-results/) no
     se miran."""
     web = RAIZ / "web"
     if not web.is_dir():
         return []
     return [p for patron in patrones for p in web.glob(patron)
-            if not {"node_modules", "dist"} & set(p.relative_to(web).parts)]
+            if not {"node_modules", "dist", "playwright-report", "test-results"} & set(p.relative_to(web).parts)]
 
 
 ARCHIVOS = sorted(
@@ -98,7 +99,7 @@ def test_toda_etiqueta_con_estrella_respeta_la_forma(archivo):
     """Un verbo, la estrella, el número. Nada de «Renderizar 2 shorts ✦ 4»."""
     texto = archivo.read_text(encoding="utf-8")
     for plantilla in re.findall(r"`([^`\n]*" + ESTRELLA + r"[^`\n]*)`", texto):
-        if plantilla.startswith("${d.saldo}"):
+        if plantilla.startswith("${saldo}"):
             continue                       # el saldo de la cabecera, más abajo
         if plantilla.startswith('<span class="cr">'):
             # M25 · B — la etiqueta de precio del desplegable del inicio. La
@@ -154,7 +155,7 @@ def test_la_estrella_es_siempre_la_misma(archivo):
 
 def test_el_saldo_de_la_cabecera_termina_en_la_estrella():
     js = (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
-    assert "`${d.saldo} créditos " + ESTRELLA + "`" in js, \
+    assert "`${saldo} créditos " + ESTRELLA + "`" in js, \
         "el saldo de la cabecera perdió su ✦"
 
 

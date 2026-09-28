@@ -55,6 +55,21 @@ const tarifasSinNotas: Plugin = {
   },
 };
 
+// UI·18: el módulo de cada pantalla bloquea el primer pintado hasta que
+// corre (`blocking="render"`). Sin eso, entre dos pantallas el navegador
+// fotografiaba a veces la página nueva antes de tiempo y cancelaba la View
+// Transition: en Chromium falló 1 de cada 3 navegaciones, y con el atributo
+// 24 de 24. No cambia lo que se ve sin transición: antes de que corra el
+// módulo, #raiz está vacío de todos modos. Vite descarta el atributo si se
+// escribe en el index.html; por eso se pone aquí, sobre el HTML ya armado.
+const pintarConElModulo: Plugin = {
+  name: 'pintar-con-el-modulo',
+  transformIndexHtml: {
+    order: 'post',
+    handler: html => html.replace(/<script type="module"(?![^>]*\bblocking=)/g, '<script type="module" blocking="render"'),
+  },
+};
+
 // Todo lo que no es de Vite va a uvicorn: la API, auth.js, monedero.js, las
 // fuentes, /ui/clasica y las pantallas viejas. 8011 es el origen registrado
 // en Cognito, por eso Vite se queda con él y el server baja a 8012.
@@ -71,7 +86,7 @@ const TODO_MENOS_LO_DE_VITE =
 
 export default defineConfig({
   root: RAIZ,
-  plugins: [tarifasSinNotas, react(), tailwindcss()],
+  plugins: [tarifasSinNotas, pintarConElModulo, react(), tailwindcss()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -91,5 +106,8 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/prueba/preparar.ts'],
     restoreMocks: true,
+    // pantallas enteras en jsdom, en paralelo: con 4 núcleos ocupados una
+    // prueba de cobro con relojes falsos pasa de los 5 s de fábrica
+    testTimeout: 15_000,
   },
 });

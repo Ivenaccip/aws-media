@@ -379,7 +379,7 @@ export function Imagenes() {
   }
 
   // ── enviar (el candado lo pone BotonCobro, antes de cualquier await)
-  async function enviar() {
+  async function enviar(cobrado?: () => void) {
     if (vivo.current.enVuelo || cargando) return;
     setFalla(null);
     // lo recién escrito también cuenta
@@ -399,6 +399,7 @@ export function Imagenes() {
     setEnVuelo(true);
     setEspera('Revisando tu texto…'); // cubre el hueco mudo del guardarraíl
     let creada: Hecha | null = null;
+    let cobra = false; // UI·19: el «−N» vuela solo si el servidor cobró
     try {
       // el pedido se arma ANTES de moderar: tocar la pantalla durante la
       // revisión ya no cambia lo que se cobra
@@ -438,6 +439,8 @@ export function Imagenes() {
         setPrompt('');
         setIntencion(false);
       }
+      cobra = true;
+      cobrado?.(); // antes de bajar la imagen: el «−N» va con el saldo
       refrescarSaldo();
     } catch (e) {
       setEspera(null); // NUNCA un orbe girando junto a un error
@@ -449,6 +452,7 @@ export function Imagenes() {
     }
     // lo recién creado pasa directo a editarse
     if (creada) await seguir(creada.nombre);
+    return cobra;
   }
 
   // ── el título: la palabra gira mientras la pantalla está en blanco

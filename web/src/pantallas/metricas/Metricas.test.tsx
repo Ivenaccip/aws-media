@@ -1,13 +1,33 @@
 // Métricas, como COMPORTAMIENTO. Cada test empieza por el ID de su invariante
 // (tests/test_migracion_ui.py); el mapa contra las aserciones de
 // static/metricas.html está en docs/migracion/metricas.md.
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { olvidarApariciones } from '../../nucleo/useAparecerUnaVez';
+import { ponerObservador } from '../../prueba/observador';
 import { json, servidor, sinRed, type Ruta } from '../../prueba/servidor';
-import { casillas, delta, duracion, num, rutaTramo, unir, valor, type Publicacion, type Tramo } from './logica';
+import {
+  BARRAS,
+  barrasVistas,
+  casillas,
+  diaCorto,
+  delta,
+  duracion,
+  num,
+  rutaTramo,
+  unir,
+  valor,
+  type Medida,
+  type Publicacion,
+  type Tramo,
+} from './logica';
 import { Metricas } from './Metricas';
 
 const base = (id: string, red: string, extra: Partial<Publicacion> = {}): Publicacion => ({
@@ -82,6 +102,7 @@ const tarjeta = async (red: string) => (await screen.findByText(red, { selector:
 
 beforeEach(() => {
   vi.unstubAllGlobals();
+  olvidarApariciones();
   document.title = 'Estudio de video · Métricas';
 });
 afterEach(() => {
@@ -462,5 +483,141 @@ describe('metricas', () => {
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Cómo rinden tus publicaciones');
     await tarjeta('Instagram');
+  });
+});
+
+// UI·23 — la gráfica de «Cómo fue cambiando». jsdom no anima ni tiene
+// IntersectionObserver: sin él, la gráfica tiene que estar COMPLETA.
+describe('UI·23 · las barras de «Cómo fue cambiando»', () => {
+  const medidas = (...vistas: (number | null)[]): Medida[] =>
+    vistas.map((v, i) => ({ cuando: `2026-09-${String(10 + i).padStart(2, '0')}T10:00:00Z`, numeros: v === null ? null : { vistas: v } }));
+  const grafica = (li: HTMLElement) => li.querySelector<HTMLElement>('[data-grafica]');
+  const barras = (g: HTMLElement) => [...g.querySelectorAll<HTMLElement>('[data-barra]')];
+  const abrir = async (red = 'Instagram') => {
+    const li = await tarjeta(red);
+    await userEvent.click(within(li).getByRole('button', { name: 'Ver el resto' }));
+    return li;
+  };
+
+  it('UI·23: 500 ms por barra y 50 ms entre una y otra, con su porqué al lado', () => {
+    // vitest no procesa CSS: se lee tal cual del disco
+    const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../estilos/tokens.css'), 'utf8');
+    expect(tokens).toMatch(/UI·23:[^*]+\*\/\s*--dur-grafica: 500ms;\s*--escalon-grafica: 50ms;/);
+    expect(tokens).toContain('--animate-barra-crece: barra-crece var(--dur-grafica) var(--ease-salida)');
+    expect(tokens).toContain('calc(var(--dur-grafica) + var(--i, 0) * var(--escalon-grafica)) both');
+  });
+
+  it('UI·23: un hueco no es una barra en cero, y solo se dibujan las últimas', () => {
+    expect(barrasVistas(medidas(50, null, 100, 0))).toEqual({
+      barras: [
+        { cuando: '2026-09-10T10:00:00Z', vistas: 50, alto: 50 },
+        { cuando: '2026-09-11T10:00:00Z', vistas: null, alto: 0 },
+        { cuando: '2026-09-12T10:00:00Z', vistas: 100, alto: 100 },
+        { cuando: '2026-09-13T10:00:00Z', vistas: 0, alto: 0 },
+      ],
+      de: 4,
+    });
+    // con una sola cifra no hay nada que comparar
+    expect(barrasVistas(medidas(null, 7))).toBeNull();
+    expect(barrasVistas([])).toBeNull();
+    expect(barrasVistas(medidas(0, 0))!.barras.map(b => b.alto)).toEqual([0, 0]);
+    // una cuenta negativa no se dibuja desde la base: hueco
+    expect(barrasVistas(medidas(-3, 4, 8))!.barras.map(b => b.vistas)).toEqual([null, 4, 8]);
+    const muchas = barrasVistas(medidas(1, 2, 3, 4, 5, 6, 7, 8, 9))!;
+    expect(muchas.barras).toHaveLength(BARRAS);
+    expect(muchas.barras.map(b => b.vistas)).toEqual([4, 5, 6, 7, 8, 9]);
+    expect(muchas.de).toBe(9);
+  });
+
+  it('UI·23: con cifras largas se dibujan menos barras, para que ninguna cifra pise a otra', () => {
+    // «99,999» cabe en seis columnas de teléfono; «103,200» ya pide cinco
+    expect(barrasVistas(medidas(10, 20, 30, 40, 50, 60, 99_999))!.barras).toHaveLength(6);
+    const grandes = barrasVistas(medidas(1, 103_200, 245_100, 318_740, 412_050, 515_800, 998_230))!;
+    expect(grandes.barras.map(b => b.vistas)).toEqual([245_100, 318_740, 412_050, 515_800, 998_230]);
+    expect(grandes.de).toBe(7);
+    expect(barrasVistas(medidas(1, 2, 3, 4, 5, 12_345_678))!.barras).toHaveLength(4);
+    // lo que decide es la más larga de las que quedan: al soltar la de 7 caracteres vuelven a caber más
+    expect(barrasVistas(medidas(1_000_000, 1, 2, 3, 4, 5))!.barras.map(b => b.vistas)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('UI·23: las barras tienen su altura final sin depender de la animación', async () => {
+    montar({ '/api/metricas': () => json(tramo()) });
+    render(<Metricas />);
+    const li = await abrir();
+    const g = grafica(li)!;
+    // sin IntersectionObserver no hay marca: es el estado de una captura o de un lector
+    expect(g).not.toHaveAttribute('data-entra');
+    expect(g).toHaveAttribute('aria-hidden', 'true');
+    const [a, b] = barras(g);
+    // de la más vieja (1,240) a la más nueva (1,200): el alto es el final, no 0
+    expect(a!.style.height).toBe('100%');
+    expect(b!.style.height).toBe('96.8%');
+    expect(a!.style.getPropertyValue('--i')).toBe('0');
+    expect(b!.style.getPropertyValue('--i')).toBe('1');
+    expect(a).toHaveTextContent('1,240');
+    expect(b).toHaveTextContent('1,200');
+    // y bajo cada una, su día
+    expect(diaCorto('2026-09-21T10:00:00Z')).toMatch(/^21 sep/);
+    expect(g).toHaveTextContent(diaCorto(MEDIDA.historial[0]!.cuando) + diaCorto(MEDIDA.historial[1]!.cuando));
+    // la animación solo mueve scale y opacity, y solo bajo la marca y motion-safe
+    expect(a!.firstElementChild!.className).toContain('motion-safe:in-data-entra:animate-barra-crece');
+    expect(b!.querySelector('[data-final]')!.className).toContain('motion-safe:in-data-entra:animate-cifra-asoma');
+    // la tabla se queda como estaba
+    expect(within(li).getAllByRole('row')).toHaveLength(3);
+  });
+
+  it('UI·23: marcada para crecer, el alto sigue siendo el final', async () => {
+    const IO = ponerObservador();
+    montar({ '/api/metricas': () => json(tramo()) });
+    render(<Metricas />);
+    const li = await abrir();
+    const g = grafica(li)!;
+    IO.ultimo().cruzar();
+    expect(g).toHaveAttribute('data-entra');
+    expect(barras(g).map(b => b.style.height)).toEqual(['100%', '96.8%']);
+  });
+
+  it('UI·23: crece una sola vez: ni al cerrar y abrir, ni en «Las más vistas»', async () => {
+    const IO = ponerObservador();
+    montar({ '/api/metricas': () => json(tramo()) });
+    render(<Metricas />);
+    const li = await abrir();
+    IO.ultimo().cruzar();
+    expect(grafica(li)).toHaveAttribute('data-entra');
+    const antes = IO.todos.length;
+    await userEvent.click(within(li).getByRole('button', { name: 'Ocultar el resto' }));
+    await userEvent.click(within(li).getByRole('button', { name: 'Ver el resto' }));
+    expect(grafica(li)).not.toHaveAttribute('data-entra');
+    // ya vista: ni siquiera se vuelve a mirar
+    expect(IO.todos).toHaveLength(antes);
+    await userEvent.click(screen.getByRole('button', { name: 'Las más vistas' }));
+    expect(grafica(await tarjeta('Instagram'))).not.toHaveAttribute('data-entra');
+    expect(IO.todos).toHaveLength(antes);
+  });
+
+  it('UI·23: sin dos cifras que comparar no hay gráfica, y la tabla sigue', async () => {
+    const una = { ...MEDIDA, historial: medidas(null, 1200) };
+    montar({ '/api/metricas': () => json(tramo({ items: [una], mejores: [] })) });
+    render(<Metricas />);
+    const li = await abrir();
+    expect(li).toHaveTextContent('Cómo fue cambiando');
+    expect(grafica(li)).toBeNull();
+    expect(within(li).getByRole('table')).toBeInTheDocument();
+  });
+
+  it('UI·23: con más de seis mediciones dice cuáles dibuja', async () => {
+    const larga = { ...MEDIDA, historial: medidas(10, 20, 30, 40, 50, 60, null, 80, 90) };
+    montar({ '/api/metricas': () => json(tramo({ items: [larga], mejores: [] })) });
+    render(<Metricas />);
+    const g = grafica(await abrir())!;
+    expect(g).toHaveTextContent('(las 6 más recientes de 9)');
+    const b = barras(g);
+    expect(b).toHaveLength(6);
+    expect(b.map(x => x.style.getPropertyValue('--i'))).toEqual(['0', '1', '2', '3', '4', '5']);
+    // el hueco no lleva ni barra ni cifra
+    expect(b[3]!.childElementCount).toBe(0);
+    // lo último que se mueve es la cifra de la última barra
+    expect(g.querySelectorAll('[data-final]')).toHaveLength(1);
+    expect(b[5]!.querySelector('[data-final]')).toHaveTextContent('90');
   });
 });

@@ -2,14 +2,32 @@
 // a mano (docs/PLAN-UI.md §2). Sin sombra: la profundidad la dan el velo y la
 // superficie (docs/DISENO.md §4).
 import * as D from '@radix-ui/react-dialog';
-import { useRef, type ReactNode, type RefObject } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 
 import { Icono } from './Icono';
 
-export const VELO = 'fixed inset-0 z-40 bg-[rgba(4,9,17,0.72)]';
+// UI·20: entran y salen (tokens.css): 150 ms al abrir, 100 ms al cerrar.
+// Mientras sale, la caja no recibe clics: caen en el velo, que sigue tapando
+// la página hasta desmontarse.
+export const VELO =
+  'fixed inset-0 z-40 bg-[rgba(4,9,17,0.72)] ' +
+  'data-[state=open]:animate-velo-entra data-[state=closed]:animate-velo-sale';
 export const CAJA =
   'fixed left-1/2 top-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 ' +
-  'rounded-grande border border-linea bg-superficie p-6 text-texto';
+  'rounded-grande border border-linea bg-superficie p-6 text-texto ' +
+  'data-[state=open]:animate-caja-entra data-[state=closed]:animate-caja-sale ' +
+  'data-[state=closed]:pointer-events-none';
+
+// UI·20: la caja tarda 100 ms en irse, y quien la cierra suele vaciar su
+// estado en el mismo clic (setVeredicto(null), setEditando(null)…). Mientras
+// sale se sigue viendo lo último que tuvo abierta, en vez de encogerse a
+// medio camino. Con useState y no useRef: react-hooks prohíbe leer refs al
+// pintar.
+export function useLoUltimoAbierto<T>(valor: T, abierto: boolean): T {
+  const [visto, setVisto] = useState(valor);
+  if (abierto && !Object.is(visto, valor)) setVisto(valor);
+  return abierto ? valor : visto;
+}
 
 export interface PropsDialogo {
   abierto: boolean;
@@ -24,21 +42,31 @@ export interface PropsDialogo {
   focoInicial?: RefObject<HTMLElement | null>;
   /** Dónde vuelve el foco al cerrar; sin él, a lo que tenía el foco al abrir. */
   focoAlCerrar?: RefObject<HTMLElement | null>;
+  /** Si lo que tenía el foco al abrir ya no está (o no se deja enfocar), aquí. */
+  focoDeRespaldo?: RefObject<HTMLElement | null>;
 }
 
 // Radix devuelve el foco a su <Trigger> al cerrar; aquí los diálogos se abren
 // con estado (sin Trigger) y el foco caía al <body>: quien navega con teclado
 // perdía el sitio. Se guarda lo que tenía el foco al abrir y se le devuelve.
-export function useFocoDeVuelta() {
+export function useFocoDeVuelta(respaldo?: RefObject<HTMLElement | null>) {
   const origen = useRef<HTMLElement | null>(null);
   return {
     onOpenAutoFocus: () => {
       origen.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     },
+    // UI·20: esto corre al DESMONTAR, 100 ms después de cerrar. En ese rato
+    // lo que abrió pudo borrarse o deshabilitarse (en Agenda, la tarjeta que
+    // se canceló): entonces va al respaldo
     onCloseAutoFocus: (e: Event) => {
-      if (!origen.current?.isConnected) return;
-      e.preventDefault();
-      origen.current.focus();
+      for (const destino of [origen.current, respaldo?.current]) {
+        if (!destino?.isConnected) continue;
+        destino.focus();
+        if (document.activeElement === destino) {
+          e.preventDefault();
+          return;
+        }
+      }
     },
   };
 }
@@ -63,16 +91,25 @@ function useGraciaDelVelo() {
 }
 
 export function Dialogo({
-  abierto, alCambiar, titulo, descripcion, children, acciones, focoInicial, focoAlCerrar,
+  abierto, alCambiar, focoInicial, focoAlCerrar, focoDeRespaldo, ...props
 }: PropsDialogo) {
-  const foco = useFocoDeVuelta();
+  const foco = useFocoDeVuelta(focoDeRespaldo);
   const gracia = useGraciaDelVelo();
+  // campo por campo: cada uno conserva su identidad entre renders del padre
+  const titulo = useLoUltimoAbierto(props.titulo, abierto);
+  const descripcion = useLoUltimoAbierto(props.descripcion, abierto);
+  const children = useLoUltimoAbierto(props.children, abierto);
+  const acciones = useLoUltimoAbierto(props.acciones, abierto);
   return (
     <D.Root open={abierto} onOpenChange={alCambiar}>
       <D.Portal>
         <D.Overlay className={VELO} />
         <D.Content
           className={CAJA}
+          // UI·20: mientras sale (100 ms) muestra lo último con sus handlers
+          // de entonces; el pointer-events-none frena al ratón, esto al
+          // teclado (un Enter en el campo no manda el formulario ya cerrado)
+          inert={!abierto}
           onOpenAutoFocus={e => {
             gracia.marcar();
             foco.onOpenAutoFocus();

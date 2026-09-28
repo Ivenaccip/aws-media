@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { oirCobros } from '../prueba/servidor';
 import { BotonCobro } from './BotonCobro';
 
 describe('BotonCobro', () => {
@@ -61,5 +63,74 @@ describe('BotonCobro', () => {
     render(<BotonCobro verbo="Generar" costo={10} alCobrar={() => alCobrar().catch(() => {})} />);
     await userEvent.click(screen.getByRole('button'));
     await vi.waitFor(() => expect(screen.getByRole('button')).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('UI·19: un cobro que salió bien le avisa a monedero.js cuánto y desde dónde', async () => {
+    const cobros = oirCobros();
+    render(<BotonCobro verbo="Generar" costo={30} alCobrar={async () => true} />);
+    await userEvent.click(screen.getByRole('button'));
+    // jsdom no mide: el rect sale en ceros, pero sale
+    await vi.waitFor(() => expect(cobros).toEqual([{ costo: 30, rect: { x: 0, y: 0, ancho: 0, alto: 0 } }]));
+  });
+
+  it('UI·19: sin `true` no vuela nada: un 402, un veto o una validación no cobraron', async () => {
+    const cobros = oirCobros();
+    for (const alCobrar of [
+      async () => {},
+      async () => false,
+      () => Promise.reject(new Error('402')).catch(() => undefined),
+    ]) {
+      const { unmount } = render(<BotonCobro verbo="Generar" costo={30} alCobrar={alCobrar} />);
+      await userEvent.click(screen.getByRole('button'));
+      await vi.waitFor(() => expect(screen.getByRole('button')).not.toHaveAttribute('aria-busy'));
+      unmount();
+    }
+    expect(cobros).toEqual([]);
+  });
+
+  it('UI·19: doble clic que cobra una vez vuela una vez', async () => {
+    const cobros = oirCobros();
+    let soltar!: (v: boolean) => void;
+    render(<BotonCobro verbo="Producir" costo={90} alCobrar={() => new Promise<boolean>(r => { soltar = r; })} />);
+    const b = screen.getByRole('button');
+    b.click();
+    b.click();
+    soltar(true);
+    await vi.waitFor(() => expect(cobros).toHaveLength(1));
+  });
+
+  it('UI·19: con cobrado() vuela en cuanto el servidor acepta, no cuando termina lo lento; y una sola vez', async () => {
+    const cobros = oirCobros();
+    let soltar!: () => void;
+    render(
+      <BotonCobro
+        verbo="Generar"
+        costo={5}
+        alCobrar={async cobrado => {
+          cobrado(); // el POST ya pasó…
+          await new Promise<void>(r => { soltar = r; }); // …y la imagen aún baja
+          return true;
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button'));
+    await vi.waitFor(() => expect(cobros).toHaveLength(1));
+    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
+    soltar();
+    await vi.waitFor(() => expect(screen.getByRole('button')).not.toHaveAttribute('aria-busy'));
+    expect(cobros).toHaveLength(1);
+  });
+
+  it('UI·19: si el cobro desmonta el botón, el «−N» sale de donde estaba', async () => {
+    const cobros = oirCobros();
+    function Pantalla() {
+      const [hecho, setHecho] = useState(false);
+      return hecho ? <p>Listo</p> : <BotonCobro verbo="Generar" costo={12} alCobrar={async () => { setHecho(true); return true; }} />;
+    }
+    render(<Pantalla />);
+    await userEvent.click(screen.getByRole('button'));
+    await screen.findByText('Listo');
+    expect(cobros).toEqual([expect.objectContaining({ costo: 12 })]);
+    expect(cobros[0]!.rect).not.toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { simularSalida } from '../../prueba/salida';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Agenda } from './Agenda';
 import { validar, type Pagina, type Programada } from './logica';
@@ -498,5 +499,71 @@ describe('agenda', () => {
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Agenda tus publicaciones');
     await screen.findByText(/No tienes nada programado/);
+  });
+});
+
+describe('UI·20 · el diálogo tarda 100 ms en irse', () => {
+  it('cancelar con respuesta instantánea: al terminar la salida, el foco va a «Actualizar» y no al body', async () => {
+    const salida = simularSalida();
+    let n = 0;
+    montar({
+      '/api/agenda': () => json(pagina(n++ === 0 ? [UNO] : [])),
+      '/api/agenda/cancelar': () => json({ id: 'sch_1', cancelado: true }),
+    });
+    render(<Agenda />);
+    await userEvent.click(within(await tarjeta('Instagram')).getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, cancelarla' }));
+    await screen.findByText('Publicación cancelada.');
+    // la tarjeta que abrió el diálogo ya no existe cuando la caja termina de irse
+    salida.terminar();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Actualizar' })).toHaveFocus());
+  });
+});
+
+describe('UI·24 · el «no» y el «listo» de cambiar la hora', () => {
+  const tiembla = (el: HTMLElement) => el.className.includes('animate-campo-tiembla');
+
+  it('UI·24: una hora que ya pasó hace temblar el campo una vez; el mismo «no» otra vez, no', async () => {
+    const f = montar({ '/api/agenda': () => json(pagina([UNO])), '/api/agenda/reprogramar': () => json({}) });
+    render(<Agenda />);
+    const dlg = await abrirHora();
+    const campo = within(dlg).getByLabelText('Nueva fecha y hora');
+    expect(tiembla(campo)).toBe(false);
+    ponerHora('2001-01-01T10:00');
+    expect(tiembla(campo)).toBe(false); // teclear no tiembla
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Guardar' }));
+    expect(within(dlg).getByText('Esa hora ya pasó: elige una más adelante.')).toBeInTheDocument();
+    expect(campo).toHaveAttribute('aria-invalid', 'true');
+    expect(tiembla(campo)).toBe(true);
+    fireEvent.animationEnd(campo);
+    expect(tiembla(campo)).toBe(false);
+    // Guardar otra vez con lo mismo: el error ya estaba
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Guardar' }));
+    expect(tiembla(campo)).toBe(false);
+    // teclear lo borra; el siguiente «no» es otra aparición
+    ponerHora('');
+    expect(campo).not.toHaveAttribute('aria-invalid');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Guardar' }));
+    expect(within(dlg).getByText('Elige la fecha y hora.')).toBeInTheDocument();
+    expect(tiembla(campo)).toBe(true);
+    expect(llamadas(f, '/api/agenda/reprogramar')).toHaveLength(0);
+  });
+
+  it('UI·24: la hora guardada se confirma con la palomita que se dibuja; cancelar no guarda y no la dibuja', async () => {
+    montar({
+      '/api/agenda': () => json(pagina([UNO, DOS])),
+      '/api/agenda/reprogramar': () => json({ id: 'sch_1' }),
+      '/api/agenda/cancelar': () => json({ id: 'sch_2', cancelado: true }),
+    });
+    render(<Agenda />);
+    await abrirHora();
+    ponerHora('2099-06-01T10:30');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    const ok = (await screen.findByText(/^Hora cambiada:/)).closest('[role="status"]')!;
+    expect(ok.querySelector('svg path')!.getAttribute('class')).toBe('motion-safe:animate-trazo-se-dibuja');
+    await userEvent.click(within(await tarjeta('Facebook')).getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, cancelarla' }));
+    const cancelada = (await screen.findByText('Publicación cancelada.')).closest('[role="status"]')!;
+    expect(cancelada.querySelector('svg path')).not.toHaveAttribute('class');
   });
 });

@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import type { Candidato, Costo, Proyecto } from './logica';
 import { Shorts } from './Shorts';
 
@@ -264,6 +264,7 @@ describe('renderizar', () => {
   });
 
   it('shorts.cobro.tiempos_fuera_de_rango_no_cobran', async () => {
+    const cobros = oirCobros();
     const f = montar({ proyecto: () => CANDIDATOS });
     render(<Shorts />);
     await screen.findByRole('button', { name: 'Renderizar ✦ 9' });
@@ -276,6 +277,7 @@ describe('renderizar', () => {
     expect(b).toBeDisabled();
     await userEvent.click(b);
     expect(llamadas(f, '/api/shorts/podcast/render')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('shorts.cobro.mas_de_diez_no_cobra', async () => {
@@ -289,15 +291,18 @@ describe('renderizar', () => {
   });
 
   it('shorts.cobro.sin_saldo_con_la_recarga_cerrada_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     monedero = ponerMonedero(null, false);
     montar({ proyecto: () => CANDIDATOS, rutas: { '/api/shorts/podcast/render': () => json({ detail: 'Te faltan créditos.' }, 402) } });
     render(<Shorts />);
     await userEvent.click(await screen.findByRole('button', { name: 'Renderizar ✦ 9' }));
     expect(await screen.findByText(/Te faltan créditos\./)).toHaveTextContent(monedero.cta);
     expect(screen.queryByRole('button', { name: 'Recargar' })).toBeNull();
+    expect(cobros).toEqual([]);
   });
 
   it('shorts.cobro.saldo_conocido_que_no_alcanza_no_cobra', async () => {
+    const cobros = oirCobros();
     monedero = ponerMonedero(4);
     const f = montar({ proyecto: () => CANDIDATOS });
     render(<Shorts />);
@@ -306,9 +311,11 @@ describe('renderizar', () => {
     expect(screen.getAllByText(/Te faltan ✦ 5/).length).toBeGreaterThan(0);
     await userEvent.click(b);
     expect(llamadas(f, '/api/shorts/podcast/render')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('shorts.cobro.refresca_el_saldo_tras_cobrar_y_al_terminar', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let estado: Proyecto = CANDIDATOS;
     montar({
@@ -324,11 +331,13 @@ describe('renderizar', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Renderizar ✦ 9' }));
     expect(await screen.findByText(/Renderizando en la nube/)).toBeInTheDocument();
     expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+    expect(cobros).toEqual([expect.objectContaining({ costo: 9 })]);
     estado = RENDER_LISTO;
     await esperar(5000);
     expect(await screen.findByRole('heading', { name: '3 · Tus shorts' })).toBeInTheDocument();
     // al terminar puede haber devolución: se vuelve a refrescar
     expect(monedero.refrescar).toHaveBeenCalledTimes(2);
+    expect(cobros).toHaveLength(1); // …pero una devolución no vuela como un cobro
   });
 
   it('shorts.candidatos.lo_elegido_sobrevive_al_sondeo', async () => {
@@ -386,6 +395,7 @@ describe('importar de YouTube', () => {
   });
 
   it('shorts.cobro.importado_abre_el_proyecto', async () => {
+    const cobros = oirCobros();
     irA(null);
     montar({
       rutas: {
@@ -399,9 +409,11 @@ describe('importar de YouTube', () => {
     expect(await screen.findByText(/Trayendo «Entrevista larga» de YouTube/)).toBeInTheDocument();
     expect(location.search).toBe('?p=yt-abc123');
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([expect.objectContaining({ costo: 11 })]);
   });
 
   it('shorts.cobro.importar_409_abre_el_que_ya_existe', async () => {
+    const cobros = oirCobros();
     irA(null);
     montar({
       rutas: {
@@ -414,6 +426,7 @@ describe('importar de YouTube', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Importar ✦ 11' }));
     expect(await screen.findByText('Candidato 1')).toBeInTheDocument();
     expect(location.search).toBe('?p=yt-abc123');
+    expect(cobros).toEqual([]); // abrir el que ya existía no cobró
   });
 
   it('shorts.importacion.descargando_sin_orbe_y_sin_la_liga', async () => {
@@ -609,5 +622,57 @@ describe('subir y marco', () => {
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Shorts · podcast');
     await screen.findByRole('button', { name: 'Analizar ✦ 7' });
+  });
+});
+
+// UI·21 — lo que termina con la página abierta se enciende un instante; lo
+// que ya estaba listo al entrar, no. Los nombres NO son IDs de invariante
+// (tests/test_migracion_ui.py).
+describe('UI·21 · lo que acaba de quedar listo', () => {
+  it('UI·21: «Análisis listo» se enciende al terminar con la página abierta', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let estado: Proyecto = ANALIZANDO;
+    montar({ proyecto: () => estado });
+    render(<Shorts />);
+    await screen.findByText('Analizando tu video · transcript y candidatos');
+    estado = CANDIDATOS;
+    await esperar(5000);
+    const listo = await screen.findByText('Análisis listo');
+    expect(listo).toHaveClass('text-exito', 'destello');
+    // se apaga al terminar su animación
+    fireEvent.animationEnd(listo);
+    expect(listo).not.toHaveClass('destello');
+  });
+
+  it('UI·21: «Análisis listo» NO se enciende si ya estaba listo en la primera carga', async () => {
+    montar({ proyecto: () => CANDIDATOS });
+    render(<Shorts />);
+    const listo = await screen.findByText('Análisis listo');
+    expect(listo).toHaveClass('text-exito');
+    expect(listo).not.toHaveClass('destello');
+  });
+
+  it('UI·21: «Render listo» y las salidas: se encienden y entran al terminar con la página abierta', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let estado: Proyecto = RENDERIZANDO;
+    montar({ proyecto: () => estado });
+    render(<Shorts />);
+    await screen.findByText(/Renderizando en la nube/);
+    estado = RENDER_LISTO;
+    await esperar(5000);
+    expect(await screen.findByText('Render listo')).toHaveClass('destello');
+    const salidas = screen.getByRole('heading', { name: '3 · Tus shorts' }).closest('.fila-viva');
+    expect(salidas).toHaveClass('fila-entra');
+    // «Análisis listo» ya estaba: no se enciende por el render
+    expect(screen.getByText('Análisis listo')).not.toHaveClass('destello');
+  });
+
+  it('UI·21: con el render ya listo al entrar, ni «Render listo» se enciende ni las salidas entran animadas', async () => {
+    montar({ proyecto: () => RENDER_LISTO });
+    render(<Shorts />);
+    expect(await screen.findByText('Render listo')).not.toHaveClass('destello');
+    const salidas = screen.getByRole('heading', { name: '3 · Tus shorts' }).closest('.fila-viva');
+    expect(salidas).toHaveClass('fila-viva');
+    expect(salidas).not.toHaveClass('fila-entra');
   });
 });

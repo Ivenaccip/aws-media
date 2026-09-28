@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { oirCobros } from '../../prueba/servidor';
 import { Clip } from './Clip';
 import type { Clip as FichaClip, Config } from './logica';
 
@@ -145,14 +146,17 @@ describe('clip', () => {
   });
 
   it('clip.cobro.sin_texto_no_cobra', async () => {
+    const cobros = oirCobros();
     const f = servidor({});
     render(<Clip />);
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(screen.getByText('Escribe qué quieres ver primero.')).toBeInTheDocument();
     expect(posts(f, '/api/clip/generar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('clip.cobro.fotos_subiendo_no_cobra', async () => {
+    const cobros = oirCobros();
     let soltarPut!: (r: Response) => void;
     const f = servidor({ 'https://s3.ejemplo/': () => new Promise<Response>(r => (soltarPut = r)) });
     render(<Clip />);
@@ -162,10 +166,12 @@ describe('clip', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Generar ✦/ }));
     expect(screen.getByText('Espera a que terminen de subir tus fotos.')).toBeInTheDocument();
     expect(posts(f, '/api/clip/generar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
     await act(async () => soltarPut(new Response(null, { status: 200 })));
   });
 
   it('clip.cobro.error_junto_al_boton_y_se_puede_reintentar', async () => {
+    const cobros = oirCobros();
     let intentos = 0;
     const f = servidor({
       '/api/clip/generar': () =>
@@ -177,6 +183,7 @@ describe('clip', () => {
     await escribir('Un gato');
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ya tienes 3 clips generándose — espera a que terminen.');
+    expect(cobros).toEqual([]);
     // el texto sigue ahí para volver a intentarlo
     expect(screen.getByLabelText('Qué quieres ver')).toHaveValue('Un gato');
     await userEvent.click(screen.getByRole('button', { name: 'Generar ✦ 30' }));
@@ -184,16 +191,19 @@ describe('clip', () => {
   });
 
   it('clip.cobro.sin_saldo_402_ofrece_recargar', async () => {
+    const cobros = oirCobros();
     servidor({ '/api/clip/generar': () => json({ detail: 'Te faltan 10 créditos' }, 402) });
     render(<Clip />);
     await escribir('Un gato');
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Te faltan 10 créditos');
+    expect(cobros).toEqual([]);
     await userEvent.click(screen.getByRole('button', { name: 'Recargar' }));
     expect(monedero.recargar).toHaveBeenCalled();
   });
 
   it('clip.cobro.recarga_cerrada_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     monedero.recarga = false;
     servidor({ '/api/clip/generar': () => json({ detail: 'Te faltan 10 créditos' }, 402) });
     render(<Clip />);
@@ -201,9 +211,11 @@ describe('clip', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Escríbenos por el canal de la comunidad');
     expect(screen.queryByRole('button', { name: 'Recargar' })).not.toBeInTheDocument();
+    expect(cobros).toEqual([]);
   });
 
   it('clip.cobro.saldo_conocido_que_no_alcanza_no_cobra', async () => {
+    const cobros = oirCobros();
     monedero.get.mockReturnValue({ saldo: 12 });
     const f = servidor({});
     render(<Clip />);
@@ -213,9 +225,11 @@ describe('clip', () => {
     expect(screen.getByText(/Te faltan ✦ 18/)).toBeInTheDocument();
     await userEvent.click(boton);
     expect(posts(f, '/api/clip/generar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('clip.cobro.refresca_el_saldo_y_limpia_tras_cobrar', async () => {
+    const cobros = oirCobros();
     servidor({ '/api/clip/generar': () => json({ lanzado: true, id: 'c', creditos: 30 }) });
     render(<Clip />);
     await escribir('Un gato');
@@ -224,6 +238,8 @@ describe('clip', () => {
     await waitFor(() => expect(screen.getByLabelText('Qué quieres ver')).toHaveValue(''));
     expect(screen.queryByRole('button', { name: 'Quitar foto' })).not.toBeInTheDocument();
     expect(monedero.refrescar).toHaveBeenCalled();
+    // con una foto se cobra la tarifa sin composición
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: CFG.creditos })]));
   });
 
   it('clip.cobro.espera_a_que_termine_antes_de_otro', async () => {
@@ -343,6 +359,7 @@ describe('clip', () => {
   });
 
   it('clip.lista.sondea_mientras_genera_y_para_al_terminar', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let lista: FichaClip[] = [VIVO];
     const f = servidor({ '/api/clip': () => json({ clips: lista }) });
@@ -365,6 +382,7 @@ describe('clip', () => {
     expect(listados()).toBe(alTerminar);
     // al terminar, el saldo se vuelve a pedir (por si hubo devolución)
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([]); // una devolución no vuela como un cobro
   });
 
   it('clip.lista.fallo_de_carga_avisa_reintenta_y_sigue_solo', async () => {
@@ -394,5 +412,110 @@ describe('clip', () => {
       '/ui/clasica?pantalla=clip',
     );
     await screen.findByRole('button', { name: /Generar ✦/ });
+  });
+});
+
+// UI·21 — la lista de clips crece sin saltar. Los nombres NO son IDs de
+// invariante (tests/test_migracion_ui.py): empiezan por «UI·21: ».
+describe('UI·21 · la lista de clips', () => {
+  const OTRO: FichaClip = { ...LISTO, id: 'clip-0', texto: 'Una ola rompiendo', imagenes: 0, video: '' };
+  const fila = (texto: string) => screen.getByText(texto).closest('.fila-viva');
+
+  it('UI·21: en la primera carga ningún clip entra animado', async () => {
+    servidor({ '/api/clip': () => json({ clips: [LISTO, OTRO] }) });
+    const { container } = render(<Clip />);
+    await screen.findByText('Una ola rompiendo');
+    expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+  });
+
+  it('UI·21: tras generar, solo el clip nuevo entra abriendo su espacio', async () => {
+    const NUEVO: FichaClip = { ...VIVO, id: 'clip-3', texto: 'Un gato en la luna' };
+    let lista: FichaClip[] = [LISTO, OTRO];
+    servidor({
+      '/api/clip/generar': () => {
+        lista = [NUEVO, LISTO, OTRO];
+        return json({ lanzado: true, id: NUEVO.id, creditos: 30 });
+      },
+      '/api/clip': () => json({ clips: lista }),
+    });
+    const { container } = render(<Clip />);
+    await screen.findByText('Una ola rompiendo');
+    await escribir('Un gato');
+    await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
+    await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(3));
+    expect(fila('Un gato en la luna')).toHaveClass('fila-entra');
+    expect(fila('Un perro en la playa')).not.toHaveClass('fila-entra');
+    expect(fila('Una ola rompiendo')).not.toHaveClass('fila-entra');
+    // la clase se va al terminar su animación
+    fireEvent.animationEnd(fila('Un gato en la luna')!);
+    expect(fila('Un gato en la luna')).not.toHaveClass('fila-entra');
+  });
+
+  it('UI·21: un clip que trae el sondeo entra animado; los que ya estaban no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    const { container } = render(<Clip />);
+    await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(1));
+    // desde otra pestaña se pidió otro: llega en la siguiente vuelta
+    lista = [OTRO, VIVO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
+    expect(fila('Una ola rompiendo')).toHaveClass('fila-entra');
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(1);
+  });
+
+  it('UI·21: tras un fallo de carga, la primera carga buena tampoco anima', async () => {
+    let red = false;
+    servidor({ '/api/clip': () => (red ? json({ clips: [LISTO, OTRO] }) : sinRed()) });
+    const { container } = render(<Clip />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos traer tus clips.');
+    red = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await screen.findByText('Una ola rompiendo');
+    expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+  });
+
+  it('UI·21: el clip que queda listo con la página abierta enciende su detalle; el que ya estaba listo no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO, OTRO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    render(<Clip />);
+    // el que ya estaba listo al entrar no se enciende
+    expect(await screen.findByText('8 s · sin fotos · ✦ 30')).not.toHaveClass('destello');
+    lista = [{ ...VIVO, estado: 'listo', video: '/api/clip/clip-2/video' }, OTRO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    const recien = await screen.findByText('8 s · 1 foto tuya · ✦ 30');
+    expect(recien).toHaveClass('destello');
+    expect(screen.getByText('8 s · sin fotos · ✦ 30')).not.toHaveClass('destello');
+    // al terminar el destello se apaga
+    fireEvent.animationEnd(recien);
+    expect(recien).not.toHaveClass('destello');
+  });
+
+  it('UI·21: un clip que ya estaba listo al entrar no enciende su detalle', async () => {
+    servidor({ '/api/clip': () => json({ clips: [LISTO] }) });
+    render(<Clip />);
+    expect(await screen.findByText('8 s · 1 foto tuya · ✦ 30')).not.toHaveClass('destello');
+  });
+
+  it('UI·21: un clip que falla no enciende nada', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    const { container } = render(<Clip />);
+    await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(1));
+    lista = [{ ...VIVO, estado: 'error', error: 'Veo no respondió' }];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(await screen.findByText('Veo no respondió')).toBeInTheDocument();
+    expect(container.querySelectorAll('.destello')).toHaveLength(0);
   });
 });

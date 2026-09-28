@@ -157,13 +157,14 @@ export function Subir() {
     setConfirmando(false);
   };
 
-  async function alProponer() {
+  async function alProponer(cobrado?: () => void) {
     if (!(await preguntar())) return;
     const p = proyecto;
     setNotaEditor(null);
     setLanzando(true); // el POST tarda unos segundos: no dejarlos mudos
     try {
       await sugerir(p);
+      cobrado?.(); // antes de releer: el «−N» va con el saldo
       refrescarSaldo();
     } catch (e) {
       // el error se queda a la vista y el botón vuelve a servir
@@ -173,6 +174,7 @@ export function Subir() {
       setLanzando(false);
     }
     await leer(p).catch(() => undefined);
+    return true; // UI·19: se cobró; el «−N» vuela del botón
   }
 
   const conFuente = Boolean(st?.fuente);

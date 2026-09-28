@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { BotonCobro } from '../../marca/BotonCobro';
 import { EsperaIA } from '../../marca/EsperaIA';
 import { Recarga } from '../../marca/Recarga';
-import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
+import { avisarCobro, refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { ESTRELLA } from '../../nucleo/estrella';
 import { moderar } from '../../nucleo/moderar';
@@ -84,6 +84,7 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
   const [falla, setFalla] = useState<Falla | null>(null);
   const [veredicto, setVeredicto] = useState<{ mensaje: string; motivo: string } | null>(null);
   const [balanceador, setBalanceador] = useState<string | null>(null);
+  const zonaGenerar = useRef<HTMLDivElement>(null);
   const texto = useRef<HTMLTextAreaElement>(null);
   const custom = useRef<HTMLTextAreaElement>(null);
   const elegir = useRef<HTMLInputElement>(null);
@@ -214,6 +215,7 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
       setEspera(null); // el orbe se va antes de lo que sigue
       refrescarSaldo();
       alCrear(nuevo);
+      return true; // UI·19: se cobró; el «−N» vuela del botón
     } catch (e) {
       setEspera(null); // NUNCA un orbe girando junto a un error
       if (e instanceof ErrorApi && e.estado === 409) {
@@ -480,7 +482,7 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
         </Tarjeta>
       </div>
 
-      <div className="mt-4 flex flex-col items-center gap-2 text-center">
+      <div ref={zonaGenerar} className="mt-4 flex flex-col items-center gap-2 text-center">
         <BotonCobro
           verbo="Generar"
           costo={PREPARAR}
@@ -533,7 +535,12 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
         cancelar="No, la cambio"
         alConfirmar={() => {
           setBalanceador(null);
-          void enviar(true);
+          // UI·19: «Sí, crearla» también cobra; el «−N» sale de «Generar», que
+          // está detrás del diálogo (se mide ahora: si se crea, el formulario se va)
+          const desde = zonaGenerar.current?.querySelector('button')?.getBoundingClientRect() ?? null;
+          void enviar(true).then(ok => {
+            if (ok === true) avisarCobro(PREPARAR, desde);
+          });
         }}
       />
     </>

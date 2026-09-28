@@ -1,6 +1,8 @@
 // Un servidor de mentira para los tests de pantallas: cada ruta es un prefijo
 // de URL y gana la más larga (/api/x/config antes que /api/x).
-import { vi } from 'vitest';
+import { onTestFinished, vi } from 'vitest';
+
+import type { DetalleCobro } from '../nucleo/globales';
 
 export function json(cuerpo: unknown, estado = 200): Response {
   return new Response(JSON.stringify(cuerpo), { status: estado, headers: { 'Content-Type': 'application/json' } });
@@ -35,4 +37,15 @@ export function ponerMonedero(saldo: number | null, recarga = true) {
   };
   window.monedero = m;
   return m;
+}
+
+/** UI·19: los avisos de cobro que BotonCobro manda a monedero.js (el «−N»
+ *  que vuela) durante este test. Un cobro que salió bien deja uno; un 402,
+ *  un veto o una validación no dejan ninguno. */
+export function oirCobros(): DetalleCobro[] {
+  const vistos: DetalleCobro[] = [];
+  const oir = (e: CustomEvent<DetalleCobro>) => vistos.push(e.detail);
+  window.addEventListener('cobro', oir);
+  onTestFinished(() => window.removeEventListener('cobro', oir));
+  return vistos;
 }

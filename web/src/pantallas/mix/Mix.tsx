@@ -14,7 +14,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { EsperaIA } from '../../marca/EsperaIA';
 import { Marco } from '../../marca/Marco';
 import { Recarga } from '../../marca/Recarga';
-import { refrescarSaldo } from '../../marca/useSaldo';
+import { avisarCobro, refrescarSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { Aviso, type TipoAviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
@@ -295,6 +295,7 @@ function Formulario({
   const [espera, setEspera] = useState(false);
   const [verErr, setVerErr] = useState('');
   const [encendiendo, setEncendiendo] = useState(false);
+  const botonEncender = useRef<HTMLButtonElement>(null);
   const candado = useRef(false);
   const tokGuardar = useRef(0);
   const vivo = useRef(true);
@@ -544,6 +545,8 @@ function Formulario({
     alNota(null);
     try {
       const j = await encender(idBorrador || '');
+      // UI·19: el «−N» sale del botón con lo que el servidor dice que cobró
+      avisarCobro(j.creditos, botonEncender.current?.getBoundingClientRect() ?? null);
       refrescarSaldo();
       alNota({
         tipo: 'exito',
@@ -860,7 +863,7 @@ function Formulario({
               </p>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Boton nivel="principal" disabled={!alcanza} trabajando={encendiendo && 'Encendiendo…'} onClick={() => void encenderYa()}>
+              <Boton ref={botonEncender} nivel="principal" disabled={!alcanza} trabajando={encendiendo && 'Encendiendo…'} onClick={() => void encenderYa()}>
                 Encender la campaña
               </Boton>
               <span className="text-xs text-secundario">A partir de ahí sale sola, sin que la revises.</span>

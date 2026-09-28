@@ -86,11 +86,98 @@
   --inset-shadow-*: initial;
   --drop-shadow-*: initial;
 
-  /* movimiento (§4) */
+  /* movimiento (§4). «salida» frena al llegar (ease-out, para lo que entra);
+     «entrada» acelera al irse (ease-in, para lo que sale) */
   --ease-*: initial;
   --ease-salida: cubic-bezier(0, 0, 0.2, 1);
+  --ease-entrada: cubic-bezier(0.4, 0, 1, 1);
   --default-transition-duration: 120ms;
   --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+
+  /* UI·20: los diálogos (ui/Dialogo.tsx y ui/Confirmar.tsx). Radix pone
+     data-state=open|closed y su Presence espera el animationend de la salida
+     antes de desmontar: no hace falta JS. Entran en 150 ms y salen en 100:
+     irse más rápido de lo que se llega es lo que los hace sentir ágiles. La
+     caja se centra con `translate`; la escala va en `scale`, que no lo pisa.
+     Ojo con los nombres: Presence los compara con includes(), así que
+     ninguno puede contener a otro («aparece» cabe en «desaparece», y cerrar
+     a media entrada desmontaría sin salida) */
+  --animate-velo-entra: velo-entra 150ms var(--ease-salida);
+  --animate-velo-sale: velo-sale 100ms var(--ease-entrada);
+  --animate-caja-entra: caja-entra 150ms var(--ease-salida);
+  --animate-caja-sale: caja-sale 100ms var(--ease-entrada);
+  @keyframes velo-entra { from { opacity: 0; } }
+  @keyframes velo-sale { to { opacity: 0; } }
+  @keyframes caja-entra { from { opacity: 0; scale: 0.96; } }
+  @keyframes caja-sale { to { opacity: 0; scale: 0.96; } }
+
+  /* UI·24: el «no» y el «listo» de los formularios, sin toasts.
+     · ui/Campo.tsx: el campo que PASA a tener error tiembla tres veces en
+       240 ms (±6 px, 80 ms cada ida y vuelta). Corto a propósito: quien lo ve
+       ya va a corregir y no hay que hacerlo esperar. Lineal: es un vaivén,
+       no algo que llega. Va en `translate`, que no pisa ningún transform.
+     · ui/Icono.tsx con `dibujar` (la palomita de ui/Guardado.tsx y del
+       Aviso): el trazo se dibuja en 300 ms. pathLength=1 hace que el guion
+       mida lo que el trazo; el guion vive solo en los keyframes, así que
+       quieto (o sin animación) el trazo es entero. Hueco de 2 y arranque en
+       1.05, no en 1: con remates redondos, un guion que apenas toca el
+       inicio del camino es un punto en algunos motores.
+     · ui/Guardado.tsx: el texto llega con el resorte (--curva-resorte) en
+       --dur-media, a la vez que la palomita: sin retraso, porque la regla de
+       «reducir movimiento» acorta la duración pero no el retraso.
+     En las tres el reposo es el estilo natural del elemento (ninguna lo
+     fija con fill-mode): lo que no anima, se ve terminado. Y las tres se
+     ponen con motion-safe:, así que con «reducir movimiento» ni arrancan
+     (la regla global de abajo las aplanaría igual). */
+  --animate-campo-tiembla: campo-tiembla 240ms linear;
+  --animate-trazo-se-dibuja: trazo-se-dibuja 300ms var(--ease-salida);
+  --animate-guardado-llega: guardado-llega var(--dur-media) var(--curva-resorte);
+  @keyframes campo-tiembla {
+    8.33%, 41.67%, 75% { translate: -6px 0; }
+    25%, 58.33%, 91.67% { translate: 6px 0; }
+  }
+  @keyframes trazo-se-dibuja {
+    from { stroke-dasharray: 1 2; stroke-dashoffset: 1.05; }
+    to { stroke-dasharray: 1 2; stroke-dashoffset: 0; }
+  }
+  @keyframes guardado-llega { from { opacity: 0; translate: -0.5em 0; } }
+}
+
+/* UI·18: los tokens de movimiento. Van fuera de @theme porque Tailwind no
+   tiene espacio de nombres para duraciones, y así se emiten siempre. Desde
+   una clase se usan con duration-(--dur-media) y ease-(--curva-resorte).
+   Ninguna animación de web/ lleva una duración suelta: o es una de estas, o
+   es una de las de su tarjeta (UI·18 a UI·25) con su porqué al lado. */
+:root {
+  --dur-rapida: 120ms;   /* hover, foco, pequeños cambios de estado */
+  --dur-media: 250ms;    /* algo que entra, sale o cambia de lugar */
+  /* resorte suave hecho con linear(): se pasa ≈9 % y regresa. Es un muelle
+     amortiguado (ζ = 0.6) muestreado en 25 puntos; solo para cosas que
+     llegan (el «Guardado», el punto del buzón), nunca para las que se van */
+  --curva-resorte: linear(0, 0.074, 0.244, 0.45, 0.649, 0.817, 0.944, 1.028, 1.075, 1.094,
+    1.092, 1.078, 1.06, 1.04, 1.023, 1.009, 1, 0.994, 0.992, 0.991, 0.992, 0.994, 0.996, 0.997, 1);
+  /* UI·23: las barras de las gráficas de Métricas. Medio segundo se lee como
+     «se dibuja» y no como «tarda»; 50 ms entre una barra y la siguiente hacen
+     la ola sin alargarla (son seis como mucho: la última arranca a los 250) */
+  --dur-grafica: 500ms;
+  --escalon-grafica: 50ms;
+}
+
+/* UI·23: las gráficas de Métricas (pantallas/metricas/Grafica.tsx). Cada
+   barra crece desde la base con el retraso de su --i, y su cifra asoma
+   cuando la barra termina. Es `inline` porque el retraso lee el --i de CADA
+   barra: en un @theme normal, var(--i) se resolvería una sola vez en :root
+   (a 0) y crecerían todas a la vez. Solo corren con la marca data-entra de
+   nucleo/useAparecerUnaVez.ts y con motion-safe: la regla de «reducir
+   movimiento» acorta la duración pero NO el retraso, y con `both` las cifras
+   se quedarían escondidas hasta 750 ms */
+@theme inline {
+  --animate-barra-crece: barra-crece var(--dur-grafica) var(--ease-salida)
+    calc(var(--i, 0) * var(--escalon-grafica)) both;
+  --animate-cifra-asoma: cifra-asoma var(--dur-media) var(--ease-salida)
+    calc(var(--dur-grafica) + var(--i, 0) * var(--escalon-grafica)) both;
+  @keyframes barra-crece { from { scale: 1 0; } }
+  @keyframes cifra-asoma { from { opacity: 0; } }
 }
 
 @layer base {
@@ -116,4 +203,128 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* los pseudo-elementos de las View Transitions no son `*`: la regla de
+     arriba no los alcanza. Las transiciones de documento ya no se piden con
+     esta preferencia (abajo); esto cubre las de startViewTransition() */
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
+
+/* UI·18: entre pantallas, un fundido en vez del parpadeo en blanco. Solo
+   entre dos páginas que lo piden (las de web/ y, con static/carta.css, las
+   viejas) y solo si el sistema no pide reducir movimiento. Donde el
+   navegador no lo sabe hacer (antes de Chrome 126 o Safari 18.2), se navega
+   exactamente como antes. Los que lo hacen esperan al módulo de la pantalla
+   (blocking="render"); por si alguno no esperara, monedero.js se la salta
+   con la pantalla vacía: fundirse hacia nada sería el mismo parpadeo. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+::view-transition-group(*) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-salida);
+}
+/* la miniatura del inicio es 16:10 recortada y la película llega con su
+   proporción: las dos fotos llenan la caja que se agranda, recortadas, en
+   vez de estirarse o desbordarla (nucleo/transiciones.ts) */
+::view-transition-image-pair(miniatura) { overflow: clip; }
+::view-transition-old(miniatura), ::view-transition-new(miniatura) {
+  height: 100%;
+  object-fit: cover;
+}
+
+/* UI·21: las listas vivas (nucleo/useListaViva.ts, ui/FilaViva.tsx). Lo que
+   llega nuevo abre su espacio de 0 a su altura en 240 ms, en vez de empujar
+   todo de golpe (con interpolate-size, Chrome 129+; en los demás solo se
+   funde). Lo que acaba de quedar listo se enciende un instante (600 ms). En
+   @layer components: las utilidades de Tailwind siguen ganando. El
+   min-height: 0 es para las listas en columna flex (Competencia): ahí el
+   mínimo automático de un flex item es su contenido y le ganaba al height: 0
+   del keyframe; la fila ocupaba todo desde el primer cuadro y solo se fundía. */
+@keyframes fila-entra { from { opacity: 0; } }
+@keyframes fila-abre { from { opacity: 0; height: 0; } }
+@keyframes destello { from { background-color: var(--color-exito-fondo); } }
+@layer components {
+  /* el margen de la tarjeta queda dentro de la fila: no salta al final */
+  .fila-viva { display: flow-root; }
+  .fila-entra { animation: fila-entra 240ms var(--ease-salida); }
+  @supports (interpolate-size: allow-keywords) {
+    .fila-entra { interpolate-size: allow-keywords; overflow: clip; min-height: 0; animation-name: fila-abre; }
+  }
+  .destello { border-radius: var(--radius-chico); animation: destello 600ms var(--ease-salida); }
+}
+/* Al reordenar (transiciones.ts → transicionar(…, ['reordenar'])) cada fila
+   viaja de su lugar viejo al nuevo en 300 ms. La página no se fotografía
+   entera: queda viva y los clics pasan; solo vuelan las filas. */
+html:active-view-transition-type(reordenar) {
+  view-transition-name: none;
+  & .fila-viva { view-transition-name: var(--vt-nombre); }
+}
+html:active-view-transition-type(reordenar)::view-transition { pointer-events: none; }
+html:active-view-transition-type(reordenar)::view-transition-group(*) { animation-duration: 300ms; }
+/* La píldora del saldo (#monedero, con su nombre de UI·18) se fotografía
+   aparte en estas transiciones de una sola pantalla: si se quedara en la
+   página viva, las filas o la rejilla que vuelan le pasarían ENCIMA (la capa
+   de la transición siempre va sobre la página). Se ve viva y quieta: sin la
+   foto vieja encimada (el número puede ir rodando: se vería doble) y sin
+   fundido. Vale para el calendario de abajo también. */
+html:active-view-transition-type(reordenar, adelante, atras)::view-transition-old(monedero) { display: none; }
+html:active-view-transition-type(reordenar, adelante, atras)::view-transition-new(monedero),
+html:active-view-transition-type(reordenar, adelante, atras)::view-transition-group(monedero) { animation: none; }
+
+/* UI·22: el calendario tiene dirección (mix/Calendario.tsx). «Mes siguiente»:
+   la rejilla vieja sale a la izquierda y la nueva entra por la derecha; «Mes
+   anterior», al revés. Sale en 180 ms (lo que se va, más rápido que lo que
+   llega) y entra en --dur-media; 24 px bastan para leer la dirección sin que
+   parezca un carrusel que marea. El nombre del mes solo se funde. Como al
+   reordenar (UI·21), la página no se fotografía entera: solo el calendario. */
+html:active-view-transition-type(adelante, atras) {
+  view-transition-name: none;
+  & [data-cal='mes-0'] { view-transition-name: cal-mes-0; }
+  & [data-cal='mes-1'] { view-transition-name: cal-mes-1; }
+  & [data-cal='dias-0'] { view-transition-name: cal-dias-0; }
+  & [data-cal='dias-1'] { view-transition-name: cal-dias-1; }
+}
+html:active-view-transition-type(adelante, atras)::view-transition { pointer-events: none; }
+html:active-view-transition-type(adelante, atras)::view-transition-group(*) { animation-duration: var(--dur-media); }
+/* el nombre del mes solo se funde, sin encimarse: el viejo se va en 90 ms */
+html:active-view-transition-type(adelante, atras)::view-transition-old(cal-mes-0),
+html:active-view-transition-type(adelante, atras)::view-transition-old(cal-mes-1) {
+  animation: cal-apaga 90ms var(--ease-entrada) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(adelante, atras)::view-transition-new(cal-mes-0),
+html:active-view-transition-type(adelante, atras)::view-transition-new(cal-mes-1) {
+  animation: cal-prende var(--dur-media) var(--ease-salida) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(adelante)::view-transition-old(cal-dias-0),
+html:active-view-transition-type(adelante)::view-transition-old(cal-dias-1) {
+  animation: cal-sale-izq 180ms var(--ease-entrada) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(adelante)::view-transition-new(cal-dias-0),
+html:active-view-transition-type(adelante)::view-transition-new(cal-dias-1) {
+  animation: cal-entra-der var(--dur-media) var(--ease-salida) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(atras)::view-transition-old(cal-dias-0),
+html:active-view-transition-type(atras)::view-transition-old(cal-dias-1) {
+  animation: cal-sale-der 180ms var(--ease-entrada) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(atras)::view-transition-new(cal-dias-0),
+html:active-view-transition-type(atras)::view-transition-new(cal-dias-1) {
+  animation: cal-entra-izq var(--dur-media) var(--ease-salida) both;
+  mix-blend-mode: normal;
+}
+/* la vieja se apaga en la primera mitad de su salida y la nueva empieza a
+   verse al 30 % de su entrada: si se enciman a media opacidad, los números
+   de los dos meses se leen uno encima del otro */
+@keyframes cal-sale-izq { 50% { opacity: 0; } to { opacity: 0; transform: translateX(-24px); } }
+@keyframes cal-sale-der { 50% { opacity: 0; } to { opacity: 0; transform: translateX(24px); } }
+@keyframes cal-entra-der { from { opacity: 0; transform: translateX(24px); } 30% { opacity: 0; } }
+@keyframes cal-entra-izq { from { opacity: 0; transform: translateX(-24px); } 30% { opacity: 0; } }
+@keyframes cal-apaga { to { opacity: 0; } }
+@keyframes cal-prende { from { opacity: 0; } 30% { opacity: 0; } }

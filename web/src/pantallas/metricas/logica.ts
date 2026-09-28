@@ -106,6 +106,12 @@ export function dia(iso: string | null | undefined): string {
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
 }
 
+/** UI·23 — «20 sep»: lo que cabe bajo una barra de la gráfica en un teléfono. */
+export function diaCorto(iso: string | null | undefined): string {
+  const d = new Date(iso ?? '');
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+}
+
 /** null NO es 0: «no lo informa» y «cero» son cosas distintas. */
 export function num(v: unknown): string {
   return typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('es-MX') : '';
@@ -159,6 +165,59 @@ export function delta(it: Pick<Publicacion, 'historial'>): string {
   const d = b - a;
   const signo = d > 0 ? '+' : d < 0 ? '−' : '';
   return `${signo}${num(Math.abs(d))} vistas desde el ${dia(antes.cuando)} · ${h.length} mediciones.`;
+}
+
+/** UI·23 — cuántas barras se dibujan como mucho. Las demás mediciones siguen en la tabla. */
+export const BARRAS = 6;
+
+// Cuántas caben en un teléfono (≈290 px de tarjeta a 390) con su cifra encima
+// sin pisar la de al lado, según los caracteres de la cifra más larga. Medido
+// en Chromium con la Geist de 13 px: «12,050» mide 43 px y cabe en seis
+// columnas de 45; «103,200» mide 51 y pide cinco.
+const CABEN: readonly (readonly [number, number])[] = [
+  [6, 6],
+  [7, 5],
+  [10, 4],
+  [13, 3],
+];
+const caben = (cifras: number[]) => {
+  const largo = Math.max(...cifras.map(n => num(n).length));
+  return CABEN.find(([l]) => largo <= l)?.[1] ?? 2;
+};
+
+export interface Barra {
+  cuando: string;
+  /** null = la red no lo informó: un HUECO, no una barra en cero. */
+  vistas: number | null;
+  /** En % de la más alta de las que se dibujan. */
+  alto: number;
+}
+
+/** UI·23 — «Cómo fue cambiando» en barras: las vistas de las últimas
+ *  mediciones (las que quepan), de la más vieja a la más nueva. null si no
+ *  hay al menos dos cifras que comparar; `de` es cuántas mediciones hay en total. */
+export function barrasVistas(h: Medida[]): { barras: Barra[]; de: number } | null {
+  const todas = Array.isArray(h) ? h : [];
+  for (let cuantas = BARRAS; cuantas >= 2; cuantas--) {
+    const ultimas = todas.slice(-cuantas);
+    // una cuenta negativa no se puede dibujar desde la base: en la gráfica es un hueco (la tabla la enseña tal cual)
+    const v = ultimas.map(f => {
+      const n = f.numeros?.vistas;
+      return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null;
+    });
+    const con = v.filter((n): n is number => n !== null);
+    if (con.length < 2) return null;
+    if (ultimas.length > caben(con)) continue;
+    const max = Math.max(...con);
+    return {
+      barras: ultimas.map((f, i) => {
+        const n = v[i]!;
+        return { cuando: f.cuando, vistas: n, alto: n === null || !max ? 0 : Math.round((n / max) * 1000) / 10 };
+      }),
+      de: todas.length,
+    };
+  }
+  return null;
 }
 
 export const tieneNumeros = (it: Publicacion) => !!it.numeros || (Array.isArray(it.detalle) && it.detalle.length > 0);

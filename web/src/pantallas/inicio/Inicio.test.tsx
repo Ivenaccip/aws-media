@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clip, video } from '../../nucleo/tarifas';
+import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Inicio } from './Inicio';
 import type { Edicion, EstadoBlotato, Imagen, Proyecto } from './logica';
@@ -611,5 +612,81 @@ describe('el marco', () => {
     pintar();
     expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=inicio');
     await screen.findByText('La historia del café');
+  });
+});
+
+describe('UI·18 · la miniatura se agranda hasta su película', () => {
+  // jsdom no navega: el clic se queda en la página
+  const sinNavegar = (e: Event) => e.preventDefault();
+  beforeEach(() => document.addEventListener('click', sinNavegar));
+  afterEach(() => document.removeEventListener('click', sinNavegar));
+
+  it('tocar una película lista deja dicho qué miniatura llevar (la que se ve)', async () => {
+    montar({ proyectos: [P1] });
+    const { container } = pintar();
+    fireEvent.click(await screen.findByRole('link', { name: 'La historia del café' }));
+    expect(miniaturaQueLlega('p1')?.src).toBe('/api/proyectos/p1/archivo/portada.jpg');
+    // si la portada falló, viaja la que quedó a la vista
+    olvidarMiniatura();
+    fireEvent.error(container.querySelector('article img')!);
+    fireEvent.click(screen.getByRole('link', { name: 'La historia del café' }));
+    expect(miniaturaQueLlega('p1')?.src).toBe('/api/proyectos/p1/archivo/personaje.png');
+  });
+
+  it('con Ctrl, ⌘, Shift, Alt o la rueda se abre en otra pestaña: no se deja nada dicho', async () => {
+    montar({ proyectos: [P1] });
+    pintar();
+    const liga = await screen.findByRole('link', { name: 'La historia del café' });
+    for (const tecla of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+      fireEvent.click(liga, tecla);
+      expect(miniaturaQueLlega('p1')).toBeNull();
+    }
+    // un clic normal, sí
+    fireEvent.click(liga);
+    expect(miniaturaQueLlega('p1')).not.toBeNull();
+  });
+
+  it('una película que no está lista abre su progreso: no hay reproductor al que agrandarse', async () => {
+    montar({ proyectos: [{ ...P1, estado: 'produciendo' }] });
+    pintar();
+    fireEvent.click(await screen.findByRole('link', { name: 'La historia del café' }));
+    expect(miniaturaQueLlega('p1')).toBeNull();
+  });
+});
+
+describe('UI·24 · conectar Blotato dice «listo» con la palomita', () => {
+  const abrir = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ }));
+  };
+  const palomita = (texto: HTMLElement) => texto.parentElement!.querySelector('svg path')!;
+
+  it('UI·24: la clave recién guardada dibuja la palomita y se anuncia; al volver a abrir, quieta y callada', async () => {
+    let estado = SIN_CLAVE;
+    montar({
+      rutas: {
+        '/api/blotato': (_u, init) => {
+          if (init?.method === 'POST') estado = CONECTADO;
+          return json(estado);
+        },
+      },
+    });
+    pintar();
+    await abrir();
+    await userEvent.type(await screen.findByLabelText('Tu clave de API de Blotato'), 'buena');
+    await userEvent.click(screen.getByRole('button', { name: 'Conectar' }));
+    const listo = await screen.findByText('Tu Blotato está conectado');
+    expect(listo.closest('[role="status"]')).not.toBeNull();
+    expect(palomita(listo).getAttribute('class')).toBe('motion-safe:animate-trazo-se-dibuja');
+    // «Guardado» no se lleva el foco: sigue dentro del diálogo
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    // Cambiar clave y Cancelar no guardó nada nuevo: quieta
+    await userEvent.click(screen.getByRole('button', { name: 'Cambiar clave' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(palomita(screen.getByText('Tu Blotato está conectado'))).not.toHaveAttribute('class');
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    await abrir();
+    const quieta = await screen.findByText('Tu Blotato está conectado');
+    expect(quieta.closest('[role="status"]')).toBeNull();
+    expect(palomita(quieta)).not.toHaveAttribute('class');
   });
 });

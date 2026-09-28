@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { clicDia, devolucion, fechaLarga, fraseDevolucion, hoy, leerEjemplo, suma, type Campana, type Corrida, type EstadoMix } from './logica';
 import { Mix } from './Mix';
 
@@ -342,6 +342,7 @@ describe('mix', () => {
 
   it('mix.cobro.encender_doble_clic_un_cobro_con_su_id', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
     let soltar!: (r: Response) => void;
     const f = montar(CON_EJEMPLO, { '/api/mix/encender': () => new Promise<Response>(r => (soltar = r)) });
     render(<Mix />);
@@ -359,6 +360,8 @@ describe('mix', () => {
     expect(await screen.findByText('Campaña encendida: 7 publicaciones, una cada día a las 10:00.')).toBeInTheDocument();
     expect(monedero.refrescar).toHaveBeenCalled();
     expect(gets(f).length).toBeGreaterThanOrEqual(2);
+    // UI·19: el «−N» sale de «Encender la campaña» con lo que el servidor cobró
+    expect(cobros).toEqual([expect.objectContaining({ costo: 35 })]);
   });
 
   it('mix.cobro.si_no_alcanza_no_se_enciende_y_dice_a_quien_escribir', async () => {
@@ -374,6 +377,7 @@ describe('mix', () => {
 
   it('mix.cobro.un_402_dice_a_quien_escribir_y_un_409_recarga', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
     ponerMonedero(null, false);
     let n = 0;
     const f = montar(CON_EJEMPLO, {
@@ -392,6 +396,8 @@ describe('mix', () => {
     await avanzar(800);
     await userEvent.click(await esperarCosto());
     await waitFor(() => expect(gets(f).length).toBe(antes + 1));
+    // ni el 402 ni el 409 cobraron: no vuela nada
+    expect(cobros).toEqual([]);
   });
 
   it('mix.cobro.el_saldo_apagado_no_promete_cobro', async () => {

@@ -4,7 +4,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json, llamadas, ponerMonedero, servidor, sinRed } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed } from '../../prueba/servidor';
 import { Competencia } from './Competencia';
 import type { Cuenta, Informe, Listado, Resumen } from './logica';
 
@@ -86,6 +86,7 @@ describe('competencia', () => {
   });
 
   it('competencia.cobro.doble_clic_un_solo_post', async () => {
+    const cobros = oirCobros();
     let soltar!: (r: Response) => void;
     const f = servidor({
       '/api/competencia': () => json(listado([A])),
@@ -98,9 +99,12 @@ describe('competencia', () => {
     expect(llamadas(f, '/api/competencia/analizar')).toHaveLength(1);
     await act(async () => soltar(json({ lanzado: true, id: 'inf-3', creditos: TARIFA })));
     expect(monedero.refrescar).toHaveBeenCalled();
+    // una cuenta: un solo «−N» por la tarifa de una
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: TARIFA })]));
   });
 
   it('competencia.cobro.el_error_va_junto_a_revisar', async () => {
+    const cobros = oirCobros();
     servidor({
       '/api/competencia': () => json(listado([A])),
       '/api/competencia/analizar': () => json({ detail: 'Ya hay una revisión en marcha — espera a que termine' }, 409),
@@ -108,9 +112,11 @@ describe('competencia', () => {
     render(<Competencia />);
     await userEvent.click(await screen.findByRole('button', { name: /Revisar ✦/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ya hay una revisión en marcha');
+    expect(cobros).toEqual([]);
   });
 
   it('competencia.cobro.sin_saldo_402_con_la_recarga_abierta_ofrece_recargar', async () => {
+    const cobros = oirCobros();
     servidor({
       '/api/competencia': () => json(listado([A])),
       '/api/competencia/analizar': () => json({ detail: 'Te faltan 3 créditos' }, 402),
@@ -118,6 +124,7 @@ describe('competencia', () => {
     render(<Competencia />);
     await userEvent.click(await screen.findByRole('button', { name: /Revisar ✦/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Te faltan 3 créditos');
+    expect(cobros).toEqual([]);
     await userEvent.click(screen.getByRole('button', { name: 'Recargar' }));
     expect(monedero.recargar).toHaveBeenCalled();
   });
@@ -246,6 +253,7 @@ describe('competencia', () => {
   });
 
   it('competencia.lista.sondea_mientras_revisa_y_para_al_terminar', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let informes: Resumen[] = [VIVO];
     const f = servidor({ '/api/competencia': () => json(listado([A], informes)) });
@@ -267,6 +275,7 @@ describe('competencia', () => {
     });
     expect(gets()).toBe(alTerminar);
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([]); // una devolución no vuela como un cobro
   });
 
   it('competencia.lista.sin_red_con_una_revision_viva_sigue_reintentando', async () => {
@@ -309,5 +318,50 @@ describe('competencia', () => {
     render(<Competencia />);
     expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=competencia');
     await screen.findByRole('button', { name: 'Revisar' });
+  });
+});
+
+// UI·21 — la cuenta que se agrega entra abriendo su espacio. Los nombres NO
+// son IDs de invariante (tests/test_migracion_ui.py).
+describe('UI·21 · las cuentas que vigilas', () => {
+  const fila = (cuenta: string) => screen.getByText(cuenta).closest('li');
+
+  it('UI·21: la cuenta agregada entra con fila-entra; las que ya estaban no', async () => {
+    let cuentas: Cuenta[] = [A];
+    servidor({
+      '/api/competencia': () => json(listado(cuentas)),
+      '/api/competencia/cuentas': () => {
+        cuentas = [A, B];
+        return json({ cuentas });
+      },
+    });
+    render(<Competencia />);
+    await screen.findByText('@cuenta_a');
+    // en la primera carga nada entra animado
+    expect(fila('@cuenta_a')).toHaveClass('fila-viva');
+    expect(fila('@cuenta_a')).not.toHaveClass('fila-entra');
+    await userEvent.type(screen.getByLabelText('Liga del perfil que quieres vigilar'), 'tiktok.com/@cuenta_b');
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    await screen.findByText('@cuenta_b');
+    // la fila ES el <li> de la lista (FilaViva como="li")
+    expect(fila('@cuenta_b')!.parentElement!.tagName).toBe('UL');
+    expect(fila('@cuenta_b')).toHaveClass('fila-viva', 'fila-entra');
+    expect(fila('@cuenta_a')).not.toHaveClass('fila-entra');
+  });
+
+  it('UI·21: la revisión que acaba de quedar lista enciende su resumen; la que ya estaba no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const VIEJO: Resumen = { ...LISTO, id: 'inf-0', n_publicaciones: 4, creditos: 5, devueltos: 0 };
+    let informes: Resumen[] = [VIVO, VIEJO];
+    servidor({ '/api/competencia': () => json(listado([A], informes)) });
+    render(<Competencia />);
+    expect(await screen.findByText(/4 publicaciones · 5 créditos/)).not.toHaveClass('destello');
+    informes = [{ ...VIVO, estado: 'listo' }, VIEJO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    const recien = await screen.findByText(/2 publicaciones · 10 créditos/);
+    expect(recien).toHaveClass('destello');
+    expect(screen.getByText(/4 publicaciones · 5 créditos/)).not.toHaveClass('destello');
   });
 });

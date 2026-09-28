@@ -60,6 +60,8 @@ def test_la_etapa_web_verifica_antes_de_compilar_y_su_dist_entra_a_la_imagen():
     etapa = codigo[codigo.index("AS web"):codigo.index("FROM python:")]
     assert "npm ci" in etapa and "RUN npm run verificar" in etapa
     assert etapa.index("npm --version") < etapa.index("npm ci")
+    # UI·19: el test de monedero.js vive en vitest; sin el archivo no corre
+    assert etapa.index("COPY static/monedero.js /repo/static/monedero.js") < etapa.index("RUN npm run verificar")
     verificar = _paquete()["scripts"]["verificar"]
     for paso in ("tipos", "lint", "test", "build"):
         assert f"npm run {paso}" in verificar, f"`verificar` ya no corre {paso}"
@@ -121,7 +123,7 @@ def test_el_lockfile_tampoco_trae_prohibidas():
 
 def _fuentes_web():
     return [p for p in WEB.rglob("*") if p.is_file()
-            and not {"node_modules", "dist"} & set(p.relative_to(WEB).parts)
+            and not {"node_modules", "dist", "playwright-report", "test-results"} & set(p.relative_to(WEB).parts)
             and p.suffix in {".ts", ".tsx", ".js", ".html", ".css"}]
 
 
@@ -180,6 +182,23 @@ def test_el_dist_no_trae_las_notas_ni_la_economia_de_tarifas():
     for prohibido in ("costo_interno_usd_por_credito", "piso_venta_usd_por_credito",
                       "nota_por_duracion", "verified_on", "pricing.json"):
         assert prohibido not in texto, prohibido
+
+
+def test_cada_pantalla_se_pinta_con_su_modulo():
+    """UI·18: el módulo de cada pantalla bloquea el primer pintado. Sin
+    `blocking="render"` la View Transition entre pantallas se cancelaba en
+    1 de cada 3 navegaciones (la página nueva se fotografiaba vacía). Vite
+    tira el atributo del index.html fuente: lo pone el plugin
+    pintarConElModulo de vite.config.ts, y aquí se mira en el HTML final."""
+    if not DIST.is_dir():
+        pytest.skip("web/dist no está compilado (npm run build); en la imagen siempre está")
+    paginas = sorted((DIST / "estudio").glob("*/index.html"))
+    assert paginas, "dist sin pantallas"
+    for html in paginas:
+        modulos = re.findall(r"<script type=\"module\"[^>]*>", html.read_text(encoding="utf-8"))
+        assert modulos, f"{html.parent.name}: sin módulo"
+        for m in modulos:
+            assert 'blocking="render"' in m, f"{html.parent.name}: {m}"
 
 
 # ---------------------------------------------------------------------------

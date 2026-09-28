@@ -12,8 +12,15 @@
 //     que ya se enseñaba se queda.
 //
 // El sondeo usa la escalera de sondeo.ts y se duerme con la pestaña oculta.
+//
+// UI·21: con `claves`, la lista sabe qué llegó nuevo (`nuevos`, para que
+// entre abriendo su espacio en vez de empujar todo de golpe) y, si lo que ya
+// estaba cambió de orden, pinta el cambio dentro de una View Transition de
+// tipo «reordenar» (cada fila viaja de su lugar viejo al nuevo). La primera
+// carga no anima nada.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { transicionar } from './transiciones';
 import { useSondeo } from './useSondeo';
 
 export interface ListaViva<T> {
@@ -28,34 +35,89 @@ export interface ListaViva<T> {
   actualizar: () => Promise<void>;
   /** Cambiar los datos a mano (p. ej. con lo que devolvió un POST). */
   poner: (d: T) => void;
+  /** UI·21: las claves que llegaron en la última actualización (nunca en la primera carga). */
+  nuevos: ReadonlySet<string>;
 }
 
-export interface OpcionesListaViva {
+export interface OpcionesListaViva<T> {
   /** Se llama cuando lo que trabajaba termina (p. ej. refrescar el saldo). */
   alTerminar?: () => void;
+  /** UI·21: la clave estable de cada fila, en el orden en que se pinta. */
+  claves?: (d: T) => readonly string[];
+}
+
+export const NINGUNO: ReadonlySet<string> = new Set();
+
+/** UI·21: qué claves aparecieron entre lo que se pintó en el render anterior
+ *  y lo que se pinta en este. Se calcula al pintar y no al llegar: si dos
+ *  actualizaciones caen en el mismo lote de React, la segunda no borra lo
+ *  que trajo la primera. `datos` null es «todavía nada»: lo primero que
+ *  llega no entra animado. Si este pintado va dentro de una transición de
+ *  reordenamiento, ninguna: la transición ya las anima. */
+export function useNuevos<T>(
+  datos: T | null,
+  claves: ((d: T) => readonly string[]) | undefined,
+  enTransicion = false,
+): ReadonlySet<string> {
+  const [visto, setVisto] = useState<{ datos: T | null; nuevos: ReadonlySet<string> }>({ datos, nuevos: NINGUNO });
+  if (visto.datos === datos) return visto.nuevos;
+  let nuevos = NINGUNO;
+  if (claves && datos !== null && visto.datos !== null && !enTransicion) {
+    const estaban = new Set(claves(visto.datos));
+    nuevos = new Set(claves(datos).filter(k => !estaban.has(k)));
+  }
+  setVisto({ datos, nuevos });
+  return nuevos;
+}
+
+/** UI·21: qué filas son nuevas y si las que ya estaban cambiaron de orden.
+ *  `antes` null es la primera carga: nada entra animado. */
+export function diferencia(antes: readonly string[] | null, despues: readonly string[]) {
+  if (antes === null) return { nuevos: NINGUNO, reordena: false };
+  const estaban = new Set(antes);
+  const quedan = new Set(despues);
+  const a = antes.filter(id => quedan.has(id));
+  const b = despues.filter(id => estaban.has(id));
+  return { nuevos: new Set(despues.filter(id => !estaban.has(id))), reordena: a.some((id, i) => id !== b[i]) };
 }
 
 export function useListaViva<T>(
   cargar: () => Promise<T>,
   vivo: (d: T) => boolean,
-  op: OpcionesListaViva = {},
+  op: OpcionesListaViva<T> = {},
 ): ListaViva<T> {
-  const [datos, setDatos] = useState<T | null>(null);
+  // lo pintado, y si se pintó dentro de la transición de reordenar
+  const [pintura, setPintura] = useState<{ datos: T | null; enTransicion: boolean }>({ datos: null, enTransicion: false });
+  const datos = pintura.datos;
+  const nuevos = useNuevos(datos, op.claves, pintura.enTransicion);
   const [error, setError] = useState(false);
   const [sinRed, setSinRed] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
-  const ref = useRef({ cargar, vivo, op, datos });
+  const ref = useRef({ cargar, vivo, op });
   useEffect(() => {
-    ref.current = { cargar, vivo, op, datos };
+    ref.current = { cargar, vivo, op };
   });
+  // lo último que llegó. Aparte, y solo lo escribe aplicar: con el pintado
+  // diferido de una transición, un render en medio no puede devolverlo a lo
+  // viejo (el efecto de arriba corre tras cada render)
+  const ultimo = useRef<T | null>(null);
+  const turno = useRef(0);
 
   const aplicar = useCallback((d: T): boolean => {
-    const antes = ref.current.datos;
-    ref.current.datos = d;
-    setDatos(d);
+    const antes = ultimo.current;
+    ultimo.current = d;
+    const t = ++turno.current;
     setError(false);
     setSinRed(false);
     setFallo(null);
+    const claves = ref.current.op.claves;
+    const reordena = !!claves && antes !== null && diferencia(claves(antes), claves(d)).reordena;
+    const pintar = () => {
+      if (t !== turno.current) return; // lo pisó otro que llegó después
+      setPintura({ datos: d, enTransicion: reordena });
+    };
+    if (reordena) transicionar(pintar, ['reordenar']);
+    else pintar();
     const sigue = ref.current.vivo(d);
     if (!sigue && antes !== null && ref.current.vivo(antes)) ref.current.op.alTerminar?.();
     return !sigue;
@@ -63,7 +125,7 @@ export function useListaViva<T>(
 
   const fallar = useCallback((e: unknown) => {
     setFallo(e);
-    const d = ref.current.datos;
+    const d = ultimo.current;
     if (d !== null && ref.current.vivo(d)) setSinRed(true);
     else setError(true);
   }, []);
@@ -93,5 +155,5 @@ export function useListaViva<T>(
   const actualizar = useCallback(() => tarea().then(() => undefined, () => undefined), [tarea]);
   const poner = useCallback((d: T) => void aplicar(d), [aplicar]);
 
-  return { datos, error, sinRed, fallo, actualizar, poner };
+  return { datos, error, sinRed, fallo, actualizar, poner, nuevos };
 }

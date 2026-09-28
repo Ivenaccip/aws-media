@@ -21,7 +21,18 @@ export interface OpcionesOrbe {
   alAgotar?: () => void;
 }
 
+// UI·19: lo que BotonCobro le cuenta a monedero.js cuando un cobro salió
+// bien, para que dibuje el «−N» saliendo del botón hacia la píldora.
+export interface DetalleCobro {
+  costo: number;
+  /** Dónde estaba el botón (en px del viewport), o null si no se sabe. */
+  rect: { x: number; y: number; ancho: number; alto: number } | null;
+}
+
 declare global {
+  interface WindowEventMap {
+    cobro: CustomEvent<DetalleCobro>;
+  }
   interface Window {
     orbe?: {
       montar(el: HTMLElement, op: OpcionesOrbe): MandoOrbe;

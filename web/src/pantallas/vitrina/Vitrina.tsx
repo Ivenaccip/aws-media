@@ -2,7 +2,7 @@
 // el contraste calculado en vivo. Es donde el dueño aprueba la base desde el
 // teléfono antes de que exista la primera pantalla (tarjeta UI·6). No cobra
 // nada: los botones que «cobran» aquí solo esperan un segundo y medio.
-import { useState, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 
 import { EsperaIA } from '../../marca/EsperaIA';
 import { BotonCobro } from '../../marca/BotonCobro';
@@ -16,6 +16,7 @@ import { Campo } from '../../ui/Campo';
 import { Confirmar } from '../../ui/Confirmar';
 import { Dialogo } from '../../ui/Dialogo';
 import { Esqueleto } from '../../ui/Esqueleto';
+import { Guardado } from '../../ui/Guardado';
 import { Icono } from '../../ui/Icono';
 import { TRAZOS, type NombreIcono } from '../../ui/iconos';
 import { Pestanas } from '../../ui/Pestanas';
@@ -73,12 +74,46 @@ function Fila({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap items-start gap-3">{children}</div>;
 }
 
+// UI·24: el «no» y el «listo» de un formulario, sin toasts. Vacío o con una
+// letra, el campo tiembla (solo cuando el error aparece: el segundo «no»
+// seguido cambia el texto y no tiembla); bien escrito, «Guardado» junto al
+// botón. Escribir otra vez lo quita.
+function GuardarDeMuestra() {
+  const [nombre, setNombre] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState(false);
+
+  function guardar(e: FormEvent) {
+    e.preventDefault();
+    const n = nombre.trim();
+    const malo = !n ? 'Escribe el nombre de tu canal.' : n.length < 3 ? 'Usa al menos 3 letras.' : null;
+    setError(malo);
+    setGuardado(!malo);
+  }
+
+  return (
+    <form noValidate onSubmit={guardar} className="grid max-w-[480px] gap-3">
+      <Campo etiqueta="Nombre del canal" value={nombre} error={error} ayuda="Lo ven quienes te siguen."
+        onChange={e => {
+          setNombre(e.target.value);
+          setGuardado(false);
+        }} />
+      <div className="flex min-h-12 flex-wrap items-center gap-3">
+        <Boton type="submit">Guardar</Boton>
+        {/* la región está siempre: lo que cambia dentro se anuncia seguro */}
+        <span role="status" className="text-sm">{guardado && <Guardado anuncia={false} />}</span>
+      </div>
+    </form>
+  );
+}
+
 export function Vitrina() {
   const [dialogo, setDialogo] = useState(false);
   const [confirmar, setConfirmar] = useState(false);
   const [confirmado, setConfirmado] = useState(0);
   const [latido, setLatido] = useState(0);
   const [cobros, setCobros] = useState(0);
+  const [dibujos, setDibujos] = useState(0);
   const costoPelicula = video.por_duracion['30'];
 
   return (
@@ -199,6 +234,21 @@ export function Vitrina() {
           <Campo etiqueta="Tu correo" defaultValue="ana(arroba)ejemplo.com"
             error="Falta la arroba (@). Escribe algo como ana@ejemplo.com." />
         </div>
+      </Seccion>
+
+      <Seccion titulo="Guardar, sin toasts">
+        <p className="m-0 max-w-[65ch] text-secundario">
+          El «no» es el campo que tiembla cuando aparece el error; el «listo», una palomita que se
+          dibuja donde se guardó. Con «reducir movimiento» no tiembla ni se dibuja: el mensaje sale igual.
+        </p>
+        <GuardarDeMuestra />
+        {/* el Aviso de la Agenda al guardar la hora; al abrir, quieto */}
+        <Fila>
+          <Aviso key={dibujos} tipo="exito" dibujar={dibujos > 0}>
+            Hora cambiada: Instagram sale el viernes a las 10:30 (tu hora).
+          </Aviso>
+          <Boton denso onClick={() => setDibujos(n => n + 1)}>Dibujar la palomita</Boton>
+        </Fila>
       </Seccion>
 
       <Seccion titulo="Pestañas">

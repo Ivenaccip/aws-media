@@ -12,10 +12,13 @@ import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi, recuperarApartado } from '../../nucleo/api';
+import { nombreVT } from '../../nucleo/transiciones';
 import { useListaViva } from '../../nucleo/useListaViva';
+import { useLlegada } from '../../nucleo/useLlegada';
 import { useTituloPestana } from '../../nucleo/useTituloPestana';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { FilaViva } from '../../ui/FilaViva';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
 import { analizar, cargar, colorSeguro, detalle, titulo, vivos, type Listado, type Perfil } from './logica';
@@ -31,7 +34,11 @@ function urlInicial(): string {
 }
 
 export function Estilos() {
-  const lista = useListaViva<Listado>(cargar, l => vivos(l).length > 0, { alTerminar: refrescarSaldo });
+  const lista = useListaViva<Listado>(cargar, l => vivos(l).length > 0, {
+    alTerminar: refrescarSaldo,
+    // UI·21: re-analizar uno que falló lo sube a la cima: viaja, no salta
+    claves: l => l.estilos.map(e => e.id),
+  });
   const [url, setUrl] = useState(urlInicial);
   const [estado, setEstado] = useState<{ texto: string; error: boolean; sinSaldo?: boolean } | null>(null);
   const saldo = useSaldo();
@@ -40,15 +47,18 @@ export function Estilos() {
   const enMarcha = lista.datos ? vivos(lista.datos) : [];
   useTituloPestana(enMarcha.length ? 'Analizando el estilo' : null);
 
-  async function alAnalizar() {
+  async function alAnalizar(cobrado?: () => void) {
     const limpia = url.trim();
     if (!limpia) {
       setEstado({ texto: 'Pega la liga primero.', error: false });
       return;
     }
     setEstado(null);
+    let cobra = false; // UI·19: el «−N» vuela si el servidor cobró
     try {
       await analizar(limpia);
+      cobra = true;
+      cobrado?.(); // antes de releer: el «−N» va con el saldo
       setUrl('');
       refrescarSaldo();
       await lista.actualizar();
@@ -59,6 +69,7 @@ export function Estilos() {
         sinSaldo: e instanceof ErrorApi && e.sinSaldo,
       });
     }
+    return cobra;
   }
 
   const tarifa = lista.datos?.creditos ?? null;
@@ -139,7 +150,9 @@ export function Estilos() {
             <p className="m-0 text-xs text-secundario">Todavía no tienes perfiles — pega una liga arriba.</p>
           )}
           {lista.datos?.estilos.map(e => (
-            <TarjetaPerfil key={e.id} perfil={e} conOrbe={enMarcha.length === 1} />
+            <FilaViva key={e.id} nombre={nombreVT('perfil', e.id)} nueva={lista.nuevos.has(e.id)}>
+              <TarjetaPerfil perfil={e} conOrbe={enMarcha.length === 1} />
+            </FilaViva>
           ))}
         </Tarjeta>
       </div>
@@ -148,6 +161,8 @@ export function Estilos() {
 }
 
 function TarjetaPerfil({ perfil: e, conOrbe }: { perfil: Perfil; conOrbe: boolean }) {
+  // UI·21: al quedar listo (con la pantalla abierta) su detalle se enciende
+  const [encendida, apagar] = useLlegada(e.estado === 'listo');
   if (e.estado === 'analizando' || e.estado === 'error') {
     return (
       <article className="mb-4 rounded-grande border border-linea p-4">
@@ -181,7 +196,10 @@ function TarjetaPerfil({ perfil: e, conOrbe }: { perfil: Perfil; conOrbe: boolea
   return (
     <article className="mb-4 rounded-grande border border-linea p-4">
       <h3 className="m-0 mb-1 text-md font-semibold [overflow-wrap:anywhere]">
-        {titulo(e)} <small className="font-normal text-secundario">{detalle(e)}</small>
+        {titulo(e)}{' '}
+        <small className={unir('font-normal text-secundario', encendida && 'destello')} onAnimationEnd={apagar}>
+          {detalle(e)}
+        </small>
       </h3>
       <div className="my-3 flex h-8 overflow-hidden rounded-medio border border-linea" aria-label="Paleta" role="img">
         {(e.paleta ?? []).map((c, i) => {

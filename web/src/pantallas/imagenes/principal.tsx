@@ -1,12 +1,6 @@
 import '../../estilos/tokens.css';
 
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-
+import { montar } from '../../nucleo/montar';
 import { Imagenes } from './Imagenes';
 
-createRoot(document.getElementById('raiz')!).render(
-  <StrictMode>
-    <Imagenes />
-  </StrictMode>,
-);
+montar(<Imagenes />);

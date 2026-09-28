@@ -12,9 +12,13 @@ import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi, recuperarApartado } from '../../nucleo/api';
 import { creditos } from '../../nucleo/formato';
+import { nombreVT } from '../../nucleo/transiciones';
+import { useNuevos } from '../../nucleo/useListaViva';
+import { useLlegada } from '../../nucleo/useLlegada';
 import { useSondeo } from '../../nucleo/useSondeo';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { FilaViva } from '../../ui/FilaViva';
 import { Icono } from '../../ui/Icono';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
@@ -52,10 +56,16 @@ function textoInicial(): string {
   return tomarBrief();
 }
 
+const CLAVES = (l: FichaClip[]) => l.map(c => c.id);
+
 export function Clip() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [clips, setClips] = useState<FichaClip[] | null>(null);
   const [falloCarga, setFalloCarga] = useState(false);
+  // UI·21: el clip que acaba de pedirse entra abriendo su espacio. La lista
+  // vacía que deja un fallo de carga no cuenta como vista: la primera carga
+  // buena después de él tampoco anima
+  const nuevos = useNuevos(falloCarga && clips?.length === 0 ? null : clips, CLAVES);
   const [texto, setTexto] = useState(textoInicial);
   const [formato, setFormato] = useState<Formato>('horizontal');
   const [fotos, setFotos] = useState<Foto[]>([]);
@@ -146,7 +156,7 @@ export function Clip() {
     });
   }
 
-  async function alGenerar() {
+  async function alGenerar(cobrado?: () => void) {
     const limpio = texto.trim();
     if (!limpio) {
       setEstado({ texto: 'Escribe qué quieres ver primero.', error: false });
@@ -163,8 +173,10 @@ export function Clip() {
       fotos.forEach(f => f.url && URL.revokeObjectURL(f.url));
       setFotos([]);
       setEsperando(true);
+      cobrado?.(); // antes de releer: el «−N» va con el saldo
       refrescarSaldo();
       await traer().catch(() => undefined);
+      return true; // UI·19: se cobró
     } catch (e) {
       const sinSaldo = e instanceof ErrorApi && e.sinSaldo;
       setEstado({ texto: e instanceof Error ? e.message : String(e), error: true, sinSaldo });
@@ -327,7 +339,9 @@ export function Clip() {
             <p className="m-0 text-xs text-secundario">Todavía no has hecho ninguno.</p>
           )}
           {clips?.map(c => (
-            <TarjetaClip key={c.id} clip={c} conOrbe={vivos.length === 1} />
+            <FilaViva key={c.id} nombre={nombreVT('clip', c.id)} nueva={nuevos.has(c.id)}>
+              <TarjetaClip clip={c} conOrbe={vivos.length === 1} />
+            </FilaViva>
           ))}
         </Tarjeta>
       </div>
@@ -336,6 +350,8 @@ export function Clip() {
 }
 
 function TarjetaClip({ clip: c, conOrbe }: { clip: FichaClip; conOrbe: boolean }) {
+  // UI·21: al quedar listo (con la pantalla abierta) su detalle se enciende
+  const [encendido, apagar] = useLlegada(c.estado !== 'generando' && c.estado !== 'error');
   return (
     <article className="mb-4 rounded-grande border border-linea p-4">
       <p className="m-0 mb-1 text-sm [overflow-wrap:anywhere]">{c.texto}</p>
@@ -365,7 +381,7 @@ function TarjetaClip({ clip: c, conOrbe }: { clip: FichaClip; conOrbe: boolean }
       )}
       {c.estado !== 'generando' && c.estado !== 'error' && (
         <>
-          <p className="m-0 text-xs text-secundario">
+          <p className={unir('m-0 text-xs text-secundario', encendido && 'destello')} onAnimationEnd={apagar}>
             {detalleClip(c)} · {creditos(c.creditos)}
           </p>
           {c.recorte && (

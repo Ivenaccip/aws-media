@@ -20,6 +20,8 @@ venv/
 # artefactos locales
 # el dist lo construye la etapa web del Dockerfile; uno local viejo no se cuela
 web/dist/
+web/test-results/
+web/playwright-report/
 *.log
 oauth_client.json
 token_drive.json

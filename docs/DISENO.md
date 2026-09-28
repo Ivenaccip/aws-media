@@ -107,6 +107,33 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - **Movimiento:** 120 ms (hover, apretar) y 200 ms (abrir, cerrar), con
   `ease-out`. Con `prefers-reduced-motion: reduce` todo queda quieto, el
   orbe incluido.
+  - Desde UI·18 son tokens en `web/src/estilos/tokens.css`: `--dur-rapida`
+    (120 ms), `--dur-media` (250 ms, algo que entra, sale o cambia de lugar),
+    `--ease-salida` y `--curva-resorte` (un resorte con `linear()` que se pasa
+    ≈9 % y regresa; solo para lo que llega, nunca para lo que se va).
+  - Las ocho tarjetas de movimiento (UI·18 a UI·25) usan esos tokens o una
+    duración propia con su porqué al lado: 280 ms entre pantallas; 150/100 ms
+    los diálogos (entran más lento de lo que salen, `--ease-entrada` para lo
+    que se va); el saldo que baja rueda 700 ms, la píldora se tiñe 900 ms y
+    el «−N» vuela 600 ms; lo que llega a una lista abre su espacio en 240 ms
+    y lo que se reordena viaja 300 ms; el calendario sale en 180 ms y entra
+    en 250 ms con 24 px de desplazamiento; un campo tiembla 240 ms cuando
+    aparece su error y la palomita de «Guardado» se dibuja en 300 ms; el
+    punto del buzón llega en 300 ms con el resorte y suelta una sola onda de
+    900 ms.
+  - Nada anima por defecto lo que ya estaba al abrir la pantalla: la primera
+    carga no rueda, no se enciende y no entra animada.
+  - Entre pantallas hay View Transition (fundido; la píldora del saldo se
+    queda quieta; la miniatura de una película lista se agranda hasta su
+    reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con
+    «reducir movimiento» nada se quede moviéndose en las 12 pantallas.
+  - Un botón que se apaga mientras puede tener el foco (el «Mes anterior»
+    del calendario al volver al mes en curso) usa `aria-disabled`, no
+    `disabled`: un botón deshabilitado suelta el foco al `<body>`.
+  - Las gráficas de Métricas (UI·23) se dibujan la primera vez que entran en
+    pantalla: 500 ms cada barra, 50 ms entre una y la siguiente, y la cifra de
+    cada barra asoma al final. Una sola vez; sin JS, al volver o con «reducir
+    movimiento» ya están completas. Las barras son del azul de datos.
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
   sea más chico.
 - **Foco:** `outline: 2px solid #f0a94a; outline-offset: 3px` en todo lo
@@ -149,7 +176,9 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   automática) y **Analizar** (Métricas, Competencia).
 - El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
   con su «＋» para recargar. Se probó al pie del menú (UI·10) y el dueño
-  prefirió la píldora (25-sep).
+  prefirió la píldora (25-sep). Al cambiar de pantalla sale desde el primer
+  cuadro con el último saldo de la pestaña (15 min como mucho); si el
+  servidor no lo confirma, se apaga un poco y se lee «sin confirmar».
 - En el inicio, el centro sigue siendo el bloque de crear imagen y video
   que ya existe (`.prompt` en `static/index.html`).
 - Celular: **sin decidir** (el lienzo proponía pestañas abajo).
@@ -162,9 +191,9 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 | **Espera larga** (producir) | Pasos con nombre en español (Guion aprobado → Voz grabada → Animando las escenas · 2 de 6 → Uniendo el video), el tiempo que falta y «puedes cerrar esta pestaña». |
 | **Espera corta** | Por ahora como hoy. Los «esqueletos» quedan para después. |
 | **Error** | Tres partes: **qué pasó** (sin culpar), **qué pasó con tus créditos** («Te devolvimos ✦ 90») y **qué sigue** (un botón). Lo técnico va plegado en «Detalles técnicos». |
-| **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. |
+| **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. Al aparecer, el campo tiembla una vez (`ui/Campo.tsx`, UI·24). |
 | **Tus trabajos** (`static/trabajos.js`) | Cuadro abajo a la derecha en todas las pantallas: lo que corre (paso, avance, «Ver»), lo que terminó en las últimas **24 h** con su enlace y lo que falló con «Te devolvimos ✦ N». Va **plegado**; se abre solo cuando algo termina o falla y no lo habías visto. Lo cerrado no vuelve en ese navegador. En celular, abajo a todo lo ancho (dueño, 25-sep). |
-| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
+| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo; en las pantallas de `web/` el «Guardado» va donde se guardó, con su palomita: `ui/Guardado.tsx`, UI·24), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
 
 ## 9. Fuera de alcance por ahora
 
