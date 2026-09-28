@@ -201,6 +201,28 @@ def test_el_pool_sigue_con_retain(prod):
     assert pool["UpdateReplacePolicy"] == "Retain"
 
 
+def test_el_pool_de_prod_lleva_proteccion_de_borrado(prod):
+    """RETAIN y DeletionProtection no son lo mismo y los dos hacen falta.
+
+    RETAIN es de CloudFormation: si el stack deja de declarar el pool, el pool
+    sobrevive huérfano. DeletionProtection es de Cognito: impide el
+    `delete-user-pool` de la consola o de la CLI, que RETAIN no ve pasar.
+
+    Va en el template y no puesta a mano justamente por esto: la propiedad
+    puesta desde la consola no viaja en él, así que nadie podía responder si
+    sobrevivía al siguiente update del ApiStack. Declarada aquí, la gobierna
+    CloudFormation y la respuesta deja de ser una pregunta."""
+    pool = prod["aws-media-api"]["Resources"]["Users0A0EEA89"]
+    assert pool["Properties"]["DeletionProtection"] == "ACTIVE"
+
+
+def test_el_pool_de_dev_no_lleva_proteccion_de_borrado(dev):
+    """Un entorno de pruebas tiene que poder tirarse. Con ACTIVE, el `cdk
+    destroy` del stack de dev falla y hay que ir a apagarla a mano primero."""
+    pool = dev["aws-media-api-dev"]["Resources"]["Users0A0EEA89"]
+    assert pool["Properties"].get("DeletionProtection", "INACTIVE") == "INACTIVE"
+
+
 def test_la_maquina_de_producir_conserva_su_nombre(prod):
     sm = _uno(prod["aws-media-jobs"], "AWS::StepFunctions::StateMachine")
     assert sm["StateMachineName"] == "aws-media-producir"
