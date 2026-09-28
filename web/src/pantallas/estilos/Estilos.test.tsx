@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed } from '../../prueba/servidor';
+import { simularVT } from '../../prueba/transicion';
 import { Estilos } from './Estilos';
 import type { Listado, Perfil } from './logica';
 
@@ -254,5 +255,92 @@ describe('estilos', () => {
     expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=estilos');
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     await screen.findByRole('button', { name: /Analizar ✦/ });
+  });
+});
+
+// UI·21 — re-analizar un perfil lo sube a la cima: viaja, no salta. Los
+// nombres NO son IDs de invariante (tests/test_migracion_ui.py).
+describe('UI·21 · la lista de perfiles', () => {
+  const FALLIDO: Perfil = { id: 'tt-999', estado: 'error', plataforma: 'tiktok', error: 'privado' };
+  const filas = (c: HTMLElement) => Array.from(c.querySelectorAll<HTMLElement>('.fila-viva'));
+  // el primer texto del título: «@autor» si está listo, el id si no
+  const orden = (c: HTMLElement) => filas(c).map(f => f.querySelector('h3')?.firstChild?.textContent);
+
+  it('UI·21: re-analizar sube el perfil a la cima dentro de UNA transición «reordenar», sin filas que entren', async () => {
+    let estilos: Perfil[] = [LISTO, FALLIDO];
+    servidor({
+      '/api/estilo': () => json(listado(estilos)),
+      '/api/estilo/analizar': () => {
+        estilos = [{ id: 'tt-999', estado: 'analizando', plataforma: 'tiktok' }, LISTO];
+        return json({ lanzado: true, id: 'tt-999', creditos: TARIFA });
+      },
+    });
+    const vt = simularVT();
+    const { container } = render(<Estilos />);
+    await screen.findByText('@lacuenta');
+    expect(orden(container)).toEqual(['@lacuenta', 'tt-999']);
+    const filaFallida = filas(container)[1];
+    await escribir('https://www.tiktok.com/@a/video/999');
+    await userEvent.click(await screen.findByRole('button', { name: /Analizar ✦/ }));
+    await waitFor(() => expect(orden(container)).toEqual(['tt-999', '@lacuenta']));
+    expect(vt.espia).toHaveBeenCalledOnce();
+    expect(vt.tipos).toEqual([['reordenar']]);
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+    // es la MISMA fila (viaja), no una que se desmonta y vuelve a montar
+    expect(filas(container)[0]).toBe(filaFallida);
+    expect(screen.getByText(/Analizando el estilo/)).toBeInTheDocument();
+  });
+
+  it('UI·21: sin View Transitions el reorden se pinta igual, al instante', async () => {
+    let estilos: Perfil[] = [LISTO, FALLIDO];
+    servidor({
+      '/api/estilo': () => json(listado(estilos)),
+      '/api/estilo/analizar': () => {
+        estilos = [{ id: 'tt-999', estado: 'analizando', plataforma: 'tiktok' }, LISTO];
+        return json({ lanzado: true, id: 'tt-999', creditos: TARIFA });
+      },
+    });
+    const { container } = render(<Estilos />);
+    await screen.findByText('@lacuenta');
+    await escribir('https://www.tiktok.com/@a/video/999');
+    await userEvent.click(await screen.findByRole('button', { name: /Analizar ✦/ }));
+    await waitFor(() => expect(orden(container)).toEqual(['tt-999', '@lacuenta']));
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+  });
+
+  it('UI·21: un perfil nuevo arriba entra abriendo su espacio, sin transición', async () => {
+    let estilos: Perfil[] = [LISTO];
+    servidor({
+      '/api/estilo': () => json(listado(estilos)),
+      '/api/estilo/analizar': () => {
+        estilos = [VIVO, LISTO];
+        return json({ lanzado: true, id: VIVO.id, creditos: TARIFA });
+      },
+    });
+    const vt = simularVT();
+    const { container } = render(<Estilos />);
+    await screen.findByText('@lacuenta');
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+    await escribir('https://www.tiktok.com/@a/video/123');
+    await userEvent.click(await screen.findByRole('button', { name: /Analizar ✦/ }));
+    await waitFor(() => expect(orden(container)).toEqual(['tt-123', '@lacuenta']));
+    expect(vt.espia).not.toHaveBeenCalled();
+    expect(filas(container)[0]).toHaveClass('fila-entra');
+    expect(filas(container)[1]).not.toHaveClass('fila-entra');
+  });
+
+  it('UI·21: el perfil que queda listo con la página abierta enciende su detalle; el que ya estaba no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const OTRO: Perfil = { ...LISTO, id: 'ig-otro', fuente: { autor: 'otra', plataforma: 'instagram' }, metrica: { duracion_s: 9, cortes_por_min: 12 } };
+    let estilos: Perfil[] = [VIVO, OTRO];
+    servidor({ '/api/estilo': () => json(listado(estilos)) });
+    render(<Estilos />);
+    expect(await screen.findByText('instagram · 9 s · 12 cortes/min')).not.toHaveClass('destello');
+    estilos = [{ ...LISTO, id: VIVO.id }, OTRO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(await screen.findByText('instagram · 12 s · 30 cortes/min')).toHaveClass('destello');
+    expect(screen.getByText('instagram · 9 s · 12 cortes/min')).not.toHaveClass('destello');
   });
 });

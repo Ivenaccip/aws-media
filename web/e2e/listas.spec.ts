@@ -82,6 +82,28 @@ test('re-analizar sube el perfil a la cima: las tarjetas viajan, y nada entra an
   expect(await page.locator('.fila-entra').count()).toBe(0);
 });
 
+test('si el foco está en una tarjeta que viaja, sigue en el mismo botón al terminar', async ({ page }) => {
+  // otro análisis termina mientras miras: el sondeo trae la lista reordenada
+  let vuelta = 0;
+  await page.route('**/api/estilo', r => {
+    const listo = { ...PERFIL('ig-bueno', 'listo'), perfil: { prompt_estilo: 'luz cálida' } };
+    return r.fulfill({
+      json: {
+        creditos: 7,
+        estilos: vuelta++ === 0 ? [listo, PERFIL('ig-otro', 'analizando')] : [PERFIL('ig-otro', 'listo'), listo],
+      },
+    });
+  });
+  await page.goto('/estudio/estilos/');
+  const copiar = page.getByRole('button', { name: 'Copiar' });
+  await copiar.focus();
+  await expect.poll(() => filas(page), { timeout: 15000 }).toEqual(['perfil-ig-otro', 'perfil-ig-bueno']);
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() =>
+    (document.activeElement?.closest('.fila-viva') as HTMLElement | null)?.style.getPropertyValue('--vt-nombre'))).toBe('perfil-ig-bueno');
+  await expect(page.locator('.fila-viva').last().getByRole('button', { name: 'Copiar' })).toBeFocused();
+});
+
 test.describe('con «reducir movimiento»', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
@@ -95,6 +117,8 @@ test.describe('con «reducir movimiento»', () => {
     await estilos(page);
     await page.getByRole('button', { name: /Analizar/ }).click();
     await expect.poll(() => filas(page)).toEqual(['perfil-ig-roto', 'perfil-ig-bueno']);
-    expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+    expect(await page.evaluate(animacionesVivas)).toEqual([]);
+    expect(await page.evaluate(() => document.getAnimations().some(a => /view-transition/.test(
+      (a.effect as KeyframeEffect | null)?.pseudoElement ?? '')))).toBe(false);
   });
 });

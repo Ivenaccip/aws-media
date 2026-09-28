@@ -48,6 +48,28 @@ export interface OpcionesListaViva<T> {
 
 export const NINGUNO: ReadonlySet<string> = new Set();
 
+/** UI·21: qué claves aparecieron entre lo que se pintó en el render anterior
+ *  y lo que se pinta en este. Se calcula al pintar y no al llegar: si dos
+ *  actualizaciones caen en el mismo lote de React, la segunda no borra lo
+ *  que trajo la primera. `datos` null es «todavía nada»: lo primero que
+ *  llega no entra animado. Si este pintado va dentro de una transición de
+ *  reordenamiento, ninguna: la transición ya las anima. */
+export function useNuevos<T>(
+  datos: T | null,
+  claves: ((d: T) => readonly string[]) | undefined,
+  enTransicion = false,
+): ReadonlySet<string> {
+  const [visto, setVisto] = useState<{ datos: T | null; nuevos: ReadonlySet<string> }>({ datos, nuevos: NINGUNO });
+  if (visto.datos === datos) return visto.nuevos;
+  let nuevos = NINGUNO;
+  if (claves && datos !== null && visto.datos !== null && !enTransicion) {
+    const estaban = new Set(claves(visto.datos));
+    nuevos = new Set(claves(datos).filter(k => !estaban.has(k)));
+  }
+  setVisto({ datos, nuevos });
+  return nuevos;
+}
+
 /** UI·21: qué filas son nuevas y si las que ya estaban cambiaron de orden.
  *  `antes` null es la primera carga: nada entra animado. */
 export function diferencia(antes: readonly string[] | null, despues: readonly string[]) {
@@ -64,8 +86,10 @@ export function useListaViva<T>(
   vivo: (d: T) => boolean,
   op: OpcionesListaViva<T> = {},
 ): ListaViva<T> {
-  const [datos, setDatos] = useState<T | null>(null);
-  const [nuevos, setNuevos] = useState<ReadonlySet<string>>(NINGUNO);
+  // lo pintado, y si se pintó dentro de la transición de reordenar
+  const [pintura, setPintura] = useState<{ datos: T | null; enTransicion: boolean }>({ datos: null, enTransicion: false });
+  const datos = pintura.datos;
+  const nuevos = useNuevos(datos, op.claves, pintura.enTransicion);
   const [error, setError] = useState(false);
   const [sinRed, setSinRed] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
@@ -87,15 +111,12 @@ export function useListaViva<T>(
     setSinRed(false);
     setFallo(null);
     const claves = ref.current.op.claves;
-    const dif = claves ? diferencia(antes === null ? null : claves(antes), claves(d)) : null;
-    // con reordenamiento la transición anima también lo que entra: ese turno
-    // no marca nuevos
+    const reordena = !!claves && antes !== null && diferencia(claves(antes), claves(d)).reordena;
     const pintar = () => {
       if (t !== turno.current) return; // lo pisó otro que llegó después
-      setDatos(d);
-      setNuevos(dif && !dif.reordena ? dif.nuevos : NINGUNO);
+      setPintura({ datos: d, enTransicion: reordena });
     };
-    if (dif?.reordena) transicionar(pintar, ['reordenar']);
+    if (reordena) transicionar(pintar, ['reordenar']);
     else pintar();
     const sigue = ref.current.vivo(d);
     if (!sigue && antes !== null && ref.current.vivo(antes)) ref.current.op.alTerminar?.();

@@ -414,3 +414,108 @@ describe('clip', () => {
     await screen.findByRole('button', { name: /Generar ✦/ });
   });
 });
+
+// UI·21 — la lista de clips crece sin saltar. Los nombres NO son IDs de
+// invariante (tests/test_migracion_ui.py): empiezan por «UI·21: ».
+describe('UI·21 · la lista de clips', () => {
+  const OTRO: FichaClip = { ...LISTO, id: 'clip-0', texto: 'Una ola rompiendo', imagenes: 0, video: '' };
+  const fila = (texto: string) => screen.getByText(texto).closest('.fila-viva');
+
+  it('UI·21: en la primera carga ningún clip entra animado', async () => {
+    servidor({ '/api/clip': () => json({ clips: [LISTO, OTRO] }) });
+    const { container } = render(<Clip />);
+    await screen.findByText('Una ola rompiendo');
+    expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+  });
+
+  it('UI·21: tras generar, solo el clip nuevo entra abriendo su espacio', async () => {
+    const NUEVO: FichaClip = { ...VIVO, id: 'clip-3', texto: 'Un gato en la luna' };
+    let lista: FichaClip[] = [LISTO, OTRO];
+    servidor({
+      '/api/clip/generar': () => {
+        lista = [NUEVO, LISTO, OTRO];
+        return json({ lanzado: true, id: NUEVO.id, creditos: 30 });
+      },
+      '/api/clip': () => json({ clips: lista }),
+    });
+    const { container } = render(<Clip />);
+    await screen.findByText('Una ola rompiendo');
+    await escribir('Un gato');
+    await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
+    await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(3));
+    expect(fila('Un gato en la luna')).toHaveClass('fila-entra');
+    expect(fila('Un perro en la playa')).not.toHaveClass('fila-entra');
+    expect(fila('Una ola rompiendo')).not.toHaveClass('fila-entra');
+    // la clase se va al terminar su animación
+    fireEvent.animationEnd(fila('Un gato en la luna')!);
+    expect(fila('Un gato en la luna')).not.toHaveClass('fila-entra');
+  });
+
+  it('UI·21: un clip que trae el sondeo entra animado; los que ya estaban no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    const { container } = render(<Clip />);
+    await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(1));
+    // desde otra pestaña se pidió otro: llega en la siguiente vuelta
+    lista = [OTRO, VIVO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
+    expect(fila('Una ola rompiendo')).toHaveClass('fila-entra');
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(1);
+  });
+
+  it('UI·21: tras un fallo de carga, la primera carga buena tampoco anima', async () => {
+    let red = false;
+    servidor({ '/api/clip': () => (red ? json({ clips: [LISTO, OTRO] }) : sinRed()) });
+    const { container } = render(<Clip />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos traer tus clips.');
+    red = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await screen.findByText('Una ola rompiendo');
+    expect(container.querySelectorAll('.fila-viva')).toHaveLength(2);
+    expect(container.querySelectorAll('.fila-entra')).toHaveLength(0);
+  });
+
+  it('UI·21: el clip que queda listo con la página abierta enciende su detalle; el que ya estaba listo no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO, OTRO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    render(<Clip />);
+    // el que ya estaba listo al entrar no se enciende
+    expect(await screen.findByText('8 s · sin fotos · ✦ 30')).not.toHaveClass('destello');
+    lista = [{ ...VIVO, estado: 'listo', video: '/api/clip/clip-2/video' }, OTRO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    const recien = await screen.findByText('8 s · 1 foto tuya · ✦ 30');
+    expect(recien).toHaveClass('destello');
+    expect(screen.getByText('8 s · sin fotos · ✦ 30')).not.toHaveClass('destello');
+    // al terminar el destello se apaga
+    fireEvent.animationEnd(recien);
+    expect(recien).not.toHaveClass('destello');
+  });
+
+  it('UI·21: un clip que ya estaba listo al entrar no enciende su detalle', async () => {
+    servidor({ '/api/clip': () => json({ clips: [LISTO] }) });
+    render(<Clip />);
+    expect(await screen.findByText('8 s · 1 foto tuya · ✦ 30')).not.toHaveClass('destello');
+  });
+
+  it('UI·21: un clip que falla no enciende nada', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lista: FichaClip[] = [VIVO];
+    servidor({ '/api/clip': () => json({ clips: lista }) });
+    const { container } = render(<Clip />);
+    await waitFor(() => expect(container.querySelectorAll('.fila-viva')).toHaveLength(1));
+    lista = [{ ...VIVO, estado: 'error', error: 'Veo no respondió' }];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(await screen.findByText('Veo no respondió')).toBeInTheDocument();
+    expect(container.querySelectorAll('.destello')).toHaveLength(0);
+  });
+});

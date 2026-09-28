@@ -1,9 +1,20 @@
 // UI·18 — la miniatura que viaja del inicio a su película. jsdom no tiene
 // View Transitions: los eventos pageswap/pagereveal se disparan a mano, con
 // y sin `viewTransition`, que es lo que decide si hay nombre o no.
+import { act, render, screen } from '@testing-library/react';
+import { createElement, useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { miniaturaQueLlega, NOMBRE_MINIATURA, olvidarMiniatura, tocarMiniatura, trasLaLlegada } from './transiciones';
+import { quitarVT, simularVT } from '../prueba/transicion';
+import {
+  miniaturaQueLlega,
+  NOMBRE_MINIATURA,
+  nombreVT,
+  olvidarMiniatura,
+  tocarMiniatura,
+  transicionar,
+  trasLaLlegada,
+} from './transiciones';
 
 function evento(tipo: 'pageswap' | 'pagereveal', conTransicion: boolean) {
   const e = new Event(tipo);
@@ -107,5 +118,128 @@ describe('el nombre de la miniatura', () => {
 describe('trasLaLlegada', () => {
   it('sin transición (jsdom, o un navegador sin ellas) se cumple sola', async () => {
     await expect(trasLaLlegada()).resolves.toBeUndefined();
+  });
+});
+
+// ── UI·21: transicionar() y nombreVT() ────────────────────────────────────
+
+/** Un texto con estado: el test lo cambia desde fuera, dentro del `cambio`. */
+function Texto({ exponer }: { exponer: (poner: (t: string) => void) => void }) {
+  const [texto, setTexto] = useState('viejo');
+  useEffect(() => exponer(setTexto), [exponer]);
+  return createElement('p', { 'data-testid': 'texto' }, texto);
+}
+
+/** Un matchMedia de mentira: solo «reducir movimiento» puede coincidir. */
+function ponerReducir(reduce: boolean) {
+  const mm = vi.fn((q: string) => ({ matches: reduce && q === '(prefers-reduced-motion: reduce)', media: q }));
+  vi.stubGlobal('matchMedia', mm);
+  return mm;
+}
+
+describe('UI·21 · transicionar', () => {
+  afterEach(() => {
+    quitarVT();
+    Reflect.deleteProperty(document, 'hidden'); // vuelve el getter de jsdom
+  });
+
+  it('sin startViewTransition (jsdom, un navegador viejo) el cambio corre al instante y devuelve null', () => {
+    const cambio = vi.fn();
+    expect(transicionar(cambio, ['reordenar'])).toBeNull();
+    expect(cambio).toHaveBeenCalledOnce();
+  });
+
+  it('con «reducir movimiento» va al instante aunque haya soporte', () => {
+    const vt = simularVT();
+    const mm = ponerReducir(true);
+    const cambio = vi.fn();
+    expect(transicionar(cambio, ['reordenar'])).toBeNull();
+    expect(cambio).toHaveBeenCalledOnce();
+    expect(vt.espia).not.toHaveBeenCalled();
+    expect(mm).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
+  });
+
+  it('con la pestaña oculta va al instante (nadie mira y el navegador la saltaría)', () => {
+    const vt = simularVT();
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    const cambio = vi.fn();
+    expect(transicionar(cambio, ['reordenar'])).toBeNull();
+    expect(cambio).toHaveBeenCalledOnce();
+    expect(vt.espia).not.toHaveBeenCalled();
+  });
+
+  it('sin soporte de tipos (Chrome 111-124: solo acepta una función) va al instante', () => {
+    const vt = simularVT({ sinTipos: true });
+    const cambio = vi.fn();
+    expect(transicionar(cambio, ['reordenar'])).toBeNull();
+    expect(cambio).toHaveBeenCalledOnce();
+    expect(vt.espia).not.toHaveBeenCalled();
+  });
+
+  it('con soporte va dentro de la transición con sus tipos, y el DOM ya está pintado cuando update vuelve (flushSync)', () => {
+    let poner!: (t: string) => void;
+    const alVolver: string[] = [];
+    const vt = simularVT({ trasUpdate: () => alVolver.push(screen.getByTestId('texto').textContent ?? '') });
+    ponerReducir(false);
+    render(createElement(Texto, { exponer: p => (poner = p) }));
+    let devuelta: ViewTransition | null = null;
+    act(() => {
+      devuelta = transicionar(() => poner('nuevo'), ['reordenar']);
+    });
+    expect(vt.espia).toHaveBeenCalledOnce();
+    expect(vt.espia).toHaveBeenCalledWith(expect.objectContaining({ types: ['reordenar'] }));
+    expect(devuelta).not.toBeNull();
+    // dentro de act, sin flushSync React lo dejaría para el final: aquí diría «viejo»
+    expect(alVolver).toEqual(['nuevo']);
+    expect(screen.getByTestId('texto')).toHaveTextContent('nuevo');
+  });
+
+  it('los tipos se copian: cambiar el arreglo después no toca la transición', () => {
+    const vt = simularVT();
+    const tipos = ['reordenar'];
+    transicionar(() => undefined, tipos);
+    tipos.push('otro');
+    expect(vt.tipos).toEqual([['reordenar']]);
+  });
+
+  it('si la transición se salta (ready, finished y updateCallbackDone rechazados), no queda ningún rechazo sin atender', async () => {
+    const sueltos: unknown[] = [];
+    const oir = (razon: unknown) => void sueltos.push(razon);
+    process.on('unhandledRejection', oir);
+    try {
+      simularVT({ saltada: true });
+      const cambio = vi.fn();
+      expect(transicionar(cambio, ['reordenar'])).not.toBeNull();
+      // el cambio corre igual: saltarse la animación no se salta los datos
+      expect(cambio).toHaveBeenCalledOnce();
+      await new Promise(listo => setTimeout(listo, 0));
+      expect(sueltos).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', oir);
+    }
+  });
+});
+
+describe('UI·21 · nombreVT', () => {
+  const VALIDO = /^[A-Za-z][A-Za-z0-9_-]*$/;
+
+  it('lo que ya es [A-Za-z0-9-] pasa tal cual, con su prefijo', () => {
+    expect(nombreVT('perfil', 'ig-AbC')).toBe('perfil-ig-AbC');
+  });
+
+  it('un «.» de un id de cuenta va como _2e_', () => {
+    expect(nombreVT('cuenta', 'in-la.cuenta')).toBe('cuenta-in-la_2e_cuenta');
+  });
+
+  it('«a_b» y «a.b» no chocan: el «_» también se escapa', () => {
+    expect(nombreVT('x', 'a_b')).not.toBe(nombreVT('x', 'a.b'));
+    expect(nombreVT('x', 'a_b')).toBe('x-a_5f_b');
+  });
+
+  it('siempre es un nombre válido, con ids raros también', () => {
+    const ids = ['ig-AbC', 'in-la.cuenta', 'a_b', 'a b', 'ñandú', '🙂', '1abc', '_', '--', '', 'a/b?c=d#e', 'x_2e_y'];
+    for (const id of ids) expect(nombreVT('perfil', id)).toMatch(VALIDO);
+    // y distintos entre sí
+    expect(new Set(ids.map(id => nombreVT('perfil', id))).size).toBe(ids.length);
   });
 });

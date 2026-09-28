@@ -320,3 +320,48 @@ describe('competencia', () => {
     await screen.findByRole('button', { name: 'Revisar' });
   });
 });
+
+// UI·21 — la cuenta que se agrega entra abriendo su espacio. Los nombres NO
+// son IDs de invariante (tests/test_migracion_ui.py).
+describe('UI·21 · las cuentas que vigilas', () => {
+  const fila = (cuenta: string) => screen.getByText(cuenta).closest('li');
+
+  it('UI·21: la cuenta agregada entra con fila-entra; las que ya estaban no', async () => {
+    let cuentas: Cuenta[] = [A];
+    servidor({
+      '/api/competencia': () => json(listado(cuentas)),
+      '/api/competencia/cuentas': () => {
+        cuentas = [A, B];
+        return json({ cuentas });
+      },
+    });
+    render(<Competencia />);
+    await screen.findByText('@cuenta_a');
+    // en la primera carga nada entra animado
+    expect(fila('@cuenta_a')).toHaveClass('fila-viva');
+    expect(fila('@cuenta_a')).not.toHaveClass('fila-entra');
+    await userEvent.type(screen.getByLabelText('Liga del perfil que quieres vigilar'), 'tiktok.com/@cuenta_b');
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    await screen.findByText('@cuenta_b');
+    // la fila ES el <li> de la lista (FilaViva como="li")
+    expect(fila('@cuenta_b')!.parentElement!.tagName).toBe('UL');
+    expect(fila('@cuenta_b')).toHaveClass('fila-viva', 'fila-entra');
+    expect(fila('@cuenta_a')).not.toHaveClass('fila-entra');
+  });
+
+  it('UI·21: la revisión que acaba de quedar lista enciende su resumen; la que ya estaba no', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const VIEJO: Resumen = { ...LISTO, id: 'inf-0', n_publicaciones: 4, creditos: 5, devueltos: 0 };
+    let informes: Resumen[] = [VIVO, VIEJO];
+    servidor({ '/api/competencia': () => json(listado([A], informes)) });
+    render(<Competencia />);
+    expect(await screen.findByText(/4 publicaciones · 5 créditos/)).not.toHaveClass('destello');
+    informes = [{ ...VIVO, estado: 'listo' }, VIEJO];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    const recien = await screen.findByText(/2 publicaciones · 10 créditos/);
+    expect(recien).toHaveClass('destello');
+    expect(screen.getByText(/4 publicaciones · 5 créditos/)).not.toHaveClass('destello');
+  });
+});

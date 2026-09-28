@@ -13,7 +13,7 @@ import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi, recuperarApartado } from '../../nucleo/api';
 import { creditos } from '../../nucleo/formato';
 import { nombreVT } from '../../nucleo/transiciones';
-import { diferencia, NINGUNO } from '../../nucleo/useListaViva';
+import { useNuevos } from '../../nucleo/useListaViva';
 import { useLlegada } from '../../nucleo/useLlegada';
 import { useSondeo } from '../../nucleo/useSondeo';
 import { Aviso } from '../../ui/Aviso';
@@ -56,12 +56,16 @@ function textoInicial(): string {
   return tomarBrief();
 }
 
+const CLAVES = (l: FichaClip[]) => l.map(c => c.id);
+
 export function Clip() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [clips, setClips] = useState<FichaClip[] | null>(null);
-  const [nuevos, setNuevos] = useState<ReadonlySet<string>>(NINGUNO);
-  const vistos = useRef<string[] | null>(null);
   const [falloCarga, setFalloCarga] = useState(false);
+  // UI·21: el clip que acaba de pedirse entra abriendo su espacio. La lista
+  // vacía que deja un fallo de carga no cuenta como vista: la primera carga
+  // buena después de él tampoco anima
+  const nuevos = useNuevos(falloCarga && clips?.length === 0 ? null : clips, CLAVES);
   const [texto, setTexto] = useState(textoInicial);
   const [formato, setFormato] = useState<Formato>('horizontal');
   const [fotos, setFotos] = useState<Foto[]>([]);
@@ -75,11 +79,6 @@ export function Clip() {
   const idTexto = useId();
 
   const aplicar = useCallback((lista: FichaClip[]): boolean => {
-    // UI·21: el clip que acaba de pedirse entra abriendo su espacio; en la
-    // primera carga buena nada entra animado (un fallo no cuenta como vista)
-    const ids = lista.map(c => c.id);
-    setNuevos(diferencia(vistos.current, ids).nuevos);
-    vistos.current = ids;
     setClips(lista);
     setFalloCarga(false);
     const vivos = generando(lista).length > 0;

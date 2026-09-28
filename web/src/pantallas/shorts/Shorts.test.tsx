@@ -624,3 +624,55 @@ describe('subir y marco', () => {
     await screen.findByRole('button', { name: 'Analizar ✦ 7' });
   });
 });
+
+// UI·21 — lo que termina con la página abierta se enciende un instante; lo
+// que ya estaba listo al entrar, no. Los nombres NO son IDs de invariante
+// (tests/test_migracion_ui.py).
+describe('UI·21 · lo que acaba de quedar listo', () => {
+  it('UI·21: «Análisis listo» se enciende al terminar con la página abierta', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let estado: Proyecto = ANALIZANDO;
+    montar({ proyecto: () => estado });
+    render(<Shorts />);
+    await screen.findByText('Analizando tu video · transcript y candidatos');
+    estado = CANDIDATOS;
+    await esperar(5000);
+    const listo = await screen.findByText('Análisis listo');
+    expect(listo).toHaveClass('text-exito', 'destello');
+    // se apaga al terminar su animación
+    fireEvent.animationEnd(listo);
+    expect(listo).not.toHaveClass('destello');
+  });
+
+  it('UI·21: «Análisis listo» NO se enciende si ya estaba listo en la primera carga', async () => {
+    montar({ proyecto: () => CANDIDATOS });
+    render(<Shorts />);
+    const listo = await screen.findByText('Análisis listo');
+    expect(listo).toHaveClass('text-exito');
+    expect(listo).not.toHaveClass('destello');
+  });
+
+  it('UI·21: «Render listo» y las salidas: se encienden y entran al terminar con la página abierta', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let estado: Proyecto = RENDERIZANDO;
+    montar({ proyecto: () => estado });
+    render(<Shorts />);
+    await screen.findByText(/Renderizando en la nube/);
+    estado = RENDER_LISTO;
+    await esperar(5000);
+    expect(await screen.findByText('Render listo')).toHaveClass('destello');
+    const salidas = screen.getByRole('heading', { name: '3 · Tus shorts' }).closest('.fila-viva');
+    expect(salidas).toHaveClass('fila-entra');
+    // «Análisis listo» ya estaba: no se enciende por el render
+    expect(screen.getByText('Análisis listo')).not.toHaveClass('destello');
+  });
+
+  it('UI·21: con el render ya listo al entrar, ni «Render listo» se enciende ni las salidas entran animadas', async () => {
+    montar({ proyecto: () => RENDER_LISTO });
+    render(<Shorts />);
+    expect(await screen.findByText('Render listo')).not.toHaveClass('destello');
+    const salidas = screen.getByRole('heading', { name: '3 · Tus shorts' }).closest('.fila-viva');
+    expect(salidas).toHaveClass('fila-viva');
+    expect(salidas).not.toHaveClass('fila-entra');
+  });
+});
