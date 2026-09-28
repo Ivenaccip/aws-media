@@ -444,6 +444,14 @@ set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IM
 Sin `--app` no pasa nada malo (esos nombres no existen en `app.py`). Ojo: las
 imágenes de dev cuentan para las 20 que conserva la regla del ECR.
 
+**En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
+lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
+`/estudio/`…) responde 302 a su `/estudio/<p>/`, aunque `server/migracion.py`
+la tenga en `nueva`. Producción no tiene la variable (lo fija
+`tests/test_entornos.py`), así que sus etapas siguen siendo las de
+`PANTALLAS`. «Usar la versión anterior» del Marco sigue devolviendo a la
+clásica, también en dev.
+
 ## Deploy (checklist)
 
 1. PR `dev` → `main` y merge → GitHub Actions construye la imagen y la

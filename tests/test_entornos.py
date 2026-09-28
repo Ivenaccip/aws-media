@@ -464,3 +464,19 @@ def test_el_ci_corre_la_sintesis_antes_del_build():
     assert "--noconftest" in paso
     assert "github.ref" not in paso, "tiene que correr en dev y en los PRs"
     assert i < wf.index("- name: Build de la imagen")
+
+
+def test_solo_dev_manda_a_las_pantallas_nuevas(prod, dev):
+    """UI_ETAPA_MINIMA sube todas las pantallas a `todos` (server/migracion.py).
+    En prod no puede existir: las etapas de producción las decide PANTALLAS,
+    una por una y en su deploy."""
+    for template in list(prod.values()):
+        for env in _env_lambdas(template):
+            assert "UI_ETAPA_MINIMA" not in env
+    api = [e for e in _env_lambdas(dev["aws-media-api-dev"]) if "COGNITO_DOMINIO" in e]
+    assert len(api) == 1
+    assert api[0]["UI_ETAPA_MINIMA"] == "todos"
+    for template in (dev["aws-media-jobs-dev"],):
+        for env in _env_lambdas(template):
+            assert "UI_ETAPA_MINIMA" not in env, "solo la Lambda del API sirve pantallas"
+

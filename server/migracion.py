@@ -27,10 +27,19 @@ porque ya no hay nada viejo que servir.
 Cambiar de etapa = editar PANTALLAS y desplegar (lo corre el dueño).
 tests/test_migracion_ui.py exige, antes de `todos`, que cada invariante de la
 pantalla exista como test en web/.
+
+UI_ETAPA_MINIMA (solo el stack de dev la tiene, infra/stacks/api.py): sube
+TODAS las pantallas por lo menos a esa etapa sin tocar PANTALLAS. Las etapas
+viven en el código y el código de dev es el que luego llega a main: pasar una
+pantalla a `todos` para verla en dev la pasaría también en producción. Con la
+variable, dev navega por las pantallas nuevas y prod sigue donde diga
+PANTALLAS. Solo acepta `todos`: `retirada` quitaría la salida de emergencia
+(«Usar la versión anterior») y `nueva` no cambiaría nada.
 """
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +55,9 @@ CLASICA = "clasica"
 # 7 días: la regla de retiro es «7 días en `todos` sin incidentes de dinero».
 # Quien eligió la clásica vuelve a ver la nueva al cabo de ese tiempo.
 DURACION_COOKIE = 7 * 24 * 3600
+
+ETAPA_MINIMA_VAR = "UI_ETAPA_MINIMA"
+MINIMAS = ("todos",)
 
 NO_STORE = {"Cache-Control": "no-store"}
 SIN_CACHE = {"Cache-Control": "no-cache"}
@@ -99,6 +111,25 @@ PANTALLAS: dict[str, Pantalla] = {
 }
 
 
+def etapa_minima() -> str:
+    """La etapa mínima del entorno, o "" si no hay. Un valor que no sea
+    `todos` revienta: mejor que el deploy falle a que dev se quede en `nueva`
+    sin avisar o que alguien retire pantallas por una variable."""
+    v = os.getenv(ETAPA_MINIMA_VAR, "").strip()
+    if v and v not in MINIMAS:
+        raise ValueError(f"migracion: {ETAPA_MINIMA_VAR}={v!r}; solo se acepta {MINIMAS}")
+    return v
+
+
+def etapa(p: Pantalla) -> str:
+    """La etapa que rige de verdad: la de PANTALLAS o la mínima del entorno,
+    la que vaya más adelante."""
+    minima = etapa_minima()
+    if minima and ETAPAS.index(minima) > ETAPAS.index(p.etapa):
+        return minima
+    return p.etapa
+
+
 def _sub(request: Request) -> str:
     """El sub del id_token de la cookie, sin verificar. Solo para el log."""
     token = request.cookies.get("token")
@@ -116,15 +147,16 @@ def _con_query(ruta: str, request: Request) -> str:
 
 
 def _anotar(accion: str, nombre: str, p: Pantalla, request: Request) -> None:
-    log.info("migracion %s pantalla=%s etapa=%s sub=%s", accion, nombre, p.etapa, _sub(request))
+    log.info("migracion %s pantalla=%s etapa=%s sub=%s", accion, nombre, etapa(p), _sub(request))
 
 
 def decidir(nombre: str, request: Request, nueva_montada: bool) -> str | None:
     """A dónde redirige la URL vieja de `nombre`; None = servir la vieja."""
     p = PANTALLAS[nombre]
-    if p.etapa == "retirada":
+    e = etapa(p)
+    if e == "retirada":
         return _con_query(p.nueva, request)
-    if p.etapa == "todos" and nueva_montada and request.cookies.get(COOKIE) != CLASICA:
+    if e == "todos" and nueva_montada and request.cookies.get(COOKIE) != CLASICA:
         return _con_query(p.nueva, request)
     return None
 
@@ -134,6 +166,10 @@ def montar(app, montadas: list[str], static: Path) -> None:
 
     Va ANTES de `app.mount("/", …)`, igual que web.montar, y recibe lo que
     este montó para saber qué pantallas nuevas existen de verdad."""
+    minima = etapa_minima()   # un valor mal escrito revienta al arrancar
+    if minima:
+        log.info("migracion: %s=%s, ninguna pantalla por debajo de esa etapa",
+                 ETAPA_MINIMA_VAR, minima)
     for nombre, p in PANTALLAS.items():
         if p.etapa not in ETAPAS:
             raise ValueError(f"migracion: etapa desconocida {p.etapa!r} en {nombre}")
@@ -147,7 +183,7 @@ def montar(app, montadas: list[str], static: Path) -> None:
         p = PANTALLAS.get(pantalla)
         if p is None:
             return RedirectResponse("/estudio/", status_code=302, headers=NO_STORE)
-        if p.etapa == "retirada":
+        if etapa(p) == "retirada":
             # ya no hay versión anterior: se queda en la nueva
             return RedirectResponse(p.nueva, status_code=302, headers=NO_STORE)
         _anotar("clasica", pantalla, p, request)

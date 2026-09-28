@@ -205,3 +205,55 @@ def test_la_version_anterior_del_inicio_vuelve_a_estudio(tmp_path, monkeypatch):
     r = _app_inicio(tmp_path, monkeypatch, "todos").get("/ui/clasica?pantalla=inicio")
     assert r.status_code == 302 and r.headers["location"] == "/estudio/"
     assert "ui=clasica" in r.headers["set-cookie"]
+
+
+# ---------- UI_ETAPA_MINIMA: dev navega por las nuevas sin tocar PANTALLAS ----------
+
+def test_la_minima_todos_redirige_una_pantalla_en_nueva(cliente, monkeypatch):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")
+    r = cliente("nueva").get("/demo.html?x=1")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/estudio/demo/?x=1"
+
+
+def test_con_la_minima_la_cookie_clasica_sigue_siendo_la_salida(cliente, monkeypatch):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")
+    c = cliente("nueva")
+    r = c.get("/ui/clasica", params={"pantalla": "demo"})
+    assert r.status_code == 302 and r.headers["location"] == "/demo.html"
+    c.cookies.set("ui", "clasica")
+    r = c.get("/demo.html")
+    assert r.status_code == 200 and "vieja" in r.text
+
+
+def test_la_minima_no_baja_una_pantalla_retirada(cliente, monkeypatch):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")
+    c = cliente("retirada", con_vieja=False)
+    c.cookies.set("ui", "clasica")
+    assert c.get("/demo.html").headers["location"] == "/estudio/demo/"
+
+
+def test_la_minima_sin_la_pantalla_compilada_no_manda_a_un_404(cliente, monkeypatch):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")
+    r = cliente("nueva", montada=False).get("/demo.html")
+    assert r.status_code == 200 and "vieja" in r.text
+
+
+def test_sin_la_variable_nada_cambia(cliente, monkeypatch):
+    monkeypatch.delenv("UI_ETAPA_MINIMA", raising=False)
+    assert cliente("nueva").get("/demo.html").status_code == 200
+
+
+@pytest.mark.parametrize("valor", ["retirada", "nueva", "TODOS", "si"])
+def test_una_minima_que_no_sea_todos_revienta_al_arrancar(tmp_path, monkeypatch, valor):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", valor)
+    with pytest.raises(ValueError, match="UI_ETAPA_MINIMA"):
+        _app(tmp_path, "nueva")
+
+
+def test_el_log_dice_la_etapa_que_rige(cliente, monkeypatch, caplog):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")
+    with caplog.at_level(logging.INFO, logger="migracion"):
+        cliente("nueva").get("/demo.html")
+    assert "pantalla=demo etapa=todos" in caplog.text
+
