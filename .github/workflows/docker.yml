@@ -3,13 +3,26 @@
 # arranca y responde sin .env (las keys solo hacen falta al usar cada API).
 #
 # Dos ramas (ver docs/OPERACION.md § Ramas): «dev» integra, «main» es lo que
-# corre en AWS. El build y los tests corren en las dos y en cada PR; el push a
-# ECR corre SOLO desde main, y eso no es una preferencia de estilo:
-# la Lambda de producción consume la etiqueta «latest» de ese mismo repositorio
-# de ECR. Si dev también empujara, el siguiente «cdk deploy» — hecho desde
-# donde fuera — se llevaría código de dev a producción. Con un solo entorno
-# AWS, esa guarda es la única frontera entre lo que se prueba y lo que ven los
-# testers.
+# corre en producción. El build y los tests corren en las dos y en cada PR.
+#
+# LAS DOS EMPUJAN AL ECR, Y NO ES LO MISMO QUE EMPUJEN
+#
+# Hasta el 2026-09-28 solo main empujaba, porque había UN entorno AWS y la
+# etiqueta «latest» de este repositorio de ECR es la que consume la Lambda de
+# producción. Ya hay dos entornos (infra/app_dev.py), así que la regla se
+# estrecha hasta lo que de verdad protege producción:
+#
+#     «latest» SOLO se escribe desde main.
+#
+# dev sube su imagen con la etiqueta «dev-<sha>» y nada más. Un «cdk deploy»
+# de producción no puede recogerla ni por descuido: para desplegar esa imagen
+# hay que NOMBRARLA (IMAGE_TAG=dev-<sha>), y quien la nombra ve en el nombre que
+# no es de main.
+#
+# Por eso los dos pushes son EXPLÍCITOS y ninguno usa «--all-tags»: ese flag
+# sube todas las etiquetas locales del repositorio, o sea que un «latest» que
+# quedara colgando en el daemon del runner viajaría desde dev sin que nadie lo
+# pidiera. tests/test_flujo_ramas.py lo vigila.
 name: docker
 
 on:
@@ -87,23 +100,42 @@ jobs:
       # publica en ECR (C1 — la Lambda del API la consume por el tag latest).
       # Desde dev o desde un PR se construye y se prueba, pero NO se publica.
       - name: Debug claims OIDC (iss/aud/sub — no son secretos)
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: |
           TOKEN=$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
           echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{iss, aud, sub}' || true
 
+      # El rol es el MISMO para las dos ramas y solo puede hacer una cosa:
+      # subir capas al repositorio aws-media del ECR. No despliega nada — el
+      # «cdk deploy» lo corre siempre una persona, en los dos entornos.
       - name: Credenciales AWS (OIDC)
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::191241816158:role/aws-media-github-ecr
           aws-region: us-east-1
 
-      - name: Push a ECR (latest + sha)
+      - name: Push a ECR desde main (latest + sha)
         if: github.ref == 'refs/heads/main'
         run: |
           ECR=191241816158.dkr.ecr.us-east-1.amazonaws.com
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
           docker tag aws-media:ci $ECR/aws-media:latest
           docker tag aws-media:ci $ECR/aws-media:${{ github.sha }}
-          docker push --all-tags $ECR/aws-media
+          docker push $ECR/aws-media:latest
+          docker push $ECR/aws-media:${{ github.sha }}
+
+      # La imagen de dev NO lleva «latest». Con eso basta para que no llegue a
+      # producción sola: la Lambda de prod resuelve su digest desde «latest»
+      # salvo que alguien escriba IMAGE_TAG, y «dev-<sha>» no se escribe solo.
+      #
+      # Para llevarla al entorno dev (infra/app_dev.py), a mano y nombrándola:
+      #   IMAGE_TAG=dev-<sha> npx cdk --app "python app_dev.py" deploy --all
+      - name: Push a ECR desde dev (dev-sha, nunca latest)
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          ECR=191241816158.dkr.ecr.us-east-1.amazonaws.com
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
+          docker tag aws-media:ci $ECR/aws-media:dev-${{ github.sha }}
+          docker push $ECR/aws-media:dev-${{ github.sha }}
+          echo "::notice::imagen de dev lista: dev-${{ github.sha }} | desplegarla con IMAGE_TAG=dev-${{ github.sha }} npx cdk --app 'python app_dev.py' deploy --all"

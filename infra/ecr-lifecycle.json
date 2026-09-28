@@ -2,13 +2,15 @@
   "rules": [
     {
       "rulePriority": 1,
-      "description": "Conserva las 20 imagenes mas recientes. Cada build sube ~1.6 GB unicos porque el CI no cachea capas, asi que sin esto el repo crece ~4 GB al dia. El riesgo no es el numero: es no desplegar en 20 merges, porque las Lambdas van al digest. Ver OPERACION.md",
+      "description": "Conserva las 40 mas recientes. Desde el 28-sep-2026 empujan DOS ramas (main: latest+sha; dev: dev-sha), y 20 se repartian. Las Lambdas van al digest: borrar la desplegada la deja sin arrancar. Ensayo: ecr_preview.py",
       "selection": {
         "tagStatus": "any",
         "countType": "imageCountMoreThan",
-        "countNumber": 20
+        "countNumber": 40
       },
-      "action": { "type": "expire" }
+      "action": {
+        "type": "expire"
+      }
     }
   ]
 }

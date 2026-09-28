@@ -280,25 +280,49 @@ Dos, y solo dos:
 Cada cambio sale de `dev` en su rama y su PR vuelve a `dev`. Liberar es un PR
 `dev` → `main`, y el deploy va pegado al merge.
 
-**Por qué esto importa, y qué NO resuelve.** Hay UN entorno AWS: los testers usan
-la misma Aurora, el mismo Cognito y el mismo bucket donde tú pruebas. `dev` no es
-un lugar seguro donde romper cosas en la nube — un `cdk deploy` desde cualquier
-rama pisa el mismo stack. Lo que las dos ramas compran es otra cosa: saber qué
-están usando los testers sin ir a interrogar a ECR. Si la regla se cumple,
-`git log main` lo responde.
+**Por qué esto importa.** Un merge a `main` sin su `cdk deploy` deja al repo
+diciendo algo falso: la promesa de estas dos ramas es que `git log main`
+responde qué están usando los testers sin ir a interrogar al ECR.
 
-Por eso `dev` se prueba **en local** — la suite, `tools/check_js.py` y el server
-en 8011 — y por eso el deploy no es "cuando se pueda": un merge a `main` sin su
-`cdk deploy` deja al repo diciendo algo falso.
+**Desde el 28-sep-2026 hay DOS entornos AWS**, cada uno con su pool de Cognito,
+su Aurora y su bucket (`infra/entornos.py`, `infra/app_dev.py`). Hasta entonces
+había uno solo y `dev` no tenía dónde verse en la nube; buena parte de esta
+sección decía eso y ya no es cierto.
+
+Lo que **no** cambia: `cdk deploy` lo corre siempre una persona, en los dos
+entornos. GitHub Actions construye y publica imágenes; no despliega nada.
 
 ### Dónde se ve cada una
 
 | rama | dónde se ve |
 |---|---|
 | `main` | https://irremplazables.xyz — **lo que usan los testers** |
-| `dev` | solo en tu máquina: `venv/Scripts/python -m uvicorn server.app:app --port 8011` → http://localhost:8011 |
+| `dev` | https://illyp2jbff.execute-api.us-east-1.amazonaws.com — el entorno dev |
+| cualquier rama | tu máquina: `venv/Scripts/python -m uvicorn server.app:app --port 8011` → http://localhost:8011 |
 
-No hay un «dev en la nube». Con un solo entorno AWS, esa columna no existe.
+#### Cómo llega tu código al entorno dev
+
+**No llega solo.** Son dos actos, igual que en producción:
+
+1. **Automático.** Al mergear a `dev`, el CI corre las mismas compuertas que
+   para main y sube la imagen al ECR con la etiqueta **`dev-<sha>`**. Nunca
+   escribe `latest`: esa es la etiqueta que la Lambda de producción resuelve
+   sola, y solo se escribe desde `main` (`tests/test_flujo_ramas.py` lo fija).
+2. **A mano, tú.** Esa imagen hay que **nombrarla** para desplegarla:
+
+```bash
+cd infra
+IMAGE_TAG=dev-<sha> npx cdk --app "python app_dev.py" deploy --all
+```
+
+El `--app` va en TODOS los comandos de dev, también en el `diff` y el
+`destroy`: `cdk.json` apunta a producción. Olvidarlo no despliega prod por
+error (`app.py` no declara stacks `-dev`, así que `cdk` sale con error), salvo
+un `--all` sin `--app`.
+
+El sha sale del run del CI o de `git log origin/dev`. En cmd, `set IMAGE_TAG=...`
+**dura lo que dure la ventana, no el comando** — suéltalo al acabar con
+`set IMAGE_TAG=`.
 
 #### El 8011 con login real (`.env.local`)
 
@@ -316,10 +340,12 @@ venv/Scripts/python tools/env_local.py --ejecutar    # escribe .env.local
 así que el cableado generado gana sin que nadie edite el `.env` a mano. Para
 volver al dev local de siempre, **borra el archivo**: no hay que deshacer nada.
 
-**Mientras no existan los stacks `-dev` (paso 8 del entorno dev), eso apunta a
-PRODUCCIÓN.** El pool, la base y el monedero que veas en localhost:8011 son los
-reales: lo que cobres o borres ahí le pasa a un usuario de verdad. La
-herramienta te hace teclear `PROD` antes de escribir el archivo.
+**Por defecto eso apunta a PRODUCCIÓN.** El pool, la base y el monedero que veas
+en localhost:8011 son los reales: lo que cobres o borres ahí le pasa a un
+usuario de verdad. La herramienta te hace teclear `PROD` antes de escribir el
+archivo. Desde el 28-sep existen los stacks `-dev`, así que ya hay a dónde
+apuntar que no sea producción — los outputs de `aws-media-db-dev` y
+`aws-media-api-dev`.
 
 Lo que **no** pone, a propósito: `JOBS_BACKEND`, `JOBS_QUEUE_URL` y
 `PRODUCIR_SM_ARN` —con esos tres tu máquina encola en la cola de producción y el
@@ -391,11 +417,11 @@ el `gh pr merge` de cada rama de trabajo: hace lo mismo, pero solo en ese PR.
 Proteger `dev` sería la solución limpia, pero la protección de ramas pide
 GitHub Pro en repos privados.
 
-El día que haya testers suficientes para que no puedas permitirte romperles nada,
-lo que toca es un segundo entorno AWS, no una tercera rama. Los dos stacks con
-VPC ya van con `nat_gateways=0`, así que duplicar no arrastra el costo fijo del
-NAT; lo que falta es parametrizar cuatro nombres cableados (`aws-media-users`,
-el dominio `media-ivenaccip`, `aws-media-producir` y el rol OIDC).
+Esto decía que «el día que haya testers suficientes, lo que toca es un segundo
+entorno AWS, no una tercera rama», y listaba los cuatro nombres cableados que
+había que parametrizar. **Hecho el 28-sep-2026**: los nombres viven en
+`infra/entornos.py` y el segundo entorno en `infra/app_dev.py`. El rol OIDC se
+quedó compartido a propósito — solo sabe subir al ECR, no desplegar.
 
 ## Entornos (prod y dev)
 
