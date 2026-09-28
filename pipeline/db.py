@@ -388,9 +388,23 @@ def cargar_proyecto_editor(user_id: str, nombre: str) -> dict | None:
 
 def listar_proyectos_editor(user_id: str) -> list[dict]:
     filas = ejecutar(
-        "SELECT nombre, doc::text AS doc FROM proyectos_editor "
+        "SELECT nombre, creado, doc::text AS doc FROM proyectos_editor "
         "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
-    return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
+    # UI·26: la fecha viaja para ordenar «Mis videos» junto con películas y clips
+    return [{"nombre": f["nombre"], "creado": _iso(f.get("creado")),
+             "doc": json.loads(f["doc"])} for f in filas]
+
+
+def _iso(valor) -> str | None:
+    """El Data API entrega un timestamptz como «2026-09-28 17:29:13.123» (en
+    UTC y sin zona): sin la T ni la Z, Safari no lo entiende y Chrome lo lee
+    como hora local."""
+    if hasattr(valor, "isoformat"):
+        return valor.isoformat()
+    if not isinstance(valor, str) or not valor:
+        return None
+    iso = valor.replace(" ", "T", 1)
+    return iso if iso.endswith("Z") or "+" in iso[10:] else iso + "Z"
 
 
 def corridas_editor(user_id: str) -> list[dict]:

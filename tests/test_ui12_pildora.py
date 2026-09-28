@@ -6,36 +6,50 @@ las 12 pantallas y los estados de crear a 390, 700, 1000 y 1280 px con el
 avatar visible: solo chocaban el inicio en celular (el título) y crear fuera
 del formulario (la primera tarjeta, en revisión hasta en escritorio).
 """
+import functools
 import re
 from pathlib import Path
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
-MONEDERO = (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
-CREAR = (ESTATICOS / "crear.html").read_text(encoding="utf-8")
-INICIO = (ESTATICOS / "index.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _monedero() -> str:
+    return (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _crear() -> str:
+    return (ESTATICOS / "crear.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _inicio() -> str:
+    return (ESTATICOS / "index.html").read_text(encoding="utf-8")
+
 
 FIN_PILDORA = 52   # top 12 + botón de 40
 
 
 def test_la_pildora_sigue_donde_estaba():
     """Decisión del dueño (25-sep): el saldo se queda arriba a la derecha."""
-    assert "position:fixed;top:12px;right:14px;" in MONEDERO
-    assert "width:40px;height:40px;" in MONEDERO
+    assert "position:fixed;top:12px;right:14px;" in _monedero()
+    assert "width:40px;height:40px;" in _monedero()
 
 
 def test_crear_baja_todos_sus_estados_sin_cabecera():
-    m = re.search(r"#progreso, #revision, #imagenes, #resultado, #error \{ padding-top:(\d+)px; \}", CREAR)
+    m = re.search(r"#progreso, #revision, #imagenes, #resultado, #error \{ padding-top:(\d+)px; \}", _crear())
     assert m, "algún estado de crear volvió a quedar debajo de la píldora"
-    margen_main = int(re.search(r"main \{ max-width:720px; margin:(\d+)px auto;", CREAR).group(1))
+    margen_main = int(re.search(r"main \{ max-width:720px; margin:(\d+)px auto;", _crear()).group(1))
     assert margen_main + int(m.group(1)) >= FIN_PILDORA + 16
 
 
 def test_crear_no_duplica_el_espacio_del_formulario():
     """El formulario ya tiene su cabecera con la franja libre."""
-    assert "#form" not in re.search(r"#progreso, #revision[^{]*\{", CREAR).group(0)
+    assert "#form" not in re.search(r"#progreso, #revision[^{]*\{", _crear()).group(0)
 
 
 def test_el_inicio_en_celular_baja_el_titulo():
-    movil = INICIO[INICIO.index("@media (max-width: 860px)"):]
+    movil = _inicio()[_inicio().index("@media (max-width: 860px)"):]
     m = re.search(r"\.layout \{ grid-template-columns: 1fr; padding-top: (\d+)px; \}", movil)
     assert m and int(m.group(1)) >= FIN_PILDORA + 16

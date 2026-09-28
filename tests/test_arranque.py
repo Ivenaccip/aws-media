@@ -28,7 +28,7 @@ def _en_proceso_limpio(codigo: str, clave: str = "") -> str:
     entorno = {**os.environ, "OPENAI_API_KEY": clave,
                "OPENAI_BASE_URL": "http://127.0.0.1:9"}
     r = subprocess.run([sys.executable, "-c", codigo], capture_output=True,
-                       text=True, cwd=str(RAIZ), env=entorno)
+                       text=True, encoding="utf-8", cwd=str(RAIZ), env=entorno)
     assert r.returncode == 0, f"el subproceso falló:\n{r.stderr[-2000:]}"
     return r.stdout.strip()
 

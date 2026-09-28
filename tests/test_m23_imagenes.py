@@ -747,7 +747,7 @@ def test_el_js_de_la_pagina_es_valido(html, tmp_path):
         pytest.skip("node no está instalado")
     f = tmp_path / "imagenes.js"
     f.write_text(_js(html), encoding="utf-8")
-    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
 
 
@@ -892,5 +892,5 @@ def test_el_js_del_inicio_es_valido(hub, tmp_path):
         pytest.skip("node no está instalado")
     f = tmp_path / "hub.js"
     f.write_text(_js(hub), encoding="utf-8")
-    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr

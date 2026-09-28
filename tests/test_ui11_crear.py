@@ -7,6 +7,7 @@ Lo que se defiende aquí:
   botón ámbar, y lo técnico queda plegado;
 - la cifra de «Te devolvimos ✦ N» es la que devuelve el worker, no otra.
 """
+import functools
 import json
 import re
 import shutil
@@ -16,7 +17,11 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-CREAR = (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _crear() -> str:
+    return (RAIZ / "static" / "crear.html").read_text(encoding="utf-8")
 
 
 def _js(html: str) -> str:
@@ -24,8 +29,8 @@ def _js(html: str) -> str:
 
 
 def _seccion(id_: str) -> str:
-    i = CREAR.index(f'<section id="{id_}"')
-    return CREAR[i:CREAR.index("</section>", i)]
+    i = _crear().index(f'<section id="{id_}"')
+    return _crear()[i:_crear().index("</section>", i)]
 
 
 def _bloque(js: str, inicio: str) -> str:
@@ -43,7 +48,7 @@ def _bloque(js: str, inicio: str) -> str:
 # lo que se lee en el HTML
 
 def test_carga_los_iconos_antes_del_script():
-    assert CREAR.index('src="/iconos.js"') < CREAR.index("<script>\nconst $")
+    assert _crear().index('src="/iconos.js"') < _crear().index("<script>\nconst $")
 
 
 def test_la_espera_tiene_pasos_y_lo_que_falta():
@@ -51,20 +56,20 @@ def test_la_espera_tiene_pasos_y_lo_que_falta():
     assert 'id="ppasos"' in prog and 'id="pfalta" hidden' in prog
     # la barra y el orbe se quedan
     assert 'id="pbar"' in prog and 'id="orbe-prog"' in prog
-    assert "Puedes cerrar esta pestaña" in CREAR
+    assert "Puedes cerrar esta pestaña" in _crear()
 
 
 def test_ningun_filtro_tine_los_iconos():
     """crear tuvo un .ico con filtro sepia (emojis de título → ámbar) que
     alcanzaba al SVG: la palomita verde y el aviso rojo salían ámbar. UI·13
     quitó los emojis y con ellos el filtro."""
-    assert "sepia(" not in CREAR
+    assert "sepia(" not in _crear()
 
 
 def test_sin_emojis_en_la_espera_ni_en_el_error():
     for e in "🎥✍❌":
-        assert e not in CREAR, e
-    assert "Error desconocido" not in CREAR
+        assert e not in _crear(), e
+    assert "Error desconocido" not in _crear()
 
 
 def test_el_error_llega_en_tres_partes():
@@ -75,13 +80,13 @@ def test_el_error_llega_en_tres_partes():
     assert "<summary>Detalles técnicos</summary>" in error
     # un solo principal: «Empezar de nuevo» es secundario mientras se pueda reintentar
     assert 'class="btn btn-pri" id="reintentar"' in error and 'class="btn btn-sec" id="denuevo"' in error
-    js = _bloque(_js(CREAR), "function pintaError(p)")
+    js = _bloque(_js(_crear()), "function pintaError(p)")
     assert "$('#denuevo').classList.toggle('btn-sec', fallaProducir);" in js
     assert "$('#denuevo').classList.toggle('btn-pri', !fallaProducir);" in js
 
 
 def test_el_error_de_reintentar_no_pisa_lo_que_paso():
-    js = _js(CREAR)
+    js = _js(_crear())
     reintentar = js[js.index("$('#reintentar').onclick"):js.index("// --- reanudar por URL")]
     assert "$('#eerr').textContent = e.message" in reintentar
     assert "#emsg" not in reintentar
@@ -90,7 +95,7 @@ def test_el_error_de_reintentar_no_pisa_lo_que_paso():
 def test_devuelve_la_misma_cifra_que_el_worker():
     """producir_task devuelve creditos.producir_cobrado(p) → p.cobrado_producir;
     lambda_worker devuelve costo_preparar() → tarifas.preparar."""
-    js = _bloque(_js(CREAR), "function pintaError(p)")
+    js = _bloque(_js(_crear()), "function pintaError(p)")
     assert "p.cobrado_producir ??" in js
     assert ": mon.tarifas.preparar;" in js
     worker = (RAIZ / "worker" / "producir_task.py").read_text(encoding="utf-8")
@@ -102,7 +107,7 @@ def test_devuelve_la_misma_cifra_que_el_worker():
 def test_los_pasos_cubren_todas_las_etapas_del_pipeline():
     """Una etapa que no está en ningún paso dejaría el paso anterior encendido
     mientras la barra avanza. Se leen de ETAPA_TXT, que ya las nombra todas."""
-    js = _js(CREAR)
+    js = _js(_crear())
     etapa_txt = js[js.index("const ETAPA_TXT = {"):js.index("};", js.index("const ETAPA_TXT = {"))]
     etapas = set(re.findall(r"(\w+):'", etapa_txt))
     prep = js[js.index("const PASOS_PREP"):js.index("const PASOS_PROD")]
@@ -163,7 +168,7 @@ def corrida(tmp_path_factory):
     node = shutil.which("node")
     if not node:
         pytest.skip("node no está instalado")
-    js = _js(CREAR)
+    js = _js(_crear())
     codigo = "\n".join([
         js[js.index("const ETAPA_TXT = {"):js.index("};", js.index("const ETAPA_TXT = {")) + 2],
         js[js.index("const PASOS_PREP"):js.index("let minutosProd = null;")],
@@ -173,7 +178,7 @@ def corrida(tmp_path_factory):
     ])
     f = tmp_path_factory.mktemp("ui11") / "prueba.js"
     f.write_text(NODO.replace("__CODIGO__", codigo), encoding="utf-8")
-    r = subprocess.run([node, str(f)], capture_output=True, text=True)
+    r = subprocess.run([node, str(f)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 

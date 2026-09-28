@@ -972,7 +972,7 @@ def test_la_url_firmada_no_llega_al_log_del_worker(tmp_path):
     env = {**os.environ, "PYTHONPATH": str(raiz), "SSM_ENV_PREFIX": "",
            "PYTHONIOENCODING": "utf-8"}
     r = subprocess.run([sys.executable, str(guion)], cwd=raiz, env=env,
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, encoding="utf-8", timeout=120)
     assert r.returncode == 0, r.stderr
     assert "SECRETO" not in r.stderr + r.stdout
 

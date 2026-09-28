@@ -10,7 +10,7 @@ Aurora necesitan los ARNs (sección «Base de datos»).
 | Qué | Liga |
 |---|---|
 | **Producto (API + web)** | https://irremplazables.xyz — el endpoint viejo sigue vivo: https://2ecset5i94.execute-api.us-east-1.amazonaws.com |
-| **Dashboard admin** | https://irremplazables.xyz/admin.html |
+| **Dashboard admin** | https://irremplazables.xyz/admin.html (la nueva, en prueba: `/estudio/admin/`) |
 | **Login (Hosted UI Cognito)** | https://media-ivenaccip.auth.us-east-1.amazoncognito.com — la misma pantalla cubre el cambio de contraseña del primer login; el branding se retoca en el editor visual de la consola Cognito (vive FUERA de CloudFormation) |
 | **CDN de media** | https://d8bfm82hs0s6a.cloudfront.net |
 | **Langfuse (trazas y prompts)** | https://us.cloud.langfuse.com |
@@ -66,6 +66,22 @@ venv/Scripts/python tools/usuarios.py reactivar correo@ejemplo.com
 user_id real de la base) antes de tocar el monedero, y truena con aviso si el
 correo no existe en el pool. También acepta el sub directo (el id que imprime
 `usuarios.py lista`).
+
+**Para resolver un correo hace falta `COGNITO_POOL_ID`** (o `--pool`). Lo pone
+`.env.local`, que genera `tools/env_local.py`:
+
+```bash
+venv/Scripts/python tools/env_local.py --ejecutar
+```
+
+Antes había un pool de producción cableado como default, y con dev en pie eso
+resolvía el correo contra el pool equivocado **sin avisar**: abonaría al `sub` de
+un usuario de producción dentro de la base de dev. Ahora falla y lo dice. Pasar
+el sub directo no necesita pool.
+
+`abonar` además comprueba contra CloudFormation que el clúster es el del
+`--entorno` que le declaraste, y en producción hace teclear `PROD`. `saldo` y
+`movimientos` no preguntan nada.
 
 ```bash
 venv/Scripts/python tools/creditos.py saldo --user correo@ejemplo.com
@@ -284,6 +300,45 @@ en 8011 — y por eso el deploy no es "cuando se pueda": un merge a `main` sin s
 
 No hay un «dev en la nube». Con un solo entorno AWS, esa columna no existe.
 
+#### El 8011 con login real (`.env.local`)
+
+Por default el 8011 corre **sin login**: `server/auth.py` solo exige el JWT si ve
+`COGNITO_POOL_ID`, y sin esa variable todo pasa como `DEFAULT_USER_ID`. Para
+probar el login, el monedero o los créditos de verdad hay que darle el cableado
+de AWS, y ese cableado **no se teclea**: sale de los outputs del stack.
+
+```bash
+venv/Scripts/python tools/env_local.py              # ENSAYO: dice qué escribiría
+venv/Scripts/python tools/env_local.py --ejecutar    # escribe .env.local
+```
+
+`.env.local` se carga después del `.env` y con override (`pipeline/config.py`),
+así que el cableado generado gana sin que nadie edite el `.env` a mano. Para
+volver al dev local de siempre, **borra el archivo**: no hay que deshacer nada.
+
+**Mientras no existan los stacks `-dev` (paso 8 del entorno dev), eso apunta a
+PRODUCCIÓN.** El pool, la base y el monedero que veas en localhost:8011 son los
+reales: lo que cobres o borres ahí le pasa a un usuario de verdad. La
+herramienta te hace teclear `PROD` antes de escribir el archivo.
+
+Lo que **no** pone, a propósito: `JOBS_BACKEND`, `JOBS_QUEUE_URL` y
+`PRODUCIR_SM_ARN` —con esos tres tu máquina encola en la cola de producción y el
+worker de prod recoge y paga la generación—, `STRIPE_WEBHOOK_SECRET`,
+`LANGFUSE_PROMPTS` y **los dos prefijos de SSM**.
+
+El de usuarios es el que más duele y **no falla: publica**. Con
+`SSM_USUARIOS_PREFIX` de producción puesto, `claves_usuario.en_nube()` da `True` y
+`blotato.clave_y_origen()` devuelve la clave de Blotato de un usuario **real**
+leída de SSM: a partir de ahí cualquier prueba de MIX en tu máquina publica en la
+cuenta de redes de ese cliente. Sin el prefijo, las claves salen de
+`work/_claves` —archivo local que git ignora— y el flujo de «conecta tu clave» se
+prueba igual. `SSM_ENV_PREFIX` se queda fuera por otra razón: en local no lo lee
+nadie, porque lo consume `worker/env_ssm.py` desde `server/lambda_handler.py` y
+uvicorn arranca `server/app.py`.
+
+El porqué de cada uno está en el docstring de `tools/env_local.py`, y
+`tests/test_entorno_local.py` lo fija.
+
 ### Los comandos, por caso
 
 **Un cambio cualquiera** — sale de `dev` y vuelve a `dev`:
@@ -374,12 +429,36 @@ IMAGE_TAG=<sha completo de lo desplegado> npx cdk diff aws-media-db aws-media-me
 Con `IMAGE_TAG` y no con `latest`: en cuanto algo nuevo llegue a main, el diff
 contra `:latest` sale con el `ImageUri` cambiado aunque la infra sea la misma.
 
+### Deploy del entorno dev
+
+Cada push a `dev` (un merge de PR incluido) publica, cuando el CI pasa, la
+imagen `aws-media:dev-<sha completo del commit>`. Nunca `latest`. El sha es el
+de `git log -1 --format=%H origin/dev` tras un `git fetch`. En cmd, desde
+`D:\aws-project\infra`:
+
+```bash
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IMAGE_TAG=dev-<sha>" && npx cdk --app "python app_dev.py" diff aws-media-api-dev aws-media-jobs-dev & set "IMAGE_TAG="
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IMAGE_TAG=dev-<sha>" && npx cdk --app "python app_dev.py" deploy aws-media-api-dev aws-media-jobs-dev --require-approval never & set "IMAGE_TAG="
+```
+
+Sin `--app` no pasa nada malo (esos nombres no existen en `app.py`). Ojo: las
+imágenes de dev cuentan para las 20 que conserva la regla del ECR.
+
+**En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
+lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
+`/estudio/`…) responde 302 a su `/estudio/<p>/`, aunque `server/migracion.py`
+la tenga en `nueva`. Producción no tiene la variable (lo fija
+`tests/test_entornos.py`), así que sus etapas siguen siendo las de
+`PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»; para volver
+a una clásica se teclea `/ui/clasica?pantalla=<p>`.
+
 ## Deploy (checklist)
 
 1. PR `dev` → `main` y merge → GitHub Actions construye la imagen y la
-   empuja a ECR. **Solo main empuja**: desde `dev` o desde un PR se
-   construye y se prueba, pero no se publica — la Lambda de producción
-   consume el `latest` de ese mismo repositorio.
+   empuja a ECR. **Solo main empuja `latest`**: un PR se construye y se
+   prueba sin publicar, y `dev` publica únicamente `dev-<sha>` para el
+   entorno dev (abajo) — la Lambda de producción consume el `latest` de ese
+   mismo repositorio.
 2. En tu terminal, desde `D:\aws-project\infra` — en cmd:
 
 ```bash
@@ -560,6 +639,33 @@ Ojo con el `--app`: sin él, `cdk` usa `app.py` y despliega producción.
   CNAME plano, así que Cloudflare lo aplana siempre; en gris eso publicaría las
   IP del endpoint de API Gateway, que no son estables.
 
+### La caché de los estáticos (UI·3)
+
+La decide el servidor (`_StaticCacheado` en `server/app.py`), no Cloudflare:
+
+| Qué | `Cache-Control` | Borde |
+|---|---|---|
+| HTML | `no-cache` | no se cachea (DYNAMIC) |
+| JS y CSS | `no-cache` | `Cloudflare-CDN-Cache-Control: max-age=60` |
+| Imágenes | `public, max-age=86400` | lo que decida Cloudflare |
+| Versionados (`*.v1.*`) | `public, max-age=604800, immutable` | ídem |
+
+Antes del 27-sep el JS y el CSS salían sin cabecera y Cloudflare les ponía
+`max-age=14400`: un fix de UI tardaba hasta 4 h en llegar. Con la tabla, un
+deploy llega al borde en ≤ 60 s y el navegador lo ve en su siguiente carga,
+**sin purgar nada**.
+
+Comprobación después de cada deploy que toque esto:
+
+```bash
+curl -s -D - -o /dev/null https://irremplazables.xyz/auth.js | grep -iE "cache-control|cf-cache-status|^age"
+```
+
+Lo esperado: `cache-control: no-cache`, `cf-cache-status` en HIT a la segunda
+petición y `age` ≤ 60. Si sale `max-age=14400`, es que Cloudflare está pisando
+la cabecera: en **Caching → Configuration → Browser Cache TTL**, elige
+«Respect Existing Headers».
+
 ### Lo que NO se puede borrar nunca
 
 El CNAME `_181ee3334b127307304e024ff9aefc56` de la zona es el de validación de
@@ -680,6 +786,93 @@ aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" 
 
 Los seis ids que pueden cambiar están en la cabecera de
 `infra/stacks/alertas.py`, con la fecha en que se verificaron.
+
+## La UI nueva (`web/`, UI·6)
+
+Vite 8 + React 19 + TS estricto + Tailwind v4 + Radix, multipágina
+(docs/PLAN-UI.md §3). Cada carpeta `web/estudio/<p>/index.html` es una
+pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
+(noindex): todos los componentes en todos sus estados.
+
+**Del código a producción:**
+1. La etapa `web` del Dockerfile corre `npm run verificar`, que hace tipos,
+   lint, vitest y build. Si algo falla, **falla el build** y no sale imagen.
+2. `web/dist` se copia a la imagen.
+3. `server/web.py` lo monta si existe. Sin `dist` no se monta nada y el resto
+   sigue igual.
+
+**Caché:** los assets de `/estudio/assets/` llevan hash y son `immutable`
+por un año. El HTML va con `no-cache`.
+
+**Después del primer deploy con `web/`** (cierra UI·6):
+
+```bash
+python tools/verificar_web.py
+```
+
+Solo hace GET. Revisa que la vitrina salga `noindex`, que sus assets sean
+`immutable` y salgan con HIT, que un asset inexistente dé 404, que `/auth.js`
+siga `no-cache` y que ninguna clave de `pricing.json` viaje en el JS. Lo que
+queda es tuyo: abrir `/estudio/_vitrina/` en el teléfono y aprobarla.
+
+**Local:**
+
+```bash
+cd web && npm ci
+npm run dev                    # Vite en 8011 (el origen registrado en Cognito)
+uvicorn server.app:app --port 8012   # desde la raíz, en otra terminal
+```
+
+Vite manda a uvicorn todo lo que no es suyo: la API, `auth.js` y las
+pantallas viejas. Pide Node 20.19 o más nuevo. `/instalar` y `/actualizar`
+lo comprueban y compilan `web/`.
+
+**Reglas que vigilan `tests/test_web_tuberia.py` y `eslint.config.js`:**
+- La etapa web usa el mismo Node que la imagen. `.nvmrc` dice lo mismo.
+- Las versiones son exactas.
+- No entran `next`, `gsap`, `axios` ni `motion`.
+- Sin `dangerouslySetInnerHTML`.
+- **`pricing.json` nunca llega al navegador.** Las tarifas se importan de
+  `tools/tarifas.json` con nombre, y el plugin `tarifasSinNotas` de
+  `vite.config.ts` les quita las notas (citan costos de proveedor) y `economia`.
+
+**Para añadir una dependencia**, usa `npx npm@11 install -D paquete@x.y.z`
+dentro de `web/`. El npm 10 del Node 20 se cae con «Cannot read properties
+of null (reading 'edgesOut')» al resolver los peers opcionales de vitest
+4.1. `npm ci` con el lockfile sí funciona en npm 10, que es lo que corre el
+build. `engine-strict` rechaza cualquier paquete que pida Node 22; ya pasó
+con `@testing-library/jest-dom@6.10`, y por eso está fijado a 6.9.1.
+
+### El interruptor de migración (UI·7)
+
+`server/migracion.py` es lo único que decide qué versión de una pantalla ve
+cada quien. Cada pantalla migrada tiene una etapa en `PANTALLAS`:
+
+| Etapa | URL vieja (`/admin.html`) | URL nueva (`/estudio/admin/`) |
+|---|---|---|
+| `nueva` | la vieja, igual que siempre | existe; solo se llega tecleándola |
+| `todos` | 302 a la nueva, **salvo** la cookie `ui=clasica` | la ven todos |
+| `retirada` | 302 siempre; el HTML viejo ya no existe | la ven todos |
+
+- El 302 **conserva el query** y lleva `Cache-Control: no-store`.
+- Si una pantalla nueva falla, se abre **`/ui/clasica?pantalla=<p>`** a mano
+  (el botón «Usar la versión anterior» se quitó el 28-sep). Eso deja la cookie
+  7 días y lo lleva a la vieja, **sin desplegar**. Para volver antes:
+  `/ui/nueva?pantalla=<p>`.
+- **Cambiar de etapa** = editar `etapa=` en `PANTALLAS` y desplegar (lo
+  corres tú). Rollback: desplegar el sha anterior.
+- **Medir el retiro** (≥ 3 de 5 usuarios pasaron por la nueva, 7 días sin
+  incidentes): cada 302 deja en CloudWatch una línea como
+  `migracion 302 pantalla=admin etapa=todos sub=<sub>`, y cada elección de la
+  clásica `migracion clasica …`. El sub se lee de la cookie **sin verificar**
+  la firma: sirve para contar, nunca para dar acceso.
+- **Antes de `retirada`:** `tests/test_migracion_ui.py` exige que cada
+  invariante del registro exista como test en `web/` y que haya un
+  `docs/migracion/<p>.md` con cada aserción vieja y su destino. En `retirada`
+  exige que el HTML viejo ya no exista.
+
+Piloto: **admin** (solo lo usa el dueño), hoy en `nueva`. Su mapa está en
+`docs/migracion/admin.md`.
 
 ## La imagen (Node, y por qué está fijado)
 

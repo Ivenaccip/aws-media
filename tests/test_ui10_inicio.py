@@ -7,6 +7,7 @@ Lo que se defiende aquí:
 - quien no tiene nada ve los tres caminos, y solo cuando las listas llegaron bien;
 - el saldo se queda arriba, en la píldora de monedero.js (decisión del dueño).
 """
+import functools
 import re
 import shutil
 import subprocess
@@ -16,10 +17,26 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = RAIZ / "static"
-INICIO = (ESTATICOS / "index.html").read_text(encoding="utf-8")
-CARTA = (ESTATICOS / "carta.css").read_text(encoding="utf-8")
-ICONOS = (ESTATICOS / "iconos.js").read_text(encoding="utf-8")
-MONEDERO = (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _inicio() -> str:
+    return (ESTATICOS / "index.html").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _carta() -> str:
+    return (ESTATICOS / "carta.css").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _iconos() -> str:
+    return (ESTATICOS / "iconos.js").read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=None)
+def _monedero() -> str:
+    return (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
 
 
 def _estilo(html: str) -> str:
@@ -37,13 +54,13 @@ def test_las_fuentes_son_propias_y_con_licencia():
     for fuente in ("geist-latin.v1.woff2", "bricolage-latin.v1.woff2"):
         f = ESTATICOS / "fuentes" / fuente
         assert f.is_file() and f.read_bytes()[:4] == b"wOF2", fuente
-        assert f"url(/fuentes/{fuente})" in CARTA
+        assert f"url(/fuentes/{fuente})" in _carta()
     for licencia in ("OFL-geist.txt", "OFL-bricolage.txt"):
         assert "SIL Open Font License" in (ESTATICOS / "fuentes" / licencia).read_text(encoding="utf-8")
 
 
 def test_sin_recursos_externos():
-    for nombre, texto in (("carta.css", CARTA), ("iconos.js", ICONOS), ("index.html", INICIO)):
+    for nombre, texto in (("carta.css", _carta()), ("iconos.js", _iconos()), ("index.html", _inicio())):
         assert "fonts.googleapis" not in texto and "fonts.gstatic" not in texto, nombre
         assert "cdn" not in texto.lower().replace("cdns", ""), nombre
 
@@ -72,17 +89,17 @@ def test_las_fuentes_llegan_con_su_tipo(cliente):
 
 
 def test_la_carta_usa_la_escala_de_seis_tamanos():
-    tamanos = set(re.findall(r"--t-[a-z-]+:\s*(\d+)px", CARTA))
+    tamanos = set(re.findall(r"--t-[a-z-]+:\s*(\d+)px", _carta()))
     assert tamanos == {"13", "15", "17", "20", "24", "32"}
 
 
 def test_la_carta_respeta_reducir_movimiento():
-    assert "@media (prefers-reduced-motion: reduce)" in CARTA
+    assert "@media (prefers-reduced-motion: reduce)" in _carta()
 
 
 def test_el_ambar_apretado_no_baja_del_contraste():
     """#a96716 con la tinta da 4.19:1: el principal no lo usa de fondo."""
-    pri = CARTA[CARTA.index(".btn-pri {"):CARTA.index(".btn-sec {")]
+    pri = _carta()[_carta().index(".btn-pri {"):_carta().index(".btn-sec {")]
     assert "#a96716" not in pri
 
 
@@ -90,14 +107,14 @@ def test_el_ambar_apretado_no_baja_del_contraste():
 # el inicio
 
 def test_el_inicio_carga_la_carta_antes_que_su_estilo():
-    assert INICIO.index('href="/carta.css"') < INICIO.index("<style>")
-    assert INICIO.index('src="/iconos.js"') < INICIO.index("<script>\nconst $")
+    assert _inicio().index('href="/carta.css"') < _inicio().index("<style>")
+    assert _inicio().index('src="/iconos.js"') < _inicio().index("<script>\nconst $")
 
 
 def test_un_solo_acento_y_en_un_solo_boton():
-    estilo = _estilo(INICIO)
+    estilo = _estilo(_inicio())
     assert "--acc: var(--c-ambar)" in estilo
-    assert "#5b8dd6" not in INICIO, "el azul ya no es el acento del inicio"
+    assert "#5b8dd6" not in _inicio(), "el azul ya no es el acento del inicio"
     # los bordes al pasar el ratón ya no se pintan de acento
     assert "border-color: var(--acc)" not in estilo
     # el ámbar de fondo solo en el botón de enviar (y en el principal del diálogo)
@@ -107,7 +124,7 @@ def test_un_solo_acento_y_en_un_solo_boton():
 
 
 def test_titulos_en_bricolage_y_texto_en_geist():
-    estilo = _estilo(INICIO)
+    estilo = _estilo(_inicio())
     assert "body { font: var(--t-sm)/1.6 var(--f-texto);" in estilo
     for sel in (".prompt h2", ".cabecera-grid h2", ".caminos h2", "aside h1"):
         regla = estilo[estilo.index(sel):]
@@ -116,7 +133,7 @@ def test_titulos_en_bricolage_y_texto_en_geist():
 
 def test_sin_tamanos_de_letra_fuera_de_la_escala():
     """Los px sueltos que quedan son de iconos (20 y 28), no de texto."""
-    estilo = _estilo(INICIO)
+    estilo = _estilo(_inicio())
     sueltos = re.findall(r"font-size:\s*([\d.]+)px", estilo)
     assert set(sueltos) <= {"20", "28"}, sueltos
     assert not re.search(r"font:\s*[\d.]+px", estilo)
@@ -127,11 +144,11 @@ EMOJIS = "🎬🎞🖼✅❌⏳✂✕✓＋"
 
 def test_sin_emojis_como_iconos():
     for e in EMOJIS:
-        assert e not in INICIO, f"quedó {e} en el inicio"
+        assert e not in _inicio(), f"quedó {e} en el inicio"
 
 
 def test_cada_entrada_del_menu_lleva_icono():
-    menu = INICIO[INICIO.index('<nav aria-label="Secciones">'):INICIO.index("</nav>")]
+    menu = _inicio()[_inicio().index('<nav aria-label="Secciones">'):_inicio().index("</nav>")]
     entradas = re.findall(r"<a href=\"[^\"]+\"[^>]*>(.{0,40})", menu)
     assert len(entradas) == 7
     for e in entradas:
@@ -139,23 +156,23 @@ def test_cada_entrada_del_menu_lleva_icono():
 
 
 def test_los_iconos_que_usa_el_inicio_existen():
-    nombres = set(re.findall(r"data-icono=\"([a-z]+)\"", INICIO))
-    nombres |= set(re.findall(r"icono\('([a-z]+)'", INICIO))
-    estado = INICIO[INICIO.index("const ESTADO = {"):INICIO.index("const estadoHTML")]
+    nombres = set(re.findall(r"data-icono=\"([a-z]+)\"", _inicio()))
+    nombres |= set(re.findall(r"icono\('([a-z]+)'", _inicio()))
+    estado = _inicio()[_inicio().index("const ESTADO = {"):_inicio().index("const estadoHTML")]
     nombres |= set(re.findall(r"\['([a-z]+)', '", estado))
     for n in nombres:
-        assert f"    {n}: '" in ICONOS, n
+        assert f"    {n}: '" in _iconos(), n
 
 
 def test_el_saldo_se_queda_en_la_pildora_de_arriba():
     """El dueño probó el saldo al pie del menú y prefirió la píldora de arriba
     (25-sep). El inicio no trae hueco propio y monedero.js pinta como siempre."""
-    assert "saldo-menu" not in INICIO
-    assert "saldo-menu" not in MONEDERO
-    assert "el.querySelector('#mon-pill').hidden = false;" in MONEDERO
+    assert "saldo-menu" not in _inicio()
+    assert "saldo-menu" not in _monedero()
+    assert "el.querySelector('#mon-pill').hidden = false;" in _monedero()
 
 def test_los_tres_caminos():
-    caminos = INICIO[INICIO.index('<section class="caminos"'):INICIO.index("</section>", INICIO.index('<section class="caminos"'))]
+    caminos = _inicio()[_inicio().index('<section class="caminos"'):_inicio().index("</section>", _inicio().index('<section class="caminos"'))]
     assert 'hidden' in caminos.split(">")[0]
     assert caminos.count('<article class="camino">') == 3
     assert 'href="/shorts.html"' in caminos and 'href="/e1.html"' in caminos
@@ -163,11 +180,11 @@ def test_los_tres_caminos():
     # secundarios: el único ámbar de la pantalla es el de enviar
     assert "btn-pri" not in caminos
     # los caminos van debajo de la caja: la caja sigue en el centro
-    assert INICIO.index('<section class="prompt">') < INICIO.index('<section class="caminos"')
+    assert _inicio().index('<section class="prompt">') < _inicio().index('<section class="caminos"')
 
 
 def test_los_caminos_solo_con_las_cuatro_listas_bien_y_vacias():
-    js = _js(INICIO)
+    js = _js(_inicio())
     carga = js[js.index("async function cargar()"):js.index("function render(ps)")]
     assert "const nuevo = !ps.length && ri && ri.ok && !imagenes.length && eds && !eds.length;" in carga
     assert "if (!rp.ok) { avisarCarga(); return; }" in carga
@@ -175,7 +192,7 @@ def test_los_caminos_solo_con_las_cuatro_listas_bien_y_vacias():
 
 
 def test_desde_una_idea_no_cobra_solo_elige():
-    js = _js(INICIO)
+    js = _js(_inicio())
     idea = js[js.index("$('#camino-idea').onclick"):js.index("let slots = null;")]
     assert "fetch(" not in idea and "location.href" not in idea
     assert "o.id === 'investigacion'" in idea and "$('#idea').focus();" in idea
@@ -185,10 +202,10 @@ def test_el_js_del_inicio_y_los_iconos_son_validos(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node no está instalado")
-    for nombre, codigo in (("inicio.js", _js(INICIO)), ("iconos.js", ICONOS)):
+    for nombre, codigo in (("inicio.js", _js(_inicio())), ("iconos.js", _iconos())):
         f = tmp_path / nombre
         f.write_text(codigo, encoding="utf-8")
-        r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+        r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == 0, (nombre, r.stderr)
 
 
@@ -201,11 +218,11 @@ def test_los_iconos_escapan_nada_porque_no_reciben_texto(tmp_path):
     prueba = tmp_path / "prueba.js"
     prueba.write_text(
         "const document = {readyState: 'complete', querySelectorAll: () => []};\n"
-        "const window = {};\n" + ICONOS +
+        "const window = {};\n" + _iconos() +
         "\nconst svg = window.icono('video', 'ok');\n"
         "if (!svg.startsWith('<svg class=\"ico ok\"') || !svg.includes('aria-hidden=\"true\"')) throw new Error(svg);\n"
         "let lanzo = false; try { window.icono('<img>'); } catch { lanzo = true; }\n"
         "if (!lanzo) throw new Error('aceptó un nombre desconocido');\n",
         encoding="utf-8")
-    r = subprocess.run([node, str(prueba)], capture_output=True, text=True)
+    r = subprocess.run([node, str(prueba)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr

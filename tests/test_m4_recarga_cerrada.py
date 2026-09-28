@@ -10,6 +10,7 @@ o que reabra la recarga sin enterarse de que toca siete sitios a la vez.
 Para reabrir: `const RECARGA = true` en static/monedero.js — y estos tests
 cambian con ella, que es justamente el aviso de que la decisión se revirtió.
 """
+import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -62,3 +63,30 @@ def test_el_servidor_no_da_la_instruccion():
     frase saldría DOS veces en imágenes y en crear."""
     texto = (RAIZ / "pipeline" / "creditos.py").read_text(encoding="utf-8")
     assert "Recarga créditos" not in texto
+
+
+# ---------------------------------------------------------------------------
+# la UI nueva (web/) obedece al MISMO interruptor
+
+def _fuentes_web():
+    src = RAIZ / "web" / "src"
+    if not src.is_dir():
+        return []
+    return [p for p in src.rglob("*.ts*") if ".test." not in p.name]
+
+
+def test_web_solo_ofrece_recargar_desde_recarga_tsx():
+    """UI·8.2: un solo componente decide botón o texto leyendo
+    window.monedero.recarga; ninguna pantalla llama a recargar() por su cuenta
+    (así nació el «Recargar» muerto que se corrigió en clip)."""
+    recarga = RAIZ / "web" / "src" / "marca" / "Recarga.tsx"
+    if not recarga.exists():
+        return
+    texto = recarga.read_text(encoding="utf-8")
+    assert "m.recarga" in texto and "m.cta" in texto
+    for p in _fuentes_web():
+        if p == recarga:
+            continue
+        codigo = p.read_text(encoding="utf-8")
+        assert not re.search(r"monedero\??\.recargar\(", codigo), \
+            f"{p.relative_to(RAIZ)} abre la recarga sin mirar el interruptor"

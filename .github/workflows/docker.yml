@@ -10,6 +10,12 @@
 # donde fuera — se llevaría código de dev a producción. Con un solo entorno
 # AWS, esa guarda es la única frontera entre lo que se prueba y lo que ven los
 # testers.
+#
+# La excepción es el entorno dev (infra/app_dev.py): un push a dev publica
+# SOLO la etiqueta «dev-<sha>». Nunca «latest» ni el sha pelón, que son los
+# nombres de producción. Esa imagen solo llega a AWS si alguien la pide con
+# IMAGE_TAG=dev-<sha> y --app "python app_dev.py"; tests/test_flujo_ramas.py
+# lo vigila.
 name: docker
 
 on:
@@ -34,10 +40,13 @@ jobs:
       # segundos en vez de tras varios minutos de docker build.
       # --noconftest: tests/conftest.py importa pipeline.config, y estas reglas
       # solo leen dos archivos de texto — no hacen falta las deps del proyecto.
-      - name: Reglas del repo (dos ramas y frontera con producción)
+      # test_entorno_local.py va aquí por la misma razón y una más: sus tests de
+      # .gitignore preguntan por `git check-ignore`, y el contenedor no trae git
+      # ni .git/. Ahí se saltan solos; este paso es el único sitio donde corren.
+      - name: Reglas del repo (dos ramas, frontera con producción y .gitignore)
         run: |
           pip install --quiet pytest
-          python -m pytest tests/test_flujo_ramas.py tests/test_imagen_node.py -q --noconftest
+          python -m pytest tests/test_flujo_ramas.py tests/test_imagen_node.py tests/test_entorno_local.py -q --noconftest
 
       # Los nombres físicos de producción (pool y dominio de Cognito, prefijos
       # de SSM, máquina de estados) sintetizados desde la composición REAL de
@@ -104,3 +113,21 @@ jobs:
           docker tag aws-media:ci $ECR/aws-media:latest
           docker tag aws-media:ci $ECR/aws-media:${{ github.sha }}
           docker push --all-tags $ECR/aws-media
+
+      # Entorno dev: la misma imagen validada, con una etiqueta que ningún
+      # stack de producción consume. Se despliega a mano (docs/OPERACION.md,
+      # «Deploy del entorno dev»).
+      - name: Credenciales AWS para dev (OIDC)
+        if: github.ref == 'refs/heads/dev'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::191241816158:role/aws-media-github-ecr
+          aws-region: us-east-1
+
+      - name: Push a ECR solo dev-<sha>
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          ECR=191241816158.dkr.ecr.us-east-1.amazonaws.com
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
+          docker tag aws-media:ci $ECR/aws-media:dev-${{ github.sha }}
+          docker push $ECR/aws-media:dev-${{ github.sha }}

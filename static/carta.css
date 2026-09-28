@@ -134,3 +134,14 @@ input[type=file]::file-selector-button:hover { background: var(--c-elevada); bor
     transition-duration: 0.01ms !important; scroll-behavior: auto !important;
   }
 }
+
+/* --- UI·18: entre pantallas, un fundido en vez del parpadeo en blanco ---
+   Lo mismo que web/src/estilos/tokens.css, para que mientras dure la
+   migración también se funda al ir y venir entre una pantalla vieja y una
+   nueva. La píldora del saldo (monedero.js) lleva el mismo nombre en todas,
+   así que se queda quieta. Con «reducir movimiento» no se pide; donde el
+   navegador no lo sabe hacer, se navega como siempre. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+::view-transition-group(*) { animation-duration: 280ms; animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }

@@ -21,6 +21,32 @@ ESTATICOS = RAIZ / "static"
 PAGINA_IMAGENES = "imagenes.html"
 
 
+def _web(*patrones: str) -> list[Path]:
+    """Los fuentes de web/ (Fase 3 de docs/PLAN-UI.md) que casan con los patrones.
+
+    Si web/ todavía no existe no hay nada que vigilar: lista vacía, no error.
+    node_modules/ (de terceros), dist/ (compilado de estos mismos fuentes) y lo
+    que dejan las pruebas de navegador (playwright-report/, test-results/) no
+    se miran."""
+    web = RAIZ / "web"
+    if not web.is_dir():
+        return []
+    return [p for patron in patrones for p in web.glob(patron)
+            if not {"node_modules", "dist", "playwright-report", "test-results"} & set(p.relative_to(web).parts)]
+
+
+def _nombre(p: Path) -> str:
+    """El nombre, como siempre; en web/ la ruta, porque allí casi todo es index.html."""
+    web = RAIZ / "web"
+    return str(p.relative_to(RAIZ)) if web in p.parents else p.name
+
+
+# UI·1: las pantallas nuevas de web/ entran a los guardianes antes de que exista
+# la primera. El favicon solo se le pide a un HTML; lo demás, a todo el fuente.
+WEB_HTML = ("**/*.html",)
+WEB_FUENTES = ("**/*.html", "src/**/*.ts", "src/**/*.tsx", "src/**/*.css")
+
+
 @pytest.fixture
 def cliente(monkeypatch):
     monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
@@ -56,9 +82,10 @@ def test_orbe_js_no_carga_el_motor_ni_el_shader():
 
 
 def test_ningun_html_carga_el_motor_directo():
-    for html in list(ESTATICOS.glob("*.html")) + [RAIZ / "tools" / "editor" / "index.html"]:
+    for html in (list(ESTATICOS.glob("*.html")) + [RAIZ / "tools" / "editor" / "index.html"]
+                 + _web(*WEB_FUENTES)):
         texto = html.read_text(encoding="utf-8")
-        assert "orbe-gpu" not in texto, f"{html.name} carga el motor sin pereza"
+        assert "orbe-gpu" not in texto, f"{_nombre(html)} carga el motor sin pereza"
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +148,7 @@ def test_el_boton_conserva_su_precio():
 @pytest.mark.skipif(shutil.which("node") is None, reason="node no está en el PATH")
 def test_check_js_pasa_en_todo_el_repo():
     r = subprocess.run([sys.executable, str(RAIZ / "tools" / "check_js.py")],
-                       capture_output=True, text=True, cwd=str(RAIZ))
+                       capture_output=True, text=True, encoding="utf-8", cwd=str(RAIZ))
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -132,7 +159,7 @@ def test_check_js_caza_un_error_inline(tmp_path):
     roto.write_text("<html><body>\n<script>\nfunction x( {\n</script>\n</body></html>",
                     encoding="utf-8")
     r = subprocess.run([sys.executable, str(RAIZ / "tools" / "check_js.py"), str(roto)],
-                       capture_output=True, text=True, cwd=str(RAIZ))
+                       capture_output=True, text=True, encoding="utf-8", cwd=str(RAIZ))
     assert r.returncode == 1 and "1 con errores" in r.stdout
 
 
@@ -153,7 +180,7 @@ def test_arnes_del_componente_en_node():
     corre de verdad contra un DOM mínimo: es la parte que puede mentirle al
     usuario, y no necesita GPU para auditarse."""
     r = subprocess.run(["node", str(RAIZ / "tests" / "orbe_nodo.js")],
-                       capture_output=True, text=True, cwd=str(RAIZ))
+                       capture_output=True, text=True, encoding="utf-8", cwd=str(RAIZ))
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -287,8 +314,8 @@ PAGINAS_FASE3 = [E1, SHORTS, ESTILOS]
 def test_todas_las_paginas_tienen_favicon(cliente):
     """Media docena de pantallas invitan a cerrar la pestaña y volver. Sin
     favicon, volver es buscar a ciegas entre veinte papeles en blanco."""
-    for html in ESTATICOS.glob("*.html"):
-        assert '<link rel="icon" href="/favicon.svg"' in html.read_text(encoding="utf-8"), html.name
+    for html in list(ESTATICOS.glob("*.html")) + _web(*WEB_HTML):
+        assert '<link rel="icon" href="/favicon.svg"' in html.read_text(encoding="utf-8"), _nombre(html)
     r = cliente.get("/favicon.svg")
     assert r.status_code == 200 and "svg" in r.headers.get("content-type", "")
 
@@ -362,9 +389,9 @@ def test_ya_no_hay_enlaces_al_monedero_inexistente():
     """/monedero.html nunca ha existido: el CTA del 402 era un 404 duro en las
     dos pantallas donde más duele (te acabas de quedar sin créditos)."""
     assert not (ESTATICOS / "monedero.html").exists()
-    for html in ESTATICOS.glob("*.html"):
+    for html in list(ESTATICOS.glob("*.html")) + _web(*WEB_FUENTES):
         texto = html.read_text(encoding="utf-8")
-        assert 'href="/monedero.html"' not in texto, f"{html.name} sigue llevando al 404"
+        assert 'href="/monedero.html"' not in texto, f"{_nombre(html)} sigue llevando al 404"
     # y existe el camino de verdad
     assert "recargar: togglePanel" in (ESTATICOS / "monedero.js").read_text(encoding="utf-8")
     for pagina in (SHORTS, ESTILOS):

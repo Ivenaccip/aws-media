@@ -31,7 +31,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
-from server import auth
+from server import auth, migracion, web
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
@@ -189,8 +189,39 @@ def proyectos_edicion():
                         "editor_listo": flags.get("cuts", False),
                         # M14: estado de la corrida de sugerencias (poll de e1)
                         "editar": fila["doc"].get("editar"),
-                        "subidas": fila["doc"].get("subidas", [])})
+                        "subidas": fila["doc"].get("subidas", []),
+                        # UI·26: «Mis videos» del inicio enseña los shorts
+                        "creado": fila.get("creado"),
+                        "shorts": resumen_shorts(fila["doc"])})
     return out
+
+
+def resumen_shorts(doc: dict) -> dict | None:
+    """UI·26 — lo que «Mis videos» necesita de los shorts de un proyecto del
+    editor, no el doc entero (candidatos, logs, URLs que caducan). None si el
+    proyecto nunca pasó por shorts: ni se importó de YouTube ni se analizó.
+
+    estado: `corriendo` (descarga, análisis o render en curso), `listo` (ya
+    hay shorts), `error`, o `espera` (te toca: analizar o elegir)."""
+    imp = doc.get("importar") or {}
+    st = doc.get("shorts") or {}
+    if not imp and not st:
+        return None
+    ren = st.get("render") or {}
+    estados = (imp.get("estado"), st.get("estado"), ren.get("estado"))
+    if (imp.get("estado") == "descargando" or st.get("estado") == "analizando"
+            or ren.get("estado") == "corriendo"):
+        estado = "corriendo"
+    elif ren.get("estado") == "listo":
+        estado = "listo"
+    elif "error" in estados:
+        estado = "error"
+    else:
+        estado = "espera"
+    inicios = [x for x in (imp.get("inicio"), st.get("inicio")) if isinstance(x, str)]
+    return {"estado": estado, "titulo": imp.get("titulo") or "",
+            "inicio": min(inicios) if inicios else None,
+            "cuantos": len(ren.get("salidas") or []) if estado == "listo" else 0}
 
 
 def _proyecto(id_: str) -> Proyecto:
@@ -497,6 +528,8 @@ def proyectos():
         mini, alt = _miniatura(p)
         return {"id": p.id, "creado": p.creado, "estado": p.estado,
                 "brief": p.brief[:80], "archivado": p.archivado,
+                # UI·26: el tipo de «Mis videos» (idea/auto = Video largo, investigacion = Cuento)
+                "modo": p.modo,
                 "miniatura": mini, "miniatura_alt": alt}
     return [fila(p) for p in listar_proyectos()]
 
@@ -1046,13 +1079,42 @@ INMUTABLES = {"orbe-gpu.v1.js", "orbe.v1.wgsl",
 mimetypes.add_type("font/woff2", ".woff2")
 
 
+_SIN_CACHE = {"Cache-Control": "no-cache"}
+_REVALIDA_BORDE = {"Cache-Control": "no-cache",
+                   "Cloudflare-CDN-Cache-Control": "max-age=60"}
+
+
+def _tipo(resp) -> str:
+    return str(getattr(resp, "media_type", "") or "").split(";")[0].strip()
+
+
+def _es_codigo(resp) -> bool:
+    return _tipo(resp) in {"application/javascript", "text/javascript", "text/css"}
+
+
+def _es_html(resp) -> bool:
+    return _tipo(resp) == "text/html"
+
+
 class _StaticCacheado(StaticFiles):
     """Los assets pesados (imágenes de muestra de /estilos/) viajan por Lambda —
     sin Cache-Control el navegador los re-descarga en cada clic de estilo
     (hasta ~370 KB por imagen). Un día de caché basta: solo cambian con deploy
-    y el ETag de StaticFiles revalida al vencer. El HTML/JS queda como estaba
-    (revalidación por ETag en cada carga — así los fixes de UI llegan solos),
-    salvo los versionados de INMUTABLES.
+    y el ETag de StaticFiles revalida al vencer.
+
+    UI·3 · HTML, JS y CSS revalidan en cada carga (así un fix de UI llega con
+    el siguiente deploy; tarjeta congelada «Cache-Control para auth.js y
+    monedero.js»). Antes no llevaban cabecera y Cloudflare les ponía la suya:
+    medido el 27-sep, /auth.js, /monedero.js y /carta.css salían con
+    `max-age=14400` y HIT — un fix tardaba hasta 4 h en llegar. Ahora:
+      · Cache-Control: no-cache — el navegador pregunta siempre. Cloudflare lo
+        deja pasar tal cual (medido en «/», que ya lo llevaba).
+      · Cloudflare-CDN-Cache-Control: max-age=60 — SOLO para el borde, que no
+        lo reenvía. El JS y el CSS siguen saliendo del borde: una carga del
+        estudio pide ~8 a la vez y, sin esto, cada una despertaría una Lambda
+        del techo de 10 que el API comparte con el worker. Un deploy llega al
+        borde en ≤ 60 s sin purgar nada.
+    El HTML no se cachea en el borde por defecto (sale DYNAMIC): solo no-cache.
 
     El filtro de imágenes va por media_type y el de INMUTABLES por NOMBRE: todo
     el JS del repo comparte media_type, así que ahí no se puede distinguir."""
@@ -1063,6 +1125,10 @@ class _StaticCacheado(StaticFiles):
             resp.headers["Cache-Control"] = "public, max-age=86400"
         elif args and Path(str(args[0])).name in INMUTABLES:
             resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
+        elif _es_codigo(resp):
+            resp.headers.update(_REVALIDA_BORDE)
+        elif _es_html(resp):
+            resp.headers.update(_SIN_CACHE)
         return resp
 
 
@@ -1083,8 +1149,8 @@ def _editor_imagenes_viejo():
 # /estudio/ sirve el MISMO index.html (no se mueve: sus tests lo leen ahí).
 # Cualquier «/?algo» es un enlace viejo al estudio (?p=, ?blotato=conectar…):
 # 302 conservando el query. 302 y no 301, igual que arriba.
-# no-cache en los tres: son HTML y un cambio de portada tiene que llegar solo.
-_SIN_CACHE = {"Cache-Control": "no-cache"}
+# no-cache en los tres (_SIN_CACHE, arriba): son HTML y un cambio de portada
+# tiene que llegar solo.
 
 
 @app.get("/", include_in_schema=False)
@@ -1100,14 +1166,19 @@ def _estudio_sin_barra(request: Request):
     return RedirectResponse(f"/estudio/{q}", status_code=302)
 
 
-@app.get("/estudio/", include_in_schema=False)
-def _estudio():
-    return FileResponse(ROOT / "static" / "index.html", headers=_SIN_CACHE)
+# /estudio/ (el mismo index.html, no-cache) lo sirve server/migracion.py:
+# es la URL vieja del inicio, que se migra a /estudio/inicio/ (UI·8.4).
 
 
 @app.get("/entrar", include_in_schema=False)
 def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
+
+# UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje
+# se queda con todo lo que venga detrás.
+# UI·7 · y las URLs viejas de las pantallas que se migran: server/migracion.py
+# decide si sirven la vieja o redirigen a la nueva.
+migracion.montar(app, web.montar(app), ROOT / "static")
 
 app.mount("/", _StaticCacheado(directory=ROOT / "static", html=True), name="static")

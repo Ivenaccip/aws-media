@@ -14,11 +14,10 @@ excepción nadie le devolvió nada.
 
 Estos tests fijan las dos mitades del arreglo (nada se cobra fuera de rango; una
 corrida que no entrega nada devuelve) y que el campo de la liga no vuelva a
-esconderse detrás de una condición de la URL.
+esconderse detrás de una condición de la URL (esa mitad, la de la pantalla,
+vive en test_m22_testers_ui.py).
 """
 import json
-import re
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,7 +25,6 @@ from fastapi.testclient import TestClient
 from pipeline import creditos, db, jobs, media_sync
 from server import editar_api, shorts_api
 
-RAIZ = Path(__file__).resolve().parent.parent
 DOC = {"flags": {"generado": True},
        "subidas": [{"key": "videos/v1/subidas/charla.mp4", "bytes": 9}]}
 SEIS_SEGUNDOS = 6.0      # el clip exacto del reporte
@@ -164,30 +162,3 @@ def test_una_sola_sugerencia_ya_es_entrega(st):
     """Con algo que enseñar, el servicio se prestó: no se devuelve nada."""
     from worker.editar_task import creditos_a_devolver
     assert creditos_a_devolver(st) == 0
-
-
-# ---------------------------------------------------------------------------
-# B · la liga de YouTube, visible también con un proyecto abierto
-
-SHORTS_HTML = (RAIZ / "static" / "shorts.html").read_text(encoding="utf-8")
-
-
-def test_la_liga_no_vive_solo_en_elegir_proyecto():
-    """El bug: `sec-importar` se revelaba en un único sitio, dentro de
-    elegirProyecto(), que solo corre cuando la URL NO trae ?p=. Con un proyecto
-    abierto la sección no existía y no había dónde pegar la liga."""
-    revelados = SHORTS_HTML.count('$("sec-importar").hidden = false')
-    assert revelados >= 2, (
-        "la sección de la liga vuelve a revelarse en un solo sitio: si ese sitio "
-        "es elegirProyecto(), con ?p= en la URL no hay dónde pegar la liga")
-
-
-def test_cargar_revela_la_liga_con_proyecto_abierto():
-    cuerpo = re.search(r"async function cargar\(\) \{(.*?)\n\}", SHORTS_HTML, re.S)
-    assert cuerpo, "cambió la firma de cargar() — revisa este test"
-    assert '$("sec-importar").hidden = false' in cuerpo.group(1)
-
-
-def test_la_descarga_en_curso_sigue_ocultandola():
-    """Mientras ESE proyecto se descarga, la sección estorba."""
-    assert '$("sec-importar").hidden = true' in SHORTS_HTML
