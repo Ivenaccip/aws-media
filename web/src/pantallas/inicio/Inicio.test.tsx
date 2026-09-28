@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clip, video } from '../../nucleo/tarifas';
+import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Inicio } from './Inicio';
 import type { Edicion, EstadoBlotato, Imagen, Proyecto } from './logica';
@@ -611,5 +612,31 @@ describe('el marco', () => {
     pintar();
     expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=inicio');
     await screen.findByText('La historia del café');
+  });
+});
+
+describe('UI·18 · la miniatura se agranda hasta su película', () => {
+  // jsdom no navega: el clic se queda en la página
+  const sinNavegar = (e: Event) => e.preventDefault();
+  beforeEach(() => document.addEventListener('click', sinNavegar));
+  afterEach(() => document.removeEventListener('click', sinNavegar));
+
+  it('tocar una película lista deja dicho qué miniatura llevar (la que se ve)', async () => {
+    montar({ proyectos: [P1] });
+    const { container } = pintar();
+    fireEvent.click(await screen.findByRole('link', { name: 'La historia del café' }));
+    expect(miniaturaQueLlega('p1')?.src).toBe('/api/proyectos/p1/archivo/portada.jpg');
+    // si la portada falló, viaja la que quedó a la vista
+    olvidarMiniatura();
+    fireEvent.error(container.querySelector('article img')!);
+    fireEvent.click(screen.getByRole('link', { name: 'La historia del café' }));
+    expect(miniaturaQueLlega('p1')?.src).toBe('/api/proyectos/p1/archivo/personaje.png');
+  });
+
+  it('una película que no está lista abre su progreso: no hay reproductor al que agrandarse', async () => {
+    montar({ proyectos: [{ ...P1, estado: 'produciendo' }] });
+    pintar();
+    fireEvent.click(await screen.findByRole('link', { name: 'La historia del café' }));
+    expect(miniaturaQueLlega('p1')).toBeNull();
   });
 });

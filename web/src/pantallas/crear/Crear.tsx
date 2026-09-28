@@ -19,6 +19,13 @@ import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { ESTRELLA } from '../../nucleo/estrella';
+import {
+  type Llegada as LlegadaDeMiniatura,
+  miniaturaQueLlega,
+  NOMBRE_MINIATURA,
+  olvidarMiniatura,
+  trasLaLlegada,
+} from '../../nucleo/transiciones';
 import { useSondeo } from '../../nucleo/useSondeo';
 import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
@@ -97,6 +104,19 @@ export function Crear() {
   const [version, setVersion] = useState(0); // la revisión se vuelve a armar al reabrir
   const actual = useRef<Proyecto | null>(null);
   const fallos = useRef(0);
+  // UI·18: la miniatura que el inicio tocó para abrir esta película. Se
+  // queda hasta que el navegador termina de agrandarla, aunque la película
+  // llegue antes: quitarla a medio camino corta la transición en seco.
+  const [llega] = useState(() => miniaturaQueLlega(url.id));
+  const [enVuelo, setEnVuelo] = useState(llega !== null);
+  useEffect(() => {
+    olvidarMiniatura();
+    let vivo = true;
+    void trasLaLlegada().then(() => vivo && setEnVuelo(false));
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   const poner = useCallback((p: Proyecto) => {
     const antes = actual.current;
@@ -171,6 +191,7 @@ export function Crear() {
   }
 
   const estado = proyecto?.estado;
+  const enLlegada = llega !== null && (enVuelo || (!proyecto && !noAbrio));
   const titulo = !proyecto
     ? url.id
       ? 'Tu película'
@@ -198,17 +219,23 @@ export function Crear() {
           </Aviso>
         </div>
       )}
-      {!proyecto && url.id && !noAbrio && <p className="text-xs text-secundario">Abriendo tu película…</p>}
-      {!proyecto && !url.id && <Formulario inicial={url.inicial} alCrear={alCrear} />}
-      {proyecto && enMarcha(proyecto) && (
-        <Progreso proyecto={proyecto} avance={avance} latido={latido} minutos={minutos} reposo={sinRed} />
+      {enLlegada ? (
+        <Llegada {...llega} />
+      ) : (
+        <>
+          {!proyecto && url.id && !noAbrio && <p className="text-xs text-secundario">Abriendo tu película…</p>}
+          {!proyecto && !url.id && <Formulario inicial={url.inicial} alCrear={alCrear} />}
+          {proyecto && enMarcha(proyecto) && (
+            <Progreso proyecto={proyecto} avance={avance} latido={latido} minutos={minutos} reposo={sinRed} />
+          )}
+          {proyecto && estado === 'revision' && (
+            <Revision key={proyecto.id + ':' + version} proyecto={proyecto} alCambiar={poner} alMinutos={setMinutos} />
+          )}
+          {proyecto && estado === 'imagenes' && <Aprobar proyecto={proyecto} alCambiar={poner} />}
+          {proyecto && estado === 'listo' && <Resultado proyecto={proyecto} alCambiar={poner} />}
+          {proyecto && estado === 'error' && <Falla proyecto={proyecto} alCambiar={poner} />}
+        </>
       )}
-      {proyecto && estado === 'revision' && (
-        <Revision key={proyecto.id + ':' + version} proyecto={proyecto} alCambiar={poner} alMinutos={setMinutos} />
-      )}
-      {proyecto && estado === 'imagenes' && <Aprobar proyecto={proyecto} alCambiar={poner} />}
-      {proyecto && estado === 'listo' && <Resultado proyecto={proyecto} alCambiar={poner} />}
-      {proyecto && estado === 'error' && <Falla proyecto={proyecto} alCambiar={poner} />}
     </Marco>
   );
 }
@@ -436,6 +463,27 @@ function Aprobar({ proyecto: p, alCambiar }: { proyecto: Proyecto; alCambiar: (p
 }
 
 // ── 4 · el resultado: el video grande, Descargar | Editor | Rehacer
+// UI·18: mientras la película carga, su miniatura ocupa el lugar del
+// reproductor, con el nombre que el inicio le puso a la que tocaste: el
+// navegador la agranda desde allá hasta aquí (nucleo/transiciones.ts).
+function Llegada({ src, proporcion }: LlegadaDeMiniatura) {
+  return (
+    <div className="max-w-[900px]">
+      <section className="rounded-grande border border-linea bg-superficie p-4">
+        <img
+          src={src}
+          alt=""
+          // la caja existe antes de que la imagen cargue: sin alto, el
+          // navegador agrandaría la miniatura hacia una raya
+          style={{ viewTransitionName: NOMBRE_MINIATURA, aspectRatio: proporcion ?? 16 / 9 }}
+          className="block max-h-[70vh] w-full rounded-medio object-contain"
+        />
+        <p className="mb-0 mt-3 text-xs text-secundario">Abriendo tu película…</p>
+      </section>
+    </div>
+  );
+}
+
 function Resultado({ proyecto: p, alCambiar }: { proyecto: Proyecto; alCambiar: (p: Proyecto) => void }) {
   const [falla, setFalla] = useState<string | null>(null);
   const [volviendo, setVolviendo] = useState(false);

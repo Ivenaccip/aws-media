@@ -1,8 +1,9 @@
 // Cada proyecto es una OBRA (mock): imagen grande, título abajo y, en las
 // películas, la X para archivar. La tarjeta entera es el enlace; la X va por
 // encima (un botón dentro de un <a> no es HTML válido).
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 
+import { tocarMiniatura } from '../../nucleo/transiciones';
 import { Icono } from '../../ui/Icono';
 import type { NombreIcono } from '../../ui/iconos';
 import { unir } from '../../ui/unir';
@@ -45,15 +46,20 @@ export function TarjetaProyecto({ p, alArchivar }: { p: Proyecto; alArchivar: (p
   const src = fuentes[intento];
   const e = ESTADO[p.estado];
   const fecha = fechaCorta(p.creado);
+  const img = useRef<HTMLImageElement>(null);
+  // UI·18: una película lista abre en su reproductor, y esta miniatura se
+  // agranda hasta él (nucleo/transiciones.ts). Las demás abren en su progreso
+  // o su revisión: no hay a dónde agrandarse.
+  const alAbrir = p.estado === 'listo' && src ? () => tocarMiniatura(p.id, src, img.current) : undefined;
   return (
     <article className={TARJETA}>
       {src ? (
-        <img src={src} alt="" loading="lazy" className={MINIATURA} onError={() => setIntento(i => i + 1)} />
+        <img ref={img} src={src} alt="" loading="lazy" className={MINIATURA} onError={() => setIntento(i => i + 1)} />
       ) : (
         <Hueco icono="video" />
       )}
       <div className="px-3 py-2.5">
-        <a href={'/crear.html?p=' + encodeURIComponent(p.id)} className={ESTIRADO} title={p.brief}>
+        <a href={'/crear.html?p=' + encodeURIComponent(p.id)} className={ESTIRADO} title={p.brief} onClick={alAbrir}>
           <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap">
             {p.brief || '(sin título)'}
           </span>

@@ -7,6 +7,7 @@ import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { video } from '../../nucleo/tarifas';
+import { NOMBRE_MINIATURA, tocarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Crear } from './Crear';
 import { avanceDe, costoProducir, DURACIONES, precioDe, SIN_AVANCE, type Proyecto } from './logica';
@@ -951,5 +952,36 @@ describe('crear · transversales', () => {
       expect(principales()).toBe(p.estado === 'listo' ? 0 : 1);
       cleanup();
     }
+  });
+});
+
+describe('UI·18 · la miniatura que llega del inicio', () => {
+  it('mientras la película carga, su miniatura ocupa el lugar del reproductor, con el nombre de la transición', async () => {
+    tocarMiniatura('p1', '/api/proyectos/p1/archivo/portada.jpg', null);
+    let responder: ((r: Response) => void) | null = null;
+    abrir(() => new Promise<Response>(r => (responder = r)));
+    const img = document.querySelector('img')!;
+    expect(img).toHaveAttribute('src', '/api/proyectos/p1/archivo/portada.jpg');
+    expect(img.style.viewTransitionName).toBe(NOMBRE_MINIATURA);
+    expect(screen.getByText('Abriendo tu película…')).toBeInTheDocument();
+    // llega la película: el reproductor toma su lugar y el nombre se va con la miniatura
+    await waitFor(() => expect(responder).not.toBeNull());
+    await act(async () => responder!(json({ ...P, estado: 'listo', progreso: { editor: 'gen-p1' } })));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Película lista' })).toBeInTheDocument();
+    expect(document.querySelector('video')).toBeInTheDocument();
+    expect([...document.querySelectorAll<HTMLElement>('*')].some(n => n.style.viewTransitionName)).toBe(false);
+  });
+
+  it('sin pista (o de otra película) se abre como siempre, con el texto', () => {
+    tocarMiniatura('otra', '/api/x.jpg', null);
+    abrir(() => new Promise<Response>(() => undefined));
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByText('Abriendo tu película…')).toBeInTheDocument();
+  });
+
+  it('la pista se usa una vez: recargar la página ya no la pinta', async () => {
+    tocarMiniatura('p1', '/api/a.jpg', null);
+    abrir(() => new Promise<Response>(() => undefined));
+    await waitFor(() => expect(sessionStorage.getItem('vt:miniatura')).toBeNull());
   });
 });

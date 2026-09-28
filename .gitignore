@@ -59,3 +59,6 @@ infra/cdk.out/
 
 # UI·6: lo compila `npm run build` (y la etapa web del Dockerfile)
 web/dist/
+# UI·18: lo que dejan las pruebas de navegador (`npm run e2e`)
+web/test-results/
+web/playwright-report/

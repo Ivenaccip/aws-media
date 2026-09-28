@@ -182,6 +182,23 @@ def test_el_dist_no_trae_las_notas_ni_la_economia_de_tarifas():
         assert prohibido not in texto, prohibido
 
 
+def test_cada_pantalla_se_pinta_con_su_modulo():
+    """UI·18: el módulo de cada pantalla bloquea el primer pintado. Sin
+    `blocking="render"` la View Transition entre pantallas se cancelaba en
+    1 de cada 3 navegaciones (la página nueva se fotografiaba vacía). Vite
+    tira el atributo del index.html fuente: lo pone el plugin
+    pintarConElModulo de vite.config.ts, y aquí se mira en el HTML final."""
+    if not DIST.is_dir():
+        pytest.skip("web/dist no está compilado (npm run build); en la imagen siempre está")
+    paginas = sorted((DIST / "estudio").glob("*/index.html"))
+    assert paginas, "dist sin pantallas"
+    for html in paginas:
+        modulos = re.findall(r"<script type=\"module\"[^>]*>", html.read_text(encoding="utf-8"))
+        assert modulos, f"{html.parent.name}: sin módulo"
+        for m in modulos:
+            assert 'blocking="render"' in m, f"{html.parent.name}: {m}"
+
+
 # ---------------------------------------------------------------------------
 # server/web.py
 

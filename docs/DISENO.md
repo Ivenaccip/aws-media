@@ -107,6 +107,17 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - **Movimiento:** 120 ms (hover, apretar) y 200 ms (abrir, cerrar), con
   `ease-out`. Con `prefers-reduced-motion: reduce` todo queda quieto, el
   orbe incluido.
+  - Desde UI·18 son tokens en `web/src/estilos/tokens.css`: `--dur-rapida`
+    (120 ms), `--dur-media` (250 ms, algo que entra, sale o cambia de lugar),
+    `--ease-salida` y `--curva-resorte` (un resorte con `linear()` que se pasa
+    ≈9 % y regresa; solo para lo que llega, nunca para lo que se va).
+  - Las ocho tarjetas de movimiento (UI·18 a UI·25) usan esos tokens o una
+    duración propia con su porqué al lado: 280 ms entre pantallas, 150/100 ms
+    los diálogos (entran más lento de lo que salen), 700 ms el saldo que baja.
+  - Entre pantallas hay View Transition (fundido; la píldora del saldo se
+    queda quieta; la miniatura de una película lista se agranda hasta su
+    reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con
+    «reducir movimiento» nada se quede moviéndose en las 12 pantallas.
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
   sea más chico.
 - **Foco:** `outline: 2px solid #f0a94a; outline-offset: 3px` en todo lo

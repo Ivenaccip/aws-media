@@ -24,11 +24,13 @@
 
   // Mock del dueño (Miro, 2026-09-10): boleto · píldora [＋ | N créditos] · avatar.
   // El ＋ abre la recarga; el avatar despliega el menú con «Salir».
+  // UI·18: `view-transition-name` igual en todas las pantallas. Entre dos
+  // pantallas de web/ el navegador funde el resto y a esta la deja quieta.
   const el = document.createElement('div');
   el.id = 'monedero';
   el.style.cssText =
     'position:fixed;top:12px;right:14px;z-index:1000;display:none;align-items:center;gap:12px;' +
-    'font:13px/1 system-ui,sans-serif;color:#ece8e1';
+    'font:13px/1 system-ui,sans-serif;color:#ece8e1;view-transition-name:monedero';
   const FONDO = 'background:rgba(18,20,26,.94);border:1px solid #22354f;' +
     'box-shadow:0 2px 12px rgba(0,0,0,.4);';
   const TICKET =
@@ -140,19 +142,59 @@
 
   function refrescar() { reintento = 0; return intentar(); }
 
+  // UI·18: el último saldo de ESTA pestaña. La pantalla siguiente pinta la
+  // píldora con él desde el primer cuadro, antes de que /api/creditos
+  // conteste; sin eso la píldora no existe cuando el navegador fotografía la
+  // pantalla nueva, y en vez de quedarse quieta se apaga y vuelve a salir.
+  // Lleva el `sub` del token: otra cuenta en la misma pestaña no lo ve.
+  const ULTIMO = 'monedero:ultimo';
+  function guardarUltimo(saldo) {
+    try {
+      sessionStorage.setItem(ULTIMO, JSON.stringify({ quien: delToken().sub || '', saldo,
+        sesion: !el.querySelector('#mon-user').hidden }));
+    } catch { /* sin sessionStorage: se pinta al llegar el saldo, como antes */ }
+  }
+  function olvidarUltimo() {
+    try { sessionStorage.removeItem(ULTIMO); } catch { /* nada que olvidar */ }
+  }
+  function pintarUltimo() {
+    let u = null;
+    try { u = JSON.parse(sessionStorage.getItem(ULTIMO)); } catch { return; }
+    if (!u || typeof u.saldo !== 'number' || u.quien !== (delToken().sub || '')) return;
+    pintarSaldo(u.saldo);
+    if (u.sesion) {
+      el.querySelector('#mon-user').hidden = false;
+      el.querySelector('#mon-email').textContent = delToken().email || '';
+    }
+  }
+
+  // si el monedero resultó apagado (CREDITOS_BACKEND=off) después de pintar
+  // el guardado. `hidden` no bastaría: el display:flex inline le gana
+  function ocultarSaldo() {
+    el.querySelector('#mon-ticket').style.display = 'none';
+    el.querySelector('#mon-pill').style.display = 'none';
+    if (el.querySelector('#mon-user').hidden) el.style.display = 'none';
+  }
+
+  function pintarSaldo(saldo) {
+    el.style.display = 'flex';
+    el.querySelector('#mon-ticket').hidden = false;
+    el.querySelector('#mon-pill').hidden = false;
+    el.querySelector('#mon-ticket').style.display = el.querySelector('#mon-pill').style.display = 'flex';
+    el.querySelector('#mon-saldo').textContent = `${saldo} créditos ✦`;
+  }
+
   async function intentar() {
     clearTimeout(reintentoT);
     try {
       const r = await fetch('/api/creditos');
       if (!r.ok) { programarReintento(); return; }
       const d = await r.json();
-      if (!d.activo) return;
+      if (!d.activo) { olvidarUltimo(); ocultarSaldo(); return; }
       reintento = 0;
       est.activo = true; est.saldo = d.saldo; est.tarifas = d.tarifas || {}; est.packs = d.packs || [];
-      el.style.display = 'flex';
-      el.querySelector('#mon-ticket').hidden = false;
-      el.querySelector('#mon-pill').hidden = false;
-      el.querySelector('#mon-saldo').textContent = `${d.saldo} créditos ✦`;
+      pintarSaldo(d.saldo);
+      guardarUltimo(d.saldo);
       document.dispatchEvent(new CustomEvent('monedero', { detail: est }));
     } catch { programarReintento(); /* sin red: se reintenta igual */ }
   }
@@ -161,12 +203,13 @@
     reintentoT = setTimeout(intentar, ESPERAS_MS[reintento++]);
   }
 
-  function emailDelToken() {
-    // el id_token es un JWT: el payload trae el email (solo para mostrarlo)
+  function delToken() {
+    // el id_token es un JWT: el payload trae el email y el sub (solo para
+    // mostrarlos y para no enseñarle a una cuenta el saldo de otra)
     try {
       const t = localStorage.getItem('auth_id_token');
-      return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || '';
-    } catch { return ''; }
+      return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) || {};
+    } catch { return {}; }
   }
 
   function montar() {
@@ -175,16 +218,28 @@
     if (mas) mas.onclick = togglePanel;   // no existe con la recarga cerrada
     el.querySelector('#mon-avatar').onclick = toggleMenu;
     el.querySelector('#mon-salir').onclick = () => {
-      if (confirm('¿Cerrar sesión?')) window.auth.salir();
+      if (confirm('¿Cerrar sesión?')) { olvidarUltimo(); window.auth.salir(); }
     };
+    pintarUltimo();
     if (window.auth) window.auth.config().then(c => {
       if (!c.activo) return;
       el.querySelector('#mon-user').hidden = false;   // el avatar (y su Salir)
-      el.querySelector('#mon-email').textContent = emailDelToken();
+      el.querySelector('#mon-email').textContent = delToken().email || '';
       el.style.display = 'flex';   // con sesión, la cabecera se ve aunque el
       refrescar();                 // saldo tarde — el logout siempre a mano
     });
     refrescar();
+  }
+
+  // UI·18: se monta en DOMContentLoaded o en `pagereveal`, lo que llegue
+  // primero. pagereveal va justo antes del primer cuadro: si la pantalla
+  // tarda en cargar sus módulos, DOMContentLoaded llega tarde y la píldora
+  // no saldría en la foto de la View Transition (se apagaría y volvería).
+  let montado = false;
+  function montarUnaVez() {
+    if (montado || !document.body) return;
+    montado = true;
+    montar();
   }
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescar(); });
@@ -193,5 +248,9 @@
   // /monedero.html, que NUNCA ha existido: el CTA del 402 era un 404 duro.
   window.monedero = { get: () => est, refrescar, textoRecarga, recargar: togglePanel,
                       recarga: RECARGA, cta: CTA };
-  if (document.body) montar(); else addEventListener('DOMContentLoaded', montar);
+  if (document.body) montarUnaVez();
+  else {
+    addEventListener('DOMContentLoaded', montarUnaVez);
+    addEventListener('pagereveal', montarUnaVez);
+  }
 })();

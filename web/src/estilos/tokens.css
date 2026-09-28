@@ -93,6 +93,21 @@
   --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
 }
 
+/* UI·18: los tokens de movimiento. Van fuera de @theme porque Tailwind no
+   tiene espacio de nombres para duraciones, y así se emiten siempre. Desde
+   una clase se usan con duration-(--dur-media) y ease-(--curva-resorte).
+   Ninguna animación de web/ lleva una duración suelta: o es una de estas, o
+   es una de las de su tarjeta (UI·18 a UI·25) con su porqué al lado. */
+:root {
+  --dur-rapida: 120ms;   /* hover, foco, pequeños cambios de estado */
+  --dur-media: 250ms;    /* algo que entra, sale o cambia de lugar */
+  /* resorte suave hecho con linear(): se pasa ≈9 % y regresa. Es un muelle
+     amortiguado (ζ = 0.6) muestreado en 25 puntos; solo para cosas que
+     llegan (el «Guardado», el punto del buzón), nunca para las que se van */
+  --curva-resorte: linear(0, 0.074, 0.244, 0.45, 0.649, 0.817, 0.944, 1.028, 1.075, 1.094,
+    1.092, 1.078, 1.06, 1.04, 1.023, 1.009, 1, 0.994, 0.992, 0.991, 0.992, 0.994, 0.996, 0.997, 1);
+}
+
 @layer base {
   html { color-scheme: dark; }
   body {
@@ -116,4 +131,31 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* los pseudo-elementos de las View Transitions no son `*`: la regla de
+     arriba no los alcanza. Las transiciones de documento ya no se piden con
+     esta preferencia (abajo); esto cubre las de startViewTransition() */
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* UI·18: entre pantallas, un fundido en vez del parpadeo en blanco. Solo
+   entre dos páginas que lo piden (las de web/; las viejas de static/ navegan
+   como siempre) y solo si el sistema no pide reducir movimiento. Donde el
+   navegador no lo sabe hacer (antes de Chrome 126 o Safari 18.2), se navega
+   exactamente como antes. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+::view-transition-group(*) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-salida);
+}
+/* la miniatura del inicio es 16:10 recortada y la película llega con su
+   proporción: las dos fotos llenan la caja que se agranda, recortadas, en
+   vez de estirarse o desbordarla (nucleo/transiciones.ts) */
+::view-transition-image-pair(miniatura) { overflow: clip; }
+::view-transition-old(miniatura), ::view-transition-new(miniatura) {
+  height: 100%;
+  object-fit: cover;
 }
