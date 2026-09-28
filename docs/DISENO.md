@@ -127,6 +127,9 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     queda quieta; la miniatura de una película lista se agranda hasta su
     reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con
     «reducir movimiento» nada se quede moviéndose en las 12 pantallas.
+  - Un botón que se apaga mientras puede tener el foco (el «Mes anterior»
+    del calendario al volver al mes en curso) usa `aria-disabled`, no
+    `disabled`: un botón deshabilitado suelta el foco al `<body>`.
   - Las gráficas de Métricas (UI·23) se dibujan la primera vez que entran en
     pantalla: 500 ms cada barra, 50 ms entre una y la siguiente, y la cifra de
     cada barra asoma al final. Una sola vez; sin JS, al volver o con «reducir
@@ -173,7 +176,9 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   automática) y **Analizar** (Métricas, Competencia).
 - El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
   con su «＋» para recargar. Se probó al pie del menú (UI·10) y el dueño
-  prefirió la píldora (25-sep).
+  prefirió la píldora (25-sep). Al cambiar de pantalla sale desde el primer
+  cuadro con el último saldo de la pestaña (15 min como mucho); si el
+  servidor no lo confirma, se apaga un poco y se lee «sin confirmar».
 - En el inicio, el centro sigue siendo el bloque de crear imagen y video
   que ya existe (`.prompt` en `static/index.html`).
 - Celular: **sin decidir** (el lienzo proponía pestañas abajo).
