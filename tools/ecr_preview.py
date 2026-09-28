@@ -26,8 +26,30 @@ POLITICA = RAIZ / "infra" / "ecr-lifecycle.json"
 REPO = "aws-media"
 REGION = "us-east-1"
 
-FN_API = "aws-media-api-ApiF70053CD-YeW12ZJZWsRm"
-FN_WORKER = "aws-media-jobs-Worker11F36D0F-kpu3w964xy7A"
+# Los seis runtimes que corren una imagen de este ECR, resueltos desde
+# CloudFormation y no cableados por nombre físico.
+#
+# Antes había dos constantes con los nombres físicos de producción
+# («aws-media-api-ApiF70053CD-YeW12ZJZWsRm») y el Fargate salía de
+# list_task_definitions(sort="DESC", maxResults=1) — «la más nueva de la
+# cuenta». Las dos cosas se rompieron el 28-sep-2026, cuando nació el entorno
+# dev: los nombres de dev no estaban en la lista, y «la más nueva» pasó a ser
+# ambigua entre dos familias de task definition.
+#
+# El fallo no habría sido ruidoso, que es lo peor: la herramienta habría dicho
+# «seguro de aplicar» con la imagen de dev en la lista de borrado.
+#
+# Los ids LÓGICOS sí son iguales en los dos entornos (mismo código de CDK), y
+# además tests/test_entornos.py fija los de Cognito y SFN por la misma razón:
+# renombrar un construct crea un recurso nuevo.
+RUNTIMES = (
+    ("API prod",     "aws-media-api",      "ApiF70053CD",        "lambda"),
+    ("worker prod",  "aws-media-jobs",     "Worker11F36D0F",     "lambda"),
+    ("Fargate prod", "aws-media-jobs",     "ProducirTd27D1DC84", "ecs"),
+    ("API dev",      "aws-media-api-dev",  "ApiF70053CD",        "lambda"),
+    ("worker dev",   "aws-media-jobs-dev", "Worker11F36D0F",     "lambda"),
+    ("Fargate dev",  "aws-media-jobs-dev", "ProducirTd27D1DC84", "ecs"),
+)
 
 
 def _digest(uri: str) -> str:
@@ -35,24 +57,43 @@ def _digest(uri: str) -> str:
     return uri.split("@")[-1] if "@" in uri else ""
 
 
+NO_EXISTE = "(el stack no existe)"
+
+
+def _fisico(cfn, stack: str, id_logico: str) -> str:
+    """El nombre/ARN real de un recurso, o NO_EXISTE si el stack no está."""
+    try:
+        r = cfn.describe_stack_resource(StackName=stack, LogicalResourceId=id_logico)
+        return r["StackResourceDetail"]["PhysicalResourceId"]
+    except Exception as e:                                        # noqa: BLE001
+        if "does not exist" in str(e):
+            return NO_EXISTE
+        raise
+
+
 def digests_vivos() -> dict[str, str]:
-    """Lo que corre cada runtime. Si algo falla, se dice — no se asume vacío."""
+    """Lo que corre cada runtime. Si algo falla, se dice — no se asume vacío.
+
+    Un stack que NO existe sí es un ok: no hay imagen que proteger. Lo que no
+    puede pasar por bueno es un stack que existe y no se deja leer."""
     vivos: dict[str, str] = {}
+    cfn = boto3.client("cloudformation", region_name=REGION)
     lam = boto3.client("lambda", region_name=REGION)
-    for etiqueta, fn in (("Lambda API", FN_API), ("Lambda worker", FN_WORKER)):
+    ecs = boto3.client("ecs", region_name=REGION)
+
+    for etiqueta, stack, id_logico, tipo in RUNTIMES:
         try:
-            uri = lam.get_function(FunctionName=fn)["Code"]["ResolvedImageUri"]
-            vivos[etiqueta] = _digest(uri)
+            fisico = _fisico(cfn, stack, id_logico)
+            if fisico == NO_EXISTE:
+                vivos[etiqueta] = NO_EXISTE
+            elif tipo == "lambda":
+                uri = lam.get_function(FunctionName=fisico)["Code"]["ResolvedImageUri"]
+                vivos[etiqueta] = _digest(uri)
+            else:
+                td = ecs.describe_task_definition(taskDefinition=fisico)["taskDefinition"]
+                vivos[etiqueta] = _digest(td["containerDefinitions"][0]["image"])
         except Exception as e:                                    # noqa: BLE001
             vivos[etiqueta] = f"(no se pudo leer: {type(e).__name__})"
-
-    ecs = boto3.client("ecs", region_name=REGION)
-    try:
-        arns = ecs.list_task_definitions(sort="DESC", maxResults=1)["taskDefinitionArns"]
-        td = ecs.describe_task_definition(taskDefinition=arns[0])["taskDefinition"]
-        vivos["Fargate"] = _digest(td["containerDefinitions"][0]["image"])
-    except Exception as e:                                        # noqa: BLE001
-        vivos["Fargate"] = f"(no se pudo leer: {type(e).__name__})"
     return vivos
 
 
@@ -98,7 +139,9 @@ def main() -> int:
     vivos = digests_vivos()
     en_peligro = []
     for etiqueta, dig in vivos.items():
-        if dig.startswith("("):
+        if dig == NO_EXISTE:
+            print(f"  -  {etiqueta:14s} {dig}")
+        elif dig.startswith("("):
             print(f"  ?  {etiqueta:14s} {dig}")
             en_peligro.append(etiqueta)          # no poder comprobarlo NO es un ok
         elif dig in marcados:
