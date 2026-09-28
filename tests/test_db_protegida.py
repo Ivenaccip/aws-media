@@ -96,6 +96,10 @@ def test_el_techo_de_acu_sigue_siendo_el_freno_de_gasto():
     assert cfg.get("MinCapacity") == 0.5, (
         "min 0 reactiva la auto-pausa: la primera petición tras ~5 min sin "
         "tráfico paga ~25 s de despertar, o un 503 dentro del muro de 29 s")
+    assert "SecondsUntilAutoPause" not in cfg, (
+        "producción no se pausa. Desde el paso 8 del entorno dev el suelo y la "
+        "auto-pausa salen de `entorno.es_prod` (infra/stacks/db.py), o sea que "
+        "un descuido ahí dormiría la base de los usuarios, no la de pruebas")
 
 
 def test_el_data_api_sigue_encendido():
