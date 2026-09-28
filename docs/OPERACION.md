@@ -429,12 +429,28 @@ IMAGE_TAG=<sha completo de lo desplegado> npx cdk diff aws-media-db aws-media-me
 Con `IMAGE_TAG` y no con `latest`: en cuanto algo nuevo llegue a main, el diff
 contra `:latest` sale con el `ImageUri` cambiado aunque la infra sea la misma.
 
+### Deploy del entorno dev
+
+Cada push a `dev` (un merge de PR incluido) publica, cuando el CI pasa, la
+imagen `aws-media:dev-<sha completo del commit>`. Nunca `latest`. El sha es el
+de `git log -1 --format=%H origin/dev` tras un `git fetch`. En cmd, desde
+`D:\aws-project\infra`:
+
+```bash
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IMAGE_TAG=dev-<sha>" && npx cdk --app "python app_dev.py" diff aws-media-api-dev aws-media-jobs-dev & set "IMAGE_TAG="
+set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IMAGE_TAG=dev-<sha>" && npx cdk --app "python app_dev.py" deploy aws-media-api-dev aws-media-jobs-dev --require-approval never & set "IMAGE_TAG="
+```
+
+Sin `--app` no pasa nada malo (esos nombres no existen en `app.py`). Ojo: las
+imágenes de dev cuentan para las 20 que conserva la regla del ECR.
+
 ## Deploy (checklist)
 
 1. PR `dev` → `main` y merge → GitHub Actions construye la imagen y la
-   empuja a ECR. **Solo main empuja**: desde `dev` o desde un PR se
-   construye y se prueba, pero no se publica — la Lambda de producción
-   consume el `latest` de ese mismo repositorio.
+   empuja a ECR. **Solo main empuja `latest`**: un PR se construye y se
+   prueba sin publicar, y `dev` publica únicamente `dev-<sha>` para el
+   entorno dev (abajo) — la Lambda de producción consume el `latest` de ese
+   mismo repositorio.
 2. En tu terminal, desde `D:\aws-project\infra` — en cmd:
 
 ```bash

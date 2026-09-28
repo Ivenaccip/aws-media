@@ -10,6 +10,12 @@
 # donde fuera — se llevaría código de dev a producción. Con un solo entorno
 # AWS, esa guarda es la única frontera entre lo que se prueba y lo que ven los
 # testers.
+#
+# La excepción es el entorno dev (infra/app_dev.py): un push a dev publica
+# SOLO la etiqueta «dev-<sha>». Nunca «latest» ni el sha pelón, que son los
+# nombres de producción. Esa imagen solo llega a AWS si alguien la pide con
+# IMAGE_TAG=dev-<sha> y --app "python app_dev.py"; tests/test_flujo_ramas.py
+# lo vigila.
 name: docker
 
 on:
@@ -107,3 +113,21 @@ jobs:
           docker tag aws-media:ci $ECR/aws-media:latest
           docker tag aws-media:ci $ECR/aws-media:${{ github.sha }}
           docker push --all-tags $ECR/aws-media
+
+      # Entorno dev: la misma imagen validada, con una etiqueta que ningún
+      # stack de producción consume. Se despliega a mano (docs/OPERACION.md,
+      # «Deploy del entorno dev»).
+      - name: Credenciales AWS para dev (OIDC)
+        if: github.ref == 'refs/heads/dev'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::191241816158:role/aws-media-github-ecr
+          aws-region: us-east-1
+
+      - name: Push a ECR solo dev-<sha>
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          ECR=191241816158.dkr.ecr.us-east-1.amazonaws.com
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
+          docker tag aws-media:ci $ECR/aws-media:dev-${{ github.sha }}
+          docker push $ECR/aws-media:dev-${{ github.sha }}
