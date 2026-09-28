@@ -206,3 +206,60 @@ html:active-view-transition-type(reordenar) {
 }
 html:active-view-transition-type(reordenar)::view-transition { pointer-events: none; }
 html:active-view-transition-type(reordenar)::view-transition-group(*) { animation-duration: 300ms; }
+
+/* UI·22: el calendario tiene dirección (mix/Calendario.tsx). «Mes siguiente»:
+   la rejilla vieja sale a la izquierda y la nueva entra por la derecha; «Mes
+   anterior», al revés. Sale en 180 ms (lo que se va, más rápido que lo que
+   llega) y entra en --dur-media; 24 px bastan para leer la dirección sin que
+   parezca un carrusel que marea. El nombre del mes solo se funde. Como al
+   reordenar (UI·21), la página no se fotografía entera: solo el calendario. */
+html:active-view-transition-type(adelante, atras) {
+  view-transition-name: none;
+  & [data-cal='mes-0'] { view-transition-name: cal-mes-0; }
+  & [data-cal='mes-1'] { view-transition-name: cal-mes-1; }
+  & [data-cal='dias-0'] { view-transition-name: cal-dias-0; }
+  & [data-cal='dias-1'] { view-transition-name: cal-dias-1; }
+  & #monedero { view-transition-name: none !important; }
+}
+html:active-view-transition-type(adelante, atras)::view-transition { pointer-events: none; }
+html:active-view-transition-type(adelante, atras)::view-transition-group(*) { animation-duration: var(--dur-media); }
+/* el nombre del mes solo se funde, sin encimarse: el viejo se va en 90 ms */
+html:active-view-transition-type(adelante, atras)::view-transition-old(cal-mes-0),
+html:active-view-transition-type(adelante, atras)::view-transition-old(cal-mes-1) {
+  animation: cal-apaga 90ms var(--ease-entrada) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(adelante, atras)::view-transition-new(cal-mes-0),
+html:active-view-transition-type(adelante, atras)::view-transition-new(cal-mes-1) {
+  animation: cal-prende var(--dur-media) var(--ease-salida) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(adelante)::view-transition-old(cal-dias-0),
+html:active-view-transition-type(adelante)::view-transition-old(cal-dias-1) {
+  animation: cal-sale-izq 180ms var(--ease-entrada) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(adelante)::view-transition-new(cal-dias-0),
+html:active-view-transition-type(adelante)::view-transition-new(cal-dias-1) {
+  animation: cal-entra-der var(--dur-media) var(--ease-salida) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(atras)::view-transition-old(cal-dias-0),
+html:active-view-transition-type(atras)::view-transition-old(cal-dias-1) {
+  animation: cal-sale-der 180ms var(--ease-entrada) both;
+  mix-blend-mode: normal;
+}
+html:active-view-transition-type(atras)::view-transition-new(cal-dias-0),
+html:active-view-transition-type(atras)::view-transition-new(cal-dias-1) {
+  animation: cal-entra-izq var(--dur-media) var(--ease-salida) both;
+  mix-blend-mode: normal;
+}
+/* la vieja se apaga en la primera mitad de su salida y la nueva empieza a
+   verse al 30 % de su entrada: si se enciman a media opacidad, los números
+   de los dos meses se leen uno encima del otro */
+@keyframes cal-sale-izq { 50% { opacity: 0; } to { opacity: 0; transform: translateX(-24px); } }
+@keyframes cal-sale-der { 50% { opacity: 0; } to { opacity: 0; transform: translateX(24px); } }
+@keyframes cal-entra-der { from { opacity: 0; transform: translateX(24px); } 30% { opacity: 0; } }
+@keyframes cal-entra-izq { from { opacity: 0; transform: translateX(-24px); } 30% { opacity: 0; } }
+@keyframes cal-apaga { to { opacity: 0; } }
+@keyframes cal-prende { from { opacity: 0; } 30% { opacity: 0; } }
