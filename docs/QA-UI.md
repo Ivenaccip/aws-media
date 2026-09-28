@@ -190,3 +190,29 @@ salga devuelve lo cobrado. Hazla en el teléfono (390 px) y en el escritorio.
 | 10 | Apagar → «Sí, apagarla» | «Te devolvimos 5 créditos» (si aún no salió); la píldora del saldo lo refleja |
 | 11 | Desconectar Blotato y volver a MIX | El aviso y el formulario apagado; un clic lleva a conectar |
 | 12 | «Usar la versión anterior» | Llega a `/mix.html`; en `todos`, `/mix.html` ya no redirige para ti durante 7 días |
+
+## crear · `/estudio/crear/`
+
+Generar cobra el guion (**✦ 10**, `tarifas.json` §video.preparar) y producir,
+el resto de la duración (`por_duracion − preparar`). La película más barata es
+de 15 s: **✦ 10 + ✦ 45**. Cambiar el personaje o una imagen cuesta **✦ 2**.
+Hazla en el teléfono (390 px) y en el escritorio.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar desde el inicio con una idea escrita | La idea en el cuadro; «Generar ✦ 10»; «Película de 0:30: ✦ 100 en total» y la nota que reparte 10 + 90 |
+| 2 | Bajar la duración a 0:15 (botón − y flechas del teclado) | «✦ 55 en total» y «los otros 45, al producir»; el botón sigue en «Generar ✦ 10» |
+| 3 | Subir 5 imágenes del personaje | Entran 4 y «1 se quedó fuera»; quitar una devuelve el foco a otra miniatura |
+| 4 | Escribir algo violento y Generar | «Revisa tu texto» explica por qué; **no** se cobra nada |
+| 5 | Poner un rubro que no cuadre y Generar | «¿Crear de todos modos?», con el foco en «No, la cambio» |
+| 6 | 💳 Texto normal, doble clic en «Generar ✦ 10» | **Un** cobro de 10; la URL pasa a `?p=…`; los pasos «Entendiendo tu idea…» |
+| 7 | Cerrar la pestaña a media espera y volver con el enlace | Retoma la espera donde iba; la barra no retrocede |
+| 8 | En revisión: elegir una opción, editar una escena, esperar 1 s y recargar | «Guardado a las HH:MM»; tras recargar, la escena editada sigue ahí |
+| 9 | «Escuchar» una voz | Suena la muestra; no cobra |
+| 10 | 💳 «Cambiar ✦ 2» con «ponle lentes» | Aparece una opción nueva marcada; la píldora baja 2 |
+| 11 | Marcar «Enséñame las imágenes antes de animar» y 💳 «Producir ✦ 45» (doble clic) | **Un** cobro de 45; «Produciendo tu película»; se detiene en «¿Te gustan estas imágenes?» |
+| 12 | «Mejor no» → Enter | Enter = «No, seguir aquí»; nada cambia |
+| 13 | «Animar la película» | Sin cobro; vuelve la espera con «Faltan unos N min.» |
+| 14 | Con la película lista | Video con portada; «Descargar» baja el mp4; «Editor» abre el editor de cortes |
+| 15 | «Rehacer» | Vuelve a revisión; no cobra |
+| 16 | «Usar la versión anterior» | Llega a `/crear.html`; en `todos`, `/crear.html` ya no redirige para ti durante 7 días |
