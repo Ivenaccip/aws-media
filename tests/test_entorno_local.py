@@ -238,6 +238,53 @@ def test_subir_a_produccion_exige_teclearlo():
     assert fuente.index("if args.dry:") < fuente.index("ssm.put_parameter(")
 
 
+# ---------------------------------------------------------------------------
+# 6. tools/creditos.py: abonar no se equivoca de entorno en silencio
+
+CREDITOS = (RAIZ / "tools" / "creditos.py").read_text(encoding="utf-8")
+
+
+def test_creditos_ya_no_hereda_el_pool_de_produccion():
+    """Era el peor cable de los tres: `--user correo@` se resolvía contra
+    POOL_DEFAULT de tools/usuarios.py —producción, cableado— fuera cual fuera el
+    clúster de destino. Con dev en pie, eso abona al `sub` de un usuario de
+    producción dentro de la base de dev, sin un solo error por pantalla."""
+    assert "POOL_DEFAULT" not in CREDITOS
+    assert 'ap.add_argument("--pool", default=os.getenv("COGNITO_POOL_ID")' in CREDITOS
+
+
+def test_sin_pool_resolver_un_correo_falla_en_vez_de_adivinar():
+    assert "if not args.pool:" in CREDITOS
+    assert CREDITOS.index("if not args.pool:") < CREDITOS.index("admin_get_user")
+
+
+def test_abonar_confirma_antes_de_tocar_la_base():
+    """La confirmación va antes de exportar los ARN y de importar pipeline.db:
+    si se colara después, el primer movimiento ya estaría escrito."""
+    assert "if not confirmar_abono(entorno, args.cluster_arn, resumen):" in CREDITOS
+    assert (CREDITOS.index("confirmar_abono(entorno")
+            < CREDITOS.index('os.environ["DB_CLUSTER_ARN"] = args.cluster_arn'))
+
+
+def test_abonar_en_produccion_exige_teclearlo():
+    assert 'input("Teclea PROD para confirmar: ").strip() == "PROD"' in CREDITOS
+
+
+def test_solo_abonar_confirma_leer_no():
+    """saldo y movimientos no preguntan nada: leer no rompe nada, y meterles una
+    confirmación es la vía rápida a que alguien la aprenda de memoria."""
+    assert CREDITOS.count("confirmar_abono(") == 2   # la def y su única llamada
+    assert 'if args.accion == "abonar":' in CREDITOS
+
+
+def test_el_entorno_del_cluster_se_pregunta_no_se_adivina():
+    """El nombre físico del clúster lo genera CDK: deducir el entorno del texto
+    del ARN acierta hasta el día que no."""
+    assert "cluster_del_entorno" in CREDITOS
+    assert "def cluster_del_entorno" in FUENTE
+    assert "describe_stacks" not in CREDITOS   # la pregunta vive en un solo sitio
+
+
 def test_el_env_example_manda_al_env_local():
     assert "tools/env_local.py" in EJEMPLO
     for var in ("COGNITO_CLIENT_ID", "DB_SECRET_ARN"):

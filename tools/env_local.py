@@ -125,6 +125,24 @@ def outputs(cfn, stack: str) -> dict[str, str]:
     return {o["OutputKey"]: o["OutputValue"] for o in desc.get("Outputs", [])}
 
 
+def cluster_del_entorno(entorno: entornos.Entorno) -> str:
+    """El ARN del clúster de Aurora de ese entorno, según CloudFormation.
+
+    Se PREGUNTA en vez de adivinarse. El nombre físico del clúster lo genera CDK
+    (`awsmediadb…`), así que deducir el entorno leyendo el texto del ARN es
+    justo el tipo de heurística que acierta hasta el día que no. Lo usa
+    tools/creditos.py para negarse a mover créditos si el clúster que recibió no
+    es el del entorno que le declararon."""
+    import boto3
+    stack = stacks_de(entorno)["db"]
+    outs = outputs(boto3.client("cloudformation"), stack)
+    if "ClusterArn" not in outs:
+        raise SystemExit(
+            f"El stack {stack} no publica el output ClusterArn. "
+            "¿Se renombró en infra/stacks/db.py?")
+    return outs["ClusterArn"]
+
+
 def region_del_pool(pool_id: str) -> str:
     """El pool id trae la región delante: us-east-1_XXXX. Mismo truco que
     server/auth.py:_region(), así no depende de la región del perfil."""

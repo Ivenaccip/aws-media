@@ -67,6 +67,22 @@ user_id real de la base) antes de tocar el monedero, y truena con aviso si el
 correo no existe en el pool. También acepta el sub directo (el id que imprime
 `usuarios.py lista`).
 
+**Para resolver un correo hace falta `COGNITO_POOL_ID`** (o `--pool`). Lo pone
+`.env.local`, que genera `tools/env_local.py`:
+
+```bash
+venv/Scripts/python tools/env_local.py --ejecutar
+```
+
+Antes había un pool de producción cableado como default, y con dev en pie eso
+resolvía el correo contra el pool equivocado **sin avisar**: abonaría al `sub` de
+un usuario de producción dentro de la base de dev. Ahora falla y lo dice. Pasar
+el sub directo no necesita pool.
+
+`abonar` además comprueba contra CloudFormation que el clúster es el del
+`--entorno` que le declaraste, y en producción hace teclear `PROD`. `saldo` y
+`movimientos` no preguntan nada.
+
 ```bash
 venv/Scripts/python tools/creditos.py saldo --user correo@ejemplo.com
 ```
