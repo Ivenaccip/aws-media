@@ -75,15 +75,21 @@ def _fuente(doc: dict, nombre: str) -> str | None:
 
 
 def _duracion_s(key: str) -> float:
-    """ffprobe sobre el CDN (la imagen trae ffmpeg; lee solo el moov, no baja
-    el archivo). El costo de transcripción depende de esta duración."""
-    base = os.getenv("CDN_BASE", "").rstrip("/")
-    if not base:
-        raise HTTPException(503, "CDN_BASE no configurada")
+    """ffprobe sobre la URL del archivo (la imagen trae ffmpeg; lee solo el
+    moov, no baja el archivo). El costo de transcripción depende de esta
+    duración.
+
+    La clave es `videos/<n>/pelicula.mp4` o una de `videos/<n>/subidas/`, y el
+    CDN ya no sirve ese prefijo: `url_media` la firma. ffprobe se traga una URL
+    firmada igual que una pública — es HTTP con query, nada más."""
+    url = media_sync.url_media(key)
+    if not url:
+        raise HTTPException(503, "sin CDN_BASE ni MEDIA_BUCKET")
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "csv=p=0", f"{base}/{key}"],
-        capture_output=True, text=True, timeout=30)
+         "-of", "csv=p=0", url],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=30)
     try:
         return float(r.stdout.strip())
     except ValueError:
@@ -249,7 +255,10 @@ def estado(nombre: str):
     for campo in ("shorts", "importar"):   # los guardados antes del tachado también
         if (doc.get(campo) or {}).get("error"):
             doc[campo]["error"] = apify.tachar(doc[campo]["error"])
-    return {"shorts": doc.get("shorts"), "fuente": _fuente(doc, nombre),
+    # Las salidas del render viven en `videos/`, que el CDN ya no sirve: sus
+    # URLs se arman aquí, al entregar, y nunca se guardan (caducan).
+    return {"shorts": media_sync.refrescar_urls(doc.get("shorts")),
+            "fuente": _fuente(doc, nombre),
             "importar": doc.get("importar"),
             "creditos_por_short": creditos.SHORTS_RENDER_CR,
             "cdn": os.getenv("CDN_BASE", "").rstrip("/")}

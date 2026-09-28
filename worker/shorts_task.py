@@ -116,15 +116,16 @@ def _pipeline(user_id: str, nombre: str, destino: Path, st: dict) -> list[dict]:
     _correr(["bash", str(ROOT / "tools" / "shorts" / "validate.sh"),
              "--output-dir", str(salida_dir)])
 
-    cdn = os.getenv("CDN_BASE", "").rstrip("/")
     salidas = []
     for f in sorted(salida_dir.glob("*.mp4")):
         key = f"videos/{nombre}/output/shorts/{f.name}"
         media_sync.subir_archivo(f, key)
         # `key` va explícita para que el botón de descargar no tenga que
-        # deshacer la URL del CDN a mano (M22 · D)
+        # deshacer la URL del CDN a mano (M22 · D). Y ahora es lo ÚNICO que se
+        # guarda: `videos/` ya no lo sirve el CDN, así que la URL la arma
+        # media_sync.refrescar_urls al entregar el documento.
         salidas.append({"archivo": f.name, "bytes": f.stat().st_size, "key": key,
-                        "url": f"{cdn}/{key}" if cdn else None})
+                        "url": None})
     if not salidas:
         raise RuntimeError("el export no produjo ningún MP4")
     return salidas

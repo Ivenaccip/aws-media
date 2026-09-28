@@ -564,7 +564,10 @@ def _parsear_srt(crudo: str) -> list[dict]:
 def subs_estado(name: str):
     from server.editor import _nube, _proyecto_nube, _render_caducado
     if _nube():
-        s = _proyecto_nube(name).get("subtitulos") or {}
+        # el video con subtítulos quemados vive en `videos/`: se firma al
+        # entregarlo. Las filas viejas guardaban SOLO la URL del CDN, sin
+        # `key`, y refrescar_urls la destripa para poder volver a firmarla.
+        s = media_sync.refrescar_urls(_proyecto_nube(name).get("subtitulos") or {})
         estado = s.get("estado")
         crudo = media_sync.leer_texto(f"videos/{name}/work/subs/subs.srt")
         return {"running": estado == "corriendo" and not _render_caducado(s),

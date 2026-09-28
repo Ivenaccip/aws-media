@@ -11,6 +11,13 @@ from pipeline import db, jobs, media_sync
 from server import editor
 
 
+class _S3Firma:
+    """Firma determinista, para no depender de boto3 real en los tests."""
+
+    def generate_presigned_url(self, op, Params, ExpiresIn):  # noqa: N803
+        return f"https://s3.example/{Params['Key']}?firma"
+
+
 @pytest.fixture
 def nube(monkeypatch, tmp_path):
     """Server en modo nube: backend postgres, CDN configurada, sin Cognito
@@ -18,6 +25,10 @@ def nube(monkeypatch, tmp_path):
     monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
     monkeypatch.setenv("STATE_BACKEND", "postgres")
     monkeypatch.setenv("CDN_BASE", "https://cdn.example.com")
+    # En producción las dos van juntas, y desde la lista blanca del CDN hace
+    # falta: lo de `videos/` ya no se sirve por CDN, se firma contra el bucket.
+    monkeypatch.setenv("MEDIA_BUCKET", "bucket-test")
+    monkeypatch.setattr(media_sync, "_s3", lambda: _S3Firma())
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path))
     docs = {"gen-abc": {"flags": {"cuts": True}}}
     monkeypatch.setattr(db, "cargar_proyecto_editor",
@@ -95,13 +106,18 @@ def test_save_409_si_otra_pestana_guardo(nube, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# media — 302 al CDN (CloudFront sirve el Range del proxy)
+# media — 302 a una URL FIRMADA (el CDN ya no sirve `videos/`)
 
-def test_media_redirige_al_cdn(nube):
+def test_media_redirige_a_una_url_firmada(nube):
+    """Este `proxy.mp4` es exactamente el archivo que la fuga del CDN entregaba
+    sin login: `GET /videos/1/work/editor/proxy.mp4` daba 200 y un megabyte de
+    video. Ahora la clave no la sirve CloudFront y el redirect va firmado."""
     r = nube.get("/editor/gen-abc/media/proxy.mp4", follow_redirects=False)
-    assert r.status_code == 307 or r.status_code == 302
-    assert r.headers["location"] == \
-        "https://cdn.example.com/videos/gen-abc/work/editor/proxy.mp4"
+    assert r.status_code in (302, 307)
+    destino = r.headers["location"]
+    assert destino == \
+        "https://s3.example/videos/gen-abc/work/editor/proxy.mp4?firma"
+    assert "cdn.example.com" not in destino
 
 
 # ---------------------------------------------------------------------------
@@ -147,14 +163,16 @@ def test_render_corriendo_caducado_se_relanza(nube, monkeypatch):
     del nube.docs["gen-abc"]["render"]
 
 
-def test_render_status_desde_el_doc(nube):
-    """Un render anterior a M22 no trae `key`: el status la devuelve en None y
-    el front, que solo pinta el botón de descargar si viene, no se rompe."""
+def test_render_status_rescata_la_key_de_un_render_viejo(nube):
+    """Un render anterior a M22 no traía `key`, solo la URL del CDN — y esa URL
+    ahora contesta 403. El status la destripa para recuperar la clave, firma de
+    nuevo, y de paso devuelve la `key` que antes iba en None: así el botón de
+    descargar aparece también para lo viejo."""
     nube.docs["gen-abc"]["render"] = {
         "estado": "listo", "url": "https://cdn.example.com/x.mp4", "log": ""}
     s = nube.get("/editor/gen-abc/api/render/status").json()
     assert s == {"running": False, "log": "", "ok": True,
-                 "url": "https://cdn.example.com/x.mp4", "key": None}
+                 "url": "https://s3.example/x.mp4?firma", "key": "x.mp4"}
     del nube.docs["gen-abc"]["render"]
 
 
@@ -242,8 +260,12 @@ def test_render_task_ok_sube_y_fija_listo(tarea, monkeypatch):
     assert json.loads(cuts.read_text(encoding="utf-8")) == CUTS
     assert "videos/gen-abc/output/preview-tight.mp4" in registro["subidos"]
     assert registro["render"]["estado"] == "listo"
-    assert registro["render"]["url"] == \
-        "https://cdn.example.com/videos/gen-abc/output/preview-tight.mp4"
+    # Se persiste la CLAVE y no la URL: `videos/` ya no lo sirve el CDN, y una
+    # URL firmada guardada en Postgres caducaría dentro de la fila. La arma
+    # media_sync.refrescar_urls al entregar el estado.
+    assert registro["render"]["key"] == \
+        "videos/gen-abc/output/preview-tight.mp4"
+    assert registro["render"]["url"] is None
     # el subprocess mockeado tarda ~0 s → el costo redondea a 0; lo que importa
     # es que la línea de infra se registró con el concepto correcto
     assert registro["infra"][0] == "infra-render" and registro["infra"][1] >= 0

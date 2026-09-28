@@ -41,11 +41,13 @@ def _asegurar_canonico(nombre: str, fuente_key: str) -> dict:
         if k.endswith(".canonical.json"):
             return json.loads(media_sync.leer_texto(k))
 
-    cdn = os.getenv("CDN_BASE", "").rstrip("/")
+    # `fuente_key` vive bajo `videos/`, que el CDN ya no sirve: va firmada. Una
+    # hora es de sobra — ffmpeg abre la URL al arrancar, no al terminar.
+    fuente_url = media_sync.url_media(fuente_key)
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
         audio = Path(tmp) / "audio.wav"
         subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-i", f"{cdn}/{fuente_key}",
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", fuente_url,
              "-vn", "-ac", "1", "-ar", "16000", str(audio)],
             check=True, timeout=600)
         dur = asr_backend.duracion_audio_s(audio)

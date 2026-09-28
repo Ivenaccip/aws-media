@@ -88,10 +88,16 @@ def _proyecto_nube(name: str) -> dict:
 
 
 def _cdn(key: str) -> str:
-    base = os.getenv("CDN_BASE", "").rstrip("/")
-    if not base:
-        raise HTTPException(503, "CDN_BASE no configurada — sin ella no hay media en nube")
-    return f"{base}/{key}"
+    """La URL de un artefacto del editor, firmada si hace falta.
+
+    El único que pasa por aquí es `videos/<n>/work/editor/<archivo>` — el
+    `proxy.mp4` que la fuga del CDN servía sin login. Ya no lo sirve el CDN:
+    `url_media` lo firma, y la liga caduca en una hora.
+    """
+    url = media_sync.url_media(key)
+    if not url:
+        raise HTTPException(503, "sin CDN_BASE ni MEDIA_BUCKET — no hay media en nube")
+    return url
 
 
 def _leer_json_s3(key: str) -> dict | None:
@@ -425,7 +431,9 @@ def _render_nube(name: str, style: str) -> dict:
 @router.get("/{name}/api/render/status")
 def render_status(name: str):
     if _nube():
-        r = _proyecto_nube(name).get("render") or {}
+        # la preview vive en `videos/<n>/output/`, que el CDN ya no sirve: la
+        # URL se firma aquí al entregarla, y las filas viejas traían la del CDN
+        r = media_sync.refrescar_urls(_proyecto_nube(name).get("render") or {})
         estado = r.get("estado")
         return {"running": estado == "corriendo" and not _render_caducado(r),
                 "log": r.get("log", ""),
