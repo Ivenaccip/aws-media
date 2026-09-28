@@ -34,7 +34,44 @@ def backend() -> str:
 _usuario_request: ContextVar[str | None] = ContextVar("usuario_request", default=None)
 
 
+# RAG·1 — candado de identidad del camino público (/automatiza). Un visitante
+# anónimo NO es «nadie»: sin este candado caería en el default de abajo, es
+# decir, en el piloto (su S3, su saldo, su reserva de nombres del editor, que
+# no se suelta nunca). Por eso el camino público no llama usuario_actual() con
+# cuidado: la llamada revienta. Lo marcan el middleware (prefijos públicos de
+# server/auth.py) y el worker público con camino_publico().
+# Ojo, RAG·31: el 25-oct la ventana pasa a «con cuenta y cobrando» y este
+# candado es justo lo que se revierte. Está escrito para quitarse en un solo
+# lugar, no esparcido por los endpoints.
+_camino_publico: ContextVar[bool] = ContextVar("camino_publico", default=False)
+
+
+class IdentidadEnCaminoPublico(RuntimeError):
+    """usuario_actual() se llamó desde el camino público: es un bug, no un 401."""
+
+
+def en_camino_publico() -> bool:
+    return _camino_publico.get()
+
+
+class camino_publico:
+    """Marca el contexto actual como público mientras dure el bloque:
+    `with db.camino_publico(): ...` (middleware y worker público)."""
+
+    def __enter__(self):
+        self._marca = _camino_publico.set(True)
+        return self
+
+    def __exit__(self, *exc):
+        _camino_publico.reset(self._marca)
+        return False
+
+
 def usuario_actual() -> str:
+    if _camino_publico.get():
+        raise IdentidadEnCaminoPublico(
+            "usuario_actual() en el camino público: un anónimo caería en "
+            "el piloto. Usa el id de la corrida, no un usuario.")
     return _usuario_request.get() or os.getenv("DEFAULT_USER_ID", "piloto")
 
 
