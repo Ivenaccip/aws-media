@@ -335,6 +335,8 @@ def test_ningun_nombre_se_sale_de_la_carpeta_del_usuario(srv, nombre):
 
 
 def test_la_pagina_se_sirve(cliente):
+    # la vieja: con `imagenes` en `todos` solo la ve quien eligió la clásica
+    cliente.cookies.set("ui", "clasica")
     r = cliente.get("/imagenes.html")
     assert r.status_code == 200 and 'id="enviar"' in r.text
 

@@ -65,6 +65,12 @@ def test_el_html_revalida_y_no_se_cachea_en_el_borde(cliente, ruta):
 @pytest.mark.parametrize("ruta", ["/", "/entrar", "/estudio/"])
 def test_las_rutas_de_entrada_siguen_en_no_cache(cliente, ruta):
     r = cliente.get(ruta, follow_redirects=False)
+    if r.status_code == 302:
+        # /estudio/ es la URL vieja del inicio: con `inicio` en `todos` lleva al
+        # nuevo (server/migracion.py), y ese 302 no lo guarda nadie
+        assert ruta == "/estudio/" and r.headers["location"] == "/estudio/inicio/", ruta
+        assert r.headers["cache-control"] == "no-store", ruta
+        r = cliente.get(r.headers["location"], follow_redirects=False)
     assert r.status_code == 200, ruta
     assert r.headers["cache-control"] == "no-cache", ruta
 

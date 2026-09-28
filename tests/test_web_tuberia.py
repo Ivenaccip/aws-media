@@ -276,8 +276,10 @@ def test_la_app_real_sirve_la_vitrina_si_esta_compilada(monkeypatch):
     for a in assets:
         ra = c.get(a)
         assert ra.status_code == 200 and "immutable" in ra.headers["cache-control"], a
-    # las rutas de siempre siguen donde estaban
-    assert c.get("/estudio/", follow_redirects=False).status_code == 200
+    # las rutas de siempre siguen donde estaban: /estudio/ sirve el inicio, o
+    # con `inicio` en `todos` lleva por 302 al nuevo
+    r = c.get("/estudio/")
+    assert r.status_code == 200 and r.url.path in ("/estudio/", "/estudio/inicio/")
 
 
 # ---------------------------------------------------------------------------
