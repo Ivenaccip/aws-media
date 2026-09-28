@@ -140,6 +140,14 @@ class ApiStack(Stack):
         entrada = e.dominio_publico or http_api.api_endpoint
         pool = cognito.UserPool(
             self, "Users", user_pool_name=e.pool,
+            # Protección de borrado SOLO en producción, y en el template a
+            # propósito: puesta a mano desde la consola no viaja en él, así que
+            # no había forma de saber si sobrevivía al siguiente update del
+            # stack. Aquí la gobierna CloudFormation y la respuesta es sí.
+            # Dev la lleva apagada porque un entorno de pruebas tiene que poder
+            # tirarse: con ACTIVE, `cdk destroy` del stack de dev falla y hay
+            # que ir a apagarla a mano antes de poder borrar nada.
+            deletion_protection=e.es_prod,
             self_sign_up_enabled=False,      # alta manual mientras es piloto
             sign_in_aliases=cognito.SignInAliases(email=True),
             # M2: el email que dispara tools/usuarios.py alta — {username} y
