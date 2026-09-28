@@ -313,10 +313,10 @@ describe('competencia', () => {
     await waitFor(() => expect(document.title).toBe('Revisando a la competencia · Estudio de video · Investiga tu competencia'));
   });
 
-  it('competencia.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('competencia.marco.enlace_estudio_sin_version_anterior', async () => {
     servidor({ '/api/competencia': () => json(listado([])) });
     render(<Competencia />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=competencia');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     await screen.findByRole('button', { name: 'Revisar' });
   });
 });

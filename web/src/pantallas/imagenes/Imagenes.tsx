@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
-import { EsperaIA } from '../../marca/EsperaIA';
+import { avanceEspera, EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
@@ -32,15 +32,18 @@ import {
   cargarEstilos,
   crear,
   editar,
+  ESTIMADO_IMAGEN_MS,
   formatoDe,
   MAX_TEXTO,
   mensaje,
   modoDe,
   nombrePropio,
   paleta,
+  pasosImagen,
   problemaArchivo,
   problemaEnvio,
   quiereEditar,
+  REVISANDO,
   TEXTOS,
   urlArchivo,
   vistaDe,
@@ -49,6 +52,7 @@ import {
   type Estilo,
   type Formato,
   type Hecha,
+  type Modo,
 } from './logica';
 
 interface Trabajo {
@@ -397,7 +401,7 @@ export function Imagenes() {
     }
     vivo.current.enVuelo = true;
     setEnVuelo(true);
-    setEspera('Revisando tu texto…'); // cubre el hueco mudo del guardarraíl
+    setEspera(REVISANDO); // cubre el hueco mudo del guardarraíl
     let creada: Hecha | null = null;
     let cobra = false; // UI·19: el «−N» vuela solo si el servidor cobró
     try {
@@ -582,11 +586,6 @@ export function Imagenes() {
           )}
           {visible === 'resultado' && resultado && (
             <img src={resultado.url} alt="Tu imagen nueva" className="max-h-full max-w-full rounded-medio object-contain" />
-          )}
-          {espera && vista === 'editar' && (
-            <div className="absolute right-2 top-2">
-              <EsperaIA texto={espera} tope={180000} textoAlAgotar={AL_AGOTAR} />
-            </div>
           )}
         </div>
         {visible !== 'vacio' && (
@@ -840,7 +839,8 @@ export function Imagenes() {
             alCobrar={enviar}
           />
         </span>
-        {espera && vista === 'crear' && <EsperaIA texto={espera} tope={180000} textoAlAgotar={AL_AGOTAR} />}
+        {/* UI·27: la misma espera por pasos que crear, en las dos vistas */}
+        {espera && <EsperaImagen modo={modo} texto={espera} />}
         {falla && (
           <p role="alert" className="m-0 max-w-[65ch] whitespace-pre-wrap text-center text-sm text-error">
             {falla.texto}
@@ -951,5 +951,23 @@ function Muestra({ estilo, descripcion, children }: { estilo: string; descripcio
       )}
       {children}
     </div>
+  );
+}
+
+function EsperaImagen({ modo, texto }: { modo: Modo; texto: string }) {
+  // el reloj empieza cuando aparece la espera (se monta con el envío)
+  const [desde] = useState(() => Date.now());
+  const llevas = useLlevas(desde);
+  const pasos = pasosImagen(modo);
+  const paso = texto === REVISANDO ? 0 : 1;
+  return (
+    <EsperaPasos
+      className="mt-2 w-full"
+      pasos={pasos}
+      paso={paso}
+      pct={avanceEspera(paso, pasos.length, llevas, ESTIMADO_IMAGEN_MS)}
+      tiempo={textoLlevas(llevas, 'unos 20 s')}
+      orbe={{ texto, tope: 180000, textoAlAgotar: AL_AGOTAR }}
+    />
   );
 }

@@ -249,10 +249,10 @@ describe('estilos', () => {
     await waitFor(() => expect(document.title).toBe('Analizando el estilo · Estudio de video · Copiadora de estilos'));
   });
 
-  it('estilos.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('estilos.marco.enlace_estudio_sin_version_anterior', async () => {
     servidor({ '/api/estilo': () => json(listado([])) });
     render(<Estilos />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=estilos');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     await screen.findByRole('button', { name: /Analizar ✦/ });
   });

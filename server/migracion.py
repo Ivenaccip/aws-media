@@ -34,7 +34,7 @@ viven en el código y el código de dev es el que luego llega a main: pasar una
 pantalla a `todos` para verla en dev la pasaría también en producción. Con la
 variable, dev navega por las pantallas nuevas y prod sigue donde diga
 PANTALLAS. Solo acepta `todos`: `retirada` quitaría la salida de emergencia
-(«Usar la versión anterior») y `nueva` no cambiaría nada.
+(/ui/clasica) y `nueva` no cambiaría nada.
 """
 from __future__ import annotations
 

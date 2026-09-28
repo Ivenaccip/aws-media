@@ -82,7 +82,7 @@ ese nombre exacto.
 | `subir.espera.sin_red_con_la_corrida_viva_sigue_reintentando` | sin red con la corrida viva: «Sin conexión — reintentando…», el orbe se queda y sigue solo |
 | `subir.espera.titulo_de_la_pestana_dice_revisando` | la pestaña dice «Revisando tu metraje · …» |
 | `subir.espera.el_orbe_ocupa_el_sitio_de_la_animacion` | con la corrida viva, el orbe reemplaza la animación del editor, no se le suma; la de shorts se queda |
-| `subir.marco.enlaces_estudio_y_version_anterior` | «← Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=subir`) |
+| `subir.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

@@ -37,7 +37,7 @@ INVARIANTES = {
         "admin.sync.doble_clic_un_solo_post",
         "admin.sync.error_deja_volver_a_intentar",
         "admin.flujo.signo_pinta_verde_o_rojo",
-        "admin.marco.enlaces_estudio_y_version_anterior",
+        "admin.marco.enlace_estudio_sin_version_anterior",
     ],
     "clip": [
         "clip.cobro.precio_del_servidor_en_el_boton",
@@ -65,7 +65,7 @@ INVARIANTES = {
         "clip.lista.sondea_mientras_genera_y_para_al_terminar",
         "clip.lista.fallo_de_carga_avisa_reintenta_y_sigue_solo",
         "clip.espera.titulo_de_la_pestana_dice_generando",
-        "clip.marco.enlaces_estudio_y_version_anterior",
+        "clip.marco.enlace_estudio_sin_version_anterior",
     ],
     "estilos": [
         "estilos.cobro.precio_del_servidor_en_el_boton",
@@ -84,7 +84,7 @@ INVARIANTES = {
         "estilos.lista.sin_red_con_un_analisis_vivo_sigue_reintentando",
         "estilos.lista.fallo_de_carga_avisa_y_reintenta",
         "estilos.espera.titulo_de_la_pestana_dice_analizando",
-        "estilos.marco.enlaces_estudio_y_version_anterior",
+        "estilos.marco.enlace_estudio_sin_version_anterior",
     ],
     "competencia": [
         "competencia.cobro.precio_por_cuenta_del_servidor",
@@ -105,7 +105,7 @@ INVARIANTES = {
         "competencia.lista.sin_red_con_una_revision_viva_sigue_reintentando",
         "competencia.lista.fallo_de_carga_avisa_y_reintenta",
         "competencia.espera.titulo_de_la_pestana_dice_revisando",
-        "competencia.marco.enlaces_estudio_y_version_anterior",
+        "competencia.marco.enlace_estudio_sin_version_anterior",
     ],    "inicio": [
         "inicio.caja.arranca_en_el_clip_lo_mas_barato",
         "inicio.caja.precios_de_tarifas_json",
@@ -146,7 +146,7 @@ INVARIANTES = {
         "inicio.blotato.viene_del_editor_con_blotato_conectar",
         "inicio.blotato.enlace_a_la_api_con_noopener",
         "inicio.blotato.conectar_enciende_el_menu",
-        "inicio.marco.version_anterior",
+        "inicio.marco.sin_version_anterior",
     ],
     "shorts": [
         "shorts.cobro.analizar_con_el_precio_del_servidor",
@@ -184,7 +184,7 @@ INVARIANTES = {
         "shorts.espera.sin_red_con_algo_vivo_sigue_reintentando",
         "shorts.espera.titulo_de_la_pestana",
         "shorts.subida.sube_y_abre_el_proyecto",
-        "shorts.marco.enlaces_estudio_y_version_anterior",
+        "shorts.marco.enlace_estudio_sin_version_anterior",
     ],
     "subir": [
         "subir.cobro.precio_del_servidor_en_el_boton",
@@ -222,7 +222,7 @@ INVARIANTES = {
         "subir.espera.sin_red_con_la_corrida_viva_sigue_reintentando",
         "subir.espera.titulo_de_la_pestana_dice_revisando",
         "subir.espera.el_orbe_ocupa_el_sitio_de_la_animacion",
-        "subir.marco.enlaces_estudio_y_version_anterior",
+        "subir.marco.enlace_estudio_sin_version_anterior",
     ],
     "agenda": [
         "agenda.carga.una_sola_llamada_al_abrir_y_ningun_sondeo",
@@ -256,7 +256,7 @@ INVARIANTES = {
         "agenda.cancelar.el_404_recarga_y_despues_avisa",
         "agenda.cancelar.el_409_ofrece_conectar",
         "agenda.cobro.no_cobra_ni_pinta_ambar_fuera_del_dialogo",
-        "agenda.marco.enlaces_estudio_y_version_anterior",
+        "agenda.marco.enlace_estudio_sin_version_anterior",
     ],
     "metricas": [
         "metricas.carga.una_llamada_al_abrir_y_ningun_sondeo",
@@ -284,7 +284,7 @@ INVARIANTES = {
         "metricas.tarjeta.adjuntos_y_motivo_del_servidor",
         "metricas.carga.una_carga_a_la_vez",
         "metricas.cobro.no_cobra_ni_pinta_ambar",
-        "metricas.marco.enlaces_estudio_y_version_anterior",
+        "metricas.marco.enlace_estudio_sin_version_anterior",
     ],
     "imagenes": [
         "imagenes.cobro.precio_de_tarifas_json_y_verbo_segun_el_modo",
@@ -322,7 +322,7 @@ INVARIANTES = {
         "imagenes.teclado.ctrl_enter_envia",
         "imagenes.titulo.el_lector_oye_el_titulo_fijo",
         "imagenes.textos.del_servidor_como_texto",
-        "imagenes.marco.enlaces_estudio_y_version_anterior",
+        "imagenes.marco.enlace_estudio_sin_version_anterior",
     ],
     "mix": [
         "mix.carga.una_llamada_al_abrir_y_restaura_el_borrador",
@@ -354,7 +354,7 @@ INVARIANTES = {
         "mix.ultima.dice_como_acabo_la_anterior",
         "mix.carga.fallo_avisa_con_reintentar",
         "mix.textos.del_servidor_como_texto",
-        "mix.marco.enlaces_estudio_y_version_anterior",
+        "mix.marco.enlace_estudio_sin_version_anterior",
     ],
     "crear": [
         "crear.formulario.estilos_radiogroup_muestra_y_personalizado",
@@ -408,7 +408,7 @@ INVARIANTES = {
         "crear.error.al_preparar_empezar_de_nuevo_con_la_idea",
         "crear.error.sin_monedero_no_habla_de_creditos",
         "crear.textos.del_servidor_como_texto",
-        "crear.marco.enlaces_estudio_y_version_anterior",
+        "crear.marco.enlace_estudio_sin_version_anterior",
         "crear.cobro.un_solo_principal_por_vista",
     ],
 }

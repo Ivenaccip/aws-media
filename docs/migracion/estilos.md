@@ -47,7 +47,7 @@ En `web/src/pantallas/estilos/Estilos.test.tsx`, con ese nombre exacto.
 | `estilos.lista.sin_red_con_un_analisis_vivo_sigue_reintentando` | sin red con un análisis vivo: «reintentando…», la tarjeta sigue y el sondeo no muere (M19) |
 | `estilos.lista.fallo_de_carga_avisa_y_reintenta` | sin red y nada vivo: aviso con Reintentar, sin «Cargando…» colgado |
 | `estilos.espera.titulo_de_la_pestana_dice_analizando` | «Analizando el estilo · …» en la pestaña |
-| `estilos.marco.enlaces_estudio_y_version_anterior` | «← Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=estilos`) |
+| `estilos.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

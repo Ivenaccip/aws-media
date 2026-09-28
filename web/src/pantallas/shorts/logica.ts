@@ -26,12 +26,16 @@ export interface Salida {
 
 export interface Render {
   estado?: 'corriendo' | 'listo' | 'error' | string;
+  /** ISO del servidor: cuándo se lanzó (UI·27, «Llevas…»). */
+  inicio?: string;
   salidas?: Salida[];
   log?: string;
 }
 
 export interface EstadoShorts {
   estado?: 'analizando' | 'candidatos' | 'error' | string;
+  /** ISO del servidor: cuándo empezó el análisis (UI·27). */
+  inicio?: string;
   candidatos?: Candidato[];
   listo?: string;
   error?: string;
@@ -40,6 +44,7 @@ export interface EstadoShorts {
 
 export interface Importacion {
   estado?: 'descargando' | 'listo' | 'error' | string;
+  inicio?: string;
   titulo?: string;
   error?: string;
 }
@@ -88,6 +93,13 @@ export const cargarCosto = (p: string) => pedir<Costo>(ruta(p) + '/costo');
 export const analizar = (p: string) => pedir<{ lanzado: boolean; creditos: number }>(ruta(p) + '/analizar', { cuerpo: {} });
 export const renderizar = (p: string, cuerpo: { shorts: Corte[]; estilo: string; plataforma: string; tipo: string }) =>
   pedir<{ lanzado: boolean; creditos: number }>(ruta(p) + '/render', { cuerpo });
+// la misma regla que server/shorts_api.py `_YT_ID`: así una liga que no es de
+// YouTube se corrige en el campo, sin ir al servidor
+const ID_YOUTUBE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+export const LIGA_INVALIDA =
+  'Esa no parece una liga de YouTube. Cópiala desde «Compartir» del video (youtube.com/watch?v=…, youtu.be/… o /shorts/…).';
+export const esLigaDeYoutube = (url: string) => ID_YOUTUBE.test(url);
+
 export const cotizar = (url: string) => pedir<Cotizacion>('/api/shorts/importar/cotizar', { cuerpo: { url } });
 export const importar = (url: string) =>
   pedir<{ lanzado: boolean; nombre: string; creditos: number }>('/api/shorts/importar', { cuerpo: { url } });
@@ -153,3 +165,14 @@ export const urlDescarga = (key: string, nombre: string) =>
   '/api/media/descarga?' + new URLSearchParams({ key, nombre }).toString();
 
 export const conP = (p: string) => '?p=' + encodeURIComponent(p);
+
+// UI·27 — el camino entero de un short, con la misma espera que crear. Son
+// pasos de verdad: el servidor dice en cuál va (descargando, analizando, el
+// render) y «tú eliges» es la pausa en la que manda la persona. Dentro de cada
+// paso no cuenta fases, así que la barra va por pasos y el resto es el reloj.
+export const PASOS_SHORTS = [
+  { falta: 'Traer tu video', activo: 'Trayendo tu video', hecho: 'Video listo' },
+  { falta: 'Analizar el video', activo: 'Analizando: transcript y candidatos', hecho: 'Video analizado' },
+  { falta: 'Tú eliges los cortes', hecho: 'Cortes elegidos' },
+  { falta: 'Renderizar los shorts', activo: 'Renderizando tus shorts', hecho: 'Shorts listos' },
+];

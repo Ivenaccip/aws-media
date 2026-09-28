@@ -126,7 +126,7 @@ afterEach(() => {
   delete window.monedero;
 });
 
-async function cotizarLiga(url = 'https://www.youtube.com/watch?v=abc123') {
+async function cotizarLiga(url = 'https://www.youtube.com/watch?v=abc123DEF45') {
   await userEvent.type(await screen.findByLabelText('Liga de YouTube'), url);
   await userEvent.click(screen.getByRole('button', { name: 'Cotizar' }));
 }
@@ -184,7 +184,9 @@ describe('analizar', () => {
     montar({ proyecto: () => ANALIZANDO });
     const { unmount } = render(<Shorts />);
     expect(await screen.findByText('Analizando tu video · transcript y candidatos')).toBeInTheDocument();
-    expect(screen.getByText('Puedes cerrar la página: el análisis sigue en la nube.')).toBeInTheDocument();
+    expect(screen.getByText('Puedes cerrar esta pestaña: sigue en la nube y este enlace te trae de vuelta.')).toBeInTheDocument();
+    // UI·27: los pasos del camino, en el del análisis
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Analizando: transcript y candidatos');
     unmount();
     // el render es Remotion componiendo, no la IA pensando: sin orbe
     montar({ proyecto: () => RENDERIZANDO });
@@ -379,6 +381,53 @@ describe('importar de YouTube', () => {
     expect(screen.queryByRole('button', { name: /Importar/ })).toBeNull();
   });
 
+  it('una liga que no es de YouTube se corrige en el campo, sin ir al servidor', async () => {
+    irA(null);
+    const f = montar();
+    render(<Shorts />);
+    await cotizarLiga('asdasdasdasd');
+    const campo = screen.getByLabelText('Liga de YouTube');
+    expect(campo).toHaveAttribute('aria-invalid', 'true');
+    expect(campo).toHaveClass('motion-safe:animate-campo-tiembla');
+    expect(screen.getByText(/Esa no parece una liga de YouTube/)).toBeInTheDocument();
+    expect(llamadas(f, '/api/shorts/importar/cotizar')).toHaveLength(0);
+    // al corregirla, el error se va
+    await userEvent.type(campo, 'x');
+    expect(campo).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('lo que el servidor dice de la liga (4xx) va en el campo; una caída, abajo', async () => {
+    irA(null);
+    montar({
+      rutas: {
+        '/api/shorts/importar/cotizar': () => json({ detail: 'El video dura menos de 1 min.' }, 422),
+      },
+    });
+    render(<Shorts />);
+    await cotizarLiga();
+    const campo = screen.getByLabelText('Liga de YouTube');
+    expect(await screen.findByText('El video dura menos de 1 min.')).toBeInTheDocument();
+    expect(campo).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('una caída del servidor al cotizar no marca la liga como mala', async () => {
+    irA(null);
+    montar({ rutas: { '/api/shorts/importar/cotizar': () => json({ detail: 'Se cayó Apify' }, 502) } });
+    render(<Shorts />);
+    await cotizarLiga();
+    expect(await screen.findByText('Se cayó Apify')).toBeInTheDocument();
+    expect(screen.getByLabelText('Liga de YouTube')).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('Enter en el campo también cotiza', async () => {
+    irA(null);
+    const f = montar();
+    render(<Shorts />);
+    await userEvent.type(await screen.findByLabelText('Liga de YouTube'), 'https://youtu.be/abc123DEF45{Enter}');
+    await screen.findByRole('button', { name: 'Importar ✦ 11' });
+    expect(llamadas(f, '/api/shorts/importar/cotizar')).toHaveLength(1);
+  });
+
   it('shorts.cobro.importar_doble_clic_un_solo_post', async () => {
     irA(null);
     let soltar!: (r: Response) => void;
@@ -389,7 +438,7 @@ describe('importar de YouTube', () => {
     await userEvent.dblClick(b);
     expect(llamadas(f, '/api/shorts/importar')).toHaveLength(1);
     expect(JSON.parse(String(llamadas(f, '/api/shorts/importar')[0]![1]!.body))).toEqual({
-      url: 'https://www.youtube.com/watch?v=abc123',
+      url: 'https://www.youtube.com/watch?v=abc123DEF45',
     });
     await act(async () => soltar(json({ lanzado: true, nombre: 'yt-abc123', creditos: 11 })));
   });
@@ -615,10 +664,10 @@ describe('subir y marco', () => {
     expect(location.search).toBe('?p=mi-entrevista');
   });
 
-  it('shorts.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('shorts.marco.enlace_estudio_sin_version_anterior', async () => {
     montar();
     render(<Shorts />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=shorts');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Shorts · podcast');
     await screen.findByRole('button', { name: 'Analizar ✦ 7' });

@@ -42,7 +42,7 @@ En `web/src/pantallas/competencia/Competencia.test.tsx`, con ese nombre exacto.
 | `competencia.lista.sin_red_con_una_revision_viva_sigue_reintentando` | sin red con una revisión viva: «reintentando…» y el sondeo no muere |
 | `competencia.lista.fallo_de_carga_avisa_y_reintenta` | sin red y nada vivo: aviso con Reintentar, sin «Cargando…» colgado |
 | `competencia.espera.titulo_de_la_pestana_dice_revisando` | «Revisando a la competencia · …» en la pestaña |
-| `competencia.marco.enlaces_estudio_y_version_anterior` | «Usar la versión anterior» (`/ui/clasica?pantalla=competencia`) |
+| `competencia.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

@@ -189,6 +189,7 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 |---|---|
 | **Vacío** | Enseña el primer paso. En el inicio de alguien nuevo: **tres caminos** (desde una idea → crear; desde un video largo → shorts; desde tu metraje → subir) y un video de ejemplo. |
 | **Espera larga** (producir) | Pasos con nombre en español (Guion aprobado → Voz grabada → Animando las escenas · 2 de 6 → Uniendo el video), el tiempo que falta y «puedes cerrar esta pestaña». |
+| **Espera con pasos** (UI·27, `marca/EsperaPasos.tsx`) | La misma tarjeta en crear, clip, imagen, shorts (traer, analizar, renderizar) y el Editor IA de Subir. **Solo pasos de verdad**: donde el servidor no cuenta fases hay pocos pasos y lo demás es el reloj («Llevas 0:45 · suele tardar 1–2 min»); la barra va por pasos y, con un tiempo estimado, avanza dentro del paso sin pasar del 90 % ni retroceder. El orbe solo cuando la IA piensa (una descarga o un render dicen su estado sin orbe). «Puedes cerrar esta pestaña» solo si el trabajo sigue en la nube (una imagen se espera en el navegador). Estilos, Competencia y Mix siguen con el orbe solo: son esperas cortas. |
 | **Espera corta** | Por ahora como hoy. Los «esqueletos» quedan para después. |
 | **Error** | Tres partes: **qué pasó** (sin culpar), **qué pasó con tus créditos** («Te devolvimos ✦ 90») y **qué sigue** (un botón). Lo técnico va plegado en «Detalles técnicos». |
 | **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. Al aparecer, el campo tiembla una vez (`ui/Campo.tsx`, UI·24). |

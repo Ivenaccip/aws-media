@@ -27,6 +27,12 @@ describe('api', () => {
     expect(e.message).toBe('Te faltan créditos');
   });
 
+  it('un 422 de validación de FastAPI no enseña «HTTP 422»', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ detail: [{ loc: ['body', 'url'], msg: 'too short' }] }, 422));
+    const e = (await pedir('/api/x', { cuerpo: {} }).catch(x => x)) as ErrorApi;
+    expect(e.message).toBe('Revisa lo que escribiste: hay un dato que no es válido.');
+  });
+
   it('sin red dice qué hacer, no «TypeError: Failed to fetch»', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
     const e = (await pedir('/api/x').catch(x => x)) as ErrorApi;

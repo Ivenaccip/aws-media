@@ -95,7 +95,7 @@ Cada ID es el nombre exacto de un test de vitest en
 | `crear.error.al_preparar_empezar_de_nuevo_con_la_idea` | Falla al preparar: devuelve el guion, «Empezar de nuevo» es el principal y lleva la idea a `/estudio/crear/?brief=` |
 | `crear.error.sin_monedero_no_habla_de_creditos` | Sin monedero no se menciona ningún crédito |
 | `crear.textos.del_servidor_como_texto` | Dossier, fuentes, descripción, motivos y guion se pintan como texto |
-| `crear.marco.enlaces_estudio_y_version_anterior` | El Marco: «Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=crear`) |
+| `crear.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 | `crear.cobro.un_solo_principal_por_vista` | Un solo principal en el formulario, la revisión, las imágenes y el error; ninguno en el resultado |
 
 ## Cada aserción vieja y su destino

@@ -88,7 +88,7 @@ con ese nombre exacto.
 | `inicio.blotato.viene_del_editor_con_blotato_conectar` | `?blotato=conectar` abre el diálogo al llegar |
 | `inicio.blotato.enlace_a_la_api_con_noopener` | «Blotato → Settings → API» en otra pestaña con `noopener noreferrer` |
 | `inicio.blotato.conectar_enciende_el_menu` | al conectar, las cuatro entradas se encienden |
-| `inicio.marco.version_anterior` | «Usar la versión anterior» (`/ui/clasica?pantalla=inicio`) |
+| `inicio.marco.sin_version_anterior` | Sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

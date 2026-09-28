@@ -227,3 +227,20 @@ export function paleta(texto: string, estilos: Estilo[], hayImagen: boolean, hay
 }
 
 export const mensaje = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+// UI·27 — la espera de una imagen, con sus pasos de verdad: primero se revisa
+// el texto (el guardarraíl, M13) y luego la IA la hace. Se espera EN el
+// navegador: aquí no hay «puedes cerrar esta pestaña».
+export const REVISANDO = 'Revisando tu texto…';
+const HACER: Record<Modo, { falta: string; activo: string; hecho: string }> = {
+  crear: { falta: 'Crear la imagen', activo: 'Creando tu imagen', hecho: 'Imagen creada' },
+  pincel: { falta: 'Cambiar la zona que pintaste', activo: 'Cambiando la zona que pintaste', hecho: 'Zona cambiada' },
+  todo: { falta: 'Transformar tu imagen', activo: 'Transformando tu imagen', hecho: 'Imagen transformada' },
+};
+export const pasosImagen = (m: Modo) => [
+  { falta: 'Revisar tu texto', activo: 'Revisando tu texto', hecho: 'Texto revisado' },
+  HACER[m],
+  { falta: 'Tu imagen, lista' },
+];
+/** Lo que suele tardar todo (revisar + hacer): «~20 s» más la revisión. */
+export const ESTIMADO_IMAGEN_MS = 25_000;

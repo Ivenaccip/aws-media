@@ -492,10 +492,10 @@ describe('agenda', () => {
     ]);
   });
 
-  it('agenda.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('agenda.marco.enlace_estudio_sin_version_anterior', async () => {
     montar({ '/api/agenda': () => json(pagina([])) });
     render(<Agenda />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=agenda');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Agenda tus publicaciones');
     await screen.findByText(/No tienes nada programado/);

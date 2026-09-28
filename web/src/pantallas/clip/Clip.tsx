@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
-import { EsperaIA } from '../../marca/EsperaIA';
+import { avanceEspera, EsperaPasos, reloj, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
@@ -27,10 +27,12 @@ import {
   cargarConfig,
   costo,
   detalleClip,
+  ESTIMADO_CLIP_MS,
   firmar,
   generando,
   generar,
   notaPrecio,
+  PASOS_CLIP,
   subirDirecto,
   tipoDe,
   tomarBrief,
@@ -349,30 +351,43 @@ export function Clip() {
   );
 }
 
+const AGOTADO_CLIP =
+  'Llevamos un rato sin novedades. El clip sigue en la nube: puedes cerrar la página y volver. Si sigue igual, escríbenos.';
+
+// UI·27: la misma espera que crear (marca/EsperaPasos). Solo el primero que se
+// genera lleva el orbe (hay uno por página); los demás, su reloj en una línea.
+function EsperaClip({ inicio }: { inicio: string | null | undefined }) {
+  const llevas = useLlevas(inicio);
+  return (
+    <EsperaPasos
+      plano
+      className="mt-3"
+      pasos={PASOS_CLIP}
+      paso={1}
+      pct={avanceEspera(1, PASOS_CLIP.length, llevas, ESTIMADO_CLIP_MS)}
+      tiempo={textoLlevas(llevas, '1–2 min')}
+      orbe={{ texto: 'Generando tu clip · 1-2 min', tope: 600000, textoAlAgotar: AGOTADO_CLIP }}
+      cerrar="Puedes cerrar esta pestaña: el clip sigue en la nube y aquí lo encuentras al volver."
+    />
+  );
+}
+
+function EsperaCorta({ inicio }: { inicio: string | null | undefined }) {
+  const llevas = useLlevas(inicio);
+  return (
+    <p role="status" className="m-0 min-h-10 text-xs text-secundario">
+      Generando tu clip…{llevas != null ? ' · llevas ' + reloj(llevas) : ''}
+    </p>
+  );
+}
+
 function TarjetaClip({ clip: c, conOrbe }: { clip: FichaClip; conOrbe: boolean }) {
   // UI·21: al quedar listo (con la pantalla abierta) su detalle se enciende
   const [encendido, apagar] = useLlegada(c.estado !== 'generando' && c.estado !== 'error');
   return (
     <article className="mb-4 rounded-grande border border-linea p-4">
       <p className="m-0 mb-1 text-sm [overflow-wrap:anywhere]">{c.texto}</p>
-      {c.estado === 'generando' && (
-        <div className="min-h-10">
-          {conOrbe ? (
-            <EsperaIA
-              texto="Generando tu clip · 1-2 min"
-              tope={600000}
-              textoAlAgotar={
-                'Llevamos un rato sin novedades. El clip sigue en la nube: puedes cerrar la página y volver. ' +
-                'Si sigue igual, escríbenos.'
-              }
-            />
-          ) : (
-            <span role="status" className="text-xs text-secundario">
-              Generando tu clip…
-            </span>
-          )}
-        </div>
-      )}
+      {c.estado === 'generando' && (conOrbe ? <EsperaClip inicio={c.inicio} /> : <EsperaCorta inicio={c.inicio} />)}
       {c.estado === 'error' && (
         <>
           <p className="m-0 text-sm text-error">{c.error || 'No se pudo generar.'}</p>

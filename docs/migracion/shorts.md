@@ -86,7 +86,7 @@ con ese nombre exacto.
 | `shorts.espera.sin_red_con_algo_vivo_sigue_reintentando` | sin red con algo corriendo: «Sin conexión — reintentando…» y sigue solo |
 | `shorts.espera.titulo_de_la_pestana` | la pestaña dice «Analizando tu video» y «✓ Análisis listo» |
 | `shorts.subida.sube_y_abre_el_proyecto` | subir propone el nombre desde el archivo, no es el principal y al terminar abre el proyecto |
-| `shorts.marco.enlaces_estudio_y_version_anterior` | «← Estudio», «Usar la versión anterior» (`/ui/clasica?pantalla=shorts`) y «Shorts · <proyecto>» |
+| `shorts.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 
