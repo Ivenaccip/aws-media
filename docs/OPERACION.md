@@ -725,6 +725,17 @@ pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
 **Caché:** los assets de `/estudio/assets/` llevan hash y son `immutable`
 por un año. El HTML va con `no-cache`.
 
+**Después del primer deploy con `web/`** (cierra UI·6):
+
+```bash
+python tools/verificar_web.py
+```
+
+Solo hace GET. Revisa que la vitrina salga `noindex`, que sus assets sean
+`immutable` y salgan con HIT, que un asset inexistente dé 404, que `/auth.js`
+siga `no-cache` y que ninguna clave de `pricing.json` viaje en el JS. Lo que
+queda es tuyo: abrir `/estudio/_vitrina/` en el teléfono y aprobarla.
+
 **Local:**
 
 ```bash
