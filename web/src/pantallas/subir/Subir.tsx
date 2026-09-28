@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
+import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
 import { EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
@@ -291,6 +292,19 @@ export function Subir() {
               {st && !st.fuente && !st.editor_listo && (
                 <p className="m-0 text-sm text-secundario">Sube tu metraje primero</p>
               )}
+              {st?.editar?.estado === 'error' && !vivo && !lanzando && (
+                // UI·27: el mismo error en tres partes que crear (UI·11)
+                <ErrorTresPartes
+                  plano
+                  nivel={3}
+                  anunciar
+                  className="mb-4"
+                  paso="La corrida anterior se detuvo antes de proponer el corte."
+                  creditos="Te devolvimos lo que se cobró: no pagas por un corte que no salió."
+                  sigue="Tu metraje sigue guardado: vuelve a pulsar «Proponer». Se cobra como la primera vez."
+                  detalle={st.editar.error}
+                />
+              )}
               {costo && !costo.backend_listo && <p className="m-0 text-sm text-secundario">{costo.aviso}</p>}
               {costo?.backend_listo && !vivo && (
                 <>
@@ -367,12 +381,8 @@ function EstadoCorte({ carga }: { carga: Carga }) {
       texto = resumenListo(st.editar).texto;
       icono = 'cortar';
     } else if (!st.fuente) texto = 'Sube tu metraje arriba y aquí aparecen tus dos caminos.';
-    else if (ed.estado === 'error') {
-      // el fallo anterior y el metraje son contexto, no etiqueta de la acción
-      texto = 'La corrida anterior falló y tus créditos se devolvieron.';
-      icono = 'aviso';
-      mal = true;
-    } else if (!ed.estado && costo) texto = notaMetraje(costo);
+    // UI·27: la corrida fallida se cuenta en tres partes junto a «Proponer»
+    else if (!ed.estado && costo) texto = notaMetraje(costo);
   }
   return (
     <p role="status" className="mt-3 mb-0 text-xs text-secundario">

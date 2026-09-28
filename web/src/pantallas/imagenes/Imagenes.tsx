@@ -13,11 +13,13 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
+import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
 import { avanceEspera, EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
+import { creditos } from '../../nucleo/formato';
 import { moderar } from '../../nucleo/moderar';
 import { video } from '../../nucleo/tarifas';
 import { Aviso } from '../../ui/Aviso';
@@ -65,6 +67,8 @@ interface Trabajo {
 interface Falla {
   texto: string;
   sinSaldo?: boolean;
+  /** El server cobró, falló y devolvió (502): se cuenta en tres partes. */
+  devuelto?: boolean;
 }
 
 const FORMATOS: [Formato, string, string, string][] = [
@@ -448,7 +452,12 @@ export function Imagenes() {
       refrescarSaldo();
     } catch (e) {
       setEspera(null); // NUNCA un orbe girando junto a un error
-      setFalla({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });
+      setFalla({
+        texto: mensaje(e),
+        sinSaldo: e instanceof ErrorApi && e.sinSaldo,
+        // el 502 es el único que cobró: el server devolvió antes de contestar
+        devuelto: e instanceof ErrorApi && e.estado === 502,
+      });
     } finally {
       setEspera(null);
       vivo.current.enVuelo = false;
@@ -841,7 +850,18 @@ export function Imagenes() {
         </span>
         {/* UI·27: la misma espera por pasos que crear, en las dos vistas */}
         {espera && <EsperaImagen modo={modo} texto={espera} />}
-        {falla && (
+        {falla?.devuelto && (
+          // UI·27: el mismo error en tres partes que crear (UI·11)
+          <ErrorTresPartes
+            anunciar
+            className="w-full text-left"
+            paso={modo === 'crear' ? 'No pudimos crear tu imagen.' : 'No pudimos cambiar tu imagen.'}
+            creditos={'Te devolvimos ' + creditos(TARIFA) + ': no pagas por una imagen que no salió.'}
+            sigue={`Tu texto sigue en la caja: vuelve a pulsar «${t.verbo}». Se cobra como la primera vez.`}
+            detalle={falla.texto}
+          />
+        )}
+        {falla && !falla.devuelto && (
           <p role="alert" className="m-0 max-w-[65ch] whitespace-pre-wrap text-center text-sm text-error">
             {falla.texto}
             {falla.sinSaldo && (

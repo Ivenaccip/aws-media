@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
+import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
 import { avanceEspera, EsperaPasos, reloj, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
@@ -426,10 +427,21 @@ function TarjetaClip({ clip: c, conOrbe }: { clip: FichaClip; conOrbe: boolean }
       <p className="m-0 mb-1 text-sm [overflow-wrap:anywhere]">{c.texto}</p>
       {c.estado === 'generando' && (conOrbe ? <EsperaClip inicio={c.inicio} /> : <EsperaCorta inicio={c.inicio} />)}
       {c.estado === 'error' && (
-        <>
-          <p className="m-0 text-sm text-error">{c.error || 'No se pudo generar.'}</p>
-          <p className="m-0 text-xs text-secundario">Los créditos volvieron a tu saldo.</p>
-        </>
+        // UI·27: el mismo error en tres partes que crear (UI·11)
+        <ErrorTresPartes
+          plano
+          nivel={3}
+          anunciar
+          className="mt-3"
+          paso="No pudimos generar este clip."
+          creditos={
+            c.creditos
+              ? 'Te devolvimos ' + creditos(c.creditos) + ': no pagas por un clip que no salió.'
+              : 'Te devolvimos lo que se cobró: no pagas por un clip que no salió.'
+          }
+          sigue="Escribe tu idea otra vez arriba y pulsa «Generar». Se cobra como la primera vez."
+          detalle={c.error}
+        />
       )}
       {c.estado !== 'generando' && c.estado !== 'error' && (
         <>

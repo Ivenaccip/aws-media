@@ -198,7 +198,12 @@ describe('analizar', () => {
   it('shorts.analisis.error_dice_que_los_creditos_volvieron_sin_orbe', async () => {
     montar({ proyecto: () => ({ ...SIN_ANALISIS, shorts: { estado: 'error', error: 'sin audio' } }) });
     render(<Shorts />);
-    expect(await screen.findByText('El análisis falló (sin audio) — tus créditos se devolvieron.')).toBeInTheDocument();
+    // UI·27: en tres partes, como crear; lo técnico queda plegado
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóEl análisis de tu video se detuvo.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos lo que se cobró por el análisis');
+    expect(falla).toHaveTextContent('Qué sigueVuelve a pulsar «Analizar».');
+    expect(screen.getByText('sin audio').closest('details')).not.toBeNull();
     expect(screen.queryByText(/Analizando tu video/)).toBeNull();
     expect(await screen.findByRole('button', { name: 'Analizar ✦ 7' })).toBeEnabled();
   });
@@ -490,7 +495,12 @@ describe('importar de YouTube', () => {
   it('shorts.importacion.fallida_dice_que_los_creditos_volvieron', async () => {
     montar({ proyecto: () => ({ ...SIN_ANALISIS, fuente: null, importar: { estado: 'error', error: 'video privado' } }) });
     render(<Shorts />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('La importación falló (video privado) — tus créditos se devolvieron.');
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóNo pudimos traer el video de YouTube.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos lo que se cobró por importarlo');
+    expect(falla).toHaveTextContent('Qué sigueRevisa que la liga abra en YouTube');
+    expect(screen.getByRole('link', { name: 'vuelve a intentarlo' })).toHaveAttribute('href', '?');
+    expect(screen.getByText('video privado').closest('details')).not.toBeNull();
     expect(screen.queryByRole('heading', { name: '1 · Analizar el video' })).toBeNull();
   });
 });
@@ -589,7 +599,11 @@ describe('el proyecto', () => {
   it('shorts.render.error_dice_que_los_creditos_volvieron', async () => {
     montar({ proyecto: () => ({ ...CANDIDATOS, shorts: { ...CANDIDATOS.shorts!, render: { estado: 'error', log: 'ffmpeg: sin espacio' } } }) });
     render(<Shorts />);
-    expect(await screen.findByText(/El render falló \(ffmpeg: sin espacio\) — tus créditos se devolvieron/)).toBeInTheDocument();
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóEl render de tus shorts se detuvo.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos lo que se cobró por el render');
+    expect(falla).toHaveTextContent('Qué sigueAjusta tus cortes si quieres y vuelve a renderizar.');
+    expect(screen.getByText('ffmpeg: sin espacio').closest('details')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Renderizar ✦ 9' })).toBeEnabled();
   });
 

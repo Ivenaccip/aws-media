@@ -354,8 +354,12 @@ describe('clip', () => {
     abrir('clip-1');
     servidor({ '/api/clip': () => json({ clips: [{ ...LISTO, estado: 'error', error: 'Veo no respondió' }] }) });
     render(<Clip />);
-    expect(await screen.findByText('Veo no respondió')).toBeInTheDocument();
-    expect(screen.getByText('Los créditos volvieron a tu saldo.')).toBeInTheDocument();
+    // UI·27: en tres partes, como crear; lo técnico queda plegado
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóNo pudimos generar este clip.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos ✦ 30: no pagas por un clip que no salió.');
+    expect(falla).toHaveTextContent('Qué sigueEscribe tu idea otra vez arriba y pulsa «Generar».');
+    expect(screen.getByText('Veo no respondió').closest('details')).not.toBeNull();
   });
 
   it('clip.lista.sin_historial_manda_a_mis_videos', async () => {
