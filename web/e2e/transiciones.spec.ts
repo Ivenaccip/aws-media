@@ -102,9 +102,17 @@ test('entre una pantalla nueva y una vieja también se funde (carta.css pide lo 
   // como una persona: la página ya pintó antes del clic. Navegar en el
   // mismo instante en que carga no deja nada que fotografiar
   await page.waitForTimeout(300);
-  // /entrar.html es de static/ y carga carta.css; las demás viejas mandan a
-  // las nuevas en este servidor (etapa `todos`)
-  await page.evaluate(() => { location.href = '/entrar.html'; });
-  await page.waitForURL('**/entrar.html');
+  // el inicio viejo (static/index.html): este servidor no lo redirige, las
+  // demás viejas mandan a las nuevas (etapa `todos`). Ojo: una vieja que
+  // corra un <script> ANTES de carta.css (hoy solo la portada pública) a
+  // veces se fotografía antes de saber que pide el fundido
+  await page.evaluate(() => { location.href = '/index.html'; });
+  await page.waitForURL('**/index.html');
   await expect.poll(() => page.evaluate(() => window.__vt?.hubo ?? null)).toBe(true);
+  // y lo pide solo sin «reducir movimiento»
+  expect(await page.evaluate(() =>
+    [...document.styleSheets].some(h => [...h.cssRules].some(r =>
+      r instanceof CSSMediaRule && r.conditionText.includes('prefers-reduced-motion: no-preference') &&
+      r.cssText.includes('@view-transition'))),
+  )).toBe(true);
 });

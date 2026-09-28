@@ -1,7 +1,7 @@
 // Cada proyecto es una OBRA (mock): imagen grande, título abajo y, en las
 // películas, la X para archivar. La tarjeta entera es el enlace; la X va por
 // encima (un botón dentro de un <a> no es HTML válido).
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
 import { tocarMiniatura } from '../../nucleo/transiciones';
 import { Icono } from '../../ui/Icono';
@@ -50,7 +50,14 @@ export function TarjetaProyecto({ p, alArchivar }: { p: Proyecto; alArchivar: (p
   // UI·18: una película lista abre en su reproductor, y esta miniatura se
   // agranda hasta él (nucleo/transiciones.ts). Las demás abren en su progreso
   // o su revisión: no hay a dónde agrandarse.
-  const alAbrir = p.estado === 'listo' && src ? () => tocarMiniatura(p.id, src, img.current) : undefined;
+  const alAbrir =
+    p.estado === 'listo' && src
+      ? (e: MouseEvent) => {
+          // con Ctrl/⌘/Shift/Alt se abre en otra pestaña o ventana: aquí no hay transición
+          if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+          tocarMiniatura(p.id, src, img.current);
+        }
+      : undefined;
   return (
     <article className={TARJETA}>
       {src ? (

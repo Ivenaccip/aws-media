@@ -27,19 +27,24 @@ type Pista = { id: string; src: string; proporcion: number | null; t: number };
 export type Llegada = { src: string; proporcion: number | null };
 
 type ConTransicion = Event & { viewTransition?: ViewTransition | null };
+// pageswap trae a dónde se va (Chrome 123+; en Safari no)
+type Salida = ConTransicion & { activation?: { entry?: { url?: string } } | null };
 
-let tocada: HTMLElement | null = null;
+let tocada: { id: string; img: HTMLElement } | null = null;
 let nombrada: HTMLElement | null = null;
 let escuchando = false;
 
 // ── la pantalla que se va
 function alIrse(e: Event) {
-  const vt = (e as ConTransicion).viewTransition;
-  const img = tocada;
+  const { viewTransition: vt, activation } = e as Salida;
+  const t = tocada;
   tocada = null;
-  if (!vt || !img?.isConnected) return;
-  img.style.viewTransitionName = NOMBRE_MINIATURA;
-  nombrada = img;
+  if (!vt || !t?.img.isConnected) return;
+  // si se sabe a dónde va y no es a esa película, no se nombra nada
+  const destino = activation?.entry?.url;
+  if (destino && new URL(destino, location.href).searchParams.get('p') !== t.id) return;
+  t.img.style.viewTransitionName = NOMBRE_MINIATURA;
+  nombrada = t.img;
 }
 
 // al volver con «atrás» la página sale de la caché con el nombre puesto: se
@@ -57,7 +62,7 @@ export function tocarMiniatura(id: string, src: string, img: HTMLImageElement | 
   } catch {
     return; // sin sessionStorage la pantalla nueva no sabría qué pintar
   }
-  tocada = img;
+  tocada = img ? { id, img } : null;
   if (!escuchando) {
     escuchando = true;
     addEventListener('pageswap', alIrse);
