@@ -55,7 +55,37 @@ def test_ninguna_otra_rama_se_cuela_en_la_guarda():
     assert "refs/heads/" in WF
     ramas = {l.split("refs/heads/")[1].split("'")[0]
              for l in WF.splitlines() if "refs/heads/" in l}
-    assert ramas == {"main"}, f"el CI condiciona pasos a ramas de más: {ramas}"
+    assert ramas == {"main", "dev"}, f"el CI condiciona pasos a ramas de más: {ramas}"
+    assert "||" not in "".join(l for l in WF.splitlines() if "refs/heads/" in l), \
+        "una guarda que junta ramas: main y dev publican por pasos separados"
+
+
+# ---------------------------------------------------------------------------
+# el entorno dev publica su propia etiqueta, y solo esa
+
+GUARDA_DEV = "if: github.ref == 'refs/heads/dev'"
+
+
+def _pasos_de_dev() -> list[str]:
+    return [b for b in ("- name:" + x for x in WF.split("- name:")[1:]) if GUARDA_DEV in b]
+
+
+def test_dev_publica_solo_dev_sha():
+    """Ni «latest» ni el sha pelón: son los nombres que consume producción."""
+    push = _paso("Push a ECR solo dev-<sha>")
+    assert GUARDA_DEV in push
+    tags = [l.rsplit("$ECR/aws-media:", 1)[1] for l in push.splitlines() if "$ECR/aws-media:" in l]
+    assert tags and all(t.startswith("dev-") for t in tags), tags
+    assert "--all-tags" not in push, "--all-tags subiría cualquier otra etiqueta local"
+    assert len(_pasos_de_dev()) == 2
+    for paso in _pasos_de_dev():
+        assert ":latest" not in paso, "dev tocó la etiqueta de producción"
+
+
+def test_dev_publica_despues_de_validar():
+    """La imagen de dev es la misma que pasó la suite y el smoke: va al final."""
+    assert WF.index("Push a ECR solo dev-<sha>") > WF.index("Suite de tests dentro del contenedor")
+    assert WF.index("Credenciales AWS para dev (OIDC)") > WF.index("Smoke del server")
 
 
 # ---------------------------------------------------------------------------
