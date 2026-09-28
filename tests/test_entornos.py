@@ -36,6 +36,7 @@ if str(INFRA) not in sys.path:
 from entornos import DEV, PROD  # noqa: E402
 
 APP = (INFRA / "app.py").read_text(encoding="utf-8")
+APP_DEV = (INFRA / "app_dev.py").read_text(encoding="utf-8")
 WF_PATH = RAIZ / ".github" / "workflows" / "docker.yml"
 
 # Los ids lógicos de lo que tiene estado en Cognito y Step Functions. Cambiar
@@ -298,34 +299,57 @@ def test_la_invitacion_y_los_callbacks_de_prod_usan_el_nombre_propio(prod):
     assert len(cliente["CallbackURLs"]) == 3, "falta el execute-api de las ligas viejas"
 
 
-# --- dev, armado aparte: su app llegará en el paso 8 ------------------------
+# --- dev: su propia app, infra/app_dev.py (paso 8) --------------------------
 
 @pytest.fixture(scope="module")
 def dev(cdk):
-    from entornos import DEV as E
-    from stacks.api import ApiStack
-    from stacks.db import DbStack
-    from stacks.jobs import JobsStack
-    from stacks.media import MediaStack
-    env = cdk.Environment(account="191241816158", region="us-east-1")
+    """Los templates de la composición real de infra/app_dev.py.
+
+    Armados por su `construir()` y no a mano, por la MISMA razón que los de
+    prod: unos stacks montados aquí seguirían en verde aunque `app_dev.py`
+    dejara de pasar `entorno=DEV`, que es justo el fallo que importa."""
+    app_dev = importlib.import_module("app_dev")
     app = cdk.App()
-    db = DbStack(app, "aws-media-db-dev", env=env)
-    # MediaStack también recibe `entorno` desde la lista blanca del CDN: de él
-    # sale el CORS del bucket, y con el default (PROD) el bucket de dev diría
-    # que acepta subidas desde irremplazables.xyz. Lo caza el test de abajo, y
-    # el día que exista app_dev.py tiene que pasarlo igual.
-    media = MediaStack(app, "aws-media-media-dev", env=env, entorno=E)
-    jobs = JobsStack(app, "aws-media-jobs-dev", env=env, cluster_db=db.cluster,
-                     media_bucket=media.bucket,
-                     cdn_domain=media.cdn.distribution_domain_name,
-                     image_ref="sha256:" + "1" * 64, entorno=E)
-    ApiStack(app, "aws-media-api-dev", env=env, cluster=db.cluster,
-             media_bucket=media.bucket,
-             cdn_domain=media.cdn.distribution_domain_name,
-             jobs_queue=jobs.queue, producir_sm=jobs.state_machine,
-             image_ref="sha256:" + "1" * 64, entorno=E)
+    app_dev.construir(app, "sha256:" + "1" * 64)
     ensamblado = app.synth()
     return {s.stack_name: s.template for s in ensamblado.stacks}
+
+
+def test_app_dev_arma_los_cuatro_stacks_y_ninguno_mas(dev):
+    """`base`, `alertas` y `dominio` no se instancian a propósito: el rol OIDC
+    es único y ya existe, las alertas llevan los ids de producción cableados
+    (vigilarían prod con nombre de dev) y el dominio es irremplazables.xyz."""
+    assert set(dev) == {"aws-media-db-dev", "aws-media-media-dev",
+                        "aws-media-jobs-dev", "aws-media-api-dev"}
+
+
+def test_app_dev_solo_sintetiza_bajo_main():
+    """Igual que app.py: importarlo no puede construir ni hablar con AWS, o el
+    fixture de arriba sintetizaría dos veces y los tests no podrían importarlo."""
+    guarda = 'if __name__ == "__main__":'
+    assert guarda in APP_DEV
+    cabecera = APP_DEV.split(guarda, 1)[0]
+    for llamada in ("app = cdk.App()", "app.synth()", "construir(app, digest)"):
+        assert llamada in APP_DEV.split(guarda, 1)[1]
+        assert llamada not in cabecera
+
+
+def test_app_dev_le_pasa_entorno_a_los_cuatro_stacks():
+    """El default de los cuatro es PROD. Olvidar un `entorno=DEV` no rompe el
+    synth: deja ese stack de dev hablando con los nombres de producción."""
+    cuerpo = APP_DEV[APP_DEV.index("def construir"):
+                     APP_DEV.index('if __name__ == "__main__":')]
+    codigo = cuerpo.split('"""')[2]   # sin el docstring, que también los nombra
+    for stack in ("DbStack(", "MediaStack(", "JobsStack(", "ApiStack("):
+        assert stack in codigo, f"falta {stack}"
+    assert codigo.count("entorno=DEV") == 4, (
+        "los cuatro stacks de dev tienen que recibir entorno=DEV")
+
+
+def test_app_dev_no_toca_los_stacks_de_una_sola_cuenta():
+    for prohibido in ("BaseStack", "AlertasStack", "DominioStack"):
+        assert prohibido not in APP_DEV.split('"""')[2], (
+            f"{prohibido} es único por cuenta: dev no lo instancia")
 
 
 def test_dev_usa_sus_propios_nombres(dev):
@@ -353,6 +377,73 @@ def test_nada_de_dev_apunta_a_produccion(dev):
             assert literal not in texto, f"{nombre} contiene {literal}"
     pool = _uno(dev["aws-media-api-dev"], "AWS::Cognito::UserPool")
     assert pool["AdminCreateUserConfig"]["InviteMessageTemplate"]["EmailSubject"].startswith("[dev] ")
+
+
+# --- y lo que dev hace DISTINTO, no solo con otro nombre --------------------
+
+def _cluster(template):
+    cs = [r for r in template["Resources"].values() if r["Type"] == "AWS::RDS::DBCluster"]
+    assert len(cs) == 1, f"se esperaba un clúster, hay {len(cs)}"
+    return cs[0]
+
+
+def test_la_aurora_de_dev_duerme_y_la_de_prod_no(dev, prod):
+    """La diferencia que paga el entorno. El suelo de 0.5 ACU de producción
+    cuesta $43.80 dólares al mes esté quieto o no; dev con suelo 0 y auto-pausa
+    solo paga mientras se usa. Decisión del dueño del 27-sep-2026.
+
+    La ventana son 5 min, decidido el 28-sep: dev se usa a vistazos sueltos
+    para ver un cambio, no en sesiones largas, así que no hay nada que proteger
+    de un despertar y sí una hora de suelo que se pagaría sin que nadie mire.
+    El valor va escrito en el stack aunque coincida con el default del CDK —
+    aquí se fija para que ni un cambio de default lo mueva en silencio."""
+    d = _cluster(dev["aws-media-db-dev"])["Properties"]["ServerlessV2ScalingConfiguration"]
+    assert d["MinCapacity"] == 0
+    assert d["SecondsUntilAutoPause"] == 300
+
+    p_ = _cluster(prod["aws-media-db"])["Properties"]["ServerlessV2ScalingConfiguration"]
+    assert p_["MinCapacity"] == 0.5, "prod no se pausa: un 503 dentro del muro de 29 s"
+    assert "SecondsUntilAutoPause" not in p_
+
+
+def test_la_base_de_dev_se_puede_tirar_y_la_de_prod_no(dev, prod):
+    """Un entorno de pruebas que no se puede destruir deja de ser de pruebas:
+    con DeletionProtection el `cdk destroy` de dev falla y hay que ir a
+    apagarla a mano. Y su snapshot final sería almacenamiento pagado para
+    siempre por datos que nadie va a restaurar."""
+    d = _cluster(dev["aws-media-db-dev"])
+    assert d["Properties"].get("DeletionProtection") is False
+    assert d.get("DeletionPolicy") == "Delete"
+
+    p_ = _cluster(prod["aws-media-db"])
+    assert p_["Properties"].get("DeletionProtection") is True
+    assert p_.get("DeletionPolicy") == "Snapshot"
+
+
+def _relojes(template):
+    return {k: r["Properties"].get("ScheduleExpression")
+            for k, r in template["Resources"].items()
+            if r["Type"] == "AWS::Events::Rule"}
+
+
+def test_dev_no_hereda_el_reloj_de_costes_y_si_el_de_mix(dev, prod):
+    """El sync de costes lee Langfuse, y dev NO comparte ese proyecto a
+    propósito (`tools/ssm_env.py` se niega a subirle esas claves). Sin ellas
+    fallaría a las 06:00 todos los días: ruido diario en los logs de un entorno
+    donde nadie los mira, que es como se aprende a ignorarlos.
+
+    El de MIX sí viaja, porque MIX hay que poder probarlo y para que hiciera
+    daño harían falta DOS cosas a la vez que no se dan: campañas activas en la
+    base de dev y la clave de Blotato de un cliente real bajo el prefijo de
+    dev."""
+    d = _relojes(dev["aws-media-jobs-dev"])
+    assert not any(k.startswith("SyncCostes") for k in d), (
+        "el reloj de costes de Langfuse no pinta nada en dev")
+    assert any(k.startswith("MixReloj") for k in d)
+
+    p_ = _relojes(prod["aws-media-jobs"])
+    assert any(k.startswith("SyncCostes") for k in p_), (
+        "prod SÍ lo necesita: es la base del dashboard admin")
 
 
 # ---------------------------------------------------------------------------
