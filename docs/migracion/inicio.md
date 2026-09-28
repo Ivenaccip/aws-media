@@ -35,8 +35,8 @@ eso:
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/inicio/` existe; `/estudio/` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/estudio/?q` → 302 a `/estudio/inicio/?q`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/inicio/` existe; `/estudio/` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/estudio/?q` → 302 a `/estudio/inicio/?q`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/index.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño corre el QA manual de `docs/QA-UI.md` § inicio.

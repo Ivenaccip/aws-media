@@ -24,8 +24,8 @@ pudimos calcular el costo» y se ofrece reintentar.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/crear/` existe; `/crear.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/crear.html` → 302 a `/estudio/crear/` (conserva `?p=`, `?brief=` y `?modo=`), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/crear/` existe; `/crear.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/crear.html` → 302 a `/estudio/crear/` (conserva `?p=`, `?brief=` y `?modo=`), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/crear.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 El inicio, el cuadro de trabajos (`trabajos_api`) y el hub enlazan a

@@ -6,9 +6,10 @@ Cada pantalla que se migra a web/ pasa por tres etapas, una por deploy:
   · `nueva`    la pantalla nueva existe, pero solo se llega tecleando su URL
                (/estudio/<p>/). La vieja sigue igual. Es el canario del dueño.
   · `todos`    la URL vieja responde 302 a la nueva, SALVO que el usuario
-               tenga la cookie `ui=clasica` (el enlace «Usar la versión
-               anterior» del Marco). Así una pantalla nueva con un bug se
-               revierte para UNA persona sin desplegar.
+               tenga la cookie `ui=clasica`. La deja /ui/clasica?pantalla=<p>,
+               que hoy se manda a mano: el enlace «Usar la versión anterior»
+               del Marco se quitó el 28-sep. Así una pantalla nueva con un bug
+               se revierte para UNA persona sin desplegar.
   · `retirada` 302 siempre, con o sin cookie; el HTML viejo ya no existe.
 
 Reglas del 302 (el precedente de /crear-imagenes.html perdía el query):
@@ -79,35 +80,35 @@ class Pantalla:
 
 PANTALLAS: dict[str, Pantalla] = {
     # el piloto: solo la usa el dueño (grupo admin de Cognito)
-    "admin": Pantalla(vieja="/admin.html", nueva="/estudio/admin/", etapa="nueva"),
+    "admin": Pantalla(vieja="/admin.html", nueva="/estudio/admin/", etapa="todos"),
     # UI·8.1: la primera con usuarios reales; cobra una sola cosa
-    "clip": Pantalla(vieja="/clip.html", nueva="/estudio/clip/", etapa="nueva"),
+    "clip": Pantalla(vieja="/clip.html", nueva="/estudio/clip/", etapa="todos"),
     # UI·8.2: las dos cobran una cosa y comparten el patrón «lista que se
     # sondea mientras la IA trabaja» (nucleo/useListaViva.ts)
-    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="nueva"),
-    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/competencia/", etapa="nueva"),
+    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="todos"),
+    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/competencia/", etapa="todos"),
     # UI·8.3: editar metraje (e1). Sube con progreso real y cobra una cosa,
     # «Proponer ✦ N»; la URL nueva dice lo que se hace en ella
-    "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),
+    "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="todos"),
     # UI·8.4: el inicio. Su URL vieja es /estudio/ misma (tarjetas 37 y 38):
     # la nueva vive al lado, en /estudio/inicio/, y en `todos` /estudio/
     # redirige ahí. No cobra: reparte a las pantallas que cobran.
-    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="nueva", fichero="index.html"),
+    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="todos", fichero="index.html"),
     # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
     # subida es la misma de editar metraje (marca/SubirVideo)
-    "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
+    "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="todos"),
     # UI·8.6: las dos hermanas de Blotato (lo programado y lo que ya salió).
     # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto
-    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/agenda/", etapa="nueva"),
-    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="nueva"),
+    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/agenda/", etapa="todos"),
+    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="todos"),
     # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
     # y modera el texto antes de cobrar
-    "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),
+    "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="todos"),
     # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día
-    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/mix/", etapa="nueva"),
+    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/mix/", etapa="todos"),
     # UI·8.9: crear una película. Cobra el guion al empezar, el resto al
     # producir y cada imagen que se cambia; el 302 conserva ?p=, ?brief= y ?modo=
-    "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="nueva"),
+    "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="todos"),
 }
 
 

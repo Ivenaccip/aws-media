@@ -11,8 +11,8 @@ costo_competencia`, lineal).
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `nueva` | `/estudio/competencia/` existe; `/competencia.html` sigue igual | ⏳ al desplegar |
-| `todos` | `/competencia.html` → 302, salvo la cookie `ui=clasica` | pendiente |
+| `nueva` | `/estudio/competencia/` existe; `/competencia.html` sigue igual | ✅ 28-sep |
+| `todos` | `/competencia.html` → 302, salvo la cookie `ui=clasica` | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/competencia.html` y sus tests viejos | pendiente |
 
 Antes de `todos`: una revisión de verdad con una cuenta y el QA de

@@ -11,8 +11,8 @@ créditos.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/clip/` existe; `/clip.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/clip.html?brief=…` → 302 a `/estudio/clip/?brief=…`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/clip/` existe; `/clip.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/clip.html?brief=…` → 302 a `/estudio/clip/?brief=…`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/clip.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`: el dueño genera **un clip de verdad** en `/estudio/clip/`
