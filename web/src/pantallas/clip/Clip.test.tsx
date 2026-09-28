@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { oirCobros } from '../../prueba/servidor';
 import { Clip } from './Clip';
 import type { Clip as FichaClip, Config } from './logica';
 
@@ -145,14 +146,17 @@ describe('clip', () => {
   });
 
   it('clip.cobro.sin_texto_no_cobra', async () => {
+    const cobros = oirCobros();
     const f = servidor({});
     render(<Clip />);
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(screen.getByText('Escribe qué quieres ver primero.')).toBeInTheDocument();
     expect(posts(f, '/api/clip/generar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('clip.cobro.fotos_subiendo_no_cobra', async () => {
+    const cobros = oirCobros();
     let soltarPut!: (r: Response) => void;
     const f = servidor({ 'https://s3.ejemplo/': () => new Promise<Response>(r => (soltarPut = r)) });
     render(<Clip />);
@@ -162,10 +166,12 @@ describe('clip', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Generar ✦/ }));
     expect(screen.getByText('Espera a que terminen de subir tus fotos.')).toBeInTheDocument();
     expect(posts(f, '/api/clip/generar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
     await act(async () => soltarPut(new Response(null, { status: 200 })));
   });
 
   it('clip.cobro.error_junto_al_boton_y_se_puede_reintentar', async () => {
+    const cobros = oirCobros();
     let intentos = 0;
     const f = servidor({
       '/api/clip/generar': () =>
@@ -177,6 +183,7 @@ describe('clip', () => {
     await escribir('Un gato');
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ya tienes 3 clips generándose — espera a que terminen.');
+    expect(cobros).toEqual([]);
     // el texto sigue ahí para volver a intentarlo
     expect(screen.getByLabelText('Qué quieres ver')).toHaveValue('Un gato');
     await userEvent.click(screen.getByRole('button', { name: 'Generar ✦ 30' }));
@@ -184,16 +191,19 @@ describe('clip', () => {
   });
 
   it('clip.cobro.sin_saldo_402_ofrece_recargar', async () => {
+    const cobros = oirCobros();
     servidor({ '/api/clip/generar': () => json({ detail: 'Te faltan 10 créditos' }, 402) });
     render(<Clip />);
     await escribir('Un gato');
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Te faltan 10 créditos');
+    expect(cobros).toEqual([]);
     await userEvent.click(screen.getByRole('button', { name: 'Recargar' }));
     expect(monedero.recargar).toHaveBeenCalled();
   });
 
   it('clip.cobro.recarga_cerrada_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     monedero.recarga = false;
     servidor({ '/api/clip/generar': () => json({ detail: 'Te faltan 10 créditos' }, 402) });
     render(<Clip />);
@@ -201,9 +211,11 @@ describe('clip', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Generar ✦ 30' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Escríbenos por el canal de la comunidad');
     expect(screen.queryByRole('button', { name: 'Recargar' })).not.toBeInTheDocument();
+    expect(cobros).toEqual([]);
   });
 
   it('clip.cobro.saldo_conocido_que_no_alcanza_no_cobra', async () => {
+    const cobros = oirCobros();
     monedero.get.mockReturnValue({ saldo: 12 });
     const f = servidor({});
     render(<Clip />);
@@ -213,9 +225,11 @@ describe('clip', () => {
     expect(screen.getByText(/Te faltan ✦ 18/)).toBeInTheDocument();
     await userEvent.click(boton);
     expect(posts(f, '/api/clip/generar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('clip.cobro.refresca_el_saldo_y_limpia_tras_cobrar', async () => {
+    const cobros = oirCobros();
     servidor({ '/api/clip/generar': () => json({ lanzado: true, id: 'c', creditos: 30 }) });
     render(<Clip />);
     await escribir('Un gato');
@@ -224,6 +238,8 @@ describe('clip', () => {
     await waitFor(() => expect(screen.getByLabelText('Qué quieres ver')).toHaveValue(''));
     expect(screen.queryByRole('button', { name: 'Quitar foto' })).not.toBeInTheDocument();
     expect(monedero.refrescar).toHaveBeenCalled();
+    // con una foto se cobra la tarifa sin composición
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: CFG.creditos })]));
   });
 
   it('clip.cobro.espera_a_que_termine_antes_de_otro', async () => {
@@ -343,6 +359,7 @@ describe('clip', () => {
   });
 
   it('clip.lista.sondea_mientras_genera_y_para_al_terminar', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let lista: FichaClip[] = [VIVO];
     const f = servidor({ '/api/clip': () => json({ clips: lista }) });
@@ -365,6 +382,7 @@ describe('clip', () => {
     expect(listados()).toBe(alTerminar);
     // al terminar, el saldo se vuelve a pedir (por si hubo devolución)
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([]); // una devolución no vuela como un cobro
   });
 
   it('clip.lista.fallo_de_carga_avisa_reintenta_y_sigue_solo', async () => {

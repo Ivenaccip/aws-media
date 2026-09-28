@@ -3,6 +3,11 @@
 // con CREDITOS_BACKEND=off) no pinta nada. Las páginas escuchan el evento
 // 'monedero' para pintar costos junto a sus botones, y llaman
 // window.monedero.refrescar() después de cada acción que cobra.
+//
+// UI·19: cuando el saldo cambia, el número rueda hasta el nuevo y la píldora
+// se tiñe un instante. Si además llega el evento 'cobro' en window
+// ({ costo, rect: { x, y, ancho, alto } }, lo manda BotonCobro de web/ solo
+// cuando el cobro salió bien), un «−N» vuela del botón a la píldora.
 (function () {
   const est = { activo: false, saldo: null, tarifas: {}, packs: [] };
 
@@ -54,11 +59,19 @@
   // sin el ＋ pegado a la izquierda, el saldo se centra en la píldora
   const PAD_SALDO = RECARGA ? '0 20px 0 14px' : '0 18px';
   el.innerHTML =
-    '<span id="mon-ticket" hidden title="tus créditos" style="display:flex;color:#ece8e1">' + TICKET + '</span>' +
-    '<span id="mon-pill" hidden style="' + FONDO + 'display:flex;align-items:center;height:38px;' +
+    // nacen con display:none (el `hidden` no basta contra un display inline):
+    // antes del primer saldo, counter() pintaría «0 créditos», un saldo falso.
+    // pintarSaldo los enciende
+    '<span id="mon-ticket" hidden title="tus créditos" style="display:none;color:#ece8e1">' + TICKET + '</span>' +
+    '<span id="mon-pill" hidden style="' + FONDO + 'display:none;align-items:center;height:38px;' +
       'border-radius:999px">' + MAS +
-      '<span id="mon-saldo" style="font:600 14px system-ui;white-space:nowrap;padding:' + PAD_SALDO + '"></span>' +
+      // UI·19: lo que se ve rueda y no se lee (#mon-cifra); lo que se lee es
+      // el texto de verdad (#mon-real), y los cambios se anuncian en #mon-aviso
+      '<span id="mon-saldo" style="font:600 14px system-ui;white-space:nowrap;padding:' + PAD_SALDO + '">' +
+        '<span id="mon-cifra" aria-hidden="true"></span><span id="mon-real" class="mon-oculto"></span>' +
+      '</span>' +
     '</span>' +
+    '<span id="mon-aviso" class="mon-oculto" role="status"></span>' +
     // M2: el avatar despliega «Salir» (auth.salir limpia tokens y pasa por el
     // /logout del Hosted UI — clave tras un cambio de permisos: el re-login
     // trae los grupos nuevos en el token). Solo se pinta si el login está activo.
@@ -78,6 +91,40 @@
           'onmouseout="this.style.background=\'none\'">Cerrar sesión</button>' +
       '</span>' +
     '</span>';
+
+  // UI·19: el número rueda con una propiedad registrada como entero, que el
+  // navegador sabe interpolar, pintada con counter(). Registrarla es a la vez
+  // la prueba de soporte: sin CSS.registerProperty (Firefox < 128, Safari <
+  // 16.4) la transición no interpola y el número cambia de golpe, como antes.
+  try {
+    CSS.registerProperty({ name: '--mon-saldo', syntax: '<integer>', inherits: false, initialValue: '0' });
+  } catch { /* sin la API, o ya registrada por otra copia de este archivo */ }
+  const ESTILO = document.createElement('style');
+  ESTILO.textContent =
+    // 700 ms: lo bastante lento para leer que bajó, no tanto como para esperar
+    '#mon-cifra{counter-reset:mon-saldo var(--mon-saldo);font-variant-numeric:tabular-nums;' +
+      'transition:--mon-saldo 700ms cubic-bezier(0,0,.2,1)}' +
+    '#mon-cifra::after{content:counter(mon-saldo) " créditos ✦"}' +
+    // 900 ms: el tinte llega rápido (20 %) y se va despacio
+    '#mon-pill.mon-tinte{animation:mon-tinte 900ms cubic-bezier(0,0,.2,1)}' +
+    '@keyframes mon-tinte{20%{background-color:#2e2110}}' +   // --color-aviso-fondo
+    // 600 ms: el «−N» sale del botón y se apaga al llegar a la píldora
+    '.mon-vuelo{position:fixed;z-index:1001;pointer-events:none;font:600 14px system-ui,sans-serif;' +
+      'color:#f0a94a;transform:translate(-50%,-50%);opacity:0;' +
+      'animation:mon-vuela 600ms cubic-bezier(.4,0,.2,1) forwards}' +
+    '@keyframes mon-vuela{20%{opacity:1}100%{opacity:0;' +
+      'transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.85)}}' +
+    '.mon-oculto{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;' +
+      'overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
+    // las pantallas viejas no cargan tokens.css: la regla de quietud va aquí
+    // también (carta.css trae la suya, igual que tokens.css)
+    '@media (prefers-reduced-motion: reduce){#mon-cifra{transition:none}' +
+      '#mon-pill.mon-tinte{animation:none}.mon-vuelo{display:none}}';
+  (document.head || document.documentElement).appendChild(ESTILO);
+
+  function sinMovimiento() {
+    try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  }
 
   function textoRecarga() {
     const packs = est.packs.map(p => `${p.creditos} créditos — $${p.usd.toFixed(2)} dólares`).join('\n· ');
@@ -171,17 +218,69 @@
   // si el monedero resultó apagado (CREDITOS_BACKEND=off) después de pintar
   // el guardado. `hidden` no bastaría: el display:flex inline le gana
   function ocultarSaldo() {
+    pintado = null;
     el.querySelector('#mon-ticket').style.display = 'none';
     el.querySelector('#mon-pill').style.display = 'none';
     if (el.querySelector('#mon-user').hidden) el.style.display = 'none';
   }
+
+  // UI·19: el último número pintado en ESTA página (el guardado de UI·18
+  // cuenta). null = nada todavía: lo primero que se pinta no rueda.
+  let pintado = null, tinteT = null;
 
   function pintarSaldo(saldo) {
     el.style.display = 'flex';
     el.querySelector('#mon-ticket').hidden = false;
     el.querySelector('#mon-pill').hidden = false;
     el.querySelector('#mon-ticket').style.display = el.querySelector('#mon-pill').style.display = 'flex';
-    el.querySelector('#mon-saldo').textContent = `${saldo} créditos ✦`;
+    el.querySelector('#mon-real').textContent = `${saldo} créditos ✦`;
+    const n = Math.trunc(Number(saldo)) || 0, antes = pintado;
+    const cifra = el.querySelector('#mon-cifra');
+    pintado = n;
+    if (antes === null) {
+      // sin transición: fija el valor antes de devolvérsela
+      cifra.style.transition = 'none';
+      cifra.style.setProperty('--mon-saldo', String(n));
+      void getComputedStyle(cifra).getPropertyValue('--mon-saldo');
+      cifra.style.transition = '';
+      return;
+    }
+    if (n === antes) return;
+    cifra.style.setProperty('--mon-saldo', String(n));
+    // el número real, al instante, para quien no ve la animación
+    el.querySelector('#mon-aviso').textContent = 'Tu saldo: ' + n + ' créditos';
+    tintar();
+  }
+
+  function tintar() {
+    const p = el.querySelector('#mon-pill');
+    p.classList.remove('mon-tinte');
+    void p.offsetWidth;   // reinicia la animación si ya estaba corriendo
+    p.classList.add('mon-tinte');
+    clearTimeout(tinteT);
+    tinteT = setTimeout(() => p.classList.remove('mon-tinte'), 900);
+  }
+
+  // UI·19: el «−N» del botón que cobró a la píldora. Va a <body>, fuera de
+  // #monedero, y no se enfoca ni se lee: el aviso de #mon-aviso ya lo dice.
+  function volar(e) {
+    const d = (e && e.detail) || {};
+    const costo = Math.trunc(Number(d.costo)), r = d.rect;
+    if (pintado === null || !el.isConnected || !(costo > 0) || !r || !(r.ancho > 0) || sinMovimiento()) return;
+    const destino = el.querySelector('#mon-cifra').getBoundingClientRect();
+    const x = r.x + r.ancho / 2, y = r.y + r.alto / 2;
+    const n = document.createElement('span');
+    n.className = 'mon-vuelo';
+    n.setAttribute('aria-hidden', 'true');
+    n.textContent = '−' + costo;
+    n.style.left = x + 'px';
+    n.style.top = y + 'px';
+    n.style.setProperty('--dx', (destino.left + destino.width / 2 - x) + 'px');
+    n.style.setProperty('--dy', (destino.top + destino.height / 2 - y) + 'px');
+    const quitar = () => n.remove();
+    n.addEventListener('animationend', quitar);
+    setTimeout(quitar, 1000);   // por si la animación no llega a correr
+    document.body.appendChild(n);
   }
 
   async function intentar() {
@@ -243,6 +342,7 @@
   }
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescar(); });
+  addEventListener('cobro', volar);
   // recargar(): lo mismo que pulsar el ＋ de la cabecera. Existe porque los
   // avisos de «te faltan créditos» de otras pantallas enlazaban a
   // /monedero.html, que NUNCA ha existido: el CTA del 402 era un 404 duro.

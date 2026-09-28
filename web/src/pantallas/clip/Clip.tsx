@@ -165,6 +165,7 @@ export function Clip() {
       setEsperando(true);
       refrescarSaldo();
       await traer().catch(() => undefined);
+      return true; // UI·19: se cobró
     } catch (e) {
       const sinSaldo = e instanceof ErrorApi && e.sinSaldo;
       setEstado({ texto: e instanceof Error ? e.message : String(e), error: true, sinSaldo });

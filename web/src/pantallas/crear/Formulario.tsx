@@ -214,6 +214,7 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
       setEspera(null); // el orbe se va antes de lo que sigue
       refrescarSaldo();
       alCrear(nuevo);
+      return true; // UI·19: se cobró; el «−N» vuela del botón
     } catch (e) {
       setEspera(null); // NUNCA un orbe girando junto a un error
       if (e instanceof ErrorApi && e.estado === 409) {

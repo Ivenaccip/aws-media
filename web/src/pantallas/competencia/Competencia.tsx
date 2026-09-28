@@ -114,13 +114,16 @@ export function Competencia() {
 
   async function alRevisar() {
     setNotaRevisar(null);
+    let cobrado = false; // UI·19: el «−N» vuela si el servidor cobró
     try {
       await revisar();
+      cobrado = true;
       refrescarSaldo();
       await lista.actualizar();
     } catch (e) {
       setNotaRevisar(mensajeDe(e));
     }
+    return cobrado;
   }
 
   const n = d?.cuentas.length ?? 0;

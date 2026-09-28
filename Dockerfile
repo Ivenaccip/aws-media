@@ -23,6 +23,9 @@ COPY web/ ./
 # las tarifas en créditos viven fuera de web/ (tools/tarifas.json es la única
 # fuente); pricing.json NO se copia: no tiene nada que hacer en el cliente
 COPY tools/tarifas.json /repo/tools/tarifas.json
+# UI·19: vitest corre static/monedero.js (la píldora del saldo, compartida con
+# las pantallas viejas) dentro de jsdom: src/marca/monedero.test.ts
+COPY static/monedero.js /repo/static/monedero.js
 RUN npm run verificar
 
 # --- Imagen del producto ----------------------------------------------------

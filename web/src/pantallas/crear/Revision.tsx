@@ -195,6 +195,7 @@ export function Revision({
       sinGuardar.current = false;
       refrescarSaldo();
       alCambiar(p);
+      return true; // UI·19: se cobró
     } catch (e) {
       setFalla({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });
     } finally {
@@ -475,6 +476,7 @@ function Personaje({
       setCambiando(false); // el orbe se va antes de que aparezca la imagen nueva
       refrescarSaldo();
       alCambiar(p);
+      return true; // UI·19: se cobró
     } catch (e) {
       setMsgCambio({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });
     } finally {

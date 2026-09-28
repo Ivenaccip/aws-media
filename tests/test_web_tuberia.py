@@ -60,6 +60,8 @@ def test_la_etapa_web_verifica_antes_de_compilar_y_su_dist_entra_a_la_imagen():
     etapa = codigo[codigo.index("AS web"):codigo.index("FROM python:")]
     assert "npm ci" in etapa and "RUN npm run verificar" in etapa
     assert etapa.index("npm --version") < etapa.index("npm ci")
+    # UI·19: el test de monedero.js vive en vitest; sin el archivo no corre
+    assert etapa.index("COPY static/monedero.js /repo/static/monedero.js") < etapa.index("RUN npm run verificar")
     verificar = _paquete()["scripts"]["verificar"]
     for paso in ("tipos", "lint", "test", "build"):
         assert f"npm run {paso}" in verificar, f"`verificar` ya no corre {paso}"

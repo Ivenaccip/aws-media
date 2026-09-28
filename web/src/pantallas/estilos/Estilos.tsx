@@ -47,8 +47,10 @@ export function Estilos() {
       return;
     }
     setEstado(null);
+    let cobrado = false; // UI·19: el «−N» vuela si el servidor cobró
     try {
       await analizar(limpia);
+      cobrado = true;
       setUrl('');
       refrescarSaldo();
       await lista.actualizar();
@@ -59,6 +61,7 @@ export function Estilos() {
         sinSaldo: e instanceof ErrorApi && e.sinSaldo,
       });
     }
+    return cobrado;
   }
 
   const tarifa = lista.datos?.creditos ?? null;

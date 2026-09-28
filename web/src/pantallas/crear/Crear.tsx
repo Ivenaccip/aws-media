@@ -340,6 +340,7 @@ function Aprobar({ proyecto: p, alCambiar }: { proyecto: Proyecto; alCambiar: (p
       setVersion(v => v + 1);
       refrescarSaldo();
       alCambiar(nuevo);
+      return true; // UI·19: se cobró
     } catch (e) {
       setFalla({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });
     } finally {
@@ -589,6 +590,7 @@ function Falla({ proyecto: p, alCambiar }: { proyecto: Proyecto; alCambiar: (p: 
       const nuevo = await producir(p.id, null);
       refrescarSaldo();
       alCambiar(nuevo);
+      return true; // UI·19: se cobró
     } catch (e) {
       // va aparte: «qué pasó» sigue contando el fallo original
       setFalla({ texto: mensaje(e), sinSaldo: e instanceof ErrorApi && e.sinSaldo });

@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { video } from '../../nucleo/tarifas';
-import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { decodificar } from './decodificar';
 import { Imagenes } from './Imagenes';
 import { formatoDe, paleta, quiereEditar, type Estilo } from './logica';
@@ -133,6 +133,7 @@ describe('imagenes', () => {
   });
 
   it('imagenes.cobro.el_guardarrail_corta_antes_de_cobrar', async () => {
+    const cobros = oirCobros();
     const f = montar({
       '/api/moderar': () =>
         json({ permitido: false, mensaje: 'La IA no permite violencia explícita.', motivo: '<b>sangre</b> en «tu texto»' }),
@@ -145,6 +146,7 @@ describe('imagenes', () => {
     expect(d).toHaveTextContent('La IA no permite violencia explícita.');
     expect(within(d).getByText('<b>sangre</b> en «tu texto»')).toBeInTheDocument();
     expect(posts(f)).toHaveLength(0);
+    expect(cobros).toEqual([]);
     await userEvent.click(within(d).getByRole('button', { name: 'Entendido, lo edito' }));
     await waitFor(() => expect(caja()).toHaveFocus());
     expect(boton('Generar')).toBeEnabled();
@@ -176,6 +178,7 @@ describe('imagenes', () => {
   });
 
   it('imagenes.cobro.lo_que_se_dice_antes_no_se_cobra', async () => {
+    const cobros = oirCobros();
     const f = montar();
     render(<Imagenes />);
     await screen.findByRole('button', { name: 'Animado' });
@@ -192,9 +195,11 @@ describe('imagenes', () => {
     await userEvent.click(boton('Generar'));
     expect(screen.getByRole('alert')).toHaveTextContent('Primero sube la imagen que quieres editar');
     expect(f.mock.calls.filter(c => String(c[0]).startsWith('/api/imagenes') || c[0] === '/api/moderar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('imagenes.cobro.el_pincel_sin_zona_no_cobra', async () => {
+    const cobros = oirCobros();
     const f = montar();
     render(<Imagenes />);
     await subir();
@@ -202,6 +207,7 @@ describe('imagenes', () => {
     await userEvent.click(boton('Cambiar'));
     expect(screen.getByRole('alert')).toHaveTextContent('Pinta sobre tu imagen la zona que quieres cambiar');
     expect(posts(f, '/api/imagenes/editar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('imagenes.cobro.el_pincel_manda_la_imagen_y_la_zona_sin_estilo', async () => {
@@ -249,6 +255,7 @@ describe('imagenes', () => {
   });
 
   it('imagenes.cobro.sin_saldo_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     montar({ '/api/imagenes': () => json({ detail: 'Créditos insuficientes: esta acción cuesta 2 créditos y tu saldo es 1.' }, 402) });
     ponerMonedero(null, false);
     render(<Imagenes />);
@@ -259,6 +266,7 @@ describe('imagenes', () => {
     expect(a).toHaveTextContent('Créditos insuficientes');
     expect(a).toHaveTextContent('Escríbenos por el canal de la comunidad');
     expect(within(a).queryByRole('button', { name: 'Recargar' })).toBeNull();
+    expect(cobros).toEqual([]);
   });
 
   it('imagenes.cobro.saldo_conocido_que_no_alcanza_no_cobra', async () => {
@@ -273,12 +281,15 @@ describe('imagenes', () => {
   });
 
   it('imagenes.cobro.refresca_el_saldo_tras_cobrar', async () => {
+    const cobros = oirCobros();
     montar();
     render(<Imagenes />);
     await screen.findByRole('button', { name: 'Animado' });
     await escribir('un faro');
     await userEvent.click(boton('Generar'));
     await waitFor(() => expect(monedero.refrescar).toHaveBeenCalled());
+    // el «−N» sale cuando lo creado ya pasó a editarse
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: P })]));
   });
 
   it('imagenes.cobro.en_vuelo_nada_cambia_la_imagen_ni_el_modo', async () => {

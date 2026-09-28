@@ -4,7 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json, llamadas, ponerMonedero, servidor, sinRed } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed } from '../../prueba/servidor';
 import { Estilos } from './Estilos';
 import type { Listado, Perfil } from './logica';
 
@@ -85,14 +85,17 @@ describe('estilos', () => {
   });
 
   it('estilos.cobro.sin_liga_no_cobra', async () => {
+    const cobros = oirCobros();
     const f = servidor({ '/api/estilo': () => json(listado([])) });
     render(<Estilos />);
     await userEvent.click(await screen.findByRole('button', { name: /Analizar ✦/ }));
     expect(screen.getByText('Pega la liga primero.')).toBeInTheDocument();
     expect(llamadas(f, '/api/estilo/analizar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('estilos.cobro.error_junto_al_boton', async () => {
+    const cobros = oirCobros();
     servidor({
       '/api/estilo': () => json(listado([])),
       '/api/estilo/analizar': () => json({ detail: 'Ese video ya tiene su perfil de estilo — está en tu lista' }, 409),
@@ -102,9 +105,11 @@ describe('estilos', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Analizar ✦/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ese video ya tiene su perfil de estilo');
     expect(screen.getByLabelText('Liga de Instagram o TikTok')).toHaveValue('https://www.instagram.com/reel/abcdef');
+    expect(cobros).toEqual([]);
   });
 
   it('estilos.cobro.sin_saldo_con_la_recarga_cerrada_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     monedero.recarga = false;
     servidor({
       '/api/estilo': () => json(listado([])),
@@ -117,9 +122,11 @@ describe('estilos', () => {
     expect(alerta).toHaveTextContent('Te faltan 2 créditos');
     expect(alerta).toHaveTextContent('Escríbenos por el canal de la comunidad');
     expect(screen.queryByRole('button', { name: 'Recargar' })).not.toBeInTheDocument();
+    expect(cobros).toEqual([]);
   });
 
   it('estilos.cobro.limpia_y_refresca_el_saldo_tras_cobrar', async () => {
+    const cobros = oirCobros();
     servidor({
       '/api/estilo': () => json(listado([])),
       '/api/estilo/analizar': () => json({ lanzado: true, id: 'x', creditos: TARIFA }),
@@ -129,6 +136,7 @@ describe('estilos', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Analizar ✦/ }));
     await waitFor(() => expect(screen.getByLabelText('Liga de Instagram o TikTok')).toHaveValue(''));
     expect(monedero.refrescar).toHaveBeenCalled();
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: TARIFA })]));
   });
 
   it('estilos.lista.perfil_listo_con_sus_campos', async () => {
@@ -176,6 +184,7 @@ describe('estilos', () => {
   });
 
   it('estilos.lista.sondea_mientras_analiza_y_para_al_terminar', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let estilos: Perfil[] = [VIVO];
     const f = servidor({ '/api/estilo': () => json(listado(estilos)) });
@@ -197,6 +206,7 @@ describe('estilos', () => {
     });
     expect(gets()).toBe(alTerminar);
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([]); // una devolución no vuela como un cobro
   });
 
   it('estilos.lista.sin_red_con_un_analisis_vivo_sigue_reintentando', async () => {

@@ -245,6 +245,7 @@ function Importar({ principal, alImportar }: { principal: boolean; alImportar: (
       const r = await importar(url.trim());
       refrescarSaldo();
       alImportar(r.nombre);
+      return true; // UI·19: se cobró
     } catch (e) {
       // ya importado o importándose: se abre el que existe
       if (e instanceof ErrorApi && e.estado === 409 && cotiza.nombre) alImportar(cotiza.nombre);
@@ -430,6 +431,7 @@ function Analisis({ p, st, alLanzar }: { p: string; st: EstadoShorts; alLanzar: 
     }
     refrescarSaldo();
     alLanzar();
+    return true; // UI·19: se cobró
   }
 
   const verbo = conCandidatos ? 'Re-analizar' : 'Analizar';
@@ -580,6 +582,7 @@ function Candidatos({
     }
     refrescarSaldo();
     alLanzar();
+    return true; // UI·19: se cobró
   }
 
   return (

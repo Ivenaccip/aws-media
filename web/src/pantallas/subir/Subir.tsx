@@ -173,6 +173,7 @@ export function Subir() {
       setLanzando(false);
     }
     await leer(p).catch(() => undefined);
+    return true; // UI·19: se cobró; el «−N» vuela del botón
   }
 
   const conFuente = Boolean(st?.fuente);

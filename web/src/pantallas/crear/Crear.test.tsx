@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { video } from '../../nucleo/tarifas';
 import { NOMBRE_MINIATURA, tocarMiniatura } from '../../nucleo/transiciones';
-import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Crear } from './Crear';
 import { avanceDe, costoProducir, DURACIONES, precioDe, SIN_AVANCE, type Proyecto } from './logica';
 
@@ -210,6 +210,7 @@ describe('crear · cobro al empezar', () => {
   });
 
   it('crear.cobro.generar_sin_saldo_para_el_guion_no_cobra', async () => {
+    const cobros = oirCobros();
     ponerMonedero(video.preparar - 3);
     const f = montar();
     render(<Crear />);
@@ -219,6 +220,7 @@ describe('crear · cobro al empezar', () => {
     await userEvent.click(generar());
     expect(llamadas(f, '/api/proyectos')).toHaveLength(0);
     expect(llamadas(f, '/api/moderar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('crear.cobro.alcanza_para_el_guion_y_no_para_producir_se_dice', async () => {
@@ -232,6 +234,7 @@ describe('crear · cobro al empezar', () => {
   });
 
   it('crear.cobro.generar_doble_clic_una_pelicula', async () => {
+    const cobros = oirCobros();
     let soltar!: (r: Response) => void;
     const f = montar({ '/api/proyectos': () => new Promise<Response>(r => (soltar = r)) });
     render(<Crear />);
@@ -244,6 +247,8 @@ describe('crear · cobro al empezar', () => {
     await act(async () => soltar(json({ ...P, estado: 'creado' })));
     expect(llamadas(f, '/api/proyectos')).toHaveLength(1);
     expect(monedero.refrescar).toHaveBeenCalled();
+    // UI·19: un doble clic es UN cobro y un solo «−N»
+    expect(cobros).toEqual([expect.objectContaining({ costo: video.preparar })]);
   });
 
   it('crear.cobro.el_pedido_se_arma_antes_de_moderar_y_la_rejilla_queda_inerte', async () => {
@@ -264,6 +269,7 @@ describe('crear · cobro al empezar', () => {
   });
 
   it('crear.cobro.moderacion_rechaza_sin_llamar_y_explica', async () => {
+    const cobros = oirCobros();
     const f = montar({
       '/api/moderar': () => json({ permitido: false, mensaje: 'La IA no permite violencia explícita.', motivo: 'Habla de sangre.' }),
     });
@@ -274,12 +280,14 @@ describe('crear · cobro al empezar', () => {
     expect(d).toHaveTextContent('La IA no permite violencia explícita.');
     expect(d).toHaveTextContent('Habla de sangre.');
     expect(llamadas(f, '/api/proyectos')).toHaveLength(0);
+    expect(cobros).toEqual([]);
     await userEvent.click(within(d).getByRole('button', { name: 'Entendido, lo edito' }));
     await waitFor(() => expect(screen.getByLabelText('De qué trata tu video')).toHaveFocus());
     expect(generar()).toBeEnabled();
   });
 
   it('crear.cobro.brief_vacio_no_llama', async () => {
+    const cobros = oirCobros();
     const f = montar();
     render(<Crear />);
     await userEvent.type(screen.getByLabelText('De qué trata tu video'), '   ');
@@ -287,9 +295,11 @@ describe('crear · cobro al empezar', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Describe tu video primero.');
     expect(screen.getByLabelText('De qué trata tu video')).toHaveFocus();
     expect(f.mock.calls.filter(c => c[0] === '/api/moderar' || c[0] === '/api/proyectos')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('crear.cobro.slots_409_avisa_y_balanceador_pregunta_y_fuerza', async () => {
+    const cobros = oirCobros();
     let n = 0;
     const f = montar({
       '/api/proyectos': () =>
@@ -315,9 +325,12 @@ describe('crear · cobro al empezar', () => {
     expect(forzado.get('forzar')).toBe('true');
     // forzar ya pasó una vez por la moderación
     expect(llamadas(f, '/api/moderar')).toHaveLength(2);
+    // los dos 409 no cobraron, y el forzado sale del diálogo, no del botón: no vuela nada
+    expect(cobros).toEqual([]);
   });
 
   it('crear.cobro.un_402_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     ponerMonedero(500, false);
     montar({
       '/api/proyectos': () => json({ detail: 'Créditos insuficientes: esta acción cuesta 10 créditos y tu saldo es 4.' }, 402),
@@ -328,6 +341,7 @@ describe('crear · cobro al empezar', () => {
     const a = await screen.findByRole('alert');
     expect(a).toHaveTextContent('Créditos insuficientes: esta acción cuesta 10 créditos y tu saldo es 4.');
     expect(a).toHaveTextContent('Escríbenos por el canal de la comunidad para conseguir más.');
+    expect(cobros).toEqual([]);
   });
 
   it('crear.crear.manda_todos_los_campos_y_pone_p_en_la_url', async () => {
@@ -497,6 +511,7 @@ describe('crear · la espera', () => {
 
 describe('crear · revisión', () => {
   it('crear.revision.personaje_elegir_y_crear_opciones_gratis', async () => {
+    const cobros = oirCobros();
     const sin: Proyecto = { ...P, personaje: { ...P.personaje, opciones: [] } };
     const f = abrir(sin, { '/api/proyectos/p1/personaje/generar': () => json(P) });
     expect(await screen.findByText('Sin costo: va incluido en los créditos del guion.')).toBeInTheDocument();
@@ -508,6 +523,7 @@ describe('crear · revisión', () => {
     expect(op2).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Opción 1 del personaje' })).toHaveAttribute('aria-pressed', 'false');
     expect(monedero.refrescar).not.toHaveBeenCalled();
+    expect(cobros).toEqual([]);
   });
 
   it('crear.revision.crear_opciones_si_falla_lo_dice', async () => {
@@ -520,6 +536,7 @@ describe('crear · revisión', () => {
   });
 
   it('crear.revision.cambiar_personaje_cobra_imagen_y_valida_antes', async () => {
+    const cobros = oirCobros();
     const nuevo: Proyecto = {
       ...P,
       personaje: { ...P.personaje, opciones: [...P.personaje.opciones, { path: '/w/p1/personaje/opcion_3.jpg' }], elegida: 2 },
@@ -532,12 +549,14 @@ describe('crear · revisión', () => {
     await userEvent.click(cambiar);
     expect(screen.getByRole('alert')).toHaveTextContent('Primero elige la opción a modificar.');
     expect(llamadas(f, '/api/proyectos/p1/personaje/modificar')).toHaveLength(0);
+    expect(cobros).toEqual([]); // lo que se dice antes de cobrar no vuela
     await userEvent.click(screen.getByRole('button', { name: 'Opción 1 del personaje' }));
     await userEvent.click(cambiar);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Opción 3 del personaje' })).toHaveAttribute('aria-pressed', 'true'));
     expect(cuerpoDe(f, '/api/proyectos/p1/personaje/modificar')).toEqual([JSON.stringify({ instruccion: 'ponle lentes', opcion: 0 })]);
     expect(screen.getByLabelText('Qué cambiar de la opción elegida')).toHaveValue('');
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([expect.objectContaining({ costo: video.imagen })]);
   });
 
   it('crear.revision.voces_con_nivel_motivo_y_muestra', async () => {
@@ -650,6 +669,7 @@ describe('crear · revisión', () => {
 
 describe('crear · producir', () => {
   it('crear.cobro.producir_con_precio_del_servidor_y_guarda_antes', async () => {
+    const cobros = oirCobros();
     const f = abrir({ ...P, personaje: { ...P.personaje, elegida: 1 } });
     // el precio es el del servidor (/estimacion), no una cuenta de la pantalla
     const b = await screen.findByRole('button', { name: 'Producir ✦ ' + PRODUCIR });
@@ -670,13 +690,16 @@ describe('crear · producir', () => {
     expect(cuerpoDe(f, '/api/proyectos/p1/personaje', 'PUT')).toEqual([JSON.stringify({ elegida: 1, nombre: 'Michi' })]);
     expect(await screen.findByRole('heading', { level: 1, name: 'Produciendo tu película' })).toBeInTheDocument();
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([expect.objectContaining({ costo: PRODUCIR })]);
   });
 
   it('crear.cobro.producir_sin_personaje_no_cobra', async () => {
+    const cobros = oirCobros();
     const f = abrir(P);
     await userEvent.click(await screen.findByRole('button', { name: 'Producir ✦ ' + PRODUCIR }));
     expect(screen.getByRole('alert')).toHaveTextContent('Elige una opción de personaje.');
     expect(f.mock.calls.filter(c => String(c[0]).includes('/producir'))).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('crear.cobro.producir_si_no_alcanza_no_cobra_y_un_402_lo_dice', async () => {
@@ -738,6 +761,7 @@ describe('crear · imágenes, resultado y error', () => {
   };
 
   it('crear.imagenes.cambiar_una_cobra_y_refresca_la_imagen', async () => {
+    const cobros = oirCobros();
     const f = abrir(IMGS, { '/api/proyectos/p1/imagenes/e3/regenerar': () => json(IMGS) });
     expect(await screen.findByRole('heading', { level: 1, name: '¿Te gustan estas imágenes?' })).toBeInTheDocument();
     expect(screen.getByAltText('Imagen de la toma 1')).toHaveAttribute('src', '/api/proyectos/p1/archivo/start_1.jpg?v=0');
@@ -757,15 +781,18 @@ describe('crear · imágenes, resultado y error', () => {
       JSON.stringify({ prompt: 'a cat with a helmet', confirmar: true }),
     ]);
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([expect.objectContaining({ costo: video.imagen })]);
   });
 
   it('crear.imagenes.un_402_al_cambiar_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     ponerMonedero(500, false);
     abrir(IMGS, { '/api/proyectos/p1/imagenes/e1/regenerar': () => json({ detail: 'Créditos insuficientes.' }, 402) });
     await userEvent.click((await screen.findAllByRole('button', { name: 'Cambiar ✦ ' + video.imagen }))[0]!);
     const a = await screen.findByRole('alert');
     expect(a).toHaveTextContent('Créditos insuficientes.');
     expect(a).toHaveTextContent('Escríbenos por el canal de la comunidad');
+    expect(cobros).toEqual([]);
   });
 
   it('crear.imagenes.animar_no_cobra', async () => {
@@ -779,6 +806,7 @@ describe('crear · imágenes, resultado y error', () => {
   });
 
   it('crear.imagenes.mejor_no_confirma_y_dice_lo_devuelto', async () => {
+    const cobros = oirCobros();
     const f = abrir(IMGS, { '/api/proyectos/p1/cancelar': () => json({ proyecto: P, devueltos: 86 }) });
     await userEvent.click(await screen.findByRole('button', { name: 'Mejor no' }));
     const d = await screen.findByRole('alertdialog', { name: '¿Volver a revisión sin animar?' });
@@ -790,6 +818,7 @@ describe('crear · imágenes, resultado y error', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Revisa tu película' })).toBeInTheDocument();
     expect(llamadas(f, '/api/proyectos/p1/cancelar')).toHaveLength(1);
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([]); // una devolución no es un cobro: no vuela «−N»
   });
 
   it('crear.resultado.video_descargar_editor_y_drive_http', async () => {
@@ -817,6 +846,7 @@ describe('crear · imágenes, resultado y error', () => {
   });
 
   it('crear.resultado.rehacer_vuelve_a_revision_gratis', async () => {
+    const cobros = oirCobros();
     let n = 0;
     const f = abrir({ ...P, estado: 'listo', progreso: { editor: 'gen-p1' } }, {
       '/api/proyectos/p1/reabrir': () => (n++ === 0 ? json({ detail: 'Solo una película lista se puede modificar' }, 409) : json(P)),
@@ -828,6 +858,7 @@ describe('crear · imágenes, resultado y error', () => {
     expect(await screen.findByLabelText('Escena 1')).toHaveValue('Había una vez un gato.');
     expect(llamadas(f, '/api/proyectos/p1/reabrir')).toHaveLength(2);
     expect(monedero.refrescar).not.toHaveBeenCalled();
+    expect(cobros).toEqual([]);
   });
 
   const ERR_PROD: Proyecto = {
@@ -840,6 +871,7 @@ describe('crear · imágenes, resultado y error', () => {
   };
 
   it('crear.error.al_producir_reintentar_con_precio_y_devolucion', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let n = 0;
     const f = abrir(ERR_PROD, {
@@ -865,9 +897,11 @@ describe('crear · imágenes, resultado y error', () => {
     // el error de reintentar va aparte: «qué pasó» sigue contando el original
     expect(await screen.findByText('Esta película ya se está produciendo')).toBeInTheDocument();
     expect(screen.getByText(/Se detuvo en «Animando las escenas»/)).toBeInTheDocument();
+    expect(cobros).toEqual([]); // ni la devolución ni el 409 vuelan
     await userEvent.click(b);
     expect(await screen.findByRole('heading', { level: 1, name: 'Produciendo tu película' })).toBeInTheDocument();
     expect(llamadas(f, '/api/proyectos/p1/producir')).toHaveLength(2);
+    expect(cobros).toEqual([expect.objectContaining({ costo: PRODUCIR })]);
   });
 
   it('crear.error.al_producir_sin_cobrado_usa_la_tabla', async () => {

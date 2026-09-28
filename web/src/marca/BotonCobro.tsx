@@ -5,12 +5,18 @@
 //     tic del clic, antes de cualquier await: un doble clic es UNA petición.
 //   · cobro.sin_saldo_no_cobra — si el saldo conocido no alcanza, el botón se
 //     deshabilita y dice cuánto falta, con <Recarga> al lado.
+//
+// UI·19: si `alCobrar` resuelve `true` (el servidor aceptó el cobro), avisa a
+// monedero.js, que dibuja «−N» saliendo de este botón hacia la píldora. Con
+// cualquier otra cosa (un 402, un veto, una validación) no vuela nada: un
+// «−N» que no se cobró sería mentir sobre dinero.
 import { useRef, useState } from 'react';
 
 import { Boton } from '../ui/Boton';
 import { ESTRELLA } from '../nucleo/estrella';
 import { entero } from '../nucleo/formato';
 import { Recarga } from './Recarga';
+import { avisarCobro } from './useSaldo';
 import type { Verbo } from './verbos';
 
 export interface PropsBotonCobro {
@@ -18,8 +24,9 @@ export interface PropsBotonCobro {
   costo: number;
   /** Saldo conocido. `null` = aún no se sabe: no se bloquea por él. */
   saldo?: number | null;
-  /** Lo que cobra. El botón queda «trabajando» hasta que la promesa termine. */
-  alCobrar: () => Promise<unknown>;
+  /** Lo que cobra. El botón queda «trabajando» hasta que la promesa termine.
+   *  Resuelve `true` SOLO si el servidor aceptó el cobro (UI·19). */
+  alCobrar: () => Promise<boolean | void>;
   /** Texto mientras trabaja. */
   trabajando?: string;
   deshabilitado?: boolean;
@@ -37,15 +44,21 @@ export function BotonCobro({
   nivel = 'principal',
 }: PropsBotonCobro) {
   const candado = useRef(false);
+  const boton = useRef<HTMLButtonElement>(null);
   const [ocupado, setOcupado] = useState(false);
   const faltan = saldo !== null && saldo < costo ? costo - saldo : 0;
 
   async function cobrar() {
     if (candado.current || faltan || deshabilitado) return;
     candado.current = true;          // antes de cualquier await
+    // dónde estaba al tocarlo: si el cobro lo desmonta, el «−N» sale de ahí
+    const antes = boton.current?.getBoundingClientRect() ?? null;
     setOcupado(true);
     try {
-      await alCobrar();
+      if ((await alCobrar()) === true) {
+        const b = boton.current;
+        avisarCobro(costo, b?.isConnected ? b.getBoundingClientRect() : antes);
+      }
     } finally {
       candado.current = false;
       setOcupado(false);
@@ -55,6 +68,7 @@ export function BotonCobro({
   return (
     <span className="inline-flex flex-col items-start gap-1">
       <Boton
+        ref={boton}
         nivel={nivel}
         onClick={() => void cobrar()}
         disabled={deshabilitado || faltan > 0}

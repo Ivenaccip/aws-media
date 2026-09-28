@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import type { Costo, EstadoEditar } from './logica';
 import { Subir } from './Subir';
 
@@ -141,6 +141,7 @@ describe('editor IA: lo que cobra', () => {
   });
 
   it('subir.cobro.pide_confirmar_y_cancelar_no_cobra', async () => {
+    const cobros = oirCobros();
     const f = montar();
     render(<Subir />);
     await userEvent.click(await screen.findByRole('button', { name: 'Proponer ✦ 17' }));
@@ -149,6 +150,7 @@ describe('editor IA: lo que cobra', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(llamadas(f, '/api/editar/podcast/sugerir')).toHaveLength(0);
+    expect(cobros).toEqual([]);
     // y el botón sigue sirviendo
     await userEvent.click(screen.getByRole('button', { name: 'Proponer ✦ 17' }));
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
@@ -182,6 +184,7 @@ describe('editor IA: lo que cobra', () => {
   });
 
   it('subir.cobro.error_se_queda_y_el_boton_vuelve', async () => {
+    const cobros = oirCobros();
     let veces = 0;
     const f = montar({
       rutas: {
@@ -195,6 +198,7 @@ describe('editor IA: lo que cobra', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Proponer ✦ 17' }));
     await userEvent.click(screen.getByRole('button', { name: 'Proponer' }));
     expect(await screen.findByText('La corrida ya está en curso — espera a que termine')).toBeInTheDocument();
+    expect(cobros).toEqual([]);
     // no se borra solo (la vieja lo pintaba y el initCorte() de abajo lo borraba)
     await act(async () => {
       await new Promise(r => setTimeout(r, 50));
@@ -206,6 +210,7 @@ describe('editor IA: lo que cobra', () => {
   });
 
   it('subir.cobro.sin_saldo_con_la_recarga_cerrada_dice_a_quien_escribir', async () => {
+    const cobros = oirCobros();
     monedero = ponerMonedero(null, false);
     montar({ rutas: { '/api/editar/podcast/sugerir': () => json({ detail: 'Te faltan créditos.' }, 402) } });
     render(<Subir />);
@@ -214,9 +219,11 @@ describe('editor IA: lo que cobra', () => {
     const alerta = await screen.findByText(/Te faltan créditos\./);
     expect(alerta).toHaveTextContent(monedero.cta);
     expect(screen.queryByRole('button', { name: 'Recargar' })).toBeNull();
+    expect(cobros).toEqual([]);
   });
 
   it('subir.cobro.saldo_conocido_que_no_alcanza_no_cobra', async () => {
+    const cobros = oirCobros();
     monedero = ponerMonedero(5);
     const f = montar();
     render(<Subir />);
@@ -226,9 +233,11 @@ describe('editor IA: lo que cobra', () => {
     await userEvent.click(boton);
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(llamadas(f, '/api/editar/podcast/sugerir')).toHaveLength(0);
+    expect(cobros).toEqual([]);
   });
 
   it('subir.cobro.refresca_el_saldo_y_pasa_a_revisando', async () => {
+    const cobros = oirCobros();
     let st = CON_FUENTE;
     const f = montar({
       estado: () => st,
@@ -244,6 +253,7 @@ describe('editor IA: lo que cobra', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Proponer' }));
     expect(await screen.findByText('Revisando tu metraje · transcribir y proponer el corte')).toBeInTheDocument();
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([expect.objectContaining({ costo: COSTO.creditos })]);
     expect(screen.queryByRole('button', { name: /Proponer/ })).toBeNull();
     // el POST va sin cuerpo, como siempre
     expect(llamadas(f, '/api/editar/podcast/sugerir')[0]![1]!.body).toBeUndefined();
@@ -539,6 +549,7 @@ describe('el panel de los dos caminos', () => {
 
 describe('la espera', () => {
   it('subir.espera.sondea_mientras_corre_y_para_al_terminar', async () => {
+    const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let st: EstadoEditar = CORRIENDO;
     const f = montar({ estado: () => st });
@@ -562,6 +573,7 @@ describe('la espera', () => {
     expect(gets()).toBe(alTerminar);
     // si falló o no encontró relleno, hubo devolución: el saldo se refresca
     expect(monedero.refrescar).toHaveBeenCalled();
+    expect(cobros).toEqual([]); // pero una devolución no vuela como un cobro
   });
 
   it('subir.espera.sin_red_con_la_corrida_viva_sigue_reintentando', async () => {
