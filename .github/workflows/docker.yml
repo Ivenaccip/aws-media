@@ -34,10 +34,13 @@ jobs:
       # segundos en vez de tras varios minutos de docker build.
       # --noconftest: tests/conftest.py importa pipeline.config, y estas reglas
       # solo leen dos archivos de texto — no hacen falta las deps del proyecto.
-      - name: Reglas del repo (dos ramas y frontera con producción)
+      # test_entorno_local.py va aquí por la misma razón y una más: sus tests de
+      # .gitignore preguntan por `git check-ignore`, y el contenedor no trae git
+      # ni .git/. Ahí se saltan solos; este paso es el único sitio donde corren.
+      - name: Reglas del repo (dos ramas, frontera con producción y .gitignore)
         run: |
           pip install --quiet pytest
-          python -m pytest tests/test_flujo_ramas.py tests/test_imagen_node.py -q --noconftest
+          python -m pytest tests/test_flujo_ramas.py tests/test_imagen_node.py tests/test_entorno_local.py -q --noconftest
 
       # Los nombres físicos de producción (pool y dominio de Cognito, prefijos
       # de SSM, máquina de estados) sintetizados desde la composición REAL de

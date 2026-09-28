@@ -34,6 +34,19 @@ RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
+WF_PATH = RAIZ / ".github" / "workflows" / "docker.yml"
+
+# Los tests que preguntan por `git check-ignore` miran el REPO, no la imagen:
+# .dockerignore excluye .git/ a propósito y el contenedor ni siquiera trae git.
+# Ahí se saltan; donde importa que corran es en el runner, y el workflow los
+# corre en su primer paso («Reglas del repo»), antes del build, para fallar en
+# segundos y no tras varios minutos de docker build. Mismo patrón que
+# tests/test_flujo_ramas.py. El skip no es un hueco: lo vigila el último test
+# de este archivo.
+sin_repo = pytest.mark.skipif(
+    not (RAIZ / ".git").exists(),
+    reason="sin .git/ (dentro del contenedor) — corren en el runner")
+
 from tools import env_local  # noqa: E402  (boto3 se importa dentro de funciones)
 
 FUENTE = (RAIZ / "tools" / "env_local.py").read_text(encoding="utf-8")
@@ -53,6 +66,7 @@ def escritas() -> set[str]:
 # ---------------------------------------------------------------------------
 # 1. no se comitea
 
+@sin_repo
 @pytest.mark.parametrize("ruta", [".env.local", ".env.dev.local"])
 def test_git_ignora_el_env_local(ruta):
     """Lleva DB_SECRET_ARN y el pool de Cognito. El patrón `.env` no lo cubre."""
@@ -63,6 +77,7 @@ def test_git_ignora_el_env_local(ruta):
         "prefijos: `.env.local` y `.env.*.local` van explícitos.")
 
 
+@sin_repo
 @pytest.mark.parametrize("ruta", ["tools/tanda1.txt", "tools/tanda1.txt.altas.tsv"])
 def test_git_ignora_las_listas_de_invitacion(ruta):
     """Las tandas y su bitácora llevan correos personales reales."""
@@ -71,6 +86,7 @@ def test_git_ignora_las_listas_de_invitacion(ruta):
     assert r.returncode == 0, f"git NO ignora {ruta}, y lleva correos reales."
 
 
+@sin_repo
 def test_el_escritor_se_niega_si_git_no_lo_ignora(tmp_path):
     """El cinturón del propio script, no solo el .gitignore de hoy."""
     assert not env_local.git_lo_ignora(tmp_path / "cableado.txt")
@@ -283,6 +299,26 @@ def test_el_entorno_del_cluster_se_pregunta_no_se_adivina():
     assert "cluster_del_entorno" in CREDITOS
     assert "def cluster_del_entorno" in FUENTE
     assert "describe_stacks" not in CREDITOS   # la pregunta vive en un solo sitio
+
+
+# ---------------------------------------------------------------------------
+# 7. el skip de arriba no puede volverse un hueco
+
+@pytest.mark.skipif(not WF_PATH.exists(),
+                    reason="sin .github/ (dentro del contenedor)")
+def test_los_tests_de_git_corren_fuera_del_contenedor():
+    """Si este archivo sale del paso «Reglas del repo», los tests marcados con
+    @sin_repo dejan de correr en TODAS partes: dentro del contenedor por falta
+    de .git/, y en ningún otro lado porque nadie los correría. Entonces el
+    .gitignore podría perder `.env.local` sin que nada se pusiera rojo."""
+    wf = WF_PATH.read_text(encoding="utf-8")
+    i = wf.index("- name: Reglas del repo")
+    j = wf.find("- name:", i + 10)
+    paso = wf[i:j if j != -1 else len(wf)]
+    assert "test_entorno_local.py" in paso
+    assert "--noconftest" in paso, (
+        "sin --noconftest el runner tendría que instalar todas las deps del "
+        "proyecto: tests/conftest.py importa pipeline.config")
 
 
 def test_el_env_example_manda_al_env_local():
