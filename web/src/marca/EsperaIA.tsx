@@ -11,13 +11,15 @@ export interface PropsEsperaIA {
   /** Milisegundos de silencio tras los que el orbe se apaga (el trabajo no). */
   tope?: number;
   /** Cambia cada vez que hay avance real: el orbe «late» y el tope reinicia. */
-  latido?: number;
+  latido?: number | string;
+  /** Sin contacto con el servidor no se afirma que la IA trabaja: el orbe reposa. */
+  reposo?: boolean;
   heroe?: boolean;
   /** Lo que dice el orbe cuando se agota el tope (el trabajo sigue). */
   textoAlAgotar?: string;
 }
 
-export function EsperaIA({ texto, tope, latido, heroe = false, textoAlAgotar }: PropsEsperaIA) {
+export function EsperaIA({ texto, tope, latido, reposo = false, heroe = false, textoAlAgotar }: PropsEsperaIA) {
   const hueco = useRef<HTMLSpanElement>(null);
   const mando = useRef<MandoOrbe | null>(null);
   const hayOrbe = typeof window !== 'undefined' && Boolean(window.orbe);
@@ -38,6 +40,7 @@ export function EsperaIA({ texto, tope, latido, heroe = false, textoAlAgotar }: 
 
   useEffect(() => { mando.current?.texto(texto); }, [texto]);
   useEffect(() => { if (latido !== undefined) mando.current?.latir(); }, [latido]);
+  useEffect(() => { mando.current?.estado(reposo ? 'idle' : 'pensando'); }, [reposo]);
 
   if (!hayOrbe) return <span role="status">{texto}</span>;
   return <span ref={hueco} />;

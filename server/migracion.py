@@ -93,6 +93,9 @@ PANTALLAS: dict[str, Pantalla] = {
     "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),
     # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día
     "mix": Pantalla(vieja="/mix.html", nueva="/estudio/mix/", etapa="nueva"),
+    # UI·8.9: crear una película. Cobra el guion al empezar, el resto al
+    # producir y cada imagen que se cambia; el 302 conserva ?p=, ?brief= y ?modo=
+    "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="nueva"),
 }
 
 
