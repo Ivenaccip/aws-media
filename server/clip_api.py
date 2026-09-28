@@ -229,7 +229,7 @@ def video(clip_id: str):
     doc = _leer(_key_doc(db.usuario_actual(), clip_id))
     if not isinstance(doc, dict) or not doc.get("key"):
         raise HTTPException(404, "no encontrado")
-    base = os.getenv("CDN_BASE", "").rstrip("/")
-    if not base:
-        raise HTTPException(503, "CDN_BASE no configurada — sin ella no hay media en nube")
-    return RedirectResponse(f"{base}/{doc['key']}")
+    url = media_sync.url_media(doc["key"])
+    if not url:
+        raise HTTPException(503, "sin CDN_BASE ni MEDIA_BUCKET — no hay media en nube")
+    return RedirectResponse(url)

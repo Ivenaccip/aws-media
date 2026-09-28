@@ -310,7 +310,11 @@ def dev(cdk):
     env = cdk.Environment(account="191241816158", region="us-east-1")
     app = cdk.App()
     db = DbStack(app, "aws-media-db-dev", env=env)
-    media = MediaStack(app, "aws-media-media-dev", env=env)
+    # MediaStack también recibe `entorno` desde la lista blanca del CDN: de él
+    # sale el CORS del bucket, y con el default (PROD) el bucket de dev diría
+    # que acepta subidas desde irremplazables.xyz. Lo caza el test de abajo, y
+    # el día que exista app_dev.py tiene que pasarlo igual.
+    media = MediaStack(app, "aws-media-media-dev", env=env, entorno=E)
     jobs = JobsStack(app, "aws-media-jobs-dev", env=env, cluster_db=db.cluster,
                      media_bucket=media.bucket,
                      cdn_domain=media.cdn.distribution_domain_name,

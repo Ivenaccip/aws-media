@@ -65,17 +65,27 @@ def test_confirmar_registra_en_db(monkeypatch):
     class S3:
         def head_object(self, Bucket, Key):
             return {"ContentLength": 999}
+
+    class Firma:
+        def generate_presigned_url(self, op, Params, ExpiresIn):
+            return f"https://s3.example/{Params['Key']}?firma"
     guardado = {}
     monkeypatch.setattr(media_api, "_s3", lambda: S3())
     monkeypatch.setattr(media_api.db, "reservar_nombre_editor", lambda u, n: True)
     monkeypatch.setattr(media_api.db, "cargar_proyecto_editor", lambda u, n: None)
     monkeypatch.setattr(media_api.db, "guardar_proyecto_editor",
                         lambda u, n, doc: guardado.update(u=u, n=n, doc=json.loads(doc)))
+    monkeypatch.setattr(media_api.media_sync, "_s3", lambda: Firma())
     r = media_api.confirmar(media_api.ConfirmarIn(
         proyecto="video-1", key="videos/video-1/subidas/clip.mp4"))
+    # La subida vive en `videos/`, que el CDN ya no sirve: la respuesta lleva
+    # una URL FIRMADA para el <video> de muestra de e1...
     assert r == {"key": "videos/video-1/subidas/clip.mp4", "archivo": "clip.mp4",
-                 "bytes": 999, "cdn": "https://cdn.test/videos/video-1/subidas/clip.mp4"}
+                 "bytes": 999,
+                 "cdn": "https://s3.example/videos/video-1/subidas/clip.mp4?firma"}
+    # ...y lo que se GUARDA no la lleva, porque caducaria dentro de la fila.
     assert guardado["n"] == "video-1" and guardado["doc"]["subidas"][0]["bytes"] == 999
+    assert "cdn" not in guardado["doc"]["subidas"][0]
 
 
 def test_confirmar_rechaza_key_de_otro_proyecto(monkeypatch):

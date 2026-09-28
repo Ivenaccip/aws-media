@@ -317,8 +317,12 @@ def test_shorts_task_pipeline_completo(tarea):
     assert reg["subidos"] == ["videos/v1/output/shorts/short_01_tiktok.mp4"]
     st = reg["fijados"][-1]
     assert st["render"]["estado"] == "listo"
-    assert st["render"]["salidas"][0]["url"] == \
-        "https://cdn.example.com/videos/v1/output/shorts/short_01_tiktok.mp4"
+    # Se persiste la CLAVE, no la URL: `videos/` ya no lo sirve el CDN, y una
+    # firmada guardada aquí caducaría dentro de Postgres. La arma al entregar
+    # media_sync.refrescar_urls, desde /api/shorts/<n>/estado.
+    assert st["render"]["salidas"][0]["key"] == \
+        "videos/v1/output/shorts/short_01_tiktok.mp4"
+    assert st["render"]["salidas"][0]["url"] is None
     assert reg["infra"] == "infra-shorts" and reg["devueltos"] == []
 
 

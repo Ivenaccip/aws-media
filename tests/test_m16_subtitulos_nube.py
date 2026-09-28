@@ -11,11 +11,22 @@ from pipeline import db, jobs, media_sync
 from server import overlays_api
 
 
+class _S3Firma:
+    """Firma determinista, para no depender de boto3 real en los tests."""
+
+    def generate_presigned_url(self, op, Params, ExpiresIn):  # noqa: N803
+        return f"https://s3.example/{Params['Key']}?firma"
+
+
 @pytest.fixture
 def nube(monkeypatch, tmp_path):
     monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
     monkeypatch.setenv("STATE_BACKEND", "postgres")
     monkeypatch.setenv("CDN_BASE", "https://cdn.example.com")
+    # En produccion las dos van juntas, y desde la lista blanca hace falta:
+    # `videos/` ya no lo sirve el CDN, se firma contra el bucket.
+    monkeypatch.setenv("MEDIA_BUCKET", "bucket-test")
+    monkeypatch.setattr(media_sync, "_s3", lambda: _S3Firma())
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path))
     docs = {"gen-abc": {"flags": {"cuts": True, "generado": True}},
             "video-2": {"flags": {"cuts": True},
@@ -119,14 +130,15 @@ def test_quemar_subida_409_sin_render(nube):
 
 
 # ---------------------------------------------------------------------------
-# archivo — en nube redirige al CDN (la UI pide la muestra por aquí)
+# archivo — en nube redirige FIRMADO (la UI pide la muestra por aquí)
 
-def test_archivo_nube_redirige_al_cdn(nube):
+def test_archivo_nube_redirige_firmado(nube):
+    """La muestra vive bajo `videos/`, que el CDN dejó de servir: va firmada."""
     r = nube.get("/editor/gen-abc/archivo/subs/muestra-10.0s.png",
                  follow_redirects=False)
     assert r.status_code in (302, 307)
     assert r.headers["location"] == \
-        "https://cdn.example.com/videos/gen-abc/work/subs/muestra-10.0s.png"
+        "https://s3.example/videos/gen-abc/work/subs/muestra-10.0s.png?firma"
 
 
 def test_archivo_nube_404_extension_rara(nube):
@@ -180,7 +192,10 @@ def test_estado_nube_listo_con_segmentos(nube, monkeypatch):
                         lambda key: SRT if key.endswith("subs.srt") else None)
     s = nube.get("/editor/gen-abc/api/subtitulos/estado").json()
     assert s["running"] is False and s["ok"] is True
-    assert s["url"].endswith("pelicula-subtitulado.mp4")
+    # Fila vieja: guardaba SOLO la URL del CDN, que hoy daría 403. El estado la
+    # destripa para sacar la clave y la vuelve a firmar.
+    assert s["url"] == \
+        "https://s3.example/videos/gen-abc/pelicula-subtitulado.mp4?firma"
     assert [seg["text"] for seg in s["segmentos"]] == ["hola mundo", "adiós"]
     assert s["segmentos"][0] == {"start": 1.0, "end": 2.5, "text": "hola mundo"}
     del nube.docs["gen-abc"]["subtitulos"]
@@ -258,8 +273,11 @@ def test_subtitulos_task_ok_sube_y_fija_listo(tarea, monkeypatch):
     assert "videos/gen-abc/pelicula-subtitulado.mp4" in registro["subidos"]
     assert "videos/gen-abc/work/subs/subs.srt" in registro["subidos"]
     assert registro["estado"]["estado"] == "listo"
-    assert registro["estado"]["url"] == \
-        "https://cdn.example.com/videos/gen-abc/pelicula-subtitulado.mp4"
+    # La clave se persiste; la URL se arma al entregar (refrescar_urls). Este
+    # ejecutor era el único que guardaba solo la URL, sin `key`.
+    assert registro["estado"]["key"] == \
+        "videos/gen-abc/pelicula-subtitulado.mp4"
+    assert registro["estado"]["url"] is None
     assert registro["infra"][0] == "infra-subtitulos" and registro["infra"][1] >= 0
 
 
@@ -296,8 +314,9 @@ def test_subtitulos_task_subida_quema_sobre_el_preview(tarea, monkeypatch):
     assert subtitulos_task.main("u1", "video-2") == 0
     assert vistos["base"].replace("\\", "/").endswith("output/preview-tight.mp4")
     assert "videos/video-2/output/preview-tight-subtitulado.mp4" in registro["subidos"]
-    assert registro["estado"]["url"] == \
-        "https://cdn.example.com/videos/video-2/output/preview-tight-subtitulado.mp4"
+    assert registro["estado"]["key"] == \
+        "videos/video-2/output/preview-tight-subtitulado.mp4"
+    assert registro["estado"]["url"] is None
 
 
 def test_subtitulos_task_subida_sin_render_fija_error(tarea):

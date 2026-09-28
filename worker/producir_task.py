@@ -67,7 +67,6 @@ def main(user_id: str, proyecto_id: str, fase: str = "todo") -> int:
         editor_dir = videos_root() / nombre
         subidos = media_sync.subir_dir(editor_dir, f"videos/{nombre}/")
         log.info("%s: puente %s con %d artefactos en S3", proyecto_id, nombre, subidos)
-        cdn = os.getenv("CDN_BASE", "").rstrip("/")
         doc = {
             "origen": {"generador": proyecto_id, "user_id": user_id},
             "flags": {
@@ -79,7 +78,8 @@ def main(user_id: str, proyecto_id: str, fase: str = "todo") -> int:
                 "key": f"videos/{nombre}/pelicula.mp4", "archivo": "pelicula.mp4",
                 "bytes": (editor_dir / "pelicula.mp4").stat().st_size
                 if (editor_dir / "pelicula.mp4").is_file() else 0,
-                "cdn": f"{cdn}/videos/{nombre}/pelicula.mp4",
+                # sin `cdn`: `videos/` ya no lo sirve el CDN y la URL firmada
+                # caducaría guardada. La arma refrescar_urls al entregar.
             }] if (editor_dir / "pelicula.mp4").is_file() else [],
         }
         db.guardar_proyecto_editor(user_id, nombre, json.dumps(doc, ensure_ascii=False))

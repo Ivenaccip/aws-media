@@ -25,7 +25,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from pipeline import db
+from pipeline import db, media_sync
 
 router = APIRouter(prefix="/api/media")
 
@@ -49,8 +49,13 @@ def _s3():
 
 
 def _cdn(key: str) -> str:
-    base = os.getenv("CDN_BASE", "").rstrip("/")
-    return f"{base}/{key}" if base else key
+    """La URL de la subida recién confirmada, para el <video> de muestra de e1.
+
+    Las subidas viven en `videos/<proyecto>/subidas/`, que el CDN ya no sirve:
+    sale firmada. El campo sigue llamándose `cdn` porque es el que lee
+    `static/e1.html`, y renombrarlo sería otro PR con su propio riesgo.
+    """
+    return media_sync.url_media(key) or key
 
 
 def _validar_nombre(nombre: str) -> str:
@@ -177,15 +182,19 @@ def confirmar(body: ConfirmarIn):
 
     usuario = db.usuario_actual()
     doc = db.cargar_proyecto_editor(usuario, proyecto) or {"subidas": []}
+    # La `cdn` NO se persiste: ahora es una URL firmada y caduca. Se guarda la
+    # clave, que es lo permanente, y la URL se arma al entregar.
     subida = {"key": body.key, "archivo": body.key.rsplit("/", 1)[-1],
-              "bytes": head["ContentLength"], "cdn": _cdn(body.key)}
+              "bytes": head["ContentLength"]}
     doc["subidas"] = [s for s in doc.get("subidas", []) if s["key"] != body.key] + [subida]
     db.guardar_proyecto_editor(usuario, proyecto, json.dumps(doc, ensure_ascii=False))
-    return subida
+    return {**subida, "cdn": _cdn(body.key)}
 
 
 @router.get("/{proyecto}")
 def subidas(proyecto: str):
     _bucket()
     doc = db.cargar_proyecto_editor(db.usuario_actual(), _validar_nombre(proyecto))
-    return {"subidas": (doc or {}).get("subidas", [])}
+    # `refrescar_urls` al entregar, no al cargar: hay filas viejas con la URL
+    # absoluta del CDN dentro, y esa URL ya contesta 403.
+    return media_sync.refrescar_urls({"subidas": (doc or {}).get("subidas", [])})

@@ -83,12 +83,11 @@ def main(user_id: str, nombre: str, estilo: str) -> int:
             else:
                 log.warning("%s: edited-transcript no derivado:\n%s", nombre,
                             ((et.stdout or "") + (et.stderr or ""))[-400:])
-        cdn = os.getenv("CDN_BASE", "").rstrip("/")
         key = f"{prefijo}output/preview-{estilo}.mp4"
-        # `key` va aparte de la URL para que el botón de descargar pueda pedir
-        # el archivo firmado en vez de abrirlo en una pestaña (M22 · D)
-        render.update(estado="listo", key=key,
-                      url=f"{cdn}/{key}" if cdn else None)
+        # Solo la `key`. La URL se arma al entregar el documento
+        # (media_sync.refrescar_urls): `videos/` ya no lo sirve el CDN y una
+        # URL firmada guardada aquí caducaría dentro de Postgres.
+        render.update(estado="listo", key=key, url=None)
         log.info("%s: render %s listo → %s", nombre, estilo, render["url"])
     else:
         render.update(estado="error", log=cola)
