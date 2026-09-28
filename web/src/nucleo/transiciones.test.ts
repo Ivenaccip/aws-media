@@ -16,9 +16,11 @@ import {
   trasLaLlegada,
 } from './transiciones';
 
-function evento(tipo: 'pageswap' | 'pagereveal', conTransicion: boolean) {
+function evento(tipo: 'pageswap' | 'pagereveal', conTransicion: boolean, destino?: string) {
   const e = new Event(tipo);
   Object.defineProperty(e, 'viewTransition', { value: conTransicion ? {} : null });
+  // pageswap dice a dónde se va (Chrome 123+; Safari no lo trae)
+  if (destino) Object.defineProperty(e, 'activation', { value: { entry: { url: destino } } });
   dispatchEvent(e);
 }
 
@@ -101,6 +103,20 @@ describe('el nombre de la miniatura', () => {
     evento('pageswap', true);
     evento('pagereveal', true);
     expect(tocada.style.viewTransitionName).toBe('');
+  });
+
+  it('si se sabe a dónde va y no es a esa película, no se nombra', () => {
+    const tocada = imagen();
+    tocarMiniatura('p1', '/api/a.jpg', tocada);
+    evento('pageswap', true, '/estudio/agenda/');
+    expect(tocada.style.viewTransitionName).toBe('');
+    tocarMiniatura('p1', '/api/a.jpg', tocada);
+    evento('pageswap', true, '/crear.html?p=p2');
+    expect(tocada.style.viewTransitionName).toBe('');
+    // a su película, sí
+    tocarMiniatura('p1', '/api/a.jpg', tocada);
+    evento('pageswap', true, '/crear.html?p=p1');
+    expect(tocada.style.viewTransitionName).toBe(NOMBRE_MINIATURA);
   });
 
   it('un clic que no terminó en navegación no deja nombre para el siguiente', () => {

@@ -11,6 +11,9 @@ import { animacionesVivas } from './pantallas';
 declare global {
   interface Window {
     __ui24: string[];
+    /** Las que se congelan en su primer cuadro al arrancar, para medirlas a
+     *  mano: una máquina cargada llegaría a buscarlas ya terminadas. */
+    __congelar: string[];
   }
 }
 
@@ -21,12 +24,20 @@ declare global {
 async function oir(page: Page) {
   await page.addInitScript(() => {
     window.__ui24 = [];
+    window.__congelar = [];
     document.addEventListener(
       'animationstart',
       e => {
         if (!/^(campo-tiembla|trazo-se-dibuja|guardado-llega)$/.test(e.animationName)) return;
         const d = parseFloat(getComputedStyle(e.target as Element).animationDuration) * 1000;
         window.__ui24.push(`${e.animationName} ${Math.round(d)}`);
+        if (!window.__congelar.includes(e.animationName)) return;
+        for (const a of (e.target as Element).getAnimations()) {
+          if ((a as CSSAnimation).animationName === e.animationName && a.playState === 'running') {
+            a.pause();
+            a.currentTime = 0;
+          }
+        }
       },
       true,
     );
@@ -40,24 +51,34 @@ const arrancaron = (page: Page) =>
     return window.__ui24.splice(0);
   });
 
+const congelar = (page: Page, ...nombres: string[]) => page.evaluate(n => { window.__congelar = n; }, nombres);
+
 // cuántos px se movió la caja a los `ms` del temblor (lo congela ahí y lo acaba)
 const translateEn = (caja: Locator, ms: number) =>
-  caja.evaluate((el, t) => {
-    const a = el.getAnimations()[0]!;
-    a.pause();
-    a.currentTime = t;
+  caja.evaluate(async (el, t) => {
+    let a: Animation | undefined;
+    for (let i = 0; i < 120 && !a; i++) {
+      a = el.getAnimations().find(x => (x as CSSAnimation).animationName === 'campo-tiembla');
+      if (!a) await new Promise(r => requestAnimationFrame(r));
+    }
+    a!.pause();
+    a!.currentTime = t;
     const v = parseFloat(getComputedStyle(el).translate);
-    a.finish();
+    a!.finish();
     return v;
   }, ms);
 
 // cuánto trazo falta por dibujar (1 o más = nada, 0 = entero), a los `ms` si se dice
 const faltaDelTrazo = (trazo: Locator, ms?: number) =>
-  trazo.evaluate((p, t) => {
-    const a = p.getAnimations()[0];
-    if (a && t !== null) {
-      a.pause();
-      a.currentTime = t;
+  trazo.evaluate(async (p, t) => {
+    if (t !== null) {
+      let a: Animation | undefined;
+      for (let i = 0; i < 120 && !a; i++) {
+        a = p.getAnimations().find(x => (x as CSSAnimation).animationName === 'trazo-se-dibuja');
+        if (!a) await new Promise(r => requestAnimationFrame(r));
+      }
+      a!.pause();
+      a!.currentTime = t;
     }
     return parseFloat(getComputedStyle(p).strokeDashoffset);
   }, ms ?? null);
@@ -79,11 +100,13 @@ test('vitrina: al abrir nada tiembla ni se dibuja (la palomita del aviso está q
 
 test('vitrina: el error que aparece hace temblar la caja; repetirlo, teclear o cambiarle el texto, no', async ({ page }) => {
   const { campo, guardar } = await vitrina(page);
+  await congelar(page, 'campo-tiembla');
   await guardar.click();
   await expect(page.getByText('Escribe el nombre de tu canal.')).toBeVisible();
   await expect(campo).toHaveAttribute('aria-invalid', 'true');
   expect(await translateEn(campo, 20)).toBeCloseTo(-6, 1); // a la izquierda a los 20 ms
   expect(await arrancaron(page)).toEqual(['campo-tiembla 240']);
+  await congelar(page);
   await guardar.click(); // el mismo error otra vez
   await campo.fill('a'); // teclas
   await guardar.click(); // otro texto, sin pasar por «sin error»
@@ -101,6 +124,7 @@ test('vitrina: se arregla y vuelve a fallar: tiembla otra vez (a la derecha a lo
   await guardar.click();
   await expect(campo).not.toHaveAttribute('aria-invalid');
   await campo.fill('');
+  await congelar(page, 'campo-tiembla');
   await guardar.click();
   await expect(campo).toHaveAttribute('aria-invalid', 'true');
   expect(await translateEn(campo, 60)).toBeCloseTo(6, 1);
@@ -111,6 +135,7 @@ test('vitrina: se arregla y vuelve a fallar: tiembla otra vez (a la derecha a lo
 test('vitrina: «Guardado» se dibuja junto al botón, se anuncia y el foco se queda en «Guardar»', async ({ page }) => {
   const { campo, guardar, listo } = await vitrina(page);
   await campo.fill('Mi canal');
+  await congelar(page, 'trazo-se-dibuja');
   await guardar.click();
   await expect(listo).toBeVisible();
   await expect(guardar).toBeFocused();

@@ -3,6 +3,8 @@
 // revés. Con «reducir movimiento», el mes cambia al instante.
 import { expect, test, type Page } from '@playwright/test';
 
+import { cuantasTransiciones, grabarTransiciones, ultimaTransicion } from './pantallas';
+
 const hoy = new Date();
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dia = (n: number) => {
@@ -45,26 +47,29 @@ const animando = (page: Page) =>
 const mesALaVista = (page: Page) => page.locator('[data-cal="mes-0"]').textContent();
 
 test('«Mes siguiente» sale por la izquierda y entra por la derecha; «Mes anterior», al revés', async ({ page }) => {
+  await grabarTransiciones(page);
   await mixVacio(page);
   await page.waitForTimeout(300);
   expect(await mesALaVista(page)).toBe(nombre(0));
 
   await page.getByRole('button', { name: 'Mes siguiente' }).click();
-  await expect.poll(() => animando(page)).toEqual(expect.arrayContaining([
+  await expect.poll(() => cuantasTransiciones(page)).toBe(1);
+  const primera = await ultimaTransicion(page);
+  expect(primera).toEqual(expect.arrayContaining([
     '::view-transition-old(cal-dias-0) cal-sale-izq',
     '::view-transition-new(cal-dias-0) cal-entra-der',
   ]));
   // el encabezado solo se funde: no se desliza
-  const conMes = (await animando(page)).filter(a => a.includes('(cal-mes-0)'));
-  expect(conMes.some(a => /cal-(sale|entra)/.test(a))).toBe(false);
+  expect(primera.filter(a => a.includes('(cal-mes-0)')).some(a => /cal-(sale|entra)/.test(a))).toBe(false);
   // la página no se fotografía entera: solo el calendario vuela
-  expect((await animando(page)).some(a => a.includes('(root)'))).toBe(false);
+  expect(primera.some(a => a.includes('(root)'))).toBe(false);
   await expect.poll(() => mesALaVista(page)).toBe(nombre(1));
   await expect(page.locator('p[aria-live="polite"]').filter({ hasText: nombre(1) })).toHaveCount(1);
   await expect.poll(() => animando(page)).toEqual([]);
 
   await page.getByRole('button', { name: 'Mes anterior' }).click();
-  await expect.poll(() => animando(page)).toEqual(expect.arrayContaining([
+  await expect.poll(() => cuantasTransiciones(page)).toBe(2);
+  expect(await ultimaTransicion(page)).toEqual(expect.arrayContaining([
     '::view-transition-old(cal-dias-0) cal-sale-der',
     '::view-transition-new(cal-dias-0) cal-entra-izq',
   ]));
@@ -80,10 +85,11 @@ test('dos clics rápidos en «Mes siguiente» avanzan dos meses', async ({ page 
 });
 
 test('en escritorio se ven dos meses y los dos viajan', async ({ page }) => {
+  await grabarTransiciones(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await mixVacio(page);
   await page.getByRole('button', { name: 'Mes siguiente' }).click();
-  await expect.poll(() => animando(page)).toEqual(expect.arrayContaining([
+  await expect.poll(() => ultimaTransicion(page)).toEqual(expect.arrayContaining([
     '::view-transition-new(cal-dias-0) cal-entra-der',
     '::view-transition-new(cal-dias-1) cal-entra-der',
   ]));

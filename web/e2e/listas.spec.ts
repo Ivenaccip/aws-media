@@ -3,7 +3,9 @@
 // Con «reducir movimiento», todo al instante.
 import { expect, test, type Page } from '@playwright/test';
 
-import { animacionesVivas } from './pantallas';
+import {
+  animacionesVivas, arranques, congelarArranques, cuantasTransiciones, grabarTransiciones, oirArranques, ultimaTransicion,
+} from './pantallas';
 
 const CUENTA = (id: string, cuenta: string) => ({ id, red: 'instagram', cuenta });
 const PERFIL = (id: string, estado: string) => ({
@@ -55,21 +57,22 @@ const filas = (page: Page) => page.evaluate(() =>
   [...document.querySelectorAll<HTMLElement>('.fila-viva')].map(f => f.style.getPropertyValue('--vt-nombre')));
 
 test('la cuenta que se agrega abre su espacio; la que ya estaba no se anima', async ({ page }) => {
+  // lo que arranca, y la que abre se queda en su primer cuadro para medirla
+  await oirArranques(page, /^fila-/);
   await competencia(page);
+  await congelarArranques(page, 'fila-abre');
   await page.getByPlaceholder(/instagram\.com\/lacuenta/).fill('instagram.com/dos');
   await page.getByRole('button', { name: 'Agregar' }).click();
   await page.getByText('@dos').waitFor();
-  // solo las de filas (el botón «Agregar» tiene su propia transición de hover)
-  const vivas = (await page.evaluate(animacionesVivas)).filter(a => a.nombre.startsWith('fila-'));
-  // Chromium sabe animar hasta `height: auto` (interpolate-size): abre, no solo se funde
-  expect(vivas.map(a => `${a.nombre} ${a.duracion} ${a.objetivo}`)).toEqual([
-    expect.stringMatching(/^fila-abre 240 li\.fila-viva\.fila-entra/),
-  ]);
+  // Chromium sabe animar hasta `height: auto` (interpolate-size): abre, no
+  // solo se funde; y solo la nueva
+  await expect.poll(() => arranques(page)).toEqual(['fila-abre 240']);
+  expect(await page.locator('li.fila-viva.fila-entra').count()).toBe(1);
   // y de verdad abre: a la mitad mide menos que al final (en una columna flex
   // el mínimo automático le ganaba al height: 0 y solo se fundía)
   const alto = await page.evaluate(() => {
     const li = document.querySelector<HTMLElement>('li.fila-entra')!;
-    const a = li.getAnimations()[0]!;
+    const a = li.getAnimations().find(x => (x as CSSAnimation).animationName === 'fila-abre')!;
     a.pause();
     a.currentTime = 120;
     const media = li.getBoundingClientRect().height;
@@ -82,15 +85,20 @@ test('la cuenta que se agrega abre su espacio; la que ya estaba no se anima', as
 });
 
 test('re-analizar sube el perfil a la cima: las tarjetas viajan, y nada entra animado', async ({ page }) => {
+  await grabarTransiciones(page);
   await estilos(page);
   expect(await filas(page)).toEqual(['perfil-ig-bueno', 'perfil-ig-roto']);
   await page.getByRole('button', { name: /Analizar/ }).click();
-  await expect.poll(() =>
-    page.evaluate(() => document.getAnimations().map(a => (a.effect as KeyframeEffect | null)?.pseudoElement ?? '').filter(Boolean)),
-  ).toEqual(expect.arrayContaining(['::view-transition-group(perfil-ig-roto)', '::view-transition-group(perfil-ig-bueno)']));
+  await expect.poll(() => cuantasTransiciones(page)).toBe(1);
+  const vuelan = await ultimaTransicion(page);
+  expect(vuelan).toEqual(expect.arrayContaining([
+    expect.stringMatching(/^::view-transition-group\(perfil-ig-roto\)/),
+    expect.stringMatching(/^::view-transition-group\(perfil-ig-bueno\)/),
+  ]));
   // la página no se fotografía entera: queda viva mientras tanto
-  const pseudos = await page.evaluate(() => document.getAnimations().map(a => (a.effect as KeyframeEffect | null)?.pseudoElement ?? ''));
-  expect(pseudos.some(p => p.includes('(root)'))).toBe(false);
+  expect(vuelan.some(p => p.includes('(root)'))).toBe(false);
+  // y la píldora del saldo va aparte, quieta: nada suyo se anima
+  expect(vuelan.some(p => p.includes('(monedero)'))).toBe(false);
   await expect.poll(() => filas(page)).toEqual(['perfil-ig-roto', 'perfil-ig-bueno']);
   expect(await page.locator('.fila-entra').count()).toBe(0);
 });

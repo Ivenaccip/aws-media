@@ -633,6 +633,19 @@ describe('UI·18 · la miniatura se agranda hasta su película', () => {
     expect(miniaturaQueLlega('p1')?.src).toBe('/api/proyectos/p1/archivo/personaje.png');
   });
 
+  it('con Ctrl, ⌘, Shift, Alt o la rueda se abre en otra pestaña: no se deja nada dicho', async () => {
+    montar({ proyectos: [P1] });
+    pintar();
+    const liga = await screen.findByRole('link', { name: 'La historia del café' });
+    for (const tecla of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+      fireEvent.click(liga, tecla);
+      expect(miniaturaQueLlega('p1')).toBeNull();
+    }
+    // un clic normal, sí
+    fireEvent.click(liga);
+    expect(miniaturaQueLlega('p1')).not.toBeNull();
+  });
+
   it('una película que no está lista abre su progreso: no hay reproductor al que agrandarse', async () => {
     montar({ proyectos: [{ ...P1, estado: 'produciendo' }] });
     pintar();

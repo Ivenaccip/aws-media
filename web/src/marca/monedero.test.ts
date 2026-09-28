@@ -113,6 +113,12 @@ describe('el saldo rueda', () => {
     expect($('#mon-aviso').textContent).toBe('');
   });
 
+  it('lo que se VE (el ::after de #mon-cifra) también dice «créditos ✦»', () => {
+    cargar();
+    const hoja = [...document.querySelectorAll('style')].map(s => s.textContent).join('');
+    expect(hoja).toContain('#mon-cifra::after{content:counter(mon-saldo) " créditos ✦"}');
+  });
+
   it('lo que se ve no se lee; lo que se lee es el número real', async () => {
     cargar();
     await vi.waitFor(() => expect(cifra()).toBe('120'));

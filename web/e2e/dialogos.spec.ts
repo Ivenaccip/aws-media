@@ -3,7 +3,7 @@
 // vitrina viven un Dialogo y un Confirmar de muestra, sin API.
 import { expect, test, type Page } from '@playwright/test';
 
-import { animacionesVivas } from './pantallas';
+import { animacionesVivas, arranques, oirArranques, olvidarArranques } from './pantallas';
 
 // solo las del diálogo: la vitrina tiene sus propias animaciones (el orbe,
 // los esqueletos) que no vienen al caso
@@ -16,17 +16,21 @@ for (const caso of [
   { boton: 'Borrar el proyecto…', rol: 'alertdialog' as const },
 ]) {
   test(`${caso.rol}: entra, sale más rápido de lo que entró y el foco vuelve`, async ({ page }) => {
+    // lo que arranca, no lo que sigue vivo: 100 ms se acaban mientras una
+    // máquina cargada llega a mirar
+    await oirArranques(page, /^(caja|velo)-(entra|sale)$/);
     await page.goto('/estudio/_vitrina/');
     const abrir = page.getByRole('button', { name: caso.boton });
     await abrir.focus();
     await page.keyboard.press('Enter');
     const d = page.getByRole(caso.rol);
     await expect(d).toBeVisible();
-    expect(await nombres(page)).toEqual(expect.arrayContaining(['caja-entra 150', 'velo-entra 150']));
+    await expect.poll(() => arranques(page)).toEqual(expect.arrayContaining(['caja-entra 150', 'velo-entra 150']));
     await expect.poll(() => nombres(page)).toEqual([]);
+    await olvidarArranques(page);
     await page.keyboard.press('Escape');
-    // sigue en pantalla mientras sale: Radix espera el animationend
-    expect(await nombres(page)).toEqual(expect.arrayContaining(['caja-sale 100', 'velo-sale 100']));
+    // sale animada: Radix espera su animationend para desmontar
+    await expect.poll(() => arranques(page)).toEqual(expect.arrayContaining(['caja-sale 100', 'velo-sale 100']));
     await expect(d).toBeHidden();
     await expect(abrir).toBeFocused();
   });

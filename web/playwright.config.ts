@@ -9,8 +9,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // PW_PUERTO: para correr dos copias del repo a la vez sin que una use el
-// servidor (y el dist) de la otra
-const PUERTO = Number(process.env.PW_PUERTO ?? 4173);
+// servidor (y el dist) de la otra. No es el 4173 de `vite preview`: con uno
+// abierto, Playwright lo reutilizaría (sin los /api simulados ni static/)
+const PUERTO = Number(process.env.PW_PUERTO ?? 4317);
 const canal = process.env.PW_CANAL;
 
 export default defineConfig({
@@ -25,7 +26,8 @@ export default defineConfig({
   },
   webServer: {
     command: `node e2e/servidor.mjs ${PUERTO}`,
-    url: `http://127.0.0.1:${PUERTO}/estudio/inicio/`,
+    // solo e2e/servidor.mjs contesta aquí: otro servidor en el puerto no se reutiliza
+    url: `http://127.0.0.1:${PUERTO}/__e2e`,
     reuseExistingServer: !process.env.CI,
   },
 });

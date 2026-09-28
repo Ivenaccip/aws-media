@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(WEB, 'dist');
 const ESTATICOS = resolve(WEB, '..', 'static');
-const PUERTO = Number(process.argv[2] || 4173);
+const PUERTO = Number(process.argv[2] || 4317);
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',
@@ -74,6 +74,8 @@ function archivo(raiz, ruta) {
 createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   const ruta = decodeURIComponent(url.pathname);
+  // la seña de este servidor: playwright.config.ts la pide antes de reutilizarlo
+  if (ruta === '/__e2e') return json(res, 200, { e2e: true });
   if (ruta in VIEJAS) {
     res.writeHead(302, { Location: VIEJAS[ruta] + url.search, 'Cache-Control': 'no-store' });
     return res.end();

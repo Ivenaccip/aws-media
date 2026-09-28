@@ -123,7 +123,7 @@ def test_el_lockfile_tampoco_trae_prohibidas():
 
 def _fuentes_web():
     return [p for p in WEB.rglob("*") if p.is_file()
-            and not {"node_modules", "dist"} & set(p.relative_to(WEB).parts)
+            and not {"node_modules", "dist", "playwright-report", "test-results"} & set(p.relative_to(WEB).parts)
             and p.suffix in {".ts", ".tsx", ".js", ".html", ".css"}]
 
 

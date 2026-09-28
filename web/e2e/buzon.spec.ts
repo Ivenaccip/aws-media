@@ -3,7 +3,7 @@
 // servidor no manda el campo (el buzón es UI·17): aquí se simula.
 import { expect, test, type Page } from '@playwright/test';
 
-import { animacionesVivas } from './pantallas';
+import { animacionesVivas, arranques, oirArranques, olvidarArranques } from './pantallas';
 
 async function conAvisos(page: Page, ...lista: Array<number | undefined>) {
   let i = 0;
@@ -24,21 +24,23 @@ test('sin el campo (el servidor de hoy) no hay punto', async ({ page }) => {
 });
 
 test('avisos nuevos: el punto llega y suelta una onda; con el mismo número no se repite', async ({ page }) => {
+  // lo que arranca: la llegada dura 300 ms y una máquina cargada llega tarde a mirarla
+  await oirArranques(page, /^mon-(punto-llega|onda)$/);
   await conAvisos(page, 2, 2, 3);
   await page.goto('/estudio/estilos/');
   const punto = page.locator('#mon-punto');
   await expect(punto).toBeVisible();
-  expect(await delPunto(page)).toEqual(expect.arrayContaining(['mon-punto-llega', 'mon-onda']));
+  await expect.poll(() => arranques(page)).toEqual(['mon-punto-llega 300', 'mon-onda 900']);
   await expect.poll(() => delPunto(page), { timeout: 3000 }).toEqual([]);
+  await olvidarArranques(page);
 
   await page.evaluate(() => window.monedero!.refrescar()); // mismo número
-  await page.waitForTimeout(400);
-  expect(await delPunto(page)).toEqual([]);
+  await page.waitForTimeout(700); // más que la espera de la onda (250 ms)
+  expect(await arranques(page)).toEqual([]);
 
   await page.evaluate(() => window.monedero!.refrescar()); // uno más
-  await expect.poll(() => delPunto(page)).toContain('mon-onda');
-  // ya estaba: no vuelve a crecer desde cero
-  expect(await delPunto(page)).not.toContain('mon-punto-llega');
+  // ya estaba: no vuelve a crecer desde cero, solo la onda
+  await expect.poll(() => arranques(page)).toEqual(['mon-onda 900']);
 });
 
 test('el punto no tapa la píldora ni se encima con ella', async ({ page }) => {

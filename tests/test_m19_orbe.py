@@ -25,13 +25,14 @@ def _web(*patrones: str) -> list[Path]:
     """Los fuentes de web/ (Fase 3 de docs/PLAN-UI.md) que casan con los patrones.
 
     Si web/ todavía no existe no hay nada que vigilar: lista vacía, no error.
-    node_modules/ (de terceros) y dist/ (compilado de estos mismos fuentes) no
+    node_modules/ (de terceros), dist/ (compilado de estos mismos fuentes) y lo
+    que dejan las pruebas de navegador (playwright-report/, test-results/) no
     se miran."""
     web = RAIZ / "web"
     if not web.is_dir():
         return []
     return [p for patron in patrones for p in web.glob(patron)
-            if not {"node_modules", "dist"} & set(p.relative_to(web).parts)]
+            if not {"node_modules", "dist", "playwright-report", "test-results"} & set(p.relative_to(web).parts)]
 
 
 def _nombre(p: Path) -> str:

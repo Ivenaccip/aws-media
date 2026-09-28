@@ -3,7 +3,7 @@
 // ni interpola la propiedad registrada.
 import { expect, test, type Page } from '@playwright/test';
 
-import { animacionesVivas } from './pantallas';
+import { animacionesVivas, arranques, congelarArranques, oirArranques } from './pantallas';
 
 // /api/creditos va contestando los saldos de la lista, uno por petición (el
 // último se repite)
@@ -37,15 +37,24 @@ test('la primera carga no rueda ni se tiñe', async ({ page }) => {
 });
 
 test('un saldo menor rueda hasta el nuevo, tiñe la píldora y lo anuncia', async ({ page }) => {
+  // lo que arranca; y el número se queda en su primer cuadro para medirlo a
+  // media rodada sin carreras con una máquina lenta
+  await oirArranques(page, /^(transición de --mon-saldo|mon-tinte)$/);
   await saldos(page, 120, 90);
   await page.goto('/estudio/estilos/');
   await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
+  await congelarArranques(page, 'transición de --mon-saldo');
   await page.evaluate(() => window.monedero!.refrescar());
   await expect(page.locator('#mon-aviso')).toHaveText('Tu saldo: 90 créditos');
-  const vivas = (await page.evaluate(animacionesVivas)).map(a => a.nombre);
-  expect(vivas).toEqual(expect.arrayContaining(['transición de --mon-saldo', 'mon-tinte']));
-  await page.waitForTimeout(250);
-  const aMedias = await cifra(page);
+  await expect.poll(() => arranques(page)).toEqual(expect.arrayContaining(['transición de --mon-saldo 700', 'mon-tinte 900']));
+  const aMedias = await page.evaluate(() => {
+    const c = document.querySelector('#mon-cifra')!;
+    const t = c.getAnimations().find(a => (a as CSSTransition).transitionProperty === '--mon-saldo')!;
+    t.currentTime = 250;
+    const v = Number(getComputedStyle(c).getPropertyValue('--mon-saldo'));
+    t.finish();
+    return v;
+  });
   expect(aMedias).toBeGreaterThan(90);
   expect(aMedias).toBeLessThan(120);
   await expect.poll(() => cifra(page)).toBe(90);
@@ -54,6 +63,7 @@ test('un saldo menor rueda hasta el nuevo, tiñe la píldora y lo anuncia', asyn
 });
 
 test('Estilos cobra: vuela «−7» del botón a la píldora y el saldo baja', async ({ page }) => {
+  await oirArranques(page, /^mon-vuela$/);
   await saldos(page, 120, 113);
   await estilosConCobro(page, { status: 200, json: { lanzado: true, id: 'e1', creditos: 7 } });
   await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
@@ -61,7 +71,7 @@ test('Estilos cobra: vuela «−7» del botón a la píldora y el saldo baja', a
   const vuelo = page.locator('.mon-vuelo');
   await expect(vuelo).toHaveText('−7');
   await expect(vuelo).toHaveAttribute('aria-hidden', 'true');
-  expect((await page.evaluate(animacionesVivas)).map(a => a.nombre)).toContain('mon-vuela');
+  await expect.poll(() => arranques(page)).toEqual(['mon-vuela 600']);
   await expect(vuelo).toHaveCount(0);
   await expect.poll(() => cifra(page)).toBe(113);
 });

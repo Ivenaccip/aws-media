@@ -984,7 +984,10 @@ describe('crear · transversales', () => {
       abrir(p);
       await screen.findByRole('heading', { level: 1 });
       if (p.estado === 'revision') await screen.findByRole('button', { name: 'Producir ✦ ' + PRODUCIR });
-      expect(principales()).toBe(p.estado === 'listo' ? 0 : 1);
+      // el principal de 'error' («Reintentar ✦ N») espera al precio, que llega
+      // después del título: se espera a que aparezca en vez de contar al vuelo
+      if (p.estado === 'listo') expect(principales()).toBe(0);
+      else await waitFor(() => expect(principales()).toBe(1));
       cleanup();
     }
   });
