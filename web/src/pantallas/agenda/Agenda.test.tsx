@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { simularSalida } from '../../prueba/salida';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Agenda } from './Agenda';
 import { validar, type Pagina, type Programada } from './logica';
@@ -498,5 +499,23 @@ describe('agenda', () => {
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Agenda tus publicaciones');
     await screen.findByText(/No tienes nada programado/);
+  });
+});
+
+describe('UI·20 · el diálogo tarda 100 ms en irse', () => {
+  it('cancelar con respuesta instantánea: al terminar la salida, el foco va a «Actualizar» y no al body', async () => {
+    const salida = simularSalida();
+    let n = 0;
+    montar({
+      '/api/agenda': () => json(pagina(n++ === 0 ? [UNO] : [])),
+      '/api/agenda/cancelar': () => json({ id: 'sch_1', cancelado: true }),
+    });
+    render(<Agenda />);
+    await userEvent.click(within(await tarjeta('Instagram')).getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, cancelarla' }));
+    await screen.findByText('Publicación cancelada.');
+    // la tarjeta que abrió el diálogo ya no existe cuando la caja termina de irse
+    salida.terminar();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Actualizar' })).toHaveFocus());
   });
 });

@@ -314,6 +314,9 @@ export function Agenda() {
         }}
         titulo="Cambiar la hora"
         focoInicial={campo}
+        // UI·20: el foco vuelve 100 ms después de cerrar; si la tarjeta que
+        // abrió ya no está, va a «Actualizar»
+        focoDeRespaldo={actualizar}
         acciones={
           <>
             <Boton nivel="secundario" onClick={cerrarHora}>
@@ -359,6 +362,7 @@ export function Agenda() {
         }}
         titulo="¿Cancelar esta publicación?"
         descripcion={aCancelar ? confirmacion(aCancelar) : ''}
+        focoDeRespaldo={actualizar}
         confirmar="Sí, cancelarla"
         cancelar="No, dejarla"
         peligro

@@ -86,11 +86,30 @@
   --inset-shadow-*: initial;
   --drop-shadow-*: initial;
 
-  /* movimiento (§4) */
+  /* movimiento (§4). «salida» frena al llegar (ease-out, para lo que entra);
+     «entrada» acelera al irse (ease-in, para lo que sale) */
   --ease-*: initial;
   --ease-salida: cubic-bezier(0, 0, 0.2, 1);
+  --ease-entrada: cubic-bezier(0.4, 0, 1, 1);
   --default-transition-duration: 120ms;
   --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+
+  /* UI·20: los diálogos (ui/Dialogo.tsx y ui/Confirmar.tsx). Radix pone
+     data-state=open|closed y su Presence espera el animationend de la salida
+     antes de desmontar: no hace falta JS. Entran en 150 ms y salen en 100:
+     irse más rápido de lo que se llega es lo que los hace sentir ágiles. La
+     caja se centra con `translate`; la escala va en `scale`, que no lo pisa.
+     Ojo con los nombres: Presence los compara con includes(), así que
+     ninguno puede contener a otro («aparece» cabe en «desaparece», y cerrar
+     a media entrada desmontaría sin salida) */
+  --animate-velo-entra: velo-entra 150ms var(--ease-salida);
+  --animate-velo-sale: velo-sale 100ms var(--ease-entrada);
+  --animate-caja-entra: caja-entra 150ms var(--ease-salida);
+  --animate-caja-sale: caja-sale 100ms var(--ease-entrada);
+  @keyframes velo-entra { from { opacity: 0; } }
+  @keyframes velo-sale { to { opacity: 0; } }
+  @keyframes caja-entra { from { opacity: 0; scale: 0.96; } }
+  @keyframes caja-sale { to { opacity: 0; scale: 0.96; } }
 }
 
 /* UI·18: los tokens de movimiento. Van fuera de @theme porque Tailwind no
