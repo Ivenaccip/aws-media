@@ -212,10 +212,12 @@
 }
 
 /* UI·18: entre pantallas, un fundido en vez del parpadeo en blanco. Solo
-   entre dos páginas que lo piden (las de web/; las viejas de static/ navegan
-   como siempre) y solo si el sistema no pide reducir movimiento. Donde el
+   entre dos páginas que lo piden (las de web/ y, con static/carta.css, las
+   viejas) y solo si el sistema no pide reducir movimiento. Donde el
    navegador no lo sabe hacer (antes de Chrome 126 o Safari 18.2), se navega
-   exactamente como antes. */
+   exactamente como antes. Y donde lo hace pero no espera al módulo de la
+   pantalla (blocking="render", que Safari no respeta), monedero.js se la
+   salta: fundirse hacia una página vacía sería el mismo parpadeo, animado. */
 @media (prefers-reduced-motion: no-preference) {
   @view-transition { navigation: auto; }
 }
@@ -236,7 +238,10 @@
    llega nuevo abre su espacio de 0 a su altura en 240 ms, en vez de empujar
    todo de golpe (con interpolate-size, Chrome 129+; en los demás solo se
    funde). Lo que acaba de quedar listo se enciende un instante (600 ms). En
-   @layer components: las utilidades de Tailwind siguen ganando. */
+   @layer components: las utilidades de Tailwind siguen ganando. El
+   min-height: 0 es para las listas en columna flex (Competencia): ahí el
+   mínimo automático de un flex item es su contenido y le ganaba al height: 0
+   del keyframe; la fila ocupaba todo desde el primer cuadro y solo se fundía. */
 @keyframes fila-entra { from { opacity: 0; } }
 @keyframes fila-abre { from { opacity: 0; height: 0; } }
 @keyframes destello { from { background-color: var(--color-exito-fondo); } }
@@ -245,7 +250,7 @@
   .fila-viva { display: flow-root; }
   .fila-entra { animation: fila-entra 240ms var(--ease-salida); }
   @supports (interpolate-size: allow-keywords) {
-    .fila-entra { interpolate-size: allow-keywords; overflow: clip; animation-name: fila-abre; }
+    .fila-entra { interpolate-size: allow-keywords; overflow: clip; min-height: 0; animation-name: fila-abre; }
   }
   .destello { border-radius: var(--radius-chico); animation: destello 600ms var(--ease-salida); }
 }
@@ -255,10 +260,18 @@
 html:active-view-transition-type(reordenar) {
   view-transition-name: none;
   & .fila-viva { view-transition-name: var(--vt-nombre); }
-  & #monedero { view-transition-name: none !important; }
 }
 html:active-view-transition-type(reordenar)::view-transition { pointer-events: none; }
 html:active-view-transition-type(reordenar)::view-transition-group(*) { animation-duration: 300ms; }
+/* La píldora del saldo (#monedero, con su nombre de UI·18) se fotografía
+   aparte en estas transiciones de una sola pantalla: si se quedara en la
+   página viva, las filas o la rejilla que vuelan le pasarían ENCIMA (la capa
+   de la transición siempre va sobre la página). Se ve viva y quieta: sin la
+   foto vieja encimada (el número puede ir rodando: se vería doble) y sin
+   fundido. Vale para el calendario de abajo también. */
+html:active-view-transition-type(reordenar, adelante, atras)::view-transition-old(monedero) { display: none; }
+html:active-view-transition-type(reordenar, adelante, atras)::view-transition-new(monedero),
+html:active-view-transition-type(reordenar, adelante, atras)::view-transition-group(monedero) { animation: none; }
 
 /* UI·22: el calendario tiene dirección (mix/Calendario.tsx). «Mes siguiente»:
    la rejilla vieja sale a la izquierda y la nueva entra por la derecha; «Mes
@@ -272,7 +285,6 @@ html:active-view-transition-type(adelante, atras) {
   & [data-cal='mes-1'] { view-transition-name: cal-mes-1; }
   & [data-cal='dias-0'] { view-transition-name: cal-dias-0; }
   & [data-cal='dias-1'] { view-transition-name: cal-dias-1; }
-  & #monedero { view-transition-name: none !important; }
 }
 html:active-view-transition-type(adelante, atras)::view-transition { pointer-events: none; }
 html:active-view-transition-type(adelante, atras)::view-transition-group(*) { animation-duration: var(--dur-media); }

@@ -48,7 +48,22 @@ describe('UI·22 · el calendario tiene dirección', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mes anterior' }));
     expect(aLaVista()).toBe(mes(0));
     // no se retrocede antes del mes en curso
-    expect(screen.getByRole('button', { name: 'Mes anterior' })).toBeDisabled();
+    const anterior = screen.getByRole('button', { name: 'Mes anterior' });
+    expect(anterior).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(anterior);
+    expect(aLaVista()).toBe(mes(0));
+  });
+
+  it('volver al mes en curso con el teclado no suelta el foco (aria-disabled, no disabled)', () => {
+    pintar();
+    fireEvent.click(screen.getByRole('button', { name: 'Mes siguiente' }));
+    const anterior = screen.getByRole('button', { name: 'Mes anterior' });
+    expect(anterior).not.toHaveAttribute('aria-disabled');
+    anterior.focus();
+    fireEvent.click(anterior);
+    expect(aLaVista()).toBe(mes(0));
+    expect(anterior).not.toBeDisabled();
+    expect(anterior).toHaveFocus();
   });
 
   it('«Mes siguiente» pide el tipo adelante y «Mes anterior» el tipo atras', () => {

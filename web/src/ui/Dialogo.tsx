@@ -106,6 +106,10 @@ export function Dialogo({
         <D.Overlay className={VELO} />
         <D.Content
           className={CAJA}
+          // UI·20: mientras sale (100 ms) muestra lo último con sus handlers
+          // de entonces; el pointer-events-none frena al ratón, esto al
+          // teclado (un Enter en el campo no manda el formulario ya cerrado)
+          inert={!abierto}
           onOpenAutoFocus={e => {
             gracia.marcar();
             foco.onOpenAutoFocus();

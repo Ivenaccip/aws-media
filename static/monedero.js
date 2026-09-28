@@ -133,6 +133,9 @@
       'animation:mon-vuela 600ms cubic-bezier(.4,0,.2,1) forwards}' +
     '@keyframes mon-vuela{20%{opacity:1}100%{opacity:0;' +
       'transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.85)}}' +
+    // lo guardado que el servidor no pudo confirmar (sin red, base
+    // despertando): se ve más apagado hasta que conteste
+    '#mon-pill.mon-sin-confirmar{opacity:.6}' +
     '.mon-oculto{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;' +
       'overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
     // las pantallas viejas no cargan tokens.css: la regla de quietud va aquí
@@ -226,10 +229,15 @@
   // conteste; sin eso la píldora no existe cuando el navegador fotografía la
   // pantalla nueva, y en vez de quedarse quieta se apaga y vuelve a salir.
   // Lleva el `sub` del token: otra cuenta en la misma pestaña no lo ve.
-  const ULTIMO = 'monedero:ultimo';
+  // Caduca a los 15 min (la pantalla anterior lo renueva en cada respuesta
+  // buena): más viejo, mejor esperar al servidor. Mientras el servidor no lo
+  // confirme, es provisional (ver sinConfirmar).
+  const ULTIMO = 'monedero:ultimo', VIGENCIA_MS = 15 * 60 * 1000;
+  let saliendo = false;   // una respuesta que llega tras «Cerrar sesión» no se guarda
   function guardarUltimo(saldo) {
+    if (saliendo) return;
     try {
-      sessionStorage.setItem(ULTIMO, JSON.stringify({ quien: delToken().sub || '', saldo,
+      sessionStorage.setItem(ULTIMO, JSON.stringify({ quien: delToken().sub || '', saldo, t: Date.now(),
         sesion: !el.querySelector('#mon-user').hidden, avisos: avisosVistos }));
     } catch { /* sin sessionStorage: se pinta al llegar el saldo, como antes */ }
   }
@@ -240,6 +248,10 @@
     let u = null;
     try { u = JSON.parse(sessionStorage.getItem(ULTIMO)); } catch { return; }
     if (!u || typeof u.saldo !== 'number' || u.quien !== (delToken().sub || '')) return;
+    // con sesión siempre hay `sub`: sin él, lo guardó una respuesta tardía de
+    // la cuenta que acaba de salir
+    if (u.sesion && !u.quien) return;
+    if (!(Date.now() - u.t < VIGENCIA_MS)) return;
     pintarSaldo(u.saldo);
     pintarAvisos(u.avisos, true);   // quieto, y fija la base de «ya lo vi»
     if (u.sesion) {
@@ -253,6 +265,8 @@
   function ocultarSaldo() {
     pintado = null;
     avisosVistos = null;
+    est.activo = false; est.saldo = null;
+    anunciar('');
     el.querySelector('#mon-punto').hidden = true;
     el.querySelector('#mon-ticket').style.display = 'none';
     el.querySelector('#mon-pill').style.display = 'none';
@@ -272,19 +286,45 @@
     const n = Math.trunc(Number(saldo)) || 0, antes = pintado;
     const cifra = el.querySelector('#mon-cifra');
     pintado = n;
+    sinConfirmar(false);
     if (antes === null) {
       // sin transición: fija el valor antes de devolvérsela
       cifra.style.transition = 'none';
       cifra.style.setProperty('--mon-saldo', String(n));
       void getComputedStyle(cifra).getPropertyValue('--mon-saldo');
       cifra.style.transition = '';
-      return;
+      return '';
     }
-    if (n === antes) return;
+    if (n === antes) return '';
     cifra.style.setProperty('--mon-saldo', String(n));
-    // el número real, al instante, para quien no ve la animación
-    el.querySelector('#mon-aviso').textContent = 'Tu saldo: ' + n + ' créditos';
     tintar();
+    // el número real, al instante, para quien no ve la animación
+    return 'Tu saldo: ' + n + ' créditos';
+  }
+
+  // #mon-aviso (role=status) dice lo que cambió y se vacía a los 5 s: si se
+  // quedara, quien recorre la cabecera leería el saldo dos veces (este y
+  // #mon-real), con dos redacciones
+  let avisoT = null;
+  function anunciar(texto) {
+    const aviso = el.querySelector('#mon-aviso');
+    aviso.textContent = texto;
+    clearTimeout(avisoT);
+    if (texto) avisoT = setTimeout(() => { aviso.textContent = ''; }, 5000);
+  }
+
+  // lo pintado desde lo guardado, cuando el servidor no contesta: la píldora
+  // se apaga un poco y se lee «sin confirmar». La primera respuesta buena lo
+  // quita (pintarSaldo). Solo después de un fallo: en el camino feliz
+  // contesta en milisegundos y la píldora no cambia entre pantallas
+  const SIN_CONFIRMAR = ' (sin confirmar)';
+  function sinConfirmar(si) {
+    const pill = el.querySelector('#mon-pill'), real = el.querySelector('#mon-real');
+    pill.classList.toggle('mon-sin-confirmar', si);
+    if (si) {
+      pill.title = 'Sin conexión: este saldo puede no estar al día';
+      if (!real.textContent.endsWith(SIN_CONFIRMAR)) real.textContent += SIN_CONFIRMAR;
+    } else pill.removeAttribute('title');
   }
 
   // UI·25: `avisosVistos` es el último avisos_sin_leer que ESTA pestaña ya
@@ -299,19 +339,24 @@
     clearTimeout(quitarT[clase]);
     quitarT[clase] = setTimeout(() => nodo.classList.remove(clase), ms);
   }
+  // Devuelve lo que hay que anunciar: los avisos nuevos se dicen también con
+  // «reducir movimiento», aunque el punto no se mueva.
   function pintarAvisos(n, quieto) {
-    if (!Number.isInteger(n) || n < 0) return;   // hoy /api/creditos no lo trae
-    if (!quieto && document.hidden) return;       // la onda no se gasta sin nadie mirando
+    if (!Number.isInteger(n) || n < 0) return '';   // hoy /api/creditos no lo trae
+    if (!quieto && document.hidden) return '';       // la onda no se gasta sin nadie mirando
     const punto = el.querySelector('#mon-punto');
     const antes = avisosVistos ?? 0, estaba = !punto.hidden;
     avisosVistos = n;
     el.querySelector('#mon-sin-leer').textContent =
       n === 0 ? '' : n === 1 ? '1 aviso sin leer' : n + ' avisos sin leer';
     punto.hidden = n === 0;
-    if (n === 0) { punto.classList.remove('mon-llega', 'mon-onda'); return; }
-    if (quieto || n <= antes || sinMovimiento()) return;
-    if (!estaba) reanimar(punto, 'mon-llega', LLEGA_MS);
-    reanimar(punto, 'mon-onda', ONDA_ESPERA_MS + ONDA_MS);
+    if (n === 0) { punto.classList.remove('mon-llega', 'mon-onda'); return ''; }
+    if (quieto || n <= antes) return '';
+    if (!sinMovimiento()) {
+      if (!estaba) reanimar(punto, 'mon-llega', LLEGA_MS);
+      reanimar(punto, 'mon-onda', ONDA_ESPERA_MS + ONDA_MS);
+    }
+    return 'Tienes ' + el.querySelector('#mon-sin-leer').textContent;
   }
 
   function tintar() {
@@ -345,20 +390,32 @@
     document.body.appendChild(n);
   }
 
+  // Cada petición lleva su número y solo cuenta la última que se PIDIÓ: una
+  // respuesta vieja que llega tarde (un refresco lento que salió antes del
+  // cobro) no regresa el saldo, ni rueda, ni se guarda.
+  let pedido = 0;
   async function intentar() {
     clearTimeout(reintentoT);
+    const mio = ++pedido;
     try {
       const r = await fetch('/api/creditos');
-      if (!r.ok) { programarReintento(); return; }
+      if (mio !== pedido) return;
+      if (!r.ok) { fallo(); return; }
       const d = await r.json();
+      if (mio !== pedido) return;
       if (!d.activo) { olvidarUltimo(); ocultarSaldo(); return; }
       reintento = 0;
       est.activo = true; est.saldo = d.saldo; est.tarifas = d.tarifas || {}; est.packs = d.packs || [];
-      pintarSaldo(d.saldo);
-      pintarAvisos(d.avisos_sin_leer);
+      const dice = [pintarSaldo(d.saldo), pintarAvisos(d.avisos_sin_leer)].filter(Boolean);
+      if (dice.length) anunciar(dice.join('. '));
       guardarUltimo(d.saldo);
       document.dispatchEvent(new CustomEvent('monedero', { detail: est }));
-    } catch { programarReintento(); /* sin red: se reintenta igual */ }
+    } catch { if (mio === pedido) fallo(); /* sin red: se reintenta igual */ }
+  }
+  function fallo() {
+    // lo que se ve vino de lo guardado y nadie lo ha confirmado aquí
+    if (pintado !== null && est.saldo === null) sinConfirmar(true);
+    programarReintento();
   }
   function programarReintento() {
     if (reintento >= ESPERAS_MS.length) return;   // se rinde en silencio; visibilitychange lo revive
@@ -380,7 +437,7 @@
     if (mas) mas.onclick = togglePanel;   // no existe con la recarga cerrada
     el.querySelector('#mon-avatar').onclick = toggleMenu;
     el.querySelector('#mon-salir').onclick = () => {
-      if (confirm('¿Cerrar sesión?')) { olvidarUltimo(); window.auth.salir(); }
+      if (confirm('¿Cerrar sesión?')) { saliendo = true; olvidarUltimo(); window.auth.salir(); }
     };
     pintarUltimo();
     if (window.auth) window.auth.config().then(c => {
@@ -403,6 +460,16 @@
     montado = true;
     montar();
   }
+
+  // UI·18: la transición entre pantallas fotografía la nueva en pagereveal.
+  // Chromium espera al módulo (blocking="render") y #raiz ya trae la
+  // pantalla; donde no se espera (Safari), #raiz sigue vacío y el fundido
+  // iría hacia una página en blanco: mejor navegar como antes. Las viejas
+  // no tienen #raiz
+  addEventListener('pagereveal', e => {
+    const raiz = document.getElementById('raiz');
+    if (e.viewTransition && raiz && !raiz.firstElementChild) e.viewTransition.skipTransition();
+  });
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescar(); });
   addEventListener('cobro', volar);

@@ -325,8 +325,9 @@ describe('crear · cobro al empezar', () => {
     expect(forzado.get('forzar')).toBe('true');
     // forzar ya pasó una vez por la moderación
     expect(llamadas(f, '/api/moderar')).toHaveLength(2);
-    // los dos 409 no cobraron, y el forzado sale del diálogo, no del botón: no vuela nada
-    expect(cobros).toEqual([]);
+    // los dos 409 no cobraron; el forzado sí, y su «−N» sale de «Generar»,
+    // detrás del diálogo (UI·19): uno solo
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: 10 })]));
   });
 
   it('crear.cobro.un_402_dice_a_quien_escribir', async () => {

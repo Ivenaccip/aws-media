@@ -156,7 +156,7 @@ export function Clip() {
     });
   }
 
-  async function alGenerar() {
+  async function alGenerar(cobrado?: () => void) {
     const limpio = texto.trim();
     if (!limpio) {
       setEstado({ texto: 'Escribe qué quieres ver primero.', error: false });
@@ -173,6 +173,7 @@ export function Clip() {
       fotos.forEach(f => f.url && URL.revokeObjectURL(f.url));
       setFotos([]);
       setEsperando(true);
+      cobrado?.(); // antes de releer: el «−N» va con el saldo
       refrescarSaldo();
       await traer().catch(() => undefined);
       return true; // UI·19: se cobró

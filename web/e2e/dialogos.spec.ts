@@ -43,6 +43,52 @@ test('el Confirmar con «Cancelar» también devuelve el foco', async ({ page })
   await expect(abrir).toBeFocused();
 });
 
+test('Agenda con la red de verdad: al cancelar con el teclado, el foco acaba en «Actualizar», no en el <body>', async ({ page }) => {
+  // la lista y el cancelar tardan: «Actualizar» sigue deshabilitado (cargando)
+  // cuando el diálogo se desmonta y cuando cancelarYa termina
+  let cancelada = false;
+  const tarda = () => new Promise(r => setTimeout(r, 400));
+  await page.route('**/api/agenda', async r => {
+    await tarda();
+    const items = cancelada ? [] : [{ id: 'sch_1', red: 'Instagram', cuenta_nombre: 'miCuenta', cuando: '2099-05-01T15:00:00Z', texto: 'Hola', cortado: false, medios: 1 }];
+    return r.fulfill({ json: { items, cursor: null, total: items.length, error: null, reconectar: false } });
+  });
+  await page.route('**/api/agenda/cancelar', async r => {
+    await tarda();
+    cancelada = true;
+    return r.fulfill({ json: { ok: true } });
+  });
+  await page.goto('/estudio/agenda/');
+  const cancelar = page.getByRole('button', { name: 'Cancelar', exact: true });
+  await cancelar.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'No, dejarla' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Sí, cancelarla' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Publicación cancelada.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Actualizar' })).toBeFocused();
+});
+
+test('mientras sale, el diálogo ya no oye el teclado (Enter no manda el formulario cerrado)', async ({ page }) => {
+  let posts = 0;
+  await page.route(/\/api\/blotato(\?.*)?$/, r => {
+    if (r.request().method() === 'POST') posts++;
+    return r.fulfill({ json: { conectado: false, origen: null, cuentas: [], error: null, plan: null } });
+  });
+  await page.goto('/estudio/inicio/?blotato=conectar');
+  const form = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
+  const clave = form.getByLabel('Tu clave de API de Blotato');
+  await clave.fill('una-clave');
+  await clave.focus();
+  // Escape y, en los 100 ms de la salida, Enter
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  await expect(form).toBeHidden();
+  await page.waitForTimeout(300);
+  expect(posts).toBe(0);
+});
+
 test.describe('con «reducir movimiento»', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 

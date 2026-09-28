@@ -9,7 +9,10 @@
 // UI·19: si `alCobrar` resuelve `true` (el servidor aceptó el cobro), avisa a
 // monedero.js, que dibuja «−N» saliendo de este botón hacia la píldora. Con
 // cualquier otra cosa (un 402, un veto, una validación) no vuela nada: un
-// «−N» que no se cobró sería mentir sobre dinero.
+// «−N» que no se cobró sería mentir sobre dinero. Si después del cobro la
+// pantalla todavía espera algo lento (bajar la imagen, releer la lista),
+// llama al `cobrado()` que recibe justo cuando el servidor acepta: el «−N»
+// sale entonces, a la par del saldo que baja, y no segundos después.
 import { useRef, useState } from 'react';
 
 import { Boton } from '../ui/Boton';
@@ -25,8 +28,9 @@ export interface PropsBotonCobro {
   /** Saldo conocido. `null` = aún no se sabe: no se bloquea por él. */
   saldo?: number | null;
   /** Lo que cobra. El botón queda «trabajando» hasta que la promesa termine.
-   *  Resuelve `true` SOLO si el servidor aceptó el cobro (UI·19). */
-  alCobrar: () => Promise<boolean | void>;
+   *  Resuelve `true` SOLO si el servidor aceptó el cobro (UI·19); o llama a
+   *  `cobrado()` en cuanto lo acepte, si aún le falta algo lento. */
+  alCobrar: (cobrado: () => void) => Promise<boolean | void>;
   /** Texto mientras trabaja. */
   trabajando?: string;
   deshabilitado?: boolean;
@@ -54,11 +58,15 @@ export function BotonCobro({
     // dónde estaba al tocarlo: si el cobro lo desmonta, el «−N» sale de ahí
     const antes = boton.current?.getBoundingClientRect() ?? null;
     setOcupado(true);
+    let volo = false;   // un cobro, un «−N»
+    const cobrado = () => {
+      if (volo) return;
+      volo = true;
+      const b = boton.current;
+      avisarCobro(costo, b?.isConnected ? b.getBoundingClientRect() : antes);
+    };
     try {
-      if ((await alCobrar()) === true) {
-        const b = boton.current;
-        avisarCobro(costo, b?.isConnected ? b.getBoundingClientRect() : antes);
-      }
+      if ((await alCobrar(cobrado)) === true) cobrado();
     } finally {
       candado.current = false;
       setOcupado(false);

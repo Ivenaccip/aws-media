@@ -119,18 +119,19 @@ export function Competencia() {
     }
   }
 
-  async function alRevisar() {
+  async function alRevisar(cobrado?: () => void) {
     setNotaRevisar(null);
-    let cobrado = false; // UI·19: el «−N» vuela si el servidor cobró
+    let cobra = false; // UI·19: el «−N» vuela si el servidor cobró
     try {
       await revisar();
-      cobrado = true;
+      cobra = true;
+      cobrado?.(); // antes de releer: el «−N» va con el saldo
       refrescarSaldo();
       await lista.actualizar();
     } catch (e) {
       setNotaRevisar(mensajeDe(e));
     }
-    return cobrado;
+    return cobra;
   }
 
   const n = d?.cuentas.length ?? 0;

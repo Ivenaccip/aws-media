@@ -47,17 +47,18 @@ export function Estilos() {
   const enMarcha = lista.datos ? vivos(lista.datos) : [];
   useTituloPestana(enMarcha.length ? 'Analizando el estilo' : null);
 
-  async function alAnalizar() {
+  async function alAnalizar(cobrado?: () => void) {
     const limpia = url.trim();
     if (!limpia) {
       setEstado({ texto: 'Pega la liga primero.', error: false });
       return;
     }
     setEstado(null);
-    let cobrado = false; // UI·19: el «−N» vuela si el servidor cobró
+    let cobra = false; // UI·19: el «−N» vuela si el servidor cobró
     try {
       await analizar(limpia);
-      cobrado = true;
+      cobra = true;
+      cobrado?.(); // antes de releer: el «−N» va con el saldo
       setUrl('');
       refrescarSaldo();
       await lista.actualizar();
@@ -68,7 +69,7 @@ export function Estilos() {
         sinSaldo: e instanceof ErrorApi && e.sinSaldo,
       });
     }
-    return cobrado;
+    return cobra;
   }
 
   const tarifa = lista.datos?.creditos ?? null;

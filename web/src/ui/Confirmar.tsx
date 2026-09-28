@@ -49,7 +49,7 @@ export function Confirmar({
     <A.Root open={abierto} onOpenChange={alCambiar}>
       <A.Portal>
         <A.Overlay className={VELO} />
-        <A.Content className={CAJA} {...foco}>
+        <A.Content className={CAJA} inert={!abierto} {...foco}>
           <A.Title className="m-0 font-titulo text-titulo-sm font-bold">{titulo}</A.Title>
           <A.Description className="mb-0 mt-2 text-md text-secundario">{descripcion}</A.Description>
           <div className="mt-6 flex flex-wrap justify-end gap-3">

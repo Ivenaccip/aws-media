@@ -106,5 +106,8 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/prueba/preparar.ts'],
     restoreMocks: true,
+    // pantallas enteras en jsdom, en paralelo: con 4 núcleos ocupados una
+    // prueba de cobro con relojes falsos pasa de los 5 s de fábrica
+    testTimeout: 15_000,
   },
 });

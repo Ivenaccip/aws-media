@@ -38,6 +38,19 @@ async function llega(nuevo: number) {
   await vi.waitFor(() => expect($('#mon-real').textContent).toBe(nuevo + ' créditos ✦'));
 }
 
+/** Refresca y espera a que la respuesta se procese de verdad (el evento
+ *  'monedero' sale al final): con una microtarea las aserciones corren antes. */
+async function refrescado() {
+  const hecho = new Promise(r => document.addEventListener('monedero', r, { once: true }));
+  window.monedero!.refrescar();
+  await hecho;
+}
+
+// un id_token de mentira con ese `sub` (el monedero solo lee su payload)
+const conCuenta = (sub: string) => localStorage.setItem('auth_id_token', 'x.' + btoa(JSON.stringify({ sub })) + '.y');
+const guardado = (u: Record<string, unknown>) =>
+  sessionStorage.setItem('monedero:ultimo', JSON.stringify({ quien: '', sesion: false, t: Date.now(), ...u }));
+
 function cobro(detalle: unknown) {
   window.dispatchEvent(new CustomEvent('cobro', { detail: detalle }));
 }
@@ -55,6 +68,8 @@ afterEach(() => {
   document.body.replaceChildren();
   document.head.replaceChildren();
   delete window.monedero;
+  sessionStorage.clear();
+  localStorage.clear();
 });
 
 describe('el saldo rueda', () => {
@@ -92,9 +107,8 @@ describe('el saldo rueda', () => {
   it('el mismo saldo otra vez no hace nada', async () => {
     cargar();
     await vi.waitFor(() => expect(cifra()).toBe('120'));
-    window.monedero!.refrescar();
-    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
-    await Promise.resolve();
+    await refrescado();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
     expect(tenida()).toBe(false);
     expect($('#mon-aviso').textContent).toBe('');
   });
@@ -136,7 +150,7 @@ describe('el saldo rueda', () => {
   });
 
   it('lo guardado por UI·18 cuenta como pintado: si el servidor trae otro, rueda', async () => {
-    sessionStorage.setItem('monedero:ultimo', JSON.stringify({ quien: '', saldo: 200, sesion: false }));
+    guardado({ saldo: 200 });
     colgado = true;
     cargar();
     expect(cifra()).toBe('200');
@@ -148,10 +162,170 @@ describe('el saldo rueda', () => {
   });
 
   it('si el monedero resulta apagado, la píldora guardada se esconde y se olvida', async () => {
-    sessionStorage.setItem('monedero:ultimo', JSON.stringify({ quien: '', saldo: 200, sesion: false }));
+    guardado({ saldo: 200 });
     activo = false;
     cargar();
     await vi.waitFor(() => expect($('#mon-pill').style.display).toBe('none'));
+    expect(sessionStorage.getItem('monedero:ultimo')).toBeNull();
+  });
+
+  it('si se apaga con la pantalla abierta, las pantallas dejan de ver el saldo y el anuncio se calla', async () => {
+    cargar();
+    await vi.waitFor(() => expect(cifra()).toBe('120'));
+    await llega(90);
+    expect($('#mon-aviso').textContent).toBe('Tu saldo: 90 créditos');
+    activo = false;
+    window.monedero!.refrescar();
+    await vi.waitFor(() => expect(window.monedero!.get()).toMatchObject({ activo: false, saldo: null }));
+    expect($('#mon-aviso').textContent).toBe('');
+  });
+
+  it('el anuncio se vacía a los 5 s: la cabecera no dice el saldo dos veces', async () => {
+    cargar();
+    await vi.waitFor(() => expect(cifra()).toBe('120'));
+    vi.useFakeTimers();
+    await llega(90);
+    expect($('#mon-aviso').textContent).toBe('Tu saldo: 90 créditos');
+    vi.advanceTimersByTime(5000);
+    expect($('#mon-aviso').textContent).toBe('');
+    expect($('#mon-real').textContent).toBe('90 créditos ✦');
+  });
+
+  it('una respuesta vieja que llega tarde no regresa el saldo', async () => {
+    const pendientes: Array<(n: number) => void> = [];
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(ok => {
+      pendientes.push(n => ok(new Response(JSON.stringify({ activo: true, saldo: n, tarifas: {}, packs: [] }))));
+    })));
+    new Function(CODIGO)();
+    pendientes.splice(0).forEach(f => f(120)); // la carga
+    await vi.waitFor(() => expect(cifra()).toBe('120'));
+    window.monedero!.refrescar(); // un refresco lento, antes del cobro…
+    window.monedero!.refrescar(); // …y el de después del cobro
+    const [vieja, nueva] = pendientes;
+    nueva!(90);
+    await vi.waitFor(() => expect(cifra()).toBe('90'));
+    vieja!(120);
+    await new Promise(r => setTimeout(r, 10));
+    expect(cifra()).toBe('90');
+    expect(window.monedero!.get()?.saldo).toBe(90);
+    expect(JSON.parse(sessionStorage.getItem('monedero:ultimo')!).saldo).toBe(90);
+  });
+});
+
+describe('UI·18 · la transición entre pantallas no se funde hacia una página vacía', () => {
+  function revelar() {
+    const skipTransition = vi.fn();
+    const e = Object.assign(new Event('pagereveal'), { viewTransition: { skipTransition } });
+    window.dispatchEvent(e);
+    return skipTransition;
+  }
+
+  it('si #raiz sigue vacío (el navegador no esperó al módulo) se la salta', () => {
+    colgado = true;
+    const raiz = Object.assign(document.createElement('div'), { id: 'raiz' });
+    document.body.append(raiz);
+    cargar();
+    expect(revelar()).toHaveBeenCalled();
+  });
+
+  it('con la pantalla ya dibujada, o en una pantalla vieja (sin #raiz), la deja', () => {
+    colgado = true;
+    cargar();
+    expect(revelar()).not.toHaveBeenCalled();
+    const raiz = Object.assign(document.createElement('div'), { id: 'raiz' });
+    raiz.append(document.createElement('main'));
+    document.body.append(raiz);
+    expect(revelar()).not.toHaveBeenCalled();
+  });
+});
+
+describe('UI·18 · lo guardado de la pestaña', () => {
+  it('lo de otra cuenta no se pinta', async () => {
+    conCuenta('B');
+    guardado({ quien: 'A', saldo: 999 });
+    colgado = true;
+    cargar();
+    expect($('#mon-pill').getAttribute('style')).toContain('display:none;');
+    expect($('#mon-real').textContent).toBe('');
+  });
+
+  it('lo de la misma cuenta, sí', () => {
+    conCuenta('A');
+    guardado({ quien: 'A', saldo: 999 });
+    colgado = true;
+    cargar();
+    expect($('#mon-real').textContent).toBe('999 créditos ✦');
+  });
+
+  it('con sesión y sin cuenta (lo guardó una respuesta tardía tras salir) no se pinta', () => {
+    guardado({ saldo: 777, sesion: true });
+    colgado = true;
+    cargar();
+    expect($('#mon-real').textContent).toBe('');
+  });
+
+  it('lo de hace más de 15 minutos, tampoco', () => {
+    guardado({ saldo: 999, t: Date.now() - 16 * 60 * 1000 });
+    colgado = true;
+    cargar();
+    expect($('#mon-real').textContent).toBe('');
+  });
+
+  it('lo guardado sin fecha (de antes de este cambio) no se pinta', () => {
+    sessionStorage.setItem('monedero:ultimo', JSON.stringify({ quien: '', saldo: 999, sesion: false }));
+    colgado = true;
+    cargar();
+    expect($('#mon-real').textContent).toBe('');
+  });
+
+  it('si el servidor no contesta, lo guardado se apaga y se lee «sin confirmar»; al contestar, vuelve', async () => {
+    guardado({ saldo: 200 });
+    let falla = true;
+    vi.stubGlobal('fetch', vi.fn(() => falla
+      ? Promise.resolve(new Response('', { status: 503 }))
+      : Promise.resolve(new Response(JSON.stringify({ activo: true, saldo: 200, tarifas: {}, packs: [] })))));
+    new Function(CODIGO)();
+    const pill = $('#mon-pill');
+    expect(pill.classList.contains('mon-sin-confirmar')).toBe(false); // el primer cuadro, igual que la pantalla anterior
+    await vi.waitFor(() => expect(pill.classList.contains('mon-sin-confirmar')).toBe(true));
+    expect($('#mon-real').textContent).toBe('200 créditos ✦ (sin confirmar)');
+    expect(pill.title).toMatch(/Sin conexión/);
+    falla = false;
+    await refrescado();
+    expect(pill.classList.contains('mon-sin-confirmar')).toBe(false);
+    expect($('#mon-real').textContent).toBe('200 créditos ✦');
+    expect(pill.hasAttribute('title')).toBe(false);
+  });
+
+  it('un saldo confirmado en esta pantalla no se apaga si un refresco falla después', async () => {
+    let falla = false;
+    vi.stubGlobal('fetch', vi.fn(() => falla
+      ? Promise.reject(new TypeError('sin red'))
+      : Promise.resolve(new Response(JSON.stringify({ activo: true, saldo: 120, tarifas: {}, packs: [] })))));
+    new Function(CODIGO)();
+    await vi.waitFor(() => expect(cifra()).toBe('120'));
+    falla = true;
+    window.monedero!.refrescar();
+    await new Promise(r => setTimeout(r, 10));
+    expect($('#mon-pill').classList.contains('mon-sin-confirmar')).toBe(false);
+  });
+
+  it('una respuesta que llega después de «Cerrar sesión» no se guarda', async () => {
+    conCuenta('A');
+    const salir = vi.fn(() => localStorage.removeItem('auth_id_token'));
+    vi.stubGlobal('auth', { salir, config: () => Promise.resolve({ activo: true }) });
+    vi.stubGlobal('confirm', () => true);
+    const sueltas: Array<() => void> = [];
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(ok => {
+      sueltas.push(() => ok(new Response(JSON.stringify({ activo: true, saldo: 777, tarifas: {}, packs: [] }))));
+    })));
+    new Function(CODIGO)();
+    await vi.waitFor(() => expect($('#mon-user').hidden).toBe(false));
+    $('#mon-salir').click();
+    expect(salir).toHaveBeenCalled();
+    expect(sueltas.length).toBeGreaterThan(0);
+    sueltas.forEach(f => f());
+    await new Promise(r => setTimeout(r, 10));
     expect(sessionStorage.getItem('monedero:ultimo')).toBeNull();
   });
 });
@@ -239,6 +413,17 @@ describe('UI·25 · el punto del buzón avisa una sola vez', () => {
     expect(llega()).toBe(true);
     expect(onda()).toBe(true);
     expect($('#mon-sin-leer').textContent).toBe('2 avisos sin leer');
+    // y se dice: el punto solo se ve
+    expect($('#mon-aviso').textContent).toBe('Tienes 2 avisos sin leer');
+  });
+
+  it('si en el mismo refresco cambian el saldo y los avisos, se dicen los dos', async () => {
+    avisos = 1;
+    await cargado();
+    saldo = 90;
+    avisos = 2;
+    await refrescar();
+    expect($('#mon-aviso').textContent).toBe('Tu saldo: 90 créditos. Tienes 2 avisos sin leer');
   });
 
   it('el mismo número en otro refresco no vuelve a soltar la onda; uno más, sí (sin volver a llegar)', async () => {
@@ -256,7 +441,7 @@ describe('UI·25 · el punto del buzón avisa una sola vez', () => {
   });
 
   it('lo visto en otra pantalla de la pestaña no se repite al navegar', async () => {
-    sessionStorage.setItem('monedero:ultimo', JSON.stringify({ quien: '', saldo: 120, sesion: false, avisos: 3 }));
+    guardado({ saldo: 120, avisos: 3 });
     avisos = 3;
     await cargado();
     expect(punto().hidden).toBe(false);
@@ -292,6 +477,8 @@ describe('UI·25 · el punto del buzón avisa una sola vez', () => {
     await cargado();
     expect(punto().hidden).toBe(false);
     expect(llega() || onda()).toBe(false);
+    // quieto, pero se dice igual
+    expect($('#mon-aviso').textContent).toBe('Tienes 2 avisos sin leer');
     const hoja = [...document.querySelectorAll('style')].map(e => e.textContent).join('');
     expect(hoja).toContain('#mon-punto.mon-llega,#mon-punto.mon-onda::after{animation:none}');
   });

@@ -7,7 +7,7 @@
 // Una carga a la vez: dos tiran dos veces de Blotato, y la que se pide
 // mientras hay otra en curso se ENCOLA (cancelar dos seguidas perdía la
 // segunda recarga y la lista enseñaba lo que ya no existe).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { Marco } from '../../marca/Marco';
 import { Aviso } from '../../ui/Aviso';
@@ -134,10 +134,21 @@ export function Agenda() {
     Promise.resolve().then(() => cargarLista());
   }, [cargarLista]);
 
-  // la tarjeta que tenía el foco pudo desaparecer: el foco no cae al <body>
-  const focoSinDueno = () => {
+  // la tarjeta que tenía el foco pudo desaparecer: el foco no cae al <body>.
+  // Se mira DESPUÉS de pintar y sin carga en curso: «Actualizar» está
+  // deshabilitado mientras carga, y un botón deshabilitado no toma el foco
+  // (con la red de verdad, la lista vuelve después de cerrar el diálogo)
+  const focoPendiente = useRef(false);
+  const [, pedirFoco] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (!focoPendiente.current || ocupado) return;
+    focoPendiente.current = false;
     const a = document.activeElement;
     if (!a || a === document.body) actualizar.current?.focus();
+  });
+  const focoSinDueno = () => {
+    focoPendiente.current = true;
+    pedirFoco();
   };
 
   // ── cambiar la hora

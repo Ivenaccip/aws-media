@@ -99,6 +99,28 @@ describe('BotonCobro', () => {
     await vi.waitFor(() => expect(cobros).toHaveLength(1));
   });
 
+  it('UI·19: con cobrado() vuela en cuanto el servidor acepta, no cuando termina lo lento; y una sola vez', async () => {
+    const cobros = oirCobros();
+    let soltar!: () => void;
+    render(
+      <BotonCobro
+        verbo="Generar"
+        costo={5}
+        alCobrar={async cobrado => {
+          cobrado(); // el POST ya pasó…
+          await new Promise<void>(r => { soltar = r; }); // …y la imagen aún baja
+          return true;
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button'));
+    await vi.waitFor(() => expect(cobros).toHaveLength(1));
+    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
+    soltar();
+    await vi.waitFor(() => expect(screen.getByRole('button')).not.toHaveAttribute('aria-busy'));
+    expect(cobros).toHaveLength(1);
+  });
+
   it('UI·19: si el cobro desmonta el botón, el «−N» sale de donde estaba', async () => {
     const cobros = oirCobros();
     function Pantalla() {

@@ -65,6 +65,19 @@ test('la cuenta que se agrega abre su espacio; la que ya estaba no se anima', as
   expect(vivas.map(a => `${a.nombre} ${a.duracion} ${a.objetivo}`)).toEqual([
     expect.stringMatching(/^fila-abre 240 li\.fila-viva\.fila-entra/),
   ]);
+  // y de verdad abre: a la mitad mide menos que al final (en una columna flex
+  // el mínimo automático le ganaba al height: 0 y solo se fundía)
+  const alto = await page.evaluate(() => {
+    const li = document.querySelector<HTMLElement>('li.fila-entra')!;
+    const a = li.getAnimations()[0]!;
+    a.pause();
+    a.currentTime = 120;
+    const media = li.getBoundingClientRect().height;
+    a.finish();
+    return { media, final: li.getBoundingClientRect().height };
+  });
+  expect(alto.media).toBeGreaterThan(0);
+  expect(alto.media).toBeLessThan(alto.final * 0.9);
   await expect.poll(() => page.locator('.fila-entra').count()).toBe(0);
 });
 

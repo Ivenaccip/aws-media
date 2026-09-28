@@ -59,6 +59,7 @@ export function Calendario({ ini, fin, maxDias, alElegir, alLimpiar }: PropsCale
   // transición el mes nuevo se pinta un cuadro después, y dos clics rápidos
   // en «Mes anterior» no pueden pasar del mes en curso
   function irA(paso: 1 | -1) {
+    if (paso < 0 && primero) return;
     transicionar(
       () =>
         setMes(x => {
@@ -131,7 +132,17 @@ export function Calendario({ ini, fin, maxDias, alElegir, alLimpiar }: PropsCale
   return (
     <div ref={caja}>
       <div className="mb-3 flex items-center gap-2">
-        <Boton nivel="secundario" denso aria-label="Mes anterior" disabled={primero} onClick={() => irA(-1)}>
+        {/* aria-disabled y no disabled: al volver al mes en curso con el
+            teclado, un botón deshabilitado suelta el foco al <body> */}
+        <Boton
+          nivel="secundario"
+          denso
+          aria-label="Mes anterior"
+          aria-disabled={primero || undefined}
+          // se ve como el deshabilitado de Boton; con ! porque sus hover:enabled: pesan más
+          className={unir(primero && 'cursor-default! text-secundario! hover:border-campo! hover:bg-transparent! active:scale-100! active:bg-transparent!')}
+          onClick={() => irA(-1)}
+        >
           <Icono nombre="izquierda" />
         </Boton>
         <Boton nivel="secundario" denso aria-label="Mes siguiente" onClick={() => irA(1)}>

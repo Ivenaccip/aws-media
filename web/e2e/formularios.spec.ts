@@ -32,8 +32,13 @@ async function oir(page: Page) {
     );
   });
 }
-/** Lo que arrancó desde la última vez que se preguntó. */
-const arrancaron = (page: Page) => page.evaluate(() => window.__ui24.splice(0));
+/** Lo que arrancó desde la última vez que se preguntó. El animationstart se
+ *  despacha en el siguiente cuadro: se esperan dos antes de leer. */
+const arrancaron = (page: Page) =>
+  page.evaluate(async () => {
+    for (let i = 0; i < 2; i++) await new Promise(r => requestAnimationFrame(r));
+    return window.__ui24.splice(0);
+  });
 
 // cuántos px se movió la caja a los `ms` del temblor (lo congela ahí y lo acaba)
 const translateEn = (caja: Locator, ms: number) =>
