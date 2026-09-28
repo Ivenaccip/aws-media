@@ -112,8 +112,15 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     `--ease-salida` y `--curva-resorte` (un resorte con `linear()` que se pasa
     ≈9 % y regresa; solo para lo que llega, nunca para lo que se va).
   - Las ocho tarjetas de movimiento (UI·18 a UI·25) usan esos tokens o una
-    duración propia con su porqué al lado: 280 ms entre pantallas, 150/100 ms
-    los diálogos (entran más lento de lo que salen), 700 ms el saldo que baja.
+    duración propia con su porqué al lado: 280 ms entre pantallas; 150/100 ms
+    los diálogos (entran más lento de lo que salen, `--ease-entrada` para lo
+    que se va); el saldo que baja rueda 700 ms, la píldora se tiñe 900 ms y
+    el «−N» vuela 600 ms; lo que llega a una lista abre su espacio en 240 ms
+    y lo que se reordena viaja 300 ms; el calendario sale en 180 ms y entra
+    en 250 ms con 24 px de desplazamiento; el punto del buzón llega en 300 ms
+    con el resorte y suelta una sola onda de 900 ms.
+  - Nada anima por defecto lo que ya estaba al abrir la pantalla: la primera
+    carga no rueda, no se enciende y no entra animada.
   - Entre pantallas hay View Transition (fundido; la píldora del saldo se
     queda quieta; la miniatura de una película lista se agranda hasta su
     reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con
