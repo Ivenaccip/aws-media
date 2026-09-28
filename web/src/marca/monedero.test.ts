@@ -14,6 +14,7 @@ const CODIGO = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..
 let saldo: number | null;
 let activo: boolean;
 let colgado: boolean;
+let avisos: number | undefined;
 
 function cargar() {
   vi.stubGlobal(
@@ -21,7 +22,7 @@ function cargar() {
     vi.fn(() =>
       colgado
         ? new Promise<Response>(() => undefined)
-        : Promise.resolve(new Response(JSON.stringify({ activo, saldo, tarifas: {}, packs: [] }))),
+        : Promise.resolve(new Response(JSON.stringify({ activo, saldo, tarifas: {}, packs: [], avisos_sin_leer: avisos }))),
     ),
   );
   new Function(CODIGO)();
@@ -45,6 +46,7 @@ beforeEach(() => {
   saldo = 120;
   activo = true;
   colgado = false;
+  avisos = undefined;
 });
 
 afterEach(() => {
@@ -204,5 +206,100 @@ describe('el «−N» que vuela', () => {
       cobro(d);
     }
     expect(vuelo()).toBeNull();
+  });
+});
+
+describe('UI·25 · el punto del buzón avisa una sola vez', () => {
+  const punto = () => $('#mon-punto');
+  const onda = () => punto().classList.contains('mon-onda');
+  const llega = () => punto().classList.contains('mon-llega');
+
+  async function cargado() {
+    cargar();
+    await vi.waitFor(() => expect(cifra()).toBe('120'));
+  }
+  async function refrescar() {
+    const antes = vi.mocked(fetch).mock.calls.length;
+    window.monedero!.refrescar();
+    await vi.waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBe(antes + 1));
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  it('sin avisos_sin_leer (el servidor de hoy) no hay punto', async () => {
+    await cargado();
+    expect(punto().hidden).toBe(true);
+    expect($('#mon-sin-leer').textContent).toBe('');
+  });
+
+  it('con avisos nuevos el punto llega con rebote y suelta una onda; se lee cuántos son', async () => {
+    avisos = 2;
+    await cargado();
+    expect(punto().hidden).toBe(false);
+    expect(punto()).toHaveAttribute('aria-hidden', 'true');
+    expect(llega()).toBe(true);
+    expect(onda()).toBe(true);
+    expect($('#mon-sin-leer').textContent).toBe('2 avisos sin leer');
+  });
+
+  it('el mismo número en otro refresco no vuelve a soltar la onda; uno más, sí (sin volver a llegar)', async () => {
+    avisos = 1;
+    await cargado();
+    // la onda ya terminó (su limpieza es un setTimeout de 1150 ms)
+    punto().classList.remove('mon-onda', 'mon-llega');
+    await refrescar();
+    expect(onda()).toBe(false);
+    avisos = 2;
+    await refrescar();
+    expect(onda()).toBe(true);
+    expect(llega()).toBe(false); // ya estaba: no vuelve a crecer desde cero
+    expect($('#mon-sin-leer').textContent).toBe('2 avisos sin leer');
+  });
+
+  it('lo visto en otra pantalla de la pestaña no se repite al navegar', async () => {
+    sessionStorage.setItem('monedero:ultimo', JSON.stringify({ quien: '', saldo: 120, sesion: false, avisos: 3 }));
+    avisos = 3;
+    await cargado();
+    expect(punto().hidden).toBe(false);
+    expect(onda()).toBe(false);
+    expect(llega()).toBe(false);
+  });
+
+  it('con la pestaña oculta no se gasta la onda: sale al volver', async () => {
+    avisos = 1;
+    await cargado();
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    avisos = 2;
+    await refrescar();
+    expect($('#mon-sin-leer').textContent).toBe('1 aviso sin leer');
+    Reflect.deleteProperty(document, 'hidden');
+    punto().classList.remove('mon-onda');
+    await refrescar();
+    expect(onda()).toBe(true);
+  });
+
+  it('al leerlos todos (0) el punto se va', async () => {
+    avisos = 2;
+    await cargado();
+    avisos = 0;
+    await refrescar();
+    expect(punto().hidden).toBe(true);
+    expect($('#mon-sin-leer').textContent).toBe('');
+  });
+
+  it('con «reducir movimiento» el punto aparece sin animar', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce') }));
+    avisos = 2;
+    await cargado();
+    expect(punto().hidden).toBe(false);
+    expect(llega() || onda()).toBe(false);
+    const hoja = [...document.querySelectorAll('style')].map(e => e.textContent).join('');
+    expect(hoja).toContain('#mon-punto.mon-llega,#mon-punto.mon-onda::after{animation:none}');
+  });
+
+  it('el resorte del punto es el mismo --curva-resorte de tokens.css', () => {
+    const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../estilos/tokens.css'), 'utf8');
+    const deTokens = /--curva-resorte:\s*(linear\([^)]*\))/.exec(tokens)![1]!.replace(/\s+/g, '');
+    const deMonedero = /const RESORTE = ('[^;]*);/.exec(CODIGO)![1]!.replace(/'\s*\+\s*'/g, '').replace(/'/g, '').replace(/\s+/g, '');
+    expect(deMonedero).toBe(deTokens);
   });
 });

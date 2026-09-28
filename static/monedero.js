@@ -8,6 +8,14 @@
 // se tiñe un instante. Si además llega el evento 'cobro' en window
 // ({ costo, rect: { x, y, ancho, alto } }, lo manda BotonCobro de web/ solo
 // cuando el cobro salió bien), un «−N» vuela del botón a la píldora.
+//
+// UI·25: si /api/creditos trae `avisos_sin_leer` (el buzón de UI·17), un
+// punto aparece sobre el boleto: crece con un rebote y suelta UNA onda, solo
+// cuando el número sube (al cargar o al volver a la pestaña), nunca en cada
+// refresco con el mismo número. La base de «ya lo vi» vive con el último
+// saldo de la pestaña (UI·18), para que cambiar de pantalla no la repita.
+// Hoy el servidor no lo manda: el punto no se pinta. El panel del buzón y
+// sus animaciones (#mon-buzon) son de UI·17.
 (function () {
   const est = { activo: false, saldo: null, tarifas: {}, packs: [] };
 
@@ -62,7 +70,10 @@
     // nacen con display:none (el `hidden` no basta contra un display inline):
     // antes del primer saldo, counter() pintaría «0 créditos», un saldo falso.
     // pintarSaldo los enciende
-    '<span id="mon-ticket" hidden title="tus créditos" style="display:none;color:#ece8e1">' + TICKET + '</span>' +
+    // UI·25: el punto va sobre el boleto. Sin display en ningún lado: su
+    // `hidden` tiene que ganar (la misma trampa que el menú de abajo)
+    '<span id="mon-ticket" hidden title="tus créditos" style="display:none;position:relative;color:#ece8e1">' + TICKET +
+      '<span id="mon-punto" hidden aria-hidden="true"></span><span id="mon-sin-leer" class="mon-oculto"></span></span>' +
     '<span id="mon-pill" hidden style="' + FONDO + 'display:none;align-items:center;height:38px;' +
       'border-radius:999px">' + MAS +
       // UI·19: lo que se ve rueda y no se lee (#mon-cifra); lo que se lee es
@@ -99,6 +110,14 @@
   try {
     CSS.registerProperty({ name: '--mon-saldo', syntax: '<integer>', inherits: false, initialValue: '0' });
   } catch { /* sin la API, o ya registrada por otra copia de este archivo */ }
+  // UI·25: 300 ms la llegada, 900 ms la onda; la onda sale cuando el punto
+  // ya casi llegó (250 ms). Una sola vez: después, quieto. RESORTE es una
+  // copia de --curva-resorte (web/src/estilos/tokens.css), porque las
+  // pantallas viejas no cargan tokens.css; monedero.test.ts vigila que sean
+  // iguales
+  const LLEGA_MS = 300, ONDA_ESPERA_MS = 250, ONDA_MS = 900;
+  const RESORTE = 'linear(0, 0.074, 0.244, 0.45, 0.649, 0.817, 0.944, 1.028, 1.075, 1.094, ' +
+    '1.092, 1.078, 1.06, 1.04, 1.023, 1.009, 1, 0.994, 0.992, 0.991, 0.992, 0.994, 0.996, 0.997, 1)';
   const ESTILO = document.createElement('style');
   ESTILO.textContent =
     // 700 ms: lo bastante lento para leer que bajó, no tanto como para esperar
@@ -118,8 +137,21 @@
       'overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
     // las pantallas viejas no cargan tokens.css: la regla de quietud va aquí
     // también (carta.css trae la suya, igual que tokens.css)
+    // UI·25: el punto ámbar con un aro del color del fondo, para que se
+    // despegue del boleto
+    '#mon-punto{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;' +
+      'background:#f0a94a;box-shadow:0 0 0 2px #0b1626;pointer-events:none}' +
+    // sin linear() (Safari < 17.2) la segunda declaración no se entiende y
+    // queda la primera, un rebote parecido
+    '#mon-punto.mon-llega{animation:mon-punto-llega ' + LLEGA_MS + 'ms cubic-bezier(.34,1.56,.64,1);' +
+      'animation:mon-punto-llega ' + LLEGA_MS + 'ms ' + RESORTE + '}' +
+    '@keyframes mon-punto-llega{from{scale:0}}' +
+    '#mon-punto::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid #f0a94a;opacity:0}' +
+    '#mon-punto.mon-onda::after{animation:mon-onda ' + ONDA_MS + 'ms cubic-bezier(0,0,.2,1) ' + ONDA_ESPERA_MS + 'ms 1}' +
+    '@keyframes mon-onda{from{opacity:.7;scale:1}to{opacity:0;scale:3}}' +
     '@media (prefers-reduced-motion: reduce){#mon-cifra{transition:none}' +
-      '#mon-pill.mon-tinte{animation:none}.mon-vuelo{display:none}}';
+      '#mon-pill.mon-tinte{animation:none}.mon-vuelo{display:none}' +
+      '#mon-punto.mon-llega,#mon-punto.mon-onda::after{animation:none}}';
   (document.head || document.documentElement).appendChild(ESTILO);
 
   function sinMovimiento() {
@@ -198,7 +230,7 @@
   function guardarUltimo(saldo) {
     try {
       sessionStorage.setItem(ULTIMO, JSON.stringify({ quien: delToken().sub || '', saldo,
-        sesion: !el.querySelector('#mon-user').hidden }));
+        sesion: !el.querySelector('#mon-user').hidden, avisos: avisosVistos }));
     } catch { /* sin sessionStorage: se pinta al llegar el saldo, como antes */ }
   }
   function olvidarUltimo() {
@@ -209,6 +241,7 @@
     try { u = JSON.parse(sessionStorage.getItem(ULTIMO)); } catch { return; }
     if (!u || typeof u.saldo !== 'number' || u.quien !== (delToken().sub || '')) return;
     pintarSaldo(u.saldo);
+    pintarAvisos(u.avisos, true);   // quieto, y fija la base de «ya lo vi»
     if (u.sesion) {
       el.querySelector('#mon-user').hidden = false;
       el.querySelector('#mon-email').textContent = delToken().email || '';
@@ -219,6 +252,8 @@
   // el guardado. `hidden` no bastaría: el display:flex inline le gana
   function ocultarSaldo() {
     pintado = null;
+    avisosVistos = null;
+    el.querySelector('#mon-punto').hidden = true;
     el.querySelector('#mon-ticket').style.display = 'none';
     el.querySelector('#mon-pill').style.display = 'none';
     if (el.querySelector('#mon-user').hidden) el.style.display = 'none';
@@ -250,6 +285,33 @@
     // el número real, al instante, para quien no ve la animación
     el.querySelector('#mon-aviso').textContent = 'Tu saldo: ' + n + ' créditos';
     tintar();
+  }
+
+  // UI·25: `avisosVistos` es el último avisos_sin_leer que ESTA pestaña ya
+  // enseñó (lo guardado cuenta; null vale 0). La onda sale solo si el
+  // servidor trae MÁS.
+  let avisosVistos = null;
+  const quitarT = {};
+  function reanimar(nodo, clase, ms) {
+    nodo.classList.remove(clase);
+    void nodo.offsetWidth;   // reinicia la animación
+    nodo.classList.add(clase);
+    clearTimeout(quitarT[clase]);
+    quitarT[clase] = setTimeout(() => nodo.classList.remove(clase), ms);
+  }
+  function pintarAvisos(n, quieto) {
+    if (!Number.isInteger(n) || n < 0) return;   // hoy /api/creditos no lo trae
+    if (!quieto && document.hidden) return;       // la onda no se gasta sin nadie mirando
+    const punto = el.querySelector('#mon-punto');
+    const antes = avisosVistos ?? 0, estaba = !punto.hidden;
+    avisosVistos = n;
+    el.querySelector('#mon-sin-leer').textContent =
+      n === 0 ? '' : n === 1 ? '1 aviso sin leer' : n + ' avisos sin leer';
+    punto.hidden = n === 0;
+    if (n === 0) { punto.classList.remove('mon-llega', 'mon-onda'); return; }
+    if (quieto || n <= antes || sinMovimiento()) return;
+    if (!estaba) reanimar(punto, 'mon-llega', LLEGA_MS);
+    reanimar(punto, 'mon-onda', ONDA_ESPERA_MS + ONDA_MS);
   }
 
   function tintar() {
@@ -293,6 +355,7 @@
       reintento = 0;
       est.activo = true; est.saldo = d.saldo; est.tarifas = d.tarifas || {}; est.packs = d.packs || [];
       pintarSaldo(d.saldo);
+      pintarAvisos(d.avisos_sin_leer);
       guardarUltimo(d.saldo);
       document.dispatchEvent(new CustomEvent('monedero', { detail: est }));
     } catch { programarReintento(); /* sin red: se reintenta igual */ }
