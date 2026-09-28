@@ -360,8 +360,13 @@ describe('imagenes', () => {
     await escribir('un faro');
     await userEvent.click(boton('Generar'));
     expect(await screen.findByText('Revisando tu texto…')).toBeInTheDocument();
+    // UI·27: los pasos de verdad, y aquí no se cierra la pestaña (la espera es del navegador)
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Revisando tu texto');
+    expect(screen.queryByText(/cerrar esta pestaña/)).toBeNull();
     await act(async () => moderado(json({ permitido: true })));
     expect(await screen.findByText('Creando tu imagen · ~20 s')).toBeInTheDocument();
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Creando tu imagen');
+    expect(screen.getByText('Texto revisado')).toBeInTheDocument();
     await act(async () => soltar(json({ detail: 'No se pudo generar la imagen: fal caído' }, 502)));
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo generar la imagen');
     expect(screen.queryByText('Creando tu imagen · ~20 s')).toBeNull();

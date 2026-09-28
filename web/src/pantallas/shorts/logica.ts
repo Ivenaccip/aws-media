@@ -26,12 +26,16 @@ export interface Salida {
 
 export interface Render {
   estado?: 'corriendo' | 'listo' | 'error' | string;
+  /** ISO del servidor: cuándo se lanzó (UI·27, «Llevas…»). */
+  inicio?: string;
   salidas?: Salida[];
   log?: string;
 }
 
 export interface EstadoShorts {
   estado?: 'analizando' | 'candidatos' | 'error' | string;
+  /** ISO del servidor: cuándo empezó el análisis (UI·27). */
+  inicio?: string;
   candidatos?: Candidato[];
   listo?: string;
   error?: string;
@@ -40,6 +44,7 @@ export interface EstadoShorts {
 
 export interface Importacion {
   estado?: 'descargando' | 'listo' | 'error' | string;
+  inicio?: string;
   titulo?: string;
   error?: string;
 }
@@ -160,3 +165,14 @@ export const urlDescarga = (key: string, nombre: string) =>
   '/api/media/descarga?' + new URLSearchParams({ key, nombre }).toString();
 
 export const conP = (p: string) => '?p=' + encodeURIComponent(p);
+
+// UI·27 — el camino entero de un short, con la misma espera que crear. Son
+// pasos de verdad: el servidor dice en cuál va (descargando, analizando, el
+// render) y «tú eliges» es la pausa en la que manda la persona. Dentro de cada
+// paso no cuenta fases, así que la barra va por pasos y el resto es el reloj.
+export const PASOS_SHORTS = [
+  { falta: 'Traer tu video', activo: 'Trayendo tu video', hecho: 'Video listo' },
+  { falta: 'Analizar el video', activo: 'Analizando: transcript y candidatos', hecho: 'Video analizado' },
+  { falta: 'Tú eliges los cortes', hecho: 'Cortes elegidos' },
+  { falta: 'Renderizar los shorts', activo: 'Renderizando tus shorts', hecho: 'Shorts listos' },
+];

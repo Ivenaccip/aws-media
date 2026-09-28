@@ -358,6 +358,19 @@ describe('clip', () => {
     expect(await screen.findByText('Todavía no has hecho ninguno.')).toBeInTheDocument();
   });
 
+  it('UI·27: el clip que se genera enseña sus pasos, lo que lleva y que puedes cerrar la pestaña', async () => {
+    const inicio = new Date(Date.now() - 45_000).toISOString();
+    servidor({ '/api/clip': () => json({ clips: [{ ...VIVO, inicio }] }) });
+    render(<Clip />);
+    const activo = await screen.findByRole('listitem', { current: 'step' });
+    expect(activo).toHaveTextContent('Generando el video');
+    expect(screen.getByText('Recibimos tu idea')).toBeInTheDocument();
+    expect(screen.getByText(/^Llevas 0:4\d · suele tardar 1–2 min\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/Puedes cerrar esta pestaña/)).toBeInTheDocument();
+    // 45 s de 2 min dentro del paso 2 de 3: la barra ya pasó el tercio
+    expect(Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'))).toBeGreaterThan(33);
+  });
+
   it('clip.lista.sondea_mientras_genera_y_para_al_terminar', async () => {
     const cobros = oirCobros();
     vi.useFakeTimers({ shouldAdvanceTime: true });

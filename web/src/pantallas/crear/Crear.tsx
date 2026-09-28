@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
-import { EsperaIA } from '../../marca/EsperaIA';
+import { EsperaPasos } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { Recarga } from '../../marca/Recarga';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
@@ -31,7 +31,6 @@ import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
 import { Confirmar } from '../../ui/Confirmar';
 import { Icono } from '../../ui/Icono';
-import { unir } from '../../ui/unir';
 import { Formulario, type Inicial } from './Formulario';
 import {
   animar,
@@ -256,65 +255,25 @@ function Progreso({
   reposo: boolean;
 }) {
   const prod = p.estado === 'produciendo';
-  const pasos = prod ? PASOS_PROD : PASOS_PREP;
-  const falta = prod ? textoFalta(minutos, avance.pct) : null;
   const total = p.progreso.escenas_total;
-  const escenas = total ? ' · ' + (p.progreso.escenas_listas || 0) + ' de ' + total : '';
   return (
-    <section className="max-w-[720px] rounded-grande border border-linea bg-superficie p-5">
-      {falta && <p className="m-0 mb-3 tabular-nums text-secundario">{falta}</p>}
-      <div
-        role="progressbar"
-        aria-label="Avance"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(avance.pct)}
-        className="h-1.5 overflow-hidden rounded-[3px] bg-linea"
-      >
-        <i
-          className="block h-full bg-gradient-to-r from-ambar to-ambar-claro transition-[width] duration-400 motion-reduce:transition-none"
-          style={{ width: avance.pct + '%' }}
-        />
-      </div>
-      <div className="mt-3">
-        <EsperaIA
-          texto={etiquetaEtapa(p)}
-          tope={SIN_AVANCE_MS}
-          latido={latido}
-          reposo={reposo}
-          textoAlAgotar="Llevamos un rato sin novedades. Tu película sigue en la nube: puedes cerrar esto y volver con el mismo enlace. Si sigue igual, escríbenos."
-        />
-      </div>
-      <ol aria-label="Pasos" className="m-0 mt-4 grid list-none gap-3 p-0">
-        {pasos.map((x, k) => {
-          const hecho = k < avance.paso;
-          const activo = k === avance.paso;
-          return (
-            <li
-              key={x.falta}
-              aria-current={activo ? 'step' : undefined}
-              className={unir('grid grid-cols-[24px_1fr] items-start gap-2.5', hecho || activo ? 'text-texto' : 'text-secundario', activo && 'font-semibold')}
-            >
-              <span className="grid size-6 place-items-center" aria-hidden="true">
-                {hecho ? (
-                  <Icono nombre="listo" className="text-exito" />
-                ) : activo ? (
-                  <span className="size-3 rounded-full bg-ambar-claro motion-safe:animate-pulse" />
-                ) : (
-                  <span className="size-2.5 rounded-full border-2 border-campo" />
-                )}
-              </span>
-              <span>
-                {hecho ? x.hecho : activo ? (x.activo ?? x.falta) + (prod && k === 2 ? escenas : '') : x.falta}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-      <p className="m-0 mt-3 text-xs text-secundario">
-        Puedes cerrar esta pestaña: el trabajo sigue en la nube y este enlace te trae de vuelta.
-      </p>
-    </section>
+    <EsperaPasos
+      pasos={prod ? PASOS_PROD : PASOS_PREP}
+      paso={avance.paso}
+      // «Animando las escenas · 2 de 6»: el conteo es del paso de las escenas
+      detalle={prod && avance.paso === 2 && total ? ' · ' + (p.progreso.escenas_listas || 0) + ' de ' + total : undefined}
+      pct={avance.pct}
+      tiempo={prod ? textoFalta(minutos, avance.pct) : null}
+      orbe={{
+        texto: etiquetaEtapa(p),
+        tope: SIN_AVANCE_MS,
+        latido,
+        reposo,
+        textoAlAgotar:
+          'Llevamos un rato sin novedades. Tu película sigue en la nube: puedes cerrar esto y volver con el mismo enlace. Si sigue igual, escríbenos.',
+      }}
+      cerrar="Puedes cerrar esta pestaña: el trabajo sigue en la nube y este enlace te trae de vuelta."
+    />
   );
 }
 

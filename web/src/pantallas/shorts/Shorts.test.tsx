@@ -184,7 +184,9 @@ describe('analizar', () => {
     montar({ proyecto: () => ANALIZANDO });
     const { unmount } = render(<Shorts />);
     expect(await screen.findByText('Analizando tu video · transcript y candidatos')).toBeInTheDocument();
-    expect(screen.getByText('Puedes cerrar la página: el análisis sigue en la nube.')).toBeInTheDocument();
+    expect(screen.getByText('Puedes cerrar esta pestaña: sigue en la nube y este enlace te trae de vuelta.')).toBeInTheDocument();
+    // UI·27: los pasos del camino, en el del análisis
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Analizando: transcript y candidatos');
     unmount();
     // el render es Remotion componiendo, no la IA pensando: sin orbe
     montar({ proyecto: () => RENDERIZANDO });

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
-import { EsperaIA } from '../../marca/EsperaIA';
+import { EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
@@ -28,6 +28,7 @@ import {
   cargarEstado,
   corriendo,
   notaMetraje,
+  PASOS_EDITOR,
   resumenListo,
   sugerir,
   type ConfigMedia,
@@ -268,14 +269,7 @@ export function Subir() {
               </p>
               {vivo || lanzando ? (
                 // el orbe OCUPA el sitio de la animación decorativa, no se le suma
-                <div className="my-4 grid min-h-[110px] place-items-center rounded-medio border border-linea bg-fondo p-3">
-                  <EsperaIA
-                    heroe
-                    texto="Revisando tu metraje · transcribir y proponer el corte"
-                    tope={1800000}
-                    textoAlAgotar={AL_AGOTAR}
-                  />
-                </div>
+                <EsperaEditor inicio={st?.editar?.inicio} reposo={vivo && sinRed} />
               ) : (
                 <div className="anim anim-editor" aria-hidden="true">
                   <div className="pista" />
@@ -385,5 +379,21 @@ function EstadoCorte({ carga }: { carga: Carga }) {
       {icono && <Icono nombre={icono} className={unir('mr-1 align-[-0.15em]', mal ? 'text-error' : 'text-secundario')} />}
       {texto}
     </p>
+  );
+}
+
+// UI·27: la misma espera por pasos que crear, en el sitio de la animación
+function EsperaEditor({ inicio, reposo }: { inicio: string | undefined; reposo: boolean }) {
+  const llevas = useLlevas(inicio);
+  return (
+    <EsperaPasos
+      plano
+      className="my-4"
+      pasos={PASOS_EDITOR}
+      paso={1}
+      tiempo={textoLlevas(llevas)}
+      orbe={{ texto: 'Revisando tu metraje · transcribir y proponer el corte', tope: 1800000, reposo, textoAlAgotar: AL_AGOTAR }}
+      cerrar="Puedes cerrar esta pestaña: el corte sigue en la nube y este enlace te trae de vuelta."
+    />
   );
 }

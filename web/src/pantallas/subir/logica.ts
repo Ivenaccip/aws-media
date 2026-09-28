@@ -9,6 +9,8 @@ export { cargarConfig, type ConfigMedia } from '../../nucleo/subida';
 
 export interface Corrida {
   estado?: 'corriendo' | 'listo' | 'error' | string;
+  /** ISO del servidor: cuándo empezó (UI·27, «Llevas…»). */
+  inicio?: string;
   cortes?: number;
   fluff?: number;
   flags?: number;
@@ -68,3 +70,12 @@ export function notaMetraje(c: Costo): string {
 
 export const aShorts = (p: string) => '/shorts.html?p=' + encodeURIComponent(p);
 export const alEditor = (p: string) => '/editor/' + encodeURIComponent(p) + '/';
+
+// UI·27 — la espera del Editor IA con la misma forma que crear. Pasos de
+// verdad: el metraje ya está (sin él no se lanza), la IA transcribe y propone
+// (el servidor no separa esas dos), y al final manda la persona.
+export const PASOS_EDITOR = [
+  { falta: 'Subir tu metraje', hecho: 'Metraje subido' },
+  { falta: 'Transcribir y proponer el corte', activo: 'Transcribiendo y proponiendo el corte', hecho: 'Corte propuesto' },
+  { falta: 'Tú apruebas cada corte en el editor' },
+];

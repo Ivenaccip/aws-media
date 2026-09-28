@@ -8,7 +8,7 @@
 import { useEffect, useId, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
-import { EsperaIA } from '../../marca/EsperaIA';
+import { EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
@@ -40,6 +40,7 @@ import {
   keyDe,
   LIGA_INVALIDA,
   MAX_SHORTS,
+  PASOS_SHORTS,
   minutos,
   PLATAFORMAS,
   plural,
@@ -87,12 +88,36 @@ function NotaLinea({ nota, className }: { nota: Nota | null; className?: string 
 }
 
 /** Una espera que NO es la IA pensando (descargar, renderizar): sin orbe (M19). */
-function Girando({ children }: { children: React.ReactNode }) {
+// UI·27: la espera de cada paso del camino (logica.ts, PASOS_SHORTS)
+function EsperaShorts({
+  paso,
+  inicio,
+  texto,
+  suele,
+  plano = false,
+  className,
+}: {
+  paso: number;
+  inicio: string | undefined;
+  texto: string;
+  suele?: string;
+  plano?: boolean;
+  className?: string;
+}) {
+  const llevas = useLlevas(inicio);
+  // el orbe es «la IA piensa» (M19): solo el análisis. Traer el video y el
+  // render (Remotion componiendo) dicen lo que pasa sin él
+  const ia = paso === 1;
   return (
-    <p role="status" className="m-0 flex items-center gap-2 text-sm text-secundario">
-      <span aria-hidden="true" className="inline-block size-3.5 animate-spin rounded-pildora border-2 border-campo border-t-texto" />
-      <span>{children}</span>
-    </p>
+    <EsperaPasos
+      plano={plano}
+      {...(className ? { className } : {})}
+      pasos={PASOS_SHORTS}
+      paso={paso}
+      tiempo={textoLlevas(llevas, suele)}
+      {...(ia ? { orbe: { texto, tope: 1800000, textoAlAgotar: AL_AGOTAR } } : { estado: texto })}
+      cerrar="Puedes cerrar esta pestaña: sigue en la nube y este enlace te trae de vuelta."
+    />
   );
 }
 
@@ -386,11 +411,13 @@ function ProyectoShorts({ p, alAbrir }: { p: string; alAbrir: (nombre: string) =
       {d === null && !lista.error && <p className="text-sm text-secundario">Cargando…</p>}
 
       {d && descargando && (
-        <Tarjeta className="mb-6">
-          <Girando>
-            Trayendo «{imp.titulo || 'el video'}» de YouTube — suele tardar 1-3 minutos; puedes cerrar la página.
-          </Girando>
-        </Tarjeta>
+        <EsperaShorts
+          className="mb-6"
+          paso={0}
+          inicio={imp.inicio}
+          suele="1–3 min"
+          texto={'Trayendo «' + (imp.titulo || 'el video') + '» de YouTube'}
+        />
       )}
 
       {d && !descargando && imp.estado === 'error' && !d.fuente && (
@@ -473,10 +500,7 @@ function Analisis({ p, st, alLanzar }: { p: string; st: EstadoShorts; alLanzar: 
     <Tarjeta titulo="1 · Analizar el video" className="mb-6">
       {analizando ? (
         <>
-          <div className="grid min-h-[110px] place-items-center">
-            <EsperaIA heroe texto="Analizando tu video · transcript y candidatos" tope={1800000} textoAlAgotar={AL_AGOTAR} />
-          </div>
-          <p className="mt-2 mb-0 text-sm text-secundario">Puedes cerrar la página: el análisis sigue en la nube.</p>
+          <EsperaShorts plano paso={1} inicio={st.inicio} texto="Analizando tu video · transcript y candidatos" />
         </>
       ) : (
         <>
@@ -712,7 +736,7 @@ function Candidatos({
 
       <div className="mt-4">
         {corriendo ? (
-          <Girando>Renderizando en la nube — Remotion y el export tardan unos minutos por short; puedes cerrar la página.</Girando>
+          <EsperaShorts plano paso={3} inicio={render.inicio} suele="unos minutos por short" texto="Renderizando en la nube" />
         ) : n && porShort !== undefined ? (
           <BotonCobro
             verbo="Renderizar"

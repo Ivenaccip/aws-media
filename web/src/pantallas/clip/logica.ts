@@ -27,6 +27,8 @@ export interface Clip {
   recorte?: string;
   video?: string;
   error?: string;
+  /** ISO del servidor: cuándo empezó a generarse (UI·27, «Llevas 0:45»). */
+  inicio?: string | null;
 }
 
 export interface Firma {
@@ -107,3 +109,13 @@ export function tomarBrief(loc: Location = location, hist: History = history): s
   hist.replaceState(null, '', loc.pathname);
   return brief.slice(0, 2000);
 }
+
+// UI·27 — la espera de un clip: el servidor no cuenta fases (es UNA llamada a
+// la IA), así que son pocos pasos y lo demás es el reloj.
+export const PASOS_CLIP = [
+  { falta: 'Recibir tu idea', hecho: 'Recibimos tu idea' },
+  { falta: 'Generar el video', activo: 'Generando el video', hecho: 'Video generado' },
+  { falta: 'Tu clip, listo para ver' },
+];
+/** Lo que suele tardar un clip: el tope de «1-2 min», para que la barra no corra de más. */
+export const ESTIMADO_CLIP_MS = 120_000;
