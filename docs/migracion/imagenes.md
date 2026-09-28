@@ -80,7 +80,7 @@ con ese nombre exacto.
 | `imagenes.teclado.ctrl_enter_envia` | Ctrl/Cmd+Enter envía |
 | `imagenes.titulo.el_lector_oye_el_titulo_fijo` | la palabra que gira es decorativa: el lector oye «Crea tu imagen» / «Edita tu imagen» |
 | `imagenes.textos.del_servidor_como_texto` | los nombres de estilo con HTML se leen como texto |
-| `imagenes.marco.enlaces_estudio_y_version_anterior` | «← Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=imagenes`) |
+| `imagenes.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

@@ -88,6 +88,13 @@ export const cargarCosto = (p: string) => pedir<Costo>(ruta(p) + '/costo');
 export const analizar = (p: string) => pedir<{ lanzado: boolean; creditos: number }>(ruta(p) + '/analizar', { cuerpo: {} });
 export const renderizar = (p: string, cuerpo: { shorts: Corte[]; estilo: string; plataforma: string; tipo: string }) =>
   pedir<{ lanzado: boolean; creditos: number }>(ruta(p) + '/render', { cuerpo });
+// la misma regla que server/shorts_api.py `_YT_ID`: así una liga que no es de
+// YouTube se corrige en el campo, sin ir al servidor
+const ID_YOUTUBE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+export const LIGA_INVALIDA =
+  'Esa no parece una liga de YouTube. Cópiala desde «Compartir» del video (youtube.com/watch?v=…, youtu.be/… o /shorts/…).';
+export const esLigaDeYoutube = (url: string) => ID_YOUTUBE.test(url);
+
 export const cotizar = (url: string) => pedir<Cotizacion>('/api/shorts/importar/cotizar', { cuerpo: { url } });
 export const importar = (url: string) =>
   pedir<{ lanzado: boolean; nombre: string; creditos: number }>('/api/shorts/importar', { cuerpo: { url } });

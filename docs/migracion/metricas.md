@@ -57,7 +57,7 @@ Cada uno es un test de vitest en
 | `metricas.tarjeta.adjuntos_y_motivo_del_servidor` | «2 archivos» y el motivo que redacta el server |
 | `metricas.carga.una_carga_a_la_vez` | mientras carga, todo lo que carga se apaga y no sale una segunda llamada |
 | `metricas.cobro.no_cobra_ni_pinta_ambar` | ningún ✦ ni botón ámbar |
-| `metricas.marco.enlaces_estudio_y_version_anterior` | «← Estudio», «Usar la versión anterior» (`/ui/clasica?pantalla=metricas`) y el título |
+| `metricas.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

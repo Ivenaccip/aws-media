@@ -60,7 +60,7 @@ Cada ID es un test de vitest con ese nombre exacto, en
 | `agenda.cancelar.el_404_recarga_y_despues_avisa` | 404 al cancelar: primero repinta y después avisa (el aviso sobrevive a la recarga) |
 | `agenda.cancelar.el_409_ofrece_conectar` | un 409 al cancelar ofrece conectar |
 | `agenda.cobro.no_cobra_ni_pinta_ambar_fuera_del_dialogo` | ningún ✦ ni botón ámbar en la lista; el único principal es Guardar, dentro del diálogo |
-| `agenda.marco.enlaces_estudio_y_version_anterior` | «← Estudio», «Usar la versión anterior» (`/ui/clasica?pantalla=agenda`) y el título |
+| `agenda.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

@@ -607,10 +607,10 @@ describe('Blotato', () => {
 });
 
 describe('el marco', () => {
-  it('inicio.marco.version_anterior', async () => {
+  it('inicio.marco.sin_version_anterior', async () => {
     montar();
     pintar();
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=inicio');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     await screen.findByText('La historia del café');
   });
 });

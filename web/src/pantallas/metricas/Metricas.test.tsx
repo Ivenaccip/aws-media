@@ -476,10 +476,10 @@ describe('metricas', () => {
     expect(document.body).not.toHaveTextContent('✦');
   });
 
-  it('metricas.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('metricas.marco.enlace_estudio_sin_version_anterior', async () => {
     montar({ '/api/metricas': () => json(tramo()) });
     render(<Metricas />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=metricas');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Cómo rinden tus publicaciones');
     await tarjeta('Instagram');

@@ -55,7 +55,7 @@ ese nombre exacto.
 | `clip.lista.sondea_mientras_genera_y_para_al_terminar` | sondea mientras hay uno generándose, para al terminar y refresca el saldo |
 | `clip.lista.fallo_de_carga_avisa_reintenta_y_sigue_solo` | sin red: aviso con «Reintentar», sin «Cargando…» colgado, y el sondeo sigue solo |
 | `clip.espera.titulo_de_la_pestana_dice_generando` | la pestaña dice «Generando tu clip · …» mientras se genera |
-| `clip.marco.enlaces_estudio_y_version_anterior` | «← Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=clip`) |
+| `clip.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

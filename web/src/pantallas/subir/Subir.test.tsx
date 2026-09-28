@@ -619,10 +619,10 @@ describe('la espera', () => {
 });
 
 describe('el marco', () => {
-  it('subir.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('subir.marco.enlace_estudio_sin_version_anterior', async () => {
     montar();
     render(<Subir />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=subir');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     await screen.findByRole('button', { name: 'Proponer ✦ 17' });
   });

@@ -74,7 +74,7 @@ Cada ID es el nombre exacto de un test de vitest en
 | `mix.ultima.dice_como_acabo_la_anterior` | «Apagaste tu campaña / Tu campaña terminó: salieron N de M días. Te devolvimos…» |
 | `mix.carga.fallo_avisa_con_reintentar` | Sin red: el aviso en español con Reintentar |
 | `mix.textos.del_servidor_como_texto` | Motivo, cuenta y textos con HTML se leen como texto. Una imagen `javascript:` no se pinta. Un estado o tono «constructor» no pinta una función |
-| `mix.marco.enlaces_estudio_y_version_anterior` | «← Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=mix`) |
+| `mix.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

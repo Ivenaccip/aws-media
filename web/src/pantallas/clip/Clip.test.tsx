@@ -403,14 +403,11 @@ describe('clip', () => {
     await waitFor(() => expect(document.title).toBe('Generando tu clip · Estudio de video · Clip de 8 segundos'));
   });
 
-  it('clip.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('clip.marco.enlace_estudio_sin_version_anterior', async () => {
     servidor({});
     render(<Clip />);
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute(
-      'href',
-      '/ui/clasica?pantalla=clip',
-    );
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     await screen.findByRole('button', { name: /Generar ✦/ });
   });
 });

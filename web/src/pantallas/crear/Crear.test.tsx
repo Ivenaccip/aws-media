@@ -959,12 +959,12 @@ describe('crear · transversales', () => {
     expect(document.querySelector('img[src="x"]')).toBeNull();
   });
 
-  it('crear.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('crear.marco.enlace_estudio_sin_version_anterior', async () => {
     montar();
     render(<Crear />);
     expect(screen.getByRole('heading', { level: 1, name: 'Crea tu video' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=crear');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     await screen.findByRole('radio', { name: 'Animado' });
   });
 

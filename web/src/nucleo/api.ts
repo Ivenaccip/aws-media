@@ -51,6 +51,9 @@ function mensajeDe(estado: number, detalle: unknown): string {
     if (typeof m === 'string' && m.trim()) return m;
   }
   if (estado === 0) return 'No hay conexión. Revisa tu internet y vuelve a intentar.';
+  // el 422 de validación de FastAPI trae una lista técnica en `detail`: se
+  // traduce a lo que la persona puede hacer, sin el código
+  if (estado === 422) return 'Revisa lo que escribiste: hay un dato que no es válido.';
   return 'Algo salió mal (HTTP ' + estado + ').';
 }
 

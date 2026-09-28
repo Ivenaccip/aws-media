@@ -243,14 +243,11 @@ describe('admin', () => {
     expect(screen.getByText('$3.70 dólares')).toHaveClass('text-exito');
   });
 
-  it('admin.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('admin.marco.enlace_estudio_sin_version_anterior', async () => {
     servidor({ '/api/admin/resumen': () => json(RESUMEN) });
     render(<Admin />);
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute(
-      'href',
-      '/ui/clasica?pantalla=admin',
-    );
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Panel del negocio');
     await screen.findByRole('tablist');
   });

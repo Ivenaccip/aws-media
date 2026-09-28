@@ -38,7 +38,7 @@ con ese nombre exacto.
 | `admin.sync.doble_clic_un_solo_post` | doble clic en Sincronizar = 1 POST |
 | `admin.sync.error_deja_volver_a_intentar` | tras un error, el botón vuelve a funcionar |
 | `admin.flujo.signo_pinta_verde_o_rojo` | flujo positivo en verde, negativo en rojo |
-| `admin.marco.enlaces_estudio_y_version_anterior` | «← Estudio» y «Usar la versión anterior» (`/ui/clasica?pantalla=admin`) |
+| `admin.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 
 ## Cada aserción vieja y su destino
 

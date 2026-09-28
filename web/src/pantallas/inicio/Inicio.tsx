@@ -5,7 +5,6 @@
 // con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
-import { enlaceClasica } from '../../marca/Marco';
 import { ErrorApi } from '../../nucleo/api';
 import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
@@ -145,14 +144,6 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
 
   return (
     <div className="mx-auto max-w-[1100px] px-5 pt-16 pb-14">
-      <nav aria-label="Navegación" className="mb-2 flex justify-end">
-        <a
-          href={enlaceClasica('inicio')}
-          className="inline-flex min-h-11 items-center text-sm text-enlace no-underline underline-offset-4 hover:text-texto hover:underline"
-        >
-          Usar la versión anterior
-        </a>
-      </nav>
       <div className="grid gap-7 min-[861px]:grid-cols-[230px_minmax(0,1fr)]">
         <aside className="min-w-0">
           <h1 className="m-0 flex items-center gap-2.5 px-3 pt-2.5 pb-4 text-titulo-sm font-bold">

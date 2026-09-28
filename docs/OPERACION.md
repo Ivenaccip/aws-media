@@ -449,8 +449,8 @@ lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
 `/estudio/`…) responde 302 a su `/estudio/<p>/`, aunque `server/migracion.py`
 la tenga en `nueva`. Producción no tiene la variable (lo fija
 `tests/test_entornos.py`), así que sus etapas siguen siendo las de
-`PANTALLAS`. «Usar la versión anterior» del Marco sigue devolviendo a la
-clásica, también en dev.
+`PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»; para volver
+a una clásica se teclea `/ui/clasica?pantalla=<p>`.
 
 ## Deploy (checklist)
 
@@ -855,8 +855,8 @@ cada quien. Cada pantalla migrada tiene una etapa en `PANTALLAS`:
 | `retirada` | 302 siempre; el HTML viejo ya no existe | la ven todos |
 
 - El 302 **conserva el query** y lleva `Cache-Control: no-store`.
-- Si una pantalla nueva falla, el usuario pulsa **«Usar la versión anterior»**
-  (arriba a la derecha). Eso va a `/ui/clasica?pantalla=<p>`, deja la cookie
+- Si una pantalla nueva falla, se abre **`/ui/clasica?pantalla=<p>`** a mano
+  (el botón «Usar la versión anterior» se quitó el 28-sep). Eso deja la cookie
   7 días y lo lleva a la vieja, **sin desplegar**. Para volver antes:
   `/ui/nueva?pantalla=<p>`.
 - **Cambiar de etapa** = editar `etapa=` en `PANTALLAS` y desplegar (lo

@@ -21,6 +21,7 @@ import { useLlegada } from '../../nucleo/useLlegada';
 import { useTituloPestana } from '../../nucleo/useTituloPestana';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
+import { Campo } from '../../ui/Campo';
 import { FilaViva } from '../../ui/FilaViva';
 import { Icono } from '../../ui/Icono';
 import { Tarjeta } from '../../ui/Tarjeta';
@@ -32,10 +33,12 @@ import {
   cargarProyectos,
   conP,
   cotizar,
+  esLigaDeYoutube,
   ESTILOS,
   hrefSeguro,
   importar,
   keyDe,
+  LIGA_INVALIDA,
   MAX_SHORTS,
   minutos,
   PLATAFORMAS,
@@ -218,13 +221,19 @@ function Importar({ principal, alImportar }: { principal: boolean; alImportar: (
   const [cotiza, setCotiza] = useState<Cotizacion | null>(null);
   const [cotizando, setCotizando] = useState(false);
   const [notaCotiza, setNotaCotiza] = useState<Nota | null>(null);
+  // UI·24: lo que está mal de la liga va en el campo (y el campo tiembla);
+  // la nota de abajo queda para lo que no es culpa de la liga (red, servidor)
+  const [errorLiga, setErrorLiga] = useState<string | null>(null);
   const [nota, setNota] = useState<Nota | null>(null);
   const saldo = useSaldo();
-  const idUrl = useId();
 
   async function alCotizar() {
     const limpia = url.trim();
-    if (!limpia || cotizando) return;
+    if (cotizando) return;
+    if (!esLigaDeYoutube(limpia)) {
+      setErrorLiga(LIGA_INVALIDA);
+      return;
+    }
     setCotizando(true);
     setCotiza(null);
     setNota(null);
@@ -234,7 +243,12 @@ function Importar({ principal, alImportar }: { principal: boolean; alImportar: (
       setCotiza(c);
       setNotaCotiza(null);
     } catch (e) {
-      setNotaCotiza(notaDeError(e));
+      // un 4xx de cotizar habla de ESA liga (no existe, muy corta, muy larga):
+      // va en el campo. Lo demás (red, 5xx) no es culpa de la liga
+      if (e instanceof ErrorApi && e.estado >= 400 && e.estado < 500 && !e.sinSaldo) {
+        setNotaCotiza(null);
+        setErrorLiga(mensaje(e));
+      } else setNotaCotiza(notaDeError(e));
     } finally {
       setCotizando(false);
     }
@@ -261,26 +275,34 @@ function Importar({ principal, alImportar }: { principal: boolean; alImportar: (
         Pega la liga de un video (entre 1 y 90 min): lo traemos al servicio y de ahí salen tus shorts. Llega como
         proyecto aparte, así que no toca el que tengas abierto.
       </p>
-      <label htmlFor={idUrl} className="sr-only">
-        Liga de YouTube
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          id={idUrl}
-          type="url"
-          value={url}
-          // la cotización es de ESA liga: cambiarla la anula, para no cobrar otra
-          onChange={e => {
-            setUrl(e.target.value);
-            setCotiza(null);
-          }}
-          placeholder="https://www.youtube.com/watch?v=…"
-          className="min-h-11 min-w-0 flex-[1_1_320px] rounded-medio border border-campo bg-elevada px-3 text-sm text-texto"
-        />
-        <Boton nivel="secundario" onClick={() => void alCotizar()} trabajando={cotizando && 'Cotizando…'}>
+      <form
+        className="flex flex-wrap items-start gap-3"
+        noValidate
+        onSubmit={e => {
+          e.preventDefault();
+          void alCotizar();
+        }}
+      >
+        <div className="min-w-0 flex-[1_1_320px]">
+          <Campo
+            etiqueta="Liga de YouTube"
+            etiquetaOculta
+            type="url"
+            value={url}
+            error={errorLiga}
+            // la cotización es de ESA liga: cambiarla la anula, para no cobrar otra
+            onChange={e => {
+              setUrl(e.target.value);
+              setCotiza(null);
+              setErrorLiga(null);
+            }}
+            placeholder="https://www.youtube.com/watch?v=…"
+          />
+        </div>
+        <Boton type="submit" nivel="secundario" trabajando={cotizando && 'Cotizando…'}>
           Cotizar
         </Boton>
-      </div>
+      </form>
       {cotiza && (
         <div className="mt-3">
           <p className="m-0 mb-3 text-sm text-secundario [overflow-wrap:anywhere]">

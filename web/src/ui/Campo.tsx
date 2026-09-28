@@ -15,11 +15,14 @@ export interface PropsCampo extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   etiqueta: string;
   ayuda?: string;
   error?: string | null;
+  /** La etiqueta existe (lectores de pantalla) pero no se ve: cuando el título
+   *  de la tarjeta ya dice qué va en el campo. */
+  etiquetaOculta?: boolean;
   /** React 19: la ref es una prop más y llega al <input>. */
   ref?: Ref<HTMLInputElement>;
 }
 
-export function Campo({ etiqueta, ayuda, error, className, onAnimationEnd, ...resto }: PropsCampo) {
+export function Campo({ etiqueta, etiquetaOculta, ayuda, error, className, onAnimationEnd, ...resto }: PropsCampo) {
   const id = useId();
   const idAyuda = ayuda ? id + '-ayuda' : undefined;
   const idError = error ? id + '-error' : undefined;
@@ -38,7 +41,9 @@ export function Campo({ etiqueta, ayuda, error, className, onAnimationEnd, ...re
 
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium">{etiqueta}</label>
+      <label htmlFor={id} className={etiquetaOculta ? 'sr-only' : 'text-sm font-medium'}>
+        {etiqueta}
+      </label>
       <input
         id={id}
         aria-invalid={error ? true : undefined}

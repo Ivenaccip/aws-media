@@ -604,10 +604,10 @@ describe('imagenes', () => {
     expect(container.querySelector('img[onerror]')).toBeNull();
   });
 
-  it('imagenes.marco.enlaces_estudio_y_version_anterior', async () => {
+  it('imagenes.marco.enlace_estudio_sin_version_anterior', async () => {
     montar();
     render(<Imagenes />);
-    expect(screen.getByRole('link', { name: 'Usar la versión anterior' })).toHaveAttribute('href', '/ui/clasica?pantalla=imagenes');
+    expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     await screen.findByRole('button', { name: 'Animado' });
   });
