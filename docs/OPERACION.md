@@ -67,6 +67,22 @@ user_id real de la base) antes de tocar el monedero, y truena con aviso si el
 correo no existe en el pool. También acepta el sub directo (el id que imprime
 `usuarios.py lista`).
 
+**Para resolver un correo hace falta `COGNITO_POOL_ID`** (o `--pool`). Lo pone
+`.env.local`, que genera `tools/env_local.py`:
+
+```bash
+venv/Scripts/python tools/env_local.py --ejecutar
+```
+
+Antes había un pool de producción cableado como default, y con dev en pie eso
+resolvía el correo contra el pool equivocado **sin avisar**: abonaría al `sub` de
+un usuario de producción dentro de la base de dev. Ahora falla y lo dice. Pasar
+el sub directo no necesita pool.
+
+`abonar` además comprueba contra CloudFormation que el clúster es el del
+`--entorno` que le declaraste, y en producción hace teclear `PROD`. `saldo` y
+`movimientos` no preguntan nada.
+
 ```bash
 venv/Scripts/python tools/creditos.py saldo --user correo@ejemplo.com
 ```
@@ -283,6 +299,45 @@ en 8011 — y por eso el deploy no es "cuando se pueda": un merge a `main` sin s
 | `dev` | solo en tu máquina: `venv/Scripts/python -m uvicorn server.app:app --port 8011` → http://localhost:8011 |
 
 No hay un «dev en la nube». Con un solo entorno AWS, esa columna no existe.
+
+#### El 8011 con login real (`.env.local`)
+
+Por default el 8011 corre **sin login**: `server/auth.py` solo exige el JWT si ve
+`COGNITO_POOL_ID`, y sin esa variable todo pasa como `DEFAULT_USER_ID`. Para
+probar el login, el monedero o los créditos de verdad hay que darle el cableado
+de AWS, y ese cableado **no se teclea**: sale de los outputs del stack.
+
+```bash
+venv/Scripts/python tools/env_local.py              # ENSAYO: dice qué escribiría
+venv/Scripts/python tools/env_local.py --ejecutar    # escribe .env.local
+```
+
+`.env.local` se carga después del `.env` y con override (`pipeline/config.py`),
+así que el cableado generado gana sin que nadie edite el `.env` a mano. Para
+volver al dev local de siempre, **borra el archivo**: no hay que deshacer nada.
+
+**Mientras no existan los stacks `-dev` (paso 8 del entorno dev), eso apunta a
+PRODUCCIÓN.** El pool, la base y el monedero que veas en localhost:8011 son los
+reales: lo que cobres o borres ahí le pasa a un usuario de verdad. La
+herramienta te hace teclear `PROD` antes de escribir el archivo.
+
+Lo que **no** pone, a propósito: `JOBS_BACKEND`, `JOBS_QUEUE_URL` y
+`PRODUCIR_SM_ARN` —con esos tres tu máquina encola en la cola de producción y el
+worker de prod recoge y paga la generación—, `STRIPE_WEBHOOK_SECRET`,
+`LANGFUSE_PROMPTS` y **los dos prefijos de SSM**.
+
+El de usuarios es el que más duele y **no falla: publica**. Con
+`SSM_USUARIOS_PREFIX` de producción puesto, `claves_usuario.en_nube()` da `True` y
+`blotato.clave_y_origen()` devuelve la clave de Blotato de un usuario **real**
+leída de SSM: a partir de ahí cualquier prueba de MIX en tu máquina publica en la
+cuenta de redes de ese cliente. Sin el prefijo, las claves salen de
+`work/_claves` —archivo local que git ignora— y el flujo de «conecta tu clave» se
+prueba igual. `SSM_ENV_PREFIX` se queda fuera por otra razón: en local no lo lee
+nadie, porque lo consume `worker/env_ssm.py` desde `server/lambda_handler.py` y
+uvicorn arranca `server/app.py`.
+
+El porqué de cada uno está en el docstring de `tools/env_local.py`, y
+`tests/test_entorno_local.py` lo fija.
 
 ### Los comandos, por caso
 

@@ -9,6 +9,14 @@ videos/*
 
 # Secretos
 .env
+# Paso 0 del entorno dev: el cableado de AWS que genera tools/env_local.py.
+# OJO: el patrón `.env` de arriba NO cubre `.env.local` (gitignore no hace
+# prefijos), así que van explícitos o se comitean solos.
+.env.local
+.env.*.local
+# Listas de invitación y su bitácora: llevan correos personales reales.
+tools/tanda*.txt
+*.altas.tsv
 service_account.json
 oauth_client.json
 token_drive.json
