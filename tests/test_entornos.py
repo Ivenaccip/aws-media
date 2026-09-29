@@ -108,6 +108,9 @@ def test_prefijos_reservados_de_aws(e):
     """SSM reserva «aws*» y Cognito no admite «aws» en el prefijo del dominio."""
     for prefijo in (e.ssm_env, e.ssm_usuarios):
         assert not prefijo.lstrip("/").lower().startswith("aws")
+    # S3 Vectors también reserva «aws*» (visto el 29-sep: «bucket name is reserved»)
+    if e.vectores_bucket:
+        assert not e.vectores_bucket.lower().startswith("aws"), e.vectores_bucket
     assert "aws" not in e.dominio_cognito.lower()
 
 

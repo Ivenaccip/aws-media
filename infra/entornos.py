@@ -120,7 +120,9 @@ DEV = Entorno(
     # gente viene.
     throttle_etapa=(50, 100),
     throttle_publico=(5, 10),
-    vectores_bucket="aws-media-vectores-dev",
+    # «aws*» está reservado en S3 Vectors (como en SSM): el 29-sep
+    # `aws-media-vectores-dev` devolvió «The requested bucket name is reserved».
+    vectores_bucket="media-ivenaccip-vectores-dev",
     # el sufijo es la versión del corpus: reindexar con otro modelo de
     # embeddings o con otro troceado es un índice NUEVO, nunca pisar este
     vectores_indice="n8n-docs-v1",
