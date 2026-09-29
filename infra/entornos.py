@@ -61,6 +61,14 @@ class Entorno:
     # no crea nada público hasta el encendido de RAG·30, que es cambiar este
     # False por True en PROD con su PR y su deploy, no un efecto secundario.
     publico: bool = False
+    # RAG·7 — throttling de API Gateway, (peticiones por segundo sostenidas,
+    # ráfaga). Es la red de último recurso: aguanta mientras los contadores de
+    # la base (RAG·5/6) se enteran. None = sin throttling propio, que es como
+    # sigue prod hasta RAG·30 (su template no cambia con esta tarjeta).
+    # `throttle_etapa` cubre TODAS las rutas del entorno; `throttle_publico`
+    # solo /api/publico/*, mucho más estrecho porque ahí entra internet abierto.
+    throttle_etapa: tuple[int, int] | None = None
+    throttle_publico: tuple[int, int] | None = None
 
     @property
     def es_prod(self) -> bool:
@@ -91,4 +99,9 @@ DEV = Entorno(
     api="aws-media-dev",
     dominio_publico=None,
     publico=True,
+    # Holgado para el estudio (una pantalla pide decenas de archivos de golpe)
+    # y estrecho para lo público: provisionales hasta que RAG·28 diga cuánta
+    # gente viene.
+    throttle_etapa=(50, 100),
+    throttle_publico=(5, 10),
 )

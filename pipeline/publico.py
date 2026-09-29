@@ -21,6 +21,7 @@ import hmac
 import ipaddress
 import logging
 import os
+from dataclasses import dataclass
 
 from pipeline import db
 
@@ -29,6 +30,20 @@ log = logging.getLogger("publico")
 APAGADO = "apagado"
 TOPE = "tope"
 TOPE_IP = "tope_ip"
+# RAG·7 — motivos de la entrada. Los dos primeros sí se le explican a la
+# persona (puede corregirlos); RECHAZADA lleva el motivo que dio la moderación.
+CORTO = "corto"
+LARGO = "largo"
+RECHAZADA = "rechazada"
+
+# RAG·7 — largo de la descripción, en caracteres después de quitar espacios de
+# las orillas. El máximo es PROVISIONAL hasta que el dueño ponga su número
+# (RAG·0): sin tope, alguien pega un libro y eso son tokens de entrada pagados
+# antes de que el modelo diga una palabra. El mínimo evita gastar moderación y
+# una corrida en «hola».
+LARGO_MINIMO = 20
+LARGO_MAXIMO = 1500
+PROMPT_MODERACION = "moderar_automatiza_system"
 
 # RAG·6 — cuántas corridas al día desde una misma IP mientras el dueño no
 # ponga su número (tools/automatiza.py tope --por-ip N). GENEROSO a propósito:
@@ -118,3 +133,57 @@ def encendido() -> bool:
         log.exception("no se pudo leer el interruptor: cerrado")
         return False
     return bool(ajuste and ajuste["encendido"])
+
+
+def limpiar_texto(texto: str | None) -> str:
+    """El texto tal como se va a guardar y a mandar al modelo: sin espacios en
+    las orillas y sin el carácter nulo (Postgres no lo acepta en `text`)."""
+    return (texto or "").replace("\x00", "").strip()
+
+
+def revisar_largo(texto: str | None) -> str | None:
+    """None si el largo está bien; si no, CORTO o LARGO. Gratis: va primero."""
+    n = len(limpiar_texto(texto))
+    if n < LARGO_MINIMO:
+        return CORTO
+    if n > LARGO_MAXIMO:
+        return LARGO
+    return None
+
+
+@dataclass(frozen=True)
+class Admision:
+    """Qué pasa con una petición. `motivo` None = entra a la fila."""
+    motivo: str | None
+    texto: str = ""
+    detalle: str = ""       # para RECHAZADA: la frase de la moderación
+
+
+async def admitir(texto: str | None, ip_hash: str | None) -> Admision:
+    """Las tres puertas de /automatiza, de la más barata a la más cara:
+
+    1. largo (gratis),
+    2. freno —interruptor, tope diario y tope por IP— (una lectura a la base),
+    3. moderación (una llamada a un modelo, que CUESTA).
+
+    La moderación va DESPUÉS del freno a propósito: así un bot que ya se comió
+    su tope, o la sección apagada, no le cuesta al dueño ni una llamada. La
+    contra es que una petición rechazada por moderación sí consumió una
+    lectura; es lo barato. La moderación falla CERRADO (pipeline/moderacion.py):
+    si no contesta, la petición no entra y la persona ve «Ahorita no está
+    disponible», igual que con el interruptor apagado."""
+    from pipeline import moderacion
+
+    limpio = limpiar_texto(texto)
+    motivo = revisar_largo(limpio)
+    if motivo:
+        return Admision(motivo, limpio)
+    motivo = permiso(ip_hash)
+    if motivo:
+        return Admision(motivo, limpio)
+    v = await moderacion.revisar(limpio, prompt=PROMPT_MODERACION, falla_cerrado=True)
+    if v.caido:
+        return Admision(APAGADO, limpio)
+    if not v.permitido:
+        return Admision(RECHAZADA, limpio, v.motivo)
+    return Admision(None, limpio)

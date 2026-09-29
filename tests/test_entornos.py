@@ -544,3 +544,38 @@ def test_api_de_dev_encola_en_la_publica(dev):
     assert len(envs) == 1
     assert envs[0]["PUBLICO_QUEUE_URL"] != envs[0]["JOBS_QUEUE_URL"]
     assert "sqs:SendMessage" in json.dumps(_de_tipo(api, "AWS::IAM::Policy"))
+
+
+# --- RAG·7: throttling de etapa, solo dev ------------------------------------
+
+def _etapas(template):
+    return list(_de_tipo(template, "AWS::ApiGatewayV2::Stage").values())
+
+
+def test_prod_sin_throttling_ni_ruta_publica(prod):
+    api = prod["aws-media-api"]
+    for etapa in _etapas(api):
+        assert "DefaultRouteSettings" not in etapa["Properties"]
+        assert "RouteSettings" not in etapa["Properties"]
+    claves = [r["Properties"]["RouteKey"] for r in _de_tipo(api, "AWS::ApiGatewayV2::Route").values()]
+    assert claves == ["$default"]
+
+
+def test_dev_throttling_de_etapa_y_ruta_publica_estrecha(dev):
+    api = dev["aws-media-api-dev"]
+    rutas = _de_tipo(api, "AWS::ApiGatewayV2::Route")
+    publica = {k: r for k, r in rutas.items()
+               if r["Properties"]["RouteKey"] == "ANY /api/publico/{proxy+}"}
+    (id_ruta, ruta), = publica.items()
+    # misma Lambda que $default: la ruta existe solo para poder frenarla aparte
+    default = next(r for r in rutas.values() if r["Properties"]["RouteKey"] == "$default")
+    assert ruta["Properties"]["Target"] == default["Properties"]["Target"]
+    (etapa,) = [r for r in _etapas(api)]
+    tasa, rafaga = DEV.throttle_etapa
+    assert etapa["Properties"]["DefaultRouteSettings"] == {
+        "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}
+    tasa, rafaga = DEV.throttle_publico
+    assert etapa["Properties"]["RouteSettings"] == {"ANY /api/publico/{proxy+}": {
+        "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}}
+    # la etapa nombra la ruta por su clave: tiene que crearse después
+    assert id_ruta in etapa.get("DependsOn", [])
