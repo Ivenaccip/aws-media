@@ -26,7 +26,10 @@ import time
 
 from worker.env_ssm import cargar_env_ssm
 
-cargar_env_ssm()   # claves de PLATAFORMA; este worker no tiene otras
+# SOLO las claves de lo público (capa 1): SSM_ENV_PREFIX apunta aquí al
+# prefijo /publico/ del entorno, nunca al de plataforma. La base va por IAM y
+# DB_SECRET_ARN; la sal del hash de IP la usa el API, no este worker.
+cargar_env_ssm()
 
 logging.basicConfig(level=logging.INFO, force=True)
 log = logging.getLogger("worker.publico")

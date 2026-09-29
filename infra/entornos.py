@@ -69,6 +69,22 @@ class Entorno:
     # solo /api/publico/*, mucho más estrecho porque ahí entra internet abierto.
     throttle_etapa: tuple[int, int] | None = None
     throttle_publico: tuple[int, int] | None = None
+    # RAG·17 — el almacén vectorial del RAG en S3 Vectors. El bucket y el
+    # índice NO los crea el CDK (aws-cdk-lib 2.221 no trae el módulo): los
+    # crea el dueño con `tools/vectores.py crear`, y así el índice sobrevive a
+    # un `cdk destroy` y al cierre del 25-oct. El CDK solo le da al worker
+    # público permiso de LEER este índice. None = el entorno no tiene RAG, que
+    # es como sigue prod hasta RAG·30. El nombre del bucket es único por
+    # cuenta y región, así que dev y prod nunca comparten uno.
+    vectores_bucket: str | None = None
+    vectores_indice: str | None = None
+    # Capa 1 (decisión del 29-sep): el prefijo de SSM que carga el worker
+    # PÚBLICO, aparte del de plataforma. Ahí van SOLO sus claves (la de Gemini
+    # para /automatiza, con su propio tope de cuota), cada una nueva y nunca
+    # reutilizada de /env. Las pone el dueño desde la consola de Parameter
+    # Store, no tools/ssm_env.py (que sube el .env en bloque a /env). Tiene que
+    # existir donde `publico` sea True: el CDK se niega a armar el worker sin él.
+    ssm_publico: str | None = None
 
     @property
     def es_prod(self) -> bool:
@@ -104,4 +120,9 @@ DEV = Entorno(
     # gente viene.
     throttle_etapa=(50, 100),
     throttle_publico=(5, 10),
+    vectores_bucket="aws-media-vectores-dev",
+    # el sufijo es la versión del corpus: reindexar con otro modelo de
+    # embeddings o con otro troceado es un índice NUEVO, nunca pisar este
+    vectores_indice="n8n-docs-v1",
+    ssm_publico="/media-ivenaccip-dev/publico",
 )
