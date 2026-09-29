@@ -45,6 +45,7 @@ from server.overlays_api import router as overlays_router
 from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
+from server.publico_api import router as publico_router
 from server.estilos_api import router as estilos_router
 from server.competencia_api import router as competencia_router
 from server.mix_api import router as mix_router
@@ -120,6 +121,7 @@ app.include_router(editor_router)
 app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
+app.include_router(publico_router)   # RAG·2: /api/publico/*, sin token
 app.include_router(blotato_router)
 # antes del mount de static/ de más abajo: si no, /api/agenda cae en StaticFiles
 # y devuelve su 404 en HTML
