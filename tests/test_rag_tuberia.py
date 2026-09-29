@@ -16,6 +16,7 @@ from worker import publico as worker
 def entorno(monkeypatch):
     monkeypatch.setenv(publico.VAR_SAL, "sal-de-prueba")
     monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", True)
+    monkeypatch.setattr(worker, "PAUSA_DE_MENTIRA_SEG", 0)
 
 
 class BaseDeMentira:
@@ -23,6 +24,7 @@ class BaseDeMentira:
 
     def __init__(self, monkeypatch):
         self.filas, self.descargas, self.encendido = {}, [], True
+        self.pasos, self.correos = [], []
         m = monkeypatch.setattr
         m(db, "automatiza_interruptor", lambda: {
             "encendido": self.encendido, "tope_corridas": 20, "tope_usd": None,
@@ -36,14 +38,35 @@ class BaseDeMentira:
         m(db, "automatiza_corrida", self.corrida)
         m(db, "automatiza_lugar", lambda i: 1 if self.filas[i]["estado"] == "en_fila" else None)
         m(db, "automatiza_descargo", lambda p, q: self.descargas.append((p, q)))
+        m(db, "automatiza_paso", self.paso)
+        m(db, "automatiza_guardar_correo", self.guardar_correo)
+        m(db, "automatiza_correos_de",
+          lambda i: sum(1 for c in self.correos if c["corrida_id"] == i))
 
     def crear(self, texto, *, ip_hash=None, origen=None):
         assert db.en_camino_publico()
         i = len(self.filas) + 1
         self.filas[i] = {"id": i, "publico_id": f"corrida{i:09d}", "texto": texto,
                          "ip_hash": ip_hash, "origen": origen, "estado": "recibida",
-                         "motivo": None, "resultado": None, "nodos": None}
+                         "motivo": None, "resultado": None, "nodos": None,
+                         "paso": None, "lleva_seg": 0}
         return {"id": i, "publico_id": self.filas[i]["publico_id"]}
+
+    def paso(self, i, paso):
+        assert db.en_camino_publico()
+        assert paso in db.PASOS_AUTOMATIZA
+        self.pasos.append((i, paso))
+        if self.filas[i]["estado"] != "armando":
+            return False
+        self.filas[i]["paso"] = paso
+        return True
+
+    def guardar_correo(self, i, correo, *, origen, recontacto=False,
+                       recontacto_texto=None, aviso_version=None):
+        assert db.en_camino_publico()
+        self.correos.append({"corrida_id": i, "correo": correo, "origen": origen,
+                             "recontacto": recontacto, "recontacto_texto": recontacto_texto,
+                             "aviso_version": aviso_version})
 
     def _pasar(self, i, de, a):
         if self.filas[i]["estado"] != de:
@@ -62,8 +85,13 @@ class BaseDeMentira:
         return True
 
     def corrida(self, publico_id):
-        return next((dict(f) for f in self.filas.values()
-                     if f["publico_id"] == publico_id), None)
+        # como automatiza_corrida: trae el correo vigente (la última fila)
+        f = next((dict(f) for f in self.filas.values()
+                  if f["publico_id"] == publico_id), None)
+        if f:
+            suyos = [c["correo"] for c in self.correos if c["corrida_id"] == f["id"]]
+            f["correo"] = suyos[-1] if suyos else None
+        return f
 
 
 @pytest.fixture
@@ -106,14 +134,17 @@ def test_de_punta_a_punta_sin_token(base, cola, cliente):
 
     # sondeo mientras espera
     r = cliente.get(f"/api/publico/corridas/{pid}")
-    assert r.json() == {"id": pid, "estado": "en_fila", "listo": False, "lugar": 1}
+    assert r.json() == {"id": pid, "estado": "en_fila", "listo": False, "lugar": 1,
+                        "lleva_seg": 0}
     assert cliente.get(f"/api/publico/corridas/{pid}/flujo.json").status_code == 404
 
     # el worker (lo que haría SQS)
     assert worker.handler({"Records": [{"body": json.dumps(jobs.mensaje_publico(cola[0]))}]},
                           None) == {"ok": True}
+    assert [p for _, p in base.pasos] == list(db.PASOS_AUTOMATIZA)
     r = cliente.get(f"/api/publico/corridas/{pid}").json()
     assert r["estado"] == "listo" and r["listo"] is True
+    assert "paso" not in r                   # el paso solo viaja mientras arma
     assert r["descarga"] == f"/api/publico/corridas/{pid}/flujo.json"
     assert r["nodos"] == ["n8n-nodes-base.manualTrigger", "n8n-nodes-base.set"]
 
@@ -191,7 +222,8 @@ def test_apagar_con_corridas_en_fila_las_cierra_sin_armar(base, cola, cliente):
     r = cliente.get(f"/api/publico/corridas/{pid}").json()
     # el visitante ve un mensaje amable, nunca el motivo interno («apagado»)
     assert r["estado"] == "no_salio" and "apagado" not in json.dumps(r)
-    assert r["mensaje"] == "Esta vez no salió. Intenta de nuevo en un rato."
+    assert r["mensaje"] == ("Esta vez no pudimos armar un flujo que importe bien en n8n. "
+                            "Preferimos no darte uno roto.")
 
 
 def test_fallo_del_armado_no_filtra_la_excepcion(base, cola, cliente, monkeypatch):

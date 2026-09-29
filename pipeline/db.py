@@ -392,6 +392,12 @@ ESQUEMA: list[str] = [
     "ALTER TABLE automatiza_interruptor ADD COLUMN IF NOT EXISTS tope_por_ip int",
     """CREATE INDEX IF NOT EXISTS automatiza_corridas_ip
        ON automatiza_corridas (ip_hash, creado)""",
+    # RAG·11 — en qué paso del armado va (entender → buscar → armar →
+    # revisar), para que la espera avance a la vista. Columna aparte y no en
+    # el CREATE: la tabla ya existe en dev. Sin CHECK a propósito: es
+    # cosmético, la lista blanca vive en automatiza_paso() y un paso nuevo no
+    # debe exigir otra migración.
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS paso text",
 ]
 
 
@@ -1240,6 +1246,9 @@ ANOTABLES_AUTOMATIZA = ("idioma", "motivo", "cache_acerto", "validador_ok",
 # una fecha o a numeric: esas columnas llevan su cast en el SQL
 _CAST_AUTOMATIZA = {"correo_enviado": "::timestamptz", "costo_usd": "::numeric"}
 _TOPE_ORIGEN = 500          # un referrer o un utm no necesitan más
+# RAG·11 — los pasos que ve el visitante mientras se arma, en orden. También
+# es lista blanca: el valor va a una columna que la página pinta tal cual.
+PASOS_AUTOMATIZA = ("entender", "buscar", "armar", "revisar")
 
 
 def automatiza_crear(texto: str, *, ip_hash: str | None = None,
@@ -1262,12 +1271,20 @@ def automatiza_crear(texto: str, *, ip_hash: str | None = None,
 
 
 def automatiza_corrida(publico_id: str) -> dict | None:
-    """La corrida por su id público (lo único que el visitante conoce)."""
+    """La corrida por su id público (lo único que el visitante conoce).
+
+    Trae también lo que la espera necesita en UNA sola vuelta a la base (la
+    página la sondea): el paso (RAG·11), cuántos segundos lleva desde que se
+    creó —medidos con el reloj de la base, no con el de la Lambda— y el
+    correo vigente (RAG·12), que el API enmascara antes de enseñarlo."""
     filas = ejecutar(
-        "SELECT id, publico_id, estado, motivo, en_fila_desde, empezo, "
-        "termino, array_to_json(nodos)::text AS nodos, "
-        "resultado::text AS resultado, resultado_key, "
-        "guia_key, creado FROM automatiza_corridas WHERE publico_id = :p",
+        "SELECT c.id, c.publico_id, c.estado, c.motivo, c.paso, c.en_fila_desde, "
+        "c.empezo, c.termino, array_to_json(c.nodos)::text AS nodos, "
+        "c.resultado::text AS resultado, c.resultado_key, c.guia_key, c.creado, "
+        "GREATEST(0, floor(extract(epoch FROM now() - c.creado)))::bigint AS lleva_seg, "
+        "(SELECT k.correo FROM automatiza_contactos k WHERE k.corrida_id = c.id "
+        " ORDER BY k.id DESC LIMIT 1) AS correo "
+        "FROM automatiza_corridas c WHERE c.publico_id = :p",
         {"p": publico_id})
     if not filas:
         return None
@@ -1301,15 +1318,30 @@ def automatiza_tomar(id_: int) -> bool:
     También retoma una que se quedó en «armando» más de RETOMAR_AUTOMATIZA_MIN:
     sin eso, un worker que muere a la mitad (timeout, la base despertando)
     deja la corrida colgada para siempre y el reintento de SQS no la puede
-    tomar."""
+    tomar.
+
+    El paso vuelve a NULL (la página lo lee como «entender»): quien retoma
+    empieza de cero y no hereda el «revisar» del worker que murió."""
     filas = ejecutar(
         f"""UPDATE automatiza_corridas
-              SET estado = 'armando', empezo = now(), actualizado = now(),
+              SET estado = 'armando', empezo = now(), actualizado = now(), paso = NULL,
                   reintentos = reintentos + CASE WHEN estado = 'armando' THEN 1 ELSE 0 END
             WHERE id = :i AND (estado = 'en_fila'
                OR (estado = 'armando'
                    AND empezo < now() - interval '{RETOMAR_AUTOMATIZA_MIN} minutes'))
         RETURNING id""", {"i": id_})
+    return bool(filas)
+
+
+def automatiza_paso(id_: int, paso: str) -> bool:
+    """Anota en qué paso del armado va (RAG·11). Solo si sigue en «armando»:
+    un worker lento no puede pintarle «armar» a una corrida que ya cerró."""
+    if paso not in PASOS_AUTOMATIZA:
+        raise ValueError(f"paso desconocido: {paso}")
+    filas = ejecutar(
+        """UPDATE automatiza_corridas SET paso = :p, actualizado = now()
+            WHERE id = :i AND estado = 'armando'
+        RETURNING id""", {"i": id_, "p": paso})
     return bool(filas)
 
 
@@ -1394,6 +1426,14 @@ def automatiza_correo(id_: int) -> dict | None:
         "SELECT correo, origen, recontacto, creado FROM automatiza_contactos "
         "WHERE corrida_id = :i ORDER BY id DESC LIMIT 1", {"i": id_})
     return filas[0] if filas else None
+
+
+def automatiza_correos_de(id_: int) -> int:
+    """Cuántas veces se dejó o cambió el correo de la corrida: el tope contra
+    abuso de POST /api/publico/corridas/{id}/correo (RAG·12)."""
+    filas = ejecutar("SELECT count(*) AS n FROM automatiza_contactos "
+                     "WHERE corrida_id = :i", {"i": id_})
+    return int(filas[0]["n"]) if filas else 0
 
 
 

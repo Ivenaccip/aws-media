@@ -2,11 +2,22 @@
 # entrada). El estudio y sus pantallas piden sesión: indexarlos daría
 # resultados que llevan a un login. Lo público nuevo (p. ej. /automatiza) se
 # agrega aquí con su Allow.
+# RAG·10: /automatiza, sus legales y lo que esas páginas cargan. El enlace
+# para volver (/automatiza/c/…) NO: es el resultado de alguien, y además
+# sale con X-Robots-Tag: noindex (server/app.py).
 User-agent: *
 Allow: /$
 Allow: /entrar$
+Allow: /automatiza$
+Allow: /privacidad$
+Allow: /terminos$
 Allow: /carta.css
 Allow: /enlaces.js
+Allow: /automatiza.css
+Allow: /automatiza.js
+Allow: /sondeo.js
+Allow: /legal.css
+Allow: /automatiza-og.png
 Allow: /fuentes/
 Allow: /favicon.svg
 Disallow: /
