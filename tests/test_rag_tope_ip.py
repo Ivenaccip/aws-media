@@ -115,13 +115,14 @@ def test_la_herramienta_puede_mirar_sin_ip(monkeypatch):
     assert publico.permiso(por_ip=False) is None and vistos == []
 
 
-def test_contar_por_ip_es_del_dia_de_mexico_sin_rechazadas(monkeypatch):
+def test_contar_por_ip_es_del_dia_de_mexico_con_rechazadas(monkeypatch):
     llamadas = []
     monkeypatch.setattr(db, "ejecutar",
                         lambda q, p=None: llamadas.append((" ".join(q.split()), p)) or [{"n": 4}])
     assert db.automatiza_corridas_de_ip_hoy("abc") == 4
     q, p = llamadas[0]
-    assert "ip_hash = :h" in q and "estado <> 'rechazada'" in q
+    # RAG·8: las rechazadas SÍ cuentan por IP (su moderación ya costó)
+    assert "ip_hash = :h" in q and "rechazada" not in q
     assert "America/Mexico_City" in q and p == {"h": "abc"}
 
 

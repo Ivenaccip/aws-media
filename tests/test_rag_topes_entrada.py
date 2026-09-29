@@ -11,6 +11,9 @@ from pipeline import db, moderacion, publico
 @pytest.fixture(autouse=True)
 def sal(monkeypatch):
     monkeypatch.setenv(publico.VAR_SAL, "sal-de-prueba")
+    # estos tests son de la moderación: la prueban como quedará con el armado
+    # real (RAG·21). Con el de mentira no se modera (tests/test_rag_tuberia.py)
+    monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", False)
 
 
 def _freno(monkeypatch, *, encendido=True, corridas=0):
