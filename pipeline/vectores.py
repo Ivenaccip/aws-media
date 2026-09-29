@@ -35,11 +35,13 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 # --- fijado al crear el índice (ver arriba) ---------------------------------
-# Amazon Titan Text Embeddings V2 (Bedrock): multilingüe, 1024 dimensiones, y
-# se llama con el mismo IAM que ya usa la cuenta. La elección del modelo la
-# confirma el dueño en RAG·0 ANTES de correr `crear`; si cambia, cambian estas
-# dos líneas y el índice pasa a la v2.
-MODELO_EMBEDDINGS = "amazon.titan-embed-text-v2:0"
+# gemini-embedding-001 por la API de Google (decisión del dueño, 29-sep; el
+# análisis está en RAG·19). Nativo es de 3072: se pide output_dimensionality
+# =1024 y cada vector recortado se RENORMALIZA (L2), que Google no hace por su
+# cuenta bajo 3072. task_type de documento en la ingesta y de consulta en la
+# pregunta. Contexto de 2 048 tokens: los trozos (RAG·19) no pasan de ahí.
+# Cambiar de modelo es re-embeber todo en un índice nuevo (n8n-docs-v2).
+MODELO_EMBEDDINGS = "gemini-embedding-001"
 DIMENSION = 1024
 METRICA = "cosine"
 TIPO_DATO = "float32"
@@ -96,15 +98,25 @@ def cliente():
                         region_name=os.getenv("AWS_REGION", "us-east-1"))
 
 
+def normalizar(vector: Iterable[float]) -> list[float]:
+    """L2 = 1. Obligatorio con gemini-embedding-001 recortado a 1024: sin esto
+    los vectores salen con normas distintas entre sí."""
+    v = [float(x) for x in vector]
+    norma = math.sqrt(sum(x * x for x in v))
+    if not math.isfinite(norma) or norma == 0:
+        raise VectorInvalido("un vector de norma 0 (o NaN) no tiene dirección")
+    return [x / norma for x in v]
+
+
 def validar(vector: Iterable[float]) -> list[float]:
+    """Revisa y devuelve el vector YA normalizado: todo lo que entra o se
+    consulta en el índice pasa por aquí."""
     v = [float(x) for x in vector]
     if len(v) != DIMENSION:
         raise VectorInvalido(f"el vector trae {len(v)} dimensiones; el índice es de {DIMENSION}")
     if not all(math.isfinite(x) for x in v):
         raise VectorInvalido("el vector trae NaN o infinito")
-    if METRICA == "cosine" and not any(v):
-        raise VectorInvalido("un vector de puros ceros no tiene dirección (coseno)")
-    return v
+    return normalizar(v)
 
 
 def consultar(vector: Iterable[float], k: int = 8, filtro: dict | None = None,

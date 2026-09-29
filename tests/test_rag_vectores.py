@@ -54,6 +54,17 @@ def _no_existe(c, op):
 # ---------------------------------------------------------------------------
 # lo que no se puede cambiar después
 
+def test_normaliza_a_norma_uno():
+    import math
+    v = vectores.validar([3.0] + [4.0] + [0.0] * (vectores.DIMENSION - 2))
+    assert v[:2] == [0.6, 0.8]
+    assert math.isclose(sum(x * x for x in v), 1.0)
+
+
+def test_modelo_decidido():
+    assert vectores.MODELO_EMBEDDINGS == "gemini-embedding-001"
+
+
 def test_la_configuracion_fijada():
     """Cambiar cualquiera de estas es un índice NUEVO (n8n-docs-v2), nunca
     pisar el que hay. Si este test falla, lee el docstring de pipeline/vectores.py."""

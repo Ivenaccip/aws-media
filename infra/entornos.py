@@ -78,6 +78,13 @@ class Entorno:
     # cuenta y región, así que dev y prod nunca comparten uno.
     vectores_bucket: str | None = None
     vectores_indice: str | None = None
+    # Capa 1 (decisión del 29-sep): el prefijo de SSM que carga el worker
+    # PÚBLICO, aparte del de plataforma. Ahí van SOLO sus claves (la de Gemini
+    # para /automatiza, con su propio tope de cuota), cada una nueva y nunca
+    # reutilizada de /env. Las pone el dueño desde la consola de Parameter
+    # Store, no tools/ssm_env.py (que sube el .env en bloque a /env). Tiene que
+    # existir donde `publico` sea True: el CDK se niega a armar el worker sin él.
+    ssm_publico: str | None = None
 
     @property
     def es_prod(self) -> bool:
@@ -117,4 +124,5 @@ DEV = Entorno(
     # el sufijo es la versión del corpus: reindexar con otro modelo de
     # embeddings o con otro troceado es un índice NUEVO, nunca pisar este
     vectores_indice="n8n-docs-v1",
+    ssm_publico="/media-ivenaccip-dev/publico",
 )

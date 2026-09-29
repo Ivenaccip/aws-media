@@ -77,6 +77,17 @@ def test_dev_no_comparte_ningun_nombre_con_prod(campo):
     assert getattr(DEV, campo) != getattr(PROD, campo)
 
 
+def test_el_prefijo_publico_no_se_cruza_con_los_de_plataforma():
+    """Capa 1: el worker público lee SOLO su prefijo. Si uno empezara por
+    otro, el permiso de uno alcanzaría las claves del otro."""
+    pub = DEV.ssm_publico
+    assert pub
+    for otro in (DEV.ssm_env, DEV.ssm_usuarios, PROD.ssm_env, PROD.ssm_usuarios):
+        assert not pub.startswith(otro) and not otro.startswith(pub), otro
+    assert not pub.lstrip("/").lower().startswith("aws")
+    assert PROD.ssm_publico is None, "prod lo recibe en RAG·30, con su PR"
+
+
 @pytest.mark.parametrize("campo", ["ssm_env", "ssm_usuarios"])
 def test_los_permisos_de_ssm_de_un_entorno_no_alcanzan_al_otro(campo):
     """IAM concede `parameter<prefijo>*`. Si un prefijo empezara por el otro,
@@ -358,7 +369,7 @@ def test_dev_usa_sus_propios_nombres(dev):
     assert _uno(api, "AWS::Cognito::UserPoolDomain")["Domain"] == DEV.dominio_cognito
     assert _uno(jobs, "AWS::StepFunctions::StateMachine")["StateMachineName"] == DEV.maquina_producir
     for e in _env_lambdas(api) + _env_lambdas(jobs):
-        if "SSM_ENV_PREFIX" in e:
+        if "SSM_ENV_PREFIX" in e and e["SSM_ENV_PREFIX"] != DEV.ssm_publico:
             assert e["SSM_ENV_PREFIX"] == DEV.ssm_env
             # el worker público (RAG·4) no lleva claves por-usuario a propósito
             assert e.get("SSM_USUARIOS_PREFIX", DEV.ssm_usuarios) == DEV.ssm_usuarios
@@ -535,6 +546,26 @@ def test_worker_publico_sin_claves_por_usuario_ni_cola_de_pago(dev):
     assert "sqs:SendMessage" not in texto
     assert "s3:DeleteObject" not in texto
     assert "automatiza/*" in texto
+
+
+def test_worker_publico_carga_solo_su_prefijo_de_ssm(dev):
+    """Capa 1 (29-sep): el worker que atiende a internet NO puede leer las
+    claves de plataforma. Si alguien lo vuelve a apuntar a /env, falla aquí."""
+    import json
+    worker, politicas = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    env = worker["Properties"]["Environment"]["Variables"]
+    assert env["SSM_ENV_PREFIX"] == DEV.ssm_publico
+    sentencias = [s for p in politicas for s in p["Properties"]["PolicyDocument"]["Statement"]
+                  if "ssm:" in json.dumps(s["Action"])]
+    (s,) = sentencias
+    assert s["Action"] == "ssm:GetParametersByPath"
+    recursos = s["Resource"] if isinstance(s["Resource"], list) else [s["Resource"]]
+    assert all(isinstance(r, str) for r in recursos), recursos
+    assert sorted(r.split(":parameter", 1)[1] for r in recursos) == [
+        DEV.ssm_publico, DEV.ssm_publico + "/*"]
+    texto = json.dumps(politicas)
+    assert DEV.ssm_env not in texto and "/env" not in texto
+    assert DEV.ssm_usuarios not in texto
 
 
 def _politicas_worker_publico(jobs):

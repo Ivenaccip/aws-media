@@ -243,6 +243,10 @@ class JobsStack(Stack):
         # 6 min y puede retomarla (db.automatiza_tomar); uno que falla tres
         # veces es un mensaje roto, no una corrida: a su propia DLQ, que no
         # dispara las alarmas del trabajo de pago.
+        if not entorno.ssm_publico:
+            raise ValueError(
+                f"{entorno.nombre}: `publico` sin `ssm_publico` en infra/entornos.py. "
+                "El worker público no carga las claves de plataforma (/env).")
         dlq = sqs.Queue(self, "PublicoDlq", retention_period=Duration.days(14))
         cola = sqs.Queue(
             self, "Publico",
@@ -266,7 +270,8 @@ class JobsStack(Stack):
                 "DB_NAME": "media",
                 "MEDIA_BUCKET": media_bucket.bucket_name,
                 "CDN_BASE": f"https://{cdn_domain}",
-                "SSM_ENV_PREFIX": ssm_env,   # claves de plataforma (el modelo, RAG·21)
+                # SOLO sus claves (capa 1): nunca el prefijo de plataforma
+                "SSM_ENV_PREFIX": entorno.ssm_publico,
                 "HOME": "/tmp",
                 "PYTHONIOENCODING": "utf-8",
             },
@@ -281,9 +286,14 @@ class JobsStack(Stack):
         cluster_db.grant_data_api_access(worker)
         media_bucket.grant_put(worker, "automatiza/*")
         media_bucket.grant_read(worker, "automatiza/*")
+        # El camino exacto (GetParametersByPath se autoriza contra él) y lo que
+        # cuelga debajo. Sin el `*` suelto de las demás Lambdas: `publico*`
+        # alcanzaría también un `/publicoX` que nadie ha revisado.
         worker.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:GetParametersByPath"],
-            resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{ssm_env}*"]))
+            resources=[
+                f"arn:aws:ssm:{self.region}:{self.account}:parameter{entorno.ssm_publico}",
+                f"arn:aws:ssm:{self.region}:{self.account}:parameter{entorno.ssm_publico}/*"]))
         # RAG·17: el índice del RAG, SOLO para leer. Lo crea el dueño con
         # tools/vectores.py (el CDK no trae S3 Vectors) y lo llena la ingesta
         # desde su máquina: nada que atiende a internet escribe el índice.
