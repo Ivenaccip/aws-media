@@ -387,6 +387,11 @@ ESQUEMA: list[str] = [
         nota          text,
         creado        timestamptz NOT NULL DEFAULT now()
     )""",
+    # RAG·6 — tope por IP (hasheada). Columna aparte y no en el CREATE: la
+    # tabla ya existe en dev. NULL = el provisional de pipeline/publico.py.
+    "ALTER TABLE automatiza_interruptor ADD COLUMN IF NOT EXISTS tope_por_ip int",
+    """CREATE INDEX IF NOT EXISTS automatiza_corridas_ip
+       ON automatiza_corridas (ip_hash, creado)""",
 ]
 
 
@@ -1403,7 +1408,8 @@ ZONA_AUTOMATIZA = "America/Mexico_City"
 def automatiza_interruptor() -> dict | None:
     """La fila vigente del interruptor (la última), o None si nunca se puso."""
     filas = ejecutar(
-        "SELECT encendido, tope_corridas, tope_usd::text AS tope_usd, nota, creado "
+        "SELECT encendido, tope_corridas, tope_usd::text AS tope_usd, tope_por_ip, "
+        "nota, creado "
         "FROM automatiza_interruptor ORDER BY id DESC LIMIT 1")
     if not filas:
         return None
@@ -1416,19 +1422,22 @@ def automatiza_ajustar(*, encendido: bool | None = None,
                        tope_corridas: int | None = None,
                        tope_usd: float | None = None,
                        sin_tope_usd: bool = False,
+                       tope_por_ip: int | None = None,
                        nota: str | None = None) -> dict:
     """Agrega una fila nueva: lo que no se pasa se hereda de la vigente.
     Sin fila previa, lo no dicho queda apagado y sin tope."""
-    vigente = automatiza_interruptor() or {"encendido": False,
-                                            "tope_corridas": None, "tope_usd": None}
+    vigente = automatiza_interruptor() or {"encendido": False, "tope_corridas": None,
+                                            "tope_usd": None, "tope_por_ip": None}
     nueva = {
         "e": vigente["encendido"] if encendido is None else bool(encendido),
         "c": vigente["tope_corridas"] if tope_corridas is None else int(tope_corridas),
         "u": None if sin_tope_usd else (vigente["tope_usd"] if tope_usd is None else float(tope_usd)),
+        "i": vigente.get("tope_por_ip") if tope_por_ip is None else int(tope_por_ip),
         "n": nota,
     }
-    ejecutar("INSERT INTO automatiza_interruptor (encendido, tope_corridas, tope_usd, nota) "
-             "VALUES (:e, :c, :u::numeric, :n)", nueva)
+    ejecutar("INSERT INTO automatiza_interruptor "
+             "(encendido, tope_corridas, tope_usd, tope_por_ip, nota) "
+             "VALUES (:e, :c, :u::numeric, :i, :n)", nueva)
     return automatiza_interruptor()
 
 
@@ -1446,3 +1455,13 @@ def automatiza_consumo_hoy() -> dict:
                              AT TIME ZONE '{ZONA_AUTOMATIZA}'""")
     fila = filas[0] if filas else {"corridas": 0, "usd": "0"}
     return {"corridas": int(fila["corridas"]), "usd": float(fila["usd"] or 0)}
+
+
+def automatiza_corridas_de_ip_hoy(ip_hash: str) -> int:
+    """Corridas aceptadas hoy (hora de México) desde la misma IP hasheada."""
+    filas = ejecutar(
+        f"""SELECT count(*) AS n FROM automatiza_corridas
+             WHERE ip_hash = :h AND estado <> 'rechazada'
+               AND creado >= date_trunc('day', now() AT TIME ZONE '{ZONA_AUTOMATIZA}')
+                             AT TIME ZONE '{ZONA_AUTOMATIZA}'""", {"h": ip_hash})
+    return int(filas[0]["n"]) if filas else 0

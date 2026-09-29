@@ -7,7 +7,7 @@ se toca es la corrida, nunca un usuario.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from pipeline import publico as freno
 
@@ -15,10 +15,11 @@ router = APIRouter(prefix="/api/publico")
 
 
 @router.get("/estado")
-def estado():
+def estado(request: Request):
     """¿Se puede pedir un flujo ahora? La página lo consulta al abrir para
     enseñar «Ahorita no está disponible» antes de que alguien escriba.
 
     No dice POR QUÉ (apagado o tope): al visitante le da igual, y a un bot le
     serviría saber cuánto le queda al día."""
-    return {"disponible": freno.permiso() is None}
+    ip_hash = freno.hash_ip(freno.ip_del_request(request))
+    return {"disponible": freno.permiso(ip_hash) is None}

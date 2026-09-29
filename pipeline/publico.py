@@ -16,7 +16,11 @@ presupuesto, no un contador bancario, y a cambio no hay candados.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import ipaddress
 import logging
+import os
 
 from pipeline import db
 
@@ -24,12 +28,62 @@ log = logging.getLogger("publico")
 
 APAGADO = "apagado"
 TOPE = "tope"
+TOPE_IP = "tope_ip"
+
+# RAG·6 — cuántas corridas al día desde una misma IP mientras el dueño no
+# ponga su número (tools/automatiza.py tope --por-ip N). GENEROSO a propósito:
+# una oficina o una escuela salen a internet por una sola IP, y el tope que de
+# verdad frena es el global. Este solo evita que un bucle se coma el día.
+TOPE_IP_PROVISIONAL = 10
+
+# La sal vive en SSM (/<entorno>/env/AUTOMATIZA_SAL_IP, la sube
+# tools/ssm_env.py) y llega al entorno al arrancar la Lambda. Nunca en el código.
+VAR_SAL = "AUTOMATIZA_SAL_IP"
+# Solo detrás de Cloudflare (prod, RAG·30) la IP real viene en una cabecera.
+# Sin esta variable la cabecera se IGNORA: cualquiera puede mandarla a mano
+# directo al execute-api y estrenar IP en cada petición.
+VAR_CLOUDFLARE = "AUTOMATIZA_IP_CLOUDFLARE"
 
 
-def permiso() -> str | None:
+def ip_del_request(request) -> str | None:
+    """La IP del visitante. Por defecto la que ve API Gateway (Mangum la pone
+    en request.client); CF-Connecting-IP solo si el entorno dice que hay
+    Cloudflare delante."""
+    if os.getenv(VAR_CLOUDFLARE) == "1":
+        cf = request.headers.get("cf-connecting-ip", "").strip()
+        if cf:
+            return cf
+    return request.client.host if request.client else None
+
+
+def hash_ip(ip: str | None) -> str | None:
+    """HMAC-SHA256 con la sal de SSM; None si falta la IP o la sal.
+
+    La IP en claro no sale de esta función: ni a la base ni a los logs. Una
+    IPv6 se agrupa por su /64, que es lo que un proveedor le da a UNA casa:
+    sin eso, un bot estrena dirección en cada petición sin salir de su red."""
+    sal = os.getenv(VAR_SAL, "")
+    if not ip or not sal:
+        return None
+    try:
+        dir_ip = ipaddress.ip_address(ip)
+        clave = (str(ipaddress.ip_network(f"{dir_ip}/64", strict=False))
+                 if dir_ip.version == 6 else str(dir_ip))
+    except ValueError:
+        clave = ip          # no es una IP (p. ej. el cliente de pruebas): se hashea tal cual
+    return hmac.new(sal.encode(), clave.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def permiso(ip_hash: str | None = None, *, por_ip: bool = True) -> str | None:
     """None si se puede aceptar una corrida más; si no, el motivo interno
-    ('apagado' o 'tope'). El visitante ve lo mismo en los dos casos:
-    «Ahorita no está disponible» (decisión del dueño, 28-sep)."""
+    ('apagado', 'tope' o 'tope_ip'). El visitante ve lo mismo en todos:
+    «Ahorita no está disponible» (decisión del dueño, 28-sep).
+
+    Con `por_ip` (el default) exige el hash: sin sal o sin IP no se puede
+    contar por visitante, y eso cierra, no abre."""
+    if por_ip and not ip_hash:
+        log.error("sin hash de IP (¿falta %s en SSM?): cerrado", VAR_SAL)
+        return APAGADO
     try:
         ajuste = db.automatiza_interruptor()
         if not ajuste or not ajuste["encendido"]:
@@ -40,6 +94,7 @@ def permiso() -> str | None:
             log.error("interruptor encendido sin tope: se trata como apagado")
             return APAGADO
         hoy = db.automatiza_consumo_hoy()
+        de_ip = db.automatiza_corridas_de_ip_hoy(ip_hash) if por_ip else 0
     except Exception:  # noqa: BLE001 — cualquier fallo al leer = cerrado
         log.exception("no se pudo leer el freno de /automatiza: cerrado")
         return APAGADO
@@ -47,6 +102,9 @@ def permiso() -> str | None:
         return TOPE
     if tope_u is not None and hoy["usd"] >= tope_u:
         return TOPE
+    tope_ip = ajuste.get("tope_por_ip")
+    if por_ip and de_ip >= (TOPE_IP_PROVISIONAL if tope_ip is None else tope_ip):
+        return TOPE_IP
     return None
 
 
