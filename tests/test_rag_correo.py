@@ -42,8 +42,10 @@ def pid(cliente):
 
 
 def _correo(cliente, pid, correo="Guadalupe.Ruiz@Gmail.com ", **extra):
+    # la página manda la versión del aviso con la que se llenó (data-aviso-version)
     return cliente.post(f"/api/publico/corridas/{pid}/correo",
-                        json={"correo": correo, "recontacto": False, "origen": "fila", **extra})
+                        json={"correo": correo, "recontacto": False, "origen": "fila",
+                              "aviso_version": aviso.AVISO_VERSION, **extra})
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +64,7 @@ def test_guarda_limpio_y_contesta_enmascarado(cliente, base, pid):
 
 def test_la_prueba_del_consentimiento_la_pone_el_servidor(cliente, base, pid):
     r = _correo(cliente, pid, recontacto=True, origen="listo",
-                recontacto_texto="acepto todo", aviso_version="la-que-yo-diga")
+                recontacto_texto="acepto todo")
     assert r.status_code == 200
     (fila,) = base.correos
     assert fila["recontacto"] is True and fila["origen"] == "listo"
@@ -70,16 +72,80 @@ def test_la_prueba_del_consentimiento_la_pone_el_servidor(cliente, base, pid):
     assert fila["aviso_version"] == aviso.AVISO_VERSION
 
 
+@pytest.mark.parametrize("vio", ["2026-01-01-la-de-antes", "la-que-yo-diga", None])
+def test_con_otro_aviso_en_la_pagina_no_se_guarda(cliente, base, pid, vio):
+    """Una pestaña abierta desde antes de un deploy que cambió la casilla o el
+    aviso: guardar el texto de HOY sería registrar un consentimiento a algo
+    que la persona no vio. Se le pide recargar (y sin versión, igual)."""
+    extra = {"aviso_version": vio} if vio else {}
+    r = cliente.post(f"/api/publico/corridas/{pid}/correo",
+                     json={"correo": "ana@correo.mx", "recontacto": True, "origen": "listo",
+                           **extra})
+    assert r.status_code == 409
+    assert r.json() == {"motivo": "aviso", "mensaje": publico_api.MENSAJE_AVISO}
+    assert "Recarga la página" in publico_api.MENSAJE_AVISO
+    assert base.correos == []
+
+
+def test_la_prueba_e2e_manda_la_version_del_aviso(monkeypatch):
+    """tools/automatiza_e2e.py --correo hace lo que la página: la versión la
+    lee de /automatiza (data-aviso-version). Sin ella, el 409 de arriba deja
+    la prueba de punta a punta en rojo."""
+    from tools import automatiza_e2e as e2e
+
+    class Respuesta:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return aviso.renderizar("automatiza.html").encode()
+    monkeypatch.setattr(e2e.urllib.request, "urlopen", lambda req, timeout: Respuesta())
+    assert e2e.version_del_aviso("https://x") == aviso.AVISO_VERSION
+
+    posts = []
+
+    def pedir(metodo, url, cuerpo=None):
+        if url.endswith("/estado"):
+            return 200, {"disponible": True}, 1
+        if metodo == "POST" and url.endswith("/correo"):
+            posts.append(cuerpo)
+            return 200, {"ok": True, "correo": "tu•••@x.mx"}, 1
+        if metodo == "POST":
+            return 202, {"id": "AAAAAAAAAAAAAAAA"}, 1
+        if url.endswith(".json"):
+            return 200, {"nodes": [{}]}, 1
+        return 200, {"estado": "listo", "listo": True, "correo": "tu•••@x.mx",
+                     "descarga": "/api/publico/corridas/AAAAAAAAAAAAAAAA/flujo.json"}, 1
+    monkeypatch.setattr(e2e, "_pedir", pedir)
+    monkeypatch.setattr(e2e, "revisar_paginas", lambda api, pid: True)
+    assert e2e.main(["--api", "https://x", "--correo", "tu@x.mx"]) == 0
+    assert posts == [{"correo": "tu@x.mx", "recontacto": False, "origen": "listo",
+                      "aviso_version": aviso.AVISO_VERSION}]
+
+
 @pytest.mark.parametrize("origen", publico_api.ORIGENES_CORREO)
-def test_los_tres_origenes(cliente, base, pid, origen):
+def test_los_origenes(cliente, base, pid, origen):
     assert _correo(cliente, pid, origen=origen).status_code == 200
     assert base.correos[-1]["origen"] == origen
 
 
-def test_el_sondeo_trae_el_correo_enmascarado_nunca_el_completo(cliente, base, pid):
+def test_se_paso_del_tiempo_tiene_su_origen():
+    # 2d sale también mientras arma: no es «fila» (RAG·16/28 leen el origen)
+    assert publico_api.ORIGENES_CORREO == ("listo", "fila", "no_salio", "espera")
+
+
+@pytest.mark.parametrize("estado", ["en_fila", "armando", "listo", "no_salio", "sin_cobertura"])
+def test_el_sondeo_trae_el_correo_enmascarado_nunca_el_completo(cliente, base, pid, estado):
+    """El enlace /automatiza/c/{id} se comparte: en NINGÚN estado sale el
+    correo completo (tampoco en «listo», donde la página dice «Te lo mandamos a…»)."""
     assert "correo" not in cliente.get(f"/api/publico/corridas/{pid}").json()
     _correo(cliente, pid)
+    base.filas[1]["estado"] = estado
     r = cliente.get(f"/api/publico/corridas/{pid}")
+    assert r.json()["estado"] == estado
     assert r.json()["correo"] == "gu•••@gmail.com"
     assert "guadalupe" not in r.text.lower()
     # cambiarlo vale: se ve el último
@@ -149,6 +215,22 @@ def test_tope_de_cinco_correos_por_corrida(cliente, base, pid):
     assert len(base.correos) == 5 and publico_api.TOPE_CORREOS == 5
 
 
+def test_el_api_deja_el_tope_a_la_sentencia_que_guarda(cliente, base, pid, monkeypatch):
+    """Contar aparte (automatiza_correos_de) y luego guardar es la carrera que
+    dejaba pasar de 8 a 20 correos con peticiones simultáneas: el API le pasa
+    el tope a automatiza_guardar_correo, que cuenta y guarda en una sentencia."""
+    topes, guardar = [], base.guardar_correo
+
+    def espia(i, correo, **kw):
+        topes.append(kw.get("tope"))
+        return guardar(i, correo, **kw)
+    monkeypatch.setattr(db, "automatiza_guardar_correo", espia)
+    monkeypatch.setattr(db, "automatiza_correos_de",
+                        lambda i: pytest.fail("contar aparte y luego guardar es la carrera"))
+    assert _correo(cliente, pid).status_code == 200
+    assert topes == [publico_api.TOPE_CORREOS]
+
+
 def test_el_candado_de_identidad_aplica(cliente, base, pid, monkeypatch):
     # BaseDeMentira.guardar_correo exige el camino público; aquí además se
     # comprueba que nadie pide un usuario por el camino
@@ -178,6 +260,68 @@ def test_enmascarar(correo, visto):
 ])
 def test_limpiar_correo_valido(crudo, limpio):
     assert publico_api.limpiar_correo(crudo) == limpio
+
+
+@pytest.fixture
+def sql(monkeypatch):
+    llamadas, respuestas = [], []
+
+    def falso(q, p=None):
+        llamadas.append((" ".join(q.split()), p))
+        r = respuestas.pop(0) if respuestas else []
+        if isinstance(r, Exception):
+            raise r
+        return r
+    monkeypatch.setattr(db, "ejecutar", falso)
+    return llamadas, respuestas
+
+
+def test_la_cuenta_del_tope_vive_en_la_corrida():
+    assert ("ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS correos int "
+            "NOT NULL DEFAULT 0") in db.ESQUEMA
+
+
+def test_el_tope_se_cuenta_y_se_guarda_en_una_sola_sentencia(sql):
+    """Contar y luego insertar son dos viajes: con 30 peticiones a la vez
+    pasaban de 8 a 20 correos. El UPDATE toma el candado de la fila de la
+    corrida y Postgres vuelve a mirar `correos < :tope` tras esperar."""
+    llamadas, respuestas = sql
+    respuestas.extend([[{"id": 7}], []])
+    with db.camino_publico():
+        assert db.automatiza_guardar_correo(9, " a@b.co ", origen="fila", recontacto=True,
+                                            recontacto_texto="Quiero…", aviso_version="v",
+                                            tope=5) is True
+        assert db.automatiza_guardar_correo(9, "a@b.co", origen="fila", tope=5) is False
+    (q, p), _ = llamadas
+    assert q == ("WITH turno AS ( UPDATE automatiza_corridas SET correos = correos + 1 "
+                 "WHERE id = :i AND correos < :tope RETURNING id) "
+                 "INSERT INTO automatiza_contactos (corrida_id, correo, origen, recontacto, "
+                 "recontacto_texto, aviso_version) SELECT id, :c, :o, :r, :t, :v FROM turno "
+                 "RETURNING id")
+    assert p == {"i": 9, "c": "a@b.co", "o": "fila", "r": True, "t": "Quiero…", "v": "v",
+                 "tope": 5}
+
+
+@pytest.mark.parametrize("hay,guarda", [(2, True), (5, False)])
+def test_sin_db_migrate_el_correo_se_sigue_guardando(sql, hay, guarda):
+    """Si el API nuevo llega antes que la columna, «Mandármelo y descargar» no
+    puede dar 500: vuelve al tope de antes (contar y luego guardar)."""
+    llamadas, respuestas = sql
+    respuestas.extend([RuntimeError('column "correos" of relation "automatiza_corridas" '
+                                    'does not exist'), [{"n": hay}], []])
+    with db.camino_publico():
+        assert db.automatiza_guardar_correo(9, "a@b.co", origen="fila", tope=5) is guarda
+    assert llamadas[1][0].startswith("SELECT count(*) AS n FROM automatiza_contactos")
+    assert len(llamadas) == (3 if guarda else 2)
+    if guarda:
+        assert llamadas[2][0].startswith("INSERT INTO automatiza_contactos")
+
+
+def test_otro_error_de_la_base_no_se_perdona(sql):
+    _, respuestas = sql
+    respuestas.append(RuntimeError('relation "automatiza_contactos" does not exist'))
+    with db.camino_publico(), pytest.raises(RuntimeError):
+        db.automatiza_guardar_correo(9, "a@b.co", origen="fila", tope=5)
 
 
 def test_contar_correos_de_una_corrida(monkeypatch):

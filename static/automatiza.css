@@ -108,8 +108,9 @@ h1[tabindex="-1"]:focus, h1[tabindex="-1"]:focus-visible { outline: none; }
 .btn[aria-busy="true"] { cursor: progress; }
 .btn[aria-busy="true"]:active { transform: none; }
 .enlace-44 { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; font-weight: 500; }
-.btn-enlace.chica { font-size: var(--t-xs); min-height: 24px; text-align: left; color: var(--c-enlace);
-  text-decoration: underline; text-underline-offset: 4px; }
+/* «Cambiar el correo»: se dibuja chico, pero se toca en 44 × 44 (DISENO §4) */
+.btn-enlace.chica { font-size: var(--t-xs); min-height: 44px; display: inline-flex; align-items: center;
+  text-align: left; color: var(--c-enlace); text-decoration: underline; text-underline-offset: 4px; }
 .btn-enlace.chica:hover { color: var(--c-texto); }
 
 /* --- el aviso de carta.css, a lo ancho como en el lienzo --- */

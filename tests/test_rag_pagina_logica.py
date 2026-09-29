@@ -141,6 +141,25 @@ def test_los_formularios_de_correo_y_sus_origenes():
     formas = _formularios_de_correo()
     origenes = [re.search(r'data-origen="([^"]+)"', f).group(1) for f in formas]
     assert sorted(set(origenes)) == sorted(publico_api.ORIGENES_CORREO)
+    # «se pasó del tiempo» (2d) sale también mientras arma: no es «fila»
+    tope = re.search(r"<div class=\"tope\" data-tope.*?</form>", HTML, flags=re.S).group(0)
+    assert 'data-origen="espera"' in tope
+
+
+def test_el_correo_viaja_con_la_version_del_aviso_de_la_pagina():
+    """Sin ella el servidor guardaría el texto de HOY aunque la pestaña se
+    abriera con otro (el consentimiento a un texto que no vio)."""
+    assert 'data-aviso-version="{{aviso_version}}"' in HTML
+    assert "principal.dataset.avisoVersion" in JS
+    assert re.search(r"aviso_version:\s*AVISO_VERSION", JS)
+
+
+@pytest.mark.parametrize("campo", ["correo-tarde", "correo-fila", "correo-listo", "correo-no-salio"])
+def test_cada_campo_de_correo_se_llama_correo(campo):
+    """El nombre accesible sale de su <label>: una pregunta suelta («¿No
+    quieres esperar aquí?») no le dice al lector de pantalla qué escribir."""
+    etiqueta = re.search(rf'<label for="{campo}"[^>]*>(.*?)</label>', HTML, flags=re.S).group(1)
+    assert "correo" in re.sub(r"<[^>]+>", "", etiqueta).lower(), campo
 
 
 @pytest.mark.parametrize("i", range(4))
@@ -183,11 +202,83 @@ def test_la_pantalla_1_ya_da_el_aviso_minimo():
         assert "{{" + clave + "}}" in pedir, clave
     assert "huella" in pedir and "No guardamos tu IP" not in pedir
     assert 'href="/terminos"' in pedir and 'href="/privacidad"' in pedir
+    # en el mismo POST viajan el referrer y los utm (automatiza.js): la
+    # línea lo dice, y dice a dónde escribir para oponerse
+    assert "de dónde llegan las visitas" in pedir and "llegaste" in pedir
+    assert "{{correo_privacidad}}" in pedir and "oponerte" in pedir
+
+
+def test_la_huella_no_se_llama_cifrada():
+    """Es un HMAC con una sal que tiene el responsable: no se descifra, pero
+    con la sal la IP se recupera probando las 2^32 direcciones. «Cifrada»
+    promete algo que no es."""
+    for nombre in ("automatiza.html", "privacidad.html"):
+        texto = (RAIZ / "static" / nombre).read_text(encoding="utf-8")
+        assert "cifrad" not in texto.lower(), nombre
+        assert "Del código no se puede leer tu IP" not in texto
+
+
+@pytest.mark.parametrize("cual", ["plantilla-aviso", "plantilla-aviso-compacto"])
+def test_el_simplificado_dice_lo_mismo_que_el_integral_del_correo(cual):
+    """Junto a la casilla no se puede prometer un plazo más corto que el
+    real: con la casilla, el correo se guarda hasta la baja (integral §4)."""
+    plantilla = re.search(rf'<template id="{cual}">(.*?)</template>', HTML, flags=re.S).group(1)
+    assert "{{plazo_correo}} (si marcas la casilla, hasta que te des de baja)" in plantilla
+    assert "No te pedimos datos sensibles" in plantilla
+    assert "negarte a los usos adicionales" in plantilla
 
 
 def test_terminos_y_privacidad_estan_enlazados():
     html = _sin_comentarios_html(HTML)
     assert 'href="/terminos"' in html and 'href="/privacidad"' in html
+
+
+def _bloque_js(inicio: str) -> str:
+    """El cuerpo de una función (o manejador) de la página, sin comentarios."""
+    i = JS.index(inicio)
+    return _sin_comentarios_js(JS[i:JS.index("\n  }", i)])
+
+
+def test_volver_a_mirar_arranca_un_sondeo_nuevo():
+    """reanudar() reutiliza el sondeo que ya avisó «Se cortó tu conexión» y no
+    lo vuelve a decir, pero ese aviso se quitó al entrar al tope. Y repintar
+    con el lleva_seg viejo haría retroceder «Lo pediste hace…»."""
+    bloque = _bloque_js("$('[data-volver-a-mirar]').addEventListener")
+    assert "mirar(true)" in bloque and "reanudar" not in bloque
+    assert "repintar()" in bloque
+    assert "lleva_seg: undefined" in _bloque_js("function repintar()")
+
+
+def test_la_pausa_solo_promete_el_borrador_si_se_guardo():
+    """Con localStorage bloqueado, «Guardamos lo que escribiste» sería mentira."""
+    assert "e.hidden = !(hay && estado.guardado)" in _bloque_js("function pintarPausa()")
+
+
+def test_los_errores_se_anuncian_si_el_foco_ya_estaba_en_el_campo():
+    """Enter en el correo o Ctrl+Enter en la petición: no hay evento de foco
+    que lea el aria-describedby, así que el error va a la región viva."""
+    assert "anunciar(texto, true)" in _bloque_js("function errorCorreo(")
+    assert "anunciar(error, true)" in _bloque_js("function pintarCampo(")
+    assert "anunciar(" in _bloque_js("function corridaPerdida()")
+
+
+def test_el_correo_guardado_repinta_la_corrida():
+    """Si el POST del correo contesta cuando la pantalla ya cambió (la fila
+    pasó a la espera, o quedó lista y pide el correo), lo decide la corrida."""
+    bloque = _bloque_js("function correoGuardado(")
+    assert "repintar()" in bloque and "correoSesionVer" in bloque
+
+
+def test_la_fila_no_se_quita_mientras_escribe_el_correo():
+    """pantallaPara(…, enFila) lo prueba el arnés de node; esto fija que la
+    corrida se lo pase: sin eso, al avanzar del lugar 3 al 2 el formulario
+    desaparece a media palabra y el foco se va al título."""
+    assert "pantallaPara(c, tieneCorreo(), escribiendoEnFila())" in _bloque_js("function pintarCorrida(")
+
+
+def test_el_area_tactil_de_cambiar_el_correo():
+    regla = re.search(r"\.btn-enlace\.chica \{[^}]*\}", CSS).group(0)
+    assert "min-height: 44px" in regla
 
 
 def test_te_funciono_va_escondido_hasta_rag25():

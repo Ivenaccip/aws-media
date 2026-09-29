@@ -80,13 +80,21 @@
     return m && ID.test(m[1]) ? m[1] : null;
   }
 
+  // Un enlace para volver que llegó cortado (un chat, un copiar a medias): el
+  // servidor contesta 404 con esta misma página y aquí se avisa.
+  const enlaceRoto = ruta => /^\/automatiza\/c\//.test(String(ruta || '')) && !idDeRuta(ruta);
+
   // Qué pantalla toca con lo que contestó el servidor. `conCorreo`: si ya lo
-  // dejó en esta visita (la corrida puede no traerlo todavía).
-  function pantallaPara(c, conCorreo) {
+  // dejó en esta visita (la corrida puede no traerlo todavía). `enFila`: la
+  // persona está escribiendo su correo en la fila (con texto, con el foco o
+  // mandándolo): mientras la corrida no termine, la fila no se le quita de
+  // enfrente, aunque avance al lugar 2 o empiece a armarse.
+  function pantallaPara(c, conCorreo, enFila) {
     const estado = c && c.estado;
     if (estado === 'listo') return c.correo || conCorreo ? 'listo' : 'correo';
     if (estado === 'no_salio' || estado === 'sin_cobertura') return 'no-salio';
     if (estado === 'rechazada') return 'rechazada';
+    if (enFila) return 'fila';
     if (estado === 'en_fila' && Number(c.lugar) >= FILA_DESDE) return 'fila';
     // recibida, al frente de la fila o armando (y un estado que no se conozca:
     // la espera no promete nada que no sea cierto)
@@ -106,10 +114,13 @@
     return i < 0 ? 0 : i;
   }
 
-  // «calculamos unos N min»: conservador, por tandas del worker
+  // «calculamos unos N min»: conservador, hasta que ESTÁ LISTO y no hasta que
+  // empieza. El lugar solo cuenta la fila (no las CONCURRENCIA que ya se
+  // arman), así que en el peor caso son las tandas de delante, más la que se
+  // está armando, más la suya: lugar 1 → 2 tandas, lugar 3 → 3.
   function minutosFila(lugar) {
     const n = Math.max(1, Math.floor(Number(lugar) || 1));
-    return Math.ceil(n / CONCURRENCIA) * TARDA_MAX;
+    return (Math.ceil(n / CONCURRENCIA) + 1) * TARDA_MAX;
   }
 
   function reloj(seg) {
@@ -176,14 +187,26 @@
       .map(t => ({ nombre: nombreNodo(t), disparador: esDisparador(t) }));
   }
 
-  // De dónde vino (RAG·10/28): los utm de la URL y el referrer si es de fuera.
-  // Unos utm nuevos reemplazan a los viejos juntos (son una sola campaña);
-  // volver desde /privacidad no borra el referrer de afuera.
+  // Del referrer solo el sitio («https://x.com»): para medir de dónde llegan
+  // basta, y la ruta o el query de otro sitio pueden traer tokens, correos o
+  // búsquedas de un tercero. Sin host (no es URL), nada. El servidor recorta
+  // igual (publico_api.solo_sitio); esto es para no tenerlo ni en la pestaña.
+  function sitioDe(url) {
+    let u = null;
+    try { u = new URL(String(url || '')); } catch (e) { return null; }
+    return u.host ? u.protocol + '//' + u.host : null;
+  }
+
+  // De dónde vino (RAG·10/28): los utm de la URL y el sitio de fuera del que
+  // llegó. Unos utm nuevos reemplazan a los viejos juntos (son una sola
+  // campaña); volver desde /privacidad no borra el sitio de afuera.
   function origenDe(busqueda, referrer, miOrigen, previo) {
     const fuera = {};
     for (const k of UTM.concat('referrer')) {
       if (previo && typeof previo[k] === 'string' && previo[k]) fuera[k] = previo[k].slice(0, TOPE_ORIGEN);
     }
+    // uno guardado por una versión anterior de esta página traía la URL entera
+    if (fuera.referrer) { const s = sitioDe(fuera.referrer); if (s) fuera.referrer = s; else delete fuera.referrer; }
     let q = null;
     try { q = new URLSearchParams(busqueda || ''); } catch (e) { q = null; }
     if (q && UTM.some(k => q.get(k))) {
@@ -196,7 +219,8 @@
     if (referrer) {
       let externo = false;
       try { externo = new URL(referrer).origin !== miOrigen; } catch (e) { externo = false; }
-      if (externo) fuera.referrer = String(referrer).slice(0, TOPE_ORIGEN);
+      const sitio = externo ? sitioDe(referrer) : null;
+      if (sitio) fuera.referrer = sitio.slice(0, TOPE_ORIGEN);
     }
     return fuera;
   }
@@ -220,11 +244,16 @@
     return t || 'Prueba describiéndola de otra forma.';
   }
 
+  // ¿El correo que esta pestaña escribió sigue siendo el vigente? El servidor
+  // solo manda el enmascarado: si ya es otro (lo cambiaron con el enlace en
+  // otra pestaña o en el celular), se deja de enseñar el de aquí.
+  const sigueSiendoMio = (mioVer, delServidor) => !delServidor || !mioVer || delServidor === mioVer;
+
   const Automatiza = {
     FILA_DESDE, CONCURRENCIA, TARDA_MIN, TARDA_MAX, PASOS, NOMBRES_PASO, FINALES, ID,
-    idDeRuta, pantallaPara, esFinal, firma, indicePaso, minutosFila, reloj, textoEspera,
-    textoFila, largo, estadoCampo, nombreNodo, esDisparador, nodosLegibles, origenDe,
-    correoParece, mensajeRechazo,
+    idDeRuta, enlaceRoto, pantallaPara, esFinal, firma, indicePaso, minutosFila, reloj, textoEspera,
+    textoFila, largo, estadoCampo, nombreNodo, esDisparador, nodosLegibles, sitioDe, origenDe,
+    correoParece, mensajeRechazo, sigueSiendoMio,
   };
   if (typeof module === 'object' && module && module.exports) module.exports = Automatiza;
   if (!raiz || !raiz.document) return;
@@ -241,6 +270,9 @@
   // los topes llegan llenos del servidor; si la página se abriera cruda, los del freno
   const MIN = parseInt(principal.dataset.largoMinimo, 10) || 20;
   const MAX = parseInt(principal.dataset.largoMaximo, 10) || 1500;
+  // la versión del aviso con la que se llenó ESTA página: viaja con el correo
+  // y el servidor no guarda nada si ya es otra (la persona vio otro texto)
+  const AVISO_VERSION = principal.dataset.avisoVersion || '';
 
   const TITULOS = {
     pedir: 'Automatiza con n8n', espera: 'Armando tu flujo', fila: 'En la fila',
@@ -278,6 +310,7 @@
     porEnlace: false,      // llegó con /automatiza/c/<id>
     llevaSeg: 0, llevaDesde: 0,
     correoSesion: null,    // el que escribió en esta visita (completo)
+    correoSesionVer: null, // ese mismo, como lo enmascara el servidor
     correoVer: null,       // el enmascarado del servidor
     cambiandoCorreo: false,
     lugarAntes: null,      // el primer lugar que vio en la fila
@@ -295,12 +328,14 @@
   const correoMostrar = () => estado.correoSesion || estado.correoVer || '';
   const llevaAhora = () => estado.llevaSeg + Math.max(0, (Date.now() - estado.llevaDesde) / 1000);
   const pedidoTexto = () => (estado.pedido && estado.pedido.id === estado.id && estado.pedido.texto) || '';
+  const visible = e => !!e && !e.closest('[hidden]');
 
   // --- anuncios para lectores de pantalla (aria-live="polite") ---
+  // `otraVez`: un error que se repite (mandar dos veces lo mismo) se vuelve a decir
   const anuncio = $('[data-anuncio]');
   let ultimoAnuncio = '';
-  function anunciar(texto) {
-    if (!texto || texto === ultimoAnuncio) return;
+  function anunciar(texto, otraVez) {
+    if (!texto || (texto === ultimoAnuncio && !otraVez)) return;
     ultimoAnuncio = texto;
     anuncio.textContent = '';
     raiz.setTimeout(() => { anuncio.textContent = texto; }, 60);
@@ -373,7 +408,11 @@
   // El contador siempre a la vista, gris; rojo solo al pasarse (y ahí dice
   // cuántos sobran) o tras tocar «Armar» con muy poco. El botón NO se apaga:
   // al tocarlo sale el aviso y el foco vuelve al campo (lienzo 1b).
-  function pintarCampo() {
+  // El error se lee con el foco (aria-describedby); si el foco YA estaba en
+  // el campo (Ctrl+Enter, o al pasarse escribiendo) no hay evento de foco que
+  // lo lea, así que se anuncia. `repetir`: mandar otra vez con el mismo error.
+  let errorAnunciado = null;
+  function pintarCampo(repetir) {
     const n = largo(campo.value);
     const est = estadoCampo(n, MIN, MAX);
     const error = estado.mensajeServidor
@@ -389,6 +428,8 @@
     campo.setAttribute('aria-invalid', error ? 'true' : 'false');
     errorCampo.hidden = !error;
     $('[data-error-texto]', errorCampo).textContent = error || '';
+    if (error && doc.activeElement === campo && (repetir || error !== errorAnunciado)) anunciar(error, true);
+    errorAnunciado = error;
   }
 
   function temblar(el) {
@@ -460,7 +501,7 @@
     $('[data-aviso-no-encontrada]').hidden = true;
     if (estadoCampo(largo(texto), MIN, MAX) !== 'bien') {
       estado.intento = true;
-      pintarCampo();
+      pintarCampo(true);
       temblar(campo);
       campo.focus();
       return;
@@ -482,7 +523,7 @@
     if (r.status === 422 && c && (c.motivo === 'corto' || c.motivo === 'largo')) {
       estado.mensajeServidor = c.mensaje || (c.motivo === 'corto' ? MSG_CORTO : MSG_LARGO);
       estado.intento = true;
-      pintarCampo();
+      pintarCampo(true);
       temblar(campo);
       campo.focus();
       return;
@@ -517,7 +558,8 @@
     if (estado.sondeo) estado.sondeo.detener();
     Object.assign(estado, {
       id, corrida: null, porEnlace, llevaSeg: 0, llevaDesde: Date.now(), correoSesion: null,
-      correoVer: null, cambiandoCorreo: false, lugarAntes: null, tope: false, firma: null, sondeo: null,
+      correoSesionVer: null, correoVer: null, cambiandoCorreo: false, lugarAntes: null, tope: false,
+      firma: null, sondeo: null,
     });
     for (const f of $$('[data-form-correo]')) { f.reset(); errorCorreo(f, null); }
     avisoEspera('tardando', false);
@@ -564,12 +606,27 @@
     if (cual === 'conexion') for (const b of $$('[data-preguntar-ahora]')) b.hidden = !si;
   }
 
-  // 404 (o cualquier 4xx que cancela): el enlace no lleva a ninguna corrida
+  // 404 (o cualquier 4xx que cancela), o un enlace que llegó cortado: no
+  // lleva a ninguna corrida. El aviso va antes del título que recibe el foco:
+  // se anuncia para que el lector de pantalla también lo diga.
   function corridaPerdida() {
     estado.id = null;
     cambiarRuta('/automatiza');
-    $('[data-aviso-no-encontrada]').hidden = false;
+    const aviso = $('[data-aviso-no-encontrada]');
+    aviso.hidden = false;
     mostrar('pedir');
+    anunciar(aviso.textContent.replace(/\s+/g, ' ').trim(), true);
+  }
+
+  // ¿La persona está en el formulario de correo de la fila? (texto sin
+  // mandar, el foco dentro o el POST volando). Si la fila avanza al lugar 2
+  // o empieza a armarse, cambiar de pantalla le quitaría el campo a media
+  // palabra y el foco se iría al título.
+  function escribiendoEnFila() {
+    if (estado.pantalla !== 'fila' || (tieneCorreo() && !estado.cambiandoCorreo)) return false;
+    const f = $('[data-pantalla="fila"] [data-form-correo]');
+    const input = $('input[type=email]', f);
+    return !!(f.dataset.enviando || input.value.trim() || f.contains(doc.activeElement));
   }
 
   function pintarCorrida(c) {
@@ -580,9 +637,12 @@
     estado.corrida = c;
     if (estado.tope) salirTope();
     if (typeof c.lleva_seg === 'number') { estado.llevaSeg = c.lleva_seg; estado.llevaDesde = Date.now(); }
-    if (typeof c.correo === 'string' && c.correo) estado.correoVer = c.correo;
+    if (typeof c.correo === 'string' && c.correo) {
+      if (!sigueSiendoMio(estado.correoSesionVer, c.correo)) estado.correoSesion = null;
+      estado.correoVer = c.correo;
+    }
     if (c.estado === 'en_fila' && estado.lugarAntes === null && Number(c.lugar) > 0) estado.lugarAntes = Number(c.lugar);
-    const p = pantallaPara(c, tieneCorreo());
+    const p = pantallaPara(c, tieneCorreo(), escribiendoEnFila());
     if (p === 'espera') pintarEspera(c);
     else if (p === 'fila') pintarFila(c);
     else if (p === 'correo') pintarCorreo(c);
@@ -597,6 +657,14 @@
 
   function detenerSondeo() {
     if (estado.sondeo) estado.sondeo.detener();
+  }
+
+  // Vuelve a pintar con lo último que dijo el servidor, sin tomar su lleva_seg
+  // como si fuera de ahora (el reloj de la página ya siguió contando) ni su
+  // correo como más nuevo que el que se acaba de guardar.
+  function repintar() {
+    pintarCorrida(Object.assign({}, estado.corrida || { estado: 'en_fila' },
+      { lleva_seg: undefined, correo: undefined }));
   }
 
   function pintarCorreos() {
@@ -663,17 +731,23 @@
   }
   $('[data-volver-a-mirar]').addEventListener('click', () => {
     salirTope();
-    pintarCorrida(estado.corrida || { estado: 'en_fila' });
+    repintar();
     enfocarTitulo();
-    if (estado.sondeo) estado.sondeo.reanudar(); else mirar(true);
+    // un sondeo NUEVO y no reanudar(): el viejo recuerda que ya avisó de la
+    // conexión y no lo volvería a decir, y ese aviso se quitó al entrar al tope
+    mirar(true);
   });
   for (const b of $$('[data-preguntar-ahora]')) {
     b.addEventListener('click', () => { if (estado.sondeo) estado.sondeo.reanudar(); else mirar(true); });
   }
 
   // --- 2b · fila (y 2c: ya con correo) ---
+  // Fuera de «en_fila» (la fila se queda mientras escribe su correo) el lugar
+  // no se toca: sería inventarlo.
   function pintarFila(c) {
-    const lugar = Math.max(1, Math.floor(Number(c.lugar) || 1));
+    const enFila = c.estado === 'en_fila';
+    const lugar = enFila ? Math.max(1, Math.floor(Number(c.lugar) || 1))
+      : parseInt($('[data-lugar]').textContent, 10) || 1;
     const conCorreo = tieneCorreo() && !estado.cambiandoCorreo;
     const antes = $('[data-lugar]').textContent;
     $('[data-lugar]').textContent = String(lugar);
@@ -792,10 +866,12 @@
   for (const b of $$('[data-otra-forma]')) b.addEventListener('click', otraForma);
 
   // --- 6 · no disponible ---
+  // «Guardamos lo que escribiste» solo si de verdad se guardó: con las
+  // cookies bloqueadas o en modo privado estricto localStorage truena.
   function pintarPausa() {
     const hay = !!campo.value.trim();
     if (hay) guardarBorrador();
-    for (const e of $$('[data-si-borrador]')) e.hidden = !hay;
+    for (const e of $$('[data-si-borrador]')) e.hidden = !(hay && estado.guardado);
     $('[data-sigue-pausa]').hidden = true;
   }
   $('[data-reintentar]').addEventListener('click', async ev => {
@@ -815,6 +891,9 @@
   // ---------------------------------------------------------------------
   // los formularios de correo (2b, 2d, 3 y 5): el mismo cable
 
+  // Con el foco ya en el campo (Enter en el correo) no hay evento de foco que
+  // lea el error: se anuncia. Si el formulario ya no se ve (la pantalla
+  // cambió mientras el POST volaba), también: nadie lo vería.
   function errorCorreo(f, texto) {
     const caja = $('[data-error-correo]', f);
     const input = $('input[type=email]', f);
@@ -822,7 +901,9 @@
     $('[data-error-texto]', caja).textContent = texto || '';
     input.classList.toggle('con-error', !!texto);
     input.setAttribute('aria-invalid', texto ? 'true' : 'false');
-    if (texto) temblar(input);
+    if (!texto) return;
+    temblar(input);
+    if (doc.activeElement === input || !visible(f)) anunciar(texto, true);
   }
 
   async function mandarCorreo(f) {
@@ -846,7 +927,8 @@
       r = await pedirJson('/api/publico/corridas/' + encodeURIComponent(id) + '/correo', {
         method: 'POST',
         // el texto de la casilla y la versión del aviso los pone el servidor
-        body: JSON.stringify({ correo, recontacto: !!(casilla && casilla.checked), origen: f.dataset.origen }),
+        body: JSON.stringify({ correo, recontacto: !!(casilla && casilla.checked), origen: f.dataset.origen,
+          aviso_version: AVISO_VERSION }),
       });
     } catch (e) { r = null; }
     delete f.dataset.enviando;
@@ -864,6 +946,7 @@
   function correoGuardado(f, correo, enmascarado) {
     // tal como lo guarda el servidor: en minúsculas y sin espacios
     estado.correoSesion = correo.toLowerCase();
+    estado.correoSesionVer = enmascarado || null;
     if (enmascarado) estado.correoVer = enmascarado;
     estado.cambiandoCorreo = false;
     pintarCorreos();
@@ -879,15 +962,14 @@
       enfocar($('[data-tope] [data-correo-listo]'));
       return;
     }
-    if (estado.pantalla === 'fila') {
-      pintarFila(c);
-      enfocarTitulo();
-      return;
-    }
-    if (estado.pantalla === 'no-salio') {
-      pintarNoSalio(c);
-      enfocar($('[data-pantalla="no-salio"] [data-correo-listo]'));
-    }
+    // Lo demás lo decide la corrida con el correo ya guardado: mientras el
+    // POST volaba la pantalla pudo cambiar (la fila pasó a la espera, o la
+    // corrida quedó lista y ya pedía el correo que se acaba de dar).
+    const antes = estado.pantalla;
+    repintar();
+    if (estado.pantalla !== antes) return;   // mostrar() ya movió el foco
+    if (antes === 'fila') enfocarTitulo();
+    else if (antes === 'no-salio') enfocar($('[data-pantalla="no-salio"] [data-correo-listo]'));
   }
   function enfocar(e) {
     if (!e) return;
@@ -985,6 +1067,9 @@
   restaurarBorrador();
   const idEnlace = idDeRuta(raiz.location.pathname);
   if (idEnlace) entrarPorEnlace(idEnlace);
-  else comprobarEstado();
+  else {
+    if (enlaceRoto(raiz.location.pathname)) corridaPerdida();
+    comprobarEstado();
+  }
   raiz.setInterval(relojTick, 1000);
 })(typeof window !== 'undefined' ? window : null);

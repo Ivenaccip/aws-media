@@ -10,6 +10,8 @@
 Las rutas se prueban con páginas de mentira en un directorio temporal: las
 de verdad las escribe otra tarjeta y su propio test las revisa; aquí solo se
 comprueba, si ya existen, que no piden huecos que no hay."""
+import hashlib
+import html
 import os
 import re
 from pathlib import Path
@@ -105,6 +107,55 @@ def test_las_paginas_reales_caben_en_la_csp(nombre):
     assert "challenges.cloudflare.com" not in html
 
 
+# RAG·13 — la versión del aviso es lo ÚNICO que dice qué texto aceptó cada
+# correo guardado (automatiza_contactos.aviso_version), así que cada versión
+# queda atada a la huella de su texto: el aviso simplificado, las líneas de
+# letra chica, la casilla, /privacidad y /terminos, ya llenos con DATOS. Si
+# cambias cualquiera de esos textos —o llenas un hueco de DATOS—, sube
+# AVISO_VERSION (server/aviso.py) y AGREGA aquí su huella. Una huella que ya
+# está no se edita: sería reescribir lo que aceptó alguien.
+HUELLAS_AVISO = {
+    "2026-09-29-borrador": "399d7881c48c7beb66c41bfa5ed544cbf67d4847965388fd094ff8cb088c4e2f",
+}
+
+
+def _texto_visible(pagina: str) -> str:
+    pagina = re.sub(r"<!--.*?-->", " ", pagina, flags=re.S)
+    pagina = re.sub(r"<head\b.*?</head>", " ", pagina, flags=re.S | re.I)
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", pagina)).split())
+
+
+def _huella_del_aviso() -> str:
+    pagina = (RAIZ / "static" / "automatiza.html").read_text(encoding="utf-8")
+    trozos = [aviso.RECONTACTO_TEXTO]
+    trozos += re.findall(r'<template id="plantilla-aviso[^"]*">.*?</template>', pagina, flags=re.S)
+    trozos += re.findall(r'<p class="chica letra-chica">.*?</p>', pagina, flags=re.S)
+    trozos += re.findall(r'<label class="casilla">.*?</label>', pagina, flags=re.S)
+    trozos += [(RAIZ / "static" / n).read_text(encoding="utf-8")
+               for n in ("privacidad.html", "terminos.html")]
+    texto = "\n".join(_texto_visible(aviso.llenar(t)) for t in trozos)
+    return hashlib.sha256(texto.encode("utf-8")).hexdigest()
+
+
+def test_cada_version_del_aviso_tiene_un_solo_texto():
+    huella = _huella_del_aviso()
+    assert aviso.AVISO_VERSION in HUELLAS_AVISO, (
+        f"AVISO_VERSION «{aviso.AVISO_VERSION}» no tiene huella: agrega "
+        f"\"{aviso.AVISO_VERSION}\": \"{huella}\" a HUELLAS_AVISO")
+    assert HUELLAS_AVISO[aviso.AVISO_VERSION] == huella, (
+        "cambió el texto del aviso, de la casilla o de los términos (o un hueco "
+        "de DATOS) sin subir AVISO_VERSION: súbela en server/aviso.py y agrega "
+        f"su huella «{huella}». La de «{aviso.AVISO_VERSION}» no se toca.")
+
+
+def test_la_huella_cambia_con_el_texto(monkeypatch):
+    antes = _huella_del_aviso()
+    monkeypatch.setitem(aviso.DATOS, "plazo_correo", "12 meses")
+    assert _huella_del_aviso() != antes
+    monkeypatch.setattr(aviso, "RECONTACTO_TEXTO", aviso.RECONTACTO_TEXTO + " y ofertas")
+    assert _huella_del_aviso() != antes
+
+
 # ---------------------------------------------------------------------------
 # las rutas (con páginas de mentira)
 
@@ -179,10 +230,16 @@ def test_el_enlace_para_volver_es_la_misma_pagina_y_nunca_se_indexa(cliente):
 @pytest.mark.parametrize("raro", ["corto", "x" * 17, "AAAAAAAAAAAAAAA.", "AAAAAAAAAAAAAAAA%0A",
                                   "AAAAAAAAAAAAAAA%20"])
 def test_el_enlace_para_volver_con_id_raro_es_404(cliente, raro):
+    """Un enlace que un chat cortó: 404, pero con la MISMA página (llena, con
+    su CSP y sin indexar), no una hoja en blanco sin estilos ni lang. El JS
+    ve que la ruta no trae un id y enseña «No encontramos esa petición»."""
+    limpia = cliente.get("/automatiza", headers={"Host": "irremplazables.xyz"})
     r = cliente.get(f"/automatiza/c/{raro}", headers={"Host": "irremplazables.xyz"})
     assert r.status_code == 404
+    _cabeceras_comunes(r)
     assert r.headers["x-robots-tag"] == "noindex, nofollow"
-    assert "{{" not in r.text
+    assert "etag" not in r.headers
+    assert "{{" not in r.text and r.text == limpia.text
 
 
 def test_la_barra_final_redirige_sin_perder_los_utm(cliente):
@@ -272,6 +329,40 @@ def test_robots_no_deja_pasar_el_enlace_para_volver():
     # «Allow: /automatiza» sin $ dejaría pasar /automatiza/c/… por prefijo
     assert all(not r.split(":", 1)[1].strip().startswith("/automatiza/") for r in reglas)
     assert "Allow: /automatiza\n" not in _robots()
+
+
+def _robots_permite(url: str) -> bool:
+    """Como Googlebot y Twitterbot (RFC 9309): la regla se compara con la ruta
+    MÁS el query, «$» es el fin de toda la URL y «*» cualquier cosa; gana la
+    regla más larga que case y, a igual largo, Allow."""
+    mejor = None
+    for linea in _robots().splitlines():
+        clave, _, patron = linea.partition(":")
+        clave, patron = clave.strip().lower(), patron.strip()
+        if clave not in ("allow", "disallow") or not patron:
+            continue
+        rx = re.escape(patron).replace(r"\*", ".*")
+        rx = rx[:-2] + "$" if rx.endswith(r"\$") else rx
+        if re.match(rx, url):
+            peso = (len(patron), clave == "allow")
+            if mejor is None or peso > mejor[0]:
+                mejor = (peso, clave)
+    return mejor is None or mejor[1] == "allow"
+
+
+@pytest.mark.parametrize("url,pasa", [
+    ("/automatiza", True),
+    # los enlaces que se reparten por canal (RAG·10/28): sin esto X y LinkedIn
+    # no leen la página y no enseñan la tarjeta con la imagen
+    ("/automatiza?utm_source=x&utm_medium=social", True),
+    ("/automatiza?utm_source=whatsapp", True),
+    ("/privacidad", True), ("/terminos", True), ("/automatiza-og.png", True),
+    ("/automatiza.css", True), ("/sondeo.js", True),
+    (f"/automatiza/c/{PID}", False), (f"/automatiza/c/{PID}?utm_source=x", False),
+    ("/automatizacion", False), ("/estudio/", False), ("/api/publico/estado", False),
+])
+def test_robots_como_lo_lee_un_buscador(url, pasa):
+    assert _robots_permite(url) is pasa
 
 
 def test_robots_se_sirve(cliente):

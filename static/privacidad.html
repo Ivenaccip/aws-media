@@ -43,7 +43,7 @@
   <header class="encabezado">
     <h1 id="titulo">Aviso de privacidad integral</h1>
     <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
-    <p class="resumen">/automatiza convierte lo que describes en un flujo de n8n, gratis y sin cuenta. Guardamos tu descripción, el flujo y, si nos lo das, tu correo, para armarlo, mandártelo y mejorar el servicio. De tu IP solo guardamos una huella cifrada, nunca la IP, y tus datos no los vendemos.</p>
+    <p class="resumen">/automatiza convierte lo que describes en un flujo de n8n, gratis y sin cuenta. Guardamos tu descripción, el flujo y, si nos lo das, tu correo, para armarlo, mandártelo y mejorar el servicio. De tu IP solo guardamos una huella, nunca la IP, y tus datos no los vendemos.</p>
   </header>
   <nav class="indice" aria-labelledby="indice-t">
     <p class="rotulo" id="indice-t">En esta página</p>
@@ -72,10 +72,10 @@
       <p>Solo lo necesario para armar tu flujo, mandártelo y cuidar que nadie abuse del servicio. No necesitas cuenta y no te pedimos tu nombre.</p>
       <dl class="filas">
         <div><dt>Lo que describes</dt><dd>El texto de lo que quieres automatizar (de {{largo_minimo}} a {{largo_maximo}} caracteres), tal cual lo escribes. Lo guardamos aunque la petición no se pueda armar. Como puede traer lo que tú pongas, te pedimos no escribir contraseñas, datos de otras personas ni datos sensibles.</dd></div>
-        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos, las apps que usa, en qué va tu petición (en la fila, armando, lista o no salió) y cuánto tardó. Cada petición tiene un número que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición y descargar el flujo, pero nunca tu correo completo: guárdalo como un enlace privado.</dd></div>
+        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos, las apps que usa, en qué va tu petición (en la fila, armando, lista o no salió) y cuánto tardó. Cada petición tiene un número que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo al que te lo mandamos, pero nunca ver tu correo completo: guárdalo como un enlace privado.</dd></div>
         <div><dt>Tu correo, si nos lo das</dt><dd>Lo pedimos cuando el flujo está listo, para mandártelo; en la fila o cuando no salió es opcional. Junto con él guardamos en qué pantalla lo diste, si marcaste la casilla de novedades, el texto exacto de esa casilla, la versión de este aviso que estaba vigente y la fecha. Si lo cambias, el anterior también queda guardado: es la prueba de lo que aceptaste.</dd></div>
-        <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta que solo tiene nuestro servidor (si tu conexión usa IPv6, con la parte de la dirección que corresponde a tu red). Guardamos ese código, nunca la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Del código no se puede leer tu IP.</dd></div>
-        <div><dt>De dónde llegaste</dt><dd>La página desde la que llegaste, si tu navegador la manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
+        <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta que solo tiene nuestro servidor (si tu conexión usa IPv6, con la parte de la dirección que corresponde a tu red). Guardamos ese código, nunca la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Sin esa clave, del código no se puede saber tu IP; como con ella sí se podría, lo tratamos como un dato personal más y se borra junto con tu petición.</dd></div>
+        <div><dt>De dónde llegaste</dt><dd>El sitio desde el que llegaste (solo su dirección principal, como instagram.com, no la página exacta), si tu navegador lo manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
         <div><dt>Qué hiciste con el flujo</dt><dd>Si lo descargaste y cuántas veces y, si nos avisas que no te sirvió, lo que escribas en ese aviso.</dd></div>
       </dl>
 
@@ -143,7 +143,7 @@
 
     <section class="parte" id="transferencias" aria-labelledby="transferencias-t">
       <h2 id="transferencias-t">5. Con quién los compartimos</h2>
-      <p>No vendemos ni pasamos tus datos a otras empresas para que los usen para lo suyo. Sí usamos proveedores que los procesan por encargo nuestro, solo para dar este servicio y con la obligación de cuidarlos. La ley los llama «encargados» y a esa entrega, «remisión»; no necesita tu consentimiento, pero te decimos quiénes son:</p>
+      <p>No vendemos ni pasamos tus datos a otras empresas para que los usen para lo suyo. Sí usamos proveedores que los procesan por encargo nuestro, solo para dar este servicio y con la obligación de cuidarlos. La ley los llama «encargados» y a esa entrega, «remisión»; no necesita tu consentimiento [VERIFICAR con un abogado que con la ley de 2025 la remisión siga sin necesitarlo], pero te decimos quiénes son:</p>
       <dl class="filas">
         <div><dt>Amazon Web Services (AWS)</dt><dd>Donde vive el servicio: el servidor (Lambda), la base de datos (Aurora), el almacenamiento de archivos (S3) y la fila de trabajo (SQS). Sus servidores están en Estados Unidos (Virginia del Norte).</dd></div>
         <div><dt>Cloudflare</dt><dd>Está delante del sitio: entrega las páginas y lo protege de ataques. Ve tu IP al pasar, como cualquier red por la que navegas.</dd></div>
@@ -177,7 +177,7 @@
       <p>Si lo pide alguien en tu nombre, tiene que acreditar que te representa.</p>
 
       <h3>En cuánto respondemos</h3>
-      <p>Te respondemos en un máximo de 20 días desde que recibimos tu solicitud. Si procede, lo hacemos efectivo dentro de los 15 días siguientes a nuestra respuesta. Si el caso lo justifica, podemos ampliar esos plazos una sola vez por un periodo igual, y te avisamos. Es gratis.</p>
+      <p>Te respondemos en un máximo de 20 días desde que recibimos tu solicitud. Si procede, lo hacemos efectivo dentro de los 15 días siguientes a nuestra respuesta. Si el caso lo justifica, podemos ampliar esos plazos una sola vez por un periodo igual, y te avisamos. Es gratis. [VERIFICAR con un abogado: los plazos, cuánto se pueden ampliar y si son días hábiles o naturales.]</p>
       <p>Si no te respondemos o no estás de acuerdo con la respuesta, puedes acudir a la Secretaría Anticorrupción y Buen Gobierno, la autoridad de protección de datos personales que tomó el lugar del INAI.</p>
     </section>
 

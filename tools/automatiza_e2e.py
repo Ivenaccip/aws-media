@@ -27,7 +27,9 @@ Uso (cmd, desde la raíz del repo):
 from __future__ import annotations
 
 import argparse
+import html
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -64,6 +66,19 @@ def _pagina(url: str) -> tuple[int, dict, float]:
     except urllib.error.HTTPError as e:
         codigo, cab = e.code, e.headers
     return codigo, {k.lower(): v for k, v in cab.items()}, (time.monotonic() - t0) * 1000
+
+
+def version_del_aviso(api: str) -> str:
+    """La versión del aviso con la que el servidor llena /automatiza
+    (data-aviso-version). El POST del correo la exige igual que a la página:
+    sin ella contesta 409 y no guarda nada."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(api + "/automatiza"), timeout=35) as r:
+            pagina = r.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, OSError):
+        return ""
+    m = re.search(r'data-aviso-version="([^"]*)"', pagina)
+    return html.unescape(m.group(1)) if m else ""
 
 
 def revisar_paginas(api: str, pid: str | None) -> bool:
@@ -140,7 +155,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.correo:
         codigo, r, ms = _pedir("POST", f"{base}/corridas/{pid}/correo",
-                               {"correo": a.correo, "recontacto": False, "origen": "listo"})
+                               {"correo": a.correo, "recontacto": False, "origen": "listo",
+                                "aviso_version": version_del_aviso(api)})
         _, sondeo, _ = _pedir("GET", f"{base}/corridas/{pid}")
         bien = codigo == 200 and sondeo.get("correo") == r.get("correo")
         ok = ok and bien

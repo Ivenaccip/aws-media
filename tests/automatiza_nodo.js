@@ -26,6 +26,10 @@ igual(A.idDeRuta('/automatiza/c/' + ID + '/'), null, 'con barra final no es la f
 igual(A.idDeRuta('/otra/c/' + ID), null, 'otra ruta no es el enlace');
 igual(A.idDeRuta('/automatiza/c/AAAAAAAAAAAAAAA.'), null, 'un punto no es del alfabeto del id');
 igual(A.idDeRuta(undefined), null, 'sin ruta, nada');
+// un enlace cortado: el servidor da 404 con la misma página y aquí se avisa
+ok(A.enlaceRoto('/automatiza/c/AAAAAAAAAAAAAAA') && A.enlaceRoto('/automatiza/c/' + ID + 'x'), 'un id cortado o largo es un enlace roto');
+ok(!A.enlaceRoto('/automatiza/c/' + ID) && !A.enlaceRoto('/automatiza') && !A.enlaceRoto('/privacidad') && !A.enlaceRoto(undefined),
+  'el enlace bueno y las otras rutas no son un enlace roto');
 
 // --- qué pantalla toca -----------------------------------------------------
 const P = A.pantallaPara;
@@ -44,6 +48,12 @@ igual(P({ estado: 'sin_cobertura' }), 'no-salio', 'sin_cobertura es la misma pan
 igual(P({ estado: 'rechazada' }), 'rechazada', 'rechazada');
 igual(P({ estado: 'algo_nuevo' }), 'espera', 'un estado desconocido no promete nada: espera');
 igual(P(null), 'espera', 'sin cuerpo, espera');
+// escribiendo el correo en la fila: la fila no se le quita de enfrente hasta que termine
+igual(P({ estado: 'en_fila', lugar: 2 }, false, true), 'fila', 'la fila avanzó al lugar 2 mientras escribe: se queda');
+igual(P({ estado: 'armando', paso: 'entender' }, false, true), 'fila', 'empezó a armarse mientras escribe: se queda');
+igual(P({ estado: 'listo' }, false, true), 'correo', 'ya terminó: la pantalla 3 le pide el correo');
+igual(P({ estado: 'no_salio' }, false, true), 'no-salio', 'un final siempre gana');
+igual(P({ estado: 'en_fila', lugar: 2 }, false, false), 'espera', 'sin escribir, el lugar 2 es la espera');
 igual(A.FILA_DESDE, 3, 'FILA_DESDE es 3 (contrato)');
 
 ok(A.esFinal({ estado: 'listo' }) && A.esFinal({ estado: 'no_salio' })
@@ -65,12 +75,14 @@ igual(A.indicePaso({ estado: 'en_fila', paso: 'revisar' }), 0, 'fuera de armando
 
 // --- los tiempos ---------------------------------------------------------------
 igual([A.TARDA_MIN, A.TARDA_MAX], [1, 3], 'TARDA_MIN/TARDA_MAX provisionales del contrato');
-igual(A.minutosFila(1), 3, 'lugar 1: una tanda');
-igual(A.minutosFila(2), 3, 'lugar 2: la misma tanda (el worker arma de 2 en 2)');
-igual(A.minutosFila(3), 6, 'lugar 3: segunda tanda');
-igual(A.minutosFila(12), 18, 'lugar 12: ceil(12/2) × 3');
-igual(A.minutosFila(0), 3, 'un lugar raro no da 0 min');
-igual(A.minutosFila('x'), 3, 'un lugar que no es número tampoco');
+// hasta que ESTÁ LISTO, en el peor caso: el lugar no cuenta las 2 que ya se
+// arman, así que el lugar 1 espera una tanda y se arma en otra
+igual(A.minutosFila(1), 6, 'lugar 1: la tanda que se arma + la suya');
+igual(A.minutosFila(2), 6, 'lugar 2: igual (el worker arma de 2 en 2)');
+igual(A.minutosFila(3), 9, 'lugar 3: empieza hacia el 6 y termina hacia el 9');
+igual(A.minutosFila(12), 21, 'lugar 12: (ceil(12/2) + 1) × 3');
+igual(A.minutosFila(0), 6, 'un lugar raro no da 0 min');
+igual(A.minutosFila('x'), 6, 'un lugar que no es número tampoco');
 
 igual(A.reloj(0), '0:00', 'reloj en cero');
 igual(A.reloj(72), '1:12', 'Llevas 1:12');
@@ -87,10 +99,10 @@ igual(A.textoEspera({ estado: 'armando', seg: 20, porEnlace: true }), 'Lo pedist
 igual(A.textoEspera({ estado: 'armando', seg: 660, tope: true }), 'Llevas 11 min · lo normal es entre 1 y 3 min',
   'se pasó del tiempo');
 
-igual(A.textoFila(12, 12, false), 'Vas en el lugar 12 · calculamos unos 18 min', 'la fila');
-igual(A.textoFila(7, 12, true), 'Vas en el lugar 7 · antes ibas en el 12 · unos 12 min', 'la fila con correo');
-igual(A.textoFila(7, 7, true), 'Vas en el lugar 7 · unos 12 min', 'sin avance no dice «antes ibas»');
-igual(A.textoFila(7, null, true), 'Vas en el lugar 7 · unos 12 min', 'sin lugar previo tampoco');
+igual(A.textoFila(12, 12, false), 'Vas en el lugar 12 · calculamos unos 21 min', 'la fila');
+igual(A.textoFila(7, 12, true), 'Vas en el lugar 7 · antes ibas en el 12 · unos 15 min', 'la fila con correo');
+igual(A.textoFila(7, 7, true), 'Vas en el lugar 7 · unos 15 min', 'sin avance no dice «antes ibas»');
+igual(A.textoFila(7, null, true), 'Vas en el lugar 7 · unos 15 min', 'sin lugar previo tampoco');
 
 // --- el campo (1b) --------------------------------------------------------------
 igual(A.largo('  hola  '), 4, 'cuenta sin las orillas, como el servidor');
@@ -124,10 +136,18 @@ igual(A.nodosLegibles(undefined), [], 'sin nodos, lista vacía');
 const MIO = 'https://irremplazables.xyz';
 igual(A.origenDe('?utm_source=ig&utm_campaign=oct', '', MIO, null), { utm_source: 'ig', utm_campaign: 'oct' },
   'los utm de la URL');
-igual(A.origenDe('', 'https://www.instagram.com/', MIO, null), { referrer: 'https://www.instagram.com/' },
-  'el referrer de afuera');
-igual(A.origenDe('', MIO + '/privacidad', MIO, { utm_source: 'ig', referrer: 'https://x.com/' }),
-  { utm_source: 'ig', referrer: 'https://x.com/' }, 'volver desde /privacidad no borra nada');
+igual(A.origenDe('', 'https://www.instagram.com/', MIO, null), { referrer: 'https://www.instagram.com' },
+  'el sitio de afuera');
+// del referrer, SOLO el sitio: la ruta y el query de otro sitio pueden traer tokens o correos
+igual(A.origenDe('', 'https://externo.example/articulo?token=abc#x', MIO, null), { referrer: 'https://externo.example' },
+  'sin ruta, query ni ancla');
+igual(A.origenDe('', 'https://ana:clave@externo.example:8443/p', MIO, null), { referrer: 'https://externo.example:8443' },
+  'sin usuario ni contraseña');
+igual(A.origenDe('', 'android-app://com.google.android.gm/', MIO, null), { referrer: 'android-app://com.google.android.gm' },
+  'una app también dice de dónde');
+igual(A.origenDe('', MIO + '/privacidad', MIO, { utm_source: 'ig', referrer: 'https://x.com/un/post?id=9' }),
+  { utm_source: 'ig', referrer: 'https://x.com' }, 'volver desde /privacidad no borra nada, y lo guardado entero se recorta');
+igual(A.sitioDe('no es url'), null, 'sin URL no hay sitio');
 igual(A.origenDe('?utm_source=wa', '', MIO, { utm_source: 'ig', utm_campaign: 'oct' }), { utm_source: 'wa' },
   'una campaña nueva reemplaza a la vieja entera');
 igual(A.origenDe('?x=1', '', MIO, { utm_medium: 'post' }), { utm_medium: 'post' }, 'sin utm nuevos se queda lo guardado');
@@ -141,6 +161,11 @@ for (const c of ['tu@correo.com', 'a.b+c@sub.dominio.mx', 'GU@Gmail.COM'])
 for (const c of ['', 'tu@correo', 'tu correo@x.com', 'a@b@c.com', 'a@b.com,c@d.com', 'a@.com', '@x.com',
   'a'.repeat(250) + '@x.com'])
   ok(!A.correoParece(c), 'no debería parecer correo: ' + c);
+
+// --- el correo de esta pestaña vs el del servidor (se cambió en otra) --------------------
+ok(A.sigueSiendoMio('pr•••@ejemplo.mx', 'pr•••@ejemplo.mx'), 'el mismo: se sigue enseñando el completo');
+ok(!A.sigueSiendoMio('pr•••@ejemplo.mx', 'se•••@otro.mx'), 'otro: se enseña el del servidor');
+ok(A.sigueSiendoMio('pr•••@ejemplo.mx', undefined) && A.sigueSiendoMio(null, 'se•••@otro.mx'), 'sin dato, nada cambia');
 
 // --- 5a ---------------------------------------------------------------------------------
 igual(A.mensajeRechazo('Esta petición no la podemos armar. Prueba describiéndola de otra forma.'),

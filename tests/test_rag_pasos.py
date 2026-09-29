@@ -13,13 +13,17 @@ from worker import publico as worker
 
 @pytest.fixture
 def base(monkeypatch):
-    """Base de mentira del worker: tomar, cerrar y anotar el paso."""
+    """Base de mentira del worker: tomar, cerrar y anotar el paso. Como
+    automatiza_paso, una corrida ya cerrada no anota nada: `pasos` es lo que
+    quedó escrito, no lo que se intentó."""
     estado = {"pasos": [], "cerradas": [], "en_publico": [], "paso_falla": False}
 
     def paso(i, p):
         estado["en_publico"].append(db.en_camino_publico())
         if estado["paso_falla"]:
             raise db.DespertandoError("la base de datos sigue despertando")
+        if estado["cerradas"]:
+            return False
         estado["pasos"].append(p)
         return True
 
@@ -80,6 +84,13 @@ def test_si_anotar_el_paso_falla_la_corrida_sigue(base, esperas, caplog):
     assert "no se pudo anotar el paso" in caplog.text
 
 
+def test_revisar_se_anota_antes_de_cerrar(base, esperas):
+    # después de cerrar, automatiza_paso ya no escribe: el visitante nunca
+    # vería «revisar»
+    worker.procesar(7)
+    assert base["pasos"][-1] == "revisar"
+
+
 def test_si_el_armado_falla_no_llega_a_revisar(base, esperas, monkeypatch):
     monkeypatch.setattr(worker, "armar", lambda c: (_ for _ in ()).throw(ValueError("x")))
     assert worker.procesar(7) == "no_salio"
@@ -130,10 +141,18 @@ def test_paso_es_lista_blanca(sql, paso):
     assert llamadas == []
 
 
-def test_retomar_una_corrida_borra_el_paso_del_worker_muerto(sql):
+def test_tomar_no_depende_de_la_columna_paso(sql):
+    """Si el worker nuevo llega antes que db_migrate, tomar no puede reventar:
+    la corrida se quedaría en la fila para siempre (y contando para el tope
+    del día). El paso del worker que murió lo pisa el primer «entender»."""
     llamadas, _ = sql
     db.automatiza_tomar(3)
-    assert "paso = NULL" in llamadas[0][0]
+    assert "paso" not in llamadas[0][0]
+
+
+def test_al_retomar_lo_primero_que_se_anota_es_entender(base, esperas):
+    worker.procesar(7)
+    assert base["pasos"][0] == "entender"
 
 
 def test_la_corrida_trae_paso_segundos_y_correo_en_una_vuelta(sql):
@@ -145,9 +164,13 @@ def test_la_corrida_trae_paso_segundos_y_correo_en_una_vuelta(sql):
         c = db.automatiza_corrida("p")
     assert (c["paso"], c["lleva_seg"], c["creado"]) == ("armar", 42, "2026-10-10 12:00:00")
     (q, _), = llamadas
-    assert "c.paso" in q and "c.creado" in q
-    # el reloj es el de la base, no el de la Lambda
-    assert "extract(epoch FROM now() - c.creado)" in q
+    # el paso por to_jsonb(c): sin db_migrate da NULL («entender»), no un 500
+    # en cada sondeo; c.paso revienta si la columna todavía no existe
+    assert "to_jsonb(c)->>'paso' AS paso" in q and "c.paso" not in q
+    assert "c.creado" in q
+    # el reloj es el de la base, no el de la Lambda, y ENTERO: sin floor y
+    # ::bigint, extract da numeric y el Data API lo manda como texto
+    assert "GREATEST(0, floor(extract(epoch FROM now() - c.creado)))::bigint AS lleva_seg" in q
     # el correo vigente es la ÚLTIMA fila de contactos
     assert "FROM automatiza_contactos k WHERE k.corrida_id = c.id ORDER BY k.id DESC LIMIT 1" in q
 
@@ -195,6 +218,8 @@ def test_fuera_de_armando_no_hay_paso(cliente, monkeypatch, estado):
         assert r["lugar"] == 4
 
 
-def test_lleva_seg_es_entero(cliente, monkeypatch):
-    _corrida(monkeypatch, lleva_seg=None)
-    assert cliente.get(f"/api/publico/corridas/{PID}").json()["lleva_seg"] == 0
+@pytest.mark.parametrize("crudo,visto", [(None, 0), (73, 73), ("176.262595", 176)])
+def test_lleva_seg_es_entero(cliente, monkeypatch, crudo, visto):
+    # "176.262595": un numeric tal como lo manda el Data API (decimales como texto)
+    _corrida(monkeypatch, lleva_seg=crudo)
+    assert cliente.get(f"/api/publico/corridas/{PID}").json()["lleva_seg"] == visto

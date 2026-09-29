@@ -18,7 +18,8 @@ Fecha: 29-sep-2026 · Versión del texto: `2026-09-29-borrador`
   (`<template id="plantilla-aviso">`, pantalla 3) y la compacta
   (`<template id="plantilla-aviso-compacto">`, la fila, «se pasó del tiempo»
   y «No salió»). La pantalla 1 lleva además una línea mínima con el
-  responsable, el plazo, la huella de la IP y los Términos.
+  responsable, el plazo, las finalidades (también medir de dónde llegan),
+  la huella de la IP, a dónde escribir para oponerse y los Términos.
 - Para llenar los huecos tocas **un solo archivo**: `server/aviso.py`
   (`DATOS`). Lo que no es un hueco de `DATOS` va en el HTML entre corchetes.
 - Hay **decisiones tuyas** pendientes (lista abajo): la más urgente es el
@@ -111,7 +112,7 @@ prohibidos: tienen que decir lo mismo.
 | `plazo_correo` | Cuánto guardas el correo (RAG·0). | El aviso ya dice aparte que, si marcó la casilla, se guarda hasta la baja (ver decisiones). |
 | `proveedor_correo` | El proveedor de envío separado de SES (RAG·14). | Solo el nombre, p. ej. «Resend» o «Postmark». |
 | `fecha_aviso` | La fecha de la versión que publiques. | |
-| `AVISO_VERSION` | Súbela **cada vez que cambie el texto** (p. ej. `2026-10-06`). | Se guarda con cada correo: así se prueba qué aviso aceptó cada quien. Hoy la comparten el aviso y los términos. |
+| `AVISO_VERSION` | Súbela **cada vez que cambie el texto** (p. ej. `2026-10-06`). | Se guarda con cada correo: así se prueba qué aviso aceptó cada quien. Hoy la comparten el aviso y los términos. `tests/test_rag_paginas.py` (`HUELLAS_AVISO`) ata cada versión a la huella de su texto: si cambias un texto o llenas un hueco sin subirla, falla y te dice qué huella agregar. La página manda con el correo la versión con la que se llenó; si ya no es la vigente, el servidor no guarda nada y pide recargar. |
 
 ### En el HTML (entre corchetes, no son huecos de `DATOS`)
 
@@ -125,6 +126,12 @@ prohibidos: tienen que decir lo mismo.
   público: `moderacion.revisar` lleva `@observe` y el cliente de OpenAI va
   envuelto por Langfuse, así que la descripción llega ahí en cuanto
   `ARMADO_DE_MENTIRA` pase a `False`.
+- `privacidad.html` §5 **remisión** [VERIFICAR con un abogado]: que con la
+  ley de 2025 dar datos a un encargado siga sin necesitar consentimiento (la
+  regla sale del Reglamento de 2011, art. 53).
+- `privacidad.html` §6 **plazos ARCO** [VERIFICAR con un abogado]: 20/15
+  días, cuánto se amplían (una fuente dice «hasta 10 días») y si son hábiles
+  o naturales.
 - `privacidad.html` §6 **identificación ARCO** [VERIFICAR con un abogado]: la
   ley pide documentos que acrediten la identidad, pero el visitante es anónimo.
   El texto propone: escribir desde el correo que dio + el número de petición.
@@ -192,7 +199,15 @@ operación. Son parte de dejarlo listo, no adornos:
 
 - La línea de la pantalla 1 del lienzo decía «No guardamos tu IP.» Es cierto
   que la IP no se guarda, pero sí una huella (HMAC con sal): la página ya dice
-  «solo una huella cifrada», igual que el simplificado y el integral.
+  «solo una huella», igual que el simplificado y el integral. No dice
+  «cifrada»: no se puede descifrar, pero quien tiene la sal sí puede probar
+  las 2^32 direcciones IPv4 y dar con la IP en horas. Es un dato
+  seudonimizado, no anónimo, y así lo dice el §2 del integral.
+- Del referrer solo se guarda el sitio (`https://x.com`), no la ruta ni el
+  query: la finalidad declarada («medir de dónde llegan, en números
+  agregados») no necesita más, y la URL completa de otro sitio puede traer
+  tokens o correos de un tercero. Si quieres la ruta para atribuir campañas,
+  decídelo y dilo en el §2.
 - La pantalla 1 **ya recaba datos** (descripción, huella, origen; aun si se
   rechaza): su línea ya nombra al responsable, el plazo y la finalidad
   (se cambió contra el lienzo por eso).

@@ -5,10 +5,14 @@
 # RAG·10: /automatiza, sus legales y lo que esas páginas cargan. El enlace
 # para volver (/automatiza/c/…) NO: es el resultado de alguien, y además
 # sale con X-Robots-Tag: noindex (server/app.py).
+# «/automatiza?» es la misma página con utm_*: Google y Twitterbot comparan la
+# regla con ruta+query, y sin ella el enlace con utm cae en «Disallow: /» (X y
+# LinkedIn no enseñan la tarjeta). No abre /automatiza/c/…: no empieza igual.
 User-agent: *
 Allow: /$
 Allow: /entrar$
 Allow: /automatiza$
+Allow: /automatiza?
 Allow: /privacidad$
 Allow: /terminos$
 Allow: /carta.css

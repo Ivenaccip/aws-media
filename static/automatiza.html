@@ -49,8 +49,10 @@
 </header>
 
 <!-- los topes del campo los pone el servidor (salen de pipeline/publico.py):
-     el navegador avisa con los MISMOS números que después revisa la API -->
-<main id="principal" data-largo-minimo="{{largo_minimo}}" data-largo-maximo="{{largo_maximo}}">
+     el navegador avisa con los MISMOS números que después revisa la API. La
+     versión del aviso viaja con cada correo: si ya no es la vigente, la
+     persona vio otro texto y el servidor no guarda nada (pide recargar) -->
+<main id="principal" data-largo-minimo="{{largo_minimo}}" data-largo-maximo="{{largo_maximo}}" data-aviso-version="{{aviso_version}}">
 
   <!-- mientras se lee la corrida del enlace para volver: nunca el formulario -->
   <p class="buscando" data-buscando role="status" hidden>Buscando tu petición…</p>
@@ -104,7 +106,7 @@
         </div>
         <!-- los datos se empiezan a guardar AQUÍ, no en la pantalla 3: el aviso
              simplificado mínimo va desde la primera petición (RAG·13) -->
-        <p class="chica letra-chica">Cuando esté armado te pedimos tu correo para mandártelo. {{responsable}} ({{domicilio}}) guarda tu descripción y el flujo durante {{plazo_peticion}} para armarlo y, si no te opones, para mejorar el servicio; de tu IP solo guarda una huella cifrada. Al armarlo aceptas los <a href="/terminos">Términos</a>. <a href="/privacidad">Aviso de privacidad</a></p>
+        <p class="chica letra-chica">Cuando esté armado te pedimos tu correo para mandártelo. {{responsable}} ({{domicilio}}) guarda tu descripción y el flujo durante {{plazo_peticion}} para armarlo y, si no te opones, para mejorar el servicio y medir de dónde llegan las visitas (de qué sitio llegaste y la campaña del enlace); de tu IP solo guarda una huella. Para oponerte o ejercer tus derechos: {{correo_privacidad}}. Al armarlo aceptas los <a href="/terminos">Términos</a>. <a href="/privacidad">Aviso de privacidad</a></p>
       </form>
     </div>
 
@@ -160,7 +162,8 @@
 
       <!-- 2d · se pasó del tiempo: el sondeo dejó de mirar (el trabajo sigue) -->
       <div class="tope" data-tope hidden>
-        <form class="form-correo" data-form-correo data-origen="fila" novalidate>
+        <!-- origen «espera»: 2d sale en la espera y también mientras arma, no solo en la fila -->
+        <form class="form-correo" data-form-correo data-origen="espera" novalidate>
           <label for="correo-tarde" class="fuerte">Déjanos tu correo y te lo mandamos cuando salga</label>
           <div class="fila-campo">
             <input id="correo-tarde" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-tarde-error">
@@ -228,11 +231,11 @@
 
       <form class="form-correo" data-form-correo data-origen="fila" novalidate>
         <div class="apilado">
-          <label for="correo-fila" class="fuerte">¿No quieres esperar aquí?</label>
-          <span class="secundario">Déjanos tu correo y te lo mandamos en cuanto termine. Puedes cerrar la pestaña.</span>
+          <label for="correo-fila" class="fuerte">¿No quieres esperar aquí?<span class="sr"> Tu correo</span></label>
+          <span class="secundario" id="correo-fila-ayuda">Déjanos tu correo y te lo mandamos en cuanto termine. Puedes cerrar la pestaña.</span>
         </div>
         <div class="fila-campo">
-          <input id="correo-fila" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-fila-error">
+          <input id="correo-fila" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-fila-ayuda correo-fila-error">
           <button type="submit" class="btn btn-pri btn-grande">Mándamelo</button>
         </div>
         <p class="campo-error" id="correo-fila-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
@@ -359,7 +362,7 @@
       <hr class="linea">
 
       <form class="form-correo" data-form-correo data-origen="no_salio" novalidate>
-        <label for="correo-no-salio" class="fuerte">¿Te lo mandamos cuando lo tengamos?</label>
+        <label for="correo-no-salio" class="fuerte">¿Te lo mandamos cuando lo tengamos?<span class="sr"> Tu correo</span></label>
         <div class="fila-campo">
           <input id="correo-no-salio" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-no-salio-error">
           <button type="submit" class="btn btn-sec btn-grande">Mándamelo</button>
@@ -441,22 +444,24 @@
     <dl class="aviso-filas">
       <div><dt>Quién</dt><dd>{{responsable}}, con domicilio en {{domicilio}}.</dd></div>
       <div><dt>Para qué</dt><dd>Para armar tu flujo, mandártelo con su guía y avisarte de tu petición. Si no te opones, también para mejorar el servicio con tu descripción y medir de dónde llegan las visitas. Solo si marcas la casilla de abajo, para escribirte con novedades.</dd></div>
-      <div><dt>Qué guardamos</dt><dd>Tu descripción y el flujo, durante {{plazo_peticion}}; tu correo, durante {{plazo_correo}}. De tu IP solo una huella cifrada para los topes, nunca la IP. No te pedimos datos sensibles.</dd></div>
+      <div><dt>Qué guardamos</dt><dd>Tu descripción y el flujo, durante {{plazo_peticion}}; tu correo, durante {{plazo_correo}} (si marcas la casilla, hasta que te des de baja). De tu IP solo una huella para los topes, nunca la IP. No te pedimos datos sensibles.</dd></div>
       <div><dt>Tus derechos</dt><dd>Para ver, corregir o borrar tus datos, oponerte a un uso, negarte a los usos adicionales o darte de baja, escríbenos a {{correo_privacidad}} con tu número de petición.</dd></div>
     </dl>
     <a class="enlace-44" href="/privacidad">Leer el aviso de privacidad integral</a>
   </section>
 </template>
 <!-- la versión corta, para los formularios de la fila (2b/2c), «se pasó del
-     tiempo» (2d) y «No salió» (5): mismas 4 filas, sin nombrar la pantalla -->
+     tiempo» (2d) y «No salió» (5): mismas 4 filas, sin nombrar la pantalla.
+     Si cambias un texto legal de aquí, sube AVISO_VERSION (server/aviso.py):
+     tests/test_rag_paginas.py ata cada versión a la huella de su texto -->
 <template id="plantilla-aviso-compacto">
   <section class="aviso-simple compacto">
     <h2 class="rotulo">Aviso de privacidad simplificado</h2>
     <dl class="aviso-filas">
       <div><dt>Quién</dt><dd>{{responsable}} · {{domicilio}}</dd></div>
       <div><dt>Para qué</dt><dd>Mandarte el flujo de esta petición en cuanto lo tengamos. Tu descripción, además, para mejorar el servicio si no te opones. Novedades, solo con la casilla.</dd></div>
-      <div><dt>Qué guardamos</dt><dd>La petición, {{plazo_peticion}}; tu correo, {{plazo_correo}}. Tu IP no: solo una huella cifrada.</dd></div>
-      <div><dt>Tus derechos</dt><dd>Ver, corregir o borrar tus datos, negarte o darte de baja: {{correo_privacidad}}</dd></div>
+      <div><dt>Qué guardamos</dt><dd>La petición, {{plazo_peticion}}; tu correo, {{plazo_correo}} (si marcas la casilla, hasta que te des de baja). Tu IP no: solo una huella. No te pedimos datos sensibles.</dd></div>
+      <div><dt>Tus derechos</dt><dd>Ver, corregir o borrar tus datos, negarte a los usos adicionales o darte de baja: {{correo_privacidad}}</dd></div>
     </dl>
     <a class="enlace-44" href="/privacidad">Leer el aviso de privacidad integral</a>
   </section>

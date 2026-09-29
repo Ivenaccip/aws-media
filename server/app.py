@@ -1222,7 +1222,8 @@ def _se_indexa(request: Request) -> bool:
     return host.rstrip(".") == DOMINIO_INDEXABLE
 
 
-def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True):
+def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True,
+                    status: int = 200):
     try:
         cuerpo = aviso.renderizar(nombre)
     except FileNotFoundError:
@@ -1232,6 +1233,8 @@ def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True):
     cabeceras = dict(_CABECERAS_PUBLICAS)
     if not (indexable and _se_indexa(request)):
         cabeceras.update(_NO_INDEXAR)
+    if status != 200:
+        return HTMLResponse(cuerpo, status_code=status, headers=cabeceras)
     # no-cache revalida en cada carga: con el ETag, la revalidación es un 304
     etag = '"' + hashlib.sha256(cuerpo.encode()).hexdigest()[:32] + '"'
     cabeceras["ETag"] = etag
@@ -1258,13 +1261,15 @@ def _automatiza_barra(request: Request):
 @app.get("/automatiza/c/{publico_id}", include_in_schema=False)
 def _automatiza_corrida(request: Request, publico_id: str):
     """El «enlace para volver»: la MISMA página, que lee el id del path. Nunca
-    se indexa (es el resultado de alguien) y un id con otra forma ni se sirve.
-    Si la corrida existe lo dice el API cuando la página pregunta."""
+    se indexa (es el resultado de alguien). Si la corrida existe lo dice el
+    API cuando la página pregunta.
+
+    Un id con otra forma —un enlace que un chat o un copiar a medias
+    cortó— es 404, pero con la MISMA página: el JS ve que la ruta no trae un
+    id y enseña «No encontramos esa petición» sobre el formulario, igual que
+    con un id que no existe."""
     if not publico_api.ID_PUBLICO.fullmatch(publico_id):
-        return HTMLResponse("<!doctype html><title>No encontrada</title>"
-                            '<p>No encontramos esa petición. <a href="/automatiza">'
-                            "Pide otra</a>.</p>", status_code=404,
-                            headers={**_CABECERAS_PUBLICAS, **_NO_INDEXAR})
+        return _pagina_publica(request, "automatiza.html", indexable=False, status=404)
     return _pagina_publica(request, "automatiza.html", indexable=False)
 
 

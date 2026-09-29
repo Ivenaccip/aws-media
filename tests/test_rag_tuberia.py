@@ -55,18 +55,24 @@ class BaseDeMentira:
     def paso(self, i, paso):
         assert db.en_camino_publico()
         assert paso in db.PASOS_AUTOMATIZA
-        self.pasos.append((i, paso))
+        # como automatiza_paso: fuera de «armando» no escribe nada, así que
+        # `pasos` es lo que QUEDÓ escrito, no lo que se intentó
         if self.filas[i]["estado"] != "armando":
             return False
+        self.pasos.append((i, paso))
         self.filas[i]["paso"] = paso
         return True
 
     def guardar_correo(self, i, correo, *, origen, recontacto=False,
-                       recontacto_texto=None, aviso_version=None):
+                       recontacto_texto=None, aviso_version=None, tope=None):
         assert db.en_camino_publico()
+        # como el SQL: con tope, la cuenta y el INSERT son una sola cosa
+        if tope is not None and sum(1 for c in self.correos if c["corrida_id"] == i) >= tope:
+            return False
         self.correos.append({"corrida_id": i, "correo": correo, "origen": origen,
                              "recontacto": recontacto, "recontacto_texto": recontacto_texto,
                              "aviso_version": aviso_version})
+        return True
 
     def _pasar(self, i, de, a):
         if self.filas[i]["estado"] != de:
@@ -141,7 +147,10 @@ def test_de_punta_a_punta_sin_token(base, cola, cliente):
     # el worker (lo que haría SQS)
     assert worker.handler({"Records": [{"body": json.dumps(jobs.mensaje_publico(cola[0]))}]},
                           None) == {"ok": True}
+    # los cuatro quedaron ESCRITOS (el doble no anota fuera de «armando»): un
+    # «revisar» después de cerrar no lo vería nadie
     assert [p for _, p in base.pasos] == list(db.PASOS_AUTOMATIZA)
+    assert base.filas[1]["paso"] == "revisar"
     r = cliente.get(f"/api/publico/corridas/{pid}").json()
     assert r["estado"] == "listo" and r["listo"] is True
     assert "paso" not in r                   # el paso solo viaja mientras arma
@@ -179,6 +188,48 @@ def test_el_armado_real_trae_la_moderacion_de_vuelta(base, cola, cliente, monkey
     assert base.filas[1]["estado"] == "rechazada"
     r = cliente.get(f"/api/publico/corridas/{base.filas[1]['publico_id']}").json()
     assert r["estado"] == "rechazada" and r["mensaje"] == "Eso sería spam."
+
+
+def test_rechazada_sin_frase_no_ensena_una_palabra_interna(base, cola, cliente, monkeypatch):
+    # el modelo puede rechazar sin motivo: quien vuelve con el enlace lee la
+    # frase general, nunca «moderación»
+    monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", False)
+
+    async def modelo(name, system, user):
+        return {"permitido": False, "motivo": ""}
+    monkeypatch.setattr(moderacion, "chat_json", modelo)
+    general = "Esta petición no la podemos armar. Prueba describiéndola de otra forma."
+    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    assert r.status_code == 422 and r.json()["mensaje"] == general
+    r = cliente.get(f"/api/publico/corridas/{base.filas[1]['publico_id']}")
+    assert r.json()["mensaje"] == general and "moderaci" not in r.text
+
+
+def test_el_lugar_se_cuenta_antes_de_encolar(base, cliente, monkeypatch):
+    # un worker instantáneo: la toma en cuanto se encola, antes de que el
+    # POST conteste. Contado después, el 202 diría «lugar: null».
+    monkeypatch.setattr(jobs, "encolar_publico", lambda i: base._pasar(i, "en_fila", "armando"))
+    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    assert r.status_code == 202 and r.json()["lugar"] == 1
+    assert base.filas[1]["estado"] == "armando"
+
+
+@pytest.mark.parametrize("referrer,guardado", [
+    ("https://externo.example/articulo?token=abc#arriba", "https://externo.example"),
+    ("https://www.instagram.com/", "https://www.instagram.com"),
+    ("HTTPS://Usuario:Clave@X.com:8443/p?q=1", "https://x.com:8443"),
+    ("android-app://com.google.android.gm/", "android-app://com.google.android.gm"),
+    ("http://[::1]:8080/p", "http://[::1]:8080"),
+    ("no es url", None), ("", None), ("https://x.com:99999/", None),
+])
+def test_del_referrer_solo_se_guarda_el_sitio(base, cola, cliente, referrer, guardado):
+    """Medir de dónde llegan pide el sitio; la ruta y el query de otro sitio
+    pueden traer tokens, correos o búsquedas de un tercero (aviso §2)."""
+    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO, "referrer": referrer,
+                                                    "utm_source": "boletin"})
+    assert r.status_code == 202
+    assert base.filas[1]["origen"]["referrer"] == guardado
+    assert base.filas[1]["origen"]["utm_source"] == "boletin"
 
 
 # ---------------------------------------------------------------------------

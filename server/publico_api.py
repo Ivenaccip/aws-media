@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -60,12 +61,18 @@ _SIN_CACHE = {"Cache-Control": "no-store"}
 _CORREO = re.compile(r"[^@\s\x00-\x1f\x7f,;<>]+"
                      r"@(?:[^@\s\x00-\x1f\x7f,;<>.]+\.)+[^@\s\x00-\x1f\x7f,;<>.]+")
 CORREO_MAX = 254
-ORIGENES_CORREO = ("listo", "fila", "no_salio")      # la pantalla donde lo dejó
+# la pantalla donde lo dejó; «espera» es «se pasó del tiempo» (2d), que sale
+# en la espera y también mientras arma, no solo en la fila
+ORIGENES_CORREO = ("listo", "fila", "no_salio", "espera")
 # Cuántas veces se puede dejar o cambiar el correo de UNA corrida. Cada vez es
 # una fila nueva (la prueba del consentimiento no se edita): sin tope, un
-# bucle llenaría la tabla con una sola corrida.
+# bucle llenaría la tabla con una sola corrida. Se cuenta en la misma
+# sentencia que guarda (db.automatiza_guardar_correo): así es un tope de
+# verdad aunque lleguen varias peticiones a la vez.
 TOPE_CORREOS = 5
 MENSAJE_CORREO = "Revisa tu correo: parece que le falta algo."
+MENSAJE_AVISO = ("Actualizamos el aviso de privacidad. Recarga la página para verlo "
+                 "y deja tu correo otra vez.")
 
 
 class Peticion(BaseModel):
@@ -83,6 +90,9 @@ class Correo(BaseModel):
     # la casilla APARTE y desmarcada; el texto que vio lo pone el servidor
     recontacto: bool = False
     origen: str = ""
+    # la versión del aviso con la que se llenó la página (data-aviso-version):
+    # si no es la vigente, la persona vio otro texto y no se guarda nada
+    aviso_version: str = ""
 
 
 def limpiar_correo(correo: str | None) -> str | None:
@@ -101,6 +111,22 @@ def enmascarar(correo: str) -> str:
     usuario, _, dominio = correo.rpartition("@")
     ver = 2 if len(usuario) > 2 else len(usuario) - 1
     return f"{usuario[:max(ver, 0)]}•••@{dominio}"
+
+
+def solo_sitio(referrer: str | None) -> str | None:
+    """De la página de la que llegó, solo el sitio («https://x.com», sin ruta,
+    query ni usuario): para medir de dónde llegan las visitas basta, y la ruta
+    o el query de otro sitio pueden traer tokens, correos o búsquedas de un
+    tercero. Lo que no sea una URL con host no se guarda."""
+    try:
+        u = urlsplit(str(referrer or "").strip())
+        con_host = bool(u.scheme and u.hostname) and u.port != 0   # un puerto imposible revienta
+    except ValueError:
+        return None
+    if not con_host:
+        return None
+    sitio = u.netloc.rpartition("@")[2].lower()      # sin usuario:contraseña
+    return f"{u.scheme.lower()}://{sitio}"
 
 
 def _json(cuerpo: dict, status: int = 200) -> JSONResponse:
@@ -131,10 +157,14 @@ async def crear(body: Peticion, request: Request):
         return _json({"motivo": a.motivo, "mensaje": MENSAJES[a.motivo],
                       "minimo": freno.LARGO_MINIMO, "maximo": freno.LARGO_MAXIMO}, 422)
     origen = body.model_dump(exclude={"texto"})
+    origen["referrer"] = solo_sitio(origen.get("referrer"))
     if a.motivo == freno.RECHAZADA:
-        # Se guarda: su moderación ya costó y cuenta para el tope por IP.
+        # Se guarda: su moderación ya costó y cuenta para el tope por IP. El
+        # motivo es lo que lee quien vuelve con el enlace: sin frase de la
+        # moderación, la general (nunca una palabra interna como «moderación»)
         fila = db.automatiza_crear(a.texto, ip_hash=ip_hash, origen=origen)
-        db.automatiza_cerrar(fila["id"], "rechazada", motivo=a.detalle or "moderación")
+        db.automatiza_cerrar(fila["id"], "rechazada",
+                             motivo=a.detalle or MENSAJES[freno.RECHAZADA])
         return _json({"motivo": a.motivo,
                       "mensaje": a.detalle or MENSAJES[freno.RECHAZADA]}, 422)
     if a.motivo:
@@ -173,7 +203,9 @@ def consultar(publico_id: str):
         return _json({"mensaje": NO_ENCONTRADA}, 404)
     cuerpo = {"id": c["publico_id"], "estado": c["estado"],
               "listo": c["estado"] == "listo",
-              "lleva_seg": int(c.get("lleva_seg") or 0)}
+              # int(float()): si el SQL perdiera su ::bigint, el Data API
+              # mandaría el numeric como texto («176.26») y esto no daría 500
+              "lleva_seg": int(float(c.get("lleva_seg") or 0))}
     if c.get("correo"):
         cuerpo["correo"] = enmascarar(c["correo"])
     if c["estado"] == "en_fila":
@@ -194,10 +226,11 @@ def consultar(publico_id: str):
 
 @router.post("/corridas/{publico_id}/correo")
 def dejar_correo(publico_id: str, body: Correo):
-    """Deja (o cambia) el correo de la corrida: en la fila, en «ya está armado»
-    o en «no salió». Cada vez se AGREGA una fila con la prueba del
-    consentimiento; el texto de la casilla y la versión del aviso los pone el
-    servidor (server/aviso.py), el cliente solo dice sí o no.
+    """Deja (o cambia) el correo de la corrida: en la fila, en «se pasó del
+    tiempo», en «ya está armado» o en «no salió». Cada vez se AGREGA una fila
+    con la prueba del consentimiento; el texto de la casilla y la versión del
+    aviso los pone el servidor (server/aviso.py), el cliente solo dice sí o no
+    y con qué versión se llenó su página (tiene que ser la vigente).
 
     Aquí no se manda nada: el envío es de RAG·14/16."""
     if not ID_PUBLICO.fullmatch(publico_id or ""):
@@ -216,13 +249,18 @@ def dejar_correo(publico_id: str, body: Correo):
         # no hay nada que mandarle, y guardar el correo sería juntar datos de más
         return _json({"mensaje": "Esta petición no la podemos armar, así que no "
                                  "hay nada que mandarte."}, 409)
-    if db.automatiza_correos_de(c["id"]) >= TOPE_CORREOS:
+    if body.aviso_version != aviso.AVISO_VERSION:
+        # La página se llenó con otro aviso (una pestaña abierta desde antes
+        # de un deploy): guardar RECONTACTO_TEXTO y AVISO_VERSION de hoy
+        # registraría un consentimiento a un texto que la persona no vio.
+        return _json({"motivo": "aviso", "mensaje": MENSAJE_AVISO}, 409)
+    if not db.automatiza_guardar_correo(c["id"], correo, origen=body.origen,
+                                        recontacto=body.recontacto,
+                                        recontacto_texto=aviso.RECONTACTO_TEXTO,
+                                        aviso_version=aviso.AVISO_VERSION,
+                                        tope=TOPE_CORREOS):
         return _json({"mensaje": "Ya cambiaste el correo varias veces. Si necesitas "
                                  "ayuda, escríbenos."}, 429)
-    db.automatiza_guardar_correo(c["id"], correo, origen=body.origen,
-                                 recontacto=body.recontacto,
-                                 recontacto_texto=aviso.RECONTACTO_TEXTO,
-                                 aviso_version=aviso.AVISO_VERSION)
     return _json({"ok": True, "correo": enmascarar(correo)})
 
 

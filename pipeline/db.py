@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 from contextvars import ContextVar
@@ -398,6 +399,12 @@ ESQUEMA: list[str] = [
     # cosmético, la lista blanca vive en automatiza_paso() y un paso nuevo no
     # debe exigir otra migración.
     "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS paso text",
+    # RAG·12 — cuántas veces se dejó o cambió el correo de la corrida. Es el
+    # tope de POST …/correo y vive en la corrida y no en un count(*) de
+    # automatiza_contactos: contar y luego insertar son dos sentencias, y con
+    # peticiones simultáneas todas leen la misma cuenta y todas pasan. Sumar
+    # aquí toma el candado de la fila (ver automatiza_guardar_correo).
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS correos int NOT NULL DEFAULT 0",
 ]
 
 
@@ -1276,9 +1283,14 @@ def automatiza_corrida(publico_id: str) -> dict | None:
     Trae también lo que la espera necesita en UNA sola vuelta a la base (la
     página la sondea): el paso (RAG·11), cuántos segundos lleva desde que se
     creó —medidos con el reloj de la base, no con el de la Lambda— y el
-    correo vigente (RAG·12), que el API enmascara antes de enseñarlo."""
+    correo vigente (RAG·12), que el API enmascara antes de enseñarlo.
+
+    El paso se lee con to_jsonb(c) y no como c.paso: si el API nuevo llega
+    antes que db_migrate, la columna todavía no existe y esto devuelve NULL
+    (la página lo pinta como «entender») en vez de un 500 en cada sondeo."""
     filas = ejecutar(
-        "SELECT c.id, c.publico_id, c.estado, c.motivo, c.paso, c.en_fila_desde, "
+        "SELECT c.id, c.publico_id, c.estado, c.motivo, to_jsonb(c)->>'paso' AS paso, "
+        "c.en_fila_desde, "
         "c.empezo, c.termino, array_to_json(c.nodos)::text AS nodos, "
         "c.resultado::text AS resultado, c.resultado_key, c.guia_key, c.creado, "
         "GREATEST(0, floor(extract(epoch FROM now() - c.creado)))::bigint AS lleva_seg, "
@@ -1320,11 +1332,15 @@ def automatiza_tomar(id_: int) -> bool:
     deja la corrida colgada para siempre y el reintento de SQS no la puede
     tomar.
 
-    El paso vuelve a NULL (la página lo lee como «entender»): quien retoma
-    empieza de cero y no hereda el «revisar» del worker que murió."""
+    El paso NO se toca aquí: lo reinicia el primer _paso("entender") del
+    worker, que corre justo después, así que quien retoma no hereda el
+    «revisar» del que murió. Y esta sentencia no depende de la columna: si el
+    worker nuevo llega antes que db_migrate, tomar no revienta y las corridas
+    no se quedan en la fila para siempre (anotar el paso sí falla, pero es
+    cosmético y el worker sigue)."""
     filas = ejecutar(
         f"""UPDATE automatiza_corridas
-              SET estado = 'armando', empezo = now(), actualizado = now(), paso = NULL,
+              SET estado = 'armando', empezo = now(), actualizado = now(),
                   reintentos = reintentos + CASE WHEN estado = 'armando' THEN 1 ELSE 0 END
             WHERE id = :i AND (estado = 'en_fila'
                OR (estado = 'armando'
@@ -1409,15 +1425,49 @@ def automatiza_reportar(publico_id: str, reporte: str) -> None:
 def automatiza_guardar_correo(id_: int, correo: str, *, origen: str,
                               recontacto: bool = False,
                               recontacto_texto: str | None = None,
-                              aviso_version: str | None = None) -> None:
+                              aviso_version: str | None = None,
+                              tope: int | None = None) -> bool:
     """Agrega (nunca edita) el correo de la corrida con la prueba del
-    consentimiento: si marcó la casilla aparte, qué decía y qué aviso regía."""
-    ejecutar(
-        """INSERT INTO automatiza_contactos
-             (corrida_id, correo, origen, recontacto, recontacto_texto, aviso_version)
-           VALUES (:i, :c, :o, :r, :t, :v)""",
-        {"i": id_, "c": correo.strip(), "o": origen, "r": bool(recontacto),
-         "t": recontacto_texto if recontacto else None, "v": aviso_version})
+    consentimiento: si marcó la casilla aparte, qué decía y qué aviso regía.
+
+    Con `tope`, solo si la corrida lleva menos de `tope` correos; devuelve si
+    lo guardó. La cuenta y el INSERT van en UNA sentencia: el UPDATE toma el
+    candado de la fila de la corrida, así que las peticiones simultáneas pasan
+    de una en una y Postgres vuelve a mirar `correos < :tope` con el valor
+    que dejó la anterior. (Un INSERT…SELECT con count(*) NO bastaría: con READ
+    COMMITTED el count(*) no ve lo que las otras insertaron.)"""
+    valores = {"i": id_, "c": correo.strip(), "o": origen, "r": bool(recontacto),
+               "t": recontacto_texto if recontacto else None, "v": aviso_version}
+    columnas = "corrida_id, correo, origen, recontacto, recontacto_texto, aviso_version"
+    if tope is not None:
+        try:
+            filas = ejecutar(
+                f"""WITH turno AS (
+                        UPDATE automatiza_corridas SET correos = correos + 1
+                         WHERE id = :i AND correos < :tope RETURNING id)
+                    INSERT INTO automatiza_contactos ({columnas})
+                    SELECT id, :c, :o, :r, :t, :v FROM turno RETURNING id""",
+                {**valores, "tope": tope})
+            return bool(filas)
+        except Exception as e:  # noqa: BLE001 — solo se perdona la columna que falta
+            if not _falta_columna(e, "correos"):
+                raise
+            # el API nuevo llegó antes que db_migrate: el tope de antes (contar
+            # y luego guardar), blando pero sin tumbar «Mandármelo y descargar»
+            logging.getLogger(__name__).warning(
+                "automatiza_corridas.correos no existe: corre tools/db_migrate.py")
+            if automatiza_correos_de(id_) >= tope:
+                return False
+    ejecutar(f"INSERT INTO automatiza_contactos ({columnas}) "
+             "VALUES (:i, :c, :o, :r, :t, :v)", valores)
+    return True
+
+
+def _falta_columna(e: Exception, columna: str) -> bool:
+    """¿El error es que `columna` todavía no existe? (el Data API lo manda como
+    BadRequestException con el mensaje de Postgres; psycopg, como UndefinedColumn)."""
+    texto = f"{type(e).__name__} {e}".lower()
+    return f'"{columna}"' in texto and ("does not exist" in texto or "undefinedcolumn" in texto)
 
 
 def automatiza_correo(id_: int) -> dict | None:
