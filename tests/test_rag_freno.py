@@ -176,6 +176,13 @@ def test_estado_publico_sin_token_y_sin_motivo(cliente, monkeypatch, motivo, dis
     assert r.json() == {"disponible": disponible}     # nunca dice cuál tope ni cuánto
 
 
-def test_estado_publico_es_la_unica_ruta_de_publico_api():
+def test_rutas_de_publico_api_son_las_conocidas():
+    # una ruta pública nueva es una decisión, no un efecto secundario: RAG·8
+    # agregó el recorrido de la corrida; la siguiente se anota aquí a propósito
     from server.publico_api import router
-    assert [r.path for r in router.routes] == ["/api/publico/estado"]
+    assert sorted((r.path, tuple(sorted(r.methods))) for r in router.routes) == [
+        ("/api/publico/corridas", ("POST",)),
+        ("/api/publico/corridas/{publico_id}", ("GET",)),
+        ("/api/publico/corridas/{publico_id}/flujo.json", ("GET",)),
+        ("/api/publico/estado", ("GET",)),
+    ]

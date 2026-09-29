@@ -1444,7 +1444,8 @@ def automatiza_ajustar(*, encendido: bool | None = None,
 def automatiza_consumo_hoy() -> dict:
     """Corridas aceptadas hoy (hora de México) y su gasto REAL anotado.
 
-    Las rechazadas no cuentan: se rechazan antes de llamar a ningún modelo.
+    Las rechazadas no cuentan: no se armaron. (Su moderación sí costó; esa
+    la frena el tope por IP, que sí las cuenta.)
     El gasto es solo el que ya se anotó (costo_usd, RAG·24): aquí no se
     inventa ningún precio."""
     filas = ejecutar(
@@ -1458,10 +1459,13 @@ def automatiza_consumo_hoy() -> dict:
 
 
 def automatiza_corridas_de_ip_hoy(ip_hash: str) -> int:
-    """Corridas aceptadas hoy (hora de México) desde la misma IP hasheada."""
+    """Corridas de hoy (hora de México) desde la misma IP hasheada, CON las
+    rechazadas: desde RAG·7 una rechazada ya costó una llamada de moderación,
+    y sin contarlas un bot podría repetir textos rechazados sin tope. (El
+    tope global sí las excluye: ese mide lo que se armó.)"""
     filas = ejecutar(
         f"""SELECT count(*) AS n FROM automatiza_corridas
-             WHERE ip_hash = :h AND estado <> 'rechazada'
+             WHERE ip_hash = :h
                AND creado >= date_trunc('day', now() AT TIME ZONE '{ZONA_AUTOMATIZA}')
                              AT TIME ZONE '{ZONA_AUTOMATIZA}'""", {"h": ip_hash})
     return int(filas[0]["n"]) if filas else 0

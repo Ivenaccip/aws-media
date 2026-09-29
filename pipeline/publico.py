@@ -45,6 +45,15 @@ LARGO_MINIMO = 20
 LARGO_MAXIMO = 1500
 PROMPT_MODERACION = "moderar_automatiza_system"
 
+# RAG·8 — mientras el worker arme SIEMPRE el mismo flujo de mentira
+# (worker/publico.py), no se llama a ningún modelo: ni para armar ni para
+# moderar. La tubería se prueba entera sin gastar un dólar. RAG·21 cambia
+# esto a False en el MISMO PR que conecta el armado real, y con eso la
+# moderación cerrada de RAG·7 vuelve a correr sola (lo vigila
+# tests/test_rag_tuberia.py). Un solo interruptor para las dos cosas: no
+# puede haber armado real sin moderación.
+ARMADO_DE_MENTIRA = True
+
 # RAG·6 — cuántas corridas al día desde una misma IP mientras el dueño no
 # ponga su número (tools/automatiza.py tope --por-ip N). GENEROSO a propósito:
 # una oficina o una escuela salen a internet por una sola IP, y el tope que de
@@ -181,6 +190,8 @@ async def admitir(texto: str | None, ip_hash: str | None) -> Admision:
     motivo = permiso(ip_hash)
     if motivo:
         return Admision(motivo, limpio)
+    if ARMADO_DE_MENTIRA:
+        return Admision(None, limpio)
     v = await moderacion.revisar(limpio, prompt=PROMPT_MODERACION, falla_cerrado=True)
     if v.caido:
         return Admision(APAGADO, limpio)
