@@ -301,6 +301,78 @@ ESQUEMA: list[str] = [
         actualizado timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (user_id, campana_id, dia)
     )""",
+    # RAG·3 — /automatiza, la ventana pública del 10 al 25-oct. Lo IRREVERSIBLE
+    # del proyecto: su razón de ser es saber qué automatizaciones pide la gente,
+    # y un campo que no se guardó esos quince días ya no existe. Por eso se
+    # guarda de más.
+    #
+    # SIN user_id y sin FK a usuarios: el visitante es anónimo (RAG·1). La
+    # llave es un índice autoincremental; hacia afuera (la liga /c/<id> y el
+    # sondeo) viaja `publico_id`, aleatorio, para que nadie recorra las
+    # corridas de los demás sumando 1. Estilo `costes`: el texto crudo tal
+    # cual, jsonb con la salida completa y columnas sueltas solo para listar
+    # y agrupar.
+    """CREATE TABLE IF NOT EXISTS automatiza_corridas (
+        id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        publico_id      text NOT NULL UNIQUE,
+        texto           text NOT NULL,
+        idioma          text,
+        estado          text NOT NULL DEFAULT 'recibida',
+        motivo          text,
+        en_fila_desde   timestamptz,
+        empezo          timestamptz,
+        termino         timestamptz,
+        cache_acerto    boolean,
+        validador_ok    boolean,
+        validador_motivo text,
+        reintentos      int NOT NULL DEFAULT 0,
+        nodos           text[],
+        resultado       jsonb,
+        resultado_key   text,
+        guia_key        text,
+        modelo          text,
+        costo_usd       numeric(10, 4),
+        traza           text,
+        correo_enviado  timestamptz,
+        envio_id        text,
+        envio_error     text,
+        descargo_json   timestamptz,
+        descargo_guia   timestamptz,
+        descargas       int NOT NULL DEFAULT 0,
+        reportado       timestamptz,
+        reporte         text,
+        ip_hash         text,
+        referrer        text,
+        utm_source      text,
+        utm_medium      text,
+        utm_campaign    text,
+        utm_content     text,
+        creado          timestamptz NOT NULL DEFAULT now(),
+        actualizado     timestamptz NOT NULL DEFAULT now()
+    )""",
+    # la fila (RAG·12, «vas en el lugar N») y el tope diario (RAG·5) cuentan por aquí
+    """CREATE INDEX IF NOT EXISTS automatiza_corridas_fila
+       ON automatiza_corridas (en_fila_desde) WHERE estado = 'en_fila'""",
+    """CREATE INDEX IF NOT EXISTS automatiza_corridas_creado
+       ON automatiza_corridas (creado)""",
+    # El correo va APARTE de la corrida: es dato personal con su propio plazo
+    # de borrado (RAG·0) y su propia lista de opt-in (RAG·35), y así se borra
+    # sin tocar lo que se pidió. Solo se AGREGAN filas, nunca se editan: cada
+    # vez que alguien deja o cambia su correo queda qué casilla vio, con qué
+    # texto y con qué versión del aviso de privacidad. Esa es la prueba del
+    # consentimiento. Vale la última fila de cada corrida.
+    """CREATE TABLE IF NOT EXISTS automatiza_contactos (
+        id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        corrida_id        bigint NOT NULL REFERENCES automatiza_corridas(id),
+        correo            text NOT NULL,
+        origen            text NOT NULL,
+        recontacto        boolean NOT NULL DEFAULT false,
+        recontacto_texto  text,
+        aviso_version     text,
+        creado            timestamptz NOT NULL DEFAULT now()
+    )""",
+    """CREATE INDEX IF NOT EXISTS automatiza_contactos_corrida
+       ON automatiza_contactos (corrida_id, id)""",
 ]
 
 
@@ -1124,4 +1196,168 @@ def mix_ultima(user_id: str) -> dict | None:
         f"creditos_devueltos FROM mix_campanas WHERE user_id = :u "
         f"AND estado NOT IN {_VIVA} ORDER BY actualizado DESC LIMIT 1",
         {"u": user_id})
+    return filas[0] if filas else None
+
+
+# ---------------------------------------------------------------------------
+# RAG·3 — corridas públicas de /automatiza. Aquí no hay user_id en ninguna
+# parte: estas funciones son las ÚNICAS que el camino público toca en la base,
+# y ninguna llama usuario_actual() (el candado de RAG·1 reventaría).
+
+# recibida → en_fila → armando → listo | sin_cobertura | no_salio;
+# rechazada sale directo de recibida (moderación, largo, tope)
+ESTADOS_AUTOMATIZA = ("recibida", "en_fila", "armando", "listo",
+                      "sin_cobertura", "no_salio", "rechazada")
+TERMINALES_AUTOMATIZA = ("listo", "sin_cobertura", "no_salio", "rechazada")
+ORIGEN_AUTOMATIZA = ("referrer", "utm_source", "utm_medium", "utm_campaign",
+                     "utm_content")
+# lo que el worker puede anotar; es lista blanca porque el nombre de la
+# columna va pegado al SQL
+ANOTABLES_AUTOMATIZA = ("idioma", "motivo", "cache_acerto", "validador_ok",
+                        "validador_motivo", "reintentos", "resultado_key",
+                        "guia_key", "modelo", "costo_usd", "traza",
+                        "correo_enviado", "envio_id", "envio_error")
+# el Data API manda los textos como varchar y Postgres no los asigna solo a
+# una fecha o a numeric: esas columnas llevan su cast en el SQL
+_CAST_AUTOMATIZA = {"correo_enviado": "::timestamptz", "costo_usd": "::numeric"}
+_TOPE_ORIGEN = 500          # un referrer o un utm no necesitan más
+
+
+def automatiza_crear(texto: str, *, ip_hash: str | None = None,
+                     origen: dict | None = None) -> dict:
+    """Guarda lo que pidió el visitante TAL CUAL y devuelve {id, publico_id}.
+
+    El texto no se recorta ni se limpia aquí: los topes de largo son de
+    RAG·7 y van antes; lo que llegue hasta aquí se guarda entero."""
+    import secrets
+    origen = origen or {}
+    datos = {k: (str(origen[k])[:_TOPE_ORIGEN] if origen.get(k) else None)
+             for k in ORIGEN_AUTOMATIZA}
+    columnas = ", ".join(ORIGEN_AUTOMATIZA)
+    valores = ", ".join(f":{k}" for k in ORIGEN_AUTOMATIZA)
+    filas = ejecutar(
+        f"INSERT INTO automatiza_corridas (publico_id, texto, ip_hash, {columnas}) "
+        f"VALUES (:p, :t, :ip, {valores}) RETURNING id, publico_id",
+        {**datos, "p": secrets.token_urlsafe(12), "t": texto, "ip": ip_hash})
+    return filas[0]
+
+
+def automatiza_corrida(publico_id: str) -> dict | None:
+    """La corrida por su id público (lo único que el visitante conoce)."""
+    filas = ejecutar(
+        "SELECT id, publico_id, estado, motivo, en_fila_desde, empezo, "
+        "termino, array_to_json(nodos)::text AS nodos, "
+        "resultado::text AS resultado, resultado_key, "
+        "guia_key, creado FROM automatiza_corridas WHERE publico_id = :p",
+        {"p": publico_id})
+    if not filas:
+        return None
+    fila = filas[0]
+    # jsonb y text[] se piden como texto: el Data API no los devuelve solos
+    for k in ("resultado", "nodos"):
+        fila[k] = json.loads(fila[k]) if fila.get(k) else None
+    return fila
+
+
+def automatiza_a_fila(id_: int) -> bool:
+    """recibida → en_fila. La hora de entrada es la que ordena el «lugar N»."""
+    filas = ejecutar(
+        """UPDATE automatiza_corridas
+              SET estado = 'en_fila', en_fila_desde = now(), actualizado = now()
+            WHERE id = :i AND estado = 'recibida'
+        RETURNING id""", {"i": id_})
+    return bool(filas)
+
+
+def automatiza_tomar(id_: int) -> bool:
+    """en_fila → armando. UPDATE condicionado: si SQS entrega el mensaje dos
+    veces, solo un worker gana la corrida."""
+    filas = ejecutar(
+        """UPDATE automatiza_corridas
+              SET estado = 'armando', empezo = now(), actualizado = now()
+            WHERE id = :i AND estado = 'en_fila'
+        RETURNING id""", {"i": id_})
+    return bool(filas)
+
+
+def automatiza_cerrar(id_: int, estado: str, *, resultado: dict | None = None,
+                      nodos: list[str] | None = None, motivo: str | None = None) -> bool:
+    """Deja la corrida en un estado final. Una corrida cerrada no se reabre:
+    lo que se guardó es lo que vio el visitante."""
+    if estado not in TERMINALES_AUTOMATIZA:
+        raise ValueError(f"estado final inválido: {estado}")
+    filas = ejecutar(
+        """UPDATE automatiza_corridas
+              SET estado = :e, termino = now(), actualizado = now(),
+                  motivo = COALESCE(:m, motivo),
+                  resultado = COALESCE(:r::jsonb, resultado),
+                  nodos = CASE WHEN :n::jsonb IS NULL THEN nodos
+                          ELSE ARRAY(SELECT jsonb_array_elements_text(:n::jsonb)) END
+            WHERE id = :i AND estado NOT IN ('listo', 'sin_cobertura', 'no_salio', 'rechazada')
+        RETURNING id""",
+        {"i": id_, "e": estado, "m": motivo, "r": resultado,
+         "n": nodos})
+    return bool(filas)
+
+
+def automatiza_anotar(id_: int, **campos) -> None:
+    """Anota métricas sueltas de la corrida (caché, validador, coste, envío…)."""
+    malos = set(campos) - set(ANOTABLES_AUTOMATIZA)
+    if malos:
+        raise ValueError(f"campos no anotables: {sorted(malos)}")
+    if not campos:
+        return
+    sets = ", ".join(f"{k} = :{k}{_CAST_AUTOMATIZA.get(k, '')}" for k in campos)
+    ejecutar(f"UPDATE automatiza_corridas SET {sets}, actualizado = now() "
+             "WHERE id = :i", {**campos, "i": id_})
+
+
+def automatiza_lugar(id_: int) -> int | None:
+    """Su lugar en la fila (1 = la siguiente), o None si ya no está en fila."""
+    filas = ejecutar(
+        """SELECT count(*) AS lugar FROM automatiza_corridas f,
+                  automatiza_corridas yo
+            WHERE yo.id = :i AND yo.estado = 'en_fila'
+              AND f.estado = 'en_fila' AND f.en_fila_desde <= yo.en_fila_desde""",
+        {"i": id_})
+    lugar = int(filas[0]["lugar"]) if filas else 0
+    return lugar or None
+
+
+def automatiza_descargo(publico_id: str, que: str) -> None:
+    """Cuenta una descarga; la hora que se guarda es la de la PRIMERA."""
+    columna = {"json": "descargo_json", "guia": "descargo_guia"}.get(que)
+    if not columna:
+        raise ValueError(f"descarga desconocida: {que}")
+    ejecutar(f"UPDATE automatiza_corridas SET {columna} = COALESCE({columna}, now()), "
+             "descargas = descargas + 1, actualizado = now() WHERE publico_id = :p",
+             {"p": publico_id})
+
+
+def automatiza_reportar(publico_id: str, reporte: str) -> None:
+    """El botón «no me sirvió» (RAG·25). Se queda el primero."""
+    ejecutar("UPDATE automatiza_corridas SET reportado = COALESCE(reportado, now()), "
+             "reporte = COALESCE(reporte, :r), actualizado = now() "
+             "WHERE publico_id = :p", {"p": publico_id, "r": reporte[:2000]})
+
+
+def automatiza_guardar_correo(id_: int, correo: str, *, origen: str,
+                              recontacto: bool = False,
+                              recontacto_texto: str | None = None,
+                              aviso_version: str | None = None) -> None:
+    """Agrega (nunca edita) el correo de la corrida con la prueba del
+    consentimiento: si marcó la casilla aparte, qué decía y qué aviso regía."""
+    ejecutar(
+        """INSERT INTO automatiza_contactos
+             (corrida_id, correo, origen, recontacto, recontacto_texto, aviso_version)
+           VALUES (:i, :c, :o, :r, :t, :v)""",
+        {"i": id_, "c": correo.strip(), "o": origen, "r": bool(recontacto),
+         "t": recontacto_texto if recontacto else None, "v": aviso_version})
+
+
+def automatiza_correo(id_: int) -> dict | None:
+    """El correo vigente de la corrida: la última fila que dejó."""
+    filas = ejecutar(
+        "SELECT correo, origen, recontacto, creado FROM automatiza_contactos "
+        "WHERE corrida_id = :i ORDER BY id DESC LIMIT 1", {"i": id_})
     return filas[0] if filas else None
