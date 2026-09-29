@@ -5,6 +5,7 @@ Un solo worker (estado en memoria + JSON — PLAN-FUSION.md F4)."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import mimetypes
@@ -14,7 +15,8 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, RedirectResponse,
+                               Response)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,7 +33,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
-from server import auth, migracion, web
+from server import auth, aviso, migracion, publico_api, web
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
@@ -1098,6 +1100,12 @@ def _es_html(resp) -> bool:
     return _tipo(resp) == "text/html"
 
 
+# RAG·10/13 · páginas de static/ que son plantillas (server/aviso.py): solo se
+# sirven llenas, por su ruta limpia
+PLANTILLAS = {"automatiza.html": "/automatiza", "privacidad.html": "/privacidad",
+              "terminos.html": "/terminos"}
+
+
 class _StaticCacheado(StaticFiles):
     """Los assets pesados (imágenes de muestra de /estilos/) viajan por Lambda —
     sin Cache-Control el navegador los re-descarga en cada clic de estilo
@@ -1120,6 +1128,14 @@ class _StaticCacheado(StaticFiles):
 
     El filtro de imágenes va por media_type y el de INMUTABLES por NOMBRE: todo
     el JS del repo comparte media_type, así que ahí no se puede distinguir."""
+
+    async def get_response(self, path: str, scope):
+        # RAG·10 · las plantillas de /automatiza tienen sus rutas (más abajo),
+        # pero «//automatiza.html» o «/%2E/automatiza.html» no casan con ellas
+        # y aquí se normalizan al mismo archivo: tampoco salen crudas por ahí.
+        if path in PLANTILLAS:
+            return RedirectResponse(PLANTILLAS[path], status_code=302)
+        return await super().get_response(path, scope)
 
     def file_response(self, *args, **kwargs):
         resp = super().file_response(*args, **kwargs)
@@ -1175,6 +1191,107 @@ def _estudio_sin_barra(request: Request):
 @app.get("/entrar", include_in_schema=False)
 def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
+
+
+# RAG·10/13 · /automatiza y sus legales: las únicas páginas para gente de fuera
+# y sin sesión. Se sirven llenas (server/aviso.py pone los {{huecos}} del
+# dueño) y con su CSP: es la única superficie anónima con formulario, así que
+# nada en línea —ni <script>, ni <style>, ni style=, ni onclick=—.
+_CSP_PUBLICA = ("default-src 'none'; script-src 'self'; style-src 'self'; "
+                "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+                "form-action 'self'; base-uri 'none'; frame-ancestors 'none'; "
+                "manifest-src 'self'")
+_CABECERAS_PUBLICAS = {
+    "Content-Security-Policy": _CSP_PUBLICA,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    **_SIN_CACHE,
+}
+# El único host que se indexa. Con el dominio propio (infra/stacks/dominio.py:
+# CNAME de Cloudflare → dominio personalizado de API Gateway, sin mapeo de
+# ruta) el Host llega tal cual hasta aquí; cualquier otro —el execute-api de
+# dev o de prod, localhost— es la MISMA página con otra dirección, y
+# duplicada en los buscadores le quitaría peso a la de verdad.
+DOMINIO_INDEXABLE = "irremplazables.xyz"
+_NO_INDEXAR = {"X-Robots-Tag": "noindex, nofollow"}
+
+
+def _se_indexa(request: Request) -> bool:
+    host = request.headers.get("host", "").strip().lower().rsplit(":", 1)[0]
+    return host.rstrip(".") == DOMINIO_INDEXABLE
+
+
+def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True,
+                    status: int = 200):
+    try:
+        cuerpo = aviso.renderizar(nombre)
+    except FileNotFoundError:
+        return HTMLResponse("<!doctype html><title>No encontrada</title>"
+                            "<p>Esta página no existe.</p>", status_code=404,
+                            headers={**_CABECERAS_PUBLICAS, **_NO_INDEXAR})
+    cabeceras = dict(_CABECERAS_PUBLICAS)
+    if not (indexable and _se_indexa(request)):
+        cabeceras.update(_NO_INDEXAR)
+    if status != 200:
+        return HTMLResponse(cuerpo, status_code=status, headers=cabeceras)
+    # no-cache revalida en cada carga: con el ETag, la revalidación es un 304
+    etag = '"' + hashlib.sha256(cuerpo.encode()).hexdigest()[:32] + '"'
+    cabeceras["ETag"] = etag
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=cabeceras)
+    return HTMLResponse(cuerpo, headers=cabeceras)
+
+
+@app.get("/automatiza", include_in_schema=False)
+def _automatiza(request: Request):
+    return _pagina_publica(request, "automatiza.html")
+
+
+def _con_query(ruta: str, request: Request) -> str:
+    # los utm_* viajan en el query (RAG·10): un redirect no los puede perder
+    return f"{ruta}?{request.url.query}" if request.url.query else ruta
+
+
+@app.get("/automatiza/", include_in_schema=False)
+def _automatiza_barra(request: Request):
+    return RedirectResponse(_con_query("/automatiza", request), status_code=302)
+
+
+@app.get("/automatiza/c/{publico_id}", include_in_schema=False)
+def _automatiza_corrida(request: Request, publico_id: str):
+    """El «enlace para volver»: la MISMA página, que lee el id del path. Nunca
+    se indexa (es el resultado de alguien). Si la corrida existe lo dice el
+    API cuando la página pregunta.
+
+    Un id con otra forma —un enlace que un chat o un copiar a medias
+    cortó— es 404, pero con la MISMA página: el JS ve que la ruta no trae un
+    id y enseña «No encontramos esa petición» sobre el formulario, igual que
+    con un id que no existe."""
+    if not publico_api.ID_PUBLICO.fullmatch(publico_id):
+        return _pagina_publica(request, "automatiza.html", indexable=False, status=404)
+    return _pagina_publica(request, "automatiza.html", indexable=False)
+
+
+@app.get("/privacidad", include_in_schema=False)
+def _privacidad(request: Request):
+    return _pagina_publica(request, "privacidad.html")
+
+
+@app.get("/terminos", include_in_schema=False)
+def _terminos(request: Request):
+    return _pagina_publica(request, "terminos.html")
+
+
+# El montaje «/» de abajo sirve cualquier archivo de static/, y estas tres son
+# PLANTILLAS: servidas por ahí saldrían con los {{huecos}} a la vista y sin su
+# CSP. Se desvían a su ruta limpia. 302, igual que arriba.
+@app.get("/automatiza.html", include_in_schema=False)
+@app.get("/privacidad.html", include_in_schema=False)
+@app.get("/terminos.html", include_in_schema=False)
+def _plantilla_cruda(request: Request):
+    return RedirectResponse(_con_query(PLANTILLAS[request.url.path.lstrip("/")], request),
+                            status_code=302)
 
 
 # UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje

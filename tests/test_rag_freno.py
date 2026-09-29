@@ -10,6 +10,13 @@ from pipeline import db, publico
 from worker import publico as worker_publico
 
 
+@pytest.fixture(autouse=True)
+def _sin_pausa_ni_pasos(monkeypatch):
+    # los pasos de la espera (RAG·11) tienen su test: aquí ni se anotan ni se esperan
+    monkeypatch.setattr(worker_publico, "PAUSA_DE_MENTIRA_SEG", 0)
+    monkeypatch.setattr(db, "automatiza_paso", lambda i, p: True)
+
+
 def _base(monkeypatch, ajuste, corridas=0, usd=0.0, de_ip=0):
     monkeypatch.setattr(db, "automatiza_interruptor", lambda: ajuste)
     monkeypatch.setattr(db, "automatiza_consumo_hoy",
@@ -178,11 +185,13 @@ def test_estado_publico_sin_token_y_sin_motivo(cliente, monkeypatch, motivo, dis
 
 def test_rutas_de_publico_api_son_las_conocidas():
     # una ruta pública nueva es una decisión, no un efecto secundario: RAG·8
-    # agregó el recorrido de la corrida; la siguiente se anota aquí a propósito
+    # agregó el recorrido de la corrida y RAG·12/13 el correo; la siguiente se
+    # anota aquí a propósito
     from server.publico_api import router
     assert sorted((r.path, tuple(sorted(r.methods))) for r in router.routes) == [
         ("/api/publico/corridas", ("POST",)),
         ("/api/publico/corridas/{publico_id}", ("GET",)),
+        ("/api/publico/corridas/{publico_id}/correo", ("POST",)),
         ("/api/publico/corridas/{publico_id}/flujo.json", ("GET",)),
         ("/api/publico/estado", ("GET",)),
     ]

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<!-- /privacidad (RAG·13): el aviso de privacidad INTEGRAL de /automatiza, con
+     la estructura de 8 secciones del lienzo (RAG13_Privacidad). El aviso
+     simplificado es el diálogo de static/automatiza.html (se acepta antes de
+     mandar la primera descripción) y enlaza aquí.
+
+     Es una plantilla: los marcadores de doble llave son huecos del dueño que
+     server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
+     hace fallar tests/test_rag_paginas.py. Por eso en estos comentarios no se
+     escriben llaves dobles. Lo que va entre corchetes y NO es marcador
+     ([VERIFICAR…], [POR DECIDIR…]) lo resuelve el dueño en este archivo.
+
+     Qué dice cada sección y de dónde sale (tablas de pipeline/db.py, hash de
+     IP de pipeline/publico.py, almacenamiento de static/automatiza.js): ver
+     docs/automatiza/aviso-privacidad.md. Si cambia lo que se guarda, cambia
+     este texto y AVISO_VERSION.
+
+     CSP estricta: sin JS, sin style ni atributos de estilo; todo en /legal.css. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aviso de privacidad · Irremplazables</title>
+<meta name="description" content="Qué datos guardamos cuando usas /automatiza, para qué, cuánto tiempo, con quién los compartimos y cómo ejercer tus derechos.">
+<link rel="canonical" href="https://irremplazables.xyz/privacidad">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+<a class="saltar" href="#principal">Saltar al contenido</a>
+
+<header class="cabeza">
+  <a class="marca" href="/">Irremplazables</a>
+  <p class="cabeza-entrar"><span class="solo-ancho">¿Ya eres parte?</span> <a href="/entrar">Entrar</a></p>
+</header>
+
+<aside class="aviso-caja borrador" aria-label="Aviso de borrador">
+  <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+  <span class="apilado"><strong>Borrador para revisión del dueño · versión {{aviso_version}}</strong><span>Lo que va entre corchetes todavía falta por escribir, decidir o verificar.</span></span>
+</aside>
+
+<main id="principal" class="legal">
+  <header class="encabezado">
+    <h1 id="titulo">Aviso de privacidad integral</h1>
+    <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
+    <p class="resumen">/automatiza convierte lo que describes en un flujo de n8n, gratis y sin cuenta. Guardamos tu descripción, el flujo y, si nos lo das, tu correo, para armarlo, mandártelo y mejorar el servicio. De tu IP solo guardamos una huella, nunca la IP, y tus datos no los vendemos.</p>
+  </header>
+  <nav class="indice" aria-labelledby="indice-t">
+    <p class="rotulo" id="indice-t">En esta página</p>
+    <ol>
+      <li><a href="#responsable">1. Quién es el responsable</a></li>
+      <li><a href="#datos">2. Qué datos recabamos</a></li>
+      <li><a href="#finalidades">3. Para qué los usamos</a></li>
+      <li><a href="#conservacion">4. Cuánto tiempo los guardamos</a></li>
+      <li><a href="#transferencias">5. Con quién los compartimos</a></li>
+      <li><a href="#derechos">6. Tus derechos y cómo ejercerlos</a></li>
+      <li><a href="#revocar">7. Cómo retirar tu consentimiento</a></li>
+      <li><a href="#cambios">8. Cambios a este aviso</a></li>
+    </ol>
+    <a class="volver" href="/automatiza">Volver a /automatiza</a>
+  </nav>
+
+  <article class="texto" aria-labelledby="titulo">
+    <section class="parte" id="responsable" aria-labelledby="responsable-t">
+      <h2 id="responsable-t">1. Quién es el responsable</h2>
+      <p>El responsable de tus datos personales es <strong>{{responsable}}</strong>, con domicilio para oír y recibir notificaciones en {{domicilio}}. En este aviso lo llamamos «nosotros». Irremplazables es el nombre de este sitio y de su comunidad.</p>
+      <p>Para cualquier cosa sobre tus datos escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>.</p>
+    </section>
+
+    <section class="parte" id="datos" aria-labelledby="datos-t">
+      <h2 id="datos-t">2. Qué datos recabamos</h2>
+      <p>Solo lo necesario para armar tu flujo, mandártelo y cuidar que nadie abuse del servicio. No necesitas cuenta y no te pedimos tu nombre.</p>
+      <p>Antes de que nos mandes tu primera descripción, la página te enseña el aviso de privacidad simplificado y te pide aceptarlo con una casilla («He leído el aviso de privacidad y acepto los términos»). Si no lo aceptas, no nos llega nada.</p>
+      <dl class="filas">
+        <div><dt>Lo que describes</dt><dd>El texto de lo que quieres automatizar (de {{largo_minimo}} a {{largo_maximo}} caracteres), tal cual lo escribes. Lo guardamos aunque la petición no se pueda armar. Como puede traer lo que tú pongas, te pedimos no escribir contraseñas, datos de otras personas ni datos sensibles.</dd></div>
+        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos, las apps que usa, en qué va tu petición (en la fila, armando, lista o no salió), cuánto tardó y la versión de este aviso que aceptaste antes de mandarla. Cada petición tiene un número que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo al que te lo mandamos, pero nunca ver tu correo completo: guárdalo como un enlace privado.</dd></div>
+        <div><dt>Tu correo, si nos lo das</dt><dd>Lo pedimos cuando el flujo está listo, para mandártelo; en la fila o cuando no salió es opcional. Junto con él guardamos en qué pantalla lo diste, si marcaste la casilla de novedades, el texto exacto de esa casilla, la versión de este aviso que estaba vigente y la fecha. Si lo cambias, el anterior también queda guardado: es la prueba de lo que aceptaste.</dd></div>
+        <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta que solo tiene nuestro servidor (si tu conexión usa IPv6, con la parte de la dirección que corresponde a tu red). Guardamos ese código, nunca la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Sin esa clave, del código no se puede saber tu IP; como con ella sí se podría, lo tratamos como un dato personal más y se borra junto con tu petición.</dd></div>
+        <div><dt>De dónde llegaste</dt><dd>El sitio desde el que llegaste (solo su dirección principal, como instagram.com, no la página exacta), si tu navegador lo manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
+        <div><dt>Qué hiciste con el flujo</dt><dd>Si lo descargaste y cuántas veces y, si nos avisas que no te sirvió, lo que escribas en ese aviso.</dd></div>
+      </dl>
+
+      <h3>Datos sensibles</h3>
+      <p>No te pedimos datos sensibles (por ejemplo, sobre tu salud, origen étnico, creencias, opiniones políticas o preferencia sexual) ni datos financieros. Si alguno queda dentro de tu descripción, escríbenos y lo borramos.</p>
+
+      <h3>Lo que se queda en tu navegador</h3>
+      <p>La página guarda en tu propio navegador, sin mandárnoslo:</p>
+      <ul>
+        <li>el borrador de lo que vas escribiendo, para que no lo pierdas si se cierra la pestaña; se borra al mandar tu petición;</li>
+        <li>la versión del aviso que aceptaste, para no volver a pedírtelo mientras no cambie;</li>
+        <li>tu último número de petición y lo que pediste, para enseñártelo cuando vuelves con el enlace;</li>
+        <li>de dónde llegaste, solo mientras la pestaña está abierta (eso sí nos llega junto con tu petición).</li>
+      </ul>
+      <p>Lo borras cuando quieras borrando los datos de este sitio en tu navegador.</p>
+
+      <h3>Cookies</h3>
+      <p>Esta página no usa cookies propias, ni de publicidad, ni de rastreo, y no carga herramientas de analítica de terceros. Cloudflare, que protege el sitio, puede poner cookies técnicas de seguridad para distinguir personas de bots. [VERIFICAR en el panel de Cloudflare qué cookies pone y cuánto duran.]</p>
+    </section>
+
+    <section class="parte" id="finalidades" aria-labelledby="finalidades-t">
+      <h2 id="finalidades-t">3. Para qué los usamos</h2>
+
+      <h3>Para darte el servicio (necesarias)</h3>
+      <p>Sin estas no podemos armarte el flujo:</p>
+      <ul>
+        <li>Armar tu flujo a partir de tu descripción y revisar que importe en n8n. Antes, un filtro automático revisa que la petición no sea de un uso prohibido (lo explican los <a href="/terminos">Términos</a>).</li>
+        <li>Enseñarte en pantalla cómo va y entregártelo: la descarga y el correo con el flujo y su guía.</li>
+        <li>Avisarte de tu petición: si dejaste tu correo en la fila, cuando termine; si no salió, cuando la resolvamos a mano.</li>
+        <li>Cuidar el servicio: aplicar el tope diario y el tope por conexión (para eso es la huella de tu IP) y frenar abusos.</li>
+        <li>Atender lo que nos reportes y tus solicitudes sobre tus datos.</li>
+      </ul>
+
+      <h3>Adicionales, que puedes rechazar</h3>
+      <ul>
+        <li><strong>Mejorar el servicio.</strong> Leer las peticiones y los flujos, también una persona de nuestro equipo, para entender qué quiere automatizar la gente, corregir fallas y decidir qué agregar. Para esto usamos tu descripción y el flujo, nunca tu correo.</li>
+        <li><strong>Medir de dónde llegan las visitas.</strong> Con la página de origen y las etiquetas de campaña, siempre en números agregados.</li>
+        <li><strong>Escribirte después, solo si marcas la casilla.</strong> Al dejar tu correo verás esta casilla, aparte y desmarcada:
+          <p class="cita">{{recontacto_texto}}</p>
+          Si no la marcas, tu correo solo sirve para lo necesario de arriba.</li>
+      </ul>
+      <p>Cómo negarte: para las dos primeras, escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con tu número de petición y dejamos de usar tu petición para eso. Para los correos de novedades basta con no marcar la casilla; si ya la marcaste, date de baja cuando quieras (punto 7). Negarte a cualquiera de estas no te quita el servicio.</p>
+
+      <div class="caja">
+        <h3 class="rotulo">Lo que no hacemos</h3>
+        <ul>
+          <li>No guardamos tu IP en claro: ni en la base de datos ni en nuestros registros.</li>
+          <li>No vendemos, rentamos ni prestamos tus datos a nadie.</li>
+          <li>No te escribimos con novedades si no marcaste la casilla.</li>
+          <li>No te pedimos contraseñas ni entramos a tus cuentas: el flujo lo importas y lo conectas tú, en tu n8n.</li>
+          <li>No usamos cookies de publicidad ni de rastreo.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="parte" id="conservacion" aria-labelledby="conservacion-t">
+      <h2 id="conservacion-t">4. Cuánto tiempo los guardamos</h2>
+      <dl class="filas">
+        <div><dt>Tu descripción, el flujo y los datos de tu petición</dt><dd>Durante {{plazo_peticion}}. Incluye la huella de tu conexión, de dónde llegaste y tus descargas.</dd></div>
+        <div><dt>Tu correo y la prueba de lo que aceptaste</dt><dd>Durante {{plazo_correo}}. Si marcaste la casilla de novedades, lo guardamos para eso hasta que te des de baja.</dd></div>
+        <div><dt>Los registros técnicos del servidor</dt><dd>Una semana. Sirven para revisar errores.</dd></div>
+        <div><dt>Lo que está en tu navegador</dt><dd>Hasta que lo borres. El borrador se borra solo al mandar tu petición.</dd></div>
+      </dl>
+      <p>Cuando se cumple el plazo, borramos los datos o los convertimos en números que ya no pueden relacionarse contigo (por ejemplo, cuántas peticiones hubo de cada tipo).</p>
+    </section>
+
+    <section class="parte" id="transferencias" aria-labelledby="transferencias-t">
+      <h2 id="transferencias-t">5. Con quién los compartimos</h2>
+      <p>No vendemos ni pasamos tus datos a otras empresas para que los usen para lo suyo. Sí usamos proveedores que los procesan por encargo nuestro, solo para dar este servicio y con la obligación de cuidarlos. La ley los llama «encargados» y a esa entrega, «remisión»; no necesita tu consentimiento [VERIFICAR con un abogado que con la ley de 2025 la remisión siga sin necesitarlo], pero te decimos quiénes son:</p>
+      <dl class="filas">
+        <div><dt>Amazon Web Services (AWS)</dt><dd>Donde vive el servicio: el servidor (Lambda), la base de datos (Aurora), el almacenamiento de archivos (S3) y la fila de trabajo (SQS). Sus servidores están en Estados Unidos (Virginia del Norte).</dd></div>
+        <div><dt>Cloudflare</dt><dd>Está delante del sitio: entrega las páginas y lo protege de ataques. Ve tu IP al pasar, como cualquier red por la que navegas.</dd></div>
+        <div><dt>El proveedor del modelo de inteligencia artificial</dt><dd>[POR DECIDIR (RAG·21): nombre del proveedor y país]. Recibe el texto de tu descripción para revisarlo y armar el flujo. No recibe tu correo ni tu IP.</dd></div>
+        <div><dt>Langfuse</dt><dd>Registra las llamadas al modelo de inteligencia artificial, incluida tu descripción, para revisar errores y costos. [VERIFICAR: región de la cuenta de Langfuse.]</dd></div>
+        <div><dt>El envío de correo</dt><dd>{{proveedor_correo}}. Recibe tu correo y el mensaje con tu flujo para entregártelo.</dd></div>
+      </dl>
+      <p>Varios de estos proveedores procesan los datos fuera de México, principalmente en Estados Unidos.</p>
+      <p>Fuera de eso, solo entregaríamos datos a una autoridad que nos los pida con fundamento legal.</p>
+    </section>
+
+    <section class="parte" id="derechos" aria-labelledby="derechos-t">
+      <h2 id="derechos-t">6. Tus derechos y cómo ejercerlos</h2>
+      <p>Sobre tus datos tienes derecho a:</p>
+      <ul>
+        <li><strong>Acceso:</strong> saber qué datos tuyos tenemos y cómo los usamos.</li>
+        <li><strong>Rectificación:</strong> corregirlos si están mal o incompletos (por ejemplo, tu correo).</li>
+        <li><strong>Cancelación:</strong> que los borremos.</li>
+        <li><strong>Oposición:</strong> que dejemos de usarlos para algo en particular.</li>
+      </ul>
+      <p>Se conocen como derechos ARCO. También puedes retirar tu consentimiento (punto 7).</p>
+
+      <h3>Cómo pedirlo</h3>
+      <p>Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con:</p>
+      <ol>
+        <li>Tu nombre y el correo donde quieres la respuesta.</li>
+        <li>Tu número de petición (es lo que sigue a /automatiza/c/ en tu enlace para volver) o el correo que nos diste.</li>
+        <li>Qué derecho quieres ejercer y sobre qué datos.</li>
+        <li>Cómo comprobamos que eres tú. Lo más simple es escribirnos desde el correo que nos diste. Como no tenemos tu nombre ni una cuenta tuya, a veces ese correo o tu número de petición es lo único que te liga a tus datos; si no alcanza para comprobarlo, te lo decimos y buscamos otra forma. [VERIFICAR con un abogado si esto basta o hay que pedir una identificación.]</li>
+      </ol>
+      <p>Si lo pide alguien en tu nombre, tiene que acreditar que te representa.</p>
+
+      <h3>En cuánto respondemos</h3>
+      <p>Te respondemos en un máximo de 20 días desde que recibimos tu solicitud. Si procede, lo hacemos efectivo dentro de los 15 días siguientes a nuestra respuesta. Si el caso lo justifica, podemos ampliar esos plazos una sola vez por un periodo igual, y te avisamos. Es gratis. [VERIFICAR con un abogado: los plazos, cuánto se pueden ampliar y si son días hábiles o naturales.]</p>
+      <p>Si no te respondemos o no estás de acuerdo con la respuesta, puedes acudir a la Secretaría Anticorrupción y Buen Gobierno, la autoridad de protección de datos personales que tomó el lugar del INAI.</p>
+    </section>
+
+    <section class="parte" id="revocar" aria-labelledby="revocar-t">
+      <h2 id="revocar-t">7. Cómo retirar tu consentimiento</h2>
+      <ul>
+        <li><strong>Correos de novedades:</strong> cada uno trae un enlace para darte de baja; también puedes escribirnos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>. Después no te volvemos a escribir de novedades; solo guardamos que te diste de baja, para respetarlo.</li>
+        <li><strong>Mejorar el servicio y medir visitas:</strong> escríbenos con tu número de petición y dejamos de usarla para eso.</li>
+        <li><strong>Borrar tu petición o tu correo:</strong> es una cancelación (punto 6). Si borramos tu correo antes de mandarte el flujo, ya no podremos mandártelo por correo.</li>
+      </ul>
+      <p>Retirar tu consentimiento vale desde que lo pides, no hacia atrás. Te respondemos en los mismos plazos del punto 6.</p>
+    </section>
+
+    <section class="parte" id="cambios" aria-labelledby="cambios-t">
+      <h2 id="cambios-t">8. Cambios a este aviso</h2>
+      <p>Si cambiamos este aviso, publicamos la versión nueva en esta misma dirección (irremplazables.xyz/privacidad), con su número de versión y su fecha arriba. Si el cambio toca para qué usamos tus datos o con quién los compartimos y nos dejaste tu correo, también te avisamos por correo; si el cambio necesita tu consentimiento, te lo pedimos antes de aplicarlo.</p>
+      <p>Con cada petición guardamos la versión del aviso que aceptaste antes de mandarla, y con cada correo la versión que estaba vigente cuando nos lo diste. Si publicamos una versión nueva, la página te la vuelve a enseñar y te pide aceptarla antes de mandar otra petición o un correo.</p>
+    </section>
+  </article>
+</main>
+
+<footer class="pie">
+  <a href="/automatiza">/automatiza</a>
+  <a href="/privacidad" aria-current="page">Aviso de privacidad</a>
+  <a href="/terminos">Términos</a>
+</footer>
+</body>
+</html>

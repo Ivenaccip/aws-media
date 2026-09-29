@@ -28,6 +28,9 @@ def base(monkeypatch):
         return True
     monkeypatch.setattr(db, "automatiza_tomar", tomar)
     monkeypatch.setattr(db, "automatiza_cerrar", cerrar)
+    # los pasos de la espera (RAG·11) tienen su test en test_rag_pasos.py
+    monkeypatch.setattr(db, "automatiza_paso", lambda i, p: True)
+    monkeypatch.setattr(publico, "PAUSA_DE_MENTIRA_SEG", 0)
     # el interruptor de RAG·5 encendido (su propio test en test_rag_freno.py)
     from pipeline import publico as freno
     monkeypatch.setattr(freno, "encendido", lambda: True)

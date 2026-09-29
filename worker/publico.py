@@ -13,11 +13,16 @@ que falló—, y el reintento la retoma (db.automatiza_tomar).
 
 Hoy `armar` devuelve siempre el mismo flujo de mentira: el recorrido completo
 tiene que existir antes que el RAG (RAG·8). RAG·21 cambia solo esa función.
+
+RAG·11 — mientras arma, anota el paso que ve el visitante (entender → buscar
+→ armar → revisar). Es cosmético: si anotarlo falla se loguea y se sigue; un
+paso no puede tumbar una corrida.
 """
 from __future__ import annotations
 
 import json
 import logging
+import time
 
 from worker.env_ssm import cargar_env_ssm
 
@@ -43,12 +48,30 @@ FLUJO_DE_MENTIRA = {
     "settings": {},
 }
 
+# RAG·11 — con el armado de mentira todo termina en un milisegundo y la espera
+# saltaría de «entender» a «listo»: esta pausa por paso (~8 s en total) deja
+# ver la espera avanzar en dev. Solo aplica con publico.ARMADO_DE_MENTIRA; los
+# tests la ponen en 0.
+PAUSA_DE_MENTIRA_SEG = 2.0
+
 
 def armar(corrida: dict) -> dict:
     """Arma el flujo de la corrida. Devuelve {"flujo": ..., "nodos": [...]}."""
     return {"flujo": FLUJO_DE_MENTIRA,
             "nodos": [n["type"] for n in FLUJO_DE_MENTIRA["nodes"]],
             "de_mentira": True}
+
+
+def _paso(corrida_id: int, paso: str) -> None:
+    """Anota el paso y, con el armado de mentira, se queda en él un rato."""
+    from pipeline import db
+    from pipeline import publico as freno
+    try:
+        db.automatiza_paso(corrida_id, paso)
+    except Exception:  # noqa: BLE001 — cosmético: la corrida sigue igual
+        log.exception("corrida %s: no se pudo anotar el paso %s", corrida_id, paso)
+    if freno.ARMADO_DE_MENTIRA and PAUSA_DE_MENTIRA_SEG > 0:
+        time.sleep(PAUSA_DE_MENTIRA_SEG)
 
 
 def procesar(corrida_id: int) -> str:
@@ -64,12 +87,17 @@ def procesar(corrida_id: int) -> str:
         if not freno.encendido():
             db.automatiza_cerrar(corrida_id, "no_salio", motivo="apagado")
             return "apagado"
+        # entender y buscar son hoy solo el letrero (el puente de idioma y la
+        # búsqueda llegan con RAG·20/21); revisar, el validador de RAG·22
+        for paso in ("entender", "buscar", "armar"):
+            _paso(corrida_id, paso)
         try:
             salida = armar({"id": corrida_id})
         except Exception as e:  # noqa: BLE001 — cualquier fallo del armado cierra igual
             log.exception("corrida %s: no salió", corrida_id)
             db.automatiza_cerrar(corrida_id, "no_salio", motivo=f"{type(e).__name__}: {e}"[:500])
             return "no_salio"
+        _paso(corrida_id, "revisar")
         db.automatiza_cerrar(corrida_id, "listo", resultado=salida,
                              nodos=salida.get("nodos") or [])
         return "listo"
