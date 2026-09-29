@@ -70,8 +70,8 @@ def _pagina(url: str) -> tuple[int, dict, float]:
 
 def version_del_aviso(api: str) -> str:
     """La versión del aviso con la que el servidor llena /automatiza
-    (data-aviso-version). El POST del correo la exige igual que a la página:
-    sin ella contesta 409 y no guarda nada."""
+    (data-aviso-version). El POST de la corrida y el del correo la exigen
+    igual que a la página: sin ella contestan 409 y no guardan nada."""
     try:
         with urllib.request.urlopen(urllib.request.Request(api + "/automatiza"), timeout=35) as r:
             pagina = r.read().decode("utf-8", errors="replace")
@@ -117,7 +117,11 @@ def main(argv: list[str] | None = None) -> int:
         print("   → no disponible: ¿interruptor encendido? ¿sal en SSM? (tools/automatiza.py estado)")
         return 1
 
-    codigo, cuerpo, ms = _pedir("POST", base + "/corridas", {"texto": a.texto, "utm_source": "e2e"})
+    # como la página: la descripción viaja con la versión del aviso aceptado
+    # (RAG·13); sin ella el POST contesta 409 y no guarda nada
+    version = version_del_aviso(api)
+    codigo, cuerpo, ms = _pedir("POST", base + "/corridas", {"texto": a.texto, "utm_source": "e2e",
+                                                             "aviso_version": version})
     print(f"2. pedir       {codigo} en {ms:.0f} ms  {cuerpo}")
     if codigo != 202:
         return 1
@@ -156,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.correo:
         codigo, r, ms = _pedir("POST", f"{base}/corridas/{pid}/correo",
                                {"correo": a.correo, "recontacto": False, "origen": "listo",
-                                "aviso_version": version_del_aviso(api)})
+                                "aviso_version": version})
         _, sondeo, _ = _pedir("GET", f"{base}/corridas/{pid}")
         bien = codigo == 200 and sondeo.get("correo") == r.get("correo")
         ok = ok and bien

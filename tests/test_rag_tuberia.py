@@ -9,7 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pipeline import db, jobs, moderacion, publico
+from server import aviso
 from worker import publico as worker
+
+# RAG·13 — la página manda la descripción con la versión del aviso que la
+# persona aceptó en el pop-up; sin la vigente el POST contesta 409
+AVISO = {"aviso_version": aviso.AVISO_VERSION}
 
 
 @pytest.fixture(autouse=True)
@@ -43,11 +48,12 @@ class BaseDeMentira:
         m(db, "automatiza_correos_de",
           lambda i: sum(1 for c in self.correos if c["corrida_id"] == i))
 
-    def crear(self, texto, *, ip_hash=None, origen=None):
+    def crear(self, texto, *, ip_hash=None, origen=None, aviso_version=None):
         assert db.en_camino_publico()
         i = len(self.filas) + 1
         self.filas[i] = {"id": i, "publico_id": f"corrida{i:09d}", "texto": texto,
-                         "ip_hash": ip_hash, "origen": origen, "estado": "recibida",
+                         "ip_hash": ip_hash, "origen": origen, "aviso_version": aviso_version,
+                         "estado": "recibida",
                          "motivo": None, "resultado": None, "nodos": None,
                          "paso": None, "lleva_seg": 0}
         return {"id": i, "publico_id": self.filas[i]["publico_id"]}
@@ -127,7 +133,7 @@ TEXTO = "Cada vez que llegue un correo con factura, guardar el PDF en Drive."
 
 def test_de_punta_a_punta_sin_token(base, cola, cliente):
     r = cliente.post("/api/publico/corridas",
-                     json={"texto": "  " + TEXTO, "utm_source": "comunidad"})
+                     json={**AVISO, "texto": "  " + TEXTO, "utm_source": "comunidad"})
     assert r.status_code == 202, r.text
     assert r.headers["cache-control"] == "no-store"
     cuerpo = r.json()
@@ -169,7 +175,7 @@ def test_no_llama_a_ningun_modelo_con_el_armado_de_mentira(base, cola, cliente, 
     async def prohibido(*a, **k):
         raise AssertionError("RAG·8 no gasta: sin modelo mientras el armado sea de mentira")
     monkeypatch.setattr(moderacion, "chat_json", prohibido)
-    assert cliente.post("/api/publico/corridas", json={"texto": TEXTO}).status_code == 202
+    assert cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO}).status_code == 202
 
 
 def test_el_armado_real_trae_la_moderacion_de_vuelta(base, cola, cliente, monkeypatch):
@@ -181,7 +187,7 @@ def test_el_armado_real_trae_la_moderacion_de_vuelta(base, cola, cliente, monkey
         llamadas.append(user)
         return {"permitido": False, "motivo": "Eso sería spam."}
     monkeypatch.setattr(moderacion, "chat_json", modelo)
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
     assert r.status_code == 422 and r.json()["mensaje"] == "Eso sería spam."
     assert llamadas == [TEXTO] and cola == []
     # se guarda como rechazada (cuenta por IP) y el sondeo dice por qué
@@ -199,7 +205,7 @@ def test_rechazada_sin_frase_no_ensena_una_palabra_interna(base, cola, cliente, 
         return {"permitido": False, "motivo": ""}
     monkeypatch.setattr(moderacion, "chat_json", modelo)
     general = "Esta petición no la podemos armar. Prueba describiéndola de otra forma."
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
     assert r.status_code == 422 and r.json()["mensaje"] == general
     r = cliente.get(f"/api/publico/corridas/{base.filas[1]['publico_id']}")
     assert r.json()["mensaje"] == general and "moderaci" not in r.text
@@ -209,7 +215,7 @@ def test_el_lugar_se_cuenta_antes_de_encolar(base, cliente, monkeypatch):
     # un worker instantáneo: la toma en cuanto se encola, antes de que el
     # POST conteste. Contado después, el 202 diría «lugar: null».
     monkeypatch.setattr(jobs, "encolar_publico", lambda i: base._pasar(i, "en_fila", "armando"))
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
     assert r.status_code == 202 and r.json()["lugar"] == 1
     assert base.filas[1]["estado"] == "armando"
 
@@ -225,7 +231,7 @@ def test_el_lugar_se_cuenta_antes_de_encolar(base, cliente, monkeypatch):
 def test_del_referrer_solo_se_guarda_el_sitio(base, cola, cliente, referrer, guardado):
     """Medir de dónde llegan pide el sitio; la ruta y el query de otro sitio
     pueden traer tokens, correos o búsquedas de un tercero (aviso §2)."""
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO, "referrer": referrer,
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO, "referrer": referrer,
                                                     "utm_source": "boletin"})
     assert r.status_code == 202
     assert base.filas[1]["origen"]["referrer"] == guardado
@@ -237,7 +243,7 @@ def test_del_referrer_solo_se_guarda_el_sitio(base, cola, cliente, referrer, gua
 
 @pytest.mark.parametrize("texto,motivo", [("hola", "corto"), ("x" * 1501, "largo")])
 def test_largo_contesta_422_sin_guardar(base, cola, cliente, texto, motivo):
-    r = cliente.post("/api/publico/corridas", json={"texto": texto})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": texto})
     assert r.status_code == 422 and r.json()["motivo"] == motivo
     assert r.json()["maximo"] == publico.LARGO_MAXIMO
     assert base.filas == {} and cola == []
@@ -245,7 +251,7 @@ def test_largo_contesta_422_sin_guardar(base, cola, cliente, texto, motivo):
 
 def test_apagado_contesta_503_igual_que_la_pagina(base, cola, cliente):
     base.encendido = False
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
     assert r.status_code == 503
     assert r.json() == {"disponible": False, "mensaje": "Ahorita no está disponible"}
     assert base.filas == {} and cola == []
@@ -253,7 +259,7 @@ def test_apagado_contesta_503_igual_que_la_pagina(base, cola, cliente):
 
 def test_sin_sal_no_entra(base, cola, cliente, monkeypatch):
     monkeypatch.delenv(publico.VAR_SAL)
-    assert cliente.post("/api/publico/corridas", json={"texto": TEXTO}).status_code == 503
+    assert cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO}).status_code == 503
     assert base.filas == {}
 
 
@@ -261,13 +267,13 @@ def test_si_la_cola_falla_la_corrida_no_queda_colgada(base, cliente, monkeypatch
     def caida(i):
         raise RuntimeError("SQS no contesta")
     monkeypatch.setattr(jobs, "encolar_publico", caida)
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
     assert r.status_code == 503
     assert base.filas[1]["estado"] == "no_salio"
 
 
 def test_apagar_con_corridas_en_fila_las_cierra_sin_armar(base, cola, cliente):
-    pid = cliente.post("/api/publico/corridas", json={"texto": TEXTO}).json()["id"]
+    pid = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO}).json()["id"]
     base.encendido = False
     worker.procesar(cola[0])
     r = cliente.get(f"/api/publico/corridas/{pid}").json()
@@ -278,7 +284,7 @@ def test_apagar_con_corridas_en_fila_las_cierra_sin_armar(base, cola, cliente):
 
 
 def test_fallo_del_armado_no_filtra_la_excepcion(base, cola, cliente, monkeypatch):
-    pid = cliente.post("/api/publico/corridas", json={"texto": TEXTO}).json()["id"]
+    pid = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO}).json()["id"]
     monkeypatch.setattr(worker, "armar", lambda c: (_ for _ in ()).throw(
         ValueError("detalle interno /var/task/secreto.py")))
     worker.procesar(cola[0])
@@ -299,6 +305,6 @@ def test_id_que_no_existe_da_404(base, cliente):
 
 def test_un_token_ajeno_se_ignora(base, cola, cliente):
     # el camino público no mira el token: ni lo pide ni lo usa si viene
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO},
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO},
                      headers={"Authorization": "Bearer basura"})
     assert r.status_code == 202

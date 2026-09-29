@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from pipeline import db, publico
 from server import aviso, publico_api
-from test_rag_tuberia import TEXTO, BaseDeMentira
+from test_rag_tuberia import AVISO, TEXTO, BaseDeMentira
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ def cliente(base, monkeypatch):
 
 @pytest.fixture
 def pid(cliente):
-    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO})
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
     assert r.status_code == 202, r.text
     return r.json()["id"]
 
@@ -119,11 +119,19 @@ def test_la_prueba_e2e_manda_la_version_del_aviso(monkeypatch):
             return 200, {"nodes": [{}]}, 1
         return 200, {"estado": "listo", "listo": True, "correo": "tu•••@x.mx",
                      "descarga": "/api/publico/corridas/AAAAAAAAAAAAAAAA/flujo.json"}, 1
-    monkeypatch.setattr(e2e, "_pedir", pedir)
+    corridas = []
+
+    def pedir_y_anotar(metodo, url, cuerpo=None):
+        if metodo == "POST" and url.endswith("/corridas"):
+            corridas.append(cuerpo)
+        return pedir(metodo, url, cuerpo)
+    monkeypatch.setattr(e2e, "_pedir", pedir_y_anotar)
     monkeypatch.setattr(e2e, "revisar_paginas", lambda api, pid: True)
     assert e2e.main(["--api", "https://x", "--correo", "tu@x.mx"]) == 0
     assert posts == [{"correo": "tu@x.mx", "recontacto": False, "origen": "listo",
                       "aviso_version": aviso.AVISO_VERSION}]
+    # la corrida también viaja con la versión del aviso (RAG·13)
+    assert [c["aviso_version"] for c in corridas] == [aviso.AVISO_VERSION]
 
 
 @pytest.mark.parametrize("origen", publico_api.ORIGENES_CORREO)
@@ -332,3 +340,85 @@ def test_contar_correos_de_una_corrida(monkeypatch):
         assert db.automatiza_correos_de(9) == 3
     assert llamadas == [("SELECT count(*) AS n FROM automatiza_contactos "
                          "WHERE corrida_id = :i", {"i": 9})]
+
+
+# ---------------------------------------------------------------------------
+# RAG·13 — el aviso se acepta en el pop-up ANTES de mandar la descripción:
+# POST /corridas exige la versión vigente igual que el del correo, y la
+# corrida guarda cuál aceptó (automatiza_corridas.aviso_version)
+
+@pytest.mark.parametrize("vio", ["2026-01-01-la-de-antes", "", None])
+def test_pedir_sin_el_aviso_vigente_da_409_y_no_guarda_nada(cliente, base, monkeypatch, vio):
+    """Sin aviso aceptado (o con uno viejo) no se guarda la descripción, no se
+    modera (cuesta) ni cuenta para el tope por IP: la página vuelve a abrir el
+    aviso. Por eso va antes que todo lo demás."""
+    from pipeline import jobs
+    encoladas = []
+    monkeypatch.setattr(jobs, "encolar_publico", encoladas.append)
+
+    async def admitir(*a, **k):
+        raise AssertionError("sin aviso aceptado no se admite nada")
+    monkeypatch.setattr(publico, "admitir", admitir)
+    extra = {"aviso_version": vio} if vio is not None else {}
+    r = cliente.post("/api/publico/corridas", json={"texto": TEXTO, **extra})
+    assert r.status_code == 409
+    assert r.headers["cache-control"] == "no-store"
+    assert r.json() == {"motivo": "aviso", "mensaje": publico_api.MENSAJE_AVISO_PEDIR}
+    assert base.filas == {} and encoladas == []
+
+
+def test_pedir_guarda_la_version_que_acepto(cliente, base):
+    r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO, "utm_source": "ig"})
+    assert r.status_code == 202, r.text
+    fila = base.filas[1]
+    assert fila["aviso_version"] == aviso.AVISO_VERSION
+    # la versión no se cuela en el origen (referrer y utm)
+    assert "aviso_version" not in fila["origen"] and fila["origen"]["utm_source"] == "ig"
+
+
+def test_la_version_aceptada_vive_en_la_corrida():
+    assert ("ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS aviso_version text"
+            in db.ESQUEMA)
+
+
+def test_crear_guarda_la_version_en_su_columna(sql):
+    llamadas, respuestas = sql
+    respuestas.append([{"id": 7, "publico_id": "x"}])
+    with db.camino_publico():
+        assert db.automatiza_crear("texto", ip_hash="h", aviso_version="v1") == {
+            "id": 7, "publico_id": "x"}
+    ((q, p),) = llamadas
+    assert q.startswith("INSERT INTO automatiza_corridas (publico_id, texto, ip_hash, referrer,")
+    assert ", aviso_version) VALUES (" in q and q.endswith(":v) RETURNING id, publico_id")
+    assert p["v"] == "v1" and p["t"] == "texto"
+
+
+def test_sin_db_migrate_la_corrida_se_guarda_sin_la_version(sql):
+    """Si el API nuevo llega antes que la columna, «Armar mi flujo» no puede
+    dar 500: se guarda la corrida sin la versión (la vigente es la del deploy)."""
+    llamadas, respuestas = sql
+    respuestas.extend([RuntimeError('column "aviso_version" of relation '
+                                    '"automatiza_corridas" does not exist'),
+                       [{"id": 8, "publico_id": "y"}]])
+    with db.camino_publico():
+        assert db.automatiza_crear("texto", aviso_version="v1") == {"id": 8, "publico_id": "y"}
+    (q1, _), (q2, p2) = llamadas
+    assert "aviso_version" in q1
+    assert "aviso_version" not in q2 and "v" not in p2 and p2["t"] == "texto"
+
+
+def test_crear_no_perdona_otro_error(sql):
+    llamadas, respuestas = sql
+    respuestas.append(RuntimeError('column "referrer" of relation "automatiza_corridas" '
+                                   'does not exist'))
+    with db.camino_publico(), pytest.raises(RuntimeError):
+        db.automatiza_crear("texto", aviso_version="v1")
+    assert len(llamadas) == 1
+
+
+def test_crear_sin_version_no_la_nombra(sql):
+    # quien no la pasa (tools, pruebas viejas) guarda como antes
+    llamadas, respuestas = sql
+    respuestas.append([{"id": 1, "publico_id": "z"}])
+    db.automatiza_crear("texto")
+    assert "aviso_version" not in llamadas[0][0]

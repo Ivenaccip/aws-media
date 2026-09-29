@@ -108,14 +108,18 @@ def test_las_paginas_reales_caben_en_la_csp(nombre):
 
 
 # RAG·13 — la versión del aviso es lo ÚNICO que dice qué texto aceptó cada
-# correo guardado (automatiza_contactos.aviso_version), así que cada versión
-# queda atada a la huella de su texto: el aviso simplificado, las líneas de
-# letra chica, la casilla, /privacidad y /terminos, ya llenos con DATOS. Si
+# petición y cada correo guardados (automatiza_corridas.aviso_version y
+# automatiza_contactos.aviso_version), así que cada versión
+# queda atada a la huella de su texto: el aviso simplificado (el diálogo, con
+# su casilla de aceptar), las líneas de letra chica, las casillas,
+# /privacidad y /terminos, ya llenos con DATOS. Si
 # cambias cualquiera de esos textos —o llenas un hueco de DATOS—, sube
 # AVISO_VERSION (server/aviso.py) y AGREGA aquí su huella. Una huella que ya
-# está no se edita: sería reescribir lo que aceptó alguien.
+# está no se edita: sería reescribir lo que aceptó alguien. (La de
+# «2026-09-29-borrador» se recalculó el mismo 29-sep al pasar el aviso a un
+# pop-up que se acepta antes de pedir: esa versión nunca se publicó.)
 HUELLAS_AVISO = {
-    "2026-09-29-borrador": "399d7881c48c7beb66c41bfa5ed544cbf67d4847965388fd094ff8cb088c4e2f",
+    "2026-09-29-borrador": "7c6700fa06e34f0b8f8db0c6e16c494b399981168fba858974303cd4e17f6827",
 }
 
 
@@ -128,7 +132,8 @@ def _texto_visible(pagina: str) -> str:
 def _huella_del_aviso() -> str:
     pagina = (RAIZ / "static" / "automatiza.html").read_text(encoding="utf-8")
     trozos = [aviso.RECONTACTO_TEXTO]
-    trozos += re.findall(r'<template id="plantilla-aviso[^"]*">.*?</template>', pagina, flags=re.S)
+    # el aviso simplificado es UN diálogo (RAG·13), con la casilla de aceptar
+    trozos += re.findall(r'<dialog id="dialogo-aviso".*?</dialog>', pagina, flags=re.S)
     trozos += re.findall(r'<p class="chica letra-chica">.*?</p>', pagina, flags=re.S)
     trozos += re.findall(r'<label class="casilla">.*?</label>', pagina, flags=re.S)
     trozos += [(RAIZ / "static" / n).read_text(encoding="utf-8")

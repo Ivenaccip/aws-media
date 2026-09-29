@@ -73,10 +73,17 @@ TOPE_CORREOS = 5
 MENSAJE_CORREO = "Revisa tu correo: parece que le falta algo."
 MENSAJE_AVISO = ("Actualizamos el aviso de privacidad. Recarga la página para verlo "
                  "y deja tu correo otra vez.")
+# el mismo 409 al pedir (RAG·13): la página vuelve a abrir el aviso, y si su
+# versión ya es otra (un deploy a media visita), este mensaje pide recargar
+MENSAJE_AVISO_PEDIR = ("Antes de armarlo necesitamos que leas y aceptes el aviso de "
+                       "privacidad. Si ya lo aceptaste, recarga la página: lo actualizamos.")
 
 
 class Peticion(BaseModel):
     texto: str = ""
+    # la versión del aviso que la persona aceptó en el pop-up antes de mandar
+    # (la de data-aviso-version): sin la vigente no se guarda nada
+    aviso_version: str = ""
     # de dónde vino (RAG·28); la página los copia de su propia URL
     referrer: str | None = None
     utm_source: str | None = None
@@ -151,25 +158,32 @@ def estado(request: Request):
 @router.post("/corridas")
 async def crear(body: Peticion, request: Request):
     """Acepta una petición o dice por qué no. 202 = ya está en la fila."""
+    if body.aviso_version != aviso.AVISO_VERSION:
+        # Antes que todo lo demás: sin el aviso vigente aceptado no se guarda
+        # la descripción, ni se modera (cuesta) ni cuenta para el tope por IP.
+        # La página vuelve a enseñar el aviso para que lo acepte.
+        return _json({"motivo": "aviso", "mensaje": MENSAJE_AVISO_PEDIR}, 409)
     ip_hash = freno.hash_ip(freno.ip_del_request(request))
     a = await freno.admitir(body.texto, ip_hash)
     if a.motivo in (freno.CORTO, freno.LARGO):
         return _json({"motivo": a.motivo, "mensaje": MENSAJES[a.motivo],
                       "minimo": freno.LARGO_MINIMO, "maximo": freno.LARGO_MAXIMO}, 422)
-    origen = body.model_dump(exclude={"texto"})
+    origen = body.model_dump(exclude={"texto", "aviso_version"})
     origen["referrer"] = solo_sitio(origen.get("referrer"))
     if a.motivo == freno.RECHAZADA:
         # Se guarda: su moderación ya costó y cuenta para el tope por IP. El
         # motivo es lo que lee quien vuelve con el enlace: sin frase de la
         # moderación, la general (nunca una palabra interna como «moderación»)
-        fila = db.automatiza_crear(a.texto, ip_hash=ip_hash, origen=origen)
+        fila = db.automatiza_crear(a.texto, ip_hash=ip_hash, origen=origen,
+                                   aviso_version=aviso.AVISO_VERSION)
         db.automatiza_cerrar(fila["id"], "rechazada",
                              motivo=a.detalle or MENSAJES[freno.RECHAZADA])
         return _json({"motivo": a.motivo,
                       "mensaje": a.detalle or MENSAJES[freno.RECHAZADA]}, 422)
     if a.motivo:
         return _no_disponible()
-    fila = db.automatiza_crear(a.texto, ip_hash=ip_hash, origen=origen)
+    fila = db.automatiza_crear(a.texto, ip_hash=ip_hash, origen=origen,
+                               aviso_version=aviso.AVISO_VERSION)
     db.automatiza_a_fila(fila["id"])
     # el lugar se cuenta ANTES de encolar: con la fila vacía el worker puede
     # tomarla antes de que este POST conteste, y el 202 diría «lugar: null»

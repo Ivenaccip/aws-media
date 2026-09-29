@@ -178,4 +178,40 @@ igual(A.mensajeRechazo(''), 'Prueba describiéndola de otra forma.', 'sin mensaj
 igual(A.mensajeRechazo('Esta petición no la podemos armar.'), 'Prueba describiéndola de otra forma.',
   'solo el título: el general');
 
+// --- el aviso de privacidad (RAG·13): cuándo sale el diálogo -------------------------
+// Sale la primera vez que manda algo y ya no, mientras sea la MISMA versión.
+// Un almacén de mentira (como localStorage) y uno que truena en todo.
+function almacen() {
+  const datos = {};
+  return { getItem: k => (k in datos ? datos[k] : null), setItem: (k, v) => { datos[k] = String(v); },
+    removeItem: k => { delete datos[k]; }, datos };
+}
+const truena = { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('QuotaExceeded'); } };
+const V = '2026-09-29-borrador';
+igual(A.CLAVE_AVISO, 'automatiza:aviso', 'la llave del aviso aceptado');
+
+const ls = almacen();
+igual(A.avisoGuardado(ls), null, 'navegador nuevo: nada aceptado');
+ok(A.avisoPendiente(V, A.avisoGuardado(ls), null), 'la primera vez sale el aviso');
+ok(A.guardarAviso(ls, V), 'aceptar guarda la versión');
+igual(ls.datos['automatiza:aviso'], V, 'se guarda la versión, no un «sí»');
+ok(!A.avisoPendiente(V, A.avisoGuardado(ls), null), 'ya aceptó esta versión: no vuelve a salir');
+// el dueño cambió el texto y subió AVISO_VERSION: se vuelve a pedir
+ok(A.avisoPendiente('2026-10-06', A.avisoGuardado(ls), null), 'otra versión: vuelve a salir');
+ok(A.avisoPendiente(V, 'si', null) && A.avisoPendiente(V, 'true', null), 'un valor que no es la versión no cuenta');
+// sin versión en la página (la sirvieron cruda) se pide siempre: el servidor tampoco aceptaría
+ok(A.avisoPendiente('', '', '') && A.avisoPendiente('', null, null), 'sin versión, siempre se pide');
+
+// localStorage bloqueado (incógnito estricto, sin permiso): no tumba nada
+igual(A.avisoGuardado(truena), null, 'leer un almacén que truena = nada aceptado');
+igual(A.avisoGuardado(null), null, 'sin almacén = nada aceptado');
+ok(!A.guardarAviso(truena, V), 'guardar en un almacén que truena dice que no');
+ok(!A.guardarAviso(null, V), 'sin almacén, guardar dice que no');
+// …pero en esta visita ya aceptó: no se le vuelve a pedir en el correo
+ok(!A.avisoPendiente(V, A.avisoGuardado(truena), V), 'aceptado en esta visita, aunque no se guardó');
+// …y en la próxima visita (memoria vacía) sí se vuelve a pedir
+ok(A.avisoPendiente(V, A.avisoGuardado(truena), null), 'la próxima visita sin almacén: se vuelve a pedir');
+// en memoria una versión vieja no cuenta
+ok(A.avisoPendiente('2026-10-06', null, V), 'la versión aceptada en memoria tiene que ser la vigente');
+
 console.log(`automatiza: ${comprobaciones} comprobaciones OK`);

@@ -9,7 +9,8 @@ contrato y se rompe sin hacer ruido:
   · carga /sondeo.js ANTES que /automatiza.js y nunca auth.js ni monedero.js;
   · solo pide /api/publico/* y pinta lo del servidor con textContent;
   · cada formulario de correo lleva la casilla APARTE, desmarcada, con el
-    texto del servidor, y un hueco para el ÚNICO aviso simplificado;
+    texto del servidor, y el botón que abre el ÚNICO aviso simplificado
+    (un <dialog>, que se acepta antes de mandar datos por primera vez);
   · «¿Te funcionó?» va escondido (RAG·25);
   · los números que comparte con el servidor son los mismos.
 
@@ -172,40 +173,102 @@ def test_cada_formulario_lleva_la_casilla_aparte_y_desmarcada(i):
     # el texto lo pone el servidor (el mismo que guarda con el correo)
     assert "{{recontacto_texto}}" in forma
     assert re.search(r'<input\b[^>]*type="email"[^>]*\brequired\b', forma)
-    assert "data-aviso-aqui" in forma, "cada formulario lleva el aviso simplificado"
+    # el aviso ya no va pegado: un botón chico lo abre (el mismo diálogo)
+    assert "data-ver-aviso" in forma, "cada formulario deja releer el aviso"
+    assert "aviso-simple" not in forma and "<dl" not in forma
 
 
-@pytest.mark.parametrize("cual", ["plantilla-aviso", "plantilla-aviso-compacto"])
-def test_el_aviso_simplificado_vive_en_sus_plantillas(cual):
-    """Una plantilla completa (pantalla 3) y una compacta (fila, 2d, no salió),
-    cada una UNA vez, con sus cuatro filas y el enlace al integral."""
-    assert HTML.count(f'<template id="{cual}">') == 1
-    plantilla = re.search(rf'<template id="{cual}">(.*?)</template>', HTML, flags=re.S).group(1)
-    assert [m for m in re.findall(r"<dt>([^<]+)</dt>", plantilla)] == \
+def _dialogo(cual: str) -> str:
+    assert HTML.count(f'<dialog id="{cual}"') == 1, cual
+    return re.search(rf'<dialog id="{cual}".*?</dialog>', HTML, flags=re.S).group(0)
+
+
+def test_el_aviso_simplificado_es_un_solo_dialogo():
+    """UN bloque en toda la página, con sus cuatro filas, los huecos del dueño
+    y los enlaces al integral y a los Términos. Ya no hay plantillas."""
+    assert "<template" not in HTML
+    aviso = _dialogo("dialogo-aviso")
+    assert 'aria-labelledby="aviso-t"' in aviso
+    assert re.search(r'<h2 id="aviso-t"[^>]*tabindex="-1"', aviso), "el foco va al título"
+    assert re.findall(r"<dt>([^<]+)</dt>", aviso) == \
         ["Quién", "Para qué", "Qué guardamos", "Tus derechos"]
     for clave in ("responsable", "domicilio", "plazo_peticion", "plazo_correo",
                   "correo_privacidad"):
-        assert "{{" + clave + "}}" in plantilla, clave
-    assert 'href="/privacidad"' in plantilla
+        assert "{{" + clave + "}}" in aviso, clave
+    assert 'href="/privacidad"' in aviso and 'href="/terminos"' in aviso
     # la IP: se guarda una huella para los topes (pipeline/publico.py), así
     # que el aviso no puede decir «tu IP no» a secas
-    assert "huella" in plantilla
-    assert cual in JS
+    assert "huella" in aviso
+    # lo que medimos del origen (referrer y utm viajan en el POST)
+    assert "de dónde llegan las visitas" in aviso and "llegaste" in aviso
+    assert "oponerte" in aviso
 
 
-def test_la_pantalla_1_ya_da_el_aviso_minimo():
-    """Los datos se guardan desde el primer «Armar» (aun si se rechaza): la
-    pantalla 1 nombra al responsable, el plazo, la huella de la IP y los Términos."""
-    pedir = re.search(r'<form class="tarjeta pedir-form".*?</form>', HTML, flags=re.S).group(0)
-    pedir = _sin_comentarios_html(pedir)
-    for clave in ("responsable", "domicilio", "plazo_peticion"):
-        assert "{{" + clave + "}}" in pedir, clave
-    assert "huella" in pedir and "No guardamos tu IP" not in pedir
-    assert 'href="/terminos"' in pedir and 'href="/privacidad"' in pedir
-    # en el mismo POST viajan el referrer y los utm (automatiza.js): la
-    # línea lo dice, y dice a dónde escribir para oponerse
-    assert "de dónde llegan las visitas" in pedir and "llegaste" in pedir
-    assert "{{correo_privacidad}}" in pedir and "oponerte" in pedir
+def test_hasta_abajo_la_casilla_desmarcada_y_aceptar():
+    """La casilla es la última decisión del diálogo: después de todo el texto,
+    con label real y desmarcada. «Aceptar» no se apaga con disabled (soltaría
+    el foco): aria-disabled y, al tocarlo sin la casilla, dice qué falta."""
+    aviso = _dialogo("dialogo-aviso")
+    pie = aviso[aviso.index("data-casilla-aviso") - 200:]
+    assert aviso.index("data-casilla-aviso") > aviso.index("Tus derechos")
+    casilla = re.search(r'<label class="casilla[^"]*"><input\b[^>]*data-casilla-aviso[^>]*>'
+                        r'<span>([^<]+)</span></label>', aviso)
+    assert casilla, "la casilla va DENTRO de su <label>"
+    assert casilla.group(1) == "He leído el aviso de privacidad y acepto los términos"
+    assert "checked" not in casilla.group(0)
+    boton = re.search(r"<button\b[^>]*data-aceptar-aviso[^>]*>([^<]+)</button>", pie)
+    assert boton and boton.group(1) == "Aceptar"
+    assert 'aria-disabled="true"' in boton.group(0) and " disabled" not in boton.group(0)
+    assert re.search(r'id="aviso-falta"[^>]*role="alert"', aviso)
+    # en modo lectura, sin casilla y con «Cerrar»
+    assert re.search(r'data-solo-leer>\s*<button[^>]*data-cerrar-dialogo>Cerrar</button>', aviso)
+    assert '.dialogo[data-modo="leer"] [data-solo-aceptar]' in CSS
+
+
+def test_el_dialogo_es_nativo_y_recuerda_la_version():
+    codigo = _sin_comentarios_js(JS)
+    assert ".showModal()" in codigo, "<dialog> nativo: el resto queda inerte y Escape cierra"
+    assert "const CLAVE_AVISO = 'automatiza:aviso';" in JS
+    assert "guardarAviso(almacenLocal(), AVISO_VERSION)" in _bloque_js("botonAceptar.addEventListener")
+    # cerrar sin aceptar no manda nada: la acción solo corre con «aceptado»
+    assert "valor === 'aceptado' && accion" in codigo
+    # Escape no hereda el «aceptado» de la vez anterior
+    assert "d.returnValue = ''" in _bloque_js("function abrirDialogo(")
+
+
+def test_se_pide_antes_de_armar_y_antes_del_correo():
+    """La primera vez que manda datos: al tocar «Armar» (antes del POST) y,
+    si llegó con el enlace desde otro navegador, antes del correo."""
+    pedir = _bloque_js("formPedir.addEventListener('submit'")
+    assert "conAviso('pedir', () => enviarPedido(false))" in pedir
+    assert "pedirJson(" not in pedir, "el POST va DESPUÉS del aviso, en enviarPedido"
+    correo = _bloque_js("async function mandarCorreo(")
+    assert correo.index("avisoPendiente(") < correo.index("pedirJson(")
+    # la corrida viaja con la versión aceptada; un 409 del aviso lo vuelve a pedir
+    envio = _bloque_js("async function enviarPedido(")
+    assert "aviso_version: AVISO_VERSION" in envio
+    assert "c.motivo === 'aviso'" in envio and "olvidarAviso()" in envio
+
+
+def test_la_pantalla_1_ya_no_lleva_la_linea_legal():
+    """El aviso se acepta en el diálogo: la letra chica de la pantalla 1 se fue."""
+    pedir = _sin_comentarios_html(
+        re.search(r'<section class="pantalla pedir".*?</section>', HTML, flags=re.S).group(0))
+    assert "letra-chica" not in pedir and "{{responsable}}" not in pedir
+    assert "Al armarlo aceptas" not in HTML and "Al mandarlo aceptas" not in HTML
+
+
+def test_como_funciona_en_celular_es_un_dialogo():
+    """A una columna el panel lateral se esconde y un botón lo abre en otro
+    <dialog> con el MISMO contenido (lo copia montarComo)."""
+    como = _dialogo("dialogo-como")
+    assert "data-como-aqui" in como and 'aria-labelledby="como-dialogo-t"' in como
+    assert re.search(r'<button\b[^>]*data-abrir-como[^>]*>', HTML)
+    celular = CSS[CSS.index("@media (max-width: 760px)"):]
+    assert ".pedir > .como { display: none; }" in celular
+    assert ".como-abrir { display: inline-flex;" in celular
+    assert ".como-abrir { display: none; }" in CSS[:CSS.index("@media (max-width: 760px)")]
+    assert "function montarComo()" in JS and "montarComo();" in JS
 
 
 def test_la_huella_no_se_llama_cifrada():
@@ -218,14 +281,13 @@ def test_la_huella_no_se_llama_cifrada():
         assert "Del código no se puede leer tu IP" not in texto
 
 
-@pytest.mark.parametrize("cual", ["plantilla-aviso", "plantilla-aviso-compacto"])
-def test_el_simplificado_dice_lo_mismo_que_el_integral_del_correo(cual):
+def test_el_simplificado_dice_lo_mismo_que_el_integral_del_correo():
     """Junto a la casilla no se puede prometer un plazo más corto que el
     real: con la casilla, el correo se guarda hasta la baja (integral §4)."""
-    plantilla = re.search(rf'<template id="{cual}">(.*?)</template>', HTML, flags=re.S).group(1)
-    assert "{{plazo_correo}} (si marcas la casilla, hasta que te des de baja)" in plantilla
-    assert "No te pedimos datos sensibles" in plantilla
-    assert "negarte a los usos adicionales" in plantilla
+    aviso = _dialogo("dialogo-aviso")
+    assert "{{plazo_correo}} (si marcas la casilla, hasta que te des de baja)" in aviso
+    assert "No te pedimos datos sensibles" in aviso
+    assert "negarte a los usos adicionales" in aviso
 
 
 def test_terminos_y_privacidad_estan_enlazados():

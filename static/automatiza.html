@@ -68,6 +68,9 @@
         <span class="etiqueta">Gratis del 10 al 25 de octubre</span>
         <h1 id="pedir-t" class="titulo-lg" tabindex="-1">Cuéntanos qué haces a mano. Te devolvemos el flujo de n8n.</h1>
         <p class="lead"><span class="solo-ancho">Escríbelo como se lo contarías a alguien. </span>Buscamos en la documentación de n8n, armamos el flujo y revisamos que importe.<span class="solo-ancho"> Tú lo descargas y lo pegas en tu n8n.</span></p>
+        <!-- en celular el panel lateral no cabe: este botón lo abre en un diálogo -->
+        <button type="button" class="btn btn-sec como-abrir" data-abrir-como aria-haspopup="dialog">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17v.01"/></svg>¿Cómo funciona?</button>
       </div>
 
       <form class="tarjeta pedir-form" data-form-pedir novalidate>
@@ -104,13 +107,15 @@
           <button type="submit" class="btn btn-pri btn-grande" data-armar>Armar mi flujo</button>
           <span class="chica">Suele tardar unos minutos. No necesitas cuenta.</span>
         </div>
-        <!-- los datos se empiezan a guardar AQUÍ, no en la pantalla 3: el aviso
-             simplificado mínimo va desde la primera petición (RAG·13) -->
-        <p class="chica letra-chica">Cuando esté armado te pedimos tu correo para mandártelo. {{responsable}} ({{domicilio}}) guarda tu descripción y el flujo durante {{plazo_peticion}} para armarlo y, si no te opones, para mejorar el servicio y medir de dónde llegan las visitas (de qué sitio llegaste y la campaña del enlace); de tu IP solo guarda una huella. Para oponerte o ejercer tus derechos: {{correo_privacidad}}. Al armarlo aceptas los <a href="/terminos">Términos</a>. <a href="/privacidad">Aviso de privacidad</a></p>
+        <!-- los datos se empiezan a guardar AQUÍ, no en la pantalla 3: la
+             primera vez que toca «Armar», automatiza.js abre el aviso de
+             privacidad (el diálogo de abajo) y solo manda si lo acepta (RAG·13) -->
       </form>
     </div>
 
-    <aside class="como" aria-labelledby="como-t">
+    <!-- en computadora es la columna lateral; en celular se esconde y su
+         contenido lo copia automatiza.js al diálogo «¿Cómo funciona?» -->
+    <aside class="como" aria-labelledby="como-t" data-como>
       <h2 id="como-t" class="titulo-md">Cómo funciona</h2>
       <ol class="como-lista">
         <li><span class="como-n" aria-hidden="true">1</span><span class="como-texto"><span class="fuerte">Lo describes</span><span class="secundario">En español, con tus palabras.</span></span></li>
@@ -171,7 +176,7 @@
           </div>
           <p class="campo-error" id="correo-tarde-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
           <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para avisarte de esta petición. Puedes darte de baja cuando quieras.</span></span></label>
-          <div data-aviso-aqui></div>
+          <button type="button" class="btn-enlace chica alinear-inicio" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
         </form>
         <div class="caja-exito" data-correo-listo hidden>
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
@@ -240,7 +245,7 @@
         </div>
         <p class="campo-error" id="correo-fila-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
         <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para avisarte de esta petición. Puedes darte de baja cuando quieras.</span></span></label>
-        <div data-aviso-aqui></div>
+        <button type="button" class="btn-enlace chica alinear-inicio" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
       </form>
 
       <span class="secundario" data-fila-quedate hidden>Si te quedas, esta página avanza sola. Al terminar pasa directo a «Listo»: no te vuelve a pedir el correo.</span>
@@ -248,7 +253,7 @@
     </div>
   </section>
 
-  <!-- 3 · Ya está armado: tu correo (+ aviso simplificado, RAG·13) -->
+  <!-- 3 · Ya está armado: tu correo (el aviso ya lo aceptó al pedir; aquí se relee) -->
   <section class="pantalla columna" data-pantalla="correo" aria-labelledby="correo-t" hidden>
     <div class="tarjeta caja-720 bloque-24">
       <div class="apilado-10">
@@ -271,12 +276,11 @@
           <span class="chica" id="correo-listo-ayuda">Ahí te llegan el .json y la guía paso a paso, con videos cortos para conectar cada cuenta.</span>
           <p class="campo-error" id="correo-listo-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
         </div>
-        <div data-aviso-aqui data-completo></div>
         <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para mandarte este flujo. Puedes darte de baja cuando quieras.</span></span></label>
         <div class="acciones">
           <button type="submit" class="btn btn-pri btn-grande">Mandármelo y descargar</button>
+          <button type="button" class="btn-enlace chica" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
         </div>
-        <p class="chica letra-chica">Al mandarlo aceptas los <a href="/terminos">Términos</a>.</p>
       </form>
     </div>
   </section>
@@ -369,7 +373,7 @@
         </div>
         <p class="campo-error" id="correo-no-salio-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
         <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para avisarte de esta petición. Puedes darte de baja cuando quieras.</span></span></label>
-        <div data-aviso-aqui></div>
+        <button type="button" class="btn-enlace chica alinear-inicio" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
       </form>
       <div class="caja-exito" data-correo-listo hidden>
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
@@ -433,38 +437,58 @@
   <p class="sr" data-anuncio aria-live="polite"></p>
 </main>
 
-<!-- EL AVISO DE PRIVACIDAD SIMPLIFICADO (RAG·13). Son los ÚNICOS bloques:
-     automatiza.js copia el completo al formulario de la pantalla 3
-     (data-completo) y el compacto a los demás que piden correo (2b, 2d y 5).
+<!-- EL AVISO DE PRIVACIDAD SIMPLIFICADO (RAG·13): UN solo diálogo. Sale la
+     PRIMERA vez que la persona manda algo («Armar mi flujo», o el correo si
+     llegó con el enlace desde otro navegador) con la casilla y «Aceptar»
+     hasta abajo; automatiza.js guarda qué versión aceptó y no lo vuelve a
+     pedir. «Aviso de privacidad» junto a cada correo lo abre para releerlo
+     (data-modo="leer": sin casilla, con «Cerrar»).
      El texto legal lo ajusta el dueño aquí, con docs/automatiza/aviso-privacidad.md,
-     y los huecos en server/aviso.py (DATOS). -->
-<template id="plantilla-aviso">
-  <section class="aviso-simple">
-    <h2 class="rotulo">Aviso de privacidad simplificado</h2>
-    <dl class="aviso-filas">
-      <div><dt>Quién</dt><dd>{{responsable}}, con domicilio en {{domicilio}}.</dd></div>
-      <div><dt>Para qué</dt><dd>Para armar tu flujo, mandártelo con su guía y avisarte de tu petición. Si no te opones, también para mejorar el servicio con tu descripción y medir de dónde llegan las visitas. Solo si marcas la casilla de abajo, para escribirte con novedades.</dd></div>
-      <div><dt>Qué guardamos</dt><dd>Tu descripción y el flujo, durante {{plazo_peticion}}; tu correo, durante {{plazo_correo}} (si marcas la casilla, hasta que te des de baja). De tu IP solo una huella para los topes, nunca la IP. No te pedimos datos sensibles.</dd></div>
-      <div><dt>Tus derechos</dt><dd>Para ver, corregir o borrar tus datos, oponerte a un uso, negarte a los usos adicionales o darte de baja, escríbenos a {{correo_privacidad}} con tu número de petición.</dd></div>
-    </dl>
-    <a class="enlace-44" href="/privacidad">Leer el aviso de privacidad integral</a>
-  </section>
-</template>
-<!-- la versión corta, para los formularios de la fila (2b/2c), «se pasó del
-     tiempo» (2d) y «No salió» (5): mismas 4 filas, sin nombrar la pantalla.
-     Si cambias un texto legal de aquí, sube AVISO_VERSION (server/aviso.py):
-     tests/test_rag_paginas.py ata cada versión a la huella de su texto -->
-<template id="plantilla-aviso-compacto">
-  <section class="aviso-simple compacto">
-    <h2 class="rotulo">Aviso de privacidad simplificado</h2>
-    <dl class="aviso-filas">
-      <div><dt>Quién</dt><dd>{{responsable}} · {{domicilio}}</dd></div>
-      <div><dt>Para qué</dt><dd>Mandarte el flujo de esta petición en cuanto lo tengamos. Tu descripción, además, para mejorar el servicio si no te opones. Novedades, solo con la casilla.</dd></div>
-      <div><dt>Qué guardamos</dt><dd>La petición, {{plazo_peticion}}; tu correo, {{plazo_correo}} (si marcas la casilla, hasta que te des de baja). Tu IP no: solo una huella. No te pedimos datos sensibles.</dd></div>
-      <div><dt>Tus derechos</dt><dd>Ver, corregir o borrar tus datos, negarte a los usos adicionales o darte de baja: {{correo_privacidad}}</dd></div>
-    </dl>
-    <a class="enlace-44" href="/privacidad">Leer el aviso de privacidad integral</a>
-  </section>
-</template>
+     y los huecos en server/aviso.py (DATOS). Si cambias un texto legal de
+     aquí, sube AVISO_VERSION: tests/test_rag_paginas.py ata cada versión a
+     la huella de su texto. -->
+<dialog id="dialogo-aviso" class="dialogo" aria-labelledby="aviso-t" data-modo="aceptar">
+  <div class="dialogo-cabeza">
+    <h2 id="aviso-t" class="titulo-sm" tabindex="-1">Aviso de privacidad simplificado</h2>
+    <button type="button" class="dialogo-cerrar" data-cerrar-dialogo aria-label="Cerrar sin aceptar">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
+  </div>
+  <p class="secundario" data-solo-aceptar data-aviso-lead>Antes de armar tu flujo, lee qué hacemos con lo que nos mandas.</p>
+  <p class="aviso-caja" data-aviso-cambio role="alert" hidden>
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+    <span data-aviso-cambio-texto></span>
+  </p>
+  <dl class="aviso-filas">
+    <div><dt>Quién</dt><dd>{{responsable}}, con domicilio en {{domicilio}}.</dd></div>
+    <div><dt>Para qué</dt><dd>Para armar tu flujo, mandártelo con su guía y avisarte de tu petición. Si no te opones, también para mejorar el servicio con tu descripción y medir de dónde llegan las visitas (de qué sitio llegaste y la campaña del enlace). Solo si marcas la casilla aparte que está junto a tu correo, para escribirte con novedades.</dd></div>
+    <div><dt>Qué guardamos</dt><dd>Tu descripción y el flujo, durante {{plazo_peticion}}; tu correo, cuando nos lo das, durante {{plazo_correo}} (si marcas la casilla, hasta que te des de baja). También qué versión de este aviso aceptaste. De tu IP solo una huella para los topes, nunca la IP. No te pedimos datos sensibles.</dd></div>
+    <div><dt>Tus derechos</dt><dd>Para ver, corregir o borrar tus datos, oponerte a un uso, negarte a los usos adicionales o darte de baja, escríbenos a {{correo_privacidad}} con tu número de petición.</dd></div>
+  </dl>
+  <div class="dialogo-enlaces">
+    <a class="enlace-44" href="/privacidad" target="_blank" rel="noopener">Leer el aviso de privacidad integral</a>
+    <a class="enlace-44" href="/terminos" target="_blank" rel="noopener">Leer los Términos</a>
+  </div>
+  <div class="dialogo-pie" data-solo-aceptar>
+    <label class="casilla casilla-aceptar"><input type="checkbox" data-casilla-aviso aria-describedby="aviso-falta"><span>He leído el aviso de privacidad y acepto los términos</span></label>
+    <p class="campo-error" id="aviso-falta" data-aviso-falta role="alert" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span>Marca la casilla para seguir.</span></p>
+    <button type="button" class="btn btn-pri btn-grande" data-aceptar-aviso aria-disabled="true">Aceptar</button>
+  </div>
+  <div class="dialogo-pie" data-solo-leer>
+    <button type="button" class="btn btn-sec btn-grande" data-cerrar-dialogo>Cerrar</button>
+  </div>
+</dialog>
+
+<!-- «¿Cómo funciona?» en celular: el mismo contenido del panel lateral -->
+<dialog id="dialogo-como" class="dialogo" aria-labelledby="como-dialogo-t">
+  <div class="dialogo-cabeza">
+    <h2 id="como-dialogo-t" class="titulo-sm" tabindex="-1">Cómo funciona</h2>
+    <button type="button" class="dialogo-cerrar" data-cerrar-dialogo aria-label="Cerrar">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
+  </div>
+  <div class="dialogo-como" data-como-aqui></div>
+  <div class="dialogo-pie">
+    <button type="button" class="btn btn-sec btn-grande" data-cerrar-dialogo>Entendido</button>
+  </div>
+</dialog>
 </body>
 </html>

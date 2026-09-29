@@ -2,7 +2,8 @@
 <html lang="es">
 <!-- /privacidad (RAG·13): el aviso de privacidad INTEGRAL de /automatiza, con
      la estructura de 8 secciones del lienzo (RAG13_Privacidad). El aviso
-     simplificado vive en static/automatiza.html y enlaza aquí.
+     simplificado es el diálogo de static/automatiza.html (se acepta antes de
+     mandar la primera descripción) y enlaza aquí.
 
      Es una plantilla: los marcadores de doble llave son huecos del dueño que
      server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
@@ -70,9 +71,10 @@
     <section class="parte" id="datos" aria-labelledby="datos-t">
       <h2 id="datos-t">2. Qué datos recabamos</h2>
       <p>Solo lo necesario para armar tu flujo, mandártelo y cuidar que nadie abuse del servicio. No necesitas cuenta y no te pedimos tu nombre.</p>
+      <p>Antes de que nos mandes tu primera descripción, la página te enseña el aviso de privacidad simplificado y te pide aceptarlo con una casilla («He leído el aviso de privacidad y acepto los términos»). Si no lo aceptas, no nos llega nada.</p>
       <dl class="filas">
         <div><dt>Lo que describes</dt><dd>El texto de lo que quieres automatizar (de {{largo_minimo}} a {{largo_maximo}} caracteres), tal cual lo escribes. Lo guardamos aunque la petición no se pueda armar. Como puede traer lo que tú pongas, te pedimos no escribir contraseñas, datos de otras personas ni datos sensibles.</dd></div>
-        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos, las apps que usa, en qué va tu petición (en la fila, armando, lista o no salió) y cuánto tardó. Cada petición tiene un número que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo al que te lo mandamos, pero nunca ver tu correo completo: guárdalo como un enlace privado.</dd></div>
+        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos, las apps que usa, en qué va tu petición (en la fila, armando, lista o no salió), cuánto tardó y la versión de este aviso que aceptaste antes de mandarla. Cada petición tiene un número que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo al que te lo mandamos, pero nunca ver tu correo completo: guárdalo como un enlace privado.</dd></div>
         <div><dt>Tu correo, si nos lo das</dt><dd>Lo pedimos cuando el flujo está listo, para mandártelo; en la fila o cuando no salió es opcional. Junto con él guardamos en qué pantalla lo diste, si marcaste la casilla de novedades, el texto exacto de esa casilla, la versión de este aviso que estaba vigente y la fecha. Si lo cambias, el anterior también queda guardado: es la prueba de lo que aceptaste.</dd></div>
         <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta que solo tiene nuestro servidor (si tu conexión usa IPv6, con la parte de la dirección que corresponde a tu red). Guardamos ese código, nunca la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Sin esa clave, del código no se puede saber tu IP; como con ella sí se podría, lo tratamos como un dato personal más y se borra junto con tu petición.</dd></div>
         <div><dt>De dónde llegaste</dt><dd>El sitio desde el que llegaste (solo su dirección principal, como instagram.com, no la página exacta), si tu navegador lo manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
@@ -86,6 +88,7 @@
       <p>La página guarda en tu propio navegador, sin mandárnoslo:</p>
       <ul>
         <li>el borrador de lo que vas escribiendo, para que no lo pierdas si se cierra la pestaña; se borra al mandar tu petición;</li>
+        <li>la versión del aviso que aceptaste, para no volver a pedírtelo mientras no cambie;</li>
         <li>tu último número de petición y lo que pediste, para enseñártelo cuando vuelves con el enlace;</li>
         <li>de dónde llegaste, solo mientras la pestaña está abierta (eso sí nos llega junto con tu petición).</li>
       </ul>
@@ -194,7 +197,7 @@
     <section class="parte" id="cambios" aria-labelledby="cambios-t">
       <h2 id="cambios-t">8. Cambios a este aviso</h2>
       <p>Si cambiamos este aviso, publicamos la versión nueva en esta misma dirección (irremplazables.xyz/privacidad), con su número de versión y su fecha arriba. Si el cambio toca para qué usamos tus datos o con quién los compartimos y nos dejaste tu correo, también te avisamos por correo; si el cambio necesita tu consentimiento, te lo pedimos antes de aplicarlo.</p>
-      <p>Con cada correo guardamos la versión del aviso que estaba vigente cuando nos lo diste.</p>
+      <p>Con cada petición guardamos la versión del aviso que aceptaste antes de mandarla, y con cada correo la versión que estaba vigente cuando nos lo diste. Si publicamos una versión nueva, la página te la vuelve a enseñar y te pide aceptarla antes de mandar otra petición o un correo.</p>
     </section>
   </article>
 </main>

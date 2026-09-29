@@ -13,13 +13,29 @@ Fecha: 29-sep-2026 · Versión del texto: `2026-09-29-borrador`
 - `/privacidad` es el **aviso integral** (las 8 secciones del lienzo) y
   `/terminos` son los **términos de uso**. Los dos dicen arriba «Borrador para
   revisión del dueño».
-- El **aviso simplificado** (el bloque de 4 filas junto a cada formulario de
-  correo) vive en `static/automatiza.html`, en dos plantillas: la completa
-  (`<template id="plantilla-aviso">`, pantalla 3) y la compacta
-  (`<template id="plantilla-aviso-compacto">`, la fila, «se pasó del tiempo»
-  y «No salió»). La pantalla 1 lleva además una línea mínima con el
-  responsable, el plazo, las finalidades (también medir de dónde llegan),
-  la huella de la IP, a dónde escribir para oponerse y los Términos.
+- El **aviso simplificado** (las 4 filas: quién, para qué, qué guardamos,
+  tus derechos) es **un solo pop-up** en `static/automatiza.html`
+  (`<dialog id="dialogo-aviso">`). Sale la **primera vez que la persona manda
+  datos**: al tocar «Armar mi flujo», antes de que la descripción salga del
+  navegador, y —si llegó con el enlace para volver desde otro navegador y
+  nunca aceptó— antes de guardar su correo. Hasta abajo lleva la casilla
+  **desmarcada** «He leído el aviso de privacidad y acepto los términos» y el
+  botón «Aceptar» (sin la casilla no acepta). Cerrarlo o Escape = no se
+  manda nada. Enlaza al integral (`/privacidad`) y a `/terminos`.
+- **Qué se guarda de la aceptación:** la versión aceptada viaja con la
+  petición (`POST /api/publico/corridas`, campo `aviso_version`) y se guarda
+  en `automatiza_corridas.aviso_version`; si no viene o no es la vigente, el
+  servidor contesta 409 y **no guarda nada** (ni modera ni cuenta para el
+  tope). En el navegador queda `automatiza:aviso` = la versión, para no
+  volver a pedirlo mientras no cambie; si el navegador no deja guardarlo, se
+  pide otra vez en la próxima visita.
+- Junto a cada correo (la fila, «se pasó del tiempo», «ya está armado» y
+  «No salió») ya no va el bloque: queda un enlace chico «Aviso de
+  privacidad» que abre el mismo pop-up para releerlo (sin casilla). La
+  casilla de **novedades** (`RECONTACTO_TEXTO`) sigue junto al correo,
+  aparte y desmarcada: es otro consentimiento y no se mezcla con el del aviso.
+  La pantalla 1 ya no lleva la línea de letra chica: lo que decía está en el
+  pop-up.
 - Para llenar los huecos tocas **un solo archivo**: `server/aviso.py`
   (`DATOS`). Lo que no es un hueco de `DATOS` va en el HTML entre corchetes.
 - Hay **decisiones tuyas** pendientes (lista abajo): la más urgente es el
@@ -32,8 +48,8 @@ Fecha: 29-sep-2026 · Versión del texto: `2026-09-29-borrador`
 | `static/privacidad.html` | Aviso de privacidad integral. Plantilla con huecos. |
 | `static/terminos.html` | Términos de uso. Plantilla con huecos. |
 | `static/legal.css` | El estilo de las dos (tokens de `static/carta.css`, sin JS, cabe en la CSP). |
-| `server/aviso.py` | `DATOS`: los huecos que llenas. `AVISO_VERSION` y `RECONTACTO_TEXTO`: lo que se guarda con cada correo como prueba del consentimiento. |
-| `static/automatiza.html` | Donde va el aviso simplificado (`plantilla-aviso` y `plantilla-aviso-compacto`), la línea de la pantalla 1 y la casilla. |
+| `server/aviso.py` | `DATOS`: los huecos que llenas. `AVISO_VERSION`: lo que se guarda con cada petición y cada correo como prueba de qué aviso aceptó. `RECONTACTO_TEXTO`: el texto de la casilla de novedades, que se guarda con el correo. |
+| `static/automatiza.html` | Donde va el aviso simplificado (el pop-up `dialogo-aviso`, con la casilla de aceptar) y las casillas de novedades junto a cada correo. |
 
 El server llena los huecos al servir la página (con escape HTML). Si una
 página pide un hueco que no existe en `DATOS`, falla `tests/test_rag_paginas.py`
@@ -78,7 +94,7 @@ diputados.gob.mx bloqueados por la red del entorno). Por eso todos llevan
 | 5. Con quién | Encargados: AWS (Lambda, Aurora, S3, SQS; us-east-1), Cloudflare, proveedor del modelo de IA [RAG·21], Langfuse, `proveedor_correo` [RAG·14]. Sin transferencias a terceros, salvo autoridad con fundamento legal. | transferencias y remisiones (según EY ya no es obligatorio listarlas; se declaran igual) | `infra/app.py` (región), `server/app.py` (Cloudflare), `pipeline/llm.py` y `pipeline/moderacion.py` (OpenAI + Langfuse hoy) |
 | 6. Tus derechos | Qué es cada derecho ARCO, a qué correo, qué mandar (incluido el número de petición, que es lo único que liga a una persona anónima con sus datos), plazos 20/15, gratis, autoridad. | fr. V | art. 29 y 31 [VERIFICAR] |
 | 7. Retirar el consentimiento | Baja de novedades (enlace en cada correo + correo), negarse a lo adicional, borrar petición o correo. Sin efectos hacia atrás. | revocación y fr. IV | — |
-| 8. Cambios | Se publican en la misma URL con versión y fecha; aviso por correo si cambian finalidades o proveedores; nuevo consentimiento si hace falta. Cada correo guarda la versión vigente. | fr. VI | `automatiza_contactos.aviso_version` |
+| 8. Cambios | Se publican en la misma URL con versión y fecha; aviso por correo si cambian finalidades o proveedores; nuevo consentimiento si hace falta. Cada petición guarda la versión que se aceptó en el pop-up y cada correo la vigente; con una versión nueva, el pop-up vuelve a salir. | fr. VI | `automatiza_corridas.aviso_version`, `automatiza_contactos.aviso_version` |
 
 ## Qué dicen los términos, en corto
 
@@ -106,13 +122,13 @@ prohibidos: tienen que decir lo mismo.
 | Clave | Qué poner | Ojo |
 |---|---|---|
 | `responsable` | Tu nombre completo (persona física) o la razón social (si hay empresa). | «Irremplazables» es la marca, no una persona: la ley pide la identidad de quien responde. |
-| `domicilio` | Domicilio para oír y recibir notificaciones. | Sale en el aviso simplificado junto a cada formulario: es obligatorio (fr. I). |
+| `domicilio` | Domicilio para oír y recibir notificaciones. | Sale en el aviso simplificado (el pop-up): es obligatorio (fr. I). |
 | `correo_privacidad` | Un correo que leas, para derechos ARCO. | Sale como enlace `mailto:`. Lo usan también los términos como contacto. |
 | `plazo_peticion` | Cuánto guardas la descripción, el flujo y los datos de la petición (RAG·0). | Se lee después de «durante»: escribe algo como «12 meses desde tu petición». |
 | `plazo_correo` | Cuánto guardas el correo (RAG·0). | El aviso ya dice aparte que, si marcó la casilla, se guarda hasta la baja (ver decisiones). |
 | `proveedor_correo` | El proveedor de envío separado de SES (RAG·14). | Solo el nombre, p. ej. «Resend» o «Postmark». |
 | `fecha_aviso` | La fecha de la versión que publiques. | |
-| `AVISO_VERSION` | Súbela **cada vez que cambie el texto** (p. ej. `2026-10-06`). | Se guarda con cada correo: así se prueba qué aviso aceptó cada quien. Hoy la comparten el aviso y los términos. `tests/test_rag_paginas.py` (`HUELLAS_AVISO`) ata cada versión a la huella de su texto: si cambias un texto o llenas un hueco sin subirla, falla y te dice qué huella agregar. La página manda con el correo la versión con la que se llenó; si ya no es la vigente, el servidor no guarda nada y pide recargar. |
+| `AVISO_VERSION` | Súbela **cada vez que cambie el texto** (p. ej. `2026-10-06`). | Se guarda con cada petición y con cada correo: así se prueba qué aviso aceptó cada quien. Al subirla, el pop-up vuelve a salir a quien aceptó la anterior. Hoy la comparten el aviso y los términos. `tests/test_rag_paginas.py` (`HUELLAS_AVISO`) ata cada versión a la huella de su texto: si cambias un texto o llenas un hueco sin subirla, falla y te dice qué huella agregar. La página manda con la petición y con el correo la versión con la que se llenó; si ya no es la vigente, el servidor no guarda nada: vuelve a enseñar el pop-up y, si la página es de antes de un deploy, pide recargar. (La huella de `2026-09-29-borrador` se recalculó el 29-sep al pasar el aviso al pop-up: esa versión nunca se publicó.) |
 
 ### En el HTML (entre corchetes, no son huecos de `DATOS`)
 
@@ -168,10 +184,13 @@ de las dos páginas y sube `AVISO_VERSION`.
    condiciones lo prohíben, puedes agregarlo a «Lo que no hacemos».
 7. **El flujo es para quien lo pide, sin exclusividad**, y no reclamas
    derechos sobre él (términos §5).
-8. **Aceptar los términos desde la pantalla 1.** Los usos prohibidos aplican
-   desde la primera petición, así que la línea de la pantalla 1 ya dice «Al
-   armarlo aceptas los Términos» (además de «Al mandarlo…» en la del correo).
-   Confírmalo con el abogado.
+8. **Aceptar el aviso y los términos con una casilla, antes de la primera
+   petición.** Los usos prohibidos aplican desde la primera petición, así que
+   el pop-up pide marcar «He leído el aviso de privacidad y acepto los
+   términos» antes de mandar nada (antes era una línea «Al armarlo aceptas…»
+   en la pantalla 1). La ley pide por regla general solo consentimiento
+   tácito; la casilla es más de lo que pide, pero deja prueba (la versión
+   guardada con la petición). Confírmalo con el abogado.
 
 ## Lo que el texto promete y alguien tiene que cumplir
 
@@ -209,11 +228,13 @@ operación. Son parte de dejarlo listo, no adornos:
   tokens o correos de un tercero. Si quieres la ruta para atribuir campañas,
   decídelo y dilo en el §2.
 - La pantalla 1 **ya recaba datos** (descripción, huella, origen; aun si se
-  rechaza): su línea ya nombra al responsable, el plazo y la finalidad
-  (se cambió contra el lienzo por eso).
+  rechaza): por eso el aviso completo sale en el pop-up **antes** de mandar
+  la primera petición (el lienzo solo lo ponía junto al correo, y una
+  versión anterior de la página lo resumía en una línea de letra chica).
 - El contrato decía que el navegador solo guarda el borrador. `static/automatiza.js`
   guarda además `automatiza:pedido` (el número de petición y el texto, en
-  `localStorage`, sin caducidad) y `automatiza:origen` (utm y referrer, en
+  `localStorage`, sin caducidad), `automatiza:aviso` (la versión del aviso
+  aceptada, en `localStorage`) y `automatiza:origen` (utm y referrer, en
   `sessionStorage`). El aviso describe lo que hace el código. Si eso cambia,
   cambia el §2.
 

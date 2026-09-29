@@ -6,7 +6,8 @@
 
    Lo mismo en todas las pantallas: la tarjeta de 720 centrada (espera, fila,
    correo, no salió, rechazada) o la rejilla de dos columnas (pedir, listo).
-   A 760 px o menos todo baja a una columna y el panel lateral se va abajo;
+   A 760 px o menos todo baja a una columna y el panel lateral se va a un
+   diálogo («¿Cómo funciona?»);
    a 390 px no puede haber scroll lateral (lo mira la prueba de Playwright). */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -191,6 +192,8 @@ input[type=email].con-error { border: 2px solid var(--c-error); padding: 0 15px;
 .ideas > .chica { margin-right: 4px; }
 .ideas-lista { display: contents; }
 .btn.chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-medio); }
+/* «¿Cómo funciona?»: solo en celular, donde el panel lateral no cabe */
+.como-abrir { display: none; }
 
 /* el panel de «Cómo funciona» */
 .como { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
@@ -278,18 +281,59 @@ input[type=email].con-error { border: 2px solid var(--c-error); padding: 0 15px;
   cursor: pointer;
 }
 
-/* el aviso simplificado: UN bloque (la plantilla del HTML), dos tamaños */
-.aviso-simple {
-  display: flex; flex-direction: column; gap: 12px; padding: 18px 20px;
-  background: var(--c-hundido); border: 1px solid var(--c-linea); border-radius: var(--r-boton);
+/* «Aviso de privacidad» junto a cada correo: chico, pero se toca en 44 × 44 */
+.form-correo .btn-enlace[data-ver-aviso] { min-width: 44px; }
+
+/* ================================================================
+   los diálogos (RAG·13): el aviso de privacidad y «¿Cómo funciona?»
+   <dialog> nativo con showModal: el foco queda dentro y Escape lo cierra
+   ================================================================ */
+.dialogo {
+  /* margin:auto lo centra: h1, p… llevan margin 0, pero el <dialog> no */
+  margin: auto; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+  padding: 28px; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--c-superficie); color: var(--c-texto);
+  border: 1px solid var(--c-linea); border-radius: var(--r-grande);
 }
+.dialogo[open] { display: flex; flex-direction: column; gap: 20px; }
+.dialogo::backdrop { background: rgba(4, 9, 17, .72); }
+.dialogo h2[tabindex="-1"]:focus, .dialogo h2[tabindex="-1"]:focus-visible { outline: none; }
+.dialogo-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.dialogo-cabeza h2 { padding-top: 8px; }
+.dialogo-cerrar {
+  flex-shrink: 0; width: 44px; height: 44px; margin: -4px -8px 0 0; display: grid; place-items: center;
+  border: 0; border-radius: var(--r-medio); background: transparent; color: var(--c-secundario); cursor: pointer;
+}
+.dialogo-cerrar:hover { color: var(--c-texto); background: var(--c-elevada); }
+.dialogo-enlaces { display: flex; flex-wrap: wrap; gap: 0 24px; }
+.dialogo-pie {
+  display: flex; flex-direction: column; gap: 16px; padding-top: 20px; border-top: 1px solid var(--c-linea);
+}
+.dialogo-pie .btn { align-self: flex-start; }
+/* aria-disabled y no disabled: el botón conserva el foco y, al tocarlo, dice
+   qué falta (DISENO §4) */
+.btn-pri[aria-disabled="true"]:not([aria-busy="true"]) {
+  border: 1px dashed var(--c-campo); background: var(--c-superficie); color: var(--c-secundario);
+}
+.btn-pri[aria-disabled="true"]:not([aria-busy="true"]):hover { background: var(--c-superficie); }
+/* la casilla de aceptar: toda la fila se toca (44 px de alto como mínimo) */
+.casilla-aceptar { min-height: 44px; align-items: center; font-weight: 600; }
+.casilla-aceptar input { margin: 0; }
+.dialogo[data-modo="leer"] [data-solo-aceptar],
+.dialogo[data-modo="aceptar"] [data-solo-leer] { display: none; }
+.dialogo-como { display: flex; flex-direction: column; gap: 16px; }
+
 .aviso-filas { display: flex; flex-direction: column; gap: 12px; }
 .aviso-filas > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; }
 .aviso-filas dt { font-weight: 600; }
-.aviso-simple.compacto { gap: 8px; padding: 14px 16px; font-size: var(--t-xs); line-height: 1.45; }
-.aviso-simple.compacto .aviso-filas { gap: 6px; }
-.aviso-simple.compacto .aviso-filas > div { grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
-.aviso-simple.compacto dd { color: var(--c-secundario); }
+
+/* entra en 150 ms (DISENO §4); con «reducir movimiento» aparece sin más */
+@media (prefers-reduced-motion: no-preference) {
+  .dialogo[open] { animation: dialogo-entra 150ms ease-out; }
+  .dialogo[open]::backdrop { animation: velo-entra 150ms ease-out; }
+}
+@keyframes dialogo-entra { from { opacity: 0; transform: translateY(8px); } }
+@keyframes velo-entra { from { opacity: 0; } }
 
 /* ================================================================
    3 · correo: la cadena de «Lo que hace»
@@ -357,7 +401,7 @@ main:has(.listo:not([hidden])) { padding-top: 48px; }
 .pausa .lead { max-width: 58ch; }
 
 /* ================================================================
-   7 · celular: una columna, el panel lateral baja, sin scroll lateral
+   7 · celular: una columna, el panel lateral a su diálogo, sin scroll lateral
    ================================================================ */
 @media (max-width: 760px) {
   .solo-ancho { display: none; }
@@ -377,7 +421,9 @@ main:has(.listo:not([hidden])) { padding-top: 48px; }
   .ideas-lista { display: flex; gap: 8px; flex-wrap: wrap; }
   .pedir-form .acciones { flex-direction: column; align-items: stretch; gap: 12px; }
   .pedir-form .acciones .btn { width: 100%; }
-  .como { padding-top: 0; }
+  /* el panel lateral se va a su diálogo; el botón lo abre */
+  .pedir > .como { display: none; }
+  .como-abrir { display: inline-flex; align-self: flex-start; }
   .como-lista { gap: 16px; }
   .como-lista li { gap: 12px; }
 
@@ -389,9 +435,9 @@ main:has(.listo:not([hidden])) { padding-top: 48px; }
 
   .fila-campo { flex-direction: column; }
   .fila-campo .btn { width: 100%; }
-  .aviso-filas > div,
-  .aviso-simple.compacto .aviso-filas > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .aviso-simple { padding: 16px; }
+  .aviso-filas > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .dialogo { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 20px 16px; }
+  .dialogo-pie .btn { align-self: stretch; }
 
   .listo { gap: 24px; }
   .listo-rejilla { grid-template-columns: minmax(0, 1fr); gap: 24px; }

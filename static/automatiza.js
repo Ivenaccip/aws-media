@@ -249,11 +249,40 @@
   // otra pestaña o en el celular), se deja de enseñar el de aquí.
   const sigueSiendoMio = (mioVer, delServidor) => !delServidor || !mioVer || delServidor === mioVer;
 
+  // --- el aviso de privacidad (RAG·13) ---
+  // Se acepta UNA vez, en el diálogo, antes de mandar datos por primera vez
+  // («Armar mi flujo», o el correo si llegó con el enlace desde otro
+  // navegador). Se recuerda en localStorage la VERSIÓN aceptada: si el dueño
+  // cambia el texto (y sube AVISO_VERSION), se vuelve a pedir.
+  const CLAVE_AVISO = 'automatiza:aviso';
+
+  // ¿Qué versión aceptó en este navegador? null si ninguna o si el almacén
+  // no se deja leer (incógnito estricto, sin permiso): entonces se pide.
+  function avisoGuardado(almacen) {
+    try { return almacen ? almacen.getItem(CLAVE_AVISO) : null; } catch (e) { return null; }
+  }
+
+  // Guarda la versión aceptada; false si el almacén truena (se volverá a
+  // pedir en la próxima visita, no en esta: ver avisoPendiente).
+  function guardarAviso(almacen, version) {
+    try { almacen.setItem(CLAVE_AVISO, version); return true; } catch (e) { return false; }
+  }
+
+  // ¿Hay que enseñar el aviso antes de mandar? Sí, salvo que ya aceptó ESTA
+  // versión: en este navegador (guardada) o en esta visita (enMemoria, por si
+  // el almacén no se dejó escribir). Sin versión en la página, se pide
+  // siempre (el servidor tampoco aceptaría).
+  function avisoPendiente(version, guardada, enMemoria) {
+    if (!version) return true;
+    return guardada !== version && enMemoria !== version;
+  }
+
   const Automatiza = {
     FILA_DESDE, CONCURRENCIA, TARDA_MIN, TARDA_MAX, PASOS, NOMBRES_PASO, FINALES, ID,
     idDeRuta, enlaceRoto, pantallaPara, esFinal, firma, indicePaso, minutosFila, reloj, textoEspera,
     textoFila, largo, estadoCampo, nombreNodo, esDisparador, nodosLegibles, sitioDe, origenDe,
-    correoParece, mensajeRechazo, sigueSiendoMio,
+    correoParece, mensajeRechazo, sigueSiendoMio, CLAVE_AVISO, avisoGuardado, guardarAviso,
+    avisoPendiente,
   };
   if (typeof module === 'object' && module && module.exports) module.exports = Automatiza;
   if (!raiz || !raiz.document) return;
@@ -493,13 +522,12 @@
     return leerJson('sessionStorage', CLAVE_ORIGEN) || {};
   }
 
-  formPedir.addEventListener('submit', async ev => {
+  formPedir.addEventListener('submit', ev => {
     ev.preventDefault();
     if (estado.enviando) return;   // doble clic = una sola petición
-    const texto = campo.value;
     avisoEnvio.hidden = true;
     $('[data-aviso-no-encontrada]').hidden = true;
-    if (estadoCampo(largo(texto), MIN, MAX) !== 'bien') {
+    if (estadoCampo(largo(campo.value), MIN, MAX) !== 'bien') {
       estado.intento = true;
       pintarCampo(true);
       temblar(campo);
@@ -507,12 +535,23 @@
       return;
     }
     guardarBorrador();
+    // la primera vez, el aviso de privacidad: sin aceptarlo no sale nada
+    conAviso('pedir', () => enviarPedido(false));
+  });
+
+  // `reintento`: ya se volvió a enseñar el aviso tras un 409 y se aceptó; si
+  // el servidor lo rechaza otra vez, su versión ya es otra (un deploy a media
+  // visita) y solo queda recargar: se dice en línea, sin otro diálogo.
+  async function enviarPedido(reintento) {
+    if (estado.enviando) return;
+    const texto = campo.value;
     estado.enviando = true;
     ocupar(botonArmar, true, 'Enviando…');
     let r = null;
     try {
       r = await pedirJson('/api/publico/corridas', {
-        method: 'POST', body: JSON.stringify(Object.assign({ texto }, origenGuardado())),
+        method: 'POST',
+        body: JSON.stringify(Object.assign({ texto }, origenGuardado(), { aviso_version: AVISO_VERSION })),
       });
     } catch (e) { r = null; }
     estado.enviando = false;
@@ -520,6 +559,12 @@
     const c = r && r.cuerpo;
     if (!r) { mostrarAvisoEnvio(SIN_RED + ' Lo que escribiste sigue aquí.'); return; }
     if (r.status === 202 && c && ID.test(String(c.id || ''))) { aceptada(c, texto); return; }
+    if (r.status === 409 && c && c.motivo === 'aviso') {
+      olvidarAviso();
+      if (reintento) mostrarAvisoEnvio(c.mensaje || 'Recarga la página para ver el aviso de privacidad vigente.');
+      else conAviso('pedir', () => enviarPedido(true), c.mensaje);
+      return;
+    }
     if (r.status === 422 && c && (c.motivo === 'corto' || c.motivo === 'largo')) {
       estado.mensajeServidor = c.mensaje || (c.motivo === 'corto' ? MSG_CORTO : MSG_LARGO);
       estado.intento = true;
@@ -537,7 +582,7 @@
     // todo freno del servidor (apagado, tope, throttling) es UNA pantalla
     if (r.status === 503 || r.status === 429) { pintarPausa(); mostrar('no-disponible'); return; }
     mostrarAvisoEnvio('Algo falló de nuestro lado. Intenta de nuevo en un momento: lo que escribiste sigue aquí.');
-  });
+  }
 
   // 202: ya está en la fila. La URL pasa a ser el enlace para volver.
   function aceptada(c, texto) {
@@ -906,7 +951,8 @@
     if (doc.activeElement === input || !visible(f)) anunciar(texto, true);
   }
 
-  async function mandarCorreo(f) {
+  // `reintento`: como en enviarPedido, tras un 409 del aviso ya aceptado otra vez
+  async function mandarCorreo(f, reintento) {
     if (f.dataset.enviando) return;
     const input = $('input[type=email]', f);
     const casilla = $('input[name=recontacto]', f);
@@ -920,6 +966,12 @@
     }
     const id = estado.id;
     if (!id) return;
+    // llegó con el enlace desde otro navegador y nunca aceptó el aviso: antes
+    // de guardar su correo, el aviso (y después sigue solo)
+    if (avisoPendiente(AVISO_VERSION, avisoGuardado(almacenLocal()), avisoEnMemoria)) {
+      conAviso('correo', () => mandarCorreo(f, reintento));
+      return;
+    }
     f.dataset.enviando = '1';
     ocupar(boton, true, 'Mandando…');
     let r = null;
@@ -936,11 +988,16 @@
     if (estado.id !== id) return;
     if (!r) { errorCorreo(f, SIN_RED); input.focus(); return; }
     if (r.ok && r.cuerpo && r.cuerpo.ok) { correoGuardado(f, correo, r.cuerpo.correo); return; }
+    if (r.status === 409 && r.cuerpo && r.cuerpo.motivo === 'aviso' && !reintento) {
+      olvidarAviso();
+      conAviso('correo', () => mandarCorreo(f, true), r.cuerpo.mensaje);
+      return;
+    }
     errorCorreo(f, (r.cuerpo && r.cuerpo.mensaje) || 'Algo falló al mandarlo. Intenta de nuevo en un momento.');
     input.focus();
   }
   for (const f of $$('[data-form-correo]')) {
-    f.addEventListener('submit', ev => { ev.preventDefault(); mandarCorreo(f); });
+    f.addEventListener('submit', ev => { ev.preventDefault(); mandarCorreo(f, false); });
   }
 
   function correoGuardado(f, correo, enmascarado) {
@@ -989,6 +1046,119 @@
   }
 
   // ---------------------------------------------------------------------
+  // los diálogos (RAG·13): el aviso de privacidad y «¿Cómo funciona?»
+  //
+  // <dialog> nativo con showModal(): el resto de la página queda inerte, el
+  // foco no se sale y Escape lo cierra. Al abrir, el foco va al título; al
+  // cerrar, vuelve a lo que lo abrió. Cerrar el aviso sin aceptar = no se
+  // manda nada.
+
+  const dialogoAviso = $('#dialogo-aviso');
+  const dialogoComo = $('#dialogo-como');
+  const casillaAviso = $('[data-casilla-aviso]', dialogoAviso);
+  const botonAceptar = $('[data-aceptar-aviso]', dialogoAviso);
+  const faltaAviso = $('[data-aviso-falta]', dialogoAviso);
+  const avisoCambio = $('[data-aviso-cambio]', dialogoAviso);
+  const LEAD_AVISO = {
+    pedir: 'Antes de armar tu flujo, lee qué hacemos con lo que nos mandas.',
+    correo: 'Antes de guardar tu correo, lee qué hacemos con tus datos.',
+  };
+  let avisoEnMemoria = null;   // la versión aceptada en esta visita
+  let alAceptarAviso = null;   // lo que estaba por mandarse
+  const regreso = new Map();   // diálogo → a qué vuelve el foco al cerrar
+
+  // el acceso mismo a localStorage puede tronar (SecurityError)
+  function almacenLocal() {
+    try { return raiz.localStorage; } catch (e) { return null; }
+  }
+
+  function abrirDialogo(d) {
+    regreso.set(d, doc.activeElement);
+    d.returnValue = '';   // si no, un Escape hereda el «aceptado» de la vez anterior
+    if (!d.open) d.showModal();
+    d.scrollTop = 0;
+    $('h2', d).focus();
+  }
+  function alCerrar(d, siguiente) {
+    d.addEventListener('close', () => {
+      const desde = regreso.get(d);
+      regreso.delete(d);
+      if (desde && desde.isConnected && typeof desde.focus === 'function') desde.focus();
+      if (siguiente) siguiente(d.returnValue);
+    });
+  }
+  for (const b of $$('[data-cerrar-dialogo]')) {
+    b.addEventListener('click', () => b.closest('dialog').close(''));
+  }
+
+  function pintarAceptar() {
+    if (casillaAviso.checked) {
+      botonAceptar.removeAttribute('aria-disabled');
+      faltaAviso.hidden = true;
+    } else botonAceptar.setAttribute('aria-disabled', 'true');
+  }
+  casillaAviso.addEventListener('change', pintarAceptar);
+
+  // modo «aceptar»: casilla + «Aceptar» hasta abajo; «leer»: solo «Cerrar».
+  // `mensaje`: el del servidor cuando rechazó por aviso (409)
+  function abrirAviso(modo, que, alAceptar, mensaje) {
+    dialogoAviso.dataset.modo = modo;
+    $('.dialogo-cerrar', dialogoAviso).setAttribute('aria-label', modo === 'aceptar' ? 'Cerrar sin aceptar' : 'Cerrar');
+    $('[data-aviso-lead]', dialogoAviso).textContent = LEAD_AVISO[que] || LEAD_AVISO.pedir;
+    casillaAviso.checked = false;
+    faltaAviso.hidden = true;
+    pintarAceptar();
+    avisoCambio.hidden = !mensaje;
+    $('[data-aviso-cambio-texto]', avisoCambio).textContent = mensaje || '';
+    alAceptarAviso = modo === 'aceptar' ? alAceptar : null;
+    abrirDialogo(dialogoAviso);
+  }
+
+  // Si ya aceptó esta versión, `accion` corre en seguida; si no, primero el aviso.
+  function conAviso(que, accion, mensaje) {
+    if (!avisoPendiente(AVISO_VERSION, avisoGuardado(almacenLocal()), avisoEnMemoria)) { accion(); return; }
+    abrirAviso('aceptar', que, accion, mensaje);
+  }
+
+  // el servidor dijo que esa versión ya no vale: se vuelve a pedir
+  function olvidarAviso() {
+    avisoEnMemoria = null;
+    try { raiz.localStorage.removeItem(CLAVE_AVISO); } catch (e) { /* nada que borrar */ }
+  }
+
+  botonAceptar.addEventListener('click', () => {
+    if (!casillaAviso.checked) {
+      // role="alert": el lector de pantalla lo dice (la región viva de la
+      // página queda inerte mientras el diálogo está abierto)
+      faltaAviso.hidden = false;
+      casillaAviso.focus();
+      return;
+    }
+    // si el almacén no se deja escribir, vale para esta visita y se volverá a
+    // pedir en la próxima
+    guardarAviso(almacenLocal(), AVISO_VERSION);
+    avisoEnMemoria = AVISO_VERSION;
+    dialogoAviso.close('aceptado');
+  });
+  alCerrar(dialogoAviso, valor => {
+    const accion = alAceptarAviso;
+    alAceptarAviso = null;
+    if (valor === 'aceptado' && accion) accion();
+  });
+  for (const b of $$('[data-ver-aviso]')) b.addEventListener('click', () => abrirAviso('leer'));
+
+  // «¿Cómo funciona?» (celular): el MISMO contenido del panel lateral, copiado
+  // una vez al abrir la página (el título ya lo pone el diálogo)
+  function montarComo() {
+    const hueco = $('[data-como-aqui]', dialogoComo);
+    for (const hijo of Array.from($('[data-como]').children)) {
+      if (hijo.tagName !== 'H2') hueco.appendChild(hijo.cloneNode(true));
+    }
+  }
+  alCerrar(dialogoComo);
+  $('[data-abrir-como]').addEventListener('click', () => abrirDialogo(dialogoComo));
+
+  // ---------------------------------------------------------------------
   // el reloj de la espera: «Llevas 1:12»
 
   function relojTick() {
@@ -1011,23 +1181,6 @@
 
   // ---------------------------------------------------------------------
   // al abrir
-
-  // el aviso simplificado vive en DOS plantillas del HTML (la completa para la
-  // pantalla 3, la compacta para los demás formularios): se copia a cada hueco
-  function montarAvisos() {
-    const completo = $('#plantilla-aviso');
-    const compacto = $('#plantilla-aviso-compacto') || completo;
-    $$('[data-aviso-aqui]').forEach((hueco, i) => {
-      const plantilla = hueco.hasAttribute('data-completo') ? completo : compacto;
-      if (!plantilla || !plantilla.content || !plantilla.content.firstElementChild) return;
-      const copia = plantilla.content.firstElementChild.cloneNode(true);
-      if (!hueco.hasAttribute('data-completo')) copia.classList.add('compacto');
-      const h = $('h2', copia);
-      h.id = 'aviso-simplificado-' + (i + 1);
-      copia.setAttribute('aria-labelledby', h.id);
-      hueco.replaceWith(copia);
-    });
-  }
 
   function guardarOrigen() {
     let miOrigen = '';
@@ -1063,7 +1216,7 @@
   }
 
   guardarOrigen();
-  montarAvisos();
+  montarComo();
   restaurarBorrador();
   const idEnlace = idDeRuta(raiz.location.pathname);
   if (idEnlace) entrarPorEnlace(idEnlace);

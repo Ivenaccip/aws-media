@@ -405,6 +405,11 @@ ESQUEMA: list[str] = [
     # peticiones simultáneas todas leen la misma cuenta y todas pasan. Sumar
     # aquí toma el candado de la fila (ver automatiza_guardar_correo).
     "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS correos int NOT NULL DEFAULT 0",
+    # RAG·13 — qué versión del aviso de privacidad aceptó en el pop-up antes
+    # de mandar la descripción (la de cada correo vive en automatiza_contactos).
+    # Columna aparte y no en el CREATE: la tabla ya existe en dev. Si el API
+    # nuevo llega antes que db_migrate, automatiza_crear guarda sin ella.
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS aviso_version text",
 ]
 
 
@@ -1259,21 +1264,39 @@ PASOS_AUTOMATIZA = ("entender", "buscar", "armar", "revisar")
 
 
 def automatiza_crear(texto: str, *, ip_hash: str | None = None,
-                     origen: dict | None = None) -> dict:
+                     origen: dict | None = None,
+                     aviso_version: str | None = None) -> dict:
     """Guarda lo que pidió el visitante TAL CUAL y devuelve {id, publico_id}.
 
     El texto no se recorta ni se limpia aquí: los topes de largo son de
-    RAG·7 y van antes; lo que llegue hasta aquí se guarda entero."""
+    RAG·7 y van antes; lo que llegue hasta aquí se guarda entero.
+
+    `aviso_version`: el aviso de privacidad que aceptó antes de mandarlo
+    (RAG·13). Si el API nuevo llega antes que db_migrate y la columna todavía
+    no existe, se guarda sin ella (y se avisa en el log) en vez de tumbar
+    «Armar mi flujo»: la versión vigente queda también en el código del deploy."""
     import secrets
     origen = origen or {}
     datos = {k: (str(origen[k])[:_TOPE_ORIGEN] if origen.get(k) else None)
              for k in ORIGEN_AUTOMATIZA}
+    datos.update(p=secrets.token_urlsafe(12), t=texto, ip=ip_hash)
     columnas = ", ".join(ORIGEN_AUTOMATIZA)
     valores = ", ".join(f":{k}" for k in ORIGEN_AUTOMATIZA)
+    if aviso_version is not None:
+        try:
+            filas = ejecutar(
+                f"INSERT INTO automatiza_corridas (publico_id, texto, ip_hash, {columnas}, "
+                f"aviso_version) VALUES (:p, :t, :ip, {valores}, :v) RETURNING id, publico_id",
+                {**datos, "v": aviso_version})
+            return filas[0]
+        except Exception as e:  # noqa: BLE001 — solo se perdona la columna que falta
+            if not _falta_columna(e, "aviso_version"):
+                raise
+            logging.getLogger(__name__).warning(
+                "automatiza_corridas.aviso_version no existe: corre tools/db_migrate.py")
     filas = ejecutar(
         f"INSERT INTO automatiza_corridas (publico_id, texto, ip_hash, {columnas}) "
-        f"VALUES (:p, :t, :ip, {valores}) RETURNING id, publico_id",
-        {**datos, "p": secrets.token_urlsafe(12), "t": texto, "ip": ip_hash})
+        f"VALUES (:p, :t, :ip, {valores}) RETURNING id, publico_id", datos)
     return filas[0]
 
 
