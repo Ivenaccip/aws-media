@@ -136,10 +136,12 @@ class ApiStack(Stack):
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["cloudwatch:GetMetricStatistics"], resources=["*"]))
 
+        integracion = apigw_int.HttpLambdaIntegration("Fn", fn)
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name=e.api,
-            default_integration=apigw_int.HttpLambdaIntegration("Fn", fn),
+            default_integration=integracion,
         )
+        self._throttling(http_api, integracion, e)
 
         # Sin dominio propio (dev), la liga de la invitación y los callbacks
         # van al execute-api de ESTE stack: nunca a los de producción.
@@ -244,3 +246,29 @@ class ApiStack(Stack):
             cdk.CfnOutput(self, "DominioPublico", value=e.dominio_publico)
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)
         cdk.CfnOutput(self, "UserPoolClientId", value=client.user_pool_client_id)
+
+    @staticmethod
+    def _throttling(http_api: apigwv2.HttpApi, integracion, e: Entorno) -> None:
+        """RAG·7 — throttling de etapa. El HttpApi manda todo a la Lambda por
+        `$default`; para frenar SOLO lo público hace falta una ruta propia
+        (`/api/publico/{proxy+}`, misma Lambda) y ponerle su límite en la
+        etapa. Lo que pase del límite recibe 429 de API Gateway sin tocar la
+        Lambda ni la base; la página lo muestra como «Ahorita no está
+        disponible» (RAG·9)."""
+        if e.throttle_etapa is None and not (e.publico and e.throttle_publico):
+            return
+        etapa = http_api.default_stage.node.default_child
+        if e.throttle_etapa is not None:
+            tasa, rafaga = e.throttle_etapa
+            etapa.default_route_settings = apigwv2.CfnStage.RouteSettingsProperty(
+                throttling_rate_limit=tasa, throttling_burst_limit=rafaga)
+        if e.publico and e.throttle_publico is not None:
+            ruta, = http_api.add_routes(
+                path="/api/publico/{proxy+}", methods=[apigwv2.HttpMethod.ANY],
+                integration=integracion)
+            tasa, rafaga = e.throttle_publico
+            etapa.route_settings = {"ANY /api/publico/{proxy+}": {
+                "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}}
+            # La etapa nombra la ruta por su clave: si CloudFormation la
+            # actualiza antes de crear la ruta, falla con «Unable to find Route».
+            etapa.add_dependency(ruta.node.default_child)
