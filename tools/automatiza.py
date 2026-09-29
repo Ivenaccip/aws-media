@@ -6,6 +6,7 @@
     python tools/automatiza.py tope --corridas 200
     python tools/automatiza.py tope --usd 25
     python tools/automatiza.py tope --sin-usd
+    python tools/automatiza.py tope --por-ip 10     # corridas al día por visitante
 
 Cambia UNA FILA en la base, sin desplegar nada: el cambio vale en la
 siguiente petición. Cada cambio agrega una fila (queda el historial de quién
@@ -45,10 +46,14 @@ def _mostrar(db) -> None:
         u = ajuste.get("tope_usd")
         print(f"Tope de corridas al día: {c if c is not None else 'sin tope'}")
         print(f"Tope de gasto al día: {f'${u:.2f} dólares' if u is not None else 'sin tope'}")
+        from pipeline.publico import TOPE_IP_PROVISIONAL
+        i = ajuste.get("tope_por_ip")
+        print(f"Tope por visitante (IP) al día: "
+              f"{i if i is not None else f'{TOPE_IP_PROVISIONAL} (provisional)'}")
     print(f"Hoy (hora de México): {hoy['corridas']} corridas aceptadas, "
           f"${hoy['usd']:.2f} dólares de gasto anotado")
     from pipeline import publico
-    motivo = publico.permiso()
+    motivo = publico.permiso(por_ip=False)   # la herramienta no es un visitante
     print("Para el visitante:", "disponible" if motivo is None
           else f"«Ahorita no está disponible» (motivo interno: {motivo})")
 
@@ -71,6 +76,7 @@ def main() -> None:
     tp.add_argument("--corridas", type=int)
     tp.add_argument("--usd", type=float)
     tp.add_argument("--sin-usd", action="store_true")
+    tp.add_argument("--por-ip", type=int)
     tp.add_argument("--nota")
     args = ap.parse_args()
     if not args.cluster_arn or not args.secret_arn:
@@ -82,7 +88,8 @@ def main() -> None:
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
     from pipeline import db
 
-    for valor in (getattr(args, "tope_corridas", None), getattr(args, "corridas", None)):
+    for valor in (getattr(args, "tope_corridas", None), getattr(args, "corridas", None),
+                  getattr(args, "por_ip", None)):
         if valor is not None and valor < 0:
             ap.error("un tope no puede ser negativo")
 
@@ -98,10 +105,12 @@ def main() -> None:
     elif args.accion == "apagar":
         db.automatiza_ajustar(encendido=False, nota=args.nota)
     elif args.accion == "tope":
-        if args.corridas is None and args.usd is None and not args.sin_usd:
-            ap.error("di qué tope: --corridas N, --usd X o --sin-usd")
+        if (args.corridas is None and args.usd is None and not args.sin_usd
+                and args.por_ip is None):
+            ap.error("di qué tope: --corridas N, --usd X, --sin-usd o --por-ip N")
         db.automatiza_ajustar(tope_corridas=args.corridas, tope_usd=args.usd,
-                              sin_tope_usd=args.sin_usd, nota=args.nota)
+                              sin_tope_usd=args.sin_usd, tope_por_ip=args.por_ip,
+                              nota=args.nota)
     _mostrar(db)
 
 
