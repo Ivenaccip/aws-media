@@ -58,6 +58,12 @@ def procesar(corrida_id: int) -> str:
         if not db.automatiza_tomar(corrida_id):
             log.info("corrida %s: ya la tiene otro worker o ya terminó", corrida_id)
             return "ajena"
+        # RAG·5: si el dueño apagó mientras esta corrida esperaba en la fila,
+        # no se gasta en ella. Se cierra con su motivo y queda contada.
+        from pipeline import publico as freno
+        if not freno.encendido():
+            db.automatiza_cerrar(corrida_id, "no_salio", motivo="apagado")
+            return "apagado"
         try:
             salida = armar({"id": corrida_id})
         except Exception as e:  # noqa: BLE001 — cualquier fallo del armado cierra igual

@@ -28,6 +28,9 @@ def base(monkeypatch):
         return True
     monkeypatch.setattr(db, "automatiza_tomar", tomar)
     monkeypatch.setattr(db, "automatiza_cerrar", cerrar)
+    # el interruptor de RAG·5 encendido (su propio test en test_rag_freno.py)
+    from pipeline import publico as freno
+    monkeypatch.setattr(freno, "encendido", lambda: True)
     return estado
 
 

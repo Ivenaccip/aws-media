@@ -373,6 +373,20 @@ ESQUEMA: list[str] = [
     )""",
     """CREATE INDEX IF NOT EXISTS automatiza_contactos_corrida
        ON automatiza_contactos (corrida_id, id)""",
+    # RAG·5 — el interruptor y el tope diario de /automatiza. Es una FILA y no
+    # una variable de entorno a propósito: apagar en una emergencia (o cerrar
+    # el 25-oct) no puede exigir un deploy del API, que redespliega todo.
+    # Solo se agregan filas, igual que los contactos: vale la última, y las
+    # anteriores dicen quién apagó, cuándo y por qué. Sin ninguna fila la
+    # sección está APAGADA: se enciende a propósito, nunca por omisión.
+    """CREATE TABLE IF NOT EXISTS automatiza_interruptor (
+        id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        encendido     boolean NOT NULL,
+        tope_corridas int,
+        tope_usd      numeric(10, 2),
+        nota          text,
+        creado        timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
@@ -1375,3 +1389,60 @@ def automatiza_correo(id_: int) -> dict | None:
         "SELECT correo, origen, recontacto, creado FROM automatiza_contactos "
         "WHERE corrida_id = :i ORDER BY id DESC LIMIT 1", {"i": id_})
     return filas[0] if filas else None
+
+
+
+# ---------------------------------------------------------------------------
+# RAG·5 — interruptor y consumo del día de /automatiza
+
+# El día de la ventana es el de México, no el de UTC: con UTC el cupo se
+# reiniciaría a las 6 de la tarde, en plena hora de uso.
+ZONA_AUTOMATIZA = "America/Mexico_City"
+
+
+def automatiza_interruptor() -> dict | None:
+    """La fila vigente del interruptor (la última), o None si nunca se puso."""
+    filas = ejecutar(
+        "SELECT encendido, tope_corridas, tope_usd::text AS tope_usd, nota, creado "
+        "FROM automatiza_interruptor ORDER BY id DESC LIMIT 1")
+    if not filas:
+        return None
+    fila = filas[0]
+    fila["tope_usd"] = float(fila["tope_usd"]) if fila.get("tope_usd") else None
+    return fila
+
+
+def automatiza_ajustar(*, encendido: bool | None = None,
+                       tope_corridas: int | None = None,
+                       tope_usd: float | None = None,
+                       sin_tope_usd: bool = False,
+                       nota: str | None = None) -> dict:
+    """Agrega una fila nueva: lo que no se pasa se hereda de la vigente.
+    Sin fila previa, lo no dicho queda apagado y sin tope."""
+    vigente = automatiza_interruptor() or {"encendido": False,
+                                            "tope_corridas": None, "tope_usd": None}
+    nueva = {
+        "e": vigente["encendido"] if encendido is None else bool(encendido),
+        "c": vigente["tope_corridas"] if tope_corridas is None else int(tope_corridas),
+        "u": None if sin_tope_usd else (vigente["tope_usd"] if tope_usd is None else float(tope_usd)),
+        "n": nota,
+    }
+    ejecutar("INSERT INTO automatiza_interruptor (encendido, tope_corridas, tope_usd, nota) "
+             "VALUES (:e, :c, :u::numeric, :n)", nueva)
+    return automatiza_interruptor()
+
+
+def automatiza_consumo_hoy() -> dict:
+    """Corridas aceptadas hoy (hora de México) y su gasto REAL anotado.
+
+    Las rechazadas no cuentan: se rechazan antes de llamar a ningún modelo.
+    El gasto es solo el que ya se anotó (costo_usd, RAG·24): aquí no se
+    inventa ningún precio."""
+    filas = ejecutar(
+        f"""SELECT count(*) AS corridas, COALESCE(sum(costo_usd), 0)::text AS usd
+              FROM automatiza_corridas
+             WHERE estado <> 'rechazada'
+               AND creado >= date_trunc('day', now() AT TIME ZONE '{ZONA_AUTOMATIZA}')
+                             AT TIME ZONE '{ZONA_AUTOMATIZA}'""")
+    fila = filas[0] if filas else {"corridas": 0, "usd": "0"}
+    return {"corridas": int(fila["corridas"]), "usd": float(fila["usd"] or 0)}
