@@ -1,0 +1,404 @@
+/* /automatiza (RAG·9 a RAG·13) — el lienzo aprobado el 28-sep hecho CSS.
+
+   Solo tokens de /carta.css (docs/DISENO.md): la paleta la vigila
+   tests/test_m20_paleta.py y aquí no se escribe un color que no esté ahí.
+   Los tamaños de letra son los seis de la escala; el espacio, múltiplos de 4.
+
+   Lo mismo en todas las pantallas: la tarjeta de 720 centrada (espera, fila,
+   correo, no salió, rechazada) o la rejilla de dos columnas (pedir, listo).
+   A 760 px o menos todo baja a una columna y el panel lateral se va abajo;
+   a 390 px no puede haber scroll lateral (lo mira la prueba de Playwright). */
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; overflow-wrap: break-word;
+  background: var(--c-fondo); color: var(--c-texto);
+  font: 400 var(--t-sm)/1.5 var(--f-texto);
+}
+h1, h2, p, ol, ul, dl, dd, pre { margin: 0; }
+button, input, textarea { font: inherit; color: inherit; }
+a { color: var(--c-enlace); text-underline-offset: 4px; }
+a:hover { color: var(--c-texto); }
+::placeholder { color: #6b7a8f; opacity: 1; }
+
+/* lo que solo es para lectores de pantalla */
+.sr {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.saltar {
+  position: absolute; left: 16px; top: -64px; z-index: 10; padding: 8px 12px;
+  border-radius: var(--r-medio); background: var(--c-elevada); color: var(--c-texto);
+}
+.saltar:focus { top: 12px; }
+
+/* --- la letra: seis tamaños (§2) --- */
+.titulo-lg { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; text-wrap: balance; }
+.titulo-md { font: 700 var(--t-titulo-md)/1.2 var(--f-titulo); }
+.titulo-sm { font: 700 var(--t-titulo-sm)/1.3 var(--f-titulo); }
+.lead { font-size: var(--t-md); line-height: 1.55; color: var(--c-secundario); max-width: 62ch; }
+.lectura { font-size: var(--t-md); line-height: 1.55; max-width: 65ch; }
+.parrafo { max-width: 62ch; }
+.chica { font-size: var(--t-xs); line-height: 1.45; color: var(--c-secundario); }
+.secundario { color: var(--c-secundario); }
+.fuerte { font-weight: 600; }
+.normal { font-weight: 400; }
+.numeros { font-variant-numeric: tabular-nums; }
+.rotulo {
+  font: 600 var(--t-xs)/1.45 var(--f-texto); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--c-secundario);
+}
+.letra-chica { max-width: 70ch; }
+.cita { max-width: 70ch; }
+
+/* el título recibe el foco al cambiar de pantalla (para el lector de pantalla);
+   no es un control ni se llega con Tab, así que no lleva el anillo */
+h1[tabindex="-1"]:focus, h1[tabindex="-1"]:focus-visible { outline: none; }
+
+/* --- pilas: el gap del lienzo en cada bloque --- */
+.apilado { display: flex; flex-direction: column; gap: 2px; }
+.apilado-4 { display: flex; flex-direction: column; gap: 4px; }
+.apilado-6 { display: flex; flex-direction: column; gap: 6px; }
+.apilado-8 { display: flex; flex-direction: column; gap: 8px; }
+.apilado-10 { display: flex; flex-direction: column; gap: 10px; }
+.apilado-24 { display: flex; flex-direction: column; gap: 24px; }
+.bloque-10 { display: flex; flex-direction: column; gap: 10px; }
+.bloque-16 { display: flex; flex-direction: column; gap: 16px; }
+.bloque-18 { display: flex; flex-direction: column; gap: 18px; }
+.bloque-20 { display: flex; flex-direction: column; gap: 20px; }
+.bloque-24 { display: flex; flex-direction: column; gap: 24px; }
+.alinear-inicio { align-self: flex-start; }
+.acciones { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.solo-angosto { display: none; }
+
+/* --- iconos de trazo (§6): 24 px de dibujo, trazo 1.7, currentColor --- */
+.ico-22 { width: 22px; height: 22px; }
+.ico-24 { width: 24px; height: 24px; }
+.ico-28 { width: 28px; height: 28px; }
+.ico-40 { width: 40px; height: 40px; }
+.ico-exito { color: var(--c-exito); }
+.ico-error { color: var(--c-error); }
+.ico-ambar { color: var(--c-ambar-claro); }
+.ico-gris { color: var(--c-secundario); }
+.con-icono { display: flex; align-items: center; gap: 10px; }
+.titulo-estado { display: flex; align-items: center; gap: 12px; }
+
+/* --- superficies (§3: la profundidad la da el fondo, no la sombra) --- */
+.tarjeta {
+  background: var(--c-superficie); border: 1px solid var(--c-linea);
+  border-radius: var(--r-grande); padding: 28px;
+}
+.hundida {
+  background: var(--c-hundido); border: 1px solid var(--c-linea);
+  border-radius: var(--r-grande); padding: 20px 24px;
+}
+.linea { border: 0; height: 1px; margin: 0; background: var(--c-linea); }
+.etiqueta {
+  align-self: flex-start; padding: 4px 10px; border-radius: var(--r-chico);
+  border: 1px solid var(--c-linea); background: var(--c-superficie);
+  font-size: var(--t-xs); font-weight: 500; line-height: 1.45; color: var(--c-secundario);
+}
+
+/* --- botones: los de carta.css, con el alto de 48 del lienzo --- */
+.btn-grande { min-height: 48px; padding: 0 24px; }
+.btn-pri.btn-grande { padding: 0 28px; }
+.btn[aria-busy="true"] { cursor: progress; }
+.btn[aria-busy="true"]:active { transform: none; }
+.enlace-44 { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; font-weight: 500; }
+.btn-enlace.chica { font-size: var(--t-xs); min-height: 24px; text-align: left; color: var(--c-enlace);
+  text-decoration: underline; text-underline-offset: 4px; }
+.btn-enlace.chica:hover { color: var(--c-texto); }
+
+/* --- el aviso de carta.css, a lo ancho como en el lienzo --- */
+.pantalla .aviso-caja { width: auto; gap: 12px; padding: 14px 16px; }
+.aviso-caja .ico { margin-top: 2px; }
+.caja-exito {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+  border-radius: var(--r-medio); background: #102e22; border: 1px solid var(--c-exito);
+}
+.caja-exito > .ico { color: var(--c-exito); margin-top: 2px; }
+.nota-caja {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+  border-radius: var(--r-boton); background: var(--c-superficie); border: 1px solid var(--c-linea);
+}
+.nota-caja .ico { margin-top: 2px; }
+
+/* ================================================================
+   el marco: encabezado y main, con el contenido a 1152 como máximo
+   (el lienzo mide 1280 con 64 de margen a cada lado)
+   ================================================================ */
+.cabeza {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 20px max(64px, calc((100% - 1152px) / 2));
+  border-bottom: 1px solid var(--c-linea);
+}
+.marca {
+  font: 800 var(--t-titulo-sm)/1.3 var(--f-titulo); color: var(--c-texto); text-decoration: none;
+}
+.cabeza-entrar { display: flex; align-items: center; gap: 8px; color: var(--c-secundario); }
+.cabeza-entrar a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; font-weight: 500; }
+
+main { padding: 56px max(64px, calc((100% - 1152px) / 2)) 64px; }
+.buscando { color: var(--c-secundario); text-align: center; padding: 48px 0; }
+.pantalla.columna { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+.caja-720 { width: 100%; max-width: 720px; }
+.tarjeta.caja-720 { padding: 32px; }
+
+/* ================================================================
+   1 · pedir
+   ================================================================ */
+.pedir { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 48px; align-items: start; }
+.pedir-col { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.pedir-cabeza { display: flex; flex-direction: column; gap: 16px; }
+.pedir-cabeza h1 { max-width: 22ch; }
+.pedir-form { display: flex; flex-direction: column; gap: 24px; }
+
+.campo { display: flex; flex-direction: column; gap: 8px; }
+.campo label { font-weight: 600; }
+.campo-pie { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-xs); line-height: 1.45; color: var(--c-secundario); }
+.cuenta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cuenta.fuera { color: var(--c-error); font-weight: 600; }
+.campo-pie.escribiendo .cuenta { font-weight: 600; }
+
+textarea, input[type=email] {
+  width: 100%; background: var(--c-elevada); color: var(--c-texto);
+  border: 1px solid var(--c-campo); border-radius: var(--r-medio);
+  transition: border-color var(--m-rapido) ease-out;
+}
+textarea { display: block; resize: vertical; padding: 14px 16px; font-size: var(--t-md); line-height: 1.55; }
+#peticion { min-height: 150px; }
+input[type=email] { height: 48px; padding: 0 16px; }
+/* el error engruesa el borde a 2 px sin mover el texto: el padding cede 1 */
+.con-error textarea, textarea.con-error { border: 2px solid var(--c-error); padding: 13px 15px; }
+input[type=email].con-error { border: 2px solid var(--c-error); padding: 0 15px; }
+
+.campo-error { display: flex; align-items: flex-start; gap: 8px; color: #ffb4b4; }
+.campo-error .ico { color: var(--c-error); margin-top: 2px; }
+/* el campo tiembla una vez al aparecer el error (§4, 240 ms) */
+.tiembla { animation: tiembla 240ms ease-out 1; }
+@keyframes tiembla {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+}
+
+.ideas { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ideas > .chica { margin-right: 4px; }
+.ideas-lista { display: contents; }
+.btn.chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-medio); }
+
+/* el panel de «Cómo funciona» */
+.como { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
+.como-lista { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 20px; }
+.como-lista li { display: flex; gap: 14px; }
+.como-n {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--c-campo);
+  display: flex; align-items: center; justify-content: center; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.como-texto { display: flex; flex-direction: column; gap: 2px; }
+.necesitas { margin-top: 8px; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+
+/* ================================================================
+   2 · espera y 2b · fila (la misma tarjeta)
+   ================================================================ */
+.espera { display: flex; flex-direction: column; gap: 24px; }
+.espera-cabeza { display: flex; gap: 20px; align-items: center; }
+.espera-titulos { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+/* el orbe CSS del lienzo: solo mientras la IA piensa (§8). Respira despacio;
+   con «reducir movimiento» carta.css lo deja quieto. */
+.orbe {
+  flex-shrink: 0; width: 64px; height: 64px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f0a94a, #a96716 60%, #2e2110);
+  box-shadow: 0 0 0 8px #2e2110;
+  animation: respira 2400ms ease-in-out infinite;
+}
+@keyframes respira {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.lugar {
+  flex-shrink: 0; width: 64px; height: 64px; border-radius: 50%;
+  border: 1px solid var(--c-campo); background: var(--c-elevada);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+}
+.lugar-t { font-size: var(--t-xs); color: var(--c-secundario); }
+.lugar-n { font: 800 var(--t-titulo-md)/1 var(--f-titulo); }
+
+.progreso { display: flex; flex-direction: column; gap: 8px; }
+.barra { height: 8px; border-radius: 4px; background: var(--c-elevada); overflow: hidden; }
+.barra-relleno {
+  width: 0; height: 100%; border-radius: 4px; background: var(--c-ambar);
+  transition: width 600ms ease-out;
+}
+/* los anchos de la barra, en clases: la CSP no deja escribir style="" */
+.barra-relleno[data-avance="1"] { width: 8%; }
+.barra-relleno[data-avance="2"] { width: 33%; }
+.barra-relleno[data-avance="3"] { width: 58%; }
+.barra-relleno[data-avance="4"] { width: 83%; }
+
+.pasos { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.pasos li { display: flex; gap: 12px; align-items: center; color: var(--c-secundario); }
+.pasos li.hecho { color: var(--c-texto); }
+.pasos li.actual { color: var(--c-texto); font-weight: 600; }
+.paso-marca { flex-shrink: 0; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+.paso-hecho {
+  display: none; width: 22px; height: 22px; fill: none; stroke: var(--c-exito);
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+.paso-punto { box-sizing: content-box; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--c-campo); }
+.pasos li.hecho .paso-hecho { display: block; }
+.pasos li.hecho .paso-punto { display: none; }
+.pasos li.actual .paso-punto { border: 0; background: var(--c-ambar); box-shadow: 0 0 0 4px #2e2110; }
+.fila-pasos { gap: 12px; }
+
+.tope { display: flex; flex-direction: column; gap: 16px; }
+.espera-pie { gap: 6px; }
+.pedido { display: flex; flex-direction: column; gap: 6px; }
+
+/* ================================================================
+   formularios de correo (2b, 2d, 3 y 5)
+   ================================================================ */
+.form-correo { display: flex; flex-direction: column; gap: 12px; }
+.fila-campo { display: flex; gap: 8px; }
+.fila-campo input { flex: 1 1 auto; min-width: 0; }
+.fila-campo .btn { flex-shrink: 0; }
+.form-correo-grande { gap: 20px; }
+
+.casilla { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.casilla input {
+  flex-shrink: 0; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--c-ambar);
+  cursor: pointer;
+}
+
+/* el aviso simplificado: UN bloque (la plantilla del HTML), dos tamaños */
+.aviso-simple {
+  display: flex; flex-direction: column; gap: 12px; padding: 18px 20px;
+  background: var(--c-hundido); border: 1px solid var(--c-linea); border-radius: var(--r-boton);
+}
+.aviso-filas { display: flex; flex-direction: column; gap: 12px; }
+.aviso-filas > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; }
+.aviso-filas dt { font-weight: 600; }
+.aviso-simple.compacto { gap: 8px; padding: 14px 16px; font-size: var(--t-xs); line-height: 1.45; }
+.aviso-simple.compacto .aviso-filas { gap: 6px; }
+.aviso-simple.compacto .aviso-filas > div { grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
+.aviso-simple.compacto dd { color: var(--c-secundario); }
+
+/* ================================================================
+   3 · correo: la cadena de «Lo que hace»
+   ================================================================ */
+.lo-que-hace { border-radius: var(--r-boton); padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.cadena { list-style: none; padding: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cadena li { display: flex; gap: 8px; align-items: center; }
+.cadena-nodo {
+  padding: 4px 10px; border-radius: var(--r-chico); border: 1px solid var(--c-linea); background: var(--c-elevada);
+}
+.cadena .ico { width: 16px; height: 16px; color: #6b7a8f; }
+
+/* ================================================================
+   4 · listo
+   ================================================================ */
+.listo { display: flex; flex-direction: column; gap: 32px; }
+main:has(.listo:not([hidden])) { padding-top: 48px; }
+.listo-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start; }
+.listo-rejilla aside .hundida { padding: 20px 24px; }
+.nodos { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.nodos li {
+  display: grid; grid-template-columns: 32px 150px minmax(0, 1fr); gap: 14px; align-items: center;
+  padding: 12px 0; border-bottom: 1px solid var(--c-linea);
+}
+.nodos li:last-child { border-bottom: 0; }
+.nodos .nodo-n { color: var(--c-secundario); font-variant-numeric: tabular-nums; }
+.nodos .nodo-nombre { font-weight: 600; }
+.nodos .nodo-que { color: var(--c-secundario); }
+.guia { padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: var(--t-md); line-height: 1.55; max-width: 65ch; }
+.revisado { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.revisado li { display: flex; gap: 10px; align-items: center; }
+.revisado .ico { width: 18px; height: 18px; }
+.dos-botones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#que-paso { font-size: var(--t-sm); padding: 12px 14px; }
+
+/* ================================================================
+   5 · no salió y 5a · rechazada
+   ================================================================ */
+.lista-puntos { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.pantalla .hundida.bloque-10 { border-radius: var(--r-boton); padding: 16px 20px; }
+.detalles summary {
+  display: flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--c-secundario);
+  list-style: none;
+}
+.detalles summary::-webkit-details-marker { display: none; }
+.detalles summary::before {
+  content: ""; width: 8px; height: 8px; margin-right: 12px; border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform var(--m-normal) ease-out;
+}
+.detalles[open] summary::before { transform: rotate(45deg); }
+.detalles summary:hover { color: var(--c-texto); }
+.detalles pre {
+  margin-top: 8px; white-space: pre-wrap; padding: 12px; border-radius: var(--r-medio);
+  background: var(--c-hundido); color: var(--c-secundario);
+  font: var(--t-xs)/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ================================================================
+   6 · no disponible
+   ================================================================ */
+.pantalla.pausa {
+  width: 100%; max-width: 640px; margin: 0 auto; padding-top: 16px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+.pausa .lead { max-width: 58ch; }
+
+/* ================================================================
+   7 · celular: una columna, el panel lateral baja, sin scroll lateral
+   ================================================================ */
+@media (max-width: 760px) {
+  .solo-ancho { display: none; }
+  .solo-angosto { display: inline; }
+
+  .cabeza { padding: 12px 16px; }
+  main { padding: 28px 16px 40px; }
+  main:has(.listo:not([hidden])) { padding-top: 28px; }
+
+  .pedir { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .pedir-cabeza { gap: 12px; }
+  .pedir-cabeza h1 { max-width: none; }
+  .pedir-form { padding: 20px 16px; gap: 20px; }
+  #peticion { min-height: 210px; padding: 12px 14px; }
+  .con-error #peticion { padding: 11px 13px; }
+  .ideas { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ideas-lista { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pedir-form .acciones { flex-direction: column; align-items: stretch; gap: 12px; }
+  .pedir-form .acciones .btn { width: 100%; }
+  .como { padding-top: 0; }
+  .como-lista { gap: 16px; }
+  .como-lista li { gap: 12px; }
+
+  .tarjeta, .tarjeta.caja-720 { padding: 24px 20px; }
+  .espera-cabeza { gap: 16px; }
+  .orbe, .lugar { width: 56px; height: 56px; }
+  .orbe { box-shadow: 0 0 0 6px #2e2110; }
+  .hundida { padding: 16px 20px; }
+
+  .fila-campo { flex-direction: column; }
+  .fila-campo .btn { width: 100%; }
+  .aviso-filas > div,
+  .aviso-simple.compacto .aviso-filas > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .aviso-simple { padding: 16px; }
+
+  .listo { gap: 24px; }
+  .listo-rejilla { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .nodos li { grid-template-columns: 24px minmax(0, 1fr); gap: 4px 12px; }
+  .nodos .nodo-que { grid-column: 2; }
+  .listo .acciones .btn { width: 100%; }
+
+  .acciones .btn-pri { width: 100%; }
+  .pantalla.pausa { padding-top: 0; }
+  .pausa .btn-pri { align-self: stretch; }
+}
