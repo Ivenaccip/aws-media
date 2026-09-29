@@ -53,6 +53,7 @@ Y DESPUÉS DEL PRIMER DEPLOY, la base nace vacía:
     python tools/db_migrate.py        # con las envs de dev, no las de prod
     python tools/ssm_env.py --prefijo /media-ivenaccip-dev/env
     python tools/usuarios.py alta <correo> --pool <el de dev> --cluster-arn <el de dev>
+    python tools/vectores.py crear --confirmar   # RAG·17: el índice del RAG (no es del CDK)
 
 El alta manda un correo de invitación con el asunto `[dev]` y una liga a su
 propio execute-api (api.py:140). Dev tiene UN usuario, el dueño, y el grupo

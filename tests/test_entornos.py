@@ -537,6 +537,41 @@ def test_worker_publico_sin_claves_por_usuario_ni_cola_de_pago(dev):
     assert "automatiza/*" in texto
 
 
+def _politicas_worker_publico(jobs):
+    (_, worker), = _worker_publico(jobs)
+    rol = worker["Properties"]["Role"]["Fn::GetAtt"][0]
+    return worker, [r for r in _de_tipo(jobs, "AWS::IAM::Policy").values()
+                    if {"Ref": rol} in r["Properties"]["Roles"]]
+
+
+def test_worker_publico_solo_lee_su_indice_vectorial(dev):
+    """RAG·17: el worker que atiende a internet consulta el índice del RAG y
+    no puede escribirlo ni borrarlo, ni alcanzar otro índice."""
+    import json
+    worker, politicas = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    env = worker["Properties"]["Environment"]["Variables"]
+    assert env["VECTORES_BUCKET"] == DEV.vectores_bucket
+    assert env["VECTORES_INDICE"] == DEV.vectores_indice
+    sentencias = [s for p in politicas for s in p["Properties"]["PolicyDocument"]["Statement"]
+                  if "s3vectors" in json.dumps(s["Action"])]
+    assert len(sentencias) == 1
+    (s,) = sentencias
+    assert sorted(s["Action"]) == ["s3vectors:GetVectors", "s3vectors:QueryVectors"]
+    recurso = json.dumps(s["Resource"])
+    assert f"bucket/{DEV.vectores_bucket}/index/{DEV.vectores_indice}" in recurso
+    assert "*" not in recurso
+
+
+def test_nadie_mas_toca_s3_vectors(dev, prod):
+    """Ni el API, ni el worker de pago, ni nada de prod (su RAG llega en RAG·30)."""
+    import json
+    for nombre, template in {**dev, **prod}.items():
+        texto = json.dumps(template)
+        if nombre == "aws-media-jobs-dev":
+            continue
+        assert "s3vectors" not in texto and "VECTORES_" not in texto, nombre
+
+
 def test_api_de_dev_encola_en_la_publica(dev):
     import json
     api = dev["aws-media-api-dev"]

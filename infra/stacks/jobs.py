@@ -222,13 +222,15 @@ class JobsStack(Stack):
         self.cola_publica = None
         if entorno.publico:
             self.cola_publica = self._tuberia_publica(
-                repo, image_ref, cluster_db, media_bucket, cdn_domain, ssm_env)
+                repo, image_ref, cluster_db, media_bucket, cdn_domain, ssm_env,
+                entorno)
 
         cdk.CfnOutput(self, "QueueUrl", value=self.queue.queue_url)
         cdk.CfnOutput(self, "StateMachineArn", value=self.state_machine.state_machine_arn)
 
     def _tuberia_publica(self, repo, image_ref: str, cluster_db, media_bucket,
-                         cdn_domain: str, ssm_env: str) -> sqs.Queue:
+                         cdn_domain: str, ssm_env: str,
+                         entorno: Entorno) -> sqs.Queue:
         """Cola + worker de /automatiza, con los permisos más cortos posibles.
 
         El worker público corre código que atiende a cualquiera de internet,
@@ -282,5 +284,17 @@ class JobsStack(Stack):
         worker.add_to_role_policy(iam.PolicyStatement(
             actions=["ssm:GetParametersByPath"],
             resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{ssm_env}*"]))
+        # RAG·17: el índice del RAG, SOLO para leer. Lo crea el dueño con
+        # tools/vectores.py (el CDK no trae S3 Vectors) y lo llena la ingesta
+        # desde su máquina: nada que atiende a internet escribe el índice.
+        # GetVectors va junto a QueryVectors porque S3 Vectors lo exige para
+        # devolver metadatos o filtrar por ellos.
+        if entorno.vectores_bucket and entorno.vectores_indice:
+            worker.add_environment("VECTORES_BUCKET", entorno.vectores_bucket)
+            worker.add_environment("VECTORES_INDICE", entorno.vectores_indice)
+            worker.add_to_role_policy(iam.PolicyStatement(
+                actions=["s3vectors:QueryVectors", "s3vectors:GetVectors"],
+                resources=[f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/"
+                           f"{entorno.vectores_bucket}/index/{entorno.vectores_indice}"]))
         cdk.CfnOutput(self, "ColaPublicaUrl", value=cola.queue_url)
         return cola
