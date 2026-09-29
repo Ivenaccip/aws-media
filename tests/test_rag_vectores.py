@@ -157,6 +157,21 @@ def test_crear_solo_el_indice_si_el_bucket_ya_esta(s3v):
     assert len(herramienta.crear(entornos.DEV, True, s3v)) == 1
 
 
+def test_solo_bucket_no_toca_el_indice(s3v):
+    _no_existe(s3v, "get_vector_bucket")
+    s3v.st.add_response("create_vector_bucket", {"vectorBucketArn": "arn:x"}, {
+        "vectorBucketName": BUCKET, "encryptionConfiguration": {"sseType": "AES256"},
+        "tags": ANY})
+    hechos = herramienta.crear(entornos.DEV, True, s3v, solo_bucket=True)
+    assert len(hechos) == 1 and "bucket" in hechos[0]   # sin get_index ni create_index
+
+
+def test_solo_bucket_con_el_bucket_ya_creado(s3v):
+    s3v.st.add_response("get_vector_bucket", {"vectorBucket": {
+        "vectorBucketName": BUCKET, "vectorBucketArn": "arn:x", "creationTime": "2026-09-30T00:00:00Z"}})
+    assert herramienta.crear(entornos.DEV, True, s3v, solo_bucket=True) == []
+
+
 def test_crear_es_idempotente(s3v):
     s3v.st.add_response("get_vector_bucket", {"vectorBucket": {
         "vectorBucketName": BUCKET, "vectorBucketArn": "arn:x", "creationTime": "2026-09-30T00:00:00Z"}})

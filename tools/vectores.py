@@ -3,6 +3,10 @@
     python tools/vectores.py estado                 # dev por defecto
     python tools/vectores.py crear                  # ensayo: dice qué haría
     python tools/vectores.py crear --confirmar      # crea bucket e índice
+    python tools/vectores.py crear --solo-bucket --confirmar
+                                                    # solo el bucket: el índice
+                                                    # espera a que se decida el
+                                                    # modelo de embeddings
 
 Por qué un script y no el CDK: aws-cdk-lib 2.221 no trae S3 Vectors, y aunque
 lo trajera el índice tiene que sobrevivir a un `cdk destroy` de dev y al cierre
@@ -91,8 +95,11 @@ def nombres(entorno: entornos.Entorno) -> tuple[str, str]:
     return entorno.vectores_bucket, entorno.vectores_indice
 
 
-def crear(entorno: entornos.Entorno, confirmar: bool, s3v) -> list[str]:
-    """Crea lo que falte. Devuelve lo que hizo (o haría, sin `confirmar`)."""
+def crear(entorno: entornos.Entorno, confirmar: bool, s3v,
+          solo_bucket: bool = False) -> list[str]:
+    """Crea lo que falte. Devuelve lo que hizo (o haría, sin `confirmar`).
+    Con `solo_bucket` no mira ni crea el índice: el bucket no depende del
+    modelo de embeddings, el índice sí (su dimensión es para siempre)."""
     bucket, indice = nombres(entorno)
     hechos: list[str] = []
 
@@ -104,6 +111,8 @@ def crear(entorno: entornos.Entorno, confirmar: bool, s3v) -> list[str]:
                 encryptionConfiguration={"sseType": "AES256"},
                 tags={"proyecto": "aws-media", "entorno": entorno.nombre, "tarjeta": "RAG-17"})
         ya = None
+    elif solo_bucket:
+        return hechos
     else:
         ya = _no_existe(s3v.get_index, vectorBucketName=bucket, indexName=indice)
 
@@ -117,6 +126,8 @@ def crear(entorno: entornos.Entorno, confirmar: bool, s3v) -> list[str]:
                   "(sube la versión en infra/entornos.py) y se reindexa.")
         return hechos
 
+    if solo_bucket:
+        return hechos
     q = esperado()
     hechos.append(f"crear el índice {indice}: {q['dimension']} dimensiones, "
                   f"{q['distanceMetric']}, no filtrables {q['nonFilterableMetadataKeys']}")
@@ -161,6 +172,8 @@ def main(argv: list[str] | None = None, s3v=None) -> int:
     cr = sub.add_parser("crear")
     cr.add_argument("--confirmar", action="store_true",
                     help="crea de verdad; sin esto solo dice qué haría")
+    cr.add_argument("--solo-bucket", action="store_true",
+                    help="crea solo el bucket; el índice espera al modelo de embeddings")
     args = ap.parse_args(argv)
     entorno = entornos.PROD if args.entorno == "prod" else entornos.DEV
     nombres(entorno)                       # falla antes de hablar con AWS
@@ -169,9 +182,10 @@ def main(argv: list[str] | None = None, s3v=None) -> int:
     if args.accion == "estado":
         return estado(entorno, s3v)
 
-    hechos = crear(entorno, args.confirmar, s3v)
+    hechos = crear(entorno, args.confirmar, s3v, solo_bucket=args.solo_bucket)
     if not hechos:
-        print("Nada que hacer: el bucket y el índice ya existen con la configuración esperada.")
+        print("Nada que hacer: el bucket ya existe." if args.solo_bucket else
+              "Nada que hacer: el bucket y el índice ya existen con la configuración esperada.")
         return 0
     titulo = "Hecho:" if args.confirmar else "Ensayo — esto es lo que haría (agrega --confirmar):"
     print(titulo)
