@@ -99,6 +99,7 @@ def construir(app: cdk.App, image_ref: str) -> None:
              media_bucket=media.bucket,
              cdn_domain=media.cdn.distribution_domain_name,
              jobs_queue=jobs.queue, producir_sm=jobs.state_machine,
+             cola_publica=jobs.cola_publica,
              image_ref=image_ref, entorno=DEV)
 
 

@@ -1269,13 +1269,27 @@ def automatiza_a_fila(id_: int) -> bool:
     return bool(filas)
 
 
+# El worker público corta a los 5 min y su cola no reentrega antes de 6
+# (infra/stacks/jobs.py): una corrida en «armando» con más de esto es de un
+# worker que murió a medias, no de uno que sigue trabajando.
+RETOMAR_AUTOMATIZA_MIN = 6
+
+
 def automatiza_tomar(id_: int) -> bool:
     """en_fila → armando. UPDATE condicionado: si SQS entrega el mensaje dos
-    veces, solo un worker gana la corrida."""
+    veces, solo un worker gana la corrida.
+
+    También retoma una que se quedó en «armando» más de RETOMAR_AUTOMATIZA_MIN:
+    sin eso, un worker que muere a la mitad (timeout, la base despertando)
+    deja la corrida colgada para siempre y el reintento de SQS no la puede
+    tomar."""
     filas = ejecutar(
-        """UPDATE automatiza_corridas
-              SET estado = 'armando', empezo = now(), actualizado = now()
-            WHERE id = :i AND estado = 'en_fila'
+        f"""UPDATE automatiza_corridas
+              SET estado = 'armando', empezo = now(), actualizado = now(),
+                  reintentos = reintentos + CASE WHEN estado = 'armando' THEN 1 ELSE 0 END
+            WHERE id = :i AND (estado = 'en_fila'
+               OR (estado = 'armando'
+                   AND empezo < now() - interval '{RETOMAR_AUTOMATIZA_MIN} minutes'))
         RETURNING id""", {"i": id_})
     return bool(filas)
 

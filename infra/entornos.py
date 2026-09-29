@@ -56,6 +56,11 @@ class Entorno:
     # invitación. None = el entorno no tiene nombre propio y se entra por el
     # host execute-api.
     dominio_publico: str | None
+    # RAG·4 — la tubería pública de /automatiza (cola y worker propios). Va
+    # apagada en prod a propósito: aunque el código llegue a main, producción
+    # no crea nada público hasta el encendido de RAG·30, que es cambiar este
+    # False por True en PROD con su PR y su deploy, no un efecto secundario.
+    publico: bool = False
 
     @property
     def es_prod(self) -> bool:
@@ -85,4 +90,5 @@ DEV = Entorno(
     maquina_producir="aws-media-producir-dev",
     api="aws-media-dev",
     dominio_publico=None,
+    publico=True,
 )

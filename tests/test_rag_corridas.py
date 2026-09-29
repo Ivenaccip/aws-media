@@ -123,7 +123,7 @@ def test_transiciones_condicionadas(sql, fn, estado_origen):
     llamadas, respuestas = sql
     respuestas.append([])                          # otro worker ya la tomó
     assert fn(3) is False
-    assert f"AND estado = '{estado_origen}'" in llamadas[0][0]
+    assert f"estado = '{estado_origen}'" in llamadas[0][0]
 
 
 def test_cerrar_solo_a_estados_finales(sql):

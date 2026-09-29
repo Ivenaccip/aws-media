@@ -44,7 +44,8 @@ class ApiStack(Stack):
                  cluster: rds.DatabaseCluster, media_bucket: s3.Bucket,
                  cdn_domain: str, jobs_queue: sqs.Queue,
                  producir_sm: sfn.StateMachine, image_ref: str = "latest",
-                 entorno: Entorno = PROD, **kwargs) -> None:
+                 entorno: Entorno = PROD, cola_publica: sqs.IQueue | None = None,
+                 **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
         # Todos los nombres físicos salen de `entorno`. El default es PROD y
         # reproduce los nombres de hoy; pasar DEV a ESTE stack (el vivo) no
@@ -104,6 +105,11 @@ class ApiStack(Stack):
         media_bucket.grant_put(fn)
         media_bucket.grant_read(fn)
         jobs_queue.grant_send_messages(fn)
+        # RAG·4: /api/publico/* encola en SU cola, nunca en la de pago. Solo
+        # enviar: quien consume es el worker público.
+        if cola_publica is not None:
+            fn.add_environment("PUBLICO_QUEUE_URL", cola_publica.queue_url)
+            cola_publica.grant_send_messages(fn)
         producir_sm.grant_start_execution(fn)
         # M23 · D (prerrequisito): el freno de capacidad cuenta las ejecuciones
         # vivas antes de arrancar otra (pipeline/jobs.py `_hay_sitio`). Sin este

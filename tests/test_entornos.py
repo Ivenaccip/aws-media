@@ -360,7 +360,8 @@ def test_dev_usa_sus_propios_nombres(dev):
     for e in _env_lambdas(api) + _env_lambdas(jobs):
         if "SSM_ENV_PREFIX" in e:
             assert e["SSM_ENV_PREFIX"] == DEV.ssm_env
-            assert e["SSM_USUARIOS_PREFIX"] == DEV.ssm_usuarios
+            # el worker público (RAG·4) no lleva claves por-usuario a propósito
+            assert e.get("SSM_USUARIOS_PREFIX", DEV.ssm_usuarios) == DEV.ssm_usuarios
         if "COGNITO_DOMINIO" in e:
             assert e["COGNITO_DOMINIO"].startswith(DEV.dominio_cognito + ".auth.")
 
@@ -480,3 +481,66 @@ def test_solo_dev_manda_a_las_pantallas_nuevas(prod, dev):
         for env in _env_lambdas(template):
             assert "UI_ETAPA_MINIMA" not in env, "solo la Lambda del API sirve pantallas"
 
+
+
+# --- RAG·4: la tubería pública de /automatiza, solo en dev -------------------
+
+def _worker_publico(template):
+    fns = [(k, r) for k, r in _de_tipo(template, "AWS::Lambda::Function").items()
+           if r["Properties"].get("ImageConfig", {}).get("Command") == ["worker.publico.handler"]]
+    return fns
+
+
+def test_publico_apagado_en_prod_y_encendido_en_dev():
+    assert PROD.publico is False, "prod se enciende en RAG·30, con su PR, no de paso"
+    assert DEV.publico is True
+
+
+def test_prod_no_crea_nada_publico(prod):
+    import json
+    for nombre, template in prod.items():
+        assert not _worker_publico(template), f"{nombre} tiene worker público"
+        texto = json.dumps(template)
+        assert "PUBLICO_QUEUE_URL" not in texto and "ColaPublicaUrl" not in texto
+
+
+def test_dev_tiene_cola_y_worker_publicos_propios(dev):
+    jobs = dev["aws-media-jobs-dev"]
+    (id_worker, worker), = _worker_publico(jobs)
+    assert worker["Properties"]["Timeout"] == 300
+    colas = _de_tipo(jobs, "AWS::SQS::Queue")
+    publica = next(k for k in colas if k.startswith("Publico") and "Dlq" not in k)
+    # la cola pública no reentrega antes de que el worker corte
+    assert colas[publica]["Properties"]["VisibilityTimeout"] > 300
+    # y el worker consume SOLO la cola pública
+    fuentes = [r["Properties"] for r in _de_tipo(jobs, "AWS::Lambda::EventSourceMapping").values()
+               if r["Properties"]["FunctionName"] == {"Ref": id_worker}]
+    assert len(fuentes) == 1
+    assert fuentes[0]["EventSourceArn"] == {"Fn::GetAtt": [publica, "Arn"]}
+    assert fuentes[0]["ScalingConfig"]["MaximumConcurrency"] == 2
+
+
+def test_worker_publico_sin_claves_por_usuario_ni_cola_de_pago(dev):
+    import json
+    jobs = dev["aws-media-jobs-dev"]
+    (id_worker, worker), = _worker_publico(jobs)
+    env = worker["Properties"]["Environment"]["Variables"]
+    for prohibida in ("SSM_USUARIOS_PREFIX", "JOBS_QUEUE_URL", "CREDITOS_BACKEND"):
+        assert prohibida not in env, prohibida
+    rol = worker["Properties"]["Role"]["Fn::GetAtt"][0]
+    politicas = [r for r in _de_tipo(jobs, "AWS::IAM::Policy").values()
+                 if {"Ref": rol} in r["Properties"]["Roles"]]
+    texto = json.dumps(politicas)
+    assert DEV.ssm_usuarios not in texto
+    assert "sqs:SendMessage" not in texto
+    assert "s3:DeleteObject" not in texto
+    assert "automatiza/*" in texto
+
+
+def test_api_de_dev_encola_en_la_publica(dev):
+    import json
+    api = dev["aws-media-api-dev"]
+    envs = [e for e in _env_lambdas(api) if "PUBLICO_QUEUE_URL" in e]
+    assert len(envs) == 1
+    assert envs[0]["PUBLICO_QUEUE_URL"] != envs[0]["JOBS_QUEUE_URL"]
+    assert "sqs:SendMessage" in json.dumps(_de_tipo(api, "AWS::IAM::Policy"))
