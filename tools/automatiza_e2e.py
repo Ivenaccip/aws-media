@@ -47,7 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--texto", default=TEXTO)
     ap.add_argument("--espera", type=int, default=120, help="segundos máximos de sondeo")
     a = ap.parse_args(argv)
-    base = a.api.rstrip("/") + "/api/publico"
+    # se acepta con o sin https:// (como sale del output del deploy o copiado a mano)
+    api = a.api.strip().rstrip("/")
+    if not api.startswith(("http://", "https://")):
+        api = "https://" + api
+    base = api + "/api/publico"
 
     codigo, cuerpo, ms = _pedir("GET", base + "/estado")
     print(f"1. estado      {codigo} en {ms:.0f} ms  {cuerpo}")
@@ -79,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"   → terminó sin flujo: {cuerpo}")
         return 1
 
-    codigo, flujo, ms = _pedir("GET", a.api.rstrip("/") + cuerpo["descarga"])
+    codigo, flujo, ms = _pedir("GET", api + cuerpo["descarga"])
     ok = codigo == 200 and isinstance(flujo, dict) and flujo.get("nodes")
     print(f"4. descargar   {codigo} en {ms:.0f} ms  {len(flujo.get('nodes', [])) if ok else flujo} nodos")
     print("\nTUBERÍA COMPLETA ✓" if ok else "\nFALLÓ la descarga")
