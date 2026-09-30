@@ -89,6 +89,8 @@ def main() -> None:
     os.environ["DB_SECRET_ARN"] = args.secret_arn
     os.environ["DB_NAME"] = args.database
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+    # el .env trae los ARNs del clúster VIVO: que se vea a cuál se le habla
+    print(f"Clúster: {args.cluster_arn.rsplit(':', 1)[-1]} · base: {args.database}")
     from pipeline import db
 
     for valor in (getattr(args, "tope_corridas", None), getattr(args, "corridas", None),
