@@ -410,6 +410,25 @@ ESQUEMA: list[str] = [
     # Columna aparte y no en el CREATE: la tabla ya existe en dev. Si el API
     # nuevo llega antes que db_migrate, automatiza_crear guarda sin ella.
     "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS aviso_version text",
+    # RAG·20 — con qué se buscó, y lo que necesita el caché de RAG·32 para
+    # reciclar corridas pasadas sin volver a pagar embeddings. Columnas aparte
+    # y no en el CREATE: la tabla ya existe en dev.
+    #   peticion_vector   el embedding de la PETICIÓN ORIGINAL (task_type de
+    #                     consulta), sea cual sea el camino: así las corridas
+    #                     se comparan entre sí. Es derivado del texto: se borra
+    #                     con él, al mismo plazo (RAG·0).
+    #   peticion_modelo   «gemini-embedding-001/1024»: un vector de otro modelo
+    #                     o dimensión no se puede comparar con estos.
+    #   catalogo_version  «n8n 2.41.4 · prototipo»: si cambia, lo que está en
+    #                     caché ya no vale.
+    #   busqueda_camino   directo · reescrita (RAG·20); para medir cuál gana.
+    #   busqueda          el detalle: consulta usada, nodos sugeridos y, si
+    #                     la reescritura falló, por qué se cayó a directo.
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS peticion_vector real[]",
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS peticion_modelo text",
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS catalogo_version text",
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS busqueda_camino text",
+    "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS busqueda jsonb",
 ]
 
 
@@ -1414,6 +1433,26 @@ def automatiza_anotar(id_: int, **campos) -> None:
     sets = ", ".join(f"{k} = :{k}{_CAST_AUTOMATIZA.get(k, '')}" for k in campos)
     ejecutar(f"UPDATE automatiza_corridas SET {sets}, actualizado = now() "
              "WHERE id = :i", {**campos, "i": id_})
+
+
+def automatiza_texto(id_: int) -> str | None:
+    """Lo que pidió el visitante, por id interno (lo usa el worker)."""
+    filas = ejecutar("SELECT texto FROM automatiza_corridas WHERE id = :i", {"i": id_})
+    return filas[0]["texto"] if filas else None
+
+
+def automatiza_busqueda(id_: int, *, vector: list[float] | None, modelo: str | None,
+                        catalogo: str, camino: str, detalle: dict) -> None:
+    """Anota con qué se buscó (RAG·20). El vector viaja como JSON y se vuelve
+    real[] en el SQL: el Data API no manda arreglos de números."""
+    ejecutar(
+        """UPDATE automatiza_corridas
+              SET peticion_vector = CASE WHEN :v::jsonb IS NULL THEN NULL ELSE
+                      ARRAY(SELECT x::real FROM jsonb_array_elements_text(:v::jsonb) x) END,
+                  peticion_modelo = :m, catalogo_version = :c,
+                  busqueda_camino = :k, busqueda = :d::jsonb, actualizado = now()
+            WHERE id = :i""",
+        {"i": id_, "v": vector, "m": modelo, "c": catalogo, "k": camino, "d": detalle})
 
 
 def automatiza_lugar(id_: int) -> int | None:

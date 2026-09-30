@@ -65,6 +65,17 @@ def armar(corrida: dict) -> dict:
             "de_mentira": True}
 
 
+def _entender(corrida_id: int):
+    """RAG·20 — la consulta con que se va a buscar y el vector de la petición.
+    Sin modelo de reescritura todavía (RAG·0): el camino «reescrita» cae solo
+    a directo y queda anotado."""
+    from pipeline import db, embeddings, puente
+    texto = db.automatiza_texto(corrida_id)
+    if not texto:
+        raise ValueError("la corrida no tiene texto")
+    return puente.entender(corrida_id, texto, embeber=embeddings.embeber)
+
+
 def _paso(corrida_id: int, paso: str) -> None:
     """Anota el paso y, con el armado de mentira, se queda en él un rato."""
     from pipeline import db
@@ -90,12 +101,18 @@ def procesar(corrida_id: int) -> str:
         if not freno.encendido():
             db.automatiza_cerrar(corrida_id, "no_salio", motivo="apagado")
             return "apagado"
-        # entender y buscar son hoy solo el letrero (el puente de idioma y la
-        # búsqueda llegan con RAG·20/21); revisar, el validador de RAG·22
-        for paso in ("entender", "buscar", "armar"):
-            _paso(corrida_id, paso)
+        # RAG·20: «entender» prepara la consulta y embebe la petición, pero
+        # SOLO con el armado real (RAG·21 apaga ARMADO_DE_MENTIRA): con el de
+        # mentira no se llama a ningún modelo. «buscar» llega con RAG·21 y
+        # «revisar», el validador, con RAG·22.
+        _paso(corrida_id, "entender")
+        corrida = {"id": corrida_id}
         try:
-            salida = armar({"id": corrida_id})
+            if not freno.ARMADO_DE_MENTIRA:
+                corrida["consulta"], corrida["vector"] = _entender(corrida_id)
+            for paso in ("buscar", "armar"):
+                _paso(corrida_id, paso)
+            salida = armar(corrida)
         except Exception as e:  # noqa: BLE001 — cualquier fallo del armado cierra igual
             log.exception("corrida %s: no salió", corrida_id)
             db.automatiza_cerrar(corrida_id, "no_salio", motivo=f"{type(e).__name__}: {e}"[:500])
