@@ -1,0 +1,259 @@
+{
+  "nota": "BORRADOR del conjunto de prueba de /automatiza (RAG·26), escrito por Claude el 30-sep para que el dueño lo corrija: ¿así escribe tu público? Cada petición dice qué se espera (listo · sin_cobertura) y los nodos que el flujo DEBE traer (no todos los que puede traer). Lo usa tools/eval_rag.py para comparar modelos (Opus 5.5 contra Sonnet 5.5) y caminos de búsqueda (directo contra reescrita). No se usa en producción.",
+  "estado": "borrador",
+  "peticiones": [
+    {
+      "id": "contenido-1",
+      "dominio": "contenido",
+      "peticion": "Cada que suba un video a mi canal quiero que me llegue un mensaje a telegram con el link",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.telegram"
+      ]
+    },
+    {
+      "id": "contenido-2",
+      "dominio": "contenido",
+      "peticion": "Quiero que todos los lunes a las 9 me mande un resumen de las noticias de un feed RSS a mi correo",
+      "esperado": "sin_cobertura",
+      "nodos": [],
+      "nota": "RSS Feed Read es nivel 3: hoy debería salir sin_cobertura o resolverlo con HTTP Request"
+    },
+    {
+      "id": "contenido-3",
+      "dominio": "contenido",
+      "peticion": "que la IA me escriba 3 ideas de post para instagram cada mañana y las guarde en un google sheets",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.scheduleTrigger",
+        "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "n8n-nodes-base.googleSheets"
+      ]
+    },
+    {
+      "id": "contenido-4",
+      "dominio": "contenido",
+      "peticion": "Publicar automaticamente en instagram las fotos que ponga en una carpeta de drive",
+      "esperado": "sin_cobertura",
+      "nodos": [],
+      "nota": "Instagram/Facebook Graph no está permitido"
+    },
+    {
+      "id": "ventas-1",
+      "dominio": "ventas",
+      "peticion": "Cuando alguien llene mi formulario de contacto, guarda sus datos en una hoja de calculo y mandale un correo de bienvenida",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.formTrigger",
+        "n8n-nodes-base.googleSheets",
+        "n8n-nodes-base.gmail"
+      ]
+    },
+    {
+      "id": "ventas-2",
+      "dominio": "ventas",
+      "peticion": "Cada que entre un lead nuevo en HubSpot avisame por Slack",
+      "esperado": "sin_cobertura",
+      "nodos": [],
+      "nota": "HubSpot es nivel 3"
+    },
+    {
+      "id": "ventas-3",
+      "dominio": "ventas",
+      "peticion": "tengo una lista de clientes en sheets, quiero mandarles un whatsapp de recordatorio de pago el dia 1 de cada mes",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.googleSheets",
+        "n8n-nodes-base.whatsApp"
+      ]
+    },
+    {
+      "id": "ventas-4",
+      "dominio": "ventas",
+      "peticion": "Cuando me llegue un correo de un cliente preguntando precios, que una IA le conteste con mi lista de precios",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.gmailTrigger",
+        "@n8n/n8n-nodes-langchain.agent",
+        "n8n-nodes-base.gmail"
+      ]
+    },
+    {
+      "id": "docs-1",
+      "dominio": "documentos",
+      "peticion": "Cuando me llegue una factura en PDF por correo, saca el total y la fecha y anotalo en google sheets",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.gmailTrigger",
+        "n8n-nodes-base.extractFromFile",
+        "n8n-nodes-base.googleSheets"
+      ]
+    },
+    {
+      "id": "docs-2",
+      "dominio": "documentos",
+      "peticion": "Guarda en google drive todos los archivos adjuntos que me lleguen al gmail",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.gmailTrigger",
+        "n8n-nodes-base.googleDrive"
+      ]
+    },
+    {
+      "id": "docs-3",
+      "dominio": "documentos",
+      "peticion": "quiero un chat donde pueda preguntarle cosas a mis PDFs de politicas de la empresa",
+      "esperado": "listo",
+      "nodos": [
+        "@n8n/n8n-nodes-langchain.chatTrigger",
+        "@n8n/n8n-nodes-langchain.agent",
+        "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+        "@n8n/n8n-nodes-langchain.embeddingsOpenAi"
+      ]
+    },
+    {
+      "id": "docs-4",
+      "dominio": "documentos",
+      "peticion": "Convierte cada fila nueva de mi hoja de pedidos en un documento de google docs",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.googleSheets",
+        "n8n-nodes-base.googleDocs"
+      ]
+    },
+    {
+      "id": "soporte-1",
+      "dominio": "soporte",
+      "peticion": "Un bot de telegram que conteste las preguntas frecuentes de mis clientes con IA y recuerde la conversacion",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.telegramTrigger",
+        "@n8n/n8n-nodes-langchain.agent",
+        "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "n8n-nodes-base.telegram"
+      ]
+    },
+    {
+      "id": "soporte-2",
+      "dominio": "soporte",
+      "peticion": "Revisar cada 5 minutos si mi pagina web esta caida y si no responde mandarme un correo",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.if"
+      ]
+    },
+    {
+      "id": "soporte-3",
+      "dominio": "soporte",
+      "peticion": "Cuando alguien abra un issue en GitHub mandarlo a un canal de slack",
+      "esperado": "sin_cobertura",
+      "nodos": [],
+      "nota": "GitHub Trigger es nivel 3"
+    },
+    {
+      "id": "soporte-4",
+      "dominio": "soporte",
+      "peticion": "clasifica los correos que me llegan en urgente o no urgente con IA y los urgentes mandamelos a telegram",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.gmailTrigger",
+        "n8n-nodes-base.telegram"
+      ]
+    },
+    {
+      "id": "productividad-1",
+      "dominio": "productividad",
+      "peticion": "Todos los viernes mandame por correo un resumen de las tareas que quedan pendientes en mi notion",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.notion",
+        "n8n-nodes-base.gmail"
+      ]
+    },
+    {
+      "id": "productividad-2",
+      "dominio": "productividad",
+      "peticion": "Agrega a mi Google Calendar las citas que la gente agenda en mi formulario",
+      "esperado": "sin_cobertura",
+      "nodos": [],
+      "nota": "Google Calendar es nivel 3"
+    },
+    {
+      "id": "productividad-3",
+      "dominio": "productividad",
+      "peticion": "Cuando llegue un webhook de mi tienda con un pedido nuevo, guardalo en airtable y respondele ok",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.webhook",
+        "n8n-nodes-base.airtable",
+        "n8n-nodes-base.respondToWebhook"
+      ]
+    },
+    {
+      "id": "productividad-4",
+      "dominio": "productividad",
+      "peticion": "Juntar todas las filas de mi hoja de gastos y mandarme el total del mes por slack",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.googleSheets",
+        "n8n-nodes-base.slack"
+      ]
+    },
+    {
+      "id": "ia-1",
+      "dominio": "agentes",
+      "peticion": "Un agente de IA que pueda buscar y agregar filas en mi hoja de inventario cuando le pregunto por chat",
+      "esperado": "listo",
+      "nodos": [
+        "@n8n/n8n-nodes-langchain.chatTrigger",
+        "@n8n/n8n-nodes-langchain.agent",
+        "n8n-nodes-base.googleSheetsTool"
+      ]
+    },
+    {
+      "id": "ia-2",
+      "dominio": "agentes",
+      "peticion": "quiero usar claude de anthropic para resumir los correos largos que me llegan y mandarme el resumen por telegram",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.gmailTrigger",
+        "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+        "n8n-nodes-base.telegram"
+      ],
+      "nota": "pide otro proveedor: debe usar Anthropic, no OpenAI"
+    },
+    {
+      "id": "ia-3",
+      "dominio": "agentes",
+      "peticion": "que la ia consulte el clima de mi ciudad en una API y me diga en la mañana si llevo paraguas",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.httpRequest"
+      ]
+    },
+    {
+      "id": "vago-1",
+      "dominio": "vago",
+      "peticion": "automatiza mi negocio",
+      "esperado": "sin_cobertura",
+      "nodos": [],
+      "nota": "demasiado vago: debería pedir detalles o no cubrir, nunca inventar"
+    },
+    {
+      "id": "datos-1",
+      "dominio": "privacidad",
+      "peticion": "Mandale un correo a juan.perez@miempresa.com cada que se agregue una fila a mi hoja, mi clave de api es sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456",
+      "esperado": "listo",
+      "nodos": [
+        "n8n-nodes-base.googleSheets",
+        "n8n-nodes-base.gmail"
+      ],
+      "nota": "el flujo NO debe llevar la clave ni el correo real"
+    }
+  ]
+}

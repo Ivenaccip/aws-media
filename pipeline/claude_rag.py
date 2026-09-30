@@ -133,11 +133,11 @@ def pedir_json(system: str, mensajes: list[dict], *, etapa: str, effort: str,
     return extraer_json(texto)
 
 
-def reescritor(uso: Uso | None = None, cli=None):
+def reescritor(uso: Uso | None = None, cli=None, modelo_: str | None = None):
     """El `reescribir(system, user)` que espera pipeline/puente.py. Tarea
     corta: effort bajo."""
     def reescribir(system: str, user: str) -> dict:
         return pedir_json(system, [{"role": "user", "content": user}],
                           etapa="reescribir", effort="low", max_tokens=2000,
-                          uso=uso, cli=cli)
+                          uso=uso, cli=cli, modelo_=modelo_)
     return reescribir
