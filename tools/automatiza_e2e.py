@@ -35,6 +35,10 @@ import time
 import urllib.error
 import urllib.request
 
+# la consola de Windows (cp1252) no sabe escribir «→» ni «✓»
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 TEXTO = ("Cada vez que llegue un correo con una factura en PDF, guardarla en "
          "una carpeta de Google Drive y anotar el monto en una hoja de cálculo.")
 PAGINAS = ("/automatiza", "/privacidad", "/terminos")
