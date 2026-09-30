@@ -111,7 +111,7 @@ def preparar(peticion: str, camino: str | None = None, *,
 
 def modelo_vector() -> str:
     from pipeline import vectores
-    return f"{vectores.MODELO_EMBEDDINGS}/{vectores.DIMENSION}"
+    return f"{vectores.modelo()}/{vectores.DIMENSION}"
 
 
 def entender(corrida_id: int, peticion: str, *,

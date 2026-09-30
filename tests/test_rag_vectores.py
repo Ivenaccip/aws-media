@@ -61,8 +61,21 @@ def test_normaliza_a_norma_uno():
     assert math.isclose(sum(x * x for x in v), 1.0)
 
 
-def test_modelo_decidido():
-    assert vectores.MODELO_EMBEDDINGS == "gemini-embedding-001"
+def test_modelo_decidido(monkeypatch):
+    assert vectores.modelo() == "gemini-embedding-001"          # el plan
+    monkeypatch.setenv("EMBEDDINGS", "titan")                   # respaldo temporal
+    assert vectores.modelo() == "amazon.titan-embed-text-v2:0"
+    monkeypatch.setenv("EMBEDDINGS", "openai")
+    with pytest.raises(ValueError, match="openai"):
+        vectores.proveedor()
+
+
+def test_dev_usa_titan_en_su_propio_indice():
+    """Respaldo temporal (30-sep): dev embebe con Titan en un índice aparte.
+    Cada modelo tiene su índice; volver a Gemini es volver a n8n-docs-v1."""
+    assert entornos.DEV.embeddings == "titan"
+    assert "titan" in INDICE and INDICE != "n8n-docs-v1"
+    assert entornos.PROD.embeddings is None
 
 
 def test_la_configuracion_fijada():

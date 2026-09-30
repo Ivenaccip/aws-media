@@ -85,6 +85,10 @@ class Entorno:
     # Store, no tools/ssm_env.py (que sube el .env en bloque a /env). Tiene que
     # existir donde `publico` sea True: el CDK se niega a armar el worker sin él.
     ssm_publico: str | None = None
+    # Con qué modelo se embebe el índice de arriba: «gemini» (el plan) o
+    # «titan» (respaldo temporal por Bedrock, 30-sep). Va amarrado al índice:
+    # cambiarlo es cambiar también `vectores_indice` (pipeline/vectores.py).
+    embeddings: str | None = None
 
     @property
     def es_prod(self) -> bool:
@@ -124,7 +128,11 @@ DEV = Entorno(
     # `aws-media-vectores-dev` devolvió «The requested bucket name is reserved».
     vectores_bucket="media-ivenaccip-vectores-dev",
     # el sufijo es la versión del corpus: reindexar con otro modelo de
-    # embeddings o con otro troceado es un índice NUEVO, nunca pisar este
-    vectores_indice="n8n-docs-v1",
+    # embeddings o con otro troceado es un índice NUEVO, nunca pisar este.
+    # RESPALDO TEMPORAL (30-sep): Google no acepta aún la tarjeta, así que dev
+    # usa Titan V2 por Bedrock en su propio índice. Al volver a Gemini:
+    # vectores_indice="n8n-docs-v1" y embeddings="gemini" (ese índice sigue ahí).
+    vectores_indice="n8n-docs-titan-v1",
+    embeddings="titan",
     ssm_publico="/media-ivenaccip-dev/publico",
 )

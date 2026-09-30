@@ -41,7 +41,18 @@ from typing import Any, Iterable
 # cuenta bajo 3072. task_type de documento en la ingesta y de consulta en la
 # pregunta. Contexto de 2 048 tokens: los trozos (RAG·19) no pasan de ahí.
 # Cambiar de modelo es re-embeber todo en un índice nuevo (n8n-docs-v2).
-MODELO_EMBEDDINGS = "gemini-embedding-001"
+#
+# RESPALDO TEMPORAL (30-sep): la cuenta de Google está en verificación y no
+# acepta la tarjeta. Mientras tanto dev embebe con Amazon Titan Text
+# Embeddings V2 por Bedrock: IAM puro, sin clave en SSM (y sin KMS). NO es la
+# decisión final: al volver a Gemini, dev regresa a EMBEDDINGS="gemini" y al
+# índice n8n-docs-v1 en infra/entornos.py. Cada modelo tiene SU índice: dos
+# espacios de vectores distintos jamás se mezclan en uno.
+MODELOS = {
+    "gemini": "gemini-embedding-001",
+    "titan": "amazon.titan-embed-text-v2:0",   # respaldo temporal
+}
+PROVEEDOR_POR_DEFECTO = "gemini"
 DIMENSION = 1024
 METRICA = "cosine"
 TIPO_DATO = "float32"
@@ -80,6 +91,19 @@ class Resultado:
     metadatos: dict[str, Any]
 
 
+def proveedor() -> str:
+    """«gemini» o «titan», de EMBEDDINGS (el CDK la pone en el worker desde
+    infra/entornos.py; la ingesta y el eval, desde el mismo entorno)."""
+    p = os.getenv("EMBEDDINGS") or PROVEEDOR_POR_DEFECTO
+    if p not in MODELOS:
+        raise ValueError(f"EMBEDDINGS={p!r}: tiene que ser uno de {sorted(MODELOS)}")
+    return p
+
+
+def modelo() -> str:
+    return MODELOS[proveedor()]
+
+
 def configurado() -> bool:
     return bool(os.getenv("VECTORES_BUCKET") and os.getenv("VECTORES_INDICE"))
 
@@ -100,7 +124,8 @@ def cliente():
 
 def normalizar(vector: Iterable[float]) -> list[float]:
     """L2 = 1. Obligatorio con gemini-embedding-001 recortado a 1024: sin esto
-    los vectores salen con normas distintas entre sí."""
+    los vectores salen con normas distintas entre sí. (Titan ya los devuelve
+    normalizados; pasar otra vez no cambia nada.)"""
     v = [float(x) for x in vector]
     norma = math.sqrt(sum(x * x for x in v))
     if not math.isfinite(norma) or norma == 0:

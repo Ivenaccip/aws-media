@@ -41,7 +41,7 @@ METADATOS: filtrables `nodos` (lista de tipos), `tipo` (nodo · credencial),
 LA CLAVE DE GEMINI sale de SSM `<ssm_publico>/GEMINI_API_KEY` con tus
 credenciales de AWS (capa 1: nunca la de plataforma del .env). No se imprime.
 
-Precio: sin precio confirmado (gemini-embedding-001 no está en tools/pricing.json).
+Precio: sin precio confirmado (el modelo de embeddings no está en tools/pricing.json).
 El ensayo da los tokens; el número en dólares sale de ahí cuando esté el precio.
 """
 from __future__ import annotations
@@ -297,7 +297,7 @@ def imprimir(r: dict, docs_commit: str) -> None:
     print(f"Trozo más grande: {r['trozo_mas_grande']:,} caracteres (tope {MAX_CARACTERES:,})")
     if r["sin_docs"]:
         print(f"Sin página de documentación: {', '.join(r['sin_docs'])}")
-    print("Precio: sin precio confirmado (gemini-embedding-001 no está en tools/pricing.json).")
+    print("Precio: sin precio confirmado (el modelo de embeddings no está en tools/pricing.json).")
 
 
 def _clave_gemini(entorno: entornos.Entorno) -> None:
@@ -315,8 +315,10 @@ def subir(trozos: list[Trozo], entorno: entornos.Entorno, *, embeber=None, s3v=N
     from pipeline import embeddings
     os.environ["VECTORES_BUCKET"] = entorno.vectores_bucket
     os.environ["VECTORES_INDICE"] = entorno.vectores_indice
+    os.environ["EMBEDDINGS"] = entorno.embeddings or ""
     if embeber is None:
-        _clave_gemini(entorno)
+        if entorno.embeddings != "titan":      # Titan (respaldo) va por IAM, sin clave
+            _clave_gemini(entorno)
         embeber = embeddings.embeber
     vectores_ = embeber([t.texto for t in trozos], "documento")
     lista = [vectores.Trozo(t.clave, v, {**t.metadatos, "texto": t.texto})
@@ -356,7 +358,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.accion == "subir":
             print("Ensayo: agrega --confirmar para embeber y guardar (cuesta).")
         return 0
-    print(f"Subiendo {len(trozos)} trozos a {entorno.vectores_bucket}/{entorno.vectores_indice}…")
+    print(f"Subiendo {len(trozos)} trozos a {entorno.vectores_bucket}/{entorno.vectores_indice} "
+          f"con {vectores.MODELOS[entorno.embeddings or vectores.PROVEEDOR_POR_DEFECTO]}…")
     n = subir(trozos, entorno)
     print(f"Hecho: {n} trozos en el índice.")
     return 0
