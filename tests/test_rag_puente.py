@@ -215,10 +215,11 @@ def base(monkeypatch):
     monkeypatch.setattr(publico, "encendido", lambda: True)
     monkeypatch.setattr(worker, "PAUSA_DE_MENTIRA_SEG", 0)
 
-    def entender(i):
+    def entender(i, uso=None):
         estado["entender"] += 1
-        return puente.Consulta("q", "directo"), [0.1]
+        return "texto", puente.Consulta("q", "directo"), [0.1]
     monkeypatch.setattr(worker, "_entender", entender)
+    monkeypatch.setattr(worker, "_cuentas", lambda *a, **k: None)
     return estado
 
 
@@ -238,7 +239,7 @@ def test_con_el_armado_real_entiende_y_pasa_la_consulta(base, monkeypatch):
 def test_si_entender_falla_la_corrida_no_sale(base, monkeypatch):
     monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", False)
 
-    def truena(i):
+    def truena(i, uso=None):
         raise ConnectionError("Gemini no contesta")
     monkeypatch.setattr(worker, "_entender", truena)
     assert worker.procesar(7) == "no_salio"
@@ -247,11 +248,23 @@ def test_si_entender_falla_la_corrida_no_sale(base, monkeypatch):
 
 def test__entender_usa_el_texto_de_la_corrida(monkeypatch):
     monkeypatch.setattr(db, "automatiza_texto", lambda i: PETICION)
+    monkeypatch.delenv("RAG_CAMINO", raising=False)
     vistos = []
     monkeypatch.setattr(puente, "entender",
-                        lambda i, t, **kw: vistos.append((i, t, kw["embeber"])) or ("c", "v"))
-    assert worker._entender(5) == ("c", "v")
-    assert vistos == [(5, PETICION, embeddings.embeber)]
+                        lambda i, t, **kw: vistos.append((i, t, kw)) or ("c", "v"))
+    assert worker._entender(5) == (PETICION, "c", "v")
+    assert vistos[0][:2] == (5, PETICION)
+    assert vistos[0][2]["embeber"] is embeddings.embeber
+    assert vistos[0][2]["reescribir"] is None          # directo: Claude ni se llama
+
+
+def test__entender_reescrita_usa_claude(monkeypatch):
+    monkeypatch.setattr(db, "automatiza_texto", lambda i: PETICION)
+    monkeypatch.setenv("RAG_CAMINO", "reescrita")
+    vistos = []
+    monkeypatch.setattr(puente, "entender", lambda i, t, **kw: vistos.append(kw) or ("c", "v"))
+    worker._entender(5)
+    assert callable(vistos[0]["reescribir"])
     monkeypatch.setattr(db, "automatiza_texto", lambda i: None)
     with pytest.raises(ValueError):
         worker._entender(5)
