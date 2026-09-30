@@ -276,3 +276,43 @@ def test_automatiza_busqueda_sql(monkeypatch):
     assert "jsonb_array_elements_text(:v::jsonb)" in q and "WHERE id = :i" in q
     assert p == {"i": 3, "v": [0.5, 0.25], "m": "m", "c": "c", "k": "directo",
                  "d": {"consulta": "x"}}
+
+
+def test_embeber_espera_el_limite_por_minuto(monkeypatch):
+    esperas = []
+    monkeypatch.setattr(embeddings.time, "sleep", esperas.append)
+    g = _Gemini()
+    real = g.embed_content
+    fallos = [RuntimeError("429 RESOURCE_EXHAUSTED"), RuntimeError("429 RESOURCE_EXHAUSTED")]
+
+    def a_veces(**kw):
+        if fallos:
+            raise fallos.pop(0)
+        return real(**kw)
+    g.embed_content = a_veces
+    assert len(embeddings.embeber(["x"], "documento", cli=g)) == 1
+    assert esperas == list(embeddings.ESPERAS_429[:2])
+
+
+def test_embeber_no_reintenta_otros_errores(monkeypatch):
+    monkeypatch.setattr(embeddings.time, "sleep", lambda s: None)
+    g = _Gemini()
+
+    def truena(**kw):
+        raise RuntimeError("400 INVALID_ARGUMENT: input too long")
+    g.embed_content = truena
+    with pytest.raises(RuntimeError, match="400"):
+        embeddings.embeber(["x"], "documento", cli=g)
+
+
+def test_embeber_se_rinde_tras_las_esperas(monkeypatch):
+    esperas = []
+    monkeypatch.setattr(embeddings.time, "sleep", esperas.append)
+    g = _Gemini()
+
+    def siempre(**kw):
+        raise RuntimeError("429")
+    g.embed_content = siempre
+    with pytest.raises(RuntimeError):
+        embeddings.embeber(["x"], "documento", cli=g)
+    assert esperas == list(embeddings.ESPERAS_429)

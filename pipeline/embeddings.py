@@ -20,12 +20,17 @@ Precio: sin precio confirmado (gemini-embedding-001 no está en tools/pricing.js
 from __future__ import annotations
 
 import os
+import time
 from typing import Iterable
 
 from pipeline import vectores
 
 TAREAS = {"documento": "RETRIEVAL_DOCUMENT", "consulta": "RETRIEVAL_QUERY"}
 LOTE = 100          # textos por llamada (batchEmbedContents)
+# La ingesta manda cientos de trozos seguidos y choca con el límite por
+# minuto de Google (429 / RESOURCE_EXHAUSTED): se espera y se reintenta.
+# Cualquier otro error sube a la primera.
+ESPERAS_429 = (5, 15, 30, 60)
 
 
 class SinClave(RuntimeError):
@@ -58,11 +63,19 @@ def embeber(textos: Iterable[str], tarea: str, *, cli=None) -> list[list[float]]
     fuera: list[list[float]] = []
     for i in range(0, len(lista), LOTE):
         parte = lista[i:i + LOTE]
-        r = cli.models.embed_content(
-            model=vectores.MODELO_EMBEDDINGS, contents=parte,
-            config=types.EmbedContentConfig(
-                task_type=TAREAS[tarea], output_dimensionality=vectores.DIMENSION,
-                auto_truncate=False))
+        config = types.EmbedContentConfig(
+            task_type=TAREAS[tarea], output_dimensionality=vectores.DIMENSION,
+            auto_truncate=False)
+        for espera in (*ESPERAS_429, None):
+            try:
+                r = cli.models.embed_content(
+                    model=vectores.MODELO_EMBEDDINGS, contents=parte, config=config)
+                break
+            except Exception as e:  # noqa: BLE001 — solo se perdona el límite por minuto
+                texto = f"{type(e).__name__} {e}"
+                if espera is None or not ("429" in texto or "RESOURCE_EXHAUSTED" in texto):
+                    raise
+                time.sleep(espera)
         if len(r.embeddings) != len(parte):
             raise RuntimeError("Gemini devolvió otro número de vectores")
         fuera.extend(vectores.validar(e.values) for e in r.embeddings)
