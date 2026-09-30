@@ -41,7 +41,7 @@ class Armado:
     resumen: str
     nodos: list[str]
     faltan: list[str] = field(default_factory=list)
-    fuentes: list[str] = field(default_factory=list)
+    fuentes: list[dict] = field(default_factory=list)     # clave y distancia
     intentos: int = 1
     advertencias: list[str] = field(default_factory=list)
     modelo: str = ""
@@ -109,7 +109,7 @@ def generar(peticion: str, resultados: list[vectores.Resultado], *, uso: claude_
     import json
     system = prompt_sistema()
     mensajes = [{"role": "user", "content": _mensaje(peticion, contexto(resultados))}]
-    fuentes = [r.clave for r in resultados]
+    fuentes = [{"clave": r.clave, "distancia": r.distancia} for r in resultados]
     m = modelo_ or claude_rag.modelo()
     ultimo = None
     for intento in (1, 2):

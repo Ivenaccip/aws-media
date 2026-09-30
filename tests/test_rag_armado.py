@@ -159,7 +159,8 @@ def test_generar_listo_a_la_primera():
     a = armado.generar(PETICION, _res(), uso=uso, cli=cli)
     assert (a.estado, a.intentos, a.modelo) == ("listo", 1, "claude-opus-5-5")
     assert a.nodos == [B + "scheduleTrigger", B + "httpRequest", B + "gmail"]
-    assert a.fuentes == ["k0", "k1", "k2"]
+    assert [f["clave"] for f in a.fuentes] == ["k0", "k1", "k2"]
+    assert a.fuentes[1]["distancia"] == 0.1
     msg = cli.pedidos[0]["messages"][0]["content"]
     assert PETICION in msg and "doc 2" in msg
     assert cli.pedidos[0]["output_config"] == {"effort": armado.EFFORT}
