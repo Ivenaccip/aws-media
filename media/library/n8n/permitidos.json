@@ -1,0 +1,312 @@
+{
+  "nota": "Lo que el generador de /automatiza PUEDE USAR (RAG·18). Se edita a mano; el catálogo de lo que existe es catalog.json. Etapa prototipo: niveles 1 y 2 de la investigación «Nodos más usados de n8n y su 80/20» (30-sep-2026), sin subflujos y con Simple Vector Store. Las variantes <tipo>Tool de un nodo permitido también lo están. CRECER hacia el 80%: agregar el nodo aquí, ingestar su documentación al índice vectorial (RAG·19, por nodo: no se reingesta lo que ya está) y escribir su guía de credencial (RAG·33). tests/test_rag_catalogo_n8n.py revisa cada entrada contra el catálogo.",
+  "etapa": "prototipo",
+  "llm": {
+    "proveedor": "openai",
+    "nodo": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+    "modelo": "gpt-5.4-mini",
+    "regla": "Si el visitante no pide un proveedor de IA, se usa OpenAI con este modelo: es barato y de las API más fáciles de conectar. Si pide otro proveedor o modelo, se usa el que pidió; si su nodo no está permitido, «aún no lo soportamos».",
+    "decidido": "dueño, 30-sep-2026"
+  },
+  "nodos": [
+    {
+      "tipo": "n8n-nodes-base.manualTrigger",
+      "nombre": "Manual Trigger",
+      "nivel": 1,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.scheduleTrigger",
+      "nombre": "Schedule Trigger",
+      "nivel": 1,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.webhook",
+      "nombre": "Webhook",
+      "nivel": 1,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.if",
+      "nombre": "If",
+      "nivel": 1,
+      "funcion": "flujo"
+    },
+    {
+      "tipo": "n8n-nodes-base.switch",
+      "nombre": "Switch",
+      "nivel": 1,
+      "funcion": "flujo"
+    },
+    {
+      "tipo": "n8n-nodes-base.merge",
+      "nombre": "Merge",
+      "nivel": 1,
+      "funcion": "flujo"
+    },
+    {
+      "tipo": "n8n-nodes-base.wait",
+      "nombre": "Wait",
+      "nivel": 1,
+      "funcion": "flujo"
+    },
+    {
+      "tipo": "n8n-nodes-base.splitInBatches",
+      "nombre": "Loop Over Items (Split in Batches)",
+      "nivel": 1,
+      "funcion": "flujo"
+    },
+    {
+      "tipo": "n8n-nodes-base.set",
+      "nombre": "Edit Fields (Set)",
+      "nivel": 1,
+      "funcion": "datos"
+    },
+    {
+      "tipo": "n8n-nodes-base.splitOut",
+      "nombre": "Split Out",
+      "nivel": 1,
+      "funcion": "datos"
+    },
+    {
+      "tipo": "n8n-nodes-base.httpRequest",
+      "nombre": "HTTP Request",
+      "nivel": 1,
+      "funcion": "http_y_codigo",
+      "nota": "Su variante n8n-nodes-base.httpRequestTool es la «HTTP Request Tool» del nivel 2 (la vieja @n8n/n8n-nodes-langchain.toolHttpRequest está obsoleta)."
+    },
+    {
+      "tipo": "n8n-nodes-base.code",
+      "nombre": "Code",
+      "nivel": 1,
+      "funcion": "http_y_codigo"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.agent",
+      "nombre": "AI Agent",
+      "nivel": 1,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "nombre": "OpenAI Chat Model",
+      "nivel": 1,
+      "funcion": "ia",
+      "nota": "El modelo por defecto va en `llm`, no en n8n (el nodo trae gpt-5-mini de fábrica)."
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "nombre": "Structured Output Parser",
+      "nivel": 1,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "nombre": "Simple Memory",
+      "nivel": 1,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.openAi",
+      "nombre": "OpenAI",
+      "nivel": 1,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "n8n-nodes-base.googleSheets",
+      "nombre": "Google Sheets",
+      "nivel": 1,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.gmail",
+      "nombre": "Gmail",
+      "nivel": 1,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.telegram",
+      "nombre": "Telegram",
+      "nivel": 1,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "nombre": "Chat Trigger",
+      "nivel": 2,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.formTrigger",
+      "nombre": "n8n Form Trigger",
+      "nivel": 2,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.telegramTrigger",
+      "nombre": "Telegram Trigger",
+      "nivel": 2,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.gmailTrigger",
+      "nombre": "Gmail Trigger",
+      "nivel": 2,
+      "funcion": "disparador"
+    },
+    {
+      "tipo": "n8n-nodes-base.noOp",
+      "nombre": "No Operation, do nothing",
+      "nivel": 2,
+      "funcion": "flujo"
+    },
+    {
+      "tipo": "n8n-nodes-base.aggregate",
+      "nombre": "Aggregate",
+      "nivel": 2,
+      "funcion": "datos"
+    },
+    {
+      "tipo": "n8n-nodes-base.filter",
+      "nombre": "Filter",
+      "nivel": 2,
+      "funcion": "datos"
+    },
+    {
+      "tipo": "n8n-nodes-base.html",
+      "nombre": "HTML",
+      "nivel": 2,
+      "funcion": "datos"
+    },
+    {
+      "tipo": "n8n-nodes-base.limit",
+      "nombre": "Limit",
+      "nivel": 2,
+      "funcion": "datos"
+    },
+    {
+      "tipo": "n8n-nodes-base.respondToWebhook",
+      "nombre": "Respond to Webhook",
+      "nivel": 2,
+      "funcion": "http_y_codigo"
+    },
+    {
+      "tipo": "n8n-nodes-base.extractFromFile",
+      "nombre": "Extract from File",
+      "nivel": 2,
+      "funcion": "archivos"
+    },
+    {
+      "tipo": "n8n-nodes-base.convertToFile",
+      "nombre": "Convert to File",
+      "nivel": 2,
+      "funcion": "archivos"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "nombre": "Google Gemini Chat Model",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.chainLlm",
+      "nombre": "Basic LLM Chain",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "nombre": "OpenRouter Chat Model",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "nombre": "Anthropic Chat Model",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "nombre": "Embeddings OpenAI",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "nombre": "Default Data Loader",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "nombre": "Recursive Character Text Splitter",
+      "nivel": 2,
+      "funcion": "ia"
+    },
+    {
+      "tipo": "n8n-nodes-base.googleDrive",
+      "nombre": "Google Drive",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.slack",
+      "nombre": "Slack",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.emailSend",
+      "nombre": "Send Email",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.airtable",
+      "nombre": "Airtable",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.whatsApp",
+      "nombre": "WhatsApp Business Cloud",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.notion",
+      "nombre": "Notion",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "n8n-nodes-base.googleDocs",
+      "nombre": "Google Docs",
+      "nivel": 2,
+      "funcion": "apps"
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "nombre": "Simple Vector Store",
+      "nivel": 2,
+      "funcion": "ia",
+      "nota": "Agregado al prototipo (decisión del dueño, 30-sep): sin un almacén vectorial, Embeddings, Default Data Loader y el Text Splitter no sirven. Guarda en la memoria de n8n: se pierde si n8n se reinicia; la guía (RAG·33) lo dice."
+    }
+  ],
+  "fuera_por_ahora": [
+    {
+      "tipo": "n8n-nodes-base.executeWorkflow",
+      "por": "Subflujo: obliga a importar dos flujos y enlazarlos a mano; entregamos un solo .json."
+    },
+    {
+      "tipo": "n8n-nodes-base.executeWorkflowTrigger",
+      "por": "Subflujo (igual que Execute Workflow)."
+    },
+    {
+      "tipo": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "por": "Call n8n Workflow Tool: subflujo como herramienta del agente (igual que Execute Workflow)."
+    }
+  ]
+}
