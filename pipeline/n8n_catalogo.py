@@ -55,6 +55,11 @@ def permitidos() -> dict[str, dict]:
     return {n["tipo"]: n for n in _permitidos_json()["nodos"]}
 
 
+def etapa() -> str:
+    """«prototipo» mientras sean los niveles 1 y 2; cambia al crecer."""
+    return _permitidos_json().get("etapa", "?")
+
+
 def llm() -> dict:
     """El proveedor y modelo que se sugiere cuando el visitante no pide otro."""
     return _permitidos_json()["llm"]

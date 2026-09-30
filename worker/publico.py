@@ -59,10 +59,53 @@ PAUSA_DE_MENTIRA_SEG = 2.0
 
 
 def armar(corrida: dict) -> dict:
-    """Arma el flujo de la corrida. Devuelve {"flujo": ..., "nodos": [...]}."""
-    return {"flujo": FLUJO_DE_MENTIRA,
-            "nodos": [n["type"] for n in FLUJO_DE_MENTIRA["nodes"]],
-            "de_mentira": True}
+    """Arma el flujo de la corrida. Devuelve {"flujo": ..., "nodos": [...]}
+    y, con el armado real, "estado" (listo · sin_cobertura) y lo demás que
+    se guarda en `resultado`."""
+    from pipeline import publico as freno
+    if freno.ARMADO_DE_MENTIRA:
+        return {"flujo": FLUJO_DE_MENTIRA,
+                "nodos": [n["type"] for n in FLUJO_DE_MENTIRA["nodes"]],
+                "de_mentira": True}
+    from pipeline import armado, embeddings
+    a = armado.armar(corrida["texto"], corrida["consulta"], corrida["vector"],
+                     embeber=embeddings.embeber, uso=corrida["uso"])
+    return {"estado": a.estado, **a.como_resultado(corrida["uso"])}
+
+
+def _entender(corrida_id: int, uso=None):
+    """RAG·20 — (texto, consulta con que se va a buscar, vector de la
+    petición). Con RAG_CAMINO=reescrita reescribe Claude (claude_rag)."""
+    from pipeline import claude_rag, db, embeddings, puente
+    texto = db.automatiza_texto(corrida_id)
+    if not texto:
+        raise ValueError("la corrida no tiene texto")
+    reescribir = (claude_rag.reescritor(uso) if puente.camino_configurado() == "reescrita"
+                  else None)
+    consulta, vector = puente.entender(corrida_id, texto, embeber=embeddings.embeber,
+                                       reescribir=reescribir)
+    return texto, consulta, vector
+
+
+def _cuentas(corrida_id: int, uso, *, modelo: str | None = None,
+             validador_ok: bool | None = None, motivo: str | None = None) -> None:
+    """RAG·24 — anota modelo, validador y costo. Cosmético para la corrida:
+    si falla se loguea y se sigue."""
+    from pipeline import costos_rag, db
+    campos = {}
+    if modelo:
+        campos["modelo"] = modelo
+    if validador_ok is not None:
+        campos["validador_ok"] = validador_ok
+        if not validador_ok and motivo:
+            campos["validador_motivo"] = motivo[:500]
+    costo = costos_rag.costo_usd(uso)
+    if costo is not None:
+        campos["costo_usd"] = costo
+    try:
+        db.automatiza_anotar(corrida_id, **campos)
+    except Exception:  # noqa: BLE001
+        log.exception("corrida %s: no se pudieron anotar las cuentas", corrida_id)
 
 
 def _paso(corrida_id: int, paso: str) -> None:
@@ -90,20 +133,62 @@ def procesar(corrida_id: int) -> str:
         if not freno.encendido():
             db.automatiza_cerrar(corrida_id, "no_salio", motivo="apagado")
             return "apagado"
-        # entender y buscar son hoy solo el letrero (el puente de idioma y la
-        # búsqueda llegan con RAG·20/21); revisar, el validador de RAG·22
-        for paso in ("entender", "buscar", "armar"):
+        # RAG·20: «entender» prepara la consulta y embebe la petición, pero
+        # SOLO con el armado real (RAG·21 apaga ARMADO_DE_MENTIRA): con el de
+        # mentira no se llama a ningún modelo. «buscar» llega con RAG·21 y
+        # «revisar», el validador, con RAG·22.
+        _paso(corrida_id, "entender")
+        from pipeline import claude_rag, trazas_rag
+        corrida = {"id": corrida_id, "uso": claude_rag.Uso()}
+        with trazas_rag.corrida(corrida_id) as traza:
+            return _armar_y_cerrar(corrida, traza)
+
+
+def _armar_y_cerrar(corrida: dict, traza) -> str:
+    """Entender → buscar → armar → revisar → cerrar, dentro de la traza."""
+    from pipeline import db
+    from pipeline import publico as freno
+    corrida_id = corrida["id"]
+    try:
+        if not freno.ARMADO_DE_MENTIRA:
+            corrida["texto"], corrida["consulta"], corrida["vector"] = \
+                _entender(corrida_id, corrida["uso"])
+        for paso in ("buscar", "armar"):
             _paso(corrida_id, paso)
-        try:
-            salida = armar({"id": corrida_id})
-        except Exception as e:  # noqa: BLE001 — cualquier fallo del armado cierra igual
-            log.exception("corrida %s: no salió", corrida_id)
-            db.automatiza_cerrar(corrida_id, "no_salio", motivo=f"{type(e).__name__}: {e}"[:500])
-            return "no_salio"
-        _paso(corrida_id, "revisar")
-        db.automatiza_cerrar(corrida_id, "listo", resultado=salida,
-                             nodos=salida.get("nodos") or [])
-        return "listo"
+        salida = armar(corrida)
+    except Exception as e:  # noqa: BLE001 — cualquier fallo del armado cierra igual
+        log.exception("corrida %s: no salió", corrida_id)
+        _cuentas(corrida_id, corrida["uso"], validador_ok=False if
+                 type(e).__name__ == "NoSalio" else None, motivo=str(e))
+        traza.update(output={"estado": "no_salio", "error": f"{type(e).__name__}: {e}"[:500]},
+                     metadata=_para_traza(corrida))
+        db.automatiza_cerrar(corrida_id, "no_salio", motivo=f"{type(e).__name__}: {e}"[:500])
+        return "no_salio"
+    _paso(corrida_id, "revisar")
+    estado = salida.pop("estado", "listo")
+    if not salida.get("de_mentira"):
+        _cuentas(corrida_id, corrida["uso"], modelo=salida.get("modelo"),
+                 validador_ok=True if estado == "listo" else None)
+    motivo = ("faltan: " + "; ".join(salida.get("faltan") or []))[:500] \
+        if estado == "sin_cobertura" else None
+    traza.update(output={"estado": estado, "nodos": salida.get("nodos"),
+                         "faltan": salida.get("faltan"), "intentos": salida.get("intentos"),
+                         "advertencias": salida.get("advertencias")},
+                 metadata={**_para_traza(corrida), "fuentes": salida.get("fuentes"),
+                           "modelo": salida.get("modelo")})
+    db.automatiza_cerrar(corrida_id, estado, resultado=salida,
+                         nodos=salida.get("nodos") or [], motivo=motivo)
+    return estado
+
+
+def _para_traza(corrida: dict) -> dict:
+    """RAG·23 — lo que va a Langfuse: camino, consulta y tokens. Ni el texto
+    completo ni el vector (se enmascara de todos modos en trazas_rag)."""
+    c = corrida.get("consulta")
+    from pipeline import puente
+    return {"camino": getattr(c, "camino", None), "consulta": getattr(c, "texto", None),
+            "respaldo": getattr(c, "respaldo", None),
+            "catalogo": puente.version_catalogo(), "uso": corrida["uso"].total()}
 
 
 def handler(event, context):  # noqa: ANN001 — firma de Lambda

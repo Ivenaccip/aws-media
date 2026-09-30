@@ -73,6 +73,10 @@ def test_con_la_pausa_en_cero_no_espera(base, esperas, monkeypatch):
 
 def test_con_el_armado_real_no_hay_pausa_de_mentira(base, esperas, monkeypatch):
     monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", False)
+    # RAG·20/21 se prueban aparte (tests/test_rag_puente.py, test_rag_armado.py)
+    monkeypatch.setattr(worker, "_entender", lambda i, u=None: ("t", None, None))
+    monkeypatch.setattr(worker, "armar", lambda c: {"flujo": {}, "nodos": []})
+    monkeypatch.setattr(worker, "_cuentas", lambda *a, **k: None)
     worker.procesar(7)
     assert esperas == [] and base["pasos"] == list(db.PASOS_AUTOMATIZA)
 

@@ -6,7 +6,8 @@
     "nodo": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
     "modelo": "gpt-5.4-mini",
     "regla": "Si el visitante no pide un proveedor de IA, se usa OpenAI con este modelo: es barato y de las API más fáciles de conectar. Si pide otro proveedor o modelo, se usa el que pidió; si su nodo no está permitido, «aún no lo soportamos».",
-    "decidido": "dueño, 30-sep-2026"
+    "decidido": "dueño, 30-sep-2026",
+    "verificado": "el dueño lo vio en la lista «From list» del nodo OpenAI Chat Model de su n8n, 30-sep-2026"
   },
   "nodos": [
     {
