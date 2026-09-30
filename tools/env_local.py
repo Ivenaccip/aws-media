@@ -188,6 +188,8 @@ def recolectar(entorno: entornos.Entorno) -> dict[str, str]:
     if entorno.vectores_bucket and entorno.vectores_indice:
         valores["VECTORES_BUCKET"] = entorno.vectores_bucket
         valores["VECTORES_INDICE"] = entorno.vectores_indice
+        if entorno.embeddings:     # amarrado al índice (respaldo Titan, 30-sep)
+            valores["EMBEDDINGS"] = entorno.embeddings
 
     fugas = [v for v in valores if v in PROHIBIDAS]
     if fugas:      # cinturón: la lista de arriba y esta no pueden solaparse

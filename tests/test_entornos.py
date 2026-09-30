@@ -594,6 +594,23 @@ def test_worker_publico_solo_lee_su_indice_vectorial(dev):
     recurso = json.dumps(s["Resource"])
     assert f"bucket/{DEV.vectores_bucket}/index/{DEV.vectores_indice}" in recurso
     assert "*" not in recurso
+    assert env["EMBEDDINGS"] == DEV.embeddings
+
+
+def test_worker_publico_solo_invoca_titan(dev, prod):
+    """Respaldo temporal (30-sep): Bedrock solo para invocar el modelo de
+    embeddings Titan V2, y solo donde el entorno lo usa."""
+    import json
+    _, politicas = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    bedrock = [s for p in politicas for s in p["Properties"]["PolicyDocument"]["Statement"]
+               if "bedrock" in json.dumps(s["Action"])]
+    assert len(bedrock) == (1 if DEV.embeddings == "titan" else 0)
+    for s in bedrock:
+        assert s["Action"] == "bedrock:InvokeModel"
+        assert "foundation-model/amazon.titan-embed-text-v2:0" in json.dumps(s["Resource"])
+        assert "*" not in json.dumps(s["Resource"])
+    for stack in prod.values():
+        assert "bedrock:" not in json.dumps(stack)
 
 
 def test_nadie_mas_toca_s3_vectors(dev, prod):

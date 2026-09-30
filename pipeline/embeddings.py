@@ -1,5 +1,11 @@
 """RAG·19/20 — embeddings del RAG con gemini-embedding-001 (API de Google).
 
+RESPALDO TEMPORAL (30-sep): con EMBEDDINGS=titan se embebe con Amazon Titan
+Text Embeddings V2 por Bedrock (pipeline/vectores.py). IAM puro: ni clave ni
+SSM. Titan no distingue documento de consulta; la `tarea` se sigue exigiendo
+para que el código no cambie al volver a Gemini. Precio de Titan: sin precio
+confirmado (no está en tools/pricing.json).
+
 Lo que decidió el dueño el 29-sep y NO se cambia sin reindexar (pipeline/vectores.py):
 1024 dimensiones con `output_dimensionality`, renormalizadas a norma 1, y
 `task_type` de DOCUMENTO para lo que se ingesta y de CONSULTA para lo que se
@@ -19,6 +25,7 @@ Precio: sin precio confirmado (gemini-embedding-001 no está en tools/pricing.js
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from typing import Iterable
@@ -58,6 +65,8 @@ def embeber(textos: Iterable[str], tarea: str, *, cli=None) -> list[list[float]]
     lista = list(textos)
     if any(not t or not t.strip() for t in lista):
         raise ValueError("no se embebe un texto vacío")
+    if vectores.proveedor() == "titan":
+        return _titan(lista, cli)
     from google.genai import types
     cli = cli or cliente()
     fuera: list[list[float]] = []
@@ -69,7 +78,7 @@ def embeber(textos: Iterable[str], tarea: str, *, cli=None) -> list[list[float]]
         for espera in (*ESPERAS_429, None):
             try:
                 r = cli.models.embed_content(
-                    model=vectores.MODELO_EMBEDDINGS, contents=parte, config=config)
+                    model=vectores.MODELOS["gemini"], contents=parte, config=config)
                 break
             except Exception as e:  # noqa: BLE001 — solo se perdona el límite por minuto
                 texto = f"{type(e).__name__} {e}"
@@ -79,4 +88,35 @@ def embeber(textos: Iterable[str], tarea: str, *, cli=None) -> list[list[float]]
         if len(r.embeddings) != len(parte):
             raise RuntimeError("Gemini devolvió otro número de vectores")
         fuera.extend(vectores.validar(e.values) for e in r.embeddings)
+    return fuera
+
+
+# --- respaldo temporal: Titan V2 por Bedrock ---------------------------------
+
+def cliente_bedrock():
+    import boto3
+    return boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"))
+
+
+def _titan(lista: list[str], cli=None) -> list[list[float]]:
+    """Titan no tiene lotes síncronos: una llamada por texto. Su tope es de
+    50 000 caracteres (los trozos de la ingesta no pasan de 6 000). Se
+    reintenta solo el límite por minuto de Bedrock (ThrottlingException)."""
+    cli = cli or cliente_bedrock()
+    fuera: list[list[float]] = []
+    for texto in lista:
+        cuerpo = json.dumps({"inputText": texto, "dimensions": vectores.DIMENSION,
+                             "normalize": True, "embeddingTypes": ["float"]})
+        for espera in (*ESPERAS_429, None):
+            try:
+                r = cli.invoke_model(modelId=vectores.MODELOS["titan"], body=cuerpo,
+                                     contentType="application/json", accept="application/json")
+                break
+            except Exception as e:  # noqa: BLE001 — solo se perdona el límite por minuto
+                if espera is None or "Throttling" not in f"{type(e).__name__} {e}":
+                    raise
+                time.sleep(espera)
+        datos = json.loads(r["body"].read())
+        fuera.append(vectores.validar(datos.get("embeddingsByType", {}).get("float")
+                                      or datos["embedding"]))
     return fuera

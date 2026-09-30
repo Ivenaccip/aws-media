@@ -127,14 +127,17 @@ def imprimir(resumen: dict) -> None:
         print(f"{k:44} {r['acierto_estado']:>7.0%} {r['valido_1er']:>9.0%} {cob:>6} "
               f"{r['sin_secretos']:>9.0%} {r['tokens_entrada']:>8,} {r['tokens_salida']:>8,} "
               f"{r['segundos_prom']:>5.1f}")
-    print("Precio: sin precio confirmado (ni Claude ni gemini-embedding-001 están en tools/pricing.json).")
+    print("Precio: sin precio confirmado (ni Claude ni el modelo de embeddings están en tools/pricing.json).")
 
 
 def _claves(entorno: entornos.Entorno) -> None:
     import boto3
     ssm = boto3.client("ssm")
-    for nombre, var in (("CLAUDE_API_KEY", "CLAUDE_API_KEY_PUBLICO"),
-                        ("GEMINI_API_KEY", "GEMINI_API_KEY_PUBLICO")):
+    os.environ["EMBEDDINGS"] = entorno.embeddings or ""
+    claves = [("CLAUDE_API_KEY", "CLAUDE_API_KEY_PUBLICO")]
+    if entorno.embeddings != "titan":          # Titan (respaldo) va por IAM, sin clave
+        claves.append(("GEMINI_API_KEY", "GEMINI_API_KEY_PUBLICO"))
+    for nombre, var in claves:
         if not os.getenv(var):
             os.environ[var] = ssm.get_parameter(
                 Name=f"{entorno.ssm_publico}/{nombre}", WithDecryption=True)["Parameter"]["Value"]

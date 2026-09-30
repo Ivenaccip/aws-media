@@ -31,6 +31,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pipeline.config  # noqa: E402,F401 — carga el .env (DB_CLUSTER_ARN/DB_SECRET_ARN)
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 def _mostrar(db) -> None:
     ajuste = db.automatiza_interruptor()
@@ -86,6 +89,8 @@ def main() -> None:
     os.environ["DB_SECRET_ARN"] = args.secret_arn
     os.environ["DB_NAME"] = args.database
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+    # el .env trae los ARNs del clúster VIVO: que se vea a cuál se le habla
+    print(f"Clúster: {args.cluster_arn.rsplit(':', 1)[-1]} · base: {args.database}")
     from pipeline import db
 
     for valor in (getattr(args, "tope_corridas", None), getattr(args, "corridas", None),

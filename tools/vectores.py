@@ -159,7 +159,7 @@ def estado(entorno: entornos.Entorno, s3v) -> int:
     malas = diferencias(i["index"])
     for m in malas:
         print(f"  DISTINTO — {m}")
-    print(f"Modelo de embeddings esperado: {vectores.MODELO_EMBEDDINGS}")
+    print(f"Modelo de embeddings esperado: {vectores.MODELOS[entorno.embeddings or vectores.PROVEEDOR_POR_DEFECTO]}")
     return 1 if malas else 0
 
 

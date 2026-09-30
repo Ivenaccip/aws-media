@@ -302,6 +302,14 @@ class JobsStack(Stack):
         if entorno.vectores_bucket and entorno.vectores_indice:
             worker.add_environment("VECTORES_BUCKET", entorno.vectores_bucket)
             worker.add_environment("VECTORES_INDICE", entorno.vectores_indice)
+            worker.add_environment("EMBEDDINGS", entorno.embeddings or "gemini")
+            # RESPALDO TEMPORAL (30-sep): Titan V2 por Bedrock mientras Google
+            # verifica la cuenta. Solo ESE modelo, solo invocar.
+            if entorno.embeddings == "titan":
+                worker.add_to_role_policy(iam.PolicyStatement(
+                    actions=["bedrock:InvokeModel"],
+                    resources=[f"arn:aws:bedrock:{self.region}::foundation-model/"
+                               "amazon.titan-embed-text-v2:0"]))
             worker.add_to_role_policy(iam.PolicyStatement(
                 actions=["s3vectors:QueryVectors", "s3vectors:GetVectors"],
                 resources=[f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/"

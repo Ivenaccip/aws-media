@@ -2,6 +2,7 @@
 
 Sin red y sin gastar: el modelo que reescribe es una función de mentira y el
 cliente de Gemini un objeto que responde lo que se le pide."""
+import json
 import types as pytypes
 
 import pytest
@@ -329,3 +330,58 @@ def test_embeber_se_rinde_tras_las_esperas(monkeypatch):
     with pytest.raises(RuntimeError):
         embeddings.embeber(["x"], "documento", cli=g)
     assert esperas == list(embeddings.ESPERAS_429)
+
+
+# respaldo temporal: Titan V2 por Bedrock (30-sep)
+
+class _Cuerpo:
+    def __init__(self, datos):
+        self._d = datos
+
+    def read(self):
+        return json.dumps(self._d).encode()
+
+
+class _Bedrock:
+    def __init__(self, dim=1024, truenas=0):
+        self.pedidos, self.dim, self.truenas = [], dim, truenas
+
+    def invoke_model(self, **kw):
+        if self.truenas:
+            self.truenas -= 1
+            raise RuntimeError("ThrottlingException: Too many requests")
+        self.pedidos.append(kw)
+        return {"body": _Cuerpo({"embeddingsByType": {"float": [0.5] * self.dim}})}
+
+
+def test_titan_una_llamada_por_texto(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "titan")
+    b = _Bedrock()
+    vs = embeddings.embeber(["hola", "adiós"], "consulta", cli=b)
+    assert len(vs) == 2 and abs(sum(x * x for x in vs[0]) - 1) < 1e-9
+    assert [p["modelId"] for p in b.pedidos] == ["amazon.titan-embed-text-v2:0"] * 2
+    cuerpo = json.loads(b.pedidos[0]["body"])
+    assert cuerpo == {"inputText": "hola", "dimensions": 1024, "normalize": True,
+                      "embeddingTypes": ["float"]}
+
+
+def test_titan_no_pide_clave(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "titan")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY_PUBLICO", raising=False)
+    assert len(embeddings.embeber(["x"], "documento", cli=_Bedrock())) == 1
+
+
+def test_titan_reintenta_solo_el_limite(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "titan")
+    esperas = []
+    monkeypatch.setattr(embeddings.time, "sleep", esperas.append)
+    assert len(embeddings.embeber(["x"], "documento", cli=_Bedrock(truenas=2))) == 1
+    assert esperas == list(embeddings.ESPERAS_429[:2])
+    with pytest.raises(vectores.VectorInvalido):
+        embeddings.embeber(["x"], "documento", cli=_Bedrock(dim=256))
+
+
+def test_titan_anota_su_modelo_en_la_corrida(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "titan")
+    assert puente.modelo_vector() == "amazon.titan-embed-text-v2:0/1024"
