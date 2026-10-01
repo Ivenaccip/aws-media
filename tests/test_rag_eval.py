@@ -41,7 +41,8 @@ def test_calificar():
     flujo = {"nodes": [{"type": B + "gmail"}, {"type": B + "manualTrigger"}]}
     r = eval_rag.calificar(_caso(), "listo", flujo, 1)
     assert r == {"acierto_estado": True, "valido_1er": True,
-                 "cobertura_nodos": 0.5, "sin_secretos": True}
+                 "cobertura_nodos": 0.5, "nodos_faltantes": [B + "if"],
+                 "sin_secretos": True}
     r = eval_rag.calificar(_caso(), "listo", {"nodes": [], "x": "ana@x.mx"}, 2)
     assert not r["valido_1er"] and not r["sin_secretos"] and r["cobertura_nodos"] == 0
     r = eval_rag.calificar(_caso(esperado="sin_cobertura", nodos=[]), "sin_cobertura", None, 1)
@@ -111,3 +112,22 @@ def test_modelos_y_caminos_validos():
     with pytest.raises(SystemExit, match="lateral"):
         eval_rag.main(["--caminos", "lateral", "ensayo"])
     assert puente.CAMINOS == ("directo", "reescrita")
+
+
+def test_banderas_antes_o_despues_del_subcomando(monkeypatch, capsys):
+    """El docstring las pone después; el 1-oct se usaron antes. Valen igual."""
+    monkeypatch.setattr(eval_rag, "_claves", lambda e: (_ for _ in ()).throw(AssertionError()))
+    caso = eval_rag.conjunto()[0]["id"]
+    for argv in (["--solo", caso, "--modelos", "claude-sonnet-5-5", "ensayo"],
+                 ["ensayo", "--solo", caso, "--modelos", "claude-sonnet-5-5"],
+                 ["correr", "--solo", caso, "--modelos", "claude-sonnet-5-5"]):
+        assert eval_rag.main(argv) == 0
+        assert "= 1 corridas" in capsys.readouterr().out
+
+
+def test_tabla_con_tantas_columnas_como_valores(capsys):
+    eval_rag.imprimir({"m · directo": {
+        "corridas": 1, "acierto_estado": 1.0, "valido_1er": 1.0, "cobertura_nodos": 2 / 3,
+        "sin_secretos": 1.0, "tokens_entrada": 2980, "tokens_salida": 1008, "segundos_prom": 11.2}})
+    encabezado, fila = capsys.readouterr().out.splitlines()[:2]
+    assert len(encabezado.split("·")[1].split()) - 1 == len(fila.split("·")[1].split()) - 1 == 7

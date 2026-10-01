@@ -65,7 +65,8 @@ def calificar(caso: dict, estado: str, flujo: dict | None, intentos: int) -> dic
     """Las métricas de UNA corrida (puro: lo prueban los tests)."""
     tipos = {n["type"] for n in (flujo or {}).get("nodes", [])}
     debe = caso.get("nodos") or []
-    cobertura = (sum(1 for t in debe if t in tipos) / len(debe)) if debe else None
+    faltan = [t for t in debe if t not in tipos]
+    cobertura = ((len(debe) - len(faltan)) / len(debe)) if debe else None
     texto_flujo = json.dumps(flujo or {}, ensure_ascii=False)
     correos = set(_CORREO.findall(caso["peticion"]))
     secretos_peticion = [s for s in re.findall(r"sk-[\w-]{10,}", caso["peticion"])]
@@ -73,7 +74,8 @@ def calificar(caso: dict, estado: str, flujo: dict | None, intentos: int) -> dic
         not any(s in texto_flujo for s in secretos_peticion)
     return {"acierto_estado": estado == caso["esperado"],
             "valido_1er": estado == "listo" and intentos == 1,
-            "cobertura_nodos": cobertura, "sin_secretos": sin_secretos}
+            "cobertura_nodos": cobertura, "nodos_faltantes": faltan,
+            "sin_secretos": sin_secretos}
 
 
 def resumir(filas: list[dict]) -> dict:
@@ -119,14 +121,23 @@ def correr_uno(caso: dict, modelo: str, camino: str, *, embeber, armar, reescrit
     return fila
 
 
+# Encabezados de UNA palabra: con «sin datos» o «válido 1º» la tabla parecía
+# traer más columnas que valores. Qué es cada una, en LEYENDA.
+COLUMNAS = ("acierto", "válido", "nodos", "privado", "tok_ent", "tok_sal", "seg")
+LEYENDA = ("acierto = estado esperado · válido = listo al 1er intento · "
+           "nodos = cobertura de nodos esperados · privado = sin correos ni claves de la "
+           "petición en el flujo · tok_ent/tok_sal = tokens de Claude · seg = promedio")
+
+
 def imprimir(resumen: dict) -> None:
-    print(f"{'modelo · camino':44} {'estado':>7} {'válido 1º':>9} {'nodos':>6} {'sin datos':>9} "
-          f"{'tok ent':>8} {'tok sal':>8} {'seg':>5}")
+    anchos = (7, 7, 6, 8, 8, 8, 5)
+    print(f"{'modelo · camino':44} " + " ".join(f"{c:>{a}}" for c, a in zip(COLUMNAS, anchos)))
     for k, r in resumen.items():
         cob = "—" if r["cobertura_nodos"] is None else f"{r['cobertura_nodos']:.0%}"
-        print(f"{k:44} {r['acierto_estado']:>7.0%} {r['valido_1er']:>9.0%} {cob:>6} "
-              f"{r['sin_secretos']:>9.0%} {r['tokens_entrada']:>8,} {r['tokens_salida']:>8,} "
+        print(f"{k:44} {r['acierto_estado']:>7.0%} {r['valido_1er']:>7.0%} {cob:>6} "
+              f"{r['sin_secretos']:>8.0%} {r['tokens_entrada']:>8,} {r['tokens_salida']:>8,} "
               f"{r['segundos_prom']:>5.1f}")
+    print(LEYENDA)
     print("Precio: sin precio confirmado (ni Claude ni el modelo de embeddings están en tools/pricing.json).")
 
 
@@ -153,10 +164,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--modelos", default=",".join(claude_rag.CANDIDATOS))
     ap.add_argument("--caminos", default="directo")
     ap.add_argument("--solo", help="ids del conjunto separados por coma")
+    # Las mismas banderas valen también DESPUÉS del subcomando (como en el
+    # docstring). SUPPRESS: si no se dan ahí, no pisan las de antes.
+    comunes = argparse.ArgumentParser(add_help=False)
+    for bandera in ("--modelos", "--caminos", "--solo"):
+        comunes.add_argument(bandera, default=argparse.SUPPRESS)
     sub = ap.add_subparsers(dest="accion", required=True)
-    sub.add_parser("ensayo")
-    c = sub.add_parser("correr")
-    c.add_argument("--confirmar", action="store_true", help="llama a Claude y a Gemini (cuesta)")
+    sub.add_parser("ensayo", parents=[comunes])
+    c = sub.add_parser("correr", parents=[comunes])
+    c.add_argument("--confirmar", action="store_true",
+                   help="llama a Claude y al modelo de embeddings (cuesta)")
     args = ap.parse_args(argv)
 
     modelos = [m.strip() for m in args.modelos.split(",") if m.strip()]
@@ -181,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
             for x in caminos:
                 f = correr_uno(caso, m, x, embeber=embeddings.embeber, armar=armado.armar,
                                reescritor=lambda uso, mod: claude_rag.reescritor(uso, modelo_=mod))
-                print(f"  {caso['id']:18} {m:20} {x:9} → {f['estado']}")
+                falta = f" · faltan: {', '.join(f['nodos_faltantes'])}" if f["nodos_faltantes"] else ""
+                print(f"  {caso['id']:18} {m:20} {x:9} → {f['estado']}{falta}")
                 filas.append(f)
     resumen = resumir(filas)
     imprimir(resumen)

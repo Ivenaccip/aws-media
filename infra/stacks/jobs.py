@@ -303,6 +303,11 @@ class JobsStack(Stack):
             worker.add_environment("VECTORES_BUCKET", entorno.vectores_bucket)
             worker.add_environment("VECTORES_INDICE", entorno.vectores_indice)
             worker.add_environment("EMBEDDINGS", entorno.embeddings or "gemini")
+            # RAG·21: el armado real y su modelo, solo donde el entorno lo enciende
+            if entorno.armado_real:
+                worker.add_environment("ARMADO_REAL", "1")
+                if entorno.rag_modelo:
+                    worker.add_environment("RAG_MODELO", entorno.rag_modelo)
             # RESPALDO TEMPORAL (30-sep): Titan V2 por Bedrock mientras Google
             # verifica la cuenta. Solo ESE modelo, solo invocar. Con «openai»
             # (segundo respaldo, 1-oct) no hay permiso que dar: la clave llega

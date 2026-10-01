@@ -292,6 +292,19 @@ def test_worker_real_sin_clave_no_sale(real, monkeypatch):
     assert real["cerradas"][0][1]["motivo"].startswith("SinClave")
 
 
-def test_el_armado_de_mentira_sigue_encendido():
-    # apagarlo gasta en cada corrida de dev: lo decide el dueño (RAG·21)
-    assert publico.ARMADO_DE_MENTIRA is True
+def test_el_armado_de_mentira_es_el_default():
+    # sin ARMADO_REAL=1 (lo pone el CDK solo donde `armado_real`) no se gasta
+    import importlib
+    import os
+    assert os.getenv("ARMADO_REAL") is None
+    assert importlib.reload(publico).ARMADO_DE_MENTIRA is True
+
+
+def test_armado_real_solo_en_dev_y_con_modelo_explicito():
+    """1-oct: el dueño enciende el armado real en dev (tope 20 al día). El
+    modelo va fijado, provisional hasta el eval de 50 corridas."""
+    from infra import entornos
+    from pipeline import claude_rag
+    assert entornos.DEV.armado_real is True
+    assert entornos.DEV.rag_modelo in claude_rag.CANDIDATOS
+    assert entornos.PROD.armado_real is False and entornos.PROD.rag_modelo is None

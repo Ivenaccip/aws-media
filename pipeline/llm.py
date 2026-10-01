@@ -10,6 +10,7 @@ if TYPE_CHECKING:  # solo para los type checkers — en runtime no se evalúa
     from langfuse.openai import AsyncOpenAI
 
 _client: "AsyncOpenAI | None" = None
+_client_publico: "AsyncOpenAI | None" = None
 
 
 def client() -> "AsyncOpenAI":
@@ -26,8 +27,33 @@ def client() -> "AsyncOpenAI":
     return _client
 
 
-async def chat_json(name: str, system: str, user: str) -> dict:
-    """Ejecuta un prompt que debe responder JSON puro y lo parsea."""
+def clave_publica() -> str:
+    """Capa 1: la clave de OpenAI de lo PÚBLICO, nunca la de plataforma.
+    `OPENAI_API_KEY_PUBLICO` si está en el entorno; si no, el parámetro de
+    SSM que dice `SSM_OPENAI_PUBLICO` (la Lambda del API: solo ESE parámetro).
+    Sin ninguna de las dos truena, y la moderación falla cerrado."""
+    import os
+    k = os.getenv("OPENAI_API_KEY_PUBLICO")
+    if k:
+        return k
+    nombre = os.getenv("SSM_OPENAI_PUBLICO")
+    if not nombre:
+        raise RuntimeError("falta la clave pública de OpenAI (SSM_OPENAI_PUBLICO)")
+    import boto3
+    return boto3.client("ssm").get_parameter(Name=nombre, WithDecryption=True)["Parameter"]["Value"]
+
+
+def client_publico() -> "AsyncOpenAI":
+    global _client_publico
+    if _client_publico is None:
+        from langfuse.openai import AsyncOpenAI
+        _client_publico = AsyncOpenAI(api_key=clave_publica())
+    return _client_publico
+
+
+async def chat_json(name: str, system: str, user: str, *, publico: bool = False) -> dict:
+    """Ejecuta un prompt que debe responder JSON puro y lo parsea. Con
+    `publico` va con la clave de lo público (capa 1), no con la de plataforma."""
     extra = {}
     # M10: si el system salió de Langfuse (config.PromptTexto trae el objeto),
     # la generation queda enlazada a esa versión del prompt — el dashboard de
@@ -35,7 +61,7 @@ async def chat_json(name: str, system: str, user: str) -> dict:
     objeto = getattr(system, "objeto", None)
     if objeto is not None:
         extra["langfuse_prompt"] = objeto
-    resp = await client().chat.completions.create(
+    resp = await (client_publico() if publico else client()).chat.completions.create(
         model=settings.openai_model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         name=name,  # nombre de la generation en Langfuse

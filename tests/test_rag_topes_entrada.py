@@ -25,12 +25,16 @@ def _freno(monkeypatch, *, encendido=True, corridas=0):
     monkeypatch.setattr(db, "automatiza_corridas_de_ip_hoy", lambda h: 0)
 
 
+CLAVES: list[dict] = []     # los kwargs de cada llamada (¿con la clave pública?)
+
+
 def _modelo(monkeypatch, respuesta=None, *, error=None):
     """El LLM de moderación de mentira; devuelve la lista de llamadas."""
     llamadas = []
 
-    async def fake(name, system, user):
+    async def fake(name, system, user, **kw):
         llamadas.append((name, str(system), user))
+        CLAVES.append(kw)
         if error:
             raise error
         return respuesta
@@ -138,6 +142,19 @@ async def test_veredicto_ambiguo_cierra(monkeypatch, respuesta):
     _freno(monkeypatch)
     _modelo(monkeypatch, respuesta)
     assert (await publico.admitir(TEXTO, "h")).motivo == publico.APAGADO
+
+
+@pytest.mark.asyncio
+async def test_admitir_modera_con_la_clave_publica(monkeypatch):
+    """Capa 1: la moderación de /automatiza la paga la clave de /publico/."""
+    _freno(monkeypatch)
+    CLAVES.clear()
+    _modelo(monkeypatch, {"permitido": True, "motivo": ""})
+    assert (await publico.admitir(TEXTO, "h")).motivo is None
+    assert CLAVES == [{"publico": True}]
+    CLAVES.clear()
+    await moderacion.revisar(TEXTO)             # la de plataforma, como siempre
+    assert CLAVES == [{}]
 
 
 @pytest.mark.asyncio

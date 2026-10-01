@@ -632,6 +632,32 @@ def test_api_de_dev_encola_en_la_publica(dev):
     assert "sqs:SendMessage" in json.dumps(_de_tipo(api, "AWS::IAM::Policy"))
 
 
+def test_armado_real_encendido_a_la_vez_en_api_y_worker(dev, prod):
+    """RAG·21 (1-oct): ARMADO_REAL=1 en las dos Lambdas o en ninguna: no puede
+    haber armado real sin moderación. La moderación lee SOLO la clave de
+    OpenAI de /publico/ (capa 1), nunca la de plataforma."""
+    import json
+    api = dev["aws-media-api-dev"]
+    (env_api,) = [e for e in _env_lambdas(api) if "PUBLICO_QUEUE_URL" in e]
+    worker, _ = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    env_worker = worker["Properties"]["Environment"]["Variables"]
+    assert env_api["ARMADO_REAL"] == env_worker["ARMADO_REAL"] == "1"
+    assert env_worker["RAG_MODELO"] == DEV.rag_modelo
+    param = f"{DEV.ssm_publico}/OPENAI_API_KEY"
+    assert env_api["SSM_OPENAI_PUBLICO"] == param
+    sentencias = [st for pol in _de_tipo(api, "AWS::IAM::Policy").values()
+                  for st in pol["Properties"]["PolicyDocument"]["Statement"]
+                  if DEV.ssm_publico in json.dumps(st["Resource"])]
+    (st,) = sentencias
+    assert st["Action"] == "ssm:GetParameter"
+    assert json.dumps(st["Resource"]).endswith(f'parameter{param}"') or \
+        f"parameter{param}" in json.dumps(st["Resource"])
+    assert "*" not in json.dumps(st["Resource"])
+    for template in prod.values():
+        texto = json.dumps(template)
+        assert "ARMADO_REAL" not in texto and "SSM_OPENAI_PUBLICO" not in texto
+
+
 # --- RAG·7: throttling de etapa, solo dev ------------------------------------
 
 def _etapas(template):

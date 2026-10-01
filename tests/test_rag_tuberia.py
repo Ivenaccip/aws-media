@@ -183,8 +183,9 @@ def test_el_armado_real_trae_la_moderacion_de_vuelta(base, cola, cliente, monkey
     monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", False)
     llamadas = []
 
-    async def modelo(name, system, user):
+    async def modelo(name, system, user, **kw):
         llamadas.append(user)
+        assert kw == {"publico": True}       # capa 1: con la clave de /publico/
         return {"permitido": False, "motivo": "Eso sería spam."}
     monkeypatch.setattr(moderacion, "chat_json", modelo)
     r = cliente.post("/api/publico/corridas", json={**AVISO, "texto": TEXTO})
@@ -201,7 +202,7 @@ def test_rechazada_sin_frase_no_ensena_una_palabra_interna(base, cola, cliente, 
     # frase general, nunca «moderación»
     monkeypatch.setattr(publico, "ARMADO_DE_MENTIRA", False)
 
-    async def modelo(name, system, user):
+    async def modelo(name, system, user, **kw):
         return {"permitido": False, "motivo": ""}
     monkeypatch.setattr(moderacion, "chat_json", modelo)
     general = "Esta petición no la podemos armar. Prueba describiéndola de otra forma."
