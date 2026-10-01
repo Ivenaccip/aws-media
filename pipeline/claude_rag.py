@@ -51,8 +51,11 @@ class RespuestaInvalida(ValueError):
 
 @dataclass
 class Uso:
-    """Tokens acumulados de una corrida, por modelo (RAG·24)."""
+    """Tokens acumulados de una corrida, por modelo (RAG·24): las llamadas a
+    Claude, los embeddings (`tipo: embedding`, solo entrada) y cuántas
+    consultas se le hicieron a S3 Vectors."""
     llamadas: list[dict] = field(default_factory=list)
+    consultas: int = 0
 
     def sumar(self, etapa: str, modelo: str, r, *, seg: float | None = None) -> None:
         u = r.usage
@@ -65,12 +68,24 @@ class Uso:
             ll["seg"] = round(seg, 1)
         self.llamadas.append(ll)
 
+    def sumar_embedding(self, etapa: str, modelo: str, tokens: int | None) -> None:
+        """`tokens` None: el proveedor no los reporta (Gemini). Entonces esa
+        corrida queda sin costo calculable, nunca con uno inventado."""
+        self.llamadas.append({
+            "etapa": etapa, "modelo": modelo, "tipo": "embedding",
+            "entrada": tokens, "salida": 0, "cache_escrita": 0, "cache_leida": 0})
+
     def total(self) -> dict:
         t = {"entrada": 0, "salida": 0, "cache_escrita": 0, "cache_leida": 0}
         for ll in self.llamadas:
             for k in t:
-                t[k] += ll[k]
+                t[k] += ll[k] or 0
         return t
+
+    def como_dict(self) -> dict:
+        """Lo que se guarda en `resultado.uso` de la corrida."""
+        return {"llamadas": self.llamadas, "total": self.total(),
+                "consultas_vector": self.consultas}
 
 
 def modelo() -> str:
@@ -126,19 +141,35 @@ def pedir_json(system: str, mensajes: list[dict], *, etapa: str, effort: str,
     # el system es estable entre corridas: se cachea (la lista de nodos y las
     # reglas pesan miles de tokens y se repiten en cada petición)
     sistema = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-    t0 = time.monotonic()
-    r = cli.beta.messages.create(
-        model=m, max_tokens=max_tokens, system=sistema, messages=mensajes,
-        output_config={"effort": effort},
-        betas=[FALLBACK_BETA], fallbacks="default")
-    seg = time.monotonic() - t0
-    # una línea por llamada en CloudWatch: separa lo que tarda el modelo del
-    # arranque en frío (las líneas REPORT solo dan la duración total)
-    log.info("claude %s: %s effort=%s %.1f s · entrada %s · salida %s · %s",
-             etapa, getattr(r, "model", m) or m, effort, seg,
-             r.usage.input_tokens, r.usage.output_tokens, r.stop_reason)
+    from pipeline import costos_rag, trazas_rag
+    # RAG·23: una generation por llamada, SIN el texto (el del visitante ya
+    # está enmascarado en la raíz; el flujo vive en la corrida): modelo,
+    # tokens, segundos y, si pricing.json lo tiene, el costo.
+    with trazas_rag.etapa(etapa, tipo="generation", model=m,
+                          model_parameters={"effort": effort, "max_tokens": max_tokens}) as gen:
+        t0 = time.monotonic()
+        r = cli.beta.messages.create(
+            model=m, max_tokens=max_tokens, system=sistema, messages=mensajes,
+            output_config={"effort": effort},
+            betas=[FALLBACK_BETA], fallbacks="default")
+        seg = time.monotonic() - t0
+        u = r.usage
+        servido = getattr(r, "model", m) or m
+        # una línea por llamada en CloudWatch: separa lo que tarda el modelo del
+        # arranque en frío (las líneas REPORT solo dan la duración total)
+        log.info("claude %s: %s effort=%s %.1f s · entrada %s · salida %s · %s",
+                 etapa, servido, effort, seg, u.input_tokens, u.output_tokens, r.stop_reason)
+        propio = Uso()
+        propio.sumar(etapa, m, r, seg=seg)
+        costo = costos_rag.costo_usd(propio)
+        gen.update(model=servido, usage_details={
+            "input": u.input_tokens, "output": u.output_tokens,
+            "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
+            "cache_creation_input_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0},
+            metadata={"seg": round(seg, 1), "stop_reason": r.stop_reason},
+            **({"cost_details": {"total": costo}} if costo is not None else {}))
     if uso is not None:
-        uso.sumar(etapa, m, r, seg=seg)
+        uso.llamadas.extend(propio.llamadas)
     if r.stop_reason == "refusal":
         raise Declinado(f"{etapa}: el modelo declinó")
     if r.stop_reason == "max_tokens":

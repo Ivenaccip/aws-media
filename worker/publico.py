@@ -67,23 +67,35 @@ def armar(corrida: dict) -> dict:
         return {"flujo": FLUJO_DE_MENTIRA,
                 "nodos": [n["type"] for n in FLUJO_DE_MENTIRA["nodes"]],
                 "de_mentira": True}
-    from pipeline import armado, embeddings
+    from pipeline import armado
     a = armado.armar(corrida["texto"], corrida["consulta"], corrida["vector"],
-                     embeber=embeddings.embeber, uso=corrida["uso"])
+                     embeber=_embeber(corrida["uso"]), uso=corrida["uso"])
     return {"estado": a.estado, **a.como_resultado(corrida["uso"])}
+
+
+def _embeber(uso):
+    """embeddings.embeber que además anota sus tokens en el uso de la corrida
+    (RAG·24)."""
+    from functools import partial
+
+    from pipeline import embeddings
+    return partial(embeddings.embeber, uso=uso)
 
 
 def _entender(corrida_id: int, uso=None):
     """RAG·20 — (texto, consulta con que se va a buscar, vector de la
     petición). Con RAG_CAMINO=reescrita reescribe Claude (claude_rag)."""
-    from pipeline import claude_rag, db, embeddings, puente
+    from pipeline import claude_rag, db, puente, trazas_rag
     texto = db.automatiza_texto(corrida_id)
     if not texto:
         raise ValueError("la corrida no tiene texto")
-    reescribir = (claude_rag.reescritor(uso) if puente.camino_configurado() == "reescrita"
-                  else None)
-    consulta, vector = puente.entender(corrida_id, texto, embeber=embeddings.embeber,
-                                       reescribir=reescribir)
+    camino = puente.camino_configurado()
+    reescribir = claude_rag.reescritor(uso) if camino == "reescrita" else None
+    with trazas_rag.etapa("entender", entrada={"camino": camino}) as obs:
+        consulta, vector = puente.entender(corrida_id, texto, embeber=_embeber(uso),
+                                           reescribir=reescribir)
+        obs.update(output={"camino": consulta.camino, "consulta": consulta.texto,
+                           "respaldo": consulta.respaldo})
     return texto, consulta, vector
 
 
@@ -162,7 +174,10 @@ def _armar_y_cerrar(corrida: dict, traza) -> str:
                  type(e).__name__ == "NoSalio" else None, motivo=str(e))
         traza.update(output={"estado": "no_salio", "error": f"{type(e).__name__}: {e}"[:500]},
                      metadata=_para_traza(corrida))
-        db.automatiza_cerrar(corrida_id, "no_salio", motivo=f"{type(e).__name__}: {e}"[:500])
+        # RAG·24: lo que se gastó antes de fallar también cuenta; descargar
+        # exige estado «listo», así que guardar el uso aquí no entrega nada
+        db.automatiza_cerrar(corrida_id, "no_salio", motivo=f"{type(e).__name__}: {e}"[:500],
+                             resultado={"uso": corrida["uso"].como_dict()})
         return "no_salio"
     _paso(corrida_id, "revisar")
     estado = salida.pop("estado", "listo")

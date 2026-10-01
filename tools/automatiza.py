@@ -7,6 +7,7 @@
     python tools/automatiza.py tope --usd 25
     python tools/automatiza.py tope --sin-usd
     python tools/automatiza.py tope --por-ip 10     # corridas al día por visitante
+    python tools/automatiza.py corridas --dias 7    # RAG·24: tiempo, tokens y costo
 
 Cambia UNA FILA en la base, sin desplegar nada: el cambio vale en la
 siguiente petición. Cada cambio agrega una fila (queda el historial de quién
@@ -61,6 +62,51 @@ def _mostrar(db) -> None:
           else f"«Ahorita no está disponible» (motivo interno: {motivo})")
 
 
+def _pesos(usd: float | None) -> str:
+    return "sin precio confirmado" if usd is None else f"${usd:.2f} dólares"
+
+
+def resumen_corridas(filas: list[dict]) -> list[str]:
+    """RAG·24 — una línea por corrida y el total. El costo sale de
+    pipeline/costos_rag.py con los precios de HOY en tools/pricing.json: las
+    corridas viejas se cuentan solas cuando se agreguen los precios."""
+    import json
+
+    from pipeline import costos_rag
+    lineas = [f"{'id':>5}  {'creada':11}  {'estado':13}  {'seg':>5}  {'int':>3}  "
+              f"{'claude ent/sal':>15}  {'emb':>5}  {'busq':>4}  costo"]
+    total, con_costo, segs = 0.0, True, []
+    for f in filas:
+        uso = json.loads(f["uso"]) if f.get("uso") else None
+        llamadas = (uso or {}).get("llamadas") or []
+        claude = [ll for ll in llamadas if ll.get("tipo") != "embedding"]
+        emb = sum(ll.get("entrada") or 0 for ll in llamadas if ll.get("tipo") == "embedding")
+        ent = sum(ll.get("entrada") or 0 for ll in claude)
+        sal = sum(ll.get("salida") or 0 for ll in claude)
+        seg = float(f["seg"]) if f.get("seg") else None
+        if seg is not None and f["estado"] == "listo":
+            segs.append(seg)
+        costo = costos_rag.costo_de_resultado(uso)
+        if costo is None:
+            con_costo = False
+        else:
+            total += costo
+        lineas.append(
+            f"{f['id']:>5}  {f.get('creado') or '':11}  {f['estado']:13}  "
+            f"{f'{seg:.0f}' if seg is not None else '—':>5}  {f.get('intentos') or '—':>3}  "
+            f"{f'{ent}/{sal}' if claude else '—':>15}  {emb or '—':>5}  "
+            f"{(uso or {}).get('consultas_vector', '—'):>4}  {_pesos(costo)}")
+    lineas.append("")
+    lineas.append(f"Corridas: {len(filas)} · listas: {len(segs)}"
+                  + (f" · armado promedio de las listas: {sum(segs) / len(segs):.0f} s"
+                     if segs else ""))
+    lineas.append("Costo total: " + (_pesos(total) if con_costo and filas else
+                                     "sin precio confirmado" if filas else "$0.00 dólares"))
+    lineas.append("(int = intentos del validador · emb = tokens de embeddings · "
+                  "busq = consultas a S3 Vectors · sin la moderación, que corre en el API)")
+    return lineas
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -81,6 +127,8 @@ def main() -> None:
     tp.add_argument("--sin-usd", action="store_true")
     tp.add_argument("--por-ip", type=int)
     tp.add_argument("--nota")
+    co = sub.add_parser("corridas", help="RAG·24: tiempo, tokens y costo por corrida")
+    co.add_argument("--dias", type=int, default=1)
     args = ap.parse_args()
     if not args.cluster_arn or not args.secret_arn:
         ap.error("faltan --cluster-arn/--secret-arn (o DB_CLUSTER_ARN/DB_SECRET_ARN)")
@@ -97,6 +145,12 @@ def main() -> None:
                   getattr(args, "por_ip", None)):
         if valor is not None and valor < 0:
             ap.error("un tope no puede ser negativo")
+
+    if args.accion == "corridas":
+        if args.dias < 1:
+            ap.error("--dias tiene que ser 1 o más")
+        print("\n".join(resumen_corridas(db.automatiza_corridas_recientes(args.dias))))
+        return
 
     if args.accion == "encender":
         vigente = db.automatiza_interruptor() or {}

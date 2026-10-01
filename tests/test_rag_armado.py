@@ -237,7 +237,7 @@ def test_costo_con_precios(monkeypatch):
 
 def test_pricing_json_hoy_no_tiene_precios_de_rag():
     # si esto falla es que el dueño ya agregó la sección: ajusta el reporte
-    costos_rag.precios.cache_clear()
+    costos_rag._rag.cache_clear()
     assert costos_rag.precios() == {}
 
 

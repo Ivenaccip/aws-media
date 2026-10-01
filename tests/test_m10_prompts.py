@@ -177,6 +177,21 @@ def test_chat_json_publico_usa_la_clave_publica(monkeypatch):
     monkeypatch.setattr(llm, "client_publico", lambda: publico)
     asyncio.run(llm.chat_json("moderar", "x", "hola", publico=True))
     assert publico.kwargs and plataforma.kwargs is None
+    # sin kwargs de Langfuse: el cliente público es el SDK de OpenAI pelón
+    assert "name" not in publico.kwargs and "langfuse_prompt" not in publico.kwargs
+
+
+def test_cliente_publico_sin_langfuse(monkeypatch):
+    """El texto de un anónimo no viaja al Langfuse de PLATAFORMA (que es el que
+    carga la Lambda del API): el cliente público no lleva el envoltorio."""
+    from pipeline import llm
+    monkeypatch.setattr(llm, "_client_publico", None)
+    monkeypatch.setenv("OPENAI_API_KEY_PUBLICO", "publica")
+    c = llm.client_publico()
+    import openai
+    assert type(c) is openai.AsyncOpenAI
+    assert not type(c).__module__.startswith("langfuse")
+    monkeypatch.setattr(llm, "_client_publico", None)
 
 
 def test_clave_publica_de_ssm_o_nada(monkeypatch):
