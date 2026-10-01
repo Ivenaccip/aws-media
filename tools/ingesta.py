@@ -38,7 +38,8 @@ METADATOS: filtrables `nodos` (lista de tipos), `tipo` (nodo · credencial),
 `fuente`, `docs_commit`, `version_n8n`, `idioma`; no filtrables `texto`,
 `titulo`, `url` (pipeline/vectores.py).
 
-LA CLAVE DE GEMINI sale de SSM `<ssm_publico>/GEMINI_API_KEY` con tus
+LA CLAVE DEL PROVEEDOR sale de SSM `<ssm_publico>/GEMINI_API_KEY` (u
+`OPENAI_API_KEY` con el respaldo de OpenAI; Titan no lleva) con tus
 credenciales de AWS (capa 1: nunca la de plataforma del .env). No se imprime.
 
 Precio: sin precio confirmado (el modelo de embeddings no está en tools/pricing.json).
@@ -300,15 +301,18 @@ def imprimir(r: dict, docs_commit: str) -> None:
     print("Precio: sin precio confirmado (el modelo de embeddings no está en tools/pricing.json).")
 
 
-def _clave_gemini(entorno: entornos.Entorno) -> None:
-    """Pone GEMINI_API_KEY_PUBLICO desde SSM /publico/. Nunca la imprime."""
-    if os.getenv("GEMINI_API_KEY_PUBLICO"):
+def _clave_publica(entorno: entornos.Entorno) -> None:
+    """Pone `<CLAVE>_PUBLICO` del proveedor desde SSM /publico/. Nunca la
+    imprime. Titan (IAM) no lleva clave."""
+    from pipeline import embeddings
+    clave = embeddings.CLAVES[entorno.embeddings or vectores.PROVEEDOR_POR_DEFECTO]
+    if not clave or os.getenv(f"{clave}_PUBLICO"):
         return
     import boto3
-    nombre = f"{entorno.ssm_publico}/GEMINI_API_KEY"
+    nombre = f"{entorno.ssm_publico}/{clave}"
     valor = boto3.client("ssm").get_parameter(Name=nombre, WithDecryption=True)["Parameter"]["Value"]
-    os.environ["GEMINI_API_KEY_PUBLICO"] = valor
-    print(f"Clave de Gemini: {nombre} (SSM)")
+    os.environ[f"{clave}_PUBLICO"] = valor
+    print(f"Clave de embeddings: {nombre} (SSM)")
 
 
 def subir(trozos: list[Trozo], entorno: entornos.Entorno, *, embeber=None, s3v=None) -> int:
@@ -317,8 +321,7 @@ def subir(trozos: list[Trozo], entorno: entornos.Entorno, *, embeber=None, s3v=N
     os.environ["VECTORES_INDICE"] = entorno.vectores_indice
     os.environ["EMBEDDINGS"] = entorno.embeddings or ""
     if embeber is None:
-        if entorno.embeddings != "titan":      # Titan (respaldo) va por IAM, sin clave
-            _clave_gemini(entorno)
+        _clave_publica(entorno)
         embeber = embeddings.embeber
     vectores_ = embeber([t.texto for t in trozos], "documento")
     lista = [vectores.Trozo(t.clave, v, {**t.metadatos, "texto": t.texto})

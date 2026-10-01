@@ -6,6 +6,12 @@ SSM. Titan no distingue documento de consulta; la `tarea` se sigue exigiendo
 para que el código no cambie al volver a Gemini. Precio de Titan: sin precio
 confirmado (no está en tools/pricing.json).
 
+SEGUNDO RESPALDO (1-oct): con EMBEDDINGS=openai se embebe con OpenAI
+text-embedding-3-small y `dimensions`=1024. La clave es `OPENAI_API_KEY_PUBLICO`
+si existe; si no, `OPENAI_API_KEY`. En el worker solo existe la segunda y sale
+de `/publico/` (una clave nueva con su propio tope, nunca la de plataforma).
+OpenAI tampoco distingue documento de consulta. Precio: sin precio confirmado.
+
 Lo que decidió el dueño el 29-sep y NO se cambia sin reindexar (pipeline/vectores.py):
 1024 dimensiones con `output_dimensionality`, renormalizadas a norma 1, y
 `task_type` de DOCUMENTO para lo que se ingesta y de CONSULTA para lo que se
@@ -40,8 +46,13 @@ LOTE = 100          # textos por llamada (batchEmbedContents)
 ESPERAS_429 = (5, 15, 30, 60)
 
 
+# Qué clave de /publico/ necesita cada proveedor (Titan va por IAM, sin clave).
+# La ingesta y el eval la leen de SSM y la ponen como `<NOMBRE>_PUBLICO`.
+CLAVES = {"gemini": "GEMINI_API_KEY", "titan": None, "openai": "OPENAI_API_KEY"}
+
+
 class SinClave(RuntimeError):
-    """No hay clave de Gemini para lo público."""
+    """No hay clave del proveedor de embeddings para lo público."""
 
 
 def clave() -> str:
@@ -67,6 +78,8 @@ def embeber(textos: Iterable[str], tarea: str, *, cli=None) -> list[list[float]]
         raise ValueError("no se embebe un texto vacío")
     if vectores.proveedor() == "titan":
         return _titan(lista, cli)
+    if vectores.proveedor() == "openai":
+        return _openai(lista, cli)
     from google.genai import types
     cli = cli or cliente()
     fuera: list[list[float]] = []
@@ -119,4 +132,45 @@ def _titan(lista: list[str], cli=None) -> list[list[float]]:
         datos = json.loads(r["body"].read())
         fuera.append(vectores.validar(datos.get("embeddingsByType", {}).get("float")
                                       or datos["embedding"]))
+    return fuera
+
+
+# --- segundo respaldo temporal: OpenAI text-embedding-3-small ----------------
+
+def clave_openai() -> str:
+    k = os.getenv("OPENAI_API_KEY_PUBLICO") or os.getenv("OPENAI_API_KEY")
+    if not k:
+        raise SinClave("falta OPENAI_API_KEY (en el worker sale de /publico/)")
+    return k
+
+
+def cliente_openai():
+    from openai import OpenAI
+    # sin reintentos propios del SDK: los de abajo son los únicos y se ven
+    return OpenAI(api_key=clave_openai(), max_retries=0)
+
+
+def _openai(lista: list[str], cli=None) -> list[list[float]]:
+    """Lotes de LOTE textos por llamada. Con `dimensions` OpenAI ya devuelve
+    el vector recortado y normalizado; `validar` lo revisa igual. Se reintenta
+    solo el límite por minuto (429 / RateLimitError)."""
+    cli = cli or cliente_openai()
+    fuera: list[list[float]] = []
+    for i in range(0, len(lista), LOTE):
+        parte = lista[i:i + LOTE]
+        for espera in (*ESPERAS_429, None):
+            try:
+                r = cli.embeddings.create(model=vectores.MODELOS["openai"], input=parte,
+                                          dimensions=vectores.DIMENSION,
+                                          encoding_format="float")
+                break
+            except Exception as e:  # noqa: BLE001 — solo se perdona el límite por minuto
+                texto = f"{type(e).__name__} {e}"
+                if espera is None or not ("429" in texto or "RateLimit" in texto):
+                    raise
+                time.sleep(espera)
+        if len(r.data) != len(parte):
+            raise RuntimeError("OpenAI devolvió otro número de vectores")
+        # el orden lo da `index`, no la posición en la respuesta
+        fuera.extend(vectores.validar(d.embedding) for d in sorted(r.data, key=lambda d: d.index))
     return fuera

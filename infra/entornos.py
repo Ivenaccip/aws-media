@@ -86,7 +86,8 @@ class Entorno:
     # existir donde `publico` sea True: el CDK se niega a armar el worker sin él.
     ssm_publico: str | None = None
     # Con qué modelo se embebe el índice de arriba: «gemini» (el plan) o
-    # «titan» (respaldo temporal por Bedrock, 30-sep). Va amarrado al índice:
+    # «titan» (respaldo temporal por Bedrock, 30-sep) u «openai» (segundo
+    # respaldo, 1-oct: Bedrock bloqueado en la cuenta). Va amarrado al índice:
     # cambiarlo es cambiar también `vectores_indice` (pipeline/vectores.py).
     embeddings: str | None = None
 
@@ -132,7 +133,10 @@ DEV = Entorno(
     # RESPALDO TEMPORAL (30-sep): Google no acepta aún la tarjeta, así que dev
     # usa Titan V2 por Bedrock en su propio índice. Al volver a Gemini:
     # vectores_indice="n8n-docs-v1" y embeddings="gemini" (ese índice sigue ahí).
-    vectores_indice="n8n-docs-titan-v1",
-    embeddings="titan",
+    # SEGUNDO RESPALDO (1-oct): Bedrock dio «Error 002» (bloqueo de la cuenta,
+    # caso con AWS Support), así que dev pasa a OpenAI. Si Bedrock se libera
+    # antes que Google: vectores_indice="n8n-docs-titan-v1" y embeddings="titan".
+    vectores_indice="n8n-docs-openai-v1",
+    embeddings="openai",
     ssm_publico="/media-ivenaccip-dev/publico",
 )
