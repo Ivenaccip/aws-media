@@ -1622,7 +1622,8 @@ def automatiza_corridas_recientes(dias: int = 1) -> list[dict]:
                    to_char(creado AT TIME ZONE '{ZONA_AUTOMATIZA}', 'MM-DD HH24:MI') AS creado
               FROM automatiza_corridas
              WHERE estado <> 'rechazada'
-               AND creado >= now() - make_interval(days => :d)
+               -- ::int: make_interval solo existe con int4 y _param manda bigint
+               AND creado >= now() - make_interval(days => :d::int)
              ORDER BY id""", {"d": int(dias)})
 
 

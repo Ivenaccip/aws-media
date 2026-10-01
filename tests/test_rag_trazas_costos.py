@@ -319,3 +319,19 @@ def test_corridas_recientes_no_lee_texto_ni_flujo(monkeypatch):
     sql, p = vistos[0]
     assert p == {"d": 7} and "rechazada" in sql
     assert "texto" not in sql and "'flujo'" not in sql and "ip_hash" not in sql
+
+
+def test_todo_make_interval_lleva_cast_a_int():
+    """El Data API manda los int de Python como bigint y make_interval solo
+    existe con int4 («function make_interval(days => bigint) does not
+    exist»). Ya se rompió tres veces: este guardián revisa TODO pipeline/."""
+    import re
+    from pathlib import Path
+    raiz = Path(__file__).resolve().parent.parent / "pipeline"
+    malos = []
+    for f in raiz.rglob("*.py"):
+        for n, linea in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            for m in re.finditer(r"make_interval\(\s*\w+\s*=>\s*(:\w+)(::int)?", linea):
+                if not m.group(2):
+                    malos.append(f"{f.name}:{n}")
+    assert malos == [], f"make_interval sin ::int en {malos}"
