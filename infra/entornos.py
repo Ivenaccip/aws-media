@@ -90,6 +90,14 @@ class Entorno:
     # respaldo, 1-oct: Bedrock bloqueado en la cuenta). Va amarrado al índice:
     # cambiarlo es cambiar también `vectores_indice` (pipeline/vectores.py).
     embeddings: str | None = None
+    # RAG·21 (encendido el 1-oct en dev): el armado real en vez del flujo de
+    # mentira. Pone ARMADO_REAL=1 en la Lambda del API (modera con la clave
+    # pública de OpenAI) y en el worker (arma con Claude). GASTA en cada
+    # corrida: el freno es el tope de corridas (tools/automatiza.py tope).
+    armado_real: bool = False
+    # El modelo que arma (RAG_MODELO en el worker). Explícito para no heredar
+    # en silencio el default de pipeline/claude_rag.py.
+    rag_modelo: str | None = None
 
     @property
     def es_prod(self) -> bool:
@@ -139,4 +147,9 @@ DEV = Entorno(
     vectores_indice="n8n-docs-openai-v1",
     embeddings="openai",
     ssm_publico="/media-ivenaccip-dev/publico",
+    # Tope acordado con el dueño: 20 corridas al día en dev.
+    armado_real=True,
+    # PROVISIONAL hasta el eval de 50 corridas (RAG·26): Opus 5.5 es el default
+    # de pipeline/claude_rag.py; se fija aquí para que cambiarlo sea una línea.
+    rag_modelo="claude-opus-5-5",
 )

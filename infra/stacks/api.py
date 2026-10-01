@@ -110,6 +110,16 @@ class ApiStack(Stack):
         if cola_publica is not None:
             fn.add_environment("PUBLICO_QUEUE_URL", cola_publica.queue_url)
             cola_publica.grant_send_messages(fn)
+            # RAG·21 + capa 1: con el armado real, /api/publico/corridas modera
+            # cada petición, y lo paga la clave de OpenAI de /publico/, no la
+            # de plataforma de /env. Solo ESE parámetro, solo leerlo.
+            if e.armado_real:
+                param = f"{e.ssm_publico}/OPENAI_API_KEY"
+                fn.add_environment("ARMADO_REAL", "1")
+                fn.add_environment("SSM_OPENAI_PUBLICO", param)
+                fn.add_to_role_policy(iam.PolicyStatement(
+                    actions=["ssm:GetParameter"],
+                    resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{param}"]))
         producir_sm.grant_start_execution(fn)
         # M23 · D (prerrequisito): el freno de capacidad cuenta las ejecuciones
         # vivas antes de arrancar otra (pipeline/jobs.py `_hay_sitio`). Sin este

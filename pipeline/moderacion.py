@@ -36,13 +36,15 @@ class Veredicto(BaseModel):
 
 @observe(name="moderar")
 async def revisar(texto: str, *, prompt: str = "moderar_system",
-                  falla_cerrado: bool = False) -> Veredicto:
+                  falla_cerrado: bool = False, publico: bool = False) -> Veredicto:
     cerrado = falla_cerrado or db.en_camino_publico()
     texto = (texto or "").strip()
     if not texto:
         return Veredicto(permitido=True)
     try:
-        r = await chat_json("moderar", load_prompt(prompt), texto[:4000])
+        # lo público con SU clave (capa 1); lo de plataforma, como siempre
+        extra = {"publico": True} if publico else {}
+        r = await chat_json("moderar", load_prompt(prompt), texto[:4000], **extra)
     except Exception as err:  # noqa: BLE001
         if cerrado:
             log.error("moderación no disponible (%s) — se rechaza (falla cerrado)", err)

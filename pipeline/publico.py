@@ -52,7 +52,11 @@ PROMPT_MODERACION = "moderar_automatiza_system"
 # moderación cerrada de RAG·7 vuelve a correr sola (lo vigila
 # tests/test_rag_tuberia.py). Un solo interruptor para las dos cosas: no
 # puede haber armado real sin moderación.
-ARMADO_DE_MENTIRA = True
+#
+# 1-oct: lo enciende el ENTORNO (`armado_real` en infra/entornos.py), que pone
+# ARMADO_REAL=1 a la vez en la Lambda del API (modera) y en el worker (arma).
+# Sin esa variable, el de mentira: ningún entorno gasta por accidente.
+ARMADO_DE_MENTIRA = os.getenv("ARMADO_REAL") != "1"
 
 # RAG·6 — cuántas corridas al día desde una misma IP mientras el dueño no
 # ponga su número (tools/automatiza.py tope --por-ip N). GENEROSO a propósito:
@@ -192,7 +196,8 @@ async def admitir(texto: str | None, ip_hash: str | None) -> Admision:
         return Admision(motivo, limpio)
     if ARMADO_DE_MENTIRA:
         return Admision(None, limpio)
-    v = await moderacion.revisar(limpio, prompt=PROMPT_MODERACION, falla_cerrado=True)
+    v = await moderacion.revisar(limpio, prompt=PROMPT_MODERACION, falla_cerrado=True,
+                                 publico=True)
     if v.caido:
         return Admision(APAGADO, limpio)
     if not v.permitido:
