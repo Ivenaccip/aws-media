@@ -48,9 +48,16 @@ from typing import Any, Iterable
 # decisión final: al volver a Gemini, dev regresa a EMBEDDINGS="gemini" y al
 # índice n8n-docs-v1 en infra/entornos.py. Cada modelo tiene SU índice: dos
 # espacios de vectores distintos jamás se mezclan en uno.
+#
+# SEGUNDO RESPALDO (1-oct): Bedrock también quedó bloqueado a nivel de cuenta
+# («Error 002», caso abierto con AWS Support). Dev pasa a OpenAI
+# text-embedding-3-small con `dimensions`=1024, en su índice n8n-docs-openai-v1,
+# con una clave NUEVA solo para lo público en /publico/OPENAI_API_KEY. Tampoco
+# es la decisión final.
 MODELOS = {
     "gemini": "gemini-embedding-001",
     "titan": "amazon.titan-embed-text-v2:0",   # respaldo temporal
+    "openai": "text-embedding-3-small",        # segundo respaldo temporal
 }
 PROVEEDOR_POR_DEFECTO = "gemini"
 DIMENSION = 1024
@@ -92,7 +99,7 @@ class Resultado:
 
 
 def proveedor() -> str:
-    """«gemini» o «titan», de EMBEDDINGS (el CDK la pone en el worker desde
+    """«gemini», «titan» u «openai», de EMBEDDINGS (el CDK la pone en el worker desde
     infra/entornos.py; la ingesta y el eval, desde el mismo entorno)."""
     p = os.getenv("EMBEDDINGS") or PROVEEDOR_POR_DEFECTO
     if p not in MODELOS:

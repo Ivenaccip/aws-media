@@ -385,3 +385,64 @@ def test_titan_reintenta_solo_el_limite(monkeypatch):
 def test_titan_anota_su_modelo_en_la_corrida(monkeypatch):
     monkeypatch.setenv("EMBEDDINGS", "titan")
     assert puente.modelo_vector() == "amazon.titan-embed-text-v2:0/1024"
+
+
+# segundo respaldo: OpenAI text-embedding-3-small (1-oct)
+
+class _Dato:
+    def __init__(self, index, embedding):
+        self.index, self.embedding = index, embedding
+
+
+class _OpenAI:
+    def __init__(self, dim=1024, truenas=0, error="RateLimitError: 429 Too Many Requests"):
+        self.pedidos, self.dim, self.truenas, self.error = [], dim, truenas, error
+        self.embeddings = self
+
+    def create(self, **kw):
+        if self.truenas:
+            self.truenas -= 1
+            raise RuntimeError(self.error)
+        self.pedidos.append(kw)
+        # al revés a propósito: el orden lo manda `index`
+        datos = [_Dato(i, [float(i + 1)] + [0.0] * (self.dim - 1)) for i in range(len(kw["input"]))]
+        return type("R", (), {"data": datos[::-1]})()
+
+
+def test_openai_por_lotes_y_en_orden(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "openai")
+    o = _OpenAI()
+    textos = [f"t{i}" for i in range(embeddings.LOTE + 3)]
+    vs = embeddings.embeber(textos, "documento", cli=o)
+    assert len(vs) == len(textos) and [len(p["input"]) for p in o.pedidos] == [embeddings.LOTE, 3]
+    assert o.pedidos[0]["model"] == "text-embedding-3-small"
+    assert o.pedidos[0]["dimensions"] == 1024
+    assert vs[0][0] == 1.0 and vs[1][0] == 1.0     # normalizados, y cada uno el suyo
+    assert all(abs(sum(x * x for x in v) - 1) < 1e-9 for v in vs)
+
+
+def test_openai_la_clave_publica_manda(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "plataforma")
+    monkeypatch.setenv("OPENAI_API_KEY_PUBLICO", "publica")
+    assert embeddings.clave_openai() == "publica"
+    monkeypatch.delenv("OPENAI_API_KEY_PUBLICO")
+    monkeypatch.delenv("OPENAI_API_KEY")
+    with pytest.raises(embeddings.SinClave):
+        embeddings.clave_openai()
+
+
+def test_openai_reintenta_solo_el_limite(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "openai")
+    esperas = []
+    monkeypatch.setattr(embeddings.time, "sleep", esperas.append)
+    assert len(embeddings.embeber(["x"], "documento", cli=_OpenAI(truenas=2))) == 1
+    assert esperas == list(embeddings.ESPERAS_429[:2])
+    with pytest.raises(RuntimeError, match="401"):
+        embeddings.embeber(["x"], "documento", cli=_OpenAI(truenas=1, error="401 invalid key"))
+    with pytest.raises(vectores.VectorInvalido):
+        embeddings.embeber(["x"], "documento", cli=_OpenAI(dim=1536))
+
+
+def test_openai_anota_su_modelo_en_la_corrida(monkeypatch):
+    monkeypatch.setenv("EMBEDDINGS", "openai")
+    assert puente.modelo_vector() == "text-embedding-3-small/1024"

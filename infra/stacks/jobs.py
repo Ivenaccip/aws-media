@@ -304,7 +304,9 @@ class JobsStack(Stack):
             worker.add_environment("VECTORES_INDICE", entorno.vectores_indice)
             worker.add_environment("EMBEDDINGS", entorno.embeddings or "gemini")
             # RESPALDO TEMPORAL (30-sep): Titan V2 por Bedrock mientras Google
-            # verifica la cuenta. Solo ESE modelo, solo invocar.
+            # verifica la cuenta. Solo ESE modelo, solo invocar. Con «openai»
+            # (segundo respaldo, 1-oct) no hay permiso que dar: la clave llega
+            # de /publico/ como las demás (SSM_ENV_PREFIX).
             if entorno.embeddings == "titan":
                 worker.add_to_role_policy(iam.PolicyStatement(
                     actions=["bedrock:InvokeModel"],

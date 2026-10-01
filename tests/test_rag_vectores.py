@@ -65,16 +65,18 @@ def test_modelo_decidido(monkeypatch):
     assert vectores.modelo() == "gemini-embedding-001"          # el plan
     monkeypatch.setenv("EMBEDDINGS", "titan")                   # respaldo temporal
     assert vectores.modelo() == "amazon.titan-embed-text-v2:0"
-    monkeypatch.setenv("EMBEDDINGS", "openai")
-    with pytest.raises(ValueError, match="openai"):
+    monkeypatch.setenv("EMBEDDINGS", "openai")                  # segundo respaldo
+    assert vectores.modelo() == "text-embedding-3-small"
+    monkeypatch.setenv("EMBEDDINGS", "voyage")
+    with pytest.raises(ValueError, match="voyage"):
         vectores.proveedor()
 
 
-def test_dev_usa_titan_en_su_propio_indice():
-    """Respaldo temporal (30-sep): dev embebe con Titan en un índice aparte.
+def test_dev_usa_openai_en_su_propio_indice():
+    """Segundo respaldo (1-oct): dev embebe con OpenAI en un índice aparte.
     Cada modelo tiene su índice; volver a Gemini es volver a n8n-docs-v1."""
-    assert entornos.DEV.embeddings == "titan"
-    assert "titan" in INDICE and INDICE != "n8n-docs-v1"
+    assert entornos.DEV.embeddings == "openai"
+    assert "openai" in INDICE and INDICE not in ("n8n-docs-v1", "n8n-docs-titan-v1")
     assert entornos.PROD.embeddings is None
 
 

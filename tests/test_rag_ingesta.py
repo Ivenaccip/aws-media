@@ -3,6 +3,7 @@
 Se arma aquí un clon de mentira de n8n-docs con la misma forma que el real
 (frontmatter y etiquetas de GitBook, carpetas por nodo, credenciales
 compartidas), y el embebido y S3 Vectors son objetos que solo anotan."""
+import dataclasses
 import json
 
 import pytest
@@ -173,34 +174,49 @@ def test_subir(docs, monkeypatch):
         assert len(json.dumps(filtrables).encode()) < 2048    # tope de metadatos filtrables
 
 
-def test_la_clave_sale_de_ssm_publico(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY_PUBLICO", raising=False)
-    pedidas = []
-
+def _ssm_falso(monkeypatch, pedidas):
     class _SSM:
         def get_parameter(self, Name, WithDecryption):
             pedidas.append((Name, WithDecryption))
             return {"Parameter": {"Value": "secreto"}}
     import boto3
     monkeypatch.setattr(boto3, "client", lambda s: _SSM())
-    ingesta._clave_gemini(entornos.DEV)
-    assert pedidas == [(entornos.DEV.ssm_publico + "/GEMINI_API_KEY", True)]
+
+
+@pytest.mark.parametrize("proveedor,clave", [("gemini", "GEMINI_API_KEY"),
+                                             ("openai", "OPENAI_API_KEY")])
+def test_la_clave_sale_de_ssm_publico(monkeypatch, proveedor, clave):
+    monkeypatch.delenv(f"{clave}_PUBLICO", raising=False)
+    pedidas = []
+    _ssm_falso(monkeypatch, pedidas)
+    entorno = dataclasses.replace(entornos.DEV, embeddings=proveedor)
+    ingesta._clave_publica(entorno)
+    assert pedidas == [(entornos.DEV.ssm_publico + "/" + clave, True)]
     import os
-    assert os.environ["GEMINI_API_KEY_PUBLICO"] == "secreto"
+    assert os.environ[f"{clave}_PUBLICO"] == "secreto"
 
 
-def test_con_titan_no_lee_la_clave_de_gemini(docs, monkeypatch):
-    """Respaldo temporal (30-sep): Titan va por IAM; la ingesta no toca SSM."""
-    monkeypatch.setattr(ingesta, "_clave_gemini",
-                        lambda e: (_ for _ in ()).throw(AssertionError("leyó la clave")))
+def test_con_titan_no_lee_ninguna_clave(monkeypatch):
+    """Titan va por IAM: la ingesta no toca SSM."""
+    pedidas = []
+    _ssm_falso(monkeypatch, pedidas)
+    ingesta._clave_publica(dataclasses.replace(entornos.DEV, embeddings="titan"))
+    assert pedidas == []
+
+
+def test_dev_sube_con_openai(docs, monkeypatch):
+    """Segundo respaldo (1-oct): dev embebe con OpenAI y su clave de /publico/."""
+    leidas = []
+    monkeypatch.setattr(ingesta, "_clave_publica", leidas.append)
     from pipeline import embeddings
     monkeypatch.setattr(embeddings, "embeber",
                         lambda textos, tarea: [[0.1] * vectores.DIMENSION for _ in textos])
     trozos, _ = ingesta.trozos_de(docs, TIPOS)
-    assert entornos.DEV.embeddings == "titan"
+    assert entornos.DEV.embeddings == "openai"
     assert ingesta.subir(trozos, entornos.DEV, s3v=_S3V()) == len(trozos)
+    assert leidas == [entornos.DEV]
     import os
-    assert os.environ["EMBEDDINGS"] == "titan"
+    assert os.environ["EMBEDDINGS"] == "openai"
 
 
 # ---------------------------------------------------------------------------

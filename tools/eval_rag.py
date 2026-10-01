@@ -4,12 +4,12 @@
     python tools/eval_rag.py correr --confirmar              # Opus 5.5 y Sonnet 5.5, camino directo
     python tools/eval_rag.py correr --confirmar --caminos directo,reescrita --solo ventas-1,ia-2
 
-CUESTA (Claude + Gemini por cada petición × modelo × camino): sin
+CUESTA (Claude + embeddings por cada petición × modelo × camino): sin
 `--confirmar` no sale nada de la máquina. Precio: sin precio confirmado; el
 reporte trae los tokens de cada corrida.
 
 Necesita: el índice con la documentación (tools/ingesta.py subir), y las
-claves de /publico/ (CLAUDE_API_KEY y GEMINI_API_KEY) que lee de SSM con tus
+claves de /publico/ (CLAUDE_API_KEY y la del modelo de embeddings) que lee de SSM con tus
 credenciales de AWS; nunca las imprime.
 
 LAS ENTRADAS: media/library/n8n/prueba_borrador.json (borrador para que el
@@ -134,9 +134,11 @@ def _claves(entorno: entornos.Entorno) -> None:
     import boto3
     ssm = boto3.client("ssm")
     os.environ["EMBEDDINGS"] = entorno.embeddings or ""
+    from pipeline import embeddings, vectores
     claves = [("CLAUDE_API_KEY", "CLAUDE_API_KEY_PUBLICO")]
-    if entorno.embeddings != "titan":          # Titan (respaldo) va por IAM, sin clave
-        claves.append(("GEMINI_API_KEY", "GEMINI_API_KEY_PUBLICO"))
+    clave = embeddings.CLAVES[entorno.embeddings or vectores.PROVEEDOR_POR_DEFECTO]
+    if clave:                                  # Titan (respaldo) va por IAM, sin clave
+        claves.append((clave, f"{clave}_PUBLICO"))
     for nombre, var in claves:
         if not os.getenv(var):
             os.environ[var] = ssm.get_parameter(
