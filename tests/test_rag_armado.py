@@ -235,10 +235,26 @@ def test_costo_con_precios(monkeypatch):
     assert costos_rag.costo_usd(uso) is None           # precio incompleto = sin precio
 
 
-def test_pricing_json_hoy_no_tiene_precios_de_rag():
-    # si esto falla es que el dueño ya agregó la sección: ajusta el reporte
+def test_pricing_json_rag_hoy_sin_lectura_de_cache():
+    """1-oct: el dueño dio entrada/salida/escritura de Opus y Sonnet 5.5 y el
+    embedding, pero NO la lectura de caché ni las consultas de S3 Vectors. Con
+    eso ninguna corrida con Claude tiene costo todavía (nunca se inventa).
+    Si esto falla es que ya se completó la sección: ajusta el reporte."""
     costos_rag._rag.cache_clear()
-    assert costos_rag.precios() == {}
+    p = costos_rag.precios()
+    assert p["claude-opus-5-5"]["entrada"] == 4.0 and p["claude-opus-5-5"]["salida"] == 20.0
+    assert p["claude-opus-5-5"]["cache_escrita"] == 5.0               # la de 5 minutos
+    assert p["claude-sonnet-5-5"]["cache_escrita"] == 2.5
+    assert p["text-embedding-3-small"] == {"entrada": 0.02}
+    assert "cache_leida" not in p["claude-opus-5-5"]
+    uso = claude_rag.Uso()
+    uso.llamadas.append({"etapa": "armar1", "modelo": "claude-opus-5-5", "entrada": 1,
+                         "salida": 1, "cache_escrita": 0, "cache_leida": 0})
+    assert costos_rag.costo_usd(uso) is None
+    solo_embedding = claude_rag.Uso()
+    solo_embedding.sumar_embedding("embeber_consulta", "text-embedding-3-small", 1_000_000)
+    assert costos_rag.costo_usd(solo_embedding) == 0.02
+    costos_rag._rag.cache_clear()
 
 
 # ---------------------------------------------------------------------------
