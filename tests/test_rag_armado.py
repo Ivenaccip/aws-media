@@ -85,11 +85,12 @@ def test_extraer_json_invalido(texto):
         claude_rag.extraer_json(texto)
 
 
-def test_pedir_json_lo_que_se_manda():
+def test_pedir_json_lo_que_se_manda(caplog):
     cli = _Claude({"ok": True})
     uso = claude_rag.Uso()
-    r = claude_rag.pedir_json("S", [{"role": "user", "content": "u"}], etapa="x",
-                              effort="low", max_tokens=100, uso=uso, cli=cli)
+    with caplog.at_level("INFO", logger="pipeline.claude_rag"):
+        r = claude_rag.pedir_json("S", [{"role": "user", "content": "u"}], etapa="x",
+                                  effort="low", max_tokens=100, uso=uso, cli=cli)
     assert r == {"ok": True}
     kw = cli.pedidos[0]
     assert kw["model"] == "claude-opus-5-5"
@@ -97,8 +98,14 @@ def test_pedir_json_lo_que_se_manda():
     assert kw["fallbacks"] == "default" and kw["betas"] == [claude_rag.FALLBACK_BETA]
     assert kw["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert "thinking" not in kw and "tool_choice" not in kw and "temperature" not in kw
+    seg = uso.llamadas[0].pop("seg")
+    assert isinstance(seg, float) and seg >= 0
     assert uso.llamadas == [{"etapa": "x", "modelo": "claude-opus-5-5", "entrada": 1000,
                              "salida": 500, "cache_escrita": 0, "cache_leida": 800}]
+    # una línea por llamada en CloudWatch: etapa, modelo, effort, segundos y tokens
+    linea = caplog.messages[-1]
+    assert linea.startswith("claude x: claude-opus-5-5 effort=low ")
+    assert "entrada 1000 · salida 500 · end_turn" in linea
 
 
 def test_refusal_y_max_tokens():

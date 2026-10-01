@@ -24,13 +24,17 @@ se guardan los tokens de cada llamada para calcularlo cuando esté (RAG·24).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 
 MODELO_POR_DEFECTO = "claude-opus-5-5"
 CANDIDATOS = ("claude-opus-5-5", "claude-sonnet-5-5")
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+log = logging.getLogger(__name__)
 
 
 class SinClave(RuntimeError):
@@ -50,13 +54,16 @@ class Uso:
     """Tokens acumulados de una corrida, por modelo (RAG·24)."""
     llamadas: list[dict] = field(default_factory=list)
 
-    def sumar(self, etapa: str, modelo: str, r) -> None:
+    def sumar(self, etapa: str, modelo: str, r, *, seg: float | None = None) -> None:
         u = r.usage
-        self.llamadas.append({
+        ll = {
             "etapa": etapa, "modelo": getattr(r, "model", modelo) or modelo,
             "entrada": u.input_tokens, "salida": u.output_tokens,
             "cache_escrita": getattr(u, "cache_creation_input_tokens", 0) or 0,
-            "cache_leida": getattr(u, "cache_read_input_tokens", 0) or 0})
+            "cache_leida": getattr(u, "cache_read_input_tokens", 0) or 0}
+        if seg is not None:
+            ll["seg"] = round(seg, 1)
+        self.llamadas.append(ll)
 
     def total(self) -> dict:
         t = {"entrada": 0, "salida": 0, "cache_escrita": 0, "cache_leida": 0}
@@ -119,12 +126,19 @@ def pedir_json(system: str, mensajes: list[dict], *, etapa: str, effort: str,
     # el system es estable entre corridas: se cachea (la lista de nodos y las
     # reglas pesan miles de tokens y se repiten en cada petición)
     sistema = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+    t0 = time.monotonic()
     r = cli.beta.messages.create(
         model=m, max_tokens=max_tokens, system=sistema, messages=mensajes,
         output_config={"effort": effort},
         betas=[FALLBACK_BETA], fallbacks="default")
+    seg = time.monotonic() - t0
+    # una línea por llamada en CloudWatch: separa lo que tarda el modelo del
+    # arranque en frío (las líneas REPORT solo dan la duración total)
+    log.info("claude %s: %s effort=%s %.1f s · entrada %s · salida %s · %s",
+             etapa, getattr(r, "model", m) or m, effort, seg,
+             r.usage.input_tokens, r.usage.output_tokens, r.stop_reason)
     if uso is not None:
-        uso.sumar(etapa, m, r)
+        uso.sumar(etapa, m, r, seg=seg)
     if r.stop_reason == "refusal":
         raise Declinado(f"{etapa}: el modelo declinó")
     if r.stop_reason == "max_tokens":
