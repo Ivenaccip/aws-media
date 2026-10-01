@@ -1,6 +1,7 @@
 """Llamadas a OpenAI instrumentadas con Langfuse."""
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from .config import settings
@@ -8,6 +9,8 @@ from .utils import parse_llm_json
 
 if TYPE_CHECKING:  # solo para los type checkers — en runtime no se evalúa
     from langfuse.openai import AsyncOpenAI
+
+log = logging.getLogger(__name__)
 
 _client: "AsyncOpenAI | None" = None
 _client_publico: "AsyncOpenAI | None" = None
@@ -44,9 +47,13 @@ def clave_publica() -> str:
 
 
 def client_publico() -> "AsyncOpenAI":
+    """El SDK de OpenAI SIN el envoltorio de Langfuse: la Lambda del API carga
+    las claves de Langfuse de PLATAFORMA, y con el envoltorio el texto de un
+    visitante anónimo terminaría en ese proyecto, sin enmascarar (lo acordado
+    el 30-sep: lo público solo en su proyecto aparte, ver trazas_rag)."""
     global _client_publico
     if _client_publico is None:
-        from langfuse.openai import AsyncOpenAI
+        from openai import AsyncOpenAI
         _client_publico = AsyncOpenAI(api_key=clave_publica())
     return _client_publico
 
@@ -54,6 +61,15 @@ def client_publico() -> "AsyncOpenAI":
 async def chat_json(name: str, system: str, user: str, *, publico: bool = False) -> dict:
     """Ejecuta un prompt que debe responder JSON puro y lo parsea. Con
     `publico` va con la clave de lo público (capa 1), no con la de plataforma."""
+    mensajes = [{"role": "system", "content": str(system)}, {"role": "user", "content": user}]
+    if publico:
+        # sin Langfuse (ver client_publico): solo tokens al log, para el costo
+        resp = await client_publico().chat.completions.create(
+            model=settings.openai_model, messages=mensajes)
+        u = getattr(resp, "usage", None)
+        log.info("%s (público): %s · entrada %s · salida %s", name, settings.openai_model,
+                 getattr(u, "prompt_tokens", None), getattr(u, "completion_tokens", None))
+        return parse_llm_json(resp.choices[0].message.content or "")
     extra = {}
     # M10: si el system salió de Langfuse (config.PromptTexto trae el objeto),
     # la generation queda enlazada a esa versión del prompt — el dashboard de
@@ -61,7 +77,7 @@ async def chat_json(name: str, system: str, user: str, *, publico: bool = False)
     objeto = getattr(system, "objeto", None)
     if objeto is not None:
         extra["langfuse_prompt"] = objeto
-    resp = await (client_publico() if publico else client()).chat.completions.create(
+    resp = await client().chat.completions.create(
         model=settings.openai_model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         name=name,  # nombre de la generation en Langfuse

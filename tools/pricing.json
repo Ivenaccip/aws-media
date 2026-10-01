@@ -95,5 +95,16 @@
     "verified_on": "2026-09-16",
     "plan_minimo": { "nombre": "Starter", "usd_por_mes": 29 },
     "source": "https://www.blotato.com/pricing y https://help.blotato.com/api/start"
+  },
+  "rag": {
+    "comment": "RAG·24 — /automatiza. Dólares por MILLÓN de tokens (embedding: solo entrada). Lo lee pipeline/costos_rag.py: si a un modelo le falta un campo, la corrida queda sin costo, nunca con uno inventado. cache_escrita = escritura de 5 minutos (el cache_control ephemeral que usa pipeline/claude_rag.py); la de 1 hora no se usa y queda solo de referencia.",
+    "verified_on": "2026-10-01",
+    "fuente": "Dados por el dueño el 2026-10-01 desde las páginas de precios de Anthropic y OpenAI.",
+    "modelos": {
+      "claude-opus-5-5": { "entrada": 4.0, "salida": 20.0, "cache_escrita": 5.0, "cache_escrita_1h": 8.0 },
+      "claude-sonnet-5-5": { "entrada": 2.0, "salida": 10.0, "cache_escrita": 2.5, "cache_escrita_1h": 4.0 },
+      "text-embedding-3-small": { "entrada": 0.02 }
+    },
+    "pendiente": "Falta cache_leida (lectura de caché) de Opus y Sonnet 5.5 y s3vectors.consultas_por_millon (precio de las consultas de S3 Vectors, no el de almacenamiento de S3 Standard). Mientras falten, el costo por corrida sale «sin precio confirmado»."
   }
 }

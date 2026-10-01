@@ -1610,6 +1610,22 @@ def automatiza_consumo_hoy() -> dict:
     return {"corridas": int(fila["corridas"]), "usd": float(fila["usd"] or 0)}
 
 
+def automatiza_corridas_recientes(dias: int = 1) -> list[dict]:
+    """RAG·24 — las corridas armadas de los últimos `dias` (sin las
+    rechazadas) con lo que hace falta para medir costo y tiempo: el uso
+    guardado (`resultado.uso`), intentos, modelo y cuánto tardó el worker.
+    Para tools/automatiza.py; nunca devuelve el texto ni el flujo."""
+    return ejecutar(
+        f"""SELECT id, estado, modelo, resultado->>'intentos' AS intentos,
+                   (resultado->'uso')::text AS uso,
+                   EXTRACT(EPOCH FROM (termino - empezo))::text AS seg,
+                   to_char(creado AT TIME ZONE '{ZONA_AUTOMATIZA}', 'MM-DD HH24:MI') AS creado
+              FROM automatiza_corridas
+             WHERE estado <> 'rechazada'
+               AND creado >= now() - make_interval(days => :d)
+             ORDER BY id""", {"d": int(dias)})
+
+
 def automatiza_corridas_de_ip_hoy(ip_hash: str) -> int:
     """Corridas de hoy (hora de México) desde la misma IP hasheada, CON las
     rechazadas: desde RAG·7 una rechazada ya costó una llamada de moderación,

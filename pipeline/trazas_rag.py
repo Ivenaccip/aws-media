@@ -18,6 +18,7 @@ Nada de esto puede tumbar una corrida: cualquier falla de Langfuse se traga.
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import re
@@ -27,6 +28,12 @@ log = logging.getLogger(__name__)
 
 _CORREO = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _TELEFONO = re.compile(r"(?<![\w/])(?:\+|\()?\d[\d\s().-]{7,}\d(?![\w/])")
+
+# El cliente de Langfuse SOLO mientras hay una corrida abierta: las etapas
+# (`etapa()`) cuelgan de ella y fuera de una corrida no mandan nada. Así la
+# ingesta y el eval, que corren en la máquina del dueño con las claves de
+# PLATAFORMA en el .env, nunca terminan trazados.
+_EN_CORRIDA: contextvars.ContextVar = contextvars.ContextVar("trazas_rag_corrida", default=None)
 
 
 def activo() -> bool:
@@ -71,12 +78,47 @@ def corrida(corrida_id: int, *, entrada: dict | None = None):
         pila.close()
         yield _Nada()
         return
-    with pila:
-        yield _Enmascarado(span)
+    marca = _EN_CORRIDA.set(cli)
+    try:
+        with pila:
+            yield _Enmascarado(span)
+    finally:
+        _EN_CORRIDA.reset(marca)
     try:
         cli.flush()
     except Exception:  # noqa: BLE001
         log.exception("corrida %s: no se pudo mandar la traza", corrida_id)
+
+
+@contextmanager
+def etapa(nombre: str, *, tipo: str = "span", entrada=None, **kw):
+    """Una observación hija de la corrida abierta (reescribir, embeber,
+    buscar, armar, revisar). `tipo` es el as_type de Langfuse (span,
+    generation, embedding, retriever, guardrail); `kw` va tal cual (model,
+    model_parameters…). Fuera de una corrida, o si Langfuse falla al abrir,
+    rinde uno que no hace nada. Una excepción del cuerpo sale tal cual y queda
+    anotada como ERROR."""
+    cli = _EN_CORRIDA.get()
+    if cli is None:
+        yield _Nada()
+        return
+    pila = ExitStack()
+    try:
+        obs = pila.enter_context(cli.start_as_current_observation(
+            as_type=tipo, name=nombre,
+            input=enmascarar(entrada) if entrada is not None else None, **kw))
+    except Exception:  # noqa: BLE001 — la traza nunca tumba la corrida
+        log.exception("no se pudo abrir la etapa %s de la traza", nombre)
+        pila.close()
+        yield _Nada()
+        return
+    with pila:
+        envuelta = _Enmascarado(obs)
+        try:
+            yield envuelta
+        except Exception as e:
+            envuelta.update(level="ERROR", status_message=f"{type(e).__name__}: {e}"[:300])
+            raise
 
 
 class _Enmascarado:

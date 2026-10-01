@@ -67,19 +67,40 @@ def cliente():
     return genai.Client(api_key=clave())
 
 
-def embeber(textos: Iterable[str], tarea: str, *, cli=None) -> list[list[float]]:
+def embeber(textos: Iterable[str], tarea: str, *, cli=None, uso=None) -> list[list[float]]:
     """Un vector de 1024, ya normalizado, por texto y en el mismo orden. El
     título de cada trozo va DENTRO de su texto (tools/ingesta.py): el campo
-    `title` de Google obliga a una llamada por trozo."""
+    `title` de Google obliga a una llamada por trozo.
+
+    Con `uso` (un claude_rag.Uso, RAG·24) anota los tokens que cobró el
+    proveedor; dentro de una corrida, además, una observación en la traza
+    (RAG·23)."""
     if tarea not in TAREAS:
         raise ValueError(f"tarea tiene que ser una de {sorted(TAREAS)}")
     lista = list(textos)
     if any(not t or not t.strip() for t in lista):
         raise ValueError("no se embebe un texto vacío")
+    from pipeline import trazas_rag
+    modelo = vectores.modelo()
+    with trazas_rag.etapa(f"embeber_{tarea}", tipo="embedding", model=modelo) as obs:
+        fuera, tokens = _por_proveedor(lista, tarea, cli)
+        if tokens is not None:
+            obs.update(usage_details={"input": tokens}, metadata={"textos": len(lista)})
+    if uso is not None:
+        uso.sumar_embedding(f"embeber_{tarea}", modelo, tokens)
+    return fuera
+
+
+def _por_proveedor(lista: list[str], tarea: str, cli) -> tuple[list[list[float]], int | None]:
+    """(vectores, tokens cobrados o None si el proveedor no los dice)."""
     if vectores.proveedor() == "titan":
         return _titan(lista, cli)
     if vectores.proveedor() == "openai":
         return _openai(lista, cli)
+    return _gemini(lista, tarea, cli), None
+
+
+def _gemini(lista: list[str], tarea: str, cli=None) -> list[list[float]]:
     from google.genai import types
     cli = cli or cliente()
     fuera: list[list[float]] = []
@@ -111,12 +132,13 @@ def cliente_bedrock():
     return boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"))
 
 
-def _titan(lista: list[str], cli=None) -> list[list[float]]:
+def _titan(lista: list[str], cli=None) -> tuple[list[list[float]], int | None]:
     """Titan no tiene lotes síncronos: una llamada por texto. Su tope es de
     50 000 caracteres (los trozos de la ingesta no pasan de 6 000). Se
     reintenta solo el límite por minuto de Bedrock (ThrottlingException)."""
     cli = cli or cliente_bedrock()
     fuera: list[list[float]] = []
+    tokens: int | None = 0
     for texto in lista:
         cuerpo = json.dumps({"inputText": texto, "dimensions": vectores.DIMENSION,
                              "normalize": True, "embeddingTypes": ["float"]})
@@ -132,7 +154,9 @@ def _titan(lista: list[str], cli=None) -> list[list[float]]:
         datos = json.loads(r["body"].read())
         fuera.append(vectores.validar(datos.get("embeddingsByType", {}).get("float")
                                       or datos["embedding"]))
-    return fuera
+        n = datos.get("inputTextTokenCount")
+        tokens = tokens + n if tokens is not None and isinstance(n, int) else None
+    return fuera, tokens
 
 
 # --- segundo respaldo temporal: OpenAI text-embedding-3-small ----------------
@@ -150,12 +174,13 @@ def cliente_openai():
     return OpenAI(api_key=clave_openai(), max_retries=0)
 
 
-def _openai(lista: list[str], cli=None) -> list[list[float]]:
+def _openai(lista: list[str], cli=None) -> tuple[list[list[float]], int | None]:
     """Lotes de LOTE textos por llamada. Con `dimensions` OpenAI ya devuelve
     el vector recortado y normalizado; `validar` lo revisa igual. Se reintenta
     solo el límite por minuto (429 / RateLimitError)."""
     cli = cli or cliente_openai()
     fuera: list[list[float]] = []
+    tokens: int | None = 0
     for i in range(0, len(lista), LOTE):
         parte = lista[i:i + LOTE]
         for espera in (*ESPERAS_429, None):
@@ -173,4 +198,6 @@ def _openai(lista: list[str], cli=None) -> list[list[float]]:
             raise RuntimeError("OpenAI devolvió otro número de vectores")
         # el orden lo da `index`, no la posición en la respuesta
         fuera.extend(vectores.validar(d.embedding) for d in sorted(r.data, key=lambda d: d.index))
-    return fuera
+        n = getattr(getattr(r, "usage", None), "prompt_tokens", None)
+        tokens = tokens + n if tokens is not None and isinstance(n, int) else None
+    return fuera, tokens

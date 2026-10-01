@@ -251,11 +251,15 @@ def test__entender_usa_el_texto_de_la_corrida(monkeypatch):
     monkeypatch.setattr(db, "automatiza_texto", lambda i: PETICION)
     monkeypatch.delenv("RAG_CAMINO", raising=False)
     vistos = []
+    c = puente.Consulta(PETICION, "directo")
     monkeypatch.setattr(puente, "entender",
-                        lambda i, t, **kw: vistos.append((i, t, kw)) or ("c", "v"))
-    assert worker._entender(5) == (PETICION, "c", "v")
+                        lambda i, t, **kw: vistos.append((i, t, kw)) or (c, "v"))
+    uso = object()
+    assert worker._entender(5, uso) == (PETICION, c, "v")
     assert vistos[0][:2] == (5, PETICION)
-    assert vistos[0][2]["embeber"] is embeddings.embeber
+    # RAG·24: el embeber de la corrida anota sus tokens en el uso de ESA corrida
+    emb = vistos[0][2]["embeber"]
+    assert emb.func is embeddings.embeber and emb.keywords == {"uso": uso}
     assert vistos[0][2]["reescribir"] is None          # directo: Claude ni se llama
 
 
@@ -263,7 +267,8 @@ def test__entender_reescrita_usa_claude(monkeypatch):
     monkeypatch.setattr(db, "automatiza_texto", lambda i: PETICION)
     monkeypatch.setenv("RAG_CAMINO", "reescrita")
     vistos = []
-    monkeypatch.setattr(puente, "entender", lambda i, t, **kw: vistos.append(kw) or ("c", "v"))
+    monkeypatch.setattr(puente, "entender", lambda i, t, **kw: vistos.append(kw) or
+                        (puente.Consulta("q", "reescrita"), "v"))
     worker._entender(5)
     assert callable(vistos[0]["reescribir"])
     monkeypatch.setattr(db, "automatiza_texto", lambda i: None)

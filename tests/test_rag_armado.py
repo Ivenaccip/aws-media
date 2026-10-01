@@ -85,11 +85,12 @@ def test_extraer_json_invalido(texto):
         claude_rag.extraer_json(texto)
 
 
-def test_pedir_json_lo_que_se_manda():
+def test_pedir_json_lo_que_se_manda(caplog):
     cli = _Claude({"ok": True})
     uso = claude_rag.Uso()
-    r = claude_rag.pedir_json("S", [{"role": "user", "content": "u"}], etapa="x",
-                              effort="low", max_tokens=100, uso=uso, cli=cli)
+    with caplog.at_level("INFO", logger="pipeline.claude_rag"):
+        r = claude_rag.pedir_json("S", [{"role": "user", "content": "u"}], etapa="x",
+                                  effort="low", max_tokens=100, uso=uso, cli=cli)
     assert r == {"ok": True}
     kw = cli.pedidos[0]
     assert kw["model"] == "claude-opus-5-5"
@@ -97,8 +98,14 @@ def test_pedir_json_lo_que_se_manda():
     assert kw["fallbacks"] == "default" and kw["betas"] == [claude_rag.FALLBACK_BETA]
     assert kw["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert "thinking" not in kw and "tool_choice" not in kw and "temperature" not in kw
+    seg = uso.llamadas[0].pop("seg")
+    assert isinstance(seg, float) and seg >= 0
     assert uso.llamadas == [{"etapa": "x", "modelo": "claude-opus-5-5", "entrada": 1000,
                              "salida": 500, "cache_escrita": 0, "cache_leida": 800}]
+    # una línea por llamada en CloudWatch: etapa, modelo, effort, segundos y tokens
+    linea = caplog.messages[-1]
+    assert linea.startswith("claude x: claude-opus-5-5 effort=low ")
+    assert "entrada 1000 · salida 500 · end_turn" in linea
 
 
 def test_refusal_y_max_tokens():
@@ -228,10 +235,26 @@ def test_costo_con_precios(monkeypatch):
     assert costos_rag.costo_usd(uso) is None           # precio incompleto = sin precio
 
 
-def test_pricing_json_hoy_no_tiene_precios_de_rag():
-    # si esto falla es que el dueño ya agregó la sección: ajusta el reporte
-    costos_rag.precios.cache_clear()
-    assert costos_rag.precios() == {}
+def test_pricing_json_rag_hoy_sin_lectura_de_cache():
+    """1-oct: el dueño dio entrada/salida/escritura de Opus y Sonnet 5.5 y el
+    embedding, pero NO la lectura de caché ni las consultas de S3 Vectors. Con
+    eso ninguna corrida con Claude tiene costo todavía (nunca se inventa).
+    Si esto falla es que ya se completó la sección: ajusta el reporte."""
+    costos_rag._rag.cache_clear()
+    p = costos_rag.precios()
+    assert p["claude-opus-5-5"]["entrada"] == 4.0 and p["claude-opus-5-5"]["salida"] == 20.0
+    assert p["claude-opus-5-5"]["cache_escrita"] == 5.0               # la de 5 minutos
+    assert p["claude-sonnet-5-5"]["cache_escrita"] == 2.5
+    assert p["text-embedding-3-small"] == {"entrada": 0.02}
+    assert "cache_leida" not in p["claude-opus-5-5"]
+    uso = claude_rag.Uso()
+    uso.llamadas.append({"etapa": "armar1", "modelo": "claude-opus-5-5", "entrada": 1,
+                         "salida": 1, "cache_escrita": 0, "cache_leida": 0})
+    assert costos_rag.costo_usd(uso) is None
+    solo_embedding = claude_rag.Uso()
+    solo_embedding.sumar_embedding("embeber_consulta", "text-embedding-3-small", 1_000_000)
+    assert costos_rag.costo_usd(solo_embedding) == 0.02
+    costos_rag._rag.cache_clear()
 
 
 # ---------------------------------------------------------------------------

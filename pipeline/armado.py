@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pipeline import claude_rag, n8n_catalogo, validador, vectores
+from pipeline import claude_rag, n8n_catalogo, trazas_rag, validador, vectores
 
 K = 8                        # trozos de documentación por petición
 MAX_CONTEXTO = 40_000        # caracteres de documentación que viajan al modelo
@@ -51,7 +51,7 @@ class Armado:
         return {"flujo": self.flujo, "resumen": self.resumen, "nodos": self.nodos,
                 "faltan": self.faltan, "fuentes": self.fuentes, "intentos": self.intentos,
                 "advertencias": self.advertencias, "modelo": self.modelo,
-                "uso": {"llamadas": uso.llamadas, "total": uso.total()}}
+                "uso": uso.como_dict()}
 
 
 def lista_de_nodos() -> str:
@@ -72,12 +72,19 @@ def prompt_sistema() -> str:
                                       llm_modelo=llm["modelo"])
 
 
-def buscar(consulta, vector_peticion, *, embeber, s3v=None) -> list[vectores.Resultado]:
-    if consulta.camino == "directo" and vector_peticion is not None:
-        qv = vector_peticion
-    else:
-        qv = embeber([consulta.texto], "consulta")[0]
-    return vectores.consultar(qv, k=K, s3v=s3v)
+def buscar(consulta, vector_peticion, *, embeber, s3v=None,
+           uso: claude_rag.Uso | None = None) -> list[vectores.Resultado]:
+    reusa = consulta.camino == "directo" and vector_peticion is not None
+    # RAG·23: qué trozos salieron y a qué distancia, para saber si un flujo
+    # malo vino de recuperar mal o de generar mal
+    with trazas_rag.etapa("buscar", tipo="retriever",
+                          entrada={"camino": consulta.camino, "reusa_vector": reusa}) as obs:
+        qv = vector_peticion if reusa else embeber([consulta.texto], "consulta")[0]
+        resultados = vectores.consultar(qv, k=K, s3v=s3v)
+        if uso is not None:
+            uso.consultas += 1
+        obs.update(output=[{"clave": r.clave, "distancia": r.distancia} for r in resultados])
+    return resultados
 
 
 def contexto(resultados: list[vectores.Resultado]) -> str:
@@ -120,7 +127,10 @@ def generar(peticion: str, resultados: list[vectores.Resultado], *, uso: claude_
             faltan = [str(x)[:200] for x in (r.get("faltan") or [])][:10]
             return Armado("sin_cobertura", None, "", [], faltan=faltan, fuentes=fuentes,
                           intentos=intento, modelo=m)
-        v = validador.validar(r["flujo"])
+        with trazas_rag.etapa(f"revisar{intento}", tipo="guardrail") as obs:
+            v = validador.validar(r["flujo"])
+            obs.update(output={"ok": v.ok, "errores": v.errores[:10],
+                               "advertencias": v.advertencias[:10]})
         if v.ok:
             nodos = [n["type"] for n in r["flujo"]["nodes"]]
             return Armado("listo", r["flujo"], str(r.get("resumen") or "")[:500], nodos,
@@ -137,5 +147,5 @@ def generar(peticion: str, resultados: list[vectores.Resultado], *, uso: claude_
 
 def armar(peticion: str, consulta, vector_peticion, *, embeber, uso: claude_rag.Uso,
           cli=None, s3v=None, modelo_: str | None = None) -> Armado:
-    resultados = buscar(consulta, vector_peticion, embeber=embeber, s3v=s3v)
+    resultados = buscar(consulta, vector_peticion, embeber=embeber, s3v=s3v, uso=uso)
     return generar(peticion, resultados, uso=uso, cli=cli, modelo_=modelo_)
