@@ -10,8 +10,8 @@ tablas y las pestañas antes de tocar una pantalla que cobre.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/admin/` existe; `/admin.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/admin.html` → 302 a `/estudio/admin/` (conserva el query), salvo la cookie `ui=clasica` | `etapa="todos"` en `PANTALLAS` + deploy | pendiente |
+| `nueva` | `/estudio/admin/` existe; `/admin.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/admin.html` → 302 a `/estudio/admin/` (conserva el query), salvo la cookie `ui=clasica` | `etapa="todos"` en `PANTALLAS` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/admin.html` y sus tests viejos (tabla de abajo) | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Regla de retiro (docs/PLAN-UI.md §7): 7 días en `todos` sin incidentes. Para

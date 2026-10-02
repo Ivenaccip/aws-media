@@ -25,8 +25,8 @@ original: enviar otra vez da otra versión, no pisa la anterior.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/imagenes/` existe; `/imagenes.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/imagenes.html?…` → 302 a `/estudio/imagenes/?…` (conserva `img`, `editar` y `prompt`), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/imagenes/` existe; `/imagenes.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/imagenes.html?…` → 302 a `/estudio/imagenes/?…` (conserva `img`, `editar` y `prompt`), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/imagenes.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño hace una corrida de verdad en `/estudio/imagenes/`

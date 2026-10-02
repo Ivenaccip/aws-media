@@ -21,8 +21,8 @@ son los mismos que usa editar metraje (`/estudio/subir/`).
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/shorts/` existe; `/shorts.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/shorts.html?p=…` → 302 a `/estudio/shorts/?p=…`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/shorts/` existe; `/shorts.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/shorts.html?p=…` → 302 a `/estudio/shorts/?p=…`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/shorts.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño hace una corrida de verdad en `/estudio/shorts/`

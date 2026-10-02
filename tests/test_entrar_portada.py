@@ -77,6 +77,9 @@ def test_raiz_con_query_es_un_enlace_viejo_al_estudio(local):
 
 
 def test_estudio_sirve_el_mismo_index(local):
+    # con `inicio` en `todos`, /estudio/ lleva al inicio nuevo; el viejo lo
+    # sigue viendo quien eligió la versión clásica (server/migracion.py)
+    local.cookies.set("ui", "clasica")
     r = local.get("/estudio/")
     assert r.status_code == 200
     assert r.text == (STATIC / "index.html").read_text(encoding="utf-8")
@@ -92,7 +95,12 @@ def test_entrar_existe(local):
 def test_las_tres_son_publicas_con_cognito(nube):
     # sin token: ninguna de las tres puede pedir sesión, o no habría por dónde entrar
     for ruta in ("/", "/estudio/", "/entrar", "/callback.html", "/enlaces.js"):
-        assert nube.get(ruta, follow_redirects=False).status_code == 200, ruta
+        r = nube.get(ruta, follow_redirects=False)
+        if ruta == "/estudio/" and r.status_code == 302:
+            # en `todos` lleva al inicio nuevo, que tampoco pide sesión
+            assert r.headers["location"] == "/estudio/inicio/"
+            r = nube.get(r.headers["location"], follow_redirects=False)
+        assert r.status_code == 200, ruta
 
 
 def test_sin_sesion_va_a_entrar_con_la_ruta_y_el_query(nube):

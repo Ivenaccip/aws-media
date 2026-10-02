@@ -29,8 +29,8 @@ costo, pero no el ejemplo.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/mix/` existe; `/mix.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/mix.html` → 302 a `/estudio/mix/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/mix/` existe; `/mix.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/mix.html` → 302 a `/estudio/mix/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/mix.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § MIX. El ejemplo es

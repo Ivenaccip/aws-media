@@ -18,8 +18,8 @@ no lo toca: `estilos.cobro.el_sondeo_no_reabre_el_boton_con_el_cobro_en_vuelo`.
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `nueva` | `/estudio/estilos/` existe; `/estilos.html` sigue igual | ⏳ al desplegar |
-| `todos` | `/estilos.html` → 302 a `/estudio/estilos/`, salvo la cookie `ui=clasica` | pendiente |
+| `nueva` | `/estudio/estilos/` existe; `/estilos.html` sigue igual | ✅ 28-sep |
+| `todos` | `/estilos.html` → 302 a `/estudio/estilos/`, salvo la cookie `ui=clasica` | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/estilos.html` y sus tests viejos | pendiente |
 
 Antes de `todos`: un análisis de verdad en `/estudio/estilos/` y el QA de

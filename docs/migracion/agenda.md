@@ -14,8 +14,8 @@ dos cosas: cambiar la hora y cancelar. Lo que cuida es otra cosa:
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/agenda/` existe; `/agenda.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/agenda.html` → 302 a `/estudio/agenda/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/agenda/` existe; `/agenda.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/agenda.html` → 302 a `/estudio/agenda/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/agenda.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § agenda. Necesita

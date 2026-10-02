@@ -19,8 +19,8 @@ vieja se llamaba `e1`.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/subir/` existe; `/e1.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/e1.html?p=…` → 302 a `/estudio/subir/?p=…`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/subir/` existe; `/e1.html` sigue igual | este PR | ✅ 28-sep |
+| `todos` | `/e1.html?p=…` → 302 a `/estudio/subir/?p=…`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | ⏳ al desplegar |
 | `retirada` | 302 siempre; se borran `static/e1.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño hace dos cosas en `/estudio/subir/`:
