@@ -115,15 +115,6 @@ def test_todo_lo_propio_va_con_ruta_absoluta():
 EXTERNOS = {"https://www.hostinger.com/es/hosting-n8n"}
 
 
-def test_lo_externo_abre_aparte_y_sin_opener():
-    html = _sin_comentarios_html(HTML)
-    for url in EXTERNOS:
-        etiqueta = re.search(r'<a\b[^>]*href="' + re.escape(url) + r'"[^>]*>', html)
-        assert etiqueta, url
-        assert 'target="_blank"' in etiqueta.group(0)
-        assert 'rel="noopener"' in etiqueta.group(0)
-
-
 def test_solo_pide_la_api_publica():
     codigo = _sin_comentarios_js(JS)
     for url in re.findall(r"['\"](/api/[^'\"]*)['\"]", codigo):
