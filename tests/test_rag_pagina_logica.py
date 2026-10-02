@@ -106,7 +106,13 @@ def test_todo_lo_propio_va_con_ruta_absoluta():
     for attr in re.findall(r'\b(?:src|href)="([^"#]+)"', html):
         if attr.startswith("https://irremplazables.xyz/"):
             continue      # canonical y og:*
+        if attr in EXTERNOS:
+            continue
         assert attr.startswith("/"), attr
+
+
+# Enlaces a otros sitios, uno por uno: lo demás tiene que ser ruta propia.
+EXTERNOS = {"https://www.hostinger.com/es/hosting-n8n"}
 
 
 def test_solo_pide_la_api_publica():
