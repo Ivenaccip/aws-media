@@ -56,6 +56,48 @@ class Entorno:
     # invitación. None = el entorno no tiene nombre propio y se entra por el
     # host execute-api.
     dominio_publico: str | None
+    # RAG·4 — la tubería pública de /automatiza (cola y worker propios). Va
+    # apagada en prod a propósito: aunque el código llegue a main, producción
+    # no crea nada público hasta el encendido de RAG·30, que es cambiar este
+    # False por True en PROD con su PR y su deploy, no un efecto secundario.
+    publico: bool = False
+    # RAG·7 — throttling de API Gateway, (peticiones por segundo sostenidas,
+    # ráfaga). Es la red de último recurso: aguanta mientras los contadores de
+    # la base (RAG·5/6) se enteran. None = sin throttling propio, que es como
+    # sigue prod hasta RAG·30 (su template no cambia con esta tarjeta).
+    # `throttle_etapa` cubre TODAS las rutas del entorno; `throttle_publico`
+    # solo /api/publico/*, mucho más estrecho porque ahí entra internet abierto.
+    throttle_etapa: tuple[int, int] | None = None
+    throttle_publico: tuple[int, int] | None = None
+    # RAG·17 — el almacén vectorial del RAG en S3 Vectors. El bucket y el
+    # índice NO los crea el CDK (aws-cdk-lib 2.221 no trae el módulo): los
+    # crea el dueño con `tools/vectores.py crear`, y así el índice sobrevive a
+    # un `cdk destroy` y al cierre del 25-oct. El CDK solo le da al worker
+    # público permiso de LEER este índice. None = el entorno no tiene RAG, que
+    # es como sigue prod hasta RAG·30. El nombre del bucket es único por
+    # cuenta y región, así que dev y prod nunca comparten uno.
+    vectores_bucket: str | None = None
+    vectores_indice: str | None = None
+    # Capa 1 (decisión del 29-sep): el prefijo de SSM que carga el worker
+    # PÚBLICO, aparte del de plataforma. Ahí van SOLO sus claves (la de Gemini
+    # para /automatiza, con su propio tope de cuota), cada una nueva y nunca
+    # reutilizada de /env. Las pone el dueño desde la consola de Parameter
+    # Store, no tools/ssm_env.py (que sube el .env en bloque a /env). Tiene que
+    # existir donde `publico` sea True: el CDK se niega a armar el worker sin él.
+    ssm_publico: str | None = None
+    # Con qué modelo se embebe el índice de arriba: «gemini» (el plan) o
+    # «titan» (respaldo temporal por Bedrock, 30-sep) u «openai» (segundo
+    # respaldo, 1-oct: Bedrock bloqueado en la cuenta). Va amarrado al índice:
+    # cambiarlo es cambiar también `vectores_indice` (pipeline/vectores.py).
+    embeddings: str | None = None
+    # RAG·21 (encendido el 1-oct en dev): el armado real en vez del flujo de
+    # mentira. Pone ARMADO_REAL=1 en la Lambda del API (modera con la clave
+    # pública de OpenAI) y en el worker (arma con Claude). GASTA en cada
+    # corrida: el freno es el tope de corridas (tools/automatiza.py tope).
+    armado_real: bool = False
+    # El modelo que arma (RAG_MODELO en el worker). Explícito para no heredar
+    # en silencio el default de pipeline/claude_rag.py.
+    rag_modelo: str | None = None
 
     @property
     def es_prod(self) -> bool:
@@ -85,4 +127,29 @@ DEV = Entorno(
     maquina_producir="aws-media-producir-dev",
     api="aws-media-dev",
     dominio_publico=None,
+    publico=True,
+    # Holgado para el estudio (una pantalla pide decenas de archivos de golpe)
+    # y estrecho para lo público: provisionales hasta que RAG·28 diga cuánta
+    # gente viene.
+    throttle_etapa=(50, 100),
+    throttle_publico=(5, 10),
+    # «aws*» está reservado en S3 Vectors (como en SSM): el 29-sep
+    # `aws-media-vectores-dev` devolvió «The requested bucket name is reserved».
+    vectores_bucket="media-ivenaccip-vectores-dev",
+    # el sufijo es la versión del corpus: reindexar con otro modelo de
+    # embeddings o con otro troceado es un índice NUEVO, nunca pisar este.
+    # RESPALDO TEMPORAL (30-sep): Google no acepta aún la tarjeta, así que dev
+    # usa Titan V2 por Bedrock en su propio índice. Al volver a Gemini:
+    # vectores_indice="n8n-docs-v1" y embeddings="gemini" (ese índice sigue ahí).
+    # SEGUNDO RESPALDO (1-oct): Bedrock dio «Error 002» (bloqueo de la cuenta,
+    # caso con AWS Support), así que dev pasa a OpenAI. Si Bedrock se libera
+    # antes que Google: vectores_indice="n8n-docs-titan-v1" y embeddings="titan".
+    vectores_indice="n8n-docs-openai-v1",
+    embeddings="openai",
+    ssm_publico="/media-ivenaccip-dev/publico",
+    # Tope acordado con el dueño: 20 corridas al día en dev.
+    armado_real=True,
+    # PROVISIONAL hasta el eval de 50 corridas (RAG·26): Opus 5.5 es el default
+    # de pipeline/claude_rag.py; se fija aquí para que cambiarlo sea una línea.
+    rag_modelo="claude-opus-5-5",
 )

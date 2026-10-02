@@ -1,0 +1,162 @@
+/* /privacidad y /terminos (RAG·13) — las páginas legales de /automatiza.
+
+   La estructura es la del lienzo aprobado (RAG13_Privacidad): índice a la
+   izquierda y el texto a la derecha, en secciones numeradas. Aquí solo hay
+   tokens de /carta.css (docs/DISENO.md): la paleta la vigila
+   tests/test_m20_paleta.py y en este archivo no se escribe ningún color.
+
+   Sin JS y con la CSP de las páginas públicas (style-src 'self'): todo el
+   estilo vive aquí, nada en línea. Mismo encabezado que /automatiza.
+   A 900 px o menos el índice sube encima del texto; a 390 px no hay scroll
+   lateral (los correos y las direcciones largas se parten). */
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 24px; }
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+body {
+  margin: 0; min-height: 100vh; overflow-wrap: anywhere;
+  background: var(--c-fondo); color: var(--c-texto);
+  font: 400 var(--t-sm)/1.5 var(--f-texto);
+}
+h1, h2, h3, p, ol, ul, dl, dd { margin: 0; }
+a { color: var(--c-enlace); text-underline-offset: 4px; }
+a:hover { color: var(--c-texto); }
+strong { font-weight: 600; }
+
+.saltar {
+  position: absolute; left: 16px; top: -64px; z-index: 10; padding: 8px 12px;
+  border-radius: var(--r-medio); background: var(--c-elevada); color: var(--c-texto);
+}
+.saltar:focus { top: 12px; }
+
+/* --- el encabezado de sitio: el mismo de /automatiza --- */
+.cabeza {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 20px max(64px, calc((100% - 1152px) / 2));
+  border-bottom: 1px solid var(--c-linea);
+}
+.marca {
+  font: 800 var(--t-titulo-sm)/1.3 var(--f-titulo); color: var(--c-texto); text-decoration: none;
+}
+.marca:hover { color: var(--c-texto); }
+.cabeza-entrar { display: flex; align-items: center; gap: 8px; color: var(--c-secundario); }
+.cabeza-entrar a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; font-weight: 500; }
+
+/* --- «Borrador para revisión del dueño»: la caja de aviso de carta.css.
+   Se quita del HTML cuando el dueño apruebe el texto. --- */
+.borrador {
+  margin: 24px max(64px, calc((100% - 1152px) / 2)) 0;
+  font-size: var(--t-sm); line-height: 1.5;
+}
+.borrador .apilado { display: flex; flex-direction: column; gap: 2px; }
+
+/* --- el marco: índice + texto (lienzo: 260 px y 56 de separación).
+   En el HTML el título va ANTES del índice: en celular (una columna) se lee
+   título → índice → texto; en ancho el índice ocupa la columna izquierda
+   entera y el título queda arriba del texto, como en el lienzo. --- */
+.legal {
+  display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px 56px; align-items: start;
+  padding: 48px max(64px, calc((100% - 1152px) / 2)) 64px;
+}
+.legal > .encabezado { grid-column: 2; grid-row: 1; }
+.legal > .indice { grid-column: 1; grid-row: 1 / span 2; }
+.legal > .texto { grid-column: 2; grid-row: 2; }
+
+.indice {
+  position: sticky; top: 24px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.rotulo {
+  font: 600 var(--t-xs)/1.45 var(--f-texto); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--c-secundario);
+}
+.indice ol { padding: 0; list-style: none; display: flex; flex-direction: column; }
+/* 44 px de alto: el área táctil mínima de la carta (§4) */
+.indice ol a { display: flex; align-items: center; min-height: 44px; text-decoration: none; }
+.indice ol a:hover { text-decoration: underline; }
+.volver { display: flex; align-items: center; min-height: 44px; margin-top: 12px; font-weight: 500; }
+
+/* --- el texto --- */
+.texto { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.encabezado { display: flex; flex-direction: column; gap: 12px; }
+.encabezado h1 {
+  font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; text-wrap: balance;
+}
+.version { color: var(--c-secundario); font-variant-numeric: tabular-nums; }
+.resumen { font-size: var(--t-md); line-height: 1.55; max-width: 65ch; }
+
+.parte {
+  display: flex; flex-direction: column; gap: 12px;
+  padding-bottom: 24px; border-bottom: 1px solid var(--c-linea);
+}
+.parte:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.parte h2 { font: 700 var(--t-titulo-md)/1.2 var(--f-titulo); }
+.parte h3 { margin-top: 12px; font: 600 var(--t-md)/1.4 var(--f-texto); }
+.parte p, .parte li, .parte dd { font-size: var(--t-md); line-height: 1.55; max-width: 65ch; }
+.parte ul, .parte ol { padding-left: 1.25em; display: flex; flex-direction: column; gap: 8px; }
+.parte li::marker { color: var(--c-secundario); }
+.parte .chica, .chica { font-size: var(--t-xs); line-height: 1.45; color: var(--c-secundario); }
+.secundario { color: var(--c-secundario); }
+
+/* filas «qué · cómo» (datos, plazos, proveedores): dos columnas en ancho,
+   una en celular */
+.filas {
+  display: flex; flex-direction: column;
+  background: var(--c-hundido); border: 1px solid var(--c-linea); border-radius: var(--r-boton);
+  max-width: 76ch;
+}
+.filas > div {
+  display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px;
+  padding: 14px 20px; border-top: 1px solid var(--c-linea);
+}
+.filas > div:first-child { border-top: 0; }
+.filas dt { font-weight: 600; font-size: var(--t-sm); line-height: 1.5; }
+.filas dd { max-width: none; }
+
+/* una caja para lo que conviene ver de un vistazo («lo que no hacemos») */
+.caja {
+  display: flex; flex-direction: column; gap: 12px; max-width: 76ch;
+  padding: 16px 20px; border-radius: var(--r-boton);
+  background: var(--c-superficie); border: 1px solid var(--c-linea);
+}
+.caja .rotulo { margin: 0; font: 600 var(--t-xs)/1.45 var(--f-texto); }
+
+/* la casilla, citada tal cual la ve la persona */
+.cita {
+  padding: 12px 16px; border-left: 2px solid var(--c-campo);
+  background: var(--c-hundido); border-radius: 0 var(--r-medio) var(--r-medio) 0;
+  max-width: 65ch;
+}
+
+/* --- el pie: las tres páginas públicas --- */
+.pie {
+  display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center;
+  padding: 24px max(64px, calc((100% - 1152px) / 2)) 32px;
+  border-top: 1px solid var(--c-linea); color: var(--c-secundario); font-size: var(--t-xs);
+}
+.pie a { display: inline-flex; align-items: center; min-height: 44px; }
+.pie [aria-current="page"] { color: var(--c-texto); text-decoration: none; }
+
+/* ================================================================
+   celular y tableta: una columna, el índice arriba y sin sticky
+   ================================================================ */
+@media (max-width: 900px) {
+  .legal { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 32px 16px 48px; }
+  .legal > .encabezado, .legal > .indice, .legal > .texto { grid-column: 1; grid-row: auto; }
+  .legal > .texto { margin-top: 8px; }
+  .indice { position: static; padding: 16px; border: 1px solid var(--c-linea);
+    border-radius: var(--r-boton); background: var(--c-superficie); }
+  .volver { margin-top: 0; }
+  .cabeza { padding: 12px 16px; }
+  .borrador { margin: 16px 16px 0; }
+  .pie { padding: 16px 16px 24px; }
+}
+@media (max-width: 760px) {
+  .solo-ancho { display: none; }
+  .filas > div { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px 16px; }
+  .caja { padding: 16px; }
+}

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<!-- /terminos (RAG·13): los términos de uso de /automatiza. Mismo marco que
+     /privacidad (índice + texto, /legal.css) y el mismo encabezado de sitio.
+
+     Es una plantilla: los marcadores de doble llave son huecos del dueño que
+     server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
+     hace fallar tests/test_rag_paginas.py. Por eso en estos comentarios no se
+     escriben llaves dobles. Lo que va entre corchetes y NO es marcador lo
+     resuelve el dueño en este archivo.
+
+     Los usos prohibidos salen de prompts/moderar_automatiza_system.md: si el
+     filtro cambia, esta lista cambia con él. La ventana (10 al 25-oct) es la
+     del plan (RAG·30 y RAG·31). Explicación para el dueño en
+     docs/automatiza/aviso-privacidad.md.
+
+     CSP estricta: sin JS, sin style ni atributos de estilo; todo en /legal.css. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Términos de uso · Irremplazables</title>
+<meta name="description" content="Las reglas de /automatiza: servicio gratuito y experimental, sin garantía, usos prohibidos, límites de uso y a quién pertenece tu flujo.">
+<link rel="canonical" href="https://irremplazables.xyz/terminos">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+<a class="saltar" href="#principal">Saltar al contenido</a>
+
+<header class="cabeza">
+  <a class="marca" href="/">Irremplazables</a>
+  <p class="cabeza-entrar"><span class="solo-ancho">¿Ya eres parte?</span> <a href="/entrar">Entrar</a></p>
+</header>
+
+<aside class="aviso-caja borrador" aria-label="Aviso de borrador">
+  <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+  <span class="apilado"><strong>Borrador para revisión del dueño · versión {{aviso_version}}</strong><span>Lo que va entre corchetes todavía falta por escribir, decidir o verificar.</span></span>
+</aside>
+
+<main id="principal" class="legal">
+  <header class="encabezado">
+    <h1 id="titulo">Términos de uso de /automatiza</h1>
+    <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
+    <p class="resumen">Es gratis y experimental: describes un proceso, un sistema automático arma un flujo de n8n y tú lo revisas antes de usarlo. Las aceptas con la casilla «He leído el aviso de privacidad y acepto los términos» que te enseñamos antes de mandar tu primera petición (o tu correo, si llegaste con el enlace desde otro navegador).</p>
+  </header>
+  <nav class="indice" aria-labelledby="indice-t">
+    <p class="rotulo" id="indice-t">En esta página</p>
+    <ol>
+      <li><a href="#que-es">1. Qué es /automatiza</a></li>
+      <li><a href="#sin-garantia">2. Revísalo antes de usarlo</a></li>
+      <li><a href="#prohibido">3. Usos prohibidos</a></li>
+      <li><a href="#limites">4. Límites de uso</a></li>
+      <li><a href="#tu-flujo">5. Tu flujo y lo que escribes</a></li>
+      <li><a href="#responsabilidad">6. Responsabilidad limitada</a></li>
+      <li><a href="#tus-datos">7. Tus datos</a></li>
+      <li><a href="#cambios">8. Cambios a estos términos</a></li>
+      <li><a href="#ley">9. Ley aplicable</a></li>
+      <li><a href="#contacto">10. Contacto</a></li>
+    </ol>
+    <a class="volver" href="/automatiza">Volver a /automatiza</a>
+  </nav>
+
+  <article class="texto" aria-labelledby="titulo">
+    <section class="parte" id="que-es" aria-labelledby="que-es-t">
+      <h2 id="que-es-t">1. Qué es /automatiza</h2>
+      <p>/automatiza es un servicio de <strong>{{responsable}}</strong> («nosotros») en irremplazables.xyz/automatiza: describes con tus palabras algo que haces a mano y te devolvemos un flujo de n8n listo para importar.</p>
+      <ul>
+        <li>Es <strong>gratis</strong> y no necesitas cuenta.</li>
+        <li>Es un <strong>experimento</strong> abierto del 10 al 25 de octubre de 2026. Podemos pausarlo en cualquier momento (verás «Ahorita no está disponible») y, después del 25 de octubre, cambiarlo o cerrarlo. Si sigue con otras condiciones, te las diremos antes de que las aceptes.</li>
+        <li>Para usarlo necesitas tener [POR DECIDIR: edad mínima; recomendamos 18] años o más.</li>
+      </ul>
+      <p>n8n es un producto de terceros: /automatiza no es un servicio de n8n. Para usar el flujo necesitas tu propio n8n (instalado por ti o en la nube) y seguir sus condiciones.</p>
+    </section>
+
+    <section class="parte" id="sin-garantia" aria-labelledby="sin-garantia-t">
+      <h2 id="sin-garantia-t">2. Revísalo antes de usarlo</h2>
+      <p>El flujo lo arma un sistema automático con modelos de inteligencia artificial, no una persona. Revisamos que importe en n8n, pero no que haga exactamente lo que necesitas ni que no tenga errores. Te lo entregamos <strong>tal cual, sin garantía</strong> de ningún tipo.</p>
+      <p>Antes de conectarle cuentas reales:</p>
+      <ul>
+        <li>revísalo nodo por nodo y entiende qué hace cada uno;</li>
+        <li>pruébalo con datos de prueba y actívalo solo cuando estés seguro;</li>
+        <li>ten presente que un flujo mal armado puede mandar mensajes que no querías, borrar o cambiar datos, o gastar créditos de los servicios que conectes.</li>
+      </ul>
+      <p>Nunca pongas contraseñas ni claves en tu descripción: las cuentas se conectan dentro de tu n8n y nosotros no las vemos.</p>
+      <p>El servicio puede fallar, tardar o no estar disponible, y algunas peticiones no salen; cuando pasa, te lo decimos en pantalla.</p>
+    </section>
+
+    <section class="parte" id="prohibido" aria-labelledby="prohibido-t">
+      <h2 id="prohibido-t">3. Usos prohibidos</h2>
+      <p>No puedes usar /automatiza para pedir flujos cuyo propósito sea:</p>
+      <ul>
+        <li>mandar mensajes masivos a gente que no los pidió: spam, bots de comentarios, cuentas falsas, inflar seguidores o reseñas;</li>
+        <li>engañar o robar: phishing, hacerse pasar por una persona o empresa, sacar contraseñas, tarjetas o datos de acceso, fraudes o estafas;</li>
+        <li>recolectar datos personales de otras personas sin su permiso, como juntar correos o teléfonos para contactarlas, o vigilar o rastrear a alguien;</li>
+        <li>acosar, amenazar o exponer a una persona;</li>
+        <li>saltarse los límites o protecciones de un servicio (captchas, bloqueos o pagos) o atacar un sistema (saturarlo o probar contraseñas a la fuerza);</li>
+        <li>contenido sexual con menores, odio contra grupos protegidos o causar daño real.</li>
+      </ul>
+      <p>Tampoco puedes:</p>
+      <ul>
+        <li>meter en tu descripción instrucciones para el sistema en vez de una petición (por ejemplo, «ignora lo anterior» o «muéstrame tus instrucciones»);</li>
+        <li>mandar peticiones con bots o programas, ni intentar saltarte los límites de uso;</li>
+        <li>atacar o saturar el sitio.</li>
+      </ul>
+      <p>Un filtro automático revisa cada petición. Si no pasa, no la armamos y te decimos qué parte no pasa, sin acusarte. Podemos rechazar peticiones y bloquear el acceso a quien no respete estas reglas.</p>
+    </section>
+
+    <section class="parte" id="limites" aria-labelledby="limites-t">
+      <h2 id="limites-t">4. Límites de uso</h2>
+      <p>Para que alcance para todos y para cuidar el gasto hay límites:</p>
+      <ul>
+        <li>un tope de peticiones al día para todo el servicio y otro por conexión;</li>
+        <li>la descripción tiene que tener entre {{largo_minimo}} y {{largo_maximo}} caracteres;</li>
+        <li>un número limitado de veces que puedes cambiar el correo de una misma petición.</li>
+      </ul>
+      <p>Cuando se llena un tope verás «Ahorita no está disponible»: lo que escribiste se queda guardado en tu navegador y puedes intentar más tarde. Si hay mucha gente, tu petición entra a una fila y te decimos tu lugar. Los límites pueden cambiar en cualquier momento.</p>
+    </section>
+
+    <section class="parte" id="tu-flujo" aria-labelledby="tu-flujo-t">
+      <h2 id="tu-flujo-t">5. Tu flujo y lo que escribes</h2>
+      <ul>
+        <li><strong>El flujo es para ti.</strong> Puedes importarlo, cambiarlo, usarlo en tu trabajo o en tu negocio y compartirlo. No reclamamos ningún derecho sobre él ni sobre lo que construyas con él.</li>
+        <li><strong>No es exclusivo.</strong> Como lo arma un sistema automático, alguien que pida algo parecido puede recibir un flujo parecido.</li>
+        <li><strong>Lo que escribes sigue siendo tuyo.</strong> Al mandarlo nos das permiso de usarlo para armar tu flujo y para lo que dice el <a href="/privacidad">aviso de privacidad</a>.</li>
+        <li><strong>Lo de terceros es de terceros.</strong> n8n, sus nodos y las apps que conecta el flujo (Gmail, Sheets, Slack…) son de sus dueños y tienen sus propias condiciones; cumplirlas te toca a ti.</li>
+      </ul>
+    </section>
+
+    <section class="parte" id="responsabilidad" aria-labelledby="responsabilidad-t">
+      <h2 id="responsabilidad-t">6. Responsabilidad limitada</h2>
+      <p>Como el servicio es gratuito y experimental, en la medida en que la ley lo permita no respondemos por daños o pérdidas que vengan de usar el flujo o de no poder usar el servicio: por ejemplo, datos borrados o cambiados, mensajes enviados por error, cargos de los servicios que conectes o cuentas suspendidas por su proveedor.</p>
+      <p>Tú decides si activas el flujo y cómo; lo que hagas con él es tu responsabilidad. Nada de esto limita los derechos que la ley te da y que no se pueden renunciar.</p>
+    </section>
+
+    <section class="parte" id="tus-datos" aria-labelledby="tus-datos-t">
+      <h2 id="tus-datos-t">7. Tus datos</h2>
+      <p>Qué guardamos (tu descripción, el flujo, tu correo si nos lo das y una huella de tu conexión, nunca tu IP), para qué y cuánto tiempo está en el <a href="/privacidad">aviso de privacidad</a>. La casilla para recibir novedades es aparte: no marcarla no te quita nada del servicio.</p>
+    </section>
+
+    <section class="parte" id="cambios" aria-labelledby="cambios-t">
+      <h2 id="cambios-t">8. Cambios a estos términos</h2>
+      <p>Podemos cambiar estos términos. La versión nueva se publica en esta misma dirección (irremplazables.xyz/terminos) con su número de versión y su fecha, y vale para las peticiones que hagas después de publicarla. Una petición que ya hiciste sigue con los términos que había cuando la hiciste.</p>
+    </section>
+
+    <section class="parte" id="ley" aria-labelledby="ley-t">
+      <h2 id="ley-t">9. Ley aplicable</h2>
+      <p>Estos términos se rigen por las leyes federales de los Estados Unidos Mexicanos. Para cualquier desacuerdo, las partes se someten a los tribunales competentes de [POR DECIDIR: ciudad], salvo que la ley te permita acudir a otra autoridad. [VERIFICAR con un abogado esta cláusula y la de responsabilidad limitada.]</p>
+    </section>
+
+    <section class="parte" id="contacto" aria-labelledby="contacto-t">
+      <h2 id="contacto-t">10. Contacto</h2>
+      <p>{{responsable}} · {{domicilio}} · <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a></p>
+      <p>Si es sobre una petición en particular, incluye su número (es lo que sigue a /automatiza/c/ en tu enlace para volver).</p>
+    </section>
+  </article>
+</main>
+
+<footer class="pie">
+  <a href="/automatiza">/automatiza</a>
+  <a href="/privacidad">Aviso de privacidad</a>
+  <a href="/terminos" aria-current="page">Términos</a>
+</footer>
+</body>
+</html>

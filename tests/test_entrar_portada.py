@@ -148,8 +148,11 @@ def test_callback_ya_no_vuelve_a_la_portada():
 
 
 def test_las_pantallas_vuelven_al_estudio_no_a_la_portada():
+    # /automatiza y sus legales (RAG·9/13) son para gente de fuera y sin sesión:
+    # «Irremplazables» lleva a la portada, igual que en portada y entrar
     for f in STATIC.glob("*.html"):
-        if f.name in ("portada.html", "entrar.html"):
+        if f.name in ("portada.html", "entrar.html", "automatiza.html",
+                      "privacidad.html", "terminos.html"):
             continue
         t = f.read_text(encoding="utf-8")
         assert 'href="/"' not in t, f.name

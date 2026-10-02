@@ -44,7 +44,8 @@ class ApiStack(Stack):
                  cluster: rds.DatabaseCluster, media_bucket: s3.Bucket,
                  cdn_domain: str, jobs_queue: sqs.Queue,
                  producir_sm: sfn.StateMachine, image_ref: str = "latest",
-                 entorno: Entorno = PROD, **kwargs) -> None:
+                 entorno: Entorno = PROD, cola_publica: sqs.IQueue | None = None,
+                 **kwargs) -> None:
         super().__init__(scope, id_, **kwargs)
         # Todos los nombres físicos salen de `entorno`. El default es PROD y
         # reproduce los nombres de hoy; pasar DEV a ESTE stack (el vivo) no
@@ -104,6 +105,21 @@ class ApiStack(Stack):
         media_bucket.grant_put(fn)
         media_bucket.grant_read(fn)
         jobs_queue.grant_send_messages(fn)
+        # RAG·4: /api/publico/* encola en SU cola, nunca en la de pago. Solo
+        # enviar: quien consume es el worker público.
+        if cola_publica is not None:
+            fn.add_environment("PUBLICO_QUEUE_URL", cola_publica.queue_url)
+            cola_publica.grant_send_messages(fn)
+            # RAG·21 + capa 1: con el armado real, /api/publico/corridas modera
+            # cada petición, y lo paga la clave de OpenAI de /publico/, no la
+            # de plataforma de /env. Solo ESE parámetro, solo leerlo.
+            if e.armado_real:
+                param = f"{e.ssm_publico}/OPENAI_API_KEY"
+                fn.add_environment("ARMADO_REAL", "1")
+                fn.add_environment("SSM_OPENAI_PUBLICO", param)
+                fn.add_to_role_policy(iam.PolicyStatement(
+                    actions=["ssm:GetParameter"],
+                    resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter{param}"]))
         producir_sm.grant_start_execution(fn)
         # M23 · D (prerrequisito): el freno de capacidad cuenta las ejecuciones
         # vivas antes de arrancar otra (pipeline/jobs.py `_hay_sitio`). Sin este
@@ -130,10 +146,12 @@ class ApiStack(Stack):
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=["cloudwatch:GetMetricStatistics"], resources=["*"]))
 
+        integracion = apigw_int.HttpLambdaIntegration("Fn", fn)
         http_api = apigwv2.HttpApi(
             self, "HttpApi", api_name=e.api,
-            default_integration=apigw_int.HttpLambdaIntegration("Fn", fn),
+            default_integration=integracion,
         )
+        self._throttling(http_api, integracion, e)
 
         # Sin dominio propio (dev), la liga de la invitación y los callbacks
         # van al execute-api de ESTE stack: nunca a los de producción.
@@ -238,3 +256,29 @@ class ApiStack(Stack):
             cdk.CfnOutput(self, "DominioPublico", value=e.dominio_publico)
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)
         cdk.CfnOutput(self, "UserPoolClientId", value=client.user_pool_client_id)
+
+    @staticmethod
+    def _throttling(http_api: apigwv2.HttpApi, integracion, e: Entorno) -> None:
+        """RAG·7 — throttling de etapa. El HttpApi manda todo a la Lambda por
+        `$default`; para frenar SOLO lo público hace falta una ruta propia
+        (`/api/publico/{proxy+}`, misma Lambda) y ponerle su límite en la
+        etapa. Lo que pase del límite recibe 429 de API Gateway sin tocar la
+        Lambda ni la base; la página lo muestra como «Ahorita no está
+        disponible» (RAG·9)."""
+        if e.throttle_etapa is None and not (e.publico and e.throttle_publico):
+            return
+        etapa = http_api.default_stage.node.default_child
+        if e.throttle_etapa is not None:
+            tasa, rafaga = e.throttle_etapa
+            etapa.default_route_settings = apigwv2.CfnStage.RouteSettingsProperty(
+                throttling_rate_limit=tasa, throttling_burst_limit=rafaga)
+        if e.publico and e.throttle_publico is not None:
+            ruta, = http_api.add_routes(
+                path="/api/publico/{proxy+}", methods=[apigwv2.HttpMethod.ANY],
+                integration=integracion)
+            tasa, rafaga = e.throttle_publico
+            etapa.route_settings = {"ANY /api/publico/{proxy+}": {
+                "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}}
+            # La etapa nombra la ruta por su clave: si CloudFormation la
+            # actualiza antes de crear la ruta, falla con «Unable to find Route».
+            etapa.add_dependency(ruta.node.default_child)

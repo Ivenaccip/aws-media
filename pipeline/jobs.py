@@ -95,6 +95,28 @@ def mensaje_preparar(user_id: str, proyecto_id: str) -> dict:
     return {"tipo": "preparar", "user_id": user_id, "proyecto_id": proyecto_id}
 
 
+def mensaje_publico(corrida_id: int) -> dict:
+    """RAG·4 — lo único que viaja: el número de la corrida. El texto que
+    escribió el visitante vive en la base, no en la cola."""
+    return {"tipo": "automatiza", "corrida_id": int(corrida_id)}
+
+
+def encolar_publico(corrida_id: int) -> None:
+    """Manda la corrida a la cola PÚBLICA (nunca a JOBS_QUEUE_URL, la de pago).
+
+    En local no hay cola: el worker corre en un hilo del propio server."""
+    if backend() != "aws":
+        import threading
+        from worker.publico import procesar
+        threading.Thread(target=procesar, args=(int(corrida_id),), daemon=True).start()
+        return
+    # la URL se lee ANTES de tocar SQS: sin ella se truena aquí, nunca se
+    # cae de rebote en otra cola
+    url = os.environ["PUBLICO_QUEUE_URL"]
+    _sqs().send_message(QueueUrl=url,
+                        MessageBody=json.dumps(mensaje_publico(corrida_id)))
+
+
 def encolar_preparar(user_id: str, proyecto_id: str) -> None:
     _sqs().send_message(
         QueueUrl=os.environ["JOBS_QUEUE_URL"],

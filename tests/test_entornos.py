@@ -77,6 +77,17 @@ def test_dev_no_comparte_ningun_nombre_con_prod(campo):
     assert getattr(DEV, campo) != getattr(PROD, campo)
 
 
+def test_el_prefijo_publico_no_se_cruza_con_los_de_plataforma():
+    """Capa 1: el worker público lee SOLO su prefijo. Si uno empezara por
+    otro, el permiso de uno alcanzaría las claves del otro."""
+    pub = DEV.ssm_publico
+    assert pub
+    for otro in (DEV.ssm_env, DEV.ssm_usuarios, PROD.ssm_env, PROD.ssm_usuarios):
+        assert not pub.startswith(otro) and not otro.startswith(pub), otro
+    assert not pub.lstrip("/").lower().startswith("aws")
+    assert PROD.ssm_publico is None, "prod lo recibe en RAG·30, con su PR"
+
+
 @pytest.mark.parametrize("campo", ["ssm_env", "ssm_usuarios"])
 def test_los_permisos_de_ssm_de_un_entorno_no_alcanzan_al_otro(campo):
     """IAM concede `parameter<prefijo>*`. Si un prefijo empezara por el otro,
@@ -97,6 +108,9 @@ def test_prefijos_reservados_de_aws(e):
     """SSM reserva «aws*» y Cognito no admite «aws» en el prefijo del dominio."""
     for prefijo in (e.ssm_env, e.ssm_usuarios):
         assert not prefijo.lstrip("/").lower().startswith("aws")
+    # S3 Vectors también reserva «aws*» (visto el 29-sep: «bucket name is reserved»)
+    if e.vectores_bucket:
+        assert not e.vectores_bucket.lower().startswith("aws"), e.vectores_bucket
     assert "aws" not in e.dominio_cognito.lower()
 
 
@@ -358,9 +372,10 @@ def test_dev_usa_sus_propios_nombres(dev):
     assert _uno(api, "AWS::Cognito::UserPoolDomain")["Domain"] == DEV.dominio_cognito
     assert _uno(jobs, "AWS::StepFunctions::StateMachine")["StateMachineName"] == DEV.maquina_producir
     for e in _env_lambdas(api) + _env_lambdas(jobs):
-        if "SSM_ENV_PREFIX" in e:
+        if "SSM_ENV_PREFIX" in e and e["SSM_ENV_PREFIX"] != DEV.ssm_publico:
             assert e["SSM_ENV_PREFIX"] == DEV.ssm_env
-            assert e["SSM_USUARIOS_PREFIX"] == DEV.ssm_usuarios
+            # el worker público (RAG·4) no lleva claves por-usuario a propósito
+            assert e.get("SSM_USUARIOS_PREFIX", DEV.ssm_usuarios) == DEV.ssm_usuarios
         if "COGNITO_DOMINIO" in e:
             assert e["COGNITO_DOMINIO"].startswith(DEV.dominio_cognito + ".auth.")
 
@@ -426,24 +441,24 @@ def _relojes(template):
             if r["Type"] == "AWS::Events::Rule"}
 
 
-def test_dev_no_hereda_el_reloj_de_costes_y_si_el_de_mix(dev, prod):
+def test_dev_no_hereda_ningun_reloj(dev, prod):
     """El sync de costes lee Langfuse, y dev NO comparte ese proyecto a
-    propósito (`tools/ssm_env.py` se niega a subirle esas claves). Sin ellas
-    fallaría a las 06:00 todos los días: ruido diario en los logs de un entorno
-    donde nadie los mira, que es como se aprende a ignorarlos.
+    propósito (`tools/ssm_env.py` se niega a subirle esas claves).
 
-    El de MIX sí viaja, porque MIX hay que poder probarlo y para que hiciera
-    daño harían falta DOS cosas a la vez que no se dan: campañas activas en la
-    base de dev y la clave de Blotato de un cliente real bajo el prefijo de
-    dev."""
+    El de MIX tampoco (2-oct): cada disparo consulta la base y despertaba cada
+    hora el Aurora de dev (suelo 0, auto-pausa), que es gasto sin nadie usando
+    dev. En dev MIX se prueba disparando el worker a mano."""
     d = _relojes(dev["aws-media-jobs-dev"])
     assert not any(k.startswith("SyncCostes") for k in d), (
         "el reloj de costes de Langfuse no pinta nada en dev")
-    assert any(k.startswith("MixReloj") for k in d)
+    assert not any(k.startswith("MixReloj") for k in d), (
+        "el reloj de MIX despierta cada hora el Aurora de dev")
 
     p_ = _relojes(prod["aws-media-jobs"])
     assert any(k.startswith("SyncCostes") for k in p_), (
         "prod SÍ lo necesita: es la base del dashboard admin")
+    assert any(k.startswith("MixReloj") for k in p_), (
+        "prod SÍ lo necesita: publica las campañas de MIX")
 
 
 # ---------------------------------------------------------------------------
@@ -480,3 +495,199 @@ def test_solo_dev_manda_a_las_pantallas_nuevas(prod, dev):
         for env in _env_lambdas(template):
             assert "UI_ETAPA_MINIMA" not in env, "solo la Lambda del API sirve pantallas"
 
+
+
+# --- RAG·4: la tubería pública de /automatiza, solo en dev -------------------
+
+def _worker_publico(template):
+    fns = [(k, r) for k, r in _de_tipo(template, "AWS::Lambda::Function").items()
+           if r["Properties"].get("ImageConfig", {}).get("Command") == ["worker.publico.handler"]]
+    return fns
+
+
+def test_publico_apagado_en_prod_y_encendido_en_dev():
+    assert PROD.publico is False, "prod se enciende en RAG·30, con su PR, no de paso"
+    assert DEV.publico is True
+
+
+def test_prod_no_crea_nada_publico(prod):
+    import json
+    for nombre, template in prod.items():
+        assert not _worker_publico(template), f"{nombre} tiene worker público"
+        texto = json.dumps(template)
+        assert "PUBLICO_QUEUE_URL" not in texto and "ColaPublicaUrl" not in texto
+
+
+def test_dev_tiene_cola_y_worker_publicos_propios(dev):
+    jobs = dev["aws-media-jobs-dev"]
+    (id_worker, worker), = _worker_publico(jobs)
+    assert worker["Properties"]["Timeout"] == 300
+    colas = _de_tipo(jobs, "AWS::SQS::Queue")
+    publica = next(k for k in colas if k.startswith("Publico") and "Dlq" not in k)
+    # la cola pública no reentrega antes de que el worker corte
+    assert colas[publica]["Properties"]["VisibilityTimeout"] > 300
+    # y el worker consume SOLO la cola pública
+    fuentes = [r["Properties"] for r in _de_tipo(jobs, "AWS::Lambda::EventSourceMapping").values()
+               if r["Properties"]["FunctionName"] == {"Ref": id_worker}]
+    assert len(fuentes) == 1
+    assert fuentes[0]["EventSourceArn"] == {"Fn::GetAtt": [publica, "Arn"]}
+    assert fuentes[0]["ScalingConfig"]["MaximumConcurrency"] == 2
+
+
+def test_worker_publico_sin_claves_por_usuario_ni_cola_de_pago(dev):
+    import json
+    jobs = dev["aws-media-jobs-dev"]
+    (id_worker, worker), = _worker_publico(jobs)
+    env = worker["Properties"]["Environment"]["Variables"]
+    for prohibida in ("SSM_USUARIOS_PREFIX", "JOBS_QUEUE_URL", "CREDITOS_BACKEND"):
+        assert prohibida not in env, prohibida
+    rol = worker["Properties"]["Role"]["Fn::GetAtt"][0]
+    politicas = [r for r in _de_tipo(jobs, "AWS::IAM::Policy").values()
+                 if {"Ref": rol} in r["Properties"]["Roles"]]
+    texto = json.dumps(politicas)
+    assert DEV.ssm_usuarios not in texto
+    assert "sqs:SendMessage" not in texto
+    assert "s3:DeleteObject" not in texto
+    assert "automatiza/*" in texto
+
+
+def test_worker_publico_carga_solo_su_prefijo_de_ssm(dev):
+    """Capa 1 (29-sep): el worker que atiende a internet NO puede leer las
+    claves de plataforma. Si alguien lo vuelve a apuntar a /env, falla aquí."""
+    import json
+    worker, politicas = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    env = worker["Properties"]["Environment"]["Variables"]
+    assert env["SSM_ENV_PREFIX"] == DEV.ssm_publico
+    sentencias = [s for p in politicas for s in p["Properties"]["PolicyDocument"]["Statement"]
+                  if "ssm:" in json.dumps(s["Action"])]
+    (s,) = sentencias
+    assert s["Action"] == "ssm:GetParametersByPath"
+    recursos = s["Resource"] if isinstance(s["Resource"], list) else [s["Resource"]]
+    assert all(isinstance(r, str) for r in recursos), recursos
+    assert sorted(r.split(":parameter", 1)[1] for r in recursos) == [
+        DEV.ssm_publico, DEV.ssm_publico + "/*"]
+    texto = json.dumps(politicas)
+    assert DEV.ssm_env not in texto and "/env" not in texto
+    assert DEV.ssm_usuarios not in texto
+
+
+def _politicas_worker_publico(jobs):
+    (_, worker), = _worker_publico(jobs)
+    rol = worker["Properties"]["Role"]["Fn::GetAtt"][0]
+    return worker, [r for r in _de_tipo(jobs, "AWS::IAM::Policy").values()
+                    if {"Ref": rol} in r["Properties"]["Roles"]]
+
+
+def test_worker_publico_solo_lee_su_indice_vectorial(dev):
+    """RAG·17: el worker que atiende a internet consulta el índice del RAG y
+    no puede escribirlo ni borrarlo, ni alcanzar otro índice."""
+    import json
+    worker, politicas = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    env = worker["Properties"]["Environment"]["Variables"]
+    assert env["VECTORES_BUCKET"] == DEV.vectores_bucket
+    assert env["VECTORES_INDICE"] == DEV.vectores_indice
+    sentencias = [s for p in politicas for s in p["Properties"]["PolicyDocument"]["Statement"]
+                  if "s3vectors" in json.dumps(s["Action"])]
+    assert len(sentencias) == 1
+    (s,) = sentencias
+    assert sorted(s["Action"]) == ["s3vectors:GetVectors", "s3vectors:QueryVectors"]
+    recurso = json.dumps(s["Resource"])
+    assert f"bucket/{DEV.vectores_bucket}/index/{DEV.vectores_indice}" in recurso
+    assert "*" not in recurso
+    assert env["EMBEDDINGS"] == DEV.embeddings
+
+
+def test_worker_publico_solo_invoca_titan(dev, prod):
+    """Respaldo temporal (30-sep): Bedrock solo para invocar el modelo de
+    embeddings Titan V2, y solo donde el entorno lo usa."""
+    import json
+    _, politicas = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    bedrock = [s for p in politicas for s in p["Properties"]["PolicyDocument"]["Statement"]
+               if "bedrock" in json.dumps(s["Action"])]
+    assert len(bedrock) == (1 if DEV.embeddings == "titan" else 0)
+    for s in bedrock:
+        assert s["Action"] == "bedrock:InvokeModel"
+        assert "foundation-model/amazon.titan-embed-text-v2:0" in json.dumps(s["Resource"])
+        assert "*" not in json.dumps(s["Resource"])
+    for stack in prod.values():
+        assert "bedrock:" not in json.dumps(stack)
+
+
+def test_nadie_mas_toca_s3_vectors(dev, prod):
+    """Ni el API, ni el worker de pago, ni nada de prod (su RAG llega en RAG·30)."""
+    import json
+    for nombre, template in {**dev, **prod}.items():
+        texto = json.dumps(template)
+        if nombre == "aws-media-jobs-dev":
+            continue
+        assert "s3vectors" not in texto and "VECTORES_" not in texto, nombre
+
+
+def test_api_de_dev_encola_en_la_publica(dev):
+    import json
+    api = dev["aws-media-api-dev"]
+    envs = [e for e in _env_lambdas(api) if "PUBLICO_QUEUE_URL" in e]
+    assert len(envs) == 1
+    assert envs[0]["PUBLICO_QUEUE_URL"] != envs[0]["JOBS_QUEUE_URL"]
+    assert "sqs:SendMessage" in json.dumps(_de_tipo(api, "AWS::IAM::Policy"))
+
+
+def test_armado_real_encendido_a_la_vez_en_api_y_worker(dev, prod):
+    """RAG·21 (1-oct): ARMADO_REAL=1 en las dos Lambdas o en ninguna: no puede
+    haber armado real sin moderación. La moderación lee SOLO la clave de
+    OpenAI de /publico/ (capa 1), nunca la de plataforma."""
+    import json
+    api = dev["aws-media-api-dev"]
+    (env_api,) = [e for e in _env_lambdas(api) if "PUBLICO_QUEUE_URL" in e]
+    worker, _ = _politicas_worker_publico(dev["aws-media-jobs-dev"])
+    env_worker = worker["Properties"]["Environment"]["Variables"]
+    assert env_api["ARMADO_REAL"] == env_worker["ARMADO_REAL"] == "1"
+    assert env_worker["RAG_MODELO"] == DEV.rag_modelo
+    param = f"{DEV.ssm_publico}/OPENAI_API_KEY"
+    assert env_api["SSM_OPENAI_PUBLICO"] == param
+    sentencias = [st for pol in _de_tipo(api, "AWS::IAM::Policy").values()
+                  for st in pol["Properties"]["PolicyDocument"]["Statement"]
+                  if DEV.ssm_publico in json.dumps(st["Resource"])]
+    (st,) = sentencias
+    assert st["Action"] == "ssm:GetParameter"
+    assert json.dumps(st["Resource"]).endswith(f'parameter{param}"') or \
+        f"parameter{param}" in json.dumps(st["Resource"])
+    assert "*" not in json.dumps(st["Resource"])
+    for template in prod.values():
+        texto = json.dumps(template)
+        assert "ARMADO_REAL" not in texto and "SSM_OPENAI_PUBLICO" not in texto
+
+
+# --- RAG·7: throttling de etapa, solo dev ------------------------------------
+
+def _etapas(template):
+    return list(_de_tipo(template, "AWS::ApiGatewayV2::Stage").values())
+
+
+def test_prod_sin_throttling_ni_ruta_publica(prod):
+    api = prod["aws-media-api"]
+    for etapa in _etapas(api):
+        assert "DefaultRouteSettings" not in etapa["Properties"]
+        assert "RouteSettings" not in etapa["Properties"]
+    claves = [r["Properties"]["RouteKey"] for r in _de_tipo(api, "AWS::ApiGatewayV2::Route").values()]
+    assert claves == ["$default"]
+
+
+def test_dev_throttling_de_etapa_y_ruta_publica_estrecha(dev):
+    api = dev["aws-media-api-dev"]
+    rutas = _de_tipo(api, "AWS::ApiGatewayV2::Route")
+    publica = {k: r for k, r in rutas.items()
+               if r["Properties"]["RouteKey"] == "ANY /api/publico/{proxy+}"}
+    (id_ruta, ruta), = publica.items()
+    # misma Lambda que $default: la ruta existe solo para poder frenarla aparte
+    default = next(r for r in rutas.values() if r["Properties"]["RouteKey"] == "$default")
+    assert ruta["Properties"]["Target"] == default["Properties"]["Target"]
+    (etapa,) = [r for r in _etapas(api)]
+    tasa, rafaga = DEV.throttle_etapa
+    assert etapa["Properties"]["DefaultRouteSettings"] == {
+        "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}
+    tasa, rafaga = DEV.throttle_publico
+    assert etapa["Properties"]["RouteSettings"] == {"ANY /api/publico/{proxy+}": {
+        "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}}
+    # la etapa nombra la ruta por su clave: tiene que crearse después
+    assert id_ruta in etapa.get("DependsOn", [])

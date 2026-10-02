@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="es">
+<!-- /automatiza (RAG·9 a RAG·13): la sección pública que convierte una
+     descripción en un flujo de n8n. Una sola página con todas las pantallas
+     del lienzo aprobado el 28-sep como secciones (data-pantalla); se ve una a
+     la vez y la elige /automatiza.js. La sirve server/app.py en /automatiza y
+     también en /automatiza/c/<id> (el enlace para volver), ya LLENA: los
+     marcadores de doble llave son huecos del dueño que server/aviso.py
+     sustituye con escape HTML; uno sin clave hace fallar tests/test_rag_paginas.py.
+
+     CSP estricta (script-src y style-src 'self'): nada en línea aquí. Ni
+     script, ni style, ni atributos de estilo ni manejadores on…; todo va en
+     /automatiza.css y /automatiza.js, con rutas ABSOLUTAS porque la página
+     también vive en /automatiza/c/…
+
+     NO carga auth.js ni monedero.js: los dos llaman a la API con sesión, y un
+     401 mandaría al visitante a Cognito sin haber tocado nada. Lo único que se
+     pide es /api/publico/*. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automatiza con n8n · Irremplazables</title>
+<meta name="description" content="Cuéntanos qué haces a mano y te devolvemos el flujo de n8n listo para importar. Gratis del 10 al 25 de octubre, sin cuenta.">
+<link rel="canonical" href="https://irremplazables.xyz/automatiza">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Irremplazables">
+<meta property="og:title" content="Cuéntanos qué haces a mano. Te devolvemos el flujo de n8n.">
+<meta property="og:description" content="Lo describes con tus palabras, lo armamos y revisamos que importe. Gratis del 10 al 25 de octubre, sin cuenta.">
+<meta property="og:url" content="https://irremplazables.xyz/automatiza">
+<meta property="og:image" content="https://irremplazables.xyz/automatiza-og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cuéntanos qué haces a mano. Te devolvemos el flujo de n8n. Gratis del 10 al 25 de octubre.">
+<meta property="og:locale" content="es_MX">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<link rel="stylesheet" href="/automatiza.css">
+<!-- el sondeo va ANTES: automatiza.js usa window.Sondeo (defer respeta el orden) -->
+<script src="/sondeo.js" defer></script>
+<script src="/automatiza.js" defer></script>
+</head>
+<body>
+<a class="saltar" href="#principal">Saltar al contenido</a>
+
+<header class="cabeza">
+  <a class="marca" href="/">Irremplazables</a>
+  <p class="cabeza-entrar"><span class="solo-ancho">¿Ya eres parte?</span> <a href="/entrar">Entrar</a></p>
+</header>
+
+<!-- los topes del campo los pone el servidor (salen de pipeline/publico.py):
+     el navegador avisa con los MISMOS números que después revisa la API. La
+     versión del aviso viaja con cada correo: si ya no es la vigente, la
+     persona vio otro texto y el servidor no guarda nada (pide recargar) -->
+<main id="principal" data-largo-minimo="{{largo_minimo}}" data-largo-maximo="{{largo_maximo}}" data-aviso-version="{{aviso_version}}">
+
+  <!-- mientras se lee la corrida del enlace para volver: nunca el formulario -->
+  <p class="buscando" data-buscando role="status" hidden>Buscando tu petición…</p>
+
+  <!-- 1 · Qué quieres automatizar (y 1b: el campo muy corto / muy largo) -->
+  <section class="pantalla pedir" data-pantalla="pedir" aria-labelledby="pedir-t">
+    <div class="pedir-col">
+      <p class="aviso-caja" data-aviso-no-encontrada hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+        <span>No encontramos esa petición. Revisa que el enlace esté completo, o pide tu flujo otra vez aquí.</span>
+      </p>
+      <div class="pedir-cabeza">
+        <span class="etiqueta">Gratis del 10 al 25 de octubre</span>
+        <h1 id="pedir-t" class="titulo-lg" tabindex="-1">Cuéntanos qué haces a mano. Te devolvemos el flujo de n8n.</h1>
+        <p class="lead"><span class="solo-ancho">Escríbelo como se lo contarías a alguien. </span>Buscamos en la documentación de n8n, armamos el flujo y revisamos que importe.<span class="solo-ancho"> Tú lo descargas y lo pegas en tu n8n.</span></p>
+        <!-- en celular el panel lateral no cabe: este botón lo abre en un diálogo -->
+        <button type="button" class="btn btn-sec como-abrir" data-abrir-como aria-haspopup="dialog">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17v.01"/></svg>¿Cómo funciona?</button>
+      </div>
+
+      <form class="tarjeta pedir-form" data-form-pedir novalidate>
+        <div class="campo">
+          <label for="peticion">¿Qué quieres automatizar?</label>
+          <textarea id="peticion" name="texto" rows="6" spellcheck="true" autocomplete="off"
+                    placeholder="Ej.: cuando me llegue un correo con una factura a Gmail, guardar el PDF en Drive y anotar la fecha y el monto en una hoja de Sheets."
+                    aria-describedby="peticion-ayuda peticion-cuenta peticion-error"></textarea>
+          <div class="campo-pie">
+            <span id="peticion-ayuda" data-ayuda><span class="solo-ancho">Nombra las apps y el orden. No pongas contraseñas.</span><span class="solo-angosto">Sin contraseñas.</span></span>
+            <span id="peticion-cuenta" class="cuenta" data-cuenta>0 / {{largo_maximo}}</span>
+          </div>
+          <p class="campo-error" id="peticion-error" data-error-campo hidden>
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+            <span data-error-texto></span>
+          </p>
+        </div>
+
+        <div class="ideas">
+          <span class="chica">Ideas para empezar:</span>
+          <div class="ideas-lista">
+            <button type="button" class="btn btn-sec chip" data-idea="Cuando me llegue un correo con una factura a Gmail, guardar el PDF en Drive y anotar la fecha y el monto en una hoja de Sheets."><span>Facturas <span class="solo-ancho">de Gmail </span>a Sheets</span></button>
+            <button type="button" class="btn btn-sec chip" data-idea="Cuando alguien llene el formulario de contacto de mi página, mandarme un WhatsApp con su nombre, su teléfono y lo que pidió."><span>Formulario <span class="solo-ancho">nuevo </span>a WhatsApp</span></button>
+            <button type="button" class="btn btn-sec chip solo-ancho" data-idea="Cuando entre un pedido nuevo en Shopify, avisar en el canal de pedidos de Slack con el nombre del cliente, los productos y el total.">Pedido de Shopify a Slack</button>
+          </div>
+        </div>
+
+        <p class="aviso-caja" data-aviso-envio role="alert" hidden>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+          <span data-aviso-envio-texto>No pudimos conectar. Revisa tu conexión e intenta de nuevo: lo que escribiste sigue aquí.</span>
+        </p>
+
+        <div class="acciones">
+          <button type="submit" class="btn btn-pri btn-grande" data-armar>Armar mi flujo</button>
+          <span class="chica">Suele tardar unos minutos. No necesitas cuenta.</span>
+        </div>
+        <!-- los datos se empiezan a guardar AQUÍ, no en la pantalla 3: la
+             primera vez que toca «Armar», automatiza.js abre el aviso de
+             privacidad (el diálogo de abajo) y solo manda si lo acepta (RAG·13) -->
+      </form>
+    </div>
+
+    <!-- en computadora es la columna lateral; en celular se esconde y su
+         contenido lo copia automatiza.js al diálogo «¿Cómo funciona?» -->
+    <aside class="como" aria-labelledby="como-t" data-como>
+      <h2 id="como-t" class="titulo-md">Cómo funciona</h2>
+      <ol class="como-lista">
+        <li><span class="como-n" aria-hidden="true">1</span><span class="como-texto"><span class="fuerte">Lo describes</span><span class="secundario">En español, con tus palabras.</span></span></li>
+        <li><span class="como-n" aria-hidden="true">2</span><span class="como-texto"><span class="fuerte">Lo armamos y lo revisamos</span><span class="secundario">Solo con nodos que existen en n8n, bien conectados y sin contraseñas dentro.</span></span></li>
+        <li><span class="como-n" aria-hidden="true">3</span><span class="como-texto"><span class="fuerte">Lo importas</span><span class="secundario">Descargas el .json, lo pegas en n8n y conectas tus cuentas.</span></span></li>
+      </ol>
+      <div class="hundida necesitas">
+        <span class="rotulo">Qué necesitas</span>
+        <span>Un n8n propio o en la nube. Tus cuentas se conectan allí: nunca nos pasas una contraseña.</span>
+      </div>
+    </aside>
+  </section>
+
+  <!-- 2 · Espera con pasos (y 2d: recién enviada, se cortó la conexión,
+       volviste con el enlace, se pasó del tiempo) -->
+  <section class="pantalla columna" data-pantalla="espera" aria-labelledby="espera-t" hidden>
+    <div class="tarjeta caja-720 espera">
+      <div class="espera-cabeza">
+        <div class="orbe" aria-hidden="true"></div>
+        <div class="espera-titulos">
+          <h1 id="espera-t" class="titulo-md" tabindex="-1" data-espera-titulo>Estamos armando tu flujo</h1>
+          <span class="secundario numeros" data-espera-tiempo>Llevas 0:00</span>
+        </div>
+      </div>
+
+      <!-- 2d · se cortó la conexión: arriba, como en el lienzo; «Preguntar ahora» va bajo los pasos -->
+      <div class="aviso-caja aviso-con-boton" data-aviso="conexion" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+        <span class="apilado"><span class="fuerte">Se cortó tu conexión</span><span>Tu flujo se sigue armando de nuestro lado. Volvemos a preguntar <span data-siguiente>en unos segundos</span>.</span></span>
+      </div>
+
+      <div class="progreso" data-progreso>
+        <div class="barra"><div class="barra-relleno" data-barra></div></div>
+        <span class="chica numeros" data-paso-texto>Paso 1 de 4</span>
+      </div>
+
+      <ol class="pasos" data-pasos>
+        <li data-paso="entender"><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Entendimos lo que pediste<span class="sr" data-paso-estado></span></span></li>
+        <li data-paso="buscar"><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Buscamos en la documentación de n8n<span class="sr" data-paso-estado></span></span></li>
+        <li data-paso="armar"><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Armando el flujo<span class="sr" data-paso-estado></span></span></li>
+        <li data-paso="revisar"><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Revisando que importe en n8n<span class="sr" data-paso-estado></span></span></li>
+      </ol>
+
+      <div class="aviso-caja" data-aviso="tardando" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+        <span>Está tardando más que de costumbre. Sigue trabajando: no hace falta que recargues.</span>
+      </div>
+      <button type="button" class="btn btn-sec btn-grande alinear-inicio" data-preguntar-ahora hidden>Preguntar ahora</button>
+
+      <!-- 2d · se pasó del tiempo: el sondeo dejó de mirar (el trabajo sigue) -->
+      <div class="tope" data-tope hidden>
+        <!-- origen «espera»: 2d sale en la espera y también mientras arma, no solo en la fila -->
+        <form class="form-correo" data-form-correo data-origen="espera" novalidate>
+          <label for="correo-tarde" class="fuerte">Déjanos tu correo y te lo mandamos cuando salga</label>
+          <div class="fila-campo">
+            <input id="correo-tarde" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-tarde-error">
+            <button type="submit" class="btn btn-sec btn-grande">Mándamelo</button>
+          </div>
+          <p class="campo-error" id="correo-tarde-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
+          <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para avisarte de esta petición. Puedes darte de baja cuando quieras.</span></span></label>
+          <button type="button" class="btn-enlace chica alinear-inicio" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
+        </form>
+        <div class="caja-exito" data-correo-listo hidden>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
+          <span>Te lo mandamos a <span class="fuerte" data-correo-ver></span> en cuanto salga.</span>
+        </div>
+        <button type="button" class="btn btn-sec btn-grande alinear-inicio" data-volver-a-mirar>Volver a mirar</button>
+      </div>
+
+      <hr class="linea">
+      <div class="apilado espera-pie">
+        <span class="fuerte" data-espera-correo>Al terminar te pedimos tu correo para mandártelo</span>
+        <span class="secundario">Si necesitas cerrar la pestaña, vuelve a este enlace: <a class="numeros" data-enlace-volver href="/automatiza"></a></span>
+      </div>
+    </div>
+
+    <section class="hundida caja-720 pedido" data-lo-que-pediste aria-labelledby="pediste-t" hidden>
+      <h2 id="pediste-t" class="rotulo">Lo que pediste</h2>
+      <p class="lectura" data-pedido-texto></p>
+    </section>
+  </section>
+
+  <!-- 2b · En la fila (y 2c: en la fila, ya con correo) -->
+  <section class="pantalla columna" data-pantalla="fila" aria-labelledby="fila-t" hidden>
+    <div class="tarjeta caja-720 espera">
+      <div class="espera-cabeza">
+        <div class="lugar" aria-hidden="true"><span class="lugar-t">lugar</span><span class="lugar-n numeros" data-lugar></span></div>
+        <div class="espera-titulos">
+          <h1 id="fila-t" class="titulo-md" tabindex="-1" data-fila-titulo>Hay mucha gente. Ya estás en la fila.</h1>
+          <span class="secundario numeros" data-fila-tiempo></span>
+        </div>
+      </div>
+
+      <!-- 2d · se cortó la conexión: arriba, como en el lienzo; «Preguntar ahora» va bajo los pasos -->
+      <div class="aviso-caja aviso-con-boton" data-aviso="conexion" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+        <span class="apilado"><span class="fuerte">Se cortó tu conexión</span><span>Tu lugar en la fila no se pierde. Volvemos a preguntar <span data-siguiente>en unos segundos</span>.</span></span>
+      </div>
+
+      <div class="caja-exito" data-fila-con-correo hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
+        <span class="apilado"><span>Te lo mandamos a <span class="fuerte" data-correo-ver></span> en cuanto termine, con su guía paso a paso.</span><button type="button" class="btn-enlace chica alinear-inicio" data-cambiar-correo>¿Te equivocaste? Cambiar el correo</button></span>
+      </div>
+
+      <ol class="pasos">
+        <li class="hecho"><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Recibimos lo que pediste<span class="sr">: hecho</span></span></li>
+        <li class="actual" aria-current="step"><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Esperando turno<span class="sr">: en curso</span></span></li>
+        <li><span class="paso-marca" aria-hidden="true"><svg class="paso-hecho" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="paso-punto"></span></span><span>Armar el flujo y revisar que importe<span class="sr">: pendiente</span></span></li>
+      </ol>
+
+      <div class="aviso-caja" data-aviso="tardando" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+        <span>La fila va más lenta que de costumbre. Sigue avanzando: no hace falta que recargues.</span>
+      </div>
+      <button type="button" class="btn btn-sec btn-grande alinear-inicio" data-preguntar-ahora hidden>Preguntar ahora</button>
+
+      <hr class="linea">
+
+      <form class="form-correo" data-form-correo data-origen="fila" novalidate>
+        <div class="apilado">
+          <label for="correo-fila" class="fuerte">¿No quieres esperar aquí?<span class="sr"> Tu correo</span></label>
+          <span class="secundario" id="correo-fila-ayuda">Déjanos tu correo y te lo mandamos en cuanto termine. Puedes cerrar la pestaña.</span>
+        </div>
+        <div class="fila-campo">
+          <input id="correo-fila" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-fila-ayuda correo-fila-error">
+          <button type="submit" class="btn btn-pri btn-grande">Mándamelo</button>
+        </div>
+        <p class="campo-error" id="correo-fila-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
+        <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para avisarte de esta petición. Puedes darte de baja cuando quieras.</span></span></label>
+        <button type="button" class="btn-enlace chica alinear-inicio" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
+      </form>
+
+      <span class="secundario" data-fila-quedate hidden>Si te quedas, esta página avanza sola. Al terminar pasa directo a «Listo»: no te vuelve a pedir el correo.</span>
+      <span class="chica"><span data-fila-sin-correo>O quédate: esta página avanza sola. </span>Enlace para volver: <a class="numeros" data-enlace-volver href="/automatiza"></a></span>
+    </div>
+  </section>
+
+  <!-- 3 · Ya está armado: tu correo (el aviso ya lo aceptó al pedir; aquí se relee) -->
+  <section class="pantalla columna" data-pantalla="correo" aria-labelledby="correo-t" hidden>
+    <div class="tarjeta caja-720 bloque-24">
+      <div class="apilado-10">
+        <div class="titulo-estado">
+          <svg class="ico ico-28 ico-exito" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>
+          <h1 id="correo-t" class="titulo-lg" tabindex="-1">Tu flujo está armado</h1>
+        </div>
+        <p class="lead">Ya revisamos que importe en n8n. Dinos tu correo: te mandamos el flujo y su guía paso a paso, y en seguida también los puedes descargar.</p>
+      </div>
+
+      <div class="hundida lo-que-hace" data-cadena-caja hidden>
+        <span class="rotulo">Lo que hace</span>
+        <ol class="cadena" data-cadena></ol>
+      </div>
+
+      <form class="form-correo form-correo-grande" data-form-correo data-origen="listo" novalidate>
+        <div class="campo">
+          <label for="correo-listo">Tu correo</label>
+          <input id="correo-listo" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-listo-ayuda correo-listo-error">
+          <span class="chica" id="correo-listo-ayuda">Ahí te llegan el .json y la guía paso a paso, con videos cortos para conectar cada cuenta.</span>
+          <p class="campo-error" id="correo-listo-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
+        </div>
+        <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para mandarte este flujo. Puedes darte de baja cuando quieras.</span></span></label>
+        <div class="acciones">
+          <button type="submit" class="btn btn-pri btn-grande">Mandármelo y descargar</button>
+          <button type="button" class="btn-enlace chica" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- 4 · Listo: descarga + cómo importarlo -->
+  <section class="pantalla listo" data-pantalla="listo" aria-labelledby="listo-t" hidden>
+    <div class="apilado-10">
+      <div class="titulo-estado">
+        <svg class="ico ico-28 ico-exito" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>
+        <h1 id="listo-t" class="titulo-lg" tabindex="-1">Tu flujo está listo</h1>
+      </div>
+      <p class="lectura" data-listo-correo>Te lo mandamos a <span class="fuerte" data-correo-ver></span>. Aquí también lo puedes descargar.</p>
+      <p class="secundario cita" data-listo-pedido hidden></p>
+    </div>
+
+    <div class="listo-rejilla">
+      <div class="apilado-24">
+        <section class="tarjeta bloque-20" aria-labelledby="hace-t">
+          <h2 id="hace-t" class="titulo-md">Lo que hace</h2>
+          <ol class="nodos" data-nodos></ol>
+          <div class="acciones">
+            <a class="btn btn-pri btn-grande" data-descargar href="/automatiza" download>
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/></svg>Descargar el flujo (.json)</a>
+          </div>
+        </section>
+
+        <section class="tarjeta bloque-18" aria-labelledby="importar-t">
+          <h2 id="importar-t" class="titulo-md">Cómo importarlo en n8n</h2>
+          <ol class="guia">
+            <li>Para usar n8n en línea, entra a <a href="https://www.hostinger.com/es/hosting-n8n">hostinger.com/es/hosting-n8n</a>.</li>
+            <li>Abre n8n y crea un flujo nuevo.</li>
+            <li>Pega con Ctrl + V, o usa «Importar desde archivo» con el .json.</li>
+            <li>Conecta tus cuentas en cada nodo. Vienen vacías a propósito: tus contraseñas no salen de tu n8n.</li>
+          </ol>
+        </section>
+      </div>
+
+      <aside class="apilado-24">
+        <!-- ¿Te funcionó? (RAG·25): va escondido y sin cablear hasta que exista
+             dónde guardarlo. Atado al número de petición. -->
+        <section class="tarjeta bloque-16" data-te-funciono aria-labelledby="funciono-t" hidden>
+          <h2 id="funciono-t" class="titulo-sm">¿Te funcionó?</h2>
+          <span class="secundario">Nos ayuda a corregirlo. Lo leemos todo.</span>
+          <div class="dos-botones">
+            <button type="button" class="btn btn-sec btn-grande" aria-pressed="false">Sí, funcionó</button>
+            <button type="button" class="btn btn-sec btn-grande" aria-pressed="false">No funcionó</button>
+          </div>
+          <label for="que-paso" class="fuerte">¿Qué pasó? <span class="secundario normal">(opcional)</span></label>
+          <textarea id="que-paso" rows="4" placeholder="Ej.: n8n dice que no encuentra el nodo de Sheets."></textarea>
+          <button type="button" class="btn btn-sec alinear-inicio">Mandar</button>
+          <span class="chica numeros">Petición n.º <span data-id></span></span>
+        </section>
+
+        <section class="hundida bloque-10" aria-labelledby="revisamos-t">
+          <h2 id="revisamos-t" class="rotulo">Lo que revisamos</h2>
+          <ul class="revisado">
+            <li><svg class="ico ico-exito" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Importa en n8n</li>
+            <li><svg class="ico ico-exito" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Todos sus nodos existen</li>
+            <li><svg class="ico ico-exito" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Sin contraseñas dentro</li>
+          </ul>
+          <span class="secundario">Que haga justo lo que pediste lo confirmas tú al probarlo.</span>
+        </section>
+
+        <span class="chica numeros">Petición n.º <span data-id></span></span>
+        <a class="enlace-44" href="/automatiza" data-otro-flujo>Armar otro flujo</a>
+      </aside>
+    </div>
+  </section>
+
+  <!-- 5 · No salió un flujo que importe (estados no_salio y sin_cobertura) -->
+  <section class="pantalla columna" data-pantalla="no-salio" aria-labelledby="no-salio-t" hidden>
+    <div class="tarjeta caja-720 bloque-24">
+      <div class="apilado-8">
+        <h1 id="no-salio-t" class="titulo-sm con-icono" tabindex="-1"><svg class="ico ico-22 ico-error" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>Qué pasó</h1>
+        <p class="lectura" data-mensaje>Esta vez no pudimos armar un flujo que importe bien en n8n. Preferimos no darte uno roto.</p>
+      </div>
+      <div class="apilado-6">
+        <h2 class="rotulo">Qué sigue</h2>
+        <p class="parrafo">Lo apuntamos para revisarlo a mano. Mientras, prueba contarlo en pasos más cortos o nombrando las apps: suele bastar.</p>
+      </div>
+      <div class="acciones">
+        <button type="button" class="btn btn-pri btn-grande" data-otra-forma>Describirlo de otra forma</button>
+      </div>
+      <hr class="linea">
+
+      <form class="form-correo" data-form-correo data-origen="no_salio" novalidate>
+        <label for="correo-no-salio" class="fuerte">¿Te lo mandamos cuando lo tengamos?<span class="sr"> Tu correo</span></label>
+        <div class="fila-campo">
+          <input id="correo-no-salio" name="correo" type="email" autocomplete="email" inputmode="email" placeholder="tu@correo.com" required aria-describedby="correo-no-salio-error">
+          <button type="submit" class="btn btn-sec btn-grande">Mándamelo</button>
+        </div>
+        <p class="campo-error" id="correo-no-salio-error" data-error-correo hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span data-error-texto></span></p>
+        <label class="casilla"><input type="checkbox" name="recontacto"><span class="apilado"><span>{{recontacto_texto}}</span><span class="chica">Es aparte. Sin marcarla, tu correo solo sirve para avisarte de esta petición. Puedes darte de baja cuando quieras.</span></span></label>
+        <button type="button" class="btn-enlace chica alinear-inicio" data-ver-aviso aria-haspopup="dialog">Aviso de privacidad</button>
+      </form>
+      <div class="caja-exito" data-correo-listo hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
+        <span class="apilado"><span>Te lo mandamos a <span class="fuerte" data-correo-ver></span> cuando lo tengamos.</span><button type="button" class="btn-enlace chica alinear-inicio" data-cambiar-correo>¿Te equivocaste? Cambiar el correo</button></span>
+      </div>
+
+      <details class="detalles">
+        <summary>Detalles técnicos</summary>
+        <pre data-detalles></pre>
+      </details>
+    </div>
+  </section>
+
+  <!-- 5a · Rechazada por el revisor -->
+  <section class="pantalla columna" data-pantalla="rechazada" aria-labelledby="rechazada-t" hidden>
+    <div class="tarjeta caja-720 bloque-24">
+      <div class="apilado-10">
+        <h1 id="rechazada-t" class="titulo-md con-icono" tabindex="-1"><svg class="ico ico-24 ico-ambar" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8"/></svg>Esta petición no la podemos armar</h1>
+        <p class="lectura" data-mensaje></p>
+      </div>
+      <div class="hundida bloque-10">
+        <h2 class="rotulo">Lo que sí armamos</h2>
+        <ul class="lista-puntos">
+          <li>Tareas de tu trabajo o tu negocio que hoy haces a mano.</li>
+          <li>Avisos y correos a gente que sí pidió recibirlos.</li>
+          <li>Mover datos entre tus propias apps y cuentas.</li>
+        </ul>
+      </div>
+      <div class="acciones">
+        <button type="button" class="btn btn-pri btn-grande" data-otra-forma>Describirlo de otra forma</button>
+        <span class="chica" data-texto-sigue>Tu texto sigue en el formulario.</span>
+      </div>
+      <!-- «¿Crees que nos equivocamos?» (lienzo 5a): escondido hasta que exista
+           dónde recibir el aviso (el reporte es RAG·25). -->
+      <div class="apilado-24" data-equivocamos hidden>
+        <hr class="linea">
+        <div class="apilado-4">
+          <span class="fuerte">¿Crees que nos equivocamos?</span>
+          <span class="secundario">Cuéntanos para qué lo quieres y lo revisamos a mano.</span>
+          <span class="chica numeros">Petición n.º <span data-id></span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · Ahorita no está disponible: UNA pantalla para todo freno del
+       servidor (apagado, tope diario, tope por IP, throttling) -->
+  <section class="pantalla pausa" data-pantalla="no-disponible" aria-labelledby="pausa-t" hidden>
+    <svg class="ico ico-40 ico-gris" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+    <h1 id="pausa-t" class="titulo-lg" tabindex="-1">Ahorita no está disponible</h1>
+    <p class="lead">El servicio está en pausa por un momento. Vuelve más tarde<span data-si-borrador>: lo que escribiste te espera aquí</span>.</p>
+    <div class="nota-caja" data-si-borrador>
+      <svg class="ico ico-gris" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M9 9h6"/><path d="M9 13h4"/></svg>
+      <span>Guardamos lo que escribiste en este navegador. Cuando vuelvas lo encuentras en el formulario, tal cual.</span>
+    </div>
+    <p class="secundario" data-sigue-pausa role="status" hidden>Sigue en pausa. Prueba otra vez en unos minutos.</p>
+    <button type="button" class="btn btn-pri btn-grande alinear-inicio" data-reintentar>Intentar de nuevo</button>
+  </section>
+
+  <!-- aviso para lectores de pantalla: pasos, lugar en la fila, avisos -->
+  <p class="sr" data-anuncio aria-live="polite"></p>
+</main>
+
+<!-- EL AVISO DE PRIVACIDAD SIMPLIFICADO (RAG·13): UN solo diálogo. Sale la
+     PRIMERA vez que la persona manda algo («Armar mi flujo», o el correo si
+     llegó con el enlace desde otro navegador) con la casilla y «Aceptar»
+     hasta abajo; automatiza.js guarda qué versión aceptó y no lo vuelve a
+     pedir. «Aviso de privacidad» junto a cada correo lo abre para releerlo
+     (data-modo="leer": sin casilla, con «Cerrar»).
+     El texto legal lo ajusta el dueño aquí, con docs/automatiza/aviso-privacidad.md,
+     y los huecos en server/aviso.py (DATOS). Si cambias un texto legal de
+     aquí, sube AVISO_VERSION: tests/test_rag_paginas.py ata cada versión a
+     la huella de su texto. -->
+<dialog id="dialogo-aviso" class="dialogo" aria-labelledby="aviso-t" data-modo="aceptar">
+  <div class="dialogo-cabeza">
+    <h2 id="aviso-t" class="titulo-sm" tabindex="-1">Aviso de privacidad simplificado</h2>
+    <button type="button" class="dialogo-cerrar" data-cerrar-dialogo aria-label="Cerrar sin aceptar">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
+  </div>
+  <p class="secundario" data-solo-aceptar data-aviso-lead>Antes de armar tu flujo, lee qué hacemos con lo que nos mandas.</p>
+  <p class="aviso-caja" data-aviso-cambio role="alert" hidden>
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg>
+    <span data-aviso-cambio-texto></span>
+  </p>
+  <dl class="aviso-filas">
+    <div><dt>Quién</dt><dd>{{responsable}}, con domicilio en {{domicilio}}.</dd></div>
+    <div><dt>Para qué</dt><dd>Para armar tu flujo, mandártelo con su guía y avisarte de tu petición. Si no te opones, también para mejorar el servicio con tu descripción y medir de dónde llegan las visitas (de qué sitio llegaste y la campaña del enlace). Solo si marcas la casilla aparte que está junto a tu correo, para escribirte con novedades.</dd></div>
+    <div><dt>Qué guardamos</dt><dd>Tu descripción y el flujo, durante {{plazo_peticion}}; tu correo, cuando nos lo das, durante {{plazo_correo}} (si marcas la casilla, hasta que te des de baja). También qué versión de este aviso aceptaste. De tu IP solo una huella para los topes, nunca la IP. No te pedimos datos sensibles.</dd></div>
+    <div><dt>Tus derechos</dt><dd>Para ver, corregir o borrar tus datos, oponerte a un uso, negarte a los usos adicionales o darte de baja, escríbenos a {{correo_privacidad}} con tu número de petición.</dd></div>
+  </dl>
+  <div class="dialogo-enlaces">
+    <a class="enlace-44" href="/privacidad" target="_blank" rel="noopener">Leer el aviso de privacidad integral</a>
+    <a class="enlace-44" href="/terminos" target="_blank" rel="noopener">Leer los Términos</a>
+  </div>
+  <div class="dialogo-pie" data-solo-aceptar>
+    <label class="casilla casilla-aceptar"><input type="checkbox" data-casilla-aviso aria-describedby="aviso-falta"><span>He leído el aviso de privacidad y acepto los términos</span></label>
+    <p class="campo-error" id="aviso-falta" data-aviso-falta role="alert" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg><span>Marca la casilla para seguir.</span></p>
+    <button type="button" class="btn btn-pri btn-grande" data-aceptar-aviso aria-disabled="true">Aceptar</button>
+  </div>
+  <div class="dialogo-pie" data-solo-leer>
+    <button type="button" class="btn btn-sec btn-grande" data-cerrar-dialogo>Cerrar</button>
+  </div>
+</dialog>
+
+<!-- «¿Cómo funciona?» en celular: el mismo contenido del panel lateral -->
+<dialog id="dialogo-como" class="dialogo" aria-labelledby="como-dialogo-t">
+  <div class="dialogo-cabeza">
+    <h2 id="como-dialogo-t" class="titulo-sm" tabindex="-1">Cómo funciona</h2>
+    <button type="button" class="dialogo-cerrar" data-cerrar-dialogo aria-label="Cerrar">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
+  </div>
+  <div class="dialogo-como" data-como-aqui></div>
+  <div class="dialogo-pie">
+    <button type="button" class="btn btn-sec btn-grande" data-cerrar-dialogo>Entendido</button>
+  </div>
+</dialog>
+</body>
+</html>

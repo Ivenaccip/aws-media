@@ -137,21 +137,21 @@ class JobsStack(Stack):
         # cuáles tocan en SU reloj y encola solo esas; publicar dos veces lo
         # impide el PRIMARY KEY de mix_corridas, no esta regla.
         #
-        # Este SÍ va también en dev, al revés que el de costes, porque MIX es
-        # algo que hay que poder probar. Para que fuera peligroso tendrían que
-        # darse DOS cosas a la vez: campañas activas en la base de dev y la
-        # clave de Blotato de un cliente real bajo `SSM_USUARIOS_PREFIX`. Lo
-        # primero solo pasa si alguien siembra dev con una copia de producción
-        # —por eso la tarjeta dice que no se hace— y lo segundo no puede pasar:
-        # el prefijo de dev es `/media-ivenaccip-dev/usuarios` y ahí no hay
-        # claves de nadie. Con la base vacía el despachador recoge cero.
-        events.Rule(
-            self, "MixReloj",
-            schedule=events.Schedule.cron(minute="0"),   # :00 de cada hora
-            targets=[targets.LambdaFunction(
-                worker, event=events.RuleTargetInput.from_object(
-                    {"tipo": "mix_reloj"}))],
-        )
+        # Solo en prod (2-oct, decisión del dueño). Antes también iba en dev
+        # para poder probar MIX, pero cada disparo consulta la base: despertaba
+        # cada hora el Aurora de dev, que tiene suelo 0 y auto-pausa a los
+        # 5 min, y lo dejaba facturando ACU unos ~5 min de cada hora sin que
+        # nadie estuviera usando dev. Para probar MIX en dev se dispara a mano:
+        #   aws lambda invoke --function-name <worker de dev>
+        #       --payload '{"tipo":"mix_reloj"}' --cli-binary-format raw-in-base64-out salida.json
+        if entorno.es_prod:
+            events.Rule(
+                self, "MixReloj",
+                schedule=events.Schedule.cron(minute="0"),   # :00 de cada hora
+                targets=[targets.LambdaFunction(
+                    worker, event=events.RuleTargetInput.from_object(
+                        {"tipo": "mix_reloj"}))],
+            )
 
         # --- 2) Fargate para producciones/renders largos ---------------------
         vpc = ec2.Vpc(
@@ -213,5 +213,113 @@ class JobsStack(Stack):
             targets=[targets.LambdaFunction(worker)],
         )
 
+        # --- 4) RAG·4 · la tubería pública de /automatiza ---------------------
+        # Cola y worker PROPIOS, no la cola de arriba: esa está topada a dos
+        # huecos que comparten las campañas de MIX, cobradas por adelantado. Un
+        # pico de curiosos anónimos no puede retrasar la publicación de las
+        # nueve de alguien que ya pagó. El radio de explosión es el argumento.
+        # Solo existe donde `entorno.publico` (hoy dev; prod en RAG·30).
+        self.cola_publica = None
+        if entorno.publico:
+            self.cola_publica = self._tuberia_publica(
+                repo, image_ref, cluster_db, media_bucket, cdn_domain, ssm_env,
+                entorno)
+
         cdk.CfnOutput(self, "QueueUrl", value=self.queue.queue_url)
         cdk.CfnOutput(self, "StateMachineArn", value=self.state_machine.state_machine_arn)
+
+    def _tuberia_publica(self, repo, image_ref: str, cluster_db, media_bucket,
+                         cdn_domain: str, ssm_env: str,
+                         entorno: Entorno) -> sqs.Queue:
+        """Cola + worker de /automatiza, con los permisos más cortos posibles.
+
+        El worker público corre código que atiende a cualquiera de internet,
+        así que no hereda nada del de arriba: sin las claves POR-USUARIO de
+        SSM, sin escribir en la cola de pago, sin el monedero, y en S3 solo
+        bajo `automatiza/`. Si algún día hace falta más, se agrega aquí a la
+        vista, no por compartir un rol."""
+        # Tiempos: el worker corta a los 5 min y la cola no reentrega antes de
+        # 6. Un mensaje que vuelve encuentra la corrida en «armando» con más de
+        # 6 min y puede retomarla (db.automatiza_tomar); uno que falla tres
+        # veces es un mensaje roto, no una corrida: a su propia DLQ, que no
+        # dispara las alarmas del trabajo de pago.
+        if not entorno.ssm_publico:
+            raise ValueError(
+                f"{entorno.nombre}: `publico` sin `ssm_publico` en infra/entornos.py. "
+                "El worker público no carga las claves de plataforma (/env).")
+        dlq = sqs.Queue(self, "PublicoDlq", retention_period=Duration.days(14))
+        cola = sqs.Queue(
+            self, "Publico",
+            visibility_timeout=Duration.minutes(6),
+            retention_period=Duration.days(1),   # una petición de ayer ya no espera a nadie
+            dead_letter_queue=sqs.DeadLetterQueue(max_receive_count=3, queue=dlq),
+        )
+        worker = lambda_.DockerImageFunction(
+            self, "WorkerPublico",
+            code=lambda_.DockerImageCode.from_ecr(
+                repo, tag_or_digest=image_ref,
+                entrypoint=["/usr/local/bin/python", "-m", "awslambdaric"],
+                cmd=["worker.publico.handler"],
+            ),
+            memory_size=1024,
+            timeout=Duration.minutes(5),
+            environment={
+                "STATE_BACKEND": "postgres",
+                "DB_CLUSTER_ARN": cluster_db.cluster_arn,
+                "DB_SECRET_ARN": cluster_db.secret.secret_arn,
+                "DB_NAME": "media",
+                "MEDIA_BUCKET": media_bucket.bucket_name,
+                "CDN_BASE": f"https://{cdn_domain}",
+                # SOLO sus claves (capa 1): nunca el prefijo de plataforma
+                "SSM_ENV_PREFIX": entorno.ssm_publico,
+                "HOME": "/tmp",
+                "PYTHONIOENCODING": "utf-8",
+            },
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+        # Cuántas corridas a la vez. Es LA perilla de carga de la ventana
+        # pública: lo que no cabe espera en la cola, y eso es la fila de
+        # RAG·12. 2 es el mínimo que acepta SQS; se sube en RAG·30 con el
+        # tope diario ya decidido, sabiendo cuánto cuesta cada hueco.
+        worker.add_event_source(event_sources.SqsEventSource(
+            cola, batch_size=1, max_concurrency=2))
+        cluster_db.grant_data_api_access(worker)
+        media_bucket.grant_put(worker, "automatiza/*")
+        media_bucket.grant_read(worker, "automatiza/*")
+        # El camino exacto (GetParametersByPath se autoriza contra él) y lo que
+        # cuelga debajo. Sin el `*` suelto de las demás Lambdas: `publico*`
+        # alcanzaría también un `/publicoX` que nadie ha revisado.
+        worker.add_to_role_policy(iam.PolicyStatement(
+            actions=["ssm:GetParametersByPath"],
+            resources=[
+                f"arn:aws:ssm:{self.region}:{self.account}:parameter{entorno.ssm_publico}",
+                f"arn:aws:ssm:{self.region}:{self.account}:parameter{entorno.ssm_publico}/*"]))
+        # RAG·17: el índice del RAG, SOLO para leer. Lo crea el dueño con
+        # tools/vectores.py (el CDK no trae S3 Vectors) y lo llena la ingesta
+        # desde su máquina: nada que atiende a internet escribe el índice.
+        # GetVectors va junto a QueryVectors porque S3 Vectors lo exige para
+        # devolver metadatos o filtrar por ellos.
+        if entorno.vectores_bucket and entorno.vectores_indice:
+            worker.add_environment("VECTORES_BUCKET", entorno.vectores_bucket)
+            worker.add_environment("VECTORES_INDICE", entorno.vectores_indice)
+            worker.add_environment("EMBEDDINGS", entorno.embeddings or "gemini")
+            # RAG·21: el armado real y su modelo, solo donde el entorno lo enciende
+            if entorno.armado_real:
+                worker.add_environment("ARMADO_REAL", "1")
+                if entorno.rag_modelo:
+                    worker.add_environment("RAG_MODELO", entorno.rag_modelo)
+            # RESPALDO TEMPORAL (30-sep): Titan V2 por Bedrock mientras Google
+            # verifica la cuenta. Solo ESE modelo, solo invocar. Con «openai»
+            # (segundo respaldo, 1-oct) no hay permiso que dar: la clave llega
+            # de /publico/ como las demás (SSM_ENV_PREFIX).
+            if entorno.embeddings == "titan":
+                worker.add_to_role_policy(iam.PolicyStatement(
+                    actions=["bedrock:InvokeModel"],
+                    resources=[f"arn:aws:bedrock:{self.region}::foundation-model/"
+                               "amazon.titan-embed-text-v2:0"]))
+            worker.add_to_role_policy(iam.PolicyStatement(
+                actions=["s3vectors:QueryVectors", "s3vectors:GetVectors"],
+                resources=[f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/"
+                           f"{entorno.vectores_bucket}/index/{entorno.vectores_indice}"]))
+        cdk.CfnOutput(self, "ColaPublicaUrl", value=cola.queue_url)
+        return cola
