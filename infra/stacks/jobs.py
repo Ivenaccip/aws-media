@@ -137,21 +137,21 @@ class JobsStack(Stack):
         # cuáles tocan en SU reloj y encola solo esas; publicar dos veces lo
         # impide el PRIMARY KEY de mix_corridas, no esta regla.
         #
-        # Este SÍ va también en dev, al revés que el de costes, porque MIX es
-        # algo que hay que poder probar. Para que fuera peligroso tendrían que
-        # darse DOS cosas a la vez: campañas activas en la base de dev y la
-        # clave de Blotato de un cliente real bajo `SSM_USUARIOS_PREFIX`. Lo
-        # primero solo pasa si alguien siembra dev con una copia de producción
-        # —por eso la tarjeta dice que no se hace— y lo segundo no puede pasar:
-        # el prefijo de dev es `/media-ivenaccip-dev/usuarios` y ahí no hay
-        # claves de nadie. Con la base vacía el despachador recoge cero.
-        events.Rule(
-            self, "MixReloj",
-            schedule=events.Schedule.cron(minute="0"),   # :00 de cada hora
-            targets=[targets.LambdaFunction(
-                worker, event=events.RuleTargetInput.from_object(
-                    {"tipo": "mix_reloj"}))],
-        )
+        # Solo en prod (2-oct, decisión del dueño). Antes también iba en dev
+        # para poder probar MIX, pero cada disparo consulta la base: despertaba
+        # cada hora el Aurora de dev, que tiene suelo 0 y auto-pausa a los
+        # 5 min, y lo dejaba facturando ACU unos ~5 min de cada hora sin que
+        # nadie estuviera usando dev. Para probar MIX en dev se dispara a mano:
+        #   aws lambda invoke --function-name <worker de dev>
+        #       --payload '{"tipo":"mix_reloj"}' --cli-binary-format raw-in-base64-out salida.json
+        if entorno.es_prod:
+            events.Rule(
+                self, "MixReloj",
+                schedule=events.Schedule.cron(minute="0"),   # :00 de cada hora
+                targets=[targets.LambdaFunction(
+                    worker, event=events.RuleTargetInput.from_object(
+                        {"tipo": "mix_reloj"}))],
+            )
 
         # --- 2) Fargate para producciones/renders largos ---------------------
         vpc = ec2.Vpc(
