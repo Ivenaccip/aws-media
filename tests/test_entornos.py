@@ -441,24 +441,24 @@ def _relojes(template):
             if r["Type"] == "AWS::Events::Rule"}
 
 
-def test_dev_no_hereda_el_reloj_de_costes_y_si_el_de_mix(dev, prod):
+def test_dev_no_hereda_ningun_reloj(dev, prod):
     """El sync de costes lee Langfuse, y dev NO comparte ese proyecto a
-    propósito (`tools/ssm_env.py` se niega a subirle esas claves). Sin ellas
-    fallaría a las 06:00 todos los días: ruido diario en los logs de un entorno
-    donde nadie los mira, que es como se aprende a ignorarlos.
+    propósito (`tools/ssm_env.py` se niega a subirle esas claves).
 
-    El de MIX sí viaja, porque MIX hay que poder probarlo y para que hiciera
-    daño harían falta DOS cosas a la vez que no se dan: campañas activas en la
-    base de dev y la clave de Blotato de un cliente real bajo el prefijo de
-    dev."""
+    El de MIX tampoco (2-oct): cada disparo consulta la base y despertaba cada
+    hora el Aurora de dev (suelo 0, auto-pausa), que es gasto sin nadie usando
+    dev. En dev MIX se prueba disparando el worker a mano."""
     d = _relojes(dev["aws-media-jobs-dev"])
     assert not any(k.startswith("SyncCostes") for k in d), (
         "el reloj de costes de Langfuse no pinta nada en dev")
-    assert any(k.startswith("MixReloj") for k in d)
+    assert not any(k.startswith("MixReloj") for k in d), (
+        "el reloj de MIX despierta cada hora el Aurora de dev")
 
     p_ = _relojes(prod["aws-media-jobs"])
     assert any(k.startswith("SyncCostes") for k in p_), (
         "prod SÍ lo necesita: es la base del dashboard admin")
+    assert any(k.startswith("MixReloj") for k in p_), (
+        "prod SÍ lo necesita: publica las campañas de MIX")
 
 
 # ---------------------------------------------------------------------------
