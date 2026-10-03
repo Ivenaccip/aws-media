@@ -52,8 +52,14 @@
   .sin-cuenta { color: var(--c-secundario); font-size: var(--t-xs); }
   .sin-cuenta a { color: var(--c-enlace); }
   .sin-cuenta a:hover { color: var(--c-texto); }
-  footer { padding: 24px 0 32px; border-top: 1px solid var(--c-linea); color: var(--c-secundario);
-           font-size: var(--t-xs); }
+  /* el pie de contacto: cada enlace mide 44 px de alto (área táctil), por eso
+     el relleno es menor que el de un pie de solo texto. Sin ámbar: el único
+     de la portada es «Entrar a mi estudio». A 390 px se parte en dos filas */
+  .pie { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; overflow-wrap: anywhere;
+         padding: 12px 0 20px; border-top: 1px solid var(--c-linea); color: var(--c-secundario);
+         font-size: var(--t-xs); }
+  .pie a { min-height: 44px; display: inline-flex; align-items: center; color: var(--c-enlace); }
+  .pie a:hover { color: var(--c-texto); }
 </style>
 </head>
 <body>
@@ -71,7 +77,12 @@
     </div>
   </section>
 </main>
-<footer class="ancho">Irremplazables</footer>
+<footer class="ancho pie">
+  <span>Irremplazables</span>
+  <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>
+  <a href="/privacidad">Aviso de privacidad</a>
+  <a href="/terminos">Términos</a>
+</footer>
 <script src="/enlaces.js"></script>
 </body>
 </html>
