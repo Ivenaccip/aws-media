@@ -1175,6 +1175,25 @@ def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
 
+# El aviso de privacidad y los términos: públicos y sin sesión, igual que la
+# portada y /entrar (los enlaza el pie de las dos). Llevan ruta propia porque
+# el montaje de abajo solo los serviría con «.html»; su hoja (/legal.css) sí
+# sale de ese montaje, como /carta.css.
+# Van JUSTO aquí, pegadas a _entrar(): dev trae sus propias rutas en este mismo
+# punto, y así la fusión marca conflicto en vez de dejar dos
+# @app.get("/privacidad") sin avisar.
+# También contestan HEAD: es lo que mandan `curl -I` y los verificadores de
+# enlaces, y con solo GET recibían un 404 del montaje de abajo.
+@app.api_route("/privacidad", methods=["GET", "HEAD"], include_in_schema=False)
+def _privacidad():
+    return FileResponse(ROOT / "static" / "privacidad.html", headers=_SIN_CACHE)
+
+
+@app.api_route("/terminos", methods=["GET", "HEAD"], include_in_schema=False)
+def _terminos():
+    return FileResponse(ROOT / "static" / "terminos.html", headers=_SIN_CACHE)
+
+
 # UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje
 # se queda con todo lo que venga detrás.
 # UI·7 · y las URLs viejas de las pantallas que se migran: server/migracion.py
