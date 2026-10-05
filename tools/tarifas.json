@@ -44,6 +44,11 @@
     "nota": "M23 · D — publicidad automática: UNA imagen al día en UNA sola cuenta, sin que el dueño del negocio la revise. Los 5 son 2 de la imagen y 3 de la automatización, la subida y la infra (decisión del dueño, 2026-09-18). La campaña se cobra COMPLETA por adelantado (días × 5) y se devuelve por DÍA lo que no salga: al apagar a mitad se regresan los días que no se publicaron, y un día que falla devuelve sus 5. Economía: al piso de venta ($0.015 dólares/crédito) son $0.075 contra ~$0.04 de costo real. La imagen NO se inventa de cero — parte de la foto que sube el usuario, así que es el endpoint de EDITAR de Grok ($0.02 de salida + $0.002 por referencia, pricing.json §generacion.grok_edit), más el tema del día con el LLM y la subida a Blotato. A diferencia de video.imagen (2 créditos), aquí la tarifa sí deja margen.",
     "nota_ejemplo": "El ejemplo del día 1 que se enseña ANTES de encender no se cobra, y no se regenera: si la enciende, ese mismo ejemplo ES la publicación del primer día. Cuesta una imagen real (~$0.022 dólares), así que quien pide ejemplos y nunca enciende sale gratis — se aceptó a cambio de que nadie pague sin ver (decisión del dueño, 2026-09-18)."
   },
+  "rag": {
+    "abono_tester_por_uso": 10,
+    "abono_tester_max_por_dia": 5,
+    "nota": "RAG·29 (decisión del dueño, 5-oct-2026) — TEMPORAL, una a dos semanas: mientras se recupera información de los testers, /automatiza en dev NO cobra; al revés, cada uso de un tester ABONA abono_tester_por_uso créditos en la cuenta de producción que tiene ese correo, con un máximo de abono_tester_max_por_dia usos al día por cuenta. Lo abona tools/abonos_testers.py (lo corre el dueño). Los 10 salen de la corrida medida del 2-oct: ~$0.13 dólares de Claude por armado (pricing.json §rag) al piso de venta de $0.015 dólares por crédito ≈ 9. Al terminar la prueba, este mismo número pasa a ser lo que se COBRA por uso (ver docs/RAG_TESTERS.md)."
+  },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [
     { "creditos": 100, "usd": 1.99 },
