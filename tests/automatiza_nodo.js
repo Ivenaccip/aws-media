@@ -187,7 +187,7 @@ function almacen() {
     removeItem: k => { delete datos[k]; }, datos };
 }
 const truena = { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('QuotaExceeded'); } };
-const V = '2026-09-29-borrador';
+const V = '2026-10-04';
 igual(A.CLAVE_AVISO, 'automatiza:aviso', 'la llave del aviso aceptado');
 
 const ls = almacen();

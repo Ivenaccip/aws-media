@@ -510,6 +510,36 @@ def test_publico_apagado_en_prod_y_encendido_en_dev():
     assert DEV.publico is True
 
 
+def _sin_decidir_del_aviso() -> tuple:
+    """SIN_DECIDIR de server/aviso.py, leído del texto y sin importarlo: este
+    archivo corre también en el paso del CI que solo instala el CDK (con
+    --noconftest), y ahí no tiene por qué depender de lo que importe server/."""
+    import ast
+    arbol = ast.parse((RAIZ / "server" / "aviso.py").read_text(encoding="utf-8"))
+    for nodo in arbol.body:
+        if (isinstance(nodo, ast.Assign) and len(nodo.targets) == 1
+                and getattr(nodo.targets[0], "id", None) == "SIN_DECIDIR"):
+            valor = ast.literal_eval(nodo.value)     # tiene que ser un literal
+            assert isinstance(valor, tuple) and all(isinstance(c, str) for c in valor)
+            return valor
+    raise AssertionError("server/aviso.py ya no declara SIN_DECIDIR: sin esa "
+                         "tupla nada frena el encendido de /automatiza en prod")
+
+
+def test_prod_no_enciende_lo_publico_con_datos_del_aviso_sin_decidir():
+    """CANDADO del encendido. El aviso de privacidad de /automatiza todavía
+    dice en prosa que sus plazos y su proveedor de envío no están decididos
+    (server/aviso.py, SIN_DECIDIR). Con eso se puede probar en dev; no se le
+    puede abrir a internet en producción. Este test no se arregla relajándolo
+    ni vaciando la tupla: se arregla cuando el dueño decide, se escribe el dato
+    en DATOS, se saca de SIN_DECIDIR y sube AVISO_VERSION. (Que la tupla diga
+    lo mismo que el texto lo vigila tests/test_rag_paginas.py.)"""
+    sin_decidir = _sin_decidir_del_aviso()
+    assert not (PROD.publico and sin_decidir), (
+        "PROD.publico está encendido y el aviso todavía tiene datos del dueño "
+        f"sin decidir: {sin_decidir}")
+
+
 def test_prod_no_crea_nada_publico(prod):
     import json
     for nombre, template in prod.items():

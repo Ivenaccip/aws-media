@@ -1193,10 +1193,17 @@ def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
 
-# RAG·10/13 · /automatiza y sus legales: las únicas páginas para gente de fuera
-# y sin sesión. Se sirven llenas (server/aviso.py pone los {{huecos}} del
-# dueño) y con su CSP: es la única superficie anónima con formulario, así que
-# nada en línea —ni <script>, ni <style>, ni style=, ni onclick=—.
+# RAG·10/13 · /automatiza y las dos páginas legales: para gente de fuera y sin
+# sesión. Se sirven llenas (server/aviso.py pone los {{huecos}} del dueño) y
+# con su CSP: /automatiza es la única superficie anónima con formulario, así
+# que nada en línea —ni <script>, ni <style>, ni style=, ni onclick=—.
+#
+# /privacidad y /terminos son el aviso y los términos de TODO Irremplazables
+# (el Estudio y /automatiza): los enlaza también el pie de la portada y de
+# /entrar. En main son HTML estático servido con FileResponse (server/aviso.py
+# no puede vivir allá: importa pipeline.publico); aquí gana este mecanismo y
+# sus rutas NO se duplican. De las de main se conserva lo que hacían de más:
+# contestar HEAD (ver _pagina_publica).
 _CSP_PUBLICA = ("default-src 'none'; script-src 'self'; style-src 'self'; "
                 "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
                 "form-action 'self'; base-uri 'none'; frame-ancestors 'none'; "
@@ -1236,10 +1243,16 @@ def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True,
     if status != 200:
         return HTMLResponse(cuerpo, status_code=status, headers=cabeceras)
     # no-cache revalida en cada carga: con el ETag, la revalidación es un 304
-    etag = '"' + hashlib.sha256(cuerpo.encode()).hexdigest()[:32] + '"'
+    datos = cuerpo.encode()
+    etag = '"' + hashlib.sha256(datos).hexdigest()[:32] + '"'
     cabeceras["ETag"] = etag
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=cabeceras)
+    if request.method == "HEAD":
+        # las mismas cabeceras que el GET (CSP, ETag, tipo y largo) y sin
+        # cuerpo: es lo que preguntan `curl -I` y los verificadores de enlaces
+        return Response(status_code=200, media_type="text/html",
+                        headers={**cabeceras, "Content-Length": str(len(datos))})
     return HTMLResponse(cuerpo, headers=cabeceras)
 
 
@@ -1273,12 +1286,15 @@ def _automatiza_corrida(request: Request, publico_id: str):
     return _pagina_publica(request, "automatiza.html", indexable=False)
 
 
-@app.get("/privacidad", include_in_schema=False)
+# Las dos legales contestan también HEAD (así llegaron de main, PR #174): con
+# solo GET, un `curl -I` o un verificador de enlaces caía en el montaje de
+# abajo y recibía un 404 de una página que sí existe.
+@app.api_route("/privacidad", methods=["GET", "HEAD"], include_in_schema=False)
 def _privacidad(request: Request):
     return _pagina_publica(request, "privacidad.html")
 
 
-@app.get("/terminos", include_in_schema=False)
+@app.api_route("/terminos", methods=["GET", "HEAD"], include_in_schema=False)
 def _terminos(request: Request):
     return _pagina_publica(request, "terminos.html")
 

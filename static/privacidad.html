@@ -1,27 +1,38 @@
 <!doctype html>
 <html lang="es">
-<!-- /privacidad (RAG·13): el aviso de privacidad INTEGRAL de /automatiza, con
-     la estructura de 8 secciones del lienzo (RAG13_Privacidad). El aviso
-     simplificado es el diálogo de static/automatiza.html (se acepta antes de
-     mandar la primera descripción) y enlaza aquí.
+<!-- /privacidad: el aviso de privacidad de Irremplazables. Cubre las dos
+     cosas que hay en este sitio:
+       · secciones 1 a 13: el Estudio (la plataforma cerrada de los miembros).
+         Es el texto que main publicó el 3-oct-2026 (PR 174) y aquí no se
+         le cambia el sentido, los números, los plazos ni el marco;
+       · sección 14: /automatiza (la herramienta abierta, sin cuenta).
 
      Es una plantilla: los marcadores de doble llave son huecos del dueño que
      server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
      hace fallar tests/test_rag_paginas.py. Por eso en estos comentarios no se
-     escriben llaves dobles. Lo que va entre corchetes y NO es marcador
-     ([VERIFICAR…], [POR DECIDIR…]) lo resuelve el dueño en este archivo.
+     escriben llaves dobles. En main la misma página es HTML estático, porque
+     server/aviso.py no puede vivir allá.
 
-     Qué dice cada sección y de dónde sale (tablas de pipeline/db.py, hash de
-     IP de pipeline/publico.py, almacenamiento de static/automatiza.js): ver
-     docs/automatiza/aviso-privacidad.md. Si cambia lo que se guarda, cambia
-     este texto y AVISO_VERSION.
+     El responsable es una empresa de Estados Unidos: el texto no cita leyes
+     ni autoridades de ningún país en particular.
+
+     Cada cosa que la sección 14 afirma sale del código (pipeline/db.py,
+     pipeline/publico.py, server/publico_api.py, worker/publico.py,
+     static/automatiza.js) y lo que el código no respalda no se afirma. Lo que
+     vale solo para /automatiza («no necesitas cuenta», «no pone cookies
+     propias») se queda DENTRO de la sección 14: fuera de ella contradice al
+     Estudio, que sí tiene cuenta y cookies de sesión.
+
+     Si cambia lo que se guarda, a quién se envía o cuánto dura, cambia este
+     texto y AVISO_VERSION (server/aviso.py), y se agrega su huella en
+     tests/test_rag_paginas.py.
 
      CSP estricta: sin JS, sin style ni atributos de estilo; todo en /legal.css. -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aviso de privacidad · Irremplazables</title>
-<meta name="description" content="Qué datos guardamos cuando usas /automatiza, para qué, cuánto tiempo, con quién los compartimos y cómo ejercer tus derechos.">
+<meta name="description" content="Qué datos trata Irremplazables de sus miembros y de quien usa /automatiza, para qué, cuánto tiempo, con qué proveedores los comparte y cómo ejercer tus derechos.">
 <link rel="canonical" href="https://irremplazables.xyz/privacidad">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/carta.css">
@@ -35,174 +46,372 @@
   <p class="cabeza-entrar"><span class="solo-ancho">¿Ya eres parte?</span> <a href="/entrar">Entrar</a></p>
 </header>
 
-<aside class="aviso-caja borrador" aria-label="Aviso de borrador">
-  <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
-  <span class="apilado"><strong>Borrador para revisión del dueño · versión {{aviso_version}}</strong><span>Lo que va entre corchetes todavía falta por escribir, decidir o verificar.</span></span>
-</aside>
-
 <main id="principal" class="legal">
   <header class="encabezado">
-    <h1 id="titulo">Aviso de privacidad integral</h1>
+    <h1 id="titulo">Aviso de privacidad</h1>
     <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
-    <p class="resumen">/automatiza convierte lo que describes en un flujo de n8n, gratis y sin cuenta. Guardamos tu descripción, el flujo y, si nos lo das, tu correo, para armarlo, mandártelo y mejorar el servicio. De tu IP solo guardamos una huella, nunca la IP, y tus datos no los vendemos.</p>
+    <p class="resumen">Irremplazables es una plataforma cerrada de inteligencia artificial para los miembros de nuestra comunidad. Usamos tu correo para darte tu cuenta y guardamos lo que subes, escribes y generas para darte el servicio. Para eso trabajamos con proveedores que pueden estar en un país distinto del tuyo. Tus datos no se usan para publicidad y no se venden. /automatiza, la herramienta abierta de este mismo sitio, tiene su propia sección (la 14): ahí solo te escribimos con novedades si marcas una casilla aparte.</p>
   </header>
   <nav class="indice" aria-labelledby="indice-t">
     <p class="rotulo" id="indice-t">En esta página</p>
     <ol>
       <li><a href="#responsable">1. Quién es el responsable</a></li>
-      <li><a href="#datos">2. Qué datos recabamos</a></li>
-      <li><a href="#finalidades">3. Para qué los usamos</a></li>
-      <li><a href="#conservacion">4. Cuánto tiempo los guardamos</a></li>
-      <li><a href="#transferencias">5. Con quién los compartimos</a></li>
-      <li><a href="#derechos">6. Tus derechos y cómo ejercerlos</a></li>
-      <li><a href="#revocar">7. Cómo retirar tu consentimiento</a></li>
-      <li><a href="#cambios">8. Cambios a este aviso</a></li>
+      <li><a href="#aplica">2. A quién aplica</a></li>
+      <li><a href="#datos">3. Qué datos tratamos</a></li>
+      <li><a href="#finalidades">4. Para qué los usamos</a></li>
+      <li><a href="#conservacion">5. Cuánto tiempo los guardamos</a></li>
+      <li><a href="#proveedores">6. Con quién los compartimos</a></li>
+      <li><a href="#publicar">7. Publicar en tus redes</a></li>
+      <li><a href="#derechos">8. Tus derechos y cómo ejercerlos</a></li>
+      <li><a href="#limitar">9. Retirar tu consentimiento y limitar el uso</a></li>
+      <li><a href="#cookies">10. Cookies y tu navegador</a></li>
+      <li><a href="#seguridad">11. Seguridad</a></li>
+      <li><a href="#cambios">12. Cambios a este aviso</a></li>
+      <li><a href="#desacuerdo">13. Si no estás de acuerdo con nuestra respuesta</a></li>
+      <li><a href="#automatiza">14. /automatiza: si la usas sin cuenta</a></li>
     </ol>
-    <a class="volver" href="/automatiza">Volver a /automatiza</a>
+    <a class="volver" href="/">Volver al inicio</a>
   </nav>
 
   <article class="texto" aria-labelledby="titulo">
     <section class="parte" id="responsable" aria-labelledby="responsable-t">
       <h2 id="responsable-t">1. Quién es el responsable</h2>
-      <p>El responsable de tus datos personales es <strong>{{responsable}}</strong>, con domicilio para oír y recibir notificaciones en {{domicilio}}. En este aviso lo llamamos «nosotros». Irremplazables es el nombre de este sitio y de su comunidad.</p>
-      <p>Para cualquier cosa sobre tus datos escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>.</p>
+      <p>El responsable de tus datos personales es <strong>{{responsable}}</strong>, con domicilio en {{domicilio}}. En este aviso lo llamamos «nosotros». Irremplazables es el nombre de la plataforma (irremplazables.xyz) y de su comunidad. Dentro, a la plataforma la llamamos «el Estudio».</p>
+      <p>Las solicitudes sobre tus datos las atendemos nosotros mismos. Para cualquier cosa sobre tus datos escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>: es nuestro único correo de contacto, de privacidad y para ejercer tus derechos.</p>
+      <p>En este mismo sitio está <a href="/automatiza">/automatiza</a>, una herramienta abierta. No es parte de la plataforma: cuando este aviso dice «la plataforma» o «el Estudio» no habla de ella. Lo que pasa con tus datos si la usas está en la sección 14.</p>
+    </section>
+
+    <section class="parte" id="aplica" aria-labelledby="aplica-t">
+      <h2 id="aplica-t">2. A quién aplica</h2>
+      <p>La plataforma es cerrada: no tiene registro público. Un administrador crea cada cuenta para una persona que ya es miembro de la comunidad de Irremplazables en Skool. Este aviso aplica a:</p>
+      <ul>
+        <li><strong>Miembros con cuenta</strong> en la plataforma.</li>
+        <li><strong>Miembros de la comunidad que todavía no tienen cuenta.</strong> De ti tratamos solo los datos de la lista de miembros, para poder invitarte.</li>
+        <li><strong>Quien nos escribe</strong> a {{correo_privacidad}}.</li>
+        <li><strong>Quien usa /automatiza:</strong> lo suyo está en la sección 14.</li>
+        <li><strong>Quien visita el sitio</strong> sin iniciar sesión y sin usar /automatiza: solo se tratan los datos técnicos de la visita (sección 10).</li>
+      </ul>
+      <p>Si recibiste una invitación y no quieres la cuenta, escríbenos: la desactivamos y no vuelves a recibir correos de la plataforma.</p>
+      <p>Las secciones 3 a 7 y 9 a 11 hablan sobre todo de la plataforma y de la cuenta de los miembros. Las secciones 1, 8, 12 y 13 valen para todos. La 14 es la de /automatiza.</p>
     </section>
 
     <section class="parte" id="datos" aria-labelledby="datos-t">
-      <h2 id="datos-t">2. Qué datos recabamos</h2>
-      <p>Solo lo necesario para armar tu flujo, mandártelo y cuidar que nadie abuse del servicio. No necesitas cuenta y no te pedimos tu nombre.</p>
-      <p>Antes de que nos mandes tu primera descripción, la página te enseña el aviso de privacidad simplificado y te pide aceptarlo con una casilla («He leído el aviso de privacidad y acepto los términos»). Si no lo aceptas, no nos llega nada.</p>
+      <h2 id="datos-t">3. Qué datos tratamos</h2>
+
+      <h3>De dónde salen</h3>
+      <p>No llenas un formulario de registro. Tu correo es el de tu membresía en nuestra comunidad de Skool: lo tomamos de la lista de miembros de esa comunidad. De esa lista usamos tu correo, tu plan y la fecha de ingreso que figura en ella; la lista también trae el nombre con el que apareces en la comunidad. Todo lo demás lo aportas o lo generas tú al usar la plataforma.</p>
+
+      <h3>Qué datos son</h3>
       <dl class="filas">
-        <div><dt>Lo que describes</dt><dd>El texto de lo que quieres automatizar (de {{largo_minimo}} a {{largo_maximo}} caracteres), tal cual lo escribes. Lo guardamos aunque la petición no se pueda armar. Como puede traer lo que tú pongas, te pedimos no escribir contraseñas, datos de otras personas ni datos sensibles.</dd></div>
-        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos, las apps que usa, en qué va tu petición (en la fila, armando, lista o no salió), cuánto tardó y la versión de este aviso que aceptaste antes de mandarla. Cada petición tiene un número que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo al que te lo mandamos, pero nunca ver tu correo completo: guárdalo como un enlace privado.</dd></div>
-        <div><dt>Tu correo, si nos lo das</dt><dd>Lo pedimos cuando el flujo está listo, para mandártelo; en la fila o cuando no salió es opcional. Junto con él guardamos en qué pantalla lo diste, si marcaste la casilla de novedades, el texto exacto de esa casilla, la versión de este aviso que estaba vigente y la fecha. Si lo cambias, el anterior también queda guardado: es la prueba de lo que aceptaste.</dd></div>
-        <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta que solo tiene nuestro servidor (si tu conexión usa IPv6, con la parte de la dirección que corresponde a tu red). Guardamos ese código, nunca la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Sin esa clave, del código no se puede saber tu IP; como con ella sí se podría, lo tratamos como un dato personal más y se borra junto con tu petición.</dd></div>
-        <div><dt>De dónde llegaste</dt><dd>El sitio desde el que llegaste (solo su dirección principal, como instagram.com, no la página exacta), si tu navegador lo manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
-        <div><dt>Qué hiciste con el flujo</dt><dd>Si lo descargaste y cuántas veces y, si nos avisas que no te sirvió, lo que escribas en ese aviso.</dd></div>
+        <div><dt>Tu cuenta</dt><dd>Tu correo (es tu usuario), un identificador interno de la cuenta, la fecha de alta, tu plan y tu tope de proyectos. Tu contraseña la administra Amazon Cognito: nosotros no la vemos ni la guardamos en nuestra base de datos. Para crear la cuenta no pedimos nombre, teléfono ni domicilio.</dd></div>
+        <div><dt>La lista de miembros y las invitaciones</dt><dd>Correo, plan, la fecha de ingreso que figura en la lista y el nombre con el que apareces en la comunidad. También una bitácora de las invitaciones: fecha, correo, plan y resultado. Estas listas viven en archivos de trabajo nuestros, fuera de la plataforma.</dd></div>
+        <div><dt>Créditos y pagos</dt><dd>Tu saldo y cada movimiento del monedero: cuántos créditos, de qué tipo (cortesía, cargo, devolución, compra o ajuste hecho por un administrador), a qué corresponde y la fecha. Los pagos con tarjeta, cuando los hay, se hacen en la página de Stripe: los datos de tu tarjeta los captura Stripe y a nosotros no nos llegan. De un pago guardamos su referencia y los créditos abonados.</dd></div>
+        <div><dt>Lo que subes</dt><dd>Tus videos (con tu imagen y tu voz), su audio, imágenes, fotos de referencia y la foto de producto de una campaña.</dd></div>
+        <div><dt>Lo que escribes</dt><dd>La idea que escribes para cada proyecto (la descripción de lo que quieres crear), guiones, los mensajes del chat del editor, el texto de tus publicaciones, el motivo y el tono de una campaña y los nombres de tus proyectos.</dd></div>
+        <div><dt>Lo que se genera</dt><dd>Transcripciones, cortes y sus versiones, subtítulos, narraciones, imágenes, clips, videos e informes de análisis.</dd></div>
+        <div><dt>Publicación en redes</dt><dd>Solo si conectas Blotato: la clave de API que tú aportas, las cuentas que tienes conectadas allí (identificador, red, nombre y usuario) y el registro de lo que programas y publicas: texto, cuenta, hora, identificador de la publicación y estado. Para mostrarte la Agenda y las Métricas consultamos en Blotato lo que tienes programado y publicado en tu cuenta, con sus números, aunque lo hayas programado fuera de la plataforma.</dd></div>
+        <div><dt>Otras claves que tú aportes</dt><dd>En algunos casos, una clave de API propia de otro servicio (por ejemplo, de Claude) que nos entregas para que la configuremos en tu cuenta. Cuando se usa tu clave, ese proveedor procesa lo que se le envía dentro de tu propia cuenta con él y bajo sus condiciones.</dd></div>
+        <div><dt>Uso y costos</dt><dd>Qué funciones usas y cuándo, cuánto costó cada operación y con qué proveedor. También un registro de uso detallado de cada llamada a un modelo de inteligencia artificial (una «traza»): lo que se le envió, lo que respondió y el identificador de tu cuenta.</dd></div>
+        <div><dt>Datos técnicos</dt><dd>Los registros del servidor: la ruta que pediste, el resultado y cuánto tardó; algunas líneas llevan el identificador de tu cuenta o el nombre del proyecto. Cuando tu navegador descarga un archivo de nuestra red de entrega (un video o una imagen), quedan registrados tu dirección IP, tu navegador, el archivo pedido y la hora. Además, lo que se guarda en tu navegador (sección 10).</dd></div>
+        <div><dt>Lo que nos escribes</dt><dd>Los correos que mandas a {{correo_privacidad}}: tu dirección, el nombre con el que escribes, el contenido del mensaje y lo que adjuntes, como una identificación si te la pedimos (sección 8).</dd></div>
       </dl>
 
       <h3>Datos sensibles</h3>
-      <p>No te pedimos datos sensibles (por ejemplo, sobre tu salud, origen étnico, creencias, opiniones políticas o preferencia sexual) ni datos financieros. Si alguno queda dentro de tu descripción, escríbenos y lo borramos.</p>
+      <p>No te pedimos datos sensibles (por ejemplo, sobre tu salud, origen étnico, creencias, opiniones políticas o preferencia sexual). Pero tú decides qué subes y qué escribes, y tus videos, imágenes y textos pueden contenerlos. Lo que subas se procesa solo para hacer lo que pides. Te recomendamos no subir datos sensibles, tuyos o de otras personas, si no hace falta.</p>
+      <p>Tus videos llevan tu imagen y tu voz. Los usamos para editar y generar tu contenido; la plataforma no tiene funciones de reconocimiento facial ni de voz para identificar personas.</p>
 
-      <h3>Lo que se queda en tu navegador</h3>
-      <p>La página guarda en tu propio navegador, sin mandárnoslo:</p>
+      <h3>Datos de otras personas</h3>
       <ul>
-        <li>el borrador de lo que vas escribiendo, para que no lo pierdas si se cierra la pestaña; se borra al mandar tu petición;</li>
-        <li>la versión del aviso que aceptaste, para no volver a pedírtelo mientras no cambie;</li>
-        <li>tu último número de petición y lo que pediste, para enseñártelo cuando vuelves con el enlace;</li>
-        <li>de dónde llegaste, solo mientras la pestaña está abierta (eso sí nos llega junto con tu petición).</li>
+        <li><strong>Quien aparece en lo que subes.</strong> Si en tus videos o fotos aparecen otras personas, sus datos también se procesan. Antes de subirlos, asegúrate de tener su permiso.</li>
+        <li><strong>Cuentas que analizas.</strong> En las funciones de competencia y de estilos, tú nos indicas cuentas o publicaciones públicas de otras personas. Traemos sus publicaciones públicas y sus números, y los guardamos en tu informe.</li>
+        <li><strong>Enlaces que importas.</strong> Si traes un video por su enlace (por ejemplo, de YouTube), guardamos el enlace y el video.</li>
       </ul>
-      <p>Lo borras cuando quieras borrando los datos de este sitio en tu navegador.</p>
 
-      <h3>Cookies</h3>
-      <p>Esta página no usa cookies propias, ni de publicidad, ni de rastreo, y no carga herramientas de analítica de terceros. Cloudflare, que protege el sitio, puede poner cookies técnicas de seguridad para distinguir personas de bots. [VERIFICAR en el panel de Cloudflare qué cookies pone y cuánto duran.]</p>
+      <h3>Datos financieros</h3>
+      <p>No recibimos ni guardamos números de tarjeta ni datos bancarios.</p>
     </section>
 
     <section class="parte" id="finalidades" aria-labelledby="finalidades-t">
-      <h2 id="finalidades-t">3. Para qué los usamos</h2>
+      <h2 id="finalidades-t">4. Para qué los usamos</h2>
 
       <h3>Para darte el servicio (necesarias)</h3>
-      <p>Sin estas no podemos armarte el flujo:</p>
       <ul>
-        <li>Armar tu flujo a partir de tu descripción y revisar que importe en n8n. Antes, un filtro automático revisa que la petición no sea de un uso prohibido (lo explican los <a href="/terminos">Términos</a>).</li>
-        <li>Enseñarte en pantalla cómo va y entregártelo: la descarga y el correo con el flujo y su guía.</li>
-        <li>Avisarte de tu petición: si dejaste tu correo en la fila, cuando termine; si no salió, cuando la resolvamos a mano.</li>
-        <li>Cuidar el servicio: aplicar el tope diario y el tope por conexión (para eso es la huella de tu IP) y frenar abusos.</li>
-        <li>Atender lo que nos reportes y tus solicitudes sobre tus datos.</li>
+        <li>Invitarte a la plataforma si eres miembro de la comunidad.</li>
+        <li>Crear y administrar tu cuenta, y dejarte iniciar sesión.</li>
+        <li>Mandarte los correos de tu cuenta: la invitación con tu contraseña provisional, el de restablecer contraseña y los códigos de verificación. Los envía Amazon Cognito y son los únicos correos que manda la plataforma. Aparte, te contestamos por correo cuando nos escribes y, si pasara algo importante con tu cuenta o con tus datos, te escribiríamos a mano desde {{correo_privacidad}}. No es publicidad.</li>
+        <li>Darte las funciones que usas: transcribir y editar tus videos, generar imágenes, clips, videos y narraciones, y analizar las cuentas que indiques.</li>
+        <li>Llevar tu monedero: abonar, cobrar y devolver créditos, y registrar los pagos, cuando los hay.</li>
+        <li>Publicar en tus redes cuando tú lo indiques, incluidas las campañas MIX que enciendas (sección 7).</li>
+        <li>Revisar de forma automática, al crear un video o una imagen, que lo que pides generar no sea contenido prohibido.</li>
+        <li>Darte soporte, corregir fallas, controlar los costos del servicio, mejorarlo, prevenir abusos y cuidar la seguridad. Para eso revisamos el uso y los costos de cada cuenta.</li>
+        <li>Contestar los mensajes que nos escribes.</li>
+        <li>Atender tus solicitudes sobre tus datos y cumplir nuestras obligaciones legales.</li>
       </ul>
 
-      <h3>Adicionales, que puedes rechazar</h3>
-      <ul>
-        <li><strong>Mejorar el servicio.</strong> Leer las peticiones y los flujos, también una persona de nuestro equipo, para entender qué quiere automatizar la gente, corregir fallas y decidir qué agregar. Para esto usamos tu descripción y el flujo, nunca tu correo.</li>
-        <li><strong>Medir de dónde llegan las visitas.</strong> Con la página de origen y las etiquetas de campaña, siempre en números agregados.</li>
-        <li><strong>Escribirte después, solo si marcas la casilla.</strong> Al dejar tu correo verás esta casilla, aparte y desmarcada:
-          <p class="cita">{{recontacto_texto}}</p>
-          Si no la marcas, tu correo solo sirve para lo necesario de arriba.</li>
-      </ul>
-      <p>Cómo negarte: para las dos primeras, escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con tu número de petición y dejamos de usar tu petición para eso. Para los correos de novedades basta con no marcar la casilla; si ya la marcaste, date de baja cuando quieras (punto 7). Negarte a cualquiera de estas no te quita el servicio.</p>
+      <h3>Otros usos</h3>
+      <p>En la plataforma no hay. No usamos tus datos para publicidad y no te mandamos correos de novedades ni promociones. Tus datos no se venden, no se rentan y no se prestan. Si algún día quisiéramos usarlos para algo distinto, te pediremos tu consentimiento antes.</p>
+      <p>/automatiza es distinta en esto: tiene usos a los que te puedes oponer y una casilla opcional para recibir novedades por correo (sección 14).</p>
 
-      <div class="caja">
-        <h3 class="rotulo">Lo que no hacemos</h3>
-        <ul>
-          <li>No guardamos tu IP en claro: ni en la base de datos ni en nuestros registros.</li>
-          <li>No vendemos, rentamos ni prestamos tus datos a nadie.</li>
-          <li>No te escribimos con novedades si no marcaste la casilla.</li>
-          <li>No te pedimos contraseñas ni entramos a tus cuentas: el flujo lo importas y lo conectas tú, en tu n8n.</li>
-          <li>No usamos cookies de publicidad ni de rastreo.</li>
-        </ul>
-      </div>
+      <h3>Quién puede ver tu información de nuestro lado</h3>
+      <p>Nuestro personal autorizado puede ver, de cada cuenta: el correo y el identificador, el saldo y los movimientos, la idea que escribes para cada proyecto, el costo de cada operación y los registros de uso (las trazas), que incluyen lo que se envió a los modelos de inteligencia artificial y lo que respondieron. Lo hace para darte soporte, controlar los costos y mejorar el servicio. Al atender un problema también puede abrir los archivos del proyecto afectado.</p>
+
+      <h3>Revisión automática</h3>
+      <p>Al crear un video o una imagen, un modelo de inteligencia artificial revisa tu texto antes de generar y puede pedirte que lo cambies si detecta contenido que no se permite. No interviene una persona. Si crees que se equivocó, escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> y una persona lo revisa.</p>
     </section>
 
     <section class="parte" id="conservacion" aria-labelledby="conservacion-t">
-      <h2 id="conservacion-t">4. Cuánto tiempo los guardamos</h2>
+      <h2 id="conservacion-t">5. Cuánto tiempo los guardamos</h2>
+      <p>No hay un plazo único: depende del tipo de dato. La plataforma no borra tu cuenta ni tu contenido por sí sola, y hoy no tiene un botón para borrarlos: la cancelación se pide por correo.</p>
       <dl class="filas">
-        <div><dt>Tu descripción, el flujo y los datos de tu petición</dt><dd>Durante {{plazo_peticion}}. Incluye la huella de tu conexión, de dónde llegaste y tus descargas.</dd></div>
-        <div><dt>Tu correo y la prueba de lo que aceptaste</dt><dd>Durante {{plazo_correo}}. Si marcaste la casilla de novedades, lo guardamos para eso hasta que te des de baja.</dd></div>
-        <div><dt>Los registros técnicos del servidor</dt><dd>Una semana. Sirven para revisar errores.</dd></div>
-        <div><dt>Lo que está en tu navegador</dt><dd>Hasta que lo borres. El borrador se borra solo al mandar tu petición.</dd></div>
+        <div><dt>Tu cuenta y tu contenido</dt><dd>Mientras tu cuenta exista. Incluye lo que subes, lo que escribes, lo que se genera y sus versiones anteriores. Archivar un proyecto no lo borra.</dd></div>
+        <div><dt>Movimientos de créditos y pagos</dt><dd>Mientras tu cuenta exista. Si se cancela, cinco años más, bloqueados: solo para cumplir obligaciones legales y poder aclarar un cobro.</dd></div>
+        <div><dt>Tu clave de Blotato</dt><dd>Hasta que desconectes Blotato: en ese momento la borramos de nuestro sistema.</dd></div>
+        <div><dt>Otras claves que aportes</dt><dd>Hasta que nos pidas quitarlas.</dd></div>
+        <div><dt>Uso, costos y trazas</dt><dd>El registro de costos, mientras tu cuenta exista. Las trazas se guardan en Langfuse y hoy no tienen un plazo de borrado fijado por nosotros.</dd></div>
+        <div><dt>Registros técnicos</dt><dd>Los del servidor, una semana. Los de la red de entrega de archivos, que incluyen tu dirección IP, 30 días. Si una tarea tuya falla (por ejemplo, generar un video), sus datos técnicos pueden quedar guardados hasta 14 días. El historial de cada generación de video lo conserva AWS por el plazo que fija ese servicio.</dd></div>
+        <div><dt>Copias de seguridad</dt><dd>Las de la base de datos, 7 días. De los archivos se guardan versiones anteriores, que no tienen un plazo automático de borrado.</dd></div>
+        <div><dt>Lista de miembros e invitaciones</dt><dd>Mientras seas miembro de la comunidad o tu cuenta exista.</dd></div>
+        <div><dt>Lo que nos escribes</dt><dd>El tiempo necesario para atenderte y tener constancia de tu solicitud. Una identificación que nos mandes se usa solo para comprobar que eres tú y se conserva solo ese mismo tiempo.</dd></div>
+        <div><dt>Lo que está en tu navegador</dt><dd>Depende de cada cosa: tus credenciales se borran al cerrar sesión y el resto dura lo que dice la sección 10, o hasta que lo borres.</dd></div>
       </dl>
-      <p>Cuando se cumple el plazo, borramos los datos o los convertimos en números que ya no pueden relacionarse contigo (por ejemplo, cuántas peticiones hubo de cada tipo).</p>
+
+      <h3>Si pides que cancelemos tus datos</h3>
+      <p>Nos lo pides por correo (sección 8) y lo hacemos a mano, dentro de los plazos de esa sección. Cubre tu cuenta, tu contenido y tus datos en nuestros sistemas. Con honestidad, esto es lo que no desaparece de inmediato:</p>
+      <ul>
+        <li><strong>Copias de seguridad</strong> de la base de datos: siguen existiendo hasta que cumplen sus 7 días.</li>
+        <li><strong>Versiones anteriores de tus archivos:</strong> hay que eliminarlas aparte; lo hacemos dentro de los mismos plazos de la sección 8, incluida su ampliación.</li>
+        <li><strong>Trazas:</strong> están en Langfuse, en un espacio que administramos nosotros. No se borran solas: las eliminamos a mano, dentro de esos mismos plazos.</li>
+        <li><strong>Registros técnicos:</strong> se borran solos al cumplir su plazo.</li>
+        <li><strong>Movimientos de créditos y pagos:</strong> se conservan bloqueados cinco años y después se eliminan.</li>
+        <li><strong>Copias en proveedores:</strong> lo que ya se envió a un proveedor para darte el servicio (por ejemplo, el audio para transcribir o las imágenes para generar) lo conserva ese proveedor según sus propias reglas y no desaparece de inmediato. Su borrado depende de ese proveedor.</li>
+        <li><strong>Lo que ya publicaste</strong> sigue en tus redes: se borra en cada red.</li>
+      </ul>
+
+      <h3>Si dejas la comunidad</h3>
+      <p>Cada cierto tiempo revisamos a mano quién sigue en la comunidad. Si ya no eres miembro, dejamos tu cuenta suspendida: no puedes entrar, pero tus proyectos y tu saldo se conservan por si vuelves. Suspender no apaga una campaña MIX encendida ni cancela lo que ya está programado en Blotato (sección 7): hazlo antes de dejar la comunidad. Si ya no puedes entrar y tienes una campaña encendida, escríbenos y la apagamos a mano. Pasados 90 días desde la suspensión, cancelamos la cuenta como se explica arriba. No es un proceso automático: depende de esa revisión, así que puede tardar. Si quieres que cancelemos antes, escríbenos.</p>
     </section>
 
-    <section class="parte" id="transferencias" aria-labelledby="transferencias-t">
-      <h2 id="transferencias-t">5. Con quién los compartimos</h2>
-      <p>No vendemos ni pasamos tus datos a otras empresas para que los usen para lo suyo. Sí usamos proveedores que los procesan por encargo nuestro, solo para dar este servicio y con la obligación de cuidarlos. La ley los llama «encargados» y a esa entrega, «remisión»; no necesita tu consentimiento [VERIFICAR con un abogado que con la ley de 2025 la remisión siga sin necesitarlo], pero te decimos quiénes son:</p>
+    <section class="parte" id="proveedores" aria-labelledby="proveedores-t">
+      <h2 id="proveedores-t">6. Con quién los compartimos</h2>
+      <p>No vendemos tus datos ni los entregamos para publicidad. Para darte el servicio los compartimos con los proveedores de abajo. La mayoría los recibe solo para hacer el trabajo que le pedimos. Tres son distintos y van aparte: Blotato y Stripe son servicios con los que tratas tú directamente, y Skool es de donde sale la lista de miembros.</p>
+
+      <h3>Proveedores que usamos para darte el servicio</h3>
       <dl class="filas">
-        <div><dt>Amazon Web Services (AWS)</dt><dd>Donde vive el servicio: el servidor (Lambda), la base de datos (Aurora), el almacenamiento de archivos (S3) y la fila de trabajo (SQS). Sus servidores están en Estados Unidos (Virginia del Norte).</dd></div>
-        <div><dt>Cloudflare</dt><dd>Está delante del sitio: entrega las páginas y lo protege de ataques. Ve tu IP al pasar, como cualquier red por la que navegas.</dd></div>
-        <div><dt>El proveedor del modelo de inteligencia artificial</dt><dd>[POR DECIDIR (RAG·21): nombre del proveedor y país]. Recibe el texto de tu descripción para revisarlo y armar el flujo. No recibe tu correo ni tu IP.</dd></div>
-        <div><dt>Langfuse</dt><dd>Registra las llamadas al modelo de inteligencia artificial, incluida tu descripción, para revisar errores y costos. [VERIFICAR: región de la cuenta de Langfuse.]</dd></div>
-        <div><dt>El envío de correo</dt><dd>{{proveedor_correo}}. Recibe tu correo y el mensaje con tu flujo para entregártelo.</dd></div>
+        <div><dt>Amazon Web Services (AWS)</dt><dd>Es la infraestructura donde vive todo: las cuentas y el inicio de sesión (Amazon Cognito), la base de datos, los archivos, los servidores, la red de entrega de archivos y los correos de tu cuenta. Los datos se guardan en Estados Unidos (región us-east-1, Norte de Virginia); la red de entrega sirve los archivos desde el punto más cercano a ti.</dd></div>
+        <div><dt>Cloudflare</dt><dd>Está delante del sitio: entrega las páginas y lo protege de ataques. Por él pasa el tráfico del sitio y de la plataforma (las páginas y lo que envías y recibes de ella), así que ve tu dirección IP y ese contenido. Los archivos de video e imagen y la pantalla de contraseña los sirve AWS directamente. También reenvía a nuestro buzón los correos que llegan a {{correo_privacidad}}.</dd></div>
+        <div><dt>Google (Gmail)</dt><dd>Es el buzón donde leemos {{correo_privacidad}}. Recibe los correos que nos escribes.</dd></div>
+        <div><dt>OpenAI</dt><dd>Recibe textos (la idea de tu proyecto, guiones, transcripciones, textos de publicaciones y lo que revisa el filtro automático) y algunas imágenes (tus fotos de referencia y cuadros de video), para escribir, analizar y revisar.</dd></div>
+        <div><dt>Anthropic</dt><dd>Atiende el chat del editor. Recibe la transcripción del proyecto y los mensajes recientes de ese chat.</dd></div>
+        <div><dt>fal</dt><dd>Genera imágenes, clips, video y voz. Recibe las instrucciones de generación, el texto de la narración y las imágenes que subes como base. fal da acceso a modelos de otras empresas, que procesan lo necesario para generar el resultado.</dd></div>
+        <div><dt>AssemblyAI</dt><dd>Recibe el audio de tus videos para transcribirlo.</dd></div>
+        <div><dt>Apify</dt><dd>Recibe los enlaces y los nombres de cuentas públicas que tú indicas, para traer el video o las publicaciones públicas.</dd></div>
+        <div><dt>Langfuse</dt><dd>Guarda las trazas de las llamadas a los modelos de inteligencia artificial: el identificador de tu cuenta, el nombre del proyecto, lo que se envió y lo que respondió el modelo. Sirve para revisar errores y costos.</dd></div>
       </dl>
-      <p>Varios de estos proveedores procesan los datos fuera de México, principalmente en Estados Unidos.</p>
-      <p>Fuera de eso, solo entregaríamos datos a una autoridad que nos los pida con fundamento legal.</p>
+
+      <h3>Blotato, Stripe y Skool</h3>
+      <dl class="filas">
+        <div><dt>Blotato</dt><dd>Solo si lo conectas. Es un servicio que contratas tú, con sus propias condiciones. Con tu propia clave recibe los videos e imágenes a publicar, el texto, la cuenta y la hora, y publica en tus redes. También le consultamos lo que tienes programado y publicado, para mostrarte la Agenda y las Métricas.</dd></div>
+        <div><dt>Stripe</dt><dd>Procesa los pagos con tarjeta, cuando los hay. Los datos de la tarjeta se los das tú directamente a Stripe; junto con el pago recibe el identificador de tu cuenta, para saber a quién abonar los créditos.</dd></div>
+        <div><dt>Skool</dt><dd>Es el servicio donde vive la comunidad y de donde sale la lista de miembros. Nuestra plataforma no le envía tus datos. Lo que haces dentro de Skool se rige por su propio aviso de privacidad.</dd></div>
+      </dl>
+      <p>Los datos de la plataforma se guardan en Estados Unidos (AWS); los demás proveedores pueden guardarlos o procesarlos en otros países. Si vives fuera de Estados Unidos, tus datos salen de tu país. Lo que un proveedor recibe lo conserva según sus propias reglas (sección 5).</p>
+      <p>Además, cuando publicas, tu contenido llega a Blotato y a la red social que elijas, por instrucción tuya: si no quieres que llegue ahí, no conectes Blotato. Tus datos también pueden entregarse a una autoridad competente que los requiera con fundamento legal. Si algún día quisiéramos compartir tus datos con alguien más para algo distinto de lo que dice este aviso, te pediremos tu consentimiento antes.</p>
+    </section>
+
+    <section class="parte" id="publicar" aria-labelledby="publicar-t">
+      <h2 id="publicar-t">7. Publicar en tus redes</h2>
+      <p>Publicar es opcional. Para hacerlo conectas tu cuenta de Blotato pegando tu clave de API. La guardamos cifrada, no te la volvemos a mostrar y no la escribimos en nuestros registros.</p>
+      <ul>
+        <li><strong>Publicaciones que tú mandas.</strong> Tú eliges el video, el texto, la cuenta y la hora, y se publica con tu clave y en tu cuenta.</li>
+        <li><strong>MIX es distinto.</strong> Cuando enciendes una campaña, MIX genera y publica una imagen con su texto cada día, en la cuenta que elegiste, <strong>sin que revises cada publicación antes de que salga</strong>. Antes de encender solo ves un ejemplo: el del primer día.</li>
+      </ul>
+      <div class="caja">
+        <h3 class="rotulo">Cómo dejar de publicar de verdad</h3>
+        <ol>
+          <li>Cancela en la Agenda lo que tengas programado.</li>
+          <li>Apaga tu campaña MIX.</li>
+          <li>Después, desconecta Blotato.</li>
+        </ol>
+        <p>Desconectar borra tu clave de nuestro sistema, pero por sí solo no cancela lo que ya quedó programado dentro de Blotato: eso se gestiona en Blotato.</p>
+      </div>
+      <p>Lo que ya se publicó queda en tus redes, bajo las reglas de cada red.</p>
     </section>
 
     <section class="parte" id="derechos" aria-labelledby="derechos-t">
-      <h2 id="derechos-t">6. Tus derechos y cómo ejercerlos</h2>
-      <p>Sobre tus datos tienes derecho a:</p>
+      <h2 id="derechos-t">8. Tus derechos y cómo ejercerlos</h2>
+      <p>Vivas donde vivas, sobre tus datos puedes pedirnos:</p>
       <ul>
         <li><strong>Acceso:</strong> saber qué datos tuyos tenemos y cómo los usamos.</li>
-        <li><strong>Rectificación:</strong> corregirlos si están mal o incompletos (por ejemplo, tu correo).</li>
-        <li><strong>Cancelación:</strong> que los borremos.</li>
-        <li><strong>Oposición:</strong> que dejemos de usarlos para algo en particular.</li>
+        <li><strong>Rectificación:</strong> corregirlos si están mal o incompletos. El correo de tu cuenta no se cambia desde la plataforma: se pide por aquí.</li>
+        <li><strong>Cancelación:</strong> que los eliminemos, con los límites de la sección 5.</li>
+        <li><strong>Oposición:</strong> que dejemos de usarlos para algo en particular, y pedir que una persona revise una decisión que tomó el filtro automático.</li>
       </ul>
-      <p>Se conocen como derechos ARCO. También puedes retirar tu consentimiento (punto 7).</p>
+      <p>También puedes retirar tu consentimiento (sección 9).</p>
 
       <h3>Cómo pedirlo</h3>
       <p>Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con:</p>
       <ol>
-        <li>Tu nombre y el correo donde quieres la respuesta.</li>
-        <li>Tu número de petición (es lo que sigue a /automatiza/c/ en tu enlace para volver) o el correo que nos diste.</li>
-        <li>Qué derecho quieres ejercer y sobre qué datos.</li>
-        <li>Cómo comprobamos que eres tú. Lo más simple es escribirnos desde el correo que nos diste. Como no tenemos tu nombre ni una cuenta tuya, a veces ese correo o tu número de petición es lo único que te liga a tus datos; si no alcanza para comprobarlo, te lo decimos y buscamos otra forma. [VERIFICAR con un abogado si esto basta o hay que pedir una identificación.]</li>
+        <li>Tu nombre y el correo donde quieres recibir la respuesta.</li>
+        <li>Algo que acredite que eres tú. Lo más simple es escribirnos desde el correo de tu cuenta. Si no puedes, o si hay duda razonable, te pediremos una identificación oficial. Si lo pide alguien en tu nombre, debe mandar su identificación y el documento que acredite que te representa.</li>
+        <li>Qué derecho quieres ejercer.</li>
+        <li>Una descripción clara de los datos sobre los que lo quieres ejercer.</li>
+        <li>Cualquier dato que ayude a encontrarlos: por ejemplo, el nombre del proyecto o la fecha.</li>
       </ol>
-      <p>Si lo pide alguien en tu nombre, tiene que acreditar que te representa.</p>
+      <p>Si pides una rectificación, dinos además qué hay que corregir y manda lo que lo respalde. Si a tu solicitud le falta algo, te lo decimos para que la completes.</p>
 
-      <h3>En cuánto respondemos</h3>
-      <p>Te respondemos en un máximo de 20 días desde que recibimos tu solicitud. Si procede, lo hacemos efectivo dentro de los 15 días siguientes a nuestra respuesta. Si el caso lo justifica, podemos ampliar esos plazos una sola vez por un periodo igual, y te avisamos. Es gratis. [VERIFICAR con un abogado: los plazos, cuánto se pueden ampliar y si son días hábiles o naturales.]</p>
-      <p>Si no te respondemos o no estás de acuerdo con la respuesta, puedes acudir a la Secretaría Anticorrupción y Buen Gobierno, la autoridad de protección de datos personales que tomó el lugar del INAI.</p>
+      <h3>En cuánto tiempo te contestamos</h3>
+      <p>Te contestamos por correo en un máximo de <strong>20 días hábiles</strong> desde que recibimos tu solicitud. Si procede, la hacemos efectiva dentro de los <strong>15 días hábiles</strong> siguientes a nuestra respuesta. Cuando el caso lo justifique, cada plazo se puede ampliar una sola vez por un periodo igual, y te avisamos. Contamos como hábiles los días de lunes a viernes.</p>
+      <p>Ejercer tus derechos no tiene costo. Solo podríamos cobrarte gastos justificados de envío o de reproducción, y te lo diríamos antes.</p>
+      <p>Si pides acceso, te mandamos la información por correo. No existe una descarga automática de todo tu contenido: lo preparamos a mano.</p>
     </section>
 
-    <section class="parte" id="revocar" aria-labelledby="revocar-t">
-      <h2 id="revocar-t">7. Cómo retirar tu consentimiento</h2>
+    <section class="parte" id="limitar" aria-labelledby="limitar-t">
+      <h2 id="limitar-t">9. Retirar tu consentimiento y limitar el uso</h2>
+      <p>Tratamos tus datos porque son necesarios para darte la plataforma como miembro de la comunidad. Si no estás de acuerdo con este aviso, no uses la plataforma y escríbenos.</p>
+
+      <h3>Retirar tu consentimiento</h3>
+      <p>Puedes retirarlo en cualquier momento escribiendo a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>. Vale desde que lo pides, no hacia atrás, y te contestamos en los plazos de la sección 8. Como todos los usos que este aviso describe para la plataforma son necesarios para el servicio, retirarlo significa dejar de usar la plataforma: desactivamos tu cuenta y, si lo pides, cancelamos tus datos.</p>
+
+      <h3>Cómo limitar el uso o la divulgación de tus datos</h3>
       <ul>
-        <li><strong>Correos de novedades:</strong> cada uno trae un enlace para darte de baja; también puedes escribirnos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>. Después no te volvemos a escribir de novedades; solo guardamos que te diste de baja, para respetarlo.</li>
-        <li><strong>Mejorar el servicio y medir visitas:</strong> escríbenos con tu número de petición y dejamos de usarla para eso.</li>
-        <li><strong>Borrar tu petición o tu correo:</strong> es una cancelación (punto 6). Si borramos tu correo antes de mandarte el flujo, ya no podremos mandártelo por correo.</li>
+        <li>No subas ni escribas lo que no quieras que se procese: lo que subes se envía a los proveedores de la sección 6 para darte el servicio.</li>
+        <li>No conectes Blotato, o desconéctalo, y apaga MIX (sección 7).</li>
+        <li>No compartas los enlaces de tus archivos con quien no deba verlos: todos llevan el mismo identificador de tu cuenta, y quien tenga uno puede llegar a otros archivos tuyos de nombre fijo o predecible, no solo a los de ese proyecto (sección 11).</li>
+        <li>Cierra sesión al terminar, sobre todo en un equipo que no es tuyo.</li>
+        <li>Pídenos por correo que dejemos de usar un dato para algo en concreto.</li>
+        <li>Si no quieres la cuenta, la desactivamos y no recibes más correos de la plataforma.</li>
       </ul>
-      <p>Retirar tu consentimiento vale desde que lo pides, no hacia atrás. Te respondemos en los mismos plazos del punto 6.</p>
+      <p>En la plataforma no usamos tus datos para nada más, así que no hay nada adicional que tengas que rechazar. En /automatiza sí hay usos a los que te puedes oponer: están en la sección 14.</p>
+    </section>
+
+    <section class="parte" id="cookies" aria-labelledby="cookies-t">
+      <h2 id="cookies-t">10. Cookies y tu navegador</h2>
+      <p>La plataforma usa solo lo necesario para mantener tu sesión y recordar lo que ya viste. No usa cookies de publicidad y no carga herramientas de analítica ni de rastreo de terceros.</p>
+      <dl class="filas">
+        <div><dt>Cookie «token»</dt><dd>Es tu sesión: una credencial que lleva tu correo y el identificador de tu cuenta. Dura mientras tu navegador siga abierto y se borra al cerrar sesión.</dd></div>
+        <div><dt>Cookie «ui»</dt><dd>Solo si eliges usar la versión anterior de una pantalla. Recuerda esa preferencia durante 7 días.</dd></div>
+        <div><dt>Almacenamiento local</dt><dd>Tus credenciales de sesión, incluida una que renueva la sesión hasta por 30 días sin volver a pedirte la contraseña; se borran al cerrar sesión. También la lista de trabajos que ya viste o cerraste y las notas que escribes en el editor de cortes antes de enviarlas: se quedan en ese navegador, aunque cierres sesión, hasta que las envías o las borras.</dd></div>
+        <div><dt>Almacenamiento de la pestaña</dt><dd>Datos temporales del inicio de sesión, tu último saldo y lo que estabas enviando o tenías sin guardar si la sesión se venció a medias. Se borra al cerrar la pestaña.</dd></div>
+        <div><dt>Inicio de sesión</dt><dd>La pantalla donde escribes tu contraseña es de Amazon Cognito y puede usar sus propias cookies para ese paso.</dd></div>
+        <div><dt>Cloudflare</dt><dd>Protege el sitio y puede poner cookies técnicas de seguridad para distinguir personas de programas automáticos. No las controlamos nosotros.</dd></div>
+      </dl>
+      <p>Puedes borrarlas o bloquearlas desde la configuración de tu navegador. Sin las de sesión no podrás entrar a la plataforma.</p>
+      <p>Aunque no usamos rastreadores, tu dirección IP sí se registra: Cloudflare la ve al pasar y nuestra red de entrega de archivos la guarda 30 días (sección 5).</p>
+    </section>
+
+    <section class="parte" id="seguridad" aria-labelledby="seguridad-t">
+      <h2 id="seguridad-t">11. Seguridad</h2>
+      <p>Cuidamos tus datos con medidas técnicas y administrativas, y preferimos decirte también sus límites:</p>
+      <ul>
+        <li>El sitio se sirve por conexión cifrada (HTTPS).</li>
+        <li>Tus archivos se guardan cifrados en el almacenamiento de AWS.</li>
+        <li>Las claves de API que aportas se guardan cifradas, en un almacén aparte, y nunca se devuelven ni se escriben en los registros.</li>
+        <li>Solo nuestro personal autorizado tiene acceso de administración.</li>
+        <li>Tu cuenta se protege con tu correo y tu contraseña. Hoy no hay verificación en dos pasos: usa una contraseña que no uses en otro sitio.</li>
+      </ul>
+      <div class="caja">
+        <h3 class="rotulo">Lo que conviene que sepas</h3>
+        <ul>
+          <li><strong>Muchos de tus archivos se abren con solo tener su enlace.</strong> No piden iniciar sesión: lo que generas (imágenes, clips, videos e informes), las imágenes que subes para generarlo (fotos de referencia, imágenes base y la foto de producto), el documento del proyecto, con tu idea y tu guion, y los registros de lo que publicas. Los enlaces son largos, pero todos llevan el mismo identificador de tu cuenta y muchos archivos tienen nombre fijo o predecible: quien recibe el enlace de uno puede deducir otros archivos tuyos (por ejemplo, la lista de cuentas que analizas y sus informes), no solo los de ese proyecto. Los videos que subes para editar son distintos: se entregan con enlaces temporales, que caducan. Trata todos tus enlaces como privados.</li>
+          <li>Lo que se envía a un proveedor queda también bajo las medidas de seguridad de ese proveedor.</li>
+        </ul>
+      </div>
+      <p>Si ocurre una vulneración de seguridad que afecte de forma significativa tus datos, te avisaremos de inmediato, en cuanto la confirmemos, por los medios de contacto que tenemos de ti, para que puedas tomar medidas.</p>
     </section>
 
     <section class="parte" id="cambios" aria-labelledby="cambios-t">
-      <h2 id="cambios-t">8. Cambios a este aviso</h2>
-      <p>Si cambiamos este aviso, publicamos la versión nueva en esta misma dirección (irremplazables.xyz/privacidad), con su número de versión y su fecha arriba. Si el cambio toca para qué usamos tus datos o con quién los compartimos y nos dejaste tu correo, también te avisamos por correo; si el cambio necesita tu consentimiento, te lo pedimos antes de aplicarlo.</p>
-      <p>Con cada petición guardamos la versión del aviso que aceptaste antes de mandarla, y con cada correo la versión que estaba vigente cuando nos lo diste. Si publicamos una versión nueva, la página te la vuelve a enseñar y te pide aceptarla antes de mandar otra petición o un correo.</p>
+      <h2 id="cambios-t">12. Cambios a este aviso</h2>
+      <p>Si cambiamos este aviso, publicamos la versión nueva en esta misma dirección (irremplazables.xyz/privacidad), con su número de versión y su fecha arriba.</p>
+      <p>Si el cambio toca qué datos tratamos, para qué los usamos o con quién los compartimos, además lo anunciamos en la comunidad antes de aplicarlo. Si el cambio es para usar tus datos en algo distinto de lo que dice este aviso, te pedimos tu consentimiento antes.</p>
+    </section>
+
+    <section class="parte" id="desacuerdo" aria-labelledby="desacuerdo-t">
+      <h2 id="desacuerdo-t">13. Si no estás de acuerdo con nuestra respuesta</h2>
+      <p>Si no te contestamos a tiempo o no estás de acuerdo con nuestra respuesta, escríbenos de nuevo a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> y lo revisamos. Si en el lugar donde vives hay una autoridad de protección de datos personales, también puedes acudir a ella.</p>
+      <p class="chica">{{responsable}} es una empresa de Estados Unidos. Este aviso no te quita los derechos que la ley de protección de datos del lugar donde vives te dé y que no se puedan renunciar.</p>
+    </section>
+
+    <section class="parte" id="automatiza" aria-labelledby="automatiza-t">
+      <h2 id="automatiza-t">14. /automatiza: si la usas sin cuenta</h2>
+      <p><a href="/automatiza">/automatiza</a> convierte lo que describes en un flujo de n8n. Es una herramienta abierta: para usarla no necesitas cuenta y no te pedimos tu nombre. Por eso lo que las secciones 3 a 7 dicen de la cuenta, los créditos, tu contenido y la publicación en redes no aplica aquí; esta sección dice qué pasa con tus datos cuando la usas. El responsable (sección 1) y tus derechos (sección 8) son los mismos.</p>
+
+      <h3>Antes de mandar nada</h3>
+      <p>Antes de que nos llegue tu primera descripción, la página te enseña un resumen de este aviso y te pide aceptarlo con una casilla («He leído el aviso de privacidad y acepto los términos»). Si no lo aceptas, tu descripción no sale de tu navegador y no guardamos nada. Con tu petición guardamos qué versión de este aviso aceptaste.</p>
+
+      <h3>Qué datos tratamos</h3>
+      <dl class="filas">
+        <div><dt>Lo que describes</dt><dd>El texto de lo que quieres automatizar, de {{largo_minimo}} a {{largo_maximo}} caracteres. Lo guardamos también cuando el filtro automático lo rechaza o cuando el flujo no sale. Puede traer lo que tú pongas: no escribas contraseñas, datos de otras personas ni datos sensibles.</dd></div>
+        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos y los nodos que usa; en qué va la petición (en la fila, armando, lista, no salió o rechazada) y sus horas; con qué modelo de inteligencia artificial se armó, cuántos intentos tomó y cuánto gastó en llamadas a los modelos; datos técnicos de la búsqueda en la documentación de n8n, entre ellos una representación numérica de tu texto; y la versión de este aviso que aceptaste. Cada petición tiene un número aleatorio que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo; del correo que ya dejaste solo ve una parte, nunca el correo completo. Guárdalo como un enlace privado.</dd></div>
+        <div><dt>Tu correo, si nos lo das</dt><dd>La página te lo pide cuando tu flujo está listo, para mandártelo con su guía; en la fila, o si el flujo no salió, dejarlo es opcional. Con él guardamos en qué pantalla lo dejaste, si marcaste la casilla de novedades (y, si la marcaste, su texto exacto), la versión de este aviso que estaba vigente y la fecha. Si lo cambias, el anterior también queda guardado, como constancia de lo que aceptaste. Se puede cambiar un número limitado de veces por petición.</dd></div>
+        <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta nuestra (si tu conexión es IPv6, con la parte de la dirección que corresponde a tu red). /automatiza guarda ese código con tu petición, no la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Sin la clave, del código no se puede obtener tu IP; con ella sí se podría, así que lo tratamos como un dato personal más. Aparte, Cloudflare ve tu IP al pasar, como en todo el sitio (sección 6).</dd></div>
+        <div><dt>De dónde llegaste</dt><dd>El sitio desde el que llegaste (solo su dirección principal, como instagram.com, no la página exacta), si tu navegador lo manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
+        <div><dt>Tus descargas</dt><dd>Si descargaste el flujo: cuándo fue la primera vez y cuántas veces.</dd></div>
+        <div><dt>Registros técnicos</dt><dd>Los registros del servidor: el número de la petición, en qué terminó, los errores y los datos técnicos de las llamadas a los modelos (qué modelo, cuánto tardó y cuántos tokens usó).</dd></div>
+      </dl>
+      <p>No te pedimos datos sensibles ni datos financieros. Si alguno quedó dentro de tu descripción, escríbenos y lo cancelamos (sección 8).</p>
+
+      <h3>Lo que se queda en tu navegador</h3>
+      <p>La página guarda en tu propio navegador:</p>
+      <ul>
+        <li>el borrador de lo que vas escribiendo, para que no lo pierdas si se cierra la pestaña; se borra al mandar tu petición;</li>
+        <li>la versión de este aviso que aceptaste, para no volver a pedírtelo mientras no cambie;</li>
+        <li>tu último número de petición y lo que pediste, para enseñártelo cuando vuelves con el enlace;</li>
+        <li>de dónde llegaste, solo mientras la pestaña está abierta (eso sí nos llega junto con tu petición).</li>
+      </ul>
+      <p>Lo borras cuando quieras borrando los datos de este sitio en tu navegador. /automatiza no pone cookies propias ni carga herramientas de analítica o de rastreo de terceros; Cloudflare puede poner las suyas, como en todo el sitio (sección 10).</p>
+
+      <h3>Para qué los usamos</h3>
+      <p>Para darte el servicio (necesarias):</p>
+      <ul>
+        <li>Revisar tu petición con un filtro automático, armar tu flujo y revisar que se pueda importar en n8n. Los usos que el filtro no deja pasar están en los <a href="/terminos#automatiza">Términos</a>.</li>
+        <li>Enseñarte en pantalla cómo va y dejarte descargarlo.</li>
+        <li>Con el correo que dejes: mandarte el flujo con su guía y avisarte de tu petición.</li>
+        <li>Cuidar el servicio: aplicar el tope diario y el tope por conexión (para eso es la huella) y frenar abusos.</li>
+        <li>Atender lo que nos escribas y tus solicitudes sobre tus datos.</li>
+      </ul>
+      <p>Otros usos, a los que te puedes oponer:</p>
+      <ul>
+        <li><strong>Mejorar el servicio.</strong> Nuestro personal autorizado puede leer las peticiones y los flujos para entender qué se pide, revisar a mano las que no salieron y corregir fallas.</li>
+        <li><strong>Medir de dónde llegan las visitas,</strong> con el sitio de origen y las etiquetas de campaña.</li>
+        <li><strong>Escribirte después, solo si marcas la casilla.</strong> Junto al campo del correo verás esta casilla, aparte y desmarcada:
+          <p class="cita">{{recontacto_texto}}</p>
+          Si no la marcas, tu correo solo sirve para lo necesario de arriba. No marcarla no te quita nada del servicio.</li>
+      </ul>
+      <p>Para oponerte a los dos primeros, escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con tu número de petición. Para las novedades basta con no marcar la casilla; si ya la marcaste, escríbenos y dejamos de escribirte.</p>
+
+      <h3>Cuánto tiempo los guardamos</h3>
+      <dl class="filas">
+        <div><dt>Tu descripción, el flujo y los datos de tu petición</dt><dd>Durante {{plazo_peticion}}. /automatiza no los borra por sí sola: se conservan hasta que pidas su cancelación (sección 8). Incluye la huella de tu conexión, de dónde llegaste y tus descargas.</dd></div>
+        <div><dt>Tu correo y la constancia de lo que aceptaste</dt><dd>Durante {{plazo_correo}}. Tampoco se borra solo: se conserva hasta que pidas su cancelación. Si marcaste la casilla de novedades, lo usamos para eso hasta que nos pidas dejar de hacerlo.</dd></div>
+        <div><dt>Registros técnicos del servidor</dt><dd>Una semana.</dd></div>
+        <div><dt>Copias de seguridad</dt><dd>Las de la base de datos, 7 días, igual que en la sección 5.</dd></div>
+        <div><dt>Lo que está en tu navegador</dt><dd>Hasta que lo borres. El borrador se borra solo al mandar tu petición.</dd></div>
+      </dl>
+
+      <h3>Con quién los compartimos</h3>
+      <p>Para /automatiza usamos estos proveedores, que también están en la sección 6:</p>
+      <dl class="filas">
+        <div><dt>Amazon Web Services (AWS)</dt><dd>El servidor, la base de datos, la fila de trabajo y el índice de la documentación de n8n donde se busca. En Estados Unidos (región us-east-1, Norte de Virginia).</dd></div>
+        <div><dt>Cloudflare</dt><dd>Está delante del sitio: por él pasa lo que envías y recibes, y ve tu dirección IP.</dd></div>
+        <div><dt>OpenAI</dt><dd>Recibe el texto de tu descripción para el filtro automático y para buscar en la documentación de n8n.</dd></div>
+        <div><dt>Anthropic</dt><dd>Recibe el texto de tu descripción y arma el flujo.</dd></div>
+        <div><dt>Langfuse</dt><dd>Guarda el registro de las llamadas a los modelos de inteligencia artificial, que puede incluir tu descripción. Sirve para revisar errores y costos.</dd></div>
+        <div><dt>El envío de correo</dt><dd>{{proveedor_correo}}</dd></div>
+      </dl>
+      <p>A los proveedores de inteligencia artificial no les enviamos tu correo ni la huella de tu conexión: reciben tu descripción, con lo que tú hayas escrito en ella.</p>
+
+      <h3>Tus derechos y cómo retirar tu consentimiento</h3>
+      <p>Tus derechos son los de la sección 8 y se piden igual, por correo. Como aquí no hay cuenta ni nombre, lo que liga tus datos contigo es tu número de petición (lo que sigue a /automatiza/c/ en tu enlace para volver) o el correo que dejaste: inclúyelo en tu solicitud y, si puedes, escríbenos desde ese correo. Si con eso no podemos comprobar que eres tú, te lo decimos.</p>
+      <p>Puedes retirar tu consentimiento cuando quieras, escribiendo a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>. Vale desde que lo pides, no hacia atrás, y te contestamos en los plazos de la sección 8. Si cancelamos tu correo antes de mandarte el flujo, ya no podremos mandártelo.</p>
+
+      <h3>Si este aviso cambia</h3>
+      <p>Con cada petición guardamos la versión de este aviso que aceptaste, y con cada correo la que estaba vigente cuando lo dejaste. Si publicamos una versión nueva, la página te la vuelve a enseñar y te pide aceptarla antes de mandar otra petición o un correo.</p>
     </section>
   </article>
 </main>
 
 <footer class="pie">
+  <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>
   <a href="/automatiza">/automatiza</a>
   <a href="/privacidad" aria-current="page">Aviso de privacidad</a>
   <a href="/terminos">Términos</a>

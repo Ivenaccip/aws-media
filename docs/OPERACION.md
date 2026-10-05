@@ -381,6 +381,18 @@ git checkout dev && git merge origin/main && git push   # dev no se queda atrás
 mismo `git merge origin/main` de arriba. Es la única excepción a «todo pasa por
 dev», y conviene que siga siendo excepción.
 
+Si esa bajada trae conflictos y por eso viaja en un PR a `dev` (pasó con lo
+legal: el PR #174 a `main`, octubre de 2026), **ese PR no lleva el `--squash`
+de «un cambio cualquiera»: se fusiona con `gh pr merge <N> --merge`**. Lo que
+evita que el siguiente release choque es que `main` quede como ancestro de
+`dev`, y eso solo lo deja un commit de merge. Con squash, o con «Rebase and
+merge», los mismos archivos vuelven a chocar en el `dev` → `main`. Antes de
+fusionar un release, esto tiene que contestar:
+
+```bash
+git fetch origin && git merge-base --is-ancestor origin/main origin/dev && echo "main ya está dentro de dev"
+```
+
 ### La trampa de `--delete-branch-on-merge`
 
 Esa opción del repo está **apagada a propósito** (2026-09-13). Borra la rama

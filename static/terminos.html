@@ -1,25 +1,40 @@
 <!doctype html>
 <html lang="es">
-<!-- /terminos (RAG·13): los términos de uso de /automatiza. Mismo marco que
+<!-- /terminos: los términos de uso de Irremplazables. Mismo marco que
      /privacidad (índice + texto, /legal.css) y el mismo encabezado de sitio.
+     Cubre las dos cosas que hay en este sitio:
+       · secciones 1 a 13: el Estudio (la plataforma cerrada de los miembros).
+         Es el texto que main publicó el 3-oct-2026 (PR 174) y aquí no se
+         le cambia el sentido, los números, los plazos ni el marco;
+       · sección 14: /automatiza (la herramienta abierta, sin cuenta).
 
      Es una plantilla: los marcadores de doble llave son huecos del dueño que
      server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
      hace fallar tests/test_rag_paginas.py. Por eso en estos comentarios no se
-     escriben llaves dobles. Lo que va entre corchetes y NO es marcador lo
-     resuelve el dueño en este archivo.
+     escriben llaves dobles. En main la misma página es HTML estático.
 
-     Los usos prohibidos salen de prompts/moderar_automatiza_system.md: si el
-     filtro cambia, esta lista cambia con él. La ventana (10 al 25-oct) es la
-     del plan (RAG·30 y RAG·31). Explicación para el dueño en
-     docs/automatiza/aviso-privacidad.md.
+     El responsable es una empresa de Estados Unidos y los términos se rigen
+     por las leyes de Delaware (sección 12): el texto no cita leyes ni
+     autoridades de otro país.
 
-     CSP estricta: sin JS, sin style ni atributos de estilo; todo en /legal.css. -->
+     Lo que afirma está medido en el código. Del Estudio: créditos, cortesía,
+     tope de proyectos, suspensión, Blotato, Agenda y MIX (las cantidades de
+     cortesía salen de tools/tarifas.json). De /automatiza: los usos
+     prohibidos salen de prompts/moderar_automatiza_system.md (si el filtro
+     cambia, la lista cambia con él), los límites de pipeline/publico.py y
+     server/publico_api.py, y las fechas de la ventana, de lo que anuncia
+     static/automatiza.html. «Gratis» y «no necesitas cuenta» valen solo para
+     /automatiza y se quedan DENTRO de la sección 14.
+
+     Si el código cambia, este texto cambia con él y sube AVISO_VERSION
+     (server/aviso.py), que comparten el aviso y los términos.
+
+     Sin JS, sin style ni atributos de estilo: todo vive en /legal.css. -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Términos de uso · Irremplazables</title>
-<meta name="description" content="Las reglas de /automatiza: servicio gratuito y experimental, sin garantía, usos prohibidos, límites de uso y a quién pertenece tu flujo.">
+<meta name="description" content="Las reglas del Estudio de Irremplazables (tu cuenta, los créditos, de quién es el contenido, los usos prohibidos y lo que pasa cuando publicas en tus redes) y las de /automatiza.">
 <link rel="canonical" href="https://irremplazables.xyz/terminos">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/carta.css">
@@ -33,61 +48,325 @@
   <p class="cabeza-entrar"><span class="solo-ancho">¿Ya eres parte?</span> <a href="/entrar">Entrar</a></p>
 </header>
 
-<aside class="aviso-caja borrador" aria-label="Aviso de borrador">
-  <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
-  <span class="apilado"><strong>Borrador para revisión del dueño · versión {{aviso_version}}</strong><span>Lo que va entre corchetes todavía falta por escribir, decidir o verificar.</span></span>
-</aside>
-
 <main id="principal" class="legal">
   <header class="encabezado">
-    <h1 id="titulo">Términos de uso de /automatiza</h1>
+    <h1 id="titulo">Términos de uso de Irremplazables</h1>
     <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
-    <p class="resumen">Es gratis y experimental: describes un proceso, un sistema automático arma un flujo de n8n y tú lo revisas antes de usarlo. Las aceptas con la casilla «He leído el aviso de privacidad y acepto los términos» que te enseñamos antes de mandar tu primera petición (o tu correo, si llegaste con el enlace desde otro navegador).</p>
+    <p class="resumen">Irremplazables es una plataforma cerrada, proveedora de inteligencia artificial a la comunidad de Irremplazables (<a href="https://www.skool.com/irremplazables/classroom">skool.com/irremplazables</a>). Aquí están sus reglas: cómo funciona tu cuenta, qué son los créditos, de quién es el contenido, qué no se puede hacer y qué pasa cuando publicas en tus redes. Las reglas de /automatiza, la herramienta abierta de este mismo sitio, están en la sección 14.</p>
   </header>
   <nav class="indice" aria-labelledby="indice-t">
     <p class="rotulo" id="indice-t">En esta página</p>
     <ol>
-      <li><a href="#que-es">1. Qué es /automatiza</a></li>
-      <li><a href="#sin-garantia">2. Revísalo antes de usarlo</a></li>
-      <li><a href="#prohibido">3. Usos prohibidos</a></li>
-      <li><a href="#limites">4. Límites de uso</a></li>
-      <li><a href="#tu-flujo">5. Tu flujo y lo que escribes</a></li>
-      <li><a href="#responsabilidad">6. Responsabilidad limitada</a></li>
-      <li><a href="#tus-datos">7. Tus datos</a></li>
-      <li><a href="#cambios">8. Cambios a estos términos</a></li>
-      <li><a href="#ley">9. Ley aplicable</a></li>
-      <li><a href="#contacto">10. Contacto</a></li>
+      <li><a href="#quienes">1. Quiénes somos y qué cubren estos términos</a></li>
+      <li><a href="#cuenta">2. Tu cuenta</a></li>
+      <li><a href="#creditos">3. Créditos</a></li>
+      <li><a href="#contenido-ia">4. Lo que generas con IA</a></li>
+      <li><a href="#tu-contenido">5. Tu contenido</a></li>
+      <li><a href="#prohibido">6. Usos prohibidos</a></li>
+      <li><a href="#publicar">7. Publicar en tus redes</a></li>
+      <li><a href="#terceros">8. Servicios de terceros</a></li>
+      <li><a href="#responsabilidad">9. Disponibilidad y responsabilidad</a></li>
+      <li><a href="#cierre">10. Suspensión y cierre de cuenta</a></li>
+      <li><a href="#cambios">11. Cambios a estos términos</a></li>
+      <li><a href="#ley">12. Ley aplicable</a></li>
+      <li><a href="#contacto">13. Tus datos y contacto</a></li>
+      <li><a href="#automatiza">14. /automatiza</a></li>
     </ol>
-    <a class="volver" href="/automatiza">Volver a /automatiza</a>
+    <a class="volver" href="/">Volver al inicio</a>
   </nav>
 
   <article class="texto" aria-labelledby="titulo">
-    <section class="parte" id="que-es" aria-labelledby="que-es-t">
-      <h2 id="que-es-t">1. Qué es /automatiza</h2>
-      <p>/automatiza es un servicio de <strong>{{responsable}}</strong> («nosotros») en irremplazables.xyz/automatiza: describes con tus palabras algo que haces a mano y te devolvemos un flujo de n8n listo para importar.</p>
-      <ul>
-        <li>Es <strong>gratis</strong> y no necesitas cuenta.</li>
-        <li>Es un <strong>experimento</strong> abierto del 10 al 25 de octubre de 2026. Podemos pausarlo en cualquier momento (verás «Ahorita no está disponible») y, después del 25 de octubre, cambiarlo o cerrarlo. Si sigue con otras condiciones, te las diremos antes de que las aceptes.</li>
-        <li>Para usarlo necesitas tener [POR DECIDIR: edad mínima; recomendamos 18] años o más.</li>
-      </ul>
-      <p>n8n es un producto de terceros: /automatiza no es un servicio de n8n. Para usar el flujo necesitas tu propio n8n (instalado por ti o en la nube) y seguir sus condiciones.</p>
+    <section class="parte" id="quienes" aria-labelledby="quienes-t">
+      <h2 id="quienes-t">1. Quiénes somos y qué cubren estos términos</h2>
+      <p>El Estudio de Irremplazables, en irremplazables.xyz, es un servicio de <strong>{{responsable}}</strong> («nosotros»), proveedor de diversas inteligencias artificiales usadas para el aprendizaje de nuestros alumnos, con domicilio en {{domicilio}}. Nos escribes a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>.</p>
+      <p>Es una plataforma <strong>cerrada</strong>: no hay registro público. Un administrador crea cada cuenta para una persona que ya es miembro de la comunidad Irremplazables en Skool.</p>
+      <p>Estos términos cubren el uso del Estudio y, en la sección 14, el de <a href="/automatiza">/automatiza</a>, una herramienta abierta de este mismo sitio que no es parte del Estudio. La membresía de la comunidad se gestiona en Skool, con sus propias condiciones, y no la regulan estos términos.</p>
+
+      <h3>Cómo se aceptan</h3>
+      <p>Los aceptas al entrar a tu cuenta y usar el Estudio. Si no estás de acuerdo, no lo uses y escríbenos: desactivamos tu cuenta y no recibes más correos de la plataforma.</p>
+      <p>/automatiza se acepta aparte, con su propia casilla (sección 14).</p>
+
+      <h3>Palabras que usamos</h3>
+      <dl class="filas">
+        <div><dt>El Estudio</dt><dd>La plataforma de irremplazables.xyz a la que entras con tu cuenta: crear videos, imágenes y clips, editar, sacar shorts, revisar a tu competencia y publicar en tus redes.</dd></div>
+        <div><dt>Tu cuenta</dt><dd>El acceso personal que un administrador creó con tu correo.</dd></div>
+        <div><dt>Créditos</dt><dd>La unidad interna con la que se pagan las acciones del Estudio que usan inteligencia artificial o cómputo.</dd></div>
+        <div><dt>Cortesía</dt><dd>Los créditos que te abonamos sin cobrarte, por ser miembro.</dd></div>
+        <div><dt>Tu contenido</dt><dd>Lo que subes, importas o escribes: videos, audio, fotos, textos, ideas y enlaces.</dd></div>
+        <div><dt>Contenido generado</dt><dd>Lo que el Estudio produce a partir de lo anterior: guiones, imágenes, voces, clips, videos, cortes, subtítulos, textos para publicar e informes.</dd></div>
+      </dl>
     </section>
 
-    <section class="parte" id="sin-garantia" aria-labelledby="sin-garantia-t">
-      <h2 id="sin-garantia-t">2. Revísalo antes de usarlo</h2>
-      <p>El flujo lo arma un sistema automático con modelos de inteligencia artificial, no una persona. Revisamos que importe en n8n, pero no que haga exactamente lo que necesitas ni que no tenga errores. Te lo entregamos <strong>tal cual, sin garantía</strong> de ningún tipo.</p>
+    <section class="parte" id="cuenta" aria-labelledby="cuenta-t">
+      <h2 id="cuenta-t">2. Tu cuenta</h2>
+      <ul>
+        <li><strong>Es por invitación.</strong> Recibes un correo con tu acceso y una contraseña provisional; al entrar por primera vez la cambias por una tuya.</li>
+        <li><strong>Es personal.</strong> Es para una sola persona. No la compartas, no la prestes y no la vendas. Lo que se haga desde ella se toma como hecho por ti; si crees que alguien más entró, cambia tu contraseña y escríbenos.</li>
+        <li><strong>Es para mayores de edad.</strong> Al usarla declaras que tienes 18 años o más. No verificamos la edad; si sabemos que una cuenta la usa una persona menor de 18 años, la cuenta puede quedar suspendida.</li>
+        <li><strong>La plataforma solo envía correos de servicio.</strong> La invitación con tu contraseña provisional, el restablecimiento de contraseña y los códigos de verificación. Aparte, te contestamos por correo cuando nos escribes y, si pasara algo importante con tu cuenta, te escribiríamos a mano desde {{correo_privacidad}}. La plataforma no manda publicidad ni boletines.</li>
+        <li><strong>Si no quieres la cuenta,</strong> escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> y la desactivamos.</li>
+      </ul>
+
+      <h3>Proyectos y límites</h3>
+      <p>Tu cuenta tiene un tope de proyectos de video activos según el plan con el que la damos de alta: hoy son 6 en el plan mensual y no hay tope en el plan anual. Un administrador puede ajustar el tope de una cuenta.</p>
+      <p>Archivar un proyecto libera su lugar sin borrar nada, y puedes restaurarlo cuando tengas un lugar libre. Hay además límites técnicos, como el tamaño y la duración de los archivos que subes.</p>
+
+      <h3>Los enlaces a tus archivos</h3>
+      <p>Hay archivos tuyos que se abren con su enlace, sin necesidad de iniciar sesión:</p>
+      <ul>
+        <li>lo que genera el Estudio: imágenes, clips, videos e informes;</li>
+        <li>las imágenes que subes para generarlo: fotos de referencia, la imagen base de un clip y la foto de producto de una campaña MIX;</li>
+        <li>el documento de cada proyecto de creación, con tu idea y tu guion;</li>
+        <li>los registros de lo que publicas.</li>
+      </ul>
+      <p>Quien tenga el enlace de un archivo puede verlo. Todos tus enlaces llevan el mismo identificador de tu cuenta, así que a partir de uno se puede llegar a otros archivos tuyos de nombre fijo o predecible, no solo a los de ese proyecto. Trata esos enlaces como privados.</p>
+    </section>
+
+    <section class="parte" id="creditos" aria-labelledby="creditos-t">
+      <h2 id="creditos-t">3. Créditos</h2>
+      <p>Las acciones que usan inteligencia artificial o cómputo se pagan con créditos. Los créditos <strong>no son dinero</strong>: solo sirven dentro del Estudio, no se pueden pasar a otra cuenta y no se cambian por dinero.</p>
+
+      <h3>Créditos de cortesía</h3>
+      <p>Cuando damos de alta tu cuenta te abonamos créditos de cortesía según el plan con el que la damos de alta: <strong>100</strong> en el plan mensual y <strong>200</strong> en el plan anual.</p>
+      <p>Después del alta, cualquier abono adicional lo hace un administrador a mano. No hay un abono programado y no prometemos abonos periódicos.</p>
+
+      <h3>Un solo saldo</h3>
+      <p>El Estudio lleva un solo saldo por cuenta. Todos tus créditos se gastan igual, sin importar cómo llegaron. Hoy el sistema no les pone fecha de caducidad. Si algún día la cortesía tuviera caducidad, lo avisaríamos como un cambio a estos términos (sección 11) y no afectaría a créditos que hayas comprado.</p>
+
+      <h3>Cómo se gastan</h3>
+      <ul>
+        <li>Antes de cada acción que cuesta créditos, la pantalla te dice cuántos.</li>
+        <li>Se descuentan al iniciar la acción, antes de que exista el resultado.</li>
+        <li>Si tu saldo no alcanza, la acción no empieza y no se descuenta nada.</li>
+        <li>Hay acciones que no cuestan créditos, como ajustar un corte en el editor visual o guardar versiones.</li>
+        <li>Cuántos créditos cuesta cada acción puede cambiar. Vale lo que la pantalla te muestre antes de confirmar. Un cambio de tarifa no reduce tu saldo ni vuelve a cobrar lo que ya generaste.</li>
+      </ul>
+
+      <h3>Cuando algo falla</h3>
+      <p>Si una generación no se completa por una causa nuestra, sea una falla del Estudio o de un proveedor que usamos, te devolvemos a tu saldo los créditos de esa generación. Normalmente el sistema lo hace solo, sin que lo pidas. Si ves un cargo por algo que no recibiste, escríbenos y lo revisamos.</p>
+      <p>No es una falla que el resultado no sea el que imaginabas: lo que produce la inteligencia artificial varía (sección 4). En las campañas MIX hay un caso que no se devuelve solo; está explicado en la sección 7.</p>
+
+      <h3>Compra de créditos</h3>
+      <p>Hoy la compra de créditos dentro del Estudio está cerrada. Si necesitas más créditos, escríbenos por el canal de la comunidad.</p>
+      <p>Si la compra se abre, antes de pagar verás el precio, la forma de pago y nuestros datos de contacto. Los pagos los procesa Stripe: nosotros no recibimos ni guardamos los datos de tu tarjeta.</p>
+
+      <h3>Reembolsos</h3>
+      <ul>
+        <li><strong>En dinero,</strong> solo devolvemos un cobro erróneo: por ejemplo, un cargo duplicado o un pago por el que no recibiste tus créditos. Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> desde el correo de tu cuenta, con la fecha del cobro.</li>
+        <li><strong>En créditos,</strong> devolvemos lo que se cobró por una generación que falló por causa nuestra.</li>
+        <li>Los créditos ya usados en una generación que sí se entregó no se devuelven.</li>
+      </ul>
+      <p>Nada de esto limita los derechos que la ley de protección al consumidor del lugar donde vives te dé y que no se puedan renunciar.</p>
+    </section>
+
+    <section class="parte" id="contenido-ia" aria-labelledby="contenido-ia-t">
+      <h2 id="contenido-ia-t">4. Lo que generas con IA</h2>
+      <p>Los guiones, las imágenes, las voces, los clips y los textos los producen modelos de inteligencia artificial de otras empresas, no personas.</p>
+      <ul>
+        <li><strong>Sin garantía de exactitud.</strong> Puede traer errores, datos falsos, o caras, manos, textos y voces mal hechos. Revísalo antes de usarlo o publicarlo.</li>
+        <li><strong>No es exclusivo.</strong> Otra persona con una idea parecida puede obtener un resultado parecido.</li>
+        <li><strong>Puede no tener protección de derechos de autor.</strong> En muchos países la ley solo reconoce como autor a una persona, no a un sistema. No te garantizamos que puedas registrarlo como obra ni impedir que otros usen algo parecido.</li>
+        <li><strong>Entre tú y nosotros, es para ti.</strong> No reclamamos derechos sobre lo que generas. Puedes usarlo, también en tu negocio, respetando estos términos, las condiciones de los proveedores de IA y las reglas de cada red.</li>
+        <li><strong>Avisar que es IA te toca a ti.</strong> Algunas redes piden marcar el contenido hecho con inteligencia artificial.</li>
+      </ul>
+
+      <h3>El filtro automático</h3>
+      <p>Al crear un video o una imagen, un filtro automático revisa tu texto antes de generar y antes de cobrarte. Si no pasa, te pide cambiarlo y no se descuenta nada. Los proveedores de IA aplican además sus propios filtros y pueden rechazar una generación.</p>
+      <p>Si crees que el filtro se equivocó, escríbenos y lo revisa una persona.</p>
+    </section>
+
+    <section class="parte" id="tu-contenido" aria-labelledby="tu-contenido-t">
+      <h2 id="tu-contenido-t">5. Tu contenido</h2>
+      <p><strong>Lo que subes, importas o escribes sigue siendo tuyo.</strong> No nos quedamos con tus derechos.</p>
+
+      <h3>El permiso que nos das</h3>
+      <p>Para que el Estudio funcione nos das una licencia limitada, no exclusiva y sin costo, únicamente para operar el servicio:</p>
+      <ul>
+        <li>guardar tu contenido y hacer las copias técnicas necesarias;</li>
+        <li>transformarlo como tú pidas: transcribirlo, cortarlo, subtitularlo o generar a partir de él;</li>
+        <li>enviarlo a los proveedores que hacen ese trabajo;</li>
+        <li>mostrártelo y, cuando tú lo indiques, publicarlo en tus redes.</li>
+      </ul>
+      <p>La licencia dura mientras tu contenido siga guardado en el Estudio o en las copias que describe el <a href="/privacidad">aviso de privacidad</a>. No lo ponemos en venta ni lo usamos para promocionar el Estudio sin pedirte permiso antes.</p>
+
+      <h3>Lo que tú garantizas</h3>
+      <ul>
+        <li>Que tienes los derechos sobre lo que subes o importas, incluidos los videos que traes con un enlace, la música, las marcas y las fotos.</li>
+        <li>Que tienes el consentimiento de las personas que aparecen o se escuchan en tu contenido, para grabarlas, editarlas y publicarlas. Si aparecen menores de edad, el de quien los representa.</li>
+        <li>Que tu contenido no rompe la ley ni los derechos de otras personas.</li>
+      </ul>
+      <p>Si alguien nos reclama por contenido tuyo, la responsabilidad por ese contenido es tuya. Mientras se aclara, tu cuenta puede quedar suspendida (sección 10).</p>
+
+      <h3>Quién puede verlo</h3>
+      <p>Nuestro personal autorizado puede ver la idea que escribes para cada proyecto, tus costos y los registros de uso de tu cuenta, que incluyen lo que se envía a los modelos de inteligencia artificial y lo que responden. Lo hace para dar soporte, controlar costos y mejorar el servicio. Al atender un problema también puede abrir los archivos del proyecto afectado. Los proveedores que procesan tu contenido lo reciben para hacer su trabajo. Qué datos tratamos, con quién y cuánto tiempo se guardan está en el <a href="/privacidad">aviso de privacidad</a>.</p>
+    </section>
+
+    <section class="parte" id="prohibido" aria-labelledby="prohibido-t">
+      <h2 id="prohibido-t">6. Usos prohibidos</h2>
+      <p>No puedes usar el Estudio para:</p>
+      <ul>
+        <li><strong>Suplantar a alguien:</strong> hacerte pasar por una persona o una empresa real, o hacer que parezca que alguien dijo o hizo algo que no dijo ni hizo.</li>
+        <li><strong>Usar la imagen o la voz de otra persona sin su permiso,</strong> en lo que subes o en lo que generas.</li>
+        <li><strong>Contenido ilegal o dañino:</strong> contenido sexual con menores, violencia explícita, odio contra grupos de personas, acoso, amenazas, fraudes o estafas.</li>
+        <li><strong>Engañar:</strong> presentar como real algo inventado para causar daño a una persona o al público.</li>
+        <li><strong>Copiar lo ajeno:</strong> subir, importar o reproducir material de otros sin tener los derechos. La copiadora de estilos sirve para tomar el estilo de un video, no para clonar su contenido.</li>
+        <li><strong>Spam:</strong> publicar en masa, crear cuentas falsas o inflar seguidores, vistas o reseñas.</li>
+        <li><strong>Romper las reglas de cada red</strong> donde publicas, o las de Blotato.</li>
+        <li><strong>Vigilar o acosar:</strong> la revisión de competencia es solo para analizar publicaciones de cuentas públicas. No la uses para acosar a nadie ni para juntar datos personales.</li>
+        <li><strong>Atacar el Estudio:</strong> saturarlo, usar bots, saltarte los límites o los filtros, o intentar entrar a cuentas o archivos de otros miembros.</li>
+        <li><strong>Revender o compartir tu acceso.</strong></li>
+      </ul>
+      <p>Si incumples, una generación puede ser rechazada y tu cuenta puede quedar suspendida (sección 10).</p>
+    </section>
+
+    <section class="parte" id="publicar" aria-labelledby="publicar-t">
+      <h2 id="publicar-t">7. Publicar en tus redes</h2>
+      <p>Publicar desde el Estudio es opcional. Para hacerlo conectas <strong>tu propia cuenta de Blotato</strong> con tu clave. Blotato es un servicio de otra empresa, con su propio costo y sus propias condiciones, que contratas tú.</p>
+      <ul>
+        <li>Publicamos <strong>en tu nombre</strong>, con tu clave, en la cuenta y la red que tú elijas.</li>
+        <li>Al publicar un video eliges la cuenta, el texto y si sale ahora o a una hora programada.</li>
+        <li>Lo programado vive en Blotato. En la Agenda puedes cambiarle la hora o cancelarlo; cancelar no se deshace.</li>
+        <li>Lo que publiques es tu responsabilidad, incluidas las reglas de cada red.</li>
+      </ul>
+
+      <h3>MIX: una imagen al día, sin revisión previa</h3>
+      <p>MIX publica <strong>una imagen generada con IA y su texto, una vez al día</strong>, en una sola cuenta, durante las fechas que elijas. <strong>No revisas cada publicación antes de que salga.</strong></p>
+      <ul>
+        <li>Antes de encender ves un ejemplo del primer día. Ese ejemplo es lo que se publica el primer día.</li>
+        <li>Al encender se cobra la campaña completa por adelantado.</li>
+        <li>Los días que no se publican se devuelven: si un día falla, vuelven sus créditos; si apagas la campaña, vuelven los de los días que faltaban.</li>
+        <li>Hay una excepción: si un día se mandó a Blotato y Blotato no confirmó, ese día no se devuelve solo, porque pudo haberse publicado. Revísalo en tu red: si no salió, escríbenos y lo revisamos.</li>
+        <li>Solo puedes tener una campaña encendida a la vez.</li>
+      </ul>
+      <p>Enciende MIX solo si aceptas que salga contenido que no viste antes. Revisa tu red de vez en cuando y apaga la campaña si algo no te gusta.</p>
+
+      <div class="caja">
+        <h3 class="rotulo">Cómo dejar de publicar</h3>
+        <ol>
+          <li>Cancela en la Agenda lo que tengas programado.</li>
+          <li>Apaga tu campaña MIX.</li>
+          <li>Desconecta Blotato: eso borra tu clave del Estudio.</li>
+        </ol>
+        <p>Desconectar Blotato, por sí solo, <strong>no cancela lo que ya está programado</strong>: eso vive en Blotato y se gestiona allí. Si desconectas con una campaña MIX encendida, MIX ya no puede publicar y la campaña queda en pausa; apágala para recuperar los créditos de los días que faltaban.</p>
+      </div>
+    </section>
+
+    <section class="parte" id="terceros" aria-labelledby="terceros-t">
+      <h2 id="terceros-t">8. Servicios de terceros</h2>
+      <p>El Estudio funciona con servicios de otras empresas: los modelos de inteligencia artificial, la infraestructura donde corre, Blotato y las redes donde publicas, Stripe para los pagos y Skool, donde vive la comunidad.</p>
+      <ul>
+        <li>Cada uno se usa bajo <strong>sus propias condiciones</strong>. Cumplir las de Blotato y las de cada red donde publicas te toca a ti.</li>
+        <li>Pueden cambiar sus precios, sus funciones o sus reglas, y pueden bloquear una cuenta o un contenido. Esas decisiones no las tomamos nosotros.</li>
+        <li>Las claves de servicios de terceros que nos des, como la de Blotato, son tuyas y tú respondes por su uso. La de Blotato la quitas tú cuando quieras, desde el Estudio; cualquier otra clave que nos hayas dado la quitamos si nos lo pides.</li>
+      </ul>
+      <p>La lista de proveedores y lo que recibe cada uno está en el <a href="/privacidad">aviso de privacidad</a>.</p>
+    </section>
+
+    <section class="parte" id="responsabilidad" aria-labelledby="responsabilidad-t">
+      <h2 id="responsabilidad-t">9. Disponibilidad y responsabilidad</h2>
+
+      <h3>Disponibilidad</h3>
+      <p>No prometemos un servicio ininterrumpido. Puede haber fallas, mantenimiento y esperas, y las funciones pueden cambiar o retirarse. El Estudio no es un servicio de respaldo: descarga y guarda por tu cuenta los videos que te importan.</p>
+      <p>Si decidimos cerrar el Estudio, lo avisaremos con anticipación en el canal de la comunidad para que puedas descargar tu contenido.</p>
+
+      <h3>Lo que sí nos toca</h3>
+      <ul>
+        <li>Prestar el servicio con un cuidado razonable.</li>
+        <li>Devolverte los créditos de una generación que falló por causa nuestra, y el dinero de un cobro erróneo (sección 3).</li>
+        <li>Responder por los daños que te causemos por nuestra culpa, conforme a la ley aplicable (sección 12).</li>
+      </ul>
+
+      <h3>Lo que no depende de nosotros</h3>
+      <ul>
+        <li>Lo que decidas publicar y sus consecuencias.</li>
+        <li>Las decisiones de las redes y de Blotato: bloqueos, alcance, publicaciones retiradas o cuentas suspendidas.</li>
+        <li>Las condiciones, los precios y los límites de los servicios de terceros.</li>
+        <li>Que el contenido generado sea exacto, original o sirva para un fin en particular (sección 4).</li>
+        <li>Lo que haga con tu cuenta o con tus archivos alguien a quien le diste tu contraseña o un enlace.</li>
+      </ul>
+      <p>Nada de lo anterior nos libera de la responsabilidad que la ley nos impone, ni limita los derechos irrenunciables que tienes como consumidor.</p>
+    </section>
+
+    <section class="parte" id="cierre" aria-labelledby="cierre-t">
+      <h2 id="cierre-t">10. Suspensión y cierre de cuenta</h2>
+
+      <h3>Suspensión</h3>
+      <p>Una cuenta puede quedar suspendida si incumple estos términos, si hay un problema de seguridad o si su titular dejó la comunidad.</p>
+      <ul>
+        <li>Suspender <strong>desactiva el acceso</strong>: ya no puedes iniciar sesión. <strong>No borra</strong> tus proyectos ni tu saldo, y la cuenta se puede reactivar.</li>
+        <li>Si la suspensión es por incumplimiento, te decimos el motivo y puedes escribirnos para aclararlo.</li>
+        <li>Suspender no cancela lo que ya esté programado en Blotato ni apaga por sí solo una campaña MIX encendida. Si ya no puedes entrar y tienes una campaña encendida, escríbenos y la apagamos a mano.</li>
+      </ul>
+
+      <h3>Si dejas la comunidad</h3>
+      <p>El Estudio es para miembros. No recibimos un aviso cuando alguien deja la comunidad: lo revisamos a mano cada cierto tiempo.</p>
+      <ul>
+        <li>Cuando vemos que ya no eres miembro, tu cuenta queda suspendida.</li>
+        <li>Si vuelves a la comunidad antes de que se cancele, la reactivamos con tus proyectos y tu saldo.</li>
+        <li>Pasados 90 días desde la suspensión, cancelamos la cuenta. Este paso también lo hacemos a mano.</li>
+      </ul>
+      <p>Antes de dejar la comunidad, cancela lo programado, apaga tu campaña MIX y descarga lo que quieras conservar.</p>
+
+      <h3>Si quieres cerrar tu cuenta</h3>
+      <p>Hoy no hay un botón para cerrarla desde el Estudio. Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> desde el correo de tu cuenta: desactivamos tu acceso en cuanto atendemos tu correo y después cancelamos la cuenta a mano, en los plazos del <a href="/privacidad">aviso de privacidad</a>.</p>
+      <ul>
+        <li>Antes de pedirlo, descarga lo que quieras conservar, cancela lo programado, apaga MIX y desconecta Blotato.</li>
+        <li>Cerrar tu cuenta del Estudio no cancela tu membresía de la comunidad: esa se cancela en Skool.</li>
+        <li>Al cancelarse la cuenta, el saldo de créditos que quede se pierde: no se cambia por dinero ni se pasa a otra cuenta. Esto no limita los derechos que la ley de protección al consumidor del lugar donde vives te dé sobre créditos que hayas comprado.</li>
+        <li>No todo se borra de inmediato. Las copias de seguridad, los registros técnicos y las copias que ya tienen los proveedores siguen sus propios tiempos, y los movimientos de créditos y de pagos se conservan 5 años. El detalle está en el <a href="/privacidad">aviso de privacidad</a>.</li>
+      </ul>
+    </section>
+
+    <section class="parte" id="cambios" aria-labelledby="cambios-t">
+      <h2 id="cambios-t">11. Cambios a estos términos</h2>
+      <p>Estos términos pueden cambiar, pero no de un día para otro ni en silencio:</p>
+      <ul>
+        <li>La versión nueva se publica en esta misma dirección (irremplazables.xyz/terminos), con su número de versión y su fecha.</li>
+        <li>La avisamos en el canal de la comunidad con anticipación, antes de que empiece a valer, y decimos desde qué fecha vale.</li>
+        <li>Un cambio no reduce los créditos que ya tienes ni se aplica a lo que ya generaste, publicaste o pagaste.</li>
+        <li>Si no estás de acuerdo, puedes dejar de usar el Estudio y pedir que cancelemos tu cuenta (sección 10). Si sigues usándolo después de la fecha anunciada, la versión nueva es la que vale para ti.</li>
+      </ul>
+    </section>
+
+    <section class="parte" id="ley" aria-labelledby="ley-t">
+      <h2 id="ley-t">12. Ley aplicable</h2>
+      <p>{{responsable}} es una empresa de Estados Unidos. Estos términos se rigen por las leyes del estado de Delaware, Estados Unidos, donde tenemos nuestro domicilio (sección 1).</p>
+      <p>Si tienes un problema, escríbenos primero a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>: casi todo se resuelve ahí.</p>
+      <p>Para lo que deba resolverse ante un juez, tú y nosotros acordamos acudir a los tribunales ubicados en el estado de Delaware, Estados Unidos, salvo que la ley del lugar donde vives te permita acudir a los de tu propio domicilio. Estos términos no te quitan los derechos que la ley de protección al consumidor del lugar donde vives te dé y que no se puedan renunciar.</p>
+    </section>
+
+    <section class="parte" id="contacto" aria-labelledby="contacto-t">
+      <h2 id="contacto-t">13. Tus datos y contacto</h2>
+      <p>Qué datos personales tratamos, para qué, con quién los compartimos, cuánto tiempo los guardamos y cómo ejercer tus derechos está en el <a href="/privacidad">aviso de privacidad</a>.</p>
+      <p>{{responsable}} · {{domicilio}} · <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a></p>
+      <p>Si nos escribes por algo de tu cuenta, hazlo desde el correo con el que entras al Estudio: así sabemos que eres tú.</p>
+    </section>
+
+    <section class="parte" id="automatiza" aria-labelledby="automatiza-t">
+      <h2 id="automatiza-t">14. /automatiza</h2>
+      <p><a href="/automatiza">/automatiza</a> es otra herramienta de <strong>{{responsable}}</strong> en este mismo sitio: describes con tus palabras algo que haces a mano y te devolvemos un flujo de n8n para importar. No es parte del Estudio. Las secciones 2 a 11 hablan del Estudio, de su cuenta y de sus créditos, y no aplican aquí: las reglas de /automatiza son las de esta sección. Las secciones 1, 12 y 13 (quiénes somos, la ley aplicable y el contacto) valen igual.</p>
+
+      <h3>Cómo se aceptan</h3>
+      <p>Con la casilla «He leído el aviso de privacidad y acepto los términos», que la página te enseña antes de mandar tu primera petición (o tu correo, si llegaste con el enlace para volver desde otro navegador). Sin aceptarla no se envía nada.</p>
+
+      <h3>Qué es</h3>
+      <ul>
+        <li>Es <strong>gratis</strong> y no necesitas cuenta.</li>
+        <li>Es un <strong>experimento</strong>: la página lo anuncia como gratis del 10 al 25 de octubre de 2026. Puede pausarse en cualquier momento (verás «Ahorita no está disponible») y, después, cambiar o cerrarse.</li>
+        <li>n8n es un producto de terceros: /automatiza no es un servicio de n8n. Para usar el flujo necesitas tu propio n8n (instalado por ti o en la nube) y seguir sus condiciones.</li>
+      </ul>
+
+      <h3>Revísalo antes de usarlo</h3>
+      <p>El flujo lo arma un sistema automático con modelos de inteligencia artificial, no una persona. Revisamos que se pueda importar en n8n, pero no que haga exactamente lo que necesitas ni que no tenga errores. Te lo entregamos <strong>tal cual, sin garantía</strong>.</p>
       <p>Antes de conectarle cuentas reales:</p>
       <ul>
         <li>revísalo nodo por nodo y entiende qué hace cada uno;</li>
         <li>pruébalo con datos de prueba y actívalo solo cuando estés seguro;</li>
         <li>ten presente que un flujo mal armado puede mandar mensajes que no querías, borrar o cambiar datos, o gastar créditos de los servicios que conectes.</li>
       </ul>
-      <p>Nunca pongas contraseñas ni claves en tu descripción: las cuentas se conectan dentro de tu n8n y nosotros no las vemos.</p>
-      <p>El servicio puede fallar, tardar o no estar disponible, y algunas peticiones no salen; cuando pasa, te lo decimos en pantalla.</p>
-    </section>
+      <p>Nunca pongas contraseñas ni claves en tu descripción: las cuentas se conectan dentro de tu n8n y nosotros no las vemos. El servicio puede fallar, tardar o no estar disponible, y algunas peticiones no salen; cuando pasa, te lo decimos en pantalla.</p>
 
-    <section class="parte" id="prohibido" aria-labelledby="prohibido-t">
-      <h2 id="prohibido-t">3. Usos prohibidos</h2>
+      <h3>Usos prohibidos</h3>
       <p>No puedes usar /automatiza para pedir flujos cuyo propósito sea:</p>
       <ul>
         <li>mandar mensajes masivos a gente que no los pidió: spam, bots de comentarios, cuentas falsas, inflar seguidores o reseñas;</li>
@@ -103,11 +382,9 @@
         <li>mandar peticiones con bots o programas, ni intentar saltarte los límites de uso;</li>
         <li>atacar o saturar el sitio.</li>
       </ul>
-      <p>Un filtro automático revisa cada petición. Si no pasa, no la armamos y te decimos qué parte no pasa, sin acusarte. Podemos rechazar peticiones y bloquear el acceso a quien no respete estas reglas.</p>
-    </section>
+      <p>Un filtro automático revisa cada petición antes de armarla. Si no pasa, no la armamos y te decimos qué parte no pasa, sin acusarte. Podemos rechazar peticiones y bloquear el acceso a quien no respete estas reglas.</p>
 
-    <section class="parte" id="limites" aria-labelledby="limites-t">
-      <h2 id="limites-t">4. Límites de uso</h2>
+      <h3>Límites de uso</h3>
       <p>Para que alcance para todos y para cuidar el gasto hay límites:</p>
       <ul>
         <li>un tope de peticiones al día para todo el servicio y otro por conexión;</li>
@@ -115,48 +392,33 @@
         <li>un número limitado de veces que puedes cambiar el correo de una misma petición.</li>
       </ul>
       <p>Cuando se llena un tope verás «Ahorita no está disponible»: lo que escribiste se queda guardado en tu navegador y puedes intentar más tarde. Si hay mucha gente, tu petición entra a una fila y te decimos tu lugar. Los límites pueden cambiar en cualquier momento.</p>
-    </section>
 
-    <section class="parte" id="tu-flujo" aria-labelledby="tu-flujo-t">
-      <h2 id="tu-flujo-t">5. Tu flujo y lo que escribes</h2>
+      <h3>Tu flujo y lo que escribes</h3>
       <ul>
         <li><strong>El flujo es para ti.</strong> Puedes importarlo, cambiarlo, usarlo en tu trabajo o en tu negocio y compartirlo. No reclamamos ningún derecho sobre él ni sobre lo que construyas con él.</li>
         <li><strong>No es exclusivo.</strong> Como lo arma un sistema automático, alguien que pida algo parecido puede recibir un flujo parecido.</li>
-        <li><strong>Lo que escribes sigue siendo tuyo.</strong> Al mandarlo nos das permiso de usarlo para armar tu flujo y para lo que dice el <a href="/privacidad">aviso de privacidad</a>.</li>
+        <li><strong>Lo que escribes sigue siendo tuyo.</strong> Al mandarlo nos das permiso de usarlo para armar tu flujo y para lo que dice el <a href="/privacidad#automatiza">aviso de privacidad</a>.</li>
         <li><strong>Lo de terceros es de terceros.</strong> n8n, sus nodos y las apps que conecta el flujo (Gmail, Sheets, Slack…) son de sus dueños y tienen sus propias condiciones; cumplirlas te toca a ti.</li>
       </ul>
-    </section>
 
-    <section class="parte" id="responsabilidad" aria-labelledby="responsabilidad-t">
-      <h2 id="responsabilidad-t">6. Responsabilidad limitada</h2>
-      <p>Como el servicio es gratuito y experimental, en la medida en que la ley lo permita no respondemos por daños o pérdidas que vengan de usar el flujo o de no poder usar el servicio: por ejemplo, datos borrados o cambiados, mensajes enviados por error, cargos de los servicios que conectes o cuentas suspendidas por su proveedor.</p>
-      <p>Tú decides si activas el flujo y cómo; lo que hagas con él es tu responsabilidad. Nada de esto limita los derechos que la ley te da y que no se pueden renunciar.</p>
-    </section>
+      <h3>Responsabilidad</h3>
+      <p>Tú decides si activas el flujo y cómo. No depende de nosotros lo que hagas con él ni sus consecuencias: por ejemplo, datos borrados o cambiados, mensajes enviados por error, cargos de los servicios que conectes o cuentas suspendidas por su proveedor. Tampoco, que el flujo sirva para un fin en particular.</p>
+      <p>Igual que en la sección 9: nada de esto nos libera de la responsabilidad que la ley nos impone, ni limita los derechos irrenunciables que tienes como consumidor.</p>
 
-    <section class="parte" id="tus-datos" aria-labelledby="tus-datos-t">
-      <h2 id="tus-datos-t">7. Tus datos</h2>
-      <p>Qué guardamos (tu descripción, el flujo, tu correo si nos lo das y una huella de tu conexión, nunca tu IP), para qué y cuánto tiempo está en el <a href="/privacidad">aviso de privacidad</a>. La casilla para recibir novedades es aparte: no marcarla no te quita nada del servicio.</p>
-    </section>
+      <h3>Tus datos</h3>
+      <p>Qué guardamos cuando usas /automatiza (tu descripción, el flujo, tu correo si nos lo das y una huella de tu conexión en lugar de tu IP), para qué y cuánto tiempo está en la sección 14 del <a href="/privacidad#automatiza">aviso de privacidad</a>. La casilla para recibir novedades es aparte: no marcarla no te quita nada del servicio.</p>
 
-    <section class="parte" id="cambios" aria-labelledby="cambios-t">
-      <h2 id="cambios-t">8. Cambios a estos términos</h2>
-      <p>Podemos cambiar estos términos. La versión nueva se publica en esta misma dirección (irremplazables.xyz/terminos) con su número de versión y su fecha, y vale para las peticiones que hagas después de publicarla. Una petición que ya hiciste sigue con los términos que había cuando la hiciste.</p>
-    </section>
+      <h3>Si estos términos cambian</h3>
+      <p>La versión nueva se publica en esta misma dirección, con su número de versión y su fecha. En /automatiza, la página te la enseña y te pide aceptarla antes de mandar otra petición o un correo. Con cada petición queda guardada la versión que aceptaste.</p>
 
-    <section class="parte" id="ley" aria-labelledby="ley-t">
-      <h2 id="ley-t">9. Ley aplicable</h2>
-      <p>Estos términos se rigen por las leyes federales de los Estados Unidos Mexicanos. Para cualquier desacuerdo, las partes se someten a los tribunales competentes de [POR DECIDIR: ciudad], salvo que la ley te permita acudir a otra autoridad. [VERIFICAR con un abogado esta cláusula y la de responsabilidad limitada.]</p>
-    </section>
-
-    <section class="parte" id="contacto" aria-labelledby="contacto-t">
-      <h2 id="contacto-t">10. Contacto</h2>
-      <p>{{responsable}} · {{domicilio}} · <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a></p>
-      <p>Si es sobre una petición en particular, incluye su número (es lo que sigue a /automatiza/c/ en tu enlace para volver).</p>
+      <h3>Contacto</h3>
+      <p>Si nos escribes por una petición en particular, incluye su número: es lo que sigue a /automatiza/c/ en tu enlace para volver.</p>
     </section>
   </article>
 </main>
 
 <footer class="pie">
+  <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>
   <a href="/automatiza">/automatiza</a>
   <a href="/privacidad">Aviso de privacidad</a>
   <a href="/terminos" aria-current="page">Términos</a>
