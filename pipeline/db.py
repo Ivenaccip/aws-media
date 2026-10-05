@@ -1643,6 +1643,31 @@ def automatiza_lista_novedades() -> list[dict]:
     return list(vistos.values())
 
 
+def automatiza_usos_con_correo(desde: str) -> list[dict]:
+    """RAG·29 (temporal) — las corridas que cuentan como «uso» de un tester:
+    terminadas (listo o no_salio: las dos son información) desde `desde`
+    (AAAA-MM-DD, hora de México), con su correo VIGENTE. Un renglón por
+    corrida; el día va en hora de México, como el tope diario."""
+    return ejecutar(
+        f"""SELECT r.publico_id, r.estado, c.correo,
+                   to_char(r.creado AT TIME ZONE '{ZONA_AUTOMATIZA}', 'YYYY-MM-DD') AS dia
+              FROM automatiza_corridas r
+              JOIN automatiza_contactos c ON c.corrida_id = r.id
+             WHERE r.estado IN ('listo', 'no_salio')
+               AND (r.creado AT TIME ZONE '{ZONA_AUTOMATIZA}')::date >= CAST(:d AS date)
+               AND NOT EXISTS (SELECT 1 FROM automatiza_contactos d
+                                WHERE d.corrida_id = c.corrida_id AND d.id > c.id)
+             ORDER BY r.id""", {"d": desde})
+
+
+def movimiento_con_referencia(referencia: str) -> bool:
+    """¿Ya hay un movimiento del monedero con esta referencia? (abonos que no
+    se pueden repetir, como los de los testers del RAG)."""
+    filas = ejecutar("SELECT 1 AS si FROM monedero_movimientos WHERE referencia = :r LIMIT 1",
+                     {"r": referencia})
+    return bool(filas)
+
+
 def automatiza_ya_enviado(campana: str, correo: str) -> bool:
     filas = ejecutar("SELECT 1 AS si FROM automatiza_envios "
                      "WHERE campana = :k AND correo = :c", {"k": campana, "c": correo_normal(correo)})
