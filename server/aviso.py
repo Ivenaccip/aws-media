@@ -128,3 +128,10 @@ def renderizar(nombre: str, directorio: Path | None = None) -> str:
             del _CACHE[vieja]
         _CACHE[llave] = lleno
     return _CACHE[llave]
+
+
+def renderizar_con(nombre: str, extra: dict, directorio: Path | None = None) -> str:
+    """Como renderizar(), pero con huecos que cambian en cada petición (el
+    título y el texto de la página de baja, RAG·35). No pasa por la caché."""
+    ruta = Path(directorio or ESTATICOS) / nombre
+    return llenar(ruta.read_text(encoding="utf-8"), {**DATOS, **extra})

@@ -1103,7 +1103,9 @@ def _es_html(resp) -> bool:
 # RAG·10/13 · páginas de static/ que son plantillas (server/aviso.py): solo se
 # sirven llenas, por su ruta limpia
 PLANTILLAS = {"automatiza.html": "/automatiza", "privacidad.html": "/privacidad",
-              "terminos.html": "/terminos"}
+              "terminos.html": "/terminos",
+              # RAG·35: las de la baja solo existen con un token; crudas, a /automatiza
+              "baja.html": "/automatiza", "baja-hecha.html": "/automatiza"}
 
 
 class _StaticCacheado(StaticFiles):
@@ -1286,6 +1288,73 @@ def _automatiza_corrida(request: Request, publico_id: str):
     return _pagina_publica(request, "automatiza.html", indexable=False)
 
 
+# RAG·35 · el enlace de baja de la lista de novedades (pipeline/novedades.py).
+# GET enseña la pregunta y NO da de baja: los clientes de correo y los
+# antivirus abren los enlaces solos. POST da de baja; lo mandan el botón de la
+# página y el «Cancelar suscripción» de Gmail/Outlook (List-Unsubscribe-Post,
+# RFC 8058), que no espera nada más que un 200. Como el resto de lo público,
+# la base se toca dentro del candado de identidad (db.camino_publico).
+_BAJA_HECHA = ("Listo, ya no recibirás novedades",
+               "Te quitamos de la lista de novedades de Irremplazables. Si te llega "
+               "algún correo que ya iba en camino, ese es el último.")
+_BAJA_ENLACE_MALO = ("Este enlace no sirve",
+                     "Puede que se haya cortado al copiarlo. Usa el enlace completo del "
+                     "último correo que te mandamos, o escríbenos y te damos de baja a mano.")
+_BAJA_NO_SE_PUDO = ("Ahorita no pudimos darte de baja",
+                    "Intenta de nuevo en unos minutos. Si sigue fallando, escríbenos y "
+                    "te damos de baja a mano.")
+
+
+def _pagina_baja(nombre: str, *, status: int = 200, textos: tuple[str, str] | None = None):
+    extra = {"baja_titulo": textos[0], "baja_texto": textos[1]} if textos else {}
+    cuerpo = aviso.renderizar_con(nombre, extra)
+    return HTMLResponse(cuerpo, status_code=status,
+                        headers={**_CABECERAS_PUBLICAS, **_NO_INDEXAR})
+
+
+def _contacto_de_baja(token: str) -> dict | None:
+    """El contacto que firma el token; None si el token no sirve. Revienta con
+    novedades.SinSal si falta la sal (es 503, no «enlace malo»)."""
+    from pipeline import novedades
+    contacto_id = novedades.verificar(token)
+    if contacto_id is None:
+        return None
+    with db.camino_publico():
+        return db.automatiza_contacto(contacto_id)
+
+
+@app.get("/automatiza/baja/{token}", include_in_schema=False)
+def _baja_pregunta(token: str):
+    from pipeline import novedades
+    try:
+        contacto = _contacto_de_baja(token)
+    except novedades.SinSal:
+        logging.getLogger("novedades").error("baja: falta la sal, no se puede verificar")
+        return _pagina_baja("baja-hecha.html", status=503, textos=_BAJA_NO_SE_PUDO)
+    except Exception:  # noqa: BLE001 — la base: se dice, no se cae en 500
+        logging.getLogger("novedades").exception("baja: no se pudo leer el contacto")
+        return _pagina_baja("baja-hecha.html", status=503, textos=_BAJA_NO_SE_PUDO)
+    if contacto is None:
+        return _pagina_baja("baja-hecha.html", status=404, textos=_BAJA_ENLACE_MALO)
+    return _pagina_baja("baja.html")
+
+
+@app.post("/automatiza/baja/{token}", include_in_schema=False)
+def _baja_hecha(token: str):
+    from pipeline import novedades
+    try:
+        contacto = _contacto_de_baja(token)
+        if contacto is None:
+            return _pagina_baja("baja-hecha.html", status=404, textos=_BAJA_ENLACE_MALO)
+        with db.camino_publico():
+            db.automatiza_dar_baja(contacto["correo"], origen="enlace",
+                                   contacto_id=int(contacto["id"]))
+    except Exception:  # noqa: BLE001 — sin sal o sin base: 503, nunca un «listo» falso
+        logging.getLogger("novedades").exception("baja: no se pudo anotar")
+        return _pagina_baja("baja-hecha.html", status=503, textos=_BAJA_NO_SE_PUDO)
+    return _pagina_baja("baja-hecha.html", textos=_BAJA_HECHA)
+
+
 # Las dos legales contestan también HEAD (así llegaron de main, PR #174): con
 # solo GET, un `curl -I` o un verificador de enlaces caía en el montaje de
 # abajo y recibía un 404 de una página que sí existe.
@@ -1305,6 +1374,8 @@ def _terminos(request: Request):
 @app.get("/automatiza.html", include_in_schema=False)
 @app.get("/privacidad.html", include_in_schema=False)
 @app.get("/terminos.html", include_in_schema=False)
+@app.get("/baja.html", include_in_schema=False)
+@app.get("/baja-hecha.html", include_in_schema=False)
 def _plantilla_cruda(request: Request):
     return RedirectResponse(_con_query(PLANTILLAS[request.url.path.lstrip("/")], request),
                             status_code=302)
