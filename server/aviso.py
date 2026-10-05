@@ -73,6 +73,23 @@ DATOS = {
     "largo_minimo": str(freno.LARGO_MINIMO),
 }
 
+# Las claves de DATOS que el dueño todavía NO decide. Su texto no lleva
+# corchetes —dice en prosa «todavía no»—, así que el candado de pendientes que
+# llegó de main (tests/test_entrar_portada.py) no las ve: por eso se declaran
+# aquí, a la vista. Mientras esta tupla no esté vacía, /automatiza no se puede
+# encender en producción (PROD.publico en infra/entornos.py): lo vigila
+# tests/test_entornos.py. Y tests/test_rag_paginas.py no deja vaciarla sin
+# haber escrito el dato, ni escribir el dato sin sacarlo de aquí.
+#
+# `proveedor_correo` pesa doble: static/automatiza.html ya le dice al visitante
+# «te lo mandamos a tu correo» y ningún código manda nada todavía (RAG·14).
+#
+# OJO: esto frena el ENCENDIDO en producción, no la publicación del texto. Las
+# dos páginas legales se sirven en producción con o sin /automatiza, así que el
+# dev→main que lleve este archivo publica estas tres frases tal cual. Decidir
+# antes de ese merge, o aceptar que salgan así, es cosa del dueño.
+SIN_DECIDIR = ("plazo_peticion", "plazo_correo", "proveedor_correo")
+
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
 _MARCADOR = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 

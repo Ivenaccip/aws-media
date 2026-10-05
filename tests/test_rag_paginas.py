@@ -273,7 +273,8 @@ def test_lo_que_solo_vale_para_automatiza_no_se_sale_de_su_seccion(nombre):
 def test_el_aviso_no_promete_un_plazo_ni_un_proveedor_que_nadie_decidio():
     """Los plazos de /automatiza (RAG·0) y su proveedor de envío (RAG·14)
     siguen sin decidir y ningún código borra ni manda nada: el aviso lo dice
-    así. Cuando el dueño decida, cambia DATOS, este test y AVISO_VERSION."""
+    así. Cuando el dueño decida, cambia DATOS, aviso.SIN_DECIDIR, este test y
+    AVISO_VERSION."""
     parte = _texto_visible(_parte_automatiza(_real("privacidad.html")))
     sin_fijar = "un plazo que todavía no está fijado"
     assert aviso.DATOS["plazo_peticion"] == aviso.DATOS["plazo_correo"] == sin_fijar
@@ -283,6 +284,38 @@ def test_el_aviso_no_promete_un_plazo_ni_un_proveedor_que_nadie_decidio():
     fuente = (RAIZ / "pipeline" / "db.py").read_text(encoding="utf-8")
     assert not re.search(r"DELETE FROM\s+automatiza_", fuente), (
         "ya hay código que borra corridas o correos: el aviso tiene que decir el plazo")
+
+
+# Cómo suena en DATOS un dato que el dueño no ha decidido. No lleva corchetes,
+# así que el candado de tests/test_entrar_portada.py no lo ve.
+SUENA_A_PENDIENTE = ("todavía no", "aún no", "sin decidir", "por decidir",
+                     "por definir", "pendiente")
+
+
+def test_lo_que_el_dueno_no_ha_decidido_esta_declarado():
+    """aviso.SIN_DECIDIR es lo que le impide a /automatiza encenderse en
+    producción (tests/test_entornos.py). Para que ese candado valga, la tupla
+    y el texto tienen que decir lo mismo: no se vacía dejando la prosa de
+    pendiente, y un dato ya escrito no se queda apuntado como pendiente."""
+    assert isinstance(aviso.SIN_DECIDIR, tuple)
+    assert set(aviso.SIN_DECIDIR) <= set(aviso.DATOS)
+    assert len(set(aviso.SIN_DECIDIR)) == len(aviso.SIN_DECIDIR)
+    suenan = {clave for clave, valor in aviso.DATOS.items()
+              if any(s in valor.lower() for s in SUENA_A_PENDIENTE)}
+    assert suenan == set(aviso.SIN_DECIDIR)
+
+
+@pytest.mark.parametrize("nombre", PAGINAS)
+def test_las_paginas_no_esconden_otro_pendiente_fuera_de_datos(nombre):
+    """Lo sin decidir entra a las páginas SOLO por los huecos de DATOS. Si una
+    plantilla escribiera a mano «un plazo que todavía no está fijado», la
+    tupla se podría vaciar y la frase seguiría publicada."""
+    texto = _texto_visible(_real(nombre)).lower()
+    for clave in aviso.SIN_DECIDIR:
+        texto = texto.replace(aviso.DATOS[clave].lower(), " ")
+    for frase in ("todavía no está fijado", "todavía no hay un proveedor",
+                  "sin decidir", "por decidir", "por definir"):
+        assert frase not in texto, (nombre, frase)
 
 
 # ---------------------------------------------------------------------------
