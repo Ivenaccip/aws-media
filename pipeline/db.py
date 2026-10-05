@@ -429,6 +429,35 @@ ESQUEMA: list[str] = [
     "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS catalogo_version text",
     "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS busqueda_camino text",
     "ALTER TABLE automatiza_corridas ADD COLUMN IF NOT EXISTS busqueda jsonb",
+    # RAG·35 — la lista de novedades. Entra solo quien marcó la casilla aparte
+    # (automatiza_contactos.recontacto); de aquí salen las bajas y lo ya
+    # mandado. Las dos solo AGREGAN filas: una baja no se borra ni se
+    # «deshace», es la prueba de que se respetó.
+    #   automatiza_bajas   el correo NORMALIZADO (minúsculas y sin espacios en
+    #                      las orillas), de dónde vino (el enlace del correo,
+    #                      el botón de un clic del cliente de correo, una
+    #                      petición a mano, un rebote o una queja de SES) y,
+    #                      si vino del enlace, de qué contacto.
+    #   automatiza_envios  una fila por campaña y correo: volver a correr la
+    #                      misma campaña no le manda dos veces a nadie.
+    """CREATE TABLE IF NOT EXISTS automatiza_bajas (
+        id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        correo       text NOT NULL,
+        origen       text NOT NULL,
+        contacto_id  bigint,
+        nota         text,
+        creado       timestamptz NOT NULL DEFAULT now()
+    )""",
+    """CREATE INDEX IF NOT EXISTS automatiza_bajas_correo
+       ON automatiza_bajas (correo)""",
+    """CREATE TABLE IF NOT EXISTS automatiza_envios (
+        campana      text NOT NULL,
+        correo       text NOT NULL,
+        contacto_id  bigint,
+        mensaje_id   text,
+        creado       timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (campana, correo)
+    )""",
 ]
 
 
@@ -1546,6 +1575,85 @@ def automatiza_correos_de(id_: int) -> int:
     filas = ejecutar("SELECT count(*) AS n FROM automatiza_contactos "
                      "WHERE corrida_id = :i", {"i": id_})
     return int(filas[0]["n"]) if filas else 0
+
+
+# ---------------------------------------------------------------------------
+# RAG·35 — la lista de novedades: quién entra, las bajas y lo ya mandado
+
+def correo_normal(correo: str) -> str:
+    """La forma con que se compara un correo en la lista y en las bajas."""
+    return correo.strip().lower()
+
+
+def automatiza_contacto(contacto_id: int) -> dict | None:
+    """Un renglón de automatiza_contactos por su id (el que firma el enlace de baja)."""
+    filas = ejecutar("SELECT id, corrida_id, correo FROM automatiza_contactos "
+                     "WHERE id = :i", {"i": contacto_id})
+    return filas[0] if filas else None
+
+
+def automatiza_de_baja(correo: str) -> bool:
+    filas = ejecutar("SELECT 1 AS si FROM automatiza_bajas WHERE correo = :c LIMIT 1",
+                     {"c": correo_normal(correo)})
+    return bool(filas)
+
+
+def automatiza_dar_baja(correo: str, *, origen: str, contacto_id: int | None = None,
+                        nota: str | None = None) -> bool:
+    """Anota la baja. Devuelve True si es nueva y False si ya estaba: volver a
+    darse de baja no agrega otra fila (el enlace se puede pulsar dos veces,
+    y el botón de un clic de Gmail también llega solo)."""
+    if automatiza_de_baja(correo):
+        return False
+    ejecutar("INSERT INTO automatiza_bajas (correo, origen, contacto_id, nota) "
+             "VALUES (:c, :o, :i, :n)",
+             {"c": correo_normal(correo), "o": origen, "i": contacto_id,
+              "n": (nota or None) and nota[:500]})
+    return True
+
+
+def automatiza_lista_novedades() -> list[dict]:
+    """La lista de novedades lista para mandar: un renglón por correo.
+
+    Entra un correo si su renglón VIGENTE en alguna corrida (el último que se
+    dejó ahí) marcó la casilla aparte. Si alguien cambió el correo de una
+    corrida, el anterior deja de contar: casi siempre se cambia porque estaba
+    mal escrito. No entra quien está en automatiza_bajas, aunque después haya
+    vuelto a marcar la casilla en otra petición: la baja es para siempre.
+
+    Por correo queda el PRIMER consentimiento (fecha, texto, versión del aviso
+    y el contacto con que se firma su enlace de baja) y de dónde llegó."""
+    filas = ejecutar(
+        """SELECT c.id AS contacto_id, c.correo, c.creado, c.origen,
+                  c.recontacto_texto, c.aviso_version,
+                  r.utm_source, r.utm_medium, r.utm_campaign
+             FROM automatiza_contactos c
+             JOIN automatiza_corridas r ON r.id = c.corrida_id
+            WHERE c.recontacto
+              AND NOT EXISTS (SELECT 1 FROM automatiza_contactos d
+                               WHERE d.corrida_id = c.corrida_id AND d.id > c.id)
+              AND NOT EXISTS (SELECT 1 FROM automatiza_bajas b
+                               WHERE b.correo = lower(trim(c.correo)))
+            ORDER BY c.id""")
+    vistos: dict[str, dict] = {}
+    for f in filas:
+        correo = correo_normal(f["correo"])
+        if correo not in vistos:
+            vistos[correo] = {**f, "correo": correo}
+    return list(vistos.values())
+
+
+def automatiza_ya_enviado(campana: str, correo: str) -> bool:
+    filas = ejecutar("SELECT 1 AS si FROM automatiza_envios "
+                     "WHERE campana = :k AND correo = :c", {"k": campana, "c": correo_normal(correo)})
+    return bool(filas)
+
+
+def automatiza_anotar_envio(campana: str, correo: str, *, contacto_id: int | None,
+                            mensaje_id: str | None) -> None:
+    ejecutar("INSERT INTO automatiza_envios (campana, correo, contacto_id, mensaje_id) "
+             "VALUES (:k, :c, :i, :m) ON CONFLICT (campana, correo) DO NOTHING",
+             {"k": campana, "c": correo_normal(correo), "i": contacto_id, "m": mensaje_id})
 
 
 

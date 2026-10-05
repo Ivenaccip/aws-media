@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<!-- RAG·35 · lo que se ve después de pulsar «Sí, darme de baja», o cuando el
+     enlace no sirve. El servidor pone el título y el texto (server/app.py);
+     los dos pasan por el escape de server/aviso.py. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{baja_titulo}} · Irremplazables</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<link rel="stylesheet" href="/automatiza.css">
+</head>
+<body>
+<a class="saltar" href="#principal">Saltar al contenido</a>
+
+<header class="cabeza">
+  <a class="marca" href="/">Irremplazables</a>
+</header>
+
+<main id="principal">
+  <section class="tarjeta caja-720 bloque-20" aria-labelledby="baja-t">
+    <h1 id="baja-t" class="titulo-lg">{{baja_titulo}}</h1>
+    <p class="lead">{{baja_texto}}</p>
+    <p class="secundario">¿Dudas? Escríbenos a {{correo_privacidad}}.</p>
+    <p><a href="/">Volver al inicio</a></p>
+  </section>
+</main>
+</body>
+</html>

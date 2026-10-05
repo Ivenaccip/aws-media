@@ -61,6 +61,10 @@ CLAVES = [
     # (python -c "import secrets; print(secrets.token_hex(32))") y la pega en
     # su .env; sin ella la sección pública queda cerrada (falla cerrado).
     "AUTOMATIZA_SAL_IP",
+    # RAG·35 — firma los enlaces de baja de la lista de novedades. Se genera
+    # igual que la de IP y NO debe ser la misma: si una se filtra, la otra
+    # sigue sirviendo. Sin ella /automatiza/baja/… responde 503 (falla cerrado).
+    "AUTOMATIZA_SAL_BAJA",
     # M17 — importar videos por liga (actores de Apify, pricing.json §apify)
     "APIFY_TOKEN",
 ]
