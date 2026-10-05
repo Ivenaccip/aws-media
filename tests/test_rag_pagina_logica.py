@@ -280,11 +280,25 @@ def test_como_funciona_en_celular_es_un_dialogo():
 def test_la_huella_no_se_llama_cifrada():
     """Es un HMAC con una sal que tiene el responsable: no se descifra, pero
     con la sal la IP se recupera probando las 2^32 direcciones. «Cifrada»
-    promete algo que no es."""
-    for nombre in ("automatiza.html", "privacidad.html"):
-        texto = (RAIZ / "static" / nombre).read_text(encoding="utf-8")
-        assert "cifrad" not in texto.lower(), nombre
-        assert "Del código no se puede leer tu IP" not in texto
+    promete algo que no es.
+
+    /privacidad cubre también el Estudio (el texto de main, secciones 1 a 13),
+    que SÍ habla de cifrado, y con razón: la conexión HTTPS, los archivos en
+    S3 y las claves de API. Por eso la palabra se prohíbe donde se habla de
+    /automatiza —toda su página y toda su sección del aviso— y, en el resto
+    del aviso, en cualquier frase que nombre la huella."""
+    pagina = (RAIZ / "static" / "automatiza.html").read_text(encoding="utf-8")
+    assert "cifrad" not in pagina.lower()
+    aviso = (RAIZ / "static" / "privacidad.html").read_text(encoding="utf-8")
+    assert "Del código no se puede leer tu IP" not in pagina + aviso
+    seccion = re.search(r'<section class="parte" id="automatiza".*?</section>', aviso, flags=re.S)
+    assert seccion, "el aviso perdió la sección de /automatiza"
+    assert "huella" in seccion.group(0), "la sección de /automatiza ya no explica la huella"
+    assert "cifrad" not in seccion.group(0).lower()
+    for bloque in re.findall(r"<(?:p|li|dd)\b.*?</(?:p|li|dd)>", _sin_comentarios_html(aviso),
+                             flags=re.S):
+        if "huella" in bloque.lower():
+            assert "cifrad" not in bloque.lower(), bloque[:120]
 
 
 def test_el_simplificado_dice_lo_mismo_que_el_integral_del_correo():

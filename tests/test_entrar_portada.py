@@ -91,7 +91,9 @@ def test_entrar_existe(local):
 
 def test_las_tres_son_publicas_con_cognito(nube):
     # sin token: ninguna de las tres puede pedir sesión, o no habría por dónde entrar
-    for ruta in ("/", "/estudio/", "/entrar", "/callback.html", "/enlaces.js"):
+    # (y el aviso de privacidad y los términos se leen ANTES de tener cuenta)
+    for ruta in ("/", "/estudio/", "/entrar", "/callback.html", "/enlaces.js",
+                 "/privacidad", "/terminos", "/legal.css"):
         assert nube.get(ruta, follow_redirects=False).status_code == 200, ruta
 
 
@@ -137,6 +139,112 @@ def test_enlace_de_la_comunidad_se_esconde_si_esta_vacio():
 def test_enlace_de_la_comunidad_apunta_a_skool():
     js = (STATIC / "enlaces.js").read_text(encoding="utf-8")
     assert "comunidad: 'https://www.skool.com/irremplazables'" in js
+
+
+# ---------------------------------------------------------------------------
+# pie de contacto y páginas legales
+
+CORREO = 'href="mailto:hola@irremplazables.xyz"'
+
+
+def _pie(html: str) -> str:
+    m = re.search(r"<footer\b.*?</footer>", html, re.S)
+    return m.group(0) if m else ""
+
+
+def test_el_pie_lleva_el_correo_y_las_dos_paginas_legales():
+    # el contacto y los dos documentos se alcanzan sin sesión, desde las dos
+    # páginas que ve quien todavía no entra
+    for nombre, html in (("portada", _portada()), ("entrar", _entrar())):
+        pie = _pie(html)
+        for trozo in (CORREO, 'href="/privacidad"', 'href="/terminos"'):
+            assert trozo in pie, (nombre, trozo)
+
+
+def test_el_pie_no_le_quita_nada_a_la_portada():
+    # los «Entrar» siguen siendo dos y el pie no trae un tercero; sigue sin
+    # tocar la API; y el pie no lleva ámbar: el único es «Entrar a mi estudio»
+    assert _portada().count('href="/entrar"') == 2
+    assert 'href="/entrar"' not in _pie(_portada())
+    codigo = re.sub(r"<!--.*?-->", "", _portada(), flags=re.S)
+    for prohibido in ("auth.js", "monedero.js", "fetch(", "/api/"):
+        assert prohibido not in codigo, prohibido
+    for html in (_portada(), _entrar()):
+        reglas = re.findall(r"\.pie\b[^{]*\{[^}]*\}", html)
+        assert reglas and not any("ambar" in r for r in reglas), reglas
+        # área táctil de 44 px (docs/DISENO.md): el dibujo del enlace mide 13
+        enlace = [r for r in reglas if re.match(r"\.pie a\s*\{", r)]
+        assert enlace and "min-height: 44px" in enlace[0], reglas
+
+
+def test_entrar_dice_que_al_entrar_se_aceptan_los_terminos():
+    # los términos dicen «Los aceptas al entrar a tu cuenta»: /entrar lo tiene
+    # que decir junto al botón y con los dos documentos a un toque, no solo en
+    # el pie. Va dentro de la tarjeta, después del botón
+    m = re.search(r'<p class="acepta">.*?</p>', _entrar(), re.S)
+    assert m, "falta la línea de aceptación en /entrar"
+    linea = m.group(0)
+    assert "Al entrar aceptas" in linea
+    assert 'href="/terminos"' in linea and 'href="/privacidad"' in linea
+    puerta = _entrar().split('<div class="puerta">')[1].split("</main>")[0]
+    assert puerta.index('id="entrar"') < puerta.index(linea)
+
+
+LEGALES = ("/privacidad", "/terminos")
+
+
+@pytest.mark.parametrize("ruta", LEGALES)
+def test_las_paginas_legales_se_sirven_por_su_ruta(local, ruta):
+    # se piden por la ruta y no leyendo el archivo: lo que se prueba es lo que
+    # recibe el navegador
+    r = local.get(ruta)
+    assert r.status_code == 200, ruta
+    assert r.headers["cache-control"] == "no-cache", ruta
+    assert "text/html" in r.headers["content-type"], ruta
+    assert CORREO in _pie(r.text), ruta
+    assert 'href="/legal.css"' in r.text, ruta
+    # `curl -I` y los verificadores de enlaces preguntan con HEAD
+    assert local.head(ruta).status_code == 200, ruta
+
+
+@pytest.mark.parametrize("ruta", LEGALES)
+def test_las_paginas_legales_no_salen_con_pendientes(local, ruta):
+    # CANDADO: mientras al texto le falte un dato del dueño («[POR ESCRIBIR:
+    # …]»), este test falla y la página no puede llegar a producción. No se
+    # arregla relajándolo: se arregla escribiendo el dato. Los comentarios del
+    # HTML no cuentan (ahí sí se puede nombrar lo que ya no está).
+    html = re.sub(r"<!--.*?-->", "", local.get(ruta).text, flags=re.S)
+    for pendiente in ("{{", "Borrador", "[POR", "[VERIFICAR", "[ABOGADO"):
+        assert pendiente not in html, (ruta, pendiente)
+    # la lista de arriba es cerrada y un hueco con otra etiqueta se colaría; el
+    # texto legal no usa corchetes para nada más, así que no pasa ninguno
+    assert "[" not in html, (ruta, html[html.find("["):][:60])
+
+
+@pytest.mark.parametrize("ruta", LEGALES)
+def test_las_paginas_legales_no_nombran_un_producto_que_no_se_sirve(local, ruta):
+    # /automatiza es otro producto. Donde la app no tiene esa ruta (main, lo
+    # que corre en producción) los documentos no la pueden nombrar ni enlazar.
+    # Donde sí la tiene (dev) nombrarla es legítimo —los dos documentos le
+    # dedican su sección 14—, pero entonces cada enlace a ella tiene que llegar
+    # a una página que de verdad se sirve. Antes aquí se saltaba el test: una
+    # prueba que no corre en la rama donde se escribe el texto no vigila nada
+    html = re.sub(r"<!--.*?-->", "", local.get(ruta).text, flags=re.S)
+    if not any(getattr(r, "path", "") == "/automatiza" for r in local.app.routes):
+        assert "/automatiza" not in html, ruta
+        return
+    enlaces = set(re.findall(r'href="(/automatiza[^"#]*)', html))
+    assert enlaces, f"{ruta} nombra /automatiza pero no la enlaza"
+    for enlace in sorted(enlaces):
+        assert local.get(enlace).status_code == 200, (ruta, enlace)
+    # y la sección que la explica existe: el índice no apunta al vacío
+    assert 'href="#automatiza"' in html and 'id="automatiza"' in html, ruta
+
+
+def test_la_hoja_de_las_legales_se_sirve_como_las_demas(local):
+    r = local.get("/legal.css")
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "no-cache"
 
 
 # ---------------------------------------------------------------------------

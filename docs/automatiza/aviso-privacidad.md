@@ -1,5 +1,33 @@
 # Aviso de privacidad y términos de /automatiza · guía para el dueño (RAG·13)
 
+> **4-oct-2026 · esta guía describe el borrador del 29-sep, que ya no es el
+> texto vigente.** Con la bajada de main (PR #174) el aviso y los términos
+> pasaron a la versión `2026-10-04`:
+>
+> - `/privacidad` y `/terminos` son los de **todo Irremplazables**: secciones
+>   1 a 13, el Estudio (el texto que main publicó el 3-oct como `2026-10-03`);
+>   sección 14, /automatiza.
+> - El responsable es **Fundamentos AI LLC**, empresa de Estados Unidos
+>   (Delaware). El texto **ya no cita ley mexicana**: todo lo de «Qué pide la
+>   ley», los artículos, la autoridad y «Ley mexicana; tribunales» de abajo
+>   queda como historia del borrador, no como descripción de las páginas.
+> - Ya no hay caja de «Borrador» ni corchetes en el HTML: `DATOS` está lleno.
+> - El pop-up se llama «Resumen del aviso de privacidad» (antes
+>   «simplificado») y enlaza «el aviso de privacidad completo» (antes
+>   «integral»).
+>
+> **Sigue valiendo** la mecánica: los huecos de `server/aviso.py`, que
+> `AVISO_VERSION` se guarda con cada petición y cada correo, la huella por
+> versión en `tests/test_rag_paginas.py` y lo que dice «Diferencias que
+> encontré» sobre lo que guarda el código.
+>
+> **Sigue sin decidir** (el texto lo dice tal cual, sin prometer nada):
+> `plazo_peticion` y `plazo_correo` («un plazo que todavía no está fijado»:
+> ningún código borra corridas ni correos), `proveedor_correo` (ningún código
+> manda correos todavía) y la edad mínima de /automatiza (los términos no
+> dicen ninguna). Antes de encender /automatiza en producción (RAG·30) hay
+> que decidirlos, cambiar `DATOS` y el texto, y subir `AVISO_VERSION`.
+
 Fecha: 29-sep-2026 · Versión del texto: `2026-09-29-borrador`
 
 > **Esto no es asesoría legal.** Lo escribió un agente a partir del código del

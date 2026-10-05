@@ -7,9 +7,13 @@
   · la plantilla cruda (/automatiza.html…) no se ve: 302 a la ruta limpia;
   · robots.txt deja pasar lo público y no el enlace para volver.
 
-Las rutas se prueban con páginas de mentira en un directorio temporal: las
-de verdad las escribe otra tarjeta y su propio test las revisa; aquí solo se
-comprueba, si ya existen, que no piden huecos que no hay."""
+Las rutas se prueban con páginas de mentira en un directorio temporal. De las
+de verdad aquí se comprueba que no piden huecos que no hay, que caben en la
+CSP y —desde la bajada de main del 4-oct-2026— el marco del texto legal: quién
+responde, que no cite leyes de un país que no es el del responsable y que lo
+que solo vale para /automatiza no se salga de su sección. (Lo que ve el
+navegador en /privacidad y /terminos, con el candado de pendientes, lo prueba
+tests/test_entrar_portada.py: esas pruebas llegaron de main.)"""
 import hashlib
 import html
 import os
@@ -45,6 +49,23 @@ def test_datos_trae_lo_que_se_guarda_con_el_correo():
                   "plazo_correo", "proveedor_correo", "fecha_aviso"):
         assert aviso.DATOS[clave], clave
     assert all(isinstance(v, str) for v in aviso.DATOS.values())
+
+
+def test_datos_dice_quien_responde_y_ya_no_trae_huecos():
+    """Lo que decidió el dueño (3-oct-2026) y lo que main ya publica: si un
+    dato de aquí cambia, cambia también lo que dice producción."""
+    assert aviso.DATOS["responsable"] == "Fundamentos AI LLC"
+    assert aviso.DATOS["domicilio"] == ("2803 Philadelphia Pike, STE B #1531, "
+                                        "Claymont, DE 19703 US")
+    assert aviso.DATOS["correo_privacidad"] == "hola@irremplazables.xyz"
+    for clave, valor in aviso.DATOS.items():
+        # ni «[POR ESCRIBIR…]» ni ningún otro hueco entre corchetes
+        assert "[" not in valor and "POR DECIDIR" not in valor, clave
+    # la versión y la fecha que muestran las páginas van juntas
+    meses = ("enero febrero marzo abril mayo junio julio agosto septiembre "
+             "octubre noviembre diciembre").split()
+    a, m, d = (int(x) for x in aviso.AVISO_VERSION.split("-"))
+    assert aviso.DATOS["fecha_aviso"] == f"{d} de {meses[m - 1]} de {a}"
 
 
 def test_llenar_escapa_el_html():
@@ -118,8 +139,14 @@ def test_las_paginas_reales_caben_en_la_csp(nombre):
 # está no se edita: sería reescribir lo que aceptó alguien. (La de
 # «2026-09-29-borrador» se recalculó el mismo 29-sep al pasar el aviso a un
 # pop-up que se acepta antes de pedir: esa versión nunca se publicó.)
+#
+# «2026-10-04» es la bajada de main (PR #174): el aviso y los términos pasan a
+# ser los de TODO Irremplazables —el texto del Estudio que main publicó como
+# 2026-10-03, más la sección 14 de /automatiza—, con el responsable, el
+# domicilio y el contacto ya escritos y sin el marco legal del borrador.
 HUELLAS_AVISO = {
     "2026-09-29-borrador": "7c6700fa06e34f0b8f8db0c6e16c494b399981168fba858974303cd4e17f6827",
+    "2026-10-04": "bd841e9f4bce94fe2587c2bf068db23913133bc9a116c3d626fc17f9b313dbab",
 }
 
 
@@ -162,6 +189,103 @@ def test_la_huella_cambia_con_el_texto(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# el marco del texto legal (la bajada de main, 4-oct-2026)
+#
+# /privacidad y /terminos son los de TODO Irremplazables: secciones 1 a 13, el
+# Estudio (el texto de main); sección 14, /automatiza. El responsable es una
+# empresa de Estados Unidos y los términos se rigen por Delaware: así lo
+# decidió el dueño y así lo publica main.
+
+LEGALES = ("privacidad.html", "terminos.html")
+
+
+def _real(nombre: str) -> str:
+    """La página de verdad, ya llena y sin comentarios: lo que lee la gente."""
+    return re.sub(r"<!--.*?-->", "", aviso.renderizar(nombre), flags=re.S)
+
+
+def _parte_automatiza(pagina: str) -> str:
+    m = re.search(r'<section class="parte" id="automatiza".*?</section>', pagina, flags=re.S)
+    assert m, "falta la sección de /automatiza"
+    return m.group(0)
+
+
+@pytest.mark.parametrize("nombre", LEGALES)
+def test_las_legales_dicen_quien_responde_y_su_version(nombre):
+    texto = _texto_visible(_real(nombre))
+    for dato in ("Fundamentos AI LLC",
+                 "2803 Philadelphia Pike, STE B #1531, Claymont, DE 19703 US",
+                 "hola@irremplazables.xyz"):
+        assert dato in texto, (nombre, dato)
+    assert (f"Versión {aviso.AVISO_VERSION} · última actualización "
+            f"{aviso.DATOS['fecha_aviso']}") in texto
+
+
+def test_los_terminos_se_rigen_por_delaware():
+    texto = _texto_visible(_real("terminos.html"))
+    assert "se rigen por las leyes del estado de Delaware, Estados Unidos" in texto
+
+
+@pytest.mark.parametrize("nombre", PAGINAS)
+def test_el_texto_no_trae_restos_del_borrador_de_marco_mexicano(nombre):
+    """El borrador del 29-sep citaba la ley mexicana de datos, sus derechos
+    por su sigla, su autoridad y sus tribunales. Nada de eso es del
+    responsable: si vuelve, vuelve por una fusión mal resuelta."""
+    texto = _texto_visible(_real(nombre))
+    for resto in (r"\bLFPDPPP\b", r"\bARCO\b", r"\bINAI\b", r"\bPROFECO\b", r"Secretar[ií]a",
+                  r"M[eé]xic", r"Mexican", r"remisi[oó]n", r"\bencargados\b"):
+        assert not re.search(resto, texto), (nombre, resto)
+    for resto in ("aviso de privacidad integral", "aviso de privacidad simplificado",
+                  "borrador para revisión", "falta por escribir"):
+        assert resto not in texto.lower(), (nombre, resto)
+
+
+def test_cada_legal_tiene_sus_catorce_secciones_y_la_ultima_es_automatiza():
+    for nombre in LEGALES:
+        pagina = _real(nombre)
+        titulos = re.findall(r'<h2 id="[a-z-]+-t">(\d+)\. ', pagina)
+        assert titulos == [str(n) for n in range(1, 15)], (nombre, titulos)
+        assert '<h2 id="automatiza-t">14. /automatiza' in _parte_automatiza(pagina)
+        # el índice lleva las mismas catorce, y la de /automatiza se alcanza
+        indice = re.search(r'<nav class="indice".*?</nav>', pagina, flags=re.S).group(0)
+        assert len(re.findall(r'<li><a href="#', indice)) == 14, nombre
+        assert 'href="#automatiza"' in indice, nombre
+
+
+# Lo que es cierto de /automatiza y FALSO del Estudio, que sí tiene cuenta,
+# créditos y cookies de sesión. Fuera de la sección 14 cualquiera de estas
+# frases contradice al resto del documento.
+SOLO_DE_AUTOMATIZA = ("no necesitas cuenta", "no te pedimos tu nombre",
+                      "no pone cookies propias", "gratis")
+
+
+@pytest.mark.parametrize("nombre", LEGALES)
+def test_lo_que_solo_vale_para_automatiza_no_se_sale_de_su_seccion(nombre):
+    pagina = _real(nombre)
+    parte = _parte_automatiza(pagina)
+    fuera = _texto_visible(pagina.replace(parte, "")).lower()
+    for frase in SOLO_DE_AUTOMATIZA:
+        assert frase not in fuera, (nombre, frase)
+    # y dentro sí lo dice: la sección no se quedó sin lo suyo
+    assert "no necesitas cuenta" in _texto_visible(parte).lower(), nombre
+
+
+def test_el_aviso_no_promete_un_plazo_ni_un_proveedor_que_nadie_decidio():
+    """Los plazos de /automatiza (RAG·0) y su proveedor de envío (RAG·14)
+    siguen sin decidir y ningún código borra ni manda nada: el aviso lo dice
+    así. Cuando el dueño decida, cambia DATOS, este test y AVISO_VERSION."""
+    parte = _texto_visible(_parte_automatiza(_real("privacidad.html")))
+    sin_fijar = "un plazo que todavía no está fijado"
+    assert aviso.DATOS["plazo_peticion"] == aviso.DATOS["plazo_correo"] == sin_fijar
+    assert parte.count(f"Durante {sin_fijar}.") == 2
+    assert "no los borra por sí sola" in parte
+    assert "Todavía no hay un proveedor conectado" in parte
+    fuente = (RAIZ / "pipeline" / "db.py").read_text(encoding="utf-8")
+    assert not re.search(r"DELETE FROM\s+automatiza_", fuente), (
+        "ya hay código que borra corridas o correos: el aviso tiene que decir el plazo")
+
+
+# ---------------------------------------------------------------------------
 # las rutas (con páginas de mentira)
 
 @pytest.fixture
@@ -200,7 +324,8 @@ def test_las_tres_paginas_se_sirven_llenas_y_con_su_csp(cliente, ruta):
     assert "{{" not in r.text
     assert aviso.RECONTACTO_TEXTO in r.text
     assert f"0 / {publico.LARGO_MAXIMO}" in r.text
-    assert "[POR ESCRIBIR: nombre o razón social del responsable]" in r.text
+    # el hueco del responsable sale lleno con lo que dice DATOS, no crudo
+    assert "<p>Fundamentos AI LLC</p>" in r.text
 
 
 @pytest.mark.parametrize("host,se_indexa", [
@@ -292,6 +417,24 @@ def test_revalidar_con_etag_da_304(cliente):
     r2 = cliente.get("/automatiza", headers={"If-None-Match": etag})
     assert r2.status_code == 304 and r2.content == b""
     assert r2.headers["content-security-policy"] == CSP
+
+
+@pytest.mark.parametrize("ruta", ["/privacidad", "/terminos"])
+def test_las_legales_contestan_head_con_las_cabeceras_del_get(cliente, ruta):
+    """`curl -I` y los verificadores de enlaces preguntan con HEAD. En main
+    estas dos rutas lo contestan (FileResponse); aquí también, con las mismas
+    cabeceras que el GET —CSP incluida— y sin cuerpo."""
+    g = cliente.get(ruta)
+    h = cliente.head(ruta)
+    assert h.status_code == 200 and h.content == b""
+    _cabeceras_comunes(h)
+    assert h.headers["etag"] == g.headers["etag"]
+    assert h.headers["content-type"] == g.headers["content-type"]
+    assert h.headers["content-length"] == str(len(g.content))
+    assert h.headers.get("x-robots-tag") == g.headers.get("x-robots-tag")
+    # y revalida igual que el GET
+    r = cliente.head(ruta, headers={"If-None-Match": g.headers["etag"]})
+    assert r.status_code == 304 and r.content == b""
 
 
 def test_si_la_pagina_no_existe_es_404_no_500(cliente, paginas):
