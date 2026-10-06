@@ -1,15 +1,15 @@
 # /automatiza con testers — régimen TEMPORAL (RAG·29)
 
 Decisión del dueño, 5-oct-2026. Dura **una a dos semanas** (hasta ~19-oct), mientras se
-recupera información de los testers. Al terminar, se invierte: el mismo número pasa de
-abonarse a cobrarse.
+recupera información de los testers. Al terminar, se invierte: /automatiza pasa de abonar
+a cobrar (el número se decide con los datos de la prueba).
 
 ## Cómo funciona hoy
 
 - `/automatiza` vive **pública en dev**: `https://illyp2jbff.execute-api.us-east-1.amazonaws.com/automatiza`.
 - El dueño manda testers. Cada tester pide su flujo y **deja su correo**: el mismo con el que
   tiene cuenta en la plataforma de producción (main).
-- **No se cobra.** Al revés: cada **uso** abona **10 créditos** en su cuenta de producción.
+- **No se cobra.** Al revés: cada **uso** abona **20 créditos** en su cuenta de producción (6-oct: subió de 10 a 20; el costo medido de Claude por armado ronda los 9 créditos).
   - Cuenta como uso una corrida terminada (`listo` o `no_salio`) con correo. Las
     rechazadas por el filtro y las que siguen en curso no cuentan.
   - Vale el último correo que se dejó en esa corrida.
@@ -50,7 +50,7 @@ teclear PROD.
 1. Dejar de correr `tools/abonos_testers.py`. Hacer una última pasada para no dejar usos
    sin abonar.
 2. Pasar `/automatiza` a cobrar: `abono_tester_por_uso` deja de usarse y se agrega un
-   `cobro_por_uso` en `tools/tarifas.json` §`rag` (10, salvo que los datos digan otra cosa).
+   `cobro_por_uso` en `tools/tarifas.json` §`rag`. El número se decide con los datos de la prueba: el abono de 20 era incentivo, no la tarifa.
    Va junto con el cambio de RAG·29: términos aceptados al entrar a la plataforma y
    `/automatiza` dentro del Estudio, con la cuenta.
 3. Borrar `tools/abonos_testers.py`, sus tests y este documento, o dejarlos marcados como

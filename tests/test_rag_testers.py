@@ -22,7 +22,7 @@ def _uso(pid, correo="tester@y.com", dia="2026-10-06", estado="listo"):
 def test_la_tarifa_sale_de_tarifas_json():
     rag = json.loads((RAIZ / "tools" / "tarifas.json").read_text(encoding="utf-8"))["rag"]
     assert at.tarifa() == (rag["abono_tester_por_uso"], rag["abono_tester_max_por_dia"])
-    assert at.tarifa()[0] == 10
+    assert at.tarifa() == (20, 5)      # decisión del dueño, 6-oct
 
 
 def test_un_uso_por_corrida_con_su_referencia():

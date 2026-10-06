@@ -45,9 +45,9 @@
     "nota_ejemplo": "El ejemplo del día 1 que se enseña ANTES de encender no se cobra, y no se regenera: si la enciende, ese mismo ejemplo ES la publicación del primer día. Cuesta una imagen real (~$0.022 dólares), así que quien pide ejemplos y nunca enciende sale gratis — se aceptó a cambio de que nadie pague sin ver (decisión del dueño, 2026-09-18)."
   },
   "rag": {
-    "abono_tester_por_uso": 10,
+    "abono_tester_por_uso": 20,
     "abono_tester_max_por_dia": 5,
-    "nota": "RAG·29 (decisión del dueño, 5-oct-2026) — TEMPORAL, una a dos semanas: mientras se recupera información de los testers, /automatiza en dev NO cobra; al revés, cada uso de un tester ABONA abono_tester_por_uso créditos en la cuenta de producción que tiene ese correo, con un máximo de abono_tester_max_por_dia usos al día por cuenta. Lo abona tools/abonos_testers.py (lo corre el dueño). Los 10 salen de la corrida medida del 2-oct: ~$0.13 dólares de Claude por armado (pricing.json §rag) al piso de venta de $0.015 dólares por crédito ≈ 9. Al terminar la prueba, este mismo número pasa a ser lo que se COBRA por uso (ver docs/RAG_TESTERS.md)."
+    "nota": "RAG·29 (decisión del dueño, 5-oct-2026) — TEMPORAL, una a dos semanas: mientras se recupera información de los testers, /automatiza en dev NO cobra; al revés, cada uso de un tester ABONA abono_tester_por_uso créditos en la cuenta de producción que tiene ese correo, con un máximo de abono_tester_max_por_dia usos al día por cuenta. Lo abona tools/abonos_testers.py (lo corre el dueño). 6-oct: el dueño lo sube de 10 a 20 por uso como incentivo para los testers (máximo 5 usos al día = 100 créditos por cuenta al día). La referencia de costo es la corrida medida del 2-oct: ~$0.13 dólares de Claude por armado (pricing.json §rag) al piso de venta de $0.015 dólares por crédito ≈ 9 créditos. Lo que se COBRE por uso al terminar la prueba se decide aparte con los datos de los testers (ver docs/RAG_TESTERS.md)."
   },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [
