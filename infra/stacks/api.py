@@ -176,6 +176,27 @@ class ApiStack(Stack):
             ),
             removal_policy=cdk.RemovalPolicy.RETAIN,
         )
+        # Remitente propio SIN cambiar de servicio de envío. `UserPoolEmail`
+        # del CDK solo ofrece dos caminos: with_cognito (no deja poner el
+        # remitente) y with_ses (EmailSendingAccount=DEVELOPER, que con SES en
+        # el sandbox solo entrega a direcciones verificadas: dejaría de llegar
+        # la invitación a todo el mundo). El punto medio existe en Cognito pero
+        # no en el construct de alto nivel, así que va por el recurso L1:
+        # COGNITO_DEFAULT + la identidad de SES como remitente. Cognito necesita
+        # permiso sobre esa identidad (infra/ses-politica-remitente.json, fuera
+        # del CDK): sin él este update falla y CloudFormation lo deshace.
+        # Dos cosas medidas el 7-oct contra la API, que la guía no deja claras:
+        # con COGNITO_DEFAULT el campo From se rechaza («Cannot configure From
+        # email address for default email configuration»), y el SourceArn tiene
+        # que ser el de la DIRECCIÓN: con el del dominio responde «Invalid FROM
+        # email address ARN». El remitente es la dirección de ese ARN.
+        if e.remitente_correo:
+            pool.node.default_child.email_configuration = (
+                cognito.CfnUserPool.EmailConfigurationProperty(
+                    email_sending_account="COGNITO_DEFAULT",
+                    source_arn=(f"arn:aws:ses:{self.region}:{self.account}"
+                                f":identity/{e.remitente_correo}"),
+                ))
         origenes = ([e.dominio_publico] if e.dominio_publico else []) + [
             http_api.api_endpoint, "http://localhost:8011"]
         client = pool.add_client(

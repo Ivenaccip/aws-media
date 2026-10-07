@@ -52,6 +52,19 @@ class Entorno:
     maquina_producir: str
     # API Gateway (no es único, pero en la consola se distingue por él)
     api: str
+    # Quién firma los correos del pool (invitación, recuperar contraseña).
+    # None = el remitente de fábrica de Cognito, no-reply@verificationemail.com.
+    # La DIRECCIÓN tiene que estar verificada en SES por separado (no basta con
+    # el dominio: SES no admite envío delegado con una dirección que solo hereda
+    # la verificación) y llevar la política de infra/ses-politica-remitente.json.
+    # Las dos cosas viven fuera del CDK (las pone el dueño): sin ellas el deploy
+    # del pool falla.
+    # El pool sigue mandando con el correo integrado de Cognito: conserva el
+    # tope de 50 correos al día (que es de la CUENTA: lo comparten prod y dev).
+    # Dev usa la MISMA dirección porque es la única dirección verificada en SES
+    # (la identidad del dominio no sirve como SourceArn): es un remitente, no
+    # una liga, y el asunto de dev ya lleva «[dev] » delante.
+    remitente_correo: str | None
     # El nombre público del producto: callbacks, logout y la liga del correo de
     # invitación. None = el entorno no tiene nombre propio y se entra por el
     # host execute-api.
@@ -70,6 +83,7 @@ PROD = Entorno(
     ssm_usuarios="/media-ivenaccip/usuarios",
     maquina_producir="aws-media-producir",
     api="aws-media",
+    remitente_correo="hola@irremplazables.xyz",
     dominio_publico="https://irremplazables.xyz",
 )
 
@@ -84,5 +98,6 @@ DEV = Entorno(
     ssm_usuarios="/media-ivenaccip-dev/usuarios",
     maquina_producir="aws-media-producir-dev",
     api="aws-media-dev",
+    remitente_correo="hola@irremplazables.xyz",
     dominio_publico=None,
 )

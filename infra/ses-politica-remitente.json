@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CognitoEnviaComoIrremplazables",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "email.cognito-idp.amazonaws.com"
+      },
+      "Action": [
+        "SES:SendEmail",
+        "SES:SendRawEmail"
+      ],
+      "Resource": "arn:aws:ses:us-east-1:191241816158:identity/hola@irremplazables.xyz",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "191241816158"
+        },
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:cognito-idp:us-east-1:191241816158:userpool/*"
+        }
+      }
+    }
+  ]
+}
