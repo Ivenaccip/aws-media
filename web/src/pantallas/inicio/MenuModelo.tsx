@@ -27,15 +27,18 @@ export interface PropsMenuModelo {
   alElegir: (e: Eleccion) => void;
   /** Créditos del modelo (y calidad) en esta tarea. */
   precio: (id: string, calidad?: string) => number;
-  alCrear: () => void;
+  /** true si el pedido salió: el menú se cierra. false o nada: se queda abierto. */
+  alCrear: () => boolean | void;
   enviando: boolean;
+  /** Una línea bajo el precio (p. ej. lo que suma juntar varias imágenes). */
+  nota?: string;
 }
 
 /** El «desde»: lo más barato del modelo (con resolución, la más baja). */
 const desde = (m: Modelo, precio: PropsMenuModelo['precio']) =>
   Math.min(...(m.calidades ? m.calidades.map(c => precio(m.id, c.id)) : [precio(m.id)]));
 
-export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, enviando }: PropsMenuModelo) {
+export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, enviando, nota }: PropsMenuModelo) {
   const [abierto, setAbierto] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLButtonElement>(null);
@@ -253,10 +256,13 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
                   {ESTRELLA} {creditos} {SUFIJO[tarea]}
                 </span>
               </div>
+              {nota && <span className="-mt-1.5 text-xs text-secundario">{nota}</span>}
               <Boton
                 nivel="principal"
                 trabajando={enviando && 'Generando…'}
-                onClick={alCrear}
+                onClick={() => {
+                  if (alCrear() === true) setAbierto(false);
+                }}
                 className="mx-auto w-full min-[640px]:w-1/2"
               >
                 Crear <Icono nombre="enviar" />

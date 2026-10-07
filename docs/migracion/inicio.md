@@ -3,7 +3,7 @@
 `static/index.html` (servido en `/estudio/`) → `/estudio/inicio/`
 (`web/src/pantallas/inicio/`).
 
-El inicio **no cobra**: reparte. Tiene cuatro partes:
+El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b también pide lo que elige modelo (un video corto, crear o editar una imagen). Tiene cuatro partes:
 
 - **La caja** «¿Qué vamos a crear hoy?» lleva a la pantalla que cobra con el
   texto ya puesto.
@@ -51,13 +51,22 @@ con ese nombre exacto.
 |---|---|
 | `inicio.caja.arranca_en_el_clip_lo_mas_barato` | arranca en Video → «Un video corto» con su modelo de siempre (Veo 3.1 Lite), para quien no abra el menú (M25 · B); el chip de la tarea ya no lleva precio |
 | `inicio.caja.precios_de_tarifas_json` | las historias con el rango mín–máx de `video.por_duracion`; las tareas que eligen modelo (clip, imagen, editar) dicen «según el modelo» y su precio sale de `tarifas.json` §modelos; el test compara contra el mismo `tarifas.json` |
-| `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | clip → `/clip.html?brief=`; cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; imágenes → `/imagenes.html?prompt=` (y `&editar=1`); el texto va sin espacios de más |
+| `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | las tareas SIN modelo siguen llevando a su pantalla: cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; el texto va sin espacios de más. (Clip e imágenes ya no navegan: ver las filas de abajo) |
 | `inicio.caja.sin_texto_no_navega` | sin texto: el aviso junto a la caja, el foco vuelve a ella y no se navega |
 | `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco |
 | `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra |
 | `inicio.caja.cambiar_de_familia_elige_la_primera` | Imagen/Video (el riel) con `aria-pressed` y la primera opción de la familia |
 | `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s`, `video.imagen`) |
-| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; mientras la página navega dice «Generando…» y no acepta otro clic |
+| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; pide el clip a `/api/clip/generar` con `modelo`, sin navegar; el menú se cierra, el texto se vacía y se avisa dónde mirar |
+| `inicio.caja.el_servidor_decide_el_precio_y_un_error_se_dice` | un 402 (o cualquier error) se dice en la caja y el texto no se pierde; el cuerpo nunca trae créditos |
+| `inicio.caja.un_texto_vetado_no_se_pide` | la moderación (M13) corre antes de lo que cobra |
+| `inicio.caja.crear_una_imagen_se_pide_aqui` | `/api/imagenes` con `modelo`, estilo animado (el que traía la pantalla de imágenes) |
+| `inicio.caja.editar_pide_la_imagen_con_el_mas` | sin imagen no sale y dice cómo agregarla; con ella va a `/api/imagenes/editar` en modo `todo` con `modelo` |
+| `inicio.caja.el_mas_agrega_quita_y_respeta_el_tope` | el «+» solo existe en las tareas que usan imágenes; tope 3 (clip) o 1 (editar); un archivo que no sirve se rechaza con su motivo |
+| `inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas` | las fotos suben directo a S3 (`/api/clip/presign`) y el menú dice lo que suma juntarlas (tarifas.json `clip.componer_imagenes`) |
+| `inicio.caja.arrastrar_imagenes_a_la_caja_las_agrega` | arrastrar es un atajo del «+» |
+| `inicio.galeria.lo_recien_pedido_aparece_generando_y_se_relee` | mientras el servidor contesta hay una tarjeta «Generando…» al principio; al contestar, la lista se relee y la tarjeta local se va |
+| `inicio.galeria.usar_como_referencia_lleva_la_imagen_a_la_caja` | el visor de una imagen la devuelve a la caja, en «Un video corto» |
 | `inicio.caja.las_tareas_sin_modelo_no_traen_chip_de_modelo` | cuentos e historias no eligen modelo: su «Crear» está en la barra y lleva a `/crear.html` |
 | `inicio.caja.cada_tarea_recuerda_su_modelo` | clip, imagen y editar guardan su modelo por separado |
 | `inicio.menumodelo.niveles_precios_y_predeterminado` | los modelos por nivel y de menor a mayor precio, «Predeterminado» en el de siempre, «desde ✦ N» si hay resolución, y el pie con el nombre y el precio |
@@ -77,24 +86,26 @@ con ese nombre exacto.
 | `inicio.caminos.enlaces_a_shorts_y_metraje` | «Hacer shorts» → `/shorts.html`, «Subir metraje» → `/e1.html` |
 | `inicio.carga.sin_proyectos_avisa_y_reintentar` | sin la lista de proyectos: aviso con Reintentar, sin concluir que es alguien nuevo; al cargar bien el aviso se va |
 | `inicio.proyectos.cada_tarjeta_lleva_a_crear` | cada película abre `/crear.html?p=<id>`; su estado con icono si no está lista y «N de M slots» |
-| `inicio.videos.nuevo_video_aun_sin_slots` | UI·26: «Nuevo video» siempre (con los slots llenos todavía caben un clip y unos shorts), elige Videos y enfoca la caja. Reemplaza a `inicio.proyectos.nueva_pelicula_solo_si_hay_slot`; el tope de películas lo sigue cuidando el server (409 al crear) |
+| `inicio.galeria.los_slots_se_ven_junto_al_titulo_y_no_hay_tarjetas_de_nuevo` | R4b: «N de M slots» junto a «Mis creaciones»; ya no hay tarjetas «Nuevo video» ni «Nueva imagen» (la caja es la puerta). Reemplaza a `inicio.videos.nuevo_video_aun_sin_slots` |
 | `inicio.videos.mezcla_peliculas_clips_y_shorts_lo_mas_nuevo_primero` | UI·26: «Mis videos» junta películas, clips (`/api/clip`) y los proyectos del editor que pasaron por shorts, por fecha |
 | `inicio.videos.las_cuatro_etiquetas` | abajo va el tipo: `idea` y el viejo `auto` = Video largo, `investigacion` = Cuento, clip = Video corto, shorts = Shorts |
 | `inicio.videos.el_estado_solo_si_no_esta_listo` | «Cuento · en revisión — te espera», «Video corto · con error»; lo listo solo lleva la etiqueta y la fecha |
-| `inicio.videos.cada_uno_abre_su_pantalla` | película → `/crear.html?p=`, clip → `/clip.html?c=`, shorts → `/shorts.html?p=`; el clip listo enseña su primer cuadro, callado y fuera del tabulador |
+| `inicio.videos.cada_uno_abre_su_pantalla` | película → `/crear.html?p=`, clip → visor de la galería (video con controles y Descargar), shorts → `/shorts.html?p=`; el clip listo enseña su primer cuadro, callado y fuera del tabulador |
 | `inicio.videos.los_slots_cuentan_solo_peliculas` | «N de M slots» y archivar siguen siendo solo de películas |
-| `inicio.videos.las_ediciones_sin_shorts_no_entran` | un metraje subido solo para el corte sigue en «Mis ediciones» |
+| `inicio.galeria.las_ediciones_van_en_su_filtro_y_los_shorts_en_el_suyo` | las ediciones de metraje entran a la galería (filtro «Ediciones»); los shorts, en «Shorts». Reemplaza a `inicio.videos.las_ediciones_sin_shorts_no_entran` |
 | `inicio.videos.sin_los_clips_avisa_y_reintenta` | si `/api/clip` falla, las películas se ven y una línea ofrece reintentar |
 | `inicio.proyectos.miniatura_rota_cae_al_personaje_y_al_hueco` | portada rota → personaje → hueco, sin icono roto |
 | `inicio.proyectos.archivar_pide_confirmar` | archivar pide confirmación («No se borra nada…»); Cancelar no manda nada; al archivar pasa a «Proyectos archivados» |
 | `inicio.proyectos.no_se_ofrece_archivar_mientras_corre` | ni se ofrece con una tarea en curso (`preparando`, `produciendo`) |
 | `inicio.proyectos.error_al_archivar_dice_el_motivo` | el motivo del server (409) o «Sin conexión — intenta de nuevo.» |
 | `inicio.proyectos.restaurar_desde_archivados` | Restaurar lo devuelve a «Mis videos» |
-| `inicio.imagenes.cinco_y_ver_todas` | las 5 más nuevas; «Ver todas (N)» / «Ver menos» con `aria-expanded`, solo si hay más de 5 |
-| `inicio.imagenes.cada_una_abre_para_editar_y_la_rota_no_deja_icono` | `/imagenes.html?img=<nombre codificado>`, carga diferida, «Nueva imagen», y una rota no deja icono roto |
+| `inicio.galeria.doce_y_ver_mas` | se ven 12 tarjetas y «Ver más (N)» trae otras 12. Reemplaza a `inicio.imagenes.cinco_y_ver_todas` |
+| `inicio.imagenes.cada_una_abre_en_el_visor_y_la_rota_no_deja_icono` | una imagen abre un visor (Descargar, Editar → `/imagenes.html?img=<nombre codificado>`), carga diferida, y una rota no deja icono roto |
 | `inicio.imagenes.si_falla_la_lista_no_se_rompe` | sin `/api/imagenes` la sección no sale y el resto sí |
 | `inicio.ediciones.estado_y_enlace_a_e1` | cada edición abre `/e1.html?p=<codificado>` con su estado (M14) |
-| `inicio.listas.orden_videos_imagenes_ediciones` | el orden: videos → imágenes → ediciones |
+| `inicio.galeria.una_sola_galeria_lo_mas_nuevo_primero` | una sola sección «Mis creaciones» con todo mezclado, lo más nuevo primero. Reemplaza a `inicio.listas.orden_videos_imagenes_ediciones` |
+| `inicio.galeria.los_filtros_solo_ofrecen_lo_que_hay` | Todo, Películas, Videos cortos, Imágenes, Shorts y Ediciones, cada uno con su conteo; un filtro sin nada no sale |
+| `inicio.galeria.se_actualiza_sola_mientras_un_clip_se_genera` | mientras un video corto se genera, la lista se vuelve a pedir cada 5 s; al terminar, para |
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
 | `inicio.menu.entradas_y_grupos_en_orden` | las 7 entradas y sus destinos; Estudio de Contenido → Blotato → Publicidad Automática (MIX debajo de su requisito); nada dice «próximamente» |
 | `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar |
@@ -178,7 +189,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_los_rotulos_son_los_que_eligio_el_dueno` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` (los busca por rótulo) |
 | `test_los_chips_viejos_ya_no_estan` | `OPCIONES` en `logica.ts` no los tiene |
 | `test_las_imagenes_por_fin_tienen_puerta` | `inicio.caja.cambiar_de_familia_elige_la_primera` |
-| `test_el_clip_va_a_su_pantalla` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` |
+| `test_el_clip_va_a_su_pantalla` | `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` (el clip ya no navega: se pide en la caja) |
 | `test_las_etiquetas_internas_van_al_reves_de_lo_que_suenan` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` |
 | `test_el_inicio_manda_el_texto_con_el_nombre_que_espera_cada_pantalla` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` |
 | `test_lo_que_ya_esta_en_la_caja_no_se_repite_en_el_menu` | `inicio.menu.entradas_y_grupos_en_orden` |

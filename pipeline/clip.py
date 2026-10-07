@@ -33,7 +33,7 @@ import logging
 
 from langfuse import get_client, observe
 
-from . import fal
+from . import fal, modelos_ia
 from .config import load_prompt, settings
 from .llm import chat_json
 from .models import formato_de
@@ -122,7 +122,7 @@ async def componer(image_urls: list[str], prompt: str,
 
 @observe(name="clip_animar")
 async def animar(prompt: str, image_url: str | None = None,
-                 formato: str = "horizontal") -> str:
+                 formato: str = "horizontal", modelo: str | None = None) -> str:
     """La llamada a Veo. Con imagen es image-to-video; sin ella, el endpoint
     hermano de la misma familia, al mismo precio.
 
@@ -142,7 +142,10 @@ async def animar(prompt: str, image_url: str | None = None,
     # gente sube aquí.
     if image_url:
         args["image_url"] = image_url
-    app = settings.fal_veo if image_url else settings.fal_veo_t2v
+    # R4: el endpoint sale de la tabla de modelos. Los argumentos de arriba son
+    # los de la familia Veo; un modelo de otra familia trae su propio juego (se
+    # suma aquí junto con su fila en modelos_ia, y se prueba antes de activarlo).
+    app = modelos_ia.resolver("clip", modelo).endpoint_para(bool(image_url))
     ultimo = ""
     for intento in range(1, settings.clip_max_attempts + 1):
         try:
@@ -160,14 +163,24 @@ async def animar(prompt: str, image_url: str | None = None,
     raise ClipError(f"No se pudo generar el video: {ultimo[:200]}")
 
 
-def costo_usd(n_imagenes: int = 0) -> float:
+def costo_usd(n_imagenes: int = 0, modelo: str | None = None) -> float:
     """Lo que nos cuesta el clip, para dejarlo escrito junto al cobro.
 
     Los números salen de pricing.json vía pipeline.pricing — aquí no se
     hardcodea ninguno.
     """
-    from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, VEO_LITE_POR_SEGUNDO
-    total = DURACION_S * VEO_LITE_POR_SEGUNDO[(RESOLUCION, CON_AUDIO)]
+    from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, VEO_LITE_POR_SEGUNDO, costo_fal
+    m = modelos_ia.resolver("clip", modelo)
+    if m.id == "veo-lite":
+        total = DURACION_S * VEO_LITE_POR_SEGUNDO[(RESOLUCION, CON_AUDIO)]
+    else:
+        # un modelo registrado se cuesta por su endpoint exacto; sin costo
+        # conocido es un error, no un cero que parezca gratis
+        total = costo_fal(m.endpoint_para(False), {"duration": f"{DURACION_S}s",
+                                                   "resolution": RESOLUCION,
+                                                   "generate_audio": CON_AUDIO})
+        if total is None:
+            raise ClipError(f"Sin costo conocido para el modelo {m.id}")
     if int(n_imagenes) >= 2:
         total += GROK_EDIT_SALIDA + GROK_EDIT_ENTRADA * int(n_imagenes)
     return round(total, 4)
@@ -175,7 +188,7 @@ def costo_usd(n_imagenes: int = 0) -> float:
 
 @observe(name="clip")
 async def generar(texto: str, image_urls: list[str] | None = None,
-                  formato: str = "horizontal") -> dict:
+                  formato: str = "horizontal", modelo: str | None = None) -> dict:
     """El clip completo: prompt → (composición) → Veo. Lanza ClipError."""
     urls = list(image_urls or [])[:MAX_IMAGENES]
     texto = valida_texto(texto)
@@ -186,7 +199,7 @@ async def generar(texto: str, image_urls: list[str] | None = None,
         inicial = await componer(urls, plan["composicion"], formato)
         origen = "compuesta"
 
-    video = await animar(plan["video"], inicial, formato)
+    video = await animar(plan["video"], inicial, formato, modelo)
     get_client().update_current_span(
         output={"imagenes": len(urls), "origen_inicial": origen, "formato": formato})
     return {"video_url": video, "imagen_inicial": inicial, "origen_inicial": origen,

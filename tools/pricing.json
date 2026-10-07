@@ -51,7 +51,10 @@
     "grok_nota": "M23 · B (2026-09-18): la MISMA salida de $0.02 sirve para los DOS endpoints de la familia. `xai/grok-imagine-image/edit` (editar, con $0.002 más por cada imagen de referencia) y `xai/grok-imagine-image` (crear, sin referencias, leído ese día en su página: «Your request will cost $0.02 per image»). Por eso crear no necesita entrada propia: pipeline/pricing.py casa por «grok-imagine-image» y las referencias se cuentan de los argumentos. Medido el 18-sep en 8 llamadas reales: devuelve ~1 MP (1280x720, 1024x1024, 720x1280) en JPEG, 13-29 s.",
     "nano_banana_fal_usd_por_imagen": 0.04,
     "nano_banana_fal_nota": "HISTÓRICO desde el 2026-09-18: ningún cálculo lo usa ya. Las imágenes las hace Grok desde esa fecha, porque `fal-ai/nano-banana` es `gemini-2.5-flash-image` y Google lo apaga el 2026-10-02. El número queda para poder leer el histórico de Langfuse: fal cobraba $0.0398 por MP (verificado 2026-08-10 en docs/BROLL-RUTAS.md); a 1:1 (~1 MP) ≈ $0.04 dólares. Lo usaban M1 (personaje sin referencia) y g2 con GEN_BACKEND=fal.",
-    "eleven_v3_usd_por_1k_chars": 0.10,
+    "endpoints": {
+  "nota": "R4 (2026-10-07): costo de los endpoints del selector de modelo, POR NOMBRE EXACTO de endpoint de fal. pipeline/pricing.py ya no casa por trozo («veo3.1» in app), así que un endpoint que no esté aquí ni en las llaves de arriba da «sin costo conocido», nunca el de un modelo vecino. Una ficha por endpoint: {\"unidad\": \"imagen\", \"usd\": N, \"usd_referencia\": N, \"verified_on\": \"AAAA-MM-DD\"} o {\"unidad\": \"segundo\", \"usd_por_segundo\": {\"720p_con_audio\": N, \"720p_sin_audio\": N, ...}, \"verified_on\": \"AAAA-MM-DD\"}. El precio se lee en la página del modelo en fal el día de la prueba; sin fecha no se anota."
+ },
+ "eleven_v3_usd_por_1k_chars": 0.10,
     "source": "https://fal.ai/models/fal-ai/veo3.1/lite/image-to-video · https://fal.ai/models/fal-ai/veo3.1/lite · https://fal.ai/models/xai/grok-imagine-image/edit · https://fal.ai/models/xai/grok-imagine-image · https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3",
     "google": {
       "comment": "Backend GEN_BACKEND=google (Gemini API, popup g1/g2). Verificado 2026-08-24 en ai.google.dev/gemini-api/docs/pricing. Veo en Gemini incluye audio (se descarta en el mux: manda el TTS) y solo cobra si el video se genera con éxito.",
