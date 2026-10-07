@@ -60,6 +60,121 @@ venv/Scripts/python tools/usuarios.py reactivar correo@ejemplo.com
 - `adoptar correo --de piloto` migra proyectos/saldo/movimientos de un id
   viejo al usuario real (se usó una vez para el dueño; raro necesitarlo).
 
+## El remitente de los correos (`hola@irremplazables.xyz`)
+
+Todos los correos del pool —invitación, reenvío, recuperar contraseña— salen
+firmados por `hola@irremplazables.xyz` y no por `no-reply@verificationemail.com`.
+El envío sigue siendo el **integrado de Cognito** (`COGNITO_DEFAULT`), no el SES
+de la cuenta, así que:
+
+- **El tope sigue siendo 50 correos al día, y es de la CUENTA**, no del pool:
+  lo comparten prod y dev, y se reinicia a las 09:00 UTC (03:00 hora centro).
+  Una invitación de prueba en dev le quita un correo a la tanda de ese día.
+- No depende de que SES salga del sandbox. El día que salga, pasar a
+  `UserPoolEmail.with_ses(...)` es otro cambio, con su PR; hasta entonces
+  `DEVELOPER` dejaría sin invitación a todo el mundo (solo entrega a
+  direcciones verificadas) y `tests/test_entornos.py` lo impide.
+
+Son tres piezas, y solo una vive en el CDK:
+
+Orden: la 2 y la 3 van ANTES de desplegar la 1. Al revés, el update del pool
+falla (`InvalidEmailRoleAccessPolicyException`) y CloudFormation lo deshace.
+Las dos quedaron hechas el 7-oct-2026; los comandos están por si hay que
+repetirlas, y se corren desde la raíz del repo (`file://` es relativo a donde
+estés, no a `infra\`).
+
+1. `remitente_correo` en `infra/entornos.py` → `EmailConfiguration` del pool
+   (`infra/stacks/api.py`). Con el correo integrado, Cognito pide el ARN de
+   la **dirección** y rechaza el campo `From`; el remitente es esa dirección.
+2. **La dirección verificada en SES por separado.** No basta con tener
+   verificado el dominio: SES no admite envío delegado (que es lo que hace
+   Cognito aquí) con una dirección que solo hereda la verificación. Se crea
+   una vez y se confirma con la liga que AWS manda a ese buzón:
+
+```bash
+aws sesv2 create-email-identity --region us-east-1 --email-identity hola@irremplazables.xyz
+```
+
+3. **La política de envío de esa dirección**, en
+   `infra/ses-politica-remitente.json`. Autoriza a los pools de esta cuenta a
+   firmar como ella. La pone el dueño, una vez:
+
+```bash
+aws sesv2 create-email-identity-policy --region us-east-1 --email-identity hola@irremplazables.xyz --policy-name cognito-remitente --policy file://infra/ses-politica-remitente.json
+```
+
+Para cambiarla, el mismo comando con `update-email-identity-policy`. Para ver
+cómo está la identidad (verificación, política y DKIM):
+
+```bash
+aws sesv2 get-email-identity --region us-east-1 --email-identity hola@irremplazables.xyz
+```
+
+Después de cada deploy que toque el pool (prod `us-east-1_WyPvxnj1V`, dev
+`us-east-1_XChDzHHjw`):
+
+```bash
+aws cognito-idp describe-user-pool --region us-east-1 --user-pool-id us-east-1_WyPvxnj1V --query UserPool.EmailConfiguration
+```
+
+Tiene que traer `EmailSendingAccount: COGNITO_DEFAULT` y el `SourceArn` de la
+dirección. Y la prueba que cuenta es un correo real: una invitación o un
+«¿Olvidaste tu contraseña?» que llegue de `hola@irremplazables.xyz`.
+
+El buzón `hola@irremplazables.xyz` tiene que existir de verdad (hoy es una
+regla de Cloudflare Email Routing): ahí llegan las respuestas de los
+invitados y la liga de verificación si algún día hay que repetirla.
+
+### Lo que NO se toca mientras el pool firme con la dirección
+
+Ninguna de estas cosas hace fallar un deploy en el momento: se nota cuando el
+correo deja de llegar.
+
+**Dejan al pool sin poder mandar**, y hacen fallar el siguiente deploy que
+toque el pool (al actualizarlo, Cognito vuelve a comprobar el permiso; sin la
+política contesta `InvalidEmailRoleAccessPolicyException`, medido el 7-oct):
+
+- Borrar la identidad `hola@irremplazables.xyz` o su política
+  `cognito-remitente` en SES. Quitar la política **no** devuelve el remitente
+  de fábrica: el pool sigue apuntando a la identidad.
+- Ponerle a esa identidad un *configuration set* por defecto: según la guía de
+  SES no hay envío delegado sobre una identidad que lo tenga (no medido aquí).
+
+**No cortan el envío, pero el correo sale sin la firma del dominio** y lo más
+probable es que caiga en spam:
+
+- Apagarle la firma DKIM a la dirección (hoy hereda la del dominio).
+- Borrar la identidad del dominio `irremplazables.xyz`, o en Cloudflare los
+  tres CNAME de `_domainkey`.
+
+**Y no se cambia el correo del pool desde la consola ni con `aws cognito-idp
+update-user-pool`:** ese comando devuelve a su valor de fábrica todo lo que no
+se le pase (la plantilla de invitación, la protección de borrado y
+`AllowAdminCreateUserOnly`, o sea, abre el auto-registro).
+
+### Volver al remitente de fábrica
+
+Primero el pool, y la política se queda puesta (sola no hace nada). El
+remitente NO viaja en la imagen: sale de `infra/entornos.py` del árbol desde
+el que despliegas, así que fijar un `IMAGE_TAG` viejo no lo quita.
+
+1. `remitente_correo=None` en el entorno (`PROD`, `DEV` o los dos) de
+   `infra/entornos.py`.
+2. En `tests/test_entornos.py`, el cambio «a sabiendas» que pide su mensaje:
+   `test_el_pool_de_prod_firma_…` fija el remitente de prod y falla. El CI lo
+   corre antes del build: sin tocarlo, ese commit no publica imagen.
+3. Desplegar el stack del API de ese entorno con la imagen que ya corre.
+
+Para producción con prisa, sin esperar un PR: desplegar el ÁRBOL del commit de
+`main` anterior al cambio (`git checkout --detach` con su sha), no solo su
+imagen, con el `IMAGE_TAG` de la imagen que corre en ese momento. La receta
+de «Desplegar UN commit concreto» sola contesta `(no changes)` y el pool no
+se mueve. Después se vuelve a `main` y se hace el PR con calma.
+
+Se comprueba con el `describe-user-pool` de arriba: tiene que quedar solo
+`EmailSendingAccount: COGNITO_DEFAULT`, sin `SourceArn`. Esta vuelta atrás se
+ensaya en dev antes de confiar en ella para prod.
+
 ## Créditos (`tools/creditos.py`)
 
 `--user` acepta el **correo**: el tool lo resuelve al sub de Cognito (el
@@ -685,6 +800,9 @@ ACM, y ACM **lo relee para renovar**. El certificado vence el **2027-04-08** y
 la renovación arranca 45 días antes: son dos ciclos al año, no uno. Borrar ese
 registro no rompe nada hoy y rompe todo en medio año, cuando nadie se acuerde
 de este trabajo.
+
+Tampoco los tres CNAME de `_domainkey` de esa misma zona: son la firma DKIM
+con la que salen los correos del pool (ver «El remitente de los correos»).
 
 ### La trampa que se cobró media hora el día del cambio
 
