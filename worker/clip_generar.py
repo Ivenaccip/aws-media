@@ -47,7 +47,8 @@ async def _correr(doc: dict, tmp: Path) -> dict:
         urls.append(await fal.subir_archivo(destino))
 
     res = await clip.generar(doc.get("texto", ""), urls,
-                             doc.get("formato") or "horizontal")
+                             doc.get("formato") or "horizontal",
+                             doc.get("modelo") or None)
 
     # El enlace que devuelve fal caduca: la copia que se queda es la nuestra.
     local = tmp / "clip.mp4"
@@ -81,7 +82,7 @@ def generar(user_id: str, clip_id: str) -> None:
                  len(doc.get("imagenes") or []), res["origen_inicial"])
 
         if db.backend() == "postgres":
-            usd = clip.costo_usd(len(doc.get("imagenes") or []))
+            usd = clip.costo_usd(len(doc.get("imagenes") or []), doc.get("modelo") or None)
             try:
                 db.ejecutar(
                     """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd)

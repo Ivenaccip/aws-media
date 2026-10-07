@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import fal
+from . import fal, modelos_ia
 from .config import settings
 from .models import formato_de
 
 
 async def imagen_fal(prompt: str, destino: Path, referencia: Path | None = None,
-                     meta: dict | None = None, aspecto: str | None = None) -> str:
+                     meta: dict | None = None, aspecto: str | None = None,
+                     modelo: str | None = None) -> str:
     """Una imagen en fal — texto puro, o edición si hay referencia. Descarga a
     `destino` y devuelve la URL en fal (aguas abajo el pipeline referencia por
     URL).
@@ -35,9 +36,9 @@ async def imagen_fal(prompt: str, destino: Path, referencia: Path | None = None,
     """
     args: dict = {"prompt": prompt, "num_images": 1,
                   "aspect_ratio": aspecto or "1:1"}
-    app = settings.fal_imagen
+    # R4: el endpoint sale de la tabla de modelos (sin `modelo`, el de siempre)
+    app = modelos_ia.resolver("imagen", modelo).endpoint_para(referencia is not None)
     if referencia is not None:
-        app = settings.fal_imagen_edit
         args["image_urls"] = [await fal.subir_archivo(referencia)]
     res = await fal.llamar(app, args, timeout_s=settings.grok_timeout_s,
                            nombre="imagen", meta=meta or {})
@@ -49,7 +50,7 @@ async def imagen_fal(prompt: str, destino: Path, referencia: Path | None = None,
 
 
 async def imagen_pincel(prompt: str, imagen: Path, marcada: Path, destino: Path,
-                        meta: dict | None = None) -> str:
+                        meta: dict | None = None, modelo: str | None = None) -> str:
     """«Editor de imágenes» del sidebar (decisión del usuario 2026-09-08: el
     resultado de Flux Fill no convenció). Recibe la imagen original y una
     copia con la zona a cambiar resaltada (la pinta el front); la instrucción
@@ -71,7 +72,7 @@ async def imagen_pincel(prompt: str, imagen: Path, marcada: Path, destino: Path,
         "image_urls": [await fal.subir_archivo(imagen), await fal.subir_archivo(marcada)],
         "num_images": 1,
     }
-    res = await fal.llamar(settings.fal_imagen_edit, args, timeout_s=settings.grok_timeout_s,
+    res = await fal.llamar(modelos_ia.resolver("editar", modelo).endpoint, args, timeout_s=settings.grok_timeout_s,
                            nombre="imagen_pincel", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")
     if not url:
@@ -81,7 +82,7 @@ async def imagen_pincel(prompt: str, imagen: Path, marcada: Path, destino: Path,
 
 
 async def imagen_transformar(prompt: str, imagen: Path, destino: Path,
-                             meta: dict | None = None) -> str:
+                             meta: dict | None = None, modelo: str | None = None) -> str:
     """El otro modo del editor: cambiar la imagen ENTERA, sin zona pintada.
 
     `imagen_pincel` le ordena al modelo «keep every other part pixel-identical»,
@@ -106,7 +107,7 @@ async def imagen_transformar(prompt: str, imagen: Path, destino: Path,
         "image_urls": [await fal.subir_archivo(imagen)],
         "num_images": 1,
     }
-    res = await fal.llamar(settings.fal_imagen_edit, args, timeout_s=settings.grok_timeout_s,
+    res = await fal.llamar(modelos_ia.resolver("editar", modelo).endpoint, args, timeout_s=settings.grok_timeout_s,
                            nombre="imagen_transformar", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")
     if not url:

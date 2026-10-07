@@ -31,7 +31,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from pipeline import clip, creditos, db, jobs, media_sync
+from pipeline import clip, creditos, db, jobs, media_sync, modelos_ia
 
 router = APIRouter(prefix="/api/clip")
 
@@ -119,6 +119,8 @@ class PedidoClip(BaseModel):
     # pedido para que la fila del registro de clics quede completa.
     puerta: str = ""
     desplegado: bool = False
+    # R4: el modelo elegido en la caja del inicio. Vacío = el predeterminado.
+    modelo: str = ""
 
 
 @router.get("/config")
@@ -166,6 +168,11 @@ def generar(pedido: PedidoClip):
         raise HTTPException(422, f"formato desconocido: {pedido.formato!r}")
     if len(pedido.imagenes) > clip.MAX_IMAGENES:
         raise HTTPException(422, f"Como mucho {clip.MAX_IMAGENES} imágenes por clip")
+    try:
+        modelo = modelos_ia.resolver("clip", pedido.modelo).id
+        creditos.costo_modelo("clip", modelo)       # sin tarifa no se ofrece
+    except (modelos_ia.ModeloDesconocido, KeyError):
+        raise HTTPException(422, f"Ese modelo no está disponible: {pedido.modelo!r}")
     # las keys las manda el navegador: sin esto, cualquiera pediría la de otro
     propio = f"{_prefijo(user)}subidas/"
     for key in pedido.imagenes:
@@ -178,7 +185,7 @@ def generar(pedido: PedidoClip):
         raise HTTPException(409, f"Ya tienes {MAX_EN_MARCHA} clips generándose — "
                                  "espera a que terminen.")
 
-    n = creditos.costo_clip(len(pedido.imagenes))
+    n = creditos.costo_clip(len(pedido.imagenes), modelo)
     clip_id = ("clip-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                + "-" + uuid4().hex[:6])
     if creditos.activo():
@@ -187,7 +194,7 @@ def generar(pedido: PedidoClip):
         except creditos.SinSaldo as e:
             raise HTTPException(402, str(e))
     doc = {"estado": "generando", "inicio": _ahora(), "creditos": n,
-           "texto": texto, "formato": pedido.formato,
+           "modelo": modelo, "texto": texto, "formato": pedido.formato,
            "imagenes": list(pedido.imagenes),
            "segundos": clip.DURACION_S}
     media_sync.escribir_texto(_key_doc(user, clip_id),

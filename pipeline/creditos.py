@@ -62,6 +62,10 @@ CLIP_COMPONER_CR = 2
 # M23 · D — MIX, publicidad automática (fallback espejo de tarifas.json §mix)
 MIX_POR_PUBLICACION_CR = 5
 
+# R4 — créditos por modelo elegido (tarifas.json §modelos). Sin fallback a
+# propósito: un modelo sin número aquí NO se puede pedir.
+MODELOS_CR: dict[str, dict[str, int]] = {}
+
 def _tabla_de(crudo: dict) -> dict[int, int]:
     """§video.por_duracion → {segundos: total}. Se queda solo con lo que el
     pipeline sabe producir: una llave fuera del rango se cobraría con su precio y
@@ -102,6 +106,10 @@ try:
     CLIP_COMPONER_CR = _c.get("componer_imagenes", CLIP_COMPONER_CR)
     MIX_POR_PUBLICACION_CR = _t.get("mix", {}).get(
         "por_publicacion", MIX_POR_PUBLICACION_CR)
+    MODELOS_CR = {tarea: {m: int(cr) for m, cr in tabla.items()
+                          if isinstance(cr, int) and not isinstance(cr, bool)}
+                  for tarea, tabla in (_t.get("modelos") or {}).items()
+                  if isinstance(tabla, dict)}
 except (FileNotFoundError, KeyError, ValueError, TypeError):
     pass  # fallback: tarifa de arriba (2026-09-02); una llave mal escrita no tumba la API
 
@@ -168,6 +176,13 @@ def costo_imagen() -> int:
     return IMAGEN_CR
 
 
+def costo_modelo(tarea: str, modelo_id: str) -> int:
+    """R4: lo que cuesta la tarea con el modelo elegido (tarifas.json §modelos).
+
+    Levanta KeyError si el modelo no tiene número: no se inventa una tarifa."""
+    return MODELOS_CR[tarea][modelo_id]
+
+
 def costo_shorts_analizar(duracion_s: float, con_transcript: bool) -> int:
     """M8: análisis de candidatos (LLM) + transcripción si el proyecto no trae
     canónico — 2 cr por cada 5 min empezados (cubre AssemblyAI de pricing.json)."""
@@ -222,14 +237,18 @@ def costo_competencia(n_cuentas: int) -> int:
     return COMPETENCIA_POR_CUENTA_CR * max(0, int(n_cuentas))
 
 
-def costo_clip(n_imagenes: int = 0) -> int:
+def costo_clip(n_imagenes: int = 0, modelo: str | None = None) -> int:
     """M25 A/F: el clip de 8 segundos con audio — una sola llamada a Veo.
 
     Tarifa plana (no por segundo: la duración es fija). El extra de componer
     solo aparece con DOS o TRES imágenes, que es cuando hay que juntarlas con
     Grok antes de animar: con cero es text-to-video y con una se anima directo,
-    y en ninguno de esos casos se paga Grok. El usuario paga lo que usa."""
-    return CLIP_CR + (CLIP_COMPONER_CR if int(n_imagenes) >= 2 else 0)
+    y en ninguno de esos casos se paga Grok. El usuario paga lo que usa.
+
+    R4: con `modelo` la base sale de §modelos.clip; sin él (o con el
+    predeterminado) sigue siendo §clip.video_8s, que dice lo mismo."""
+    base = CLIP_CR if not modelo else costo_modelo("clip", modelo)
+    return base + (CLIP_COMPONER_CR if int(n_imagenes) >= 2 else 0)
 
 
 def costo_shorts_render(n_shorts: int) -> int:

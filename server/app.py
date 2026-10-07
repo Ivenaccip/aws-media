@@ -300,6 +300,7 @@ class PedidoImagen(BaseModel):
     estilo: str = "animated"
     estilo_custom: str = ""
     formato: str = ""
+    modelo: str = ""     # R4: vacío = el predeterminado
 
 
 # M23 — los formatos de la herramienta de imágenes. Tabla PROPIA, y no la
@@ -307,6 +308,21 @@ class PedidoImagen(BaseModel):
 # tests la fijan. Una imagen suelta sí puede ser cuadrada. Sin formato se
 # queda en 1:1, que es lo que ha salido siempre.
 ASPECTOS_IMAGEN = {"horizontal": "16:9", "vertical": "9:16", "cuadrado": "1:1"}
+
+
+def _modelo_imagen(tarea: str, pedido: str) -> tuple[str | None, int]:
+    """R4: el modelo pedido y sus créditos, validados en el servidor. Sin
+    `modelo` todo sigue como siempre (tarifa de imagen, modelo predeterminado);
+    con uno, o está en la tabla y trae tarifa en tarifas.json §modelos, o 422."""
+    pedido = (pedido or "").strip()
+    if not pedido:
+        return None, creditos.costo_imagen()
+    from pipeline import modelos_ia
+    try:
+        m = modelos_ia.resolver(tarea, pedido)
+        return m.id, creditos.costo_modelo(tarea, m.id)
+    except (modelos_ia.ModeloDesconocido, KeyError):
+        raise HTTPException(422, f"Ese modelo no está disponible: {pedido!r}")
 
 
 @app.post("/api/imagenes")
@@ -321,7 +337,7 @@ async def crear_imagen(body: PedidoImagen):
     aspecto = ASPECTOS_IMAGEN[body.formato or "cuadrado"]
     estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo == "custom"
                              else "animated", body.estilo_custom or None)
-    costo = creditos.costo_imagen()
+    modelo, costo = _modelo_imagen("imagen", body.modelo)
     if creditos.activo():
         try:
             creditos.cobrar(costo, "imagen:estudio")
@@ -332,7 +348,8 @@ async def crear_imagen(body: PedidoImagen):
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
         await media_fal.imagen_fal(f"{prompt}. {estilo.prompt}. No text, no watermark.",
-                                   destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
+                                   destino, meta={"imagen_estudio": nombre}, aspecto=aspecto,
+                                   modelo=modelo)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
@@ -347,7 +364,8 @@ async def crear_imagen(body: PedidoImagen):
 async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                         marcada: UploadFile | None = File(None),
                         modo: str = Form("pincel"),
-                        estilo: str = Form(""), estilo_custom: str = Form("")):
+                        estilo: str = Form(""), estilo_custom: str = Form(""),
+                        modelo: str = Form("")):
     """M15 — «Editor de imágenes». Misma tarifa de imagen.
 
     Dos modos, porque el editor solo sabía hacer uno y los testers pedían el
@@ -385,7 +403,7 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                                  "transformar toda la imagen")
     if len(datos_img) > 15 * 1024 * 1024:
         raise HTTPException(422, "La imagen es muy grande (máximo 15 MB)")
-    costo = creditos.costo_imagen()
+    modelo, costo = _modelo_imagen("editar", modelo)
     if creditos.activo():
         try:
             creditos.cobrar(costo, "imagen:editor")
@@ -403,10 +421,12 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                 f_marca = Path(td) / "marcada.jpg"
                 f_marca.write_bytes(datos_marca)
                 await media_fal.imagen_pincel(prompt, f_img, f_marca, destino,
-                                              meta={"imagen_editor": nombre})
+                                              meta={"imagen_editor": nombre},
+                                              modelo=modelo)
             else:
                 await media_fal.imagen_transformar(prompt, f_img, destino,
-                                                   meta={"imagen_editor": nombre})
+                                                   meta={"imagen_editor": nombre},
+                                                   modelo=modelo)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
