@@ -31,7 +31,7 @@ import {
   type Imagen,
   type Proyecto,
 } from './logica';
-import { Galeria } from './Galeria';
+import { Galeria, type Pendiente } from './Galeria';
 
 interface Listas {
   proyectos: Proyecto[];
@@ -70,6 +70,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
+  // lo que se pidió desde la caja y todavía no llega a la lista
+  const [pendientes, setPendientes] = useState<Pendiente[]>([]);
 
   const cargar = useCallback(async () => {
     const [ps, sl, im, ed, cl] = await Promise.allSettled([
@@ -130,6 +132,18 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     return () => clearInterval(t);
   }, [hayGenerando, cargar]);
 
+  // «Usar como referencia» del visor: la imagen vuelve a la caja, lista para animarla
+  async function usarComoReferencia(im: Imagen) {
+    try {
+      const r = await fetch(im.url);
+      if (!r.ok) throw new Error('no se pudo traer');
+      const blob = await r.blob();
+      caja.current?.referencia(new File([blob], im.nombre, { type: blob.type || 'image/jpeg' }));
+    } catch {
+      setAviso('No pudimos traer esa imagen — inténtalo de nuevo.');
+    }
+  }
+
   async function accion(p: Proyecto, verbo: 'archivar' | 'desarchivar') {
     try {
       await (verbo === 'archivar' ? archivar(p.id) : desarchivar(p.id));
@@ -167,7 +181,15 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
         </aside>
 
         <main className="min-w-0">
-          <Caja ref={caja} ir={ir} />
+          <Caja
+            ref={caja}
+            ir={ir}
+            alPedir={p => setPendientes(l => [p, ...l])}
+            alTerminar={clave => {
+              // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va
+              void cargar().finally(() => setPendientes(l => l.filter(p => p.clave !== clave)));
+            }}
+          />
 
           {falloCarga && (
             <div className="mb-6">
@@ -196,8 +218,10 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           {listas && !nuevo && (
             <Galeria
               creaciones={creaciones(listas.proyectos, listas.clips, listas.ediciones, listas.imagenes)}
+              pendientes={pendientes}
               slots={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}
               alArchivar={setAArchivar}
+              alUsarReferencia={usarComoReferencia}
             />
           )}
           {listas && !nuevo && listas.clips === null && (

@@ -3,7 +3,7 @@
 `static/index.html` (servido en `/estudio/`) → `/estudio/inicio/`
 (`web/src/pantallas/inicio/`).
 
-El inicio **no cobra**: reparte. Tiene cuatro partes:
+El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b también pide lo que elige modelo (un video corto, crear o editar una imagen). Tiene cuatro partes:
 
 - **La caja** «¿Qué vamos a crear hoy?» lleva a la pantalla que cobra con el
   texto ya puesto.
@@ -51,13 +51,22 @@ con ese nombre exacto.
 |---|---|
 | `inicio.caja.arranca_en_el_clip_lo_mas_barato` | arranca en Video → «Un video corto» con su modelo de siempre (Veo 3.1 Lite), para quien no abra el menú (M25 · B); el chip de la tarea ya no lleva precio |
 | `inicio.caja.precios_de_tarifas_json` | las historias con el rango mín–máx de `video.por_duracion`; las tareas que eligen modelo (clip, imagen, editar) dicen «según el modelo» y su precio sale de `tarifas.json` §modelos; el test compara contra el mismo `tarifas.json` |
-| `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | clip → `/clip.html?brief=`; cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; imágenes → `/imagenes.html?prompt=` (y `&editar=1`); el texto va sin espacios de más |
+| `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | las tareas SIN modelo siguen llevando a su pantalla: cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; el texto va sin espacios de más. (Clip e imágenes ya no navegan: ver las filas de abajo) |
 | `inicio.caja.sin_texto_no_navega` | sin texto: el aviso junto a la caja, el foco vuelve a ella y no se navega |
 | `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco |
 | `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra |
 | `inicio.caja.cambiar_de_familia_elige_la_primera` | Imagen/Video (el riel) con `aria-pressed` y la primera opción de la familia |
 | `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s`, `video.imagen`) |
-| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; mientras la página navega dice «Generando…» y no acepta otro clic |
+| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; pide el clip a `/api/clip/generar` con `modelo`, sin navegar; el menú se cierra, el texto se vacía y se avisa dónde mirar |
+| `inicio.caja.el_servidor_decide_el_precio_y_un_error_se_dice` | un 402 (o cualquier error) se dice en la caja y el texto no se pierde; el cuerpo nunca trae créditos |
+| `inicio.caja.un_texto_vetado_no_se_pide` | la moderación (M13) corre antes de lo que cobra |
+| `inicio.caja.crear_una_imagen_se_pide_aqui` | `/api/imagenes` con `modelo`, estilo animado (el que traía la pantalla de imágenes) |
+| `inicio.caja.editar_pide_la_imagen_con_el_mas` | sin imagen no sale y dice cómo agregarla; con ella va a `/api/imagenes/editar` en modo `todo` con `modelo` |
+| `inicio.caja.el_mas_agrega_quita_y_respeta_el_tope` | el «+» solo existe en las tareas que usan imágenes; tope 3 (clip) o 1 (editar); un archivo que no sirve se rechaza con su motivo |
+| `inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas` | las fotos suben directo a S3 (`/api/clip/presign`) y el menú dice lo que suma juntarlas (tarifas.json `clip.componer_imagenes`) |
+| `inicio.caja.arrastrar_imagenes_a_la_caja_las_agrega` | arrastrar es un atajo del «+» |
+| `inicio.galeria.lo_recien_pedido_aparece_generando_y_se_relee` | mientras el servidor contesta hay una tarjeta «Generando…» al principio; al contestar, la lista se relee y la tarjeta local se va |
+| `inicio.galeria.usar_como_referencia_lleva_la_imagen_a_la_caja` | el visor de una imagen la devuelve a la caja, en «Un video corto» |
 | `inicio.caja.las_tareas_sin_modelo_no_traen_chip_de_modelo` | cuentos e historias no eligen modelo: su «Crear» está en la barra y lleva a `/crear.html` |
 | `inicio.caja.cada_tarea_recuerda_su_modelo` | clip, imagen y editar guardan su modelo por separado |
 | `inicio.menumodelo.niveles_precios_y_predeterminado` | los modelos por nivel y de menor a mayor precio, «Predeterminado» en el de siempre, «desde ✦ N» si hay resolución, y el pie con el nombre y el precio |
@@ -180,7 +189,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_los_rotulos_son_los_que_eligio_el_dueno` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` (los busca por rótulo) |
 | `test_los_chips_viejos_ya_no_estan` | `OPCIONES` en `logica.ts` no los tiene |
 | `test_las_imagenes_por_fin_tienen_puerta` | `inicio.caja.cambiar_de_familia_elige_la_primera` |
-| `test_el_clip_va_a_su_pantalla` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` |
+| `test_el_clip_va_a_su_pantalla` | `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` (el clip ya no navega: se pide en la caja) |
 | `test_las_etiquetas_internas_van_al_reves_de_lo_que_suenan` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` |
 | `test_el_inicio_manda_el_texto_con_el_nombre_que_espera_cada_pantalla` | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` |
 | `test_lo_que_ya_esta_en_la_caja_no_se_repite_en_el_menu` | `inicio.menu.entradas_y_grupos_en_orden` |

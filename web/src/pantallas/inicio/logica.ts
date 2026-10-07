@@ -25,6 +25,8 @@ export interface Opcion {
   editar?: boolean;
   /** Si la tarea elige modelo, de qué lista (modelos.ts). */
   modelos?: Tarea;
+  /** Cuántas imágenes de referencia admite (el «+» de la caja). Sin esto, ninguna. */
+  referencias?: number;
   nota: string;
   hueco: string;
 }
@@ -39,6 +41,7 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
       rotulo: 'Un video corto',
       precio: '',
       modelos: 'clip',
+      referencias: 3,
       destino: '/clip.html',
       nota: 'Ocho segundos con sonido, de una sola toma. Puedes subir hasta 3 fotos.',
       hueco: 'Escribe qué quieres ver. Ejemplo: «mi perro corriendo en la playa al atardecer».',
@@ -77,10 +80,11 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
       rotulo: 'Editar una imagen',
       precio: '',
       modelos: 'editar',
+      referencias: 1,
       destino: '/imagenes.html',
       editar: true,
-      nota: 'Subes una que ya tienes y nos dices qué cambiar.',
-      hueco: 'Dinos qué cambiarle a tu imagen. La subes en la pantalla siguiente.',
+      nota: 'Agregas una que ya tienes con el + y nos dices qué cambiar.',
+      hueco: 'Dinos qué cambiarle a tu imagen. Agrégala con el +.',
     },
   ],
 };
