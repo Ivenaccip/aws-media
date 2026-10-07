@@ -49,13 +49,29 @@ con ese nombre exacto.
 
 | ID | Qué garantiza |
 |---|---|
-| `inicio.caja.arranca_en_el_clip_lo_mas_barato` | arranca en Videos → «Un video corto», lo más barato, para quien no abra el desplegable (M25 · B) |
-| `inicio.caja.precios_de_tarifas_json` | el clip con `clip.video_8s`, las historias con el rango mín–máx de `video.por_duracion` y las imágenes con `video.imagen`; el test compara contra el mismo `tarifas.json` |
+| `inicio.caja.arranca_en_el_clip_lo_mas_barato` | arranca en Video → «Un video corto» con su modelo de siempre (Veo 3.1 Lite), para quien no abra el menú (M25 · B); el chip de la tarea ya no lleva precio |
+| `inicio.caja.precios_de_tarifas_json` | las historias con el rango mín–máx de `video.por_duracion`; las tareas que eligen modelo (clip, imagen, editar) dicen «según el modelo» y su precio sale de `tarifas.json` §modelos; el test compara contra el mismo `tarifas.json` |
 | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | clip → `/clip.html?brief=`; cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; imágenes → `/imagenes.html?prompt=` (y `&editar=1`); el texto va sin espacios de más |
 | `inicio.caja.sin_texto_no_navega` | sin texto: el aviso junto a la caja, el foco vuelve a ella y no se navega |
 | `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco |
 | `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra |
-| `inicio.caja.cambiar_de_familia_elige_la_primera` | Imágenes/Videos con `aria-pressed` y la primera opción de la familia |
+| `inicio.caja.cambiar_de_familia_elige_la_primera` | Imagen/Video (el riel) con `aria-pressed` y la primera opción de la familia |
+| `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s`, `video.imagen`) |
+| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; mientras la página navega dice «Generando…» y no acepta otro clic |
+| `inicio.caja.las_tareas_sin_modelo_no_traen_chip_de_modelo` | cuentos e historias no eligen modelo: su «Crear» está en la barra y lleva a `/crear.html` |
+| `inicio.caja.cada_tarea_recuerda_su_modelo` | clip, imagen y editar guardan su modelo por separado |
+| `inicio.menumodelo.niveles_precios_y_predeterminado` | los modelos por nivel y de menor a mayor precio, «Predeterminado» en el de siempre, «desde ✦ N» si hay resolución, y el pie con el nombre y el precio |
+| `inicio.menumodelo.la_resolucion_solo_aparece_en_el_modelo_que_la_tiene` | «Resolución» se elige en el pie solo con Nano Banana Pro; cambia el precio y el chip, y desaparece con otro modelo |
+| `inicio.menumodelo.crear_va_en_el_pie_y_no_acepta_dos_clics_mientras_trabaja` | un solo envío por clic, también en el menú |
+| `inicio.menumodelo.teclado_y_cierres` | ↑↓ ←→ Home End mueven la elección, Esc cierra y devuelve el foco al chip, un clic fuera cierra |
+| `inicio.modelos.cada_modelo_activo_tiene_precio_y_cada_precio_su_modelo` | el catálogo (`modelos.ts`) y `tarifas.json` §modelos no se desfasan, en ninguno de los dos sentidos |
+| `inicio.modelos.el_predeterminado_esta_activo_y_es_el_que_ya_valia` | el predeterminado de cada tarea está activo y vale lo mismo que cobra la pantalla |
+| `inicio.modelos.sin_precio_confirmado_no_se_ofrece_aunque_este_activo` | sin número en `tarifas.json` el modelo no sale, ni uno con resolución a medias |
+| `inicio.modelos.un_modelo_apagado_no_se_ofrece_aunque_tenga_precio` | `activo: false` lo saca del menú aunque tenga precio |
+| `inicio.modelos.por_nivel_y_de_menor_a_mayor_precio` | los grupos y su orden |
+| `inicio.modelos.todo_modelo_del_catalogo_cae_en_un_nivel_de_su_tarea` | ningún modelo desaparece por traer un nivel que su tarea no enseña |
+| `inicio.modelos.editar_solo_los_que_tienen_endpoint_edit` | Grok, GPT Image 2, Nano Banana 2 y Nano Banana Pro |
+| `inicio.modelos.el_modelo_viaja_en_la_url_solo_si_no_es_el_predeterminado` | `modelo=<id>` solo si no es el predeterminado, y nunca en tareas sin modelo |
 | `inicio.caminos.solo_con_todas_las_listas_bien_y_vacias` | los tres caminos solo si proyectos, imágenes, ediciones y clips llegaron bien y vacíos; una que falló no cuenta como vacía (UI·10). El 503 de clips en local («corre en el servicio») sí cuenta como vacío |
 | `inicio.caminos.desde_una_idea_no_cobra_solo_elige` | «Crear un video» elige «Creador de cuentos» y enfoca la caja; ni navega ni manda nada |
 | `inicio.caminos.enlaces_a_shorts_y_metraje` | «Hacer shorts» → `/shorts.html`, «Subir metraje» → `/e1.html` |

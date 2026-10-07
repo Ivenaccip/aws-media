@@ -6,4 +6,4 @@
 // tools/pricing.json (costos en dólares y márgenes) NUNCA se importa desde
 // web/: lo prohíben eslint.config.js y tests/test_web_tuberia.py, que además
 // lo busca en dist/.
-export { video, shorts, estilos, competencia, clip, editar, mix } from '../../../tools/tarifas.json';
+export { video, shorts, estilos, competencia, clip, editar, mix, modelos } from '../../../tools/tarifas.json';

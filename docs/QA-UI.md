@@ -16,7 +16,7 @@ y en el escritorio.
 |---|---|---|
 | 1 | Entrar desde el inicio: «Un video corto», escribir algo, seguir. En `nueva` llega a `/clip.html`; cambia la URL a `/estudio/clip/?brief=hola` | El texto aparece en «Qué quieres ver» y la URL queda sin `?brief` |
 | 2 | Subir una foto `.heic` del iPhone | Miniatura, sin error. «Generar ✦ 30» |
-| 3 | Subir una segunda foto | «Generar ✦ 32» y la nota «30 créditos + 2 por juntar tus 2 fotos en una» (`tarifas.json` §clip: `video_8s` 30 + `componer_imagenes` 2) |
+| 3 | Subir una segunda foto | «Generar ✦ 38» y la nota «36 créditos + 2 por juntar tus 2 fotos en una» (`tarifas.json` §clip: `video_8s` 36 + `componer_imagenes` 2) |
 | 4 | 💳 Doble clic rápido en Generar | **Un** cobro en la píldora; un solo clip en «Tus clips» |
 | 5 | Mientras se genera, cambiar de pestaña 1 min y volver | La lista se actualiza al volver; la pestaña decía «Generando tu clip · …» |
 | 6 | Recargar la página a mitad | El clip sigue en «Generando…» y termina solo |

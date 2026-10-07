@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { clip, video } from '../../nucleo/tarifas';
+import { clip, modelos, video } from '../../nucleo/tarifas';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Inicio } from './Inicio';
@@ -101,7 +101,10 @@ afterEach(() => {
 });
 
 const caja = () => screen.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' });
-const botonOpcion = () => screen.getByRole('button', { name: /✦/ });
+// el chip de TAREA (sin precio) y el de MODELO; son los dos menús de la caja
+const botonOpcion = () =>
+  screen.getAllByRole('button').find(b => b.getAttribute('aria-haspopup') === 'listbox')!;
+const botonModelo = () => screen.getByRole('button', { name: /^Modelo / });
 const enviar = () => screen.getByRole('button', { name: 'Crear' });
 
 async function elegirOpcion(rotulo: string) {
@@ -113,8 +116,11 @@ describe('la caja', () => {
   it('inicio.caja.arranca_en_el_clip_lo_mas_barato', async () => {
     montar();
     pintar();
-    expect(screen.getByRole('button', { name: 'Videos' })).toHaveAttribute('aria-pressed', 'true');
-    expect(botonOpcion()).toHaveTextContent('Un video corto ✦ ' + clip.video_8s);
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'true');
+    // R4: el chip de la tarea ya no lleva precio; el modelo predeterminado es el que ya se usaba
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
+    expect(botonOpcion()).not.toHaveTextContent('✦');
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite');
     await screen.findByText('La historia del café');
   });
 
@@ -125,13 +131,69 @@ describe('la caja', () => {
     const rango = `${Math.min(...d)}–${Math.max(...d)}`;
     await userEvent.click(botonOpcion());
     const opciones = screen.getAllByRole('option').map(o => o.textContent);
-    expect(opciones[0]).toContain('Un video corto✦ ' + clip.video_8s);
+    // las tareas que eligen modelo dicen «según el modelo»; las demás, su rango de tarifas.json
+    expect(opciones[0]).toContain('Un video cortosegún el modelo');
     expect(opciones[1]).toContain('Creador de cuentos✦ ' + rango);
     expect(opciones[2]).toContain('Crea tu historia✦ ' + rango);
     await userEvent.keyboard('{Escape}');
-    await userEvent.click(screen.getByRole('button', { name: 'Imágenes' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     await userEvent.click(botonOpcion());
-    for (const o of screen.getAllByRole('option')) expect(o).toHaveTextContent('✦ ' + video.imagen);
+    for (const o of screen.getAllByRole('option')) expect(o).toHaveTextContent('según el modelo');
+  });
+
+  it('inicio.caja.el_modelo_se_paga_con_tarifas_json', async () => {
+    montar();
+    pintar();
+    // el clip: el menú de modelo enseña lo mismo que cobra la pantalla del clip
+    expect(clip.video_8s).toBe(modelos.clip['veo-lite']);
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Lite/ })).toHaveTextContent('✦ ' + modelos.clip['veo-lite']);
+    expect(menu).toHaveTextContent('✦ ' + modelos.clip['veo-lite'] + ' por clip de 8 s');
+    await userEvent.keyboard('{Escape}');
+    // la imagen: el menú dice lo que dice tarifas.json, y es lo que ya valía
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.click(botonModelo());
+    const imagen = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    expect(imagen).toHaveTextContent('✦ ' + modelos.imagen.grok + ' por imagen');
+    expect(modelos.imagen.grok).toBe(video.imagen);
+  });
+
+  it('inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo', async () => {
+    montar();
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    expect(ir).toHaveBeenCalledWith('/clip.html?brief=un+gato+en+la+luna');
+    // y mientras la página navega, el botón dice que trabaja y no acepta otro clic
+    expect(within(menu).getByRole('button', { name: 'Generando…' })).toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole('button', { name: 'Generando…' }));
+    expect(ir).toHaveBeenCalledTimes(1);
+  });
+
+  it('inicio.caja.las_tareas_sin_modelo_no_traen_chip_de_modelo', async () => {
+    montar();
+    pintar();
+    await elegirOpcion('Creador de cuentos');
+    expect(screen.queryByRole('button', { name: /^Modelo / })).toBeNull();
+    // su «Crear» está en la barra y no depende de ningún menú
+    await userEvent.type(caja(), 'la Segunda Guerra');
+    await userEvent.click(enviar());
+    expect(ir).toHaveBeenLastCalledWith('/crear.html?brief=la+Segunda+Guerra&modo=investigacion');
+  });
+
+  it('inicio.caja.cada_tarea_recuerda_su_modelo', async () => {
+    montar();
+    pintar();
+    // hoy solo hay un modelo ofrecido por tarea: el predeterminado, y vuelve al regresar
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine');
+    await elegirOpcion('Editar una imagen');
+    expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine');
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite');
   });
 
   it('inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo', async () => {
@@ -146,10 +208,14 @@ describe('la caja', () => {
       ['Editar una imagen', 'Imágenes', '/imagenes.html?prompt=un+gato+en+la+luna&editar=1'],
     ];
     for (const [rotulo, familia, url] of casos) {
-      if (familia) await userEvent.click(screen.getByRole('button', { name: familia }));
+      if (familia) await userEvent.click(screen.getByRole('button', { name: familia === 'Imágenes' ? 'Imagen' : familia }));
       await elegirOpcion(rotulo);
       await userEvent.click(enviar());
       expect(ir).toHaveBeenLastCalledWith(url);
+      // la persona regresa con «atrás»: el navegador restaura la página desde su caché
+      act(() => {
+        window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+      });
     }
   });
 
@@ -196,8 +262,8 @@ describe('la caja', () => {
     montar();
     pintar();
     await elegirOpcion('Crea tu historia');
-    await userEvent.click(screen.getByRole('button', { name: 'Imágenes' }));
-    expect(screen.getByRole('button', { name: 'Imágenes' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(screen.getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
     expect(botonOpcion()).toHaveTextContent('Crear una imagen');
   });
 });
@@ -277,7 +343,7 @@ describe('las listas', () => {
     expect(await screen.findByText('1 activos · slots ilimitados')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo video' }));
     expect(caja()).toHaveFocus();
-    expect(screen.getByRole('button', { name: 'Videos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('inicio.proyectos.miniatura_rota_cae_al_personaje_y_al_hueco', async () => {

@@ -6,7 +6,8 @@
 // la vieja los tenía ESCRITOS («30», «55–190», «2») y un test comprobaba que
 // coincidieran. Aquí no hay número que pueda desfasarse.
 import { ErrorApi, pedir } from '../../nucleo/api';
-import { clip, video } from '../../nucleo/tarifas';
+import { video } from '../../nucleo/tarifas';
+import { PREDETERMINADO, type Tarea } from './modelos';
 
 // ---------------------------------------------------------------------------
 // la caja: qué te llevas (familia) y cuál de esas cosas (opción)
@@ -16,11 +17,14 @@ export type Familia = 'videos' | 'imagenes';
 export interface Opcion {
   id: string;
   rotulo: string;
-  /** El precio tal cual se enseña: «30» o «55–190». */
+  /** Lo que se enseña en el menú de la tarea: «55–190». Vacío si la tarea elige
+   *  modelo: ahí el precio es el del modelo, y el menú dice «según el modelo». */
   precio: string;
   destino: string;
   modo?: 'investigacion' | 'idea';
   editar?: boolean;
+  /** Si la tarea elige modelo, de qué lista (modelos.ts). */
+  modelos?: Tarea;
   nota: string;
   hueco: string;
 }
@@ -33,7 +37,8 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
     {
       id: 'clip',
       rotulo: 'Un video corto',
-      precio: String(clip.video_8s),
+      precio: '',
+      modelos: 'clip',
       destino: '/clip.html',
       nota: 'Ocho segundos con sonido, de una sola toma. Puedes subir hasta 3 fotos.',
       hueco: 'Escribe qué quieres ver. Ejemplo: «mi perro corriendo en la playa al atardecer».',
@@ -61,7 +66,8 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
     {
       id: 'imagen',
       rotulo: 'Crear una imagen',
-      precio: String(video.imagen),
+      precio: '',
+      modelos: 'imagen',
       destino: '/imagenes.html',
       nota: 'Desde cero, con el estilo visual que elijas.',
       hueco: 'Describe la imagen que quieres.',
@@ -69,7 +75,8 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
     {
       id: 'imagen_editar',
       rotulo: 'Editar una imagen',
-      precio: String(video.imagen),
+      precio: '',
+      modelos: 'editar',
       destino: '/imagenes.html',
       editar: true,
       nota: 'Subes una que ya tienes y nos dices qué cambiar.',
@@ -78,12 +85,16 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
   ],
 };
 
-/** A dónde lleva «Crear»: crear.html y clip.html leen `brief`; imagenes.html, `prompt`. */
-export function destinoDe(o: Opcion, texto: string): string {
+/** A dónde lleva «Crear»: crear.html y clip.html leen `brief`; imagenes.html, `prompt`.
+ *  `modelo` (el id, con su calidad si la tiene: `nbp-4k`) viaja SOLO si no es el
+ *  predeterminado de la tarea: las direcciones de hoy no cambian, y la pantalla que
+ *  cobra decide con su propia lista. */
+export function destinoDe(o: Opcion, texto: string, modelo?: string): string {
   const q = new URLSearchParams();
   q.set(o.destino === '/imagenes.html' ? 'prompt' : 'brief', texto);
   if (o.modo) q.set('modo', o.modo);
   if (o.editar) q.set('editar', '1');
+  if (o.modelos && modelo && modelo !== PREDETERMINADO[o.modelos]) q.set('modelo', modelo);
   return o.destino + '?' + q.toString();
 }
 
