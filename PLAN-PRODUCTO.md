@@ -2628,6 +2628,12 @@ verificadas una por una. Es peor que el problema original.
    **Es el paso largo y solo lo puede abrir el dueño.** Describir el caso como
    transaccional: invitaciones y recuperación de contraseña, lista cerrada de
    una comunidad de pago, sin marketing, con manejo de rebotes y quejas.
+   **Mientras tanto (7-oct):** el remitente propio ya no espera a esto. El
+   pool firma como `hola@irremplazables.xyz` con el correo integrado de
+   Cognito (`COGNITO_DEFAULT` + el ARN de la identidad de correo, verificada
+   en SES aparte del dominio y con su política de envío); ver «El remitente
+   de los correos» en `docs/OPERACION.md`. Lo que sigue pendiente del acceso
+   de producción es el volumen (más de 50 al día) y los eventos de rebote.
 4. **Cuando lo concedan**: `cognito.UserPoolEmail.with_ses(...)` en el
    `UserPool` y `cdk deploy`. Es actualización en sitio, no reemplaza el pool
    ni toca a los usuarios existentes — confirmar igual con `cdk diff`.

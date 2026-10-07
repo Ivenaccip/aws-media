@@ -299,6 +299,53 @@ def test_la_invitacion_y_los_callbacks_de_prod_usan_el_nombre_propio(prod):
     assert len(cliente["CallbackURLs"]) == 3, "falta el execute-api de las ligas viejas"
 
 
+# Sin «From» y con el ARN de la DIRECCIÓN, no el del dominio: con el correo
+# integrado Cognito rechaza las otras dos formas (medido el 7-oct, ver api.py).
+REMITENTE = {
+    "EmailSendingAccount": "COGNITO_DEFAULT",
+    "SourceArn": "arn:aws:ses:us-east-1:191241816158:identity/hola@irremplazables.xyz",
+}
+
+
+def test_el_pool_de_prod_firma_con_el_dominio_propio_sin_cambiar_de_servicio(prod):
+    """El remitente es hola@irremplazables.xyz, pero el envío sigue siendo el
+    integrado de Cognito (COGNITO_DEFAULT). DEVELOPER manda por el SES de la
+    cuenta, y mientras SES siga en el sandbox eso solo entrega a direcciones
+    verificadas: la invitación dejaría de llegarle a todo el mundo sin que
+    ningún deploy falle. El día que SES salga del sandbox y esto se cambie, se
+    cambia este test a sabiendas."""
+    pool = _uno(prod["aws-media-api"], "AWS::Cognito::UserPool")
+    assert pool.get("EmailConfiguration") == REMITENTE, (
+        "el pool de prod ya no firma como hola@irremplazables.xyz; si es la "
+        "vuelta atrás de docs/OPERACION.md, este test se cambia a sabiendas")
+
+
+def test_la_politica_de_ses_autoriza_al_remitente_del_template(prod, dev):
+    """La política vive fuera del CDK (la pone el dueño con la CLI, sobre la
+    identidad de la DIRECCIÓN) y sin ella el update del pool falla. Si alguien
+    cambia el remitente, este archivo tiene que cambiar con él: aquí se nota
+    antes de un deploy."""
+    import json
+    politica = json.loads((INFRA / "ses-politica-remitente.json").read_text(encoding="utf-8"))
+    (regla,) = politica["Statement"]
+    assert regla["Effect"] == "Allow"
+    assert regla["Principal"] == {"Service": "email.cognito-idp.amazonaws.com"}
+    assert {a.lower() for a in regla["Action"]} == {"ses:sendemail", "ses:sendrawemail"}
+    for template in (prod["aws-media-api"], dev["aws-media-api-dev"]):
+        correo = _uno(template, "AWS::Cognito::UserPool").get("EmailConfiguration")
+        if correo is None:      # ese entorno está con el remitente de fábrica
+            continue
+        assert regla["Resource"] == correo["SourceArn"]
+    # Solo los pools de ESTA cuenta, en esta región. No lleva ids de pool a
+    # propósito: dev se puede tirar y recrear (nace con otro id) y un id mal
+    # tecleado aquí no lo ve ningún test: se vería en un deploy fallido.
+    cuenta = regla["Resource"].split(":")[4]
+    assert regla["Condition"] == {
+        "StringEquals": {"aws:SourceAccount": cuenta},
+        "ArnLike": {"aws:SourceArn": f"arn:aws:cognito-idp:us-east-1:{cuenta}:userpool/*"},
+    }
+
+
 # --- dev: su propia app, infra/app_dev.py (paso 8) --------------------------
 
 @pytest.fixture(scope="module")
@@ -368,8 +415,18 @@ def test_dev_usa_sus_propios_nombres(dev):
 def test_nada_de_dev_apunta_a_produccion(dev):
     """El síntoma de un hueco aquí sería «el login de dev funciona»: contra el
     Hosted UI de producción, o invitando a la gente a irremplazables.xyz."""
+    import copy
     import json
     for nombre, template in dev.items():
+        # La ÚNICA mención permitida: el remitente del correo del pool. Es la
+        # única dirección verificada en SES (el dominio no sirve como
+        # SourceArn), no una liga: no manda a nadie a producción. Se quita esa
+        # propiedad y se revisa todo lo demás.
+        template = copy.deepcopy(template)
+        for r in template["Resources"].values():
+            if r["Type"] == "AWS::Cognito::UserPool":
+                quitado = r["Properties"].pop("EmailConfiguration", None)
+                assert quitado in (None, REMITENTE), quitado
         texto = json.dumps(template)
         assert "irremplazables.xyz" not in texto, f"{nombre} menciona el dominio de prod"
         for literal in ('"aws-media-users"', '"media-ivenaccip"',
