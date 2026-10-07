@@ -273,13 +273,13 @@ describe('los tres caminos', () => {
     montar({ proyectos: [] });
     const { unmount } = pintar();
     expect(await screen.findByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Mis videos' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Mis creaciones' })).toBeNull();
     unmount();
     // una lista que falló no cuenta como vacía
     for (const falla of [{ imagenes: null }, { ediciones: null }, { clips: null }] as const) {
       montar({ proyectos: [], ...falla });
       const { unmount: fuera } = pintar();
-      expect(await screen.findByRole('heading', { name: 'Mis videos' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Mis creaciones' })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: /tres caminos/ })).toBeNull();
       fuera();
     }
@@ -331,19 +331,18 @@ describe('las listas', () => {
     expect(screen.getByText('produciéndose…')).toBeInTheDocument();
   });
 
-  it('inicio.videos.nuevo_video_aun_sin_slots', async () => {
-    // con los slots llenos todavía caben un clip y unos shorts
+  it('inicio.galeria.los_slots_se_ven_junto_al_titulo_y_no_hay_tarjetas_de_nuevo', async () => {
     montar({ proyectos: [P1, P2], slots: 2 });
     const { unmount } = pintar();
     await screen.findByText('La historia del café');
-    expect(screen.getByRole('button', { name: 'Nuevo video' })).toBeInTheDocument();
+    expect(screen.getByText('2 de 2 slots')).toBeInTheDocument();
+    // la caja ya es la puerta de entrada: no hay tarjetas «Nuevo…» que saquen de la página
+    expect(screen.queryByRole('button', { name: 'Nuevo video' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Nueva imagen' })).toBeNull();
     unmount();
     montar({ proyectos: [P1], slots: null });
     pintar();
     expect(await screen.findByText('1 activos · slots ilimitados')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo video' }));
-    expect(caja()).toHaveFocus();
-    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('inicio.proyectos.miniatura_rota_cae_al_personaje_y_al_hueco', async () => {
@@ -424,27 +423,33 @@ describe('las listas', () => {
     expect(screen.getByRole('link', { name: 'Un proyecto viejo' })).toBeInTheDocument();
   });
 
-  it('inicio.imagenes.cinco_y_ver_todas', async () => {
-    montar({ imagenes: [1, 2, 3, 4, 5, 6, 7].map(img) });
+  it('inicio.galeria.doce_y_ver_mas', async () => {
+    montar({ imagenes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(img) });
     pintar();
-    const ver = await screen.findByRole('button', { name: 'Ver todas (7)' });
-    expect(screen.getAllByRole('link', { name: /Abrir tu imagen/ })).toHaveLength(5);
-    expect(ver).toHaveAttribute('aria-expanded', 'false');
+    // 13 imágenes y 1 película: se ven 12 y quedan 2
+    const ver = await screen.findByRole('button', { name: 'Ver más (2)' });
+    expect(screen.getAllByRole('button', { name: /Abrir tu imagen/ })).toHaveLength(11);
     await userEvent.click(ver);
-    expect(screen.getAllByRole('link', { name: /Abrir tu imagen/ })).toHaveLength(7);
-    expect(screen.getByRole('button', { name: 'Ver menos' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('button', { name: /Abrir tu imagen/ })).toHaveLength(13);
+    expect(screen.queryByRole('button', { name: /Ver más/ })).toBeNull();
   });
 
-  it('inicio.imagenes.cada_una_abre_para_editar_y_la_rota_no_deja_icono', async () => {
+  it('inicio.imagenes.cada_una_abre_en_el_visor_y_la_rota_no_deja_icono', async () => {
     montar({ imagenes: [{ ...img(1), nombre: 'mi foto&1.jpg' }] });
     const { container } = pintar();
-    const enlace = await screen.findByRole('link', { name: /Abrir tu imagen/ });
-    expect(enlace).toHaveAttribute('href', '/imagenes.html?img=mi%20foto%261.jpg');
-    expect(screen.getByRole('link', { name: 'Nueva imagen' })).toHaveAttribute('href', '/imagenes.html');
-    const im = enlace.querySelector('img')!;
+    const tarjeta = await screen.findByRole('button', { name: /Abrir tu imagen/ });
+    const im = tarjeta.querySelector('img')!;
     expect(im).toHaveAttribute('loading', 'lazy');
+    await userEvent.click(tarjeta);
+    // el visor ofrece bajarla y editarla; no cambia de página
+    const visor = await screen.findByRole('dialog', { name: 'Tu imagen' });
+    expect(within(visor).getByRole('link', { name: 'Editar' })).toHaveAttribute('href', '/imagenes.html?img=mi%20foto%261.jpg');
+    expect(within(visor).getByRole('link', { name: /Descargar/ })).toHaveAttribute('href', '/api/imagenes/img-1.jpg');
+    expect(ir).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     fireEvent.error(im);
-    expect(container.querySelector('a[href^="/imagenes.html?img"] img')).toBeNull();
+    expect(container.querySelector('button[aria-label^="Abrir tu imagen"] img')).toBeNull();
   });
 
   it('inicio.imagenes.si_falla_la_lista_no_se_rompe', async () => {
@@ -463,12 +468,58 @@ describe('las listas', () => {
     expect(screen.getByText('sugerencias en curso…')).toBeInTheDocument();
   });
 
-  it('inicio.listas.orden_videos_imagenes_ediciones', async () => {
-    montar({ imagenes: [img(1)], ediciones: [ED] });
+  it('inicio.galeria.una_sola_galeria_lo_mas_nuevo_primero', async () => {
+    montar({ proyectos: [P1], clips: [C1], ediciones: [S1, ED], imagenes: [img(1)] });
     pintar();
-    await screen.findByRole('heading', { name: 'Mis ediciones' });
+    const seccion = (await screen.findByRole('heading', { name: 'Mis creaciones' })).closest('section')!;
+    // ya no hay tres secciones: Mis videos / Mis imágenes / Mis ediciones desaparecen
     const titulos = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
-    expect(titulos.filter(t => t?.startsWith('Mis '))).toEqual(['Mis videos', 'Mis imágenes', 'Mis ediciones']);
+    expect(titulos.filter(t => t?.startsWith('Mis '))).toEqual(['Mis creaciones']);
+    // clip 25-sep, shorts 22-sep, edición de esos shorts 21-sep, película 20-sep, imagen de 2025,
+    // y la edición sin fecha al final
+    const tarjetas = [...seccion.querySelector('.grid')!.children].map(c => c.textContent ?? '');
+    const esperado = ['Mi perro en la playa', 'Mi charla en el foro', 'yt-charla', 'La historia del café', 'Imagen', 'podcast'];
+    expect(tarjetas).toHaveLength(esperado.length);
+    esperado.forEach((t, i) => expect(tarjetas[i]).toContain(t));
+  });
+
+  it('inicio.galeria.los_filtros_solo_ofrecen_lo_que_hay', async () => {
+    montar({ imagenes: [img(1)] });
+    pintar();
+    const grupo = await screen.findByRole('group', { name: 'Filtrar' });
+    const nombres = within(grupo).getAllByRole('button').map(b => b.textContent);
+    expect(nombres).toEqual(['Todo 2', 'Películas 1', 'Imágenes 1']);
+    expect(within(grupo).getByRole('button', { name: /^Todo/ })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(within(grupo).getByRole('button', { name: /^Imágenes/ }));
+    expect(screen.queryByText('La historia del café')).toBeNull();
+    expect(screen.getByRole('button', { name: /Abrir tu imagen/ })).toBeInTheDocument();
+    expect(within(grupo).getByRole('button', { name: /^Imágenes/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('inicio.galeria.se_actualiza_sola_mientras_un_clip_se_genera', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let listo = false;
+    const f = montar({
+      rutas: {
+        '/api/clip': () =>
+          json({ clips: [listo ? C1 : { ...C1, estado: 'generando', video: '' }] }),
+      },
+    });
+    pintar();
+    await screen.findByText('generándose…', { exact: false });
+    const antes = llamadas(f, '/api/clip', 'GET').length;
+    listo = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    await waitFor(() => expect(screen.queryByText('generándose…', { exact: false })).toBeNull());
+    expect(llamadas(f, '/api/clip', 'GET').length).toBeGreaterThan(antes);
+    // ya listo, deja de preguntar
+    const despues = llamadas(f, '/api/clip', 'GET').length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(llamadas(f, '/api/clip', 'GET').length).toBe(despues);
   });
 
   it('inicio.listas.textos_del_server_como_texto', async () => {
@@ -484,12 +535,14 @@ describe('las listas', () => {
   });
 });
 
-describe('Mis videos', () => {
+describe('Mis creaciones: los videos', () => {
+  // el título de cada tarjeta de video (el atributo title lo llevan el enlace, el botón y el texto que aún no abre)
   const titulos = () =>
     screen
       .getAllByRole('article')
-      .map(a => within(a).queryByRole('link')?.textContent)
+      .map(a => a.querySelector('[title]:not([title^="Archivar"])')?.getAttribute('title'))
       .filter(Boolean);
+  const tarjeta = async (titulo: string) => (await screen.findByTitle(titulo)).closest('article')!;
 
   it('inicio.videos.mezcla_peliculas_clips_y_shorts_lo_mas_nuevo_primero', async () => {
     montar({ proyectos: [P1], clips: [C1], ediciones: [S1] });
@@ -512,7 +565,7 @@ describe('Mis videos', () => {
     });
     pintar();
     const etiqueta = async (titulo: string) =>
-      (await screen.findByRole('link', { name: titulo })).closest('article')!.querySelector('p')!.textContent;
+      (await tarjeta(titulo)).querySelector('p')!.textContent;
     expect(await etiqueta('Idea')).toMatch(/^Video largo · /);
     expect(await etiqueta('Vieja')).toMatch(/^Video largo · /);
     expect(await etiqueta('Sin modo')).toMatch(/^Video largo · /);
@@ -537,7 +590,7 @@ describe('Mis videos', () => {
     });
     pintar();
     const leyenda = async (titulo: string) =>
-      (await screen.findByRole('link', { name: titulo })).closest('article')!.querySelector('p')!.textContent ?? '';
+      (await tarjeta(titulo)).querySelector('p')!.textContent ?? '';
     expect(await leyenda('La historia del café')).toMatch(/^Cuento · en revisión — te espera · /);
     expect(await leyenda('Generándose')).toMatch(/^Video corto · generándose… · /);
     expect(await leyenda('Fallido')).toMatch(/^Video corto · con error · /);
@@ -550,10 +603,9 @@ describe('Mis videos', () => {
   it('inicio.videos.cada_uno_abre_su_pantalla', async () => {
     montar({ proyectos: [P1], clips: [C1, { ...C1, id: 'c-gen', texto: 'En camino', estado: 'generando', video: '' }], ediciones: [S1] });
     const { container } = pintar();
-    expect(await screen.findByRole('link', { name: 'Mi perro en la playa' })).toHaveAttribute(
-      'href',
-      '/clip.html?c=clip-20260925-100000-ab',
-    );
+    // el clip listo abre en el visor (no cambia de página); el que se genera no abre nada todavía
+    const clipListo = await screen.findByRole('button', { name: 'Mi perro en la playa' });
+    expect(screen.queryByRole('button', { name: 'En camino' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Mi charla en el foro' })).toHaveAttribute('href', '/shorts.html?p=yt-charla');
     expect(screen.getByRole('link', { name: 'La historia del café' })).toHaveAttribute('href', '/crear.html?p=p1');
     // el clip listo enseña su primer cuadro, callado y fuera del tabulador; el que se genera, el hueco
@@ -565,6 +617,13 @@ describe('Mis videos', () => {
     // un video que no carga cae al hueco
     fireEvent.error(videos[0]!);
     expect(container.querySelectorAll('article video')).toHaveLength(0);
+    // el visor: el video con controles y la descarga
+    await userEvent.click(clipListo);
+    const visor = await screen.findByRole('dialog', { name: 'Mi perro en la playa' });
+    expect(visor.querySelector('video')).toHaveAttribute('src', C1.video);
+    expect(visor.querySelector('video')).toHaveAttribute('controls');
+    expect(within(visor).getByRole('link', { name: /Descargar/ })).toHaveAttribute('href', C1.video);
+    expect(ir).not.toHaveBeenCalled();
   });
 
   it('inicio.videos.los_slots_cuentan_solo_peliculas', async () => {
@@ -575,15 +634,19 @@ describe('Mis videos', () => {
     expect(screen.getAllByRole('button', { name: /^Archivar/ })).toHaveLength(1);
   });
 
-  it('inicio.videos.las_ediciones_sin_shorts_no_entran', async () => {
+  it('inicio.galeria.las_ediciones_van_en_su_filtro_y_los_shorts_en_el_suyo', async () => {
     montar({ ediciones: [ED, S1] });
     pintar();
-    const seccion = (await screen.findByRole('heading', { name: 'Mis videos' })).closest('section')!;
-    expect(within(seccion).queryByText('podcast')).toBeNull();
-    expect(within(seccion).getByText('Mi charla en el foro')).toBeInTheDocument();
-    // la edición sigue en su sección
-    const ediciones = screen.getByRole('heading', { name: 'Mis ediciones' }).closest('section')!;
-    expect(within(ediciones).getByText('podcast')).toBeInTheDocument();
+    const grupo = await screen.findByRole('group', { name: 'Filtrar' });
+    // Todo: la película, los shorts, la edición de esos shorts y la otra edición
+    expect(within(grupo).getByRole('button', { name: /^Todo/ })).toHaveTextContent('4');
+    await userEvent.click(within(grupo).getByRole('button', { name: /^Shorts/ }));
+    expect(screen.getByText('Mi charla en el foro')).toBeInTheDocument();
+    expect(screen.queryByText('podcast')).toBeNull();
+    await userEvent.click(within(grupo).getByRole('button', { name: /^Ediciones/ }));
+    expect(screen.getByText('podcast')).toBeInTheDocument();
+    expect(screen.getByText('yt-charla')).toBeInTheDocument();
+    expect(screen.queryByText('La historia del café')).toBeNull();
   });
 
   it('inicio.videos.sin_los_clips_avisa_y_reintenta', async () => {

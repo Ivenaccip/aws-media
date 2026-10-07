@@ -228,6 +228,58 @@ export function mezclar(proyectos: Proyecto[], clips: ClipCorto[] | null, edicio
   return todos.sort((a, b) => (a.fecha === b.fecha ? 0 : b.fecha > a.fecha ? 1 : -1));
 }
 
+// ---------------------------------------------------------------------------
+// «Mis creaciones»: todo lo que hiciste en una sola galería, lo más nuevo
+// primero. Las películas, los clips y los shorts son los `Video` de arriba; se
+// suman las imágenes y las ediciones de metraje. Los filtros solo reducen la lista.
+
+export type Creacion =
+  | Video
+  | { tipo: 'imagen'; clave: string; fecha: number; im: Imagen }
+  | { tipo: 'edicion'; clave: string; fecha: number; e: Edicion };
+
+export type Filtro = 'todo' | 'peliculas' | 'cortos' | 'imagenes' | 'shorts' | 'ediciones';
+
+export const FILTROS: Array<{ id: Filtro; rotulo: string }> = [
+  { id: 'todo', rotulo: 'Todo' },
+  { id: 'peliculas', rotulo: 'Películas' },
+  { id: 'cortos', rotulo: 'Videos cortos' },
+  { id: 'imagenes', rotulo: 'Imágenes' },
+  { id: 'shorts', rotulo: 'Shorts' },
+  { id: 'ediciones', rotulo: 'Ediciones' },
+];
+
+export function filtroDe(c: Creacion): Exclude<Filtro, 'todo'> {
+  switch (c.tipo) {
+    case 'largo':
+    case 'cuento':
+      return 'peliculas';
+    case 'corto':
+      return 'cortos';
+    case 'imagen':
+      return 'imagenes';
+    case 'shorts':
+      return 'shorts';
+    case 'edicion':
+      return 'ediciones';
+  }
+}
+
+/** Todo junto y ordenado: lo más nuevo primero; sin fecha que se entienda, al final. */
+export function creaciones(
+  proyectos: Proyecto[],
+  clips: ClipCorto[] | null,
+  ediciones: Edicion[] | null,
+  imagenes: Imagen[] | null,
+): Creacion[] {
+  const todos: Creacion[] = [
+    ...mezclar(proyectos, clips, ediciones),
+    ...(imagenes ?? []).map(im => ({ tipo: 'imagen' as const, clave: 'i:' + im.nombre, fecha: im.creado * 1000, im })),
+    ...(ediciones ?? []).map(e => ({ tipo: 'edicion' as const, clave: 'e:' + e.nombre, fecha: cuando(e.creado), e })),
+  ];
+  return todos.sort((a, b) => (a.fecha === b.fecha ? 0 : b.fecha > a.fecha ? 1 : -1));
+}
+
 type Estado = { icono: 'reloj' | 'guion' | 'listo' | 'aviso'; texto: string; tono?: 'ok' | 'mal' };
 
 /** El estado que va junto a la etiqueta, o null si ya está listo (lista = solo
@@ -272,7 +324,8 @@ export function estadoEdicion(e: Edicion): { icono?: 'reloj' | 'aviso' | 'cortar
   return { texto: e.generado ? 'película generada' : 'sin metraje aún' };
 }
 
-export const IMG_A_LA_VISTA = 5;
+/** Cuántas tarjetas enseña la galería antes del «Ver más». */
+export const CREACIONES_A_LA_VISTA = 12;
 
 export function diaImagen(creado: number): string {
   const d = new Date(creado * 1000);
