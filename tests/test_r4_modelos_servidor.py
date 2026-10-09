@@ -59,19 +59,29 @@ def test_los_endpoints_salen_de_settings():
     assert modelos_ia.resolver("editar", "grok").endpoint == settings.fal_imagen_edit
 
 
-def test_cada_modelo_de_la_tabla_trae_tarifa():
-    """Un modelo sin número en tarifas.json no se puede ofrecer: la tabla y la
-    tarifa tienen que andar juntas, en las dos direcciones."""
+def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
+    """La tabla y la tarifa tienen que andar juntas. Un número en tarifas.json
+    para un modelo que la tabla no conoce es una tarifa que nadie puede pedir
+    (dedazo). Al revés NO es un error: una fila de la tabla sin número es un
+    modelo INERTE (Ola 1: veo-fast, veo-std, nb2) y el servidor lo rechaza con 422;
+    cuáles son hoy los inertes lo fija tests/test_r4_ola1.py."""
     from pipeline import creditos, modelos_ia
+    for tarea, tabla in creditos.MODELOS_CR.items():
+        assert tarea in modelos_ia.TAREAS, tarea
+        assert set(tabla) <= set(modelos_ia.disponibles(tarea)), tarea
+    # los que sí tienen número se cobran: entero, o uno por cada duración
     for tarea in modelos_ia.TAREAS:
-        for id_ in modelos_ia.disponibles(tarea):
+        for id_ in creditos.MODELOS_CR.get(tarea, {}):
             m = modelos_ia.resolver(tarea, id_)
             if m.duraciones:       # el clip: un número por cada duración que admite
                 for s in m.duraciones:
                     assert isinstance(creditos.costo_modelo(tarea, id_, s), int)
             else:
                 assert isinstance(creditos.costo_modelo(tarea, id_), int)
-        assert set(creditos.MODELOS_CR.get(tarea, {})) == set(modelos_ia.disponibles(tarea))
+    # los dos modelos a la venta desde R4 siguen con número
+    assert set(creditos.MODELOS_CR["imagen"]) >= {"grok"}
+    assert set(creditos.MODELOS_CR["editar"]) >= {"grok"}
+    assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite"}
 
 
 def test_los_predeterminados_cuestan_lo_de_siempre():
@@ -89,14 +99,26 @@ def test_los_predeterminados_cuestan_lo_de_siempre():
 # el costo en dólares: por endpoint exacto
 
 def test_un_modelo_de_la_misma_familia_no_hereda_el_costo_de_lite():
+    """Cada endpoint se cuesta por su nombre EXACTO. Veo Fast y Standard (Ola 1)
+    traen su propia ficha, con su propio precio: no el de Lite. Un endpoint
+    vecino al que nadie le anotó ficha sigue dando «sin costo»."""
     from pipeline.pricing import costo_fal, unidades_fal
     args = {"duration": "8s", "resolution": "720p", "generate_audio": True}
-    assert costo_fal("fal-ai/veo3.1/lite", args) is not None
-    for otro in ("fal-ai/veo3.1/fast", "fal-ai/veo3.1", "fal-ai/veo3.1/image-to-video"):
+    assert costo_fal("fal-ai/veo3.1/lite", args) == 0.4
+    # los de Ola 1 cuestan lo suyo: ni lo de Lite ni None
+    assert costo_fal("fal-ai/veo3.1/fast", args) == 1.2
+    assert costo_fal("fal-ai/veo3.1", args) == 3.2
+    assert costo_fal("fal-ai/veo3.1/image-to-video", args) == 3.2
+    assert costo_fal("fal-ai/nano-banana-2", {"num_images": 1}) == 0.08
+    # los vecinos sin ficha: «sin costo conocido», nunca el del que se parece
+    for otro in ("fal-ai/veo3.1/reference-to-video", "fal-ai/veo3.1/lite/extend-video",
+                 "fal-ai/veo3.1/first-last-frame-to-video"):
         assert costo_fal(otro, args) is None, otro
         assert unidades_fal(otro, args) is None, otro
-    assert costo_fal("fal-ai/nano-banana-2", {"num_images": 1}) is None
-    assert costo_fal("fal-ai/nano-banana-pro", {"num_images": 1}) is None
+    for otro in ("fal-ai/nano-banana-pro", "fal-ai/nano-banana-pro/edit",
+                 "google/nano-banana-2-lite", "fal-ai/nano-banana-2/lite"):
+        assert costo_fal(otro, {"num_images": 1}) is None, otro
+        assert unidades_fal(otro, {"num_images": 1}) is None, otro
 
 
 def test_un_endpoint_en_pricing_json_se_cuesta_sin_tocar_codigo(monkeypatch):

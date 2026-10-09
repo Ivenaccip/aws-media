@@ -107,10 +107,10 @@ const CLIP: Modelo[] = [
   { id: 'veo-lite', nombre: 'Veo 3.1 Lite', detalle: 'Google · 720p con audio', nivel: 'economico', activo: true },
   { id: 'grokv', nombre: 'Grok Imagine Video', detalle: 'xAI · 720p', nivel: 'economico', activo: false },
   { id: 'ltx', nombre: 'LTX-2.5 Fast', detalle: 'Lightricks · 720p con audio', nivel: 'economico', activo: false },
-  { id: 'veo-fast', nombre: 'Veo 3.1 Fast', detalle: 'Google · 1080p con audio', nivel: 'calidad', activo: false },
+  { id: 'veo-fast', nombre: 'Veo 3.1 Fast', detalle: 'Google · 720p con audio', nivel: 'calidad', activo: false },
   { id: 'kling', nombre: 'Kling V3 Pro', detalle: 'Kuaishou · con audio', nivel: 'calidad', activo: false },
   { id: 'seed', nombre: 'Seedance 2.0', detalle: 'ByteDance · 720p con audio', nivel: 'calidad', activo: false },
-  { id: 'veo-std', nombre: 'Veo 3.1 Standard', detalle: 'Google · 1080p con audio', nivel: 'calidad', activo: false },
+  { id: 'veo-std', nombre: 'Veo 3.1 Standard', detalle: 'Google · 720p con audio', nivel: 'calidad', activo: false },
 ];
 
 export const CATALOGO: Record<Tarea, Modelo[]> = {

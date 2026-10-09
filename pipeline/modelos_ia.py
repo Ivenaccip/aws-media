@@ -1,24 +1,37 @@
 """R4 · F1 — la tabla de modelos de IA que el usuario puede elegir.
 
-Un id de modelo («grok», «veo-lite») es lo único que cruza del navegador al
-servidor. De aquí sale a qué endpoint de fal se llama, y de tools/tarifas.json
-§modelos sale cuánto se cobra: el navegador NUNCA manda un precio ni un endpoint.
+Un id de modelo («grok», «veo-lite», «veo-fast», «nb2»…) es lo único que cruza del
+navegador al servidor. De aquí sale a qué endpoint de fal se llama, y de
+tools/tarifas.json §modelos sale cuánto se cobra: el navegador NUNCA manda un
+precio ni un endpoint.
 
-Un modelo está en esta tabla solo cuando ya se verificó su endpoint, sus
-parámetros y su costo (tools/pricing.json). Sumar uno es una fila de datos aquí,
-su costo en pricing.json §generacion.endpoints y sus créditos en tarifas.json
-§modelos — y recién entonces `activo: true` en el catálogo de la web
-(web/src/pantallas/inicio/modelos.ts). Un id que no está aquí se rechaza con 422:
-no se cae al modelo de siempre, porque cobraría uno y entregaría otro.
+Estar en esta tabla NO es estar a la venta. Una fila con su endpoint, sus
+parámetros y su costo en dólares (tools/pricing.json §generacion.endpoints) es
+una fila INERTE: el servidor la conoce, pero mientras tools/tarifas.json
+§modelos no tenga su número de créditos no se ofrece y se rechaza con 422, sin
+cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
+levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
+es la compuerta: recién entonces `activo: true` en el catálogo de la web
+(web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite;
+Veo 3.1 Fast, Veo 3.1 Standard y Nano Banana 2 esperan su prueba.
+
+Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
+porque cobraría uno y entregaría otro.
 
 Lo mismo con la duración del clip: cada modelo declara aquí los segundos que
 admite y tools/tarifas.json §modelos.clip trae el precio de cada uno. Una
 duración que el modelo no admite, o que no tiene número, se rechaza con 422: no
 se cambia en silencio a otra, porque cobraría una y entregaría otra.
+
+Los argumentos que un modelo necesita fijos (p. ej. la resolución de Nano Banana
+2: solo la de 1K tiene tarifa leída) viajan en `Modelo.args_extra`: no dependen
+del valor por defecto del modelo en fal, que puede cambiar sin avisar.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Mapping
 
 from .config import settings
 
@@ -52,20 +65,66 @@ class Modelo:
     # clip: los segundos enteros que admite. Vacío = la tarea no tiene duración.
     # Un modelo que no admite 4 s (p. ej. LTX) simplemente no la trae aquí.
     duraciones: tuple[int, ...] = ()
+    # Argumentos que este modelo manda SIEMPRE además de los de la tarea (imagen:
+    # los de `media_fal`). Inmutable: el dict que llega se copia y queda en un
+    # `MappingProxyType`, así que ni quien lo pasó ni quien lo lea puede
+    # cambiarlo después. Fuera del hash a propósito (un mapping no se hashea);
+    # entra en la comparación.
+    args_extra: Mapping[str, object] = field(
+        default_factory=lambda: MappingProxyType({}), hash=False)
+
+    def __post_init__(self):
+        # frozen: la única forma de reemplazar el campo es object.__setattr__
+        object.__setattr__(self, "args_extra", MappingProxyType(dict(self.args_extra)))
 
     def endpoint_para(self, con_imagen: bool) -> str:
         return (self.endpoint_con_imagen or self.endpoint) if con_imagen else self.endpoint
 
+    def con_args_extra(self, args: dict) -> dict:
+        """`args` con los argumentos fijos del modelo sumados. Los de la tarea
+        mandan: el extra solo agrega las llaves que `args` no trae (nunca pisa el
+        prompt ni las imágenes). Sin extra devuelve una copia idéntica, así que
+        Grok manda exactamente lo que mandaba."""
+        return {**self.args_extra, **args} if self.args_extra else dict(args)
+
+
+# Endpoints de la familia Veo 3.1 que NO viven en settings: el costo en dólares
+# se anota por nombre exacto de endpoint (pricing.json §generacion.endpoints), así
+# que sobrescribirlos por entorno dejaría la llamada sin costo conocido.
+VEO_FAST_T2V = "fal-ai/veo3.1/fast"
+VEO_FAST_I2V = "fal-ai/veo3.1/fast/image-to-video"
+VEO_STD_T2V = "fal-ai/veo3.1"
+VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
+NB2_CREAR = "fal-ai/nano-banana-2"
+NB2_EDITAR = "fal-ai/nano-banana-2/edit"
+
+# Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
+# manda explícito para no depender de que el default de fal siga siendo 1K.
+NB2_ARGS_EXTRA = MappingProxyType({"resolution": "1K"})
+
 
 def _tabla() -> dict[tuple[str, str], Modelo]:
-    # Se arma al llamar y no al importar: los endpoints de Grok y Veo viven en
+    # Se arma al llamar y no al importar: los endpoints de Grok y Veo Lite viven en
     # settings (se pueden sobrescribir por entorno) y esta tabla debe seguirlos.
     grok = Modelo("grok", "imagen", settings.fal_imagen, settings.fal_imagen_edit)
     veo = Modelo("veo-lite", "clip", settings.fal_veo_t2v, settings.fal_veo,
                  con_audio=True, duraciones=(4, 6, 8))
+    # Veo 3.1 Fast y Standard: mismos argumentos que Lite (los arma clip.animar), solo
+    # cambia el endpoint. INERTES hasta que tarifas.json les ponga créditos.
+    veo_fast = Modelo("veo-fast", "clip", VEO_FAST_T2V, VEO_FAST_I2V,
+                      con_audio=True, duraciones=(4, 6, 8))
+    veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
+                     con_audio=True, duraciones=(4, 6, 8))
+    # Nano Banana 2: crear (con referencia va al /edit) y editar. INERTE también.
+    nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
+    nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     return {("imagen", "grok"): grok,
+            ("imagen", "nb2"): nb2,
             ("editar", "grok"): Modelo("grok", "editar", settings.fal_imagen_edit),
-            ("clip", "veo-lite"): veo}
+            ("editar", "nb2"): nb2_editar,
+            ("clip", "veo-lite"): veo,
+            ("clip", "veo-fast"): veo_fast,
+            ("clip", "veo-std"): veo_std}
 
 
 def resolver(tarea: str, modelo_id: str | None) -> Modelo:

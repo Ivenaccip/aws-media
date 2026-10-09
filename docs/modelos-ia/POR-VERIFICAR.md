@@ -1,8 +1,11 @@
 # Modelos del selector: lo que falta por verificar (R4)
 
-Hoy solo dos modelos están en `pipeline/modelos_ia.py`: **Grok Imagine** (crear y
-editar) y **Veo 3.1 Lite** (clip). Los otros 18 viven en el catálogo de la web
-(`web/src/pantallas/inicio/modelos.ts`) con `activo: false`.
+Hoy cinco modelos están en `pipeline/modelos_ia.py`. A la venta: **Grok Imagine**
+(crear y editar) y **Veo 3.1 Lite** (clip). Desde la Ola 1 (9-oct-2026), como filas
+**inertes** (el servidor las conoce, pero no se ofrecen ni se cobran): **Veo 3.1 Fast**
+y **Veo 3.1 Standard** (clip) y **Nano Banana 2** (crear y editar). Los otros 15 solo
+viven en el catálogo de la web (`web/src/pantallas/inicio/modelos.ts`) con
+`activo: false`, igual que los tres de la Ola 1.
 
 ## Cómo se enciende un modelo (una fila de datos, tres archivos y una prueba)
 
@@ -10,19 +13,37 @@ editar) y **Veo 3.1 Lite** (clip). Los otros 18 viven en el catálogo de la web
    duración, resolución, audio, imágenes de referencia). → fila en `pipeline/modelos_ia.py`.
 2. **Costo en dólares**, leído en la página del modelo el día de la prueba. →
    `tools/pricing.json` §generacion.endpoints (con `verified_on`).
-3. **Créditos**: costo ÷ 0.75 ÷ piso de venta, hacia arriba y al par (mín. 2 por
-   imagen; en los clips, un número por duración, ver abajo). → `tools/tarifas.json` §modelos.
+3. **Créditos: la COMPUERTA.** Se calculan como costo ÷ 0.75 ÷ piso de venta, hacia
+   arriba y al par (mín. 2 por imagen; en los clips, un número por duración, ver
+   abajo), pero el número **no se escribe todavía**. Un modelo con fila en
+   `pipeline/modelos_ia.py` y ficha en `tools/pricing.json`, pero sin número en
+   `tools/tarifas.json` §modelos, no se ofrece y el servidor lo rechaza con 422, sin
+   cobrar. El número se escribe junto con `activo: true` (paso 5), después de la
+   prueba pagada (paso 4). → `tools/tarifas.json` §modelos.
 4. **Prueba pagada pequeña** (con el «sí» del dueño): 4 s para clips, una imagen
    para imágenes. Se mira que el endpoint responde, que el resultado viene como
    se promete (audio, resolución) y que el costo real de fal coincide con el anotado.
-5. Solo entonces, `activo: true` en el catálogo de la web.
+   Se corre con `python tools/probar_modelo.py <tarea> <modelo>`:
+   - Sin `--si` es un ensayo: enseña el endpoint, los argumentos, el costo esperado en
+     dólares y los créditos (si ya hay número); no llama a fal ni pide la clave.
+   - Con `--si` hace UNA sola llamada con el adaptador real (exige `FAL_KEY` en el
+     entorno o en el `.env`; la clave nunca se imprime) y es lo que gasta.
+   - Mide con ffprobe lo que llegó (ancho×alto, segundos, pista de audio) y marca
+     «REVISAR» si algo difiere de lo prometido. Opciones: `--segundos N` (clip),
+     `--imagen RUTA` (obligatoria al editar; en clip, imagen a video), `--prompt`,
+     `--formato` y `--salida`.
+   - El costo esperado se compara después con el panel de fal (Request Details → Cost):
+     la herramienta no lo sabe, fal no devuelve lo cobrado.
+5. Solo entonces, `activo: true` en el catálogo de la web, junto con el número del paso 3.
 
 ## Datos por modelo (lectura del 8-oct-2026)
 
 Las lecturas completas (endpoints, parámetros, tablas de precio y lo que no se
 encontró) están en [`DATOS-FAL-2026-10-08.md`](DATOS-FAL-2026-10-08.md). Ningún
 precio de ahí está confirmado todavía: faltan la decisión del dueño y la prueba
-pagada. Esta tabla dice qué le falta a cada modelo para poder encenderse.
+pagada (los de la Ola 1 ya tienen su costo en dólares en `pricing.json`, leído el
+8-oct, pero sigue sin confirmarse). Esta tabla dice qué le falta a cada modelo para
+poder encenderse.
 
 | Tarea | Modelo (id) | Endpoint fal | Falta |
 |---|---|---|---|
@@ -35,15 +56,21 @@ pagada. Esta tabla dice qué le falta a cada modelo para poder encenderse.
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
 | imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | sin `num_images`: probar que fal lo ignora |
-| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | solo la prueba pagada |
+| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | fila y costo en dólares listos (Ola 1); falta la prueba pagada con el «sí» del dueño; créditos propuestos 8 (crear y editar), se escriben al encender |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
 | clip | LTX-2.5 Fast (`ltx`) | `lightricks/ltx-2.5/text-to-video/fast` y `/image-to-video/fast` | adaptador; la prueba es de 6 s (mínimo del modelo) |
-| clip | Veo 3.1 Fast (`veo-fast`) | `fal-ai/veo3.1/fast` y `/fast/image-to-video` | tabla de precios propia; mismos argumentos que Lite |
+| clip | Veo 3.1 Fast (`veo-fast`) | `fal-ai/veo3.1/fast` y `/fast/image-to-video` | fila y costo en dólares listos (Ola 1); falta la prueba pagada con el «sí» del dueño; créditos propuestos 54, 80 y 108 (4, 6 y 8 s), se escriben al encender |
 | clip | Kling V3 Pro (`kling`) | `fal-ai/kling-video/v3/pro/text-to-video` y `/image-to-video` | adaptador (`start_image_url`, sin resolución) |
 | clip | Seedance 2.0 (`seed`) | `bytedance/seedance-2.0/text-to-video` y `/image-to-video` | adaptador; $0.3034 contra $0.3024 por segundo (el clip sale en 216 créditos con las dos) |
-| clip | Veo 3.1 Standard (`veo-std`) | `fal-ai/veo3.1` y `/image-to-video` | tabla de precios propia; mismos argumentos que Lite |
+| clip | Veo 3.1 Standard (`veo-std`) | `fal-ai/veo3.1` y `/image-to-video` | fila y costo en dólares listos (Ola 1); falta la prueba pagada con el «sí» del dueño; créditos propuestos 144, 214 y 286 (4, 6 y 8 s), se escriben al encender |
+
+**Ola 1 (9-oct-2026).** Los clips de Fast y Standard se piden a 720p con audio, como
+Lite: a 1080p la página cobra lo mismo, pero no está verificado que 1080p admita 4 y
+6 s, así que no se manda y su costo no se anota. Nano Banana 2 manda
+`resolution: "1K"` explícito (`args_extra` de su fila): 1K es la única resolución con
+precio leído ($0.08 dólares por imagen), y no se depende del valor por defecto de fal.
 
 Para los clips, la lectura del 8-oct ya respondió lo básico: los siete tienen
 endpoint de texto a video y de imagen a video, y los siete admiten 8 s. El audio es
@@ -51,8 +78,9 @@ opcional (`generate_audio`) en LTX, Veo, Kling y Seedance, viene sin parámetro 
 Video y no está documentado en MiniMax.
 
 Un modelo de otra familia que Veo recibe argumentos distintos: `pipeline/clip.py`
-(`animar`) hoy arma los de la familia Veo; el primer modelo de otra familia trae
-su adaptador de argumentos junto con su fila.
+(`animar`) hoy arma los de la familia Veo (Lite, Fast y Standard comparten ese
+armado, por eso las dos filas nuevas no traen adaptador); el primer modelo de otra
+familia trae su adaptador de argumentos junto con su fila.
 
 ## La duración de un clip (contrato del 9-oct-2026)
 

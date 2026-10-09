@@ -320,12 +320,18 @@ def test_guardian_las_duraciones_de_la_tarifa_son_las_que_declara_el_modelo():
     """La tabla de modelos y la tarifa tienen que andar juntas, en las dos
     direcciones: un modelo que declara una duración sin número no la ofrece
     (error 422), y un número para una duración que el modelo no admite es un
-    dedazo."""
+    dedazo. Un modelo sin NINGÚN número (Ola 1: veo-fast, veo-std) es inerte y no
+    entra en esta cuenta; uno con números a medias sí falla."""
     from pipeline import creditos, modelos_ia
+    assert "veo-lite" in creditos.MODELOS_CR["clip"]
     for id_ in modelos_ia.disponibles("clip"):
+        if id_ not in creditos.MODELOS_CR["clip"]:
+            continue                      # inerte: no se ofrece ninguna duración
         declaradas = set(modelos_ia.resolver("clip", id_).duraciones)
         con_numero = set(creditos.MODELOS_CR["clip"][id_])
         assert con_numero == declaradas, id_
+    # y ningún número es de un modelo que la tabla no conoce
+    assert set(creditos.MODELOS_CR["clip"]) <= set(modelos_ia.disponibles("clip"))
 
 
 def test_guardian_a_mas_segundos_mas_creditos():

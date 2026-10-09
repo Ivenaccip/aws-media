@@ -37,10 +37,12 @@ async def imagen_fal(prompt: str, destino: Path, referencia: Path | None = None,
     args: dict = {"prompt": prompt, "num_images": 1,
                   "aspect_ratio": aspecto or "1:1"}
     # R4: el endpoint sale de la tabla de modelos (sin `modelo`, el de siempre)
-    app = modelos_ia.resolver("imagen", modelo).endpoint_para(referencia is not None)
+    m = modelos_ia.resolver("imagen", modelo)
+    app = m.endpoint_para(referencia is not None)
     if referencia is not None:
         args["image_urls"] = [await fal.subir_archivo(referencia)]
-    res = await fal.llamar(app, args, timeout_s=settings.grok_timeout_s,
+    # los argumentos fijos del modelo (p. ej. la resolución de Nano Banana 2); Grok no trae
+    res = await fal.llamar(app, m.con_args_extra(args), timeout_s=settings.grok_timeout_s,
                            nombre="imagen", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")
     if not url:
@@ -67,12 +69,13 @@ async def imagen_pincel(prompt: str, imagen: Path, marcada: Path, destino: Path,
         f"to the highlighted region: {prompt}. Keep every other part of the original "
         "pixel-identical. Return the full edited image with no pink marking, no text, "
         "no watermark.")
+    m = modelos_ia.resolver("editar", modelo)
     args = {
         "prompt": instruccion,
         "image_urls": [await fal.subir_archivo(imagen), await fal.subir_archivo(marcada)],
         "num_images": 1,
     }
-    res = await fal.llamar(modelos_ia.resolver("editar", modelo).endpoint, args, timeout_s=settings.grok_timeout_s,
+    res = await fal.llamar(m.endpoint, m.con_args_extra(args), timeout_s=settings.grok_timeout_s,
                            nombre="imagen_pincel", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")
     if not url:
@@ -102,12 +105,13 @@ async def imagen_transformar(prompt: str, imagen: Path, destino: Path,
         "the same subject, composition and framing as the original — this is a "
         "transformation of this image, not a new one. Return the full image "
         "with no text and no watermark.")
+    m = modelos_ia.resolver("editar", modelo)
     args = {
         "prompt": instruccion,
         "image_urls": [await fal.subir_archivo(imagen)],
         "num_images": 1,
     }
-    res = await fal.llamar(modelos_ia.resolver("editar", modelo).endpoint, args, timeout_s=settings.grok_timeout_s,
+    res = await fal.llamar(m.endpoint, m.con_args_extra(args), timeout_s=settings.grok_timeout_s,
                            nombre="imagen_transformar", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")
     if not url:
