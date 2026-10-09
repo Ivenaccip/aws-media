@@ -220,9 +220,16 @@ def _recientes_s3(prefijo: str, desde: float) -> list[tuple[str, dict]]:
     return out
 
 
+def _segundos_del_clip(doc: dict) -> int:
+    """Lo que el usuario eligió (4, 6 u 8), para el título; 8 si el documento no lo trae."""
+    s = doc.get("segundos")
+    return s if isinstance(s, int) and not isinstance(s, bool) and s > 0 else 8
+
+
 def ficha_s3(tipo: str, ref: str, doc: dict, ahora: float) -> dict | None:
+    seg = _segundos_del_clip(doc)
     textos = {
-        "clip": ("Generando tu clip de 8 segundos", "Tu clip de 8 segundos está listo",
+        "clip": (f"Generando tu clip de {seg} segundos", f"Tu clip de {seg} segundos está listo",
                  "No se pudo generar tu clip", "/clip.html", _corto(doc.get("texto", ""))),
         "estilo": ("Analizando un estilo", "Tu perfil de estilo está listo",
                    "No se pudo analizar el estilo", "/estilos.html",

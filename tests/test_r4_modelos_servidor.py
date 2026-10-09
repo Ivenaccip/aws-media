@@ -11,6 +11,9 @@ Lo que este archivo defiende:
   * que sumar un endpoint por pricing.json §generacion.endpoints se cueste sin
     tocar código, y que una ficha a medias dé «sin costo», no un cero.
 
+La duración del clip (4, 6, 8 s) y su precio por duración viven en
+tests/test_r4_duracion.py.
+
 OJO: nada de importar pipeline/server a nivel de módulo (ver test_m25_clip)."""
 import json
 import sys
@@ -62,15 +65,23 @@ def test_cada_modelo_de_la_tabla_trae_tarifa():
     from pipeline import creditos, modelos_ia
     for tarea in modelos_ia.TAREAS:
         for id_ in modelos_ia.disponibles(tarea):
-            assert isinstance(creditos.costo_modelo(tarea, id_), int)
+            m = modelos_ia.resolver(tarea, id_)
+            if m.duraciones:       # el clip: un número por cada duración que admite
+                for s in m.duraciones:
+                    assert isinstance(creditos.costo_modelo(tarea, id_, s), int)
+            else:
+                assert isinstance(creditos.costo_modelo(tarea, id_), int)
         assert set(creditos.MODELOS_CR.get(tarea, {})) == set(modelos_ia.disponibles(tarea))
 
 
 def test_los_predeterminados_cuestan_lo_de_siempre():
     from pipeline import creditos
+    # el clip trae un número por duración; a 8 s (la de siempre) vale la tarifa plana
+    assert creditos.costo_modelo("clip", "veo-lite", 8) == creditos.costo_clip(0)
     assert creditos.costo_modelo("clip", "veo-lite") == creditos.costo_clip(0)
     assert creditos.costo_modelo("imagen", "grok") == creditos.costo_imagen()
     assert creditos.costo_modelo("editar", "grok") == creditos.costo_imagen()
+    assert creditos.costo_clip(2, "veo-lite", 8) == creditos.costo_clip(2)
     assert creditos.costo_clip(2, "veo-lite") == creditos.costo_clip(2)
 
 
@@ -167,7 +178,7 @@ def test_el_clip_guarda_el_modelo_y_cobra_su_tarifa(cliente, s3, monkeypatch):
     assert r.status_code == 200
     assert cobros[0][0] == creditos.costo_clip(0, "veo-lite")
     doc = json.loads(next(iter(s3.values())))
-    assert doc["modelo"] == "veo-lite"
+    assert doc["modelo"] == "veo-lite" and doc["segundos"] == 8
 
 
 def test_el_clip_sin_modelo_se_queda_con_el_predeterminado(cliente, s3, monkeypatch):

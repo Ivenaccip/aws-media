@@ -1,4 +1,4 @@
-"""M25 · A/F — el clip de 8 segundos: la puerta sencilla.
+"""M25 · A/F — el clip de 4, 6 u 8 segundos: la puerta sencilla.
 
 Hay gente que no quiere una película: quiere subir una foto, escribir una línea
 y llevarse un video. Esta es esa puerta, y a propósito no comparte casi nada con
@@ -8,8 +8,10 @@ la de crear proyectos:
   no hay estado `revision` que aprobar ni Step Functions que esperar.
 - **Un solo cobro.** La película cobra `preparar` al empezar y el resto al
   producir; aquí se cobra una vez y se devuelve entera si falla.
-- **Sin duraciones que elegir.** Ocho segundos es el slot máximo de Veo: no es
-  una opción de producto, es la unidad.
+- **Pocas duraciones que elegir.** Ocho segundos es el slot máximo de Veo y lo
+  que vale si el pedido no dice nada; R4 deja pedir 4 o 6. El navegador manda el
+  id del modelo y los segundos: qué duraciones admite el modelo y cuánto cuestan
+  lo decide el servidor (modelos_ia y tarifas.json §modelos), nunca el pedido.
 
 Las mismas reglas duras de la copiadora de estilos y de la competencia: preview
 de costo antes de cobrar (la tarifa sale de tarifas.json §clip y la UI la enseña
@@ -25,6 +27,7 @@ import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -44,7 +47,7 @@ _ID = re.compile(r"^clip-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 
 def _nube() -> None:
     if db.backend() != "postgres" or not media_sync._bucket():
-        raise HTTPException(503, "El clip de 8 segundos corre en el servicio")
+        raise HTTPException(503, "El clip corre en el servicio")
 
 
 def _ahora() -> str:
@@ -121,6 +124,11 @@ class PedidoClip(BaseModel):
     desplegado: bool = False
     # R4: el modelo elegido en la caja del inicio. Vacío = el predeterminado.
     modelo: str = ""
+    # R4: la duración del clip, en segundos. Ausente = 8. Es `Any` a propósito:
+    # con `int` pydantic convertiría `true` en 1, «8» en 8 y 8.0 en 8, y
+    # cobraría una duración que el navegador no pidió; aquí llega tal cual y
+    # modelos_ia.valida_duracion decide (un `null` explícito también es 422).
+    segundos: Any = clip.DURACION_S
 
 
 @router.get("/config")
@@ -170,9 +178,19 @@ def generar(pedido: PedidoClip):
         raise HTTPException(422, f"Como mucho {clip.MAX_IMAGENES} imágenes por clip")
     try:
         modelo = modelos_ia.resolver("clip", pedido.modelo).id
-        creditos.costo_modelo("clip", modelo)       # sin tarifa no se ofrece
-    except (modelos_ia.ModeloDesconocido, KeyError):
+    except modelos_ia.ModeloDesconocido:
         raise HTTPException(422, f"Ese modelo no está disponible: {pedido.modelo!r}")
+    # la duración y el precio se resuelven aquí, antes de leer nada de S3, de
+    # cobrar, de crear el doc o de encolar: el costo sale SOLO del servidor
+    try:
+        segundos = modelos_ia.valida_duracion("clip", modelo, pedido.segundos)
+    except modelos_ia.ModeloDesconocido as err:
+        raise HTTPException(422, str(err))
+    try:
+        n = creditos.costo_clip(len(pedido.imagenes), modelo, segundos)
+    except KeyError:    # sin número en tarifas.json no se ofrece: ni gratis ni en otra
+        raise HTTPException(422, f"Ese modelo no está disponible para clips de "
+                                 f"{segundos} s: {modelo!r}")
     # las keys las manda el navegador: sin esto, cualquiera pediría la de otro
     propio = f"{_prefijo(user)}subidas/"
     for key in pedido.imagenes:
@@ -185,7 +203,6 @@ def generar(pedido: PedidoClip):
         raise HTTPException(409, f"Ya tienes {MAX_EN_MARCHA} clips generándose — "
                                  "espera a que terminen.")
 
-    n = creditos.costo_clip(len(pedido.imagenes), modelo)
     clip_id = ("clip-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                + "-" + uuid4().hex[:6])
     if creditos.activo():
@@ -196,11 +213,11 @@ def generar(pedido: PedidoClip):
     doc = {"estado": "generando", "inicio": _ahora(), "creditos": n,
            "modelo": modelo, "texto": texto, "formato": pedido.formato,
            "imagenes": list(pedido.imagenes),
-           "segundos": clip.DURACION_S}
+           "segundos": segundos}
     media_sync.escribir_texto(_key_doc(user, clip_id),
                               json.dumps(doc, ensure_ascii=False, indent=1))
     try:
-        jobs.encolar_clip(user, clip_id)
+        jobs.encolar_clip(user, clip_id, segundos)
     except Exception as err:  # noqa: BLE001 — cobrado y sin job = lo peor: revertir
         if creditos.activo():
             creditos.devolver(n, f"clip:{clip_id}", user)

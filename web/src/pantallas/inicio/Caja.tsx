@@ -1,6 +1,8 @@
 // «¿Qué vamos a crear hoy?» (M25 · B, R4 + R4b): el riel de la izquierda dice QUÉ
 // te llevas (Imagen o Video), el chip de tarea CUÁL de esas cosas, y el chip de
 // modelo CON QUÉ IA. El precio se ve dentro del menú de modelo, junto al «Crear».
+// El clip suma ahí mismo su duración (4, 6 u 8 s, 8 por defecto): la caja la
+// guarda y la manda con el pedido; el precio lo calcula el servidor.
 //
 // Lo que elige modelo (un video corto, crear o editar una imagen) se pide AQUÍ:
 // la caja sube las imágenes de referencia (el «+», o arrastrándolas), pide con
@@ -21,7 +23,22 @@ import { MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from '.
 import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
-import { grupos as gruposDe, llavePrecio, PREDETERMINADO, precioDe, type Tarea } from './modelos';
+import {
+  admite,
+  cambioPorDuracion,
+  CATALOGO,
+  DURACION_PREDETERMINADA,
+  duracionesDe,
+  duracionesOfrecidas,
+  duracionVigente,
+  grupos as gruposDe,
+  llavePrecio,
+  modeloPara,
+  ofrecidosDe,
+  precioDe,
+  PRECIOS,
+  type Tarea,
+} from './modelos';
 
 export interface MandoCaja {
   /** Pone la familia y la opción, enfoca el texto y sube la página. */
@@ -60,6 +77,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const [opcion, setOpcion] = useState<Opcion>(OPCIONES.videos[0]!);
   // cada tarea recuerda su propio modelo
   const [elegidos, setElegidos] = useState<Partial<Record<Tarea, Eleccion>>>({});
+  // la duración que se pidió para el clip; la que rige sale de abajo (puede ser otra si esa ya no se ofrece)
+  const [pedida, setPedida] = useState(DURACION_PREDETERMINADA);
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -143,14 +162,26 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const opciones = OPCIONES[familia];
 
   // el modelo de la tarea: el que eligió, o el predeterminado, o el primero que
-  // se ofrezca. Si no se ofrece ninguno, la tarea no muestra chip de modelo.
+  // se ofrezca (y que admita la duración, en el clip). Si no se ofrece ninguno,
+  // la tarea no muestra chip de modelo.
   const tarea = opcion.modelos;
-  const grupos = useMemo(() => (tarea ? gruposDe(tarea) : []), [tarea]);
-  const ofrecidos = grupos.flatMap(g => g.modelos);
+  const ofrecidos = useMemo(() => (tarea ? ofrecidosDe(tarea) : []), [tarea]);
+  const duraciones = tarea ? duracionesOfrecidas(tarea, ofrecidos) : [];
+  const segundos = duracionVigente(duraciones, pedida);
+  const grupos = useMemo(() => (tarea ? gruposDe(tarea, CATALOGO, PRECIOS, segundos) : []), [tarea, segundos]);
   const guardado = tarea ? elegidos[tarea] : undefined;
-  const modelo = tarea ? (ofrecidos.find(m => m.id === (guardado?.id ?? PREDETERMINADO[tarea])) ?? ofrecidos[0]) : undefined;
+  const modelo = tarea ? modeloPara(tarea, ofrecidos, guardado?.id, segundos) : undefined;
   const calidad = modelo?.calidades ? (modelo.calidades.find(c => c.id === guardado?.calidad) ?? modelo.calidades[0]) : undefined;
   const modeloId = modelo ? llavePrecio(modelo.id, calidad?.id) : undefined;
+
+  /** Cambia la duración del clip. Si el modelo elegido no la ofrece, vuelve al predeterminado y lo dice. */
+  function elegirDuracion(nueva: number): string | undefined {
+    setPedida(nueva);
+    const cambio = tarea && modelo ? cambioPorDuracion(tarea, ofrecidos, modelo, nueva) : null;
+    if (!tarea || !cambio) return undefined;
+    setElegidos(e => ({ ...e, [tarea]: { id: cambio.queda.id } }));
+    return cambio.aviso;
+  }
 
   function abrir() {
     setMarcada(Math.max(0, opciones.findIndex(o => o.id === opcion.id)));
@@ -250,7 +281,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       }
       alPedir?.({ clave, tipo: opcion.id === 'clip' ? 'corto' : 'imagen', texto: limpio });
       salio = true;
-      if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas);
+      if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
       else if (opcion.id === 'imagen') await pedirImagen(limpio, modelo);
       else await pedirEdicion(limpio, modelo, adjuntas[0]!);
       setTexto('');
@@ -434,13 +465,25 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
           <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
             {tarea && modelo && (
               <MenuModelo
+                key={tarea}
                 tarea={tarea}
                 grupos={grupos}
                 elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
                 alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
-                precio={(id, cal) => precioDe(tarea, id, cal)!}
+                precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos)!}
                 alCrear={enviar}
                 enviando={enviando}
+                {...(duraciones.length
+                  ? {
+                      duracion: {
+                        segundos,
+                        opciones: duraciones,
+                        alElegir: elegirDuracion,
+                        admite: m => admite(tarea, m, segundos),
+                        desde: m => duracionesDe(tarea, m)[0]!,
+                      },
+                    }
+                  : {})}
                 {...(tarea === 'clip' && fotos.length >= 2
                   ? { nota: `+ ${ESTRELLA} ${tarifaClip.componer_imagenes} por juntar tus ${fotos.length} imágenes en una` }
                   : {})}

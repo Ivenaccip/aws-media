@@ -10,6 +10,7 @@ import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Inicio } from './Inicio';
 import type { ClipCorto, Edicion, EstadoBlotato, Imagen, Proyecto } from './logica';
+import { CATALOGO, PRECIOS } from './modelos';
 
 const P1: Proyecto = {
   id: 'p1',
@@ -99,7 +100,25 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  restaurarCatalogo?.();
+  restaurarCatalogo = undefined;
 });
+
+// El catálogo real solo enciende Veo Lite. Para ver qué pasa con un modelo que no
+// tiene todas las duraciones se enciende LTX (sin 4 s) mientras dura la prueba, con
+// números de PRUEBA (no son los de tarifas.json), y después se deja como estaba.
+let restaurarCatalogo: (() => void) | undefined;
+function encenderLtx() {
+  const ltx = CATALOGO.clip.find(m => m.id === 'ltx')!;
+  const antes = { activo: ltx.activo, precio: PRECIOS.clip.ltx };
+  ltx.activo = true;
+  PRECIOS.clip.ltx = { '6': 10, '8': 12 };
+  restaurarCatalogo = () => {
+    ltx.activo = antes.activo;
+    if (antes.precio === undefined) delete PRECIOS.clip.ltx;
+    else PRECIOS.clip.ltx = antes.precio;
+  };
+}
 
 const caja = () => screen.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' });
 // el chip de TAREA (sin precio) y el de MODELO; son los dos menús de la caja
@@ -148,12 +167,12 @@ describe('la caja', () => {
   it('inicio.caja.el_modelo_se_paga_con_tarifas_json', async () => {
     montar();
     pintar();
-    // el clip: el menú de modelo enseña lo mismo que cobra la pantalla del clip
-    expect(clip.video_8s).toBe(modelos.clip['veo-lite']);
+    // el clip: el menú de modelo enseña lo mismo que cobra la pantalla del clip (el de 8 s, que arranca elegido)
+    expect(clip.video_8s).toBe(modelos.clip['veo-lite']['8']);
     await userEvent.click(botonModelo());
     const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
-    expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Lite/ })).toHaveTextContent('✦ ' + modelos.clip['veo-lite']);
-    expect(menu).toHaveTextContent('✦ ' + modelos.clip['veo-lite'] + ' por clip de 8 s');
+    expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Lite/ })).toHaveTextContent('✦ ' + modelos.clip['veo-lite']['8']);
+    expect(menu).toHaveTextContent('✦ ' + modelos.clip['veo-lite']['8'] + ' por clip de 8 s');
     await userEvent.keyboard('{Escape}');
     // la imagen: el menú dice lo que dice tarifas.json, y es lo que ya valía
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
@@ -164,7 +183,7 @@ describe('la caja', () => {
   });
 
   it('inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo', async () => {
-    const f = montar({ rutas: { '/api/clip/generar': () => json({ lanzado: true, id: 'clip-1', creditos: modelos.clip['veo-lite'] }) } });
+    const f = montar({ rutas: { '/api/clip/generar': () => json({ lanzado: true, id: 'clip-1', creditos: modelos.clip['veo-lite']['8'] }) } });
     pintar();
     await userEvent.type(caja(), 'un gato en la luna');
     await userEvent.click(botonModelo());
@@ -172,11 +191,13 @@ describe('la caja', () => {
     await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
     // el video corto se pide aquí, con el modelo elegido, y la página no navega
     await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    // sin tocar la duración van los 8 s de siempre
     expect(cuerpoDe(f, '/api/clip/generar')).toEqual({
       texto: 'un gato en la luna',
       formato: 'horizontal',
       imagenes: [],
       modelo: 'veo-lite',
+      segundos: 8,
       puerta: 'caja',
     });
     expect(ir).not.toHaveBeenCalled();
@@ -329,6 +350,10 @@ describe('la caja', () => {
     const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
     // con dos fotos se juntan en una, y eso suma lo que dice tarifas.json
     expect(menu).toHaveTextContent('+ ✦ ' + clip.componer_imagenes + ' por juntar tus 2 imágenes en una');
+    // y no depende de la duración del clip
+    await userEvent.click(within(menu).getByRole('radio', { name: '4 s' }));
+    expect(menu).toHaveTextContent('+ ✦ ' + clip.componer_imagenes + ' por juntar tus 2 imágenes en una');
+    await userEvent.click(within(menu).getByRole('radio', { name: '8 s' }));
     await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
     expect(llamadas(f, '/api/clip/presign')).toHaveLength(2);
@@ -342,6 +367,140 @@ describe('la caja', () => {
     fireEvent.dragOver(seccion, { dataTransfer: { files: [] } });
     fireEvent.drop(seccion, { dataTransfer: { files: [foto('arrastrada.png')] } });
     expect(await screen.findByRole('button', { name: 'Quitar «arrastrada.png»' })).toBeInTheDocument();
+  });
+
+  it('inicio.caja.la_duracion_recalcula_los_precios_el_chip_y_el_pie', async () => {
+    montar();
+    pintar();
+    const tabla = modelos.clip['veo-lite'];
+    // más corto, más barato
+    expect(tabla['4']).toBeLessThan(tabla['6']);
+    expect(tabla['6']).toBeLessThan(tabla['8']);
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 8 s');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    const grupo = within(menu).getByRole('radiogroup', { name: 'Duración del clip' });
+    expect(within(grupo).getAllByRole('radio').map(r => r.textContent)).toEqual(['4 s', '6 s', '8 s']);
+    expect(within(grupo).getByRole('radio', { name: '8 s' })).toHaveAttribute('aria-checked', 'true');
+    for (const s of ['6', '4', '8'] as const) {
+      await userEvent.click(within(grupo).getByRole('radio', { name: s + ' s' }));
+      expect(within(grupo).getByRole('radio', { name: s + ' s' })).toHaveAttribute('aria-checked', 'true');
+      // el chip, la fila, el encabezado del grupo y el pie dicen los créditos de ESA duración
+      expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · ' + s + ' s');
+      expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Lite/ })).toHaveTextContent('✦ ' + tabla[s]);
+      expect(menu).toHaveTextContent('Económicos✦ ' + tabla[s] + ' por clip de ' + s + ' s');
+      expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + tabla[s] + ' por clip de ' + s + ' s');
+    }
+    // y en la caja queda la última
+    await userEvent.click(within(grupo).getByRole('radio', { name: '4 s' }));
+    await userEvent.keyboard('{Escape}');
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 4 s');
+  });
+
+  it('inicio.caja.el_clip_manda_los_segundos_elegidos', async () => {
+    const f = montar({
+      rutas: { '/api/clip/generar': () => json({ lanzado: true, id: 'clip-6', creditos: modelos.clip['veo-lite']['6'] }) },
+    });
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: '6 s' }));
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    // viajan el modelo y los segundos; el precio lo calcula el servidor
+    expect(cuerpoDe(f, '/api/clip/generar')).toEqual({
+      texto: 'un gato en la luna',
+      formato: 'horizontal',
+      imagenes: [],
+      modelo: 'veo-lite',
+      segundos: 6,
+      puerta: 'caja',
+    });
+    expect(Object.keys(cuerpoDe(f, '/api/clip/generar'))).not.toContain('creditos');
+    expect(await screen.findByRole('status')).toHaveTextContent('Mis creaciones');
+    // la duración se queda para el próximo
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 6 s');
+  });
+
+  it('inicio.caja.un_modelo_sin_esa_duracion_se_atenua_y_se_vuelve_al_predeterminado', async () => {
+    encenderLtx();
+    const f = montar({ rutas: { '/api/clip/generar': () => json({ lanzado: true, id: 'clip-ltx', creditos: 10 }) } });
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    const ltx = () => within(menu).getByRole('radio', { name: /LTX-2\.5 Fast/ });
+    const duracion = (s: string) => within(menu).getByRole('radio', { name: s + ' s' });
+    await userEvent.click(ltx());
+    expect(botonModelo()).toHaveTextContent('Modelo LTX-2.5 Fast · 8 s');
+    // a 4 s LTX no existe: vuelve el predeterminado, se atenúa y el pie dice por qué
+    await userEvent.click(duracion('4'));
+    expect(within(menu).getByRole('status')).toHaveTextContent('LTX-2.5 Fast empieza en 6 s. Te dejamos Veo 3.1 Lite.');
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 4 s');
+    expect(ltx()).toHaveAttribute('aria-disabled', 'true');
+    expect(ltx()).toHaveTextContent('Desde 6 s');
+    expect(ltx()).toHaveAttribute('aria-checked', 'false');
+    await userEvent.click(ltx());
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 4 s');
+    // de vuelta a 8 s se puede elegir, pero no se elige solo
+    await userEvent.click(duracion('8'));
+    expect(within(menu).queryByRole('status')).toBeNull();
+    expect(ltx()).not.toHaveAttribute('aria-disabled');
+    expect(ltx()).toHaveAttribute('aria-checked', 'false');
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 8 s');
+    // con 6 s sí: se elige y es lo que viaja
+    await userEvent.click(duracion('6'));
+    await userEvent.click(ltx());
+    expect(botonModelo()).toHaveTextContent('Modelo LTX-2.5 Fast · 6 s');
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/clip/generar')).toMatchObject({ modelo: 'ltx', segundos: 6 });
+  });
+
+  it('inicio.caja.imagen_y_editar_no_tienen_selector_de_duracion', async () => {
+    montar();
+    pintar();
+    await userEvent.click(botonModelo());
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('radio', { name: '6 s' }));
+    await userEvent.keyboard('{Escape}');
+    for (const tarea of ['Crear una imagen', 'Editar una imagen']) {
+      await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+      if (tarea.startsWith('Editar')) await elegirOpcion(tarea);
+      // el chip no habla de segundos y el menú no trae el selector, ni lo del clip
+      expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine');
+      expect(botonModelo().textContent).not.toMatch(/\d s/);
+      await userEvent.click(botonModelo());
+      const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+      expect(within(menu).queryByRole('radiogroup', { name: 'Duración del clip' })).toBeNull();
+      expect(within(menu).queryByRole('radio', { name: /\d s$/ })).toBeNull();
+      expect(menu).toHaveTextContent('✦ ' + modelos.imagen.grok + ' por imagen');
+      expect(menu).not.toHaveTextContent('por clip');
+      await userEvent.keyboard('{Escape}');
+    }
+    // al volver al video, la duración que se eligió sigue ahí
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 6 s');
+  });
+
+  it('inicio.caja.el_aviso_de_duracion_no_sobrevive_al_cambio_de_tarea', async () => {
+    encenderLtx();
+    montar();
+    pintar();
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: /LTX-2\.5 Fast/ }));
+    await userEvent.click(within(menu).getByRole('radio', { name: '4 s' }));
+    expect(within(menu).getByRole('status')).toHaveTextContent('LTX-2.5 Fast empieza en 6 s');
+    // con el teclado el menú no se cierra solo: se pasa a Imagen sin cerrarlo
+    screen.getByRole('button', { name: 'Imagen' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine');
+    expect(screen.queryByRole('status', { name: '' })).toBeNull();
+    await userEvent.click(botonModelo());
+    const imagen = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    expect(imagen).not.toHaveTextContent('empieza en');
+    expect(within(imagen).queryByRole('status')).toBeNull();
   });
 
   it('inicio.galeria.lo_recien_pedido_aparece_generando_y_se_relee', async () => {

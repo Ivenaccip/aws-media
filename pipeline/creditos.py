@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from . import db
+from .modelos_ia import DURACION_PREDETERMINADA_S, PREDETERMINADO
 from .project import DURACION_MAX_S, DURACION_MIN_S
 
 _TARIFAS_JSON = Path(__file__).resolve().parent.parent / "tools" / "tarifas.json"
@@ -63,8 +64,10 @@ CLIP_COMPONER_CR = 2
 MIX_POR_PUBLICACION_CR = 5
 
 # R4 — créditos por modelo elegido (tarifas.json §modelos). Sin fallback a
-# propósito: un modelo sin número aquí NO se puede pedir.
-MODELOS_CR: dict[str, dict[str, int]] = {}
+# propósito: un modelo sin número aquí NO se puede pedir. Imagen y editar traen
+# un entero por modelo; el clip, uno por duración: {"veo-lite": {4: 18, 6: 28, 8: 36}}
+# (en el JSON las llaves son los segundos como texto; aquí ya son enteros).
+MODELOS_CR: dict[str, dict[str, int | dict[int, int]]] = {}
 
 def _tabla_de(crudo: dict) -> dict[int, int]:
     """§video.por_duracion → {segundos: total}. Se queda solo con lo que el
@@ -79,6 +82,38 @@ def _tabla_de(crudo: dict) -> dict[int, int]:
         if DURACION_MIN_S <= s <= DURACION_MAX_S:
             tabla[s] = n
     return tabla
+
+
+def _creditos_de(valor) -> int | None:
+    """Un número de créditos válido (entero y positivo) o None. Un cero o un
+    negativo en la tarifa regalaría el servicio o abonaría saldo al cobrar."""
+    if isinstance(valor, int) and not isinstance(valor, bool) and valor > 0:
+        return valor
+    return None
+
+
+def _modelos_de(crudo: dict) -> dict[str, dict[str, int | dict[int, int]]]:
+    """§modelos → {tarea: {modelo: créditos | {segundos: créditos}}}. Lo que no
+    es un número válido se descarta: un modelo (o una duración) sin tarifa NO se
+    ofrece, y una llave mal escrita no puede tumbar la API."""
+    tablas = {}
+    for tarea, tabla in (crudo or {}).items():
+        if not isinstance(tabla, dict):
+            continue
+        modelos = {}
+        for modelo, valor in tabla.items():
+            if isinstance(valor, dict):          # clip: un número por duración
+                por_duracion = {}
+                for seg, cr in valor.items():
+                    if (isinstance(seg, str) and seg.isascii() and seg.isdecimal()
+                            and int(seg) > 0 and _creditos_de(cr)):
+                        por_duracion[int(seg)] = cr
+                if por_duracion:
+                    modelos[modelo] = dict(sorted(por_duracion.items()))
+            elif _creditos_de(valor):
+                modelos[modelo] = valor
+        tablas[tarea] = modelos
+    return tablas
 
 
 try:
@@ -106,10 +141,7 @@ try:
     CLIP_COMPONER_CR = _c.get("componer_imagenes", CLIP_COMPONER_CR)
     MIX_POR_PUBLICACION_CR = _t.get("mix", {}).get(
         "por_publicacion", MIX_POR_PUBLICACION_CR)
-    MODELOS_CR = {tarea: {m: int(cr) for m, cr in tabla.items()
-                          if isinstance(cr, int) and not isinstance(cr, bool)}
-                  for tarea, tabla in (_t.get("modelos") or {}).items()
-                  if isinstance(tabla, dict)}
+    MODELOS_CR = _modelos_de(_t.get("modelos"))
 except (FileNotFoundError, KeyError, ValueError, TypeError):
     pass  # fallback: tarifa de arriba (2026-09-02); una llave mal escrita no tumba la API
 
@@ -176,11 +208,23 @@ def costo_imagen() -> int:
     return IMAGEN_CR
 
 
-def costo_modelo(tarea: str, modelo_id: str) -> int:
+def costo_modelo(tarea: str, modelo_id: str, segundos: int | None = None) -> int:
     """R4: lo que cuesta la tarea con el modelo elegido (tarifas.json §modelos).
 
-    Levanta KeyError si el modelo no tiene número: no se inventa una tarifa."""
-    return MODELOS_CR[tarea][modelo_id]
+    Imagen y editar traen un número por modelo. El clip trae uno por duración:
+    sin `segundos` vale la del producto (8 s). Levanta KeyError si no hay
+    número —modelo sin tarifa, duración sin tarifa, o una duración pedida a una
+    tarea que no la tiene—: no se inventa una tarifa, ni se cobra la de otra
+    duración."""
+    cr = MODELOS_CR[tarea][modelo_id]
+    if not isinstance(cr, dict):
+        if segundos is not None:
+            raise KeyError(f"{tarea}/{modelo_id} no tiene tarifa por duración")
+        return cr
+    s = DURACION_PREDETERMINADA_S if segundos is None else segundos
+    if type(s) is not int:                 # True o 8.0 caerían en la llave 1 u 8
+        raise KeyError(f"{tarea}/{modelo_id}: duración inválida {s!r}")
+    return cr[s]
 
 
 def costo_shorts_analizar(duracion_s: float, con_transcript: bool) -> int:
@@ -237,17 +281,24 @@ def costo_competencia(n_cuentas: int) -> int:
     return COMPETENCIA_POR_CUENTA_CR * max(0, int(n_cuentas))
 
 
-def costo_clip(n_imagenes: int = 0, modelo: str | None = None) -> int:
-    """M25 A/F: el clip de 8 segundos con audio — una sola llamada a Veo.
+def costo_clip(n_imagenes: int = 0, modelo: str | None = None,
+               segundos: int | None = None) -> int:
+    """M25 A/F: el clip con audio — una sola llamada a Veo.
 
-    Tarifa plana (no por segundo: la duración es fija). El extra de componer
-    solo aparece con DOS o TRES imágenes, que es cuando hay que juntarlas con
-    Grok antes de animar: con cero es text-to-video y con una se anima directo,
-    y en ninguno de esos casos se paga Grok. El usuario paga lo que usa.
+    El extra de componer solo aparece con DOS o TRES imágenes, que es cuando hay
+    que juntarlas con Grok antes de animar: con cero es text-to-video y con una
+    se anima directo, y en ninguno de esos casos se paga Grok. El usuario paga
+    lo que usa. Es fijo: no crece ni baja con la duración.
 
-    R4: con `modelo` la base sale de §modelos.clip; sin él (o con el
-    predeterminado) sigue siendo §clip.video_8s, que dice lo mismo."""
-    base = CLIP_CR if not modelo else costo_modelo("clip", modelo)
+    Sin `modelo` ni `segundos` (la ruta heredada /clip.html) es la tarifa plana
+    de 8 s de siempre, §clip.video_8s. R4: con cualquiera de los dos la base sale
+    de §modelos.clip, que trae un número por duración (4, 6, 8 s) y vale lo mismo
+    que la plana a 8 s. Una duración sin número levanta KeyError: ni cero ni la
+    de otra duración."""
+    if not modelo and segundos is None:
+        base = CLIP_CR
+    else:
+        base = costo_modelo("clip", modelo or PREDETERMINADO["clip"], segundos)
     return base + (CLIP_COMPONER_CR if int(n_imagenes) >= 2 else 0)
 
 

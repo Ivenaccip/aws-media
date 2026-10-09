@@ -10,8 +10,8 @@ editar) y **Veo 3.1 Lite** (clip). Los otros 18 viven en el catálogo de la web
    duración, resolución, audio, imágenes de referencia). → fila en `pipeline/modelos_ia.py`.
 2. **Costo en dólares**, leído en la página del modelo el día de la prueba. →
    `tools/pricing.json` §generacion.endpoints (con `verified_on`).
-3. **Créditos**: costo ÷ 0.75 ÷ piso de venta, hacia arriba (mín. 2 por imagen).
-   → `tools/tarifas.json` §modelos.
+3. **Créditos**: costo ÷ 0.75 ÷ piso de venta, hacia arriba y al par (mín. 2 por
+   imagen; en los clips, un número por duración, ver abajo). → `tools/tarifas.json` §modelos.
 4. **Prueba pagada pequeña** (con el «sí» del dueño): 4 s para clips, una imagen
    para imágenes. Se mira que el endpoint responde, que el resultado viene como
    se promete (audio, resolución) y que el costo real de fal coincide con el anotado.
@@ -53,3 +53,30 @@ Video y no está documentado en MiniMax.
 Un modelo de otra familia que Veo recibe argumentos distintos: `pipeline/clip.py`
 (`animar`) hoy arma los de la familia Veo; el primer modelo de otra familia trae
 su adaptador de argumentos junto con su fila.
+
+## La duración de un clip (contrato del 9-oct-2026)
+
+El navegador manda el id del modelo y los segundos (4, 6 u 8; si falta, 8). El
+servidor valida y calcula el precio: nunca confía en uno que venga del navegador.
+Para que un modelo de clip nuevo ofrezca duraciones, se declaran en dos lugares y
+tienen que coincidir:
+
+1. **`pipeline/modelos_ia.py`**: su fila trae `duraciones=(...)`, los segundos
+   enteros que su endpoint acepta de verdad (LTX no admite 4 s: `(6, 8)`).
+   `DURACION_PREDETERMINADA_S` (8) es la del producto cuando el pedido no dice nada.
+2. **`tools/tarifas.json` §modelos.clip**: su tabla por duración, por ejemplo
+   `"ltx": {"6": 48, "8": 64}`. Las llaves son los segundos como texto y los
+   valores, créditos enteros, positivos y **pares** (se redondea hacia arriba al
+   par, nunca hacia abajo). Los 2 de componer 2 o 3 imágenes son fijos
+   (`clip.componer_imagenes`) y no dependen de la duración.
+
+El costo en dólares sale solo de `pricing.json`: `clip.costo_usd` pasa
+`duration: "<n>s"` a `costo_fal`, que cobra por segundo. Un modelo sin ficha para
+su endpoint (el de texto y el de imagen) da «sin costo conocido», que es un
+error, no un cero.
+
+Solo se ofrece la duración que tiene las dos cosas. Declarada sin número, o con
+número pero sin declarar, el servidor responde 422 (no se cobra otra duración en
+su lugar), y la prueba `test_guardian_las_duraciones_de_la_tarifa_son_las_que_declara_el_modelo`
+(`tests/test_r4_duracion.py`) falla hasta que coincidan. Esa misma prueba
+guarda que todos los créditos de §modelos sean pares.
