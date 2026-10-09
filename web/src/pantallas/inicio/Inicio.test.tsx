@@ -104,8 +104,9 @@ afterEach(() => {
   restaurarCatalogo = undefined;
 });
 
-// El catálogo real solo enciende Veo Lite. Para ver qué pasa con un modelo que no
-// tiene todas las duraciones se enciende LTX (sin 4 s) mientras dura la prueba, con
+// El catálogo real enciende Grok y Nano Banana 2 (imagen y editar) y Veo Lite y Veo
+// Fast (clip, los dos con 4, 6 y 8 s). Para ver qué pasa con un modelo que no tiene
+// todas las duraciones se enciende LTX (sin 4 s) mientras dura la prueba, con
 // números de PRUEBA (no son los de tarifas.json), y después se deja como estaba.
 let restaurarCatalogo: (() => void) | undefined;
 function encenderLtx() {
@@ -249,13 +250,28 @@ describe('la caja', () => {
   it('inicio.caja.cada_tarea_recuerda_su_modelo', async () => {
     montar();
     pintar();
-    // hoy solo hay un modelo ofrecido por tarea: el predeterminado, y vuelve al regresar
+    // cada tarea arranca en su predeterminado y recuerda el que se elija, sin contagiar a las demás
+    const elegirModelo = async (nombre: RegExp) => {
+      await userEvent.click(botonModelo());
+      const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+      await userEvent.click(within(menu).getByRole('radio', { name: nombre }));
+      await userEvent.keyboard('{Escape}');
+    };
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine');
+    await elegirModelo(/Nano Banana 2/);
+    expect(botonModelo()).toHaveTextContent('Modelo Nano Banana 2');
     await elegirOpcion('Editar una imagen');
-    expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine');
+    expect(botonModelo()).toHaveTextContent('Modelo Grok Imagine'); // editar no heredó el de crear
     await userEvent.click(screen.getByRole('button', { name: 'Video' }));
     expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite');
+    await elegirModelo(/Veo 3\.1 Fast/);
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Fast');
+    // y al regresar cada una conserva el suyo
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(botonModelo()).toHaveTextContent('Modelo Nano Banana 2');
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Fast');
   });
 
   it('inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo', async () => {
@@ -291,6 +307,22 @@ describe('la caja', () => {
     expect(ir).not.toHaveBeenCalled();
   });
 
+  it('inicio.caja.crear_una_imagen_manda_nano_banana_2', async () => {
+    const f = montar({ rutas: { '/api/imagenes': (_url, init) => (init?.method === 'POST' ? json({ nombre: 'n.jpg', url: '/api/imagenes/n.jpg' }) : json({ imagenes: [] })) } });
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    const fila = within(menu).getByRole('radio', { name: /Nano Banana 2/ });
+    // el precio de la fila es el de tarifas.json
+    expect(fila).toHaveTextContent('✦ ' + modelos.imagen.nb2);
+    await userEvent.click(fila);
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/imagenes')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/imagenes')).toEqual({ prompt: 'un gato en la luna', estilo: 'animated', estilo_custom: '', modelo: 'nb2' });
+  });
+
   it('inicio.caja.editar_pide_la_imagen_con_el_mas', async () => {
     const f = montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
     const { container } = pintar();
@@ -312,6 +344,24 @@ describe('la caja', () => {
     expect(fd.get('prompt')).toBe('ponle un sombrero');
     expect(fd.get('modo')).toBe('todo');
     expect(fd.get('modelo')).toBe('grok');
+    expect((fd.get('imagen') as File).name).toBe('gato.png');
+  });
+
+  it('inicio.caja.editar_manda_nano_banana_2', async () => {
+    const f = montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
+    const { container } = pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await elegirOpcion('Editar una imagen');
+    await userEvent.type(caja(), 'ponle un sombrero');
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: /Nano Banana 2/ }));
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/imagenes/editar')).toHaveLength(1));
+    const fd = llamadas(f, '/api/imagenes/editar')[0]![1]!.body as FormData;
+    expect(fd.get('modelo')).toBe('nb2');
+    expect(fd.get('modo')).toBe('todo');
     expect((fd.get('imagen') as File).name).toBe('gato.png');
   });
 
@@ -421,6 +471,31 @@ describe('la caja', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Mis creaciones');
     // la duración se queda para el próximo
     expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 6 s');
+  });
+
+  it('inicio.caja.el_clip_manda_veo_fast_y_sus_segundos', async () => {
+    const f = montar({
+      rutas: { '/api/clip/generar': () => json({ lanzado: true, id: 'clip-fast', creditos: modelos.clip['veo-fast']['4'] }) },
+    });
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: /Veo 3\.1 Fast/ }));
+    await userEvent.click(within(menu).getByRole('radio', { name: '4 s' }));
+    // la fila enseña lo que dice tarifas.json a esa duración, y el servidor es quien cobra
+    expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Fast/ })).toHaveTextContent('✦ ' + modelos.clip['veo-fast']['4']);
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/clip/generar')).toEqual({
+      texto: 'un gato en la luna',
+      formato: 'horizontal',
+      imagenes: [],
+      modelo: 'veo-fast',
+      segundos: 4,
+      puerta: 'caja',
+    });
+    expect(Object.keys(cuerpoDe(f, '/api/clip/generar'))).not.toContain('creditos');
   });
 
   it('inicio.caja.un_modelo_sin_esa_duracion_se_atenua_y_se_vuelve_al_predeterminado', async () => {

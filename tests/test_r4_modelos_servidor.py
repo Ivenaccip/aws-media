@@ -78,10 +78,11 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
                     assert isinstance(creditos.costo_modelo(tarea, id_, s), int)
             else:
                 assert isinstance(creditos.costo_modelo(tarea, id_), int)
-    # los dos modelos a la venta desde R4 siguen con número
-    assert set(creditos.MODELOS_CR["imagen"]) >= {"grok"}
-    assert set(creditos.MODELOS_CR["editar"]) >= {"grok"}
-    assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite"}
+    # los modelos a la venta siguen con número: Grok y Veo Lite desde R4; Nano Banana 2 y
+    # Veo 3.1 Fast desde el 9-oct-2026
+    assert set(creditos.MODELOS_CR["imagen"]) >= {"grok", "nb2"}
+    assert set(creditos.MODELOS_CR["editar"]) >= {"grok", "nb2"}
+    assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite", "veo-fast"}
 
 
 def _activos_de_la_web() -> dict[str, list[str]]:

@@ -1292,3 +1292,22 @@ def test_guardian_todo_modelo_con_numero_cubre_su_costo_con_el_margen():
                 assert valor >= creditos_sugeridos(usd, minimo=2), (tarea, id_)
                 revisados += 1
     assert revisados >= 10             # grok ×2, nb2 ×2, y las tres duraciones de Lite y de Fast
+
+
+def test_guardian_componer_imagenes_nunca_cobra_por_debajo_del_costo():
+    """Con 2 o 3 imágenes se suma la composición de Grok y se cobran 2 créditos FIJOS de más
+    (clip.componer_imagenes), que no crecen con el modelo ni con la duración. Con ese
+    recargo fijo el margen baja unas décimas del 25 % de la fórmula en dos celdas (Veo 3.1
+    Fast de 6 s, 82 créditos contra 84, y Veo Lite de 4 s con 3 imágenes, 20 contra 22);
+    el peor caso hoy es 24.67 %. Lo que NO puede pasar es cobrar por debajo del costo ni que
+    el margen se hunda: si alguien toca los números o el recargo, esto salta."""
+    from pipeline import clip, creditos
+    peor = Fraction(1)
+    for id_, valor in creditos.MODELOS_CR["clip"].items():
+        for s in valor:
+            for n in (0, 1, 2, 3):
+                ingreso = Fraction(creditos.costo_clip(n, id_, s)) * PISO_VENTA
+                costo = Fraction(str(clip.costo_usd(n, id_, s)))
+                assert ingreso > costo, (id_, s, n)                      # nunca en pérdida
+                peor = min(peor, (ingreso - costo) / ingreso)
+    assert peor >= Fraction(24, 100), float(peor)

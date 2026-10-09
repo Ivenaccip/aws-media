@@ -1,10 +1,10 @@
 # Modelos del selector: lo que falta por verificar (R4)
 
-Hoy siete filas están en `pipeline/modelos_ia.py`. A la venta: **Grok Imagine** y
-**Nano Banana 2** (crear y editar) y **Veo 3.1 Lite** y **Veo 3.1 Fast** (clip); los dos
-últimos de la Ola 1 se encendieron el 9-oct-2026, tras su prueba pagada. **Veo 3.1
-Standard** (clip) es la única fila **inerte**: el servidor la conoce, pero no se ofrece ni
-se cobra. Los otros 15 solo viven en el catálogo de la web
+Hoy siete filas están en `pipeline/modelos_ia.py`. A la venta: **Grok Imagine**, **Nano
+Banana 2** (crear y editar), **Veo 3.1 Lite** y **Veo 3.1 Fast** (clip). De ellos, Nano
+Banana 2 y Veo 3.1 Fast (Ola 1) se encendieron el 9-oct-2026 tras su prueba pagada; Grok y
+Veo 3.1 Lite ya estaban. **Veo 3.1 Standard** (clip) es la única fila **inerte**: el
+servidor la conoce, pero no se ofrece ni se cobra. Los otros 15 solo viven en el catálogo de la web
 (`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que Standard.
 
 ## Cómo se enciende un modelo (una fila de datos, tres archivos y una prueba)
@@ -40,10 +40,12 @@ se cobra. Los otros 15 solo viven en el catálogo de la web
 
 Las lecturas completas (endpoints, parámetros, tablas de precio y lo que no se
 encontró) están en [`DATOS-FAL-2026-10-08.md`](DATOS-FAL-2026-10-08.md). Ningún
-precio de ahí está confirmado todavía: faltan la decisión del dueño y la prueba
-pagada (los de la Ola 1 ya tienen su costo en dólares en `pricing.json`, leído el
-8-oct, pero sigue sin confirmarse). Esta tabla dice qué le falta a cada modelo para
-poder encenderse.
+precio de ahí está confirmado todavía, salvo los de la Ola 1 y el de klein: faltan la
+decisión del dueño y la prueba pagada. Nano Banana 2 (crear y editar), Veo 3.1 Fast (con
+y sin imagen, a 4 s con audio) y Veo 3.1 Standard sin imagen se confirmaron en el panel de
+fal el 9-oct-2026 (DATOS §9, $3.04 dólares en seis llamadas); la ficha de Standard con
+imagen sigue siendo solo la lectura del 8-oct. Esta tabla dice qué le falta a cada modelo
+para poder encenderse.
 
 | Tarea | Modelo (id) | Endpoint fal | Falta |
 |---|---|---|---|
@@ -76,18 +78,18 @@ Ese `resolution` es un PIN: si una tarea manda la misma llave, gana la del model
 el precio solo vale a 1K. Y Veo 3.1 Fast y Standard hacen **un solo intento** por clip
 (`max_intentos=1` en su fila; Lite sigue con los de `CLIP_MAX_ATTEMPTS`).
 
-### Avisos antes de la prueba pagada y de encender la Ola 1
+### Avisos de la Ola 1 (vigentes)
 
-1. **Veo 3.1 Fast y Standard: un solo intento.** Antes de encender Veo 3.1 Fast o
-   Standard: el timeout del clip es de 240 s; la prueba pagada imprime cuánto tardó la
-   llamada y marca REVISAR si pasa del 70 % — un timeout de cliente puede dejar un
-   trabajo vivo y cobrado en fal, y por eso estos dos modelos hacen un solo intento.
-   Medido el 8-oct a 4 s: Fast 45.7 s y 28.6 s, Standard 38.5 s. Los clips de 6 y 8 s no
-   se han medido.
+1. **Veo 3.1 Fast y Standard: un solo intento.** Hoy el timeout del clip es de 240 s; la
+   prueba pagada imprime cuánto tardó la llamada y marca REVISAR si pasa del 70 % — un
+   timeout de cliente puede dejar un trabajo vivo y cobrado en fal, y por eso estos dos
+   modelos hacen un solo intento. Fast ya está a la venta y se midió a 4 s (45.7 s y
+   28.6 s); Standard, inerte, tardó 38.5 s a 4 s y sin imagen. Los clips de 6 y 8 s no se
+   han medido.
 2. **La imagen de entrada del clip.** La imagen de entrada del clip a partir de imagen
    debe ser de 720p o más de lado corto y de 16:9 o 9:16 (página del modelo, 8-oct). La
    caja acepta fotos de cualquier forma: lo que fal hace con una foto 4:3 o cuadrada NO
-   está comprobado (aplica también a Veo Lite hoy); la prueba con `--imagen-sin-validar`
+   está comprobado (aplica también a Veo Lite y a Veo 3.1 Fast hoy); la prueba con `--imagen-sin-validar`
    sirve para medirlo.
 3. **Nano Banana 2 al editar: `resolution` quedó comprobado (9-oct-2026).** La lectura del
    8-oct NO lista `resolution` entre los parámetros de `fal-ai/nano-banana-2/edit` (solo
