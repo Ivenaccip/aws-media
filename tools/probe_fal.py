@@ -33,6 +33,8 @@ from pathlib import Path
 def _cargar_env() -> None:
     try:
         from dotenv import load_dotenv
+        # primero el .env de donde se corre (el script puede vivir en otra carpeta), luego el de siempre
+        load_dotenv(Path.cwd() / ".env")
         load_dotenv()
     except Exception:  # noqa: BLE001 — sin python-dotenv basta con el entorno
         pass
