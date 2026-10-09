@@ -26,7 +26,7 @@ pagada. Esta tabla dice qué le falta a cada modelo para poder encenderse.
 
 | Tarea | Modelo (id) | Endpoint fal | Falta |
 |---|---|---|---|
-| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | «Request Details» de una solicitud de la 9B en el panel de fal (la 4B midió $0.005 dólares por imagen, ver DATOS §8) para escribir su costo; traducción a `image_size` |
+| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | traducción a `image_size`. Costo ya medido en el panel el 9-oct: $0.006 dólares por imagen a 1024×1024 (DATOS §8); se escribe en `pricing.json` con su fila |
 | imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | traducción a `image_size` |
 | imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | traducción a `image_size` |
 | imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | traducción a `image_size` |
