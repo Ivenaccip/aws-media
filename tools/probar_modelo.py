@@ -17,29 +17,46 @@ Windows desde D:\\aws-project con el venv.
                        el modelo: es una prueba pequeña)
   --imagen RUTA        editar: la imagen a transformar (obligatoria).
                        clip: si va, imagen a video; si no, texto a video
+  --imagen-sin-validar clip con --imagen: no exige lado corto de 720 px ni 16:9 /
+                       9:16 (para probar a propósito una foto rara; avisa). Una
+                       imagen vacía o ilegible se rechaza siempre
   --prompt TEXTO       lo que se pide (sin esto, uno corto de prueba). Va tal cual
                        al adaptador: NO pasa por el LLM que escribe prompts
   --formato F          horizontal | vertical (imagen y clip; editar conserva el
-                       encuadre de la imagen)
+                       encuadre de la imagen). Con --imagen en un clip, sin esto
+                       se deduce de la imagen (apaisada = horizontal)
   --salida CARPETA     dónde guardar lo generado (por defecto work/probar_modelo)
   --si                 SÍ llamar a fal y gastar. Sin esto solo es un ensayo
 
 SIN --si: ensayo. Enseña la tarea, el modelo, el endpoint exacto, los argumentos
 que armaría el adaptador, el costo esperado en dólares (tools/pricing.json) y los
-créditos que cobraría (tools/tarifas.json, si hay número). No llama a nada, no
-pide clave, no crea carpetas.
+créditos que cobraría (tools/tarifas.json, si hay número). No llama a fal ni gasta
+nada, no pide clave, no crea carpetas. Para que eso sea cierto apaga el trazado de
+Langfuse mientras dura: clip.animar lleva @observe y, con LANGFUSE_* configurado,
+el ensayo exportaría un span con error. Se apaga con LANGFUSE_TRACING_ENABLED=false
+(comprobado: con un servidor local de prueba, sin la variable llega 1 solicitud a
+Langfuse y con ella ninguna); si tú ya definiste esa variable, se respeta tal cual.
 
 CON --si: exige FAL_KEY (del entorno o del .env de la carpeta actual; la clave
-jamás se imprime), valida la duración ANTES de llamar, hace UNA sola llamada con
-el adaptador real (un reintento del adaptador se corta: dos llamadas serían el
-doble de gasto), descarga el resultado sin pisar nada y lo mide con ffprobe:
-ancho×alto, segundos y si trae pista de audio. fal no devuelve lo cobrado: el
-costo esperado se compara después con Request Details en el panel de fal.
+jamás se imprime, ni en pantalla, ni en un error, ni en el log de una librería;
+una clave con espacios o saltos de línea se rechaza), valida la duración, la imagen
+y la carpeta de salida ANTES de llamar, hace UN solo intento de llamada de nuestro
+lado (un reintento del adaptador se corta: dos llamadas serían el doble de gasto),
+imprime la URL del resultado en cuanto fal responde, lo descarga sin pisar nada y lo
+mide con ffprobe: ancho×alto, segundos y si trae pista de audio.
 
-Salida: 0 = el ensayo o la prueba terminaron; 1 = la llamada o la medición
-fallaron (revisa el panel por si se cobró); 2 = el pedido no es válido o falta
-algo, y NO se gastó nada. Las diferencias con lo prometido salen en el texto
-(«REVISAR»), no en el código de salida.
+OJO con «un solo intento»: es de NUESTRO lado. Por debajo, fal_client puede reenviar
+el POST de envío hasta 10 veces, sin idempotencia, si la respuesta se pierde; eso no
+lo vemos desde aquí. Por eso, al terminar, hay que revisar en Request Details que haya
+UNA solicitud (no duplicadas). Y fal no devuelve lo cobrado: el costo esperado se
+compara con Request Details en el panel de fal.
+
+Salida: 0 = el ensayo o la prueba terminaron; 1 = falló con la llamada ya hecha (revisa
+el panel por si se cobró); 2 = NO se gastó nada: el pedido no es válido, falta algo, la
+carpeta de salida es imposible, el endpoint no concuerda con la tabla, o falló antes de
+llegar a llamar a fal (p. ej. la subida de la imagen).
+Las diferencias con lo prometido salen en el texto («REVISAR»), no en el código de
+salida.
 
 Ejemplos (desde la raíz del repo):
   python tools/probar_modelo.py clip veo-lite --segundos 4
@@ -51,11 +68,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
+import math
 import os
 import shutil
 import subprocess
 import sys
 import time
+import traceback
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -87,6 +107,21 @@ EXT_VIDEO = {".mp4", ".webm", ".mov"}
 TOLERANCIA_SEGUNDOS = 0.5      # un clip de «8 s» mide 8.0x: medio segundo sobra
 TOLERANCIA_ASPECTO = 0.03      # ancho/alto contra el aspecto pedido (3 %)
 
+# La imagen de entrada de un clip (docs/modelos-ia/DATOS-FAL-2026-10-08.md §4, página
+# del modelo): de 720p o más de lado corto y de 16:9 o 9:16. Con otra, la única
+# llamada pagada se gasta para nada.
+LADO_CORTO_MIN_IMAGEN = 720
+ASPECTOS_IMAGEN_CLIP = (16 / 9, 9 / 16)
+
+# «1K» es ~1 megapíxel (1024×1024, 1376×768). Por encima de 1.2 MP la salida no es
+# 1K y el costo anotado ($ por imagen a 1K) ya no vale.
+MAX_MP_1K = 1.2
+MIN_MP_1K = 0.8          # 1K es ~1 MP: algo mucho más chico (0.5K) tiene un precio que no está leído
+
+# Si la llamada tarda más de esto del tiempo que el cliente espera, está cerca de
+# cortarse por timeout: un corte de cliente puede dejar el trabajo vivo y cobrado en fal.
+UMBRAL_TIEMPO = 0.70
+
 
 class _Uso(Exception):
     """El pedido no es válido o falta algo. Sale con 2 y NO se gastó nada."""
@@ -111,7 +146,8 @@ class Plan:
     en texto falla si el módulo no está registrado en sys.modules."""
 
     def __init__(self, tarea: str, modelo, prompt: str, imagen: Path | None,
-                 formato: str | None, segundos: int | None, salida: Path):
+                 formato: str | None, segundos: int | None, salida: Path,
+                 formato_explicito: bool = False, imagen_sin_validar: bool = False):
         self.tarea = tarea
         self.modelo = modelo               # pipeline.modelos_ia.Modelo
         self.prompt = prompt
@@ -119,6 +155,8 @@ class Plan:
         self.formato = formato             # None en editar: conserva el encuadre
         self.segundos = segundos           # solo el clip
         self.salida = salida
+        self.formato_explicito = formato_explicito      # ¿vino --formato? Si no, un clip lo deduce de la imagen
+        self.imagen_sin_validar = imagen_sin_validar    # salta SOLO la regla de lado corto / relación
         # los llena el ensayo (_planear), con el adaptador real
         self.endpoint = ""
         self.argumentos: dict = {}
@@ -138,10 +176,22 @@ class Plan:
 # ---------------------------------------------------------------------------
 # salida a pantalla: la clave nunca se imprime
 
+def _formas(v: str) -> set[str]:
+    """Las formas en que un valor puede aparecer en un texto: tal cual, sin espacios
+    en los bordes y escapado como lo escribe repr() (un «\\n» al final que h11 pone
+    en su mensaje de «Illegal header value» ya no es el valor original)."""
+    return {v, v.strip(), repr(v)[1:-1], repr(v.strip())[1:-1]}
+
+
 def _secretos() -> list[str]:
-    vistos = (os.getenv(k) or "" for k in ("FAL_KEY", "FAL_KEY_ID", "FAL_KEY_SECRET"))
-    # una clave de menos de 4 caracteres no es una clave: tapar «a» destrozaría el texto
-    return sorted({v for v in vistos if len(v) >= 4}, key=len, reverse=True)
+    formas: set[str] = set()
+    for k in ("FAL_KEY", "FAL_KEY_ID", "FAL_KEY_SECRET"):
+        v = os.getenv(k) or ""
+        # la clave de fal tiene la forma «id:secreto» y un error puede nombrar solo una mitad
+        for trozo in (v, *v.split(":")):
+            formas |= _formas(trozo)
+    # menos de 4 caracteres no es una clave: tapar «a» destrozaría el texto
+    return sorted((f for f in formas if len(f) >= 4), key=len, reverse=True)
 
 
 def _limpio(texto: str) -> str:
@@ -153,6 +203,73 @@ def _limpio(texto: str) -> str:
 
 def _decir(texto: str = "", *, err: bool = False) -> None:
     print(_limpio(texto), file=sys.stderr if err else sys.stdout)
+
+
+class _FiltroClave(logging.Filter):
+    """Tapa la clave en un registro de logging: el mensaje ya formateado (con sus
+    argumentos adentro), los argumentos y la traza de la excepción. Nunca levanta:
+    si no puede limpiar un registro, lo reemplaza por un aviso en vez de dejarlo pasar."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            try:
+                mensaje = record.getMessage()
+            except Exception:  # noqa: BLE001 — un mensaje mal formado igual se limpia
+                mensaje = f"{record.msg} {record.args}"
+            record.msg, record.args = _limpio(mensaje), ()
+            info = record.exc_info
+            if isinstance(info, tuple) and info and info[0] is not None:
+                traza = "".join(traceback.format_exception(*info)).rstrip("\n")
+                record.exc_text = _limpio(traza)
+            elif record.exc_text:
+                record.exc_text = _limpio(record.exc_text)
+            record.exc_info = None          # que ningún formateador vuelva a armar la traza cruda
+            if isinstance(record.stack_info, str):
+                record.stack_info = _limpio(record.stack_info)
+        except Exception:  # noqa: BLE001 — antes perder el registro que filtrar la clave
+            record.msg, record.args = "(registro omitido: no se pudo limpiar)", ()
+            record.exc_info = record.exc_text = record.stack_info = None
+        return True
+
+
+@contextmanager
+def _logs_sin_clave():
+    """Mientras dura el bloque, NINGÚN registro de logging sale con la clave. Los
+    avisos de las librerías (pipeline/clip.py hace log.warning(... err)) no pasan por
+    _decir: escriben directo a stderr por logging. Un Filter en el logger raíz NO los
+    vería (los filtros de un logger no se aplican a lo que sube de sus hijos), así
+    que el filtro se cuelga de la fábrica de registros, por la que pasa todo registro
+    antes de llegar a cualquier handler, también el de último recurso."""
+    previa = logging.getLogRecordFactory()
+    filtro = _FiltroClave()
+
+    def fabrica(*args, **kwargs):
+        registro = previa(*args, **kwargs)
+        filtro.filter(registro)
+        return registro
+
+    logging.setLogRecordFactory(fabrica)
+    try:
+        yield
+    finally:
+        if logging.getLogRecordFactory() is fabrica:
+            logging.setLogRecordFactory(previa)
+
+
+@contextmanager
+def _sin_trazado(apagar: bool):
+    """El ensayo no debe llamar a nada, ni al trazado de Langfuse (clip.animar lleva
+    @observe y con LANGFUSE_* configurado exportaría un span con error). Se apaga ANTES
+    de importar pipeline; si el dueño ya definió la variable, se respeta. Se deja como
+    estaba al salir (los tests llaman a main() muchas veces en el mismo proceso)."""
+    puesta = apagar and "LANGFUSE_TRACING_ENABLED" not in os.environ
+    if puesta:
+        os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
+    try:
+        yield
+    finally:
+        if puesta:
+            os.environ.pop("LANGFUSE_TRACING_ENABLED", None)
 
 
 def _salida_segura() -> None:
@@ -192,26 +309,42 @@ def _ruta_libre(destino: Path) -> Path:
     return candidata
 
 
+def _borrar(ruta: Path) -> None:
+    """Borra si puede. En Windows un antivirus puede dejar abierto un archivo recién
+    escrito y unlink lanza PermissionError: un parcial que no se pudo borrar no debe
+    tapar un resultado ya guardado (y ya cobrado)."""
+    try:
+        ruta.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _guardar_sin_pisar(origen: Path, salida: Path, base: str, ext: str) -> Path:
     """Mueve `origen` a salida/base+ext, o a base_2+ext, base_3+ext… El nombre se
     reserva con creación exclusiva («x»): si dos corridas coinciden, la segunda
-    ve el nombre ocupado y sigue, en lugar de escribir encima."""
+    ve el nombre ocupado y sigue, en lugar de escribir encima. Ya reservado, el
+    contenido llega con os.replace (un solo paso, sin parcial que borrar después);
+    si el sistema no deja moverlo, se copia, y un parcial que no se deje borrar no
+    cuenta como fallo."""
     k = 1
     while True:
         destino = salida / (f"{base}{ext}" if k == 1 else f"{base}_{k}{ext}")
         try:
-            f = open(destino, "xb")
+            open(destino, "xb").close()          # la reserva: creación exclusiva
         except FileExistsError:
             k += 1
             continue
+        break
+    try:
+        os.replace(origen, destino)
+    except OSError:
         try:
-            with f, open(origen, "rb") as src:
-                shutil.copyfileobj(src, f)
+            shutil.copyfile(origen, destino)
         except BaseException:
-            destino.unlink(missing_ok=True)      # era nuestro: lo reservamos nosotros
+            _borrar(destino)                     # era nuestro: lo reservamos nosotros
             raise
-        origen.unlink(missing_ok=True)
-        return destino
+        _borrar(origen)
+    return destino
 
 
 def _extension(url: str, ruta: Path, tarea: str) -> str:
@@ -245,8 +378,13 @@ def _analizar(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("modelo", help="el id del modelo en pipeline/modelos_ia.py, p. ej. veo-lite, grok, nb2")
     p.add_argument("--segundos", type=int, help="clip: duración en segundos (por defecto la más corta que admite el modelo)")
     p.add_argument("--imagen", help="editar: la imagen a transformar (obligatoria). clip: imagen a video")
+    p.add_argument("--imagen-sin-validar", action="store_true",
+                   help="clip con --imagen: no exige lado corto de 720 px ni 16:9 / 9:16 (avisa). "
+                        "Una imagen vacía o ilegible se rechaza siempre")
     p.add_argument("--prompt", help="lo que se pide; va tal cual al adaptador, sin pasar por el LLM")
-    p.add_argument("--formato", choices=FORMATOS, help="imagen y clip: horizontal (por defecto) o vertical")
+    p.add_argument("--formato", choices=FORMATOS,
+                   help="imagen y clip: horizontal (por defecto) o vertical; con --imagen en un clip, "
+                        "sin esto se deduce de la imagen")
     p.add_argument("--salida", help=f"carpeta donde guardar lo generado (por defecto {SALIDA_PREDETERMINADA})")
     p.add_argument("--si", action="store_true", help="SÍ llamar a fal y gastar. Sin esto solo se muestra el plan")
     return p.parse_args(argv)
@@ -272,6 +410,9 @@ def _preparar(a: argparse.Namespace) -> Plan:
         raise _Uso("--formato no aplica a editar: se conserva el encuadre de la imagen.")
     if a.tarea == "editar" and not a.imagen:
         raise _Uso("La tarea editar necesita --imagen RUTA (la imagen a transformar).")
+    if a.imagen_sin_validar and not (a.tarea == "clip" and a.imagen):
+        raise _Uso("--imagen-sin-validar solo aplica a la tarea clip con --imagen: la regla de lado corto "
+                   "y relación es del modelo de clip a partir de imagen.")
 
     segundos = None
     if a.tarea == "clip":
@@ -298,7 +439,8 @@ def _preparar(a: argparse.Namespace) -> Plan:
 
     return Plan(tarea=a.tarea, modelo=modelo, prompt=prompt, imagen=imagen,
                 formato=None if a.tarea == "editar" else (a.formato or "horizontal"),
-                segundos=segundos, salida=Path(a.salida).expanduser() if a.salida else SALIDA_PREDETERMINADA)
+                segundos=segundos, salida=Path(a.salida).expanduser() if a.salida else SALIDA_PREDETERMINADA,
+                formato_explicito=bool(a.formato), imagen_sin_validar=a.imagen_sin_validar)
 
 
 # ---------------------------------------------------------------------------
@@ -317,10 +459,15 @@ def _sustituir(modulo, **cambios):
             setattr(modulo, k, v)
 
 
-async def _invocar(plan: Plan, destino: Path) -> str:
+async def _invocar(plan: Plan, destino: Path, solo_plan: bool = False) -> str:
     """UNA vez el adaptador real que la tarea usa en producción. Devuelve la URL
     del resultado. imagen/editar descargan ellos mismos a `destino`; el clip solo
-    devuelve la URL (la descarga la hace quien llama)."""
+    devuelve la URL (la descarga la hace quien llama).
+
+    `solo_plan` es para el ensayo previo (la grabadora corta antes de llamar): corre la
+    función SIN su decorador de trazas (`__wrapped__`), porque con el trazado encendido
+    cada prueba pagada exportaría a Langfuse un span `clip_animar` falso, en ERROR,
+    antes del real."""
     from pipeline import clip, fal, media_fal
     from pipeline.models import formato_de
 
@@ -334,7 +481,8 @@ async def _invocar(plan: Plan, destino: Path) -> str:
             plan.prompt, plan.imagen, destino, meta=meta, modelo=plan.modelo.id)
     # clip: sin pasar por clip.generar, que llama al LLM que escribe el prompt
     url_imagen = await fal.subir_archivo(plan.imagen) if plan.imagen else None
-    return await clip.animar(plan.prompt, url_imagen, plan.formato, plan.modelo.id, plan.segundos)
+    animar = getattr(clip.animar, "__wrapped__", clip.animar) if solo_plan else clip.animar
+    return await animar(plan.prompt, url_imagen, plan.formato, plan.modelo.id, plan.segundos)
 
 
 async def _planear(plan: Plan) -> None:
@@ -355,7 +503,7 @@ async def _planear(plan: Plan) -> None:
 
     with _sustituir(fal, llamar=grabadora, subir_archivo=subir_falso):
         try:
-            await _invocar(plan, plan.salida / ".ensayo")     # jamás se escribe: la grabadora corta antes
+            await _invocar(plan, plan.salida / ".ensayo", solo_plan=True)   # jamás se escribe: la grabadora corta antes
         except _FinDelEnsayo:
             pass
     if not visto:
@@ -423,12 +571,48 @@ def _medir(ruta: Path) -> dict:
     if not video or not video.get("width") or not video.get("height"):
         raise _SinMedida(f"{ruta.name} no tiene un flujo de imagen que medir")
     audio = next((s for s in flujos if s.get("codec_type") == "audio"), None)
-    try:
-        segundos = float((datos.get("format") or {}).get("duration") or video.get("duration"))
-    except (TypeError, ValueError):
-        segundos = None
+    # ffprobe escribe «N/A» donde no sabe: se prueba cada fuente, en orden, y gana la primera
+    # que sea un número (la del contenedor y, si no, la del flujo de video)
+    segundos = None
+    for crudo in ((datos.get("format") or {}).get("duration"), video.get("duration")):
+        try:
+            valor = float(crudo)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(valor) and valor >= 0:
+            segundos = valor
+            break
     return {"ancho": int(video["width"]), "alto": int(video["height"]), "segundos": segundos,
             "audio": audio is not None, "codec_audio": (audio or {}).get("codec_name")}
+
+
+def _promete_1k(plan: Plan) -> bool:
+    """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2: la única con tarifa leída)"""
+    # args_extra puede ser un mapping o una tupla de pares (llave, valor): dict() lee las dos
+    extra = dict(getattr(plan.modelo, "args_extra", None) or ())
+    return str(extra.get("resolution", "")).upper() == "1K"
+
+
+def _dolares(valor: float | None) -> str:
+    """«$0.08 dólares»: dos decimales si bastan, cuatro si no."""
+    if valor is None:
+        return "sin precio confirmado"
+    return f"${valor:.2f} dólares" if round(valor, 2) == round(valor, 4) else f"${valor:.4f} dólares"
+
+
+def _veredicto_tiempo(plan: Plan, una: "_UnaLlamada") -> list[str]:
+    """Una llamada que tardó cerca de su timeout es una prueba que ya estuvo a punto
+    de cortarse: un timeout de cliente puede dejar el trabajo vivo y cobrado en fal."""
+    limite = una.timeout_s
+    if not limite:
+        from pipeline.config import settings
+        limite = settings.clip_timeout_s if plan.tarea == "clip" else settings.grok_timeout_s
+    if una.segundos is None or not limite or una.segundos <= UMBRAL_TIEMPO * limite:
+        return []
+    variable = "CLIP_TIMEOUT_S" if plan.tarea == "clip" else "GROK_TIMEOUT_S"
+    return [f"la llamada tardó {una.segundos:.0f} s de los {limite} s de espera del cliente "
+            f"({100 * una.segundos / limite:.0f} %, más del {UMBRAL_TIEMPO:.0%}): un timeout de cliente puede "
+            f"dejar el trabajo vivo y cobrado en fal. Revisa Request Details y sube {variable} antes de ofrecerlo"]
 
 
 def _veredicto(plan: Plan, medida: dict) -> list[str]:
@@ -442,6 +626,11 @@ def _veredicto(plan: Plan, medida: dict) -> list[str]:
         a, b = (int(v) for v in formato_de(plan.formato)["aspecto"].split(":"))
         if abs(ancho / alto - a / b) > (a / b) * TOLERANCIA_ASPECTO:
             dif.append(f"se pidió {a}:{b} y llegó {ancho}×{alto}")
+    if plan.tarea in ("imagen", "editar") and _promete_1k(plan):
+        mp = ancho * alto / 1_000_000
+        if mp > MAX_MP_1K or mp < MIN_MP_1K:
+            dif.append(f"se prometió 1K (~1 MP) y llegó {ancho}×{alto} ({mp:.2f} MP): el costo anotado "
+                       f"({_dolares(plan.costo_usd)}) solo vale a 1K, así que lo cobrado puede ser otro")
     if plan.tarea != "clip":
         return dif
     pedida = int(clip.RESOLUCION.rstrip("p"))
@@ -468,120 +657,294 @@ def _describir(plan: Plan, medida: dict) -> str:
     return " · ".join(partes)
 
 
+def _reloj() -> float:
+    return time.monotonic()
+
+
+def _urls(respuesta) -> list[str]:
+    """Las URL del resultado en lo que devolvió fal: video.url (clip) o images[].url."""
+    if not isinstance(respuesta, dict):
+        return []
+    urls: list[str] = []
+    video = respuesta.get("video")
+    if isinstance(video, dict) and video.get("url"):
+        urls.append(str(video["url"]))
+    imagenes = respuesta.get("images")
+    for imagen in imagenes if isinstance(imagenes, list) else []:
+        if isinstance(imagen, dict) and imagen.get("url"):
+            urls.append(str(imagen["url"]))
+    return urls
+
+
 class _UnaLlamada:
     """fal.llamar con tope de UNA llamada por corrida. La primera pasa; la
     segunda —el reintento del clip, o un adaptador que reintenta por su cuenta—
-    se corta antes de salir: otra llamada sería otro cobro."""
+    se corta antes de salir: otra llamada sería otro cobro. (Es un solo intento de
+    NUESTRO lado: por debajo, fal_client puede reenviar el envío si la respuesta
+    se pierde, y eso no lo vemos.)
 
-    def __init__(self, real):
+    Guarda la respuesta EN CUANTO vuelve, antes de que nadie descargue nada: si la
+    descarga o el guardado fallan después, la URL del resultado ya cobrado no se pierde."""
+
+    def __init__(self, real, al_volver=None):
         self.real = real
+        self.al_volver = al_volver          # se llama con esta misma instancia, cuando fal responde
         self.llamadas = 0
         self.error: BaseException | None = None
+        self.respuesta = None               # lo que devolvió la llamada que salió
+        self.timeout_s = None               # la espera que el adaptador le dio a fal
+        self.segundos: float | None = None  # lo que tardó la llamada (respondiera o fallara)
+
+    def urls(self) -> list[str]:
+        return _urls(self.respuesta)
 
     async def __call__(self, app, argumentos, timeout_s=None, nombre=None, meta=None):
         self.llamadas += 1
         if self.llamadas > 1:
             raise _SegundaLlamada("segunda llamada a fal en la misma corrida")
+        self.timeout_s = timeout_s
+        t0 = _reloj()
         try:
-            return await self.real(app, argumentos, timeout_s=timeout_s, nombre=nombre, meta=meta)
+            respuesta = await self.real(app, argumentos, timeout_s=timeout_s, nombre=nombre, meta=meta)
         except Exception as err:  # noqa: BLE001 — se anota y se relanza tal cual
+            self.segundos = _reloj() - t0
             self.error = err
             raise
+        self.segundos = _reloj() - t0
+        self.respuesta = respuesta
+        if self.al_volver:
+            try:
+                self.al_volver(self)
+            except Exception:  # noqa: BLE001 — avisar es un extra: no puede perder lo ya cobrado
+                pass
+        return respuesta
 
 
-async def _gastar(plan: Plan) -> tuple[Path, float]:
-    """UNA llamada real al adaptador. Devuelve (archivo guardado, segundos que tardó)."""
+def _anunciar_respuesta(una: _UnaLlamada) -> None:
+    """Se imprime ANTES de descargar: si lo que sigue falla, la URL ya quedó a la vista."""
+    espera = f" (el cliente espera hasta {una.timeout_s} s)" if una.timeout_s else ""
+    _decir(f"  fal respondió en {una.segundos:.1f} s{espera}")
+    urls = una.urls()
+    for url in urls:
+        _decir(f"  resultado en fal: {url}")
+    if not urls:
+        _decir("  (fal respondió, pero sin URL de resultado)")
+
+
+def _avisar_cobro(una: _UnaLlamada) -> None:
+    """Qué decir del cobro después de un fallo, según hasta dónde llegó la corrida."""
+    urls = una.urls()
+    if urls:
+        _decir("El resultado SÍ se generó y se cobró. Aquí está la URL (guárdala, fal no la conserva para siempre):", err=True)
+        for url in urls:
+            _decir(f"  {url}", err=True)
+        _decir("Descárgalo de ahí y mídelo a mano; revisa en Request Details que haya UNA solicitud (no duplicadas).", err=True)
+    elif una.llamadas >= 1:
+        _decir("Revisa Request Details en el panel de fal por si se cobró algo (y que no haya solicitudes duplicadas).", err=True)
+    else:
+        _decir("No se llegó a llamar a fal: no se gastó nada.", err=True)
+
+
+async def _gastar(plan: Plan, una: _UnaLlamada) -> Path:
+    """UNA llamada real al adaptador (a través de `una`). Devuelve el archivo guardado."""
     from pipeline import fal
 
     plan.salida.mkdir(parents=True, exist_ok=True)
     parcial = _ruta_libre(plan.salida / f".{plan.base}.parcial")
-    una = _UnaLlamada(fal.llamar)
-    t0 = time.monotonic()
     try:
         with _sustituir(fal, llamar=una):
             url = await _invocar(plan, parcial)
         if plan.tarea == "clip":
             await fal.descargar(url, parcial)
-        seg = time.monotonic() - t0
         if not parcial.is_file() or parcial.stat().st_size == 0:
             raise RuntimeError("fal respondió, pero no quedó nada descargado")
-        return _guardar_sin_pisar(parcial, plan.salida, plan.base, _extension(url, parcial, plan.tarea)), seg
+        return _guardar_sin_pisar(parcial, plan.salida, plan.base, _extension(url, parcial, plan.tarea))
     except _SegundaLlamada as err:
         motivo = str(una.error) if una.error else "fal no devolvió el resultado esperado"
         raise RuntimeError(f"La llamada a fal falló ({motivo}). El adaptador quiso reintentar y se cortó: "
                            "una llamada por corrida.") from err
     finally:
-        parcial.unlink(missing_ok=True)
+        _borrar(parcial)
 
 
 def _correr(plan: Plan) -> int:
+    from pipeline import fal
+
     _imprimir_plan(plan, "PRUEBA PAGADA")
     _decir(f"  carpeta de salida: {plan.salida}")
-    _decir("Llamando a fal (una sola llamada)…")
+    _decir("Llamando a fal (un solo intento de nuestro lado; fal_client puede reenviar el envío "
+           "si la respuesta se pierde)…")
+    una = _UnaLlamada(fal.llamar, al_volver=_anunciar_respuesta)
     try:
-        archivo, segundos = asyncio.run(_gastar(plan))
+        archivo = asyncio.run(_gastar(plan, una))
     except KeyboardInterrupt:
-        _decir("Interrumpido. Si la llamada ya había salido, revisa Request Details en el panel de fal por si se cobró.", err=True)
+        _decir("Interrumpido.", err=True)
+        _avisar_cobro(una)
         return 1
     except Exception as err:  # noqa: BLE001 — cualquier fallo se cuenta con claridad, sin traza
-        _decir(f"La prueba falló: {err}", err=True)
-        _decir("Revisa Request Details en el panel de fal por si se cobró algo.", err=True)
-        return 1
-    # desde aquí ya se gastó: pase lo que pase, el recordatorio del cobro sale
-    _decir(f"  respuesta en {segundos:.1f} s")
+        if una.urls():
+            _decir(f"Falló DESPUÉS de la llamada pagada (al descargar o guardar): {err}", err=True)
+        else:
+            _decir(f"La prueba falló: {err}", err=True)
+        _avisar_cobro(una)
+        # 2 = no se gastó nada: si fal.llamar ni siquiera se invocó (p. ej. falló la subida de la imagen) no hubo cobro
+        return 2 if una.llamadas == 0 and not una.urls() else 1
+    # desde aquí ya se gastó: pase lo que pase —un error al medir, un Ctrl+C— el recordatorio del cobro sale
     _decir(f"  guardado: {archivo}")
     codigo = 0
+    dif: list[str] = []
+    medido = False
     try:
-        medida = _medir(archivo)
-        mp = medida["ancho"] * medida["alto"] / 1_000_000
-        _decir(f"MEDIDO · {_describir(plan, medida)} · {mp:.2f} MP")
-        dif = _veredicto(plan, medida)
+        try:
+            medida = _medir(archivo)
+            mp = medida["ancho"] * medida["alto"] / 1_000_000
+            _decir(f"MEDIDO · {_describir(plan, medida)} · {mp:.2f} MP")
+            dif += _veredicto(plan, medida)
+            medido = True
+        except Exception as err:  # noqa: BLE001 — el archivo ya está guardado; la medición falló
+            _decir(f"Se guardó el archivo, pero no se pudo medir: {err}", err=True)
+            _decir(f"Mídelo a mano: ffprobe -v error -show_streams \"{archivo}\"", err=True)
+            codigo = 1
+        dif += _veredicto_tiempo(plan, una)
         for d in dif:
             _decir(f"  REVISAR: {d}")
-        if not dif:
+        if medido and not dif:
             _decir("  coincide con lo prometido")
-    except Exception as err:  # noqa: BLE001 — el archivo ya está guardado; la medición falló
-        _decir(f"Se guardó el archivo, pero no se pudo medir: {err}", err=True)
-        _decir(f"Mídelo a mano: ffprobe -v error -show_streams \"{archivo}\"", err=True)
-        codigo = 1
-    _decir(f"Costo esperado: {_linea_costo(plan)}")
-    _decir("Recordatorio: compáralo con Request Details en el panel de fal: fal no devuelve lo cobrado.")
+    finally:
+        _decir(f"Costo esperado: {_linea_costo(plan)}")
+        _decir("Recordatorio: compáralo con Request Details en el panel de fal (fal no devuelve lo cobrado) y "
+               "revisa que haya UNA solicitud, no duplicadas: fal_client puede reenviar el envío si la respuesta se pierde.")
     return codigo
+
+
+# ---------------------------------------------------------------------------
+# lo que se comprueba ANTES de gastar (todo fallo de aquí sale con 2: no se gastó nada)
+
+def _planear_y_comprobar(plan: Plan) -> None:
+    """Corre el adaptador contra la grabadora y exige que el endpoint sea el de la tabla."""
+    asyncio.run(_planear(plan))
+    esperado = plan.modelo.endpoint_para(plan.con_imagen)
+    if plan.endpoint != esperado:
+        raise _Uso(f"El adaptador llamaría a {plan.endpoint}, pero la tabla de modelos dice {esperado}. "
+                   "No se gasta nada hasta que concuerden.")
+
+
+def _relacion_valida(ancho: int, alto: int) -> bool:
+    r = ancho / alto
+    return any(abs(r - objetivo) <= objetivo * TOLERANCIA_ASPECTO for objetivo in ASPECTOS_IMAGEN_CLIP)
+
+
+def _validar_imagen(plan: Plan) -> None:
+    """Mide la imagen de entrada con ffprobe antes de gastar. Una imagen vacía o
+    ilegible se rechaza siempre. Para un clip, además: lado corto de 720 px o más y
+    16:9 o 9:16 (la página del modelo; --imagen-sin-validar salta SOLO esto), y el
+    formato sale de la imagen si no se pasó --formato (o se rechaza si discrepa)."""
+    ruta = plan.imagen
+    try:
+        peso = ruta.stat().st_size
+    except OSError as err:
+        raise _Uso(f"No puedo leer la imagen {ruta}: {err}. No se gastó nada.") from err
+    if peso == 0:
+        raise _Uso(f"La imagen está vacía (0 bytes): {ruta}. No se gastó nada.")
+    try:
+        medida = _medir(ruta)
+    except _SinMedida as err:
+        raise _Uso(f"No puedo leer la imagen {ruta.name}: {err}. Una imagen ilegible gastaría la única llamada "
+                   "para nada, y esto no se salta con --imagen-sin-validar. No se gastó nada.") from err
+    if plan.tarea != "clip":
+        return                          # editar: ni 720p ni 16:9 (el modelo conserva el encuadre)
+
+    ancho, alto = medida["ancho"], medida["alto"]
+    orientacion = "horizontal" if ancho > alto else "vertical" if alto > ancho else None
+    if plan.formato_explicito and orientacion and plan.formato != orientacion:
+        raise _Uso(f"--formato {plan.formato} no concuerda con la imagen: {ruta.name} mide {ancho}×{alto} "
+                   f"({'apaisada' if orientacion == 'horizontal' else 'vertical'}). Quita --formato para "
+                   "deducirlo de la imagen, o usa otra. No se gastó nada.")
+    if not plan.formato_explicito and orientacion:
+        plan.formato = orientacion
+
+    if plan.imagen_sin_validar:
+        _decir("AVISO: --imagen-sin-validar: no se comprueba el lado corto ni la relación de la imagen. Si el "
+               "modelo la rechaza, la llamada ya salió y puede cobrarse igual.", err=True)
+        return
+    problemas = []
+    if min(ancho, alto) < LADO_CORTO_MIN_IMAGEN:
+        problemas.append(f"su lado corto mide {min(ancho, alto)} px y se piden {LADO_CORTO_MIN_IMAGEN} o más")
+    if not _relacion_valida(ancho, alto):
+        problemas.append(f"su relación es {ancho / alto:.2f}:1 y se pide 16:9 o 9:16 (±{TOLERANCIA_ASPECTO:.0%})")
+    if problemas:
+        raise _Uso(f"La imagen {ruta.name} mide {ancho}×{alto}: {' y '.join(problemas)}. El modelo de clip a "
+                   f"partir de imagen exige una imagen de {LADO_CORTO_MIN_IMAGEN} px o más de lado corto y de 16:9 o 9:16 "
+                   "(es un requisito de la página del modelo, docs/modelos-ia/DATOS-FAL-2026-10-08.md §4); con otra se "
+                   "gastaría la única llamada para nada. No se gastó nada. Usa otra imagen, o --imagen-sin-validar "
+                   "si quieres probarla a propósito.")
+
+
+def _preparar_salida(salida: Path) -> None:
+    """Crea la carpeta y prueba que se puede escribir (crea y borra un archivo temporal)."""
+    prueba = salida / f".prueba-escritura-{os.getpid()}"
+    try:
+        salida.mkdir(parents=True, exist_ok=True)
+        prueba.write_bytes(b"ok")
+        prueba.unlink()
+    except OSError as err:
+        _borrar(prueba)
+        raise _Uso(f"No puedo escribir en la carpeta de salida {salida}: {err}. No se gastó nada; "
+                   "elige otra con --salida.") from err
+
+
+def _preflight(plan: Plan) -> None:
+    """Con --si: todo lo que se pueda comprobar se comprueba ANTES de gastar."""
+    clave = os.getenv("FAL_KEY") or ""
+    if not clave:
+        raise _Uso("Falta FAL_KEY en el entorno o en el .env de esta carpeta "
+                   "(la clave la pone el dueño; aquí no se imprime).")
+    if clave != clave.strip() or not clave.isprintable() or any(c.isspace() for c in clave):
+        raise _Uso("FAL_KEY trae espacios o caracteres de control (¿un salto de línea al final?): fal la "
+                   "rechazaría y el error podría delatarla. Corrígela en el entorno o en el .env. "
+                   "No se gastó nada (la clave no se imprime).")
+    if not _ffprobe_exe():
+        raise _Uso("Falta ffprobe (viene con ffmpeg): sin él no se puede medir lo que llegue, "
+                   "y no se gasta una prueba que no se pueda comprobar.")
+    if plan.salida.exists() and not plan.salida.is_dir():
+        raise _Uso(f"--salida no es una carpeta: {plan.salida}")
+    if plan.imagen:
+        _validar_imagen(plan)
+    _preparar_salida(plan.salida)
 
 
 def main(argv: list[str] | None = None) -> int:
     _salida_segura()
     a = _analizar(argv)
-    try:
-        plan = _preparar(a)
-        asyncio.run(_planear(plan))
-        esperado = plan.modelo.endpoint_para(plan.con_imagen)
-        if plan.endpoint != esperado:
-            _decir(f"El adaptador llamaría a {plan.endpoint}, pero la tabla de modelos dice {esperado}. "
-                   "No se gasta nada hasta que concuerden.", err=True)
-            return 1
-        if not a.si:
-            _imprimir_plan(plan, "ENSAYO")
-            _decir("  NO se llamó a nada. Para gastar de verdad, repite el comando con --si.")
-            return 0
+    with _logs_sin_clave(), _sin_trazado(apagar=not a.si):
+        try:
+            plan = _preparar(a)
+            _planear_y_comprobar(plan)
+            if not a.si:
+                _imprimir_plan(plan, "ENSAYO")
+                if plan.tarea == "clip" and plan.imagen:
+                    _decir(f"  con --si se mide la imagen antes de gastar: lado corto de {LADO_CORTO_MIN_IMAGEN} px "
+                           "o más y 16:9 o 9:16 (sin --formato, el formato sale de ella)")
+                _decir("  NO se llamó a nada. Para gastar de verdad, repite el comando con --si.")
+                return 0
 
-        # con --si: todo lo que se pueda comprobar se comprueba ANTES de gastar
-        _cargar_env()
-        if not os.getenv("FAL_KEY"):
-            raise _Uso("Falta FAL_KEY en el entorno o en el .env de esta carpeta "
-                       "(la clave la pone el dueño; aquí no se imprime).")
-        if not _ffprobe_exe():
-            raise _Uso("Falta ffprobe (viene con ffmpeg): sin él no se puede medir lo que llegue, "
-                       "y no se gasta una prueba que no se pueda comprobar.")
-        if plan.salida.exists() and not plan.salida.is_dir():
-            raise _Uso(f"--salida no es una carpeta: {plan.salida}")
-        return _correr(plan)
-    except _Uso as err:
-        _decir(str(err), err=True)
-        return 2
-    except Exception as err:  # noqa: BLE001 — un fallo propio se cuenta sin traza
-        _decir(f"La herramienta falló: {err}", err=True)
-        return 1
+            _cargar_env()
+            formato_antes = plan.formato
+            _preflight(plan)
+            if plan.formato != formato_antes:       # el formato salió de la imagen: el plan se rehace con él
+                _planear_y_comprobar(plan)
+            return _correr(plan)
+        except _Uso as err:
+            _decir(str(err), err=True)
+            return 2
+        except KeyboardInterrupt:
+            _decir("Interrumpido. Si la llamada ya había salido, revisa Request Details en el panel de fal.", err=True)
+            return 1
+        except SystemExit:
+            raise
+        except BaseException as err:  # noqa: BLE001 — incluye CancelledError: sin traza cruda (llevaría la clave)
+            _decir(f"La herramienta falló: {type(err).__name__}: {err}", err=True)
+            return 1
 
 
 if __name__ == "__main__":

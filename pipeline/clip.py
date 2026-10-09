@@ -137,6 +137,13 @@ async def animar(prompt: str, image_url: str | None = None,
 
     Los timeouts son los del clip, NO los de la película: 720 s × 2 intentos
     son 24 minutos y la Lambda del worker muere a los 15.
+
+    Los intentos son min(settings.clip_max_attempts, Modelo.max_intentos) cuando el
+    modelo trae un tope (0 = los de settings). Un timeout de cliente se vuelve
+    FalError en `fal.llamar`, pero NO cancela el trabajo en fal: el primero puede
+    seguir vivo y cobrado cuando sale el segundo. Con Lite sale barato (hasta $0.40
+    dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que Fast y
+    Standard hacen uno solo.
     """
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
@@ -157,8 +164,11 @@ async def animar(prompt: str, image_url: str | None = None,
     # los de la familia Veo; un modelo de otra familia trae su propio juego (se
     # suma aquí junto con su fila en modelos_ia, y se prueba antes de activarlo).
     app = m.endpoint_para(bool(image_url))
+    intentos = settings.clip_max_attempts
+    if m.max_intentos > 0:
+        intentos = min(intentos, m.max_intentos)       # el modelo pide menos, nunca más
     ultimo = ""
-    for intento in range(1, settings.clip_max_attempts + 1):
+    for intento in range(1, intentos + 1):
         try:
             res = await fal.llamar(app, args, timeout_s=settings.clip_timeout_s,
                                    nombre="veo", meta={"clip": True, "intento": intento})

@@ -25,12 +25,18 @@ se cambia en silencio a otra, porque cobraría una y entregaría otra.
 
 Los argumentos que un modelo necesita fijos (p. ej. la resolución de Nano Banana
 2: solo la de 1K tiene tarifa leída) viajan en `Modelo.args_extra`: no dependen
-del valor por defecto del modelo en fal, que puede cambiar sin avisar.
+del valor por defecto del modelo en fal, que puede cambiar sin avisar. Son un PIN:
+si la tarea manda la misma llave, gana la del modelo (el precio solo vale con ese
+valor), y una llave que la tarea manda siempre (prompt, imágenes, aspecto,
+duración) no se puede fijar.
+
+Los intentos de un clip también son del modelo (`Modelo.max_intentos`): un timeout
+de cliente no cancela el trabajo en fal, así que reintentar un modelo caro puede
+cobrar dos veces. Veo 3.1 Fast y Standard hacen un solo intento.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from types import MappingProxyType
+from dataclasses import dataclass
 from typing import Mapping
 
 from .config import settings
@@ -54,6 +60,52 @@ class DuracionNoAdmitida(ModeloDesconocido):
     las dos y la API pueda distinguirlas cuando quiera."""
 
 
+# Llaves que la TAREA manda siempre (el texto, las imágenes, el aspecto, los
+# segundos): ningún modelo puede fijarlas en `args_extra`, porque pisaría lo que el
+# usuario pidió y se cobró. `image_url` es la imagen de entrada de la familia Veo.
+LLAVES_PROTEGIDAS = frozenset(
+    {"prompt", "image_urls", "image_url", "num_images", "aspect_ratio", "duration"})
+
+
+def _normaliza_args_extra(id_: str, valor) -> tuple[tuple[str, object], ...]:
+    """Los argumentos fijos como tupla inmutable de pares (llave, valor), ordenada
+    por llave: dos modelos con los mismos argumentos son iguales, vengan como
+    vengan. Acepta un dict (o cualquier Mapping) o una secuencia de pares.
+
+    Se guardan como tupla y NO como un `MappingProxyType`: éste no se puede copiar
+    con `copy.deepcopy`, serializar con `pickle` ni recorrer con
+    `dataclasses.asdict`, y rompía todo Modelo (incluido Grok)."""
+    if isinstance(valor, Mapping):
+        pares = list(valor.items())
+    else:
+        try:
+            pares = [tuple(p) for p in valor]
+        except TypeError as err:
+            raise TypeError(f"args_extra de {id_!r}: se esperaba un dict o pares "
+                            f"(llave, valor), llegó {type(valor).__name__}") from err
+    vistas: set[str] = set()
+    for par in pares:
+        if len(par) != 2:
+            raise ValueError(f"args_extra de {id_!r}: cada argumento es un par (llave, valor)")
+        llave, dato = par
+        if not isinstance(llave, str) or not llave:
+            raise ValueError(f"args_extra de {id_!r}: la llave {llave!r} debe ser un texto")
+        if llave in LLAVES_PROTEGIDAS:
+            raise ValueError(
+                f"args_extra de {id_!r}: «{llave}» lo manda la tarea y un modelo no puede "
+                f"fijarlo (llaves protegidas: {', '.join(sorted(LLAVES_PROTEGIDAS))})")
+        if llave in vistas:
+            raise ValueError(f"args_extra de {id_!r}: la llave «{llave}» está repetida")
+        vistas.add(llave)
+        try:
+            hash(dato)
+        except TypeError as err:
+            raise ValueError(
+                f"args_extra de {id_!r}: el valor de «{llave}» debe ser inmutable "
+                f"(texto, número, booleano, None o tupla)") from err
+    return tuple(sorted(pares, key=lambda par: par[0]))
+
+
 @dataclass(frozen=True)
 class Modelo:
     id: str
@@ -66,26 +118,42 @@ class Modelo:
     # Un modelo que no admite 4 s (p. ej. LTX) simplemente no la trae aquí.
     duraciones: tuple[int, ...] = ()
     # Argumentos que este modelo manda SIEMPRE además de los de la tarea (imagen:
-    # los de `media_fal`). Inmutable: el dict que llega se copia y queda en un
-    # `MappingProxyType`, así que ni quien lo pasó ni quien lo lea puede
-    # cambiarlo después. Fuera del hash a propósito (un mapping no se hashea);
-    # entra en la comparación.
-    args_extra: Mapping[str, object] = field(
-        default_factory=lambda: MappingProxyType({}), hash=False)
+    # los de `media_fal`). Tupla inmutable de pares (llave, valor): al construir se
+    # acepta un dict, se copia y se ordena por llave, así que ni quien lo pasó ni
+    # quien lo lea puede cambiarlo después, y el Modelo se copia, serializa y
+    # compara sin sorpresas. Son un pin: ver `con_args_extra`.
+    args_extra: tuple[tuple[str, object], ...] = ()
+    # clip: tope de intentos de este modelo. 0 = vale el de settings.clip_max_attempts.
+    # Con N > 0 se usa min(settings.clip_max_attempts, N): un modelo puede pedir
+    # MENOS intentos que el ambiente, nunca más. Un timeout de cliente no cancela el
+    # trabajo en fal, así que un reintento puede cobrar dos veces; en los modelos
+    # caros (Veo 3.1 Standard, $3.20 dólares por clip de 8 s) se fija en 1.
+    max_intentos: int = 0
 
     def __post_init__(self):
         # frozen: la única forma de reemplazar el campo es object.__setattr__
-        object.__setattr__(self, "args_extra", MappingProxyType(dict(self.args_extra)))
+        object.__setattr__(self, "args_extra", _normaliza_args_extra(self.id, self.args_extra))
+        if type(self.max_intentos) is not int or self.max_intentos < 0:
+            raise ValueError(f"max_intentos de {self.id!r} debe ser un entero de 0 o más "
+                             f"(0 = los de settings.clip_max_attempts)")
+
+    @property
+    def args_extra_dict(self) -> dict:
+        """Los argumentos fijos como un dict NUEVO cada vez (cambiarlo no toca al modelo)."""
+        return dict(self.args_extra)
 
     def endpoint_para(self, con_imagen: bool) -> str:
         return (self.endpoint_con_imagen or self.endpoint) if con_imagen else self.endpoint
 
     def con_args_extra(self, args: dict) -> dict:
-        """`args` con los argumentos fijos del modelo sumados. Los de la tarea
-        mandan: el extra solo agrega las llaves que `args` no trae (nunca pisa el
-        prompt ni las imágenes). Sin extra devuelve una copia idéntica, así que
-        Grok manda exactamente lo que mandaba."""
-        return {**self.args_extra, **args} if self.args_extra else dict(args)
+        """`args` con los argumentos fijos del modelo sumados. Los del MODELO ganan:
+        son un pin, no un valor por defecto. Nano Banana 2 solo tiene leído el
+        precio de 1K ($0.08 dólares), así que si una tarea futura manda `resolution`
+        (p. ej. la calidad de Nano Banana Pro) no puede subirle la resolución a un
+        modelo que cobra por 1K. Las llaves de la tarea (prompt, imágenes…) están
+        protegidas al construir el Modelo, así que el pin nunca las pisa. Sin extra
+        devuelve una copia idéntica, así que Grok manda exactamente lo que mandaba."""
+        return {**args, **self.args_extra_dict} if self.args_extra else dict(args)
 
 
 # Endpoints de la familia Veo 3.1 que NO viven en settings: el costo en dólares
@@ -100,7 +168,7 @@ NB2_EDITAR = "fal-ai/nano-banana-2/edit"
 
 # Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
 # manda explícito para no depender de que el default de fal siga siendo 1K.
-NB2_ARGS_EXTRA = MappingProxyType({"resolution": "1K"})
+NB2_ARGS_EXTRA = (("resolution", "1K"),)
 
 
 def _tabla() -> dict[tuple[str, str], Modelo]:
@@ -110,11 +178,14 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     veo = Modelo("veo-lite", "clip", settings.fal_veo_t2v, settings.fal_veo,
                  con_audio=True, duraciones=(4, 6, 8))
     # Veo 3.1 Fast y Standard: mismos argumentos que Lite (los arma clip.animar), solo
-    # cambia el endpoint. INERTES hasta que tarifas.json les ponga créditos.
+    # cambia el endpoint. INERTES hasta que tarifas.json les ponga créditos. Un solo
+    # intento (max_intentos=1): el timeout del clip es de cliente y puede dejar vivo y
+    # cobrado el trabajo en fal; Standard son $3.20 dólares por intento a 8 s, hasta 8
+    # veces el de Lite, y devolver créditos no devuelve lo que fal ya cobró.
     veo_fast = Modelo("veo-fast", "clip", VEO_FAST_T2V, VEO_FAST_I2V,
-                      con_audio=True, duraciones=(4, 6, 8))
+                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
-                     con_audio=True, duraciones=(4, 6, 8))
+                     con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. INERTE también.
     nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)

@@ -56,7 +56,7 @@ poder encenderse.
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
 | imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | sin `num_images`: probar que fal lo ignora |
-| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | fila y costo en dólares listos (Ola 1); falta la prueba pagada con el «sí» del dueño; créditos propuestos 8 (crear y editar), se escriben al encender |
+| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | fila y costo en dólares listos (Ola 1); falta la prueba pagada con el «sí» del dueño; créditos propuestos 8 (crear y editar), se escriben al encender; `resolution` en el `/edit` es un supuesto sin comprobar (aviso 3 abajo) |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
@@ -71,6 +71,30 @@ Lite: a 1080p la página cobra lo mismo, pero no está verificado que 1080p admi
 6 s, así que no se manda y su costo no se anota. Nano Banana 2 manda
 `resolution: "1K"` explícito (`args_extra` de su fila): 1K es la única resolución con
 precio leído ($0.08 dólares por imagen), y no se depende del valor por defecto de fal.
+Ese `resolution` es un PIN: si una tarea manda la misma llave, gana la del modelo, porque
+el precio solo vale a 1K. Y Veo 3.1 Fast y Standard hacen **un solo intento** por clip
+(`max_intentos=1` en su fila; Lite sigue con los de `CLIP_MAX_ATTEMPTS`).
+
+### Avisos antes de la prueba pagada y de encender la Ola 1
+
+1. **Veo 3.1 Fast y Standard: un solo intento.** Antes de encender Veo 3.1 Fast o
+   Standard: el timeout del clip es de 240 s; la prueba pagada imprime cuánto tardó la
+   llamada y marca REVISAR si pasa del 70 % — un timeout de cliente puede dejar un
+   trabajo vivo y cobrado en fal, y por eso estos dos modelos hacen un solo intento.
+2. **La imagen de entrada del clip.** La imagen de entrada del clip a partir de imagen
+   debe ser de 720p o más de lado corto y de 16:9 o 9:16 (página del modelo, 8-oct). La
+   caja acepta fotos de cualquier forma: lo que fal hace con una foto 4:3 o cuadrada NO
+   está comprobado (aplica también a Veo Lite hoy); la prueba con `--imagen-sin-validar`
+   sirve para medirlo.
+3. **Nano Banana 2 al editar: `resolution` es un supuesto sin comprobar.** La lectura del
+   8-oct NO lista `resolution` entre los parámetros de `fal-ai/nano-banana-2/edit` (solo
+   `image_urls` y `aspect_ratio`), y aun así se manda `"1K"` también al editar. Si `/edit`
+   ignora `resolution` y devuelve el tamaño de la imagen subida, el costo podría pasar de
+   $0.08 dólares; si lo rechaza, todo editar `nb2` daría error con devolución; la prueba
+   pagada de editar lo decide.
+4. **`tools/probar_modelo.py` y el reenvío.** `tools/probar_modelo.py` hace UN intento por
+   nuestro lado, pero `fal_client` puede reenviar el envío si se pierde la respuesta:
+   revisa en Request Details que haya una sola solicitud.
 
 Para los clips, la lectura del 8-oct ya respondió lo básico: los siete tienen
 endpoint de texto a video y de imagen a video, y los siete admiten 8 s. El audio es

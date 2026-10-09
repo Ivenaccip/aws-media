@@ -41,7 +41,8 @@ async def imagen_fal(prompt: str, destino: Path, referencia: Path | None = None,
     app = m.endpoint_para(referencia is not None)
     if referencia is not None:
         args["image_urls"] = [await fal.subir_archivo(referencia)]
-    # los argumentos fijos del modelo (p. ej. la resolución de Nano Banana 2); Grok no trae
+    # los argumentos fijos del modelo (p. ej. la resolución de Nano Banana 2) mandan sobre
+    # los de la tarea: son el pin del que depende el precio. Grok no trae
     res = await fal.llamar(app, m.con_args_extra(args), timeout_s=settings.grok_timeout_s,
                            nombre="imagen", meta=meta or {})
     url = ((res.get("images") or [{}])[0]).get("url")

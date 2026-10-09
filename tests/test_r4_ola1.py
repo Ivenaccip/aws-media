@@ -14,14 +14,21 @@ Lo que este archivo defiende:
     el mismo camino cobra, llama al endpoint correcto y registra el costo;
   * que la fórmula de la hoja de costos (costo ÷ 0.75 ÷ $0.015 dólares, hacia
     arriba, al par) reproduzca la propuesta, para que el número que se escriba al
-    encender no se pueda equivocar.
+    encender no se pueda equivocar;
+  * que los argumentos fijos de un modelo sean un PIN (ganan sobre los de la tarea:
+    el precio de Nano Banana 2 solo vale a 1K), que cualquier Modelo se pueda copiar,
+    serializar y recorrer, y que Veo 3.1 Fast y Standard hagan UN solo intento (un
+    timeout de cliente puede dejar vivo y cobrado el trabajo en fal).
 
 Sin red: fal, LLM, S3, SQS y Langfuse mockeados.
 
 OJO: nada de importar pipeline/server a nivel de módulo (ver test_m25_clip)."""
 import asyncio
+import copy
+import dataclasses
 import json
 import math
+import pickle
 import sys
 from dataclasses import FrozenInstanceError
 from fractions import Fraction
@@ -132,12 +139,19 @@ def test_los_endpoints_nuevos_no_dependen_de_settings(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# args_extra: inmutable, y solo lo trae Nano Banana 2
+# args_extra: inmutable, copiable, un pin, y solo lo trae Nano Banana 2
+
+def _toda_la_tabla():
+    from pipeline import modelos_ia
+    return [modelos_ia.resolver(t, i) for t in modelos_ia.TAREAS for i in modelos_ia.disponibles(t)]
+
 
 def test_solo_nano_banana_2_trae_argumentos_extra():
     from pipeline import modelos_ia
     for tarea in ("imagen", "editar"):
-        assert modelos_ia.resolver(tarea, "nb2").args_extra == {"resolution": "1K"}
+        nb2 = modelos_ia.resolver(tarea, "nb2")
+        assert nb2.args_extra == (("resolution", "1K"),)
+        assert nb2.args_extra_dict == {"resolution": "1K"}
         assert not modelos_ia.resolver(tarea, "grok").args_extra
     for id_ in ("veo-lite", "veo-fast", "veo-std"):
         assert not modelos_ia.resolver("clip", id_).args_extra
@@ -147,15 +161,24 @@ def test_args_extra_es_inmutable():
     from pipeline import modelos_ia
     m = modelos_ia.resolver("imagen", "nb2")
     with pytest.raises(TypeError):
-        m.args_extra["resolution"] = "2K"
+        m.args_extra[0] = ("resolution", "2K")
     with pytest.raises(TypeError):
-        del m.args_extra["resolution"]
+        m.args_extra[0][1] = "2K"
     with pytest.raises(FrozenInstanceError):
-        m.args_extra = {}
-    # y el modelo sigue sirviendo de llave (hash fuera del mapping, igualdad dentro)
+        m.args_extra = ()
+    with pytest.raises(FrozenInstanceError):
+        m.max_intentos = 5
+    # el dict que se pide es NUEVO cada vez: cambiarlo no toca al modelo
+    d = m.args_extra_dict
+    d["resolution"] = "4K"
+    d["otro"] = 1
+    assert m.args_extra_dict == {"resolution": "1K"}
+    assert m.con_args_extra({"prompt": "x"}) == {"prompt": "x", "resolution": "1K"}
+    # y el modelo sigue sirviendo de llave (hash e igualdad, con los argumentos dentro)
     assert hash(m) == hash(modelos_ia.resolver("imagen", "nb2"))
     assert m == modelos_ia.resolver("imagen", "nb2")
     assert m != modelos_ia.Modelo("nb2", "imagen", m.endpoint, m.endpoint_con_imagen)
+    assert {m: 1}[modelos_ia.resolver("imagen", "nb2")] == 1
 
 
 def test_el_dict_que_se_le_pasa_se_copia():
@@ -166,18 +189,127 @@ def test_el_dict_que_se_le_pasa_se_copia():
     origen["resolution"] = "4K"
     origen["otro"] = 1
     assert dict(m.args_extra) == {"resolution": "1K"}
+    assert m.args_extra == (("resolution", "1K"),)
 
 
-def test_el_extra_solo_agrega_llaves_que_no_existen():
+def test_args_extra_se_normaliza_igual_venga_como_venga():
+    """Un dict, pares en una lista o pares en otro orden dan el MISMO modelo."""
+    from pipeline import modelos_ia
+    a = modelos_ia.Modelo("x", "imagen", "fal-ai/x", args_extra={"b": 2, "a": 1})
+    b = modelos_ia.Modelo("x", "imagen", "fal-ai/x", args_extra=[("a", 1), ("b", 2)])
+    c = modelos_ia.Modelo("x", "imagen", "fal-ai/x", args_extra=(("b", 2), ("a", 1)))
+    assert a.args_extra == b.args_extra == c.args_extra == (("a", 1), ("b", 2))
+    assert a == b == c and hash(a) == hash(b) == hash(c)
+    assert modelos_ia.Modelo("x", "imagen", "fal-ai/x").args_extra == ()
+    assert modelos_ia.Modelo("x", "imagen", "fal-ai/x", args_extra={}).args_extra == ()
+
+
+@pytest.mark.parametrize("llave", ["prompt", "image_urls", "image_url", "num_images",
+                                   "aspect_ratio", "duration"])
+def test_un_modelo_no_puede_fijar_una_llave_que_manda_la_tarea(llave):
+    from pipeline import modelos_ia
+    assert llave in modelos_ia.LLAVES_PROTEGIDAS
+    for extra in ({llave: "x"}, [(llave, "x")], {"resolution": "1K", llave: "x"}):
+        with pytest.raises(ValueError, match=llave):
+            modelos_ia.Modelo("x", "imagen", "fal-ai/x", args_extra=extra)
+
+
+def test_las_llaves_protegidas_son_las_que_manda_la_tarea():
+    from pipeline import modelos_ia
+    assert {"prompt", "image_urls", "num_images", "aspect_ratio", "duration"} \
+        <= modelos_ia.LLAVES_PROTEGIDAS
+    # ninguna fila de la tabla fija una (se arma al importar: si no, esto ya habría fallado)
+    for m in _toda_la_tabla():
+        assert not {k for k, _ in m.args_extra} & modelos_ia.LLAVES_PROTEGIDAS, m.id
+
+
+def test_args_extra_mal_formados_se_rechazan():
+    from pipeline import modelos_ia
+    Modelo = modelos_ia.Modelo
+    with pytest.raises(ValueError):
+        Modelo("x", "imagen", "e", args_extra=[("a", 1), ("a", 2)])       # llave repetida
+    with pytest.raises(ValueError):
+        Modelo("x", "imagen", "e", args_extra=[("a", 1, 2)])              # no es un par
+    with pytest.raises(ValueError):
+        Modelo("x", "imagen", "e", args_extra={1: "x"})                   # llave sin texto
+    with pytest.raises(ValueError):
+        Modelo("x", "imagen", "e", args_extra={"": "x"})
+    with pytest.raises(ValueError):
+        Modelo("x", "imagen", "e", args_extra={"lista": [1, 2]})          # valor mutable
+    with pytest.raises(TypeError):
+        Modelo("x", "imagen", "e", args_extra=5)
+
+
+@pytest.mark.parametrize("copiar", [
+    copy.copy,
+    copy.deepcopy,
+    lambda m: pickle.loads(pickle.dumps(m)),
+    lambda m: pickle.loads(pickle.dumps(m, protocol=0)),
+], ids=["copy", "deepcopy", "pickle", "pickle-p0"])
+def test_todo_modelo_se_copia_y_se_serializa(copiar):
+    """Con un MappingProxyType esto lanzaba «cannot pickle 'mappingproxy'» para
+    CUALQUIER fila, incluido Grok."""
+    for m in _toda_la_tabla():
+        otro = copiar(m)
+        assert otro == m and hash(otro) == hash(m), m.id
+        assert otro.args_extra == m.args_extra and otro.max_intentos == m.max_intentos
+        assert otro.con_args_extra({"prompt": "x"}) == m.con_args_extra({"prompt": "x"})
+
+
+def test_dataclasses_asdict_recorre_cualquier_modelo():
+    from pipeline import modelos_ia
+    for m in _toda_la_tabla():
+        d = dataclasses.asdict(m)
+        assert d["id"] == m.id and d["max_intentos"] == m.max_intentos
+        assert tuple(map(tuple, d["args_extra"])) == m.args_extra
+    nb2 = dataclasses.asdict(modelos_ia.resolver("imagen", "nb2"))
+    assert dict(nb2["args_extra"]) == {"resolution": "1K"}
+    assert dataclasses.asdict(modelos_ia.resolver("imagen", "grok"))["args_extra"] == ()
+    # y de vuelta: lo que sale de asdict reconstruye el mismo modelo
+    assert modelos_ia.Modelo(**nb2) == modelos_ia.resolver("imagen", "nb2")
+
+
+def test_el_extra_agrega_lo_que_falta_y_el_original_no_se_toca():
     from pipeline import modelos_ia
     m = modelos_ia.resolver("imagen", "nb2")
     base = {"prompt": "un gato", "num_images": 1}
     mezcla = m.con_args_extra(base)
     assert mezcla == {"prompt": "un gato", "num_images": 1, "resolution": "1K"}
     assert base == {"prompt": "un gato", "num_images": 1}      # no se toca el original
-    # lo de la tarea manda: el extra jamás pisa el prompt, las imágenes ni una llave ya puesta
-    pisado = m.con_args_extra({"prompt": "un gato", "resolution": "2K"})
-    assert pisado["resolution"] == "2K" and pisado["prompt"] == "un gato"
+
+
+@pytest.mark.parametrize("tarea", ["imagen", "editar"])
+@pytest.mark.parametrize("pedida", ["4K", "2K", "0.5K", "1K", "", None])
+def test_el_pin_de_1k_de_nano_banana_2_manda_sobre_la_tarea(tarea, pedida):
+    """$0.08 dólares por imagen solo vale a 1K: si un llamador futuro manda
+    `resolution` (p. ej. la calidad de Nano Banana Pro), el modelo NO la obedece."""
+    from pipeline import modelos_ia
+    m = modelos_ia.resolver(tarea, "nb2")
+    args = {"prompt": "un gato", "num_images": 1, "aspect_ratio": "16:9",
+            "image_urls": ["https://fal.test/a.png"], "resolution": pedida}
+    mezcla = m.con_args_extra(args)
+    assert mezcla == {**args, "resolution": "1K"}
+    assert args["resolution"] == pedida                       # y el original queda como estaba
+
+
+def test_grok_sigue_identico_aunque_la_tarea_mande_resolution():
+    """Grok no fija nada: lo que manda la tarea sale tal cual, copia idéntica."""
+    from pipeline import modelos_ia
+    m = modelos_ia.resolver("imagen", "grok")
+    args = {"prompt": "un gato", "num_images": 1, "aspect_ratio": "1:1", "resolution": "4K"}
+    salida = m.con_args_extra(args)
+    assert salida == args and salida is not args
+    editar = modelos_ia.resolver("editar", "grok").con_args_extra(args)
+    assert editar == args and editar is not args
+
+
+def test_el_pin_no_pisa_el_prompt_ni_las_imagenes_de_la_tarea():
+    """Eso lo garantiza la validación de arriba: un pin solo puede ser de llaves
+    que la tarea NO manda, así que el prompt y las imágenes pasan siempre."""
+    from pipeline import modelos_ia
+    m = modelos_ia.Modelo("x", "editar", "fal-ai/x", args_extra={"resolution": "1K", "seed": 7})
+    args = {"prompt": "un gato", "image_urls": ["a", "b"], "num_images": 1}
+    assert m.con_args_extra(args) == {**args, "resolution": "1K", "seed": 7}
 
 
 def test_sin_extra_los_argumentos_quedan_identicos():
@@ -337,6 +469,221 @@ def test_animar_manda_a_fast_y_standard_lo_mismo_que_a_lite(monkeypatch, modelo,
     assert args["resolution"] == "720p" and args["generate_audio"] is True
     assert args["aspect_ratio"] == "9:16" and args["safety_tolerance"] == "6"
     assert ("image_url" in args) is con_imagen
+
+
+# ---------------------------------------------------------------------------
+# clip.animar: los intentos son del modelo (un timeout de cliente puede dejar vivo y
+# cobrado el trabajo en fal, y Standard cuesta $3.20 dólares por intento a 8 s)
+
+@pytest.fixture
+def veo_que_falla(monkeypatch):
+    """fal.llamar que siempre falla, como un timeout de cliente (FalError). Anota cada llamada."""
+    from pipeline import fal
+    llamadas = []
+
+    async def llamar(app, argumentos, timeout_s, nombre, meta=None):
+        llamadas.append(SimpleNamespace(app=app, args=argumentos, meta=meta))
+        raise fal.FalError(f"{app}: timeout tras {timeout_s}s")
+    monkeypatch.setattr(fal, "llamar", llamar)
+    return llamadas
+
+
+@pytest.fixture
+def veo_sin_video(monkeypatch):
+    """fal.llamar que responde bien pero sin video."""
+    from pipeline import fal
+    llamadas = []
+
+    async def llamar(app, argumentos, timeout_s, nombre, meta=None):
+        llamadas.append(app)
+        return {}
+    monkeypatch.setattr(fal, "llamar", llamar)
+    return llamadas
+
+
+def _intentos_de_settings(monkeypatch, n):
+    from pipeline import clip
+    monkeypatch.setattr(clip, "settings", SimpleNamespace(clip_max_attempts=n, clip_timeout_s=5))
+
+
+def test_los_intentos_por_defecto_de_un_modelo_son_los_de_settings():
+    """max_intentos=0 es «los de settings»: nadie que no lo pida cambia de conducta."""
+    from pipeline import modelos_ia
+    assert modelos_ia.Modelo("x", "clip", "fal-ai/x").max_intentos == 0
+    for m in _toda_la_tabla():
+        esperado = 1 if (m.tarea, m.id) in {("clip", "veo-fast"), ("clip", "veo-std")} else 0
+        assert m.max_intentos == esperado, (m.tarea, m.id)
+    assert modelos_ia.resolver("imagen", "grok").max_intentos == 0
+    assert modelos_ia.resolver("clip", "veo-lite").max_intentos == 0
+
+
+@pytest.mark.parametrize("malo", [-1, 1.0, "1", True, None])
+def test_max_intentos_solo_acepta_enteros_de_cero_o_mas(malo):
+    from pipeline import modelos_ia
+    with pytest.raises(ValueError, match="max_intentos"):
+        modelos_ia.Modelo("x", "clip", "fal-ai/x", max_intentos=malo)
+
+
+@pytest.mark.parametrize("modelo", sorted(CLIPS))
+@pytest.mark.parametrize("con_imagen", [False, True])
+@pytest.mark.parametrize("segundos", [4, 6, 8])
+def test_un_fallo_en_fast_o_standard_hace_exactamente_una_llamada(
+        veo_que_falla, monkeypatch, modelo, con_imagen, segundos):
+    from pipeline import clip
+    imagen = "https://fal.test/foto.jpg" if con_imagen else None
+    with pytest.raises(clip.ClipError, match="No se pudo generar el video"):
+        asyncio.run(clip.animar("a dog", imagen, "vertical", modelo, segundos))
+    (ll,) = veo_que_falla
+    assert ll.app == CLIPS[modelo][1 if con_imagen else 0]
+    assert ll.meta == {"clip": True, "intento": 1}
+
+
+@pytest.mark.parametrize("modelo", sorted(CLIPS))
+@pytest.mark.parametrize("n", [1, 2, 3, 10])
+def test_aunque_settings_pida_mas_intentos_fast_y_standard_hacen_uno(
+        veo_que_falla, monkeypatch, modelo, n):
+    from pipeline import clip
+    _intentos_de_settings(monkeypatch, n)
+    with pytest.raises(clip.ClipError):
+        asyncio.run(clip.animar("a dog", None, "horizontal", modelo, 8))
+    assert len(veo_que_falla) == 1
+
+
+@pytest.mark.parametrize("modelo", sorted(CLIPS))
+def test_si_fal_responde_sin_video_fast_y_standard_tampoco_reintentan(
+        veo_sin_video, monkeypatch, modelo):
+    from pipeline import clip
+    _intentos_de_settings(monkeypatch, 3)
+    with pytest.raises(clip.ClipError, match="Veo no devolvió video"):
+        asyncio.run(clip.animar("a dog", None, "horizontal", modelo, 8))
+    assert len(veo_sin_video) == 1
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 5])
+def test_lite_sigue_reintentando_lo_que_dice_settings(veo_que_falla, monkeypatch, n):
+    """Lite no cambió: con N intentos en settings hace N llamadas, como siempre."""
+    from pipeline import clip
+    _intentos_de_settings(monkeypatch, n)
+    with pytest.raises(clip.ClipError):
+        asyncio.run(clip.animar("a dog", "https://fal.test/foto.jpg", "vertical", "veo-lite", 8))
+    assert [ll.meta["intento"] for ll in veo_que_falla] == list(range(1, n + 1))
+
+
+def test_lite_con_la_configuracion_real_hace_clip_max_attempts_llamadas(veo_que_falla):
+    from pipeline import clip
+    from pipeline.config import settings
+    assert settings.clip_max_attempts >= 2        # el valor de siempre es 2
+    with pytest.raises(clip.ClipError):
+        asyncio.run(clip.animar("a dog", None, "horizontal", "veo-lite", 6))
+    assert len(veo_que_falla) == settings.clip_max_attempts
+    # y sin modelo (el predeterminado, Lite) igual
+    veo_que_falla.clear()
+    with pytest.raises(clip.ClipError):
+        asyncio.run(clip.animar("a dog"))
+    assert len(veo_que_falla) == settings.clip_max_attempts
+
+
+def test_lite_reintenta_y_se_recupera_pero_standard_no_tiene_segunda_oportunidad(monkeypatch):
+    """Primer intento falla, el segundo responde: Lite entrega el video; Standard,
+    con el mismo guion de fal, se rinde en el primero (y no gasta un segundo cobro)."""
+    from pipeline import clip, fal
+    _intentos_de_settings(monkeypatch, 2)
+    for modelo, llamadas_esperadas, sale_video in (("veo-lite", 2, True), ("veo-std", 1, False)):
+        llamadas = []
+
+        async def llamar(app, argumentos, timeout_s, nombre, meta=None, _l=llamadas):
+            _l.append(app)
+            if len(_l) == 1:
+                raise fal.FalError("timeout")
+            return {"video": {"url": "https://fal.test/clip.mp4"}}
+        monkeypatch.setattr(fal, "llamar", llamar)
+        if sale_video:
+            assert asyncio.run(clip.animar("a dog", None, "horizontal", modelo, 8)) \
+                == "https://fal.test/clip.mp4"
+        else:
+            with pytest.raises(clip.ClipError):
+                asyncio.run(clip.animar("a dog", None, "horizontal", modelo, 8))
+        assert len(llamadas) == llamadas_esperadas, modelo
+
+
+def test_el_tope_de_un_modelo_nunca_sube_los_intentos_de_settings(
+        veo_que_falla, monkeypatch):
+    """max_intentos es un TECHO: un modelo puede pedir menos que settings, jamás más."""
+    from pipeline import clip, modelos_ia
+    veo = modelos_ia.resolver("clip", "veo-lite")
+    casos = ((5, 2, 2),    # el modelo pide 5, settings 2 -> 2
+             (2, 3, 2),    # el modelo pide 2, settings 3 -> 2
+             (1, 3, 1),    # el modelo pide 1 -> 1
+             (0, 3, 3))    # 0 = los de settings
+    for tope, de_settings, esperado in casos:
+        veo_que_falla.clear()
+        _intentos_de_settings(monkeypatch, de_settings)
+        modelo = dataclasses.replace(veo, max_intentos=tope)
+        monkeypatch.setattr(modelos_ia, "resolver", lambda tarea, id_, _m=modelo: _m)
+        with pytest.raises(clip.ClipError):
+            asyncio.run(clip.animar("a dog", None, "horizontal", "veo-lite", 8))
+        assert len(veo_que_falla) == esperado, (tope, de_settings)
+
+
+def test_el_clip_completo_con_standard_hace_una_sola_llamada_a_fal(
+        veo_que_falla, monkeypatch):
+    """Por el camino real (generar): el prompt se escribe una vez y fal se llama una."""
+    from pipeline import clip
+
+    async def chat_json(name, system, user):
+        return {"video": "A dog running.", "composicion": "", "recorte": ""}
+    monkeypatch.setattr("pipeline.clip.chat_json", chat_json)
+    with pytest.raises(clip.ClipError):
+        asyncio.run(clip.generar("mi perro", None, "horizontal", "veo-std", 8))
+    assert len(veo_que_falla) == 1 and veo_que_falla[0].app == CLIPS["veo-std"][0]
+
+
+# ---------------------------------------------------------------------------
+# lo que NO está comprobado queda escrito donde el dueño lo lee antes de pagar
+
+def _plano(ruta: Path) -> str:
+    """El texto en una sola línea y sin las comillas de código, para buscar frases."""
+    return " ".join(ruta.read_text(encoding="utf-8").replace("`", "").split())
+
+
+def test_el_supuesto_de_resolution_en_el_edit_de_nano_banana_2_esta_anotado():
+    """DATOS §3 no lista `resolution` entre los parámetros de /edit: mandar 1K ahí es un
+    supuesto, y la prueba pagada de editar lo decide. Si desaparece de alguno de los tres
+    sitios, alguien podría encender nb2 sin saber que editar no está comprobado."""
+    docs = RAIZ / "docs" / "modelos-ia"
+    textos = {"pricing.json nota_ola1": " ".join(_pricing()["generacion"]["endpoints"]["nota_ola1"].split()),
+              "POR-VERIFICAR": _plano(docs / "POR-VERIFICAR.md"),
+              "DATOS §3": _plano(docs / "DATOS-FAL-2026-10-08.md")}
+    for donde, t in textos.items():
+        assert "nano-banana-2/edit" in t and "resolution" in t, donde
+        assert "supuesto sin comprobar" in t.lower(), donde
+        assert "ignora" in t and "$0.08 dólares" in t and "daría error con devolución" in t, donde
+        assert "la prueba pagada de editar lo decide" in t, donde
+
+
+def test_los_avisos_de_la_ola_1_estan_en_por_verificar():
+    t = _plano(RAIZ / "docs" / "modelos-ia" / "POR-VERIFICAR.md")
+    # (a) el timeout de cliente y el único intento de Fast y Standard
+    for trozo in ("el timeout del clip es de 240 s", "marca REVISAR si pasa del 70 %",
+                  "un timeout de cliente puede dejar un trabajo vivo y cobrado en fal",
+                  "estos dos modelos hacen un solo intento"):
+        assert trozo in t, trozo
+    # (b) la forma de la imagen de entrada
+    for trozo in ("720p o más de lado corto", "16:9 o 9:16", "NO está comprobado",
+                  "--imagen-sin-validar"):
+        assert trozo in t, trozo
+    # (c) el reenvío de fal_client
+    for trozo in ("UN intento por nuestro lado", "fal_client puede reenviar el envío",
+                  "una sola solicitud"):
+        assert trozo in t, trozo
+
+
+def test_los_docs_y_las_notas_de_la_ola_1_nunca_dicen_centavos():
+    docs = RAIZ / "docs" / "modelos-ia"
+    nota = _pricing()["generacion"]["endpoints"]["nota_ola1"]
+    for t in (nota, (docs / "POR-VERIFICAR.md").read_text(encoding="utf-8"),
+              (docs / "DATOS-FAL-2026-10-08.md").read_text(encoding="utf-8")):
+        assert "centavos" not in t.lower()
 
 
 # ---------------------------------------------------------------------------

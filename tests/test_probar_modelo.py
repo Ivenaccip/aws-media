@@ -6,12 +6,20 @@ Lo que este archivo defiende:
     dólares y créditos (o «sin precio confirmado» / «sin número en tarifas.json»);
   * con --si y sin FAL_KEY, o con una duración que el modelo no admite, o sin
     ffprobe, sale con 2 y NO llama (nada se gasta si algo no se puede comprobar);
-  * la clave de fal jamás sale en pantalla, ni dentro de un mensaje de error;
-  * UNA sola llamada por corrida: el reintento del clip se corta;
+  * la clave de fal jamás sale en pantalla, ni dentro de un mensaje de error, ni
+    en el log de una librería (sale por logging directo a stderr), ni en su forma
+    escapada o a medias (id:secreto); una clave con espacios se rechaza;
+  * un solo intento de llamada de nuestro lado: el reintento del clip se corta;
+  * la respuesta pagada no se pierde: su URL se imprime antes de descargar y en todo
+    fallo posterior, y la carpeta de salida se prueba ANTES de gastar;
+  * la imagen de entrada se mide antes de gastar (vacía, ilegible, lado corto,
+    relación 16:9 / 9:16, formato deducido) y --imagen-sin-validar salta solo la regla;
   * lo descargado nunca pisa lo que ya estaba, y se mide con ffprobe (tamaño,
-    segundos y si trae pista de audio);
+    segundos y si trae pista de audio); un parcial que no se deja borrar no tapa el éxito;
+  * lo medido se compara con lo prometido, incluido el 1K de Nano Banana 2 y el
+    tiempo de la llamada contra su timeout;
   * un pedido mal hecho (editar sin imagen, modelo desconocido) da un error
-    claro, no una traza.
+    claro, no una traza; todo fallo de preflight sale con 2 (no se gastó nada).
 
 Sin red: fal, la descarga y ffprobe están sustituidos. Los tests usan veo-lite y
 grok, que ya existen; el único que toca veo-fast se salta si aún no resuelve.
@@ -22,7 +30,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -53,6 +65,8 @@ class Entorno:
         self.resultado: dict = {"video": {"url": "https://fal.invalid/v/salida.mp4"}}
         self.error: Exception | None = None             # lo que levanta fal.llamar
         self.medida: dict = dict(MEDIDA_CLIP)
+        # lo que mide ffprobe de una IMAGEN DE ENTRADA concreta (ruta → medida, o una excepción)
+        self.medidas_entrada: dict[Path, dict | Exception] = {}
         self.n_descargas = 0
 
 
@@ -79,9 +93,13 @@ def env(monkeypatch, tmp_path):
         return destino
 
     def medir(ruta):
-        assert Path(ruta).is_file(), "se mide el archivo ya guardado"
-        e.medidos.append(Path(ruta))
-        return dict(e.medida)
+        ruta = Path(ruta)
+        assert ruta.is_file(), "se mide un archivo que existe"
+        e.medidos.append(ruta)
+        entrada = e.medidas_entrada.get(ruta)
+        if isinstance(entrada, Exception):
+            raise entrada
+        return dict(entrada if entrada is not None else e.medida)
 
     monkeypatch.setattr(fal, "llamar", llamar)
     monkeypatch.setattr(fal, "subir_archivo", subir_archivo)
@@ -215,12 +233,14 @@ def test_sin_si_no_se_pide_la_clave_ni_se_lee_el_env(env, capsys, monkeypatch):
     assert code == 0 and "FAL_KEY" not in err and NO_LLAMO in out
 
 
-def test_si_el_adaptador_y_la_tabla_no_concuerdan_no_se_gasta(env, capsys, monkeypatch, foto):
+@pytest.mark.parametrize("si", [[], ["--si"]])
+def test_si_el_adaptador_y_la_tabla_no_concuerdan_no_se_gasta_y_sale_con_2(env, capsys, monkeypatch, foto, si):
     from pipeline import modelos_ia
     monkeypatch.setattr(modelos_ia.Modelo, "endpoint_para", lambda self, con_imagen: "fal-ai/otro")
-    code, out, err = _correr(capsys, "editar", "grok", "--imagen", foto, "--si")
-    assert code == 1 and env.llamadas == []
+    code, out, err = _correr(capsys, "editar", "grok", "--imagen", foto, *si)
+    assert code == 2 and env.llamadas == [] and env.subidas == []     # 2 = no se gastó nada
     assert "fal-ai/otro" in err and "No se gasta nada" in err
+    assert "Request Details" not in err                               # con 0 llamadas no hay cobro que revisar
 
 
 # ---------------------------------------------------------------------------
@@ -567,3 +587,643 @@ def test_medir_sin_ffprobe_instalado_lo_dice(monkeypatch, tmp_path):
     monkeypatch.setattr(probar, "_ffprobe_exe", lambda: None)
     with pytest.raises(probar._SinMedida, match="ffprobe no está instalado"):
         probar._medir(tmp_path / "v.mp4")
+
+
+# ---------------------------------------------------------------------------
+# X1 · la promesa de 1K de Nano Banana 2
+
+@pytest.mark.parametrize("tarea, ancho, alto, se_marca", [
+    ("imagen", 2752, 1536, True),       # 4.2 MP: llegó en 2K
+    ("editar", 2752, 1536, True),
+    ("editar", 4096, 4096, True),       # 16.8 MP: llegó en 4K
+    ("imagen", 688, 384, True),         # 0.26 MP: llegó en 0.5K, cuyo precio no está leído
+    ("editar", 512, 512, True),         # 0.26 MP
+    ("imagen", 1376, 768, False),       # 1.06 MP: 1K de verdad
+    ("editar", 1376, 768, False),
+    ("editar", 1024, 1024, False),      # 1.05 MP
+])
+def test_nb2_promete_1k_y_una_salida_mayor_se_marca_para_revisar(env, capsys, foto, tmp_path, tarea, ancho, alto, se_marca):
+    from pipeline import modelos_ia
+    assert dict(modelos_ia.resolver(tarea, "nb2").args_extra)["resolution"] == "1K"
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto}
+    extra = ["--imagen", foto] if tarea == "editar" else []
+    code, out, err = _correr(capsys, tarea, "nb2", *extra, "--si", "--salida", tmp_path / "s")
+
+    assert code == 0, err                                  # la prueba corrió; el veredicto va en el texto
+    assert env.llamadas[0][1]["resolution"] == "1K"
+    if se_marca:
+        assert "REVISAR" in out and "se prometió 1K" in out and f"{ancho}×{alto}" in out
+        assert re.search(r"el costo anotado \(\$0\.08 dólares\) solo vale a 1K", out)
+        assert "coincide con lo prometido" not in out
+    else:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+def test_un_modelo_sin_resolucion_fija_no_se_juzga_por_los_megapixeles(env, capsys, tmp_path):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 2752, "alto": 1536}        # 16:9, 4.2 MP, en Grok
+    code, out, err = _correr(capsys, "imagen", "grok", "--si", "--salida", tmp_path / "s")
+    assert code == 0 and "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+# ---------------------------------------------------------------------------
+# X2 · la clave no se filtra
+
+def test_la_clave_en_un_aviso_de_logging_de_una_libreria_tampoco_sale(env, capsys, caplog, monkeypatch, tmp_path):
+    """clip.animar hace log.warning(... err): sale por logging, no por _decir."""
+    from pipeline import clip, fal
+    monkeypatch.setattr(clip, "settings", SimpleNamespace(clip_max_attempts=3, clip_timeout_s=5))
+    env.error = fal.FalError(f"401 Unauthorized: Authorization: Key {CLAVE}")
+    caplog.set_level(logging.WARNING)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+
+    assert code == 1 and len(env.llamadas) == 1
+    assert "Veo falló en el clip" in caplog.text            # el aviso sí salió por logging…
+    assert CLAVE not in caplog.text                         # …sin la clave
+    for registro in caplog.records:
+        assert CLAVE not in registro.getMessage() and CLAVE not in str(registro.args)
+    assert CLAVE not in out and CLAVE not in err
+
+
+def test_la_clave_en_el_log_no_llega_a_stderr_en_un_proceso_real(tmp_path):
+    """El caso que describió el revisor: sin ningún handler configurado, logging
+    escribe el aviso directo a stderr (handler de último recurso)."""
+    guion = (
+        "import importlib.util, os, sys\n"
+        "from types import SimpleNamespace\n"
+        "raiz = sys.argv[1]\n"
+        "sys.path.insert(0, raiz)\n"
+        "spec = importlib.util.spec_from_file_location('probar_modelo', raiz + '/tools/probar_modelo.py')\n"
+        "probar = importlib.util.module_from_spec(spec); spec.loader.exec_module(probar)\n"
+        "from pipeline import clip, fal\n"
+        "async def llamar(app, argumentos, timeout_s=None, nombre=None, meta=None):\n"
+        "    raise fal.FalError('401 Unauthorized: Authorization: Key ' + os.environ['FAL_KEY'])\n"
+        "fal.llamar = llamar\n"
+        "clip.settings = SimpleNamespace(clip_max_attempts=3, clip_timeout_s=5)\n"
+        "probar._ffprobe_exe = lambda: 'ffprobe'\n"
+        "probar._cargar_env = lambda: None\n"
+        "sys.exit(probar.main(['clip', 'veo-lite', '--segundos', '4', '--si', '--salida', sys.argv[2]]))\n")
+    r = subprocess.run([sys.executable, "-c", guion, str(RAIZ), str(tmp_path / "s")], capture_output=True,
+                       text=True, encoding="utf-8", cwd=tmp_path, timeout=180,
+                       env={**os.environ, "FAL_KEY": CLAVE, "LANGFUSE_TRACING_ENABLED": "false",
+                            "PYTHONIOENCODING": "utf-8"})
+    assert r.returncode == 1, r.stderr
+    assert "Veo falló en el clip" in r.stderr               # el aviso salió de verdad por stderr…
+    assert CLAVE not in r.stderr and CLAVE not in r.stdout  # …sin la clave
+    assert "***" in r.stderr
+
+
+def test_el_filtro_de_logs_tapa_mensaje_argumentos_y_traza_y_se_quita_al_terminar(monkeypatch):
+    import io
+    monkeypatch.setenv("FAL_KEY", CLAVE)
+    original = logging.getLogRecordFactory()
+    flujo = io.StringIO()
+    manejador = logging.StreamHandler(flujo)
+    manejador.setFormatter(logging.Formatter("%(name)s|%(message)s"))
+    logger = logging.getLogger("terceros.libreria")
+    logger.addHandler(manejador)
+    logger.propagate = False
+    try:
+        with probar._logs_sin_clave():
+            assert logging.getLogRecordFactory() is not original
+            logger.error("falló con %s y %s", CLAVE, {"k": CLAVE})        # argumentos
+            logger.error(f"mensaje con {CLAVE} dentro")                     # mensaje
+            try:
+                raise ValueError(f"mal: {CLAVE}")
+            except ValueError:
+                logger.error("con traza", exc_info=True)                    # exc_info
+        assert logging.getLogRecordFactory() is original                    # se quita al terminar
+        logger.error("ya sin filtro: %s", CLAVE)
+    finally:
+        logger.removeHandler(manejador)
+        logger.propagate = True
+    texto = flujo.getvalue()
+    antes, despues = texto.split("ya sin filtro")
+    assert CLAVE not in antes and antes.count("***") >= 4
+    assert "ValueError" in antes and "Traceback" in antes
+    assert CLAVE in despues                                                 # fuera del bloque no se toca nada
+
+
+@pytest.mark.parametrize("clave, error", [
+    ("idclave-1234:secretoSOLO-98765", "401: secreto equivocado secretoSOLO-98765"),    # solo la mitad secreta
+    ("idclave-1234:secretoSOLO-98765", "401: key id idclave-1234 inválido"),            # solo la mitad id
+])
+def test_un_error_que_nombra_solo_una_mitad_de_la_clave_tambien_se_tapa(env, capsys, monkeypatch, clave, error):
+    from pipeline import fal
+    monkeypatch.setenv("FAL_KEY", clave)
+    env.error = fal.FalError(error)
+    code, out, err = _correr(capsys, "imagen", "grok", "--si")
+    assert code == 1
+    for mitad in clave.split(":"):
+        assert mitad not in out and mitad not in err
+    assert "***" in err
+
+
+def test_la_forma_escapada_de_la_clave_tambien_se_tapa(env, capsys, monkeypatch):
+    """h11 pone el valor con repr(): una barra invertida sale duplicada y ya no es la clave tal cual."""
+    from pipeline import fal
+    clave = "abcd-efgh\\ijkl-5678"
+    escapada = repr(clave)[1:-1]
+    assert escapada != clave
+    monkeypatch.setenv("FAL_KEY", clave)
+    env.error = fal.FalError(f"Illegal header value b'Key {escapada}'")
+    code, out, err = _correr(capsys, "imagen", "grok", "--si")
+    assert code == 1 and clave not in err and escapada not in err and "***" in err
+
+
+def test_limpio_tapa_la_clave_terminada_en_salto_de_linea_en_todas_sus_formas(monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "clave-nl-1234567\n")
+    for texto in ("Illegal header value b'Key clave-nl-1234567\\n'",     # h11: repr escapado
+                  "Key clave-nl-1234567 rechazada",                      # sin el salto (strip)
+                  "Key clave-nl-1234567\n rechazada"):                   # tal cual
+        assert "clave-nl-1234567" not in probar._limpio(texto), texto
+
+
+@pytest.mark.parametrize("clave", ["clave-123456 ", " clave-123456", "clave-123456\n", "clave-123456\r",
+                                   "clave 123456", "clave\t123456", "clave-12\x0734567"])
+def test_una_clave_con_espacios_o_caracteres_de_control_se_rechaza_sin_imprimirla(env, capsys, monkeypatch, tmp_path, clave):
+    monkeypatch.setenv("FAL_KEY", clave)
+    salida = tmp_path / "s"
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", salida)
+
+    assert code == 2 and env.llamadas == [] and env.subidas == [] and env.descargas == []
+    assert "FAL_KEY" in err and "espacios" in err
+    assert "clave-123456" not in out + err and "clave-12" not in out + err    # el mensaje no la imprime
+    assert not salida.exists()                                                # ni se creó la carpeta
+
+
+# ---------------------------------------------------------------------------
+# X3 · lo pagado no se pierde
+
+@pytest.mark.parametrize("tarea, modelo, url", [
+    ("clip", "veo-lite", "https://fal.invalid/v/salida.mp4"),
+    ("imagen", "grok", "https://fal.invalid/i/resultado.png"),
+])
+def test_si_la_descarga_falla_la_url_ya_salio_antes_y_el_exit_no_es_2(env, capsys, monkeypatch, tmp_path, tarea, modelo, url):
+    from pipeline import fal
+    if tarea == "clip":
+        env.resultado = {"video": {"url": url}}
+    else:
+        env.resultado = {"images": [{"url": url}]}
+    antes = {}
+
+    async def descargar_roto(u, destino):
+        antes["out"] = capsys.readouterr().out            # lo que ya se había impreso al empezar a descargar
+        raise OSError("se cortó la conexión")
+
+    monkeypatch.setattr(fal, "descargar", descargar_roto)
+    code, out, err = _correr(capsys, tarea, modelo, "--si", "--salida", tmp_path / "s")
+
+    assert code == 1 and len(env.llamadas) == 1            # falló después de pagar: no es «pedido inválido»
+    assert url in antes["out"]                             # la URL salió ANTES de descargar
+    assert url in err and "SÍ se generó y se cobró" in err and "se cortó la conexión" in err
+    assert "la prueba falló" not in err.lower()            # no es el «falló» a secas
+    assert "Request Details" in err
+
+
+def test_si_el_guardado_falla_la_url_tambien_sale(env, capsys, monkeypatch, tmp_path):
+    def guardar_roto(*a, **k):
+        raise PermissionError("acceso denegado")
+    monkeypatch.setattr(probar, "_guardar_sin_pisar", guardar_roto)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 1
+    assert "https://fal.invalid/v/salida.mp4" in out and "https://fal.invalid/v/salida.mp4" in err
+    assert "SÍ se generó y se cobró" in err and "acceso denegado" in err
+
+
+def test_el_exito_tambien_imprime_la_url_del_resultado(env, capsys, tmp_path):
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 0 and "https://fal.invalid/v/salida.mp4" in out
+
+
+@pytest.mark.parametrize("resultado, esperadas", [
+    ({"video": {"url": "https://x/v.mp4"}}, ["https://x/v.mp4"]),
+    ({"images": [{"url": "https://x/a.png"}, {"url": "https://x/b.png"}]}, ["https://x/a.png", "https://x/b.png"]),
+    ({"images": [{}], "video": None}, []),
+    ({"images": None}, []),
+    ({}, []),
+    (None, []),
+    ("no es un dict", []),
+])
+def test_las_urls_del_resultado_se_leen_de_video_e_imagenes(resultado, esperadas):
+    assert probar._urls(resultado) == esperadas
+
+
+@pytest.mark.parametrize("como", ["debajo_de_un_archivo", "sin_permiso_de_escritura"])
+def test_una_carpeta_de_salida_que_no_se_puede_escribir_sale_con_2_y_sin_llamar(env, capsys, monkeypatch, tmp_path, como):
+    if como == "debajo_de_un_archivo":
+        archivo = tmp_path / "ocupado"
+        archivo.write_text("soy un archivo")
+        salida = archivo / "dentro"
+    else:
+        salida = tmp_path / "solo_lectura"
+        escribir = Path.write_bytes
+
+        def write_bytes(self, datos):
+            if self.name.startswith(".prueba-escritura"):
+                raise PermissionError(13, "Permission denied", str(self))
+            return escribir(self, datos)
+
+        monkeypatch.setattr(Path, "write_bytes", write_bytes)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", salida)
+
+    assert code == 2 and env.llamadas == [] and env.subidas == [] and env.descargas == []
+    assert "No puedo escribir en la carpeta de salida" in err and "No se gastó nada" in err
+    assert "Request Details" not in err                    # con 0 llamadas no hay cobro que revisar
+
+
+def test_con_si_la_carpeta_de_salida_se_crea_y_se_prueba_antes_de_llamar(env, capsys, tmp_path):
+    """Si falla la llamada, la carpeta ya existe y no queda el archivo de prueba."""
+    from pipeline import fal
+    env.error = fal.FalError("caído")
+    salida = tmp_path / "a" / "b"
+    code, out, err = _correr(capsys, "imagen", "grok", "--si", "--salida", salida)
+    assert code == 1 and salida.is_dir() and list(salida.iterdir()) == []
+
+
+def test_un_fallo_antes_de_llamar_dice_que_no_se_gasto_nada_y_no_habla_de_cobro(env, capsys, monkeypatch, foto, tmp_path):
+    from pipeline import fal
+
+    async def subir_roto(path):
+        raise OSError("sin red para subir")
+
+    monkeypatch.setattr(fal, "subir_archivo", subir_roto)
+    code, out, err = _correr(capsys, "editar", "grok", "--imagen", foto, "--si", "--salida", tmp_path / "s")
+    assert code == 2 and env.llamadas == []          # no se llegó a llamar: «no se gastó nada» es el código 2
+    assert "sin red para subir" in err and "no se gastó nada" in err
+    assert "Request Details" not in err and "se cobró" not in err
+
+
+def test_un_fallo_de_la_llamada_sin_respuesta_manda_a_revisar_el_cobro(env, capsys, tmp_path):
+    from pipeline import fal
+    env.error = fal.FalError("timeout")
+    code, out, err = _correr(capsys, "imagen", "grok", "--si", "--salida", tmp_path / "s")
+    assert code == 1 and len(env.llamadas) == 1
+    assert "Request Details" in err and "solicitudes duplicadas" in err
+    assert "SÍ se generó" not in err                       # no hay respuesta: no se promete un resultado
+
+
+# ---------------------------------------------------------------------------
+# X4 · la imagen de entrada se mide ANTES de gastar
+
+def _con_medida(env, foto, ancho, alto):
+    env.medidas_entrada[foto] = {"ancho": ancho, "alto": alto, "segundos": None, "audio": False, "codec_audio": None}
+
+
+def test_una_imagen_de_cero_bytes_se_rechaza_siempre(env, capsys, foto, tmp_path):
+    foto.write_bytes(b"")
+    for extra in ([], ["--imagen-sin-validar"]):
+        code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, *extra, "--si", "--salida", tmp_path / "s")
+        assert code == 2 and env.llamadas == [] and env.subidas == []
+        assert "vacía" in err and "0 bytes" in err
+    code, out, err = _correr(capsys, "editar", "grok", "--imagen", foto, "--si", "--salida", tmp_path / "s")
+    assert code == 2 and env.llamadas == [] and "vacía" in err
+
+
+@pytest.mark.parametrize("tarea, modelo, extra", [("clip", "veo-lite", ["--imagen-sin-validar"]),
+                                                 ("clip", "veo-lite", []), ("editar", "grok", [])])
+def test_una_imagen_ilegible_se_rechaza_siempre_tambien_con_sin_validar(env, capsys, foto, tmp_path, tarea, modelo, extra):
+    env.medidas_entrada[foto] = probar._SinMedida("Invalid data found when processing input")
+    code, out, err = _correr(capsys, tarea, modelo, "--imagen", foto, *extra, "--si", "--salida", tmp_path / "s")
+    assert code == 2 and env.llamadas == [] and env.subidas == []
+    assert "No puedo leer la imagen" in err and "Invalid data" in err and "No se gastó nada" in err
+
+
+@pytest.mark.parametrize("ancho, alto, motivo", [
+    (1, 1, "lado corto mide 1 px"),                    # el PNG de 1×1
+    (960, 540, "lado corto mide 540 px"),              # 16:9 pero de menos de 720p
+    (1440, 1080, "relación es 1.33:1"),                # una foto 4:3
+    (1080, 1080, "relación es 1.00:1"),                # cuadrada
+    (3000, 2000, "relación es 1.50:1"),                # 3:2 de cámara
+    (1920, 1020, "relación es 1.88:1"),                # 16:9 corrido: fuera del ±3 %
+])
+def test_un_clip_rechaza_una_imagen_que_el_modelo_no_acepta_y_explica_el_requisito(env, capsys, foto, tmp_path, ancho, alto, motivo):
+    _con_medida(env, foto, ancho, alto)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, "--si", "--salida", tmp_path / "s")
+
+    assert code == 2 and env.llamadas == [] and env.subidas == []
+    assert f"{ancho}×{alto}" in err and motivo in err
+    assert "720" in err and "16:9 o 9:16" in err and "página del modelo" in err
+    assert "--imagen-sin-validar" in err and "No se gastó nada" in err
+
+
+@pytest.mark.parametrize("ancho, alto, formato", [
+    (1280, 720, "16:9"), (1920, 1080, "16:9"), (3840, 2160, "16:9"),
+    (720, 1280, "9:16"), (1080, 1920, "9:16"),
+    (1920, 1060, "16:9"),                              # 1.81:1, dentro del ±3 %
+])
+def test_un_clip_acepta_una_imagen_de_720p_o_mas_en_16_9_o_9_16_y_deduce_el_formato(env, capsys, foto, tmp_path, ancho, alto, formato):
+    _con_medida(env, foto, ancho, alto)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert env.llamadas[0][1]["aspect_ratio"] == formato          # lo que se pagó sigue a la imagen
+    assert f'"aspect_ratio": "{formato}"' in out                  # y el plan impreso también (se rehízo)
+
+
+def test_con_formato_explicito_que_concuerda_no_se_toca(env, capsys, foto, tmp_path):
+    _con_medida(env, foto, 720, 1280)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, "--formato", "vertical",
+                             "--si", "--salida", tmp_path / "s")
+    assert code == 0, err and env.llamadas[0][1]["aspect_ratio"] == "9:16"
+
+
+@pytest.mark.parametrize("ancho, alto, formato", [(1280, 720, "vertical"), (720, 1280, "horizontal")])
+@pytest.mark.parametrize("sin_validar", [[], ["--imagen-sin-validar"]])
+def test_un_formato_que_discrepa_de_la_imagen_se_rechaza_tambien_con_sin_validar(env, capsys, foto, tmp_path, ancho, alto, formato, sin_validar):
+    _con_medida(env, foto, ancho, alto)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, "--formato", formato, *sin_validar,
+                             "--si", "--salida", tmp_path / "s")
+    assert code == 2 and env.llamadas == [] and env.subidas == []
+    assert f"--formato {formato} no concuerda con la imagen" in err and f"{ancho}×{alto}" in err
+
+
+@pytest.mark.parametrize("ancho, alto", [(1, 1), (1440, 1080), (1080, 1080), (960, 540)])
+def test_sin_validar_salta_solo_la_regla_de_lado_corto_y_relacion_y_avisa(env, capsys, foto, tmp_path, ancho, alto):
+    _con_medida(env, foto, ancho, alto)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, "--imagen-sin-validar",
+                             "--si", "--salida", tmp_path / "s")
+    assert code == 0, err and len(env.llamadas) == 1 and env.subidas == [foto]
+    assert "AVISO" in err and "--imagen-sin-validar" in err
+
+
+def test_sin_validar_con_una_imagen_que_pasa_igual_avisa(env, capsys, foto, tmp_path):
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto, "--imagen-sin-validar",
+                             "--si", "--salida", tmp_path / "s")
+    assert code == 0 and "AVISO" in err
+
+
+@pytest.mark.parametrize("ancho, alto", [(1, 1), (1440, 1080), (300, 200)])
+def test_editar_no_aplica_la_regla_de_720p_ni_de_16_9(env, capsys, foto, tmp_path, ancho, alto):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = dict(MEDIDA_IMAGEN)
+    _con_medida(env, foto, ancho, alto)
+    code, out, err = _correr(capsys, "editar", "grok", "--imagen", foto, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err and len(env.llamadas) == 1
+
+
+@pytest.mark.parametrize("argv, tarea_modelo", [
+    (["--imagen-sin-validar"], ("clip", "veo-lite")),                       # clip sin imagen
+    (["--imagen", "{foto}", "--imagen-sin-validar"], ("editar", "grok")),   # editar: la regla no aplica
+    (["--imagen-sin-validar"], ("imagen", "grok")),
+])
+def test_sin_validar_donde_no_aplica_se_rechaza(env, capsys, foto, argv, tarea_modelo):
+    argv = [a.replace("{foto}", str(foto)) for a in argv]
+    code, out, err = _correr(capsys, *tarea_modelo, *argv, "--si")
+    assert code == 2 and env.llamadas == [] and "--imagen-sin-validar solo aplica" in err
+
+
+def test_el_ensayo_no_mide_la_imagen_y_avisa_que_con_si_se_mide(env, capsys, foto):
+    env.medidas_entrada[foto] = probar._SinMedida("no me deberían llamar en el ensayo")
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--imagen", foto)
+    assert code == 0 and env.medidos == [] and err == ""
+    assert "con --si se mide la imagen" in out and "720" in out and "16:9 o 9:16" in out
+
+
+# ---------------------------------------------------------------------------
+# X5 · el tiempo de la llamada contra su timeout
+
+def _reloj_falso(env, monkeypatch, tarda):
+    """La llamada «tarda» `tarda` segundos en un reloj que controla el test."""
+    from pipeline import fal
+    reloj = {"t": 1000.0}
+    original = fal.llamar
+
+    async def lenta(app, argumentos, **kw):
+        reloj["t"] += tarda
+        return await original(app, argumentos, **kw)
+
+    monkeypatch.setattr(fal, "llamar", lenta)
+    monkeypatch.setattr(probar, "_reloj", lambda: reloj["t"])
+
+
+@pytest.mark.parametrize("tarea, modelo, tarda, se_marca", [
+    ("clip", "veo-lite", 80, True),        # 80 % de 100 s
+    ("clip", "veo-lite", 71, True),
+    ("clip", "veo-lite", 70, False),       # exactamente el 70 % no pasa del 70 %
+    ("clip", "veo-lite", 12, False),
+    ("imagen", "grok", 91, True),          # 91 s de 120 s = 76 %
+    ("imagen", "grok", 60, False),
+])
+def test_una_llamada_que_tarda_mas_del_70_por_ciento_del_timeout_se_marca(env, capsys, monkeypatch, tmp_path, tarea, modelo, tarda, se_marca):
+    from pipeline import clip, media_fal
+    monkeypatch.setattr(clip, "settings", SimpleNamespace(clip_max_attempts=1, clip_timeout_s=100))
+    monkeypatch.setattr(media_fal, "settings", SimpleNamespace(grok_timeout_s=120))
+    if tarea == "imagen":
+        env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+        env.medida = dict(MEDIDA_IMAGEN)
+    _reloj_falso(env, monkeypatch, tarda)
+    limite = 100 if tarea == "clip" else 120
+    code, out, err = _correr(capsys, tarea, modelo, "--si", "--salida", tmp_path / "s")
+
+    assert code == 0, err
+    assert f"fal respondió en {tarda:.1f} s (el cliente espera hasta {limite} s)" in out     # se reporta siempre
+    if se_marca:
+        assert "REVISAR" in out and f"tardó {tarda} s de los {limite} s" in out
+        assert "vivo y cobrado" in out and "coincide con lo prometido" not in out
+    else:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+def test_el_tiempo_lento_se_marca_aunque_la_medicion_falle(env, capsys, monkeypatch, tmp_path):
+    from pipeline import clip
+
+    def roto(ruta):
+        raise probar._SinMedida("corrupto")
+
+    monkeypatch.setattr(clip, "settings", SimpleNamespace(clip_max_attempts=1, clip_timeout_s=100))
+    monkeypatch.setattr(probar, "_medir", roto)
+    _reloj_falso(env, monkeypatch, 90)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 1 and "no se pudo medir" in err
+    assert "REVISAR" in out and "vivo y cobrado" in out
+    assert "coincide con lo prometido" not in out
+
+
+# ---------------------------------------------------------------------------
+# X6 · el ensayo no llama a nada, ni al trazado
+
+def _espiar_planear(monkeypatch):
+    """Anota el valor de LANGFUSE_TRACING_ENABLED en el momento en que se planea."""
+    visto: list = []
+    planear = probar._planear
+
+    async def espia(plan):
+        visto.append(os.environ.get("LANGFUSE_TRACING_ENABLED"))
+        return await planear(plan)
+
+    monkeypatch.setattr(probar, "_planear", espia)
+    return visto
+
+
+def test_el_ensayo_apaga_el_trazado_de_langfuse_y_lo_deja_como_estaba(env, capsys, monkeypatch):
+    monkeypatch.delenv("LANGFUSE_TRACING_ENABLED", raising=False)
+    visto = _espiar_planear(monkeypatch)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4)
+    assert code == 0 and visto == ["false"]
+    assert "LANGFUSE_TRACING_ENABLED" not in os.environ        # no se queda puesta para el resto del proceso
+
+
+def test_si_el_dueno_ya_definio_el_trazado_se_respeta(env, capsys, monkeypatch):
+    monkeypatch.setenv("LANGFUSE_TRACING_ENABLED", "true")
+    visto = _espiar_planear(monkeypatch)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4)
+    assert code == 0 and visto == ["true"] and os.environ["LANGFUSE_TRACING_ENABLED"] == "true"
+
+
+def test_con_si_no_se_toca_el_trazado(env, capsys, monkeypatch, tmp_path):
+    monkeypatch.delenv("LANGFUSE_TRACING_ENABLED", raising=False)
+    visto = _espiar_planear(monkeypatch)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 0 and visto == [None]
+
+
+# ---------------------------------------------------------------------------
+# X8 · ffprobe dice «N/A»
+
+@pytest.mark.parametrize("formato, flujo, esperado", [
+    ("N/A", "4.004000", 4.004),            # el contenedor no sabe: gana la del flujo
+    ("nan", "4.004000", 4.004),
+    ("8.041000", "N/A", 8.041),            # el contenedor manda si es válido
+    ("8.041000", "4.004000", 8.041),
+    ("N/A", "N/A", None),
+    (None, None, None),
+    ("N/A", None, None),
+])
+def test_medir_prueba_las_dos_duraciones_y_se_queda_con_la_primera_valida(monkeypatch, tmp_path, formato, flujo, esperado):
+    video = {"codec_type": "video", "width": 1280, "height": 720}
+    if flujo is not None:
+        video["duration"] = flujo
+    _ffprobe_falso(monkeypatch, {"streams": [video], "format": {} if formato is None else {"duration": formato}})
+    assert probar._medir(tmp_path / "v.mp4")["segundos"] == esperado
+
+
+# ---------------------------------------------------------------------------
+# X9 · un parcial que no se deja borrar no tapa el éxito
+
+def _unlink_que_niega_el_parcial(monkeypatch):
+    unlink = Path.unlink
+
+    def negado(self, *a, **k):
+        if self.name.endswith(".parcial"):
+            raise PermissionError(13, "El proceso no tiene acceso al archivo (otro proceso lo usa)", str(self))
+        return unlink(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", negado)
+
+
+def test_si_no_se_puede_borrar_el_parcial_el_archivo_final_queda_guardado_y_se_mide(env, capsys, monkeypatch, tmp_path):
+    _unlink_que_niega_el_parcial(monkeypatch)
+    salida = tmp_path / "s"
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", salida)
+
+    assert code == 0, err
+    guardado = salida / "clip-veo-lite-4s.mp4"
+    assert guardado.read_bytes() == b"contenido-1"
+    assert env.medidos == [guardado]
+    assert "MEDIDO" in out and "falló" not in err
+
+
+def test_si_el_sistema_no_deja_mover_el_parcial_se_copia_y_el_exito_se_mantiene(env, capsys, monkeypatch, tmp_path):
+    """Windows: el antivirus tiene abierto el parcial, así que ni se mueve ni se borra."""
+    _unlink_que_niega_el_parcial(monkeypatch)
+
+    def replace_negado(origen, destino):
+        raise PermissionError(13, "El proceso no tiene acceso al archivo", str(origen))
+
+    monkeypatch.setattr(probar.os, "replace", replace_negado)
+    salida = tmp_path / "s"
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", salida)
+
+    assert code == 0, err
+    guardado = salida / "clip-veo-lite-4s.mp4"
+    assert guardado.read_bytes() == b"contenido-1" and env.medidos == [guardado]
+    assert "MEDIDO" in out and "falló" not in err
+
+
+def test_si_ni_mover_ni_copiar_funcionan_no_queda_un_destino_vacio(tmp_path, monkeypatch):
+    origen = tmp_path / ".x.parcial"
+    origen.write_bytes(b"datos")
+
+    def negado(*a, **k):
+        raise PermissionError(13, "acceso denegado")
+
+    monkeypatch.setattr(probar.os, "replace", negado)
+    monkeypatch.setattr(probar.shutil, "copyfile", negado)
+    with pytest.raises(PermissionError):
+        probar._guardar_sin_pisar(origen, tmp_path, "x", ".mp4")
+    assert not (tmp_path / "x.mp4").exists()               # la reserva vacía se retira
+
+
+# ---------------------------------------------------------------------------
+# X10 · «una sola llamada» es de nuestro lado
+
+def test_el_texto_no_promete_una_sola_llamada_absoluta_y_pide_revisar_que_no_haya_duplicadas(env, capsys, tmp_path):
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 0
+    assert "un solo intento de nuestro lado" in out and "fal_client puede reenviar el envío" in out
+    assert "UNA solicitud" in out and "no duplicadas" in out and "Request Details" in out
+
+
+def test_el_docstring_explica_que_fal_client_puede_reenviar_el_envio():
+    doc = " ".join(probar.__doc__.split())
+    assert "UN solo intento de llamada de nuestro lado" in doc
+    assert "fal_client puede reenviar el POST de envío hasta 10 veces" in doc and "sin idempotencia" in doc
+    assert "UNA solicitud" in doc
+
+
+# ---------------------------------------------------------------------------
+# segunda ronda de la revisión
+
+class _Raro(BaseException):
+    """Algo que NO es una Exception (como asyncio.CancelledError): el traceback crudo del
+    intérprete llevaría la clave en su mensaje."""
+
+
+def test_una_excepcion_que_no_es_exception_no_suelta_un_traceback_con_la_clave(env, capsys, tmp_path):
+    env.error = _Raro(f"401 Unauthorized: Authorization: Key {CLAVE}")
+    code, out, err = _correr(capsys, "imagen", "grok", "--si", "--salida", tmp_path / "s")
+    assert code == 1 and len(env.llamadas) == 1
+    assert CLAVE not in out and CLAVE not in err
+    assert "_Raro" in err and "***" in err and "Traceback" not in err
+
+
+def test_un_ctrl_c_al_medir_despues_de_pagar_igual_deja_el_recordatorio_del_cobro(env, capsys, monkeypatch, tmp_path):
+    def interrumpido(ruta):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(probar, "_medir", interrumpido)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 1 and len(env.llamadas) == 1
+    assert "Interrumpido" in err and "Traceback" not in err
+    assert "Recordatorio" in out and "Request Details" in out and "Costo esperado" in out
+
+
+def test_el_plan_corre_el_adaptador_sin_su_decorador_de_trazas(env, capsys, monkeypatch, tmp_path):
+    """clip.animar lleva @observe: planearlo con el decorador exportaría un span falso
+    (en ERROR) a Langfuse antes de cada prueba pagada. El plan usa __wrapped__; la llamada
+    real, la función tal cual."""
+    from pipeline import clip, fal, modelos_ia
+
+    llamado: list[str] = []
+
+    async def desnudo(prompt, url, formato, modelo, segundos):
+        llamado.append("desnudo")
+        res = await fal.llamar(modelos_ia.resolver("clip", modelo).endpoint_para(bool(url)), {"prompt": prompt})
+        return res["video"]["url"]
+
+    async def decorado(prompt, url, formato, modelo, segundos):
+        llamado.append("decorado")
+        return await desnudo(prompt, url, formato, modelo, segundos)
+
+    decorado.__wrapped__ = desnudo
+    monkeypatch.setattr(clip, "animar", decorado)
+
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4)             # ensayo
+    assert code == 0 and llamado == ["desnudo"]
+
+    llamado.clear()
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    # el plan, sin decorar; la llamada real sí pasa por la función decorada (que a su vez llama al desnudo)
+    assert llamado == ["desnudo", "decorado", "desnudo"]
