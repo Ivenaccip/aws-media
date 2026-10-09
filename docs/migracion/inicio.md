@@ -56,15 +56,20 @@ con ese nombre exacto.
 | `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco |
 | `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra |
 | `inicio.caja.cambiar_de_familia_elige_la_primera` | Imagen/Video (el riel) con `aria-pressed` y la primera opción de la familia |
-| `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s`, `video.imagen`) |
-| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; pide el clip a `/api/clip/generar` con `modelo`, sin navegar; el menú se cierra, el texto se vacía y se avisa dónde mirar |
+| `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s` = el clip de 8 s de `modelos.clip.veo-lite`, `video.imagen`) |
+| `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; pide el clip a `/api/clip/generar` con `modelo` y `segundos` (8 si no se tocó), sin navegar; el menú se cierra, el texto se vacía y se avisa dónde mirar |
 | `inicio.caja.el_servidor_decide_el_precio_y_un_error_se_dice` | un 402 (o cualquier error) se dice en la caja y el texto no se pierde; el cuerpo nunca trae créditos |
 | `inicio.caja.un_texto_vetado_no_se_pide` | la moderación (M13) corre antes de lo que cobra |
 | `inicio.caja.crear_una_imagen_se_pide_aqui` | `/api/imagenes` con `modelo`, estilo animado (el que traía la pantalla de imágenes) |
 | `inicio.caja.editar_pide_la_imagen_con_el_mas` | sin imagen no sale y dice cómo agregarla; con ella va a `/api/imagenes/editar` en modo `todo` con `modelo` |
 | `inicio.caja.el_mas_agrega_quita_y_respeta_el_tope` | el «+» solo existe en las tareas que usan imágenes; tope 3 (clip) o 1 (editar); un archivo que no sirve se rechaza con su motivo |
-| `inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas` | las fotos suben directo a S3 (`/api/clip/presign`) y el menú dice lo que suma juntarlas (tarifas.json `clip.componer_imagenes`) |
+| `inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas` | las fotos suben directo a S3 (`/api/clip/presign`) y el menú dice lo que suma juntarlas (tarifas.json `clip.componer_imagenes`); la nota no cambia con la duración del clip |
 | `inicio.caja.arrastrar_imagenes_a_la_caja_las_agrega` | arrastrar es un atajo del «+» |
+| `inicio.caja.la_duracion_recalcula_los_precios_el_chip_y_el_pie` | R4 · duración (9-oct-2026, opción A): el menú del clip trae «Duración del clip» (4 s · 6 s · 8 s, 8 por defecto, «Más corto, más barato»); al elegirla cambian los créditos de cada fila, el rango de cada grupo, el pie («✦ N por clip de N s») y el chip («Modelo Veo 3.1 Lite · 6 s»). Los números salen de `tarifas.json` §modelos.clip, por duración |
+| `inicio.caja.el_clip_manda_los_segundos_elegidos` | el pedido del clip lleva `segundos` junto al `modelo` (nunca créditos: el servidor calcula y cobra); la duración se queda para el próximo pedido |
+| `inicio.caja.un_modelo_sin_esa_duracion_se_atenua_y_se_vuelve_al_predeterminado` | un modelo sin número para la duración se atenúa (`aria-disabled`, «Desde N s», no se elige); si era el elegido vuelve el predeterminado y el pie avisa `«<Modelo> empieza en N s. Te dejamos <Predeterminado>.»` (`<Aviso>`, `role="status"`); al volver a una duración que sí tiene, no se elige solo. Se prueba encendiendo LTX un rato con números de prueba |
+| `inicio.caja.imagen_y_editar_no_tienen_selector_de_duracion` | crear y editar imagen no traen la duración (ni en el menú ni en el chip ni en el pie); la del clip se recuerda al volver al video |
+| `inicio.caja.el_aviso_de_duracion_no_sobrevive_al_cambio_de_tarea` | el aviso «<Modelo> empieza en N s…» es de la tarea del clip: al pasar a Imagen o Editar con el teclado (sin cerrar el menú) la hoja nace de nuevo, sin aviso |
 | `inicio.galeria.lo_recien_pedido_aparece_generando_y_se_relee` | mientras el servidor contesta hay una tarjeta «Generando…» al principio; al contestar, la lista se relee y la tarjeta local se va |
 | `inicio.galeria.usar_como_referencia_lleva_la_imagen_a_la_caja` | el visor de una imagen la devuelve a la caja, en «Un video corto» |
 | `inicio.caja.las_tareas_sin_modelo_no_traen_chip_de_modelo` | cuentos e historias no eligen modelo: su «Crear» está en la barra y lleva a `/crear.html` |
@@ -73,6 +78,11 @@ con ese nombre exacto.
 | `inicio.menumodelo.la_resolucion_solo_aparece_en_el_modelo_que_la_tiene` | «Resolución» se elige en el pie solo con Nano Banana Pro; cambia el precio y el chip, y desaparece con otro modelo |
 | `inicio.menumodelo.crear_va_en_el_pie_y_no_acepta_dos_clics_mientras_trabaja` | un solo envío por clic, también en el menú |
 | `inicio.menumodelo.teclado_y_cierres` | ↑↓ ←→ Home End mueven la elección, Esc cierra y devuelve el foco al chip, un clic fuera cierra |
+| `inicio.menumodelo.la_duracion_solo_sale_en_el_clip_y_recalcula_las_filas` | el grupo de radios «Duración del clip» solo existe en el clip, con botones de al menos 44 px (`min-h-11`); cambia filas, rangos, pie y chip |
+| `inicio.menumodelo.el_modelo_sin_esa_duracion_se_atenua_y_no_se_elige` | la fila sin esa duración: `aria-disabled`, fuera del tabulador, sin ✦ y con «Desde N s»; ni el clic ni Enter la eligen |
+| `inicio.menumodelo.si_el_elegido_no_la_tiene_vuelve_el_predeterminado_con_un_aviso_en_el_pie` | el aviso vive en el pie del menú, se va al elegir otra duración u otro modelo y no sobrevive a cerrar y reabrir |
+| `inicio.menumodelo.duracion_con_flechas_y_foco` | ←→↑↓ cambian la duración (sin salirse de los extremos) y llevan el foco al botón nuevo; al abrir el foco sigue yendo al modelo elegido; las flechas entre modelos saltan los atenuados |
+| `inicio.menumodelo.con_una_sola_duracion_no_hay_selector` | con una sola duración ofrecida no sale el grupo «Duración del clip» ni su pista; el chip y el pie siguen diciendo los segundos |
 | `inicio.modelos.cada_modelo_activo_tiene_precio_y_cada_precio_su_modelo` | el catálogo (`modelos.ts`) y `tarifas.json` §modelos no se desfasan, en ninguno de los dos sentidos |
 | `inicio.modelos.el_predeterminado_esta_activo_y_es_el_que_ya_valia` | el predeterminado de cada tarea está activo y vale lo mismo que cobra la pantalla |
 | `inicio.modelos.sin_precio_confirmado_no_se_ofrece_aunque_este_activo` | sin número en `tarifas.json` el modelo no sale, ni uno con resolución a medias |
@@ -81,6 +91,12 @@ con ese nombre exacto.
 | `inicio.modelos.todo_modelo_del_catalogo_cae_en_un_nivel_de_su_tarea` | ningún modelo desaparece por traer un nivel que su tarea no enseña |
 | `inicio.modelos.editar_solo_los_que_tienen_endpoint_edit` | Grok, GPT Image 2, Nano Banana 2 y Nano Banana Pro |
 | `inicio.modelos.el_modelo_viaja_en_la_url_solo_si_no_es_el_predeterminado` | `modelo=<id>` solo si no es el predeterminado, y nunca en tareas sin modelo |
+| `inicio.modelos.el_clip_trae_un_precio_por_duracion_en_enteros` | `tarifas.json` §modelos.clip es un objeto por duración: llaves de segundos que el producto sabe pedir (4, 6, 8), créditos enteros positivos y más corto nunca cuesta más; imagen y editar siguen con un entero |
+| `inicio.modelos.una_duracion_sin_numero_no_se_ofrece_ni_cuesta_cero` | una duración sin número da `null` (nunca 0 ni el precio de otra); el entero viejo en un clip tampoco es un precio; el modelo se ofrece con número en al menos una duración y el selector solo trae las que algún modelo ofrece |
+| `inicio.modelos.cada_duracion_recalcula_el_rango_del_grupo` | el rango «✦ lo–hi» de cada grupo cuenta solo los modelos que tienen esa duración (vacío si ninguno); las filas no se mueven al cambiar de duración |
+| `inicio.modelos.cambiar_la_duracion_deja_el_predeterminado_con_su_aviso` | si el elegido no la tiene queda el predeterminado (o, si tampoco, el primero que sí) y el aviso dice desde cuántos segundos empieza; si nadie la tiene, no hay cambio |
+| `inicio.modelos.la_duracion_que_rige_cae_en_una_que_se_ofrece` | si la pedida ya no se ofrece rige la de siempre (8 s) o la más larga que sí |
+| `inicio.modelos.imagen_y_editar_no_dependen_de_la_duracion` | el precio, los grupos y el «desde» de imagen y editar son los mismos para cualquier duración |
 | `inicio.caminos.solo_con_todas_las_listas_bien_y_vacias` | los tres caminos solo si proyectos, imágenes, ediciones y clips llegaron bien y vacíos; una que falló no cuenta como vacía (UI·10). El 503 de clips en local («corre en el servicio») sí cuenta como vacío |
 | `inicio.caminos.desde_una_idea_no_cobra_solo_elige` | «Crear un video» elige «Creador de cuentos» y enfoca la caja; ni navega ni manda nada |
 | `inicio.caminos.enlaces_a_shorts_y_metraje` | «Hacer shorts» → `/shorts.html`, «Subir metraje» → `/e1.html` |
@@ -241,3 +257,14 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   lugar de «lista · fecha»; el estado solo si falta algo. «Nueva película» es
   ahora «Nuevo video» y se ve siempre. Los slots y archivar siguen siendo
   solo de películas.
+- **Duración del clip (R4, dueño 9-oct-2026, opción A):** el menú de modelo del
+  clip trae arriba «Duración del clip» (4, 6 u 8 s; 8 por defecto). Los
+  créditos son los de `tarifas.json` §modelos.clip, un objeto por duración
+  (`{"4": 18, "6": 28, "8": 36}`, redondeados hacia arriba al par). Un modelo
+  solo se ofrece en las duraciones que tienen número: en las demás su fila se
+  atenúa y dice «Desde N s». Una duración sin número nunca cuesta cero ni cae
+  en otra. La caja manda `segundos` en el pedido y el servidor calcula y cobra.
+  El aviso `«<Modelo> empieza en N s. Te dejamos <Predeterminado>.»` va en
+  la caja de `<Aviso>` (la carta prohíbe el ámbar suelto), no en texto ámbar
+  como en el tablero. Imagen y editar no traen duración. La pantalla heredada
+  `/clip.html` no cambia (8 s, 36 créditos).

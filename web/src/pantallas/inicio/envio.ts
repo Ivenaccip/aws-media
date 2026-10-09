@@ -3,8 +3,8 @@
 // clip o la imagen con el MODELO elegido y se queda en el inicio: lo que se
 // está generando aparece en «Mis creaciones».
 //
-// El servidor es quien cobra y quien decide el precio: aquí solo viaja el id
-// del modelo, nunca un número de créditos.
+// El servidor es quien cobra y quien decide el precio: aquí solo viajan el id
+// del modelo y los segundos del clip, nunca un número de créditos.
 import { ErrorApi, pedir } from '../../nucleo/api';
 
 /** Las extensiones que acepta el clip (server/clip_api.py) y cuántas fotos. */
@@ -63,11 +63,12 @@ async function subir(f: File): Promise<string> {
   return firma.key;
 }
 
-export async function pedirClip(texto: string, modelo: string, fotos: File[]): Promise<{ id: string }> {
+/** `segundos` es la duración del clip (4, 6 u 8): el servidor la busca en su tarifa y rechaza la que el modelo no tiene. */
+export async function pedirClip(texto: string, modelo: string, fotos: File[], segundos: number): Promise<{ id: string }> {
   const imagenes = await Promise.all(fotos.map(subir));
   return pedir<{ id: string }>('/api/clip/generar', {
     // `puerta` es lo que el servidor anota en su registro de clics
-    cuerpo: { texto, formato: 'horizontal', imagenes, modelo, puerta: 'caja' },
+    cuerpo: { texto, formato: 'horizontal', imagenes, modelo, segundos, puerta: 'caja' },
     // si la sesión vence a mitad, el texto no se pierde (docs/PLAN-UI.md §6)
     apartar: 'clip-generar',
   });

@@ -1,4 +1,4 @@
-"""M25 · A/F — el clip de 8 segundos (worker Lambda, un par de minutos):
+"""M25 · A/F — el clip de 4, 6 u 8 segundos (worker Lambda, un par de minutos):
 
   1. las imágenes que subió el usuario (0 a 3) bajan de S3 y suben a fal;
   2. el LLM traduce su petición en español a un prompt de Veo en inglés;
@@ -9,13 +9,18 @@
      usuarios/<user>/clips/<id>.json
 
 La regla que gobierna este worker: **no relanza nunca.** Un reintento de la
-cola generaría un segundo video —otros $0.40 dólares— que nadie pidió y que el
-usuario no vería. Por eso todo error se atrapa aquí: el doc queda en `error`,
-los créditos vuelven completos y la Lambda termina bien para que SQS borre el
-mensaje.
+cola generaría un segundo video —otros $0.20 a $0.40 dólares, según la
+duración— que nadie pidió y que el usuario no vería. Por eso todo error se
+atrapa aquí: el doc queda en `error`, los créditos vuelven completos y la
+Lambda termina bien para que SQS borre el mensaje.
 
 La devolución es de TODO. A diferencia de la competencia, aquí no hay partes:
-o hay video o no hay nada que entregar.
+o hay video o no hay nada que entregar. Y es de LO COBRADO: el número sale del
+doc (`creditos`, que el API escribió al cobrar con la tarifa de esa duración),
+no de recalcularlo con la tarifa de hoy.
+
+La duración (`segundos`) también sale del doc, que es el que manda; el mensaje
+de la cola la lleva solo para verla sin abrir S3.
 """
 from __future__ import annotations
 
@@ -48,7 +53,8 @@ async def _correr(doc: dict, tmp: Path) -> dict:
 
     res = await clip.generar(doc.get("texto", ""), urls,
                              doc.get("formato") or "horizontal",
-                             doc.get("modelo") or None)
+                             doc.get("modelo") or None,
+                             doc.get("segundos"))
 
     # El enlace que devuelve fal caduca: la copia que se queda es la nuestra.
     local = tmp / "clip.mp4"
@@ -82,8 +88,10 @@ def generar(user_id: str, clip_id: str) -> None:
                  len(doc.get("imagenes") or []), res["origen_inicial"])
 
         if db.backend() == "postgres":
-            usd = clip.costo_usd(len(doc.get("imagenes") or []), doc.get("modelo") or None)
             try:
+                # con la duración REAL del clip entregado: 4 s no cuestan lo de 8
+                usd = clip.costo_usd(len(doc.get("imagenes") or []),
+                                     doc.get("modelo") or None, res["segundos"])
                 db.ejecutar(
                     """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd)
                        VALUES (:u, :p, 'clip', 'fal', :usd)""",
