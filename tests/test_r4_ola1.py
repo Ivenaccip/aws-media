@@ -1,4 +1,9 @@
-"""R4 · Ola 1 — Veo 3.1 Fast, Veo 3.1 Standard y Nano Banana 2 como filas INERTES.
+"""R4 · Ola 1 — Veo 3.1 Fast, Veo 3.1 Standard y Nano Banana 2.
+
+Nacieron como filas INERTES (sin número de créditos no se ofrecen). El 9-oct-2026,
+tras la prueba pagada pequeña, el dueño encendió Nano Banana 2 (crear y editar) y Veo
+3.1 Fast: tienen número en tools/tarifas.json y `activo: true` en la web. Veo 3.1
+Standard sigue inerte (`INERTES`).
 
 Lo que este archivo defiende:
   * que las filas y sus endpoints sean los exactos (docs/modelos-ia/DATOS-FAL-2026-10-08.md
@@ -42,11 +47,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 RAIZ = Path(__file__).resolve().parent.parent
 
-# Los modelos de la Ola 1 que HOY no tienen número en tarifas.json. Cuando el
-# dueño enciende uno (número en tarifas.json + `activo: true` en la web), se saca
-# de aquí: el test `test_hoy_tarifas_json_no_trae_numero_para_los_inertes` es el
-# aviso de que la compuerta se abrió a propósito.
-INERTES = {("imagen", "nb2"), ("editar", "nb2"), ("clip", "veo-fast"), ("clip", "veo-std")}
+# Todos los modelos de la Ola 1 (con fila en modelos_ia y ficha en pricing.json). La
+# COMPUERTA se prueba con los cuatro, forzando que no tengan número (fixture
+# `sin_numero`), aunque ya estén encendidos: es el mecanismo el que se defiende.
+OLA1 = {("imagen", "nb2"), ("editar", "nb2"), ("clip", "veo-fast"), ("clip", "veo-std")}
+# Los de la Ola 1 que HOY no tienen número en tarifas.json (9-oct-2026: Nano Banana 2 y
+# Veo 3.1 Fast se encendieron; Standard no). Cuando el dueño enciende uno (número en
+# tarifas.json + `activo: true` en la web), se saca de aquí: el test
+# `test_hoy_tarifas_json_no_trae_numero_para_los_inertes` es el aviso de que la
+# compuerta se abrió a propósito.
+INERTES = {("clip", "veo-std")}
+ENCENDIDOS = OLA1 - INERTES
 
 # endpoint de texto y de imagen de cada modelo de clip
 CLIPS = {
@@ -58,7 +69,8 @@ TARIFA_S = {"veo-fast": (0.15, 0.10), "veo-std": (0.40, 0.20)}
 # dólares del clip CON audio (lo que se pide) a 4, 6 y 8 s
 USD_CLIP = {"veo-fast": {4: 0.6, 6: 0.9, 8: 1.2}, "veo-std": {4: 1.6, 6: 2.4, 8: 3.2}}
 NB2_USD = 0.08
-# créditos propuestos (docs/modelos-ia/DATOS-FAL-2026-10-08.md): NO están en tarifas.json
+# créditos de la Ola 1 (docs/modelos-ia/DATOS-FAL-2026-10-08.md §9): los de Nano Banana 2 y
+# Veo 3.1 Fast YA están en tarifas.json; los de Veo 3.1 Standard son solo la propuesta
 PROPUESTA_CLIP = {"veo-fast": {4: 54, 6: 80, 8: 108}, "veo-std": {4: 144, 6: 214, 8: 286}}
 PROPUESTA_NB2 = 8
 
@@ -639,26 +651,27 @@ def test_el_clip_completo_con_standard_hace_una_sola_llamada_a_fal(
 
 
 # ---------------------------------------------------------------------------
-# lo que NO está comprobado queda escrito donde el dueño lo lee antes de pagar
+# lo comprobado y lo que sigue sin comprobar quedan escritos donde el dueño lo lee
 
 def _plano(ruta: Path) -> str:
     """El texto en una sola línea y sin las comillas de código, para buscar frases."""
     return " ".join(ruta.read_text(encoding="utf-8").replace("`", "").split())
 
 
-def test_el_supuesto_de_resolution_en_el_edit_de_nano_banana_2_esta_anotado():
-    """DATOS §3 no lista `resolution` entre los parámetros de /edit: mandar 1K ahí es un
-    supuesto, y la prueba pagada de editar lo decide. Si desaparece de alguno de los tres
-    sitios, alguien podría encender nb2 sin saber que editar no está comprobado."""
+def test_el_resultado_de_resolution_en_el_edit_de_nano_banana_2_esta_anotado():
+    """DATOS §3 no lista `resolution` entre los parámetros de /edit: mandar 1K ahí fue un
+    supuesto, y la prueba pagada de editar (9-oct-2026) lo resolvió: lo acepta y devuelve
+    ~1 MP aunque la entrada sea de 5 MP. Tiene que decirse igual en los tres sitios, y
+    ninguno puede seguir diciendo que es un supuesto abierto."""
     docs = RAIZ / "docs" / "modelos-ia"
     textos = {"pricing.json nota_ola1": " ".join(_pricing()["generacion"]["endpoints"]["nota_ola1"].split()),
               "POR-VERIFICAR": _plano(docs / "POR-VERIFICAR.md"),
               "DATOS §3": _plano(docs / "DATOS-FAL-2026-10-08.md")}
     for donde, t in textos.items():
         assert "nano-banana-2/edit" in t and "resolution" in t, donde
-        assert "supuesto sin comprobar" in t.lower(), donde
-        assert "ignora" in t and "$0.08 dólares" in t and "daría error con devolución" in t, donde
-        assert "la prueba pagada de editar lo decide" in t, donde
+        assert "supuesto sin comprobar" not in t.lower(), donde
+        assert "comprobado" in t.lower(), donde
+        assert "5.02 MP" in t and "1376×768" in t and "$0.08 dólares" in t, donde
 
 
 def test_los_avisos_de_la_ola_1_estan_en_por_verificar():
@@ -919,7 +932,7 @@ def sin_numero(monkeypatch):
     pase en tarifas.json: así la compuerta se prueba aunque el dueño ya los haya
     encendido."""
     from pipeline import creditos
-    for tarea, id_ in INERTES:
+    for tarea, id_ in OLA1:
         monkeypatch.delitem(creditos.MODELOS_CR.get(tarea, {}), id_, raising=False)
 
 
@@ -993,20 +1006,61 @@ def test_editar_imagen_con_nano_banana_2_inerte_da_422(
     _sin_rastro(espia, falso_fal, imagenes_al_disco)
 
 
-def test_los_tres_ids_siguen_rechazados_aunque_el_dueño_no_haya_tocado_nada(
+def test_standard_sigue_rechazado_con_la_tarifa_real(
         cliente, espia, falso_fal, imagenes_al_disco):
-    """Con la tarifa REAL (sin forzar nada): lo que el dueño ve hoy. Es el mismo
-    contrato de arriba pero contra tools/tarifas.json tal como está."""
-    for modelo in ("veo-fast", "veo-std"):
-        r = cliente.post("/api/clip/generar", json={"texto": "mi perro", "modelo": modelo})
-        assert r.status_code == 422, (modelo, r.text)
+    """Con la tarifa REAL (sin forzar nada): lo que ve hoy el usuario. Veo 3.1 Standard
+    no tiene número en tools/tarifas.json y se rechaza con 422, sin tocar nada. Es el
+    mismo contrato de arriba, pero contra el archivo tal como está."""
+    for segundos in (None, 4, 6, 8):
+        cuerpo = {"texto": "mi perro", "modelo": "veo-std"}
+        if segundos:
+            cuerpo["segundos"] = segundos
+        r = cliente.post("/api/clip/generar", json=cuerpo)
+        assert r.status_code == 422, (segundos, r.text)
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+
+
+@pytest.mark.parametrize("segundos,cobro", [(None, 108), (4, 54), (6, 80), (8, 108)])
+def test_veo_fast_con_la_tarifa_real_cobra_su_numero(cliente, espia, segundos, cobro):
+    """Sin la fixture `encendido`: el número sale de tools/tarifas.json tal como está."""
+    cuerpo = {"texto": "mi perro", "modelo": "veo-fast"}
+    if segundos:
+        cuerpo["segundos"] = segundos
+    r = cliente.post("/api/clip/generar", json=cuerpo)
+    assert r.status_code == 200, r.text
+    assert r.json()["creditos"] == cobro
+    assert espia.cobros == [(cobro, f"clip:{r.json()['id']}")]
+    assert len(espia.encolados) == 1
+
+
+def test_nano_banana_2_con_la_tarifa_real_cobra_su_numero(
+        cliente, espia, falso_fal, imagenes_al_disco):
     r = cliente.post("/api/imagenes", json={"prompt": "un gato", "modelo": "nb2"})
-    assert r.status_code == 422, r.text
+    assert r.status_code == 200, r.text
+    assert espia.cobros == [(8, "imagen:estudio")] and espia.devueltos == []
+    (ll,) = falso_fal
+    assert ll.app == "fal-ai/nano-banana-2" and ll.args["resolution"] == "1K"
     r = cliente.post("/api/imagenes/editar",
                      data={"prompt": "más sol", "modo": "todo", "modelo": "nb2"},
                      files={"imagen": ("a.png", b"\x89PNG-de-prueba", "image/png")})
-    assert r.status_code == 422, r.text
-    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+    assert r.status_code == 200, r.text
+    assert espia.cobros[-1] == (8, "imagen:editor")
+    assert falso_fal[-1].app == "fal-ai/nano-banana-2/edit"
+    assert falso_fal[-1].args["resolution"] == "1K"
+
+
+def test_hoy_tarifas_json_trae_los_numeros_de_los_encendidos():
+    """Lo que el dueño escribió el 9-oct-2026 tras la prueba pagada: exactamente la
+    propuesta (que la fórmula reproduce, más abajo) y solo para los encendidos."""
+    from pipeline import creditos
+    modelos = _tarifas()["modelos"]
+    assert modelos["imagen"]["nb2"] == modelos["editar"]["nb2"] == PROPUESTA_NB2
+    assert modelos["clip"]["veo-fast"] == {str(s): c for s, c in PROPUESTA_CLIP["veo-fast"].items()}
+    assert creditos.costo_modelo("imagen", "nb2") == creditos.costo_modelo("editar", "nb2") == 8
+    assert [creditos.costo_modelo("clip", "veo-fast", s) for s in (4, 6, 8)] == [54, 80, 108]
+    assert creditos.costo_modelo("clip", "veo-fast") == 108          # sin duración, la de siempre: 8 s
+    for tarea, id_ in ENCENDIDOS:
+        assert id_ in modelos[tarea], (tarea, id_)
 
 
 def test_hoy_tarifas_json_no_trae_numero_para_los_inertes():
@@ -1021,16 +1075,13 @@ def test_hoy_tarifas_json_no_trae_numero_para_los_inertes():
         assert id_ not in creditos.MODELOS_CR.get(tarea, {}), (tarea, id_)
     # la compuerta, vista desde el monedero: ni un número ni un cero
     for s in (None, 4, 6, 8):
-        for id_ in ("veo-fast", "veo-std"):
+        for tarea, id_ in INERTES:
             with pytest.raises(KeyError):
-                creditos.costo_modelo("clip", id_, s)
+                creditos.costo_modelo(tarea, id_, s)
             with pytest.raises(KeyError):
                 creditos.costo_clip(0, id_, s)
             with pytest.raises(KeyError):
                 creditos.costo_clip(2, id_, s)
-    for tarea in ("imagen", "editar"):
-        with pytest.raises(KeyError):
-            creditos.costo_modelo(tarea, "nb2")
 
 
 def test_los_modelos_a_la_venta_no_se_movieron():
@@ -1045,7 +1096,8 @@ def test_los_modelos_a_la_venta_no_se_movieron():
 
 @pytest.fixture
 def encendido(monkeypatch):
-    """Como si el dueño hubiera escrito la propuesta en tarifas.json §modelos."""
+    """Como si el dueño hubiera escrito la propuesta de TODA la Ola 1 en tarifas.json
+    §modelos (hoy Nano Banana 2 y Veo 3.1 Fast ya están; Standard es solo la propuesta)."""
     from pipeline import creditos
     monkeypatch.setitem(creditos.MODELOS_CR.setdefault("imagen", {}), "nb2", PROPUESTA_NB2)
     monkeypatch.setitem(creditos.MODELOS_CR.setdefault("editar", {}), "nb2", PROPUESTA_NB2)
@@ -1239,4 +1291,4 @@ def test_guardian_todo_modelo_con_numero_cubre_su_costo_con_el_margen():
                 assert usd, (tarea, id_)
                 assert valor >= creditos_sugeridos(usd, minimo=2), (tarea, id_)
                 revisados += 1
-    assert revisados >= 5                              # grok ×2 y las tres duraciones de Lite
+    assert revisados >= 10             # grok ×2, nb2 ×2, y las tres duraciones de Lite y de Fast

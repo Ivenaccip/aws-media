@@ -98,7 +98,20 @@ describe('modelos.ts y tarifas.json', () => {
 
   it('inicio.modelos.un_modelo_apagado_no_se_ofrece_aunque_tenga_precio', () => {
     const g = grupos('imagen', CATALOGO, preciosDeTodos());
-    expect(g.flatMap(x => x.modelos.map(m => m.id))).toEqual(['grok']);
+    const ofrecidos = g.flatMap(x => x.modelos.map(m => m.id));
+    const apagados = CATALOGO.imagen.filter(m => !m.activo).map(m => m.id);
+    expect(apagados.length).toBeGreaterThan(0); // si no hubiera ninguno, la prueba no probaría nada
+    expect(ofrecidos.filter(id => apagados.includes(id))).toEqual([]);
+    expect([...ofrecidos].sort()).toEqual(CATALOGO.imagen.filter(m => m.activo).map(m => m.id).sort());
+  });
+
+  it('inicio.modelos.lo_que_esta_a_la_venta_hoy', () => {
+    // el estado del 9-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron tras la prueba pagada;
+    // Veo 3.1 Standard sigue apagado. Si esto cambia, que sea a propósito (y con su número en tarifas.json).
+    const activos = (t: Tarea) => CATALOGO[t].filter(m => m.activo).map(m => m.id);
+    expect(activos('imagen')).toEqual(['grok', 'nb2']);
+    expect(activos('editar')).toEqual(['grok', 'nb2']);
+    expect(activos('clip')).toEqual(['veo-lite', 'veo-fast']);
   });
 
   it('inicio.modelos.por_nivel_y_de_menor_a_mayor_precio', () => {

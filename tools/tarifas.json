@@ -34,10 +34,13 @@
     "nota_mudo": "Sin audio el clip cuesta $0.24 dólares y el número correcto sería 18-20 créditos. Hoy no se ofrece: la decisión del dueño (17-sep) fue un solo producto, con sonido."
   },
   "modelos": {
-    "nota": "7-oct-2026 — créditos por modelo, para el selector de «¿Qué vamos a crear hoy?». SOLO están los modelos con costo verificado en pricing.json (Grok Imagine para crear y editar, Veo 3.1 Lite para el clip): un modelo sin número aquí no se ofrece, ni siquiera si el catálogo del cliente (web/src/pantallas/inicio/modelos.ts) lo trae. Regla de la hoja de costos: costo ÷ 0.75 ÷ piso de venta (economia.piso_venta_usd_por_credito), redondeado hacia arriba, mínimo 2 por imagen. Para sumar un modelo: su costo en pricing.json (verified_on), su número aquí y su marca `activo` en el catálogo, después de una prueba pagada pequeña con el «sí» del dueño. Los valores son enteros: son lo que ve y paga el usuario; el servidor NUNCA confía en un precio que mande el cliente. 9-oct-2026: los créditos van redondeados HACIA ARRIBA al par (nunca hacia abajo: el margen solo sube). Los clips traen un número por duración en segundos (4, 6, 8): el modelo solo se ofrece en las duraciones que tienen número.",
-    "imagen": { "grok": 2 },
-    "editar": { "grok": 2 },
-    "clip": { "veo-lite": { "4": 18, "6": 28, "8": 36 } }
+    "nota": "7-oct-2026 — créditos por modelo, para el selector de «¿Qué vamos a crear hoy?». SOLO están los modelos con costo verificado en pricing.json (Grok Imagine y Nano Banana 2 para crear y editar, Veo 3.1 Lite y Veo 3.1 Fast para el clip): un modelo sin número aquí no se ofrece, ni siquiera si el catálogo del cliente (web/src/pantallas/inicio/modelos.ts) lo trae. Regla de la hoja de costos: costo ÷ 0.75 ÷ piso de venta (economia.piso_venta_usd_por_credito), redondeado hacia arriba, mínimo 2 por imagen. Para sumar un modelo: su costo en pricing.json (verified_on), su número aquí y su marca `activo` en el catálogo, después de una prueba pagada pequeña con el «sí» del dueño. Los valores son enteros: son lo que ve y paga el usuario; el servidor NUNCA confía en un precio que mande el cliente. 9-oct-2026: los créditos van redondeados HACIA ARRIBA al par (nunca hacia abajo: el margen solo sube). Los clips traen un número por duración en segundos (4, 6, 8): el modelo solo se ofrece en las duraciones que tienen número. 9-oct-2026 (Ola 1): Nano Banana 2 y Veo 3.1 Fast entraron tras su prueba pagada pequeña (docs/modelos-ia/DATOS-FAL-2026-10-08.md §9); Veo 3.1 Standard tiene fila y costo pero sigue SIN número aquí, así que no se ofrece.",
+    "imagen": { "grok": 2, "nb2": 8 },
+    "editar": { "grok": 2, "nb2": 8 },
+    "clip": {
+      "veo-lite": { "4": 18, "6": 28, "8": 36 },
+      "veo-fast": { "4": 54, "6": 80, "8": 108 }
+    }
   },
   "editar": {
     "sugerencias": 2,

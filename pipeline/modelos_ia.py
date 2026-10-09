@@ -12,8 +12,9 @@ una fila INERTE: el servidor la conoce, pero mientras tools/tarifas.json
 cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
 levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
 es la compuerta: recién entonces `activo: true` en el catálogo de la web
-(web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite;
-Veo 3.1 Fast, Veo 3.1 Standard y Nano Banana 2 esperan su prueba.
+(web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok, Nano Banana 2, Veo 3.1
+Lite y Veo 3.1 Fast (los dos últimos entraron el 9-oct-2026 tras su prueba pagada);
+Veo 3.1 Standard es la única fila inerte.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -178,7 +179,7 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     veo = Modelo("veo-lite", "clip", settings.fal_veo_t2v, settings.fal_veo,
                  con_audio=True, duraciones=(4, 6, 8))
     # Veo 3.1 Fast y Standard: mismos argumentos que Lite (los arma clip.animar), solo
-    # cambia el endpoint. INERTES hasta que tarifas.json les ponga créditos. Un solo
+    # cambia el endpoint. Fast ya está a la venta; Standard sigue INERTE hasta que tarifas.json le ponga créditos. Un solo
     # intento (max_intentos=1): el timeout del clip es de cliente y puede dejar vivo y
     # cobrado el trabajo en fal; Standard son $3.20 dólares por intento a 8 s, hasta 8
     # veces el de Lite, y devolver créditos no devuelve lo que fal ya cobró.
@@ -186,7 +187,7 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                       con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
-    # Nano Banana 2: crear (con referencia va al /edit) y editar. INERTE también.
+    # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el 9-oct-2026.
     nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     return {("imagen", "grok"): grok,
