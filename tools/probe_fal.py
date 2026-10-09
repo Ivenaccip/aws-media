@@ -40,6 +40,16 @@ def _cargar_env() -> None:
         pass
 
 
+def _ruta_libre(destino: Path) -> Path:
+    """Lo ya guardado nunca se pisa: si el nombre existe, se agrega _2, _3…"""
+    if not destino.exists():
+        return destino
+    k = 2
+    while (candidata := destino.with_name(f"{destino.stem}_{k}{destino.suffix}")).exists():
+        k += 1
+    return candidata
+
+
 def _analizar(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Prueba pagada pequeña de un endpoint de fal.")
     p.add_argument("endpoint", help="el endpoint exacto de fal, p. ej. fal-ai/flux-2/klein/9b")
@@ -126,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             urls = [i.get("url") for i in res.get("images") or []] + [(res.get("video") or {}).get("url")]
             for j, url in enumerate(u for u in urls if u):
                 ext = Path(url.split("?")[0]).suffix or ".bin"
-                destino = salida / f"{a.endpoint.replace('/', '_')}-{k}-{j}{ext}"
+                destino = _ruta_libre(salida / f"{a.endpoint.replace('/', '_')}-{k}-{j}{ext}")
                 destino.write_bytes(httpx.get(url, timeout=120, follow_redirects=True).content)
                 print(f"  guardado: {destino}")
     print(f"PROMEDIO · {sum(tiempos) / len(tiempos):.1f} s por llamada")
