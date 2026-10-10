@@ -95,6 +95,28 @@ def mensaje_preparar(user_id: str, proyecto_id: str) -> dict:
     return {"tipo": "preparar", "user_id": user_id, "proyecto_id": proyecto_id}
 
 
+def mensaje_publico(corrida_id: int) -> dict:
+    """RAG·4 — lo único que viaja: el número de la corrida. El texto que
+    escribió el visitante vive en la base, no en la cola."""
+    return {"tipo": "automatiza", "corrida_id": int(corrida_id)}
+
+
+def encolar_publico(corrida_id: int) -> None:
+    """Manda la corrida a la cola PÚBLICA (nunca a JOBS_QUEUE_URL, la de pago).
+
+    En local no hay cola: el worker corre en un hilo del propio server."""
+    if backend() != "aws":
+        import threading
+        from worker.publico import procesar
+        threading.Thread(target=procesar, args=(int(corrida_id),), daemon=True).start()
+        return
+    # la URL se lee ANTES de tocar SQS: sin ella se truena aquí, nunca se
+    # cae de rebote en otra cola
+    url = os.environ["PUBLICO_QUEUE_URL"]
+    _sqs().send_message(QueueUrl=url,
+                        MessageBody=json.dumps(mensaje_publico(corrida_id)))
+
+
 def encolar_preparar(user_id: str, proyecto_id: str) -> None:
     _sqs().send_message(
         QueueUrl=os.environ["JOBS_QUEUE_URL"],
@@ -140,16 +162,17 @@ def encolar_competencia(user_id: str, informe_id: str, cuentas: list[dict]) -> N
                                 "informe_id": informe_id, "cuentas": cuentas}))
 
 
-def encolar_clip(user_id: str, clip_id: str) -> None:
-    """M25 A: el clip de 8 s — trabajo corto en el worker Lambda, NO una
+def encolar_clip(user_id: str, clip_id: str, segundos: int) -> None:
+    """M25 A: el clip de 4, 6 u 8 s — trabajo corto en el worker Lambda, NO una
     producción de Fargate. Así no consume slot de proyecto (nadie se topa con
     el 409 de server/app.py por pedir un clip), no hay estado `revision` ni
     Step Functions, y el cobro y la devolución son uno solo. El mensaje lleva
-    solo ids: el pedido vive en el doc del clip en S3."""
+    ids y los segundos que se cobraron (para ver en la cola qué se pidió sin
+    abrir S3); el pedido completo vive en el doc del clip, que es el que manda."""
     _sqs().send_message(
         QueueUrl=os.environ["JOBS_QUEUE_URL"],
         MessageBody=json.dumps({"tipo": "clip", "user_id": user_id,
-                                "clip_id": clip_id}))
+                                "clip_id": clip_id, "segundos": segundos}))
 
 
 def encolar_publicar(user_id: str, proyecto: str, pub_id: str) -> None:

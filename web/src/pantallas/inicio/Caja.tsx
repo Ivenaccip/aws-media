@@ -1,21 +1,59 @@
-// «¿Qué vamos a crear hoy?» (M25 · B): el segmentado dice QUÉ te llevas y el
-// desplegable CUÁL de esas cosas. No cobra: lleva a la pantalla que cobra con
-// el texto ya puesto, y el precio se ve en el desplegable antes de enviar.
-import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+// «¿Qué vamos a crear hoy?» (M25 · B, R4 + R4b): el riel de la izquierda dice QUÉ
+// te llevas (Imagen o Video), el chip de tarea CUÁL de esas cosas, y el chip de
+// modelo CON QUÉ IA. El precio se ve dentro del menú de modelo, junto al «Crear».
+// El clip suma ahí mismo su duración (4, 6 u 8 s, 8 por defecto): la caja la
+// guarda y la manda con el pedido; el precio lo calcula el servidor.
+//
+// Lo que elige modelo (un video corto, crear o editar una imagen) se pide AQUÍ:
+// la caja sube las imágenes de referencia (el «+», o arrastrándolas), pide con
+// el modelo elegido y se queda en el inicio; lo que se genera aparece en «Mis
+// creaciones». Lo demás (cuentos, historias) sigue llevando a su pantalla con el
+// texto ya puesto.
+import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { ErrorApi } from '../../nucleo/api';
 import { ESTRELLA } from '../../nucleo/estrella';
+import { moderar } from '../../nucleo/moderar';
+import { clip as tarifaClip } from '../../nucleo/tarifas';
+import { refrescarSaldo } from '../../marca/useSaldo';
+import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
+import { MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from './envio';
+import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Opcion } from './logica';
+import { MenuModelo, type Eleccion } from './MenuModelo';
+import {
+  admite,
+  cambioPorDuracion,
+  CATALOGO,
+  DURACION_PREDETERMINADA,
+  duracionesDe,
+  duracionesOfrecidas,
+  duracionVigente,
+  grupos as gruposDe,
+  llavePrecio,
+  modeloPara,
+  ofrecidosDe,
+  precioDe,
+  PRECIOS,
+  type Tarea,
+} from './modelos';
 
 export interface MandoCaja {
   /** Pone la familia y la opción, enfoca el texto y sube la página. */
   elegir(familia: Familia, id?: string): void;
+  /** Pone una imagen tuya como referencia de un video corto (el «Usar como referencia» del visor). */
+  referencia(archivo: File): void;
 }
 
 export interface PropsCaja {
   /** A dónde ir. En la página es location.assign; en los tests, un espía. */
   ir: (url: string) => void;
+  /** Se pidió algo con la caja: aparece «generando» en la galería. */
+  alPedir?: (p: Pendiente) => void;
+  /** Ya contestó el servidor (bien o mal): la tarjeta de «generando» se quita y la lista se relee. */
+  alTerminar?: (clave: string) => void;
 }
 
 // una pista al pasar el ratón o al enfocar: qué hace cada cosa (mock 2026-09-07)
@@ -26,15 +64,32 @@ const PISTA =
   'after:opacity-0 after:invisible after:transition-opacity after:content-[attr(data-pista)] ' +
   'hover:after:visible hover:after:opacity-100 focus-visible:after:visible focus-visible:after:opacity-100';
 
-export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir }, ref) {
-  // Arranca en el clip a propósito: es lo más barato, así que es lo que menos
-  // daño hace a quien no abra el desplegable (M25 · B).
+// el riel: dos botones con icono. En celular es una fila sobre el texto.
+const RIEL = [
+  { familia: 'imagenes', rotulo: 'Imagen', icono: 'imagen' },
+  { familia: 'videos', rotulo: 'Video', icono: 'video' },
+] as const;
+
+export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir, alTerminar }, ref) {
+  // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
+  // menos sorprende a quien no abra el menú de modelo (M25 · B).
   const [familia, setFamilia] = useState<Familia>('videos');
   const [opcion, setOpcion] = useState<Opcion>(OPCIONES.videos[0]!);
+  // cada tarea recuerda su propio modelo
+  const [elegidos, setElegidos] = useState<Partial<Record<Tarea, Eleccion>>>({});
+  // la duración que se pidió para el clip; la que rige sale de abajo (puede ser otra si esa ya no se ofrece)
+  const [pedida, setPedida] = useState(DURACION_PREDETERMINADA);
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [marcada, setMarcada] = useState(0);
+  // las imágenes de referencia: se suben al pedir, no al agregarlas
+  const [refs, setRefs] = useState<File[]>([]);
+  const [aviso, setAviso] = useState('');
+  const [arrastrando, setArrastrando] = useState(false);
+  const archivos = useRef<HTMLInputElement>(null);
+  const pedidos = useRef(0);
   const area = useRef<HTMLTextAreaElement>(null);
   const boton = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
@@ -47,6 +102,14 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir }, ref) 
       setFamilia(f);
       setOpcion(OPCIONES[f].find(o => o.id === id) ?? OPCIONES[f][0]!);
       setAbierto(false);
+      area.current?.focus();
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    },
+    referencia(archivo) {
+      setFamilia('videos');
+      setOpcion(OPCIONES.videos[0]!);
+      setAbierto(false);
+      setRefs(r => [...r, archivo].slice(-MAX_FOTOS_CLIP));
       area.current?.focus();
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
     },
@@ -65,6 +128,17 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir }, ref) 
   useEffect(() => {
     if (abierto) (lista.current?.children[marcada] as HTMLElement | undefined)?.focus();
   }, [abierto, marcada]);
+
+  // «Generando…» dura hasta que la página navega. Si la persona regresa con «atrás»,
+  // el navegador restaura ESTA página desde su caché con el estado que tenía:
+  // sin esto, el botón se quedaría trabajando para siempre.
+  useEffect(() => {
+    const volvio = (e: Event) => {
+      if ((e as PageTransitionEvent).persisted) setEnviando(false);
+    };
+    window.addEventListener('pageshow', volvio);
+    return () => window.removeEventListener('pageshow', volvio);
+  }, []);
 
   // El menú es más ancho que su botón, y el botón está a media fila: anclado a
   // un lado se salía por el otro. Se mide y se sujeta dentro de la ventana.
@@ -86,6 +160,28 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir }, ref) 
   }, [abierto]);
 
   const opciones = OPCIONES[familia];
+
+  // el modelo de la tarea: el que eligió, o el predeterminado, o el primero que
+  // se ofrezca (y que admita la duración, en el clip). Si no se ofrece ninguno,
+  // la tarea no muestra chip de modelo.
+  const tarea = opcion.modelos;
+  const ofrecidos = useMemo(() => (tarea ? ofrecidosDe(tarea) : []), [tarea]);
+  const duraciones = tarea ? duracionesOfrecidas(tarea, ofrecidos) : [];
+  const segundos = duracionVigente(duraciones, pedida);
+  const grupos = useMemo(() => (tarea ? gruposDe(tarea, CATALOGO, PRECIOS, segundos) : []), [tarea, segundos]);
+  const guardado = tarea ? elegidos[tarea] : undefined;
+  const modelo = tarea ? modeloPara(tarea, ofrecidos, guardado?.id, segundos) : undefined;
+  const calidad = modelo?.calidades ? (modelo.calidades.find(c => c.id === guardado?.calidad) ?? modelo.calidades[0]) : undefined;
+  const modeloId = modelo ? llavePrecio(modelo.id, calidad?.id) : undefined;
+
+  /** Cambia la duración del clip. Si el modelo elegido no la ofrece, vuelve al predeterminado y lo dice. */
+  function elegirDuracion(nueva: number): string | undefined {
+    setPedida(nueva);
+    const cambio = tarea && modelo ? cambioPorDuracion(tarea, ofrecidos, modelo, nueva) : null;
+    if (!tarea || !cambio) return undefined;
+    setElegidos(e => ({ ...e, [tarea]: { id: cambio.queda.id } }));
+    return cambio.aviso;
+  }
 
   function abrir() {
     setMarcada(Math.max(0, opciones.findIndex(o => o.id === opcion.id)));
@@ -112,134 +208,326 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir }, ref) 
     e.preventDefault();
   }
 
-  function enviar() {
+  // cuántas referencias admite la tarea de ahora; las que sobren se guardan, no se pierden
+  const maxRefs = opcion.referencias ?? 0;
+  const fotos = useMemo(() => refs.slice(0, maxRefs), [refs, maxRefs]);
+  const tareaRef = opcion.id === 'clip' ? 'clip' : 'editar';
+
+  function agregar(nuevos: File[]) {
+    if (!maxRefs) return;
+    setAviso('');
+    const buenos: File[] = [];
+    for (const f of nuevos) {
+      const motivo = rechazo(f, tareaRef);
+      if (motivo) {
+        setError(motivo);
+        continue;
+      }
+      buenos.push(f);
+    }
+    if (!buenos.length) return;
+    setError('');
+    // con una sola referencia (editar) la nueva reemplaza; con varias, se suman hasta el tope
+    setRefs(r => (maxRefs === 1 ? [buenos[0]!] : [...r, ...buenos].slice(0, maxRefs)));
+    if (maxRefs > 1 && fotos.length + buenos.length > maxRefs) setError(`Como mucho ${maxRefs} imágenes.`);
+  }
+
+  function quitar(i: number) {
+    setRefs(r => r.filter((_, j) => j !== i));
+  }
+
+  function alSoltar(e: React.DragEvent) {
+    if (!maxRefs) return;
+    e.preventDefault();
+    setArrastrando(false);
+    agregar(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)));
+  }
+
+  /** Devuelve true si el pedido salió (el menú de modelo se cierra); false si faltó algo. */
+  function enviar(): boolean {
     const limpio = texto.trim();
     if (!limpio) {
       setError('Cuéntanos qué quieres primero — o entra por el menú de la izquierda para ver el formulario completo.');
       area.current?.focus();
-      return;
+      return false;
+    }
+    if (enviando) return false;
+    // lo que elige modelo se pide aquí; lo demás va a su pantalla con el texto puesto
+    if (opcion.modelos && modeloId) {
+      if (opcion.id === 'imagen_editar' && !fotos.length) {
+        setError('Agrega con el + la imagen que quieres editar.');
+        return false;
+      }
+      setError('');
+      void pedirAqui(limpio, modeloId, fotos);
+      return true;
     }
     setError('');
-    ir(destinoDe(opcion, limpio));
+    setEnviando(true); // hasta que la página navegue
+    ir(destinoDe(opcion, limpio, modeloId));
+    return true;
   }
 
-  return (
-    <section className="mb-8 rounded-grande border border-linea bg-superficie p-5 min-[861px]:mt-[82px]">
-      <h2 id={idTitulo} className="m-0 mb-2 text-titulo-md font-bold">
-        ¿Qué vamos a crear hoy?
-      </h2>
-      <textarea
-        ref={area}
-        aria-labelledby={idTitulo}
-        maxLength={5000}
-        value={texto}
-        onChange={e => setTexto(e.target.value)}
-        placeholder={opcion.hueco}
-        className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
-      />
-      <div className="mt-2 flex flex-wrap items-center gap-2.5">
-        <div role="group" aria-label="Qué quieres crear" className="inline-flex overflow-hidden rounded-medio border border-linea">
-          {(['imagenes', 'videos'] as const).map(f => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={familia === f}
-              onClick={() => {
-                setFamilia(f);
-                setOpcion(OPCIONES[f][0]!);
-                setAbierto(false);
-              }}
-              className={unir(
-                'min-h-11 cursor-pointer border-0 px-3.5 text-sm whitespace-nowrap',
-                familia === f ? 'bg-elevada text-texto' : 'bg-transparent text-secundario hover:text-texto',
-              )}
-            >
-              {f === 'imagenes' ? 'Imágenes' : 'Videos'}
-            </button>
-          ))}
-        </div>
+  async function pedirAqui(limpio: string, modelo: string, adjuntas: File[]) {
+    const clave = `pedido-${++pedidos.current}`;
+    setEnviando(true);
+    setAviso('');
+    let salio = false;
+    try {
+      const v = await moderar(limpio); // M13: se modera ANTES de lo que cobra
+      if (!v.permitido) {
+        setError(v.mensaje);
+        return;
+      }
+      alPedir?.({ clave, tipo: opcion.id === 'clip' ? 'corto' : 'imagen', texto: limpio });
+      salio = true;
+      if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
+      else if (opcion.id === 'imagen') await pedirImagen(limpio, modelo);
+      else await pedirEdicion(limpio, modelo, adjuntas[0]!);
+      setTexto('');
+      setRefs([]);
+      setAviso('Listo, ya va. Míralo abajo, en «Mis creaciones».');
+      refrescarSaldo(); // se cobró: el saldo cambia
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      // 402 y demás: nada se cobró; el 502 de imágenes ya devolvió los créditos
+      if (e instanceof ErrorApi && e.estado === 502) refrescarSaldo();
+    } finally {
+      setEnviando(false);
+      if (salio) alTerminar?.(clave);
+    }
+  }
 
-        <div ref={menu} className="relative min-w-0">
+  const crear = (
+    <Boton
+      nivel="principal"
+      trabajando={enviando && 'Generando…'}
+      onClick={enviar}
+      className={unir('w-full min-[640px]:w-auto', modelo && 'min-[640px]:hidden')}
+    >
+      Crear <Icono nombre="enviar" />
+    </Boton>
+  );
+
+  return (
+    // arrastrar es un atajo: el camino accesible es el botón «+» (con teclado y lector de pantalla)
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <section
+      onDragOver={e => {
+        if (!maxRefs) return;
+        e.preventDefault();
+        setArrastrando(true);
+      }}
+      onDragLeave={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastrando(false);
+      }}
+      onDrop={alSoltar}
+      className={unir(
+        'mb-8 flex flex-col gap-4 rounded-grande border bg-superficie p-4 min-[640px]:flex-row min-[640px]:p-5 min-[861px]:mt-[82px]',
+        arrastrando ? 'border-dashed border-ambar' : 'border-linea',
+      )}
+    >
+      <div
+        role="group"
+        aria-label="Qué quieres crear"
+        className="flex flex-none gap-1 rounded-boton border border-linea p-1 min-[640px]:w-[81px] min-[640px]:flex-col min-[640px]:gap-1.5 min-[640px]:rounded-none min-[640px]:border-0 min-[640px]:border-r min-[640px]:p-0 min-[640px]:pr-4"
+      >
+        {RIEL.map(r => (
           <button
-            ref={boton}
+            key={r.familia}
             type="button"
-            aria-haspopup="listbox"
-            aria-expanded={abierto}
-            aria-controls={idLista}
-            data-pista={opcion.nota}
-            onClick={() => (abierto ? setAbierto(false) : abrir())}
-            onKeyDown={e => {
-              if (e.key === 'ArrowDown' && !abierto) {
-                e.preventDefault();
-                abrir();
-              }
+            aria-pressed={familia === r.familia}
+            onClick={() => {
+              setFamilia(r.familia);
+              setOpcion(OPCIONES[r.familia][0]!);
+              setAbierto(false);
             }}
             className={unir(
-              PISTA,
-              'min-h-11 max-w-full cursor-pointer overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
+              'flex min-h-12 flex-1 cursor-pointer flex-row items-center justify-center gap-2 rounded-medio border-0 text-sm',
+              'min-[640px]:min-h-16 min-[640px]:w-16 min-[640px]:flex-none min-[640px]:flex-col min-[640px]:gap-1 min-[640px]:text-xs',
+              familia === r.familia ? 'bg-elevada text-texto' : 'bg-transparent text-secundario hover:bg-elevada',
             )}
           >
-            {opcion.rotulo}{' '}
-            <span className="text-secundario">
-              {ESTRELLA} {opcion.precio}
-            </span>{' '}
-            <span aria-hidden="true" className="text-secundario">
-              ▾
-            </span>
+            <Icono nombre={r.icono} />
+            {r.rotulo}
           </button>
-          {abierto && (
-            <div
-              ref={lista}
-              id={idLista}
-              role="listbox"
-              aria-label="Opciones"
-              className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(340px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
-            >
-              {opciones.map((o, i) => (
-                <div
-                  key={o.id}
-                  role="option"
-                  aria-selected={o.id === opcion.id}
-                  tabIndex={i === marcada ? 0 : -1}
-                  onClick={() => elegir(o)}
-                  onKeyDown={teclaLista}
-                  onMouseEnter={() => setMarcada(i)}
-                  className={unir(
-                    'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
-                    (i === marcada || o.id === opcion.id) && 'bg-elevada',
-                  )}
-                >
-                  <span className="flex items-baseline justify-between gap-3">
-                    <b className="text-sm font-semibold">{o.rotulo}</b>
-                    <span className="text-xs text-secundario">
-                      {ESTRELLA} {o.precio}
-                    </span>
-                  </span>
-                  <small className="block text-xs text-secundario">{o.nota}</small>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <button
-          type="button"
-          aria-label="Crear"
-          data-pista="Crear. Puedes cambiar de opción arriba antes de enviar."
-          onClick={enviar}
-          className={unir(
-            PISTA,
-            'ml-auto grid size-11 cursor-pointer place-items-center rounded-pildora border-0 bg-ambar text-tinta transition-[background-color,transform] hover:bg-ambar-claro active:scale-[0.96] after:right-0 after:left-auto',
-          )}
-        >
-          <Icono nombre="enviar" />
-        </button>
+        ))}
       </div>
-      {error && (
-        <p role="alert" className="mt-2.5 mb-0 text-xs text-error">
-          {error}
-        </p>
-      )}
+
+      <div className="min-w-0 flex-1">
+        <h2 id={idTitulo} className="m-0 mb-2 font-titulo text-titulo-md font-bold">
+          ¿Qué vamos a crear hoy?
+        </h2>
+        {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} />}
+        <textarea
+          ref={area}
+          aria-labelledby={idTitulo}
+          maxLength={5000}
+          value={texto}
+          onChange={e => {
+            setTexto(e.target.value);
+            setAviso('');
+          }}
+          placeholder={opcion.hueco}
+          className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
+        />
+        <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
+          <div className="flex min-w-0 gap-2.5">
+          {maxRefs > 0 && (
+            <>
+              {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
+              <input
+                ref={archivos}
+                type="file"
+                accept="image/*,.heic,.heif"
+                multiple={maxRefs > 1}
+                tabIndex={-1}
+                aria-hidden="true"
+                className="hidden"
+                onChange={e => {
+                  agregar(Array.from(e.target.files ?? []));
+                  e.target.value = ''; // para poder elegir el mismo archivo otra vez
+                }}
+              />
+              <button
+                type="button"
+                aria-label={maxRefs > 1 ? 'Agregar imágenes de referencia' : 'Agregar la imagen que quieres editar'}
+                title="Agregar imágenes, o arrástralas a la caja"
+                onClick={() => archivos.current?.click()}
+                className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
+              >
+                <Icono nombre="mas" />
+              </button>
+            </>
+          )}
+          <div ref={menu} className="relative min-w-0 flex-1 min-[640px]:flex-none">
+            <button
+              ref={boton}
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={abierto}
+              aria-controls={idLista}
+              data-pista={opcion.nota}
+              onClick={() => (abierto ? setAbierto(false) : abrir())}
+              onKeyDown={e => {
+                if (e.key === 'ArrowDown' && !abierto) {
+                  e.preventDefault();
+                  abrir();
+                }
+              }}
+              className={unir(
+                PISTA,
+                'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
+                'min-[640px]:min-h-11 min-[640px]:max-w-full min-[640px]:w-auto min-[640px]:justify-start',
+              )}
+            >
+              {opcion.rotulo}{' '}
+              <span aria-hidden="true" className="text-secundario">
+                ▾
+              </span>
+            </button>
+            {abierto && (
+              <div
+                ref={lista}
+                id={idLista}
+                role="listbox"
+                aria-label="Opciones"
+                className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(400px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
+              >
+                {opciones.map((o, i) => (
+                  <div
+                    key={o.id}
+                    role="option"
+                    aria-selected={o.id === opcion.id}
+                    tabIndex={i === marcada ? 0 : -1}
+                    onClick={() => elegir(o)}
+                    onKeyDown={teclaLista}
+                    onMouseEnter={() => setMarcada(i)}
+                    className={unir(
+                      'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
+                      (i === marcada || o.id === opcion.id) && 'bg-elevada',
+                    )}
+                  >
+                    <span className="flex items-baseline justify-between gap-3">
+                      <b className="text-sm font-semibold">{o.rotulo}</b>
+                      <span className="text-xs whitespace-nowrap text-secundario">
+                        {o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`}
+                      </span>
+                    </span>
+                    <small className="block text-xs text-secundario">{o.nota}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          </div>
+
+          <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
+            {tarea && modelo && (
+              <MenuModelo
+                key={tarea}
+                tarea={tarea}
+                grupos={grupos}
+                elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
+                alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
+                precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos)!}
+                alCrear={enviar}
+                enviando={enviando}
+                {...(duraciones.length
+                  ? {
+                      duracion: {
+                        segundos,
+                        opciones: duraciones,
+                        alElegir: elegirDuracion,
+                        admite: m => admite(tarea, m, segundos),
+                        desde: m => duracionesDe(tarea, m)[0]!,
+                      },
+                    }
+                  : {})}
+                {...(tarea === 'clip' && fotos.length >= 2
+                  ? { nota: `+ ${ESTRELLA} ${tarifaClip.componer_imagenes} por juntar tus ${fotos.length} imágenes en una` }
+                  : {})}
+              />
+            )}
+            {crear}
+          </div>
+        </div>
+        {error && (
+          <p role="alert" className="mt-2.5 mb-0 text-xs text-error">
+            {error}
+          </p>
+        )}
+        {aviso && !error && (
+          <p role="status" className="mt-2.5 mb-0 text-xs text-secundario">
+            {aviso}
+          </p>
+        )}
+      </div>
     </section>
   );
 });
+
+
+/** Las miniaturas de lo que se va a mandar, con su ✕. Las URL de vista previa se sueltan al irse. */
+function Referencias({ fotos, alQuitar }: { fotos: File[]; alQuitar: (i: number) => void }) {
+  // jsdom no trae createObjectURL: ahí no hay vista previa y no pasa nada
+  const urls = useMemo(() => fotos.map(f => (typeof URL.createObjectURL === 'function' ? URL.createObjectURL(f) : '')), [fotos]);
+  useEffect(() => () => urls.forEach(u => u && URL.revokeObjectURL(u)), [urls]);
+  return (
+    <ul aria-label="Imágenes de referencia" className="m-0 mb-2 flex list-none flex-wrap gap-3 p-0">
+      {fotos.map((f, i) => (
+        <li key={f.name + i} className="relative size-14 rounded-medio border border-linea bg-elevada">
+          {urls[i] ? <img src={urls[i]} alt="" className="size-full rounded-medio object-cover" /> : null}
+          <button
+            type="button"
+            aria-label={`Quitar «${f.name}»`}
+            onClick={() => alQuitar(i)}
+            className="absolute -top-2 -right-2 grid size-6 cursor-pointer place-items-center rounded-pildora border border-linea bg-fondo p-0 text-texto hover:border-campo"
+          >
+            <Icono nombre="cerrar" className="size-3" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}

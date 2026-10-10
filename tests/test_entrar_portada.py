@@ -224,12 +224,21 @@ def test_las_paginas_legales_no_salen_con_pendientes(local, ruta):
 @pytest.mark.parametrize("ruta", LEGALES)
 def test_las_paginas_legales_no_nombran_un_producto_que_no_se_sirve(local, ruta):
     # /automatiza es otro producto. Donde la app no tiene esa ruta (main, lo
-    # que corre en producción) los documentos no la pueden nombrar ni enlazar;
-    # donde sí la tiene (dev), enlazarla es legítimo y este test no aplica
-    if any(getattr(r, "path", "") == "/automatiza" for r in local.app.routes):
-        pytest.skip("esta app sí sirve /automatiza")
+    # que corre en producción) los documentos no la pueden nombrar ni enlazar.
+    # Donde sí la tiene (dev) nombrarla es legítimo —los dos documentos le
+    # dedican su sección 14—, pero entonces cada enlace a ella tiene que llegar
+    # a una página que de verdad se sirve. Antes aquí se saltaba el test: una
+    # prueba que no corre en la rama donde se escribe el texto no vigila nada
     html = re.sub(r"<!--.*?-->", "", local.get(ruta).text, flags=re.S)
-    assert "/automatiza" not in html, ruta
+    if not any(getattr(r, "path", "") == "/automatiza" for r in local.app.routes):
+        assert "/automatiza" not in html, ruta
+        return
+    enlaces = set(re.findall(r'href="(/automatiza[^"#]*)', html))
+    assert enlaces, f"{ruta} nombra /automatiza pero no la enlaza"
+    for enlace in sorted(enlaces):
+        assert local.get(enlace).status_code == 200, (ruta, enlace)
+    # y la sección que la explica existe: el índice no apunta al vacío
+    assert 'href="#automatiza"' in html and 'id="automatiza"' in html, ruta
 
 
 def test_la_hoja_de_las_legales_se_sirve_como_las_demas(local):
@@ -247,11 +256,12 @@ def test_callback_ya_no_vuelve_a_la_portada():
 
 
 def test_las_pantallas_vuelven_al_estudio_no_a_la_portada():
-    # /automatiza y sus legales (RAG·9/13) son para gente de fuera y sin sesión:
-    # «Irremplazables» lleva a la portada, igual que en portada y entrar
+    # /automatiza, sus legales (RAG·9/13) y la baja de novedades (RAG·35) son
+    # para gente de fuera y sin sesión: «Irremplazables» lleva a la portada,
+    # igual que en portada y entrar
     for f in STATIC.glob("*.html"):
         if f.name in ("portada.html", "entrar.html", "automatiza.html",
-                      "privacidad.html", "terminos.html"):
+                      "privacidad.html", "terminos.html", "baja.html", "baja-hecha.html"):
             continue
         t = f.read_text(encoding="utf-8")
         assert 'href="/"' not in t, f.name

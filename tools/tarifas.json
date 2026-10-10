@@ -28,10 +28,19 @@
     "nota": "M23 C5 — investiga tu competencia: las 10 últimas publicaciones de cada cuenta vigilada, con sus números, más una lectura del LLM sobre todas juntas. Se cobra POR CUENTA analizada (decisión del dueño, 2026-09-17), igual en las tres redes aunque cuesten distinto: con 10 publicaciones, Instagram sale a $0.027 dólares, YouTube a $0.010 y TikTok a $0.003 (pricing.json §apify), más ~$0.02 de gpt-5-mini repartido entre las cuentas de la corrida. El peor caso (todas de Instagram) queda en ~$0.033 contra $0.045 de venta al piso. Agregar, quitar y volver a ver un informe ya hecho = 0 créditos: solo se cobra traer publicaciones nuevas."
   },
   "clip": {
-    "video_8s": 30,
+    "video_8s": 36,
     "componer_imagenes": 2,
-    "nota": "M25 · A/F — clip de 8 segundos con audio: UNA llamada a Veo, sin guionista, TTS ni whisper. Los 30 salen de la economía, no del gusto: 8 s con audio son $0.40 dólares de Veo (pricing.json §generacion.veo31_lite_usd_por_segundo, 720p con audio) y el piso de venta es $0.015 dólares por crédito, así que a 20 se vendería en $0.30 y se perdería dinero en cada clip. Por segundo entregado el clip es MÁS caro que la película ($0.05 contra $0.045): no amortiza nada, y «es más sencillo, cobremos menos» no aplica. Los 2 de componer se cobran SOLO cuando el usuario sube 2 o 3 imágenes y hay que juntarlas con Grok antes de animar (~$0.026 dólares, misma tarifa que video.imagen); con cero imágenes (text-to-video) o con una (se anima directo) no se cobran.",
+    "nota": "7-oct-2026 (decisión del dueño): sube de 30 a 36 créditos. Es la misma regla que el resto de los modelos (§modelos): costo ÷ 0.75 ÷ piso de venta, redondeado hacia arriba; con $0.40 dólares de Veo da 36 y deja ~26 % de margen en vez de ~11 %. Debe valer lo mismo que modelos.clip[\"veo-lite\"] (un test lo comprueba). — M25 · A/F — clip de 8 segundos con audio: UNA llamada a Veo, sin guionista, TTS ni whisper. Los 30 (hasta el 6-oct) salían de la economía, no del gusto: 8 s con audio son $0.40 dólares de Veo (pricing.json §generacion.veo31_lite_usd_por_segundo, 720p con audio) y el piso de venta es $0.015 dólares por crédito, así que a 20 se vendería en $0.30 y se perdería dinero en cada clip. Por segundo entregado el clip es MÁS caro que la película ($0.05 contra $0.045): no amortiza nada, y «es más sencillo, cobremos menos» no aplica. Los 2 de componer se cobran SOLO cuando el usuario sube 2 o 3 imágenes y hay que juntarlas con Grok antes de animar (~$0.026 dólares, misma tarifa que video.imagen); con cero imágenes (text-to-video) o con una (se anima directo) no se cobran.",
     "nota_mudo": "Sin audio el clip cuesta $0.24 dólares y el número correcto sería 18-20 créditos. Hoy no se ofrece: la decisión del dueño (17-sep) fue un solo producto, con sonido."
+  },
+  "modelos": {
+    "nota": "7-oct-2026 — créditos por modelo, para el selector de «¿Qué vamos a crear hoy?». SOLO están los modelos con costo verificado en pricing.json (Grok Imagine y Nano Banana 2 para crear y editar, Veo 3.1 Lite y Veo 3.1 Fast para el clip): un modelo sin número aquí no se ofrece, ni siquiera si el catálogo del cliente (web/src/pantallas/inicio/modelos.ts) lo trae. Regla de la hoja de costos: costo ÷ 0.75 ÷ piso de venta (economia.piso_venta_usd_por_credito), redondeado hacia arriba, mínimo 2 por imagen. Para sumar un modelo: su costo en pricing.json (verified_on), su número aquí y su marca `activo` en el catálogo, después de una prueba pagada pequeña con el «sí» del dueño. Los valores son enteros: son lo que ve y paga el usuario; el servidor NUNCA confía en un precio que mande el cliente. 9-oct-2026: los créditos van redondeados HACIA ARRIBA al par (nunca hacia abajo: el margen solo sube). Los clips traen un número por duración en segundos (4, 6, 8): el modelo solo se ofrece en las duraciones que tienen número. 9-oct-2026 (Ola 1): Nano Banana 2 y Veo 3.1 Fast entraron tras su prueba pagada pequeña (docs/modelos-ia/DATOS-FAL-2026-10-08.md §9); Veo 3.1 Standard tiene fila y costo pero sigue SIN número aquí, así que no se ofrece.",
+    "imagen": { "grok": 2, "nb2": 8 },
+    "editar": { "grok": 2, "nb2": 8 },
+    "clip": {
+      "veo-lite": { "4": 18, "6": 28, "8": 36 },
+      "veo-fast": { "4": 54, "6": 80, "8": 108 }
+    }
   },
   "editar": {
     "sugerencias": 2,
@@ -43,6 +52,11 @@
     "por_publicacion": 5,
     "nota": "M23 · D — publicidad automática: UNA imagen al día en UNA sola cuenta, sin que el dueño del negocio la revise. Los 5 son 2 de la imagen y 3 de la automatización, la subida y la infra (decisión del dueño, 2026-09-18). La campaña se cobra COMPLETA por adelantado (días × 5) y se devuelve por DÍA lo que no salga: al apagar a mitad se regresan los días que no se publicaron, y un día que falla devuelve sus 5. Economía: al piso de venta ($0.015 dólares/crédito) son $0.075 contra ~$0.04 de costo real. La imagen NO se inventa de cero — parte de la foto que sube el usuario, así que es el endpoint de EDITAR de Grok ($0.02 de salida + $0.002 por referencia, pricing.json §generacion.grok_edit), más el tema del día con el LLM y la subida a Blotato. A diferencia de video.imagen (2 créditos), aquí la tarifa sí deja margen.",
     "nota_ejemplo": "El ejemplo del día 1 que se enseña ANTES de encender no se cobra, y no se regenera: si la enciende, ese mismo ejemplo ES la publicación del primer día. Cuesta una imagen real (~$0.022 dólares), así que quien pide ejemplos y nunca enciende sale gratis — se aceptó a cambio de que nadie pague sin ver (decisión del dueño, 2026-09-18)."
+  },
+  "rag": {
+    "abono_tester_por_uso": 20,
+    "abono_tester_max_por_dia": 5,
+    "nota": "RAG·29 (decisión del dueño, 5-oct-2026) — TEMPORAL, una a dos semanas: mientras se recupera información de los testers, /automatiza en dev NO cobra; al revés, cada uso de un tester ABONA abono_tester_por_uso créditos en la cuenta de producción que tiene ese correo, con un máximo de abono_tester_max_por_dia usos al día por cuenta. Lo abona tools/abonos_testers.py (lo corre el dueño). 6-oct: el dueño lo sube de 10 a 20 por uso como incentivo para los testers (máximo 5 usos al día = 100 créditos por cuenta al día). La referencia de costo es la corrida medida del 2-oct: ~$0.13 dólares de Claude por armado (pricing.json §rag) al piso de venta de $0.015 dólares por crédito ≈ 9 créditos. Lo que se COBRE por uso al terminar la prueba se decide aparte con los datos de los testers (ver docs/RAG_TESTERS.md)."
   },
   "cortesia_mensual": { "mensual": 100, "anual": 200, "nota": "se renueva sin acumularse; los créditos COMPRADOS no caducan" },
   "packs_usd": [

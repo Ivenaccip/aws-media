@@ -22,9 +22,8 @@ import {
   cargarProyectos,
   cargarSlots,
   desarchivar,
-  IMG_A_LA_VISTA,
   leerBlotato,
-  mezclar,
+  creaciones,
   textoSlots,
   type ClipCorto,
   type Edicion,
@@ -32,7 +31,7 @@ import {
   type Imagen,
   type Proyecto,
 } from './logica';
-import { TarjetaEdicion, TarjetaImagen, TarjetaNueva, TarjetaVideo } from './Obras';
+import { Galeria, type Pendiente } from './Galeria';
 
 interface Listas {
   proyectos: Proyecto[];
@@ -61,7 +60,6 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [falloCarga, setFalloCarga] = useState(false);
   const [aviso, setAviso] = useState('');
   const [aArchivar, setAArchivar] = useState<Proyecto | null>(null);
-  const [todasImg, setTodasImg] = useState(false);
 
   // null = no se sabe: el menú se queda encendido. Dejar sin sus herramientas
   // a quien sí pagó, porque un fetch no respondió, es peor que dejar entrar a
@@ -72,6 +70,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
+  // lo que se pidió desde la caja y todavía no llega a la lista
+  const [pendientes, setPendientes] = useState<Pendiente[]>([]);
 
   const cargar = useCallback(async () => {
     const [ps, sl, im, ed, cl] = await Promise.allSettled([
@@ -123,6 +123,27 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }
   }, [cargar, abrirBlotato]);
 
+  // Un video corto tarda un par de minutos: mientras alguno se genera, la
+  // galería se vuelve a pedir sola (cada 5 s, como la pantalla del clip).
+  const hayGenerando = listas?.clips?.some(c => c.estado === 'generando') ?? false;
+  useEffect(() => {
+    if (!hayGenerando) return;
+    const t = setInterval(() => void cargar(), 5000);
+    return () => clearInterval(t);
+  }, [hayGenerando, cargar]);
+
+  // «Usar como referencia» del visor: la imagen vuelve a la caja, lista para animarla
+  async function usarComoReferencia(im: Imagen) {
+    try {
+      const r = await fetch(im.url);
+      if (!r.ok) throw new Error('no se pudo traer');
+      const blob = await r.blob();
+      caja.current?.referencia(new File([blob], im.nombre, { type: blob.type || 'image/jpeg' }));
+    } catch {
+      setAviso('No pudimos traer esa imagen — inténtalo de nuevo.');
+    }
+  }
+
   async function accion(p: Proyecto, verbo: 'archivar' | 'desarchivar') {
     try {
       await (verbo === 'archivar' ? archivar(p.id) : desarchivar(p.id));
@@ -147,9 +168,6 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     !listas.ediciones.length &&
     listas.clips !== null &&
     !listas.clips.length;
-  const videos = listas ? mezclar(listas.proyectos, listas.clips, listas.ediciones) : [];
-  const imagenes = listas?.imagenes ?? null;
-  const aLaVista = imagenes && !todasImg ? imagenes.slice(0, IMG_A_LA_VISTA) : imagenes;
 
   return (
     <div className="mx-auto max-w-[1100px] px-5 pt-16 pb-14">
@@ -163,7 +181,15 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
         </aside>
 
         <main className="min-w-0">
-          <Caja ref={caja} ir={ir} />
+          <Caja
+            ref={caja}
+            ir={ir}
+            alPedir={p => setPendientes(l => [p, ...l])}
+            alTerminar={clave => {
+              // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va
+              void cargar().finally(() => setPendientes(l => l.filter(p => p.clave !== clave)));
+            }}
+          />
 
           {falloCarga && (
             <div className="mb-6">
@@ -187,16 +213,16 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
 
           {listas === null && !falloCarga && <p className="m-0 text-xs text-secundario">Cargando tus videos…</p>}
 
-          {/* UI·26: películas, clips y shorts juntos. Los slots siguen
-              contando solo películas: un clip o unos shorts no ocupan lugar */}
+          {/* R4b: todo lo que hiciste en una galería. Los slots siguen contando
+              solo películas: un clip, una imagen o unos shorts no ocupan lugar */}
           {listas && !nuevo && (
-            <Seccion titulo="Mis videos" extra={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}>
-              {videos.map(v => (
-                <TarjetaVideo key={v.clave} v={v} alArchivar={setAArchivar} />
-              ))}
-              {/* siempre: con los slots llenos todavía caben un clip y unos shorts */}
-              <TarjetaNueva texto="Nuevo video" alPulsar={() => caja.current?.elegir('videos')} />
-            </Seccion>
+            <Galeria
+              creaciones={creaciones(listas.proyectos, listas.clips, listas.ediciones, listas.imagenes)}
+              pendientes={pendientes}
+              slots={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}
+              alArchivar={setAArchivar}
+              alUsarReferencia={usarComoReferencia}
+            />
           )}
           {listas && !nuevo && listas.clips === null && (
             <p className="-mt-4 mb-7 text-xs text-secundario">
@@ -205,33 +231,6 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
                 Reintentar
               </Boton>
             </p>
-          )}
-
-          {aLaVista && !nuevo && (
-            <Seccion
-              titulo="Mis imágenes"
-              extra={
-                imagenes!.length > IMG_A_LA_VISTA && (
-                  <Boton nivel="enlace" className="text-xs" aria-expanded={todasImg} onClick={() => setTodasImg(v => !v)}>
-                    {todasImg ? 'Ver menos' : `Ver todas (${imagenes!.length})`}
-                  </Boton>
-                )
-              }
-            >
-              {aLaVista.map(im => (
-                <TarjetaImagen key={im.nombre} im={im} />
-              ))}
-              <TarjetaNueva texto="Nueva imagen" href="/imagenes.html" />
-            </Seccion>
-          )}
-
-          {/* M14: las ediciones de metraje viven aquí (antes eran las tarjetas de e1) */}
-          {listas?.ediciones && listas.ediciones.length > 0 && (
-            <Seccion titulo="Mis ediciones">
-              {listas.ediciones.map(e => (
-                <TarjetaEdicion key={e.nombre} e={e} />
-              ))}
-            </Seccion>
           )}
 
           {archivados.length > 0 && (
@@ -281,18 +280,6 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
         }}
       />
     </div>
-  );
-}
-
-function Seccion({ titulo, extra, children }: { titulo: string; extra?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="mb-7">
-      <div className="mb-3.5 flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-titulo-sm font-bold">{titulo}</h2>
-        {extra}
-      </div>
-      <div className="grid grid-cols-2 gap-3.5 min-[861px]:grid-cols-3">{children}</div>
-    </section>
   );
 }
 

@@ -57,6 +57,14 @@ CLAVES = [
     # M16.4+: la API de Claude como BASE de plataforma — todos los usuarios
     # tienen el chat editorial configurado; una clave por-usuario (D4) la pisa
     "CLAUDE_API_KEY",
+    # RAG·6 — la sal del hash de IP de /automatiza. La genera el dueño
+    # (python -c "import secrets; print(secrets.token_hex(32))") y la pega en
+    # su .env; sin ella la sección pública queda cerrada (falla cerrado).
+    "AUTOMATIZA_SAL_IP",
+    # RAG·35 — firma los enlaces de baja de la lista de novedades. Se genera
+    # igual que la de IP y NO debe ser la misma: si una se filtra, la otra
+    # sigue sirviendo. Sin ella /automatiza/baja/… responde 503 (falla cerrado).
+    "AUTOMATIZA_SAL_BAJA",
     # M17 — importar videos por liga (actores de Apify, pricing.json §apify)
     "APIFY_TOKEN",
 ]

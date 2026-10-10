@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<!-- RAG·35 · el enlace de baja de la lista de novedades. La sirve server/app.py
+     en /automatiza/baja/<token>, ya LLENA (server/aviso.py). Un GET no da de
+     baja a nadie: los clientes de correo y los antivirus abren los enlaces
+     solos. Da de baja el botón (POST a esta misma dirección) o el botón de
+     un clic del propio cliente de correo (List-Unsubscribe-Post, RFC 8058).
+     Sin JS: el formulario basta, y la CSP no deja nada en línea. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dejar de recibir novedades · Irremplazables</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<link rel="stylesheet" href="/automatiza.css">
+</head>
+<body>
+<a class="saltar" href="#principal">Saltar al contenido</a>
+
+<header class="cabeza">
+  <a class="marca" href="/">Irremplazables</a>
+</header>
+
+<main id="principal">
+  <section class="tarjeta caja-720 bloque-20" aria-labelledby="baja-t">
+    <h1 id="baja-t" class="titulo-lg">¿Dejas de recibir novedades?</h1>
+    <p class="lead">Ya no te escribiremos con nuevas automatizaciones ni tutoriales. Tus flujos y tus peticiones no cambian.</p>
+    <form method="post" class="acciones">
+      <button type="submit" class="btn btn-pri btn-grande">Sí, darme de baja</button>
+      <a href="/">No, volver al inicio</a>
+    </form>
+    <p class="secundario">¿Dudas? Escríbenos a {{correo_privacidad}}.</p>
+  </section>
+</main>
+</body>
+</html>
