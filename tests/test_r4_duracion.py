@@ -320,7 +320,7 @@ def test_guardian_las_duraciones_de_la_tarifa_son_las_que_declara_el_modelo():
     """La tabla de modelos y la tarifa tienen que andar juntas, en las dos
     direcciones: un modelo que declara una duración sin número no la ofrece
     (error 422), y un número para una duración que el modelo no admite es un
-    dedazo. Un modelo sin NINGÚN número (Ola 1: veo-fast, veo-std) es inerte y no
+    dedazo. Un modelo sin NINGÚN número (hoy: veo-std) es inerte y no
     entra en esta cuenta; uno con números a medias sí falla."""
     from pipeline import creditos, modelos_ia
     assert "veo-lite" in creditos.MODELOS_CR["clip"]

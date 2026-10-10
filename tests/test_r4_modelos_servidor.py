@@ -63,7 +63,7 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
     """La tabla y la tarifa tienen que andar juntas. Un número en tarifas.json
     para un modelo que la tabla no conoce es una tarifa que nadie puede pedir
     (dedazo). Al revés NO es un error: una fila de la tabla sin número es un
-    modelo INERTE (Ola 1: veo-fast, veo-std, nb2) y el servidor lo rechaza con 422;
+    modelo INERTE (hoy: veo-std) y el servidor lo rechaza con 422;
     cuáles son hoy los inertes lo fija tests/test_r4_ola1.py."""
     from pipeline import creditos, modelos_ia
     for tarea, tabla in creditos.MODELOS_CR.items():
@@ -78,10 +78,42 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
                     assert isinstance(creditos.costo_modelo(tarea, id_, s), int)
             else:
                 assert isinstance(creditos.costo_modelo(tarea, id_), int)
-    # los dos modelos a la venta desde R4 siguen con número
-    assert set(creditos.MODELOS_CR["imagen"]) >= {"grok"}
-    assert set(creditos.MODELOS_CR["editar"]) >= {"grok"}
-    assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite"}
+    # los modelos a la venta siguen con número: Grok y Veo Lite desde R4; Nano Banana 2 y
+    # Veo 3.1 Fast desde el 9-oct-2026
+    assert set(creditos.MODELOS_CR["imagen"]) >= {"grok", "nb2"}
+    assert set(creditos.MODELOS_CR["editar"]) >= {"grok", "nb2"}
+    assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite", "veo-fast"}
+
+
+def _activos_de_la_web() -> dict[str, list[str]]:
+    """Los ids con `activo: true` en el catálogo de la web, por tarea. Editar son los de
+    imagen que están en CON_EDICION (así los arma el catálogo)."""
+    import re
+    ts = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "modelos.ts").read_text(encoding="utf-8")
+
+    def activos(nombre: str) -> list[str]:
+        m = re.search(rf"const {nombre}: Modelo\[\] = \[(.*?)\n\];", ts, re.S)
+        assert m, nombre
+        return [i for i, a in re.findall(r"id: '([^']+)',.*?activo: (true|false)", m.group(1), re.S)
+                if a == "true"]
+    con_edicion = re.search(r"CON_EDICION = new Set\(\[(.*?)\]\)", ts, re.S)
+    assert con_edicion
+    editables = set(re.findall(r"'([^']+)'", con_edicion.group(1)))
+    imagen = activos("IMAGEN")
+    return {"imagen": imagen, "editar": [i for i in imagen if i in editables], "clip": activos("CLIP")}
+
+
+def test_todo_modelo_activo_en_la_web_tiene_fila_y_numero_en_el_servidor():
+    """Encender `activo: true` en el catálogo sin fila en la tabla o sin número en
+    tarifas.json enseñaría un modelo que el servidor rechaza con 422. El número manda
+    (sin él la web tampoco lo ofrece), pero un `activo` suelto es un dedazo."""
+    from pipeline import creditos, modelos_ia
+    activos = _activos_de_la_web()
+    assert "grok" in activos["imagen"] and "veo-lite" in activos["clip"]      # el análisis funciona
+    for tarea, ids in activos.items():
+        for id_ in ids:
+            assert id_ in modelos_ia.disponibles(tarea), (tarea, id_, "sin fila en modelos_ia")
+            assert id_ in creditos.MODELOS_CR.get(tarea, {}), (tarea, id_, "sin número en tarifas.json")
 
 
 def test_los_predeterminados_cuestan_lo_de_siempre():
