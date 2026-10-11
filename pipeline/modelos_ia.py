@@ -13,8 +13,9 @@ cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
 levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
 es la compuerta: recién entonces `activo: true` en el catálogo de la web
 (web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite y, desde
-el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast; Veo 3.1 Standard y
-FLUX.2 klein 9B (Ola 2) son las filas inertes.
+el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. Son filas inertes
+Veo 3.1 Standard y los seis modelos de imagen de la Ola 2 (FLUX.2 klein 9B, Z-Image Turbo,
+FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3).
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -290,8 +291,9 @@ SALIDA_JPEG = (("output_format", "jpeg"),)
 
 # Los tamaños de la familia FLUX.2 (klein, pro) y Z-Image: los valores de `image_size` que
 # fal documenta para cada aspecto de la caja. Cuadrado es `square_hd` (1024×1024), el
-# único que ya se probó con klein (DATOS-FAL §8); los dos apaisados son los valores
-# estándar de la familia y quedan por comprobar contra el esquema y en la prueba pagada.
+# único que ya se probó con klein (DATOS-FAL §8). Los tres están en el enum del esquema de
+# fal (leído el 11-oct-2026, DATOS-FAL §10); falta comprobar el tamaño que llega y el cobro
+# de los apaisados y verticales en la prueba pagada.
 TAMANOS_FLUX = (("1:1", "square_hd"), ("16:9", "landscape_16_9"), ("9:16", "portrait_16_9"))
 
 # Seedream NO usa los valores predefinidos: su esquema pide un mínimo de píxeles que

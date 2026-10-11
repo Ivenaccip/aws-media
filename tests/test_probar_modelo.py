@@ -621,6 +621,43 @@ def test_nb2_promete_1k_y_una_salida_mayor_se_marca_para_revisar(env, capsys, fo
         assert "REVISAR" not in out and "coincide con lo prometido" in out
 
 
+@pytest.mark.parametrize("ancho,alto,marca", [
+    (1344, 768, None),                 # 1.03 MP: 1K de verdad
+    (1024, 1024, None),                # 1.05 MP
+    (1024, 576, "se prometió 1K"),     # 0.59 MP: llegó en 768sq
+    (512, 512, "se prometió 1K"),      # 0.26 MP: llegó en 512sq
+    (2048, 2048, "se prometió 1K"),    # 4.2 MP: llegó en 2k
+])
+def test_flux_3_promete_1k_aunque_lo_fije_en_minuscula(env, capsys, tmp_path, ancho, alto, marca):
+    """FLUX 3 manda resolution «1k» (el enum de fal) y Nano Banana 2 «1K»: ambos se juzgan igual."""
+    from pipeline import modelos_ia
+    assert dict(modelos_ia.resolver("imagen", "flux3").args_extra)["resolution"] == "1k"
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.jpg"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto, "codec": "mjpeg"}
+    code, out, err = _correr(capsys, "imagen", "flux3", "--formato", "cuadrado" if ancho == alto else "horizontal",
+                             "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert env.llamadas[0][1]["resolution"] == "1k" and "num_images" not in env.llamadas[0][1]
+    if marca:
+        assert "REVISAR" in out and marca in out
+    else:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+@pytest.mark.parametrize("codec,se_marca", [("mjpeg", False), ("png", True), ("webp", True)])
+@pytest.mark.parametrize("modelo", ["grok", "nb2"])
+def test_editar_que_no_llega_como_jpeg_tambien_se_marca_para_revisar(env, capsys, foto, tmp_path, modelo, codec, se_marca):
+    """El editor también guarda como .jpg (server/app.py): el aviso no es solo de «imagen»."""
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1376, "alto": 768, "codec": codec}
+    code, out, err = _correr(capsys, "editar", modelo, "--imagen", foto, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    if se_marca:
+        assert "REVISAR" in out and f"llegó como {codec}" in out
+    else:
+        assert "llegó como" not in out
+
+
 def test_un_modelo_sin_resolucion_fija_no_se_juzga_por_los_megapixeles(env, capsys, tmp_path):
     env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
     env.medida = {**MEDIDA_IMAGEN, "ancho": 2752, "alto": 1536}        # 16:9, 4.2 MP, en Grok

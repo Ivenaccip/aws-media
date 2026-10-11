@@ -608,7 +608,8 @@ def _tope_megapixeles(plan: Plan) -> float:
 
 
 def _promete_1k(plan: Plan) -> bool:
-    """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2: la única con tarifa leída)"""
+    """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2 con «1K» y FLUX 3 con «1k»:
+    el 1K es la única resolución con tarifa leída; por eso se compara sin distinguir mayúsculas)"""
     # args_extra puede ser un mapping o una tupla de pares (llave, valor): dict() lee las dos
     extra = dict(getattr(plan.modelo, "args_extra", None) or ())
     return str(extra.get("resolution", "")).upper() == "1K"

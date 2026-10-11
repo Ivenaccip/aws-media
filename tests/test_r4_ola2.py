@@ -469,9 +469,11 @@ def test_la_nota_de_la_ola_2_dice_dolares_y_nunca_centavos_ni_inventa_mediciones
     nota = " ".join(_pricing()["generacion"]["endpoints"]["nota_ola2"].split())
     assert "centavos" not in nota.lower()
     assert "MEDIDO en el panel" in nota and "NO están medidas todavía" in nota
-    for cifra in ("$0.006", "$0.005", "$0.03", "$0.027", "$0.04", "$0.024", "$0.015"):
-        assert cifra in nota, cifra
     import re
+    # cada modelo con SU cifra completa en SU oración (una subcadena como «$0.04» cabe en «$0.045»)
+    for id_, usd in USD.items():
+        assert re.search(rf"\({id_}[,)][^$]*\${re.escape(f'{usd:g}')} dólares", nota), id_
+    assert "$0.015 dólares por cada megapíxel extra" in nota
     # regla del dueño: «$X.XX dólares»; toda cifra con $ va seguida de «dólares»
     cifras = list(re.finditer(r"\$\d+\.\d+", nota))
     assert len(cifras) >= 10
