@@ -52,8 +52,10 @@ export interface PropsCaja {
   ir: (url: string) => void;
   /** Se pidió algo con la caja: aparece «generando» en la galería. */
   alPedir?: (p: Pendiente) => void;
-  /** Ya contestó el servidor (bien o mal): la tarjeta de «generando» se quita y la lista se relee. */
-  alTerminar?: (clave: string) => void;
+  /** Ya contestó el servidor (bien o mal): la tarjeta de «generando» se quita y la lista se relee.
+   *  `esperarLista`: el servidor aceptó una imagen (ya cobró y la hace, o ya la hizo), y solo la lista de
+   *  imágenes la trae; la tarjeta se queda hasta que esa lectura salga bien. */
+  alTerminar?: (clave: string, esperarLista: boolean) => void;
 }
 
 // una pista al pasar el ratón o al enfocar: qué hace cada cosa (mock 2026-09-07)
@@ -273,17 +275,22 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     setEnviando(true);
     setAviso('');
     let salio = false;
+    let aceptado = false; // el servidor lo recibió: ya cobró y lo hace (o ya lo hizo)
+    const tipo = opcion.id === 'clip' ? 'corto' : 'imagen';
     try {
       const v = await moderar(limpio); // M13: se modera ANTES de lo que cobra
       if (!v.permitido) {
         setError(v.mensaje);
         return;
       }
-      alPedir?.({ clave, tipo: opcion.id === 'clip' ? 'corto' : 'imagen', texto: limpio });
+      alPedir?.({ clave, tipo, texto: limpio });
       salio = true;
+      // una imagen de un modelo que tarda contesta `lanzado` (ya se cobró, va en camino):
+      // para la caja es lo mismo que una hecha, y «Mis creaciones» la enseña generándose
       if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
       else if (opcion.id === 'imagen') await pedirImagen(limpio, modelo);
       else await pedirEdicion(limpio, modelo, adjuntas[0]!);
+      aceptado = true;
       setTexto('');
       setRefs([]);
       setAviso('Listo, ya va. Míralo abajo, en «Mis creaciones».');
@@ -294,7 +301,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       if (e instanceof ErrorApi && e.estado === 502) refrescarSaldo();
     } finally {
       setEnviando(false);
-      if (salio) alTerminar?.(clave);
+      if (salio) alTerminar?.(clave, aceptado && tipo === 'imagen');
     }
   }
 

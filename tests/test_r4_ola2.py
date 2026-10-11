@@ -107,6 +107,9 @@ JPEG = {"output_format": "jpeg"}
 EXTRA = {"klein": JPEG, "zit": JPEG, "flux2": JPEG, "sdf": JPEG, "sd45": {},
          "flux3": {**JPEG, "resolution": "1k"}}
 CON_NUM_IMAGES = {"klein": True, "zit": True, "flux2": False, "sdf": True, "sd45": True, "flux3": False}
+# los que tardaron más de 10 s en la prueba pagada se generan en segundo plano (la Lambda del API corta a los
+# 29 s): la tabla de tiempos y la regla están en tests/test_imagen_segundo_plano.py
+SEGUNDO_PLANO = {"klein": False, "zit": False, "flux2": False, "sdf": True, "sd45": True, "flux3": True}
 # megapíxeles hasta donde vale el costo de la ficha (0 = precio fijo por imagen)
 MP_FICHA = {"klein": 1.2, "zit": 1.2, "flux2": 1.2, "sdf": 0.0, "sd45": 0.0, "flux3": 1.2}
 
@@ -164,6 +167,7 @@ def test_las_filas_de_la_ola_2_traen_su_endpoint_su_tamano_y_su_pin(id_):
     assert m.endpoint_para(False) == m.endpoint_para(True) == m.endpoint
     assert m.admite_referencia is False                  # solo texto a imagen
     assert m.con_num_images is CON_NUM_IMAGES[id_]
+    assert m.segundo_plano is SEGUNDO_PLANO[id_]
     assert m.llave_tamano == ("aspect_ratio" if id_ == "flux3" else "image_size")
     assert dict(m.args_extra) == EXTRA[id_]
     assert m.megapixeles_ficha == MP_FICHA[id_]
@@ -206,6 +210,10 @@ def test_los_modelos_de_antes_siguen_pidiendo_el_aspecto_tal_cual():
         assert (m.llave_tamano, m.tamanos, m.con_num_images) == ("aspect_ratio", (), True), id_
     for id_ in ("grok", "nb2"):
         assert modelos_ia.resolver("imagen", id_).admite_referencia is True
+    # Nano Banana 2 tarda 11.5–13.9 s al crear: va en segundo plano; Grok y todo editar, no
+    assert modelos_ia.resolver("imagen", "nb2").segundo_plano is True
+    assert modelos_ia.resolver("imagen", "grok").segundo_plano is False
+    assert modelos_ia.resolver("editar", "nb2").segundo_plano is False
 
 
 def test_los_aspectos_de_la_caja_son_los_que_traduce_cada_modelo():

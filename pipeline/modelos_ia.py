@@ -13,9 +13,10 @@ cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
 levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
 es la compuerta: recién entonces `activo: true` en el catálogo de la web
 (web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite y, desde
-el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. Desde el 11-oct-2026,
-tras la suya (18 llamadas y el panel de fal), también FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro,
-Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear. Es una fila inerte Veo 3.1 Standard.
+el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2026, tras la
+suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
+Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
+desplegarla. Es una fila inerte Veo 3.1 Standard.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -35,6 +36,12 @@ duración) no se puede fijar.
 Los intentos de un clip también son del modelo (`Modelo.max_intentos`): un timeout
 de cliente no cancela el trabajo en fal, así que reintentar un modelo caro puede
 cobrar dos veces. Veo 3.1 Fast y Standard hacen un solo intento.
+
+Y si una imagen se genera dentro de la petición o en segundo plano también lo decide
+el modelo (`Modelo.segundo_plano`): la Lambda del API corta a los 29 s (API Gateway:
+tope fijo de 30 s) y un arranque en frío ya gasta unos 16, así que un modelo que tardó
+más de 10 s en la prueba pagada no cabe en la petición. Esos se encolan como el clip
+(server/imagen_cola.py, worker/imagen_generar.py); los rápidos siguen síncronos.
 """
 from __future__ import annotations
 
@@ -201,6 +208,13 @@ class Modelo:
     # a ~1 MP; si llegara una imagen mucho mayor, lo cobrado sería otro. 0 = sin tope (precio
     # fijo por imagen, como Seedream). Solo lo usa la prueba pagada para marcar REVISAR.
     megapixeles_ficha: float = 0.0
+    # imagen: ¿se genera en segundo plano (cobrar → doc en S3 → cola → worker) y no dentro
+    # de la petición? Verdadero para los que tardaron MÁS DE 10 s en la prueba pagada: la
+    # Lambda del API corta a los 29 s (API Gateway HTTP API: tope fijo de 30 s) y un arranque
+    # en frío gasta unos 16; cortada la petición, se cobra, no se devuelve y fal cobra igual.
+    # Una bandera por fila: mover un modelo de un camino al otro es cambiar este booleano.
+    # Solo aplica a CREAR (`POST /api/imagenes`) y solo en la nube; en local todo es síncrono.
+    segundo_plano: bool = False
 
     def __post_init__(self):
         # frozen: la única forma de reemplazar el campo es object.__setattr__
@@ -212,6 +226,9 @@ class Modelo:
         if isinstance(mp, bool) or not isinstance(mp, (int, float)) or not mp >= 0:
             raise ValueError(f"megapixeles_ficha de {self.id!r} debe ser un número de 0 o más "
                              f"(0 = sin tope), no {mp!r}")
+        if type(self.segundo_plano) is not bool:
+            raise ValueError(f"segundo_plano de {self.id!r} debe ser True o False, "
+                             f"no {self.segundo_plano!r}")
         if self.llave_tamano not in LLAVES_DE_TAMANO:
             raise ValueError(f"llave_tamano de {self.id!r} debe ser una de "
                              f"{', '.join(LLAVES_DE_TAMANO)}, no {self.llave_tamano!r}")
@@ -325,12 +342,17 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
-    # 9-oct-2026.
-    nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
+    # 9-oct-2026. Crear tarda 11.5–13.9 s: va en segundo plano; editar sigue síncrono.
+    nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA,
+                 segundo_plano=True)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     # Ola 2: FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y
-    # FLUX 3. INERTES hasta que tarifas.json les ponga créditos. Sin endpoint de imagen: son
-    # solo texto a imagen, así que no entran en «editar».
+    # FLUX 3. Encendidos el 11-oct-2026 (número en tarifas.json §modelos «imagen»); se ofrecen al
+    # desplegar la rama. Sin endpoint de imagen: son solo texto a imagen, así que no entran en
+    # «editar». `segundo_plano` va en los que tardaron más de 10 s en la prueba pagada (los
+    # segundos de cada uno están en docs/modelos-ia/POR-VERIFICAR.md): FLUX 3 21.8–25.0 s,
+    # Seedream 5.0 Flash 13.4–15.0 s y Seedream 4.5 8.6–22.7 s. FLUX.2 pro (7.2–8.1 s), klein
+    # (0.8–1.2 s) y Z-Image Turbo (1.0–1.8 s) caben en la petición.
     klein = Modelo("klein", "imagen", KLEIN_CREAR, llave_tamano="image_size",
                    tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, megapixeles_ficha=1.2)
     zit = Modelo("zit", "imagen", ZIT_CREAR, llave_tamano="image_size",
@@ -340,13 +362,14 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                    tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, con_num_images=False,
                    megapixeles_ficha=1.2)
     sdf = Modelo("sdf", "imagen", SDF_CREAR, llave_tamano="image_size",
-                 tamanos=TAMANOS_SDF, args_extra=SALIDA_JPEG)
+                 tamanos=TAMANOS_SDF, args_extra=SALIDA_JPEG, segundo_plano=True)
     sd45 = Modelo("sd45", "imagen", SD45_CREAR, llave_tamano="image_size",
-                  tamanos=TAMANOS_SD45)
+                  tamanos=TAMANOS_SD45, segundo_plano=True)
     # FLUX 3: pide el aspecto como la caja ("16:9"), no trae `num_images` y solo tiene leído el
     # precio de 1K (resolution "1k"): se fija como el 1K de Nano Banana 2.
     flux3 = Modelo("flux3", "imagen", FLUX3_CREAR, con_num_images=False, megapixeles_ficha=1.2,
-                   args_extra=(("output_format", "jpeg"), ("resolution", "1k")))
+                   args_extra=(("output_format", "jpeg"), ("resolution", "1k")),
+                   segundo_plano=True)
     return {("imagen", "grok"): grok,
             ("imagen", "klein"): klein,
             ("imagen", "zit"): zit,

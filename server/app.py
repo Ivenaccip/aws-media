@@ -33,7 +33,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
-from server import auth, aviso, migracion, publico_api, web
+from server import auth, aviso, imagen_cola, migracion, publico_api, web
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
@@ -53,6 +53,7 @@ from server.competencia_api import router as competencia_router
 from server.mix_api import router as mix_router
 from server.trabajos_api import router as trabajos_router
 from server.clip_api import router as clip_router
+from server.imagen_cola import router as imagen_cola_router
 from server.shorts_api import router as shorts_router
 
 
@@ -137,6 +138,9 @@ app.include_router(shorts_router)
 app.include_router(estilos_router)
 app.include_router(competencia_router)
 app.include_router(clip_router)
+# antes de /api/imagenes/{nombre} y /{nombre}/archivo (más abajo): el estado de un pedido
+# en segundo plano vive en /api/imagenes/pedidos/{id}
+app.include_router(imagen_cola_router)
 app.include_router(editar_router)
 app.include_router(mix_router)
 app.include_router(trabajos_router)
@@ -338,6 +342,12 @@ async def crear_imagen(body: PedidoImagen):
     estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo == "custom"
                              else "animated", body.estilo_custom or None)
     modelo, costo = _modelo_imagen("imagen", body.modelo)
+    prompt_fal = f"{prompt}. {estilo.prompt}. No text, no watermark."
+    # los modelos lentos no caben en los 29 s de la petición: se cobran y se encolan, y la
+    # pantalla sondea /api/imagenes/pedidos/{id}. Los rápidos —y todo en local— siguen aquí
+    if imagen_cola.en_segundo_plano(modelo):
+        return imagen_cola.lanzar(db.usuario_actual(), prompt, prompt_fal, aspecto, modelo,
+                                  costo)
     if creditos.activo():
         try:
             creditos.cobrar(costo, "imagen:estudio")
@@ -347,9 +357,8 @@ async def crear_imagen(body: PedidoImagen):
     destino = _dir_imagenes() / nombre
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
-        await media_fal.imagen_fal(f"{prompt}. {estilo.prompt}. No text, no watermark.",
-                                   destino, meta={"imagen_estudio": nombre}, aspecto=aspecto,
-                                   modelo=modelo)
+        await media_fal.imagen_fal(prompt_fal, destino, meta={"imagen_estudio": nombre},
+                                   aspecto=aspecto, modelo=modelo)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
@@ -464,6 +473,10 @@ MAX_IMAGENES = 200
 def mis_imagenes():
     """Las imágenes del usuario, de la más nueva a la más vieja. En la nube se
     leen de SU carpeta de S3 (el usuario sale del token); en local, del disco."""
+    # los pedidos en segundo plano (server/imagen_cola.py) se leen ANTES que las imágenes:
+    # una que termina entre las dos lecturas sale en las dos (repetida un instante), y al
+    # revés no saldría en ninguna. `[]` si no hay, falla S3 o es local
+    pendientes = imagen_cola.pendientes(db.usuario_actual())
     if jobs.backend() == "aws":
         prefijo = f"imagenes/{db.usuario_actual()}/"
         filas = [(k[len(prefijo):], t) for k, t in media_sync.listar_prefijo_con_fecha(prefijo)]
@@ -474,7 +487,8 @@ def mis_imagenes():
                    key=lambda f: f[1], reverse=True)
     return {"total": len(filas),
             "imagenes": [{"nombre": n, "url": f"/api/imagenes/{n}", "creado": int(t)}
-                         for n, t in filas[:MAX_IMAGENES]]}
+                         for n, t in filas[:MAX_IMAGENES]],
+            "pendientes": pendientes}
 
 
 @app.get("/api/imagenes/{nombre}/archivo")

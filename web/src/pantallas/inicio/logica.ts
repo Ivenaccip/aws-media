@@ -154,6 +154,20 @@ export interface Imagen {
   creado: number;
 }
 
+/** Una imagen que se hace en segundo plano (los modelos que tardan), tal como la cuenta `pendientes` de /api/imagenes.
+ *  `generando` o `error` de la última hora; la `listo` ya está en `imagenes`. */
+export interface PedidoImagen {
+  id: string;
+  estado: 'generando' | 'listo' | 'error' | string;
+  inicio: string;
+  texto: string;
+  modelo: string;
+  creditos: number;
+  nombre: string;
+  url: string;
+  error: string;
+}
+
 export const cargarProyectos = () => pedir<Proyecto[]>('/api/proyectos');
 export const cargarSlots = () => pedir<{ slots: number | null }>('/api/slots');
 export const cargarEdiciones = () => pedir<Edicion[]>('/api/edicion/proyectos');
@@ -167,7 +181,12 @@ export const cargarClips = () =>
       throw e;
     },
   );
-export const cargarImagenes = () => pedir<{ imagenes?: Imagen[] }>('/api/imagenes').then(r => r.imagenes ?? []);
+export const cargarImagenes = () =>
+  pedir<{ imagenes?: Imagen[]; pendientes?: PedidoImagen[] }>('/api/imagenes').then(r => ({
+    imagenes: r.imagenes ?? [],
+    // en local, o con un servidor anterior, la llave no viene: no hay ninguna
+    pendientes: r.pendientes ?? [],
+  }));
 
 export const archivar = (id: string) =>
   pedir<Proyecto>('/api/proyectos/' + encodeURIComponent(id) + '/archivar', { metodo: 'POST' });

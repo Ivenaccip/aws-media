@@ -44,7 +44,10 @@ una clave con espacios o saltos de línea se rechaza), valida la duración, la i
 y la carpeta de salida ANTES de llamar, hace UN solo intento de llamada de nuestro
 lado (un reintento del adaptador se corta: dos llamadas serían el doble de gasto),
 imprime la URL del resultado en cuanto fal responde, lo descarga sin pisar nada y lo
-mide con ffprobe: ancho×alto, segundos y si trae pista de audio.
+mide con ffprobe: ancho×alto, segundos y si trae pista de audio. También mide cuánto tardó
+la llamada: una imagen que se genera dentro de la petición del API (modelo sin
+`segundo_plano`) sale REVISAR si pasó de 10 s, porque esa Lambda corta a los 29 s; una de
+segundo plano solo recibe un aviso con el tiempo.
 
 OJO con «un solo intento»: es de NUESTRO lado. Por debajo, fal_client puede reenviar
 el POST de envío hasta 10 veces, sin idempotencia, si la respuesta se pierde; eso no
@@ -127,6 +130,11 @@ MIN_MP_1K = 0.8          # 1K es ~1 MP: algo mucho más chico (0.5K) tiene un pr
 # Si la llamada tarda más de esto del tiempo que el cliente espera, está cerca de
 # cortarse por timeout: un corte de cliente puede dejar el trabajo vivo y cobrado en fal.
 UMBRAL_TIEMPO = 0.70
+
+# Una imagen que NO va en segundo plano se genera dentro de la petición del API, y esa Lambda
+# corta a los 29 s (API Gateway: tope fijo de 30 s); un arranque en frío gasta unos 16. A partir
+# de 10 s ya no queda holgura: ese modelo debe llevar `segundo_plano=True` (pipeline/modelos_ia.py).
+LIMITE_PETICION_S = 10
 
 
 class _Uso(Exception):
@@ -637,6 +645,37 @@ def _veredicto_tiempo(plan: Plan, una: "_UnaLlamada") -> list[str]:
             f"dejar el trabajo vivo y cobrado en fal. Revisa Request Details y sube {variable} antes de ofrecerlo"]
 
 
+def _dentro_de_la_peticion(plan: Plan) -> bool:
+    """¿Esta imagen se genera dentro de la petición del API? Crear y editar son imágenes;
+    solo las que llevan `segundo_plano` se encolan (y solo al crear)."""
+    return plan.tarea in ("imagen", "editar") and not getattr(plan.modelo, "segundo_plano", False)
+
+
+def _veredicto_peticion(plan: Plan, una: "_UnaLlamada") -> list[str]:
+    """REVISAR si una imagen que responde dentro de la petición tardó más de 10 s: la ruta de
+    venta corre en la Lambda del API, que corta a los 29 s, y con un arranque en frío ya no hay
+    holgura. Cortada la petición se cobra, no se devuelve y fal cobra igual."""
+    if not _dentro_de_la_peticion(plan) or una.segundos is None or una.segundos <= LIMITE_PETICION_S:
+        return []
+    return [f"la llamada tardó {una.segundos:.1f} s (más de {LIMITE_PETICION_S} s) y este modelo responde dentro de la "
+            "petición: la ruta de venta responde dentro de la Lambda del API, que corta a los 29 s; un arranque "
+            "en frío gasta unos 16 s. Si es lento de verdad, ponle segundo_plano=True en pipeline/modelos_ia.py "
+            "antes de ofrecerlo"]
+
+
+def _aviso_peticion(plan: Plan, una: "_UnaLlamada") -> str | None:
+    """Solo informa: un modelo de segundo plano no responde dentro de la petición, así que su tiempo
+    no es un fallo. Dice cuánto tardó y si esa llamada daba para quitarle la bandera."""
+    if plan.tarea != "imagen" or not getattr(plan.modelo, "segundo_plano", False) or una.segundos is None:
+        return None
+    if una.segundos > LIMITE_PETICION_S:
+        return (f"la llamada tardó {una.segundos:.1f} s (más de {LIMITE_PETICION_S} s) y este modelo va en segundo "
+                "plano (segundo_plano=True): la petición del API no la espera, como corresponde")
+    return (f"la llamada tardó {una.segundos:.1f} s ({LIMITE_PETICION_S} s o menos) y este modelo va en segundo plano "
+            "(segundo_plano=True): una sola llamada no basta para decidir, pero si siempre responde así podría ir "
+            "dentro de la petición")
+
+
 def _veredicto(plan: Plan, medida: dict) -> list[str]:
     """Las diferencias entre lo que se pidió y lo que llegó. Vacío = coincide."""
     from pipeline import clip
@@ -838,8 +877,12 @@ def _correr(plan: Plan) -> int:
             _decir(f"Mídelo a mano: ffprobe -v error -show_streams \"{archivo}\"", err=True)
             codigo = 1
         dif += _veredicto_tiempo(plan, una)
+        dif += _veredicto_peticion(plan, una)
         for d in dif:
             _decir(f"  REVISAR: {d}")
+        aviso = _aviso_peticion(plan, una)
+        if aviso:
+            _decir(f"  AVISO: {aviso}")
         if medido and not dif:
             _decir("  coincide con lo prometido")
     finally:

@@ -17,7 +17,9 @@ Lo que este archivo defiende:
   * lo descargado nunca pisa lo que ya estaba, y se mide con ffprobe (tamaño,
     segundos y si trae pista de audio); un parcial que no se deja borrar no tapa el éxito;
   * lo medido se compara con lo prometido, incluido el 1K de Nano Banana 2 y el
-    tiempo de la llamada contra su timeout;
+    tiempo de la llamada contra su timeout; y una imagen que responde dentro de la
+    petición del API (sin `segundo_plano`) sale REVISAR si pasó de 10 s, porque esa
+    Lambda corta a los 29 s (las de segundo plano solo reciben un AVISO);
   * un pedido mal hecho (editar sin imagen, modelo desconocido) da un error
     claro, no una traza; todo fallo de preflight sale con 2 (no se gastó nada).
 
@@ -1138,7 +1140,8 @@ def _reloj_falso(env, monkeypatch, tarda):
     ("clip", "veo-lite", 70, False),       # exactamente el 70 % no pasa del 70 %
     ("clip", "veo-lite", 12, False),
     ("imagen", "grok", 91, True),          # 91 s de 120 s = 76 %
-    ("imagen", "grok", 60, False),
+    ("imagen", "flux3", 60, False),        # 50 %; va en segundo plano, así que los 60 s son un AVISO
+    ("imagen", "grok", 9, False),          # y una imagen de la petición que tarda 9 s cabe en los 10
 ])
 def test_una_llamada_que_tarda_mas_del_70_por_ciento_del_timeout_se_marca(env, capsys, monkeypatch, tmp_path, tarea, modelo, tarda, se_marca):
     from pipeline import clip, media_fal
@@ -1362,3 +1365,82 @@ def test_el_plan_corre_el_adaptador_sin_su_decorador_de_trazas(env, capsys, monk
     assert code == 0, err
     # el plan, sin decorar; la llamada real sí pasa por la función decorada (que a su vez llama al desnudo)
     assert llamado == ["desnudo", "decorado", "desnudo"]
+
+
+# ---------------------------------------------------------------------------
+# la ruta de venta responde dentro de la Lambda del API, que corta a los 29 s
+
+FRASE_LAMBDA = ("la ruta de venta responde dentro de la Lambda del API, que corta a los 29 s; "
+                "un arranque en frío gasta unos 16 s")
+
+
+def _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, tarda, tarea="imagen", *extra):
+    """Una prueba pagada de imagen/editar que «tarda» `tarda` segundos (reloj falso)."""
+    from pipeline import media_fal
+    monkeypatch.setattr(media_fal, "settings", SimpleNamespace(grok_timeout_s=300))
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = dict(MEDIDA_IMAGEN)
+    _reloj_falso(env, monkeypatch, tarda)
+    return _correr(capsys, tarea, modelo, *extra, "--si", "--salida", tmp_path / "s")
+
+
+@pytest.mark.parametrize("modelo", ["grok", "klein", "zit", "flux2"])
+def test_una_imagen_de_la_peticion_que_tarda_mas_de_10_s_se_marca(env, capsys, monkeypatch, tmp_path, modelo):
+    from pipeline import modelos_ia
+    assert modelos_ia.resolver("imagen", modelo).segundo_plano is False
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, 10.5)
+    assert code == 0, err
+    assert "REVISAR" in out and FRASE_LAMBDA in out and "tardó 10.5 s" in out
+    assert "segundo_plano=True" in out                       # y dice cómo arreglarlo
+    assert "coincide con lo prometido" not in out and "AVISO" not in out
+
+
+@pytest.mark.parametrize("tarda", [10, 9.9, 1.2])
+def test_una_imagen_de_la_peticion_que_tarda_10_s_o_menos_no_se_marca(env, capsys, monkeypatch, tmp_path, tarda):
+    """«Más de 10 s»: exactamente 10 todavía cabe."""
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, "grok", tarda)
+    assert code == 0, err
+    assert "REVISAR" not in out and "AVISO" not in out and "coincide con lo prometido" in out
+
+
+@pytest.mark.parametrize("modelo", ["nb2", "sdf", "sd45", "flux3"])
+def test_una_imagen_de_segundo_plano_lenta_es_un_aviso_y_no_un_revisar(env, capsys, monkeypatch, tmp_path, modelo):
+    """Esos modelos no responden dentro de la petición: tardar 25 s es lo esperado."""
+    from pipeline import modelos_ia
+    assert modelos_ia.resolver("imagen", modelo).segundo_plano is True
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, 25)
+    assert code == 0, err
+    assert "REVISAR" not in out and FRASE_LAMBDA not in out
+    assert "AVISO" in out and "tardó 25.0 s" in out and "va en segundo plano" in out
+    assert "coincide con lo prometido" in out
+
+
+def test_una_imagen_de_segundo_plano_rapida_avisa_que_una_llamada_no_basta(env, capsys, monkeypatch, tmp_path):
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, "sd45", 8.6)
+    assert code == 0, err
+    assert "REVISAR" not in out and "AVISO" in out and "tardó 8.6 s" in out
+    assert "una sola llamada no basta" in out
+
+
+def test_editar_tambien_responde_dentro_de_la_peticion(env, capsys, monkeypatch, tmp_path, foto):
+    """`POST /api/imagenes/editar` sigue síncrono: un editar de 13.9 s (lo que tardó Nano Banana 2)
+    se marca igual que una imagen lenta de la petición."""
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, "nb2", 13.9,
+                                     "editar", "--imagen", foto)
+    assert code == 0, err
+    assert "REVISAR" in out and FRASE_LAMBDA in out and "AVISO" not in out
+
+
+def test_un_clip_no_se_mide_contra_la_peticion(env, capsys, monkeypatch, tmp_path):
+    """Los clips ya van por la cola: sus 45 s no son un problema de la Lambda del API."""
+    from pipeline import clip
+    monkeypatch.setattr(clip, "settings", SimpleNamespace(clip_max_attempts=1, clip_timeout_s=240))
+    _reloj_falso(env, monkeypatch, 45)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert FRASE_LAMBDA not in out and "AVISO" not in out and "REVISAR" not in out
+
+
+def test_el_ensayo_no_mide_tiempos_ni_avisa(env, capsys):
+    code, out, err = _correr(capsys, "imagen", "flux3")
+    assert code == 0 and "AVISO" not in out and "REVISAR" not in out

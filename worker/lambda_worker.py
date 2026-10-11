@@ -129,6 +129,15 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             # la cola cobraría un segundo video que nadie pidió.
             from worker.clip_generar import generar as clip
             clip(j["user_id"], j["clip_id"])
+        elif j["tipo"] == "imagen":
+            # Imagen de un modelo lento (nb2, sdf, sd45, flux3): una llamada a fal
+            # que no cabe en los 29 s de la petición. No relanza la generación: el
+            # trabajo marca su propio error y devuelve lo cobrado, y un reintento
+            # de la cola pagaría una segunda imagen en fal que nadie pidió. Solo
+            # levanta si no puede devolver los créditos (o leer el doc): la
+            # reentrega repite SOLO la devolución y, si falla otra vez, va a la DLQ.
+            from worker.imagen_generar import generar as imagen
+            imagen(j["user_id"], j["imagen_id"])
         elif j["tipo"] == "publicar":
             # M23 C2: película → Blotato. Nunca relanza: un reintento de la
             # cola publicaría dos veces (la publicación se reclama con If-Match).

@@ -815,10 +815,10 @@ def test_fal_llamar_anota_costo_y_unidades_en_langfuse(monkeypatch, app, args, e
         def start_as_current_observation(self, **kw):
             return _Ctx()
 
-    async def subscribe_async(app_, arguments):
+    async def subscribe(app_, arguments):
         return {"ok": True}
     monkeypatch.setattr(fal, "get_client", lambda: _Cliente())
-    monkeypatch.setattr(fal, "fal_client", SimpleNamespace(subscribe_async=subscribe_async))
+    monkeypatch.setattr(fal, "cliente", lambda: SimpleNamespace(subscribe=subscribe))
     asyncio.run(fal.llamar(app, args, timeout_s=5, nombre="prueba"))
     (final,) = [s for s in spans if "cost_details" in s]
     assert final["cost_details"] == {"total": esperado}

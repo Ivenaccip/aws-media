@@ -67,6 +67,9 @@ def nube(monkeypatch):
         return True
     monkeypatch.setattr(media_sync, "subir_archivo", subir)
     monkeypatch.setattr(media_sync, "bajar_archivo", bajar)
+    # la lista también busca los pedidos en segundo plano (server/imagen_cola.py): aquí no hay
+    # ninguno, y con MEDIA_BUCKET en el entorno no debe salir a S3 de verdad
+    monkeypatch.setattr(media_sync, "listar_prefijo", lambda p: [])
     return s3
 
 
@@ -780,7 +783,7 @@ def test_en_local_la_lista_sale_del_disco_de_la_mas_nueva_a_la_mas_vieja(cliente
 
 def test_sin_carpeta_la_lista_esta_vacia(cliente, srv, monkeypatch):
     monkeypatch.delenv("JOBS_BACKEND", raising=False)
-    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": []}
+    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": [], "pendientes": []}
 
 
 def test_en_nube_cada_quien_ve_solo_su_carpeta(cliente, srv, nube, monkeypatch):

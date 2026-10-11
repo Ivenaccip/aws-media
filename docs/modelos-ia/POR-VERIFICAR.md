@@ -1,12 +1,13 @@
 # Modelos del selector: lo que falta por verificar (R4)
 
-Hoy trece filas están en `pipeline/modelos_ia.py` (once modelos). A la venta (con número en
-`tools/tarifas.json` y `activo: true` en la web): para crear imágenes **Grok Imagine**, **Nano Banana 2**
-y, desde el 11-oct-2026, **FLUX.2 klein 9B**, **Z-Image Turbo**, **FLUX.2 pro**, **Seedream 5.0 Flash**,
-**Seedream 4.5** y **FLUX 3**; para editar, **Grok Imagine** y **Nano Banana 2**; para el clip, **Veo 3.1
-Lite** y **Veo 3.1 Fast**. Nano Banana 2 y Veo 3.1 Fast (Ola 1) se encendieron el 9-oct-2026 tras su prueba
-pagada, y los seis de imagen de la Ola 2 el 11-oct-2026 tras la suya (18 llamadas y el panel de fal, DATOS §11);
-Grok y Veo 3.1 Lite ya estaban. Un solo modelo es **inerte**: el servidor lo conoce, pero no se ofrece ni se
+Hoy trece filas están en `pipeline/modelos_ia.py` (once modelos). Con número en
+`tools/tarifas.json` y `activo: true` en la web: para crear imágenes **Grok Imagine**, **Nano Banana 2**
+y, encendidos el 11-oct-2026 en la rama (se ofrecen al desplegarla), **FLUX.2 klein 9B**, **Z-Image Turbo**,
+**FLUX.2 pro**, **Seedream 5.0 Flash**, **Seedream 4.5** y **FLUX 3**; para editar, **Grok Imagine** y
+**Nano Banana 2**; para el clip, **Veo 3.1 Lite** y **Veo 3.1 Fast**. Nano Banana 2 y Veo 3.1 Fast (Ola 1) se
+encendieron el 9-oct-2026 tras su prueba pagada, y los seis de imagen de la Ola 2 el 11-oct-2026 tras la suya
+(18 llamadas y el panel de fal, DATOS §11); Grok y Veo 3.1 Lite ya estaban. Cuatro de las imágenes (Nano Banana 2,
+Seedream 5.0 Flash, Seedream 4.5 y FLUX 3) se generan en segundo plano: ver «Qué va en segundo plano y por qué». Un solo modelo es **inerte**: el servidor lo conoce, pero no se ofrece ni se
 cobra, **Veo 3.1 Standard** (clip, Ola 1). Los otros 9 (Nano Banana 2 Lite y Pro, GPT Image 2 y 2.5, y cinco de clip)
 solo viven en el catálogo de la web (`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que él.
 
@@ -57,16 +58,16 @@ para poder encenderse.
 
 | Tarea | Modelo (id) | Endpoint fal | Falta |
 |---|---|---|---|
-| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **a la venta desde el 11-oct-2026** (Ola 2, solo crear): presets `square_hd`, `landscape_16_9` y `portrait_16_9` (los tres están en el esquema de fal, confirmado el 11-oct), jpeg explícito y ficha de $0.006 dólares por imagen (medida en el panel el 9-oct y de nuevo el 11-oct). Prueba pagada hecha el 11-oct-2026 (UTC): llegaron las tres formas en jpeg (1024×1024, 1024×576, 576×1024). Panel (DATOS §11): llegaron 2 de 3 filas, $0.006 dólares y $0.003375 dólares, que es 0.5625 de la ficha (parece cobrar por píxel: inferencia, el panel no trae el tamaño). Encendida con **2 créditos** (decisión del dueño, 11-oct-2026). Falta: la tercera fila del panel |
-| imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | **a la venta desde el 11-oct-2026** (solo crear): mismos presets que klein, jpeg explícito, ficha de $0.005 dólares por megapíxel (LEÍDA el 8-oct). Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg (1024×1024, 1024×576, 576×1024). Panel (DATOS §11): llegó **1 de 3 filas**, $0.005 dólares, que coincide con la lectura pero no dice a qué tamaño corresponde. Encendida con **2 créditos** (decisión del dueño, 11-oct-2026). Falta: las otras dos filas del panel |
-| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | **a la venta desde el 11-oct-2026** (solo crear): mismos presets, jpeg explícito y **sin `num_images`** (su esquema no lo trae). Ficha de $0.03 dólares: la lectura del 8-oct dejaba abierto que el 1024×1024 (1.05 MP) se cobrara entre $0.03 dólares y $0.045 dólares según cuente el megapíxel. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg (1024×1024, 1024×576, 576×1024). Panel: **las tres solicitudes costaron $0.03 dólares**, con el cuadrado de 1.05 MP entre ellas (no se cobró el megapíxel extra). Encendida con **4 créditos** (decisión del dueño, 11-oct-2026; cubrirían hasta $0.045 dólares) |
-| imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | **a la venta desde el 11-oct-2026** (solo crear): pares explícitos 1920×1920, 2048×1152 y 1152×2048 (su esquema exige entre 1024×1024 y 2048×2048 píxeles; los presets no llegan), jpeg explícito, ficha de $0.027 dólares por imagen. Prueba pagada hecha el 11-oct-2026 (UTC): llegaron exactamente los tamaños pedidos, en jpeg. Panel: las tres solicitudes costaron $0.027 dólares, con tamaños distintos (3.69 MP el cuadrado, 2.36 MP los otros). Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
+| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (Ola 2, solo crear): presets `square_hd`, `landscape_16_9` y `portrait_16_9` (los tres están en el esquema de fal, confirmado el 11-oct), jpeg explícito y ficha de $0.006 dólares por imagen (medida en el panel el 9-oct y de nuevo el 11-oct). Prueba pagada hecha el 11-oct-2026 (UTC): llegaron las tres formas en jpeg (1024×1024, 1024×576, 576×1024). Panel (DATOS §11): llegaron 2 de 3 filas, $0.006 dólares y $0.003375 dólares, que es 0.5625 de la ficha (parece cobrar por píxel: inferencia, el panel no trae el tamaño). Encendida con **2 créditos** (decisión del dueño, 11-oct-2026). Falta: la tercera fila del panel |
+| imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): mismos presets que klein, jpeg explícito, ficha de $0.005 dólares por megapíxel (LEÍDA el 8-oct). Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg (1024×1024, 1024×576, 576×1024). Panel (DATOS §11): llegó **1 de 3 filas**, $0.005 dólares, que coincide con la lectura pero no dice a qué tamaño corresponde. Encendida con **2 créditos** (decisión del dueño, 11-oct-2026). Falta: las otras dos filas del panel |
+| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): mismos presets, jpeg explícito y **sin `num_images`** (su esquema no lo trae). Ficha de $0.03 dólares: la lectura del 8-oct dejaba abierto que el 1024×1024 (1.05 MP) se cobrara entre $0.03 dólares y $0.045 dólares según cuente el megapíxel. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg (1024×1024, 1024×576, 576×1024). Panel: **las tres solicitudes costaron $0.03 dólares**, con el cuadrado de 1.05 MP entre ellas (no se cobró el megapíxel extra). Encendida con **4 créditos** (decisión del dueño, 11-oct-2026; cubrirían hasta $0.045 dólares) |
+| imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (13.4 a 15.0 s), pares explícitos 1920×1920, 2048×1152 y 1152×2048 (su esquema exige entre 1024×1024 y 2048×2048 píxeles; los presets no llegan), jpeg explícito, ficha de $0.027 dólares por imagen. Prueba pagada hecha el 11-oct-2026 (UTC): llegaron exactamente los tamaños pedidos, en jpeg. Panel: las tres solicitudes costaron $0.027 dólares, con tamaños distintos (3.69 MP el cuadrado, 2.36 MP los otros). Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
 | imagen | Nano Banana 2 Lite (`nbl`) | `google/nano-banana-2-lite` | cobra por tokens: **sin precio confirmado** hasta medirlo en la prueba |
-| imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | **a la venta desde el 11-oct-2026** (solo crear): pares explícitos 2048×2048, 2752×1536 y 1536×2752 (su esquema exige 2560×1440 píxeles como mínimo), **sin `output_format`** (la prueba mira en qué formato llega), ficha de $0.04 dólares por imagen. Prueba pagada hecha el 11-oct-2026 (UTC): llegaron exactamente los tamaños pedidos y **en jpeg aun sin pedirlo** (su formato por defecto). Panel: las tres solicitudes costaron $0.04 dólares (4 créditos admiten hasta $0.045 dólares, la menor holgura de los seis). Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
+| imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (8.6 a 22.7 s), pares explícitos 2048×2048, 2752×1536 y 1536×2752 (su esquema exige 2560×1440 píxeles como mínimo), **sin `output_format`** (la prueba mira en qué formato llega), ficha de $0.04 dólares por imagen. Prueba pagada hecha el 11-oct-2026 (UTC): llegaron exactamente los tamaños pedidos y **en jpeg aun sin pedirlo** (su formato por defecto). Panel: las tres solicitudes costaron $0.04 dólares (4 créditos admiten hasta $0.045 dólares, la menor holgura de los seis). Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
-| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **a la venta desde el 11-oct-2026** (solo crear): pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K. Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Panel: las tres solicitudes costaron $0.024 dólares, con el cuadrado de 1024×1024 y los dos de ~1 MP. Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
-| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
+| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (21.8 a 25.0 s), pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K. Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Panel: las tres solicitudes costaron $0.024 dólares, con el cuadrado de 1024×1024 y los dos de ~1 MP. Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
+| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear va en segundo plano** (11.5 a 13.9 s), editar sigue dentro de la petición; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
@@ -109,7 +110,7 @@ el precio solo vale a 1K. Y Veo 3.1 Fast y Standard hacen **un solo intento** po
    nuestro lado, pero `fal_client` puede reenviar el envío si se pierde la respuesta:
    revisa en Request Details que haya una sola solicitud.
 
-### Ola 2 (11-oct-2026): el tamaño por familia y seis modelos de imagen (a la venta desde ese día)
+### Ola 2 (11-oct-2026): el tamaño por familia y seis modelos de imagen (encendidos en la rama ese día; se ofrecen al desplegarla)
 
 Grok y Nano Banana piden el tamaño con `aspect_ratio` («16:9»); FLUX.2, Z-Image y Seedream (y
 GPT Image) piden `image_size` con valores propios. Cada fila de imagen lo declara y
@@ -141,7 +142,7 @@ no trae `num_images`, y FLUX 3 tampoco (ya no hace falta «probar que fal lo ign
 **Encendido (11-oct-2026).** Con el «sí» del dueño, tras la prueba pagada y el panel de fal, los seis entraron
 con su propuesta de créditos: FLUX.2 klein 2, Z-Image Turbo 2, FLUX.2 pro 4, Seedream 5.0 Flash 4, Seedream 4.5 4 y
 FLUX 3 4. El número está en `tools/tarifas.json` §modelos «imagen» (no en «editar»: ninguno edita) y `activo: true` en
-`web/src/pantallas/inicio/modelos.ts`. Se ofrecen cuando el dueño despliegue la rama. Antes de eso, mirar las 18 imágenes
+`web/src/pantallas/inicio/modelos.ts`. Encendidos el 11-oct-2026 en la rama; se ofrecen al desplegarla. Antes de eso, mirar las 18 imágenes
 (`work/probar_modelo/ola2/`) sigue pendiente: lo medido es tamaño, formato y costo, no calidad. Para apagar uno basta quitar
 su número de `tarifas.json`: el servidor lo rechaza con 422 sin cobrar.
 
@@ -175,6 +176,34 @@ cada solicitud. **El dueño pegó 15 filas de 18**: de FLUX.2 klein llegaron $0.
 que parece un cobro por píxel) y falta 1; de Z-Image Turbo llegó una de $0.005 dólares y faltan 2. No cambian los créditos. La herramienta no mira la calidad de las imágenes: eso lo decide el dueño mirándolas. Cada llamada
 imprimió en Windows el aviso de cierre «Event loop is closed» de asyncio (18 de 18), con código de salida 0 y el
 resultado ya guardado; es ruido, no un fallo.
+
+### Qué va en segundo plano y por qué
+
+`POST /api/imagenes` generaba la imagen DENTRO de la petición, y la Lambda del API corta a los 29 s (API Gateway HTTP
+API: tope fijo de 30 s); un arranque en frío ya gasta unos 16 s. Cortada la petición, se cobraba, no se devolvía y fal
+cobraba igual. Por eso el modelo que tardó **más de 10 s** en la prueba pagada lleva `segundo_plano=True` en su fila de
+`pipeline/modelos_ia.py`: al crear en la nube se cobra, se guarda el pedido en S3 (`usuarios/<user>/imagenes-pedidos/<id>.json`)
+y se encola, como el clip; `worker/imagen_generar.py` la genera y la sube a «Mis creaciones» (`imagenes/<user>/<nombre>`) y la
+pantalla sondea `GET /api/imagenes/pedidos/<id>`. Los rápidos siguen síncronos, con la respuesta de siempre; en local
+todo es síncrono; editar no cambia.
+
+| Modelo | Segundos medidos | ¿Segundo plano? |
+|---|---|---|
+| Nano Banana 2 (`nb2`) | 11.5 a 13.9 (crear 11.7; editar 11.5 y 13.9, DATOS §9) | sí, al crear |
+| Seedream 5.0 Flash (`sdf`) | 13.4 a 15.0 | sí |
+| Seedream 4.5 (`sd45`) | 8.6 a 22.7 | sí |
+| FLUX 3 (`flux3`) | 21.8 a 25.0 | sí |
+| FLUX.2 pro (`flux2`) | 7.2 a 8.1 | no |
+| FLUX.2 klein (`klein`) | 0.8 a 1.2 | no |
+| Z-Image Turbo (`zit`) | 1.0 a 1.8 | no |
+| Grok Imagine (`grok`) | sin medición registrada en el repo | no (el predeterminado, rápido y conocido; sin regla) |
+
+La regla: **segundo plano si y solo si algún tiempo medido pasó de 10 s** (`tests/test_imagen_segundo_plano.py` fija la
+tabla y la regla). Mover un modelo de un camino al otro es cambiar un booleano. `tools/probar_modelo.py` marca REVISAR cuando
+una imagen que va dentro de la petición tarda más de 10 s, y para las de segundo plano solo avisa. **Decisión pendiente del
+dueño:** editar (`/api/imagenes/editar`) no se encola y Nano Banana 2 al editar midió 11.5 y 13.9 s; con un arranque en frío de
+~16 s más el cobro y la subida (~2 s) suma de ~29.5 a ~32 s y supera los 29 s de la Lambda y los 30 s del gateway
+(`docs/OPERACION.md`, «Imágenes en segundo plano»).
 
 **GPT Image sigue sin fila**, por tres razones: faltan las decisiones del dueño (la calidad y el tamaño
 fijos que se ofrecen; la propuesta de la hoja de costos es GPT Image 2.5 Flare en `high`, 6 créditos a

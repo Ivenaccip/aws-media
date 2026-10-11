@@ -21,6 +21,46 @@ Las versiones no se sobrescriben: cada envío crea un nombre nuevo
 (`<12 hex>.jpg`). Después de editar, la imagen de trabajo sigue siendo la
 original: enviar otra vez da otra versión, no pisa la anterior.
 
+## Imágenes en segundo plano
+
+Los modelos que tardan más de ~10 s (Nano Banana 2, Seedream 5.0 Flash, Seedream
+4.5 y FLUX 3) no se esperan dentro de la petición: la Lambda del API corta a los
+29 s. `POST /api/imagenes` cobra, deja el pedido en marcha y contesta
+`{lanzado: true, id, creditos}` en vez de `{nombre, url}`; los modelos rápidos
+siguen contestando lo de siempre. Esta pantalla acepta las dos respuestas:
+
+- con `lanzado`, el «−N» sale y el saldo se refresca **en ese momento** (ya se
+  cobró) y se pregunta por `GET /api/imagenes/pedidos/<id>` cada 2 s, con su
+  espera por pasos de siempre;
+- `listo` sigue exactamente como si el POST hubiera devuelto `{nombre, url}`;
+- `error` es el mismo camino que el 502 de siempre (tres partes, el texto se
+  queda) y refresca el saldo: el worker ya devolvió los créditos;
+- pasados **5 min** el navegador deja de esperar y dice que la imagen sigue en
+  camino y aparecerá en «Mis creaciones»: no devuelve nada, el servidor es quien
+  devuelve;
+- **solo un 404 (el pedido no existe) corta la espera**. El pedido ya está
+  cobrado y en marcha, así que cualquier otro fallo de la pregunta (un 429, un
+  408, un 401/403 intermitente, un 5xx o la red caída) se tolera y se vuelve a
+  preguntar hasta el tope;
+- al desmontar la pantalla el sondeo se cancela.
+
+Editar (`/api/imagenes/editar`) sigue síncrono.
+
+**Hoy este camino está latente.** Esta pantalla (y la página vieja) manda
+`POST /api/imagenes` sin `modelo`, y sin `modelo` el servidor usa el
+predeterminado (Grok), que contesta en el momento con `{nombre, url}`. Solo
+pasa a segundo plano un pedido con `modelo` de los cuatro lentos, y ese solo lo
+manda **la caja del inicio** (`inicio.caja.una_imagen_lanzada_dice_que_va_en_camino_y_refresca_el_saldo`).
+El sondeo de aquí queda escrito y probado para el día que la pantalla ofrezca
+elegir modelo; mientras tanto no se ejercita con el servidor real.
+
+**La página vieja** (`static/imagenes.html`) hace lo mismo con su propio
+`esperarImagen`: solo el 404 corta, y el aviso de que sigue en camino no es un
+error, así que sale por `#gaviso` (`role="status"`, tono secundario) y no por
+`#gerr` (`role="alert"`, rojo). Como no tiene bundler, lo prueba
+`tests/test_imagenes_vieja_sondeo.py` (el bloque corre en node). Ese archivo se
+borra junto con la página.
+
 ## Etapas
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
@@ -78,6 +118,15 @@ con ese nombre exacto.
 | `imagenes.archivo.pegar_texto_gana_a_la_imagen` | pegar con texto (Excel, PowerPoint) pega el texto; sin texto, abre la imagen |
 | `imagenes.archivo.tipo_y_tamano_antes_de_abrir` | solo JPG, PNG o WebP, hasta 15 MB, sin llegar a abrirla |
 | `imagenes.teclado.ctrl_enter_envia` | Ctrl/Cmd+Enter envía |
+| `imagenes.segundo_plano.lanzado_sondea_y_al_estar_lista_sigue_como_la_de_siempre` | con `lanzado` el «−N» sale una sola vez y el saldo se refresca antes de que la imagen esté; mientras tanto, su espera por pasos; al llegar `listo` pasa a editarse como si el POST hubiera devuelto `{nombre, url}`, y deja de preguntar |
+| `imagenes.segundo_plano.el_sondeo_es_cada_2_s_y_un_tropiezo_de_red_no_lo_corta` | `GET /api/imagenes/pedidos/<id>` cada 2 s exactos (ni uno antes); una red caída o un 503 no cortan la espera, un 404 sí (los demás 4xx, en `imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado`) |
+| `imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado` | un 429, 408, 401, 403, 400, 409 o 422 del sondeo no cortan la espera de una imagen ya cobrada (se sigue preguntando y, al salir, queda como siempre, con un solo cobro); el 404 (el pedido no existe) sí corta, con su `ErrorApi` |
+| `imagenes.segundo_plano.pasado_el_tope_de_5_min_dice_que_sigue_en_camino_sin_devolver_nada` | a los 5 min exactos el navegador deja de esperar; un aviso (no un error) dice que la imagen sigue en camino y aparecerá en «Mis creaciones», con enlace al inicio; no habla de devolver, deja de preguntar y el botón vuelve |
+| `imagenes.segundo_plano.si_falla_se_cuenta_en_tres_partes_y_se_refresca_el_saldo` | un pedido `error` es el 502 de siempre (qué pasó, tus créditos, qué sigue; el texto se queda) con el mensaje del servidor plegado, y refresca el saldo |
+| `imagenes.segundo_plano.al_cerrar_la_pantalla_se_deja_de_preguntar` | desmontar corta el sondeo: no hay más peticiones |
+| `imagenes.segundo_plano.la_respuesta_de_siempre_no_sondea` | `{nombre, url}` no sondea nada; un `lanzado` sin `id` no es una imagen válida |
+| `imagenes.segundo_plano.tres_en_marcha_se_dice_sin_hablar_de_devolver` | el 409 «Ya tienes 3 imágenes generándose…» no cobró: sin «Te devolvimos», sin «Qué pasó», el texto se queda |
+| `imagenes.segundo_plano.el_orbe_no_manda_a_pedirla_otra_vez` | si el orbe se agota con la imagen en camino, dice que no la pida otra vez (ya se cobró), no el «inténtalo otra vez» de la espera síncrona |
 | `imagenes.titulo.el_lector_oye_el_titulo_fijo` | la palabra que gira es decorativa: el lector oye «Crea tu imagen» / «Edita tu imagen» |
 | `imagenes.textos.del_servidor_como_texto` | los nombres de estilo con HTML se leen como texto |
 | `imagenes.marco.enlace_estudio_sin_version_anterior` | «← Estudio», sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
@@ -122,6 +171,14 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_mis_imagenes_abre_una_imagen_validada` | `imagenes.enlace.solo_abre_una_imagen_con_nombre_valido` y `imagenes.enlace.editar_abre_el_editor` |
 | `test_soltar_una_imagen_en_cualquier_parte_la_abre` | el `drop` del documento en `Imagenes.tsx` (se prueba apagado en vuelo en `imagenes.cobro.en_vuelo_nada_cambia_la_imagen_ni_el_modo`) |
 | `test_el_js_de_la_pagina_es_valido` | `tsc` y `npm run build` |
+
+### tests/test_imagenes_vieja_sondeo.py (la espera en segundo plano de la página)
+
+| Test viejo | Destino |
+|---|---|
+| `test_solo_un_404_corta_el_sondeo_de_un_pedido_ya_cobrado` | `imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado` |
+| `test_pasado_el_tope_no_devuelve_un_error_sino_un_aviso_de_que_sigue_en_camino`, `test_el_aviso_de_en_camino_es_un_estado_informativo_y_no_el_error_del_formulario`, `test_el_aviso_se_limpia_donde_se_limpia_el_error_del_formulario` | `imagenes.segundo_plano.pasado_el_tope_de_5_min_dice_que_sigue_en_camino_sin_devolver_nada` (un `<Aviso>` con `role="status"`, nunca `role="alert"`) |
+| `test_un_error_de_verdad_del_pedido_no_lleva_la_marca_de_en_camino` | `imagenes.segundo_plano.si_falla_se_cuenta_en_tres_partes_y_se_refresca_el_saldo` |
 
 ### tests/test_ui14_imagenes.py (la carta de diseño en la vieja)
 

@@ -24,11 +24,14 @@ import {
 } from './logica';
 import { TarjetaEdicion, TarjetaImagen, TarjetaVideo } from './Obras';
 
-/** Algo que se pidió desde la caja y todavía no llega a la lista. */
+/** Algo que se pidió desde la caja y todavía no llega a la lista, o una imagen que el
+ *  servidor hace en segundo plano (`pendientes` de /api/imagenes). */
 export interface Pendiente {
   clave: string;
   tipo: 'corto' | 'imagen';
   texto: string;
+  /** Solo una imagen en segundo plano que falló: lo que dice el servidor. Sin esto, la tarjeta gira. */
+  error?: string;
 }
 
 type Visto = { tipo: 'corto'; c: ClipCorto } | { tipo: 'imagen'; im: Imagen };
@@ -130,26 +133,39 @@ export function Galeria({ creaciones, pendientes = [], slots, alArchivar, alUsar
   );
 }
 
-/** La tarjeta de lo que se acaba de pedir: gira hasta que la lista la trae. */
+/** La tarjeta de lo que se acaba de pedir: gira hasta que la lista la trae. Si el
+ *  servidor dice que falló (`error`), deja de girar y cuenta por qué. */
 function Generando({ p }: { p: Pendiente }) {
+  const fallo = p.error !== undefined;
   return (
     <article
-      aria-busy="true"
+      aria-busy={fallo ? undefined : 'true'}
       className="relative flex flex-col overflow-hidden rounded-boton border border-linea bg-superficie text-texto"
     >
       <div className="grid aspect-[16/10] w-full place-items-center border-b border-linea bg-elevada text-secundario">
-        <span className="flex flex-col items-center gap-1.5 text-xs">
-          <Icono nombre="reloj" className="size-6 animate-spin motion-reduce:animate-none" />
-          Generando…
-        </span>
+        {fallo ? (
+          <span className="flex flex-col items-center gap-1.5 text-xs text-error">
+            <Icono nombre="aviso" className="size-6" />
+            Con error
+          </span>
+        ) : (
+          <span className="flex flex-col items-center gap-1.5 text-xs">
+            <Icono nombre="reloj" className="size-6 animate-spin motion-reduce:animate-none" />
+            Generando…
+          </span>
+        )}
       </div>
       <div className="px-3 py-2.5">
         <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap" title={p.texto}>
           {p.texto}
         </span>
         <p className="m-0 text-xs text-secundario">
-          <span className="font-semibold text-texto">{p.tipo === 'corto' ? 'Video corto' : 'Imagen'}</span> · puedes seguir
-          usando la página
+          <span className="font-semibold text-texto">{p.tipo === 'corto' ? 'Video corto' : 'Imagen'}</span> ·{' '}
+          {/* región viva: el fallo llega solo (lo trae el sondeo), así que quien no ve la tarjeta lo oye.
+              Está desde que la tarjeta gira: un lector solo anuncia lo que cambia en una región que ya existía. */}
+          <span aria-live="polite">
+            {fallo ? <span className="text-error">{p.error}</span> : 'puedes seguir usando la página'}
+          </span>
         </p>
       </div>
     </article>

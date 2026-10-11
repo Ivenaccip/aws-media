@@ -1,9 +1,10 @@
 """UI·15 — «Tus trabajos»: el cuadro de abajo a la derecha, en todas las pantallas.
 
 Una sola lectura que junta lo que corre y lo que terminó en las últimas
-HORAS_VISIBLE horas, de todos los tipos: películas, clips, shorts (importar,
-analizar, renderizar), la propuesta de corte del editor IA, estilos y
-competencia. Cada ficha trae qué es, en qué va y a dónde llevar al usuario.
+HORAS_VISIBLE horas, de todos los tipos: películas, clips, imágenes en segundo
+plano, shorts (importar, analizar, renderizar), la propuesta de corte del
+editor IA, estilos y competencia. Cada ficha trae qué es, en qué va y a dónde
+llevar al usuario.
 
 Solo lee y no cobra. El cuadro sondea mientras hay algo corriendo, así que lo
 que cuesta leer se recorta ANTES de abrir nada: de S3 solo se abren los
@@ -23,6 +24,7 @@ from fastapi import APIRouter
 
 from pipeline import creditos, db, media_sync
 from pipeline.project import Proyecto, listar_proyectos
+from server import imagen_cola
 
 router = APIRouter(prefix="/api/trabajos", tags=["trabajos"])
 
@@ -202,7 +204,7 @@ def _editor(user: str, desde: float, ahora: float) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# lo que vive en S3 como un JSON por corrida: clips, estilos y competencia
+# lo que vive en S3 como un JSON por corrida: clips, imágenes, estilos y competencia
 
 def _recientes_s3(prefijo: str, desde: float) -> list[tuple[str, dict]]:
     """Solo abre lo que cambió dentro de la ventana: la fecha viene del listado.
@@ -228,9 +230,17 @@ def _segundos_del_clip(doc: dict) -> int:
 
 def ficha_s3(tipo: str, ref: str, doc: dict, ahora: float) -> dict | None:
     seg = _segundos_del_clip(doc)
+    devueltos = doc.get("devueltos")
+    if tipo == "imagen":
+        # el worker guarda lo cobrado (`creditos`) y si volvió (`devuelto`); un pedido que
+        # caducó sin respuesta se enseña como error (lo mismo que «Mis creaciones»)
+        doc = imagen_cola.como_se_ve(doc) or {}
+        devueltos = doc.get("creditos") if doc.get("devuelto") is not False else None
     textos = {
         "clip": (f"Generando tu clip de {seg} segundos", f"Tu clip de {seg} segundos está listo",
                  "No se pudo generar tu clip", "/clip.html", _corto(doc.get("texto", ""))),
+        "imagen": ("Generando tu imagen", "Tu imagen está lista", "No se pudo generar tu imagen",
+                   "/imagenes.html", _corto(doc.get("texto", ""))),
         "estilo": ("Analizando un estilo", "Tu perfil de estilo está listo",
                    "No se pudo analizar el estilo", "/estilos.html",
                    _corto(doc.get("cuenta") or doc.get("url") or "")),
@@ -252,8 +262,7 @@ def ficha_s3(tipo: str, ref: str, doc: dict, ahora: float) -> dict | None:
     if estado == "listo":
         return _ficha(tipo, ref, "listo", listo, url, fin, detalle=detalle)
     if estado == "error":
-        return _ficha(tipo, ref, "error", error, url, fin, detalle=detalle,
-                      devueltos=doc.get("devueltos"))
+        return _ficha(tipo, ref, "error", error, url, fin, detalle=detalle, devueltos=devueltos)
     return None
 
 
@@ -262,6 +271,7 @@ def _s3(user: str, desde: float, ahora: float) -> list[dict]:
         return []
     out = []
     for tipo, prefijo in (("clip", f"usuarios/{user}/clips/"),
+                          ("imagen", f"usuarios/{user}/imagenes-pedidos/"),
                           ("estilo", f"usuarios/{user}/estilos/"),
                           ("competencia", f"usuarios/{user}/competencia/informes/")):
         for ref, doc in _recientes_s3(prefijo, desde):

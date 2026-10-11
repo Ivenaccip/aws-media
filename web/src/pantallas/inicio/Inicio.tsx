@@ -5,6 +5,7 @@
 // con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
+import { refrescarSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
@@ -29,6 +30,7 @@ import {
   type Edicion,
   type EstadoBlotato,
   type Imagen,
+  type PedidoImagen,
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
@@ -41,7 +43,17 @@ interface Listas {
   ediciones: Edicion[] | null;
   /** UI·26: los clips de 8 s también son «Mis videos». null = no llegaron. */
   clips: ClipCorto[] | null;
+  /** Las imágenes que el servidor hace en segundo plano (generando, o con error de la última hora). */
+  pedidos: PedidoImagen[];
 }
+
+/** Un pedido en segundo plano se enseña con la misma tarjeta de «Generando…» que lo recién pedido en la caja. */
+const comoPendiente = (p: PedidoImagen): Pendiente => ({
+  clave: 'i:' + p.id,
+  tipo: 'imagen',
+  texto: p.texto,
+  ...(p.estado === 'error' ? { error: p.error || 'La imagen no se pudo generar. Se te devolvieron los créditos.' } : {}),
+});
 
 const mensaje = (e: unknown) => {
   // el 409 de desarchivar trae el texto en `detail` y alguno viejo en `detail.aviso`
@@ -70,10 +82,16 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
+  // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
+  const generandoImagenes = useRef<Set<string>>(new Set());
   // lo que se pidió desde la caja y todavía no llega a la lista
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  // las imágenes que el servidor aceptó desde la caja y cuya relectura de la lista aún no salió bien: su tarjeta
+  // es lo único que dice que van en camino, así que se queda (y se sigue intentando) hasta que la lista las traiga
+  const [esperandoLista, setEsperandoLista] = useState<string[]>([]);
 
-  const cargar = useCallback(async () => {
+  /** true si la relectura salió bien con la lista de imágenes, que es donde vive lo que se pide en la caja. */
+  const cargar = useCallback(async (): Promise<boolean> => {
     const [ps, sl, im, ed, cl] = await Promise.allSettled([
       cargarProyectos(),
       cargarSlots(),
@@ -84,16 +102,31 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     // sin la lista de proyectos se avisa y el inicio se queda con lo que tenía
     if (ps.status === 'rejected') {
       setFalloCarga(true);
-      return;
+      return false;
     }
     setFalloCarga(false);
-    setListas({
+    if (im.status === 'fulfilled') {
+      const { pendientes } = im.value;
+      // una que generaba y ahora falló: ya se devolvió lo cobrado, el saldo se pone al día
+      if (pendientes.some(p => p.estado === 'error' && generandoImagenes.current.has(p.id))) refrescarSaldo();
+      generandoImagenes.current = new Set(pendientes.filter(p => p.estado === 'generando').map(p => p.id));
+    }
+    setListas(antes => ({
       proyectos: ps.value,
       slots: sl.status === 'fulfilled' ? sl.value.slots : null,
-      imagenes: im.status === 'fulfilled' ? im.value : null,
+      imagenes: im.status === 'fulfilled' ? im.value.imagenes : null,
       ediciones: ed.status === 'fulfilled' ? ed.value : null,
       clips: cl.status === 'fulfilled' ? cl.value : null,
-    });
+      // si la lista de imágenes no llegó, los pedidos se quedan como estaban: sin ellos el sondeo se pararía a medias
+      pedidos: im.status === 'fulfilled' ? im.value.pendientes : (antes?.pedidos ?? []),
+    }));
+    return im.status === 'fulfilled';
+  }, []);
+
+  // la lista ya trae lo pedido en la caja: sus tarjetas locales se van
+  const quitarPendientes = useCallback((claves: string[]) => {
+    setPendientes(l => l.filter(p => !claves.includes(p.clave)));
+    setEsperandoLista(l => l.filter(c => !claves.includes(c)));
   }, []);
 
   const abrirBlotato = useCallback(() => {
@@ -123,14 +156,23 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }
   }, [cargar, abrirBlotato]);
 
-  // Un video corto tarda un par de minutos: mientras alguno se genera, la
-  // galería se vuelve a pedir sola (cada 5 s, como la pantalla del clip).
-  const hayGenerando = listas?.clips?.some(c => c.estado === 'generando') ?? false;
+  // Un video corto tarda un par de minutos y una imagen de un modelo lento, medio
+  // minuto: mientras alguno se genera, la galería se vuelve a pedir sola (cada 5 s,
+  // como la pantalla del clip). También mientras una imagen recién pedida espera que
+  // una relectura salga bien: sin ella, ni la tarjeta ni el sondeo tendrían de dónde seguir.
+  const hayGenerando =
+    (listas?.clips?.some(c => c.estado === 'generando') ?? false) ||
+    (listas?.pedidos.some(p => p.estado === 'generando') ?? false);
   useEffect(() => {
-    if (!hayGenerando) return;
-    const t = setInterval(() => void cargar(), 5000);
+    if (!hayGenerando && !esperandoLista.length) return;
+    const t = setInterval(() => {
+      // esta lectura empezó después de pedirlas: si sale bien, las trae y sus tarjetas locales sobran
+      void cargar().then(llego => {
+        if (llego && esperandoLista.length) quitarPendientes(esperandoLista);
+      });
+    }, 5000);
     return () => clearInterval(t);
-  }, [hayGenerando, cargar]);
+  }, [hayGenerando, esperandoLista, cargar, quitarPendientes]);
 
   // «Usar como referencia» del visor: la imagen vuelve a la caja, lista para animarla
   async function usarComoReferencia(im: Imagen) {
@@ -167,7 +209,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     listas.ediciones !== null &&
     !listas.ediciones.length &&
     listas.clips !== null &&
-    !listas.clips.length;
+    !listas.clips.length &&
+    !listas.pedidos.length;
 
   return (
     <div className="mx-auto max-w-[1100px] px-5 pt-16 pb-14">
@@ -185,9 +228,14 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             ref={caja}
             ir={ir}
             alPedir={p => setPendientes(l => [p, ...l])}
-            alTerminar={clave => {
-              // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va
-              void cargar().finally(() => setPendientes(l => l.filter(p => p.clave !== clave)));
+            alTerminar={(clave, esperarLista) => {
+              // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
+              // Una imagen que el servidor aceptó se queda hasta que la lista llegue: si esa lectura
+              // falla, la tarjeta es lo único que dice que va en camino (se reintenta cada 5 s).
+              void cargar().then(llego => {
+                if (llego || !esperarLista) quitarPendientes([clave]);
+                else setEsperandoLista(l => [...l, clave]);
+              });
             }}
           />
 
@@ -218,7 +266,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           {listas && !nuevo && (
             <Galeria
               creaciones={creaciones(listas.proyectos, listas.clips, listas.ediciones, listas.imagenes)}
-              pendientes={pendientes}
+              pendientes={[...pendientes, ...listas.pedidos.map(comoPendiente)]}
               slots={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}
               alArchivar={setAArchivar}
               alUsarReferencia={usarComoReferencia}

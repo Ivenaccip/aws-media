@@ -9,7 +9,10 @@
 //     elegir, editar sin imagen, el pincel sin zona, el texto vacío);
 //   · el pedido se arma ANTES de moderar: lo que se toque durante la revisión
 //     ya no cambia lo que se cobra;
-//   · con una petición en vuelo no se cambia la imagen, la zona ni el modo.
+//   · con una petición en vuelo no se cambia la imagen, la zona ni el modo;
+//   · un modelo que tarda contesta `lanzado` (ya se cobró y la hace el worker): se
+//     pregunta por el pedido cada 2 s, con tope de 5 min en el navegador. Pasado el
+//     tope se dice que sigue en camino; el servidor es quien devuelve si falla.
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
@@ -46,6 +49,7 @@ import {
   problemaEnvio,
   quiereEditar,
   REVISANDO,
+  SigueEnCamino,
   TEXTOS,
   urlArchivo,
   vistaDe,
@@ -69,6 +73,8 @@ interface Falla {
   sinSaldo?: boolean;
   /** El server cobró, falló y devolvió (502): se cuenta en tres partes. */
   devuelto?: boolean;
+  /** Pasó el tope de espera y la imagen sigue en camino: no es un error, no se devuelve nada. */
+  enCamino?: boolean;
 }
 
 const FORMATOS: [Formato, string, string, string][] = [
@@ -81,6 +87,9 @@ const PALABRAS = ['Crea', 'Edita', 'Bocetea'];
 const TARIFA = video.imagen;
 const AL_AGOTAR =
   'Esto está tardando más de lo normal. Si no aparece tu imagen, inténtalo otra vez; si te descontaron créditos, escríbenos.';
+// en segundo plano ya se cobró y la imagen va en camino: pedirla otra vez cobraría dos veces
+const AL_AGOTAR_EN_CAMINO =
+  'Tu imagen sigue en camino y está tardando más de lo normal. No la pidas otra vez: aparecerá en «Mis creaciones», en el inicio.';
 
 export function Imagenes() {
   const saldo = useSaldo();
@@ -104,6 +113,8 @@ export function Imagenes() {
   const [cargando, setCargando] = useState(false);
   const [enVuelo, setEnVuelo] = useState(false);
   const [espera, setEspera] = useState<string | null>(null);
+  // el servidor cobró y la imagen se hace en segundo plano: se espera preguntando por ella
+  const [segundoPlano, setSegundoPlano] = useState(false);
   const [hayTrazo, setHayTrazo] = useState(false);
   const [grosor, setGrosor] = useState(46);
   const [falla, setFalla] = useState<Falla | null>(null);
@@ -118,6 +129,9 @@ export function Imagenes() {
   const archivoInput = useRef<HTMLInputElement>(null);
   const envio = useRef<HTMLSpanElement>(null);
   const generacion = useRef(0);
+  // corta el sondeo de una imagen en segundo plano si la pantalla se cierra
+  const cancelar = useRef<AbortController | null>(null);
+  useEffect(() => () => cancelar.current?.abort(), []);
   // lo que leen las promesas y los eventos del documento sin esperar un render
   const vivo = useRef({ enVuelo: false, trabajo: null as Trabajo | null, resultado: null as Hecha | null, estado: 'vacio' as Estado });
   useEffect(() => {
@@ -414,7 +428,17 @@ export function Imagenes() {
       let hacer: () => Promise<Hecha>;
       if (m === 'crear') {
         const cuerpo = { prompt: p, estilo, estilo_custom: estiloCustom, formato };
-        hacer = () => crear(cuerpo);
+        cancelar.current = new AbortController();
+        hacer = () =>
+          crear(cuerpo, {
+            senal: cancelar.current!.signal,
+            // el modelo tarda: el servidor ya cobró y la imagen va en camino
+            alLanzar: () => {
+              setSegundoPlano(true);
+              cobrado?.();
+              refrescarSaldo();
+            },
+          });
       } else {
         const fd = new FormData();
         fd.append('prompt', p);
@@ -451,14 +475,23 @@ export function Imagenes() {
       cobrado?.(); // antes de bajar la imagen: el «−N» va con el saldo
       refrescarSaldo();
     } catch (e) {
+      // la pantalla se cerró a media espera: nadie lee la respuesta
+      if (e instanceof DOMException && e.name === 'AbortError') return false;
       setEspera(null); // NUNCA un orbe girando junto a un error
-      setFalla({
-        texto: mensaje(e),
-        sinSaldo: e instanceof ErrorApi && e.sinSaldo,
-        // el 502 es el único que cobró: el server devolvió antes de contestar
-        devuelto: e instanceof ErrorApi && e.estado === 502,
-      });
+      if (e instanceof SigueEnCamino) {
+        setFalla({ texto: e.message, enCamino: true });
+      } else {
+        setFalla({
+          texto: mensaje(e),
+          sinSaldo: e instanceof ErrorApi && e.sinSaldo,
+          // el 502 es el único que cobró: el server devolvió antes de contestar
+          devuelto: e instanceof ErrorApi && e.estado === 502,
+        });
+        // y devolvió: el saldo vuelve a subir (en segundo plano, lo devuelve el worker)
+        if (e instanceof ErrorApi && e.estado === 502) refrescarSaldo();
+      }
     } finally {
+      setSegundoPlano(false);
       setEspera(null);
       vivo.current.enVuelo = false;
       setEnVuelo(false);
@@ -849,7 +882,7 @@ export function Imagenes() {
           />
         </span>
         {/* UI·27: la misma espera por pasos que crear, en las dos vistas */}
-        {espera && <EsperaImagen modo={modo} texto={espera} />}
+        {espera && <EsperaImagen modo={modo} texto={espera} enCamino={segundoPlano} />}
         {falla?.devuelto && (
           // UI·27: el mismo error en tres partes que crear (UI·11)
           <ErrorTresPartes
@@ -861,7 +894,16 @@ export function Imagenes() {
             detalle={falla.texto}
           />
         )}
-        {falla && !falla.devuelto && (
+        {falla?.enCamino && (
+          // no es un error: el servidor sigue con ella y, si falla, devuelve los créditos
+          <Aviso>
+            {falla.texto}{' '}
+            <a className={claseBoton('enlace')} href="/estudio/">
+              Ir al inicio
+            </a>
+          </Aviso>
+        )}
+        {falla && !falla.devuelto && !falla.enCamino && (
           <p role="alert" className="m-0 max-w-[65ch] whitespace-pre-wrap text-center text-sm text-error">
             {falla.texto}
             {falla.sinSaldo && (
@@ -974,7 +1016,7 @@ function Muestra({ estilo, descripcion, children }: { estilo: string; descripcio
   );
 }
 
-function EsperaImagen({ modo, texto }: { modo: Modo; texto: string }) {
+function EsperaImagen({ modo, texto, enCamino }: { modo: Modo; texto: string; enCamino: boolean }) {
   // el reloj empieza cuando aparece la espera (se monta con el envío)
   const [desde] = useState(() => Date.now());
   const llevas = useLlevas(desde);
@@ -987,7 +1029,7 @@ function EsperaImagen({ modo, texto }: { modo: Modo; texto: string }) {
       paso={paso}
       pct={avanceEspera(paso, pasos.length, llevas, ESTIMADO_IMAGEN_MS)}
       tiempo={textoLlevas(llevas, 'unos 20 s')}
-      orbe={{ texto, tope: 180000, textoAlAgotar: AL_AGOTAR }}
+      orbe={{ texto, tope: 180000, textoAlAgotar: enCamino ? AL_AGOTAR_EN_CAMINO : AL_AGOTAR }}
     />
   );
 }

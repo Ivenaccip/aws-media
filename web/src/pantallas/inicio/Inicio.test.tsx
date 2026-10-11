@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clip, modelos, video } from '../../nucleo/tarifas';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
-import { json, llamadas, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Inicio } from './Inicio';
-import type { ClipCorto, Edicion, EstadoBlotato, Imagen, Proyecto } from './logica';
+import type { ClipCorto, Edicion, EstadoBlotato, Imagen, PedidoImagen, Proyecto } from './logica';
 import { CATALOGO, PRECIOS } from './modelos';
 
 const P1: Proyecto = {
@@ -43,6 +43,20 @@ const S1: Edicion = {
   shorts: { estado: 'listo', titulo: 'Mi charla en el foro', inicio: '2026-09-22T10:00:00Z', cuantos: 3 },
 };
 
+// una imagen que el servidor hace en segundo plano (los modelos que tardan): sale en `pendientes` de /api/imagenes
+const PEDIDO: PedidoImagen = {
+  id: 'img-20261011-120000-abc123',
+  estado: 'generando',
+  inicio: '2026-10-11T12:00:00+00:00',
+  texto: 'un faro de noche',
+  modelo: 'nb2',
+  creditos: modelos.imagen.nb2,
+  nombre: '',
+  url: '',
+  error: '',
+};
+const SE_DEVOLVIERON = 'La imagen no se pudo generar. Se te devolvieron los créditos.';
+
 const CONECTADO: EstadoBlotato = {
   conectado: true,
   origen: 'usuario',
@@ -56,6 +70,8 @@ interface Mundo {
   proyectos?: Proyecto[] | (() => Response | Promise<Response>);
   slots?: number | null;
   imagenes?: Imagen[] | null;
+  /** Las imágenes en segundo plano. Sin esto la llave `pendientes` ni viaja (un servidor local o anterior). */
+  pedidos?: PedidoImagen[];
   ediciones?: Edicion[] | null;
   /** 'local': el 503 de «corre en el servicio». */
   clips?: ClipCorto[] | null | 'local';
@@ -67,6 +83,7 @@ function montar({
   proyectos = [P1],
   slots = null,
   imagenes = [],
+  pedidos,
   ediciones = [],
   clips = [],
   blotato = CONECTADO,
@@ -75,7 +92,8 @@ function montar({
   return servidor({
     '/api/proyectos': () => (typeof proyectos === 'function' ? proyectos() : json(proyectos)),
     '/api/slots': () => json({ slots, activos: 0 }),
-    '/api/imagenes': () => (imagenes ? json({ total: imagenes.length, imagenes }) : json({ detail: 'x' }, 500)),
+    '/api/imagenes': () =>
+      imagenes ? json({ total: imagenes.length, imagenes, ...(pedidos ? { pendientes: pedidos } : {}) }) : json({ detail: 'x' }, 500),
     '/api/edicion/proyectos': () => (ediciones ? json(ediciones) : sinRed()),
     '/api/clip': () =>
       clips === 'local' ? json({ detail: 'corre en el servicio' }, 503) : clips ? json({ clips }) : sinRed(),
@@ -102,12 +120,15 @@ afterEach(() => {
   vi.useRealTimers();
   restaurarCatalogo?.();
   restaurarCatalogo = undefined;
+  delete window.monedero;
 });
 
-// El catálogo real enciende Grok y Nano Banana 2 (imagen y editar) y Veo Lite y Veo
-// Fast (clip, los dos con 4, 6 y 8 s). Para ver qué pasa con un modelo que no tiene
-// todas las duraciones se enciende LTX (sin 4 s) mientras dura la prueba, con
-// números de PRUEBA (no son los de tarifas.json), y después se deja como estaba.
+// El catálogo real enciende, para crear imágenes, Grok, FLUX.2 klein, Z-Image Turbo,
+// FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3 y Nano Banana 2 (para editar,
+// solo Grok y Nano Banana 2), y Veo Lite y Veo Fast (clip, los dos con 4, 6 y 8 s).
+// Para ver qué pasa con un modelo que no tiene todas las duraciones se enciende LTX
+// (sin 4 s) mientras dura la prueba, con números de PRUEBA (no son los de
+// tarifas.json), y después se deja como estaba.
 let restaurarCatalogo: (() => void) | undefined;
 function encenderLtx() {
   const ltx = CATALOGO.clip.find(m => m.id === 'ltx')!;
@@ -321,6 +342,150 @@ describe('la caja', () => {
     await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(llamadas(f, '/api/imagenes')).toHaveLength(1));
     expect(cuerpoDe(f, '/api/imagenes')).toEqual({ prompt: 'un gato en la luna', estilo: 'animated', estilo_custom: '', modelo: 'nb2' });
+  });
+
+  it('inicio.caja.una_imagen_lanzada_dice_que_va_en_camino_y_refresca_el_saldo', async () => {
+    const monedero = ponerMonedero(100);
+    // el servidor cobra, deja la imagen en marcha y contesta `lanzado`; desde entonces la lista la trae generándose
+    let pedidos: PedidoImagen[] = [];
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) =>
+          init?.method === 'POST'
+            ? ((pedidos = [PEDIDO]), json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos }))
+            : json({ imagenes: [], pendientes: pedidos }),
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.type(caja(), 'un faro de noche');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: /Nano Banana 2/ }));
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/imagenes')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/imagenes')).toMatchObject({ prompt: 'un faro de noche', modelo: 'nb2' });
+    // para la caja es un pedido que salió: lo dice, se vacía y el saldo (que ya bajó) se pone al día
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    expect(caja()).toHaveValue('');
+    expect(monedero.refrescar).toHaveBeenCalled();
+    expect(ir).not.toHaveBeenCalled();
+    // y «Mis creaciones» la enseña generándose: una sola tarjeta, la del servidor
+    await waitFor(() => expect(screen.getAllByRole('article').filter(a => a.getAttribute('aria-busy') === 'true')).toHaveLength(1));
+    expect(screen.getAllByRole('article')[0]).toHaveTextContent('un faro de noche');
+  });
+
+  it('inicio.caja.la_respuesta_de_siempre_de_una_imagen_sigue_igual', async () => {
+    const monedero = ponerMonedero(100);
+    const f = montar({
+      rutas: { '/api/imagenes': (_url, init) => (init?.method === 'POST' ? json({ nombre: 'n.jpg', url: '/api/imagenes/n.jpg' }) : json({ imagenes: [] })) },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/imagenes')).toHaveLength(1));
+    // el modelo rápido contesta {nombre, url}: el mismo aviso, el mismo saldo, y nada queda generándose
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    expect(monedero.refrescar).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getAllByRole('article').filter(a => a.getAttribute('aria-busy') === 'true')).toHaveLength(0));
+  });
+
+  it('inicio.caja.si_falla_la_primera_relectura_tras_lanzar_la_tarjeta_se_conserva_y_se_reintenta', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // el servidor cobra y contesta `lanzado`; las dos primeras lecturas de la lista tras eso fallan
+    let lanzado = false;
+    let caidas = 2;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            lanzado = true;
+            return json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos });
+          }
+          if (lanzado && caidas > 0) {
+            caidas--;
+            return caidas === 1 ? json({ detail: 'x' }, 503) : sinRed();
+          }
+          return json({ imagenes: [], pendientes: lanzado ? [PEDIDO] : [] });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.type(caja(), 'un faro de noche');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: /Nano Banana 2/ }));
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    const lecturas = () => llamadas(f, '/api/imagenes', 'GET').length;
+    const generando = () => screen.queryAllByRole('article').filter(a => a.getAttribute('aria-busy') === 'true');
+    // la relectura tras el POST cayó (503): la tarjeta de lo recién pedido es lo único que dice que va en camino
+    await waitFor(() => expect(lecturas()).toBe(2));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000); // que la lectura fallida termine de asentarse (aún no toca el reintento)
+    });
+    expect(generando()).toHaveLength(1);
+    expect(generando()[0]).toHaveTextContent('un faro de noche');
+    // se sigue intentando cada 5 s y, mientras no salga bien, la tarjeta se queda (aquí cae la red)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturas()).toBe(3);
+    expect(generando()).toHaveLength(1);
+    // sale bien: queda UNA tarjeta, la del servidor, y como sigue generándose se sigue preguntando solo
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturas()).toBe(4);
+    expect(generando()).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturas()).toBe(5);
+    expect(generando()).toHaveLength(1);
+  });
+
+  it('inicio.caja.un_pedido_que_el_servidor_rechazo_no_deja_su_tarjeta_aunque_la_lista_no_llegue', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // el POST da 500 (nada quedó en marcha) y la lista tampoco responde: no hay nada que conservar
+    let pedido = false;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            pedido = true;
+            return json({ detail: 'Algo falló' }, 500);
+          }
+          return pedido ? json({ detail: 'x' }, 503) : json({ imagenes: [] });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.type(caja(), 'un faro de noche');
+    await userEvent.click(botonModelo());
+    const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(within(menu).getByRole('radio', { name: /Nano Banana 2/ }));
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Algo falló');
+    await waitFor(() => expect(llamadas(f, '/api/imagenes', 'GET').length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(screen.queryAllByRole('article').filter(a => a.getAttribute('aria-busy') === 'true')).toHaveLength(0));
+    // y no se queda preguntando por algo que no existe
+    const despues = llamadas(f, '/api/imagenes', 'GET').length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(llamadas(f, '/api/imagenes', 'GET').length).toBe(despues);
   });
 
   it('inicio.caja.editar_pide_la_imagen_con_el_mas', async () => {
@@ -917,6 +1082,149 @@ describe('las listas', () => {
       await vi.advanceTimersByTimeAsync(11000);
     });
     expect(llamadas(f, '/api/clip', 'GET').length).toBe(despues);
+  });
+
+  it('inicio.galeria.una_imagen_en_segundo_plano_aparece_generando', async () => {
+    // sin nada más: solo ella basta para que no se quede en «Tu primer video, en tres caminos»
+    montar({ proyectos: [], pedidos: [PEDIDO] });
+    pintar();
+    const grupo = await screen.findByRole('group', { name: 'Filtrar' });
+    expect(screen.queryByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeNull();
+    const tarjeta = screen.getAllByRole('article')[0]!;
+    expect(tarjeta).toHaveAttribute('aria-busy', 'true');
+    expect(tarjeta).toHaveTextContent('Generando…');
+    expect(tarjeta).toHaveTextContent('un faro de noche');
+    expect(tarjeta).toHaveTextContent('Imagen');
+    // cuenta como imagen en los filtros
+    expect(within(grupo).getAllByRole('button').map(b => b.textContent)).toEqual(['Todo 1', 'Imágenes 1']);
+    await userEvent.click(within(grupo).getByRole('button', { name: /^Imágenes/ }));
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+  });
+
+  it('inicio.galeria.una_imagen_que_fallo_dice_por_que', async () => {
+    const monedero = ponerMonedero(100);
+    montar({ pedidos: [{ ...PEDIDO, estado: 'error', error: SE_DEVOLVIERON }, { ...PEDIDO, id: 'img-20261011-110000-def456', texto: '<b>otra</b>' }] });
+    pintar();
+    await screen.findByText(SE_DEVOLVIERON);
+    const falla = screen.getByText(SE_DEVOLVIERON).closest('article')!;
+    // ya no gira: dice que falló y por qué, con el texto que se pidió
+    expect(falla).not.toHaveAttribute('aria-busy');
+    expect(falla).not.toHaveTextContent('Generando…');
+    expect(falla).toHaveTextContent('Con error');
+    expect(falla).toHaveTextContent('un faro de noche');
+    // la otra sigue generándose, y su texto es texto
+    expect(screen.getByText('<b>otra</b>').closest('article')).toHaveAttribute('aria-busy', 'true');
+    // un error que ya estaba al abrir la página no es una novedad: el saldo se lee solo
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+  });
+
+  it('inicio.galeria.se_actualiza_sola_mientras_una_imagen_se_hace', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let hecha = false;
+    const f = montar({
+      proyectos: [],
+      rutas: {
+        '/api/imagenes': () => json(hecha ? { imagenes: [img(1)], pendientes: [] } : { imagenes: [], pendientes: [PEDIDO] }),
+      },
+    });
+    pintar();
+    await screen.findByText('Generando…');
+    const antes = llamadas(f, '/api/imagenes', 'GET').length;
+    hecha = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    // ya está en «Mis creaciones» como cualquier imagen, y la tarjeta que giraba se fue
+    expect(await screen.findByRole('button', { name: /Abrir tu imagen/ })).toBeInTheDocument();
+    expect(screen.queryByText('Generando…')).toBeNull();
+    expect(llamadas(f, '/api/imagenes', 'GET').length).toBeGreaterThan(antes);
+    // ya no hay nada generándose: deja de preguntar
+    const despues = llamadas(f, '/api/imagenes', 'GET').length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(llamadas(f, '/api/imagenes', 'GET').length).toBe(despues);
+  });
+
+  it('inicio.galeria.una_imagen_que_pasa_a_error_refresca_el_saldo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let fallo = false;
+    // además, una que falló hace un rato: sola no es una novedad
+    const vieja = { ...PEDIDO, id: 'img-20261011-110000-def456', estado: 'error', error: 'Esta falló antes.' };
+    const f = montar({
+      rutas: {
+        '/api/imagenes': () =>
+          json({ imagenes: [], pendientes: [fallo ? { ...PEDIDO, estado: 'error', error: SE_DEVOLVIERON } : PEDIDO, vieja] }),
+      },
+    });
+    pintar();
+    await screen.findByText('Generando…');
+    expect(screen.getByText('Esta falló antes.')).toBeInTheDocument();
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    fallo = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    // el worker ya devolvió los créditos: el saldo vuelve a subir
+    expect(await screen.findByText(SE_DEVOLVIERON)).toBeInTheDocument();
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+    // y el error que se queda a la vista no vuelve a refrescar ni a preguntar
+    const despues = llamadas(f, '/api/imagenes', 'GET').length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(llamadas(f, '/api/imagenes', 'GET').length).toBe(despues);
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+  });
+
+  it('inicio.galeria.una_imagen_que_pasa_a_error_se_anuncia', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let fallo = false;
+    montar({
+      rutas: {
+        '/api/imagenes': () =>
+          json({ imagenes: [], pendientes: [fallo ? { ...PEDIDO, estado: 'error', error: SE_DEVOLVIERON } : PEDIDO] }),
+      },
+    });
+    pintar();
+    await screen.findByText('Generando…');
+    // la región viva ya está en la página mientras gira: un lector solo anuncia lo que CAMBIA en una que ya existía
+    const region = screen.getByText('Generando…').closest('article')!.querySelector('[aria-live="polite"]');
+    expect(region).not.toBeNull();
+    expect(region).not.toHaveTextContent(SE_DEVOLVIERON);
+    fallo = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    await screen.findByText(SE_DEVOLVIERON);
+    // el mismo nodo, ahora con el mensaje del servidor; amable (polite): el fallo ya se devolvió, no hay prisa
+    expect(screen.getByText(SE_DEVOLVIERON).closest('[aria-live]')).toBe(region);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('inicio.galeria.si_falla_la_lista_de_imagenes_a_media_espera_no_se_pierde_el_pedido', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let cae = false;
+    const f = montar({
+      proyectos: [],
+      rutas: { '/api/imagenes': () => (cae ? json({ detail: 'x' }, 500) : json({ imagenes: [], pendientes: [PEDIDO] })) },
+    });
+    pintar();
+    await screen.findByText('Generando…');
+    cae = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    // la lista no llegó, pero el pedido sigue ahí y se sigue preguntando
+    const fallida = llamadas(f, '/api/imagenes', 'GET').length;
+    expect(screen.getByText('Generando…')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(llamadas(f, '/api/imagenes', 'GET').length).toBeGreaterThan(fallida);
+    expect(screen.getByText('Generando…')).toBeInTheDocument();
   });
 
   it('inicio.listas.textos_del_server_como_texto', async () => {
