@@ -41,9 +41,9 @@ Y si una imagen se genera dentro de la petición o en segundo plano también lo 
 el modelo (`Modelo.segundo_plano`): la Lambda del API corta a los 29 s (API Gateway:
 tope fijo de 30 s) y un arranque en frío ya gasta unos 16, así que un modelo que tardó
 más de 10 s en la prueba pagada no cabe en la petición. Esos se encolan como el clip
-(server/imagen_cola.py, worker/imagen_generar.py); los rápidos siguen síncronos. La única
-excepción a la regla es Grok (13 a 29 s medidos): sigue síncrono por decisión pendiente del
-dueño (docs/OPERACION.md).
+(server/imagen_cola.py, worker/imagen_generar.py); los rápidos siguen síncronos. Las dos
+excepciones a la regla son Grok (13 a 29 s medidos) y Nano Banana 2 al crear (11.7 s): siguen
+síncronos «de momento» por decisión del dueño del 11-oct-2026 (docs/OPERACION.md).
 """
 from __future__ import annotations
 
@@ -350,10 +350,10 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
-    # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): crear va en segundo plano; editar
-    # sigue síncrono.
-    nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA,
-                 segundo_plano=True)
+    # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): por la regla de arriba iría a
+    # segundo plano, pero sigue síncrono —como Grok y como editar— «de momento», por decisión
+    # del dueño del 11-oct-2026: docs/OPERACION.md, «Decisión del dueño: Grok y Nano Banana 2».
+    nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     # Ola 2: FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y
     # FLUX 3. Encendidos el 11-oct-2026 (número en tarifas.json §modelos «imagen»); se ofrecen al

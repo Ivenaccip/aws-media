@@ -23,11 +23,12 @@ original: enviar otra vez da otra versión, no pisa la anterior.
 
 ## Imágenes en segundo plano
 
-Los modelos que tardan más de ~10 s (Nano Banana 2, Seedream 5.0 Flash, Seedream
-4.5 y FLUX 3) no se esperan dentro de la petición: la Lambda del API corta a los
-29 s. `POST /api/imagenes` cobra, deja el pedido en marcha y contesta
-`{lanzado: true, id, creditos}` en vez de `{nombre, url}`; los modelos rápidos
-siguen contestando lo de siempre. Esta pantalla acepta las dos respuestas:
+Los modelos que tardan más de ~10 s (Seedream 5.0 Flash, Seedream 4.5 y FLUX 3) no
+se esperan dentro de la petición: la Lambda del API corta a los 29 s. `POST
+/api/imagenes` cobra, deja el pedido en marcha y contesta `{lanzado: true, id,
+creditos}` en vez de `{nombre, url}`; los modelos rápidos siguen contestando lo de
+siempre, y también Grok y Nano Banana 2, que por decisión del dueño (11-oct-2026)
+siguen síncronos «de momento». Esta pantalla acepta las dos respuestas:
 
 - con `lanzado`, el «−N» sale y el saldo se refresca **en ese momento** (ya se
   cobró) y se pregunta por `GET /api/imagenes/pedidos/<id>` cada 2 s, con su

@@ -2,16 +2,16 @@
 
 `POST /api/imagenes` generaba la imagen DENTRO de la petición, y la Lambda del API
 corta a los 29 s (API Gateway HTTP API: tope fijo de 30 s; un arranque en frío ya
-gasta unos 16). Cuatro modelos tardaron más de 10 s en la prueba pagada —FLUX 3 hasta
-25.0 s, Seedream 4.5 hasta 22.7 s, Seedream 5.0 Flash 15.0 s y Nano Banana 2 11.7 s al
-crear—, y si la petición se corta se cobra, no se devuelve y fal cobra igual. Esos pasan por
+gasta unos 16). Tres modelos tardaron más de 10 s en la prueba pagada y van por aquí —FLUX 3
+hasta 25.0 s, Seedream 4.5 hasta 22.7 s y Seedream 5.0 Flash 15.0 s—, y si la petición se corta
+se cobra, no se devuelve y fal cobra igual. Esos pasan por
 aquí, con el mismo patrón del clip (server/clip_api.py): cobrar → doc en S3 → cola →
 worker/imagen_generar.py → la pantalla sondea el doc.
 
 Cuáles son lo dice una bandera por modelo (`Modelo.segundo_plano`); los rápidos
 —FLUX.2 klein, Z-Image Turbo y FLUX.2 pro— siguen síncronos y con la respuesta de
-siempre, y también Grok, el predeterminado, por decisión pendiente del dueño: mide de 13
-a 29 s (docs/OPERACION.md, «Imágenes en segundo plano»). Solo aplica a CREAR (editar no
+siempre, y también Grok, el predeterminado (13 a 29 s), y Nano Banana 2 (11.7 s), por decisión
+del dueño de dejarlos como están «de momento» (docs/OPERACION.md, «Imágenes en segundo plano»). Solo aplica a CREAR (editar no
 se toca) y solo en la nube: en local no hay SQS ni S3 y todo sigue síncrono.
 
 El navegador distingue las dos respuestas por la presencia de `lanzado`:

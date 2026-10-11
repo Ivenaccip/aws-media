@@ -10,9 +10,9 @@ devolvía y fal cobraba igual. Esos pasan por la cola: cobrar → doc en S3 → 
 Lo que este archivo defiende:
 
   * la TABLA: qué modelos van a segundo plano y por qué (los segundos medidos están fijados
-    aquí) — la regla es «segundo_plano si y solo si algún tiempo medido pasó de 10 s», con UNA
-    excepción nombrada: Grok (13 a 29 s medidos), que sigue síncrono por decisión pendiente del
-    dueño (docs/OPERACION.md);
+    aquí) — la regla es «segundo_plano si y solo si algún tiempo medido pasó de 10 s», con DOS
+    excepciones nombradas: Grok (13 a 29 s medidos) y Nano Banana 2 al crear (11.7 s), que siguen
+    síncronos «de momento» por decisión del dueño del 11-oct-2026 (docs/OPERACION.md);
   * el contrato HTTP: validar todo antes de cobrar (422), el tope de 3 en marcha (409), el
     orden cobrar → doc → encolar, la devolución si no se pudo lanzar (502), y la respuesta de
     siempre para los rápidos y para el backend local;
@@ -62,8 +62,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 RAIZ = Path(__file__).resolve().parent.parent
 USER = "ana"
 
-LENTOS = ("nb2", "sdf", "sd45", "flux3")
-RAPIDOS = ("grok", "klein", "zit", "flux2")
+LENTOS = ("sdf", "sd45", "flux3")
+RAPIDOS = ("grok", "klein", "zit", "flux2", "nb2")
 # Los segundos MEDIDOS por llamada en las pruebas pagadas (docs/modelos-ia/POR-VERIFICAR.md,
 # DATOS-FAL-2026-10-08.md §9 y §11): (menor, mayor). Nano Banana 2 son tres llamadas (crear 11.7 s;
 # editar 11.5 y 13.9 s). Grok Imagine SÍ tiene medición: ocho llamadas reales el 18-sep, de 13 a 29 s
@@ -78,11 +78,12 @@ TIEMPOS_MEDIDOS = {
     "zit": (1.0, 1.8),
     "grok": (13, 29),
 }
-# La regla manda en todos menos en uno, y la excepción está NOMBRADA: Grok (el predeterminado) rozaba el
-# muro de 29 s ya en síncrono y la regla lo mandaría a segundo plano, pero esa decisión es del dueño
-# (docs/OPERACION.md, «Decisión pendiente del dueño: Grok»). Mientras no la tome, la bandera sigue en
-# False; cuando la tome, se borra esta línea y la prueba obliga a que la bandera siga a la regla.
-EXCEPCIONES_A_LA_REGLA = {"grok": "decisión pendiente del dueño"}
+# La regla manda en todos menos en dos, y las excepciones están NOMBRADAS: Grok (el predeterminado) rozaba
+# el muro de 29 s ya en síncrono, y Nano Banana 2 al crear midió 11.7 s: la regla mandaría a los dos a
+# segundo plano, pero el dueño decidió el 11-oct-2026 dejarlos como están «de momento» (docs/OPERACION.md,
+# «Decisión del dueño: Grok y Nano Banana 2»). Mientras no cambie, las banderas siguen en False; cuando
+# cambie, se borra su línea aquí y la prueba obliga a que la bandera siga a la regla.
+EXCEPCIONES_A_LA_REGLA = {"grok": "decisión del dueño, de momento", "nb2": "decisión del dueño, de momento"}
 
 ID_RE = re.compile(r"^img-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 NOMBRE_RE = re.compile(r"^[0-9a-f]{12}\.jpg$")
@@ -104,7 +105,7 @@ def _muro_s() -> float:
 def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
     """segundo_plano <=> algún tiempo medido > 10 s. Mover un modelo es cambiar un booleano, pero
     ese booleano tiene que seguir a la medición: un modelo nuevo sin medir obliga a medirlo aquí.
-    La única excepción es Grok, nombrada, y tiene que ser una excepción de verdad."""
+    Las únicas excepciones son Grok y Nano Banana 2, nombradas, y tienen que serlo de verdad."""
     from pipeline import modelos_ia
     imagen = modelos_ia.disponibles("imagen")
     assert set(imagen) == set(TIEMPOS_MEDIDOS), "modelo nuevo de imagen: anota sus segundos"
@@ -114,10 +115,10 @@ def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
             assert mayor > _muro_s() and va is False, id_      # la regla lo mandaría; el dueño aún no
         else:
             assert va is (mayor > _muro_s()), id_
-    assert set(EXCEPCIONES_A_LA_REGLA) == {"grok"}
+    assert set(EXCEPCIONES_A_LA_REGLA) == {"grok", "nb2"}
 
 
-def test_exactamente_estos_cuatro_van_a_segundo_plano_al_crear():
+def test_exactamente_estos_tres_van_a_segundo_plano_al_crear():
     from pipeline import modelos_ia
     lentos = {i for i in modelos_ia.disponibles("imagen")
               if modelos_ia.resolver("imagen", i).segundo_plano}
@@ -149,7 +150,7 @@ def test_segundo_plano_solo_acepta_un_booleano(malo):
 
 def test_la_documentacion_trae_los_segundos_de_cada_modelo():
     """La tabla de arriba y la de docs/modelos-ia/POR-VERIFICAR.md dicen lo mismo: segundos medidos
-    y si va en segundo plano. Grok tiene su medición (13 a 29 s) y su «no, por ahora» pendiente."""
+    y si va en segundo plano. Grok (13 a 29 s) y Nano Banana 2 (11.7 s al crear) llevan su «no, por ahora»."""
     doc = (RAIZ / "docs" / "modelos-ia" / "POR-VERIFICAR.md").read_text(encoding="utf-8")
     seccion = doc[doc.index("### Qué va en segundo plano y por qué"):]
     filas = {}
@@ -163,23 +164,26 @@ def test_la_documentacion_trae_los_segundos_de_cada_modelo():
         _, segundos, va = filas[id_]
         assert segundos.startswith(f"{menor} a {mayor}"), id_
         if id_ in EXCEPCIONES_A_LA_REGLA:
-            assert va.lower().startswith("no") and "pendiente" in va.lower(), id_
+            assert va.lower().startswith("no") and "decisión del dueño" in va.lower(), id_
         else:
             assert va.lower().startswith("sí" if mayor > _muro_s() else "no"), id_
 
 
-def test_grok_tiene_medicion_y_su_decision_pendiente_esta_escrita_donde_el_dueno_la_lee():
+def test_grok_y_nb2_tienen_medicion_y_la_decision_del_dueno_esta_escrita_donde_la_lee():
     """La documentación decía que Grok no tenía medición «en el repo» y que era «rápido y conocido»: falso.
-    Lo que hay medido sigue en su sitio, ya no se afirma lo contrario y la decisión está en OPERACION.md."""
+    Lo que hay medido sigue en su sitio, ya no se afirma lo contrario y la decisión del dueño (Grok y
+    Nano Banana 2 se quedan síncronos «de momento») está en OPERACION.md."""
     assert "13–29 s por imagen" in (RAIZ / "PLAN-PRODUCTO.md").read_text(encoding="utf-8")
     assert "13-29 s" in (RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8")
     for md in (RAIZ / "docs" / "modelos-ia").glob("*.md"):
         texto = md.read_text(encoding="utf-8").lower()
         assert "sin medición registrada" not in texto and "rápido y conocido" not in texto, md.name
     operacion = (RAIZ / "docs" / "OPERACION.md").read_text(encoding="utf-8")
-    assert "**Decisión pendiente del dueño: Grok" in operacion
-    pendiente = operacion[operacion.index("**Decisión pendiente del dueño: Grok"):][:1800]
-    assert "13 a 29 s" in pendiente and "28.7" in pendiente and "segundo_plano=True" in pendiente
+    titulo = "**Decisión del dueño (11-oct-2026): Grok y Nano Banana 2 siguen síncronos"
+    assert titulo in operacion
+    decision = operacion[operacion.index(titulo):][:4200]
+    assert "13 a 29 s" in decision and "28.7" in decision and "segundo_plano=True" in decision
+    assert "11.7 s" in decision and "EXCEPCIONES_A_LA_REGLA" in decision
 
 
 # ---------------------------------------------------------------------------

@@ -1384,7 +1384,7 @@ def _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, tarda, tarea="im
     return _correr(capsys, tarea, modelo, *extra, "--si", "--salida", tmp_path / "s")
 
 
-@pytest.mark.parametrize("modelo", ["grok", "klein", "zit", "flux2"])
+@pytest.mark.parametrize("modelo", ["grok", "klein", "zit", "flux2", "nb2"])
 def test_una_imagen_de_la_peticion_que_tarda_mas_de_10_s_se_marca(env, capsys, monkeypatch, tmp_path, modelo):
     from pipeline import modelos_ia
     assert modelos_ia.resolver("imagen", modelo).segundo_plano is False
@@ -1403,7 +1403,7 @@ def test_una_imagen_de_la_peticion_que_tarda_10_s_o_menos_no_se_marca(env, capsy
     assert "REVISAR" not in out and "AVISO" not in out and "coincide con lo prometido" in out
 
 
-@pytest.mark.parametrize("modelo", ["nb2", "sdf", "sd45", "flux3"])
+@pytest.mark.parametrize("modelo", ["sdf", "sd45", "flux3"])
 def test_una_imagen_de_segundo_plano_lenta_es_un_aviso_y_no_un_revisar(env, capsys, monkeypatch, tmp_path, modelo):
     """Esos modelos no responden dentro de la petición: tardar 25 s es lo esperado."""
     from pipeline import modelos_ia

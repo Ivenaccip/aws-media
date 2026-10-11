@@ -6,8 +6,8 @@ y, encendidos el 11-oct-2026 en la rama (se ofrecen al desplegarla), **FLUX.2 kl
 **FLUX.2 pro**, **Seedream 5.0 Flash**, **Seedream 4.5** y **FLUX 3**; para editar, **Grok Imagine** y
 **Nano Banana 2**; para el clip, **Veo 3.1 Lite** y **Veo 3.1 Fast**. Nano Banana 2 y Veo 3.1 Fast (Ola 1) se
 encendieron el 9-oct-2026 tras su prueba pagada, y los seis de imagen de la Ola 2 el 11-oct-2026 tras la suya
-(18 llamadas y el panel de fal, DATOS §11); Grok y Veo 3.1 Lite ya estaban. Cuatro de las imágenes (Nano Banana 2,
-Seedream 5.0 Flash, Seedream 4.5 y FLUX 3) se generan en segundo plano: ver «Qué va en segundo plano y por qué». Un solo modelo es **inerte**: el servidor lo conoce, pero no se ofrece ni se
+(18 llamadas y el panel de fal, DATOS §11); Grok y Veo 3.1 Lite ya estaban. Tres de las imágenes (Seedream 5.0 Flash,
+Seedream 4.5 y FLUX 3) se generan en segundo plano: ver «Qué va en segundo plano y por qué». Un solo modelo es **inerte**: el servidor lo conoce, pero no se ofrece ni se
 cobra, **Veo 3.1 Standard** (clip, Ola 1). Los otros 9 (Nano Banana 2 Lite y Pro, GPT Image 2 y 2.5, y cinco de clip)
 solo viven en el catálogo de la web (`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que él.
 
@@ -67,7 +67,7 @@ para poder encenderse.
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
 | imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (21.8 a 25.0 s), pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K. Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Panel: las tres solicitudes costaron $0.024 dólares, con el cuadrado de 1024×1024 y los dos de ~1 MP. Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
-| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear va en segundo plano** (crear midió 11.7 s; editar, 11.5 y 13.9 s), editar sigue dentro de la petición; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
+| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear y editar siguen dentro de la petición** (crear midió 11.7 s; editar, 11.5 y 13.9 s): excepción a la regla de segundo plano, decisión del dueño del 11-oct-2026, «de momento»; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
@@ -189,19 +189,20 @@ todo es síncrono; editar no cambia.
 
 | Modelo | Segundos medidos | ¿Segundo plano? |
 |---|---|---|
-| Nano Banana 2 (`nb2`) | 11.5 a 13.9 (crear 11.7; editar 11.5 y 13.9, DATOS §9) | sí, al crear |
+| Nano Banana 2 (`nb2`) | 11.5 a 13.9 (crear 11.7; editar 11.5 y 13.9, DATOS §9) | no, por ahora: decisión del dueño (11-oct-2026), de momento (`docs/OPERACION.md`) |
 | Seedream 5.0 Flash (`sdf`) | 13.4 a 15.0 | sí |
 | Seedream 4.5 (`sd45`) | 8.6 a 22.7 | sí |
 | FLUX 3 (`flux3`) | 21.8 a 25.0 | sí |
 | FLUX.2 pro (`flux2`) | 7.2 a 8.1 | no |
 | FLUX.2 klein (`klein`) | 0.8 a 1.2 | no |
 | Z-Image Turbo (`zit`) | 1.0 a 1.8 | no |
-| Grok Imagine (`grok`) | 13 a 29 (PLAN-PRODUCTO.md y `tools/pricing.json`: ocho llamadas reales el 18-sep; mediana 16; el vertical, 28.7) | no, por ahora: decisión pendiente del dueño (`docs/OPERACION.md`) |
+| Grok Imagine (`grok`) | 13 a 29 (PLAN-PRODUCTO.md y `tools/pricing.json`: ocho llamadas reales el 18-sep; mediana 16; el vertical, 28.7) | no, por ahora: decisión del dueño (11-oct-2026), de momento (`docs/OPERACION.md`) |
 
 La regla: **segundo plano si y solo si algún tiempo medido pasó de 10 s** (`tests/test_imagen_segundo_plano.py` fija la
-tabla y la regla), con **una excepción nombrada: Grok**. Midió 13 a 29 s (el vertical, 28.7 s), así que la regla lo mandaría a
-segundo plano, pero es el modelo predeterminado y esa decisión es del dueño: sigue síncrono hasta que la tome
-(`docs/OPERACION.md`, «Decisión pendiente del dueño: Grok»). Mover un modelo de un camino al otro es cambiar un booleano. `tools/probar_modelo.py` marca REVISAR cuando
+tabla y la regla), con **dos excepciones nombradas: Grok y Nano Banana 2 al crear**. Grok midió 13 a 29 s (el vertical, 28.7 s) y
+Nano Banana 2 al crear, 11.7 s, así que la regla los mandaría a segundo plano, pero el dueño decidió el 11-oct-2026 dejarlos como
+están «de momento» (Grok es el predeterminado y Nano Banana 2 está a la venta síncrono desde el 9-oct): siguen síncronos hasta
+que cambie (`docs/OPERACION.md`, «Decisión del dueño: Grok y Nano Banana 2»). Mover un modelo de un camino al otro es cambiar un booleano. `tools/probar_modelo.py` marca REVISAR cuando
 una imagen que va dentro de la petición tarda más de 10 s, y para las de segundo plano solo avisa. **Decisión pendiente del
 dueño:** editar (`/api/imagenes/editar`) no se encola y Nano Banana 2 al editar midió 11.5 y 13.9 s; con un arranque en frío de
 ~16 s más el cobro y la subida (~2 s) suma de ~29.5 a ~32 s y supera los 29 s de la Lambda y los 30 s del gateway

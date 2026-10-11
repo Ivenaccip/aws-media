@@ -921,10 +921,10 @@ Los seis ids que pueden cambiar están en la cabecera de
 
 `POST /api/imagenes` generaba la imagen dentro de la petición, y la Lambda del API corta a los 29 s (API Gateway: tope
 fijo de 30 s; un arranque en frío ya gasta unos 16). Cortada la petición, se cobraba, no se devolvía y fal cobraba igual. Por
-eso los modelos que tardaron **más de 10 s** en la prueba pagada —Nano Banana 2 al crear (11.7 s), Seedream 5.0 Flash,
-Seedream 4.5 y FLUX 3— se encolan como el clip. Cuáles lo dice una bandera por fila, `segundo_plano` en `pipeline/modelos_ia.py`
+eso los modelos que tardaron **más de 10 s** en la prueba pagada —Seedream 5.0 Flash, Seedream 4.5 y FLUX 3— se encolan
+como el clip. Cuáles lo dice una bandera por fila, `segundo_plano` en `pipeline/modelos_ia.py`
 (la tabla con los segundos medidos está en `docs/modelos-ia/POR-VERIFICAR.md`); los rápidos siguen síncronos y en local todo es
-síncrono. La única excepción a la regla es Grok (ver «Decisión pendiente del dueño: Grok», abajo).
+síncrono. Las dos excepciones a la regla son Grok y Nano Banana 2 al crear (ver «Decisión del dueño: Grok y Nano Banana 2», abajo).
 
 El camino: cobrar → doc en S3 (`usuarios/<user>/imagenes-pedidos/<id>.json`) → SQS → `worker/imagen_generar.py` → la imagen
 queda en `imagenes/<user>/<nombre>` (donde viven las de siempre) y la pantalla, que sondea `GET /api/imagenes/pedidos/<id>`,
@@ -1035,7 +1035,8 @@ pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 m�
 `activo: false` en `web/src/pantallas/inicio/modelos.ts`. Los pedidos que ya estaban en la cola siguen y terminan: el worker usa
 lo que dice el doc, no la tarifa de hoy. Mover un modelo entre síncrono y segundo plano es cambiar su `segundo_plano`.
 
-**Decisión pendiente del dueño: Grok (el predeterminado) sigue síncrono con 13 a 29 s medidos.** La prueba pagada del 18-sep (ocho
+**Decisión del dueño (11-oct-2026): Grok y Nano Banana 2 siguen síncronos «de momento».** Se deja todo como estaba y se anota
+para volver a verlo; no es que la regla no los alcance. **Grok (el predeterminado) sigue síncrono con 13 a 29 s medidos.** La prueba pagada del 18-sep (ocho
 llamadas con prompts reales; `PLAN-PRODUCTO.md` y `tools/pricing.json`, `grok_nota`) midió **13 a 29 s por imagen, mediana 16, y el
 vertical (720×1280) 28.7 s**. Por la regla de la tabla —segundo plano si algún tiempo medido pasó de 10 s— Grok iría a segundo
 plano. Sigue síncrono porque esa decisión es del dueño, y es la ruta de más tráfico: la pantalla de Imágenes y la página vieja no
@@ -1046,6 +1047,14 @@ devolución, y fal cobra igual. Opciones: (a) `segundo_plano=True` en la fila de
 prueba de `tests/test_imagen_segundo_plano.py` obliga entonces a borrar su excepción `EXCEPCIONES_A_LA_REGLA`, y cambia la respuesta
 de `POST /api/imagenes` para el modelo predeterminado: el cliente ya acepta las dos formas); (b) un `asyncio.wait_for` de ~24 s en
 `server/app.py` que devuelva los créditos antes de que muera la Lambda. **La bandera de Grok sigue en `False`.**
+
+**Nano Banana 2 al crear sigue síncrono, igual que desde que salió a la venta el 9-oct.** Midió **11.7 s** al crear (DATOS §9);
+por la regla iría a segundo plano, y en una versión de esta rama su bandera estaba en `True`: se quitó por decisión del dueño.
+Con un arranque en frío (~16 s) más el cobro y la subida (~2 s) la petición suma ~29.7 s, al borde de los 29 s de la Lambda y por
+encima de los 30 s del gateway: es el MISMO riesgo que ya tenía antes de esta rama, no uno nuevo. Para moverlo basta
+`segundo_plano=True` en su fila de crear en `pipeline/modelos_ia.py` y borrar su línea de `EXCEPCIONES_A_LA_REGLA` en
+`tests/test_imagen_segundo_plano.py` (la prueba obliga a que la bandera siga a la regla). Editar con Nano Banana 2 es la decisión
+pendiente de abajo.
 
 **Decisión pendiente del dueño: EDITAR con Nano Banana 2 sigue síncrono** (`/api/imagenes/editar` no se encola). Al editar midió
 11.5 y 13.9 s (crear midió 11.7 s); con un arranque en frío (~16 s, `infra/stacks/alertas.py`) más el cobro y la subida (~2 s) la

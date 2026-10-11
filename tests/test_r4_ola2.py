@@ -210,8 +210,9 @@ def test_los_modelos_de_antes_siguen_pidiendo_el_aspecto_tal_cual():
         assert (m.llave_tamano, m.tamanos, m.con_num_images) == ("aspect_ratio", (), True), id_
     for id_ in ("grok", "nb2"):
         assert modelos_ia.resolver("imagen", id_).admite_referencia is True
-    # Nano Banana 2 midió 11.7 s al crear: va en segundo plano; Grok (decisión pendiente del dueño) y todo editar, no
-    assert modelos_ia.resolver("imagen", "nb2").segundo_plano is True
+    # Grok (13 a 29 s) y Nano Banana 2 al crear (11.7 s) siguen síncronos «de momento» por decisión del dueño
+    # (11-oct-2026), igual que todo editar
+    assert modelos_ia.resolver("imagen", "nb2").segundo_plano is False
     assert modelos_ia.resolver("imagen", "grok").segundo_plano is False
     assert modelos_ia.resolver("editar", "nb2").segundo_plano is False
 
