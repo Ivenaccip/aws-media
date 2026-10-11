@@ -290,10 +290,10 @@ FLUX3_CREAR = "blackforestlabs/flux-3/text-to-image"
 SALIDA_JPEG = (("output_format", "jpeg"),)
 
 # Los tamaños de la familia FLUX.2 (klein, pro) y Z-Image: los valores de `image_size` que
-# fal documenta para cada aspecto de la caja. Cuadrado es `square_hd` (1024×1024), el
-# único que ya se probó con klein (DATOS-FAL §8). Los tres están en el enum del esquema de
-# fal (leído el 11-oct-2026, DATOS-FAL §10); falta comprobar el tamaño que llega y el cobro
-# de los apaisados y verticales en la prueba pagada.
+# fal documenta para cada aspecto de la caja. Cuadrado es `square_hd` (1024×1024). Los tres
+# están en el enum del esquema de fal (leído el 11-oct-2026, DATOS-FAL §10) y la prueba pagada del
+# 10-oct (DATOS-FAL §11) midió lo que llega: 1024×1024, 1024×576 y 576×1024 (0.59 MP los apaisados
+# y verticales).
 TAMANOS_FLUX = (("1:1", "square_hd"), ("16:9", "landscape_16_9"), ("9:16", "portrait_16_9"))
 
 # Seedream NO usa los valores predefinidos: su esquema pide un mínimo de píxeles que

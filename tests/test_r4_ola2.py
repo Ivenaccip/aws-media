@@ -63,9 +63,33 @@ INERTES = set(OLA2)
 # dólares por imagen de cada modelo (pricing.json) y su propuesta de créditos
 USD = {"klein": 0.006, "zit": 0.005, "flux2": 0.03, "sdf": 0.027, "sd45": 0.04, "flux3": 0.024}
 PROPUESTA = {"klein": 2, "zit": 2, "flux2": 4, "sdf": 4, "sd45": 4, "flux3": 4}
-# klein es lo MEDIDO en el panel (9-oct); las otras cinco, lo LEÍDO en la página (8-oct)
-VERIFICADO = {"klein": "2026-10-09", "zit": "2026-10-08", "flux2": "2026-10-08", "sdf": "2026-10-08",
-              "sd45": "2026-10-08", "flux3": "2026-10-08"}
+# fecha de la lectura que respalda cada ficha: cinco, MEDIDAS en el panel de fal el 11-oct tras la
+# prueba pagada de 18 llamadas; Z-Image sigue LEÍDA (el 8-oct): del panel llegó 1 fila de 3
+VERIFICADO = {**{id_: "2026-10-11" for id_ in USD}, "zit": "2026-10-08"}
+# Lo que el dueño pegó del panel (dólares por solicitud), TAL CUAL llegó: 15 filas de las 18
+# llamadas. El panel trae el endpoint y el costo, NO el tamaño de cada solicitud: aquí no se asigna
+# cada fila a una forma. No se inventan las que faltan.
+PANEL = {
+    "klein": [0.003375, 0.006],
+    "zit": [0.005],
+    "flux2": [0.03, 0.03, 0.03],
+    "sdf": [0.027, 0.027, 0.027],
+    "sd45": [0.04, 0.04, 0.04],
+    "flux3": [0.024, 0.024, 0.024],
+}
+# cuántas de las 3 filas de cada modelo NO llegaron. Quien lea una fila que falta la agrega a PANEL
+# y baja este número; la nota de pricing.json dice «por confirmar» justo de los que aparecen aquí
+FALTAN = {"klein": 1, "zit": 2}
+# los tamaños (ancho, alto) que de verdad llegaron en las tres llamadas de cada modelo, según el
+# reporte de la prueba pagada (las tres formas: cuadrado, horizontal y vertical)
+TAMANOS_MEDIDOS = {
+    "klein": [(1024, 1024), (1024, 576), (576, 1024)],
+    "zit": [(1024, 1024), (1024, 576), (576, 1024)],
+    "flux2": [(1024, 1024), (1024, 576), (576, 1024)],
+    "flux3": [(1024, 1024), (1360, 768), (768, 1360)],
+    "sdf": [(1920, 1920), (2048, 1152), (1152, 2048)],
+    "sd45": [(2048, 2048), (2752, 1536), (1536, 2752)],
+}
 # lo que la caja sabe pedir (server/app.py::ASPECTOS_IMAGEN) y su valor en la familia FLUX.2 / Z-Image
 ASPECTOS = {"1:1": "square_hd", "16:9": "landscape_16_9", "9:16": "portrait_16_9"}
 # Seedream pide pares explícitos: sus presets no alcanzan el mínimo de píxeles del esquema
@@ -420,7 +444,7 @@ def test_el_pincel_y_transformar_no_aceptan_ninguno_de_la_ola_2(falso_fal, tmp_p
 
 @pytest.mark.parametrize("id_", IDS)
 def test_la_ficha_de_cada_modelo_es_la_que_dice_su_origen(id_):
-    """Klein, medido en el panel de fal; las otras cinco, leídas en la página y por confirmar."""
+    """Las seis, medidas en el panel de fal el 11-oct-2026 (la ficha es el cuadrado, el techo)."""
     ficha = _pricing()["generacion"]["endpoints"][ENDPOINTS[id_]]
     assert ficha == {"unidad": "imagen", "usd": USD[id_], "verified_on": VERIFICADO[id_]}
 
@@ -435,8 +459,8 @@ def test_la_4b_de_klein_no_tiene_ficha_y_jamas_se_cotiza_con_la_de_la_9b():
 @pytest.mark.parametrize("id_", IDS)
 def test_costo_fal_es_la_ficha_con_los_argumentos_reales(id_, aspecto):
     """El costo que se anota en Langfuse sale de los MISMOS argumentos que van a fal. Los que
-    cobran por megapíxel se anotan a ~1 MP (techo de la peor corrida que se espera, por comprobar
-    en la prueba pagada); FLUX.2 pro y FLUX 3 no mandan `num_images`: cuentan una imagen."""
+    cobran por megapíxel se anotan a ~1 MP: la ficha es la forma cuadrada, el techo si cobran por
+    píxel; FLUX.2 pro y FLUX 3 no mandan `num_images`: cuentan una imagen."""
     from pipeline import modelos_ia, pricing
     m = modelos_ia.resolver("imagen", id_)
     args = m.con_args_extra(m.args_de_imagen("x", aspecto))
@@ -456,9 +480,42 @@ def test_la_formula_de_la_hoja_de_costos_reproduce_la_propuesta():
         assert Fraction(n) * Fraction(15, 1000) * Fraction(75, 100) >= Fraction(str(usd))
 
 
+def _ficha_usd(id_: str) -> Fraction:
+    return Fraction(str(_pricing()["generacion"]["endpoints"][ENDPOINTS[id_]]["usd"]))
+
+
+@pytest.mark.parametrize("id_", IDS)
+def test_las_filas_del_panel_cuadran_con_la_ficha_de_pricing_json(id_):
+    """Ninguna fila del panel supera la ficha de pricing.json, la ficha la alcanza (con klein y Z-Image,
+    en la forma cuadrada), y los créditos propuestos alcanzan para ella con el margen de la hoja de
+    costos. Las 3 llamadas del modelo son las filas que llegaron más las que FALTAN."""
+    ficha = _ficha_usd(id_)
+    filas = [Fraction(str(x)) for x in PANEL[id_]]
+    assert len(filas) + FALTAN.get(id_, 0) == 3
+    assert max(filas) == ficha and all(f <= ficha for f in filas)
+    assert Fraction(PROPUESTA[id_]) * Fraction(15, 1000) * Fraction(75, 100) >= ficha
+
+
+@pytest.mark.parametrize("id_", ["flux2", "sdf", "sd45", "flux3"])
+def test_estos_cuatro_cobraron_lo_mismo_con_tamanos_distintos(id_):
+    """Las tres llamadas costaron igual aunque midieron distinto: el cuadrado de FLUX.2 pro (1.05 MP) no
+    pagó el megapíxel extra ni sus apaisados (0.59 MP) un descuento, y el 1920×1920 de Seedream 5.0
+    Flash (3.69 MP) no costó más que su 2048×1152 (2.36 MP). Vale para los tamaños probados."""
+    assert len({ancho * alto for ancho, alto in TAMANOS_MEDIDOS[id_]}) >= 2
+    assert len(PANEL[id_]) == 3 and len(set(PANEL[id_])) == 1
+
+
+def test_klein_cobra_por_pixel_segun_las_dos_filas_que_llegaron():
+    """1024×576 es 0.5625 del 1024×1024, y la fila chica del panel es exactamente 0.5625 de la ficha.
+    El panel no dice qué tamaño tuvo cada fila: esto es la inferencia que explica los dos números."""
+    assert Fraction(1024 * 576, 1024 * 1024) == Fraction(9, 16)
+    assert Fraction(str(min(PANEL["klein"]))) == Fraction(9, 16) * _ficha_usd("klein")
+
+
 def test_flux_2_pro_cubre_el_peor_cobro_con_los_mismos_creditos():
-    """1024×1024 son 1.05 MP: $0.03 más $0.015 por MP extra da entre $0.03075 (proporcional) y
-    $0.045 (si el megapíxel cuenta entero). Los 4 créditos propuestos cubren los dos con margen."""
+    """La lectura dejaba abierto: 1024×1024 son 1.05 MP, de $0.03 dólares más $0.015 dólares por MP
+    extra, entre $0.03075 dólares (proporcional) y $0.045 dólares (si el megapíxel cuenta entero). El
+    panel cobró $0.03 dólares (ver PANEL), pero los 4 créditos propuestos cubrirían igual los tres casos."""
     for usd in (Fraction(3, 100), Fraction(3075, 100000), Fraction(45, 1000)):
         n = math.ceil(usd / Fraction(75, 100) / Fraction(15, 1000))
         assert max(2, n + (n % 2)) == PROPUESTA["flux2"] == 4
@@ -468,7 +525,13 @@ def test_flux_2_pro_cubre_el_peor_cobro_con_los_mismos_creditos():
 def test_la_nota_de_la_ola_2_dice_dolares_y_nunca_centavos_ni_inventa_mediciones():
     nota = " ".join(_pricing()["generacion"]["endpoints"]["nota_ola2"].split())
     assert "centavos" not in nota.lower()
-    assert "MEDIDO en el panel" in nota and "NO están medidas todavía" in nota
+    assert "MEDIDAS en el panel" in nota and "NO están medidas" not in nota
+    assert "LEÍDAS" not in nota
+    # «por confirmar» aparece en la oración de cada modelo al que le faltan filas, y solo en esas
+    frases = nota.split(". ")
+    for id_ in USD:
+        frase = next(f for f in frases if f"({id_}" in f)
+        assert ("por confirmar" in frase) == (id_ in FALTAN), id_
     import re
     # cada modelo con SU cifra completa en SU oración (una subcadena como «$0.04» cabe en «$0.045»)
     for id_, usd in USD.items():
