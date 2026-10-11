@@ -157,7 +157,8 @@ async function elegirOpcion(rotulo: string) {
   await userEvent.click(screen.getByRole('option', { name: new RegExp(rotulo) }));
 }
 
-// la caja pide una imagen a Nano Banana 2, que el servidor deja en segundo plano (contesta `lanzado`)
+// la caja pide una imagen y el servidor la deja en segundo plano (contesta `lanzado`). El servidor real solo
+// lo hace con FLUX 3, Seedream 5.0 Flash y Seedream 4.5; aquí es un doble que contesta `lanzado` con cualquier modelo
 async function pedirImagenLenta(texto: string) {
   await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
   await userEvent.type(caja(), texto);

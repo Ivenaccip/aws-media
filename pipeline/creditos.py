@@ -350,5 +350,10 @@ def devolver_unica(creditos: int, referencia: str, user_id: str | None = None) -
     """Como `devolver`, pero UNA sola vez por referencia: repetirla (el reintento de un
     worker tras un fallo a medias) no abona de nuevo y devuelve None; si se abonó, el saldo
     nuevo. Solo para referencias únicas por hecho (`imagen:<id>`): las que se repiten, como
-    «imagen:estudio», siguen en `devolver`."""
+    «imagen:estudio», siguen en `devolver`.
+
+    Rechaza cantidades de cero o menos: una devolución nunca resta, y un `n` negativo en un doc
+    manipulado restaría saldo (solo lo frenaba el CHECK saldo >= 0)."""
+    if int(creditos) <= 0:
+        raise ValueError(f"una devolución debe ser de al menos 1 crédito, no {creditos!r}")
     return db.abonar_devolucion(user_id or db.usuario_actual(), int(creditos), referencia)

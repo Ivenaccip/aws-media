@@ -116,6 +116,15 @@ def test_devolver_unica_usa_la_sentencia_unica_y_el_usuario_de_siempre(monkeypat
     assert llamadas == [("ana", 7, "imagen:img-1"), ("piloto", 4, "imagen:img-2")]
 
 
+@pytest.mark.parametrize("n", [0, -3, "0", "-1"])
+def test_devolver_unica_rechaza_cero_y_negativos_sin_tocar_la_base(monkeypatch, n):
+    """Una devolución nunca resta: un `n` negativo (un doc manipulado) restaría saldo, y solo lo frenaba el
+    CHECK saldo >= 0 de la tabla."""
+    monkeypatch.setattr(db, "abonar_devolucion", lambda *a: pytest.fail("no debe llegar a la base"))
+    with pytest.raises(ValueError):
+        creditos.devolver_unica(n, "imagen:img-1", "ana")
+
+
 def test_devolver_y_abonar_creditos_siguen_igual_para_las_referencias_que_se_repiten(monkeypatch):
     """«imagen:estudio» e «imagen:editor» se repiten a propósito: esas devoluciones NO pueden volverse únicas."""
     llamadas = []

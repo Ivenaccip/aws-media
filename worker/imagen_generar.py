@@ -72,6 +72,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -88,6 +89,7 @@ MENSAJE_SIN_COBRO = "La imagen no se pudo generar. No se te cobró."
 MENSAJE_SIN_DEVOLUCION = ("La imagen no se pudo generar y no pudimos devolverte los créditos "
                           "automáticamente; ya quedó avisado.")
 
+NOMBRE_RE = re.compile(r"[0-9a-f]{12}\.jpg")   # el nombre que fija server/imagen_cola.py al crear el doc
 RECLAMO_VIVE_S = 14 * 60     # la visibilidad de la cola es de 15 min: más viejo, el worker murió
 ESCRITURAS = 3               # intentos de escribir un doc (o marcar el reclamo) en S3
 PAUSA_ESCRITURA_S = 0.5
@@ -273,7 +275,7 @@ def generar(user_id: str, imagen_id: str) -> None:
     if reclamo is None:
         log.info("%s: otra entrega tiene el pedido, no se hace nada", imagen_id)
         return
-    n = int(doc.get("creditos") or 0)
+    n = max(0, int(doc.get("creditos") or 0))       # lo que se cobró; un negativo no es una devolución
 
     try:
         if reclamo.get("fallo") is True and not solo_devolver:
@@ -285,6 +287,8 @@ def generar(user_id: str, imagen_id: str) -> None:
             return
         try:
             nombre = doc["nombre"]
+            if not NOMBRE_RE.fullmatch(str(nombre)):     # solo el API escribe el doc, pero no se confía a ciegas
+                raise ValueError(f"nombre de imagen inválido en el pedido: {nombre!r}")
             with tempfile.TemporaryDirectory() as td:
                 destino = Path(td) / nombre
                 asyncio.run(media_fal.imagen_fal(doc["prompt"], destino,

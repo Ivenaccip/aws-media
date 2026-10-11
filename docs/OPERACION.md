@@ -1249,7 +1249,7 @@ Con la política de 20, el repositorio se estabilizaba en ~33 GB; con 30 son ~50
 ### El riesgo real, que no es el número
 
 **Las Lambdas apuntan a un digest, no a un tag.** Si la imagen que corre
-producción cae fuera de las 20 más recientes y se expira, la función deja de
+producción cae fuera de las 30 más recientes y se expira, la función deja de
 poder arrancar contenedores nuevos.
 
 Treinta son unos diez días de margen al ritmo de septiembre (~3 imágenes al día) y

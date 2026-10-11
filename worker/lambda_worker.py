@@ -130,7 +130,7 @@ def handler(event, context):  # noqa: ANN001 — firma de Lambda
             from worker.clip_generar import generar as clip
             clip(j["user_id"], j["clip_id"])
         elif j["tipo"] == "imagen":
-            # Imagen de un modelo lento (nb2, sdf, sd45, flux3): una llamada a fal
+            # Imagen de un modelo lento (sdf, sd45, flux3): una llamada a fal
             # que no cabe en los 29 s de la petición. No relanza la generación: el
             # trabajo marca su propio error y devuelve lo cobrado, y un reintento
             # de la cola pagaría una segunda imagen en fal que nadie pidió. Solo

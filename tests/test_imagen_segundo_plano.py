@@ -1,9 +1,10 @@
 """Imágenes en segundo plano — el patrón del clip aplicado a `POST /api/imagenes`.
 
 `/api/imagenes` generaba DENTRO de la petición y la Lambda del API corta a los 29 s (API
-Gateway: tope fijo de 30 s; un arranque en frío gasta unos 16). Cuatro modelos tardaron
-más de 10 s en la prueba pagada (FLUX 3 hasta 25.0 s, Seedream 4.5 hasta 22.7 s, Seedream
-5.0 Flash 15.0 s, Nano Banana 2 11.7 s al crear) y, cortada la petición, se cobraba, no se
+Gateway: tope fijo de 30 s; un arranque en frío gasta unos 16). Tres modelos tardaron
+más de 10 s en la prueba pagada y van por la cola (FLUX 3 hasta 25.0 s, Seedream 4.5 hasta
+22.7 s, Seedream 5.0 Flash 15.0 s; Grok y Nano Banana 2 también pasan de 10 s, pero siguen
+síncronos «de momento» por decisión del dueño) y, cortada la petición, se cobraba, no se
 devolvía y fal cobraba igual. Esos pasan por la cola: cobrar → doc en S3 → `jobs.encolar_imagen` →
 `worker/imagen_generar.py` → la pantalla sondea `GET /api/imagenes/pedidos/{id}`.
 
@@ -1414,6 +1415,31 @@ def _estados_escritos(s3) -> list[str]:
     return [e for e in s3.escrituras if e.endswith(".json")]
 
 
+@pytest.mark.parametrize("nombre", ["../otro.jpg", "x/abcdef012345.jpg", "ABCDEF012345.jpg", "abcdef012345.png", ""])
+def test_un_nombre_de_imagen_invalido_en_el_doc_no_llama_a_fal_ni_sube_y_devuelve_lo_cobrado(
+        worker, s3, fal_imagen, nombre):
+    """Solo el API escribe el doc, pero el worker no confía a ciegas en lo que sale de S3: un nombre que no sea
+    el que fija el API (12 hex + .jpg) se trata como una generación fallida, no se usa para armar una ruta."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker(nombre=nombre))
+
+    worker.w.generar("u1", IMAGEN_ID)
+
+    assert fal_imagen.llamadas == [] and s3.subidas == {}
+    assert worker.devueltos == [(7, f"imagen:{IMAGEN_ID}", "u1")]
+    assert json.loads(s3[CLAVE_DOC])["estado"] == "error"
+
+
+def test_un_pedido_con_creditos_negativos_no_resta_saldo(worker, s3, fal_imagen):
+    """`creditos` negativo en el doc se lee como 0 (nada cobrado): no se llama a devolver con un número que restaría."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker(creditos=-5, nombre="../malo.jpg"))
+
+    worker.w.generar("u1", IMAGEN_ID)
+
+    assert worker.devueltos == []
+    doc = json.loads(s3[CLAVE_DOC])
+    assert doc["estado"] == "error" and doc["devuelto"] is True
+
+
 def test_una_imagen_buena_se_genera_se_sube_y_deja_el_doc_listo(worker, s3, fal_imagen):
     s3[CLAVE_DOC] = json.dumps(_doc_worker())
     original = fal_imagen.contenido
@@ -2111,7 +2137,10 @@ def test_dos_entregas_a_la_vez_gana_la_que_llega_primero_y_solo_cuenta_su_result
     assert len(worker.devueltos) == devoluciones
     assert len(s3.subidas) == (1 if estado == "listo" else 0)
     assert _estados_escritos(s3) == [CLAVE_DOC]             # un solo doc escrito, una sola vez
-    assert [(k, e, ok) for k, e, ok in s3.condicionales][:2] == [(RECLAMO, None, True), (RECLAMO, None, False)]
+    # solo los intentos de CREAR el reclamo (sin etiqueta): la marca de fallo de la ganadora (If-Match con su
+    # etag) se registra antes o después del intento rechazado de la otra según quién corra primero, y comparar
+    # las dos primeras entradas sin filtrar hacía la prueba intermitente (3 de 100 corridas en paralelo)
+    assert [(k, e, ok) for k, e, ok in s3.condicionales if e is None] == [(RECLAMO, None, True), (RECLAMO, None, False)]
 
 
 def test_dos_entregas_que_leen_el_mismo_reclamo_vencido_solo_una_lo_toma(worker, s3, fal_imagen, monkeypatch):
