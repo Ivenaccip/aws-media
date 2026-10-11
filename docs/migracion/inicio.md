@@ -90,7 +90,7 @@ con ese nombre exacto.
 | `inicio.modelos.el_predeterminado_esta_activo_y_es_el_que_ya_valia` | el predeterminado de cada tarea está activo y vale lo mismo que cobra la pantalla |
 | `inicio.modelos.sin_precio_confirmado_no_se_ofrece_aunque_este_activo` | sin número en `tarifas.json` el modelo no sale, ni uno con resolución a medias |
 | `inicio.modelos.un_modelo_apagado_no_se_ofrece_aunque_tenga_precio` | `activo: false` lo saca del menú aunque tenga precio |
-| `inicio.modelos.lo_que_esta_a_la_venta_hoy` | el catálogo real tiene activos Grok y Nano Banana 2 (imagen y editar) y Veo 3.1 Lite y Veo 3.1 Fast (clip); Veo 3.1 Standard sigue apagado |
+| `inicio.modelos.lo_que_esta_a_la_venta_hoy` | el catálogo real tiene activos, para crear imágenes, Grok, FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3 y Nano Banana 2 (para editar, solo Grok y Nano Banana 2) y Veo 3.1 Lite y Veo 3.1 Fast (clip); Veo 3.1 Standard sigue apagado |
 | `inicio.modelos.por_nivel_y_de_menor_a_mayor_precio` | los grupos y su orden |
 | `inicio.modelos.todo_modelo_del_catalogo_cae_en_un_nivel_de_su_tarea` | ningún modelo desaparece por traer un nivel que su tarea no enseña |
 | `inicio.modelos.editar_solo_los_que_tienen_endpoint_edit` | Grok, GPT Image 2, Nano Banana 2 y Nano Banana Pro |

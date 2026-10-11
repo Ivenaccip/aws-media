@@ -79,15 +79,15 @@ const HASTA_2K_Y_4K: Calidad[] = [
 
 const IMAGEN: Modelo[] = [
   { id: 'grok', nombre: 'Grok Imagine', detalle: 'xAI', nivel: 'economico', activo: true },
-  { id: 'klein', nombre: 'FLUX.2 klein', detalle: 'Black Forest Labs', nivel: 'economico', activo: false },
-  { id: 'zit', nombre: 'Z-Image Turbo', detalle: 'Rápido y barato', nivel: 'economico', activo: false },
-  { id: 'flux2', nombre: 'FLUX.2 pro', detalle: 'Black Forest Labs', nivel: 'economico', activo: false },
-  { id: 'sdf', nombre: 'Seedream 5.0 Flash', detalle: 'ByteDance', nivel: 'economico', activo: false },
+  { id: 'klein', nombre: 'FLUX.2 klein', detalle: 'Black Forest Labs', nivel: 'economico', activo: true },
+  { id: 'zit', nombre: 'Z-Image Turbo', detalle: 'Rápido y barato', nivel: 'economico', activo: true },
+  { id: 'flux2', nombre: 'FLUX.2 pro', detalle: 'Black Forest Labs', nivel: 'economico', activo: true },
+  { id: 'sdf', nombre: 'Seedream 5.0 Flash', detalle: 'ByteDance', nivel: 'economico', activo: true },
   { id: 'nbl', nombre: 'Nano Banana 2 Lite', detalle: 'Google', nivel: 'equilibrado', activo: false },
-  { id: 'sd45', nombre: 'Seedream 4.5', detalle: 'ByteDance', nivel: 'equilibrado', activo: false },
+  { id: 'sd45', nombre: 'Seedream 4.5', detalle: 'ByteDance', nivel: 'equilibrado', activo: true },
   { id: 'gpt2', nombre: 'GPT Image 2', detalle: 'OpenAI', nivel: 'equilibrado', activo: false },
   { id: 'gpt25', nombre: 'GPT Image 2.5', detalle: 'OpenAI', nivel: 'equilibrado', activo: false },
-  { id: 'flux3', nombre: 'FLUX 3', detalle: 'Black Forest Labs', nivel: 'equilibrado', activo: false },
+  { id: 'flux3', nombre: 'FLUX 3', detalle: 'Black Forest Labs', nivel: 'equilibrado', activo: true },
   { id: 'nb2', nombre: 'Nano Banana 2', detalle: 'Google', nivel: 'equilibrado', activo: true },
   {
     id: 'nbp',

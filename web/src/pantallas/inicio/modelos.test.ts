@@ -106,10 +106,12 @@ describe('modelos.ts y tarifas.json', () => {
   });
 
   it('inicio.modelos.lo_que_esta_a_la_venta_hoy', () => {
-    // el estado del 9-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron tras la prueba pagada;
-    // Veo 3.1 Standard sigue apagado. Si esto cambia, que sea a propósito (y con su número en tarifas.json).
+    // el estado del 11-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
+    // el 11-oct entraron para crear imágenes FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash,
+    // Seedream 4.5 y FLUX 3 (ninguno edita). Veo 3.1 Standard sigue apagado. Si esto cambia, que sea a
+    // propósito (y con su número en tarifas.json).
     const activos = (t: Tarea) => CATALOGO[t].filter(m => m.activo).map(m => m.id);
-    expect(activos('imagen')).toEqual(['grok', 'nb2']);
+    expect(activos('imagen')).toEqual(['grok', 'klein', 'zit', 'flux2', 'sdf', 'sd45', 'flux3', 'nb2']);
     expect(activos('editar')).toEqual(['grok', 'nb2']);
     expect(activos('clip')).toEqual(['veo-lite', 'veo-fast']);
   });

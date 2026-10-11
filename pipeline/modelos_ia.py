@@ -13,9 +13,9 @@ cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
 levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
 es la compuerta: recién entonces `activo: true` en el catálogo de la web
 (web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite y, desde
-el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. Son filas inertes
-Veo 3.1 Standard y los seis modelos de imagen de la Ola 2 (FLUX.2 klein 9B, Z-Image Turbo,
-FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3).
+el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. Desde el 11-oct-2026,
+tras la suya (18 llamadas y el panel de fal), también FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro,
+Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear. Es una fila inerte Veo 3.1 Standard.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.

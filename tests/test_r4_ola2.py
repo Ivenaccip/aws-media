@@ -1,7 +1,9 @@
 """R4 · Ola 2 — imágenes de familias nuevas (FLUX.2, Z-Image, Seedream, FLUX 3; GPT Image sigue fuera).
 
-Seis filas INERTES: FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash,
-Seedream 4.5 y FLUX 3. Ninguna tiene número en tools/tarifas.json ni `activo: true` en la web.
+Seis filas, que nacieron INERTES y el 11-oct-2026 se encendieron por decisión del dueño, tras su
+prueba pagada (18 llamadas) y la lectura del panel de fal: FLUX.2 klein 9B, Z-Image Turbo,
+FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3. Tienen número en tools/tarifas.json §modelos
+«imagen» (no en «editar»: ninguno edita) y `activo: true` en la web.
 
 Lo que cambia respecto a la Ola 1: Grok y Nano Banana piden el tamaño con
 `aspect_ratio` («16:9»); FLUX.2, Z-Image y Seedream no lo entienden y piden
@@ -19,8 +21,10 @@ Lo que este archivo defiende:
     enum, `num_images` solo donde el endpoint lo trae, los mínimos de píxeles de Seedream;
   * que Grok y Nano Banana 2 manden exactamente los mismos argumentos de siempre;
   * que un modelo de solo texto a imagen no reciba una imagen de referencia;
-  * LA COMPUERTA de las seis: sin número en tools/tarifas.json, 422 antes de cobrar, de
-    crear nada o de llamar a fal; y que escribir el número sea lo único que falta;
+  * LA COMPUERTA, que sigue siendo el mecanismo: si a alguno de las seis le quitan el número
+    de tools/tarifas.json, 422 antes de cobrar, de crear nada o de llamar a fal;
+  * que HOY tengan exactamente la propuesta de créditos en tarifas.json y `activo: true` en la
+    web, que cobren y llamen a su endpoint, y que devuelvan los créditos si fal falla;
   * que el costo salga de la ficha de pricing.json por endpoint exacto.
 
 Sin red: fal, S3 y el monedero mockeados.
@@ -55,11 +59,10 @@ ENDPOINTS = {
 }
 IDS = tuple(ENDPOINTS)
 OLA2 = {("imagen", id_): ep for id_, ep in ENDPOINTS.items()}
-# Los que HOY no tienen número en tarifas.json. Cuando el dueño enciende uno (número en
-# tarifas.json + `activo: true` en la web) se saca de aquí: el test
-# `test_hoy_tarifas_json_no_trae_numero_para_los_inertes` es el aviso de que la compuerta
-# se abrió a propósito.
-INERTES = set(OLA2)
+# Los que HOY tienen número en tarifas.json y `activo: true` en la web (el dueño los encendió el
+# 11-oct-2026). Si alguno se vuelve a apagar, se saca de aquí a propósito: el test
+# `test_hoy_tarifas_json_trae_la_propuesta_de_las_seis` es el aviso.
+ENCENDIDOS = set(OLA2)
 # dólares por imagen de cada modelo (pricing.json) y su propuesta de créditos
 USD = {"klein": 0.006, "zit": 0.005, "flux2": 0.03, "sdf": 0.027, "sd45": 0.04, "flux3": 0.024}
 PROPUESTA = {"klein": 2, "zit": 2, "flux2": 4, "sdf": 4, "sd45": 4, "flux3": 4}
@@ -653,8 +656,8 @@ def imagenes_al_disco(cliente, falso_fal, monkeypatch, tmp_path):
 
 @pytest.fixture
 def sin_numero(monkeypatch):
-    """Fuerza que los modelos de la Ola 2 no tengan número, pase lo que pase en
-    tarifas.json: la compuerta se prueba aunque el dueño ya los haya encendido."""
+    """Quita el número a los modelos de la Ola 2, pase lo que pase en tarifas.json: la
+    compuerta se prueba aunque el dueño ya los haya encendido (como hoy)."""
     from pipeline import creditos
     for tarea, id_ in OLA2:
         monkeypatch.delitem(creditos.MODELOS_CR.get(tarea, {}), id_, raising=False)
@@ -662,7 +665,7 @@ def sin_numero(monkeypatch):
 
 @pytest.mark.parametrize("formato", ["horizontal", "vertical", "cuadrado", ""])
 @pytest.mark.parametrize("id_", IDS)
-def test_un_modelo_inerte_da_422_sin_cobrar_ni_llamar_a_fal(
+def test_sin_numero_en_tarifas_el_modelo_da_422_sin_cobrar_ni_llamar_a_fal(
         cliente, espia, falso_fal, sin_numero, imagenes_al_disco, id_, formato):
     cuerpo = {"prompt": "un gato", "modelo": id_, "estilo": "animated"}
     if formato:
@@ -678,7 +681,8 @@ def test_un_modelo_inerte_da_422_sin_cobrar_ni_llamar_a_fal(
 @pytest.mark.parametrize("modo", ["todo", "pincel"])
 @pytest.mark.parametrize("id_", IDS)
 def test_ninguno_de_la_ola_2_entra_al_editor(cliente, espia, falso_fal, imagenes_al_disco, id_, modo):
-    """Ninguno tiene fila en «editar»: 422 aunque alguien le ponga número en tarifas.json."""
+    """Ninguno tiene fila en «editar» ni número en tarifas.json §modelos «editar»: 422 aunque tengan
+    número en «imagen» (están encendidos para crear, no para editar)."""
     archivos = {"imagen": ("a.png", b"\x89PNG-de-prueba", "image/png")}
     if modo == "pincel":
         archivos["marcada"] = ("m.jpg", b"\xff\xd8-de-prueba", "image/jpeg")
@@ -688,44 +692,37 @@ def test_ninguno_de_la_ola_2_entra_al_editor(cliente, espia, falso_fal, imagenes
     assert espia.cobros == [] and falso_fal == []
 
 
-def test_hoy_tarifas_json_no_trae_numero_para_los_inertes():
-    """EL AVISO DE QUE LA COMPUERTA SE ABRIÓ. Mientras estos números no existan, los
-    modelos no se ofrecen. Cuando el dueño los escriba (tras la prueba pagada), este test
-    falla a propósito: se saca el modelo de INERTES y se ajusta lo demás (catálogo de la
-    web, docs). No es un fallo del código."""
+def test_hoy_tarifas_json_trae_la_propuesta_de_las_seis():
+    """LO QUE EL DUEÑO ESCRIBIÓ EL 11-OCT-2026 tras la prueba pagada: exactamente la propuesta (que la
+    fórmula reproduce más arriba), solo para crear y no para editar. Si alguno se vuelve a apagar, este
+    test falla a propósito: se saca de ENCENDIDOS y se ajusta lo demás (catálogo de la web, docs)."""
     from pipeline import creditos
     modelos = _tarifas()["modelos"]
-    for tarea, id_ in INERTES:
-        assert id_ not in modelos.get(tarea, {}), (tarea, id_)
-        assert id_ not in creditos.MODELOS_CR.get(tarea, {}), (tarea, id_)
+    for tarea, id_ in ENCENDIDOS:
+        assert modelos[tarea][id_] == PROPUESTA[id_], (tarea, id_)
+        assert creditos.MODELOS_CR[tarea][id_] == PROPUESTA[id_], (tarea, id_)
+        assert creditos.costo_modelo(tarea, id_) == PROPUESTA[id_]
+        assert id_ not in modelos.get("editar", {}) and id_ not in creditos.MODELOS_CR.get("editar", {})
         with pytest.raises(KeyError):
-            creditos.costo_modelo(tarea, id_)
+            creditos.costo_modelo("editar", id_)
 
 
 @pytest.mark.parametrize("id_", IDS)
-def test_el_catalogo_de_la_web_trae_a_los_de_la_ola_2_apagados(id_):
-    """Mientras la compuerta esté cerrada, la web no los ofrece aunque los conozca."""
+def test_el_catalogo_de_la_web_trae_a_los_de_la_ola_2_encendidos(id_):
+    """La web los ofrece para crear: `activo: true` en su fila del catálogo de imagen."""
     ts = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "modelos.ts").read_text(encoding="utf-8")
     fila = next(l for l in ts.splitlines() if f"id: '{id_}'" in l)
-    assert "activo: false" in fila
+    assert "activo: true" in fila
 
 
 # ---------------------------------------------------------------------------
-# escribir el número es lo ÚNICO que falta (simulado: tarifas.json no se toca)
-
-@pytest.fixture
-def encendido(monkeypatch):
-    """Como si el dueño hubiera escrito la propuesta de las seis en tarifas.json §modelos."""
-    from pipeline import creditos
-    for id_ in IDS:
-        monkeypatch.setitem(creditos.MODELOS_CR.setdefault("imagen", {}), id_, PROPUESTA[id_])
-
+# encendidos: cobran y llaman a su endpoint con los números REALES de tarifas.json
 
 @pytest.mark.parametrize("formato,aspecto", [("horizontal", "16:9"), ("vertical", "9:16"),
                                              ("cuadrado", "1:1"), ("", "1:1")])
 @pytest.mark.parametrize("id_", IDS)
-def test_con_el_numero_puesto_cada_modelo_cobra_y_llama_a_su_endpoint(
-        cliente, espia, falso_fal, encendido, imagenes_al_disco, id_, formato, aspecto):
+def test_encendido_cada_modelo_cobra_y_llama_a_su_endpoint(
+        cliente, espia, falso_fal, imagenes_al_disco, id_, formato, aspecto):
     cuerpo = {"prompt": "un gato", "modelo": id_, "estilo": "animated"}
     if formato:
         cuerpo["formato"] = formato
@@ -740,7 +737,7 @@ def test_con_el_numero_puesto_cada_modelo_cobra_y_llama_a_su_endpoint(
 
 
 @pytest.mark.parametrize("id_", IDS)
-def test_si_fal_falla_se_devuelven_los_creditos(cliente, espia, encendido, imagenes_al_disco, monkeypatch, id_):
+def test_si_fal_falla_se_devuelven_los_creditos(cliente, espia, imagenes_al_disco, monkeypatch, id_):
     from pipeline import fal
 
     async def llamar(app, argumentos, timeout_s, nombre, meta=None):
@@ -752,7 +749,7 @@ def test_si_fal_falla_se_devuelven_los_creditos(cliente, espia, encendido, image
     assert espia.cobros == [(n, "imagen:estudio")] and espia.devueltos == [(n, "imagen:estudio")]
 
 
-def test_los_modelos_a_la_venta_no_se_movieron():
+def test_los_modelos_de_antes_no_se_movieron():
     from pipeline import creditos
     assert creditos.costo_modelo("imagen", "grok") == 2
     assert creditos.costo_modelo("imagen", "nb2") == creditos.costo_modelo("editar", "nb2") == 8
