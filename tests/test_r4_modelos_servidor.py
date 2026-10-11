@@ -78,8 +78,10 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
                     assert isinstance(creditos.costo_modelo(tarea, id_, s), int)
             else:
                 assert isinstance(creditos.costo_modelo(tarea, id_), int)
-    # los modelos a la venta siguen con número: Grok y Veo Lite desde R4; Nano Banana 2 y
-    # Veo 3.1 Fast desde el 9-oct-2026
+    # los modelos encendidos siguen con número: Grok y Veo Lite desde R4; Nano Banana 2 y
+    # Veo 3.1 Fast desde el 9-oct-2026; y, encendidos el 11-oct-2026 en la rama (se ofrecen al
+    # desplegarla), FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y
+    # FLUX 3, solo para crear (su número exacto lo fija tests/test_r4_ola2.py)
     assert set(creditos.MODELOS_CR["imagen"]) >= {"grok", "nb2"}
     assert set(creditos.MODELOS_CR["editar"]) >= {"grok", "nb2"}
     assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite", "veo-fast"}

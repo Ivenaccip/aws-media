@@ -74,9 +74,16 @@ export async function pedirClip(texto: string, modelo: string, fotos: File[], se
   });
 }
 
+/** Lo que contesta crear una imagen: la de siempre (`nombre` y `url`, los modelos rápidos) o `lanzado`
+ *  (los que tardan: el servidor ya cobró y la hace en segundo plano; aparece en «Mis creaciones»). */
+export type RespuestaImagen = { nombre: string; url: string } | { lanzado: true; id: string; creditos: number };
+
+/** ¿El servidor dejó la imagen en marcha? Solo entonces no hay imagen todavía y la lista de «Mis creaciones» es la única que la trae. */
+export const esLanzada = (r: unknown): boolean => typeof r === 'object' && r !== null && 'lanzado' in r && r.lanzado === true;
+
 /** Crear: el estilo y el formato son los que traía la pantalla de imágenes (animado, cuadrada). */
 export const pedirImagen = (texto: string, modelo: string) =>
-  pedir<{ nombre: string; url: string }>('/api/imagenes', {
+  pedir<RespuestaImagen>('/api/imagenes', {
     cuerpo: { prompt: texto, estilo: 'animated', estilo_custom: '', modelo },
   });
 

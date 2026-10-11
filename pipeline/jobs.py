@@ -175,6 +175,19 @@ def encolar_clip(user_id: str, clip_id: str, segundos: int) -> None:
                                 "clip_id": clip_id, "segundos": segundos}))
 
 
+def encolar_imagen(user_id: str, imagen_id: str) -> None:
+    """Una imagen de los modelos lentos (`Modelo.segundo_plano`) — trabajo corto en
+    el worker Lambda, como el clip. Va por la cola por una razón de transporte: la
+    Lambda del API corta a los 29 s y estos modelos tardaron de 8.6 a 25 s en la
+    prueba pagada (más ~16 s de un arranque en frío). El mensaje solo lleva ids: el
+    pedido completo (prompt, aspecto, modelo y lo cobrado) vive en el doc de S3, que
+    es el que manda."""
+    _sqs().send_message(
+        QueueUrl=os.environ["JOBS_QUEUE_URL"],
+        MessageBody=json.dumps({"tipo": "imagen", "user_id": user_id,
+                                "imagen_id": imagen_id}))
+
+
 def encolar_publicar(user_id: str, proyecto: str, pub_id: str) -> None:
     """M23 C2: subir la película a Blotato y crear el post. El mensaje solo
     lleva ids: la clave del usuario la lee el worker, y el texto vive en la

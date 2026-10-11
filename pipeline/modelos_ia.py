@@ -13,8 +13,10 @@ cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
 levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
 es la compuerta: recién entonces `activo: true` en el catálogo de la web
 (web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite y, desde
-el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast; Veo 3.1 Standard es
-la única fila inerte.
+el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2026, tras la
+suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
+Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
+desplegarla. Es una fila inerte Veo 3.1 Standard.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -34,6 +36,14 @@ duración) no se puede fijar.
 Los intentos de un clip también son del modelo (`Modelo.max_intentos`): un timeout
 de cliente no cancela el trabajo en fal, así que reintentar un modelo caro puede
 cobrar dos veces. Veo 3.1 Fast y Standard hacen un solo intento.
+
+Y si una imagen se genera dentro de la petición o en segundo plano también lo decide
+el modelo (`Modelo.segundo_plano`): la Lambda del API corta a los 29 s (API Gateway:
+tope fijo de 30 s) y un arranque en frío ya gasta unos 16, así que un modelo que tardó
+más de 10 s en la prueba pagada no cabe en la petición. Esos se encolan como el clip
+(server/imagen_cola.py, worker/imagen_generar.py); los rápidos siguen síncronos. Las dos
+excepciones a la regla son Grok (13 a 29 s medidos) y Nano Banana 2 al crear (11.7 s): siguen
+síncronos «de momento» por decisión del dueño del 11-oct-2026 (docs/OPERACION.md).
 """
 from __future__ import annotations
 
@@ -55,6 +65,12 @@ class ModeloDesconocido(ValueError):
     """El id no existe para esa tarea. Es un error del pedido (422), no nuestro."""
 
 
+class AspectoNoAdmitido(ModeloDesconocido):
+    """El modelo pide el tamaño con valores propios («image_size») y no tiene traducción
+    para ese aspecto. Error del pedido (422), igual que la duración: no se cambia en
+    silencio a otro aspecto, porque se entregaría una imagen que nadie pidió."""
+
+
 class DuracionNoAdmitida(ModeloDesconocido):
     """El modelo existe, pero no hace clips de esa duración. También es un error
     del pedido (422); hereda de ModeloDesconocido para que un solo `except` cubra
@@ -65,7 +81,8 @@ class DuracionNoAdmitida(ModeloDesconocido):
 # segundos): ningún modelo puede fijarlas en `args_extra`, porque pisaría lo que el
 # usuario pidió y se cobró. `image_url` es la imagen de entrada de la familia Veo.
 LLAVES_PROTEGIDAS = frozenset(
-    {"prompt", "image_urls", "image_url", "num_images", "aspect_ratio", "duration"})
+    {"prompt", "image_urls", "image_url", "num_images", "aspect_ratio", "image_size",
+     "duration"})
 
 
 def _normaliza_args_extra(id_: str, valor) -> tuple[tuple[str, object], ...]:
@@ -107,6 +124,54 @@ def _normaliza_args_extra(id_: str, valor) -> tuple[tuple[str, object], ...]:
     return tuple(sorted(pares, key=lambda par: par[0]))
 
 
+# Los aspectos que la caja de imágenes sabe pedir (server/app.py::ASPECTOS_IMAGEN) y las
+# dos formas con que un endpoint de imagen pide el tamaño.
+ASPECTOS_CAJA = ("1:1", "16:9", "9:16")
+LLAVES_DE_TAMANO = ("aspect_ratio", "image_size")
+
+
+def _normaliza_tamanos(id_: str, llave: str, valor) -> tuple[tuple[str, object], ...]:
+    """Los tamaños como tupla inmutable de pares (aspecto, valor), ordenada por aspecto.
+
+    Con «aspect_ratio» no hay tabla (el aspecto viaja tal cual). Con «image_size» hace
+    falta un valor para CADA aspecto de la caja: un aspecto sin traducción dejaría al
+    modelo a medias (se cobraría y no se podría llamar), así que se rechaza al
+    construir la fila. El valor es un texto de fal («square_hd») o un par (ancho, alto)
+    de enteros: un dict no sería inmutable."""
+    if isinstance(valor, Mapping):
+        pares = list(valor.items())
+    else:
+        pares = [tuple(p) for p in (valor or ())]
+    if llave == "aspect_ratio":
+        if pares:
+            raise ValueError(f"tamanos de {id_!r}: con llave_tamano «aspect_ratio» el aspecto "
+                             f"viaja tal cual y no lleva tabla")
+        return ()
+    vistos: set[str] = set()
+    for par in pares:
+        if len(par) != 2:
+            raise ValueError(f"tamanos de {id_!r}: cada tamaño es un par (aspecto, valor)")
+        aspecto, dato = par
+        if aspecto not in ASPECTOS_CAJA:
+            raise ValueError(f"tamanos de {id_!r}: «{aspecto}» no es un aspecto de la caja "
+                             f"({', '.join(ASPECTOS_CAJA)})")
+        if aspecto in vistos:
+            raise ValueError(f"tamanos de {id_!r}: el aspecto «{aspecto}» está repetido")
+        vistos.add(aspecto)
+        if isinstance(dato, str):
+            ok = bool(dato.strip())
+        else:
+            ok = (isinstance(dato, tuple) and len(dato) == 2
+                  and all(type(n) is int and n > 0 for n in dato))
+        if not ok:
+            raise ValueError(f"tamanos de {id_!r}: el valor de «{aspecto}» debe ser un texto de "
+                             f"fal o un par (ancho, alto) de enteros positivos, no {dato!r}")
+    faltan = [a for a in ASPECTOS_CAJA if a not in vistos]
+    if faltan:
+        raise ValueError(f"tamanos de {id_!r}: falta la traducción de {', '.join(faltan)}")
+    return tuple(sorted(pares, key=lambda par: par[0]))
+
+
 @dataclass(frozen=True)
 class Modelo:
     id: str
@@ -130,6 +195,29 @@ class Modelo:
     # trabajo en fal, así que un reintento puede cobrar dos veces; en los modelos
     # caros (Veo 3.1 Standard, $3.20 dólares por clip de 8 s) se fija en 1.
     max_intentos: int = 0
+    # imagen: cómo pide el tamaño de salida este endpoint. «aspect_ratio» (Grok, Nano
+    # Banana, FLUX 3): se manda el aspecto de la caja tal cual («16:9»). «image_size»
+    # (FLUX.2, Z-Image, Seedream, GPT Image): cada familia habla con valores propios
+    # («square_hd», «landscape_16_9»…), y `tamanos` trae el de cada aspecto de la caja.
+    llave_tamano: str = "aspect_ratio"
+    tamanos: tuple[tuple[str, object], ...] = ()
+    # imagen: ¿el endpoint trae `num_images`? La tarea lo manda siempre, salvo a los que
+    # su esquema no lo trae (FLUX.2 pro y FLUX 3, leído el 11-oct-2026): ahí no se manda,
+    # en vez de esperar que fal lo ignore.
+    con_num_images: bool = True
+    # imagen: hasta cuántos megapíxeles de SALIDA vale el costo de su ficha en
+    # tools/pricing.json. Los que cobran por megapíxel (FLUX.2, Z-Image, FLUX 3) se anotan
+    # a ~1 MP; si llegara una imagen mucho mayor, lo cobrado sería otro. 0 = sin tope (precio
+    # fijo por imagen, como Seedream). Solo lo usa la prueba pagada para marcar REVISAR.
+    megapixeles_ficha: float = 0.0
+    # imagen: ¿se genera en segundo plano (cobrar → doc en S3 → cola → worker) y no dentro
+    # de la petición? Verdadero para los que tardaron MÁS DE 10 s en la prueba pagada: la
+    # Lambda del API corta a los 29 s (API Gateway HTTP API: tope fijo de 30 s) y un arranque
+    # en frío gasta unos 16; cortada la petición, se cobra, no se devuelve y fal cobra igual.
+    # Una bandera por fila: mover un modelo de un camino al otro es cambiar este booleano.
+    # Grok es la excepción: midió 13–29 s y sigue en False por decisión pendiente del dueño.
+    # Solo aplica a CREAR (`POST /api/imagenes`) y solo en la nube; en local todo es síncrono.
+    segundo_plano: bool = False
 
     def __post_init__(self):
         # frozen: la única forma de reemplazar el campo es object.__setattr__
@@ -137,6 +225,18 @@ class Modelo:
         if type(self.max_intentos) is not int or self.max_intentos < 0:
             raise ValueError(f"max_intentos de {self.id!r} debe ser un entero de 0 o más "
                              f"(0 = los de settings.clip_max_attempts)")
+        mp = self.megapixeles_ficha
+        if isinstance(mp, bool) or not isinstance(mp, (int, float)) or not mp >= 0:
+            raise ValueError(f"megapixeles_ficha de {self.id!r} debe ser un número de 0 o más "
+                             f"(0 = sin tope), no {mp!r}")
+        if type(self.segundo_plano) is not bool:
+            raise ValueError(f"segundo_plano de {self.id!r} debe ser True o False, "
+                             f"no {self.segundo_plano!r}")
+        if self.llave_tamano not in LLAVES_DE_TAMANO:
+            raise ValueError(f"llave_tamano de {self.id!r} debe ser una de "
+                             f"{', '.join(LLAVES_DE_TAMANO)}, no {self.llave_tamano!r}")
+        object.__setattr__(self, "tamanos", _normaliza_tamanos(self.id, self.llave_tamano,
+                                                                self.tamanos))
 
     @property
     def args_extra_dict(self) -> dict:
@@ -145,6 +245,33 @@ class Modelo:
 
     def endpoint_para(self, con_imagen: bool) -> str:
         return (self.endpoint_con_imagen or self.endpoint) if con_imagen else self.endpoint
+
+    @property
+    def admite_referencia(self) -> bool:
+        """¿Tiene endpoint propio para partir de una imagen? Un modelo de solo texto a
+        imagen (FLUX.2, Z-Image…) no la admite: mandarle `image_urls` a su endpoint de
+        crear no es editar, es un argumento que fal puede ignorar y cobrar igual."""
+        return bool(self.endpoint_con_imagen)
+
+    def args_de_imagen(self, prompt: str, aspecto: str, num_imagenes: int = 1) -> dict:
+        """Los argumentos de «crear una imagen» en el idioma de este endpoint: el
+        prompt, `num_images` (si el endpoint lo trae) y el tamaño, ya traducido. Con
+        «aspect_ratio» el aspecto viaja tal cual y Grok manda exactamente lo de siempre;
+        con «image_size» sale el valor de `tamanos`, o AspectoNoAdmitido."""
+        args: dict = {"prompt": prompt}
+        if self.con_num_images:
+            args["num_images"] = num_imagenes
+        if self.llave_tamano == "aspect_ratio":
+            args["aspect_ratio"] = aspecto
+            return args
+        valor = dict(self.tamanos).get(aspecto)
+        if valor is None:
+            raise AspectoNoAdmitido(
+                f"El modelo {self.id} no tiene tamaño para el aspecto {aspecto!r}. "
+                f"Aspectos disponibles: {', '.join(a for a, _ in self.tamanos)}.")
+        args["image_size"] = ({"width": valor[0], "height": valor[1]}
+                              if isinstance(valor, tuple) else valor)
+        return args
 
     def con_args_extra(self, args: dict) -> dict:
         """`args` con los argumentos fijos del modelo sumados. Los del MODELO ganan:
@@ -166,6 +293,35 @@ VEO_STD_T2V = "fal-ai/veo3.1"
 VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
 NB2_CREAR = "fal-ai/nano-banana-2"
 NB2_EDITAR = "fal-ai/nano-banana-2/edit"
+# Ola 2 (familias nuevas de imagen): todos solo texto a imagen (sin endpoint de editar en el
+# selector). Endpoints y parámetros leídos del esquema público de fal el 11-oct-2026
+# (tools/leer_esquema_fal.py; docs/modelos-ia/DATOS-FAL-2026-10-08.md §10).
+KLEIN_CREAR = "fal-ai/flux-2/klein/9b"
+ZIT_CREAR = "fal-ai/z-image/turbo"
+FLUX2_CREAR = "fal-ai/flux-2-pro"
+SDF_CREAR = "bytedance/seedream/v5/flash/text-to-image"
+SD45_CREAR = "fal-ai/bytedance/seedream/v4.5/text-to-image"
+FLUX3_CREAR = "blackforestlabs/flux-3/text-to-image"
+
+# La caja guarda TODA imagen como .jpg (server/app.py) y la sirve como image/jpeg: un PNG
+# dentro de un .jpg lo pintan los navegadores, pero no lo aceptan las redes al publicar. Los
+# modelos nuevos piden jpeg explícito en vez de depender del valor por defecto de fal (que en
+# klein y Z-Image es png). Seedream 4.5 no trae `output_format`: la prueba pagada mira qué llega.
+SALIDA_JPEG = (("output_format", "jpeg"),)
+
+# Los tamaños de la familia FLUX.2 (klein, pro) y Z-Image: los valores de `image_size` que
+# fal documenta para cada aspecto de la caja. Cuadrado es `square_hd` (1024×1024). Los tres
+# están en el enum del esquema de fal (leído el 11-oct-2026, DATOS-FAL §10) y la prueba pagada del
+# 10-oct (DATOS-FAL §11) midió lo que llega: 1024×1024, 1024×576 y 576×1024 (0.59 MP los apaisados
+# y verticales).
+TAMANOS_FLUX = (("1:1", "square_hd"), ("16:9", "landscape_16_9"), ("9:16", "portrait_16_9"))
+
+# Seedream NO usa los valores predefinidos: su esquema pide un mínimo de píxeles que
+# `landscape_16_9` no alcanza. Se mandan pares (ancho, alto) explícitos, múltiplos de 16.
+#   · 5.0 Flash: entre 1024×1024 y 2048×2048 píxeles en total, relación entre 1/16 y 16.
+#   · 4.5: ancho y alto entre 1920 y 4096, o píxeles en total entre 2560×1440 y 4096×4096.
+TAMANOS_SDF = (("1:1", (1920, 1920)), ("16:9", (2048, 1152)), ("9:16", (1152, 2048)))
+TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2752)))
 
 # Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
 # manda explícito para no depender de que el default de fal siga siendo 1K.
@@ -175,6 +331,11 @@ NB2_ARGS_EXTRA = (("resolution", "1K"),)
 def _tabla() -> dict[tuple[str, str], Modelo]:
     # Se arma al llamar y no al importar: los endpoints de Grok y Veo Lite viven en
     # settings (se pueden sobrescribir por entorno) y esta tabla debe seguirlos.
+    # Grok tarda de 13 a 29 s por imagen (mediana 16; el vertical, 28.7 s: ocho llamadas reales
+    # el 18-sep, PLAN-PRODUCTO.md y tools/pricing.json). Por la regla de abajo —segundo plano si
+    # algún tiempo medido pasó de 10 s— iría a segundo plano, pero sigue síncrono (sin
+    # `segundo_plano`) porque esa decisión es del dueño: docs/OPERACION.md, «Decisión pendiente
+    # del dueño: Grok».
     grok = Modelo("grok", "imagen", settings.fal_imagen, settings.fal_imagen_edit)
     veo = Modelo("veo-lite", "clip", settings.fal_veo_t2v, settings.fal_veo,
                  con_audio=True, duraciones=(4, 6, 8))
@@ -189,10 +350,42 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
-    # 9-oct-2026.
+    # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): por la regla de arriba iría a
+    # segundo plano, pero sigue síncrono —como Grok y como editar— «de momento», por decisión
+    # del dueño del 11-oct-2026: docs/OPERACION.md, «Decisión del dueño: Grok y Nano Banana 2».
     nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
+    # Ola 2: FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y
+    # FLUX 3. Encendidos el 11-oct-2026 (número en tarifas.json §modelos «imagen»); se ofrecen al
+    # desplegar la rama. Sin endpoint de imagen: son solo texto a imagen, así que no entran en
+    # «editar». `segundo_plano` va en los que tardaron más de 10 s en la prueba pagada (los
+    # segundos de cada uno están en docs/modelos-ia/POR-VERIFICAR.md): FLUX 3 21.8–25.0 s,
+    # Seedream 5.0 Flash 13.4–15.0 s y Seedream 4.5 8.6–22.7 s. FLUX.2 pro (7.2–8.1 s), klein
+    # (0.8–1.2 s) y Z-Image Turbo (1.0–1.8 s) caben en la petición.
+    klein = Modelo("klein", "imagen", KLEIN_CREAR, llave_tamano="image_size",
+                   tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, megapixeles_ficha=1.2)
+    zit = Modelo("zit", "imagen", ZIT_CREAR, llave_tamano="image_size",
+                 tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, megapixeles_ficha=1.2)
+    # FLUX.2 pro: su esquema no trae `num_images`
+    flux2 = Modelo("flux2", "imagen", FLUX2_CREAR, llave_tamano="image_size",
+                   tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, con_num_images=False,
+                   megapixeles_ficha=1.2)
+    sdf = Modelo("sdf", "imagen", SDF_CREAR, llave_tamano="image_size",
+                 tamanos=TAMANOS_SDF, args_extra=SALIDA_JPEG, segundo_plano=True)
+    sd45 = Modelo("sd45", "imagen", SD45_CREAR, llave_tamano="image_size",
+                  tamanos=TAMANOS_SD45, segundo_plano=True)
+    # FLUX 3: pide el aspecto como la caja ("16:9"), no trae `num_images` y solo tiene leído el
+    # precio de 1K (resolution "1k"): se fija como el 1K de Nano Banana 2.
+    flux3 = Modelo("flux3", "imagen", FLUX3_CREAR, con_num_images=False, megapixeles_ficha=1.2,
+                   args_extra=(("output_format", "jpeg"), ("resolution", "1k")),
+                   segundo_plano=True)
     return {("imagen", "grok"): grok,
+            ("imagen", "klein"): klein,
+            ("imagen", "zit"): zit,
+            ("imagen", "flux2"): flux2,
+            ("imagen", "sdf"): sdf,
+            ("imagen", "sd45"): sd45,
+            ("imagen", "flux3"): flux3,
             ("imagen", "nb2"): nb2,
             ("editar", "grok"): Modelo("grok", "editar", settings.fal_imagen_edit),
             ("editar", "nb2"): nb2_editar,

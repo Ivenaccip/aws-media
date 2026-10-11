@@ -17,7 +17,9 @@ Lo que este archivo defiende:
   * lo descargado nunca pisa lo que ya estaba, y se mide con ffprobe (tamaño,
     segundos y si trae pista de audio); un parcial que no se deja borrar no tapa el éxito;
   * lo medido se compara con lo prometido, incluido el 1K de Nano Banana 2 y el
-    tiempo de la llamada contra su timeout;
+    tiempo de la llamada contra su timeout; y una imagen que responde dentro de la
+    petición del API (sin `segundo_plano`) sale REVISAR si pasó de 10 s, porque esa
+    Lambda corta a los 29 s (las de segundo plano solo reciben un AVISO);
   * un pedido mal hecho (editar sin imagen, modelo desconocido) da un error
     claro, no una traza; todo fallo de preflight sale con 2 (no se gastó nada).
 
@@ -553,11 +555,12 @@ def _ffprobe_falso(monkeypatch, datos, returncode=0, stderr=""):
 
 def test_medir_lee_tamano_segundos_y_audio_de_un_video(monkeypatch, tmp_path):
     visto = _ffprobe_falso(monkeypatch, {
-        "streams": [{"codec_type": "video", "width": 1280, "height": 720},
+        "streams": [{"codec_type": "video", "width": 1280, "height": 720, "codec_name": "h264"},
                     {"codec_type": "audio", "codec_name": "aac"}],
         "format": {"duration": "8.041000"}})
     m = probar._medir(tmp_path / "v.mp4")
-    assert m == {"ancho": 1280, "alto": 720, "segundos": 8.041, "audio": True, "codec_audio": "aac"}
+    assert m == {"ancho": 1280, "alto": 720, "segundos": 8.041, "audio": True, "codec_audio": "aac",
+                 "codec": "h264"}
     # sin shell, lista de argumentos, y la salida se lee en UTF-8 (Windows)
     assert isinstance(visto["cmd"], list) and visto["cmd"][0] == "ffprobe"
     assert "shell" not in visto["kwargs"] and visto["kwargs"]["encoding"] == "utf-8"
@@ -620,11 +623,145 @@ def test_nb2_promete_1k_y_una_salida_mayor_se_marca_para_revisar(env, capsys, fo
         assert "REVISAR" not in out and "coincide con lo prometido" in out
 
 
+@pytest.mark.parametrize("ancho,alto,marca", [
+    (1344, 768, None),                 # 1.03 MP: 1K de verdad
+    (1024, 1024, None),                # 1.05 MP
+    (1024, 576, "se prometió 1K"),     # 0.59 MP: llegó en 768sq
+    (512, 512, "se prometió 1K"),      # 0.26 MP: llegó en 512sq
+    (2048, 2048, "se prometió 1K"),    # 4.2 MP: llegó en 2k
+])
+def test_flux_3_promete_1k_aunque_lo_fije_en_minuscula(env, capsys, tmp_path, ancho, alto, marca):
+    """FLUX 3 manda resolution «1k» (el enum de fal) y Nano Banana 2 «1K»: ambos se juzgan igual."""
+    from pipeline import modelos_ia
+    assert dict(modelos_ia.resolver("imagen", "flux3").args_extra)["resolution"] == "1k"
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.jpg"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto, "codec": "mjpeg"}
+    code, out, err = _correr(capsys, "imagen", "flux3", "--formato", "cuadrado" if ancho == alto else "horizontal",
+                             "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert env.llamadas[0][1]["resolution"] == "1k" and "num_images" not in env.llamadas[0][1]
+    if marca:
+        assert "REVISAR" in out and marca in out
+    else:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+@pytest.mark.parametrize("codec,se_marca", [("mjpeg", False), ("png", True), ("webp", True)])
+@pytest.mark.parametrize("modelo", ["grok", "nb2"])
+def test_editar_que_no_llega_como_jpeg_tambien_se_marca_para_revisar(env, capsys, foto, tmp_path, modelo, codec, se_marca):
+    """El editor también guarda como .jpg (server/app.py): el aviso no es solo de «imagen»."""
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1376, "alto": 768, "codec": codec}
+    code, out, err = _correr(capsys, "editar", modelo, "--imagen", foto, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    if se_marca:
+        assert "REVISAR" in out and f"llegó como {codec}" in out
+    else:
+        assert "llegó como" not in out
+
+
 def test_un_modelo_sin_resolucion_fija_no_se_juzga_por_los_megapixeles(env, capsys, tmp_path):
     env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
     env.medida = {**MEDIDA_IMAGEN, "ancho": 2752, "alto": 1536}        # 16:9, 4.2 MP, en Grok
     code, out, err = _correr(capsys, "imagen", "grok", "--si", "--salida", tmp_path / "s")
     assert code == 0 and "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+# ---------------------------------------------------------------------------
+# Ola 2 · imágenes con image_size (FLUX.2 klein) y el formato cuadrado
+
+@pytest.mark.parametrize("formato,valor", [("cuadrado", "square_hd"), ("horizontal", "landscape_16_9"),
+                                           ("vertical", "portrait_16_9"), (None, "landscape_16_9")])
+def test_el_ensayo_de_klein_manda_el_image_size_de_su_familia(env, capsys, monkeypatch, formato, valor):
+    from pipeline import creditos
+    monkeypatch.setattr(creditos, "MODELOS_CR", {})      # «sin número» fijo: no depende de si ya se encendió
+    extra = ["--formato", formato] if formato else []
+    code, out, err = _correr(capsys, "imagen", "klein", *extra)
+    assert code == 0 and err == "" and env.llamadas == [] and NO_LLAMO in out
+    assert "fal-ai/flux-2/klein/9b" in out
+    assert f'"image_size": "{valor}"' in out and "aspect_ratio" not in out
+    assert "$0.0060 dólares" in out and SIN_NUMERO in out
+
+
+def test_cuadrado_no_se_vuelve_16_9_en_silencio(env, capsys):
+    """pipeline.models.formato_de cae en horizontal ante un nombre que no conoce: aquí no."""
+    code, out, _ = _correr(capsys, "imagen", "grok", "--formato", "cuadrado")
+    assert code == 0 and '"aspect_ratio": "1:1"' in out and "16:9" not in out
+
+
+def test_el_clip_no_admite_cuadrado(env, capsys):
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--formato", "cuadrado")
+    assert code == 2 and "solo aplica a imagen" in err and env.llamadas == []
+
+
+def test_los_formatos_de_la_prueba_son_los_de_la_caja_de_imagenes():
+    import server.app as app_mod
+    assert probar.ASPECTOS_IMAGEN == app_mod.ASPECTOS_IMAGEN
+    assert probar.FORMATOS_IMAGEN == tuple(app_mod.ASPECTOS_IMAGEN)
+
+
+@pytest.mark.parametrize("formato,ancho,alto,marca", [
+    ("cuadrado", 1024, 1024, None),                  # 1.05 MP: lo que se anotó
+    ("horizontal", 1024, 576, None),                 # 0.59 MP: cuesta menos, no se marca
+    ("vertical", 576, 1024, None),
+    ("cuadrado", 2048, 2048, "vale hasta 1.2 MP"),   # 4.2 MP: el costo anotado es el de ~1 MP
+    ("horizontal", 1024, 1024, "se pidió 16:9"),     # llegó con otro aspecto
+])
+def test_klein_se_juzga_por_su_aspecto_y_por_su_megapixel(env, capsys, tmp_path, formato, ancho, alto, marca):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto}
+    code, out, err = _correr(capsys, "imagen", "klein", "--formato", formato, "--si",
+                             "--salida", tmp_path / "s")
+    assert code == 0, err
+    (app, args), = env.llamadas
+    assert app == "fal-ai/flux-2/klein/9b" and "aspect_ratio" not in args and "image_size" in args
+    if marca is None:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+    else:
+        assert "REVISAR" in out and marca in out
+
+
+@pytest.mark.parametrize("codec,se_marca", [("mjpeg", False), (None, False), ("png", True), ("webp", True)])
+@pytest.mark.parametrize("modelo", ["klein", "grok", "nb2"])
+def test_una_imagen_que_no_llega_como_jpeg_se_marca_para_revisar(env, capsys, tmp_path, modelo, codec, se_marca):
+    """La caja guarda TODA imagen como .jpg y la sirve como image/jpeg (server/app.py)."""
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1376, "alto": 768}
+    if codec:
+        env.medida["codec"] = codec
+    code, out, err = _correr(capsys, "imagen", modelo, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    if se_marca:
+        assert "REVISAR" in out and f"llegó como {codec}" in out and "image/jpeg" in out
+    else:
+        assert "llegó como" not in out
+
+
+def test_el_codec_se_enseña_junto_al_tamano_medido(env, capsys, tmp_path):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1376, "alto": 768, "codec": "mjpeg"}
+    code, out, _ = _correr(capsys, "imagen", "grok", "--si", "--salida", tmp_path / "s")
+    assert code == 0 and "1376×768 · jpeg" in out
+
+
+@pytest.mark.parametrize("modelo,esperado", [("klein", 1.2), ("zit", 1.2), ("flux2", 1.2), ("flux3", 1.2),
+                                             ("sdf", 0.0), ("sd45", 0.0), ("grok", 0.0), ("nb2", 0.0)])
+def test_el_tope_de_megapixeles_lo_declara_la_fila(modelo, esperado):
+    """Los que cobran por megapíxel se juzgan por su tamaño; Seedream, de precio fijo por imagen, no."""
+    from pipeline import modelos_ia
+    plan = SimpleNamespace(tarea="imagen", modelo=modelos_ia.resolver("imagen", modelo))
+    assert probar._tope_megapixeles(plan) == esperado
+    assert probar._tope_megapixeles(SimpleNamespace(tarea="editar", modelo=plan.modelo)) == 0.0
+
+
+@pytest.mark.parametrize("modelo,ancho,alto", [("sdf", 2048, 1152), ("sd45", 2752, 1536)])
+def test_seedream_no_se_marca_por_ser_grande(env, capsys, tmp_path, modelo, ancho, alto):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.jpg"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto, "codec": "mjpeg"}
+    code, out, err = _correr(capsys, "imagen", modelo, "--formato", "horizontal", "--si",
+                             "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert "REVISAR" not in out and "coincide con lo prometido" in out
 
 
 # ---------------------------------------------------------------------------
@@ -1003,7 +1140,8 @@ def _reloj_falso(env, monkeypatch, tarda):
     ("clip", "veo-lite", 70, False),       # exactamente el 70 % no pasa del 70 %
     ("clip", "veo-lite", 12, False),
     ("imagen", "grok", 91, True),          # 91 s de 120 s = 76 %
-    ("imagen", "grok", 60, False),
+    ("imagen", "flux3", 60, False),        # 50 %; va en segundo plano, así que los 60 s son un AVISO
+    ("imagen", "grok", 9, False),          # y una imagen de la petición que tarda 9 s cabe en los 10
 ])
 def test_una_llamada_que_tarda_mas_del_70_por_ciento_del_timeout_se_marca(env, capsys, monkeypatch, tmp_path, tarea, modelo, tarda, se_marca):
     from pipeline import clip, media_fal
@@ -1227,3 +1365,82 @@ def test_el_plan_corre_el_adaptador_sin_su_decorador_de_trazas(env, capsys, monk
     assert code == 0, err
     # el plan, sin decorar; la llamada real sí pasa por la función decorada (que a su vez llama al desnudo)
     assert llamado == ["desnudo", "decorado", "desnudo"]
+
+
+# ---------------------------------------------------------------------------
+# la ruta de venta responde dentro de la Lambda del API, que corta a los 29 s
+
+FRASE_LAMBDA = ("la ruta de venta responde dentro de la Lambda del API, que corta a los 29 s; "
+                "un arranque en frío gasta unos 16 s")
+
+
+def _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, tarda, tarea="imagen", *extra):
+    """Una prueba pagada de imagen/editar que «tarda» `tarda` segundos (reloj falso)."""
+    from pipeline import media_fal
+    monkeypatch.setattr(media_fal, "settings", SimpleNamespace(grok_timeout_s=300))
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = dict(MEDIDA_IMAGEN)
+    _reloj_falso(env, monkeypatch, tarda)
+    return _correr(capsys, tarea, modelo, *extra, "--si", "--salida", tmp_path / "s")
+
+
+@pytest.mark.parametrize("modelo", ["grok", "klein", "zit", "flux2", "nb2"])
+def test_una_imagen_de_la_peticion_que_tarda_mas_de_10_s_se_marca(env, capsys, monkeypatch, tmp_path, modelo):
+    from pipeline import modelos_ia
+    assert modelos_ia.resolver("imagen", modelo).segundo_plano is False
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, 10.5)
+    assert code == 0, err
+    assert "REVISAR" in out and FRASE_LAMBDA in out and "tardó 10.5 s" in out
+    assert "segundo_plano=True" in out                       # y dice cómo arreglarlo
+    assert "coincide con lo prometido" not in out and "AVISO" not in out
+
+
+@pytest.mark.parametrize("tarda", [10, 9.9, 1.2])
+def test_una_imagen_de_la_peticion_que_tarda_10_s_o_menos_no_se_marca(env, capsys, monkeypatch, tmp_path, tarda):
+    """«Más de 10 s»: exactamente 10 todavía cabe."""
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, "grok", tarda)
+    assert code == 0, err
+    assert "REVISAR" not in out and "AVISO" not in out and "coincide con lo prometido" in out
+
+
+@pytest.mark.parametrize("modelo", ["sdf", "sd45", "flux3"])
+def test_una_imagen_de_segundo_plano_lenta_es_un_aviso_y_no_un_revisar(env, capsys, monkeypatch, tmp_path, modelo):
+    """Esos modelos no responden dentro de la petición: tardar 25 s es lo esperado."""
+    from pipeline import modelos_ia
+    assert modelos_ia.resolver("imagen", modelo).segundo_plano is True
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, modelo, 25)
+    assert code == 0, err
+    assert "REVISAR" not in out and FRASE_LAMBDA not in out
+    assert "AVISO" in out and "tardó 25.0 s" in out and "va en segundo plano" in out
+    assert "coincide con lo prometido" in out
+
+
+def test_una_imagen_de_segundo_plano_rapida_avisa_que_una_llamada_no_basta(env, capsys, monkeypatch, tmp_path):
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, "sd45", 8.6)
+    assert code == 0, err
+    assert "REVISAR" not in out and "AVISO" in out and "tardó 8.6 s" in out
+    assert "una sola llamada no basta" in out
+
+
+def test_editar_tambien_responde_dentro_de_la_peticion(env, capsys, monkeypatch, tmp_path, foto):
+    """`POST /api/imagenes/editar` sigue síncrono: un editar de 13.9 s (lo que tardó Nano Banana 2)
+    se marca igual que una imagen lenta de la petición."""
+    code, out, err = _llamada_imagen(env, capsys, monkeypatch, tmp_path, "nb2", 13.9,
+                                     "editar", "--imagen", foto)
+    assert code == 0, err
+    assert "REVISAR" in out and FRASE_LAMBDA in out and "AVISO" not in out
+
+
+def test_un_clip_no_se_mide_contra_la_peticion(env, capsys, monkeypatch, tmp_path):
+    """Los clips ya van por la cola: sus 45 s no son un problema de la Lambda del API."""
+    from pipeline import clip
+    monkeypatch.setattr(clip, "settings", SimpleNamespace(clip_max_attempts=1, clip_timeout_s=240))
+    _reloj_falso(env, monkeypatch, 45)
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert FRASE_LAMBDA not in out and "AVISO" not in out and "REVISAR" not in out
+
+
+def test_el_ensayo_no_mide_tiempos_ni_avisa(env, capsys):
+    code, out, err = _correr(capsys, "imagen", "flux3")
+    assert code == 0 and "AVISO" not in out and "REVISAR" not in out

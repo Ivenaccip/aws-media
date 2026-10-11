@@ -8,11 +8,12 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ErrorApi } from '../../nucleo/api';
 import { video } from '../../nucleo/tarifas';
 import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { decodificar } from './decodificar';
 import { Imagenes } from './Imagenes';
-import { formatoDe, paleta, quiereEditar, type Estilo } from './logica';
+import { esperarImagen, formatoDe, paleta, quiereEditar, SigueEnCamino, type Estilo } from './logica';
 
 vi.mock('./decodificar', () => ({
   decodificar: vi.fn(async () => ({ ancho: 1200, alto: 800, fuente: {} })),
@@ -641,5 +642,398 @@ describe('imagenes', () => {
     expect(screen.queryByRole('link', { name: 'Usar la versión anterior' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Estudio' })).toHaveAttribute('href', '/estudio/');
     await screen.findByRole('button', { name: 'Animado' });
+  });
+});
+
+// ── imágenes en segundo plano: los modelos que tardan contestan `lanzado` (ya se
+// cobró) y la pantalla pregunta por el pedido cada 2 s hasta que sale
+const ID = 'img-20261011-120000-abc123';
+const RUTA_PEDIDO = '/api/imagenes/pedidos/' + ID;
+const LANZADA = { lanzado: true, id: ID, creditos: P };
+const ficha = (estado: string, extra: Record<string, unknown> = {}) => ({
+  id: ID,
+  estado,
+  inicio: '2026-10-11T12:00:00+00:00',
+  texto: 'un faro',
+  modelo: 'nb2',
+  creditos: P,
+  nombre: '',
+  url: '',
+  error: '',
+  ...extra,
+});
+const LISTA = ficha('listo', { nombre: HECHA.nombre, url: HECHA.url });
+const preguntas = (f: ReturnType<typeof servidor>) => llamadas(f, RUTA_PEDIDO, 'GET').length;
+const avanzar = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+// una Response sin streams: con los relojes de mentira el cuerpo de una real no siempre avanza
+const rapida = (cuerpo: unknown, estado = 200) =>
+  ({
+    ok: estado < 400,
+    status: estado,
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    json: async () => cuerpo,
+    text: async () => JSON.stringify(cuerpo),
+  }) as unknown as Response;
+
+describe('imagenes en segundo plano', () => {
+  it('imagenes.segundo_plano.lanzado_sondea_y_al_estar_lista_sigue_como_la_de_siempre', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
+    let estado = 'generando';
+    const f = montar({
+      '/api/imagenes': () => json(LANZADA),
+      [RUTA_PEDIDO]: () => json(estado === 'listo' ? LISTA : ficha('generando')),
+    });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(posts(f)).toHaveLength(1));
+    // ya se cobró: el «−N» sale y la píldora se pone al día aunque la imagen aún no esté
+    await waitFor(() => expect(cobros).toEqual([expect.objectContaining({ costo: P })]));
+    expect(monedero.refrescar).toHaveBeenCalled();
+    // mientras tanto, su espera de siempre
+    expect(screen.getByText('Creando tu imagen · ~20 s')).toBeInTheDocument();
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Creando tu imagen');
+    await avanzar(2100);
+    expect(preguntas(f)).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('img', { name: 'Tu imagen' })).toBeNull();
+    estado = 'listo';
+    await avanzar(2100);
+    // igual que si el POST hubiera devuelto {nombre, url}: la imagen pasa a editarse
+    await waitFor(() => expect(f.mock.calls.some(c => c[0] === '/api/imagenes/aaaaaaaaaaaa.jpg/archivo')).toBe(true));
+    expect(await screen.findByRole('img', { name: 'Tu imagen' })).toBeInTheDocument();
+    expect(caja()).toHaveValue('');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Edita tu imagen');
+    expect(screen.getByRole('link', { name: 'Descargar' })).toHaveAttribute('href', '/api/imagenes/aaaaaaaaaaaa.jpg/archivo');
+    expect(cobros).toHaveLength(1);
+    // y deja de preguntar
+    const alFinal = preguntas(f);
+    await avanzar(10000);
+    expect(preguntas(f)).toBe(alFinal);
+  });
+
+  it('imagenes.segundo_plano.el_sondeo_es_cada_2_s_y_un_tropiezo_de_red_no_lo_corta', async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    const f = vi.fn(async () => {
+      n++;
+      if (n === 2) throw new TypeError('Failed to fetch'); // la red parpadea
+      if (n === 3) return rapida({ detail: 'caído' }, 503); // y el servidor también
+      return rapida(n < 4 ? ficha('generando') : LISTA);
+    });
+    vi.stubGlobal('fetch', f);
+    const hecha = esperarImagen(ID);
+    await avanzar(1999);
+    expect(f).not.toHaveBeenCalled();
+    await avanzar(1);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(f).toHaveBeenLastCalledWith(RUTA_PEDIDO, expect.objectContaining({ method: 'GET' }));
+    await avanzar(2000);
+    expect(f).toHaveBeenCalledTimes(2);
+    await avanzar(2000);
+    expect(f).toHaveBeenCalledTimes(3);
+    await avanzar(2000);
+    await expect(hecha).resolves.toEqual(HECHA);
+    expect(f).toHaveBeenCalledTimes(4);
+    // el 404 de un pedido que no existe sí corta: no hay nada que esperar
+    vi.stubGlobal('fetch', vi.fn(async () => rapida({ detail: 'no encontrado' }, 404)));
+    const nada = expect(esperarImagen(ID)).rejects.toBeInstanceOf(ErrorApi);
+    await avanzar(2000);
+    await nada;
+  });
+
+  it('imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado', async () => {
+    vi.useFakeTimers();
+    // ya se cobró y la imagen sigue en marcha: un 429, un 408, un 401/403 intermitente… son del camino,
+    // no del pedido. Todos se toleran, como los 5xx y la red caída, hasta el tope.
+    const tropiezos = [429, 408, 401, 403, 400, 409, 422];
+    let n = 0;
+    const f = vi.fn(async () => (n < tropiezos.length ? rapida({ detail: 'x' }, tropiezos[n++]) : rapida(LISTA)));
+    vi.stubGlobal('fetch', f);
+    let fin: unknown = null;
+    void esperarImagen(ID).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    for (let i = 0; i < tropiezos.length; i++) await avanzar(2000);
+    expect(fin).toBeNull();
+    expect(f).toHaveBeenCalledTimes(tropiezos.length);
+    await avanzar(2000);
+    expect(fin).toEqual(HECHA);
+    expect(f).toHaveBeenCalledTimes(tropiezos.length + 1);
+
+    // el único que corta es el 404 (el pedido no existe)
+    vi.stubGlobal('fetch', vi.fn(async () => rapida({ detail: 'Pedido no encontrado' }, 404)));
+    fin = null;
+    void esperarImagen(ID).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    await avanzar(2000);
+    expect(fin).toBeInstanceOf(ErrorApi);
+    expect((fin as ErrorApi).estado).toBe(404);
+    vi.useRealTimers();
+
+    // y en la pantalla: un 429 a media espera no suelta un error sobre una imagen ya cobrada; sigue esperando
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
+    let estado = 429;
+    const g = montar({
+      '/api/imagenes': () => json(LANZADA),
+      [RUTA_PEDIDO]: () => (estado === 429 ? json({ message: 'Too Many Requests' }, 429) : json(LISTA)),
+    });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(posts(g)).toHaveLength(1));
+    await avanzar(2100);
+    expect(preguntas(g)).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Creando tu imagen · ~20 s')).toBeInTheDocument();
+    estado = 200;
+    await avanzar(2100);
+    expect(await screen.findByRole('img', { name: 'Tu imagen' })).toBeInTheDocument();
+    // un solo cobro: nadie tuvo que pedirla otra vez
+    expect(posts(g)).toHaveLength(1);
+    expect(cobros).toHaveLength(1);
+  });
+
+  it('imagenes.segundo_plano.un_cuerpo_ilegible_en_el_sondeo_se_tolera_como_la_red_caida', async () => {
+    vi.useFakeTimers();
+    // el cuerpo de la respuesta no se pudo leer (un 502 con JSON vacío, un JSON a medias, la red que cae a
+    // media lectura): sale de pedir() como SyntaxError o TypeError, no como ErrorApi. Es un tropiezo del camino
+    // igual que la red caída: el pedido ya está cobrado y la imagen sigue en marcha.
+    const ilegible = (estado: number, error: Error) =>
+      ({
+        ok: estado < 400,
+        status: estado,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => {
+          throw error;
+        },
+        text: async () => '',
+      }) as unknown as Response;
+    const tropiezos = [
+      ilegible(502, new SyntaxError('Unexpected end of JSON input')),
+      ilegible(200, new SyntaxError('Unexpected end of JSON input')),
+      ilegible(200, new TypeError('network error')),
+      ilegible(504, new TypeError('terminated')),
+    ];
+    let n = 0;
+    const f = vi.fn(async () => (n < tropiezos.length ? tropiezos[n++]! : rapida(LISTA)));
+    vi.stubGlobal('fetch', f);
+    let fin: unknown = null;
+    void esperarImagen(ID).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    for (let i = 0; i < tropiezos.length; i++) await avanzar(2000);
+    expect(fin).toBeNull();
+    expect(f).toHaveBeenCalledTimes(tropiezos.length);
+    await avanzar(2000);
+    expect(fin).toEqual(HECHA);
+    expect(f).toHaveBeenCalledTimes(tropiezos.length + 1);
+
+    // lo que sí corta sigue cortando: el 404 (el pedido no existe)…
+    vi.stubGlobal('fetch', vi.fn(async () => rapida({ detail: 'Pedido no encontrado' }, 404)));
+    fin = null;
+    void esperarImagen(ID).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    await avanzar(2000);
+    expect(fin).toBeInstanceOf(ErrorApi);
+    expect((fin as ErrorApi).estado).toBe(404);
+
+    // …y que la pantalla se cierre en mitad de la pregunta (no es un tropiezo: nadie espera ya)
+    const control = new AbortController();
+    const colgada = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_ok, mal) => {
+          init?.signal?.addEventListener('abort', () => mal(new DOMException('Cancelado', 'AbortError')));
+        }),
+    );
+    vi.stubGlobal('fetch', colgada);
+    fin = null;
+    void esperarImagen(ID, control.signal).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    await avanzar(2000);
+    expect(colgada).toHaveBeenCalledTimes(1);
+    control.abort();
+    await avanzar(0);
+    expect(fin).toBeInstanceOf(DOMException);
+    expect((fin as DOMException).name).toBe('AbortError');
+    expect(colgada).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+
+    // y en la pantalla: un cuerpo ilegible a media espera no suelta un error técnico sobre una imagen ya cobrada
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
+    let roto = true;
+    const g = montar({
+      '/api/imagenes': () => json(LANZADA),
+      [RUTA_PEDIDO]: () => (roto ? ilegible(502, new SyntaxError('Unexpected end of JSON input')) : json(LISTA)),
+    });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(posts(g)).toHaveLength(1));
+    await avanzar(2100);
+    expect(preguntas(g)).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Unexpected end of JSON input/)).toBeNull();
+    expect(screen.getByText('Creando tu imagen · ~20 s')).toBeInTheDocument();
+    roto = false;
+    await avanzar(2100);
+    expect(await screen.findByRole('img', { name: 'Tu imagen' })).toBeInTheDocument();
+    // un solo cobro: nadie tuvo que pedirla otra vez
+    expect(posts(g)).toHaveLength(1);
+    expect(cobros).toHaveLength(1);
+  });
+
+  it('imagenes.segundo_plano.pasado_el_tope_de_5_min_dice_que_sigue_en_camino_sin_devolver_nada', async () => {
+    // el tope exacto, sin pantalla: ni un segundo antes
+    vi.useFakeTimers();
+    const siempre = vi.fn(async () => rapida(ficha('generando')));
+    vi.stubGlobal('fetch', siempre);
+    let fin: unknown = null;
+    void esperarImagen(ID).catch(e => (fin = e));
+    await avanzar(5 * 60 * 1000 - 1);
+    expect(fin).toBeNull();
+    await avanzar(1);
+    expect(fin).toBeInstanceOf(SigueEnCamino);
+    expect((fin as Error).message).toMatch(/sigue en camino/);
+    expect(siempre).toHaveBeenCalledTimes(150);
+    vi.useRealTimers();
+
+    // y en la pantalla: un aviso (no un error) que lleva al inicio; nada se devuelve
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
+    const f = montar({ '/api/imagenes': () => json(LANZADA), [RUTA_PEDIDO]: () => json(ficha('generando')) });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(posts(f)).toHaveLength(1));
+    await avanzar(5 * 60 * 1000 + 5000);
+    expect(await screen.findByText(/sigue en camino y está tardando más de lo normal\. Aparecerá en «Mis creaciones»/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute('href', '/estudio/');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Te devolvimos/)).toBeNull();
+    expect(screen.queryByText('Creando tu imagen · ~20 s')).toBeNull();
+    expect(boton('Generar')).toBeEnabled();
+    expect(cobros).toHaveLength(1);
+    const tras = preguntas(f);
+    await avanzar(20000);
+    expect(preguntas(f)).toBe(tras);
+  });
+
+  it('imagenes.segundo_plano.si_falla_se_cuenta_en_tres_partes_y_se_refresca_el_saldo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const mensaje = 'La imagen no se pudo generar. Se te devolvieron los créditos.';
+    montar({ '/api/imagenes': () => json(LANZADA), [RUTA_PEDIDO]: () => json(ficha('error', { error: mensaje })) });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(monedero.refrescar).toHaveBeenCalled());
+    const antes = monedero.refrescar.mock.calls.length;
+    await avanzar(2100);
+    // el mismo camino de error que el 502 de siempre: tres partes y el texto se queda
+    const falla = await screen.findByRole('alert');
+    expect(falla).toHaveTextContent('Qué pasóNo pudimos crear tu imagen.');
+    expect(falla).toHaveTextContent('Tus créditosTe devolvimos ✦ ' + video.imagen + ': no pagas por una imagen que no salió.');
+    expect(falla).toHaveTextContent('Qué sigueTu texto sigue en la caja: vuelve a pulsar «Generar».');
+    expect(screen.getByText(mensaje).closest('details')).not.toBeNull();
+    expect(caja()).toHaveValue('un faro');
+    expect(screen.queryByText('Creando tu imagen · ~20 s')).toBeNull();
+    expect(boton('Generar')).toBeEnabled();
+    // el worker ya devolvió: la píldora vuelve a subir
+    expect(monedero.refrescar.mock.calls.length).toBeGreaterThan(antes);
+  });
+
+  it('imagenes.segundo_plano.al_cerrar_la_pantalla_se_deja_de_preguntar', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const f = montar({ '/api/imagenes': () => json(LANZADA), [RUTA_PEDIDO]: () => json(ficha('generando')) });
+    const { unmount } = render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(posts(f)).toHaveLength(1));
+    await avanzar(2100);
+    expect(preguntas(f)).toBeGreaterThanOrEqual(1);
+    unmount();
+    const alCerrar = preguntas(f);
+    await avanzar(30000);
+    expect(preguntas(f)).toBe(alCerrar);
+  });
+
+  it('imagenes.segundo_plano.la_respuesta_de_siempre_no_sondea', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const f = montar(); // POST /api/imagenes contesta {nombre, url}
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    expect(await screen.findByRole('img', { name: 'Tu imagen' })).toBeInTheDocument();
+    await avanzar(20000);
+    expect(f.mock.calls.filter(c => String(c[0]).startsWith('/api/imagenes/pedidos'))).toHaveLength(0);
+    // un `lanzado` sin id no es una imagen: no se sondea nada y se dice
+    const g = montar({ '/api/imagenes': () => json({ lanzado: true }) });
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva imagen' }));
+    await userEvent.click(boton('Generar'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('no trae una imagen válida');
+    expect(g.mock.calls.filter(c => String(c[0]).startsWith('/api/imagenes/pedidos'))).toHaveLength(0);
+  });
+
+  it('imagenes.segundo_plano.tres_en_marcha_se_dice_sin_hablar_de_devolver', async () => {
+    const cobros = oirCobros();
+    montar({ '/api/imagenes': () => json({ detail: 'Ya tienes 3 imágenes generándose — espera a que terminen.' }, 409) });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    const a = await screen.findByRole('alert');
+    expect(a).toHaveTextContent('Ya tienes 3 imágenes generándose — espera a que terminen.');
+    // nada se cobró: no hay «Qué pasó» ni «Te devolvimos»
+    expect(screen.queryByText('Qué pasó')).toBeNull();
+    expect(screen.queryByText(/Te devolvimos/)).toBeNull();
+    expect(cobros).toEqual([]);
+    expect(caja()).toHaveValue('un faro');
+  });
+
+  it('imagenes.segundo_plano.el_orbe_no_manda_a_pedirla_otra_vez', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const textos: string[] = [];
+    let alAgotar: (() => void) | undefined;
+    window.orbe = {
+      montar: vi.fn((_el, op) => {
+        alAgotar = op.alAgotar;
+        const m = { texto: (t: string) => (textos.push(t), m), estado: () => m, latir: () => m, apagar: () => m, desmontar: vi.fn() };
+        return m as never;
+      }),
+      soportado: () => true,
+      precargar: vi.fn(),
+    };
+    montar({ '/api/imagenes': () => json(LANZADA), [RUTA_PEDIDO]: () => json(ficha('generando')) });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(window.orbe!.montar).toHaveBeenCalled());
+    await avanzar(2100);
+    // el orbe se agota estando la imagen en camino: ya se cobró, no hay que repetirla
+    alAgotar!();
+    expect(textos.at(-1)).toMatch(/No la pidas otra vez/);
+    expect(textos.at(-1)).not.toMatch(/inténtalo otra vez/);
+    delete window.orbe;
   });
 });

@@ -772,6 +772,41 @@ def abonar_compra(user_id: str, creditos: int, referencia: str) -> int | None:
     return int(filas[0]["saldo"])
 
 
+def abonar_devolucion(user_id: str, creditos: int, referencia: str) -> int | None:
+    """Abono de DEVOLUCIÓN idempotente por referencia: el que puede reintentar un worker.
+
+    `abonar_creditos` son tres sentencias sueltas del Data API, sin transacción: si falla a
+    medias (el saldo ya sumó y el libro no) y la cola reentrega, repetirlo abona dos veces. Aquí
+    el movimiento y el saldo van en UNA sola sentencia (un CTE), así que entran los dos o
+    ninguno; y si a ese usuario ya se le devolvió con esa referencia no se toca nada y se devuelve
+    None. Devuelve el saldo resultante.
+
+    Solo para referencias ÚNICAS por hecho (`imagen:<id>`). Las que se repiten —«imagen:estudio»,
+    «imagen:editor»— siguen en `abonar_creditos`: aquí la segunda devolución no se abonaría.
+
+    NO hay índice único detrás (uno global sobre `tipo = 'devolucion'` rompería esas referencias
+    repetidas), así que dos sentencias EXACTAMENTE simultáneas con la misma referencia podrían
+    abonar las dos. Quien llama lo evita serializando las entregas (el reclamo en S3 del worker
+    de imágenes); docs/OPERACION.md explica el índice parcial que lo cerraría del todo."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """WITH mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :n, 'devolucion', :r
+               WHERE NOT EXISTS (SELECT 1 FROM monedero_movimientos
+                                 WHERE user_id = :u AND referencia = :r
+                                   AND tipo = 'devolucion')
+               RETURNING id)
+           INSERT INTO monedero (user_id, saldo)
+           SELECT :u, GREATEST(:n, 0) FROM mov
+           ON CONFLICT (user_id) DO UPDATE
+             SET saldo = monedero.saldo + :n, actualizado = now()
+           RETURNING saldo""",
+        {"u": user_id, "n": int(creditos), "r": referencia})
+    return int(filas[0]["saldo"]) if filas else None     # sin filas: esa referencia ya se devolvió
+
+
 def cobrar_creditos(user_id: str, creditos: int,
                     referencia: str | None = None) -> int | None:
     """EL gate duro: UPDATE condicionado — si el saldo no alcanza (o no hay

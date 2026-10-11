@@ -22,8 +22,9 @@ Windows desde D:\\aws-project con el venv.
                        imagen vacía o ilegible se rechaza siempre
   --prompt TEXTO       lo que se pide (sin esto, uno corto de prueba). Va tal cual
                        al adaptador: NO pasa por el LLM que escribe prompts
-  --formato F          horizontal | vertical (imagen y clip; editar conserva el
-                       encuadre de la imagen). Con --imagen en un clip, sin esto
+  --formato F          horizontal | vertical (imagen y clip) o cuadrado (solo
+                       imagen: el clip no admite 1:1); editar conserva el
+                       encuadre de la imagen. Con --imagen en un clip, sin esto
                        se deduce de la imagen (apaisada = horizontal)
   --salida CARPETA     dónde guardar lo generado (por defecto work/probar_modelo)
   --si                 SÍ llamar a fal y gastar. Sin esto solo es un ensayo
@@ -43,7 +44,10 @@ una clave con espacios o saltos de línea se rechaza), valida la duración, la i
 y la carpeta de salida ANTES de llamar, hace UN solo intento de llamada de nuestro
 lado (un reintento del adaptador se corta: dos llamadas serían el doble de gasto),
 imprime la URL del resultado en cuanto fal responde, lo descarga sin pisar nada y lo
-mide con ffprobe: ancho×alto, segundos y si trae pista de audio.
+mide con ffprobe: ancho×alto, segundos y si trae pista de audio. También mide cuánto tardó
+la llamada: una imagen que se genera dentro de la petición del API (modelo sin
+`segundo_plano`) sale REVISAR si pasó de 10 s, porque esa Lambda corta a los 29 s; una de
+segundo plano solo recibe un aviso con el tiempo.
 
 OJO con «un solo intento»: es de NUESTRO lado. Por debajo, fal_client puede reenviar
 el POST de envío hasta 10 veces, sin idempotencia, si la respuesta se pierde; eso no
@@ -86,6 +90,11 @@ if str(RAIZ) not in sys.path:      # `python tools/probar_modelo.py` pone tools/
 
 TAREAS = ("imagen", "editar", "clip")
 FORMATOS = ("horizontal", "vertical")
+# La caja de imágenes también pide cuadrado (1:1). La tabla es la de server/app.py::ASPECTOS_IMAGEN
+# (un test las compara); NO se usa pipeline.models.formato_de, que ante un nombre que no conoce
+# cae en horizontal sin avisar: «cuadrado» se volvería 16:9 en silencio.
+ASPECTOS_IMAGEN = {"horizontal": "16:9", "vertical": "9:16", "cuadrado": "1:1"}
+FORMATOS_IMAGEN = tuple(ASPECTOS_IMAGEN)
 SALIDA_PREDETERMINADA = Path("work") / "probar_modelo"
 
 # Lo que se pide si no se da --prompt. Cortos y verificables a simple vista; en
@@ -121,6 +130,11 @@ MIN_MP_1K = 0.8          # 1K es ~1 MP: algo mucho más chico (0.5K) tiene un pr
 # Si la llamada tarda más de esto del tiempo que el cliente espera, está cerca de
 # cortarse por timeout: un corte de cliente puede dejar el trabajo vivo y cobrado en fal.
 UMBRAL_TIEMPO = 0.70
+
+# Una imagen que NO va en segundo plano se genera dentro de la petición del API, y esa Lambda
+# corta a los 29 s (API Gateway: tope fijo de 30 s); un arranque en frío gasta unos 16. A partir
+# de 10 s ya no queda holgura: ese modelo debe llevar `segundo_plano=True` (pipeline/modelos_ia.py).
+LIMITE_PETICION_S = 10
 
 
 class _Uso(Exception):
@@ -382,9 +396,9 @@ def _analizar(argv: list[str] | None) -> argparse.Namespace:
                    help="clip con --imagen: no exige lado corto de 720 px ni 16:9 / 9:16 (avisa). "
                         "Una imagen vacía o ilegible se rechaza siempre")
     p.add_argument("--prompt", help="lo que se pide; va tal cual al adaptador, sin pasar por el LLM")
-    p.add_argument("--formato", choices=FORMATOS,
-                   help="imagen y clip: horizontal (por defecto) o vertical; con --imagen en un clip, "
-                        "sin esto se deduce de la imagen")
+    p.add_argument("--formato", choices=FORMATOS_IMAGEN,
+                   help="imagen y clip: horizontal (por defecto) o vertical; imagen también admite "
+                        "cuadrado; con --imagen en un clip, sin esto se deduce de la imagen")
     p.add_argument("--salida", help=f"carpeta donde guardar lo generado (por defecto {SALIDA_PREDETERMINADA})")
     p.add_argument("--si", action="store_true", help="SÍ llamar a fal y gastar. Sin esto solo se muestra el plan")
     return p.parse_args(argv)
@@ -408,6 +422,8 @@ def _preparar(a: argparse.Namespace) -> Plan:
         raise _Uso("La tarea imagen crea desde texto y no usa --imagen. Para transformar una imagen usa la tarea editar.")
     if a.tarea == "editar" and a.formato:
         raise _Uso("--formato no aplica a editar: se conserva el encuadre de la imagen.")
+    if a.tarea == "clip" and a.formato == "cuadrado":
+        raise _Uso("--formato cuadrado solo aplica a imagen: el clip admite horizontal o vertical (Veo no acepta 1:1).")
     if a.tarea == "editar" and not a.imagen:
         raise _Uso("La tarea editar necesita --imagen RUTA (la imagen a transformar).")
     if a.imagen_sin_validar and not (a.tarea == "clip" and a.imagen):
@@ -469,13 +485,11 @@ async def _invocar(plan: Plan, destino: Path, solo_plan: bool = False) -> str:
     cada prueba pagada exportaría a Langfuse un span `clip_animar` falso, en ERROR,
     antes del real."""
     from pipeline import clip, fal, media_fal
-    from pipeline.models import formato_de
 
     meta = {"probar_modelo": True}
     if plan.tarea == "imagen":
         return await media_fal.imagen_fal(
-            plan.prompt, destino, meta=meta, aspecto=formato_de(plan.formato)["aspecto"],
-            modelo=plan.modelo.id)
+            plan.prompt, destino, meta=meta, aspecto=_aspecto(plan), modelo=plan.modelo.id)
     if plan.tarea == "editar":
         return await media_fal.imagen_transformar(
             plan.prompt, plan.imagen, destino, meta=meta, modelo=plan.modelo.id)
@@ -583,11 +597,27 @@ def _medir(ruta: Path) -> dict:
             segundos = valor
             break
     return {"ancho": int(video["width"]), "alto": int(video["height"]), "segundos": segundos,
-            "audio": audio is not None, "codec_audio": (audio or {}).get("codec_name")}
+            "audio": audio is not None, "codec_audio": (audio or {}).get("codec_name"),
+            "codec": video.get("codec_name")}
+
+
+def _aspecto(plan: Plan) -> str:
+    """El aspecto «16:9» que se pide: la tabla de la caja para una imagen, la de Veo para un clip."""
+    from pipeline.models import formato_de
+    return ASPECTOS_IMAGEN[plan.formato] if plan.tarea == "imagen" else formato_de(plan.formato)["aspecto"]
+
+
+def _tope_megapixeles(plan: Plan) -> float:
+    """Hasta cuántos megapíxeles vale el costo anotado de este modelo (0 = sin tope). Los que
+    cobran por megapíxel (FLUX.2 klein: $0.006 dólares por MP) se anotan a ~1 MP, y lo declara
+    su fila (`megapixeles_ficha`); si llega mucho más grande, lo cobrado puede ser otro. Los de
+    precio fijo por imagen (Seedream) no tienen tope."""
+    return float(getattr(plan.modelo, "megapixeles_ficha", 0) or 0) if plan.tarea == "imagen" else 0.0
 
 
 def _promete_1k(plan: Plan) -> bool:
-    """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2: la única con tarifa leída)"""
+    """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2 con «1K» y FLUX 3 con «1k»:
+    el 1K es la única resolución con tarifa leída; por eso se compara sin distinguir mayúsculas)"""
     # args_extra puede ser un mapping o una tupla de pares (llave, valor): dict() lee las dos
     extra = dict(getattr(plan.modelo, "args_extra", None) or ())
     return str(extra.get("resolution", "")).upper() == "1K"
@@ -615,17 +645,56 @@ def _veredicto_tiempo(plan: Plan, una: "_UnaLlamada") -> list[str]:
             f"dejar el trabajo vivo y cobrado en fal. Revisa Request Details y sube {variable} antes de ofrecerlo"]
 
 
+def _dentro_de_la_peticion(plan: Plan) -> bool:
+    """¿Esta imagen se genera dentro de la petición del API? Crear y editar son imágenes;
+    solo las que llevan `segundo_plano` se encolan (y solo al crear)."""
+    return plan.tarea in ("imagen", "editar") and not getattr(plan.modelo, "segundo_plano", False)
+
+
+def _veredicto_peticion(plan: Plan, una: "_UnaLlamada") -> list[str]:
+    """REVISAR si una imagen que responde dentro de la petición tardó más de 10 s: la ruta de
+    venta corre en la Lambda del API, que corta a los 29 s, y con un arranque en frío ya no hay
+    holgura. Cortada la petición se cobra, no se devuelve y fal cobra igual."""
+    if not _dentro_de_la_peticion(plan) or una.segundos is None or una.segundos <= LIMITE_PETICION_S:
+        return []
+    return [f"la llamada tardó {una.segundos:.1f} s (más de {LIMITE_PETICION_S} s) y este modelo responde dentro de la "
+            "petición: la ruta de venta responde dentro de la Lambda del API, que corta a los 29 s; un arranque "
+            "en frío gasta unos 16 s. Si es lento de verdad, ponle segundo_plano=True en pipeline/modelos_ia.py "
+            "antes de ofrecerlo"]
+
+
+def _aviso_peticion(plan: Plan, una: "_UnaLlamada") -> str | None:
+    """Solo informa: un modelo de segundo plano no responde dentro de la petición, así que su tiempo
+    no es un fallo. Dice cuánto tardó y si esa llamada daba para quitarle la bandera."""
+    if plan.tarea != "imagen" or not getattr(plan.modelo, "segundo_plano", False) or una.segundos is None:
+        return None
+    if una.segundos > LIMITE_PETICION_S:
+        return (f"la llamada tardó {una.segundos:.1f} s (más de {LIMITE_PETICION_S} s) y este modelo va en segundo "
+                "plano (segundo_plano=True): la petición del API no la espera, como corresponde")
+    return (f"la llamada tardó {una.segundos:.1f} s ({LIMITE_PETICION_S} s o menos) y este modelo va en segundo plano "
+            "(segundo_plano=True): una sola llamada no basta para decidir, pero si siempre responde así podría ir "
+            "dentro de la petición")
+
+
 def _veredicto(plan: Plan, medida: dict) -> list[str]:
     """Las diferencias entre lo que se pidió y lo que llegó. Vacío = coincide."""
     from pipeline import clip
-    from pipeline.models import formato_de
 
     dif: list[str] = []
     ancho, alto = medida["ancho"], medida["alto"]
     if plan.formato:
-        a, b = (int(v) for v in formato_de(plan.formato)["aspecto"].split(":"))
+        a, b = (int(v) for v in _aspecto(plan).split(":"))
         if abs(ancho / alto - a / b) > (a / b) * TOLERANCIA_ASPECTO:
             dif.append(f"se pidió {a}:{b} y llegó {ancho}×{alto}")
+    tope = _tope_megapixeles(plan)
+    if tope and ancho * alto / 1_000_000 > tope:
+        dif.append(f"llegó {ancho}×{alto} ({ancho * alto / 1_000_000:.2f} MP) y el costo anotado "
+                   f"({_dolares(plan.costo_usd)}) vale hasta {tope:g} MP: lo cobrado puede ser otro")
+    codec = medida.get("codec")
+    if plan.tarea in ("imagen", "editar") and codec and codec != "mjpeg":
+        dif.append(f"llegó como {codec} y la caja guarda toda imagen como .jpg y la sirve como "
+                   "image/jpeg: un PNG o WebP ahí lo pintan los navegadores, pero las redes lo rechazan "
+                   "al publicar (pide output_format jpeg, o conviértela al guardar)")
     if plan.tarea in ("imagen", "editar") and _promete_1k(plan):
         mp = ancho * alto / 1_000_000
         if mp > MAX_MP_1K or mp < MIN_MP_1K:
@@ -654,6 +723,8 @@ def _describir(plan: Plan, medida: dict) -> str:
             partes.append(f"{medida['segundos']:.2f} s")
         partes.append("audio: SÍ" + (f" ({medida['codec_audio']})" if medida["codec_audio"] else "")
                       if medida["audio"] else "audio: NO")
+    elif medida.get("codec"):
+        partes.append({"mjpeg": "jpeg"}.get(medida["codec"], medida["codec"]))
     return " · ".join(partes)
 
 
@@ -806,8 +877,12 @@ def _correr(plan: Plan) -> int:
             _decir(f"Mídelo a mano: ffprobe -v error -show_streams \"{archivo}\"", err=True)
             codigo = 1
         dif += _veredicto_tiempo(plan, una)
+        dif += _veredicto_peticion(plan, una)
         for d in dif:
             _decir(f"  REVISAR: {d}")
+        aviso = _aviso_peticion(plan, una)
+        if aviso:
+            _decir(f"  AVISO: {aviso}")
         if medido and not dif:
             _decir("  coincide con lo prometido")
     finally:

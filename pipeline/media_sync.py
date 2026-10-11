@@ -178,6 +178,38 @@ def escribir_texto(key: str, texto: str, tipo: str = "application/json") -> None
                      Body=texto.encode("utf-8"), ContentType=tipo)
 
 
+def leer_texto_con_etag(key: str) -> tuple[str | None, str | None]:
+    """(contenido, etiqueta) de un objeto, o (None, None) si no existe / no hay bucket.
+    La etiqueta es la que pide `escribir_texto_si` para saber que nadie lo cambió."""
+    bucket = _bucket()
+    if not bucket:
+        return None, None
+    try:
+        r = _s3().get_object(Bucket=bucket, Key=key)
+    except _s3().exceptions.NoSuchKey:
+        return None, None
+    return r["Body"].read().decode("utf-8"), r["ETag"]
+
+
+def escribir_texto_si(key: str, texto: str, etag: str | None = None,
+                      tipo: str = "application/json") -> str | None:
+    """Escritura condicional de S3, la misma de pipeline/publicaciones.py: sin `etag`
+    solo si el objeto NO existe (If-None-Match: *); con `etag`, solo si nadie lo cambió
+    desde que se leyó (If-Match). Devuelve la etiqueta nueva, o None si otro llegó antes
+    (cualquier otro error de S3 se levanta)."""
+    s3 = _s3()
+    extra = {"IfMatch": etag} if etag else {"IfNoneMatch": "*"}
+    try:
+        r = s3.put_object(Bucket=_bucket(), Key=key, Body=texto.encode("utf-8"),
+                          ContentType=tipo, **extra)
+    except s3.exceptions.ClientError as err:
+        if err.response.get("Error", {}).get("Code") in ("PreconditionFailed",
+                                                         "ConditionalRequestConflict"):
+            return None
+        raise
+    return r["ETag"]
+
+
 def respaldar(key: str, key_respaldo: str) -> None:
     """Copia dentro del bucket ANTES de sobreescribir (las versiones no se
     borran: el original queda bajo el prefijo de respaldos)."""
