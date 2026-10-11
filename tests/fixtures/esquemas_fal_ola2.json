@@ -1,0 +1,350 @@
+{
+ "_fuente": "Esquema público de fal leído el 2026-10-11 con tools/leer_esquema_fal.py (reporte de la TAREA «OLA 2 · ESQUEMAS DE FAL + ECR»). Solo las propiedades que una fila de imagen puede mandar o que cambian el diseño; `propiedades` trae TODAS las del endpoint. Si fal cambia un esquema, se vuelve a leer y se actualiza este archivo junto con la fila.",
+ "fal-ai/flux-2/klein/9b": {
+  "entrada": "Flux2Klein9bInput",
+  "propiedades": [
+   "sync_mode",
+   "prompt",
+   "enable_safety_checker",
+   "num_inference_steps",
+   "num_images",
+   "seed",
+   "output_format",
+   "image_size"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "image_size": {
+   "tipo": "image_size",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9"
+   ],
+   "objeto_ancho_alto": true,
+   "por_defecto": "landscape_4_3"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "png"
+  }
+ },
+ "fal-ai/z-image/turbo": {
+  "entrada": "ZImageTurboInput",
+  "propiedades": [
+   "sync_mode",
+   "output_format",
+   "enable_safety_checker",
+   "seed",
+   "acceleration",
+   "image_size",
+   "prompt",
+   "num_inference_steps",
+   "num_images",
+   "enable_prompt_expansion"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "image_size": {
+   "tipo": "image_size",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9"
+   ],
+   "objeto_ancho_alto": true,
+   "por_defecto": "landscape_4_3"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "png"
+  }
+ },
+ "fal-ai/flux-2-pro": {
+  "entrada": "Flux2ProInput",
+  "propiedades": [
+   "image_size",
+   "safety_tolerance",
+   "enable_safety_checker",
+   "sync_mode",
+   "prompt",
+   "output_format",
+   "seed"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "image_size": {
+   "tipo": "image_size",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9"
+   ],
+   "objeto_ancho_alto": true,
+   "por_defecto": "landscape_4_3"
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png"
+   ],
+   "por_defecto": "jpeg"
+  }
+ },
+ "bytedance/seedream/v5/flash/text-to-image": {
+  "entrada": "SeedreamV5FlashTextToImageInput",
+  "propiedades": [
+   "enable_safety_checker",
+   "image_size",
+   "num_images",
+   "sync_mode",
+   "prompt",
+   "output_format"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "image_size": {
+   "tipo": "image_size",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9",
+    "auto_1K",
+    "auto_2K"
+   ],
+   "objeto_ancho_alto": true,
+   "por_defecto": "auto_2K"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 6,
+   "por_defecto": 1
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png"
+   ],
+   "por_defecto": "jpeg"
+  },
+  "limite_pixeles": {
+   "min": 1048576,
+   "max": 4194304,
+   "relacion_min": 0.0625,
+   "relacion_max": 16
+  }
+ },
+ "fal-ai/bytedance/seedream/v4.5/text-to-image": {
+  "entrada": "BytedanceSeedreamV45TextToImageInput",
+  "propiedades": [
+   "sync_mode",
+   "prompt",
+   "num_images",
+   "seed",
+   "image_size",
+   "enable_safety_checker",
+   "max_images"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "image_size": {
+   "tipo": "image_size",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9",
+    "auto_2K",
+    "auto_4K"
+   ],
+   "objeto_ancho_alto": true,
+   "por_defecto": {
+    "width": 2048,
+    "height": 2048
+   }
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 6,
+   "por_defecto": 1
+  },
+  "limite_pixeles": {
+   "lado_min": 1920,
+   "lado_max": 4096,
+   "o_pixeles_min": 3686400,
+   "o_pixeles_max": 16777216
+  }
+ },
+ "blackforestlabs/flux-3/text-to-image": {
+  "entrada": "Flux3TextToImageInput",
+  "propiedades": [
+   "sync_mode",
+   "version",
+   "aspect_ratio",
+   "prompt",
+   "safety_tolerance",
+   "output_format",
+   "resolution",
+   "enable_prompt_expansion"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "aspect_ratio": {
+   "tipo": "enum",
+   "enum": [
+    "auto",
+    "21:9",
+    "2:1",
+    "16:9",
+    "3:2",
+    "7:5",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "5:7",
+    "2:3",
+    "9:16",
+    "1:2"
+   ],
+   "por_defecto": "auto"
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "512sq",
+    "768sq",
+    "1k",
+    "2k",
+    "4k"
+   ],
+   "por_defecto": "1k"
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png"
+   ],
+   "por_defecto": "jpeg"
+  }
+ },
+ "_gpt_sin_fila_todavia": {
+  "openai/gpt-image-2": {
+   "num_images": {
+    "tipo": "integer",
+    "min": 1,
+    "max": 4,
+    "por_defecto": 1
+   },
+   "quality": [
+    "auto",
+    "low",
+    "medium",
+    "high"
+   ],
+   "image_size_extra": [
+    "auto"
+   ],
+   "por_defecto_tamano": "landscape_4_3",
+   "por_defecto_calidad": "high"
+  },
+  "openai/gpt-image-2/edit": {
+   "image_urls_max": 16,
+   "mask_url": true,
+   "por_defecto_tamano": "auto"
+  },
+  "openai/gpt-image-2.5/flare/text-to-image": {
+   "num_images": {
+    "tipo": "integer",
+    "min": 1,
+    "max": 10,
+    "por_defecto": 1
+   },
+   "quality": [
+    "auto",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "output_compression": true
+  },
+  "openai/gpt-image-2.5/sunburst/text-to-image": {
+   "num_images": {
+    "tipo": "integer",
+    "min": 1,
+    "max": 10,
+    "por_defecto": 1
+   },
+   "quality": [
+    "auto",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "output_compression": true
+  },
+  "openai/gpt-image-2.5/flare/edit": {
+   "image_urls_max": 16,
+   "mask_url": true,
+   "por_defecto_tamano": "auto"
+  },
+  "openai/gpt-image-2.5/sunburst/edit": {
+   "image_urls_max": 16,
+   "mask_url": true,
+   "por_defecto_tamano": "auto"
+  },
+  "nota": "Sin fila: faltan las decisiones del dueño (calidad, Flare o Sunburst, si GPT Image 2 edita) y el precio de los tamaños 16:9 y 9:16."
+ }
+}

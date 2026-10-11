@@ -589,7 +589,8 @@ def _medir(ruta: Path) -> dict:
             segundos = valor
             break
     return {"ancho": int(video["width"]), "alto": int(video["height"]), "segundos": segundos,
-            "audio": audio is not None, "codec_audio": (audio or {}).get("codec_name")}
+            "audio": audio is not None, "codec_audio": (audio or {}).get("codec_name"),
+            "codec": video.get("codec_name")}
 
 
 def _aspecto(plan: Plan) -> str:
@@ -598,11 +599,12 @@ def _aspecto(plan: Plan) -> str:
     return ASPECTOS_IMAGEN[plan.formato] if plan.tarea == "imagen" else formato_de(plan.formato)["aspecto"]
 
 
-def _costo_a_un_megapixel(plan: Plan) -> bool:
-    """¿El costo anotado de este modelo es el de ~1 MP? Los de `image_size` con tarifa por
-    megapíxel (FLUX.2 klein: $0.006 dólares por MP) se anotan a 1024×1024; si llega mucho más
-    grande, lo cobrado puede ser otro."""
-    return plan.tarea == "imagen" and getattr(plan.modelo, "llave_tamano", "") == "image_size"
+def _tope_megapixeles(plan: Plan) -> float:
+    """Hasta cuántos megapíxeles vale el costo anotado de este modelo (0 = sin tope). Los que
+    cobran por megapíxel (FLUX.2 klein: $0.006 dólares por MP) se anotan a ~1 MP, y lo declara
+    su fila (`megapixeles_ficha`); si llega mucho más grande, lo cobrado puede ser otro. Los de
+    precio fijo por imagen (Seedream) no tienen tope."""
+    return float(getattr(plan.modelo, "megapixeles_ficha", 0) or 0) if plan.tarea == "imagen" else 0.0
 
 
 def _promete_1k(plan: Plan) -> bool:
@@ -644,9 +646,15 @@ def _veredicto(plan: Plan, medida: dict) -> list[str]:
         a, b = (int(v) for v in _aspecto(plan).split(":"))
         if abs(ancho / alto - a / b) > (a / b) * TOLERANCIA_ASPECTO:
             dif.append(f"se pidió {a}:{b} y llegó {ancho}×{alto}")
-    if _costo_a_un_megapixel(plan) and ancho * alto / 1_000_000 > MAX_MP_1K:
+    tope = _tope_megapixeles(plan)
+    if tope and ancho * alto / 1_000_000 > tope:
         dif.append(f"llegó {ancho}×{alto} ({ancho * alto / 1_000_000:.2f} MP) y el costo anotado "
-                   f"({_dolares(plan.costo_usd)}) es el de ~1 MP: lo cobrado puede ser otro")
+                   f"({_dolares(plan.costo_usd)}) vale hasta {tope:g} MP: lo cobrado puede ser otro")
+    codec = medida.get("codec")
+    if plan.tarea in ("imagen", "editar") and codec and codec != "mjpeg":
+        dif.append(f"llegó como {codec} y la caja guarda toda imagen como .jpg y la sirve como "
+                   "image/jpeg: un PNG o WebP ahí lo pintan los navegadores, pero las redes lo rechazan "
+                   "al publicar (pide output_format jpeg, o conviértela al guardar)")
     if plan.tarea in ("imagen", "editar") and _promete_1k(plan):
         mp = ancho * alto / 1_000_000
         if mp > MAX_MP_1K or mp < MIN_MP_1K:
@@ -675,6 +683,8 @@ def _describir(plan: Plan, medida: dict) -> str:
             partes.append(f"{medida['segundos']:.2f} s")
         partes.append("audio: SÍ" + (f" ({medida['codec_audio']})" if medida["codec_audio"] else "")
                       if medida["audio"] else "audio: NO")
+    elif medida.get("codec"):
+        partes.append({"mjpeg": "jpeg"}.get(medida["codec"], medida["codec"]))
     return " · ".join(partes)
 
 

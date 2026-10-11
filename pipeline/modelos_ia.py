@@ -191,9 +191,15 @@ class Modelo:
     # («square_hd», «landscape_16_9»…), y `tamanos` trae el de cada aspecto de la caja.
     llave_tamano: str = "aspect_ratio"
     tamanos: tuple[tuple[str, object], ...] = ()
-    # imagen: ¿el endpoint trae `num_images`? Hoy la tarea lo manda siempre; FLUX 3 no lo
-    # documenta y no está comprobado que fal lo ignore en vez de rechazarlo.
+    # imagen: ¿el endpoint trae `num_images`? La tarea lo manda siempre, salvo a los que
+    # su esquema no lo trae (FLUX.2 pro y FLUX 3, leído el 11-oct-2026): ahí no se manda,
+    # en vez de esperar que fal lo ignore.
     con_num_images: bool = True
+    # imagen: hasta cuántos megapíxeles de SALIDA vale el costo de su ficha en
+    # tools/pricing.json. Los que cobran por megapíxel (FLUX.2, Z-Image, FLUX 3) se anotan
+    # a ~1 MP; si llegara una imagen mucho mayor, lo cobrado sería otro. 0 = sin tope (precio
+    # fijo por imagen, como Seedream). Solo lo usa la prueba pagada para marcar REVISAR.
+    megapixeles_ficha: float = 0.0
 
     def __post_init__(self):
         # frozen: la única forma de reemplazar el campo es object.__setattr__
@@ -201,6 +207,10 @@ class Modelo:
         if type(self.max_intentos) is not int or self.max_intentos < 0:
             raise ValueError(f"max_intentos de {self.id!r} debe ser un entero de 0 o más "
                              f"(0 = los de settings.clip_max_attempts)")
+        mp = self.megapixeles_ficha
+        if isinstance(mp, bool) or not isinstance(mp, (int, float)) or not mp >= 0:
+            raise ValueError(f"megapixeles_ficha de {self.id!r} debe ser un número de 0 o más "
+                             f"(0 = sin tope), no {mp!r}")
         if self.llave_tamano not in LLAVES_DE_TAMANO:
             raise ValueError(f"llave_tamano de {self.id!r} debe ser una de "
                              f"{', '.join(LLAVES_DE_TAMANO)}, no {self.llave_tamano!r}")
@@ -262,14 +272,34 @@ VEO_STD_T2V = "fal-ai/veo3.1"
 VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
 NB2_CREAR = "fal-ai/nano-banana-2"
 NB2_EDITAR = "fal-ai/nano-banana-2/edit"
-# Ola 2 (familias nuevas de imagen). FLUX.2 klein 9B: solo texto a imagen.
+# Ola 2 (familias nuevas de imagen): todos solo texto a imagen (sin endpoint de editar en el
+# selector). Endpoints y parámetros leídos del esquema público de fal el 11-oct-2026
+# (tools/leer_esquema_fal.py; docs/modelos-ia/DATOS-FAL-2026-10-08.md §10).
 KLEIN_CREAR = "fal-ai/flux-2/klein/9b"
+ZIT_CREAR = "fal-ai/z-image/turbo"
+FLUX2_CREAR = "fal-ai/flux-2-pro"
+SDF_CREAR = "bytedance/seedream/v5/flash/text-to-image"
+SD45_CREAR = "fal-ai/bytedance/seedream/v4.5/text-to-image"
+FLUX3_CREAR = "blackforestlabs/flux-3/text-to-image"
+
+# La caja guarda TODA imagen como .jpg (server/app.py) y la sirve como image/jpeg: un PNG
+# dentro de un .jpg lo pintan los navegadores, pero no lo aceptan las redes al publicar. Los
+# modelos nuevos piden jpeg explícito en vez de depender del valor por defecto de fal (que en
+# klein y Z-Image es png). Seedream 4.5 no trae `output_format`: la prueba pagada mira qué llega.
+SALIDA_JPEG = (("output_format", "jpeg"),)
 
 # Los tamaños de la familia FLUX.2 (klein, pro) y Z-Image: los valores de `image_size` que
 # fal documenta para cada aspecto de la caja. Cuadrado es `square_hd` (1024×1024), el
 # único que ya se probó con klein (DATOS-FAL §8); los dos apaisados son los valores
 # estándar de la familia y quedan por comprobar contra el esquema y en la prueba pagada.
 TAMANOS_FLUX = (("1:1", "square_hd"), ("16:9", "landscape_16_9"), ("9:16", "portrait_16_9"))
+
+# Seedream NO usa los valores predefinidos: su esquema pide un mínimo de píxeles que
+# `landscape_16_9` no alcanza. Se mandan pares (ancho, alto) explícitos, múltiplos de 16.
+#   · 5.0 Flash: entre 1024×1024 y 2048×2048 píxeles en total, relación entre 1/16 y 16.
+#   · 4.5: ancho y alto entre 1920 y 4096, o píxeles en total entre 2560×1440 y 4096×4096.
+TAMANOS_SDF = (("1:1", (1920, 1920)), ("16:9", (2048, 1152)), ("9:16", (1152, 2048)))
+TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2752)))
 
 # Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
 # manda explícito para no depender de que el default de fal siga siendo 1K.
@@ -296,12 +326,32 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     # 9-oct-2026.
     nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)
-    # FLUX.2 klein 9B (Ola 2): INERTE hasta que tarifas.json le ponga créditos. Sin
-    # endpoint de imagen: es solo texto a imagen, así que no entra en «editar».
+    # Ola 2: FLUX.2 klein 9B, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y
+    # FLUX 3. INERTES hasta que tarifas.json les ponga créditos. Sin endpoint de imagen: son
+    # solo texto a imagen, así que no entran en «editar».
     klein = Modelo("klein", "imagen", KLEIN_CREAR, llave_tamano="image_size",
-                   tamanos=TAMANOS_FLUX)
+                   tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, megapixeles_ficha=1.2)
+    zit = Modelo("zit", "imagen", ZIT_CREAR, llave_tamano="image_size",
+                 tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, megapixeles_ficha=1.2)
+    # FLUX.2 pro: su esquema no trae `num_images`
+    flux2 = Modelo("flux2", "imagen", FLUX2_CREAR, llave_tamano="image_size",
+                   tamanos=TAMANOS_FLUX, args_extra=SALIDA_JPEG, con_num_images=False,
+                   megapixeles_ficha=1.2)
+    sdf = Modelo("sdf", "imagen", SDF_CREAR, llave_tamano="image_size",
+                 tamanos=TAMANOS_SDF, args_extra=SALIDA_JPEG)
+    sd45 = Modelo("sd45", "imagen", SD45_CREAR, llave_tamano="image_size",
+                  tamanos=TAMANOS_SD45)
+    # FLUX 3: pide el aspecto como la caja ("16:9"), no trae `num_images` y solo tiene leído el
+    # precio de 1K (resolution "1k"): se fija como el 1K de Nano Banana 2.
+    flux3 = Modelo("flux3", "imagen", FLUX3_CREAR, con_num_images=False, megapixeles_ficha=1.2,
+                   args_extra=(("output_format", "jpeg"), ("resolution", "1k")))
     return {("imagen", "grok"): grok,
             ("imagen", "klein"): klein,
+            ("imagen", "zit"): zit,
+            ("imagen", "flux2"): flux2,
+            ("imagen", "sdf"): sdf,
+            ("imagen", "sd45"): sd45,
+            ("imagen", "flux3"): flux3,
             ("imagen", "nb2"): nb2,
             ("editar", "grok"): Modelo("grok", "editar", settings.fal_imagen_edit),
             ("editar", "nb2"): nb2_editar,

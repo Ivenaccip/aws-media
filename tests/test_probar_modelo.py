@@ -553,11 +553,12 @@ def _ffprobe_falso(monkeypatch, datos, returncode=0, stderr=""):
 
 def test_medir_lee_tamano_segundos_y_audio_de_un_video(monkeypatch, tmp_path):
     visto = _ffprobe_falso(monkeypatch, {
-        "streams": [{"codec_type": "video", "width": 1280, "height": 720},
+        "streams": [{"codec_type": "video", "width": 1280, "height": 720, "codec_name": "h264"},
                     {"codec_type": "audio", "codec_name": "aac"}],
         "format": {"duration": "8.041000"}})
     m = probar._medir(tmp_path / "v.mp4")
-    assert m == {"ancho": 1280, "alto": 720, "segundos": 8.041, "audio": True, "codec_audio": "aac"}
+    assert m == {"ancho": 1280, "alto": 720, "segundos": 8.041, "audio": True, "codec_audio": "aac",
+                 "codec": "h264"}
     # sin shell, lista de argumentos, y la salida se lee en UTF-8 (Windows)
     assert isinstance(visto["cmd"], list) and visto["cmd"][0] == "ffprobe"
     assert "shell" not in visto["kwargs"] and visto["kwargs"]["encoding"] == "utf-8"
@@ -664,7 +665,7 @@ def test_los_formatos_de_la_prueba_son_los_de_la_caja_de_imagenes():
     ("cuadrado", 1024, 1024, None),                  # 1.05 MP: lo que se anotó
     ("horizontal", 1024, 576, None),                 # 0.59 MP: cuesta menos, no se marca
     ("vertical", 576, 1024, None),
-    ("cuadrado", 2048, 2048, "~1 MP"),               # 4.2 MP: el costo anotado es el de 1 MP
+    ("cuadrado", 2048, 2048, "vale hasta 1.2 MP"),   # 4.2 MP: el costo anotado es el de ~1 MP
     ("horizontal", 1024, 1024, "se pidió 16:9"),     # llegó con otro aspecto
 ])
 def test_klein_se_juzga_por_su_aspecto_y_por_su_megapixel(env, capsys, tmp_path, formato, ancho, alto, marca):
@@ -679,6 +680,49 @@ def test_klein_se_juzga_por_su_aspecto_y_por_su_megapixel(env, capsys, tmp_path,
         assert "REVISAR" not in out and "coincide con lo prometido" in out
     else:
         assert "REVISAR" in out and marca in out
+
+
+@pytest.mark.parametrize("codec,se_marca", [("mjpeg", False), (None, False), ("png", True), ("webp", True)])
+@pytest.mark.parametrize("modelo", ["klein", "grok", "nb2"])
+def test_una_imagen_que_no_llega_como_jpeg_se_marca_para_revisar(env, capsys, tmp_path, modelo, codec, se_marca):
+    """La caja guarda TODA imagen como .jpg y la sirve como image/jpeg (server/app.py)."""
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1376, "alto": 768}
+    if codec:
+        env.medida["codec"] = codec
+    code, out, err = _correr(capsys, "imagen", modelo, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    if se_marca:
+        assert "REVISAR" in out and f"llegó como {codec}" in out and "image/jpeg" in out
+    else:
+        assert "llegó como" not in out
+
+
+def test_el_codec_se_enseña_junto_al_tamano_medido(env, capsys, tmp_path):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1376, "alto": 768, "codec": "mjpeg"}
+    code, out, _ = _correr(capsys, "imagen", "grok", "--si", "--salida", tmp_path / "s")
+    assert code == 0 and "1376×768 · jpeg" in out
+
+
+@pytest.mark.parametrize("modelo,esperado", [("klein", 1.2), ("zit", 1.2), ("flux2", 1.2), ("flux3", 1.2),
+                                             ("sdf", 0.0), ("sd45", 0.0), ("grok", 0.0), ("nb2", 0.0)])
+def test_el_tope_de_megapixeles_lo_declara_la_fila(modelo, esperado):
+    """Los que cobran por megapíxel se juzgan por su tamaño; Seedream, de precio fijo por imagen, no."""
+    from pipeline import modelos_ia
+    plan = SimpleNamespace(tarea="imagen", modelo=modelos_ia.resolver("imagen", modelo))
+    assert probar._tope_megapixeles(plan) == esperado
+    assert probar._tope_megapixeles(SimpleNamespace(tarea="editar", modelo=plan.modelo)) == 0.0
+
+
+@pytest.mark.parametrize("modelo,ancho,alto", [("sdf", 2048, 1152), ("sd45", 2752, 1536)])
+def test_seedream_no_se_marca_por_ser_grande(env, capsys, tmp_path, modelo, ancho, alto):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.jpg"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto, "codec": "mjpeg"}
+    code, out, err = _correr(capsys, "imagen", modelo, "--formato", "horizontal", "--si",
+                             "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert "REVISAR" not in out and "coincide con lo prometido" in out
 
 
 # ---------------------------------------------------------------------------

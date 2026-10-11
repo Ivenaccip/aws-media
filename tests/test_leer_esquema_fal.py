@@ -76,6 +76,16 @@ def test_el_resumen_enseña_enum_objeto_rangos_lista_y_defecto():
     assert "El tamaño de la imagen generada." in r          # descripción de una llave clave
 
 
+def test_la_descripcion_larga_de_una_llave_clave_no_se_corta_a_la_mitad():
+    """El 11-oct la regla de píxeles de GPT Image quedó cortada en «total pixels»: se leía hasta el final."""
+    doc = json.loads(json.dumps(MUESTRA))
+    largo = ("Concrete sizes must have both dimensions as multiples of 16, max edge 3840px, "
+             "aspect ratio <= 3:1, total pixels " + "x" * 300 + " FIN")
+    doc["components"]["schemas"]["KleinInput"]["properties"]["image_size"]["description"] = largo
+    assert "FIN" in leer.resumir(doc, ENDPOINT)
+    assert leer.DESCRIPCION_MAX >= 700
+
+
 def test_una_llave_que_no_es_clave_no_trae_descripcion():
     r = leer.resumir(MUESTRA, ENDPOINT)
     assert "El texto." not in r                               # `prompt` no está en las llaves clave

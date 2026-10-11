@@ -58,6 +58,9 @@ _ENDPOINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*
 # Las llaves que definen tamaño, calidad y cantidad: de esas se enseña también la descripción.
 # El encabezado de un resumen que no se pudo armar: main lo cuenta aparte de las descargas caídas.
 SIN_RESUMEN = "  (no se pudo leer la entrada:"
+# Cuánto de la descripción de una llave clave se enseña. 240 cortaba el límite de píxeles de
+# `image_size` de GPT Image («…total pixels» y se acababa): las reglas están al final del texto.
+DESCRIPCION_MAX = 700
 _LLAVES_CLAVE = ("image_size", "aspect_ratio", "resolution", "quality", "num_images",
                  "image_urls", "output_format", "mask_url", "seed")
 
@@ -189,7 +192,7 @@ def _resumir(doc: dict, endpoint: str) -> str:
         desc = (real.get("description") if isinstance(real, dict) else "") or \
                (prop.get("description") if isinstance(prop, dict) else "") or ""
         if llave in _LLAVES_CLAVE and desc:
-            lineas.append(f"      {' '.join(str(desc).split())[:240]}")
+            lineas.append(f"      {' '.join(str(desc).split())[:DESCRIPCION_MAX]}")
     return "\n".join(lineas)
 
 

@@ -1,12 +1,13 @@
 # Modelos del selector: lo que falta por verificar (R4)
 
-Hoy ocho filas están en `pipeline/modelos_ia.py`. A la venta: **Grok Imagine**, **Nano
+Hoy trece filas están en `pipeline/modelos_ia.py` (once modelos). A la venta: **Grok Imagine**, **Nano
 Banana 2** (crear y editar), **Veo 3.1 Lite** y **Veo 3.1 Fast** (clip). De ellos, Nano
 Banana 2 y Veo 3.1 Fast (Ola 1) se encendieron el 9-oct-2026 tras su prueba pagada; Grok y
-Veo 3.1 Lite ya estaban. Dos filas son **inertes**: el servidor las conoce, pero no se
-ofrecen ni se cobran. **Veo 3.1 Standard** (clip, Ola 1) y **FLUX.2 klein 9B** (imagen, Ola 2:
-primera entrega, 11-oct-2026). Los otros 14 solo viven en el catálogo de la web
-(`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que ellas.
+Veo 3.1 Lite ya estaban. Siete modelos son **inertes**: el servidor los conoce, pero no se
+ofrecen ni se cobran. **Veo 3.1 Standard** (clip, Ola 1) y los seis de imagen de la Ola 2 (11-oct-2026):
+**FLUX.2 klein 9B**, **Z-Image Turbo**, **FLUX.2 pro**, **Seedream 5.0 Flash**, **Seedream 4.5** y
+**FLUX 3**. Los otros 9 (Nano Banana 2 Lite y Pro, GPT Image 2 y 2.5, y cinco de clip) solo viven en el
+catálogo de la web (`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que ellos.
 
 ## Cómo se enciende un modelo (una fila de datos, tres archivos y una prueba)
 
@@ -53,15 +54,15 @@ para poder encenderse.
 
 | Tarea | Modelo (id) | Endpoint fal | Falta |
 |---|---|---|---|
-| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **fila inerte desde el 11-oct-2026** (Ola 2·A): `image_size` traducido (cuadrado `square_hd`, apaisado `landscape_16_9`, vertical `portrait_16_9`) y ficha de $0.006 dólares por imagen en `pricing.json`. Falta: comprobar los dos apaisados contra el esquema (`tools/leer_esquema_fal.py`) y en la prueba pagada (3 llamadas, unos $0.018 dólares), y la decisión de encenderla (2 créditos propuestos) |
-| imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | su fila, con `image_size` (mecanismo listo; falta leer su esquema y su ficha) |
-| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | su fila, con `image_size` (mecanismo listo; falta el esquema; el costo cobra por megapíxel: $0.03 dólares el primero + $0.015 dólares por cada MP extra, sin saber si 1024×1024 cuenta 1 o 2 MP) |
-| imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | su fila, con `image_size` (mecanismo listo; falta el esquema) |
+| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **fila inerte desde el 11-oct-2026** (Ola 2): presets `square_hd`, `landscape_16_9` y `portrait_16_9` (los tres están en el esquema de fal, confirmado el 11-oct), jpeg explícito y ficha de $0.006 dólares por imagen (medida en el panel). Falta: la prueba pagada de las tres formas (unos $0.018 dólares) y la decisión de encenderla (2 créditos propuestos) |
+| imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | **fila inerte desde el 11-oct-2026**: mismos presets que klein, jpeg explícito, ficha de $0.005 dólares por megapíxel (leída, sin medir). Falta: prueba pagada (unos $0.015 dólares por las tres formas) y la decisión (2 créditos propuestos) |
+| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | **fila inerte desde el 11-oct-2026**: mismos presets, jpeg explícito y **sin `num_images`** (su esquema no lo trae). Ficha de $0.03 dólares (leída): un 1024×1024 son 1.05 MP y se cobra entre $0.03 y $0.045 dólares según cuente el megapíxel; 4 créditos cubren los dos casos. Falta: prueba pagada (de $0.09 a $0.135 dólares por las tres formas) y la decisión |
+| imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | **fila inerte desde el 11-oct-2026**: pares explícitos 1920×1920, 2048×1152 y 1152×2048 (su esquema exige entre 1024×1024 y 2048×2048 píxeles; los presets no llegan), jpeg explícito, ficha de $0.027 dólares por imagen (leída). Falta: prueba pagada (unos $0.081 dólares) y la decisión (4 créditos propuestos) |
 | imagen | Nano Banana 2 Lite (`nbl`) | `google/nano-banana-2-lite` | cobra por tokens: **sin precio confirmado** hasta medirlo en la prueba |
-| imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | su fila, con `image_size` (mecanismo listo; falta el esquema) |
+| imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | **fila inerte desde el 11-oct-2026**: pares explícitos 2048×2048, 2752×1536 y 1536×2752 (su esquema exige 2560×1440 píxeles como mínimo), **sin `output_format`** (la prueba mira en qué formato llega), ficha de $0.04 dólares por imagen (leída). Falta: prueba pagada (unos $0.12 dólares) y la decisión (4 créditos propuestos) |
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
-| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | sin `num_images`: el mecanismo ya lo admite (`con_num_images=False` no lo manda); su fila aún no existe, falta leer su esquema y escribirla |
+| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **fila inerte desde el 11-oct-2026**: pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K (leída). Queda `version: "latest"` sin fijar. Falta: prueba pagada (unos $0.072 dólares) y la decisión (4 créditos propuestos) |
 | imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
@@ -105,10 +106,10 @@ el precio solo vale a 1K. Y Veo 3.1 Fast y Standard hacen **un solo intento** po
    nuestro lado, pero `fal_client` puede reenviar el envío si se pierde la respuesta:
    revisa en Request Details que haya una sola solicitud.
 
-### Ola 2 · primera entrega (11-oct-2026): el tamaño por familia y FLUX.2 klein
+### Ola 2 (11-oct-2026): el tamaño por familia y seis modelos de imagen inertes
 
-Grok y Nano Banana piden el tamaño con `aspect_ratio` («16:9»); FLUX.2, Z-Image, Seedream y
-GPT Image piden `image_size` con valores propios. Cada fila de imagen lo declara y
+Grok y Nano Banana piden el tamaño con `aspect_ratio` («16:9»); FLUX.2, Z-Image y Seedream (y
+GPT Image) piden `image_size` con valores propios. Cada fila de imagen lo declara y
 `Modelo.args_de_imagen(prompt, aspecto)` lo traduce; `media_fal.imagen_fal` solo lo usa:
 
 - `llave_tamano`: `"aspect_ratio"` (lo de siempre: Grok manda los mismos argumentos de antes)
@@ -117,35 +118,43 @@ GPT Image piden `image_size` con valores propios. Cada fila de imagen lo declara
   `server/app.py::ASPECTOS_IMAGEN`). Una fila sin los tres no se puede construir; un aspecto
   fuera de esos es `AspectoNoAdmitido` (422), nunca un cambio silencioso a otro. El valor es un
   texto de fal (`square_hd`) o un par (ancho, alto), que sale como `{"width", "height"}`
-  (GPT Image pide tamaños concretos).
-- `con_num_images`: FLUX 3 no documenta `num_images`; con `False` no se manda.
+  (Seedream y GPT Image piden tamaños concretos).
+- `con_num_images`: FLUX.2 pro y FLUX 3 no traen `num_images` en su esquema; con `False` no se manda.
+- `megapixeles_ficha`: hasta cuántos megapíxeles de salida vale el costo de la ficha (los que cobran
+  por megapíxel); solo lo usa la prueba pagada para marcar REVISAR. 0 = precio fijo por imagen.
 - `admite_referencia`: un modelo de solo texto a imagen (sin `endpoint_con_imagen`) no recibe
-  una imagen de referencia: `imagen_fal` lo rechaza, no se la manda ni cae a otro modelo. Klein
-  tampoco tiene fila en «editar», así que el editor no puede llamarlo.
+  una imagen de referencia: `imagen_fal` lo rechaza, no se la manda ni cae a otro modelo. Ninguno de
+  los seis tiene fila en «editar», así que el editor no puede llamarlos.
 - `image_size` es llave protegida: ningún modelo puede fijarla en `args_extra`.
 
-**FLUX.2 klein 9B** (`klein`, `fal-ai/flux-2/klein/9b`) es la primera fila: inerte, sin número en
-`tarifas.json`. Su ficha en `pricing.json` es **$0.006 dólares por imagen**, medido en el panel de
-fal el 9-oct a 1024×1024 (DATOS §8; el panel muestra tres decimales, así que con cobro
-proporcional al megapíxel serían unos $0.0063 dólares y se verían igual). La página cobra por
-megapíxel: los apaisados y verticales (más chicos que 1 MP) deberían costar igual o menos,
-pero eso queda por comprobar con la prueba pagada. De los tres valores de
-`image_size`, solo `square_hd` está probado con klein; `landscape_16_9` y `portrait_16_9` son los
-estándar de la familia FLUX y quedan **por comprobar** (esquema + prueba pagada de las tres
-formas). Para esa prueba, `tools/probar_modelo.py` ahora acepta `--formato cuadrado` en imágenes
-(clip no: Veo no admite 1:1), muestra el `image_size` en el ensayo y marca REVISAR si el aspecto
-de la salida no es el pedido o si llega a más de ~1.2 MP (el costo anotado es el de ~1 MP).
+**Los esquemas, leídos el 11-oct-2026** con `tools/leer_esquema_fal.py` (solo lectura, sin clave; DATOS
+§10 tiene el detalle) son el contrato: `tests/fixtures/esquemas_fal_ola2.json` los guarda y
+`tests/test_r4_ola2.py` comprueba que cada fila solo manda llaves que el endpoint tiene, valores de su
+enum y `num_images` solo donde existe. Lo que cambió el diseño: (1) los presets de FLUX.2, Z-Image y
+klein existen tal cual; (2) los de Seedream NO alcanzan su mínimo de píxeles (5.0 Flash: entre 1024×1024
+y 2048×2048; 4.5: 2560×1440 como mínimo), por eso llevan pares explícitos múltiplos de 16; (3) FLUX.2 pro
+no trae `num_images`, y FLUX 3 tampoco (ya no hace falta «probar que fal lo ignora»).
 
-**Lo que falta de la Ola 2** (cada modelo: su fila + ficha + prueba pagada pequeña con el «sí»
-del dueño + número y `activo: true`): Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream
-4.5, GPT Image 2 y 2.5 (con las decisiones de abajo) y FLUX 3. Antes de escribir sus filas se
-leen los esquemas exactos con `tools/leer_esquema_fal.py` (los 12 endpoints, sin gasto).
+**El formato del archivo.** La caja guarda TODA imagen como `.jpg` y la sirve como `image/jpeg`
+(`server/app.py`), pero klein y Z-Image devuelven PNG por defecto. Un PNG dentro de un `.jpg` lo
+pintan los navegadores, pero las redes lo rechazan al publicar. Por eso los seis piden `output_format:
+"jpeg"` explícito (menos Seedream 4.5, que no trae el parámetro), y `tools/probar_modelo.py` marca
+REVISAR si lo que llega no es JPEG. **Aviso aparte, sin resolver:** Nano Banana 2 (ya a la venta) no
+fija `output_format` y su valor por defecto en fal no está leído aquí; si devuelve PNG, hoy se guardaría
+como `.jpg`. Se comprueba con la lectura de su esquema y con la próxima prueba pagada.
 
-Decisiones del dueño que siguen abiertas para GPT Image: la calidad y el tamaño fijos que se
-ofrecen (la propuesta de la hoja de costos es GPT Image 2.5 Flare en `high`, 6 créditos a
-1024×1024), Flare contra Sunburst, y si GPT Image 2 ofrece editar (con `image_size: auto` el
-precio depende del tamaño de la foto del usuario y no es predecible; fijar un tamaño recorta o
-distorsiona su imagen).
+**Tamaños de salida (por comprobar en la prueba pagada).** Klein, Z-Image, FLUX.2 pro y FLUX 3 cobran por
+megapíxel: los apaisados y verticales de 1 MP o menos deberían costar igual o menos que el cuadrado,
+que es lo que la ficha anota. La prueba pagada (`tools/probar_modelo.py imagen <modelo> --formato
+cuadrado|horizontal|vertical --si`) mide el tamaño que llega (REVISAR si el aspecto
+no es el pedido) y el panel de fal confirma el cobro.
+
+**GPT Image sigue sin fila**, por tres razones: faltan las decisiones del dueño (la calidad y el tamaño
+fijos que se ofrecen; la propuesta de la hoja de costos es GPT Image 2.5 Flare en `high`, 6 créditos a
+1024×1024), Flare contra Sunburst y si GPT Image 2 ofrece editar (con `image_size: auto` el precio
+depende del tamaño de la foto del usuario y no es predecible); y las tablas de precio no traen el vertical
+(1080×1920): el de 9:16 no tiene precio leído. El esquema ya dice que `image_urls` admite hasta 16,
+`mask_url` es opcional y el tamaño por defecto al editar es `auto` (DATOS §10).
 
 Para los clips, la lectura del 8-oct ya respondió lo básico: los siete tienen
 endpoint de texto a video y de imagen a video, y los siete admiten 8 s. El audio es
