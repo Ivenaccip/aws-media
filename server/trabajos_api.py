@@ -32,6 +32,13 @@ HORAS_VISIBLE = 24        # lo terminado se ve un día (dueño, 25-sep)
 HORAS_COLGADO = 3         # algo «corriendo» más que esto no se anuncia como vivo
 SONDEO_S = 15             # cada cuánto pregunta el cuadro mientras algo corre
 MAX_POR_TIPO = 10
+# A dónde lleva la ficha de una imagen en segundo plano: el inicio nuevo, que es donde «Mis
+# creaciones» enseña el pedido (en curso, lista o con su error). Ni /imagenes.html ni
+# /estudio/imagenes/ lo enseñan: son el formulario de crear, vacío. No es /estudio/: mientras el
+# inicio esté en la etapa `nueva` (server/migracion.py) esa URL sirve el inicio viejo, que no
+# lista pedidos. static/trabajos.js oculta la ficha en la pantalla a la que apunta, así que en el
+# propio inicio no se repite lo que «Mis creaciones» ya dice.
+URL_IMAGEN = "/estudio/inicio/"
 
 # Los mismos nombres que enseña crear (static/crear.html, PASOS_PREP y PASOS_PROD)
 _PASOS = [
@@ -240,7 +247,7 @@ def ficha_s3(tipo: str, ref: str, doc: dict, ahora: float) -> dict | None:
         "clip": (f"Generando tu clip de {seg} segundos", f"Tu clip de {seg} segundos está listo",
                  "No se pudo generar tu clip", "/clip.html", _corto(doc.get("texto", ""))),
         "imagen": ("Generando tu imagen", "Tu imagen está lista", "No se pudo generar tu imagen",
-                   "/imagenes.html", _corto(doc.get("texto", ""))),
+                   URL_IMAGEN, _corto(doc.get("texto", ""))),
         "estilo": ("Analizando un estilo", "Tu perfil de estilo está listo",
                    "No se pudo analizar el estilo", "/estilos.html",
                    _corto(doc.get("cuenta") or doc.get("url") or "")),
@@ -271,13 +278,18 @@ def _s3(user: str, desde: float, ahora: float) -> list[dict]:
         return []
     out = []
     for tipo, prefijo in (("clip", f"usuarios/{user}/clips/"),
-                          ("imagen", f"usuarios/{user}/imagenes-pedidos/"),
                           ("estilo", f"usuarios/{user}/estilos/"),
                           ("competencia", f"usuarios/{user}/competencia/informes/")):
         for ref, doc in _recientes_s3(prefijo, desde):
             f = ficha_s3(tipo, ref, doc, ahora)
             if f and _epoch(f["cuando"]) >= desde:
                 out.append(f)
+    # las imágenes NO listan su prefijo entero (un .json y un .reclamo por pedido, todo el
+    # historial): `_mios` solo mira los ids de hoy y de ayer, que cubren las HORAS_VISIBLE
+    for ref, doc in imagen_cola._mios(user):
+        f = ficha_s3("imagen", ref, doc, ahora)
+        if f and _epoch(f["cuando"]) >= desde:
+            out.append(f)
     return out
 
 

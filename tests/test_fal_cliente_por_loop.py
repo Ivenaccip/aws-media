@@ -128,6 +128,57 @@ def test_los_loops_cerrados_no_se_acumulan(fal, falso):
     assert len(fal._clientes) <= 1                   # a lo sumo el de la última corrida
 
 
+def test_los_semaforos_de_loops_cerrados_tampoco_se_acumulan(fal, falso):
+    """Un `asyncio.Semaphore` que ESPERÓ guarda su loop con referencia fuerte, así que la clave débil sola no lo
+    suelta: sin la purga de `_del_loop` en `semaforo()`, cada invocación del worker con más llamadas que cupos
+    dejaría un loop cerrado (y todo lo suyo) en memoria. Antes de esta prueba solo se miraba `_clientes`."""
+    n = fal.settings.fal_concurrency + 2
+
+    async def muchas():
+        return await asyncio.gather(*[
+            fal.llamar("fal-ai/flux/dev", {"prompt": str(i)}, timeout_s=5, nombre="prueba")
+            for i in range(n)])
+
+    for _ in range(10):
+        assert len(asyncio.run(muchas())) == n
+    assert len(fal._semaforos) <= 1 and len(fal._clientes) <= 1
+
+
+def test_varios_hilos_con_su_propio_asyncio_run_no_se_pisan_al_purgar_loops_cerrados(fal, falso):
+    """El API tiene endpoints `def` que corren en el threadpool y hacen `asyncio.run` (server/overlays_api.py):
+    dos hilos purgan a la vez el MISMO loop cerrado. Sin el `threading.Lock` de `_del_loop` uno revienta con
+    KeyError («del guardado[viejo]») o con «dictionary changed size during iteration», dentro de `llamar` y
+    con la imagen ya cobrada. La ventana es de microsegundos: con el intervalo de cambio de hilo por defecto
+    (5 ms) casi nunca se ve, así que se estrecha para que la carrera salga siempre."""
+    errores: list[BaseException] = []
+
+    async def una():
+        fal.cliente()
+        fal.semaforo()
+        await asyncio.sleep(0)
+        fal.cliente()
+        fal.semaforo()
+
+    def hilo():
+        try:
+            for _ in range(100):
+                asyncio.run(una())
+        except BaseException as e:      # noqa: BLE001 — se reporta abajo, no se pierde en el hilo
+            errores.append(e)
+
+    antes = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        hilos = [threading.Thread(target=hilo) for _ in range(8)]
+        [h.start() for h in hilos]
+        [h.join(120) for h in hilos]
+    finally:
+        sys.setswitchinterval(antes)
+    assert not any(h.is_alive() for h in hilos), "un hilo se colgó"
+    assert errores == [], f"{len(errores)} hilos reventaron: {errores[:2]!r}"
+    assert len(fal._clientes) <= 8 and len(fal._semaforos) <= 8      # a lo sumo los loops que sigan vivos
+
+
 def test_llamar_y_subir_archivo_pasan_por_el_cliente_del_loop(fal, falso, tmp_path):
     async def uso():
         res = await fal.llamar("fal-ai/flux/dev", {"prompt": "un faro"}, timeout_s=5, nombre="prueba")

@@ -3,29 +3,40 @@
 `/api/imagenes` generaba DENTRO de la petición y la Lambda del API corta a los 29 s (API
 Gateway: tope fijo de 30 s; un arranque en frío gasta unos 16). Cuatro modelos tardaron
 más de 10 s en la prueba pagada (FLUX 3 hasta 25.0 s, Seedream 4.5 hasta 22.7 s, Seedream
-5.0 Flash 15.0 s, Nano Banana 2 13.9 s) y, cortada la petición, se cobraba, no se devolvía y
-fal cobraba igual. Esos pasan por la cola: cobrar → doc en S3 → `jobs.encolar_imagen` →
+5.0 Flash 15.0 s, Nano Banana 2 11.7 s al crear) y, cortada la petición, se cobraba, no se
+devolvía y fal cobraba igual. Esos pasan por la cola: cobrar → doc en S3 → `jobs.encolar_imagen` →
 `worker/imagen_generar.py` → la pantalla sondea `GET /api/imagenes/pedidos/{id}`.
 
 Lo que este archivo defiende:
 
   * la TABLA: qué modelos van a segundo plano y por qué (los segundos medidos están fijados
-    aquí) — la regla es «segundo_plano si y solo si algún tiempo medido pasó de 10 s»;
+    aquí) — la regla es «segundo_plano si y solo si algún tiempo medido pasó de 10 s», con UNA
+    excepción nombrada: Grok (13 a 29 s medidos), que sigue síncrono por decisión pendiente del
+    dueño (docs/OPERACION.md);
   * el contrato HTTP: validar todo antes de cobrar (422), el tope de 3 en marcha (409), el
     orden cobrar → doc → encolar, la devolución si no se pudo lanzar (502), y la respuesta de
     siempre para los rápidos y para el backend local;
   * `pendientes` en `GET /api/imagenes` y `GET /api/imagenes/pedidos/{id}`: la ficha sin el
     prompt completo, el recorte por fecha ANTES de leer, que jamás se vea lo de otro, que se
-    lean ANTES que las imágenes y que un S3 caído no tumbe la lista de imágenes;
+    lean ANTES que las imágenes y que un S3 caído no tumbe la lista de imágenes —pero lo diga:
+    `pendientes_ok: false`, para que un `[]` no se lea como «no hay pendientes»—; la caducidad
+    de 45 min que comparten el tope y el aviso de «tardó demasiado»;
   * el worker: nunca relanza la generación, devuelve EXACTAMENTE lo cobrado (leído del doc),
     devuelve ANTES de escribir el doc `error` (que guarda `devuelto`) y, si la devolución
-    falla, levanta para que SQS reentregue y la reentrega repite SOLO la devolución; la
-    imagen ya subida nunca se devuelve aunque el doc `listo` no se pueda escribir; y no paga
-    ni devuelve dos veces cuando SQS entrega el mismo mensaje a la vez (el reclamo en S3);
+    falla o el doc `error` no se puede escribir, levanta para que SQS reentregue y la reentrega
+    repite SOLO la devolución (idempotente: una sentencia atómica, no abona dos veces aunque
+    falle a medias); deja marcado el fallo en el reclamo ANTES de devolver, así que ni con el
+    doc sin escribir se regenera; la imagen ya subida nunca se devuelve aunque el doc `listo` no
+    se pueda escribir; y no paga ni devuelve dos veces cuando SQS entrega el mismo mensaje a la
+    vez (el reclamo en S3, con un token propio: el 412 que recibe el reintento de botocore sobre
+    su PUT ya aplicado no lo hace perder su propio reclamo);
   * el despachador de la Lambda del worker y que el API y el worker hablen del mismo doc;
-  * «Tus trabajos» (/api/trabajos) también enseña las imágenes en segundo plano.
+  * «Tus trabajos» (/api/trabajos) también enseña las imágenes en segundo plano, con un enlace al
+    inicio nuevo (donde «Mis creaciones» las enseña) y leyéndolas como «Mis creaciones», sin listar
+    todo el historial.
 
-Sin red: fal, S3, SQS y el monedero mockeados.
+Sin red hacia afuera: fal, S3, SQS y el monedero mockeados. La única conexión es la de botocore real
+contra un S3 falso en 127.0.0.1 (`_S3Http`), que existe para provocar lo que un doble en memoria no puede.
 
 OJO: nada de importar pipeline/server a nivel de módulo (ver test_m25_clip)."""
 import importlib.util
@@ -33,11 +44,15 @@ import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -51,8 +66,8 @@ LENTOS = ("nb2", "sdf", "sd45", "flux3")
 RAPIDOS = ("grok", "klein", "zit", "flux2")
 # Los segundos MEDIDOS por llamada en las pruebas pagadas (docs/modelos-ia/POR-VERIFICAR.md,
 # DATOS-FAL-2026-10-08.md §9 y §11): (menor, mayor). Nano Banana 2 son tres llamadas (crear 11.7 s;
-# editar 11.5 y 13.9 s). Grok NO está: no hay medición registrada en el repo y no tiene regla (es el
-# predeterminado, rápido y conocido; la decisión del dueño es que siga síncrono).
+# editar 11.5 y 13.9 s). Grok Imagine SÍ tiene medición: ocho llamadas reales el 18-sep, de 13 a 29 s
+# (mediana 16; el vertical, 28.7 s), en PLAN-PRODUCTO.md y en tools/pricing.json (`grok_nota`).
 TIEMPOS_MEDIDOS = {
     "nb2": (11.5, 13.9),
     "sdf": (13.4, 15.0),
@@ -61,7 +76,13 @@ TIEMPOS_MEDIDOS = {
     "flux2": (7.2, 8.1),
     "klein": (0.8, 1.2),
     "zit": (1.0, 1.8),
+    "grok": (13, 29),
 }
+# La regla manda en todos menos en uno, y la excepción está NOMBRADA: Grok (el predeterminado) rozaba el
+# muro de 29 s ya en síncrono y la regla lo mandaría a segundo plano, pero esa decisión es del dueño
+# (docs/OPERACION.md, «Decisión pendiente del dueño: Grok»). Mientras no la tome, la bandera sigue en
+# False; cuando la tome, se borra esta línea y la prueba obliga a que la bandera siga a la regla.
+EXCEPCIONES_A_LA_REGLA = {"grok": "decisión pendiente del dueño"}
 
 ID_RE = re.compile(r"^img-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 NOMBRE_RE = re.compile(r"^[0-9a-f]{12}\.jpg$")
@@ -82,15 +103,18 @@ def _muro_s() -> float:
 
 def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
     """segundo_plano <=> algún tiempo medido > 10 s. Mover un modelo es cambiar un booleano, pero
-    ese booleano tiene que seguir a la medición: un modelo nuevo sin medir obliga a medirlo aquí."""
+    ese booleano tiene que seguir a la medición: un modelo nuevo sin medir obliga a medirlo aquí.
+    La única excepción es Grok, nombrada, y tiene que ser una excepción de verdad."""
     from pipeline import modelos_ia
     imagen = modelos_ia.disponibles("imagen")
-    assert set(imagen) == set(TIEMPOS_MEDIDOS) | {"grok"}, "modelo nuevo de imagen: anota sus segundos"
+    assert set(imagen) == set(TIEMPOS_MEDIDOS), "modelo nuevo de imagen: anota sus segundos"
     for id_, (_, mayor) in TIEMPOS_MEDIDOS.items():
-        assert modelos_ia.resolver("imagen", id_).segundo_plano is (mayor > _muro_s()), id_
-    # Grok: sin medición en el repo, sin regla; sigue síncrono por decisión del dueño
-    assert "grok" not in TIEMPOS_MEDIDOS
-    assert modelos_ia.resolver("imagen", "grok").segundo_plano is False
+        va = modelos_ia.resolver("imagen", id_).segundo_plano
+        if id_ in EXCEPCIONES_A_LA_REGLA:
+            assert mayor > _muro_s() and va is False, id_      # la regla lo mandaría; el dueño aún no
+        else:
+            assert va is (mayor > _muro_s()), id_
+    assert set(EXCEPCIONES_A_LA_REGLA) == {"grok"}
 
 
 def test_exactamente_estos_cuatro_van_a_segundo_plano_al_crear():
@@ -125,7 +149,7 @@ def test_segundo_plano_solo_acepta_un_booleano(malo):
 
 def test_la_documentacion_trae_los_segundos_de_cada_modelo():
     """La tabla de arriba y la de docs/modelos-ia/POR-VERIFICAR.md dicen lo mismo: segundos medidos
-    y si va en segundo plano."""
+    y si va en segundo plano. Grok tiene su medición (13 a 29 s) y su «no, por ahora» pendiente."""
     doc = (RAIZ / "docs" / "modelos-ia" / "POR-VERIFICAR.md").read_text(encoding="utf-8")
     seccion = doc[doc.index("### Qué va en segundo plano y por qué"):]
     filas = {}
@@ -134,19 +158,42 @@ def test_la_documentacion_trae_los_segundos_de_cada_modelo():
         m = re.search(r"\(`([a-z0-9]+)`\)", celdas[0]) if len(celdas) == 3 else None
         if m:
             filas[m.group(1)] = celdas
-    assert set(filas) == set(TIEMPOS_MEDIDOS) | {"grok"}
+    assert set(filas) == set(TIEMPOS_MEDIDOS)
     for id_, (menor, mayor) in TIEMPOS_MEDIDOS.items():
         _, segundos, va = filas[id_]
         assert segundos.startswith(f"{menor} a {mayor}"), id_
-        assert va.lower().startswith("sí" if mayor > _muro_s() else "no"), id_
-    assert "sin medición" in filas["grok"][1] and filas["grok"][2].lower().startswith("no")
+        if id_ in EXCEPCIONES_A_LA_REGLA:
+            assert va.lower().startswith("no") and "pendiente" in va.lower(), id_
+        else:
+            assert va.lower().startswith("sí" if mayor > _muro_s() else "no"), id_
+
+
+def test_grok_tiene_medicion_y_su_decision_pendiente_esta_escrita_donde_el_dueno_la_lee():
+    """La documentación decía que Grok no tenía medición «en el repo» y que era «rápido y conocido»: falso.
+    Lo que hay medido sigue en su sitio, ya no se afirma lo contrario y la decisión está en OPERACION.md."""
+    assert "13–29 s por imagen" in (RAIZ / "PLAN-PRODUCTO.md").read_text(encoding="utf-8")
+    assert "13-29 s" in (RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8")
+    for md in (RAIZ / "docs" / "modelos-ia").glob("*.md"):
+        texto = md.read_text(encoding="utf-8").lower()
+        assert "sin medición registrada" not in texto and "rápido y conocido" not in texto, md.name
+    operacion = (RAIZ / "docs" / "OPERACION.md").read_text(encoding="utf-8")
+    assert "**Decisión pendiente del dueño: Grok" in operacion
+    pendiente = operacion[operacion.index("**Decisión pendiente del dueño: Grok"):][:1800]
+    assert "13 a 29 s" in pendiente and "28.7" in pendiente and "segundo_plano=True" in pendiente
 
 
 # ---------------------------------------------------------------------------
 # fixtures
 
 class _S3(dict):
-    """Los docs de S3 en memoria ({key: texto}) y lo que se hizo con ellos."""
+    """Los docs de S3 en memoria ({key: texto}) y lo que se hizo con ellos.
+
+    Falla como falla S3 de verdad, no solo «antes de escribir»: `escritura_rota` hace fallar toda escritura
+    (o, con un sufijo como ".json", solo las de esas keys); `respuesta_perdida` APLICA las siguientes N
+    escrituras y levanta igual (se escribió, se perdió la respuesta); `condicional_aplicada_412` APLICA la
+    escritura condicional número N (1 = la primera) y contesta como si hubiera perdido —el 412 que recibe el
+    reintento automático de botocore sobre un PUT que sí se aplicó—; `condicional_roto` hace fallar las
+    condicionales."""
 
     def __init__(self):
         super().__init__()
@@ -154,7 +201,10 @@ class _S3(dict):
         self.prefijos: list[str] = []
         self.escrituras: list[str] = []
         self.subidas: dict[str, bytes] = {}
-        self.escritura_rota = False
+        self.escritura_rota: bool | str = False
+        self.respuesta_perdida = 0
+        self.condicional_aplicada_412: set[int] = set()
+        self.condicional_roto = False
         self.lectura_rota = False
         self.listado_roto = False
         self.etags: dict[str, str] = {}          # la etiqueta de cada objeto, para las escrituras condicionales
@@ -182,11 +232,14 @@ def s3(monkeypatch):
         return docs.get(key)
 
     def escribir(key, texto, tipo="application/json"):
-        if docs.escritura_rota:
+        if docs.escritura_rota is True or (docs.escritura_rota and key.endswith(docs.escritura_rota)):
             raise OSError("S3 caído")
         with docs.candado:
             docs.escrituras.append(key)
             docs.poner(key, texto)
+            if docs.respuesta_perdida:
+                docs.respuesta_perdida -= 1
+                raise OSError("se escribió, pero la respuesta se perdió")
 
     def leer_con_etag(key):
         with docs.candado:
@@ -194,10 +247,16 @@ def s3(monkeypatch):
 
     def escribir_si(key, texto, etag=None, tipo="application/json"):
         """Como el de S3: sin etiqueta solo si no existe (If-None-Match), con ella solo si nadie lo cambió."""
+        if docs.condicional_roto:
+            raise OSError("S3 caído")
         with docs.candado:
             ok = (key not in docs) if etag is None else docs.etags.get(key) == etag
             docs.condicionales.append((key, etag, ok))
-            return docs.poner(key, texto) if ok else None
+            if not ok:
+                return None
+            nueva = docs.poner(key, texto)
+            # aplicada, pero el reintento de botocore recibió 412 y esto cree que perdió
+            return None if len(docs.condicionales) in docs.condicional_aplicada_412 else nueva
 
     def listar(prefijo):
         if docs.listado_roto:
@@ -275,11 +334,16 @@ def fal_imagen(monkeypatch):
     """`media_fal.imagen_fal` anotado: la llamada exacta y, si se pide, un error. `secuencia` da
     un resultado por llamada (None = sale bien, una excepción = falla) antes de caer en `error`."""
     from pipeline import media_fal
-    f = SimpleNamespace(llamadas=[], error=None, secuencia=[], contenido=b"jpg-de-fal")
+    f = SimpleNamespace(llamadas=[], error=None, secuencia=[], contenido=b"jpg-de-fal", por_hilo={},
+                        al_llamar=None)
 
     async def imagen_fal(*args, **kw):
-        f.llamadas.append(SimpleNamespace(args=args, kw=kw))
-        error = f.secuencia.pop(0) if f.secuencia else f.error
+        hilo = threading.current_thread().name
+        f.llamadas.append(SimpleNamespace(args=args, kw=kw, hilo=hilo))
+        if f.al_llamar:
+            f.al_llamar()                        # p. ej. «justo ahora S3 se cae»
+        # lo que sale puede depender de QUÉ entrega llama (por nombre de hilo), de la llamada o de todas
+        error = f.por_hilo[hilo] if hilo in f.por_hilo else f.secuencia.pop(0) if f.secuencia else f.error
         if error:
             raise error
         Path(args[1]).write_bytes(f.contenido)
@@ -435,7 +499,7 @@ def test_con_dos_en_marcha_la_tercera_pasa(cliente, nube, s3, monedero, cola):
 
 
 @pytest.mark.parametrize("otro", [
-    _doc(edad_s=31 * 60),                                          # generando, pero caducó (más de 30 min)
+    _doc(edad_s=46 * 60),                                          # generando, pero caducó (más de 45 min)
     _doc("listo", edad_s=120, listo=_iso(60)),
     _doc("error", edad_s=90, listo=_iso(60), error="x"),
     _doc(inicio="ayer"),                                           # fecha que no se lee: cuenta como caducado
@@ -572,14 +636,16 @@ def _pendientes(cliente):
     return r.json()["pendientes"]
 
 
-def test_sin_pedidos_pendientes_es_una_lista_vacia_y_nunca_falta_la_llave(cliente, nube, s3):
-    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": [], "pendientes": []}
+def test_sin_pedidos_pendientes_es_una_lista_vacia_y_nunca_faltan_las_llaves(cliente, nube, s3):
+    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": [], "pendientes": [],
+                                                   "pendientes_ok": True}
 
 
 def test_en_local_pendientes_es_vacia_y_no_se_consulta_s3(cliente, s3, monkeypatch):
     monkeypatch.delenv("JOBS_BACKEND", raising=False)
     _poner(s3, _id(30), _doc())                         # aunque hubiera un doc a la vista
     assert _pendientes(cliente) == []
+    assert cliente.get("/api/imagenes").json()["pendientes_ok"] is True        # no leer no es fallar
     assert s3.prefijos == [] and s3.lecturas == []
 
 
@@ -615,30 +681,47 @@ CADUCADO = "Esta imagen tardó demasiado y no llegó. Si no ves tus créditos de
 
 def test_un_generando_caducado_dentro_de_la_hora_se_enseña_como_error_sin_prometer_la_devolucion(
         cliente, nube, s3):
-    """Más de 30 minutos sin respuesta: ya no es «Generando…», pero tampoco desaparece en silencio. No
+    """Más de 45 minutos sin respuesta: ya no es «Generando…», pero tampoco desaparece en silencio. No
     sabemos qué le pasó al worker, así que NO se afirma que se devolvieron los créditos."""
-    _poner(s3, _id(40 * 60), _doc(edad_s=40 * 60, nombre="a" * 12 + ".jpg"))
+    _poner(s3, _id(50 * 60), _doc(edad_s=50 * 60, nombre="a" * 12 + ".jpg"))
     (p,) = _pendientes(cliente)
-    assert (p["id"], p["estado"], p["error"], p["url"]) == (_id(40 * 60), "error", CADUCADO, "")
+    assert (p["id"], p["estado"], p["error"], p["url"]) == (_id(50 * 60), "error", CADUCADO, "")
     assert "devolvieron" not in p["error"] and p["nombre"] == "a" * 12 + ".jpg"
 
 
-@pytest.mark.parametrize("edad_s,se_ve", [(29 * 60, "generando"), (31 * 60, "error"), (59 * 60, "error"),
+@pytest.mark.parametrize("edad_s,se_ve", [(44 * 60, "generando"), (46 * 60, "error"), (59 * 60, "error"),
                                           (61 * 60, None), (5 * 3600, None)])
-def test_el_generando_pasa_a_error_a_los_30_min_y_se_va_a_la_hora(cliente, nube, s3, edad_s, se_ve):
+def test_el_generando_pasa_a_error_a_los_45_min_y_se_va_a_la_hora(cliente, nube, s3, edad_s, se_ve):
     _poner(s3, _id(edad_s), _doc(edad_s=edad_s))
     assert [p["estado"] for p in _pendientes(cliente)] == ([se_ve] if se_ve else [])
 
 
+def test_la_caducidad_es_de_45_minutos_y_la_comparten_el_tope_y_el_mensaje(cliente, nube, s3, monedero, cola):
+    """30 min era poco: la cola reentrega a los 15 y un pedido puede esperar detrás de dos clips. El tope de 3
+    (`MAX_EN_MARCHA`), el paso a error de «Mis creaciones» y de «Tus trabajos» salen de la MISMA constante."""
+    from server import imagen_cola
+    assert imagen_cola.HORAS_CADUCA == 0.75 and imagen_cola.MAX_EN_MARCHA == 3
+    for i in range(3):                                          # tres de 44 min: siguen contando
+        _poner(s3, _id(44 * 60 + i), _doc(edad_s=44 * 60 + i))
+    assert _pedir(cliente, "flux3").status_code == 409
+    for clave in list(s3):
+        del s3[clave]
+    for i in range(3):                                          # tres de 46 min: ya no ocupan lugar
+        _poner(s3, _id(46 * 60 + i), _doc(edad_s=46 * 60 + i))
+    assert _pedir(cliente, "flux3").status_code == 200
+    assert [p["estado"] for p in _pendientes(cliente) if p["id"] != monedero.cobros[0][1].removeprefix("imagen:")] \
+        == ["error"] * 3
+
+
 def test_un_generando_caducado_se_enseña_pero_sigue_sin_contar_para_el_tope(cliente, nube, s3, monedero, cola):
     for i in range(3):
-        _poner(s3, _id(40 * 60 + i), _doc(edad_s=40 * 60 + i))
+        _poner(s3, _id(50 * 60 + i), _doc(edad_s=50 * 60 + i))
     assert [p["estado"] for p in _pendientes(cliente)] == ["error"] * 3
     assert _pedir(cliente, "flux3").status_code == 200          # tres «error» visibles, ninguno ocupa lugar
 
 
 def test_un_generando_caducado_sin_fecha_legible_no_se_enseña(cliente, nube, s3):
-    _poner(s3, _id(40 * 60), _doc(inicio="ayer"))
+    _poner(s3, _id(50 * 60), _doc(inicio="ayer"))
     assert _pendientes(cliente) == []
 
 
@@ -772,6 +855,7 @@ def test_si_s3_falla_al_listar_los_pedidos_la_lista_de_imagenes_sigue_saliendo(
     assert r.status_code == 200, r.text
     assert [i["nombre"] for i in r.json()["imagenes"]] == ["0123456789ab.jpg"]
     assert r.json()["pendientes"] == [] and r.json()["total"] == 1
+    assert r.json()["pendientes_ok"] is False           # y lo dice: [] aquí NO significa «no hay pendientes»
     avisos = [x for x in caplog.records if x.name == "imagen_cola"]
     assert [x.levelno for x in avisos] == [logging.WARNING] and avisos[0].exc_info is not None
 
@@ -782,6 +866,7 @@ def test_si_s3_falla_al_leer_todos_los_pedidos_la_lista_de_imagenes_sigue_salien
     s3.lectura_rota = True
     r = cliente.get("/api/imagenes")
     assert r.status_code == 200 and r.json()["pendientes"] == []
+    assert r.json()["pendientes_ok"] is False
     assert [i["nombre"] for i in r.json()["imagenes"]] == ["0123456789ab.jpg"]
 
 
@@ -800,6 +885,32 @@ def test_un_pedido_que_no_se_puede_leer_no_tumba_a_los_demas(cliente, nube, s3, 
     with caplog.at_level(logging.WARNING, logger="imagen_cola"):
         assert [p["texto"] for p in _pendientes(cliente)] == ["el bueno"]
     assert _id(31) in caplog.text
+    # …pero la respuesta ya no dice «esto es todo»: al pedido que falta lo tapaba un 200 sin aviso
+    assert cliente.get("/api/imagenes").json()["pendientes_ok"] is False
+
+
+def test_pendientes_ok_es_true_si_se_leyo_todo_aunque_un_doc_no_sea_json(cliente, nube, s3):
+    """Un doc corrupto no se va a arreglar solo ni es un fallo de S3: no apaga la señal de «se leyó todo»."""
+    _poner(s3, _id(30), _doc(texto="el bueno"))
+    s3[f"usuarios/{USER}/imagenes-pedidos/{_id(31)}.json"] = "esto no es json"
+    d = cliente.get("/api/imagenes").json()
+    assert [p["texto"] for p in d["pendientes"]] == ["el bueno"] and d["pendientes_ok"] is True
+
+
+def test_pendientes_ok_vuelve_a_ser_true_cuando_s3_se_recupera(cliente, nube, s3):
+    """La señal es de ESA lectura: no se queda pegada."""
+    _poner(s3, _id(30), _doc(texto="en marcha"))
+    s3.listado_roto = True
+    assert cliente.get("/api/imagenes").json()["pendientes_ok"] is False
+    s3.listado_roto = False
+    d = cliente.get("/api/imagenes").json()
+    assert d["pendientes_ok"] is True and [p["texto"] for p in d["pendientes"]] == ["en marcha"]
+
+
+def test_la_llave_pendientes_sigue_en_la_respuesta_cuando_la_lectura_fallo(cliente, nube, s3):
+    s3.listado_roto = True
+    d = cliente.get("/api/imagenes").json()
+    assert d["pendientes"] == [] and d["pendientes_ok"] is False and {"total", "imagenes"} <= set(d)
 
 
 def test_el_tope_de_tres_cuenta_aunque_un_pedido_no_se_pueda_leer(cliente, nube, s3, monedero, cola, monkeypatch):
@@ -1007,6 +1118,175 @@ def test_leer_texto_con_etag_de_lo_que_no_existe_o_sin_bucket(s3_condicional, mo
 
 
 # ---------------------------------------------------------------------------
+# botocore REAL contra un S3 que aplica el PUT y pierde la respuesta
+
+class _S3Http:
+    """Un S3 en localhost para botocore de verdad (con sus reintentos de fábrica). Aplica los PUT condicionales
+    y en los que se le piden (`perder_respuesta_de`, 1 = el primer PUT) CORTA la conexión sin responder: lo que
+    pasa con un reset o un timeout justo después de que S3 escribió. botocore reintenta solo, y el reintento de
+    un PUT condicional que ya se aplicó recibe 412 aunque el primero sí escribió. Un doble en memoria no
+    produce eso, y por eso las pruebas de concurrencia no lo cubrían. `bitacora` anota cada petición con el
+    número de intento que declara el SDK (`amz-sdk-request: attempt=N`)."""
+
+    def __init__(self):
+        self.objetos: dict[str, tuple[bytes, str]] = {}
+        self.bitacora: list[tuple[str, str, str, int]] = []
+        self.perder_respuesta_de: set[int] = set()
+        self._puts = 0
+        self._candado = threading.Lock()
+        servidor = self
+
+        class Manejador(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *args):
+                pass
+
+            def _key(self):
+                return unquote(self.path.split("?")[0]).lstrip("/").split("/", 1)[1]
+
+            def _intento(self):
+                return int(self.headers.get("amz-sdk-request", "attempt=1").split("=")[1].split(";")[0])
+
+            def _xml(self, estado, codigo):
+                cuerpo = f"<?xml version='1.0'?><Error><Code>{codigo}</Code><Message>{codigo}</Message></Error>".encode()
+                self.send_response(estado)
+                self.send_header("Content-Type", "application/xml")
+                self.send_header("Content-Length", str(len(cuerpo)))
+                self.end_headers()
+                self.wfile.write(cuerpo)
+
+            def do_PUT(self):
+                cuerpo = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                key = self._key()
+                with servidor._candado:
+                    servidor._puts += 1
+                    n = servidor._puts
+                    actual = servidor.objetos.get(key)
+                    crear, tomar = self.headers.get("If-None-Match"), self.headers.get("If-Match")
+                    if (crear == "*" and actual) or (tomar and (actual is None or actual[1] != tomar)):
+                        servidor.bitacora.append(("PUT", key, "412", self._intento()))
+                        return self._xml(412, "PreconditionFailed")
+                    etag = f'"e{n}"'
+                    servidor.objetos[key] = (cuerpo, etag)
+                    perdida = n in servidor.perder_respuesta_de
+                    servidor.bitacora.append(("PUT", key, "aplicado, respuesta perdida" if perdida else "aplicado",
+                                              self._intento()))
+                if perdida:
+                    self.close_connection = True
+                    self.connection.close()
+                    return
+                self.send_response(200)
+                self.send_header("ETag", etag)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def do_GET(self):
+                key = self._key()
+                actual = servidor.objetos.get(key)
+                if actual is None:
+                    servidor.bitacora.append(("GET", key, "404", self._intento()))
+                    return self._xml(404, "NoSuchKey")
+                servidor.bitacora.append(("GET", key, "200", self._intento()))
+                self.send_response(200)
+                self.send_header("ETag", actual[1])
+                self.send_header("Content-Length", str(len(actual[0])))
+                self.end_headers()
+                self.wfile.write(actual[0])
+
+        self.http = ThreadingHTTPServer(("127.0.0.1", 0), Manejador)
+        self.http.daemon_threads = True
+        threading.Thread(target=self.http.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.http.server_address[1]}"
+
+    def poner(self, key: str, texto: str) -> str:
+        etag = f'"p{len(self.objetos) + 1}-{len(texto)}"'
+        self.objetos[key] = (texto.encode("utf-8"), etag)
+        return etag
+
+    def texto(self, key: str) -> str:
+        return self.objetos[key][0].decode("utf-8")
+
+
+@pytest.fixture
+def s3_http(monkeypatch):
+    """botocore real apuntando al servidor de arriba, y `media_sync` usándolo (sin tocar sus funciones)."""
+    import boto3
+    from pipeline import media_sync
+    servidor = _S3Http()
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+    cliente_s3 = boto3.client("s3", endpoint_url=servidor.url, region_name="us-east-1",
+                              aws_access_key_id="x", aws_secret_access_key="x")
+    monkeypatch.setattr(media_sync, "_s3", lambda: cliente_s3)
+    monkeypatch.setattr(media_sync, "_bucket", lambda: "bkt")
+    yield servidor
+    servidor.http.shutdown()
+    servidor.http.server_close()
+
+
+def test_botocore_reintenta_un_put_condicional_aplicado_y_recibe_412(s3_http):
+    """La premisa, con el cliente de verdad: la respuesta del PUT se pierde, botocore reintenta (intento 2) y el
+    reintento recibe 412 aunque el primero escribió. Es lo que hay que sobrevivir."""
+    from pipeline import media_sync
+    s3_http.perder_respuesta_de = {1}
+    assert media_sync.escribir_texto_si("k", "uno") is None          # parece que perdió…
+    assert s3_http.texto("k") == "uno"                              # …pero escribió
+    assert s3_http.bitacora == [("PUT", "k", "aplicado, respuesta perdida", 1), ("PUT", "k", "412", 2)]
+
+
+def test_con_botocore_real_un_reclamo_creado_con_la_respuesta_perdida_sigue_siendo_nuestro(s3_http):
+    import worker.imagen_generar as w
+    s3_http.perder_respuesta_de = {1}
+    key = w._key_reclamo("u1", IMAGEN_ID)
+    assert w._reclamar(key, "mi-token") == {}                       # ganado, no perdido
+    assert json.loads(s3_http.texto(key))["token"] == "mi-token"
+    assert ("PUT", key, "412", 2) in s3_http.bitacora               # el 412 del reintento sí ocurrió
+
+
+def test_con_botocore_real_la_toma_de_un_reclamo_vencido_con_la_respuesta_perdida_sigue_siendo_nuestra(s3_http):
+    import worker.imagen_generar as w
+    key = w._key_reclamo("u1", IMAGEN_ID)
+    s3_http.poner(key, _reclamo(20 * 60, token="de-un-worker-muerto"))
+    s3_http.perder_respuesta_de = {2}           # el PUT 1 es crear (412 de verdad); el 2 es la toma con If-Match
+    previo = w._reclamar(key, "mi-token")
+    assert previo is not None and previo["token"] == "de-un-worker-muerto"
+    assert json.loads(s3_http.texto(key))["token"] == "mi-token"
+    assert ("PUT", key, "412", 2) in s3_http.bitacora
+
+
+def test_con_botocore_real_un_reclamo_reciente_ajeno_sigue_perdiendo(s3_http):
+    import worker.imagen_generar as w
+    key = w._key_reclamo("u1", IMAGEN_ID)
+    s3_http.poner(key, _reclamo(30, token="otra-entrega"))
+    assert w._reclamar(key, "mi-token") is None
+    assert json.loads(s3_http.texto(key))["token"] == "otra-entrega"
+
+
+def test_con_botocore_real_el_pedido_se_genera_aunque_el_reclamo_pierda_la_respuesta(
+        s3_http, fal_imagen, monkeypatch):
+    """De punta a punta con el worker real: lo que pasaba era «pedido cobrado, sin fal, sin devolución» —el
+    worker salía callado— y ahora se genera como si nada."""
+    from pipeline import costes_infra, creditos, media_sync
+    import worker.imagen_generar as w
+    monkeypatch.setenv("DEFAULT_USER_ID", "otro-usuario")
+    monkeypatch.setattr(creditos, "activo", lambda: True)
+    monkeypatch.setattr(creditos, "devolver_unica", lambda *a: pytest.fail("devolvió con una imagen buena"))
+    monkeypatch.setattr(costes_infra, "registrar", lambda *a, **k: None)
+    subidas = {}
+    monkeypatch.setattr(media_sync, "subir_archivo", lambda local, key: subidas.__setitem__(key, Path(local).read_bytes()))
+    s3_http.poner(CLAVE_DOC, json.dumps(_doc_worker()))
+    s3_http.perder_respuesta_de = {1}                               # el PUT del reclamo
+    w.generar("u1", IMAGEN_ID)
+    assert len(fal_imagen.llamadas) == 1 and list(subidas) == ["imagenes/u1/abcdef012345.jpg"]
+    assert json.loads(s3_http.texto(CLAVE_DOC))["estado"] == "listo"
+    assert json.loads(s3_http.texto(RECLAMO))["token"]
+
+
+# ---------------------------------------------------------------------------
 # el worker: devolver lo cobrado, NO regenerar y no hacer nada dos veces
 
 IMAGEN_ID = "img-20261011-120000-abcdef"
@@ -1024,19 +1304,95 @@ def worker(monkeypatch, s3, fal_imagen):
     # Registrarla aquí es lo que hace que monkeypatch la restaure al terminar (ver test_m25_clip).
     monkeypatch.setenv("DEFAULT_USER_ID", "otro-usuario")
     monkeypatch.setattr(w, "PAUSA_ESCRITURA_S", 0)
-    e = SimpleNamespace(w=w, devueltos=[], infra=[], doc_al_devolver=[], devolver_roto=None)
+    e = SimpleNamespace(w=w, devueltos=[], llamadas_devolver=[], infra=[], doc_al_devolver=[],
+                        reclamo_al_devolver=[], devolver_roto=None, refs=set())
 
-    def devolver(n, ref, u=None):
-        # lo que decía el doc en el instante de devolver: la devolución va ANTES del doc `error`
+    def devolver_unica(n, ref, u=None):
+        # lo que decía el doc y el reclamo en el instante de devolver: la devolución va ANTES del doc
+        # `error` y DESPUÉS de marcar el fallo en el reclamo
         e.doc_al_devolver.append(json.loads(s3[CLAVE_DOC])["estado"] if CLAVE_DOC in s3 else None)
+        e.reclamo_al_devolver.append(json.loads(s3[RECLAMO]) if RECLAMO in s3 else None)
+        e.llamadas_devolver.append((n, ref, u))
         if e.devolver_roto:
             raise e.devolver_roto
+        if ref in e.refs:                   # como la sentencia real: la misma referencia no abona dos veces
+            return None
+        e.refs.add(ref)
         e.devueltos.append((n, ref, u))
+        return 100
 
     monkeypatch.setattr(creditos, "activo", lambda: True)
-    monkeypatch.setattr(creditos, "devolver", devolver)
+    monkeypatch.setattr(creditos, "devolver_unica", devolver_unica)
     monkeypatch.setattr(costes_infra, "registrar", lambda *a, **k: e.infra.append(a))
     return e
+
+
+class _PgFalso:
+    """El monedero de Postgres sin Postgres: cada `db.ejecutar` es UNA sentencia que se confirma sola, como en
+    el Data API (no hay transacción entre una llamada y la siguiente). Solo entiende lo que usa el monedero.
+    `fallos[n]`: la n-ésima sentencia falla `antes` de aplicarse o `despues`, con la respuesta perdida.
+    El SQL de verdad se probó contra un Postgres 16 desechable; esto prueba lo que el worker hace con él."""
+
+    def __init__(self):
+        self.saldo: dict[str, int] = {}
+        self.libro: list[tuple[str, int, str, str | None]] = []       # (usuario, créditos, tipo, referencia)
+        self.usuarios: set[str] = set()
+        self.sentencias: list[str] = []
+        self.fallos: dict[int, str] = {}
+
+    def __call__(self, sql, params=None):
+        self.sentencias.append(sql)
+        falla = self.fallos.get(len(self.sentencias))
+        if falla == "antes":
+            raise OSError("Data API caído")
+        filas = self._aplicar(" ".join(sql.split()), params or {})
+        if falla == "despues":
+            raise OSError("se aplicó, pero la respuesta del Data API se perdió")
+        return filas
+
+    def _aplicar(self, sql, p):
+        u, n = p.get("u"), p.get("n")
+        if sql.startswith("INSERT INTO usuarios"):
+            self.usuarios.add(u)
+            return []
+        if sql.startswith("WITH mov AS"):               # abonar_devolucion: libro y saldo en UNA sentencia
+            if "NOT EXISTS" in sql and any(f[0] == u and f[2] == "devolucion" and f[3] == p["r"]
+                                           for f in self.libro):
+                return []
+            self.libro.append((u, n, "devolucion", p["r"]))
+            self.saldo[u] = self.saldo.get(u, 0) + n
+            return [{"saldo": self.saldo[u]}]
+        if sql.startswith("INSERT INTO monedero (user_id, saldo)"):         # abonar_creditos: primero el saldo…
+            self.saldo[u] = self.saldo.get(u, 0) + n
+            return [{"saldo": self.saldo[u]}]
+        if sql.startswith("INSERT INTO monedero_movimientos"):              # …y luego, aparte, el libro
+            self.libro.append((u, n, p["t"], p["r"]))
+            return []
+        raise AssertionError(f"sentencia que el monedero falso no conoce: {sql[:70]}")
+
+    def devoluciones(self, user="u1") -> list[tuple[int, str]]:
+        return [(n, r) for u, n, t, r in self.libro if u == user and t == "devolucion"]
+
+
+@pytest.fixture
+def pg(monkeypatch):
+    from pipeline import db
+    falso = _PgFalso()
+    monkeypatch.setattr(db, "ejecutar", falso)
+    return falso
+
+
+@pytest.fixture
+def worker_pg(monkeypatch, s3, fal_imagen, pg):
+    """El worker con la devolución REAL (`creditos.devolver_unica` → `db.abonar_devolucion`) contra el
+    monedero falso: lo que se defiende es el saldo y el libro, no que se llame a una función."""
+    from pipeline import costes_infra, creditos
+    import worker.imagen_generar as w
+    monkeypatch.setenv("DEFAULT_USER_ID", "otro-usuario")
+    monkeypatch.setattr(w, "PAUSA_ESCRITURA_S", 0)
+    monkeypatch.setattr(creditos, "activo", lambda: True)
+    monkeypatch.setattr(costes_infra, "registrar", lambda *a, **k: None)
+    return SimpleNamespace(w=w)
 
 
 def _doc_worker(**kw) -> dict:
@@ -1045,8 +1401,8 @@ def _doc_worker(**kw) -> dict:
     return _doc(**{**base, **kw})
 
 
-def _reclamo(segundos_atras: float) -> str:
-    return json.dumps({"reclamado": _iso(segundos_atras)})
+def _reclamo(segundos_atras: float, **extra) -> str:
+    return json.dumps({"reclamado": _iso(segundos_atras), **extra})
 
 
 def _estados_escritos(s3) -> list[str]:
@@ -1077,8 +1433,12 @@ def test_una_imagen_buena_se_genera_se_sube_y_deja_el_doc_listo(worker, s3, fal_
         "un gato astronauta", "flux3", 7, "abcdef012345.jpg")
     assert worker.devueltos == []
     assert os.environ["DEFAULT_USER_ID"] == "u1"
-    # el pedido se reclamó (con la hora) antes de generar
-    assert datetime.fromisoformat(json.loads(s3[RECLAMO])["reclamado"]).tzinfo is not None
+    # el pedido se reclamó (con la hora y el token de esta invocación) antes de generar, y el PRIMER
+    # reclamo es una escritura CONDICIONAL de crear (If-None-Match): sin eso dos entregas no se excluyen
+    reclamo = json.loads(s3[RECLAMO])
+    assert datetime.fromisoformat(reclamo["reclamado"]).tzinfo is not None
+    assert re.fullmatch(r"[0-9a-f]{32}", reclamo["token"]) and "fallo" not in reclamo
+    assert s3.condicionales == [(RECLAMO, None, True)]
     # y la línea de infra de la Lambda, con el concepto que corresponde
     (infra,) = worker.infra
     assert infra[:3] == ("u1", IMAGEN_ID, "infra-imagen")
@@ -1206,16 +1566,21 @@ def test_reentregado_tras_fallar_no_devuelve_dos_veces(worker, s3, fal_imagen):
     assert len(fal_imagen.llamadas) == 1
 
 
-def test_si_ni_siquiera_se_puede_escribir_el_doc_de_error_igual_se_devuelve(worker, s3, fal_imagen, caplog):
-    """Devolver va primero: con S3 caído la devolución ya está hecha y NO se levanta (reentregar
-    devolvería dos veces)."""
+def test_si_ni_siquiera_se_puede_escribir_el_doc_de_error_igual_se_devuelve_y_el_worker_levanta(
+        worker, s3, fal_imagen, caplog):
+    """Devolver va primero y es idempotente: con el doc sin poder escribirse la devolución ya está hecha y
+    el worker LEVANTA, para que la reentrega escriba el doc (si el mensaje se borrara, el pedido quedaría
+    en `generando` hasta que caduque, sin haber dicho nunca que falló)."""
     s3[CLAVE_DOC] = json.dumps(_doc_worker())
     fal_imagen.error = RuntimeError("boom")
-    s3.escritura_rota = True
+    s3.escritura_rota = ".json"
     with caplog.at_level(logging.ERROR, logger="imagen_generar"):
-        worker.w.generar("u1", IMAGEN_ID)                   # no levanta
+        with pytest.raises(worker.w.DocNoEscrito, match="devuelto=True"):
+            worker.w.generar("u1", IMAGEN_ID)
     assert worker.devueltos == [(7, f"imagen:{IMAGEN_ID}", "u1")]
-    assert "tampoco se pudo escribir el doc `error`" in caplog.text
+    assert "no se pudo escribir el doc `error`" in caplog.text
+    assert json.loads(s3[CLAVE_DOC])["estado"] == "generando"      # y el doc no cambió
+    assert len(worker.infra) == 1                                   # el finally corre aunque levante
 
 
 # --- la devolución misma falla
@@ -1276,6 +1641,257 @@ def test_la_reentrega_de_una_devolucion_fallida_no_espera_a_que_el_reclamo_venza
     worker.devolver_roto = None
     worker.w.generar("u1", IMAGEN_ID)
     assert worker.devueltos == [(7, f"imagen:{IMAGEN_ID}", "u1")]
+
+
+# --- el fallo queda MARCADO en el reclamo antes de devolver: ni la doble falla regenera
+
+def test_el_fallo_queda_marcado_en_el_reclamo_antes_de_devolver_con_una_escritura_condicional(
+        worker, s3, fal_imagen):
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    worker.w.generar("u1", IMAGEN_ID)
+    (reclamo,) = worker.reclamo_al_devolver                 # lo que decía el reclamo AL devolver
+    assert reclamo["fallo"] is True and re.fullmatch(r"[0-9a-f]{32}", reclamo["token"])
+    # crear el reclamo y marcarlo son escrituras condicionales; la marca lleva la etiqueta del reclamo
+    crear, marcar = s3.condicionales
+    assert crear == (RECLAMO, None, True) and marcar[0] == RECLAMO and marcar[1] and marcar[2]
+
+
+def test_la_marca_del_fallo_se_reintenta_y_basta_con_que_una_escritura_salga(worker, s3, fal_imagen, monkeypatch):
+    from pipeline import media_sync
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    escribir_si = media_sync.escribir_texto_si
+    marcas = []
+
+    def escribir_si_con_mal_momento(key, texto, etag=None, tipo="application/json"):
+        if etag is not None:                                # solo la marca lleva etiqueta aquí
+            marcas.append(etag)
+            if len(marcas) <= 2:
+                raise OSError("S3 con un mal momento")
+        return escribir_si(key, texto, etag=etag, tipo=tipo)
+
+    monkeypatch.setattr(media_sync, "escribir_texto_si", escribir_si_con_mal_momento)
+    worker.w.generar("u1", IMAGEN_ID)
+    assert len(marcas) == 3 and json.loads(s3[RECLAMO])["fallo"] is True
+    assert worker.reclamo_al_devolver[0]["fallo"] is True
+
+
+def test_si_la_marca_se_aplico_pero_su_respuesta_se_perdio_no_se_escribe_otra_vez(worker, s3, fal_imagen):
+    """Como el 412 del reintento de botocore: la marca (la 2ª condicional) SE APLICÓ y contestó que no.
+    Se relee, se ve el `fallo` con nuestro token y se sigue: nada de una tercera escritura."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    s3.condicional_aplicada_412 = {2}
+    worker.w.generar("u1", IMAGEN_ID)
+    assert len(s3.condicionales) == 2
+    assert worker.reclamo_al_devolver[0]["fallo"] is True and len(worker.devueltos) == 1
+
+
+def test_si_la_marca_no_sale_nunca_se_devuelve_igual_y_queda_en_el_log(worker, s3, fal_imagen, monkeypatch, caplog):
+    """La marca es una red de seguridad: jamás impide devolver ni escribir el doc."""
+    from pipeline import media_sync
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    escribir_si = media_sync.escribir_texto_si
+
+    def sin_marca(key, texto, etag=None, tipo="application/json"):
+        if etag is not None:
+            raise OSError("S3 con un mal momento")
+        return escribir_si(key, texto, etag=etag, tipo=tipo)
+
+    monkeypatch.setattr(media_sync, "escribir_texto_si", sin_marca)
+    with caplog.at_level(logging.ERROR, logger="imagen_generar"):
+        worker.w.generar("u1", IMAGEN_ID)                   # no levanta: devolvió y escribió el doc
+    assert "el fallo no quedó marcado" in caplog.text
+    assert worker.devueltos == [(7, f"imagen:{IMAGEN_ID}", "u1")]
+    assert json.loads(s3[CLAVE_DOC])["devuelto"] is True
+
+
+def test_la_marca_del_fallo_conserva_la_hora_del_reclamo(worker, s3):
+    """Refrescarla retrasaría el vencimiento: si después ni siquiera se puede soltar el reclamo, la reentrega de
+    los 15 min lo encontraría «reciente» y saldría en silencio (mensaje borrado, créditos sin devolver)."""
+    s3.poner(RECLAMO, _reclamo(5 * 60, token="mio"))
+    reclamado = json.loads(s3[RECLAMO])["reclamado"]
+    worker.w._marcar_fallo(RECLAMO, "mio")
+    assert json.loads(s3[RECLAMO]) == {"reclamado": reclamado, "token": "mio", "fallo": True}
+
+
+def test_la_marca_del_fallo_no_pisa_un_reclamo_que_ya_es_de_otra_entrega(worker, s3):
+    s3.poner(RECLAMO, _reclamo(1, token="otra-entrega"))
+    antes = s3[RECLAMO]
+    worker.w._marcar_fallo(RECLAMO, "mio")
+    assert s3[RECLAMO] == antes and s3.condicionales == []         # ni siquiera escribió
+
+
+def test_si_fal_falla_devolver_falla_y_el_doc_error_no_se_escribe_la_reentrega_no_regenera(worker, s3, fal_imagen):
+    """El hueco que había: el doc se quedaba en `generando` con el reclamo soltado y la reentrega
+    REGENERABA (otra llamada a fal, que cobra) en vez de solo devolver."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    worker.devolver_roto = RuntimeError("Aurora caída")
+    s3.escritura_rota = ".json"                             # el doc no se escribe; el reclamo sí
+    with pytest.raises(RuntimeError, match="Aurora caída"):
+        worker.w.generar("u1", IMAGEN_ID)
+    assert json.loads(s3[CLAVE_DOC])["estado"] == "generando"
+    reclamo = json.loads(s3[RECLAMO])
+    assert reclamo["fallo"] is True and worker.w._reclamo_vencido(s3[RECLAMO])    # marcado y ya soltado
+
+    # la reentrega, con Aurora y S3 de vuelta. Si regenerara, esta vez fal saldría bien
+    fal_imagen.error = None
+    worker.devolver_roto = None
+    s3.escritura_rota = False
+    worker.w.generar("u1", IMAGEN_ID)
+
+    assert len(fal_imagen.llamadas) == 1 and s3.subidas == {}          # NO se regeneró
+    assert worker.devueltos == [(7, f"imagen:{IMAGEN_ID}", "u1")]
+    doc = json.loads(s3[CLAVE_DOC])
+    assert (doc["estado"], doc["devuelto"], doc["error"]) == ("error", True, MENSAJE_ERROR)
+
+
+def test_un_reclamo_vencido_marcado_con_fallo_nunca_regenera_aunque_el_doc_siga_generando(worker, s3, fal_imagen):
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    s3.poner(RECLAMO, _reclamo(20 * 60, token="de-la-entrega-anterior", fallo=True))
+    worker.w.generar("u1", IMAGEN_ID)                       # fal saldría bien, pero no se llama
+    assert fal_imagen.llamadas == [] and s3.subidas == {}
+    assert worker.devueltos == [(7, f"imagen:{IMAGEN_ID}", "u1")]
+    doc = json.loads(s3[CLAVE_DOC])
+    assert (doc["estado"], doc["devuelto"], doc["error"]) == ("error", True, MENSAJE_ERROR)
+    # lo contrario sí regenera: el mismo reclamo vencido SIN marca es el de un worker que murió generando
+    assert not worker.w._reclamo_vencido(s3[RECLAMO])
+
+
+def test_un_reclamo_reciente_marcado_con_fallo_lo_tiene_otra_entrega(worker, s3, fal_imagen):
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    s3.poner(RECLAMO, _reclamo(60, token="otra-entrega", fallo=True))
+    antes = dict(s3)
+    worker.w.generar("u1", IMAGEN_ID)
+    assert fal_imagen.llamadas == [] and worker.devueltos == [] and dict(s3) == antes
+
+
+def test_devolvio_pero_el_doc_error_no_se_pudo_escribir_la_reentrega_lo_escribe_sin_abonar_dos_veces(
+        worker_pg, s3, fal_imagen, pg):
+    """La devolución de verdad (`devolver_unica` contra el monedero falso): el saldo sube UNA vez y el doc que
+    quedó sin escribir se escribe en la reentrega, que no regenera ni vuelve a abonar."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    s3.escritura_rota = ".json"
+    with pytest.raises(worker_pg.w.DocNoEscrito):
+        worker_pg.w.generar("u1", IMAGEN_ID)
+    assert pg.saldo == {"u1": 7} and pg.devoluciones() == [(7, f"imagen:{IMAGEN_ID}")]
+    assert json.loads(s3[CLAVE_DOC])["estado"] == "generando"
+
+    s3.escritura_rota = False
+    worker_pg.w.generar("u1", IMAGEN_ID)                    # la reentrega
+
+    assert pg.saldo == {"u1": 7} and len(pg.devoluciones()) == 1       # SIGUE en 7: no abonó otra vez
+    assert len(fal_imagen.llamadas) == 1
+    doc = json.loads(s3[CLAVE_DOC])
+    assert (doc["estado"], doc["devuelto"], doc["error"]) == ("error", True, MENSAJE_ERROR)
+
+
+def test_la_reentrega_que_devuelve_pero_no_puede_escribir_el_doc_deja_de_decir_que_no_devolvio_en_la_siguiente(
+        worker_pg, s3, fal_imagen, pg):
+    """Aurora se cae en la primera entrega (el doc dice `devuelto: false`). En la segunda vuelve Aurora y se cae
+    S3: abona pero no puede cambiar el doc, que seguiría diciendo «no pudimos devolverte» con el saldo ya
+    repuesto. Por eso levanta (a la DLQ si no hay una tercera) y la tercera cierra el doc con `devuelto: true`."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    pg.fallos = {2: "antes"}                                # la sentencia del monedero de la 1ª entrega
+    with pytest.raises(OSError, match="Data API caído"):
+        worker_pg.w.generar("u1", IMAGEN_ID)
+    assert json.loads(s3[CLAVE_DOC])["devuelto"] is False and pg.saldo == {}
+
+    s3.escritura_rota = ".json"
+    with pytest.raises(worker_pg.w.DocNoEscrito):
+        worker_pg.w.generar("u1", IMAGEN_ID)                # abonó, pero el doc sigue igual
+    assert pg.saldo == {"u1": 7}
+    assert json.loads(s3[CLAVE_DOC])["devuelto"] is False
+
+    s3.escritura_rota = False
+    worker_pg.w.generar("u1", IMAGEN_ID)                    # la tercera
+    assert pg.saldo == {"u1": 7} and len(pg.devoluciones()) == 1
+    assert json.loads(s3[CLAVE_DOC])["devuelto"] is True and len(fal_imagen.llamadas) == 1
+
+
+def test_sin_cobro_y_sin_poder_escribir_el_doc_error_tambien_levanta_y_la_reentrega_lo_escribe(worker, s3, fal_imagen):
+    """Aunque no haya nada que devolver: con el doc en `generando` la reentrega regeneraría."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker(creditos=0))
+    fal_imagen.error = RuntimeError("boom")
+    s3.escritura_rota = ".json"
+    with pytest.raises(worker.w.DocNoEscrito):
+        worker.w.generar("u1", IMAGEN_ID)
+    s3.escritura_rota = False
+    fal_imagen.error = None
+    worker.w.generar("u1", IMAGEN_ID)
+    assert len(fal_imagen.llamadas) == 1 and worker.devueltos == []
+    doc = json.loads(s3[CLAVE_DOC])
+    assert doc["estado"] == "error" and doc["error"] == "La imagen no se pudo generar. No se te cobró."
+
+
+def test_el_hueco_que_queda_si_s3_no_deja_ni_marcar_el_fallo_la_reentrega_regenera(worker, s3, fal_imagen):
+    """Lo ÚNICO que sigue sin cubrir, y está documentado (docs/OPERACION.md): S3 cae justo al fallar —ni la marca
+    ni el doc ni soltar el reclamo se pueden escribir— y Aurora tampoco devuelve. La reentrega llega con el
+    reclamo vencido, sin marca, y es indistinguible de un worker que murió generando: llama a fal otra vez.
+    Si esto cambia, que sea a propósito."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    worker.devolver_roto = RuntimeError("Aurora caída")
+
+    def se_cae_s3():
+        s3.escritura_rota = True
+        s3.condicional_roto = True
+
+    fal_imagen.al_llamar = se_cae_s3
+    with pytest.raises(RuntimeError, match="Aurora caída"):
+        worker.w.generar("u1", IMAGEN_ID)
+    assert "fallo" not in json.loads(s3[RECLAMO]) and json.loads(s3[CLAVE_DOC])["estado"] == "generando"
+
+    s3.escritura_rota = False
+    s3.condicional_roto = False
+    fal_imagen.al_llamar = None
+    fal_imagen.error = None
+    worker.devolver_roto = None
+    s3.poner(RECLAMO, _reclamo(15 * 60))                    # la cola reentrega a los 15 min
+    worker.w.generar("u1", IMAGEN_ID)
+    assert len(fal_imagen.llamadas) == 2                    # regeneró: una llamada más a fal
+
+
+# --- la devolución es idempotente: falle donde falle, el saldo sube UNA vez
+
+@pytest.mark.parametrize("sentencia,como", [(1, "antes"), (2, "antes"), (2, "despues")],
+                         ids=["cae-al-asegurar-al-usuario", "cae-antes-de-abonar", "abona-y-se-pierde-la-respuesta"])
+def test_si_la_devolucion_falla_a_medias_la_reentrega_no_abona_dos_veces(
+        worker_pg, s3, fal_imagen, pg, sentencia, como):
+    """El abono del libro y el saldo van en UNA sentencia: o entran los dos o ninguno, y si ya entraron la
+    reentrega no suma. Con las tres sentencias sueltas de `abonar_creditos`, un fallo entre el saldo y el
+    libro dejaba el saldo sumado y la reentrega lo sumaba otra vez (14 por una imagen de 7)."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    pg.fallos = {sentencia: como}
+    with pytest.raises(OSError):
+        worker_pg.w.generar("u1", IMAGEN_ID)
+    doc = json.loads(s3[CLAVE_DOC])
+    assert doc["estado"] == "error" and doc["devuelto"] is False and doc["error"] == SIN_DEVOLVER
+
+    worker_pg.w.generar("u1", IMAGEN_ID)                    # la reentrega, con Aurora de vuelta
+
+    assert pg.saldo == {"u1": 7}                            # exactamente lo cobrado
+    assert pg.devoluciones() == [(7, f"imagen:{IMAGEN_ID}")]
+    assert json.loads(s3[CLAVE_DOC])["devuelto"] is True and len(fal_imagen.llamadas) == 1
+    worker_pg.w.generar("u1", IMAGEN_ID)                    # y una tercera no hace nada
+    assert pg.saldo == {"u1": 7}
+
+
+def test_el_worker_devuelve_con_devolver_unica_y_nunca_con_devolver(worker, s3, fal_imagen, monkeypatch):
+    """`creditos.devolver` no es idempotente (otros llamadores repiten referencias a propósito): el worker de
+    imágenes usa SOLO la única, con la referencia `imagen:<id>`, que no se repite entre pedidos."""
+    from pipeline import creditos
+    monkeypatch.setattr(creditos, "devolver", lambda *a, **k: pytest.fail("el worker debe usar devolver_unica"))
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    fal_imagen.error = RuntimeError("boom")
+    worker.w.generar("u1", IMAGEN_ID)
+    assert worker.llamadas_devolver == [(7, f"imagen:{IMAGEN_ID}", "u1")]
 
 
 @pytest.mark.parametrize("creditos_doc", [0, None])
@@ -1370,6 +1986,40 @@ def test_si_otro_toma_el_reclamo_vencido_entre_leerlo_y_tomarlo_esta_entrega_no_
     assert fal_imagen.llamadas == [] and worker.devueltos == [] and s3.escrituras == []
 
 
+def test_un_412_del_reintento_de_botocore_sobre_el_reclamo_inicial_no_hace_perder_el_pedido(worker, s3, fal_imagen):
+    """El PUT del reclamo SE APLICÓ, pero la respuesta se perdió; botocore reintentó y su reintento recibió
+    412. Sin el token, el worker se creía perdedor de su PROPIO reclamo y salía en silencio: pedido cobrado,
+    sin fal, sin devolución, mensaje borrado (ni DLQ ni alarma). Con el token lo lee y sigue."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    s3.condicional_aplicada_412 = {1}
+    worker.w.generar("u1", IMAGEN_ID)
+    assert len(fal_imagen.llamadas) == 1 and json.loads(s3[CLAVE_DOC])["estado"] == "listo"
+    assert s3.condicionales == [(RECLAMO, None, True)]      # una sola condicional: se aplicó y se reconoció
+
+
+def test_un_412_del_reintento_sobre_la_toma_de_un_reclamo_vencido_tampoco_lo_hace_perder(worker, s3, fal_imagen):
+    """Lo mismo en la otra ruta: la 1ª condicional (crear) pierde de verdad, y la 2ª (If-Match, tomar el vencido)
+    se aplica y contesta 412 al reintento: la etiqueta ya cambió."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    s3.poner(RECLAMO, _reclamo(20 * 60))
+    s3.condicional_aplicada_412 = {2}
+    worker.w.generar("u1", IMAGEN_ID)
+    assert len(fal_imagen.llamadas) == 1 and json.loads(s3[CLAVE_DOC])["estado"] == "listo"
+    assert [(k, e is None, ok) for k, e, ok in s3.condicionales] == [(RECLAMO, True, False), (RECLAMO, False, True)]
+
+
+@pytest.mark.parametrize("ajeno", [{"token": "de-otra-entrega"}, {"token": ""}, {}],
+                         ids=["token-ajeno", "token-vacio", "sin-token"])
+def test_un_reclamo_reciente_con_otro_token_sigue_perdiendo(worker, s3, fal_imagen, ajeno):
+    """El token solo reconoce lo PROPIO: un reclamo fresco de otra entrega (con su token, o de una versión
+    anterior sin token) no se toma ni se confunde."""
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    s3.poner(RECLAMO, _reclamo(30, **ajeno))
+    antes = dict(s3)
+    worker.w.generar("u1", IMAGEN_ID)
+    assert fal_imagen.llamadas == [] and worker.devueltos == [] and dict(s3) == antes
+
+
 def test_si_el_reclamo_no_se_puede_escribir_se_levanta_sin_llamar_a_fal(worker, s3, fal_imagen, monkeypatch):
     """Antes de fal no se cobró nada más: que SQS reentregue es inocuo."""
     from pipeline import media_sync
@@ -1384,20 +2034,8 @@ def test_si_el_reclamo_no_se_puede_escribir_se_levanta_sin_llamar_a_fal(worker, 
     assert fal_imagen.llamadas == [] and worker.devueltos == []
 
 
-def _dos_entregas_a_la_vez(worker, s3, monkeypatch, estado_esperado):
-    """DOS copias del mismo mensaje corriendo a la vez. La barrera las obliga a leer el doc ANTES de que
-    cualquiera escriba: es la ventana del «leo, veo `generando`, genero» sin escritura condicional."""
-    from pipeline import media_sync
-    barrera = threading.Barrier(2)
-    leer = media_sync.leer_texto
-
-    def leer_juntas(key):
-        v = leer(key)
-        if key == CLAVE_DOC:
-            barrera.wait(timeout=10)
-        return v
-
-    monkeypatch.setattr(media_sync, "leer_texto", leer_juntas)
+def _correr_entregas(worker, nombres):
+    """Una entrega por hilo, cada uno con su nombre (`fal_imagen` lo anota); devuelve lo que levantaron."""
     errores = []
 
     def correr():
@@ -1406,11 +2044,41 @@ def _dos_entregas_a_la_vez(worker, s3, monkeypatch, estado_esperado):
         except BaseException as e:      # noqa: BLE001 — se reporta abajo, no se pierde en el hilo
             errores.append(e)
 
-    hilos = [threading.Thread(target=correr) for _ in range(2)]
+    hilos = [threading.Thread(target=correr, name=n) for n in nombres]
     [h.start() for h in hilos]
     [h.join(30) for h in hilos]
     assert not any(h.is_alive() for h in hilos), "una entrega se colgó"
-    assert errores == []
+    return errores
+
+
+def _dos_entregas_a_la_vez(worker, s3, monkeypatch, estado_esperado, primera=None):
+    """DOS copias del mismo mensaje corriendo a la vez. La barrera las obliga a leer el doc ANTES de que
+    cualquiera escriba: es la ventana del «leo, veo `generando`, genero» sin escritura condicional.
+    `primera` es el nombre de la entrega que llega PRIMERO al reclamo (la otra espera a que esa lo haya
+    escrito): así se sabe QUIÉN gana y la prueba puede afirmarlo."""
+    from pipeline import media_sync
+    barrera = threading.Barrier(2)
+    leer = media_sync.leer_texto
+    escribir_si = media_sync.escribir_texto_si
+    reclamo_escrito = threading.Event()
+
+    def leer_juntas(key):
+        v = leer(key)
+        if key == CLAVE_DOC:
+            barrera.wait(timeout=10)
+        return v
+
+    def escribir_si_en_orden(key, texto, etag=None, tipo="application/json"):
+        if threading.current_thread().name != primera:
+            assert reclamo_escrito.wait(timeout=10), "la entrega que iba primero nunca reclamó"
+        r = escribir_si(key, texto, etag=etag, tipo=tipo)
+        reclamo_escrito.set()
+        return r
+
+    monkeypatch.setattr(media_sync, "leer_texto", leer_juntas)
+    if primera:
+        monkeypatch.setattr(media_sync, "escribir_texto_si", escribir_si_en_orden)
+    assert _correr_entregas(worker, ["entrega-buena", "entrega-mala"]) == []
     assert json.loads(s3[CLAVE_DOC])["estado"] == estado_esperado
 
 
@@ -1423,21 +2091,47 @@ def test_dos_entregas_a_la_vez_que_fallan_devuelven_UNA_sola_vez(worker, s3, fal
     assert len(worker.infra) == 1                           # la que perdió el reclamo no anotó nada
 
 
-@pytest.mark.parametrize("secuencia,estado,devoluciones", [
-    ([None, RuntimeError("rechazo")], "listo", 0),          # la primera en llegar es la que sale bien
-    ([RuntimeError("rechazo"), None], "error", 1),          # la primera en llegar es la que falla
+@pytest.mark.parametrize("primera,estado,devoluciones", [
+    ("entrega-buena", "listo", 0),
+    ("entrega-mala", "error", 1),
 ], ids=["gana-la-buena", "gana-la-mala"])
-def test_dos_entregas_a_la_vez_una_buena_y_una_mala_no_se_pisan(
-        worker, s3, fal_imagen, monkeypatch, secuencia, estado, devoluciones):
-    """Sin reclamo, la buena dejaba la imagen en la galería y la mala la marcaba `error` y devolvía los
-    créditos: imagen gratis y un doc que miente. Con reclamo corre UNA y su resultado es el único."""
+def test_dos_entregas_a_la_vez_gana_la_que_llega_primero_y_solo_cuenta_su_resultado(
+        worker, s3, fal_imagen, monkeypatch, primera, estado, devoluciones):
+    """Una entrega saldría bien y la otra mal; se fuerza cuál llega primero al reclamo y se afirma que ESA es la
+    que llama a fal y que su resultado es el único. Sin reclamo, la buena dejaba la imagen en la galería y la
+    mala la marcaba `error` y devolvía los créditos: imagen gratis y un doc que miente."""
     s3[CLAVE_DOC] = json.dumps(_doc_worker())
-    fal_imagen.secuencia = list(secuencia)
-    _dos_entregas_a_la_vez(worker, s3, monkeypatch, estado)
-    assert len(fal_imagen.llamadas) == 1
+    fal_imagen.por_hilo = {"entrega-buena": None, "entrega-mala": RuntimeError("rechazo")}
+    _dos_entregas_a_la_vez(worker, s3, monkeypatch, estado, primera=primera)
+    assert [ll.hilo for ll in fal_imagen.llamadas] == [primera]     # fal solo lo llamó quien ganó
     assert len(worker.devueltos) == devoluciones
     assert len(s3.subidas) == (1 if estado == "listo" else 0)
     assert _estados_escritos(s3) == [CLAVE_DOC]             # un solo doc escrito, una sola vez
+    assert [(k, e, ok) for k, e, ok in s3.condicionales][:2] == [(RECLAMO, None, True), (RECLAMO, None, False)]
+
+
+def test_dos_entregas_que_leen_el_mismo_reclamo_vencido_solo_una_lo_toma(worker, s3, fal_imagen, monkeypatch):
+    """La barrera está en la lectura del reclamo con su etiqueta: las dos ven el MISMO reclamo vencido antes de
+    que cualquiera escriba. La etiqueta vieja solo le sirve a la primera; sin If-Match las dos lo tomarían y las
+    dos llamarían a fal."""
+    from pipeline import media_sync
+    s3[CLAVE_DOC] = json.dumps(_doc_worker())
+    s3.poner(RECLAMO, _reclamo(20 * 60))
+    barrera = threading.Barrier(2)
+    leer_con_etag = media_sync.leer_texto_con_etag
+    ya_leyeron = set()
+
+    def leer_juntas(key):
+        visto = leer_con_etag(key)
+        if threading.current_thread().name not in ya_leyeron:      # solo la PRIMERA lectura de cada una
+            ya_leyeron.add(threading.current_thread().name)
+            barrera.wait(timeout=10)
+        return visto
+
+    monkeypatch.setattr(media_sync, "leer_texto_con_etag", leer_juntas)
+    assert _correr_entregas(worker, ["entrega-1", "entrega-2"]) == []
+    assert len(fal_imagen.llamadas) == 1 and json.loads(s3[CLAVE_DOC])["estado"] == "listo"
+    assert len([c for c in s3.condicionales if c[2]]) == 1          # una sola toma ganó
 
 
 def test_dos_reentregas_a_la_vez_de_una_devolucion_fallida_devuelven_UNA_sola_vez(
@@ -1460,7 +2154,7 @@ def test_el_api_y_el_worker_hablan_del_mismo_doc_de_punta_a_punta(
     assert cliente.get(f"/api/imagenes/pedidos/{imagen_id}").json()["estado"] == "generando"
     assert [p["id"] for p in _pendientes(cliente)] == [imagen_id]
 
-    monkeypatch.setattr(creditos, "devolver", lambda *a: pytest.fail("devolvió con una imagen buena"))
+    monkeypatch.setattr(creditos, "devolver_unica", lambda *a: pytest.fail("devolvió con una imagen buena"))
     worker.w.generar(USER, imagen_id)
 
     ficha = cliente.get(f"/api/imagenes/pedidos/{imagen_id}").json()
@@ -1470,7 +2164,8 @@ def test_el_api_y_el_worker_hablan_del_mismo_doc_de_punta_a_punta(
     (ll,) = fal_imagen.llamadas
     assert ll.kw["aspecto"] == "9:16" and ll.kw["modelo"] == "flux3"
     d = cliente.get("/api/imagenes").json()
-    assert d["pendientes"] == [] and [i["nombre"] for i in d["imagenes"]] == [ficha["nombre"]]
+    assert d["pendientes"] == [] and d["pendientes_ok"] is True
+    assert [i["nombre"] for i in d["imagenes"]] == [ficha["nombre"]]
 
 
 # ---------------------------------------------------------------------------
@@ -1484,7 +2179,73 @@ def _ficha_trabajo(doc, ref="img-1", ahora=None):
 def test_trabajos_una_imagen_generandose_es_un_trabajo_en_curso():
     f = _ficha_trabajo(_doc(edad_s=60, texto="un faro de noche"))
     assert (f["tipo"], f["estado"], f["titulo"], f["detalle"], f["url"]) == (
-        "imagen", "corriendo", "Generando tu imagen", "un faro de noche", "/imagenes.html")
+        "imagen", "corriendo", "Generando tu imagen", "un faro de noche", "/estudio/inicio/")
+
+
+@pytest.mark.parametrize("doc", [
+    _doc(edad_s=60), _doc("listo", edad_s=120, listo=_iso(30)),
+    _doc("error", edad_s=120, listo=_iso(30), error="x"), _doc(edad_s=50 * 60)],
+    ids=["corriendo", "listo", "error", "caducado"])
+def test_trabajos_la_ficha_de_una_imagen_lleva_al_inicio_nuevo_donde_mis_creaciones_la_ensena(doc):
+    """El «Ver» llevaba a /imagenes.html, que es el formulario de crear, vacío: ni la imagen ni el error. «Mis
+    creaciones» solo existe en el inicio nuevo, y esa URL sale de la tabla de migración (no es /estudio/: con el
+    inicio en la etapa `nueva` sirve el viejo, que no lista pedidos)."""
+    from server import migracion, trabajos_api
+    f = _ficha_trabajo(doc)
+    assert f["url"] == migracion.PANTALLAS["inicio"].nueva == trabajos_api.URL_IMAGEN == "/estudio/inicio/"
+    assert f["url"] not in ("/imagenes.html", migracion.PANTALLAS["imagenes"].nueva)
+
+
+def test_trabajos_js_enlaza_a_esa_ruta_y_no_la_repite_en_la_pantalla_que_ya_la_ensena():
+    """static/trabajos.js pinta la URL de la ficha tal cual en un <a href> y oculta la ficha en la pantalla a la
+    que apunta (`deEstaPantalla`): en el inicio no repite lo que «Mis creaciones» ya dice; en cualquier otra
+    pantalla (estilos, clip…) el «Ver» lleva al inicio."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node no está instalado")
+    codigo = (RAIZ / "static" / "trabajos.js").read_text(encoding="utf-8")
+    assert 'href="${esc(t.url)}"' in codigo
+    guion = codigo + """
+const P = globalThis.trabajosPuro;
+const L = [{id: 'imagen:img-1', estado: 'listo', url: '/estudio/inicio/'},
+           {id: 'clip:1', estado: 'listo', url: '/clip.html'}];
+const en = p => P.visibles(L, {}, {origin: 'http://x', pathname: p, search: ''}).map(t => t.id);
+console.log(JSON.stringify({estilos: en('/estilos.html'), inicio: en('/estudio/inicio/'), viejo: en('/estudio/')}));
+"""
+    r = subprocess.run([node, "-e", guion], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"estilos": ["imagen:img-1", "clip:1"], "inicio": ["clip:1"],
+                                    "viejo": ["imagen:img-1", "clip:1"]}
+
+
+def test_trabajos_no_lista_el_historial_de_imagenes_ni_lee_los_reclamos(cliente, nube, s3, monkeypatch):
+    """Cada carga del cuadro y cada sondeo de 15 s pagaban un LIST de TODO el prefijo (un .json y un .reclamo por
+    pedido, para siempre). Ahora usa lo mismo que «Mis creaciones»: los ids de hoy y de ayer, y solo abre los
+    más nuevos."""
+    from pipeline import db, media_sync
+    from server import imagen_cola
+    ahora = datetime.now(timezone.utc)
+    monkeypatch.setattr(db, "backend", lambda: "postgres")
+    monkeypatch.setattr(db, "proyectos_recientes", lambda user, horas: [])
+    monkeypatch.setattr(db, "corridas_editor", lambda user: [])
+    for dias in range(3, 400, 3):                          # un año de historial: un doc y un .reclamo por pedido
+        viejo = ahora - timedelta(days=dias)
+        _poner(s3, _id(5, ahora=viejo), _doc("listo", listo=_iso(0)))
+        s3[f"usuarios/{USER}/imagenes-pedidos/{_id(5, ahora=viejo)}.reclamo"] = _reclamo(0)
+    _poner(s3, _id(30), _doc(texto="la de hoy", edad_s=30))
+    s3[f"usuarios/{USER}/imagenes-pedidos/{_id(30)}.reclamo"] = _reclamo(30)
+    listados_con_fecha = []
+    monkeypatch.setattr(media_sync, "listar_prefijo_con_fecha",
+                        lambda prefijo: listados_con_fecha.append(prefijo) or [])
+    r = cliente.get("/api/trabajos")
+    assert r.status_code == 200, r.text
+    assert [t["detalle"] for t in r.json()["trabajos"] if t["tipo"] == "imagen"] == ["la de hoy"]
+    # el prefijo entero de pedidos no se lista; solo los de hoy y de ayer, y de ahí solo los .json
+    assert f"usuarios/{USER}/imagenes-pedidos/" not in listados_con_fecha
+    assert s3.prefijos == [f"usuarios/{USER}/imagenes-pedidos/img-{ahora:%Y%m%d}",
+                           f"usuarios/{USER}/imagenes-pedidos/img-{ahora - timedelta(days=1):%Y%m%d}"]
+    assert s3.lecturas and len(s3.lecturas) <= imagen_cola.MAX_PENDIENTES
+    assert all(k.endswith(".json") for k in s3.lecturas)
 
 
 def test_trabajos_una_imagen_lista_dice_que_esta_lista():
@@ -1503,7 +2264,7 @@ def test_trabajos_el_error_solo_dice_que_se_devolvieron_los_creditos_si_se_devol
 
 
 def test_trabajos_un_pedido_caducado_se_enseña_como_error_sin_devueltos_y_se_va_a_la_hora():
-    f = _ficha_trabajo(_doc(edad_s=40 * 60))
+    f = _ficha_trabajo(_doc(edad_s=50 * 60))
     assert (f["estado"], f["titulo"], f["devueltos"]) == ("error", "No se pudo generar tu imagen", None)
     assert _ficha_trabajo(_doc(edad_s=70 * 60)) is None
     assert _ficha_trabajo(_doc(inicio="ayer")) is None

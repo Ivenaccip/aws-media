@@ -67,7 +67,7 @@ para poder encenderse.
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
 | imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (21.8 a 25.0 s), pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K. Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Panel: las tres solicitudes costaron $0.024 dólares, con el cuadrado de 1024×1024 y los dos de ~1 MP. Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
-| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear va en segundo plano** (11.5 a 13.9 s), editar sigue dentro de la petición; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
+| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear va en segundo plano** (crear midió 11.7 s; editar, 11.5 y 13.9 s), editar sigue dentro de la petición; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
@@ -196,10 +196,12 @@ todo es síncrono; editar no cambia.
 | FLUX.2 pro (`flux2`) | 7.2 a 8.1 | no |
 | FLUX.2 klein (`klein`) | 0.8 a 1.2 | no |
 | Z-Image Turbo (`zit`) | 1.0 a 1.8 | no |
-| Grok Imagine (`grok`) | sin medición registrada en el repo | no (el predeterminado, rápido y conocido; sin regla) |
+| Grok Imagine (`grok`) | 13 a 29 (PLAN-PRODUCTO.md y `tools/pricing.json`: ocho llamadas reales el 18-sep; mediana 16; el vertical, 28.7) | no, por ahora: decisión pendiente del dueño (`docs/OPERACION.md`) |
 
 La regla: **segundo plano si y solo si algún tiempo medido pasó de 10 s** (`tests/test_imagen_segundo_plano.py` fija la
-tabla y la regla). Mover un modelo de un camino al otro es cambiar un booleano. `tools/probar_modelo.py` marca REVISAR cuando
+tabla y la regla), con **una excepción nombrada: Grok**. Midió 13 a 29 s (el vertical, 28.7 s), así que la regla lo mandaría a
+segundo plano, pero es el modelo predeterminado y esa decisión es del dueño: sigue síncrono hasta que la tome
+(`docs/OPERACION.md`, «Decisión pendiente del dueño: Grok»). Mover un modelo de un camino al otro es cambiar un booleano. `tools/probar_modelo.py` marca REVISAR cuando
 una imagen que va dentro de la petición tarda más de 10 s, y para las de segundo plano solo avisa. **Decisión pendiente del
 dueño:** editar (`/api/imagenes/editar`) no se encola y Nano Banana 2 al editar midió 11.5 y 13.9 s; con un arranque en frío de
 ~16 s más el cobro y la subida (~2 s) suma de ~29.5 a ~32 s y supera los 29 s de la Lambda y los 30 s del gateway

@@ -47,6 +47,16 @@ interface Listas {
   pedidos: PedidoImagen[];
 }
 
+/** Cuánto se espera a que una relectura de la lista de imágenes salga bien antes de soltar la tarjeta local: si el
+ *  servidor no contesta o no puede leer los pedidos, la tarjeta no puede girar para siempre. */
+const ESPERA_MAXIMA_MS = 2 * 60 * 1000;
+
+/** Una imagen que el servidor aceptó y cuya relectura de la lista aún no salió bien: su tarjeta local, y desde cuándo se espera. */
+interface Espera {
+  clave: string;
+  desde: number;
+}
+
 /** Un pedido en segundo plano se enseña con la misma tarjeta de «Generando…» que lo recién pedido en la caja. */
 const comoPendiente = (p: PedidoImagen): Pendiente => ({
   clave: 'i:' + p.id,
@@ -70,6 +80,8 @@ const navegar = (url: string) => location.assign(url);
 export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [listas, setListas] = useState<Listas | null>(null);
   const [falloCarga, setFalloCarga] = useState(false);
+  // se soltó la tarjeta de una imagen pedida sin poder confirmarla: el mismo aviso, hasta una lectura buena
+  const [sinConfirmar, setSinConfirmar] = useState(false);
   const [aviso, setAviso] = useState('');
   const [aArchivar, setAArchivar] = useState<Proyecto | null>(null);
 
@@ -88,9 +100,17 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   // las imágenes que el servidor aceptó desde la caja y cuya relectura de la lista aún no salió bien: su tarjeta
   // es lo único que dice que van en camino, así que se queda (y se sigue intentando) hasta que la lista las traiga
-  const [esperandoLista, setEsperandoLista] = useState<string[]>([]);
+  // o pasen ESPERA_MAXIMA_MS
+  const [esperandoLista, setEsperandoLista] = useState<Espera[]>([]);
+  // lo mismo, para leerlo desde un callback que quedó de un render anterior (el fin de un pedido)
+  const esperando = useRef<Espera[]>([]);
+  useEffect(() => {
+    esperando.current = esperandoLista;
+  }, [esperandoLista]);
 
-  /** true si la relectura salió bien con la lista de imágenes, que es donde vive lo que se pide en la caja. */
+  /** true si la relectura salió bien con la lista de imágenes y sus pedidos, que es donde vive lo que se pide en la
+   *  caja. Una lectura que llegó pero sin poder leer los pedidos (`pendientes_ok: false`) no cuenta: su `pendientes`
+   *  vacía no dice que no haya. */
   const cargar = useCallback(async (): Promise<boolean> => {
     const [ps, sl, im, ed, cl] = await Promise.allSettled([
       cargarProyectos(),
@@ -105,11 +125,12 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
       return false;
     }
     setFalloCarga(false);
-    if (im.status === 'fulfilled') {
-      const { pendientes } = im.value;
+    const pedidos = im.status === 'fulfilled' && im.value.pendientesOk ? im.value.pendientes : null;
+    if (pedidos) {
       // una que generaba y ahora falló: ya se devolvió lo cobrado, el saldo se pone al día
-      if (pendientes.some(p => p.estado === 'error' && generandoImagenes.current.has(p.id))) refrescarSaldo();
-      generandoImagenes.current = new Set(pendientes.filter(p => p.estado === 'generando').map(p => p.id));
+      if (pedidos.some(p => p.estado === 'error' && generandoImagenes.current.has(p.id))) refrescarSaldo();
+      generandoImagenes.current = new Set(pedidos.filter(p => p.estado === 'generando').map(p => p.id));
+      setSinConfirmar(false);
     }
     setListas(antes => ({
       proyectos: ps.value,
@@ -117,16 +138,17 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
       imagenes: im.status === 'fulfilled' ? im.value.imagenes : null,
       ediciones: ed.status === 'fulfilled' ? ed.value : null,
       clips: cl.status === 'fulfilled' ? cl.value : null,
-      // si la lista de imágenes no llegó, los pedidos se quedan como estaban: sin ellos el sondeo se pararía a medias
-      pedidos: im.status === 'fulfilled' ? im.value.pendientes : (antes?.pedidos ?? []),
+      // si la lista de imágenes no llegó, o llegó sin poder leer los pedidos, estos se quedan como estaban: sin ellos
+      // el sondeo se pararía a medias (las imágenes ya terminadas que sí vinieron se siguen mostrando)
+      pedidos: pedidos ?? antes?.pedidos ?? [],
     }));
-    return im.status === 'fulfilled';
+    return pedidos !== null;
   }, []);
 
   // la lista ya trae lo pedido en la caja: sus tarjetas locales se van
   const quitarPendientes = useCallback((claves: string[]) => {
     setPendientes(l => l.filter(p => !claves.includes(p.clave)));
-    setEsperandoLista(l => l.filter(c => !claves.includes(c)));
+    setEsperandoLista(l => l.filter(e => !claves.includes(e.clave)));
   }, []);
 
   const abrirBlotato = useCallback(() => {
@@ -168,7 +190,14 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     const t = setInterval(() => {
       // esta lectura empezó después de pedirlas: si sale bien, las trae y sus tarjetas locales sobran
       void cargar().then(llego => {
-        if (llego && esperandoLista.length) quitarPendientes(esperandoLista);
+        if (!esperandoLista.length) return;
+        if (llego) return quitarPendientes(esperandoLista.map(e => e.clave));
+        // sin una lectura buena en ESPERA_MAXIMA_MS la tarjeta no puede girar para siempre: se suelta y se avisa
+        const vencidas = esperandoLista.filter(e => Date.now() - e.desde >= ESPERA_MAXIMA_MS);
+        if (vencidas.length) {
+          quitarPendientes(vencidas.map(e => e.clave));
+          setSinConfirmar(true);
+        }
       });
     }, 5000);
     return () => clearInterval(t);
@@ -203,6 +232,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   // le enseña el inicio de alguien nuevo por un fetch (UI·10).
   const nuevo =
     listas !== null &&
+    !pendientes.length &&
     !listas.proyectos.length &&
     listas.imagenes !== null &&
     !listas.imagenes.length &&
@@ -231,15 +261,20 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             alTerminar={(clave, esperarLista) => {
               // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
               // Una imagen que el servidor aceptó se queda hasta que la lista llegue: si esa lectura
-              // falla, la tarjeta es lo único que dice que va en camino (se reintenta cada 5 s).
+              // falla (o no pudo leer los pedidos), la tarjeta es lo único que dice que va en camino
+              // (se reintenta cada 5 s, hasta ESPERA_MAXIMA_MS).
+              const desde = Date.now();
+              // las que ya esperaban cuando sale esta lectura: si sale bien, las trae a ellas también
+              const previas = esperando.current.map(e => e.clave);
               void cargar().then(llego => {
-                if (llego || !esperarLista) quitarPendientes([clave]);
-                else setEsperandoLista(l => [...l, clave]);
+                if (llego) quitarPendientes([clave, ...previas]);
+                else if (!esperarLista) quitarPendientes([clave]);
+                else setEsperandoLista(l => [...l, { clave, desde }]);
               });
             }}
           />
 
-          {falloCarga && (
+          {(falloCarga || sinConfirmar) && (
             <div className="mb-6">
               <Aviso tipo="error">
                 No pudimos traer tus videos. Revisa tu conexión e inténtalo de nuevo.{' '}

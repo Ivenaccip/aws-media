@@ -783,7 +783,8 @@ def test_en_local_la_lista_sale_del_disco_de_la_mas_nueva_a_la_mas_vieja(cliente
 
 def test_sin_carpeta_la_lista_esta_vacia(cliente, srv, monkeypatch):
     monkeypatch.delenv("JOBS_BACKEND", raising=False)
-    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": [], "pendientes": []}
+    assert cliente.get("/api/imagenes").json() == {"total": 0, "imagenes": [], "pendientes": [],
+                                                   "pendientes_ok": True}
 
 
 def test_en_nube_cada_quien_ve_solo_su_carpeta(cliente, srv, nube, monkeypatch):

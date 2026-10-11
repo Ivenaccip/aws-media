@@ -475,8 +475,9 @@ def mis_imagenes():
     leen de SU carpeta de S3 (el usuario sale del token); en local, del disco."""
     # los pedidos en segundo plano (server/imagen_cola.py) se leen ANTES que las imágenes:
     # una que termina entre las dos lecturas sale en las dos (repetida un instante), y al
-    # revés no saldría en ninguna. `[]` si no hay, falla S3 o es local
-    pendientes = imagen_cola.pendientes(db.usuario_actual())
+    # revés no saldría en ninguna. `[]` si no hay o es local; si falla S3 también es `[]`, pero
+    # `pendientes_ok` sale en false: la pantalla no debe tomarlo por «no hay pendientes»
+    pendientes, pendientes_ok = imagen_cola.pendientes(db.usuario_actual())
     if jobs.backend() == "aws":
         prefijo = f"imagenes/{db.usuario_actual()}/"
         filas = [(k[len(prefijo):], t) for k, t in media_sync.listar_prefijo_con_fecha(prefijo)]
@@ -488,7 +489,7 @@ def mis_imagenes():
     return {"total": len(filas),
             "imagenes": [{"nombre": n, "url": f"/api/imagenes/{n}", "creado": int(t)}
                          for n, t in filas[:MAX_IMAGENES]],
-            "pendientes": pendientes}
+            "pendientes": pendientes, "pendientes_ok": pendientes_ok}
 
 
 @app.get("/api/imagenes/{nombre}/archivo")

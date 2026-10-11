@@ -6,8 +6,9 @@ con un fetch de mentira y un reloj que avanza solo al esperar (se salta si no ha
 node). Lo que se fija:
 
   · el pedido ya está cobrado y en marcha: SOLO un 404 (el pedido no existe) corta
-    la espera. Un 429, un 408, un 401/403 intermitente, un 5xx o la red caída se
-    toleran hasta el tope de 5 min;
+    la espera. Un 429, un 408, un 401/403 intermitente, un 5xx, la red caída o un
+    cuerpo que no se pudo leer (JSON vacío o a medias, la red que muere mientras
+    llega) se toleran hasta el tope de 5 min;
   · pasado el tope no es un error: el aviso de «sigue en camino» no sale por #gerr
     (role=alert, clase err) sino por un elemento de estado (role=status), y se
     limpia donde se limpia #gerr.
@@ -46,6 +47,9 @@ def _node(escenario: str, tmp_path: Path) -> dict:
         "Date.now = () => reloj;\n"
         "const respuesta = (estado, cuerpo) => ({ ok: estado < 400, status: estado,\n"
         "  json: async () => cuerpo, text: async () => JSON.stringify(cuerpo) });\n"
+        # el cuerpo no se puede leer: JSON a medias, o la red que muere mientras llega
+        "const ilegible = (estado, error) => ({ ok: estado < 400, status: estado,\n"
+        "  json: async () => { throw error; }, text: async () => { throw error; } });\n"
         "const FICHA = (estado, extra = {}) => ({ id: 'img-x', estado, nombre: '', url: '', error: '', ...extra });\n"
         "const LISTA = FICHA('listo', { nombre: 'aaaaaaaaaaaa.jpg', url: '/api/imagenes/aaaaaaaaaaaa.jpg' });\n"
         "let preguntas = 0;\n"
@@ -56,6 +60,7 @@ def _node(escenario: str, tmp_path: Path) -> dict:
         "    preguntas++;\n"
         "    const p = pasos.length ? pasos.shift() : { estado: 200, cuerpo: FICHA('generando') };\n"
         "    if (p === 'red') throw new TypeError('Failed to fetch');\n"
+        "    if (p.respuesta) return p.respuesta;\n"
         "    return respuesta(p.estado, p.cuerpo);\n"
         "  };\n"
         "}\n"
@@ -89,6 +94,33 @@ out.preguntas404 = preguntas;
     assert o["preguntas"] == 11
     assert o["mensaje404"] == "Pedido no encontrado" and o["preguntas404"] == 1
     assert "sin404" not in o
+
+
+def test_un_cuerpo_ilegible_no_corta_el_sondeo_de_un_pedido_ya_cobrado(tmp_path):
+    o = _node(r"""
+// la respuesta llegó pero su cuerpo no se lee (JSON a medias, la red que muere mientras llega): es del
+// camino igual que la red caída. SyntaxError y Error pelados no son TypeError: antes cortaban el sondeo
+guion([
+  { respuesta: ilegible(200, new SyntaxError('Unexpected end of JSON input')) },
+  { respuesta: ilegible(200, new TypeError('terminated')) },
+  { respuesta: ilegible(200, new Error('socket hang up')) },
+  { respuesta: ilegible(502, new SyntaxError('Unexpected end of JSON input')) },
+  'red',
+  { estado: 200, cuerpo: LISTA },
+]);
+try { out.hecha = await esperarImagen('img-x'); } catch (e) { out.corto = String(e.name) + ': ' + e.message; }
+out.preguntas = preguntas;
+
+// el 404 sigue cortando aunque su cuerpo tampoco se lea: el pedido no existe, y se dice en llano
+guion([{ respuesta: ilegible(404, new TypeError('terminated')) }]);
+try { await esperarImagen('img-x'); out.sin404 = true; } catch (e) { out.mensaje404 = e.message; }
+out.preguntas404 = preguntas;
+""", tmp_path)
+    assert "corto" not in o, f"un cuerpo ilegible cortó la espera de un pedido ya cobrado: {o}"
+    assert o["hecha"] == {"nombre": "aaaaaaaaaaaa.jpg", "url": "/api/imagenes/aaaaaaaaaaaa.jpg"}
+    assert o["preguntas"] == 6
+    assert "sin404" not in o, "el 404 se toleró: el pedido no existe y hay que dejar de esperar"
+    assert o["mensaje404"] == "Pedido no encontrado" and o["preguntas404"] == 1
 
 
 def test_pasado_el_tope_no_devuelve_un_error_sino_un_aviso_de_que_sigue_en_camino(tmp_path):

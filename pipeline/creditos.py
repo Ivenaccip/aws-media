@@ -344,3 +344,11 @@ def abonar(creditos: int, tipo: str, referencia: str | None = None,
 def devolver(creditos: int, referencia: str, user_id: str | None = None) -> int:
     """Fallo nuestro = créditos de vuelta (regla 3 de la spec)."""
     return abonar(int(creditos), "devolucion", referencia, user_id)
+
+
+def devolver_unica(creditos: int, referencia: str, user_id: str | None = None) -> int | None:
+    """Como `devolver`, pero UNA sola vez por referencia: repetirla (el reintento de un
+    worker tras un fallo a medias) no abona de nuevo y devuelve None; si se abonó, el saldo
+    nuevo. Solo para referencias únicas por hecho (`imagen:<id>`): las que se repiten, como
+    «imagen:estudio», siguen en `devolver`."""
+    return db.abonar_devolucion(user_id or db.usuario_actual(), int(creditos), referencia)

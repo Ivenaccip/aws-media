@@ -41,7 +41,9 @@ Y si una imagen se genera dentro de la petición o en segundo plano también lo 
 el modelo (`Modelo.segundo_plano`): la Lambda del API corta a los 29 s (API Gateway:
 tope fijo de 30 s) y un arranque en frío ya gasta unos 16, así que un modelo que tardó
 más de 10 s en la prueba pagada no cabe en la petición. Esos se encolan como el clip
-(server/imagen_cola.py, worker/imagen_generar.py); los rápidos siguen síncronos.
+(server/imagen_cola.py, worker/imagen_generar.py); los rápidos siguen síncronos. La única
+excepción a la regla es Grok (13 a 29 s medidos): sigue síncrono por decisión pendiente del
+dueño (docs/OPERACION.md).
 """
 from __future__ import annotations
 
@@ -213,6 +215,7 @@ class Modelo:
     # Lambda del API corta a los 29 s (API Gateway HTTP API: tope fijo de 30 s) y un arranque
     # en frío gasta unos 16; cortada la petición, se cobra, no se devuelve y fal cobra igual.
     # Una bandera por fila: mover un modelo de un camino al otro es cambiar este booleano.
+    # Grok es la excepción: midió 13–29 s y sigue en False por decisión pendiente del dueño.
     # Solo aplica a CREAR (`POST /api/imagenes`) y solo en la nube; en local todo es síncrono.
     segundo_plano: bool = False
 
@@ -328,6 +331,11 @@ NB2_ARGS_EXTRA = (("resolution", "1K"),)
 def _tabla() -> dict[tuple[str, str], Modelo]:
     # Se arma al llamar y no al importar: los endpoints de Grok y Veo Lite viven en
     # settings (se pueden sobrescribir por entorno) y esta tabla debe seguirlos.
+    # Grok tarda de 13 a 29 s por imagen (mediana 16; el vertical, 28.7 s: ocho llamadas reales
+    # el 18-sep, PLAN-PRODUCTO.md y tools/pricing.json). Por la regla de abajo —segundo plano si
+    # algún tiempo medido pasó de 10 s— iría a segundo plano, pero sigue síncrono (sin
+    # `segundo_plano`) porque esa decisión es del dueño: docs/OPERACION.md, «Decisión pendiente
+    # del dueño: Grok».
     grok = Modelo("grok", "imagen", settings.fal_imagen, settings.fal_imagen_edit)
     veo = Modelo("veo-lite", "clip", settings.fal_veo_t2v, settings.fal_veo,
                  con_audio=True, duraciones=(4, 6, 8))
@@ -342,7 +350,8 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
-    # 9-oct-2026. Crear tarda 11.5–13.9 s: va en segundo plano; editar sigue síncrono.
+    # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): crear va en segundo plano; editar
+    # sigue síncrono.
     nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA,
                  segundo_plano=True)
     nb2_editar = Modelo("nb2", "editar", NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)

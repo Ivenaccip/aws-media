@@ -96,7 +96,8 @@ const dormir = (ms: number, senal?: AbortSignal) =>
   });
 
 /** Pregunta por el pedido cada SONDEO_IMAGEN_MS hasta que sale la imagen. `error` es el 502 de siempre: el worker ya devolvió los créditos.
- *  Solo un 404 (el pedido no existe) corta la espera; cualquier otro fallo de la pregunta se tolera hasta el tope. */
+ *  Solo un 404 (el pedido no existe) corta la espera, y la pantalla que se cierra; cualquier otro fallo de la pregunta
+ *  (un 5xx, la red caída, un cuerpo que no se pudo leer) se tolera hasta el tope. */
 export async function esperarImagen(id: string, senal?: AbortSignal): Promise<Hecha> {
   const hasta = Date.now() + TOPE_SONDEO_IMAGEN_MS;
   for (;;) {
@@ -105,10 +106,12 @@ export async function esperarImagen(id: string, senal?: AbortSignal): Promise<He
     try {
       ficha = await pedir<FichaPedido>('/api/imagenes/pedidos/' + encodeURIComponent(id), senal ? { senal } : {});
     } catch (e) {
-      // El pedido ya está cobrado y en marcha: solo un 404 (el pedido no existe) corta la espera.
-      // Un 429, un 408, un 401/403 intermitente, un 5xx o la red caída son tropiezos del camino, no
-      // del pedido: la imagen sigue en camino y se vuelve a preguntar hasta el tope.
-      if (!(e instanceof ErrorApi) || e.estado === 404) throw e;
+      // El pedido ya está cobrado y en marcha: solo un 404 (el pedido no existe) corta la espera (o
+      // la pantalla que se cierra). Un 429, un 408, un 401/403 intermitente, un 5xx, la red caída o un
+      // cuerpo que no se pudo leer (JSON vacío o a medias: sale de pedir() como SyntaxError o TypeError,
+      // no como ErrorApi) son tropiezos del camino, no del pedido: la imagen sigue en camino y se
+      // vuelve a preguntar hasta el tope.
+      if (senal?.aborted || (e instanceof ErrorApi && e.estado === 404)) throw e;
     }
     if (ficha?.estado === 'listo') return hechaValida({ nombre: ficha.nombre, url: ficha.url });
     if (ficha?.estado === 'error')

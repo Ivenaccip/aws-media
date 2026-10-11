@@ -803,6 +803,102 @@ describe('imagenes en segundo plano', () => {
     expect(cobros).toHaveLength(1);
   });
 
+  it('imagenes.segundo_plano.un_cuerpo_ilegible_en_el_sondeo_se_tolera_como_la_red_caida', async () => {
+    vi.useFakeTimers();
+    // el cuerpo de la respuesta no se pudo leer (un 502 con JSON vacío, un JSON a medias, la red que cae a
+    // media lectura): sale de pedir() como SyntaxError o TypeError, no como ErrorApi. Es un tropiezo del camino
+    // igual que la red caída: el pedido ya está cobrado y la imagen sigue en marcha.
+    const ilegible = (estado: number, error: Error) =>
+      ({
+        ok: estado < 400,
+        status: estado,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => {
+          throw error;
+        },
+        text: async () => '',
+      }) as unknown as Response;
+    const tropiezos = [
+      ilegible(502, new SyntaxError('Unexpected end of JSON input')),
+      ilegible(200, new SyntaxError('Unexpected end of JSON input')),
+      ilegible(200, new TypeError('network error')),
+      ilegible(504, new TypeError('terminated')),
+    ];
+    let n = 0;
+    const f = vi.fn(async () => (n < tropiezos.length ? tropiezos[n++]! : rapida(LISTA)));
+    vi.stubGlobal('fetch', f);
+    let fin: unknown = null;
+    void esperarImagen(ID).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    for (let i = 0; i < tropiezos.length; i++) await avanzar(2000);
+    expect(fin).toBeNull();
+    expect(f).toHaveBeenCalledTimes(tropiezos.length);
+    await avanzar(2000);
+    expect(fin).toEqual(HECHA);
+    expect(f).toHaveBeenCalledTimes(tropiezos.length + 1);
+
+    // lo que sí corta sigue cortando: el 404 (el pedido no existe)…
+    vi.stubGlobal('fetch', vi.fn(async () => rapida({ detail: 'Pedido no encontrado' }, 404)));
+    fin = null;
+    void esperarImagen(ID).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    await avanzar(2000);
+    expect(fin).toBeInstanceOf(ErrorApi);
+    expect((fin as ErrorApi).estado).toBe(404);
+
+    // …y que la pantalla se cierre en mitad de la pregunta (no es un tropiezo: nadie espera ya)
+    const control = new AbortController();
+    const colgada = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_ok, mal) => {
+          init?.signal?.addEventListener('abort', () => mal(new DOMException('Cancelado', 'AbortError')));
+        }),
+    );
+    vi.stubGlobal('fetch', colgada);
+    fin = null;
+    void esperarImagen(ID, control.signal).then(
+      v => (fin = v),
+      e => (fin = e),
+    );
+    await avanzar(2000);
+    expect(colgada).toHaveBeenCalledTimes(1);
+    control.abort();
+    await avanzar(0);
+    expect(fin).toBeInstanceOf(DOMException);
+    expect((fin as DOMException).name).toBe('AbortError');
+    expect(colgada).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+
+    // y en la pantalla: un cuerpo ilegible a media espera no suelta un error técnico sobre una imagen ya cobrada
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cobros = oirCobros();
+    let roto = true;
+    const g = montar({
+      '/api/imagenes': () => json(LANZADA),
+      [RUTA_PEDIDO]: () => (roto ? ilegible(502, new SyntaxError('Unexpected end of JSON input')) : json(LISTA)),
+    });
+    render(<Imagenes />);
+    await screen.findByRole('button', { name: 'Animado' });
+    await escribir('un faro');
+    await userEvent.click(boton('Generar'));
+    await waitFor(() => expect(posts(g)).toHaveLength(1));
+    await avanzar(2100);
+    expect(preguntas(g)).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Unexpected end of JSON input/)).toBeNull();
+    expect(screen.getByText('Creando tu imagen · ~20 s')).toBeInTheDocument();
+    roto = false;
+    await avanzar(2100);
+    expect(await screen.findByRole('img', { name: 'Tu imagen' })).toBeInTheDocument();
+    // un solo cobro: nadie tuvo que pedirla otra vez
+    expect(posts(g)).toHaveLength(1);
+    expect(cobros).toHaveLength(1);
+  });
+
   it('imagenes.segundo_plano.pasado_el_tope_de_5_min_dice_que_sigue_en_camino_sin_devolver_nada', async () => {
     // el tope exacto, sin pantalla: ni un segundo antes
     vi.useFakeTimers();

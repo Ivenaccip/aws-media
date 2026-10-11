@@ -950,16 +950,14 @@ async function esperarImagen(id) {
   const hasta = Date.now() + TOPE_MS;
   for (;;) {
     await new Promise(ok => setTimeout(ok, SONDEO_MS));
-    let ficha = null;
-    try {
-      const r = await fetch(`/api/imagenes/pedidos/${encodeURIComponent(id)}`);
-      if (r.ok) ficha = await r.json();
-      // ya se cobró y la imagen sigue en marcha: solo un 404 (el pedido no existe) corta la
-      // espera; un 429, un 408, un 401/403 intermitente o un 5xx son del camino, no del pedido
-      else if (r.status === 404) throw new Error(await errTxt(r));
-    } catch (e) {
-      if (!(e instanceof TypeError)) throw e;   // la red parpadeó: la imagen sigue en camino
-    }
+    let ficha = null, r = null;
+    try { r = await fetch(`/api/imagenes/pedidos/${encodeURIComponent(id)}`); }
+    catch { /* la red parpadeó: la imagen sigue en camino */ }
+    // ya se cobró y la imagen sigue en marcha: solo un 404 (el pedido no existe) corta la
+    // espera; un 429, un 408, un 401/403 intermitente o un 5xx son del camino, no del pedido
+    if (r && r.status === 404) throw new Error(await errTxt(r).catch(() => 'Pedido no encontrado'));
+    // y un cuerpo que no se lee (JSON vacío o a medias, la red que muere mientras llega) tampoco
+    if (r && r.ok) { try { ficha = await r.json(); } catch { /* se vuelve a preguntar */ } }
     if (ficha && ficha.estado === 'listo') return { nombre: ficha.nombre, url: ficha.url };
     if (ficha && ficha.estado === 'error') {
       window.monedero?.refrescar();             // el worker ya devolvió los créditos

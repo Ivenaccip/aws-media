@@ -19,7 +19,7 @@ import { refrescarSaldo } from '../../marca/useSaldo';
 import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
-import { MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from './envio';
+import { esLanzada, MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from './envio';
 import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
@@ -53,8 +53,9 @@ export interface PropsCaja {
   /** Se pidió algo con la caja: aparece «generando» en la galería. */
   alPedir?: (p: Pendiente) => void;
   /** Ya contestó el servidor (bien o mal): la tarjeta de «generando» se quita y la lista se relee.
-   *  `esperarLista`: el servidor aceptó una imagen (ya cobró y la hace, o ya la hizo), y solo la lista de
-   *  imágenes la trae; la tarjeta se queda hasta que esa lectura salga bien. */
+   *  `esperarLista`: el servidor dejó una imagen en marcha (`lanzado`: ya cobró y la hace), y solo la lista de
+   *  imágenes la trae; la tarjeta se queda hasta que esa lectura salga bien (o pasen 2 minutos). Una imagen que
+   *  contestó hecha ({nombre, url}) no la necesita. */
   alTerminar?: (clave: string, esperarLista: boolean) => void;
 }
 
@@ -275,7 +276,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     setEnviando(true);
     setAviso('');
     let salio = false;
-    let aceptado = false; // el servidor lo recibió: ya cobró y lo hace (o ya lo hizo)
+    let lanzada = false; // el servidor dejó una imagen en marcha: ya cobró y la hace
     const tipo = opcion.id === 'clip' ? 'corto' : 'imagen';
     try {
       const v = await moderar(limpio); // M13: se modera ANTES de lo que cobra
@@ -288,9 +289,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       // una imagen de un modelo que tarda contesta `lanzado` (ya se cobró, va en camino):
       // para la caja es lo mismo que una hecha, y «Mis creaciones» la enseña generándose
       if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
-      else if (opcion.id === 'imagen') await pedirImagen(limpio, modelo);
+      else if (opcion.id === 'imagen') lanzada = esLanzada(await pedirImagen(limpio, modelo));
       else await pedirEdicion(limpio, modelo, adjuntas[0]!);
-      aceptado = true;
       setTexto('');
       setRefs([]);
       setAviso('Listo, ya va. Míralo abajo, en «Mis creaciones».');
@@ -301,7 +301,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       if (e instanceof ErrorApi && e.estado === 502) refrescarSaldo();
     } finally {
       setEnviando(false);
-      if (salio) alTerminar?.(clave, aceptado && tipo === 'imagen');
+      if (salio) alTerminar?.(clave, lanzada);
     }
   }
 

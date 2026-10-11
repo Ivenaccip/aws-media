@@ -182,10 +182,13 @@ export const cargarClips = () =>
     },
   );
 export const cargarImagenes = () =>
-  pedir<{ imagenes?: Imagen[]; pendientes?: PedidoImagen[] }>('/api/imagenes').then(r => ({
+  pedir<{ imagenes?: Imagen[]; pendientes?: PedidoImagen[]; pendientes_ok?: boolean }>('/api/imagenes').then(r => ({
     imagenes: r.imagenes ?? [],
     // en local, o con un servidor anterior, la llave no viene: no hay ninguna
     pendientes: r.pendientes ?? [],
+    // false: el servidor no pudo leer los pedidos y `pendientes` viene vacía sin querer decir «no hay».
+    // Sin la llave (un servidor anterior) se da por buena.
+    pendientesOk: r.pendientes_ok !== false,
   }));
 
 export const archivar = (id: string) =>

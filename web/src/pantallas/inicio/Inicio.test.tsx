@@ -157,6 +157,20 @@ async function elegirOpcion(rotulo: string) {
   await userEvent.click(screen.getByRole('option', { name: new RegExp(rotulo) }));
 }
 
+// la caja pide una imagen a Nano Banana 2, que el servidor deja en segundo plano (contesta `lanzado`)
+async function pedirImagenLenta(texto: string) {
+  await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+  await userEvent.type(caja(), texto);
+  await userEvent.click(botonModelo());
+  const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
+  await userEvent.click(within(menu).getByRole('radio', { name: /Nano Banana 2/ }));
+  await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+}
+const generando = () => screen.queryAllByRole('article').filter(a => a.getAttribute('aria-busy') === 'true');
+const lecturasDeImagenes = (f: ReturnType<typeof montar>) => llamadas(f, '/api/imagenes', 'GET').length;
+// 200 sin poder leer los pedidos: `pendientes` viene vacía pero NO quiere decir «no hay» (pendientes_ok: false)
+const DEGRADADA = { imagenes: [], pendientes: [], pendientes_ok: false };
+
 describe('la caja', () => {
   it('inicio.caja.arranca_en_el_clip_lo_mas_barato', async () => {
     montar();
@@ -486,6 +500,313 @@ describe('la caja', () => {
       await vi.advanceTimersByTimeAsync(11000);
     });
     expect(llamadas(f, '/api/imagenes', 'GET').length).toBe(despues);
+  });
+
+  it('inicio.caja.una_lectura_con_los_pedidos_sin_leer_no_cuenta_como_buena_y_la_tarjeta_se_queda', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // el servidor cobra y contesta `lanzado`; la primera lectura tras eso sale 200 pero sin poder leer los pedidos
+    // (pendientes_ok: false, pendientes vacía), y la siguiente ya los trae
+    let lanzado = false;
+    let degradadas = 1;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            lanzado = true;
+            return json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos });
+          }
+          if (lanzado && degradadas > 0) {
+            degradadas--;
+            return json(DEGRADADA);
+          }
+          return json({ imagenes: [], pendientes: lanzado ? [PEDIDO] : [], pendientes_ok: true });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await pedirImagenLenta('un faro de noche');
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(2));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000); // que la lectura degradada termine de asentarse
+    });
+    // «no pude leer tus pedidos» no es «no tienes pedidos»: la tarjeta de lo recién pedido sigue, es lo único que dice que va en camino
+    expect(generando()).toHaveLength(1);
+    expect(generando()[0]).toHaveTextContent('un faro de noche');
+    // y se vuelve a preguntar: la siguiente sale bien y queda UNA tarjeta, la del servidor
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturasDeImagenes(f)).toBe(3);
+    expect(generando()).toHaveLength(1);
+    // como esa sigue generándose, se sigue preguntando sola
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturasDeImagenes(f)).toBe(4);
+    expect(generando()).toHaveLength(1);
+  });
+
+  it('inicio.caja.si_la_lista_no_sale_bien_en_2_min_se_suelta_la_tarjeta_y_se_avisa', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // desde que se pide, el servidor contesta 200 pero sin poder leer los pedidos, todas las veces
+    let lanzado = false;
+    let sano = false;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            lanzado = true;
+            return json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos });
+          }
+          if (lanzado && !sano) return json(DEGRADADA);
+          return json({ imagenes: [], pendientes: lanzado ? [PEDIDO] : [], pendientes_ok: true });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await pedirImagenLenta('un faro de noche');
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(2));
+    // durante los 2 min la tarjeta se queda y no hay aviso: se sigue intentando cada 5 s
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(110_000);
+    });
+    expect(generando()).toHaveLength(1);
+    expect(screen.queryByText(/No pudimos traer tus videos/)).toBeNull();
+    expect(lecturasDeImagenes(f)).toBeGreaterThan(15);
+    // pasados los 2 min sin una lectura buena: la tarjeta se suelta y sale el aviso de siempre, con su «Reintentar»
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(21_000);
+    });
+    expect(await screen.findByText(/No pudimos traer tus videos/)).toBeInTheDocument();
+    expect(generando()).toHaveLength(0);
+    // y ya no gira ni sigue preguntando: nada queda esperando
+    const alSoltar = lecturasDeImagenes(f);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(lecturasDeImagenes(f)).toBe(alSoltar);
+    expect(screen.getByText(/No pudimos traer tus videos/)).toBeInTheDocument();
+    // «Reintentar» con la lista ya sana: el aviso se va y la imagen sale de la lista del servidor
+    sano = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(screen.queryByText(/No pudimos traer tus videos/)).toBeNull());
+    expect(generando()).toHaveLength(1);
+    expect(generando()[0]).toHaveTextContent('un faro de noche');
+  });
+
+  it('inicio.caja.el_aviso_de_no_poder_confirmar_se_queda_aunque_otra_imagen_siga_preguntando', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    const OTRA: PedidoImagen = { ...PEDIDO, id: 'img-20261011-110000-def456', texto: 'una luna de queso' };
+    // otra imagen ya iba generándose (la lista la trajo bien); desde que se pide la nueva, la lista sale 200
+    // sin poder leer los pedidos, todas las veces
+    let lanzado = false;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            lanzado = true;
+            return json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos });
+          }
+          return json(lanzado ? DEGRADADA : { imagenes: [], pendientes: [OTRA], pendientes_ok: true });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('una luna de queso');
+    await pedirImagenLenta('un faro de noche');
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(131_000);
+    });
+    // la tarjeta local se soltó y el aviso sale; la otra imagen sigue a la vista y se sigue preguntando
+    expect(await screen.findByText(/No pudimos traer tus videos/)).toBeInTheDocument();
+    expect(generando()).toHaveLength(1);
+    expect(generando()[0]).toHaveTextContent('una luna de queso');
+    const alSoltar = lecturasDeImagenes(f);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    expect(lecturasDeImagenes(f)).toBeGreaterThan(alSoltar);
+    // y el aviso no se va solo con esas lecturas: sigue sin haber una buena
+    expect(screen.getByText(/No pudimos traer tus videos/)).toBeInTheDocument();
+  });
+
+  it('inicio.caja.una_imagen_que_el_servidor_ya_hizo_no_deja_una_tarjeta_girando_si_la_lista_no_llega', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // el modelo rápido y la edición contestan {nombre, url}: la imagen ya está hecha. Si la lista no llega, no hay
+    // nada que esperar ni que girar (solo lo que el servidor dijo que sigue en marcha, `lanzado`, se conserva)
+    let pedido = false;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            pedido = true;
+            return json({ nombre: 'n.jpg', url: '/api/imagenes/n.jpg' });
+          }
+          return pedido ? json({ detail: 'x' }, 503) : json({ imagenes: [] });
+        },
+        '/api/imagenes/editar': () => {
+          pedido = true;
+          return json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' });
+        },
+      },
+    });
+    const { container } = pintar();
+    await screen.findByText('La historia del café');
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(botonModelo());
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('button', { name: 'Crear' }));
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(2));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(generando()).toHaveLength(0);
+    // y no se queda preguntando por algo que ya está hecho
+    const despues = lecturasDeImagenes(f);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturasDeImagenes(f)).toBe(despues);
+    // lo mismo con la edición, que es síncrona
+    await elegirOpcion('Editar una imagen');
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    await userEvent.type(caja(), 'ponle un sombrero');
+    await userEvent.click(botonModelo());
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/imagenes/editar')).toHaveLength(1));
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(despues + 1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(generando()).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturasDeImagenes(f)).toBe(despues + 1);
+  });
+
+  it('inicio.caja.si_la_lista_se_cae_del_todo_tambien_se_suelta_la_tarjeta_a_los_2_min', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // el POST sale bien y desde ahí GET /api/imagenes da 500 siempre
+    let lanzado = false;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            lanzado = true;
+            return json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos });
+          }
+          return lanzado ? json({ detail: 'x' }, 500) : json({ imagenes: [] });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await pedirImagenLenta('un faro de noche');
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(2));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(110_000);
+    });
+    expect(generando()).toHaveLength(1);
+    expect(screen.queryByText(/No pudimos traer tus videos/)).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(21_000);
+    });
+    expect(await screen.findByText(/No pudimos traer tus videos/)).toBeInTheDocument();
+    expect(generando()).toHaveLength(0);
+    const alSoltar = lecturasDeImagenes(f);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(lecturasDeImagenes(f)).toBe(alSoltar);
+  });
+
+  it('inicio.caja.quien_empieza_ve_su_tarjeta_aunque_la_lista_no_traiga_los_pedidos', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    // sin nada hecho todavía (los tres caminos), su primera imagen se pide y la lectura sale sin poder leer los pedidos:
+    // listas vacías no es lo mismo que «no pidió nada», y la tarjeta es lo único que dice que va en camino
+    let lanzado = false;
+    montar({
+      proyectos: [],
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            lanzado = true;
+            return json({ lanzado: true, id: PEDIDO.id, creditos: PEDIDO.creditos });
+          }
+          return json(lanzado ? DEGRADADA : { imagenes: [], pendientes: [], pendientes_ok: true });
+        },
+      },
+    });
+    pintar();
+    expect(await screen.findByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeInTheDocument();
+    await pedirImagenLenta('un faro de noche');
+    expect(await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.queryByRole('heading', { name: /tres caminos/ })).toBeNull();
+    expect(generando()).toHaveLength(1);
+    expect(generando()[0]).toHaveTextContent('un faro de noche');
+  });
+
+  it('inicio.caja.dos_pedidos_seguidos_con_la_primera_lectura_degradada_no_dejan_tarjetas_de_mas', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ponerMonedero(100);
+    const SEGUNDO: PedidoImagen = { ...PEDIDO, id: 'img-20261011-120100-def456', texto: 'una luna de queso' };
+    // el primer pedido sale y su relectura es degradada (la tarjeta se queda); el segundo sale antes del siguiente
+    // intento y su relectura sí es buena: trae los dos pedidos
+    let lanzados: PedidoImagen[] = [];
+    let degradadas = 1;
+    const f = montar({
+      rutas: {
+        '/api/imagenes': (_url, init) => {
+          if (init?.method === 'POST') {
+            const p = lanzados.length ? SEGUNDO : PEDIDO;
+            lanzados = [...lanzados, p];
+            return json({ lanzado: true, id: p.id, creditos: p.creditos });
+          }
+          if (lanzados.length && degradadas > 0) {
+            degradadas--;
+            return json(DEGRADADA);
+          }
+          return json({ imagenes: [], pendientes: lanzados, pendientes_ok: true });
+        },
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await pedirImagenLenta('un faro de noche');
+    await screen.findByText('Listo, ya va. Míralo abajo, en «Mis creaciones».');
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(2));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(generando()).toHaveLength(1);
+    // el segundo pedido, antes de que toque el siguiente intento
+    await userEvent.type(caja(), 'una luna de queso');
+    await userEvent.click(enviar());
+    await waitFor(() => expect(lecturasDeImagenes(f)).toBe(3));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    // la lectura buena trajo los dos: quedan dos tarjetas (las del servidor), no tres con una repetida
+    expect(generando()).toHaveLength(2);
+    expect(generando().map(a => a.textContent).join('|')).toMatch(/una luna de queso/);
+    expect(generando().filter(a => a.textContent?.includes('un faro de noche'))).toHaveLength(1);
   });
 
   it('inicio.caja.editar_pide_la_imagen_con_el_mas', async () => {
@@ -1225,6 +1546,53 @@ describe('las listas', () => {
     });
     expect(llamadas(f, '/api/imagenes', 'GET').length).toBeGreaterThan(fallida);
     expect(screen.getByText('Generando…')).toBeInTheDocument();
+  });
+
+  it('inicio.galeria.una_lectura_con_los_pedidos_sin_leer_a_media_espera_no_borra_el_pedido_ni_apaga_el_sondeo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // el pedido va generándose; una lectura sale 200 sin poder leer los pedidos (pendientes_ok: false) pero con las
+    // imágenes ya terminadas; la siguiente ya trae todo
+    let paso: 'bien' | 'degradada' | 'hecha' = 'bien';
+    const f = montar({
+      proyectos: [],
+      rutas: {
+        '/api/imagenes': () =>
+          paso === 'bien'
+            ? json({ imagenes: [], pendientes: [PEDIDO], pendientes_ok: true })
+            : paso === 'degradada'
+              ? json({ imagenes: [img(1)], pendientes: [], pendientes_ok: false })
+              : json({ imagenes: [img(1), img(2)], pendientes: [], pendientes_ok: true }),
+      },
+    });
+    pintar();
+    await screen.findByText('Generando…');
+    paso = 'degradada';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    // las imágenes que sí vinieron se ven; el pedido no se pierde por una lectura que no pudo leerlo
+    expect(await screen.findByRole('button', { name: /Abrir tu imagen/ })).toBeInTheDocument();
+    expect(generando()).toHaveLength(1);
+    expect(generando()[0]).toHaveTextContent('un faro de noche');
+    // y se sigue preguntando: no se apagó el sondeo
+    const degradada = lecturasDeImagenes(f);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturasDeImagenes(f)).toBeGreaterThan(degradada);
+    expect(generando()).toHaveLength(1);
+    // la lectura buena dice que ya no hay pedidos: ahí sí se va la tarjeta y se deja de preguntar
+    paso = 'hecha';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    await waitFor(() => expect(generando()).toHaveLength(0));
+    expect(screen.getAllByRole('button', { name: /Abrir tu imagen/ })).toHaveLength(2);
+    const fin = lecturasDeImagenes(f);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturasDeImagenes(f)).toBe(fin);
   });
 
   it('inicio.listas.textos_del_server_como_texto', async () => {

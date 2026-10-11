@@ -38,10 +38,14 @@ siguen contestando lo de siempre. Esta pantalla acepta las dos respuestas:
 - pasados **5 min** el navegador deja de esperar y dice que la imagen sigue en
   camino y aparecerá en «Mis creaciones»: no devuelve nada, el servidor es quien
   devuelve;
-- **solo un 404 (el pedido no existe) corta la espera**. El pedido ya está
-  cobrado y en marcha, así que cualquier otro fallo de la pregunta (un 429, un
-  408, un 401/403 intermitente, un 5xx o la red caída) se tolera y se vuelve a
-  preguntar hasta el tope;
+- **solo un 404 (el pedido no existe) corta la espera** (y la pantalla que se
+  cierra). El pedido ya está cobrado y en marcha, así que cualquier otro fallo
+  de la pregunta (un 429, un 408, un 401/403 intermitente, un 5xx, la red caída
+  o **un cuerpo que no se pudo leer**: JSON vacío o a medias, la red que muere
+  mientras llega) se tolera y se vuelve a preguntar hasta el tope. Un cuerpo
+  ilegible sale de `pedir()` como `SyntaxError` o `TypeError`, no como
+  `ErrorApi`, y antes cortaba la espera con un mensaje técnico (p. ej.
+  «Unexpected end of JSON input») sobre una imagen ya cobrada;
 - al desmontar la pantalla el sondeo se cancela.
 
 Editar (`/api/imagenes/editar`) sigue síncrono.
@@ -55,9 +59,10 @@ El sondeo de aquí queda escrito y probado para el día que la pantalla ofrezca
 elegir modelo; mientras tanto no se ejercita con el servidor real.
 
 **La página vieja** (`static/imagenes.html`) hace lo mismo con su propio
-`esperarImagen`: solo el 404 corta, y el aviso de que sigue en camino no es un
-error, así que sale por `#gaviso` (`role="status"`, tono secundario) y no por
-`#gerr` (`role="alert"`, rojo). Como no tiene bundler, lo prueba
+`esperarImagen`: solo el 404 corta (un cuerpo que no se lee, sea cual sea el
+error, se vuelve a preguntar como cualquier red caída), y el aviso de que sigue
+en camino no es un error, así que sale por `#gaviso` (`role="status"`, tono
+secundario) y no por `#gerr` (`role="alert"`, rojo). Como no tiene bundler, lo prueba
 `tests/test_imagenes_vieja_sondeo.py` (el bloque corre en node). Ese archivo se
 borra junto con la página.
 
@@ -121,6 +126,7 @@ con ese nombre exacto.
 | `imagenes.segundo_plano.lanzado_sondea_y_al_estar_lista_sigue_como_la_de_siempre` | con `lanzado` el «−N» sale una sola vez y el saldo se refresca antes de que la imagen esté; mientras tanto, su espera por pasos; al llegar `listo` pasa a editarse como si el POST hubiera devuelto `{nombre, url}`, y deja de preguntar |
 | `imagenes.segundo_plano.el_sondeo_es_cada_2_s_y_un_tropiezo_de_red_no_lo_corta` | `GET /api/imagenes/pedidos/<id>` cada 2 s exactos (ni uno antes); una red caída o un 503 no cortan la espera, un 404 sí (los demás 4xx, en `imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado`) |
 | `imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado` | un 429, 408, 401, 403, 400, 409 o 422 del sondeo no cortan la espera de una imagen ya cobrada (se sigue preguntando y, al salir, queda como siempre, con un solo cobro); el 404 (el pedido no existe) sí corta, con su `ErrorApi` |
+| `imagenes.segundo_plano.un_cuerpo_ilegible_en_el_sondeo_se_tolera_como_la_red_caida` | un 502 con JSON vacío, un 200 con JSON a medias o una red que cae mientras se lee el cuerpo (`SyntaxError`/`TypeError`, no `ErrorApi`) no cortan la espera de una imagen ya cobrada: se sigue preguntando y, al salir, queda como siempre, con un solo cobro y sin un mensaje técnico en rojo; el 404 y la pantalla que se cierra (`AbortError`) sí cortan |
 | `imagenes.segundo_plano.pasado_el_tope_de_5_min_dice_que_sigue_en_camino_sin_devolver_nada` | a los 5 min exactos el navegador deja de esperar; un aviso (no un error) dice que la imagen sigue en camino y aparecerá en «Mis creaciones», con enlace al inicio; no habla de devolver, deja de preguntar y el botón vuelve |
 | `imagenes.segundo_plano.si_falla_se_cuenta_en_tres_partes_y_se_refresca_el_saldo` | un pedido `error` es el 502 de siempre (qué pasó, tus créditos, qué sigue; el texto se queda) con el mensaje del servidor plegado, y refresca el saldo |
 | `imagenes.segundo_plano.al_cerrar_la_pantalla_se_deja_de_preguntar` | desmontar corta el sondeo: no hay más peticiones |
@@ -177,6 +183,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | Test viejo | Destino |
 |---|---|
 | `test_solo_un_404_corta_el_sondeo_de_un_pedido_ya_cobrado` | `imagenes.segundo_plano.solo_un_404_corta_la_espera_de_un_pedido_ya_cobrado` |
+| `test_un_cuerpo_ilegible_no_corta_el_sondeo_de_un_pedido_ya_cobrado` | `imagenes.segundo_plano.un_cuerpo_ilegible_en_el_sondeo_se_tolera_como_la_red_caida` |
 | `test_pasado_el_tope_no_devuelve_un_error_sino_un_aviso_de_que_sigue_en_camino`, `test_el_aviso_de_en_camino_es_un_estado_informativo_y_no_el_error_del_formulario`, `test_el_aviso_se_limpia_donde_se_limpia_el_error_del_formulario` | `imagenes.segundo_plano.pasado_el_tope_de_5_min_dice_que_sigue_en_camino_sin_devolver_nada` (un `<Aviso>` con `role="status"`, nunca `role="alert"`) |
 | `test_un_error_de_verdad_del_pedido_no_lleva_la_marca_de_en_camino` | `imagenes.segundo_plano.si_falla_se_cuenta_en_tres_partes_y_se_refresca_el_saldo` |
 
