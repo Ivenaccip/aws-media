@@ -54,15 +54,15 @@ para poder encenderse.
 
 | Tarea | Modelo (id) | Endpoint fal | Falta |
 |---|---|---|---|
-| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **fila inerte desde el 11-oct-2026** (Ola 2): presets `square_hd`, `landscape_16_9` y `portrait_16_9` (los tres están en el esquema de fal, confirmado el 11-oct), jpeg explícito y ficha de $0.006 dólares por imagen (medida en el panel). Falta: la prueba pagada de las tres formas (unos $0.018 dólares) y la decisión de encenderla (2 créditos propuestos) |
-| imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | **fila inerte desde el 11-oct-2026**: mismos presets que klein, jpeg explícito, ficha de $0.005 dólares por megapíxel (leída, sin medir). Falta: prueba pagada (unos $0.015 dólares por las tres formas) y la decisión (2 créditos propuestos) |
-| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | **fila inerte desde el 11-oct-2026**: mismos presets, jpeg explícito y **sin `num_images`** (su esquema no lo trae). Ficha de $0.03 dólares (leída): un 1024×1024 son 1.05 MP y se cobra entre $0.03 y $0.045 dólares según cuente el megapíxel; 4 créditos cubren los dos casos. Falta: prueba pagada (de $0.09 a $0.135 dólares por las tres formas) y la decisión |
-| imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | **fila inerte desde el 11-oct-2026**: pares explícitos 1920×1920, 2048×1152 y 1152×2048 (su esquema exige entre 1024×1024 y 2048×2048 píxeles; los presets no llegan), jpeg explícito, ficha de $0.027 dólares por imagen (leída). Falta: prueba pagada (unos $0.081 dólares) y la decisión (4 créditos propuestos) |
+| imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **fila inerte desde el 11-oct-2026** (Ola 2): presets `square_hd`, `landscape_16_9` y `portrait_16_9` (los tres están en el esquema de fal, confirmado el 11-oct), jpeg explícito y ficha de $0.006 dólares por imagen (medida en el panel). Prueba pagada hecha el 11-oct-2026 (UTC): llegaron las tres formas en jpeg (1024×1024, 1024×576, 576×1024). Falta: el costo cobrado de las tres, en el panel (esperado $0.018 dólares), y la decisión (2 créditos propuestos) |
+| imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | **fila inerte desde el 11-oct-2026**: mismos presets que klein, jpeg explícito, ficha de $0.005 dólares por megapíxel (leída, sin medir). Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg (1024×1024, 1024×576, 576×1024). Falta: el costo cobrado, en el panel (esperado $0.015 dólares por las tres), y la decisión (2 créditos propuestos) |
+| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | **fila inerte desde el 11-oct-2026**: mismos presets, jpeg explícito y **sin `num_images`** (su esquema no lo trae). Ficha de $0.03 dólares (leída): un 1024×1024 son 1.05 MP y se cobra entre $0.03 y $0.045 dólares según cuente el megapíxel; 4 créditos cubren los dos casos. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg (1024×1024, 1024×576, 576×1024). Falta: el costo cobrado, en el panel (esperado de $0.09 dólares a $0.135 dólares por las tres; el cuadrado de 1.05 MP es el caso que decide), y la decisión |
+| imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | **fila inerte desde el 11-oct-2026**: pares explícitos 1920×1920, 2048×1152 y 1152×2048 (su esquema exige entre 1024×1024 y 2048×2048 píxeles; los presets no llegan), jpeg explícito, ficha de $0.027 dólares por imagen (leída). Prueba pagada hecha el 11-oct-2026 (UTC): llegaron exactamente los tamaños pedidos, en jpeg. Falta: el costo cobrado, en el panel (esperado $0.081 dólares por las tres), y la decisión (4 créditos propuestos) |
 | imagen | Nano Banana 2 Lite (`nbl`) | `google/nano-banana-2-lite` | cobra por tokens: **sin precio confirmado** hasta medirlo en la prueba |
-| imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | **fila inerte desde el 11-oct-2026**: pares explícitos 2048×2048, 2752×1536 y 1536×2752 (su esquema exige 2560×1440 píxeles como mínimo), **sin `output_format`** (la prueba mira en qué formato llega), ficha de $0.04 dólares por imagen (leída). Falta: prueba pagada (unos $0.12 dólares) y la decisión (4 créditos propuestos) |
+| imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | **fila inerte desde el 11-oct-2026**: pares explícitos 2048×2048, 2752×1536 y 1536×2752 (su esquema exige 2560×1440 píxeles como mínimo), **sin `output_format`** (la prueba mira en qué formato llega), ficha de $0.04 dólares por imagen (leída). Prueba pagada hecha el 11-oct-2026 (UTC): llegaron exactamente los tamaños pedidos y **en jpeg aun sin pedirlo** (su formato por defecto). Falta: el costo cobrado, en el panel (esperado $0.12 dólares por las tres), y la decisión (4 créditos propuestos) |
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
-| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **fila inerte desde el 11-oct-2026**: pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K (leída). Queda `version: "latest"` sin fijar. Falta: prueba pagada (unos $0.072 dólares) y la decisión (4 créditos propuestos) |
+| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **fila inerte desde el 11-oct-2026**: pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K (leída). Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Falta: el costo cobrado, en el panel (esperado $0.072 dólares por las tres), y la decisión (4 créditos propuestos) |
 | imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
@@ -143,11 +143,26 @@ REVISAR si lo que llega no es JPEG. **Aviso aparte, sin resolver:** Nano Banana 
 fija `output_format` y su valor por defecto en fal no está leído aquí; si devuelve PNG, hoy se guardaría
 como `.jpg`. Se comprueba con la lectura de su esquema y con la próxima prueba pagada.
 
-**Tamaños de salida (por comprobar en la prueba pagada).** Klein, Z-Image, FLUX.2 pro y FLUX 3 cobran por
-megapíxel: los apaisados y verticales de 1 MP o menos deberían costar igual o menos que el cuadrado,
-que es lo que la ficha anota. La prueba pagada (`tools/probar_modelo.py imagen <modelo> --formato
-cuadrado|horizontal|vertical --si`) mide el tamaño que llega (REVISAR si el aspecto
-no es el pedido) y el panel de fal confirma el cobro.
+**Tamaños de salida: medidos en la prueba pagada del 11-oct-2026 (UTC).** Se hicieron 18 llamadas, una por
+modelo y forma, con `tools/probar_modelo.py imagen <modelo> --formato cuadrado|horizontal|vertical --si`.
+Las 18 salieron en jpeg, con el tamaño y el formato prometidos y sin ninguna línea REVISAR:
+
+| Modelo | Cuadrado | Horizontal | Vertical | Segundos por llamada |
+|---|---|---|---|---|
+| Z-Image Turbo (`zit`) | 1024×1024 | 1024×576 | 576×1024 | 1.0 a 1.8 |
+| FLUX.2 klein 9B (`klein`) | 1024×1024 | 1024×576 | 576×1024 | 0.8 a 1.2 |
+| FLUX 3 (`flux3`) | 1024×1024 | 1360×768 | 768×1360 | 21.8 a 25.0 |
+| Seedream 5.0 Flash (`sdf`) | 1920×1920 | 2048×1152 | 1152×2048 | 13.4 a 15.0 |
+| FLUX.2 pro (`flux2`) | 1024×1024 | 1024×576 | 576×1024 | 7.2 a 8.1 |
+| Seedream 4.5 (`sd45`) | 2048×2048 | 2752×1536 | 1536×2752 | 8.6 a 22.7 |
+
+Lo que enseña: (1) los apaisados y verticales de los presets de FLUX.2 y Z-Image son de 0.59 MP, no
+de 1 MP; (2) FLUX 3 devuelve ~1 MP con el aspecto aproximado (1360×768 es 1.771, no 1.778); (3) Seedream 4.5,
+sin `output_format`, llega en jpeg. **Lo cobrado no se sabe todavía:** fal no lo devuelve en la respuesta, así que
+falta la lectura del panel de fal (Request Details → Cost) de las 18 solicitudes (esperado $0.396 dólares en total) y
+que no haya duplicadas. La herramienta no mira la calidad de las imágenes: eso lo decide el dueño mirándolas. Cada llamada
+imprimió en Windows el aviso de cierre «Event loop is closed» de asyncio (18 de 18), con código de salida 0 y el
+resultado ya guardado; es ruido, no un fallo.
 
 **GPT Image sigue sin fila**, por tres razones: faltan las decisiones del dueño (la calidad y el tamaño
 fijos que se ofrecen; la propuesta de la hoja de costos es GPT Image 2.5 Flare en `high`, 6 créditos a
