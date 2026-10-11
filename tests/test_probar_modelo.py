@@ -628,6 +628,58 @@ def test_un_modelo_sin_resolucion_fija_no_se_juzga_por_los_megapixeles(env, caps
 
 
 # ---------------------------------------------------------------------------
+# Ola 2 · imágenes con image_size (FLUX.2 klein) y el formato cuadrado
+
+@pytest.mark.parametrize("formato,valor", [("cuadrado", "square_hd"), ("horizontal", "landscape_16_9"),
+                                           ("vertical", "portrait_16_9"), (None, "landscape_16_9")])
+def test_el_ensayo_de_klein_manda_el_image_size_de_su_familia(env, capsys, formato, valor):
+    extra = ["--formato", formato] if formato else []
+    code, out, err = _correr(capsys, "imagen", "klein", *extra)
+    assert code == 0 and err == "" and env.llamadas == [] and NO_LLAMO in out
+    assert "fal-ai/flux-2/klein/9b" in out
+    assert f'"image_size": "{valor}"' in out and "aspect_ratio" not in out
+    assert "$0.0060 dólares" in out and SIN_NUMERO in out
+
+
+def test_cuadrado_no_se_vuelve_16_9_en_silencio(env, capsys):
+    """pipeline.models.formato_de cae en horizontal ante un nombre que no conoce: aquí no."""
+    code, out, _ = _correr(capsys, "imagen", "grok", "--formato", "cuadrado")
+    assert code == 0 and '"aspect_ratio": "1:1"' in out and "16:9" not in out
+
+
+def test_el_clip_no_admite_cuadrado(env, capsys):
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--formato", "cuadrado")
+    assert code == 2 and "solo aplica a imagen" in err and env.llamadas == []
+
+
+def test_los_formatos_de_la_prueba_son_los_de_la_caja_de_imagenes():
+    import server.app as app_mod
+    assert probar.ASPECTOS_IMAGEN == app_mod.ASPECTOS_IMAGEN
+    assert probar.FORMATOS_IMAGEN == tuple(app_mod.ASPECTOS_IMAGEN)
+
+
+@pytest.mark.parametrize("formato,ancho,alto,marca", [
+    ("cuadrado", 1024, 1024, None),                  # 1.05 MP: lo que se anotó
+    ("horizontal", 1024, 576, None),                 # 0.59 MP: cuesta menos, no se marca
+    ("vertical", 576, 1024, None),
+    ("cuadrado", 2048, 2048, "~1 MP"),               # 4.2 MP: el costo anotado es el de 1 MP
+    ("horizontal", 1024, 1024, "se pidió 16:9"),     # llegó con otro aspecto
+])
+def test_klein_se_juzga_por_su_aspecto_y_por_su_megapixel(env, capsys, tmp_path, formato, ancho, alto, marca):
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.png"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto}
+    code, out, err = _correr(capsys, "imagen", "klein", "--formato", formato, "--si",
+                             "--salida", tmp_path / "s")
+    assert code == 0, err
+    (app, args), = env.llamadas
+    assert app == "fal-ai/flux-2/klein/9b" and "aspect_ratio" not in args and "image_size" in args
+    if marca is None:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+    else:
+        assert "REVISAR" in out and marca in out
+
+
+# ---------------------------------------------------------------------------
 # X2 · la clave no se filtra
 
 def test_la_clave_en_un_aviso_de_logging_de_una_libreria_tampoco_sale(env, capsys, caplog, monkeypatch, tmp_path):

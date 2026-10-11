@@ -34,10 +34,16 @@ async def imagen_fal(prompt: str, destino: Path, referencia: Path | None = None,
     por el valor por defecto del modelo y no por decisión de nadie. Escrito, deja
     de depender de con qué modelo estemos hoy.
     """
-    args: dict = {"prompt": prompt, "num_images": 1,
-                  "aspect_ratio": aspecto or "1:1"}
-    # R4: el endpoint sale de la tabla de modelos (sin `modelo`, el de siempre)
+    # R4: el endpoint sale de la tabla de modelos (sin `modelo`, el de siempre) y el tamaño
+    # se pide en el idioma de su familia: Grok y Nano Banana, «aspect_ratio»; FLUX.2,
+    # Z-Image, Seedream y GPT Image, «image_size» con valores propios (Ola 2)
     m = modelos_ia.resolver("imagen", modelo)
+    args = m.args_de_imagen(prompt, aspecto or "1:1")
+    if referencia is not None and not m.admite_referencia:
+        # un modelo de solo texto a imagen no edita: no se le manda la referencia (fal
+        # podría ignorarla y cobrar igual) ni se cae a otro modelo sin avisar
+        raise modelos_ia.ModeloDesconocido(
+            f"El modelo {m.id} no admite imagen de referencia: solo crea desde texto.")
     app = m.endpoint_para(referencia is not None)
     if referencia is not None:
         args["image_urls"] = [await fal.subir_archivo(referencia)]

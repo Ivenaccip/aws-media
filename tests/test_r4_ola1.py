@@ -116,16 +116,13 @@ def test_nano_banana_2_editar_siempre_va_al_edit():
     assert m.duraciones == ()
 
 
-def test_la_tabla_trae_exactamente_estos_modelos():
-    """Nano Banana 2 Lite (`nbl`) NO entra: cobra por tokens y no hay precio."""
+def test_la_tabla_trae_los_modelos_de_la_ola_1():
+    """Las filas de la Ola 1 siguen ahí. La lista EXACTA de la tabla (lo que entró
+    después y lo que sigue fuera) la guarda tests/test_r4_ola2.py, que es la de hoy."""
     from pipeline import modelos_ia
-    assert modelos_ia.disponibles("imagen") == ["grok", "nb2"]
+    assert {"grok", "nb2"} <= set(modelos_ia.disponibles("imagen"))
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
     assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std"]
-    for tarea, id_ in (("imagen", "nbl"), ("editar", "nbl"), ("imagen", "nbp"),
-                       ("clip", "kling")):
-        with pytest.raises(modelos_ia.ModeloDesconocido):
-            modelos_ia.resolver(tarea, id_)
 
 
 def test_los_predeterminados_no_cambian():

@@ -22,8 +22,9 @@ Windows desde D:\\aws-project con el venv.
                        imagen vacía o ilegible se rechaza siempre
   --prompt TEXTO       lo que se pide (sin esto, uno corto de prueba). Va tal cual
                        al adaptador: NO pasa por el LLM que escribe prompts
-  --formato F          horizontal | vertical (imagen y clip; editar conserva el
-                       encuadre de la imagen). Con --imagen en un clip, sin esto
+  --formato F          horizontal | vertical (imagen y clip) o cuadrado (solo
+                       imagen: el clip no admite 1:1); editar conserva el
+                       encuadre de la imagen. Con --imagen en un clip, sin esto
                        se deduce de la imagen (apaisada = horizontal)
   --salida CARPETA     dónde guardar lo generado (por defecto work/probar_modelo)
   --si                 SÍ llamar a fal y gastar. Sin esto solo es un ensayo
@@ -86,6 +87,11 @@ if str(RAIZ) not in sys.path:      # `python tools/probar_modelo.py` pone tools/
 
 TAREAS = ("imagen", "editar", "clip")
 FORMATOS = ("horizontal", "vertical")
+# La caja de imágenes también pide cuadrado (1:1). La tabla es la de server/app.py::ASPECTOS_IMAGEN
+# (un test las compara); NO se usa pipeline.models.formato_de, que ante un nombre que no conoce
+# cae en horizontal sin avisar: «cuadrado» se volvería 16:9 en silencio.
+ASPECTOS_IMAGEN = {"horizontal": "16:9", "vertical": "9:16", "cuadrado": "1:1"}
+FORMATOS_IMAGEN = tuple(ASPECTOS_IMAGEN)
 SALIDA_PREDETERMINADA = Path("work") / "probar_modelo"
 
 # Lo que se pide si no se da --prompt. Cortos y verificables a simple vista; en
@@ -382,9 +388,9 @@ def _analizar(argv: list[str] | None) -> argparse.Namespace:
                    help="clip con --imagen: no exige lado corto de 720 px ni 16:9 / 9:16 (avisa). "
                         "Una imagen vacía o ilegible se rechaza siempre")
     p.add_argument("--prompt", help="lo que se pide; va tal cual al adaptador, sin pasar por el LLM")
-    p.add_argument("--formato", choices=FORMATOS,
-                   help="imagen y clip: horizontal (por defecto) o vertical; con --imagen en un clip, "
-                        "sin esto se deduce de la imagen")
+    p.add_argument("--formato", choices=FORMATOS_IMAGEN,
+                   help="imagen y clip: horizontal (por defecto) o vertical; imagen también admite "
+                        "cuadrado; con --imagen en un clip, sin esto se deduce de la imagen")
     p.add_argument("--salida", help=f"carpeta donde guardar lo generado (por defecto {SALIDA_PREDETERMINADA})")
     p.add_argument("--si", action="store_true", help="SÍ llamar a fal y gastar. Sin esto solo se muestra el plan")
     return p.parse_args(argv)
@@ -408,6 +414,8 @@ def _preparar(a: argparse.Namespace) -> Plan:
         raise _Uso("La tarea imagen crea desde texto y no usa --imagen. Para transformar una imagen usa la tarea editar.")
     if a.tarea == "editar" and a.formato:
         raise _Uso("--formato no aplica a editar: se conserva el encuadre de la imagen.")
+    if a.tarea == "clip" and a.formato == "cuadrado":
+        raise _Uso("--formato cuadrado solo aplica a imagen: el clip admite horizontal o vertical (Veo no acepta 1:1).")
     if a.tarea == "editar" and not a.imagen:
         raise _Uso("La tarea editar necesita --imagen RUTA (la imagen a transformar).")
     if a.imagen_sin_validar and not (a.tarea == "clip" and a.imagen):
@@ -469,13 +477,11 @@ async def _invocar(plan: Plan, destino: Path, solo_plan: bool = False) -> str:
     cada prueba pagada exportaría a Langfuse un span `clip_animar` falso, en ERROR,
     antes del real."""
     from pipeline import clip, fal, media_fal
-    from pipeline.models import formato_de
 
     meta = {"probar_modelo": True}
     if plan.tarea == "imagen":
         return await media_fal.imagen_fal(
-            plan.prompt, destino, meta=meta, aspecto=formato_de(plan.formato)["aspecto"],
-            modelo=plan.modelo.id)
+            plan.prompt, destino, meta=meta, aspecto=_aspecto(plan), modelo=plan.modelo.id)
     if plan.tarea == "editar":
         return await media_fal.imagen_transformar(
             plan.prompt, plan.imagen, destino, meta=meta, modelo=plan.modelo.id)
@@ -586,6 +592,19 @@ def _medir(ruta: Path) -> dict:
             "audio": audio is not None, "codec_audio": (audio or {}).get("codec_name")}
 
 
+def _aspecto(plan: Plan) -> str:
+    """El aspecto «16:9» que se pide: la tabla de la caja para una imagen, la de Veo para un clip."""
+    from pipeline.models import formato_de
+    return ASPECTOS_IMAGEN[plan.formato] if plan.tarea == "imagen" else formato_de(plan.formato)["aspecto"]
+
+
+def _costo_a_un_megapixel(plan: Plan) -> bool:
+    """¿El costo anotado de este modelo es el de ~1 MP? Los de `image_size` con tarifa por
+    megapíxel (FLUX.2 klein: $0.006 dólares por MP) se anotan a 1024×1024; si llega mucho más
+    grande, lo cobrado puede ser otro."""
+    return plan.tarea == "imagen" and getattr(plan.modelo, "llave_tamano", "") == "image_size"
+
+
 def _promete_1k(plan: Plan) -> bool:
     """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2: la única con tarifa leída)"""
     # args_extra puede ser un mapping o una tupla de pares (llave, valor): dict() lee las dos
@@ -618,14 +637,16 @@ def _veredicto_tiempo(plan: Plan, una: "_UnaLlamada") -> list[str]:
 def _veredicto(plan: Plan, medida: dict) -> list[str]:
     """Las diferencias entre lo que se pidió y lo que llegó. Vacío = coincide."""
     from pipeline import clip
-    from pipeline.models import formato_de
 
     dif: list[str] = []
     ancho, alto = medida["ancho"], medida["alto"]
     if plan.formato:
-        a, b = (int(v) for v in formato_de(plan.formato)["aspecto"].split(":"))
+        a, b = (int(v) for v in _aspecto(plan).split(":"))
         if abs(ancho / alto - a / b) > (a / b) * TOLERANCIA_ASPECTO:
             dif.append(f"se pidió {a}:{b} y llegó {ancho}×{alto}")
+    if _costo_a_un_megapixel(plan) and ancho * alto / 1_000_000 > MAX_MP_1K:
+        dif.append(f"llegó {ancho}×{alto} ({ancho * alto / 1_000_000:.2f} MP) y el costo anotado "
+                   f"({_dolares(plan.costo_usd)}) es el de ~1 MP: lo cobrado puede ser otro")
     if plan.tarea in ("imagen", "editar") and _promete_1k(plan):
         mp = ancho * alto / 1_000_000
         if mp > MAX_MP_1K or mp < MIN_MP_1K:
