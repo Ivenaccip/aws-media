@@ -222,17 +222,26 @@ def test_los_modelos_con_image_size_se_copian_y_se_serializan():
 # ---------------------------------------------------------------------------
 # imagen_fal: lo que llega a fal
 
+class _Llamadas(list):
+    """Las llamadas a fal.llamar; `.subidas` anota además lo que se subió al CDN de fal."""
+
+    def __init__(self):
+        super().__init__()
+        self.subidas = []
+
+
 @pytest.fixture
 def falso_fal(monkeypatch):
-    """Registra cada llamada a fal en vez de hacerla."""
+    """Registra cada llamada a fal (y cada subida) en vez de hacerla."""
     from pipeline import fal
-    llamadas = []
+    llamadas = _Llamadas()
 
     async def llamar(app, argumentos, timeout_s, nombre, meta=None):
         llamadas.append(SimpleNamespace(app=app, args=argumentos, nombre=nombre))
         return {"images": [{"url": "https://fal.test/x.jpg"}]}
 
     async def subir_archivo(path):
+        llamadas.subidas.append(Path(path).name)
         return f"https://fal.test/subida/{Path(path).name}"
 
     async def descargar(url, destino):
@@ -268,7 +277,16 @@ def test_imagen_fal_no_le_manda_una_referencia_a_un_modelo_de_solo_texto(falso_f
     with pytest.raises(modelos_ia.ModeloDesconocido, match="no admite imagen de referencia"):
         asyncio.run(media_fal.imagen_fal("un gato", tmp_path / "a.jpg", referencia=ref,
                                          modelo="klein"))
-    assert falso_fal == [] and not (tmp_path / "a.jpg").exists()
+    assert falso_fal == [] and falso_fal.subidas == [] and not (tmp_path / "a.jpg").exists()
+
+
+def test_imagen_fal_con_un_aspecto_sin_traduccion_no_cambia_a_otro_en_silencio(falso_fal, tmp_path):
+    """La invariante vive en el adaptador que gasta el dinero, no solo en `args_de_imagen`:
+    un aspecto que el modelo no traduce NO cae en 1:1 (se cobraría un cuadrado que nadie pidió)."""
+    from pipeline import media_fal, modelos_ia
+    with pytest.raises(modelos_ia.AspectoNoAdmitido):
+        asyncio.run(media_fal.imagen_fal("un gato", tmp_path / "a.jpg", aspecto="21:9", modelo="klein"))
+    assert falso_fal == [] and falso_fal.subidas == [] and not (tmp_path / "a.jpg").exists()
 
 
 @pytest.mark.parametrize("modelo,endpoint", [("grok", None), ("nb2", "fal-ai/nano-banana-2")])

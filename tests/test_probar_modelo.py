@@ -632,7 +632,9 @@ def test_un_modelo_sin_resolucion_fija_no_se_juzga_por_los_megapixeles(env, caps
 
 @pytest.mark.parametrize("formato,valor", [("cuadrado", "square_hd"), ("horizontal", "landscape_16_9"),
                                            ("vertical", "portrait_16_9"), (None, "landscape_16_9")])
-def test_el_ensayo_de_klein_manda_el_image_size_de_su_familia(env, capsys, formato, valor):
+def test_el_ensayo_de_klein_manda_el_image_size_de_su_familia(env, capsys, monkeypatch, formato, valor):
+    from pipeline import creditos
+    monkeypatch.setattr(creditos, "MODELOS_CR", {})      # «sin número» fijo: no depende de si ya se encendió
     extra = ["--formato", formato] if formato else []
     code, out, err = _correr(capsys, "imagen", "klein", *extra)
     assert code == 0 and err == "" and env.llamadas == [] and NO_LLAMO in out

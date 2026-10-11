@@ -55,13 +55,13 @@ para poder encenderse.
 |---|---|---|---|
 | imagen | FLUX.2 klein (`klein`) | `fal-ai/flux-2/klein/9b` (elegida el 9-oct; la 4B se descartó) | **fila inerte desde el 11-oct-2026** (Ola 2·A): `image_size` traducido (cuadrado `square_hd`, apaisado `landscape_16_9`, vertical `portrait_16_9`) y ficha de $0.006 dólares por imagen en `pricing.json`. Falta: comprobar los dos apaisados contra el esquema (`tools/leer_esquema_fal.py`) y en la prueba pagada (3 llamadas, unos $0.018 dólares), y la decisión de encenderla (2 créditos propuestos) |
 | imagen | Z-Image Turbo (`zit`) | `fal-ai/z-image/turbo` | su fila, con `image_size` (mecanismo listo; falta leer su esquema y su ficha) |
-| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | su fila, con `image_size` (mecanismo listo; falta el esquema; el costo cobra por megapíxel: $0.03 el primero + $0.015 por cada MP extra, sin saber si 1024×1024 cuenta 1 o 2 MP) |
+| imagen | FLUX.2 pro (`flux2`) | `fal-ai/flux-2-pro` | su fila, con `image_size` (mecanismo listo; falta el esquema; el costo cobra por megapíxel: $0.03 dólares el primero + $0.015 dólares por cada MP extra, sin saber si 1024×1024 cuenta 1 o 2 MP) |
 | imagen | Seedream 5.0 Flash (`sdf`) | `bytedance/seedream/v5/flash/text-to-image` | su fila, con `image_size` (mecanismo listo; falta el esquema) |
 | imagen | Nano Banana 2 Lite (`nbl`) | `google/nano-banana-2-lite` | cobra por tokens: **sin precio confirmado** hasta medirlo en la prueba |
 | imagen | Seedream 4.5 (`sd45`) | `fal-ai/bytedance/seedream/v4.5/text-to-image` | su fila, con `image_size` (mecanismo listo; falta el esquema) |
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
-| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | sin `num_images`: la fila lo declara (`con_num_images=False`) y no lo manda; falta leer su esquema |
+| imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | sin `num_images`: el mecanismo ya lo admite (`con_num_images=False` no lo manda); su fila aún no existe, falta leer su esquema y escribirla |
 | imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
@@ -126,8 +126,10 @@ GPT Image piden `image_size` con valores propios. Cada fila de imagen lo declara
 
 **FLUX.2 klein 9B** (`klein`, `fal-ai/flux-2/klein/9b`) es la primera fila: inerte, sin número en
 `tarifas.json`. Su ficha en `pricing.json` es **$0.006 dólares por imagen**, medido en el panel de
-fal el 9-oct a 1024×1024 (DATOS §8). La página cobra por megapíxel, así que el cuadrado es el
-techo y los apaisados (más chicos que 1 MP) cuestan igual o menos. De los tres valores de
+fal el 9-oct a 1024×1024 (DATOS §8; el panel muestra tres decimales, así que con cobro
+proporcional al megapíxel serían unos $0.0063 dólares y se verían igual). La página cobra por
+megapíxel: los apaisados y verticales (más chicos que 1 MP) deberían costar igual o menos,
+pero eso queda por comprobar con la prueba pagada. De los tres valores de
 `image_size`, solo `square_hd` está probado con klein; `landscape_16_9` y `portrait_16_9` son los
 estándar de la familia FLUX y quedan **por comprobar** (esquema + prueba pagada de las tres
 formas). Para esa prueba, `tools/probar_modelo.py` ahora acepta `--formato cuadrado` en imágenes

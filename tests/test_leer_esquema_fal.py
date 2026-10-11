@@ -16,6 +16,7 @@ entorno no llega a fal.ai); la prueba con el esquema real la corre el dueño.
 """
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import urllib.error
@@ -81,9 +82,13 @@ def test_una_llave_que_no_es_clave_no_trae_descripcion():
 
 
 def test_la_ruta_exacta_del_endpoint_gana_sobre_otro_post():
+    """La ruta ajena va PRIMERA en el dict: sin el orden por ruta exacta ganaría ella."""
     doc = json.loads(json.dumps(MUESTRA))
-    doc["paths"]["/otra/ruta"] = {"post": {"requestBody": {"content": {"application/json": {
+    exacta = doc["paths"].pop(f"/{ENDPOINT}")
+    ajena = {"post": {"requestBody": {"content": {"application/json": {
         "schema": {"type": "object", "properties": {"x": {"type": "string"}}}}}}}}
+    doc["paths"] = {"/otra/ruta": ajena, f"/{ENDPOINT}": exacta}
+    assert next(iter(doc["paths"])) == "/otra/ruta"
     nombre, esq = leer.esquema_de_entrada(doc, ENDPOINT)
     assert nombre == "KleinInput" and "image_size" in esq["properties"]
 
@@ -96,6 +101,28 @@ def test_la_ruta_exacta_del_endpoint_gana_sobre_otro_post():
 def test_un_esquema_que_no_se_entiende_lo_dice_y_no_truena(doc, motivo):
     r = leer.resumir(doc, ENDPOINT)
     assert "no se pudo leer la entrada" in r and motivo in r
+
+
+@pytest.mark.parametrize("doc", [
+    [], None, "texto", 5,                                              # JSON válido que no es un objeto
+    {"paths": []}, {"paths": "x"},
+    {"paths": {"/x": {"post": {"requestBody": {"content": {"application/json": {
+        "schema": {"type": "object", "properties": [], "required": True}}}}}}}},
+    {"paths": {"/x": {"post": {"requestBody": {"content": {"application/json": {
+        "schema": {"type": "object", "properties": {"a": {"$ref": "#/c/A"}}}}}}}}}, "c": {"A": {
+        "type": "array", "items": {"$ref": "#/c/A"}}}},               # esquema recursivo
+])
+def test_un_json_valido_de_otra_forma_no_tumba_la_corrida(doc):
+    """resumir nunca levanta: el resumen dice que no pudo leer y empieza con SIN_RESUMEN."""
+    r = leer.resumir(doc, ENDPOINT)
+    assert isinstance(r, str)
+
+
+def test_un_esquema_recursivo_se_resume_sin_recursion_infinita():
+    doc = {"paths": {"/x": {"post": {"requestBody": {"content": {"application/json": {
+        "schema": {"type": "object", "properties": {"a": {"$ref": "#/c/A"}}}}}}}}},
+        "c": {"A": {"type": "array", "items": {"$ref": "#/c/A"}}}}
+    assert leer.resumir(doc, "x").startswith(leer.SIN_RESUMEN)
 
 
 def test_un_ref_roto_no_cae_en_un_ciclo():
@@ -148,11 +175,50 @@ def test_una_pagina_caida_no_frena_a_las_demas(monkeypatch, tmp_path, capsys):
     assert not (tmp_path / "fal-ai__z-image__turbo.json").exists()
 
 
-def test_una_respuesta_que_no_es_json_cuenta_como_fallo(monkeypatch, tmp_path):
+@pytest.mark.parametrize("error", [
+    json.JSONDecodeError("x", "<html>", 0),                      # respuesta que no es JSON
+    UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte"),   # cuerpo que no es UTF-8
+    http.client.IncompleteRead(b"{", 10),                        # lectura cortada
+    http.client.BadStatusLine("???"),
+    TimeoutError("lento"),
+])
+def test_una_respuesta_mala_cuenta_como_fallo_y_no_frena_a_las_demas(monkeypatch, tmp_path, error):
     def descargar(ep):
-        raise json.JSONDecodeError("x", "<html>", 0)
+        if ep == "fal-ai/z-image/turbo":
+            raise error
+        return MUESTRA
     monkeypatch.setattr(leer, "descargar", descargar)
-    assert leer.main([ENDPOINT, "--salida", str(tmp_path)]) == 1
+    code = leer.main([ENDPOINT, "fal-ai/z-image/turbo", "fal-ai/flux-2-pro", "--salida", str(tmp_path)])
+    resumen = (tmp_path / "RESUMEN.txt").read_text(encoding="utf-8")
+    assert code == 1
+    assert "NO SE PUDO LEER" in resumen and resumen.count("entrada: KleinInput") == 2
+
+
+def test_un_esquema_que_no_se_entiende_tambien_sale_con_1_y_lo_dice(monkeypatch, tmp_path, capsys):
+    """Un 200 con un JSON que no es un OpenAPI no es «leído»: no se cuenta como éxito."""
+    monkeypatch.setattr(leer, "descargar", lambda ep: {"detail": "not found"})
+    code = leer.main([ENDPOINT, "--salida", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "0 de 1 con esquema legible" in out and "1 descargados pero sin entender" in out
+    assert (tmp_path / "fal-ai__flux-2__klein__9b.json").exists()          # el JSON queda guardado
+
+
+def test_sin_argumentos_lee_la_ola_2_y_guarda_en_work_esquemas_fal(monkeypatch, tmp_path):
+    pedidos = []
+    monkeypatch.setattr(leer, "descargar", lambda ep: pedidos.append(ep) or MUESTRA)
+    monkeypatch.chdir(tmp_path)
+    assert leer.main([]) == 0
+    assert tuple(pedidos) == leer.OLA2
+    carpeta = tmp_path / "work" / "esquemas_fal"
+    assert (carpeta / "RESUMEN.txt").is_file()
+    assert len(list(carpeta.glob("*.json"))) == len(leer.OLA2)
+
+
+def test_el_resumen_dice_cuantos_se_entendieron(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(leer, "descargar", lambda ep: MUESTRA)
+    assert leer.main([ENDPOINT, "fal-ai/flux-2-pro", "--salida", str(tmp_path)]) == 0
+    assert "2 de 2 con esquema legible" in capsys.readouterr().out
 
 
 def test_no_se_puede_crear_la_carpeta_de_salida(monkeypatch, tmp_path):

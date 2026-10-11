@@ -13,8 +13,8 @@ cobrar, sin crear documento y sin encolar (pipeline/creditos.py::costo_modelo
 levanta KeyError). Ese número lo escribe el dueño DESPUÉS de la prueba pagada, y
 es la compuerta: recién entonces `activo: true` en el catálogo de la web
 (web/src/pantallas/inicio/modelos.ts). Hoy están a la venta Grok y Veo 3.1 Lite y, desde
-el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast; Veo 3.1 Standard es
-la única fila inerte.
+el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast; Veo 3.1 Standard y
+FLUX.2 klein 9B (Ola 2) son las filas inertes.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.

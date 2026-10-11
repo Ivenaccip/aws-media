@@ -14,7 +14,8 @@ SOLO LECTURA. Una petición GET a fal.ai por endpoint, sin clave: no lee el .env
 usa fal_client, no manda ningún encabezado de autorización y no ejecuta ningún modelo,
 así que no cuesta nada. Guarda el JSON completo de cada uno y un RESUMEN.txt (lo que
 conviene pegar en el reporte). Si una página no responde, lo dice y sigue con la
-siguiente; sale con 1 si alguna falló, con 2 si el pedido no es válido.
+siguiente; sale con 1 si alguna no se pudo leer o no se entendió su esquema (el JSON queda
+guardado igual), con 2 si el pedido no es válido.
 
 Lo que el esquema NO dice: el precio (ese se lee en la página del modelo y se confirma en
 el panel de fal) ni lo que fal hace de verdad con un valor fuera de rango.
@@ -22,6 +23,7 @@ el panel de fal) ni lo que fal hace de verdad con un valor fuera de rango.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import re
 import sys
@@ -54,6 +56,8 @@ OLA2 = (
 # Un nombre de endpoint de fal: segmentos con letras, números, punto, guion y guion bajo.
 _ENDPOINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)+$")
 # Las llaves que definen tamaño, calidad y cantidad: de esas se enseña también la descripción.
+# El encabezado de un resumen que no se pudo armar: main lo cuenta aparte de las descargas caídas.
+SIN_RESUMEN = "  (no se pudo leer la entrada:"
 _LLAVES_CLAVE = ("image_size", "aspect_ratio", "resolution", "quality", "num_images",
                  "image_urls", "output_format", "mask_url", "seed")
 
@@ -103,7 +107,11 @@ def _ref(doc: dict, nodo):
 
 def esquema_de_entrada(doc: dict, endpoint: str) -> tuple[str, dict]:
     """(nombre, esquema) de lo que el POST del endpoint recibe, o ValueError."""
+    if not isinstance(doc, dict):
+        raise ValueError("el esquema no es un objeto JSON")
     rutas = doc.get("paths") or {}
+    if not isinstance(rutas, dict):
+        raise ValueError("el esquema no trae «paths» como objeto")
     candidatas = []
     for ruta, ops in rutas.items():
         post = (ops or {}).get("post") if isinstance(ops, dict) else None
@@ -152,12 +160,21 @@ def _valores(doc: dict, p) -> list[str]:
 
 
 def resumir(doc: dict, endpoint: str) -> str:
-    """El resumen de un endpoint: una línea por llave (más su descripción si es clave)."""
+    """El resumen de un endpoint: una línea por llave (más su descripción si es clave).
+    Un esquema de otra forma NO tira el programa: dice qué no pudo leer (el JSON completo
+    ya quedó guardado) y el texto empieza con SIN_RESUMEN para que quien llama lo cuente."""
+    try:
+        return _resumir(doc, endpoint)
+    except Exception as err:  # noqa: BLE001 — un esquema raro (recursivo, de otra forma) no frena a los demás
+        return f"{SIN_RESUMEN} {type(err).__name__}: {str(err)[:200]}; el JSON completo quedó guardado)"
+
+
+def _resumir(doc: dict, endpoint: str) -> str:
     try:
         nombre, esq = esquema_de_entrada(doc, endpoint)
     except ValueError as err:
-        return f"  (no se pudo leer la entrada: {err}; el JSON completo quedó guardado)"
-    requeridas = set(esq.get("required") or [])
+        return f"{SIN_RESUMEN} {err}; el JSON completo quedó guardado)"
+    requeridas = set(esq.get("required") or []) if isinstance(esq.get("required"), list) else set()
     lineas = [f"  entrada: {nombre}"]
     for llave, prop in (esq.get("properties") or {}).items():
         real = _ref(doc, prop)
@@ -192,24 +209,31 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as err:
         _uso(f"No puedo crear la carpeta {salida}: {err}")
 
-    resumen, fallos = [], 0
+    resumen, fallos, sin_resumen = [], 0, 0
     for ep in endpoints:
         encabezado = f"== {ep}"
         try:
             doc = descargar(ep)
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as err:
+        # URLError y TimeoutError (son OSError), HTTPException (lectura cortada) y ValueError
+        # (JSON inválido o un cuerpo que no es UTF-8): una página mala no frena a las demás
+        except (urllib.error.URLError, http.client.HTTPException, ValueError, OSError) as err:
             fallos += 1
             cuerpo = f"  NO SE PUDO LEER: {type(err).__name__}: {str(err)[:200]}"
         else:
             (salida / nombre_de_archivo(ep)).write_text(
                 json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
             cuerpo = resumir(doc, ep)
+            if cuerpo.startswith(SIN_RESUMEN):
+                sin_resumen += 1
         resumen.append(f"{encabezado}\n{cuerpo}")
         print(f"{encabezado}\n{cuerpo}\n")
     (salida / "RESUMEN.txt").write_text("\n\n".join(resumen) + "\n", encoding="utf-8")
-    print(f"Guardado en {salida} ({len(endpoints) - fallos} de {len(endpoints)} leídos). "
-          "No se llamó a ningún modelo ni se gastó nada.")
-    return 1 if fallos else 0
+    entendidos = len(endpoints) - fallos - sin_resumen
+    print(f"Guardado en {salida}: {entendidos} de {len(endpoints)} con esquema legible"
+          + (f"; {sin_resumen} descargados pero sin entender (revisa su JSON guardado)" if sin_resumen else "")
+          + (f"; {fallos} no se pudieron leer" if fallos else "")
+          + ". No se llamó a ningún modelo ni se gastó nada.")
+    return 1 if fallos or sin_resumen else 0
 
 
 if __name__ == "__main__":
