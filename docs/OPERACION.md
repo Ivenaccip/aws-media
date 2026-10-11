@@ -569,7 +569,7 @@ set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IM
 ```
 
 Sin `--app` no pasa nada malo (esos nombres no existen en `app.py`). Ojo: las
-imágenes de dev cuentan para las 20 que conserva la regla del ECR.
+imágenes de dev cuentan para las 30 que conserva la regla del ECR.
 
 **En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
 lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
@@ -672,7 +672,7 @@ Un tag que no exista **para el deploy** con un mensaje claro; no cae a
 `latest`. Desplegar una imagen distinta de la que pediste, y en silencio, es el
 peor final posible para una vuelta atrás.
 
-Ojo con el margen de la retención: la política conserva 20 imágenes, así que
+Ojo con el margen de la retención: la política conserva 30 imágenes, así que
 una imagen vieja se puede haber borrado ya. Si la necesitas y no está, la única
 salida es reconstruirla desde su commit.
 
@@ -1058,8 +1058,14 @@ renderiza, y eso se valida con un render real, no con el CI.
 
 ## ECR (ciclo de vida de las imágenes)
 
-El repositorio `aws-media` conserva las **20 imágenes más recientes** y expira el
+El repositorio `aws-media` conserva las **30 imágenes más recientes** y expira el
 resto. La política vive en `infra/ecr-lifecycle.json`.
+
+**11-oct-2026: de 20 a 30.** El repositorio tenía 21 imágenes y la de producción
+(`c970e23…`) era la 12.ª más nueva: aguantaba 8 fusiones más a `dev` y la 9.ª la
+expiraba, con el release a producción detenido. Subir el número compra margen; no
+arregla el fondo (ver «El riesgo real»). Se aplica con el procedimiento de abajo: el
+CI no la aplica, la aplica una persona.
 
 ### Por qué hace falta
 
@@ -1071,7 +1077,7 @@ de sus 17 capas — 48 MB de 1.664.** El CI no cachea capas de Docker, así que 
 build reconstruye todo desde cero y sube ~1,6 GB genuinamente nuevos. Al ritmo de
 merges de estos días, unos 4,8 GB al día.
 
-Con la política, el repositorio se estabiliza en ~33 GB en vez de subir sin techo.
+Con la política de 20, el repositorio se estabilizaba en ~33 GB; con 30 son ~50 GB (30 × ~1,6 GB), en vez de subir sin techo.
 
 ### El riesgo real, que no es el número
 
@@ -1079,9 +1085,12 @@ Con la política, el repositorio se estabiliza en ~33 GB en vez de subir sin tec
 producción cae fuera de las 20 más recientes y se expira, la función deja de
 poder arrancar contenedores nuevos.
 
-Veinte son unos siete días de margen al ritmo actual. El peligro no es que el
-número sea bajo: es **dejar pasar 20 merges sin desplegar**. Ya ha pasado estar
-tres PRs por detrás.
+Treinta son unos diez días de margen al ritmo de septiembre (~3 imágenes al día) y
+unos seis al de los días con trabajo (~5 al día). El peligro no es que el
+número sea bajo: es **dejar pasar 30 merges sin desplegar**. Ya ha pasado estar
+tres PRs por detrás. Para saber cuánto margen queda hoy: cuenta las imágenes
+más NUEVAS que la de producción (`aws ecr describe-images`, ordenadas por
+`imagePushedAt`); la de producción se expira cuando esa cuenta llega a 30.
 
 ### Antes de tocar nada: el preview
 
