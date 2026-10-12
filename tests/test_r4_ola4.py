@@ -1,16 +1,16 @@
 """R4 · Ola 4 — los clips de otras familias: MiniMax H3 Max Turbo (`h3t`), Grok Imagine Video (`grokv`),
-LTX-2.5 Fast (`ltx`), Kling V3 Pro (`kling`) y Seedance 2.0 (`seed`).
+Grok Imagine Video 1.5 Lite (`grokl`, 12-oct-2026), LTX-2.5 Fast (`ltx`), Kling V3 Pro (`kling`) y Seedance 2.0 (`seed`).
 
 Cada uno nace INERTE: tiene fila (`pipeline/modelos_ia.py`), adaptador de argumentos
 (`pipeline/clip_familias.py`) y ficha de costo LEÍDA (`tools/pricing.json`), pero ningún número en
 `tools/tarifas.json`, así que el servidor lo conoce y no lo ofrece (422 antes de cobrar).
 
 Lo que este archivo defiende:
-  * las cinco filas y sus datos (endpoints, familia, duraciones, audio, un solo intento);
+  * las seis filas y sus datos (endpoints, familia, duraciones, audio, un solo intento);
   * que Veo manda EXACTAMENTE lo de siempre (el refactor a `args_de_clip` no le cambió ni una llave);
   * que cada familia manda lo que su esquema real pide: llaves que existen, obligatorias presentes, valores
     dentro del enum, el tipo de la duración, y el endpoint de imagen con la llave de imagen de SU familia
-    (`tests/fixtures/esquemas_fal_ola4.json`, leído el 12-oct-2026);
+    (`tests/fixtures/esquemas_fal_ola4.json`, leído el 12-oct-2026; el de Lite en `esquemas_fal_grok_lite.json`);
   * que el costo sale de los MISMOS argumentos que se mandan (la resolución de MiniMax va en mayúscula y una
     resolución que la ficha no trae es «sin costo conocido», nunca el precio de la de al lado);
   * que siguen inertes: sin número no hay venta.
@@ -33,6 +33,8 @@ NUEVOS = {
             "minimax", (4, 6, 8), True),
     "grokv": ("xai/grok-imagine-video/text-to-video", "xai/grok-imagine-video/image-to-video",
               "grok", (4, 6, 8), True),
+    "grokl": ("xai/grok-imagine-video/v1.5/lite/text-to-video", "xai/grok-imagine-video/v1.5/lite/image-to-video",
+              "grok_lite", (4, 6, 8), True),
     "ltx": ("lightricks/ltx-2.5/text-to-video/fast", "lightricks/ltx-2.5/image-to-video/fast",
             "ltx", (6, 8), True),
     "kling": ("fal-ai/kling-video/v3/pro/text-to-video", "fal-ai/kling-video/v3/pro/image-to-video",
@@ -41,10 +43,10 @@ NUEVOS = {
              "seedance", (4, 6, 8), True),
 }
 # La llave donde cada familia pide la imagen de entrada (la de Kling no es `image_url`).
-LLAVE_IMAGEN = {"minimax": "image_url", "grok": "image_url", "ltx": "image_url",
+LLAVE_IMAGEN = {"minimax": "image_url", "grok": "image_url", "grok_lite": "image_url", "ltx": "image_url",
                 "kling": "start_image_url", "seedance": "image_url"}
 # Familias cuyo endpoint de imagen a video NO tiene `aspect_ratio` (el lienzo sale de la imagen).
-SIN_ASPECTO_CON_IMAGEN = {"minimax", "kling"}
+SIN_ASPECTO_CON_IMAGEN = {"minimax", "kling", "grok_lite"}
 ASPECTO = {"horizontal": "16:9", "vertical": "9:16"}
 
 
@@ -53,8 +55,13 @@ def _fixture() -> dict:
     return datos
 
 
+def _fixture_lite() -> dict:
+    return json.loads((RAIZ / "tests" / "fixtures" / "esquemas_fal_grok_lite.json").read_text(encoding="utf-8"))
+
+
 def _esquemas() -> dict:
-    return {k: v for k, v in _fixture().items() if not k.startswith("_")}
+    """Los de la Ola 4 (12) y los de Grok 1.5 Lite (2): cada fila de NUEVOS trae su texto a video y su imagen a video."""
+    return {k: v for k, v in {**_fixture(), **_fixture_lite()}.items() if not k.startswith("_")}
 
 
 def _filas():
@@ -78,10 +85,10 @@ def test_la_fila_trae_sus_endpoints_familia_duraciones_y_un_solo_intento(id_):
     assert not m.args_extra and not m.segundo_plano
 
 
-def test_los_clips_disponibles_son_los_de_veo_y_los_cinco_nuevos():
+def test_los_clips_disponibles_son_los_de_veo_y_los_seis_nuevos():
     from pipeline import modelos_ia
     assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std",
-                                              "h3t", "grokv", "ltx", "kling", "seed"]
+                                              "h3t", "grokv", "grokl", "ltx", "kling", "seed"]
     assert modelos_ia.PREDETERMINADO["clip"] == "veo-lite"          # el predeterminado no cambió
 
 
@@ -90,7 +97,7 @@ def test_ltx_no_admite_cuatro_segundos_y_el_resto_si():
     with pytest.raises(modelos_ia.DuracionNoAdmitida):
         modelos_ia.valida_duracion("clip", "ltx", 4)
     assert modelos_ia.valida_duracion("clip", "ltx", 6) == 6
-    for id_ in ("h3t", "grokv", "kling", "seed"):
+    for id_ in ("h3t", "grokv", "grokl", "kling", "seed"):
         assert modelos_ia.valida_duracion("clip", id_, 4) == 4
 
 
@@ -153,6 +160,17 @@ def test_grok_video_manda_la_duracion_entera_y_720p_sin_parametro_de_audio():
     assert a == {"prompt": "un perro corre", "duration": 4, "resolution": "720p", "aspect_ratio": "9:16"}
     assert type(a["duration"]) is int and "generate_audio" not in a
     assert _args("grokv", True)["image_url"] == "https://s3.test/a.jpg"
+
+
+def test_grok_lite_manda_720p_y_el_aspecto_solo_en_texto_a_video():
+    """Lite (esquema del 12-oct-2026): su image-to-video NO tiene `aspect_ratio`, y la base sí. Es la diferencia que
+    obligó a una familia propia: mandarle el aspecto con imagen es una llave que su esquema no trae."""
+    sin, con = _args("grokl", False), _args("grokl", True)
+    assert sin == {"prompt": "un perro corre", "duration": 4, "resolution": "720p", "aspect_ratio": "9:16"}
+    assert con == {"prompt": "un perro corre", "duration": 4, "resolution": "720p", "image_url": "https://s3.test/a.jpg"}
+    assert type(sin["duration"]) is int and "generate_audio" not in sin and "generate_audio" not in con
+    # la base, en cambio, sí manda el aspecto con imagen
+    assert _args("grokv", True)["aspect_ratio"] == "9:16"
 
 
 def test_ltx_pide_720p_explicito_porque_su_valor_por_defecto_es_1080p():
@@ -224,19 +242,31 @@ def test_los_tipos_de_la_duracion_estan_confirmados_y_son_los_que_mandan_los_ada
     for id_ in ("kling", "seed"):
         miembros = esquemas[NUEVOS[id_][0]]["duration"]["enum"]
         assert all(type(v) is str for v in miembros), id_          # [textos]
-    for id_, tipo in (("h3t", int), ("grokv", int), ("ltx", int), ("kling", str), ("seed", str)):
+    for id_, tipo in (("h3t", int), ("grokv", int), ("grokl", int), ("ltx", int), ("kling", str), ("seed", str)):
         assert type(_args(id_, False)["duration"]) is tipo, id_
 
 
 def test_el_esquema_guardado_dice_de_donde_sale_y_trae_los_doce_endpoints():
     datos = _fixture()
     assert "--ola4" in datos["_fuente"] and "2026-10-12" in datos["_fuente"]
+    assert len({k for k in datos if not k.startswith("_")}) == 12
     esquemas = _esquemas()
-    assert len(esquemas) == 12
+    assert len(esquemas) == 14                                  # los 12 de la Ola 4 y los 2 de Grok 1.5 Lite
     for id_, (t2v, i2v, *_resto) in NUEVOS.items():
         assert t2v in esquemas and i2v in esquemas, id_
     for endpoint, esq in esquemas.items():
         assert "url" in esq["salida"], endpoint                # el clip se baja de video.url
+
+
+def test_el_esquema_de_grok_lite_dice_que_esta_transcrito_y_cual_es_la_diferencia_con_la_base():
+    datos = _fixture_lite()
+    assert "2026-10-12" in datos["_fuente"] and "TRANSCRITOS" in datos["_fuente"]
+    lite_t2v, lite_i2v = (datos[NUEVOS["grokl"][0]], datos[NUEVOS["grokl"][1]])
+    assert "aspect_ratio" in lite_t2v["propiedades"] and "aspect_ratio" not in lite_i2v["propiedades"]
+    base_i2v = _fixture()[NUEVOS["grokv"][1]]
+    assert "aspect_ratio" in base_i2v["propiedades"]                       # la base sí lo trae con imagen
+    assert lite_t2v["resolution"]["enum"] == ["480p", "720p", "1080p"] and base_i2v["resolution"]["enum"] == ["480p", "720p"]
+    assert lite_t2v["duration"] == lite_i2v["duration"] == {"tipo": "integer", "min": 1, "max": 15, "por_defecto": 6}
 
 
 @pytest.mark.parametrize("formato", ["horizontal", "vertical"])
@@ -281,6 +311,7 @@ def test_la_resolucion_por_defecto_de_fal_no_es_la_que_se_cobra_o_se_manda_expli
 
 # DATOS-FAL §7 (4 s; LTX, 6 s) y la tabla de cada ficha para el resto de las duraciones
 USD = {"h3t": {4: 0.096, 6: 0.144, 8: 0.192}, "grokv": {4: 0.28, 6: 0.42, 8: 0.56},
+       "grokl": {4: 0.12, 6: 0.18, 8: 0.24},
        "ltx": {6: 0.54, 8: 0.72}, "kling": {4: 0.672, 6: 1.008, 8: 1.344},
        "seed": {4: 1.2136, 6: 1.8204, 8: 2.4272}}
 
@@ -298,10 +329,34 @@ def test_seedance_cobra_distinto_en_imagen_a_video():
     assert clip.costo_usd(1, "seed", 4) == pytest.approx(1.2096, abs=1e-4)      # su tabla de i2v dice 0.3024
 
 
+def test_grok_cobra_un_extra_por_la_imagen_de_entrada_del_image_to_video():
+    """El panel de fal (12-oct-2026) cobró 0.28 dólares en texto a video y 0.282 en imagen a video de la base (4 s a
+    720p): 0.002 por la imagen. Lite lo trae en su página: 0.01 por cada imagen de entrada."""
+    from pipeline import clip
+    assert clip.costo_usd(0, "grokv", 4) == pytest.approx(0.28, abs=1e-4)
+    assert clip.costo_usd(1, "grokv", 4) == pytest.approx(0.282, abs=1e-4)
+    assert clip.costo_usd(1, "grokv", 8) == pytest.approx(0.562, abs=1e-4)
+    for segundos, sin, con in ((4, 0.12, 0.13), (6, 0.18, 0.19), (8, 0.24, 0.25)):
+        assert clip.costo_usd(0, "grokl", segundos) == pytest.approx(sin, abs=1e-4)
+        assert clip.costo_usd(1, "grokl", segundos) == pytest.approx(con, abs=1e-4)
+    # los demás clips no suman nada por la imagen de entrada
+    assert clip.costo_usd(1, "h3t", 4) == pytest.approx(clip.costo_usd(0, "h3t", 4), abs=1e-4)
+
+
+def test_minimax_se_cobra_por_los_segundos_pedidos_y_no_por_los_entregados():
+    """Panel de fal, 12-oct-2026: 0.096 dólares por cada clip (texto a video e imagen a video). Se pidieron 4 s a
+    768P ($0.024 por segundo, en promoción hasta el 15-oct): 4 × 0.024. Los 4.48 s del archivo habrían sido 0.1075."""
+    from pipeline import clip
+    assert clip.costo_usd(0, "h3t", 4) == clip.costo_usd(1, "h3t", 4) == pytest.approx(0.096, abs=1e-4)
+    assert abs(clip.costo_usd(0, "h3t", 4) - 4.48 * 0.024) > 0.01
+
+
 def test_componer_dos_o_tres_imagenes_suma_lo_de_grok_a_cualquier_modelo():
     from pipeline import clip
     assert clip.costo_usd(3, "kling", 4) == pytest.approx(0.672 + 0.02 + 3 * 0.002, abs=1e-4)
     assert clip.costo_usd(2, "h3t", 8) == pytest.approx(0.192 + 0.02 + 2 * 0.002, abs=1e-4)
+    # y el extra de la imagen de entrada de Grok Lite se suma UNA vez (la compuesta es una sola imagen)
+    assert clip.costo_usd(3, "grokl", 4) == pytest.approx(0.12 + 0.01 + 0.02 + 3 * 0.002, abs=1e-4)
 
 
 def test_una_resolucion_que_la_ficha_no_trae_es_sin_costo_conocido_y_no_el_precio_de_otra():
@@ -324,12 +379,24 @@ def test_kling_se_cobra_con_audio_y_sin_el_cambia_la_tarifa():
 
 def test_las_fichas_nuevas_dicen_que_son_lecturas_de_la_pagina_y_su_fecha():
     datos = json.loads((RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8"))["generacion"]["endpoints"]
-    for t2v, i2v, *_resto in NUEVOS.values():
+    for id_, (t2v, i2v, *_resto) in NUEVOS.items():
         for endpoint in (t2v, i2v):
-            assert datos[endpoint]["unidad"] == "segundo" and datos[endpoint]["verified_on"] == "2026-10-08"
+            fecha = "2026-10-12" if id_ == "grokl" else "2026-10-08"       # Lite se leyó después de la prueba pagada
+            assert datos[endpoint]["unidad"] == "segundo" and datos[endpoint]["verified_on"] == fecha, endpoint
     nota = datos["nota_ola4"]
-    assert "INERTES" in nota and "LEÍDO" in nota and "1.5" in nota
-    assert "xai/grok-imagine-video/v1.5/text-to-video" not in datos          # la 1.5 no tiene ficha
+    assert "INERTES" in nota and "LEÍDO" in nota and "1.5" in nota and "PEDIDOS" in nota
+    assert "xai/grok-imagine-video/v1.5/text-to-video" not in datos          # la 1.5 (sin Lite) no tiene ficha
+    assert "xai/grok-imagine-video/v1.5/image-to-video" not in datos
+
+
+def test_las_fichas_de_grok_dicen_el_extra_por_imagen_y_las_de_minimax_su_promocion():
+    datos = json.loads((RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8"))["generacion"]["endpoints"]
+    assert datos[NUEVOS["grokv"][1]]["usd_imagen_entrada"] == 0.002 and "usd_imagen_entrada" not in datos[NUEVOS["grokv"][0]]
+    assert datos[NUEVOS["grokl"][1]]["usd_imagen_entrada"] == 0.01 and "usd_imagen_entrada" not in datos[NUEVOS["grokl"][0]]
+    for endpoint in NUEVOS["grokl"][:2]:
+        assert datos[endpoint]["usd_por_segundo"] == {"480p": 0.02, "720p": 0.03, "1080p": 0.14}
+    for endpoint in NUEVOS["h3t"][:2]:
+        assert "15-oct-2026" in datos[endpoint]["nota_promocion"] and "0.04" in datos[endpoint]["nota_promocion"]
 
 
 def test_las_unidades_de_uso_para_langfuse_son_los_segundos_pedidos():
@@ -412,7 +479,7 @@ def _tarifas() -> dict:
 
 
 @pytest.mark.parametrize("id_", sorted(NUEVOS))
-def test_ninguno_de_los_cinco_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(id_):
+def test_ninguno_de_los_seis_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(id_):
     from pipeline import creditos
     assert id_ not in _tarifas()["modelos"]["clip"]
     for segundos in NUEVOS[id_][3]:
@@ -450,7 +517,7 @@ def _medida(ancho, alto, segundos, audio=True):
             "codec_audio": "aac" if audio else None, "codec": "h264"}
 
 
-@pytest.mark.parametrize("id_,res", [("h3t", "768P"), ("grokv", "720p"), ("ltx", "720p"), ("seed", "720p"),
+@pytest.mark.parametrize("id_,res", [("h3t", "768P"), ("grokv", "720p"), ("grokl", "720p"), ("ltx", "720p"), ("seed", "720p"),
                                      ("kling", "")])
 def test_la_resolucion_que_se_compara_es_la_que_manda_el_adaptador(id_, res):
     probar, plan = _plan(id_)
@@ -479,7 +546,8 @@ def test_grok_a_720_se_marca_si_llega_otra_resolucion():
 
 @pytest.mark.parametrize("id_", sorted(NUEVOS))
 def test_una_fila_que_promete_audio_se_marca_sin_pista(id_):
-    """Las cinco prometen audio (MiniMax lo trajo en sus dos llamadas pagadas): un clip sin pista es REVISAR."""
+    """Las seis prometen audio (MiniMax y la base de Grok lo trajeron en sus llamadas pagadas; Lite lo supone y la prueba
+    pagada lo confirma): un clip sin pista es REVISAR."""
     probar, plan = _plan(id_)
     segundos = plan.segundos
     assert any("NO trae pista de audio" in d

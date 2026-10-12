@@ -12,12 +12,13 @@ Lo que cambia por familia:
   familia     duración             resolución  audio (generate_audio)   imagen de entrada   aspect_ratio
   minimax     número               «768P»      (no existe)              image_url           solo sin imagen
   grok        entero               «720p»      (sin parámetro)          image_url           siempre
+  grok_lite   entero               «720p»      (sin parámetro)          image_url           solo sin imagen
   ltx         entero               «720p»      sí                       image_url           siempre
   kling       texto                (no existe) sí                       start_image_url     solo sin imagen
   seedance    texto                «720p»      sí                       image_url           siempre
 
 Con imagen, `aspect_ratio` se manda donde el endpoint lo acepta (como Veo: gana el formato que el usuario
-eligió); donde no existe (MiniMax y Kling, imagen a video) el lienzo sale de la imagen. La resolución se
+eligió); donde no existe (MiniMax, Kling y Grok Lite, imagen a video) el lienzo sale de la imagen. La resolución se
 manda SIEMPRE explícita donde existe: el precio de pricing.json es el de esa resolución y no se deja al valor
 por defecto de fal, que puede cambiar sin avisar (el de LTX ya es 1080p: $0.13 dólares por segundo contra
 $0.09 a 720p).
@@ -58,6 +59,20 @@ def grok(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dic
     return args
 
 
+def grok_lite(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dict:
+    """Grok Imagine Video 1.5 Lite (`xai/grok-imagine-video/v1.5/lite/…`, esquema leído el 12-oct-2026): igual
+    que la base —`duration` entero (1–15), `resolution` 480p, 720p o 1080p, sin parámetro de audio, la imagen en
+    `image_url`— salvo que su image-to-video NO tiene `aspect_ratio` (el lienzo sale de la imagen) y la base sí. Mandarle
+    el aspecto con imagen es una llave que su esquema no trae. La resolución va explícita: el valor por defecto es
+    720p, pero el precio de pricing.json es el de la que se pide."""
+    args: dict = {"prompt": prompt, "duration": segundos, "resolution": "720p"}
+    if image_url:
+        args["image_url"] = image_url
+    else:
+        args["aspect_ratio"] = aspecto
+    return args
+
+
 def ltx(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dict:
     """LTX-2.5 Fast: `duration` es un enum MEZCLADO (los enteros 6, 8… 20 y el texto «auto»; relectura del
     12-oct-2026), así que los segundos van como entero. No admite 4 s. El valor por defecto de `resolution`
@@ -95,6 +110,7 @@ def seedance(prompt: str, image_url: str | None, aspecto: str, segundos: int) ->
 ARMADORES: dict[str, Callable[[str, str | None, str, int], dict]] = {
     "minimax": minimax,
     "grok": grok,
+    "grok_lite": grok_lite,
     "ltx": ltx,
     "kling": kling,
     "seedance": seedance,
