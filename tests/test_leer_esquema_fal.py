@@ -271,3 +271,121 @@ def test_el_codigo_no_toca_claves_ni_el_env_ni_fal_client():
     for prohibido in ("FAL_KEY", "dotenv", "fal_client", "os.environ", "getenv", ".env\"", "Authorization",
                       "subscribe", "settings"):
         assert prohibido not in codigo.split('"""', 2)[2], prohibido
+
+
+# ---------------------------------------------------------------------------
+# Ola 4: los clips (R4). Mismas defensas: solo lectura, nada que gaste.
+
+CLIP = "xai/grok-imagine-video/text-to-video"
+MUESTRA_CLIP = {
+    "openapi": "3.0.4",
+    "paths": {
+        f"/{CLIP}/requests/{{request_id}}/status": {"get": {"responses": {"200": {"content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/QueueStatus"}}}}}}},
+        f"/{CLIP}/requests/{{request_id}}": {"get": {"responses": {"200": {"content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ClipOutput"}}}}}}},
+        f"/{CLIP}": {"post": {"requestBody": {"content": {"application/json": {
+            "schema": {"$ref": "#/components/schemas/ClipInput"}}}}}},
+    },
+    "components": {"schemas": {
+        "ClipInput": {"type": "object", "required": ["prompt"], "properties": {
+            "prompt": {"type": "string"},
+            "duration": {"type": "integer", "minimum": 1, "maximum": 15, "default": 6,
+                         "description": "Segundos del video."},
+            "generate_audio": {"type": "boolean", "default": True, "description": "Con sonido."},
+            "start_image_url": {"type": "string", "description": "La imagen de entrada."}}},
+        "ClipOutput": {"type": "object", "properties": {
+            "video": {"$ref": "#/components/schemas/File"}, "seed": {"type": "integer"}}},
+        "File": {"type": "object", "properties": {
+            "url": {"type": "string"}, "content_type": {"type": "string"}}},
+        "QueueStatus": {"type": "object", "properties": {"status": {"type": "string"}}},
+    }},
+}
+
+
+def test_la_ola_4_trae_los_doce_clips_de_cinco_familias_y_las_dos_versiones_de_grok():
+    assert len(leer.OLA4) == len(set(leer.OLA4)) == 12
+    t2v = [e for e in leer.OLA4 if "text-to-video" in e]
+    i2v = [e for e in leer.OLA4 if "image-to-video" in e]
+    assert len(t2v) == len(i2v) == 6
+    for e in t2v:                                            # cada familia, con sus dos caminos
+        assert e.replace("text-to-video", "image-to-video") in i2v
+    assert "xai/grok-imagine-video/text-to-video" in leer.OLA4
+    assert "xai/grok-imagine-video/v1.5/text-to-video" in leer.OLA4
+    assert not any("veo3.1" in e for e in leer.OLA4)         # Veo ya lo arma clip.animar
+    assert not set(leer.OLA2) & set(leer.OLA4)
+
+
+@pytest.mark.parametrize("bueno", leer.OLA4)
+def test_los_endpoints_de_la_ola_4_pasan_la_validacion(bueno):
+    assert leer.validar_endpoint(bueno) == bueno
+
+
+def test_ola4_lee_exactamente_los_doce_y_guarda_el_json_de_cada_uno(monkeypatch, tmp_path, capsys):
+    pedidos = []
+    monkeypatch.setattr(leer, "descargar", lambda ep: pedidos.append(ep) or MUESTRA_CLIP)
+    assert leer.main(["--ola4", "--salida", str(tmp_path)]) == 0
+    assert tuple(pedidos) == leer.OLA4
+    assert len(list(tmp_path.glob("*.json"))) == 12
+    assert "12 de 12 con esquema legible" in capsys.readouterr().out
+
+
+def test_ola4_y_endpoints_sueltos_juntos_se_rechazan_antes_de_pedir_nada(monkeypatch, capsys):
+    monkeypatch.setattr(leer, "descargar", lambda ep: pytest.fail("no debía pedir nada"))
+    with pytest.raises(SystemExit) as e:
+        leer.main(["--ola4", ENDPOINT])
+    assert e.value.code == 2
+    assert "no las dos cosas" in capsys.readouterr().err
+
+
+def test_sin_argumentos_sigue_leyendo_la_ola_2(monkeypatch, tmp_path):
+    """Agregar --ola4 no cambia el comportamiento de siempre."""
+    pedidos = []
+    monkeypatch.setattr(leer, "descargar", lambda ep: pedidos.append(ep) or MUESTRA)
+    monkeypatch.chdir(tmp_path)
+    assert leer.main([]) == 0 and tuple(pedidos) == leer.OLA2
+
+
+def test_el_resumen_de_un_clip_enseña_duracion_audio_imagen_y_la_forma_de_la_salida():
+    r = leer.resumir(MUESTRA_CLIP, CLIP)
+    assert "- duration: integer minimum=1 maximum=15 · por defecto 6" in r
+    assert "Segundos del video." in r                    # `duration` es llave clave
+    assert "- generate_audio: boolean · por defecto true" in r and "Con sonido." in r
+    assert "La imagen de entrada." in r                  # `start_image_url` es llave clave (Kling)
+    assert "salida: ClipOutput" in r
+    assert "- video: objeto{content_type, url}" in r    # lo que clip.animar lee: res["video"]["url"]
+    assert "QueueStatus" not in r                        # la ruta de estado no es la salida
+
+
+def test_sin_forma_de_salida_lo_dice_en_una_linea_y_no_vuelve_ilegible_al_endpoint():
+    r = leer.resumir(MUESTRA, ENDPOINT)                  # MUESTRA no trae GET de resultado
+    assert not r.startswith(leer.SIN_RESUMEN)
+    assert "salida: (el esquema no trae la forma de la respuesta" in r
+    assert "entrada: KleinInput" in r
+
+
+def test_una_salida_rota_no_tira_la_lectura():
+    doc = json.loads(json.dumps(MUESTRA_CLIP))
+    doc["components"]["schemas"]["ClipOutput"]["properties"]["video"] = {"$ref": "#/components/schemas/Nada"}
+    r = leer.resumir(doc, CLIP)
+    assert not r.startswith(leer.SIN_RESUMEN) and "entrada: ClipInput" in r
+
+
+# ---------------------------------------------------------------------------
+# El tipo de un enum de cifras (la duración de un clip): número o texto no se ven igual a fal.
+
+@pytest.mark.parametrize("valores,marca", [
+    ([6, 8, 10], " [números]"),
+    (["3", "4", "5"], " [textos]"),
+    ([6, 8, 10, "auto"], " [mezcla; textos: auto]"),
+    (["auto", "4", 5, 6, 7], " [mezcla; textos: auto, 4]"),
+    (["square_hd", "landscape_16_9"], ""),                  # nombres: no hay duda, no hay marca
+    (["16:9", "9:16"], ""),                                 # relaciones de aspecto: tampoco
+    (["480p", "720p"], ""),
+])
+def test_un_enum_de_cifras_dice_si_son_numeros_o_texto(valores, marca):
+    doc = {"paths": {"/x": {"post": {"requestBody": {"content": {"application/json": {
+        "schema": {"type": "object", "properties": {"duration": {"enum": valores}}}}}}}}}}
+    r = leer.resumir(doc, "x/y")
+    esperado = "enum[" + ", ".join(str(v) for v in valores) + "]" + marca
+    assert f"- duration: {esperado}" in r

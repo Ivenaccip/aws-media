@@ -40,7 +40,7 @@ def test_sin_modelo_se_usa_el_predeterminado():
 
 def test_un_modelo_desconocido_no_cae_al_predeterminado():
     from pipeline import modelos_ia
-    for tarea, id_ in (("clip", "kling"), ("imagen", "gpt2"), ("editar", "nbp")):
+    for tarea, id_ in (("clip", "sora"), ("imagen", "gpt2"), ("editar", "nbp")):
         with pytest.raises(modelos_ia.ModeloDesconocido):
             modelos_ia.resolver(tarea, id_)
     with pytest.raises(modelos_ia.ModeloDesconocido):

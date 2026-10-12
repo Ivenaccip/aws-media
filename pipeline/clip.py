@@ -1,4 +1,4 @@
-"""M25 · A/F — el clip de 4, 6 u 8 segundos: una sola llamada a Veo, con audio.
+"""M25 · A/F — el clip de 4, 6 u 8 segundos: una sola llamada al modelo elegido (Veo, por defecto), con audio.
 
 Es el producto corto: el usuario escribe qué quiere, sube de cero a tres
 imágenes (ninguna obligatoria) y se lleva un video. Sin guionista, sin TTS, sin
@@ -35,7 +35,7 @@ import logging
 
 from langfuse import get_client, observe
 
-from . import fal, modelos_ia
+from . import clip_familias, fal, modelos_ia
 from .config import load_prompt, settings
 from .llm import chat_json
 from .models import formato_de
@@ -124,32 +124,11 @@ async def componer(image_urls: list[str], prompt: str,
     return url
 
 
-@observe(name="clip_animar")
-async def animar(prompt: str, image_url: str | None = None,
-                 formato: str = "horizontal", modelo: str | None = None,
-                 segundos: int = DURACION_S) -> str:
-    """La llamada a Veo. Con imagen es image-to-video; sin ella, el endpoint
-    hermano de la misma familia, al mismo precio.
-
-    `segundos` es la duración que se cobró (4, 6 u 8): se valida contra lo que el
-    modelo admite y viaja como «<n>s». Una que no admite levanta
-    DuracionNoAdmitida, nunca se cambia en silencio a otra.
-
-    Los timeouts son los del clip, NO los de la película: 720 s × 2 intentos
-    son 24 minutos y la Lambda del worker muere a los 15.
-
-    Los intentos son min(settings.clip_max_attempts, Modelo.max_intentos) cuando el
-    modelo trae un tope (0 = los de settings). Un timeout de cliente se vuelve
-    FalError en `fal.llamar`, pero NO cancela el trabajo en fal: el primero puede
-    seguir vivo y cobrado cuando sale el segundo. Con Lite sale barato (hasta $0.40
-    dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que Fast y
-    Standard hacen uno solo.
-    """
-    m = modelos_ia.resolver("clip", modelo)
-    segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
+def _args_veo(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dict:
+    """Los argumentos de la familia Veo (Lite, Fast y Standard): los de siempre."""
     args = {
         "prompt": prompt,
-        "aspect_ratio": formato_de(formato)["aspecto"],
+        "aspect_ratio": aspecto,
         "duration": f"{segundos}s",
         "resolution": RESOLUCION,
         "generate_audio": CON_AUDIO,
@@ -160,10 +139,51 @@ async def animar(prompt: str, image_url: str | None = None,
     # gente sube aquí.
     if image_url:
         args["image_url"] = image_url
-    # R4: el endpoint sale de la tabla de modelos. Los argumentos de arriba son
-    # los de la familia Veo; un modelo de otra familia trae su propio juego (se
-    # suma aquí junto con su fila en modelos_ia, y se prueba antes de activarlo).
+    return args
+
+
+def args_de_clip(m: modelos_ia.Modelo, prompt: str, image_url: str | None,
+                 formato: str, segundos: int) -> dict:
+    """Lo que se le manda a fal para ese modelo: los argumentos de su familia
+    (`clip_familias`, o Veo, que se arma aquí) más los fijos de la fila. Es lo MISMO que
+    `animar` llama y que `costo_usd` anota, para que el costo salga de lo que de verdad se pide."""
+    aspecto = formato_de(formato)["aspecto"]
+    if m.familia_clip == "veo":
+        args = _args_veo(prompt, image_url, aspecto, segundos)
+    else:
+        args = clip_familias.ARMADORES[m.familia_clip](prompt, image_url, aspecto, segundos)
+    return m.con_args_extra(args)
+
+
+@observe(name="clip_animar")
+async def animar(prompt: str, image_url: str | None = None,
+                 formato: str = "horizontal", modelo: str | None = None,
+                 segundos: int = DURACION_S) -> str:
+    """La llamada al modelo de clip. Con imagen es image-to-video; sin ella, el
+    endpoint hermano de la misma familia, al mismo precio.
+
+    `segundos` es la duración que se cobró (4, 6 u 8): se valida contra lo que el
+    modelo admite y viaja como lo pide su familia (`args_de_clip`): «<n>s» en Veo, un
+    número en MiniMax, Grok y LTX, un texto sin «s» en Kling y Seedance. Una que no
+    admite levanta DuracionNoAdmitida, nunca se cambia en silencio a otra.
+
+    Los timeouts son los del clip, NO los de la película: 720 s × 2 intentos
+    son 24 minutos y la Lambda del worker muere a los 15.
+
+    Los intentos son min(settings.clip_max_attempts, Modelo.max_intentos) cuando el
+    modelo trae un tope (0 = los de settings). Un timeout de cliente se vuelve
+    FalError en `fal.llamar`, pero NO cancela el trabajo en fal: el primero puede
+    seguir vivo y cobrado cuando sale el segundo. Con Lite sale barato (hasta $0.40
+    dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que todos los
+    demás modelos (Veo Fast y Standard y los cinco de la Ola 4, que no tienen tiempos
+    medidos) hacen uno solo.
+    """
+    m = modelos_ia.resolver("clip", modelo)
+    segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
+    # R4: el endpoint sale de la tabla de modelos y los argumentos, de la familia de la fila.
+    args = args_de_clip(m, prompt, image_url, formato, segundos)
     app = m.endpoint_para(bool(image_url))
+    etiqueta = "Veo" if m.familia_clip == "veo" else m.id
     intentos = settings.clip_max_attempts
     if m.max_intentos > 0:
         intentos = min(intentos, m.max_intentos)       # el modelo pide menos, nunca más
@@ -171,16 +191,17 @@ async def animar(prompt: str, image_url: str | None = None,
     for intento in range(1, intentos + 1):
         try:
             res = await fal.llamar(app, args, timeout_s=settings.clip_timeout_s,
-                                   nombre="veo", meta={"clip": True, "intento": intento})
+                                   nombre="veo" if etiqueta == "Veo" else f"clip-{m.id}",
+                                   meta={"clip": True, "intento": intento})
         except fal.FalError as err:
             ultimo = str(err)
-            log.warning("Veo falló en el clip (intento %d): %s", intento, err)
+            log.warning("%s falló en el clip (intento %d): %s", etiqueta, intento, err)
             continue
         url = (res.get("video") or {}).get("url")
         if url:
             return url
-        ultimo = "Veo no devolvió video"
-        log.warning("Veo no devolvió video en el clip (intento %d)", intento)
+        ultimo = f"{etiqueta} no devolvió video"
+        log.warning("%s no devolvió video en el clip (intento %d)", etiqueta, intento)
     raise ClipError(f"No se pudo generar el video: {ultimo[:200]}")
 
 
@@ -196,10 +217,12 @@ def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
     from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, costo_fal
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
-    # el endpoint exacto que se llama: con imagen (una o la compuesta) o sin ella
-    total = costo_fal(m.endpoint_para(int(n_imagenes) >= 1),
-                      {"duration": f"{segundos}s", "resolution": RESOLUCION,
-                       "generate_audio": CON_AUDIO})
+    # el endpoint exacto que se llama, con los argumentos exactos de su familia: con imagen
+    # (una o la compuesta) o sin ella. Un texto cualquiera hace de imagen: solo importa la forma.
+    con_imagen = int(n_imagenes) >= 1
+    total = costo_fal(m.endpoint_para(con_imagen),
+                      args_de_clip(m, "", "https://imagen.invalida/entrada" if con_imagen else None,
+                                   "horizontal", segundos))
     # sin costo conocido es un error, no un cero que parezca gratis
     if not total:
         raise ClipError(f"Sin costo conocido para el modelo {m.id}")
@@ -212,7 +235,7 @@ def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
 async def generar(texto: str, image_urls: list[str] | None = None,
                   formato: str = "horizontal", modelo: str | None = None,
                   segundos: int = DURACION_S) -> dict:
-    """El clip completo: prompt → (composición) → Veo. Lanza ClipError.
+    """El clip completo: prompt → (composición) → modelo de clip. Lanza ClipError.
 
     La duración se valida ANTES de gastar nada (el LLM y Grok cuestan): una que
     el modelo no admite no llega ni a escribir el prompt."""

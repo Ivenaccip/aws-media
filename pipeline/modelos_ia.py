@@ -18,7 +18,10 @@ suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 
 Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
 desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendieron también en
 la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Sigue inerte
-solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar.
+solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar. Los clips de las otras familias
+(MiniMax H3 Max Turbo, Grok Imagine Video, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0, Ola 4) tienen fila
+y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (MiniMax y Grok Video ya tuvieron su
+prueba pagada del 12-oct-2026; los otros tres no).
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -62,6 +65,11 @@ PREDETERMINADO = {"imagen": "grok", "editar": "grok", "clip": "veo-lite"}
 # predeterminado: cada modelo declara abajo las que de verdad admite.
 DURACION_PREDETERMINADA_S = 8
 
+# clip: la familia de argumentos de un modelo. Cada una pide distinto la duración (número, texto, «8s»),
+# la resolución, el audio y la imagen de entrada, así que `pipeline/clip_familias.py` trae un armador por
+# familia y `clip.animar` elige el de la fila (Veo, la de siempre, se arma en `pipeline/clip.py`).
+FAMILIAS_CLIP = ("veo", "minimax", "grok", "ltx", "kling", "seedance")
+
 
 class ModeloDesconocido(ValueError):
     """El id no existe para esa tarea. Es un error del pedido (422), no nuestro."""
@@ -81,10 +89,10 @@ class DuracionNoAdmitida(ModeloDesconocido):
 
 # Llaves que la TAREA manda siempre (el texto, las imágenes, el aspecto, los
 # segundos): ningún modelo puede fijarlas en `args_extra`, porque pisaría lo que el
-# usuario pidió y se cobró. `image_url` es la imagen de entrada de la familia Veo.
+# usuario pidió y se cobró. `image_url` es la imagen de entrada de la familia Veo (y `start_image_url`, la de Kling).
 LLAVES_PROTEGIDAS = frozenset(
-    {"prompt", "image_urls", "image_url", "num_images", "aspect_ratio", "image_size",
-     "duration"})
+    {"prompt", "image_urls", "image_url", "start_image_url", "end_image_url", "num_images",
+     "aspect_ratio", "image_size", "duration"})
 
 
 def _normaliza_args_extra(id_: str, valor) -> tuple[tuple[str, object], ...]:
@@ -191,6 +199,9 @@ class Modelo:
     # quien lo lea puede cambiarlo después, y el Modelo se copia, serializa y
     # compara sin sorpresas. Son un pin: ver `con_args_extra`.
     args_extra: tuple[tuple[str, object], ...] = ()
+    # clip: la familia de argumentos con que se le habla a este endpoint (FAMILIAS_CLIP). Las filas de
+    # imagen la ignoran.
+    familia_clip: str = "veo"
     # clip: tope de intentos de este modelo. 0 = vale el de settings.clip_max_attempts.
     # Con N > 0 se usa min(settings.clip_max_attempts, N): un modelo puede pedir
     # MENOS intentos que el ambiente, nunca más. Un timeout de cliente no cancela el
@@ -231,6 +242,9 @@ class Modelo:
         if isinstance(mp, bool) or not isinstance(mp, (int, float)) or not mp >= 0:
             raise ValueError(f"megapixeles_ficha de {self.id!r} debe ser un número de 0 o más "
                              f"(0 = sin tope), no {mp!r}")
+        if self.familia_clip not in FAMILIAS_CLIP:
+            raise ValueError(f"familia_clip de {self.id!r} debe ser una de "
+                             f"{', '.join(FAMILIAS_CLIP)}, no {self.familia_clip!r}")
         if type(self.segundo_plano) is not bool:
             raise ValueError(f"segundo_plano de {self.id!r} debe ser True o False, "
                              f"no {self.segundo_plano!r}")
@@ -293,6 +307,19 @@ VEO_FAST_T2V = "fal-ai/veo3.1/fast"
 VEO_FAST_I2V = "fal-ai/veo3.1/fast/image-to-video"
 VEO_STD_T2V = "fal-ai/veo3.1"
 VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
+# Ola 4 (clips de otras familias). Endpoints y parámetros leídos del esquema público de fal el 12-oct-2026
+# (tools/leer_esquema_fal.py --ola4; docs/modelos-ia/DATOS-FAL-2026-10-08.md §14). Grok Video tiene dos
+# versiones; entra la base (la 1.5 cuesta el doble y la página no explica la diferencia: decisión del dueño).
+H3T_T2V = "minimax/h3-max-turbo/text-to-video"
+H3T_I2V = "minimax/h3-max-turbo/image-to-video"
+GROKV_T2V = "xai/grok-imagine-video/text-to-video"
+GROKV_I2V = "xai/grok-imagine-video/image-to-video"
+LTX_T2V = "lightricks/ltx-2.5/text-to-video/fast"
+LTX_I2V = "lightricks/ltx-2.5/image-to-video/fast"
+KLING_T2V = "fal-ai/kling-video/v3/pro/text-to-video"
+KLING_I2V = "fal-ai/kling-video/v3/pro/image-to-video"
+SEED_T2V = "bytedance/seedance-2.0/text-to-video"
+SEED_I2V = "bytedance/seedance-2.0/image-to-video"
 NB2_CREAR = "fal-ai/nano-banana-2"
 NB2_EDITAR = "fal-ai/nano-banana-2/edit"
 NBP_CREAR = "fal-ai/nano-banana-pro"
@@ -361,6 +388,21 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                       con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+    # Ola 4: clips de otras familias, INERTES (sin número en tarifas.json, sin prueba pagada). Un solo
+    # intento cada uno mientras no se mida cuánto tardan: un timeout de cliente no cancela el trabajo en
+    # fal. MiniMax no trae parámetro de audio y su esquema no dice si la salida lo lleva, pero la prueba pagada
+    # del 12-oct-2026 midió una pista aac en sus dos clips (texto a video e imagen a video): `con_audio=True`,
+    # y la prueba pagada marca REVISAR si un clip suyo llega sin pista. LTX no admite 4 s (su mínimo es 6).
+    h3t = Modelo("h3t", "clip", H3T_T2V, H3T_I2V, familia_clip="minimax",
+                 con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+    grokv = Modelo("grokv", "clip", GROKV_T2V, GROKV_I2V, familia_clip="grok",
+                   con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+    ltx = Modelo("ltx", "clip", LTX_T2V, LTX_I2V, familia_clip="ltx",
+                 con_audio=True, duraciones=(6, 8), max_intentos=1)
+    kling = Modelo("kling", "clip", KLING_T2V, KLING_I2V, familia_clip="kling",
+                   con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+    seed = Modelo("seed", "clip", SEED_T2V, SEED_I2V, familia_clip="seedance",
+                  con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
     # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): por la regla de arriba iría a
     # segundo plano, pero sigue síncrono —como Grok y como editar— «de momento», por decisión
@@ -412,7 +454,12 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
             ("editar", "nb2"): nb2_editar,
             ("clip", "veo-lite"): veo,
             ("clip", "veo-fast"): veo_fast,
-            ("clip", "veo-std"): veo_std}
+            ("clip", "veo-std"): veo_std,
+            ("clip", "h3t"): h3t,
+            ("clip", "grokv"): grokv,
+            ("clip", "ltx"): ltx,
+            ("clip", "kling"): kling,
+            ("clip", "seed"): seed}
 
 
 def resolver(tarea: str, modelo_id: str | None) -> Modelo:

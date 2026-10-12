@@ -122,7 +122,8 @@ def test_la_tabla_trae_los_modelos_de_la_ola_1():
     from pipeline import modelos_ia
     assert {"grok", "nb2"} <= set(modelos_ia.disponibles("imagen"))
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
-    assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std"]
+    # Veo primero; los clips de otras familias (Ola 4) los guarda tests/test_r4_ola4.py
+    assert modelos_ia.disponibles("clip")[:3] == ["veo-lite", "veo-fast", "veo-std"]
 
 
 def test_los_predeterminados_no_cambian():
@@ -523,7 +524,10 @@ def test_los_intentos_por_defecto_de_un_modelo_son_los_de_settings():
     from pipeline import modelos_ia
     assert modelos_ia.Modelo("x", "clip", "fal-ai/x").max_intentos == 0
     for m in _toda_la_tabla():
-        esperado = 1 if (m.tarea, m.id) in {("clip", "veo-fast"), ("clip", "veo-std")} else 0
+        # Veo 3.1 Fast y Standard, y los cinco clips de la Ola 4 (sin medir cuánto tardan): un solo intento
+        esperado = 1 if (m.tarea, m.id) in {("clip", "veo-fast"), ("clip", "veo-std"), ("clip", "h3t"),
+                                            ("clip", "grokv"), ("clip", "ltx"), ("clip", "kling"),
+                                            ("clip", "seed")} else 0
         assert m.max_intentos == esperado, (m.tarea, m.id)
     assert modelos_ia.resolver("imagen", "grok").max_intentos == 0
     assert modelos_ia.resolver("clip", "veo-lite").max_intentos == 0
@@ -1017,6 +1021,21 @@ def test_standard_sigue_rechazado_con_la_tarifa_real(
             cuerpo["segundos"] = segundos
         r = cliente.post("/api/clip/generar", json=cuerpo)
         assert r.status_code == 422, (segundos, r.text)
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+
+
+@pytest.mark.parametrize("modelo", ["h3t", "grokv", "ltx", "kling", "seed"])
+def test_los_clips_de_la_ola_4_se_rechazan_con_la_tarifa_real(
+        cliente, espia, falso_fal, imagenes_al_disco, modelo):
+    """Ola 4: MiniMax, Grok Video, LTX, Kling y Seedance tienen fila y adaptador pero ningún número en
+    tools/tarifas.json: el servidor responde 422 sin cobrar, sin crear documento y sin encolar, con y sin
+    duración (también las que el modelo no admite). Hasta su prueba pagada no se ofrecen."""
+    for segundos in (None, 4, 6, 8):
+        cuerpo = {"texto": "mi perro", "modelo": modelo}
+        if segundos:
+            cuerpo["segundos"] = segundos
+        r = cliente.post("/api/clip/generar", json=cuerpo)
+        assert r.status_code == 422, (modelo, segundos, r.text)
     _sin_rastro(espia, falso_fal, imagenes_al_disco)
 
 
