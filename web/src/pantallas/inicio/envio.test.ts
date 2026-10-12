@@ -36,7 +36,13 @@ describe('imagenesPegadas', () => {
     );
     expect([a!.name, b!.name, c!.name]).toEqual(['imagen-pegada-1.png', 'imagen-pegada-2.webp', 'imagen-pegada-3.jpg']);
     expect(a!.type).toBe('image/png');
-    expect(await a!.text()).toBe('x');
+    // jsdom no trae File.text(): se lee con FileReader
+    const contenido = await new Promise<string>(listo => {
+      const lector = new FileReader();
+      lector.onload = () => listo(String(lector.result));
+      lector.readAsText(a!);
+    });
+    expect(contenido).toBe('x');
   });
 
   it('una sola captura no lleva número', () => {
