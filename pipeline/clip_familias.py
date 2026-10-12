@@ -12,7 +12,7 @@ Lo que cambia por familia:
   familia     duración             resolución  audio (generate_audio)   imagen de entrada   aspect_ratio
   minimax     número               «768P»      (no existe)              image_url           solo sin imagen
   grok        entero               «720p»      (sin parámetro)          image_url           siempre
-  ltx         ver DURACION_LTX     «720p»      sí                       image_url           siempre
+  ltx         entero (provisional) «720p»      sí                       image_url           siempre
   kling       texto                (no existe) sí                       start_image_url     solo sin imagen
   seedance    texto                «720p»      sí                       image_url           siempre
 

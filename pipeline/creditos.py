@@ -283,7 +283,7 @@ def costo_competencia(n_cuentas: int) -> int:
 
 def costo_clip(n_imagenes: int = 0, modelo: str | None = None,
                segundos: int | None = None) -> int:
-    """M25 A/F: el clip con audio — una sola llamada a Veo.
+    """M25 A/F: el clip con audio — una sola llamada al modelo de clip.
 
     El extra de componer solo aparece con DOS o TRES imágenes, que es cuando hay
     que juntarlas con Grok antes de animar: con cero es text-to-video y con una

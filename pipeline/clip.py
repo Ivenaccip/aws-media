@@ -1,4 +1,4 @@
-"""M25 · A/F — el clip de 4, 6 u 8 segundos: una sola llamada a Veo, con audio.
+"""M25 · A/F — el clip de 4, 6 u 8 segundos: una sola llamada al modelo elegido (Veo, por defecto), con audio.
 
 Es el producto corto: el usuario escribe qué quiere, sube de cero a tres
 imágenes (ninguna obligatoria) y se lleva un video. Sin guionista, sin TTS, sin
@@ -159,12 +159,13 @@ def args_de_clip(m: modelos_ia.Modelo, prompt: str, image_url: str | None,
 async def animar(prompt: str, image_url: str | None = None,
                  formato: str = "horizontal", modelo: str | None = None,
                  segundos: int = DURACION_S) -> str:
-    """La llamada a Veo. Con imagen es image-to-video; sin ella, el endpoint
-    hermano de la misma familia, al mismo precio.
+    """La llamada al modelo de clip. Con imagen es image-to-video; sin ella, el
+    endpoint hermano de la misma familia, al mismo precio.
 
     `segundos` es la duración que se cobró (4, 6 u 8): se valida contra lo que el
-    modelo admite y viaja como «<n>s». Una que no admite levanta
-    DuracionNoAdmitida, nunca se cambia en silencio a otra.
+    modelo admite y viaja como lo pide su familia (`args_de_clip`): «<n>s» en Veo, un
+    número en MiniMax, Grok y LTX, un texto sin «s» en Kling y Seedance. Una que no
+    admite levanta DuracionNoAdmitida, nunca se cambia en silencio a otra.
 
     Los timeouts son los del clip, NO los de la película: 720 s × 2 intentos
     son 24 minutos y la Lambda del worker muere a los 15.
@@ -173,8 +174,9 @@ async def animar(prompt: str, image_url: str | None = None,
     modelo trae un tope (0 = los de settings). Un timeout de cliente se vuelve
     FalError en `fal.llamar`, pero NO cancela el trabajo en fal: el primero puede
     seguir vivo y cobrado cuando sale el segundo. Con Lite sale barato (hasta $0.40
-    dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que Fast y
-    Standard hacen uno solo.
+    dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que todos los
+    demás modelos (Veo Fast y Standard y los cinco de la Ola 4, que no tienen tiempos
+    medidos) hacen uno solo.
     """
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
@@ -233,7 +235,7 @@ def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
 async def generar(texto: str, image_urls: list[str] | None = None,
                   formato: str = "horizontal", modelo: str | None = None,
                   segundos: int = DURACION_S) -> dict:
-    """El clip completo: prompt → (composición) → Veo. Lanza ClipError.
+    """El clip completo: prompt → (composición) → modelo de clip. Lanza ClipError.
 
     La duración se valida ANTES de gastar nada (el LLM y Grok cuestan): una que
     el modelo no admite no llega ni a escribir el prompt."""

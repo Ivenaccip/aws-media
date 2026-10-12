@@ -204,6 +204,16 @@ def test_la_imagen_viaja_en_la_llave_de_su_familia(id_):
     assert not (otras & set(con))
 
 
+def test_los_argumentos_fijos_de_la_fila_se_suman_a_los_de_su_familia():
+    """Un clip puede fijar un argumento propio (un pin, como el 1K de Nano Banana 2) y gana al de la tarea."""
+    from pipeline import clip, modelos_ia
+    m = modelos_ia.Modelo("xx", "clip", "a/t2v", "a/i2v", familia_clip="kling",
+                          args_extra={"cfg_scale": 0.7, "generate_audio": False}, duraciones=(4,))
+    a = clip.args_de_clip(m, "un perro", None, "horizontal", 4)
+    assert a["cfg_scale"] == 0.7 and a["generate_audio"] is False        # el pin gana sobre lo de la familia
+    assert a["duration"] == "4" and a["prompt"] == "un perro"            # y lo de la tarea sigue ahí
+
+
 def test_el_esquema_guardado_dice_de_donde_sale_y_trae_los_doce_endpoints():
     datos = _fixture()
     assert "--ola4" in datos["_fuente"] and "2026-10-12" in datos["_fuente"]

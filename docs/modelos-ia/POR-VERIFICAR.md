@@ -239,7 +239,10 @@ trabajo en fal. La prueba pagada imprime cuánto tardó y marca REVISAR si pasa 
 5. **Los créditos** salen de la fórmula de siempre con el costo MEDIDO en el panel de fal (no con la lectura de la página).
 6. **La imagen de entrada.** Las reglas de lado corto y relación de aspecto que `probar_modelo` exige (720 px y 16:9 o 9:16) son las de Veo; las
    de las otras familias no están leídas. En MiniMax y Kling la forma del video la decide la imagen (sus endpoints no tienen `aspect_ratio`).
-7. **Tiempos.** Nada de esto está medido. Si algún clip tarda más que la espera del clip (240 s), un solo intento es lo correcto.
+7. **La duración de MiniMax.** La página dice que el clip puede durar hasta ~0.7 s más de lo pedido: con la tolerancia de 0.5 s de `probar_modelo`,
+   un REVISAR «se pidieron 4 s y dura 4.65 s» es de esperar y no es un fallo (el costo se anota por los segundos pedidos; el panel dirá si
+   fal cobra por los pedidos o por los entregados).
+8. **Tiempos.** Nada de esto está medido. Si algún clip tarda más que la espera del clip (240 s), un solo intento es lo correcto.
 
 ### Qué va en segundo plano y por qué
 
