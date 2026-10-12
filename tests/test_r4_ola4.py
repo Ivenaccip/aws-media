@@ -332,7 +332,7 @@ def test_seedance_cobra_distinto_en_imagen_a_video():
 
 def test_grok_cobra_un_extra_por_la_imagen_de_entrada_del_image_to_video():
     """El panel de fal (12-oct-2026) cobró 0.28 dólares en texto a video y 0.282 en imagen a video de la base (4 s a
-    720p): 0.002 por la imagen. Lite lo trae en su página: 0.01 por cada imagen de entrada."""
+    720p): 0.002 por la imagen. Lite, en el mismo panel: $0.12 y $0.13 (0.01 por cada imagen de entrada)."""
     from pipeline import clip
     assert clip.costo_usd(0, "grokv", 4) == pytest.approx(0.28, abs=1e-4)
     assert clip.costo_usd(1, "grokv", 4) == pytest.approx(0.282, abs=1e-4)
