@@ -3,10 +3,13 @@
 uno acepta: qué llaves, de qué tipo, con qué valores permitidos y cuál es el valor por
 defecto. Es la fuente exacta para escribir el adaptador de una familia nueva de imágenes
 (R4 · Ola 2): los valores de `image_size`, si trae `num_images`, el máximo de
-`image_urls`, las calidades de GPT Image.
+`image_urls`, las calidades de GPT Image; y, para los clips (R4 · Ola 4), cómo pide cada
+familia la duración, el audio, la resolución y la imagen de entrada, y qué forma tiene lo que
+devuelve (la línea «salida»).
 
 Uso (desde la raíz del repo):
   python tools/leer_esquema_fal.py                      # los endpoints de la Ola 2
+  python tools/leer_esquema_fal.py --ola4               # los 12 endpoints de clip de la Ola 4
   python tools/leer_esquema_fal.py fal-ai/flux-2-pro    # uno o varios, por su nombre exacto
   python tools/leer_esquema_fal.py --salida CARPETA     # dónde guardar (work/esquemas_fal)
 
@@ -53,6 +56,24 @@ OLA2 = (
     "blackforestlabs/flux-3/text-to-image",
 )
 
+# Los endpoints de los clips de la Ola 4 (docs/modelos-ia/POR-VERIFICAR.md, DATOS §4): texto a video e
+# imagen a video de MiniMax H3 Max Turbo, Grok Imagine Video (la base y la 1.5: la página no explica la
+# diferencia), LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0. Veo es la familia que `clip.animar` ya arma.
+OLA4 = (
+    "minimax/h3-max-turbo/text-to-video",
+    "minimax/h3-max-turbo/image-to-video",
+    "xai/grok-imagine-video/text-to-video",
+    "xai/grok-imagine-video/image-to-video",
+    "xai/grok-imagine-video/v1.5/text-to-video",
+    "xai/grok-imagine-video/v1.5/image-to-video",
+    "lightricks/ltx-2.5/text-to-video/fast",
+    "lightricks/ltx-2.5/image-to-video/fast",
+    "fal-ai/kling-video/v3/pro/text-to-video",
+    "fal-ai/kling-video/v3/pro/image-to-video",
+    "bytedance/seedance-2.0/text-to-video",
+    "bytedance/seedance-2.0/image-to-video",
+)
+
 # Un nombre de endpoint de fal: segmentos con letras, números, punto, guion y guion bajo.
 _ENDPOINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)+$")
 # Las llaves que definen tamaño, calidad y cantidad: de esas se enseña también la descripción.
@@ -62,7 +83,10 @@ SIN_RESUMEN = "  (no se pudo leer la entrada:"
 # `image_size` de GPT Image («…total pixels» y se acababa): las reglas están al final del texto.
 DESCRIPCION_MAX = 700
 _LLAVES_CLAVE = ("image_size", "aspect_ratio", "resolution", "quality", "num_images",
-                 "image_urls", "output_format", "mask_url", "seed")
+                 "image_urls", "output_format", "mask_url", "seed",
+                 # el clip (Ola 4): cómo pide cada familia la duración, el audio y la imagen de entrada
+                 "duration", "generate_audio", "image_url", "start_image_url", "end_image_url",
+                 "negative_prompt", "safety_tolerance")
 
 
 def _uso(msg: str) -> None:
@@ -132,6 +156,48 @@ def esquema_de_entrada(doc: dict, endpoint: str) -> tuple[str, dict]:
     return nombre or "(sin nombre)", esq
 
 
+def esquema_de_salida(doc: dict, endpoint: str) -> tuple[str, dict] | None:
+    """(nombre, esquema) de lo que el endpoint DEVUELVE (el GET `.../requests/{id}` con 200), o None.
+
+    Un clip se baja de `res["video"]["url"]`; cada familia nueva tiene que confirmar que su
+    respuesta trae esa forma antes de entrar al selector."""
+    rutas = doc.get("paths") or {}
+    candidatas = []
+    for ruta, ops in rutas.items():
+        get = (ops or {}).get("get") if isinstance(ops, dict) else None
+        if not isinstance(get, dict) or str(ruta).endswith("/status") or str(ruta).endswith("/cancel"):
+            continue
+        cuerpo = ((((get.get("responses") or {}).get("200") or {}).get("content") or {})
+                  .get("application/json") or {})
+        if "schema" in cuerpo:
+            candidatas.append((ruta, cuerpo["schema"]))
+    if not candidatas:
+        return None
+    candidatas.sort(key=lambda c: not str(c[0]).strip("/").startswith(endpoint))
+    _, esq = candidatas[0]
+    nombre = str(esq.get("$ref", "")).rsplit("/", 1)[-1] if isinstance(esq, dict) else ""
+    esq = _ref(doc, esq)
+    if not isinstance(esq, dict) or "properties" not in esq:
+        return None
+    return nombre or "(sin nombre)", esq
+
+
+def _resumen_de_salida(doc: dict, endpoint: str) -> list[str]:
+    """Las líneas de la salida. Nunca tira el programa ni vuelve «sin entender» al endpoint: la
+    entrada ya se leyó y lo que falte aquí se dice en una línea."""
+    try:
+        salida = esquema_de_salida(doc, endpoint)
+        if salida is None:
+            return ["  salida: (el esquema no trae la forma de la respuesta; mirar el JSON guardado)"]
+        nombre, esq = salida
+        lineas = [f"  salida: {nombre}"]
+        for llave, prop in (esq.get("properties") or {}).items():
+            lineas.append(f"  - {llave}: " + " | ".join(dict.fromkeys(_valores(doc, prop))))
+        return lineas
+    except Exception as err:  # noqa: BLE001 — un esquema raro no frena la lectura
+        return [f"  salida: (no se pudo leer: {type(err).__name__}: {str(err)[:120]})"]
+
+
 def _valores(doc: dict, p) -> list[str]:
     """Una descripción corta de lo que admite una propiedad (tipo, enum, objeto, rangos)."""
     p = _ref(doc, p)
@@ -193,6 +259,7 @@ def _resumir(doc: dict, endpoint: str) -> str:
                (prop.get("description") if isinstance(prop, dict) else "") or ""
         if llave in _LLAVES_CLAVE and desc:
             lineas.append(f"      {' '.join(str(desc).split())[:DESCRIPCION_MAX]}")
+    lineas.extend(_resumen_de_salida(doc, endpoint))
     return "\n".join(lineas)
 
 
@@ -202,10 +269,14 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="Lee el esquema público de endpoints de fal (solo lectura, sin gasto, sin clave).")
     p.add_argument("endpoints", nargs="*", help="endpoints por su nombre exacto; sin ninguno, los de la Ola 2")
+    p.add_argument("--ola4", action="store_true",
+                   help="los 12 endpoints de clip de la Ola 4 (no se combina con endpoints sueltos)")
     p.add_argument("--salida", default=str(SALIDA_PREDETERMINADA),
                    help=f"carpeta donde guardar el JSON y el RESUMEN.txt (por defecto {SALIDA_PREDETERMINADA})")
     a = p.parse_args(argv)
-    endpoints = [validar_endpoint(e.strip("/")) for e in (a.endpoints or OLA2)]
+    if a.ola4 and a.endpoints:
+        _uso("Usa --ola4 o nombra los endpoints, no las dos cosas.")
+    endpoints = [validar_endpoint(e.strip("/")) for e in (OLA4 if a.ola4 else (a.endpoints or OLA2))]
     salida = Path(a.salida).expanduser()
     try:
         salida.mkdir(parents=True, exist_ok=True)
