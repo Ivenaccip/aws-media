@@ -20,7 +20,8 @@ desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de f
 la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Sigue inerte
 solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar. Los clips de las otras familias
 (MiniMax H3 Max Turbo, Grok Imagine Video, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0, Ola 4) tienen fila
-y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json y sin prueba pagada.
+y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (MiniMax y Grok Video ya tuvieron su
+prueba pagada del 12-oct-2026; los otros tres no).
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -389,10 +390,11 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     # Ola 4: clips de otras familias, INERTES (sin número en tarifas.json, sin prueba pagada). Un solo
     # intento cada uno mientras no se mida cuánto tardan: un timeout de cliente no cancela el trabajo en
-    # fal. `con_audio` solo donde la página lo documenta: MiniMax no trae parámetro de audio ni dice si la
-    # salida lo lleva, así que no se promete. LTX no admite 4 s (su mínimo es 6).
+    # fal. MiniMax no trae parámetro de audio y su esquema no dice si la salida lo lleva, pero la prueba pagada
+    # del 12-oct-2026 midió una pista aac en sus dos clips (texto a video e imagen a video): `con_audio=True`,
+    # y la prueba pagada marca REVISAR si un clip suyo llega sin pista. LTX no admite 4 s (su mínimo es 6).
     h3t = Modelo("h3t", "clip", H3T_T2V, H3T_I2V, familia_clip="minimax",
-                 con_audio=False, duraciones=(4, 6, 8), max_intentos=1)
+                 con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     grokv = Modelo("grokv", "clip", GROKV_T2V, GROKV_I2V, familia_clip="grok",
                    con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     ltx = Modelo("ltx", "clip", LTX_T2V, LTX_I2V, familia_clip="ltx",

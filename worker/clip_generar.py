@@ -5,7 +5,7 @@
   3. con dos o tres imágenes, Grok las junta en una sola (esa es el cuadro
      inicial); con una se anima directo; con ninguna es text-to-video;
   4. el modelo entrega el video; trae audio donde su fila lo promete (Modelo.con_audio:
-     Veo y las demás familias sí, MiniMax no), que es lo que se cobró;
+     todos los clips de la tabla hoy), que es lo que se cobró;
   5. el video se guarda en S3 bajo el usuario y el doc queda listo:
      usuarios/<user>/clips/<id>.json
 

@@ -30,7 +30,8 @@ from __future__ import annotations
 from typing import Callable
 
 # Todos prometen sonido donde el endpoint lo deja pedir (es la tarifa en créditos del producto).
-# MiniMax no trae parámetro de audio y su página no dice si la salida lo lleva: no se promete.
+# MiniMax no trae parámetro de audio (no se puede pedir ni apagar); su clip trae pista aac de todos modos
+# (medido el 12-oct-2026 en sus dos llamadas, DATOS §15).
 CON_AUDIO = True
 
 

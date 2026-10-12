@@ -30,7 +30,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 # id → (texto a video, imagen a video, familia, duraciones, con_audio)
 NUEVOS = {
     "h3t": ("minimax/h3-max-turbo/text-to-video", "minimax/h3-max-turbo/image-to-video",
-            "minimax", (4, 6, 8), False),
+            "minimax", (4, 6, 8), True),
     "grokv": ("xai/grok-imagine-video/text-to-video", "xai/grok-imagine-video/image-to-video",
               "grok", (4, 6, 8), True),
     "ltx": ("lightricks/ltx-2.5/text-to-video/fast", "lightricks/ltx-2.5/image-to-video/fast",
@@ -459,8 +459,9 @@ def test_la_resolucion_que_se_compara_es_la_que_manda_el_adaptador(id_, res):
 
 def test_minimax_a_768_no_da_un_revisar_falso_por_no_medir_720():
     probar, plan = _plan("h3t", 4)
-    assert probar._veredicto(plan, _medida(1366, 768, 4.0, audio=False)) == []
-    dif = probar._veredicto(plan, _medida(1280, 720, 4.0, audio=False))       # 720 NO es 768P
+    # lo que llegó de verdad en la prueba pagada del 12-oct-2026: 1344×768, 4.48 s, con audio
+    assert probar._veredicto(plan, _medida(1344, 768, 4.48)) == []
+    dif = probar._veredicto(plan, _medida(1280, 720, 4.0))                     # 720 NO es 768P
     assert any("se pidió 768P y el lado corto mide 720" in d for d in dif)
 
 
@@ -476,11 +477,40 @@ def test_grok_a_720_se_marca_si_llega_otra_resolucion():
     assert any("se pidió 720p y el lado corto mide 480" in d for d in probar._veredicto(plan, _medida(854, 480, 4.0)))
 
 
-def test_una_fila_que_promete_audio_se_marca_sin_pista_y_minimax_que_no_lo_promete_no():
-    probar, plan = _plan("seed", 4)
-    assert any("NO trae pista de audio" in d for d in probar._veredicto(plan, _medida(1280, 720, 4.0, audio=False)))
-    probar, plan = _plan("h3t", 4)
-    assert not any("audio" in d for d in probar._veredicto(plan, _medida(1366, 768, 4.0, audio=False)))
+@pytest.mark.parametrize("id_", sorted(NUEVOS))
+def test_una_fila_que_promete_audio_se_marca_sin_pista(id_):
+    """Las cinco prometen audio (MiniMax lo trajo en sus dos llamadas pagadas): un clip sin pista es REVISAR."""
+    probar, plan = _plan(id_)
+    segundos = plan.segundos
+    assert any("NO trae pista de audio" in d
+               for d in probar._veredicto(plan, _medida(1366, 768, float(segundos), audio=False)))
+
+
+def test_una_fila_que_no_promete_audio_no_se_marca_por_no_traerlo():
+    from pipeline import modelos_ia
+    probar = _probar()
+    m = modelos_ia.Modelo("xx", "clip", "a/t2v", "a/i2v", familia_clip="minimax",
+                          con_audio=False, duraciones=(4,))
+    plan = probar.Plan("clip", m, "x", None, "horizontal", 4, Path("w"))
+    assert not any("audio" in d for d in probar._veredicto(plan, _medida(1344, 768, 4.0, audio=False)))
+
+
+def test_minimax_midio_audio_en_la_prueba_pagada_y_la_fila_lo_promete():
+    assert _filas()["h3t"].con_audio is True
+
+
+@pytest.mark.parametrize("ancho,alto,hay_revisar", [
+    (1280, 720, False),        # Grok texto a video: 720 exacto
+    (1280, 704, False),        # Grok imagen a video (12-oct-2026): alineado a múltiplos de 16
+    (1280, 736, False),
+    (854, 480, True),          # otra resolución
+    (1920, 1080, True),
+    (960, 540, True),
+])
+def test_un_lado_corto_alineado_a_16_px_no_es_otra_resolucion(ancho, alto, hay_revisar):
+    probar, plan = _plan("grokv", 4)
+    dif = probar._veredicto(plan, _medida(ancho, alto, 4.04))
+    assert any("lado corto mide" in d for d in dif) is hay_revisar, (ancho, alto, dif)
 
 
 def test_veo_conserva_su_veredicto_de_siempre():

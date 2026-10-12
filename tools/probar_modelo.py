@@ -116,6 +116,10 @@ EXT_VIDEO = {".mp4", ".webm", ".mov"}
 
 TOLERANCIA_SEGUNDOS = 0.5      # un clip de «8 s» mide 8.0x: medio segundo sobra
 TOLERANCIA_ASPECTO = 0.03      # ancho/alto contra el aspecto pedido (3 %)
+# Un clip de «720p» puede llegar con el lado corto alineado a un múltiplo de 16: Grok Video partiendo
+# de una imagen entregó 1280×704 (704 = 44×16), el 12-oct-2026. 16 px de diferencia no son otra resolución;
+# más sí (540, 480, 1080).
+TOLERANCIA_LADO_CORTO_PX = 16
 
 # La imagen de entrada de un clip (docs/modelos-ia/DATOS-FAL-2026-10-08.md §4, página
 # del modelo): de 720p o más de lado corto y de 16:9 o 9:16. Con otra, la única
@@ -741,7 +745,7 @@ def _veredicto(plan: Plan, medida: dict) -> list[str]:
         return dif
     res = _resolucion_pedida(plan)
     pedida = re.fullmatch(r"(\d+)[pP]", res)       # «720p», «768P»; «» (Kling no la tiene) o «4k» no se comparan
-    if pedida and min(ancho, alto) != int(pedida.group(1)):
+    if pedida and abs(min(ancho, alto) - int(pedida.group(1))) > TOLERANCIA_LADO_CORTO_PX:
         dif.append(f"se pidió {res} y el lado corto mide {min(ancho, alto)}")
     seg = medida["segundos"]
     if seg is None:
