@@ -12,7 +12,7 @@ Lo que cambia por familia:
   familia     duración             resolución  audio (generate_audio)   imagen de entrada   aspect_ratio
   minimax     número               «768P»      (no existe)              image_url           solo sin imagen
   grok        entero               «720p»      (sin parámetro)          image_url           siempre
-  ltx         entero (provisional) «720p»      sí                       image_url           siempre
+  ltx         entero               «720p»      sí                       image_url           siempre
   kling       texto                (no existe) sí                       start_image_url     solo sin imagen
   seedance    texto                «720p»      sí                       image_url           siempre
 
@@ -57,16 +57,12 @@ def grok(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dic
     return args
 
 
-# LTX-2.5 Fast: la duración es un enum (6, 8, 10… 20 o «auto»). Hasta confirmar el tipo de sus miembros
-# con la relectura del esquema (que marca [números] o [textos]) se manda como ENTERO. No admite 4 s.
-def _duracion_ltx(segundos: int):
-    return segundos
-
-
 def ltx(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dict:
-    """LTX-2.5 Fast: el valor por defecto de `resolution` es 1080p ($0.13 dólares por segundo contra
-    $0.09 a 720p), así que 720p va explícito. `aspect_ratio` solo admite 16:9 y 9:16."""
-    args: dict = {"prompt": prompt, "duration": _duracion_ltx(segundos), "resolution": "720p",
+    """LTX-2.5 Fast: `duration` es un enum MEZCLADO (los enteros 6, 8… 20 y el texto «auto»; relectura del
+    12-oct-2026), así que los segundos van como entero. No admite 4 s. El valor por defecto de `resolution`
+    es 1080p ($0.13 dólares por segundo contra $0.09 a 720p), así que 720p va explícito. `aspect_ratio`
+    solo admite 16:9 y 9:16."""
+    args: dict = {"prompt": prompt, "duration": segundos, "resolution": "720p",
                   "generate_audio": CON_AUDIO, "aspect_ratio": aspecto}
     if image_url:
         args["image_url"] = image_url

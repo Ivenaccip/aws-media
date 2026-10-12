@@ -1,5 +1,5 @@
 {
- "_fuente": "Esquema público de fal leído con tools/leer_esquema_fal.py --ola4 en la máquina del dueño (work/esquemas_fal/RESUMEN.txt, 2026-10-12 00:51 GMT-6; 12 de 12 con esquema legible); lo pegó la TAREA «OLA 4 · ESQUEMAS CLIPS» el 2026-10-12. Solo las propiedades que un adaptador de clip manda o que cambian el diseño; `propiedades` trae TODAS las del endpoint y `salida` lo que devuelve (el clip se baja de video.url). `tipo_de_miembros` = «por_confirmar» marca un enum de cifras cuyo resumen todavía no distinguía número de texto (la relectura marca [números] o [textos]). Si fal cambia un esquema, se vuelve a leer y se actualiza este archivo junto con el adaptador.",
+ "_fuente": "Esquema público de fal leído con tools/leer_esquema_fal.py --ola4 en la máquina del dueño (work/esquemas_fal/RESUMEN.txt, 2026-10-12 00:51 GMT-6; 12 de 12 con esquema legible); lo pegó la TAREA «OLA 4 · ESQUEMAS CLIPS» el 2026-10-12. Los TIPOS de los enums de cifras (la duración) salen de la relectura que marca [números]/[textos] (TAREA «OLA 4 · TIPOS DE DURATION», mismo día, lector en el commit cb6a86d): en LTX son enteros más el texto «auto», en Kling y Seedance todo texto. Solo las propiedades que un adaptador de clip manda o que cambian el diseño; `propiedades` trae TODAS las del endpoint y `salida` lo que devuelve (el clip se baja de video.url). Si fal cambia un esquema, se vuelve a leer y se actualiza este archivo junto con el adaptador.",
  "minimax/h3-max-turbo/text-to-video": {
   "entrada": "H3MaxTurboTextToVideoInput",
   "propiedades": [
@@ -317,18 +317,18 @@
   "duration": {
    "tipo": "enum",
    "enum": [
-    "6",
-    "8",
-    "10",
-    "12",
-    "14",
-    "16",
-    "18",
-    "20",
+    6,
+    8,
+    10,
+    12,
+    14,
+    16,
+    18,
+    20,
     "auto"
    ],
    "por_defecto": "auto",
-   "tipo_de_miembros": "por_confirmar"
+   "tipo_de_miembros": "mezcla: enteros y el texto auto"
   },
   "generate_audio": {
    "tipo": "boolean",
@@ -384,18 +384,18 @@
   "duration": {
    "tipo": "enum",
    "enum": [
-    "6",
-    "8",
-    "10",
-    "12",
-    "14",
-    "16",
-    "18",
-    "20",
+    6,
+    8,
+    10,
+    12,
+    14,
+    16,
+    18,
+    20,
     "auto"
    ],
    "por_defecto": "auto",
-   "tipo_de_miembros": "por_confirmar"
+   "tipo_de_miembros": "mezcla: enteros y el texto auto"
   },
   "generate_audio": {
    "tipo": "boolean",
@@ -463,7 +463,7 @@
     "15"
    ],
    "por_defecto": "5",
-   "tipo_de_miembros": "por_confirmar"
+   "tipo_de_miembros": "texto"
   },
   "generate_audio": {
    "tipo": "boolean",
@@ -520,7 +520,7 @@
     "15"
    ],
    "por_defecto": "5",
-   "tipo_de_miembros": "por_confirmar"
+   "tipo_de_miembros": "texto"
   },
   "generate_audio": {
    "tipo": "boolean",
@@ -566,7 +566,7 @@
     "15"
    ],
    "por_defecto": "auto",
-   "tipo_de_miembros": "por_confirmar"
+   "tipo_de_miembros": "texto"
   },
   "generate_audio": {
    "tipo": "boolean",
@@ -639,7 +639,7 @@
     "15"
    ],
    "por_defecto": "auto",
-   "tipo_de_miembros": "por_confirmar"
+   "tipo_de_miembros": "texto"
   },
   "generate_audio": {
    "tipo": "boolean",

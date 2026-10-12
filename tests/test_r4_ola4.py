@@ -214,6 +214,20 @@ def test_los_argumentos_fijos_de_la_fila_se_suman_a_los_de_su_familia():
     assert a["duration"] == "4" and a["prompt"] == "un perro"            # y lo de la tarea sigue ahí
 
 
+def test_los_tipos_de_la_duracion_estan_confirmados_y_son_los_que_mandan_los_adaptadores():
+    """La relectura del 12-oct-2026 marcó número o texto: ya no queda nada «por confirmar» en el esquema guardado."""
+    esquemas = _esquemas()
+    assert "por_confirmar" not in json.dumps(_fixture())
+    ltx = esquemas[NUEVOS["ltx"][0]]["duration"]["enum"]
+    assert ltx[:-1] == [6, 8, 10, 12, 14, 16, 18, 20] and ltx[-1] == "auto"
+    assert all(type(v) is int for v in ltx[:-1])                   # [mezcla; textos: auto]
+    for id_ in ("kling", "seed"):
+        miembros = esquemas[NUEVOS[id_][0]]["duration"]["enum"]
+        assert all(type(v) is str for v in miembros), id_          # [textos]
+    for id_, tipo in (("h3t", int), ("grokv", int), ("ltx", int), ("kling", str), ("seed", str)):
+        assert type(_args(id_, False)["duration"]) is tipo, id_
+
+
 def test_el_esquema_guardado_dice_de_donde_sale_y_trae_los_doce_endpoints():
     datos = _fixture()
     assert "--ola4" in datos["_fuente"] and "2026-10-12" in datos["_fuente"]
@@ -243,7 +257,9 @@ def test_lo_que_manda_cada_familia_cabe_en_su_esquema_real(id_, con_imagen, form
             assert dur["min"] <= a["duration"] <= dur["max"], (id_, a["duration"])
             assert type(a["duration"]) is int or dur["tipo"] == "number"
         else:
-            assert str(a["duration"]) in dur["enum"], (id_, a["duration"])
+            # el TIPO también cuenta: «4» (texto) no es 4 (entero) para fal
+            assert any(a["duration"] == v and type(a["duration"]) is type(v) for v in dur["enum"]), \
+                (id_, a["duration"], dur["enum"])
         if "generate_audio" in esq["propiedades"]:
             assert a["generate_audio"] is True                  # el producto promete sonido donde se puede pedir
         else:

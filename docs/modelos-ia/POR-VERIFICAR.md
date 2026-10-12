@@ -74,7 +74,7 @@ para poder encenderse.
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | **encendido el 12-oct-2026 en la rama; se ofrece al desplegarla** (Ola 3, solo crear): dos filas, `nbp-2k` y `nbp-4k` (el catálogo de la web las llama «hasta 2K» y «4K»), que fijan `resolution`, piden jpeg y `enable_web_search: false`, y van a **segundo plano** (medidos 24.9 a 28.1 s en 2K y 37.4 a 43.5 s en 4K). Prueba pagada hecha el 11-oct-2026 (hora de México): 4 llamadas, todas en jpeg y con el tamaño de su resolución (2K ~4.2 MP, 4K 16.91 MP). Panel (DATOS §13): dos solicitudes de $0.15 dólares y dos de $0.30 dólares, asignadas por la hora (el panel no trae la resolución): 2K $0.15 dólares, 4K $0.30 dólares, como dice la página («el doble»). Ficha por resolución en `pricing.json`. Encendida con **14 créditos el 2K y 28 el 4K** (decisión del dueño, 12-oct-2026). Falta: el 1K (solo leído, no se vende) y **editar** (`/edit`), que no cabe en la petición y necesita su propio camino en segundo plano |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | **inerte** (Ola 4): fila y adaptador hechos con el esquema real (DATOS §14); 768P a $0.024 dólares por segundo (solo LEÍDO). Falta: prueba pagada (4 s ≈ $0.096 dólares por llamada), mirar si el clip trae audio (el esquema no lo dice) y la decisión del dueño sobre los créditos propuestos 10, 14 y 18 (4, 6 y 8 s) |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (la 1.5 es `v1.5/…`) | **inerte** (Ola 4): fila y adaptador de la versión **base** (720p, $0.07 dólares por segundo, solo LEÍDO); la 1.5 (720p a $0.14 dólares) no tiene fila ni ficha: decisión del dueño. Falta: prueba pagada (4 s ≈ $0.28 dólares) y la decisión de los créditos propuestos 26, 38 y 50 |
-| clip | LTX-2.5 Fast (`ltx`) | `lightricks/ltx-2.5/text-to-video/fast` y `/image-to-video/fast` | **inerte** (Ola 4): fila y adaptador hechos; solo 6 y 8 s (su mínimo es 6); 720p explícito ($0.09 dólares por segundo, solo LEÍDO; su defecto es 1080p). Falta: prueba pagada de 6 s (≈ $0.54 dólares), **confirmar el tipo de `duration`** (número o texto) y la decisión de los créditos propuestos 48 y 64 |
+| clip | LTX-2.5 Fast (`ltx`) | `lightricks/ltx-2.5/text-to-video/fast` y `/image-to-video/fast` | **inerte** (Ola 4): fila y adaptador hechos; solo 6 y 8 s (su mínimo es 6); 720p explícito ($0.09 dólares por segundo, solo LEÍDO; su defecto es 1080p). Falta: prueba pagada de 6 s (≈ $0.54 dólares) y la decisión de los créditos propuestos 48 y 64 |
 | clip | Veo 3.1 Fast (`veo-fast`) | `fal-ai/veo3.1/fast` y `/fast/image-to-video` | **a la venta desde el 9-oct-2026**: 54, 80 y 108 créditos (4, 6 y 8 s); los dos endpoints probados a 4 s y costo confirmado en el panel (DATOS §9). Sin medir: el tiempo de los clips de 6 y 8 s |
 | clip | Kling V3 Pro (`kling`) | `fal-ai/kling-video/v3/pro/text-to-video` y `/image-to-video` | **inerte** (Ola 4): fila y adaptador hechos (`start_image_url`, duración como texto, sin parámetro de resolución); $0.168 dólares por segundo con audio (solo LEÍDO). Falta: prueba pagada (4 s ≈ $0.672 dólares) y la decisión de los créditos propuestos 60, 90 y 120 |
 | clip | Seedance 2.0 (`seed`) | `bytedance/seedance-2.0/text-to-video` y `/image-to-video` | **inerte** (Ola 4): fila y adaptador hechos (duración como texto, 720p explícito); $0.3034 dólares por segundo en texto a video y $0.3024 en imagen a video, solo LEÍDO (el clip de 8 s sale en 216 créditos con las dos). Falta: prueba pagada (4 s ≈ $1.21 dólares por llamada, la más cara) y la decisión de los créditos propuestos 108, 162 y 216 |
@@ -223,26 +223,24 @@ la que la familia pidió, no contra 720 fijo.
 **Un solo intento por clip** (`max_intentos=1`) en los cinco, mientras no se mida cuánto tardan: un timeout de cliente no cancela el
 trabajo en fal. La prueba pagada imprime cuánto tardó y marca REVISAR si pasa del 70 % de la espera.
 
+**Tipos confirmados (12-oct-2026).** La relectura con el lector marcando tipos (DATOS §14) cerró la duda de la duración: Grok un entero, MiniMax un número, LTX los enteros 6 … 20 más el texto «auto» (se manda entero), Kling y Seedance texto. Es lo que ya mandaban los adaptadores, y `tests/test_r4_ola4.py` ahora exige el tipo exacto contra el esquema guardado.
+
 **Pendientes antes de encender cualquiera (todo decisión o dinero del dueño):**
 
-1. **Confirmar el tipo de `duration` en LTX, Kling y Seedance.** El resumen del 12-oct no distinguía número de texto en un enum de cifras;
-   `tools/leer_esquema_fal.py` ya marca `[números]`, `[textos]` o `[mezcla]`. Hoy LTX va como entero y Kling y Seedance como texto
-   (sus defectos vienen entre comillas), y `tests/test_r4_ola4.py` no puede fijar el tipo hasta releer. Un tipo equivocado lo rechaza fal
-   antes de cobrar, pero gasta la ronda.
-2. **Qué modelos se prueban**, con su costo por delante (cada prueba necesita el «sí» del dueño): estimados de la página del 8-oct, a 4 s
+1. **Qué modelos se prueban**, con su costo por delante (cada prueba necesita el «sí» del dueño): estimados de la página del 8-oct, a 4 s
    (LTX, 6 s) y por llamada: MiniMax $0.096 dólares, Grok Video $0.28, LTX $0.54, Kling $0.672 y Seedance $1.2136 (texto a video) o $1.2096
    (imagen a video). Texto a video e imagen a video son endpoints distintos y los dos deben probarse (como se hizo con Veo 3.1 Fast).
-3. **Grok Video: base o 1.5.** Entró la base. La 1.5 cuesta el doble ($0.14 dólares por segundo a 720p), suma 1080p y la página no explica la
+2. **Grok Video: base o 1.5.** Entró la base. La 1.5 cuesta el doble ($0.14 dólares por segundo a 720p), suma 1080p y la página no explica la
    diferencia: si se quiere, es una fila y una ficha más.
-4. **El audio de MiniMax.** Ni el esquema ni la página dicen si la salida lo trae; la fila no lo promete (`con_audio=False`) y la prueba pagada
+3. **El audio de MiniMax.** Ni el esquema ni la página dicen si la salida lo trae; la fila no lo promete (`con_audio=False`) y la prueba pagada
    imprime «audio: SÍ/NO». Si no lo trae, el catálogo ya dice solo «768p».
-5. **Los créditos** salen de la fórmula de siempre con el costo MEDIDO en el panel de fal (no con la lectura de la página).
-6. **La imagen de entrada.** Las reglas de lado corto y relación de aspecto que `probar_modelo` exige (720 px y 16:9 o 9:16) son las de Veo; las
+4. **Los créditos** salen de la fórmula de siempre con el costo MEDIDO en el panel de fal (no con la lectura de la página).
+5. **La imagen de entrada.** Las reglas de lado corto y relación de aspecto que `probar_modelo` exige (720 px y 16:9 o 9:16) son las de Veo; las
    de las otras familias no están leídas. En MiniMax y Kling la forma del video la decide la imagen (sus endpoints no tienen `aspect_ratio`).
-7. **La duración de MiniMax.** La página dice que el clip puede durar hasta ~0.7 s más de lo pedido: con la tolerancia de 0.5 s de `probar_modelo`,
+6. **La duración de MiniMax.** La página dice que el clip puede durar hasta ~0.7 s más de lo pedido: con la tolerancia de 0.5 s de `probar_modelo`,
    un REVISAR «se pidieron 4 s y dura 4.65 s» es de esperar y no es un fallo (el costo se anota por los segundos pedidos; el panel dirá si
    fal cobra por los pedidos o por los entregados).
-8. **Tiempos.** Nada de esto está medido. Si algún clip tarda más que la espera del clip (240 s), un solo intento es lo correcto.
+7. **Tiempos.** Nada de esto está medido. Si algún clip tarda más que la espera del clip (240 s), un solo intento es lo correcto.
 
 ### Qué va en segundo plano y por qué
 
