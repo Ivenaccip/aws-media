@@ -27,6 +27,9 @@ export interface Opcion {
   modelos?: Tarea;
   /** Cuántas imágenes de referencia admite (el «+» de la caja). Sin esto, ninguna. */
   referencias?: number;
+  /** La opción a la que pasa la caja cuando se le agrega una imagen: crear una imagen no parte de ninguna, pero
+   *  con una la tarea es editarla. Lleva el «+» sin llevar miniaturas propias. */
+  alAgregar?: string;
   nota: string;
   hueco: string;
 }
@@ -71,8 +74,9 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
       rotulo: 'Crear una imagen',
       precio: '',
       modelos: 'imagen',
+      alAgregar: 'imagen_editar',
       destino: '/imagenes.html',
-      nota: 'Desde cero, con el estilo visual que elijas.',
+      nota: 'Desde cero, con el estilo visual que elijas. Si le agregas una imagen con el +, la editamos.',
       hueco: 'Describe la imagen que quieres.',
     },
     {
