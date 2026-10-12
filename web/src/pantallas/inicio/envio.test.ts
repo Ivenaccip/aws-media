@@ -1,8 +1,8 @@
 // Lo que trae un pegado (Ctrl+V), sin pantalla: qué imágenes salen y con qué nombre.
 // El comportamiento en la caja (agregar, pasar a editar, no tocar otros campos) se prueba en Inicio.test.tsx.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { imagenesPegadas } from './envio';
+import { descripcionDeArchivos, EXTS_EDITAR, imagenesPegadas, soloImagenes, traerImagen } from './envio';
 
 const archivo = (nombre: string, tipo: string) => new File(['x'], nombre, { type: tipo });
 
@@ -95,5 +95,36 @@ describe('imagenesPegadas', () => {
       }),
     );
     expect(r.map(x => x.name)).toEqual(['imagen-pegada.png']);
+  });
+});
+
+describe('lo que sirve para el «+» y la hoja de Mis creaciones', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('la frase de archivos nombra las extensiones que de verdad se aceptan y su tope', () => {
+    const editar = descripcionDeArchivos('editar');
+    // jpg y jpeg son el mismo formato para quien lee
+    for (const ext of EXTS_EDITAR.filter(e => e !== '.jpeg')) expect(editar.toLowerCase()).toContain(ext.slice(1));
+    expect(editar).toBe('JPG, PNG o WebP · hasta 15 MB');
+    expect(descripcionDeArchivos('clip')).toBe('JPG, PNG, WebP, GIF, AVIF o HEIC · hasta 20 MB');
+  });
+
+  it('solo se quedan las imágenes (un .heic sin tipo cuenta)', () => {
+    const r = soloImagenes([archivo('a.png', 'image/png'), archivo('b.pdf', 'application/pdf'), archivo('c.HEIC', ''), archivo('d.txt', 'text/plain')]);
+    expect(r.map(f => f.name)).toEqual(['a.png', 'c.HEIC']);
+  });
+
+  it('traerImagen envuelve lo que baja del servidor con su nombre y su tipo', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('contenido', { status: 200, headers: { 'Content-Type': 'image/png' } })));
+    const f = await traerImagen({ nombre: 'abc.png', url: '/api/imagenes/abc.png' });
+    expect([f.name, f.type]).toEqual(['abc.png', 'image/png']);
+    // sin tipo en la respuesta, jpeg (lo que genera el estudio)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([120]), { status: 200 })));
+    expect((await traerImagen({ nombre: 'z.jpg', url: '/u' })).type).toBe('image/jpeg');
+  });
+
+  it('traerImagen falla si el servidor no la tiene', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 404 })));
+    await expect(traerImagen({ nombre: 'x.jpg', url: '/u' })).rejects.toThrow('no se pudo traer');
   });
 });

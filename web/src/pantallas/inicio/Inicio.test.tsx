@@ -1484,6 +1484,226 @@ describe('la caja', () => {
   });
 });
 
+describe('la hoja «Elegir de Mis creaciones»', () => {
+  const imagenesDe = (n: number) => Array.from({ length: n }, (_, i) => img(i + 1));
+  const archivosDeImagenes = (n: number): Record<string, Ruta> =>
+    Object.fromEntries(
+      Array.from({ length: n }, (_, i) => [
+        `/api/imagenes/img-${i + 1}.jpg`,
+        () => new Response('x', { status: 200, headers: { 'Content-Type': 'image/jpeg' } }),
+      ]),
+    );
+  // el «+» solo ofrece Mis creaciones cuando la lista ya llegó
+  const esperarLista = () => screen.findAllByRole('button', { name: /Abrir tu imagen/ });
+  const botonMas = (nombre = 'Agregar imágenes de referencia') => screen.getByRole('button', { name: nombre });
+  async function abrirLaHoja(nombreMas?: string) {
+    await userEvent.click(botonMas(nombreMas));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Elegir de Mis creaciones/ }));
+    return screen.findByRole('dialog', { name: 'Agregar imágenes' });
+  }
+  const tiles = (hoja: HTMLElement) => within(hoja).getAllByRole('button', { name: /tu imagen del/ });
+
+  it('inicio.biblioteca.el_mas_ofrece_subir_o_elegir_de_mis_creaciones', async () => {
+    montar({ imagenes: imagenesDe(4), rutas: archivosDeImagenes(4) });
+    const { container } = pintar();
+    await esperarLista();
+    const clic = vi.spyOn(entradaDeFotos(container), 'click');
+    expect(botonMas()).toHaveAttribute('aria-haspopup', 'menu');
+    expect(botonMas()).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(botonMas());
+    const menu = screen.getByRole('menu', { name: 'Agregar imágenes' });
+    expect(botonMas()).toHaveAttribute('aria-expanded', 'true');
+    // cada opción dice qué sirve / cuántas hay; el foco cae en la primera
+    const subir = within(menu).getByRole('menuitem', { name: /Subir de tu computadora/ });
+    expect(subir).toHaveTextContent('JPG, PNG, WebP, GIF, AVIF o HEIC · hasta 20 MB');
+    expect(within(menu).getByRole('menuitem', { name: /Elegir de Mis creaciones/ })).toHaveTextContent('4 imágenes tuyas');
+    expect(menu).toHaveTextContent('pegarlas con Ctrl+V');
+    expect(subir).toHaveFocus();
+    expect(clic).not.toHaveBeenCalled();
+    await userEvent.click(subir);
+    expect(clic).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('inicio.biblioteca.sin_imagenes_el_mas_abre_el_selector_de_siempre', async () => {
+    montar({ imagenes: [] });
+    const { container } = pintar();
+    const clic = vi.spyOn(entradaDeFotos(container), 'click');
+    await userEvent.click(botonMas());
+    expect(clic).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(botonMas()).not.toHaveAttribute('aria-haspopup');
+  });
+
+  it('inicio.biblioteca.elegir_trae_las_imagenes_a_la_caja_en_el_orden_marcado', async () => {
+    const f = montar({ imagenes: imagenesDe(4), rutas: archivosDeImagenes(4) });
+    pintar();
+    await esperarLista();
+    const hoja = await abrirLaHoja();
+    // más ancha que un diálogo común, con sus dos pestañas y lo más nuevo primero
+    expect(hoja.className).toContain('760px');
+    expect(within(hoja).getByRole('tab', { name: 'Mis creaciones' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(hoja).getByRole('tab', { name: 'Mi computadora' })).toBeInTheDocument();
+    expect(within(hoja).getByRole('status')).toHaveTextContent('0 de 3 seleccionadas');
+    const antes = tiles(hoja);
+    expect(antes).toHaveLength(4);
+    expect(within(hoja).getByRole('button', { name: 'Agregar' })).toBeDisabled();
+    // se eligen la 1.ª (img-4, la más nueva) y la 3.ª (img-2): llevan su número, en el orden en que se marcaron
+    await userEvent.click(antes[2]!);
+    await userEvent.click(antes[0]!);
+    expect(within(tiles(hoja)[2]!).getByText('1')).toBeInTheDocument();
+    expect(within(tiles(hoja)[0]!).getByText('2')).toBeInTheDocument();
+    expect(tiles(hoja)[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(within(hoja).getByRole('status')).toHaveTextContent('2 de 3 seleccionadas');
+    // elegir de nuevo la quita
+    await userEvent.click(tiles(hoja)[1]!);
+    await userEvent.click(tiles(hoja)[1]!);
+    expect(tiles(hoja)[1]).toHaveAttribute('aria-pressed', 'false');
+    // se agregan (con su nombre de archivo) y la hoja se cierra
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Agregar 2' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar imágenes' })).toBeNull());
+    const lista = screen.getByRole('list', { name: 'Imágenes de referencia' });
+    expect(within(lista).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual([
+      'Quitar «img-2.jpg»',
+      'Quitar «img-4.jpg»',
+    ]);
+    // cada una se trajo una sola vez, y la que no se eligió (img-3) ni se tocó
+    expect(f.mock.calls.filter(c => c[0] === '/api/imagenes/img-2.jpg')).toHaveLength(1);
+    expect(f.mock.calls.filter(c => c[0] === '/api/imagenes/img-4.jpg')).toHaveLength(1);
+    expect(f.mock.calls.filter(c => c[0] === '/api/imagenes/img-3.jpg')).toHaveLength(0);
+  });
+
+  it('inicio.biblioteca.el_tope_sale_de_lo_que_le_cabe_a_la_caja', async () => {
+    montar({ imagenes: imagenesDe(4), rutas: archivosDeImagenes(4) });
+    const { container } = pintar();
+    await esperarLista();
+    // con 2 fotos ya puestas solo cabe 1 más: las demás se apagan y no se pueden sumar
+    await userEvent.upload(entradaDeFotos(container), [foto('a.png'), foto('b.png')]);
+    const hoja = await abrirLaHoja();
+    expect(within(hoja).getByRole('status')).toHaveTextContent('0 de 1 seleccionadas');
+    await userEvent.click(tiles(hoja)[0]!);
+    await userEvent.click(tiles(hoja)[1]!);
+    expect(tiles(hoja)[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(tiles(hoja)[1]).toHaveAttribute('aria-pressed', 'false');
+    expect(tiles(hoja)[1]).toHaveAttribute('aria-disabled', 'true');
+    expect(within(hoja).getByRole('status')).toHaveTextContent('1 de 1 seleccionadas');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Agregar 1' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar imágenes' })).toBeNull());
+    expect(within(screen.getByRole('list', { name: 'Imágenes de referencia' })).getAllByRole('listitem')).toHaveLength(3);
+    // con las 3 puestas ya no cabe ninguna, y la hoja lo dice
+    const llena = await abrirLaHoja();
+    expect(within(llena).getByRole('status')).toHaveTextContent('Ya tienes todas las que caben');
+    expect(tiles(llena)[0]).toHaveAttribute('aria-disabled', 'true');
+    expect(within(llena).getByRole('button', { name: 'Agregar' })).toBeDisabled();
+  });
+
+  it('inicio.biblioteca.en_crear_una_imagen_elige_una_y_la_caja_pasa_a_editar', async () => {
+    montar({ imagenes: imagenesDe(4), rutas: archivosDeImagenes(4) });
+    pintar();
+    await esperarLista();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    const hoja = await abrirLaHoja('Agregar una imagen para editarla');
+    // editar admite una sola: elegir otra reemplaza a la anterior
+    expect(within(hoja).getByRole('status')).toHaveTextContent('0 de 1 seleccionadas');
+    await userEvent.click(tiles(hoja)[0]!);
+    await userEvent.click(tiles(hoja)[1]!);
+    expect(tiles(hoja)[0]).toHaveAttribute('aria-pressed', 'false');
+    expect(tiles(hoja)[1]).toHaveAttribute('aria-pressed', 'true');
+    // sus archivos son los del editor, no los del clip
+    await userEvent.click(within(hoja).getByRole('tab', { name: 'Mi computadora' }));
+    expect(within(hoja).getByText('JPG, PNG o WebP · hasta 15 MB.')).toBeInTheDocument();
+    await userEvent.click(within(hoja).getByRole('tab', { name: 'Mis creaciones' }));
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Agregar 1' }));
+    expect(await screen.findByRole('button', { name: 'Quitar «img-3.jpg»' })).toBeInTheDocument();
+    expect(botonOpcion()).toHaveTextContent('Editar una imagen');
+    expect(screen.getByRole('status')).toHaveTextContent('pasamos a «Editar una imagen»');
+  });
+
+  it('inicio.biblioteca.si_una_no_se_puede_traer_la_hoja_se_queda_y_lo_dice', async () => {
+    montar({ imagenes: imagenesDe(4), rutas: { ...archivosDeImagenes(4), '/api/imagenes/img-4.jpg': () => new Response('no', { status: 404 }) } });
+    pintar();
+    await esperarLista();
+    const hoja = await abrirLaHoja();
+    await userEvent.click(tiles(hoja)[0]!); // img-4, la que no llega
+    await userEvent.click(tiles(hoja)[1]!);
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Agregar 2' }));
+    // el error se dice y la hoja sigue abierta, con lo elegido y sin nada agregado a la caja
+    expect(await screen.findByText('No pudimos traer esa imagen — inténtalo de nuevo.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Agregar imágenes' })).toBeInTheDocument();
+    expect(tiles(hoja)[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(within(hoja).getByRole('button', { name: 'Agregar 2' })).toBeEnabled();
+    expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
+  });
+
+  it('inicio.biblioteca.cerrar_olvida_lo_elegido', async () => {
+    montar({ imagenes: imagenesDe(4), rutas: archivosDeImagenes(4) });
+    pintar();
+    await esperarLista();
+    const hoja = await abrirLaHoja();
+    await userEvent.click(tiles(hoja)[0]!);
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar imágenes' })).toBeNull());
+    expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
+    // al volver a abrirla no queda nada marcado
+    const otra = await abrirLaHoja();
+    expect(within(otra).getByRole('status')).toHaveTextContent('0 de 3 seleccionadas');
+    expect(tiles(otra).every(t => t.getAttribute('aria-pressed') === 'false')).toBe(true);
+    // Esc también cierra y también olvida
+    await userEvent.click(tiles(otra)[1]!);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar imágenes' })).toBeNull());
+    const tercera = await abrirLaHoja();
+    expect(within(tercera).getByRole('status')).toHaveTextContent('0 de 3 seleccionadas');
+  });
+
+  it('inicio.biblioteca.mi_computadora_elige_o_suelta_archivos', async () => {
+    montar({ imagenes: imagenesDe(2), rutas: archivosDeImagenes(2) });
+    const { container } = pintar();
+    await esperarLista();
+    const clic = vi.spyOn(entradaDeFotos(container), 'click');
+    const hoja = await abrirLaHoja();
+    await userEvent.click(within(hoja).getByRole('tab', { name: 'Mi computadora' }));
+    expect(within(hoja).getByText('Arrastra tus imágenes aquí')).toBeInTheDocument();
+    expect(within(hoja).getByText('JPG, PNG, WebP, GIF, AVIF o HEIC · hasta 20 MB.')).toBeInTheDocument();
+    // «Elegir archivos…» cierra la hoja y abre el selector de archivos
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Elegir archivos…' }));
+    expect(clic).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar imágenes' })).toBeNull());
+    // soltar archivos en la hoja: un texto arrastrado no se corta; una imagen se agrega a la caja y la hoja se cierra
+    const otra = await abrirLaHoja();
+    await userEvent.click(within(otra).getByRole('tab', { name: 'Mi computadora' }));
+    const zona = within(otra).getByText('Arrastra tus imágenes aquí').parentElement!;
+    expect(fireEvent.dragOver(zona, { dataTransfer: { files: [], types: ['text/plain'] } })).toBe(true);
+    expect(fireEvent.dragOver(zona, { dataTransfer: { files: [], types: ['Files'] } })).toBe(false);
+    expect(zona).toHaveClass('border-ambar');
+    fireEvent.drop(zona, { dataTransfer: { files: [foto('soltada.png'), new File(['x'], 'nota.txt', { type: 'text/plain' })], types: ['Files'] } });
+    expect(await screen.findByRole('button', { name: 'Quitar «soltada.png»' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar imágenes' })).toBeNull());
+    // lo soltado en la hoja no se agrega dos veces (la caja de atrás no lo oye)
+    expect(within(screen.getByRole('list', { name: 'Imágenes de referencia' })).getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('inicio.biblioteca.el_menu_se_cierra_con_esc_y_fuera', async () => {
+    montar({ imagenes: imagenesDe(2), rutas: archivosDeImagenes(2) });
+    pintar();
+    await esperarLista();
+    await userEvent.click(botonMas());
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(botonMas()).toHaveFocus(); // el foco vuelve al «+»
+    await userEvent.click(botonMas());
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await userEvent.click(caja());
+    expect(screen.queryByRole('menu')).toBeNull();
+    // el «+» abre y cierra
+    await userEvent.click(botonMas());
+    await userEvent.click(botonMas());
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
 describe('los tres caminos', () => {
   it('inicio.caminos.solo_con_todas_las_listas_bien_y_vacias', async () => {
     montar({ proyectos: [] });

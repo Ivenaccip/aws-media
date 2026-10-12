@@ -36,9 +36,21 @@ import { refrescarSaldo } from '../../marca/useSaldo';
 import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
-import { esLanzada, imagenesPegadas, MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from './envio';
+import {
+  descripcionDeArchivos,
+  esLanzada,
+  imagenesPegadas,
+  MAX_FOTOS_CLIP,
+  pedirClip,
+  pedirEdicion,
+  pedirImagen,
+  rechazo,
+  soloImagenes,
+  traerImagen,
+} from './envio';
+import { Biblioteca } from './Biblioteca';
 import type { Pendiente } from './Galeria';
-import { destinoDe, OPCIONES, type Familia, type Opcion } from './logica';
+import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
 import {
   admite,
@@ -74,7 +86,12 @@ export interface PropsCaja {
    *  imágenes la trae; la tarjeta se queda hasta que esa lectura salga bien (o pasen 2 minutos). Una imagen que
    *  contestó hecha ({nombre, url}) no la necesita. */
   alTerminar?: (clave: string, esperarLista: boolean) => void;
+  /** Las imágenes de «Mis creaciones»: con ellas, el «+» ofrece también «Elegir de Mis creaciones». Sin ninguna, el
+   *  «+» abre el selector de archivos, como siempre. */
+  imagenes?: Imagen[] | undefined;
 }
+
+const SIN_IMAGENES: Imagen[] = [];
 
 // una pista al pasar el ratón o al enfocar: qué hace cada cosa (mock 2026-09-07)
 const PISTA =
@@ -97,7 +114,7 @@ const RIEL = [
   { familia: 'videos', rotulo: 'Video', icono: 'video' },
 ] as const;
 
-export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir, alTerminar }, ref) {
+export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir, alTerminar, imagenes = SIN_IMAGENES }, ref) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
   // menos sorprende a quien no abra el menú de modelo (M25 · B).
   const [familia, setFamilia] = useState<Familia>('videos');
@@ -116,6 +133,11 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const [aviso, setAviso] = useState('');
   const [arrastrando, setArrastrando] = useState(false);
   const archivos = useRef<HTMLInputElement>(null);
+  // el menú del «+» (con imágenes en Mis creaciones) y la hoja «Elegir de Mis creaciones»
+  const [menuMas, setMenuMas] = useState(false);
+  const [biblioteca, setBiblioteca] = useState(false);
+  const mas = useRef<HTMLDivElement>(null);
+  const botonMas = useRef<HTMLButtonElement>(null);
   const pedidos = useRef(0);
   const seccion = useRef<HTMLElement>(null);
   // el cuadro de abajo a la derecha trae un error de la caja (un error se queda hasta cerrarlo)
@@ -169,6 +191,26 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     window.addEventListener('pageshow', volvio);
     return () => window.removeEventListener('pageshow', volvio);
   }, []);
+
+  // el menú del «+»: un clic fuera o Esc lo cierra (con Esc el foco vuelve al «+»); al abrir, el foco va a su primera opción
+  useEffect(() => {
+    if (!menuMas) return;
+    const fuera = (e: MouseEvent) => {
+      if (!mas.current?.contains(e.target as Node)) setMenuMas(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMenuMas(false);
+      botonMas.current?.focus();
+    };
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', esc);
+    mas.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [menuMas]);
 
   // El menú es más ancho que su botón, y el botón está a media fila: anclado a
   // un lado se salía por el otro. Se mide y se sujeta dentro de la ventana.
@@ -245,6 +287,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   // a «Editar una imagen» (que es la que sabe partir de una y trae solo los modelos que editan)
   const alAgregar = opcion.alAgregar ? opciones.find(o => o.id === opcion.alAgregar) : undefined;
   const admiteImagenes = maxRefs > 0 || alAgregar !== undefined;
+  // lo que se agrega rige por la tarea que va a quedar (con una imagen, «Crear una imagen» pasa a editar)
+  const tareaDeImagenes = alAgregar ?? opcion;
+  const topeDeImagenes = tareaDeImagenes.referencias ?? 0;
+  const disponibles = topeDeImagenes === 1 ? 1 : Math.max(0, topeDeImagenes - fotos.length);
+  const archivosDeLaTarea = tareaDeImagenes.id === 'clip' ? 'clip' : 'editar';
+  const hayBiblioteca = admiteImagenes && imagenes.length > 0;
 
   /** Lo que la caja dice: en el cuadro de abajo a la derecha y, si esa página no lo trae, aquí mismo. */
   function decir(tipo: 'ok' | 'mal', texto: string) {
@@ -295,6 +343,34 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     if (alAgregar) pasarAEditar(alAgregar);
   }
 
+  /** El «+»: con imágenes en Mis creaciones abre su menú; sin ellas, el selector de archivos de siempre. */
+  function alPulsarMas() {
+    if (hayBiblioteca) setMenuMas(m => !m);
+    else archivos.current?.click();
+  }
+
+  function subirDeLaComputadora() {
+    setMenuMas(false);
+    archivos.current?.click();
+  }
+
+  function abrirBiblioteca() {
+    setMenuMas(false);
+    setBiblioteca(true);
+  }
+
+  /** Las elegidas en la hoja, traídas del servidor y agregadas como cualquier otra imagen. false: no se pudo
+   *  traer alguna y la hoja se queda abierta, con lo elegido. */
+  async function traerDeLaBiblioteca(elegidas: Imagen[]): Promise<boolean> {
+    try {
+      agregar(await Promise.all(elegidas.map(traerImagen)));
+      return true;
+    } catch {
+      decir('mal', 'No pudimos traer esa imagen — inténtalo de nuevo.');
+      return false;
+    }
+  }
+
   /** «Crear una imagen» recibió una imagen: sigue «Editar una imagen», con el mismo modelo si ese también edita. */
   function pasarAEditar(editar: Opcion) {
     setOpcion(editar);
@@ -313,7 +389,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     if (!admiteImagenes || !traeArchivos(e)) return;
     e.preventDefault();
     setArrastrando(false);
-    agregar(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)));
+    agregar(soloImagenes(Array.from(e.dataTransfer.files)));
   }
 
   // Ctrl+V con una imagen copiada (una captura, o un archivo del explorador): se agrega igual que con el «+».
@@ -418,208 +494,270 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   );
 
   return (
-    // arrastrar es un atajo: el camino accesible es el botón «+» (con teclado y lector de pantalla)
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <section
-      ref={seccion}
-      onDragOver={e => {
-        // solo lo que trae archivos: mover texto dentro del propio cuadro sigue su camino normal
-        if (!admiteImagenes || !traeArchivos(e)) return;
-        e.preventDefault();
-        setArrastrando(true);
-      }}
-      onDragLeave={e => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastrando(false);
-      }}
-      onDrop={alSoltar}
-      className={unir(
-        'mb-8 flex flex-col gap-4 rounded-grande border bg-superficie p-4 min-[640px]:flex-row min-[640px]:p-5 min-[861px]:mt-[82px]',
-        arrastrando ? 'border-dashed border-ambar' : 'border-linea',
-      )}
-    >
-      <div
-        role="group"
-        aria-label="Qué quieres crear"
-        className="flex flex-none gap-1 rounded-boton border border-linea p-1 min-[640px]:w-[81px] min-[640px]:flex-col min-[640px]:gap-1.5 min-[640px]:rounded-none min-[640px]:border-0 min-[640px]:border-r min-[640px]:p-0 min-[640px]:pr-4"
+    <>
+      {/* arrastrar es un atajo: el camino accesible es el botón «+» (con teclado y lector de pantalla) */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <section
+        ref={seccion}
+        onDragOver={e => {
+          // solo lo que trae archivos: mover texto dentro del propio cuadro sigue su camino normal
+          if (!admiteImagenes || !traeArchivos(e)) return;
+          e.preventDefault();
+          setArrastrando(true);
+        }}
+        onDragLeave={e => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastrando(false);
+        }}
+        onDrop={alSoltar}
+        className={unir(
+          'mb-8 flex flex-col gap-4 rounded-grande border bg-superficie p-4 min-[640px]:flex-row min-[640px]:p-5 min-[861px]:mt-[82px]',
+          arrastrando ? 'border-dashed border-ambar' : 'border-linea',
+        )}
       >
-        {RIEL.map(r => (
-          <button
-            key={r.familia}
-            type="button"
-            aria-pressed={familia === r.familia}
-            onClick={() => {
-              setFamilia(r.familia);
-              setOpcion(OPCIONES[r.familia][0]!);
-              setAbierto(false);
-            }}
-            className={unir(
-              'flex min-h-12 flex-1 cursor-pointer flex-row items-center justify-center gap-2 rounded-medio border-0 text-sm',
-              'min-[640px]:min-h-16 min-[640px]:w-16 min-[640px]:flex-none min-[640px]:flex-col min-[640px]:gap-1 min-[640px]:text-xs',
-              familia === r.familia ? 'bg-elevada text-texto' : 'bg-transparent text-secundario hover:bg-elevada',
-            )}
-          >
-            <Icono nombre={r.icono} />
-            {r.rotulo}
-          </button>
-        ))}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <h2 id={idTitulo} className="m-0 mb-2 font-titulo text-titulo-md font-bold">
-          ¿Qué vamos a crear hoy?
-        </h2>
-        {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} />}
-        <textarea
-          ref={area}
-          aria-labelledby={idTitulo}
-          maxLength={5000}
-          value={texto}
-          onChange={e => {
-            setTexto(e.target.value);
-            setAviso('');
-          }}
-          placeholder={opcion.hueco}
-          className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
-        />
-        <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
-          <div className="flex min-w-0 gap-2.5">
-          {admiteImagenes && (
-            <>
-              {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
-              <input
-                ref={archivos}
-                type="file"
-                accept="image/*,.heic,.heif"
-                multiple={maxRefs > 1}
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-                onChange={e => {
-                  agregar(Array.from(e.target.files ?? []));
-                  e.target.value = ''; // para poder elegir el mismo archivo otra vez
-                }}
-              />
-              <button
-                type="button"
-                aria-label={
-                  maxRefs > 1
-                    ? 'Agregar imágenes de referencia'
-                    : alAgregar
-                      ? 'Agregar una imagen para editarla'
-                      : 'Agregar la imagen que quieres editar'
-                }
-                title="Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V"
-                onClick={() => archivos.current?.click()}
-                className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
-              >
-                <Icono nombre="mas" />
-              </button>
-            </>
-          )}
-          <div ref={menu} className="relative min-w-0 flex-1 min-[640px]:flex-none">
+        <div
+          role="group"
+          aria-label="Qué quieres crear"
+          className="flex flex-none gap-1 rounded-boton border border-linea p-1 min-[640px]:w-[81px] min-[640px]:flex-col min-[640px]:gap-1.5 min-[640px]:rounded-none min-[640px]:border-0 min-[640px]:border-r min-[640px]:p-0 min-[640px]:pr-4"
+        >
+          {RIEL.map(r => (
             <button
-              ref={boton}
+              key={r.familia}
               type="button"
-              aria-haspopup="listbox"
-              aria-expanded={abierto}
-              aria-controls={idLista}
-              data-pista={opcion.nota}
-              onClick={() => (abierto ? setAbierto(false) : abrir())}
-              onKeyDown={e => {
-                if (e.key === 'ArrowDown' && !abierto) {
-                  e.preventDefault();
-                  abrir();
-                }
+              aria-pressed={familia === r.familia}
+              onClick={() => {
+                setFamilia(r.familia);
+                setOpcion(OPCIONES[r.familia][0]!);
+                setAbierto(false);
               }}
               className={unir(
-                PISTA,
-                'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
-                'min-[640px]:min-h-11 min-[640px]:max-w-full min-[640px]:w-auto min-[640px]:justify-start',
+                'flex min-h-12 flex-1 cursor-pointer flex-row items-center justify-center gap-2 rounded-medio border-0 text-sm',
+                'min-[640px]:min-h-16 min-[640px]:w-16 min-[640px]:flex-none min-[640px]:flex-col min-[640px]:gap-1 min-[640px]:text-xs',
+                familia === r.familia ? 'bg-elevada text-texto' : 'bg-transparent text-secundario hover:bg-elevada',
               )}
             >
-              {opcion.rotulo}{' '}
-              <span aria-hidden="true" className="text-secundario">
-                ▾
-              </span>
+              <Icono nombre={r.icono} />
+              {r.rotulo}
             </button>
-            {abierto && (
-              <div
-                ref={lista}
-                id={idLista}
-                role="listbox"
-                aria-label="Opciones"
-                className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(400px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
-              >
-                {opciones.map((o, i) => (
-                  <div
-                    key={o.id}
-                    role="option"
-                    aria-selected={o.id === opcion.id}
-                    tabIndex={i === marcada ? 0 : -1}
-                    onClick={() => elegir(o)}
-                    onKeyDown={teclaLista}
-                    onMouseEnter={() => setMarcada(i)}
-                    className={unir(
-                      'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
-                      (i === marcada || o.id === opcion.id) && 'bg-elevada',
-                    )}
-                  >
-                    <span className="flex items-baseline justify-between gap-3">
-                      <b className="text-sm font-semibold">{o.rotulo}</b>
-                      <span className="text-xs whitespace-nowrap text-secundario">
-                        {o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`}
-                      </span>
-                    </span>
-                    <small className="block text-xs text-secundario">{o.nota}</small>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          </div>
-
-          <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
-            {tarea && modelo && (
-              <MenuModelo
-                key={tarea}
-                tarea={tarea}
-                grupos={grupos}
-                elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
-                alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
-                precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos)!}
-                alCrear={enviar}
-                enviando={enviando}
-                {...(duraciones.length
-                  ? {
-                      duracion: {
-                        segundos,
-                        opciones: duraciones,
-                        alElegir: elegirDuracion,
-                        admite: m => admite(tarea, m, segundos),
-                        desde: m => duracionesDe(tarea, m)[0]!,
-                      },
-                    }
-                  : {})}
-                {...(tarea === 'clip' && fotos.length >= 2
-                  ? { nota: `+ ${ESTRELLA} ${tarifaClip.componer_imagenes} por juntar tus ${fotos.length} imágenes en una` }
-                  : {})}
-              />
-            )}
-            {crear}
-          </div>
+          ))}
         </div>
-        {error && (
-          <p role="alert" className="mt-2.5 mb-0 text-xs text-error">
-            {error}
-          </p>
-        )}
-        {aviso && !error && (
-          <p role="status" className="mt-2.5 mb-0 text-xs text-secundario">
-            {aviso}
-          </p>
-        )}
-      </div>
-    </section>
+
+        <div className="min-w-0 flex-1">
+          <h2 id={idTitulo} className="m-0 mb-2 font-titulo text-titulo-md font-bold">
+            ¿Qué vamos a crear hoy?
+          </h2>
+          {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} />}
+          <textarea
+            ref={area}
+            aria-labelledby={idTitulo}
+            maxLength={5000}
+            value={texto}
+            onChange={e => {
+              setTexto(e.target.value);
+              setAviso('');
+            }}
+            placeholder={opcion.hueco}
+            className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
+          />
+          <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
+            <div className="flex min-w-0 gap-2.5">
+            {admiteImagenes && (
+              <>
+                {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
+                <input
+                  ref={archivos}
+                  type="file"
+                  accept="image/*,.heic,.heif"
+                  multiple={maxRefs > 1}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="hidden"
+                  onChange={e => {
+                    agregar(Array.from(e.target.files ?? []));
+                    e.target.value = ''; // para poder elegir el mismo archivo otra vez
+                  }}
+                />
+                <div ref={mas} className="relative flex-none">
+                  <button
+                    ref={botonMas}
+                    type="button"
+                    aria-label={
+                      maxRefs > 1
+                        ? 'Agregar imágenes de referencia'
+                        : alAgregar
+                          ? 'Agregar una imagen para editarla'
+                          : 'Agregar la imagen que quieres editar'
+                    }
+                    title="Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V"
+                    {...(hayBiblioteca ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuMas } : {})}
+                    onClick={alPulsarMas}
+                    className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
+                  >
+                    <Icono nombre="mas" />
+                  </button>
+                  {menuMas && (
+                    <div
+                      role="menu"
+                      aria-label="Agregar imágenes"
+                      className="absolute top-[calc(100%+8px)] left-0 z-20 w-[min(340px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={subirDeLaComputadora}
+                        className="flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada"
+                      >
+                        <Icono nombre="subir" className="text-secundario" />
+                        <span className="block min-w-0 flex-1">
+                          <b className="block text-sm font-semibold">Subir de tu computadora</b>
+                          <small className="block text-xs text-secundario">{descripcionDeArchivos(archivosDeLaTarea)}</small>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={abrirBiblioteca}
+                        className="flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada"
+                      >
+                        <Icono nombre="imagen" className="text-secundario" />
+                        <span className="block min-w-0 flex-1">
+                          <b className="block text-sm font-semibold">Elegir de Mis creaciones</b>
+                          <small className="block text-xs text-secundario">
+                            {imagenes.length === 1 ? '1 imagen tuya' : `${imagenes.length} imágenes tuyas`}
+                          </small>
+                        </span>
+                      </button>
+                      <p className="m-0 mx-1 mt-1 border-t border-linea px-1.5 pt-2.5 pb-1.5 text-xs text-secundario">
+                        También puedes arrastrarlas a la caja o pegarlas con Ctrl+V.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            <div ref={menu} className="relative min-w-0 flex-1 min-[640px]:flex-none">
+              <button
+                ref={boton}
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={abierto}
+                aria-controls={idLista}
+                data-pista={opcion.nota}
+                onClick={() => (abierto ? setAbierto(false) : abrir())}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowDown' && !abierto) {
+                    e.preventDefault();
+                    abrir();
+                  }
+                }}
+                className={unir(
+                  PISTA,
+                  'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
+                  'min-[640px]:min-h-11 min-[640px]:max-w-full min-[640px]:w-auto min-[640px]:justify-start',
+                )}
+              >
+                {opcion.rotulo}{' '}
+                <span aria-hidden="true" className="text-secundario">
+                  ▾
+                </span>
+              </button>
+              {abierto && (
+                <div
+                  ref={lista}
+                  id={idLista}
+                  role="listbox"
+                  aria-label="Opciones"
+                  className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(400px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
+                >
+                  {opciones.map((o, i) => (
+                    <div
+                      key={o.id}
+                      role="option"
+                      aria-selected={o.id === opcion.id}
+                      tabIndex={i === marcada ? 0 : -1}
+                      onClick={() => elegir(o)}
+                      onKeyDown={teclaLista}
+                      onMouseEnter={() => setMarcada(i)}
+                      className={unir(
+                        'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
+                        (i === marcada || o.id === opcion.id) && 'bg-elevada',
+                      )}
+                    >
+                      <span className="flex items-baseline justify-between gap-3">
+                        <b className="text-sm font-semibold">{o.rotulo}</b>
+                        <span className="text-xs whitespace-nowrap text-secundario">
+                          {o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`}
+                        </span>
+                      </span>
+                      <small className="block text-xs text-secundario">{o.nota}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            </div>
+
+            <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
+              {tarea && modelo && (
+                <MenuModelo
+                  key={tarea}
+                  tarea={tarea}
+                  grupos={grupos}
+                  elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
+                  alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
+                  precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos)!}
+                  alCrear={enviar}
+                  enviando={enviando}
+                  {...(duraciones.length
+                    ? {
+                        duracion: {
+                          segundos,
+                          opciones: duraciones,
+                          alElegir: elegirDuracion,
+                          admite: m => admite(tarea, m, segundos),
+                          desde: m => duracionesDe(tarea, m)[0]!,
+                        },
+                      }
+                    : {})}
+                  {...(tarea === 'clip' && fotos.length >= 2
+                    ? { nota: `+ ${ESTRELLA} ${tarifaClip.componer_imagenes} por juntar tus ${fotos.length} imágenes en una` }
+                    : {})}
+                />
+              )}
+              {crear}
+            </div>
+          </div>
+          {error && (
+            <p role="alert" className="mt-2.5 mb-0 text-xs text-error">
+              {error}
+            </p>
+          )}
+          {aviso && !error && (
+            <p role="status" className="mt-2.5 mb-0 text-xs text-secundario">
+              {aviso}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* fuera del <section>: lo que se suelta o se hace en la hoja no sube hasta el arrastre de la caja */}
+      <Biblioteca
+        abierto={biblioteca}
+        alCambiar={setBiblioteca}
+        imagenes={imagenes}
+        disponibles={disponibles}
+        reemplaza={topeDeImagenes === 1}
+        alAgregar={traerDeLaBiblioteca}
+        alElegirArchivos={() => {
+          setBiblioteca(false);
+          archivos.current?.click();
+        }}
+        alSoltarArchivos={soltados => {
+          setBiblioteca(false);
+          agregar(soloImagenes(soltados));
+        }}
+        descripcionArchivos={descripcionDeArchivos(archivosDeLaTarea)}
+      />
+    </>
   );
 });
 

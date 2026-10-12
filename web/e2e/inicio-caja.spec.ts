@@ -15,8 +15,23 @@ const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/moderar': { permitido: true },
 };
 
-async function inicio(page: Page, generar: { estado: number; cuerpo: unknown; demoraMs?: number }) {
+// un PNG de 1×1: lo que «sirve» el estudio como imagen de Mis creaciones
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+const imagenDeMisCreaciones = (i: number) => ({ nombre: `img-${i}.jpg`, url: `/api/imagenes/img-${i}.jpg`, creado: 1_758_000_000 + i });
+
+async function inicio(
+  page: Page,
+  generar: { estado: number; cuerpo: unknown; demoraMs?: number },
+  imagenes: Array<ReturnType<typeof imagenDeMisCreaciones>> = [],
+) {
   for (const [ruta, json] of Object.entries(RESPUESTAS_VACIAS)) await page.route(ruta, r => r.fulfill({ json }));
+  if (imagenes.length) {
+    await page.route('**/api/imagenes', r => r.fulfill({ json: { total: imagenes.length, imagenes } }));
+    await page.route('**/api/imagenes/*.jpg', r => r.fulfill({ body: PNG_1X1, contentType: 'image/png' }));
+  }
   await page.route('**/api/blotato', r => r.fulfill({ status: 404, json: { detail: 'no' } }));
   await page.route('**/api/clip/generar', async r => {
     if (generar.demoraMs) await new Promise(f => setTimeout(f, generar.demoraMs));
@@ -120,4 +135,28 @@ test('sin texto, el error también sale en el cuadro', async ({ page }) => {
   await page.getByRole('button', { name: /^Modelo / }).click();
   await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
   await expect(page.locator('#bandeja').getByRole('alert')).toContainText('Cuéntanos qué quieres primero');
+});
+
+test('el «+» ofrece Mis creaciones: se eligen imágenes en la hoja y llegan a la caja', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} }, [imagenDeMisCreaciones(1), imagenDeMisCreaciones(2), imagenDeMisCreaciones(3)]);
+  const mas = page.getByRole('button', { name: 'Agregar imágenes de referencia' });
+  await mas.click();
+  await expect(page.getByRole('menu', { name: 'Agregar imágenes' })).toBeVisible();
+  await page.getByRole('menuitem', { name: /Elegir de Mis creaciones/ }).click();
+  const hoja = page.getByRole('dialog', { name: 'Agregar imágenes' });
+  await expect(hoja).toBeVisible();
+  // las miniaturas cargan de verdad (no son cuadros vacíos)
+  await expect
+    .poll(() => hoja.locator('img').first().evaluate(i => (i as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  const miniaturas = hoja.getByRole('button', { name: /tu imagen del/ });
+  await miniaturas.nth(0).click();
+  await miniaturas.nth(2).click();
+  await expect(hoja.getByRole('status')).toContainText('2 de 3 seleccionadas');
+  await page.screenshot({ path: process.env.PW_CAPTURA_HOJA ?? 'test-results/hoja-mis-creaciones.png' });
+  await hoja.getByRole('button', { name: 'Agregar 2' }).click();
+  await expect(hoja).toBeHidden();
+  // la más nueva (img-3) se marcó al final, así que va segunda
+  await expect(page.getByRole('button', { name: 'Quitar «img-3.jpg»' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Quitar «img-1.jpg»' })).toBeVisible();
 });
