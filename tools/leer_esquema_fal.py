@@ -198,6 +198,36 @@ def _resumen_de_salida(doc: dict, endpoint: str) -> list[str]:
         return [f"  salida: (no se pudo leer: {type(err).__name__}: {str(err)[:120]})"]
 
 
+def _parece_numero(v) -> bool:
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, (int, float)):
+        return True
+    try:
+        float(str(v))
+        return isinstance(v, str)
+    except ValueError:
+        return False
+
+
+def _tipos_del_enum(valores: list) -> str:
+    """` [números]`, ` [textos]` o ` [mezcla; textos: auto]` cuando el enum son cifras.
+
+    `enum[6, 8, auto]` se lee igual con 6 número que con «6» texto, y fal rechaza el tipo
+    equivocado (la duración de un clip: LTX, Kling y Seedance). Un enum de nombres
+    («square_hd», «16:9») no lleva marca: ahí no hay duda."""
+    if not any(_parece_numero(v) for v in valores):
+        return ""
+    numeros = [v for v in valores if not isinstance(v, str)]
+    textos = [v for v in valores if isinstance(v, str)]
+    if not textos:
+        return " [números]"
+    if not numeros:
+        return " [textos]"
+    return f" [mezcla; textos: {', '.join(textos)}]" if len(textos) <= len(numeros) else \
+        f" [mezcla; números: {', '.join(str(v) for v in numeros)}]"
+
+
 def _valores(doc: dict, p) -> list[str]:
     """Una descripción corta de lo que admite una propiedad (tipo, enum, objeto, rangos)."""
     p = _ref(doc, p)
@@ -207,7 +237,7 @@ def _valores(doc: dict, p) -> list[str]:
         if isinstance(p.get(alt), list):
             return [v for sub in p[alt] for v in _valores(doc, sub)]
     if isinstance(p.get("enum"), list):
-        return ["enum[" + ", ".join(str(v) for v in p["enum"]) + "]"]
+        return ["enum[" + ", ".join(str(v) for v in p["enum"]) + "]" + _tipos_del_enum(p["enum"])]
     t = p.get("type")
     if t == "object":
         props = ", ".join(sorted((p.get("properties") or {})))

@@ -369,3 +369,23 @@ def test_una_salida_rota_no_tira_la_lectura():
     doc["components"]["schemas"]["ClipOutput"]["properties"]["video"] = {"$ref": "#/components/schemas/Nada"}
     r = leer.resumir(doc, CLIP)
     assert not r.startswith(leer.SIN_RESUMEN) and "entrada: ClipInput" in r
+
+
+# ---------------------------------------------------------------------------
+# El tipo de un enum de cifras (la duración de un clip): número o texto no se ven igual a fal.
+
+@pytest.mark.parametrize("valores,marca", [
+    ([6, 8, 10], " [números]"),
+    (["3", "4", "5"], " [textos]"),
+    ([6, 8, 10, "auto"], " [mezcla; textos: auto]"),
+    (["auto", "4", 5, 6, 7], " [mezcla; textos: auto, 4]"),
+    (["square_hd", "landscape_16_9"], ""),                  # nombres: no hay duda, no hay marca
+    (["16:9", "9:16"], ""),                                 # relaciones de aspecto: tampoco
+    (["480p", "720p"], ""),
+])
+def test_un_enum_de_cifras_dice_si_son_numeros_o_texto(valores, marca):
+    doc = {"paths": {"/x": {"post": {"requestBody": {"content": {"application/json": {
+        "schema": {"type": "object", "properties": {"duration": {"enum": valores}}}}}}}}}}
+    r = leer.resumir(doc, "x/y")
+    esperado = "enum[" + ", ".join(str(v) for v in valores) + "]" + marca
+    assert f"- duration: {esperado}" in r
