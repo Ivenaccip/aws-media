@@ -901,9 +901,28 @@ describe('la caja', () => {
     montar();
     pintar();
     const seccion = caja().closest('section')!;
-    fireEvent.dragOver(seccion, { dataTransfer: { files: [] } });
-    fireEvent.drop(seccion, { dataTransfer: { files: [foto('arrastrada.png')] } });
+    fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['Files'] } });
+    fireEvent.drop(seccion, { dataTransfer: { files: [foto('arrastrada.png')], types: ['Files'] } });
     expect(await screen.findByRole('button', { name: 'Quitar «arrastrada.png»' })).toBeInTheDocument();
+  });
+
+  it('inicio.caja.arrastrar_una_imagen_a_crear_una_imagen_pasa_a_editar_y_un_texto_arrastrado_no_se_corta', async () => {
+    montar();
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    const seccion = caja().closest('section')!;
+    // mover un texto seleccionado dentro de la caja (no trae archivos) sigue su camino normal: nadie lo cancela
+    expect(fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['text/plain'] } })).toBe(true);
+    expect(fireEvent.drop(seccion, { dataTransfer: { files: [], types: ['text/plain'] } })).toBe(true);
+    expect(seccion).not.toHaveClass('border-dashed');
+    expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    // un archivo sí: se acepta el arrastre y, al soltarlo, la caja pasa a editar
+    expect(fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['Files'] } })).toBe(false);
+    expect(seccion).toHaveClass('border-dashed');
+    fireEvent.drop(seccion, { dataTransfer: { files: [foto('arrastrada.png')], types: ['Files'] } });
+    expect(await screen.findByRole('button', { name: 'Quitar «arrastrada.png»' })).toBeInTheDocument();
+    expect(botonOpcion()).toHaveTextContent('Editar una imagen');
   });
 
   it('inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita', async () => {
@@ -955,7 +974,10 @@ describe('la caja', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     await userEvent.upload(entradaDeFotos(container), new File(['x'], 'nota.txt', { type: 'image/png' }));
     expect(screen.getByRole('alert')).toHaveTextContent('«nota.txt» no se puede usar');
-    // el archivo se rechazó con el motivo del editor (sirve .jpg, .jpeg, .png, .webp): la caja sigue donde estaba
+    // un .gif lo lee el clip pero NO el editor: en «Crear una imagen» rige la lista del editor
+    await userEvent.upload(entradaDeFotos(container), foto('animada.gif', 'image/gif'));
+    expect(screen.getByRole('alert')).toHaveTextContent('«animada.gif» no se puede usar. Sirven: .jpg, .jpeg, .png, .webp.');
+    // la caja sigue donde estaba y sin miniatura
     expect(botonOpcion()).toHaveTextContent('Crear una imagen');
     expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
   });
@@ -981,8 +1003,10 @@ describe('la caja', () => {
     pegar(caja(), { archivos: [foto('image.png'), foto('image.png')] });
     expect(await screen.findByRole('alert')).toHaveTextContent('Como mucho 3');
     expect(screen.getByRole('button', { name: 'Quitar «imagen-pegada-1.png»' })).toBeInTheDocument();
-    // da igual dónde esté el foco de la página
+    // da igual dónde esté el foco de la página: con un lugar libre, el pegado sobre el body suma
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar «vacaciones.jpg»' }));
     pegar(document.body, { archivos: [foto('suelta.webp', 'image/webp')] });
+    expect(await screen.findByRole('button', { name: 'Quitar «suelta.webp»' })).toBeInTheDocument();
     expect(within(screen.getByRole('list', { name: 'Imágenes de referencia' })).getAllByRole('listitem')).toHaveLength(3);
   });
 
@@ -992,6 +1016,17 @@ describe('la caja', () => {
     const archivo = new File(['x'], 'image.png', { type: 'image/png' });
     pegar(caja(), { elementos: [{ kind: 'string', getAsFile: () => null }, { kind: 'file', getAsFile: () => archivo }] });
     expect(await screen.findByRole('button', { name: 'Quitar «imagen-pegada.png»' })).toBeInTheDocument();
+  });
+
+  it('inicio.caja.pegar_un_archivo_del_finder_cuenta_aunque_el_texto_sea_su_nombre', async () => {
+    montar();
+    pintar();
+    // el Finder de macOS (con Chrome) pone el NOMBRE del archivo como texto junto al archivo: es la imagen, no letras
+    expect(pegar(caja(), { archivos: [foto('Foto del gato.png')], texto: 'Foto del gato.png' })).toBe(false);
+    expect(await screen.findByRole('button', { name: 'Quitar «Foto del gato.png»' })).toBeInTheDocument();
+    // pero un texto que no es el nombre del archivo sigue siendo texto
+    expect(pegar(caja(), { archivos: [foto('otra.png')], texto: 'una tabla de Excel' })).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Quitar «otra.png»' })).toBeNull();
   });
 
   it('inicio.caja.pegar_texto_o_lo_que_no_es_imagen_no_se_toca', async () => {
@@ -1125,6 +1160,82 @@ describe('la caja', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     // un veto no es «ya lo estamos creando»
     expect(avisos.mostrar).toHaveBeenCalledTimes(1);
+  });
+
+  it('inicio.caja.al_corregir_lo_que_faltaba_el_error_del_cuadro_se_quita_y_el_creando_no', async () => {
+    const avisos = ponerAvisos();
+    montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
+    const { container } = pintar();
+    const dicho = () => avisos.mostrar.mock.calls.map(c => ({ texto: c[0], ...c[1] }));
+    const crearEnMenu = async () => {
+      await userEvent.click(botonModelo());
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('button', { name: 'Crear' }));
+    };
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await elegirOpcion('Editar una imagen');
+    await userEvent.type(caja(), 'ponle un sombrero');
+    await crearEnMenu();
+    expect(dicho().at(-1)).toEqual({ texto: 'Agrega con el + la imagen que quieres editar.', tipo: 'mal', clave: 'caja' });
+    // el aviso cae abajo a la derecha, donde está el «Crear» del menú: el menú se cierra para no quedar tapado
+    expect(screen.queryByRole('dialog', { name: 'Elegir modelo' })).toBeNull();
+    expect(avisos.quitar).not.toHaveBeenCalled();
+    // agregada la imagen, «Agrega con el +» ya no dice la verdad: sale del cuadro
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    expect(avisos.quitar).toHaveBeenCalledTimes(1);
+    expect(avisos.quitar).toHaveBeenCalledWith('caja');
+    // y se pide: «ya estamos editando» (verde)
+    await crearEnMenu();
+    await waitFor(() => expect(dicho().at(-1)).toEqual({ texto: expect.stringContaining('Ya estamos editando tu imagen'), tipo: 'ok', clave: 'caja' }));
+    await waitFor(() => expect(caja()).toHaveValue(''));
+    // lo verde NO es un error: agregar otra imagen no lo quita
+    await userEvent.upload(entradaDeFotos(container), foto('perro.png'));
+    expect(avisos.quitar).toHaveBeenCalledTimes(1);
+  });
+
+  it('inicio.caja.un_lote_con_una_imagen_buena_y_otra_mala_conserva_el_aviso_de_la_mala', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    const { container } = pintar();
+    await userEvent.upload(entradaDeFotos(container), [foto('buena.png'), new File(['x'], 'nota.txt', { type: 'image/png' })]);
+    expect(await screen.findByRole('button', { name: 'Quitar «buena.png»' })).toBeInTheDocument();
+    // la buena se agrega y la mala se dice (y no se quita después)
+    expect(avisos.mostrar).toHaveBeenLastCalledWith(expect.stringContaining('«nota.txt» no se puede usar'), { tipo: 'mal', clave: 'caja' });
+    expect(avisos.quitar).not.toHaveBeenCalled();
+  });
+
+  it('inicio.caja.los_avisos_de_agregar_tambien_van_al_cuadro', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    const { container } = pintar();
+    // el tope de fotos del clip
+    await userEvent.upload(entradaDeFotos(container), [foto('a.png'), foto('b.png'), foto('c.png'), foto('d.png')]);
+    expect(avisos.mostrar).toHaveBeenLastCalledWith('Como mucho 3 imágenes.', { tipo: 'mal', clave: 'caja' });
+    // «Crear una imagen» recibe una imagen y pasa a editar: lo dice en el cuadro, en verde
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    expect(avisos.mostrar).toHaveBeenLastCalledWith('Con una imagen, la caja la edita: pasamos a «Editar una imagen».', { tipo: 'ok', clave: 'caja' });
+    // y nada de eso aparece junto a la caja
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('inicio.caja.el_modelo_de_editar_que_ya_se_eligio_no_se_pisa_al_pasar_desde_crear', async () => {
+    montar();
+    const { container } = pintar();
+    const elegirModelo = async (nombre: RegExp) => {
+      await userEvent.click(botonModelo());
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('radio', { name: nombre }));
+      await userEvent.keyboard('{Escape}');
+    };
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    await elegirOpcion('Editar una imagen');
+    await elegirModelo(/Nano Banana 2/);
+    await elegirOpcion('Crear una imagen');
+    await elegirModelo(/Grok Imagine/); // elegido a propósito para crear
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    expect(botonOpcion()).toHaveTextContent('Editar una imagen');
+    // el de editar se respeta: no se le pisa con el de crear
+    expect(botonModelo()).toHaveTextContent('Modelo Nano Banana 2');
   });
 
   it('inicio.caja.la_duracion_recalcula_los_precios_el_chip_y_el_pie', async () => {

@@ -28,7 +28,7 @@ import {
 } from 'react';
 
 import { ErrorApi } from '../../nucleo/api';
-import { avisar } from '../../nucleo/avisos';
+import { avisar, quitarAviso } from '../../nucleo/avisos';
 import { ESTRELLA } from '../../nucleo/estrella';
 import { moderar } from '../../nucleo/moderar';
 import { clip as tarifaClip } from '../../nucleo/tarifas';
@@ -88,6 +88,9 @@ const PISTA =
 // «Tus trabajos» (static/trabajos.js). Comparten clave: lo nuevo reemplaza lo anterior de la caja.
 const CLAVE_AVISO = 'caja';
 
+/** ¿Lo que se arrastra trae archivos? Un texto seleccionado que se mueve dentro del cuadro no los trae. */
+const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
 // el riel: dos botones con icono. En celular es una fila sobre el texto.
 const RIEL = [
   { familia: 'imagenes', rotulo: 'Imagen', icono: 'imagen' },
@@ -115,6 +118,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const archivos = useRef<HTMLInputElement>(null);
   const pedidos = useRef(0);
   const seccion = useRef<HTMLElement>(null);
+  // el cuadro de abajo a la derecha trae un error de la caja (un error se queda hasta cerrarlo)
+  const errorEnElCuadro = useRef(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const boton = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
@@ -244,6 +249,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   /** Lo que la caja dice: en el cuadro de abajo a la derecha y, si esa página no lo trae, aquí mismo. */
   function decir(tipo: 'ok' | 'mal', texto: string) {
     if (avisar(texto, { tipo, clave: CLAVE_AVISO })) {
+      errorEnElCuadro.current = tipo === 'mal';
       setError('');
       setAviso('');
     } else if (tipo === 'mal') {
@@ -255,12 +261,24 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     }
   }
 
+  /** Lo que estaba mal ya se corrigió (se agregó la imagen, se vuelve a pedir): se quita el error, esté junto a la caja
+   *  o en el cuadro. Un aviso verde de «ya lo estamos creando» no es un error y se queda. */
+  function limpiarError() {
+    setError('');
+    if (errorEnElCuadro.current) {
+      errorEnElCuadro.current = false;
+      quitarAviso(CLAVE_AVISO);
+    }
+  }
+
   function agregar(nuevos: File[]) {
     // con una imagen en «Crear una imagen» la tarea que rige es la de editar: sus topes y sus extensiones
     const tarea = alAgregar ?? opcion;
     const tope = tarea.referencias ?? 0;
     if (!tope) return;
     setAviso('');
+    // lo de antes ya no vale (faltaba la imagen, la anterior no servía…); lo que rechace este lote se dice después
+    limpiarError();
     const buenos: File[] = [];
     for (const f of nuevos) {
       const motivo = rechazo(f, tarea.id === 'clip' ? 'clip' : 'editar');
@@ -271,7 +289,6 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       buenos.push(f);
     }
     if (!buenos.length) return;
-    setError('');
     // con una sola referencia (editar) la nueva reemplaza; con varias, se suman hasta el tope
     setRefs(r => (tope === 1 ? [buenos[0]!] : [...r, ...buenos].slice(0, tope)));
     if (tope > 1 && fotos.length + buenos.length > tope) decir('mal', `Como mucho ${tope} imágenes.`);
@@ -293,7 +310,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   }
 
   function alSoltar(e: React.DragEvent) {
-    if (!admiteImagenes) return;
+    if (!admiteImagenes || !traeArchivos(e)) return;
     e.preventDefault();
     setArrastrando(false);
     agregar(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)));
@@ -319,26 +336,27 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     return () => document.removeEventListener('paste', oir);
   }, []);
 
-  /** Devuelve true si el pedido salió (el menú de modelo se cierra); false si faltó algo. */
+  /** Devuelve true si el menú de modelo debe cerrarse: salió el pedido, o faltaba algo y el aviso (que cae abajo a la
+   *  derecha, donde está el «Crear» del menú) no debe quedar tapando el botón. false solo si ya hay un pedido en vuelo. */
   function enviar(): boolean {
     const limpio = texto.trim();
     if (!limpio) {
       decir('mal', 'Cuéntanos qué quieres primero — o entra por el menú de la izquierda para ver el formulario completo.');
       area.current?.focus();
-      return false;
+      return true;
     }
     if (enviando) return false;
     // lo que elige modelo se pide aquí; lo demás va a su pantalla con el texto puesto
     if (opcion.modelos && modeloId) {
       if (opcion.id === 'imagen_editar' && !fotos.length) {
         decir('mal', 'Agrega con el + la imagen que quieres editar.');
-        return false;
+        return true;
       }
-      setError('');
+      limpiarError();
       void pedirAqui(limpio, modeloId, fotos);
       return true;
     }
-    setError('');
+    limpiarError();
     setEnviando(true); // hasta que la página navegue
     ir(destinoDe(opcion, limpio, modeloId));
     return true;
@@ -364,7 +382,10 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       salio = true;
       // la tarjeta de «Generando…» y este aviso salen juntos; si el servidor lo rechaza, el error lo reemplaza
       enElCuadro = avisar(`Ya estamos ${queHace}. Míralo abajo, en «Mis creaciones».`, { tipo: 'ok', clave: CLAVE_AVISO });
-      if (enElCuadro) setError('');
+      if (enElCuadro) {
+        errorEnElCuadro.current = false; // el aviso verde reemplazó al error de antes
+        setError('');
+      }
       // una imagen de un modelo que tarda contesta `lanzado` (ya se cobró, va en camino):
       // para la caja es lo mismo que una hecha, y «Mis creaciones» la enseña generándose
       if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
@@ -402,7 +423,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     <section
       ref={seccion}
       onDragOver={e => {
-        if (!admiteImagenes) return;
+        // solo lo que trae archivos: mover texto dentro del propio cuadro sigue su camino normal
+        if (!admiteImagenes || !traeArchivos(e)) return;
         e.preventDefault();
         setArrastrando(true);
       }}

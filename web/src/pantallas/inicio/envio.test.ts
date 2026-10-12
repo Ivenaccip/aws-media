@@ -57,6 +57,27 @@ describe('imagenesPegadas', () => {
     expect(imagenesPegadas(portapapeles({ texto: '  \n', files: [archivo('image.png', 'image/png')] }))).toHaveLength(1);
   });
 
+  it('el Finder de macOS manda el NOMBRE del archivo como texto: es la imagen, no letras', () => {
+    const una = archivo('Foto del gato.png', 'image/png');
+    // el nombre solo, sin mayúsculas, sin extensión, con la ruta o como file:///
+    for (const texto of ['Foto del gato.png', 'foto del gato.PNG', 'Foto del gato', '/Users/ana/Fotos/Foto del gato.png', 'file:///Users/ana/Fotos/Foto%20del%20gato.png', 'Foto del gato.png\n']) {
+      expect(imagenesPegadas(portapapeles({ files: [una], texto })), texto).toHaveLength(1);
+    }
+    // macOS guarda el nombre del archivo descompuesto (NFD) y el texto compuesto (NFC)
+    const nfd = archivo('Fotografi\u0301a.png'.normalize('NFD'), 'image/png');
+    expect(imagenesPegadas(portapapeles({ files: [nfd], texto: 'Fotografía.png'.normalize('NFC') }))).toHaveLength(1);
+    // varios archivos: una línea por nombre
+    const dos = imagenesPegadas(portapapeles({ files: [archivo('a.png', 'image/png'), archivo('b.jpg', 'image/jpeg')], texto: 'a.png\nb.jpg' }));
+    expect(dos.map(f => f.name)).toEqual(['a.png', 'b.jpg']);
+  });
+
+  it('un texto que NO son solo los nombres de los archivos sigue ganando', () => {
+    const f = archivo('a.png', 'image/png');
+    expect(imagenesPegadas(portapapeles({ files: [f], texto: 'a.png y algo más' }))).toEqual([]);
+    expect(imagenesPegadas(portapapeles({ files: [f], texto: 'a.png\notra cosa' }))).toEqual([]);
+    expect(imagenesPegadas(portapapeles({ files: [f], texto: 'file:///x/%E0%A4%A.png' }))).toEqual([]); // un % suelto no rompe nada
+  });
+
   it('lo que no es imagen se deja pasar; un .heic sin tipo sí cuenta', () => {
     expect(imagenesPegadas(portapapeles({ files: [archivo('cuenta.pdf', 'application/pdf')] }))).toEqual([]);
     expect(imagenesPegadas(portapapeles({ files: [archivo('foto.HEIC', '')] })).map(f => f.name)).toEqual(['foto.HEIC']);

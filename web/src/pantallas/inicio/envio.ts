@@ -66,13 +66,38 @@ function nombrePegada(f: File, posicion: number, total: number): string {
   return `imagen-pegada${total > 1 ? '-' + posicion : ''}${ext}`;
 }
 
+const normal = (s: string) => s.normalize('NFC').toLowerCase();
+const sinExtension = (s: string) => s.replace(/\.[^./\\]+$/, '');
+
+/** ¿Todo ese texto son nombres de los archivos que vienen en el portapapeles? El Finder de macOS (con Chrome, Edge o
+ *  Brave) pone el NOMBRE del archivo —o su ruta, o su file:///— como texto junto al archivo: es el mismo pegado, no
+ *  letras que alguien copió. Se compara sin mayúsculas, con o sin extensión y normalizando los acentos (macOS guarda
+ *  el nombre del archivo descompuesto y el texto compuesto). */
+function esNombreDeArchivo(texto: string, archivos: File[]): boolean {
+  const nombres = new Set(archivos.flatMap(f => [normal(f.name), normal(sinExtension(f.name))]));
+  const lineas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return (
+    lineas.length > 0 &&
+    lineas.every(linea => {
+      let ultimo = linea.split(/[\\/]/).filter(Boolean).pop() ?? '';
+      try {
+        if (/^file:\/\//i.test(linea)) ultimo = decodeURIComponent(ultimo);
+      } catch {
+        return false; // un % suelto: no es una dirección de archivo
+      }
+      return nombres.has(normal(ultimo));
+    })
+  );
+}
+
 /**
  * Las imágenes que trae un pegado (Ctrl+V): un archivo copiado del explorador o una captura. Si el pegado trae
- * TEXTO no se toca (Word o Excel mandan las letras y además una foto de ellas: ganan las letras), y lo que no sea
- * imagen se deja pasar. Devuelve `[]` cuando no hay nada que agregar.
+ * TEXTO no se toca (Word o Excel mandan las letras y además una foto de ellas: ganan las letras), salvo que ese texto
+ * sea solo el nombre de los mismos archivos (el Finder de macOS). Lo que no sea imagen se deja pasar. Devuelve `[]`
+ * cuando no hay nada que agregar.
  */
 export function imagenesPegadas(dt: DataTransfer | null | undefined): File[] {
-  if (!dt || dt.getData('text/plain').trim()) return [];
+  if (!dt) return [];
   const archivos = Array.from(dt.files ?? []);
   // algunos navegadores solo las traen como elementos del portapapeles
   if (!archivos.length) {
@@ -82,6 +107,9 @@ export function imagenesPegadas(dt: DataTransfer | null | undefined): File[] {
     }
   }
   const imagenes = archivos.filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+  if (!imagenes.length) return [];
+  const texto = dt.getData('text/plain').trim();
+  if (texto && !esNombreDeArchivo(texto, archivos)) return [];
   return imagenes.map((f, i) => {
     const nombre = nombrePegada(f, i + 1, imagenes.length);
     return nombre === f.name ? f : new File([f], nombre, { type: f.type });
