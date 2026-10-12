@@ -65,6 +65,10 @@ USER = "ana"
 
 LENTOS = ("sdf", "sd45", "flux3")
 RAPIDOS = ("grok", "klein", "zit", "flux2", "nb2")
+# Nano Banana Pro (Ola 3, filas inertes: sin número en tarifas.json, no se ofrece) todavía no tiene
+# segundos medidos. Hasta que la prueba pagada los mida se SUPONE lento: segundo plano. Cuando se midan,
+# pasan a TIEMPOS_MEDIDOS y esta lista se vacía.
+SIN_MEDIR = ("nbp-2k", "nbp-4k")
 # Los segundos MEDIDOS por llamada en las pruebas pagadas (docs/modelos-ia/POR-VERIFICAR.md,
 # DATOS-FAL-2026-10-08.md §9 y §11): (menor, mayor). Nano Banana 2 son tres llamadas (crear 11.7 s;
 # editar 11.5 y 13.9 s). Grok Imagine SÍ tiene medición: ocho llamadas reales el 18-sep, de 13 a 29 s
@@ -109,7 +113,9 @@ def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
     Las únicas excepciones son Grok y Nano Banana 2, nombradas, y tienen que serlo de verdad."""
     from pipeline import modelos_ia
     imagen = modelos_ia.disponibles("imagen")
-    assert set(imagen) == set(TIEMPOS_MEDIDOS), "modelo nuevo de imagen: anota sus segundos"
+    assert set(imagen) == set(TIEMPOS_MEDIDOS) | set(SIN_MEDIR), "modelo nuevo de imagen: anota sus segundos"
+    for id_ in SIN_MEDIR:                                 # sin medir se supone lento, nunca rápido
+        assert modelos_ia.resolver("imagen", id_).segundo_plano is True, id_
     for id_, (_, mayor) in TIEMPOS_MEDIDOS.items():
         va = modelos_ia.resolver("imagen", id_).segundo_plano
         if id_ in EXCEPCIONES_A_LA_REGLA:
@@ -119,11 +125,12 @@ def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
     assert set(EXCEPCIONES_A_LA_REGLA) == {"grok", "nb2"}
 
 
-def test_exactamente_estos_tres_van_a_segundo_plano_al_crear():
+def test_exactamente_estos_van_a_segundo_plano_al_crear():
+    """Los tres que midieron más de 10 s, más las dos filas de Nano Banana Pro, que se suponen lentas."""
     from pipeline import modelos_ia
     lentos = {i for i in modelos_ia.disponibles("imagen")
               if modelos_ia.resolver("imagen", i).segundo_plano}
-    assert lentos == set(LENTOS)
+    assert lentos == set(LENTOS) | set(SIN_MEDIR)
     assert not set(RAPIDOS) & lentos
 
 

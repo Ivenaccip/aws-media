@@ -79,7 +79,12 @@ def _costo_ficha(f: dict, args: dict) -> float | None:
     Una ficha a medias da None: nunca se inventa la parte que falta."""
     try:
         if f.get("unidad") == "imagen":
-            return round(float(f["usd"]) * int(args.get("num_images", 1))
+            # El precio puede depender de la resolución pedida (Nano Banana Pro: 1K y 4K cobran
+            # distinto). Con `usd_por_resolucion`, una resolución que la tabla no trae es «no se
+            # sabe» (KeyError → None): jamás el precio de la de al lado.
+            por_res = f.get("usd_por_resolucion")
+            usd = f["usd"] if por_res is None else por_res[str(args.get("resolution") or "")]
+            return round(float(usd) * int(args.get("num_images", 1))
                          + float(f.get("usd_referencia", 0))
                          * len(args.get("image_urls") or []), 4)
         if f.get("unidad") == "segundo":

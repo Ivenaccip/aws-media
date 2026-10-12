@@ -293,6 +293,7 @@ VEO_STD_T2V = "fal-ai/veo3.1"
 VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
 NB2_CREAR = "fal-ai/nano-banana-2"
 NB2_EDITAR = "fal-ai/nano-banana-2/edit"
+NBP_CREAR = "fal-ai/nano-banana-pro"
 # Ola 2 (familias nuevas de imagen): todos solo texto a imagen (sin endpoint de editar en el
 # selector). Endpoints y parámetros leídos del esquema público de fal el 11-oct-2026
 # (tools/leer_esquema_fal.py; docs/modelos-ia/DATOS-FAL-2026-10-08.md §10).
@@ -328,6 +329,13 @@ TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2
 # su esquema (leído el 11-oct-2026, DATOS-FAL §12) trae `output_format` por defecto en
 # "png" en crear y en editar, y la caja guarda lo que baja como .jpg sin convertirlo.
 NB2_ARGS_EXTRA = (("output_format", "jpeg"), ("resolution", "1K"))
+
+# Nano Banana Pro (Ola 3, solo crear): la calidad del catálogo de la web («hasta 2K» y «4K») son DOS filas,
+# `nbp-2k` y `nbp-4k` (la llave de tools/tarifas.json es `<id>-<calidad>`), y cada una fija su `resolution`:
+# el precio depende de ella (pricing.json `usd_por_resolucion`) y no se deja al valor por defecto de fal (1K).
+# Pide jpeg (su esquema trae «png» por defecto: DATOS-FAL §12) y fija `enable_web_search` en false, que en el
+# editar cobra $0.015 dólares extra (lectura del 8-oct) y aquí no se ofrece.
+NBP_ARGS_BASE = (("enable_web_search", False), ("output_format", "jpeg"))
 
 
 def _tabla() -> dict[tuple[str, str], Modelo]:
@@ -381,6 +389,12 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     flux3 = Modelo("flux3", "imagen", FLUX3_CREAR, con_num_images=False, megapixeles_ficha=1.2,
                    args_extra=(("output_format", "jpeg"), ("resolution", "1k")),
                    segundo_plano=True)
+    # Nano Banana Pro (Ola 3): INERTE (sin número en tarifas.json, no se ofrece), solo crear. Dos filas, una por
+    # calidad. Sin medir: se supone lento y va a segundo plano hasta que la prueba pagada diga lo contrario.
+    nbp_2k = Modelo("nbp-2k", "imagen", NBP_CREAR, args_extra=(*NBP_ARGS_BASE, ("resolution", "2K")),
+                    segundo_plano=True)
+    nbp_4k = Modelo("nbp-4k", "imagen", NBP_CREAR, args_extra=(*NBP_ARGS_BASE, ("resolution", "4K")),
+                    segundo_plano=True)
     return {("imagen", "grok"): grok,
             ("imagen", "klein"): klein,
             ("imagen", "zit"): zit,
@@ -389,6 +403,8 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
             ("imagen", "sd45"): sd45,
             ("imagen", "flux3"): flux3,
             ("imagen", "nb2"): nb2,
+            ("imagen", "nbp-2k"): nbp_2k,
+            ("imagen", "nbp-4k"): nbp_4k,
             ("editar", "grok"): Modelo("grok", "editar", settings.fal_imagen_edit),
             ("editar", "nb2"): nb2_editar,
             ("clip", "veo-lite"): veo,

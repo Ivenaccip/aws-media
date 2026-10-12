@@ -1,15 +1,16 @@
 # Modelos del selector: lo que falta por verificar (R4)
 
-Hoy trece filas están en `pipeline/modelos_ia.py` (once modelos). Con número en
+Hoy quince filas están en `pipeline/modelos_ia.py` (doce modelos). Con número en
 `tools/tarifas.json` y `activo: true` en la web: para crear imágenes **Grok Imagine**, **Nano Banana 2**
 y, encendidos el 11-oct-2026 en la rama (se ofrecen al desplegarla), **FLUX.2 klein 9B**, **Z-Image Turbo**,
 **FLUX.2 pro**, **Seedream 5.0 Flash**, **Seedream 4.5** y **FLUX 3**; para editar, **Grok Imagine** y
 **Nano Banana 2**; para el clip, **Veo 3.1 Lite** y **Veo 3.1 Fast**. Nano Banana 2 y Veo 3.1 Fast (Ola 1) se
 encendieron el 9-oct-2026 tras su prueba pagada, y los seis de imagen de la Ola 2 el 11-oct-2026 tras la suya
 (18 llamadas y el panel de fal, DATOS §11); Grok y Veo 3.1 Lite ya estaban. Tres de las imágenes (Seedream 5.0 Flash,
-Seedream 4.5 y FLUX 3) se generan en segundo plano: ver «Qué va en segundo plano y por qué». Un solo modelo es **inerte**: el servidor lo conoce, pero no se ofrece ni se
-cobra, **Veo 3.1 Standard** (clip, Ola 1). Los otros 9 (Nano Banana 2 Lite y Pro, GPT Image 2 y 2.5, y cinco de clip)
-solo viven en el catálogo de la web (`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que él.
+Seedream 4.5 y FLUX 3) se generan en segundo plano: ver «Qué va en segundo plano y por qué». Dos modelos son **inertes**: el servidor los conoce, pero no se ofrecen ni se
+cobran, **Veo 3.1 Standard** (clip, Ola 1) y **Nano Banana Pro** (imagen, Ola 3: dos filas, `nbp-2k` y `nbp-4k`). Los otros 8
+(Nano Banana 2 Lite, GPT Image 2 y 2.5, y cinco de clip) solo viven en el catálogo de la web
+(`web/src/pantallas/inicio/modelos.ts`) con `activo: false`, igual que ellos.
 
 ## Cómo se enciende un modelo (una fila de datos, tres archivos y una prueba)
 
@@ -68,7 +69,7 @@ para poder encenderse.
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
 | imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (21.8 a 25.0 s), pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K. Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Panel: las tres solicitudes costaron $0.024 dólares, con el cuadrado de 1024×1024 y los dos de ~1 MP. Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
 | imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear y editar siguen dentro de la petición** (crear midió 11.7 s; editar, 11.5 y 13.9 s): excepción a la regla de segundo plano, decisión del dueño del 11-oct-2026, «de momento»; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). **Pide `output_format: "jpeg"` desde el 12-oct-2026** (su esquema trae «png» por defecto y la caja guarda lo que baja como .jpg: DATOS §12; hasta esa fecha pudo entregar PNG con extensión .jpg). Sin probar: editar con dos imágenes (modo «pincel») |
-| imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | parámetro de calidad (`resolution`) en servidor; precio de 2K y 4K |
+| imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | **filas inertes desde el 12-oct-2026** (Ola 3, solo crear): `nbp-2k` y `nbp-4k` fijan `resolution` en el servidor (el catálogo de la web ya las llama «hasta 2K» y «4K»), piden jpeg y `enable_web_search: false`, y van a segundo plano **sin medir** (se suponen lentas). Ficha por resolución en `pricing.json`: $0.15 dólares a 1K (leída el 8-oct) y $0.30 dólares a 4K (el cálculo de «el doble»); el 2K no lo dice la página: **sin precio confirmado**. Falta: prueba pagada (con el «sí» del dueño), panel de fal para el 2K y el 4K, los segundos de cada una, los créditos y `activo: true`. Editar (`/edit`) queda fuera: no cabe en la petición |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
 | clip | LTX-2.5 Fast (`ltx`) | `lightricks/ltx-2.5/text-to-video/fast` y `/image-to-video/fast` | adaptador; la prueba es de 6 s (mínimo del modelo) |
@@ -176,6 +177,28 @@ cada solicitud. **El dueño pegó 15 filas de 18**: de FLUX.2 klein llegaron $0.
 que parece un cobro por píxel) y falta 1; de Z-Image Turbo llegó una de $0.005 dólares y faltan 2. No cambian los créditos. La herramienta no mira la calidad de las imágenes: eso lo decide el dueño mirándolas. Cada llamada
 imprimió en Windows el aviso de cierre «Event loop is closed» de asyncio (18 de 18), con código de salida 0 y el
 resultado ya guardado; es ruido, no un fallo.
+
+### Ola 3 (12-oct-2026): Nano Banana Pro (solo crear, filas inertes) y el formato de Nano Banana 2
+
+**Estado del despliegue.** La Ola 2 se fusionó a `dev` el 11-oct-2026 (PR 186) y se desplegó en dev el 12-oct. La prueba con FLUX 3
+(la primera imagen en segundo plano en AWS) salió bien: la tarjeta pasó de «Generando…» a la imagen, con el saldo en −4. Antes de esa
+prueba el worker de imágenes solo se había ejercido con dobles.
+
+**Nano Banana 2 pide jpeg.** El resumen de esquemas (DATOS §12) mostró que su `output_format` por defecto es «png» y que la caja guarda lo
+que baja como `.jpg` sin convertirlo: hasta el 12-oct pudo entregar PNG con extensión `.jpg`. La fila ahora fija `output_format: "jpeg"` en
+crear y en editar, y `tests/test_r4_ola3.py` falla si alguna fila de imagen deja que fal decida un formato que no sea jpeg.
+
+**Nano Banana Pro, dos filas.** El catálogo de la web ofrece dos calidades, y el precio de cada una vive en `tarifas.json` como
+`<id>-<calidad>` (`llavePrecio`): `nbp-2k` y `nbp-4k` son dos filas con el mismo endpoint (`fal-ai/nano-banana-pro`) y distinta
+`resolution`. Mientras no tengan número en `tarifas.json`, el servidor responde 422 sin cobrar. El costo se calcula con la ficha
+`usd_por_resolucion` (`pipeline/pricing.py`): una resolución que la ficha no trae da «sin costo conocido», nunca el precio de la de al lado.
+
+Lo que falta para encenderlas, en el orden de siempre: (1) el «sí» del dueño para una prueba pagada pequeña (`tools/probar_modelo.py`:
+ensayo sin gasto primero, que enseña el costo esperado y el «sin precio confirmado» del 2K); (2) mirar en el panel de fal lo que cobró
+cada solicitud, que fija el precio del 2K y confirma el del 4K; (3) los segundos de cada una: si midieran 10 s o menos, la bandera
+`segundo_plano` se apaga; (4) los créditos, con la fórmula de siempre; (5) número en `tarifas.json` y `activo: true`.
+**Editar con Nano Banana Pro** no entra en esta ola: el editar sigue dentro de la petición y una calidad alta no cabe en 29 s; necesita
+su propio camino en segundo plano (subir la foto por S3, como el clip).
 
 ### Qué va en segundo plano y por qué
 

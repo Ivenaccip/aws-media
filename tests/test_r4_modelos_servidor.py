@@ -149,7 +149,8 @@ def test_un_modelo_de_la_misma_familia_no_hereda_el_costo_de_lite():
                  "fal-ai/veo3.1/first-last-frame-to-video"):
         assert costo_fal(otro, args) is None, otro
         assert unidades_fal(otro, args) is None, otro
-    for otro in ("fal-ai/nano-banana-pro", "fal-ai/nano-banana-pro/edit",
+    # (`fal-ai/nano-banana-pro` ya tiene ficha desde la Ola 3, por resolución; su /edit no)
+    for otro in ("fal-ai/nano-banana-pro/edit",
                  "google/nano-banana-2-lite", "fal-ai/nano-banana-2/lite"):
         assert costo_fal(otro, {"num_images": 1}) is None, otro
         assert unidades_fal(otro, {"num_images": 1}) is None, otro
