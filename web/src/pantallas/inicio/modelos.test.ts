@@ -106,12 +106,12 @@ describe('modelos.ts y tarifas.json', () => {
   });
 
   it('inicio.modelos.lo_que_esta_a_la_venta_hoy', () => {
-    // el estado del 11-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
+    // el estado del 12-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
     // el 11-oct entraron para crear imágenes FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash,
-    // Seedream 4.5 y FLUX 3 (ninguno edita). Veo 3.1 Standard sigue apagado. Si esto cambia, que sea a
-    // propósito (y con su número en tarifas.json).
+    // Seedream 4.5 y FLUX 3 (ninguno edita), y el 12-oct Nano Banana Pro (dos calidades, solo crear: no edita
+    // todavía). Veo 3.1 Standard sigue apagado. Si esto cambia, que sea a propósito (y con su número en tarifas.json).
     const activos = (t: Tarea) => CATALOGO[t].filter(m => m.activo).map(m => m.id);
-    expect(activos('imagen')).toEqual(['grok', 'klein', 'zit', 'flux2', 'sdf', 'sd45', 'flux3', 'nb2']);
+    expect(activos('imagen')).toEqual(['grok', 'klein', 'zit', 'flux2', 'sdf', 'sd45', 'flux3', 'nb2', 'nbp']);
     expect(activos('editar')).toEqual(['grok', 'nb2']);
     expect(activos('clip')).toEqual(['veo-lite', 'veo-fast']);
   });
@@ -144,7 +144,8 @@ describe('modelos.ts y tarifas.json', () => {
   });
 
   it('inicio.modelos.editar_solo_los_que_tienen_endpoint_edit', () => {
-    expect(CATALOGO.editar.map(m => m.id)).toEqual(['grok', 'gpt2', 'nb2', 'nbp']);
+    // Nano Banana Pro tiene `/edit` en fal pero no se ofrece para editar todavía: queda fuera del catálogo de editar
+    expect(CATALOGO.editar.map(m => m.id)).toEqual(['grok', 'gpt2', 'nb2']);
   });
 
   it('inicio.modelos.el_modelo_viaja_en_la_url_solo_si_no_es_el_predeterminado', () => {

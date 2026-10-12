@@ -63,12 +63,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 RAIZ = Path(__file__).resolve().parent.parent
 USER = "ana"
 
-LENTOS = ("sdf", "sd45", "flux3")
+LENTOS = ("sdf", "sd45", "flux3", "nbp-2k", "nbp-4k")
 RAPIDOS = ("grok", "klein", "zit", "flux2", "nb2")
-# Nano Banana Pro (Ola 3, filas inertes: sin número en tarifas.json, no se ofrece) todavía no tiene
-# segundos medidos. Hasta que la prueba pagada los mida se SUPONE lento: segundo plano. Cuando se midan,
-# pasan a TIEMPOS_MEDIDOS y esta lista se vacía.
-SIN_MEDIR = ("nbp-2k", "nbp-4k")
 # Los segundos MEDIDOS por llamada en las pruebas pagadas (docs/modelos-ia/POR-VERIFICAR.md,
 # DATOS-FAL-2026-10-08.md §9 y §11): (menor, mayor). Nano Banana 2 son tres llamadas (crear 11.7 s;
 # editar 11.5 y 13.9 s). Grok Imagine SÍ tiene medición: ocho llamadas reales el 18-sep, de 13 a 29 s
@@ -82,6 +78,10 @@ TIEMPOS_MEDIDOS = {
     "klein": (0.8, 1.2),
     "zit": (1.0, 1.8),
     "grok": (13, 29),
+    # Nano Banana Pro (Ola 3), prueba pagada del 11-oct-2026 hora de México (DATOS-FAL §13): 2K 28.1 y 24.9 s;
+    # 4K 37.4 y 43.5 s
+    "nbp-2k": (24.9, 28.1),
+    "nbp-4k": (37.4, 43.5),
 }
 # La regla manda en todos menos en dos, y las excepciones están NOMBRADAS: Grok (el predeterminado) rozaba
 # el muro de 29 s ya en síncrono, y Nano Banana 2 al crear midió 11.7 s: la regla mandaría a los dos a
@@ -113,9 +113,7 @@ def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
     Las únicas excepciones son Grok y Nano Banana 2, nombradas, y tienen que serlo de verdad."""
     from pipeline import modelos_ia
     imagen = modelos_ia.disponibles("imagen")
-    assert set(imagen) == set(TIEMPOS_MEDIDOS) | set(SIN_MEDIR), "modelo nuevo de imagen: anota sus segundos"
-    for id_ in SIN_MEDIR:                                 # sin medir se supone lento, nunca rápido
-        assert modelos_ia.resolver("imagen", id_).segundo_plano is True, id_
+    assert set(imagen) == set(TIEMPOS_MEDIDOS), "modelo nuevo de imagen: anota sus segundos"
     for id_, (_, mayor) in TIEMPOS_MEDIDOS.items():
         va = modelos_ia.resolver("imagen", id_).segundo_plano
         if id_ in EXCEPCIONES_A_LA_REGLA:
@@ -126,11 +124,11 @@ def test_la_tabla_de_tiempos_medidos_decide_quien_va_a_segundo_plano():
 
 
 def test_exactamente_estos_van_a_segundo_plano_al_crear():
-    """Los tres que midieron más de 10 s, más las dos filas de Nano Banana Pro, que se suponen lentas."""
+    """Los que midieron más de 10 s: Seedream 5.0 Flash, Seedream 4.5, FLUX 3 y las dos calidades de Nano Banana Pro."""
     from pipeline import modelos_ia
     lentos = {i for i in modelos_ia.disponibles("imagen")
               if modelos_ia.resolver("imagen", i).segundo_plano}
-    assert lentos == set(LENTOS) | set(SIN_MEDIR)
+    assert lentos == set(LENTOS)
     assert not set(RAPIDOS) & lentos
 
 
@@ -164,7 +162,7 @@ def test_la_documentacion_trae_los_segundos_de_cada_modelo():
     filas = {}
     for linea in seccion.splitlines():
         celdas = [c.strip() for c in linea.strip().strip("|").split("|")]
-        m = re.search(r"\(`([a-z0-9]+)`\)", celdas[0]) if len(celdas) == 3 else None
+        m = re.search(r"\(`([a-z0-9-]+)`\)", celdas[0]) if len(celdas) == 3 else None
         if m:
             filas[m.group(1)] = celdas
     assert set(filas) == set(TIEMPOS_MEDIDOS)

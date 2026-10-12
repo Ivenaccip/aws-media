@@ -143,8 +143,8 @@ def _tarifas() -> dict:
 
 def test_la_tabla_trae_exactamente_estos_modelos():
     """La lista EXACTA de hoy. Nano Banana 2 Lite (`nbl`) no entra (cobra por tokens y
-    no hay precio); Nano Banana Pro (Ola 3) entra con dos filas INERTES, una por calidad
-    (`nbp-2k` y `nbp-4k`, solo crear), y los clips de otras familias son de la Ola 4."""
+    no hay precio); Nano Banana Pro (Ola 3) entra con dos filas, una por calidad (`nbp-2k` y
+    `nbp-4k`, solo crear, encendidas el 12-oct-2026), y los clips de otras familias son de la Ola 4."""
     from pipeline import modelos_ia
     assert modelos_ia.disponibles("imagen") == ["grok", *IDS, "nb2", "nbp-2k", "nbp-4k"]
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
@@ -691,10 +691,12 @@ def test_sin_numero_en_tarifas_el_modelo_da_422_sin_cobrar_ni_llamar_a_fal(
 
 
 @pytest.mark.parametrize("id_", ["nbp-2k", "nbp-4k"])
-def test_nano_banana_pro_inerte_da_422_sin_cobrar_ni_llamar_a_fal(
-        cliente, espia, falso_fal, imagenes_al_disco, id_):
-    """Ola 3: las dos filas de Nano Banana Pro existen en el servidor pero no tienen número en
-    tarifas.json: 422 antes de cobrar, de crear nada o de llamar a fal."""
+def test_nano_banana_pro_sin_numero_en_tarifas_da_422_sin_cobrar_ni_llamar_a_fal(
+        cliente, espia, falso_fal, imagenes_al_disco, monkeypatch, id_):
+    """Ola 3, LA COMPUERTA: las dos filas de Nano Banana Pro están encendidas desde el 12-oct-2026, pero si
+    alguien les quita el número de tarifas.json: 422 antes de cobrar, de crear nada o de llamar a fal."""
+    from pipeline import creditos
+    monkeypatch.delitem(creditos.MODELOS_CR["imagen"], id_)
     r = cliente.post("/api/imagenes", json={"prompt": "un gato", "modelo": id_, "estilo": "animated"})
     assert r.status_code == 422, r.text
     assert id_ in r.json()["detail"]

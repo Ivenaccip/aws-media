@@ -94,13 +94,17 @@ const IMAGEN: Modelo[] = [
     nombre: 'Nano Banana Pro',
     detalle: 'Google · elige la resolución abajo',
     nivel: 'maxima',
-    activo: false,
+    activo: true,
     calidades: HASTA_2K_Y_4K,
   },
 ];
 
-/** Para editar solo entran los que tienen versión «edit» en fal. */
-const CON_EDICION = new Set(['grok', 'gpt2', 'nb2', 'nbp']);
+/**
+ * Para editar solo entran los que tienen versión «edit» en fal y que el servidor sabe editar. Nano Banana Pro tiene
+ * `/edit` en fal, pero editar con él no se ofrece todavía (no cabe en la petición: necesita su propio camino en segundo
+ * plano), así que no entra mientras tanto: encendido para crear, no debe aparecer en «Editar» sin fila ni número allí.
+ */
+const CON_EDICION = new Set(['grok', 'gpt2', 'nb2']);
 
 const CLIP: Modelo[] = [
   { id: 'h3t', nombre: 'MiniMax H3 Max Turbo', detalle: 'MiniMax · 768p', nivel: 'economico', activo: false },

@@ -921,7 +921,7 @@ Los seis ids que pueden cambiar están en la cabecera de
 
 `POST /api/imagenes` generaba la imagen dentro de la petición, y la Lambda del API corta a los 29 s (API Gateway: tope
 fijo de 30 s; un arranque en frío ya gasta unos 16). Cortada la petición, se cobraba, no se devolvía y fal cobraba igual. Por
-eso los modelos que tardaron **más de 10 s** en la prueba pagada —Seedream 5.0 Flash, Seedream 4.5 y FLUX 3— se encolan
+eso los modelos que tardaron **más de 10 s** en la prueba pagada —Seedream 5.0 Flash, Seedream 4.5, FLUX 3 y las dos calidades de Nano Banana Pro (2K y 4K)— se encolan
 como el clip. Cuáles lo dice una bandera por fila, `segundo_plano` en `pipeline/modelos_ia.py`
 (la tabla con los segundos medidos está en `docs/modelos-ia/POR-VERIFICAR.md`); los rápidos siguen síncronos y en local todo es
 síncrono. Las dos excepciones a la regla son Grok y Nano Banana 2 al crear (ver «Decisión del dueño: Grok y Nano Banana 2», abajo).

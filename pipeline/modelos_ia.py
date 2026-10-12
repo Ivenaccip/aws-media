@@ -16,8 +16,8 @@ es la compuerta: recién entonces `activo: true` en el catálogo de la web
 el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2026, tras la
 suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
 Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
-desplegarla. Siguen inertes Veo 3.1 Standard y, desde el 12-oct-2026, las dos filas de Nano Banana Pro
-(`nbp-2k` y `nbp-4k`, solo crear): sin número en tarifas.json dan 422 antes de cobrar.
+desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendió en la rama
+Nano Banana Pro (dos filas, `nbp-2k` y `nbp-4k`, solo crear). Es una fila inerte Veo 3.1 Standard.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -331,7 +331,7 @@ TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2
 # "png" en crear y en editar, y la caja guarda lo que baja como .jpg sin convertirlo.
 NB2_ARGS_EXTRA = (("output_format", "jpeg"), ("resolution", "1K"))
 
-# Nano Banana Pro (Ola 3, solo crear): la calidad del catálogo de la web («hasta 2K» y «4K») son DOS filas,
+# Nano Banana Pro (Ola 3, solo crear; encendido el 12-oct-2026): la calidad del catálogo de la web («hasta 2K» y «4K») son DOS filas,
 # `nbp-2k` y `nbp-4k` (la llave de tools/tarifas.json es `<id>-<calidad>`), y cada una fija su `resolution`:
 # el precio depende de ella (pricing.json `usd_por_resolucion`) y no se deja al valor por defecto de fal (1K).
 # Pide jpeg (su esquema trae «png» por defecto: DATOS-FAL §12) y fija `enable_web_search` en false, que en el
@@ -390,8 +390,9 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     flux3 = Modelo("flux3", "imagen", FLUX3_CREAR, con_num_images=False, megapixeles_ficha=1.2,
                    args_extra=(("output_format", "jpeg"), ("resolution", "1k")),
                    segundo_plano=True)
-    # Nano Banana Pro (Ola 3): INERTE (sin número en tarifas.json, no se ofrece), solo crear. Dos filas, una por
-    # calidad. Sin medir: se supone lento y va a segundo plano hasta que la prueba pagada diga lo contrario.
+    # Nano Banana Pro (Ola 3): solo crear, dos filas, una por calidad. Encendido el 12-oct-2026 (número en tarifas.json
+    # §modelos «imagen»: nbp-2k 14 y nbp-4k 28; se ofrece al desplegar). Va a segundo plano: la prueba pagada midió
+    # 24.9 y 28.1 s en 2K y 37.4 y 43.5 s en 4K, y la regla manda a segundo plano todo lo que pasa de 10 s.
     nbp_2k = Modelo("nbp-2k", "imagen", NBP_CREAR, args_extra=(*NBP_ARGS_BASE, ("resolution", "2K")),
                     segundo_plano=True)
     nbp_4k = Modelo("nbp-4k", "imagen", NBP_CREAR, args_extra=(*NBP_ARGS_BASE, ("resolution", "4K")),
