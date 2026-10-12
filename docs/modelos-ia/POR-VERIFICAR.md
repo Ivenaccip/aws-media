@@ -68,7 +68,7 @@ para poder encenderse.
 | imagen | GPT Image 2 (`gpt2`) | `openai/gpt-image-2` y `openai/gpt-image-2/edit` | elegir calidad y tamaño fijos; si ofrece editar (el tamaño `auto` no tiene precio predecible) |
 | imagen | GPT Image 2.5 (`gpt25`) | `openai/gpt-image-2.5/flare/text-to-image` o `.../sunburst/text-to-image` | elegir Flare o Sunburst y la calidad |
 | imagen | FLUX 3 (`flux3`) | `blackforestlabs/flux-3/text-to-image` | **encendido el 11-oct-2026 en la rama; se ofrece al desplegarla** (solo crear): **va en segundo plano** (21.8 a 25.0 s), pide `aspect_ratio` como la caja, **sin `num_images`**, `resolution: "1k"` fija (el único tamaño con precio leído) y jpeg explícito. Ficha de $0.024 dólares a 1K. Queda `version: "latest"` sin fijar. Prueba pagada hecha el 11-oct-2026 (UTC): tres formas en jpeg, pero **~1 MP en 1360×768 y 768×1360** (no 1024×576). Panel: las tres solicitudes costaron $0.024 dólares, con el cuadrado de 1024×1024 y los dos de ~1 MP. Encendida con **4 créditos** (decisión del dueño, 11-oct-2026) |
-| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear y editar siguen dentro de la petición** (crear midió 11.7 s; editar, 11.5 y 13.9 s): excepción a la regla de segundo plano, decisión del dueño del 11-oct-2026, «de momento»; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). **Pide `output_format: "jpeg"` desde el 12-oct-2026** (su esquema trae «png» por defecto y la caja guarda lo que baja como .jpg: DATOS §12; hasta esa fecha pudo entregar PNG con extensión .jpg). Sin probar: editar con dos imágenes (modo «pincel») |
+| imagen | Nano Banana 2 (`nb2`) | `fal-ai/nano-banana-2` y `/edit` | **a la venta desde el 9-oct-2026**: 8 créditos, crear y editar; **crear y editar siguen dentro de la petición** (crear midió 11.7 s; editar, 11.5 y 13.9 s): excepción a la regla de segundo plano, decisión del dueño del 11-oct-2026, «de momento»; prueba pagada hecha y costo confirmado en el panel (DATOS §9); `resolution` en el `/edit` comprobado (aviso 3 abajo). **Pide `output_format: "jpeg"` desde el 12-oct-2026 en la rama; se aplica al desplegarla** (su esquema trae «png» por defecto y la caja guarda lo que baja como .jpg: DATOS §12; hasta desplegarla puede seguir entregando PNG con extensión .jpg). Sin probar: editar con dos imágenes (modo «pincel») |
 | imagen | Nano Banana Pro (`nbp`) | `fal-ai/nano-banana-pro` y `/edit` | **filas inertes desde el 12-oct-2026** (Ola 3, solo crear): `nbp-2k` y `nbp-4k` fijan `resolution` en el servidor (el catálogo de la web ya las llama «hasta 2K» y «4K»), piden jpeg y `enable_web_search: false`, y van a segundo plano **sin medir** (se suponen lentas). Ficha por resolución en `pricing.json`: $0.15 dólares a 1K (leída el 8-oct) y $0.30 dólares a 4K (el cálculo de «el doble»); el 2K no lo dice la página: **sin precio confirmado**. Falta: prueba pagada (con el «sí» del dueño), panel de fal para el 2K y el 4K, los segundos de cada una, los créditos y `activo: true`. Editar (`/edit`) queda fuera: no cabe en la petición |
 | clip | MiniMax H3 Max Turbo (`h3t`) | `minimax/h3-max-turbo/text-to-video` y `/image-to-video` | audio no documentado; adaptador |
 | clip | Grok Imagine Video (`grokv`) | `xai/grok-imagine-video/text-to-video` y `/image-to-video` (o `v1.5/…`) | elegir versión base o 1.5; adaptador |
@@ -151,9 +151,9 @@ su número de `tarifas.json`: el servidor lo rechaza con 422 sin cobrar.
 (`server/app.py`), pero klein y Z-Image devuelven PNG por defecto. Un PNG dentro de un `.jpg` lo
 pintan los navegadores, pero las redes lo rechazan al publicar. Por eso los seis piden `output_format:
 "jpeg"` explícito (menos Seedream 4.5, que no trae el parámetro), y `tools/probar_modelo.py` marca
-REVISAR si lo que llega no es JPEG. **Aviso aparte, sin resolver:** Nano Banana 2 (ya a la venta) no
-fija `output_format` y su valor por defecto en fal no está leído aquí; si devuelve PNG, hoy se guardaría
-como `.jpg`. Se comprueba con la lectura de su esquema y con la próxima prueba pagada.
+REVISAR si lo que llega no es JPEG. **Resuelto en la Ola 3 (12-oct-2026, en la rama):** Nano Banana 2 (ya a la venta) no
+fijaba `output_format`; su esquema, leído después, trae «png» por defecto (DATOS §12), así que hasta desplegar el arreglo
+sus imágenes se guardan como PNG con extensión `.jpg`. La fila ya pide jpeg (ver «Ola 3» abajo).
 
 **Tamaños de salida: medidos en la prueba pagada del 11-oct-2026 (UTC).** Se hicieron 18 llamadas, una por
 modelo y forma, con `tools/probar_modelo.py imagen <modelo> --formato cuadrado|horizontal|vertical --si`.
@@ -185,8 +185,8 @@ resultado ya guardado; es ruido, no un fallo.
 prueba el worker de imágenes solo se había ejercido con dobles.
 
 **Nano Banana 2 pide jpeg.** El resumen de esquemas (DATOS §12) mostró que su `output_format` por defecto es «png» y que la caja guarda lo
-que baja como `.jpg` sin convertirlo: hasta el 12-oct pudo entregar PNG con extensión `.jpg`. La fila ahora fija `output_format: "jpeg"` en
-crear y en editar, y `tests/test_r4_ola3.py` falla si alguna fila de imagen deja que fal decida un formato que no sea jpeg.
+que baja como `.jpg` sin convertirlo: hasta desplegar el arreglo puede seguir entregando PNG con extensión `.jpg`. La fila ya fija `output_format: "jpeg"` en
+crear y en editar (en la rama desde el 12-oct, sin desplegar), y `tests/test_r4_ola3.py` falla si alguna fila de imagen deja que fal decida un formato que no sea jpeg.
 
 **Nano Banana Pro, dos filas.** El catálogo de la web ofrece dos calidades, y el precio de cada una vive en `tarifas.json` como
 `<id>-<calidad>` (`llavePrecio`): `nbp-2k` y `nbp-4k` son dos filas con el mismo endpoint (`fal-ai/nano-banana-pro`) y distinta

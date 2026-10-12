@@ -1284,7 +1284,9 @@ def test_guardian_todo_modelo_con_numero_cubre_su_costo_con_el_margen():
                     assert cr >= creditos_sugeridos(clip.costo_usd(0, id_, s)), (id_, s)
                     revisados += 1
             else:
-                args = {"num_images": 1}
+                # con los argumentos fijos del modelo: el precio de Nano Banana Pro depende de su
+                # `resolution`, y sin ella la ficha da None a propósito (sin precio no se inventa)
+                args = {"num_images": 1, **m.args_extra_dict}
                 if tarea == "editar":
                     args["image_urls"] = ["a"]          # una referencia, como el editor
                 usd = costo_fal(m.endpoint_para(tarea == "editar"), args)

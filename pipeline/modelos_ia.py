@@ -16,7 +16,8 @@ es la compuerta: recién entonces `activo: true` en el catálogo de la web
 el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2026, tras la
 suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
 Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
-desplegarla. Es una fila inerte Veo 3.1 Standard.
+desplegarla. Siguen inertes Veo 3.1 Standard y, desde el 12-oct-2026, las dos filas de Nano Banana Pro
+(`nbp-2k` y `nbp-4k`, solo crear): sin número en tarifas.json dan 422 antes de cobrar.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -326,7 +327,7 @@ TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2
 
 # Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
 # manda explícito para no depender de que el default de fal siga siendo 1K. Y pide jpeg:
-# su esquema (leído el 11-oct-2026, DATOS-FAL §12) trae `output_format` por defecto en
+# su esquema (leído el 10-oct-2026 hora de México, DATOS-FAL §12) trae `output_format` por defecto en
 # "png" en crear y en editar, y la caja guarda lo que baja como .jpg sin convertirlo.
 NB2_ARGS_EXTRA = (("output_format", "jpeg"), ("resolution", "1K"))
 

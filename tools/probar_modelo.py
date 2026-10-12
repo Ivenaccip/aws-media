@@ -126,6 +126,11 @@ ASPECTOS_IMAGEN_CLIP = (16 / 9, 9 / 16)
 # 1K y el costo anotado ($ por imagen a 1K) ya no vale.
 MAX_MP_1K = 1.2
 MIN_MP_1K = 0.8          # 1K es ~1 MP: algo mucho más chico (0.5K) tiene un precio que no está leído
+# Los megapíxeles que se esperan de cada resolución que una fila FIJA en sus argumentos (menor, mayor,
+# nominal): 1K ~1 MP (1024², 1376×768), 2K ~4 MP (2048², 2752×1536) y 4K ~16 MP (4096², 5504×3072). Las
+# bandas de 2K y 4K (Nano Banana Pro) son un supuesto que la propia prueba pagada confirma: el precio de
+# ese modelo depende de la resolución, así que una salida de otra resolución se marca para revisar.
+BANDAS_MP = {"1K": (MIN_MP_1K, MAX_MP_1K, 1), "2K": (3.0, 5.5, 4), "4K": (12.0, 20.0, 16)}
 
 # Si la llamada tarda más de esto del tiempo que el cliente espera, está cerca de
 # cortarse por timeout: un corte de cliente puede dejar el trabajo vivo y cobrado en fal.
@@ -544,6 +549,13 @@ def _linea_creditos(plan: Plan) -> str:
 
 def _linea_costo(plan: Plan) -> str:
     if plan.costo_usd is None:
+        from pipeline import pricing
+        ficha = pricing.ENDPOINTS_JSON.get(plan.endpoint) or {}
+        if ficha.get("usd_por_resolucion") is not None:
+            # hay ficha, pero por resolución, y a ésta le falta su precio: no es «sin ficha»
+            res = (plan.argumentos or {}).get("resolution")
+            return (f"sin precio confirmado (la ficha de este endpoint en tools/pricing.json no trae la "
+                    f"resolución {res!r}: se mide en el panel de fal tras la prueba pagada)")
         return "sin precio confirmado (no hay ficha de este endpoint en tools/pricing.json)"
     return f"${plan.costo_usd:.4f} dólares (tools/pricing.json)"
 
@@ -615,12 +627,18 @@ def _tope_megapixeles(plan: Plan) -> float:
     return float(getattr(plan.modelo, "megapixeles_ficha", 0) or 0) if plan.tarea == "imagen" else 0.0
 
 
-def _promete_1k(plan: Plan) -> bool:
-    """¿La fila del modelo fija la resolución en 1K? (Nano Banana 2 con «1K» y FLUX 3 con «1k»:
-    el 1K es la única resolución con tarifa leída; por eso se compara sin distinguir mayúsculas)"""
+def _resolucion_prometida(plan: Plan) -> str:
+    """La resolución («1K», «2K» o «4K») que la fila del modelo FIJA en sus argumentos, o «» si no fija
+    ninguna que tenga banda. Nano Banana 2 fija «1K» y FLUX 3 «1k» (el 1K es su única resolución con tarifa
+    leída), Nano Banana Pro fija «2K» o «4K»: se compara sin distinguir mayúsculas."""
     # args_extra puede ser un mapping o una tupla de pares (llave, valor): dict() lee las dos
     extra = dict(getattr(plan.modelo, "args_extra", None) or ())
-    return str(extra.get("resolution", "")).upper() == "1K"
+    res = str(extra.get("resolution", "")).upper()
+    return res if res in BANDAS_MP else ""
+
+
+def _promete_1k(plan: Plan) -> bool:
+    return _resolucion_prometida(plan) == "1K"
 
 
 def _dolares(valor: float | None) -> str:
@@ -695,11 +713,18 @@ def _veredicto(plan: Plan, medida: dict) -> list[str]:
         dif.append(f"llegó como {codec} y la caja guarda toda imagen como .jpg y la sirve como "
                    "image/jpeg: un PNG o WebP ahí lo pintan los navegadores, pero las redes lo rechazan "
                    "al publicar (pide output_format jpeg, o conviértela al guardar)")
-    if plan.tarea in ("imagen", "editar") and _promete_1k(plan):
+    res = _resolucion_prometida(plan) if plan.tarea in ("imagen", "editar") else ""
+    if res:
+        menor, mayor, nominal = BANDAS_MP[res]
         mp = ancho * alto / 1_000_000
-        if mp > MAX_MP_1K or mp < MIN_MP_1K:
-            dif.append(f"se prometió 1K (~1 MP) y llegó {ancho}×{alto} ({mp:.2f} MP): el costo anotado "
-                       f"({_dolares(plan.costo_usd)}) solo vale a 1K, así que lo cobrado puede ser otro")
+        if mp > mayor or mp < menor:
+            if plan.costo_usd is None:
+                cola = ("el precio de este endpoint depende de la resolución y la de esta fila no tiene precio "
+                        "confirmado: mira en el panel de fal lo que cobró")
+            else:
+                cola = (f"el costo anotado ({_dolares(plan.costo_usd)}) solo vale a {res}, así que lo cobrado "
+                        "puede ser otro")
+            dif.append(f"se prometió {res} (~{nominal} MP) y llegó {ancho}×{alto} ({mp:.2f} MP): {cola}")
     if plan.tarea != "clip":
         return dif
     pedida = int(clip.RESOLUCION.rstrip("p"))
