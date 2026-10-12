@@ -3,6 +3,9 @@
 //  · «Crear una imagen» tiene su «+» y, con una imagen, la caja pasa a «Editar una imagen»;
 //  · «Ya estamos creando…» y los errores salen en el cuadro de abajo a la derecha, no junto a la caja.
 // Lo que vitest no puede ver: que window.avisos exista cuando la caja lo llama y dónde cae el cuadro en pantalla.
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
 import { expect, test, type Page } from '@playwright/test';
 
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
@@ -15,8 +18,41 @@ const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/moderar': { permitido: true },
 };
 
-async function inicio(page: Page, generar: { estado: number; cuerpo: unknown; demoraMs?: number }) {
+// un PNG de 1×1: lo que «sirve» el estudio como imagen de Mis creaciones
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+// Un «CDN» de verdad, en OTRO origen y SIN cabeceras CORS, como el de la nube: una imagen se pinta desde ahí (<img>), pero un
+// fetch desde la página falla. Sin esto la prueba pasaría con un servidor que sirve la imagen en el mismo origen.
+async function cdnSinCors() {
+  const servidor = createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'image/png' });
+    res.end(PNG_1X1);
+  });
+  await new Promise<void>(listo => servidor.listen(0, '127.0.0.1', listo));
+  const { port } = servidor.address() as AddressInfo;
+  return { url: `http://127.0.0.1:${port}`, cerrar: () => new Promise<void>(listo => servidor.close(() => listo())) };
+}
+
+const imagenDeMisCreaciones = (i: number) => ({ nombre: `img-${i}.jpg`, url: `/api/imagenes/img-${i}.jpg`, creado: 1_758_000_000 + i });
+
+async function inicio(
+  page: Page,
+  generar: { estado: number; cuerpo: unknown; demoraMs?: number },
+  imagenes: Array<ReturnType<typeof imagenDeMisCreaciones>> = [],
+  cdn?: string,
+) {
   for (const [ruta, json] of Object.entries(RESPUESTAS_VACIAS)) await page.route(ruta, r => r.fulfill({ json }));
+  if (imagenes.length) {
+    await page.route('**/api/imagenes', r => r.fulfill({ json: { total: imagenes.length, imagenes } }));
+    // Con `cdn`, como en la nube: la URL de cada imagen REDIRIGE a un CDN sin CORS. La miniatura (un <img>) carga; un fetch
+    // ahí falla. Los bytes salen de nuestro endpoint /archivo, del mismo origen.
+    await page.route('**/api/imagenes/*.jpg', r =>
+      cdn ? r.fulfill({ status: 302, headers: { location: `${cdn}/imagen.png` } }) : r.fulfill({ body: PNG_1X1, contentType: 'image/png' }),
+    );
+    await page.route('**/api/imagenes/*.jpg/archivo', r => r.fulfill({ body: PNG_1X1, contentType: 'image/png' }));
+  }
   await page.route('**/api/blotato', r => r.fulfill({ status: 404, json: { detail: 'no' } }));
   await page.route('**/api/clip/generar', async r => {
     if (generar.demoraMs) await new Promise(f => setTimeout(f, generar.demoraMs));
@@ -121,3 +157,36 @@ test('sin texto, el error también sale en el cuadro', async ({ page }) => {
   await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
   await expect(page.locator('#bandeja').getByRole('alert')).toContainText('Cuéntanos qué quieres primero');
 });
+
+test('el «+» ofrece Mis creaciones: se eligen imágenes en la hoja y llegan a la caja', async ({ page }) => {
+  const cdn = await cdnSinCors();
+  try {
+    await hojaDeMisCreaciones(page, cdn.url);
+  } finally {
+    await cdn.cerrar();
+  }
+});
+
+async function hojaDeMisCreaciones(page: Page, cdn: string) {
+  await inicio(page, { estado: 200, cuerpo: {} }, [imagenDeMisCreaciones(1), imagenDeMisCreaciones(2), imagenDeMisCreaciones(3)], cdn);
+  const mas = page.getByRole('button', { name: 'Agregar imágenes de referencia' });
+  await mas.click();
+  await expect(page.getByRole('menu', { name: 'Agregar imágenes' })).toBeVisible();
+  await page.getByRole('menuitem', { name: /Elegir de Mis creaciones/ }).click();
+  const hoja = page.getByRole('dialog', { name: 'Agregar imágenes' });
+  await expect(hoja).toBeVisible();
+  // las miniaturas cargan de verdad (no son cuadros vacíos)
+  await expect
+    .poll(() => hoja.locator('img').first().evaluate(i => (i as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  const miniaturas = hoja.getByRole('button', { name: /^Tu imagen del/ });
+  await miniaturas.nth(0).click();
+  await miniaturas.nth(2).click();
+  await expect(hoja.getByRole('status')).toContainText('2 de 3 seleccionadas');
+  await page.screenshot({ path: process.env.PW_CAPTURA_HOJA ?? 'test-results/hoja-mis-creaciones.png' });
+  await hoja.getByRole('button', { name: 'Agregar 2' }).click();
+  await expect(hoja).toBeHidden();
+  // la más nueva (img-3) se marcó al final, así que va segunda
+  await expect(page.getByRole('button', { name: 'Quitar «img-3.jpg»' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Quitar «img-1.jpg»' })).toBeVisible();
+}

@@ -15,6 +15,7 @@ import type { NombreIcono } from '../../ui/iconos';
 import { unir } from '../../ui/unir';
 import { DialogoBlotato } from './Blotato';
 import { Caja, type MandoCaja } from './Caja';
+import { traerImagen } from './envio';
 import {
   archivar,
   cargarClips,
@@ -206,10 +207,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   // «Usar como referencia» del visor: la imagen vuelve a la caja, lista para animarla
   async function usarComoReferencia(im: Imagen) {
     try {
-      const r = await fetch(im.url);
-      if (!r.ok) throw new Error('no se pudo traer');
-      const blob = await r.blob();
-      caja.current?.referencia(new File([blob], im.nombre, { type: blob.type || 'image/jpeg' }));
+      caja.current?.referencia(await traerImagen(im));
     } catch {
       setAviso('No pudimos traer esa imagen — inténtalo de nuevo.');
     }
@@ -257,6 +255,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           <Caja
             ref={caja}
             ir={ir}
+            imagenes={listas?.imagenes ?? undefined}
             alPedir={p => setPendientes(l => [p, ...l])}
             alTerminar={(clave, esperarLista) => {
               // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.

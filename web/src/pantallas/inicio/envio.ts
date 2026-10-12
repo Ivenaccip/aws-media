@@ -46,6 +46,26 @@ export function rechazo(f: File, tarea: 'clip' | 'editar'): string {
   return '';
 }
 
+/** De lo que se suelta o se pega, lo que es imagen (un .heic puede venir sin tipo). */
+export const soloImagenes = (archivos: File[]): File[] =>
+  archivos.filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+
+/** Qué archivos sirven para esa tarea, en una frase para el menú del «+»: «JPG, PNG o WebP · hasta 15 MB». */
+export const descripcionDeArchivos = (tarea: 'clip' | 'editar'): string =>
+  tarea === 'clip'
+    ? `JPG, PNG, WebP, GIF, AVIF o HEIC · hasta ${MAX_BYTES_CLIP / 1024 / 1024} MB`
+    : `JPG, PNG o WebP · hasta ${MAX_BYTES_EDITAR / 1024 / 1024} MB`;
+
+/** Una imagen de «Mis creaciones» como archivo, para usarla de referencia: se trae del servidor y se envuelve.
+ *  Los bytes se piden a NUESTRO endpoint (`/archivo`) y no a `im.url`: en la nube esa URL redirige al CDN, que no manda
+ *  cabeceras CORS, y el `fetch` fallaría con toda imagen (la miniatura sí carga: es un <img>, no un fetch). */
+export async function traerImagen(im: { nombre: string }, signal?: AbortSignal): Promise<File> {
+  const r = await fetch('/api/imagenes/' + encodeURIComponent(im.nombre) + '/archivo', signal ? { signal } : {});
+  if (!r.ok) throw new Error('no se pudo traer');
+  const blob = await r.blob();
+  return new File([blob], im.nombre, { type: blob.type || 'image/jpeg' });
+}
+
 // La extensión que corresponde a cada tipo de imagen: una captura pegada llega como «image.png» o sin nombre.
 const EXTENSION_DE_TIPO: Record<string, string> = {
   'image/png': '.png',
