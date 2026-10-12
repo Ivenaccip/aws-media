@@ -93,7 +93,13 @@ def _costo_ficha(f: dict, args: dict) -> float | None:
             audio = "con_audio" if args.get("generate_audio") else "sin_audio"
             tabla = f["usd_por_segundo"]
             tarifa = tabla.get(f"{res}_{audio}", tabla.get(res))
-            return None if tarifa is None else round(seg * float(tarifa), 4)
+            if tarifa is None:
+                return None
+            # Grok Video cobra además un extra por la imagen de entrada del image-to-video ($0.002 dólares en
+            # la base, medido en el panel de fal el 12-oct-2026; $0.01 en la 1.5 Lite, leído en su página).
+            # Sin la llave `usd_imagen_entrada` en la ficha, no se suma nada (el resto de los clips).
+            entrada = float(f.get("usd_imagen_entrada", 0)) if (args.get("image_url") or args.get("start_image_url")) else 0.0
+            return round(seg * float(tarifa) + entrada, 4)
     except (KeyError, TypeError, ValueError):
         return None
     return None

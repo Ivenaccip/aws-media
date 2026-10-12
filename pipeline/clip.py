@@ -175,7 +175,7 @@ async def animar(prompt: str, image_url: str | None = None,
     FalError en `fal.llamar`, pero NO cancela el trabajo en fal: el primero puede
     seguir vivo y cobrado cuando sale el segundo. Con Lite sale barato (hasta $0.40
     dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que todos los
-    demás modelos (Veo Fast y Standard y los cinco de la Ola 4, que no tienen tiempos
+    demás modelos (Veo Fast y Standard y los seis de la Ola 4, que no tienen tiempos
     medidos) hacen uno solo.
     """
     m = modelos_ia.resolver("clip", modelo)

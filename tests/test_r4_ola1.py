@@ -524,9 +524,9 @@ def test_los_intentos_por_defecto_de_un_modelo_son_los_de_settings():
     from pipeline import modelos_ia
     assert modelos_ia.Modelo("x", "clip", "fal-ai/x").max_intentos == 0
     for m in _toda_la_tabla():
-        # Veo 3.1 Fast y Standard, y los cinco clips de la Ola 4 (sin medir cuánto tardan): un solo intento
+        # Veo 3.1 Fast y Standard, y los seis clips de la Ola 4 (sin medir cuánto tardan): un solo intento
         esperado = 1 if (m.tarea, m.id) in {("clip", "veo-fast"), ("clip", "veo-std"), ("clip", "h3t"),
-                                            ("clip", "grokv"), ("clip", "ltx"), ("clip", "kling"),
+                                            ("clip", "grokv"), ("clip", "grokl"), ("clip", "ltx"), ("clip", "kling"),
                                             ("clip", "seed")} else 0
         assert m.max_intentos == esperado, (m.tarea, m.id)
     assert modelos_ia.resolver("imagen", "grok").max_intentos == 0
@@ -1024,10 +1024,10 @@ def test_standard_sigue_rechazado_con_la_tarifa_real(
     _sin_rastro(espia, falso_fal, imagenes_al_disco)
 
 
-@pytest.mark.parametrize("modelo", ["h3t", "grokv", "ltx", "kling", "seed"])
+@pytest.mark.parametrize("modelo", ["h3t", "grokv", "grokl", "ltx", "kling", "seed"])
 def test_los_clips_de_la_ola_4_se_rechazan_con_la_tarifa_real(
         cliente, espia, falso_fal, imagenes_al_disco, modelo):
-    """Ola 4: MiniMax, Grok Video, LTX, Kling y Seedance tienen fila y adaptador pero ningún número en
+    """Ola 4: MiniMax, Grok Video, Grok Lite, LTX, Kling y Seedance tienen fila y adaptador pero ningún número en
     tools/tarifas.json: el servidor responde 422 sin cobrar, sin crear documento y sin encolar, con y sin
     duración (también las que el modelo no admite). Hasta su prueba pagada no se ofrecen."""
     for segundos in (None, 4, 6, 8):

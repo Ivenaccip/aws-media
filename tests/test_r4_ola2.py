@@ -150,7 +150,7 @@ def test_la_tabla_trae_exactamente_estos_modelos():
     assert modelos_ia.disponibles("imagen") == ["grok", *IDS, "nb2", "nbp-2k", "nbp-4k"]
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
     assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std",
-                                              "h3t", "grokv", "ltx", "kling", "seed"]
+                                              "h3t", "grokv", "grokl", "ltx", "kling", "seed"]
     # GPT Image (Ola 2, pendiente de decisiones del dueño), Nano Banana Lite y «nbp» a secas (hay que
     # elegir calidad: `nbp-2k` o `nbp-4k`) siguen sin fila; ninguna de las seis entra al editor.
     # «sora» es un clip que no existe: un id desconocido se rechaza, no cae a otro.

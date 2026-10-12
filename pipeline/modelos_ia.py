@@ -19,9 +19,9 @@ Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; s
 desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendieron también en
 la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Sigue inerte
 solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar. Los clips de las otras familias
-(MiniMax H3 Max Turbo, Grok Imagine Video, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0, Ola 4) tienen fila
-y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (MiniMax y Grok Video ya tuvieron su
-prueba pagada del 12-oct-2026; los otros tres no).
+(MiniMax H3 Max Turbo, Grok Imagine Video, Grok Imagine Video 1.5 Lite, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0,
+Ola 4) tienen fila y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (MiniMax y
+Grok Video ya tuvieron su prueba pagada y su cobro en el panel de fal del 12-oct-2026; Grok Lite y los otros tres no).
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -68,7 +68,7 @@ DURACION_PREDETERMINADA_S = 8
 # clip: la familia de argumentos de un modelo. Cada una pide distinto la duración (número, texto, «8s»),
 # la resolución, el audio y la imagen de entrada, así que `pipeline/clip_familias.py` trae un armador por
 # familia y `clip.animar` elige el de la fila (Veo, la de siempre, se arma en `pipeline/clip.py`).
-FAMILIAS_CLIP = ("veo", "minimax", "grok", "ltx", "kling", "seedance")
+FAMILIAS_CLIP = ("veo", "minimax", "grok", "grok_lite", "ltx", "kling", "seedance")
 
 
 class ModeloDesconocido(ValueError):
@@ -308,12 +308,16 @@ VEO_FAST_I2V = "fal-ai/veo3.1/fast/image-to-video"
 VEO_STD_T2V = "fal-ai/veo3.1"
 VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
 # Ola 4 (clips de otras familias). Endpoints y parámetros leídos del esquema público de fal el 12-oct-2026
-# (tools/leer_esquema_fal.py --ola4; docs/modelos-ia/DATOS-FAL-2026-10-08.md §14). Grok Video tiene dos
-# versiones; entra la base (la 1.5 cuesta el doble y la página no explica la diferencia: decisión del dueño).
+# (tools/leer_esquema_fal.py --ola4; docs/modelos-ia/DATOS-FAL-2026-10-08.md §14). Grok Video tiene tres
+# versiones: la base, la 1.5 (a $0.14 dólares por segundo, sin fila: decisión del dueño) y la 1.5 Lite (más abajo).
 H3T_T2V = "minimax/h3-max-turbo/text-to-video"
 H3T_I2V = "minimax/h3-max-turbo/image-to-video"
 GROKV_T2V = "xai/grok-imagine-video/text-to-video"
 GROKV_I2V = "xai/grok-imagine-video/image-to-video"
+# Grok Imagine Video 1.5 Lite: la versión barata de la 1.5 (esquema leído el 12-oct-2026; DATOS §16). Es otra
+# familia de argumentos que la base: su image-to-video no tiene `aspect_ratio`.
+GROKL_T2V = "xai/grok-imagine-video/v1.5/lite/text-to-video"
+GROKL_I2V = "xai/grok-imagine-video/v1.5/lite/image-to-video"
 LTX_T2V = "lightricks/ltx-2.5/text-to-video/fast"
 LTX_I2V = "lightricks/ltx-2.5/image-to-video/fast"
 KLING_T2V = "fal-ai/kling-video/v3/pro/text-to-video"
@@ -397,6 +401,11 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                  con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     grokv = Modelo("grokv", "clip", GROKV_T2V, GROKV_I2V, familia_clip="grok",
                    con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+    # Grok 1.5 Lite (12-oct-2026): fila inerte. El esquema no decía si su clip trae sonido; la prueba pagada del mismo día
+    # midió una pista aac en sus dos clips (texto a video e imagen a video), aunque muy bajita (DATOS §16): `con_audio=True`,
+    # y `probar_modelo` marca REVISAR si un clip suyo llega sin pista.
+    grokl = Modelo("grokl", "clip", GROKL_T2V, GROKL_I2V, familia_clip="grok_lite",
+                   con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     ltx = Modelo("ltx", "clip", LTX_T2V, LTX_I2V, familia_clip="ltx",
                  con_audio=True, duraciones=(6, 8), max_intentos=1)
     kling = Modelo("kling", "clip", KLING_T2V, KLING_I2V, familia_clip="kling",
@@ -457,6 +466,7 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
             ("clip", "veo-std"): veo_std,
             ("clip", "h3t"): h3t,
             ("clip", "grokv"): grokv,
+            ("clip", "grokl"): grokl,
             ("clip", "ltx"): ltx,
             ("clip", "kling"): kling,
             ("clip", "seed"): seed}
