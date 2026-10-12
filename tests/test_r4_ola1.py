@@ -1024,10 +1024,10 @@ def test_standard_sigue_rechazado_con_la_tarifa_real(
     _sin_rastro(espia, falso_fal, imagenes_al_disco)
 
 
-@pytest.mark.parametrize("modelo", ["h3t", "grokv", "grokl", "ltx", "kling", "seed"])
+@pytest.mark.parametrize("modelo", ["grokv", "grokl", "ltx", "kling", "seed"])
 def test_los_clips_de_la_ola_4_se_rechazan_con_la_tarifa_real(
         cliente, espia, falso_fal, imagenes_al_disco, modelo):
-    """Ola 4: MiniMax, Grok Video, Grok Lite, LTX, Kling y Seedance tienen fila y adaptador pero ningún número en
+    """Ola 4 (MiniMax se encendió el 12-oct-2026): Grok Video, Grok Lite, LTX, Kling y Seedance tienen fila y adaptador pero ningún número en
     tools/tarifas.json: el servidor responde 422 sin cobrar, sin crear documento y sin encolar, con y sin
     duración (también las que el modelo no admite). Hasta su prueba pagada no se ofrecen."""
     for segundos in (None, 4, 6, 8):
@@ -1050,6 +1050,55 @@ def test_veo_fast_con_la_tarifa_real_cobra_su_numero(cliente, espia, segundos, c
     assert r.json()["creditos"] == cobro
     assert espia.cobros == [(cobro, f"clip:{r.json()['id']}")]
     assert len(espia.encolados) == 1
+
+
+@pytest.mark.parametrize("n_imagenes,extra", [(0, 0), (1, 0), (2, 2), (3, 2)])
+@pytest.mark.parametrize("segundos,cobro", [(None, 30), (4, 16), (6, 22), (8, 30)])
+def test_minimax_con_la_tarifa_real_cobra_su_numero(cliente, espia, segundos, cobro, n_imagenes, extra):
+    """MiniMax H3 Max Turbo (Ola 4, encendido el 12-oct-2026): 16, 22 y 30 créditos a 4, 6 y 8 s, sin duración la de 8 s;
+    componer 2 o 3 imágenes suma 2. Sin la fixture `encendido`: el número sale de tools/tarifas.json tal como está."""
+    cuerpo = {"texto": "mi perro", "modelo": "h3t", "imagenes": _imagenes_propias(n_imagenes)}
+    if segundos:
+        cuerpo["segundos"] = segundos
+    r = cliente.post("/api/clip/generar", json=cuerpo)
+    assert r.status_code == 200, r.text
+    assert r.json()["creditos"] == cobro + extra
+    assert espia.cobros == [(cobro + extra, f"clip:{r.json()['id']}")]
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    assert (doc["modelo"], doc["segundos"], doc["creditos"]) == ("h3t", segundos or 8, cobro + extra)
+    assert len(espia.encolados) == 1
+
+
+@pytest.mark.parametrize("segundos", [4, 6, 8])
+def test_minimax_el_worker_llama_a_su_endpoint_con_los_argumentos_de_su_familia(
+        cliente, espia, monkeypatch, tmp_path, segundos):
+    """Del doc que escribió el API al endpoint de MiniMax: duración como NÚMERO, 768P en mayúscula y sin `generate_audio`
+    (no tiene) ni llaves de Veo; el aspecto viaja en texto a video. El costo anotado es el de la ficha por los segundos pedidos."""
+    import worker.clip_generar as w
+    from pipeline import clip, fal
+    cliente.post("/api/clip/generar", json={"texto": "mi perro", "modelo": "h3t", "segundos": segundos})
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    llamadas = []
+
+    async def llamar(app, argumentos, timeout_s, nombre, meta=None):
+        llamadas.append((app, argumentos, nombre))
+        return {"video": {"url": "https://fal.test/clip.mp4"}}
+
+    async def descargar(url, destino):
+        Path(destino).write_bytes(b"video")
+
+    async def chat_json(name, system, user):
+        return {"video": "A dog running.", "composicion": "", "recorte": ""}
+    monkeypatch.setattr(fal, "llamar", llamar)
+    monkeypatch.setattr(fal, "descargar", descargar)
+    monkeypatch.setattr("pipeline.clip.chat_json", chat_json)
+    res = asyncio.run(w._correr(doc, tmp_path))
+    ((app, args, nombre),) = llamadas
+    assert app == "minimax/h3-max-turbo/text-to-video" and nombre == "clip-h3t"
+    assert args == {"prompt": "A dog running.", "duration": segundos, "resolution": "768P",
+                    "prompt_expansion_mode": "balanced", "aspect_ratio": "16:9"}
+    assert type(args["duration"]) is int and res["segundos"] == segundos
+    assert clip.costo_usd(0, "h3t", segundos) == pytest.approx(segundos * 0.04, abs=1e-4)
 
 
 def test_nano_banana_2_con_la_tarifa_real_cobra_su_numero(

@@ -1243,9 +1243,12 @@ describe('la caja', () => {
     montar();
     pintar();
     const tabla = modelos.clip['veo-lite'];
+    const minimax = modelos.clip.h3t; // el otro económico (12-oct-2026): el encabezado del grupo da el rango de los dos
     // más corto, más barato
     expect(tabla['4']).toBeLessThan(tabla['6']);
     expect(tabla['6']).toBeLessThan(tabla['8']);
+    expect(minimax['4']).toBeLessThan(minimax['6']);
+    expect(minimax['6']).toBeLessThan(minimax['8']);
     expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 8 s');
     await userEvent.click(botonModelo());
     const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
@@ -1258,7 +1261,10 @@ describe('la caja', () => {
       // el chip, la fila, el encabezado del grupo y el pie dicen los créditos de ESA duración
       expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · ' + s + ' s');
       expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Lite/ })).toHaveTextContent('✦ ' + tabla[s]);
-      expect(menu).toHaveTextContent('Económicos✦ ' + tabla[s] + ' por clip de ' + s + ' s');
+      expect(within(menu).getByRole('radio', { name: /MiniMax/ })).toHaveTextContent('✦ ' + minimax[s]);
+      expect(menu).toHaveTextContent(
+        'Económicos✦ ' + Math.min(tabla[s], minimax[s]) + '–' + Math.max(tabla[s], minimax[s]) + ' por clip de ' + s + ' s',
+      );
       expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + tabla[s] + ' por clip de ' + s + ' s');
     }
     // y en la caja queda la última

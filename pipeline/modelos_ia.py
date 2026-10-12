@@ -19,9 +19,11 @@ Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; s
 desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendieron también en
 la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Sigue inerte
 solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar. Los clips de las otras familias
-(MiniMax H3 Max Turbo, Grok Imagine Video, Grok Imagine Video 1.5 Lite, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0,
-Ola 4) tienen fila y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (MiniMax y
-Grok Video ya tuvieron su prueba pagada y su cobro en el panel de fal del 12-oct-2026; Grok Lite y los otros tres no).
+(Grok Imagine Video, Grok Imagine Video 1.5 Lite, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0, Ola 4) tienen fila
+y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (Grok Video ya tuvo su prueba
+pagada y su cobro en el panel de fal del 12-oct-2026; Grok Lite y los otros tres no). MiniMax H3 Max Turbo (Ola 4) se
+encendió el 12-oct-2026 con 16, 22 y 30 créditos a 4, 6 y 8 s (decisión del dueño, tras su prueba pagada y el panel);
+se ofrece al desplegar la rama.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.

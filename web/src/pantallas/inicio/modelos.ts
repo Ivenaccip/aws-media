@@ -107,7 +107,7 @@ const IMAGEN: Modelo[] = [
 const CON_EDICION = new Set(['grok', 'gpt2', 'nb2']);
 
 const CLIP: Modelo[] = [
-  { id: 'h3t', nombre: 'MiniMax H3 Max Turbo', detalle: 'MiniMax · 768p', nivel: 'economico', activo: false },
+  { id: 'h3t', nombre: 'MiniMax H3 Max Turbo', detalle: 'MiniMax · 768p', nivel: 'economico', activo: true },
   { id: 'veo-lite', nombre: 'Veo 3.1 Lite', detalle: 'Google · 720p con audio', nivel: 'economico', activo: true },
   { id: 'grokv', nombre: 'Grok Imagine Video', detalle: 'xAI · 720p', nivel: 'economico', activo: false },
   { id: 'grokl', nombre: 'Grok Imagine Video 1.5 Lite', detalle: 'xAI · 720p', nivel: 'economico', activo: false },
