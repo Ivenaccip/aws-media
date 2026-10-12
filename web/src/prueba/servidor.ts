@@ -39,6 +39,20 @@ export function ponerMonedero(saldo: number | null, recarga = true) {
   return m;
 }
 
+/** window.avisos de mentira: el cuadro de abajo a la derecha de static/trabajos.js. Lo puesto se quita solo
+ *  al terminar el test. `mostrar` lleva lo que se dijo: texto y opciones (tipo, clave). */
+export function ponerAvisos() {
+  const a = {
+    mostrar: vi.fn<NonNullable<Window['avisos']>['mostrar']>(() => 1),
+    quitar: vi.fn<NonNullable<Window['avisos']>['quitar']>(),
+  };
+  window.avisos = a;
+  onTestFinished(() => {
+    delete window.avisos;
+  });
+  return a;
+}
+
 /** UI·19: los avisos de cobro que BotonCobro manda a monedero.js (el «−N»
  *  que vuela) durante este test. Un cobro que salió bien deja uno; un 402,
  *  un veto o una validación no dejan ninguno. */

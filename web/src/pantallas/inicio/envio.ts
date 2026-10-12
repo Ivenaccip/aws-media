@@ -46,6 +46,76 @@ export function rechazo(f: File, tarea: 'clip' | 'editar'): string {
   return '';
 }
 
+// La extensión que corresponde a cada tipo de imagen: una captura pegada llega como «image.png» o sin nombre.
+const EXTENSION_DE_TIPO: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/avif': '.avif',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+};
+
+/** El nombre con que se enseña y se valida una imagen pegada: el suyo si es un archivo de verdad (copiado del
+ *  explorador), y si es una captura («image.png», o sin nombre) uno que dice qué es. */
+function nombrePegada(f: File, posicion: number, total: number): string {
+  const generico = !f.name || /^image\.[a-z0-9]+$/i.test(f.name);
+  if (!generico) return f.name;
+  const ext = EXTENSION_DE_TIPO[f.type] || extension(f.name) || '.png';
+  return `imagen-pegada${total > 1 ? '-' + posicion : ''}${ext}`;
+}
+
+const normal = (s: string) => s.normalize('NFC').toLowerCase();
+const sinExtension = (s: string) => s.replace(/\.[^./\\]+$/, '');
+
+/** ¿Todo ese texto son nombres de los archivos que vienen en el portapapeles? El Finder de macOS (con Chrome, Edge o
+ *  Brave) pone el NOMBRE del archivo —o su ruta, o su file:///— como texto junto al archivo: es el mismo pegado, no
+ *  letras que alguien copió. Se compara sin mayúsculas, con o sin extensión y normalizando los acentos (macOS guarda
+ *  el nombre del archivo descompuesto y el texto compuesto). */
+function esNombreDeArchivo(texto: string, archivos: File[]): boolean {
+  const nombres = new Set(archivos.flatMap(f => [normal(f.name), normal(sinExtension(f.name))]));
+  const lineas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return (
+    lineas.length > 0 &&
+    lineas.every(linea => {
+      let ultimo = linea.split(/[\\/]/).filter(Boolean).pop() ?? '';
+      try {
+        if (/^file:\/\//i.test(linea)) ultimo = decodeURIComponent(ultimo);
+      } catch {
+        return false; // un % suelto: no es una dirección de archivo
+      }
+      return nombres.has(normal(ultimo));
+    })
+  );
+}
+
+/**
+ * Las imágenes que trae un pegado (Ctrl+V): un archivo copiado del explorador o una captura. Si el pegado trae
+ * TEXTO no se toca (Word o Excel mandan las letras y además una foto de ellas: ganan las letras), salvo que ese texto
+ * sea solo el nombre de los mismos archivos (el Finder de macOS). Lo que no sea imagen se deja pasar. Devuelve `[]`
+ * cuando no hay nada que agregar.
+ */
+export function imagenesPegadas(dt: DataTransfer | null | undefined): File[] {
+  if (!dt) return [];
+  const archivos = Array.from(dt.files ?? []);
+  // algunos navegadores solo las traen como elementos del portapapeles
+  if (!archivos.length) {
+    for (const el of Array.from(dt.items ?? [])) {
+      const f = el.kind === 'file' ? el.getAsFile() : null;
+      if (f) archivos.push(f);
+    }
+  }
+  const imagenes = archivos.filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+  if (!imagenes.length) return [];
+  const texto = dt.getData('text/plain').trim();
+  if (texto && !esNombreDeArchivo(texto, archivos)) return [];
+  return imagenes.map((f, i) => {
+    const nombre = nombrePegada(f, i + 1, imagenes.length);
+    return nombre === f.name ? f : new File([f], nombre, { type: f.type });
+  });
+}
+
 interface Firma {
   url: string;
   key: string;

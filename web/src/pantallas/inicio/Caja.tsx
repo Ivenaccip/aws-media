@@ -5,13 +5,30 @@
 // guarda y la manda con el pedido; el precio lo calcula el servidor.
 //
 // Lo que elige modelo (un video corto, crear o editar una imagen) se pide AQUÍ:
-// la caja sube las imágenes de referencia (el «+», o arrastrándolas), pide con
-// el modelo elegido y se queda en el inicio; lo que se genera aparece en «Mis
-// creaciones». Lo demás (cuentos, historias) sigue llevando a su pantalla con el
-// texto ya puesto.
-import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+// la caja sube las imágenes de referencia (el «+», arrastrándolas o pegándolas con
+// Ctrl+V), pide con el modelo elegido y se queda en el inicio; lo que se genera
+// aparece en «Mis creaciones». Lo demás (cuentos, historias) sigue llevando a su
+// pantalla con el texto ya puesto.
+//
+// «Crear una imagen» también tiene «+»: con una imagen la tarea es editarla, así
+// que la caja pasa sola a «Editar una imagen».
+//
+// Lo que la caja dice —que ya está creando, o por qué no pudo— sale en el cuadro de
+// abajo a la derecha (nucleo/avisos); donde esa página no lo trae, junto a la caja.
+import {
+  forwardRef,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { ErrorApi } from '../../nucleo/api';
+import { avisar, quitarAviso } from '../../nucleo/avisos';
 import { ESTRELLA } from '../../nucleo/estrella';
 import { moderar } from '../../nucleo/moderar';
 import { clip as tarifaClip } from '../../nucleo/tarifas';
@@ -19,7 +36,7 @@ import { refrescarSaldo } from '../../marca/useSaldo';
 import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
-import { esLanzada, MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from './envio';
+import { esLanzada, imagenesPegadas, MAX_FOTOS_CLIP, pedirClip, pedirEdicion, pedirImagen, rechazo } from './envio';
 import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
@@ -67,6 +84,13 @@ const PISTA =
   'after:opacity-0 after:invisible after:transition-opacity after:content-[attr(data-pista)] ' +
   'hover:after:visible hover:after:opacity-100 focus-visible:after:visible focus-visible:after:opacity-100';
 
+// Lo que la caja dice (que ya está creando, o por qué no pudo) va al cuadro de abajo a la derecha, el mismo de
+// «Tus trabajos» (static/trabajos.js). Comparten clave: lo nuevo reemplaza lo anterior de la caja.
+const CLAVE_AVISO = 'caja';
+
+/** ¿Lo que se arrastra trae archivos? Un texto seleccionado que se mueve dentro del cuadro no los trae. */
+const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
 // el riel: dos botones con icono. En celular es una fila sobre el texto.
 const RIEL = [
   { familia: 'imagenes', rotulo: 'Imagen', icono: 'imagen' },
@@ -93,6 +117,9 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const [arrastrando, setArrastrando] = useState(false);
   const archivos = useRef<HTMLInputElement>(null);
   const pedidos = useRef(0);
+  const seccion = useRef<HTMLElement>(null);
+  // el cuadro de abajo a la derecha trae un error de la caja (un error se queda hasta cerrarlo)
+  const errorEnElCuadro = useRef(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const boton = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
@@ -214,25 +241,68 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   // cuántas referencias admite la tarea de ahora; las que sobren se guardan, no se pierden
   const maxRefs = opcion.referencias ?? 0;
   const fotos = useMemo(() => refs.slice(0, maxRefs), [refs, maxRefs]);
-  const tareaRef = opcion.id === 'clip' ? 'clip' : 'editar';
+  // «Crear una imagen» no parte de ninguna, pero admite agregar una: con ella la tarea es editarla, y la caja pasa
+  // a «Editar una imagen» (que es la que sabe partir de una y trae solo los modelos que editan)
+  const alAgregar = opcion.alAgregar ? opciones.find(o => o.id === opcion.alAgregar) : undefined;
+  const admiteImagenes = maxRefs > 0 || alAgregar !== undefined;
+
+  /** Lo que la caja dice: en el cuadro de abajo a la derecha y, si esa página no lo trae, aquí mismo. */
+  function decir(tipo: 'ok' | 'mal', texto: string) {
+    if (avisar(texto, { tipo, clave: CLAVE_AVISO })) {
+      errorEnElCuadro.current = tipo === 'mal';
+      setError('');
+      setAviso('');
+    } else if (tipo === 'mal') {
+      setError(texto);
+      setAviso('');
+    } else {
+      setAviso(texto);
+      setError('');
+    }
+  }
+
+  /** Lo que estaba mal ya se corrigió (se agregó la imagen, se vuelve a pedir): se quita el error, esté junto a la caja
+   *  o en el cuadro. Un aviso verde de «ya lo estamos creando» no es un error y se queda. */
+  function limpiarError() {
+    setError('');
+    if (errorEnElCuadro.current) {
+      errorEnElCuadro.current = false;
+      quitarAviso(CLAVE_AVISO);
+    }
+  }
 
   function agregar(nuevos: File[]) {
-    if (!maxRefs) return;
+    // con una imagen en «Crear una imagen» la tarea que rige es la de editar: sus topes y sus extensiones
+    const tarea = alAgregar ?? opcion;
+    const tope = tarea.referencias ?? 0;
+    if (!tope) return;
     setAviso('');
+    // lo de antes ya no vale (faltaba la imagen, la anterior no servía…); lo que rechace este lote se dice después
+    limpiarError();
     const buenos: File[] = [];
     for (const f of nuevos) {
-      const motivo = rechazo(f, tareaRef);
+      const motivo = rechazo(f, tarea.id === 'clip' ? 'clip' : 'editar');
       if (motivo) {
-        setError(motivo);
+        decir('mal', motivo);
         continue;
       }
       buenos.push(f);
     }
     if (!buenos.length) return;
-    setError('');
     // con una sola referencia (editar) la nueva reemplaza; con varias, se suman hasta el tope
-    setRefs(r => (maxRefs === 1 ? [buenos[0]!] : [...r, ...buenos].slice(0, maxRefs)));
-    if (maxRefs > 1 && fotos.length + buenos.length > maxRefs) setError(`Como mucho ${maxRefs} imágenes.`);
+    setRefs(r => (tope === 1 ? [buenos[0]!] : [...r, ...buenos].slice(0, tope)));
+    if (tope > 1 && fotos.length + buenos.length > tope) decir('mal', `Como mucho ${tope} imágenes.`);
+    if (alAgregar) pasarAEditar(alAgregar);
+  }
+
+  /** «Crear una imagen» recibió una imagen: sigue «Editar una imagen», con el mismo modelo si ese también edita. */
+  function pasarAEditar(editar: Opcion) {
+    setOpcion(editar);
+    const suyo = elegidos.imagen;
+    if (suyo && !elegidos.editar && ofrecidosDe('editar').some(m => m.id === suyo.id)) {
+      setElegidos(e => ({ ...e, editar: suyo }));
+    }
+    decir('ok', 'Con una imagen, la caja la edita: pasamos a «Editar una imagen».');
   }
 
   function quitar(i: number) {
@@ -240,32 +310,53 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   }
 
   function alSoltar(e: React.DragEvent) {
-    if (!maxRefs) return;
+    if (!admiteImagenes || !traeArchivos(e)) return;
     e.preventDefault();
     setArrastrando(false);
     agregar(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)));
   }
 
-  /** Devuelve true si el pedido salió (el menú de modelo se cierra); false si faltó algo. */
+  // Ctrl+V con una imagen copiada (una captura, o un archivo del explorador): se agrega igual que con el «+».
+  // Va en el documento y no en el texto: da igual dónde esté el foco de la página.
+  const alPegar = useEffectEvent((e: ClipboardEvent) => {
+    if (!admiteImagenes) return;
+    const destino = e.target instanceof HTMLElement ? e.target : null;
+    // en otro campo (la clave de Blotato…) lo pegado es de ese campo; el único que es de la caja es su texto
+    if (destino && destino !== area.current && (destino.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(destino.tagName))) return;
+    // con un diálogo abierto (el visor, Blotato) la caja queda detrás: no se le agrega nada sin que se vea
+    if (seccion.current?.closest('[aria-hidden="true"]')) return;
+    const imagenes = imagenesPegadas(e.clipboardData);
+    if (!imagenes.length) return;
+    e.preventDefault();
+    agregar(imagenes);
+  });
+  useEffect(() => {
+    const oir = (e: ClipboardEvent) => alPegar(e);
+    document.addEventListener('paste', oir);
+    return () => document.removeEventListener('paste', oir);
+  }, []);
+
+  /** Devuelve true si el menú de modelo debe cerrarse: salió el pedido, o faltaba algo y el aviso (que cae abajo a la
+   *  derecha, donde está el «Crear» del menú) no debe quedar tapando el botón. false solo si ya hay un pedido en vuelo. */
   function enviar(): boolean {
     const limpio = texto.trim();
     if (!limpio) {
-      setError('Cuéntanos qué quieres primero — o entra por el menú de la izquierda para ver el formulario completo.');
+      decir('mal', 'Cuéntanos qué quieres primero — o entra por el menú de la izquierda para ver el formulario completo.');
       area.current?.focus();
-      return false;
+      return true;
     }
     if (enviando) return false;
     // lo que elige modelo se pide aquí; lo demás va a su pantalla con el texto puesto
     if (opcion.modelos && modeloId) {
       if (opcion.id === 'imagen_editar' && !fotos.length) {
-        setError('Agrega con el + la imagen que quieres editar.');
-        return false;
+        decir('mal', 'Agrega con el + la imagen que quieres editar.');
+        return true;
       }
-      setError('');
+      limpiarError();
       void pedirAqui(limpio, modeloId, fotos);
       return true;
     }
-    setError('');
+    limpiarError();
     setEnviando(true); // hasta que la página navegue
     ir(destinoDe(opcion, limpio, modeloId));
     return true;
@@ -277,15 +368,24 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     setAviso('');
     let salio = false;
     let lanzada = false; // el servidor dejó una imagen en marcha: ya cobró y la hace
+    let enElCuadro = false; // «ya lo estamos creando» salió en el cuadro de abajo a la derecha
     const tipo = opcion.id === 'clip' ? 'corto' : 'imagen';
+    const queHace =
+      opcion.id === 'clip' ? `creando tu clip de ${segundos} segundos` : opcion.id === 'imagen' ? 'creando tu imagen' : 'editando tu imagen';
     try {
       const v = await moderar(limpio); // M13: se modera ANTES de lo que cobra
       if (!v.permitido) {
-        setError(v.mensaje);
+        decir('mal', v.mensaje);
         return;
       }
       alPedir?.({ clave, tipo, texto: limpio });
       salio = true;
+      // la tarjeta de «Generando…» y este aviso salen juntos; si el servidor lo rechaza, el error lo reemplaza
+      enElCuadro = avisar(`Ya estamos ${queHace}. Míralo abajo, en «Mis creaciones».`, { tipo: 'ok', clave: CLAVE_AVISO });
+      if (enElCuadro) {
+        errorEnElCuadro.current = false; // el aviso verde reemplazó al error de antes
+        setError('');
+      }
       // una imagen de un modelo que tarda contesta `lanzado` (ya se cobró, va en camino):
       // para la caja es lo mismo que una hecha, y «Mis creaciones» la enseña generándose
       if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
@@ -293,10 +393,11 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       else await pedirEdicion(limpio, modelo, adjuntas[0]!);
       setTexto('');
       setRefs([]);
-      setAviso('Listo, ya va. Míralo abajo, en «Mis creaciones».');
+      // sin el cuadro (esta página no lo trae) se dice aquí, junto a la caja
+      if (!enElCuadro) setAviso('Listo, ya va. Míralo abajo, en «Mis creaciones».');
       refrescarSaldo(); // se cobró: el saldo cambia
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      decir('mal', e instanceof Error ? e.message : String(e));
       // 402 y demás: nada se cobró; el 502 de imágenes ya devolvió los créditos
       if (e instanceof ErrorApi && e.estado === 502) refrescarSaldo();
     } finally {
@@ -320,8 +421,10 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     // arrastrar es un atajo: el camino accesible es el botón «+» (con teclado y lector de pantalla)
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <section
+      ref={seccion}
       onDragOver={e => {
-        if (!maxRefs) return;
+        // solo lo que trae archivos: mover texto dentro del propio cuadro sigue su camino normal
+        if (!admiteImagenes || !traeArchivos(e)) return;
         e.preventDefault();
         setArrastrando(true);
       }}
@@ -380,7 +483,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
         />
         <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
           <div className="flex min-w-0 gap-2.5">
-          {maxRefs > 0 && (
+          {admiteImagenes && (
             <>
               {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
               <input
@@ -398,8 +501,14 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
               />
               <button
                 type="button"
-                aria-label={maxRefs > 1 ? 'Agregar imágenes de referencia' : 'Agregar la imagen que quieres editar'}
-                title="Agregar imágenes, o arrástralas a la caja"
+                aria-label={
+                  maxRefs > 1
+                    ? 'Agregar imágenes de referencia'
+                    : alAgregar
+                      ? 'Agregar una imagen para editarla'
+                      : 'Agregar la imagen que quieres editar'
+                }
+                title="Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V"
                 onClick={() => archivos.current?.click()}
                 className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
               >
