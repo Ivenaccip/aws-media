@@ -324,8 +324,10 @@ TAMANOS_SDF = (("1:1", (1920, 1920)), ("16:9", (2048, 1152)), ("9:16", (1152, 20
 TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2752)))
 
 # Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
-# manda explícito para no depender de que el default de fal siga siendo 1K.
-NB2_ARGS_EXTRA = (("resolution", "1K"),)
+# manda explícito para no depender de que el default de fal siga siendo 1K. Y pide jpeg:
+# su esquema (leído el 11-oct-2026, DATOS-FAL §12) trae `output_format` por defecto en
+# "png" en crear y en editar, y la caja guarda lo que baja como .jpg sin convertirlo.
+NB2_ARGS_EXTRA = (("output_format", "jpeg"), ("resolution", "1K"))
 
 
 def _tabla() -> dict[tuple[str, str], Modelo]:

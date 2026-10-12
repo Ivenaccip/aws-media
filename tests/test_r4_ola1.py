@@ -159,8 +159,8 @@ def test_solo_nano_banana_2_trae_argumentos_extra():
     from pipeline import modelos_ia
     for tarea in ("imagen", "editar"):
         nb2 = modelos_ia.resolver(tarea, "nb2")
-        assert nb2.args_extra == (("resolution", "1K"),)
-        assert nb2.args_extra_dict == {"resolution": "1K"}
+        assert nb2.args_extra == (("output_format", "jpeg"), ("resolution", "1K"))
+        assert nb2.args_extra_dict == {"output_format": "jpeg", "resolution": "1K"}
         assert not modelos_ia.resolver(tarea, "grok").args_extra
     for id_ in ("veo-lite", "veo-fast", "veo-std"):
         assert not modelos_ia.resolver("clip", id_).args_extra
@@ -181,8 +181,9 @@ def test_args_extra_es_inmutable():
     d = m.args_extra_dict
     d["resolution"] = "4K"
     d["otro"] = 1
-    assert m.args_extra_dict == {"resolution": "1K"}
-    assert m.con_args_extra({"prompt": "x"}) == {"prompt": "x", "resolution": "1K"}
+    assert m.args_extra_dict == {"output_format": "jpeg", "resolution": "1K"}
+    assert m.con_args_extra({"prompt": "x"}) == {"prompt": "x", "output_format": "jpeg",
+                                                 "resolution": "1K"}
     # y el modelo sigue sirviendo de llave (hash e igualdad, con los argumentos dentro)
     assert hash(m) == hash(modelos_ia.resolver("imagen", "nb2"))
     assert m == modelos_ia.resolver("imagen", "nb2")
@@ -272,7 +273,7 @@ def test_dataclasses_asdict_recorre_cualquier_modelo():
         assert d["id"] == m.id and d["max_intentos"] == m.max_intentos
         assert tuple(map(tuple, d["args_extra"])) == m.args_extra
     nb2 = dataclasses.asdict(modelos_ia.resolver("imagen", "nb2"))
-    assert dict(nb2["args_extra"]) == {"resolution": "1K"}
+    assert dict(nb2["args_extra"]) == {"output_format": "jpeg", "resolution": "1K"}
     assert dataclasses.asdict(modelos_ia.resolver("imagen", "grok"))["args_extra"] == ()
     # y de vuelta: lo que sale de asdict reconstruye el mismo modelo
     assert modelos_ia.Modelo(**nb2) == modelos_ia.resolver("imagen", "nb2")
@@ -283,7 +284,8 @@ def test_el_extra_agrega_lo_que_falta_y_el_original_no_se_toca():
     m = modelos_ia.resolver("imagen", "nb2")
     base = {"prompt": "un gato", "num_images": 1}
     mezcla = m.con_args_extra(base)
-    assert mezcla == {"prompt": "un gato", "num_images": 1, "resolution": "1K"}
+    assert mezcla == {"prompt": "un gato", "num_images": 1, "output_format": "jpeg",
+                      "resolution": "1K"}
     assert base == {"prompt": "un gato", "num_images": 1}      # no se toca el original
 
 
@@ -297,7 +299,7 @@ def test_el_pin_de_1k_de_nano_banana_2_manda_sobre_la_tarea(tarea, pedida):
     args = {"prompt": "un gato", "num_images": 1, "aspect_ratio": "16:9",
             "image_urls": ["https://fal.test/a.png"], "resolution": pedida}
     mezcla = m.con_args_extra(args)
-    assert mezcla == {**args, "resolution": "1K"}
+    assert mezcla == {**args, "output_format": "jpeg", "resolution": "1K"}
     assert args["resolution"] == pedida                       # y el original queda como estaba
 
 
@@ -364,7 +366,7 @@ def test_nano_banana_2_crear_sin_referencia_manda_1k_explicito(falso_fal, tmp_pa
     (ll,) = falso_fal
     assert ll.app == "fal-ai/nano-banana-2"
     assert ll.args == {"prompt": "un gato", "num_images": 1, "aspect_ratio": "16:9",
-                       "resolution": "1K"}
+                       "output_format": "jpeg", "resolution": "1K"}
 
 
 def test_nano_banana_2_crear_sin_aspecto_sigue_en_1_a_1(falso_fal, tmp_path):
@@ -381,7 +383,8 @@ def test_nano_banana_2_crear_con_referencia_va_al_edit_con_1k(falso_fal, tmp_pat
     (ll,) = falso_fal
     assert ll.app == "fal-ai/nano-banana-2/edit"
     assert ll.args == {"prompt": "un gato", "num_images": 1, "aspect_ratio": "9:16",
-                       "image_urls": ["https://fal.test/subida/ref.png"], "resolution": "1K"}
+                       "image_urls": ["https://fal.test/subida/ref.png"],
+                       "output_format": "jpeg", "resolution": "1K"}
 
 
 def test_nano_banana_2_pincel_manda_las_dos_imagenes_y_1k(falso_fal, tmp_path):

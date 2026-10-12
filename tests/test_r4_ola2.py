@@ -426,7 +426,8 @@ def test_grok_y_nano_banana_2_llaman_igual_que_antes(falso_fal, tmp_path, modelo
     (ll,) = falso_fal
     esperado = {"prompt": "un gato", "num_images": 1, "aspect_ratio": "9:16"}
     if modelo == "nb2":
-        esperado["resolution"] = "1K"
+        # jpeg explícito desde la Ola 3: su esquema trae `output_format` por defecto en png
+        esperado.update({"output_format": "jpeg", "resolution": "1K"})
         assert ll.app == endpoint
     assert ll.args == esperado
 
