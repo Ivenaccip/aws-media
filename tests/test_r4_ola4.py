@@ -546,8 +546,8 @@ def test_grok_a_720_se_marca_si_llega_otra_resolucion():
 
 @pytest.mark.parametrize("id_", sorted(NUEVOS))
 def test_una_fila_que_promete_audio_se_marca_sin_pista(id_):
-    """Las seis prometen audio (MiniMax y la base de Grok lo trajeron en sus llamadas pagadas; Lite lo supone y la prueba
-    pagada lo confirma): un clip sin pista es REVISAR."""
+    """Las seis prometen audio (MiniMax, la base de Grok y Lite lo trajeron en sus llamadas pagadas; en Grok es bajito):
+    un clip sin pista es REVISAR."""
     probar, plan = _plan(id_)
     segundos = plan.segundos
     assert any("NO trae pista de audio" in d

@@ -401,8 +401,9 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                  con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     grokv = Modelo("grokv", "clip", GROKV_T2V, GROKV_I2V, familia_clip="grok",
                    con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
-    # Grok 1.5 Lite (12-oct-2026): fila inerte. El esquema no dice si su clip trae sonido; `con_audio=True` es lo que
-    # trajo la base en sus dos llamadas pagadas y la prueba pagada de Lite marca REVISAR si llega sin pista.
+    # Grok 1.5 Lite (12-oct-2026): fila inerte. El esquema no decía si su clip trae sonido; la prueba pagada del mismo día
+    # midió una pista aac en sus dos clips (texto a video e imagen a video), aunque muy bajita (DATOS §16): `con_audio=True`,
+    # y `probar_modelo` marca REVISAR si un clip suyo llega sin pista.
     grokl = Modelo("grokl", "clip", GROKL_T2V, GROKL_I2V, familia_clip="grok_lite",
                    con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     ltx = Modelo("ltx", "clip", LTX_T2V, LTX_I2V, familia_clip="ltx",
