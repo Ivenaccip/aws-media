@@ -672,21 +672,45 @@ def test_nano_banana_pro_promete_su_resolucion_y_otra_se_marca_para_revisar(
     if se_marca:
         assert "REVISAR" in out and f"se prometió {res}" in out and f"{ancho}×{alto}" in out
         assert "coincide con lo prometido" not in out
-        if modelo == "nbp-4k":                  # con precio en la ficha: dice cuál
-            assert f"el costo anotado ($0.30 dólares) solo vale a {res}" in out
-        else:                                    # el 2K no tiene precio: lo dice, no inventa uno
-            assert "no tiene precio confirmado" in out and "$" not in out.split("se prometió")[1].split("\n")[0]
+        dolares = "$0.30 dólares" if modelo == "nbp-4k" else "$0.15 dólares"     # la ficha medida en el panel
+        assert f"el costo anotado ({dolares}) solo vale a {res}" in out
     else:
         assert "REVISAR" not in out and "coincide con lo prometido" in out
 
 
-def test_el_ensayo_de_nbp_2k_dice_que_falta_la_resolucion_y_no_que_falta_la_ficha(env, capsys):
-    """La ficha de Nano Banana Pro existe (por resolución); al 2K le falta su celda. Decir «no hay ficha»
-    mandaría a buscar una ficha entera cuando lo que falta es medir el 2K en el panel de fal."""
+def _sin_la_celda_del_2k(monkeypatch):
+    """La ficha de Nano Banana Pro SIN el 2K: el estado de antes de medirlo, para probar el mecanismo."""
+    from pipeline import pricing
+    ficha = dict(pricing.ENDPOINTS_JSON["fal-ai/nano-banana-pro"])
+    ficha["usd_por_resolucion"] = {k: v for k, v in ficha["usd_por_resolucion"].items() if k != "2K"}
+    monkeypatch.setitem(pricing.ENDPOINTS_JSON, "fal-ai/nano-banana-pro", ficha)
+
+
+def test_el_ensayo_de_nbp_2k_enseña_el_costo_medido_en_el_panel(env, capsys):
+    code, out, err = _correr(capsys, "imagen", "nbp-2k", "--formato", "cuadrado")
+    assert code == 0, err
+    assert "costo esperado: $0.1500 dólares (tools/pricing.json)" in out and "sin precio confirmado" not in out
+    assert "créditos que cobraría: 14 créditos (tools/tarifas.json §modelos)" in out
+
+
+def test_el_ensayo_dice_que_falta_la_resolucion_y_no_que_falta_la_ficha(env, capsys, monkeypatch):
+    """La ficha de Nano Banana Pro existe (por resolución); si le falta la celda de una calidad, decir «no hay
+    ficha» mandaría a buscar una ficha entera cuando lo que falta es medir esa resolución en el panel de fal."""
+    _sin_la_celda_del_2k(monkeypatch)
     code, out, err = _correr(capsys, "imagen", "nbp-2k", "--formato", "cuadrado")
     assert code == 0, err
     assert "no trae la resolución '2K'" in out and "se mide en el panel de fal" in out
     assert "no hay ficha" not in out
+
+
+def test_sin_precio_de_la_resolucion_la_prueba_pagada_no_inventa_el_costo(env, capsys, tmp_path, monkeypatch):
+    _sin_la_celda_del_2k(monkeypatch)
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.jpg"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": 1024, "alto": 1024, "codec": "mjpeg"}      # llegó en 1K
+    code, out, err = _correr(capsys, "imagen", "nbp-2k", "--formato", "cuadrado", "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    assert "REVISAR" in out and "se prometió 2K" in out
+    assert "no tiene precio confirmado" in out
 
 
 def test_el_ensayo_de_nbp_4k_enseña_el_costo_de_la_ficha(env, capsys):

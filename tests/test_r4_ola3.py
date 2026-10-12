@@ -126,7 +126,7 @@ def test_grok_ya_entrega_jpeg_por_defecto_y_no_lleva_pin():
 
 
 # ---------------------------------------------------------------------------
-# B · Nano Banana Pro: dos filas INERTES (una por calidad), solo crear
+# B · Nano Banana Pro: dos filas (una por calidad), solo crear; nacieron INERTES y se encendieron el 12-oct-2026
 
 NBP = {"nbp-2k": "2K", "nbp-4k": "4K"}
 NBP_CREAR = "fal-ai/nano-banana-pro"
@@ -161,7 +161,7 @@ def test_las_filas_de_nano_banana_pro_traen_su_endpoint_y_su_resolucion(id_):
                                   "resolution": NBP[id_]}
     assert m.llave_tamano == "aspect_ratio" and m.tamanos == ()
     assert m.con_num_images is True and m.megapixeles_ficha == 0
-    assert m.segundo_plano is True                            # sin medir se supone lento
+    assert m.segundo_plano is True                            # medido 24.9 a 43.5 s: más de 10 s
     assert not m.duraciones and m.max_intentos == 0
 
 
@@ -192,22 +192,33 @@ def test_nano_banana_pro_a_secas_no_existe_y_no_edita_todavia():
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
 
 
-def test_la_ficha_de_nano_banana_pro_cobra_por_resolucion_y_el_2k_queda_sin_precio():
-    """1K y 4K están en la ficha (el 4K es el cálculo de «el doble»: nota_ola3); el 2K no lo dice la página,
-    y un precio que no se sabe es None, nunca el de la resolución de al lado."""
+def test_la_ficha_de_nano_banana_pro_cobra_por_resolucion_y_lo_que_no_trae_queda_sin_precio():
+    """2K y 4K están MEDIDOS en el panel (DATOS §13: $0.15 y $0.30 dólares); el 1K sigue solo leído. Una resolución
+    que la ficha no trae es None, nunca el precio de la de al lado."""
     from pipeline.pricing import costo_fal, unidades_fal
-    assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "1K"}) == 0.15
+    assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "2K"}) == 0.15
     assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "4K"}) == 0.3
+    assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "1K"}) == 0.15      # leído, no se vende
     assert costo_fal(NBP_CREAR, {"num_images": 2, "resolution": "4K"}) == 0.6
-    assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "2K"}) is None
     assert costo_fal(NBP_CREAR, {"num_images": 1}) is None                  # sin resolución: no se sabe
-    assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "4k"}) is None   # y no se adivina el caso
+    for rara in ("4k", "2k", "0.5K", "8K", " 4K", ""):
+        assert costo_fal(NBP_CREAR, {"num_images": 1, "resolution": rara}) is None, rara
     assert unidades_fal(NBP_CREAR, {"num_images": 1}) == {"images": 1, "reference_images": 0}
     # el editar no tiene ficha: «sin costo conocido»
     assert costo_fal(NBP_EDITAR, {"num_images": 1, "resolution": "1K"}) is None
     # y los demás precios por imagen no cambiaron
     assert costo_fal("fal-ai/nano-banana-2", {"num_images": 1, "resolution": "1K"}) == 0.08
     assert costo_fal("blackforestlabs/flux-3/text-to-image", {"num_images": 1}) == 0.024
+
+
+def test_si_a_la_ficha_le_falta_el_2k_el_modelo_no_inventa_su_precio(monkeypatch):
+    """El mecanismo sigue vivo aunque hoy la ficha traiga el 2K: sin esa celda, «sin costo conocido»."""
+    from pipeline import pricing
+    ficha = dict(pricing.ENDPOINTS_JSON[NBP_CREAR])
+    ficha["usd_por_resolucion"] = {"1K": 0.15, "4K": 0.3}
+    monkeypatch.setitem(pricing.ENDPOINTS_JSON, NBP_CREAR, ficha)
+    assert pricing.costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "2K"}) is None
+    assert pricing.costo_fal(NBP_CREAR, {"num_images": 1, "resolution": "4K"}) == 0.3
 
 
 def test_una_ficha_por_resolucion_sin_esa_resolucion_no_inventa_nada(monkeypatch):
@@ -221,14 +232,16 @@ def test_una_ficha_por_resolucion_sin_esa_resolucion_no_inventa_nada(monkeypatch
     assert pricing.costo_fal("fal-ai/prueba/pro", {"num_images": 1, "resolution": "2K"}) is None
 
 
-def test_la_nota_de_la_ola_3_dice_dolares_y_aclara_que_el_4k_es_un_calculo():
+def test_la_nota_de_la_ola_3_dice_dolares_y_lo_que_midio_el_panel():
     nota = _pricing_endpoints()["nota_ola3"]
     assert "centavos" not in nota.lower()
     assert "$0.15 dólares" in nota and "$0.30 dólares" in nota and "$0.015 dólares" in nota
-    assert "cálculo" in nota and "sin costo conocido" in nota and "usd_por_resolucion" in nota
+    assert "MEDIDOS" in nota and "no la resolución" in nota        # el panel trae endpoint y costo, no la resolución
+    assert "el dueño asignó" in nota and "LEÍDO" in nota and "no se vende" in nota   # el 1K sigue solo leído
+    assert "usd_por_resolucion" in nota and "sin costo conocido" in nota
     ficha = _pricing_endpoints()[NBP_CREAR]
-    assert ficha["usd_por_resolucion"] == {"1K": 0.15, "4K": 0.3} and "usd" not in ficha
-    assert ficha["verified_on"] == "2026-10-08"            # leída en la página, sin medir en el panel
+    assert ficha["usd_por_resolucion"] == {"1K": 0.15, "2K": 0.15, "4K": 0.3} and "usd" not in ficha
+    assert ficha["verified_on"] == "2026-10-12"            # la fecha en que se leyó el panel
     assert NBP_EDITAR not in _pricing_endpoints()
 
 
@@ -237,23 +250,74 @@ def _pricing_endpoints() -> dict:
     return p["generacion"]["endpoints"]
 
 
-def test_inerte_sin_numero_en_tarifas_no_se_ofrece():
-    """LA COMPUERTA: sin número en tarifas.json el servidor no lo conoce como vendible (KeyError → 422)."""
+def test_encendido_tiene_numero_en_imagen_y_ninguno_en_editar():
+    """Encendido el 12-oct-2026 con la propuesta de la fórmula (decisión del dueño): nbp-2k 14 y nbp-4k 28 en
+    «imagen»; el editor no lo conoce (sin fila ni número en «editar»)."""
     from pipeline import creditos
-    for id_ in NBP:
-        with pytest.raises(KeyError):
-            creditos.costo_modelo("imagen", id_)
-        assert id_ not in _tarifas()["modelos"]["imagen"]
-    assert not any(k.startswith("nbp") for tarea in ("imagen", "editar") for k in _tarifas()["modelos"][tarea])
+    assert _tarifas()["modelos"]["imagen"]["nbp-2k"] == 14 and _tarifas()["modelos"]["imagen"]["nbp-4k"] == 28
+    assert creditos.costo_modelo("imagen", "nbp-2k") == 14 and creditos.costo_modelo("imagen", "nbp-4k") == 28
+    assert not any(k.startswith("nbp") for k in _tarifas()["modelos"]["editar"])
+    with pytest.raises(KeyError):
+        creditos.costo_modelo("editar", "nbp-2k")
 
 
-def test_el_catalogo_de_la_web_parte_nbp_en_las_mismas_llaves_que_las_filas():
-    """El navegador manda `<id>-<calidad>` (llavePrecio): tienen que ser EXACTAMENTE los ids de las filas,
-    y mientras no tengan número el modelo sigue apagado."""
+def test_los_creditos_son_los_de_la_formula_con_el_costo_medido_y_el_margen_no_baja_del_piso():
+    """costo ÷ 0.75 ÷ $0.015 dólares, hacia arriba y luego al par (decisión del 9-oct): 14 y 28 salen del panel,
+    y lo cobrado deja al menos el 25 % de margen."""
+    from fractions import Fraction
+    import math
+    piso = Fraction(str(_tarifas()["economia"]["piso_venta_usd_por_credito"]))
+    for id_, res, esperado in (("nbp-2k", "2K", 14), ("nbp-4k", "4K", 28)):
+        usd = Fraction(str(_pricing_endpoints()[NBP_CREAR]["usd_por_resolucion"][res]))
+        n = math.ceil(usd / Fraction(3, 4) / piso)
+        n += n % 2
+        assert n == esperado == _tarifas()["modelos"]["imagen"][id_], id_
+        assert usd <= Fraction(3, 4) * n * piso, id_          # el costo no pasa del 75 % de lo cobrado
+
+
+# La prueba pagada del 11-oct-2026 (hora de México; DATOS-FAL §13): (id, forma, aspecto pedido, ancho, alto,
+# megapíxeles, segundos, dólares que cobró el panel)
+PRUEBA_PAGADA = (
+    ("nbp-2k", "cuadrado", "1:1", 2048, 2048, 4.19, 28.1, 0.15),
+    ("nbp-2k", "vertical", "9:16", 1536, 2752, 4.23, 24.9, 0.15),
+    ("nbp-4k", "horizontal", "16:9", 5504, 3072, 16.91, 37.4, 0.30),
+    ("nbp-4k", "vertical", "9:16", 3072, 5504, 16.91, 43.5, 0.30),
+)
+
+
+def test_la_prueba_pagada_cuadra_con_la_ficha_las_bandas_y_el_segundo_plano():
+    """Lo medido el 11-oct es lo que sostiene la ficha, las bandas de megapíxeles de probar_modelo y la bandera de
+    segundo plano: el panel cobró lo que dice la ficha, las cuatro salidas caen en su banda, y todas pasaron de 10 s."""
+    import importlib.util
+    from fractions import Fraction
+    from pipeline import modelos_ia
+    spec = importlib.util.spec_from_file_location("probar_modelo", RAIZ / "tools" / "probar_modelo.py")
+    probar = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probar)
+    ficha = _pricing_endpoints()[NBP_CREAR]["usd_por_resolucion"]
+    total = Fraction(0)
+    for id_, _forma, aspecto, ancho, alto, mp, segundos, dolares in PRUEBA_PAGADA:
+        res = NBP[id_]
+        assert dolares == ficha[res], id_                                   # lo cobrado es la ficha
+        assert round(ancho * alto / 1_000_000, 2) == mp                     # los megapíxeles son los de las medidas
+        menor, mayor, _ = probar.BANDAS_MP[res]
+        assert menor <= mp <= mayor, (id_, mp)                              # y caen en la banda de su resolución
+        a, b = (int(v) for v in aspecto.split(":"))
+        assert abs(ancho / alto - a / b) <= (a / b) * probar.TOLERANCIA_ASPECTO, (id_, aspecto)
+        assert segundos > probar.LIMITE_PETICION_S                          # todas pasan de 10 s
+        assert modelos_ia.resolver("imagen", id_).segundo_plano is True
+        total += Fraction(str(dolares))
+    assert total == Fraction("0.90") and total <= Fraction("1.20")          # el gasto, bajo el techo autorizado
+
+
+def test_el_catalogo_de_la_web_trae_nbp_encendido_y_parte_en_las_mismas_llaves_que_las_filas():
+    """El navegador manda `<id>-<calidad>` (llavePrecio): tienen que ser EXACTAMENTE los ids de las filas, cada una
+    con su número en tarifas.json, y el modelo está encendido (`activo: true`) desde el 12-oct-2026."""
     import re
     ts = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "modelos.ts").read_text(encoding="utf-8")
     calidades = re.search(r"HASTA_2K_Y_4K: Calidad\[\] = \[(.*?)\];", ts, re.S).group(1)
     ids = re.findall(r"id: '([^']+)'", calidades)
     assert {f"nbp-{c}" for c in ids} == set(NBP)
+    assert all(f"nbp-{c}" in _tarifas()["modelos"]["imagen"] for c in ids)
     bloque = re.search(r"id: 'nbp',(.*?)\},", ts, re.S).group(1)
-    assert "activo: false" in bloque and "calidades: HASTA_2K_Y_4K" in bloque
+    assert "activo: true" in bloque and "calidades: HASTA_2K_Y_4K" in bloque
