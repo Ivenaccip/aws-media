@@ -75,6 +75,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -694,6 +695,17 @@ def _aviso_peticion(plan: Plan, una: "_UnaLlamada") -> str | None:
             "dentro de la petición")
 
 
+def _resolucion_pedida(plan: Plan) -> str:
+    """La resolución de un clip tal como la manda el adaptador de su familia («720p»; «768P» en MiniMax,
+    en mayúscula), o «» si la familia no tiene parámetro de resolución (Kling). Sale de los argumentos
+    reales, no de una constante de Veo: comparar MiniMax contra 720 daría un REVISAR falso."""
+    args = plan.argumentos or {}
+    if "resolution" not in args:                  # sin ensayo previo, o la familia no la manda
+        from pipeline import clip
+        args = clip.args_de_clip(plan.modelo, "", None, plan.formato or "horizontal", plan.segundos)
+    return str(args.get("resolution") or "")
+
+
 def _veredicto(plan: Plan, medida: dict) -> list[str]:
     """Las diferencias entre lo que se pidió y lo que llegó. Vacío = coincide."""
     from pipeline import clip
@@ -727,9 +739,10 @@ def _veredicto(plan: Plan, medida: dict) -> list[str]:
             dif.append(f"se prometió {res} (~{nominal} MP) y llegó {ancho}×{alto} ({mp:.2f} MP): {cola}")
     if plan.tarea != "clip":
         return dif
-    pedida = int(clip.RESOLUCION.rstrip("p"))
-    if min(ancho, alto) != pedida:
-        dif.append(f"se pidió {clip.RESOLUCION} y el lado corto mide {min(ancho, alto)}")
+    res = _resolucion_pedida(plan)
+    pedida = re.fullmatch(r"(\d+)[pP]", res)       # «720p», «768P»; «» (Kling no la tiene) o «4k» no se comparan
+    if pedida and min(ancho, alto) != int(pedida.group(1)):
+        dif.append(f"se pidió {res} y el lado corto mide {min(ancho, alto)}")
     seg = medida["segundos"]
     if seg is None:
         dif.append("el archivo no dice cuánto dura")

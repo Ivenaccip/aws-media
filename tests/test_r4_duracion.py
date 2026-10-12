@@ -120,7 +120,7 @@ def test_un_modelo_desconocido_sigue_siendo_modelo_desconocido():
     """Con un id que no existe, el error es el de siempre y no el de duración."""
     from pipeline import modelos_ia
     with pytest.raises(modelos_ia.ModeloDesconocido) as e:
-        modelos_ia.valida_duracion("clip", "kling", 8)
+        modelos_ia.valida_duracion("clip", "sora", 8)
     assert not isinstance(e.value, modelos_ia.DuracionNoAdmitida)
 
 

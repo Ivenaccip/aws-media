@@ -144,16 +144,18 @@ def _tarifas() -> dict:
 def test_la_tabla_trae_exactamente_estos_modelos():
     """La lista EXACTA de hoy. Nano Banana 2 Lite (`nbl`) no entra (cobra por tokens y
     no hay precio); Nano Banana Pro (Ola 3) entra con dos filas, una por calidad (`nbp-2k` y
-    `nbp-4k`, solo crear, encendidas el 12-oct-2026), y los clips de otras familias son de la Ola 4."""
+    `nbp-4k`, solo crear, encendidas el 12-oct-2026); los clips de otras familias (Ola 4) entran INERTES
+    después de los de Veo y sus datos los guarda tests/test_r4_ola4.py."""
     from pipeline import modelos_ia
     assert modelos_ia.disponibles("imagen") == ["grok", *IDS, "nb2", "nbp-2k", "nbp-4k"]
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
-    assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std"]
-    # GPT Image (Ola 2, pendiente de decisiones del dueño), Nano Banana Lite, «nbp» a secas (hay que
-    # elegir calidad: `nbp-2k` o `nbp-4k`) y los clips
-    # de otras familias siguen sin fila; ninguna de las seis entra al editor
+    assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std",
+                                              "h3t", "grokv", "ltx", "kling", "seed"]
+    # GPT Image (Ola 2, pendiente de decisiones del dueño), Nano Banana Lite y «nbp» a secas (hay que
+    # elegir calidad: `nbp-2k` o `nbp-4k`) siguen sin fila; ninguna de las seis entra al editor.
+    # «sora» es un clip que no existe: un id desconocido se rechaza, no cae a otro.
     fuera = [("imagen", "nbl"), ("editar", "nbl"), ("imagen", "nbp"), ("imagen", "gpt2"),
-             ("imagen", "gpt25"), ("editar", "gpt2"), ("clip", "kling")]
+             ("imagen", "gpt25"), ("editar", "gpt2"), ("clip", "sora")]
     fuera += [("editar", id_) for id_ in IDS]
     for tarea, id_ in fuera:
         with pytest.raises(modelos_ia.ModeloDesconocido):

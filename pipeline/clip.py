@@ -35,7 +35,7 @@ import logging
 
 from langfuse import get_client, observe
 
-from . import fal, modelos_ia
+from . import clip_familias, fal, modelos_ia
 from .config import load_prompt, settings
 from .llm import chat_json
 from .models import formato_de
@@ -124,6 +124,37 @@ async def componer(image_urls: list[str], prompt: str,
     return url
 
 
+def _args_veo(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dict:
+    """Los argumentos de la familia Veo (Lite, Fast y Standard): los de siempre."""
+    args = {
+        "prompt": prompt,
+        "aspect_ratio": aspecto,
+        "duration": f"{segundos}s",
+        "resolution": RESOLUCION,
+        "generate_audio": CON_AUDIO,
+        "safety_tolerance": "6",
+    }
+    # Sin prompt negativo a propósito: el del otro producto prohíbe
+    # `photorealistic, humans, people, person, face`, que es justo lo que la
+    # gente sube aquí.
+    if image_url:
+        args["image_url"] = image_url
+    return args
+
+
+def args_de_clip(m: modelos_ia.Modelo, prompt: str, image_url: str | None,
+                 formato: str, segundos: int) -> dict:
+    """Lo que se le manda a fal para ese modelo: los argumentos de su familia
+    (`clip_familias`, o Veo, que se arma aquí) más los fijos de la fila. Es lo MISMO que
+    `animar` llama y que `costo_usd` anota, para que el costo salga de lo que de verdad se pide."""
+    aspecto = formato_de(formato)["aspecto"]
+    if m.familia_clip == "veo":
+        args = _args_veo(prompt, image_url, aspecto, segundos)
+    else:
+        args = clip_familias.ARMADORES[m.familia_clip](prompt, image_url, aspecto, segundos)
+    return m.con_args_extra(args)
+
+
 @observe(name="clip_animar")
 async def animar(prompt: str, image_url: str | None = None,
                  formato: str = "horizontal", modelo: str | None = None,
@@ -147,23 +178,10 @@ async def animar(prompt: str, image_url: str | None = None,
     """
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
-    args = {
-        "prompt": prompt,
-        "aspect_ratio": formato_de(formato)["aspecto"],
-        "duration": f"{segundos}s",
-        "resolution": RESOLUCION,
-        "generate_audio": CON_AUDIO,
-        "safety_tolerance": "6",
-    }
-    # Sin prompt negativo a propósito: el del otro producto prohíbe
-    # `photorealistic, humans, people, person, face`, que es justo lo que la
-    # gente sube aquí.
-    if image_url:
-        args["image_url"] = image_url
-    # R4: el endpoint sale de la tabla de modelos. Los argumentos de arriba son
-    # los de la familia Veo; un modelo de otra familia trae su propio juego (se
-    # suma aquí junto con su fila en modelos_ia, y se prueba antes de activarlo).
+    # R4: el endpoint sale de la tabla de modelos y los argumentos, de la familia de la fila.
+    args = args_de_clip(m, prompt, image_url, formato, segundos)
     app = m.endpoint_para(bool(image_url))
+    etiqueta = "Veo" if m.familia_clip == "veo" else m.id
     intentos = settings.clip_max_attempts
     if m.max_intentos > 0:
         intentos = min(intentos, m.max_intentos)       # el modelo pide menos, nunca más
@@ -171,16 +189,17 @@ async def animar(prompt: str, image_url: str | None = None,
     for intento in range(1, intentos + 1):
         try:
             res = await fal.llamar(app, args, timeout_s=settings.clip_timeout_s,
-                                   nombre="veo", meta={"clip": True, "intento": intento})
+                                   nombre="veo" if etiqueta == "Veo" else f"clip-{m.id}",
+                                   meta={"clip": True, "intento": intento})
         except fal.FalError as err:
             ultimo = str(err)
-            log.warning("Veo falló en el clip (intento %d): %s", intento, err)
+            log.warning("%s falló en el clip (intento %d): %s", etiqueta, intento, err)
             continue
         url = (res.get("video") or {}).get("url")
         if url:
             return url
-        ultimo = "Veo no devolvió video"
-        log.warning("Veo no devolvió video en el clip (intento %d)", intento)
+        ultimo = f"{etiqueta} no devolvió video"
+        log.warning("%s no devolvió video en el clip (intento %d)", etiqueta, intento)
     raise ClipError(f"No se pudo generar el video: {ultimo[:200]}")
 
 
@@ -196,10 +215,12 @@ def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
     from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, costo_fal
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
-    # el endpoint exacto que se llama: con imagen (una o la compuesta) o sin ella
-    total = costo_fal(m.endpoint_para(int(n_imagenes) >= 1),
-                      {"duration": f"{segundos}s", "resolution": RESOLUCION,
-                       "generate_audio": CON_AUDIO})
+    # el endpoint exacto que se llama, con los argumentos exactos de su familia: con imagen
+    # (una o la compuesta) o sin ella. Un texto cualquiera hace de imagen: solo importa la forma.
+    con_imagen = int(n_imagenes) >= 1
+    total = costo_fal(m.endpoint_para(con_imagen),
+                      args_de_clip(m, "", "https://imagen.invalida/entrada" if con_imagen else None,
+                                   "horizontal", segundos))
     # sin costo conocido es un error, no un cero que parezca gratis
     if not total:
         raise ClipError(f"Sin costo conocido para el modelo {m.id}")
