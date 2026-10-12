@@ -126,7 +126,7 @@ def test_grok_ya_entrega_jpeg_por_defecto_y_no_lleva_pin():
 
 
 # ---------------------------------------------------------------------------
-# B · Nano Banana Pro: dos filas INERTES (una por calidad), solo crear
+# B · Nano Banana Pro: dos filas (una por calidad), solo crear; nacieron INERTES y se encendieron el 12-oct-2026
 
 NBP = {"nbp-2k": "2K", "nbp-4k": "4K"}
 NBP_CREAR = "fal-ai/nano-banana-pro"
@@ -161,7 +161,7 @@ def test_las_filas_de_nano_banana_pro_traen_su_endpoint_y_su_resolucion(id_):
                                   "resolution": NBP[id_]}
     assert m.llave_tamano == "aspect_ratio" and m.tamanos == ()
     assert m.con_num_images is True and m.megapixeles_ficha == 0
-    assert m.segundo_plano is True                            # sin medir se supone lento
+    assert m.segundo_plano is True                            # medido 24.9 a 43.5 s: más de 10 s
     assert not m.duraciones and m.max_intentos == 0
 
 

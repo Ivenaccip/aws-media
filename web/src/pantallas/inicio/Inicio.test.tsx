@@ -124,7 +124,7 @@ afterEach(() => {
 });
 
 // El catálogo real enciende, para crear imágenes, Grok, FLUX.2 klein, Z-Image Turbo,
-// FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3 y Nano Banana 2 (para editar,
+// FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3, Nano Banana 2 y Nano Banana Pro (para editar,
 // solo Grok y Nano Banana 2), y Veo Lite y Veo Fast (clip, los dos con 4, 6 y 8 s).
 // Para ver qué pasa con un modelo que no tiene todas las duraciones se enciende LTX
 // (sin 4 s) mientras dura la prueba, con números de PRUEBA (no son los de

@@ -1,7 +1,6 @@
-// El menú de modelo con un catálogo de PRUEBA que sí trae lo que todavía no
-// está activo (varios niveles, un modelo con resolución, un clip que no tiene
-// todas las duraciones): así se prueba el comportamiento completo, también el que
-// el catálogo real todavía no trae.
+// El menú de modelo con un catálogo de PRUEBA que trae lo que el catálogo real puede no traer en cada
+// momento (varios niveles, un modelo con resolución —hoy Nano Banana Pro, con sus propios precios de
+// prueba—, un clip que no tiene todas las duraciones): así se prueba el comportamiento completo.
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';

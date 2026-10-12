@@ -7,7 +7,7 @@ y, encendidos el 11-oct-2026 en la rama (se ofrecen al desplegarla), **FLUX.2 kl
 (dos calidades, `nbp-2k` y `nbp-4k`); para editar, **Grok Imagine** y
 **Nano Banana 2**; para el clip, **Veo 3.1 Lite** y **Veo 3.1 Fast**. Nano Banana 2 y Veo 3.1 Fast (Ola 1) se
 encendieron el 9-oct-2026 tras su prueba pagada, y los seis de imagen de la Ola 2 el 11-oct-2026 tras la suya
-(18 llamadas y el panel de fal, DATOS §11); Grok y Veo 3.1 Lite ya estaban; Nano Banana Pro (Ola 3) se encendió el 12-oct-2026 tras su prueba de 4 llamadas (DATOS §13). Cinco de las imágenes (Seedream 5.0 Flash,
+(18 llamadas y el panel de fal, DATOS §11); Grok y Veo 3.1 Lite ya estaban; Nano Banana Pro (Ola 3) se encendió el 12-oct-2026 tras su prueba de 4 llamadas (DATOS §13). Cinco filas de imagen (Seedream 5.0 Flash,
 Seedream 4.5, FLUX 3 y las dos calidades de Nano Banana Pro) se generan en segundo plano: ver «Qué va en segundo plano y por qué». Un solo modelo es **inerte**: el servidor lo conoce, pero no se ofrece ni se
 cobra, **Veo 3.1 Standard** (clip, Ola 1). Los otros 8
 (Nano Banana 2 Lite, GPT Image 2 y 2.5, y cinco de clip) solo viven en el catálogo de la web

@@ -16,8 +16,9 @@ es la compuerta: recién entonces `activo: true` en el catálogo de la web
 el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2026, tras la
 suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
 Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
-desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendió en la rama
-Nano Banana Pro (dos filas, `nbp-2k` y `nbp-4k`, solo crear). Es una fila inerte Veo 3.1 Standard.
+desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendieron también en
+la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Sigue inerte
+solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
