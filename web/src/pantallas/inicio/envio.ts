@@ -56,9 +56,11 @@ export const descripcionDeArchivos = (tarea: 'clip' | 'editar'): string =>
     ? `JPG, PNG, WebP, GIF, AVIF o HEIC · hasta ${MAX_BYTES_CLIP / 1024 / 1024} MB`
     : `JPG, PNG o WebP · hasta ${MAX_BYTES_EDITAR / 1024 / 1024} MB`;
 
-/** Una imagen de «Mis creaciones» como archivo, para usarla de referencia: se trae del servidor y se envuelve. */
-export async function traerImagen(im: { nombre: string; url: string }): Promise<File> {
-  const r = await fetch(im.url);
+/** Una imagen de «Mis creaciones» como archivo, para usarla de referencia: se trae del servidor y se envuelve.
+ *  Los bytes se piden a NUESTRO endpoint (`/archivo`) y no a `im.url`: en la nube esa URL redirige al CDN, que no manda
+ *  cabeceras CORS, y el `fetch` fallaría con toda imagen (la miniatura sí carga: es un <img>, no un fetch). */
+export async function traerImagen(im: { nombre: string }, signal?: AbortSignal): Promise<File> {
+  const r = await fetch('/api/imagenes/' + encodeURIComponent(im.nombre) + '/archivo', signal ? { signal } : {});
   if (!r.ok) throw new Error('no se pudo traer');
   const blob = await r.blob();
   return new File([blob], im.nombre, { type: blob.type || 'image/jpeg' });

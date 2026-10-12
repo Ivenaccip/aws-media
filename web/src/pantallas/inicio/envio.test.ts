@@ -114,17 +114,33 @@ describe('lo que sirve para el «+» y la hoja de Mis creaciones', () => {
     expect(r.map(f => f.name)).toEqual(['a.png', 'c.HEIC']);
   });
 
-  it('traerImagen envuelve lo que baja del servidor con su nombre y su tipo', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('contenido', { status: 200, headers: { 'Content-Type': 'image/png' } })));
-    const f = await traerImagen({ nombre: 'abc.png', url: '/api/imagenes/abc.png' });
-    expect([f.name, f.type]).toEqual(['abc.png', 'image/png']);
+  it('traerImagen envuelve lo que baja de nuestro endpoint con su nombre y su tipo', async () => {
+    const f = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+      async () => new Response('contenido', { status: 200, headers: { 'Content-Type': 'image/png' } }),
+    );
+    vi.stubGlobal('fetch', f);
+    const r = await traerImagen({ nombre: 'abc.png' });
+    expect([r.name, r.type]).toEqual(['abc.png', 'image/png']);
+    // los bytes se piden a /archivo (mismo origen), jamás a la URL de la imagen: en la nube esa redirige a un CDN sin CORS
+    expect(f.mock.calls[0]![0]).toBe('/api/imagenes/abc.png/archivo');
+    // y un nombre con espacios o símbolos viaja codificado
+    await traerImagen({ nombre: 'mi foto&1.jpg' });
+    expect(f.mock.calls[1]![0]).toBe('/api/imagenes/mi%20foto%261.jpg/archivo');
     // sin tipo en la respuesta, jpeg (lo que genera el estudio)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([120]), { status: 200 })));
-    expect((await traerImagen({ nombre: 'z.jpg', url: '/u' })).type).toBe('image/jpeg');
+    expect((await traerImagen({ nombre: 'z.jpg' })).type).toBe('image/jpeg');
+  });
+
+  it('traerImagen pasa la señal para poder cancelarse', async () => {
+    const f = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response('x', { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    const cancelar = new AbortController();
+    await traerImagen({ nombre: 'a.jpg' }, cancelar.signal);
+    expect(f.mock.calls[0]![1]).toEqual({ signal: cancelar.signal });
   });
 
   it('traerImagen falla si el servidor no la tiene', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 404 })));
-    await expect(traerImagen({ nombre: 'x.jpg', url: '/u' })).rejects.toThrow('no se pudo traer');
+    await expect(traerImagen({ nombre: 'x.jpg' })).rejects.toThrow('no se pudo traer');
   });
 });

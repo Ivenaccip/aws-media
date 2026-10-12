@@ -192,7 +192,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     return () => window.removeEventListener('pageshow', volvio);
   }, []);
 
-  // el menú del «+»: un clic fuera o Esc lo cierra (con Esc el foco vuelve al «+»); al abrir, el foco va a su primera opción
+  // el menú del «+»: un clic fuera o Esc lo cierra (con Esc el foco vuelve al «+», si estaba en el menú); al abrir, el
+  // foco va a su primera opción
   useEffect(() => {
     if (!menuMas) return;
     const fuera = (e: MouseEvent) => {
@@ -201,7 +202,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     const esc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setMenuMas(false);
-      botonMas.current?.focus();
+      const foco = document.activeElement;
+      if (!foco || foco === document.body || mas.current?.contains(foco)) botonMas.current?.focus();
     };
     document.addEventListener('mousedown', fuera);
     document.addEventListener('keydown', esc);
@@ -343,10 +345,31 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     if (alAgregar) pasarAEditar(alAgregar);
   }
 
-  /** El «+»: con imágenes en Mis creaciones abre su menú; sin ellas, el selector de archivos de siempre. */
+  /** El «+»: con imágenes en Mis creaciones abre su menú; sin ellas, el selector de archivos de siempre. Quien lo abre
+   *  ya corrige lo que falló: el error del cuadro de avisos se quita (en un celular chico lo tapaba, con sus toques). */
   function alPulsarMas() {
-    if (hayBiblioteca) setMenuMas(m => !m);
-    else archivos.current?.click();
+    if (hayBiblioteca) {
+      if (!menuMas) limpiarError();
+      setMenuMas(m => !m);
+    } else archivos.current?.click();
+  }
+
+  /** Flechas, Inicio y Fin recorren las opciones del menú; Tab lo cierra y sigue al control que viene después del «+». */
+  function teclasDelMenu(e: React.KeyboardEvent<HTMLDivElement>) {
+    const opciones = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const i = opciones.indexOf(document.activeElement as HTMLElement);
+    const ir = (j: number) => {
+      e.preventDefault();
+      opciones[(j + opciones.length) % opciones.length]?.focus();
+    };
+    if (e.key === 'ArrowDown') ir(i + 1);
+    else if (e.key === 'ArrowUp') ir(i < 0 ? opciones.length - 1 : i - 1);
+    else if (e.key === 'Home') ir(0);
+    else if (e.key === 'End') ir(opciones.length - 1);
+    else if (e.key === 'Tab') {
+      setMenuMas(false);
+      botonMas.current?.focus(); // sin preventDefault: el Tab de ahora sigue desde el «+»
+    }
   }
 
   function subirDeLaComputadora() {
@@ -359,16 +382,18 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     setBiblioteca(true);
   }
 
-  /** Las elegidas en la hoja, traídas del servidor y agregadas como cualquier otra imagen. false: no se pudo
-   *  traer alguna y la hoja se queda abierta, con lo elegido. */
-  async function traerDeLaBiblioteca(elegidas: Imagen[]): Promise<boolean> {
+  /** Las elegidas en la hoja, traídas del servidor y agregadas como cualquier otra imagen. null: salió bien. Un texto:
+   *  no se pudo traer alguna, y la hoja lo dice dentro de sí y se queda abierta con lo elegido (el cuadro de avisos
+   *  queda tapado por el diálogo). Si la hoja se cierra mientras trae, `signal` se aborta y no se agrega nada. */
+  async function traerDeLaBiblioteca(elegidas: Imagen[], signal: AbortSignal): Promise<string | null> {
+    let traidas: File[];
     try {
-      agregar(await Promise.all(elegidas.map(traerImagen)));
-      return true;
+      traidas = await Promise.all(elegidas.map(im => traerImagen(im, signal)));
     } catch {
-      decir('mal', 'No pudimos traer esa imagen — inténtalo de nuevo.');
-      return false;
+      return signal.aborted ? null : 'No pudimos traer esa imagen — inténtalo de nuevo.';
     }
+    if (!signal.aborted) agregar(traidas);
+    return null;
   }
 
   /** «Crear una imagen» recibió una imagen: sigue «Editar una imagen», con el mismo modelo si ese también edita. */
@@ -598,6 +623,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                     <div
                       role="menu"
                       aria-label="Agregar imágenes"
+                      tabIndex={-1}
+                      onKeyDown={teclasDelMenu}
                       className="absolute top-[calc(100%+8px)] left-0 z-20 w-[min(340px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
                     >
                       <button
@@ -751,11 +778,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
           setBiblioteca(false);
           archivos.current?.click();
         }}
-        alSoltarArchivos={soltados => {
+        alSoltarArchivos={soltadas => {
           setBiblioteca(false);
-          agregar(soloImagenes(soltados));
+          agregar(soltadas); // la hoja ya dejó solo las imágenes
         }}
         descripcionArchivos={descripcionDeArchivos(archivosDeLaTarea)}
+        focoAlCerrar={botonMas}
       />
     </>
   );

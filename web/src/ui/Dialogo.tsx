@@ -44,7 +44,7 @@ export interface PropsDialogo {
   /** Dónde cae el foco al abrir; sin él, en lo primero que se toca (la equis). */
   focoInicial?: RefObject<HTMLElement | null>;
   /** Dónde vuelve el foco al cerrar; sin él, a lo que tenía el foco al abrir. */
-  focoAlCerrar?: RefObject<HTMLElement | null>;
+  focoAlCerrar?: RefObject<HTMLElement | null> | undefined;
   /** Si lo que tenía el foco al abrir ya no está (o no se deja enfocar), aquí. */
   focoDeRespaldo?: RefObject<HTMLElement | null>;
   /** Más ancho (760 px en vez de 480): para una cuadrícula. */
