@@ -96,12 +96,25 @@ def _activos_de_la_web() -> dict[str, list[str]]:
     def activos(nombre: str) -> list[str]:
         m = re.search(rf"const {nombre}: Modelo\[\] = \[(.*?)\n\];", ts, re.S)
         assert m, nombre
-        return [i for i, a in re.findall(r"id: '([^']+)',.*?activo: (true|false)", m.group(1), re.S)
-                if a == "true"]
+        salida: list[str] = []
+        for id_, cuerpo in re.findall(r"\{\s*id: '([^']+)',([^{}]*)\}", m.group(1)):
+            if "activo: true" not in cuerpo:
+                continue
+            cal = re.search(r"calidades: (\w+)", cuerpo)
+            if cal:
+                # con calidades el navegador manda `<id>-<calidad>` (llavePrecio): esos son los ids del servidor
+                bloque = re.search(rf"const {cal.group(1)}: Calidad\[\] = \[(.*?)\];", ts, re.S)
+                assert bloque, cal.group(1)
+                salida += [f"{id_}-{c}" for c in re.findall(r"id: '([^']+)'", bloque.group(1))]
+            else:
+                salida.append(id_)
+        return salida
     con_edicion = re.search(r"CON_EDICION = new Set\(\[(.*?)\]\)", ts, re.S)
     assert con_edicion
     editables = set(re.findall(r"'([^']+)'", con_edicion.group(1)))
     imagen = activos("IMAGEN")
+    # (un modelo con calidades —Nano Banana Pro— sale como `nbp-2k`, `nbp-4k`, que no están en CON_EDICION:
+    # encendido solo para crear no pide fila ni número en «editar»; su editar es otra ola)
     return {"imagen": imagen, "editar": [i for i in imagen if i in editables], "clip": activos("CLIP")}
 
 
@@ -149,7 +162,8 @@ def test_un_modelo_de_la_misma_familia_no_hereda_el_costo_de_lite():
                  "fal-ai/veo3.1/first-last-frame-to-video"):
         assert costo_fal(otro, args) is None, otro
         assert unidades_fal(otro, args) is None, otro
-    for otro in ("fal-ai/nano-banana-pro", "fal-ai/nano-banana-pro/edit",
+    # (`fal-ai/nano-banana-pro` ya tiene ficha desde la Ola 3, por resolución; su /edit no)
+    for otro in ("fal-ai/nano-banana-pro/edit",
                  "google/nano-banana-2-lite", "fal-ai/nano-banana-2/lite"):
         assert costo_fal(otro, {"num_images": 1}) is None, otro
         assert unidades_fal(otro, {"num_images": 1}) is None, otro

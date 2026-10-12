@@ -143,12 +143,14 @@ def _tarifas() -> dict:
 
 def test_la_tabla_trae_exactamente_estos_modelos():
     """La lista EXACTA de hoy. Nano Banana 2 Lite (`nbl`) no entra (cobra por tokens y
-    no hay precio); Nano Banana Pro es de la Ola 3 y los clips de otras familias, de la 4."""
+    no hay precio); Nano Banana Pro (Ola 3) entra con dos filas INERTES, una por calidad
+    (`nbp-2k` y `nbp-4k`, solo crear), y los clips de otras familias son de la Ola 4."""
     from pipeline import modelos_ia
-    assert modelos_ia.disponibles("imagen") == ["grok", *IDS, "nb2"]
+    assert modelos_ia.disponibles("imagen") == ["grok", *IDS, "nb2", "nbp-2k", "nbp-4k"]
     assert modelos_ia.disponibles("editar") == ["grok", "nb2"]
     assert modelos_ia.disponibles("clip") == ["veo-lite", "veo-fast", "veo-std"]
-    # GPT Image (Ola 2, pendiente de decisiones del dueño), Nano Banana Lite y Pro, y los clips
+    # GPT Image (Ola 2, pendiente de decisiones del dueño), Nano Banana Lite, «nbp» a secas (hay que
+    # elegir calidad: `nbp-2k` o `nbp-4k`) y los clips
     # de otras familias siguen sin fila; ninguna de las seis entra al editor
     fuera = [("imagen", "nbl"), ("editar", "nbl"), ("imagen", "nbp"), ("imagen", "gpt2"),
              ("imagen", "gpt25"), ("editar", "gpt2"), ("clip", "kling")]
@@ -426,7 +428,8 @@ def test_grok_y_nano_banana_2_llaman_igual_que_antes(falso_fal, tmp_path, modelo
     (ll,) = falso_fal
     esperado = {"prompt": "un gato", "num_images": 1, "aspect_ratio": "9:16"}
     if modelo == "nb2":
-        esperado["resolution"] = "1K"
+        # jpeg explícito desde la Ola 3: su esquema trae `output_format` por defecto en png
+        esperado.update({"output_format": "jpeg", "resolution": "1K"})
         assert ll.app == endpoint
     assert ll.args == esperado
 
@@ -680,6 +683,19 @@ def test_sin_numero_en_tarifas_el_modelo_da_422_sin_cobrar_ni_llamar_a_fal(
     if formato:
         cuerpo["formato"] = formato
     r = cliente.post("/api/imagenes", json=cuerpo)
+    assert r.status_code == 422, r.text
+    assert id_ in r.json()["detail"]
+    assert espia.cobros == [] and espia.devueltos == []
+    assert falso_fal == []
+    assert not imagenes_al_disco.exists() or list(imagenes_al_disco.iterdir()) == []
+
+
+@pytest.mark.parametrize("id_", ["nbp-2k", "nbp-4k"])
+def test_nano_banana_pro_inerte_da_422_sin_cobrar_ni_llamar_a_fal(
+        cliente, espia, falso_fal, imagenes_al_disco, id_):
+    """Ola 3: las dos filas de Nano Banana Pro existen en el servidor pero no tienen número en
+    tarifas.json: 422 antes de cobrar, de crear nada o de llamar a fal."""
+    r = cliente.post("/api/imagenes", json={"prompt": "un gato", "modelo": id_, "estilo": "animated"})
     assert r.status_code == 422, r.text
     assert id_ in r.json()["detail"]
     assert espia.cobros == [] and espia.devueltos == []

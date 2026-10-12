@@ -16,7 +16,8 @@ es la compuerta: recién entonces `activo: true` en el catálogo de la web
 el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2026, tras la
 suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
 Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
-desplegarla. Es una fila inerte Veo 3.1 Standard.
+desplegarla. Siguen inertes Veo 3.1 Standard y, desde el 12-oct-2026, las dos filas de Nano Banana Pro
+(`nbp-2k` y `nbp-4k`, solo crear): sin número en tarifas.json dan 422 antes de cobrar.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -293,6 +294,7 @@ VEO_STD_T2V = "fal-ai/veo3.1"
 VEO_STD_I2V = "fal-ai/veo3.1/image-to-video"
 NB2_CREAR = "fal-ai/nano-banana-2"
 NB2_EDITAR = "fal-ai/nano-banana-2/edit"
+NBP_CREAR = "fal-ai/nano-banana-pro"
 # Ola 2 (familias nuevas de imagen): todos solo texto a imagen (sin endpoint de editar en el
 # selector). Endpoints y parámetros leídos del esquema público de fal el 11-oct-2026
 # (tools/leer_esquema_fal.py; docs/modelos-ia/DATOS-FAL-2026-10-08.md §10).
@@ -324,8 +326,17 @@ TAMANOS_SDF = (("1:1", (1920, 1920)), ("16:9", (2048, 1152)), ("9:16", (1152, 20
 TAMANOS_SD45 = (("1:1", (2048, 2048)), ("16:9", (2752, 1536)), ("9:16", (1536, 2752)))
 
 # Nano Banana 2 solo tiene leída la tarifa de 1K ($0.08 dólares por imagen). Se
-# manda explícito para no depender de que el default de fal siga siendo 1K.
-NB2_ARGS_EXTRA = (("resolution", "1K"),)
+# manda explícito para no depender de que el default de fal siga siendo 1K. Y pide jpeg:
+# su esquema (leído el 10-oct-2026 hora de México, DATOS-FAL §12) trae `output_format` por defecto en
+# "png" en crear y en editar, y la caja guarda lo que baja como .jpg sin convertirlo.
+NB2_ARGS_EXTRA = (("output_format", "jpeg"), ("resolution", "1K"))
+
+# Nano Banana Pro (Ola 3, solo crear): la calidad del catálogo de la web («hasta 2K» y «4K») son DOS filas,
+# `nbp-2k` y `nbp-4k` (la llave de tools/tarifas.json es `<id>-<calidad>`), y cada una fija su `resolution`:
+# el precio depende de ella (pricing.json `usd_por_resolucion`) y no se deja al valor por defecto de fal (1K).
+# Pide jpeg (su esquema trae «png» por defecto: DATOS-FAL §12) y fija `enable_web_search` en false, que en el
+# editar cobra $0.015 dólares extra (lectura del 8-oct) y aquí no se ofrece.
+NBP_ARGS_BASE = (("enable_web_search", False), ("output_format", "jpeg"))
 
 
 def _tabla() -> dict[tuple[str, str], Modelo]:
@@ -379,6 +390,12 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     flux3 = Modelo("flux3", "imagen", FLUX3_CREAR, con_num_images=False, megapixeles_ficha=1.2,
                    args_extra=(("output_format", "jpeg"), ("resolution", "1k")),
                    segundo_plano=True)
+    # Nano Banana Pro (Ola 3): INERTE (sin número en tarifas.json, no se ofrece), solo crear. Dos filas, una por
+    # calidad. Sin medir: se supone lento y va a segundo plano hasta que la prueba pagada diga lo contrario.
+    nbp_2k = Modelo("nbp-2k", "imagen", NBP_CREAR, args_extra=(*NBP_ARGS_BASE, ("resolution", "2K")),
+                    segundo_plano=True)
+    nbp_4k = Modelo("nbp-4k", "imagen", NBP_CREAR, args_extra=(*NBP_ARGS_BASE, ("resolution", "4K")),
+                    segundo_plano=True)
     return {("imagen", "grok"): grok,
             ("imagen", "klein"): klein,
             ("imagen", "zit"): zit,
@@ -387,6 +404,8 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
             ("imagen", "sd45"): sd45,
             ("imagen", "flux3"): flux3,
             ("imagen", "nb2"): nb2,
+            ("imagen", "nbp-2k"): nbp_2k,
+            ("imagen", "nbp-4k"): nbp_4k,
             ("editar", "grok"): Modelo("grok", "editar", settings.fal_imagen_edit),
             ("editar", "nb2"): nb2_editar,
             ("clip", "veo-lite"): veo,

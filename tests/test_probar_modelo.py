@@ -646,6 +646,63 @@ def test_flux_3_promete_1k_aunque_lo_fije_en_minuscula(env, capsys, tmp_path, an
         assert "REVISAR" not in out and "coincide con lo prometido" in out
 
 
+@pytest.mark.parametrize("modelo,res,ancho,alto,formato,se_marca", [
+    ("nbp-2k", "2K", 2048, 2048, "cuadrado", False),      # 4.19 MP: 2K de verdad
+    ("nbp-2k", "2K", 2752, 1536, "horizontal", False),    # 4.23 MP
+    ("nbp-4k", "4K", 4096, 4096, "cuadrado", False),      # 16.8 MP: 4K de verdad
+    ("nbp-4k", "4K", 5504, 3072, "horizontal", False),    # 16.9 MP
+    ("nbp-4k", "4K", 1376, 768, "horizontal", True),      # 1.06 MP: se pidió 4K y llegó en 1K
+    ("nbp-4k", "4K", 2752, 1536, "horizontal", True),     # 4.23 MP: llegó en 2K
+    ("nbp-2k", "2K", 5504, 3072, "horizontal", True),     # 16.9 MP: se pidió 2K y llegó en 4K
+    ("nbp-2k", "2K", 1024, 1024, "cuadrado", True),       # 1.05 MP: llegó en 1K
+])
+def test_nano_banana_pro_promete_su_resolucion_y_otra_se_marca_para_revisar(
+        env, capsys, tmp_path, modelo, res, ancho, alto, formato, se_marca):
+    """Su precio depende de la resolución: la prueba pagada que debe fijarlo no puede dar por buena una
+    salida de otra resolución (antes solo se vigilaba la de 1K)."""
+    from pipeline import modelos_ia
+    assert dict(modelos_ia.resolver("imagen", modelo).args_extra)["resolution"] == res
+    env.resultado = {"images": [{"url": "https://fal.invalid/i/resultado.jpg"}]}
+    env.medida = {**MEDIDA_IMAGEN, "ancho": ancho, "alto": alto, "codec": "mjpeg"}
+    code, out, err = _correr(capsys, "imagen", modelo, "--formato", formato, "--si", "--salida", tmp_path / "s")
+    assert code == 0, err
+    llamada = env.llamadas[0][1]
+    assert llamada["resolution"] == res and llamada["output_format"] == "jpeg"
+    assert llamada["enable_web_search"] is False
+    if se_marca:
+        assert "REVISAR" in out and f"se prometió {res}" in out and f"{ancho}×{alto}" in out
+        assert "coincide con lo prometido" not in out
+        if modelo == "nbp-4k":                  # con precio en la ficha: dice cuál
+            assert f"el costo anotado ($0.30 dólares) solo vale a {res}" in out
+        else:                                    # el 2K no tiene precio: lo dice, no inventa uno
+            assert "no tiene precio confirmado" in out and "$" not in out.split("se prometió")[1].split("\n")[0]
+    else:
+        assert "REVISAR" not in out and "coincide con lo prometido" in out
+
+
+def test_el_ensayo_de_nbp_2k_dice_que_falta_la_resolucion_y_no_que_falta_la_ficha(env, capsys):
+    """La ficha de Nano Banana Pro existe (por resolución); al 2K le falta su celda. Decir «no hay ficha»
+    mandaría a buscar una ficha entera cuando lo que falta es medir el 2K en el panel de fal."""
+    code, out, err = _correr(capsys, "imagen", "nbp-2k", "--formato", "cuadrado")
+    assert code == 0, err
+    assert "no trae la resolución '2K'" in out and "se mide en el panel de fal" in out
+    assert "no hay ficha" not in out
+
+
+def test_el_ensayo_de_nbp_4k_enseña_el_costo_de_la_ficha(env, capsys):
+    code, out, err = _correr(capsys, "imagen", "nbp-4k", "--formato", "cuadrado")
+    assert code == 0, err
+    assert "costo esperado: $0.3000 dólares (tools/pricing.json)" in out and "no trae la resolución" not in out
+
+
+def test_un_endpoint_sin_ficha_sigue_diciendo_que_no_hay_ficha(env, capsys, monkeypatch):
+    from pipeline import pricing
+    monkeypatch.delitem(pricing.ENDPOINTS_JSON, "fal-ai/nano-banana-pro")
+    code, out, err = _correr(capsys, "imagen", "nbp-2k", "--formato", "cuadrado")
+    assert code == 0, err
+    assert "no hay ficha de este endpoint" in out and "no trae la resolución" not in out
+
+
 @pytest.mark.parametrize("codec,se_marca", [("mjpeg", False), ("png", True), ("webp", True)])
 @pytest.mark.parametrize("modelo", ["grok", "nb2"])
 def test_editar_que_no_llega_como_jpeg_tambien_se_marca_para_revisar(env, capsys, foto, tmp_path, modelo, codec, se_marca):
