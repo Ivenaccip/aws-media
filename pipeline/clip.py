@@ -124,14 +124,15 @@ async def componer(image_urls: list[str], prompt: str,
     return url
 
 
-def _args_veo(prompt: str, image_url: str | None, aspecto: str, segundos: int) -> dict:
-    """Los argumentos de la familia Veo (Lite, Fast y Standard): los de siempre."""
+def _args_veo(prompt: str, image_url: str | None, aspecto: str, segundos: int, audio: bool = CON_AUDIO) -> dict:
+    """Los argumentos de la familia Veo (Lite, Fast y Standard): los de siempre. `audio=False` (la caja del
+    inicio, solo en Lite y Fast) manda `generate_audio: false` y fal cobra la tarifa sin audio."""
     args = {
         "prompt": prompt,
         "aspect_ratio": aspecto,
         "duration": f"{segundos}s",
         "resolution": RESOLUCION,
-        "generate_audio": CON_AUDIO,
+        "generate_audio": audio,
         "safety_tolerance": "6",
     }
     # Sin prompt negativo a propósito: el del otro producto prohíbe
@@ -143,22 +144,24 @@ def _args_veo(prompt: str, image_url: str | None, aspecto: str, segundos: int) -
 
 
 def args_de_clip(m: modelos_ia.Modelo, prompt: str, image_url: str | None,
-                 formato: str, segundos: int) -> dict:
+                 formato: str, segundos: int, audio: bool = CON_AUDIO) -> dict:
     """Lo que se le manda a fal para ese modelo: los argumentos de su familia
     (`clip_familias`, o Veo, que se arma aquí) más los fijos de la fila. Es lo MISMO que
-    `animar` llama y que `costo_usd` anota, para que el costo salga de lo que de verdad se pide."""
+    `animar` llama y que `costo_usd` anota, para que el costo salga de lo que de verdad se pide.
+    `audio` es si el clip lleva sonido (por defecto sí, como siempre): solo cambia lo que se manda a
+    los modelos con `generate_audio`; a los demás no se les manda nada."""
     aspecto = formato_de(formato)["aspecto"]
     if m.familia_clip == "veo":
-        args = _args_veo(prompt, image_url, aspecto, segundos)
+        args = _args_veo(prompt, image_url, aspecto, segundos, audio)
     else:
-        args = clip_familias.ARMADORES[m.familia_clip](prompt, image_url, aspecto, segundos)
+        args = clip_familias.ARMADORES[m.familia_clip](prompt, image_url, aspecto, segundos, audio)
     return m.con_args_extra(args)
 
 
 @observe(name="clip_animar")
 async def animar(prompt: str, image_url: str | None = None,
                  formato: str = "horizontal", modelo: str | None = None,
-                 segundos: int = DURACION_S) -> str:
+                 segundos: int = DURACION_S, audio: bool = CON_AUDIO) -> str:
     """La llamada al modelo de clip. Con imagen es image-to-video; sin ella, el
     endpoint hermano de la misma familia, al mismo precio.
 
@@ -180,8 +183,9 @@ async def animar(prompt: str, image_url: str | None = None,
     """
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
+    audio = modelos_ia.valida_audio("clip", m.id, audio)
     # R4: el endpoint sale de la tabla de modelos y los argumentos, de la familia de la fila.
-    args = args_de_clip(m, prompt, image_url, formato, segundos)
+    args = args_de_clip(m, prompt, image_url, formato, segundos, audio)
     app = m.endpoint_para(bool(image_url))
     etiqueta = "Veo" if m.familia_clip == "veo" else m.id
     intentos = settings.clip_max_attempts
@@ -206,23 +210,25 @@ async def animar(prompt: str, image_url: str | None = None,
 
 
 def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
-              segundos: int = DURACION_S) -> float:
+              segundos: int = DURACION_S, audio: bool = CON_AUDIO) -> float:
     """Lo que nos cuesta el clip, para dejarlo escrito junto al cobro.
 
     Los números salen de pricing.json vía pipeline.pricing — aquí no se
     hardcodea ninguno. Va con la duración REAL: `costo_fal` lee los segundos de
     los argumentos y cobra por segundo, así que un clip de 4 s no se anota como
-    uno de 8.
+    uno de 8. Y con el sonido que se pidió: `audio=False` (solo Veo y los que traen `generate_audio`)
+    cuesta lo de la tarifa sin audio de su ficha.
     """
     from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, costo_fal
     m = modelos_ia.resolver("clip", modelo)
     segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
+    audio = modelos_ia.valida_audio("clip", m.id, audio)
     # el endpoint exacto que se llama, con los argumentos exactos de su familia: con imagen
     # (una o la compuesta) o sin ella. Un texto cualquiera hace de imagen: solo importa la forma.
     con_imagen = int(n_imagenes) >= 1
     total = costo_fal(m.endpoint_para(con_imagen),
                       args_de_clip(m, "", "https://imagen.invalida/entrada" if con_imagen else None,
-                                   "horizontal", segundos))
+                                   "horizontal", segundos, audio))
     # sin costo conocido es un error, no un cero que parezca gratis
     if not total:
         raise ClipError(f"Sin costo conocido para el modelo {m.id}")
@@ -234,13 +240,14 @@ def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
 @observe(name="clip")
 async def generar(texto: str, image_urls: list[str] | None = None,
                   formato: str = "horizontal", modelo: str | None = None,
-                  segundos: int = DURACION_S) -> dict:
+                  segundos: int = DURACION_S, audio: bool = CON_AUDIO) -> dict:
     """El clip completo: prompt → (composición) → modelo de clip. Lanza ClipError.
 
-    La duración se valida ANTES de gastar nada (el LLM y Grok cuestan): una que
-    el modelo no admite no llega ni a escribir el prompt."""
-    segundos = modelos_ia.valida_duracion(
-        "clip", modelos_ia.resolver("clip", modelo).id, segundos)
+    La duración y el sonido se validan ANTES de gastar nada (el LLM y Grok cuestan): una duración
+    que el modelo no admite, o «sin sonido» en uno que no lo permite, no llega ni a escribir el prompt."""
+    modelo_id = modelos_ia.resolver("clip", modelo).id
+    segundos = modelos_ia.valida_duracion("clip", modelo_id, segundos)
+    audio = modelos_ia.valida_audio("clip", modelo_id, audio)
     urls = list(image_urls or [])[:MAX_IMAGENES]
     texto = valida_texto(texto)
     plan = await escribir_prompt(texto, len(urls), formato)
@@ -250,10 +257,10 @@ async def generar(texto: str, image_urls: list[str] | None = None,
         inicial = await componer(urls, plan["composicion"], formato)
         origen = "compuesta"
 
-    video = await animar(plan["video"], inicial, formato, modelo, segundos)
+    video = await animar(plan["video"], inicial, formato, modelo, segundos, audio)
     get_client().update_current_span(
         output={"imagenes": len(urls), "origen_inicial": origen, "formato": formato,
-                "segundos": segundos})
+                "segundos": segundos, "audio": audio})
     return {"video_url": video, "imagen_inicial": inicial, "origen_inicial": origen,
             "prompt": plan["video"], "prompt_composicion": plan["composicion"],
-            "recorte": plan["recorte"], "segundos": segundos}
+            "recorte": plan["recorte"], "segundos": segundos, "audio": audio}

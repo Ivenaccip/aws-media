@@ -15,6 +15,10 @@ Windows desde D:\\aws-project con el venv.
 
   --segundos N         clip: duración del clip (sin esto, la más corta que admite
                        el modelo: es una prueba pequeña)
+  --sin-sonido         clip: pedirlo SIN sonido (`generate_audio: false`), como el
+                       interruptor «Audio» de la caja. Solo los modelos que lo
+                       permiten (Veo Lite y Fast, con número «sin sonido» en
+                       tarifas.json); el veredicto marca REVISAR si el archivo trae pista
   --imagen RUTA        editar: la imagen a transformar (obligatoria).
                        clip: si va, imagen a video; si no, texto a video
   --imagen-sin-validar clip con --imagen: no exige lado corto de 720 px ni 16:9 /
@@ -171,7 +175,8 @@ class Plan:
 
     def __init__(self, tarea: str, modelo, prompt: str, imagen: Path | None,
                  formato: str | None, segundos: int | None, salida: Path,
-                 formato_explicito: bool = False, imagen_sin_validar: bool = False):
+                 formato_explicito: bool = False, imagen_sin_validar: bool = False,
+                 audio: bool = True):
         self.tarea = tarea
         self.modelo = modelo               # pipeline.modelos_ia.Modelo
         self.prompt = prompt
@@ -181,6 +186,7 @@ class Plan:
         self.salida = salida
         self.formato_explicito = formato_explicito      # ¿vino --formato? Si no, un clip lo deduce de la imagen
         self.imagen_sin_validar = imagen_sin_validar    # salta SOLO la regla de lado corto / relación
+        self.audio = audio                 # clip: ¿con sonido? (False = --sin-sonido, solo donde el modelo lo permite)
         # los llena el ensayo (_planear), con el adaptador real
         self.endpoint = ""
         self.argumentos: dict = {}
@@ -194,6 +200,8 @@ class Plan:
     @property
     def base(self) -> str:
         partes = [self.tarea, self.modelo.id] + ([f"{self.segundos}s"] if self.segundos else [])
+        if self.tarea == "clip" and not self.audio:
+            partes.append("sinsonido")          # el clip mudo no pisa al de con sonido
         return _nombre_seguro("-".join(partes))
 
 
@@ -401,6 +409,8 @@ def _analizar(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("tarea", choices=TAREAS, help="qué se prueba: imagen (crear), editar o clip")
     p.add_argument("modelo", help="el id del modelo en pipeline/modelos_ia.py, p. ej. veo-lite, grok, nb2")
     p.add_argument("--segundos", type=int, help="clip: duración en segundos (por defecto la más corta que admite el modelo)")
+    p.add_argument("--sin-sonido", action="store_true",
+                   help="clip: pedirlo sin sonido (solo los modelos que lo permiten); se cobra el número «sin sonido»")
     p.add_argument("--imagen", help="editar: la imagen a transformar (obligatoria). clip: imagen a video")
     p.add_argument("--imagen-sin-validar", action="store_true",
                    help="clip con --imagen: no exige lado corto de 720 px ni 16:9 / 9:16 (avisa). "
@@ -428,6 +438,8 @@ def _preparar(a: argparse.Namespace) -> Plan:
     # lo que no aplica a la tarea se rechaza: callarlo cobraría algo distinto de lo que se cree
     if a.tarea != "clip" and a.segundos is not None:
         raise _Uso(f"--segundos solo aplica a la tarea clip, no a {a.tarea}.")
+    if a.tarea != "clip" and a.sin_sonido:
+        raise _Uso(f"--sin-sonido solo aplica a la tarea clip, no a {a.tarea}.")
     if a.tarea == "imagen" and a.imagen:
         raise _Uso("La tarea imagen crea desde texto y no usa --imagen. Para transformar una imagen usa la tarea editar.")
     if a.tarea == "editar" and a.formato:
@@ -439,6 +451,13 @@ def _preparar(a: argparse.Namespace) -> Plan:
     if a.imagen_sin_validar and not (a.tarea == "clip" and a.imagen):
         raise _Uso("--imagen-sin-validar solo aplica a la tarea clip con --imagen: la regla de lado corto "
                    "y relación es del modelo de clip a partir de imagen.")
+
+    audio = not a.sin_sonido
+    if a.tarea == "clip" and not audio:
+        try:
+            modelos_ia.valida_audio("clip", modelo.id, False)
+        except modelos_ia.ModeloDesconocido as err:      # incluye AudioNoAdmitido: MiniMax, Grok y Grok Lite
+            raise _Uso(str(err)) from err
 
     segundos = None
     if a.tarea == "clip":
@@ -466,7 +485,7 @@ def _preparar(a: argparse.Namespace) -> Plan:
     return Plan(tarea=a.tarea, modelo=modelo, prompt=prompt, imagen=imagen,
                 formato=None if a.tarea == "editar" else (a.formato or "horizontal"),
                 segundos=segundos, salida=Path(a.salida).expanduser() if a.salida else SALIDA_PREDETERMINADA,
-                formato_explicito=bool(a.formato), imagen_sin_validar=a.imagen_sin_validar)
+                formato_explicito=bool(a.formato), imagen_sin_validar=a.imagen_sin_validar, audio=audio)
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +525,7 @@ async def _invocar(plan: Plan, destino: Path, solo_plan: bool = False) -> str:
     # clip: sin pasar por clip.generar, que llama al LLM que escribe el prompt
     url_imagen = await fal.subir_archivo(plan.imagen) if plan.imagen else None
     animar = getattr(clip.animar, "__wrapped__", clip.animar) if solo_plan else clip.animar
-    return await animar(plan.prompt, url_imagen, plan.formato, plan.modelo.id, plan.segundos)
+    return await animar(plan.prompt, url_imagen, plan.formato, plan.modelo.id, plan.segundos, plan.audio)
 
 
 async def _planear(plan: Plan) -> None:
@@ -536,7 +555,7 @@ async def _planear(plan: Plan) -> None:
 
     if plan.tarea == "clip":
         try:
-            plan.costo_usd = clip.costo_usd(1 if plan.imagen else 0, plan.modelo.id, plan.segundos)
+            plan.costo_usd = clip.costo_usd(1 if plan.imagen else 0, plan.modelo.id, plan.segundos, plan.audio)
         except clip.ClipError:                  # «sin costo conocido»: no hay ficha en pricing.json
             plan.costo_usd = None
     else:
@@ -545,11 +564,13 @@ async def _planear(plan: Plan) -> None:
 
 def _linea_creditos(plan: Plan) -> str:
     from pipeline import creditos
+    sin_sonido = plan.tarea == "clip" and not plan.audio
     try:
-        n = creditos.costo_modelo(plan.tarea, plan.modelo.id, plan.segundos)
+        n = creditos.costo_modelo("clip_sin_audio" if sin_sonido else plan.tarea, plan.modelo.id, plan.segundos)
     except KeyError:
-        return "sin número en tarifas.json: todavía no se ofrece"
-    return f"{n} créditos (tools/tarifas.json §modelos)"
+        return ("sin número «sin sonido» en tarifas.json: no se ofrece sin sonido" if sin_sonido
+                else "sin número en tarifas.json: todavía no se ofrece")
+    return f"{n} créditos (tools/tarifas.json §modelos" + (".clip_sin_audio)" if sin_sonido else ")")
 
 
 def _linea_costo(plan: Plan) -> str:
@@ -570,6 +591,7 @@ def _imprimir_plan(plan: Plan, titulo: str) -> None:
     _decir(f"  endpoint: {plan.endpoint}")
     if plan.tarea == "clip":
         _decir(f"  segundos: {plan.segundos}")
+        _decir(f"  sonido: {'con sonido' if plan.audio else 'SIN sonido (generate_audio: false)'}")
     _decir(f"  argumentos: {json.dumps(plan.argumentos, ensure_ascii=False, default=str)}")
     _decir(f"  costo esperado: {_linea_costo(plan)}")
     _decir(f"  créditos que cobraría: {_linea_creditos(plan)}")
@@ -706,7 +728,7 @@ def _resolucion_pedida(plan: Plan) -> str:
     args = plan.argumentos or {}
     if "resolution" not in args:                  # sin ensayo previo, o la familia no la manda
         from pipeline import clip
-        args = clip.args_de_clip(plan.modelo, "", None, plan.formato or "horizontal", plan.segundos)
+        args = clip.args_de_clip(plan.modelo, "", None, plan.formato or "horizontal", plan.segundos, plan.audio)
     return str(args.get("resolution") or "")
 
 
@@ -752,7 +774,11 @@ def _veredicto(plan: Plan, medida: dict) -> list[str]:
         dif.append("el archivo no dice cuánto dura")
     elif abs(seg - plan.segundos) > TOLERANCIA_SEGUNDOS:
         dif.append(f"se pidieron {plan.segundos} s y dura {seg:.2f} s")
-    if clip.CON_AUDIO and plan.modelo.con_audio and not medida["audio"]:
+    if not plan.audio:
+        # se pidió mudo: lo que interesa saber es si de todos modos llegó una pista (¿vacía?, ¿con sonido?)
+        if medida["audio"]:
+            dif.append("se pidió sin sonido y el archivo trae pista de audio: revisa si está vacía")
+    elif clip.CON_AUDIO and plan.modelo.con_audio and not medida["audio"]:
         dif.append("se pidió con audio y el archivo NO trae pista de audio")
     return dif
 

@@ -5,7 +5,8 @@
   3. con dos o tres imágenes, Grok las junta en una sola (esa es el cuadro
      inicial); con una se anima directo; con ninguna es text-to-video;
   4. el modelo entrega el video; trae audio donde su fila lo promete (Modelo.con_audio:
-     todos los clips de la tabla hoy), que es lo que se cobró;
+     todos los clips de la tabla hoy) y, donde el endpoint deja pedirlo (Modelo.audio_opcional),
+     solo si el pedido no dijo `audio: false`: eso es lo que se cobró;
   5. el video se guarda en S3 bajo el usuario y el doc queda listo:
      usuarios/<user>/clips/<id>.json
 
@@ -20,8 +21,9 @@ o hay video o no hay nada que entregar. Y es de LO COBRADO: el número sale del
 doc (`creditos`, que el API escribió al cobrar con la tarifa de esa duración),
 no de recalcularlo con la tarifa de hoy.
 
-La duración (`segundos`) también sale del doc, que es el que manda; el mensaje
-de la cola la lleva solo para verla sin abrir S3.
+La duración (`segundos`) y el sonido (`audio`) también salen del doc, que es el que
+manda; el mensaje de la cola lleva la duración solo para verla sin abrir S3. Un doc
+sin `audio` (los de antes de la caja con interruptor) vale con sonido, como siempre.
 """
 from __future__ import annotations
 
@@ -41,6 +43,12 @@ def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _audio_de(doc: dict) -> bool:
+    """¿Lleva sonido? Un doc sin `audio` (de antes del interruptor) sí. Solo el `false` de verdad lo
+    apaga: cualquier otra cosa se deja pasar tal cual a `clip.generar`, que la rechaza."""
+    return doc.get("audio", True)
+
+
 async def _correr(doc: dict, tmp: Path) -> dict:
     """Las imágenes a fal y el clip a Veo. Todo lo async en una sola corrida."""
     from pipeline import clip, fal, media_sync
@@ -55,7 +63,8 @@ async def _correr(doc: dict, tmp: Path) -> dict:
     res = await clip.generar(doc.get("texto", ""), urls,
                              doc.get("formato") or "horizontal",
                              doc.get("modelo") or None,
-                             doc.get("segundos"))
+                             doc.get("segundos"),
+                             _audio_de(doc))
 
     # El enlace que devuelve fal caduca: la copia que se queda es la nuestra.
     local = tmp / "clip.mp4"
@@ -83,7 +92,7 @@ def generar(user_id: str, clip_id: str) -> None:
         doc.update(estado="listo", listo=_ahora(), key=key_video,
                    prompt=res["prompt"], prompt_composicion=res["prompt_composicion"],
                    recorte=res["recorte"], origen_inicial=res["origen_inicial"],
-                   segundos=res["segundos"], bytes=res["bytes"])
+                   segundos=res["segundos"], audio=res.get("audio", True), bytes=res["bytes"])
         media_sync.escribir_texto(key_doc, json.dumps(doc, ensure_ascii=False, indent=1))
         log.info("%s: clip listo (%d imagen(es), %s)", clip_id,
                  len(doc.get("imagenes") or []), res["origen_inicial"])
@@ -92,7 +101,8 @@ def generar(user_id: str, clip_id: str) -> None:
             try:
                 # con la duración REAL del clip entregado: 4 s no cuestan lo de 8
                 usd = clip.costo_usd(len(doc.get("imagenes") or []),
-                                     doc.get("modelo") or None, res["segundos"])
+                                     doc.get("modelo") or None, res["segundos"],
+                                     res.get("audio", True))
                 db.ejecutar(
                     """INSERT INTO costes (user_id, proyecto_id, concepto, proveedor, costo_usd)
                        VALUES (:u, :p, 'clip', 'fal', :usd)""",

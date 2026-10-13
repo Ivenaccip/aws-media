@@ -236,6 +236,7 @@ describe('la caja', () => {
       imagenes: [],
       modelo: 'veo-lite',
       segundos: 8,
+      audio: true,
       puerta: 'caja',
     });
     expect(ir).not.toHaveBeenCalled();
@@ -1295,6 +1296,7 @@ describe('la caja', () => {
       imagenes: [],
       modelo: 'veo-lite',
       segundos: 6,
+      audio: true,
       puerta: 'caja',
     });
     expect(Object.keys(cuerpoDe(f, '/api/clip/generar'))).not.toContain('creditos');
@@ -1323,6 +1325,7 @@ describe('la caja', () => {
       imagenes: [],
       modelo: 'veo-fast',
       segundos: 4,
+      audio: true,
       puerta: 'caja',
     });
     expect(Object.keys(cuerpoDe(f, '/api/clip/generar'))).not.toContain('creditos');
@@ -2802,5 +2805,244 @@ describe('UI·24 · conectar Blotato dice «listo» con la palomita', () => {
     const quieta = await screen.findByText('Tu Blotato está conectado');
     expect(quieta.closest('[role="status"]')).toBeNull();
     expect(palomita(quieta)).not.toHaveAttribute('class');
+  });
+});
+
+
+// El interruptor «Audio» del pie del menú de modelos (13-oct-2026): el clip con o sin sonido. Solo Veo Lite y Veo Fast se
+// pueden apagar (su endpoint trae `generate_audio` y tarifas.json trae su número «sin sonido»); MiniMax y los dos Grok
+// traen la pista que traen: el interruptor queda bloqueado y dice por qué. El precio que se ve es el de tarifas.json.
+describe('el audio del clip', () => {
+  const con = modelos.clip;
+  const sin = modelos.clip_sin_audio;
+  const ORDEN = ['Grok Imagine Video 1.5 Lite', 'MiniMax H3 Max Turbo', 'Veo 3.1 Lite', 'Grok Imagine Video', 'Veo 3.1 Fast'];
+  const generar = { '/api/clip/generar': () => json({ lanzado: true, id: 'clip-1', creditos: 1 }) };
+
+  async function abrirMenu() {
+    await userEvent.click(botonModelo());
+    return screen.getByRole('dialog', { name: 'Elegir modelo' });
+  }
+  const interruptor = (menu: HTMLElement) => within(menu).getByRole('switch', { name: 'Audio' });
+  const fila = (menu: HTMLElement, nombre: RegExp) => within(menu).getByRole('radio', { name: nombre });
+  const nombresDeFilas = (menu: HTMLElement) =>
+    within(within(menu).getByRole('radiogroup', { name: 'Modelos' }))
+      .getAllByRole('radio')
+      .map(r => /^(Grok Imagine Video 1\.5 Lite|MiniMax H3 Max Turbo|Veo 3\.1 Lite|Grok Imagine Video|Veo 3\.1 Fast)/.exec(r.textContent!)![1]);
+
+  it('inicio.audio.el_pie_trae_el_interruptor_con_sonido_y_el_precio', async () => {
+    montar();
+    pintar();
+    const menu = await abrirMenu();
+    // el pie guarda el modelo y su precio a la izquierda y el interruptor a la derecha; arranca con sonido, como siempre
+    expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + con['veo-lite']['8'] + ' por clip de 8 s');
+    const sw = interruptor(menu);
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    expect(sw).not.toHaveAttribute('aria-disabled');
+    expect(menu).toHaveTextContent('Con sonido');
+    expect(menu).not.toHaveTextContent('ahorras');
+    expect(fila(menu, /Veo 3\.1 Lite/)).toHaveTextContent('Google · 720p con audio');
+  });
+
+  it('inicio.audio.apagarlo_baja_el_precio_del_pie_las_filas_y_el_rango_y_dice_cuanto_se_ahorra', async () => {
+    montar();
+    pintar();
+    const menu = await abrirMenu();
+    await userEvent.click(interruptor(menu));
+    expect(interruptor(menu)).toHaveAttribute('aria-checked', 'false');
+    expect(menu).toHaveTextContent('Sin sonido');
+    const ahorro = con['veo-lite']['8']! - sin['veo-lite']['8']!;
+    expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + sin['veo-lite']['8'] + ' por clip de 8 s · ahorras ✦ ' + ahorro);
+    // la fila de Veo Lite baja y dice «sin audio»; Veo Fast también
+    expect(fila(menu, /Veo 3\.1 Lite/)).toHaveTextContent('✦ ' + sin['veo-lite']['8']);
+    expect(fila(menu, /Veo 3\.1 Lite/)).toHaveTextContent('Google · 720p sin audio');
+    expect(fila(menu, /Veo 3\.1 Fast/)).toHaveTextContent('✦ ' + sin['veo-fast']['8']);
+    // los que no se pueden apagar no cambian: siempre traen su sonido
+    expect(fila(menu, /MiniMax/)).toHaveTextContent('✦ ' + con.h3t['8']);
+    expect(fila(menu, /Grok Imagine Video 1\.5 Lite/)).toHaveTextContent('✦ ' + con.grokl['8']);
+    // el rango de «Económicos» sale de lo que se paga ahora
+    const economicos = [con.grokl['8']!, con.h3t['8']!, sin['veo-lite']['8']!, con.grokv['8']!];
+    expect(menu).toHaveTextContent('Económicos✦ ' + Math.min(...economicos) + '–' + Math.max(...economicos) + ' por clip de 8 s');
+    expect(menu).toHaveTextContent('Más calidad✦ ' + sin['veo-fast']['8'] + ' por clip de 8 s');
+    // y al volver a encenderlo, todo vuelve
+    await userEvent.click(interruptor(menu));
+    expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + con['veo-lite']['8'] + ' por clip de 8 s');
+    expect(menu).not.toHaveTextContent('ahorras');
+  });
+
+  it('inicio.audio.las_filas_no_se_mueven_al_apagar_el_sonido', async () => {
+    montar();
+    pintar();
+    const menu = await abrirMenu();
+    expect(nombresDeFilas(menu)).toEqual(ORDEN);
+    await userEvent.click(interruptor(menu));
+    // Veo Lite pasa a costar menos que Grok Lite, pero no salta de lugar: el orden es por el precio con sonido
+    expect(sin['veo-lite']['8']).toBeLessThan(con.grokl['8']!);
+    expect(nombresDeFilas(menu)).toEqual(ORDEN);
+  });
+
+  it('inicio.audio.cambiar_la_duracion_con_el_sonido_apagado_usa_el_numero_sin_sonido_de_esa_duracion', async () => {
+    montar();
+    pintar();
+    const menu = await abrirMenu();
+    await userEvent.click(interruptor(menu));
+    for (const s of ['4', '6', '8'] as const) {
+      await userEvent.click(within(menu).getByRole('radio', { name: s + ' s' }));
+      expect(interruptor(menu)).toHaveAttribute('aria-checked', 'false');
+      // y el «ahorras» de ESA duración: con sonido menos sin sonido
+      const ahorro = con['veo-lite'][s]! - sin['veo-lite'][s]!;
+      expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + sin['veo-lite'][s] + ' por clip de ' + s + ' s · ahorras ✦ ' + ahorro);
+    }
+  });
+
+  it('inicio.audio.el_chip_dice_sin_audio_solo_cuando_el_clip_va_mudo', async () => {
+    montar();
+    pintar();
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 8 s');
+    expect(botonModelo()).not.toHaveTextContent('sin audio');
+    const menu = await abrirMenu();
+    await userEvent.click(interruptor(menu));
+    await userEvent.keyboard('{Escape}');
+    expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 8 s · sin audio');
+    // un modelo que no se puede apagar no dice «sin audio»: su clip lleva sonido aunque se haya elegido mudo antes
+    await userEvent.click(botonModelo());
+    await userEvent.click(fila(screen.getByRole('dialog', { name: 'Elegir modelo' }), /MiniMax/));
+    await userEvent.keyboard('{Escape}');
+    expect(botonModelo()).toHaveTextContent('Modelo MiniMax H3 Max Turbo · 8 s');
+    expect(botonModelo()).not.toHaveTextContent('sin audio');
+  });
+
+  it('inicio.audio.el_pedido_manda_audio_false_si_se_apago_y_el_aviso_lo_dice', async () => {
+    const avisos = ponerAvisos();
+    const f = montar({ rutas: generar });
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    const menu = await abrirMenu();
+    await userEvent.click(interruptor(menu));
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/clip/generar')).toEqual({
+      texto: 'un gato en la luna',
+      formato: 'horizontal',
+      imagenes: [],
+      modelo: 'veo-lite',
+      segundos: 8,
+      audio: false,
+      puerta: 'caja',
+    });
+    expect(avisos.mostrar).toHaveBeenCalledWith('Ya estamos creando tu clip de 8 segundos sin sonido. Míralo abajo, en «Mis creaciones».', {
+      tipo: 'ok',
+      clave: 'caja',
+    });
+  });
+
+  it('inicio.audio.un_modelo_que_no_se_puede_apagar_bloquea_el_interruptor_y_dice_por_que', async () => {
+    const f = montar({ rutas: generar });
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    const menu = await abrirMenu();
+    for (const [nombre, estado, motivo] of [
+      [/MiniMax/, 'Sonido incluido', 'MiniMax H3 Max Turbo trae su propio sonido y no se puede apagar.'],
+      [/Grok Imagine Video 1\.5 Lite/, 'Sonido muy bajo', 'El sonido de Grok Imagine Video 1.5 Lite es muy bajo y no se puede apagar.'],
+      [/^Grok Imagine Video(?! 1)/, 'Sonido muy bajo', 'El sonido de Grok Imagine Video es muy bajo y no se puede apagar.'],
+    ] as const) {
+      await userEvent.click(fila(menu, nombre));
+      const sw = interruptor(menu);
+      // sigue en el orden del teclado (no es `disabled`), dice que está bloqueado y su estado y su motivo se leen con él
+      expect(sw).toHaveAttribute('aria-disabled', 'true');
+      expect(sw).toHaveAttribute('aria-checked', 'true');
+      expect(menu).toHaveTextContent(estado);
+      expect(menu).toHaveTextContent(motivo);
+      const leidos = sw.getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id)?.textContent);
+      expect(leidos).toEqual([estado, motivo]);
+      await userEvent.click(sw);
+      expect(sw).toHaveAttribute('aria-checked', 'true'); // tocarlo no cambia nada
+      expect(menu).not.toHaveTextContent('ahorras');
+    }
+    // y el pedido va con sonido
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/clip/generar')).toMatchObject({ modelo: 'grokv', audio: true });
+  });
+
+  it('inicio.audio.apagado_y_luego_un_modelo_sin_interruptor_pide_con_sonido_y_al_volver_sigue_apagado', async () => {
+    const f = montar({ rutas: generar });
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    const menu = await abrirMenu();
+    await userEvent.click(interruptor(menu)); // Veo Lite sin sonido
+    await userEvent.click(fila(menu, /MiniMax/));
+    expect(menu).toHaveTextContent('MiniMax H3 Max Turbo✦ ' + con.h3t['8'] + ' por clip de 8 s'); // el precio de con sonido
+    expect(menu).not.toHaveTextContent('Sin sonido');
+    await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(llamadas(f, '/api/clip/generar')).toHaveLength(1));
+    expect(cuerpoDe(f, '/api/clip/generar')).toMatchObject({ modelo: 'h3t', audio: true });
+    // la elección de la persona no se perdió: Veo Lite vuelve a estar sin sonido
+    await userEvent.click(botonModelo());
+    const otra = screen.getByRole('dialog', { name: 'Elegir modelo' });
+    await userEvent.click(fila(otra, /Veo 3\.1 Lite/));
+    expect(interruptor(otra)).toHaveAttribute('aria-checked', 'false');
+    expect(otra).toHaveTextContent('Veo 3.1 Lite✦ ' + sin['veo-lite']['8'] + ' por clip de 8 s');
+  });
+
+  it('inicio.audio.se_recuerda_en_el_navegador_y_si_el_navegador_no_deja_igual_funciona', async () => {
+    montar();
+    const primera = pintar();
+    let menu = await abrirMenu();
+    await userEvent.click(interruptor(menu));
+    expect(localStorage.getItem('caja.sonido')).toBe('sin');
+    primera.unmount();
+    // otra visita: la caja arranca sin sonido, con el chip y el precio al día
+    pintar();
+    expect(botonModelo()).toHaveTextContent('· sin audio');
+    menu = await abrirMenu();
+    expect(interruptor(menu)).toHaveAttribute('aria-checked', 'false');
+    expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + sin['veo-lite']['8'] + ' por clip de 8 s');
+    await userEvent.click(interruptor(menu));
+    expect(localStorage.getItem('caja.sonido')).toBe('con');
+  });
+
+  it('inicio.audio.un_navegador_sin_almacenamiento_no_rompe_la_caja', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('almacenamiento bloqueado');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('almacenamiento bloqueado');
+    });
+    montar();
+    pintar();
+    const menu = await abrirMenu();
+    expect(interruptor(menu)).toHaveAttribute('aria-checked', 'true'); // sin lo guardado, con sonido
+    await userEvent.click(interruptor(menu));
+    expect(interruptor(menu)).toHaveAttribute('aria-checked', 'false'); // vale para esta visita aunque no se pueda guardar
+  });
+
+  it('inicio.audio.el_interruptor_se_usa_con_teclado', async () => {
+    montar();
+    pintar();
+    const menu = await abrirMenu();
+    const sw = interruptor(menu);
+    sw.focus();
+    await userEvent.keyboard(' ');
+    expect(sw).toHaveAttribute('aria-checked', 'false');
+    await userEvent.keyboard('{Enter}');
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    expect(sw).toHaveFocus(); // sigue enfocado: el menú no se vuelve a montar
+    // su estado se lee con él
+    const leidos = sw.getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id)?.textContent);
+    expect(leidos).toEqual(['Con sonido']);
+  });
+
+  it('inicio.audio.imagen_y_editar_no_traen_interruptor', async () => {
+    montar();
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    for (const tarea of ['Crear una imagen', 'Editar una imagen']) {
+      await elegirOpcion(tarea);
+      expect(botonOpcion()).toHaveTextContent(tarea);
+      const menu = await abrirMenu();
+      expect(within(menu).queryByRole('switch'), tarea).toBeNull();
+      expect(menu, tarea).not.toHaveTextContent('Audio');
+      await userEvent.keyboard('{Escape}');
+    }
   });
 });

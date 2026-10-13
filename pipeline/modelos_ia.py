@@ -88,6 +88,12 @@ class DuracionNoAdmitida(ModeloDesconocido):
     las dos y la API pueda distinguirlas cuando quiera."""
 
 
+class AudioNoAdmitido(ModeloDesconocido):
+    """El modelo existe, pero su endpoint no deja pedir el clip sin sonido (o llegó algo que
+    no es verdadero ni falso). Error del pedido (422), igual que la duración: no se ignora en
+    silencio, porque se cobraría «sin sonido» y se entregaría con él."""
+
+
 # Llaves que la TAREA manda siempre (el texto, las imágenes, el aspecto, los
 # segundos): ningún modelo puede fijarlas en `args_extra`, porque pisaría lo que el
 # usuario pidió y se cobró. `image_url` es la imagen de entrada de la familia Veo (y `start_image_url`, la de Kling).
@@ -191,6 +197,10 @@ class Modelo:
     endpoint_con_imagen: str = ""      # editar/clip con imagen ("" = el mismo)
     # clip: ¿trae audio este modelo? El producto promete «8 s con sonido».
     con_audio: bool = False
+    # clip: ¿el endpoint trae `generate_audio`, o sea que se puede pedir CON o SIN sonido? Solo los que
+    # lo traen en su esquema (Veo, LTX, Kling y Seedance). MiniMax, Grok y Grok Lite no: su clip
+    # trae la pista que trae y no se puede apagar. Pedir «sin sonido» a uno de esos es un 422.
+    audio_opcional: bool = False
     # clip: los segundos enteros que admite. Vacío = la tarea no tiene duración.
     # Un modelo que no admite 4 s (p. ej. LTX) simplemente no la trae aquí.
     duraciones: tuple[int, ...] = ()
@@ -249,6 +259,9 @@ class Modelo:
         if type(self.segundo_plano) is not bool:
             raise ValueError(f"segundo_plano de {self.id!r} debe ser True o False, "
                              f"no {self.segundo_plano!r}")
+        if type(self.audio_opcional) is not bool:
+            raise ValueError(f"audio_opcional de {self.id!r} debe ser True o False, "
+                             f"no {self.audio_opcional!r}")
         if self.llave_tamano not in LLAVES_DE_TAMANO:
             raise ValueError(f"llave_tamano de {self.id!r} debe ser una de "
                              f"{', '.join(LLAVES_DE_TAMANO)}, no {self.llave_tamano!r}")
@@ -382,7 +395,7 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     # del dueño: Grok».
     grok = Modelo("grok", "imagen", settings.fal_imagen, settings.fal_imagen_edit)
     veo = Modelo("veo-lite", "clip", settings.fal_veo_t2v, settings.fal_veo,
-                 con_audio=True, duraciones=(4, 6, 8))
+                 con_audio=True, audio_opcional=True, duraciones=(4, 6, 8))
     # Veo 3.1 Fast y Standard: mismos argumentos que Lite (los arma clip.animar), solo
     # cambia el endpoint. Fast ya está a la venta; Standard sigue INERTE hasta que
     # tarifas.json le ponga créditos. Un solo intento (max_intentos=1): el timeout del
@@ -390,9 +403,9 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     # $3.20 dólares por intento a 8 s, hasta 8 veces el de Lite, y devolver créditos no
     # devuelve lo que fal ya cobró.
     veo_fast = Modelo("veo-fast", "clip", VEO_FAST_T2V, VEO_FAST_I2V,
-                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+                      con_audio=True, audio_opcional=True, duraciones=(4, 6, 8), max_intentos=1)
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
-                     con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+                     con_audio=True, audio_opcional=True, duraciones=(4, 6, 8), max_intentos=1)
     # Ola 4: clips de otras familias. MiniMax, Grok Video y Grok Lite están a la venta desde el 13-oct-2026 (tras su prueba
     # pagada); LTX, Kling y Seedance siguen INERTES (sin número en tarifas.json, sin prueba pagada). Un solo
     # intento cada uno mientras no se mida cuánto tardan: un timeout de cliente no cancela el trabajo en
@@ -409,11 +422,11 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
     grokl = Modelo("grokl", "clip", GROKL_T2V, GROKL_I2V, familia_clip="grok_lite",
                    con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     ltx = Modelo("ltx", "clip", LTX_T2V, LTX_I2V, familia_clip="ltx",
-                 con_audio=True, duraciones=(6, 8), max_intentos=1)
+                 con_audio=True, audio_opcional=True, duraciones=(6, 8), max_intentos=1)
     kling = Modelo("kling", "clip", KLING_T2V, KLING_I2V, familia_clip="kling",
-                   con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+                   con_audio=True, audio_opcional=True, duraciones=(4, 6, 8), max_intentos=1)
     seed = Modelo("seed", "clip", SEED_T2V, SEED_I2V, familia_clip="seedance",
-                  con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
+                  con_audio=True, audio_opcional=True, duraciones=(4, 6, 8), max_intentos=1)
     # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
     # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): por la regla de arriba iría a
     # segundo plano, pero sigue síncrono —como Grok y como editar— «de momento», por decisión
@@ -507,3 +520,20 @@ def valida_duracion(tarea: str, modelo_id: str | None, segundos) -> int:
             f"El modelo {m.id} no admite clips de {segundos} s. "
             f"Duraciones disponibles: {admitidas} s.")
     return segundos
+
+
+def valida_audio(tarea: str, modelo_id: str | None, audio) -> bool:
+    """Si el clip lleva sonido: `True` o `False` de verdad, o AudioNoAdmitido con el motivo.
+
+    Recibe lo que llegó del navegador sin tocar, como `valida_duracion`: «false», 0, None y
+    «no» se rechazan en vez de leerse como un sí o un no que nadie dijo. Pedir SIN sonido solo
+    vale en los modelos que lo permiten (`audio_opcional`): en los demás se rechaza, porque el
+    clip saldría con la pista que trae el modelo y el cobro habría sido de otro producto.
+    Con sonido (`True`) vale en todos: es lo que se vende y lo que siempre se pidió."""
+    m = resolver(tarea, modelo_id)
+    if type(audio) is not bool:
+        raise AudioNoAdmitido("El sonido del clip debe ser verdadero o falso.")
+    if not audio and not m.audio_opcional:
+        raise AudioNoAdmitido(
+            f"El modelo {m.id} trae su propio sonido y no se puede pedir sin sonido.")
+    return audio

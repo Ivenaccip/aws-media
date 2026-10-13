@@ -639,3 +639,102 @@ def test_veo_conserva_su_veredicto_de_siempre():
     assert probar._veredicto(plan, _medida(1280, 720, 4.0)) == []
     assert any("se pidió 720p y el lado corto mide 1080" in d
                for d in probar._veredicto(plan, _medida(1920, 1080, 4.0)))
+
+
+# ---------------------------------------------------------------------------
+# H · el sonido del clip (13-oct-2026): `audio_opcional` y lo que se manda a cada familia
+
+AUDIO_OPCIONAL = {"veo-lite", "veo-fast", "veo-std", "ltx", "kling", "seed"}
+
+
+def test_audio_opcional_es_de_los_modelos_cuyo_endpoint_trae_generate_audio():
+    """El interruptor del menú solo vale donde el endpoint deja pedir el sonido. Para los de la Ola 4 se comprueba contra
+    el esquema real guardado (los dos endpoints, texto e imagen); MiniMax, Grok y Grok Lite no lo traen."""
+    from pipeline import modelos_ia
+    esquemas = _esquemas()
+    for id_, (t2v, i2v, *_resto) in NUEVOS.items():
+        trae = ["generate_audio" in esquemas[t2v], "generate_audio" in esquemas[i2v]]
+        assert trae in ([True, True], [False, False]), id_
+        assert modelos_ia.resolver("clip", id_).audio_opcional is trae[0], id_
+    for id_ in ("veo-lite", "veo-fast", "veo-std"):                 # Veo manda `generate_audio` desde siempre
+        assert modelos_ia.resolver("clip", id_).audio_opcional is True
+    assert {m.id for m in modelos_ia._tabla().values() if m.tarea == "clip" and m.audio_opcional} == AUDIO_OPCIONAL
+
+
+@pytest.mark.parametrize("id_", ["veo-lite", "veo-fast", "veo-std", "ltx", "kling", "seed"])
+@pytest.mark.parametrize("con_imagen", [False, True])
+def test_los_que_traen_generate_audio_lo_mandan_segun_el_sonido_pedido(id_, con_imagen):
+    from pipeline import clip, modelos_ia
+    m = modelos_ia.resolver("clip", id_)
+    img = "https://s3.test/a.jpg" if con_imagen else None
+    con = clip.args_de_clip(m, "un perro", img, "horizontal", m.duraciones[-1])
+    sin = clip.args_de_clip(m, "un perro", img, "horizontal", m.duraciones[-1], False)
+    assert con["generate_audio"] is True and sin["generate_audio"] is False
+    assert {k: v for k, v in con.items() if k != "generate_audio"} == {k: v for k, v in sin.items() if k != "generate_audio"}
+    assert clip.args_de_clip(m, "un perro", img, "horizontal", m.duraciones[-1], True) == con    # el defecto es con sonido
+
+
+@pytest.mark.parametrize("id_", ["h3t", "grokv", "grokl"])
+@pytest.mark.parametrize("con_imagen", [False, True])
+def test_los_que_no_lo_traen_no_reciben_ninguna_llave_de_audio_pida_lo_que_pida_la_tarea(id_, con_imagen):
+    from pipeline import clip, modelos_ia
+    m = modelos_ia.resolver("clip", id_)
+    img = "https://s3.test/a.jpg" if con_imagen else None
+    con = clip.args_de_clip(m, "un perro", img, "horizontal", 4, True)
+    assert "generate_audio" not in con
+    assert clip.args_de_clip(m, "un perro", img, "horizontal", 4, False) == con      # los armadores lo ignoran: el servidor ya lo rechazó antes
+
+
+@pytest.mark.parametrize("id_", ["h3t", "grokv", "grokl"])
+def test_animar_costo_y_generar_rechazan_sin_sonido_en_un_modelo_que_no_lo_permite(monkeypatch, id_):
+    """El cinturón del pipeline (el API ya lo rechazó con 422): ni se llama a fal ni se anota un costo de «sin sonido»."""
+    from pipeline import clip, fal, modelos_ia
+    llamadas = []
+
+    async def llamar(*a, **k):
+        llamadas.append(a)
+        return {}
+    monkeypatch.setattr(fal, "llamar", llamar)
+    with pytest.raises(modelos_ia.AudioNoAdmitido):
+        asyncio.run(clip.animar("x", None, "horizontal", id_, 4, False))
+    with pytest.raises(modelos_ia.AudioNoAdmitido):
+        asyncio.run(clip.generar("un perro", None, "horizontal", id_, 4, False))
+    with pytest.raises(modelos_ia.AudioNoAdmitido):
+        clip.costo_usd(0, id_, 4, False)
+    assert llamadas == []
+
+
+def test_valida_audio_solo_deja_pasar_booleanos_de_verdad():
+    from pipeline import modelos_ia
+    assert modelos_ia.valida_audio("clip", "veo-lite", True) is True
+    assert modelos_ia.valida_audio("clip", "veo-lite", False) is False
+    assert modelos_ia.valida_audio("clip", "h3t", True) is True
+    for malo in (None, "false", "true", 0, 1, 0.0, [], {}):
+        with pytest.raises(modelos_ia.AudioNoAdmitido, match="verdadero o falso"):
+            modelos_ia.valida_audio("clip", "veo-lite", malo)
+    with pytest.raises(modelos_ia.AudioNoAdmitido, match="trae su propio sonido"):
+        modelos_ia.valida_audio("clip", "h3t", False)
+    with pytest.raises(modelos_ia.ModeloDesconocido):
+        modelos_ia.valida_audio("clip", "no-existe", True)
+    with pytest.raises(ValueError, match="audio_opcional"):
+        modelos_ia.Modelo("x", "clip", "fal-ai/x", audio_opcional=1)
+
+
+def test_el_catalogo_de_la_web_dice_sonido_opcional_en_los_mismos_modelos_que_el_servidor():
+    """`sonido` de web/src/pantallas/inicio/modelos.ts es el espejo de `Modelo.audio_opcional`: 'opcional' en los que el
+    servidor deja pedir sin sonido y 'incluido' o 'bajo' en los que no. Si se desfasan, la caja ofrecería apagar algo que el
+    servidor rechaza con 422, o escondería un interruptor que sí sirve."""
+    import re
+    from pipeline import modelos_ia
+    texto = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "modelos.ts").read_text(encoding="utf-8")
+    for id_ in modelos_ia.disponibles("clip"):
+        linea = next(l for l in texto.splitlines() if f"id: '{id_}'" in l)
+        m = modelos_ia.resolver("clip", id_)
+        if m.audio_opcional:
+            assert "sonido: 'opcional'" in linea, id_
+        else:
+            assert re.search(r"sonido: '(incluido|bajo)'", linea), id_
+    # el que se oye bien y el que casi no se oye (medido el 12-oct-2026, DATOS §15 y §16)
+    assert "sonido: 'incluido'" in next(l for l in texto.splitlines() if "id: 'h3t'" in l)
+    for id_ in ("grokv", "grokl"):
+        assert "sonido: 'bajo'" in next(l for l in texto.splitlines() if f"id: '{id_}'" in l)

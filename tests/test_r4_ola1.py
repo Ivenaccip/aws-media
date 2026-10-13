@@ -1365,10 +1365,16 @@ def test_guardian_todo_modelo_con_numero_cubre_su_costo_con_el_margen():
     revisados = 0
     for tarea, tabla in creditos.MODELOS_CR.items():
         for id_, valor in tabla.items():
-            m = modelos_ia.resolver(tarea, id_)
+            m = modelos_ia.resolver("clip" if tarea == "clip_sin_audio" else tarea, id_)
             if tarea == "clip":
                 for s, cr in valor.items():
                     assert cr >= creditos_sugeridos(clip.costo_usd(0, id_, s)), (id_, s)
+                    revisados += 1
+            elif tarea == "clip_sin_audio":
+                # el clip sin sonido se cobra con la tarifa sin audio de la ficha (13-oct-2026)
+                for s, cr in valor.items():
+                    assert cr >= creditos_sugeridos(clip.costo_usd(0, id_, s, False)), (id_, s)
+                    assert cr >= creditos_sugeridos(clip.costo_usd(1, id_, s, False)), (id_, s)
                     revisados += 1
             else:
                 # con los argumentos fijos del modelo: el precio de Nano Banana Pro depende de su
@@ -1401,3 +1407,233 @@ def test_guardian_componer_imagenes_nunca_cobra_por_debajo_del_costo():
                 assert ingreso > costo, (id_, s, n)                      # nunca en pérdida
                 peor = min(peor, (ingreso - costo) / ingreso)
     assert peor >= Fraction(24, 100), float(peor)
+
+
+# ---------------------------------------------------------------------------
+# Audio opcional (13-oct-2026): el interruptor «Audio» del menú de modelos de la caja del inicio.
+# Solo Veo Lite y Veo Fast (los que se venden y cuyo endpoint trae `generate_audio`) se pueden pedir SIN
+# sonido, con los números de tarifas.json §modelos.clip_sin_audio. Sin el campo, el clip lleva sonido.
+
+SIN_SONIDO = {"veo-lite": {4: 12, 6: 16, 8: 22}, "veo-fast": {4: 36, 6: 54, 8: 72}}
+CON_SONIDO = {"veo-lite": {4: 18, 6: 28, 8: 36}, "veo-fast": {4: 54, 6: 80, 8: 108}}
+SIN_INTERRUPTOR = ["h3t", "grokv", "grokl"]       # a la venta, pero su clip trae la pista que trae
+
+
+def _pedido_clip(cliente, **extra):
+    cuerpo = {"texto": "mi perro", **extra}
+    return cliente.post("/api/clip/generar", json=cuerpo)
+
+
+@pytest.mark.parametrize("modelo", ["veo-lite", "veo-fast", "h3t", "grokv", "grokl"])
+def test_sin_el_campo_audio_el_clip_lleva_sonido_y_cobra_lo_de_siempre(cliente, espia, modelo):
+    """Compatibilidad: un navegador que no manda `audio` (la pantalla heredada, un servidor viejo) sigue como antes."""
+    r = _pedido_clip(cliente, modelo=modelo, segundos=8)
+    assert r.status_code == 200, r.text
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    assert doc["audio"] is True
+    assert r.json()["creditos"] == doc["creditos"] == (CON_SONIDO.get(modelo) or OLA4_ENCENDIDOS[modelo])[8]
+
+
+@pytest.mark.parametrize("n_imagenes,extra", [(0, 0), (1, 0), (2, 2), (3, 2)])
+@pytest.mark.parametrize("segundos", [4, 6, 8])
+@pytest.mark.parametrize("modelo", sorted(SIN_SONIDO))
+def test_sin_sonido_cobra_el_numero_de_clip_sin_audio_y_con_sonido_el_de_siempre(
+        cliente, espia, modelo, segundos, n_imagenes, extra):
+    r = _pedido_clip(cliente, modelo=modelo, segundos=segundos, audio=False, imagenes=_imagenes_propias(n_imagenes))
+    assert r.status_code == 200, r.text
+    cobro = SIN_SONIDO[modelo][segundos] + extra
+    assert r.json()["creditos"] == cobro
+    assert espia.cobros == [(cobro, f"clip:{r.json()['id']}")]
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    assert (doc["modelo"], doc["segundos"], doc["audio"], doc["creditos"]) == (modelo, segundos, False, cobro)
+    assert len(espia.encolados) == 1
+    # y con el campo en true, explícito, es el de siempre
+    espia.cobros.clear()
+    espia.s3.clear()
+    r2 = _pedido_clip(cliente, modelo=modelo, segundos=segundos, audio=True, imagenes=_imagenes_propias(n_imagenes))
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["creditos"] == CON_SONIDO[modelo][segundos] + extra
+    assert espia.cobros[-1][0] == CON_SONIDO[modelo][segundos] + extra
+
+
+@pytest.mark.parametrize("n_imagenes", [0, 1, 2, 3])
+@pytest.mark.parametrize("segundos", [None, 4, 6, 8])
+@pytest.mark.parametrize("modelo", SIN_INTERRUPTOR)
+def test_pedir_sin_sonido_a_un_modelo_que_no_lo_permite_da_422_sin_cobrar_ni_leer_s3_ni_encolar(
+        cliente, espia, falso_fal, imagenes_al_disco, modelo, segundos, n_imagenes):
+    cuerpo = {"modelo": modelo, "audio": False, "imagenes": _imagenes_propias(n_imagenes)}
+    if segundos:
+        cuerpo["segundos"] = segundos
+    r = _pedido_clip(cliente, **cuerpo)
+    assert r.status_code == 422, r.text
+    assert modelo in r.json()["detail"] and "sonido" in r.json()["detail"]
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+
+
+@pytest.mark.parametrize("modelo", ["ltx", "kling", "seed", "veo-std"])
+@pytest.mark.parametrize("audio", [False, True])
+def test_los_clips_inertes_siguen_dando_422_con_o_sin_sonido(cliente, espia, falso_fal, imagenes_al_disco, modelo, audio):
+    """Que su endpoint traiga `generate_audio` no los enciende: sin número en tarifas.json no se vende, ni con sonido ni sin él."""
+    for segundos in (None, 4, 6, 8):
+        cuerpo = {"modelo": modelo, "audio": audio}
+        if segundos:
+            cuerpo["segundos"] = segundos
+        assert _pedido_clip(cliente, **cuerpo).status_code == 422, (modelo, segundos)
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+
+
+@pytest.mark.parametrize("malo", [None, "false", "true", "no", 0, 1, 0.0, [], {}])
+@pytest.mark.parametrize("modelo", ["veo-lite", "h3t"])
+def test_un_audio_que_no_es_verdadero_ni_falso_es_422_y_no_se_lee_como_un_si_o_un_no(
+        cliente, espia, falso_fal, imagenes_al_disco, modelo, malo):
+    r = _pedido_clip(cliente, modelo=modelo, segundos=8, audio=malo)
+    assert r.status_code == 422, (malo, r.text)
+    assert "verdadero o falso" in r.json()["detail"]
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+
+
+def test_un_modelo_sin_numero_sin_sonido_no_se_vende_sin_sonido_aunque_el_endpoint_lo_permita(
+        cliente, espia, falso_fal, imagenes_al_disco, monkeypatch):
+    """La compuerta de siempre, ahora también para «sin sonido»: sin número en §clip_sin_audio, 422 antes de cobrar."""
+    from pipeline import creditos
+    tabla = {m: dict(d) for m, d in creditos.MODELOS_CR["clip_sin_audio"].items()}
+    del tabla["veo-fast"]
+    monkeypatch.setitem(creditos.MODELOS_CR, "clip_sin_audio", tabla)
+    r = _pedido_clip(cliente, modelo="veo-fast", segundos=8, audio=False)
+    assert r.status_code == 422 and "sin sonido" in r.json()["detail"], r.text
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+    assert _pedido_clip(cliente, modelo="veo-fast", segundos=8, audio=True).status_code == 200    # con sonido, intacto
+
+
+@pytest.mark.parametrize("audio", [True, False])
+def test_apagar_un_modelo_quitando_su_numero_de_clip_lo_apaga_tambien_sin_sonido(
+        cliente, espia, falso_fal, imagenes_al_disco, monkeypatch, audio):
+    """La receta de OPERACION («quita su número de §modelos.clip»): con la fila de `clip_sin_audio` todavía puesta, el
+    modelo NO se vende ni mudo. Sin esto, quitar solo `clip` dejaba abierta la venta «sin sonido» a su precio."""
+    from pipeline import creditos
+    tabla = {m: dict(d) for m, d in creditos.MODELOS_CR["clip"].items()}
+    del tabla["veo-fast"]
+    monkeypatch.setitem(creditos.MODELOS_CR, "clip", tabla)
+    assert "veo-fast" in creditos.MODELOS_CR["clip_sin_audio"]                  # la fila suelta sigue ahí
+    for segundos in (None, 4, 6, 8):
+        cuerpo = {"modelo": "veo-fast", "audio": audio}
+        if segundos:
+            cuerpo["segundos"] = segundos
+        assert _pedido_clip(cliente, **cuerpo).status_code == 422, (audio, segundos)
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+    with pytest.raises(KeyError):
+        creditos.costo_clip(0, "veo-fast", 8, False)
+
+
+def _llamar_al_worker(espia, monkeypatch, tmp_path, doc_extra=None):
+    """Corre el worker sobre el doc que escribió el API (con `doc_extra` encima) y devuelve lo que se le mandó a fal."""
+    import worker.clip_generar as w
+    from pipeline import fal
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    doc.update(doc_extra or {})
+    llamadas = []
+
+    async def llamar(app, argumentos, timeout_s, nombre, meta=None):
+        llamadas.append((app, argumentos))
+        return {"video": {"url": "https://fal.test/clip.mp4"}}
+
+    async def descargar(url, destino):
+        Path(destino).write_bytes(b"video")
+
+    async def chat_json(name, system, user):
+        return {"video": "A dog running.", "composicion": "", "recorte": ""}
+    monkeypatch.setattr(fal, "llamar", llamar)
+    monkeypatch.setattr(fal, "descargar", descargar)
+    monkeypatch.setattr("pipeline.clip.chat_json", chat_json)
+    res = asyncio.run(w._correr(doc, tmp_path))
+    ((app, args),) = llamadas
+    return app, args, res
+
+
+@pytest.mark.parametrize("segundos", [4, 6, 8])
+@pytest.mark.parametrize("modelo", sorted(SIN_SONIDO))
+def test_el_worker_manda_generate_audio_false_a_veo_cuando_el_clip_es_sin_sonido(
+        cliente, espia, monkeypatch, tmp_path, modelo, segundos):
+    from pipeline import clip
+    _pedido_clip(cliente, modelo=modelo, segundos=segundos, audio=False)
+    app, args, res = _llamar_al_worker(espia, monkeypatch, tmp_path)
+    assert args["generate_audio"] is False and args["duration"] == f"{segundos}s"
+    assert res["audio"] is False and res["segundos"] == segundos
+    # y el costo en dólares (lo que anota el worker junto al cobro: tests/test_r4_duracion.py) es el de la tarifa sin audio
+    tarifa = {"veo-lite": 0.03, "veo-fast": 0.10}[modelo]
+    assert clip.costo_usd(0, modelo, segundos, False) == pytest.approx(segundos * tarifa, abs=1e-4)
+    assert clip.costo_usd(0, modelo, segundos, True) > clip.costo_usd(0, modelo, segundos, False)
+
+
+@pytest.mark.parametrize("doc_extra", [{}, {"audio": True}])
+def test_el_worker_pide_sonido_si_el_doc_no_dice_nada_o_dice_que_si(cliente, espia, monkeypatch, tmp_path, doc_extra):
+    """Un doc de antes del interruptor (sin `audio`) y uno con `audio: true` salen igual que siempre: con sonido."""
+    _pedido_clip(cliente, modelo="veo-lite", segundos=8)
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    if not doc_extra:
+        espia.s3[next(iter(espia.s3))] = json.dumps({k: v for k, v in doc.items() if k != "audio"})
+    app, args, res = _llamar_al_worker(espia, monkeypatch, tmp_path, doc_extra)
+    assert args["generate_audio"] is True and res["audio"] is True
+
+
+def test_el_worker_rechaza_un_doc_sin_sonido_de_un_modelo_que_no_lo_permite_sin_llamar_a_fal(
+        cliente, espia, monkeypatch, tmp_path):
+    """Cinturón y tirantes: aunque un doc llegara así (no debería: el API ya lo rechazó), no se llama a fal."""
+    import worker.clip_generar as w
+    from pipeline import clip, fal
+    _pedido_clip(cliente, modelo="h3t", segundos=8)
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    doc["audio"] = False
+    llamadas = []
+
+    async def llamar(*a, **k):
+        llamadas.append(a)
+        return {}
+    monkeypatch.setattr(fal, "llamar", llamar)
+    with pytest.raises(Exception, match="sonido"):
+        asyncio.run(w._correr(doc, tmp_path))
+    assert llamadas == []
+
+
+def test_los_creditos_sin_sonido_son_los_de_la_formula_y_dejan_el_25_por_ciento_de_margen():
+    """costo sin audio ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par: Veo Lite 12, 16 y 22 y Veo Fast 36, 54 y 72.
+    Con fracciones, para no caer en los flotantes. Y cada número es menor que el de con sonido (si no, el interruptor
+    no ahorraría nada)."""
+    from pipeline import clip, creditos
+    for id_, tabla in SIN_SONIDO.items():
+        for s, cr in tabla.items():
+            usd = Fraction(str(clip.costo_usd(0, id_, s, False)))
+            n = math.ceil(usd / Fraction(3, 4) / PISO_VENTA)
+            n += n % 2
+            assert n == cr == creditos.costo_modelo("clip_sin_audio", id_, s) == creditos.costo_clip(0, id_, s, False), (id_, s)
+            assert usd <= Fraction(3, 4) * cr * PISO_VENTA, (id_, s)
+            assert cr < CON_SONIDO[id_][s], (id_, s)
+            assert creditos.costo_clip(1, id_, s, False) == cr               # una imagen: imagen a video, mismo número
+
+
+def test_guardian_sin_sonido_con_composicion_nunca_cobra_por_debajo_del_costo():
+    """Igual que el guardián de con sonido: el recargo fijo de 2 créditos por juntar 2 o 3 imágenes baja el margen unas
+    décimas. Con sonido apagado hay UNA celda más baja que el 24 %: Veo Lite de 6 s con 3 imágenes (el número base cae
+    justo en el 25 %, 16.00 exacto, y juntar tres imágenes cuesta $0.026 dólares contra $0.03 que suman los 2
+    créditos): 23.7 %. Lo que no puede pasar es cobrar por debajo del costo ni bajar del 23 %."""
+    from pipeline import clip, creditos
+    peor = Fraction(1)
+    for id_, tabla in SIN_SONIDO.items():
+        for s in tabla:
+            for n in (0, 1, 2, 3):
+                ingreso = Fraction(creditos.costo_clip(n, id_, s, False)) * PISO_VENTA
+                costo = Fraction(str(clip.costo_usd(n, id_, s, False)))
+                assert ingreso > costo, (id_, s, n)
+                peor = min(peor, (ingreso - costo) / ingreso)
+    assert peor >= Fraction(23, 100), float(peor)
+
+
+def test_la_tabla_clip_sin_audio_solo_trae_modelos_que_la_permiten_y_con_duraciones_que_admiten():
+    from pipeline import modelos_ia
+    tabla = _tarifas()["modelos"]["clip_sin_audio"]
+    assert {i: {int(s): c for s, c in d.items()} for i, d in tabla.items()} == SIN_SONIDO
+    for id_, por_duracion in tabla.items():
+        m = modelos_ia.resolver("clip", id_)
+        assert m.audio_opcional, id_
+        assert {int(s) for s in por_duracion} <= set(m.duraciones), id_
+        assert id_ in _tarifas()["modelos"]["clip"], id_            # y se vende con sonido: sin eso no se ofrece

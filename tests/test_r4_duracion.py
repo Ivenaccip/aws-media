@@ -907,6 +907,42 @@ def test_un_clip_bueno_de_4s_queda_listo_con_sus_segundos_y_su_costo_real(
     assert [g["usd"] for g in gastos] == [clip.costo_usd(0, "veo-lite", 4)] == [0.2]
 
 
+@pytest.mark.parametrize("modelo,segundos,usd_con,usd_sin", [
+    ("veo-lite", 6, 0.30, 0.18), ("veo-fast", 8, 1.20, 0.80), ("veo-fast", 4, 0.60, 0.40),
+])
+@pytest.mark.parametrize("audio", [False, True, None])
+def test_el_gasto_que_anota_el_worker_es_el_de_la_tarifa_con_o_sin_audio_del_clip_entregado(
+        worker, s3, monkeypatch, modelo, segundos, usd_con, usd_sin, audio):
+    """El costo en dólares que queda junto al cobro sale del `audio` con que se generó (`res['audio']`), no de una
+    constante: un clip mudo no se anota con la tarifa de con sonido. Sin `audio` en el resultado vale con sonido."""
+    w, devueltos = worker
+    from pipeline import clip, db, media_sync
+    gastos = []
+    monkeypatch.setattr(db, "backend", lambda: "postgres")
+    monkeypatch.setattr(db, "ejecutar", lambda sql, params=None: gastos.append(params))
+    monkeypatch.setattr(media_sync, "subir_archivo", lambda local, key: None)
+    clip_id = _clip_id("eeeeee")
+    campos = {} if audio is None else {"audio": audio}
+    key = _poner_doc(s3, clip_id, creditos=40, segundos=segundos, modelo=modelo, **campos)
+
+    async def bien(doc, tmp):
+        destino = tmp / "clip.mp4"
+        destino.write_bytes(b"video")
+        res = {"video_url": "https://fal.test/clip.mp4", "imagen_inicial": None, "origen_inicial": "sin_imagen",
+               "prompt": "a dog", "recorte": "", "prompt_composicion": "", "segundos": segundos, "bytes": 5, "_local": destino}
+        if audio is not None:
+            res["audio"] = audio
+        return res
+    monkeypatch.setattr(w, "_correr", bien)
+
+    w.generar("u1", clip_id)
+
+    esperado = usd_sin if audio is False else usd_con
+    assert devueltos == []
+    assert [g["usd"] for g in gastos] == [clip.costo_usd(0, modelo, segundos, audio is not False)] == [esperado]
+    assert json.loads(s3[key])["audio"] is (audio is not False)          # el doc listo guarda con qué sonido salió
+
+
 def test_un_costo_que_no_se_puede_anotar_no_tumba_el_clip_entregado(worker, s3, monkeypatch):
     """Sin costo conocido el gasto no se anota, pero el video ya está entregado:
     ni se marca error ni se devuelven créditos por un clip que el usuario recibió."""

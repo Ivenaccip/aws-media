@@ -67,8 +67,10 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
     cuáles son hoy los inertes lo fija tests/test_r4_ola1.py."""
     from pipeline import creditos, modelos_ia
     for tarea, tabla in creditos.MODELOS_CR.items():
-        assert tarea in modelos_ia.TAREAS, tarea
-        assert set(tabla) <= set(modelos_ia.disponibles(tarea)), tarea
+        # `clip_sin_audio` (13-oct-2026) es la tabla del clip SIN sonido: sus modelos son los del clip
+        base = "clip" if tarea == "clip_sin_audio" else tarea
+        assert base in modelos_ia.TAREAS, tarea
+        assert set(tabla) <= set(modelos_ia.disponibles(base)), tarea
     # los que sí tienen número se cobran: entero, o uno por cada duración
     for tarea in modelos_ia.TAREAS:
         for id_ in creditos.MODELOS_CR.get(tarea, {}):
@@ -78,6 +80,12 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
                     assert isinstance(creditos.costo_modelo(tarea, id_, s), int)
             else:
                 assert isinstance(creditos.costo_modelo(tarea, id_), int)
+    # y el clip sin sonido: un número por cada duración que admite el modelo, y solo los que se pueden pedir sin sonido
+    for id_ in creditos.MODELOS_CR["clip_sin_audio"]:
+        m = modelos_ia.resolver("clip", id_)
+        assert m.audio_opcional, id_
+        for s in m.duraciones:
+            assert isinstance(creditos.costo_modelo("clip_sin_audio", id_, s), int), (id_, s)
     # los modelos encendidos siguen con número: Grok y Veo Lite desde R4; Nano Banana 2 y
     # Veo 3.1 Fast desde el 9-oct-2026; y, encendidos el 11-oct-2026 en la rama (se ofrecen al
     # desplegarla), FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y

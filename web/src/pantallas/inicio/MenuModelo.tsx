@@ -9,6 +9,11 @@
 // «Desde N s» en vez del precio y no se puede elegir; si era el elegido, la
 // caja lo cambia por el predeterminado y el pie explica por qué.
 //
+// El clip suma también, en el pie, el interruptor «Audio» (con sonido o sin él): el pie
+// guarda el modelo y su precio a la izquierda, y a la derecha el interruptor con su
+// estado escrito. En un modelo que no deja apagar el sonido el interruptor queda
+// bloqueado y una línea dice por qué.
+//
 // No sabe de precios ni de catálogo: recibe los grupos ya filtrados (solo lo
 // que se ofrece de verdad) y una función que da los créditos. Así las pruebas
 // le pasan su propio catálogo y la caja le pasa el de modelos.ts.
@@ -18,6 +23,7 @@ import { ESTRELLA } from '../../nucleo/estrella';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
+import { Interruptor } from '../../ui/Interruptor';
 import { unir } from '../../ui/unir';
 import { PREDETERMINADO, sufijo, type Grupo, type Modelo, type Tarea } from './modelos';
 
@@ -40,6 +46,23 @@ export interface Duracion {
   desde: (m: Modelo) => number;
 }
 
+/** El sonido del clip con el modelo elegido: lo que dice y hace el interruptor «Audio» del pie. */
+export interface ControlSonido {
+  /** Lo que se va a pedir: con sonido (true) o sin él. */
+  activo: boolean;
+  /** ¿Se puede cambiar con este modelo? Si no, el interruptor queda bloqueado y `motivo` dice por qué. */
+  editable: boolean;
+  /** Lo que se lee bajo el interruptor: «Con sonido», «Sin sonido», «Sonido incluido», «Sonido muy bajo». */
+  estado: string;
+  /** Por qué no se puede cambiar; vacío si sí se puede. */
+  motivo: string;
+  /** Los créditos que se ahorran sin sonido con este modelo; 0 si no se puede apagar. */
+  ahorro: number;
+  /** Lo que va bajo el nombre de cada fila («… con audio» o «… sin audio»). */
+  detalle: (m: Modelo) => string;
+  alCambiar: (activo: boolean) => void;
+}
+
 export interface PropsMenuModelo {
   tarea: Tarea;
   grupos: Grupo[];
@@ -54,6 +77,8 @@ export interface PropsMenuModelo {
   nota?: string;
   /** Solo el clip: el selector de duración arriba del menú. */
   duracion?: Duracion;
+  /** Solo el clip: el interruptor de sonido del pie. */
+  sonido?: ControlSonido;
 }
 
 /** El «desde»: lo más barato del modelo (con resolución, la más baja). */
@@ -68,7 +93,7 @@ function vecino(e: React.KeyboardEvent, i: number, largo: number): number {
   return Math.min(Math.max(i + paso, 0), largo - 1);
 }
 
-export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, enviando, nota, duracion }: PropsMenuModelo) {
+export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, enviando, nota, duracion, sonido }: PropsMenuModelo) {
   const [abierto, setAbierto] = useState(false);
   // por qué cambió el modelo al cambiar la duración; se va al elegir otra cosa y al reabrir
   const [aviso, setAviso] = useState('');
@@ -84,8 +109,9 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
   const calidad = actual.calidades?.find(c => c.id === elegido.calidad) ?? actual.calidades?.[0];
   const creditos = precio(actual.id, calidad?.id);
   const nombre = calidad ? `${actual.nombre} · ${calidad.etiqueta}` : actual.nombre;
-  // el chip dice también la duración del clip: «Veo 3.1 Lite · 8 s». Si no cabe, se recorta el NOMBRE (con «…») y los segundos
-  // se quedan: «Grok Imagine Video 1.5 Lite · 8 s» no cabe en un celular de 375 px
+  // el chip dice también la duración del clip: «Veo 3.1 Lite · 8 s», y «· sin audio» si el clip va sin sonido. Si no cabe,
+  // se recorta el NOMBRE (con «…») y lo demás se queda: «Grok Imagine Video 1.5 Lite · 8 s» no cabe en un celular de 375 px
+  const mudo = !!sonido && sonido.editable && !sonido.activo;
   // con una sola duración no hay nada que elegir: el chip y el pie ya dicen los segundos
   const conSelector = !!duracion && duracion.opciones.length > 1;
 
@@ -183,7 +209,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
           </span>
           {duracion && (
             <span className="flex-none pl-1">
-              {' '}· {duracion.segundos} s
+              {' '}· {duracion.segundos} s{mudo && ' · sin audio'}
             </span>
           )}
         </span>
@@ -204,9 +230,11 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
               'absolute top-[calc(100%+6px)] right-0 z-30 w-[420px] max-w-[calc(100vw-24px)] overflow-hidden rounded-grande border border-linea bg-superficie',
               // celular: hoja que sube desde abajo
               'max-[639px]:fixed max-[639px]:inset-x-0 max-[639px]:top-auto max-[639px]:bottom-0 max-[639px]:w-auto max-[639px]:max-w-none max-[639px]:rounded-b-none',
+              // y sin pasar de la barra del saldo (que ocupa los primeros 50 px): la lista de modelos cede el alto que falte
+              'max-[639px]:flex max-[639px]:max-h-[calc(100dvh-60px)] max-[639px]:flex-col',
             )}
           >
-            <div className="flex min-h-12 items-center justify-between pr-2 pl-4 min-[640px]:hidden">
+            <div className="flex min-h-12 items-center justify-between pr-2 pl-4 max-[639px]:shrink-0 min-[640px]:hidden">
               <h3 className="m-0 text-md font-semibold">Modelo</h3>
               <button
                 type="button"
@@ -219,7 +247,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
             </div>
 
             {conSelector && (
-              <div className="border-b border-linea px-3.5 py-3">
+              <div className="border-b border-linea px-3.5 py-3 max-[639px]:shrink-0">
                 <div className="mb-2 flex items-baseline justify-between gap-2 text-xs text-secundario">
                   <span id={idPanel + '-dur'}>Duración del clip</span>
                   <span id={idPanel + '-dur-pista'}>Más corto, más barato</span>
@@ -259,7 +287,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
               role="radiogroup"
               aria-label="Modelos"
               className={unir(
-                'overflow-y-auto px-1.5 pb-1.5',
+                'overflow-y-auto px-1.5 pb-1.5 max-[639px]:min-h-0',
                 // con el selector de duración arriba, la lista cede su alto
                 conSelector ? 'max-h-[330px] max-[639px]:max-h-[min(250px,40vh)]' : 'max-h-[400px] max-[639px]:max-h-[min(430px,50vh)]',
               )}
@@ -319,7 +347,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
                               </span>
                             )}
                           </span>
-                          <small className="block text-xs text-secundario">{m.detalle}</small>
+                          <small className="block text-xs text-secundario">{sonido ? sonido.detalle(m) : m.detalle}</small>
                         </span>
                         <span className={unir('text-sm whitespace-nowrap tabular-nums', !libre && 'text-secundario')}>
                           {libre ? (
@@ -338,7 +366,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
               ))}
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-linea px-3.5 pt-3 pb-3.5">
+            <div className="flex flex-col gap-3 border-t border-linea px-3.5 pt-3 pb-3.5 max-[639px]:shrink-0">
               {actual.calidades && (
                 <div className="flex flex-col gap-1.5">
                   <span id={idPanel + '-res'} className="text-xs text-secundario">
@@ -372,12 +400,51 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
                   </div>
                 </div>
               )}
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-sm font-semibold">{nombre}</span>
-                <span className="text-xs whitespace-nowrap text-secundario tabular-nums">
-                  {ESTRELLA} {creditos} {sufijo(tarea, duracion?.segundos)}
+              {sonido ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-semibold">{nombre}</span>
+                    <span className="text-xs text-secundario tabular-nums">
+                      {ESTRELLA} {creditos} {sufijo(tarea, duracion?.segundos)}
+                      {!sonido.activo && sonido.ahorro > 0 && (
+                        <>
+                          {' · '}
+                          <span className="text-exito">
+                            ahorras {ESTRELLA} {sonido.ahorro}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex flex-none flex-col items-end gap-0.5">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <span id={idPanel + '-audio'}>Audio</span>
+                      <Interruptor
+                        activo={sonido.activo}
+                        alCambiar={sonido.alCambiar}
+                        bloqueado={!sonido.editable}
+                        aria-labelledby={idPanel + '-audio'}
+                        aria-describedby={idPanel + '-audio-estado' + (sonido.motivo ? ' ' + idPanel + '-audio-motivo' : '')}
+                      />
+                    </div>
+                    <span id={idPanel + '-audio-estado'} className="text-xs text-secundario">
+                      {sonido.estado}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-semibold">{nombre}</span>
+                  <span className="text-xs whitespace-nowrap text-secundario tabular-nums">
+                    {ESTRELLA} {creditos} {sufijo(tarea, duracion?.segundos)}
+                  </span>
+                </div>
+              )}
+              {sonido?.motivo && (
+                <span id={idPanel + '-audio-motivo'} className="-mt-1.5 text-xs text-secundario">
+                  {sonido.motivo}
                 </span>
-              </div>
+              )}
               {nota && <span className="-mt-1.5 text-xs text-secundario">{nota}</span>}
               {aviso && (
                 <Aviso>
