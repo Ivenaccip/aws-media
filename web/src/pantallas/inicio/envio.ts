@@ -153,12 +153,16 @@ async function subir(f: File): Promise<string> {
   return firma.key;
 }
 
-/** `segundos` es la duración del clip (4, 6 u 8): el servidor la busca en su tarifa y rechaza la que el modelo no tiene. */
-export async function pedirClip(texto: string, modelo: string, fotos: File[], segundos: number): Promise<{ id: string }> {
+/**
+ * `segundos` es la duración del clip (4, 6 u 8): el servidor la busca en su tarifa y rechaza la que el modelo no tiene.
+ * `audio` es si lleva sonido (por defecto sí): `false` solo vale en los modelos que se pueden apagar, con su propio precio
+ * en el servidor; en cualquier otro el servidor lo rechaza, así que la caja manda `true` si el modelo no se puede apagar.
+ */
+export async function pedirClip(texto: string, modelo: string, fotos: File[], segundos: number, audio = true): Promise<{ id: string }> {
   const imagenes = await Promise.all(fotos.map(subir));
   return pedir<{ id: string }>('/api/clip/generar', {
     // `puerta` es lo que el servidor anota en su registro de clics
-    cuerpo: { texto, formato: 'horizontal', imagenes, modelo, segundos, puerta: 'caja' },
+    cuerpo: { texto, formato: 'horizontal', imagenes, modelo, segundos, audio, puerta: 'caja' },
     // si la sesión vence a mitad, el texto no se pierde (docs/PLAN-UI.md §6)
     apartar: 'clip-generar',
   });

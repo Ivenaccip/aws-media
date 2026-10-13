@@ -10,4 +10,10 @@ configure({ asyncUtilTimeout: 3000 });
 afterEach(() => {
   cleanup();
   sessionStorage.clear();
+  // lo que una prueba guardó como preferencia no pasa a la siguiente (y una que simula un navegador sin almacenamiento no la rompe)
+  try {
+    localStorage.clear();
+  } catch {
+    /* sin almacenamiento */
+  }
 });

@@ -129,6 +129,12 @@ class PedidoClip(BaseModel):
     # cobraría una duración que el navegador no pidió; aquí llega tal cual y
     # modelos_ia.valida_duracion decide (un `null` explícito también es 422).
     segundos: Any = clip.DURACION_S
+    # El sonido del clip. Ausente = con sonido, como siempre. Es `Any` por lo mismo que
+    # `segundos`: con `bool` pydantic leería «false», 0 o «no» como un no que el navegador no
+    # dijo y cobraría el precio de «sin sonido»; aquí llega tal cual y `valida_audio` decide
+    # (un `null` explícito también es 422). Solo los modelos con `Modelo.audio_opcional` (Veo
+    # Lite y Fast, hoy) lo dejan en `false`, y solo si tarifas.json trae su número «sin sonido».
+    audio: Any = True
 
 
 @router.get("/config")
@@ -187,10 +193,14 @@ def generar(pedido: PedidoClip):
     except modelos_ia.ModeloDesconocido as err:
         raise HTTPException(422, str(err))
     try:
-        n = creditos.costo_clip(len(pedido.imagenes), modelo, segundos)
+        audio = modelos_ia.valida_audio("clip", modelo, pedido.audio)
+    except modelos_ia.ModeloDesconocido as err:
+        raise HTTPException(422, str(err))
+    try:
+        n = creditos.costo_clip(len(pedido.imagenes), modelo, segundos, audio)
     except KeyError:    # sin número en tarifas.json no se ofrece: ni gratis ni en otra
         raise HTTPException(422, f"Ese modelo no está disponible para clips de "
-                                 f"{segundos} s: {modelo!r}")
+                                 f"{segundos} s{'' if audio else ' sin sonido'}: {modelo!r}")
     # las keys las manda el navegador: sin esto, cualquiera pediría la de otro
     propio = f"{_prefijo(user)}subidas/"
     for key in pedido.imagenes:
@@ -213,7 +223,7 @@ def generar(pedido: PedidoClip):
     doc = {"estado": "generando", "inicio": _ahora(), "creditos": n,
            "modelo": modelo, "texto": texto, "formato": pedido.formato,
            "imagenes": list(pedido.imagenes),
-           "segundos": segundos}
+           "segundos": segundos, "audio": audio}
     media_sync.escribir_texto(_key_doc(user, clip_id),
                               json.dumps(doc, ensure_ascii=False, indent=1))
     try:

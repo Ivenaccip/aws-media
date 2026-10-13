@@ -282,7 +282,7 @@ def costo_competencia(n_cuentas: int) -> int:
 
 
 def costo_clip(n_imagenes: int = 0, modelo: str | None = None,
-               segundos: int | None = None) -> int:
+               segundos: int | None = None, audio: bool = True) -> int:
     """M25 A/F: el clip con audio — una sola llamada al modelo de clip.
 
     El extra de componer solo aparece con DOS o TRES imágenes, que es cuando hay
@@ -294,11 +294,16 @@ def costo_clip(n_imagenes: int = 0, modelo: str | None = None,
     de 8 s de siempre, §clip.video_8s. R4: con cualquiera de los dos la base sale
     de §modelos.clip, que trae un número por duración (4, 6, 8 s) y vale lo mismo
     que la plana a 8 s. Una duración sin número levanta KeyError: ni cero ni la
-    de otra duración."""
-    if not modelo and segundos is None:
+    de otra duración.
+
+    `audio=False` (el interruptor de la caja del inicio) cobra el número de
+    §modelos.clip_sin_audio, que solo traen los modelos que dejan apagar el sonido
+    (Veo Lite y Fast). Sin número ahí levanta KeyError, igual que una duración sin
+    tarifa: ni el precio con sonido ni uno inventado. El extra de componer no cambia."""
+    if not modelo and segundos is None and audio:
         base = CLIP_CR
     else:
-        base = costo_modelo("clip", modelo or PREDETERMINADO["clip"], segundos)
+        base = costo_modelo("clip" if audio else "clip_sin_audio", modelo or PREDETERMINADO["clip"], segundos)
     return base + (CLIP_COMPONER_CR if int(n_imagenes) >= 2 else 0)
 
 

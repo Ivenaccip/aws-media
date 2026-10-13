@@ -190,3 +190,37 @@ async function hojaDeMisCreaciones(page: Page, cdn: string) {
   await expect(page.getByRole('button', { name: 'Quitar «img-3.jpg»' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Quitar «img-1.jpg»' })).toBeVisible();
 }
+
+test('el interruptor «Audio» del clip: baja el precio, el chip lo dice en un celular y el pedido va sin sonido', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: { lanzado: true, id: 'clip-1', creditos: 22 } });
+  await page.setViewportSize({ width: 375, height: 800 });
+  await caja(page).fill('un gato en la luna');
+  const chip = page.getByRole('button', { name: /^Modelo / });
+  await chip.click();
+  const menu = page.getByRole('dialog', { name: 'Elegir modelo' });
+  const interruptor = menu.getByRole('switch', { name: 'Audio' });
+  // arranca con sonido, como siempre, y el pie dice el precio de con sonido
+  await expect(interruptor).toHaveAttribute('aria-checked', 'true');
+  await expect(menu).toContainText('Con sonido');
+  await expect(menu).toContainText('Veo 3.1 Lite✦ 36 por clip de 8 s');
+  await interruptor.click();
+  await expect(interruptor).toHaveAttribute('aria-checked', 'false');
+  await expect(menu).toContainText('Sin sonido');
+  await expect(menu).toContainText('Veo 3.1 Lite✦ 22 por clip de 8 s · ahorras ✦ 14');
+  // el chip dice «sin audio» y los segundos no se recortan aunque el nombre no quepa: se prueba con el nombre más largo
+  await menu.getByRole('radio', { name: /Veo 3\.1 Fast/ }).click();
+  await page.keyboard.press('Escape');
+  await expect(chip).toContainText('· 8 s · sin audio');
+  const cabe = await chip.evaluate(el => {
+    const b = el.getBoundingClientRect();
+    const resto = Array.from(el.querySelectorAll('span')).find(s => s.children.length === 0 && /sin audio/.test(s.textContent ?? ''));
+    const r = resto?.getBoundingClientRect();
+    return !!r && r.left >= b.left && r.right <= b.right + 0.5;
+  });
+  expect(cabe).toBe(true);
+  // el pedido sale con `audio: false`, el modelo y los segundos
+  await chip.click();
+  const pedido = page.waitForRequest('**/api/clip/generar');
+  await menu.getByRole('button', { name: 'Crear' }).click();
+  expect((await pedido).postDataJSON()).toMatchObject({ audio: false, modelo: 'veo-fast', segundos: 8 });
+});

@@ -238,6 +238,31 @@ trabajo en fal. La prueba pagada imprime cuánto tardó y marca REVISAR si pasa 
 6. **La duración de MiniMax.** La página dice que el clip puede durar hasta ~0.7 s más de lo pedido: a 4 s midió 4.48 s (+0.48 s, justo dentro de la tolerancia de 0.5 s de `probar_modelo`). A 6 y 8 s un REVISAR «se pidieron 6 s y dura 6.6x s» es de esperar y no es un fallo (el costo se anota por los segundos pedidos; el panel de fal confirmó el 12-oct-2026 que cobra por los PEDIDOS: 4 s × $0.024 = $0.096 aunque el archivo dura 4.48 s).
 7. **Tiempos.** Medidos solo en MiniMax (3.2 y 3.9 s a 4 s) y Grok Video (45.3 y 41.5 s a 4 s); los demás no. Si algún clip tarda más que la espera del clip (240 s), un solo intento es lo correcto. Con MiniMax, tan rápido y barato, se podría relajar a los intentos de `settings` tras medir 8 s.
 
+### Audio opcional del clip (13-oct-2026): el interruptor «Audio» del menú de modelos
+
+**Estado.** Construido en la rama (se ofrece al desplegarla). El dueño eligió la propuesta A del lienzo de diseño: el pie del menú
+lleva el modelo y su precio a la izquierda y el interruptor «Audio» a la derecha, con el estado escrito («Con sonido» o
+«Sin sonido»); en MiniMax y los dos Grok queda bloqueado y una línea dice por qué.
+
+**Qué modelos lo permiten.** Solo los que traen `generate_audio` en el esquema (Veo, LTX, Kling y Seedance; en la Ola 4 se compara con
+`tests/fixtures/esquemas_fal_ola4.json`). De esos, a la venta hoy: **Veo 3.1 Lite y Veo 3.1 Fast**. MiniMax (pista audible, −25 a
+−30 dB) y Grok y Grok Lite (pista casi inaudible, −45 a −58 dB) no traen el parámetro: el servidor rechaza «sin sonido» con 422.
+
+**Créditos «sin sonido»** (`tools/tarifas.json` §modelos.`clip_sin_audio`): costo sin audio ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al
+par, con la tarifa sin audio de `pricing.json` (Veo Lite $0.03 dólares por segundo; Fast $0.10). **Veo Lite 12, 16 y 22 y Veo Fast 36, 54
+y 72** a 4, 6 y 8 s. Eran los que se dejaron como recomendación en el lienzo («por la fórmula de siempre») y el dueño no escribió otros;
+se pueden cambiar sin tocar código. Con el sonido apagado, **una celda** deja menos del 24 % de margen al juntar 3 imágenes (Veo Lite de
+6 s: 23.7 %, porque su número base cae justo en el 25 %): el guardián de `tests/test_r4_ola1.py` fija el piso en 23 %.
+
+**Decisiones tomadas por omisión (recomendaciones del lienzo, revisables).** Valor inicial «con sonido» y recordado por navegador;
+interruptor bloqueado con su motivo (no oculto) en los que no se apagan; **sin** «sin sonido» artificial en MiniMax y Grok (quitar la pista
+con ffmpeg no baja el costo); texto «Audio» con «Con sonido» o «Sin sonido» al lado. Las filas no se reordenan al apagar: el orden es por
+el precio con sonido.
+
+**Sin probar en producción (pendiente).** Ninguna prueba pagada de Veo con `generate_audio: false` desde este flujo: el costo sin audio
+sale de las fichas de `pricing.json` (la de Veo Lite sin audio es la que ya paga la película, que lleva el audio apagado; la de Veo Fast es una lectura de la página del 8-oct-2026, sin cobro medido en el panel). Antes de anunciarlo conviene un clip de Veo Lite
+de 4 s sin sonido (≈ $0.12 dólares) y comprobar en el panel que el cobro es el esperado y que el archivo no trae pista de audio.
+
 ### Qué va en segundo plano y por qué
 
 `POST /api/imagenes` generaba la imagen DENTRO de la petición, y la Lambda del API corta a los 29 s (API Gateway HTTP

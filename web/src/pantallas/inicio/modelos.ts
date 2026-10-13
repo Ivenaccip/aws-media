@@ -31,6 +31,16 @@ export interface Calidad {
   etiqueta: string;
 }
 
+/**
+ * Qué pasa con el sonido de un modelo de clip (solo el clip lo tiene):
+ *  · `opcional`: su endpoint deja pedirlo con o sin sonido (Veo, LTX, Kling, Seedance). Se puede apagar con el
+ *    interruptor «Audio» si tarifas.json trae su número `clip_sin_audio` para esa duración;
+ *  · `incluido`: trae una pista que no se puede quitar y se oye bien (MiniMax);
+ *  · `bajo`: trae una pista que no se puede quitar y casi no se oye (Grok y Grok 1.5 Lite).
+ * Es el espejo de `Modelo.audio_opcional` del servidor (tests/test_r4_ola4.py lo compara); el servidor es quien decide.
+ */
+export type Sonido = 'opcional' | 'incluido' | 'bajo';
+
 export interface Modelo {
   id: string;
   nombre: string;
@@ -41,6 +51,8 @@ export interface Modelo {
   activo: boolean;
   /** Con calidades, el precio de cada una vive en tarifas.json como `<id>-<calidad>`. */
   calidades?: Calidad[];
+  /** Solo el clip: ver `Sonido`. */
+  sonido?: Sonido;
 }
 
 export const TITULO_NIVEL: Record<Nivel, string> = {
@@ -107,15 +119,15 @@ const IMAGEN: Modelo[] = [
 const CON_EDICION = new Set(['grok', 'gpt2', 'nb2']);
 
 const CLIP: Modelo[] = [
-  { id: 'h3t', nombre: 'MiniMax H3 Max Turbo', detalle: 'MiniMax · 768p', nivel: 'economico', activo: true },
-  { id: 'veo-lite', nombre: 'Veo 3.1 Lite', detalle: 'Google · 720p con audio', nivel: 'economico', activo: true },
-  { id: 'grokv', nombre: 'Grok Imagine Video', detalle: 'xAI · 720p', nivel: 'economico', activo: true },
-  { id: 'grokl', nombre: 'Grok Imagine Video 1.5 Lite', detalle: 'xAI · 720p', nivel: 'economico', activo: true },
-  { id: 'ltx', nombre: 'LTX-2.5 Fast', detalle: 'Lightricks · 720p con audio', nivel: 'economico', activo: false },
-  { id: 'veo-fast', nombre: 'Veo 3.1 Fast', detalle: 'Google · 720p con audio', nivel: 'calidad', activo: true },
-  { id: 'kling', nombre: 'Kling V3 Pro', detalle: 'Kuaishou · con audio', nivel: 'calidad', activo: false },
-  { id: 'seed', nombre: 'Seedance 2.0', detalle: 'ByteDance · 720p con audio', nivel: 'calidad', activo: false },
-  { id: 'veo-std', nombre: 'Veo 3.1 Standard', detalle: 'Google · 720p con audio', nivel: 'calidad', activo: false },
+  { id: 'h3t', nombre: 'MiniMax H3 Max Turbo', detalle: 'MiniMax · 768p', nivel: 'economico', activo: true, sonido: 'incluido' },
+  { id: 'veo-lite', nombre: 'Veo 3.1 Lite', detalle: 'Google · 720p con audio', nivel: 'economico', activo: true, sonido: 'opcional' },
+  { id: 'grokv', nombre: 'Grok Imagine Video', detalle: 'xAI · 720p', nivel: 'economico', activo: true, sonido: 'bajo' },
+  { id: 'grokl', nombre: 'Grok Imagine Video 1.5 Lite', detalle: 'xAI · 720p', nivel: 'economico', activo: true, sonido: 'bajo' },
+  { id: 'ltx', nombre: 'LTX-2.5 Fast', detalle: 'Lightricks · 720p con audio', nivel: 'economico', activo: false, sonido: 'opcional' },
+  { id: 'veo-fast', nombre: 'Veo 3.1 Fast', detalle: 'Google · 720p con audio', nivel: 'calidad', activo: true, sonido: 'opcional' },
+  { id: 'kling', nombre: 'Kling V3 Pro', detalle: 'Kuaishou · con audio', nivel: 'calidad', activo: false, sonido: 'opcional' },
+  { id: 'seed', nombre: 'Seedance 2.0', detalle: 'ByteDance · 720p con audio', nivel: 'calidad', activo: false, sonido: 'opcional' },
+  { id: 'veo-std', nombre: 'Veo 3.1 Standard', detalle: 'Google · 720p con audio', nivel: 'calidad', activo: false, sonido: 'opcional' },
 ];
 
 export const CATALOGO: Record<Tarea, Modelo[]> = {
@@ -126,17 +138,30 @@ export const CATALOGO: Record<Tarea, Modelo[]> = {
 
 /** Los créditos de un modelo de clip, por duración: las llaves son los segundos como texto. */
 export type PorDuracion = Record<string, number>;
-/** tarifas.json §modelos: un entero por modelo, o (clip) un objeto por duración. */
-export type TablaPrecios = Record<Tarea, Record<string, number | PorDuracion>>;
+/** tarifas.json §modelos: un entero por modelo, o (clip) un objeto por duración. `clip_sin_audio` es la tabla del
+ *  clip SIN sonido (solo los modelos que lo permiten); puede faltar, y sin ella nada se puede apagar. */
+export type TablaPrecios = Record<Tarea, Record<string, number | PorDuracion>> & {
+  clip_sin_audio?: Record<string, PorDuracion>;
+};
 
 export const PRECIOS = modelos as unknown as TablaPrecios;
 
 /** La llave del precio en tarifas.json: el modelo solo, o `<modelo>-<calidad>`. */
 export const llavePrecio = (id: string, calidad?: string) => (calidad ? `${id}-${calidad}` : id);
 
+const esCredito = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0;
+
+/** Los créditos del clip SIN sonido en esa duración, o null si tarifas.json no trae el número (no se puede apagar). */
+function precioSinSonido(id: string, precios: TablaPrecios, segundos: number): number | null {
+  const n = precios.clip_sin_audio?.[id]?.[String(segundos)];
+  return esCredito(n) ? n : null;
+}
+
 /**
  * Créditos de ese modelo (y calidad) en esa tarea, o null si tarifas.json no tiene número.
  * En el clip el número es el de esa duración; en imagen y editar la duración no cuenta.
+ * `sonido` (solo el clip, con sonido por defecto): con `false` y un modelo que se puede apagar, el número es el de
+ * «sin sonido»; un modelo que no se puede apagar sigue costando lo de con sonido, porque siempre lo trae.
  */
 export function precioDe(
   tarea: Tarea,
@@ -144,10 +169,40 @@ export function precioDe(
   calidad?: string,
   precios: TablaPrecios = PRECIOS,
   segundos = DURACION_PREDETERMINADA,
+  sonido = true,
 ): number | null {
+  if (tarea === 'clip' && !sonido) {
+    const sin = precioSinSonido(id, precios, segundos);
+    if (sin !== null) return sin;
+  }
   const e = precios[tarea]?.[llavePrecio(id, calidad)];
   const n = CON_DURACION[tarea] ? (e && typeof e === 'object' ? e[String(segundos)] : undefined) : e;
-  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
+  return esCredito(n) ? n : null;
+}
+
+/** ¿Se puede pedir este clip sin sonido? Su endpoint lo permite Y tarifas.json trae su número «sin sonido» a esa duración. */
+export function puedeApagar(m: Modelo, segundos = DURACION_PREDETERMINADA, precios: TablaPrecios = PRECIOS): boolean {
+  return m.sonido === 'opcional' && precioSinSonido(m.id, precios, segundos) !== null;
+}
+
+/** Lo que se ahorra sin sonido, en créditos; 0 si no se puede apagar. */
+export function ahorroSinSonido(m: Modelo, segundos = DURACION_PREDETERMINADA, precios: TablaPrecios = PRECIOS): number {
+  if (!puedeApagar(m, segundos, precios)) return 0;
+  const con = precioDe('clip', m.id, undefined, precios, segundos);
+  const sin = precioSinSonido(m.id, precios, segundos);
+  return con !== null && sin !== null ? Math.max(0, con - sin) : 0;
+}
+
+/** Lo que dice el interruptor de un modelo que NO se puede apagar: el estado corto y el motivo. */
+export function textoSonido(m: Modelo): { estado: string; motivo: string } {
+  return m.sonido === 'bajo'
+    ? { estado: 'Sonido muy bajo', motivo: `El sonido de ${m.nombre} es muy bajo y no se puede apagar.` }
+    : { estado: 'Sonido incluido', motivo: `${m.nombre} trae su propio sonido y no se puede apagar.` };
+}
+
+/** Lo que va bajo el nombre de la fila: «… con audio», o «… sin audio» si el clip es mudo y el modelo lo permite. */
+export function detalleDe(m: Modelo, segundos: number, sonido: boolean, precios: TablaPrecios = PRECIOS): string {
+  return !sonido && puedeApagar(m, segundos, precios) ? m.detalle.replace('con audio', 'sin audio') : m.detalle;
 }
 
 /** Las calidades del modelo, o `undefined` una vez si no tiene: así se recorren igual. */
@@ -216,17 +271,18 @@ export function grupos(
   catalogo: Record<Tarea, Modelo[]> = CATALOGO,
   precios: TablaPrecios = PRECIOS,
   segundos = DURACION_PREDETERMINADA,
+  sonido = true,
 ): Grupo[] {
   const ofrecidos = ofrecidosDe(tarea, catalogo, precios);
   return NIVELES_DE[tarea]
     .map(nivel => {
-      // el orden NO mira la duración elegida: al cambiarla, las filas no se mueven.
-      // Se compara a la duración más larga de cada modelo (8 s en casi todos)
+      // el orden NO mira la duración elegida ni el sonido: al cambiarlos, las filas no se mueven.
+      // Se compara a la duración más larga de cada modelo (8 s en casi todos), con sonido
       const largo = (m: Modelo) => precioMinimo(tarea, m, precios, duracionesDe(tarea, m, precios).at(-1))!;
       const delNivel = ofrecidos.filter(m => m.nivel === nivel).sort((a, b) => largo(a) - largo(b));
       const todos = delNivel
         .filter(m => admite(tarea, m, segundos, precios))
-        .flatMap(m => calidadesDe(m).map(c => precioDe(tarea, m.id, c, precios, segundos)!));
+        .flatMap(m => calidadesDe(m).map(c => precioDe(tarea, m.id, c, precios, segundos, sonido)!));
       const lo = Math.min(...todos);
       const hi = Math.max(...todos);
       const rango = !todos.length ? '' : lo === hi ? String(lo) : `${lo}–${hi}`;

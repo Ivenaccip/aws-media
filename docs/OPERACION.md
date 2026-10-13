@@ -1035,6 +1035,20 @@ pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 m�
 `activo: false` en `web/src/pantallas/inicio/modelos.ts`. Los pedidos que ya estaban en la cola siguen y terminan: el worker usa
 lo que dice el doc, no la tarifa de hoy. Mover un modelo entre síncrono y segundo plano es cambiar su `segundo_plano`.
 
+**El interruptor de sonido del clip (13-oct-2026).** El pie del menú de modelos de «Un video corto» trae el interruptor «Audio»
+(propuesta A del lienzo de diseño, elegida por el dueño): arranca «con sonido», se recuerda por navegador (`localStorage`,
+clave `caja.sonido`) y el pedido del clip lleva `audio: true|false`. Solo se puede apagar en los modelos con
+`Modelo.audio_opcional` (su endpoint trae `generate_audio`: Veo, LTX, Kling y Seedance) **y** con número en
+`tools/tarifas.json` §modelos.`clip_sin_audio` a esa duración (hoy Veo Lite 12, 16 y 22 y Veo Fast 36, 54 y 72 créditos a 4, 6 y 8 s:
+costo sin audio ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par). Todo lo demás lo decide el servidor, no el navegador:
+`audio` llega tal cual (solo vale un booleano de verdad), «sin sonido» en MiniMax, Grok o Grok Lite da 422 sin cobrar ni
+encolar (traen su pista y no se puede quitar), un modelo sin número «sin sonido» tampoco se vende apagado, y el doc del clip
+guarda `audio` para que el worker pida `generate_audio` y anote el costo con la tarifa sin audio de la ficha (un doc de antes del
+interruptor vale con sonido). Para **cambiar un número**: edítalo en `clip_sin_audio` (y que siga siendo menor que el de con sonido).
+Para **quitar el interruptor de un modelo**: borra su fila de `clip_sin_audio` (queda siempre con sonido). Para **sumar uno**: su
+endpoint debe traer `generate_audio`, `audio_opcional=True` en su fila de `pipeline/modelos_ia.py`, `sonido: 'opcional'` en el
+catálogo de la web (`tests/test_r4_ola4.py` compara los dos) y su número aquí. La pantalla heredada `/clip.html` no manda `audio`: sigue siendo con sonido.
+
 **Decisión del dueño (11-oct-2026): Grok y Nano Banana 2 siguen síncronos «de momento».** Se deja todo como estaba y se anota
 para volver a verlo; no es que la regla no los alcance. **Grok (el predeterminado) sigue síncrono con 13 a 29 s medidos.** La prueba pagada del 18-sep (ocho
 llamadas con prompts reales; `PLAN-PRODUCTO.md` y `tools/pricing.json`, `grok_nota`) midió **13 a 29 s por imagen, mediana 16, y el

@@ -6,8 +6,10 @@ import { clip, modelos, video } from '../../nucleo/tarifas';
 import { destinoDe, OPCIONES } from './logica';
 import {
   admite,
+  ahorroSinSonido,
   cambioPorDuracion,
   CATALOGO,
+  detalleDe,
   DURACION_PREDETERMINADA,
   DURACIONES,
   duracionesDe,
@@ -20,6 +22,8 @@ import {
   PREDETERMINADO,
   precioDe,
   precioMinimo,
+  puedeApagar,
+  textoSonido,
   type Modelo,
   type Tarea,
   type TablaPrecios,
@@ -289,5 +293,128 @@ describe('modelos.ts y tarifas.json', () => {
     // y el «desde» de una imagen con resolución sigue siendo la resolución más barata
     const nbp = todos.imagen.find(m => m.id === 'nbp')!;
     expect(precioMinimo('imagen', nbp, { ...tabla, imagen: { 'nbp-2k': 14, 'nbp-4k': 27 } })).toBe(14);
+  });
+});
+
+
+// El sonido del clip (13-oct-2026): el interruptor «Audio» solo vale donde el endpoint lo permite Y tarifas.json trae su
+// número «sin sonido» (§modelos.clip_sin_audio). Sin número, el modelo no se puede apagar: ni gratis ni al precio de otro.
+describe('el sonido del clip', () => {
+  const real = modelos as unknown as Precios;
+  const clipDe = (id: string) => CATALOGO.clip.find(m => m.id === id)!;
+  /** Precios de PRUEBA con y sin sonido (no son los de tarifas.json). */
+  const PRUEBA: Precios = {
+    imagen: {},
+    editar: {},
+    clip: { 'veo-lite': { '4': 18, '6': 28, '8': 36 }, h3t: { '4': 16, '6': 22, '8': 30 }, ltx: { '6': 10, '8': 12 } },
+    clip_sin_audio: { 'veo-lite': { '4': 12, '6': 16 }, ltx: {}, h3t: { '8': 1 } },
+  };
+  /** Lo mismo pero sin la tabla «sin sonido»: nada se puede apagar. */
+  const SIN_TABLA: Precios = { imagen: {}, editar: {}, clip: PRUEBA.clip };
+
+  it('inicio.audio.el_catalogo_dice_que_modelos_se_apagan_y_el_resto_dice_por_que_no', () => {
+    const sonido = Object.fromEntries(CATALOGO.clip.map(m => [m.id, m.sonido]));
+    expect(sonido).toEqual({
+      h3t: 'incluido',
+      'veo-lite': 'opcional',
+      grokv: 'bajo',
+      grokl: 'bajo',
+      ltx: 'opcional',
+      'veo-fast': 'opcional',
+      kling: 'opcional',
+      seed: 'opcional',
+      'veo-std': 'opcional',
+    });
+    // imagen y editar no tienen sonido que elegir
+    for (const t of ['imagen', 'editar'] as const) for (const m of CATALOGO[t]) expect(m.sonido, m.id).toBeUndefined();
+  });
+
+  it('inicio.audio.la_tabla_sin_sonido_solo_trae_modelos_activos_que_se_apagan_y_cuesta_menos', () => {
+    const tabla = real.clip_sin_audio!;
+    expect(Object.keys(tabla).sort()).toEqual(['veo-fast', 'veo-lite']);
+    for (const [id, porDuracion] of Object.entries(tabla)) {
+      const m = clipDe(id);
+      expect(m.activo, id).toBe(true);
+      expect(m.sonido, id).toBe('opcional');
+      for (const [s, cr] of Object.entries(porDuracion)) {
+        const con = (modelos.clip as Record<string, Record<string, number>>)[id]![s]!;
+        expect(Number.isInteger(cr) && cr > 0, `${id} ${s} s`).toBe(true);
+        expect(cr, `${id} ${s} s`).toBeLessThan(con);
+      }
+      // una duración sin número sin sonido no se apaga: tiene que tener también su número con sonido
+      expect(Object.keys(porDuracion).sort(), id).toEqual(Object.keys((modelos.clip as Record<string, object>)[id]!).sort());
+    }
+  });
+
+  it('inicio.audio.el_precio_sin_sonido_es_el_de_la_tabla_y_los_que_no_se_apagan_siguen_con_su_precio', () => {
+    for (const s of DURACIONES) {
+      expect(precioDe('clip', 'veo-lite', undefined, real, s, false)).toBe(real.clip_sin_audio!['veo-lite']![String(s)]);
+      expect(precioDe('clip', 'veo-lite', undefined, real, s, true)).toBe((modelos.clip as Record<string, Record<string, number>>)['veo-lite']![String(s)]);
+      expect(precioDe('clip', 'veo-lite', undefined, real, s)).toBe(precioDe('clip', 'veo-lite', undefined, real, s, true)); // el defecto es con sonido
+      // MiniMax y los dos Grok siempre traen su sonido: apagarlo no les cambia el precio
+      for (const id of ['h3t', 'grokv', 'grokl']) {
+        expect(precioDe('clip', id, undefined, real, s, false), `${id} ${s} s`).toBe(precioDe('clip', id, undefined, real, s, true));
+      }
+    }
+    // sin tabla, o con una duración que no está, cuesta lo de con sonido y nunca cero
+    expect(precioDe('clip', 'veo-lite', undefined, SIN_TABLA, 8, false)).toBe(36);
+    expect(precioDe('clip', 'veo-lite', undefined, PRUEBA, 8, false)).toBe(36); // la de 8 s no está en la tabla de prueba
+    // el sonido no cambia nada fuera del clip
+    expect(precioDe('imagen', 'grok', undefined, real, 8, false)).toBe(modelos.imagen.grok);
+  });
+
+  it('inicio.audio.solo_se_puede_apagar_si_el_endpoint_lo_permite_y_hay_numero_a_esa_duracion', () => {
+    expect(puedeApagar(clipDe('veo-lite'), 8, real)).toBe(true);
+    expect(puedeApagar(clipDe('veo-fast'), 4, real)).toBe(true);
+    for (const id of ['h3t', 'grokv', 'grokl']) expect(puedeApagar(clipDe(id), 8, real), id).toBe(false);
+    // el endpoint lo permite pero no hay número: LTX con números de prueba, y Veo Lite a 8 s en la tabla de prueba
+    expect(puedeApagar(clipDe('ltx'), 8, PRUEBA)).toBe(false);
+    expect(puedeApagar(clipDe('veo-lite'), 4, PRUEBA)).toBe(true);
+    expect(puedeApagar(clipDe('veo-lite'), 8, PRUEBA)).toBe(false);
+    // y sin tabla nada se apaga
+    expect(puedeApagar(clipDe('veo-lite'), 8, SIN_TABLA)).toBe(false);
+    // un modelo que no se puede apagar según el servidor no se apaga aunque alguien le escriba un número
+    expect(puedeApagar(clipDe('h3t'), 8, PRUEBA)).toBe(false);
+  });
+
+  it('inicio.audio.el_ahorro_es_la_resta_y_cero_si_no_se_apaga', () => {
+    for (const s of DURACIONES) {
+      const con = (modelos.clip as Record<string, Record<string, number>>)['veo-fast']![String(s)]!;
+      expect(ahorroSinSonido(clipDe('veo-fast'), s, real)).toBe(con - real.clip_sin_audio!['veo-fast']![String(s)]!);
+      expect(ahorroSinSonido(clipDe('veo-fast'), s, real)).toBeGreaterThan(0);
+      expect(ahorroSinSonido(clipDe('grokl'), s, real)).toBe(0);
+    }
+    expect(ahorroSinSonido(clipDe('veo-lite'), 8, PRUEBA)).toBe(0); // sin número a 8 s: nada que ahorrar
+  });
+
+  it('inicio.audio.el_detalle_de_la_fila_dice_sin_audio_solo_si_se_apaga_de_verdad', () => {
+    const lite = clipDe('veo-lite');
+    expect(detalleDe(lite, 8, true, real)).toBe('Google · 720p con audio');
+    expect(detalleDe(lite, 8, false, real)).toBe('Google · 720p sin audio');
+    // MiniMax y Grok no dicen «con audio» y no cambian; un modelo sin número «sin sonido» tampoco cambia
+    for (const id of ['h3t', 'grokv', 'grokl']) expect(detalleDe(clipDe(id), 8, false, real), id).toBe(clipDe(id).detalle);
+    expect(detalleDe(lite, 8, false, PRUEBA)).toBe('Google · 720p con audio');
+  });
+
+  it('inicio.audio.los_modelos_sin_interruptor_dicen_su_estado_y_su_motivo', () => {
+    expect(textoSonido(clipDe('h3t'))).toEqual({
+      estado: 'Sonido incluido',
+      motivo: 'MiniMax H3 Max Turbo trae su propio sonido y no se puede apagar.',
+    });
+    expect(textoSonido(clipDe('grokv'))).toEqual({
+      estado: 'Sonido muy bajo',
+      motivo: 'El sonido de Grok Imagine Video es muy bajo y no se puede apagar.',
+    });
+    expect(textoSonido(clipDe('grokl')).estado).toBe('Sonido muy bajo');
+  });
+
+  it('inicio.audio.el_rango_del_grupo_sigue_el_sonido_y_el_orden_no_se_mueve', () => {
+    const todos = encendidos(CATALOGO);
+    const nombres = (sonido: boolean) => grupos('clip', todos, real, 8, sonido).map(g => g.modelos.map(m => m.id));
+    expect(nombres(false)).toEqual(nombres(true)); // el orden es por el precio con sonido
+    const con = grupos('clip', todos, real, 8, true).find(g => g.nivel === 'calidad')!;
+    const sin = grupos('clip', todos, real, 8, false).find(g => g.nivel === 'calidad')!;
+    expect(sin.rango).not.toBe(con.rango);
+    expect(sin.rango).toContain(String(real.clip_sin_audio!['veo-fast']!['8']));
   });
 });

@@ -31,6 +31,7 @@ import { ErrorApi } from '../../nucleo/api';
 import { avisar, quitarAviso } from '../../nucleo/avisos';
 import { ESTRELLA } from '../../nucleo/estrella';
 import { moderar } from '../../nucleo/moderar';
+import { guardarPreferencia, leerPreferencia } from '../../nucleo/preferencia';
 import { clip as tarifaClip } from '../../nucleo/tarifas';
 import { refrescarSaldo } from '../../marca/useSaldo';
 import { Boton } from '../../ui/Boton';
@@ -54,8 +55,10 @@ import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './l
 import { MenuModelo, type Eleccion } from './MenuModelo';
 import {
   admite,
+  ahorroSinSonido,
   cambioPorDuracion,
   CATALOGO,
+  detalleDe,
   DURACION_PREDETERMINADA,
   duracionesDe,
   duracionesOfrecidas,
@@ -66,6 +69,8 @@ import {
   ofrecidosDe,
   precioDe,
   PRECIOS,
+  puedeApagar,
+  textoSonido,
   type Tarea,
 } from './modelos';
 
@@ -109,6 +114,9 @@ const CLAVE_AVISO = 'caja';
 const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
 
 // el riel: dos botones con icono. En celular es una fila sobre el texto.
+/** La clave del navegador donde se recuerda si el clip va con sonido o sin él. */
+const CLAVE_SONIDO = 'caja.sonido';
+
 const RIEL = [
   { familia: 'imagenes', rotulo: 'Imagen', icono: 'imagen' },
   { familia: 'videos', rotulo: 'Video', icono: 'video' },
@@ -123,6 +131,9 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const [elegidos, setElegidos] = useState<Partial<Record<Tarea, Eleccion>>>({});
   // la duración que se pidió para el clip; la que rige sale de abajo (puede ser otra si esa ya no se ofrece)
   const [pedida, setPedida] = useState(DURACION_PREDETERMINADA);
+  // lo que la persona prefiere para el sonido del clip, y el navegador recuerda («con sonido» si nunca eligió). Lo que se
+  // pide sale de abajo: solo vale en los modelos que se pueden apagar, y en los demás el clip siempre lleva sonido
+  const [prefSonido, setPrefSonido] = useState(() => leerPreferencia(CLAVE_SONIDO) !== 'sin');
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -242,11 +253,20 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const ofrecidos = useMemo(() => (tarea ? ofrecidosDe(tarea) : []), [tarea]);
   const duraciones = tarea ? duracionesOfrecidas(tarea, ofrecidos) : [];
   const segundos = duracionVigente(duraciones, pedida);
-  const grupos = useMemo(() => (tarea ? gruposDe(tarea, CATALOGO, PRECIOS, segundos) : []), [tarea, segundos]);
+  // la lista de grupos es barata (a lo más nueve modelos) y solo la lee el menú: sin useMemo a mano, el compilador la guarda
+  const grupos = tarea ? gruposDe(tarea, CATALOGO, PRECIOS, segundos, prefSonido) : [];
   const guardado = tarea ? elegidos[tarea] : undefined;
   const modelo = tarea ? modeloPara(tarea, ofrecidos, guardado?.id, segundos) : undefined;
   const calidad = modelo?.calidades ? (modelo.calidades.find(c => c.id === guardado?.calidad) ?? modelo.calidades[0]) : undefined;
   const modeloId = modelo ? llavePrecio(modelo.id, calidad?.id) : undefined;
+  // el sonido del clip: la preferencia solo cuenta si el modelo se puede apagar a esta duración; si no, lleva sonido
+  const sePuedeApagar = tarea === 'clip' && !!modelo && puedeApagar(modelo, segundos);
+  const conSonido = !sePuedeApagar || prefSonido;
+
+  function cambiarSonido(nuevo: boolean) {
+    setPrefSonido(nuevo);
+    guardarPreferencia(CLAVE_SONIDO, nuevo ? 'con' : 'sin');
+  }
 
   /** Cambia la duración del clip. Si el modelo elegido no la ofrece, vuelve al predeterminado y lo dice. */
   function elegirDuracion(nueva: number): string | undefined {
@@ -472,7 +492,11 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     let enElCuadro = false; // «ya lo estamos creando» salió en el cuadro de abajo a la derecha
     const tipo = opcion.id === 'clip' ? 'corto' : 'imagen';
     const queHace =
-      opcion.id === 'clip' ? `creando tu clip de ${segundos} segundos` : opcion.id === 'imagen' ? 'creando tu imagen' : 'editando tu imagen';
+      opcion.id === 'clip'
+        ? `creando tu clip de ${segundos} segundos${conSonido ? '' : ' sin sonido'}`
+        : opcion.id === 'imagen'
+          ? 'creando tu imagen'
+          : 'editando tu imagen';
     try {
       const v = await moderar(limpio); // M13: se modera ANTES de lo que cobra
       if (!v.permitido) {
@@ -489,7 +513,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       }
       // una imagen de un modelo que tarda contesta `lanzado` (ya se cobró, va en camino):
       // para la caja es lo mismo que una hecha, y «Mis creaciones» la enseña generándose
-      if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos);
+      if (opcion.id === 'clip') await pedirClip(limpio, modelo, adjuntas, segundos, conSonido);
       else if (opcion.id === 'imagen') lanzada = esLanzada(await pedirImagen(limpio, modelo));
       else await pedirEdicion(limpio, modelo, adjuntas[0]!);
       setTexto('');
@@ -731,7 +755,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                   grupos={grupos}
                   elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
                   alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
-                  precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos)!}
+                  precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos, prefSonido)!}
                   alCrear={enviar}
                   enviando={enviando}
                   {...(duraciones.length
@@ -742,6 +766,19 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                           alElegir: elegirDuracion,
                           admite: m => admite(tarea, m, segundos),
                           desde: m => duracionesDe(tarea, m)[0]!,
+                        },
+                      }
+                    : {})}
+                  {...(tarea === 'clip'
+                    ? {
+                        sonido: {
+                          activo: conSonido,
+                          editable: sePuedeApagar,
+                          estado: sePuedeApagar ? (conSonido ? 'Con sonido' : 'Sin sonido') : textoSonido(modelo).estado,
+                          motivo: sePuedeApagar ? '' : textoSonido(modelo).motivo,
+                          ahorro: ahorroSinSonido(modelo, segundos),
+                          detalle: m => detalleDe(m, segundos, prefSonido),
+                          alCambiar: cambiarSonido,
                         },
                       }
                     : {})}
