@@ -387,7 +387,7 @@ def test_las_fichas_nuevas_dicen_que_son_lecturas_de_la_pagina_y_su_fecha():
     datos = json.loads((RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8"))["generacion"]["endpoints"]
     for id_, (t2v, i2v, *_resto) in NUEVOS.items():
         for endpoint in (t2v, i2v):
-            fecha = "2026-10-12" if id_ == "grokl" else "2026-10-08"       # Lite se leyó después de la prueba pagada
+            fecha = "2026-10-12" if id_ in ("grokl", "h3t") else "2026-10-08"    # Lite y la tarifa de MiniMax (después de la promoción) se leyeron el 12-oct
             assert datos[endpoint]["unidad"] == "segundo" and datos[endpoint]["verified_on"] == fecha, endpoint
     nota = datos["nota_ola4"]
     assert "INERTES" in nota and "LEÍDO" in nota and "1.5" in nota and "PEDIDOS" in nota

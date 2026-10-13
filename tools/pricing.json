@@ -130,7 +130,7 @@
           "1080P": 0.08
         },
         "nota_promocion": "La ficha lleva la tarifa de DESPUÉS de la promoción (leída en la página el 12-oct-2026): 480P 0.025, 768P 0.04 y 1080P 0.08 dólares por segundo. Hasta el 15-oct-2026 rige la promoción (−40 %): 480P 0.015, 768P 0.024 y 1080P 0.048, y el panel de fal cobró 0.096 dólares por cada clip de 4 s a 768P (4 × 0.024) aunque el archivo dura 4.48 s: se cobra por los segundos PEDIDOS. Los créditos (16, 22 y 30; decisión del dueño, 12-oct-2026) salen de la tarifa de después; el 16-oct-2026 conviene confirmar los 0.04 en el panel.",
-        "verified_on": "2026-10-08"
+        "verified_on": "2026-10-12"
       },
       "minimax/h3-max-turbo/image-to-video": {
         "unidad": "segundo",
@@ -140,7 +140,7 @@
           "1080P": 0.08
         },
         "nota_promocion": "La ficha lleva la tarifa de DESPUÉS de la promoción (leída en la página el 12-oct-2026): 480P 0.025, 768P 0.04 y 1080P 0.08 dólares por segundo. Hasta el 15-oct-2026 rige la promoción (−40 %): 480P 0.015, 768P 0.024 y 1080P 0.048, y el panel de fal cobró 0.096 dólares por cada clip de 4 s a 768P (4 × 0.024) aunque el archivo dura 4.48 s: se cobra por los segundos PEDIDOS. Los créditos (16, 22 y 30; decisión del dueño, 12-oct-2026) salen de la tarifa de después; el 16-oct-2026 conviene confirmar los 0.04 en el panel.",
-        "verified_on": "2026-10-08"
+        "verified_on": "2026-10-12"
       },
       "xai/grok-imagine-video/text-to-video": {
         "unidad": "segundo",

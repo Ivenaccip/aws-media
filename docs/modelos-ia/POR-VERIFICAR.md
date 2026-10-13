@@ -100,7 +100,7 @@ el precio solo vale a 1K. Y Veo 3.1 Fast y Standard hacen **un solo intento** po
 2. **La imagen de entrada del clip.** La imagen de entrada del clip a partir de imagen
    debe ser de 720p o más de lado corto y de 16:9 o 9:16 (página del modelo, 8-oct). La
    caja acepta fotos de cualquier forma: lo que fal hace con una foto 4:3 o cuadrada NO
-   está comprobado (aplica también a Veo Lite y a Veo 3.1 Fast hoy); la prueba con `--imagen-sin-validar`
+   está comprobado (aplica también a Veo Lite, a Veo 3.1 Fast y, desde el 13-oct-2026, a MiniMax, Grok Video y Grok 1.5 Lite; sus pruebas pagadas fueron solo 16:9); la prueba con `--imagen-sin-validar`
    sirve para medirlo.
 3. **Nano Banana 2 al editar: `resolution` quedó comprobado (9-oct-2026).** La lectura del
    8-oct NO lista `resolution` entre los parámetros de `fal-ai/nano-banana-2/edit` (solo
@@ -230,7 +230,7 @@ trabajo en fal. La prueba pagada imprime cuánto tardó y marca REVISAR si pasa 
 
 1. **Qué modelos se prueban**, con su costo por delante (cada prueba necesita el «sí» del dueño). **MiniMax, Grok Video y Grok Lite ya se probaron** (12-oct-2026, 6 llamadas, DATOS §15 y §16). Faltan LTX, Kling y Seedance (estimados de la página del 8-oct, a 4 s —LTX, 6 s— y por llamada: LTX $0.54 dólares, Kling $0.672 y Seedance $1.2136 en texto a video o $1.2096 en imagen a video). Texto a video e imagen a video son endpoints distintos y los dos deben probarse (como se hizo con Veo 3.1 Fast).
 2. **Grok Video: base, 1.5 o 1.5 Lite (decidido el 13-oct-2026).** El dueño encendió la base **y** la 1.5 Lite: las dos están en el menú (la Lite cuesta 12, 18 y 24 créditos contra 26, 38 y 50 de la base y tarda 25 s contra 45 s;
-   el sonido de las dos es casi inaudible). La 1.5 normal ($0.14 dólares por segundo a 720p) sigue sin fila: decisión del dueño. Si más adelante una de las dos sobra, se apaga con `activo: false` (y se puede dejar el número en `tarifas.json`).
+   el sonido de las dos es casi inaudible). La 1.5 normal ($0.14 dólares por segundo a 720p) sigue sin fila: decisión del dueño. Si más adelante una de las dos sobra, se apaga quitando su número de `tools/tarifas.json` (el servidor la rechaza con 422 sin cobrar) y poniendo `activo: false` en `web/src/pantallas/inicio/modelos.ts` (receta de `docs/OPERACION.md`, «Apagar un modelo»); dejar el número sin el modelo activo hace fallar `modelos.test.ts` por precio huérfano, y el servidor seguiría cobrando un pedido que llegue.
 3. **El audio de MiniMax (resuelto el 12-oct-2026).** Ni el esquema ni la página lo decían; la prueba pagada midió una pista aac en sus dos clips y la fila lo promete (`con_audio=True`; no hay parámetro para pedirlo ni apagarlo, y `probar_modelo` marca REVISAR si un clip suyo llega sin pista). Tener pista no es tener sonido bueno: lo juzga el dueño escuchando los clips.
 4. **Los créditos** salen de la fórmula de siempre con el costo MEDIDO en el panel de fal (no con la lectura de la página): costo ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par, sobre el más caro de texto a video e imagen a video (`tests/test_r4_ola4.py` los reproduce con fracciones).
 5. **La imagen de entrada.** Las reglas de lado corto y relación de aspecto que `probar_modelo` exige (720 px y 16:9 o 9:16) son las de Veo; las

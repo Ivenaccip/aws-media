@@ -1386,9 +1386,10 @@ def test_guardian_todo_modelo_con_numero_cubre_su_costo_con_el_margen():
 def test_guardian_componer_imagenes_nunca_cobra_por_debajo_del_costo():
     """Con 2 o 3 imágenes se suma la composición de Grok y se cobran 2 créditos FIJOS de más
     (clip.componer_imagenes), que no crecen con el modelo ni con la duración. Con ese
-    recargo fijo el margen baja unas décimas del 25 % de la fórmula en dos celdas (Veo 3.1
-    Fast de 6 s, 82 créditos contra 84, y Veo Lite de 4 s con 3 imágenes, 20 contra 22);
-    el peor caso hoy es 24.67 %. Lo que NO puede pasar es cobrar por debajo del costo ni que
+    recargo fijo el margen baja unas décimas del 25 % de la fórmula en cinco celdas (Veo 3.1
+    Fast de 6 s con 2 o 3 imágenes, Veo Lite de 4 s con 3 imágenes y, desde el 13-oct-2026,
+    Grok Imagine Video de 8 s con 2 o 3 imágenes: 52 créditos contra 53); el peor caso hoy es
+    24.62 % (Grok Video, 8 s, 3 imágenes: $0.588 dólares contra $0.78 de piso de venta). Lo que NO puede pasar es cobrar por debajo del costo ni que
     el margen se hunda: si alguien toca los números o el recargo, esto salta."""
     from pipeline import clip, creditos
     peor = Fraction(1)
