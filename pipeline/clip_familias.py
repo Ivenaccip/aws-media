@@ -23,8 +23,9 @@ manda SIEMPRE explícita donde existe: el precio de pricing.json es el de esa re
 por defecto de fal, que puede cambiar sin avisar (el de LTX ya es 1080p: $0.13 dólares por segundo contra
 $0.09 a 720p).
 
-Los modelos de este módulo son INERTES hasta que su prueba pagada y su número en tools/tarifas.json los
-enciendan (docs/modelos-ia/POR-VERIFICAR.md, «Ola 4»).
+Un modelo de este módulo está a la venta solo si tiene su número en tools/tarifas.json, que el dueño escribe
+DESPUÉS de la prueba pagada (docs/modelos-ia/POR-VERIFICAR.md, «Ola 4»): hoy MiniMax, Grok Video y Grok Lite; LTX,
+Kling y Seedance siguen INERTES.
 """
 from __future__ import annotations
 

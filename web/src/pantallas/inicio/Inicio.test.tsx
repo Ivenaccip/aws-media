@@ -1243,12 +1243,13 @@ describe('la caja', () => {
     montar();
     pintar();
     const tabla = modelos.clip['veo-lite'];
-    const minimax = modelos.clip.h3t; // el otro económico (12-oct-2026): el encabezado del grupo da el rango de los dos
+    // los otros económicos (13-oct-2026): MiniMax, Grok Video y Grok 1.5 Lite; el encabezado del grupo da el rango de los cuatro
+    const otros = { minimax: modelos.clip.h3t, grok: modelos.clip.grokv, lite: modelos.clip.grokl };
     // más corto, más barato
-    expect(tabla['4']).toBeLessThan(tabla['6']);
-    expect(tabla['6']).toBeLessThan(tabla['8']);
-    expect(minimax['4']).toBeLessThan(minimax['6']);
-    expect(minimax['6']).toBeLessThan(minimax['8']);
+    for (const t of [tabla, ...Object.values(otros)]) {
+      expect(t['4']).toBeLessThan(t['6']);
+      expect(t['6']).toBeLessThan(t['8']);
+    }
     expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · 8 s');
     await userEvent.click(botonModelo());
     const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
@@ -1261,9 +1262,12 @@ describe('la caja', () => {
       // el chip, la fila, el encabezado del grupo y el pie dicen los créditos de ESA duración
       expect(botonModelo()).toHaveTextContent('Modelo Veo 3.1 Lite · ' + s + ' s');
       expect(within(menu).getByRole('radio', { name: /Veo 3\.1 Lite/ })).toHaveTextContent('✦ ' + tabla[s]);
-      expect(within(menu).getByRole('radio', { name: /MiniMax/ })).toHaveTextContent('✦ ' + minimax[s]);
+      expect(within(menu).getByRole('radio', { name: /MiniMax/ })).toHaveTextContent('✦ ' + otros.minimax[s]);
+      expect(within(menu).getByRole('radio', { name: /Grok Imagine Video(?! 1\.5)/ })).toHaveTextContent('✦ ' + otros.grok[s]);
+      expect(within(menu).getByRole('radio', { name: /Grok Imagine Video 1\.5 Lite/ })).toHaveTextContent('✦ ' + otros.lite[s]);
+      const economicos = [tabla[s], otros.minimax[s], otros.grok[s], otros.lite[s]];
       expect(menu).toHaveTextContent(
-        'Económicos✦ ' + Math.min(tabla[s], minimax[s]) + '–' + Math.max(tabla[s], minimax[s]) + ' por clip de ' + s + ' s',
+        'Económicos✦ ' + Math.min(...economicos) + '–' + Math.max(...economicos) + ' por clip de ' + s + ' s',
       );
       expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + tabla[s] + ' por clip de ' + s + ' s');
     }

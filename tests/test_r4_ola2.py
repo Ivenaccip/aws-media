@@ -144,7 +144,7 @@ def _tarifas() -> dict:
 def test_la_tabla_trae_exactamente_estos_modelos():
     """La lista EXACTA de hoy. Nano Banana 2 Lite (`nbl`) no entra (cobra por tokens y
     no hay precio); Nano Banana Pro (Ola 3) entra con dos filas, una por calidad (`nbp-2k` y
-    `nbp-4k`, solo crear, encendidas el 12-oct-2026); los clips de otras familias (Ola 4) entran INERTES
+    `nbp-4k`, solo crear, encendidas el 12-oct-2026); los clips de otras familias (Ola 4) entran
     después de los de Veo y sus datos los guarda tests/test_r4_ola4.py."""
     from pipeline import modelos_ia
     assert modelos_ia.disponibles("imagen") == ["grok", *IDS, "nb2", "nbp-2k", "nbp-4k"]

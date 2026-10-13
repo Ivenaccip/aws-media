@@ -1,7 +1,7 @@
 """R4 · Ola 4 — los clips de otras familias: MiniMax H3 Max Turbo (`h3t`), Grok Imagine Video (`grokv`),
 Grok Imagine Video 1.5 Lite (`grokl`, 12-oct-2026), LTX-2.5 Fast (`ltx`), Kling V3 Pro (`kling`) y Seedance 2.0 (`seed`).
 
-Cada uno nace INERTE (MiniMax se encendió el 12-oct-2026, ver la sección F): tiene fila (`pipeline/modelos_ia.py`), adaptador de argumentos
+Cada uno nace INERTE (MiniMax, Grok Video y Grok Lite se encendieron el 13-oct-2026, ver la sección F): tiene fila (`pipeline/modelos_ia.py`), adaptador de argumentos
 (`pipeline/clip_familias.py`) y ficha de costo LEÍDA (`tools/pricing.json`), pero ningún número en
 `tools/tarifas.json`, así que el servidor lo conoce y no lo ofrece (422 antes de cobrar).
 
@@ -13,7 +13,8 @@ Lo que este archivo defiende:
     (`tests/fixtures/esquemas_fal_ola4.json`, leído el 12-oct-2026; el de Lite en `esquemas_fal_grok_lite.json`);
   * que el costo sale de los MISMOS argumentos que se mandan (la resolución de MiniMax va en mayúscula y una
     resolución que la ficha no trae es «sin costo conocido», nunca el precio de la de al lado);
-  * que siguen inertes: sin número no hay venta.
+  * que los tres encendidos cobran el número que dijo el dueño (y la fórmula lo reproduce) y que los tres que siguen
+    inertes no se venden: sin número no hay venta.
 
 Sin red: fal mockeado. OJO: nada de importar pipeline/server a nivel de módulo (ver test_m25_clip)."""
 import asyncio
@@ -485,13 +486,18 @@ def _tarifas() -> dict:
     return json.loads((RAIZ / "tools" / "tarifas.json").read_text(encoding="utf-8"))
 
 
-# MiniMax se encendió el 12-oct-2026 (16, 22 y 30 créditos, decisión del dueño); los otros cinco siguen inertes.
-ENCENDIDOS_OLA4 = {"h3t": {4: 16, 6: 22, 8: 30}}
+# MiniMax, Grok Video y Grok Lite se encendieron el 13-oct-2026 (decisión del dueño, tras su prueba pagada y el cobro del
+# panel de fal); LTX, Kling y Seedance siguen inertes. Créditos a 4, 6 y 8 s.
+ENCENDIDOS_OLA4 = {"h3t": {4: 16, 6: 22, 8: 30}, "grokv": {4: 26, 6: 38, 8: 50}, "grokl": {4: 12, 6: 18, 8: 24}}
 INERTES_OLA4 = sorted(set(NUEVOS) - set(ENCENDIDOS_OLA4))
 
 
+def test_los_tres_inertes_que_quedan_son_ltx_kling_y_seedance():
+    assert INERTES_OLA4 == ["kling", "ltx", "seed"]
+
+
 @pytest.mark.parametrize("id_", INERTES_OLA4)
-def test_ninguno_de_los_cinco_inertes_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(id_):
+def test_ninguno_de_los_tres_inertes_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(id_):
     from pipeline import creditos
     assert id_ not in _tarifas()["modelos"]["clip"]
     for segundos in NUEVOS[id_][3]:
@@ -499,32 +505,40 @@ def test_ninguno_de_los_cinco_inertes_tiene_numero_en_tarifas_y_el_servidor_los_
             creditos.costo_modelo("clip", id_, segundos)
 
 
-def test_minimax_tiene_sus_numeros_y_el_servidor_los_cobra():
+@pytest.mark.parametrize("id_", sorted(ENCENDIDOS_OLA4))
+def test_los_encendidos_tienen_sus_numeros_y_el_servidor_los_cobra(id_):
     from pipeline import creditos
-    assert _tarifas()["modelos"]["clip"]["h3t"] == {"4": 16, "6": 22, "8": 30}
-    for segundos, cr in ENCENDIDOS_OLA4["h3t"].items():
-        assert creditos.costo_modelo("clip", "h3t", segundos) == cr
-        assert creditos.costo_clip(0, "h3t", segundos) == cr
-        assert creditos.costo_clip(2, "h3t", segundos) == cr + 2            # componer 2 o 3 imágenes suma 2
-    assert creditos.costo_modelo("clip", "h3t") == 30                      # sin duración, la de siempre: 8 s
+    tabla = ENCENDIDOS_OLA4[id_]
+    assert _tarifas()["modelos"]["clip"][id_] == {str(s): c for s, c in tabla.items()}
+    assert set(tabla) == set(NUEVOS[id_][3])                               # un número por cada duración que admite
+    for segundos, cr in tabla.items():
+        assert creditos.costo_modelo("clip", id_, segundos) == cr
+        assert creditos.costo_clip(0, id_, segundos) == cr
+        assert creditos.costo_clip(1, id_, segundos) == cr                  # una imagen: imagen a video, mismo número
+        assert creditos.costo_clip(2, id_, segundos) == cr + 2              # componer 2 o 3 imágenes suma 2
+    assert creditos.costo_modelo("clip", id_) == tabla[8]                  # sin duración, la de siempre: 8 s
 
 
-def test_los_creditos_de_minimax_son_los_de_la_formula_con_la_tarifa_de_despues_de_la_promocion():
-    """costo ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par: 16, 22 y 30 (con los $0.024 de la promoción habrían sido
-    10, 14 y 18). Lo cobrado deja al menos el 25 % de margen; se calcula con fracciones para no caer en los flotantes."""
+@pytest.mark.parametrize("id_", sorted(ENCENDIDOS_OLA4))
+def test_los_creditos_de_los_encendidos_son_los_de_la_formula(id_):
+    """costo ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par, sobre el MÁS CARO de texto a video e imagen a video (un solo
+    número por duración cubre los dos): 16, 22 y 30 para MiniMax a $0.04 dólares por segundo (con los $0.024 de la promoción
+    habrían sido 10, 14 y 18), 26, 38 y 50 para Grok y 12, 18 y 24 para Lite. Lo cobrado deja al menos el 25 % de margen en
+    los dos; se calcula con fracciones para no caer en los flotantes."""
     import math
     from fractions import Fraction
     from pipeline import clip
     piso = Fraction(str(_tarifas()["economia"]["piso_venta_usd_por_credito"]))
-    for segundos, cr in ENCENDIDOS_OLA4["h3t"].items():
-        usd = Fraction(str(clip.costo_usd(0, "h3t", segundos)))
-        n = math.ceil(usd / Fraction(3, 4) / piso)
+    for segundos, cr in ENCENDIDOS_OLA4[id_].items():
+        usds = [Fraction(str(clip.costo_usd(n, id_, segundos))) for n in (0, 1)]
+        n = math.ceil(max(usds) / Fraction(3, 4) / piso)
         n += n % 2
         assert n == cr, (segundos, n)
-        assert usd <= Fraction(3, 4) * cr * piso, segundos
+        for usd in usds:
+            assert usd <= Fraction(3, 4) * cr * piso, (segundos, usd)
 
 
-def test_el_catalogo_de_la_web_deja_apagados_a_los_inertes_y_enciende_a_minimax():
+def test_el_catalogo_de_la_web_deja_apagados_a_los_inertes_y_enciende_a_los_tres():
     texto = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "modelos.ts").read_text(encoding="utf-8")
     for id_ in NUEVOS:
         linea = next(l for l in texto.splitlines() if f"id: '{id_}'" in l)
