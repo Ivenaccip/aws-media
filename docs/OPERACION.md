@@ -237,6 +237,31 @@ Si alguien pregunta por un cobro raro, el extracto lo cuenta entero:
 venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 40
 ```
 
+### «Le dije a la IA qué quería al editar y no lo hizo»
+
+Desde el 13 de octubre de 2026, `POST /api/editar/<proyecto>/sugerir` acepta un
+cuerpo **opcional** `{"instruccion": "…"}` (la caja «Edición» del inicio); sin
+cuerpo —`static/e1.html` y `/estudio/subir/`— todo es igual que antes. El
+servidor la limpia (quita caracteres de control e invisibles y los espacios de
+los extremos; vacía = como si no hubiera) y la guarda en
+`doc.editar.instruccion`; si no es texto, pasa de 2000 caracteres o el cuerpo no
+es un objeto JSON (un `text/plain` con texto, un JSON roto) responde 422
+**antes de cobrar**, y el cobro y la devolución siguen con la referencia
+`editar-sugerir:<proyecto>`. Las claves de más del cuerpo se ignoran (nunca
+viajan créditos: el servidor decide el precio) y volver a pedir sin cuerpo no
+hereda la instrucción de la corrida anterior. El worker la pone en el mensaje de
+*usuario* del LLM, entre `<<<` y `>>>`, como un dato que no cambia sus reglas ni
+el formato de salida; el system prompt (`prompts/cortes_system.md`) no se toca,
+así que no hay nada que sincronizar con Langfuse. Y le recuerda que este motor solo sabe
+**quitar tramos**: lo que la instrucción pida y no se pueda lograr así
+(vertical, subtítulos, música, títulos, fundidos) NO se aplica y sale como duda
+en el editor, con un texto que empieza por «No aplicado:» — es lo esperado, no
+un fallo. Pendientes: hoy, si lo único que devuelve la IA son esas dudas, cuenta
+como entrega (hay `flags`) y no se devuelve nada; y el servidor aún no tiene
+candado global por cuenta (`sugerir` solo bloquea por proyecto, con 409), así
+que dos proyectos distintos pueden correr a la vez y por ahora la caja lo evita
+del lado de la web.
+
 ### «Quiero mi video en vertical»
 
 Desde el 14 de septiembre de 2026 se elige al crear la película: horizontal
