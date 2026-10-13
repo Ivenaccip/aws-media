@@ -1426,14 +1426,14 @@ def test_el_plan_corre_el_adaptador_sin_su_decorador_de_trazas(env, capsys, monk
 
     llamado: list[str] = []
 
-    async def desnudo(prompt, url, formato, modelo, segundos):
+    async def desnudo(prompt, url, formato, modelo, segundos, audio=True):
         llamado.append("desnudo")
         res = await fal.llamar(modelos_ia.resolver("clip", modelo).endpoint_para(bool(url)), {"prompt": prompt})
         return res["video"]["url"]
 
-    async def decorado(prompt, url, formato, modelo, segundos):
+    async def decorado(prompt, url, formato, modelo, segundos, audio=True):
         llamado.append("decorado")
-        return await desnudo(prompt, url, formato, modelo, segundos)
+        return await desnudo(prompt, url, formato, modelo, segundos, audio)
 
     decorado.__wrapped__ = desnudo
     monkeypatch.setattr(clip, "animar", decorado)
@@ -1525,3 +1525,61 @@ def test_un_clip_no_se_mide_contra_la_peticion(env, capsys, monkeypatch, tmp_pat
 def test_el_ensayo_no_mide_tiempos_ni_avisa(env, capsys):
     code, out, err = _correr(capsys, "imagen", "flux3")
     assert code == 0 and "AVISO" not in out and "REVISAR" not in out
+
+
+# ---------------------------------------------------------------------------
+# --sin-sonido (13-oct-2026): la prueba pagada del clip mudo, igual que el interruptor «Audio» de la caja
+
+def test_el_ensayo_sin_sonido_enseña_generate_audio_false_el_costo_sin_audio_y_los_creditos_sin_sonido(env, capsys, tmp_path):
+    from pipeline import clip, creditos
+    salida = tmp_path / "no_debe_existir"
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--sin-sonido", "--salida", salida)
+    assert code == 0 and err == ""
+    assert env.llamadas == [] and env.subidas == [] and env.descargas == []
+    assert "SIN sonido" in out and '"generate_audio": false' in out
+    assert f"${clip.costo_usd(0, 'veo-lite', 4, False):.4f} dólares" in out
+    assert f"{creditos.costo_modelo('clip_sin_audio', 'veo-lite', 4)} créditos" in out and "clip_sin_audio" in out
+    assert clip.costo_usd(0, "veo-lite", 4, False) < clip.costo_usd(0, "veo-lite", 4, True)
+    assert not salida.exists()
+
+
+def test_con_si_y_sin_sonido_se_pide_generate_audio_false_y_el_archivo_no_pisa_al_de_con_sonido(env, capsys, tmp_path):
+    env.medida = dict(MEDIDA_CLIP, audio=False, codec_audio=None)         # lo que se espera de un clip mudo
+    salida = tmp_path / "s"
+    code, out, err = _correr(capsys, "clip", "veo-fast", "--segundos", 4, "--sin-sonido", "--si", "--salida", salida)
+    assert code == 0, err
+    assert len(env.llamadas) == 1 and env.llamadas[0][1]["generate_audio"] is False
+    assert [p.name for p in salida.iterdir()] == ["clip-veo-fast-4s-sinsonido.mp4"]
+    assert "audio: NO" in out and "coincide con lo prometido" in out and "REVISAR" not in out
+
+
+def test_un_clip_pedido_sin_sonido_que_llega_con_pista_se_marca_para_revisar(env, capsys, tmp_path):
+    code, out, err = _correr(capsys, "clip", "veo-lite", "--segundos", 4, "--sin-sonido", "--si", "--salida", tmp_path / "s")
+    assert code == 0, err                                                  # MEDIDA_CLIP trae pista aac
+    assert "REVISAR" in out and "se pidió sin sonido y el archivo trae pista de audio" in out
+
+
+def test_el_veredicto_de_siempre_sigue_igual_con_sonido():
+    from pipeline import modelos_ia
+    plan = probar.Plan("clip", modelos_ia.resolver("clip", "veo-lite"), "x", None, "horizontal", 4, Path("w"))
+    assert plan.audio is True
+    assert probar._veredicto(plan, dict(MEDIDA_CLIP)) == []
+    assert any("NO trae pista de audio" in d for d in probar._veredicto(plan, dict(MEDIDA_CLIP, audio=False, codec_audio=None)))
+    mudo = probar.Plan("clip", modelos_ia.resolver("clip", "veo-lite"), "x", None, "horizontal", 4, Path("w"), audio=False)
+    assert probar._veredicto(mudo, dict(MEDIDA_CLIP, audio=False, codec_audio=None)) == []
+    assert any("sin sonido" in d for d in probar._veredicto(mudo, dict(MEDIDA_CLIP)))
+
+
+@pytest.mark.parametrize("modelo", ["h3t", "grokv", "grokl"])
+@pytest.mark.parametrize("si", [[], ["--si"]])
+def test_sin_sonido_en_un_modelo_que_no_lo_permite_sale_con_2_antes_de_llamar(env, capsys, modelo, si):
+    code, out, err = _correr(capsys, "clip", modelo, "--sin-sonido", *si)
+    assert code == 2 and env.llamadas == [] and env.subidas == []
+    assert "no se puede pedir sin sonido" in err and "Traceback" not in err
+
+
+@pytest.mark.parametrize("tarea, modelo, extra", [("imagen", "grok", []), ("editar", "grok", ["--imagen", "{foto}"])])
+def test_sin_sonido_solo_aplica_al_clip(env, capsys, foto, tarea, modelo, extra):
+    extra = [a.replace("{foto}", str(foto)) for a in extra]
+    code, out, err = _correr(capsys, tarea, modelo, *extra, "--sin-sonido", "--si")
+    assert code == 2 and env.llamadas == [] and "--sin-sonido solo aplica a la tarea clip" in err

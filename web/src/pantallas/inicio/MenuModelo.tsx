@@ -230,9 +230,11 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
               'absolute top-[calc(100%+6px)] right-0 z-30 w-[420px] max-w-[calc(100vw-24px)] overflow-hidden rounded-grande border border-linea bg-superficie',
               // celular: hoja que sube desde abajo
               'max-[639px]:fixed max-[639px]:inset-x-0 max-[639px]:top-auto max-[639px]:bottom-0 max-[639px]:w-auto max-[639px]:max-w-none max-[639px]:rounded-b-none',
+              // y sin pasar de la barra del saldo (que ocupa los primeros 50 px): la lista de modelos cede el alto que falte
+              'max-[639px]:flex max-[639px]:max-h-[calc(100dvh-60px)] max-[639px]:flex-col',
             )}
           >
-            <div className="flex min-h-12 items-center justify-between pr-2 pl-4 min-[640px]:hidden">
+            <div className="flex min-h-12 items-center justify-between pr-2 pl-4 max-[639px]:shrink-0 min-[640px]:hidden">
               <h3 className="m-0 text-md font-semibold">Modelo</h3>
               <button
                 type="button"
@@ -245,7 +247,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
             </div>
 
             {conSelector && (
-              <div className="border-b border-linea px-3.5 py-3">
+              <div className="border-b border-linea px-3.5 py-3 max-[639px]:shrink-0">
                 <div className="mb-2 flex items-baseline justify-between gap-2 text-xs text-secundario">
                   <span id={idPanel + '-dur'}>Duración del clip</span>
                   <span id={idPanel + '-dur-pista'}>Más corto, más barato</span>
@@ -285,7 +287,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
               role="radiogroup"
               aria-label="Modelos"
               className={unir(
-                'overflow-y-auto px-1.5 pb-1.5',
+                'overflow-y-auto px-1.5 pb-1.5 max-[639px]:min-h-0',
                 // con el selector de duración arriba, la lista cede su alto
                 conSelector ? 'max-h-[330px] max-[639px]:max-h-[min(250px,40vh)]' : 'max-h-[400px] max-[639px]:max-h-[min(430px,50vh)]',
               )}
@@ -364,7 +366,7 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
               ))}
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-linea px-3.5 pt-3 pb-3.5">
+            <div className="flex flex-col gap-3 border-t border-linea px-3.5 pt-3 pb-3.5 max-[639px]:shrink-0">
               {actual.calidades && (
                 <div className="flex flex-col gap-1.5">
                   <span id={idPanel + '-res'} className="text-xs text-secundario">

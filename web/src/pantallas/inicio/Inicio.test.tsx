@@ -2888,7 +2888,9 @@ describe('el audio del clip', () => {
     for (const s of ['4', '6', '8'] as const) {
       await userEvent.click(within(menu).getByRole('radio', { name: s + ' s' }));
       expect(interruptor(menu)).toHaveAttribute('aria-checked', 'false');
-      expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + sin['veo-lite'][s] + ' por clip de ' + s + ' s');
+      // y el «ahorras» de ESA duración: con sonido menos sin sonido
+      const ahorro = con['veo-lite'][s]! - sin['veo-lite'][s]!;
+      expect(menu).toHaveTextContent('Veo 3.1 Lite✦ ' + sin['veo-lite'][s] + ' por clip de ' + s + ' s · ahorras ✦ ' + ahorro);
     }
   });
 
@@ -3034,8 +3036,13 @@ describe('el audio del clip', () => {
     montar();
     pintar();
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
-    const menu = await abrirMenu();
-    expect(within(menu).queryByRole('switch')).toBeNull();
-    expect(menu).not.toHaveTextContent('Audio');
+    for (const tarea of ['Crear una imagen', 'Editar una imagen']) {
+      await elegirOpcion(tarea);
+      expect(botonOpcion()).toHaveTextContent(tarea);
+      const menu = await abrirMenu();
+      expect(within(menu).queryByRole('switch'), tarea).toBeNull();
+      expect(menu, tarea).not.toHaveTextContent('Audio');
+      await userEvent.keyboard('{Escape}');
+    }
   });
 });

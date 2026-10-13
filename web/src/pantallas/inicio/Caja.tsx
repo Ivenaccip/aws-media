@@ -113,10 +113,10 @@ const CLAVE_AVISO = 'caja';
 /** ¿Lo que se arrastra trae archivos? Un texto seleccionado que se mueve dentro del cuadro no los trae. */
 const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
 
-// el riel: dos botones con icono. En celular es una fila sobre el texto.
 /** La clave del navegador donde se recuerda si el clip va con sonido o sin él. */
 const CLAVE_SONIDO = 'caja.sonido';
 
+// el riel: dos botones con icono. En celular es una fila sobre el texto.
 const RIEL = [
   { familia: 'imagenes', rotulo: 'Imagen', icono: 'imagen' },
   { familia: 'videos', rotulo: 'Video', icono: 'video' },
@@ -253,7 +253,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const ofrecidos = useMemo(() => (tarea ? ofrecidosDe(tarea) : []), [tarea]);
   const duraciones = tarea ? duracionesOfrecidas(tarea, ofrecidos) : [];
   const segundos = duracionVigente(duraciones, pedida);
-  // la lista de grupos es barata (a lo más nueve modelos) y solo la lee el menú: sin useMemo a mano, el compilador la guarda
+  // la lista de grupos es barata (a lo más nueve modelos) y solo la lee el menú: se recalcula en cada render, sin useMemo
   const grupos = tarea ? gruposDe(tarea, CATALOGO, PRECIOS, segundos, prefSonido) : [];
   const guardado = tarea ? elegidos[tarea] : undefined;
   const modelo = tarea ? modeloPara(tarea, ofrecidos, guardado?.id, segundos) : undefined;

@@ -28,7 +28,8 @@ export function Interruptor({ activo, alCambiar, bloqueado = false, className, o
         if (!bloqueado) alCambiar(!activo);
       }}
       className={unir(
-        '-my-2 inline-flex min-h-11 flex-none items-center border-0 bg-transparent p-0',
+        // `relative`: el botón se pinta encima de lo que lo rodea, para que sus 44 px se toquen enteros (el margen negativo lo mete bajo el texto de al lado)
+        'relative -my-2 inline-flex min-h-11 flex-none items-center border-0 bg-transparent p-0',
         bloqueado ? 'cursor-not-allowed' : 'cursor-pointer',
         className,
       )}

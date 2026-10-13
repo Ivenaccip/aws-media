@@ -1505,6 +1505,26 @@ def test_un_modelo_sin_numero_sin_sonido_no_se_vende_sin_sonido_aunque_el_endpoi
     assert _pedido_clip(cliente, modelo="veo-fast", segundos=8, audio=True).status_code == 200    # con sonido, intacto
 
 
+@pytest.mark.parametrize("audio", [True, False])
+def test_apagar_un_modelo_quitando_su_numero_de_clip_lo_apaga_tambien_sin_sonido(
+        cliente, espia, falso_fal, imagenes_al_disco, monkeypatch, audio):
+    """La receta de OPERACION («quita su número de §modelos.clip»): con la fila de `clip_sin_audio` todavía puesta, el
+    modelo NO se vende ni mudo. Sin esto, quitar solo `clip` dejaba abierta la venta «sin sonido» a su precio."""
+    from pipeline import creditos
+    tabla = {m: dict(d) for m, d in creditos.MODELOS_CR["clip"].items()}
+    del tabla["veo-fast"]
+    monkeypatch.setitem(creditos.MODELOS_CR, "clip", tabla)
+    assert "veo-fast" in creditos.MODELOS_CR["clip_sin_audio"]                  # la fila suelta sigue ahí
+    for segundos in (None, 4, 6, 8):
+        cuerpo = {"modelo": "veo-fast", "audio": audio}
+        if segundos:
+            cuerpo["segundos"] = segundos
+        assert _pedido_clip(cliente, **cuerpo).status_code == 422, (audio, segundos)
+    _sin_rastro(espia, falso_fal, imagenes_al_disco)
+    with pytest.raises(KeyError):
+        creditos.costo_clip(0, "veo-fast", 8, False)
+
+
 def _llamar_al_worker(espia, monkeypatch, tmp_path, doc_extra=None):
     """Corre el worker sobre el doc que escribió el API (con `doc_extra` encima) y devuelve lo que se le mandó a fal."""
     import worker.clip_generar as w
@@ -1539,7 +1559,7 @@ def test_el_worker_manda_generate_audio_false_a_veo_cuando_el_clip_es_sin_sonido
     app, args, res = _llamar_al_worker(espia, monkeypatch, tmp_path)
     assert args["generate_audio"] is False and args["duration"] == f"{segundos}s"
     assert res["audio"] is False and res["segundos"] == segundos
-    # y el costo que se anota junto al cobro es el de la tarifa sin audio de la ficha
+    # y el costo en dólares (lo que anota el worker junto al cobro: tests/test_r4_duracion.py) es el de la tarifa sin audio
     tarifa = {"veo-lite": 0.03, "veo-fast": 0.10}[modelo]
     assert clip.costo_usd(0, modelo, segundos, False) == pytest.approx(segundos * tarifa, abs=1e-4)
     assert clip.costo_usd(0, modelo, segundos, True) > clip.costo_usd(0, modelo, segundos, False)

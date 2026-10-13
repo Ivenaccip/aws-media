@@ -299,11 +299,16 @@ def costo_clip(n_imagenes: int = 0, modelo: str | None = None,
     `audio=False` (el interruptor de la caja del inicio) cobra el número de
     §modelos.clip_sin_audio, que solo traen los modelos que dejan apagar el sonido
     (Veo Lite y Fast). Sin número ahí levanta KeyError, igual que una duración sin
-    tarifa: ni el precio con sonido ni uno inventado. El extra de componer no cambia."""
+    tarifa: ni el precio con sonido ni uno inventado; y sin número CON sonido también
+    (la compuerta de siempre vale para los dos). El extra de componer no cambia."""
     if not modelo and segundos is None and audio:
         base = CLIP_CR
     else:
-        base = costo_modelo("clip" if audio else "clip_sin_audio", modelo or PREDETERMINADO["clip"], segundos)
+        id_ = modelo or PREDETERMINADO["clip"]
+        # sin número CON sonido el modelo no se vende, ni mudo: quitar su número de §modelos.clip lo apaga por completo
+        base = costo_modelo("clip", id_, segundos)
+        if not audio:
+            base = costo_modelo("clip_sin_audio", id_, segundos)
     return base + (CLIP_COMPONER_CR if int(n_imagenes) >= 2 else 0)
 
 

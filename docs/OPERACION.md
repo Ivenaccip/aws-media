@@ -1031,7 +1031,7 @@ pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis
 pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
 `.json` y un `.reclamo` por pedido, para siempre.
 
-**Apagar un modelo:** quita su número de `tools/tarifas.json` §modelos «imagen», «editar» o «clip» (el servidor lo rechaza con 422 sin cobrar) y pon
+**Apagar un modelo:** quita su número de `tools/tarifas.json` §modelos «imagen», «editar» o «clip» (y, si es Veo Lite o Veo Fast, también su fila de «clip_sin_audio»: sin número de con sonido tampoco se vende mudo, pero la fila suelta queda como precio huérfano) (el servidor lo rechaza con 422 sin cobrar) y pon
 `activo: false` en `web/src/pantallas/inicio/modelos.ts`. Los pedidos que ya estaban en la cola siguen y terminan: el worker usa
 lo que dice el doc, no la tarifa de hoy. Mover un modelo entre síncrono y segundo plano es cambiar su `segundo_plano`.
 

@@ -260,8 +260,9 @@ con ffmpeg no baja el costo); texto «Audio» con «Con sonido» o «Sin sonido�
 el precio con sonido.
 
 **Sin probar en producción (pendiente).** Ninguna prueba pagada de Veo con `generate_audio: false` desde este flujo: el costo sin audio
-sale de las fichas de `pricing.json` (la de Veo Lite sin audio es la que ya paga la película, que lleva el audio apagado; la de Veo Fast es una lectura de la página del 8-oct-2026, sin cobro medido en el panel). Antes de anunciarlo conviene un clip de Veo Lite
-de 4 s sin sonido (≈ $0.12 dólares) y comprobar en el panel que el cobro es el esperado y que el archivo no trae pista de audio.
+sale de las fichas de `pricing.json` (la de Veo Lite sin audio es la que ya paga la película, que lleva el audio apagado; la de Veo Fast es una lectura de la página del 8-oct-2026, sin cobro medido en el panel). Antes de anunciarlo conviene UN clip de Veo Fast
+de 4 s sin sonido (≈ $0.40 dólares: es el que no tiene cobro medido) y comprobar en el panel que el cobro es ese y no los $0.60 de con sonido, y con `ffprobe` que el archivo no trae pista de audio. Se pide con
+`python tools/probar_modelo.py clip veo-fast --segundos 4 --sin-sonido --si` (la herramienta marca REVISAR si llega pista); el de Veo Lite de 4 s ($0.12 dólares) es opcional.
 
 ### Qué va en segundo plano y por qué
 

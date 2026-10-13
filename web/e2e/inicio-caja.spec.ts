@@ -224,3 +224,36 @@ test('el interruptor «Audio» del clip: baja el precio, el chip lo dice en un c
   await menu.getByRole('button', { name: 'Crear' }).click();
   expect((await pedido).postDataJSON()).toMatchObject({ audio: false, modelo: 'veo-fast', segundos: 8 });
 });
+
+test('en un celular bajo la hoja del menú no pasa de la barra del saldo y el interruptor se toca entero', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  for (const [ancho, alto] of [[320, 568], [375, 553]] as const) {
+    await page.setViewportSize({ width: ancho, height: alto });
+    const chip = page.getByRole('button', { name: /^Modelo / });
+    await chip.click();
+    const menu = page.getByRole('dialog', { name: 'Elegir modelo' });
+    // el modelo con el pie más alto: el interruptor bloqueado y su motivo escrito debajo
+    await menu.getByRole('radio', { name: /Grok Imagine Video 1\.5 Lite/ }).click();
+    await expect(menu).toContainText('no se puede apagar');
+    const hoja = (await menu.boundingBox())!;
+    expect(hoja.y, `${ancho}×${alto}: la hoja tapa la barra del saldo`).toBeGreaterThanOrEqual(50);
+    expect(hoja.y + hoja.height).toBeLessThanOrEqual(alto + 0.5);
+    // «Cerrar» es lo que se toca en su centro, no la barra del saldo
+    const c = (await menu.getByRole('button', { name: 'Cerrar' }).boundingBox())!;
+    const cerrarLibre = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="dialog"]') !== null,
+      [c.x + c.width / 2, c.y + c.height / 2],
+    );
+    expect(cerrarLibre, `${ancho}×${alto}: algo tapa «Cerrar»`).toBe(true);
+    // el interruptor mide 44 px y se toca hasta su borde de abajo (no lo tapa el texto del estado)
+    const sw = (await menu.getByRole('switch', { name: 'Audio' }).boundingBox())!;
+    expect(sw.height).toBeGreaterThanOrEqual(44);
+    const enElBorde = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="switch"]') !== null,
+      [sw.x + sw.width / 2, sw.y + sw.height - 2],
+    );
+    expect(enElBorde, `${ancho}×${alto}: el borde de abajo del interruptor no lo recibe`).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+  }
+});
