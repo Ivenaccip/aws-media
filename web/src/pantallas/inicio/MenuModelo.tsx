@@ -84,8 +84,8 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
   const calidad = actual.calidades?.find(c => c.id === elegido.calidad) ?? actual.calidades?.[0];
   const creditos = precio(actual.id, calidad?.id);
   const nombre = calidad ? `${actual.nombre} · ${calidad.etiqueta}` : actual.nombre;
-  // el chip dice también la duración del clip: «Veo 3.1 Lite · 8 s»
-  const rotulo = duracion ? `${nombre} · ${duracion.segundos} s` : nombre;
+  // el chip dice también la duración del clip: «Veo 3.1 Lite · 8 s». Si no cabe, se recorta el NOMBRE (con «…») y los segundos
+  // se quedan: «Grok Imagine Video 1.5 Lite · 8 s» no cabe en un celular de 375 px
   // con una sola duración no hay nada que elegir: el chip y el pie ya dicen los segundos
   const conSelector = !!duracion && duracion.opciones.length > 1;
 
@@ -177,8 +177,15 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
         }}
         className="flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 rounded-medio border border-linea bg-transparent px-3.5 text-sm whitespace-nowrap text-texto hover:border-campo min-[640px]:min-h-11 min-[640px]:w-auto min-[640px]:justify-start"
       >
-        <span className="min-w-0 overflow-hidden text-ellipsis">
-          <span className="text-secundario">Modelo</span> {rotulo}
+        <span className="flex min-w-0">
+          <span className="min-w-0 overflow-hidden text-ellipsis">
+            <span className="text-secundario">Modelo</span> {nombre}
+          </span>
+          {duracion && (
+            <span className="flex-none pl-1">
+              {' '}· {duracion.segundos} s
+            </span>
+          )}
         </span>
         <span aria-hidden="true" className="text-secundario">
           ▾

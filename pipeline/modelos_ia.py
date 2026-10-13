@@ -17,11 +17,12 @@ el 9-oct-2026 (tras su prueba pagada), Nano Banana 2 y Veo 3.1 Fast. El 11-oct-2
 suya (18 llamadas y el panel de fal), se encendieron en la rama también FLUX.2 klein 9B, Z-Image
 Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y FLUX 3, solo para crear; se ofrecen al
 desplegarla. El 12-oct-2026, tras su prueba pagada de 4 llamadas y el panel de fal, se encendieron también en
-la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Sigue inerte
-solo Veo 3.1 Standard: sin número en tarifas.json da 422 antes de cobrar. Los clips de las otras familias
-(MiniMax H3 Max Turbo, Grok Imagine Video, Grok Imagine Video 1.5 Lite, LTX-2.5 Fast, Kling V3 Pro y Seedance 2.0,
-Ola 4) tienen fila y adaptador (`pipeline/clip_familias.py`) pero siguen INERTES: sin número en tarifas.json (MiniMax y
-Grok Video ya tuvieron su prueba pagada y su cobro en el panel de fal del 12-oct-2026; Grok Lite y los otros tres no).
+la rama las dos filas de Nano Banana Pro (`nbp-2k` y `nbp-4k`, solo crear); se ofrecen al desplegarla. Veo 3.1
+Standard sigue inerte: sin número en tarifas.json da 422 antes de cobrar. Los clips de las otras familias
+(Ola 4) tienen fila y adaptador (`pipeline/clip_familias.py`). El 13-oct-2026, tras su prueba pagada y el cobro en el
+panel de fal, se encendieron MiniMax H3 Max Turbo (16, 22 y 30 créditos a 4, 6 y 8 s: decisión del dueño), Grok Imagine
+Video (26, 38 y 50) y Grok Imagine Video 1.5 Lite (12, 18 y 24); se ofrecen al desplegar la rama. Siguen INERTES LTX-2.5
+Fast, Kling V3 Pro y Seedance 2.0: sin número en tarifas.json dan 422 antes de cobrar.
 
 Un id que no está aquí se rechaza con 422 igual: no se cae al modelo de siempre,
 porque cobraría uno y entregaría otro.
@@ -392,7 +393,8 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                       con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     veo_std = Modelo("veo-std", "clip", VEO_STD_T2V, VEO_STD_I2V,
                      con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
-    # Ola 4: clips de otras familias, INERTES (sin número en tarifas.json, sin prueba pagada). Un solo
+    # Ola 4: clips de otras familias. MiniMax, Grok Video y Grok Lite están a la venta desde el 13-oct-2026 (tras su prueba
+    # pagada); LTX, Kling y Seedance siguen INERTES (sin número en tarifas.json, sin prueba pagada). Un solo
     # intento cada uno mientras no se mida cuánto tardan: un timeout de cliente no cancela el trabajo en
     # fal. MiniMax no trae parámetro de audio y su esquema no dice si la salida lo lleva, pero la prueba pagada
     # del 12-oct-2026 midió una pista aac en sus dos clips (texto a video e imagen a video): `con_audio=True`,
@@ -401,7 +403,7 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                  con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
     grokv = Modelo("grokv", "clip", GROKV_T2V, GROKV_I2V, familia_clip="grok",
                    con_audio=True, duraciones=(4, 6, 8), max_intentos=1)
-    # Grok 1.5 Lite (12-oct-2026): fila inerte. El esquema no decía si su clip trae sonido; la prueba pagada del mismo día
+    # Grok 1.5 Lite (12-oct-2026). El esquema no decía si su clip trae sonido; la prueba pagada del mismo día
     # midió una pista aac en sus dos clips (texto a video e imagen a video), aunque muy bajita (DATOS §16): `con_audio=True`,
     # y `probar_modelo` marca REVISAR si un clip suyo llega sin pista.
     grokl = Modelo("grokl", "clip", GROKL_T2V, GROKL_I2V, familia_clip="grok_lite",

@@ -46,7 +46,7 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
       modelos: 'clip',
       referencias: 3,
       destino: '/clip.html',
-      nota: 'De 4 a 8 segundos con sonido, de una sola toma. Puedes subir hasta 3 fotos.',
+      nota: 'De 4 a 8 segundos, de una sola toma; el sonido depende del modelo. Puedes subir hasta 3 fotos.',
       hueco: 'Escribe qué quieres ver. Ejemplo: «mi perro corriendo en la playa al atardecer».',
     },
     {

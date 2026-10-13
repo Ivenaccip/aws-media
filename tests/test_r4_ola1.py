@@ -1024,11 +1024,11 @@ def test_standard_sigue_rechazado_con_la_tarifa_real(
     _sin_rastro(espia, falso_fal, imagenes_al_disco)
 
 
-@pytest.mark.parametrize("modelo", ["h3t", "grokv", "grokl", "ltx", "kling", "seed"])
-def test_los_clips_de_la_ola_4_se_rechazan_con_la_tarifa_real(
+@pytest.mark.parametrize("modelo", ["ltx", "kling", "seed"])
+def test_los_clips_de_la_ola_4_que_siguen_inertes_se_rechazan_con_la_tarifa_real(
         cliente, espia, falso_fal, imagenes_al_disco, modelo):
-    """Ola 4: MiniMax, Grok Video, Grok Lite, LTX, Kling y Seedance tienen fila y adaptador pero ningún número en
-    tools/tarifas.json: el servidor responde 422 sin cobrar, sin crear documento y sin encolar, con y sin
+    """Ola 4 (MiniMax, Grok Video y Grok Lite se encendieron el 13-oct-2026): LTX, Kling y Seedance tienen fila y adaptador pero
+    ningún número en tools/tarifas.json: el servidor responde 422 sin cobrar, sin crear documento y sin encolar, con y sin
     duración (también las que el modelo no admite). Hasta su prueba pagada no se ofrecen."""
     for segundos in (None, 4, 6, 8):
         cuerpo = {"texto": "mi perro", "modelo": modelo}
@@ -1050,6 +1050,74 @@ def test_veo_fast_con_la_tarifa_real_cobra_su_numero(cliente, espia, segundos, c
     assert r.json()["creditos"] == cobro
     assert espia.cobros == [(cobro, f"clip:{r.json()['id']}")]
     assert len(espia.encolados) == 1
+
+
+# Ola 4, encendidos el 13-oct-2026 (decisión del dueño): créditos a 4, 6 y 8 s. Sin duración se cobra la de 8 s.
+OLA4_ENCENDIDOS = {"h3t": {4: 16, 6: 22, 8: 30}, "grokv": {4: 26, 6: 38, 8: 50}, "grokl": {4: 12, 6: 18, 8: 24}}
+OLA4_CON_DURACION = [(m, s, c) for m, tabla in OLA4_ENCENDIDOS.items()
+                     for s, c in [(None, tabla[8]), *tabla.items()]]
+
+
+@pytest.mark.parametrize("n_imagenes,extra", [(0, 0), (1, 0), (2, 2), (3, 2)])
+@pytest.mark.parametrize("modelo,segundos,cobro", OLA4_CON_DURACION)
+def test_los_clips_de_la_ola_4_encendidos_con_la_tarifa_real_cobran_su_numero(
+        cliente, espia, modelo, segundos, cobro, n_imagenes, extra):
+    """MiniMax H3 Max Turbo (16, 22 y 30), Grok Imagine Video (26, 38 y 50) y Grok 1.5 Lite (12, 18 y 24) a 4, 6 y 8 s; sin
+    duración, la de 8 s; componer 2 o 3 imágenes suma 2. Sin la fixture `encendido`: el número sale de tools/tarifas.json
+    tal como está."""
+    cuerpo = {"texto": "mi perro", "modelo": modelo, "imagenes": _imagenes_propias(n_imagenes)}
+    if segundos:
+        cuerpo["segundos"] = segundos
+    r = cliente.post("/api/clip/generar", json=cuerpo)
+    assert r.status_code == 200, r.text
+    assert r.json()["creditos"] == cobro + extra
+    assert espia.cobros == [(cobro + extra, f"clip:{r.json()['id']}")]
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    assert (doc["modelo"], doc["segundos"], doc["creditos"]) == (modelo, segundos or 8, cobro + extra)
+    assert len(espia.encolados) == 1
+
+
+# endpoint de texto a video, llave de la familia y dólares por segundo (de la ficha de pricing.json) de cada uno
+OLA4_WORKER = {
+    "h3t": ("minimax/h3-max-turbo/text-to-video", 0.04,
+            {"resolution": "768P", "prompt_expansion_mode": "balanced"}),
+    "grokv": ("xai/grok-imagine-video/text-to-video", 0.07, {"resolution": "720p"}),
+    "grokl": ("xai/grok-imagine-video/v1.5/lite/text-to-video", 0.03, {"resolution": "720p"}),
+}
+
+
+@pytest.mark.parametrize("segundos", [4, 6, 8])
+@pytest.mark.parametrize("modelo", sorted(OLA4_WORKER))
+def test_los_clips_de_la_ola_4_el_worker_llama_a_su_endpoint_con_los_argumentos_de_su_familia(
+        cliente, espia, monkeypatch, tmp_path, modelo, segundos):
+    """Del doc que escribió el API al endpoint del modelo: duración como NÚMERO, la resolución explícita de su familia
+    (MiniMax «768P» en mayúscula, Grok y Grok Lite «720p»), sin `generate_audio` (ninguno lo tiene) ni llaves de Veo; el
+    aspecto viaja en texto a video. El costo anotado es el de la ficha por los segundos pedidos."""
+    import worker.clip_generar as w
+    from pipeline import clip, fal
+    cliente.post("/api/clip/generar", json={"texto": "mi perro", "modelo": modelo, "segundos": segundos})
+    (doc,) = [json.loads(t) for t in espia.s3.values()]
+    llamadas = []
+
+    async def llamar(app, argumentos, timeout_s, nombre, meta=None):
+        llamadas.append((app, argumentos, nombre))
+        return {"video": {"url": "https://fal.test/clip.mp4"}}
+
+    async def descargar(url, destino):
+        Path(destino).write_bytes(b"video")
+
+    async def chat_json(name, system, user):
+        return {"video": "A dog running.", "composicion": "", "recorte": ""}
+    monkeypatch.setattr(fal, "llamar", llamar)
+    monkeypatch.setattr(fal, "descargar", descargar)
+    monkeypatch.setattr("pipeline.clip.chat_json", chat_json)
+    res = asyncio.run(w._correr(doc, tmp_path))
+    endpoint, usd_s, propios = OLA4_WORKER[modelo]
+    ((app, args, nombre),) = llamadas
+    assert app == endpoint and nombre == f"clip-{modelo}"
+    assert args == {"prompt": "A dog running.", "duration": segundos, "aspect_ratio": "16:9", **propios}
+    assert type(args["duration"]) is int and res["segundos"] == segundos
+    assert clip.costo_usd(0, modelo, segundos) == pytest.approx(segundos * usd_s, abs=1e-4)
 
 
 def test_nano_banana_2_con_la_tarifa_real_cobra_su_numero(
@@ -1318,9 +1386,10 @@ def test_guardian_todo_modelo_con_numero_cubre_su_costo_con_el_margen():
 def test_guardian_componer_imagenes_nunca_cobra_por_debajo_del_costo():
     """Con 2 o 3 imágenes se suma la composición de Grok y se cobran 2 créditos FIJOS de más
     (clip.componer_imagenes), que no crecen con el modelo ni con la duración. Con ese
-    recargo fijo el margen baja unas décimas del 25 % de la fórmula en dos celdas (Veo 3.1
-    Fast de 6 s, 82 créditos contra 84, y Veo Lite de 4 s con 3 imágenes, 20 contra 22);
-    el peor caso hoy es 24.67 %. Lo que NO puede pasar es cobrar por debajo del costo ni que
+    recargo fijo el margen baja unas décimas del 25 % de la fórmula en cinco celdas (Veo 3.1
+    Fast de 6 s con 2 o 3 imágenes, Veo Lite de 4 s con 3 imágenes y, desde el 13-oct-2026,
+    Grok Imagine Video de 8 s con 2 o 3 imágenes: 52 créditos contra 53); el peor caso hoy es
+    24.62 % (Grok Video, 8 s, 3 imágenes: $0.588 dólares contra $0.78 de piso de venta). Lo que NO puede pasar es cobrar por debajo del costo ni que
     el margen se hunda: si alguien toca los números o el recargo, esto salta."""
     from pipeline import clip, creditos
     peor = Fraction(1)

@@ -1,7 +1,7 @@
 """R4 · Ola 4 — los clips de otras familias: MiniMax H3 Max Turbo (`h3t`), Grok Imagine Video (`grokv`),
 Grok Imagine Video 1.5 Lite (`grokl`, 12-oct-2026), LTX-2.5 Fast (`ltx`), Kling V3 Pro (`kling`) y Seedance 2.0 (`seed`).
 
-Cada uno nace INERTE: tiene fila (`pipeline/modelos_ia.py`), adaptador de argumentos
+Cada uno nace INERTE (MiniMax, Grok Video y Grok Lite se encendieron el 13-oct-2026, ver la sección F): tiene fila (`pipeline/modelos_ia.py`), adaptador de argumentos
 (`pipeline/clip_familias.py`) y ficha de costo LEÍDA (`tools/pricing.json`), pero ningún número en
 `tools/tarifas.json`, así que el servidor lo conoce y no lo ofrece (422 antes de cobrar).
 
@@ -13,7 +13,8 @@ Lo que este archivo defiende:
     (`tests/fixtures/esquemas_fal_ola4.json`, leído el 12-oct-2026; el de Lite en `esquemas_fal_grok_lite.json`);
   * que el costo sale de los MISMOS argumentos que se mandan (la resolución de MiniMax va en mayúscula y una
     resolución que la ficha no trae es «sin costo conocido», nunca el precio de la de al lado);
-  * que siguen inertes: sin número no hay venta.
+  * que los tres encendidos cobran el número que dijo el dueño (y la fórmula lo reproduce) y que los tres que siguen
+    inertes no se venden: sin número no hay venta.
 
 Sin red: fal mockeado. OJO: nada de importar pipeline/server a nivel de módulo (ver test_m25_clip)."""
 import asyncio
@@ -310,7 +311,8 @@ def test_la_resolucion_por_defecto_de_fal_no_es_la_que_se_cobra_o_se_manda_expli
 # D · el costo sale de los mismos argumentos
 
 # DATOS-FAL §7 (4 s; LTX, 6 s) y la tabla de cada ficha para el resto de las duraciones
-USD = {"h3t": {4: 0.096, 6: 0.144, 8: 0.192}, "grokv": {4: 0.28, 6: 0.42, 8: 0.56},
+# MiniMax lleva la tarifa de DESPUÉS de su promoción ($0.04 dólares por segundo a 768P; con la promoción, hasta el 15-oct, es $0.024)
+USD = {"h3t": {4: 0.16, 6: 0.24, 8: 0.32}, "grokv": {4: 0.28, 6: 0.42, 8: 0.56},
        "grokl": {4: 0.12, 6: 0.18, 8: 0.24},
        "ltx": {6: 0.54, 8: 0.72}, "kling": {4: 0.672, 6: 1.008, 8: 1.344},
        "seed": {4: 1.2136, 6: 1.8204, 8: 2.4272}}
@@ -331,7 +333,7 @@ def test_seedance_cobra_distinto_en_imagen_a_video():
 
 def test_grok_cobra_un_extra_por_la_imagen_de_entrada_del_image_to_video():
     """El panel de fal (12-oct-2026) cobró 0.28 dólares en texto a video y 0.282 en imagen a video de la base (4 s a
-    720p): 0.002 por la imagen. Lite lo trae en su página: 0.01 por cada imagen de entrada."""
+    720p): 0.002 por la imagen. Lite, en el mismo panel: $0.12 y $0.13 (0.01 por cada imagen de entrada)."""
     from pipeline import clip
     assert clip.costo_usd(0, "grokv", 4) == pytest.approx(0.28, abs=1e-4)
     assert clip.costo_usd(1, "grokv", 4) == pytest.approx(0.282, abs=1e-4)
@@ -343,27 +345,31 @@ def test_grok_cobra_un_extra_por_la_imagen_de_entrada_del_image_to_video():
     assert clip.costo_usd(1, "h3t", 4) == pytest.approx(clip.costo_usd(0, "h3t", 4), abs=1e-4)
 
 
-def test_minimax_se_cobra_por_los_segundos_pedidos_y_no_por_los_entregados():
-    """Panel de fal, 12-oct-2026: 0.096 dólares por cada clip (texto a video e imagen a video). Se pidieron 4 s a
-    768P ($0.024 por segundo, en promoción hasta el 15-oct): 4 × 0.024. Los 4.48 s del archivo habrían sido 0.1075."""
+def test_minimax_se_cobra_por_los_segundos_pedidos_y_la_ficha_lleva_la_tarifa_de_despues_de_la_promocion():
+    """Panel de fal, 12-oct-2026: $0.096 dólares por cada clip de 4 s a 768P (texto a video e imagen a video) = 4 × $0.024,
+    la tarifa en promoción (−40 %) hasta el 15-oct. Se cobra por los segundos PEDIDOS: los 4.48 s del archivo habrían sido
+    $0.1075. La ficha lleva la de DESPUÉS de la promoción ($0.04), con la que se calcularon los créditos (16, 22 y 30)."""
     from pipeline import clip
-    assert clip.costo_usd(0, "h3t", 4) == clip.costo_usd(1, "h3t", 4) == pytest.approx(0.096, abs=1e-4)
-    assert abs(clip.costo_usd(0, "h3t", 4) - 4.48 * 0.024) > 0.01
+    PROMOCION, DESPUES, ENTREGADOS = 0.024, 0.04, 4.48
+    assert 4 * PROMOCION == pytest.approx(0.096) and abs(ENTREGADOS * PROMOCION - 0.096) > 0.01   # lo medido NO es por entregados
+    assert clip.costo_usd(0, "h3t", 4) == clip.costo_usd(1, "h3t", 4) == pytest.approx(4 * DESPUES, abs=1e-4)
+    for segundos in (4, 6, 8):                                       # y sigue siendo lineal en los segundos pedidos
+        assert clip.costo_usd(0, "h3t", segundos) == pytest.approx(segundos * DESPUES, abs=1e-4)
 
 
 def test_componer_dos_o_tres_imagenes_suma_lo_de_grok_a_cualquier_modelo():
     from pipeline import clip
     assert clip.costo_usd(3, "kling", 4) == pytest.approx(0.672 + 0.02 + 3 * 0.002, abs=1e-4)
-    assert clip.costo_usd(2, "h3t", 8) == pytest.approx(0.192 + 0.02 + 2 * 0.002, abs=1e-4)
+    assert clip.costo_usd(2, "h3t", 8) == pytest.approx(0.32 + 0.02 + 2 * 0.002, abs=1e-4)
     # y el extra de la imagen de entrada de Grok Lite se suma UNA vez (la compuesta es una sola imagen)
     assert clip.costo_usd(3, "grokl", 4) == pytest.approx(0.12 + 0.01 + 0.02 + 3 * 0.002, abs=1e-4)
 
 
 def test_una_resolucion_que_la_ficha_no_trae_es_sin_costo_conocido_y_no_el_precio_de_otra():
-    """MiniMax se cobra por «768P»: con «768p» minúscula o con «720p» (la de Veo) no hay precio, no 0.024."""
+    """MiniMax se cobra por «768P»: con «768p» minúscula o con «720p» (la de Veo) no hay precio, no 0.04."""
     from pipeline.pricing import costo_fal
     t2v = NUEVOS["h3t"][0]
-    assert costo_fal(t2v, {"duration": 4, "resolution": "768P"}) == pytest.approx(0.096)
+    assert costo_fal(t2v, {"duration": 4, "resolution": "768P"}) == pytest.approx(0.16)
     assert costo_fal(t2v, {"duration": 4, "resolution": "768p"}) is None
     assert costo_fal(t2v, {"duration": 4, "resolution": "720p"}) is None
     assert costo_fal(NUEVOS["ltx"][0], {"duration": "6", "resolution": "999p"}) is None
@@ -381,7 +387,7 @@ def test_las_fichas_nuevas_dicen_que_son_lecturas_de_la_pagina_y_su_fecha():
     datos = json.loads((RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8"))["generacion"]["endpoints"]
     for id_, (t2v, i2v, *_resto) in NUEVOS.items():
         for endpoint in (t2v, i2v):
-            fecha = "2026-10-12" if id_ == "grokl" else "2026-10-08"       # Lite se leyó después de la prueba pagada
+            fecha = "2026-10-12" if id_ in ("grokl", "h3t") else "2026-10-08"    # Lite y la tarifa de MiniMax (después de la promoción) se leyeron el 12-oct
             assert datos[endpoint]["unidad"] == "segundo" and datos[endpoint]["verified_on"] == fecha, endpoint
     nota = datos["nota_ola4"]
     assert "INERTES" in nota and "LEÍDO" in nota and "1.5" in nota and "PEDIDOS" in nota
@@ -390,13 +396,15 @@ def test_las_fichas_nuevas_dicen_que_son_lecturas_de_la_pagina_y_su_fecha():
 
 
 def test_las_fichas_de_grok_dicen_el_extra_por_imagen_y_las_de_minimax_su_promocion():
+    """(Las de MiniMax llevan la tarifa de después de la promoción y la nota dice cuál era la de la prueba.)"""
     datos = json.loads((RAIZ / "tools" / "pricing.json").read_text(encoding="utf-8"))["generacion"]["endpoints"]
     assert datos[NUEVOS["grokv"][1]]["usd_imagen_entrada"] == 0.002 and "usd_imagen_entrada" not in datos[NUEVOS["grokv"][0]]
     assert datos[NUEVOS["grokl"][1]]["usd_imagen_entrada"] == 0.01 and "usd_imagen_entrada" not in datos[NUEVOS["grokl"][0]]
     for endpoint in NUEVOS["grokl"][:2]:
         assert datos[endpoint]["usd_por_segundo"] == {"480p": 0.02, "720p": 0.03, "1080p": 0.14}
     for endpoint in NUEVOS["h3t"][:2]:
-        assert "15-oct-2026" in datos[endpoint]["nota_promocion"] and "0.04" in datos[endpoint]["nota_promocion"]
+        assert "15-oct-2026" in datos[endpoint]["nota_promocion"] and "0.024" in datos[endpoint]["nota_promocion"]
+        assert datos[endpoint]["usd_por_segundo"] == {"480P": 0.025, "768P": 0.04, "1080P": 0.08}
 
 
 def test_las_unidades_de_uso_para_langfuse_son_los_segundos_pedidos():
@@ -478,8 +486,18 @@ def _tarifas() -> dict:
     return json.loads((RAIZ / "tools" / "tarifas.json").read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("id_", sorted(NUEVOS))
-def test_ninguno_de_los_seis_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(id_):
+# MiniMax, Grok Video y Grok Lite se encendieron el 13-oct-2026 (decisión del dueño, tras su prueba pagada y el cobro del
+# panel de fal); LTX, Kling y Seedance siguen inertes. Créditos a 4, 6 y 8 s.
+ENCENDIDOS_OLA4 = {"h3t": {4: 16, 6: 22, 8: 30}, "grokv": {4: 26, 6: 38, 8: 50}, "grokl": {4: 12, 6: 18, 8: 24}}
+INERTES_OLA4 = sorted(set(NUEVOS) - set(ENCENDIDOS_OLA4))
+
+
+def test_los_tres_inertes_que_quedan_son_ltx_kling_y_seedance():
+    assert INERTES_OLA4 == ["kling", "ltx", "seed"]
+
+
+@pytest.mark.parametrize("id_", INERTES_OLA4)
+def test_ninguno_de_los_tres_inertes_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(id_):
     from pipeline import creditos
     assert id_ not in _tarifas()["modelos"]["clip"]
     for segundos in NUEVOS[id_][3]:
@@ -487,11 +505,44 @@ def test_ninguno_de_los_seis_tiene_numero_en_tarifas_y_el_servidor_los_rechaza(i
             creditos.costo_modelo("clip", id_, segundos)
 
 
-def test_el_catalogo_de_la_web_los_deja_apagados():
+@pytest.mark.parametrize("id_", sorted(ENCENDIDOS_OLA4))
+def test_los_encendidos_tienen_sus_numeros_y_el_servidor_los_cobra(id_):
+    from pipeline import creditos
+    tabla = ENCENDIDOS_OLA4[id_]
+    assert _tarifas()["modelos"]["clip"][id_] == {str(s): c for s, c in tabla.items()}
+    assert set(tabla) == set(NUEVOS[id_][3])                               # un número por cada duración que admite
+    for segundos, cr in tabla.items():
+        assert creditos.costo_modelo("clip", id_, segundos) == cr
+        assert creditos.costo_clip(0, id_, segundos) == cr
+        assert creditos.costo_clip(1, id_, segundos) == cr                  # una imagen: imagen a video, mismo número
+        assert creditos.costo_clip(2, id_, segundos) == cr + 2              # componer 2 o 3 imágenes suma 2
+    assert creditos.costo_modelo("clip", id_) == tabla[8]                  # sin duración, la de siempre: 8 s
+
+
+@pytest.mark.parametrize("id_", sorted(ENCENDIDOS_OLA4))
+def test_los_creditos_de_los_encendidos_son_los_de_la_formula(id_):
+    """costo ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par, sobre el MÁS CARO de texto a video e imagen a video (un solo
+    número por duración cubre los dos): 16, 22 y 30 para MiniMax a $0.04 dólares por segundo (con los $0.024 de la promoción
+    habrían sido 10, 14 y 18), 26, 38 y 50 para Grok y 12, 18 y 24 para Lite. Lo cobrado deja al menos el 25 % de margen en
+    los dos; se calcula con fracciones para no caer en los flotantes."""
+    import math
+    from fractions import Fraction
+    from pipeline import clip
+    piso = Fraction(str(_tarifas()["economia"]["piso_venta_usd_por_credito"]))
+    for segundos, cr in ENCENDIDOS_OLA4[id_].items():
+        usds = [Fraction(str(clip.costo_usd(n, id_, segundos))) for n in (0, 1)]
+        n = math.ceil(max(usds) / Fraction(3, 4) / piso)
+        n += n % 2
+        assert n == cr, (segundos, n)
+        for usd in usds:
+            assert usd <= Fraction(3, 4) * cr * piso, (segundos, usd)
+
+
+def test_el_catalogo_de_la_web_deja_apagados_a_los_inertes_y_enciende_a_los_tres():
     texto = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "modelos.ts").read_text(encoding="utf-8")
     for id_ in NUEVOS:
         linea = next(l for l in texto.splitlines() if f"id: '{id_}'" in l)
-        assert "activo: false" in linea, id_
+        assert ("activo: true" if id_ in ENCENDIDOS_OLA4 else "activo: false") in linea, id_
 
 
 # ---------------------------------------------------------------------------

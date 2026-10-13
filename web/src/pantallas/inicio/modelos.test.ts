@@ -106,14 +106,16 @@ describe('modelos.ts y tarifas.json', () => {
   });
 
   it('inicio.modelos.lo_que_esta_a_la_venta_hoy', () => {
-    // el estado del 12-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
+    // el estado del 13-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
     // el 11-oct entraron para crear imágenes FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash,
     // Seedream 4.5 y FLUX 3 (ninguno edita), y el 12-oct Nano Banana Pro (dos calidades, solo crear: no edita
-    // todavía). Veo 3.1 Standard sigue apagado. Si esto cambia, que sea a propósito (y con su número en tarifas.json).
+    // todavía), y el 13-oct, para el clip, MiniMax H3 Max Turbo (16, 22 y 30 créditos), Grok Imagine Video (26, 38 y 50) y
+    // Grok Imagine Video 1.5 Lite (12, 18 y 24). Veo 3.1 Standard y los otros tres clips de la Ola 4 (LTX, Kling y
+    // Seedance) siguen apagados. Si esto cambia, que sea a propósito (y con su número en tarifas.json).
     const activos = (t: Tarea) => CATALOGO[t].filter(m => m.activo).map(m => m.id);
     expect(activos('imagen')).toEqual(['grok', 'klein', 'zit', 'flux2', 'sdf', 'sd45', 'flux3', 'nb2', 'nbp']);
     expect(activos('editar')).toEqual(['grok', 'nb2']);
-    expect(activos('clip')).toEqual(['veo-lite', 'veo-fast']);
+    expect(activos('clip')).toEqual(['h3t', 'veo-lite', 'grokv', 'grokl', 'veo-fast']);
   });
 
   it('inicio.modelos.por_nivel_y_de_menor_a_mayor_precio', () => {
