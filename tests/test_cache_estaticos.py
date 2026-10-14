@@ -64,9 +64,22 @@ def test_el_html_revalida_y_no_se_cachea_en_el_borde(cliente, ruta):
 
 @pytest.mark.parametrize("ruta", ["/", "/entrar", "/estudio/"])
 def test_las_rutas_de_entrada_siguen_en_no_cache(cliente, ruta):
-    r = cliente.get(ruta, follow_redirects=False)
+    # /estudio/ con la cookie de la clásica: el inicio está en `todos` y sin
+    # ella responde 302 (el test de abajo)
+    cookie = {"Cookie": "ui=clasica"} if ruta == "/estudio/" else {}
+    r = cliente.get(ruta, headers=cookie, follow_redirects=False)
     assert r.status_code == 200, ruta
     assert r.headers["cache-control"] == "no-cache", ruta
+
+
+def test_el_302_del_estudio_no_se_queda_en_cache(cliente):
+    """Cuando /estudio/ redirige al inicio nuevo, el 302 no se guarda: volver
+    a `nueva` llega en la siguiente carga (server/migracion.py)."""
+    if not any(getattr(r, "path", "") == "/estudio/inicio" for r in cliente.app.routes):
+        pytest.skip("web/dist no está compilado: sin la pantalla nueva no hay 302")
+    r = cliente.get("/estudio/", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
+    assert r.headers["cache-control"] == "no-store"
 
 
 def test_los_versionados_siguen_inmutables(cliente):

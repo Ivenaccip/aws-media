@@ -138,7 +138,7 @@ INVARIANTES = {
         "inicio.caja.dos_pedidos_seguidos_con_la_primera_lectura_degradada_no_dejan_tarjetas_de_mas",
         "inicio.caja.un_pedido_que_el_servidor_rechazo_no_deja_su_tarjeta_aunque_la_lista_no_llegue",
         "inicio.caja.editar_pide_la_imagen_con_el_mas",
-        "inicio.caja.editar_manda_nano_banana_2",
+        "inicio.caja.editar_no_ofrece_nano_banana_2",
         "inicio.caja.el_mas_agrega_quita_y_respeta_el_tope",
         "inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas",
         "inicio.caja.arrastrar_imagenes_a_la_caja_las_agrega",

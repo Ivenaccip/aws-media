@@ -60,6 +60,11 @@ const CLIP_PRUEBA: Precios = {
 const encendidos = (c: Record<Tarea, Modelo[]>) =>
   Object.fromEntries(TAREAS.map(t => [t, c[t].map(m => ({ ...m, activo: true }))])) as Record<Tarea, Modelo[]>;
 
+// Activos en el catálogo y apagados A PROPÓSITO quitándoles su número de tarifas.json (sin número la caja no los
+// ofrece y el servidor responde 422): el espejo de APAGADOS en tests/test_r4_modelos_servidor.py. 14-oct-2026,
+// decisión del dueño: editar con Nano Banana 2 pasaba de los 29 s de la Lambda (docs/OPERACION.md).
+const APAGADOS = new Set(['editar:nb2']);
+
 describe('modelos.ts y tarifas.json', () => {
   it('inicio.modelos.cada_modelo_activo_tiene_precio_y_cada_precio_su_modelo', () => {
     for (const t of TAREAS) {
@@ -67,7 +72,10 @@ describe('modelos.ts y tarifas.json', () => {
       expect(activos.length, `ninguna oferta en ${t}`).toBeGreaterThan(0);
       for (const m of activos) {
         const llaves = m.calidades ? m.calidades.map(c => llavePrecio(m.id, c.id)) : [m.id];
-        for (const k of llaves) expect(modelos[t as keyof typeof modelos], `${t}:${k}`).toHaveProperty(k);
+        for (const k of llaves) {
+          if (APAGADOS.has(`${t}:${k}`)) expect(modelos[t as keyof typeof modelos], `${t}:${k} apagado`).not.toHaveProperty(k);
+          else expect(modelos[t as keyof typeof modelos], `${t}:${k}`).toHaveProperty(k);
+        }
       }
       // y al revés: un número en tarifas.json sin modelo activo es un precio huérfano
       const llaves = activos.flatMap(m => (m.calidades ? m.calidades.map(c => llavePrecio(m.id, c.id)) : [m.id]));
@@ -110,15 +118,19 @@ describe('modelos.ts y tarifas.json', () => {
   });
 
   it('inicio.modelos.lo_que_esta_a_la_venta_hoy', () => {
-    // el estado del 13-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
+    // el estado del 14-oct-2026: Nano Banana 2 y Veo 3.1 Fast se encendieron el 9-oct tras la prueba pagada;
     // el 11-oct entraron para crear imágenes FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash,
     // Seedream 4.5 y FLUX 3 (ninguno edita), y el 12-oct Nano Banana Pro (dos calidades, solo crear: no edita
     // todavía), y el 13-oct, para el clip, MiniMax H3 Max Turbo (16, 22 y 30 créditos), Grok Imagine Video (26, 38 y 50) y
     // Grok Imagine Video 1.5 Lite (12, 18 y 24). Veo 3.1 Standard y los otros tres clips de la Ola 4 (LTX, Kling y
-    // Seedance) siguen apagados. Si esto cambia, que sea a propósito (y con su número en tarifas.json).
+    // Seedance) siguen apagados; el 14-oct Nano Banana 2 dejó de venderse para editar (APAGADOS, arriba: sigue en
+    // el catálogo, sin número). Si esto cambia, que sea a propósito (y con su número en tarifas.json).
     const activos = (t: Tarea) => CATALOGO[t].filter(m => m.activo).map(m => m.id);
     expect(activos('imagen')).toEqual(['grok', 'klein', 'zit', 'flux2', 'sdf', 'sd45', 'flux3', 'nb2', 'nbp']);
     expect(activos('editar')).toEqual(['grok', 'nb2']);
+    // 14-oct-2026: Nano Banana 2 sigue en el catálogo de editar pero sin número en tarifas.json (decisión del
+    // dueño): la caja no lo ofrece y el servidor lo rechaza. A la venta para editar, solo Grok
+    expect(activos('editar').filter(id => precioDe('editar', id) !== null)).toEqual(['grok']);
     expect(activos('clip')).toEqual(['h3t', 'veo-lite', 'grokv', 'grokl', 'veo-fast']);
   });
 

@@ -781,7 +781,9 @@ def test_si_fal_falla_se_devuelven_los_creditos(cliente, espia, imagenes_al_disc
 def test_los_modelos_de_antes_no_se_movieron():
     from pipeline import creditos
     assert creditos.costo_modelo("imagen", "grok") == 2
-    assert creditos.costo_modelo("imagen", "nb2") == creditos.costo_modelo("editar", "nb2") == 8
+    assert creditos.costo_modelo("imagen", "nb2") == 8
     assert creditos.costo_modelo("editar", "grok") == 2
+    # editar con Nano Banana 2 se apagó el 14-oct-2026 (tests/test_r4_ola1.py, INERTES)
+    assert "nb2" not in creditos.MODELOS_CR["editar"]
     assert [creditos.costo_modelo("clip", "veo-lite", s) for s in (4, 6, 8)] == [18, 28, 36]
     assert [creditos.costo_modelo("clip", "veo-fast", s) for s in (4, 6, 8)] == [54, 80, 108]
