@@ -6,12 +6,21 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clip, modelos, video } from '../../nucleo/tarifas';
+import { guardarArchivos } from '../../nucleo/traspaso';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Biblioteca } from './Biblioteca';
 import { Inicio } from './Inicio';
-import type { ClipCorto, Edicion, EstadoBlotato, Imagen, PedidoImagen, Proyecto } from './logica';
+import { destinoDe, OPCIONES, type ClipCorto, type Edicion, type EstadoBlotato, type Imagen, type PedidoImagen, type Proyecto } from './logica';
 import { CATALOGO, PRECIOS } from './modelos';
+
+// La caja le deja la foto del personaje a Crear por nucleo/traspaso (IndexedDB, que jsdom no trae). Aquí se envuelve la
+// real —los demás tests la siguen usando tal cual— y los de la foto del personaje le ponen la respuesta que necesiten.
+// El traspaso de verdad se prueba en nucleo/traspaso.test.ts.
+vi.mock('../../nucleo/traspaso', async importOriginal => {
+  const real = await importOriginal<typeof import('../../nucleo/traspaso')>();
+  return { ...real, guardarArchivos: vi.fn(real.guardarArchivos) };
+});
 
 const P1: Proyecto = {
   id: 'p1',
@@ -112,6 +121,7 @@ function pintar() {
 
 beforeEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(guardarArchivos).mockReset();
   ir = vi.fn<(url: string) => void>();
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
   history.replaceState(null, '', '/estudio/inicio/');
@@ -871,10 +881,12 @@ describe('la caja', () => {
   it('inicio.caja.el_mas_agrega_quita_y_respeta_el_tope', async () => {
     const { container } = (montar(), pintar());
     expect(screen.getByRole('button', { name: 'Agregar imágenes de referencia' })).toBeInTheDocument();
-    // «Crear una historia» no usa imágenes: no hay «+»
-    await elegirOpcion('Crea tu historia');
-    expect(screen.queryByRole('button', { name: /Agregar/ })).toBeNull();
-    await elegirOpcion('Un video corto');
+    // «Edición» no usa imágenes: su «+» es del video, y el de imágenes no está (cuentos e historias SÍ lo tienen:
+    // dueño, 14-oct-2026; ver inicio.caja.cuentos_e_historia_tienen_el_mas...)
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    expect(screen.queryByRole('button', { name: /^Agregar (imágenes|una imagen|la imagen|la foto)/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
     await userEvent.upload(entradaDeFotos(container), [foto('a.png'), foto('b.png'), foto('c.png'), foto('d.png')]);
     const lista = screen.getByRole('list', { name: 'Imágenes de referencia' });
     expect(within(lista).getAllByRole('listitem')).toHaveLength(3);
@@ -1060,10 +1072,11 @@ describe('la caja', () => {
   it('inicio.caja.pegar_solo_agrega_donde_la_caja_usa_imagenes_y_a_la_vista', async () => {
     montar();
     const { container } = pintar();
-    // cuentos e historias no usan imágenes
-    await elegirOpcion('Crea tu historia');
-    expect(pegar(caja(), { archivos: [foto('image.png')] })).toBe(true);
-    await elegirOpcion('Un video corto');
+    // «Edición» no usa imágenes (lo que se pega ahí es de su campo; el video se agrega con su «+»)
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
     expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
     // en otro campo de la página (la clave de Blotato…) lo pegado es de ese campo
     const otro = document.createElement('input');
@@ -1478,7 +1491,10 @@ describe('la caja', () => {
     pintar();
     expect(caja()).toHaveAttribute('placeholder', expect.stringContaining('mi perro corriendo'));
     await elegirOpcion('Crea tu historia');
-    expect(caja()).toHaveAttribute('placeholder', 'Pega tu historia completa — la respetamos como la escribiste.');
+    expect(caja()).toHaveAttribute(
+      'placeholder',
+      'Pega tu historia completa — la respetamos como la escribiste. Con el + puedes agregar la foto de tu personaje.',
+    );
   });
 
   it('inicio.caja.desplegable_con_teclado', async () => {
@@ -1521,6 +1537,332 @@ describe('la caja', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
     await userEvent.click(screen.getByRole('button', { name: 'Video' }));
     expect(botonOpcion()).toHaveTextContent('Un video corto');
+  });
+});
+
+// Cuentos e historias llevan «+» para la foto del personaje (dueño, 14-oct-2026). La foto se deja en el navegador y
+// «Crear» navega con `refs=<token>`; Crear la recoge (crear/Crear.test.tsx).
+describe('la caja · la foto del personaje en cuentos e historias', () => {
+  const TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+  const diferido = <T,>() => {
+    let resolver!: (v: T) => void;
+    const promesa = new Promise<T>(r => (resolver = r));
+    return { promesa, resolver };
+  };
+  const listaDelPersonaje = () => screen.getByRole('list', { name: 'Foto de tu personaje' });
+  const sinListaDelPersonaje = () => expect(screen.queryByRole('list', { name: 'Foto de tu personaje' })).toBeNull();
+  // lo que NO es del personaje: Edición, donde el «+» es del video
+  const botonesDeImagenes = () => screen.queryAllByRole('button', { name: /^Agregar (imágenes|una imagen|la imagen|la foto)/ });
+
+  it('inicio.caja.cuentos_e_historia_tienen_el_mas_con_textos_de_la_foto_del_personaje', async () => {
+    montar();
+    const { container } = pintar();
+    // las que ya lo tenían dicen lo de siempre, carácter por carácter
+    const clipMas = screen.getByRole('button', { name: 'Agregar imágenes de referencia' });
+    expect(clipMas).toHaveAttribute('title', 'Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V');
+    expect(entradaDeFotos(container)).toHaveAttribute('multiple');
+    // cuentos
+    await elegirOpcion('Creador de cuentos');
+    const mas = screen.getByRole('button', { name: 'Agregar la foto de tu personaje' });
+    expect(mas).toHaveAttribute('title', 'Agrega la foto de tu personaje, arrástrala a la caja o pégala con Ctrl+V');
+    expect(botonesDeImagenes()).toHaveLength(1);
+    expect(entradaDeFotos(container)).not.toHaveAttribute('multiple'); // UNA foto: el motor solo usa la primera
+    expect(caja()).toHaveAttribute('placeholder', expect.stringContaining('Con el + puedes agregar la foto de tu personaje.'));
+    await userEvent.click(botonOpcion());
+    expect(screen.getByRole('option', { name: /Creador de cuentos/ })).toHaveTextContent('Con el + puedes agregar la foto de tu personaje.');
+    expect(screen.getByRole('option', { name: /Crea tu historia/ })).toHaveTextContent('Con el + puedes agregar la foto de tu personaje.');
+    // las demás opciones NO lo dicen
+    expect(screen.getByRole('option', { name: /Un video corto/ })).not.toHaveTextContent('foto de tu personaje');
+    await userEvent.keyboard('{Escape}');
+    // historia
+    await elegirOpcion('Crea tu historia');
+    expect(screen.getByRole('button', { name: 'Agregar la foto de tu personaje' })).toBeInTheDocument();
+    expect(caja()).toHaveAttribute('placeholder', expect.stringContaining('Con el + puedes agregar la foto de tu personaje.'));
+    // y las de imagen conservan sus textos
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(screen.getByRole('button', { name: 'Agregar una imagen para editarla' })).toHaveAttribute(
+      'title',
+      'Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V',
+    );
+    await elegirOpcion('Editar una imagen');
+    expect(screen.getByRole('button', { name: 'Agregar la imagen que quieres editar' })).toBeInTheDocument();
+    expect(caja()).not.toHaveAttribute('placeholder', expect.stringContaining('personaje'));
+    // Edición no usa imágenes: ahí el «+» es del video
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    expect(botonesDeImagenes()).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Agregar el video que quieres editar' })).toBeInTheDocument();
+  });
+
+  it('inicio.caja.la_foto_del_personaje_se_agrega_se_reemplaza_se_quita_y_viaja_con_la_opcion', async () => {
+    montar();
+    const { container } = pintar();
+    await elegirOpcion('Creador de cuentos');
+    sinListaDelPersonaje();
+    await userEvent.upload(entradaDeFotos(container), foto('perro.png'));
+    expect(within(listaDelPersonaje()).getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
+    // una segunda REEMPLAZA a la primera (tope 1), sin decir «Como mucho»
+    await userEvent.upload(entradaDeFotos(container), foto('gato.jpg', 'image/jpeg'));
+    expect(within(listaDelPersonaje()).getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Quitar «gato.jpg»' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Quitar «perro.png»' })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    // cambiar de opción la conserva (en historia, y en el clip como una de sus referencias) y al volver sigue ahí
+    await elegirOpcion('Crea tu historia');
+    expect(screen.getByRole('button', { name: 'Quitar «gato.jpg»' })).toBeInTheDocument();
+    await elegirOpcion('Un video corto');
+    expect(within(screen.getByRole('list', { name: 'Imágenes de referencia' })).getAllByRole('listitem')).toHaveLength(1);
+    await elegirOpcion('Creador de cuentos');
+    expect(screen.getByRole('button', { name: 'Quitar «gato.jpg»' })).toBeInTheDocument();
+    // quitarla la saca
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar «gato.jpg»' }));
+    sinListaDelPersonaje();
+  });
+
+  it('inicio.caja.una_foto_que_no_sirve_se_rechaza_con_la_regla_del_editor_y_lo_dice_en_el_cuadro', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    const { container } = pintar();
+    await elegirOpcion('Crea tu historia');
+    const dicho = () => avisos.mostrar.mock.calls.at(-1);
+    // HEIC, GIF y AVIF los lee el clip pero NO el editor: aquí rige la lista más conservadora (JPG, PNG o WebP)
+    for (const [nombre, tipo] of [
+      ['selfie.heic', 'image/heic'],
+      ['animada.gif', 'image/gif'],
+      ['foto.avif', 'image/avif'],
+      ['nota.txt', 'image/png'],
+    ] as const) {
+      await userEvent.upload(entradaDeFotos(container), foto(nombre, tipo));
+      expect(dicho()![0]).toBe(`«${nombre}» no se puede usar. Sirven: .jpg, .jpeg, .png, .webp.`);
+      expect(dicho()![1]).toEqual({ tipo: 'mal', clave: 'caja' });
+      sinListaDelPersonaje();
+    }
+    // el peso: más de 15 MB
+    const grande = foto('enorme.png');
+    Object.defineProperty(grande, 'size', { value: 15 * 1024 * 1024 + 1 });
+    await userEvent.upload(entradaDeFotos(container), grande);
+    expect(dicho()![0]).toBe('«enorme.png» pesa demasiado (máximo 15 MB).');
+    sinListaDelPersonaje();
+    // y una buena después entra y se lleva el aviso
+    await userEvent.upload(entradaDeFotos(container), foto('buena.webp', 'image/webp'));
+    expect(screen.getByRole('button', { name: 'Quitar «buena.webp»' })).toBeInTheDocument();
+    expect(avisos.quitar).toHaveBeenCalledWith('caja');
+    // nada de eso junto a la caja
+    expect(screen.queryByRole('alert')).toBeNull();
+    // arrastrada o pegada, la misma regla
+    avisos.mostrar.mockClear();
+    fireEvent.drop(caja().closest('section')!, { dataTransfer: { files: [foto('arrastrada.gif', 'image/gif')], types: ['Files'] } });
+    expect(dicho()![0]).toContain('«arrastrada.gif» no se puede usar');
+    fireEvent.paste(caja(), { clipboardData: { files: [foto('pegada.heic', 'image/heic')], items: [], getData: () => '' } });
+    expect(dicho()![0]).toContain('«pegada.heic» no se puede usar');
+    expect(screen.getByRole('button', { name: 'Quitar «buena.webp»' })).toBeInTheDocument(); // la buena sigue
+  });
+
+  it('inicio.caja.la_foto_del_personaje_se_arrastra_y_se_pega', async () => {
+    montar();
+    pintar();
+    await elegirOpcion('Creador de cuentos');
+    const seccion = caja().closest('section')!;
+    // un archivo que se arrastra pinta el borde de «suelta aquí» y, al soltarlo, queda de foto
+    expect(fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['Files'] } })).toBe(false);
+    expect(seccion).toHaveClass('border-dashed');
+    fireEvent.drop(seccion, { dataTransfer: { files: [foto('arrastrada.png')], types: ['Files'] } });
+    expect(await screen.findByRole('button', { name: 'Quitar «arrastrada.png»' })).toBeInTheDocument();
+    expect(within(listaDelPersonaje()).getAllByRole('listitem')).toHaveLength(1);
+    // un texto que se mueve dentro de la caja no se corta
+    expect(fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['text/plain'] } })).toBe(true);
+    // pegar con Ctrl+V la reemplaza (en historia)
+    await elegirOpcion('Crea tu historia');
+    expect(fireEvent.paste(caja(), { clipboardData: { files: [foto('image.png')], items: [], getData: () => '' } })).toBe(false);
+    expect(await screen.findByRole('button', { name: 'Quitar «imagen-pegada.png»' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Quitar «arrastrada.png»' })).toBeNull();
+    // un texto pegado sigue siendo texto
+    expect(fireEvent.paste(caja(), { clipboardData: { files: [], items: [], getData: () => 'mi historia' } })).toBe(true);
+  });
+
+  it('inicio.caja.crear_con_foto_la_deja_en_el_navegador_y_navega_con_refs_sin_cobrar_ni_vaciar', async () => {
+    const f = montar();
+    const { container } = pintar();
+    // el clip trae dos fotos; en historia solo cabe la primera, y SOLO esa viaja
+    await userEvent.upload(entradaDeFotos(container), [foto('uno.png'), foto('dos.png')]);
+    await elegirOpcion('Crea tu historia');
+    await userEvent.type(caja(), '  Mi historia  ');
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(TOKEN);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(1));
+    expect(ir).toHaveBeenCalledWith('/estudio/crear/?brief=Mi+historia&modo=idea&refs=' + TOKEN);
+    expect(guardarArchivos).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(guardarArchivos).mock.calls[0]![0].map(a => a.name)).toEqual(['uno.png']);
+    // navegar no cobra ni pide nada, y no se vacía ni el texto ni la foto (si regresa con «atrás», ahí siguen)
+    expect(f.mock.calls.filter(c => (c[1]?.method ?? 'GET') !== 'GET')).toEqual([]);
+    expect(caja()).toHaveValue('  Mi historia  ');
+    expect(screen.getByRole('button', { name: 'Quitar «uno.png»' })).toBeInTheDocument();
+    // lo mismo en cuentos, con su modo
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    });
+    await elegirOpcion('Creador de cuentos');
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(TOKEN);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(2));
+    expect(ir).toHaveBeenLastCalledWith('/estudio/crear/?brief=Mi+historia&modo=investigacion&refs=' + TOKEN);
+  });
+
+  it('inicio.caja.crear_con_foto_con_doble_clic_guarda_una_sola_vez_y_navega_una_sola_vez', async () => {
+    montar();
+    const { container } = pintar();
+    await elegirOpcion('Crea tu historia');
+    await userEvent.type(caja(), 'Mi historia');
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    const guardando = diferido<string | null>();
+    vi.mocked(guardarArchivos).mockReturnValueOnce(guardando.promesa);
+    await userEvent.dblClick(enviar());
+    // el candado se puso ANTES de esperar: sigue guardando, el botón trabaja y nadie navegó
+    expect(guardarArchivos).toHaveBeenCalledTimes(1);
+    expect(ir).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Generando…' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Generando…' }));
+    await act(async () => guardando.resolver(TOKEN));
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(1));
+    expect(guardarArchivos).toHaveBeenCalledTimes(1);
+    expect(ir).toHaveBeenCalledWith('/estudio/crear/?brief=Mi+historia&modo=idea&refs=' + TOKEN);
+  });
+
+  it('inicio.caja.sin_foto_la_direccion_es_la_de_siempre_y_no_se_toca_el_navegador', async () => {
+    montar();
+    pintar();
+    await userEvent.type(caja(), 'un gato en la luna');
+    for (const [rotulo, url] of [
+      ['Creador de cuentos', '/crear.html?brief=un+gato+en+la+luna&modo=investigacion'],
+      ['Crea tu historia', '/crear.html?brief=un+gato+en+la+luna&modo=idea'],
+    ] as const) {
+      await elegirOpcion(rotulo);
+      await userEvent.click(enviar());
+      expect(ir).toHaveBeenLastCalledWith(url); // byte a byte la de hoy: ni `refs` ni nada
+      act(() => {
+        window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+      });
+    }
+    expect(guardarArchivos).not.toHaveBeenCalled();
+    // la dirección: `refs` solo si hay token
+    const cuento = OPCIONES.videos.find(o => o.id === 'investigacion')!;
+    const clipOpc = OPCIONES.videos.find(o => o.id === 'clip')!;
+    expect(destinoDe(cuento, 'tema')).toBe('/crear.html?brief=tema&modo=investigacion');
+    expect(destinoDe(cuento, 'tema', undefined, '')).toBe('/crear.html?brief=tema&modo=investigacion');
+    expect(destinoDe(cuento, 'tema', undefined, TOKEN)).toBe('/estudio/crear/?brief=tema&modo=investigacion&refs=' + TOKEN);
+    expect(destinoDe(cuento, 'tema', undefined, 'perdida')).toBe('/estudio/crear/?brief=tema&modo=investigacion&refs=perdida');
+    expect(destinoDe(clipOpc, 'hola', 'kling')).toBe('/clip.html?brief=hola&modelo=kling');
+  });
+
+  it('inicio.caja.si_el_navegador_no_deja_guardar_la_foto_se_navega_igual_con_refs_perdida', async () => {
+    const f = montar();
+    const { container } = pintar();
+    await elegirOpcion('Creador de cuentos');
+    await userEvent.type(caja(), 'Roma');
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    // sin IndexedDB, ventana privada, cuota…: guardarArchivos contesta null
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(null);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(1));
+    expect(ir).toHaveBeenCalledWith('/estudio/crear/?brief=Roma&modo=investigacion&refs=perdida');
+    // y si alguna vez lanzara, lo mismo: la persona nunca se queda sin camino ni con el botón trabajando para siempre
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    });
+    vi.mocked(guardarArchivos).mockRejectedValueOnce(new Error('boom'));
+    await userEvent.click(enviar());
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(2));
+    expect(ir).toHaveBeenLastCalledWith('/estudio/crear/?brief=Roma&modo=investigacion&refs=perdida');
+    expect(f.mock.calls.filter(c => (c[1]?.method ?? 'GET') !== 'GET')).toEqual([]);
+  });
+
+  it('inicio.caja.con_foto_va_directo_a_la_pantalla_nueva_de_crear_sin_pasar_por_crear_html', async () => {
+    // `/crear.html` solo redirige si su etapa lo dice (en `nueva` sirve la pantalla vieja, que ignora `refs`): con foto
+    // la dirección no depende del interruptor. Sin foto es la de siempre, por /crear.html.
+    const cuento = OPCIONES.videos.find(o => o.id === 'investigacion')!;
+    const historia = OPCIONES.videos.find(o => o.id === 'historia')!;
+    expect(destinoDe(cuento, 'tema', undefined, TOKEN)).toMatch(/^\/estudio\/crear\/\?brief=tema&modo=investigacion&refs=/);
+    expect(destinoDe(historia, 'tema', undefined, 'perdida')).toBe('/estudio/crear/?brief=tema&modo=idea&refs=perdida');
+    expect(destinoDe(historia, 'tema')).toBe('/crear.html?brief=tema&modo=idea');
+    // y es la que usa «Crear» de verdad
+    montar();
+    const { container } = pintar();
+    await elegirOpcion('Crea tu historia');
+    await userEvent.type(caja(), 'Mi historia');
+    await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(TOKEN);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(ir).mock.calls[0]![0]).not.toContain('/crear.html');
+    expect(vi.mocked(ir).mock.calls[0]![0]).toMatch(/^\/estudio\/crear\/\?/);
+  });
+
+  it('inicio.caja.una_foto_heredada_del_clip_pasa_por_la_regla_de_editar_antes_de_dejarla_y_navegar', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    const { container } = pintar();
+    // el clip acepta HEIC (hasta 20 MB); el motor de cuentos no: la regla es la de «editar»
+    await userEvent.upload(entradaDeFotos(container), foto('iphone.heic', 'image/heic'));
+    await elegirOpcion('Creador de cuentos');
+    await userEvent.type(caja(), 'Roma');
+    await userEvent.click(enviar());
+    expect(avisos.mostrar.mock.calls.at(-1)![0]).toBe('«iphone.heic» no se puede usar. Sirven: .jpg, .jpeg, .png, .webp.');
+    expect(avisos.mostrar.mock.calls.at(-1)![1]).toEqual({ tipo: 'mal', clave: 'caja' });
+    // ni se dejó en el navegador ni se navegó, y la caja sigue lista (la foto se quita o se reemplaza)
+    expect(guardarArchivos).not.toHaveBeenCalled();
+    expect(ir).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Generando…' })).toBeNull();
+    // reemplazarla por una buena abre el camino
+    await userEvent.upload(entradaDeFotos(container), foto('buena.png'));
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(TOKEN);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(ir).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(guardarArchivos).mock.calls[0]![0].map(a => a.name)).toEqual(['buena.png']);
+  });
+
+  it('inicio.caja.reemplazar_la_foto_del_personaje_no_borra_las_del_clip', async () => {
+    montar();
+    const { container } = pintar();
+    await userEvent.upload(entradaDeFotos(container), [foto('a.png'), foto('b.png'), foto('c.png')]);
+    await elegirOpcion('Creador de cuentos');
+    expect(screen.getByRole('button', { name: 'Quitar «a.png»' })).toBeInTheDocument(); // la primera es la del personaje
+    await userEvent.upload(entradaDeFotos(container), foto('nueva.png'));
+    expect(screen.getByRole('button', { name: 'Quitar «nueva.png»' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Quitar «a.png»' })).toBeNull();
+    // al volver al clip siguen sus otras dos
+    await elegirOpcion('Un video corto');
+    const lista = within(screen.getByRole('list', { name: 'Imágenes de referencia' }));
+    expect(lista.getAllByRole('listitem')).toHaveLength(3);
+    for (const n of ['nueva.png', 'b.png', 'c.png']) expect(lista.getByRole('button', { name: `Quitar «${n}»` })).toBeInTheDocument();
+  });
+
+  it('inicio.caja.una_foto_sin_tipo_se_completa_al_aceptarla_para_que_crear_no_la_descarte', async () => {
+    montar();
+    const { container } = pintar();
+    await elegirOpcion('Crea tu historia');
+    await userEvent.type(caja(), 'Mi historia');
+    // WebP sin registrar en el sistema, o un archivo que viene de Drive: `type` vacío. La caja acepta por extensión, pero
+    // Crear filtra por `type.startsWith('image/')`: sin completarlo allí diría «no alcanzó a llegar» con la foto guardada.
+    const sinTipo = new File(['x'], 'retrato.webp', { type: '' });
+    fireEvent.change(entradaDeFotos(container), { target: { files: [sinTipo] } });
+    expect(await screen.findByRole('button', { name: 'Quitar «retrato.webp»' })).toBeInTheDocument();
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(TOKEN);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(guardarArchivos).toHaveBeenCalledTimes(1));
+    const guardada = vi.mocked(guardarArchivos).mock.calls[0]![0][0]!;
+    expect(guardada.name).toBe('retrato.webp');
+    expect(guardada.type).toBe('image/webp');
+    expect(guardada.type.startsWith('image/')).toBe(true); // lo que pide Crear (sumarArchivos / Formulario)
+    // y una que ya trae tipo viaja tal cual
+    const conTipo = foto('perro.png');
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    });
+    fireEvent.change(entradaDeFotos(container), { target: { files: [conTipo] } });
+    vi.mocked(guardarArchivos).mockResolvedValueOnce(TOKEN);
+    await userEvent.click(enviar());
+    await waitFor(() => expect(guardarArchivos).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(guardarArchivos).mock.calls[1]![0][0]).toBe(conTipo);
   });
 });
 
@@ -1658,6 +2000,36 @@ describe('la hoja «Elegir de Mis creaciones»', () => {
     expect(await screen.findByRole('button', { name: 'Quitar «img-3.jpg»' })).toBeInTheDocument();
     expect(botonOpcion()).toHaveTextContent('Editar una imagen');
     expect(screen.getByRole('status')).toHaveTextContent('pasamos a «Editar una imagen»');
+  });
+
+  it('inicio.biblioteca.en_cuentos_e_historia_el_mas_habla_de_la_foto_del_personaje_y_elige_una', async () => {
+    montar({ imagenes: imagenesDe(4), rutas: archivosDeImagenes(4) });
+    pintar();
+    await esperarLista();
+    await elegirOpcion('Crea tu historia');
+    const mas = botonMas('Agregar la foto de tu personaje');
+    expect(mas).toHaveAttribute('aria-haspopup', 'menu');
+    await userEvent.click(mas);
+    const menu = screen.getByRole('menu', { name: 'Agregar la foto de tu personaje' });
+    // lo que sirve es lo del editor (la regla más conservadora), y el recordatorio habla de UNA foto
+    expect(within(menu).getByRole('menuitem', { name: /Subir de tu computadora/ })).toHaveTextContent('JPG, PNG o WebP · hasta 15 MB');
+    expect(within(menu).getByRole('menuitem', { name: /Elegir de Mis creaciones/ })).toHaveTextContent('4 imágenes tuyas');
+    expect(menu).toHaveTextContent('También puedes arrastrarla a la caja o pegarla con Ctrl+V.');
+    expect(menu).not.toHaveTextContent('arrastrarlas');
+    // la hoja admite UNA: elegir otra reemplaza a la anterior
+    await userEvent.click(within(menu).getByRole('menuitem', { name: /Elegir de Mis creaciones/ }));
+    const hoja = await screen.findByRole('dialog', { name: 'Agregar imágenes' });
+    expect(within(hoja).getByRole('status')).toHaveTextContent('0 de 1 seleccionadas');
+    await userEvent.click(tiles(hoja)[0]!);
+    await userEvent.click(tiles(hoja)[1]!);
+    expect(tiles(hoja)[0]).toHaveAttribute('aria-pressed', 'false');
+    expect(tiles(hoja)[1]).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Agregar 1' }));
+    expect(await screen.findByRole('button', { name: 'Quitar «img-3.jpg»' })).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Foto de tu personaje' })).getAllByRole('listitem')).toHaveLength(1);
+    // sigue siendo «Crea tu historia»: no pasó a nada (eso es de «Crear una imagen»)
+    expect(botonOpcion()).toHaveTextContent('Crea tu historia');
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('inicio.biblioteca.si_una_no_se_puede_traer_la_hoja_se_queda_y_lo_dice', async () => {

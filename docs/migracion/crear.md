@@ -60,6 +60,14 @@ Cada ID es el nombre exacto de un test de vitest en
 | `crear.cobro.slots_409_avisa_y_balanceador_pregunta_y_fuerza` | El 409 de espacio se dice; el del balanceador pregunta con `<Confirmar>` (arranca en «No, la cambio») y, si se acepta, reenvía con `forzar=true` sin volver a moderar |
 | `crear.cobro.un_402_dice_a_quien_escribir` | Un 402 dice el texto del server y a quién escribir (`<Recarga>`) |
 | `crear.crear.manda_todos_los_campos_y_pone_p_en_la_url` | El multipart lleva brief, estilo, estilo_custom, duracion_s, modo, rubro, personaje_extra, formato, pipeline (del A/B `?pipeline=`) y las referencias; se modera brief + detalles; la URL pasa a `?p=<id>` y empieza la espera |
+| `crear.traspaso.la_foto_del_inicio_llega_como_miniatura_con_quitar_sin_pedir_nada_nuevo` | `?refs=<token>` (la caja del inicio, 14-oct-2026): al montar, UNA vez, `tomarArchivos(token)` y la foto entra por la misma `agregar` que el «+» de aquí (miniatura con «Quitar», sus `blob:` URL y los «Detalles del personaje»). El texto y el modo de la URL siguen llegando. Crear no hace ninguna petición nueva al montar: solo la lista de estilos de siempre |
+| `crear.traspaso.la_foto_viaja_en_el_multipart_y_al_crear_la_pelicula_se_olvida` | la foto va en el campo `referencias` de `POST /api/proyectos`; al crearse la película, `olvidarArchivos(token)` (y la URL pasa a `?p=`). Leer NO borra: recargar Crear la encuentra otra vez hasta que venza (10 min) o se cree la película |
+| `crear.traspaso.si_la_pelicula_no_se_crea_la_foto_se_queda` | un 402 (o cualquier falla al crear) no olvida la foto: la persona puede reintentar |
+| `crear.traspaso.sin_archivos_o_perdida_avisa_con_ayuda_y_no_bloquea_ni_cobra` | vencida, de otra base de datos, borrada, que no sea imagen, o `refs=perdida` (la caja no pudo dejarla): «Tu foto no alcanzó a llegar desde el inicio. Agrégala con el «+» de aquí.» (`role=status`, **junto al «+»** en el mismo cuadro del texto —abajo, con «Generar», quedaba una pantalla y media más allá en un celular—, sin cobrar ni bloquear nada); con `perdida` ni se toca el navegador. Agregar una foto aquí quita el aviso |
+| `crear.traspaso.un_refs_que_no_es_un_token_ni_perdida_se_ignora` | solo `[A-Za-z0-9-]{8,64}` o el literal `perdida`; cualquier otra cosa se ignora como si no viniera (ni aviso ni lectura) |
+| `crear.traspaso.strictmode_no_la_duplica` | el efecto de montaje se protege con un `ref` (como `arrancado`): StrictMode monta dos veces y la foto entra una |
+| `crear.traspaso.la_foto_del_inicio_no_pisa_las_que_la_persona_ya_agrego_y_respeta_el_tope` | si la persona ya agregó fotos a mano antes de que llegue la del inicio, esta se suma después; con el cuadro lleno (4) no entra, no saca a nadie y se dice «Caben 4 imágenes del personaje; 1 se quedó fuera.» |
+| `crear.traspaso.si_llega_cuando_la_pantalla_ya_se_fue_no_deja_nada_colgado` | una foto que llega después de desmontar no crea `blob:` URL que nadie soltaría |
 | `crear.progreso.pasos_y_barra_no_retroceden` | La barra y los pasos nunca retroceden dentro de una fase, y arrancan de cero en la siguiente; el orden de narración no mueve el paso |
 | `crear.progreso.falta_con_estimacion_y_sin_ella_nada` | «Faltan unos N min.» sale de `/estimacion` (una vez, con el texto aprobado) repartida por la barra; «Animando las escenas · 2 de 6» y «puedes cerrar esta pestaña» |
 | `crear.progreso.sin_estimacion_no_promete_minutos` | Sin estimación no se inventa ninguna cifra de minutos |
@@ -200,6 +208,23 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_m20_paleta.py` | los colores salen de `tokens.css` |
 
 ## Diferencias a propósito
+
+- **Crear recibe la foto del personaje de la caja del inicio (dueño, 14-oct-2026,
+  «en cuento e historia debe de tener el +»).** Hasta hoy la caja solo mandaba el
+  texto (`?brief=` y `?modo=`). Ahora «Creador de cuentos» y «Crea tu historia»
+  llevan un «+» para UNA foto, que la caja deja en el navegador
+  (`nucleo/traspaso.ts`, IndexedDB, 10 minutos) y entrega con `?refs=<token>`
+  (o `?refs=perdida` si no pudo). Crear la recoge al montar y la pone en su
+  cuadro como si la persona la hubiera agregado aquí; si no llega, lo dice y no
+  bloquea nada. **No hay servidor nuevo:** la foto sale por el mismo
+  `referencias` de `POST /api/proyectos`. **Crear acepta hasta 4 fotos, pero el
+  motor solo usa la primera** (`pipeline/character.py:96`, `pipeline/flow.py:69`);
+  por eso la caja ofrece una. Subir ese tope (el de la caja, o el de Crear) es una
+  decisión pendiente de la persona dueña. **Límite:** la pantalla vieja
+  `static/crear.html` ignora `refs` y en la etapa `nueva` no redirige; por eso la
+  caja, con foto, navega directo a `/estudio/crear/` y no por `/crear.html`.
+  `static/crear.html` se queda como está y no se toca. El aviso de «foto que no
+  llegó» sale junto al «+» (no abajo, con «Generar»).
 
 - **«Pedir otra» (una imagen antes de animar) ahora dice su precio:
   «Cambiar ✦ 2».** La vieja no lo decía en el botón (solo en la nota).

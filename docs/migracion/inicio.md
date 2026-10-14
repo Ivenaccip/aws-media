@@ -57,9 +57,9 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 |---|---|
 | `inicio.caja.arranca_en_el_clip_lo_mas_barato` | arranca en Video → «Un video corto» con su modelo de siempre (Veo 3.1 Lite), para quien no abra el menú (M25 · B); el chip de la tarea ya no lleva precio |
 | `inicio.caja.precios_de_tarifas_json` | las historias con el rango mín–máx de `video.por_duracion`; las tareas que eligen modelo (clip, imagen, editar) dicen «según el modelo» y su precio sale de `tarifas.json` §modelos; el test compara contra el mismo `tarifas.json` |
-| `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | las tareas SIN modelo siguen llevando a su pantalla: cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; el texto va sin espacios de más. (Clip e imágenes ya no navegan: ver las filas de abajo) |
+| `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | las tareas SIN modelo siguen llevando a su pantalla: cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; el texto va sin espacios de más. SIN foto del personaje la dirección es la de siempre, byte a byte; con foto va a `/estudio/crear/?…&refs=…` (ver `inicio.caja.crear_con_foto_*`). (Clip e imágenes ya no navegan: ver las filas de abajo) |
 | `inicio.caja.sin_texto_no_navega` | sin texto: el aviso (en el cuadro de abajo a la derecha, o junto a la caja si la página no lo trae), el foco vuelve a ella y no se navega |
-| `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco |
+| `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco (cuentos e historia, además, dicen que con el + se agrega la foto del personaje) |
 | `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra |
 | `inicio.caja.cambiar_de_familia_elige_la_primera` | Imagen/Video/Edición (el riel, tres familias) con `aria-pressed`; Imagen y Video eligen la primera opción de la familia al entrar y Edición, que no tiene opciones, deja las de Imagen/Video como estaban |
 | `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s` = el clip de 8 s de `modelos.clip.veo-lite`, `video.imagen`) |
@@ -82,7 +82,7 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.caja.un_pedido_que_el_servidor_rechazo_no_deja_su_tarjeta_aunque_la_lista_no_llegue` | lo contrario: si el POST falló (nada quedó en marcha) la tarjeta se va aunque la lista no responda, y no se queda preguntando por algo que no existe |
 | `inicio.caja.editar_pide_la_imagen_con_el_mas` | sin imagen no sale y dice cómo agregarla; con ella va a `/api/imagenes/editar` en modo `todo` con `modelo` |
 | `inicio.caja.editar_manda_nano_banana_2` | con Nano Banana 2 elegido, `/api/imagenes/editar` lleva `modelo=nb2` en modo `todo` |
-| `inicio.caja.el_mas_agrega_quita_y_respeta_el_tope` | el «+» solo existe en las tareas que usan imágenes (clip, editar y, desde el 12-oct-2026, crear una imagen); tope 3 (clip) o 1 (editar); un archivo que no sirve se rechaza con su motivo. Con imágenes en Mis creaciones el «+» abre un menú: ver `inicio.biblioteca.*` |
+| `inicio.caja.el_mas_agrega_quita_y_respeta_el_tope` | el «+» solo existe en las tareas que usan imágenes (clip, editar, crear una imagen desde el 12-oct-2026 y cuentos e historia desde el 14-oct-2026; en Edición el «+» es del video y no hay el de imágenes); tope 3 (clip) o 1 (editar, cuentos, historia); un archivo que no sirve se rechaza con su motivo. Con imágenes en Mis creaciones el «+» abre un menú: ver `inicio.biblioteca.*` |
 | `inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas` | las fotos suben directo a S3 (`/api/clip/presign`) y el menú dice lo que suma juntarlas (tarifas.json `clip.componer_imagenes`); la nota no cambia con la duración del clip |
 | `inicio.caja.arrastrar_imagenes_a_la_caja_las_agrega` | arrastrar es un atajo del «+»; solo cuenta lo que trae archivos (`dataTransfer.types` con `Files`) |
 | `inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita` | «Crear una imagen» tiene su «+» (sin miniaturas propias): con una imagen la tarea es editarla, y la caja pasa sola a «Editar una imagen» con la miniatura, el texto escrito y el mismo modelo si ese también edita (Grok y Nano Banana 2); el pedido sale a `/api/imagenes/editar`, no a `/api/imagenes`. Lo dice con «pasamos a «Editar una imagen»» |
@@ -91,7 +91,7 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.caja.pegar_una_imagen_la_agrega_igual_que_el_mas` | Ctrl+V con una imagen copiada (captura o archivo del explorador) la agrega como con el «+», con los mismos topes y rechazos, esté donde esté el foco de la página; una captura («image.png») se llama «imagen-pegada.png» (con número si son varias) y un archivo conserva su nombre |
 | `inicio.caja.pegar_trae_la_imagen_aunque_el_navegador_solo_la_ofrezca_como_elemento` | si `clipboardData.files` viene vacío, la imagen se saca de `clipboardData.items` |
 | `inicio.caja.pegar_texto_o_lo_que_no_es_imagen_no_se_toca` | un pegado con texto (Word, Excel…) o sin imagen (un PDF) sigue su camino normal: la caja no lo corta. Única excepción: el texto que son solo los nombres de los mismos archivos (ver la fila del Finder) |
-| `inicio.caja.pegar_solo_agrega_donde_la_caja_usa_imagenes_y_a_la_vista` | no se agrega nada en cuentos ni historias (no usan imágenes), ni cuando lo pegado va a otro campo (la clave de Blotato), ni con un diálogo abierto (la caja queda detrás con `aria-hidden`) |
+| `inicio.caja.pegar_solo_agrega_donde_la_caja_usa_imagenes_y_a_la_vista` | no se agrega nada en Edición (ahí el «+» es del video; cuentos e historias SÍ pegan, desde el 14-oct-2026), ni cuando lo pegado va a otro campo (la clave de Blotato), ni con un diálogo abierto (la caja queda detrás con `aria-hidden`) |
 | `inicio.caja.pegar_una_imagen_en_crear_una_imagen_pasa_a_editar` | pegar en «Crear una imagen» hace lo mismo que el «+»: pasa a «Editar una imagen» |
 | `inicio.caja.lo_que_la_caja_dice_sale_en_el_cuadro_de_abajo_a_la_derecha` | UI·15: lo que la caja dice sale en `window.avisos` (el cuadro de `static/trabajos.js`, abajo a la derecha) con la clave `caja`: los errores (`mal`: sin texto, archivo que no sirve, el 402 del servidor) y «Ya estamos creando tu clip de N segundos» (`ok`) en cuanto el pedido sale. Lo nuevo reemplaza lo anterior (el 402 quita el «creando»), y no hay mensaje junto a la caja. Donde la página no trae el cuadro (los tests, la vitrina) se dice junto a la caja como siempre |
 | `inicio.caja.un_pedido_que_salio_bien_avisa_una_vez_en_el_cuadro_y_no_junto_a_la_caja` | un pedido bueno avisa UNA vez en el cuadro; el «Listo, ya va» de junto a la caja es solo de las páginas sin cuadro (diría lo mismo dos veces) |
@@ -103,11 +103,24 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.caja.un_lote_con_una_imagen_buena_y_otra_mala_conserva_el_aviso_de_la_mala` | con un lote mixto la buena se agrega y el aviso de la mala se queda (no se limpia después de decirlo) |
 | `inicio.caja.los_avisos_de_agregar_tambien_van_al_cuadro` | «Como mucho 3 imágenes.» y «pasamos a «Editar una imagen»» salen en el cuadro con la clave `caja`, no junto a la caja |
 | `inicio.caja.el_modelo_de_editar_que_ya_se_eligio_no_se_pisa_al_pasar_desde_crear` | al pasar de «Crear una imagen» a editar el modelo de crear se lleva solo si editar no tenía uno elegido y lo ofrece |
+| `inicio.caja.cuentos_e_historia_tienen_el_mas_con_textos_de_la_foto_del_personaje` | «Creador de cuentos» y «Crea tu historia» tienen «+» (14-oct-2026). Hablan de **la foto de tu personaje**: botón «Agregar la foto de tu personaje», su `title`, la nota y el ejemplo de la opción («Con el + puedes agregar la foto de tu personaje.»). El selector de archivos es de UNA foto (sin `multiple`). Los textos viven en `Opcion.textosMas` (`logica.ts`): las demás opciones no lo traen y siguen diciendo «imágenes de referencia» / «Agregar una imagen para editarla» / «Agregar la imagen que quieres editar», ni un carácter distinto. En Edición no hay «+» de imágenes |
+| `inicio.caja.la_foto_del_personaje_se_agrega_se_reemplaza_se_quita_y_viaja_con_la_opcion` | tope **1** (el motor solo usa `p.referencias[0]`: `pipeline/character.py:96`, `pipeline/flow.py:69`; ofrecer 4 prometería lo que no pasa): una segunda REEMPLAZA a la primera sin decir «Como mucho»; la lista de miniaturas se llama «Foto de tu personaje»; cambiar de opción conserva la foto (en el clip es una de sus referencias); «Quitar» la saca |
+| `inicio.caja.una_foto_que_no_sirve_se_rechaza_con_la_regla_del_editor_y_lo_dice_en_el_cuadro` | la regla es `rechazo(f, 'editar')`, la más conservadora: JPG, PNG o WebP de hasta 15 MB (HEIC, GIF y AVIF no, aunque el clip los lea). El aviso sale en el cuadro de abajo a la derecha (clave `caja`) y no junto a la caja; igual arrastrando o pegando |
+| `inicio.caja.la_foto_del_personaje_se_arrastra_y_se_pega` | arrastrar un archivo a la caja y Ctrl+V (como imagen, no como texto) agregan la foto; un texto que se mueve dentro de la caja no se corta |
+| `inicio.caja.crear_con_foto_la_deja_en_el_navegador_y_navega_con_refs_sin_cobrar_ni_vaciar` | «Crear» con foto: `guardarArchivos([foto])` (nucleo/traspaso, IndexedDB) y `ir('/estudio/crear/?brief=…&modo=…&refs=<token>')` (directo a la pantalla nueva: `/crear.html` ignora `refs` y en la etapa `nueva` ni redirige). **No cobra ni pide nada** (solo navega), y no vacía texto ni foto (si regresa con «atrás», ahí siguen). Con varias fotos heredadas del clip viaja SOLO la primera |
+| `inicio.caja.crear_con_foto_con_doble_clic_guarda_una_sola_vez_y_navega_una_sola_vez` | el candado (`setEnviando(true)`) se pone antes del primer `await`: doble clic mientras guarda = UNA escritura en el navegador y UNA navegación; el botón dice «Generando…» |
+| `inicio.caja.sin_foto_la_direccion_es_la_de_siempre_y_no_se_toca_el_navegador` | sin foto, `destinoDe` no suma `refs` y la dirección es idéntica a la de antes; no se llama a `guardarArchivos` |
+| `inicio.caja.con_foto_va_directo_a_la_pantalla_nueva_de_crear_sin_pasar_por_crear_html` | con foto, `destinoDe` apunta a `/estudio/crear/` (no depende de la etapa del interruptor); sin foto sigue siendo `/crear.html?…`. «Crear» con foto navega a la nueva |
+| `inicio.caja.una_foto_heredada_del_clip_pasa_por_la_regla_de_editar_antes_de_dejarla_y_navegar` | un HEIC agregado en «Un video corto» y llevado a cuentos: «Crear» lo rechaza con el motivo de `rechazo(f, 'editar')` en el cuadro de avisos, sin `guardarArchivos` ni navegar; reemplazarla por una buena abre el camino |
+| `inicio.caja.reemplazar_la_foto_del_personaje_no_borra_las_del_clip` | con tope 1 la foto nueva toma el lugar de la primera; las otras referencias del clip se guardan y vuelven al regresar |
+| `inicio.caja.una_foto_sin_tipo_se_completa_al_aceptarla_para_que_crear_no_la_descarte` | un `File` con `type: ''` y extensión `.webp` entra a la caja y se guarda con `image/webp` (`tipoDe`), que es lo que Crear exige; uno con tipo viaja tal cual |
+| `inicio.caja.si_el_navegador_no_deja_guardar_la_foto_se_navega_igual_con_refs_perdida` | si `guardarArchivos` da `null` (sin IndexedDB, ventana privada, cuota, plazo) —o lanzara— se navega igual con `&refs=perdida`: navegar no cobra y la persona no se queda sin camino; Crear le dice que la foto no llegó |
 | `inicio.biblioteca.el_mas_ofrece_subir_o_elegir_de_mis_creaciones` | con imágenes en «Mis creaciones» el «+» abre un menú (`role=menu`, `aria-haspopup`/`aria-expanded`, foco en la primera opción) con «Subir de tu computadora» —que dice qué sirve y su tope: clip «JPG, PNG, WebP, GIF, AVIF o HEIC · hasta 20 MB», editar «JPG, PNG o WebP · hasta 15 MB»— y «Elegir de Mis creaciones» («4 imágenes tuyas»), más el recordatorio de arrastrar y pegar con Ctrl+V. «Subir» abre el selector de archivos de siempre |
 | `inicio.biblioteca.sin_imagenes_el_mas_abre_el_selector_de_siempre` | sin ninguna imagen en Mis creaciones el «+» no abre menú: abre el selector de archivos, como antes (y sin `aria-haspopup`) |
 | `inicio.biblioteca.elegir_trae_las_imagenes_a_la_caja_en_el_orden_marcado` | la hoja «Agregar imágenes» (diálogo de 760 px, pestañas «Mis creaciones» y «Mi computadora») enseña las imágenes de la más nueva a la más vieja; cada elegida lleva su número (el orden en que se marcó), elegirla de nuevo la quita, y el contador dice «N de M seleccionadas». «Agregar N» las trae del servidor (una sola vez cada una), las suma a la caja con su nombre de archivo, en ese orden, y cierra la hoja. Sin elegidas, «Agregar» está apagado |
 | `inicio.biblioteca.el_tope_sale_de_lo_que_le_cabe_a_la_caja` | en el clip caben 3 menos las que ya están en la caja: al llegar al tope las demás se apagan (`aria-disabled`, sin efecto al pulsarlas); con 3 puestas la hoja dice «Ya tienes todas las que caben» y no deja agregar |
 | `inicio.biblioteca.en_crear_una_imagen_elige_una_y_la_caja_pasa_a_editar` | desde «Crear una imagen» la hoja admite UNA (elegir otra reemplaza a la anterior), «Mi computadora» dice los archivos del editor (no los del clip) y, al agregar, la caja pasa a «Editar una imagen» con esa imagen |
+| `inicio.biblioteca.en_cuentos_e_historia_el_mas_habla_de_la_foto_del_personaje_y_elige_una` | en cuentos e historia el menú del «+» se llama «Agregar la foto de tu personaje», dice «JPG, PNG o WebP · hasta 15 MB» y su recordatorio habla de UNA foto («arrastrarla… pegarla»); la hoja «Elegir de Mis creaciones» admite una (elegir otra reemplaza) y NO pasa a otra opción. La hoja conserva su título genérico «Agregar imágenes» |
 | `inicio.biblioteca.si_una_no_se_puede_traer_la_hoja_se_queda_y_lo_dice` | si el servidor no entrega alguna de las elegidas, se dice «No pudimos traer esa imagen — inténtalo de nuevo.» DENTRO de la hoja (`role=alert`; el cuadro de abajo a la derecha queda tapado por el diálogo, aria-hidden, y en un celular cubre sus botones), la hoja sigue abierta con lo elegido y a la caja no se agrega ninguna; cambiar lo elegido quita el error |
 | `inicio.biblioteca.cerrar_olvida_lo_elegido` | cerrar la hoja (Cancelar, Esc, el velo) olvida lo elegido: al reabrirla no hay nada marcado |
 | `inicio.biblioteca.mi_computadora_elige_o_suelta_archivos` | en «Mi computadora»: «Elegir archivos…» cierra la hoja y abre el selector; soltar archivos suma solo las imágenes y cierra la hoja; un texto arrastrado no se cancela; lo soltado no se agrega dos veces (la hoja está fuera del `<section>` de la caja, que tiene su propio arrastre) |
@@ -392,6 +405,48 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | se queda: `server/migracion.py` sirve la vieja con `no-cache` |
 
 ## Diferencias a propósito
+
+- **Cuentos e historias llevan «+» para la foto del personaje (dueño, 14-oct-2026,
+  «en cuento e historia debe de tener el +»):** hasta hoy «Creador de cuentos» y
+  «Crea tu historia» solo mandaban el texto por la URL a `/crear.html`, y la
+  pantalla Crear (que sí acepta la imagen del personaje) no recibía nada. Ahora la
+  caja admite **una** foto en esas dos opciones y, al pulsar «Crear», la deja en
+  el navegador y navega a Crear, que la recoge y la pone en su cuadro como si la
+  persona la hubiera agregado allá (`docs/migracion/crear.md`). Cómo:
+  `nucleo/traspaso.ts` guarda el `File` en **IndexedDB** (un archivo no cabe en la
+  URL ni en `sessionStorage`, que solo guarda texto y unos 5 MB) bajo un token
+  (`crypto.randomUUID()`) con vigencia de 10 minutos; la URL lleva `&refs=<token>`.
+  **No se toca el servidor ni `pipeline/`.** Decisiones: (1) **una foto, no
+  cuatro:** Crear acepta hasta 4, pero el motor solo usa la primera
+  (`pipeline/character.py:96`, `pipeline/flow.py:69`); ofrecer 4 en la caja
+  prometería lo que no pasa. Con tope 1 la caja ya reemplaza la anterior (el mismo
+  camino de «Editar una imagen»). Subir el tope es decisión de la persona dueña y
+  se hace en `referencias:` de `logica.ts` (y en el motor). (2) **La validación es
+  la del editor** (`rechazo(f, 'editar')`: JPG, PNG o WebP de hasta 15 MB), la más
+  conservadora: una foto HEIC o GIF que el clip leería aquí se rechaza con su
+  motivo, porque Crear no las convierte. Vale también para la foto que llegó del
+  clip al cambiar de opción: al pulsar «Crear» se revisa con la misma regla y,
+  si no sirve, se dice por qué y no se guarda ni se navega (la persona la quita o
+  la reemplaza). Una foto sin tipo MIME (WebP sin registrar en el sistema, un
+  archivo de Drive) se completa al aceptarla con `tipoDe`, porque Crear filtra
+  por tipo y la descartaría con un aviso falso. Reemplazar la foto del personaje
+  no borra las otras referencias del clip: solo toma el lugar de la primera. (3) **Si no se pudo guardar** (sin
+  IndexedDB, ventana privada, cuota, o no contestó en 4 s) se navega igual con
+  `refs=perdida`: navegar no cobra nada y la persona no se queda sin camino;
+  Crear le dice «Tu foto no alcanzó a llegar desde el inicio. Agrégala con el «+»
+  de aquí.» (4) **Leer no borra**: si recarga Crear, la foto sigue ahí hasta que
+  venza o se cree la película (entonces Crear la olvida). (5) Al navegar no se
+  vacían texto ni foto (como hoy con el texto): si regresa con «atrás» siguen. Los
+  textos del «+» de estas dos opciones (`Opcion.textosMas`) hablan de «la foto de
+  tu personaje»; los de las demás no cambian. **Con foto la caja navega directo a
+  `/estudio/crear/?brief=…&modo=…&refs=…`, no por `/crear.html`:** la vieja
+  `static/crear.html` ignora `refs`, y en la etapa `nueva` `/crear.html` NO
+  redirige (`server/migracion.py: decidir` da `None`), así que pasar por ella
+  perdería la foto sin aviso. Sin foto la dirección sigue siendo
+  `/crear.html?brief=…&modo=…`, idéntica a la de siempre (ahí rige la cookie
+  `ui=clasica`). **Límite conocido:** quien tiene la cookie `ui=clasica` y usa la
+  foto llega igual a la pantalla nueva (la clásica no sabe recibirla). Y Crear
+  acepta 4 fotos pero el motor usa la primera.
 
 - **Crear una imagen, sin estilo (dueño, 14-oct-2026, «me parece bien la opción
   1»):** la caja manda `estilo: 'ninguno'` a `POST /api/imagenes` y a fal le
