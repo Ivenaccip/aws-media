@@ -73,6 +73,10 @@ class Entorno:
     # apagada en prod a propósito: aunque el código llegue a main, producción
     # no crea nada público hasta el encendido de RAG·30, que es cambiar este
     # False por True en PROD con su PR y su deploy, no un efecto secundario.
+    # Tampoco SIRVE nada público (14-oct-2026): sin la cola, la Lambda del API
+    # no recibe PUBLICO_QUEUE_URL, y pipeline/publico.py `publicado` lee eso
+    # para dar 404 en /automatiza y /api/publico/* y servir las legales sin la
+    # sección 14 (server/sin_automatiza/).
     publico: bool = False
     # RAG·7 — throttling de API Gateway, (peticiones por segundo sostenidas,
     # ráfaga). Es la red de último recurso: aguanta mientras los contadores de

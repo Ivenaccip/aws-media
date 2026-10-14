@@ -33,6 +33,7 @@ from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
+from pipeline import publico as freno
 from server import auth, aviso, imagen_cola, migracion, publico_api, web
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
@@ -1159,6 +1160,12 @@ PLANTILLAS = {"automatiza.html": "/automatiza", "privacidad.html": "/privacidad"
               "terminos.html": "/terminos",
               # RAG·35: las de la baja solo existen con un token; crudas, a /automatiza
               "baja.html": "/automatiza", "baja-hecha.html": "/automatiza"}
+# 14-oct-2026 · donde /automatiza no se sirve (pipeline/publico.py `publicado`,
+# hoy producción) tampoco salen sus archivos por su dirección (la imagen para
+# redes dice «gratis del 10 al 25 de octubre»), sus plantillas crudas no
+# redirigen a ella, y robots.txt es el de siempre (server/sin_automatiza/).
+SOLO_CON_AUTOMATIZA = {"automatiza.css", "automatiza.js", "sondeo.js", "automatiza-og.png",
+                       *(p for p, ruta in PLANTILLAS.items() if ruta == "/automatiza")}
 
 
 class _StaticCacheado(StaticFiles):
@@ -1188,6 +1195,10 @@ class _StaticCacheado(StaticFiles):
         # RAG·10 · las plantillas de /automatiza tienen sus rutas (más abajo),
         # pero «//automatiza.html» o «/%2E/automatiza.html» no casan con ellas
         # y aquí se normalizan al mismo archivo: tampoco salen crudas por ahí.
+        if path in SOLO_CON_AUTOMATIZA and not freno.publicado():
+            raise HTTPException(status_code=404)
+        if path == "robots.txt" and not freno.publicado():
+            return FileResponse(aviso.SIN_AUTOMATIZA / "robots.txt")
         if path in PLANTILLAS:
             return RedirectResponse(PLANTILLAS[path], status_code=302)
         return await super().get_response(path, scope)
@@ -1255,9 +1266,11 @@ def _entrar():
 #
 # /privacidad y /terminos son el aviso y los términos de TODO Irremplazables
 # (el Estudio y /automatiza): los enlaza también el pie de la portada y de
-# /entrar. En main son HTML estático servido con FileResponse (server/aviso.py
-# no puede vivir allá: importa pipeline.publico); aquí gana este mecanismo y
-# sus rutas NO se duplican. De las de main se conserva lo que hacían de más:
+# /entrar. Hasta el PR #160, main las servía como HTML estático con
+# FileResponse; desde ahí las sirve este mecanismo en todos lados y sus rutas
+# NO se duplican. Donde /automatiza no se sirve (producción hasta RAG·30) el
+# archivo no es la plantilla de static/ sino la copia de server/sin_automatiza/
+# (ver `_legal`, más abajo). De las de main se conserva lo que hacían de más:
 # contestar HEAD (ver _pagina_publica).
 _CSP_PUBLICA = ("default-src 'none'; script-src 'self'; style-src 'self'; "
                 "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
@@ -1285,9 +1298,9 @@ def _se_indexa(request: Request) -> bool:
 
 
 def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True,
-                    status: int = 200):
+                    status: int = 200, directorio: Path | None = None):
     try:
-        cuerpo = aviso.renderizar(nombre)
+        cuerpo = aviso.renderizar(nombre, directorio)
     except FileNotFoundError:
         return HTMLResponse("<!doctype html><title>No encontrada</title>"
                             "<p>Esta página no existe.</p>", status_code=404,
@@ -1311,8 +1324,18 @@ def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True,
     return HTMLResponse(cuerpo, headers=cabeceras)
 
 
+def _sin_automatiza_es_404() -> None:
+    """Decisión del dueño (14-oct-2026): donde /automatiza no se sirve (hoy
+    producción, hasta RAG·30; pipeline/publico.py `publicado`) sus rutas dan el
+    mismo 404 que una ruta que no existe. Antes salía la página en pausa,
+    indexable, prometiendo «gratis del 10 al 25 de octubre»."""
+    if not freno.publicado():
+        raise HTTPException(status_code=404)
+
+
 @app.get("/automatiza", include_in_schema=False)
 def _automatiza(request: Request):
+    _sin_automatiza_es_404()
     return _pagina_publica(request, "automatiza.html")
 
 
@@ -1323,6 +1346,7 @@ def _con_query(ruta: str, request: Request) -> str:
 
 @app.get("/automatiza/", include_in_schema=False)
 def _automatiza_barra(request: Request):
+    _sin_automatiza_es_404()
     return RedirectResponse(_con_query("/automatiza", request), status_code=302)
 
 
@@ -1336,6 +1360,7 @@ def _automatiza_corrida(request: Request, publico_id: str):
     cortó— es 404, pero con la MISMA página: el JS ve que la ruta no trae un
     id y enseña «No encontramos esa petición» sobre el formulario, igual que
     con un id que no existe."""
+    _sin_automatiza_es_404()
     if not publico_api.ID_PUBLICO.fullmatch(publico_id):
         return _pagina_publica(request, "automatiza.html", indexable=False, status=404)
     return _pagina_publica(request, "automatiza.html", indexable=False)
@@ -1378,6 +1403,7 @@ def _contacto_de_baja(token: str) -> dict | None:
 
 @app.get("/automatiza/baja/{token}", include_in_schema=False)
 def _baja_pregunta(token: str):
+    _sin_automatiza_es_404()
     from pipeline import novedades
     try:
         contacto = _contacto_de_baja(token)
@@ -1394,6 +1420,7 @@ def _baja_pregunta(token: str):
 
 @app.post("/automatiza/baja/{token}", include_in_schema=False)
 def _baja_hecha(token: str):
+    _sin_automatiza_es_404()
     from pipeline import novedades
     try:
         contacto = _contacto_de_baja(token)
@@ -1411,14 +1438,22 @@ def _baja_hecha(token: str):
 # Las dos legales contestan también HEAD (así llegaron de main, PR #174): con
 # solo GET, un `curl -I` o un verificador de enlaces caía en el montaje de
 # abajo y recibía un 404 de una página que sí existe.
+# Donde /automatiza no se sirve (hoy producción) salen las de
+# server/sin_automatiza/: el texto que producción ya publicaba, sin la
+# sección 14 (decisión del dueño, 14-oct-2026; ver server/aviso.py).
+def _legal(request: Request, nombre: str):
+    directorio = None if freno.publicado() else aviso.SIN_AUTOMATIZA
+    return _pagina_publica(request, nombre, directorio=directorio)
+
+
 @app.api_route("/privacidad", methods=["GET", "HEAD"], include_in_schema=False)
 def _privacidad(request: Request):
-    return _pagina_publica(request, "privacidad.html")
+    return _legal(request, "privacidad.html")
 
 
 @app.api_route("/terminos", methods=["GET", "HEAD"], include_in_schema=False)
 def _terminos(request: Request):
-    return _pagina_publica(request, "terminos.html")
+    return _legal(request, "terminos.html")
 
 
 # El montaje «/» de abajo sirve cualquier archivo de static/, y estas tres son
@@ -1430,8 +1465,10 @@ def _terminos(request: Request):
 @app.get("/baja.html", include_in_schema=False)
 @app.get("/baja-hecha.html", include_in_schema=False)
 def _plantilla_cruda(request: Request):
-    return RedirectResponse(_con_query(PLANTILLAS[request.url.path.lstrip("/")], request),
-                            status_code=302)
+    destino = PLANTILLAS[request.url.path.lstrip("/")]
+    if destino == "/automatiza":
+        _sin_automatiza_es_404()   # no redirigir a una ruta que ahí no existe
+    return RedirectResponse(_con_query(destino, request), status_code=302)
 
 
 # UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje

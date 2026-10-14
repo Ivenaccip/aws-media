@@ -12,10 +12,13 @@ Un marcador sin clave NO se sirve crudo: revienta aquí, y
 tests/test_rag_paginas.py lo caza antes del deploy.
 
 /privacidad y /terminos cubren TODO Irremplazables: el Estudio (secciones 1 a
-13, el texto que main publicó el 3-oct-2026) y /automatiza (sección 14). Este
-archivo no existe en main —importa pipeline.publico, que allá no está—: allá
-las dos páginas son HTML estático con estos mismos datos ya escritos. Si
-cambias uno aquí, la página de main no se entera hasta el siguiente dev→main.
+13, el texto que main publicó el 3-oct-2026) y /automatiza (sección 14). Eso
+es lo que sale donde /automatiza se sirve (dev y local). Donde no (producción
+hasta RAG·30, pipeline/publico.py `publicado`) salen las copias de
+SIN_AUTOMATIZA, que ya traen escritos el responsable, el domicilio y el
+correo: si cambias aquí uno de esos datos, producción no se entera con el
+dev→main. Hay que cambiar también las copias y su huella en
+tests/test_rag_fuera_de_prod.py, y anunciarlo antes de que valga.
 """
 from __future__ import annotations
 
@@ -84,13 +87,28 @@ DATOS = {
 # `proveedor_correo` pesa doble: static/automatiza.html ya le dice al visitante
 # «te lo mandamos a tu correo» y ningún código manda nada todavía (RAG·14).
 #
-# OJO: esto frena el ENCENDIDO en producción, no la publicación del texto. Las
-# dos páginas legales se sirven en producción con o sin /automatiza, así que el
-# dev→main que lleve este archivo publica estas tres frases tal cual. Decidir
-# antes de ese merge, o aceptar que salgan así, es cosa del dueño.
+# Esto frena el ENCENDIDO en producción, no la publicación del texto. La
+# publicación la frena SIN_AUTOMATIZA, abajo: donde /automatiza no se
+# sirve, estas tres frases no salen.
 SIN_DECIDIR = ("plazo_peticion", "plazo_correo", "proveedor_correo")
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
+
+# Decisión del dueño (14-oct-2026): donde /automatiza no se sirve (hoy
+# producción; pipeline/publico.py `publicado`), /privacidad, /terminos y
+# /robots.txt son ESTAS copias: lo que producción publica desde el 3-oct-2026
+# (versión 2026-10-03, PR 174), byte por byte lo de main, sin sección 14 ni
+# nada de /automatiza. Así el dev→main no cambia el texto legal de producción,
+# que promete anunciar cualquier cambio en la comunidad antes de que valga, y
+# las legales siguen fuera de los buscadores como hasta hoy.
+#
+# Llevan el responsable y el domicilio ya escritos (no son plantilla): si
+# cambia un dato de DATOS que vive aquí, o una sección de la 1 a la 13,
+# cambian las dos y se anuncia. Su huella la fija tests/test_rag_fuera_de_prod.py.
+# Se borran en el PR de RAG·30 que encienda /automatiza en producción: desde
+# ahí las legales son las plantillas de static/ en todos lados. Ese mismo
+# deploy cambia las legales de producción: se anuncia antes.
+SIN_AUTOMATIZA = Path(__file__).resolve().parent / "sin_automatiza"
 _MARCADOR = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 
 

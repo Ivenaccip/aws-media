@@ -73,6 +73,26 @@ VAR_SAL = "AUTOMATIZA_SAL_IP"
 VAR_CLOUDFLARE = "AUTOMATIZA_IP_CLOUDFLARE"
 
 
+def publicado() -> bool:
+    """¿Este despliegue SIRVE /automatiza? Es otra cosa que el freno de abajo:
+    el freno decide si se acepta una corrida; esto, si la sección existe.
+
+    Decisión del dueño (14-oct-2026): mientras producción no la encienda
+    (RAG·30), ahí no se ve NADA de /automatiza. Ni la página ni /api/publico/*
+    ni sus archivos (404), y /privacidad, /terminos y /robots.txt son lo que
+    producción ya publicaba, sin la sección 14 (server/sin_automatiza/).
+    Sin esto, el dev→main publicaba la página «gratis del 10 al 25 de octubre»
+    y unas legales nuevas que el dueño no había decidido.
+
+    En AWS la respuesta la da la infra: la Lambda del API recibe
+    PUBLICO_QUEUE_URL solo donde `publico` es True en infra/entornos.py
+    (infra/stacks/api.py; tests/test_entornos.py fija que prod no la trae).
+    Encender RAG·30 enciende también esto, sin otro cambio. En local
+    (JOBS_BACKEND distinto de aws) siempre: es donde se escribe y se prueba."""
+    from pipeline import jobs
+    return jobs.backend() != "aws" or bool(os.getenv("PUBLICO_QUEUE_URL"))
+
+
 def ip_del_request(request) -> str | None:
     """La IP del visitante. Por defecto la que ve API Gateway (Mangum la pone
     en request.client); CF-Connecting-IP solo si el entorno dice que hay

@@ -7,6 +7,9 @@
 > - `/privacidad` y `/terminos` son los de **todo Irremplazables**: secciones
 >   1 a 13, el Estudio (el texto que main publicó el 3-oct como `2026-10-03`);
 >   sección 14, /automatiza.
+> - **14-oct-2026: eso es lo que sale en dev y en local.** Producción, hasta
+>   RAG·30, sigue sirviendo las de `2026-10-03` (`server/sin_automatiza/`, sin
+>   la sección 14 ni las frases de «todavía no»), y `/automatiza` da 404.
 > - El responsable es **Fundamentos AI LLC**, empresa de Estados Unidos
 >   (Delaware). El texto **ya no cita ley mexicana**: todo lo de «Qué pide la
 >   ley», los artículos, la autoridad y «Ley mexicana; tribunales» de abajo
@@ -26,7 +29,9 @@
 > ningún código borra corridas ni correos), `proveedor_correo` (ningún código
 > manda correos todavía) y la edad mínima de /automatiza (los términos no
 > dicen ninguna). Antes de encender /automatiza en producción (RAG·30) hay
-> que decidirlos, cambiar `DATOS` y el texto, y subir `AVISO_VERSION`.
+> que decidirlos, cambiar `DATOS` y el texto, y subir `AVISO_VERSION`. Ese
+> mismo deploy cambia las legales de producción: anunciar la versión nueva en
+> la comunidad antes de que valga, y borrar `server/sin_automatiza/` en ese PR.
 
 Fecha: 29-sep-2026 · Versión del texto: `2026-09-29-borrador`
 

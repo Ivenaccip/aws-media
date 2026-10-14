@@ -221,18 +221,27 @@ def test_las_paginas_legales_no_salen_con_pendientes(local, ruta):
     assert "[" not in html, (ruta, html[html.find("["):][:60])
 
 
+@pytest.mark.parametrize("donde", ["local", "produccion"])
 @pytest.mark.parametrize("ruta", LEGALES)
-def test_las_paginas_legales_no_nombran_un_producto_que_no_se_sirve(local, ruta):
-    # /automatiza es otro producto. Donde la app no tiene esa ruta (main, lo
-    # que corre en producción) los documentos no la pueden nombrar ni enlazar.
-    # Donde sí la tiene (dev) nombrarla es legítimo —los dos documentos le
-    # dedican su sección 14—, pero entonces cada enlace a ella tiene que llegar
-    # a una página que de verdad se sirve. Antes aquí se saltaba el test: una
-    # prueba que no corre en la rama donde se escribe el texto no vigila nada
+def test_las_paginas_legales_no_nombran_un_producto_que_no_se_sirve(local, ruta, donde,
+                                                                    monkeypatch):
+    # /automatiza es otro producto. Donde la app no la sirve (producción hasta
+    # RAG·30: pipeline/publico.py `publicado`, decisión del 14-oct-2026) los
+    # documentos no la pueden nombrar ni enlazar. Donde sí (dev, local)
+    # nombrarla es legítimo —los dos documentos le dedican su sección 14—, pero
+    # entonces cada enlace a ella tiene que llegar a una página que de verdad
+    # se sirve. Antes se miraba si la app tenía la ruta; desde que la ruta
+    # existe en todos lados y es el entorno el que la apaga, se pregunta por
+    # lo que recibe el navegador, en los dos entornos.
+    if donde == "produccion":
+        monkeypatch.setenv("JOBS_BACKEND", "aws")
+        monkeypatch.delenv("PUBLICO_QUEUE_URL", raising=False)
     html = re.sub(r"<!--.*?-->", "", local.get(ruta).text, flags=re.S)
-    if not any(getattr(r, "path", "") == "/automatiza" for r in local.app.routes):
+    if local.get("/automatiza").status_code != 200:
+        assert donde == "produccion", "local tiene que servir /automatiza"
         assert "/automatiza" not in html, ruta
         return
+    assert donde == "local", "producción no puede servir /automatiza antes de RAG·30"
     enlaces = set(re.findall(r'href="(/automatiza[^"#]*)', html))
     assert enlaces, f"{ruta} nombra /automatiza pero no la enlaza"
     for enlace in sorted(enlaces):

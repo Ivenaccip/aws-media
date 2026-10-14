@@ -239,7 +239,8 @@ def main() -> None:
     ev.add_argument("--html", required=True)
     ev.add_argument("--texto", required=True)
     ev.add_argument("--solo", help="manda solo a este correo de la lista (para probar)")
-    ev.add_argument("--base-url", help="de quién es el enlace de baja (default: el dominio de prod)")
+    ev.add_argument("--base-url", help="de quién es el enlace de baja (default: el dominio de "
+                    "prod, que no sirve /automatiza hasta RAG·30: mientras tanto, pasa la URL de dev)")
     ev.add_argument("--por-segundo", type=float, default=1.0)
     ev.add_argument("--de-verdad", action="store_true")
     args = ap.parse_args()

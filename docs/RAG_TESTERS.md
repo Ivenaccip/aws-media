@@ -55,4 +55,6 @@ teclear PROD.
    `/automatiza` dentro del Estudio, con la cuenta.
 3. Borrar `tools/abonos_testers.py`, sus tests y este documento, o dejarlos marcados como
    históricos.
-4. Revisar los pendientes de RAG·30 antes del dev→main.
+4. Revisar los pendientes de RAG·30 antes de encender `/automatiza` en producción
+   (`publico` de PROD en `infra/entornos.py`). Desde el 14-oct-2026 el dev→main ya no
+   la publica: en producción da 404 hasta ese encendido.
