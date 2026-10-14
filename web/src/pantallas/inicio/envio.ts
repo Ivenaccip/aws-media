@@ -5,6 +5,9 @@
 //
 // El servidor es quien cobra y quien decide el precio: aquí solo viajan el id
 // del modelo y los segundos del clip, nunca un número de créditos.
+//
+// E1 suma al final lo de la caja de «Edición»: qué videos sirven, y las tres
+// peticiones de /api/editar (precio, lanzar, estado). Igual: sin créditos en el cuerpo.
 import { ErrorApi, pedir } from '../../nucleo/api';
 
 /** Las extensiones que acepta el clip (server/clip_api.py) y cuántas fotos. */
@@ -49,6 +52,30 @@ export function rechazo(f: File, tarea: 'clip' | 'editar'): string {
 /** De lo que se suelta o se pega, lo que es imagen (un .heic puede venir sin tipo). */
 export const soloImagenes = (archivos: File[]): File[] =>
   archivos.filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+
+/** Los videos que acepta «Edición»: los mismos que /api/media/presign (server/media_api.py: EXTS y MAX_BYTES). */
+export const EXTS_VIDEO = ['.mp4', '.mov', '.m4v'];
+export const MAX_BYTES_VIDEO = 5 * 1024 ** 3;
+/** Lo que el menú, la pista del «+» y los avisos dicen que sirve. */
+export const DESCRIPCION_VIDEOS = 'MP4, MOV o M4V · hasta 5 GB';
+
+/** ¿Sirve este archivo como video a editar? Devuelve el motivo si no. */
+export function rechazoVideo(f: File): string {
+  if (!EXTS_VIDEO.includes(extension(f.name)))
+    return `«${f.name}» no se puede usar. Sirven: ${EXTS_VIDEO.join(', ')}.`;
+  // «.mp4» (o «..mp4») a secas: el servidor (os.path.splitext) lo lee como un archivo SIN extensión y contesta un 422
+  // que no explica nada
+  if (!/[^.]/.test(f.name.slice(0, f.name.lastIndexOf('.'))))
+    return `«${f.name}» no tiene nombre, solo la extensión. Ponle un nombre y vuelve a intentar.`;
+  // un archivo vacío subiría "bien" y el precio nunca llegaría (no hay nada que medir)
+  if (f.size === 0) return `«${f.name}» está vacío.`;
+  if (f.size > MAX_BYTES_VIDEO) return `«${f.name}» pesa demasiado (máximo ${MAX_BYTES_VIDEO / 1024 ** 3} GB).`;
+  return '';
+}
+
+/** De lo que se suelta, lo que es video (un .mov puede venir sin tipo). */
+export const soloVideos = (archivos: File[]): File[] =>
+  archivos.filter(f => f.type.startsWith('video/') || EXTS_VIDEO.includes(extension(f.name)));
 
 /** Qué archivos sirven para esa tarea, en una frase para el menú del «+»: «JPG, PNG o WebP · hasta 15 MB». */
 export const descripcionDeArchivos = (tarea: 'clip' | 'editar'): string =>
@@ -175,10 +202,13 @@ export type RespuestaImagen = { nombre: string; url: string } | { lanzado: true;
 /** ¿El servidor dejó la imagen en marcha? Solo entonces no hay imagen todavía y la lista de «Mis creaciones» es la única que la trae. */
 export const esLanzada = (r: unknown): boolean => typeof r === 'object' && r !== null && 'lanzado' in r && r.lanzado === true;
 
-/** Crear: el estilo y el formato son los que traía la pantalla de imágenes (animado, cuadrada). */
+/** Crear: SIN estilo (`ninguno`, dueño, 14-oct-2026): lo que escribes es lo que se dibuja, como en los clips
+ *  de «Un video corto». El «Animado» tipo Pixar que salía siempre era una herencia de la pantalla de imágenes
+ *  (R4b) que nadie decidió para la caja. El formato sigue siendo el de siempre (cuadrada, el del servidor sin
+ *  `formato`). La pantalla de Imágenes y la de Crear no cambian: ellas sí tienen su selector de estilo. */
 export const pedirImagen = (texto: string, modelo: string) =>
   pedir<RespuestaImagen>('/api/imagenes', {
-    cuerpo: { prompt: texto, estilo: 'animated', estilo_custom: '', modelo },
+    cuerpo: { prompt: texto, estilo: 'ninguno', estilo_custom: '', modelo },
   });
 
 /** Editar: «transformar toda la imagen» (el modo sin zona pintada). */
@@ -197,4 +227,52 @@ export async function pedirEdicion(texto: string, modelo: string, foto: File): P
     throw new ErrorApi(r.status, msg, det);
   }
   return datos as { nombre: string; url: string };
+}
+
+// ---------------------------------------------------------------------------
+// «Edición» (E1): las tres peticiones de /api/editar. El proyecto ya existe en el servidor
+// (lo creó la subida); ni el precio ni el cobro se calculan aquí.
+
+/** Lo que contesta GET /api/editar/<p>/costo. Si viene `aviso` (el video no está en el rango de 1 a 90 min, falta la
+ *  transcripción en la nube…) `backend_listo` es false y el aviso se enseña tal cual. */
+export interface CostoEdicion {
+  fuente: string;
+  duracion_s: number;
+  con_transcript: boolean;
+  creditos: number;
+  backend_listo: boolean;
+  aviso: string | null;
+}
+
+/** Lo que la caja necesita del estado de una corrida: GET /api/editar/<p>. */
+export interface EstadoCorrida {
+  editar: { estado?: 'corriendo' | 'listo' | 'error' | string } | null;
+}
+
+const rutaEditar = (proyecto: string) => '/api/editar/' + encodeURIComponent(proyecto);
+
+/** El precio ANTES del botón: el servidor lo calcula (duración medida con ffprobe y si ya hay transcripción). */
+export const pedirCostoEdicion = (proyecto: string) => pedir<CostoEdicion>(rutaEditar(proyecto) + '/costo');
+
+/** Lo que cobra y lanza: el servidor decide el precio, cobra antes de lanzar y devuelve si no pudo lanzar. SOLO viaja
+ *  la instrucción (entrada de la persona): nunca un número de créditos. */
+export const lanzarEdicion = (proyecto: string, instruccion: string) =>
+  pedir<{ lanzado: boolean; creditos: number }>(rutaEditar(proyecto) + '/sugerir', { cuerpo: { instruccion } });
+
+/** ¿Sigue corriendo? Solo se pregunta después de lanzar: nunca al montar la pantalla. */
+export const pedirEstadoEdicion = (proyecto: string) => pedir<EstadoCorrida>(rutaEditar(proyecto));
+
+/**
+ * ¿Este nombre ya es un proyecto TUYO con un video subido? (GET /api/media/<p>: vacío si no existe o es de otra cuenta.)
+ * Se pregunta antes de subir porque el servidor deja reusar un nombre propio, y ahí el video nuevo quedaría junto a la
+ * transcripción y los cortes del viejo: el precio saldría más barato (ya hay transcripción) y la corrida editaría sobre
+ * tiempos que no son de este video. Si la respuesta no llega, se sigue con el nombre: preguntar no puede frenar la subida.
+ */
+export async function nombreYaTieneVideo(proyecto: string): Promise<boolean> {
+  try {
+    const r = await pedir<{ subidas?: unknown }>('/api/media/' + encodeURIComponent(proyecto));
+    return Array.isArray(r?.subidas) && r.subidas.length > 0;
+  } catch {
+    return false;
+  }
 }

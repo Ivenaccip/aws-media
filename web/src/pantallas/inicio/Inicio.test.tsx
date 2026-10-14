@@ -341,7 +341,7 @@ describe('la caja', () => {
     await userEvent.click(botonModelo());
     await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(llamadas(f, '/api/imagenes')).toHaveLength(1));
-    expect(cuerpoDe(f, '/api/imagenes')).toEqual({ prompt: 'un gato en la luna', estilo: 'animated', estilo_custom: '', modelo: 'grok' });
+    expect(cuerpoDe(f, '/api/imagenes')).toEqual({ prompt: 'un gato en la luna', estilo: 'ninguno', estilo_custom: '', modelo: 'grok' });
     expect(ir).not.toHaveBeenCalled();
   });
 
@@ -358,7 +358,21 @@ describe('la caja', () => {
     await userEvent.click(fila);
     await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(llamadas(f, '/api/imagenes')).toHaveLength(1));
-    expect(cuerpoDe(f, '/api/imagenes')).toEqual({ prompt: 'un gato en la luna', estilo: 'animated', estilo_custom: '', modelo: 'nb2' });
+    expect(cuerpoDe(f, '/api/imagenes')).toEqual({ prompt: 'un gato en la luna', estilo: 'ninguno', estilo_custom: '', modelo: 'nb2' });
+  });
+
+  it('inicio.caja.crear_una_imagen_no_promete_un_estilo', async () => {
+    // dueño, 14-oct-2026: la caja no tiene selector de estilo y manda `ninguno`; su nota ya no ofrece uno que no hay
+    montar();
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(screen.queryByRole('combobox', { name: /estilo/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /estilo/i })).not.toBeInTheDocument();
+    await userEvent.click(botonOpcion());
+    const opcion = screen.getByRole('option', { name: /Crear una imagen/ });
+    expect(opcion).toHaveTextContent('Desde cero: dibujamos lo que escribas, tal cual.');
+    expect(opcion).toHaveTextContent('Si le agregas una imagen con el +, la editamos.');
+    expect(opcion).not.toHaveTextContent(/estilo/i);
   });
 
   it('inicio.caja.una_imagen_lanzada_dice_que_va_en_camino_y_refresca_el_saldo', async () => {
@@ -1495,6 +1509,18 @@ describe('la caja', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     expect(screen.getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
     expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    // E1: son tres familias. Edición no tiene opciones que elegir, y Video e Imagen siguen volviendo a la primera
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    expect(screen.getByRole('button', { name: 'Edición' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'true');
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
+    await elegirOpcion('Crea tu historia');
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
   });
 });
 

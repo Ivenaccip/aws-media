@@ -451,6 +451,22 @@ def test_el_texto_es_lo_que_escribio_el_usuario_recortado_y_el_prompt_lleva_el_e
     assert doc["prompt"] == "a" * 2000 + ". acuarela suave. No text, no watermark."
 
 
+def test_con_estilo_ninguno_el_doc_lleva_el_texto_y_las_reglas_sin_estilo_y_la_ficha_no_enseña_el_prompt(
+        cliente, nube, s3, monedero, cola):
+    """La caja del inicio manda `ninguno` (dueño, 14-oct-2026): al doc —y de ahí al worker, que lo manda tal
+    cual a fal— llega el texto de la persona y las reglas de siempre, sin «Pixar». La ficha que ve la UI
+    («Mis creaciones») no trae el prompt armado, solo lo que escribió: no cambia con esto."""
+    r = _pedir(cliente, "flux3", estilo="ninguno", estilo_custom="acuarela suave")
+    assert r.status_code == 200, r.text
+    (clave,) = s3
+    doc = json.loads(s3[clave])
+    assert doc["texto"] == "un gato astronauta"
+    assert doc["prompt"] == "un gato astronauta. No text, no watermark."
+    assert "pixar" not in doc["prompt"].lower() and "acuarela" not in doc["prompt"]
+    ficha = cliente.get(f"/api/imagenes/pedidos/{r.json()['id']}").json()
+    assert ficha["texto"] == "un gato astronauta" and "prompt" not in ficha
+
+
 @pytest.mark.parametrize("modelo", LENTOS)
 def test_sin_saldo_da_402_sin_doc_ni_cola(cliente, nube, s3, monedero, cola, modelo):
     monedero.con_saldo = False
