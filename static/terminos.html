@@ -1,23 +1,40 @@
 <!doctype html>
 <html lang="es">
-<!-- /terminos: los términos de uso del Estudio de Irremplazables, la plataforma
-     cerrada para miembros de la comunidad. Mismo marco que /privacidad (índice
-     + texto, /legal.css) y el mismo encabezado de sitio.
+<!-- /terminos: los términos de uso de Irremplazables. Mismo marco que
+     /privacidad (índice + texto, /legal.css) y el mismo encabezado de sitio.
+     Cubre las dos cosas que hay en este sitio:
+       · secciones 1 a 13: el Estudio (la plataforma cerrada de los miembros).
+         Es el texto que main publicó el 3-oct-2026 (PR 174) y aquí no se
+         le cambia el sentido, los números, los plazos ni el marco;
+       · sección 14: /automatiza (la herramienta abierta, sin cuenta).
 
-     En main es una página estática: se sirve tal cual, sin plantilla. Al bajar
-     a dev pasa a ser plantilla.
+     Es una plantilla: los marcadores de doble llave son huecos del dueño que
+     server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
+     hace fallar tests/test_rag_paginas.py. Por eso en estos comentarios no se
+     escriben llaves dobles. En main la misma página es HTML estático.
 
-     Lo que afirma está medido en el código (créditos, cortesía, tope de
-     proyectos, suspensión, Blotato, Agenda y MIX): si el código cambia, este
-     texto cambia con él. Las cantidades de cortesía salen de
-     tools/tarifas.json.
+     El responsable es una empresa de Estados Unidos y los términos se rigen
+     por las leyes de Delaware (sección 12): el texto no cita leyes ni
+     autoridades de otro país.
+
+     Lo que afirma está medido en el código. Del Estudio: créditos, cortesía,
+     tope de proyectos, suspensión, Blotato, Agenda y MIX (las cantidades de
+     cortesía salen de tools/tarifas.json). De /automatiza: los usos
+     prohibidos salen de prompts/moderar_automatiza_system.md (si el filtro
+     cambia, la lista cambia con él), los límites de pipeline/publico.py y
+     server/publico_api.py, y las fechas de la ventana, de lo que anuncia
+     static/automatiza.html. «Gratis» y «no necesitas cuenta» valen solo para
+     /automatiza y se quedan DENTRO de la sección 14.
+
+     Si el código cambia, este texto cambia con él y sube AVISO_VERSION
+     (server/aviso.py), que comparten el aviso y los términos.
 
      Sin JS, sin style ni atributos de estilo: todo vive en /legal.css. -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Términos de uso · Irremplazables</title>
-<meta name="description" content="Las reglas del Estudio de Irremplazables: tu cuenta, los créditos, de quién es el contenido, los usos prohibidos y lo que pasa cuando publicas en tus redes.">
+<meta name="description" content="Las reglas del Estudio de Irremplazables (tu cuenta, los créditos, de quién es el contenido, los usos prohibidos y lo que pasa cuando publicas en tus redes) y las de /automatiza.">
 <link rel="canonical" href="https://irremplazables.xyz/terminos">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/carta.css">
@@ -34,8 +51,8 @@
 <main id="principal" class="legal">
   <header class="encabezado">
     <h1 id="titulo">Términos de uso de Irremplazables</h1>
-    <p class="version">Versión 2026-10-03 · última actualización 3 de octubre de 2026</p>
-    <p class="resumen">Irremplazables es una plataforma cerrada, proveedora de inteligencia artificial a la comunidad de Irremplazables (<a href="https://www.skool.com/irremplazables/classroom">skool.com/irremplazables</a>). Aquí están sus reglas: cómo funciona tu cuenta, qué son los créditos, de quién es el contenido, qué no se puede hacer y qué pasa cuando publicas en tus redes.</p>
+    <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
+    <p class="resumen">Irremplazables es una plataforma cerrada, proveedora de inteligencia artificial a la comunidad de Irremplazables (<a href="https://www.skool.com/irremplazables/classroom">skool.com/irremplazables</a>). Aquí están sus reglas: cómo funciona tu cuenta, qué son los créditos, de quién es el contenido, qué no se puede hacer y qué pasa cuando publicas en tus redes. Las reglas de /automatiza, la herramienta abierta de este mismo sitio, están en la sección 14.</p>
   </header>
   <nav class="indice" aria-labelledby="indice-t">
     <p class="rotulo" id="indice-t">En esta página</p>
@@ -53,6 +70,7 @@
       <li><a href="#cambios">11. Cambios a estos términos</a></li>
       <li><a href="#ley">12. Ley aplicable</a></li>
       <li><a href="#contacto">13. Tus datos y contacto</a></li>
+      <li><a href="#automatiza">14. /automatiza</a></li>
     </ol>
     <a class="volver" href="/">Volver al inicio</a>
   </nav>
@@ -60,12 +78,13 @@
   <article class="texto" aria-labelledby="titulo">
     <section class="parte" id="quienes" aria-labelledby="quienes-t">
       <h2 id="quienes-t">1. Quiénes somos y qué cubren estos términos</h2>
-      <p>El Estudio de Irremplazables, en irremplazables.xyz, es un servicio de <strong>Fundamentos AI LLC</strong> («nosotros»), proveedor de diversas inteligencias artificiales usadas para el aprendizaje de nuestros alumnos, con domicilio en 2803 Philadelphia Pike, STE B &#35;1531, Claymont, DE 19703 US. Nos escribes a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>.</p>
+      <p>El Estudio de Irremplazables, en irremplazables.xyz, es un servicio de <strong>{{responsable}}</strong> («nosotros»), proveedor de diversas inteligencias artificiales usadas para el aprendizaje de nuestros alumnos, con domicilio en {{domicilio}}. Nos escribes a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>.</p>
       <p>Es una plataforma <strong>cerrada</strong>: no hay registro público. Un administrador crea cada cuenta para una persona que ya es miembro de la comunidad Irremplazables en Skool.</p>
-      <p>Estos términos cubren el uso del Estudio. La membresía de la comunidad se gestiona en Skool, con sus propias condiciones, y no la regulan estos términos.</p>
+      <p>Estos términos cubren el uso del Estudio y, en la sección 14, el de <a href="/automatiza">/automatiza</a>, una herramienta abierta de este mismo sitio que no es parte del Estudio. La membresía de la comunidad se gestiona en Skool, con sus propias condiciones, y no la regulan estos términos.</p>
 
       <h3>Cómo se aceptan</h3>
       <p>Los aceptas al entrar a tu cuenta y usar el Estudio. Si no estás de acuerdo, no lo uses y escríbenos: desactivamos tu cuenta y no recibes más correos de la plataforma.</p>
+      <p>/automatiza se acepta aparte, con su propia casilla (sección 14).</p>
 
       <h3>Palabras que usamos</h3>
       <dl class="filas">
@@ -84,8 +103,8 @@
         <li><strong>Es por invitación.</strong> Recibes un correo con tu acceso y una contraseña provisional; al entrar por primera vez la cambias por una tuya.</li>
         <li><strong>Es personal.</strong> Es para una sola persona. No la compartas, no la prestes y no la vendas. Lo que se haga desde ella se toma como hecho por ti; si crees que alguien más entró, cambia tu contraseña y escríbenos.</li>
         <li><strong>Es para mayores de edad.</strong> Al usarla declaras que tienes 18 años o más. No verificamos la edad; si sabemos que una cuenta la usa una persona menor de 18 años, la cuenta puede quedar suspendida.</li>
-        <li><strong>La plataforma solo envía correos de servicio.</strong> La invitación con tu contraseña provisional, el restablecimiento de contraseña y los códigos de verificación. Aparte, te contestamos por correo cuando nos escribes y, si pasara algo importante con tu cuenta, te escribiríamos a mano desde hola@irremplazables.xyz. No mandamos publicidad ni boletines.</li>
-        <li><strong>Si no quieres la cuenta,</strong> escríbenos a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a> y la desactivamos.</li>
+        <li><strong>La plataforma solo envía correos de servicio.</strong> La invitación con tu contraseña provisional, el restablecimiento de contraseña y los códigos de verificación. Aparte, te contestamos por correo cuando nos escribes y, si pasara algo importante con tu cuenta, te escribiríamos a mano desde {{correo_privacidad}}. La plataforma no manda publicidad ni boletines.</li>
+        <li><strong>Si no quieres la cuenta,</strong> escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> y la desactivamos.</li>
       </ul>
 
       <h3>Proyectos y límites</h3>
@@ -133,7 +152,7 @@
 
       <h3>Reembolsos</h3>
       <ul>
-        <li><strong>En dinero,</strong> solo devolvemos un cobro erróneo: por ejemplo, un cargo duplicado o un pago por el que no recibiste tus créditos. Escríbenos a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a> desde el correo de tu cuenta, con la fecha del cobro.</li>
+        <li><strong>En dinero,</strong> solo devolvemos un cobro erróneo: por ejemplo, un cargo duplicado o un pago por el que no recibiste tus créditos. Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> desde el correo de tu cuenta, con la fecha del cobro.</li>
         <li><strong>En créditos,</strong> devolvemos lo que se cobró por una generación que falló por causa nuestra.</li>
         <li>Los créditos ya usados en una generación que sí se entregó no se devuelven.</li>
       </ul>
@@ -289,7 +308,7 @@
       <p>Antes de dejar la comunidad, cancela lo programado, apaga tu campaña MIX y descarga lo que quieras conservar.</p>
 
       <h3>Si quieres cerrar tu cuenta</h3>
-      <p>Hoy no hay un botón para cerrarla desde el Estudio. Escríbenos a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a> desde el correo de tu cuenta: desactivamos tu acceso en cuanto atendemos tu correo y después cancelamos la cuenta a mano, en los plazos del <a href="/privacidad">aviso de privacidad</a>.</p>
+      <p>Hoy no hay un botón para cerrarla desde el Estudio. Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> desde el correo de tu cuenta: desactivamos tu acceso en cuanto atendemos tu correo y después cancelamos la cuenta a mano, en los plazos del <a href="/privacidad">aviso de privacidad</a>.</p>
       <ul>
         <li>Antes de pedirlo, descarga lo que quieras conservar, cancela lo programado, apaga MIX y desconecta Blotato.</li>
         <li>Cerrar tu cuenta del Estudio no cancela tu membresía de la comunidad: esa se cancela en Skool.</li>
@@ -311,22 +330,96 @@
 
     <section class="parte" id="ley" aria-labelledby="ley-t">
       <h2 id="ley-t">12. Ley aplicable</h2>
-      <p>Fundamentos AI LLC es una empresa de Estados Unidos. Estos términos se rigen por las leyes del estado de Delaware, Estados Unidos, donde tenemos nuestro domicilio (sección 1).</p>
-      <p>Si tienes un problema, escríbenos primero a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>: casi todo se resuelve ahí.</p>
+      <p>{{responsable}} es una empresa de Estados Unidos. Estos términos se rigen por las leyes del estado de Delaware, Estados Unidos, donde tenemos nuestro domicilio (sección 1).</p>
+      <p>Si tienes un problema, escríbenos primero a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>: casi todo se resuelve ahí.</p>
       <p>Para lo que deba resolverse ante un juez, tú y nosotros acordamos acudir a los tribunales ubicados en el estado de Delaware, Estados Unidos, salvo que la ley del lugar donde vives te permita acudir a los de tu propio domicilio. Estos términos no te quitan los derechos que la ley de protección al consumidor del lugar donde vives te dé y que no se puedan renunciar.</p>
     </section>
 
     <section class="parte" id="contacto" aria-labelledby="contacto-t">
       <h2 id="contacto-t">13. Tus datos y contacto</h2>
       <p>Qué datos personales tratamos, para qué, con quién los compartimos, cuánto tiempo los guardamos y cómo ejercer tus derechos está en el <a href="/privacidad">aviso de privacidad</a>.</p>
-      <p>Fundamentos AI LLC · 2803 Philadelphia Pike, STE B &#35;1531, Claymont, DE 19703 US · <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a></p>
+      <p>{{responsable}} · {{domicilio}} · <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a></p>
       <p>Si nos escribes por algo de tu cuenta, hazlo desde el correo con el que entras al Estudio: así sabemos que eres tú.</p>
+    </section>
+
+    <section class="parte" id="automatiza" aria-labelledby="automatiza-t">
+      <h2 id="automatiza-t">14. /automatiza</h2>
+      <p><a href="/automatiza">/automatiza</a> es otra herramienta de <strong>{{responsable}}</strong> en este mismo sitio: describes con tus palabras algo que haces a mano y te devolvemos un flujo de n8n para importar. No es parte del Estudio. Las secciones 2 a 11 hablan del Estudio, de su cuenta y de sus créditos, y no aplican aquí: las reglas de /automatiza son las de esta sección. Las secciones 1, 12 y 13 (quiénes somos, la ley aplicable y el contacto) valen igual.</p>
+
+      <h3>Cómo se aceptan</h3>
+      <p>Con la casilla «He leído el aviso de privacidad y acepto los términos», que la página te enseña antes de mandar tu primera petición (o tu correo, si llegaste con el enlace para volver desde otro navegador). Sin aceptarla no se envía nada.</p>
+
+      <h3>Qué es</h3>
+      <ul>
+        <li>Es <strong>gratis</strong> y no necesitas cuenta.</li>
+        <li>Es un <strong>experimento</strong>: la página lo anuncia como gratis del 10 al 25 de octubre de 2026. Puede pausarse en cualquier momento (verás «Ahorita no está disponible») y, después, cambiar o cerrarse.</li>
+        <li>n8n es un producto de terceros: /automatiza no es un servicio de n8n. Para usar el flujo necesitas tu propio n8n (instalado por ti o en la nube) y seguir sus condiciones.</li>
+      </ul>
+
+      <h3>Revísalo antes de usarlo</h3>
+      <p>El flujo lo arma un sistema automático con modelos de inteligencia artificial, no una persona. Revisamos que se pueda importar en n8n, pero no que haga exactamente lo que necesitas ni que no tenga errores. Te lo entregamos <strong>tal cual, sin garantía</strong>.</p>
+      <p>Antes de conectarle cuentas reales:</p>
+      <ul>
+        <li>revísalo nodo por nodo y entiende qué hace cada uno;</li>
+        <li>pruébalo con datos de prueba y actívalo solo cuando estés seguro;</li>
+        <li>ten presente que un flujo mal armado puede mandar mensajes que no querías, borrar o cambiar datos, o gastar créditos de los servicios que conectes.</li>
+      </ul>
+      <p>Nunca pongas contraseñas ni claves en tu descripción: las cuentas se conectan dentro de tu n8n y nosotros no las vemos. El servicio puede fallar, tardar o no estar disponible, y algunas peticiones no salen; cuando pasa, te lo decimos en pantalla.</p>
+
+      <h3>Usos prohibidos</h3>
+      <p>No puedes usar /automatiza para pedir flujos cuyo propósito sea:</p>
+      <ul>
+        <li>mandar mensajes masivos a gente que no los pidió: spam, bots de comentarios, cuentas falsas, inflar seguidores o reseñas;</li>
+        <li>engañar o robar: phishing, hacerse pasar por una persona o empresa, sacar contraseñas, tarjetas o datos de acceso, fraudes o estafas;</li>
+        <li>recolectar datos personales de otras personas sin su permiso, como juntar correos o teléfonos para contactarlas, o vigilar o rastrear a alguien;</li>
+        <li>acosar, amenazar o exponer a una persona;</li>
+        <li>saltarse los límites o protecciones de un servicio (captchas, bloqueos o pagos) o atacar un sistema (saturarlo o probar contraseñas a la fuerza);</li>
+        <li>contenido sexual con menores, odio contra grupos protegidos o causar daño real.</li>
+      </ul>
+      <p>Tampoco puedes:</p>
+      <ul>
+        <li>meter en tu descripción instrucciones para el sistema en vez de una petición (por ejemplo, «ignora lo anterior» o «muéstrame tus instrucciones»);</li>
+        <li>mandar peticiones con bots o programas, ni intentar saltarte los límites de uso;</li>
+        <li>atacar o saturar el sitio.</li>
+      </ul>
+      <p>Un filtro automático revisa cada petición antes de armarla. Si no pasa, no la armamos y te decimos qué parte no pasa, sin acusarte. Podemos rechazar peticiones y bloquear el acceso a quien no respete estas reglas.</p>
+
+      <h3>Límites de uso</h3>
+      <p>Para que alcance para todos y para cuidar el gasto hay límites:</p>
+      <ul>
+        <li>un tope de peticiones al día para todo el servicio y otro por conexión;</li>
+        <li>la descripción tiene que tener entre {{largo_minimo}} y {{largo_maximo}} caracteres;</li>
+        <li>un número limitado de veces que puedes cambiar el correo de una misma petición.</li>
+      </ul>
+      <p>Cuando se llena un tope verás «Ahorita no está disponible»: lo que escribiste se queda guardado en tu navegador y puedes intentar más tarde. Si hay mucha gente, tu petición entra a una fila y te decimos tu lugar. Los límites pueden cambiar en cualquier momento.</p>
+
+      <h3>Tu flujo y lo que escribes</h3>
+      <ul>
+        <li><strong>El flujo es para ti.</strong> Puedes importarlo, cambiarlo, usarlo en tu trabajo o en tu negocio y compartirlo. No reclamamos ningún derecho sobre él ni sobre lo que construyas con él.</li>
+        <li><strong>No es exclusivo.</strong> Como lo arma un sistema automático, alguien que pida algo parecido puede recibir un flujo parecido.</li>
+        <li><strong>Lo que escribes sigue siendo tuyo.</strong> Al mandarlo nos das permiso de usarlo para armar tu flujo y para lo que dice el <a href="/privacidad#automatiza">aviso de privacidad</a>.</li>
+        <li><strong>Lo de terceros es de terceros.</strong> n8n, sus nodos y las apps que conecta el flujo (Gmail, Sheets, Slack…) son de sus dueños y tienen sus propias condiciones; cumplirlas te toca a ti.</li>
+      </ul>
+
+      <h3>Responsabilidad</h3>
+      <p>Tú decides si activas el flujo y cómo. No depende de nosotros lo que hagas con él ni sus consecuencias: por ejemplo, datos borrados o cambiados, mensajes enviados por error, cargos de los servicios que conectes o cuentas suspendidas por su proveedor. Tampoco, que el flujo sirva para un fin en particular.</p>
+      <p>Igual que en la sección 9: nada de esto nos libera de la responsabilidad que la ley nos impone, ni limita los derechos irrenunciables que tienes como consumidor.</p>
+
+      <h3>Tus datos</h3>
+      <p>Qué guardamos cuando usas /automatiza (tu descripción, el flujo, tu correo si nos lo das y una huella de tu conexión en lugar de tu IP), para qué y cuánto tiempo está en la sección 14 del <a href="/privacidad#automatiza">aviso de privacidad</a>. La casilla para recibir novedades es aparte: no marcarla no te quita nada del servicio.</p>
+
+      <h3>Si estos términos cambian</h3>
+      <p>La versión nueva se publica en esta misma dirección, con su número de versión y su fecha. En /automatiza, la página te la enseña y te pide aceptarla antes de mandar otra petición o un correo. Con cada petición queda guardada la versión que aceptaste.</p>
+
+      <h3>Contacto</h3>
+      <p>Si nos escribes por una petición en particular, incluye su número: es lo que sigue a /automatiza/c/ en tu enlace para volver.</p>
     </section>
   </article>
 </main>
 
 <footer class="pie">
-  <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>
+  <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>
+  <a href="/automatiza">/automatiza</a>
   <a href="/privacidad">Aviso de privacidad</a>
   <a href="/terminos" aria-current="page">Términos</a>
 </footer>

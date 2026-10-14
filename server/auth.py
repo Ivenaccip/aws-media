@@ -21,6 +21,7 @@ from urllib.parse import quote
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from pipeline import db
+from pipeline import publico
 
 # M6 — grupos de Cognito del token del request (p. ej. "admin"); los fija el
 # middleware junto con el sub. En dev local (sin Cognito) el dueño es admin.
@@ -28,6 +29,8 @@ _grupos_request: ContextVar[tuple] = ContextVar("grupos_request", default=())
 
 
 def es_admin() -> bool:
+    if db.en_camino_publico():   # RAG·2: un anónimo nunca es admin, ni en local
+        return False
     if not activo():
         return True
     return "admin" in _grupos_request.get()
@@ -39,6 +42,17 @@ def es_admin() -> bool:
 PREFIJOS_PROTEGIDOS = ("/api/", "/editor/")
 # /api/pagos/stripe: Stripe no trae JWT — su gate es la firma HMAC del webhook
 RUTAS_PUBLICAS = {"/api/auth/config", "/api/pagos/stripe"}
+# RAG·2 — secciones públicas enteras (/automatiza). Una ruta exacta no alcanza:
+# /api/publico/corrida/{id} lleva parámetro. Todo lo que cae aquí corre SIN
+# token y dentro del candado de identidad (db.camino_publico): usuario_actual()
+# revienta. Solo puede servirlo server/publico_api.py; lo fija
+# tests/test_rag_camino_publico.py para que nadie cuelgue aquí una ruta con
+# datos privados por prisa.
+PREFIJOS_PUBLICOS = ("/api/publico/",)
+
+
+def es_publica(ruta: str) -> bool:
+    return ruta.startswith(PREFIJOS_PUBLICOS)
 
 
 def activo() -> bool:
@@ -81,6 +95,17 @@ def _token_del_request(request) -> str | None:
 
 async def middleware(request, call_next):
     """Fija la identidad del request (sub y grupos del token) antes de entrar."""
+    if es_publica(request.url.path):
+        # 14-oct-2026: donde /automatiza no se sirve (producción hasta RAG·30;
+        # pipeline/publico.py `publicado`) la sección no existe. El 404 va aquí,
+        # antes de leer el cuerpo: más adentro un JSON roto daba 422 y delataba
+        # la ruta. server/publico_api.py lo repite como segunda red.
+        if not publico.publicado():
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        # sin token y sin identidad, con Cognito o sin él: aunque traiga un
+        # token válido se ignora — el camino público no sabe de usuarios
+        with db.camino_publico():
+            return await call_next(request)
     marca = marca_g = None
     if activo():
         ruta = request.url.path

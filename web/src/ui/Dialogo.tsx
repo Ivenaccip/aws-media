@@ -18,6 +18,9 @@ export const CAJA =
   'data-[state=open]:animate-caja-entra data-[state=closed]:animate-caja-sale ' +
   'data-[state=closed]:pointer-events-none';
 
+// El mismo diálogo, más ancho: para lo que lleva una cuadrícula (la hoja de «Elegir de Mis creaciones»).
+export const CAJA_ANCHA = CAJA.replace('w-[min(92vw,480px)]', 'w-[min(92vw,760px)]');
+
 // UI·20: la caja tarda 100 ms en irse, y quien la cierra suele vaciar su
 // estado en el mismo clic (setVeredicto(null), setEditando(null)…). Mientras
 // sale se sigue viendo lo último que tuvo abierta, en vez de encogerse a
@@ -41,9 +44,11 @@ export interface PropsDialogo {
   /** Dónde cae el foco al abrir; sin él, en lo primero que se toca (la equis). */
   focoInicial?: RefObject<HTMLElement | null>;
   /** Dónde vuelve el foco al cerrar; sin él, a lo que tenía el foco al abrir. */
-  focoAlCerrar?: RefObject<HTMLElement | null>;
+  focoAlCerrar?: RefObject<HTMLElement | null> | undefined;
   /** Si lo que tenía el foco al abrir ya no está (o no se deja enfocar), aquí. */
   focoDeRespaldo?: RefObject<HTMLElement | null>;
+  /** Más ancho (760 px en vez de 480): para una cuadrícula. */
+  ancho?: boolean;
 }
 
 // Radix devuelve el foco a su <Trigger> al cerrar; aquí los diálogos se abren
@@ -105,7 +110,7 @@ export function Dialogo({
       <D.Portal>
         <D.Overlay className={VELO} />
         <D.Content
-          className={CAJA}
+          className={props.ancho ? CAJA_ANCHA : CAJA}
           // UI·20: mientras sale (100 ms) muestra lo último con sus handlers
           // de entonces; el pointer-events-none frena al ratón, esto al
           // teclado (un Enter en el campo no manda el formulario ya cerrado)

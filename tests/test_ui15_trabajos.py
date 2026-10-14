@@ -153,6 +153,19 @@ def test_s3_clip_estilo_competencia():
     assert comp["estado"] == "error" and comp["devueltos"] == 6 and comp["detalle"] == "@rival"
 
 
+@pytest.mark.parametrize("segundos,esperado", [(4, 4), (6, 6), (8, 8), (None, 8), ("4", 8), (True, 8), (0, 8), (-4, 8)])
+def test_s3_el_titulo_del_clip_dice_los_segundos_pedidos(segundos, esperado):
+    """R4: el clip puede durar 4, 6 u 8 s; la bandeja dice los que se eligieron
+    (8 si el documento no los trae o trae algo que no es una duración)."""
+    doc = {"estado": "generando", "inicio": _iso(AHORA - 30), "texto": "Mi perro"}
+    if segundos is not None:
+        doc["segundos"] = segundos
+    corriendo = tj.ficha_s3("clip", "clip-1", doc, AHORA)
+    listo = tj.ficha_s3("clip", "clip-1", {**doc, "estado": "listo", "listo": _iso(AHORA - 5)}, AHORA)
+    assert corriendo["titulo"] == f"Generando tu clip de {esperado} segundos"
+    assert listo["titulo"] == f"Tu clip de {esperado} segundos está listo"
+
+
 def test_s3_se_recorta_por_fecha_antes_de_abrir(monkeypatch):
     abiertos = []
     monkeypatch.setattr(tj.media_sync, "listar_prefijo_con_fecha", lambda pre: [

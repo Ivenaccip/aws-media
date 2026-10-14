@@ -111,6 +111,9 @@ def test_editar_costo_y_sugerir(cliente, monkeypatch):
     assert r.status_code == 200 and r.json()["lanzado"] is True
     assert lanzado == [("u1", "video-1")]
     assert guardado["editar"]["estado"] == "corriendo"
+    # E1: sin cuerpo el doc es el de siempre, sin clave `instruccion`
+    # (la instrucción opcional se prueba en test_m14_instruccion.py)
+    assert set(guardado["editar"]) == {"estado", "fuente", "duracion_s", "creditos", "inicio"}
 
     # con la corrida en curso, el segundo intento es 409
     doc["editar"] = guardado["editar"]

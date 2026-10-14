@@ -328,3 +328,18 @@ html:active-view-transition-type(atras)::view-transition-new(cal-dias-1) {
 @keyframes cal-entra-izq { from { opacity: 0; transform: translateX(-24px); } 30% { opacity: 0; } }
 @keyframes cal-apaga { to { opacity: 0; } }
 @keyframes cal-prende { from { opacity: 0; } 30% { opacity: 0; } }
+
+/* El cuadro de abajo a la derecha (static/trabajos.js) dibuja sus iconos con static/iconos.js y espera la regla
+   `.ico` de carta.css, que las pantallas viejas traen y estas no. Sin ella, el SVG no tiene tamaño ni trazo y el
+   «×» de un aviso (un error se queda hasta cerrarlo) no se ve. Es la misma regla, solo dentro de su cuadro. */
+#bandeja .ico {
+  width: 1.25em;
+  height: 1.25em;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.25em;
+}

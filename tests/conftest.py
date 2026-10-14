@@ -74,3 +74,12 @@ def _sin_aurora_real(monkeypatch):
     def bloqueado():
         raise RuntimeError("un test intentó hablar con Aurora de verdad")
     monkeypatch.setattr(db, "_cliente", bloqueado)
+
+
+@pytest.fixture(autouse=True)
+def _embeddings_por_defecto(monkeypatch):
+    """Cada test arranca con el proveedor de embeddings por defecto (Gemini).
+    La ingesta y el eval ponen EMBEDDINGS en os.environ desde el entorno (dev
+    usa Titan de respaldo desde el 30-sep), y el .env del dueño puede traerla:
+    sin esto un test de Gemini hablaría con un cliente de Bedrock."""
+    monkeypatch.delenv("EMBEDDINGS", raising=False)

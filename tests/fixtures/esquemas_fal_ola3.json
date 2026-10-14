@@ -1,0 +1,330 @@
+{
+ "_fuente": "Esquema público de fal leído con tools/leer_esquema_fal.py y guardado en work/esquemas_fal_2/RESUMEN.txt (última escritura 2026-10-10 23:33 GMT-6); el resumen de los 10 endpoints lo pegó la TAREA «OLA 2 · RESUMEN ESQUEMAS» el 2026-10-12. Solo las propiedades que una fila de imagen puede mandar o que cambian el diseño; `propiedades` trae TODAS las del endpoint. Si fal cambia un esquema, se vuelve a leer y se actualiza este archivo junto con la fila.",
+ "fal-ai/nano-banana-2": {
+  "entrada": "NanoBanana2Input",
+  "propiedades": [
+   "enable_web_search",
+   "output_format",
+   "safety_tolerance",
+   "prompt",
+   "num_images",
+   "limit_generations",
+   "sync_mode",
+   "system_prompt",
+   "thinking_level",
+   "aspect_ratio",
+   "resolution",
+   "seed"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "aspect_ratio": {
+   "tipo": "enum",
+   "enum": [
+    "auto",
+    "21:9",
+    "16:9",
+    "3:2",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "2:3",
+    "9:16",
+    "4:1",
+    "1:4",
+    "8:1",
+    "1:8"
+   ],
+   "por_defecto": "auto"
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "0.5K",
+    "1K",
+    "2K",
+    "4K"
+   ],
+   "por_defecto": "1K"
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "png"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  }
+ },
+ "fal-ai/nano-banana-2/edit": {
+  "entrada": "NanoBanana2EditInput",
+  "propiedades": [
+   "video_url",
+   "num_images",
+   "sync_mode",
+   "system_prompt",
+   "seed",
+   "enable_web_search",
+   "image_urls",
+   "output_format",
+   "prompt",
+   "safety_tolerance",
+   "pdf_url",
+   "limit_generations",
+   "thinking_level",
+   "aspect_ratio",
+   "resolution",
+   "audio_url"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "aspect_ratio": {
+   "tipo": "enum",
+   "enum": [
+    "auto",
+    "21:9",
+    "16:9",
+    "3:2",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "2:3",
+    "9:16",
+    "4:1",
+    "1:4",
+    "8:1",
+    "1:8"
+   ],
+   "por_defecto": "auto"
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "0.5K",
+    "1K",
+    "2K",
+    "4K"
+   ],
+   "por_defecto": "1K"
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "png"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  }
+ },
+ "fal-ai/nano-banana-pro": {
+  "entrada": "NanoBananaProInput",
+  "propiedades": [
+   "output_format",
+   "safety_tolerance",
+   "sync_mode",
+   "num_images",
+   "seed",
+   "limit_generations",
+   "aspect_ratio",
+   "prompt",
+   "enable_web_search",
+   "system_prompt",
+   "resolution"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "aspect_ratio": {
+   "tipo": "enum",
+   "enum": [
+    "auto",
+    "21:9",
+    "16:9",
+    "3:2",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "2:3",
+    "9:16"
+   ],
+   "por_defecto": "1:1"
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "1K",
+    "2K",
+    "4K"
+   ],
+   "por_defecto": "1K"
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "png"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  },
+  "enable_web_search": {
+   "tipo": "boolean",
+   "por_defecto": false
+  }
+ },
+ "fal-ai/nano-banana-pro/edit": {
+  "entrada": "NanoBananaProEditInput",
+  "propiedades": [
+   "output_format",
+   "image_urls",
+   "safety_tolerance",
+   "sync_mode",
+   "num_images",
+   "seed",
+   "limit_generations",
+   "aspect_ratio",
+   "prompt",
+   "enable_web_search",
+   "system_prompt",
+   "resolution"
+  ],
+  "obligatorias": [
+   "image_urls",
+   "prompt"
+  ],
+  "aspect_ratio": {
+   "tipo": "enum",
+   "enum": [
+    "auto",
+    "21:9",
+    "16:9",
+    "3:2",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "2:3",
+    "9:16"
+   ],
+   "por_defecto": "auto"
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "1K",
+    "2K",
+    "4K"
+   ],
+   "por_defecto": "1K"
+  },
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "png"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  },
+  "enable_web_search": {
+   "tipo": "boolean",
+   "por_defecto": false
+  }
+ },
+ "xai/grok-imagine-image": {
+  "entrada": "GrokImagineImageInput",
+  "propiedades": [
+   "prompt",
+   "sync_mode",
+   "output_format",
+   "enable_safety_checker",
+   "resolution",
+   "num_images",
+   "aspect_ratio"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "jpeg"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  }
+ },
+ "xai/grok-imagine-image/edit": {
+  "entrada": "GrokImagineImageEditInput",
+  "propiedades": [
+   "image_urls",
+   "output_format",
+   "num_images",
+   "prompt",
+   "sync_mode",
+   "enable_safety_checker",
+   "resolution",
+   "aspect_ratio"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "output_format": {
+   "tipo": "enum",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "por_defecto": "jpeg"
+  },
+  "num_images": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 4,
+   "por_defecto": 1
+  }
+ }
+}

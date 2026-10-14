@@ -6,6 +6,8 @@
 
 # media del usuario y librería SFX (decisión D2: no se redistribuye)
 media/
+# ...menos el catálogo de n8n: el validador del worker público lo lee (RAG·18)
+!media/library/n8n/
 videos/
 work/
 

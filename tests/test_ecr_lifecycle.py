@@ -45,6 +45,22 @@ def test_conserva_un_margen_que_aguante_el_retraso_de_produccion():
         "imagen; comprueba con tools/ecr_preview.py antes de bajarlo")
 
 
+def test_el_runbook_y_la_politica_dicen_el_mismo_numero():
+    """El número aparece en el JSON (countNumber y su descripción) y en OPERACION.md. Si cambia
+    en uno y no en los otros, quien lea el runbook calcula mal cuántos merges aguanta producción."""
+    import re
+    n = REGLAS[0]["selection"]["countNumber"]
+    doc = (RAIZ / "docs" / "OPERACION.md").read_text(encoding="utf-8")
+    assert f"conserva las **{n} imágenes más recientes**" in doc
+    assert f"la política conserva {n} imágenes" in doc
+    assert f"para las {n} que conserva la regla del ECR" in doc
+    assert f"dejar pasar {n} merges sin desplegar" in doc
+    desc = REGLAS[0]["description"]
+    assert f"Conserva las {n} imagenes" in desc and f"no desplegar en {n} merges" in desc
+    seccion = doc.split("## ECR (ciclo de vida")[1].split("## Base de datos")[0]
+    assert not re.search(r"\b20 (imágenes|merges)", seccion), "quedó un «20» viejo en el runbook de ECR"
+
+
 def test_la_descripcion_cabe_en_el_limite_de_ecr():
     """ECR rechaza la política entera si pasa de 255 caracteres, y el error solo
     aparece al aplicarla contra AWS — aquí se ve antes."""

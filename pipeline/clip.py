@@ -1,11 +1,13 @@
-"""M25 · A/F — el clip de 8 segundos: una sola llamada a Veo, con audio.
+"""M25 · A/F — el clip de 4, 6 u 8 segundos: una sola llamada al modelo elegido (Veo, por defecto), con audio.
 
 Es el producto corto: el usuario escribe qué quiere, sube de cero a tres
 imágenes (ninguna obligatoria) y se lleva un video. Sin guionista, sin TTS, sin
 whisper, sin alineado, sin director, sin casting, sin concat ni mux, sin
 pantalla de revisión y sin proyecto — o sea, sin nada de lo que existe para que
 una película de 45 segundos tenga ritmo. Ocho segundos no es un recorte
-arbitrario: es el slot máximo de Veo, así que un clip cabe en UNA llamada.
+arbitrario: es el slot máximo de Veo, así que un clip cabe en UNA llamada. Es la
+duración por defecto; R4 deja elegir 4 o 6 (cada modelo declara las suyas en
+`modelos_ia` y cada una trae su precio en tarifas.json §modelos).
 
 Tres caminos, según cuántas imágenes llegaron:
 
@@ -33,7 +35,7 @@ import logging
 
 from langfuse import get_client, observe
 
-from . import fal
+from . import clip_familias, fal, modelos_ia
 from .config import load_prompt, settings
 from .llm import chat_json
 from .models import formato_de
@@ -42,9 +44,11 @@ log = logging.getLogger(__name__)
 
 MAX_IMAGENES = 3
 MAX_TEXTO = 2000
-DURACION_S = 8                 # el slot máximo de Veo; un clip = una llamada
+# Solo el valor por defecto (8 s, el slot máximo de Veo): la duración real viaja
+# en cada pedido y la admitida la declara cada modelo en modelos_ia.
+DURACION_S = modelos_ia.DURACION_PREDETERMINADA_S
 RESOLUCION = "720p"
-CON_AUDIO = True               # es lo que se cobra: 30 créditos son la tarifa CON audio
+CON_AUDIO = True               # es lo que se cobra: la tarifa en créditos es la CON audio
 
 # Extensiones que acepta Veo (verificado en fal el 2026-09-18). El `.heic` no
 # es adorno: es con lo que salen las fotos de un iPhone, y un validador que no
@@ -120,21 +124,15 @@ async def componer(image_urls: list[str], prompt: str,
     return url
 
 
-@observe(name="clip_animar")
-async def animar(prompt: str, image_url: str | None = None,
-                 formato: str = "horizontal") -> str:
-    """La llamada a Veo. Con imagen es image-to-video; sin ella, el endpoint
-    hermano de la misma familia, al mismo precio.
-
-    Los timeouts son los del clip, NO los de la película: 720 s × 2 intentos
-    son 24 minutos y la Lambda del worker muere a los 15.
-    """
+def _args_veo(prompt: str, image_url: str | None, aspecto: str, segundos: int, audio: bool = CON_AUDIO) -> dict:
+    """Los argumentos de la familia Veo (Lite, Fast y Standard): los de siempre. `audio=False` (la caja del
+    inicio, solo en Lite y Fast) manda `generate_audio: false` y fal cobra la tarifa sin audio."""
     args = {
         "prompt": prompt,
-        "aspect_ratio": formato_de(formato)["aspecto"],
-        "duration": f"{DURACION_S}s",
+        "aspect_ratio": aspecto,
+        "duration": f"{segundos}s",
         "resolution": RESOLUCION,
-        "generate_audio": CON_AUDIO,
+        "generate_audio": audio,
         "safety_tolerance": "6",
     }
     # Sin prompt negativo a propósito: el del otro producto prohíbe
@@ -142,32 +140,98 @@ async def animar(prompt: str, image_url: str | None = None,
     # gente sube aquí.
     if image_url:
         args["image_url"] = image_url
-    app = settings.fal_veo if image_url else settings.fal_veo_t2v
+    return args
+
+
+def args_de_clip(m: modelos_ia.Modelo, prompt: str, image_url: str | None,
+                 formato: str, segundos: int, audio: bool = CON_AUDIO) -> dict:
+    """Lo que se le manda a fal para ese modelo: los argumentos de su familia
+    (`clip_familias`, o Veo, que se arma aquí) más los fijos de la fila. Es lo MISMO que
+    `animar` llama y que `costo_usd` anota, para que el costo salga de lo que de verdad se pide.
+    `audio` es si el clip lleva sonido (por defecto sí, como siempre): solo cambia lo que se manda a
+    los modelos con `generate_audio`; a los demás no se les manda nada."""
+    aspecto = formato_de(formato)["aspecto"]
+    if m.familia_clip == "veo":
+        args = _args_veo(prompt, image_url, aspecto, segundos, audio)
+    else:
+        args = clip_familias.ARMADORES[m.familia_clip](prompt, image_url, aspecto, segundos, audio)
+    return m.con_args_extra(args)
+
+
+@observe(name="clip_animar")
+async def animar(prompt: str, image_url: str | None = None,
+                 formato: str = "horizontal", modelo: str | None = None,
+                 segundos: int = DURACION_S, audio: bool = CON_AUDIO) -> str:
+    """La llamada al modelo de clip. Con imagen es image-to-video; sin ella, el
+    endpoint hermano de la misma familia, al mismo precio.
+
+    `segundos` es la duración que se cobró (4, 6 u 8): se valida contra lo que el
+    modelo admite y viaja como lo pide su familia (`args_de_clip`): «<n>s» en Veo, un
+    número en MiniMax, Grok y LTX, un texto sin «s» en Kling y Seedance. Una que no
+    admite levanta DuracionNoAdmitida, nunca se cambia en silencio a otra.
+
+    Los timeouts son los del clip, NO los de la película: 720 s × 2 intentos
+    son 24 minutos y la Lambda del worker muere a los 15.
+
+    Los intentos son min(settings.clip_max_attempts, Modelo.max_intentos) cuando el
+    modelo trae un tope (0 = los de settings). Un timeout de cliente se vuelve
+    FalError en `fal.llamar`, pero NO cancela el trabajo en fal: el primero puede
+    seguir vivo y cobrado cuando sale el segundo. Con Lite sale barato (hasta $0.40
+    dólares); Veo 3.1 Standard son $3.20 dólares por intento a 8 s, así que todos los
+    demás modelos (Veo Fast y Standard y los seis de la Ola 4, que no tienen tiempos
+    medidos) hacen uno solo.
+    """
+    m = modelos_ia.resolver("clip", modelo)
+    segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
+    audio = modelos_ia.valida_audio("clip", m.id, audio)
+    # R4: el endpoint sale de la tabla de modelos y los argumentos, de la familia de la fila.
+    args = args_de_clip(m, prompt, image_url, formato, segundos, audio)
+    app = m.endpoint_para(bool(image_url))
+    etiqueta = "Veo" if m.familia_clip == "veo" else m.id
+    intentos = settings.clip_max_attempts
+    if m.max_intentos > 0:
+        intentos = min(intentos, m.max_intentos)       # el modelo pide menos, nunca más
     ultimo = ""
-    for intento in range(1, settings.clip_max_attempts + 1):
+    for intento in range(1, intentos + 1):
         try:
             res = await fal.llamar(app, args, timeout_s=settings.clip_timeout_s,
-                                   nombre="veo", meta={"clip": True, "intento": intento})
+                                   nombre="veo" if etiqueta == "Veo" else f"clip-{m.id}",
+                                   meta={"clip": True, "intento": intento})
         except fal.FalError as err:
             ultimo = str(err)
-            log.warning("Veo falló en el clip (intento %d): %s", intento, err)
+            log.warning("%s falló en el clip (intento %d): %s", etiqueta, intento, err)
             continue
         url = (res.get("video") or {}).get("url")
         if url:
             return url
-        ultimo = "Veo no devolvió video"
-        log.warning("Veo no devolvió video en el clip (intento %d)", intento)
+        ultimo = f"{etiqueta} no devolvió video"
+        log.warning("%s no devolvió video en el clip (intento %d)", etiqueta, intento)
     raise ClipError(f"No se pudo generar el video: {ultimo[:200]}")
 
 
-def costo_usd(n_imagenes: int = 0) -> float:
+def costo_usd(n_imagenes: int = 0, modelo: str | None = None,
+              segundos: int = DURACION_S, audio: bool = CON_AUDIO) -> float:
     """Lo que nos cuesta el clip, para dejarlo escrito junto al cobro.
 
     Los números salen de pricing.json vía pipeline.pricing — aquí no se
-    hardcodea ninguno.
+    hardcodea ninguno. Va con la duración REAL: `costo_fal` lee los segundos de
+    los argumentos y cobra por segundo, así que un clip de 4 s no se anota como
+    uno de 8. Y con el sonido que se pidió: `audio=False` (solo Veo y los que traen `generate_audio`)
+    cuesta lo de la tarifa sin audio de su ficha.
     """
-    from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, VEO_LITE_POR_SEGUNDO
-    total = DURACION_S * VEO_LITE_POR_SEGUNDO[(RESOLUCION, CON_AUDIO)]
+    from .pricing import GROK_EDIT_ENTRADA, GROK_EDIT_SALIDA, costo_fal
+    m = modelos_ia.resolver("clip", modelo)
+    segundos = modelos_ia.valida_duracion("clip", m.id, segundos)
+    audio = modelos_ia.valida_audio("clip", m.id, audio)
+    # el endpoint exacto que se llama, con los argumentos exactos de su familia: con imagen
+    # (una o la compuesta) o sin ella. Un texto cualquiera hace de imagen: solo importa la forma.
+    con_imagen = int(n_imagenes) >= 1
+    total = costo_fal(m.endpoint_para(con_imagen),
+                      args_de_clip(m, "", "https://imagen.invalida/entrada" if con_imagen else None,
+                                   "horizontal", segundos, audio))
+    # sin costo conocido es un error, no un cero que parezca gratis
+    if not total:
+        raise ClipError(f"Sin costo conocido para el modelo {m.id}")
     if int(n_imagenes) >= 2:
         total += GROK_EDIT_SALIDA + GROK_EDIT_ENTRADA * int(n_imagenes)
     return round(total, 4)
@@ -175,8 +239,15 @@ def costo_usd(n_imagenes: int = 0) -> float:
 
 @observe(name="clip")
 async def generar(texto: str, image_urls: list[str] | None = None,
-                  formato: str = "horizontal") -> dict:
-    """El clip completo: prompt → (composición) → Veo. Lanza ClipError."""
+                  formato: str = "horizontal", modelo: str | None = None,
+                  segundos: int = DURACION_S, audio: bool = CON_AUDIO) -> dict:
+    """El clip completo: prompt → (composición) → modelo de clip. Lanza ClipError.
+
+    La duración y el sonido se validan ANTES de gastar nada (el LLM y Grok cuestan): una duración
+    que el modelo no admite, o «sin sonido» en uno que no lo permite, no llega ni a escribir el prompt."""
+    modelo_id = modelos_ia.resolver("clip", modelo).id
+    segundos = modelos_ia.valida_duracion("clip", modelo_id, segundos)
+    audio = modelos_ia.valida_audio("clip", modelo_id, audio)
     urls = list(image_urls or [])[:MAX_IMAGENES]
     texto = valida_texto(texto)
     plan = await escribir_prompt(texto, len(urls), formato)
@@ -186,9 +257,10 @@ async def generar(texto: str, image_urls: list[str] | None = None,
         inicial = await componer(urls, plan["composicion"], formato)
         origen = "compuesta"
 
-    video = await animar(plan["video"], inicial, formato)
+    video = await animar(plan["video"], inicial, formato, modelo, segundos, audio)
     get_client().update_current_span(
-        output={"imagenes": len(urls), "origen_inicial": origen, "formato": formato})
+        output={"imagenes": len(urls), "origen_inicial": origen, "formato": formato,
+                "segundos": segundos, "audio": audio})
     return {"video_url": video, "imagen_inicial": inicial, "origen_inicial": origen,
             "prompt": plan["video"], "prompt_composicion": plan["composicion"],
-            "recorte": plan["recorte"], "segundos": DURACION_S}
+            "recorte": plan["recorte"], "segundos": segundos, "audio": audio}

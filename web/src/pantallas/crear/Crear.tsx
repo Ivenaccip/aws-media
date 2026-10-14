@@ -27,6 +27,7 @@ import {
   olvidarMiniatura,
   trasLaLlegada,
 } from '../../nucleo/transiciones';
+import { PARAM_TRASPASO } from '../../nucleo/traspaso';
 import { useSondeo } from '../../nucleo/useSondeo';
 import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
@@ -55,6 +56,7 @@ import {
   PREPARAR,
   producir,
   reabrir,
+  refsDeUrl,
   regenerarImagen,
   SIN_AVANCE,
   TARIFA_IMAGEN,
@@ -89,6 +91,8 @@ function leerUrl(): { id: string | null; inicial: Inicial } {
       brief: (q.get('brief') ?? '').slice(0, 5000),
       modo: modoValido(q.get('modo')),
       pipeline: q.get('pipeline'),
+      // la foto del personaje que dejó la caja del inicio (nucleo/traspaso): solo un token o «perdida»
+      refs: refsDeUrl(q.get(PARAM_TRASPASO)),
     },
   };
 }

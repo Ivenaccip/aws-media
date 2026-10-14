@@ -1,9 +1,10 @@
 """UI·15 — «Tus trabajos»: el cuadro de abajo a la derecha, en todas las pantallas.
 
 Una sola lectura que junta lo que corre y lo que terminó en las últimas
-HORAS_VISIBLE horas, de todos los tipos: películas, clips, shorts (importar,
-analizar, renderizar), la propuesta de corte del editor IA, estilos y
-competencia. Cada ficha trae qué es, en qué va y a dónde llevar al usuario.
+HORAS_VISIBLE horas, de todos los tipos: películas, clips, imágenes en segundo
+plano, shorts (importar, analizar, renderizar), la propuesta de corte del
+editor IA, estilos y competencia. Cada ficha trae qué es, en qué va y a dónde
+llevar al usuario.
 
 Solo lee y no cobra. El cuadro sondea mientras hay algo corriendo, así que lo
 que cuesta leer se recorta ANTES de abrir nada: de S3 solo se abren los
@@ -23,6 +24,7 @@ from fastapi import APIRouter
 
 from pipeline import creditos, db, media_sync
 from pipeline.project import Proyecto, listar_proyectos
+from server import imagen_cola
 
 router = APIRouter(prefix="/api/trabajos", tags=["trabajos"])
 
@@ -30,6 +32,13 @@ HORAS_VISIBLE = 24        # lo terminado se ve un día (dueño, 25-sep)
 HORAS_COLGADO = 3         # algo «corriendo» más que esto no se anuncia como vivo
 SONDEO_S = 15             # cada cuánto pregunta el cuadro mientras algo corre
 MAX_POR_TIPO = 10
+# A dónde lleva la ficha de una imagen en segundo plano: el inicio nuevo, que es donde «Mis
+# creaciones» enseña el pedido (en curso, lista o con su error). Ni /imagenes.html ni
+# /estudio/imagenes/ lo enseñan: son el formulario de crear, vacío. No es /estudio/: mientras el
+# inicio esté en la etapa `nueva` (server/migracion.py) esa URL sirve el inicio viejo, que no
+# lista pedidos. static/trabajos.js oculta la ficha en la pantalla a la que apunta, así que en el
+# propio inicio no se repite lo que «Mis creaciones» ya dice.
+URL_IMAGEN = "/estudio/inicio/"
 
 # Los mismos nombres que enseña crear (static/crear.html, PASOS_PREP y PASOS_PROD)
 _PASOS = [
@@ -202,7 +211,7 @@ def _editor(user: str, desde: float, ahora: float) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# lo que vive en S3 como un JSON por corrida: clips, estilos y competencia
+# lo que vive en S3 como un JSON por corrida: clips, imágenes, estilos y competencia
 
 def _recientes_s3(prefijo: str, desde: float) -> list[tuple[str, dict]]:
     """Solo abre lo que cambió dentro de la ventana: la fecha viene del listado.
@@ -220,10 +229,25 @@ def _recientes_s3(prefijo: str, desde: float) -> list[tuple[str, dict]]:
     return out
 
 
+def _segundos_del_clip(doc: dict) -> int:
+    """Lo que el usuario eligió (4, 6 u 8), para el título; 8 si el documento no lo trae."""
+    s = doc.get("segundos")
+    return s if isinstance(s, int) and not isinstance(s, bool) and s > 0 else 8
+
+
 def ficha_s3(tipo: str, ref: str, doc: dict, ahora: float) -> dict | None:
+    seg = _segundos_del_clip(doc)
+    devueltos = doc.get("devueltos")
+    if tipo == "imagen":
+        # el worker guarda lo cobrado (`creditos`) y si volvió (`devuelto`); un pedido que
+        # caducó sin respuesta se enseña como error (lo mismo que «Mis creaciones»)
+        doc = imagen_cola.como_se_ve(doc) or {}
+        devueltos = doc.get("creditos") if doc.get("devuelto") is not False else None
     textos = {
-        "clip": ("Generando tu clip de 8 segundos", "Tu clip de 8 segundos está listo",
+        "clip": (f"Generando tu clip de {seg} segundos", f"Tu clip de {seg} segundos está listo",
                  "No se pudo generar tu clip", "/clip.html", _corto(doc.get("texto", ""))),
+        "imagen": ("Generando tu imagen", "Tu imagen está lista", "No se pudo generar tu imagen",
+                   URL_IMAGEN, _corto(doc.get("texto", ""))),
         "estilo": ("Analizando un estilo", "Tu perfil de estilo está listo",
                    "No se pudo analizar el estilo", "/estilos.html",
                    _corto(doc.get("cuenta") or doc.get("url") or "")),
@@ -245,8 +269,7 @@ def ficha_s3(tipo: str, ref: str, doc: dict, ahora: float) -> dict | None:
     if estado == "listo":
         return _ficha(tipo, ref, "listo", listo, url, fin, detalle=detalle)
     if estado == "error":
-        return _ficha(tipo, ref, "error", error, url, fin, detalle=detalle,
-                      devueltos=doc.get("devueltos"))
+        return _ficha(tipo, ref, "error", error, url, fin, detalle=detalle, devueltos=devueltos)
     return None
 
 
@@ -261,6 +284,12 @@ def _s3(user: str, desde: float, ahora: float) -> list[dict]:
             f = ficha_s3(tipo, ref, doc, ahora)
             if f and _epoch(f["cuando"]) >= desde:
                 out.append(f)
+    # las imágenes NO listan su prefijo entero (un .json y un .reclamo por pedido, todo el
+    # historial): `_mios` solo mira los ids de hoy y de ayer, que cubren las HORAS_VISIBLE
+    for ref, doc in imagen_cola._mios(user):
+        f = ficha_s3("imagen", ref, doc, ahora)
+        if f and _epoch(f["cuando"]) >= desde:
+            out.append(f)
     return out
 
 

@@ -78,6 +78,64 @@ def test_abonar_asegura_usuario_y_registra(monkeypatch):
     assert "monedero_movimientos" in llamadas[2]
 
 
+def test_abonar_devolucion_es_una_sola_sentencia_atomica_despues_de_asegurar_al_usuario(monkeypatch):
+    """La devolución que puede reintentar un worker: el libro y el saldo en UNA sentencia (un CTE), no las tres
+    sueltas de `abonar_creditos` (un fallo entre el saldo y el libro y el reintento abonaba otra vez)."""
+    llamadas = []
+
+    def falso_ejecutar(sql, params=None):
+        llamadas.append((" ".join(sql.split()), params))
+        return [{"saldo": 107}] if sql.lstrip().startswith("WITH") else []
+    monkeypatch.setattr(db, "ejecutar", falso_ejecutar)
+    assert db.abonar_devolucion("ana", 7, "imagen:img-1") == 107
+    assert len(llamadas) == 2                                   # asegurar al usuario + UNA del monedero
+    assert "ON CONFLICT (id) DO NOTHING" in llamadas[0][0]
+    sql, params = llamadas[1]
+    assert params == {"u": "ana", "n": 7, "r": "imagen:img-1"}  # parámetros nombrados, como el resto de db.py
+    # el movimiento solo entra si NO hay ya una devolución de esa referencia a ese usuario…
+    assert "INSERT INTO monedero_movimientos" in sql and "'devolucion'" in sql
+    assert "WHERE NOT EXISTS (SELECT 1 FROM monedero_movimientos WHERE user_id = :u AND referencia = :r " \
+        "AND tipo = 'devolucion')" in sql
+    # …y el saldo sale de lo que ese INSERT devolvió: sin movimiento nuevo no se toca
+    assert "RETURNING id)" in sql and "SELECT :u, GREATEST(:n, 0) FROM mov" in sql
+    assert "saldo = monedero.saldo + :n" in sql and sql.endswith("RETURNING saldo")
+
+
+def test_abonar_devolucion_repetida_no_toca_nada_y_devuelve_none(monkeypatch):
+    respuestas = iter([[], []])                     # usuarios, y la sentencia sin filas: ya estaba
+    monkeypatch.setattr(db, "ejecutar", lambda sql, params=None: next(respuestas))
+    assert db.abonar_devolucion("ana", 7, "imagen:img-1") is None
+
+
+def test_devolver_unica_usa_la_sentencia_unica_y_el_usuario_de_siempre(monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(db, "abonar_devolucion", lambda u, n, r: llamadas.append((u, n, r)) or 50)
+    monkeypatch.setattr(db, "usuario_actual", lambda: "piloto")
+    assert creditos.devolver_unica(7, "imagen:img-1", "ana") == 50
+    assert creditos.devolver_unica("4", "imagen:img-2") == 50       # sin usuario: el actual; el número, entero
+    assert llamadas == [("ana", 7, "imagen:img-1"), ("piloto", 4, "imagen:img-2")]
+
+
+@pytest.mark.parametrize("n", [0, -3, "0", "-1"])
+def test_devolver_unica_rechaza_cero_y_negativos_sin_tocar_la_base(monkeypatch, n):
+    """Una devolución nunca resta: un `n` negativo (un doc manipulado) restaría saldo, y solo lo frenaba el
+    CHECK saldo >= 0 de la tabla."""
+    monkeypatch.setattr(db, "abonar_devolucion", lambda *a: pytest.fail("no debe llegar a la base"))
+    with pytest.raises(ValueError):
+        creditos.devolver_unica(n, "imagen:img-1", "ana")
+
+
+def test_devolver_y_abonar_creditos_siguen_igual_para_las_referencias_que_se_repiten(monkeypatch):
+    """«imagen:estudio» e «imagen:editor» se repiten a propósito: esas devoluciones NO pueden volverse únicas."""
+    llamadas = []
+    monkeypatch.setattr(db, "abonar_creditos",
+                        lambda u, n, t, r=None: llamadas.append((u, n, t, r)) or 90)
+    monkeypatch.setattr(db, "abonar_devolucion", lambda *a: pytest.fail("devolver no es la única"))
+    assert creditos.devolver(2, "imagen:estudio", "ana") == 90
+    assert creditos.devolver(2, "imagen:estudio", "ana") == 90
+    assert llamadas == [("ana", 2, "devolucion", "imagen:estudio")] * 2
+
+
 # ---------------------------------------------------------------------------
 # creditos.cobrar levanta SinSaldo con costo y saldo legibles
 

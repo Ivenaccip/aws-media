@@ -39,8 +39,97 @@ export function hechaValida(d: unknown): Hecha {
 
 export const cargarEstilos = () => pedir<Estilo[]>('/api/estilos');
 
-export const crear = (cuerpo: { prompt: string; estilo: string; estilo_custom: string; formato: Formato }) =>
-  pedir<unknown>('/api/imagenes', { cuerpo }).then(hechaValida);
+// Los modelos que tardan más de ~10 s no se esperan dentro de la petición (la
+// Lambda del API corta a los 29 s): POST /api/imagenes cobra, deja el pedido en
+// marcha y contesta `lanzado`. De ahí en adelante se pregunta por él cada 2 s
+// hasta que acaba. Los modelos rápidos siguen contestando `{nombre, url}`.
+export const SONDEO_IMAGEN_MS = 2000;
+/** Pasado este tope el navegador deja de esperar; la imagen sigue en camino y el servidor es quien devuelve si falla. */
+export const TOPE_SONDEO_IMAGEN_MS = 5 * 60 * 1000;
+
+export interface Lanzada {
+  lanzado: true;
+  id: string;
+  creditos: number;
+}
+
+/** Un pedido en segundo plano tal como lo cuenta GET /api/imagenes/pedidos/<id>. */
+export interface FichaPedido {
+  id: string;
+  estado: 'generando' | 'listo' | 'error' | string;
+  nombre: string;
+  url: string;
+  error: string;
+}
+
+export const esLanzada = (d: unknown): d is Lanzada => {
+  const l = d as Partial<Lanzada> | null;
+  return l?.lanzado === true && typeof l.id === 'string' && l.id !== '';
+};
+
+/** El tope se cumplió y la imagen aún no termina: no es un error, no se devuelve nada. */
+export class SigueEnCamino extends Error {
+  constructor() {
+    super(
+      'Tu imagen sigue en camino y está tardando más de lo normal. Aparecerá en «Mis creaciones», en el inicio, ' +
+        'cuando termine; no hace falta pedirla otra vez.',
+    );
+    this.name = 'SigueEnCamino';
+  }
+}
+
+const ABORTADO = () => new DOMException('Cancelado', 'AbortError');
+
+// espera `ms` y se corta al instante si la pantalla se desmonta
+const dormir = (ms: number, senal?: AbortSignal) =>
+  new Promise<void>((listo, mal) => {
+    if (senal?.aborted) return mal(ABORTADO());
+    const corta = () => {
+      clearTimeout(t);
+      mal(ABORTADO());
+    };
+    const t = setTimeout(() => {
+      senal?.removeEventListener('abort', corta);
+      listo();
+    }, ms);
+    senal?.addEventListener('abort', corta, { once: true });
+  });
+
+/** Pregunta por el pedido cada SONDEO_IMAGEN_MS hasta que sale la imagen. `error` es el 502 de siempre: el worker ya devolvió los créditos.
+ *  Solo un 404 (el pedido no existe) corta la espera, y la pantalla que se cierra; cualquier otro fallo de la pregunta
+ *  (un 5xx, la red caída, un cuerpo que no se pudo leer) se tolera hasta el tope. */
+export async function esperarImagen(id: string, senal?: AbortSignal): Promise<Hecha> {
+  const hasta = Date.now() + TOPE_SONDEO_IMAGEN_MS;
+  for (;;) {
+    await dormir(SONDEO_IMAGEN_MS, senal);
+    let ficha: FichaPedido | null = null;
+    try {
+      ficha = await pedir<FichaPedido>('/api/imagenes/pedidos/' + encodeURIComponent(id), senal ? { senal } : {});
+    } catch (e) {
+      // El pedido ya está cobrado y en marcha: solo un 404 (el pedido no existe) corta la espera (o
+      // la pantalla que se cierra). Un 429, un 408, un 401/403 intermitente, un 5xx, la red caída o un
+      // cuerpo que no se pudo leer (JSON vacío o a medias: sale de pedir() como SyntaxError o TypeError,
+      // no como ErrorApi) son tropiezos del camino, no del pedido: la imagen sigue en camino y se
+      // vuelve a preguntar hasta el tope.
+      if (senal?.aborted || (e instanceof ErrorApi && e.estado === 404)) throw e;
+    }
+    if (ficha?.estado === 'listo') return hechaValida({ nombre: ficha.nombre, url: ficha.url });
+    if (ficha?.estado === 'error')
+      throw new ErrorApi(502, ficha.error || 'La imagen no se pudo generar. Se te devolvieron los créditos.', ficha);
+    if (Date.now() >= hasta) throw new SigueEnCamino();
+  }
+}
+
+/** `alLanzar` avisa cuando el servidor ya cobró y dejó la imagen en marcha; `senal` corta la espera al desmontar. */
+export async function crear(
+  cuerpo: { prompt: string; estilo: string; estilo_custom: string; formato: Formato },
+  op: { senal?: AbortSignal | undefined; alLanzar?: (() => void) | undefined } = {},
+): Promise<Hecha> {
+  const d = await pedir<unknown>('/api/imagenes', { cuerpo });
+  if (!esLanzada(d)) return hechaValida(d);
+  op.alLanzar?.();
+  return esperarImagen(d.id, op.senal);
+}
 
 /** El editor recibe multipart (la imagen y la zona marcada): pedir() solo habla JSON. */
 export async function editar(fd: FormData): Promise<Hecha> {

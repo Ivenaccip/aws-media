@@ -6,36 +6,84 @@
 // la vieja los tenía ESCRITOS («30», «55–190», «2») y un test comprobaba que
 // coincidieran. Aquí no hay número que pueda desfasarse.
 import { ErrorApi, pedir } from '../../nucleo/api';
-import { clip, video } from '../../nucleo/tarifas';
+import { video } from '../../nucleo/tarifas';
+import { PARAM_TRASPASO } from '../../nucleo/traspaso';
+import { PREDETERMINADO, type Tarea } from './modelos';
 
 // ---------------------------------------------------------------------------
 // la caja: qué te llevas (familia) y cuál de esas cosas (opción)
 
-export type Familia = 'videos' | 'imagenes';
+/** Las tres cosas que te llevas. «Edición» (E1) no elige tarea ni modelo: es otra caja (CajaEdicion), con su
+ *  propio texto, su video y su precio; por eso no está en OPCIONES. */
+export type Familia = 'videos' | 'imagenes' | 'edicion';
+
+/** Las familias que sí se reparten en tareas (el menú de la izquierda del chip): Imagen y Video. */
+export type FamiliaCrea = Exclude<Familia, 'edicion'>;
+
+/** Cómo llama una opción a lo que se agrega con el «+». Sin esto, la caja habla de «imágenes de referencia»; las
+ *  opciones donde esa imagen es OTRA cosa (la foto del personaje de un cuento) la nombran aquí. */
+export interface TextosMas {
+  /** El nombre accesible del botón «+». */
+  boton: string;
+  /** Su `title`: lo que dice al pasar el ratón. */
+  pista: string;
+  /** El nombre accesible de la lista de miniaturas. */
+  lista: string;
+  /** El nombre accesible del menú del «+» (el que ofrece «Elegir de Mis creaciones»). */
+  menu: string;
+  /** La línea de abajo del menú. */
+  recordatorio: string;
+}
 
 export interface Opcion {
   id: string;
   rotulo: string;
-  /** El precio tal cual se enseña: «30» o «55–190». */
+  /** Lo que se enseña en el menú de la tarea: «55–190». Vacío si la tarea elige
+   *  modelo: ahí el precio es el del modelo, y el menú dice «según el modelo». */
   precio: string;
   destino: string;
   modo?: 'investigacion' | 'idea';
   editar?: boolean;
+  /** Si la tarea elige modelo, de qué lista (modelos.ts). */
+  modelos?: Tarea;
+  /** Cuántas imágenes de referencia admite (el «+» de la caja). Sin esto, ninguna. */
+  referencias?: number;
+  /** La opción a la que pasa la caja cuando se le agrega una imagen: crear una imagen no parte de ninguna, pero
+   *  con una la tarea es editarla. Lleva el «+» sin llevar miniaturas propias. */
+  alAgregar?: string;
+  /** Los textos del «+» propios de la opción. Sin esto, los de siempre (imágenes de referencia). */
+  textosMas?: TextosMas;
   nota: string;
   hueco: string;
 }
 
+/** La pantalla de Crear de ahora (migracion.py: PANTALLAS['crear'].nueva). */
+const PANTALLA_CREAR = '/estudio/crear/';
+
 const duraciones = Object.values(video.por_duracion);
 const historias = `${Math.min(...duraciones)}–${Math.max(...duraciones)}`;
 
-export const OPCIONES: Record<Familia, Opcion[]> = {
+// Cuentos e historias llevan UNA foto, la del personaje (dueño, 14-oct-2026: «en cuento e historia debe de tener el +»).
+// Una y no cuatro: Crear acepta hasta 4, pero el motor solo usa la primera (pipeline/character.py, pipeline/flow.py);
+// ofrecer más prometería lo que no pasa. Con tope 1 la caja reemplaza la anterior, igual que «Editar una imagen».
+const MAS_DEL_PERSONAJE: TextosMas = {
+  boton: 'Agregar la foto de tu personaje',
+  pista: 'Agrega la foto de tu personaje, arrástrala a la caja o pégala con Ctrl+V',
+  lista: 'Foto de tu personaje',
+  menu: 'Agregar la foto de tu personaje',
+  recordatorio: 'También puedes arrastrarla a la caja o pegarla con Ctrl+V.',
+};
+
+export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
   videos: [
     {
       id: 'clip',
       rotulo: 'Un video corto',
-      precio: String(clip.video_8s),
+      precio: '',
+      modelos: 'clip',
+      referencias: 3,
       destino: '/clip.html',
-      nota: 'Ocho segundos con sonido, de una sola toma. Puedes subir hasta 3 fotos.',
+      nota: 'De 4 a 8 segundos, de una sola toma; el sonido depende del modelo. Puedes subir hasta 3 fotos.',
       hueco: 'Escribe qué quieres ver. Ejemplo: «mi perro corriendo en la playa al atardecer».',
     },
     {
@@ -44,8 +92,10 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
       precio: historias,
       destino: '/crear.html',
       modo: 'investigacion',
-      nota: 'Buscamos las fuentes y escribimos el guion por ti. Lo revisas antes de producir.',
-      hueco: 'Cuéntanos el tema. Ejemplo: «cómo empezó la Segunda Guerra Mundial».',
+      referencias: 1,
+      textosMas: MAS_DEL_PERSONAJE,
+      nota: 'Buscamos las fuentes y escribimos el guion por ti. Lo revisas antes de producir. Con el + puedes agregar la foto de tu personaje.',
+      hueco: 'Cuéntanos el tema. Ejemplo: «cómo empezó la Segunda Guerra Mundial». Con el + puedes agregar la foto de tu personaje.',
     },
     {
       id: 'historia',
@@ -53,38 +103,53 @@ export const OPCIONES: Record<Familia, Opcion[]> = {
       precio: historias,
       destino: '/crear.html',
       modo: 'idea',
-      nota: 'Usamos tu texto tal cual, sin investigar. Lo revisas antes de producir.',
-      hueco: 'Pega tu historia completa — la respetamos como la escribiste.',
+      referencias: 1,
+      textosMas: MAS_DEL_PERSONAJE,
+      nota: 'Usamos tu texto tal cual, sin investigar. Lo revisas antes de producir. Con el + puedes agregar la foto de tu personaje.',
+      hueco: 'Pega tu historia completa — la respetamos como la escribiste. Con el + puedes agregar la foto de tu personaje.',
     },
   ],
   imagenes: [
     {
       id: 'imagen',
       rotulo: 'Crear una imagen',
-      precio: String(video.imagen),
+      precio: '',
+      modelos: 'imagen',
+      alAgregar: 'imagen_editar',
       destino: '/imagenes.html',
-      nota: 'Desde cero, con el estilo visual que elijas.',
+      nota: 'Desde cero: dibujamos lo que escribas, tal cual. Si le agregas una imagen con el +, la editamos.',
       hueco: 'Describe la imagen que quieres.',
     },
     {
       id: 'imagen_editar',
       rotulo: 'Editar una imagen',
-      precio: String(video.imagen),
+      precio: '',
+      modelos: 'editar',
+      referencias: 1,
       destino: '/imagenes.html',
       editar: true,
-      nota: 'Subes una que ya tienes y nos dices qué cambiar.',
-      hueco: 'Dinos qué cambiarle a tu imagen. La subes en la pantalla siguiente.',
+      nota: 'Agregas una que ya tienes con el + y nos dices qué cambiar.',
+      hueco: 'Dinos qué cambiarle a tu imagen. Agrégala con el +.',
     },
   ],
 };
 
-/** A dónde lleva «Crear»: crear.html y clip.html leen `brief`; imagenes.html, `prompt`. */
-export function destinoDe(o: Opcion, texto: string): string {
+/** A dónde lleva «Crear»: crear.html y clip.html leen `brief`; imagenes.html, `prompt`.
+ *  `modelo` (el id, con su calidad si la tiene: `nbp-4k`) viaja SOLO si no es el
+ *  predeterminado de la tarea: las direcciones de hoy no cambian, y la pantalla que
+ *  cobra decide con su propia lista.
+ *  `traspaso` (el token de nucleo/traspaso, o `perdida`) viaja SOLO si lo hay: es la foto del personaje que la caja
+ *  dejó en el navegador para que Crear la recoja. Sin foto la dirección es la de siempre, byte a byte; con foto, la de
+ *  `/estudio/crear/`: la vieja `/crear.html` ignora `refs` y, según su etapa, ni siquiera redirige. */
+export function destinoDe(o: Opcion, texto: string, modelo?: string, traspaso?: string): string {
   const q = new URLSearchParams();
   q.set(o.destino === '/imagenes.html' ? 'prompt' : 'brief', texto);
   if (o.modo) q.set('modo', o.modo);
   if (o.editar) q.set('editar', '1');
-  return o.destino + '?' + q.toString();
+  if (o.modelos && modelo && modelo !== PREDETERMINADO[o.modelos]) q.set('modelo', modelo);
+  if (traspaso) q.set(PARAM_TRASPASO, traspaso);
+  // con foto va directo a la pantalla nueva: `/crear.html` solo redirige cuando su etapa lo dice, y la vieja ignora `refs`
+  return (traspaso && o.destino === '/crear.html' ? PANTALLA_CREAR : o.destino) + '?' + q.toString();
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +204,20 @@ export interface Imagen {
   creado: number;
 }
 
+/** Una imagen que se hace en segundo plano (los modelos que tardan), tal como la cuenta `pendientes` de /api/imagenes.
+ *  `generando` o `error` de la última hora; la `listo` ya está en `imagenes`. */
+export interface PedidoImagen {
+  id: string;
+  estado: 'generando' | 'listo' | 'error' | string;
+  inicio: string;
+  texto: string;
+  modelo: string;
+  creditos: number;
+  nombre: string;
+  url: string;
+  error: string;
+}
+
 export const cargarProyectos = () => pedir<Proyecto[]>('/api/proyectos');
 export const cargarSlots = () => pedir<{ slots: number | null }>('/api/slots');
 export const cargarEdiciones = () => pedir<Edicion[]>('/api/edicion/proyectos');
@@ -152,7 +231,15 @@ export const cargarClips = () =>
       throw e;
     },
   );
-export const cargarImagenes = () => pedir<{ imagenes?: Imagen[] }>('/api/imagenes').then(r => r.imagenes ?? []);
+export const cargarImagenes = () =>
+  pedir<{ imagenes?: Imagen[]; pendientes?: PedidoImagen[]; pendientes_ok?: boolean }>('/api/imagenes').then(r => ({
+    imagenes: r.imagenes ?? [],
+    // en local, o con un servidor anterior, la llave no viene: no hay ninguna
+    pendientes: r.pendientes ?? [],
+    // false: el servidor no pudo leer los pedidos y `pendientes` viene vacía sin querer decir «no hay».
+    // Sin la llave (un servidor anterior) se da por buena.
+    pendientesOk: r.pendientes_ok !== false,
+  }));
 
 export const archivar = (id: string) =>
   pedir<Proyecto>('/api/proyectos/' + encodeURIComponent(id) + '/archivar', { metodo: 'POST' });
@@ -217,6 +304,58 @@ export function mezclar(proyectos: Proyecto[], clips: ClipCorto[] | null, edicio
   return todos.sort((a, b) => (a.fecha === b.fecha ? 0 : b.fecha > a.fecha ? 1 : -1));
 }
 
+// ---------------------------------------------------------------------------
+// «Mis creaciones»: todo lo que hiciste en una sola galería, lo más nuevo
+// primero. Las películas, los clips y los shorts son los `Video` de arriba; se
+// suman las imágenes y las ediciones de metraje. Los filtros solo reducen la lista.
+
+export type Creacion =
+  | Video
+  | { tipo: 'imagen'; clave: string; fecha: number; im: Imagen }
+  | { tipo: 'edicion'; clave: string; fecha: number; e: Edicion };
+
+export type Filtro = 'todo' | 'peliculas' | 'cortos' | 'imagenes' | 'shorts' | 'ediciones';
+
+export const FILTROS: Array<{ id: Filtro; rotulo: string }> = [
+  { id: 'todo', rotulo: 'Todo' },
+  { id: 'peliculas', rotulo: 'Películas' },
+  { id: 'cortos', rotulo: 'Videos cortos' },
+  { id: 'imagenes', rotulo: 'Imágenes' },
+  { id: 'shorts', rotulo: 'Shorts' },
+  { id: 'ediciones', rotulo: 'Ediciones' },
+];
+
+export function filtroDe(c: Creacion): Exclude<Filtro, 'todo'> {
+  switch (c.tipo) {
+    case 'largo':
+    case 'cuento':
+      return 'peliculas';
+    case 'corto':
+      return 'cortos';
+    case 'imagen':
+      return 'imagenes';
+    case 'shorts':
+      return 'shorts';
+    case 'edicion':
+      return 'ediciones';
+  }
+}
+
+/** Todo junto y ordenado: lo más nuevo primero; sin fecha que se entienda, al final. */
+export function creaciones(
+  proyectos: Proyecto[],
+  clips: ClipCorto[] | null,
+  ediciones: Edicion[] | null,
+  imagenes: Imagen[] | null,
+): Creacion[] {
+  const todos: Creacion[] = [
+    ...mezclar(proyectos, clips, ediciones),
+    ...(imagenes ?? []).map(im => ({ tipo: 'imagen' as const, clave: 'i:' + im.nombre, fecha: im.creado * 1000, im })),
+    ...(ediciones ?? []).map(e => ({ tipo: 'edicion' as const, clave: 'e:' + e.nombre, fecha: cuando(e.creado), e })),
+  ];
+  return todos.sort((a, b) => (a.fecha === b.fecha ? 0 : b.fecha > a.fecha ? 1 : -1));
+}
+
 type Estado = { icono: 'reloj' | 'guion' | 'listo' | 'aviso'; texto: string; tono?: 'ok' | 'mal' };
 
 /** El estado que va junto a la etiqueta, o null si ya está listo (lista = solo
@@ -261,7 +400,8 @@ export function estadoEdicion(e: Edicion): { icono?: 'reloj' | 'aviso' | 'cortar
   return { texto: e.generado ? 'película generada' : 'sin metraje aún' };
 }
 
-export const IMG_A_LA_VISTA = 5;
+/** Cuántas tarjetas enseña la galería antes del «Ver más». */
+export const CREACIONES_A_LA_VISTA = 12;
 
 export function diaImagen(creado: number): string {
   const d = new Date(creado * 1000);

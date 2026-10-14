@@ -1,0 +1,93 @@
+{
+ "_fuente": "Esquema público de fal de Grok Imagine Video 1.5 Lite, leído el 2026-10-12 en la máquina del dueño (work/esquemas_fal/grok-lite/RESUMEN.txt y los dos JSON; TAREA «GROK 1.5 LITE · ESQUEMAS»). Los valores de abajo están TRANSCRITOS por Claude del reporte que esa TAREA pegó (no es la salida directa de la herramienta): mismas llaves y formato que tests/fixtures/esquemas_fal_ola4.json, sin la llave `entrada` (el nombre del tipo de entrada no venía en el reporte y no se inventa). Si hay que fiarse de cada letra, se vuelve a leer con `python tools/leer_esquema_fal.py xai/grok-imagine-video/v1.5/lite/text-to-video xai/grok-imagine-video/v1.5/lite/image-to-video --salida work/esquemas_fal/grok-lite` y se compara. `propiedades` trae TODAS las del endpoint; `salida` lo que devuelve (el clip se baja de video.url). El texto a video tiene `aspect_ratio`; el imagen a video NO.",
+ "xai/grok-imagine-video/v1.5/lite/text-to-video": {
+  "propiedades": [
+   "prompt",
+   "duration",
+   "aspect_ratio",
+   "resolution",
+   "enable_safety_checker"
+  ],
+  "obligatorias": [
+   "prompt"
+  ],
+  "duration": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 15,
+   "por_defecto": 6
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "480p",
+    "720p",
+    "1080p"
+   ],
+   "por_defecto": "720p"
+  },
+  "aspect_ratio": {
+   "tipo": "enum",
+   "enum": [
+    "16:9",
+    "4:3",
+    "3:2",
+    "1:1",
+    "2:3",
+    "3:4",
+    "9:16"
+   ],
+   "por_defecto": "16:9"
+  },
+  "salida": [
+   "content_type",
+   "duration",
+   "file_name",
+   "file_size",
+   "fps",
+   "height",
+   "num_frames",
+   "url",
+   "width"
+  ]
+ },
+ "xai/grok-imagine-video/v1.5/lite/image-to-video": {
+  "propiedades": [
+   "prompt",
+   "image_url",
+   "duration",
+   "resolution",
+   "enable_safety_checker"
+  ],
+  "obligatorias": [
+   "image_url",
+   "prompt"
+  ],
+  "duration": {
+   "tipo": "integer",
+   "min": 1,
+   "max": 15,
+   "por_defecto": 6
+  },
+  "resolution": {
+   "tipo": "enum",
+   "enum": [
+    "480p",
+    "720p",
+    "1080p"
+   ],
+   "por_defecto": "720p"
+  },
+  "salida": [
+   "content_type",
+   "duration",
+   "file_name",
+   "file_size",
+   "fps",
+   "height",
+   "num_frames",
+   "url",
+   "width"
+  ]
+ }
+}

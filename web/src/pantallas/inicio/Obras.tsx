@@ -20,6 +20,7 @@ import {
   fechaCorta,
   forma,
   type Edicion,
+  type ClipCorto,
   type Imagen,
   type Proyecto,
   type Video,
@@ -73,11 +74,36 @@ function Titulo({ href, texto, alAbrir }: { href: string; texto: string; alAbrir
   );
 }
 
+/** Lo que abre el visor (un clip, una imagen) es un botón y no un enlace: no cambia de página. */
+function TituloBoton({ texto, alAbrir, etiqueta }: { texto: string; alAbrir: () => void; etiqueta?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={alAbrir}
+      aria-label={etiqueta}
+      title={texto}
+      className={unir(ESTIRADO, 'm-0 w-full cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit]')}
+    >
+      <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap">
+        {texto || '(sin título)'}
+      </span>
+    </button>
+  );
+}
+
 type De<T extends Video['tipo']> = Extract<Video, { tipo: T }>;
 
 /** UI·26: la tarjeta de cada cosa de «Mis videos». */
-export function TarjetaVideo({ v, alArchivar }: { v: Video; alArchivar: (p: Proyecto) => void }) {
-  if (v.tipo === 'corto') return <TarjetaClip v={v} />;
+export function TarjetaVideo({
+  v,
+  alArchivar,
+  alAbrirClip,
+}: {
+  v: Video;
+  alArchivar: (p: Proyecto) => void;
+  alAbrirClip: (c: ClipCorto) => void;
+}) {
+  if (v.tipo === 'corto') return <TarjetaClip v={v} alAbrir={alAbrirClip} />;
   if (v.tipo === 'shorts') return <TarjetaShorts v={v} />;
   return <TarjetaProyecto v={v} alArchivar={alArchivar} />;
 }
@@ -129,8 +155,8 @@ function TarjetaProyecto({ v, alArchivar }: { v: De<'largo' | 'cuento'>; alArchi
 }
 
 /** UI·26 — un clip de 8 s. Listo, su primer cuadro hace de miniatura (el
- *  video mismo, sin sonido ni controles); abre en su pantalla con `?c=`. */
-function TarjetaClip({ v }: { v: De<'corto'> }) {
+ *  video mismo, sin sonido ni controles) y abre en el visor de la galería. */
+function TarjetaClip({ v, alAbrir }: { v: De<'corto'>; alAbrir: (c: ClipCorto) => void }) {
   const { c } = v;
   const [roto, setRoto] = useState(false);
   const fecha = fechaCorta(c.inicio ?? '');
@@ -152,7 +178,14 @@ function TarjetaClip({ v }: { v: De<'corto'> }) {
         <Hueco icono="video" />
       )}
       <div className="px-3 py-2.5">
-        <Titulo href={'/clip.html?c=' + encodeURIComponent(c.id)} texto={c.texto} />
+        {c.estado === 'listo' && c.video ? (
+          <TituloBoton texto={c.texto} alAbrir={() => alAbrir(c)} />
+        ) : (
+          // generándose o con error: no hay nada que ver todavía
+          <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap" title={c.texto}>
+            {c.texto || '(sin título)'}
+          </span>
+        )}
         <Leyenda v={v} fecha={fecha} />
       </div>
     </article>
@@ -174,15 +207,16 @@ function TarjetaShorts({ v }: { v: De<'shorts'> }) {
   );
 }
 
-export function TarjetaImagen({ im }: { im: Imagen }) {
+export function TarjetaImagen({ im, alAbrir }: { im: Imagen; alAbrir: (im: Imagen) => void }) {
   const dia = diaImagen(im.creado);
   const [rota, setRota] = useState(false);
   const [detalle, setDetalle] = useState(dia);
   return (
-    <a
-      href={'/imagenes.html?img=' + encodeURIComponent(im.nombre)}
-      aria-label={`Abrir tu imagen del ${dia} para editarla`}
-      className={unir(TARJETA, 'no-underline')}
+    <button
+      type="button"
+      onClick={() => alAbrir(im)}
+      aria-label={`Abrir tu imagen del ${dia}`}
+      className={unir(TARJETA, 'cursor-pointer p-0 text-left font-[inherit]')}
     >
       {rota ? (
         <Hueco icono="imagen" />
@@ -196,8 +230,10 @@ export function TarjetaImagen({ im }: { im: Imagen }) {
           onError={() => setRota(true)}
         />
       )}
-      <span className="px-3 py-2.5 text-xs text-secundario">{detalle}</span>
-    </a>
+      <span className="px-3 py-2.5 text-xs text-secundario">
+        <span className="font-semibold text-texto">Imagen</span> · {detalle}
+      </span>
+    </button>
   );
 }
 
@@ -216,26 +252,5 @@ export function TarjetaEdicion({ e }: { e: Edicion }) {
         </span>
       </span>
     </a>
-  );
-}
-
-/** La tarjeta punteada del final: «Nuevo video», «Nueva imagen». */
-export function TarjetaNueva({ texto, href, alPulsar }: { texto: string; href?: string; alPulsar?: () => void }) {
-  const clase =
-    'grid min-h-[150px] cursor-pointer place-items-center rounded-boton border border-dashed border-linea bg-superficie text-sm text-secundario no-underline transition-colors hover:border-campo hover:text-texto';
-  const dentro = (
-    <span className="flex items-center gap-2">
-      <Icono nombre="mas" />
-      {texto}
-    </span>
-  );
-  return href ? (
-    <a href={href} className={clase}>
-      {dentro}
-    </a>
-  ) : (
-    <button type="button" onClick={alPulsar} className={unir(clase, 'w-full')}>
-      {dentro}
-    </button>
   );
 }

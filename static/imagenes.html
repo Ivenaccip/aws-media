@@ -220,8 +220,10 @@
   .estado-envio { text-align:center; }
   #orbe-form { display:flex; justify-content:center; }
   #orbe-form:not(:empty) { margin-top:12px; }
-  #saldoform, #gerr { margin:6px 0 0; }
+  #saldoform, #gerr, #gaviso { margin:6px 0 0; }
   #saldoform:empty { display:none; }
+  /* región viva: vacía sigue en el árbol (con display:none el lector no oiría el primer aviso) */
+  #gaviso:empty { margin:0; }
 
   @media (prefers-reduced-motion: reduce) {
     .caja { transition:none; }
@@ -374,6 +376,7 @@
   <div class="estado-envio">
     <div id="orbe-form"></div>
     <p class="mut" id="saldoform"></p>
+    <p class="mut" id="gaviso" role="status"></p>
     <div class="err" id="gerr" role="alert"></div>
   </div>
 </section>
@@ -584,6 +587,7 @@ function cargarImagen(f, nombre = null) {
   }
   if (f.size > 15 * 1024 * 1024) { $('#gerr').textContent = 'La imagen pasa de 15 MB.'; return; }
   $('#gerr').textContent = '';
+  $('#gaviso').textContent = '';
   // UI·16: ya hay imagen en el lienzo — el aviso de «no pude abrir» sobra
   window.avisos?.quitar('imagenes-abrir');
   // cada carga invalida las anteriores, y mientras decodifica no se envía:
@@ -758,6 +762,7 @@ function fijarModo(m) {
   $('#modo-pincel').setAttribute('aria-checked', String(pincel));
   $('#modo-todo').setAttribute('aria-checked', String(!pincel));
   $('#gerr').textContent = '';
+  $('#gaviso').textContent = '';
   // quien elige «Cambiar una zona» va a pintar: se le enseña su imagen (el
   // resultado sigue a un clic, en «Ver resultado»)
   verEstado(pincel && archivo && ESTADO === 'resultado' ? 'lienzo' : ESTADO);
@@ -930,10 +935,47 @@ function bloquear(si) {
   HERRAMIENTAS.forEach(s => { $(s).disabled = si; });
 }
 
+// ---------- imágenes en segundo plano ----------
+// Los modelos que tardan más de ~10 s no se esperan dentro de la petición (la
+// Lambda del API corta a los 29 s): POST /api/imagenes cobra, deja el pedido en
+// marcha y contesta {lanzado, id, creditos}. Desde ahí se pregunta por él cada
+// 2 s hasta que sale; pasados 5 min el navegador deja de esperar, y la imagen
+// sigue en camino (si falla, el servidor devuelve los créditos). Eso no es un
+// error: el aviso va marcado con `enCamino` y sale por #gaviso, no por #gerr.
+const SONDEO_MS = 2000, TOPE_MS = 5 * 60 * 1000;
+const EN_CAMINO = 'Tu imagen sigue en camino y está tardando más de lo normal. '
+  + 'Aparecerá en «Mis creaciones», en el inicio, cuando termine; no hace falta pedirla otra vez.';
+async function esperarImagen(id) {
+  window.monedero?.refrescar();                 // ya se cobró: el saldo baja desde ya
+  const hasta = Date.now() + TOPE_MS;
+  for (;;) {
+    await new Promise(ok => setTimeout(ok, SONDEO_MS));
+    let ficha = null, r = null;
+    try { r = await fetch(`/api/imagenes/pedidos/${encodeURIComponent(id)}`); }
+    catch { /* la red parpadeó: la imagen sigue en camino */ }
+    // ya se cobró y la imagen sigue en marcha: solo un 404 (el pedido no existe) corta la
+    // espera; un 429, un 408, un 401/403 intermitente o un 5xx son del camino, no del pedido
+    if (r && r.status === 404) throw new Error(await errTxt(r).catch(() => 'Pedido no encontrado'));
+    // y un cuerpo que no se lee (JSON vacío o a medias, la red que muere mientras llega) tampoco
+    if (r && r.ok) { try { ficha = await r.json(); } catch { /* se vuelve a preguntar */ } }
+    if (ficha && ficha.estado === 'listo') return { nombre: ficha.nombre, url: ficha.url };
+    if (ficha && ficha.estado === 'error') {
+      window.monedero?.refrescar();             // el worker ya devolvió los créditos
+      throw new Error(ficha.error || 'La imagen no se pudo generar. Se te devolvieron los créditos.');
+    }
+    if (Date.now() >= hasta) {
+      const e = new Error(EN_CAMINO);
+      e.enCamino = true;                        // no es un fallo: la imagen sigue en camino
+      throw e;
+    }
+  }
+}
+
 // ---------- enviar ----------
 $('#enviar').onclick = async () => {
   if (enVuelo || cargando) return;
   $('#gerr').textContent = '';
+  $('#gaviso').textContent = '';
   leerIntencion();                // lo recién escrito también cuenta
   const modo = cual(), prompt = $('#prompt').value.trim();
   if (/^\/\S*$/.test(prompt)) {
@@ -958,11 +1000,15 @@ $('#enviar').onclick = async () => {
   $('#enviar').disabled = true;
   bloquear(true);
   let creada = false;
+  let enCamino = false;             // el servidor ya cobró y la imagen se hace en segundo plano
   const mando = montarOrbe(modo === 'crear' ? $('#orbe-form') : $('#orbe-hueco'), {
     texto: 'Revisando tu texto…',   // cubre el hueco mudo del guardrail
     tope: 180000,
-    alAgotar: m => m.texto('Esto está tardando más de lo normal. Si no aparece tu '
-      + 'imagen, inténtalo otra vez; si te descontaron créditos, escríbenos.'),
+    alAgotar: m => m.texto(enCamino
+      ? 'Tu imagen sigue en camino y está tardando más de lo normal. No la pidas '
+        + 'otra vez: aparecerá en «Mis creaciones», en el inicio.'
+      : 'Esto está tardando más de lo normal. Si no aparece tu '
+        + 'imagen, inténtalo otra vez; si te descontaron créditos, escríbenos.'),
   });
   try {
     // El pedido se arma ANTES de moderar: lo que se toque en pantalla durante
@@ -978,9 +1024,11 @@ $('#enviar').onclick = async () => {
     if (r.status === 402) throw new Error(`${await errTxt(r)} ${CTA}`);
     if (!r.ok) throw new Error(await errTxt(r));
     const d = await r.json();
+    enCamino = !!(d.lanzado && d.id);   // el modelo tarda: ya se cobró, se espera preguntando por él
+    const hecha = enCamino ? await esperarImagen(d.id) : d;   // sale igual que si hubiera contestado {nombre, url}
     mando.desmontar();              // el orbe se va ANTES de que aparezca el resultado
-    ultimoNombre = d.nombre;
-    $('#final').src = d.url;
+    ultimoNombre = hecha.nombre;
+    $('#final').src = hecha.url;
     if (modo === 'crear') {
       // el texto ya se gastó: la caja queda lista para decir qué cambiar
       creada = true;
@@ -993,7 +1041,9 @@ $('#enviar').onclick = async () => {
     window.monedero?.refrescar();
   } catch (e) {
     mando.desmontar();              // NUNCA un orbe girando junto a un error
-    $('#gerr').textContent = e.message;
+    // el tope de espera no es un fallo (la imagen sigue en camino): un aviso, no el rojo del error
+    if (e.enCamino) $('#gaviso').textContent = e.message;
+    else $('#gerr').textContent = e.message;
   } finally {
     mando.desmontar();
     bloquear(false);
@@ -1032,6 +1082,7 @@ $('#seguir').onclick = async () => {
   if (enVuelo || !ultimoNombre) return;
   const nombre = ultimoNombre;
   $('#gerr').textContent = '';
+  $('#gaviso').textContent = '';
   $('#seguir').disabled = true;
   try {
     const f = await bajarPropia(nombre);

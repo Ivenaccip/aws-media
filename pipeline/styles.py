@@ -49,7 +49,23 @@ ESTILOS: dict[str, Estilo] = {
 }
 
 
+# «Sin estilo» (dueño, 14-oct-2026): la caja del inicio dibuja lo que la persona escribe,
+# sin pegarle un look. Es un id APARTE y a propósito NO vive en ESTILOS: ese dict alimenta
+# `/api/estilos` y, por ahí, los selectores de Imágenes y de Crear (y el estilo de las
+# películas, que sí lo necesitan). Si entrara a ESTILOS, «ninguno» aparecería como una
+# opción más en esas pantallas y una película podría nacer sin estilo. Se acepta aquí, en
+# `resolver_estilo`; lo pide `POST /api/imagenes` (la caja) y `POST /api/proyectos` lo
+# rechaza con 422. Su negativo es el base, como el de «custom»: cuida manos y marcas de
+# agua, no impone ningún look.
+NINGUNO = "ninguno"
+
+_SIN_ESTILO = Estilo(NINGUNO, "Sin estilo", "", _BASE_NEG,
+                     "Lo que escribes es lo que se dibuja: no se le agrega ningún estilo.")
+
+
 def resolver_estilo(id_: str, custom: str | None = None) -> Estilo:
+    if id_ == NINGUNO:
+        return _SIN_ESTILO     # `custom` se ignora: sin estilo no hay a qué añadirle texto
     if id_ == "custom":
         return Estilo("custom", "Personalizado", (custom or "").strip(), _BASE_NEG,
                       "Descríbelo tú con tus palabras (en inglés funciona mejor).")

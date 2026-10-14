@@ -31,9 +31,19 @@ const NIVEL: Record<Nivel, string> = {
     'active:enabled:text-texto',
 };
 
-function clases(nivel: Nivel, denso: boolean): string {
+// «Apagado» sin `disabled` (E1): el mismo aspecto de DISENO.md §5 (borde discontinuo,
+// gris; jamás ámbar a media opacidad), pero con `aria-disabled`, así que el botón sigue
+// enfocable y puede explicar POR QUÉ no actúa. Sin hover ni «al apretar»: apagado no responde.
+const APAGADO: Partial<Record<Nivel, string>> = {
+  principal:
+    'cursor-default border border-dashed border-campo bg-superficie font-semibold text-secundario',
+  secundario: 'cursor-default border border-campo bg-transparent text-secundario',
+};
+
+function clases(nivel: Nivel, denso: boolean, apagado = false): string {
   const alto = nivel === 'enlace' ? '' : denso ? 'min-h-10 px-4' : 'min-h-12 px-5';
-  return unir(BASE, NIVEL[nivel], alto);
+  // sin apagado propio (enlace, peligro) el nivel conserva su aspecto y solo avisa por aria-disabled
+  return unir(BASE, (apagado && APAGADO[nivel]) || NIVEL[nivel], alto);
 }
 
 /** Las clases de un botón para un <a>: navegar es un enlace, no un botón. */
@@ -47,6 +57,10 @@ export interface PropsBoton extends ButtonHTMLAttributes<HTMLButtonElement> {
   denso?: boolean;
   /** Texto mientras trabaja («Generando…»). Mientras haya, no acepta clics. */
   trabajando?: string | false;
+  /** Apagado pero enfocable (`aria-disabled`, no `disabled`): se ve como el deshabilitado de la carta y el clic SÍ
+   *  llega a `onClick`, para que quien lo recibe diga por qué no se puede (o lleve el foco a lo que falta). Quien lo
+   *  usa es quien impide la acción: este botón no filtra nada. */
+  apagado?: boolean;
   icono?: ReactNode;
   /** React 19: la ref es una prop más y llega al <button>. */
   ref?: Ref<HTMLButtonElement>;
@@ -56,6 +70,7 @@ export function Boton({
   nivel = 'secundario',
   denso = false,
   trabajando = false,
+  apagado = false,
   icono,
   className,
   children,
@@ -70,9 +85,9 @@ export function Boton({
   return (
     <button
       type={type}
-      className={unir(clases(nivel, denso), ocupado && 'cursor-progress', className)}
+      className={unir(clases(nivel, denso, apagado && !ocupado), ocupado && 'cursor-progress', className)}
       aria-busy={ocupado || undefined}
-      aria-disabled={ocupado || undefined}
+      aria-disabled={ocupado || apagado || undefined}
       onClick={ocupado ? undefined : onClick}
       {...resto}
     >

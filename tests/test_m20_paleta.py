@@ -70,9 +70,10 @@ TRANSLUCIDOS = {
                         "(#ayudaModal, #g1modal, #b3modal, #b1modal)",
     # medianoche hundida (#040911): velos que oscurecen sin volverse gris
     "rgba(4,9,17,0.55)": "trabajos.js — sombra de la bandeja de trabajos",
-    "rgba(4,9,17,0.72)": "index.html (#dlg-blotato) y agenda.html (#agDlg) — "
-                         "::backdrop de los diálogos; web/src/ui/Dialogo.tsx "
-                         "(VELO) — el mismo velo en la UI nueva",
+    "rgba(4,9,17,0.72)": "index.html (#dlg-blotato), agenda.html (#agDlg) y "
+                         "automatiza.css (.dialogo, RAG·13) — ::backdrop de los "
+                         "diálogos; web/src/ui/Dialogo.tsx (VELO) — el mismo "
+                         "velo en la UI nueva",
     # restos del fondo viejo (#12141a/#14161a, ver test_no_quedan_rastros_…) que
     # sobrevivieron como translúcidos. Se toleran para no tocar el HTML en UI·1;
     # la migración a web/ los cambia por tokens de la paleta.

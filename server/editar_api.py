@@ -5,6 +5,10 @@ pide la corrida (transcripción si falta + LLM que propone el corte + proxy del
 editor, todo en Fargate — worker/editar_task.py) y audita las sugerencias en el
 editor visual de siempre (/editor/{nombre}/): acepta, rechaza, renderiza.
 
+E1: POST /{nombre}/sugerir acepta un cuerpo OPCIONAL `{"instruccion": str}`
+(la caja «Edición» del inicio); se valida antes de cobrar y se guarda en
+doc.editar.instruccion para que el worker se la pase al LLM.
+
 Reglas duras que se respetan: preview de costo ANTES de cobrar (créditos de
 tarifas.json §editar), cobrar antes de lanzar, devolver en fallo nuestro.
 Solo nube: en dev local el camino sigue siendo /clean-cut desde Claude Code.
@@ -13,9 +17,11 @@ from __future__ import annotations
 
 import json
 import os
+import unicodedata
 from datetime import datetime, timedelta, timezone
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 
 from pipeline import creditos, db, jobs
 from server.shorts_api import (_con_transcript, _duracion_s, _fuente, _proyecto,
@@ -27,6 +33,17 @@ router = APIRouter(prefix="/api/editar")
 # viven en shorts_api para que no puedan separarse por descuido. Lo propio de
 # aquí es POR QUÉ un metraje corto no sirve — no hay relleno que quitar.
 CORTO_EDITAR = "un video tan corto no tiene relleno que recortar"
+
+# E1 — lo que la persona le cuenta a la IA («quítale las muletillas…»). Es
+# entrada NO confiable: acaba dentro de un mensaje del LLM, así que se limpia y
+# se acota aquí, ANTES de cobrar, y el worker la vuelve a acotar (defensa en
+# profundidad: el doc de Postgres también se puede tocar). El mismo tope que
+# los textos libres de clip (pipeline/clip.py MAX_TEXTO).
+MAX_INSTRUCCION = 2000
+# Tope de lo que se acepta SIN limpiar, para no recorrer carácter por carácter un
+# cuerpo de megas: un texto honesto no trae tres de cada cuatro caracteres
+# invisibles o de control, así que pasado este largo se rechaza de una vez (422).
+_MAX_INSTRUCCION_CRUDA = MAX_INSTRUCCION * 4
 
 
 def _nube() -> None:
@@ -45,6 +62,61 @@ def _caducado(estado: dict, horas: float) -> bool:
 
 def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def limpiar_instruccion(texto: str) -> str:
+    """El texto sin caracteres de control y sin espacios en los extremos.
+
+    Salen los de control (Cc), los de formato invisibles (Cf: ancho cero,
+    marcas bidi, las «etiquetas» U+E00xx con que se esconde texto) y los
+    sustitutos sueltos (Cs: `"\\ud800"` es JSON válido pero revienta al
+    guardarlo, y eso pasaría DESPUÉS de cobrar). Se conservan los saltos de
+    línea, que en un textarea son legítimos; tabuladores y saltos de página se
+    vuelven espacio y U+2028/U+2029 se vuelven salto de línea.
+    """
+    salida: list[str] = []
+    for c in texto.replace("\r\n", "\n").replace("\r", "\n"):
+        if c == "\n":
+            salida.append(c)
+        elif c in "\t\x0b\x0c":
+            salida.append(" ")
+        else:
+            cat = unicodedata.category(c)
+            if cat in ("Zl", "Zp"):
+                salida.append("\n")
+            elif cat not in ("Cc", "Cf", "Cs"):
+                salida.append(c)
+    return "".join(salida).strip()
+
+
+def instruccion_de(cuerpo: Any) -> str:
+    """La instrucción opcional del POST /sugerir ya validada, o '' si no hay.
+
+    Sin cuerpo (static/e1.html y /estudio/subir/ llaman así) o con la
+    instrucción vacía o en blanco → '' y la corrida es la de siempre. Un cuerpo
+    que no es un objeto, una instrucción que no es texto o una de más de
+    MAX_INSTRUCCION caracteres → 422, con el motivo como texto plano (la web
+    muestra `detail` tal cual cuando es un string). Se llama ANTES de tocar el
+    monedero: ningún 422 de aquí necesita devolver nada.
+    """
+    if cuerpo is None:
+        return ""
+    if not isinstance(cuerpo, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON, "
+                                 "por ejemplo {\"instruccion\": \"…\"}")
+    valor = cuerpo.get("instruccion")
+    if valor is None:
+        return ""
+    if not isinstance(valor, str):
+        raise HTTPException(422, "La instrucción debe ser texto")
+    if len(valor) > _MAX_INSTRUCCION_CRUDA:
+        raise HTTPException(422, f"La instrucción es demasiado larga: "
+                                 f"máximo {MAX_INSTRUCCION} caracteres")
+    texto = limpiar_instruccion(valor)
+    if len(texto) > MAX_INSTRUCCION:
+        raise HTTPException(422, f"La instrucción es demasiado larga: máximo "
+                                 f"{MAX_INSTRUCCION} caracteres (llevas {len(texto)})")
+    return texto
 
 
 @router.get("/{nombre}")
@@ -79,8 +151,14 @@ def costo(nombre: str):
 
 
 @router.post("/{nombre}/sugerir")
-def sugerir(nombre: str):
+def sugerir(nombre: str, cuerpo: Annotated[Any, Body()] = None):
+    """Cobra y lanza la corrida. El cuerpo es OPCIONAL: `{"instruccion": str}`
+    le dice a la IA qué quiere la persona (E1, caja «Edición» del inicio); sin
+    cuerpo todo es como antes. Los gates (instrucción, duración) van antes de
+    cobrar; la referencia del cobro y de la devolución sigue siendo
+    `editar-sugerir:<nombre>` (la exige el barredor)."""
     _nube()
+    instruccion = instruccion_de(cuerpo)
     user = db.usuario_actual()
     doc = _proyecto(nombre)
     st = doc.get("editar") or {}
@@ -102,6 +180,8 @@ def sugerir(nombre: str):
             raise HTTPException(402, str(e))
     nuevo = {"estado": "corriendo", "fuente": key, "duracion_s": round(dur, 1),
              "creditos": n, "inicio": _ahora()}
+    if instruccion:   # sin ella el doc queda idéntico al de antes de E1
+        nuevo["instruccion"] = instruccion
     db.fijar_campo_editor(user, nombre, "editar", json.dumps(nuevo, ensure_ascii=False))
     try:
         jobs.lanzar_editar(user, nombre)

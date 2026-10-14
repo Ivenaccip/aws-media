@@ -1,14 +1,38 @@
 <!doctype html>
 <html lang="es">
-<!-- /privacidad: aviso de privacidad de Irremplazables, versión
-     2026-10-03. En main es una página estática, sin plantilla ni marcadores;
-     al bajar a dev pasa a ser plantilla. Si cambia lo que se guarda, a quién
-     se envía o cuánto dura, cambia este texto y su versión. -->
+<!-- /privacidad: el aviso de privacidad de Irremplazables. Cubre las dos
+     cosas que hay en este sitio:
+       · secciones 1 a 13: el Estudio (la plataforma cerrada de los miembros).
+         Es el texto que main publicó el 3-oct-2026 (PR 174) y aquí no se
+         le cambia el sentido, los números, los plazos ni el marco;
+       · sección 14: /automatiza (la herramienta abierta, sin cuenta).
+
+     Es una plantilla: los marcadores de doble llave son huecos del dueño que
+     server/aviso.py llena (DATOS) con escape HTML al servirla; uno sin clave
+     hace fallar tests/test_rag_paginas.py. Por eso en estos comentarios no se
+     escriben llaves dobles. En main la misma página es HTML estático, porque
+     server/aviso.py no puede vivir allá.
+
+     El responsable es una empresa de Estados Unidos: el texto no cita leyes
+     ni autoridades de ningún país en particular.
+
+     Cada cosa que la sección 14 afirma sale del código (pipeline/db.py,
+     pipeline/publico.py, server/publico_api.py, worker/publico.py,
+     static/automatiza.js) y lo que el código no respalda no se afirma. Lo que
+     vale solo para /automatiza («no necesitas cuenta», «no pone cookies
+     propias») se queda DENTRO de la sección 14: fuera de ella contradice al
+     Estudio, que sí tiene cuenta y cookies de sesión.
+
+     Si cambia lo que se guarda, a quién se envía o cuánto dura, cambia este
+     texto y AVISO_VERSION (server/aviso.py), y se agrega su huella en
+     tests/test_rag_paginas.py.
+
+     CSP estricta: sin JS, sin style ni atributos de estilo; todo en /legal.css. -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aviso de privacidad · Irremplazables</title>
-<meta name="description" content="Qué datos trata Irremplazables de sus miembros, para qué, cuánto tiempo, con qué proveedores los comparte y cómo ejercer tus derechos.">
+<meta name="description" content="Qué datos trata Irremplazables de sus miembros y de quien usa /automatiza, para qué, cuánto tiempo, con qué proveedores los comparte y cómo ejercer tus derechos.">
 <link rel="canonical" href="https://irremplazables.xyz/privacidad">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/carta.css">
@@ -25,8 +49,8 @@
 <main id="principal" class="legal">
   <header class="encabezado">
     <h1 id="titulo">Aviso de privacidad</h1>
-    <p class="version">Versión 2026-10-03 · última actualización 3 de octubre de 2026</p>
-    <p class="resumen">Irremplazables es una plataforma cerrada de inteligencia artificial para los miembros de nuestra comunidad. Usamos tu correo para darte tu cuenta y guardamos lo que subes, escribes y generas para darte el servicio. Para eso trabajamos con proveedores que pueden estar en un país distinto del tuyo. Tus datos no se usan para publicidad y no se venden.</p>
+    <p class="version">Versión {{aviso_version}} · última actualización {{fecha_aviso}}</p>
+    <p class="resumen">Irremplazables es una plataforma cerrada de inteligencia artificial para los miembros de nuestra comunidad. Usamos tu correo para darte tu cuenta y guardamos lo que subes, escribes y generas para darte el servicio. Para eso trabajamos con proveedores que pueden estar en un país distinto del tuyo. Tus datos no se usan para publicidad y no se venden. /automatiza, la herramienta abierta de este mismo sitio, tiene su propia sección (la 14): ahí solo te escribimos con novedades si marcas una casilla aparte.</p>
   </header>
   <nav class="indice" aria-labelledby="indice-t">
     <p class="rotulo" id="indice-t">En esta página</p>
@@ -44,6 +68,7 @@
       <li><a href="#seguridad">11. Seguridad</a></li>
       <li><a href="#cambios">12. Cambios a este aviso</a></li>
       <li><a href="#desacuerdo">13. Si no estás de acuerdo con nuestra respuesta</a></li>
+      <li><a href="#automatiza">14. /automatiza: si la usas sin cuenta</a></li>
     </ol>
     <a class="volver" href="/">Volver al inicio</a>
   </nav>
@@ -51,8 +76,9 @@
   <article class="texto" aria-labelledby="titulo">
     <section class="parte" id="responsable" aria-labelledby="responsable-t">
       <h2 id="responsable-t">1. Quién es el responsable</h2>
-      <p>El responsable de tus datos personales es <strong>Fundamentos AI LLC</strong>, con domicilio en 2803 Philadelphia Pike, STE B &#35;1531, Claymont, DE 19703 US. En este aviso lo llamamos «nosotros». Irremplazables es el nombre de la plataforma (irremplazables.xyz) y de su comunidad. Dentro, a la plataforma la llamamos «el Estudio».</p>
-      <p>Las solicitudes sobre tus datos las atendemos nosotros mismos. Para cualquier cosa sobre tus datos escríbenos a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>: es nuestro único correo de contacto, de privacidad y para ejercer tus derechos.</p>
+      <p>El responsable de tus datos personales es <strong>{{responsable}}</strong>, con domicilio en {{domicilio}}. En este aviso lo llamamos «nosotros». Irremplazables es el nombre de la plataforma (irremplazables.xyz) y de su comunidad. Dentro, a la plataforma la llamamos «el Estudio».</p>
+      <p>Las solicitudes sobre tus datos las atendemos nosotros mismos. Para cualquier cosa sobre tus datos escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>: es nuestro único correo de contacto, de privacidad y para ejercer tus derechos.</p>
+      <p>En este mismo sitio está <a href="/automatiza">/automatiza</a>, una herramienta abierta. No es parte de la plataforma: cuando este aviso dice «la plataforma» o «el Estudio» no habla de ella. Lo que pasa con tus datos si la usas está en la sección 14.</p>
     </section>
 
     <section class="parte" id="aplica" aria-labelledby="aplica-t">
@@ -61,10 +87,12 @@
       <ul>
         <li><strong>Miembros con cuenta</strong> en la plataforma.</li>
         <li><strong>Miembros de la comunidad que todavía no tienen cuenta.</strong> De ti tratamos solo los datos de la lista de miembros, para poder invitarte.</li>
-        <li><strong>Quien nos escribe</strong> a hola@irremplazables.xyz.</li>
-        <li><strong>Quien visita el sitio</strong> sin iniciar sesión: solo se tratan los datos técnicos de la visita (sección 10).</li>
+        <li><strong>Quien nos escribe</strong> a {{correo_privacidad}}.</li>
+        <li><strong>Quien usa /automatiza:</strong> lo suyo está en la sección 14.</li>
+        <li><strong>Quien visita el sitio</strong> sin iniciar sesión y sin usar /automatiza: solo se tratan los datos técnicos de la visita (sección 10).</li>
       </ul>
       <p>Si recibiste una invitación y no quieres la cuenta, escríbenos: la desactivamos y no vuelves a recibir correos de la plataforma.</p>
+      <p>Las secciones 3 a 7 y 9 a 11 hablan sobre todo de la plataforma y de la cuenta de los miembros. Las secciones 1, 8, 12 y 13 valen para todos. La 14 es la de /automatiza.</p>
     </section>
 
     <section class="parte" id="datos" aria-labelledby="datos-t">
@@ -85,7 +113,7 @@
         <div><dt>Otras claves que tú aportes</dt><dd>En algunos casos, una clave de API propia de otro servicio (por ejemplo, de Claude) que nos entregas para que la configuremos en tu cuenta. Cuando se usa tu clave, ese proveedor procesa lo que se le envía dentro de tu propia cuenta con él y bajo sus condiciones.</dd></div>
         <div><dt>Uso y costos</dt><dd>Qué funciones usas y cuándo, cuánto costó cada operación y con qué proveedor. También un registro de uso detallado de cada llamada a un modelo de inteligencia artificial (una «traza»): lo que se le envió, lo que respondió y el identificador de tu cuenta.</dd></div>
         <div><dt>Datos técnicos</dt><dd>Los registros del servidor: la ruta que pediste, el resultado y cuánto tardó; algunas líneas llevan el identificador de tu cuenta o el nombre del proyecto. Cuando tu navegador descarga un archivo de nuestra red de entrega (un video o una imagen), quedan registrados tu dirección IP, tu navegador, el archivo pedido y la hora. Además, lo que se guarda en tu navegador (sección 10).</dd></div>
-        <div><dt>Lo que nos escribes</dt><dd>Los correos que mandas a hola@irremplazables.xyz: tu dirección, el nombre con el que escribes, el contenido del mensaje y lo que adjuntes, como una identificación si te la pedimos (sección 8).</dd></div>
+        <div><dt>Lo que nos escribes</dt><dd>Los correos que mandas a {{correo_privacidad}}: tu dirección, el nombre con el que escribes, el contenido del mensaje y lo que adjuntes, como una identificación si te la pedimos (sección 8).</dd></div>
       </dl>
 
       <h3>Datos sensibles</h3>
@@ -110,7 +138,7 @@
       <ul>
         <li>Invitarte a la plataforma si eres miembro de la comunidad.</li>
         <li>Crear y administrar tu cuenta, y dejarte iniciar sesión.</li>
-        <li>Mandarte los correos de tu cuenta: la invitación con tu contraseña provisional, el de restablecer contraseña y los códigos de verificación. Los envía Amazon Cognito y son los únicos correos que manda la plataforma. Aparte, te contestamos por correo cuando nos escribes y, si pasara algo importante con tu cuenta o con tus datos, te escribiríamos a mano desde hola@irremplazables.xyz. No es publicidad.</li>
+        <li>Mandarte los correos de tu cuenta: la invitación con tu contraseña provisional, el de restablecer contraseña y los códigos de verificación. Los envía Amazon Cognito y son los únicos correos que manda la plataforma. Aparte, te contestamos por correo cuando nos escribes y, si pasara algo importante con tu cuenta o con tus datos, te escribiríamos a mano desde {{correo_privacidad}}. No es publicidad.</li>
         <li>Darte las funciones que usas: transcribir y editar tus videos, generar imágenes, clips, videos y narraciones, y analizar las cuentas que indiques.</li>
         <li>Llevar tu monedero: abonar, cobrar y devolver créditos, y registrar los pagos, cuando los hay.</li>
         <li>Publicar en tus redes cuando tú lo indiques, incluidas las campañas MIX que enciendas (sección 7).</li>
@@ -121,13 +149,14 @@
       </ul>
 
       <h3>Otros usos</h3>
-      <p>No hay. No usamos tus datos para publicidad y no te mandamos correos de novedades ni promociones. Tus datos no se venden, no se rentan y no se prestan. Si algún día quisiéramos usarlos para algo distinto, te pediremos tu consentimiento antes.</p>
+      <p>En la plataforma no hay. No usamos tus datos para publicidad y no te mandamos correos de novedades ni promociones. Tus datos no se venden, no se rentan y no se prestan. Si algún día quisiéramos usarlos para algo distinto, te pediremos tu consentimiento antes.</p>
+      <p>/automatiza es distinta en esto: tiene usos a los que te puedes oponer y una casilla opcional para recibir novedades por correo (sección 14).</p>
 
       <h3>Quién puede ver tu información de nuestro lado</h3>
       <p>Nuestro personal autorizado puede ver, de cada cuenta: el correo y el identificador, el saldo y los movimientos, la idea que escribes para cada proyecto, el costo de cada operación y los registros de uso (las trazas), que incluyen lo que se envió a los modelos de inteligencia artificial y lo que respondieron. Lo hace para darte soporte, controlar los costos y mejorar el servicio. Al atender un problema también puede abrir los archivos del proyecto afectado.</p>
 
       <h3>Revisión automática</h3>
-      <p>Al crear un video o una imagen, un modelo de inteligencia artificial revisa tu texto antes de generar y puede pedirte que lo cambies si detecta contenido que no se permite. No interviene una persona. Si crees que se equivocó, escríbenos a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a> y una persona lo revisa.</p>
+      <p>Al crear un video o una imagen, un modelo de inteligencia artificial revisa tu texto antes de generar y puede pedirte que lo cambies si detecta contenido que no se permite. No interviene una persona. Si crees que se equivocó, escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> y una persona lo revisa.</p>
     </section>
 
     <section class="parte" id="conservacion" aria-labelledby="conservacion-t">
@@ -169,8 +198,8 @@
       <h3>Proveedores que usamos para darte el servicio</h3>
       <dl class="filas">
         <div><dt>Amazon Web Services (AWS)</dt><dd>Es la infraestructura donde vive todo: las cuentas y el inicio de sesión (Amazon Cognito), la base de datos, los archivos, los servidores, la red de entrega de archivos y los correos de tu cuenta. Los datos se guardan en Estados Unidos (región us-east-1, Norte de Virginia); la red de entrega sirve los archivos desde el punto más cercano a ti.</dd></div>
-        <div><dt>Cloudflare</dt><dd>Está delante del sitio: entrega las páginas y lo protege de ataques. Por él pasa el tráfico del sitio y de la plataforma (las páginas y lo que envías y recibes de ella), así que ve tu dirección IP y ese contenido. Los archivos de video e imagen y la pantalla de contraseña los sirve AWS directamente. También reenvía a nuestro buzón los correos que llegan a hola@irremplazables.xyz.</dd></div>
-        <div><dt>Google (Gmail)</dt><dd>Es el buzón donde leemos hola@irremplazables.xyz. Recibe los correos que nos escribes.</dd></div>
+        <div><dt>Cloudflare</dt><dd>Está delante del sitio: entrega las páginas y lo protege de ataques. Por él pasa el tráfico del sitio y de la plataforma (las páginas y lo que envías y recibes de ella), así que ve tu dirección IP y ese contenido. Los archivos de video e imagen y la pantalla de contraseña los sirve AWS directamente. También reenvía a nuestro buzón los correos que llegan a {{correo_privacidad}}.</dd></div>
+        <div><dt>Google (Gmail)</dt><dd>Es el buzón donde leemos {{correo_privacidad}}. Recibe los correos que nos escribes.</dd></div>
         <div><dt>OpenAI</dt><dd>Recibe textos (la idea de tu proyecto, guiones, transcripciones, textos de publicaciones y lo que revisa el filtro automático) y algunas imágenes (tus fotos de referencia y cuadros de video), para escribir, analizar y revisar.</dd></div>
         <div><dt>Anthropic</dt><dd>Atiende el chat del editor. Recibe la transcripción del proyecto y los mensajes recientes de ese chat.</dd></div>
         <div><dt>fal</dt><dd>Genera imágenes, clips, video y voz. Recibe las instrucciones de generación, el texto de la narración y las imágenes que subes como base. fal da acceso a modelos de otras empresas, que procesan lo necesario para generar el resultado.</dd></div>
@@ -220,7 +249,7 @@
       <p>También puedes retirar tu consentimiento (sección 9).</p>
 
       <h3>Cómo pedirlo</h3>
-      <p>Escríbenos a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a> con:</p>
+      <p>Escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con:</p>
       <ol>
         <li>Tu nombre y el correo donde quieres recibir la respuesta.</li>
         <li>Algo que acredite que eres tú. Lo más simple es escribirnos desde el correo de tu cuenta. Si no puedes, o si hay duda razonable, te pediremos una identificación oficial. Si lo pide alguien en tu nombre, debe mandar su identificación y el documento que acredite que te representa.</li>
@@ -241,7 +270,7 @@
       <p>Tratamos tus datos porque son necesarios para darte la plataforma como miembro de la comunidad. Si no estás de acuerdo con este aviso, no uses la plataforma y escríbenos.</p>
 
       <h3>Retirar tu consentimiento</h3>
-      <p>Puedes retirarlo en cualquier momento escribiendo a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>. Vale desde que lo pides, no hacia atrás, y te contestamos en los plazos de la sección 8. Como todos los usos de este aviso son necesarios para el servicio, retirarlo significa dejar de usar la plataforma: desactivamos tu cuenta y, si lo pides, cancelamos tus datos.</p>
+      <p>Puedes retirarlo en cualquier momento escribiendo a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>. Vale desde que lo pides, no hacia atrás, y te contestamos en los plazos de la sección 8. Como todos los usos que este aviso describe para la plataforma son necesarios para el servicio, retirarlo significa dejar de usar la plataforma: desactivamos tu cuenta y, si lo pides, cancelamos tus datos.</p>
 
       <h3>Cómo limitar el uso o la divulgación de tus datos</h3>
       <ul>
@@ -252,7 +281,7 @@
         <li>Pídenos por correo que dejemos de usar un dato para algo en concreto.</li>
         <li>Si no quieres la cuenta, la desactivamos y no recibes más correos de la plataforma.</li>
       </ul>
-      <p>No usamos tus datos para nada más, así que no hay nada adicional que tengas que rechazar.</p>
+      <p>En la plataforma no usamos tus datos para nada más, así que no hay nada adicional que tengas que rechazar. En /automatiza sí hay usos a los que te puedes oponer: están en la sección 14.</p>
     </section>
 
     <section class="parte" id="cookies" aria-labelledby="cookies-t">
@@ -298,14 +327,92 @@
 
     <section class="parte" id="desacuerdo" aria-labelledby="desacuerdo-t">
       <h2 id="desacuerdo-t">13. Si no estás de acuerdo con nuestra respuesta</h2>
-      <p>Si no te contestamos a tiempo o no estás de acuerdo con nuestra respuesta, escríbenos de nuevo a <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a> y lo revisamos. Si en el lugar donde vives hay una autoridad de protección de datos personales, también puedes acudir a ella.</p>
-      <p class="chica">Fundamentos AI LLC es una empresa de Estados Unidos. Este aviso no te quita los derechos que la ley de protección de datos del lugar donde vives te dé y que no se puedan renunciar.</p>
+      <p>Si no te contestamos a tiempo o no estás de acuerdo con nuestra respuesta, escríbenos de nuevo a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> y lo revisamos. Si en el lugar donde vives hay una autoridad de protección de datos personales, también puedes acudir a ella.</p>
+      <p class="chica">{{responsable}} es una empresa de Estados Unidos. Este aviso no te quita los derechos que la ley de protección de datos del lugar donde vives te dé y que no se puedan renunciar.</p>
+    </section>
+
+    <section class="parte" id="automatiza" aria-labelledby="automatiza-t">
+      <h2 id="automatiza-t">14. /automatiza: si la usas sin cuenta</h2>
+      <p><a href="/automatiza">/automatiza</a> convierte lo que describes en un flujo de n8n. Es una herramienta abierta: para usarla no necesitas cuenta y no te pedimos tu nombre. Por eso lo que las secciones 3 a 7 dicen de la cuenta, los créditos, tu contenido y la publicación en redes no aplica aquí; esta sección dice qué pasa con tus datos cuando la usas. El responsable (sección 1) y tus derechos (sección 8) son los mismos.</p>
+
+      <h3>Antes de mandar nada</h3>
+      <p>Antes de que nos llegue tu primera descripción, la página te enseña un resumen de este aviso y te pide aceptarlo con una casilla («He leído el aviso de privacidad y acepto los términos»). Si no lo aceptas, tu descripción no sale de tu navegador y no guardamos nada. Con tu petición guardamos qué versión de este aviso aceptaste.</p>
+
+      <h3>Qué datos tratamos</h3>
+      <dl class="filas">
+        <div><dt>Lo que describes</dt><dd>El texto de lo que quieres automatizar, de {{largo_minimo}} a {{largo_maximo}} caracteres. Lo guardamos también cuando el filtro automático lo rechaza o cuando el flujo no sale. Puede traer lo que tú pongas: no escribas contraseñas, datos de otras personas ni datos sensibles.</dd></div>
+        <div><dt>Tu petición y su flujo</dt><dd>El flujo que armamos y los nodos que usa; en qué va la petición (en la fila, armando, lista, no salió o rechazada) y sus horas; con qué modelo de inteligencia artificial se armó, cuántos intentos tomó y cuánto gastó en llamadas a los modelos; datos técnicos de la búsqueda en la documentación de n8n, entre ellos una representación numérica de tu texto; y la versión de este aviso que aceptaste. Cada petición tiene un número aleatorio que viaja en tu enlace para volver. Quien tenga ese enlace puede ver en qué va la petición, descargar el flujo y dejar o cambiar el correo; del correo que ya dejaste solo ve una parte, nunca el correo completo. Guárdalo como un enlace privado.</dd></div>
+        <div><dt>Tu correo, si nos lo das</dt><dd>La página te lo pide cuando tu flujo está listo, para mandártelo con su guía; en la fila, o si el flujo no salió, dejarlo es opcional. Con él guardamos en qué pantalla lo dejaste, si marcaste la casilla de novedades (y, si la marcaste, su texto exacto), la versión de este aviso que estaba vigente y la fecha. Si lo cambias, el anterior también queda guardado, como constancia de lo que aceptaste. Se puede cambiar un número limitado de veces por petición.</dd></div>
+        <div><dt>Una huella de tu conexión, no tu IP</dt><dd>Con tu dirección IP calculamos un código usando una clave secreta nuestra (si tu conexión es IPv6, con la parte de la dirección que corresponde a tu red). /automatiza guarda ese código con tu petición, no la IP. Sirve para contar cuántas peticiones llegan al día desde una misma conexión. Sin la clave, del código no se puede obtener tu IP; con ella sí se podría, así que lo tratamos como un dato personal más. Aparte, Cloudflare ve tu IP al pasar, como en todo el sitio (sección 6).</dd></div>
+        <div><dt>De dónde llegaste</dt><dd>El sitio desde el que llegaste (solo su dirección principal, como instagram.com, no la página exacta), si tu navegador lo manda, y las etiquetas de campaña del enlace que abriste (las «utm»).</dd></div>
+        <div><dt>Tus descargas</dt><dd>Si descargaste el flujo: cuándo fue la primera vez y cuántas veces.</dd></div>
+        <div><dt>Registros técnicos</dt><dd>Los registros del servidor: el número de la petición, en qué terminó, los errores y los datos técnicos de las llamadas a los modelos (qué modelo, cuánto tardó y cuántos tokens usó).</dd></div>
+      </dl>
+      <p>No te pedimos datos sensibles ni datos financieros. Si alguno quedó dentro de tu descripción, escríbenos y lo cancelamos (sección 8).</p>
+
+      <h3>Lo que se queda en tu navegador</h3>
+      <p>La página guarda en tu propio navegador:</p>
+      <ul>
+        <li>el borrador de lo que vas escribiendo, para que no lo pierdas si se cierra la pestaña; se borra al mandar tu petición;</li>
+        <li>la versión de este aviso que aceptaste, para no volver a pedírtelo mientras no cambie;</li>
+        <li>tu último número de petición y lo que pediste, para enseñártelo cuando vuelves con el enlace;</li>
+        <li>de dónde llegaste, solo mientras la pestaña está abierta (eso sí nos llega junto con tu petición).</li>
+      </ul>
+      <p>Lo borras cuando quieras borrando los datos de este sitio en tu navegador. /automatiza no pone cookies propias ni carga herramientas de analítica o de rastreo de terceros; Cloudflare puede poner las suyas, como en todo el sitio (sección 10).</p>
+
+      <h3>Para qué los usamos</h3>
+      <p>Para darte el servicio (necesarias):</p>
+      <ul>
+        <li>Revisar tu petición con un filtro automático, armar tu flujo y revisar que se pueda importar en n8n. Los usos que el filtro no deja pasar están en los <a href="/terminos#automatiza">Términos</a>.</li>
+        <li>Enseñarte en pantalla cómo va y dejarte descargarlo.</li>
+        <li>Con el correo que dejes: mandarte el flujo con su guía y avisarte de tu petición.</li>
+        <li>Cuidar el servicio: aplicar el tope diario y el tope por conexión (para eso es la huella) y frenar abusos.</li>
+        <li>Atender lo que nos escribas y tus solicitudes sobre tus datos.</li>
+      </ul>
+      <p>Otros usos, a los que te puedes oponer:</p>
+      <ul>
+        <li><strong>Mejorar el servicio.</strong> Nuestro personal autorizado puede leer las peticiones y los flujos para entender qué se pide, revisar a mano las que no salieron y corregir fallas.</li>
+        <li><strong>Medir de dónde llegan las visitas,</strong> con el sitio de origen y las etiquetas de campaña.</li>
+        <li><strong>Escribirte después, solo si marcas la casilla.</strong> Junto al campo del correo verás esta casilla, aparte y desmarcada:
+          <p class="cita">{{recontacto_texto}}</p>
+          Si no la marcas, tu correo solo sirve para lo necesario de arriba. No marcarla no te quita nada del servicio.</li>
+      </ul>
+      <p>Para oponerte a los dos primeros, escríbenos a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a> con tu número de petición. Para las novedades basta con no marcar la casilla; si ya la marcaste, escríbenos y dejamos de escribirte.</p>
+
+      <h3>Cuánto tiempo los guardamos</h3>
+      <dl class="filas">
+        <div><dt>Tu descripción, el flujo y los datos de tu petición</dt><dd>Durante {{plazo_peticion}}. /automatiza no los borra por sí sola: se conservan hasta que pidas su cancelación (sección 8). Incluye la huella de tu conexión, de dónde llegaste y tus descargas.</dd></div>
+        <div><dt>Tu correo y la constancia de lo que aceptaste</dt><dd>Durante {{plazo_correo}}. Tampoco se borra solo: se conserva hasta que pidas su cancelación. Si marcaste la casilla de novedades, lo usamos para eso hasta que nos pidas dejar de hacerlo.</dd></div>
+        <div><dt>Registros técnicos del servidor</dt><dd>Una semana.</dd></div>
+        <div><dt>Copias de seguridad</dt><dd>Las de la base de datos, 7 días, igual que en la sección 5.</dd></div>
+        <div><dt>Lo que está en tu navegador</dt><dd>Hasta que lo borres. El borrador se borra solo al mandar tu petición.</dd></div>
+      </dl>
+
+      <h3>Con quién los compartimos</h3>
+      <p>Para /automatiza usamos estos proveedores, que también están en la sección 6:</p>
+      <dl class="filas">
+        <div><dt>Amazon Web Services (AWS)</dt><dd>El servidor, la base de datos, la fila de trabajo y el índice de la documentación de n8n donde se busca. En Estados Unidos (región us-east-1, Norte de Virginia).</dd></div>
+        <div><dt>Cloudflare</dt><dd>Está delante del sitio: por él pasa lo que envías y recibes, y ve tu dirección IP.</dd></div>
+        <div><dt>OpenAI</dt><dd>Recibe el texto de tu descripción para el filtro automático y para buscar en la documentación de n8n.</dd></div>
+        <div><dt>Anthropic</dt><dd>Recibe el texto de tu descripción y arma el flujo.</dd></div>
+        <div><dt>Langfuse</dt><dd>Guarda el registro de las llamadas a los modelos de inteligencia artificial, que puede incluir tu descripción. Sirve para revisar errores y costos.</dd></div>
+        <div><dt>El envío de correo</dt><dd>{{proveedor_correo}}</dd></div>
+      </dl>
+      <p>A los proveedores de inteligencia artificial no les enviamos tu correo ni la huella de tu conexión: reciben tu descripción, con lo que tú hayas escrito en ella.</p>
+
+      <h3>Tus derechos y cómo retirar tu consentimiento</h3>
+      <p>Tus derechos son los de la sección 8 y se piden igual, por correo. Como aquí no hay cuenta ni nombre, lo que liga tus datos contigo es tu número de petición (lo que sigue a /automatiza/c/ en tu enlace para volver) o el correo que dejaste: inclúyelo en tu solicitud y, si puedes, escríbenos desde ese correo. Si con eso no podemos comprobar que eres tú, te lo decimos.</p>
+      <p>Puedes retirar tu consentimiento cuando quieras, escribiendo a <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>. Vale desde que lo pides, no hacia atrás, y te contestamos en los plazos de la sección 8. Si cancelamos tu correo antes de mandarte el flujo, ya no podremos mandártelo.</p>
+
+      <h3>Si este aviso cambia</h3>
+      <p>Con cada petición guardamos la versión de este aviso que aceptaste, y con cada correo la que estaba vigente cuando lo dejaste. Si publicamos una versión nueva, la página te la vuelve a enseñar y te pide aceptarla antes de mandar otra petición o un correo.</p>
     </section>
   </article>
 </main>
 
 <footer class="pie">
-  <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>
+  <a href="mailto:{{correo_privacidad}}">{{correo_privacidad}}</a>
+  <a href="/automatiza">/automatiza</a>
   <a href="/privacidad" aria-current="page">Aviso de privacidad</a>
   <a href="/terminos">Términos</a>
 </footer>

@@ -237,6 +237,31 @@ Si alguien pregunta por un cobro raro, el extracto lo cuenta entero:
 venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 40
 ```
 
+### «Le dije a la IA qué quería al editar y no lo hizo»
+
+Desde el 13 de octubre de 2026, `POST /api/editar/<proyecto>/sugerir` acepta un
+cuerpo **opcional** `{"instruccion": "…"}` (la caja «Edición» del inicio); sin
+cuerpo —`static/e1.html` y `/estudio/subir/`— todo es igual que antes. El
+servidor la limpia (quita caracteres de control e invisibles y los espacios de
+los extremos; vacía = como si no hubiera) y la guarda en
+`doc.editar.instruccion`; si no es texto, pasa de 2000 caracteres o el cuerpo no
+es un objeto JSON (un `text/plain` con texto, un JSON roto) responde 422
+**antes de cobrar**, y el cobro y la devolución siguen con la referencia
+`editar-sugerir:<proyecto>`. Las claves de más del cuerpo se ignoran (nunca
+viajan créditos: el servidor decide el precio) y volver a pedir sin cuerpo no
+hereda la instrucción de la corrida anterior. El worker la pone en el mensaje de
+*usuario* del LLM, entre `<<<` y `>>>`, como un dato que no cambia sus reglas ni
+el formato de salida; el system prompt (`prompts/cortes_system.md`) no se toca,
+así que no hay nada que sincronizar con Langfuse. Y le recuerda que este motor solo sabe
+**quitar tramos**: lo que la instrucción pida y no se pueda lograr así
+(vertical, subtítulos, música, títulos, fundidos) NO se aplica y sale como duda
+en el editor, con un texto que empieza por «No aplicado:» — es lo esperado, no
+un fallo. Pendientes: hoy, si lo único que devuelve la IA son esas dudas, cuenta
+como entrega (hay `flags`) y no se devuelve nada; y el servidor aún no tiene
+candado global por cuenta (`sugerir` solo bloquea por proyecto, con 409), así
+que dos proyectos distintos pueden correr a la vez y por ahora la caja lo evita
+del lado de la web.
+
 ### «Quiero mi video en vertical»
 
 Desde el 14 de septiembre de 2026 se elige al crear la película: horizontal
@@ -496,6 +521,18 @@ git checkout dev && git merge origin/main && git push   # dev no se queda atrás
 mismo `git merge origin/main` de arriba. Es la única excepción a «todo pasa por
 dev», y conviene que siga siendo excepción.
 
+Si esa bajada trae conflictos y por eso viaja en un PR a `dev` (pasó con lo
+legal: el PR #174 a `main`, octubre de 2026), **ese PR no lleva el `--squash`
+de «un cambio cualquiera»: se fusiona con `gh pr merge <N> --merge`**. Lo que
+evita que el siguiente release choque es que `main` quede como ancestro de
+`dev`, y eso solo lo deja un commit de merge. Con squash, o con «Rebase and
+merge», los mismos archivos vuelven a chocar en el `dev` → `main`. Antes de
+fusionar un release, esto tiene que contestar:
+
+```bash
+git fetch origin && git merge-base --is-ancestor origin/main origin/dev && echo "main ya está dentro de dev"
+```
+
 ### La trampa de `--delete-branch-on-merge`
 
 Esa opción del repo está **apagada a propósito** (2026-09-13). Borra la rama
@@ -557,7 +594,7 @@ set "PATH=D:\aws-project\venv\Scripts;C:\Program Files\nodejs;%PATH%" && set "IM
 ```
 
 Sin `--app` no pasa nada malo (esos nombres no existen en `app.py`). Ojo: las
-imágenes de dev cuentan para las 20 que conserva la regla del ECR.
+imágenes de dev cuentan para las 30 que conserva la regla del ECR.
 
 **En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
 lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
@@ -660,7 +697,7 @@ Un tag que no exista **para el deploy** con un mensaje claro; no cae a
 `latest`. Desplegar una imagen distinta de la que pediste, y en silencio, es el
 peor final posible para una vuelta atrás.
 
-Ojo con el margen de la retención: la política conserva 20 imágenes, así que
+Ojo con el margen de la retención: la política conserva 30 imágenes, así que
 una imagen vieja se puede haber borrado ya. Si la necesitas y no está, la única
 salida es reconstruirla desde su commit.
 
@@ -905,6 +942,187 @@ aws cloudwatch describe-alarms --query "MetricAlarms[*].[AlarmName,StateValue]" 
 Los seis ids que pueden cambiar están en la cabecera de
 `infra/stacks/alertas.py`, con la fecha en que se verificaron.
 
+## Imágenes en segundo plano
+
+`POST /api/imagenes` generaba la imagen dentro de la petición, y la Lambda del API corta a los 29 s (API Gateway: tope
+fijo de 30 s; un arranque en frío ya gasta unos 16). Cortada la petición, se cobraba, no se devolvía y fal cobraba igual. Por
+eso los modelos que tardaron **más de 10 s** en la prueba pagada —Seedream 5.0 Flash, Seedream 4.5, FLUX 3 y las dos calidades de Nano Banana Pro (2K y 4K)— se encolan
+como el clip. Cuáles lo dice una bandera por fila, `segundo_plano` en `pipeline/modelos_ia.py`
+(la tabla con los segundos medidos está en `docs/modelos-ia/POR-VERIFICAR.md`); los rápidos siguen síncronos y en local todo es
+síncrono. Las dos excepciones a la regla son Grok y Nano Banana 2 al crear (ver «Decisión del dueño: Grok y Nano Banana 2», abajo).
+
+El camino: cobrar → doc en S3 (`usuarios/<user>/imagenes-pedidos/<id>.json`) → SQS → `worker/imagen_generar.py` → la imagen
+queda en `imagenes/<user>/<nombre>` (donde viven las de siempre) y la pantalla, que sondea `GET /api/imagenes/pedidos/<id>`,
+la ve `listo`. Un usuario no puede tener más de 3 pedidos generándose a la vez (409).
+
+**La caducidad es de 45 min** (`HORAS_CADUCA` en `server/imagen_cola.py`; la comparten el tope de 3 y el aviso de abajo). Eran 30,
+y era poco: la cola reentrega a los 15 y un pedido puede esperar detrás de dos clips. Un `generando` de más de 45 min ya no
+cuenta para el tope de 3 y deja de enseñarse como «Generando…»: «Mis creaciones» y «Tus trabajos» lo enseñan como **error**
+—«Esta imagen tardó demasiado y no llegó. Si no ves tus créditos de vuelta, escríbenos.», sin afirmar que se devolvieron—
+durante la hora desde su inicio (o sea, 15 min), y pasada la hora ya no sale. `GET /api/imagenes/pedidos/<id>` NO aplica esta
+regla: sigue contestando `generando` a cualquier edad (la pantalla corta su sondeo a los 5 min), así que «lo enseña como error»
+vale solo para la lista y para «Tus trabajos».
+
+**`GET /api/imagenes` y la lectura que puede fallar.** Trae `imagenes`, `pendientes` (los pedidos en marcha y los que fallaron en
+la última hora) y `pendientes_ok`. Leer los pedidos es de cortesía: si S3 falla al listarlos o al abrir uno, la lista de imágenes
+sigue saliendo con un 200, `pendientes` sale sin lo que no se pudo leer (`[]` si falló el listado) y **`pendientes_ok` es
+`false`**; con todo leído —y siempre en local, donde no hay cola— es `true`. Un `pendientes: []` con `pendientes_ok: false` NO
+significa «no hay pendientes», sino «no lo sé»: quien lo lee tiene que conservar lo que tenía y seguir sondeando. Un doc que
+no es JSON no apaga la bandera (no se arregla solo). La señal es de esa lectura: no se queda pegada.
+
+**La cola es COMPARTIDA** con los clips y con preparar (`infra/stacks/jobs.py`): el worker corre con `max_concurrency=2`, su
+timeout y la visibilidad del mensaje son de 15 min y el mensaje va a la DLQ tras 2 recepciones. Si hay dos clips de Veo en
+marcha (minutos cada uno), una imagen espera detrás: el usuario ve «Generando…» más tiempo del normal. Pasados los 45 min la
+pantalla ya le dice «tardó demasiado y no llegó» aunque el mensaje siga en la cola; si el worker lo termina después, la imagen
+aparece sola en «Mis creaciones» (ver «El worker no mira la edad del pedido», abajo). La señal de una cola atascada es
+`ColaAtascada` (el mensaje más viejo lleva más de 20 min durante 15 min, o sea que suena hacia los 35 min: antes de que el usuario
+vea el aviso de los 45). Subir `max_concurrency` le roba concurrencia al API (ver Alarmas), así que no es la primera palanca.
+
+**Qué hace el worker** (`worker/imagen_generar.py`):
+
+- **Reclamo con token.** SQS estándar entrega al menos una vez y a veces dos a la vez, así que antes de generar el worker reclama
+  el pedido con una escritura condicional de S3 sobre `usuarios/<user>/imagenes-pedidos/<id>.reclamo` (If-None-Match). Quien
+  pierde no hace nada: ni fal, ni devolución. Un reclamo de **14 min o más** es de un worker que ya murió (la visibilidad de la cola
+  es de 15) y se toma con If-Match de la etiqueta que se leyó. El reclamo guarda la hora y un **`token`** uuid propio de cada
+  invocación: botocore reintenta solo un PUT cuya respuesta se perdió, y el reintento de un PUT condicional que SÍ se aplicó
+  recibe 412; sin el token el worker se creía perdedor de su propio reclamo y salía en silencio (pedido cobrado, sin fal, sin
+  devolución, sin DLQ ni alarma). Ahora, al perder, lee el reclamo y, si lleva SU token, lo trata como ganado (las dos rutas: crear
+  y tomar uno vencido). Queda un `.reclamo` por pedido, junto al doc; para forzar a mano que el siguiente intento corra, bórralo.
+  Después del reclamo, el trabajo solo corre con el doc en `generando`.
+- **Devuelve primero, escribe después, y la devolución es idempotente.** Si fal rechaza o la subida falla, el worker devuelve lo
+  cobrado (el número sale del doc, `creditos`) y SOLO ENTONCES escribe el doc `error`. El doc guarda `devuelto: true|false`, y el
+  mensaje que ve el usuario solo dice «Se te devolvieron los créditos» si salió bien (si no se había cobrado nada, dice «No se te
+  cobró»). Así la pantalla nunca lee `error` con el saldo todavía sin abonar. Devuelve con `creditos.devolver_unica` →
+  `db.abonar_devolucion`: **una sola sentencia SQL atómica** (el libro y el saldo juntos) que no abona dos veces la misma
+  referencia (`imagen:<id>`, única por pedido) y devuelve `None` si ya estaba. `creditos.devolver` y `db.abonar_creditos` NO
+  cambiaron: son tres sentencias sueltas del Data API y otros llamadores repiten referencias a propósito (`imagen:estudio`,
+  `imagen:editor`).
+- **El fallo se marca en el reclamo, antes de devolver.** Lo primero que hace el worker al fallar la generación es escribir
+  `fallo: true` en el reclamo (escritura condicional, 3 intentos, best-effort: si no sale queda en el log y se sigue; nunca impide
+  devolver). Una reentrega que encuentra esa marca, o el doc en `error` con `devuelto: false`, **nunca regenera**: solo repite la
+  devolución (idempotente) y escribe el doc.
+- **Cuándo levanta** (SQS reentrega y, a la segunda, la DLQ y suena `DlqConMensajes`, `infra/stacks/alertas.py`): (a) si la
+  devolución falla: el doc queda `error` con `devuelto: false` y el mensaje «La imagen no se pudo generar y no pudimos devolverte
+  los créditos automáticamente; ya quedó avisado.», y el log dice `NO se pudieron devolver N créditos a <user>`; (b) si devolvió
+  pero no pudo escribir el doc `error` (`DocNoEscrito`; el log dice `no se pudo escribir el doc error`), para que no quede un doc
+  diciendo «no pudimos devolverte» con el saldo ya abonado, ni uno en `generando` que la reentrega regeneraría. Al levantar,
+  suelta el reclamo (lo deja vencido y con el fallo marcado) para que la reentrega no tenga que esperar los 14 minutos justos.
+- **Si la imagen ya está subida** (`imagenes/<user>/<nombre>`) y falla la escritura del doc `listo`, se reintenta 3 veces y, si
+  sigue fallando, NO se devuelve nada ni se marca `error`, y el worker no levanta (no hay reentrega): el usuario ya tiene su
+  imagen en «Mis creaciones». Queda un `la imagen quedó en la galería … pero no se pudo escribir el doc listo` en el log. El pedido
+  se verá «Generando…» hasta que caduque (45 min) y después como error «tardó demasiado» hasta la hora, aunque la imagen sí está en
+  «Mis creaciones».
+
+Qué pasa cuando la generación falla (fal rechaza o la subida falla) y algo más falla a la vez:
+
+| qué falla | qué queda | la reentrega |
+|---|---|---|
+| nada más | doc `error` con `devuelto: true`; termina bien | no hay |
+| Aurora no devuelve | doc `error` con `devuelto: false`; el worker levanta | solo devuelve y escribe `devuelto: true` |
+| devuelve, pero el doc `error` no se puede escribir | doc en `generando` y reclamo con `fallo`; levanta (`DocNoEscrito`) | no regenera: `devolver_unica` da `None` (ya estaba) y escribe el doc con `devuelto: true` |
+| Aurora Y la escritura del doc | igual: doc `generando`, reclamo con `fallo`; levanta | no regenera: devuelve y escribe el doc |
+| una reentrega que devuelve, pero S3 no deja escribir el doc | el doc sigue diciendo `devuelto: false`; levanta otra vez | la siguiente cierra el doc sin abonar de nuevo; si no hay otra, va a la DLQ |
+| lo anterior Y S3 no deja ni marcar el reclamo ni soltarlo | doc `generando`, reclamo SIN marca | **regenera**: indistinguible de un worker que murió generando (una llamada más a fal, que paga la plataforma, no el usuario) |
+
+**Si el worker muere dos veces** (timeout de 15 min, falta de memoria): SQS reentrega una vez y luego manda el mensaje a la DLQ
+(`DlqConMensajes`). Qué hacer depende del estado del doc del pedido (`usuarios/<user>/imagenes-pedidos/<id>.json`; el mensaje de
+la DLQ es `{"tipo": "imagen", "user_id", "imagen_id"}`):
+
+- **Doc en `generando`** (murió generando, las dos veces): los créditos quedan cobrados sin devolver, igual que hoy con el clip.
+  Devuelve lo que dice su campo `creditos` (`tools/creditos.py abonar <n> --user <sub> --tipo ajuste --ref imagen:<id>`; ese tool no
+  acepta el tipo `devolucion`). **No hagas redrive:** sin marca de `fallo` en el reclamo, la reentrega REGENERA —fal cobra otra
+  llamada— y el usuario se queda con el abono Y la imagen. El doc seguirá en `generando` y a los 45 min la pantalla lo enseñará
+  como «tardó demasiado» (ya no cuenta para el tope de 3).
+- **Doc en `error` con `devuelto: false`** (la devolución o la escritura del doc fallaron, y la reentrega también): un redrive es
+  seguro si nadie abonó a mano, porque repite solo la devolución, que es idempotente. Si YA devolviste a mano **no hagas redrive**:
+  el abono a mano es un `ajuste` y la devolución automática no lo ve (solo mira las de tipo `devolucion`), así que abonaría otra
+  vez. Con la devolución idempotente, antes de devolver a mano mira `tools/creditos.py movimientos` por `imagen:<id>`: si ya hay
+  una `devolucion`, el saldo ya se repuso y solo falta el doc.
+
+Un fallo normal (fal rechaza, la subida falla) NO llega a la DLQ: el worker devuelve, marca `error` y termina bien.
+
+**El worker no mira la edad del pedido (aceptado, no se arregla).** La pantalla da por perdido un pedido a los 45 min, pero el
+worker solo mira el estado del doc y el reclamo: uno que la pantalla ya dio por perdido todavía puede terminar de generarse. La
+imagen aparece sola en «Mis creaciones» y el aviso de «tardó demasiado» se esfuma; si el usuario lo repitió pagó dos imágenes por
+dos cobros, y si soporte ya había devuelto a mano se queda con las dos. Exige una cola atascada más de 45 min (`ColaAtascada` avisa
+hacia los 35) o una muerte más una espera larga.
+
+**«Tus trabajos»** (`GET /api/trabajos`, el cuadro de abajo a la derecha) también enseña las imágenes en segundo plano, como los
+clips: en curso, lista o con error, y los créditos devueltos solo si el doc no dice `devuelto: false`. El enlace de su ficha lleva
+a **`/estudio/inicio/`** —el inicio nuevo, donde «Mis creaciones» enseña el pedido, la imagen terminada o su error—, no a
+`/imagenes.html` ni a `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`, que mientras el inicio esté
+en la etapa `nueva` (`server/migracion.py`) sirve el inicio viejo, que no lista pedidos. `static/trabajos.js` oculta la ficha en la
+pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis creaciones» ya dice. Para las imágenes lee los
+pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
+`.json` y un `.reclamo` por pedido, para siempre.
+
+**Apagar un modelo:** quita su número de `tools/tarifas.json` §modelos «imagen», «editar» o «clip» (y, si es Veo Lite o Veo Fast, también su fila de «clip_sin_audio»: sin número de con sonido tampoco se vende mudo, pero la fila suelta queda como precio huérfano) (el servidor lo rechaza con 422 sin cobrar) y pon
+`activo: false` en `web/src/pantallas/inicio/modelos.ts`. Los pedidos que ya estaban en la cola siguen y terminan: el worker usa
+lo que dice el doc, no la tarifa de hoy. Mover un modelo entre síncrono y segundo plano es cambiar su `segundo_plano`.
+
+**El interruptor de sonido del clip (13-oct-2026).** El pie del menú de modelos de «Un video corto» trae el interruptor «Audio»
+(propuesta A del lienzo de diseño, elegida por el dueño): arranca «con sonido», se recuerda por navegador (`localStorage`,
+clave `caja.sonido`) y el pedido del clip lleva `audio: true|false`. Solo se puede apagar en los modelos con
+`Modelo.audio_opcional` (su endpoint trae `generate_audio`: Veo, LTX, Kling y Seedance) **y** con número en
+`tools/tarifas.json` §modelos.`clip_sin_audio` a esa duración (hoy Veo Lite 12, 16 y 22 y Veo Fast 36, 54 y 72 créditos a 4, 6 y 8 s:
+costo sin audio ÷ 0.75 ÷ $0.015 dólares, hacia arriba y al par). Todo lo demás lo decide el servidor, no el navegador:
+`audio` llega tal cual (solo vale un booleano de verdad), «sin sonido» en MiniMax, Grok o Grok Lite da 422 sin cobrar ni
+encolar (traen su pista y no se puede quitar), un modelo sin número «sin sonido» tampoco se vende apagado, y el doc del clip
+guarda `audio` para que el worker pida `generate_audio` y anote el costo con la tarifa sin audio de la ficha (un doc de antes del
+interruptor vale con sonido). Para **cambiar un número**: edítalo en `clip_sin_audio` (y que siga siendo menor que el de con sonido).
+Para **quitar el interruptor de un modelo**: borra su fila de `clip_sin_audio` (queda siempre con sonido). Para **sumar uno**: su
+endpoint debe traer `generate_audio`, `audio_opcional=True` en su fila de `pipeline/modelos_ia.py`, `sonido: 'opcional'` en el
+catálogo de la web (`tests/test_r4_ola4.py` compara los dos) y su número aquí. La pantalla heredada `/clip.html` no manda `audio`: sigue siendo con sonido.
+
+**Decisión del dueño (11-oct-2026): Grok y Nano Banana 2 siguen síncronos «de momento».** Se deja todo como estaba y se anota
+para volver a verlo; no es que la regla no los alcance. **Grok (el predeterminado) sigue síncrono con 13 a 29 s medidos.** La prueba pagada del 18-sep (ocho
+llamadas con prompts reales; `PLAN-PRODUCTO.md` y `tools/pricing.json`, `grok_nota`) midió **13 a 29 s por imagen, mediana 16, y el
+vertical (720×1280) 28.7 s**. Por la regla de la tabla —segundo plano si algún tiempo medido pasó de 10 s— Grok iría a segundo
+plano. Sigue síncrono porque esa decisión es del dueño, y es la ruta de más tráfico: la pantalla de Imágenes y la página vieja no
+mandan `modelo`, así que caen en Grok. Ya en síncrono rozaba el muro: 28.7 s más el cobro y la subida (~2 s) pasan de los 29 s de
+la Lambda y de los 30 s del gateway (el arranque en frío, ~16 s, no cuenta contra los 29 s de la función pero sí contra los 30 s
+del gateway). El usuario ve entonces un 5xx con la imagen cobrada y, si la Lambda muere sin pasar por el `except` que devuelve, sin
+devolución, y fal cobra igual. Opciones: (a) `segundo_plano=True` en la fila de Grok de `pipeline/modelos_ia.py` (una línea; la
+prueba de `tests/test_imagen_segundo_plano.py` obliga entonces a borrar su excepción `EXCEPCIONES_A_LA_REGLA`, y cambia la respuesta
+de `POST /api/imagenes` para el modelo predeterminado: el cliente ya acepta las dos formas); (b) un `asyncio.wait_for` de ~24 s en
+`server/app.py` que devuelva los créditos antes de que muera la Lambda. **La bandera de Grok sigue en `False`.**
+
+**Nano Banana 2 al crear sigue síncrono, igual que desde que salió a la venta el 9-oct.** Midió **11.7 s** al crear (DATOS §9);
+por la regla iría a segundo plano, y en una versión de esta rama su bandera estaba en `True`: se quitó por decisión del dueño.
+Con un arranque en frío (~16 s) más el cobro y la subida (~2 s) la petición suma ~29.7 s, al borde de los 29 s de la Lambda y por
+encima de los 30 s del gateway: es el MISMO riesgo que ya tenía antes de esta rama, no uno nuevo. Para moverlo basta
+`segundo_plano=True` en su fila de crear en `pipeline/modelos_ia.py` y borrar su línea de `EXCEPCIONES_A_LA_REGLA` en
+`tests/test_imagen_segundo_plano.py` (la prueba obliga a que la bandera siga a la regla). Editar con Nano Banana 2 es la decisión
+pendiente de abajo.
+
+**Decisión pendiente del dueño: EDITAR con Nano Banana 2 sigue síncrono** (`/api/imagenes/editar` no se encola). Al editar midió
+11.5 y 13.9 s (crear midió 11.7 s); con un arranque en frío (~16 s, `infra/stacks/alertas.py`) más el cobro y la subida (~2 s) la
+petición suma de ~29.5 a ~32 s y supera los 29 s de la Lambda y los 30 s del gateway: el usuario ve un 5xx con la imagen ya cobrada
+(y, si la Lambda llega a morir, sin pasar por la devolución). Hoy solo se llega desde la caja del inicio con ese modelo. Pasarlo a
+segundo plano cambia el contrato de editar y la pantalla, por eso no se hizo.
+
+**Pendiente del dueño (`db_migrate`): un índice único parcial para la devolución.** `db.abonar_devolucion` no tiene un índice único
+detrás (uno global sobre `tipo = 'devolucion'` rompería las referencias que se repiten a propósito), así que dos sentencias
+EXACTAMENTE simultáneas con la misma referencia podrían abonar las dos: las dos pasan el `NOT EXISTS` antes de que la otra confirme.
+Se reprodujo contra un Postgres 16 desechable (dos transacciones abiertas a la vez, y 8 conexiones en autocommit con 40
+referencias compartidas dejaron 41 filas de libro y 7 créditos de más). En la práctica no puede pasar con el worker: el reclamo
+serializa las entregas (es exclusivo 14 min y la Lambda muere a los 15). Si se quisiera cerrarlo del todo, `ESQUEMA` de
+`pipeline/db.py` recibiría `CREATE UNIQUE INDEX IF NOT EXISTS monedero_mov_devolucion_ref ON monedero_movimientos (user_id,
+referencia) WHERE tipo = 'devolucion' AND referencia LIKE 'imagen:img-%'` y la sentencia de `abonar_devolucion` un `ON CONFLICT
+(user_id, referencia) WHERE tipo = 'devolucion' AND referencia LIKE 'imagen:img-%' DO NOTHING` antes del `RETURNING id)`. Validado
+en el mismo Postgres: tres corridas de 3,200 sentencias, 0 duplicados y 280 créditos exactos, y el índice no estorba a
+`imagen:estudio`. Exige correr `python tools/db_migrate.py`, que corre el dueño; no se aplicó.
+
+**Un detalle de Python en los workers:** un worker tibio corre `asyncio.run()` en cada invocación y lo que se ata a un event loop
+no sirve en la siguiente. `pipeline/fal.py` guarda por eso un cliente de fal y un semáforo POR event loop (antes, el cliente
+global de `fal_client` hacía fallar cada segunda invocación con «Event loop is closed»). Sirve igual al clip, MIX y overlay.
+**`pipeline/llm.py` tiene el mismo defecto de clase y NO está arreglado:** guarda un `AsyncOpenAI` global (`_client`) cuyo pool
+de conexiones keep-alive es del loop de la primera corrida. Hoy lo salva el reintento del SDK (`max_retries=2`: cada invocación
+tibia gasta ~0.4 s y deja un «Retrying request» en el log), pero deja de salvarlo con 3 o más conexiones muertas en el pool, es
+decir, con un flujo de worker que haga 3 o más llamadas LLM concurrentes: entonces la llamada revienta con `APIConnectionError`
+(«Event loop is closed») y, en `preparar`, eso es un error y la devolución de créditos. Hoy `flow.preparar` mezcla como mucho 2
+llamadas concurrentes, así que es latente. El arreglo sería el mismo patrón (un cliente por event loop); queda pendiente.
+
 ## La UI nueva (`web/`, UI·6)
 
 Vite 8 + React 19 + TS estricto + Tailwind v4 + Radix, multipágina
@@ -1046,8 +1264,14 @@ renderiza, y eso se valida con un render real, no con el CI.
 
 ## ECR (ciclo de vida de las imágenes)
 
-El repositorio `aws-media` conserva las **20 imágenes más recientes** y expira el
+El repositorio `aws-media` conserva las **30 imágenes más recientes** y expira el
 resto. La política vive en `infra/ecr-lifecycle.json`.
+
+**11-oct-2026: de 20 a 30.** El repositorio tenía 21 imágenes y la de producción
+(`c970e23…`) era la 12.ª más nueva: aguantaba 8 fusiones más a `dev` y la 9.ª la
+expiraba, con el release a producción detenido. Subir el número compra margen; no
+arregla el fondo (ver «El riesgo real»). Se aplica con el procedimiento de abajo: el
+CI no la aplica, la aplica una persona.
 
 ### Por qué hace falta
 
@@ -1059,17 +1283,20 @@ de sus 17 capas — 48 MB de 1.664.** El CI no cachea capas de Docker, así que 
 build reconstruye todo desde cero y sube ~1,6 GB genuinamente nuevos. Al ritmo de
 merges de estos días, unos 4,8 GB al día.
 
-Con la política, el repositorio se estabiliza en ~33 GB en vez de subir sin techo.
+Con la política de 20, el repositorio se estabilizaba en ~33 GB; con 30 son ~50 GB (30 × ~1,6 GB), en vez de subir sin techo.
 
 ### El riesgo real, que no es el número
 
 **Las Lambdas apuntan a un digest, no a un tag.** Si la imagen que corre
-producción cae fuera de las 20 más recientes y se expira, la función deja de
+producción cae fuera de las 30 más recientes y se expira, la función deja de
 poder arrancar contenedores nuevos.
 
-Veinte son unos siete días de margen al ritmo actual. El peligro no es que el
-número sea bajo: es **dejar pasar 20 merges sin desplegar**. Ya ha pasado estar
-tres PRs por detrás.
+Treinta son unos diez días de margen al ritmo de septiembre (~3 imágenes al día) y
+unos seis al de los días con trabajo (~5 al día). El peligro no es que el
+número sea bajo: es **dejar pasar 30 merges sin desplegar**. Ya ha pasado estar
+tres PRs por detrás. Para saber cuánto margen queda hoy: cuenta las imágenes
+más NUEVAS que la de producción (`aws ecr describe-images`, ordenadas por
+`imagePushedAt`); la de producción se expira cuando esa cuenta llega a 30.
 
 ### Antes de tocar nada: el preview
 

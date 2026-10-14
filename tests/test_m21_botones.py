@@ -30,6 +30,14 @@ VERBOS = {
     # dentro; competencia mira lo que ya publicaron varias cuentas, y eso el
     # usuario lo llama revisar
     "Revisar",
+    # E1: la tercera familia de la caja del inicio (web/src/pantallas/inicio/
+    # CajaEdicion.tsx) edita UN video subido. No es «Proponer» (el de e1.html):
+    # aquí la persona escribe lo que quiere y la IA lo aplica
+    "Editar",
+    # 14-oct-2026 (dueño): ese botón pasa a decir «Iniciar ✦ N» — «Editar» es ahora
+    # el chip de modo junto al «+» (y más adelante «De videos a Shorts» irá ahí
+    # también), así que el botón principal tiene un verbo que sirve para todos
+    "Iniciar",
 }
 
 # Cada botón que gasta créditos, con el verbo que le toca.

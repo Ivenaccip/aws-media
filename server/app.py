@@ -5,6 +5,7 @@ Un solo worker (estado en memoria + JSON — PLAN-FUSION.md F4)."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import mimetypes
@@ -14,7 +15,8 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, RedirectResponse,
+                               Response)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -25,13 +27,14 @@ from pipeline.project import (DURACION_MAX_S, EscenaGuion, OpcionPersonaje, Proy
 from pipeline.run import resumen_imagenes
 from pipeline.scenes import asignar_rutas
 from pipeline.pricing import estimar_produccion
-from pipeline.styles import ESTILOS, resolver_estilo
+from pipeline.styles import ESTILOS, NINGUNO, Estilo, resolver_estilo
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
 from pipeline.storage import media_root, videos_root
 from pipeline import creditos, db, jobs, media_sync
-from server import auth, migracion, web
+from pipeline import publico as freno
+from server import auth, aviso, imagen_cola, migracion, publico_api, web
 from server.admin_api import router as admin_router
 from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
@@ -45,11 +48,13 @@ from server.overlays_api import router as overlays_router
 from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
+from server.publico_api import router as publico_router
 from server.estilos_api import router as estilos_router
 from server.competencia_api import router as competencia_router
 from server.mix_api import router as mix_router
 from server.trabajos_api import router as trabajos_router
 from server.clip_api import router as clip_router
+from server.imagen_cola import router as imagen_cola_router
 from server.shorts_api import router as shorts_router
 
 
@@ -120,6 +125,7 @@ app.include_router(editor_router)
 app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
+app.include_router(publico_router)   # RAG·2: /api/publico/*, sin token
 app.include_router(blotato_router)
 # antes del mount de static/ de más abajo: si no, /api/agenda cae en StaticFiles
 # y devuelve su 404 en HTML
@@ -133,6 +139,9 @@ app.include_router(shorts_router)
 app.include_router(estilos_router)
 app.include_router(competencia_router)
 app.include_router(clip_router)
+# antes de /api/imagenes/{nombre} y /{nombre}/archivo (más abajo): el estado de un pedido
+# en segundo plano vive en /api/imagenes/pedidos/{id}
+app.include_router(imagen_cola_router)
 app.include_router(editar_router)
 app.include_router(mix_router)
 app.include_router(trabajos_router)
@@ -296,6 +305,7 @@ class PedidoImagen(BaseModel):
     estilo: str = "animated"
     estilo_custom: str = ""
     formato: str = ""
+    modelo: str = ""     # R4: vacío = el predeterminado
 
 
 # M23 — los formatos de la herramienta de imágenes. Tabla PROPIA, y no la
@@ -303,6 +313,31 @@ class PedidoImagen(BaseModel):
 # tests la fijan. Una imagen suelta sí puede ser cuadrada. Sin formato se
 # queda en 1:1, que es lo que ha salido siempre.
 ASPECTOS_IMAGEN = {"horizontal": "16:9", "vertical": "9:16", "cuadrado": "1:1"}
+
+
+def _modelo_imagen(tarea: str, pedido: str) -> tuple[str | None, int]:
+    """R4: el modelo pedido y sus créditos, validados en el servidor. Sin
+    `modelo` todo sigue como siempre (tarifa de imagen, modelo predeterminado);
+    con uno, o está en la tabla y trae tarifa en tarifas.json §modelos, o 422."""
+    pedido = (pedido or "").strip()
+    if not pedido:
+        return None, creditos.costo_imagen()
+    from pipeline import modelos_ia
+    try:
+        m = modelos_ia.resolver(tarea, pedido)
+        return m.id, creditos.costo_modelo(tarea, m.id)
+    except (modelos_ia.ModeloDesconocido, KeyError):
+        raise HTTPException(422, f"Ese modelo no está disponible: {pedido!r}")
+
+
+def _prompt_de_imagen(prompt: str, estilo: Estilo) -> str:
+    """El texto que va a fal: lo que escribió la persona, el estilo y las reglas de siempre.
+    Con «ninguno» (la caja del inicio) no hay estilo que pegar, y tampoco queda el hueco «. .».
+    Todo lo demás —los cinco estilos y «custom», también el vacío— se arma byte por byte como
+    siempre: Imágenes y Crear no cambian."""
+    if estilo.id == NINGUNO:
+        return f"{prompt}. No text, no watermark."
+    return f"{prompt}. {estilo.prompt}. No text, no watermark."
 
 
 @app.post("/api/imagenes")
@@ -315,9 +350,18 @@ async def crear_imagen(body: PedidoImagen):
     if body.formato and body.formato not in ASPECTOS_IMAGEN:
         raise HTTPException(422, f"formato desconocido: {body.formato!r}")
     aspecto = ASPECTOS_IMAGEN[body.formato or "cuadrado"]
-    estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo == "custom"
+    # «ninguno» (dueño, 14-oct-2026) es lo que manda la caja del inicio: lo que la persona
+    # escribe es lo que se dibuja. No está en ESTILOS (no sale en /api/estilos), por eso se
+    # nombra aquí. Un id que no conocemos sigue cayendo a «animated», como siempre.
+    estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo in ("custom", NINGUNO)
                              else "animated", body.estilo_custom or None)
-    costo = creditos.costo_imagen()
+    modelo, costo = _modelo_imagen("imagen", body.modelo)
+    prompt_fal = _prompt_de_imagen(prompt, estilo)
+    # los modelos lentos no caben en los 29 s de la petición: se cobran y se encolan, y la
+    # pantalla sondea /api/imagenes/pedidos/{id}. Los rápidos —y todo en local— siguen aquí
+    if imagen_cola.en_segundo_plano(modelo):
+        return imagen_cola.lanzar(db.usuario_actual(), prompt, prompt_fal, aspecto, modelo,
+                                  costo)
     if creditos.activo():
         try:
             creditos.cobrar(costo, "imagen:estudio")
@@ -327,8 +371,8 @@ async def crear_imagen(body: PedidoImagen):
     destino = _dir_imagenes() / nombre
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
-        await media_fal.imagen_fal(f"{prompt}. {estilo.prompt}. No text, no watermark.",
-                                   destino, meta={"imagen_estudio": nombre}, aspecto=aspecto)
+        await media_fal.imagen_fal(prompt_fal, destino, meta={"imagen_estudio": nombre},
+                                   aspecto=aspecto, modelo=modelo)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
@@ -343,7 +387,8 @@ async def crear_imagen(body: PedidoImagen):
 async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                         marcada: UploadFile | None = File(None),
                         modo: str = Form("pincel"),
-                        estilo: str = Form(""), estilo_custom: str = Form("")):
+                        estilo: str = Form(""), estilo_custom: str = Form(""),
+                        modelo: str = Form("")):
     """M15 — «Editor de imágenes». Misma tarifa de imagen.
 
     Dos modos, porque el editor solo sabía hacer uno y los testers pedían el
@@ -381,7 +426,7 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                                  "transformar toda la imagen")
     if len(datos_img) > 15 * 1024 * 1024:
         raise HTTPException(422, "La imagen es muy grande (máximo 15 MB)")
-    costo = creditos.costo_imagen()
+    modelo, costo = _modelo_imagen("editar", modelo)
     if creditos.activo():
         try:
             creditos.cobrar(costo, "imagen:editor")
@@ -399,10 +444,12 @@ async def editar_imagen(prompt: str = Form(...), imagen: UploadFile = File(...),
                 f_marca = Path(td) / "marcada.jpg"
                 f_marca.write_bytes(datos_marca)
                 await media_fal.imagen_pincel(prompt, f_img, f_marca, destino,
-                                              meta={"imagen_editor": nombre})
+                                              meta={"imagen_editor": nombre},
+                                              modelo=modelo)
             else:
                 await media_fal.imagen_transformar(prompt, f_img, destino,
-                                                   meta={"imagen_editor": nombre})
+                                                   meta={"imagen_editor": nombre},
+                                                   modelo=modelo)
         _publicar_imagen(destino, nombre)
     except HTTPException:
         raise
@@ -440,6 +487,11 @@ MAX_IMAGENES = 200
 def mis_imagenes():
     """Las imágenes del usuario, de la más nueva a la más vieja. En la nube se
     leen de SU carpeta de S3 (el usuario sale del token); en local, del disco."""
+    # los pedidos en segundo plano (server/imagen_cola.py) se leen ANTES que las imágenes:
+    # una que termina entre las dos lecturas sale en las dos (repetida un instante), y al
+    # revés no saldría en ninguna. `[]` si no hay o es local; si falla S3 también es `[]`, pero
+    # `pendientes_ok` sale en false: la pantalla no debe tomarlo por «no hay pendientes»
+    pendientes, pendientes_ok = imagen_cola.pendientes(db.usuario_actual())
     if jobs.backend() == "aws":
         prefijo = f"imagenes/{db.usuario_actual()}/"
         filas = [(k[len(prefijo):], t) for k, t in media_sync.listar_prefijo_con_fecha(prefijo)]
@@ -450,7 +502,8 @@ def mis_imagenes():
                    key=lambda f: f[1], reverse=True)
     return {"total": len(filas),
             "imagenes": [{"nombre": n, "url": f"/api/imagenes/{n}", "creado": int(t)}
-                         for n, t in filas[:MAX_IMAGENES]]}
+                         for n, t in filas[:MAX_IMAGENES]],
+            "pendientes": pendientes, "pendientes_ok": pendientes_ok}
 
 
 @app.get("/api/imagenes/{nombre}/archivo")
@@ -602,6 +655,11 @@ async def crear(
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
+    # «ninguno» (dueño, 14-oct-2026) es solo de las imágenes sueltas de la caja del inicio: una
+    # película sin estilo no es lo que ofrece Crear, y el flujo la dibujaría sin él. Antes de
+    # crear nada ni gastar en nada.
+    if estilo == NINGUNO:
+        raise HTTPException(422, "Elige uno de los estilos de la lista.")
     # M23 · V: cada duración tiene su precio en tarifas.json; una que no está en
     # la tabla no tiene precio que cobrar. Antes de gastar en nada.
     duraciones = creditos.precios_por_duracion()
@@ -1096,6 +1154,20 @@ def _es_html(resp) -> bool:
     return _tipo(resp) == "text/html"
 
 
+# RAG·10/13 · páginas de static/ que son plantillas (server/aviso.py): solo se
+# sirven llenas, por su ruta limpia
+PLANTILLAS = {"automatiza.html": "/automatiza", "privacidad.html": "/privacidad",
+              "terminos.html": "/terminos",
+              # RAG·35: las de la baja solo existen con un token; crudas, a /automatiza
+              "baja.html": "/automatiza", "baja-hecha.html": "/automatiza"}
+# 14-oct-2026 · donde /automatiza no se sirve (pipeline/publico.py `publicado`,
+# hoy producción) tampoco salen sus archivos por su dirección (la imagen para
+# redes dice «gratis del 10 al 25 de octubre»), sus plantillas crudas no
+# redirigen a ella, y robots.txt es el de siempre (server/sin_automatiza/).
+SOLO_CON_AUTOMATIZA = {"automatiza.css", "automatiza.js", "sondeo.js", "automatiza-og.png",
+                       *(p for p, ruta in PLANTILLAS.items() if ruta == "/automatiza")}
+
+
 class _StaticCacheado(StaticFiles):
     """Los assets pesados (imágenes de muestra de /estilos/) viajan por Lambda —
     sin Cache-Control el navegador los re-descarga en cada clic de estilo
@@ -1118,6 +1190,18 @@ class _StaticCacheado(StaticFiles):
 
     El filtro de imágenes va por media_type y el de INMUTABLES por NOMBRE: todo
     el JS del repo comparte media_type, así que ahí no se puede distinguir."""
+
+    async def get_response(self, path: str, scope):
+        # RAG·10 · las plantillas de /automatiza tienen sus rutas (más abajo),
+        # pero «//automatiza.html» o «/%2E/automatiza.html» no casan con ellas
+        # y aquí se normalizan al mismo archivo: tampoco salen crudas por ahí.
+        if path in SOLO_CON_AUTOMATIZA and not freno.publicado():
+            raise HTTPException(status_code=404)
+        if path == "robots.txt" and not freno.publicado():
+            return FileResponse(aviso.SIN_AUTOMATIZA / "robots.txt")
+        if path in PLANTILLAS:
+            return RedirectResponse(PLANTILLAS[path], status_code=302)
+        return await super().get_response(path, scope)
 
     def file_response(self, *args, **kwargs):
         resp = super().file_response(*args, **kwargs)
@@ -1175,23 +1259,216 @@ def _entrar():
     return FileResponse(ROOT / "static" / "entrar.html", headers=_SIN_CACHE)
 
 
-# El aviso de privacidad y los términos: públicos y sin sesión, igual que la
-# portada y /entrar (los enlaza el pie de las dos). Llevan ruta propia porque
-# el montaje de abajo solo los serviría con «.html»; su hoja (/legal.css) sí
-# sale de ese montaje, como /carta.css.
-# Van JUSTO aquí, pegadas a _entrar(): dev trae sus propias rutas en este mismo
-# punto, y así la fusión marca conflicto en vez de dejar dos
-# @app.get("/privacidad") sin avisar.
-# También contestan HEAD: es lo que mandan `curl -I` y los verificadores de
-# enlaces, y con solo GET recibían un 404 del montaje de abajo.
+# RAG·10/13 · /automatiza y las dos páginas legales: para gente de fuera y sin
+# sesión. Se sirven llenas (server/aviso.py pone los {{huecos}} del dueño) y
+# con su CSP: /automatiza es la única superficie anónima con formulario, así
+# que nada en línea —ni <script>, ni <style>, ni style=, ni onclick=—.
+#
+# /privacidad y /terminos son el aviso y los términos de TODO Irremplazables
+# (el Estudio y /automatiza): los enlaza también el pie de la portada y de
+# /entrar. Hasta el PR #160, main las servía como HTML estático con
+# FileResponse; desde ahí las sirve este mecanismo en todos lados y sus rutas
+# NO se duplican. Donde /automatiza no se sirve (producción hasta RAG·30) el
+# archivo no es la plantilla de static/ sino la copia de server/sin_automatiza/
+# (ver `_legal`, más abajo). De las de main se conserva lo que hacían de más:
+# contestar HEAD (ver _pagina_publica).
+_CSP_PUBLICA = ("default-src 'none'; script-src 'self'; style-src 'self'; "
+                "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+                "form-action 'self'; base-uri 'none'; frame-ancestors 'none'; "
+                "manifest-src 'self'")
+_CABECERAS_PUBLICAS = {
+    "Content-Security-Policy": _CSP_PUBLICA,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    **_SIN_CACHE,
+}
+# El único host que se indexa. Con el dominio propio (infra/stacks/dominio.py:
+# CNAME de Cloudflare → dominio personalizado de API Gateway, sin mapeo de
+# ruta) el Host llega tal cual hasta aquí; cualquier otro —el execute-api de
+# dev o de prod, localhost— es la MISMA página con otra dirección, y
+# duplicada en los buscadores le quitaría peso a la de verdad.
+DOMINIO_INDEXABLE = "irremplazables.xyz"
+_NO_INDEXAR = {"X-Robots-Tag": "noindex, nofollow"}
+
+
+def _se_indexa(request: Request) -> bool:
+    host = request.headers.get("host", "").strip().lower().rsplit(":", 1)[0]
+    return host.rstrip(".") == DOMINIO_INDEXABLE
+
+
+def _pagina_publica(request: Request, nombre: str, *, indexable: bool = True,
+                    status: int = 200, directorio: Path | None = None):
+    try:
+        cuerpo = aviso.renderizar(nombre, directorio)
+    except FileNotFoundError:
+        return HTMLResponse("<!doctype html><title>No encontrada</title>"
+                            "<p>Esta página no existe.</p>", status_code=404,
+                            headers={**_CABECERAS_PUBLICAS, **_NO_INDEXAR})
+    cabeceras = dict(_CABECERAS_PUBLICAS)
+    if not (indexable and _se_indexa(request)):
+        cabeceras.update(_NO_INDEXAR)
+    if status != 200:
+        return HTMLResponse(cuerpo, status_code=status, headers=cabeceras)
+    # no-cache revalida en cada carga: con el ETag, la revalidación es un 304
+    datos = cuerpo.encode()
+    etag = '"' + hashlib.sha256(datos).hexdigest()[:32] + '"'
+    cabeceras["ETag"] = etag
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=cabeceras)
+    if request.method == "HEAD":
+        # las mismas cabeceras que el GET (CSP, ETag, tipo y largo) y sin
+        # cuerpo: es lo que preguntan `curl -I` y los verificadores de enlaces
+        return Response(status_code=200, media_type="text/html",
+                        headers={**cabeceras, "Content-Length": str(len(datos))})
+    return HTMLResponse(cuerpo, headers=cabeceras)
+
+
+def _sin_automatiza_es_404() -> None:
+    """Decisión del dueño (14-oct-2026): donde /automatiza no se sirve (hoy
+    producción, hasta RAG·30; pipeline/publico.py `publicado`) sus rutas dan el
+    mismo 404 que una ruta que no existe. Antes salía la página en pausa,
+    indexable, prometiendo «gratis del 10 al 25 de octubre»."""
+    if not freno.publicado():
+        raise HTTPException(status_code=404)
+
+
+@app.get("/automatiza", include_in_schema=False)
+def _automatiza(request: Request):
+    _sin_automatiza_es_404()
+    return _pagina_publica(request, "automatiza.html")
+
+
+def _con_query(ruta: str, request: Request) -> str:
+    # los utm_* viajan en el query (RAG·10): un redirect no los puede perder
+    return f"{ruta}?{request.url.query}" if request.url.query else ruta
+
+
+@app.get("/automatiza/", include_in_schema=False)
+def _automatiza_barra(request: Request):
+    _sin_automatiza_es_404()
+    return RedirectResponse(_con_query("/automatiza", request), status_code=302)
+
+
+@app.get("/automatiza/c/{publico_id}", include_in_schema=False)
+def _automatiza_corrida(request: Request, publico_id: str):
+    """El «enlace para volver»: la MISMA página, que lee el id del path. Nunca
+    se indexa (es el resultado de alguien). Si la corrida existe lo dice el
+    API cuando la página pregunta.
+
+    Un id con otra forma —un enlace que un chat o un copiar a medias
+    cortó— es 404, pero con la MISMA página: el JS ve que la ruta no trae un
+    id y enseña «No encontramos esa petición» sobre el formulario, igual que
+    con un id que no existe."""
+    _sin_automatiza_es_404()
+    if not publico_api.ID_PUBLICO.fullmatch(publico_id):
+        return _pagina_publica(request, "automatiza.html", indexable=False, status=404)
+    return _pagina_publica(request, "automatiza.html", indexable=False)
+
+
+# RAG·35 · el enlace de baja de la lista de novedades (pipeline/novedades.py).
+# GET enseña la pregunta y NO da de baja: los clientes de correo y los
+# antivirus abren los enlaces solos. POST da de baja; lo mandan el botón de la
+# página y el «Cancelar suscripción» de Gmail/Outlook (List-Unsubscribe-Post,
+# RFC 8058), que no espera nada más que un 200. Como el resto de lo público,
+# la base se toca dentro del candado de identidad (db.camino_publico).
+_BAJA_HECHA = ("Listo, ya no recibirás novedades",
+               "Te quitamos de la lista de novedades de Irremplazables. Si te llega "
+               "algún correo que ya iba en camino, ese es el último.")
+_BAJA_ENLACE_MALO = ("Este enlace no sirve",
+                     "Puede que se haya cortado al copiarlo. Usa el enlace completo del "
+                     "último correo que te mandamos, o escríbenos y te damos de baja a mano.")
+_BAJA_NO_SE_PUDO = ("Ahorita no pudimos darte de baja",
+                    "Intenta de nuevo en unos minutos. Si sigue fallando, escríbenos y "
+                    "te damos de baja a mano.")
+
+
+def _pagina_baja(nombre: str, *, status: int = 200, textos: tuple[str, str] | None = None):
+    extra = {"baja_titulo": textos[0], "baja_texto": textos[1]} if textos else {}
+    cuerpo = aviso.renderizar_con(nombre, extra)
+    return HTMLResponse(cuerpo, status_code=status,
+                        headers={**_CABECERAS_PUBLICAS, **_NO_INDEXAR})
+
+
+def _contacto_de_baja(token: str) -> dict | None:
+    """El contacto que firma el token; None si el token no sirve. Revienta con
+    novedades.SinSal si falta la sal (es 503, no «enlace malo»)."""
+    from pipeline import novedades
+    contacto_id = novedades.verificar(token)
+    if contacto_id is None:
+        return None
+    with db.camino_publico():
+        return db.automatiza_contacto(contacto_id)
+
+
+@app.get("/automatiza/baja/{token}", include_in_schema=False)
+def _baja_pregunta(token: str):
+    _sin_automatiza_es_404()
+    from pipeline import novedades
+    try:
+        contacto = _contacto_de_baja(token)
+    except novedades.SinSal:
+        logging.getLogger("novedades").error("baja: falta la sal, no se puede verificar")
+        return _pagina_baja("baja-hecha.html", status=503, textos=_BAJA_NO_SE_PUDO)
+    except Exception:  # noqa: BLE001 — la base: se dice, no se cae en 500
+        logging.getLogger("novedades").exception("baja: no se pudo leer el contacto")
+        return _pagina_baja("baja-hecha.html", status=503, textos=_BAJA_NO_SE_PUDO)
+    if contacto is None:
+        return _pagina_baja("baja-hecha.html", status=404, textos=_BAJA_ENLACE_MALO)
+    return _pagina_baja("baja.html")
+
+
+@app.post("/automatiza/baja/{token}", include_in_schema=False)
+def _baja_hecha(token: str):
+    _sin_automatiza_es_404()
+    from pipeline import novedades
+    try:
+        contacto = _contacto_de_baja(token)
+        if contacto is None:
+            return _pagina_baja("baja-hecha.html", status=404, textos=_BAJA_ENLACE_MALO)
+        with db.camino_publico():
+            db.automatiza_dar_baja(contacto["correo"], origen="enlace",
+                                   contacto_id=int(contacto["id"]))
+    except Exception:  # noqa: BLE001 — sin sal o sin base: 503, nunca un «listo» falso
+        logging.getLogger("novedades").exception("baja: no se pudo anotar")
+        return _pagina_baja("baja-hecha.html", status=503, textos=_BAJA_NO_SE_PUDO)
+    return _pagina_baja("baja-hecha.html", textos=_BAJA_HECHA)
+
+
+# Las dos legales contestan también HEAD (así llegaron de main, PR #174): con
+# solo GET, un `curl -I` o un verificador de enlaces caía en el montaje de
+# abajo y recibía un 404 de una página que sí existe.
+# Donde /automatiza no se sirve (hoy producción) salen las de
+# server/sin_automatiza/: el texto que producción ya publicaba, sin la
+# sección 14 (decisión del dueño, 14-oct-2026; ver server/aviso.py).
+def _legal(request: Request, nombre: str):
+    directorio = None if freno.publicado() else aviso.SIN_AUTOMATIZA
+    return _pagina_publica(request, nombre, directorio=directorio)
+
+
 @app.api_route("/privacidad", methods=["GET", "HEAD"], include_in_schema=False)
-def _privacidad():
-    return FileResponse(ROOT / "static" / "privacidad.html", headers=_SIN_CACHE)
+def _privacidad(request: Request):
+    return _legal(request, "privacidad.html")
 
 
 @app.api_route("/terminos", methods=["GET", "HEAD"], include_in_schema=False)
-def _terminos():
-    return FileResponse(ROOT / "static" / "terminos.html", headers=_SIN_CACHE)
+def _terminos(request: Request):
+    return _legal(request, "terminos.html")
+
+
+# El montaje «/» de abajo sirve cualquier archivo de static/, y estas tres son
+# PLANTILLAS: servidas por ahí saldrían con los {{huecos}} a la vista y sin su
+# CSP. Se desvían a su ruta limpia. 302, igual que arriba.
+@app.get("/automatiza.html", include_in_schema=False)
+@app.get("/privacidad.html", include_in_schema=False)
+@app.get("/terminos.html", include_in_schema=False)
+@app.get("/baja.html", include_in_schema=False)
+@app.get("/baja-hecha.html", include_in_schema=False)
+def _plantilla_cruda(request: Request):
+    destino = PLANTILLAS[request.url.path.lstrip("/")]
+    if destino == "/automatiza":
+        _sin_automatiza_es_404()   # no redirigir a una ruta que ahí no existe
+    return RedirectResponse(_con_query(destino, request), status_code=302)
 
 
 # UI·6 · la UI nueva (web/dist), si está compilada. Antes que «/»: ese montaje

@@ -22,6 +22,9 @@ export interface PropsEsperaIA {
 export function EsperaIA({ texto, tope, latido, reposo = false, heroe = false, textoAlAgotar }: PropsEsperaIA) {
   const hueco = useRef<HTMLSpanElement>(null);
   const mando = useRef<MandoOrbe | null>(null);
+  // el orbe se monta una vez, pero lo que dice al agotarse es lo último que la pantalla pidió
+  const alAgotarDice = useRef(textoAlAgotar);
+  useEffect(() => { alAgotarDice.current = textoAlAgotar; });
   const hayOrbe = typeof window !== 'undefined' && Boolean(window.orbe);
 
   useEffect(() => {
@@ -30,7 +33,7 @@ export function EsperaIA({ texto, tope, latido, reposo = false, heroe = false, t
       texto,
       ...(tope ? { tope } : {}),
       ...(heroe ? { forma: 'heroe' as const } : {}),
-      ...(textoAlAgotar ? { alAgotar: () => mando.current?.texto(textoAlAgotar) } : {}),
+      ...(textoAlAgotar ? { alAgotar: () => mando.current?.texto(alAgotarDice.current ?? textoAlAgotar) } : {}),
     });
     mando.current = m;
     return () => { m.desmontar(); mando.current = null; };

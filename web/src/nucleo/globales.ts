@@ -34,6 +34,11 @@ declare global {
     cobro: CustomEvent<DetalleCobro>;
   }
   interface Window {
+    /** El cuadro de avisos de static/trabajos.js (abajo a la derecha). Ver nucleo/avisos.ts. */
+    avisos?: {
+      mostrar(texto: string, op?: { tipo?: 'ok' | 'mal' | 'info'; segundos?: number; clave?: string }): number;
+      quitar(idOClave: number | string): void;
+    };
     orbe?: {
       montar(el: HTMLElement, op: OpcionesOrbe): MandoOrbe;
       soportado(): boolean;

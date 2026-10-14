@@ -183,6 +183,13 @@ def recolectar(entorno: entornos.Entorno) -> dict[str, str]:
     # Los dos prefijos de SSM del entorno NO se escriben — ver PROHIBIDAS y el
     # docstring. El de usuarios publicaría en la cuenta de redes de un cliente.
     valores.update(LITERALES)
+    # RAG·17: el índice del RAG no es output de ningún stack (lo crea
+    # tools/vectores.py, no el CDK); su nombre vive en infra/entornos.py.
+    if entorno.vectores_bucket and entorno.vectores_indice:
+        valores["VECTORES_BUCKET"] = entorno.vectores_bucket
+        valores["VECTORES_INDICE"] = entorno.vectores_indice
+        if entorno.embeddings:     # amarrado al índice (respaldo Titan, 30-sep)
+            valores["EMBEDDINGS"] = entorno.embeddings
 
     fugas = [v for v in valores if v in PROHIBIDAS]
     if fugas:      # cinturón: la lista de arriba y esta no pueden solaparse
