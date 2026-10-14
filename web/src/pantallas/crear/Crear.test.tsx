@@ -7,10 +7,19 @@ import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { video } from '../../nucleo/tarifas';
+import { olvidarArchivos, tomarArchivos } from '../../nucleo/traspaso';
 import { NOMBRE_MINIATURA, tocarMiniatura } from '../../nucleo/transiciones';
 import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Crear } from './Crear';
-import { avanceDe, costoProducir, DURACIONES, precioDe, SIN_AVANCE, type Proyecto } from './logica';
+import { avanceDe, costoProducir, DURACIONES, precioDe, refsDeUrl, SIN_AVANCE, type Proyecto } from './logica';
+
+// La foto del personaje llega de la caja del inicio por nucleo/traspaso (IndexedDB, que jsdom no trae). Aquí se dobla
+// lo que Crear usa de él; el traspaso de verdad se prueba en nucleo/traspaso.test.ts.
+vi.mock('../../nucleo/traspaso', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../nucleo/traspaso')>()),
+  tomarArchivos: vi.fn(),
+  olvidarArchivos: vi.fn(),
+}));
 
 const ESTILOS = [
   { id: 'animated', nombre: 'Animado', descripcion: 'Dibujo animado de colores planos' },
@@ -79,6 +88,8 @@ let monedero: ReturnType<typeof ponerMonedero>;
 let blobs = 0;
 beforeEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(tomarArchivos).mockReset();
+  vi.mocked(olvidarArchivos).mockReset();
   monedero = ponerMonedero(500);
   ir();
   blobs = 0;
@@ -990,6 +1001,187 @@ describe('crear · transversales', () => {
       else await waitFor(() => expect(principales()).toBe(1));
       cleanup();
     }
+  });
+});
+
+// La foto del personaje que trae la caja del inicio (?refs=<token>): Crear la recoge del navegador y la pone en su cuadro
+// como si la persona la hubiera agregado aquí.
+describe('crear · la foto que llega del inicio', () => {
+  const TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+  const AVISO = 'Tu foto no alcanzó a llegar desde el inicio. Agrégala con el «+» de aquí.';
+  const conRefs = (refs = TOKEN) => ir('?brief=' + encodeURIComponent('Un gato en la luna') + '&modo=idea&refs=' + refs);
+  const miniaturas = () => screen.queryAllByAltText(/de tu personaje$/);
+
+  it('crear.traspaso.la_foto_del_inicio_llega_como_miniatura_con_quitar_sin_pedir_nada_nuevo', async () => {
+    vi.mocked(tomarArchivos).mockResolvedValue([png('perro.png')]);
+    conRefs();
+    const f = montar();
+    render(<Crear />);
+    // entra por la misma `agregar` del «+»: miniatura, «Quitar», y los detalles del personaje
+    expect(await screen.findByAltText('Imagen 1 de tu personaje')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar perro.png' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Detalles del personaje (opcional)')).toBeInTheDocument();
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(tomarArchivos).toHaveBeenCalledTimes(1);
+    expect(tomarArchivos).toHaveBeenCalledWith(TOKEN);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // el texto y el modo de la URL siguen llegando
+    expect(screen.getByLabelText('De qué trata tu video')).toHaveValue('Un gato en la luna');
+    // y NO hay ninguna petición nueva: solo la lista de estilos de siempre
+    await waitFor(() => expect(f.mock.calls.map(c => c[0])).toEqual(['/api/estilos']));
+    // se quita como cualquier otra, y su blob: URL se suelta
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar perro.png' }));
+    expect(miniaturas()).toHaveLength(0);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x0');
+  });
+
+  it('crear.traspaso.la_foto_viaja_en_el_multipart_y_al_crear_la_pelicula_se_olvida', async () => {
+    vi.mocked(tomarArchivos).mockResolvedValue([png('perro.png')]);
+    vi.mocked(olvidarArchivos).mockResolvedValue(undefined);
+    conRefs();
+    const f = montar();
+    render(<Crear />);
+    await screen.findByAltText('Imagen 1 de tu personaje');
+    expect(olvidarArchivos).not.toHaveBeenCalled(); // recargar Crear debe encontrarla otra vez
+    await userEvent.click(generar());
+    await waitFor(() => expect(llamadas(f, '/api/proyectos')).toHaveLength(1));
+    const fd = llamadas(f, '/api/proyectos')[0]![1]!.body as FormData;
+    expect(fd.getAll('referencias').map(a => (a as File).name)).toEqual(['perro.png']);
+    await waitFor(() => expect(olvidarArchivos).toHaveBeenCalledWith(TOKEN));
+    expect(olvidarArchivos).toHaveBeenCalledTimes(1);
+    expect(location.search).toBe('?p=p1'); // la dirección ya no lleva `refs`
+  });
+
+  it('crear.traspaso.si_la_pelicula_no_se_crea_la_foto_se_queda', async () => {
+    vi.mocked(tomarArchivos).mockResolvedValue([png('perro.png')]);
+    conRefs();
+    montar({ '/api/proyectos': () => json({ detail: 'Créditos insuficientes' }, 402) });
+    render(<Crear />);
+    await screen.findByAltText('Imagen 1 de tu personaje');
+    await userEvent.click(generar());
+    expect(await screen.findByRole('alert')).toHaveTextContent('Créditos insuficientes');
+    expect(olvidarArchivos).not.toHaveBeenCalled();
+    expect(miniaturas()).toHaveLength(1);
+  });
+
+  it('crear.traspaso.sin_archivos_o_perdida_avisa_con_ayuda_y_no_bloquea_ni_cobra', async () => {
+    // vencida, de otra base de datos o ya borrada: tomarArchivos da []
+    vi.mocked(tomarArchivos).mockResolvedValue([]);
+    conRefs();
+    let f = montar();
+    const primera = render(<Crear />);
+    const aviso = await screen.findByRole('status');
+    expect(aviso).toHaveTextContent(AVISO);
+    // el aviso nace JUNTO al «+» (en el mismo cuadro, no abajo con «Generar», que en un celular queda una pantalla más allá)
+    const mas = screen.getByRole('button', { name: 'Subir la imagen de tu personaje' });
+    expect(aviso.closest('section')).toBe(mas.closest('section'));
+    expect(aviso.closest('section')).toContainElement(screen.getByLabelText('De qué trata tu video'));
+    expect(generar().closest('section')).not.toBe(aviso.closest('section'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(miniaturas()).toHaveLength(0);
+    // nada se bloqueó: el texto, el «+» y «Generar» siguen vivos
+    expect(screen.getByRole('button', { name: 'Subir la imagen de tu personaje' })).toBeEnabled();
+    expect(generar()).toBeEnabled();
+    expect(llamadas(f, '/api/proyectos')).toHaveLength(0);
+    // lo que llegó no es una imagen: lo mismo
+    primera.unmount();
+    cleanup();
+    vi.mocked(tomarArchivos).mockResolvedValue([new File(['x'], 'nota.pdf', { type: 'application/pdf' })]);
+    conRefs();
+    f = montar();
+    render(<Crear />);
+    expect(await screen.findByRole('status')).toHaveTextContent(AVISO);
+    expect(miniaturas()).toHaveLength(0);
+    cleanup();
+    // la caja del inicio avisó que no pudo dejarla (`refs=perdida`): se dice desde el primer pintado y ni se toca el navegador
+    vi.mocked(tomarArchivos).mockClear();
+    conRefs('perdida');
+    f = montar();
+    render(<Crear />);
+    expect(screen.getByRole('status')).toHaveTextContent(AVISO);
+    expect(tomarArchivos).not.toHaveBeenCalled();
+    expect(generar()).toBeEnabled();
+    // agregar la foto aquí quita el aviso y vale como siempre
+    await userEvent.upload(document.querySelector<HTMLInputElement>('input[type=file]')!, png('a.png'));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(miniaturas()).toHaveLength(1);
+    expect(llamadas(f, '/api/proyectos')).toHaveLength(0);
+  });
+
+  it('crear.traspaso.un_refs_que_no_es_un_token_ni_perdida_se_ignora', async () => {
+    for (const malo of ['', 'corto', '../../etc/passwd', encodeURIComponent('con espacio y mas'), 'a'.repeat(65), encodeURIComponent('<b>x</b>-12345')]) {
+      ir('?brief=hola&refs=' + malo);
+      montar();
+      render(<Crear />);
+      await screen.findByRole('radiogroup', { name: 'Estilo visual' });
+      expect(tomarArchivos).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(miniaturas()).toHaveLength(0);
+      cleanup();
+    }
+    expect(refsDeUrl(null)).toBeNull();
+    expect(refsDeUrl('perdida')).toBe('perdida');
+    expect(refsDeUrl(TOKEN)).toBe(TOKEN);
+    expect(refsDeUrl('Perdida')).toBeNull();
+    expect(refsDeUrl('abcdefg')).toBeNull(); // 7 caracteres
+  });
+
+  it('crear.traspaso.strictmode_no_la_duplica', async () => {
+    vi.mocked(tomarArchivos).mockResolvedValue([png('perro.png')]);
+    conRefs();
+    montar();
+    render(
+      <StrictMode>
+        <Crear />
+      </StrictMode>,
+    );
+    expect(await screen.findByAltText('Imagen 1 de tu personaje')).toBeInTheDocument();
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 20));
+    });
+    expect(tomarArchivos).toHaveBeenCalledTimes(1);
+    expect(miniaturas()).toHaveLength(1);
+  });
+
+  it('crear.traspaso.la_foto_del_inicio_no_pisa_las_que_la_persona_ya_agrego_y_respeta_el_tope', async () => {
+    let llegar!: (a: File[]) => void;
+    vi.mocked(tomarArchivos).mockReturnValue(new Promise<File[]>(r => (llegar = r)));
+    conRefs();
+    montar();
+    const { container } = render(<Crear />);
+    // la persona se adelanta: agrega dos a mano antes de que llegue la del inicio
+    await userEvent.upload(container.querySelector<HTMLInputElement>('input[type=file]')!, [png('a.png'), png('b.png')]);
+    expect(miniaturas()).toHaveLength(2);
+    await act(async () => llegar([png('del-inicio.png')]));
+    // las de ella siguen, y la del inicio se suma después
+    expect(screen.getByRole('button', { name: 'Quitar a.png' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar b.png' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar del-inicio.png' })).toBeInTheDocument();
+    expect(miniaturas()).toHaveLength(3);
+    cleanup();
+
+    // con el cuadro lleno (4) la del inicio no entra ni saca a nadie, y se dice
+    vi.mocked(tomarArchivos).mockReturnValue(new Promise<File[]>(r => (llegar = r)));
+    conRefs();
+    montar();
+    const otra = render(<Crear />);
+    await userEvent.upload(otra.container.querySelector<HTMLInputElement>('input[type=file]')!, [png('1.png'), png('2.png'), png('3.png'), png('4.png')]);
+    await act(async () => llegar([png('del-inicio.png')]));
+    expect(miniaturas()).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: 'Quitar del-inicio.png' })).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent('Caben 4 imágenes del personaje; 1 se quedó fuera.');
+    expect(screen.getByRole('button', { name: 'Quitar 1.png' })).toBeInTheDocument();
+  });
+
+  it('crear.traspaso.si_llega_cuando_la_pantalla_ya_se_fue_no_deja_nada_colgado', async () => {
+    let llegar!: (a: File[]) => void;
+    vi.mocked(tomarArchivos).mockReturnValue(new Promise<File[]>(r => (llegar = r)));
+    conRefs();
+    montar();
+    const { unmount } = render(<Crear />);
+    unmount();
+    await act(async () => llegar([png('tarde.png')]));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });
 

@@ -10,6 +10,11 @@
 // aparece en «Mis creaciones». Lo demás (cuentos, historias) sigue llevando a su
 // pantalla con el texto ya puesto.
 //
+// Cuentos e historias también tienen «+» (dueño, 14-oct-2026), para la foto del personaje. Esa pantalla (Crear) la
+// recibe de otra página, y un archivo no cabe en la URL: «Crear» la deja en el navegador (nucleo/traspaso) y navega
+// con `refs=<token>`; Crear la recoge y la pone en su cuadro. Navegar no cobra nada, así que si la foto no se pudo
+// dejar se navega igual (`refs=perdida`) y Crear lo dice. Aquí no hay red nueva.
+//
 // «Crear una imagen» también tiene «+»: con una imagen la tarea es editarla, así
 // que la caja pasa sola a «Editar una imagen».
 //
@@ -37,6 +42,7 @@ import { ESTRELLA } from '../../nucleo/estrella';
 import { moderar } from '../../nucleo/moderar';
 import { guardarPreferencia, leerPreferencia } from '../../nucleo/preferencia';
 import { clip as tarifaClip } from '../../nucleo/tarifas';
+import { guardarArchivos, TRASPASO_PERDIDO } from '../../nucleo/traspaso';
 import { refrescarSaldo } from '../../marca/useSaldo';
 import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
@@ -51,6 +57,7 @@ import {
   pedirImagen,
   rechazo,
   soloImagenes,
+  tipoDe,
   traerImagen,
 } from './envio';
 import { Biblioteca } from './Biblioteca';
@@ -338,6 +345,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const topeDeImagenes = tareaDeImagenes.referencias ?? 0;
   const disponibles = topeDeImagenes === 1 ? 1 : Math.max(0, topeDeImagenes - fotos.length);
   const archivosDeLaTarea = tareaDeImagenes.id === 'clip' ? 'clip' : 'editar';
+  // cómo llama la tarea a lo que se agrega (la foto del personaje, en cuentos e historias); sin esto, los de siempre
+  const textosMas = tareaDeImagenes.textosMas;
   const hayBiblioteca = admiteImagenes && imagenes.length > 0;
 
   /** Lo que la caja dice: en el cuadro de abajo a la derecha y, si esa página no lo trae, aquí mismo. */
@@ -380,11 +389,14 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
         decir('mal', motivo);
         continue;
       }
-      buenos.push(f);
+      // la caja acepta por extensión, pero Crear (y el motor) por tipo: una foto sin tipo (WebP sin registrar en el
+      // sistema, un archivo de Drive…) se completa aquí, igual que el clip al subirla, para que no se pierda al llegar
+      buenos.push(f.type ? f : new File([f], f.name, { type: tipoDe(f), lastModified: f.lastModified }));
     }
     if (!buenos.length) return;
-    // con una sola referencia (editar) la nueva reemplaza; con varias, se suman hasta el tope
-    setRefs(r => (tope === 1 ? [buenos[0]!] : [...r, ...buenos].slice(0, tope)));
+    // con una sola referencia (editar) la nueva reemplaza a la de adelante —las demás, que el clip tenía, se guardan—;
+    // con varias, se suman hasta el tope
+    setRefs(r => (tope === 1 ? [buenos[0]!, ...r.slice(1)] : [...r, ...buenos].slice(0, tope)));
     if (tope > 1 && fotos.length + buenos.length > tope) decir('mal', `Como mucho ${tope} imágenes.`);
     if (alAgregar) pasarAEditar(alAgregar);
   }
@@ -503,10 +515,31 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       void pedirAqui(limpio, modeloId, fotos);
       return true;
     }
+    // una foto que el clip aceptó (HEIC, GIF, AVIF, hasta 20 MB) y llegó aquí al cambiar de opción no pasó por la regla de
+    // esta: se revisa antes de dejarla en el navegador y navegar, y se dice por qué no sirve
+    const rechazada = fotos.map(f => rechazo(f, 'editar')).find(Boolean);
+    if (rechazada) {
+      decir('mal', rechazada);
+      return true;
+    }
     limpiarError();
-    setEnviando(true); // hasta que la página navegue
-    ir(destinoDe(opcion, limpio, modeloId));
+    setEnviando(true); // hasta que la página navegue; antes del primer await: un doble clic es UNA navegación
+    if (fotos.length) void irConFoto(opcion, limpio, fotos);
+    else ir(destinoDe(opcion, limpio, modeloId));
     return true;
+  }
+
+  /** Cuentos e historias con la foto del personaje: se deja en el navegador y se navega con su token. Si no se pudo
+   *  dejar (sin IndexedDB, ventana privada, cuota), se navega igual con `perdida`: navegar no cobra, y Crear le dice a
+   *  la persona que agregue la foto allá. `guardarArchivos` no lanza y tiene plazo: la caja no se queda esperando. */
+  async function irConFoto(destino: Opcion, limpio: string, adjuntas: File[]) {
+    let token: string | null = null;
+    try {
+      token = await guardarArchivos(adjuntas);
+    } catch {
+      /* no debería lanzar; si lo hace, es lo mismo que no haber podido: se navega con «perdida» */
+    }
+    ir(destinoDe(destino, limpio, undefined, token ?? TRASPASO_PERDIDO));
   }
 
   async function pedirAqui(limpio: string, modelo: string, adjuntas: File[]) {
@@ -625,7 +658,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
             <CajaEdicion ed={edicion} refs={refsEdicion} />
           ) : (
             <>
-              {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} />}
+              {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} etiqueta={textosMas?.lista ?? 'Imágenes de referencia'} />}
               <textarea
                 ref={area}
                 aria-labelledby={idTitulo}
@@ -661,13 +694,14 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                         ref={botonMas}
                         type="button"
                         aria-label={
-                          maxRefs > 1
+                          textosMas?.boton ??
+                          (maxRefs > 1
                             ? 'Agregar imágenes de referencia'
                             : alAgregar
                               ? 'Agregar una imagen para editarla'
-                              : 'Agregar la imagen que quieres editar'
+                              : 'Agregar la imagen que quieres editar')
                         }
-                        title="Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V"
+                        title={textosMas?.pista ?? 'Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V'}
                         {...(hayBiblioteca ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuMas } : {})}
                         onClick={alPulsarMas}
                         className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
@@ -677,7 +711,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                       {menuMas && (
                         <div
                           role="menu"
-                          aria-label="Agregar imágenes"
+                          aria-label={textosMas?.menu ?? 'Agregar imágenes'}
                           tabIndex={-1}
                           onKeyDown={teclasDelMenu}
                           className="absolute top-[calc(100%+8px)] left-0 z-20 w-[min(340px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
@@ -709,7 +743,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                             </span>
                           </button>
                           <p className="m-0 mx-1 mt-1 border-t border-linea px-1.5 pt-2.5 pb-1.5 text-xs text-secundario">
-                            También puedes arrastrarlas a la caja o pegarlas con Ctrl+V.
+                            {textosMas?.recordatorio ?? 'También puedes arrastrarlas a la caja o pegarlas con Ctrl+V.'}
                           </p>
                         </div>
                       )}
@@ -861,12 +895,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
 
 
 /** Las miniaturas de lo que se va a mandar, con su ✕. Las URL de vista previa se sueltan al irse. */
-function Referencias({ fotos, alQuitar }: { fotos: File[]; alQuitar: (i: number) => void }) {
+function Referencias({ fotos, alQuitar, etiqueta }: { fotos: File[]; alQuitar: (i: number) => void; etiqueta: string }) {
   // jsdom no trae createObjectURL: ahí no hay vista previa y no pasa nada
   const urls = useMemo(() => fotos.map(f => (typeof URL.createObjectURL === 'function' ? URL.createObjectURL(f) : '')), [fotos]);
   useEffect(() => () => urls.forEach(u => u && URL.revokeObjectURL(u)), [urls]);
   return (
-    <ul aria-label="Imágenes de referencia" className="m-0 mb-2 flex list-none flex-wrap gap-3 p-0">
+    <ul aria-label={etiqueta} className="m-0 mb-2 flex list-none flex-wrap gap-3 p-0">
       {fotos.map((f, i) => (
         <li key={f.name + i} className="relative size-14 rounded-medio border border-linea bg-elevada">
           {urls[i] ? <img src={urls[i]} alt="" className="size-full rounded-medio object-cover" /> : null}

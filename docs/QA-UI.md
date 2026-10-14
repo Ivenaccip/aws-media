@@ -76,8 +76,10 @@ y en el escritorio.
 (antes `/estudio/`). Con una cuenta que ya tiene cosas y con una nueva, en el
 teléfono (390 px) y en el escritorio. **Desde R4b la caja cobra** (el clip y la
 imagen se piden en ella) **y desde E1 también la edición de un video** (pasos
-15 a 33): los pasos marcados 💳 gastan créditos reales y solo se corren con el
-«sí» del dueño; el resto no cobra.
+15 a 33) **y, desde el 14-oct-2026, la foto del personaje de cuentos e historias**
+(pasos 35 a 42; «Crear» en la caja solo navega y NO cobra, el que cobra es el 42, ya
+en la pantalla Crear): los pasos marcados 💳 gastan créditos reales y solo se
+corren con el «sí» del dueño; el resto no cobra.
 
 | # | Paso | Qué tiene que pasar |
 |---|---|---|
@@ -115,6 +117,15 @@ imagen se piden en ella) **y desde E1 también la edición de un video** (pasos
 | 32 | Teléfono (390 px y, si se puede, 320 px): campo vacío y, con un video subiéndose, el botón | El ejemplo del campo se lee **entero** («…para Reels.»); «Subiendo…» está en **ámbar** con el cursor de espera (no gris discontinuo) y la nota de abajo lo explica |
 | 33 | Tocar el «+» mientras sube un video; esperar a que termine de subir y salga el precio | El aviso «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» se **quita solo** cuando el trabajo termina; si la subida falla, el aviso lo reemplaza el error y ese sí se queda |
 | 34 | 💳 En «Imagen» → «Crear una imagen», escribir algo realista y sin estilo (p. ej. «una foto de un perro en la playa, de día») y «Crear» | Un cobro; la imagen sale como lo escribiste, **no** en caricatura 3D tipo Pixar (antes salía «Animado» siempre). En `/estudio/imagenes/` el estilo elegido sigue funcionando |
+| 35 | En «Video» → «Creador de cuentos» (y luego «Crea tu historia») mirar la caja | Hay un «+» (antes no): su pista dice «Agrega la foto de tu personaje, arrástrala a la caja o pégala con Ctrl+V», la nota de la opción y el ejemplo dicen «Con el + puedes agregar la foto de tu personaje.». En «Un video corto», «Crear una imagen» y «Editar una imagen» el «+» dice lo de siempre |
+| 36 | En «Creador de cuentos»: «+» → elegir un JPG; luego otro PNG; luego un HEIC, un GIF y uno de más de 15 MB; luego arrastrar una foto a la caja y pegar una captura con Ctrl+V | Se ve **una** miniatura (la foto de tu personaje) con su ✕; la segunda **reemplaza** a la primera (no dice «Como mucho»); HEIC, GIF y el pesado se rechazan con su motivo abajo a la derecha («Sirven: .jpg, .jpeg, .png, .webp» / «pesa demasiado (máximo 15 MB)»); arrastrar y pegar también valen. Con imágenes en Mis creaciones el «+» abre su menú («Subir de tu computadora · JPG, PNG o WebP · hasta 15 MB», «Elegir de Mis creaciones») y la hoja deja elegir una |
+| 36b | En «Un video corto» agregar una foto HEIC (o GIF), cambiar a «Creador de cuentos», escribir un texto y «Crear» | **No navega ni guarda nada**: abajo a la derecha dice por qué no sirve («Sirven: .jpg, .jpeg, .png, .webp»); quitar la foto o reemplazarla por un JPG deja seguir. Reemplazar la foto en cuentos no borra las otras del clip al volver a él |
+| 37 | Con la foto puesta y un texto, cambiar a «Crea tu historia», a «Un video corto» y volver a «Creador de cuentos» | La foto sigue ahí en cada una (en el clip cuenta como una de sus referencias). «Quitar» la saca |
+| 38 | Con la foto puesta y un texto, «Crear» (doble clic rápido) en «Crea tu historia» | **No cobra** (la píldora no cambia): solo navega, **una vez**, a `/estudio/crear/` con el texto, el modo «Tengo una idea» marcado y **la foto como miniatura** en su cuadro, con su ✕ y «Detalles del personaje». Sin ningún aviso rojo. La dirección trae `refs=…` mientras no se crea la película. Va directo a `/estudio/crear/`, también con el interruptor en `nueva` (sin `UI_ETAPA_MINIMA`) |
+| 39 | En esa pantalla de Crear: recargar la página (F5) | La foto sigue ahí (se guarda 10 minutos o hasta crear la película). Pasados 10 minutos sin crearla, recargar muestra «Tu foto no alcanzó a llegar desde el inicio. Agrégala con el «+» de aquí.» |
+| 40 | En ventana privada de Firefox (o con los datos del sitio bloqueados): foto + texto + «Crear» en «Creador de cuentos» | Navega igual a Crear (con `refs=perdida`) y ahí dice, **junto al «+» y a la vista sin bajar** (también a 390 px de ancho), «Tu foto no alcanzó a llegar desde el inicio. Agrégala con el «+» de aquí.»; «Generar» sigue sirviendo y el «+» de Crear también; no cobra |
+| 41 | Sin foto: «Crear» en «Creador de cuentos» y en «Crea tu historia» | Igual que siempre: llega a Crear con el texto y el modo, sin foto y sin ningún aviso; la dirección no lleva `refs` |
+| 42 | 💳 En Crear con la foto llegada del inicio, «Generar ✦ N» (la primera vez) | **Cobra de verdad** (✦ `video.preparar`): se crea la película con la foto como imagen del personaje (la ve en el paso de «Revisa tu película», el personaje sale parecido). Solo con el «sí» del dueño. Nota: Crear acepta 4 fotos pero el motor usa la primera |
 
 ## shorts · `/estudio/shorts/`
 

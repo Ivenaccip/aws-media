@@ -257,3 +257,49 @@ test('en un celular bajo la hoja del menú no pasa de la barra del saldo y el in
     await expect(menu).toBeHidden();
   }
 });
+
+// Lo que vitest no puede ver: que un File pase de verdad de una página a otra por el IndexedDB real del navegador. En el
+// inicio, «Creador de cuentos» lleva «+» para la foto del personaje; «Crear» la deja en el navegador y navega a Crear
+// (directo a /estudio/crear/: la vieja /crear.html ignora `refs` y, según su etapa, ni redirige), que la recoge y la pone en su cuadro. Sin servidor nuevo y sin cobrar.
+test('la foto del personaje pasa de la caja a Crear por el navegador y sobrevive a recargar', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  let posts = 0;
+  page.on('request', r => {
+    if (r.method() === 'POST') posts++;
+  });
+  await page.route('**/api/estilos', r => r.fulfill({ json: [{ id: 'animated', nombre: 'Animado', descripcion: '' }] }));
+  await page.getByRole('button', { name: /Un video corto/ }).click();
+  await page.getByRole('option', { name: /Creador de cuentos/ }).click();
+  await caja(page).fill('cómo empezó la Segunda Guerra Mundial');
+  await page.getByRole('button', { name: 'Agregar la foto de tu personaje' }).waitFor();
+  await page.locator('input[type=file]').setInputFiles({ name: 'perro.png', mimeType: 'image/png', buffer: PNG_1X1 });
+  await expect(page.getByRole('button', { name: 'Quitar «perro.png»' })).toBeVisible();
+  await page.getByRole('button', { name: 'Crear', exact: true }).click();
+  // llegó a Crear con el texto, el modo y el token de la foto (no el archivo)
+  await page.waitForURL(/\/estudio\/crear\/\?.*refs=[A-Za-z0-9-]{8,64}/);
+  expect(new URL(page.url()).searchParams.get('modo')).toBe('investigacion');
+  await expect(page.getByLabel('De qué trata tu video')).toHaveValue('cómo empezó la Segunda Guerra Mundial');
+  await expect(page.getByAltText('Imagen 1 de tu personaje')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Quitar perro.png' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  // recargar Crear no la pierde (leer no borra)
+  await page.reload();
+  await expect(page.getByAltText('Imagen 1 de tu personaje')).toBeVisible();
+  // navegar no cobra ni crea nada
+  expect(posts).toBe(0);
+});
+
+// El aviso de «Tu foto no alcanzó a llegar» nace junto al «+», no abajo con «Generar»: en un celular lo de abajo queda
+// una pantalla y media más allá y `role=alert` no hace scroll.
+test('en el celular el aviso de la foto que no llegó queda a la vista, junto al «+» de Crear', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/estilos', r => r.fulfill({ json: [{ id: 'animated', nombre: 'Animado', descripcion: '' }] }));
+  await inicio(page, { estado: 200, cuerpo: {} });
+  await page.goto('/estudio/crear/?brief=hola&modo=idea&refs=perdida');
+  const aviso = page.getByRole('status').filter({ hasText: 'Tu foto no alcanzó a llegar' });
+  await expect(aviso).toBeVisible();
+  const caja = await aviso.boundingBox();
+  const mas = await page.getByRole('button', { name: 'Subir la imagen de tu personaje' }).boundingBox();
+  expect(caja!.y + caja!.height).toBeLessThanOrEqual(844);
+  expect(mas!.y + mas!.height).toBeLessThanOrEqual(844);
+});

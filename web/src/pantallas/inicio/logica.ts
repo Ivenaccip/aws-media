@@ -7,6 +7,7 @@
 // coincidieran. Aquí no hay número que pueda desfasarse.
 import { ErrorApi, pedir } from '../../nucleo/api';
 import { video } from '../../nucleo/tarifas';
+import { PARAM_TRASPASO } from '../../nucleo/traspaso';
 import { PREDETERMINADO, type Tarea } from './modelos';
 
 // ---------------------------------------------------------------------------
@@ -18,6 +19,21 @@ export type Familia = 'videos' | 'imagenes' | 'edicion';
 
 /** Las familias que sí se reparten en tareas (el menú de la izquierda del chip): Imagen y Video. */
 export type FamiliaCrea = Exclude<Familia, 'edicion'>;
+
+/** Cómo llama una opción a lo que se agrega con el «+». Sin esto, la caja habla de «imágenes de referencia»; las
+ *  opciones donde esa imagen es OTRA cosa (la foto del personaje de un cuento) la nombran aquí. */
+export interface TextosMas {
+  /** El nombre accesible del botón «+». */
+  boton: string;
+  /** Su `title`: lo que dice al pasar el ratón. */
+  pista: string;
+  /** El nombre accesible de la lista de miniaturas. */
+  lista: string;
+  /** El nombre accesible del menú del «+» (el que ofrece «Elegir de Mis creaciones»). */
+  menu: string;
+  /** La línea de abajo del menú. */
+  recordatorio: string;
+}
 
 export interface Opcion {
   id: string;
@@ -35,12 +51,28 @@ export interface Opcion {
   /** La opción a la que pasa la caja cuando se le agrega una imagen: crear una imagen no parte de ninguna, pero
    *  con una la tarea es editarla. Lleva el «+» sin llevar miniaturas propias. */
   alAgregar?: string;
+  /** Los textos del «+» propios de la opción. Sin esto, los de siempre (imágenes de referencia). */
+  textosMas?: TextosMas;
   nota: string;
   hueco: string;
 }
 
+/** La pantalla de Crear de ahora (migracion.py: PANTALLAS['crear'].nueva). */
+const PANTALLA_CREAR = '/estudio/crear/';
+
 const duraciones = Object.values(video.por_duracion);
 const historias = `${Math.min(...duraciones)}–${Math.max(...duraciones)}`;
+
+// Cuentos e historias llevan UNA foto, la del personaje (dueño, 14-oct-2026: «en cuento e historia debe de tener el +»).
+// Una y no cuatro: Crear acepta hasta 4, pero el motor solo usa la primera (pipeline/character.py, pipeline/flow.py);
+// ofrecer más prometería lo que no pasa. Con tope 1 la caja reemplaza la anterior, igual que «Editar una imagen».
+const MAS_DEL_PERSONAJE: TextosMas = {
+  boton: 'Agregar la foto de tu personaje',
+  pista: 'Agrega la foto de tu personaje, arrástrala a la caja o pégala con Ctrl+V',
+  lista: 'Foto de tu personaje',
+  menu: 'Agregar la foto de tu personaje',
+  recordatorio: 'También puedes arrastrarla a la caja o pegarla con Ctrl+V.',
+};
 
 export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
   videos: [
@@ -60,8 +92,10 @@ export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
       precio: historias,
       destino: '/crear.html',
       modo: 'investigacion',
-      nota: 'Buscamos las fuentes y escribimos el guion por ti. Lo revisas antes de producir.',
-      hueco: 'Cuéntanos el tema. Ejemplo: «cómo empezó la Segunda Guerra Mundial».',
+      referencias: 1,
+      textosMas: MAS_DEL_PERSONAJE,
+      nota: 'Buscamos las fuentes y escribimos el guion por ti. Lo revisas antes de producir. Con el + puedes agregar la foto de tu personaje.',
+      hueco: 'Cuéntanos el tema. Ejemplo: «cómo empezó la Segunda Guerra Mundial». Con el + puedes agregar la foto de tu personaje.',
     },
     {
       id: 'historia',
@@ -69,8 +103,10 @@ export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
       precio: historias,
       destino: '/crear.html',
       modo: 'idea',
-      nota: 'Usamos tu texto tal cual, sin investigar. Lo revisas antes de producir.',
-      hueco: 'Pega tu historia completa — la respetamos como la escribiste.',
+      referencias: 1,
+      textosMas: MAS_DEL_PERSONAJE,
+      nota: 'Usamos tu texto tal cual, sin investigar. Lo revisas antes de producir. Con el + puedes agregar la foto de tu personaje.',
+      hueco: 'Pega tu historia completa — la respetamos como la escribiste. Con el + puedes agregar la foto de tu personaje.',
     },
   ],
   imagenes: [
@@ -101,14 +137,19 @@ export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
 /** A dónde lleva «Crear»: crear.html y clip.html leen `brief`; imagenes.html, `prompt`.
  *  `modelo` (el id, con su calidad si la tiene: `nbp-4k`) viaja SOLO si no es el
  *  predeterminado de la tarea: las direcciones de hoy no cambian, y la pantalla que
- *  cobra decide con su propia lista. */
-export function destinoDe(o: Opcion, texto: string, modelo?: string): string {
+ *  cobra decide con su propia lista.
+ *  `traspaso` (el token de nucleo/traspaso, o `perdida`) viaja SOLO si lo hay: es la foto del personaje que la caja
+ *  dejó en el navegador para que Crear la recoja. Sin foto la dirección es la de siempre, byte a byte; con foto, la de
+ *  `/estudio/crear/`: la vieja `/crear.html` ignora `refs` y, según su etapa, ni siquiera redirige. */
+export function destinoDe(o: Opcion, texto: string, modelo?: string, traspaso?: string): string {
   const q = new URLSearchParams();
   q.set(o.destino === '/imagenes.html' ? 'prompt' : 'brief', texto);
   if (o.modo) q.set('modo', o.modo);
   if (o.editar) q.set('editar', '1');
   if (o.modelos && modelo && modelo !== PREDETERMINADO[o.modelos]) q.set('modelo', modelo);
-  return o.destino + '?' + q.toString();
+  if (traspaso) q.set(PARAM_TRASPASO, traspaso);
+  // con foto va directo a la pantalla nueva: `/crear.html` solo redirige cuando su etapa lo dice, y la vieja ignora `refs`
+  return (traspaso && o.destino === '/crear.html' ? PANTALLA_CREAR : o.destino) + '?' + q.toString();
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import { avisarCobro, refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { ESTRELLA } from '../../nucleo/estrella';
 import { moderar } from '../../nucleo/moderar';
+import { olvidarArchivos, tomarArchivos, TRASPASO_PERDIDO } from '../../nucleo/traspaso';
 import { Boton } from '../../ui/Boton';
 import { Confirmar } from '../../ui/Confirmar';
 import { Dialogo } from '../../ui/Dialogo';
@@ -24,6 +25,7 @@ import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import {
   armarForm,
+  AVISO_FOTO_PERDIDA,
   avisoFuera,
   avisoSaldo,
   cargarEstilos,
@@ -58,6 +60,9 @@ export interface Inicial {
   brief: string;
   modo: Modo;
   pipeline: string | null;
+  /** La foto del personaje que la caja del inicio dejó en el navegador: su token (nucleo/traspaso), o `perdida` si la
+   *  caja no pudo dejarla. null: la persona no trajo ninguna. */
+  refs: string | null;
 }
 
 interface Falla {
@@ -82,6 +87,9 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
   const [enVuelo, setEnVuelo] = useState(false);
   const [espera, setEspera] = useState<string | null>(null);
   const [falla, setFalla] = useState<Falla | null>(null);
+  // la caja del inicio avisa que la foto no se pudo dejar (`?refs=perdida`), o aquí no llegó: se dice desde el primer
+  // pintado y JUNTO al «+» (no abajo con los de «Generar», que en un celular quedan una pantalla más allá)
+  const [fotoPerdida, setFotoPerdida] = useState(inicial.refs === TRASPASO_PERDIDO);
   const [veredicto, setVeredicto] = useState<{ mensaje: string; motivo: string } | null>(null);
   const [balanceador, setBalanceador] = useState<string | null>(null);
   const zonaGenerar = useRef<HTMLDivElement>(null);
@@ -113,6 +121,7 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
     vivo.current.adjuntos = siguen;
     setAdjuntos(siguen);
     setFalla(fuera > 0 ? { texto: avisoFuera(fuera) } : null);
+    setFotoPerdida(false); // ya hay foto aquí: la del inicio no hace falta
   }
 
   function quitar(i: number, boton: HTMLButtonElement) {
@@ -140,6 +149,29 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
   });
   // al irse, las blob: URL que queden se sueltan
   useEffect(() => () => vivo.current.adjuntos.forEach(a => URL.revokeObjectURL(a.url)), []);
+
+  // La foto del personaje que trae la caja del inicio (?refs=): se recoge UNA vez, aunque StrictMode monte dos, y entra
+  // por la misma `agregar` que el «+» de aquí (el tope, las miniaturas y sus blob: URL valen igual). Si la persona ya
+  // agregó fotos a mano, la del inicio se suma después y no pisa ninguna. Si no llega (venció, otro navegador, la caja
+  // no pudo dejarla) se dice con ayuda y no se bloquea nada. No hay petición nueva: es solo el navegador.
+  // `montado` es de verdad lo que llega tarde a una pantalla que ya no está: StrictMode lo apaga y lo vuelve a prender.
+  const montado = useRef(false);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
+  const recogido = useRef(false);
+  useEffect(() => {
+    if (recogido.current || !inicial.refs || inicial.refs === TRASPASO_PERDIDO) return;
+    recogido.current = true;
+    void tomarArchivos(inicial.refs).then(archivos => {
+      if (!montado.current) return;
+      if (archivos.some(f => f.type.startsWith('image/'))) vivo.current.agregar(archivos);
+      else setFotoPerdida(true);
+    });
+  }, [inicial.refs]);
   useEffect(() => {
     const el = cuadro.current;
     if (!el) return;
@@ -214,6 +246,8 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
       const nuevo = await crearProyecto(armarForm(p, forzar));
       setEspera(null); // el orbe se va antes de lo que sigue
       refrescarSaldo();
+      // la foto del inicio ya cumplió (la película la lleva): deja de ocupar el navegador. Si no se puede, vence sola
+      if (inicial.refs) void olvidarArchivos(inicial.refs);
       alCrear(nuevo);
       return true; // UI·19: se cobró; el «−N» vuela del botón
     } catch (e) {
@@ -341,6 +375,11 @@ export function Formulario({ inicial, alCrear }: { inicial: Inicial; alCrear: (p
             className="min-h-[120px] flex-1 resize-none border-0 bg-transparent px-0.5 py-1 text-md text-texto outline-none"
           />
           {modo !== 'auto' && <p className="m-0 text-xs text-secundario">{MODONOTAS[modo]}</p>}
+          {fotoPerdida && (
+            <p role="status" className="m-0 max-w-[65ch] text-sm text-error">
+              {AVISO_FOTO_PERDIDA}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"

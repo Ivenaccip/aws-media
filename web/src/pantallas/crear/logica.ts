@@ -3,6 +3,7 @@
 // enseña en cada estado de la película. Paridad con static/crear.html.
 import { ErrorApi, pedir } from '../../nucleo/api';
 import { video } from '../../nucleo/tarifas';
+import { TRASPASO_PERDIDO, tokenValido } from '../../nucleo/traspaso';
 
 // ── el proyecto, tal como lo sirve GET /api/proyectos/{id} ──────────────────
 export type EstadoProyecto = 'creado' | 'preparando' | 'revision' | 'produciendo' | 'imagenes' | 'listo' | 'error';
@@ -218,6 +219,15 @@ export function sumarArchivos(ya: File[], nuevos: File[]): { lista: File[]; fuer
   const cupo = Math.max(0, MAX_REFS - ya.length);
   return { lista: ya.concat(imgs.slice(0, cupo)), fuera: Math.max(0, imgs.length - cupo) };
 }
+
+/** Lo que viaja en `?refs=` desde la caja del inicio: el token del traspaso de la foto del personaje, o `perdida` (la
+ *  caja no pudo dejarla). Cualquier otra cosa se ignora, como si no viniera. */
+export function refsDeUrl(valor: string | null): string | null {
+  return valor === TRASPASO_PERDIDO || tokenValido(valor) ? valor : null;
+}
+
+/** La foto del personaje que la caja del inicio prometió no llegó (se perdió, venció o el navegador no la dejó pasar). */
+export const AVISO_FOTO_PERDIDA = 'Tu foto no alcanzó a llegar desde el inicio. Agrégala con el «+» de aquí.';
 
 export const avisoFuera = (fuera: number) =>
   'Caben ' + MAX_REFS + ' imágenes del personaje; ' + fuera + (fuera === 1 ? ' se quedó' : ' se quedaron') + ' fuera.';
