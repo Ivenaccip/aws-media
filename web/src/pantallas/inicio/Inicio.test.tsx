@@ -136,7 +136,7 @@ afterEach(() => {
 
 // El catálogo real enciende, para crear imágenes, Grok, FLUX.2 klein, Z-Image Turbo,
 // FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3, Nano Banana 2 y Nano Banana Pro (para editar,
-// solo Grok y Nano Banana 2), y Veo Lite y Veo Fast (clip, los dos con 4, 6 y 8 s).
+// solo Grok: Nano Banana 2 salió de editar el 14-oct-2026), y Veo Lite y Veo Fast (clip, los dos con 4, 6 y 8 s).
 // Para ver qué pasa con un modelo que no tiene todas las duraciones se enciende LTX
 // (sin 4 s) mientras dura la prueba, con números de PRUEBA (no son los de
 // tarifas.json), y después se deja como estaba.
@@ -150,6 +150,20 @@ function encenderLtx() {
     ltx.activo = antes.activo;
     if (antes.precio === undefined) delete PRECIOS.clip.ltx;
     else PRECIOS.clip.ltx = antes.precio;
+  };
+}
+
+// Editar con Nano Banana 2 se apagó el 14-oct-2026 quitándole su número de tarifas.json (sigue en el catálogo
+// de editar). Las pruebas que necesitan DOS modelos que editan se lo ponen mientras corren, con su número de
+// crear, y después se deja como estaba.
+function nb2EditaEnLaPrueba() {
+  const antes = PRECIOS.editar.nb2;
+  const previa = restaurarCatalogo; // si la prueba también encendió otro, se restaura el suyo
+  PRECIOS.editar.nb2 = modelos.imagen.nb2;
+  restaurarCatalogo = () => {
+    if (antes === undefined) delete PRECIOS.editar.nb2;
+    else PRECIOS.editar.nb2 = antes;
+    previa?.();
   };
 }
 
@@ -860,7 +874,9 @@ describe('la caja', () => {
     expect((fd.get('imagen') as File).name).toBe('gato.png');
   });
 
-  it('inicio.caja.editar_manda_nano_banana_2', async () => {
+  it('inicio.caja.editar_no_ofrece_nano_banana_2', async () => {
+    // 14-oct-2026: editar con Nano Banana 2 pasaba de los 29 s de la Lambda con un arranque en frío y podía cobrar
+    // sin entregar; salió de editar (sin número en tarifas.json). Crear con él sigue
     const f = montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
     const { container } = pintar();
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
@@ -869,11 +885,12 @@ describe('la caja', () => {
     await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
     await userEvent.click(botonModelo());
     const menu = screen.getByRole('dialog', { name: 'Elegir modelo' });
-    await userEvent.click(within(menu).getByRole('radio', { name: /Nano Banana 2/ }));
+    expect(within(menu).queryByRole('radio', { name: /Nano Banana 2/ })).toBeNull();
+    expect(within(menu).getByRole('radio', { name: /Grok Imagine/ })).toBeInTheDocument();
     await userEvent.click(within(menu).getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(llamadas(f, '/api/imagenes/editar')).toHaveLength(1));
     const fd = llamadas(f, '/api/imagenes/editar')[0]![1]!.body as FormData;
-    expect(fd.get('modelo')).toBe('nb2');
+    expect(fd.get('modelo')).toBe('grok');
     expect(fd.get('modo')).toBe('todo');
     expect((fd.get('imagen') as File).name).toBe('gato.png');
   });
@@ -954,6 +971,7 @@ describe('la caja', () => {
   });
 
   it('inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita', async () => {
+    nb2EditaEnLaPrueba(); // para ver que el modelo de crear se lleva cuando también edita
     const f = montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
     const { container } = pintar();
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
@@ -966,7 +984,7 @@ describe('la caja', () => {
     await userEvent.click(within(screen.getByRole('dialog', { name: 'Elegir modelo' })).getByRole('radio', { name: /Nano Banana 2/ }));
     await userEvent.keyboard('{Escape}');
     await userEvent.upload(entradaDeFotos(container), foto('gato.png'));
-    // con una imagen la tarea es editarla: la caja pasa sola, con su miniatura, su texto y el mismo modelo (nb2 también edita)
+    // con una imagen la tarea es editarla: la caja pasa sola, con su miniatura, su texto y el mismo modelo (aquí nb2 también edita)
     expect(botonOpcion()).toHaveTextContent('Editar una imagen');
     expect(await screen.findByRole('button', { name: 'Quitar «gato.png»' })).toBeInTheDocument();
     expect(botonModelo()).toHaveTextContent('Modelo Nano Banana 2');
@@ -1249,6 +1267,7 @@ describe('la caja', () => {
   });
 
   it('inicio.caja.el_modelo_de_editar_que_ya_se_eligio_no_se_pisa_al_pasar_desde_crear', async () => {
+    nb2EditaEnLaPrueba(); // hacen falta dos modelos que editan
     montar();
     const { container } = pintar();
     const elegirModelo = async (nombre: RegExp) => {

@@ -34,10 +34,11 @@ SONDEO_S = 15             # cada cuánto pregunta el cuadro mientras algo corre
 MAX_POR_TIPO = 10
 # A dónde lleva la ficha de una imagen en segundo plano: el inicio nuevo, que es donde «Mis
 # creaciones» enseña el pedido (en curso, lista o con su error). Ni /imagenes.html ni
-# /estudio/imagenes/ lo enseñan: son el formulario de crear, vacío. No es /estudio/: mientras el
-# inicio esté en la etapa `nueva` (server/migracion.py) esa URL sirve el inicio viejo, que no
-# lista pedidos. static/trabajos.js oculta la ficha en la pantalla a la que apunta, así que en el
-# propio inicio no se repite lo que «Mis creaciones» ya dice.
+# /estudio/imagenes/ lo enseñan: son el formulario de crear, vacío. No es /estudio/: aunque desde
+# el 14-oct-2026 el inicio está en `todos` (server/migracion.py) y esa URL redirige aquí, con la
+# cookie `ui=clasica` sirve el inicio viejo, que no lista pedidos. static/trabajos.js oculta la
+# ficha en la pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis
+# creaciones» ya dice.
 URL_IMAGEN = "/estudio/inicio/"
 
 # Los mismos nombres que enseña crear (static/crear.html, PASOS_PREP y PASOS_PROD)

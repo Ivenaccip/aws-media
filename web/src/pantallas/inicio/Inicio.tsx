@@ -1,6 +1,7 @@
-// /estudio/inicio/ — el inicio del estudio (UI·8.4). No cobra: reparte.
-// La caja lleva a la pantalla que cobra con el texto puesto; el menú, a las
-// herramientas; las listas, a lo que ya hiciste.
+// /estudio/inicio/ — el inicio del estudio (UI·8.4). La caja cobra ahí mismo
+// el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
+// (desde E1); las demás opciones llevan a la pantalla que cobra con el texto
+// puesto. El menú lleva a las herramientas; las listas, a lo que ya hiciste.
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
 // con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';

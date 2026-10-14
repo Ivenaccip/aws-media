@@ -85,9 +85,9 @@ corren con el «sí» del dueño; el resto no cobra.
 | # | Paso | Qué tiene que pasar |
 |---|---|---|
 | 1 | Cuenta nueva | «Tu primer video, en tres caminos»; «Crear un video» pone «Creador de cuentos» y enfoca la caja |
-| 2 | Abrir el desplegable con el teclado (Tab, ↓, ↓, Enter) | Cambia la opción; los precios coinciden con `tarifas.json` (clip 30, historias 55–190, imágenes 2) |
+| 2 | Abrir el desplegable con el teclado (Tab, ↓, ↓, Enter) | Cambia la opción; los precios coinciden con `tarifas.json` (clip 36, historias 55–190, imágenes 2) |
 | 3 | En el teléfono, abrir el desplegable | No se sale de la pantalla; la página no se desplaza de lado |
-| 4 | Escribir algo y «Crear» en cada opción | Llega a la pantalla correcta con el texto ya puesto |
+| 4 | 💳 Escribir algo y «Crear» en cada opción | Las que navegan llegan a la pantalla correcta con el texto ya puesto. El clip y «Crear una imagen» **cobran en la caja** (💳); «Editar una imagen» sin foto no cobra: pide la foto con el «+» |
 | 5 | Con proyectos: clic en una película, en una imagen y en una edición | Abren `crear`, `imagenes` y `e1` con su proyecto |
 | 6 | Archivar una película → Cancelar → Archivar | Nada con Cancelar; con Archivar pasa a «Proyectos archivados» |
 | 7 | Restaurar con los slots llenos | El motivo del server en un aviso |
@@ -97,7 +97,7 @@ corren con el «sí» del dueño; el resto no cobra.
 | 11 | Desde el editor, «conectar Blotato» | Llega con el diálogo abierto |
 | 12 | Modo avión y recargar | «No pudimos traer tus proyectos» con Reintentar; no aparecen los tres caminos |
 | 13 | «Tus trabajos» con un render en curso | El cuadro de siempre, abajo a la derecha |
-| 14 | «Usar la versión anterior» | Llega a `/estudio/`; en `todos`, `/estudio/` ya no redirige para ti durante 7 días |
+| 14 | Teclear `/ui/clasica?pantalla=inicio` (el enlace «Usar la versión anterior» se quitó el 28-sep) | Llega a `/estudio/` clásico; en `todos`, `/estudio/` ya no redirige para ti durante 7 días. `/ui/nueva?pantalla=inicio` te regresa |
 | 15 | En la caja, tocar «Edición» del riel | Tres botones: Imagen · Video · Edición (la caja sigue arrancando en Video). Aparecen el campo «Cuéntale a la IA qué quieres» (en su cuadro con borde, con la pista gris «Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»»; **ya no hay una fila de ideas debajo**), el «+», el chip «Editar ▾» junto al «+» e «Iniciar» sin precio y **dorado**; debajo «Escribe qué quieres hacer con tu video.» |
 | 16 | Tocar «Iniciar» sin video | Aviso abajo a la derecha: «Primero agrega el video: pulsa el «+» o arrástralo a la caja.»; no cobra |
 | 17 | «+» y elegir un MP4 de unos 12 min (o arrastrarlo a la caja; pegar con Ctrl+V no hace nada) | La tarjeta con nombre, formato y tamaño; barra de progreso que avanza de verdad; el botón dice «Subiendo…» y la nota «Cuando termine de subir calculamos el precio. Hasta entonces no se cobra nada.»; no cobra |

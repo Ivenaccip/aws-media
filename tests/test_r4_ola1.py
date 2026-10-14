@@ -3,7 +3,8 @@
 Nacieron como filas INERTES (sin número de créditos no se ofrecen). El 9-oct-2026,
 tras la prueba pagada pequeña, el dueño encendió Nano Banana 2 (crear y editar) y Veo
 3.1 Fast: tienen número en tools/tarifas.json y `activo: true` en la web. Veo 3.1
-Standard sigue inerte (`INERTES`).
+Standard sigue inerte, y editar con Nano Banana 2 VOLVIÓ a inerte el 14-oct-2026
+(`INERTES`).
 
 Lo que este archivo defiende:
   * que las filas y sus endpoints sean los exactos (docs/modelos-ia/DATOS-FAL-2026-10-08.md
@@ -56,7 +57,10 @@ OLA1 = {("imagen", "nb2"), ("editar", "nb2"), ("clip", "veo-fast"), ("clip", "ve
 # tarifas.json + `activo: true` en la web), se saca de aquí: el test
 # `test_hoy_tarifas_json_no_trae_numero_para_los_inertes` es el aviso de que la
 # compuerta se abrió a propósito.
-INERTES = {("clip", "veo-std")}
+# 14-oct-2026: editar con Nano Banana 2 VOLVIÓ a inerte (decisión del dueño, al pasar el
+# inicio a `todos`): con un arranque en frío pasaba de los 29 s de la Lambda y podía cobrar
+# sin entregar (docs/OPERACION.md). Crear con él sigue encendido.
+INERTES = {("clip", "veo-std"), ("editar", "nb2")}
 ENCENDIDOS = OLA1 - INERTES
 
 # endpoint de texto y de imagen de cada modelo de clip
@@ -1127,13 +1131,14 @@ def test_nano_banana_2_con_la_tarifa_real_cobra_su_numero(
     assert espia.cobros == [(8, "imagen:estudio")] and espia.devueltos == []
     (ll,) = falso_fal
     assert ll.app == "fal-ai/nano-banana-2" and ll.args["resolution"] == "1K"
+    # editar con él se apagó el 14-oct-2026 (INERTES): sin número, 422 ANTES de cobrar y sin
+    # llamar a fal. El camino de editar con su número lo prueba el fixture `encendido`
     r = cliente.post("/api/imagenes/editar",
                      data={"prompt": "más sol", "modo": "todo", "modelo": "nb2"},
                      files={"imagen": ("a.png", b"\x89PNG-de-prueba", "image/png")})
-    assert r.status_code == 200, r.text
-    assert espia.cobros[-1] == (8, "imagen:editor")
-    assert falso_fal[-1].app == "fal-ai/nano-banana-2/edit"
-    assert falso_fal[-1].args["resolution"] == "1K"
+    assert r.status_code == 422, r.text
+    assert espia.cobros == [(8, "imagen:estudio")] and espia.devueltos == []
+    assert len(falso_fal) == 1
 
 
 def test_hoy_tarifas_json_trae_los_numeros_de_los_encendidos():
@@ -1141,9 +1146,9 @@ def test_hoy_tarifas_json_trae_los_numeros_de_los_encendidos():
     propuesta (que la fórmula reproduce, más abajo) y solo para los encendidos."""
     from pipeline import creditos
     modelos = _tarifas()["modelos"]
-    assert modelos["imagen"]["nb2"] == modelos["editar"]["nb2"] == PROPUESTA_NB2
+    assert modelos["imagen"]["nb2"] == PROPUESTA_NB2      # editar con él se apagó el 14-oct (INERTES)
     assert modelos["clip"]["veo-fast"] == {str(s): c for s, c in PROPUESTA_CLIP["veo-fast"].items()}
-    assert creditos.costo_modelo("imagen", "nb2") == creditos.costo_modelo("editar", "nb2") == 8
+    assert creditos.costo_modelo("imagen", "nb2") == 8
     assert [creditos.costo_modelo("clip", "veo-fast", s) for s in (4, 6, 8)] == [54, 80, 108]
     assert creditos.costo_modelo("clip", "veo-fast") == 108          # sin duración, la de siempre: 8 s
     for tarea, id_ in ENCENDIDOS:
@@ -1184,7 +1189,8 @@ def test_los_modelos_a_la_venta_no_se_movieron():
 @pytest.fixture
 def encendido(monkeypatch):
     """Como si el dueño hubiera escrito la propuesta de TODA la Ola 1 en tarifas.json
-    §modelos (hoy Nano Banana 2 y Veo 3.1 Fast ya están; Standard es solo la propuesta)."""
+    §modelos (hoy Nano Banana 2 para crear y Veo 3.1 Fast ya están; Standard y editar con
+    Nano Banana 2 son solo la propuesta)."""
     from pipeline import creditos
     monkeypatch.setitem(creditos.MODELOS_CR.setdefault("imagen", {}), "nb2", PROPUESTA_NB2)
     monkeypatch.setitem(creditos.MODELOS_CR.setdefault("editar", {}), "nb2", PROPUESTA_NB2)

@@ -5,7 +5,9 @@ fetch daba 401 y auth.js mandaba a Cognito. Con «/» convertido en portada que
 no llama a la API, esa puerta desaparece. Estos tests fijan la nueva:
 
   · «/» sirve la portada; «/?algo» es un enlace viejo → 302 a /estudio/?algo.
-  · /estudio/ sirve el mismo index.html de siempre.
+  · /estudio/ es el inicio: desde el 14-oct-2026 está en `todos`
+    (server/migracion.py) y responde 302 a /estudio/inicio/; con la cookie
+    de la clásica sigue sirviendo el index.html de siempre.
   · quien abre una pantalla sin sesión va a /entrar?volver=<ruta>.
   · /entrar solo acepta `volver` del propio dominio y no rebota sin fin.
   · auth.js hace UNA ida a Cognito aunque lleguen varios 401 juntos.
@@ -76,12 +78,32 @@ def test_raiz_con_query_es_un_enlace_viejo_al_estudio(local):
         assert r.status_code == 302 and r.headers["location"] == f"/estudio/?{q}"
 
 
+def _inicio_montado(cliente) -> bool:
+    """¿Está compilada la pantalla nueva del inicio? Sin web/dist (pytest en
+    Windows) `todos` no redirige: mandaría a un 404. En el contenedor del CI
+    sí está, y ahí /estudio/ responde 302."""
+    return any(getattr(r, "path", "") == "/estudio/inicio" for r in cliente.app.routes)
+
+
+CLASICA = {"Cookie": "ui=clasica"}
+
+
 def test_estudio_sirve_el_mismo_index(local):
-    r = local.get("/estudio/")
+    # con la cookie de la clásica, el index.html de siempre, con o sin web/dist
+    r = local.get("/estudio/", headers=CLASICA, follow_redirects=False)
     assert r.status_code == 200
     assert r.text == (STATIC / "index.html").read_text(encoding="utf-8")
     r = local.get("/estudio?p=1", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"] == "/estudio/?p=1"
+
+
+def test_estudio_lleva_al_inicio_nuevo(local):
+    r = local.get("/estudio/?p=1", follow_redirects=False)
+    if not _inicio_montado(local):
+        assert r.status_code == 200   # sin la pantalla nueva no se manda a un 404
+        return
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/?p=1"
+    assert r.headers["cache-control"] == "no-store"
 
 
 def test_entrar_existe(local):
@@ -94,7 +116,13 @@ def test_las_tres_son_publicas_con_cognito(nube):
     # (y el aviso de privacidad y los términos se leen ANTES de tener cuenta)
     for ruta in ("/", "/estudio/", "/entrar", "/callback.html", "/enlaces.js",
                  "/privacidad", "/terminos", "/legal.css"):
-        assert nube.get(ruta, follow_redirects=False).status_code == 200, ruta
+        r = nube.get(ruta, follow_redirects=False)
+        if ruta == "/estudio/" and _inicio_montado(nube):
+            # el inicio en `todos`: el 302 va a la pantalla nueva, que tampoco
+            # pide sesión; nunca a /entrar
+            assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
+            r = nube.get("/estudio/inicio/", follow_redirects=False)
+        assert r.status_code == 200, ruta
 
 
 def test_sin_sesion_va_a_entrar_con_la_ruta_y_el_query(nube):

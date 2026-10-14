@@ -6,8 +6,9 @@ Cada pantalla que se migra a web/ pasa por tres etapas, una por deploy:
   · `nueva`    la pantalla nueva existe, pero solo se llega tecleando su URL
                (/estudio/<p>/). La vieja sigue igual. Es el canario del dueño.
   · `todos`    la URL vieja responde 302 a la nueva, SALVO que el usuario
-               tenga la cookie `ui=clasica` (el enlace «Usar la versión
-               anterior» del Marco). Así una pantalla nueva con un bug se
+               tenga la cookie `ui=clasica` (la deja /ui/clasica?pantalla=<p>,
+               que se abre a mano: el enlace «Usar la versión anterior» del
+               Marco se quitó el 28-sep). Así una pantalla nueva con un bug se
                revierte para UNA persona sin desplegar.
   · `retirada` 302 siempre, con o sin cookie; el HTML viejo ya no existe.
 
@@ -91,8 +92,10 @@ PANTALLAS: dict[str, Pantalla] = {
     "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),
     # UI·8.4: el inicio. Su URL vieja es /estudio/ misma (tarjetas 37 y 38):
     # la nueva vive al lado, en /estudio/inicio/, y en `todos` /estudio/
-    # redirige ahí. No cobra: reparte a las pantallas que cobran.
-    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="nueva", fichero="index.html"),
+    # redirige ahí. Cobra en su caja (el clip, la imagen, editar una imagen y
+    # la edición de un video); lo demás lo reparte a las pantallas que cobran.
+    # 14-oct-2026: la primera en `todos`, por decisión del dueño.
+    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="todos", fichero="index.html"),
     # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
     # subida es la misma de editar metraje (marca/SubirVideo)
     "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
