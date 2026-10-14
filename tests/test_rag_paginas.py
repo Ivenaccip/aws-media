@@ -52,8 +52,10 @@ def test_datos_trae_lo_que_se_guarda_con_el_correo():
 
 
 def test_datos_dice_quien_responde_y_ya_no_trae_huecos():
-    """Lo que decidió el dueño (3-oct-2026) y lo que main ya publica: si un
-    dato de aquí cambia, cambia también lo que dice producción."""
+    """Lo que decidió el dueño (3-oct-2026) y lo que producción publica. Si un
+    dato de aquí cambia, cambia lo que dicen dev y local; producción no se
+    entera hasta RAG·30: sus legales son las copias de server/sin_automatiza/,
+    con estos datos ya escritos, y hay que cambiarlas también y anunciarlo."""
     assert aviso.DATOS["responsable"] == "Fundamentos AI LLC"
     assert aviso.DATOS["domicilio"] == ("2803 Philadelphia Pike, STE B #1531, "
                                         "Claymont, DE 19703 US")

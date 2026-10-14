@@ -24,7 +24,7 @@ import logging
 import re
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -34,7 +34,21 @@ from server import aviso
 
 log = logging.getLogger("publico_api")
 
-router = APIRouter(prefix="/api/publico")
+
+def _solo_donde_se_sirve() -> None:
+    """Donde /automatiza no se sirve (hoy producción, hasta RAG·30) estas rutas
+    no existen: 404, el mismo de una ruta que no hay. Va antes que el freno a
+    propósito: sin esto contestaban «no disponible» y la consulta de una
+    corrida llegaba hasta Aurora, anónima y sin throttling propio. Es la
+    segunda red: la primera corta en server/auth.py, antes de leer el cuerpo."""
+    if not freno.publicado():
+        raise HTTPException(status_code=404)
+
+
+# Fuera de /openapi.json y /docs en todos lados, como las páginas de
+# /automatiza: ninguna doc las necesita, y en producción las anunciaba.
+router = APIRouter(prefix="/api/publico", dependencies=[Depends(_solo_donde_se_sirve)],
+                   include_in_schema=False)
 
 NO_DISPONIBLE = "Ahorita no está disponible"
 # Lo que ve el visitante en cada final que no es «listo». El motivo interno

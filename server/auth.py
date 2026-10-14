@@ -21,6 +21,7 @@ from urllib.parse import quote
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from pipeline import db
+from pipeline import publico
 
 # M6 — grupos de Cognito del token del request (p. ej. "admin"); los fija el
 # middleware junto con el sub. En dev local (sin Cognito) el dueño es admin.
@@ -95,6 +96,12 @@ def _token_del_request(request) -> str | None:
 async def middleware(request, call_next):
     """Fija la identidad del request (sub y grupos del token) antes de entrar."""
     if es_publica(request.url.path):
+        # 14-oct-2026: donde /automatiza no se sirve (producción hasta RAG·30;
+        # pipeline/publico.py `publicado`) la sección no existe. El 404 va aquí,
+        # antes de leer el cuerpo: más adentro un JSON roto daba 422 y delataba
+        # la ruta. server/publico_api.py lo repite como segunda red.
+        if not publico.publicado():
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         # sin token y sin identidad, con Cognito o sin él: aunque traiga un
         # token válido se ignora — el camino público no sabe de usuarios
         with db.camino_publico():
