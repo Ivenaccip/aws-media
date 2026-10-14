@@ -244,10 +244,9 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     <div className="mx-auto max-w-[1100px] px-5 pt-16 pb-14">
       <div className="grid gap-7 min-[861px]:grid-cols-[230px_minmax(0,1fr)]">
         <aside className="min-w-0">
-          <h1 className="m-0 flex items-center gap-2.5 px-3 pt-2.5 pb-4 text-titulo-sm font-bold">
-            <Icono nombre="video" className="text-ambar-claro" />
-            Estudio de video
-          </h1>
+          {/* el nombre del producto, en dorado y sin icono (dueño, 14-oct-2026): el ámbar claro es el de los «títulos-marca»
+              de la carta (docs/DISENO.md §3). Los <title> de las páginas y de las otras pantallas siguen como estaban */}
+          <h1 className="m-0 px-3 pt-2.5 pb-4 text-titulo-sm font-bold text-ambar-claro">Irremplazables</h1>
           <Menu conectado={conectado} alConectar={abrirBlotato} />
         </aside>
 
@@ -426,12 +425,13 @@ interface Entrada {
 
 // «Crear imágenes» y «Crear contenido» no están aquí: su puerta es la caja
 // (M25 · B). El menú se queda con lo que empieza con algo tuyo (un archivo,
-// una liga) más lo de publicar.
+// una liga) más lo de publicar. «Editor de videos» (/e1.html) salió el 14-oct-2026
+// (dueño): editar metraje ya es la pestaña «Edición» de la caja; «De videos a
+// Shorts» se queda aquí hasta que entre al chip de esa pestaña.
 const GRUPOS: Array<{ titulo: string; blotato?: boolean; entradas: Entrada[] }> = [
   {
     titulo: 'Estudio de Contenido',
     entradas: [
-      { href: '/e1.html', icono: 'cortar', titulo: 'Editor de videos', texto: 'Sube tu metraje y la IA te propone el corte.' },
       { href: '/shorts.html', icono: 'shorts', titulo: 'De videos a Shorts', texto: 'Sube un video largo y te daremos los mejores momentos.' },
       { href: '/estilos.html', icono: 'estilo', titulo: 'Copiadora de estilos', texto: 'Recrea el estilo visual de un contenido que te guste' },
     ],

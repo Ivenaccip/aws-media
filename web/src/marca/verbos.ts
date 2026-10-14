@@ -5,6 +5,8 @@ export const VERBOS = [
   'Escribir', 'Producir', 'Reintentar', 'Cambiar', 'Generar', 'Aplicar',
   'Analizar', 'Re-analizar', 'Importar', 'Renderizar', 'Proponer', 'Animar',
   'Transformar', 'Revisar', 'Editar',
+  // 14-oct-2026 (dueño): el botón de la pestaña Edición del inicio dice «Iniciar ✦ N»
+  'Iniciar',
 ] as const;
 
 export type Verbo = (typeof VERBOS)[number];

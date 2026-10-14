@@ -42,7 +42,7 @@ eso:
 
 Antes de `todos`, el dueño corre el QA manual de `docs/QA-UI.md` § inicio.
 **El inicio cobra** (desde R4b el clip y la imagen; desde E1 la edición de un
-video, «Editar ✦ N»): los pasos del QA marcados con 💳 gastan créditos de
+video, «Iniciar ✦ N»): los pasos del QA marcados con 💳 gastan créditos de
 verdad y solo se corren con el «sí» del dueño. No hay interruptor por función:
 al pasar el inicio a `todos` la familia Edición sale para todos de golpe, con
 su cobro.
@@ -60,7 +60,17 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.caja.cada_opcion_lleva_a_su_destino_con_su_modo` | las tareas SIN modelo siguen llevando a su pantalla: cuentos → `/crear.html?…&modo=investigacion`; historia → `modo=idea`; el texto va sin espacios de más. SIN foto del personaje la dirección es la de siempre, byte a byte; con foto va a `/estudio/crear/?…&refs=…` (ver `inicio.caja.crear_con_foto_*`). (Clip e imágenes ya no navegan: ver las filas de abajo) |
 | `inicio.caja.sin_texto_no_navega` | sin texto: el aviso (en el cuadro de abajo a la derecha, o junto a la caja si la página no lo trae), el foco vuelve a ella y no se navega |
 | `inicio.caja.cada_opcion_cambia_el_ejemplo` | cada opción trae su ejemplo en el hueco (cuentos e historia, además, dicen que con el + se agrega la foto del personaje) |
-| `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra |
+| `inicio.caja.desplegable_con_teclado` | ↓ abre con el foco en la opción, ↓/Enter elige, Esc cierra sin cambiar y devuelve el foco; un clic fuera cierra. Desde el 14-oct-2026 el chip y su lista son `SelectorOpcion.tsx` (antes en línea en `Caja.tsx`) y los comparte Edición: esta prueba y las de las opciones pasan tal cual. La revisión del mismo día corrigió, para las tres familias a la vez, dos defectos que traía el chip desde antes (ver `inicio.caja.selector_*` abajo): el rótulo va ahora en un `<span>` que recorta con «…» y el botón ya no lleva `overflow-hidden` (recortaba su propia pista), y **Tab / Shift+Tab** con la lista abierta la cierran y dejan el foco en el chip (el navegador sigue desde ahí) en vez de tirarlo a `<body>`; aquí lo vigila la parte final de la prueba |
+| `inicio.caja.imagen_y_video_escriben_en_un_cuadro_con_borde_de_campo_y_fondo_elevada` | 14-oct-2026 (dueño: «un cuadro bien definido para que se vea que ahí tienen un área de escritura»): el `<textarea>` de Imagen y de Video vive en `ui/CuadroDeTexto` — borde `border-campo` (no el de línea, que no llega a 3:1), fondo `bg-elevada`, radio de campos `rounded-medio`, relleno de 12 — y adentro no pone borde, fondo ni relleno propios; su ejemplo usa `placeholder:text-secundario`. **El aro de foco** (antes `outline-none` a secas: sin aro) lo dibuja el cuadro con `has-focus-visible` (las medidas de `tokens.css`) y el texto no dibuja otro. Un clic en el relleno lleva el foco al texto. Conserva `resize-y` y la altura mínima de 88 px (`min-h-22`) desde 360 px de ancho; por debajo (teléfonos de 320 px) el piso es de 112 px (`min-h-28`), porque con el relleno del cuadro el texto perdió 26 px de ancho y el ejemplo de «Creador de cuentos» pasaba a 5 líneas y se cortaba la última (`web/e2e/inicio-caja.spec.ts`: cada opción de Imagen y Video, a 320, 340, 359, 360, 375 y 390 px) |
+| `inicio.caja.el_cuadro_y_el_chip_de_tarea_son_los_mismos_en_las_tres_familias` | un solo `CuadroDeTexto` y un solo `SelectorOpcion`: el cuadro y el chip de Edición tienen exactamente las mismas clases y atributos que los de Video, y su lista también. Si uno se desfasa de otro, falla |
+| `inicio.caja.cambiar_de_familia_o_elegir_desde_fuera_cierra_la_lista_de_opciones_abierta` | al extraer el chip, el estado abierto/cerrado salió de `Caja`: ella lo cierra con `selector.current.cerrar()` al cambiar de familia (también con un clic que no pasa por `mousedown`, p. ej. teclado o lector de pantalla) y con el mando `elegir()` (la tarjeta «Crear un video» de quien empieza) |
+| `inicio.caja.selector_el_chip_dice_la_opcion_elegida_y_su_pista_y_no_recorta_su_propia_pista` | `SelectorOpcion.test.tsx` (el chip solo, con tres opciones): dice la opción elegida, lleva su `data-pista` y el botón NO lleva `overflow-hidden` / `overflow-clip` / `text-ellipsis`: la pista es un `::after` que cuelga fuera del botón y esa clase la recortaba (jsdom no pinta, así que antes solo se miraba el atributo). El «…» va en el `<span class="truncate">` del rótulo. Con la lista abierta el globo se quita (`aria-expanded:after:hidden`): la misma nota ya sale en la fila y el globo taparía las ideas de arriba. Que se PINTA de verdad lo comprueba `web/e2e/inicio-caja.spec.ts` y `inicio-edicion.spec.ts` (`pistaSePinta`: compara la pantalla con y sin el ratón encima) |
+| `inicio.caja.selector_abre_marcando_la_elegida_y_solo_ella_lleva_aria_selected` | al abrir, el foco va a la opción elegida (no a la primera) y solo ella lleva `aria-selected="true"`. 14-oct-2026 (revisión): `aria-controls` del chip existe SOLO mientras la lista está abierta (la lista se monta al abrir: cerrada, el id no tenía destino, en las tres familias desde antes); al cerrarla se quita, como en `MenuModelo` |
+| `inicio.caja.selector_flechas_inicio_y_fin_recorren_y_enter_elige_la_marcada` | ↑ ↓ Inicio y Fin recorren la lista y se sujetan en los extremos; Enter elige la marcada, cierra y devuelve el foco al chip |
+| `inicio.caja.selector_pasar_el_raton_marca_la_fila` | pasar el ratón por una fila la marca y le pasa el foco |
+| `inicio.caja.selector_tab_y_mayus_tab_cierran_y_el_foco_sigue_desde_el_chip_nunca_a_body` | Tab y Shift+Tab con la lista abierta la cierran y el foco sigue desde el chip (al control de después / de antes), nunca a `<body>`; no eligen nada |
+| `inicio.caja.selector_esc_y_clic_fuera_cierran_y_esc_devuelve_el_foco_al_chip` | Esc cierra y devuelve el foco al chip; un clic fuera cierra |
+| `inicio.caja.selector_se_sujeta_dentro_de_la_ventana_al_abrir_y_al_girar_el_telefono` | la lista se mide y se sujeta con 12 px de margen dentro de la ventana al abrir y se vuelve a medir con `resize` (girar el teléfono) |
 | `inicio.caja.cambiar_de_familia_elige_la_primera` | Imagen/Video/Edición (el riel, tres familias) con `aria-pressed`; Imagen y Video eligen la primera opción de la familia al entrar y Edición, que no tiene opciones, deja las de Imagen/Video como estaban |
 | `inicio.caja.el_modelo_se_paga_con_tarifas_json` | R4 (7-oct-2026): el menú de modelo enseña los créditos de `tarifas.json` §modelos, y son los mismos que cobran las pantallas (`clip.video_8s` = el clip de 8 s de `modelos.clip.veo-lite`, `video.imagen`) |
 | `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; pide el clip a `/api/clip/generar` con `modelo` y `segundos` (8 si no se tocó), sin navegar; el menú se cierra, el texto se vacía y se avisa dónde mirar |
@@ -221,7 +231,9 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.galeria.si_falla_la_lista_de_imagenes_a_media_espera_no_se_pierde_el_pedido` | si una relectura de `/api/imagenes` falla, el pedido sigue a la vista y se sigue preguntando |
 | `inicio.galeria.una_lectura_con_los_pedidos_sin_leer_a_media_espera_no_borra_el_pedido_ni_apaga_el_sondeo` | lo mismo con un 200 que no pudo leer los pedidos (`pendientes_ok: false`): el pedido sigue a la vista, las imágenes que sí vinieron se enseñan y se sigue preguntando; solo una lectura buena que ya no lo trae lo quita y para el sondeo |
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
-| `inicio.menu.entradas_y_grupos_en_orden` | las 7 entradas y sus destinos; Estudio de Contenido → Blotato → Publicidad Automática (MIX debajo de su requisito); nada dice «próximamente» |
+| `inicio.menu.entradas_y_grupos_en_orden` | las 6 entradas y sus destinos (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió); Estudio de Contenido → Blotato → Publicidad Automática (MIX debajo de su requisito); nada dice «próximamente» |
+| `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`) |
+| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño) |
 | `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar |
 | `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga |
 | `inicio.menu.pregunta_ligero` | el menú pregunta con `?redes=0`, sin gastar una llamada a Blotato |
@@ -237,58 +249,71 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.blotato.enlace_a_la_api_con_noopener` | «Blotato → Settings → API» en otra pestaña con `noopener noreferrer` |
 | `inicio.blotato.conectar_enciende_el_menu` | al conectar, las cuatro entradas se encienden |
 | `inicio.marco.sin_version_anterior` | Sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
-| `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video` | el riel dice Imagen · Video · Edición (icono `cortar`) con `aria-pressed`; la caja sigue ARRANCANDO en Video; Edición trae el campo «Cuéntale a la IA qué quieres» (`aria-required`, el hueco exacto, 2000 caracteres) y el título sigue siendo «¿Qué vamos a crear hoy?» |
-| `inicio.edicion.sin_video_el_boton_es_editar_sin_precio_apagado_enfocable_y_avisa` | sin video: «Editar» sin precio, `aria-disabled` (no `disabled`: se puede enfocar) y, al tocarlo, avisa «Primero agrega el video: pulsa el «+» o arrástralo a la caja.» en el cuadro; sin ninguna petición |
+| `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video` | el riel dice Imagen · Video · Edición (icono `cortar`) con `aria-pressed`; la caja sigue ARRANCANDO en Video; Edición trae el campo «Cuéntale a la IA qué quieres» (`aria-required`, la pista de la primera idea —`huecoDe`—, 2000 caracteres) y el título sigue siendo «¿Qué vamos a crear hoy?» |
+| `inicio.edicion.sin_video_el_boton_es_iniciar_sin_precio_dorado_enfocable_y_avisa` | sin video: «Iniciar» (antes «Editar») sin precio, DORADO (14-oct-2026; antes gris discontinuo), `aria-disabled` (no `disabled`: se puede enfocar) y, al tocarlo, avisa «Primero agrega el video: pulsa el «+» o arrástralo a la caja.» en el cuadro; sin ninguna petición |
 | `inicio.edicion.con_texto_y_sin_video_la_ayuda_dice_donde_agregarlo` | con texto y sin video, la línea «Agrega el video con el «+» o arrástralo a la caja.» reemplaza a «Escribe qué quieres hacer…» |
-| `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco` | las 4 ideas (Quita muletillas y silencios · Un short vertical para Reels · Resumen de 60 segundos · Subtítulos grandes y un título): tocar una pone ese texto (reemplaza, no suma) y le da el foco al campo |
+| `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea` | 14-oct-2026 (**sustituye a** `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco`): ya no hay `role="group"` «Ideas para escribir» ni ningún botón con el texto de las 4 ideas, el riel sigue con sus 3 botones, el campo sigue vacío (la pista no es su valor) y `AYUDA_TEXTO` dice «Escribe qué quieres hacer con tu video.», sin «toca una idea» |
+| `inicio.edicion.la_pista_arranca_en_la_primera_idea_sin_fundido_y_las_cuatro_leen_igual` | la pista (el `placeholder` del campo) arranca SIEMPRE en «Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»», con la opacidad en 1 y sin salir ni entrar (la carta §4: lo que ya estaba al abrir no anima); la rotación no empieza hasta cumplido el primer intervalo; `huecoDe` da la misma frase con las 4 ideas (en ese orden, sin punto final: la idea 1 y la 4 son verbo y nombre y las 4 leen igual); cambiar de familia y volver reabre en la primera |
+| `inicio.edicion.la_pista_rota_cada_4_s_con_fundido_de_salida_y_de_entrada_y_da_la_vuelta` | con el reloj falso, dos vueltas completas: a los 3.75 s la idea empieza a salir (opacidad 0, `ease-entrada`, MISMO texto todavía), a los 4 s justos cambia el texto y entra la siguiente (opacidad 1, `ease-salida`); da la vuelta a la primera y nunca salta una idea. El reloj es un solo `setTimeout` que se re-arma en cada paso |
+| `inicio.edicion.la_pista_no_rota_con_el_foco_se_congela_entera_y_retoma_al_soltarlo_vacio` | con el foco en el campo no queda ningún temporizador (`vi.getTimerCount()`) y la pista se queda en la que estaba, ENTERA aunque el foco llegue a mitad del fundido de salida (congelada a media luz sería un campo sin pista); al soltar el foco con el campo vacío retoma desde esa idea con su intervalo completo |
+| `inicio.edicion.si_la_caja_abre_con_el_foco_en_el_campo_la_pista_nace_congelada` | `elegir('edicion')` (el mando de la caja, «Subir metraje» del primer uso) monta el campo y lo enfoca en el mismo render: la pista nace congelada en la primera y no rota hasta soltar el foco |
+| `inicio.edicion.con_texto_la_pista_no_corre_ni_arma_temporizadores_y_al_vaciar_retoma` | con texto escrito (también un solo espacio: el campo ya no está vacío y la pista no se ve) no hay temporizadores ni cambia la pista por mucho que pase; al borrar todo retoma desde la idea en que estaba |
+| `inicio.edicion.con_reducir_movimiento_la_pista_queda_fija_y_reacciona_si_cambia_la_preferencia` | con `prefers-reduced-motion: reduce` (`matchMedia`) la pista queda fija en la primera idea, sin fundido, sin rotación y sin ningún temporizador; si la persona apaga la preferencia con la pantalla abierta arranca la rotación, y si la enciende a mitad de un fundido vuelve a la primera, entera, y se detiene; al volver a apagarla sigue en la primera (sin saltar, sin fundido, a la idea que traía guardada la rotación) y de ahí rota con su intervalo completo |
+| `inicio.edicion.apagar_reducir_movimiento_sigue_en_la_primera_idea_tambien_con_el_foco_o_con_texto` | 14-oct-2026 (revisión): encender y apagar «reducir movimiento» con el campo ENFOCADO o con TEXTO (`rota` ya era falso: el reinicio no puede colgar de que `rota` cambie) deja la pista en la primera, sin temporizadores, sin fundido y sin saltar a la idea que iba; al soltar el foco (o vaciar el campo) rota desde la primera con su intervalo completo. Se rompió a propósito: sin el reinicio por `reducido` fallan esta y la anterior; con el reinicio dentro del bloque de `rota` (la primera propuesta) falla solo esta |
+| `inicio.edicion.un_temporizador_viejo_que_vence_al_parar_la_rotacion_no_deja_la_pista_a_medio_apagar` | 14-oct-2026 (revisión), en `usePistaRotatoria.test.tsx` con un arnés: si el temporizador de la idea vence entre el commit que para la rotación y la limpieza de su efecto, `paso.saliendo` queda en true con `rota` en falso; el guardia `rota &&` del retorno evita que la pista se devuelva apagada (opacidad 0 con el campo enfocado). Desde la caja entera esa carrera no se produce, por eso el arnés vence el temporizador en un efecto de layout. Sin el guardia, falla |
+| `inicio.edicion.con_la_pestana_oculta_la_pista_no_rota_ni_acumula_ciclos` | con `document.hidden` no hay temporizadores ni se dispara nada (60 s ocultas = 0 cambios); al volver, UNA idea más tras un intervalo completo, no los ciclos que «pasaron» |
+| `inicio.edicion.si_la_pestana_ya_esta_oculta_al_abrir_la_pista_no_arma_el_reloj` | si la pestaña ya estaba oculta al abrir Edición, la pista no arma el reloj; al hacerse visible, sí |
+| `inicio.edicion.la_pista_no_deja_temporizadores_al_desmontar_ni_al_cambiar_de_familia_y_en_strictmode_corre_uno_solo` | bajo `<StrictMode>` (doble efecto) hay exactamente UN temporizador de más con la pista rodando, la rotación pasa de la 1.ª a la 2.ª (no a la 3.ª); cambiar de familia lo quita; desmontar todo deja `vi.getTimerCount()` en 0 |
+| `inicio.edicion.la_pista_es_el_placeholder_nativo_con_el_token_de_duracion_el_gris_secundario_y_sin_aria_live` | el fundido va en el `::placeholder` del propio `<textarea>` (`placeholder:transition-opacity`, `placeholder:duration-(--dur-media)`, `ease-salida`/`ease-entrada`, `motion-reduce:placeholder:transition-none` porque `::placeholder` no es `*` y la regla global de `tokens.css` no lo alcanza), sin capa encima; `PISTA_FUNDIDO_MS` = `--dur-media` de `tokens.css` (250 ms); gris secundario; ni el campo ni su cuadro son región viva (sin `aria-live`) y su nombre accesible sigue siendo «Cuéntale a la IA qué quieres», no la pista |
+| `inicio.edicion.el_lector_de_pantalla_recibe_un_ejemplo_fijo_como_descripcion_del_campo_sin_repetirlo_a_la_vista` | las ideas ya no se alcanzan con Tab y la pista no se anuncia: el campo se describe con un ejemplo FIJO («Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.», `aria-describedby`) en un `<p hidden>` (14-oct-2026, revisión: antes `sr-only`, que lo dejaba además como párrafo suelto en el árbol de accesibilidad y se oía dos veces, como párrafo en modo lectura y como descripción al enfocar el campo): no se repite a la vista ni queda suelto, `aria-describedby` lo sigue leyendo, y la descripción sigue ahí con texto escrito y a lo largo de la rotación. Un e2e (`inicio-edicion.spec.ts`) lo mira en el árbol de accesibilidad de Chromium |
 | `inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar` | la subida usa `nucleo/subida` (config, presign, PUT con progreso, confirmar): el nombre del proyecto sale del archivo, la tarjeta dice nombre, formato y tamaño, `role=progressbar` con el avance real, el botón dice «Subiendo…» y «Cuando termine de subir calculamos el precio…»; el precio SOLO se pide al terminar y es el del servidor (la prueba usa un número que no está en ninguna tarifa); la tarjeta gana la duración medida («12:04 · MP4 · 824 MB») |
 | `inicio.edicion.el_precio_del_servidor_8_sin_transcript_y_2_con_transcript` | ✦ 8 para 724 s sin transcripción y ✦ 2 con ella: los muestra tal cual los manda el servidor, y la prueba comprueba que coinciden con `tarifas.json` (`editar.sugerencias` + `shorts.transcripcion_por_5min` × bloques de 5 min) |
-| `inicio.edicion.sin_texto_el_boton_con_precio_sigue_enfocable_lleva_el_foco_al_campo_y_no_avisa` | con video y sin texto: «Editar ✦ N» apagado con `aria-disabled` (sigue enfocable) y descrito por «Escribe qué quieres hacer con tu video, o toca una idea.»; tocarlo lleva el foco al campo y NO abre aviso; escribir lo enciende |
-| `inicio.edicion.un_aviso_del_servidor_apaga_el_boton_sin_precio_y_lleva_el_foco_al_mas` | si `/costo` trae `aviso` (fuera de 1–90 min, falta la transcripción en nube…) se enseña tal cual, «Editar» queda sin precio y apagado aunque haya texto, y tocarlo lleva el foco al «+» (cambiar el video), sin aviso |
+| `inicio.edicion.sin_texto_el_boton_con_precio_sigue_enfocable_lleva_el_foco_al_campo_y_no_avisa` | con video y sin texto: «Iniciar ✦ N», dorado y con `aria-disabled` (sigue enfocable), descrito por «Escribe qué quieres hacer con tu video.» (hasta el 14-oct-2026 terminaba en «, o toca una idea»); tocarlo lleva el foco al campo y NO abre aviso; escribir lo enciende |
+| `inicio.edicion.un_aviso_del_servidor_apaga_el_boton_sin_precio_y_lleva_el_foco_al_mas` | si `/costo` trae `aviso` (fuera de 1–90 min, falta la transcripción en nube…) se enseña tal cual, «Iniciar» queda sin precio, dorado y con `aria-disabled` aunque haya texto, y tocarlo lleva el foco al «+» (cambiar el video), sin aviso |
 | `inicio.edicion.lanzar_manda_solo_la_instruccion_y_vacia_la_caja_y_refresca_el_saldo` | `POST /api/editar/<p>/sugerir` con SOLO `{instruccion}` (recortada): nunca créditos en el cuerpo; se modera ANTES; la línea «Tienes ✦ 269; después te quedan ✦ 261.» antes de pulsar; tras lanzar la caja se vacía (texto y video), el saldo se refresca, vuela el «−N» con lo que cobró el servidor y el foco no se pierde (es el mismo botón) |
-| `inicio.edicion.doble_clic_en_editar_es_una_sola_peticion` | dos clics en el mismo tic = UN moderar y UN sugerir (el candado se cierra antes del primer `await`); mientras espera el botón dice «Editando…» y no acepta otro |
-| `inicio.edicion.sin_saldo_el_boton_se_apaga_y_dice_cuanto_falta_con_recargar` | si el saldo conocido no alcanza: botón apagado, «Tienes ✦ S: no alcanza para editar este video.» y «Te faltan ✦ N · Recargar» (el componente `Recarga`); tocarlo no pide nada |
+| `inicio.edicion.doble_clic_en_iniciar_es_una_sola_peticion` | dos clics en el mismo tic = UN moderar y UN sugerir (el candado se cierra antes del primer `await`); mientras espera el botón dice «Iniciando…» (antes «Editando…») y no acepta otro |
+| `inicio.edicion.sin_saldo_el_boton_se_apaga_y_dice_cuanto_falta_con_recargar` | si el saldo conocido no alcanza: «Iniciar ✦ N» dorado pero con `aria-disabled`, «Tienes ✦ S: no alcanza para editar este video.» y «Te faltan ✦ N · Recargar» (el componente `Recarga`); tocarlo no pide nada |
 | `inicio.edicion.402_del_servidor_dice_te_faltan_y_no_cobra_ni_vacia_la_caja` | si el servidor contesta 402 (el saldo de la píldora estaba atrasado): «Te faltan ✦ N · Recargar» (N sale del detalle del 402), el saldo se refresca, ningún «−N», y el video y el texto se quedan para reintentar |
 | `inicio.edicion.402_con_la_recarga_cerrada_dice_la_salida_de_la_interfaz` | con la recarga cerrada (`window.monedero.recarga` false) no hay botón «Recargar» muerto: sale el texto `cta` del monedero (`tests/test_m4_recarga_cerrada.py`) |
 | `inicio.edicion.502_avisa_y_refresca_el_saldo_porque_el_servidor_devolvio_los_creditos` | 502 (no se pudo lanzar): el mensaje del servidor al cuadro, el saldo se refresca (el servidor devuelve los créditos), ningún «−N» y la caja conserva texto y video |
 | `inicio.edicion.un_gate_del_servidor_se_dice_tal_cual_y_no_se_empieza_otra_cosa` | 413/422 (gate de duración, ANTES de cobrar) y demás errores: el mensaje del servidor tal cual al cuadro; el texto se conserva |
 | `inicio.edicion.si_otra_cuenta_tiene_el_nombre_se_reintenta_una_vez_con_nombre_alterno` | 409 al firmar = el nombre del proyecto es de otra cuenta: se reintenta UNA vez con `nombreAlterno` y el precio se pide por el proyecto que sí se reservó |
 | `inicio.edicion.un_409_que_se_repite_no_reintenta_otra_vez_y_lo_dice` | si el reintento también da 409: dos firmas en total, ninguna subida, el error al cuadro y la caja sin video |
-| `inicio.edicion.una_tarea_a_la_vez_avisa_durante_la_subida_y_durante_la_corrida` | durante la subida y mientras la corrida lanzada siga `corriendo`, «+» y «Editar» avisan «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» (el «+» queda `aria-disabled`); el sondeo de `GET /api/editar/<p>` es PEREZOSO (solo tras lanzar, cada 5 s), al terminar refresca el saldo y se detiene. El servidor aún no tiene candado por cuenta: este aviso es de la pantalla |
+| `inicio.edicion.una_tarea_a_la_vez_avisa_durante_la_subida_y_durante_la_corrida` | durante la subida y mientras la corrida lanzada siga `corriendo`, «+» e «Iniciar» avisan «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» (el «+» queda `aria-disabled`); el sondeo de `GET /api/editar/<p>` es PEREZOSO (solo tras lanzar, cada 5 s), al terminar refresca el saldo y se detiene. El servidor aún no tiene candado por cuenta: este aviso es de la pantalla |
 | `inicio.edicion.un_409_de_ya_corre_pasa_a_una_tarea_en_curso` | si el servidor dice 409 («ya está en curso») la pantalla también lo sabe desde ahí: nada empieza hasta que termine |
 | `inicio.edicion.cambiar_de_familia_y_volver_conserva_texto_y_video_y_no_cancela_la_subida` | el estado vive en `useEdicion` (llamado desde `Caja`): cambiar a Video o Imagen y volver conserva el texto y el video, y una subida a medias sigue (no se aborta) y termina con su precio |
 | `inicio.edicion.quitar_durante_la_subida_la_cancela_sin_error_y_no_pide_precio` | «Cancelar la subida» aborta el PUT, no es un error de nadie (ningún aviso), no confirma ni pide precio, y el foco vuelve al «+» |
-| `inicio.edicion.quitar_un_video_listo_deja_la_caja_para_otro` | «Quitar este video» vacía la tarjeta, el botón vuelve a «Editar» sin precio y el foco va al «+» (que ahora dice «Agregar el video que quieres editar») |
+| `inicio.edicion.quitar_un_video_listo_deja_la_caja_para_otro` | «Quitar este video» vacía la tarjeta, el botón vuelve a «Iniciar» sin precio y el foco va al «+» (que ahora dice «Agregar el video que quieres editar») |
 | `inicio.edicion.soltar_un_video_en_la_caja_lo_sube_y_pegar_se_ignora` | soltar un video en la caja de Edición lo sube (si no es video, lo dice; si son varios toma el primero y lo dice); pegar (Ctrl+V) NO agrega nada en esta familia |
 | `inicio.edicion.un_archivo_que_no_sirve_se_rechaza_con_su_motivo_antes_de_subir` | solo .mp4, .mov y .m4v, hasta 5 GB (los mismos límites que `/api/media/presign`); lo demás se rechaza con su motivo ANTES de pedir permiso de subida |
 | `inicio.edicion.si_no_hay_subidas_en_esta_instalacion_lo_dice_sin_intentar` | si `/api/media/config` dice que no hay subidas, se dice y no se firma nada |
-| `inicio.edicion.si_el_precio_no_llega_el_video_se_queda_y_editar_lo_vuelve_a_pedir` | si el precio falla el video subido se queda, el error va al cuadro y tocar «Editar» vuelve a pedir SOLO el precio (no se sube otra vez) |
+| `inicio.edicion.si_el_precio_no_llega_el_video_se_queda_e_iniciar_lo_vuelve_a_pedir` | si el precio falla el video subido se queda, el error va al cuadro y tocar «Iniciar» (la nota dice «Toca «Iniciar» para intentarlo otra vez.») vuelve a pedir SOLO el precio (no se sube otra vez) |
 | `inicio.edicion.una_instruccion_que_la_moderacion_frena_no_llega_al_servidor` | M13: una instrucción vetada por la moderación no llega a `/sugerir` ni cobra, y el texto se conserva |
 | `inicio.edicion.sin_el_cuadro_de_avisos_lo_que_se_dice_sale_junto_a_la_caja` | en una página sin `window.avisos` (tests, vitrina) lo que dice la caja de Edición sale junto a ella (`role=alert`), y se quita al corregirlo |
-| `inicio.edicion.todo_lo_tocable_mide_al_menos_44_px` | el riel, las ideas, el «+», «Editar» y la ✕ de la tarjeta miden al menos 44 px (clases `min-h-11`/`min-h-12`/`size-11`/`size-12`) |
+| `inicio.edicion.todo_lo_tocable_mide_al_menos_44_px` | el riel, el «+», el chip «Editar ▾», «Iniciar» y la ✕ de la tarjeta miden al menos 44 px (las 4 ideas, que eran botones de `min-h-11`, salieron el 14-oct-2026) (clases `min-h-11`/`min-h-12`/`size-11`/`size-12`) |
 | `inicio.edicion.ninguna_peticion_al_montar_ni_al_abrir_la_familia` | el Inicio entero: montar y abrir la familia Edición no piden NADA de `/api/editar`, `/api/media` ni `/api/moderar`; las peticiones de Edición son perezosas (`servidor()` de las pruebas y el e2e fijan las rutas del montaje) |
-| `inicio.edicion.el_boton_apagado_enfocable_no_usa_disabled_ni_opacidad_y_si_recibe_el_clic` | `<Boton apagado>`: `aria-disabled`, sin `disabled`, el apagado de la carta (borde discontinuo, gris; DISENO §5), sin ámbar a media opacidad, sin hover, y el clic SÍ llega a `onClick` |
+| `inicio.edicion.el_boton_apagado_enfocable_no_usa_disabled_ni_opacidad_y_si_recibe_el_clic` | `<Boton apagado>`: `aria-disabled`, sin `disabled`, el apagado de la carta (borde discontinuo, gris; DISENO §5), sin ámbar a media opacidad, sin hover, y el clic SÍ llega a `onClick`. Desde el 14-oct-2026 es solo la prueba de la pieza de `ui/Boton`: «Iniciar» ya no la usa (ver `inicio.edicion.iniciar_es_dorado_en_todos_los_estados_y_solo_cambian_lo_que_dice_y_su_semantica`) |
 | `inicio.edicion.si_la_subida_falla_se_dice_y_la_caja_queda_lista_para_elegir_otro` | si el PUT falla o no hay red, se dice y la caja queda sin video, lista para elegir otro |
 | `inicio.edicion.el_boton_sigue_el_orden_sin_video_subiendo_sin_precio_aviso_sin_texto_sin_saldo_listo` | `estadoDelBoton`: sin video → subiendo → calculando → sin precio → aviso del servidor → sin texto → sin saldo → listo; un aviso manda sobre el texto y el saldo; un saldo que no se sabe no bloquea |
 | `inicio.edicion.el_reloj_el_tamano_y_lo_que_falta_tras_un_402` | `reloj` («12:04», «1:18:00»), `tamano` («824 MB», «1.4 GB») y `faltanTras402` (lee «…cuesta 8 créditos y tu saldo es 5.»; sin ese texto usa el saldo conocido) |
 | `inicio.edicion.el_mando_de_la_caja_elige_edicion_y_le_da_el_foco_al_campo` | `MandoCaja.elegir('edicion')` (la caja la ofrece a quien la monta, como `elegir('videos', …)`): cambia a Edición y le da el foco al campo aunque ese campo se monte en el render que sigue; las otras familias siguen eligiendo su opción |
-| `inicio.edicion.mientras_sale_el_pedido_la_x_de_la_tarjeta_no_quita_el_video` | entre el clic en «Editar ✦ N» y la respuesta del servidor, la ✕ de la tarjeta queda `aria-disabled` y no quita el video (el pedido no se deja a medias) |
-| `inicio.edicion.enter_repetido_en_editar_es_una_sola_peticion` | Enter pulsado (o mantenido) tres veces sobre «Editar ✦ N» = UN moderar y UN sugerir y UN «−N»; con la caja ya vaciada otro Enter no lanza nada |
+| `inicio.edicion.mientras_sale_el_pedido_la_x_de_la_tarjeta_no_quita_el_video` | entre el clic en «Iniciar ✦ N» y la respuesta del servidor, la ✕ de la tarjeta queda `aria-disabled` y no quita el video (el pedido no se deja a medias) |
+| `inicio.edicion.enter_repetido_en_iniciar_es_una_sola_peticion` | Enter pulsado (o mantenido) tres veces sobre «Iniciar ✦ N» = UN moderar y UN sugerir y UN «−N»; con la caja ya vaciada otro Enter no lanza nada |
 | `inicio.edicion.clic_durante_el_402_y_el_502_en_vuelo_no_duplica_y_despues_se_puede_reintentar` | clics mientras el pedido vuela no mandan otro; tras un 402 (sin cobro) o un 502 (el servidor devolvió) el botón vuelve a servir y el reintento sale UNA vez; al reintentar desaparece el «Te faltan» viejo; tres pedidos, UN cobro |
-| `inicio.edicion.cambiar_de_familia_a_mitad_del_cobro_lo_termina_y_al_volver_la_caja_esta_vacia` | irse a Video con el pedido en vuelo no lo cancela: el cobro termina, vuela el «−N», la caja vuelve vacía y «+»/«Editar» avisan que hay una corrida en curso |
+| `inicio.edicion.cambiar_de_familia_a_mitad_del_cobro_lo_termina_y_al_volver_la_caja_esta_vacia` | irse a Video con el pedido en vuelo no lo cancela: el cobro termina, vuela el «−N», la caja vuelve vacía y «+»/«Iniciar» avisan que hay una corrida en curso |
 | `inicio.edicion.un_402_que_llega_en_otra_familia_se_ve_al_volver_y_no_pierde_nada` | un 402 que llega con la persona en otra familia se ve al volver («Te faltan ✦ N · Recargar»), conserva texto y video, no cobra, y cuando monedero.js trae el saldo de verdad la línea no se repite ni se contradice |
 | `inicio.edicion.quitar_con_el_precio_en_camino_y_subir_otro_ignora_la_respuesta_vieja` | quitar un video mientras se calcula su precio y subir otro: el precio tardío del primero no se lo queda el segundo |
-| `inicio.edicion.un_archivo_nuevo_sobre_un_video_listo_lo_reemplaza_y_el_pedido_va_al_proyecto_nuevo` | un video nuevo sobre uno listo lo reemplaza (precio nuevo, texto conservado) y «Editar» pide el proyecto nuevo, nunca el viejo |
+| `inicio.edicion.un_archivo_nuevo_sobre_un_video_listo_lo_reemplaza_y_el_pedido_va_al_proyecto_nuevo` | un video nuevo sobre uno listo lo reemplaza (precio nuevo, texto conservado) e «Iniciar» pide el proyecto nuevo, nunca el viejo |
 | `inicio.edicion.otro_archivo_durante_la_subida_avisa_y_no_empieza_otra_subida` | soltar o elegir otro archivo mientras sube avisa «Ya hay un trabajo en curso…» y no abre una segunda subida |
 | `inicio.edicion.los_nombres_raros_de_archivo_dan_un_proyecto_que_el_servidor_acepta_o_se_rechazan_con_motivo` | acentos, espacios, mayúsculas, 200 caracteres, solo símbolos o solo guiones bajos (`_.mp4`): el nombre del proyecto siempre es válido para el servidor (≤ 40, letras o cifras, `mi-video` si no queda nada); un archivo llamado solo «.mp4» o de 0 bytes se rechaza con su motivo ANTES de pedir permiso |
 | `inicio.edicion.un_nombre_que_ya_es_un_proyecto_tuyo_con_video_se_estrena_con_nombre_nuevo` | antes de firmar se pregunta `GET /api/media/<p>`: si ese nombre ya es un proyecto tuyo con video (otro «final.mp4») se estrena un nombre con `nombreAlterno`, para no mezclar el video nuevo con la transcripción y los cortes del viejo; el 409 de otra cuenta sigue reintentando UNA vez |
 | `inicio.edicion.si_no_se_puede_saber_si_el_nombre_ya_existe_se_sube_con_el_nombre_del_archivo` | si esa pregunta falla (5xx, sin red) la subida sigue con el nombre del archivo: preguntar no frena |
-| `inicio.edicion.un_precio_que_no_es_un_numero_no_se_ensena_ni_se_deja_cobrar` | un `creditos` que no es un entero ≥ 0 (null, texto, NaN, negativo, con decimales) cuenta como «sin precio»: «Editar» sin ✦, apagado (nunca «✦ 0» ni «✦ NaN»), tocarlo vuelve a pedir el precio y no modera ni cobra; una duración que no es número no rompe la tarjeta |
+| `inicio.edicion.un_precio_que_no_es_un_numero_no_se_ensena_ni_se_deja_cobrar` | un `creditos` que no es un entero ≥ 0 (null, texto, NaN, negativo, con decimales) cuenta como «sin precio»: «Iniciar» sin ✦, con `aria-disabled` (nunca «✦ 0» ni «✦ NaN»), tocarlo vuelve a pedir el precio y no modera ni cobra; una duración que no es número no rompe la tarjeta |
 | `inicio.edicion.si_el_precio_nunca_llega_se_puede_quitar_el_video_y_empezar_de_nuevo` | si `/costo` no contesta nunca, «Calculando…» no cobra y la ✕ sigue quitando el video para empezar de nuevo (el texto se conserva) |
-| `inicio.edicion.un_campo_con_solo_espacios_saltos_o_invisibles_esta_vacio_y_no_enciende_el_boton` | un campo con solo espacios, saltos, NBSP, ancho cero, marcas bidi o «etiquetas» U+E00xx está vacío: el botón sigue apagado, la ayuda sigue pidiendo texto y no se pide nada (`limpiarInstruccion` copia la limpieza del servidor, `limpiar_instruccion`) |
+| `inicio.edicion.un_campo_con_solo_espacios_saltos_o_invisibles_esta_vacio_y_no_enciende_el_boton` | un campo con solo espacios, saltos, NBSP, ancho cero, marcas bidi o «etiquetas» U+E00xx está vacío: el botón sigue con `aria-disabled`, la ayuda sigue pidiendo texto y no se pide nada (`limpiarInstruccion` copia la limpieza del servidor, `limpiar_instruccion`) |
 | `inicio.edicion.la_instruccion_que_viaja_es_la_limpia_y_es_la_misma_que_se_modera` | lo que se manda a `/sugerir` y a `/api/moderar` es la instrucción limpia (sin invisibles, tabuladores a espacio, `\r\n` a salto), la misma que verá la IA |
 | `inicio.edicion.el_campo_limita_a_2000_y_si_algo_pasa_el_servidor_es_la_autoridad` | pegar 2500 caracteres deja 2000; si uno de más se cuela, NO se recorta en silencio: el 422 del servidor (antes de cobrar) se dice tal cual, sin «−N», y texto y video se conservan |
-| `inicio.edicion.si_el_saldo_cambia_despues_del_precio_el_boton_lo_sigue_antes_de_cobrar` | si el saldo baja (o sube) después de mostrar el precio, el botón se apaga con «Te faltan» (o se enciende) sin pedir nada; el servidor sigue siendo quien decide |
+| `inicio.edicion.si_el_saldo_cambia_despues_del_precio_el_boton_lo_sigue_antes_de_cobrar` | si el saldo baja (o sube) después de mostrar el precio, el botón pasa a `aria-disabled` con «Te faltan» (o lo pierde) sin pedir nada; el servidor sigue siendo quien decide |
 | `inicio.edicion.si_la_respuesta_del_cobro_se_pierde_el_saldo_se_pone_al_dia_y_el_reintento_cae_en_ya_corre` | si se cae la red con el pedido en el aire (o hay un 409/5xx) el servidor pudo haber cobrado: el saldo de la píldora se refresca, no vuela ningún «−N» ni se vacía la caja (no se sabe), y el reintento recibe el 409 «ya corre» que pasa a corrida en curso |
 | `inicio.edicion.el_menos_n_sale_de_lo_que_cobro_el_servidor_no_del_precio_de_la_pantalla` | el «−N» que vuela es el `creditos` de la respuesta del servidor aunque el precio de la pantalla fuera otro |
 | `inicio.edicion.ningun_cuerpo_de_ninguna_peticion_lleva_creditos_ni_precio` | en todo el flujo (permiso de subida, confirmar, moderar, sugerir) ningún cuerpo habla de créditos, precio, costo ni saldo; el de `/sugerir` es solo `{instruccion}` |
@@ -300,11 +325,15 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.desmontar_con_la_corrida_en_curso_deja_de_preguntar_y_no_deja_avisos_de_react` | desmontar con la corrida lanzada detiene el sondeo (cero preguntas después) y no deja avisos de React; el sondeo sigue siendo perezoso |
 | `inicio.edicion.el_sondeo_se_libera_con_un_404_y_un_error_del_servidor_no_cuenta_como_terminado` | un 404 al preguntar por la corrida (el proyecto ya no existe) libera la caja; un 5xx no dice que terminó y se sigue preguntando |
 | `inicio.edicion.una_pregunta_que_nunca_vuelve_no_bloquea_la_caja_mas_de_2_horas` | el tope de 2 h (el que usa el servidor para dar por caducada una corrida) se cuenta con el reloj, no con una respuesta: si el servidor no contesta nunca, la caja se libera y el saldo se refresca |
-| `inicio.edicion.el_campo_conserva_el_aro_de_foco_y_su_ejemplo_se_lee_con_el_gris_secundario` | el campo de Edición NO lleva `outline-none`: el aro ámbar de la carta (§4, «sin excepción») sigue saliendo cuando se le lleva el foco desde «Editar» o desde una idea; y su ejemplo (placeholder) usa `placeholder:text-secundario` (6.45:1 sobre la superficie) y no el 50 % del texto de Tailwind (4.39:1, no pasa AA). La prueba lee `tokens.css` y calcula los dos contrastes; el navegador real lo comprueba `web/e2e/inicio-edicion.spec.ts` |
-| `inicio.edicion.el_campo_crece_para_que_su_ejemplo_no_se_corte_en_un_telefono` | el ejemplo del campo ocupa 4 renglones en 390 px (90 px) y a 320 px 5: el piso de 96 px en teléfono (`min-h-24`; 68 px desde 640 px, donde el ejemplo cabe en 3 renglones de 67.5 px) y `field-sizing-content` (que crece hasta lo que haga falta, con tope `max-h-56`) evitan que se corte «para Reels.»; el lienzo lo muestra entero |
-| `inicio.edicion.subiendo_y_calculando_se_ven_trabajando_en_ambar_con_cursor_de_espera_y_el_clic_avisa` | «Subiendo…» y «Calculando…» son el «Trabajando» de la carta (§5) y del lienzo (`.btn.p.trab`): ámbar, `cursor-progress`, `aria-busy` y `aria-disabled`, sin el borde discontinuo del apagado, descritos por su nota; el clic sigue llegando y avisa «Ya hay un trabajo en curso…»; con el precio vuelve el apagado gris de siempre |
-| `inicio.edicion.cada_apagado_se_explica_con_su_propia_linea` | `aria-describedby` en cada apagado: sin video y con texto → «Agrega el video con el «+»…»; sin precio → «No pudimos calcular el precio…»; sin saldo → «Tienes ✦ S: no alcanza…» (antes solo «sin texto» y «fuera de rango» tenían su línea) |
+| `inicio.edicion.el_campo_conserva_el_aro_de_foco_y_su_ejemplo_se_lee_con_el_gris_secundario` | el aro ámbar de la carta (§4, «sin excepción») sigue saliendo cuando se le lleva el foco desde «Iniciar» (desde una idea, hasta el 14-oct-2026, cuando eran botones). **Desde el 14-oct-2026 lo dibuja el cuadro** (`CuadroDeTexto`, `has-focus-visible:outline-2 … outline-ambar-claro`, offset 3) y el campo lleva `outline-none` para no duplicarlo (antes el campo era el que no llevaba `outline-none`); su pista (placeholder) usa `placeholder:text-secundario` (6.45:1 sobre la superficie, y también ≥ 4.5 sobre `elevada`, el fondo del cuadro) y no el 50 % del texto de Tailwind (4.39:1, no pasa AA). La prueba lee `tokens.css` y calcula los contrastes; el navegador real lo comprueba `web/e2e/inicio-edicion.spec.ts` (un solo aro, el del cuadro) |
+| `inicio.edicion.el_campo_vive_en_un_cuadro_con_borde_de_campo_y_fondo_elevada_y_un_clic_en_el_cuadro_enfoca_el_texto` | 14-oct-2026: el campo de Edición está en el mismo cuadro bien definido que Imagen y Video (`border-campo` ≥ 3:1 contra la caja, `bg-elevada`, `rounded-medio`, `p-3`); un `mousedown` en el relleno del cuadro le da el foco al texto y no lo suelta, y un clic en el propio texto sigue su camino |
+| `inicio.edicion.el_campo_crece_para_que_su_ejemplo_no_se_corte_en_un_telefono` | el piso de 96 px en teléfono (`min-h-24`; 68 px desde 640 px) y `field-sizing-content` (que crece hasta lo que haga falta, con tope `max-h-56`) evitan que se corte la pista. Medido el 14-oct-2026 con las cuatro ideas rotando (Chromium): la más larga ocupa 3 renglones (67.5 px) a 320 px, 2 (45 px) de 360 a 861 px y 1 (22.5 px) a 1100: siempre cabe en el piso y el cuadro NO cambia de alto al rotar (`web/e2e/inicio-edicion.spec.ts`). Cuando la pista era un solo ejemplo largo («…hazlo vertical para Reels.») ocupaba 4 renglones en 390 px y el piso era justo ese |
+| `inicio.edicion.subiendo_y_calculando_se_ven_trabajando_en_ambar_con_cursor_de_espera_y_el_clic_avisa` | «Subiendo…» y «Calculando…» son el «Trabajando» de la carta (§5) y del lienzo (`.btn.p.trab`): ámbar, `cursor-progress`, `aria-busy` y `aria-disabled`, sin el borde discontinuo del apagado, descritos por su nota; el clic sigue llegando y avisa «Ya hay un trabajo en curso…»; con el precio sigue dorado (desde el 14-oct-2026 ya no vuelve el gris discontinuo), con `aria-disabled` mientras falte el texto, sin `aria-busy` y sin cursor de espera |
+| `inicio.edicion.cada_apagado_se_explica_con_su_propia_linea` | `aria-describedby` en cada estado en que «Iniciar» tiene `aria-disabled`: sin video y con texto → «Agrega el video con el «+»…»; sin precio → «No pudimos calcular el precio…»; sin saldo → «Tienes ✦ S: no alcanza…» (antes solo «sin texto» y «fuera de rango» tenían su línea) |
 | `inicio.edicion.el_recargar_mide_44_px_aunque_su_letra_sea_chica` | con la recarga abierta, «Recargar» (un enlace de una línea de letra de 13 px) trae `min-h-11 min-w-11` y márgenes negativos que lo devuelven al renglón, y su aro de foco va por dentro; medido en un navegador de verdad: 44 × 44 y la nota no crece |
+| `inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion` | 14-oct-2026 (dueño: «el botón de editar lo vamos a poner a lado del +, como los otros casos; más adelante vamos a poner aquí también lo de videos a shorts»): «Editar ▾» es el MISMO `SelectorOpcion` que «Un video corto ▾», justo después del «+» y antes de «Iniciar» (el orden del foco); `aria-haspopup="listbox"`, `aria-expanded`, `aria-controls`, y `data-pista` = la nota de la opción («Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.»). Su lista tiene UNA opción (`MODOS_EDICION`, en `edicion.ts`), seleccionada, con «según el video» a la derecha. Edición no trae chip de modelo ni de duración. «De videos a Shorts» sigue en el menú de la izquierda: no se movió |
+| `inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra` | ↓ abre con el foco en la opción; con una sola opción, ↑ ↓ Inicio y Fin no se salen de ella; Esc cierra y devuelve el foco al chip; Enter, Espacio y el clic la eligen: cierra, devuelve el foco al chip y no cambia nada (ninguna petición, el texto se conserva); el clic fuera y Tab cierran; irse a otra familia con la lista abierta la deja cerrada al volver |
+| `inicio.edicion.iniciar_es_dorado_en_todos_los_estados_y_solo_cambian_lo_que_dice_y_su_semantica` | 14-oct-2026 (dueño: «donde está ahora el botón de Editar, va a decir «Iniciar» con el botón dorado como el de Generar»): sin video, con texto sin video, subiendo, con precio y con precio sin texto, el botón es ámbar (`bg-ambar`, nada de borde discontinuo ni gris) como «Crear» de Imagen y Video, que tampoco se pinta apagado sino que avisa al pulsarlo. Lo que cambia entre estados es lo que dice y su semántica: `aria-disabled` mientras no se pueda (nunca `disabled`: retiene el foco y explica), `aria-busy` solo subiendo/calculando, y NADA de `aria-disabled` cuando cobra. «Editar ✦ N» y «Editando…» ya no existen |
 | `inicio.edicion.el_aviso_de_trabajo_en_curso_se_quita_solo_cuando_ese_trabajo_termina` | como el lienzo (`aviso === 'ocupada' → ''`): «Ya hay un trabajo en curso…» se quita solo cuando la subida termina y llega el precio, y cuando el servidor dice que la corrida terminó; no antes, y no dos veces |
 | `inicio.edicion.si_otro_aviso_reemplazo_al_de_trabajo_en_curso_no_se_quita_nada` | si otro mensaje tomó el lugar de ese aviso (misma clave), p. ej. el error de una subida que falló, no se quita nada: es lo que la persona tiene que leer |
 
@@ -323,7 +352,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_titulos_en_bricolage_y_texto_en_geist` | `tokens.css` (`h1, h2` en `font-titulo`) y `font-titulo` en los `h3` de los caminos |
 | `test_sin_tamanos_de_letra_fuera_de_la_escala` | `tokens.css` borra la escala de Tailwind: fuera de los seis tamaños no compila |
 | `test_sin_emojis_como_iconos` | guardianes M19/M21 sobre `web/` e `<Icono>` |
-| `test_cada_entrada_del_menu_lleva_icono` | `GRUPOS` en `Inicio.tsx`: cada `Entrada` exige `icono`; `inicio.menu.entradas_y_grupos_en_orden` cuenta las 7 |
+| `test_cada_entrada_del_menu_lleva_icono` | `GRUPOS` en `Inicio.tsx`: cada `Entrada` exige `icono`; `inicio.menu.entradas_y_grupos_en_orden` cuenta las 6 (eran 7 hasta el 14-oct-2026) |
 | `test_los_iconos_que_usa_el_inicio_existen` | TypeScript: `NombreIcono` |
 | `test_el_saldo_se_queda_en_la_pildora_de_arriba` | el inicio nuevo no pinta saldo: lo hace la píldora de `monedero.js` |
 | `test_los_tres_caminos` | `inicio.caminos.enlaces_a_shorts_y_metraje`; los botones son `secundario` |
@@ -406,6 +435,135 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 
 ## Diferencias a propósito
 
+- **Ajustes del dueño a la pestaña Edición y al menú (14-oct-2026, mirando una
+  captura):** (1) «Editor de videos» salió del menú de la izquierda (quedan «De
+  videos a Shorts» y «Copiadora de estilos»); `static/index.html`, la página
+  vieja, no se tocó, y la tarjeta «Desde tu metraje → Subir metraje» del primer
+  uso sigue llevando a `/e1.html`. (2) El título de la columna izquierda dice
+  **«Irremplazables»** en dorado (`text-ambar-claro`), sin icono; los `<title>`
+  de las páginas y el título de las otras pantallas siguen diciendo «Estudio de
+  video · …» (pendiente de decidir). (3) El texto de las TRES familias está en un
+  cuadro bien definido (`ui/CuadroDeTexto`): borde de campo, fondo `elevada`,
+  radio de campos; el aro de foco lo dibuja el cuadro y el texto no dibuja otro.
+  (4) «Editar ▾» junto al «+», como el chip de las otras familias: se extrajo
+  `SelectorOpcion.tsx` de `Caja.tsx` y lo usan las dos cajas, así que hay un solo
+  teclado, un solo foco y una sola posición (la revisión del mismo día corrigió en las tres familias que la pista del chip no se pintaba y que Tab con la lista abierta tiraba el foco a `<body>`: ver `inicio.caja.selector_*`).
+  Hoy tiene una opción; ahí mismo irá «De videos a Shorts». (5) *No se hizo en
+  esta pasada:* que las ideas («Quita muletillas y silencios»…) aparezcan y
+  desaparezcan donde dice «Cuéntale a la IA». La fila de ideas, `usarIdea` y su
+  `role="group"` quedaron como estaban, debajo del cuadro. *(Se hizo después, en
+  el commit de las ideas que rotan: ver el bullet de abajo.)* (6) El botón principal
+  dice **«Iniciar»** (antes «Editar»; «Iniciando…» antes «Editando…») y es dorado
+  en TODOS los estados, también sin video y sin texto, y sin saldo: avisa al
+  pulsarlo, como «Crear». Conserva la semántica de antes (`aria-disabled`, nunca
+  `disabled`; el clic llega y explica; «Subiendo…» y «Calculando…» ocupados). Eso
+  contradice la fila «Sin saldo / deshabilitado» del botón principal de
+  `docs/DISENO.md` §5 para este botón: la carta lo registra ahí con su porqué.
+  **Qué pasó con cada aserción vieja:** las 4 pruebas cuyo ID nombraba «Editar»
+  (`sin_video_el_boton_es_editar…`, `doble_clic_en_editar…`,
+  `…_editar_lo_vuelve_a_pedir`, `enter_repetido_en_editar…`) se renombraron a
+  «iniciar»; `el_boton_apagado_enfocable_…` quedó como la prueba de la pieza
+  `<Boton apagado>` (que sigue en `ui/Boton`, ya sin uso en producción);
+  `el_campo_conserva_el_aro_de_foco_…` y `subiendo_y_calculando_…` cambiaron lo
+  que afirman (el aro es del cuadro; con el precio el botón sigue dorado, ya no
+  vuelve al gris); `entradas_y_grupos_en_orden` cuenta 6 entradas y no 7. El
+  guardián de botones (`test_m21_botones.py`) ganó el verbo «Iniciar».
+
+- **Las ideas de Edición pasan de botones a pista que rota (dueño, 14-oct-2026,
+  punto 5 de los ajustes; eligió «Rotan solas como pista»):** las cuatro ideas
+  («Quita muletillas y silencios», «Un short vertical para Reels», «Resumen de 60
+  segundos», «Subtítulos grandes y un título») eran botones-píldora debajo del
+  campo que ponían su texto. Ya no: en el lugar del texto gris del campo va
+  apareciendo y desapareciendo UNA idea a la vez («Cuéntale a la IA qué quieres.
+  Ejemplo: «<idea>»»), con fundido, cada 4 s, en círculo; son solo una pista y
+  desaparecen al escribir como cualquier texto de pista. Se fueron la fila
+  `role="group"`, los cuatro `<button>`, `usarIdea` de `useEdicion` y
+  `AYUDA_TEXTO` ya no dice «o toca una idea». **Cómo:** el `placeholder` NATIVO del
+  `<textarea>` con su opacidad en transición (`placeholder:` de Tailwind), y no una
+  capa encima: alinea idéntico a lo que se escriba, no tapa clics, desaparece solo
+  al escribir y no hay nada que desalinear. **Se midió, no se supuso:** Chromium
+  (Playwright, reloj de la pantalla falso y muestreo real de
+  `getComputedStyle(campo, '::placeholder').opacity`) sí transiciona
+  `::placeholder`: la salida baja de 1 a 0 pasando por 0.89 → 0.56 → 0.30 → 0.11 y
+  la entrada sube de 0.22 a 1, en los 250 ms de `--dur-media` (la curva de lo que
+  se va, `--ease-entrada`, a la salida; la de lo que llega, `--ease-salida`, a la
+  entrada). La capa `aria-hidden` queda descartada por innecesaria. **Solo se midió
+  Chromium.** Firefox y Safari no están probados aquí. Donde un navegador no
+  transicione `::placeholder` la pista no hace fundido: se simuló en Chromium con
+  `textarea::placeholder{transition:none}` y la idea se apaga de golpe (opacidad
+  1 → 0 a los ~3.7 s), el campo queda ~250 ms sin pista y la idea siguiente
+  aparece de golpe (0 → 1 con el texto nuevo a los ~3.98 s). Se degradaría a una
+  pista que parpadea cada 4 s, no a un cambio directo; no se perdería ninguna
+  función. Si el dueño quiere cerrarlo, lo que falta es probar en un Firefox real
+  y, solo si falla ahí, usar la capa `aria-hidden` que el brief ya preveía.
+  `document.getAnimations()` NO lista esas transiciones, así que
+  `animacionesVivas` de `e2e/pantallas.ts` no las ve: el guardián de movimiento
+  reducido las mide por `::placeholder` (ver abajo). **El reloj**
+  (`usePistaRotatoria`): un solo `setTimeout` que se re-arma en cada paso (la idea
+  quieta 3.75 s; sale 0.25 s; al terminar el fundido se cambia el texto, que ya no
+  se ve, y entra la siguiente), así de una idea a la siguiente pasan 4 s justos y
+  nunca hay más de un temporizador vivo: ni al desmontar, ni bajo StrictMode, ni
+  al cambiar de familia (Edición se desmonta y al volver abre en la primera).
+  Empieza SIEMPRE en la primera y sin animación (carta §4: «Nada anima por defecto
+  lo que ya estaba al abrir la pantalla»). **Cuándo NO rota:** con «reducir
+  movimiento» (queda fija en la primera idea: la carta pide que con la preferencia
+  todo quede quieto, y `::placeholder` no es `*`, así que la regla global de
+  `tokens.css` NO lo alcanzaría: lo decide el hook con `matchMedia`, reacciona si
+  la persona cambia la preferencia y el campo lleva además
+  `motion-reduce:placeholder:transition-none`. Al ENCENDERLA el hook olvida lo
+  que la rotación había avanzado (vuelve a la primera), y por eso al APAGARLA
+  sigue en la primera y rota desde ahí con su fundido, en vez de saltar sin
+  fundido a la idea que traía guardada; el reinicio cuelga de `reducido`, no de
+  que `rota` cambie, porque con el campo enfocado o con texto `rota` ya era
+  falso y el cambio no se habría visto); con el foco en el campo (quien va a
+  escribir no ve la pista cambiar bajo el cursor: se congela entera y retoma al
+  perder el foco con el campo vacío); con texto (no corre nada, ni temporizador ni
+  fundidos; vaciarlo retoma); y con la pestaña oculta (sin ciclos acumulados).
+  **Accesibilidad:** la rotación no se anuncia (sin `aria-live`); el nombre del
+  campo sigue siendo su `aria-label` y no la pista; y como las ideas ya no se
+  alcanzan con Tab, quien usa lector de pantalla recibe un ejemplo FIJO como
+  descripción del campo (`aria-describedby` a un `<p hidden>` con «Por
+  ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para
+  Reels.», el que traía el campo antes): lo más simple que no repite a la vista lo
+  que ya se ve rotando. Va `hidden` y no `sr-only`: `sr-only` es invisible pero NO
+  está oculto, así que el lector lo recitaba también como párrafo suelto entre el
+  campo y el «+» (medido con `ariaSnapshot` en Chromium); `hidden` lo saca del
+  árbol y `aria-describedby` sigue calculando la descripción desde él. La pista sigue en el gris secundario (6.45:1 sobre la
+  superficie, 5.72:1 sobre el cuadro). **Alturas:** el cuadro no cambia de alto al
+  rotar (ni mueve lo de abajo): con las cuatro ideas, la más larga ocupa 3
+  renglones a 320 px (67.5 px), 2 de 360 a 861 px y 1 a 1100, dentro de los pisos
+  de 96 px (teléfono) y 68 px (desde 640 px); medido a 320, 390 y 1100.
+  **Qué pasó con cada aserción vieja:**
+  `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco` (las 4
+  ideas, tocar una pone su texto y enfoca el campo) se retiró: murió con los
+  botones. Lo que de ella sigue siendo verdad (las 4 ideas y su orden; la ayuda ya
+  no manda a tocarlas) está en
+  `…la_fila_de_botones_de_ideas_ya_no_existe_…` y
+  `…la_pista_arranca_en_la_primera_idea_…`. `todo_lo_tocable_mide_al_menos_44_px`
+  dejó de contar las ideas; `sin_texto_el_boton_con_precio_…` ya no «enciende»
+  «Iniciar» tocando una idea (escribe); `el_riel_…` lee la pista de la primera
+  idea en vez del `HUECO_TEXTO` fijo (que se retiró: ahora es `huecoDe(idea)`); y
+  en los e2e, el recorrido por Tab pasó de siete paradas a tres (el «+», «Editar
+  ▾» e «Iniciar») y la comprobación de que el ejemplo no se corta ahora recorre
+  las cuatro ideas. `web/e2e/movimiento-reducido.spec.ts` NO cubría esto (solo
+  abre cada pantalla en su pestaña inicial, Video): ganó tres pruebas (quieta con
+  «reducir movimiento», control sin la preferencia donde sí rota, y reacción al
+  cambiar la preferencia con la pantalla abierta).
+
+- **Dos defectos del chip `SelectorOpcion` que la revisión de la pista encontró (ya estaban
+  en `a9721f0`; 14-oct-2026), arreglados para las tres familias a la vez:** (1)
+  `aria-controls` apuntaba a un id sin elemento mientras la lista estaba cerrada (la
+  lista solo se monta al abrir): ahora solo lo lleva abierta, como `MenuModelo`;
+  probado en `SelectorOpcion.test.tsx`. (2) A 320 px la página se podía arrastrar de
+  lado hasta 24 px: la pista del chip (su `::after`, invisible pero con lugar) medía
+  hasta `100vw - 72px` desde el chip, que empieza en x = 95 por debajo de 640 px
+  (20 de margen, 1 de borde, 16 de relleno, 48 del «+» y 10 de separación); con
+  `100vw - 132px` el borde derecho de la pista queda dentro de la pantalla (sobrante
+  0 px a 320, 330, 344, 345, 360 y 390, en Imagen, Video y Edición; de 382 px para
+  arriba sigue valiendo 250 y no cambia nada). Lo vigila un e2e a 320, 340 y 359 px
+  en `inicio-caja.spec.ts` (mide la página entera y el borde derecho de la pista;
+  con el valor viejo falla).
+
 - **Cuentos e historias llevan «+» para la foto del personaje (dueño, 14-oct-2026,
   «en cuento e historia debe de tener el +»):** hasta hoy «Creador de cuentos» y
   «Crea tu historia» solo mandaban el texto por la URL a `/crear.html`, y la
@@ -468,9 +626,9 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 
 - **Edición (dueño, 13-oct-2026):** la caja gana una TERCERA familia, Edición
   (riel Imagen · Video · Edición; la caja sigue arrancando en Video). En E1 es:
-  un texto obligatorio («Cuéntale a la IA qué quieres…», con 4 ideas de un
-  toque) + UN video que se sube desde el «+» o soltándolo en la caja + «Editar
-  ✦ N». El precio lo da `GET /api/editar/<p>/costo` y lo cobra el servidor al
+  un texto obligatorio («Cuéntale a la IA qué quieres…», con 4 ideas que
+  hasta el 14-oct-2026 eran botones de un toque y desde entonces rotan como pista) + UN video que se sube desde el «+» o soltándolo en la caja + «Iniciar
+  ✦ N» (se llamaba «Editar ✦ N» hasta el 14-oct-2026). El precio lo da `GET /api/editar/<p>/costo` y lo cobra el servidor al
   lanzar `POST /api/editar/<p>/sugerir` con `{instruccion}`: nunca viajan
   créditos en el cuerpo. Sin confirmación (el precio ya está en el botón); sin
   saldo, «Te faltan ✦ N · Recargar». La IA ya editaba bien: no hay prueba
@@ -488,10 +646,11 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   bandeja de tres pasos. Lo que la instrucción pida y el motor de hoy (que solo
   QUITA tramos) no sepa hacer —formato vertical, subtítulos, música— no se
   aplica y llega como duda en el editor, no se calla; por eso conviene leer las
-  ideas de la caja con ese límite en mente. El botón principal se apaga con
-  `aria-disabled` (variante `apagado` de `<Boton>`, el apagado de la carta:
-  borde discontinuo y gris, no el ámbar a media opacidad del lienzo), así sigue
-  enfocable y explica por qué.
+  ideas de la pista con ese límite en mente. El botón principal se apaga con
+  `aria-disabled` (sin `disabled`: sigue enfocable y explica por qué). Hasta el
+  14-oct-2026 además se pintaba con la variante `apagado` de `<Boton>` (borde
+  discontinuo y gris); desde esa fecha «Iniciar» es ámbar pleno en todos los
+  estados y ya no usa `apagado`.
 
   *Revisión adversarial (dinero y flujos).* El **nombre del proyecto** sale del
   archivo (`nombreDeProyecto`: `mi-video` si no queda ninguna letra o cifra,
@@ -511,7 +670,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 
   *Revisión visual y de accesibilidad (contra el lienzo Recorrido-2, medida en
   un navegador de verdad a 1440×900, 390×844 y 320 px).* Lo que se corrigió: el
-  campo traía `outline-none` y al llevarle el foco desde «Editar» o una idea no
+  campo traía `outline-none` y al llevarle el foco desde «Editar» (hoy «Iniciar») o una idea (entonces un botón) no
   se veía dónde caía (ahora conserva el aro de la carta); su ejemplo se leía a
   4.39:1 (el 50 % del texto) y ahora a 6.45:1, y en un teléfono se cortaba su
   último renglón; «Subiendo…» y «Calculando…» eran gris discontinuo (el apagado)
@@ -519,8 +678,10 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   abierta, medía 54 × 19 px; cada apagado ahora se explica con su línea
   (`aria-describedby`); y «Ya hay un trabajo en curso…» se quita solo cuando ese
   trabajo termina, como en el lienzo. Lo que **difiere a propósito** del lienzo:
-  (1) el apagado es el gris discontinuo de la carta y no el ámbar a media
-  opacidad; (2) «Te faltan ✦ N · Recargar» va junto al botón (`<Recarga>`,
+  (1) (hasta el 14-oct-2026) el apagado era el gris discontinuo de la carta y no
+  el ámbar a media opacidad; hoy «Iniciar» es ámbar pleno en todos los estados y
+  solo avisa con `aria-disabled` (ver «Ajustes del dueño» del 14-oct y DISENO
+  §5); (2) «Te faltan ✦ N · Recargar» va junto al botón (`<Recarga>`,
   DISENO §5 y §8: el 402 se queda junto al botón que cobra) y no en el cuadro de
   avisos: ese cuadro es de `trabajos.js` y no puede pintar un componente de
   React; (3) sin Marca (chip, menú y «Administrar marcas…»), sin el menú del «+»
@@ -528,8 +689,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   posteriores, así que el «+» abre directo el selector y se llama «Cambiar el
   video» cuando ya hay uno (el lienzo: «Agregar otro video»); (4) el campo se
   puede redimensionar (`resize-y`, como el de Imagen y Video; el lienzo lo
-  fija); (5) el botón se llama «Editar ✦ N» a secas para el lector de pantalla
-  (como todo botón que cobra del repo); el lienzo le pone `aria-label` «Editar
+  fija); (5) el botón se llama «Editar ✦ N» (hoy «Iniciar ✦ N») a secas para el lector de
+  pantalla (como todo botón que cobra del repo); el lienzo le pone `aria-label` «Editar
   por N créditos», pero M21 prohíbe «créditos» en el texto del botón y cambiarlo
   aquí solo dejaría un caso distinto: el arreglo es global (ocultar el ✦ y
   decir «créditos» en `BotonCobro`/`ESTRELLA`); (6) los límites del video

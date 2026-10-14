@@ -22,6 +22,10 @@
 // haga la IA (CajaEdicion). Su estado vive en useEdicion, que se llama AQUÍ y no en
 // CajaEdicion: cambiar de familia no pierde el texto, el video ni una subida a medias.
 //
+// Dos piezas se comparten con Edición (dueño, 14-oct-2026): el cuadro bien definido donde se escribe (ui/CuadroDeTexto)
+// y el chip de tarea con su lista (SelectorOpcion: «Un video corto ▾», «Crear una imagen ▾», «Editar ▾»). La caja solo le
+// pide al chip que cierre su lista cuando cambia de familia.
+//
 // Lo que la caja dice —que ya está creando, o por qué no pudo— sale en el cuadro de
 // abajo a la derecha (nucleo/avisos); donde esa página no lo trae, junto a la caja.
 import {
@@ -30,7 +34,6 @@ import {
   useEffectEvent,
   useId,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -45,6 +48,7 @@ import { clip as tarifaClip } from '../../nucleo/tarifas';
 import { guardarArchivos, TRASPASO_PERDIDO } from '../../nucleo/traspaso';
 import { refrescarSaldo } from '../../marca/useSaldo';
 import { Boton } from '../../ui/Boton';
+import { CuadroDeTexto } from '../../ui/CuadroDeTexto';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import {
@@ -85,6 +89,7 @@ import {
   textoSonido,
   type Tarea,
 } from './modelos';
+import { SelectorOpcion, type MandoSelector } from './SelectorOpcion';
 import { useEdicion } from './useEdicion';
 
 export interface MandoCaja {
@@ -110,14 +115,6 @@ export interface PropsCaja {
 }
 
 const SIN_IMAGENES: Imagen[] = [];
-
-// una pista al pasar el ratón o al enfocar: qué hace cada cosa (mock 2026-09-07)
-const PISTA =
-  'relative after:pointer-events-none after:absolute after:bottom-[calc(100%+10px)] after:left-0 after:z-10 ' +
-  'after:w-max after:max-w-[min(250px,calc(100vw-72px))] after:rounded-medio after:border after:border-linea ' +
-  'after:bg-elevada after:px-3 after:py-2 after:text-left after:text-xs after:whitespace-normal after:text-texto ' +
-  'after:opacity-0 after:invisible after:transition-opacity after:content-[attr(data-pista)] ' +
-  'hover:after:visible hover:after:opacity-100 focus-visible:after:visible focus-visible:after:opacity-100';
 
 // Lo que la caja dice (que ya está creando, o por qué no pudo) va al cuadro de abajo a la derecha, el mismo de
 // «Tus trabajos» (static/trabajos.js). Comparten clave: lo nuevo reemplaza lo anterior de la caja.
@@ -151,8 +148,6 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [abierto, setAbierto] = useState(false);
-  const [marcada, setMarcada] = useState(0);
   // las imágenes de referencia: se suben al pedir, no al agregarlas
   const [refs, setRefs] = useState<File[]>([]);
   const [aviso, setAviso] = useState('');
@@ -168,10 +163,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   // el cuadro de abajo a la derecha trae un error de la caja (un error se queda hasta cerrarlo)
   const errorEnElCuadro = useRef(false);
   const area = useRef<HTMLTextAreaElement>(null);
-  const boton = useRef<HTMLButtonElement>(null);
-  const lista = useRef<HTMLDivElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const idLista = useId();
+  // el chip de la tarea (SelectorOpcion): la caja solo le pide cerrar la lista cuando cambia de familia
+  const selector = useRef<MandoSelector>(null);
   const idTitulo = useId();
   // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
   const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') });
@@ -192,7 +185,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
         else enfocarAlMontar.current = true;
       } else {
         setOpcion(OPCIONES[f].find(o => o.id === id) ?? OPCIONES[f][0]!);
-        setAbierto(false);
+        selector.current?.cerrar();
         area.current?.focus();
       }
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
@@ -200,26 +193,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     referencia(archivo) {
       setFamilia('videos');
       setOpcion(OPCIONES.videos[0]!);
-      setAbierto(false);
+      selector.current?.cerrar();
       setRefs(r => [...r, archivo].slice(-MAX_FOTOS_CLIP));
       area.current?.focus();
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
     },
   }));
-
-  // fuera del menú o Esc: se cierra
-  useEffect(() => {
-    if (!abierto) return;
-    const fuera = (e: MouseEvent) => {
-      if (!menu.current?.contains(e.target as Node)) setAbierto(false);
-    };
-    document.addEventListener('mousedown', fuera);
-    return () => document.removeEventListener('mousedown', fuera);
-  }, [abierto]);
-
-  useEffect(() => {
-    if (abierto) (lista.current?.children[marcada] as HTMLElement | undefined)?.focus();
-  }, [abierto, marcada]);
 
   // «Generando…» dura hasta que la página navega. Si la persona regresa con «atrás»,
   // el navegador restaura ESTA página desde su caché con el estado que tenía:
@@ -254,26 +233,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     };
   }, [menuMas]);
 
-  // El menú es más ancho que su botón, y el botón está a media fila: anclado a
-  // un lado se salía por el otro. Se mide y se sujeta dentro de la ventana.
-  useLayoutEffect(() => {
-    if (!abierto) return;
-    const ubicar = () => {
-      const l = lista.current;
-      const b = boton.current;
-      if (!l || !b) return;
-      l.style.left = '0px';
-      const margen = 12;
-      const izq = b.getBoundingClientRect().left;
-      const tope = document.documentElement.clientWidth - margen - l.getBoundingClientRect().width;
-      l.style.left = Math.max(margen, Math.min(izq, tope)) - izq + 'px';
-    };
-    ubicar();
-    window.addEventListener('resize', ubicar);
-    return () => window.removeEventListener('resize', ubicar);
-  }, [abierto]);
-
-  // las opciones del menú son las de la familia de la opción de ahora (en Edición no se ven, pero la opción se conserva)
+  // las opciones del menú son las de la familia de la opción de ahora (Imagen o Video usan OPCIONES; Edición pinta su propio
+  // chip con MODOS_EDICION desde CajaEdicion, y la opción de Imagen/Video se conserva)
   const opciones = OPCIONES[OPCIONES.imagenes.some(o => o.id === opcion.id) ? 'imagenes' : 'videos'];
 
   // el modelo de la tarea: el que eligió, o el predeterminado, o el primero que
@@ -305,31 +266,6 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     if (!tarea || !cambio) return undefined;
     setElegidos(e => ({ ...e, [tarea]: { id: cambio.queda.id } }));
     return cambio.aviso;
-  }
-
-  function abrir() {
-    setMarcada(Math.max(0, opciones.findIndex(o => o.id === opcion.id)));
-    setAbierto(true);
-  }
-
-  function elegir(o: Opcion) {
-    setOpcion(o);
-    setAbierto(false);
-    boton.current?.focus();
-  }
-
-  function teclaLista(e: React.KeyboardEvent) {
-    if (e.key === 'ArrowDown') setMarcada(i => Math.min(i + 1, opciones.length - 1));
-    else if (e.key === 'ArrowUp') setMarcada(i => Math.max(i - 1, 0));
-    else if (e.key === 'Home') setMarcada(0);
-    else if (e.key === 'End') setMarcada(opciones.length - 1);
-    else if (e.key === 'Enter' || e.key === ' ') elegir(opciones[marcada]!);
-    else if (e.key === 'Escape') {
-      setAbierto(false);
-      boton.current?.focus();
-    } else if (e.key === 'Tab') setAbierto(false);
-    else return;
-    e.preventDefault();
   }
 
   // cuántas referencias admite la tarea de ahora; las que sobren se guardan, no se pierden
@@ -634,9 +570,10 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
               aria-pressed={familia === r.familia}
               onClick={() => {
                 setFamilia(r.familia);
-                // Imagen y Video eligen su primera opción, como siempre; Edición no tiene opciones (conserva todo lo suyo)
+                // Imagen y Video eligen su primera opción, como siempre; Edición no está en OPCIONES (su chip usa MODOS_EDICION, con
+                // una sola opción) y conserva todo lo suyo
                 if (r.familia !== 'edicion') setOpcion(OPCIONES[r.familia][0]!);
-                setAbierto(false);
+                selector.current?.cerrar();
               }}
               className={unir(
                 'flex min-h-12 flex-1 cursor-pointer flex-row items-center justify-center gap-2 rounded-medio border-0 text-sm',
@@ -659,7 +596,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
           ) : (
             <>
               {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} etiqueta={textosMas?.lista ?? 'Imágenes de referencia'} />}
-              <textarea
+              <CuadroDeTexto
                 ref={area}
                 aria-labelledby={idTitulo}
                 maxLength={5000}
@@ -669,7 +606,9 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                   setAviso('');
                 }}
                 placeholder={opcion.hueco}
-                className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
+                // piso de 112 px bajo 360 px (88 desde ahí): con el relleno del cuadro el texto pierde 26 px de ancho y, en un
+                // teléfono de 320, el ejemplo de «Creador de cuentos» (la más larga) pasa a 5 líneas y se cortaba la última
+                className="min-h-28 resize-y min-[360px]:min-h-22"
               />
               <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
                 <div className="flex min-w-0 gap-2.5">
@@ -750,66 +689,13 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
                     </div>
                   </>
                 )}
-                <div ref={menu} className="relative min-w-0 flex-1 min-[640px]:flex-none">
-                  <button
-                    ref={boton}
-                    type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded={abierto}
-                    aria-controls={idLista}
-                    data-pista={opcion.nota}
-                    onClick={() => (abierto ? setAbierto(false) : abrir())}
-                    onKeyDown={e => {
-                      if (e.key === 'ArrowDown' && !abierto) {
-                        e.preventDefault();
-                        abrir();
-                      }
-                    }}
-                    className={unir(
-                      PISTA,
-                      'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
-                      'min-[640px]:min-h-11 min-[640px]:max-w-full min-[640px]:w-auto min-[640px]:justify-start',
-                    )}
-                  >
-                    {opcion.rotulo}{' '}
-                    <span aria-hidden="true" className="text-secundario">
-                      ▾
-                    </span>
-                  </button>
-                  {abierto && (
-                    <div
-                      ref={lista}
-                      id={idLista}
-                      role="listbox"
-                      aria-label="Opciones"
-                      className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(400px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
-                    >
-                      {opciones.map((o, i) => (
-                        <div
-                          key={o.id}
-                          role="option"
-                          aria-selected={o.id === opcion.id}
-                          tabIndex={i === marcada ? 0 : -1}
-                          onClick={() => elegir(o)}
-                          onKeyDown={teclaLista}
-                          onMouseEnter={() => setMarcada(i)}
-                          className={unir(
-                            'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
-                            (i === marcada || o.id === opcion.id) && 'bg-elevada',
-                          )}
-                        >
-                          <span className="flex items-baseline justify-between gap-3">
-                            <b className="text-sm font-semibold">{o.rotulo}</b>
-                            <span className="text-xs whitespace-nowrap text-secundario">
-                              {o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`}
-                            </span>
-                          </span>
-                          <small className="block text-xs text-secundario">{o.nota}</small>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <SelectorOpcion
+                  ref={selector}
+                  opciones={opciones}
+                  elegida={opcion}
+                  detalle={o => (o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`)}
+                  alElegir={setOpcion}
+                />
                 </div>
 
                 <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">

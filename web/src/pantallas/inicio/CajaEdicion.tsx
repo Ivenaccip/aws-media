@@ -2,35 +2,51 @@
 // se ve; el estado, la subida, el precio y el cobro están en useEdicion (lo llama Caja, así que
 // cambiar de familia no pierde el texto, el video ni una subida a medias).
 //
-// Un solo botón principal, SIEMPRE el mismo elemento, que se apaga con `aria-disabled` y no con
-// `disabled`: apagado sigue enfocable y explica por qué (sin video avisa, sin texto lleva el
-// foco al campo, fuera de rango lo lleva al «+»). Su aspecto de apagado es el de siempre
-// (docs/DISENO.md §5: borde discontinuo, gris), no el ámbar a media opacidad del lienzo.
-// «Subiendo…» y «Calculando…» NO son apagado sino «Trabajando» (§5, y el lienzo los pinta ámbar con el cursor
-// de espera): conservan el ámbar, no se tragan el clic (avisa que hay un trabajo en curso) y se leen ocupados.
+// La fila de abajo es la de Video: «+» y el chip «Editar ▾» a la izquierda (el MISMO SelectorOpcion que Imagen y Video, con
+// una sola opción por ahora) y el botón principal a la derecha (en un teléfono, abajo, a todo el ancho).
+//
+// Un solo botón principal, «Iniciar», SIEMPRE el mismo elemento y SIEMPRE ámbar (dueño, 14-oct-2026: «dorado como el de
+// Generar»). Cuando aún no se puede, no se pinta apagado: se queda ámbar y explica al pulsarlo, igual que «Crear» de
+// Imagen y Video (docs/DISENO.md §5). Eso sí se apaga en la semántica —`aria-disabled` y no `disabled`—, así que sigue
+// enfocable y explica por qué (sin video avisa, sin texto lleva el foco al campo, fuera de rango lo lleva al «+»).
+// «Subiendo…» y «Calculando…» son «Trabajando» (§5): ámbar, cursor de espera, no se tragan el clic (avisa que hay un
+// trabajo en curso) y se leen ocupados.
+//
+// Las ideas ya no son botones (dueño, 14-oct-2026: «Rotan solas como pista»): en el lugar del texto gris del campo va
+// apareciendo y desapareciendo UNA idea a la vez (usePistaRotatoria). Es el `placeholder` NATIVO del <textarea> con su
+// opacidad en transición, y no una capa encima: alinea idéntico al texto que se escriba, no tapa clics, desaparece solo al
+// escribir y no hay nada que desalinear. Chromium transiciona `::placeholder` (se midió; ver docs/migracion/inicio.md). No
+// se anuncia (sin aria-live) y no es el nombre del campo (ese es su aria-label): quien usa lector de pantalla recibe un
+// ejemplo fijo como descripción del campo (EJEMPLO_FIJO, en un <p hidden>: solo lo lee `aria-describedby`, no queda suelto
+// en el árbol de accesibilidad).
 //
 // Lo que la revisión visual y de accesibilidad exige aquí (cada cosa tiene su prueba en Edicion.test.tsx):
-//   · el campo conserva el aro de foco de la carta (§4, «sin excepción»): llevarle el foco desde «Editar» o desde una
-//     idea sin que se vea dónde cayó dejaba a quien usa teclado sin saber dónde está;
-//   · el ejemplo del campo (placeholder) se lee con el gris secundario (6.45:1), no con el 50 % del texto (4.39:1), y
-//     el campo crece lo que haga falta para que en un teléfono no se corte la última línea;
+//   · el campo está en un cuadro bien definido (ui/CuadroDeTexto: borde de campo y fondo elevada) y ese cuadro lleva el aro
+//     de foco de la carta (§4, «sin excepción»): llevarle el foco desde «Iniciar» sin que se vea dónde cayó dejaba a quien
+//     usa teclado sin saber dónde está;
+//   · la pista del campo (placeholder) se lee con el gris secundario (6.45:1 sobre la superficie, 5.72:1 sobre el cuadro
+//     elevada, que es donde vive), no con el 50 % del texto (4.39:1 sobre la superficie, 4.11:1 sobre elevada), y
+//     el campo crece lo que haga falta para que en un teléfono no se corte la última línea (y no cambia de alto al cambiar de idea);
 //   · el «Recargar» tiene 44 px de área táctil aunque su letra sea chica;
-//   · cada apagado se explica con su propia línea (`aria-describedby`), no solo los de «sin texto» y «fuera».
-import { useId } from 'react';
+//   · cada estado del botón se explica con su propia línea (`aria-describedby`), no solo los de «sin texto» y «fuera».
+import { useId, useState } from 'react';
 
 import { ESTRELLA } from '../../nucleo/estrella';
 import { entero } from '../../nucleo/formato';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
 import { Boton } from '../../ui/Boton';
+import { CuadroDeTexto } from '../../ui/CuadroDeTexto';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import {
   AYUDA_TEXTO,
   AYUDA_VIDEO,
+  EJEMPLO_FIJO,
   ETIQUETA_TEXTO,
-  HUECO_TEXTO,
+  huecoDe,
   IDEAS_EDICION,
+  MODOS_EDICION,
   NOTA_CALCULANDO,
   NOTA_COPIA,
   NOTA_SIN_PRECIO,
@@ -39,12 +55,25 @@ import {
   tamano,
 } from './edicion';
 import { DESCRIPCION_VIDEOS, EXTS_VIDEO } from './envio';
+import { SelectorOpcion } from './SelectorOpcion';
 import type { ManejoEdicion, RefsEdicion, VideoDeEdicion } from './useEdicion';
+import { usePistaRotatoria } from './usePistaRotatoria';
 
 // lo que el selector de archivos deja escoger: las extensiones del servidor y los tipos que las acompañan
 const ACEPTA = [...EXTS_VIDEO, 'video/mp4', 'video/quicktime'].join(',');
 
 const NOTA = 'm-0 text-xs text-secundario';
+
+// El fundido de la pista, sobre el `::placeholder` del campo (Tailwind: `placeholder:`): la opacidad con el token de duración
+// de la carta (--dur-media: algo que entra o sale). Lo que entra frena al llegar (--ease-salida) y lo que se va acelera
+// (--ease-entrada); una transición usa la curva del estado al que VA. Con «reducir movimiento» ni se rota ni se transiciona
+// (`::placeholder` no es `*`: la regla global de tokens.css no lo alcanza, por eso el motion-reduce propio).
+const PISTA = 'placeholder:transition-opacity placeholder:duration-(--dur-media) motion-reduce:placeholder:transition-none';
+const PISTA_ENTRA = 'placeholder:opacity-100 placeholder:ease-(--ease-salida)';
+const PISTA_SALE = 'placeholder:opacity-0 placeholder:ease-(--ease-entrada)';
+
+/** Con una sola opción en el chip, elegirla no cambia nada: cierra la lista y devuelve el foco al chip. */
+const SIN_CAMBIO = () => undefined;
 
 // «Recargar» (cuando la recarga está abierta) es un enlace de una línea de letra chica: el área táctil de 44 px se la da
 // el relleno, y los márgenes negativos la devuelven al renglón para que la nota no crezca ni se mueva. El aro de foco va
@@ -56,20 +85,25 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
   const idAviso = useId();
   // la nota que explica el apagado cuando no es el aviso del servidor ni «escribe qué quieres» (solo hay una a la vez)
   const idNota = useId();
+  const idEjemplo = useId();
   const { video, boton, hayTexto } = ed;
 
-  // lo que el botón principal dice, y por qué está apagado (los lectores de pantalla lo leen al enfocarlo)
+  // la pista rota solo con el campo vacío y sin el foco: con texto no se ve, y quien va a escribir no la debe ver cambiar
+  // bajo el cursor (se congela en la que estaba; al soltar el foco con el campo vacío, retoma)
+  const [enfocado, setEnfocado] = useState(false);
+  const pista = usePistaRotatoria(IDEAS_EDICION, enfocado || ed.texto !== '');
+
+  // lo que el botón principal dice (los lectores de pantalla lo leen al enfocarlo, con su descripción)
   const etiqueta =
     boton.tipo === 'subiendo'
       ? 'Subiendo…'
       : boton.tipo === 'calculando'
         ? 'Calculando…'
         : boton.tipo === 'sin_texto' || boton.tipo === 'sin_saldo' || boton.tipo === 'listo'
-          ? `Editar ${ESTRELLA} ${entero(boton.creditos)}`
-          : 'Editar';
-  // subiendo y calculando son «trabajando»: ámbar, cursor de espera y ocupado; no el gris discontinuo del apagado
+          ? `Iniciar ${ESTRELLA} ${entero(boton.creditos)}`
+          : 'Iniciar';
+  // subiendo y calculando son «trabajando»: ocupado y con cursor de espera
   const esperando = boton.tipo === 'subiendo' || boton.tipo === 'calculando';
-  const apagado = boton.tipo !== 'listo' && !esperando;
   const hayNota = esperando || boton.tipo === 'sin_precio' || (boton.tipo === 'sin_video' && hayTexto) || (boton.tipo === 'sin_saldo' && ed.saldo !== null);
   const describe = [
     boton.tipo === 'fuera' ? idAviso : '',
@@ -84,34 +118,34 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
       {video && <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={ed.quitar} />}
       {video && <p className={unir(NOTA, 'mb-3')}>{NOTA_COPIA}</p>}
 
-      <textarea
+      <CuadroDeTexto
         id="texto-edicion"
         ref={area}
         rows={2}
         maxLength={2000}
         aria-label={ETIQUETA_TEXTO}
         aria-required="true"
+        aria-describedby={idEjemplo}
         value={ed.texto}
         onChange={e => ed.escribir(e.target.value)}
-        placeholder={HUECO_TEXTO}
-        // sin `outline-none`: el aro de foco de la carta (§4) lo pone tokens.css, y el campo es adonde se lleva el foco
-        className="max-h-56 min-h-24 w-full resize-y rounded-chico border-0 bg-transparent p-0 text-sm text-texto field-sizing-content placeholder:text-secundario focus-visible:outline-offset-4 min-[640px]:min-h-17"
+        onFocus={() => setEnfocado(true)}
+        onBlur={() => setEnfocado(false)}
+        placeholder={huecoDe(pista.idea)}
+        className={unir(
+          'max-h-56 min-h-24 resize-y field-sizing-content min-[640px]:min-h-17',
+          PISTA,
+          pista.saliendo ? PISTA_SALE : PISTA_ENTRA,
+        )}
       />
+      {/* el ejemplo que no rota, para el lector de pantalla: solo es la descripción del campo (`aria-describedby` lee el texto
+          aunque el <p> esté oculto). Oculto de verdad (`hidden`) y no solo invisible (`sr-only`): si no, en modo lectura el
+          lector lo recita como un párrafo suelto entre el campo y el «+», y otra vez al enfocar el campo. A la vista ya está la
+          pista de arriba, rotando */}
+      <p id={idEjemplo} hidden>
+        {EJEMPLO_FIJO}
+      </p>
 
-      <div role="group" aria-label="Ideas para escribir" className="mt-2.5 flex flex-wrap gap-2">
-        {IDEAS_EDICION.map(idea => (
-          <button
-            key={idea}
-            type="button"
-            onClick={() => ed.usarIdea(idea)}
-            className="inline-flex min-h-11 cursor-pointer items-center rounded-pildora border border-linea bg-transparent px-3 text-xs text-secundario hover:border-campo hover:bg-elevada hover:text-texto"
-          >
-            {idea}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-3 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:items-center">
+      <div className="mt-3 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
         {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
         <input
           ref={archivos}
@@ -125,26 +159,32 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
             e.target.value = ''; // para poder elegir el mismo archivo otra vez
           }}
         />
-        <button
-          ref={mas}
-          type="button"
-          aria-label={video ? 'Cambiar el video' : 'Agregar el video que quieres editar'}
-          aria-disabled={ed.ocupado || undefined}
-          title={`Agrega el video (${DESCRIPCION_VIDEOS}) o arrástralo a la caja`}
-          onClick={ed.tocarMas}
-          className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo aria-disabled:cursor-default aria-disabled:text-apagado aria-disabled:hover:border-linea min-[640px]:size-11"
-        >
-          <Icono nombre="mas" />
-        </button>
+        <div className="flex min-w-0 gap-2.5">
+          <button
+            ref={mas}
+            type="button"
+            aria-label={video ? 'Cambiar el video' : 'Agregar el video que quieres editar'}
+            aria-disabled={ed.ocupado || undefined}
+            title={`Agrega el video (${DESCRIPCION_VIDEOS}) o arrástralo a la caja`}
+            onClick={ed.tocarMas}
+            className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo aria-disabled:cursor-default aria-disabled:text-apagado aria-disabled:hover:border-linea min-[640px]:size-11"
+          >
+            <Icono nombre="mas" />
+          </button>
+          {/* el mismo chip que Imagen y Video; con una sola opción, elegirla es cerrar la lista y volver al chip */}
+          <SelectorOpcion opciones={MODOS_EDICION} elegida={MODOS_EDICION[0]} detalle={m => m.detalle} alElegir={SIN_CAMBIO} />
+        </div>
 
-        <div className="min-[640px]:ml-auto">
+        <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
           <Boton
             ref={principal}
             nivel="principal"
-            apagado={apagado}
-            trabajando={ed.lanzando && 'Editando…'}
+            trabajando={ed.lanzando && 'Iniciando…'}
+            // ámbar en todos los estados: NO se le pasa `apagado` (que lo pintaría gris y discontinuo). Lo que sí queda es la
+            // semántica: `aria-disabled` mientras no se pueda, y el clic llega para explicar por qué
+            {...(boton.tipo !== 'listo' ? { 'aria-disabled': true } : {})}
             // trabajando: ocupado y no disponible para quien lo lee, pero el clic llega (avisa que hay un trabajo en curso)
-            {...(esperando ? { 'aria-busy': true, 'aria-disabled': true } : {})}
+            {...(esperando ? { 'aria-busy': true } : {})}
             {...(describe ? { 'aria-describedby': describe } : {})}
             onClick={ed.tocarEditar}
             className={unir('w-full min-[640px]:w-auto', esperando && 'cursor-progress')}

@@ -66,7 +66,7 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 | `#93a3b8` | secundario | texto de apoyo (6.45:1 sobre superficie) | — |
 | `#6b7a8f` | secundario apagado | solo decoración o texto deshabilitado | texto normal (3.79:1 sobre superficie) |
 | `#da8c28` | **acento ámbar** | el botón principal, el foco, el ✦ | texto largo, fondos grandes |
-| `#f0a94a` | ámbar claro | hover del principal, anillo de foco, títulos-marca | — |
+| `#f0a94a` | ámbar claro | hover del principal, anillo de foco, títulos-marca (el «Irremplazables» del menú del inicio) | — |
 | `#a96716` | ámbar hondo | bordes y detalles | fondo con texto (4.19:1 con la tinta) |
 | `#14100a` | tinta | el **único** texto sobre ámbar (7.0:1) | — |
 | `#a9c6ee` | azul claro | **solo enlaces** (8.4:1 o más sobre cualquier fondo) | botones |
@@ -123,6 +123,17 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     900 ms.
   - Nada anima por defecto lo que ya estaba al abrir la pantalla: la primera
     carga no rueda, no se enciende y no entra animada.
+  - Lo que cambia con un reloj, y no con CSS, también obedece a «reducir
+    movimiento», pero la regla global de `tokens.css` NO lo alcanza (acorta las
+    animaciones y transiciones de `*`, no corta un `setTimeout`, y `::placeholder`
+    ni siquiera es `*`): quien corre el reloj pregunta por la preferencia
+    (`nucleo/useAmbiente.ts`, que además se entera si cambia con la pantalla
+    abierta) y se queda quieto. Caso de hoy (dueño, 14-oct-2026): la pista del
+    campo de Edición rota entre 4 ideas cada 4 s con un fundido de `--dur-media`
+    (sale con `--ease-entrada`, entra con `--ease-salida`), empieza siempre en la
+    primera y sin animación, y NO rota con «reducir movimiento» (fija en la
+    primera), con el foco en el campo, con texto escrito ni con la pestaña
+    oculta. Sin `aria-live`: no se anuncia.
   - Entre pantallas hay View Transition (fundido; la píldora del saldo se
     queda quieta; la miniatura de una película lista se agranda hasta su
     reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con
@@ -137,7 +148,10 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
   sea más chico.
 - **Foco:** `outline: 2px solid #f0a94a; outline-offset: 3px` en todo lo
-  que se enfoca, sin excepción.
+  que se enfoca, sin excepción. Si el campo vive dentro de un cuadro con borde y
+  fondo (el área de escritura de la caja del inicio: `ui/CuadroDeTexto`), el aro
+  lo dibuja el cuadro cuando algo de adentro tiene foco visible y el campo no
+  dibuja otro: dos aros, uno dentro del otro, se verían como un error.
 
 ## 5. Botones: tres niveles, cinco estados
 
@@ -154,6 +168,17 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 - El estado «al apretar» **no** usa `#a96716` de fondo: con la tinta da
   4.19:1 y no pasa AA. Por eso se queda en `#da8c28` y solo se encoge.
 - Doble clic sobre un botón que cobra = **una** petición.
+- **El principal puede no apagarse nunca** (dueño, 14-oct-2026): «Iniciar» de la
+  pestaña Edición del inicio es ámbar en TODOS los estados —sin video, sin texto,
+  con precio, sin saldo—, igual que «Crear» de Imagen y Video, que tampoco se
+  pintan apagados sino que explican al pulsarlos. No es la fila «Sin saldo /
+  deshabilitado» de la tabla para este botón: el gris discontinuo queda para el
+  `disabled` de verdad (`<Boton apagado>` sigue ahí para quien lo necesite). Lo
+  que no cambia: sigue sin `disabled` (retiene el foco), lleva `aria-disabled`
+  mientras no se pueda cobrar, explica por qué al pulsarlo o al enfocarlo
+  (`aria-describedby`), «Subiendo…» y «Calculando…» se leen ocupados, y el precio
+  se ve en el botón («Iniciar ✦ N») antes de cobrar. Abajo sigue el «Te faltan
+  ✦ N · Recargar».
 
 ## 6. Iconos (en lugar de emojis)
 

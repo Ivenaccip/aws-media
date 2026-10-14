@@ -76,7 +76,7 @@ export interface ManejoEdicion {
   hayTexto: boolean;
   video: VideoDeEdicion | null;
   boton: EstadoBoton;
-  /** Una subida, un precio por calcular o una corrida en curso: «+» y «Editar» avisan en vez de empezar otra. */
+  /** Una subida, un precio por calcular o una corrida en curso: «+» e «Iniciar» avisan en vez de empezar otra. */
   ocupado: boolean;
   /** Entre el clic y la respuesta del servidor. */
   lanzando: boolean;
@@ -84,7 +84,6 @@ export interface ManejoEdicion {
   /** Lo que le falta de saldo (0 = nada), sabido por el saldo o por el 402 del servidor. */
   faltan: number;
   escribir(texto: string): void;
-  usarIdea(texto: string): void;
   /** Los archivos que llegan del selector o de soltarlos en la caja. */
   recibir(archivos: File[]): void;
   quitar(): void;
@@ -210,14 +209,7 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
     olvidarAviso();
   }
 
-  function usarIdea(idea: string) {
-    setTexto(idea);
-    olvidarAviso();
-    limpiarError();
-    enfocarTexto();
-  }
-
-  /** Pide el precio del video subido. Si no llega, el video se queda y «Editar» lo vuelve a pedir. */
+  /** Pide el precio del video subido. Si no llega, el video se queda e «Iniciar» lo vuelve a pedir. */
   async function calcularPrecio(proyecto: string, mio: number) {
     if (intento.current === mio) setVideo(v => v && { ...v, fase: 'calculando' });
     try {
@@ -416,7 +408,6 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
       saldo,
       faltan,
       escribir,
-      usarIdea,
       recibir,
       quitar,
       tocarMas,
