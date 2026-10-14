@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRef } from 'react';
+import { createRef, StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -20,10 +20,12 @@ import { Caja, type MandoCaja } from './Caja';
 import {
   AVISO_OCUPADO,
   AVISO_SIN_VIDEO,
+  AYUDA_TEXTO,
   AYUDA_VIDEO,
+  EJEMPLO_FIJO,
   estadoDelBoton,
   faltanTras402,
-  HUECO_TEXTO,
+  huecoDe,
   IDEAS_EDICION,
   limpiarInstruccion,
   MODOS_EDICION,
@@ -31,6 +33,8 @@ import {
   NOTA_SIN_PRECIO,
   NOTA_SUBIENDO,
   nombreDeProyecto,
+  PISTA_CADA_MS,
+  PISTA_FUNDIDO_MS,
   reloj,
   tamano,
 } from './edicion';
@@ -226,7 +230,7 @@ describe('la caja de Edición', () => {
     // el título de la caja sigue siendo el de siempre; el campo es obligatorio y dice lo que se espera
     expect(screen.getByRole('heading', { name: '¿Qué vamos a crear hoy?' })).toBeInTheDocument();
     expect(campo()).toHaveAttribute('aria-required', 'true');
-    expect(campo()).toHaveAttribute('placeholder', HUECO_TEXTO);
+    expect(campo()).toHaveAttribute('placeholder', huecoDe(IDEAS_EDICION[0]));
     expect(campo()).toHaveAttribute('maxlength', '2000');
     // Imagen y Video siguen eligiendo su primera opción al volver
     await userEvent.click(riel().getByRole('button', { name: 'Imagen' }));
@@ -250,7 +254,7 @@ describe('la caja de Edición', () => {
     expect(boton).not.toBeDisabled();
     boton.focus();
     expect(boton).toHaveFocus();
-    expect(screen.getByText('Escribe qué quieres hacer con tu video, o toca una idea.')).toBeInTheDocument();
+    expect(screen.getByText('Escribe qué quieres hacer con tu video.')).toBeInTheDocument();
     await userEvent.click(boton);
     expect(dicho(avisos)).toEqual([{ texto: AVISO_SIN_VIDEO, tipo: 'mal', clave: 'caja' }]);
     expect(AVISO_SIN_VIDEO).toBe('Primero agrega el video: pulsa el «+» o arrástralo a la caja.');
@@ -263,30 +267,8 @@ describe('la caja de Edición', () => {
     await irAEdicion();
     await userEvent.type(campo(), TEXTO);
     expect(screen.getByText('Agrega el video con el «+» o arrástralo a la caja.')).toBeInTheDocument();
-    expect(screen.queryByText('Escribe qué quieres hacer con tu video, o toca una idea.')).toBeNull();
+    expect(screen.queryByText('Escribe qué quieres hacer con tu video.')).toBeNull();
     expect(botonIniciar()).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  it('inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco', async () => {
-    montar();
-    pintar();
-    await irAEdicion();
-    const ideas = within(screen.getByRole('group', { name: 'Ideas para escribir' })).getAllByRole('button');
-    expect(ideas.map(b => b.textContent)).toEqual([
-      'Quita muletillas y silencios',
-      'Un short vertical para Reels',
-      'Resumen de 60 segundos',
-      'Subtítulos grandes y un título',
-    ]);
-    expect([...IDEAS_EDICION]).toEqual(ideas.map(b => b.textContent));
-    await userEvent.click(ideas[2]!);
-    expect(campo()).toHaveValue('Resumen de 60 segundos');
-    expect(campo()).toHaveFocus();
-    // otra idea reemplaza a la anterior (no se acumulan)
-    await userEvent.click(ideas[0]!);
-    expect(campo()).toHaveValue('Quita muletillas y silencios');
-    // y con texto ya no pide escribir
-    expect(screen.queryByText('Escribe qué quieres hacer con tu video, o toca una idea.')).toBeNull();
   });
 
   it('inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar', async () => {
@@ -344,20 +326,17 @@ describe('la caja de Edición', () => {
     expect(boton).toHaveAttribute('aria-disabled', 'true');
     expect(boton).not.toBeDisabled();
     expect(esDorado(boton)).toBe(true);
-    expect(boton).toHaveAccessibleDescription('Escribe qué quieres hacer con tu video, o toca una idea.');
-    expect(screen.getByText('Escribe qué quieres hacer con tu video, o toca una idea.')).toBeInTheDocument();
+    expect(boton).toHaveAccessibleDescription('Escribe qué quieres hacer con tu video.');
+    expect(screen.getByText('Escribe qué quieres hacer con tu video.')).toBeInTheDocument();
     await userEvent.click(boton);
     expect(campo()).toHaveFocus();
     expect(avisos.mostrar).not.toHaveBeenCalled();
-    // una idea de un toque lo enciende...
-    await userEvent.click(screen.getByRole('button', { name: 'Resumen de 60 segundos' }));
+    // escribir lo enciende...
+    await userEvent.type(campo(), TEXTO);
     expect(screen.getByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-disabled');
     // ...y vaciar el campo lo apaga otra vez
     await userEvent.clear(campo());
     expect(screen.getByRole('button', { name: 'Iniciar ✦ 8' })).toHaveAttribute('aria-disabled', 'true');
-    // escribir también lo enciende
-    await userEvent.type(campo(), TEXTO);
-    expect(screen.getByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-disabled');
   });
 
   it('inicio.edicion.un_aviso_del_servidor_apaga_el_boton_sin_precio_y_lleva_el_foco_al_mas', async () => {
@@ -860,8 +839,6 @@ describe('la caja de Edición', () => {
     pintar();
     await irAEdicion();
     for (const b of riel().getAllByRole('button')) expect(mide44(b), b.textContent ?? '').toBe(true);
-    const ideas = within(screen.getByRole('group', { name: 'Ideas para escribir' })).getAllByRole('button');
-    for (const b of ideas) expect(b.className).toContain('min-h-11');
     expect(mide44(botonMas())).toBe(true);
     expect(mide44(chipModo())).toBe(true);
     expect(mide44(botonIniciar())).toBe(true);
@@ -943,7 +920,7 @@ describe('la caja de Edición', () => {
     expect(riel().getByRole('button', { name: 'Edición' })).toHaveAttribute('aria-pressed', 'true');
     expect(campo()).toHaveFocus();
     // ya en Edición: el foco vuelve al campo
-    screen.getByRole('button', { name: 'Quita muletillas y silencios' }).focus();
+    botonMas().focus();
     act(() => mando.current!.elegir('edicion'));
     expect(campo()).toHaveFocus();
     // y las otras familias siguen eligiendo su opción
@@ -1447,7 +1424,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
       fireEvent.change(campo(), { target: { value: nada } });
       expect(botonIniciar(), JSON.stringify(nada)).toHaveAttribute('aria-disabled', 'true');
       // y la ayuda sigue pidiendo que escriba (el campo parece lleno, pero no dice nada)
-      expect(screen.getByText('Escribe qué quieres hacer con tu video, o toca una idea.'), JSON.stringify(nada)).toBeInTheDocument();
+      expect(screen.getByText('Escribe qué quieres hacer con tu video.'), JSON.stringify(nada)).toBeInTheDocument();
       expect(limpiarInstruccion(nada), JSON.stringify(nada)).toBe('');
     }
     await userEvent.click(botonIniciar());
@@ -1745,6 +1722,431 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
   });
 });
 
+// Las ideas de Edición ya no son botones sino una pista que rota sola dentro del campo (dueño, 14-oct-2026: «Rotan solas como
+// pista»). El reloj es de verdad (setTimeout) pero falso: vi.useFakeTimers() sin avance automático, así que cada prueba mueve
+// el tiempo a mano y cuenta los temporizadores vivos con vi.getTimerCount(). Sin userEvent (necesita el reloj real): fireEvent.
+describe('la pista que rota en el campo de Edición', () => {
+  /** La cuenta de las pruebas: una idea sale a los 3.75 s y la siguiente entra a los 4 (PISTA_CADA_MS). */
+  const ANTES_DE_SALIR = PISTA_CADA_MS - PISTA_FUNDIDO_MS;
+  const pista = () => campo().getAttribute('placeholder');
+  /** El fundido de salida: la opacidad de `::placeholder` en 0 (jsdom no calcula `::placeholder`: se lee la clase que la pone). */
+  const saliendo = () => campo().className.split(/\s+/).includes('placeholder:opacity-0');
+  /**
+   * Mueve el reloj falso. El temporizador de la pista se arma en un efecto de React, y los efectos corren al salir de cada
+   * act(): para que cada paso arme el suyo a tiempo (como en el navegador) se avanza de a `paso` ms, de a 1 por omisión. Los
+   * saltos largos de «aquí no debe pasar nada» usan un paso grueso: ahí no se miden fronteras.
+   */
+  const avanzar = (ms: number, paso = 1) => {
+    for (let t = 0; t < ms; t += paso) {
+      act(() => {
+        vi.advanceTimersByTime(Math.min(paso, ms - t));
+      });
+    }
+  };
+  const aEdicion = () => fireEvent.click(riel().getByRole('button', { name: 'Edición' }));
+  /** Los temporizadores vivos con la pista rodando, y con ella parada (el foco la para): su diferencia es la rotación. */
+  function cuentas() {
+    const rodando = vi.getTimerCount();
+    fireEvent.focus(campo());
+    const parada = vi.getTimerCount();
+    fireEvent.blur(campo());
+    return { rodando, parada };
+  }
+  /** `matchMedia` con «reducir movimiento» que la prueba puede cambiar, y los oyentes que le quedan puestos. */
+  function ponerMovimiento(reducido: boolean) {
+    const oyentes = new Set<() => void>();
+    let valor = reducido;
+    vi.stubGlobal('matchMedia', (consulta: string) => ({
+      get matches() {
+        return consulta.includes('prefers-reduced-motion') && valor;
+      },
+      media: consulta,
+      addEventListener: (_tipo: string, f: () => void) => oyentes.add(f),
+      removeEventListener: (_tipo: string, f: () => void) => oyentes.delete(f),
+    }));
+    return {
+      oyentes,
+      cambiar(nuevo: boolean) {
+        valor = nuevo;
+        act(() => oyentes.forEach(f => f()));
+      },
+    };
+  }
+  /** `document.hidden` que la prueba puede cambiar (y avisa con `visibilitychange`, como el navegador). */
+  function ponerPestana(oculta: boolean) {
+    let valor = oculta;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => valor });
+    onTestFinished(() => {
+      delete (document as { hidden?: boolean }).hidden;
+    });
+    return (nuevo: boolean) => {
+      valor = nuevo;
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it('inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea', () => {
+    montar();
+    pintar();
+    aEdicion();
+    // ya no hay grupo de ideas ni ningún botón con sus textos: eran un atajo que ponía el texto en el campo, y ahora son pista
+    expect(screen.queryByRole('group', { name: /ideas/i })).toBeNull();
+    for (const idea of IDEAS_EDICION) expect(screen.queryByRole('button', { name: idea })).toBeNull();
+    expect(riel().getAllByRole('button')).toHaveLength(3);
+    // ...así que la ayuda no manda a tocar nada: «toca una idea» llevaría a un botón que no existe
+    expect(AYUDA_TEXTO).toBe('Escribe qué quieres hacer con tu video.');
+    expect(AYUDA_TEXTO).not.toMatch(/toca/i);
+    expect(screen.getByText(AYUDA_TEXTO)).toBeInTheDocument();
+    expect(screen.queryByText(/toca una idea/i)).toBeNull();
+    // el campo sigue vacío: la pista NO es su valor
+    expect(campo()).toHaveValue('');
+  });
+
+  it('inicio.edicion.la_pista_arranca_en_la_primera_idea_sin_fundido_y_las_cuatro_leen_igual', () => {
+    montar();
+    pintar();
+    aEdicion();
+    // siempre en la primera, sin salir ni entrar: abrir la pantalla no anima lo que ya estaba (docs/DISENO.md §4)
+    expect(pista()).toBe('Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»');
+    expect(saliendo()).toBe(false);
+    expect(campo().className.split(/\s+/)).toContain('placeholder:opacity-100');
+    // la rotación no empieza hasta cumplido el primer intervalo
+    avanzar(ANTES_DE_SALIR - 1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    // la misma frase con las cuatro (con el punto, o sin él, igual en todas) y entre comillas angulares
+    expect(IDEAS_EDICION.map(huecoDe)).toEqual([
+      'Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»',
+      'Cuéntale a la IA qué quieres. Ejemplo: «Un short vertical para Reels»',
+      'Cuéntale a la IA qué quieres. Ejemplo: «Resumen de 60 segundos»',
+      'Cuéntale a la IA qué quieres. Ejemplo: «Subtítulos grandes y un título»',
+    ]);
+    // y vuelve a abrirse en la primera: cambiar de familia y regresar no deja la pista a medias
+    avanzar(PISTA_CADA_MS * 2);
+    expect(pista()).not.toBe(huecoDe(IDEAS_EDICION[0]));
+    fireEvent.click(riel().getByRole('button', { name: 'Video' }));
+    aEdicion();
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+  });
+
+  it('inicio.edicion.la_pista_rota_cada_4_s_con_fundido_de_salida_y_de_entrada_y_da_la_vuelta', () => {
+    montar();
+    pintar();
+    aEdicion();
+    // dos vueltas completas: cada idea sale (opacidad 0, curva de lo que se va), se cambia el texto con el campo ya apagado y la
+    // siguiente entra (opacidad 1, curva de lo que llega). El texto cambia a los 4 s justos de que empezó la idea anterior
+    const clases = () => campo().className.split(/\s+/);
+    for (let vuelta = 0; vuelta < 2; vuelta++) {
+      for (let i = 0; i < IDEAS_EDICION.length; i++) {
+        expect(pista(), `vuelta ${vuelta}, idea ${i}`).toBe(huecoDe(IDEAS_EDICION[i]!));
+        expect(saliendo()).toBe(false);
+        expect(clases()).toContain('placeholder:ease-(--ease-salida)');
+        avanzar(ANTES_DE_SALIR - 1);
+        expect(saliendo(), 'todavía no sale').toBe(false);
+        avanzar(1);
+        // sale: sigue siendo el mismo texto (se cambia cuando ya no se ve), con la curva de lo que se va
+        expect(saliendo(), 'ya sale').toBe(true);
+        expect(pista()).toBe(huecoDe(IDEAS_EDICION[i]!));
+        expect(clases()).toContain('placeholder:ease-(--ease-entrada)');
+        expect(clases()).not.toContain('placeholder:opacity-100');
+        avanzar(PISTA_FUNDIDO_MS - 1);
+        expect(pista(), 'a un instante de cambiar').toBe(huecoDe(IDEAS_EDICION[i]!));
+        avanzar(1);
+      }
+    }
+    // dio la vuelta: otra vez la primera, y a los 4 s justos desde que empezó cada una (16 s por vuelta)
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(PISTA_CADA_MS).toBe(4000);
+    // un solo cambio por intervalo: no se salta ninguna idea
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+  });
+
+  it('inicio.edicion.la_pista_no_rota_con_el_foco_se_congela_entera_y_retoma_al_soltarlo_vacio', () => {
+    montar();
+    pintar();
+    aEdicion();
+    const { rodando, parada } = cuentas();
+    // el foco para el reloj: ni el temporizador de la rotación queda vivo
+    expect(rodando - parada).toBe(1);
+    // se pasa a la segunda idea y, a mitad del fundido de salida de esa, se enfoca el campo
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    avanzar(ANTES_DE_SALIR);
+    expect(saliendo()).toBe(true);
+    fireEvent.focus(campo());
+    // se congela en la que estaba, y ENTERA: dejarla a medio apagar sería un campo sin pista
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(parada);
+    avanzar(PISTA_CADA_MS * 10, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(parada);
+    // al soltar el foco con el campo vacío, retoma desde esa idea, con su intervalo completo
+    fireEvent.blur(campo());
+    expect(vi.getTimerCount()).toBe(rodando);
+    avanzar(PISTA_CADA_MS - 1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    avanzar(1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+  });
+
+  it('inicio.edicion.si_la_caja_abre_con_el_foco_en_el_campo_la_pista_nace_congelada', () => {
+    // «Subir metraje» del primer uso y el mando de la caja abren Edición y le dan el foco al campo en el mismo render que lo
+    // monta: la pista no debe rotar bajo el cursor de quien ya va a escribir
+    montar();
+    const mando = createRef<MandoCaja>();
+    render(<Caja ref={mando} ir={ir} />);
+    act(() => mando.current!.elegir('edicion'));
+    expect(campo()).toHaveFocus();
+    avanzar(PISTA_CADA_MS * 5, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    // (el temporizador de una caja con el foco ya no tiene la rotación: se mide cuando los de otras cosas ya vencieron)
+    const congelada = vi.getTimerCount();
+    // al soltar el foco con el campo vacío, empieza a rotar
+    fireEvent.blur(campo());
+    expect(vi.getTimerCount()).toBe(congelada + 1);
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+  });
+
+  it('inicio.edicion.con_texto_la_pista_no_corre_ni_arma_temporizadores_y_al_vaciar_retoma', () => {
+    montar();
+    pintar();
+    aEdicion();
+    const { rodando, parada } = cuentas();
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    // con texto la pista no se ve: no corre nada, ni intervalo ni fundidos (y el campo no se queda a media luz)
+    fireEvent.change(campo(), { target: { value: TEXTO } });
+    expect(vi.getTimerCount()).toBe(parada);
+    expect(saliendo()).toBe(false);
+    avanzar(PISTA_CADA_MS * 10, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    expect(vi.getTimerCount()).toBe(parada);
+    // también si lo escrito es solo un espacio: el campo ya no está vacío y la pista tampoco se ve
+    fireEvent.change(campo(), { target: { value: ' ' } });
+    expect(vi.getTimerCount()).toBe(parada);
+    // borrar todo retoma la rotación desde esa idea
+    fireEvent.change(campo(), { target: { value: '' } });
+    expect(vi.getTimerCount()).toBe(rodando);
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+  });
+
+  it('inicio.edicion.con_reducir_movimiento_la_pista_queda_fija_y_reacciona_si_cambia_la_preferencia', () => {
+    const sistema = ponerMovimiento(true);
+    montar();
+    pintar();
+    aEdicion();
+    // quieta en la primera: sin fundido, sin rotación, sin reloj (el foco no cambia la cuenta: ya no hay nada que parar)
+    const { rodando, parada } = cuentas();
+    expect(rodando).toBe(parada);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    avanzar(PISTA_CADA_MS * 10, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(parada);
+    expect(sistema.oyentes.size).toBeGreaterThan(0);
+    // la persona apaga «reducir movimiento» con la pantalla abierta: la rotación arranca sin recargar
+    sistema.cambiar(false);
+    expect(vi.getTimerCount()).toBe(parada + 1);
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    // y la vuelve a encender a mitad de un fundido: se queda quieta en la primera, entera, y sin reloj
+    avanzar(ANTES_DE_SALIR);
+    expect(saliendo()).toBe(true);
+    sistema.cambiar(true);
+    expect(saliendo()).toBe(false);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(vi.getTimerCount()).toBe(parada);
+    avanzar(PISTA_CADA_MS * 10, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    // y la apaga de nuevo: sigue en la primera, entera (no salta de golpe, sin fundido, a la idea 2.ª que traía la rotación
+    // guardada) y de ahí rota con su fundido y su intervalo completo
+    sistema.cambiar(false);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(parada + 1);
+    avanzar(PISTA_CADA_MS - 1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    avanzar(1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+  });
+
+  it('inicio.edicion.apagar_reducir_movimiento_sigue_en_la_primera_idea_tambien_con_el_foco_o_con_texto', () => {
+    // `rota` ya es falso con el foco o con texto: el reinicio no puede colgar de que `rota` cambie, o encender y apagar la
+    // preferencia en esos estados dejaría la pista saltando a la idea que iba, bajo el cursor
+    const sistema = ponerMovimiento(false);
+    montar();
+    pintar();
+    aEdicion();
+    avanzar(PISTA_CADA_MS * 2);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+    // con el foco en el campo
+    fireEvent.focus(campo());
+    const quieta = vi.getTimerCount();
+    sistema.cambiar(true);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    sistema.cambiar(false);
+    expect(pista(), 'con el foco, al apagar sigue en la primera').toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(quieta);
+    avanzar(PISTA_CADA_MS * 5, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    // al soltar el foco con el campo vacío, rota desde la primera con su intervalo completo
+    fireEvent.blur(campo());
+    avanzar(PISTA_CADA_MS - 1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    avanzar(1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+    // con texto escrito
+    fireEvent.change(campo(), { target: { value: TEXTO } });
+    const conTexto = vi.getTimerCount();
+    sistema.cambiar(true);
+    sistema.cambiar(false);
+    expect(vi.getTimerCount()).toBe(conTexto);
+    expect(pista(), 'con texto, al apagar la pista del fondo es la primera').toBe(huecoDe(IDEAS_EDICION[0]));
+    // borrar todo retoma desde la primera
+    fireEvent.change(campo(), { target: { value: '' } });
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+  });
+
+  it('inicio.edicion.con_la_pestana_oculta_la_pista_no_rota_ni_acumula_ciclos', () => {
+    const verPestana = ponerPestana(false);
+    montar();
+    pintar();
+    aEdicion();
+    const { rodando, parada } = cuentas();
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    // se oculta la pestaña: no queda ningún temporizador y, por mucho que pase, no se dispara nada ni se acumula
+    verPestana(true);
+    expect(vi.getTimerCount()).toBe(parada);
+    avanzar(60_000, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    expect(vi.getTimerCount()).toBe(parada);
+    // al volver, UNA sola idea más después de un intervalo completo, no los quince ciclos que «pasaron»
+    verPestana(false);
+    expect(vi.getTimerCount()).toBe(rodando);
+    avanzar(ANTES_DE_SALIR - 1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    avanzar(1 + PISTA_FUNDIDO_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+  });
+
+  it('inicio.edicion.si_la_pestana_ya_esta_oculta_al_abrir_la_pista_no_arma_el_reloj', () => {
+    const verPestana = ponerPestana(true);
+    montar();
+    pintar();
+    aEdicion();
+    const oculta = vi.getTimerCount();
+    avanzar(PISTA_CADA_MS * 5, 50);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    verPestana(false);
+    expect(vi.getTimerCount()).toBe(oculta + 1);
+  });
+
+  it('inicio.edicion.la_pista_no_deja_temporizadores_al_desmontar_ni_al_cambiar_de_familia_y_en_strictmode_corre_uno_solo', () => {
+    montar();
+    // StrictMode monta, desmonta y vuelve a montar los efectos: si el primer reloj no se cancelara habría dos rotaciones
+    // corriendo (y cada intervalo se saltaría una idea)
+    const { unmount } = render(
+      <StrictMode>
+        <Caja ir={ir} />
+      </StrictMode>,
+    );
+    aEdicion();
+    const { rodando, parada } = cuentas();
+    expect(rodando - parada).toBe(1);
+    avanzar(PISTA_CADA_MS);
+    expect(pista(), 'una sola rotación: pasa a la segunda, no a la tercera').toBe(huecoDe(IDEAS_EDICION[1]));
+    avanzar(PISTA_CADA_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+    // cambiar de familia desmonta la caja de Edición: su reloj se va con ella
+    fireEvent.click(riel().getByRole('button', { name: 'Imagen' }));
+    expect(vi.getTimerCount()).toBe(parada);
+    aEdicion();
+    expect(vi.getTimerCount()).toBe(rodando);
+    // y desmontar todo no deja NADA vivo
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('inicio.edicion.la_pista_es_el_placeholder_nativo_con_el_token_de_duracion_el_gris_secundario_y_sin_aria_live', () => {
+    montar();
+    pintar();
+    aEdicion();
+    const clases = campo().className.split(/\s+/);
+    // el fundido va en el `::placeholder` del propio campo (no en una capa encima): alinea idéntico al texto que se escriba,
+    // no tapa clics y desaparece solo al escribir. Con los tokens de la carta y el gris secundario de siempre (6.45:1)
+    expect(clases).toEqual(
+      expect.arrayContaining([
+        'placeholder:transition-opacity',
+        'placeholder:duration-(--dur-media)',
+        'placeholder:text-secundario',
+        // `::placeholder` no es `*`: la regla global de «reducir movimiento» no lo alcanza y por eso lleva la suya
+        'motion-reduce:placeholder:transition-none',
+        'placeholder:opacity-100',
+        'placeholder:ease-(--ease-salida)',
+      ]),
+    );
+    expect(clases).not.toContain('placeholder:opacity-0');
+    expect(document.querySelector('[data-pista-capa]')).toBeNull();
+    // los números del reloj son los de la carta (docs/DISENO.md §4) y las curvas existen
+    expect(tokens).toMatch(new RegExp(`--dur-media:\\s*${PISTA_FUNDIDO_MS}ms`));
+    expect(tokens).toMatch(/--ease-salida:\s*cubic-bezier/);
+    expect(tokens).toMatch(/--ease-entrada:\s*cubic-bezier/);
+    // la rotación no se anuncia: ni el campo ni su cuadro son una región viva, y el nombre del campo no es la pista
+    const cuadro = campo().parentElement!;
+    for (const el of [campo(), cuadro]) {
+      expect(el.getAttribute('aria-live')).toBeNull();
+      expect(el.getAttribute('role') ?? 'textbox').not.toMatch(/status|alert|log/);
+    }
+    expect(cuadro.querySelector('[aria-live], [role="status"], [role="alert"]')).toBeNull();
+    expect(campo()).toHaveAccessibleName('Cuéntale a la IA qué quieres');
+    avanzar(PISTA_CADA_MS * 2);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+    expect(campo()).toHaveAccessibleName('Cuéntale a la IA qué quieres');
+  });
+
+  it('inicio.edicion.el_lector_de_pantalla_recibe_un_ejemplo_fijo_como_descripcion_del_campo_sin_repetirlo_a_la_vista', () => {
+    montar();
+    pintar();
+    aEdicion();
+    // las ideas ya no se alcanzan con Tab y la pista rota no se anuncia: el ejemplo fijo es la descripción del campo
+    expect(EJEMPLO_FIJO).toBe('Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.');
+    expect(campo()).toHaveAccessibleDescription(EJEMPLO_FIJO);
+    // ...y no se repite a la vista: lo que se ve ya es la pista rotando. Tampoco queda suelto en el árbol de accesibilidad: con
+    // `sr-only` (invisible pero NO oculto) el lector en modo lectura lo recitaba como un párrafo entre el campo y el «+», y otra
+    // vez como descripción al enfocar el campo. Oculto (`hidden`), solo lo lee `aria-describedby`
+    const nota = screen.getByText(EJEMPLO_FIJO);
+    expect(nota.hidden).toBe(true);
+    expect(nota.className.split(/\s+/)).not.toContain('sr-only');
+    expect(screen.queryAllByRole('paragraph').map(p => p.textContent)).not.toContain(EJEMPLO_FIJO);
+    expect(pista()).not.toContain('quítale las muletillas');
+    // sigue ahí con texto escrito y a lo largo de la rotación
+    avanzar(PISTA_CADA_MS * 2);
+    expect(campo()).toHaveAccessibleDescription(EJEMPLO_FIJO);
+    fireEvent.change(campo(), { target: { value: TEXTO } });
+    expect(campo()).toHaveAccessibleDescription(EJEMPLO_FIJO);
+  });
+});
+
 // Lo que la revisión visual y de accesibilidad (lienzo Recorrido-2, DISENO.md §4 y §5) encontró en un navegador de verdad
 // y que jsdom no ve: aquí se prueba la CAUSA (la clase, el token, el atributo); las medidas reales, en
 // web/e2e/inicio-edicion.spec.ts.
@@ -1767,7 +2169,7 @@ describe('la caja de Edición, revisión visual y de accesibilidad', () => {
     const clases = campo().className.split(/\s+/);
     // el aro de foco de la carta (§4: «en todo lo que se enfoca, sin excepción») ahora lo dibuja el CUADRO que envuelve al campo,
     // cuando algo de adentro tiene foco visible, con las medidas de tokens.css: es adonde se lleva el foco desde «Iniciar» sin
-    // texto y desde una idea, y que se vea dónde cayó es lo que no se negocia...
+    // texto, y que se vea dónde cayó es lo que no se negocia...
     expect(cuadro).toEqual(
       expect.arrayContaining(['has-focus-visible:outline-2', 'has-focus-visible:outline-offset-3', 'has-focus-visible:outline-ambar-claro']),
     );
@@ -1809,9 +2211,10 @@ describe('la caja de Edición, revisión visual y de accesibilidad', () => {
     pintar();
     await irAEdicion();
     const clases = campo().className.split(/\s+/);
-    // en 390 px el ejemplo ocupa 4 renglones (90 px): el piso de 96 px lo cubre, y desde 640 px, donde cabe en 3 (67.5 px), el de
-    // 68; donde el navegador sabe medir el contenido (field-sizing) el campo crece hasta lo que haga falta (320 px: 112 px) y a
-    // partir de ahí se desplaza por dentro
+    // medido con las cuatro ideas rotando: la que más ocupa son 3 renglones a 320 px (67.5 px), 2 de 360 a 861 px (45 px) y 1 a
+    // 1100 (22.5 px). El piso de 96 px en teléfono (68 px desde 640 px) las cubre todas, así que el cuadro NO cambia de alto
+    // al rotar (web/e2e/inicio-edicion.spec.ts lo mide); donde el navegador sabe medir el contenido (field-sizing) el campo
+    // crece hasta lo que haga falta y a partir de ahí se desplaza por dentro
     expect(clases).toContain('min-h-24');
     expect(clases).toContain('min-[640px]:min-h-17');
     expect(clases).toContain('field-sizing-content');

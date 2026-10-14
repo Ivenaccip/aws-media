@@ -3,9 +3,9 @@
 //
 // Es un contenedor con el aspecto de «campo» de la carta (docs/DISENO.md §3 y §4: fondo elevada, borde de campo —NO el de
 // línea, que no llega a 3:1—, radio de campos, espacios múltiplos de 4) y, adentro, el <textarea> sin borde ni fondo ni
-// aro propios. El contenedor existe a propósito, y no un borde puesto al <textarea>: más adelante las ideas de un toque
-// van DENTRO del cuadro, debajo del texto (`children`), y el borde, el fondo y el aro de foco tienen que envolver las dos
-// cosas.
+// aro propios. El contenedor existe a propósito, y no un borde puesto al <textarea>: si algún día algo vive DENTRO del
+// cuadro, debajo del texto (`children`), el borde, el fondo y el aro de foco tienen que envolver las dos cosas. (Las ideas de
+// Edición, que se pensaron para ahí, terminaron siendo la pista del propio campo, 14-oct-2026: hoy nadie usa `children`.)
 //
 // Foco (§4: «en todo lo que se enfoca, sin excepción»): el aro ámbar de tokens.css lo dibuja el contenedor cuando algo
 // de adentro tiene foco visible (`has-focus-visible`), con las mismas medidas de siempre, y el <textarea> NO dibuja el
@@ -19,7 +19,7 @@ import type { ReactNode, Ref, TextareaHTMLAttributes } from 'react';
 import { unir } from './unir';
 
 export interface PropsCuadroDeTexto extends TextareaHTMLAttributes<HTMLTextAreaElement> {
-  /** Lo que va DENTRO del cuadro, debajo del texto (las ideas de un toque, cuando lleguen). */
+  /** Lo que va DENTRO del cuadro, debajo del texto (hoy nadie lo usa; la ranura queda para cuando algo lo pida). */
   children?: ReactNode;
   /** Clases del contenedor (`className` va al <textarea>: ahí viven la altura mínima y si se estira). */
   claseCuadro?: string;

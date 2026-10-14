@@ -84,7 +84,6 @@ export interface ManejoEdicion {
   /** Lo que le falta de saldo (0 = nada), sabido por el saldo o por el 402 del servidor. */
   faltan: number;
   escribir(texto: string): void;
-  usarIdea(texto: string): void;
   /** Los archivos que llegan del selector o de soltarlos en la caja. */
   recibir(archivos: File[]): void;
   quitar(): void;
@@ -208,13 +207,6 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
   function escribir(nuevo: string) {
     setTexto(nuevo);
     olvidarAviso();
-  }
-
-  function usarIdea(idea: string) {
-    setTexto(idea);
-    olvidarAviso();
-    limpiarError();
-    enfocarTexto();
   }
 
   /** Pide el precio del video subido. Si no llega, el video se queda e «Iniciar» lo vuelve a pedir. */
@@ -416,7 +408,6 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
       saldo,
       faltan,
       escribir,
-      usarIdea,
       recibir,
       quitar,
       tocarMas,

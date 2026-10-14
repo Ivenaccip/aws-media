@@ -311,7 +311,6 @@ INVARIANTES = {
         "inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video",
         "inicio.edicion.sin_video_el_boton_es_iniciar_sin_precio_dorado_enfocable_y_avisa",
         "inicio.edicion.con_texto_y_sin_video_la_ayuda_dice_donde_agregarlo",
-        "inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco",
         "inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar",
         "inicio.edicion.el_precio_del_servidor_8_sin_transcript_y_2_con_transcript",
         "inicio.edicion.sin_texto_el_boton_con_precio_sigue_enfocable_lleva_el_foco_al_campo_y_no_avisa",
@@ -385,6 +384,25 @@ INVARIANTES = {
         "inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion",
         "inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra",
         "inicio.edicion.iniciar_es_dorado_en_todos_los_estados_y_solo_cambian_lo_que_dice_y_su_semantica",
+        # 14-oct-2026 (dueño, «Rotan solas como pista»): las 4 ideas dejan de ser botones y pasan a ser la pista que rota dentro
+        # del campo. `una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco` ya no existe: su aserción (tocar una idea pone el texto
+        # y enfoca) murió con los botones; lo que sobrevive de ella (las 4 ideas, en ese orden, y que la ayuda no manda a tocarlas)
+        # está en las dos primeras de abajo
+        "inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea",
+        "inicio.edicion.la_pista_arranca_en_la_primera_idea_sin_fundido_y_las_cuatro_leen_igual",
+        "inicio.edicion.la_pista_rota_cada_4_s_con_fundido_de_salida_y_de_entrada_y_da_la_vuelta",
+        "inicio.edicion.la_pista_no_rota_con_el_foco_se_congela_entera_y_retoma_al_soltarlo_vacio",
+        "inicio.edicion.si_la_caja_abre_con_el_foco_en_el_campo_la_pista_nace_congelada",
+        "inicio.edicion.con_texto_la_pista_no_corre_ni_arma_temporizadores_y_al_vaciar_retoma",
+        "inicio.edicion.con_reducir_movimiento_la_pista_queda_fija_y_reacciona_si_cambia_la_preferencia",
+        "inicio.edicion.con_la_pestana_oculta_la_pista_no_rota_ni_acumula_ciclos",
+        "inicio.edicion.si_la_pestana_ya_esta_oculta_al_abrir_la_pista_no_arma_el_reloj",
+        "inicio.edicion.la_pista_no_deja_temporizadores_al_desmontar_ni_al_cambiar_de_familia_y_en_strictmode_corre_uno_solo",
+        "inicio.edicion.la_pista_es_el_placeholder_nativo_con_el_token_de_duracion_el_gris_secundario_y_sin_aria_live",
+        "inicio.edicion.el_lector_de_pantalla_recibe_un_ejemplo_fijo_como_descripcion_del_campo_sin_repetirlo_a_la_vista",
+        # 14-oct-2026 (revisión de la pista rotatoria): apagar «reducir movimiento» con la pantalla abierta, y el guardia del hook
+        "inicio.edicion.apagar_reducir_movimiento_sigue_en_la_primera_idea_tambien_con_el_foco_o_con_texto",
+        "inicio.edicion.un_temporizador_viejo_que_vence_al_parar_la_rotacion_no_deja_la_pista_a_medio_apagar",
     ],
     "shorts": [
         "shorts.cobro.analizar_con_el_precio_del_servidor",

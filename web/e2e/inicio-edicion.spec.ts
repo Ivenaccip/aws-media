@@ -7,9 +7,13 @@
 //    (jsdom no tiene diseño: eso solo se ve aquí);
 //  · la subida de verdad (XHR) muestra su progreso y el precio sale del servidor;
 //  · «Cancelar la subida» corta el PUT real (nada se confirma) y un texto enorme pegado se queda en 2000;
-//  · revisión visual y de accesibilidad (lo que jsdom no ve): el aro de foco del campo, el contraste de su ejemplo, que el
-//    ejemplo no se corte en un teléfono, «Subiendo…» en ámbar, el «Recargar» de 44 px y que con «reducir movimiento» nada
+//  · revisión visual y de accesibilidad (lo que jsdom no ve): el aro de foco del campo, el contraste de su pista, que la
+//    pista no se corte en un teléfono, «Subiendo…» en ámbar, el «Recargar» de 44 px y que con «reducir movimiento» nada
 //    se quede moviéndose;
+//  · las ideas ya no son botones sino una pista que rota sola dentro del campo (14-oct-2026, «Rotan solas como pista»): el
+//    fundido ocurre DE VERDAD en el `::placeholder` nativo, se congela con el foco, desaparece al escribir, no mueve el alto
+//    del cuadro (320, 390 y 1100 px) y no tapa clics (no hay capa encima). El reloj de la pantalla es el falso de Playwright
+//    (`page.clock`), pero los fundidos de CSS corren en tiempo real: por eso se miden con muestras;
 //  · la caja entera se recorre SOLO con teclado (Tab, Shift+Tab, Enter, Espacio) y el apagado enfocable se puede activar.
 // No gasta nada: el servidor y «S3» son rutas de mentira.
 import { expect, test, type Page } from '@playwright/test';
@@ -29,7 +33,13 @@ const RESPUESTAS_VACIAS: Record<string, unknown> = {
 
 const COSTO = { fuente: 'videos/entrevista/subidas/entrevista.mp4', duracion_s: 724, con_transcript: false, creditos: 8, backend_listo: true, aviso: null };
 
-async function edicion(page: Page, costo: unknown = COSTO, { saldo, subidaMs = 600 }: { saldo?: number; subidaMs?: number } = {}) {
+async function edicion(
+  page: Page,
+  costo: unknown = COSTO,
+  { saldo, subidaMs = 600, reloj = false }: { saldo?: number; subidaMs?: number; reloj?: boolean } = {},
+) {
+  // `reloj`: el de la pantalla (setTimeout, Date…) pasa a ser el falso de Playwright, quieto hasta que la prueba lo mueva
+  if (reloj) await page.clock.install({ time: 0 });
   for (const [ruta, json] of Object.entries(RESPUESTAS_VACIAS)) await page.route(ruta, r => r.fulfill({ json }));
   if (saldo !== undefined) await page.route('**/api/creditos', r => r.fulfill({ json: { activo: true, saldo, tarifas: {}, packs: [] } }));
   await page.route('**/api/blotato', r => r.fulfill({ status: 404, json: { detail: 'no' } }));
@@ -48,8 +58,42 @@ async function edicion(page: Page, costo: unknown = COSTO, { saldo, subidaMs = 6
   await page.route('**/api/editar/entrevista/costo', r => r.fulfill({ json: costo }));
   await page.route('**/api/editar/entrevista/sugerir', r => r.fulfill({ json: { lanzado: true, creditos: 8 } }));
   await page.goto('/estudio/inicio/');
+  if (reloj) await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await expect(campo(page)).toBeVisible();
+}
+
+// las ideas de la pista, tal como las lee el dueño (a propósito NO se importan de edicion.ts: si alguien cambia el texto, esta
+// prueba lo nota) y los números del reloj
+const IDEAS = ['Quita muletillas y silencios', 'Un short vertical para Reels', 'Resumen de 60 segundos', 'Subtítulos grandes y un título'];
+const hueco = (i: number) => `Cuéntale a la IA qué quieres. Ejemplo: «${IDEAS[i % IDEAS.length]}»`;
+const CADA_MS = 4000;
+const FUNDIDO_MS = 250;
+
+/**
+ * Pasa a la idea siguiente con el reloj falso: 3.75 s hasta que la actual empieza a salir y 0.25 s hasta que entra la otra.
+ * Entre un paso y otro hay una espera real corta: el temporizador del paso siguiente lo arma un efecto de React, y el
+ * planificador de React no es el reloj falso.
+ */
+async function siguienteIdea(page: Page) {
+  await page.clock.runFor(CADA_MS - FUNDIDO_MS);
+  await page.waitForTimeout(40);
+  await page.clock.runFor(FUNDIDO_MS);
+  await page.waitForTimeout(40);
+}
+
+/** Lo que la pista es ahora: su texto y la opacidad (calculada) de su `::placeholder`. */
+const pistaAhora = (page: Page) =>
+  campo(page).evaluate(e => ({ texto: e.getAttribute('placeholder'), opacidad: Number(getComputedStyle(e, '::placeholder').opacity) }));
+
+/** Muestrea la opacidad de la pista cada 20 ms durante `ms` (tiempo real: los fundidos de CSS no los mueve el reloj falso). */
+async function opacidades(page: Page, ms: number) {
+  const muestras: number[] = [];
+  for (let t = 0; t < ms; t += 20) {
+    muestras.push((await pistaAhora(page)).opacidad);
+    await page.waitForTimeout(20);
+  }
+  return muestras;
 }
 
 const campo = (page: Page) => page.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' });
@@ -80,7 +124,7 @@ test('«Iniciar» sin poder sigue enfocable con Tab y, sin texto, el clic lleva 
   await boton.click({ force: true });
   await expect(campo(page)).toBeFocused();
   await expect(page.locator('#bandeja [role="alert"]')).toHaveCount(0);
-  await expect(page.getByText('Escribe qué quieres hacer con tu video, o toca una idea.')).toBeVisible();
+  await expect(page.getByText('Escribe qué quieres hacer con tu video.')).toBeVisible();
   // escribir lo enciende
   await campo(page).fill('Quítale las muletillas');
   await expect(page.getByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-disabled', 'true');
@@ -155,7 +199,6 @@ test.describe('en el teléfono', () => {
     expect(sobra).toBeLessThanOrEqual(0);
     const tocables = [
       ...(await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button').all()),
-      ...(await page.getByRole('group', { name: 'Ideas para escribir' }).getByRole('button').all()),
       page.getByRole('button', { name: 'Cambiar el video' }),
       chip(page),
       page.getByRole('button', { name: 'Quitar este video' }),
@@ -190,7 +233,7 @@ const aHex = (rgb: string) => {
   return '#' + [m[1], m[2], m[3]].map(n => Number(n).toString(16).padStart(2, '0')).join('');
 };
 
-test('el cuadro se ve enfocado con UN solo aro, su ejemplo se lee con 4.5:1 y «Subiendo…» sigue en ámbar con cursor de espera', async ({ page }) => {
+test('el cuadro se ve enfocado con UN solo aro, su pista se lee con 4.5:1 y «Subiendo…» sigue en ámbar con cursor de espera', async ({ page }) => {
   await edicion(page, COSTO, { subidaMs: 4000 });
   // el aro de foco de la carta (§4) lo dibuja el cuadro que envuelve al campo: se llega con Tab y se ve. El campo no dibuja el
   // suyo (dos aros, uno dentro del otro, se verían como un error)
@@ -206,7 +249,7 @@ test('el cuadro se ve enfocado con UN solo aro, su ejemplo se lee con 4.5:1 y «
   });
   expect(aros.cuadro).toEqual({ estilo: 'solid', ancho: '2px', color: 'rgb(240, 169, 74)', separacion: '3px' });
   expect(aros.campo.estilo).toBe('none');
-  // el ejemplo: el gris secundario sobre el fondo del cuadro (elevada; con el 50 % del texto daba 4.39:1 ya sobre la superficie)
+  // la pista: el gris secundario sobre el fondo del cuadro (elevada; con el 50 % del texto daba 4.39:1 ya sobre la superficie)
   const ejemplo = await campo(page).evaluate(e => ({ color: getComputedStyle(e, '::placeholder').color, fondo: getComputedStyle(e.parentElement!).backgroundColor }));
   expect(contraste(aHex(ejemplo.color), aHex(ejemplo.fondo))).toBeGreaterThanOrEqual(4.5);
   // «Subiendo…»: «Trabajando» de la carta (ámbar, cursor de espera, ocupado), no el gris discontinuo del apagado
@@ -221,21 +264,28 @@ test('el cuadro se ve enfocado con UN solo aro, su ejemplo se lee con 4.5:1 y «
 test.describe('en el teléfono, revisión visual', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('el ejemplo del campo se lee entero (no se corta), a 320 px también y donde el navegador no mide el contenido', async ({ page }) => {
-    await edicion(page);
+  test('las cuatro ideas de la pista se leen enteras (no se cortan), a 320 px también y donde el navegador no mide el contenido', async ({ page }) => {
+    await edicion(page, COSTO, { reloj: true });
     const corte = () => campo(page).evaluate(e => ({ alto: e.getBoundingClientRect().height, sobra: e.scrollHeight - e.clientHeight }));
+    /** Las cuatro ideas, una tras otra, al ancho de ahora (al terminar vuelve a la primera). */
+    async function lasCuatro(ancho: number, aviso: string) {
+      for (let i = 0; i < IDEAS.length; i++) {
+        expect((await pistaAhora(page)).texto).toBe(hueco(i));
+        const c = await corte();
+        expect(c.sobra, `a ${ancho} px ${aviso}la idea ${i + 1} se corta (el campo mide ${c.alto})`).toBeLessThanOrEqual(1);
+        await siguienteIdea(page);
+      }
+    }
     // con field-sizing (Chrome): crece hasta lo que haga falta, también en 320 px
     for (const ancho of [390, 360, 320, 640, 861]) {
       await page.setViewportSize({ width: ancho, height: 844 });
-      const c = await corte();
-      expect(c.sobra, `a ${ancho} px el ejemplo se corta (el campo mide ${c.alto})`).toBeLessThanOrEqual(1);
+      await lasCuatro(ancho, '');
     }
     // sin él (Safari y Firefox, que aún no lo saben): el piso de la clase basta de 375 px para arriba
     await campo(page).evaluate(e => e.style.setProperty('field-sizing', 'fixed'));
     for (const ancho of [375, 390, 430, 639, 640, 861, 1440]) {
       await page.setViewportSize({ width: ancho, height: 844 });
-      const c = await corte();
-      expect(c.sobra, `a ${ancho} px, sin field-sizing, el ejemplo se corta (el campo mide ${c.alto})`).toBeLessThanOrEqual(1);
+      await lasCuatro(ancho, 'sin field-sizing, ');
     }
   });
 
@@ -261,6 +311,127 @@ test.describe('en el teléfono, revisión visual', () => {
   });
 });
 
+// ---- las ideas rotan solas como pista dentro del campo (dueño, 14-oct-2026) ----
+
+test('la pista rota sola con un fundido DE VERDAD en el ::placeholder, da la vuelta y al abrir no anima nada', async ({ page }) => {
+  await edicion(page, COSTO, { reloj: true });
+  // al abrir: la primera idea, entera, y sin ninguna transición en marcha (docs/DISENO.md §4: lo que ya estaba no anima)
+  expect(await pistaAhora(page)).toEqual({ texto: hueco(0), opacidad: 1 });
+  expect(await opacidades(page, 300)).toEqual(new Array(15).fill(1));
+  // el `::placeholder` del propio campo, con el token de duración de la carta (--dur-media) y sin capa encima
+  const estilo = await campo(page).evaluate(e => {
+    const c = getComputedStyle(e, '::placeholder');
+    return { propiedad: c.transitionProperty, duracion: c.transitionDuration, color: c.color };
+  });
+  expect(estilo).toMatchObject({ propiedad: 'opacity', duracion: '0.25s', color: 'rgb(147, 163, 184)' });
+  await expect(campo(page).locator('xpath=..').locator('> *')).toHaveCount(1);
+  // da dos vueltas completas; en cada salida y en cada entrada la opacidad pasa por valores de en medio (un fundido, no un salto)
+  for (let i = 0; i < IDEAS.length * 2; i++) {
+    expect((await pistaAhora(page)).texto, `idea ${i + 1}`).toBe(hueco(i));
+    await page.clock.runFor(CADA_MS - FUNDIDO_MS);
+    const sale = await opacidades(page, 320);
+    expect(sale.at(-1), `la idea ${i + 1} termina de salir`).toBe(0);
+    expect(sale.some(o => o > 0.05 && o < 0.95), `la idea ${i + 1} sale con un fundido (${sale.join(' ')})`).toBe(true);
+    // sigue siendo el mismo texto: se cambia cuando ya no se ve
+    expect((await pistaAhora(page)).texto).toBe(hueco(i));
+    await page.clock.runFor(FUNDIDO_MS);
+    const entra = await opacidades(page, 320);
+    expect(entra.at(-1), `la idea ${i + 2} termina de entrar`).toBe(1);
+    expect(entra.some(o => o > 0.05 && o < 0.95), `la idea ${i + 2} entra con un fundido (${entra.join(' ')})`).toBe(true);
+    expect((await pistaAhora(page)).texto).toBe(hueco(i + 1));
+  }
+  expect((await pistaAhora(page)).texto).toBe(hueco(0)); // dio la vuelta
+});
+
+test('con el foco la pista se congela entera, al escribir desaparece y al soltar el foco con el campo vacío retoma', async ({ page }) => {
+  await edicion(page, COSTO, { reloj: true });
+  await siguienteIdea(page);
+  expect((await pistaAhora(page)).texto).toBe(hueco(1));
+  // a mitad del fundido de salida se enfoca: no queda a media luz, queda entera
+  await page.clock.runFor(CADA_MS - FUNDIDO_MS);
+  await page.waitForTimeout(60);
+  await campo(page).focus();
+  await page.waitForTimeout(FUNDIDO_MS + 100);
+  expect(await pistaAhora(page)).toEqual({ texto: hueco(1), opacidad: 1 });
+  for (let i = 0; i < 4; i++) {
+    await page.clock.runFor(CADA_MS);
+    await page.waitForTimeout(40);
+  }
+  expect(await pistaAhora(page)).toEqual({ texto: hueco(1), opacidad: 1 });
+  // al escribir desaparece como cualquier pista (y no corre nada)
+  expect(await campo(page).evaluate(e => e.matches(':placeholder-shown'))).toBe(true);
+  await page.keyboard.type('Quítale las muletillas');
+  expect(await campo(page).evaluate(e => e.matches(':placeholder-shown'))).toBe(false);
+  await campo(page).fill('');
+  expect(await campo(page).evaluate(e => e.matches(':placeholder-shown'))).toBe(true);
+  // soltar el foco con el campo vacío: retoma desde la que estaba
+  await campo(page).evaluate(e => e.blur());
+  await page.clock.runFor(CADA_MS - FUNDIDO_MS);
+  await page.waitForTimeout(40);
+  await page.clock.runFor(FUNDIDO_MS);
+  await page.waitForTimeout(40);
+  expect((await pistaAhora(page)).texto).toBe(hueco(2));
+});
+
+test('al rotar el cuadro no cambia de alto ni mueve lo de abajo, a 320, 390 y 1100 px', async ({ page }) => {
+  await edicion(page, COSTO, { reloj: true });
+  const mas = page.getByRole('button', { name: 'Agregar el video que quieres editar' });
+  for (const ancho of [320, 390, 1100]) {
+    await page.setViewportSize({ width: ancho, height: 844 });
+    const medidas: Array<{ campo: number; cuadro: number; mas: number; sobra: number }> = [];
+    for (let i = 0; i < IDEAS.length; i++) {
+      const m = await campo(page).evaluate(e => ({
+        campo: e.getBoundingClientRect().height,
+        cuadro: e.parentElement!.getBoundingClientRect().height,
+        sobra: e.scrollHeight - e.clientHeight,
+      }));
+      medidas.push({ ...m, mas: (await mas.boundingBox())!.y });
+      await siguienteIdea(page);
+    }
+    // incluso a media salida y a media entrada (la pista a media luz sigue ocupando lo mismo)
+    await page.clock.runFor(CADA_MS - FUNDIDO_MS);
+    await page.waitForTimeout(100);
+    medidas.push({ campo: (await campo(page).boundingBox())!.height, cuadro: (await campo(page).locator('xpath=..').boundingBox())!.height, mas: (await mas.boundingBox())!.y, sobra: 0 });
+    expect(new Set(medidas.map(m => m.campo)).size, `a ${ancho} px cambia el alto del campo: ${JSON.stringify(medidas)}`).toBe(1);
+    expect(new Set(medidas.map(m => m.cuadro)).size, `a ${ancho} px cambia el alto del cuadro`).toBe(1);
+    expect(new Set(medidas.map(m => m.mas)).size, `a ${ancho} px se mueve lo de abajo`).toBe(1);
+    for (const m of medidas) expect(m.sobra).toBeLessThanOrEqual(1);
+    await page.clock.runFor(FUNDIDO_MS);
+    await page.waitForTimeout(40);
+    // la pista que más ocupa cabe dentro del piso del campo (96 px en teléfono, 68 desde 640 px): sin él, ni crece ni empuja
+    expect(medidas[0]!.campo).toBe(ancho < 640 ? 96 : 68);
+  }
+});
+
+test('la pista es el placeholder nativo: un clic donde se lee cae en el campo y no hay nada encima', async ({ page }) => {
+  await edicion(page, COSTO, { reloj: true });
+  const caja = (await campo(page).boundingBox())!;
+  // el centro de la primera línea, donde está el texto de la pista
+  const x = caja.x + 24;
+  const y = caja.y + 8;
+  const encima = await page.evaluate(([a, b]) => {
+    const el = document.elementFromPoint(a!, b!);
+    return el ? el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') : null;
+  }, [x, y]);
+  expect(encima).toBe('textarea#texto-edicion');
+  await page.mouse.click(x, y);
+  await expect(campo(page)).toBeFocused();
+});
+
+// El ejemplo fijo es solo la DESCRIPCIÓN del campo (`aria-describedby`). Con `sr-only` el párrafo quedaba además en el árbol de
+// accesibilidad, y quien navega en modo lectura lo oía como párrafo entre el campo y el «+» y otra vez al enfocar el campo.
+// Se mira el árbol del navegador de verdad: ningún párrafo suelto con el ejemplo, y la descripción del campo intacta.
+test('el ejemplo fijo describe al campo y no queda como párrafo suelto en el árbol de accesibilidad', async ({ page }) => {
+  await edicion(page);
+  const ejemplo = 'Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.';
+  await expect(campo(page)).toHaveAccessibleDescription(ejemplo);
+  await expect(page.getByRole('paragraph').filter({ hasText: 'Por ejemplo' })).toHaveCount(0);
+  await expect(page.getByText(ejemplo)).toBeHidden();
+  // sigue siendo la descripción con el foco, con texto escrito y con la rotación de la pista andando
+  await campo(page).fill('Quítale las muletillas');
+  await expect(campo(page)).toHaveAccessibleDescription(ejemplo);
+});
+
 test('toda la caja se recorre solo con el teclado: Tab, Shift+Tab, Enter y Espacio', async ({ page }) => {
   const sugerir: string[] = [];
   await edicion(page);
@@ -277,21 +448,13 @@ test('toda la caja se recorre solo con el teclado: Tab, Shift+Tab, Enter y Espac
   await page.keyboard.press('Tab');
   await expect(campo(page)).toBeFocused();
   await page.keyboard.type('Quítale las muletillas');
-  // las ideas, el «+», el chip «Editar ▾» e «Iniciar» están en ese orden (y Shift+Tab los recorre al revés)
+  // el «+», el chip «Editar ▾» e «Iniciar» están en ese orden (y Shift+Tab los recorre al revés); las ideas ya no son botones
   const orden: string[] = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 3; i++) {
     await page.keyboard.press('Tab');
     orden.push(await enfocado());
   }
-  expect(orden).toEqual([
-    'Quita muletillas y silencios',
-    'Un short vertical para Reels',
-    'Resumen de 60 segundos',
-    'Subtítulos grandes y un título',
-    'Agregar el video que quieres editar',
-    'Editar ▾',
-    'Iniciar',
-  ]);
+  expect(orden).toEqual(['Agregar el video que quieres editar', 'Editar ▾', 'Iniciar']);
   await page.keyboard.press('Shift+Tab');
   expect(await enfocado()).toBe('Editar ▾');
   await page.keyboard.press('Shift+Tab');

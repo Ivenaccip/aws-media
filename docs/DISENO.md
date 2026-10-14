@@ -123,6 +123,17 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     900 ms.
   - Nada anima por defecto lo que ya estaba al abrir la pantalla: la primera
     carga no rueda, no se enciende y no entra animada.
+  - Lo que cambia con un reloj, y no con CSS, también obedece a «reducir
+    movimiento», pero la regla global de `tokens.css` NO lo alcanza (acorta las
+    animaciones y transiciones de `*`, no corta un `setTimeout`, y `::placeholder`
+    ni siquiera es `*`): quien corre el reloj pregunta por la preferencia
+    (`nucleo/useAmbiente.ts`, que además se entera si cambia con la pantalla
+    abierta) y se queda quieto. Caso de hoy (dueño, 14-oct-2026): la pista del
+    campo de Edición rota entre 4 ideas cada 4 s con un fundido de `--dur-media`
+    (sale con `--ease-entrada`, entra con `--ease-salida`), empieza siempre en la
+    primera y sin animación, y NO rota con «reducir movimiento» (fija en la
+    primera), con el foco en el campo, con texto escrito ni con la pestaña
+    oculta. Sin `aria-live`: no se anuncia.
   - Entre pantallas hay View Transition (fundido; la píldora del saldo se
     queda quieta; la miniatura de una película lista se agranda hasta su
     reproductor). `web/e2e/movimiento-reducido.spec.ts` vigila que con

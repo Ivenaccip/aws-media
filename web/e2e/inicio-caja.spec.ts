@@ -404,6 +404,28 @@ test('en el celular la pista del chip queda dentro de la pantalla', async ({ pag
   expect(await pistaSePinta(page, chip)).toBe(true);
 });
 
+// A 320 px el ::after de la pista del chip (aun invisible: `invisible` sigue ocupando lugar) pasaba de la pantalla y la página se
+// podía arrastrar de lado hasta 24 px, en las tres familias. Se mide la página entera y el borde derecho de la pista con el
+// chip bajo el ratón (donde se ve; enfocado es lo mismo), que es lo que un `scrollWidth` general no señalaría.
+test('a 320 px la página no se arrastra de lado y la pista del chip queda dentro, en Imagen, Video y Edición', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  const chip = page.locator('button[aria-haspopup="listbox"]');
+  for (const ancho of [320, 340, 359]) {
+    await page.setViewportSize({ width: ancho, height: 844 });
+    for (const familia of ['Imagen', 'Video', 'Edición']) {
+      await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true }).click();
+      await expect(chip).toHaveCount(1);
+      const sobra = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(await sobra(), `${familia} a ${ancho} px: la página se arrastra de lado`).toBeLessThanOrEqual(0);
+      await chip.hover();
+      await expect.poll(() => chip.evaluate(e => getComputedStyle(e, '::after').opacity), { message: `${familia}: la pista no se enseña` }).toBe('1');
+      const derecha = await chip.evaluate(e => e.getBoundingClientRect().left + parseFloat(getComputedStyle(e, '::after').width));
+      expect(derecha, `${familia} a ${ancho} px: la pista se sale por la derecha`).toBeLessThanOrEqual(ancho);
+      expect(await sobra(), `${familia} a ${ancho} px: con la pista a la vista la página se arrastra de lado`).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
 // Con el relleno y el borde del cuadro (12 px por lado), el texto perdió 26 px de ancho: el ejemplo de «Creador de cuentos»
 // (el más largo) pasaba a 5 líneas en un teléfono de 320 px y el textarea de 88 px de piso cortaba la última («…la foto de
 // tu» y se perdía «personaje»). Se recorre CADA opción de Imagen y de Video, con su ejemplo puesto como texto, a varios anchos.

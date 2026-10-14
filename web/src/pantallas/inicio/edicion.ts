@@ -1,5 +1,5 @@
 // «Edición» en la caja del inicio (E1), la parte que no es React: los textos exactos, las
-// ideas de un toque y la regla que decide qué dice el botón principal en cada momento.
+// ideas que rotan como pista del campo y la regla que decide qué dice el botón principal en cada momento.
 //
 // E1 es: UN video subido + lo que la persona quiere + la IA propone los cortes, y se abre
 // el editor de siempre. Unir videos, copiar una creación, fundidos, música y Marcas son
@@ -13,8 +13,21 @@ import type { CostoEdicion } from './envio';
 /** El nombre del campo, para el lector de pantalla (el h2 de la caja sigue diciendo «¿Qué vamos a crear hoy?»). */
 export const ETIQUETA_TEXTO = 'Cuéntale a la IA qué quieres';
 
-export const HUECO_TEXTO =
-  'Cuéntale a la IA qué quieres: formato, duración, estilo… Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.';
+/**
+ * La pista del campo vacío (su `placeholder`): una idea de turno de IDEAS_EDICION, que va rotando (usePistaRotatoria). La
+ * frase es la misma con las cuatro y sin punto final: unas ideas son verbos («Quita muletillas y silencios») y otras
+ * nombres («Resumen de 60 segundos»), y con «Ejemplo: «…»» leen igual de natural todas.
+ */
+export function huecoDe(idea: string): string {
+  return `Cuéntale a la IA qué quieres. Ejemplo: «${idea}»`;
+}
+
+/**
+ * El ejemplo que NO rota, para quien usa lector de pantalla: la pista que cambia sola no es el nombre del campo ni se
+ * anuncia (a propósito: nada de aria-live), así que el campo lo lleva como descripción, escondido a la vista porque lo que
+ * se ve ya es la pista rotando. Es el ejemplo que traía el campo antes de que las ideas fueran botones.
+ */
+export const EJEMPLO_FIJO = 'Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.';
 
 /**
  * Lo que se puede hacer con el video, el chip «Editar ▾» junto al «+» (como «Un video corto ▾» en Video). Por ahora una
@@ -38,7 +51,11 @@ export const MODOS_EDICION: readonly [ModoEdicion, ...ModoEdicion[]] = [
   },
 ];
 
-/** Los atajos de un toque: ponen ese texto en el campo y le dan el foco. */
+/**
+ * Las ideas que rotan solas como pista dentro del campo (dueño, 14-oct-2026: «Rotan solas como pista»). Antes eran cuatro
+ * botones debajo del campo que ponían su texto; ahora son solo una pista, una a la vez, y desaparecen al escribir como
+ * cualquier texto de pista. La primera es SIEMPRE la que se ve al abrir.
+ */
 export const IDEAS_EDICION = [
   'Quita muletillas y silencios',
   'Un short vertical para Reels',
@@ -46,13 +63,26 @@ export const IDEAS_EDICION = [
   'Subtítulos grandes y un título',
 ] as const;
 
+/**
+ * Cada cuánto cambia la idea: del momento en que una empieza a salir al momento en que empieza a salir la siguiente. Cuatro
+ * segundos son los que hacen falta para leer una frase de cuatro a seis palabras sin que se sienta lenta, y a quien va a
+ * escribir se le deja la pista quieta de todos modos (con el foco, con texto, con la pestaña oculta).
+ */
+export const PISTA_CADA_MS = 4000;
+
+/**
+ * Lo que dura cada fundido (salida y entrada). Es el `--dur-media` de tokens.css («algo que entra, sale o cambia de lugar»,
+ * docs/DISENO.md §4): el reloj necesita el número, y Edicion.test.tsx vigila que siga siendo el del token.
+ */
+export const PISTA_FUNDIDO_MS = 250;
+
 /** Es verdad: el archivo subido jamás se modifica, los cortes son versiones aparte. */
 export const NOTA_COPIA = 'Se edita una copia. Tu original se queda como está.';
 
 export const AVISO_SIN_VIDEO = 'Primero agrega el video: pulsa el «+» o arrástralo a la caja.';
 export const AVISO_OCUPADO = 'Ya hay un trabajo en curso. Cuando termine puedes empezar otro.';
 
-export const AYUDA_TEXTO = 'Escribe qué quieres hacer con tu video, o toca una idea.';
+export const AYUDA_TEXTO = 'Escribe qué quieres hacer con tu video.';
 export const AYUDA_VIDEO = 'Agrega el video con el «+» o arrástralo a la caja.';
 export const NOTA_SUBIENDO = 'Cuando termine de subir calculamos el precio. Hasta entonces no se cobra nada.';
 export const NOTA_CALCULANDO = 'Estamos calculando el precio. Hasta entonces no se cobra nada.';

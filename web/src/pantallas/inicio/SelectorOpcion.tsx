@@ -6,8 +6,9 @@
 // lista abierta tiraba el foco a <body> (ahora vuelve al chip y el navegador sigue desde ahí).
 //
 // Lo que hace, y lo que prueban Inicio.test.tsx (inicio.caja.desplegable_con_teclado…) y Edicion.test.tsx:
-//   · el chip es un `aria-haspopup="listbox"` con `aria-expanded` y `aria-controls`; al pasar el ratón o enfocarlo dice
-//     la nota de la opción de ahora (`data-pista`);
+//   · el chip es un `aria-haspopup="listbox"` con `aria-expanded` y, mientras la lista está abierta, `aria-controls` (la lista
+//     solo existe montada: apuntarle cerrada sería un id sin destino); al pasar el ratón o enfocarlo dice la nota de la
+//     opción de ahora (`data-pista`);
 //   · la lista abre con clic o con ↓; recorre con ↑ ↓ Inicio Fin; Enter o Espacio eligen; Esc cierra y devuelve el foco al
 //     chip; Tab o Shift+Tab cierran, ponen el foco en el chip y siguen desde ahí (nunca a <body>); un clic fuera cierra;
 //   · elegir cierra la lista y devuelve el foco al chip (elegir la que ya estaba es solo eso: cerrar y volver);
@@ -17,10 +18,13 @@ import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useStat
 
 import { unir } from '../../ui/unir';
 
-// una pista al pasar el ratón o al enfocar: qué hace cada cosa (mock 2026-09-07)
+// una pista al pasar el ratón o al enfocar: qué hace cada cosa (mock 2026-09-07). Su ancho máximo se descuenta de la ventana
+// desde el chip, no desde el borde: por debajo de 640 px el chip empieza en x = 95 (20 de margen, 1 de borde, 16 de relleno,
+// 48 del «+» y 10 de separación), y 132 = 95 + 37 deja el borde derecho de la pista dentro de la pantalla. Con `-72px` la
+// pista (aun invisible, con `invisible` sigue ocupando lugar) desbordaba la página hasta 24 px a 320 px: se podía arrastrar de lado
 const PISTA =
   'relative after:pointer-events-none after:absolute after:bottom-[calc(100%+10px)] after:left-0 after:z-10 ' +
-  'after:w-max after:max-w-[min(250px,calc(100vw-72px))] after:rounded-medio after:border after:border-linea ' +
+  'after:w-max after:max-w-[min(250px,calc(100vw-132px))] after:rounded-medio after:border after:border-linea ' +
   'after:bg-elevada after:px-3 after:py-2 after:text-left after:text-xs after:whitespace-normal after:text-texto ' +
   'after:opacity-0 after:invisible after:transition-opacity after:content-[attr(data-pista)] ' +
   'hover:after:visible hover:after:opacity-100 focus-visible:after:visible focus-visible:after:opacity-100 ' +
@@ -132,7 +136,7 @@ export function SelectorOpcion<T extends OpcionDeSelector>({ opciones, elegida, 
         type="button"
         aria-haspopup="listbox"
         aria-expanded={abierto}
-        aria-controls={idLista}
+        aria-controls={abierto ? idLista : undefined}
         data-pista={elegida.nota}
         onClick={() => (abierto ? setAbierto(false) : abrir())}
         onKeyDown={e => {

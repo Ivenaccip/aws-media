@@ -61,10 +61,21 @@ describe('SelectorOpcion (con 3 opciones, que es donde se distinguen)', () => {
 
   it('inicio.caja.selector_abre_marcando_la_elegida_y_solo_ella_lleva_aria_selected', async () => {
     montar('b');
+    // cerrada, la lista no existe en el DOM: el chip no apunta a un id sin destino (`aria-controls` solo mientras está abierta)
+    expect(lista()).toBeNull();
+    expect(chip()).not.toHaveAttribute('aria-controls');
     await userEvent.click(chip());
     const filas = within(screen.getByRole('listbox')).getAllByRole('option');
     expect(filas.map(f => f.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
     expect(opcion(/Dos/)).toHaveFocus();
+    // abierta, `aria-controls` apunta a la lista que sí existe
+    const id = chip().getAttribute('aria-controls');
+    expect(id).toBeTruthy();
+    expect(screen.getByRole('listbox').id).toBe(id);
+    // y al cerrarla se quita otra vez
+    await userEvent.keyboard('{Escape}');
+    expect(lista()).toBeNull();
+    expect(chip()).not.toHaveAttribute('aria-controls');
   });
 
   it('inicio.caja.selector_flechas_inicio_y_fin_recorren_y_enter_elige_la_marcada', async () => {
