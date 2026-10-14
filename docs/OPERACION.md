@@ -1050,8 +1050,9 @@ hacia los 35) o una muerte más una espera larga.
 **«Tus trabajos»** (`GET /api/trabajos`, el cuadro de abajo a la derecha) también enseña las imágenes en segundo plano, como los
 clips: en curso, lista o con error, y los créditos devueltos solo si el doc no dice `devuelto: false`. El enlace de su ficha lleva
 a **`/estudio/inicio/`** —el inicio nuevo, donde «Mis creaciones» enseña el pedido, la imagen terminada o su error—, no a
-`/imagenes.html` ni a `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`, que mientras el inicio esté
-en la etapa `nueva` (`server/migracion.py`) sirve el inicio viejo, que no lista pedidos. `static/trabajos.js` oculta la ficha en la
+`/imagenes.html` ni a `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`: desde el 14-oct-2026 el
+inicio está en `todos` (`server/migracion.py`) y esa URL redirige ahí, pero con la cookie `ui=clasica` sirve el inicio viejo, que no
+lista pedidos. `static/trabajos.js` oculta la ficha en la
 pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis creaciones» ya dice. Para las imágenes lee los
 pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
 `.json` y un `.reclamo` por pedido, para siempre.
@@ -1092,13 +1093,19 @@ por la regla iría a segundo plano, y en una versión de esta rama su bandera es
 Con un arranque en frío (~16 s) más el cobro y la subida (~2 s) la petición suma ~29.7 s, al borde de los 29 s de la Lambda y por
 encima de los 30 s del gateway: es el MISMO riesgo que ya tenía antes de esta rama, no uno nuevo. Para moverlo basta
 `segundo_plano=True` en su fila de crear en `pipeline/modelos_ia.py` y borrar su línea de `EXCEPCIONES_A_LA_REGLA` en
-`tests/test_imagen_segundo_plano.py` (la prueba obliga a que la bandera siga a la regla). Editar con Nano Banana 2 es la decisión
-pendiente de abajo.
+`tests/test_imagen_segundo_plano.py` (la prueba obliga a que la bandera siga a la regla). Editar con Nano Banana 2 dejó de
+venderse el 14-oct-2026 (abajo).
 
-**Decisión pendiente del dueño: EDITAR con Nano Banana 2 sigue síncrono** (`/api/imagenes/editar` no se encola). Al editar midió
+**Decisión del dueño (14-oct-2026): Nano Banana 2 sale de «editar»,** al pasar el inicio a `todos`. Se quitó su número de
+`tools/tarifas.json` §modelos.editar: sin número la caja no lo ofrece y el servidor responde 422 antes de cobrar. Su fila en
+`pipeline/modelos_ia.py` y su lugar en `CON_EDICION` (`web/src/pantallas/inicio/modelos.ts`) se quedan: volver a venderlo es
+poner su número, después de pasar editar a segundo plano, y sacarlo de `APAGADOS` (`tests/test_r4_modelos_servidor.py` y
+`web/src/pantallas/inicio/modelos.test.ts`) y de `INERTES` (`tests/test_r4_ola1.py`). Crear con él sigue igual. Lo que sigue es el porqué. Antes, **EDITAR con
+Nano Banana 2 seguía síncrono** (`/api/imagenes/editar` no se encola). Al editar midió
 11.5 y 13.9 s (crear midió 11.7 s); con un arranque en frío (~16 s, `infra/stacks/alertas.py`) más el cobro y la subida (~2 s) la
 petición suma de ~29.5 a ~32 s y supera los 29 s de la Lambda y los 30 s del gateway: el usuario ve un 5xx con la imagen ya cobrada
-(y, si la Lambda llega a morir, sin pasar por la devolución). Hoy solo se llega desde la caja del inicio con ese modelo. Pasarlo a
+(y, si la Lambda llega a morir, sin pasar por la devolución). Solo se llegaba desde la caja del inicio con ese modelo, y con el
+inicio en `todos` ese camino se abría a todos. Pasarlo a
 segundo plano cambia el contrato de editar y la pantalla, por eso no se hizo.
 
 **Pendiente del dueño (`db_migrate`): un índice único parcial para la devolución.** `db.abonar_devolucion` no tiene un índice único
@@ -1196,7 +1203,8 @@ cada quien. Cada pantalla migrada tiene una etapa en `PANTALLAS`:
   7 días y lo lleva a la vieja, **sin desplegar**. Para volver antes:
   `/ui/nueva?pantalla=<p>`.
 - **Cambiar de etapa** = editar `etapa=` en `PANTALLAS` y desplegar (lo
-  corres tú). Rollback: desplegar el sha anterior.
+  corres tú). Rollback: desplegar el sha anterior, con el sha COMPLETO en
+  `IMAGE_TAG` (el ECR etiqueta con `github.sha`).
 - **Medir el retiro** (≥ 3 de 5 usuarios pasaron por la nueva, 7 días sin
   incidentes): cada 302 deja en CloudWatch una línea como
   `migracion 302 pantalla=admin etapa=todos sub=<sub>`, y cada elección de la
@@ -1209,6 +1217,13 @@ cada quien. Cada pantalla migrada tiene una etapa en `PANTALLAS`:
 
 Piloto: **admin** (solo lo usa el dueño), hoy en `nueva`. Su mapa está en
 `docs/migracion/admin.md`.
+
+La primera en `todos` es **inicio**, desde el 14-oct-2026 (decisión del
+dueño): `/estudio/` responde 302 a `/estudio/inicio/`. Las demás siguen en
+`nueva`, así que los enlaces del inicio nuevo llevan a sus pantallas viejas,
+salvo la foto del personaje de cuentos e historias, que lleva a la Crear
+nueva (`/estudio/crear/`). Para devolver a alguien a la clásica:
+`https://irremplazables.xyz/ui/clasica?pantalla=inicio`.
 
 ## La imagen (Node, y por qué está fijado)
 

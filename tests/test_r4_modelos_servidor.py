@@ -91,7 +91,8 @@ def test_cada_numero_de_la_tarifa_es_de_un_modelo_de_la_tabla():
     # desplegarla), FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5 y
     # FLUX 3, solo para crear (su número exacto lo fija tests/test_r4_ola2.py)
     assert set(creditos.MODELOS_CR["imagen"]) >= {"grok", "nb2"}
-    assert set(creditos.MODELOS_CR["editar"]) >= {"grok", "nb2"}
+    # editar: Nano Banana 2 se apagó el 14-oct-2026 (APAGADOS, abajo); queda Grok
+    assert set(creditos.MODELOS_CR["editar"]) >= {"grok"}
     assert set(creditos.MODELOS_CR["clip"]) >= {"veo-lite", "veo-fast"}
 
 
@@ -126,6 +127,22 @@ def _activos_de_la_web() -> dict[str, list[str]]:
     return {"imagen": imagen, "editar": [i for i in imagen if i in editables], "clip": activos("CLIP")}
 
 
+# Encendidos en el catálogo de la web y apagados A PROPÓSITO quitándoles el número de
+# tarifas.json (sin número la caja no los ofrece y el servidor responde 422 antes de cobrar).
+# 14-oct-2026, decisión del dueño al pasar el inicio a `todos`: editar con Nano Banana 2
+# pasaba de los 29 s de la Lambda con un arranque en frío (docs/OPERACION.md).
+APAGADOS = {("editar", "nb2")}
+
+
+def test_los_apagados_siguen_sin_numero():
+    """Si alguien vuelve a poner el número, este test lo avisa: sácalo de APAGADOS a
+    propósito (y pasa editar a segundo plano antes, docs/OPERACION.md)."""
+    from pipeline import creditos
+    for tarea, id_ in APAGADOS:
+        assert id_ not in creditos.MODELOS_CR.get(tarea, {}), (tarea, id_)
+        assert id_ in _activos_de_la_web()[tarea], (tarea, id_, "ya no está en el catálogo: sácalo de APAGADOS")
+
+
 def test_todo_modelo_activo_en_la_web_tiene_fila_y_numero_en_el_servidor():
     """Encender `activo: true` en el catálogo sin fila en la tabla o sin número en
     tarifas.json enseñaría un modelo que el servidor rechaza con 422. El número manda
@@ -136,6 +153,8 @@ def test_todo_modelo_activo_en_la_web_tiene_fila_y_numero_en_el_servidor():
     for tarea, ids in activos.items():
         for id_ in ids:
             assert id_ in modelos_ia.disponibles(tarea), (tarea, id_, "sin fila en modelos_ia")
+            if (tarea, id_) in APAGADOS:
+                continue
             assert id_ in creditos.MODELOS_CR.get(tarea, {}), (tarea, id_, "sin número en tarifas.json")
 
 

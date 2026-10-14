@@ -1230,7 +1230,7 @@ def _editor_imagenes_viejo():
 
 
 # Tarjetas 37 y 38 · «/» es la portada pública y el estudio vive en /estudio/.
-# /estudio/ sirve el MISMO index.html (no se mueve: sus tests lo leen ahí).
+# /estudio/ es la URL vieja del inicio: la decide server/migracion.py (abajo).
 # Cualquier «/?algo» es un enlace viejo al estudio (?p=, ?blotato=conectar…):
 # 302 conservando el query. 302 y no 301, igual que arriba.
 # no-cache en los tres (_SIN_CACHE, arriba): son HTML y un cambio de portada
@@ -1250,8 +1250,9 @@ def _estudio_sin_barra(request: Request):
     return RedirectResponse(f"/estudio/{q}", status_code=302)
 
 
-# /estudio/ (el mismo index.html, no-cache) lo sirve server/migracion.py:
-# es la URL vieja del inicio, que se migra a /estudio/inicio/ (UI·8.4).
+# /estudio/ lo decide server/migracion.py: es la URL vieja del inicio, que se
+# migra a /estudio/inicio/ (UI·8.4). Desde el 14-oct-2026 está en `todos`:
+# 302 a la nueva, o el mismo index.html (no-cache) con la cookie de la clásica.
 
 
 @app.get("/entrar", include_in_schema=False)

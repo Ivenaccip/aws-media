@@ -36,8 +36,8 @@ eso:
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/inicio/` existe; `/estudio/` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/estudio/?q` → 302 a `/estudio/inicio/?q`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/inicio/` existe; `/estudio/` sigue igual | el PR de la pantalla | ✅ en producción; la caja que cobra (R4 y Edición) llegó con el PR #160 (14-oct-2026) |
+| `todos` | `/estudio/?q` → 302 a `/estudio/inicio/?q`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | 14-oct-2026, decisión del dueño (con Nano Banana 2 fuera de «Editar») |
 | `retirada` | 302 siempre; se borran `static/index.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño corre el QA manual de `docs/QA-UI.md` § inicio.
@@ -46,6 +46,13 @@ video, «Iniciar ✦ N»): los pasos del QA marcados con 💳 gastan créditos d
 verdad y solo se corren con el «sí» del dueño. No hay interruptor por función:
 al pasar el inicio a `todos` la familia Edición sale para todos de golpe, con
 su cobro.
+
+**14-oct-2026 — lo que abre `todos`, además de la Edición:** el clip y las
+imágenes de la caja, con todo el catálogo de modelos; y la foto del personaje
+de cuentos e historias, que lleva a la Crear **nueva** (`/estudio/crear/`, que
+sigue en `nueva` y cobra el guion). Nano Banana 2 sale de «Editar» en el mismo
+cambio (`docs/OPERACION.md`). No hay enlace visible a la clásica: a quien lo
+necesite se le manda `/ui/clasica?pantalla=inicio`.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
@@ -91,11 +98,11 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.caja.dos_pedidos_seguidos_con_la_primera_lectura_degradada_no_dejan_tarjetas_de_mas` | una lectura buena trae también lo que ya esperaba: con dos imágenes seguidas y la primera relectura degradada, al salir bien la segunda quedan dos tarjetas (las del servidor), no tres con una repetida |
 | `inicio.caja.un_pedido_que_el_servidor_rechazo_no_deja_su_tarjeta_aunque_la_lista_no_llegue` | lo contrario: si el POST falló (nada quedó en marcha) la tarjeta se va aunque la lista no responda, y no se queda preguntando por algo que no existe |
 | `inicio.caja.editar_pide_la_imagen_con_el_mas` | sin imagen no sale y dice cómo agregarla; con ella va a `/api/imagenes/editar` en modo `todo` con `modelo` |
-| `inicio.caja.editar_manda_nano_banana_2` | con Nano Banana 2 elegido, `/api/imagenes/editar` lleva `modelo=nb2` en modo `todo` |
+| `inicio.caja.editar_no_ofrece_nano_banana_2` | desde el 14-oct-2026 «Editar una imagen» no ofrece Nano Banana 2 (sin número en `tarifas.json` §modelos.editar: con un arranque en frío pasaba de los 29 s de la Lambda); el pedido sale con Grok Imagine, `modelo=grok` en modo `todo`. Hasta ese día era `inicio.caja.editar_manda_nano_banana_2` |
 | `inicio.caja.el_mas_agrega_quita_y_respeta_el_tope` | el «+» solo existe en las tareas que usan imágenes (clip, editar, crear una imagen desde el 12-oct-2026 y cuentos e historia desde el 14-oct-2026; en Edición el «+» es del video y no hay el de imágenes); tope 3 (clip) o 1 (editar, cuentos, historia); un archivo que no sirve se rechaza con su motivo. Con imágenes en Mis creaciones el «+» abre un menú: ver `inicio.biblioteca.*` |
 | `inicio.caja.el_clip_con_fotos_las_sube_y_suma_el_juntarlas` | las fotos suben directo a S3 (`/api/clip/presign`) y el menú dice lo que suma juntarlas (tarifas.json `clip.componer_imagenes`); la nota no cambia con la duración del clip |
 | `inicio.caja.arrastrar_imagenes_a_la_caja_las_agrega` | arrastrar es un atajo del «+»; solo cuenta lo que trae archivos (`dataTransfer.types` con `Files`) |
-| `inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita` | «Crear una imagen» tiene su «+» (sin miniaturas propias): con una imagen la tarea es editarla, y la caja pasa sola a «Editar una imagen» con la miniatura, el texto escrito y el mismo modelo si ese también edita (Grok y Nano Banana 2); el pedido sale a `/api/imagenes/editar`, no a `/api/imagenes`. Lo dice con «pasamos a «Editar una imagen»» |
+| `inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita` | «Crear una imagen» tiene su «+» (sin miniaturas propias): con una imagen la tarea es editarla, y la caja pasa sola a «Editar una imagen» con la miniatura, el texto escrito y el mismo modelo si ese también edita (hoy solo Grok; la prueba le pone su número a Nano Banana 2 mientras corre); el pedido sale a `/api/imagenes/editar`, no a `/api/imagenes`. Lo dice con «pasamos a «Editar una imagen»» |
 | `inicio.caja.si_el_modelo_de_crear_no_edita_la_caja_edita_con_el_predeterminado` | si el modelo elegido para crear no tiene versión que edite (FLUX.2 klein…), la edición arranca con el predeterminado de editar (Grok Imagine): nunca se le pide editar a quien no sabe |
 | `inicio.caja.una_imagen_que_no_sirve_no_saca_a_crear_una_imagen_de_su_tarea` | en «Crear una imagen» un archivo que el editor no lee (solo .jpg, .jpeg, .png, .webp) se rechaza con su motivo y la caja se queda en crear |
 | `inicio.caja.pegar_una_imagen_la_agrega_igual_que_el_mas` | Ctrl+V con una imagen copiada (captura o archivo del explorador) la agrega como con el «+», con los mismos topes y rechazos, esté donde esté el foco de la página; una captura («image.png») se llama «imagen-pegada.png» (con número si son varias) y un archivo conserva su nombre |
@@ -163,11 +170,11 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.menumodelo.si_el_elegido_no_la_tiene_vuelve_el_predeterminado_con_un_aviso_en_el_pie` | el aviso vive en el pie del menú, se va al elegir otra duración u otro modelo y no sobrevive a cerrar y reabrir |
 | `inicio.menumodelo.duracion_con_flechas_y_foco` | ←→↑↓ cambian la duración (sin salirse de los extremos) y llevan el foco al botón nuevo; al abrir el foco sigue yendo al modelo elegido; las flechas entre modelos saltan los atenuados |
 | `inicio.menumodelo.con_una_sola_duracion_no_hay_selector` | con una sola duración ofrecida no sale el grupo «Duración del clip» ni su pista; el chip y el pie siguen diciendo los segundos |
-| `inicio.modelos.cada_modelo_activo_tiene_precio_y_cada_precio_su_modelo` | el catálogo (`modelos.ts`) y `tarifas.json` §modelos no se desfasan, en ninguno de los dos sentidos |
+| `inicio.modelos.cada_modelo_activo_tiene_precio_y_cada_precio_su_modelo` | el catálogo (`modelos.ts`) y `tarifas.json` §modelos no se desfasan, en ninguno de los dos sentidos; la única excepción son los apagados a propósito (`APAGADOS`: hoy editar con Nano Banana 2), que deben seguir SIN número |
 | `inicio.modelos.el_predeterminado_esta_activo_y_es_el_que_ya_valia` | el predeterminado de cada tarea está activo y vale lo mismo que cobra la pantalla |
 | `inicio.modelos.sin_precio_confirmado_no_se_ofrece_aunque_este_activo` | sin número en `tarifas.json` el modelo no sale, ni uno con resolución a medias |
 | `inicio.modelos.un_modelo_apagado_no_se_ofrece_aunque_tenga_precio` | `activo: false` lo saca del menú aunque tenga precio |
-| `inicio.modelos.lo_que_esta_a_la_venta_hoy` | el catálogo real tiene activos, para crear imágenes, Grok, FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3, Nano Banana 2 y Nano Banana Pro (dos calidades, 2K y 4K; solo para crear) (para editar, solo Grok y Nano Banana 2) y, para el clip, MiniMax H3 Max Turbo, Veo 3.1 Lite, Grok Imagine Video, Grok Imagine Video 1.5 Lite y Veo 3.1 Fast (en ese orden); Veo 3.1 Standard, LTX, Kling y Seedance siguen apagados |
+| `inicio.modelos.lo_que_esta_a_la_venta_hoy` | el catálogo real tiene activos, para crear imágenes, Grok, FLUX.2 klein, Z-Image Turbo, FLUX.2 pro, Seedream 5.0 Flash, Seedream 4.5, FLUX 3, Nano Banana 2 y Nano Banana Pro (dos calidades, 2K y 4K; solo para crear) (en el catálogo de editar, Grok y Nano Banana 2; a la venta para editar, solo Grok: desde el 14-oct-2026 Nano Banana 2 no tiene número en `tarifas.json` §modelos.editar) y, para el clip, MiniMax H3 Max Turbo, Veo 3.1 Lite, Grok Imagine Video, Grok Imagine Video 1.5 Lite y Veo 3.1 Fast (en ese orden); Veo 3.1 Standard, LTX, Kling y Seedance siguen apagados |
 | `inicio.modelos.por_nivel_y_de_menor_a_mayor_precio` | los grupos y su orden |
 | `inicio.modelos.todo_modelo_del_catalogo_cae_en_un_nivel_de_su_tarea` | ningún modelo desaparece por traer un nivel que su tarea no enseña |
 | `inicio.modelos.editar_solo_los_que_tienen_endpoint_edit` | Grok, GPT Image 2 y Nano Banana 2; Nano Banana Pro tiene `/edit` en fal pero no se ofrece para editar todavía (necesita su propio camino en segundo plano), así que queda fuera |
@@ -430,8 +437,9 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_m19_orbe.py` (favicon, sin motor GPU, sin `/monedero.html`, `check_js`) | favicon en `web/estudio/inicio/index.html` (ya lo mira `test_todas_las_paginas_tienen_favicon`); el inicio nuevo no carga el orbe |
 | `test_m20_paleta.py` | ya mira `web/`. **Al retirar:** `rgba(0,0,0,0.533)` y `rgba(20,22,26,0.72/0.95)` solo viven en `static/index.html`: salen de `TRANSLUCIDOS` en el mismo PR |
 | `test_m21_botones.py[index.html]` | el precio del desplegable es `{ESTRELLA} {precio}` en JSX, no una plantilla: no es un botón que cobre |
-| `test_entrar_portada.py::test_estudio_sirve_el_mismo_index` | se queda mientras el inicio esté en `nueva`; al pasar a `todos` cambia a esperar el 302 (`test_migracion.py` ya lo prueba) |
-| `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | se queda: `server/migracion.py` sirve la vieja con `no-cache` |
+| `test_entrar_portada.py::test_estudio_sirve_el_mismo_index` | desde `todos` (14-oct-2026) pide la vieja con la cookie `ui=clasica`; `test_estudio_lleva_al_inicio_nuevo` espera el 302 que conserva el query, y `test_las_tres_son_publicas_con_cognito` sigue el 302 hasta `/estudio/inicio/` sin pasar por `/entrar`. Las dos que esperan el 302 (`test_estudio_lleva_al_inicio_nuevo` y `test_las_tres_son_publicas_con_cognito`) solo lo esperan si la pantalla nueva está compilada (en el contenedor del CI); sin `web/dist` dan 200 |
+| `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | se queda con la cookie `ui=clasica`: `server/migracion.py` sirve la vieja con `no-cache`. `test_el_302_del_estudio_no_se_queda_en_cache` fija el `no-store` del 302 |
+| `test_web_tuberia.py::test_la_app_real_sirve_la_vitrina_si_esta_compilada` | con `web/dist`, `/estudio/` da el 302 y con la cookie `ui=clasica` el 200 |
 
 ## Diferencias a propósito
 

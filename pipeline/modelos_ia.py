@@ -427,8 +427,9 @@ def _tabla() -> dict[tuple[str, str], Modelo]:
                    con_audio=True, audio_opcional=True, duraciones=(4, 6, 8), max_intentos=1)
     seed = Modelo("seed", "clip", SEED_T2V, SEED_I2V, familia_clip="seedance",
                   con_audio=True, audio_opcional=True, duraciones=(4, 6, 8), max_intentos=1)
-    # Nano Banana 2: crear (con referencia va al /edit) y editar. A la venta desde el
-    # 9-oct-2026. Crear midió 11.7 s (editar, 11.5 y 13.9 s): por la regla de arriba iría a
+    # Nano Banana 2: crear (con referencia va al /edit) y editar. Crear, a la venta desde el
+    # 9-oct-2026; editar: la fila se queda, pero desde el 14-oct-2026 no tiene número en
+    # tarifas.json §modelos.editar y no se ofrece (docs/OPERACION.md). Crear midió 11.7 s (editar, 11.5 y 13.9 s): por la regla de arriba iría a
     # segundo plano, pero sigue síncrono —como Grok y como editar— «de momento», por decisión
     # del dueño del 11-oct-2026: docs/OPERACION.md, «Decisión del dueño: Grok y Nano Banana 2».
     nb2 = Modelo("nb2", "imagen", NB2_CREAR, NB2_EDITAR, args_extra=NB2_ARGS_EXTRA)

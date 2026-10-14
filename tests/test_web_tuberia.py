@@ -276,8 +276,13 @@ def test_la_app_real_sirve_la_vitrina_si_esta_compilada(monkeypatch):
     for a in assets:
         ra = c.get(a)
         assert ra.status_code == 200 and "immutable" in ra.headers["cache-control"], a
-    # las rutas de siempre siguen donde estaban
-    assert c.get("/estudio/", follow_redirects=False).status_code == 200
+    # las rutas de siempre siguen donde estaban; el inicio está en `todos`
+    # (server/migracion.py): /estudio/ lleva a la nueva, y con la cookie de la
+    # clásica sigue sirviendo la vieja
+    r = c.get("/estudio/", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
+    assert c.get("/estudio/", headers={"Cookie": "ui=clasica"},
+                 follow_redirects=False).status_code == 200
 
 
 # ---------------------------------------------------------------------------

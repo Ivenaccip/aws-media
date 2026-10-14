@@ -635,8 +635,13 @@ def test_en_local_todo_sigue_sincrono_tambien_los_lentos(
 
 def test_editar_sigue_sincrono_aunque_el_modelo_sea_lento(
         cliente, nube, s3, monedero, cola, monkeypatch):
-    """Solo CREAR se encola: `POST /api/imagenes/editar` con Nano Banana 2 queda como estaba."""
-    from pipeline import media_fal
+    """Solo CREAR se encola: `POST /api/imagenes/editar` con Nano Banana 2 queda como estaba.
+
+    Editar con él se apagó el 14-oct-2026 (sin número en tarifas.json, tests/test_r4_ola1.py
+    INERTES): aquí se le pone el número para probar el camino, que es el que volvería al
+    encenderlo sin pasar editar a segundo plano."""
+    from pipeline import creditos, media_fal
+    monkeypatch.setitem(creditos.MODELOS_CR["editar"], "nb2", 8)
     llamadas = []
 
     async def transformar(prompt, imagen, destino, meta=None, modelo=None):
@@ -2242,8 +2247,8 @@ def test_trabajos_una_imagen_generandose_es_un_trabajo_en_curso():
     ids=["corriendo", "listo", "error", "caducado"])
 def test_trabajos_la_ficha_de_una_imagen_lleva_al_inicio_nuevo_donde_mis_creaciones_la_ensena(doc):
     """El «Ver» llevaba a /imagenes.html, que es el formulario de crear, vacío: ni la imagen ni el error. «Mis
-    creaciones» solo existe en el inicio nuevo, y esa URL sale de la tabla de migración (no es /estudio/: con el
-    inicio en la etapa `nueva` sirve el viejo, que no lista pedidos)."""
+    creaciones» solo existe en el inicio nuevo, y esa URL sale de la tabla de migración (no es /estudio/: con la
+    cookie `ui=clasica` sirve el viejo, que no lista pedidos)."""
     from server import migracion, trabajos_api
     f = _ficha_trabajo(doc)
     assert f["url"] == migracion.PANTALLAS["inicio"].nueva == trabajos_api.URL_IMAGEN == "/estudio/inicio/"
