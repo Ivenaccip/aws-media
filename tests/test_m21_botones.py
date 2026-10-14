@@ -30,6 +30,10 @@ VERBOS = {
     # dentro; competencia mira lo que ya publicaron varias cuentas, y eso el
     # usuario lo llama revisar
     "Revisar",
+    # E1: la tercera familia de la caja del inicio (web/src/pantallas/inicio/
+    # CajaEdicion.tsx) edita UN video subido: «Editar ✦ N». No es «Proponer»
+    # (el de e1.html): aquí la persona escribe lo que quiere y la IA lo aplica
+    "Editar",
 }
 
 # Cada botón que gasta créditos, con el verbo que le toca.

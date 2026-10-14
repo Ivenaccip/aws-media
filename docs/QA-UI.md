@@ -74,7 +74,10 @@ y en el escritorio.
 ## inicio · `/estudio/inicio/`
 
 (antes `/estudio/`). Con una cuenta que ya tiene cosas y con una nueva, en el
-teléfono (390 px) y en el escritorio. Nada de esto cobra.
+teléfono (390 px) y en el escritorio. **Desde R4b la caja cobra** (el clip y la
+imagen se piden en ella) **y desde E1 también la edición de un video** (pasos
+15 a 33): los pasos marcados 💳 gastan créditos reales y solo se corren con el
+«sí» del dueño; el resto no cobra.
 
 | # | Paso | Qué tiene que pasar |
 |---|---|---|
@@ -92,6 +95,25 @@ teléfono (390 px) y en el escritorio. Nada de esto cobra.
 | 12 | Modo avión y recargar | «No pudimos traer tus proyectos» con Reintentar; no aparecen los tres caminos |
 | 13 | «Tus trabajos» con un render en curso | El cuadro de siempre, abajo a la derecha |
 | 14 | «Usar la versión anterior» | Llega a `/estudio/`; en `todos`, `/estudio/` ya no redirige para ti durante 7 días |
+| 15 | En la caja, tocar «Edición» del riel | Tres botones: Imagen · Video · Edición (la caja sigue arrancando en Video). Aparecen el campo «Cuéntale a la IA qué quieres», las 4 ideas, el «+» y «Editar» sin precio, apagado; debajo «Escribe qué quieres hacer con tu video, o toca una idea.» |
+| 16 | Tocar «Editar» sin video | Aviso abajo a la derecha: «Primero agrega el video: pulsa el «+» o arrástralo a la caja.»; no cobra |
+| 17 | «+» y elegir un MP4 de unos 12 min (o arrastrarlo a la caja; pegar con Ctrl+V no hace nada) | La tarjeta con nombre, formato y tamaño; barra de progreso que avanza de verdad; el botón dice «Subiendo…» y la nota «Cuando termine de subir calculamos el precio. Hasta entonces no se cobra nada.»; no cobra |
+| 18 | Mientras sube: escribir algo, cambiar a «Video» y volver a «Edición»; tocar el «+» y «Subiendo…» | El texto y la subida siguen donde iban (no se cortó); el «+» y el botón avisan «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» |
+| 19 | Al terminar de subir | La tarjeta suma la duración («12:04 · MP4 · …»); «Editar ✦ N» apagado con el N que dice el servidor (✦ 8 para 12:04 sin transcripción, ✦ 2 con ella; `tarifas.json` §editar y §shorts) |
+| 20 | Tocar «Editar ✦ N» sin haber escrito nada | El foco pasa al campo; no sale ningún aviso y no cobra |
+| 21 | Tocar una idea | Pone su texto en el campo y lo enfoca; «Editar ✦ N» se enciende y debajo dice «Tienes ✦ S; después te quedan ✦ …» |
+| 22 | Subir un video de menos de 1 min | «Editar» sin precio, apagado, con el aviso del servidor debajo; tocarlo lleva el foco al «+» (cambiar el video); no cobra |
+| 23 | 💳 Doble clic rápido en «Editar ✦ N» | **Un** cobro en la píldora (vuela «−N»); la caja se vacía (texto y video); «Tus trabajos» muestra la edición sola |
+| 24 | 💳 Con la corrida en marcha: tocar el «+» y «Editar» | «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.»; cuando termina, vuelven a servir (el servidor todavía no tiene candado por cuenta: dos pestañas pueden lanzar dos) |
+| 25 | Con el saldo por debajo del precio (o con la píldora desactualizada) | «Editar ✦ N» apagado, «Tienes ✦ S: no alcanza para editar este video.» y «Te faltan ✦ N · …» (con la recarga cerrada, el texto del monedero y no un botón muerto); no cobra y no se vacía nada |
+| 26 | 💳 Al terminar la corrida, abrir la ficha de «Tus trabajos» | Abre `/editor/<nombre>/` con los cortes propuestos para auditar; el archivo que subiste no cambió. Si pediste algo que el motor no hace (p. ej. «hazlo vertical») sale como duda en el editor, no se calla |
+| 27 | 💳 Si una corrida falla de nuestro lado o no encuentra relleno | Los créditos vuelven: la píldora sube otra vez |
+| 28 | Con el teclado: Tab hasta «Editar» apagado | Se enfoca (anillo ámbar) y el lector de pantalla lo anuncia como no disponible y por qué |
+| 29 | Teléfono (390 px) con un video en la caja | La caja no se sale de la pantalla; las ideas, el «+», la ✕ y «Editar» se tocan sin errar (al menos 44 px) |
+| 30 | Subir DOS videos distintos que se llamen igual (p. ej. dos «final.mp4»), uno después del otro, con la misma cuenta | El segundo se sube como un proyecto nuevo (en «Tus trabajos» sale con un nombre distinto) y su precio es el suyo: no hereda la transcripción ni los cortes del primero |
+| 31 | Con el teclado, sin ratón: Tab desde «Edición» por el campo, las 4 ideas, el «+» y «Editar»; Espacio en el «+»; Enter y Espacio en «Editar» apagado | El anillo ámbar se ve en cada parada, **también en el campo** (y cuando una idea o «Editar» le llevan el foco); el orden es el de la pantalla y Shift+Tab lo recorre al revés; Espacio en el «+» abre el selector de archivos; Enter y Espacio hacen lo mismo que el clic |
+| 32 | Teléfono (390 px y, si se puede, 320 px): campo vacío y, con un video subiéndose, el botón | El ejemplo del campo se lee **entero** («…para Reels.»); «Subiendo…» está en **ámbar** con el cursor de espera (no gris discontinuo) y la nota de abajo lo explica |
+| 33 | Tocar el «+» mientras sube un video; esperar a que termine de subir y salga el precio | El aviso «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» se **quita solo** cuando el trabajo termina; si la subida falla, el aviso lo reemplaza el error y ese sí se queda |
 
 ## shorts · `/estudio/shorts/`
 

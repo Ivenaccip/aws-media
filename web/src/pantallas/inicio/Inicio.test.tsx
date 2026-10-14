@@ -1495,6 +1495,18 @@ describe('la caja', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     expect(screen.getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
     expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    // E1: son tres familias. Edición no tiene opciones que elegir, y Video e Imagen siguen volviendo a la primera
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    expect(screen.getByRole('button', { name: 'Edición' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute('aria-pressed', 'true');
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
+    await elegirOpcion('Crea tu historia');
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(botonOpcion()).toHaveTextContent('Un video corto');
   });
 });
 

@@ -12,7 +12,12 @@ import { PREDETERMINADO, type Tarea } from './modelos';
 // ---------------------------------------------------------------------------
 // la caja: qué te llevas (familia) y cuál de esas cosas (opción)
 
-export type Familia = 'videos' | 'imagenes';
+/** Las tres cosas que te llevas. «Edición» (E1) no elige tarea ni modelo: es otra caja (CajaEdicion), con su
+ *  propio texto, su video y su precio; por eso no está en OPCIONES. */
+export type Familia = 'videos' | 'imagenes' | 'edicion';
+
+/** Las familias que sí se reparten en tareas (el menú de la izquierda del chip): Imagen y Video. */
+export type FamiliaCrea = Exclude<Familia, 'edicion'>;
 
 export interface Opcion {
   id: string;
@@ -37,7 +42,7 @@ export interface Opcion {
 const duraciones = Object.values(video.por_duracion);
 const historias = `${Math.min(...duraciones)}–${Math.max(...duraciones)}`;
 
-export const OPCIONES: Record<Familia, Opcion[]> = {
+export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
   videos: [
     {
       id: 'clip',

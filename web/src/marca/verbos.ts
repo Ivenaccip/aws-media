@@ -4,7 +4,7 @@
 export const VERBOS = [
   'Escribir', 'Producir', 'Reintentar', 'Cambiar', 'Generar', 'Aplicar',
   'Analizar', 'Re-analizar', 'Importar', 'Renderizar', 'Proponer', 'Animar',
-  'Transformar', 'Revisar',
+  'Transformar', 'Revisar', 'Editar',
 ] as const;
 
 export type Verbo = (typeof VERBOS)[number];

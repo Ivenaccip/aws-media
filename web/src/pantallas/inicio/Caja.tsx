@@ -13,6 +13,10 @@
 // «Crear una imagen» también tiene «+»: con una imagen la tarea es editarla, así
 // que la caja pasa sola a «Editar una imagen».
 //
+// La tercera familia, Edición (E1), es otra caja: un video subido + lo que quieres que le
+// haga la IA (CajaEdicion). Su estado vive en useEdicion, que se llama AQUÍ y no en
+// CajaEdicion: cambiar de familia no pierde el texto, el video ni una subida a medias.
+//
 // Lo que la caja dice —que ya está creando, o por qué no pudo— sale en el cuadro de
 // abajo a la derecha (nucleo/avisos); donde esa página no lo trae, junto a la caja.
 import {
@@ -50,6 +54,7 @@ import {
   traerImagen,
 } from './envio';
 import { Biblioteca } from './Biblioteca';
+import { CajaEdicion } from './CajaEdicion';
 import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
@@ -73,6 +78,7 @@ import {
   textoSonido,
   type Tarea,
 } from './modelos';
+import { useEdicion } from './useEdicion';
 
 export interface MandoCaja {
   /** Pone la familia y la opción, enfoca el texto y sube la página. */
@@ -116,10 +122,11 @@ const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ??
 /** La clave del navegador donde se recuerda si el clip va con sonido o sin él. */
 const CLAVE_SONIDO = 'caja.sonido';
 
-// el riel: dos botones con icono. En celular es una fila sobre el texto.
+// el riel: tres botones con icono. En celular es una fila sobre el texto.
 const RIEL = [
   { familia: 'imagenes', rotulo: 'Imagen', icono: 'imagen' },
   { familia: 'videos', rotulo: 'Video', icono: 'video' },
+  { familia: 'edicion', rotulo: 'Edición', icono: 'cortar' },
 ] as const;
 
 export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir, alTerminar, imagenes = SIN_IMAGENES }, ref) {
@@ -159,13 +166,28 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const menu = useRef<HTMLDivElement>(null);
   const idLista = useId();
   const idTitulo = useId();
+  // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
+  const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') });
+  const enEdicion = familia === 'edicion';
+  // elegir('edicion') desde fuera: el campo de esa caja se monta en el render que sigue, así que el foco se le da ahí
+  const enfocarAlMontar = useRef(false);
+  useEffect(() => {
+    if (!enEdicion || !enfocarAlMontar.current) return;
+    enfocarAlMontar.current = false;
+    refsEdicion.area.current?.focus();
+  }, [enEdicion, refsEdicion.area]);
 
   useImperativeHandle(ref, () => ({
     elegir(f, id) {
       setFamilia(f);
-      setOpcion(OPCIONES[f].find(o => o.id === id) ?? OPCIONES[f][0]!);
-      setAbierto(false);
-      area.current?.focus();
+      if (f === 'edicion') {
+        if (refsEdicion.area.current) refsEdicion.area.current.focus();
+        else enfocarAlMontar.current = true;
+      } else {
+        setOpcion(OPCIONES[f].find(o => o.id === id) ?? OPCIONES[f][0]!);
+        setAbierto(false);
+        area.current?.focus();
+      }
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
     },
     referencia(archivo) {
@@ -244,7 +266,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     return () => window.removeEventListener('resize', ubicar);
   }, [abierto]);
 
-  const opciones = OPCIONES[familia];
+  // las opciones del menú son las de la familia de la opción de ahora (en Edición no se ven, pero la opción se conserva)
+  const opciones = OPCIONES[OPCIONES.imagenes.some(o => o.id === opcion.id) ? 'imagenes' : 'videos'];
 
   // el modelo de la tarea: el que eligió, o el predeterminado, o el primero que
   // se ofrezca (y que admita la duración, en el clip). Si no se ofrece ninguno,
@@ -308,7 +331,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   // «Crear una imagen» no parte de ninguna, pero admite agregar una: con ella la tarea es editarla, y la caja pasa
   // a «Editar una imagen» (que es la que sabe partir de una y trae solo los modelos que editan)
   const alAgregar = opcion.alAgregar ? opciones.find(o => o.id === opcion.alAgregar) : undefined;
-  const admiteImagenes = maxRefs > 0 || alAgregar !== undefined;
+  // en Edición no hay imágenes: ni «+» de imágenes, ni pegar, ni la hoja (el «+» de esa caja trae VIDEOS)
+  const admiteImagenes = !enEdicion && (maxRefs > 0 || alAgregar !== undefined);
   // lo que se agrega rige por la tarea que va a quedar (con una imagen, «Crear una imagen» pasa a editar)
   const tareaDeImagenes = alAgregar ?? opcion;
   const topeDeImagenes = tareaDeImagenes.referencias ?? 0;
@@ -431,10 +455,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   }
 
   function alSoltar(e: React.DragEvent) {
-    if (!admiteImagenes || !traeArchivos(e)) return;
+    if (!(admiteImagenes || enEdicion) || !traeArchivos(e)) return;
     e.preventDefault();
     setArrastrando(false);
-    agregar(soloImagenes(Array.from(e.dataTransfer.files)));
+    // en Edición lo que se suelta es el video a editar (y se sube); pegar, en cambio, se ignora
+    if (enEdicion) edicion.recibir(Array.from(e.dataTransfer.files));
+    else agregar(soloImagenes(Array.from(e.dataTransfer.files)));
   }
 
   // Ctrl+V con una imagen copiada (una captura, o un archivo del explorador): se agrega igual que con el «+».
@@ -550,7 +576,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
         ref={seccion}
         onDragOver={e => {
           // solo lo que trae archivos: mover texto dentro del propio cuadro sigue su camino normal
-          if (!admiteImagenes || !traeArchivos(e)) return;
+          if (!(admiteImagenes || enEdicion) || !traeArchivos(e)) return;
           e.preventDefault();
           setArrastrando(true);
         }}
@@ -575,7 +601,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
               aria-pressed={familia === r.familia}
               onClick={() => {
                 setFamilia(r.familia);
-                setOpcion(OPCIONES[r.familia][0]!);
+                // Imagen y Video eligen su primera opción, como siempre; Edición no tiene opciones (conserva todo lo suyo)
+                if (r.familia !== 'edicion') setOpcion(OPCIONES[r.familia][0]!);
                 setAbierto(false);
               }}
               className={unir(
@@ -594,202 +621,208 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
           <h2 id={idTitulo} className="m-0 mb-2 font-titulo text-titulo-md font-bold">
             ¿Qué vamos a crear hoy?
           </h2>
-          {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} />}
-          <textarea
-            ref={area}
-            aria-labelledby={idTitulo}
-            maxLength={5000}
-            value={texto}
-            onChange={e => {
-              setTexto(e.target.value);
-              setAviso('');
-            }}
-            placeholder={opcion.hueco}
-            className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
-          />
-          <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
-            <div className="flex min-w-0 gap-2.5">
-            {admiteImagenes && (
-              <>
-                {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
-                <input
-                  ref={archivos}
-                  type="file"
-                  accept="image/*,.heic,.heif"
-                  multiple={maxRefs > 1}
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  className="hidden"
-                  onChange={e => {
-                    agregar(Array.from(e.target.files ?? []));
-                    e.target.value = ''; // para poder elegir el mismo archivo otra vez
-                  }}
-                />
-                <div ref={mas} className="relative flex-none">
-                  <button
-                    ref={botonMas}
-                    type="button"
-                    aria-label={
-                      maxRefs > 1
-                        ? 'Agregar imágenes de referencia'
-                        : alAgregar
-                          ? 'Agregar una imagen para editarla'
-                          : 'Agregar la imagen que quieres editar'
-                    }
-                    title="Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V"
-                    {...(hayBiblioteca ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuMas } : {})}
-                    onClick={alPulsarMas}
-                    className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
-                  >
-                    <Icono nombre="mas" />
-                  </button>
-                  {menuMas && (
-                    <div
-                      role="menu"
-                      aria-label="Agregar imágenes"
+          {enEdicion ? (
+            <CajaEdicion ed={edicion} refs={refsEdicion} />
+          ) : (
+            <>
+              {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} />}
+              <textarea
+                ref={area}
+                aria-labelledby={idTitulo}
+                maxLength={5000}
+                value={texto}
+                onChange={e => {
+                  setTexto(e.target.value);
+                  setAviso('');
+                }}
+                placeholder={opcion.hueco}
+                className="min-h-22 w-full resize-y border-0 bg-transparent p-0 text-sm text-texto outline-none"
+              />
+              <div className="mt-2 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
+                <div className="flex min-w-0 gap-2.5">
+                {admiteImagenes && (
+                  <>
+                    {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
+                    <input
+                      ref={archivos}
+                      type="file"
+                      accept="image/*,.heic,.heif"
+                      multiple={maxRefs > 1}
                       tabIndex={-1}
-                      onKeyDown={teclasDelMenu}
-                      className="absolute top-[calc(100%+8px)] left-0 z-20 w-[min(340px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
+                      aria-hidden="true"
+                      className="hidden"
+                      onChange={e => {
+                        agregar(Array.from(e.target.files ?? []));
+                        e.target.value = ''; // para poder elegir el mismo archivo otra vez
+                      }}
+                    />
+                    <div ref={mas} className="relative flex-none">
+                      <button
+                        ref={botonMas}
+                        type="button"
+                        aria-label={
+                          maxRefs > 1
+                            ? 'Agregar imágenes de referencia'
+                            : alAgregar
+                              ? 'Agregar una imagen para editarla'
+                              : 'Agregar la imagen que quieres editar'
+                        }
+                        title="Agregar imágenes, arrástralas a la caja o pégalas con Ctrl+V"
+                        {...(hayBiblioteca ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuMas } : {})}
+                        onClick={alPulsarMas}
+                        className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo min-[640px]:size-11"
+                      >
+                        <Icono nombre="mas" />
+                      </button>
+                      {menuMas && (
+                        <div
+                          role="menu"
+                          aria-label="Agregar imágenes"
+                          tabIndex={-1}
+                          onKeyDown={teclasDelMenu}
+                          className="absolute top-[calc(100%+8px)] left-0 z-20 w-[min(340px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={subirDeLaComputadora}
+                            className="flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada"
+                          >
+                            <Icono nombre="subir" className="text-secundario" />
+                            <span className="block min-w-0 flex-1">
+                              <b className="block text-sm font-semibold">Subir de tu computadora</b>
+                              <small className="block text-xs text-secundario">{descripcionDeArchivos(archivosDeLaTarea)}</small>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={abrirBiblioteca}
+                            className="flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada"
+                          >
+                            <Icono nombre="imagen" className="text-secundario" />
+                            <span className="block min-w-0 flex-1">
+                              <b className="block text-sm font-semibold">Elegir de Mis creaciones</b>
+                              <small className="block text-xs text-secundario">
+                                {imagenes.length === 1 ? '1 imagen tuya' : `${imagenes.length} imágenes tuyas`}
+                              </small>
+                            </span>
+                          </button>
+                          <p className="m-0 mx-1 mt-1 border-t border-linea px-1.5 pt-2.5 pb-1.5 text-xs text-secundario">
+                            También puedes arrastrarlas a la caja o pegarlas con Ctrl+V.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+                <div ref={menu} className="relative min-w-0 flex-1 min-[640px]:flex-none">
+                  <button
+                    ref={boton}
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={abierto}
+                    aria-controls={idLista}
+                    data-pista={opcion.nota}
+                    onClick={() => (abierto ? setAbierto(false) : abrir())}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowDown' && !abierto) {
+                        e.preventDefault();
+                        abrir();
+                      }
+                    }}
+                    className={unir(
+                      PISTA,
+                      'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
+                      'min-[640px]:min-h-11 min-[640px]:max-w-full min-[640px]:w-auto min-[640px]:justify-start',
+                    )}
+                  >
+                    {opcion.rotulo}{' '}
+                    <span aria-hidden="true" className="text-secundario">
+                      ▾
+                    </span>
+                  </button>
+                  {abierto && (
+                    <div
+                      ref={lista}
+                      id={idLista}
+                      role="listbox"
+                      aria-label="Opciones"
+                      className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(400px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
                     >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={subirDeLaComputadora}
-                        className="flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada"
-                      >
-                        <Icono nombre="subir" className="text-secundario" />
-                        <span className="block min-w-0 flex-1">
-                          <b className="block text-sm font-semibold">Subir de tu computadora</b>
-                          <small className="block text-xs text-secundario">{descripcionDeArchivos(archivosDeLaTarea)}</small>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={abrirBiblioteca}
-                        className="flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada"
-                      >
-                        <Icono nombre="imagen" className="text-secundario" />
-                        <span className="block min-w-0 flex-1">
-                          <b className="block text-sm font-semibold">Elegir de Mis creaciones</b>
-                          <small className="block text-xs text-secundario">
-                            {imagenes.length === 1 ? '1 imagen tuya' : `${imagenes.length} imágenes tuyas`}
-                          </small>
-                        </span>
-                      </button>
-                      <p className="m-0 mx-1 mt-1 border-t border-linea px-1.5 pt-2.5 pb-1.5 text-xs text-secundario">
-                        También puedes arrastrarlas a la caja o pegarlas con Ctrl+V.
-                      </p>
+                      {opciones.map((o, i) => (
+                        <div
+                          key={o.id}
+                          role="option"
+                          aria-selected={o.id === opcion.id}
+                          tabIndex={i === marcada ? 0 : -1}
+                          onClick={() => elegir(o)}
+                          onKeyDown={teclaLista}
+                          onMouseEnter={() => setMarcada(i)}
+                          className={unir(
+                            'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
+                            (i === marcada || o.id === opcion.id) && 'bg-elevada',
+                          )}
+                        >
+                          <span className="flex items-baseline justify-between gap-3">
+                            <b className="text-sm font-semibold">{o.rotulo}</b>
+                            <span className="text-xs whitespace-nowrap text-secundario">
+                              {o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`}
+                            </span>
+                          </span>
+                          <small className="block text-xs text-secundario">{o.nota}</small>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-              </>
-            )}
-            <div ref={menu} className="relative min-w-0 flex-1 min-[640px]:flex-none">
-              <button
-                ref={boton}
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded={abierto}
-                aria-controls={idLista}
-                data-pista={opcion.nota}
-                onClick={() => (abierto ? setAbierto(false) : abrir())}
-                onKeyDown={e => {
-                  if (e.key === 'ArrowDown' && !abierto) {
-                    e.preventDefault();
-                    abrir();
-                  }
-                }}
-                className={unir(
-                  PISTA,
-                  'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-medio border border-linea bg-transparent px-3.5 text-sm text-ellipsis whitespace-nowrap text-texto hover:border-campo',
-                  'min-[640px]:min-h-11 min-[640px]:max-w-full min-[640px]:w-auto min-[640px]:justify-start',
-                )}
-              >
-                {opcion.rotulo}{' '}
-                <span aria-hidden="true" className="text-secundario">
-                  ▾
-                </span>
-              </button>
-              {abierto && (
-                <div
-                  ref={lista}
-                  id={idLista}
-                  role="listbox"
-                  aria-label="Opciones"
-                  className="absolute top-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(400px,calc(100vw-48px))] min-w-[min(290px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5"
-                >
-                  {opciones.map((o, i) => (
-                    <div
-                      key={o.id}
-                      role="option"
-                      aria-selected={o.id === opcion.id}
-                      tabIndex={i === marcada ? 0 : -1}
-                      onClick={() => elegir(o)}
-                      onKeyDown={teclaLista}
-                      onMouseEnter={() => setMarcada(i)}
-                      className={unir(
-                        'cursor-pointer rounded-medio px-2.5 py-2 outline-offset-0',
-                        (i === marcada || o.id === opcion.id) && 'bg-elevada',
-                      )}
-                    >
-                      <span className="flex items-baseline justify-between gap-3">
-                        <b className="text-sm font-semibold">{o.rotulo}</b>
-                        <span className="text-xs whitespace-nowrap text-secundario">
-                          {o.modelos ? 'según el modelo' : `${ESTRELLA} ${o.precio}`}
-                        </span>
-                      </span>
-                      <small className="block text-xs text-secundario">{o.nota}</small>
-                    </div>
-                  ))}
                 </div>
-              )}
-            </div>
-            </div>
 
-            <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
-              {tarea && modelo && (
-                <MenuModelo
-                  key={tarea}
-                  tarea={tarea}
-                  grupos={grupos}
-                  elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
-                  alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
-                  precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos, prefSonido)!}
-                  alCrear={enviar}
-                  enviando={enviando}
-                  {...(duraciones.length
-                    ? {
-                        duracion: {
-                          segundos,
-                          opciones: duraciones,
-                          alElegir: elegirDuracion,
-                          admite: m => admite(tarea, m, segundos),
-                          desde: m => duracionesDe(tarea, m)[0]!,
-                        },
-                      }
-                    : {})}
-                  {...(tarea === 'clip'
-                    ? {
-                        sonido: {
-                          activo: conSonido,
-                          editable: sePuedeApagar,
-                          estado: sePuedeApagar ? (conSonido ? 'Con sonido' : 'Sin sonido') : textoSonido(modelo).estado,
-                          motivo: sePuedeApagar ? '' : textoSonido(modelo).motivo,
-                          ahorro: ahorroSinSonido(modelo, segundos),
-                          detalle: m => detalleDe(m, segundos, prefSonido),
-                          alCambiar: cambiarSonido,
-                        },
-                      }
-                    : {})}
-                  {...(tarea === 'clip' && fotos.length >= 2
-                    ? { nota: `+ ${ESTRELLA} ${tarifaClip.componer_imagenes} por juntar tus ${fotos.length} imágenes en una` }
-                    : {})}
-                />
-              )}
-              {crear}
-            </div>
-          </div>
+                <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
+                  {tarea && modelo && (
+                    <MenuModelo
+                      key={tarea}
+                      tarea={tarea}
+                      grupos={grupos}
+                      elegido={calidad ? { id: modelo.id, calidad: calidad.id } : { id: modelo.id }}
+                      alElegir={e => setElegidos(s => ({ ...s, [tarea]: e }))}
+                      precio={(id, cal) => precioDe(tarea, id, cal, PRECIOS, segundos, prefSonido)!}
+                      alCrear={enviar}
+                      enviando={enviando}
+                      {...(duraciones.length
+                        ? {
+                            duracion: {
+                              segundos,
+                              opciones: duraciones,
+                              alElegir: elegirDuracion,
+                              admite: m => admite(tarea, m, segundos),
+                              desde: m => duracionesDe(tarea, m)[0]!,
+                            },
+                          }
+                        : {})}
+                      {...(tarea === 'clip'
+                        ? {
+                            sonido: {
+                              activo: conSonido,
+                              editable: sePuedeApagar,
+                              estado: sePuedeApagar ? (conSonido ? 'Con sonido' : 'Sin sonido') : textoSonido(modelo).estado,
+                              motivo: sePuedeApagar ? '' : textoSonido(modelo).motivo,
+                              ahorro: ahorroSinSonido(modelo, segundos),
+                              detalle: m => detalleDe(m, segundos, prefSonido),
+                              alCambiar: cambiarSonido,
+                            },
+                          }
+                        : {})}
+                      {...(tarea === 'clip' && fotos.length >= 2
+                        ? { nota: `+ ${ESTRELLA} ${tarifaClip.componer_imagenes} por juntar tus ${fotos.length} imágenes en una` }
+                        : {})}
+                    />
+                  )}
+                  {crear}
+                </div>
+              </div>
+            </>
+          )}
           {error && (
             <p role="alert" className="mt-2.5 mb-0 text-xs text-error">
               {error}
