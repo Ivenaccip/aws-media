@@ -16,6 +16,28 @@ export const ETIQUETA_TEXTO = 'Cuéntale a la IA qué quieres';
 export const HUECO_TEXTO =
   'Cuéntale a la IA qué quieres: formato, duración, estilo… Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.';
 
+/**
+ * Lo que se puede hacer con el video, el chip «Editar ▾» junto al «+» (como «Un video corto ▾» en Video). Por ahora una
+ * sola: más adelante ahí mismo irá «De videos a Shorts» (hoy sigue en el menú de la izquierda). El botón principal
+ * («Iniciar») es el mismo para todas.
+ */
+export interface ModoEdicion {
+  id: string;
+  rotulo: string;
+  nota: string;
+  /** Lo que va a la derecha de su fila en la lista: el precio de esta tarea sale del video, no de una tarifa fija. */
+  detalle: string;
+}
+
+export const MODOS_EDICION: readonly [ModoEdicion, ...ModoEdicion[]] = [
+  {
+    id: 'editar',
+    rotulo: 'Editar',
+    nota: 'Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.',
+    detalle: 'según el video',
+  },
+];
+
 /** Los atajos de un toque: ponen ese texto en el campo y le dan el foco. */
 export const IDEAS_EDICION = [
   'Quita muletillas y silencios',
@@ -34,7 +56,7 @@ export const AYUDA_TEXTO = 'Escribe qué quieres hacer con tu video, o toca una 
 export const AYUDA_VIDEO = 'Agrega el video con el «+» o arrástralo a la caja.';
 export const NOTA_SUBIENDO = 'Cuando termine de subir calculamos el precio. Hasta entonces no se cobra nada.';
 export const NOTA_CALCULANDO = 'Estamos calculando el precio. Hasta entonces no se cobra nada.';
-export const NOTA_SIN_PRECIO = 'No pudimos calcular el precio. Toca «Editar» para intentarlo otra vez.';
+export const NOTA_SIN_PRECIO = 'No pudimos calcular el precio. Toca «Iniciar» para intentarlo otra vez.';
 /** Cuando el servidor no manda su propio aviso pero tampoco deja editar. */
 export const AVISO_NO_SE_PUEDE = 'Por ahora no podemos editar este video.';
 
@@ -87,12 +109,12 @@ export type FaseVideo =
   /** Ya subió: se le pregunta al servidor cuánto dura y cuánto cuesta. */
   | 'calculando'
   | 'listo'
-  /** El precio no llegó (red caída…): tocar «Editar» lo vuelve a pedir. */
+  /** El precio no llegó (red caída…): tocar «Iniciar» lo vuelve a pedir. */
   | 'sin_precio';
 
 /** Qué muestra y qué hace el botón principal. UN botón, siempre el mismo elemento: aquí solo cambia lo que dice. */
 export type EstadoBoton =
-  /** Sin video: «Editar» sin precio. */
+  /** Sin video: «Iniciar» sin precio. */
   | { tipo: 'sin_video' }
   | { tipo: 'subiendo' }
   | { tipo: 'calculando' }
@@ -123,8 +145,8 @@ export function estadoDelBoton({ video, hayTexto, saldo }: EntradaBoton): Estado
   const costo = video.costo;
   if (video.fase === 'sin_precio' || !costo) return { tipo: 'sin_precio' };
   if (costo.aviso || !costo.backend_listo) return { tipo: 'fuera', aviso: costo.aviso || AVISO_NO_SE_PUEDE };
-  // un precio que no es un entero (null, texto, NaN…) no se enseña ni se deja cobrar: «Editar ✦ 0» o «✦ NaN» mentiría
-  // sobre dinero. Es como si el precio no hubiera llegado: tocar «Editar» lo vuelve a pedir
+  // un precio que no es un entero (null, texto, NaN…) no se enseña ni se deja cobrar: «Iniciar ✦ 0» o «✦ NaN» mentiría
+  // sobre dinero. Es como si el precio no hubiera llegado: tocar «Iniciar» lo vuelve a pedir
   if (!Number.isInteger(costo.creditos) || costo.creditos < 0) return { tipo: 'sin_precio' };
   if (!hayTexto) return { tipo: 'sin_texto', creditos: costo.creditos };
   if (saldo !== null && saldo < costo.creditos) {

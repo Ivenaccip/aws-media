@@ -8,6 +8,8 @@ import type { AddressInfo } from 'node:net';
 
 import { expect, test, type Page } from '@playwright/test';
 
+import { pistaSePinta } from './pantallas';
+
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
   '**/api/slots': { slots: null, activos: 0 },
@@ -302,4 +304,136 @@ test('en el celular el aviso de la foto que no llegó queda a la vista, junto al
   const mas = await page.getByRole('button', { name: 'Subir la imagen de tu personaje' }).boundingBox();
   expect(caja!.y + caja!.height).toBeLessThanOrEqual(844);
   expect(mas!.y + mas!.height).toBeLessThanOrEqual(844);
+});
+
+// ---- los ajustes del dueño del 14-oct-2026 al menú y al área de escritura (lo que jsdom no ve: el color y el aro de verdad) ----
+
+test('el título del menú dice «Irremplazables» en dorado y en negritas, sin icono, y el menú ya no trae «Editor de videos»', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  const titulo = page.getByRole('heading', { level: 1 });
+  await expect(titulo).toHaveText('Irremplazables');
+  // el ámbar claro de la paleta (#f0a94a), con el peso y el tamaño de título que ya tenía
+  await expect(titulo).toHaveCSS('color', 'rgb(240, 169, 74)');
+  await expect(titulo).toHaveCSS('font-weight', '700');
+  await expect(titulo).toHaveCSS('font-size', '20px');
+  expect(await titulo.locator('svg, img').count()).toBe(0);
+  const menu = page.getByRole('navigation', { name: 'Secciones' });
+  await expect(menu.getByText('Editor de videos')).toHaveCount(0);
+  await expect(menu.getByText('De videos a Shorts')).toBeVisible();
+  await expect(menu.getByText('Copiadora de estilos')).toBeVisible();
+  expect(await menu.locator('a[href^="/e1.html"]').count()).toBe(0);
+});
+
+for (const [familia, nombre] of [
+  ['Imagen', '¿Qué vamos a crear hoy?'],
+  ['Video', '¿Qué vamos a crear hoy?'],
+  ['Edición', 'Cuéntale a la IA qué quieres'],
+] as const) {
+  test(`el área de escritura de «${familia}» es un cuadro bien definido con UN solo aro de foco`, async ({ page }) => {
+    await inicio(page, { estado: 200, cuerpo: {} });
+    await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true }).click();
+    const campo = page.getByRole('textbox', { name: nombre });
+    await expect(campo).toBeVisible();
+    const cuadro = campo.locator('xpath=..');
+    // el borde de campo (#55708f), el fondo de campo (elevada, #18293f), el radio de campos (10) y 12 px de relleno
+    await expect(cuadro).toHaveCSS('border-top-color', 'rgb(85, 112, 143)');
+    await expect(cuadro).toHaveCSS('border-top-width', '1px');
+    await expect(cuadro).toHaveCSS('background-color', 'rgb(24, 41, 63)');
+    await expect(cuadro).toHaveCSS('border-top-left-radius', '10px');
+    await expect(cuadro).toHaveCSS('padding-top', '12px');
+    // adentro, el texto no pone borde ni fondo propios
+    await expect(campo).toHaveCSS('border-top-width', '0px');
+    await expect(campo).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    // un clic en el relleno del cuadro (donde no hay texto) pone el cursor en él
+    await page.getByRole('heading', { level: 1 }).click(); // el foco, en otra parte
+    await cuadro.click({ position: { x: 4, y: 4 } });
+    await expect(campo).toBeFocused();
+    // UN solo aro: el del cuadro, con las medidas de la carta; el del texto no existe
+    const aros = await campo.evaluate(e => {
+      const aro = (el: Element) => {
+        const c = getComputedStyle(el);
+        return { estilo: c.outlineStyle, ancho: c.outlineWidth, color: c.outlineColor, separacion: c.outlineOffset };
+      };
+      return { cuadro: aro(e.parentElement!), campo: aro(e) };
+    });
+    expect(aros.cuadro).toEqual({ estilo: 'solid', ancho: '2px', color: 'rgb(240, 169, 74)', separacion: '3px' });
+    expect(aros.campo.estilo).toBe('none');
+  });
+}
+
+test('en el celular el cuadro de escritura de Imagen y Video cabe en la pantalla', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await inicio(page, { estado: 200, cuerpo: {} });
+  for (const familia of ['Imagen', 'Video']) {
+    await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true }).click();
+    const cuadro = (await caja(page).locator('xpath=..').boundingBox())!;
+    expect(cuadro.x, familia).toBeGreaterThanOrEqual(0);
+    expect(cuadro.x + cuadro.width, familia).toBeLessThanOrEqual(390);
+    const sobra = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(sobra, familia).toBeLessThanOrEqual(0);
+  }
+});
+
+// La pista del chip («Un video corto ▾», «Crear una imagen ▾») es un ::after que cuelga fuera del botón: un `overflow-hidden`
+// en el propio botón la recortaba y NUNCA se vio (el estilo calculado decía «visible»; solo la pantalla de verdad lo delata).
+for (const familia of ['Imagen', 'Video'] as const) {
+  test(`al pasar el ratón por el chip de «${familia}» se PINTA su pista (no la recorta el botón)`, async ({ page }) => {
+    await inicio(page, { estado: 200, cuerpo: {} });
+    await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true }).click();
+    const chip = page.locator('button[aria-haspopup="listbox"]');
+    await expect(chip).toHaveCount(1);
+    expect(await pistaSePinta(page, chip), `en «${familia}» no se ve ninguna pista`).toBe(true);
+    // el rótulo largo se recorta con «…» en su <span>, no en el botón
+    await expect(chip).toHaveCSS('overflow-x', 'visible');
+  });
+}
+
+test('en el celular la pista del chip queda dentro de la pantalla', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await inicio(page, { estado: 200, cuerpo: {} });
+  const chip = page.locator('button[aria-haspopup="listbox"]');
+  await chip.hover();
+  await expect.poll(() => chip.evaluate(e => getComputedStyle(e, '::after').opacity)).toBe('1');
+  const pista = await chip.evaluate(e => {
+    const c = e.getBoundingClientRect();
+    const d = getComputedStyle(e, '::after');
+    return { izq: c.left + parseFloat(d.left || '0'), ancho: parseFloat(d.width) };
+  });
+  expect(pista.izq).toBeGreaterThanOrEqual(0);
+  expect(pista.izq + pista.ancho).toBeLessThanOrEqual(390);
+  expect(await pistaSePinta(page, chip)).toBe(true);
+});
+
+// Con el relleno y el borde del cuadro (12 px por lado), el texto perdió 26 px de ancho: el ejemplo de «Creador de cuentos»
+// (el más largo) pasaba a 5 líneas en un teléfono de 320 px y el textarea de 88 px de piso cortaba la última («…la foto de
+// tu» y se perdía «personaje»). Se recorre CADA opción de Imagen y de Video, con su ejemplo puesto como texto, a varios anchos.
+test('el ejemplo de cada opción de Imagen y Video se lee entero en un teléfono (no se corta la última línea)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await inicio(page, { estado: 200, cuerpo: {} });
+  const chip = page.locator('button[aria-haspopup="listbox"]');
+  let probadas = 0;
+  for (const familia of ['Imagen', 'Video']) {
+    await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true }).click();
+    await chip.click();
+    const cuantas = await page.getByRole('listbox', { name: 'Opciones' }).getByRole('option').count();
+    await page.keyboard.press('Escape');
+    for (let i = 0; i < cuantas; i++) {
+      await chip.click();
+      await page.getByRole('listbox', { name: 'Opciones' }).getByRole('option').nth(i).click();
+      const nombre = ((await chip.innerText()) || '').replace('▾', '').trim();
+      const ejemplo = (await caja(page).getAttribute('placeholder'))!;
+      expect(ejemplo.length, `«${nombre}» sin ejemplo`).toBeGreaterThan(10);
+      // el ejemplo, escrito como texto, ocupa lo mismo que su placeholder: si sobra altura, la última línea se pierde
+      await caja(page).fill(ejemplo);
+      for (const ancho of [320, 340, 359, 360, 375, 390]) {
+        await page.setViewportSize({ width: ancho, height: 844 });
+        const c = await caja(page).evaluate(e => ({ alto: e.getBoundingClientRect().height, sobra: e.scrollHeight - e.clientHeight }));
+        // 2 px de tolerancia: es el interlineado de la última línea (su letra ya está a la vista), no una línea cortada
+        expect(c.sobra, `«${nombre}» (${familia}) a ${ancho} px se corta (el campo mide ${c.alto})`).toBeLessThanOrEqual(2);
+      }
+      await page.setViewportSize({ width: 390, height: 844 });
+      probadas++;
+    }
+  }
+  expect(probadas).toBeGreaterThanOrEqual(5); // las de Imagen y las de Video, no una sola familia
 });

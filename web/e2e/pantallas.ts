@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs';
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 // Las pantallas del estudio en React (UI·8), leídas de web/estudio/: una
 // pantalla nueva entra sola al guardián de «reducir movimiento». La vitrina
@@ -118,3 +118,31 @@ export const ultimaTransicion = (page: Page) =>
   page.evaluate(() => (window as unknown as { __vts: string[][] }).__vts.at(-1) ?? []);
 export const cuantasTransiciones = (page: Page) =>
   page.evaluate(() => (window as unknown as { __vts: string[][] }).__vts.length);
+
+/**
+ * ¿La pista de un chip (el `::after` de `data-pista`, que cuelga FUERA del botón, encima de él) se PINTA de verdad?
+ * `getComputedStyle(chip, '::after')` dice «visible, opacidad 1» aunque un `overflow-hidden` del propio botón recorte el
+ * globo (así estuvo en Imagen, Video y Edición, sin que nada lo notara): el estilo calculado no ve el recorte. Se compara
+ * la franja de pantalla justo encima del chip con el ratón lejos y con el ratón encima; si son idénticas, no se ve nada.
+ * Si hay más de un chip, `chip` ya debe ser uno solo.
+ */
+export async function pistaSePinta(page: Page, chip: Locator): Promise<boolean> {
+  await chip.scrollIntoViewIfNeeded();
+  const caja = (await chip.boundingBox())!;
+  const ancho = page.viewportSize()!.width;
+  const y = Math.max(0, caja.y - 110);
+  // termina 4 px antes del chip: su borde cambia con el ratón encima y no debe contar como «pista»
+  const franja = { x: 0, y, width: ancho, height: Math.max(1, caja.y - 4 - y) };
+  await page.mouse.move(0, 0);
+  await chip.evaluate(e => (e as HTMLElement).blur());
+  const sin = await page.screenshot({ clip: franja });
+  await chip.hover();
+  // la pista aparece con una transición de opacidad corta: se espera a que llegue a 1
+  for (let i = 0; i < 40; i++) {
+    if ((await chip.evaluate(e => getComputedStyle(e, '::after').opacity)) === '1') break;
+    await page.waitForTimeout(25);
+  }
+  await page.waitForTimeout(50);
+  const con = await page.screenshot({ clip: franja });
+  return !sin.equals(con);
+}

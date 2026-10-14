@@ -76,7 +76,7 @@ export interface ManejoEdicion {
   hayTexto: boolean;
   video: VideoDeEdicion | null;
   boton: EstadoBoton;
-  /** Una subida, un precio por calcular o una corrida en curso: «+» y «Editar» avisan en vez de empezar otra. */
+  /** Una subida, un precio por calcular o una corrida en curso: «+» e «Iniciar» avisan en vez de empezar otra. */
   ocupado: boolean;
   /** Entre el clic y la respuesta del servidor. */
   lanzando: boolean;
@@ -217,7 +217,7 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
     enfocarTexto();
   }
 
-  /** Pide el precio del video subido. Si no llega, el video se queda y «Editar» lo vuelve a pedir. */
+  /** Pide el precio del video subido. Si no llega, el video se queda e «Iniciar» lo vuelve a pedir. */
   async function calcularPrecio(proyecto: string, mio: number) {
     if (intento.current === mio) setVideo(v => v && { ...v, fase: 'calculando' });
     try {

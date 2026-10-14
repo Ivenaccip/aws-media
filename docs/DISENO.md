@@ -66,7 +66,7 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 | `#93a3b8` | secundario | texto de apoyo (6.45:1 sobre superficie) | — |
 | `#6b7a8f` | secundario apagado | solo decoración o texto deshabilitado | texto normal (3.79:1 sobre superficie) |
 | `#da8c28` | **acento ámbar** | el botón principal, el foco, el ✦ | texto largo, fondos grandes |
-| `#f0a94a` | ámbar claro | hover del principal, anillo de foco, títulos-marca | — |
+| `#f0a94a` | ámbar claro | hover del principal, anillo de foco, títulos-marca (el «Irremplazables» del menú del inicio) | — |
 | `#a96716` | ámbar hondo | bordes y detalles | fondo con texto (4.19:1 con la tinta) |
 | `#14100a` | tinta | el **único** texto sobre ámbar (7.0:1) | — |
 | `#a9c6ee` | azul claro | **solo enlaces** (8.4:1 o más sobre cualquier fondo) | botones |
@@ -137,7 +137,10 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
   sea más chico.
 - **Foco:** `outline: 2px solid #f0a94a; outline-offset: 3px` en todo lo
-  que se enfoca, sin excepción.
+  que se enfoca, sin excepción. Si el campo vive dentro de un cuadro con borde y
+  fondo (el área de escritura de la caja del inicio: `ui/CuadroDeTexto`), el aro
+  lo dibuja el cuadro cuando algo de adentro tiene foco visible y el campo no
+  dibuja otro: dos aros, uno dentro del otro, se verían como un error.
 
 ## 5. Botones: tres niveles, cinco estados
 
@@ -154,6 +157,17 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 - El estado «al apretar» **no** usa `#a96716` de fondo: con la tinta da
   4.19:1 y no pasa AA. Por eso se queda en `#da8c28` y solo se encoge.
 - Doble clic sobre un botón que cobra = **una** petición.
+- **El principal puede no apagarse nunca** (dueño, 14-oct-2026): «Iniciar» de la
+  pestaña Edición del inicio es ámbar en TODOS los estados —sin video, sin texto,
+  con precio, sin saldo—, igual que «Crear» de Imagen y Video, que tampoco se
+  pintan apagados sino que explican al pulsarlos. No es la fila «Sin saldo /
+  deshabilitado» de la tabla para este botón: el gris discontinuo queda para el
+  `disabled` de verdad (`<Boton apagado>` sigue ahí para quien lo necesite). Lo
+  que no cambia: sigue sin `disabled` (retiene el foco), lleva `aria-disabled`
+  mientras no se pueda cobrar, explica por qué al pulsarlo o al enfocarlo
+  (`aria-describedby`), «Subiendo…» y «Calculando…» se leen ocupados, y el precio
+  se ve en el botón («Iniciar ✦ N») antes de cobrar. Abajo sigue el «Te faltan
+  ✦ N · Recargar».
 
 ## 6. Iconos (en lugar de emojis)
 

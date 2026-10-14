@@ -1497,6 +1497,70 @@ describe('la caja', () => {
     );
   });
 
+  it('inicio.caja.imagen_y_video_escriben_en_un_cuadro_con_borde_de_campo_y_fondo_elevada', async () => {
+    montar();
+    pintar();
+    const cuadroDe = () => caja().parentElement!;
+    const clases = (el: Element) => el.className.split(/\s+/);
+    for (const familia of ['Video', 'Imagen', 'Video']) {
+      await userEvent.click(screen.getByRole('button', { name: familia }));
+      // un cuadro bien definido (dueño, 14-oct-2026): borde de campo (no el de línea, que no llega a 3:1), fondo de campo y radio 10
+      expect(clases(cuadroDe()), familia).toEqual(expect.arrayContaining(['border', 'border-campo', 'bg-elevada', 'rounded-medio', 'p-3']));
+      expect(clases(cuadroDe()), familia).not.toContain('border-linea');
+      // el aro de foco lo dibuja el cuadro y no el texto (antes la caja de Imagen y Video no tenía aro: `outline-none` a secas)
+      expect(clases(cuadroDe()), familia).toEqual(expect.arrayContaining(['has-focus-visible:outline-2', 'has-focus-visible:outline-ambar-claro']));
+      expect(clases(caja()), familia).toEqual(expect.arrayContaining(['outline-none', 'border-0', 'bg-transparent', 'p-0', 'text-sm']));
+      // el ejemplo con el gris secundario y no con el 50 % del texto
+      expect(clases(caja()), familia).toContain('placeholder:text-secundario');
+      // un clic en el relleno del cuadro lleva el foco al texto
+      act(() => (document.activeElement as HTMLElement).blur());
+      expect(fireEvent.mouseDown(cuadroDe())).toBe(false);
+      expect(caja(), familia).toHaveFocus();
+    }
+    // conserva lo que ya tenía: se estira hacia abajo y mide al menos 88 px de alto desde 360 px de ancho; por debajo (320 px)
+    // el piso es de 112 px, para que con el relleno del cuadro no se corte la última línea del ejemplo más largo
+    expect(clases(caja())).toEqual(expect.arrayContaining(['min-h-28', 'min-[360px]:min-h-22', 'resize-y']));
+  });
+
+  it('inicio.caja.el_cuadro_y_el_chip_de_tarea_son_los_mismos_en_las_tres_familias', async () => {
+    montar();
+    pintar();
+    const cuadroVideo = caja().parentElement!;
+    const chipVideo = botonOpcion();
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    const cuadroEdicion = screen.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' }).parentElement!;
+    const chipEdicion = botonOpcion();
+    // UN solo componente para cada cosa: el mismo cuadro de escritura y el mismo chip con su lista, no copias que se desfasen
+    expect(cuadroEdicion.className).toBe(cuadroVideo.className);
+    expect(chipEdicion.className).toBe(chipVideo.className);
+    expect([...chipEdicion.attributes].map(a => a.name).sort()).toEqual([...chipVideo.attributes].map(a => a.name).sort());
+    await userEvent.click(chipEdicion);
+    const listaEdicion = screen.getByRole('listbox', { name: 'Opciones' }).className;
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    await userEvent.click(botonOpcion());
+    expect(screen.getByRole('listbox', { name: 'Opciones' }).className).toBe(listaEdicion);
+  });
+
+  it('inicio.caja.cambiar_de_familia_o_elegir_desde_fuera_cierra_la_lista_de_opciones_abierta', async () => {
+    montar({ proyectos: [], imagenes: [], ediciones: [], clips: [] });
+    pintar();
+    // el clic del riel sin «mousedown» (con teclado o con un lector de pantalla): la lista no se queda abierta sobre otra familia
+    await userEvent.click(botonOpcion());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(botonOpcion()).toHaveAttribute('aria-expanded', 'false');
+    expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    // y el mando de la caja (la tarjeta «Crear un video» de quien empieza) también la cierra al elegir
+    await userEvent.click(botonOpcion());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear un video' }));
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(botonOpcion()).toHaveTextContent('Creador de cuentos');
+    expect(caja()).toHaveFocus();
+  });
+
   it('inicio.caja.desplegable_con_teclado', async () => {
     montar();
     pintar();
@@ -1516,6 +1580,19 @@ describe('la caja', () => {
     await userEvent.click(botonOpcion());
     await userEvent.click(caja());
     expect(screen.queryByRole('listbox')).toBeNull();
+    // Tab con la lista abierta la cierra y el foco sigue desde el chip (a «Crear», que viene después; «Creador de cuentos» no
+    // trae chip de modelo): no cae en <body>
+    await userEvent.click(botonOpcion());
+    await userEvent.keyboard('{Tab}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(document.body).not.toHaveFocus();
+    expect(enviar()).toHaveFocus();
+    // Shift+Tab, hacia atrás: al «+» (aquí, el de la foto del personaje)
+    await userEvent.click(botonOpcion());
+    await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(document.body).not.toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Agregar la foto de tu personaje' })).toHaveFocus();
   });
 
   it('inicio.caja.cambiar_de_familia_elige_la_primera', async () => {
@@ -2904,8 +2981,8 @@ describe('el menú', () => {
     montar();
     pintar();
     const menu = screen.getByRole('navigation', { name: 'Secciones' });
+    // «Editor de videos» (/e1.html) salió el 14-oct-2026 (dueño): editar metraje es la pestaña «Edición» de la caja
     expect(within(menu).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual([
-      '/e1.html',
       '/shorts.html',
       '/estilos.html',
       '/agenda.html',
@@ -2918,6 +2995,40 @@ describe('el menú', () => {
     expect(texto.indexOf('Estudio de Contenido')).toBeLessThan(texto.indexOf('Blotato'));
     expect(texto.indexOf('Blotato')).toBeLessThan(texto.indexOf('Publicidad Automática'));
     expect(texto).not.toMatch(/próximamente/);
+    await screen.findByText('La historia del café');
+  });
+
+  it('inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan', async () => {
+    montar();
+    pintar();
+    const menu = screen.getByRole('navigation', { name: 'Secciones' });
+    expect(within(menu).queryByText('Editor de videos')).toBeNull();
+    expect(within(menu).queryByText('Sube tu metraje y la IA te propone el corte.')).toBeNull();
+    expect(menu.querySelector('a[href^="/e1.html"]')).toBeNull();
+    // el grupo «Estudio de Contenido» sigue con «De videos a Shorts» y «Copiadora de estilos», tal cual estaban
+    const grupo = within(within(menu).getByText('Estudio de Contenido').parentElement!);
+    const enlaces = grupo.getAllByRole('link');
+    expect(enlaces.map(a => [a.getAttribute('href'), a.querySelector('b')?.textContent])).toEqual([
+      ['/shorts.html', 'De videos a Shorts'],
+      ['/estilos.html', 'Copiadora de estilos'],
+    ]);
+    expect(enlaces[0]).toHaveTextContent('Sube un video largo y te daremos los mejores momentos.');
+    expect(enlaces[1]).toHaveTextContent('Recrea el estilo visual de un contenido que te guste');
+    await screen.findByText('La historia del café');
+  });
+
+  it('inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono', async () => {
+    montar();
+    pintar();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toHaveTextContent(/^Irremplazables$/);
+    // el ámbar claro de la paleta: el de los «títulos-marca» de la carta (§3), no un color nuevo; mismo tamaño y peso de título
+    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-ambar-claro', 'text-titulo-sm', 'font-bold']));
+    // sin icono: ni un dibujo dentro del título
+    expect(h1.querySelector('svg, img, i')).toBeNull();
+    expect(h1.children).toHaveLength(0);
+    // el nombre de antes ya no sale en la pantalla
+    expect(screen.queryByText(/Estudio de video/)).toBeNull();
     await screen.findByText('La historia del café');
   });
 
