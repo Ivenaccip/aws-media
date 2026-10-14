@@ -125,6 +125,7 @@ INVARIANTES = {
         "inicio.caja.un_texto_vetado_no_se_pide",
         "inicio.caja.crear_una_imagen_se_pide_aqui",
         "inicio.caja.crear_una_imagen_manda_nano_banana_2",
+        "inicio.caja.crear_una_imagen_no_promete_un_estilo",
         "inicio.caja.una_imagen_lanzada_dice_que_va_en_camino_y_refresca_el_saldo",
         "inicio.caja.la_respuesta_de_siempre_de_una_imagen_sigue_igual",
         "inicio.caja.si_falla_la_primera_relectura_tras_lanzar_la_tarjeta_se_conserva_y_se_reintenta",

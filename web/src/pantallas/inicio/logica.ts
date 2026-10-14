@@ -81,7 +81,7 @@ export const OPCIONES: Record<FamiliaCrea, Opcion[]> = {
       modelos: 'imagen',
       alAgregar: 'imagen_editar',
       destino: '/imagenes.html',
-      nota: 'Desde cero, con el estilo visual que elijas. Si le agregas una imagen con el +, la editamos.',
+      nota: 'Desde cero: dibujamos lo que escribas, tal cual. Si le agregas una imagen con el +, la editamos.',
       hueco: 'Describe la imagen que quieres.',
     },
     {

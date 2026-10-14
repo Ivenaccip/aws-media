@@ -27,7 +27,7 @@ from pipeline.project import (DURACION_MAX_S, EscenaGuion, OpcionPersonaje, Proy
 from pipeline.run import resumen_imagenes
 from pipeline.scenes import asignar_rutas
 from pipeline.pricing import estimar_produccion
-from pipeline.styles import ESTILOS, resolver_estilo
+from pipeline.styles import ESTILOS, NINGUNO, Estilo, resolver_estilo
 from pipeline.voices import VOCES, VOZ_DEFAULT, STABILITY_DEFAULT
 from pipeline import fal
 from pipeline.config import settings
@@ -329,6 +329,16 @@ def _modelo_imagen(tarea: str, pedido: str) -> tuple[str | None, int]:
         raise HTTPException(422, f"Ese modelo no está disponible: {pedido!r}")
 
 
+def _prompt_de_imagen(prompt: str, estilo: Estilo) -> str:
+    """El texto que va a fal: lo que escribió la persona, el estilo y las reglas de siempre.
+    Con «ninguno» (la caja del inicio) no hay estilo que pegar, y tampoco queda el hueco «. .».
+    Todo lo demás —los cinco estilos y «custom», también el vacío— se arma byte por byte como
+    siempre: Imágenes y Crear no cambian."""
+    if estilo.id == NINGUNO:
+        return f"{prompt}. No text, no watermark."
+    return f"{prompt}. {estilo.prompt}. No text, no watermark."
+
+
 @app.post("/api/imagenes")
 async def crear_imagen(body: PedidoImagen):
     from uuid import uuid4
@@ -339,10 +349,13 @@ async def crear_imagen(body: PedidoImagen):
     if body.formato and body.formato not in ASPECTOS_IMAGEN:
         raise HTTPException(422, f"formato desconocido: {body.formato!r}")
     aspecto = ASPECTOS_IMAGEN[body.formato or "cuadrado"]
-    estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo == "custom"
+    # «ninguno» (dueño, 14-oct-2026) es lo que manda la caja del inicio: lo que la persona
+    # escribe es lo que se dibuja. No está en ESTILOS (no sale en /api/estilos), por eso se
+    # nombra aquí. Un id que no conocemos sigue cayendo a «animated», como siempre.
+    estilo = resolver_estilo(body.estilo if body.estilo in ESTILOS or body.estilo in ("custom", NINGUNO)
                              else "animated", body.estilo_custom or None)
     modelo, costo = _modelo_imagen("imagen", body.modelo)
-    prompt_fal = f"{prompt}. {estilo.prompt}. No text, no watermark."
+    prompt_fal = _prompt_de_imagen(prompt, estilo)
     # los modelos lentos no caben en los 29 s de la petición: se cobran y se encolan, y la
     # pantalla sondea /api/imagenes/pedidos/{id}. Los rápidos —y todo en local— siguen aquí
     if imagen_cola.en_segundo_plano(modelo):
@@ -641,6 +654,11 @@ async def crear(
 ):
     if not brief.strip():
         raise HTTPException(422, "El brief está vacío")
+    # «ninguno» (dueño, 14-oct-2026) es solo de las imágenes sueltas de la caja del inicio: una
+    # película sin estilo no es lo que ofrece Crear, y el flujo la dibujaría sin él. Antes de
+    # crear nada ni gastar en nada.
+    if estilo == NINGUNO:
+        raise HTTPException(422, "Elige uno de los estilos de la lista.")
     # M23 · V: cada duración tiene su precio en tarifas.json; una que no está en
     # la tabla no tiene precio que cobrar. Antes de gastar en nada.
     duraciones = creditos.precios_por_duracion()

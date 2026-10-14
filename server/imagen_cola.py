@@ -185,8 +185,10 @@ def lanzar(user: str, texto: str, prompt: str, aspecto: str, modelo: str, costo:
 
     Ya llega validado (prompt, formato, estilo, modelo y tarifa: lo que da 422 sin cobrar
     vive en `POST /api/imagenes`). `texto` es lo que escribió el usuario y `prompt` el que
-    va a fal, con el estilo puesto. El orden importa: el tope, luego el cobro, luego el
-    doc y al final la cola; si algo falla después de cobrar, se devuelve."""
+    va a fal, con el estilo puesto si lo hay (la caja del inicio pide «ninguno» y entonces
+    solo lleva el texto y las reglas de siempre; aquí da igual: llega armado). El orden
+    importa: el tope, luego el cobro, luego el doc y al final la cola; si algo falla
+    después de cobrar, se devuelve."""
     vivos = [d for _, d in _mios(user)
              if d.get("estado") == "generando" and not _caducado(d)]
     if len(vivos) >= MAX_EN_MARCHA:

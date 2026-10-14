@@ -66,8 +66,9 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.caja.el_envio_va_en_el_pie_del_menu_de_modelo` | el «Crear» de las tareas con modelo vive en el pie del menú; pide el clip a `/api/clip/generar` con `modelo` y `segundos` (8 si no se tocó), sin navegar; el menú se cierra, el texto se vacía y se avisa dónde mirar |
 | `inicio.caja.el_servidor_decide_el_precio_y_un_error_se_dice` | un 402 (o cualquier error) se dice —en el cuadro de abajo a la derecha, o junto a la caja si la página no lo trae— y el texto no se pierde; el cuerpo nunca trae créditos |
 | `inicio.caja.un_texto_vetado_no_se_pide` | la moderación (M13) corre antes de lo que cobra |
-| `inicio.caja.crear_una_imagen_se_pide_aqui` | `/api/imagenes` con `modelo`, estilo animado (el que traía la pantalla de imágenes) |
+| `inicio.caja.crear_una_imagen_se_pide_aqui` | `/api/imagenes` con `modelo` y SIN estilo (`estilo: 'ninguno'`): sale lo que escribió la persona, no el «Animado» que traía la pantalla de imágenes (decisión del dueño, 14-oct-2026) |
 | `inicio.caja.crear_una_imagen_manda_nano_banana_2` | con Nano Banana 2 elegido, `/api/imagenes` lleva `modelo: nb2` y la fila enseña el número de `tarifas.json` |
+| `inicio.caja.crear_una_imagen_no_promete_un_estilo` | la caja no tiene selector de estilo y la nota de «Crear una imagen» ya no ofrece uno: dice que se dibuja lo que escribes y que con el «+» se edita |
 | `inicio.caja.una_imagen_lanzada_dice_que_va_en_camino_y_refresca_el_saldo` | los modelos que tardan (Seedream 5.0 Flash, Seedream 4.5 y FLUX 3) contestan `lanzado` en vez de `{nombre, url}`: ya se cobró y la imagen se hace en segundo plano. La caja dice «Listo, ya va. Míralo abajo, en «Mis creaciones».», se vacía, refresca el saldo y no navega; «Mis creaciones» la enseña generándose (una sola tarjeta, la del servidor) |
 | `inicio.caja.la_respuesta_de_siempre_de_una_imagen_sigue_igual` | los modelos rápidos siguen contestando `{nombre, url}`: el mismo aviso, el mismo refresco del saldo y nada queda generándose |
 | `inicio.caja.si_falla_la_primera_relectura_tras_lanzar_la_tarjeta_se_conserva_y_se_reintenta` | tras un `lanzado`, la tarjeta de «Generando…» de la caja se queda hasta que una relectura de `/api/imagenes` salga bien (es lo único que dice que va en camino); mientras tanto la lista se vuelve a pedir cada 5 s, sin duplicar la tarjeta cuando por fin llega la del servidor |
@@ -391,6 +392,24 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | se queda: `server/migracion.py` sirve la vieja con `no-cache` |
 
 ## Diferencias a propósito
+
+- **Crear una imagen, sin estilo (dueño, 14-oct-2026, «me parece bien la opción
+  1»):** la caja manda `estilo: 'ninguno'` a `POST /api/imagenes` y a fal le
+  llega el texto de la persona más las reglas de siempre
+  (`«<texto>. No text, no watermark.»`), sin el «3D animated film style,
+  Pixar-like…» que antes se le pegaba a TODA imagen. Era una herencia de R4b
+  (7-oct): la caja copió el estilo fijo de la pantalla de Imágenes, donde sí hay
+  selector, y nadie lo decidió para la caja. Ahora es como con los clips de «Un
+  video corto»: lo que escribes es lo que se dibuja (quien quiera un look lo
+  pide con sus palabras, o usa `/estudio/imagenes/`, que conserva su selector).
+  La nota de la opción lo dice así. `ninguno` no es un estilo más: vive aparte
+  en `pipeline/styles.py`, **no** está en `ESTILOS` y por eso no sale en
+  `/api/estilos`, ni en Imágenes ni en Crear; `POST /api/proyectos` lo rechaza
+  con 422. Lo demás sigue igual: un cliente que no manda `estilo` (o manda uno
+  que no conoce) sigue recibiendo `animated` del servidor, el modo «todo» de
+  editar una imagen no cambia, y el pedido de los modelos lentos (cola) lleva el
+  mismo `prompt` armado. «Mis creaciones» no enseña ese prompt (solo el texto de
+  la persona), así que no cambia nada ahí.
 
 - **Edición (dueño, 13-oct-2026):** la caja gana una TERCERA familia, Edición
   (riel Imagen · Video · Edición; la caja sigue arrancando en Video). En E1 es:

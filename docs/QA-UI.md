@@ -114,6 +114,7 @@ imagen se piden en ella) **y desde E1 también la edición de un video** (pasos
 | 31 | Con el teclado, sin ratón: Tab desde «Edición» por el campo, las 4 ideas, el «+» y «Editar»; Espacio en el «+»; Enter y Espacio en «Editar» apagado | El anillo ámbar se ve en cada parada, **también en el campo** (y cuando una idea o «Editar» le llevan el foco); el orden es el de la pantalla y Shift+Tab lo recorre al revés; Espacio en el «+» abre el selector de archivos; Enter y Espacio hacen lo mismo que el clic |
 | 32 | Teléfono (390 px y, si se puede, 320 px): campo vacío y, con un video subiéndose, el botón | El ejemplo del campo se lee **entero** («…para Reels.»); «Subiendo…» está en **ámbar** con el cursor de espera (no gris discontinuo) y la nota de abajo lo explica |
 | 33 | Tocar el «+» mientras sube un video; esperar a que termine de subir y salga el precio | El aviso «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» se **quita solo** cuando el trabajo termina; si la subida falla, el aviso lo reemplaza el error y ese sí se queda |
+| 34 | 💳 En «Imagen» → «Crear una imagen», escribir algo realista y sin estilo (p. ej. «una foto de un perro en la playa, de día») y «Crear» | Un cobro; la imagen sale como lo escribiste, **no** en caricatura 3D tipo Pixar (antes salía «Animado» siempre). En `/estudio/imagenes/` el estilo elegido sigue funcionando |
 
 ## shorts · `/estudio/shorts/`
 

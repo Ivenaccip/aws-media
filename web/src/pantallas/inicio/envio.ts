@@ -202,10 +202,13 @@ export type RespuestaImagen = { nombre: string; url: string } | { lanzado: true;
 /** ¿El servidor dejó la imagen en marcha? Solo entonces no hay imagen todavía y la lista de «Mis creaciones» es la única que la trae. */
 export const esLanzada = (r: unknown): boolean => typeof r === 'object' && r !== null && 'lanzado' in r && r.lanzado === true;
 
-/** Crear: el estilo y el formato son los que traía la pantalla de imágenes (animado, cuadrada). */
+/** Crear: SIN estilo (`ninguno`, dueño, 14-oct-2026): lo que escribes es lo que se dibuja, como en los clips
+ *  de «Un video corto». El «Animado» tipo Pixar que salía siempre era una herencia de la pantalla de imágenes
+ *  (R4b) que nadie decidió para la caja. El formato sigue siendo el de siempre (cuadrada, el del servidor sin
+ *  `formato`). La pantalla de Imágenes y la de Crear no cambian: ellas sí tienen su selector de estilo. */
 export const pedirImagen = (texto: string, modelo: string) =>
   pedir<RespuestaImagen>('/api/imagenes', {
-    cuerpo: { prompt: texto, estilo: 'animated', estilo_custom: '', modelo },
+    cuerpo: { prompt: texto, estilo: 'ninguno', estilo_custom: '', modelo },
   });
 
 /** Editar: «transformar toda la imagen» (el modo sin zona pintada). */
