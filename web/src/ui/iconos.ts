@@ -43,6 +43,17 @@ export const TRAZOS = {
   izquierda: 'M15 6l-6 6 6 6',
   derecha: 'M9 6l6 6-6 6',
   magia: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',
+  marketing: 'M3 11l18-5v12L3 14zM11.6 16.8a3 3 0 1 1-5.8-1.6',
+  ubicacion: 'M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11zM12 7.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z',
+  ajustes: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+  central: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
+  producto: 'M12 2.5l8.5 4.7v9.6L12 21.5l-8.5-4.7V7.2zM12 12v9.5M3.5 7.2L12 12l8.5-4.8',
+  ventas: 'M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01',
+  coi: 'M9 3h6l1 2h3v16H5V5h3zM9 12h6M9 16h4',
+  biblioteca: 'M2 4h7a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H2zM22 4h-7a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h8z',
+  pregunta: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.2 9.2a3 3 0 0 1 5.6 1.3c0 2-2.8 2.5-2.8 4M12 17.5h.01',
+  glosario: 'M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2zM4 18a3 3 0 0 1 3-3h12M9 7h6M9 10.5h4',
+  buscar: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3',
 } as const;
 
 export type NombreIcono = keyof typeof TRAZOS;
