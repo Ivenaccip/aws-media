@@ -3,6 +3,10 @@
 Fecha: 2026-09-25 · Decidida por el dueño sobre el lienzo de propuestas
 (https://claude.ai/artifact/AHYpxmhtur9e528hAjgHmv) · Plan: `docs/PLAN-UI.md` §7 y §8
 
+Revisada el 2026-10-15 con la decisión del dueño sobre el prototipo «Mapa con
+Irremplazables»: el menú lateral se retira (el mapa lo reemplaza, §7) y el título
+«Irremplazables» lleva dorado (§3).
+
 Esta carta manda sobre cualquier gusto de agente. Si algo no está aquí, se
 decide con el dueño y se agrega aquí antes de usarlo.
 
@@ -17,7 +21,9 @@ decide con el dueño y se agrega aquí antes de usarlo.
   de §3. Lo vigila `tests/test_m20_paleta.py`.
 - **Solo modo oscuro.** No hay modo claro ni interruptor.
 - Botones de cobro **«Verbo ✦ N»**: la acción y lo que cuesta, nada más (M21).
-- El **orbe** de espera y el **menú lateral**.
+- El **orbe** de espera y el **mapa** del inicio (mapa en X → tres opciones →
+  pantalla, §7). El menú lateral ya no existe: lo reemplazó el mapa (dueño,
+  15-oct-2026).
 - **Sin gasto sin ver el costo antes.** Precios solo de `tools/tarifas.json`
   o de la API; nunca inventados.
 - **Todo en español**, con tuteo.
@@ -58,7 +64,7 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 |---|---|---|---|
 | `#0b1626` | fondo | la página | — |
 | `#08111e` | fondo hundido | pozos, reproductor, código | — |
-| `#111f33` | superficie | tarjetas, menú lateral | — |
+| `#111f33` | superficie | tarjetas (también la tarjeta única del inicio, §7) | — |
 | `#18293f` | elevada | campos, hover de secundario, popovers | fondo de enlaces azules `#5b8dd6` (4.36:1) |
 | `#22354f` | línea | bordes de tarjeta, separadores | bordes de campos (no llega a 3:1) |
 | `#55708f` | línea de campo | bordes de campos y de botón secundario (3.2–3.5:1) | texto |
@@ -66,8 +72,11 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 | `#93a3b8` | secundario | texto de apoyo (6.45:1 sobre superficie) | — |
 | `#6b7a8f` | secundario apagado | solo decoración o texto deshabilitado | texto normal (3.79:1 sobre superficie) |
 | `#da8c28` | **acento ámbar** | el botón principal, el foco, el ✦ | texto largo, fondos grandes |
-| `#f0a94a` | ámbar claro | hover del principal, anillo de foco, títulos-marca (el «Irremplazables» del menú del inicio) | — |
+| `#f0a94a` | ámbar claro | hover del principal, anillo de foco | — |
 | `#a96716` | ámbar hondo | bordes y detalles | fondo con texto (4.19:1 con la tinta) |
+| `#f3dc92` | dorado claro | solo el título «Irremplazables»: arriba de su degradado (12.2:1 sobre la superficie) | texto largo, otros títulos |
+| `#e6c35c` | dorado | solo el título «Irremplazables»: en medio del degradado, y su color liso si el navegador no recorta el fondo a la letra (9.7:1) | texto largo, otros títulos |
+| `#b98d2f` | dorado hondo | solo el título «Irremplazables»: abajo del degradado, su parte más oscura (5.45:1 sobre la superficie) | texto largo, otros títulos |
 | `#14100a` | tinta | el **único** texto sobre ámbar (7.0:1) | — |
 | `#a9c6ee` | azul claro | **solo enlaces** (8.4:1 o más sobre cualquier fondo) | botones |
 | `#5b8dd6` | azul | gráficas, relleno azul de datos | texto sobre `#18293f` |
@@ -95,6 +104,12 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
   ámbar es «Subir»; con metraje pasa a «Proponer ✦ N» (o «Editar») y Subir
   queda secundario. En el panel del negocio, «Sincronizar costes» es el ámbar
   aunque la pantalla sea de consulta (dueño, 25-sep).
+- El **dorado** (`#f3dc92` → `#e6c35c` → `#b98d2f`) no es un segundo acento: es
+  la firma del título «Irremplazables» y de nada más (dueño, 15-oct-2026). Va
+  como degradado de arriba abajo, con los tokens `--color-oro-claro`,
+  `--color-oro` y `--color-oro-hondo` de `tokens.css` y la clase `texto-oro`
+  (`bg-clip-text text-transparent`). Un navegador que no recorte el fondo a la
+  letra pinta el título en `#e6c35c` liso, nunca invisible.
 - Todo lo demás es gris: botón secundario con borde `#55708f`.
 
 ## 4. Espacio, forma y movimiento
@@ -192,21 +207,84 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   iconos de la interfaz. El ✦ de créditos **no** es un emoji: se queda.
 - Iconos del lienzo (propuesta 4): Video, Imagen, Cortar, Shorts, Guion,
   Personaje, Agenda, Publicar, Métricas, Competencia, Créditos, Aviso.
+- El mapa (§7) suma los de sus áreas, grupos y pantallas: Marketing, Ubicación,
+  Ajustes, Central, Producto, Ventas, COI, Biblioteca, Pregunta, Glosario y
+  Buscar. Viven en `ui/iconos.ts` y `static/iconos.js` (idénticos; los compara
+  `tests/test_web_tuberia.py`).
 
 ## 7. Navegación
 
-- **Menú lateral en todas las pantallas** de escritorio, agrupado en
-  **Crear** (Video, Imagen, Clip de 8 segundos, Copiar un estilo),
-  **Editar** (Mis videos, Shorts), **Publicar** (Agenda, Publicidad
-  automática) y **Analizar** (Métricas, Competencia).
+Desde el 15-oct-2026 no hay menú lateral, en ningún ancho: el inicio es un
+recorrido de tres pasos dentro de **una sola tarjeta** («Mapa con
+Irremplazables», decisión del dueño). La lista de adónde se puede ir es una
+sola, `web/src/marca/menu.ts`; el recorrido y las migas de las pantallas salen
+de ella, así no se desincronizan.
+
+- **Tres pasos:** el **mapa en X** (las áreas: Marketing, Producto, Central,
+  Ventas y Automatizaciones) → las **tres opciones** (los grupos del área
+  elegida; los de Marketing son Distrito, Blotato y Avanzado) → **la pantalla**
+  (la caja del inicio, o la lista de las pantallas del grupo).
+- **Se aterriza en la caja, no en el mapa:** al abrir `/estudio/inicio/` se ve
+  Marketing › Distrito › Imagen, como siempre. El mapa se abre desde las migas;
+  «Estás aquí» marca el lugar actual.
+- **Una tarjeta única:** 820 px de ancho como mucho, centrada en horizontal y
+  pegada arriba (64 px; no se centra en vertical para que no salte de un paso a
+  otro), en la superficie `#111f33` con borde `#22354f` y radio 16. Adentro, de
+  arriba abajo: el `h1` «Irremplazables» (dorado, 32 px, centrado y sin icono; es
+  el único `h1` de la pantalla), las migas y el paso con su `h2` («Elige un
+  área», «Elige un grupo», «¿Qué vamos a crear hoy?» en la caja, el nombre del
+  grupo en la lista).
+- **Migas que reabren cada nivel:** la ruta elegida son chips («Marketing ›
+  Distrito») y cada chip reabre su nivel: el área vuelve al mapa; el grupo, a las
+  tres opciones.
+- **«Volver a …» y Esc:** con el mapa o las tres opciones abiertos, «Volver a …»
+  dice adónde caerás («Volver a Imagen») y deja todo como estaba. **Esc** hace lo
+  mismo cuando el foco está dentro de la tarjeta (el `onKeyDown` es de la
+  tarjeta, no global). Si venías de una página hoja (abajo), «Volver a …»
+  regresa a ella.
+- **La caja siempre montada:** con el mapa, las tres opciones o la lista a la
+  vista, la caja se oculta (`hidden`), no se desmonta; así no se pierden el texto
+  escrito, el video subido ni una subida en curso. La galería «Mis creaciones» y
+  lo que cuelga de la caja se ven solo cuando se ve la caja.
+- **Lo que enseña un grupo que no es la caja:** la lista de sus pantallas como
+  tarjetas-enlace (icono, título y una línea de apoyo). Las que dependen de
+  Blotato se apagan con `aria-disabled` cuando se sabe que la persona no lo ha
+  conectado (si no se sabe, no se apaga nada) y su clic abre el diálogo de
+  conectar en vez de navegar; el botón «Conecta tu cuenta de Blotato» (o
+  «Blotato conectado: ver o cambiar») vive arriba de esa lista. Lo que aún no
+  existe (todo Central) sale apagado con la etiqueta «Próximamente» y no navega;
+  un grupo sin pantallas dice «Todavía no está disponible.». Producto, Ventas y
+  Automatizaciones son fichas inertes en el mapa.
+- **Las páginas hoja siguen siendo páginas** (Agenda, Competencia, Métricas, MIX,
+  Copiadora de estilos): llevan «← Estudio» y, a su lado, sus migas, «Marketing ›
+  Blotato», como **enlaces** al inicio con `?desde=<lugar>&ver=mapa|grupos`.
+  «Marketing» abre el mapa y «Blotato» las tres opciones, con ese lugar marcado
+  como «Estás aquí». El inicio lee los dos parámetros una sola vez, al abrir, y
+  limpia la URL; si alguno no existe, se aterriza en la caja. Las pantallas que
+  el mapa no tiene (Admin, Crear, Subir, Clip, Imágenes y Shorts) no llevan migas.
+- **Dónde quedó cada cosa:** «De videos a Shorts» es el segundo modo del chip
+  «Editar ▾» de la pestaña Edición y ya no tiene entrada propia. La Copiadora de
+  estilos está en Marketing › Avanzado **de forma provisional**: irá a «Marcas»,
+  que todavía no existe, y quitarla antes dejaría sin puerta una pantalla que
+  funciona.
+- **Celular (≤ 560 px):** la «X compacta» (dueño, 15-oct-2026): dos columnas,
+  con Central como banda de ancho completo en medio y trazos punteados cortos
+  hacia ella. En escritorio el mapa es una cuadrícula de 3 × 3 con las dos
+  diagonales punteadas (decoración: `aria-hidden`, en `#55708f`, detrás de las
+  fichas). En los dos, las fichas miden 44 px o más y el texto 13 px o más;
+  «Automatizaciones» y «Estás aquí» no se parten a 390 ni a 320 px, y nada se
+  desborda. El riel de la caja pasa a horizontal.
+- **Teclado y foco:** el orden de Tab es el de lectura (Marketing, Producto,
+  Central, Ventas, Automatizaciones). El foco nunca cae a `<body>`: al cambiar de
+  paso va al `h2` del paso nuevo, y solo si se había perdido. Un doble clic en
+  una ficha del mapa no elige además un grupo por accidente (se ignora el
+  segundo clic si llega en menos de 500 ms).
 - El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
-  con su «＋» para recargar. Se probó al pie del menú (UI·10) y el dueño
-  prefirió la píldora (25-sep). Al cambiar de pantalla sale desde el primer
-  cuadro con el último saldo de la pestaña (15 min como mucho); si el
-  servidor no lo confirma, se apaga un poco y se lee «sin confirmar».
-- En el inicio, el centro sigue siendo el bloque de crear imagen y video
-  que ya existe (`.prompt` en `static/index.html`).
-- Celular: **sin decidir** (el lienzo proponía pestañas abajo).
+  con su «＋» para recargar. Se probó al pie del menú lateral (UI·10, hoy
+  retirado) y el dueño prefirió la píldora (25-sep). Al cambiar de pantalla
+  sale desde el primer cuadro con el último saldo de la pestaña (15 min como
+  mucho); si el servidor no lo confirma, se apaga un poco y se lee «sin
+  confirmar».
 
 ## 8. Estados de la pantalla
 

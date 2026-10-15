@@ -16,6 +16,11 @@
 //      corrida sigue. Mientras siga, o mientras suba un video, no se empieza otra cosa.
 //      El servidor aún no tiene un candado por cuenta: este aviso es de la pantalla.
 //
+// El chip «Editar ▾» tiene dos modos y el modo también vive aquí (por lo mismo: cambiar de familia o abrir el mapa no lo
+// pierde). «De videos a Shorts» usa la misma subida (progreso, cancelar, tarjeta del video) pero NO pide el precio de
+// Edición ni cobra nada: «Iniciar» lleva a /estudio/shorts/ con la liga o el proyecto, y esa pantalla es la que muestra cada
+// precio y cobra con su propio botón.
+//
 // Por qué no es un <BotonCobro>: ese se apaga con `disabled` (no se enfoca ni explica) y aquí el apagado tiene que seguir
 // enfocable (sin texto lleva el foco al campo; fuera de rango, al «+»). Las reglas de dinero que BotonCobro impone viven
 // aquí, cada una con su prueba: el candado se cierra antes del primer await (doble clic y Enter repetido = UNA petición),
@@ -26,15 +31,21 @@ import { ErrorApi } from '../../nucleo/api';
 import { moderar } from '../../nucleo/moderar';
 import { cargarConfig, confirmar, firmar, nombreAlterno, subirConProgreso } from '../../nucleo/subida';
 import { avisarCobro, refrescarSaldo, useSaldo } from '../../marca/useSaldo';
+import { esLigaDeYoutube, LIGA_INVALIDA } from '../shorts/logica';
 import {
   AVISO_OCUPADO,
+  AVISO_SIN_FUENTE,
   AVISO_SIN_VIDEO,
+  destinoShorts,
+  estadoDeShorts,
   estadoDelBoton,
   faltanTras402,
   limpiarInstruccion,
   nombreDeProyecto,
   type EstadoBoton,
+  type EstadoBotonShorts,
   type FaseVideo,
+  type IdModo,
 } from './edicion';
 import {
   DESCRIPCION_VIDEOS,
@@ -71,11 +82,19 @@ export interface Mensajes {
 }
 
 export interface ManejoEdicion {
+  /** El modo del chip «Editar ▾»: lo que la caja enseña y a dónde lleva «Iniciar». */
+  modo: IdModo;
+  /** La liga de YouTube escrita en el modo Shorts (queda escrita aunque se cambie de modo). */
+  liga: string;
+  /** Lo que está mal de la liga, junto al campo (null = nada). Se va en cuanto se escribe otra. */
+  errorLiga: string | null;
   texto: string;
   /** Hay algo que decirle a la IA: lo que de verdad le llegaría (sin espacios ni caracteres invisibles), no lo que se ve. */
   hayTexto: boolean;
   video: VideoDeEdicion | null;
   boton: EstadoBoton;
+  /** Lo que dice el botón principal cuando el modo es Shorts. */
+  botonShorts: EstadoBotonShorts;
   /** Una subida, un precio por calcular o una corrida en curso: «+» e «Iniciar» avisan en vez de empezar otra. */
   ocupado: boolean;
   /** Entre el clic y la respuesta del servidor. */
@@ -84,17 +103,23 @@ export interface ManejoEdicion {
   /** Lo que le falta de saldo (0 = nada), sabido por el saldo o por el 402 del servidor. */
   faltan: number;
   escribir(texto: string): void;
+  escribirLiga(liga: string): void;
+  /** Cambia de modo desde el chip. Elegir el de ahora no hace nada. */
+  elegirModo(id: IdModo): void;
   /** Los archivos que llegan del selector o de soltarlos en la caja. */
   recibir(archivos: File[]): void;
   quitar(): void;
   tocarMas(): void;
-  tocarEditar(): void;
+  /** El botón principal, «Iniciar»: en Editar lanza la corrida; en Shorts lleva a su pantalla. */
+  tocarIniciar(): void;
 }
 
 /** Los elementos a los que hay que llevar el foco o hacer clic. Van APARTE del resto: lo que lee el render no debe
  *  colgar de un objeto que lleva refs (la regla react-hooks/refs lo marcaría entero). */
 export interface RefsEdicion {
   area: RefObject<HTMLTextAreaElement | null>;
+  /** El campo de la liga (solo existe en el modo Shorts, sin video). */
+  liga: RefObject<HTMLInputElement | null>;
   mas: RefObject<HTMLButtonElement | null>;
   archivos: RefObject<HTMLInputElement | null>;
   principal: RefObject<HTMLButtonElement | null>;
@@ -102,7 +127,11 @@ export interface RefsEdicion {
 
 const mensaje = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, olvidarAviso }: Mensajes): [ManejoEdicion, RefsEdicion] {
+/** `ir` es el de Caja: a dónde navegar (location.assign en la página, un espía en los tests). Solo lo usa «Iniciar» en Shorts. */
+export function useEdicion(
+  { decir: decirAfuera, limpiarError: limpiarAfuera, olvidarAviso }: Mensajes,
+  ir: (url: string) => void,
+): [ManejoEdicion, RefsEdicion] {
   // lo último que se dijo fue «Ya hay un trabajo en curso…»: cuando ese trabajo termina, el aviso se quita solo (el lienzo lo
   // hace: un aviso que dice «espera» no puede quedarse cuando ya no hay nada que esperar). Cualquier otra cosa que se diga o
   // se quite lo suelta: lo que reemplazó a ese aviso no es de este hook para quitarlo
@@ -115,6 +144,12 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
     avisoOcupado.current = false;
     limpiarAfuera();
   };
+  const [modo, setModo] = useState<IdModo>('editar');
+  // el modo de AHORA, para lo que se pregunta tras un await (la subida: ¿hay que pedir el precio de Edición?): la
+  // closure de `subir` es la del render en que empezó, y para entonces la persona pudo cambiar el chip
+  const modoVigente = useRef<IdModo>('editar');
+  const [liga, setLiga] = useState('');
+  const [errorLiga, setErrorLiga] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
   const [video, setVideo] = useState<VideoDeEdicion | null>(null);
   const [lanzando, setLanzando] = useState(false);
@@ -126,6 +161,7 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
   const saldo = useSaldo();
 
   const area = useRef<HTMLTextAreaElement>(null);
+  const campoLiga = useRef<HTMLInputElement>(null);
   const mas = useRef<HTMLButtonElement>(null);
   const archivos = useRef<HTMLInputElement>(null);
   const principal = useRef<HTMLButtonElement>(null);
@@ -138,6 +174,7 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
   // «hay texto» es lo que le llegaría a la IA, no lo que se ve: un campo con solo caracteres invisibles está vacío
   const hayTexto = limpiarInstruccion(texto) !== '';
   const boton = estadoDelBoton({ video, hayTexto, saldo });
+  const botonShorts = estadoDeShorts({ video, liga });
   const faltanLocal = boton.tipo === 'sin_saldo' ? boton.faltan : 0;
   const faltanDelServidor = sinSaldoDelServidor && sinSaldoDelServidor.saldo === saldo ? sinSaldoDelServidor.faltan : 0;
   const faltan = Math.max(faltanLocal, faltanDelServidor);
@@ -209,6 +246,25 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
     olvidarAviso();
   }
 
+  function escribirLiga(nueva: string) {
+    setLiga(nueva);
+    setErrorLiga(null);
+    // lo de antes («primero pega la liga») ya no vale
+    limpiarError();
+  }
+
+  function elegirModo(id: IdModo) {
+    if (id === modo) return;
+    modoVigente.current = id;
+    setModo(id);
+    // lo que decía el otro modo (un aviso, el error de la liga) no es de este
+    setErrorLiga(null);
+    limpiarError();
+    olvidarAviso();
+    // un video que subió estando en Shorts no trae el precio de Edición: se pide al pasar a Editar, como si hubiera subido allí
+    if (id === 'editar' && video?.fase === 'listo' && !video.costo) void calcularPrecio(video.proyecto, intento.current);
+  }
+
   /** Pide el precio del video subido. Si no llega, el video se queda e «Iniciar» lo vuelve a pedir. */
   async function calcularPrecio(proyecto: string, mio: number) {
     if (intento.current === mio) setVideo(v => v && { ...v, fase: 'calculando' });
@@ -270,6 +326,11 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
       decir('mal', mensaje(e));
       return;
     }
+    if (modoVigente.current === 'shorts') {
+      // Shorts no pide el precio de Edición: el del análisis y el de cada short los muestra su pantalla, antes de cobrar
+      setVideo(v => v && { ...v, fase: 'listo' });
+      return;
+    }
     await calcularPrecio(proyecto, mio);
   }
 
@@ -291,7 +352,9 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
     }
     limpiarError();
     // en E1 se edita un video a la vez: si llegan varios se toma el primero y se dice
-    if (videos.length > 1) decir('ok', `Por ahora se edita un video a la vez: usamos «${primero.name}».`);
+    if (videos.length > 1) {
+      decir('ok', `Por ahora ${modoVigente.current === 'shorts' ? 'se saca de' : 'se edita'} un video a la vez: usamos «${primero.name}».`);
+    }
     void subir(primero);
   }
 
@@ -364,10 +427,37 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
     }
   }
 
-  function tocarEditar() {
+  /** «Iniciar» en Shorts: no cobra ni pide nada, navega. Con un video subido va a su proyecto; si no, con la liga puesta. */
+  function iniciarShorts() {
+    if (video) {
+      limpiarError();
+      ir(destinoShorts({ proyecto: video.proyecto }));
+      return;
+    }
+    const limpia = liga.trim();
+    if (!limpia) {
+      decir('mal', AVISO_SIN_FUENTE);
+      return;
+    }
+    // una liga que no es de YouTube se corrige en el campo, sin ir a ningún lado ni gastar nada
+    if (!esLigaDeYoutube(limpia)) {
+      limpiarError();
+      setErrorLiga(LIGA_INVALIDA);
+      campoLiga.current?.focus();
+      return;
+    }
+    limpiarError();
+    ir(destinoShorts({ liga: limpia }));
+  }
+
+  function tocarIniciar() {
     if (lanzando) return;
     if (ocupado) {
       decir('mal', AVISO_OCUPADO);
+      return;
+    }
+    if (modo === 'shorts') {
+      iniciarShorts();
       return;
     }
     switch (boton.tipo) {
@@ -399,20 +489,26 @@ export function useEdicion({ decir: decirAfuera, limpiarError: limpiarAfuera, ol
 
   return [
     {
+      modo,
+      liga,
+      errorLiga,
       texto,
       hayTexto,
       video,
       boton,
+      botonShorts,
       ocupado,
       lanzando,
       saldo,
       faltan,
       escribir,
+      escribirLiga,
+      elegirModo,
       recibir,
       quitar,
       tocarMas,
-      tocarEditar,
+      tocarIniciar,
     },
-    { area, mas, archivos, principal },
+    { area, liga: campoLiga, mas, archivos, principal },
   ];
 }

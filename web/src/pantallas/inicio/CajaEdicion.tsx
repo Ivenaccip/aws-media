@@ -3,7 +3,11 @@
 // cambiar de familia no pierde el texto, el video ni una subida a medias).
 //
 // La fila de abajo es la de Video: «+» y el chip «Editar ▾» a la izquierda (el MISMO SelectorOpcion que Imagen y Video, con
-// una sola opción por ahora) y el botón principal a la derecha (en un teléfono, abajo, a todo el ancho).
+// dos opciones: Editar y De videos a Shorts) y el botón principal a la derecha (en un teléfono, abajo, a todo el ancho).
+//
+// El modo Shorts cambia solo el cuerpo (un texto de apoyo y el campo de la liga de YouTube, en lugar del cuadro donde se
+// le escribe a la IA) y a dónde lleva «Iniciar»: no cobra nada, navega a /estudio/shorts/ con la liga o el video ya subido
+// (el «+» sube con la misma tarjeta, progreso y «cancelar» que en Editar). El botón, la fila y los avisos son los mismos.
 //
 // Un solo botón principal, «Iniciar», SIEMPRE el mismo elemento y SIEMPRE ámbar (dueño, 14-oct-2026: «dorado como el de
 // Generar»). Cuando aún no se puede, no se pinta apagado: se queda ámbar y explica al pulsarlo, igual que «Crear» de
@@ -36,19 +40,26 @@ import { entero } from '../../nucleo/formato';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
 import { Boton } from '../../ui/Boton';
+import { Campo } from '../../ui/Campo';
 import { CuadroDeTexto } from '../../ui/CuadroDeTexto';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import {
+  APOYO_SHORTS,
   AYUDA_TEXTO,
   AYUDA_VIDEO,
   EJEMPLO_FIJO,
+  ETIQUETA_LIGA,
   ETIQUETA_TEXTO,
+  HUECO_LIGA,
   huecoDe,
   IDEAS_EDICION,
+  modoDe,
   MODOS_EDICION,
   NOTA_CALCULANDO,
   NOTA_COPIA,
+  NOTA_SHORTS_SIGUE,
+  NOTA_SHORTS_VACIA,
   NOTA_SIN_PRECIO,
   NOTA_SUBIENDO,
   reloj,
@@ -72,30 +83,35 @@ const PISTA = 'placeholder:transition-opacity placeholder:duration-(--dur-media)
 const PISTA_ENTRA = 'placeholder:opacity-100 placeholder:ease-(--ease-salida)';
 const PISTA_SALE = 'placeholder:opacity-0 placeholder:ease-(--ease-entrada)';
 
-/** Con una sola opción en el chip, elegirla no cambia nada: cierra la lista y devuelve el foco al chip. */
-const SIN_CAMBIO = () => undefined;
-
 // «Recargar» (cuando la recarga está abierta) es un enlace de una línea de letra chica: el área táctil de 44 px se la da
 // el relleno, y los márgenes negativos la devuelven al renglón para que la nota no crezca ni se mueva. El aro de foco va
 // por dentro (como el lienzo en sus avisos): por fuera taparía la línea de arriba
 const RECARGA = 'text-xs min-h-11 min-w-11 px-2 -mx-2 -my-3 focus-visible:-outline-offset-3';
 
-export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { ed: ManejoEdicion; refs: RefsEdicion }) {
+export function CajaEdicion({ ed, refs: { area, liga, mas, archivos, principal } }: { ed: ManejoEdicion; refs: RefsEdicion }) {
   const idAyudaTexto = useId();
   const idAviso = useId();
   // la nota que explica el apagado cuando no es el aviso del servidor ni «escribe qué quieres» (solo hay una a la vez)
   const idNota = useId();
   const idEjemplo = useId();
   const { video, boton, hayTexto } = ed;
+  const enShorts = ed.modo === 'shorts';
+  // la nota de Shorts: con una fuente puesta «Iniciar» lleva a otra pantalla (y eso se dice); sin ella, lo único que se promete es
+  // que subir es gratis. Va en el mismo lugar y con el mismo id que la nota que explica el apagado en Editar
+  const notaShorts = ed.botonShorts.tipo === 'listo' ? NOTA_SHORTS_SIGUE : NOTA_SHORTS_VACIA;
 
   // la pista rota solo con el campo vacío y sin el foco: con texto no se ve, y quien va a escribir no la debe ver cambiar
   // bajo el cursor (se congela en la que estaba; al soltar el foco con el campo vacío, retoma)
   const [enfocado, setEnfocado] = useState(false);
-  const pista = usePistaRotatoria(IDEAS_EDICION, enfocado || ed.texto !== '');
+  // (en Shorts no hay campo de texto ni pista: no corre ningún reloj)
+  const pista = usePistaRotatoria(IDEAS_EDICION, enfocado || ed.texto !== '' || enShorts);
 
   // lo que el botón principal dice (los lectores de pantalla lo leen al enfocarlo, con su descripción)
-  const etiqueta =
-    boton.tipo === 'subiendo'
+  const etiqueta = enShorts
+    ? ed.botonShorts.tipo === 'subiendo'
+      ? 'Subiendo…'
+      : 'Iniciar'
+    : boton.tipo === 'subiendo'
       ? 'Subiendo…'
       : boton.tipo === 'calculando'
         ? 'Calculando…'
@@ -103,47 +119,86 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
           ? `Iniciar ${ESTRELLA} ${entero(boton.creditos)}`
           : 'Iniciar';
   // subiendo y calculando son «trabajando»: ocupado y con cursor de espera
-  const esperando = boton.tipo === 'subiendo' || boton.tipo === 'calculando';
+  const esperando = enShorts ? ed.botonShorts.tipo === 'subiendo' : boton.tipo === 'subiendo' || boton.tipo === 'calculando';
+  // «Iniciar» solo cobra o navega cuando el estado es `listo`; en cualquier otro, sigue ámbar pero `aria-disabled` y explica
+  const apagado = enShorts ? ed.botonShorts.tipo !== 'listo' : boton.tipo !== 'listo';
   const hayNota = esperando || boton.tipo === 'sin_precio' || (boton.tipo === 'sin_video' && hayTexto) || (boton.tipo === 'sin_saldo' && ed.saldo !== null);
-  const describe = [
-    boton.tipo === 'fuera' ? idAviso : '',
-    (boton.tipo === 'sin_texto' || boton.tipo === 'fuera' || boton.tipo === 'sin_video') && !hayTexto ? idAyudaTexto : '',
-    hayNota ? idNota : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const describe = enShorts
+    ? idNota
+    : [
+        boton.tipo === 'fuera' ? idAviso : '',
+        (boton.tipo === 'sin_texto' || boton.tipo === 'fuera' || boton.tipo === 'sin_video') && !hayTexto ? idAyudaTexto : '',
+        hayNota ? idNota : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
 
   return (
     <>
-      {video && <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={ed.quitar} />}
-      {video && <p className={unir(NOTA, 'mb-3')}>{NOTA_COPIA}</p>}
+      {enShorts ? (
+        <>
+          <p className="m-0 mb-3 text-sm text-secundario">{APOYO_SHORTS}</p>
+          {/* con un video subido manda su tarjeta y el campo se va (la liga queda escrita: vuelve al quitar el video) */}
+          {video ? (
+            <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={ed.quitar} />
+          ) : (
+            <Campo
+              ref={liga}
+              etiqueta={ETIQUETA_LIGA}
+              etiquetaOculta
+              type="url"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={2000}
+              placeholder={HUECO_LIGA}
+              value={ed.liga}
+              error={ed.errorLiga}
+              onChange={e => ed.escribirLiga(e.target.value)}
+              // Enter es «Iniciar», como en cualquier cuadro de una sola línea (no es un <form>: aquí no hay envío nativo)
+              onKeyDown={e => {
+                if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                ed.tocarIniciar();
+              }}
+              // la pista con el gris secundario, como la del cuadro de escribir (el 50 % del texto no llega a 4.5:1 sobre elevada)
+              className="placeholder:text-secundario"
+            />
+          )}
+        </>
+      ) : (
+        <>
+          {video && <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={ed.quitar} />}
+          {video && <p className={unir(NOTA, 'mb-3')}>{NOTA_COPIA}</p>}
 
-      <CuadroDeTexto
-        id="texto-edicion"
-        ref={area}
-        rows={2}
-        maxLength={2000}
-        aria-label={ETIQUETA_TEXTO}
-        aria-required="true"
-        aria-describedby={idEjemplo}
-        value={ed.texto}
-        onChange={e => ed.escribir(e.target.value)}
-        onFocus={() => setEnfocado(true)}
-        onBlur={() => setEnfocado(false)}
-        placeholder={huecoDe(pista.idea)}
-        className={unir(
-          'max-h-56 min-h-24 resize-y field-sizing-content min-[640px]:min-h-17',
-          PISTA,
-          pista.saliendo ? PISTA_SALE : PISTA_ENTRA,
-        )}
-      />
-      {/* el ejemplo que no rota, para el lector de pantalla: solo es la descripción del campo (`aria-describedby` lee el texto
-          aunque el <p> esté oculto). Oculto de verdad (`hidden`) y no solo invisible (`sr-only`): si no, en modo lectura el
-          lector lo recita como un párrafo suelto entre el campo y el «+», y otra vez al enfocar el campo. A la vista ya está la
-          pista de arriba, rotando */}
-      <p id={idEjemplo} hidden>
-        {EJEMPLO_FIJO}
-      </p>
+          <CuadroDeTexto
+            id="texto-edicion"
+            ref={area}
+            rows={2}
+            maxLength={2000}
+            aria-label={ETIQUETA_TEXTO}
+            aria-required="true"
+            aria-describedby={idEjemplo}
+            value={ed.texto}
+            onChange={e => ed.escribir(e.target.value)}
+            onFocus={() => setEnfocado(true)}
+            onBlur={() => setEnfocado(false)}
+            placeholder={huecoDe(pista.idea)}
+            className={unir(
+              'max-h-56 min-h-24 resize-y field-sizing-content min-[640px]:min-h-17',
+              PISTA,
+              pista.saliendo ? PISTA_SALE : PISTA_ENTRA,
+            )}
+          />
+          {/* el ejemplo que no rota, para el lector de pantalla: solo es la descripción del campo (`aria-describedby` lee el texto
+              aunque el <p> esté oculto). Oculto de verdad (`hidden`) y no solo invisible (`sr-only`): si no, en modo lectura el
+              lector lo recita como un párrafo suelto entre el campo y el «+», y otra vez al enfocar el campo. A la vista ya está la
+              pista de arriba, rotando */}
+          <p id={idEjemplo} hidden>
+            {EJEMPLO_FIJO}
+          </p>
+        </>
+      )}
 
       <div className="mt-3 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
         {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
@@ -163,7 +218,7 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
           <button
             ref={mas}
             type="button"
-            aria-label={video ? 'Cambiar el video' : 'Agregar el video que quieres editar'}
+            aria-label={video ? 'Cambiar el video' : enShorts ? 'Agregar el video largo' : 'Agregar el video que quieres editar'}
             aria-disabled={ed.ocupado || undefined}
             title={`Agrega el video (${DESCRIPCION_VIDEOS}) o arrástralo a la caja`}
             onClick={ed.tocarMas}
@@ -171,8 +226,8 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
           >
             <Icono nombre="mas" />
           </button>
-          {/* el mismo chip que Imagen y Video; con una sola opción, elegirla es cerrar la lista y volver al chip */}
-          <SelectorOpcion opciones={MODOS_EDICION} elegida={MODOS_EDICION[0]} detalle={m => m.detalle} alElegir={SIN_CAMBIO} />
+          {/* el mismo chip que Imagen y Video: elegir un modo cambia el cuerpo de la caja (elegir el de ahora solo cierra la lista) */}
+          <SelectorOpcion opciones={MODOS_EDICION} elegida={modoDe(ed.modo)} detalle={m => m.detalle} alElegir={m => ed.elegirModo(m.id)} />
         </div>
 
         <div className="flex flex-col gap-2.5 min-[640px]:ml-auto min-[640px]:flex-row min-[640px]:items-center">
@@ -182,11 +237,11 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
             trabajando={ed.lanzando && 'Iniciando…'}
             // ámbar en todos los estados: NO se le pasa `apagado` (que lo pintaría gris y discontinuo). Lo que sí queda es la
             // semántica: `aria-disabled` mientras no se pueda, y el clic llega para explicar por qué
-            {...(boton.tipo !== 'listo' ? { 'aria-disabled': true } : {})}
+            {...(apagado ? { 'aria-disabled': true } : {})}
             // trabajando: ocupado y no disponible para quien lo lee, pero el clic llega (avisa que hay un trabajo en curso)
             {...(esperando ? { 'aria-busy': true } : {})}
             {...(describe ? { 'aria-describedby': describe } : {})}
-            onClick={ed.tocarEditar}
+            onClick={ed.tocarIniciar}
             className={unir('w-full min-[640px]:w-auto', esperando && 'cursor-progress')}
           >
             {etiqueta}
@@ -195,46 +250,54 @@ export function CajaEdicion({ ed, refs: { area, mas, archivos, principal } }: { 
       </div>
 
       <div role="status" className="mt-2.5 flex flex-col gap-1">
-        {boton.tipo === 'subiendo' && (
+        {enShorts ? (
           <p id={idNota} className={NOTA}>
-            {NOTA_SUBIENDO}
+            {notaShorts}
           </p>
-        )}
-        {boton.tipo === 'calculando' && (
-          <p id={idNota} className={NOTA}>
-            {NOTA_CALCULANDO}
-          </p>
-        )}
-        {boton.tipo === 'sin_precio' && (
-          <p id={idNota} className={NOTA}>
-            {NOTA_SIN_PRECIO}
-          </p>
-        )}
-        {boton.tipo === 'fuera' && (
-          <p id={idAviso} className={unir(NOTA, 'text-texto')}>
-            {boton.aviso}
-          </p>
-        )}
-        {!hayTexto && (
-          <p id={idAyudaTexto} className={NOTA}>
-            {AYUDA_TEXTO}
-          </p>
-        )}
-        {boton.tipo === 'sin_video' && hayTexto && (
-          <p id={idNota} className={NOTA}>
-            {AYUDA_VIDEO}
-          </p>
-        )}
-        {boton.tipo === 'listo' && <NotaSaldo saldo={ed.saldo} costo={boton.creditos} />}
-        {boton.tipo === 'sin_saldo' && ed.saldo !== null && (
-          <p id={idNota} className={unir(NOTA, 'tabular-nums')}>
-            Tienes {ESTRELLA} {entero(ed.saldo)}: no alcanza para editar este video.
-          </p>
-        )}
-        {ed.faltan > 0 && (
-          <p className={unir(NOTA, 'tabular-nums')}>
-            Te faltan {ESTRELLA} {entero(ed.faltan)} · <Recarga className={RECARGA} />
-          </p>
+        ) : (
+          <>
+            {boton.tipo === 'subiendo' && (
+              <p id={idNota} className={NOTA}>
+                {NOTA_SUBIENDO}
+              </p>
+            )}
+            {boton.tipo === 'calculando' && (
+              <p id={idNota} className={NOTA}>
+                {NOTA_CALCULANDO}
+              </p>
+            )}
+            {boton.tipo === 'sin_precio' && (
+              <p id={idNota} className={NOTA}>
+                {NOTA_SIN_PRECIO}
+              </p>
+            )}
+            {boton.tipo === 'fuera' && (
+              <p id={idAviso} className={unir(NOTA, 'text-texto')}>
+                {boton.aviso}
+              </p>
+            )}
+            {!hayTexto && (
+              <p id={idAyudaTexto} className={NOTA}>
+                {AYUDA_TEXTO}
+              </p>
+            )}
+            {boton.tipo === 'sin_video' && hayTexto && (
+              <p id={idNota} className={NOTA}>
+                {AYUDA_VIDEO}
+              </p>
+            )}
+            {boton.tipo === 'listo' && <NotaSaldo saldo={ed.saldo} costo={boton.creditos} />}
+            {boton.tipo === 'sin_saldo' && ed.saldo !== null && (
+              <p id={idNota} className={unir(NOTA, 'tabular-nums')}>
+                Tienes {ESTRELLA} {entero(ed.saldo)}: no alcanza para editar este video.
+              </p>
+            )}
+            {ed.faltan > 0 && (
+              <p className={unir(NOTA, 'tabular-nums')}>
+                Te faltan {ESTRELLA} {entero(ed.faltan)} · <Recarga className={RECARGA} />
+              </p>
+            )}
+          </>
         )}
       </div>
     </>

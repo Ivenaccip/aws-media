@@ -30,6 +30,13 @@ PALETA = {
     "#da8c28": "ámbar — la marca",
     "#f0a94a": "ámbar claro",
     "#a96716": "ámbar hondo",
+    # el dorado del título «Irremplazables» (dueño, 15-oct-2026): un degradado de
+    # arriba abajo, solo para ese título (la clase `texto-oro` de tokens.css)
+    "#f3dc92": "dorado claro — arriba del degradado del título «Irremplazables»",
+    "#e6c35c": "dorado — en medio del título «Irremplazables» y su color liso si "
+               "el navegador no sabe recortar el fondo a la letra",
+    "#b98d2f": "dorado hondo — abajo del título «Irremplazables» (5.45:1 sobre la "
+               "superficie)",
     "#14100a": "tinta: el ÚNICO texto válido sobre el ámbar",
     "#ece8e1": "texto",
     "#93a3b8": "secundario",
@@ -276,3 +283,47 @@ def test_idle_sigue_siendo_el_mismo_orbe_con_menos_luz():
         claro = sum(a["pensando"][40 + i * 4 + k] for k in range(3))
         oscuro = sum(a["idle"][40 + i * 4 + k] for k in range(3))
         assert oscuro < claro, f"el color {i} de idle no está más apagado"
+
+
+# ---------------------------------------------------------------------------
+# el dorado del título «Irremplazables» (dueño, 15-oct-2026)
+
+DORADO = {"--color-oro-claro": "#f3dc92", "--color-oro": "#e6c35c", "--color-oro-hondo": "#b98d2f"}
+
+
+def test_el_dorado_es_el_del_dueno_y_esta_en_la_carta():
+    """Los tres tonos de tokens.css son los decididos y los tres están en la tabla
+    de §3 de la carta: un cuarto dorado, o uno cambiado a ojo, falla aquí."""
+    css = (RAIZ / "web" / "src" / "estilos" / "tokens.css").read_text(encoding="utf-8")
+    carta = (RAIZ / "docs" / "DISENO.md").read_text(encoding="utf-8").lower()
+    for token, valor in DORADO.items():
+        assert re.search(rf"{token}:\s*{valor};", css), f"tokens.css: {token} dejó de ser {valor}"
+        assert f"`{valor}`" in carta, f"docs/DISENO.md §3 no lista {valor}"
+    assert set(re.findall(r"--color-oro[\w-]*", css)) == set(DORADO), "hay un dorado que la carta no conoce"
+
+
+def test_el_dorado_solo_se_usa_por_su_clase():
+    """Quien quiera el degradado escribe `texto-oro` (que vive en tokens.css, no en
+    un .ts/.tsx); ninguna pantalla pinta el dorado a mano (`text-oro`, `bg-oro`…):
+    sería un segundo acento."""
+    sueltos = [
+        f"{p.relative_to(RAIZ)}: {m}"
+        for p in _web("src/**/*.ts", "src/**/*.tsx")
+        for m in re.findall(r"\b(?:text|bg|border|from|via|to|ring|outline|fill|stroke)-oro[\w-]*", p.read_text(encoding="utf-8"))
+    ]
+    assert not sueltos, f"el dorado es solo del título: {sueltos}"
+
+
+def test_el_titulo_dorado_no_queda_invisible_sin_recorte_de_fondo():
+    """`text-transparent` + `bg-clip-text` dejan la letra invisible en un navegador
+    que no recorta el fondo al texto. La utilidad tiene que traer su salida: el
+    dorado liso, sin degradado."""
+    css = (RAIZ / "web" / "src" / "estilos" / "tokens.css").read_text(encoding="utf-8")
+    utilidad = re.search(r"@utility texto-oro\s*\{(.*?)\n\}", css, re.S)
+    assert utilidad, "tokens.css perdió la utilidad `texto-oro`"
+    cuerpo = utilidad.group(1)
+    assert "bg-clip-text" in cuerpo and "text-transparent" in cuerpo
+    reserva = re.search(r"@supports not \(background-clip:\s*text\)\s*\{(.*?)\}", cuerpo, re.S)
+    assert reserva, "`texto-oro` no tiene salida para un navegador sin background-clip: text"
+    assert "color: var(--color-oro)" in reserva.group(1), "la salida no pinta el dorado liso"
+    assert "background-image: none" in reserva.group(1), "la salida deja el degradado detrás de la letra"

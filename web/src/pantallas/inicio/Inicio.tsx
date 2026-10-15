@@ -1,10 +1,19 @@
 // /estudio/inicio/ — el inicio del estudio (UI·8.4). La caja cobra ahí mismo
 // el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
 // (desde E1); las demás opciones llevan a la pantalla que cobra con el texto
-// puesto. El menú lleva a las herramientas; las listas, a lo que ya hiciste.
+// puesto. Las listas, debajo, llevan a lo que ya hiciste.
+//
+// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») ya no hay menú a la
+// izquierda: todo vive en UNA tarjeta centrada (Recorrido) que enseña un paso a
+// la vez —el mapa de áreas, las tres opciones de un grupo, o su contenido: la
+// caja o la lista de sus pantallas—. Se aterriza en la caja, como siempre. La
+// caja se queda montada aunque se vea otro paso (no pierde lo escrito ni una
+// subida), y lo que va debajo de ella (Mis creaciones, los caminos…) se ve solo
+// cuando la caja se ve. Las pantallas hoja (agenda, métricas…) mandan aquí con
+// `?desde=…&ver=…` desde sus migas (recorrido.ts).
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
 // con cada aserción vieja: docs/migracion/inicio.md.
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 
 import { refrescarSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
@@ -13,7 +22,6 @@ import { Boton, claseBoton } from '../../ui/Boton';
 import { Confirmar } from '../../ui/Confirmar';
 import { Icono } from '../../ui/Icono';
 import type { NombreIcono } from '../../ui/iconos';
-import { unir } from '../../ui/unir';
 import { DialogoBlotato } from './Blotato';
 import { Caja, type MandoCaja } from './Caja';
 import { traerImagen } from './envio';
@@ -31,11 +39,14 @@ import {
   type ClipCorto,
   type Edicion,
   type EstadoBlotato,
+  type Familia,
   type Imagen,
   type PedidoImagen,
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
+import { cajaVisible, estadoInicial, reducir, urlSinEntrada } from './recorrido';
+import { Recorrido } from './Recorrido';
 
 interface Listas {
   proyectos: Proyecto[];
@@ -87,15 +98,20 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [aviso, setAviso] = useState('');
   const [aArchivar, setAArchivar] = useState<Proyecto | null>(null);
 
-  // null = no se sabe: el menú se queda encendido. Dejar sin sus herramientas
-  // a quien sí pagó, porque un fetch no respondió, es peor que dejar entrar a
-  // quien no (M23 · C).
+  // null = no se sabe: las pantallas de Blotato se quedan encendidas. Dejar sin
+  // sus herramientas a quien sí pagó, porque un fetch no respondió, es peor que
+  // dejar entrar a quien no (M23 · C).
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [dlgBlotato, setDlgBlotato] = useState(false);
   const [estadoBlotato, setEstadoBlotato] = useState<EstadoBlotato | null>(null);
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
+  // el recorrido de la tarjeta: en qué paso va, y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez)
+  const [recorrido, despachar] = useReducer(reducir, undefined, () => estadoInicial(location.search));
+  // la pestaña de la caja de ahora (Caja avisa de cada cambio): «Volver a Imagen» dice a cuál volverás. Arranca donde arranca la caja
+  const [familia, setFamilia] = useState<Familia>('videos');
+  const tituloCaja = useRef<HTMLHeadingElement>(null);
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
   // lo que se pidió desde la caja y todavía no llega a la lista
@@ -164,6 +180,13 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
       },
       (e: unknown) => setErrorBlotato(mensaje(e)),
     );
+  }, []);
+
+  // la entrada ya se leyó: la URL vuelve a /estudio/inicio/ (sin tocar lo demás, como ?blotato=conectar) para que recargar o compartir
+  // el enlace no repita el recorrido, y «atrás» siga llevando a la pantalla de donde se vino
+  useEffect(() => {
+    const limpia = urlSinEntrada(location.href);
+    if (limpia) history.replaceState(history.state, '', limpia);
   }, []);
 
   useEffect(() => {
@@ -242,20 +265,23 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     !listas.pedidos.length;
 
   return (
-    <div className="mx-auto max-w-[1100px] px-5 pt-16 pb-14">
-      <div className="grid gap-7 min-[861px]:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="min-w-0">
-          {/* el nombre del producto, en dorado y sin icono (dueño, 14-oct-2026): el ámbar claro es el de los «títulos-marca»
-              de la carta (docs/DISENO.md §3). Los <title> de las páginas y de las otras pantallas siguen como estaban */}
-          <h1 className="m-0 px-3 pt-2.5 pb-4 text-titulo-sm font-bold text-ambar-claro">Irremplazables</h1>
-          <Menu conectado={conectado} alConectar={abrirBlotato} />
-        </aside>
-
-        <main className="min-w-0">
+    <>
+      <main className="mx-auto max-w-[1100px] px-4 pt-16 pb-8 max-[380px]:px-3">
+        <Recorrido
+          estado={recorrido}
+          despachar={despachar}
+          familia={familia}
+          conectado={conectado}
+          alConectar={abrirBlotato}
+          ir={ir}
+          tituloCaja={tituloCaja}
+        >
           <Caja
             ref={caja}
             ir={ir}
             imagenes={listas?.imagenes ?? undefined}
+            alCambiarFamilia={setFamilia}
+            tituloRef={tituloCaja}
             alPedir={p => setPendientes(l => [p, ...l])}
             alTerminar={(clave, esperarLista) => {
               // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
@@ -272,7 +298,11 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
               });
             }}
           />
+        </Recorrido>
 
+        {/* Debajo de la tarjeta, del mismo ancho, y SOLO con la caja a la vista: con el mapa, las tres opciones o la lista de un
+            grupo no pintan nada (y siguen montadas: una galería que se desmonta pierde su filtro y su visor) */}
+        <div hidden={!cajaVisible(recorrido)} className="mx-auto mt-8 max-w-[820px]">
           {(falloCarga || sinConfirmar) && (
             <div className="mb-6">
               <Aviso tipo="error">
@@ -337,8 +367,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
               </ul>
             </details>
           )}
-        </main>
-      </div>
+        </div>
+      </main>
 
       <Confirmar
         abierto={aArchivar !== null}
@@ -361,7 +391,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           setConectado(d.conectado);
         }}
       />
-    </div>
+    </>
   );
 }
 
@@ -409,116 +439,5 @@ function Caminos({ alIdea }: { alIdea: () => void }) {
         )}
       </div>
     </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// el menú de la izquierda
-
-interface Entrada {
-  href: string;
-  icono: NombreIcono;
-  titulo: string;
-  texto: string;
-  /** Se apaga sin la clave de Blotato del usuario (M23 · C). */
-  blotato?: boolean;
-}
-
-// «Crear imágenes» y «Crear contenido» no están aquí: su puerta es la caja
-// (M25 · B). El menú se queda con lo que empieza con algo tuyo (un archivo,
-// una liga) más lo de publicar. «Editor de videos» (/e1.html) salió el 14-oct-2026
-// (dueño): editar metraje ya es la pestaña «Edición» de la caja; «De videos a
-// Shorts» se queda aquí hasta que entre al chip de esa pestaña.
-const GRUPOS: Array<{ titulo: string; blotato?: boolean; entradas: Entrada[] }> = [
-  {
-    titulo: 'Estudio de Contenido',
-    entradas: [
-      { href: '/shorts.html', icono: 'shorts', titulo: 'De videos a Shorts', texto: 'Sube un video largo y te daremos los mejores momentos.' },
-      { href: '/estilos.html', icono: 'estilo', titulo: 'Copiadora de estilos', texto: 'Recrea el estilo visual de un contenido que te guste' },
-    ],
-  },
-  {
-    titulo: 'Blotato',
-    blotato: true,
-    // «Investiga tu competencia» se apaga A PROPÓSITO aunque corre con Apify:
-    // el grupo se comporta como un bloque (decisión del dueño, 18-sep).
-    entradas: [
-      { href: '/agenda.html', icono: 'agenda', titulo: 'Agenda tus publicaciones', texto: 'Programa tus posts en todas tus redes', blotato: true },
-      { href: '/competencia.html', icono: 'competencia', titulo: 'Investiga tu competencia', texto: 'Qué le está funcionando a quien vigilas', blotato: true },
-      { href: '/metricas.html', icono: 'metricas', titulo: 'Ver mis métricas', texto: 'Cómo rinden tus publicaciones', blotato: true },
-    ],
-  },
-  {
-    // MIX va DEBAJO de Blotato (dueño, 19-sep): Blotato es su requisito.
-    titulo: 'Publicidad Automática',
-    entradas: [
-      { href: '/mix.html', icono: 'automatico', titulo: 'MIX', texto: 'Una publicación al día, sola, desde una foto tuya', blotato: true },
-    ],
-  },
-];
-
-function Menu({ conectado, alConectar }: { conectado: boolean | null; alConectar: () => void }) {
-  const etiqueta = conectado ? 'Blotato conectado: ver o cambiar' : 'Conecta tu cuenta de Blotato';
-  return (
-    <nav aria-label="Secciones" className="flex gap-2 overflow-x-auto pb-1.5 min-[861px]:block min-[861px]:overflow-visible">
-      {GRUPOS.map(g => (
-        <div key={g.titulo} className="contents min-[861px]:block">
-          {/* en el teléfono el grupo es una pieza más de la fila: el «+» de Blotato no se pierde */}
-          <div className="flex flex-none items-center justify-between gap-2 px-0.5 text-xs font-semibold tracking-[0.4px] text-secundario uppercase whitespace-nowrap min-[861px]:pt-4 min-[861px]:pb-2 min-[861px]:first:pt-0">
-            {g.titulo}
-            {g.blotato && (
-              <button
-                type="button"
-                aria-haspopup="dialog"
-                aria-label={etiqueta}
-                title={etiqueta}
-                onClick={alConectar}
-                className={unir(
-                  'relative grid size-8 cursor-pointer place-items-center rounded-medio border p-0 before:absolute before:-inset-1.5 before:content-[""]',
-                  conectado
-                    ? 'border-exito bg-exito-fondo text-exito'
-                    : 'border-campo bg-transparent text-secundario hover:border-secundario hover:bg-elevada hover:text-texto',
-                )}
-              >
-                <Icono nombre={conectado ? 'listo' : 'mas'} />
-              </button>
-            )}
-          </div>
-          {g.entradas.map(e => (
-            <EntradaMenu key={e.href} e={e} apagada={Boolean(e.blotato) && conectado === false} alConectar={alConectar} />
-          ))}
-        </div>
-      ))}
-    </nav>
-  );
-}
-
-function EntradaMenu({ e, apagada, alConectar }: { e: Entrada; apagada: boolean; alConectar: () => void }) {
-  // Apagada a la vista en vez de escondida: escondida, nadie descubre que el
-  // producto sabe hacerlo. El clic ofrece conectar en vez de llevar a una
-  // pantalla que solo sabe decir «conéctala».
-  const alPulsar = (ev: MouseEvent) => {
-    if (!apagada) return;
-    ev.preventDefault();
-    alConectar();
-  };
-  return (
-    <a
-      href={e.href}
-      aria-disabled={apagada || undefined}
-      onClick={alPulsar}
-      className={unir(
-        'group mb-1.5 grid flex-none grid-cols-[auto_1fr] items-start gap-x-2.5 rounded-medio border border-linea bg-superficie px-3 py-2.5 text-texto no-underline transition-colors hover:border-campo hover:bg-elevada',
-        apagada && 'opacity-60',
-      )}
-    >
-      <Icono nombre={e.icono} className="mt-px text-secundario group-hover:text-texto" />
-      <span>
-        <b className="block text-sm leading-snug font-semibold">{e.titulo}</b>
-        <small className="hidden text-xs leading-snug text-secundario min-[861px]:block">
-          {apagada ? <span className="text-ambar-claro">Conecta tu Blotato para usarlo</span> : e.texto}
-        </small>
-      </span>
-    </a>
   );
 }

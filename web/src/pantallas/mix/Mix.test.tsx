@@ -426,7 +426,7 @@ describe('mix', () => {
     expect(await screen.findByText(/Publicando todos los días a las 10:00\. Ya salieron/)).toHaveTextContent('1 de 7');
     expect(screen.getByText(/La próxima sale/)).toBeInTheDocument();
     expect(screen.getByText('Pagaste 35 créditos por adelantado. Te devolvimos 5 créditos de los días que no salieron.')).toBeInTheDocument();
-    const filas = screen.getAllByRole('listitem');
+    const filas = within(screen.getByRole('main')).getAllByRole('listitem');
     expect(filas).toHaveLength(7);
     expect(filas[0]).toHaveTextContent('Publicada');
     expect(filas[1]).toHaveTextContent('No salió');
@@ -537,7 +537,7 @@ describe('mix', () => {
     expect(container.querySelector('img[onerror]')).toBeNull();
     expect(container.innerHTML).not.toContain('javascript:');
     // un estado o un tono que no conocemos no pinta una función
-    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Pendiente');
+    expect(within(screen.getByRole('main')).getAllByRole('listitem')[0]).toHaveTextContent('Pendiente');
     expect(container.textContent).not.toContain('function');
   });
 

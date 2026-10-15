@@ -1,5 +1,12 @@
 // El marco de cada pantalla migrada (UI·7, docs/PLAN-UI.md §3): arriba
-// «← Estudio», el título y su bajada.
+// «← Estudio», las migas si la pantalla está en el mapa, el título y su bajada.
+//
+// Las migas (dueño, 15-oct-2026: «Mapa con Irremplazables») son «Marketing ›
+// Blotato»: el lugar de esta pantalla en el mapa de marca/menu.ts, como ENLACES
+// al inicio. «Marketing» reabre el mapa de áreas y «Blotato» las tres opciones
+// del área, estando "desde" esta pantalla (el inicio lee `?desde=…&ver=…` una
+// vez y limpia la URL). Las pantallas que el mapa no conoce (admin, crear,
+// subir, clip, imágenes, shorts) no las llevan: no hay a qué nivel reabrirlas.
 //
 // «Usar la versión anterior» ya no se enseña (decisión del dueño, 28-sep): la
 // ruta /ui/clasica sigue en server/migracion.py por si hace falta volver a una
@@ -9,10 +16,12 @@
 import type { ReactNode } from 'react';
 
 import { Icono } from '../ui/Icono';
+import { lugarDePagina, urlDeInicio } from './menu';
+import { Migas, type Miga } from './Migas';
 
 export interface PropsMarco {
-  /** El nombre de la pantalla en server/migracion.py (p. ej. «admin»). Hoy no se
-   *  enseña: queda para identificar la pantalla. */
+  /** El nombre de la pantalla en server/migracion.py (p. ej. «admin»). Si está en el
+   *  mapa (`pagina` de marca/menu.ts), de aquí salen sus migas. */
   pantalla: string;
   /** Casi siempre un texto; imágenes pasa su título con la palabra que gira. */
   titulo: ReactNode;
@@ -25,15 +34,43 @@ const ENLACE =
   'inline-flex min-h-11 items-center gap-2 text-sm text-enlace no-underline ' +
   'hover:text-texto hover:underline underline-offset-4';
 
-export function Marco({ titulo, bajada, children }: PropsMarco) {
+/** «Área › Grupo» de una pantalla hoja; nada si el mapa no la conoce. Los rótulos dicen a dónde llevan, porque aquí cambian de página. */
+function migasDe(pantalla: string): Miga[] {
+  const hallazgo = lugarDePagina(pantalla);
+  if (!hallazgo) return [];
+  const { area, grupo, lugar } = hallazgo;
+  return [
+    {
+      clave: 'area',
+      titulo: area.titulo,
+      icono: area.icono,
+      rotulo: `Ir al mapa para cambiar de área (ahora: ${area.titulo})`,
+      href: urlDeInicio(lugar, 'mapa'),
+    },
+    {
+      clave: 'grupo',
+      titulo: grupo.titulo,
+      icono: grupo.icono,
+      rotulo: `Ir a las opciones de ${area.titulo} (ahora: ${grupo.titulo})`,
+      href: urlDeInicio(lugar, 'grupos'),
+    },
+  ];
+}
+
+export function Marco({ pantalla, titulo, bajada, children }: PropsMarco) {
+  const migas = migasDe(pantalla);
   return (
     <div className="mx-auto max-w-[1080px] px-4 pt-16 pb-10 sm:px-6">
-      <nav aria-label="Navegación" className="flex flex-wrap items-center justify-between gap-x-6">
-        <a className={ENLACE} href="/estudio/">
-          <Icono nombre="volver" />
-          Estudio
-        </a>
-      </nav>
+      <div className="flex flex-wrap items-center gap-x-6">
+        <nav aria-label="Navegación" className="flex flex-wrap items-center justify-between gap-x-6">
+          <a className={ENLACE} href="/estudio/">
+            <Icono nombre="volver" />
+            Estudio
+          </a>
+        </nav>
+        {/* su propia <nav>: «Navegación» (volver al Estudio) y «Dónde estás» (esta pantalla en el mapa) son dos cosas distintas */}
+        <Migas migas={migas} />
+      </div>
       <main>
         <h1 className="mt-2 mb-2 font-titulo text-titulo-lg font-extrabold tracking-[-0.02em]">{titulo}</h1>
         {bajada && <div className="mb-6 max-w-[75ch] text-secundario">{bajada}</div>}

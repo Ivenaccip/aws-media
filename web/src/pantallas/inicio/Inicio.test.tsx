@@ -2995,45 +2995,61 @@ describe('Mis creaciones: los videos', () => {
   });
 });
 
+// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») no hay menú a la izquierda: las pantallas de cada grupo salen en la tarjeta,
+// después de abrir el mapa (la miga del área) y las tres opciones (la ficha del área). El recorrido sin la caja está en
+// Recorrido.test.tsx, y la lista de pantallas sola en Pantallas.test.tsx; aquí, lo que el menú de la izquierda ya cubría, por la ruta nueva.
+async function irALaLista(grupo: string, area = 'Marketing') {
+  // desde la caja la miga del área abre el mapa; si ya se está en una lista (otra vuelta) también sirve
+  if (!screen.queryByRole('group', { name: 'Áreas' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Volver al mapa para cambiar de área/ }));
+  await userEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: new RegExp(`^${area}`) }));
+  await userEvent.click(within(screen.getByRole('group', { name: area })).getByRole('button', { name: new RegExp(`^${grupo}`) }));
+}
+// la lista de pantallas del grupo (las migas son otra lista, dentro de su <nav>)
+const listaDePantallas = (opciones: { hidden?: boolean } = {}) =>
+  screen.getAllByRole('list', opciones).find(l => !l.closest('nav'))!;
+const enlacesDeLaLista = (opciones: { hidden?: boolean } = {}) => within(listaDePantallas(opciones)).getAllByRole('link', opciones);
+
 describe('el menú', () => {
   it('inicio.menu.entradas_y_grupos_en_orden', async () => {
     montar();
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    // «Editor de videos» (/e1.html) salió el 14-oct-2026 (dueño): editar metraje es la pestaña «Edición» de la caja
-    expect(within(menu).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual([
-      '/shorts.html',
-      '/estilos.html',
-      '/agenda.html',
-      '/competencia.html',
-      '/metricas.html',
-      '/mix.html',
-    ]);
-    const texto = menu.textContent ?? '';
-    // MIX tiene grupo propio, debajo de Blotato (su requisito)
-    expect(texto.indexOf('Estudio de Contenido')).toBeLessThan(texto.indexOf('Blotato'));
-    expect(texto.indexOf('Blotato')).toBeLessThan(texto.indexOf('Publicidad Automática'));
-    expect(texto).not.toMatch(/próximamente/);
-    await screen.findByText('La historia del café');
+    // ya no hay menú: ni «Secciones», ni sus grupos (MIX tuvo el suyo debajo de Blotato; ahora vive en Avanzado)
+    expect(screen.queryByRole('navigation', { name: 'Secciones' })).toBeNull();
+    expect(screen.queryByText('Estudio de Contenido')).toBeNull();
+    expect(screen.queryByText('Publicidad Automática')).toBeNull();
+    // las pantallas de cada grupo, en su orden y con sus destinos
+    await irALaLista('Blotato');
+    expect(enlacesDeLaLista().map(a => a.getAttribute('href'))).toEqual(['/agenda.html', '/competencia.html', '/metricas.html']);
+    await irALaLista('Avanzado');
+    // MIX, con Blotato como requisito (se apaga sin su clave), y la Copiadora de estilos, que se queda aquí hasta que exista «Marcas»
+    expect(enlacesDeLaLista().map(a => a.getAttribute('href'))).toEqual(['/mix.html', '/estilos.html']);
+    // «De videos a Shorts» salió de las listas: vive en «Editar ▾»
+    expect(screen.queryByText('De videos a Shorts')).toBeNull();
+    // nada de Marketing dice «próximamente»; lo de Central, sí
+    expect(listaDePantallas().textContent).not.toMatch(/próximamente/i);
+    await irALaLista('Distrito', 'Central');
+    expect(listaDePantallas().textContent).toMatch(/próximamente/i);
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 
   it('inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan', async () => {
     montar();
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    expect(within(menu).queryByText('Editor de videos')).toBeNull();
-    expect(within(menu).queryByText('Sube tu metraje y la IA te propone el corte.')).toBeNull();
-    expect(menu.querySelector('a[href^="/e1.html"]')).toBeNull();
-    // el grupo «Estudio de Contenido» sigue con «De videos a Shorts» y «Copiadora de estilos», tal cual estaban
-    const grupo = within(within(menu).getByText('Estudio de Contenido').parentElement!);
-    const enlaces = grupo.getAllByRole('link');
-    expect(enlaces.map(a => [a.getAttribute('href'), a.querySelector('b')?.textContent])).toEqual([
-      ['/shorts.html', 'De videos a Shorts'],
-      ['/estilos.html', 'Copiadora de estilos'],
-    ]);
-    expect(enlaces[0]).toHaveTextContent('Sube un video largo y te daremos los mejores momentos.');
-    expect(enlaces[1]).toHaveTextContent('Recrea el estilo visual de un contenido que te guste');
-    await screen.findByText('La historia del café');
+    // «Editor de videos» (/e1.html) salió el 14-oct-2026 (dueño): editar metraje es la pestaña «Edición» de la caja. Sigue sin salir
+    // en ninguna lista del recorrido, ni su texto, ni un enlace a /e1.html
+    for (const [area, grupo] of [['Marketing', 'Blotato'], ['Marketing', 'Avanzado'], ['Central', 'Distrito']] as const) {
+      await irALaLista(grupo, area);
+      expect(screen.queryByText('Editor de videos')).toBeNull();
+      expect(screen.queryByText('Sube tu metraje y la IA te propone el corte.')).toBeNull();
+      expect(document.querySelector('a[href^="/e1.html"]')).toBeNull();
+    }
+    // la Copiadora de estilos se queda donde estaba su puerta (Avanzado), con su texto tal cual; «De videos a Shorts» pasó a «Editar ▾»
+    await irALaLista('Avanzado');
+    const estilos = enlacesDeLaLista().find(a => a.getAttribute('href') === '/estilos.html')!;
+    expect(estilos.querySelector('b')?.textContent).toBe('Copiadora de estilos');
+    expect(estilos).toHaveTextContent('Recrea el estilo visual de un contenido que te guste');
+    expect(enlacesDeLaLista().some(a => a.getAttribute('href') === '/shorts.html')).toBe(false);
   });
 
   it('inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono', async () => {
@@ -3041,23 +3057,27 @@ describe('el menú', () => {
     pintar();
     const h1 = screen.getByRole('heading', { level: 1 });
     expect(h1).toHaveTextContent(/^Irremplazables$/);
-    // el ámbar claro de la paleta: el de los «títulos-marca» de la carta (§3), no un color nuevo; mismo tamaño y peso de título
-    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-ambar-claro', 'text-titulo-sm', 'font-bold']));
+    // el dorado del título (dueño, 15-oct-2026): un degradado que solo usa este título, de la clase `texto-oro` de tokens.css; mismo
+    // tamaño de pantalla y peso de título que las demás pantallas (`text-titulo-lg`, extrabold, Bricolage por `h1`)
+    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['texto-oro', 'text-titulo-lg', 'font-extrabold']));
+    // el ámbar claro de antes ya no pinta el nombre
+    expect(h1.className.split(/\s+/)).not.toContain('text-ambar-claro');
     // sin icono: ni un dibujo dentro del título
     expect(h1.querySelector('svg, img, i')).toBeNull();
     expect(h1.children).toHaveLength(0);
-    // el nombre de antes ya no sale en la pantalla
+    // el nombre de antes ya no sale en la pantalla, y es el único h1
     expect(screen.queryByText(/Estudio de video/)).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     await screen.findByText('La historia del café');
   });
 
   it('inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar', async () => {
     montar({ blotato: SIN_CLAVE });
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    await waitFor(() => expect(within(menu).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(4));
-    const apagadas = within(menu).getAllByRole('link').filter(a => a.getAttribute('aria-disabled') === 'true');
-    expect(apagadas.map(a => a.getAttribute('href'))).toEqual(['/agenda.html', '/competencia.html', '/metricas.html', '/mix.html']);
+    await irALaLista('Blotato');
+    await waitFor(() => expect(within(listaDePantallas()).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(3));
+    const apagadas = enlacesDeLaLista().filter(a => a.getAttribute('aria-disabled') === 'true');
+    expect(apagadas.map(a => a.getAttribute('href'))).toEqual(['/agenda.html', '/competencia.html', '/metricas.html']);
     // el clic no lleva a un callejón: abre conectar
     const clic = new MouseEvent('click', { bubbles: true, cancelable: true });
     act(() => {
@@ -3065,14 +3085,24 @@ describe('el menú', () => {
     });
     expect(clic.defaultPrevented).toBe(true);
     expect(await screen.findByRole('dialog', { name: 'Conecta tu Blotato' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    // la cuarta es MIX (en Avanzado); la Copiadora de estilos, que no depende de Blotato, no se apaga
+    await irALaLista('Avanzado');
+    const avanzadas = enlacesDeLaLista();
+    expect(avanzadas.map(a => [a.getAttribute('href'), a.getAttribute('aria-disabled')])).toEqual([
+      ['/mix.html', 'true'],
+      ['/estilos.html', null],
+    ]);
   });
 
   it('inicio.menu.si_no_se_sabe_no_se_apaga_nada', async () => {
     montar({ blotato: null });
     pintar();
     await screen.findByText('La historia del café');
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    expect(within(menu).getAllByRole('link').filter(a => a.hasAttribute('aria-disabled'))).toHaveLength(0);
+    for (const grupo of ['Blotato', 'Avanzado']) {
+      await irALaLista(grupo);
+      expect(enlacesDeLaLista().filter(a => a.hasAttribute('aria-disabled'))).toHaveLength(0);
+    }
   });
 
   it('inicio.menu.pregunta_ligero', async () => {
@@ -3084,7 +3114,9 @@ describe('el menú', () => {
 });
 
 describe('Blotato', () => {
+  // el botón vive en la lista de Blotato (antes, el «+» del menú de la izquierda): si no se está ahí, se va
   const abrir = async () => {
+    if (!screen.queryByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ })) await irALaLista('Blotato');
     await userEvent.click(await screen.findByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ }));
   };
 
@@ -3203,10 +3235,9 @@ describe('Blotato', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Desconectar' }));
     await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desconectar' }));
     await waitFor(() => expect(llamadas(f, '/api/blotato', 'DELETE')).toHaveLength(1));
-    // y el menú se apaga
-    const menu = screen.getByRole('navigation', { name: 'Secciones', hidden: true });
+    // y las pantallas de Blotato se apagan (el diálogo todavía las tapa: por eso `hidden`)
     await waitFor(() =>
-      expect(within(menu).getAllByRole('link', { hidden: true }).filter(a => a.getAttribute('aria-disabled') === 'true')).toHaveLength(4),
+      expect(enlacesDeLaLista({ hidden: true }).filter(a => a.getAttribute('aria-disabled') === 'true')).toHaveLength(3),
     );
   });
 
@@ -3230,6 +3261,7 @@ describe('Blotato', () => {
   });
 
   it('inicio.blotato.conectar_enciende_el_menu', async () => {
+    // (el «menú» son ahora las pantallas de la lista de Blotato)
     let estado = SIN_CLAVE;
     montar({
       rutas: {
@@ -3240,14 +3272,15 @@ describe('Blotato', () => {
       },
     });
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    await waitFor(() => expect(within(menu).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(4));
+    await irALaLista('Blotato');
+    await waitFor(() => expect(within(listaDePantallas()).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(3));
     await abrir();
     await userEvent.type(await screen.findByLabelText('Tu clave de API de Blotato'), 'buena');
     await userEvent.click(screen.getByRole('button', { name: 'Conectar' }));
     await screen.findByText('Tu Blotato está conectado');
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
-    expect(within(menu).queryAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(0);
+    expect(within(listaDePantallas()).queryAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Blotato conectado: ver o cambiar' })).toBeInTheDocument();
   });
 });
 
@@ -3300,7 +3333,9 @@ describe('UI·18 · la miniatura se agranda hasta su película', () => {
 });
 
 describe('UI·24 · conectar Blotato dice «listo» con la palomita', () => {
+  // el botón vive en la lista de Blotato (antes, el «+» del menú de la izquierda): si no se está ahí, se va
   const abrir = async () => {
+    if (!screen.queryByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ })) await irALaLista('Blotato');
     await userEvent.click(await screen.findByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ }));
   };
   const palomita = (texto: HTMLElement) => texto.parentElement!.querySelector('svg path')!;

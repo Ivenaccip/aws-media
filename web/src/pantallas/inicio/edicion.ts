@@ -8,6 +8,7 @@
 // El precio NO se calcula aquí: sale de GET /api/editar/<p>/costo (el servidor mide la
 // duración con ffprobe y sabe si ya hay transcripción). Esta pantalla solo lo enseña.
 import { nombreDesde } from '../../nucleo/subida';
+import { conLiga, conP, RUTA_SHORTS } from '../shorts/logica';
 import type { CostoEdicion } from './envio';
 
 /** El nombre del campo, para el lector de pantalla (el h2 de la caja sigue diciendo «¿Qué vamos a crear hoy?»). */
@@ -30,12 +31,14 @@ export function huecoDe(idea: string): string {
 export const EJEMPLO_FIJO = 'Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.';
 
 /**
- * Lo que se puede hacer con el video, el chip «Editar ▾» junto al «+» (como «Un video corto ▾» en Video). Por ahora una
- * sola: más adelante ahí mismo irá «De videos a Shorts» (hoy sigue en el menú de la izquierda). El botón principal
- * («Iniciar») es el mismo para todas.
+ * Lo que se puede hacer con el video, el chip «Editar ▾» junto al «+» (como «Un video corto ▾» en Video): editar el
+ * metraje con la IA, o sacarle shorts a un video largo. El botón principal («Iniciar») es el mismo para las dos: lo que
+ * cambia es el cuerpo de la caja y a dónde lleva el botón.
  */
+export type IdModo = 'editar' | 'shorts';
+
 export interface ModoEdicion {
-  id: string;
+  id: IdModo;
   rotulo: string;
   nota: string;
   /** Lo que va a la derecha de su fila en la lista: el precio de esta tarea sale del video, no de una tarifa fija. */
@@ -49,7 +52,16 @@ export const MODOS_EDICION: readonly [ModoEdicion, ...ModoEdicion[]] = [
     nota: 'Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.',
     detalle: 'según el video',
   },
+  {
+    id: 'shorts',
+    rotulo: 'De videos a Shorts',
+    nota: 'Sube un video largo y te daremos los mejores momentos.',
+    detalle: 'según el video',
+  },
 ];
+
+/** El modo con ese id (si no existe, el primero: Editar). */
+export const modoDe = (id: IdModo): ModoEdicion => MODOS_EDICION.find(m => m.id === id) ?? MODOS_EDICION[0];
 
 /**
  * Las ideas que rotan solas como pista dentro del campo (dueño, 14-oct-2026: «Rotan solas como pista»). Antes eran cuatro
@@ -89,6 +101,46 @@ export const NOTA_CALCULANDO = 'Estamos calculando el precio. Hasta entonces no 
 export const NOTA_SIN_PRECIO = 'No pudimos calcular el precio. Toca «Iniciar» para intentarlo otra vez.';
 /** Cuando el servidor no manda su propio aviso pero tampoco deja editar. */
 export const AVISO_NO_SE_PUEDE = 'Por ahora no podemos editar este video.';
+
+// «De videos a Shorts» (el segundo modo del chip). Aquí no se cobra nada ni se calcula ningún precio: «Iniciar» lleva a la
+// pantalla de Shorts (/estudio/shorts/), que es la que muestra cada precio y cobra con su propio botón. La caja solo junta
+// la fuente (una liga de YouTube o un video subido) y se la entrega a esa pantalla.
+
+/** El nombre del campo de la liga, para el lector de pantalla y para el rótulo que no se ve. */
+export const ETIQUETA_LIGA = 'Liga de YouTube';
+export const HUECO_LIGA = 'Pega la liga de YouTube';
+export const APOYO_SHORTS = 'Sube un video largo o pega la liga de YouTube y te proponemos los mejores momentos como shorts.';
+export const AVISO_SIN_FUENTE = 'Primero pega la liga de YouTube o agrega el video con el «+».';
+/** Con la caja vacía (o con el video subiendo): lo único que se puede prometer es que subir es gratis. */
+export const NOTA_SHORTS_VACIA = 'Subirlo no cuesta nada: el precio aparece cuando termina de subir.';
+/** Con una fuente puesta: «Iniciar» no cobra, y quien lo pulsa tiene que saber que cambia de pantalla. */
+export const NOTA_SHORTS_SIGUE = 'Te llevamos a Shorts: ahí ves el precio antes de que se cobre algo.';
+
+/** Qué muestra y qué hace el botón principal en Shorts. Es el mismo botón que en Editar: aquí solo cambia lo que dice. */
+export type EstadoBotonShorts =
+  /** Ni liga ni video: «Iniciar» sigue ámbar y explica qué falta. */
+  | { tipo: 'sin_fuente' }
+  /** El video aún sube: ocupado, y el clic avisa que hay un trabajo en curso. */
+  | { tipo: 'subiendo' }
+  /** Hay una liga o un video ya subido: «Iniciar» navega. */
+  | { tipo: 'listo' };
+
+/**
+ * Con un video en la caja manda él (es lo que se ve: su tarjeta), y la liga que hubiera se queda escrita pero no cuenta.
+ * La liga solo se mira sin espacios: no se decide aquí si es de YouTube (eso lo dice «Iniciar», junto al campo).
+ */
+export function estadoDeShorts({ video, liga }: { video: { fase: FaseVideo } | null; liga: string }): EstadoBotonShorts {
+  if (video) return video.fase === 'subiendo' ? { tipo: 'subiendo' } : { tipo: 'listo' };
+  return liga.trim() ? { tipo: 'listo' } : { tipo: 'sin_fuente' };
+}
+
+/**
+ * A dónde lleva «Iniciar» en Shorts: el video ya subido abre su proyecto (`?p=`) y una liga queda puesta en «Importar de
+ * YouTube» (`?url=`), sin importar ni cobrar. Lo que se ponga en la URL lo lee la pantalla de Shorts (shorts/logica.ts).
+ */
+export function destinoShorts(fuente: { proyecto: string } | { liga: string }): string {
+  return RUTA_SHORTS + ('proyecto' in fuente ? conP(fuente.proyecto) : conLiga(fuente.liga));
+}
 
 /**
  * Lo que de verdad le llega a la IA: el texto como lo deja el servidor (server/editar_api.py: limpiar_instruccion). Sin

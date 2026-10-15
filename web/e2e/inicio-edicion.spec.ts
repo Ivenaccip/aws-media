@@ -514,7 +514,7 @@ test('«Iniciar» es dorado en TODOS los estados (sin video, sin texto, con todo
   await expect(boton).toHaveAttribute('aria-disabled', 'true');
 });
 
-test('«Editar ▾» va junto al «+», abre su lista de una opción, y elegirla solo cierra', async ({ page }) => {
+test('«Editar ▾» va junto al «+», abre su lista de dos opciones, y elegir la de ahora solo cierra', async ({ page }) => {
   await edicion(page);
   const mas = page.getByRole('button', { name: 'Agregar el video que quieres editar' });
   const cajaMas = (await mas.boundingBox())!;
@@ -535,19 +535,20 @@ test('«Editar ▾» va junto al «+», abre su lista de una opción, y elegirla
   expect(await pistaSePinta(page, chip(page)), 'al pasar el ratón por «Editar ▾» no se pinta ninguna pista').toBe(true);
   const pista = await chip(page).evaluate(e => getComputedStyle(e, '::after').content);
   expect(pista).toContain('Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.');
-  // la lista: una opción, con «según el video»
+  // la lista: Editar (la de ahora) y De videos a Shorts, cada una con «según el video»
   await chip(page).click();
   const lista = page.getByRole('listbox', { name: 'Opciones' });
   await expect(lista).toBeVisible();
   // con la lista abierta el globo de la pista se quita (la misma nota sale en la fila de la lista), aunque el ratón siga encima
   expect(await chip(page).evaluate(e => getComputedStyle(e, '::after').display)).toBe('none');
-  await expect(lista.getByRole('option')).toHaveCount(1);
-  await expect(lista.getByRole('option')).toContainText('según el video');
-  await expect(lista.getByRole('option')).toBeFocused();
+  await expect(lista.getByRole('option')).toHaveCount(2);
+  await expect(lista.getByRole('option').nth(0)).toContainText('según el video');
+  await expect(lista.getByRole('option').nth(0)).toBeFocused();
+  await expect(lista.getByRole('option').nth(1)).toContainText('De videos a Shorts');
   await page.keyboard.press('Escape');
   await expect(lista).toHaveCount(0);
   await expect(chip(page)).toBeFocused();
-  // Enter la elige: cierra y vuelve al chip; sin ninguna petición de editar
+  // Enter elige la de ahora (la lista abre en ella): cierra y vuelve al chip; sin ninguna petición de editar
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(lista).toHaveCount(0);

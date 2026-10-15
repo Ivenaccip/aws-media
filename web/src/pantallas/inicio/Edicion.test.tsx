@@ -976,6 +976,8 @@ async function listaParaLanzar() {
 // Los ajustes del dueño del 14-oct-2026 a la pestaña Edición: «Editar ▾» junto al «+» (como «Un video corto ▾» en Video) y
 // «Iniciar» en lugar de «Editar», dorado en todos los estados. El cuadro del campo está más abajo (revisión visual).
 describe('la caja de Edición, el chip «Editar ▾» y el botón «Iniciar»', () => {
+  // (el nombre es el de cuando la lista tenía UNA opción: el registro anti-pérdida lo cita. Hoy tiene dos, Editar y «De videos a
+  // Shorts»; lo que hace la segunda está en EdicionShorts.test.tsx)
   it('inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion', async () => {
     montar();
     pintar();
@@ -985,7 +987,7 @@ describe('la caja de Edición, el chip «Editar ▾» y el botón «Iniciar»', 
     expect(chip).toHaveAttribute('aria-expanded', 'false');
     expect(chip).toHaveTextContent(/^Editar ▾$/);
     // la pista al pasar el ratón o al enfocar es la nota de la opción: lo que hace, con la promesa de la copia
-    expect(MODOS_EDICION).toHaveLength(1);
+    expect(MODOS_EDICION.map(m => m.id)).toEqual(['editar', 'shorts']);
     expect(MODOS_EDICION[0].nota).toBe('Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.');
     expect(chip).toHaveAttribute('data-pista', MODOS_EDICION[0].nota);
     // junto al «+», en su misma fila y justo después; el botón principal viene después de los dos (el orden del foco)
@@ -995,20 +997,25 @@ describe('la caja de Edición, el chip «Editar ▾» y el botón «Iniciar»', 
     expect(chip.parentElement!.parentElement).toBe(botonMas().parentElement);
     // Edición no tiene modelo ni duración que elegir
     expect(screen.queryByRole('button', { name: /^Modelo / })).toBeNull();
-    // la lista: UNA opción, la de ahora, con «según el video» a la derecha (en las otras familias dice «según el modelo» o el precio)
+    // la lista: las dos opciones, la de ahora marcada, con «según el video» a la derecha (en las otras familias dice «según el modelo» o el precio)
     await userEvent.click(chip);
     const lista = screen.getByRole('listbox', { name: 'Opciones' });
     expect(chip).toHaveAttribute('aria-expanded', 'true');
     expect(chip).toHaveAttribute('aria-controls', lista.id);
     const opciones = within(lista).getAllByRole('option');
-    expect(opciones).toHaveLength(1);
+    expect(opciones).toHaveLength(2);
     expect(opciones[0]).toHaveAttribute('aria-selected', 'true');
     expect(opciones[0]).toHaveFocus();
     expect(opciones[0]).toHaveTextContent('Editar');
     expect(opciones[0]).toHaveTextContent('según el video');
     expect(opciones[0]).toHaveTextContent(MODOS_EDICION[0].nota);
+    expect(opciones[1]).toHaveAttribute('aria-selected', 'false');
+    expect(opciones[1]).toHaveTextContent('De videos a Shorts');
+    expect(opciones[1]).toHaveTextContent('según el video');
+    expect(opciones[1]).toHaveTextContent('Sube un video largo y te daremos los mejores momentos.');
   });
 
+  // (el nombre es de cuando había una sola opción: elegir la de ahora sigue siendo solo cerrar la lista)
   it('inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra', async () => {
     const f = montar();
     pintar();
@@ -1020,14 +1027,22 @@ describe('la caja de Edición, el chip «Editar ▾» y el botón «Iniciar»', 
     chip.focus();
     await userEvent.keyboard('{ArrowDown}');
     expect(within(lista()!).getByRole('option', { name: /Editar/ })).toHaveFocus();
-    // con una sola opción, las flechas, Inicio y Fin no se salen de ella
-    await userEvent.keyboard('{ArrowDown}{ArrowUp}{End}{Home}');
+    // con dos opciones, ↓ y Fin van a la segunda, y ↑ e Inicio vuelven a la primera, sin salirse de la lista
+    await userEvent.keyboard('{ArrowDown}');
+    expect(within(lista()!).getByRole('option', { name: /De videos a Shorts/ })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(within(lista()!).getByRole('option', { name: /De videos a Shorts/ })).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(within(lista()!).getByRole('option', { name: /Editar/ })).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    expect(within(lista()!).getByRole('option', { name: /De videos a Shorts/ })).toHaveFocus();
+    await userEvent.keyboard('{Home}');
     expect(within(lista()!).getByRole('option', { name: /Editar/ })).toHaveFocus();
     // Esc cierra y el foco vuelve al chip
     await userEvent.keyboard('{Escape}');
     expect(lista()).toBeNull();
     expect(chip).toHaveFocus();
-    // Enter (y Espacio) la eligen: cierra y vuelve al chip; no cambia nada
+    // Enter (y Espacio) eligen la de ahora: cierra y vuelve al chip; no cambia nada
     for (const tecla of ['{Enter}', ' ']) {
       await userEvent.keyboard('{ArrowDown}');
       await userEvent.keyboard(tecla);
@@ -1035,7 +1050,7 @@ describe('la caja de Edición, el chip «Editar ▾» y el botón «Iniciar»', 
       expect(chip).toHaveFocus();
       expect(chip).toHaveTextContent(/^Editar ▾$/);
     }
-    // el clic en la opción también; el clic en el chip abre y cierra; un clic fuera cierra
+    // el clic en la opción de ahora también; el clic en el chip abre y cierra; un clic fuera cierra
     await userEvent.click(chip);
     await userEvent.click(screen.getByRole('option', { name: /Editar/ }));
     expect(lista()).toBeNull();

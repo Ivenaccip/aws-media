@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
-import type { Candidato, Costo, Proyecto } from './logica';
+import { conLiga, type Candidato, type Costo, type Proyecto } from './logica';
 import { Shorts } from './Shorts';
 
 // precios que no existen en tarifas.json: si alguien los escribe en el cliente, fallan
@@ -502,6 +502,108 @@ describe('importar de YouTube', () => {
     expect(screen.getByRole('link', { name: 'vuelve a intentarlo' })).toHaveAttribute('href', '?');
     expect(screen.getByText('video privado').closest('details')).not.toBeNull();
     expect(screen.queryByRole('heading', { name: '1 · Analizar el video' })).toBeNull();
+  });
+});
+
+// Desde la caja del inicio («Editar ▾ › De videos a Shorts») se llega con `?url=<liga>`: la liga queda ESCRITA en «Importar de
+// YouTube» y nada más. Cotizar (el precio) e importar (el cobro) siguen siendo de esta pantalla, y solo cuando la persona
+// los pide: una página que cotizara o cobrara sola al abrirse sería un gasto que nadie vio. (Los nombres no llevan el
+// prefijo `shorts.`: ese es el de los invariantes del registro anti-pérdida, y esto es una función nueva.)
+describe('la liga que llega de la caja del inicio', () => {
+  const abrirConLiga = (liga: string) => history.replaceState(null, '', '/estudio/shorts/' + conLiga(liga));
+
+  it('?url= deja la liga escrita en Importar y no cotiza, ni importa, ni mueve el saldo al abrir', async () => {
+    const cobros = oirCobros();
+    abrirConLiga('https://www.youtube.com/watch?v=abc123DEF45');
+    const f = montar();
+    render(<Shorts />);
+    const campo = await screen.findByLabelText('Liga de YouTube');
+    expect(campo).toHaveValue('https://www.youtube.com/watch?v=abc123DEF45');
+    expect(campo).not.toHaveAttribute('aria-invalid');
+    // el foco espera en «Cotizar»: Enter es el siguiente paso. Y «Importar» va ANTES de la subida: con la liga puesta es lo que
+    // viene a hacer, y abajo (tras lo que carga después) un teléfono no la vería sin bajar
+    expect(screen.getByRole('button', { name: 'Cotizar' })).toHaveFocus();
+    const importar = screen.getByRole('heading', { name: 'Importar de YouTube' });
+    const eleccion = await screen.findByText(/Todavía no tienes videos con metraje/);
+    const subida = await screen.findByRole('heading', { name: 'Subir un video' });
+    expect(importar.compareDocumentPosition(eleccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(importar.compareDocumentPosition(subida) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // ninguna petición a Importar: ni el precio ni el cobro salen solos
+    await act(async () => {});
+    expect(llamadas(f, '/api/shorts/importar/cotizar')).toHaveLength(0);
+    expect(llamadas(f, '/api/shorts/importar')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /^Importar/ })).toBeNull();
+    expect(cobros).toEqual([]);
+    // la persona cotiza (gratis) con ESA liga y ahí aparece el precio; importar sigue esperando su clic
+    await userEvent.click(screen.getByRole('button', { name: 'Cotizar' }));
+    expect(await screen.findByRole('button', { name: 'Importar ✦ 11' })).toBeInTheDocument();
+    expect(JSON.parse(String(llamadas(f, '/api/shorts/importar/cotizar')[0]![1]!.body))).toEqual({
+      url: 'https://www.youtube.com/watch?v=abc123DEF45',
+    });
+    expect(llamadas(f, '/api/shorts/importar')).toHaveLength(0);
+    expect(cobros).toEqual([]);
+  });
+
+  it('sin ?url= el campo de Importar está vacío, y una liga en blanco tampoco cuenta', async () => {
+    irA(null);
+    montar();
+    const { unmount } = render(<Shorts />);
+    expect(await screen.findByLabelText('Liga de YouTube')).toHaveValue('');
+    // sin liga que traer, la página no se lleva el foco a ningún lado y «Importar» sigue siendo la última tarjeta
+    expect(document.body).toHaveFocus();
+    const importar = screen.getByRole('heading', { name: 'Importar de YouTube' });
+    const subida = await screen.findByRole('heading', { name: 'Subir un video' });
+    expect(importar.compareDocumentPosition(subida) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    unmount();
+    history.replaceState(null, '', '/estudio/shorts/?url=%20%20');
+    render(<Shorts />);
+    expect(await screen.findByLabelText('Liga de YouTube')).toHaveValue('');
+  });
+
+  it('una liga con &, =, #, + y acentos llega entera tal como la mandó la caja', async () => {
+    const rara = 'https://youtu.be/abc123DEF45?si=a+b&t=1m2s&x=ñ#frag';
+    abrirConLiga(rara);
+    montar();
+    render(<Shorts />);
+    expect(await screen.findByLabelText('Liga de YouTube')).toHaveValue(rara);
+  });
+
+  it('una liga que no es de YouTube también queda escrita, pero Cotizar la corrige en el campo sin ir al servidor', async () => {
+    abrirConLiga('https://vimeo.com/123456789');
+    const f = montar();
+    render(<Shorts />);
+    const campo = await screen.findByLabelText('Liga de YouTube');
+    expect(campo).toHaveValue('https://vimeo.com/123456789');
+    await userEvent.click(screen.getByRole('button', { name: 'Cotizar' }));
+    expect(campo).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText(/Esa no parece una liga de YouTube/)).toBeInTheDocument();
+    expect(llamadas(f, '/api/shorts/importar/cotizar')).toHaveLength(0);
+  });
+
+  it('con ?p= abre ese proyecto y la liga de la URL no se usa: su Importar sale vacío', async () => {
+    history.replaceState(null, '', '/estudio/shorts/?p=podcast&url=' + encodeURIComponent('https://youtu.be/abc123DEF45'));
+    montar();
+    render(<Shorts />);
+    expect(await screen.findByText('1 · Analizar el video')).toBeInTheDocument();
+    expect(screen.getByLabelText('Liga de YouTube')).toHaveValue('');
+  });
+
+  it('importar con la liga que llegó cobra lo mismo que con una pegada, y abre el proyecto (la URL pasa a ?p=)', async () => {
+    const cobros = oirCobros();
+    abrirConLiga('https://www.youtube.com/watch?v=abc123DEF45');
+    const f = montar({
+      rutas: {
+        '/api/shorts/importar': () => json({ lanzado: true, nombre: 'yt-abc123', creditos: 11 }),
+        '/api/shorts/yt-abc123': () => json({ ...SIN_ANALISIS, fuente: null, importar: { estado: 'descargando', titulo: 'Entrevista larga' } }),
+      },
+    });
+    render(<Shorts />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Cotizar' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Importar ✦ 11' }));
+    expect(await screen.findByText(/Trayendo «Entrevista larga» de YouTube/)).toBeInTheDocument();
+    expect(location.search).toBe('?p=yt-abc123');
+    expect(llamadas(f, '/api/shorts/importar')).toHaveLength(1);
+    expect(cobros).toEqual([expect.objectContaining({ costo: 11 })]);
   });
 });
 

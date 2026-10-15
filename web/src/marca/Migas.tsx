@@ -35,7 +35,7 @@ export function Migas({ migas, etiqueta = 'Dónde estás', className }: PropsMig
         {migas.map((m, i) => {
           const contenido = (
             <>
-              {m.icono && <Icono nombre={m.icono} className="text-secundario" />}
+              {m.icono && <Icono nombre={m.icono} className="size-5! text-secundario" />}
               {m.titulo}
             </>
           );
