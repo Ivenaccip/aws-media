@@ -40,7 +40,7 @@ import {
   migasDe,
   type Accion,
   type EstadoRecorrido,
-} from './recorrido';
+} from './estadoRecorrido';
 
 export interface PropsRecorrido {
   estado: EstadoRecorrido;

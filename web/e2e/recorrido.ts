@@ -1,5 +1,5 @@
 // Lo que comparten las pruebas de navegador del recorrido del inicio (la tarjeta «Irremplazables»: mapa en X → tres opciones →
-// la caja o la lista de pantallas de un grupo; pantallas/inicio/recorrido.ts): el estudio de mentira y las maneras de señalar
+// la caja o la lista de pantallas de un grupo; pantallas/inicio/estadoRecorrido.ts): el estudio de mentira y las maneras de señalar
 // cada cosa de la tarjeta, por su rol y su nombre —lo que ve y oye una persona—, no por clases.
 //
 // Los textos están escritos a mano a propósito (no se importan de marca/menu.ts): si alguien cambia un rótulo del mapa, las

@@ -293,7 +293,7 @@ INVARIANTES = {
         # 15-oct-2026 (dueño, «Mapa con Irremplazables»): el menú de la izquierda ya no existe. Estos `inicio.menu.*` y los
         # `inicio.blotato.*` de más abajo se conservaron CON SU NOMBRE y los cumple la ruta nueva (mapa → opciones → lista de
         # pantallas): docs/migracion/inicio.md dice qué afirma ahora cada uno. El recorrido mismo y el modo «De videos a Shorts» de
-        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (recorrido.test.ts, Recorrido.test.tsx,
+        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (estadoRecorrido.test.ts, Recorrido.test.tsx,
         # Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no se registran aquí
         "inicio.menu.entradas_y_grupos_en_orden",
         # 14-oct-2026 (dueño): «Editor de videos» sale del menú y el título pasa a «Irremplazables» en dorado

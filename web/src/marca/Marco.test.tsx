@@ -16,7 +16,7 @@ function marco(pantalla: string) {
 const migas = () => screen.queryByRole('navigation', { name: 'Dónde estás' });
 
 // Las cinco pantallas hoja que el mapa conoce, con lo que sus migas deben decir y a dónde deben llevar. Los hrefs son LITERALES
-// a propósito: la prueba es el contrato con el inicio (`?desde=<área>.<grupo>.<pantalla>&ver=mapa|grupos`, pantallas/inicio/recorrido.ts).
+// a propósito: la prueba es el contrato con el inicio (`?desde=<área>.<grupo>.<pantalla>&ver=mapa|grupos`, pantallas/inicio/estadoRecorrido.ts).
 const EN_EL_MAPA = [
   { pantalla: 'agenda', area: 'Marketing', grupo: 'Blotato', lugar: 'mkt.blotato.agenda' },
   { pantalla: 'competencia', area: 'Marketing', grupo: 'Blotato', lugar: 'mkt.blotato.competencia' },

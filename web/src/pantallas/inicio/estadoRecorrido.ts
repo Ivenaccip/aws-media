@@ -1,5 +1,5 @@
 // El recorrido del inicio (dueño, 15-oct-2026: «Mapa con Irremplazables»): en qué paso de la tarjeta estás y a dónde te lleva
-// cada cosa. Es todo el estado y toda la lógica del recorrido SIN React ni DOM, para poder probarlo entero (recorrido.test.ts);
+// cada cosa. Es todo el estado y toda la lógica del recorrido SIN React ni DOM, para poder probarlo entero (estadoRecorrido.test.ts);
 // Recorrido.tsx, Mapa.tsx, Grupos.tsx y Pantallas.tsx solo lo pintan.
 //
 // Son tres pasos, y la tarjeta siempre muestra uno:

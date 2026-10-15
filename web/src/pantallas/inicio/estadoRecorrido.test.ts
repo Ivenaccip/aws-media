@@ -20,7 +20,7 @@ import {
   urlSinEntrada,
   type Accion,
   type EstadoRecorrido,
-} from './recorrido';
+} from './estadoRecorrido';
 
 // los lugares de menu.ts: todos los (área, grupo, pantalla)
 const LUGARES: Lugar[] = MENU.flatMap(a => a.grupos.flatMap(g => g.pantallas.map(p => ({ area: a.clave, grupo: g.clave, pantalla: p.clave }))));

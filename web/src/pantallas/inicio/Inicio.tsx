@@ -45,7 +45,7 @@ import {
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
-import { cajaVisible, estadoInicial, reducir, urlSinEntrada } from './recorrido';
+import { cajaVisible, estadoInicial, reducir, urlSinEntrada } from './estadoRecorrido';
 import { Recorrido } from './Recorrido';
 
 interface Listas {

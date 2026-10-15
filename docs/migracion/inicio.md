@@ -75,7 +75,7 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 **Pruebas sueltas (15-oct-2026).** El recorrido nuevo (mapa, opciones, migas,
 Esc, foco) y el modo «De videos a Shorts» son función **nueva**, no algo que la
 pantalla vieja garantizara, así que sus pruebas no llevan el prefijo `inicio.` y
-el guardián no exige registrarlas: `recorrido.test.ts` (el estado y la entrada
+el guardián no exige registrarlas: `estadoRecorrido.test.ts` (el estado y la entrada
 por URL, sin React), `Recorrido.test.tsx` (la tarjeta), `Mapa.test.tsx` (el mapa
 y las tres opciones), `Pantallas.test.tsx` (la lista de un grupo),
 `EdicionShorts.test.tsx` (el modo Shorts de la caja) y, fuera de esta carpeta,

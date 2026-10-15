@@ -1,6 +1,6 @@
 // El recorrido del inicio como COMPORTAMIENTO (dueño, 15-oct-2026: «Mapa con Irremplazables»): una tarjeta con tres pasos, las migas,
 // «Volver a …», Esc, el foco, la caja que no se desmonta, lo que va debajo, y la entrada por ?desde=…&ver=…. Se prueba con el Inicio
-// entero (lo que ve la persona), con el servidor simulado. La lógica sola está en recorrido.test.ts; el mapa, las opciones y la
+// entero (lo que ve la persona), con el servidor simulado. La lógica sola está en estadoRecorrido.test.ts; el mapa, las opciones y la
 // lista, cada uno solo, en Mapa.test.tsx y Pantallas.test.tsx.
 import { createRef, StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -12,7 +12,7 @@ import { huecoDe, IDEAS_EDICION, PISTA_CADA_MS, PISTA_FUNDIDO_MS } from './edici
 import { Inicio } from './Inicio';
 import type { EstadoBlotato, Proyecto } from './logica';
 import { Recorrido } from './Recorrido';
-import { REPOSO } from './recorrido';
+import { REPOSO } from './estadoRecorrido';
 
 const CONECTADO: EstadoBlotato = {
   conectado: true,
