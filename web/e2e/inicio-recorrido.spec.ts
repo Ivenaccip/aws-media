@@ -517,7 +517,7 @@ test('una subida en curso sigue con el mapa abierto, y el video listo y su preci
   // sube (el PUT está esperando) y se abre el mapa: la caja se esconde con la subida adentro
   await irAlMapa(page);
   // la subida termina (y pide el precio) con el mapa abierto, sin que la caja se vea
-  const precio = page.waitForResponse('**/api/editar/entrevista/costo');
+  const precio = page.waitForResponse('**/api/edicion/cotizar');
   soltar();
   await precio;
   await elegir(page, 'Marketing', 'Distrito');

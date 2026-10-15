@@ -1,15 +1,15 @@
-// «Edición» en la caja del inicio (E1), la parte que no es React: los textos exactos, las
+// «Edición» en la caja del inicio (E1 y E2), la parte que no es React: los textos exactos, las
 // ideas que rotan como pista del campo y la regla que decide qué dice el botón principal en cada momento.
 //
-// E1 es: UN video subido + lo que la persona quiere + la IA propone los cortes, y se abre
-// el editor de siempre. Unir videos, copiar una creación, fundidos, música y Marcas son
-// piezas posteriores: aquí no hay nada de eso a medias.
+// E1 es: UN video subido + lo que la persona quiere + la IA propone los cortes, y se abre el editor de siempre.
+// E2 suma: elegir videos de «Mis creaciones», subir varios en cola, unirlos en el orden que se elija y editar SIEMPRE una copia
+// (el original no se toca). Fundidos, música y Marcas siguen siendo piezas posteriores: aquí no hay nada de eso a medias.
 //
-// El precio NO se calcula aquí: sale de GET /api/editar/<p>/costo (el servidor mide la
-// duración con ffprobe y sabe si ya hay transcripción). Esta pantalla solo lo enseña.
+// El precio NO se calcula aquí: sale de POST /api/edicion/cotizar (el servidor mide cada video con ffprobe, sabe cuáles ya traen
+// transcripción y aplica las reglas de 1 a 90 min, 12 videos y un solo formato). Esta pantalla solo lo enseña.
 import { nombreDesde } from '../../nucleo/subida';
 import { conLiga, conP, esLigaDeYoutube, RUTA_SHORTS } from '../shorts/logica';
-import type { CostoEdicion } from './envio';
+import type { Cotizacion } from './envio';
 
 /** El nombre del campo, para el lector de pantalla (el h2 de la caja sigue diciendo «¿Qué vamos a crear hoy?»). */
 export const ETIQUETA_TEXTO = 'Cuéntale a la IA qué quieres';
@@ -76,6 +76,13 @@ export const IDEAS_EDICION = [
 ] as const;
 
 /**
+ * Con DOS o más videos en la caja la pista suma una primera idea que es de unir (E2). El lienzo proponía «Únelos con fundidos
+ * suaves», pero el motor une con cortes directos y no hace fundidos (decisión D-08 de E2): una pista que promete lo que no hay es
+ * peor que una sobria. Las demás son las de siempre.
+ */
+export const IDEAS_UNION = ['Únelos en este orden y quita los silencios', ...IDEAS_EDICION] as const;
+
+/**
  * Cada cuánto cambia la idea: del momento en que una empieza a salir al momento en que empieza a salir la siguiente. Cuatro
  * segundos son los que hacen falta para leer una frase de cuatro a seis palabras sin que se sienta lenta, y a quien va a
  * escribir se le deja la pista quieta de todos modos (con el foco, con texto, con la pestaña oculta).
@@ -88,8 +95,15 @@ export const PISTA_CADA_MS = 4000;
  */
 export const PISTA_FUNDIDO_MS = 250;
 
-/** Es verdad: el archivo subido jamás se modifica, los cortes son versiones aparte. */
+/** Es verdad: el original jamás se modifica; el servidor copia los videos a un proyecto nuevo y edita ESA copia (E2, R1). */
 export const NOTA_COPIA = 'Se edita una copia. Tu original se queda como está.';
+export const NOTA_COPIA_VARIOS = 'Se edita una copia. Tus originales se quedan como están.';
+
+/** Lo que se dice al lanzar (en el cuadro de abajo a la derecha): una edición sola, o una unión. */
+export const avisoDeExito = (videos: number) =>
+  videos > 1
+    ? `Ya estamos uniendo y editando tus ${videos} videos. Sigue el avance en «Tus trabajos».`
+    : 'Ya estamos editando tu video. Sigue el avance en «Tus trabajos».';
 
 export const AVISO_SIN_VIDEO = 'Primero agrega el video: pulsa el «+» o arrástralo a la caja.';
 export const AVISO_OCUPADO = 'Ya hay un trabajo en curso. Cuando termine puedes empezar otro.';
@@ -130,7 +144,7 @@ export type EstadoBotonShorts =
  * La liga solo se mira sin espacios: no se decide aquí si es de YouTube (eso lo dice «Iniciar», junto al campo).
  */
 export function estadoDeShorts({ video, liga }: { video: { fase: FaseVideo } | null; liga: string }): EstadoBotonShorts {
-  if (video) return video.fase === 'subiendo' ? { tipo: 'subiendo' } : { tipo: 'listo' };
+  if (video) return video.fase === 'subiendo' || video.fase === 'en_cola' ? { tipo: 'subiendo' } : { tipo: 'listo' };
   return liga.trim() ? { tipo: 'listo' } : { tipo: 'sin_fuente' };
 }
 
@@ -194,24 +208,33 @@ export function tamano(bytes: number): string {
   return Math.max(1, Math.round(bytes / 1e6)) + ' MB';
 }
 
-/** El video de la caja, de la subida a tener precio. */
+/** Dónde va un video de la caja: esperando su turno para subir, subiendo, o ya en el servidor. El precio no es del video sino de
+ *  todo el conjunto (EstadoCotizacion). */
 export type FaseVideo =
+  /** Elegido en el selector junto con otros: espera a que termine el de antes (se suben de uno en uno). */
+  | 'en_cola'
   /** Firmando, subiendo o confirmando: aún no existe el proyecto completo en el servidor. */
   | 'subiendo'
-  /** Ya subió: se le pregunta al servidor cuánto dura y cuánto cuesta. */
-  | 'calculando'
-  | 'listo'
+  | 'listo';
+
+/** El precio de TODO lo que hay en la caja. Lo calcula el servidor cada vez que cambia el conjunto (agregar o quitar; no reordenar). */
+export type EstadoCotizacion =
+  /** Nada que cotizar todavía (caja vacía, o aún se sube). */
+  | { fase: 'ninguna' }
+  | { fase: 'calculando' }
   /** El precio no llegó (red caída…): tocar «Iniciar» lo vuelve a pedir. */
-  | 'sin_precio';
+  | { fase: 'sin_precio' }
+  | { fase: 'lista'; datos: Cotizacion };
 
 /** Qué muestra y qué hace el botón principal. UN botón, siempre el mismo elemento: aquí solo cambia lo que dice. */
 export type EstadoBoton =
   /** Sin video: «Iniciar» sin precio. */
   | { tipo: 'sin_video' }
+  /** Algún video sube o espera su turno. */
   | { tipo: 'subiendo' }
   | { tipo: 'calculando' }
   | { tipo: 'sin_precio' }
-  /** El servidor puso un aviso (fuera de 1–90 min, falta la transcripción en nube…): sin precio, y el foco va al «+». */
+  /** El servidor puso un aviso (`bloqueo.texto`: uno solo y corto, formatos distintos, más de 90 min…): sin precio, y el foco va al «+». */
   | { tipo: 'fuera'; aviso: string }
   /** Con video y precio, pero sin texto: apagado, y el foco va al campo. */
   | { tipo: 'sin_texto'; creditos: number }
@@ -219,7 +242,11 @@ export type EstadoBoton =
   | { tipo: 'listo'; creditos: number };
 
 export interface EntradaBoton {
-  video: { fase: FaseVideo; costo: CostoEdicion | null } | null;
+  /** Cuántos videos hay en la caja (los que esperan o suben cuentan). */
+  videos: number;
+  /** Alguno sube o espera su turno. */
+  subiendo: boolean;
+  cotizacion: EstadoCotizacion;
   /** Hay algo escrito (sin contar espacios). */
   hayTexto: boolean;
   /** El saldo que conoce monedero.js; null = aún no se sabe y nadie se bloquea por él. */
@@ -227,24 +254,25 @@ export interface EntradaBoton {
 }
 
 /**
- * En este orden: sin video, subiendo, calculando, sin precio, aviso del servidor, sin texto, sin saldo, listo. El
- * orden importa: un video fuera de rango no se enciende aunque haya texto, y sin texto no se pide el saldo.
+ * En este orden: sin video, subiendo (o en cola), calculando, sin precio, aviso del servidor, sin texto, sin saldo, listo. El
+ * orden importa: un conjunto que el servidor no deja editar no se enciende aunque haya texto, y sin texto no se pide el saldo.
  */
-export function estadoDelBoton({ video, hayTexto, saldo }: EntradaBoton): EstadoBoton {
-  if (!video) return { tipo: 'sin_video' };
-  if (video.fase === 'subiendo') return { tipo: 'subiendo' };
-  if (video.fase === 'calculando') return { tipo: 'calculando' };
-  const costo = video.costo;
-  if (video.fase === 'sin_precio' || !costo) return { tipo: 'sin_precio' };
-  if (costo.aviso || !costo.backend_listo) return { tipo: 'fuera', aviso: costo.aviso || AVISO_NO_SE_PUEDE };
+export function estadoDelBoton({ videos, subiendo, cotizacion, hayTexto, saldo }: EntradaBoton): EstadoBoton {
+  if (videos === 0) return { tipo: 'sin_video' };
+  if (subiendo) return { tipo: 'subiendo' };
+  if (cotizacion.fase === 'calculando') return { tipo: 'calculando' };
+  if (cotizacion.fase !== 'lista') return { tipo: 'sin_precio' };
+  const { bloqueo, creditos } = cotizacion.datos;
+  // el aviso del servidor se enseña tal cual (es el mismo texto que daría «Iniciar» si se intentara)
+  if (bloqueo) return { tipo: 'fuera', aviso: bloqueo.texto || AVISO_NO_SE_PUEDE };
   // un precio que no es un entero (null, texto, NaN…) no se enseña ni se deja cobrar: «Iniciar ✦ 0» o «✦ NaN» mentiría
   // sobre dinero. Es como si el precio no hubiera llegado: tocar «Iniciar» lo vuelve a pedir
-  if (!Number.isInteger(costo.creditos) || costo.creditos < 0) return { tipo: 'sin_precio' };
-  if (!hayTexto) return { tipo: 'sin_texto', creditos: costo.creditos };
-  if (saldo !== null && saldo < costo.creditos) {
-    return { tipo: 'sin_saldo', creditos: costo.creditos, faltan: costo.creditos - saldo };
+  if (typeof creditos !== 'number' || !Number.isInteger(creditos) || creditos < 0) return { tipo: 'sin_precio' };
+  if (!hayTexto) return { tipo: 'sin_texto', creditos };
+  if (saldo !== null && saldo < creditos) {
+    return { tipo: 'sin_saldo', creditos, faltan: creditos - saldo };
   }
-  return { tipo: 'listo', creditos: costo.creditos };
+  return { tipo: 'listo', creditos };
 }
 
 /**

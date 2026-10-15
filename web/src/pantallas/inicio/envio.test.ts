@@ -2,7 +2,19 @@
 // El comportamiento en la caja (agregar, pasar a editar, no tocar otros campos) se prueba en Inicio.test.tsx.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { descripcionDeArchivos, EXTS_EDITAR, imagenesPegadas, soloImagenes, traerImagen } from './envio';
+import { ErrorApi } from '../../nucleo/api';
+import {
+  cotizarEdicion,
+  descripcionDeArchivos,
+  EXTS_EDITAR,
+  imagenesPegadas,
+  iniciarEdicion,
+  pedirElegibles,
+  pedirEstadoEdicion,
+  reintentarEdicion,
+  soloImagenes,
+  traerImagen,
+} from './envio';
 
 const archivo = (nombre: string, tipo: string) => new File(['x'], nombre, { type: tipo });
 
@@ -142,5 +154,93 @@ describe('lo que sirve para el «+» y la hoja de Mis creaciones', () => {
   it('traerImagen falla si el servidor no la tiene', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 404 })));
     await expect(traerImagen({ nombre: 'x.jpg' })).rejects.toThrow('no se pudo traer');
+  });
+});
+
+// Las peticiones de /api/edicion (E2): la ruta, el método y el cuerpo EXACTOS. Lo que importa de verdad es lo que NO viaja: ni créditos,
+// ni keys de S3, ni duraciones, ni formatos (el servidor lo averigua todo y decide el precio).
+describe('las peticiones de /api/edicion', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const json = (cuerpo: unknown, status = 200) =>
+    new Response(JSON.stringify(cuerpo), { status, headers: { 'Content-Type': 'application/json' } });
+  const falso = (respuesta: () => Response) => {
+    const f = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => respuesta());
+    vi.stubGlobal('fetch', f);
+    return f;
+  };
+  const llamada = (f: ReturnType<typeof falso>, i = 0) => {
+    const [url, init] = f.mock.calls[i]!;
+    return { url, metodo: init?.method, cuerpo: init?.body === undefined ? undefined : JSON.parse(String(init.body)), init };
+  };
+  const PEDIDO = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+  it('pedirElegibles es un GET sin cuerpo y pasa la señal para poder cancelarse al cerrar la hoja', async () => {
+    const f = falso(() => json({ videos: [], limites: { max_s: 5400, min_solo_s: 60, max_videos: 12, max_bytes: 16106127360 } }));
+    const cancelar = new AbortController();
+    const r = await pedirElegibles(cancelar.signal);
+    expect(r.limites.max_videos).toBe(12);
+    const l = llamada(f);
+    expect([l.url, l.metodo, l.cuerpo]).toEqual(['/api/edicion/elegibles', 'GET', undefined]);
+    expect(l.init?.signal).toBe(cancelar.signal);
+    // sin señal, la petición no lleva ninguna
+    await pedirElegibles();
+    expect(llamada(f, 1).init?.signal).toBeUndefined();
+  });
+
+  it('cotizarEdicion manda SOLO las referencias, en el orden de la caja', async () => {
+    const f = falso(() => json({ titulo: 'a + 1 más', n_videos: 2, duracion_total_s: 1, creditos: 8, desglose: null, ocupado: false, bloqueo: null, videos: [] }));
+    await cotizarEdicion(['clip:clip-20261008-101500-ab12cd', 'proyecto:entrevista']);
+    const l = llamada(f);
+    expect([l.url, l.metodo]).toEqual(['/api/edicion/cotizar', 'POST']);
+    expect(l.cuerpo).toEqual({ videos: ['clip:clip-20261008-101500-ab12cd', 'proyecto:entrevista'] });
+    // las claves del cuerpo son exactamente esa: nada de créditos, keys, duraciones ni formatos
+    expect(Object.keys(l.cuerpo as object)).toEqual(['videos']);
+  });
+
+  it('iniciarEdicion manda la clave del pedido, las referencias en su orden y la instrucción; nunca un número de créditos', async () => {
+    const f = falso(() => json({ lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 8, n_videos: 2, repetido: false }));
+    const r = await iniciarEdicion({ pedido: PEDIDO, videos: ['proyecto:b', 'proyecto:a'], instruccion: 'Quítale las muletillas' });
+    expect(r.nombre).toBe('ed-9f1c0a7b');
+    const l = llamada(f);
+    expect([l.url, l.metodo]).toEqual(['/api/edicion/iniciar', 'POST']);
+    expect(l.cuerpo).toEqual({ pedido: PEDIDO, videos: ['proyecto:b', 'proyecto:a'], instruccion: 'Quítale las muletillas' });
+    expect(Object.keys(l.cuerpo as object).sort()).toEqual(['instruccion', 'pedido', 'videos']);
+    expect(String(f.mock.calls[0]![1]?.body)).not.toMatch(/credit|key|duracion|formato/i);
+  });
+
+  it('reintentarEdicion es un POST a la copia, sin cuerpo, y el nombre viaja codificado', async () => {
+    const f = falso(() => json({ lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 8 }));
+    await reintentarEdicion('ed-9f1c0a7b');
+    const l = llamada(f);
+    expect([l.url, l.metodo, l.cuerpo]).toEqual(['/api/edicion/ed-9f1c0a7b/reintentar', 'POST', undefined]);
+    await reintentarEdicion('raro/nombre ñ');
+    expect(llamada(f, 1).url).toBe('/api/edicion/raro%2Fnombre%20%C3%B1/reintentar');
+  });
+
+  it('pedirEstadoEdicion pregunta por la copia con un GET (nunca al montar: lo llama quien ya lanzó)', async () => {
+    const f = falso(() => json({ editar: { estado: 'corriendo' } }));
+    expect((await pedirEstadoEdicion('ed-9f1c0a7b')).editar?.estado).toBe('corriendo');
+    const l = llamada(f);
+    expect([l.url, l.metodo, l.cuerpo]).toEqual(['/api/editar/ed-9f1c0a7b', 'GET', undefined]);
+  });
+
+  it('el texto del servidor sube tal cual en el error (402, 409 y el bloqueo de iniciar)', async () => {
+    falso(() => json({ detail: 'Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.' }, 402));
+    const e402 = await iniciarEdicion({ pedido: PEDIDO, videos: ['proyecto:a'], instruccion: 'x' }).catch((e: unknown) => e);
+    expect(e402).toBeInstanceOf(ErrorApi);
+    expect((e402 as ErrorApi).estado).toBe(402);
+    expect((e402 as ErrorApi).message).toBe('Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.');
+    expect((e402 as ErrorApi).sinSaldo).toBe(true);
+    falso(() => json({ detail: 'Los videos horizontales y los verticales no se mezclan. Quita los verticales o edítalos aparte.' }, 422));
+    const e422 = await iniciarEdicion({ pedido: PEDIDO, videos: ['proyecto:a', 'proyecto:b'], instruccion: 'x' }).catch((e: unknown) => e);
+    expect((e422 as ErrorApi).message).toBe('Los videos horizontales y los verticales no se mezclan. Quita los verticales o edítalos aparte.');
+  });
+
+  it('una caída de red sube como estado 0 (la caja lo trata como respuesta dudosa y conserva el pedido)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+    const e = await iniciarEdicion({ pedido: PEDIDO, videos: ['proyecto:a'], instruccion: 'x' }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ErrorApi);
+    expect((e as ErrorApi).estado).toBe(0);
   });
 });

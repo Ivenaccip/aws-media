@@ -14,6 +14,8 @@ import {
   archivable,
   archivo,
   diaImagen,
+  esCopia,
+  estadoDeCopia,
   estadoEdicion,
   estadoVideo,
   ETIQUETA,
@@ -238,6 +240,7 @@ export function TarjetaImagen({ im, alAbrir }: { im: Imagen; alAbrir: (im: Image
 }
 
 export function TarjetaEdicion({ e }: { e: Edicion }) {
+  if (esCopia(e)) return <TarjetaCopia e={e} />;
   const st = estadoEdicion(e);
   return (
     <a href={'/e1.html?p=' + encodeURIComponent(e.nombre)} className={unir(TARJETA, 'no-underline')}>
@@ -252,5 +255,43 @@ export function TarjetaEdicion({ e }: { e: Edicion }) {
         </span>
       </span>
     </a>
+  );
+}
+
+/**
+ * E2 — una COPIA editada (uno o varios videos unidos): el título que la persona leyó al lanzarla («El tren de papel + 2 más»), su
+ * estado y de dónde viene. Editando… no lleva a ningún lado (aún no hay nada que abrir) y se lee ocupada; Listo abre el editor de
+ * cortes de ESA copia; si no se pudo, queda dicho y no hay a dónde ir (la bandeja es la que ofrece «Reintentar»). La tarjeta no
+ * caduca: sale de /api/edicion/proyectos, no de «Tus trabajos». Sin título (un servidor viejo) cae al nombre técnico.
+ */
+function TarjetaCopia({ e }: { e: Edicion }) {
+  const st = estadoDeCopia(e);
+  const titulo = e.titulo || e.nombre;
+  const contenido = (
+    <>
+      <Hueco icono="cortar" />
+      <span className="px-3 py-2.5">
+        <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap" title={titulo}>
+          {titulo}
+        </span>
+        <span className="block text-xs text-secundario">
+          <Tono tono={st.tono}>
+            <Icono nombre={st.icono} className="mr-1 align-[-0.15em]" />
+            {st.texto}
+          </Tono>
+        </span>
+        <span className="block overflow-hidden text-xs text-secundario text-ellipsis whitespace-nowrap">Copia de {titulo}</span>
+      </span>
+    </>
+  );
+  // enlace solo cuando hay a dónde ir: una tarjeta que dice «Editando…» y lleva a ningún lado sería un enlace roto
+  return st.listo ? (
+    <a href={'/editor/' + encodeURIComponent(e.nombre) + '/'} className={unir(TARJETA, 'no-underline')}>
+      {contenido}
+    </a>
+  ) : (
+    <div className={TARJETA} {...(st.busy ? { 'aria-busy': true } : {})}>
+      {contenido}
+    </div>
   );
 }

@@ -12,7 +12,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json, llamadas, oirCobros, ponerAvisos, ponerMonedero, servidor, type Ruta } from '../../prueba/servidor';
+import { montar as montarEdicion, ponerXhrFalso, TEXTO, ultimoXhr, video, XhrFalso, type Mundo } from '../../prueba/edicion';
+import { llamadas, oirCobros, ponerAvisos, ponerMonedero } from '../../prueba/servidor';
 import { LIGA_INVALIDA, ligaDeLaUrl } from '../shorts/logica';
 import { Caja, type MandoCaja } from './Caja';
 import {
@@ -29,78 +30,16 @@ import {
   NOTA_SHORTS_VACIA,
   notaDeShorts,
 } from './edicion';
-import type { CostoEdicion } from './envio';
-
-const COSTO_8: CostoEdicion = {
-  fuente: 'videos/entrevista/subidas/entrevista.mp4',
-  duracion_s: 724,
-  con_transcript: false,
-  creditos: 8,
-  backend_listo: true,
-  aviso: null,
-};
 const LIGA = 'https://www.youtube.com/watch?v=abc123DEF45';
-const TEXTO = 'Quítale las muletillas y los silencios';
 
-// el PUT a S3 va por XHR (para tener progreso): uno de mentira que la prueba mueve
-class XhrFalso {
-  static todos: XhrFalso[] = [];
-  status = 0;
-  upload: { onprogress: ((ev: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
-  onload: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onabort: (() => void) | null = null;
-  abortado = false;
-  constructor() {
-    XhrFalso.todos.push(this);
-  }
-  open() {}
-  setRequestHeader() {}
-  send() {}
-  abort() {
-    this.abortado = true;
-    this.onabort?.();
-  }
-  avanzar(cargados: number, total: number) {
-    this.upload.onprogress?.({ lengthComputable: true, loaded: cargados, total });
-  }
-  terminar(status = 200) {
-    this.status = status;
-    this.onload?.();
-  }
-}
-const ultimoXhr = () => XhrFalso.todos[XhrFalso.todos.length - 1]!;
-
-interface Mundo {
-  sugerir?: Ruta;
-  /** GET /api/editar/<p>: la corrida. */
-  estado?: Ruta;
-}
-
-function montar(m: Mundo = {}) {
-  return servidor({
-    '/api/media/config': () => json({ activo: true, cdn: '' }),
-    '/api/media/presign': (_u, init) => {
-      const b = JSON.parse(String(init?.body)) as { proyecto: string; archivo: string; content_type: string };
-      return json({ url: 'https://s3.ejemplo/subida?firma=1', key: `videos/${b.proyecto}/subidas/${b.archivo}`, content_type: b.content_type });
-    },
-    '/api/media/confirmar': () => json({ archivo: 'entrevista.mp4', cdn: '' }),
-    '/api/media': () => json({ subidas: [] }),
-    '/api/moderar': () => json({ permitido: true }),
-    '/api/editar': (url, init) => {
-      if (url.endsWith('/costo')) return json(COSTO_8);
-      if (url.endsWith('/sugerir')) return (m.sugerir ?? (() => json({ lanzado: true, creditos: 8 })))(url, init);
-      return (m.estado ?? (() => json({ editar: { estado: 'corriendo' } })))(url, init);
-    },
-  });
-}
+/** El servidor de mentira de Edición (web/src/prueba/edicion.ts): aquí lo que importa es lo que NO se le pide desde el modo Shorts. */
+const montar = (m: Mundo = {}) => montarEdicion(m);
 
 let ir: ReturnType<typeof vi.fn<(url: string) => void>>;
 
 beforeEach(() => {
   vi.unstubAllGlobals();
-  XhrFalso.todos = [];
-  vi.stubGlobal('XMLHttpRequest', XhrFalso);
+  ponerXhrFalso();
   ir = vi.fn<(url: string) => void>();
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
   history.replaceState(null, '', '/estudio/inicio/');
@@ -111,24 +50,20 @@ afterEach(() => {
   delete window.monedero;
 });
 
-function video(nombre = 'entrevista.mp4', bytes = 824_000_000) {
-  const f = new File(['x'], nombre, { type: 'video/mp4' });
-  Object.defineProperty(f, 'size', { value: bytes });
-  return f;
-}
-
 const pintar = () => render(<Caja ir={ir} />);
 const entrada = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
 const riel = () => within(screen.getByRole('group', { name: 'Qué quieres crear' }));
 const campoTexto = () => screen.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' });
 const campoLiga = () => screen.getByRole('textbox', { name: 'Liga de YouTube' });
 const botonIniciar = () => screen.getByRole('button', { name: /^(Iniciar|Subiendo|Calculando|Iniciando)/ });
-const botonMas = () => screen.getByRole('button', { name: /^(Agregar el video que quieres editar|Agregar el video largo|Cambiar el video)$/ });
+const botonMas = () => screen.getByRole('button', { name: /^(Agregar el video que quieres editar|Agregar el video largo|Agregar otro video|Cambiar el video)$/ });
 // el chip: su nombre es el del modo de ahora (la ▾ es decoración)
 const chip = (nombre: 'Editar' | 'De videos a Shorts') => screen.getByRole('button', { name: nombre });
 const dicho = (a: ReturnType<typeof ponerAvisos>) => a.mostrar.mock.calls.map(c => ({ texto: c[0], ...c[1] }));
 /** Lo que salió a la red hacia una ruta (de cualquier método). */
 const alaRed = (f: ReturnType<typeof montar>, ruta: string) => f.mock.calls.filter(c => String(c[0]).startsWith(ruta));
+/** Todo lo de Edición que cobra o cotiza: el precio, el pedido y el sondeo de la copia. Desde Shorts no sale NADA de esto. */
+const deEdicion = (f: ReturnType<typeof montar>) => f.mock.calls.filter(c => /^\/api\/(edicion\/(cotizar|iniciar)|editar)/.test(String(c[0])));
 const esDorado = (b: HTMLElement) => {
   const clases = b.className.split(/\s+/);
   return clases.includes('bg-ambar') && !clases.some(c => ['border-dashed', 'bg-superficie', 'text-secundario'].includes(c));
@@ -496,13 +431,13 @@ describe('«Iniciar» en Shorts con un video subido desde el «+»', () => {
     expect(screen.getByText(NOTA_SHORTS_SIGUE)).toBeInTheDocument();
     // la nota de Editar no aparece: no se edita una copia ni se calculó ningún precio de Edición
     expect(screen.queryByText(/Se edita una copia/)).toBeNull();
-    expect(alaRed(f, '/api/editar')).toEqual([]);
+    expect(deEdicion(f)).toEqual([]);
     await userEvent.click(botonIniciar());
     expect(ir).toHaveBeenCalledTimes(1);
     expect(ir).toHaveBeenCalledWith('/estudio/shorts/?p=entrevista');
     // desde la caja no se cobró nada ni se pidió nada de Edición
     expect(cobros).toEqual([]);
-    expect(alaRed(f, '/api/editar')).toEqual([]);
+    expect(deEdicion(f)).toEqual([]);
   });
 
   it('quitar el video devuelve el campo de la liga con lo que estaba escrito, y cancelar una subida no deja nada', async () => {
@@ -544,10 +479,10 @@ describe('«Iniciar» en Shorts con un video subido desde el «+»', () => {
     await empezarSubida();
     await terminarSubida();
     await waitFor(() => expect(botonIniciar()).toHaveTextContent(/^Iniciar$/));
-    expect(alaRed(f, '/api/editar')).toEqual([]);
+    expect(deEdicion(f)).toEqual([]);
     await elegirModo('Editar');
     // ya con precio (✦ 8) y con la nota de la copia; solo falta decirle a la IA qué quiere
-    await waitFor(() => expect(alaRed(f, '/api/editar/entrevista/costo')).toHaveLength(1));
+    await waitFor(() => expect(alaRed(f, '/api/edicion/cotizar')).toHaveLength(1));
     await userEvent.type(campoTexto(), TEXTO);
     expect(await screen.findByRole('button', { name: 'Iniciar ✦ 8' })).toBeInTheDocument();
     expect(screen.getByText(/Se edita una copia/)).toBeInTheDocument();
@@ -555,8 +490,8 @@ describe('«Iniciar» en Shorts con un video subido desde el «+»', () => {
     await elegirModo('De videos a Shorts');
     await userEvent.click(botonIniciar());
     expect(ir).toHaveBeenCalledWith('/estudio/shorts/?p=entrevista');
-    expect(alaRed(f, '/api/editar/entrevista/costo')).toHaveLength(1);
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(0);
+    expect(alaRed(f, '/api/edicion/cotizar')).toHaveLength(1);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(0);
   });
 
   it('cambiar de modo a media subida: el precio de Edición se pide solo si al terminar el modo es Editar', async () => {
@@ -569,7 +504,7 @@ describe('«Iniciar» en Shorts con un video subido desde el «+»', () => {
     expect(botonIniciar()).toHaveTextContent(/^Subiendo…$/);
     await terminarSubida();
     await waitFor(() => expect(botonIniciar()).toHaveTextContent(/^Iniciar$/));
-    expect(alaRed(f, '/api/editar')).toEqual([]);
+    expect(deEdicion(f)).toEqual([]);
     await userEvent.click(botonIniciar());
     expect(ir).toHaveBeenCalledWith('/estudio/shorts/?p=entrevista');
     // quitarlo, y ahora al revés: empieza en Shorts y a media subida pasa a Editar: al terminar SÍ se pide
@@ -577,7 +512,7 @@ describe('«Iniciar» en Shorts con un video subido desde el «+»', () => {
     await empezarSubida();
     await elegirModo('Editar');
     await terminarSubida();
-    await waitFor(() => expect(alaRed(f, '/api/editar/entrevista/costo')).toHaveLength(1));
+    await waitFor(() => expect(alaRed(f, '/api/edicion/cotizar')).toHaveLength(1));
     await userEvent.type(campoTexto(), TEXTO);
     expect(await screen.findByRole('button', { name: 'Iniciar ✦ 8' })).toBeInTheDocument();
   });
@@ -596,8 +531,12 @@ describe('Editar no cambia por tener un hermano', () => {
     await terminarSubida();
     await userEvent.type(campoTexto(), TEXTO);
     await userEvent.click(await screen.findByRole('button', { name: 'Iniciar ✦ 8' }));
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
-    expect(JSON.parse(String(llamadas(f, '/api/editar/entrevista/sugerir')[0]![1]!.body))).toEqual({ instruccion: TEXTO });
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
+    expect(JSON.parse(String(llamadas(f, '/api/edicion/iniciar')[0]![1]!.body))).toEqual({
+      pedido: expect.stringMatching(/^[0-9a-f]{32}$/),
+      videos: ['proyecto:entrevista'],
+      instruccion: TEXTO,
+    });
     await waitFor(() => expect(cobros).toHaveLength(1));
     expect(ir).not.toHaveBeenCalled();
   });
@@ -628,10 +567,9 @@ describe('las reglas de Shorts sin pantalla', () => {
     expect(estadoDeShorts({ video: null, liga: LIGA })).toEqual({ tipo: 'listo' });
     expect(estadoDeShorts({ video: { fase: 'subiendo' }, liga: '' })).toEqual({ tipo: 'subiendo' });
     expect(estadoDeShorts({ video: { fase: 'subiendo' }, liga: LIGA })).toEqual({ tipo: 'subiendo' });
-    // un video ya subido está listo en cualquier fase: el precio que falte (o el que falló) es de Editar, no de Shorts
-    for (const fase of ['calculando', 'listo', 'sin_precio'] as const) {
-      expect(estadoDeShorts({ video: { fase }, liga: '' })).toEqual({ tipo: 'listo' });
-    }
+    // un video ya subido está listo: el precio (que falte, o el que falló) es de Editar, no de Shorts; el que espera su turno cuenta como subiendo
+    expect(estadoDeShorts({ video: { fase: 'listo' }, liga: '' })).toEqual({ tipo: 'listo' });
+    expect(estadoDeShorts({ video: { fase: 'en_cola' }, liga: '' })).toEqual({ tipo: 'subiendo' });
   });
 
   it('la nota promete llevar a Shorts solo si «Iniciar» navega: con un video subido o con una liga de YouTube, no con otra cosa', () => {
@@ -643,7 +581,7 @@ describe('las reglas de Shorts sin pantalla', () => {
     expect(notaDeShorts({ video: null, liga: `  ${LIGA}  ` })).toBe(NOTA_SHORTS_SIGUE);
     // con un video manda él, tenga lo que tenga escrito la liga; mientras sube, solo se promete que subir es gratis
     expect(notaDeShorts({ video: { fase: 'listo' }, liga: 'hola' })).toBe(NOTA_SHORTS_SIGUE);
-    expect(notaDeShorts({ video: { fase: 'calculando' }, liga: '' })).toBe(NOTA_SHORTS_SIGUE);
+    expect(notaDeShorts({ video: { fase: 'listo' }, liga: '' })).toBe(NOTA_SHORTS_SIGUE);
     expect(notaDeShorts({ video: { fase: 'subiendo' }, liga: LIGA })).toBe(NOTA_SHORTS_VACIA);
   });
 

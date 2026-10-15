@@ -1,8 +1,67 @@
-# HANDOFF — Edición de múltiples videos (F3.5, pendiente)
+# HANDOFF — Edición de múltiples videos (F3.5)
 
-**Fecha:** 2026-08-25 · **Estado:** diseño acordado a grandes rasgos, sin código.
+**Fecha:** 2026-08-25 (diseño) · **Actualizado:** 2026-10-15 (E2) · **Estado:** los Casos A y B
+están **hechos en la nube** (la caja «Edición» del inicio: «Elegir de Mis creaciones» y subir varios
+videos); el Caso C sigue abierto. Lo que viene después de este bloque es el diseño original, que se
+conserva porque explica por qué el motor es como es.
 **Origen:** pregunta del usuario ("¿qué pasa si quiero editar 2 videos a la vez?
 ¿tenemos flujo para unirlos?") tras cerrar las Fases 0-3 de la fusión (PLAN-FUSION.md).
+
+## Qué se hizo en E2 (Casos A y B en la nube)
+
+- **La unión la hace `worker/editar_copia.py`**, NO `generated_to_canonical.py --unir` (esa opción
+  nunca existió). `worker/editar_task.py` despacha ahí cuando `doc.editar.copia` es `true`; el camino
+  de UN video sin `copia` (E1, `/api/editar`) quedó como estaba. El contrato completo vive en el
+  archivo y en `tests/test_e2_*.py`.
+- **Decisión 2 resuelta: copia, no referencia.** Siempre se edita una COPIA (`videos/ed-<8 hex>/`)
+  y el original queda como respaldo, intacto. La copia es de servidor a servidor (`media_sync.copiar`,
+  copia gestionada de S3, sin bajar nada) en `videos/<copia>/clips/c01…c12.<ext>` — nombre por
+  `clip_id`, no por título. El worker verifica que cada original es de la cuenta, nunca escribe fuera
+  de `videos/<copia>/` y fija el ETag del original al copiarlo.
+- **Un canónico por clip**, reescrito con `source.id` = id del clip, `source.path` = su archivo en la
+  copia y `source.duration` = lo medido con `ffprobe` (los tiempos son LOCALES a su fuente, como
+  manda `docs/SCHEMA.md`; jamás se emite un canónico «global»). Un clip de IA (8 s) no se transcribe:
+  su entrada en `cuts.json` lleva `"sin_transcript": true`, no hay canónico, y entra entero.
+- **El LLM se llama una vez por clip** con el mismo texto y la línea fija «Este es el video k de n…»
+  (`_mensaje_usuario(…, union=(k, n))`). Si falla en cualquiera, falla todo y se devuelve todo.
+  «No aplicado:» se junta en una duda por motivo.
+- **La copia NO es una película.** No se llama `pelicula.mp4`, no lleva `flags.generado`, `origen` ni
+  `subidas`: subtítulos, publicar, render y shorts toman esos tres como «la base» y quemarían o
+  publicarían la película SIN editar. `tests/test_e2_worker_copia.py` lo prueba contra los
+  consumidores reales.
+- **No se copian** `overlays.json` (sus `t_in/t_out` son de UNA película), `output/`, `work/render/`,
+  `edited-transcript.json`, `portada.jpg`, ni los cortes previos del original: una edición nueva parte
+  de su metraje crudo. No se sube `clips/` (ya está en S3 por la copia) ni las partes del proxy.
+- **Topes:** hasta 12 videos, 90 min en total, 15 GB en total (disco efímero de Fargate), todos
+  horizontales o todos verticales. El servidor los rechaza ANTES de cobrar; el worker los vuelve a
+  comprobar sobre lo que mide de verdad.
+- **Dinero:** cada camino de fallo devuelve el monto cobrado (`doc.editar.creditos`) con la referencia
+  `editar-sugerir:<copia>`, reclamando antes con `db.reclamar_fallo_editor` (lo gana el worker o el
+  barredor, nunca los dos). Una unión de 2+ videos no se devuelve por «cero sugerencias»: la unión ES
+  el entregable. Ver `docs/OPERACION.md`.
+- **Lo que el motor NO hace todavía:** fundidos, música, títulos, nivelar el sonido (`loudnorm` está
+  prohibido en el master) ni cambiar de vertical a horizontal. Los cortes son directos. Lo que la
+  instrucción pida y no se pueda sale como duda «No aplicado:».
+
+### Los dos fallos de `make_proxy.py` y `render_cuts.py` que se arreglaron
+
+Medidos con ffmpeg real y clips sintéticos (`tests/test_e2_ffmpeg_union.py`), contra el código de
+antes de E2:
+
+| Caso | `make_proxy.py` | `render_cuts.py` |
+|---|---|---|
+| un clip SIN pista de audio junto a otro con audio | reventaba (`-map 0:1`, exit 234) | reventaba en `render_audio_segment` (exit 234) |
+| 24 fps/44,1 kHz mono + 30 fps/48 kHz estéreo | video 8,77 s y audio 7,67 s; `r_frame_rate` 48 | salía parejo pero VFR (`120/1`) |
+| 16:9 junto a 4:3 | partes de alto distinto pegadas con `-c copy` | `non monotonically increasing dts` al decodificar |
+| dos verticales (720×1280) | se agrandaban a 1280×2276 | ídem en preview |
+| audio 150 ms más corto que su video, 4 clips | — | el audio del master quedaba 0,58 s corto: cada clip acortaba el suyo y la deriva se SUMABA |
+
+Arreglo: `make_proxy.py` normaliza siempre cada parte a 1280×720 (720×1280 si el primer clip es
+vertical, con barras si el aspecto no coincide), 30 fps y AAC 48 kHz estéreo (silencio de la duración
+del video si no hay pista); `render_cuts.py --mode preview` usa el MISMO filtro, rellena con silencio
+un clip sin audio y rellena (`apad`) un audio corto hasta las muestras exactas de su segmento. **El
+modo `final` no cambia**: sin filtro de video, mismo encoder (el flujo local de video-stack). La
+orientación del primer clip manda; las herramientas no vuelven a juzgar lo que el servidor ya rechazó.
 
 ## Lo que YA existe (no reconstruir)
 
@@ -67,9 +126,9 @@ aquí; diseñarlo cuando A y B estén vivos.
 ## Decisiones abiertas
 
 1. Caso A: ¿overlay con campo `clip` + offset dinámico, o t_in/t_out globales
-   recalculados al unir? (propuesta: campo `clip`).
-2. ¿Unir es copia (proyecto nuevo independiente) o referencia (los origen quedan)?
-   Propuesta: copia — coherente con "las versiones nunca se borran".
+   recalculados al unir? (propuesta: campo `clip`). **Sigue abierta**: E2 no copia
+   `overlays.json`; una unión parte sin overlays.
+2. ~~¿Unir es copia o referencia?~~ **Resuelta en E2: copia** (ver arriba).
 3. UI del caso A: ¿desde e1 (selección múltiple) o desde el editor (menú)?
 4. Nombre del proyecto unido (`gen-tesla+oso`? el usuario elige?).
 

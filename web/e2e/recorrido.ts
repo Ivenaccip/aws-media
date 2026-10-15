@@ -7,6 +7,8 @@
 // pruebas lo notan en vez de seguirlo en silencio.
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import { cotizacion } from './edicion';
+
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
   '**/api/slots': { slots: null, activos: 0 },
@@ -178,7 +180,9 @@ export async function simularSubida(page: Page, puerta: Promise<void>) {
     await r.fulfill({ status: 200, body: '' });
   });
   await page.route('**/api/media/confirmar', r => r.fulfill({ json: { archivo: 'entrevista.mp4', cdn: '' } }));
-  await page.route('**/api/editar/entrevista/costo', r =>
-    r.fulfill({ json: { fuente: 'videos/entrevista/subidas/entrevista.mp4', duracion_s: 724, con_transcript: false, creditos: 8, backend_listo: true, aviso: null } }),
-  );
+  // E2: el precio sale de POST /api/edicion/cotizar con las referencias de la caja
+  await page.route('**/api/edicion/cotizar', r => {
+    const refs = (r.request().postDataJSON() as { videos: string[] }).videos;
+    return r.fulfill({ json: cotizacion(refs) });
+  });
 }

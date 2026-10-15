@@ -104,10 +104,46 @@ def _barrer_editor(campo: str, referencia: str):
         # el precio de hoy y no el que se pagó
         n = int(trabajo.get("creditos") or 0)
         if n and creditos.activo():
-            creditos.devolver(n, referencia.format(nombre=nombre), user_id)
+            try:
+                creditos.devolver(n, referencia.format(nombre=nombre), user_id)
+            except Exception:
+                if campo == "editar":
+                    _reabrir_editar(user_id, nombre, trabajo, n)
+                raise
+            if campo == "editar":
+                _anotar_devueltos(user_id, nombre, trabajo, n)
         log.info("barredor: %s/%s cerrado, %d créditos devueltos", campo, nombre, n)
         return {"accion": "devuelto", "creditos": n, "proyecto": nombre}
     return barrer
+
+
+def _anotar_devueltos(user_id: str, nombre: str, trabajo: dict, n: int) -> None:
+    """E2: la bandeja «Tus trabajos» dice «Te devolvimos ✦ N» leyendo
+    `doc.editar.devueltos`, y el barredor es quien cierra la edición cuando la tarea
+    ni arrancó. `reclamar_fallo_editor` devuelve el objeto `editar` ya en `error`: se
+    le agrega lo devuelto y se guarda. Va DESPUÉS del abono y sin levantar nada: si
+    la anotación falla, el dinero ya volvió y reintentar el evento no devolvería
+    de nuevo (el reclamo ya perdió), así que solo se avisa en el log."""
+    from pipeline import db
+    try:
+        trabajo["devueltos"] = n
+        trabajo.pop("devolucion_pendiente", None)      # el que dejó un abono fallido, ya saldado
+        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        log.exception("barredor: %s devuelto (%d créditos) pero no se pudo anotar", nombre, n)
+
+
+def _reabrir_editar(user_id: str, nombre: str, trabajo: dict, n: int) -> None:
+    """E2: el monedero falló DESPUÉS de ganar el reclamo. Sin esto el doc queda en
+    `error` y el reintento del evento pierde el reclamo: los créditos no vuelven nunca.
+    Se deja otra vez `corriendo` y se relanza el error: el reintento reclama de nuevo
+    y devuelve. Si ni siquiera esto se puede escribir, queda dicho en el log."""
+    from pipeline import db
+    try:
+        trabajo.update(estado="corriendo", devolucion_pendiente=n)
+        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        log.exception("barredor: %s NO se devolvieron %d créditos y el doc no se pudo reabrir", nombre, n)
 
 
 BARREDORES = {

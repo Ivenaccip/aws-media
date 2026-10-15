@@ -1,8 +1,9 @@
-// La caja de «Edición» del inicio (E1), como COMPORTAMIENTO. Cada test empieza por el ID de su
+// La caja de «Edición» del inicio (E1 y E2), como COMPORTAMIENTO. Cada test empieza por el ID de su
 // invariante: tests/test_migracion_ui.py exige que cada ID del registro exista aquí.
 //
-// Nada de esto gasta dinero: el servidor, la subida a S3 (XHR) y el cobro son dobles. Se prueba
-// la Caja sola (donde vive el estado) y, para lo de «ninguna petición al montar», el Inicio entero.
+// Nada de esto gasta dinero: el servidor (con las rutas de /api/edicion que define el contrato E2), la subida a S3 (XHR) y el cobro son
+// dobles (web/src/prueba/edicion.ts). Se prueba la Caja sola (donde vive el estado) y, para lo de «ninguna petición al montar», el
+// Inicio entero. Lo de varios videos, la cola de subida, la hoja y la unión está en EdicionUnion.test.tsx.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,26 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 
 import { contraste } from '../../nucleo/contraste';
 import { editar, shorts } from '../../nucleo/tarifas';
-import { json, llamadas, oirCobros, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import {
+  COPIA,
+  COSTO_2,
+  COSTO_8,
+  cotizacion,
+  cotizacion2,
+  cotizacionBloqueada,
+  diferida,
+  EXITO,
+  FUERA,
+  montar,
+  ponerXhrFalso,
+  SIN_SALDO,
+  TEXTO,
+  TEXTO_CORTO_SOLO,
+  ultimoXhr,
+  video,
+  XhrFalso,
+} from '../../prueba/edicion';
+import { json, llamadas, oirCobros, ponerAvisos, ponerMonedero, servidor, sinRed } from '../../prueba/servidor';
 import { Boton } from '../../ui/Boton';
 import { nombreValido } from '../../nucleo/subida';
 import { Caja, type MandoCaja } from './Caja';
@@ -38,117 +58,18 @@ import {
   reloj,
   tamano,
 } from './edicion';
-import { rechazoVideo, soloVideos, type CostoEdicion } from './envio';
+import { rechazoVideo, soloVideos, type Cotizacion } from './envio';
 import { Inicio } from './Inicio';
 import { ALTO_DE_ACCION, ANCHO_DE_ACCION } from './medidas';
 
 // los tokens de la carta, tal cual (un `?raw` de un .css lo procesa el plugin de Tailwind y llega vacío; como en Confirmar.test)
 const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../estilos/tokens.css'), 'utf8');
 
-// 12:04 sin transcripción: ✦ 2 de la propuesta + ✦ 6 de transcribir 3 bloques de 5 min (tools/tarifas.json)
-const COSTO_8: CostoEdicion = {
-  fuente: 'videos/entrevista/subidas/entrevista.mp4',
-  duracion_s: 724,
-  con_transcript: false,
-  creditos: 8,
-  backend_listo: true,
-  aviso: null,
-};
-// ya trae transcripción: solo la propuesta
-const COSTO_2: CostoEdicion = { ...COSTO_8, creditos: 2, con_transcript: true, duracion_s: 72 };
-const FUERA: CostoEdicion = {
-  ...COSTO_8,
-  duracion_s: 40,
-  creditos: 2,
-  backend_listo: false,
-  aviso: 'Este video dura menos de 1 min: un video tan corto no tiene relleno que recortar.',
-};
-const TEXTO = 'Quítale las muletillas y los silencios';
-
-// el PUT a S3 va por XHR (para tener progreso): uno de mentira que el test mueve
-class XhrFalso {
-  static todos: XhrFalso[] = [];
-  metodo = '';
-  url = '';
-  status = 0;
-  abortado = false;
-  upload: { onprogress: ((ev: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = {
-    onprogress: null,
-  };
-  onload: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onabort: (() => void) | null = null;
-  constructor() {
-    XhrFalso.todos.push(this);
-  }
-  open(metodo: string, url: string) {
-    this.metodo = metodo;
-    this.url = url;
-  }
-  setRequestHeader() {}
-  send() {}
-  abort() {
-    this.abortado = true;
-    this.onabort?.();
-  }
-  avanzar(cargados: number, total: number) {
-    this.upload.onprogress?.({ lengthComputable: true, loaded: cargados, total });
-  }
-  terminar(status = 200) {
-    this.status = status;
-    this.onload?.();
-  }
-}
-const ultimoXhr = () => XhrFalso.todos[XhrFalso.todos.length - 1]!;
-
-interface Mundo {
-  /** El precio por proyecto; o el servidor responde otra cosa (o tarda: una promesa). */
-  costo?: (proyecto: string) => CostoEdicion | Response | Promise<CostoEdicion | Response>;
-  /** Lo que el servidor ya tiene subido en ese proyecto (GET /api/media/<p>): vacío si el nombre es nuevo. */
-  subidas?: (proyecto: string) => unknown[] | Response;
-  presign?: Ruta;
-  confirmar?: Ruta;
-  sugerir?: Ruta;
-  /** GET /api/editar/<p>: la corrida. */
-  estado?: Ruta;
-  moderar?: Ruta;
-  config?: boolean;
-}
-
-function montar(m: Mundo = {}) {
-  return servidor({
-    '/api/media/config': () => json({ activo: m.config ?? true, cdn: '' }),
-    '/api/media/presign':
-      m.presign ??
-      ((_u, init) => {
-        const b = JSON.parse(String(init?.body)) as { proyecto: string; archivo: string; content_type: string };
-        return json({ url: 'https://s3.ejemplo/subida?firma=1', key: `videos/${b.proyecto}/subidas/${b.archivo}`, content_type: b.content_type });
-      }),
-    '/api/media/confirmar': m.confirmar ?? (() => json({ archivo: 'entrevista.mp4', cdn: '' })),
-    // GET /api/media/<proyecto>: lo ya subido (la ruta más corta pierde ante config, presign y confirmar)
-    '/api/media': url => {
-      const r = (m.subidas ?? (() => []))(decodeURIComponent(url.split('/')[3]!));
-      return r instanceof Response ? r : json({ subidas: r });
-    },
-    '/api/moderar': m.moderar ?? (() => json({ permitido: true })),
-    '/api/editar': async (url, init) => {
-      if (url.endsWith('/costo')) {
-        const proyecto = decodeURIComponent(url.split('/')[3]!);
-        const c = await (m.costo ?? (() => COSTO_8))(proyecto);
-        return c instanceof Response ? c : json(c);
-      }
-      if (url.endsWith('/sugerir')) return (m.sugerir ?? (() => json({ lanzado: true, creditos: 8 })))(url, init);
-      return (m.estado ?? (() => json({ editar: { estado: 'corriendo' } })))(url, init);
-    },
-  });
-}
-
 let ir: ReturnType<typeof vi.fn<(url: string) => void>>;
 
 beforeEach(() => {
   vi.unstubAllGlobals();
-  XhrFalso.todos = [];
-  vi.stubGlobal('XMLHttpRequest', XhrFalso);
+  ponerXhrFalso();
   ir = vi.fn<(url: string) => void>();
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
   history.replaceState(null, '', '/estudio/inicio/');
@@ -158,12 +79,6 @@ afterEach(() => {
   vi.useRealTimers();
   delete window.monedero;
 });
-
-function video(nombre = 'entrevista.mp4', tipo = 'video/mp4', bytes = 824_000_000) {
-  const f = new File(['x'], nombre, { type: tipo });
-  Object.defineProperty(f, 'size', { value: bytes });
-  return f;
-}
 
 const pintar = () => render(<Caja ir={ir} />);
 const entrada = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
@@ -179,10 +94,15 @@ const esDorado = (b: HTMLElement) => {
   const clases = b.className.split(/\s+/);
   return clases.includes('bg-ambar') && !clases.some(c => ['border-dashed', 'bg-superficie', 'text-secundario'].includes(c));
 };
-const botonMas = () => screen.getByRole('button', { name: /^(Agregar el video que quieres editar|Cambiar el video)$/ });
+const botonMas = () => screen.getByRole('button', { name: /^(Agregar el video que quieres editar|Agregar otro video)$/ });
 const riel = () => within(screen.getByRole('group', { name: 'Qué quieres crear' }));
 const dicho = (a: ReturnType<typeof ponerAvisos>) => a.mostrar.mock.calls.map(c => ({ texto: c[0], ...c[1] }));
 const cuerpoDe = (f: ReturnType<typeof montar>, ruta: string) => JSON.parse(llamadas(f, ruta)[0]![1]!.body as string) as Record<string, unknown>;
+/** Los pedidos que salieron a una ruta de /api/edicion (cotizar, iniciar…), de más antiguo a más nuevo. */
+const pedidosA = (f: ReturnType<typeof montar>, ruta: string) => llamadas(f, ruta).length;
+/** El cuerpo que se mandó a /api/edicion/iniciar: la clave del pedido, las referencias y la instrucción, y nada más. */
+const iniciarEnviado = (f: ReturnType<typeof montar>) => cuerpoDe(f, '/api/edicion/iniciar');
+const CLAVE_DE_PEDIDO = expect.stringMatching(/^[0-9a-f]{32}$/);
 
 async function irAEdicion() {
   await userEvent.click(riel().getByRole('button', { name: 'Edición' }));
@@ -334,7 +254,7 @@ describe('la caja de Edición', () => {
   });
 
   it('inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar', async () => {
-    const f = montar({ costo: () => ({ ...COSTO_8, creditos: 17 }) });
+    const f = montar({ cotizar: refs => cotizacion(refs, { creditos: 17 }) });
     pintar();
     await irAEdicion();
     expect(botonMas()).toHaveAccessibleName('Agregar el video que quieres editar');
@@ -353,13 +273,15 @@ describe('la caja de Edición', () => {
     expect(botonIniciar()).toHaveTextContent(/^Subiendo…$/);
     expect(botonIniciar()).not.toHaveTextContent('✦');
     expect(screen.getByText('Cuando termine de subir calculamos el precio. Hasta entonces no se cobra nada.')).toBeInTheDocument();
-    expect(llamadas(f, '/api/editar/entrevista/costo', 'GET')).toHaveLength(0);
+    expect(pedidosA(f, '/api/edicion/cotizar')).toBe(0);
     expect(llamadas(f, '/api/media/confirmar')).toHaveLength(0);
     await terminarSubida();
-    // ya subió: se confirma y se pregunta el precio al servidor (el 17 de la prueba no está en ninguna tarifa)
+    // ya subió: se confirma y se pregunta el precio al servidor, con la REFERENCIA del proyecto y nada más (el 17 de la prueba no está en
+    // ninguna tarifa: el botón dice lo que el servidor dijo)
     await screen.findByRole('button', { name: 'Iniciar ✦ 17' });
     expect(cuerpoDe(f, '/api/media/confirmar')).toEqual({ proyecto: 'entrevista', key: 'videos/entrevista/subidas/entrevista.mp4' });
-    expect(llamadas(f, '/api/editar/entrevista/costo', 'GET')).toHaveLength(1);
+    expect(pedidosA(f, '/api/edicion/cotizar')).toBe(1);
+    expect(cuerpoDe(f, '/api/edicion/cotizar')).toEqual({ videos: ['proyecto:entrevista'] });
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect(screen.getByText('12:04 · MP4 · 824 MB')).toBeInTheDocument();
   });
@@ -368,7 +290,7 @@ describe('la caja de Edición', () => {
     // la fórmula del servidor (pipeline/creditos.py) sobre tools/tarifas.json: ✦ 2 de la propuesta + ✦ 2 por bloque de 5 min
     expect(COSTO_8.creditos).toBe(editar.sugerencias + shorts.transcripcion_por_5min * Math.ceil(724 / 300));
     expect(COSTO_2.creditos).toBe(editar.sugerencias);
-    montar({ costo: p => (p === 'entrevista' ? COSTO_8 : COSTO_2) });
+    montar({ cotizar: refs => (refs[0] === 'proyecto:entrevista' ? cotizacion(refs) : cotizacion2(refs)) });
     pintar();
     await irAEdicion();
     await conVideoListo(video('entrevista.mp4'));
@@ -403,17 +325,17 @@ describe('la caja de Edición', () => {
 
   it('inicio.edicion.un_aviso_del_servidor_apaga_el_boton_sin_precio_y_lleva_el_foco_al_mas', async () => {
     const avisos = ponerAvisos();
-    montar({ costo: () => FUERA });
+    montar({ cotizar: () => FUERA });
     pintar();
     await irAEdicion();
     await conVideoListo();
     const boton = botonIniciar();
-    // el aviso del servidor sale tal cual, y sin precio: no se promete lo que no se puede
+    // el `bloqueo.texto` del servidor sale TAL CUAL (es el mismo `detail` que daría «Iniciar»), y sin precio: no se promete lo que no se puede
     expect(boton).toHaveTextContent(/^Iniciar$/);
-    expect(screen.getByText(FUERA.aviso!)).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_CORTO_SOLO)).toBeInTheDocument();
     expect(boton).toHaveAttribute('aria-disabled', 'true');
     expect(esDorado(boton)).toBe(true);
-    expect(boton).toHaveAccessibleDescription(expect.stringContaining(FUERA.aviso!));
+    expect(boton).toHaveAccessibleDescription(expect.stringContaining(TEXTO_CORTO_SOLO));
     await userEvent.type(campo(), TEXTO);
     expect(botonIniciar()).toHaveAttribute('aria-disabled', 'true'); // el texto no lo enciende
     await userEvent.click(botonIniciar());
@@ -433,13 +355,13 @@ describe('la caja de Edición', () => {
     // el precio y el saldo, antes de pulsar
     expect(screen.getByText('Tienes ✦ 269; después te quedan ✦ 261.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
-    // solo viaja lo que la persona escribió (recortado): el servidor decide el precio y cobra
-    expect(cuerpoDe(f, '/api/editar/entrevista/sugerir')).toEqual({ instruccion: TEXTO });
+    await waitFor(() => expect(pedidosA(f, '/api/edicion/iniciar')).toBe(1));
+    // solo viaja la clave del pedido, las referencias y lo que la persona escribió (recortado): el servidor decide el precio y cobra
+    expect(iniciarEnviado(f)).toEqual({ pedido: CLAVE_DE_PEDIDO, videos: ['proyecto:entrevista'], instruccion: TEXTO });
     // y la instrucción se moderó ANTES de la petición que cobra (M13)
     const orden = f.mock.calls.map(c => c[0]);
     expect(orden.indexOf('/api/moderar')).toBeGreaterThan(-1);
-    expect(orden.indexOf('/api/moderar')).toBeLessThan(orden.indexOf('/api/editar/entrevista/sugerir'));
+    expect(orden.indexOf('/api/moderar')).toBeLessThan(orden.indexOf('/api/edicion/iniciar'));
     // la caja queda vacía, el saldo se pone al día y el «−N» vuela con lo que cobró el servidor
     await waitFor(() => expect(campo()).toHaveValue(''));
     expect(screen.queryByText('entrevista.mp4')).toBeNull();
@@ -458,7 +380,7 @@ describe('la caja de Edición', () => {
     let soltar!: () => void;
     const espera = new Promise<void>(r => (soltar = r));
     const f = montar({
-      sugerir: async () => {
+      iniciar: async () => {
         await espera;
         return json({ lanzado: true, creditos: 8 });
       },
@@ -473,7 +395,7 @@ describe('la caja de Edición', () => {
       boton.click();
       boton.click();
     });
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
     expect(llamadas(f, '/api/moderar')).toHaveLength(1);
     // y mientras espera, el botón lo dice y no acepta otro
     expect(botonIniciar()).toHaveTextContent('Iniciando…');
@@ -481,7 +403,7 @@ describe('la caja de Edición', () => {
     await userEvent.click(botonIniciar());
     soltar();
     await waitFor(() => expect(campo()).toHaveValue(''));
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1);
   });
 
   it('inicio.edicion.sin_saldo_el_boton_se_apaga_y_dice_cuanto_falta_con_recargar', async () => {
@@ -499,7 +421,7 @@ describe('la caja de Edición', () => {
     expect(screen.getByText(/Te faltan ✦ 3/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Recargar' })).toBeInTheDocument();
     await userEvent.click(boton);
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(0);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(0);
     expect(avisos.mostrar).not.toHaveBeenCalled();
   });
 
@@ -507,7 +429,7 @@ describe('la caja de Edición', () => {
     const monedero = ponerMonedero(100); // la píldora creía que alcanzaba; el servidor sabe que no
     const cobros = oirCobros();
     const f = montar({
-      sugerir: () => json({ detail: 'Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.' }, 402),
+      iniciar: () => json({ detail: 'Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.' }, 402),
     });
     pintar();
     await irAEdicion();
@@ -521,14 +443,14 @@ describe('la caja de Edición', () => {
     expect(cobros).toHaveLength(0);
     expect(campo()).toHaveValue(TEXTO);
     expect(screen.getByText('entrevista.mp4')).toBeInTheDocument();
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1);
     // y el botón se puede volver a pulsar (el 402 no lo deja trabajando)
     expect(screen.getByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-busy');
   });
 
   it('inicio.edicion.402_con_la_recarga_cerrada_dice_la_salida_de_la_interfaz', async () => {
     ponerMonedero(100, false);
-    montar({ sugerir: () => json({ detail: 'Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.' }, 402) });
+    montar({ iniciar: () => json({ detail: 'Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.' }, 402) });
     pintar();
     await irAEdicion();
     await conVideoListo();
@@ -544,7 +466,7 @@ describe('la caja de Edición', () => {
     const avisos = ponerAvisos();
     const monedero = ponerMonedero(100);
     const cobros = oirCobros();
-    montar({ sugerir: () => json({ detail: 'No se pudo lanzar la corrida: sin capacidad' }, 502) });
+    montar({ iniciar: () => json({ detail: 'No se pudo lanzar la corrida: sin capacidad' }, 502) });
     pintar();
     await irAEdicion();
     await conVideoListo();
@@ -561,7 +483,7 @@ describe('la caja de Edición', () => {
   it('inicio.edicion.un_gate_del_servidor_se_dice_tal_cual_y_no_se_empieza_otra_cosa', async () => {
     const avisos = ponerAvisos();
     ponerMonedero(100);
-    montar({ sugerir: () => json({ detail: 'Ese video dura más de 90 min.' }, 413) });
+    montar({ iniciar: () => json({ detail: 'Ese video dura más de 90 min.' }, 413) });
     pintar();
     await irAEdicion();
     await conVideoListo();
@@ -590,7 +512,7 @@ describe('la caja de Edición', () => {
     await terminarSubida();
     // el precio se pide por el proyecto con el nombre que sí se pudo reservar
     await screen.findByRole('button', { name: 'Iniciar ✦ 8' });
-    expect(llamadas(f, `/api/editar/${nombres[1]}/costo`, 'GET')).toHaveLength(1);
+    expect(cuerpoDe(f, '/api/edicion/cotizar')).toEqual({ videos: [`proyecto:${nombres[1]}`] });
   });
 
   it('inicio.edicion.un_409_que_se_repite_no_reintenta_otra_vez_y_lo_dice', async () => {
@@ -625,11 +547,11 @@ describe('la caja de Edición', () => {
     await terminarSubida();
     await screen.findByRole('button', { name: /^Iniciar ✦ 8$/ });
     // hasta aquí no se ha preguntado por ninguna corrida: el sondeo es perezoso
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(0);
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(0);
     await userEvent.type(campo(), TEXTO);
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     await waitFor(() => expect(campo()).toHaveValue(''));
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(0);
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(0);
     // la corrida sigue: el «+» avisa en vez de abrir el selector
     avisos.mostrar.mockClear();
     await userEvent.click(botonMas());
@@ -637,7 +559,7 @@ describe('la caja de Edición', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5100);
     });
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(1);
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(1);
     avisos.mostrar.mockClear();
     await userEvent.click(botonMas());
     expect(dicho(avisos)).toHaveLength(1); // sigue corriendo
@@ -652,17 +574,17 @@ describe('la caja de Edición', () => {
     await userEvent.click(botonMas());
     expect(avisos.mostrar).not.toHaveBeenCalled();
     // y deja de preguntar
-    const lecturas = llamadas(f, '/api/editar/entrevista', 'GET').length;
+    const lecturas = llamadas(f, `/api/editar/${COPIA}`, 'GET').length;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11000);
     });
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(lecturas);
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(lecturas);
   });
 
   it('inicio.edicion.un_409_de_ya_corre_pasa_a_una_tarea_en_curso', async () => {
     const avisos = ponerAvisos();
     ponerMonedero(100);
-    montar({ sugerir: () => json({ detail: 'La corrida ya está en curso — espera a que termine' }, 409) });
+    montar({ iniciar: () => json({ detail: 'La corrida ya está en curso — espera a que termine' }, 409) });
     pintar();
     await irAEdicion();
     await conVideoListo();
@@ -781,10 +703,12 @@ describe('la caja de Edición', () => {
     pintar();
     await irAEdicion();
     await conVideoListo();
-    expect(botonMas()).toHaveAccessibleName('Cambiar el video');
+    // con un video en la caja el «+» ofrece sumar OTRO (ya no cambia el que hay: se pueden unir varios)
+    expect(botonMas()).toHaveAccessibleName('Agregar otro video');
     await userEvent.click(screen.getByRole('button', { name: 'Quitar este video' }));
     expect(screen.queryByText('entrevista.mp4')).toBeNull();
     expect(botonIniciar()).toHaveTextContent(/^Iniciar$/);
+    expect(botonMas()).toHaveAccessibleName('Agregar el video que quieres editar');
     expect(botonMas()).toHaveFocus();
   });
 
@@ -803,13 +727,15 @@ describe('la caja de Edición', () => {
     await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
     expect(screen.getByText('Mi Entrevista Final.mov')).toBeInTheDocument();
     expect(screen.getByText('MOV · 824 MB')).toBeInTheDocument();
-    // varios: se toma el primero y se dice
+    // varios entran TODOS (E2): el primero sube y el otro espera su turno; ya no se descarta ninguno ni se dice «uno a la vez»
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar la subida' }));
+    avisos.mostrar.mockClear();
     fireEvent.drop(seccion, { dataTransfer: { files: [video('uno.mp4'), video('dos.mp4')], types: ['Files'] } });
     await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
-    expect(dicho(avisos).at(-1)).toEqual({ texto: 'Por ahora se edita un video a la vez: usamos «uno.mp4».', tipo: 'ok', clave: 'caja' });
+    expect(screen.getByRole('list', { name: 'Orden de los videos' })).toBeInTheDocument();
+    expect(screen.getByText('En cola')).toBeInTheDocument();
+    expect(avisos.mostrar).not.toHaveBeenCalled();
     // pegar una imagen o un video NO agrega nada en esta familia
-    avisos.mostrar.mockClear();
     // true: nadie cortó el pegado
     expect(fireEvent.paste(campo(), { clipboardData: { files: [new File(['x'], 'captura.png', { type: 'image/png' })], items: [], getData: () => '' } })).toBe(true);
     expect(fireEvent.paste(campo(), { clipboardData: { files: [video('pegado.mp4')], items: [], getData: () => '' } })).toBe(true);
@@ -849,7 +775,7 @@ describe('la caja de Edición', () => {
   it('inicio.edicion.si_el_precio_no_llega_el_video_se_queda_e_iniciar_lo_vuelve_a_pedir', async () => {
     const avisos = ponerAvisos();
     let falla = true;
-    const f = montar({ costo: () => (falla ? new Response(JSON.stringify({ detail: 'Sin conexión con el medidor' }), { status: 503, headers: { 'Content-Type': 'application/json' } }) : COSTO_8) });
+    const f = montar({ cotizar: refs => (falla ? new Response(JSON.stringify({ detail: 'Sin conexión con el medidor' }), { status: 503, headers: { 'Content-Type': 'application/json' } }) : cotizacion(refs)) });
     pintar();
     await irAEdicion();
     await empezarSubida();
@@ -865,7 +791,7 @@ describe('la caja de Edición', () => {
     falla = false;
     await userEvent.click(botonIniciar());
     await screen.findByRole('button', { name: 'Iniciar ✦ 8' });
-    expect(llamadas(f, '/api/editar/entrevista/costo', 'GET')).toHaveLength(2);
+    expect(pedidosA(f, '/api/edicion/cotizar')).toBe(2);
     expect(llamadas(f, '/api/media/presign')).toHaveLength(1); // no se vuelve a subir
   });
 
@@ -880,7 +806,7 @@ describe('la caja de Edición', () => {
     await userEvent.type(campo(), TEXTO);
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: 'La IA no permite violencia explícita.', tipo: 'mal', clave: 'caja' }));
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(0);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(0);
     expect(cobros).toHaveLength(0);
     expect(campo()).toHaveValue(TEXTO);
   });
@@ -998,7 +924,7 @@ describe('la caja de Edición', () => {
     let soltar!: () => void;
     const espera = new Promise<void>(r => (soltar = r));
     montar({
-      sugerir: async () => {
+      iniciar: async () => {
         await espera;
         return json({ lanzado: true, creditos: 8 });
       },
@@ -1018,16 +944,6 @@ describe('la caja de Edición', () => {
     await waitFor(() => expect(screen.queryByText('entrevista.mp4')).toBeNull());
   });
 });
-
-/** Una respuesta que la prueba suelta cuando quiere (el servidor "tarda"). */
-function diferida<T>() {
-  let resolver!: (v: T) => void;
-  const promesa = new Promise<T>(r => (resolver = r));
-  return { promesa, resolver };
-}
-
-const EXITO = () => json({ lanzado: true, creditos: 8 });
-const SIN_SALDO = () => json({ detail: 'Créditos insuficientes: esta acción cuesta 8 créditos y tu saldo es 5.' }, 402);
 
 /** Hasta tener el video listo, el texto escrito y el botón «Iniciar ✦ 8» a punto de pulsarse. */
 async function listaParaLanzar() {
@@ -1059,7 +975,7 @@ describe('la caja de Edición, el chip «Editar ▾» y el botón «Iniciar»', 
     const botones = screen.getAllByRole('button');
     expect(botones.indexOf(chip)).toBe(botones.indexOf(botonMas()) + 1);
     expect(botones.indexOf(botonIniciar())).toBeGreaterThan(botones.indexOf(chip));
-    expect(chip.parentElement!.parentElement).toBe(botonMas().parentElement);
+    expect(chip.parentElement!.parentElement).toBe(botonMas().parentElement!.parentElement);
     // Edición no tiene modelo ni duración que elegir
     expect(screen.queryByRole('button', { name: /^Modelo / })).toBeNull();
     // la lista: las dos opciones, la de ahora marcada, con «según el video» a la derecha (en las otras familias dice «según el modelo» o el precio)
@@ -1192,19 +1108,19 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     ponerMonedero(100);
     const cobros = oirCobros();
     const espera = diferida<Response>();
-    const f = montar({ sugerir: () => espera.promesa });
+    const f = montar({ iniciar: () => espera.promesa });
     pintar();
     await listaParaLanzar();
     screen.getByRole('button', { name: 'Iniciar ✦ 8' }).focus();
     // Enter mantenido o pulsado varias veces: cada Enter sobre un botón es un clic
     await userEvent.keyboard('{Enter}{Enter}{Enter}');
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
     expect(llamadas(f, '/api/moderar')).toHaveLength(1);
     espera.resolver(EXITO());
     await waitFor(() => expect(campo()).toHaveValue(''));
     // ya vacía: otro Enter no lanza nada (avisa que hay un trabajo en curso)
     await userEvent.keyboard('{Enter}');
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1);
     expect(cobros.map(c => c.costo)).toEqual([8]);
   });
 
@@ -1214,7 +1130,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     const cobros = oirCobros();
     const respuestas: Array<ReturnType<typeof diferida<Response>>> = [];
     const f = montar({
-      sugerir: () => {
+      iniciar: () => {
         const d = diferida<Response>();
         respuestas.push(d);
         return d.promesa;
@@ -1222,7 +1138,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     });
     pintar();
     await listaParaLanzar();
-    const pedidos = () => llamadas(f, '/api/editar/entrevista/sugerir').length;
+    const pedidos = () => llamadas(f, '/api/edicion/iniciar').length;
     // 1.º pedido, y dos clics más mientras vuela
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     await userEvent.click(botonIniciar());
@@ -1255,11 +1171,11 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     ponerMonedero(100);
     const cobros = oirCobros();
     const espera = diferida<Response>();
-    const f = montar({ sugerir: () => espera.promesa });
+    const f = montar({ iniciar: () => espera.promesa });
     pintar();
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
     // la persona se va a Video mientras el servidor cobra
     await userEvent.click(riel().getByRole('button', { name: 'Video' }));
     espera.resolver(EXITO());
@@ -1278,11 +1194,11 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     const monedero = ponerMonedero(100);
     const cobros = oirCobros();
     const espera = diferida<Response>();
-    const f = montar({ sugerir: () => espera.promesa });
+    const f = montar({ iniciar: () => espera.promesa });
     pintar();
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
     await userEvent.click(riel().getByRole('button', { name: 'Imagen' }));
     espera.resolver(SIN_SALDO());
     await waitFor(() => expect(monedero.refrescar).toHaveBeenCalled());
@@ -1302,8 +1218,8 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
   });
 
   it('inicio.edicion.quitar_con_el_precio_en_camino_y_subir_otro_ignora_la_respuesta_vieja', async () => {
-    const vieja = diferida<CostoEdicion>();
-    montar({ costo: p => (p === 'primero' ? vieja.promesa : { ...COSTO_8, creditos: 2 }) });
+    const vieja = diferida<Cotizacion>();
+    montar({ cotizar: refs => (refs[0] === 'proyecto:primero' ? vieja.promesa : cotizacion(refs, { creditos: 2 })) });
     pintar();
     await irAEdicion();
     await empezarSubida(video('primero.mp4'));
@@ -1313,30 +1229,13 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await conVideoListo(video('segundo.mp4'));
     expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 2');
     // llega tarde el precio del video que ya no está: no se lo queda el nuevo
-    vieja.resolver({ ...COSTO_8, creditos: 99 });
+    vieja.resolver(cotizacion(['proyecto:primero'], { creditos: 99 }));
     await new Promise(r => setTimeout(r, 30));
     expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 2');
     expect(screen.getByText('segundo.mp4')).toBeInTheDocument();
     expect(screen.queryByText('primero.mp4')).toBeNull();
   });
 
-  it('inicio.edicion.un_archivo_nuevo_sobre_un_video_listo_lo_reemplaza_y_el_pedido_va_al_proyecto_nuevo', async () => {
-    ponerMonedero(100);
-    const f = montar({ costo: p => (p === 'primero' ? COSTO_8 : { ...COSTO_8, creditos: 2 }) });
-    pintar();
-    await irAEdicion();
-    await conVideoListo(video('primero.mp4'));
-    await userEvent.type(campo(), TEXTO);
-    expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 8');
-    // otro video encima: el viejo y su precio se van, el texto se queda
-    await conVideoListo(video('segundo.mov', ''));
-    expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 2');
-    expect(screen.queryByText('primero.mp4')).toBeNull();
-    expect(campo()).toHaveValue(TEXTO);
-    await userEvent.click(botonIniciar());
-    await waitFor(() => expect(llamadas(f, '/api/editar/segundo/sugerir')).toHaveLength(1));
-    expect(llamadas(f, '/api/editar/primero/sugerir')).toHaveLength(0);
-  });
 
   it('inicio.edicion.otro_archivo_durante_la_subida_avisa_y_no_empieza_otra_subida', async () => {
     const avisos = ponerAvisos();
@@ -1427,8 +1326,8 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await screen.findByRole('button', { name: 'Iniciar ✦ 8' });
     // la transcripción y los cortes del proyecto viejo no se mezclan: confirmar y precio van por el nombre nuevo
     expect(cuerpoDe(f, '/api/media/confirmar')).toMatchObject({ proyecto: nombres[1] });
-    expect(llamadas(f, `/api/editar/${nombres[1]}/costo`, 'GET')).toHaveLength(1);
-    expect(llamadas(f, '/api/editar/entrevista/costo', 'GET')).toHaveLength(0);
+    expect(pedidosA(f, '/api/edicion/cotizar')).toBe(1);
+    expect(cuerpoDe(f, '/api/edicion/cotizar')).toEqual({ videos: [`proyecto:${nombres[1]}`] });
   });
 
   it('inicio.edicion.si_no_se_puede_saber_si_el_nombre_ya_existe_se_sube_con_el_nombre_del_archivo', async () => {
@@ -1444,8 +1343,8 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
 
   it('inicio.edicion.un_precio_que_no_es_un_numero_no_se_ensena_ni_se_deja_cobrar', async () => {
     ponerMonedero(100);
-    let respuesta: unknown = { ...COSTO_8, creditos: null };
-    const f = montar({ costo: () => json(respuesta) });
+    let respuesta: unknown = cotizacion(['proyecto:entrevista'], { creditos: null });
+    const f = montar({ cotizar: () => json(respuesta) });
     pintar();
     await irAEdicion();
     await conVideoListo();
@@ -1457,18 +1356,18 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     expect(esDorado(boton)).toBe(true); // también en sin_precio
     expect(screen.getByText('No pudimos calcular el precio. Toca «Iniciar» para intentarlo otra vez.')).toBeInTheDocument();
     await userEvent.click(boton);
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/costo', 'GET')).toHaveLength(2));
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(0);
+    await waitFor(() => expect(pedidosA(f, '/api/edicion/cotizar')).toBe(2));
+    expect(pedidosA(f, '/api/edicion/iniciar')).toBe(0);
     expect(llamadas(f, '/api/moderar')).toHaveLength(0);
     respuesta = COSTO_8;
     await userEvent.click(botonIniciar());
     expect(await screen.findByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-disabled');
     // y las demás formas de no ser un precio
-    const listo = (creditos: unknown) => ({ fase: 'listo' as const, costo: { ...COSTO_8, creditos: creditos as number } });
+    const lista = (creditos: unknown) => ({ videos: 1, subiendo: false, cotizacion: { fase: 'lista' as const, datos: { ...COSTO_8, creditos: creditos as number } }, hayTexto: true, saldo: 100 });
     for (const mal of [null, undefined, Number.NaN, '8', -1, 8.5, Number.POSITIVE_INFINITY]) {
-      expect(estadoDelBoton({ video: listo(mal), hayTexto: true, saldo: 100 }).tipo, String(mal)).toBe('sin_precio');
+      expect(estadoDelBoton(lista(mal)).tipo, String(mal)).toBe('sin_precio');
     }
-    expect(estadoDelBoton({ video: listo(0), hayTexto: true, saldo: 100 })).toEqual({ tipo: 'listo', creditos: 0 });
+    expect(estadoDelBoton(lista(0))).toEqual({ tipo: 'listo', creditos: 0 });
     // y una duración que no es número no rompe la tarjeta
     expect(reloj(Number.NaN)).toBe('');
     expect(reloj(undefined as unknown as number)).toBe('');
@@ -1476,7 +1375,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
 
   it('inicio.edicion.si_el_precio_nunca_llega_se_puede_quitar_el_video_y_empezar_de_nuevo', async () => {
     ponerMonedero(100);
-    const f = montar({ costo: p => (p === 'colgado' ? new Promise<Response>(() => undefined) : COSTO_8) });
+    const f = montar({ cotizar: refs => (refs[0] === 'proyecto:colgado' ? new Promise<Response>(() => undefined) : cotizacion(refs)) });
     pintar();
     await irAEdicion();
     await empezarSubida(video('colgado.mp4'));
@@ -1486,7 +1385,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await userEvent.type(campo(), TEXTO);
     // mientras no hay precio no se cobra nada...
     await userEvent.click(botonIniciar());
-    expect(llamadas(f, '/api/editar/colgado/sugerir')).toHaveLength(0);
+    expect(pedidosA(f, '/api/edicion/iniciar')).toBe(0);
     // ...pero la persona no queda atrapada
     await userEvent.click(screen.getByRole('button', { name: 'Quitar este video' }));
     await conVideoListo(video('bueno.mp4'));
@@ -1509,7 +1408,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     }
     await userEvent.click(botonIniciar());
     expect(campo()).toHaveFocus();
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(0);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(0);
     expect(llamadas(f, '/api/moderar')).toHaveLength(0);
     // la misma limpieza que el servidor (server/editar_api.py: limpiar_instruccion)
     expect(limpiarInstruccion('  hola​ mundo\tya\r\nfin x ‮')).toBe('hola mundo ya\nfin\nx');
@@ -1525,8 +1424,8 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await conVideoListo();
     fireEvent.change(campo(), { target: { value: '  Quita​ muletillas\tya\r\ny ‮' } });
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
-    expect(cuerpoDe(f, '/api/editar/entrevista/sugerir')).toEqual({ instruccion: 'Quita muletillas ya\ny' });
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
+    expect(iniciarEnviado(f)).toEqual({ pedido: CLAVE_DE_PEDIDO, videos: ['proyecto:entrevista'], instruccion: 'Quita muletillas ya\ny' });
     expect(cuerpoDe(f, '/api/moderar')).toEqual({ texto: 'Quita muletillas ya\ny' });
   });
 
@@ -1535,7 +1434,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     const cobros = oirCobros();
     const avisos = ponerAvisos();
     const largo = 'La instrucción es demasiado larga: máximo 2000 caracteres (llevas 2001)';
-    const f = montar({ sugerir: () => json({ detail: largo }, 422) });
+    const f = montar({ iniciar: () => json({ detail: largo }, 422) });
     pintar();
     await irAEdicion();
     await conVideoListo();
@@ -1548,7 +1447,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     fireEvent.change(campo(), { target: { value: de2001 } });
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: largo, tipo: 'mal', clave: 'caja' }));
-    expect(cuerpoDe(f, '/api/editar/entrevista/sugerir')).toEqual({ instruccion: de2001 });
+    expect(iniciarEnviado(f)).toEqual({ pedido: CLAVE_DE_PEDIDO, videos: ['proyecto:entrevista'], instruccion: de2001 });
     // era un 422 de antes de cobrar: ningún «−N», y el texto y el video siguen para corregirlo
     expect(cobros).toHaveLength(0);
     expect(campo()).toHaveValue(de2001);
@@ -1570,7 +1469,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     expect(botonIniciar()).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText(/Te faltan ✦ 3/)).toBeInTheDocument();
     await userEvent.click(botonIniciar());
-    expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(0);
+    expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(0);
     // recargó: se enciende sin tocar nada más
     monedero.get.mockReturnValue({ saldo: 50 });
     act(() => {
@@ -1587,7 +1486,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     let intento = 0;
     const f = montar({
       // la 1.ª vez se cae la red con el pedido en el aire (quizá el servidor sí cobró); la 2.ª, el servidor dice que ya corre
-      sugerir: () => (++intento === 1 ? sinRed() : json({ detail: 'La corrida ya está en curso — espera a que termine' }, 409)),
+      iniciar: () => (++intento === 1 ? sinRed() : json({ detail: 'La corrida ya está en curso — espera a que termine' }, 409)),
     });
     pintar();
     await listaParaLanzar();
@@ -1598,7 +1497,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     expect(cobros).toHaveLength(0);
     expect(campo()).toHaveValue(TEXTO);
     await userEvent.click(botonIniciar());
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(2));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(2));
     await waitFor(() => expect(monedero.refrescar).toHaveBeenCalledTimes(2));
     // el 409 confirma que SÍ hay una corrida: la pantalla también lo sabe desde ahí
     avisos.mostrar.mockClear();
@@ -1610,7 +1509,7 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
   it('inicio.edicion.el_menos_n_sale_de_lo_que_cobro_el_servidor_no_del_precio_de_la_pantalla', async () => {
     ponerMonedero(100);
     const cobros = oirCobros();
-    montar({ sugerir: () => json({ lanzado: true, creditos: 6 }) }); // el precio cambió entre el costo y el cobro
+    montar({ iniciar: () => json({ lanzado: true, creditos: 6 }) }); // el precio cambió entre el costo y el cobro
     pintar();
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
@@ -1625,10 +1524,16 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     await waitFor(() => expect(campo()).toHaveValue(''));
+    // las cinco peticiones con cuerpo: permiso de subida, confirmar, precio (cotizar), moderar e iniciar
     const cuerpos = f.mock.calls.map(c => String(c[1]?.body ?? '')).filter(Boolean);
-    expect(cuerpos.length).toBeGreaterThanOrEqual(4); // permiso de subida, confirmar, moderar y sugerir
-    for (const c of cuerpos) expect(c).not.toMatch(/credit|precio|costo|saldo|✦/i);
-    expect(Object.keys(cuerpoDe(f, '/api/editar/entrevista/sugerir'))).toEqual(['instruccion']);
+    expect(cuerpos.length).toBeGreaterThanOrEqual(5);
+    for (const c of cuerpos) expect(c).not.toMatch(/credit|precio|costo|saldo|✦|\bkey\b.*usuarios\//i);
+    // lo único que viaja a las dos rutas nuevas: referencias, la clave del pedido y lo que escribió la persona
+    expect(Object.keys(cuerpoDe(f, '/api/edicion/cotizar'))).toEqual(['videos']);
+    expect(Object.keys(iniciarEnviado(f))).toEqual(['pedido', 'videos', 'instruccion']);
+    // y las referencias son «proyecto:<nombre>» o «clip:<id>»: jamás una key de S3
+    for (const ref of iniciarEnviado(f).videos as string[]) expect(ref).toMatch(/^(proyecto:[A-Za-z0-9_-]+|clip:[A-Za-z0-9_-]+)$/);
+    expect(JSON.stringify(iniciarEnviado(f))).not.toMatch(/videos\/|subidas|\.mp4/);
   });
 
   it('inicio.edicion.si_la_moderacion_se_cae_el_pedido_sigue', async () => {
@@ -1638,13 +1543,13 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     // un filtro caído no frena el producto (M13: se deja pasar)
-    await waitFor(() => expect(llamadas(f, '/api/editar/entrevista/sugerir')).toHaveLength(1));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
   });
 
   it('inicio.edicion.lo_que_se_escribe_mientras_sale_el_pedido_no_se_borra', async () => {
     ponerMonedero(100);
     const espera = diferida<Response>();
-    montar({ sugerir: () => espera.promesa });
+    montar({ iniciar: () => espera.promesa });
     pintar();
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
@@ -1734,16 +1639,16 @@ describe('la caja de Edición, a la defensiva (dinero y flujos)', () => {
     await listaParaLanzar();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
     await waitFor(() => expect(campo()).toHaveValue(''));
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(0); // perezoso: aún nada
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(0); // perezoso: aún nada
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5100);
     });
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(1);
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(1);
     unmount();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(llamadas(f, '/api/editar/entrevista', 'GET')).toHaveLength(1);
+    expect(llamadas(f, `/api/editar/${COPIA}`, 'GET')).toHaveLength(1);
     expect(errores).not.toHaveBeenCalled();
   });
 
@@ -2416,8 +2321,8 @@ describe('la caja de Edición, revisión visual y de accesibilidad', () => {
 
   it('inicio.edicion.subiendo_y_calculando_se_ven_trabajando_en_ambar_con_cursor_de_espera_y_el_clic_avisa', async () => {
     const avisos = ponerAvisos();
-    const precio = diferida<CostoEdicion>();
-    montar({ costo: () => precio.promesa });
+    const precio = diferida<Cotizacion>();
+    montar({ cotizar: () => precio.promesa });
     pintar();
     await irAEdicion();
     await empezarSubida();
@@ -2455,7 +2360,7 @@ describe('la caja de Edición, revisión visual y de accesibilidad', () => {
   it('inicio.edicion.cada_apagado_se_explica_con_su_propia_linea', async () => {
     ponerMonedero(5);
     let falla = true;
-    montar({ costo: () => (falla ? json({ detail: 'Sin conexión con el medidor' }, 503) : COSTO_8) });
+    montar({ cotizar: refs => (falla ? json({ detail: 'Sin conexión con el medidor' }, 503) : cotizacion(refs)) });
     pintar();
     await irAEdicion();
     // sin video y con texto: dónde agregarlo (antes el botón apagado no decía por qué)
@@ -2489,21 +2394,26 @@ describe('la caja de Edición, revisión visual y de accesibilidad', () => {
 
 describe('las reglas de Edición sin pantalla', () => {
   it('inicio.edicion.el_boton_sigue_el_orden_sin_video_subiendo_sin_precio_aviso_sin_texto_sin_saldo_listo', () => {
-    const listo = { fase: 'listo' as const, costo: COSTO_8 };
-    expect(estadoDelBoton({ video: null, hayTexto: true, saldo: 100 })).toEqual({ tipo: 'sin_video' });
-    expect(estadoDelBoton({ video: { fase: 'subiendo', costo: null }, hayTexto: true, saldo: 100 })).toEqual({ tipo: 'subiendo' });
-    expect(estadoDelBoton({ video: { fase: 'calculando', costo: null }, hayTexto: true, saldo: 100 })).toEqual({ tipo: 'calculando' });
-    expect(estadoDelBoton({ video: { fase: 'sin_precio', costo: null }, hayTexto: true, saldo: 100 })).toEqual({ tipo: 'sin_precio' });
-    expect(estadoDelBoton({ video: { fase: 'listo', costo: FUERA }, hayTexto: true, saldo: 100 })).toEqual({ tipo: 'fuera', aviso: FUERA.aviso });
-    // un aviso manda sobre el texto y sobre el saldo
-    expect(estadoDelBoton({ video: { fase: 'listo', costo: FUERA }, hayTexto: false, saldo: 0 }).tipo).toBe('fuera');
-    expect(estadoDelBoton({ video: listo, hayTexto: false, saldo: 0 })).toEqual({ tipo: 'sin_texto', creditos: 8 });
-    expect(estadoDelBoton({ video: listo, hayTexto: true, saldo: 5 })).toEqual({ tipo: 'sin_saldo', creditos: 8, faltan: 3 });
-    expect(estadoDelBoton({ video: listo, hayTexto: true, saldo: 8 })).toEqual({ tipo: 'listo', creditos: 8 });
+    const base = { videos: 1, subiendo: false, hayTexto: true, saldo: 100 as number | null };
+    const lista = (datos = COSTO_8) => ({ fase: 'lista' as const, datos });
+    expect(estadoDelBoton({ ...base, videos: 0, cotizacion: { fase: 'ninguna' } })).toEqual({ tipo: 'sin_video' });
+    // subir o esperar en la cola manda sobre cualquier precio que hubiera
+    expect(estadoDelBoton({ ...base, subiendo: true, cotizacion: { fase: 'ninguna' } })).toEqual({ tipo: 'subiendo' });
+    expect(estadoDelBoton({ ...base, subiendo: true, cotizacion: lista() })).toEqual({ tipo: 'subiendo' });
+    expect(estadoDelBoton({ ...base, cotizacion: { fase: 'calculando' } })).toEqual({ tipo: 'calculando' });
+    expect(estadoDelBoton({ ...base, cotizacion: { fase: 'sin_precio' } })).toEqual({ tipo: 'sin_precio' });
+    // con videos y sin precio pedido todavía, «Iniciar» lo vuelve a pedir
+    expect(estadoDelBoton({ ...base, cotizacion: { fase: 'ninguna' } })).toEqual({ tipo: 'sin_precio' });
+    // el aviso del servidor sale tal cual, y manda sobre el texto y sobre el saldo
+    expect(estadoDelBoton({ ...base, cotizacion: lista(FUERA) })).toEqual({ tipo: 'fuera', aviso: TEXTO_CORTO_SOLO });
+    expect(estadoDelBoton({ ...base, hayTexto: false, saldo: 0, cotizacion: lista(FUERA) }).tipo).toBe('fuera');
+    expect(estadoDelBoton({ ...base, hayTexto: false, saldo: 0, cotizacion: lista() })).toEqual({ tipo: 'sin_texto', creditos: 8 });
+    expect(estadoDelBoton({ ...base, saldo: 5, cotizacion: lista() })).toEqual({ tipo: 'sin_saldo', creditos: 8, faltan: 3 });
+    expect(estadoDelBoton({ ...base, saldo: 8, cotizacion: lista() })).toEqual({ tipo: 'listo', creditos: 8 });
     // un saldo que no se sabe no bloquea a nadie
-    expect(estadoDelBoton({ video: listo, hayTexto: true, saldo: null })).toEqual({ tipo: 'listo', creditos: 8 });
-    // si el servidor no manda aviso pero tampoco deja editar, no se enciende
-    expect(estadoDelBoton({ video: { fase: 'listo', costo: { ...COSTO_8, backend_listo: false } }, hayTexto: true, saldo: 100 }).tipo).toBe('fuera');
+    expect(estadoDelBoton({ ...base, saldo: null, cotizacion: lista() })).toEqual({ tipo: 'listo', creditos: 8 });
+    // un aviso sin texto no deja un botón mudo
+    expect(estadoDelBoton({ ...base, cotizacion: lista(cotizacionBloqueada(['proyecto:a'], 'x', '')) }).tipo).toBe('fuera');
   });
 
   it('inicio.edicion.el_reloj_el_tamano_y_lo_que_falta_tras_un_402', () => {

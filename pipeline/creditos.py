@@ -236,13 +236,30 @@ def costo_shorts_analizar(duracion_s: float, con_transcript: bool) -> int:
     return costo
 
 
+def costo_editar(duraciones_a_transcribir_s: list[float]) -> int:
+    """E2: lo que cuesta editar (o unir y editar) uno o varios videos. LA única
+    fuente del cálculo: la cotización, el cobro de `iniciar` y el reintento
+    salen de aquí, jamás de una cifra que venga del navegador.
+
+    La edición (el LLM propone qué quitar) se cobra UNA vez por corrida, no por
+    video. La transcripción se cobra por la SUMA de los minutos de lo que no
+    trae canónico, en bloques de 5 min empezados: 100 s + 100 s son un solo
+    bloque (2 cr), no dos. La lista trae solo las duraciones de lo que SÍ se va
+    a transcribir; vacía = nada que transcribir = solo la edición. Con un solo
+    video es exactamente la fórmula de `costo_editar_sugerencias`."""
+    costo = EDITAR_SUGERENCIAS_CR
+    if duraciones_a_transcribir_s:
+        costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(
+            sum(float(d) for d in duraciones_a_transcribir_s) / 300)
+    return costo
+
+
 def costo_editar_sugerencias(duracion_s: float, con_transcript: bool) -> int:
     """M14: corrida de sugerencias de corte (LLM) + transcripción si el metraje
-    no trae canónico — misma tarifa de transcripción que shorts (mismo vendor)."""
-    costo = EDITAR_SUGERENCIAS_CR
-    if not con_transcript:
-        costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(float(duracion_s) / 300)
-    return costo
+    no trae canónico — misma tarifa de transcripción que shorts (mismo vendor).
+    Un solo video: envoltorio de `costo_editar` (lo importan el barredor, el
+    worker y las rutas viejas de /api/editar)."""
+    return costo_editar([] if con_transcript else [duracion_s])
 
 
 def costo_broll_sugerencias() -> int:

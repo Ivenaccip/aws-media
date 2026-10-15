@@ -188,6 +188,8 @@ def sugerir(nombre: str, cuerpo: Annotated[Any, Body()] = None):
     except Exception as err:  # noqa: BLE001 — cobrado y sin job = lo peor: revertir
         if creditos.activo():
             creditos.devolver(n, f"editar-sugerir:{nombre}", user)
+            # la bandeja ("Te devolvimos ✦ N") lo lee de aquí; sin monedero no se habla de créditos
+            nuevo["devueltos"] = n
         nuevo.update(estado="error", error=f"no se pudo lanzar: {err}"[:300])
         db.fijar_campo_editor(user, nombre, "editar", json.dumps(nuevo, ensure_ascii=False))
         raise HTTPException(502, f"No se pudo lanzar la corrida: {str(err)[:200]}")

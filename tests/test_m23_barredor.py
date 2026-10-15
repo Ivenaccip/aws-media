@@ -237,6 +237,13 @@ def editor(monkeypatch):
     monkeypatch.setattr(creditos, "activo", lambda: True)
     monkeypatch.setattr(creditos, "devolver",
                         lambda n, ref, u=None: devueltos.append((n, ref, u)))
+
+    # E2: el barredor anota `devueltos` en el doc de una edición; el doc es falso.
+    # Lo escrito queda en `db.fijar_campo_editor.escritos` (user, nombre, campo, valor).
+    def fijar(user_id, nombre, campo, valor):
+        fijar.escritos.append((user_id, nombre, campo, json.loads(valor)))
+    fijar.escritos = []
+    monkeypatch.setattr(db, "fijar_campo_editor", fijar)
     return barredor, devueltos, trabajo, reclamos
 
 
@@ -379,3 +386,109 @@ def test_el_sync_diario_sigue_en_pie(reglas):
     comprobación del viejo. Lo que importa es que el sync diario siga ahí."""
     cron = {r["ScheduleExpression"] for r in reglas if "ScheduleExpression" in r}
     assert "cron(0 6 * * ? *)" in cron
+
+
+# ---------------------------------------------------------------------------
+# E2 — la bandeja dice «Te devolvimos ✦ N» leyendo doc.editar.devueltos
+
+def _escritos():
+    from pipeline import db
+    return db.fijar_campo_editor.escritos
+
+
+def test_el_barredor_anota_devueltos_en_una_edicion(editor):
+    """Una edición que ni arrancó la cierra el barredor, y es la única pieza que sabe
+    cuánto devolvió: sin `devueltos` la bandeja callaría el reembolso."""
+    barredor, devueltos, trabajo, _ = editor
+    trabajo.update(creditos=8, estado="error", paso="editar", copia=True)
+
+    barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "ed-1"], proyecto_id="ed-1"))
+
+    assert devueltos == [(8, "editar-sugerir:ed-1", "u1")]
+    (user, nombre, campo, doc), = _escritos()
+    assert (user, nombre, campo) == ("u1", "ed-1", "editar")
+    assert doc["devueltos"] == 8
+    # y lo que ya traía el doc (el paso en que murió, el monto cobrado) se conserva
+    assert doc["paso"] == "editar" and doc["creditos"] == 8 and doc["estado"] == "error"
+
+
+@pytest.mark.parametrize("modulo", ["shorts_task", "overlay_task"])
+def test_los_otros_trabajos_no_escriben_devueltos(editor, modulo):
+    """Solo `editar` lleva la anotación: shorts y overlay guardan su estado en otro lugar."""
+    barredor, devueltos, _, _ = editor
+    barredor.barrer(_evento(["python", "-m", f"worker.{modulo}", "u1", "v"], proyecto_id="v"))
+    assert len(devueltos) == 1 and _escritos() == []
+
+
+def test_sin_monedero_no_se_promete_una_devolucion(editor, monkeypatch):
+    """En local (`creditos.activo()` falso) no se devuelve ni se escribe `devueltos`."""
+    from pipeline import creditos
+    barredor, devueltos, _, _ = editor
+    monkeypatch.setattr(creditos, "activo", lambda: False)
+    barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
+    assert devueltos == [] and _escritos() == []
+
+
+def test_un_trabajo_sin_monto_no_anota_nada(editor):
+    barredor, devueltos, trabajo, _ = editor
+    trabajo["creditos"] = 0
+    barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
+    assert devueltos == [] and _escritos() == []
+
+
+def test_si_la_anotacion_falla_el_dinero_ya_volvio_y_no_se_levanta_nada(editor, monkeypatch):
+    """Devolver va ANTES de anotar: si Postgres se cae al anotar, el reintento del evento
+    perdería el reclamo (ya está en error) y no devolvería otra vez. Solo se queda en el log."""
+    from pipeline import db
+    barredor, devueltos, _, _ = editor
+
+    def truena(*a):
+        raise RuntimeError("Postgres no responde")
+    monkeypatch.setattr(db, "fijar_campo_editor", truena)
+
+    r = barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
+    assert r["accion"] == "devuelto" and len(devueltos) == 1
+
+
+def test_si_el_monedero_falla_el_doc_se_reabre_y_el_reintento_devuelve(monkeypatch):
+    """El peor hueco del barredor: ganó el reclamo (el doc pasó a `error`) y entonces el
+    monedero falló. Sin reabrir, el reintento del evento pierde el reclamo y los créditos
+    NO vuelven nunca. Con un doc de verdad (estado que cambia): la primera pasada falla y
+    deja el doc `corriendo`; la segunda lo reclama otra vez y devuelve UNA vez."""
+    from pipeline import creditos, db
+    from worker import barredor
+    doc = {"estado": "corriendo", "creditos": 8, "copia": True, "paso": "entender"}
+    abonos, fallos = [], [1]
+
+    def reclamar(user_id, nombre, campo, mensaje):
+        if doc["estado"] != "corriendo":
+            return None
+        doc.update(estado="error", error=mensaje)
+        return dict(doc)
+
+    def devolver(n, ref, u=None):
+        if fallos:
+            fallos.pop()
+            raise RuntimeError("el monedero no respondió")
+        abonos.append((n, ref, u))
+
+    def fijar(user_id, nombre, campo, valor):
+        doc.clear()
+        doc.update(json.loads(valor))
+    monkeypatch.setattr(db, "reclamar_fallo_editor", reclamar)
+    monkeypatch.setattr(db, "fijar_campo_editor", fijar)
+    monkeypatch.setattr(creditos, "activo", lambda: True)
+    monkeypatch.setattr(creditos, "devolver", devolver)
+    evento = _evento(["python", "-m", "worker.editar_task", "u1", "ed-1"], proyecto_id="ed-1")
+
+    with pytest.raises(RuntimeError):
+        barredor.barrer(evento)                      # EventBridge lo reintentará
+    assert abonos == [] and doc["estado"] == "corriendo" and doc["devolucion_pendiente"] == 8
+
+    r = barredor.barrer(evento)                      # el reintento
+    assert r == {"accion": "devuelto", "creditos": 8, "proyecto": "ed-1"}
+    assert abonos == [(8, "editar-sugerir:ed-1", "u1")]
+    assert doc["estado"] == "error" and doc["devueltos"] == 8 and "devolucion_pendiente" not in doc
+
+    assert barredor.barrer(evento)["accion"] == "nada"   # un tercer evento no devuelve de nuevo
+    assert len(abonos) == 1

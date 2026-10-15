@@ -458,6 +458,19 @@ ESQUEMA: list[str] = [
         creado       timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (campana, correo)
     )""",
+    # E2 — «una sola tarea de edición a la vez por persona», y eso lo impone el
+    # índice parcial de abajo y no el código: dos pestañas pueden mandar su
+    # «Iniciar» al mismo tiempo, las dos leen «nada corriendo» y las dos
+    # cobrarían. Es parcial para que las copias terminadas (listo o error) se
+    # conserven sin estorbar: solo cuenta la que está corriendo. `editar.copia`
+    # lo escribe únicamente el API de E2 (server/edicion_api.py), así que las
+    # corridas viejas de /api/editar/<p>/sugerir quedan fuera. Sin este índice
+    # el API funciona igual con la lectura de `ediciones_corriendo`; solo queda
+    # una ventana de carrera de unos 100 ms entre dos pestañas, y nunca se
+    # pierde dinero (cada cobro tiene su copia y su devolución).
+    """CREATE UNIQUE INDEX IF NOT EXISTS proyectos_editor_copia_en_curso
+       ON proyectos_editor (user_id)
+       WHERE doc #>> '{editar,estado}' = 'corriendo' AND doc #>> '{editar,copia}' = 'true'""",
 ]
 
 
@@ -604,9 +617,11 @@ def _iso(valor) -> str | None:
 def corridas_editor(user_id: str) -> list[dict]:
     """El cuadro de «tus trabajos» sondea mientras algo corre: solo trae las tres
     corridas que enseña, no el doc entero (cortes, chat, subtítulos…)."""
+    # E2: `titulo` viaja también: la ficha de una copia dice «La IA edita {titulo}»
+    # y el nombre técnico (ed-9f1c0a7b) no lo lee nadie.
     filas = ejecutar(
         "SELECT nombre, jsonb_build_object('editar', doc->'editar', 'importar', doc->'importar', "
-        "'shorts', doc->'shorts')::text AS doc FROM proyectos_editor "
+        "'shorts', doc->'shorts', 'titulo', doc->'titulo')::text AS doc FROM proyectos_editor "
         "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
 
@@ -616,7 +631,10 @@ def corridas_editor(user_id: str) -> list[dict]:
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
                   "editar": "{editar}", "flags": "{flags}",
                   "subtitulos": "{subtitulos}", "overlay_job": "{overlay_job}",
-                  "chat": "{chat}", "importar": "{importar}"}
+                  "chat": "{chat}", "importar": "{importar}",
+                  # E2: caché de la medición (duración, ancho, alto, audio) del
+                  # video de origen; la escribe server/edicion_api.py
+                  "meta": "{meta}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:
@@ -628,6 +646,97 @@ def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> Non
             WHERE user_id = :u AND nombre = :n""",
         {"u": user_id, "n": nombre, "v": valor},
     )
+
+
+def fijar_meta_editor(user_id: str, nombre: str, meta: str) -> None:
+    """E2: guarda la medición del video de origen (doc.meta, §4.4 del contrato).
+    Solo toca esa llave: no pisa las subidas, los flags ni la corrida."""
+    fijar_campo_editor(user_id, nombre, "meta", meta)
+
+
+# ---------------------------------------------------------------------------
+# E2 — copias editables: el candado, el reintento y el borrado seguro
+
+def crear_copia_editor(user_id: str, nombre: str, doc: str) -> bool:
+    """Crea el proyecto de la copia SIN pisar nada. True si se insertó.
+
+    NO es `guardar_proyecto_editor`: aquel es un upsert y pisaría el doc entero
+    de una copia que otra llamada ya creó y cobró. Este es un INSERT que, si
+    algo lo impide, simplemente no inserta:
+
+      - ya existía ese `nombre` para esta persona (otra llamada con el mismo
+        `pedido` ganó la carrera), o
+      - el índice parcial `proyectos_editor_copia_en_curso` vio otra copia
+        corriendo de la misma persona.
+
+    `ON CONFLICT DO NOTHING` sin objetivo cubre las dos. Quien llama NO sabe
+    cuál fue: relee el nombre (si existe con su `pedido`, es el mismo pedido; si
+    no, es el candado) y responde sin haber cobrado nada.
+
+    El nombre ya debe estar reservado (`reservar_nombre_derivado`): esta
+    función no lo reserva."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """INSERT INTO proyectos_editor (user_id, nombre, doc)
+           VALUES (:u, :n, :doc::jsonb)
+           ON CONFLICT DO NOTHING
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "doc": doc})
+    return bool(filas)
+
+
+def ediciones_corriendo(user_id: str) -> list[dict]:
+    """Los proyectos de la persona con una corrida de edición `corriendo`,
+    copias y corridas viejas por igual: [{"nombre", "editar"}].
+
+    La caducidad NO se filtra aquí sino en Python (`inicio` ausente o ilegible =
+    caducado): un cast de fecha roto dentro del SQL tumbaría la consulta entera
+    y con ella el botón «Iniciar» de todos."""
+    filas = ejecutar(
+        """SELECT nombre, (doc #> '{editar}')::text AS editar FROM proyectos_editor
+           WHERE user_id = :u AND doc #>> '{editar,estado}' = 'corriendo'""",
+        {"u": user_id})
+    return [{"nombre": f["nombre"], "editar": json.loads(f["editar"])} for f in filas]
+
+
+def reclamar_reintento_editor(user_id: str, nombre: str, editar: str) -> bool:
+    """El claim del reintento: una copia en 'error' vuelve a 'corriendo' con el
+    `editar` nuevo (`editar` llega ya serializado). Solo gana UNA llamada: el
+    UPDATE está condicionado a `estado = 'error'`, así que un doble clic o dos
+    pestañas no cobran dos veces. False si ya no estaba en 'error'.
+
+    Si el índice parcial rechaza el UPDATE (la persona ya tiene otra copia
+    corriendo) el Data API levanta un error cuyo texto dice «duplicate key»: se
+    atrapa y también es False. Quien llama relee para distinguir un caso del
+    otro."""
+    try:
+        filas = ejecutar(
+            """UPDATE proyectos_editor
+               SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+               WHERE user_id = :u AND nombre = :n
+                 AND doc #>> '{editar,estado}' = 'error'
+                 AND doc #>> '{editar,copia}' = 'true'
+               RETURNING nombre""",
+            {"u": user_id, "n": nombre, "v": editar})
+    except Exception as err:  # noqa: BLE001 — el Data API no tipa el error de unicidad
+        if "duplicate key" in f"{err}".lower():
+            return False
+        raise
+    return bool(filas)
+
+
+def borrar_copia_sin_cobrar(user_id: str, nombre: str) -> None:
+    """Suelta el candado de una copia a la que NO se le cobró (402 por saldo).
+    Jamás borra una copia ya cobrada, ni un proyecto que no sea copia: el filtro
+    va en el SQL y no en quien llama. El nombre sigue reservado para la persona,
+    así que volver a pedir da el mismo."""
+    ejecutar(
+        """DELETE FROM proyectos_editor
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,copia}' = 'true'
+             AND doc #>> '{editar,cobrado}' = 'false'""",
+        {"u": user_id, "n": nombre})
 
 
 # M23 · D (prerrequisito) — dónde vive el estado de cada trabajo de Fargate

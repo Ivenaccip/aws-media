@@ -1,6 +1,11 @@
-// «Edición» (E1): lo que la caja del inicio enseña cuando la familia es Edición. Es solo lo que
+// «Edición» (E1 y E2): lo que la caja del inicio enseña cuando la familia es Edición. Es solo lo que
 // se ve; el estado, la subida, el precio y el cobro están en useEdicion (lo llama Caja, así que
-// cambiar de familia no pierde el texto, el video ni una subida a medias).
+// cambiar de familia no pierde el texto, los videos ni una subida a medias).
+//
+// E2: el «+» de Editar abre un MENÚ (`role="menu"`, como el de Imagen): «Subir de tu computadora» (varios, en cola) y «Elegir de Mis
+// creaciones» (la hoja «Agregar videos», HojaVideos.tsx). Con UN video la caja enseña su tarjeta; con DOS o más, el bloque «N videos ·
+// se unen en este orden» con una fila por video y Subir / Bajar / Quitar (el orden de la lista es el orden en que se unen). En el modo
+// Shorts nada de esto cambia: un solo video y el «+» abre el selector de archivos directo.
 //
 // La fila de abajo es la de Video: «+» y el chip «Editar ▾» a la izquierda (el MISMO SelectorOpcion que Imagen y Video, con
 // dos opciones: Editar y De videos a Shorts) y el botón principal a la derecha (en un teléfono, abajo, a todo el ancho).
@@ -34,7 +39,7 @@
 //     el campo crece lo que haga falta para que en un teléfono no se corte la última línea (y no cambia de alto al cambiar de idea);
 //   · el «Recargar» tiene 44 px de área táctil aunque su letra sea chica;
 //   · cada estado del botón se explica con su propia línea (`aria-describedby`), no solo los de «sin texto» y «fuera».
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { ESTRELLA } from '../../nucleo/estrella';
 import { entero } from '../../nucleo/formato';
@@ -55,10 +60,12 @@ import {
   HUECO_LIGA,
   huecoDe,
   IDEAS_EDICION,
+  IDEAS_UNION,
   modoDe,
   MODOS_EDICION,
   NOTA_CALCULANDO,
   NOTA_COPIA,
+  NOTA_COPIA_VARIOS,
   NOTA_SIN_PRECIO,
   NOTA_SUBIENDO,
   notaDeShorts,
@@ -67,6 +74,7 @@ import {
 } from './edicion';
 import { DESCRIPCION_VIDEOS, EXTS_VIDEO } from './envio';
 import { ALTO_DE_ACCION, ANCHO_DE_ACCION } from './medidas';
+import { bloqueoDeSubir, descripcionDeSubir, duracionCompleta, rotuloDeFormato, rotuloDeTipo, sumar, type FichaDeVideo } from './reglasVideos';
 import { SelectorOpcion } from './SelectorOpcion';
 import type { ManejoEdicion, RefsEdicion, VideoDeEdicion } from './useEdicion';
 import { usePistaRotatoria } from './usePistaRotatoria';
@@ -93,22 +101,89 @@ export function CajaEdicion({
   ed,
   refs: { area, liga, mas, archivos, principal },
   enVista,
+  alElegirDeCreaciones,
 }: {
   ed: ManejoEdicion;
   refs: RefsEdicion;
   /** La tarjeta del inicio tiene la caja a la vista. Falso = sigue montada pero escondida (mapa, opciones o lista): la pista no corre. */
   enVista: boolean;
+  /** «Elegir de Mis creaciones» del menú del «+»: abre la hoja «Agregar videos». La hoja vive en Caja, FUERA de la sección que recibe lo
+   *  que se arrastra (como la de imágenes): lo que se suelta o se hace en ella no sube hasta el arrastre de la caja. */
+  alElegirDeCreaciones: () => void;
 }) {
   const idAyudaTexto = useId();
   const idAviso = useId();
   // la nota que explica el apagado cuando no es el aviso del servidor ni «escribe qué quieres» (solo hay una a la vez)
   const idNota = useId();
   const idEjemplo = useId();
-  const { video, boton, hayTexto } = ed;
+  const { videos, boton, hayTexto } = ed;
+  const video = ed.video;
   const enShorts = ed.modo === 'shorts';
+  const varios = videos.length > 1;
   // la nota de Shorts: si «Iniciar» va a llevar a otra pantalla se dice; si no (nada puesto, o una liga que no es de YouTube), lo
   // único que se promete es que subir es gratis. Va en el mismo lugar y con el mismo id que la nota que explica el apagado en Editar
   const notaShorts = notaDeShorts({ video, liga: ed.liga });
+
+  // el menú del «+» (solo en Editar)
+  const [menu, setMenu] = useState(false);
+  const contenedorMas = useRef<HTMLDivElement>(null);
+  const fichas: FichaDeVideo[] = videos.map(v => ({ ref: v.ref, duracion_s: v.duracion_s, formato: v.formato, bytes: v.bytes }));
+  const sinCupo = bloqueoDeSubir(fichas);
+
+  // un clic fuera o Esc lo cierra (con Esc el foco vuelve al «+», si estaba en el menú); al abrir, el foco va a su primera opción
+  useEffect(() => {
+    if (!menu) return;
+    const fuera = (e: MouseEvent) => {
+      if (!contenedorMas.current?.contains(e.target as Node)) setMenu(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMenu(false);
+      const foco = document.activeElement;
+      if (!foco || foco === document.body || contenedorMas.current?.contains(foco)) mas.current?.focus();
+    };
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', esc);
+    contenedorMas.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [menu, mas]);
+
+  // cambiar a Shorts (o a otra familia, que desmonta esta caja) deja sin menú: se ajusta al renderizar, no en un efecto
+  if (enShorts && menu) setMenu(false);
+
+  function alPulsarMas() {
+    if (enShorts) {
+      ed.tocarMas();
+      return;
+    }
+    if (menu) {
+      setMenu(false);
+      return;
+    }
+    // con una subida o una corrida en marcha no se abre: dice por qué
+    if (ed.puedeAgregar()) setMenu(true);
+  }
+
+  /** Flechas, Inicio y Fin recorren las opciones del menú; Tab lo cierra y sigue al control que viene después del «+». */
+  function teclasDelMenu(e: React.KeyboardEvent<HTMLDivElement>) {
+    const opciones = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const i = opciones.indexOf(document.activeElement as HTMLElement);
+    const ir = (j: number) => {
+      e.preventDefault();
+      opciones[(j + opciones.length) % opciones.length]?.focus();
+    };
+    if (e.key === 'ArrowDown') ir(i + 1);
+    else if (e.key === 'ArrowUp') ir(i < 0 ? opciones.length - 1 : i - 1);
+    else if (e.key === 'Home') ir(0);
+    else if (e.key === 'End') ir(opciones.length - 1);
+    else if (e.key === 'Tab') {
+      setMenu(false);
+      mas.current?.focus(); // sin preventDefault: el Tab de ahora sigue desde el «+»
+    }
+  }
 
   // la pista rota solo con el campo vacío y sin el foco: con texto no se ve, y quien va a escribir no la debe ver cambiar
   // bajo el cursor (se congela en la que estaba; al soltar el foco con el campo vacío, retoma)
@@ -120,7 +195,8 @@ export function CajaEdicion({
   // un campo que se esconde pierde el foco, y Chromium lo avisa con blur (se midió), pero no se da por hecho que todos los navegadores
   // lo hagan. Con un `enfocado` viejo la pista volvería congelada y sin nadie escribiendo, así que se suelta aquí y no se espera el aviso
   if (!campoAlaVista && enfocado) setEnfocado(false);
-  const pista = usePistaRotatoria(IDEAS_EDICION, enfocado || ed.texto !== '', campoAlaVista);
+  // con dos o más videos la pista suma «Únelos en este orden y quita los silencios» como primera idea
+  const pista = usePistaRotatoria(varios ? IDEAS_UNION : IDEAS_EDICION, enfocado || ed.texto !== '', campoAlaVista);
 
   // lo que el botón principal dice (los lectores de pantalla lo leen al enfocarlo, con su descripción)
   const etiqueta = enShorts
@@ -156,7 +232,7 @@ export function CajaEdicion({
           <p className="m-0 mb-3 text-sm text-secundario">{APOYO_SHORTS}</p>
           {/* con un video subido manda su tarjeta y el campo se va (la liga queda escrita: vuelve al quitar el video) */}
           {video ? (
-            <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={ed.quitar} />
+            <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={() => ed.quitar(video.id)} />
           ) : (
             <Campo
               ref={liga}
@@ -184,8 +260,14 @@ export function CajaEdicion({
         </>
       ) : (
         <>
-          {video && <TarjetaVideo video={video} bloqueado={ed.lanzando} alQuitar={ed.quitar} />}
-          {video && <p className={unir(NOTA, 'mb-3')}>{NOTA_COPIA}</p>}
+          {/* UN video: su tarjeta y la nota de la copia. DOS o más: el bloque de la unión, con su orden */}
+          {videos.length === 1 && videos[0] && (
+            <>
+              <TarjetaVideo video={videos[0]} bloqueado={ed.lanzando} alQuitar={() => ed.quitar(videos[0]!.id)} />
+              <p className={unir(NOTA, 'mb-3')}>{NOTA_COPIA}</p>
+            </>
+          )}
+          {varios && <BloqueUnion ed={ed} />}
 
           <CuadroDeTexto
             id="texto-edicion"
@@ -217,11 +299,12 @@ export function CajaEdicion({
       )}
 
       <div className="mt-3 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:items-center">
-        {/* oculto: lo abre el «+». El clic lo hace el botón, no el input */}
+        {/* oculto: lo abre el «+». El clic lo hace el botón, no el input. En Editar admite VARIOS archivos (van en cola) */}
         <input
           ref={archivos}
           type="file"
           accept={ACEPTA}
+          multiple={!enShorts}
           tabIndex={-1}
           aria-hidden="true"
           className="hidden"
@@ -231,17 +314,77 @@ export function CajaEdicion({
           }}
         />
         <div className="flex min-w-0 gap-2.5">
-          <button
-            ref={mas}
-            type="button"
-            aria-label={video ? 'Cambiar el video' : enShorts ? 'Agregar el video largo' : 'Agregar el video que quieres editar'}
-            aria-disabled={ed.ocupado || undefined}
-            title={`Agrega el video (${DESCRIPCION_VIDEOS}) o arrástralo a la caja`}
-            onClick={ed.tocarMas}
-            className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo aria-disabled:cursor-default aria-disabled:text-apagado aria-disabled:hover:border-linea min-[640px]:size-11"
-          >
-            <Icono nombre="mas" />
-          </button>
+          <div ref={contenedorMas} className="relative flex-none">
+            <button
+              ref={mas}
+              type="button"
+              aria-label={
+                enShorts
+                  ? video
+                    ? 'Cambiar el video'
+                    : 'Agregar el video largo'
+                  : videos.length
+                    ? 'Agregar otro video'
+                    : 'Agregar el video que quieres editar'
+              }
+              aria-disabled={ed.ocupado || undefined}
+              {...(enShorts ? {} : { 'aria-haspopup': 'menu' as const, 'aria-expanded': menu })}
+              title={`Agrega el video (${DESCRIPCION_VIDEOS}) o arrástralo a la caja`}
+              onClick={alPulsarMas}
+              className="grid size-12 flex-none cursor-pointer place-items-center rounded-pildora border border-linea bg-transparent text-texto hover:border-campo aria-disabled:cursor-default aria-disabled:text-apagado aria-disabled:hover:border-linea min-[640px]:size-11"
+            >
+              <Icono nombre="mas" />
+            </button>
+            {menu && !enShorts && (
+              <div
+                role="menu"
+                aria-label="Agregar videos"
+                tabIndex={-1}
+                onKeyDown={teclasDelMenu}
+                className={unir(
+                  'absolute left-0 z-20 w-[min(340px,calc(100vw-48px))] rounded-grande border border-linea bg-superficie p-1.5',
+                  // con dos o más videos la caja ya es alta: el menú se abre hacia arriba para no salirse de la pantalla
+                  varios ? 'bottom-[calc(100%+8px)]' : 'top-[calc(100%+8px)]',
+                )}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-disabled={sinCupo !== null || undefined}
+                  onClick={() => {
+                    if (sinCupo !== null) return; // apagado: dice por qué en su subtítulo y el menú se queda
+                    setMenu(false);
+                    ed.abrirSelector();
+                  }}
+                  className={unir(ITEM, sinCupo !== null && 'cursor-default text-apagado hover:bg-transparent')}
+                >
+                  <Icono nombre="subir" className="text-secundario" />
+                  <span className="block min-w-0 flex-1">
+                    <b className="block text-sm font-semibold">Subir de tu computadora</b>
+                    <small className="block text-xs text-secundario">{sinCupo ?? descripcionDeSubir()}</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    alElegirDeCreaciones();
+                  }}
+                  className={ITEM}
+                >
+                  <Icono nombre="video" className="text-secundario" />
+                  <span className="block min-w-0 flex-1">
+                    <b className="block text-sm font-semibold">Elegir de Mis creaciones</b>
+                    <small className="block text-xs text-secundario">Videos que ya hiciste con IA: elige uno o varios</small>
+                  </span>
+                </button>
+                <p className="m-0 mx-1 mt-1 border-t border-linea px-1.5 pt-2.5 pb-1.5 text-xs text-secundario">
+                  También puedes arrastrar el video a la caja.
+                </p>
+              </div>
+            )}
+          </div>
           {/* el mismo chip que Imagen y Video: elegir un modo cambia el cuerpo de la caja (elegir el de ahora solo cierra la lista) */}
           <SelectorOpcion opciones={MODOS_EDICION} elegida={modoDe(ed.modo)} detalle={m => m.detalle} alElegir={m => ed.elegirModo(m.id)} />
         </div>
@@ -289,6 +432,8 @@ export function CajaEdicion({
                 {NOTA_SIN_PRECIO}
               </p>
             )}
+            {/* el aviso del servidor, TAL CUAL: «Un video de menos de 1 min no se puede editar solo…», «Los videos horizontales y los
+                verticales no se mezclan…». La caja no duplica sus textos */}
             {boton.tipo === 'fuera' && (
               <p id={idAviso} className={unir(NOTA, 'text-texto')}>
                 {boton.aviso}
@@ -311,7 +456,7 @@ export function CajaEdicion({
             {boton.tipo === 'listo' && <NotaSaldo saldo={ed.saldo} costo={boton.creditos} />}
             {boton.tipo === 'sin_saldo' && ed.saldo !== null && (
               <p id={idNota} className={unir(NOTA, 'tabular-nums')}>
-                Tienes {ESTRELLA} {entero(ed.saldo)}: no alcanza para editar este video.
+                Tienes {ESTRELLA} {entero(ed.saldo)}: no alcanza para editar {varios ? 'estos videos' : 'este video'}.
               </p>
             )}
             {ed.faltan > 0 && (
@@ -326,22 +471,179 @@ export function CajaEdicion({
   );
 }
 
+const ITEM =
+  'flex w-full min-h-14 cursor-pointer items-center gap-3 rounded-medio border-0 bg-transparent px-2.5 py-2 text-left text-texto hover:bg-elevada';
+
+/** Lo que se sabe de un video para su línea de meta, en UNA línea: una creación, «Película · 0:30 · 16:9»; un archivo subido,
+ *  «12:04 · MP4 · 824 MB» (la duración llega con el primer precio: antes de eso, solo el formato y el peso). */
+function metaDe(v: VideoDeEdicion): string {
+  const duracion = v.duracion_s === null ? '' : reloj(v.duracion_s);
+  if (v.origen === 'creacion') return [v.tipo ? rotuloDeTipo(v.tipo) : '', duracion, rotuloDeFormato(v.formato)].filter(Boolean).join(' · ');
+  const extension = (v.archivo?.name.split('.').pop() ?? '').toUpperCase();
+  return [duracion, extension, v.archivo ? tamano(v.archivo.size) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * La unión (dos o más videos): «N videos · 1:12 · se unen en este orden», una fila por video con su número, y la nota de las copias.
+ * Subir y Bajar solo cambian el orden (no cobran ni vuelven a cotizar); cada fila mide al menos 44 px y sus tres botones, 44 × 44. Desde
+ * la 5.ª fila la lista tiene alto máximo de cuatro y se desplaza por dentro: la caja no crece sin límite.
+ */
+function BloqueUnion({ ed }: { ed: ManejoEdicion }) {
+  const { videos } = ed;
+  const total = duracionCompleta(videos) ? sumar(videos) : null;
+  // al mover una fila el navegador puede soltar el foco del botón que se pulsó (el nodo cambia de lugar): se le devuelve, al mismo botón
+  const foco = useRef<{ id: string; accion: 'subir' | 'bajar' } | null>(null);
+  useEffect(() => {
+    const f = foco.current;
+    if (!f) return;
+    foco.current = null;
+    document.querySelector<HTMLElement>(`[data-fila="${f.id}"] [data-accion="${f.accion}"]`)?.focus();
+  }, [videos]);
+  return (
+    <div role="group" aria-label="Videos que se unen" className="mb-3 max-w-[560px] rounded-medio border border-linea bg-hundido p-2">
+      <p className="m-0 mb-2 px-1 text-sm">
+        <b className="font-semibold tabular-nums">
+          {videos.length} videos{total !== null && ` · ${reloj(total)}`}
+        </b>{' '}
+        · se unen en este orden
+      </p>
+      <ul
+        aria-label="Orden de los videos"
+        className={unir('m-0 flex list-none flex-col gap-1.5 p-0', videos.length >= 5 && 'max-h-[15.125rem] overflow-y-auto')}
+      >
+        {videos.map((v, i) => (
+          <FilaDeVideo
+            key={v.id}
+            v={v}
+            posicion={i}
+            total={videos.length}
+            bloqueado={ed.lanzando}
+            alMover={(d, accion) => {
+              foco.current = { id: v.id, accion };
+              ed.mover(v.id, d);
+            }}
+            alQuitar={() => ed.quitar(v.id)}
+          />
+        ))}
+      </ul>
+      <p className={unir(NOTA, 'mt-2 px-1')}>{NOTA_COPIA_VARIOS}</p>
+      {/* el lector de pantalla oye dónde quedó el video que se movió */}
+      <div role="status" className="sr-only">
+        {ed.movido}
+      </div>
+    </div>
+  );
+}
+
+const BOTON_FILA =
+  'grid size-11 flex-none cursor-pointer place-items-center rounded-medio border-0 bg-transparent text-secundario hover:bg-elevada hover:text-texto aria-disabled:cursor-default aria-disabled:text-apagado aria-disabled:hover:bg-transparent aria-disabled:hover:text-apagado';
+
+function FilaDeVideo({
+  v,
+  posicion,
+  total,
+  bloqueado,
+  alMover,
+  alQuitar,
+}: {
+  v: VideoDeEdicion;
+  posicion: number;
+  total: number;
+  bloqueado: boolean;
+  alMover: (d: -1 | 1, accion: 'subir' | 'bajar') => void;
+  alQuitar: () => void;
+}) {
+  const subiendo = v.fase === 'subiendo';
+  const primera = posicion === 0;
+  const ultima = posicion === total - 1;
+  const meta = metaDe(v);
+  return (
+    // `flex-wrap`: en 320 px no caben el nombre (al menos 8 rem) y los tres botones de 44 px en una línea; los botones pasan juntos a la
+    // línea de abajo, a la derecha, en vez de aplastar el nombre hasta dejarlo ilegible
+    <li data-fila={v.id} className="flex min-h-14 flex-wrap items-center gap-x-2 rounded-medio border border-linea bg-superficie py-1 pr-1 pl-2">
+      <span aria-hidden="true" className="grid size-6 flex-none place-items-center rounded-pildora bg-elevada text-xs font-semibold tabular-nums">
+        {posicion + 1}
+      </span>
+      {/* en una pantalla muy angosta (320 px) no cabe la miniatura junto a los tres botones de 44 px: el nombre manda */}
+      <span aria-hidden="true" className="hidden h-9 w-14 flex-none place-items-center rounded-chico bg-elevada text-secundario min-[400px]:grid">
+        <Icono nombre="video" />
+      </span>
+      <div className="min-w-0 flex-1 basis-32">
+        <b className="block truncate text-sm font-semibold" title={v.nombre}>
+          {v.nombre}
+        </b>
+        {v.fase === 'en_cola' ? (
+          <small className="block truncate text-xs text-secundario">En cola</small>
+        ) : (
+          meta && <small className="block truncate text-xs text-secundario tabular-nums">{meta}</small>
+        )}
+        {subiendo && (
+          <>
+            <div
+              role="progressbar"
+              aria-label={`Subiendo “${v.nombre}”`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={v.pct}
+              className="my-1 h-1 overflow-hidden rounded-chico bg-elevada"
+            >
+              <div className="h-full bg-ambar transition-[width] duration-300" style={{ width: `${v.pct}%` }} />
+            </div>
+            <small className="block text-xs text-secundario tabular-nums">Subiendo… {entero(v.pct)} %. No cierres esta pestaña.</small>
+          </>
+        )}
+      </div>
+      <div className="ml-auto flex flex-none">
+        <button
+          type="button"
+          data-accion="subir"
+          aria-label={`Subir “${v.nombre}”`}
+          aria-disabled={primera || bloqueado || undefined}
+          onClick={() => {
+            if (!primera && !bloqueado) alMover(-1, 'subir');
+          }}
+          className={BOTON_FILA}
+        >
+          <Icono nombre="arriba" />
+        </button>
+        <button
+          type="button"
+          data-accion="bajar"
+          aria-label={`Bajar “${v.nombre}”`}
+          aria-disabled={ultima || bloqueado || undefined}
+          onClick={() => {
+            if (!ultima && !bloqueado) alMover(1, 'bajar');
+          }}
+          className={BOTON_FILA}
+        >
+          <Icono nombre="abajo" />
+        </button>
+        <button
+          type="button"
+          aria-label={subiendo ? `Cancelar la subida de “${v.nombre}”` : `Quitar “${v.nombre}”`}
+          aria-disabled={bloqueado || undefined}
+          onClick={alQuitar}
+          className={BOTON_FILA}
+        >
+          <Icono nombre="cerrar" />
+        </button>
+      </div>
+    </li>
+  );
+}
+
 /** El video de la caja: nombre, de qué es, y su ✕ (que cancela la subida si aún sube; mientras sale el pedido, apagada). */
 function TarjetaVideo({ video, bloqueado, alQuitar }: { video: VideoDeEdicion; bloqueado: boolean; alQuitar: () => void }) {
-  const formato = (video.archivo.name.split('.').pop() ?? '').toUpperCase();
-  // la duración la mide el servidor al calcular el precio: antes de eso solo se sabe lo que pesa
-  const meta = video.costo
-    ? [reloj(video.costo.duracion_s), formato, tamano(video.archivo.size)]
-    : [formato, tamano(video.archivo.size)];
   const subiendo = video.fase === 'subiendo';
+  const meta = video.fase === 'en_cola' ? 'En cola' : metaDe(video);
   return (
     <div className="mb-2 flex max-w-[440px] items-center gap-3 rounded-medio border border-linea bg-hundido py-1.5 pr-1 pl-1.5">
       <span className="grid h-11 w-18 flex-none place-items-center rounded-chico bg-elevada text-secundario">
         <Icono nombre="video" />
       </span>
       <div className="min-w-0 flex-1">
-        <b className="block truncate text-sm font-semibold">{video.archivo.name}</b>
-        <small className="block text-xs text-secundario tabular-nums">{meta.filter(Boolean).join(' · ')}</small>
+        <b className="block truncate text-sm font-semibold">{video.nombre}</b>
+        <small className="block text-xs text-secundario tabular-nums">{meta}</small>
         {subiendo && (
           <>
             <div

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clip, modelos, video } from '../../nucleo/tarifas';
 import { guardarArchivos } from '../../nucleo/traspaso';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
+import { cotizacion, TEXTO } from '../../prueba/edicion';
 import { json, llamadas, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Biblioteca } from './Biblioteca';
 import { Inicio } from './Inicio';
@@ -43,6 +44,25 @@ const C1: ClipCorto = {
   texto: 'Mi perro en la playa',
   video: '/api/clip/clip-20260925-100000-ab/video',
   inicio: '2026-09-25T10:00:00Z',
+};
+// E2: una copia editada (varios videos unidos): el servidor le da un título que la gente lee y de dónde viene
+const COPIA_DE = [
+  { ref: 'proyecto:gen-1a2b3c4d', titulo: 'El tren de papel' },
+  { ref: 'clip:clip-20261008-101500-ab12cd', titulo: 'Perro en la playa' },
+  { ref: 'proyecto:entrevista-final', titulo: 'entrevista-final' },
+];
+const COPIA: Edicion = {
+  nombre: 'ed-9f1c0a7b',
+  generado: false,
+  editor_listo: true,
+  editar: { estado: 'listo' },
+  subidas: [],
+  creado: '2026-10-14T10:00:00Z',
+  titulo: 'El tren de papel + 2 más',
+  copia_de: COPIA_DE,
+  n_videos: 3,
+  duracion_s: 762,
+  formato: 'horizontal',
 };
 const S1: Edicion = {
   nombre: 'yt-charla',
@@ -2651,6 +2671,144 @@ describe('las listas', () => {
     expect(screen.getByText('corte listo — ábrelo en el editor')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /año nuevo/ })).toHaveAttribute('href', '/e1.html?p=a%C3%B1o%20nuevo');
     expect(screen.getByText('sugerencias en curso…')).toBeInTheDocument();
+  });
+
+  it('inicio.ediciones.una_copia_dice_su_titulo_su_estado_y_de_donde_viene', async () => {
+    montar({
+      ediciones: [
+        COPIA,
+        { ...COPIA, nombre: 'ed-aaaa1111', titulo: 'Entrevista + 1 más', editar: { estado: 'corriendo' }, editor_listo: false, creado: '2026-10-13T10:00:00Z' },
+        { ...COPIA, nombre: 'ed-bbbb2222', titulo: 'Otra unión', editar: { estado: 'error' }, editor_listo: false, creado: '2026-10-12T10:00:00Z' },
+      ],
+    });
+    pintar();
+    // Listo: el título que la persona leyó al lanzarla (no el nombre técnico), su estado, de dónde viene y un enlace al editor de ESA copia
+    const lista = await screen.findByRole('link', { name: /El tren de papel \+ 2 más/ });
+    expect(lista).toHaveAttribute('href', '/editor/ed-9f1c0a7b/');
+    expect(lista).toHaveTextContent('Edición · Listo');
+    expect(lista).toHaveTextContent('Copia de El tren de papel + 2 más');
+    expect(screen.queryByText('ed-9f1c0a7b')).toBeNull();
+    // Editando…: ocupada para el lector de pantalla y SIN enlace (aún no hay nada que abrir)
+    const editando = screen.getByText('Edición · Editando…').closest('[aria-busy]')!;
+    expect(editando).toHaveAttribute('aria-busy', 'true');
+    expect(editando).toHaveTextContent('Entrevista + 1 más');
+    expect(editando).toHaveTextContent('Copia de Entrevista + 1 más');
+    expect(editando.closest('a')).toBeNull();
+    expect(screen.queryByRole('link', { name: /Entrevista \+ 1 más/ })).toBeNull();
+    // No se pudo editar: se dice, en rojo de error, y tampoco lleva a ningún lado
+    const fallo = screen.getByText('Edición · No se pudo editar');
+    expect(fallo.closest('a')).toBeNull();
+    expect(fallo.closest('article, div')!).toHaveTextContent('Otra unión');
+    // ninguna de las tres sigue a /e1.html: ese es de las ediciones de siempre
+    expect(document.querySelector('a[href^="/e1.html?p=ed-"]')).toBeNull();
+  });
+
+  it('una copia sin título (un servidor viejo) cae a su nombre y una edición de siempre no cambia', async () => {
+    montar({ ediciones: [{ ...COPIA, titulo: null }, ED] });
+    pintar();
+    expect(await screen.findByRole('link', { name: /ed-9f1c0a7b/ })).toHaveAttribute('href', '/editor/ed-9f1c0a7b/');
+    // la de siempre: su nombre, su estado de siempre y su enlace a e1
+    expect(screen.getByRole('link', { name: /podcast/ })).toHaveAttribute('href', '/e1.html?p=podcast');
+    expect(screen.getByText('corte listo — ábrelo en el editor')).toBeInTheDocument();
+    // la de siempre no dice «Copia de» (no trae `copia_de`: no es una copia)
+    expect(screen.getByRole('link', { name: /podcast/ })).not.toHaveTextContent(/Copia de/);
+  });
+
+  it('inicio.ediciones.una_copia_corriendo_mantiene_vivo_el_sondeo_de_las_listas_y_su_paso_a_error_pone_al_dia_el_saldo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let estado = 'corriendo';
+    const f = montar({ ediciones: [] });
+    // la lista de ediciones cambia con el tiempo: primero corre, luego falla (el servidor devolvió lo cobrado)
+    servidor({
+      '/api/proyectos': () => json([P1]),
+      '/api/slots': () => json({ slots: null, activos: 0 }),
+      '/api/imagenes': () => json({ total: 0, imagenes: [] }),
+      '/api/edicion/proyectos': () => json([{ ...COPIA, editar: { estado }, editor_listo: false }]),
+      '/api/clip': () => json({ clips: [] }),
+      '/api/blotato': () => json(CONECTADO),
+    });
+    expect(f).toBeDefined();
+    pintar();
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    const g = vi.mocked(fetch);
+    const lecturas = () => g.mock.calls.filter(c => c[0] === '/api/edicion/proyectos').length;
+    const antes = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    // sigue corriendo: la lista se vuelve a leer sola cada 5 s, y el saldo no se toca
+    expect(lecturas()).toBeGreaterThan(antes);
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    estado = 'error';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findByText('Edición · No se pudo editar')).toBeInTheDocument();
+    expect(monedero.refrescar).toHaveBeenCalled();
+    // ya no corre nada: el sondeo se apaga
+    const despues = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturas()).toBe(despues);
+  });
+
+  it('inicio.ediciones.una_copia_que_termina_bien_no_toca_el_saldo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let estado = 'corriendo';
+    servidor({
+      '/api/proyectos': () => json([P1]),
+      '/api/slots': () => json({ slots: null, activos: 0 }),
+      '/api/imagenes': () => json({ total: 0, imagenes: [] }),
+      '/api/edicion/proyectos': () => json([{ ...COPIA, editar: { estado } }]),
+      '/api/clip': () => json({ clips: [] }),
+      '/api/blotato': () => json(CONECTADO),
+    });
+    pintar();
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    estado = 'listo';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findByText('Edición · Listo')).toBeInTheDocument();
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+  });
+
+  it('inicio.ediciones.al_lanzar_desde_la_caja_las_listas_se_releen_y_la_copia_sale_editando', async () => {
+    ponerMonedero(100);
+    const lista = { ref: 'proyecto:gen-1a2b3c4d', tipo: 'pelicula', titulo: 'El tren de papel', duracion_s: 300, formato: 'horizontal', fecha: '2026-10-02T15:04:05+00:00', miniatura: null, video: null, con_transcript: true, audio: true, bytes: 1, es_copia: false, copia_de: [], motivo: null };
+    let lanzada = false;
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json(lanzada ? [{ ...COPIA, editar: { estado: 'corriendo' }, editor_listo: false }] : []),
+        '/api/edicion/elegibles': () => json({ videos: [lista], limites: { max_s: 5400, min_solo_s: 60, max_videos: 12, max_bytes: 16106127360 } }),
+        '/api/edicion/cotizar': () => json(cotizacion(['proyecto:gen-1a2b3c4d'], { creditos: 2, desglose: { edicion: 2, transcripcion: 0 } })),
+        '/api/edicion/iniciar': () => {
+          lanzada = true;
+          return json({ lanzado: true, nombre: 'ed-9f1c0a7b', titulo: 'El tren de papel', creditos: 2, n_videos: 1, repetido: false });
+        },
+        '/api/editar': () => json({ editar: { estado: 'corriendo' } }),
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar el video que quieres editar' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Elegir de Mis creaciones/ }));
+    const hoja = within(await screen.findByRole('dialog', { name: 'Agregar videos' }));
+    await userEvent.click(await hoja.findByRole('button', { name: /^El tren de papel,/ }));
+    await userEvent.click(hoja.getByRole('button', { name: 'Usar este video' }));
+    await screen.findByRole('button', { name: 'Iniciar ✦ 2' });
+    await userEvent.type(screen.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' }), TEXTO);
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 2' }));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
+    // el servidor aceptó: «Mis creaciones» se relee y ya muestra la copia, sin esperar al sondeo
+    await waitFor(() => expect(lecturas()).toBe(antes + 1));
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
   });
 
   it('inicio.galeria.una_sola_galeria_lo_mas_nuevo_primero', async () => {

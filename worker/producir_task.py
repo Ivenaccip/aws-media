@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import subprocess
 import sys
 
 from worker.env_ssm import cargar_env_ssm, cargar_env_usuario
@@ -28,6 +29,35 @@ cargar_env_ssm()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("producir_task")
+
+
+def _meta_pelicula(pelicula, key: str) -> dict | None:
+    """E2 (CONTRATO §4.4): la medición de la película, para que `/api/edicion/elegibles` y
+    `cotizar` no tengan que medirla con `ffprobe` sobre una URL (1–8 s por video, y la
+    Lambda corta a 29 s). La película ya está en el disco de esta tarea, así que medirla
+    aquí es gratis. Vale solo mientras `key` y `bytes` coincidan con la subida del doc.
+    Cualquier fallo = sin `meta` (el API la mide perezosamente): NUNCA tumba la producción."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries",
+             "format=duration:stream=codec_type,width,height:stream_side_data=rotation",
+             "-of", "json", str(pelicula)], capture_output=True, text=True, check=True, timeout=60)
+        j = json.loads(r.stdout)
+        ss = j.get("streams") or []
+        v = next(s for s in ss if s.get("codec_type") == "video")
+        gira = abs(int((v.get("side_data_list") or [{}])[0].get("rotation", 0))) % 180 == 90
+        ancho, alto = (v["height"], v["width"]) if gira else (v["width"], v["height"])
+        dur = float(j["format"]["duration"])
+        if not dur > 0:
+            return None
+        from datetime import datetime, timezone
+        return {"key": key, "bytes": pelicula.stat().st_size, "duracion_s": round(dur, 3),
+                "ancho": int(ancho), "alto": int(alto),
+                "audio": any(s.get("codec_type") == "audio" for s in ss),
+                "medido": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    except Exception:  # noqa: BLE001 — opcional: si no se pudo medir, se mide después
+        log.warning("%s: no se pudo medir la película para el caché", key, exc_info=True)
+        return None
 
 
 def main(user_id: str, proyecto_id: str, fase: str = "todo") -> int:
@@ -82,6 +112,10 @@ def main(user_id: str, proyecto_id: str, fase: str = "todo") -> int:
                 # caducaría guardada. La arma refrescar_urls al entregar.
             }] if (editor_dir / "pelicula.mp4").is_file() else [],
         }
+        if doc["subidas"]:
+            meta = _meta_pelicula(editor_dir / "pelicula.mp4", doc["subidas"][0]["key"])
+            if meta:
+                doc["meta"] = meta
         db.guardar_proyecto_editor(user_id, nombre, json.dumps(doc, ensure_ascii=False))
 
     log.info("%s: estado final %s", proyecto_id, p.estado)

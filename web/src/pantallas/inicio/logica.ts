@@ -186,7 +186,18 @@ export interface Edicion {
   creado?: string | null;
   /** null o ausente: el proyecto nunca pasó por shorts. */
   shorts?: ResumenShorts | null;
+  // E2: lo que el servidor sabe de una COPIA (varios videos unidos, o uno editado sin tocar el original). Un proyecto que no es una
+  // copia no trae nada de esto, o lo trae vacío: `titulo` null, `copia_de` [], `n_videos` null.
+  /** El título de la copia («El tren de papel + 2 más»): lo que la gente lee; el nombre técnico no lo ve nadie. */
+  titulo?: string | null;
+  copia_de?: Array<{ ref: string; titulo: string }>;
+  n_videos?: number | null;
+  duracion_s?: number | null;
+  formato?: 'horizontal' | 'vertical' | null;
 }
+
+/** ¿Es una copia de E2 (editada desde otros videos, con el original intacto)? */
+export const esCopia = (e: Edicion): boolean => (e.copia_de?.length ?? 0) > 0;
 
 /** Un clip de 8 s tal como lo lista /api/clip (solo lo que usa el inicio). */
 export interface ClipCorto {
@@ -389,6 +400,16 @@ export function fechaCorta(creado: string): string {
 export function textoSlots(activos: number, slots: number | null): string {
   if (slots === null) return activos ? `${activos} activos · slots ilimitados` : '';
   return `${activos} de ${slots} slots`;
+}
+
+/** El estado de una copia en su tarjeta de Mis creaciones: «Edición · Editando…», «Edición · Listo» o «Edición · No se pudo editar».
+ *  `busy`: sigue en marcha (aria-busy). Una copia con estado que no se entiende se lee como lista solo si el servidor así lo dice. */
+export function estadoDeCopia(e: Edicion): { texto: string; tono?: 'ok' | 'mal'; icono: 'reloj' | 'aviso' | 'listo'; busy: boolean; listo: boolean } {
+  const estado = e.editar?.estado;
+  if (estado === 'corriendo') return { texto: 'Edición · Editando…', icono: 'reloj', busy: true, listo: false };
+  if (estado === 'error') return { texto: 'Edición · No se pudo editar', tono: 'mal', icono: 'aviso', busy: false, listo: false };
+  if (estado === 'listo') return { texto: 'Edición · Listo', tono: 'ok', icono: 'listo', busy: false, listo: true };
+  return { texto: 'Edición', icono: 'reloj', busy: false, listo: false };
 }
 
 export function estadoEdicion(e: Edicion): { icono?: 'reloj' | 'aviso' | 'cortar'; texto: string; tono?: 'ok' | 'mal' } {

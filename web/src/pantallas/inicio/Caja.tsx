@@ -18,9 +18,9 @@
 // «Crear una imagen» también tiene «+»: con una imagen la tarea es editarla, así
 // que la caja pasa sola a «Editar una imagen».
 //
-// La tercera familia, Edición (E1), es otra caja: un video subido + lo que quieres que le
-// haga la IA (CajaEdicion). Su estado vive en useEdicion, que se llama AQUÍ y no en
-// CajaEdicion: cambiar de familia no pierde el texto, el video ni una subida a medias.
+// La tercera familia, Edición (E1 y E2), es otra caja: uno o varios videos —subidos o elegidos de Mis creaciones— + lo que quieres que
+// les haga la IA (CajaEdicion). Su estado vive en useEdicion, que se llama AQUÍ y no en
+// CajaEdicion: cambiar de familia no pierde el texto, los videos ni una subida a medias.
 //
 // Dos piezas se comparten con Edición (dueño, 14-oct-2026): el cuadro bien definido donde se escribe (ui/CuadroDeTexto)
 // y el chip de tarea con su lista (SelectorOpcion: «Un video corto ▾», «Crear una imagen ▾», «Editar ▾»). La caja solo le
@@ -72,6 +72,7 @@ import {
 } from './envio';
 import { Biblioteca } from './Biblioteca';
 import { CajaEdicion } from './CajaEdicion';
+import { HojaVideos } from './HojaVideos';
 import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
@@ -123,6 +124,8 @@ export interface PropsCaja {
   /** La tarjeta del inicio la tiene a la vista. Falso = sigue montada (con lo escrito, el video, la subida) pero escondida con
    *  `hidden` mientras se ve el mapa, las opciones o una lista: lo que corre solo para ser visto (la pista de Edición) se para. */
   enVista?: boolean;
+  /** El servidor aceptó una edición (E2): «Mis creaciones» ya tiene la tarjeta «Editando…» de su copia, y el inicio relee sus listas. */
+  alEditar?: () => void;
 }
 
 const SIN_IMAGENES: Imagen[] = [];
@@ -145,7 +148,7 @@ const RIEL = [
 ] as const;
 
 export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
-  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true },
+  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true, alEditar },
   ref,
 ) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
@@ -170,6 +173,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   // el menú del «+» (con imágenes en Mis creaciones) y la hoja «Elegir de Mis creaciones»
   const [menuMas, setMenuMas] = useState(false);
   const [biblioteca, setBiblioteca] = useState(false);
+  // la hoja «Agregar videos» del «+» de Edición (E2): vive aquí, fuera de la sección que recibe lo que se arrastra, igual que la de imágenes
+  const [hojaVideos, setHojaVideos] = useState(false);
   const mas = useRef<HTMLDivElement>(null);
   const botonMas = useRef<HTMLButtonElement>(null);
   const pedidos = useRef(0);
@@ -181,7 +186,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   const selector = useRef<MandoSelector>(null);
   const idTitulo = useId();
   // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
-  const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') }, ir);
+  const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') }, ir, alEditar);
   const enEdicion = familia === 'edicion';
   // elegir('edicion') desde fuera: el campo de esa caja se monta en el render que sigue, así que el foco se le da ahí
   const enfocarAlMontar = useRef(false);
@@ -434,7 +439,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
     if (!(admiteImagenes || enEdicion) || !traeArchivos(e)) return;
     e.preventDefault();
     setArrastrando(false);
-    // en Edición lo que se suelta es el video a editar (y se sube); pegar, en cambio, se ignora
+    // en Edición lo que se suelta son los videos a editar (VARIOS, y se suben en cola); pegar, en cambio, se ignora
     if (enEdicion) edicion.recibir(Array.from(e.dataTransfer.files));
     else agregar(soloImagenes(Array.from(e.dataTransfer.files)));
   }
@@ -625,7 +630,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
             ¿Qué vamos a crear hoy?
           </h2>
           {enEdicion ? (
-            <CajaEdicion ed={edicion} refs={refsEdicion} enVista={enVista} />
+            <CajaEdicion ed={edicion} refs={refsEdicion} enVista={enVista} alElegirDeCreaciones={() => setHojaVideos(true)} />
           ) : (
             <>
               {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} etiqueta={textosMas?.lista ?? 'Imágenes de referencia'} />}
@@ -790,6 +795,23 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
       </section>
 
       {/* fuera del <section>: lo que se suelta o se hace en la hoja no sube hasta el arrastre de la caja */}
+      <HojaVideos
+        abierto={hojaVideos && enEdicion}
+        alCambiar={setHojaVideos}
+        enCaja={edicion.videos.map(v => ({ ref: v.ref, duracion_s: v.duracion_s, formato: v.formato, bytes: v.bytes }))}
+        alUsar={edicion.agregarElegidos}
+        // lo marcado se agrega primero: elegir archivos después no deshace la selección (decisión del lienzo)
+        alElegirArchivos={marcados => {
+          edicion.agregarElegidos(marcados);
+          edicion.abrirSelector();
+        }}
+        alSoltarArchivos={(soltados, marcados) => {
+          edicion.agregarElegidos(marcados);
+          edicion.recibir(soltados);
+        }}
+        focoAlCerrar={refsEdicion.mas}
+        ocupado={edicion.ocupado}
+      />
       <Biblioteca
         abierto={biblioteca}
         alCambiar={setBiblioteca}

@@ -40,6 +40,7 @@ from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
 from server.blotato_api import router as blotato_router
 from server.broll_api import router as broll_router
+from server.edicion_api import copia_de_doc, router as edicion_router
 from server.editar_api import router as editar_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
@@ -143,6 +144,9 @@ app.include_router(clip_router)
 # en segundo plano vive en /api/imagenes/pedidos/{id}
 app.include_router(imagen_cola_router)
 app.include_router(editar_router)
+# E2: /api/edicion/{elegibles,cotizar,iniciar,<n>/reintentar}. La ruta fija
+# /api/edicion/proyectos (más abajo) no choca: este router no tiene GET /{nombre}
+app.include_router(edicion_router)
 app.include_router(mix_router)
 app.include_router(trabajos_router)
 
@@ -189,6 +193,8 @@ def proyectos_edicion():
             if fila["nombre"] in en_fs:
                 continue
             flags = fila["doc"].get("flags", {})   # los pone el puente (C4)
+            meta = fila["doc"].get("meta") if isinstance(fila["doc"].get("meta"), dict) else {}
+            copia_de = copia_de_doc(fila["doc"])
             out.append({"nombre": fila["nombre"],
                         "generado": flags.get("generado", False),
                         "canonico": flags.get("canonico", False),
@@ -201,8 +207,24 @@ def proyectos_edicion():
                         "subidas": fila["doc"].get("subidas", []),
                         # UI·26: «Mis videos» del inicio enseña los shorts
                         "creado": fila.get("creado"),
-                        "shorts": resumen_shorts(fila["doc"])})
+                        "shorts": resumen_shorts(fila["doc"]),
+                        # E2: la tarjeta de una copia dice «Copia de …» con el título,
+                        # no con el nombre técnico (ed-9f1c0a7b). Los campos de antes
+                        # no cambian; estos son aditivos.
+                        "titulo": fila["doc"].get("titulo"),
+                        "copia_de": copia_de,
+                        "n_videos": len(copia_de) if isinstance(fila["doc"].get("copia"), dict) else None,
+                        "duracion_s": meta.get("duracion_s"),
+                        "formato": meta.get("formato") or _formato_de_meta(meta)})
     return out
+
+
+def _formato_de_meta(meta: dict) -> str | None:
+    """El formato de una medición guardada antes de que `doc.meta` lo trajera."""
+    ancho, alto = meta.get("ancho"), meta.get("alto")
+    if isinstance(ancho, int) and isinstance(alto, int) and ancho > 0 and alto > 0:
+        return "vertical" if alto > ancho else "horizontal"
+    return None
 
 
 def resumen_shorts(doc: dict) -> dict | None:

@@ -43,7 +43,9 @@ MAX_DURACION_S = 5400   # 90 min: más largo no cabe en el worker de 15 min
 # video YA es del tamaño de un short y no hay nada que recortar.
 MIN_DURACION_S = 60
 CORTO_SHORTS = "tu video ya dura menos que un short — publícalo tal cual"
-VIDEO_EXT = (".mp4", ".mov", ".mkv", ".webm")
+# `.m4v` también: /api/media/presign lo acepta (media_api.EXTS) y, sin él aquí, un
+# video subido en ese formato daba 404 «no tiene metraje» en /costo y /sugerir
+VIDEO_EXT = (".mp4", ".mov", ".m4v", ".mkv", ".webm")
 
 
 def _nube() -> None:

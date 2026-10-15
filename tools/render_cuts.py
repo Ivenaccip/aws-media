@@ -7,6 +7,13 @@ Usage:
 preview: 720p h264, fast.  final: 4K60 10-bit HEVC, high quality.  El encoder se
 autodetecta por modo con la cadena NVENC → Quick Sync → AMF → CPU (tools/hwenc.py).
 
+E2 (unir videos): el preview NORMALIZA cada segmento al tamaño del primer clip
+(1280x720, o 720x1280 si es vertical; con barras si el aspecto no coincide) y a
+30 fps — `concat -c copy` de segmentos de tamaños o fps distintos descuadra el
+video y deja `non monotonically increasing dts`. Un clip sin pista de audio
+aporta silencio de la duración exacta de su segmento. `final` NO cambia: sin
+filtro de video, con su encoder de siempre (el flujo local de video-stack).
+
 Segments come from cutlib.plan_clip: keeps are split into speech runs at pauses
 >= internal_gap, each run's tail is snapped to the audio floor (words finish
 cleanly, no clipped releases), and pauses are compressed per style.
@@ -30,10 +37,17 @@ from pathlib import Path
 
 import hwenc
 from cutlib import AudioProbe, active_keeps, load_words, plan_clip
+from make_proxy import filtro_normalizado, probar, tamano_objetivo
 
 SR = 48000  # audio build sample rate
 
-VF = {"preview": ["-vf", "scale=1280:-2,format=yuv420p"], "final": []}
+VF = {"final": []}   # preview: vf_preview(w, h), según el tamaño del primer clip
+
+
+def vf_preview(w: int, h: int) -> list[str]:
+    return ["-vf", filtro_normalizado(w, h)]
+
+
 AUDIO_BITRATE = {"preview": "160k", "final": "256k"}
 
 
@@ -59,14 +73,27 @@ def video_duration(path: Path) -> float:
         return float(st["duration"])
 
 
-def render_audio_segment(src: Path, start: float, dur: float, out: Path) -> None:
+def render_audio_segment(src: Path, start: float, dur: float, out: Path,
+                         con_audio: bool = True) -> None:
     """Raw audio cut to a SAMPLE-EXACT length matching the segment's video."""
     n = round(dur * SR)
+    if not con_audio:
+        # clip SIN pista de audio (p. ej. un clip de IA): silencio de n muestras
+        # exactas, mismo formato que el resto (mono, 48 kHz, pcm_s16le). Antes
+        # `-vn … -af …` sobre una fuente sin audio reventaba con exit 234.
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                        "-i", f"anullsrc=r={SR}:cl=mono", "-t", f"{n / SR:.6f}",
+                        "-c:a", "pcm_s16le", str(out)], check=True)
+        return
     # aresample ANTES del atrim: end_sample cuenta muestras a la tasa de entrada del
     # filtro, y el metraje no siempre viene a 48 kHz (bug heredado de L1 que asumía
     # audio fuente a SR: con fuente a 16 kHz el trim nunca actuaba y cada segmento
     # quedaba +0.2s largo — 3s de drift acumulado en 15 cortes).
-    fades = (f"aresample={SR},atrim=end_sample={n},"
+    # apad ANTES del atrim (E2): un clip cuyo audio dura menos que su video (los clips
+    # de IA suelen quedar ~20-150 ms cortos) rellena con silencio hasta las n muestras
+    # exactas; sin esto cada clip de una unión acortaba el audio y la deriva SE SUMABA
+    # (cuatro clips con 150 ms de menos: 0,58 s de descuadre). Si el audio alcanza, no hace nada.
+    fades = (f"aresample={SR},apad=whole_len={n},atrim=end_sample={n},"
              f"afade=t=in:d=0.01,afade=t=out:st={max(n / SR - 0.01, 0):.4f}:d=0.01")
     cmd = ["ffmpeg", "-y", "-loglevel", "error",
            "-ss", f"{start:.3f}", "-t", f"{dur + 0.2:.3f}", "-i", str(src),
@@ -99,7 +126,13 @@ def main() -> None:
     print(f"{args.style}/{args.mode}: {len(jobs)} segments, output ~ {total / 60:.1f} min")
 
     enc_args, hwaccel = hwenc.select(args.mode)
-    enc = [*VF[args.mode], *enc_args]
+    if args.mode == "preview":
+        # la orientación del primer clip manda (el servidor ya rechazó mezclar
+        # horizontales con verticales); `final` no se toca
+        w, h = tamano_objetivo(probar(project / by_id[data["clip_order"][0]]["file"]))
+        enc = [*vf_preview(w, h), *enc_args]
+    else:
+        enc = [*VF["final"], *enc_args]
 
     seg_dir = project / "work" / "render" / f"{args.style}-{args.mode}"
     seg_dir.mkdir(parents=True, exist_ok=True)
@@ -136,10 +169,13 @@ def main() -> None:
     # build the audio to the segments' ACTUAL video lengths (sample-exact, no drift)
     print("building drift-free audio track...")
     wavs, seg_records = [], []
+    con_audio: dict[Path, bool] = {}   # un ffprobe por archivo, no por segmento
     for (cid, src, (start, end)), out in zip(jobs, outs):
         dur = video_duration(out)
         wav = out.with_suffix(".wav")
-        render_audio_segment(src, start, dur, wav)
+        if src not in con_audio:
+            con_audio[src] = probar(src)["audio"]
+        render_audio_segment(src, start, dur, wav, con_audio[src])
         wavs.append(wav)
         seg_records.append({"clip": cid, "s": round(start, 3), "e": round(end, 3),
                             "dur": round(dur, 6)})

@@ -1,6 +1,6 @@
 // /estudio/inicio/ — el inicio del estudio (UI·8.4). La caja cobra ahí mismo
 // el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
-// (desde E1); las demás opciones llevan a la pantalla que cobra con el texto
+// (desde E1; desde E2 con varios videos unidos); las demás opciones llevan a la pantalla que cobra con el texto
 // puesto. Las listas, debajo, llevan a lo que ya hiciste.
 //
 // Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») ya no hay menú a la
@@ -113,6 +113,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const tituloCaja = useRef<HTMLHeadingElement>(null);
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
+  // las copias de E2 que estaban editándose en la última lista: si una pasa a error, el servidor devolvió los créditos
+  const editandoCopias = useRef<Set<string>>(new Set());
   // lo que se pidió desde la caja y todavía no llega a la lista
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   // las imágenes que el servidor aceptó desde la caja y cuya relectura de la lista aún no salió bien: su tarjeta
@@ -142,6 +144,11 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
       return false;
     }
     setFalloCarga(false);
+    if (ed.status === 'fulfilled') {
+      // una copia que editaba y ahora falló: el servidor devolvió lo cobrado, el saldo se pone al día
+      if (ed.value.some(e => e.editar?.estado === 'error' && editandoCopias.current.has(e.nombre))) refrescarSaldo();
+      editandoCopias.current = new Set(ed.value.filter(e => e.editar?.estado === 'corriendo').map(e => e.nombre));
+    }
     const pedidos = im.status === 'fulfilled' && im.value.pendientesOk ? im.value.pendientes : null;
     if (pedidos) {
       // una que generaba y ahora falló: ya se devolvió lo cobrado, el saldo se pone al día
@@ -206,9 +213,11 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   // minuto: mientras alguno se genera, la galería se vuelve a pedir sola (cada 5 s,
   // como la pantalla del clip). También mientras una imagen recién pedida espera que
   // una relectura salga bien: sin ella, ni la tarjeta ni el sondeo tendrían de dónde seguir.
+  // E2: una copia que se está editando también (su tarjeta «Editando…» pasa a «Listo» o «No se pudo editar» sin recargar)
   const hayGenerando =
     (listas?.clips?.some(c => c.estado === 'generando') ?? false) ||
-    (listas?.pedidos.some(p => p.estado === 'generando') ?? false);
+    (listas?.pedidos.some(p => p.estado === 'generando') ?? false) ||
+    (listas?.ediciones?.some(e => e.editar?.estado === 'corriendo') ?? false);
   useEffect(() => {
     if (!hayGenerando && !esperandoLista.length) return;
     const t = setInterval(() => {
@@ -284,6 +293,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             imagenes={listas?.imagenes ?? undefined}
             tituloRef={tituloCaja}
             enVista={verCaja}
+            alEditar={() => void cargar()}
             alPedir={p => setPendientes(l => [p, ...l])}
             alTerminar={(clave, esperarLista) => {
               // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.

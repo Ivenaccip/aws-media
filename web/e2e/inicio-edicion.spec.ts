@@ -15,49 +15,30 @@
 //    del cuadro (320, 390 y 1100 px) y no tapa clics (no hay capa encima). El reloj de la pantalla es el falso de Playwright
 //    (`page.clock`), pero los fundidos de CSS corren en tiempo real: por eso se miden con muestras;
 //  · la caja entera se recorre SOLO con teclado (Tab, Shift+Tab, Enter, Espacio) y el apagado enfocable se puede activar.
-// No gasta nada: el servidor y «S3» son rutas de mentira.
+//  · E2: el precio sale de POST /api/edicion/cotizar y «Iniciar» manda POST /api/edicion/iniciar con SOLO la clave del pedido, las referencias
+//    y la instrucción; el «+» abre un menú (Subir de tu computadora / Elegir de Mis creaciones) que se maneja con el teclado.
+//    Lo de varios videos y la hoja está en inicio-edicion-union.spec.ts.
+// No gasta nada: el servidor y «S3» son rutas de mentira (e2e/edicion.ts).
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { contraste } from '../src/nucleo/contraste';
+import type { Cotizacion } from '../src/pantallas/inicio/envio';
+import { cotizacion, simularEdicion, type Visto } from './edicion';
 import { animacionesVivas, pistaSePinta } from './pantallas';
 import { elegir } from './recorrido';
 
-const RESPUESTAS_VACIAS: Record<string, unknown> = {
-  '**/api/proyectos': [],
-  '**/api/slots': { slots: null, activos: 0 },
-  '**/api/imagenes': { total: 0, imagenes: [] },
-  '**/api/edicion/proyectos': [],
-  '**/api/clip': { clips: [] },
-  '**/api/trabajos': { trabajos: [], sondeo_s: 15 },
-  '**/api/moderar': { permitido: true },
-};
-
-const COSTO = { fuente: 'videos/entrevista/subidas/entrevista.mp4', duracion_s: 724, con_transcript: false, creditos: 8, backend_listo: true, aviso: null };
+// E2: el precio ya no sale de /api/editar/<p>/costo sino de POST /api/edicion/cotizar (con las referencias de la caja) y «Iniciar» es
+// POST /api/edicion/iniciar. `costo` es lo que contesta el servidor de mentira para cualquier conjunto.
+const COSTO = cotizacion(['proyecto:entrevista']);
 
 async function edicion(
   page: Page,
-  costo: unknown = COSTO,
+  costo: Cotizacion = COSTO,
   { saldo, subidaMs = 600, reloj = false }: { saldo?: number; subidaMs?: number; reloj?: boolean } = {},
-) {
+): Promise<Visto> {
   // `reloj`: el de la pantalla (setTimeout, Date…) pasa a ser el falso de Playwright, quieto hasta que la prueba lo mueva
   if (reloj) await page.clock.install({ time: 0 });
-  for (const [ruta, json] of Object.entries(RESPUESTAS_VACIAS)) await page.route(ruta, r => r.fulfill({ json }));
-  if (saldo !== undefined) await page.route('**/api/creditos', r => r.fulfill({ json: { activo: true, saldo, tarifas: {}, packs: [] } }));
-  await page.route('**/api/blotato', r => r.fulfill({ status: 404, json: { detail: 'no' } }));
-  await page.route('**/api/media/config', r => r.fulfill({ json: { activo: true, cdn: '' } }));
-  // lo ya subido con ese nombre: nada (si lo hubiera, la caja estrenaría un nombre nuevo para no mezclar proyectos)
-  await page.route('**/api/media/entrevista', r => r.fulfill({ json: { subidas: [] } }));
-  // el PUT a «S3» es del mismo origen para no depender de CORS; tarda un poco para poder ver la barra
-  await page.route('**/api/media/presign', r =>
-    r.fulfill({ json: { url: '/s3-falso/subida', key: 'videos/entrevista/subidas/entrevista.mp4', content_type: 'video/mp4' } }),
-  );
-  await page.route('**/s3-falso/subida', async r => {
-    await new Promise(f => setTimeout(f, subidaMs));
-    await r.fulfill({ status: 200, body: '' });
-  });
-  await page.route('**/api/media/confirmar', r => r.fulfill({ json: { archivo: 'entrevista.mp4', cdn: '' } }));
-  await page.route('**/api/editar/entrevista/costo', r => r.fulfill({ json: costo }));
-  await page.route('**/api/editar/entrevista/sugerir', r => r.fulfill({ json: { lanzado: true, creditos: 8 } }));
+  const visto = await simularEdicion(page, { cotizar: () => costo, subidaMs, ...(saldo !== undefined ? { saldo } : {}) });
   await page.goto('/estudio/inicio/');
   // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
   await expect(page.getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
@@ -65,6 +46,7 @@ async function edicion(
   if (reloj) await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await expect(campo(page)).toBeVisible();
+  return visto;
 }
 
 // las ideas de la pista, tal como las lee el dueño (a propósito NO se importan de edicion.ts: si alguien cambia el texto, esta
@@ -221,7 +203,7 @@ test.describe('en el teléfono', () => {
     expect(sobra).toBeLessThanOrEqual(0);
     const tocables = [
       ...(await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button').all()),
-      page.getByRole('button', { name: 'Cambiar el video' }),
+      page.getByRole('button', { name: 'Agregar otro video' }),
       chip(page),
       page.getByRole('button', { name: 'Quitar este video' }),
       page.getByRole('button', { name: 'Iniciar ✦ 8' }),
@@ -455,12 +437,7 @@ test('el ejemplo fijo describe al campo y no queda como párrafo suelto en el á
 });
 
 test('toda la caja se recorre solo con el teclado: Tab, Shift+Tab, Enter y Espacio', async ({ page }) => {
-  const sugerir: string[] = [];
-  await edicion(page);
-  await page.route('**/api/editar/entrevista/sugerir', r => {
-    sugerir.push(r.request().postData() ?? '');
-    return r.fulfill({ json: { lanzado: true, creditos: 8 } });
-  });
+  const visto = await edicion(page);
   const enfocado = () => page.evaluate(() => (document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent || '').trim());
   // el recorrido empieza en el riel: Tab desde «Video» llega a «Edición»
   await riel(page).getByRole('button', { name: 'Video', exact: true }).focus();
@@ -481,19 +458,28 @@ test('toda la caja se recorre solo con el teclado: Tab, Shift+Tab, Enter y Espac
   expect(await enfocado()).toBe('Editar ▾');
   await page.keyboard.press('Shift+Tab');
   expect(await enfocado()).toBe('Agregar el video que quieres editar');
-  // Espacio en el «+» abre el selector de archivos
-  const [selector] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Space')]);
+  // Espacio en el «+» abre su menú (E2), con el foco en la primera opción; Enter en «Subir de tu computadora» abre el selector de archivos
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('menu', { name: 'Agregar videos' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Subir de tu computadora/ })).toBeFocused();
+  const [selector] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Enter')]);
   await selector.setFiles(VIDEO);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Iniciar ✦ 8' })).toBeVisible();
   // «Iniciar ✦ 8» ya está encendido: Tab hasta él (pasando por el chip) y Enter lanza UNA vez, con la instrucción y nada más
-  await page.getByRole('button', { name: 'Cambiar el video' }).focus();
+  await page.getByRole('button', { name: 'Agregar otro video' }).focus();
   await page.keyboard.press('Tab');
   expect(await enfocado()).toBe('Editar ▾');
   await page.keyboard.press('Tab');
   expect(await enfocado()).toBe('Iniciar ✦ 8');
   await page.keyboard.press('Enter');
   await expect(campo(page)).toHaveValue('');
-  expect(sugerir).toEqual(['{"instruccion":"Quítale las muletillas"}']);
+  // el cuerpo: la clave del pedido (32 hex), las referencias y la instrucción; NUNCA créditos, keys de S3 ni duraciones
+  expect(visto.iniciar).toHaveLength(1);
+  expect(Object.keys(visto.iniciar[0]!).sort()).toEqual(['instruccion', 'pedido', 'videos']);
+  expect(visto.iniciar[0]!.pedido).toMatch(/^[0-9a-f]{32}$/);
+  expect(visto.iniciar[0]!.videos).toEqual(['proyecto:entrevista']);
+  expect(visto.iniciar[0]!.instruccion).toBe('Quítale las muletillas');
 });
 
 test('«Iniciar» con aria-disabled se activa con Enter y con Espacio: lleva el foco al campo', async ({ page }) => {

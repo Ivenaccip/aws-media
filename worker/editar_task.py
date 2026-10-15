@@ -17,6 +17,12 @@ E1: si doc.editar trae `instruccion` (lo que la persona escribió en la caja
 «Edición» del inicio), va al mensaje de USUARIO del LLM como dato delimitado
 (`_mensaje_usuario`). El motor solo sabe quitar tramos: lo que la instrucción
 pida más allá se avisa como duda («No aplicado:») en `flags`.
+
+E2: si doc.editar trae `copia: true` (la caja «Edición» con «Elegir de Mis
+creaciones» / varios videos), la corrida NO edita el proyecto sino una COPIA de
+los originales —servidor a servidor— y los une: eso vive en worker/editar_copia.py.
+Esta función solo despacha; el camino de un video sin `copia` (E1, /api/editar)
+queda como estaba.
 """
 from __future__ import annotations
 
@@ -135,7 +141,22 @@ def _acotar_instruccion(valor: object) -> str:
     return re.sub(r">{3,}", ">>", re.sub(r"<{3,}", "<<", texto))
 
 
-def _mensaje_usuario(lineas: list[str], instruccion: str = "") -> str:
+LINEA_UNION = ("Este es el video {k} de {n} que se van a unir en ese orden. Unirlos ya lo "
+               "hace el motor: no lo marques como duda. Aplica y avisa solo sobre este video.")
+
+
+def _linea_union(union: tuple[int, int] | None) -> str:
+    """La línea fija que le dice al LLM que este transcript es UNO de varios que se
+    unen (E2). Solo ENTEROS entran al texto: la instrucción de la persona nunca pasa
+    por aquí."""
+    if not union:
+        return ""
+    k, n = union
+    return LINEA_UNION.replace("{k}", str(int(k))).replace("{n}", str(int(n)))
+
+
+def _mensaje_usuario(lineas: list[str], instruccion: str = "",
+                     union: tuple[int, int] | None = None) -> str:
     """El mensaje de USUARIO de la corrida de cortes.
 
     Sin instrucción es, byte a byte, el de siempre. Con ella, la instrucción va
@@ -147,8 +168,14 @@ def _mensaje_usuario(lineas: list[str], instruccion: str = "") -> str:
     (prompts/cortes_system.md) no se toca: con Langfuse activo editar el .md no
     llega a producción. Todo se arma por concatenación, nunca con `.format` ni
     f-string sobre el texto de la persona.
+
+    E2: con `union=(k, n)` (el video k de n que se van a unir) se agrega, justo
+    antes del transcript, `LINEA_UNION`. Con `union=None` el resultado es, byte a
+    byte, el de E1.
     """
     transcript = "Transcript segmentado del metraje:\n" + "\n".join(lineas)
+    if union:
+        transcript = _linea_union(union) + "\n\n" + transcript
     texto = _acotar_instruccion(instruccion)
     if not texto:
         return transcript
@@ -156,7 +183,8 @@ def _mensaje_usuario(lineas: list[str], instruccion: str = "") -> str:
             + AVISO_NO_APLICADO + "\n\n" + transcript)
 
 
-def _sugerencias_llm(canonico: dict, instruccion: str = "") -> dict:
+def _sugerencias_llm(canonico: dict, instruccion: str = "",
+                     union: tuple[int, int] | None = None) -> dict:
     from pipeline.config import load_prompt
     from pipeline.llm import chat_json
     from tools.normalizers.canonical_to_s1_dual import convert
@@ -166,7 +194,7 @@ def _sugerencias_llm(canonico: dict, instruccion: str = "") -> dict:
     lineas = [f"[{s['start']:.1f}–{s['end']:.1f}] {s['text']}" for s in segmentos]
     return asyncio.run(chat_json(
         "cortes_sugeridos", load_prompt("cortes_system"),
-        _mensaje_usuario(lineas, instruccion)))
+        _mensaje_usuario(lineas, instruccion, union)))
 
 
 def _spans_validos(items: list, dur: float) -> list[tuple[float, float, dict]]:
@@ -260,6 +288,15 @@ def main(user_id: str, nombre: str) -> int:
 
     doc = db.cargar_proyecto_editor(user_id, nombre) or {}
     st = doc.get("editar") or {}
+    if st.get("copia") is True:
+        # E2: una COPIA de uno o varios originales. Camino aparte (worker/editar_copia.py):
+        # reclama antes de devolver, verifica el dueño y nunca escribe fuera de la copia.
+        # Con `python -m worker.editar_task` este módulo es `__main__`: se registra con su
+        # nombre de paquete para que editar_copia no lo importe por segunda vez (y no
+        # vuelva a pedirle las claves a SSM).
+        sys.modules.setdefault("worker.editar_task", sys.modules[__name__])
+        from worker import editar_copia
+        return editar_copia.correr(user_id, nombre, doc)
     prefijo = f"videos/{nombre}/"
     try:
         destino = ruta_proyecto(nombre)

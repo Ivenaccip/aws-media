@@ -12,7 +12,8 @@ import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = join(WEB, 'dist');
+// PW_DIST: otra carpeta compilada (`vite build --outDir <carpeta>`), para probar sin pisar web/dist (E2: tres implementadores sobre el mismo árbol)
+const DIST = process.env.PW_DIST ? resolve(process.env.PW_DIST) : join(WEB, 'dist');
 const ESTATICOS = resolve(WEB, '..', 'static');
 const PUERTO = Number(process.argv[2] || 4317);
 

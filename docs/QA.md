@@ -34,6 +34,31 @@ Política verificada leyendo el código final (2026-08-03):
 - [ ] fps NTSC fraccional (60000/1001): el transcode de entrega re-estampa con
       `-r <fps_fuente>` ANTES de `-i` (ver nota en `render_cuts.py:145-152`)
 
+## QA de la unión de videos (E2)
+
+La caja «Edición» del inicio une varios videos en una COPIA (`worker/editar_copia.py`). Lo que se
+verifica, con ffmpeg real y metraje sintético (`tests/test_e2_ffmpeg_union.py`, `-f lavfi`):
+
+- [ ] **El render de la nube corre la compuerta `v:0 == a:0`.** `worker/render_task.py` mide el
+      `preview-<estilo>.mp4` con `ffprobe` y, si video y audio difieren más de `DRIFT_TOL_S` (0,15 s,
+      la de `make_subs.py` e `insert_broll.py`), deja el render en `error` y NO lo sube como listo.
+      Antes solo el render local la corría. (`tests/test_e2_render_gate.py`)
+- [ ] **El proxy de la unión es normalizado**: `tools/make_proxy.py` deja TODAS las partes en 1280×720
+      (720×1280 si el primer clip es vertical), 30 fps y AAC 48 kHz estéreo — con silencio si un clip no
+      trae audio — para que `concat -c copy` no descuadre. El manifiesto (`manifest.json`) cuenta lo
+      mismo que el video. El proxy es solo para auditar: no cambia lo que se corta.
+- [ ] **`render_cuts.py --mode preview` usa el mismo filtro** (tamaño del primer clip, 30 fps), rellena
+      con silencio un clip sin audio y rellena con silencio un audio más corto que su video (si no, la
+      deriva se suma clip tras clip). **`--mode final` no cambia**: sin filtro de video y con su
+      encoder de siempre.
+- [ ] **`loudnorm` sigue prohibido en el master.** La unión no nivela el sonido ni lo promete; el
+      `grep -rn "loudnorm" tools/ remotion/` del checklist de arriba debe seguir mostrando SOLO
+      `tools/shorts/export.sh`.
+- [ ] Un clip marcado `sin_transcript` no tiene canónico y `tools/edited_transcript.py` lo trata como
+      sin palabras (docs/SCHEMA.md); un canónico que falta sin esa marca sigue siendo error.
+- [ ] Dinero: cada camino de fallo devuelve el monto cobrado una vez
+      (`tests/test_e2_worker_copia.py`, `tests/test_m23_barredor.py`).
+
 ## QA de shorts (herencia S1)
 
 - [ ] Snapping por word boundaries + silencedetect antes de extraer (`snap_boundaries.py`)

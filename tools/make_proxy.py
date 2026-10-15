@@ -3,6 +3,13 @@ plus a timeline waveform image and a manifest with clip offsets.
 
 Usage: python tools/make_proxy.py video-1
 Writes: <project>/work/editor/proxy.mp4, waveform.png, manifest.json
+
+E2 (unir videos): el proxy es solo para auditar, así que SIEMPRE normaliza cada
+parte al mismo tamaño (1280x720, o 720x1280 si el primer clip es vertical; con
+barras si el aspecto no coincide), a 30 fps y con audio AAC 48 kHz estéreo —
+`concat -c copy` solo acepta partes idénticas. Un clip SIN pista de audio recibe
+silencio de la duración de su video. El fps de salida no afecta los cortes: el
+editor trabaja en segundos y `render_cuts.py` corta sobre el metraje original.
 """
 
 import json
@@ -13,14 +20,45 @@ from pathlib import Path
 
 import hwenc
 
+FPS = 30   # el proxy es solo para auditar: todas las partes a la misma cadencia
+SR = 48000
 
-def encode_part(src: Path, out: Path, enc: list[str], hwaccel: list[str]) -> None:
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", *hwaccel, "-i", str(src),
-         "-map", "0:0", "-map", "0:1", "-vf", "scale=1280:-2,format=yuv420p",
-         *enc, "-c:a", "aac", "-b:a", "160k", str(out)],
-        check=True,
-    )
+
+def probar(src: Path) -> dict:
+    """Ancho/alto de lo que SE VE (con la rotación del teléfono aplicada) y si trae pista de audio."""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries",
+         "stream=codec_type,width,height:stream_side_data=rotation", "-of", "json", str(src)],
+        capture_output=True, text=True, check=True)
+    ss = json.loads(r.stdout)["streams"]
+    v = next(s for s in ss if s["codec_type"] == "video")
+    gira = abs(int((v.get("side_data_list") or [{}])[0].get("rotation", 0))) % 180 == 90
+    w, h = (v["height"], v["width"]) if gira else (v["width"], v["height"])
+    return {"w": w, "h": h, "audio": any(s["codec_type"] == "audio" for s in ss)}
+
+
+def tamano_objetivo(primero: dict) -> tuple[int, int]:
+    """La orientación del primer clip manda (el servidor ya rechazó mezclar horizontales con verticales)."""
+    return (720, 1280) if primero["h"] > primero["w"] else (1280, 720)
+
+
+def filtro_normalizado(w: int, h: int) -> str:
+    """El `-vf` de una parte normalizada. `render_cuts.py --mode preview` usa el MISMO."""
+    return (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={FPS},format=yuv420p")
+
+
+def encode_part(src: Path, out: Path, enc: list[str], hwaccel: list[str], w: int, h: int) -> None:
+    """Una parte normalizada: mismo tamaño (con barras si el aspecto no coincide), mismos fps y audio 48 kHz estéreo.
+    Sin pista de audio se mete silencio de la duración del video (antes `-map 0:1` reventaba con exit 234)."""
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", *hwaccel, "-i", str(src)]
+    if probar(src)["audio"]:
+        cmd += ["-map", "0:v:0", "-map", "0:a:0", "-af", f"aresample={SR}:async=1,apad", "-shortest"]
+    else:
+        cmd += ["-f", "lavfi", "-i", f"anullsrc=r={SR}:cl=stereo", "-map", "0:v:0", "-map", "1:a:0", "-shortest"]
+    cmd += ["-vf", filtro_normalizado(w, h), *enc, "-c:a", "aac", "-b:a", "160k",
+            "-ar", str(SR), "-ac", "2", str(out)]
+    subprocess.run(cmd, check=True)
 
 
 def duration_of(path: Path) -> float:
@@ -41,8 +79,9 @@ def main() -> None:
     parts = [(cid, project / by_id[cid]["file"], out_dir / f"part-{cid}.mp4") for cid in data["clip_order"]]
 
     enc, hwaccel = hwenc.select("preview")
+    w, h = tamano_objetivo(probar(parts[0][1]))
     with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(lambda p: encode_part(p[1], p[2], enc, hwaccel), parts))
+        list(pool.map(lambda p: encode_part(p[1], p[2], enc, hwaccel, w, h), parts))
     print("parts encoded")
 
     list_file = out_dir / "list.txt"
