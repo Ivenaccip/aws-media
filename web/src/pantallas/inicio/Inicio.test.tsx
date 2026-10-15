@@ -115,8 +115,15 @@ function montar({
 
 let ir: ReturnType<typeof vi.fn<(url: string) => void>>;
 
+// El inicio abre en el MAPA (dueño, 15-oct-2026: «el mapa es el inicio»), pero casi todo lo de este archivo es de la caja, así que `pintar`
+// llega a ella por el camino de siempre —Marketing → Distrito— antes de devolver. Con `fireEvent` y no con `userEvent`: es síncrono, y
+// algunas pruebas lo llaman con el reloj falso puesto (con él `userEvent` se cuelga). El mapa, las opciones y lo que pasa antes de
+// llegar a la caja están en Recorrido.test.tsx.
 function pintar() {
-  return render(<Inicio ir={ir} />);
+  const r = render(<Inicio ir={ir} />);
+  fireEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
+  return r;
 }
 
 beforeEach(() => {
@@ -3098,7 +3105,7 @@ describe('el menú', () => {
     expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-titulo-lg', 'font-extrabold']));
     // el degradado es un FONDO recortado a la letra (`texto-oro`): en el h1, solo cubriría la caja del h1, y la letra que se desbordara
     // (espaciado de texto de WCAG 1.4.12 a 320 px, letra más grande) quedaría transparente y desaparecería. Va en un <span> en línea, cuya
-    // caja mide lo que el texto; y el h1 parte la palabra en vez de dejarla salirse de la tarjeta
+    // caja mide lo que el texto; y el h1 parte la palabra en vez de dejarla salirse de la región
     expect(h1.className.split(/\s+/)).not.toContain('texto-oro');
     expect(h1.className.split(/\s+/)).toContain('[overflow-wrap:anywhere]');
     expect(h1.children).toHaveLength(1);

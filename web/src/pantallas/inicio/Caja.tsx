@@ -30,9 +30,9 @@
 // abajo a la derecha (nucleo/avisos); donde esa página no lo trae, junto a la caja.
 //
 // Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») la caja va DENTRO de la tarjeta del inicio (Recorrido.tsx): no pinta su
-// propia tarjeta (sin fondo, borde, relleno ni margen) y avisa de cada cambio de pestaña (`alCambiarFamilia`) para que «Volver a …»
-// diga a cuál vuelves. La tarjeta la esconde con `hidden` mientras se ve el mapa o una lista, SIN desmontarla, y le avisa con
-// `enVista` para que lo que corre solo para ser visto (la pista rotatoria de Edición) no siga corriendo en lo escondido.
+// propia tarjeta (sin fondo, borde, relleno ni margen). El inicio la esconde con `hidden` mientras se ve el mapa o una lista (al abrir,
+// se ve el mapa: la caja arranca escondida), SIN desmontarla, y le avisa con `enVista` para que lo que corre solo para ser visto
+// (la pista rotatoria de Edición) no siga corriendo en lo escondido.
 import {
   forwardRef,
   useEffect,
@@ -118,9 +118,6 @@ export interface PropsCaja {
   /** Las imágenes de «Mis creaciones»: con ellas, el «+» ofrece también «Elegir de Mis creaciones». Sin ninguna, el
    *  «+» abre el selector de archivos, como siempre. */
   imagenes?: Imagen[] | undefined;
-  /** La pestaña de la caja (Imagen, Video o Edición) cambió, por el riel o por `elegir`/`referencia`; también se avisa al montar.
-   *  El recorrido del inicio rotula con ella su «Volver a Imagen» (Video, Edición). */
-  alCambiarFamilia?: (familia: Familia) => void;
   /** El `h2` «¿Qué vamos a crear hoy?»: el recorrido le lleva el foco al volver a la caja (lleva `tabIndex={-1}`). */
   tituloRef?: Ref<HTMLHeadingElement>;
   /** La tarjeta del inicio la tiene a la vista. Falso = sigue montada (con lo escrito, el video, la subida) pero escondida con
@@ -148,7 +145,7 @@ const RIEL = [
 ] as const;
 
 export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
-  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, alCambiarFamilia, tituloRef, enVista = true },
+  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true },
   ref,
 ) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
@@ -183,11 +180,6 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   // el chip de la tarea (SelectorOpcion): la caja solo le pide cerrar la lista cuando cambia de familia
   const selector = useRef<MandoSelector>(null);
   const idTitulo = useId();
-  // el recorrido del inicio rotula «Volver a Imagen/Video/Edición» con la pestaña de ahora: se le avisa de cada cambio (y del primero)
-  const avisarFamilia = useEffectEvent((f: Familia) => alCambiarFamilia?.(f));
-  useEffect(() => {
-    avisarFamilia(familia);
-  }, [familia]);
   // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
   const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') }, ir);
   const enEdicion = familia === 'edicion';

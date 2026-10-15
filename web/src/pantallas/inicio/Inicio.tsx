@@ -4,13 +4,14 @@
 // puesto. Las listas, debajo, llevan a lo que ya hiciste.
 //
 // Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») ya no hay menú a la
-// izquierda: todo vive en UNA tarjeta centrada (Recorrido) que enseña un paso a
-// la vez —el mapa de áreas, las tres opciones de un grupo, o su contenido: la
-// caja o la lista de sus pantallas—. Se aterriza en la caja, como siempre. La
-// caja se queda montada aunque se vea otro paso (no pierde lo escrito ni una
-// subida), y lo que va debajo de ella (Mis creaciones, los caminos…) se ve solo
-// cuando la caja se ve. Las pantallas hoja (agenda, métricas…) mandan aquí con
-// `?desde=…&ver=…` desde sus migas (recorrido.ts).
+// izquierda: el inicio (Recorrido) enseña un paso a la vez —el mapa de áreas,
+// las tres opciones de un grupo, o su contenido: la caja o la lista de sus
+// pantallas—, bajo el título «Irremplazables». Se aterriza en el MAPA (segunda
+// ronda del mismo día: «el mapa es el inicio»), sin nada elegido; solo la caja
+// lleva tarjeta. La caja se queda montada (y escondida) aunque se vea otro paso:
+// no pierde lo escrito ni una subida. Lo que va debajo de ella (Mis creaciones,
+// los caminos…) se ve solo cuando la caja se ve. Las pantallas hoja (agenda,
+// métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts).
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
 // con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
@@ -22,6 +23,7 @@ import { Boton, claseBoton } from '../../ui/Boton';
 import { Confirmar } from '../../ui/Confirmar';
 import { Icono } from '../../ui/Icono';
 import type { NombreIcono } from '../../ui/iconos';
+import { unir } from '../../ui/unir';
 import { DialogoBlotato } from './Blotato';
 import { Caja, type MandoCaja } from './Caja';
 import { traerImagen } from './envio';
@@ -39,7 +41,6 @@ import {
   type ClipCorto,
   type Edicion,
   type EstadoBlotato,
-  type Familia,
   type Imagen,
   type PedidoImagen,
   type Proyecto,
@@ -107,10 +108,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
-  // el recorrido de la tarjeta: en qué paso va, y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez)
+  // el recorrido: en qué paso va (el mapa al abrir), y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez)
   const [recorrido, despachar] = useReducer(reducir, undefined, () => estadoInicial(location.search));
-  // la pestaña de la caja de ahora (Caja avisa de cada cambio): «Volver a Imagen» dice a cuál volverás. Arranca donde arranca la caja
-  const [familia, setFamilia] = useState<Familia>('videos');
   const tituloCaja = useRef<HTMLHeadingElement>(null);
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
@@ -268,11 +267,12 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
 
   return (
     <>
-      <main className="mx-auto max-w-[1100px] px-4 pt-16 pb-8 max-[380px]:px-3">
+      {/* La altura de la ventana (`min-h-dvh`) es lo que deja a Recorrido centrar el mapa, las opciones y las listas en el alto que
+          sobra; con ellos no hay nada debajo que separar (sin `pb`), y con la caja sí (sus listas terminan ahí) */}
+      <main className={unir('mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 pt-16 max-[380px]:px-3', verCaja ? 'pb-8' : 'pb-0')}>
         <Recorrido
           estado={recorrido}
           despachar={despachar}
-          familia={familia}
           conectado={conectado}
           alConectar={abrirBlotato}
           ir={ir}
@@ -282,7 +282,6 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             ref={caja}
             ir={ir}
             imagenes={listas?.imagenes ?? undefined}
-            alCambiarFamilia={setFamilia}
             tituloRef={tituloCaja}
             enVista={verCaja}
             alPedir={p => setPendientes(l => [p, ...l])}
@@ -305,7 +304,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
 
         {/* Debajo de la tarjeta, del mismo ancho, y SOLO con la caja a la vista: con el mapa, las tres opciones o la lista de un
             grupo no pintan nada (y siguen montadas: una galería que se desmonta pierde su filtro y su visor) */}
-        <div hidden={!verCaja} className="mx-auto mt-8 max-w-[820px]">
+        <div hidden={!verCaja} className="mx-auto mt-8 w-full max-w-[820px]">
           {(falloCarga || sinConfirmar) && (
             <div className="mb-6">
               <Aviso tipo="error">

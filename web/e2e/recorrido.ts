@@ -1,6 +1,7 @@
-// Lo que comparten las pruebas de navegador del recorrido del inicio (la tarjeta «Irremplazables»: mapa en X → tres opciones →
-// la caja o la lista de pantallas de un grupo; pantallas/inicio/estadoRecorrido.ts): el estudio de mentira y las maneras de señalar
-// cada cosa de la tarjeta, por su rol y su nombre —lo que ve y oye una persona—, no por clases.
+// Lo que comparten las pruebas de navegador del recorrido del inicio («Irremplazables»: mapa en X → tres opciones → la caja o la
+// lista de pantallas de un grupo; pantallas/inicio/estadoRecorrido.ts): el estudio de mentira y las maneras de señalar cada cosa,
+// por su rol y su nombre —lo que ve y oye una persona—, no por clases. El inicio ABRE en el mapa (dueño, 15-oct-2026: «el mapa es el
+// inicio»): `abrirInicio` deja ahí, y `abrirLaCaja` sigue hasta la caja por el camino de siempre (Marketing → Distrito).
 //
 // Los textos están escritos a mano a propósito (no se importan de marca/menu.ts): si alguien cambia un rótulo del mapa, las
 // pruebas lo notan en vez de seguirlo en silencio.
@@ -66,33 +67,50 @@ export async function simular(page: Page, { blotato = 'caido', imagenes = 0 }: S
   return { pedidos, claves };
 }
 
-/** Abre el inicio (con `?desde=…` si se quiere entrar como lo hacen las migas de otra pantalla) y espera a que aparezca la tarjeta. */
+/** Abre el inicio (con `?desde=…` si se quiere entrar como lo hacen las migas de otra pantalla) y espera a que aparezca su región.
+ *  Sin entrada en la URL aterriza en el MAPA. */
 export async function abrirInicio(page: Page, url = '/estudio/inicio/') {
   await page.goto(url);
-  await expect(tarjeta(page)).toBeVisible();
+  await expect(region(page)).toBeVisible();
+}
+
+/** Abre el inicio y llega a la caja por el camino de siempre: mapa → Marketing → Distrito. */
+export async function abrirLaCaja(page: Page, url = '/estudio/inicio/') {
+  await abrirInicio(page, url);
+  await elegir(page, 'Marketing', 'Distrito');
+  await expect(paso(page)).toHaveText('¿Qué vamos a crear hoy?');
 }
 
 // ---------------------------------------------------------------------------
-// la tarjeta y sus partes
+// la región, la tarjeta y sus partes
 
-export const tarjeta = (page: Page): Locator => page.getByRole('region', { name: 'Irremplazables' });
+/** El inicio entero: el título (h1), las migas y el paso de ahora. La región toma su nombre del h1. */
+export const region = (page: Page): Locator => page.getByRole('region', { name: 'Irremplazables' });
 
-/** El único `h2` a la vista de la tarjeta: «Elige un área», «Elige un grupo», el nombre del grupo o el de la caja. */
-export const paso = (page: Page): Locator => tarjeta(page).getByRole('heading', { level: 2 });
+/** La TARJETA (borde, fondo y relleno), que solo existe con la caja a la vista; en los demás pasos es el mismo contenedor, sin nada de eso.
+ *  Es el límite que busca la lista de «Editar ▾» (`data-limite-lista`). */
+export const tarjeta = (page: Page): Locator => region(page).locator('[data-limite-lista]');
 
-export const migas = (page: Page): Locator => tarjeta(page).getByRole('navigation', { name: 'Dónde estás' });
+/** El único `h2` a la vista de la región: «Elige un área», «Elige un grupo», el nombre del grupo o el de la caja. */
+export const paso = (page: Page): Locator => region(page).getByRole('heading', { level: 2 });
 
-/** Una ficha del mapa. El nombre accesible trae lo que tenga la ficha («Marketing Estás aquí», «Producto Próximamente»). */
+export const migas = (page: Page): Locator => region(page).getByRole('navigation', { name: 'Dónde estás' });
+
+/** Una ficha del mapa. El nombre accesible es el del área, sin nada más: ninguna lleva «Estás aquí» (solo «Próximamente» en las apagadas). */
 export const ficha = (page: Page, area: string): Locator =>
-  tarjeta(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: new RegExp(`^${area}`) });
+  region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: new RegExp(`^${area}`) });
 
 /** Una de las tres opciones de un área. */
 export const opcion = (page: Page, area: string, grupo: string): Locator =>
-  tarjeta(page).getByRole('group', { name: area, exact: true }).getByRole('button', { name: new RegExp(`^${grupo}`) });
+  region(page).getByRole('group', { name: area, exact: true }).getByRole('button', { name: new RegExp(`^${grupo}`) });
 
-/** «Volver a Video»: dice a dónde caerás. */
+/** «Volver a Agenda tus publicaciones»: el ENLACE a la página de donde se llegó (con `?desde=…`). Es el único «Volver a …» que queda. */
 export const volverA = (page: Page, destino: string): Locator =>
-  tarjeta(page).getByRole('button', { name: `Volver a ${destino}`, exact: true });
+  region(page).getByRole('link', { name: `Volver a ${destino}`, exact: true });
+
+/** Cualquier «Volver a …» (botón o enlace) que se vea. Las migas («Volver al mapa…», «Volver a las opciones…») no cuentan: su texto es el
+ *  del lugar, no «Volver a …». */
+export const algunVolver = (page: Page): Locator => region(page).locator('button, a').filter({ hasText: /^Volver a / });
 
 /** Los botones del riel de la caja (Imagen, Video, Edición). */
 export const riel = (page: Page, familia: string): Locator =>
@@ -114,9 +132,9 @@ export async function elegir(page: Page, area: string, grupo: string) {
   await opcion(page, area, grupo).click();
 }
 
-/** Desde donde estés (la caja o una lista) hasta el contenido de un grupo, pasando por el mapa. */
+/** Desde donde estés (el mapa, la caja, las opciones o una lista) hasta el contenido de un grupo, pasando por el mapa. */
 export async function irA(page: Page, area: string, grupo: string) {
-  await irAlMapa(page);
+  if ((await paso(page).textContent()) !== 'Elige un área') await irAlMapa(page);
   await elegir(page, area, grupo);
 }
 

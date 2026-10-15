@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MenuModelo, type Eleccion } from './MenuModelo';
+import { ANCHO_DE_ACCION } from './medidas';
 import {
   admite,
   cambioPorDuracion,
@@ -173,6 +174,20 @@ describe('el menú de modelo', () => {
     await userEvent.click(within(menu()).getByRole('radio', { name: /FLUX\.2 pro/ }));
     expect(within(menu()).queryByRole('radiogroup', { name: 'Resolución' })).toBeNull();
     expect(menu()).toHaveTextContent('✦ 3 por imagen');
+  });
+
+  // dueño, 15-oct-2026: «Iniciar» (Edición) mide lo mismo que este chip en escritorio. Es un MÍNIMO compartido (medidas.ts): con más sitio del que
+  // pide el rótulo la flecha se va al borde, y con un rótulo más largo el chip crece. Sin ID del registro: es un ajuste de diseño.
+  it('el chip lleva el ancho mínimo compartido con «Iniciar» y su flecha al borde; sigue siendo todo el ancho en el celular', () => {
+    render(<Montado />);
+    expect(chip()).toHaveClass(ANCHO_DE_ACCION);
+    // con el mínimo mayor que el rótulo, la flecha va a la derecha (`justify-between`) y no pegada al texto (ya no hay `justify-start`)
+    expect(chip()).toHaveClass('justify-between');
+    expect(chip().className.split(/\s+/)).not.toContain('min-[640px]:justify-start');
+    // por debajo de 640 px sigue a todo el ancho, y desde ahí se ajusta al rótulo (y crece si el rótulo es más largo)
+    expect(chip()).toHaveClass('w-full', 'min-[640px]:w-auto', 'min-[640px]:min-h-11');
+    // el recorte con «…» sigue en el nombre, no en el chip: con un rótulo largo el chip crece y el nombre es lo que se corta
+    expect(chip().querySelector('.text-ellipsis')).not.toBeNull();
   });
 
   it('inicio.menumodelo.crear_va_en_el_pie_y_no_acepta_dos_clics_mientras_trabaja', async () => {

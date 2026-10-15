@@ -5,7 +5,9 @@ Fecha: 2026-09-25 · Decidida por el dueño sobre el lienzo de propuestas
 
 Revisada el 2026-10-15 con la decisión del dueño sobre el prototipo «Mapa con
 Irremplazables»: el menú lateral se retira (el mapa lo reemplaza, §7) y el título
-«Irremplazables» lleva dorado (§3).
+«Irremplazables» lleva dorado (§3). Esa misma tarde, segunda ronda del dueño: el
+mapa **es** el inicio (se aterriza en él), el título va arriba y fuera de cualquier
+tarjeta, solo la caja lleva tarjeta, y ya no hay «Volver a …» (§7).
 
 Esta carta manda sobre cualquier gusto de agente. Si algo no está aquí, se
 decide con el dueño y se agrega aquí antes de usarlo.
@@ -22,8 +24,8 @@ decide con el dueño y se agrega aquí antes de usarlo.
 - **Solo modo oscuro.** No hay modo claro ni interruptor.
 - Botones de cobro **«Verbo ✦ N»**: la acción y lo que cuesta, nada más (M21).
 - El **orbe** de espera y el **mapa** del inicio (mapa en X → tres opciones →
-  pantalla, §7). El menú lateral ya no existe: lo reemplazó el mapa (dueño,
-  15-oct-2026).
+  pantalla, §7), que es lo primero que se ve al abrir el inicio. El menú lateral
+  ya no existe: lo reemplazó el mapa (dueño, 15-oct-2026).
 - **Sin gasto sin ver el costo antes.** Precios solo de `tools/tarifas.json`
   o de la API; nunca inventados.
 - **Todo en español**, con tuteo.
@@ -64,7 +66,7 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 |---|---|---|---|
 | `#0b1626` | fondo | la página | — |
 | `#08111e` | fondo hundido | pozos, reproductor, código | — |
-| `#111f33` | superficie | tarjetas (también la tarjeta única del inicio, §7) | — |
+| `#111f33` | superficie | tarjetas (también la tarjeta de la caja del inicio, §7) | — |
 | `#18293f` | elevada | campos, hover de secundario, popovers | fondo de enlaces azules `#5b8dd6` (4.36:1) |
 | `#22354f` | línea | bordes de tarjeta, separadores | bordes de campos (no llega a 3:1) |
 | `#55708f` | línea de campo | bordes de campos y de botón secundario (3.2–3.5:1) | texto |
@@ -217,37 +219,58 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 ## 7. Navegación
 
 Desde el 15-oct-2026 no hay menú lateral, en ningún ancho: el inicio es un
-recorrido de tres pasos dentro de **una sola tarjeta** («Mapa con
-Irremplazables», decisión del dueño). La lista de adónde se puede ir es una
-sola, `web/src/marca/menu.ts`; el recorrido y las migas de las pantallas salen
-de ella, así no se desincronizan.
+recorrido de tres pasos («Mapa con Irremplazables», decisión del dueño), y su
+primer paso, el **mapa**, es el inicio mismo. La lista de adónde se puede ir es
+una sola, `web/src/marca/menu.ts`; el recorrido y las migas de las pantallas
+salen de ella, así no se desincronizan.
 
 - **Tres pasos:** el **mapa en X** (las áreas: Marketing, Producto, Central,
   Ventas y Automatizaciones) → las **tres opciones** (los grupos del área
   elegida; los de Marketing son Distrito, Blotato y Avanzado) → **la pantalla**
   (la caja del inicio, o la lista de las pantallas del grupo).
-- **Se aterriza en la caja, no en el mapa:** al abrir `/estudio/inicio/` se ve
-  la caja (Marketing › Distrito), en Video como siempre. El mapa se abre desde
-  las migas; «Estás aquí» marca el lugar actual.
-- **Una tarjeta única:** 820 px de ancho como mucho, centrada en horizontal y
-  pegada arriba (64 px; no se centra en vertical para que no salte de un paso a
-  otro), en la superficie `#111f33` con borde `#22354f` y radio 16. Adentro, de
-  arriba abajo: el `h1` «Irremplazables» (dorado, 32 px, centrado y sin icono; es
-  el único `h1` de la pantalla), las migas y el paso con su `h2` («Elige un
-  área», «Elige un grupo», «¿Qué vamos a crear hoy?» en la caja, el nombre del
-  grupo en la lista).
+- **Se aterriza en el mapa** (dueño, 15-oct-2026, segunda ronda: «el mapa es el
+  inicio»): al abrir `/estudio/inicio/` se ve «Elige un área» y la X, con **nada
+  elegido**. La caja (Marketing › Distrito, en Video como siempre) está montada y
+  escondida; se llega a ella eligiendo Marketing y luego Distrito. Antes se
+  aterrizaba en la caja.
+- **El título va arriba y fuera de cualquier tarjeta:** el `h1` «Irremplazables»
+  (dorado, 32 px, centrado, sin icono; es el único `h1` de la pantalla) va en
+  el mismo lugar en todos los pasos (a 88 px del borde de la ventana: debajo del
+  saldo, que es fijo y acaba a 52) y nunca dentro de una tarjeta.
+- **Solo la caja lleva tarjeta:** 820 px de ancho como mucho, centrada en
+  horizontal, en la superficie `#111f33` con borde `#22354f` y radio 16, con
+  32 px de aire bajo el título (el borde cae a 155 px, no a los 64 de antes: se
+  sentía pegado arriba) y sin centrarse en vertical, para que no salte cuando
+  baja o sube lo que cuelga de ella. Adentro, arriba, las migas y la caja con su
+  `h2` «¿Qué vamos a crear hoy?».
+- **El mapa, las opciones y las listas son pantallas sueltas, sin cuadro:** nada
+  los rodea (sin borde, fondo ni relleno). Van **centrados** en horizontal y en el
+  alto que sobra bajo el título (huecos arriba y abajo parecidos: lo medido es
+  una diferencia de 0,1 px a 1100×800), con su `h2` («Elige un área», «Elige un
+  grupo», el nombre del grupo) y, si hay, las migas centradas bajo el título.
+- **Nada se ve elegido hasta que se elige** (dueño: «parece que marketing está
+  seleccionado, mientras que no debería de verse de ese tono, hasta que lo
+  seleccionen»): ninguna ficha del mapa lleva «Estás aquí», tono distinto ni
+  `aria-current`; Marketing y Central, las dos que se abren, se ven iguales
+  (`#111f33` con borde `#22354f`; el hover y el foco se conservan) y las otras
+  tres siguen apagadas («Próximamente»). Las tres opciones solo marcan «Estás
+  aquí» en el grupo que ya elegiste (o de donde llegaste desde otra página); con el
+  inicio recién abierto, ninguna.
 - **Migas que reabren cada nivel:** la ruta elegida son chips («Marketing ›
   Distrito») y cada chip reabre su nivel: el área vuelve al mapa; el grupo, a las
-  tres opciones.
-- **«Volver a …» y Esc:** con el mapa o las tres opciones abiertos, «Volver a …»
-  dice adónde caerás («Volver a Imagen») y deja todo como estaba. **Esc** hace lo
-  mismo cuando el foco está dentro de la tarjeta (el `onKeyDown` es de la
-  tarjeta, no global). Si venías de una página hoja (abajo), «Volver a …»
-  regresa a ella.
+  tres opciones. Con la caja a la vista van dentro de la tarjeta, arriba; en los
+  demás pasos, centradas bajo el título. Son la manera de subir de nivel.
+- **Sin «Volver a …», y Esc:** dentro del inicio no hay botón de volver (dueño,
+  15-oct-2026: «no podemos poner el botón de "Volver a video"»): las migas suben de
+  nivel. **Esc** en las tres opciones sube al mapa; en el mapa y en la pantalla
+  (la caja o la lista) no hace nada; y solo cuando el foco está dentro (el
+  `onKeyDown` es de la región, no global). **Única excepción:** si llegaste desde
+  una página hoja (abajo), esa página no se alcanza con las migas, así que ahí sí
+  hay «Volver a Agenda» (un enlace, centrado bajo el título) y Esc regresa a ella.
 - **La caja siempre montada:** con el mapa, las tres opciones o la lista a la
   vista, la caja se oculta (`hidden`), no se desmonta; así no se pierden el texto
   escrito, el video subido ni una subida en curso. La galería «Mis creaciones» y
-  lo que cuelga de la caja se ven solo cuando se ve la caja.
+  lo que cuelga de la caja se ven solo cuando se ve la caja (al abrir, no se ven).
 - **Lo que enseña un grupo que no es la caja:** la lista de sus pantallas como
   tarjetas-enlace (icono, título y una línea de apoyo). Las que dependen de
   Blotato se apagan con `aria-disabled` cuando se sabe que la persona no lo ha
@@ -260,10 +283,11 @@ de ella, así no se desincronizan.
 - **Las páginas hoja siguen siendo páginas** (Agenda, Competencia, Métricas, MIX,
   Copiadora de estilos): llevan «← Estudio» y, a su lado, sus migas, «Marketing ›
   Blotato», como **enlaces** al inicio con `?desde=<lugar>&ver=mapa|grupos`.
-  «Marketing» abre el mapa y «Blotato» las tres opciones, con ese lugar marcado
-  como «Estás aquí». El inicio lee los dos parámetros una sola vez, al abrir, y
-  limpia la URL; si alguno no existe, se aterriza en la caja. Las pantallas que
-  el mapa no tiene (Admin, Crear, Subir, Clip, Imágenes y Shorts) no llevan migas.
+  «Marketing» abre el mapa y «Blotato» las tres opciones, con ese grupo marcado
+  como «Estás aquí» (venías de él) y el «Volver a …» de arriba. El inicio lee los
+  dos parámetros una sola vez, al abrir, y limpia la URL; si alguno no existe, se
+  aterriza en el mapa. Las pantallas que el mapa no tiene (Admin, Crear, Subir,
+  Clip, Imágenes y Shorts) no llevan migas.
 - **Dónde quedó cada cosa:** «De videos a Shorts» es el segundo modo del chip
   «Editar ▾» de la pestaña Edición y ya no tiene entrada propia. La Copiadora de
   estilos está en Marketing › Avanzado **de forma provisional**: irá a «Marcas»,
@@ -271,18 +295,19 @@ de ella, así no se desincronizan.
   funciona.
 - **Celular (≤ 560 px):** la «X compacta» (dueño, 15-oct-2026): dos columnas,
   con Central como banda de ancho completo en medio y trazos punteados cortos
-  hacia ella. En escritorio el mapa es una cuadrícula de 3 × 3 con las dos
-  diagonales punteadas (decoración: `aria-hidden`, en `#55708f`, detrás de las
-  fichas). En los dos, las fichas miden 44 px o más y el texto 13 px o más;
-  «Automatizaciones» y «Estás aquí» no se parten a 390 ni a 320 px, y nada se
-  desborda. El riel de la caja pasa a horizontal.
+  hacia ella, también centrada. En escritorio el mapa es una cuadrícula de 3 × 3
+  con las dos diagonales punteadas (decoración: `aria-hidden`, en `#55708f`,
+  detrás de las fichas). En los dos, las fichas miden 44 px o más y el texto 13 px
+  o más; «Automatizaciones» y «Próximamente» no se parten a 390 ni a 320 px, y
+  nada se desborda. El riel de la caja pasa a horizontal.
 - **Teclado y foco:** el orden de Tab es el de lectura (Marketing, Producto,
-  Central, Ventas, Automatizaciones). Al cambiar de paso el foco nunca cae a
-  `<body>`: va al `h2` del paso nuevo, y solo si se había perdido. Aterrizar en
-  la caja (abrir `/estudio/inicio/` sin más) no lo mueve: se queda en `<body>`, a
-  propósito, porque llegar a una página no le quita el foco a quien la lee;
-  llegar por la miga de otra página (`?desde=`) sí lo lleva al `h2`, porque abre
-  ya el mapa o las opciones. Un doble clic en una ficha del mapa no elige además
+  Central, Ventas, Automatizaciones; con una página de por medio, «Volver a …»
+  antes). Al cambiar de paso el foco nunca cae a `<body>`: va al `h2` del paso
+  nuevo, y solo si se había perdido. Abrir el inicio sin más (el mapa, sin nada
+  elegido) no lo mueve: se queda en `<body>`, a propósito, porque llegar a una
+  página no le quita el foco a quien la lee y ahí Esc no hace nada; llegar por la
+  miga de otra página (`?desde=`) sí lo lleva al `h2`, para que Esc regrese a esa
+  página sin tabular antes. Un doble clic en una ficha del mapa no elige además
   un grupo por accidente (se ignora el segundo clic si llega en menos de 500 ms).
 - El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
   con su «＋» para recargar. Se probó al pie del menú lateral (UI·10, hoy

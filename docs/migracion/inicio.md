@@ -8,11 +8,11 @@ El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b 
 - **La caja** «¿Qué vamos a crear hoy?» lleva a la pantalla que cobra con el
   texto ya puesto, pide aquí lo que elige modelo y, en su tercera familia
   (**Edición**), sube un video y lanza la edición.
-- **El recorrido** lleva a las herramientas: un mapa en X con las áreas, tres
-  opciones por área y la pantalla (la caja, o la lista de las pantallas de un
-  grupo). Es la tarjeta única del 15-oct-2026 y reemplazó al **menú de la
-  izquierda** (ver «Diferencias a propósito»; los IDs `inicio.menu.*` conservan
-  su nombre por historia).
+- **El recorrido** lleva a las herramientas: un mapa en X con las áreas (lo
+  primero que se ve al abrir el inicio), tres opciones por área y la pantalla (la
+  caja, o la lista de las pantallas de un grupo). Es del 15-oct-2026 y reemplazó
+  al **menú de la izquierda** (ver «Diferencias a propósito»; los IDs
+  `inicio.menu.*` conservan su nombre por historia).
 - **Las listas** llevan a lo que ya hiciste.
 - **El diálogo de Blotato** guarda la clave del usuario.
 
@@ -64,7 +64,7 @@ sus guardianes (`test_ui10_inicio.py`, `test_m25_entrada.py`…) siguen leyéndo
 hasta `retirada`. Lo que se pierde al pasar del menú al recorrido está
 inventariado abajo («Diferencias a propósito» y las filas `inicio.menu.*`). Esto
 cambia lo que ve **toda** la gente que entra a `/estudio/inicio/`, así que antes
-de que llegue a `main` el dueño corre en `docs/QA-UI.md` § inicio los pasos 43 a 70.
+de que llegue a `main` el dueño corre en `docs/QA-UI.md` § inicio los pasos 43 a 73.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
@@ -76,9 +76,12 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 Esc, foco) y el modo «De videos a Shorts» son función **nueva**, no algo que la
 pantalla vieja garantizara, así que sus pruebas no llevan el prefijo `inicio.` y
 el guardián no exige registrarlas: `estadoRecorrido.test.ts` (el estado y la entrada
-por URL, sin React), `Recorrido.test.tsx` (la tarjeta), `Mapa.test.tsx` (el mapa
+por URL, sin React), `Recorrido.test.tsx` (el recorrido entero), `Mapa.test.tsx` (el mapa
 y las tres opciones), `Pantallas.test.tsx` (la lista de un grupo),
-`EdicionShorts.test.tsx` (el modo Shorts de la caja) y, fuera de esta carpeta,
+`EdicionShorts.test.tsx` (el modo Shorts de la caja), más, en `Edicion.test.tsx` y
+`MenuModelo.test.tsx`, las dos pruebas sueltas de la segunda ronda (la frase de
+ayuda que ya no se ve y la medida que comparten «Iniciar» y el selector de modelo,
+`medidas.ts`) y, fuera de esta carpeta,
 `src/marca/Marco.test.tsx` (las migas de las hojas y su guardián de deriva con
 `menu.ts`), más los e2e `inicio-recorrido.spec.ts`, `inicio-shorts.spec.ts` e
 `inicio-caja.spec.ts`. Lo que **sí** viene de la pantalla vieja (las puertas del
@@ -265,7 +268,7 @@ menú, la regla de Blotato, el título) conservó sus IDs `inicio.menu.*` e
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
 | `inicio.menu.entradas_y_grupos_en_orden` | **15-oct-2026: ya no hay menú** (ni la nav «Secciones», ni «Estudio de Contenido», ni «Publicidad Automática»); las puertas de siempre siguen, ahora por mapa → opciones → lista. Marketing › Blotato: `/agenda.html`, `/competencia.html`, `/metricas.html`, en ese orden; Marketing › Avanzado: `/mix.html` (MIX, con su requisito Blotato) y `/estilos.html` (la Copiadora de estilos, provisional hasta «Marcas»). «De videos a Shorts» no sale en ninguna lista: vive en «Editar ▾» (ver `inicio.edicion.el_chip_editar_…`). Nada de Marketing dice «próximamente»; Central › Distrito sí, y ninguna de sus pantallas es un enlace. Eran 6 puertas (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió) y siguen siendo 6: cinco en las listas y la de Shorts en el chip. El ID conserva «menú» por historia |
 | `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`). **15-oct-2026:** sin menú, la prueba recorre las listas de Blotato, Avanzado y Central › Distrito y exige lo mismo (ni «Editor de videos», ni su texto, ni un `a[href^="/e1.html"]`); la Copiadora de estilos se queda en Avanzado con su texto tal cual, y «De videos a Shorts» ya no es un enlace de ninguna lista (`/shorts.html` no aparece): pasó al chip «Editar ▾». El nombre del ID habla de «las otras dos de su grupo» por historia |
-| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** de la tarjeta del inicio, centrado, en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige el tamaño y el peso en el `<h1>`, `[overflow-wrap:anywhere]` (la palabra se parte dentro de la tarjeta en vez de salirse), que el dorado vaya en un único `<span class="texto-oro">` dentro del `<h1>` (el fondo recortado a la letra mide lo que el texto: puesto en el `<h1>` mismo, con el espaciado de texto de WCAG 1.4.12 o con letra más grande, las letras que sobresalían de su caja quedaban transparentes), que **no** lleve `text-ambar-claro`, que no tenga icono (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
+| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** del inicio, centrado, FUERA y ARRIBA de cualquier tarjeta (dueño, 15-oct-2026, segunda ronda), en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige el tamaño y el peso en el `<h1>`, `[overflow-wrap:anywhere]` (la palabra se parte dentro de la región en vez de salirse), que el dorado vaya en un único `<span class="texto-oro">` dentro del `<h1>` (el fondo recortado a la letra mide lo que el texto: puesto en el `<h1>` mismo, con el espaciado de texto de WCAG 1.4.12 o con letra más grande, las letras que sobresalían de su caja quedaban transparentes), que **no** lleve `text-ambar-claro`, que no tenga icono (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
 | `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar. **15-oct-2026:** la misma regla, en las listas del recorrido: en Marketing › Blotato las tres tarjetas (agenda, competencia, métricas) quedan `aria-disabled` y dicen «Conecta tu Blotato para usarlo», y el clic NO navega (`preventDefault`) sino que abre el diálogo «Conecta tu Blotato»; la cuarta, MIX, se apaga igual en Marketing › Avanzado, mientras la Copiadora de estilos (que no depende de Blotato) no. El ID dice «cuatro» por las cuatro entradas del menú de antes |
 | `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga (en el recorrido: ninguna tarjeta de Blotato ni de Avanzado lleva `aria-disabled`) |
 | `inicio.menu.pregunta_ligero` | el inicio pregunta con `?redes=0`, UNA vez al montar (aunque no se abra ninguna lista), sin gastar una llamada a Blotato: el `GET /api/blotato` a secas no sale hasta abrir el diálogo |
@@ -284,7 +287,7 @@ menú, la regla de Blotato, el título) conservó sus IDs `inicio.menu.*` e
 | `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video` | el riel dice Imagen · Video · Edición (icono `cortar`) con `aria-pressed`; la caja sigue ARRANCANDO en Video; Edición trae el campo «Cuéntale a la IA qué quieres» (`aria-required`, la pista de la primera idea —`huecoDe`—, 2000 caracteres) y el título sigue siendo «¿Qué vamos a crear hoy?» |
 | `inicio.edicion.sin_video_el_boton_es_iniciar_sin_precio_dorado_enfocable_y_avisa` | sin video: «Iniciar» (antes «Editar») sin precio, DORADO (14-oct-2026; antes gris discontinuo), `aria-disabled` (no `disabled`: se puede enfocar) y, al tocarlo, avisa «Primero agrega el video: pulsa el «+» o arrástralo a la caja.» en el cuadro; sin ninguna petición |
 | `inicio.edicion.con_texto_y_sin_video_la_ayuda_dice_donde_agregarlo` | con texto y sin video, la línea «Agrega el video con el «+» o arrástralo a la caja.» reemplaza a «Escribe qué quieres hacer…» |
-| `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea` | 14-oct-2026 (**sustituye a** `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco`): ya no hay `role="group"` «Ideas para escribir» ni ningún botón con el texto de las 4 ideas, el riel sigue con sus 3 botones, el campo sigue vacío (la pista no es su valor) y `AYUDA_TEXTO` dice «Escribe qué quieres hacer con tu video.», sin «toca una idea» |
+| `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea` | 14-oct-2026 (**sustituye a** `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco`): ya no hay `role="group"` «Ideas para escribir» ni ningún botón con el texto de las 4 ideas, el riel sigue con sus 3 botones, el campo sigue vacío (la pista no es su valor) y `AYUDA_TEXTO` dice «Escribe qué quieres hacer con tu video.», sin «toca una idea». **15-oct-2026 (dueño: «quita el texto»):** esa frase ya no se ve —queda solo para el lector de pantalla (`sr-only`), como descripción de «Iniciar»—; esta prueba sigue leyendo el texto de `AYUDA_TEXTO` y que está en el árbol, y que no se ve lo prueban una suelta de `Edicion.test.tsx` y `inicio-edicion.spec.ts` |
 | `inicio.edicion.la_pista_arranca_en_la_primera_idea_sin_fundido_y_las_cuatro_leen_igual` | la pista (el `placeholder` del campo) arranca SIEMPRE en «Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»», con la opacidad en 1 y sin salir ni entrar (la carta §4: lo que ya estaba al abrir no anima); la rotación no empieza hasta cumplido el primer intervalo; `huecoDe` da la misma frase con las 4 ideas (en ese orden, sin punto final: la idea 1 y la 4 son verbo y nombre y las 4 leen igual); cambiar de familia y volver reabre en la primera |
 | `inicio.edicion.la_pista_rota_cada_4_s_con_fundido_de_salida_y_de_entrada_y_da_la_vuelta` | con el reloj falso, dos vueltas completas: a los 3.75 s la idea empieza a salir (opacidad 0, `ease-entrada`, MISMO texto todavía), a los 4 s justos cambia el texto y entra la siguiente (opacidad 1, `ease-salida`); da la vuelta a la primera y nunca salta una idea. El reloj es un solo `setTimeout` que se re-arma en cada paso |
 | `inicio.edicion.la_pista_no_rota_con_el_foco_se_congela_entera_y_retoma_al_soltarlo_vacio` | con el foco en el campo no queda ningún temporizador (`vi.getTimerCount()`) y la pista se queda en la que estaba, ENTERA aunque el foco llegue a mitad del fundido de salida (congelada a media luz sería un campo sin pista); al soltar el foco con el campo vacío retoma desde esa idea con su intervalo completo |
@@ -479,33 +482,62 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     pantallas del grupo. Producto, Ventas y Automatizaciones son fichas inertes
     («Próximamente»: se enfocan, no se abren). Hay **una sola lista de adónde
     ir**, `web/src/marca/menu.ts` (áreas → grupos → pantallas); de ella salen el
-    recorrido (`recorrido.ts`, todo su estado sin React), el mapa, las opciones,
+    recorrido (`estadoRecorrido.ts`, todo su estado sin React), el mapa, las opciones,
     la lista y las migas de las hojas, así que no se desincronizan. Lo que hacían
     `GRUPOS`, `Menu` y `EntradaMenu` de `Inicio.tsx` (y la columna `<aside>`) ya
     no existe como tal.
-  - **Se aterriza en la caja (15-oct-2026).** Al abrir `/estudio/inicio/` se ve
-    la caja, como siempre, con las migas «Marketing › Distrito»: el mapa se abre
-    desde las migas y «Estás aquí» marca el lugar actual. La caja sigue
-    ARRANCANDO en Video, donde arrancaba
+  - **Se aterriza en el mapa (15-oct-2026, segunda ronda del dueño: «el mapa
+    es el inicio»).** *Sustituye a «Se aterriza en la caja».* Al abrir
+    `/estudio/inicio/` se ve «Elige un área» con la X de las cinco áreas, con
+    **nada elegido**: la caja (Marketing › Distrito) está montada y escondida y
+    se llega a ella con Marketing → Distrito. Las entradas `?desde=…&ver=…` de las
+    hojas siguen igual; una entrada que no vale ahora aterriza en el mapa (antes
+    en la caja). La caja sigue ARRANCANDO en Video, donde arrancaba
     (`inicio.caja.arranca_en_el_clip_lo_mas_barato`,
-    `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video`):
-    por eso el primer «Volver a …» que se ve dice «Volver a Video».
-  - **Tarjeta única (15-oct-2026).** 820 px como mucho, centrada y pegada arriba
-    (`pt-16`, no se centra en vertical para que no salte de un paso a otro). Adentro, el
-    `h1` «Irremplazables» (dorado, único `h1`, sin icono), las migas y el paso con
-    su `h2` («Elige un área», «Elige un grupo», «¿Qué vamos a crear hoy?», el
-    nombre del grupo en la lista). La `<section>` de la caja deja de ser su
-    propia tarjeta (sin borde, fondo ni margen propios; pierde el
-    `min-[861px]:mt-[82px]` que la alineaba con el menú) y «Mis creaciones» queda
-    debajo, del mismo ancho.
-  - **Migas, «Volver a …» y Esc (15-oct-2026).** La ruta elegida son chips
-    («Marketing › Distrito») y cada uno reabre su nivel. Con el mapa o las
-    opciones abiertos aparece «Volver a Imagen» (o Video, o Edición: la pestaña
-    de ahora; o la pantalla de la que vienes; o el grupo). **Esc** hace lo mismo,
-    pero solo cuando el foco está dentro de la tarjeta (el `onKeyDown` es de
-    ella, no de la página: con un diálogo, el menú del «+» o la lista de «Editar
-    ▾» abiertos, Esc es de ellos). Mirar otra área NO te saca de donde estabas:
-    «Volver» regresa a Marketing › Distrito, no a Central.
+    `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video`).
+    En el estado hay un campo nuevo, `elegido` (falso solo en el reposo): sin él las
+    opciones marcarían «Estás aquí» en Distrito, el grupo de la caja escondida, y
+    sería el mismo «parece seleccionado» que el dueño pidió quitar del mapa.
+  - **El título arriba, la tarjeta solo para la caja (15-oct-2026, segunda
+    ronda).** *Sustituye a «Tarjeta única».* «Irremplazables» (dorado, único `h1`,
+    sin icono) va FUERA y ARRIBA de cualquier tarjeta y no se mueve de un paso a
+    otro (a 88 px del borde de la ventana). La tarjeta (borde, fondo y relleno) es
+    solo de la caja: 820 px como mucho, centrada, con 32 px de aire bajo el título
+    (su borde cae a 155 px a 1100×800; antes caía a 64, pegado al saldo) y sin
+    centrarse en vertical. El mapa, las opciones y la lista de un grupo son
+    pantallas sueltas, **sin cuadro alrededor**, centradas en horizontal y en el
+    alto que sobra bajo el título (`main` mide `min-h-dvh`, la sección llena el
+    resto y el paso se centra en ella; sin la caja `main` no lleva `pb`, para que
+    el hueco de abajo sea el mismo que el de arriba). Las migas van dentro de la
+    tarjeta (a la izquierda) con la caja, y centradas bajo el título en los demás
+    pasos. La `<section>` de la caja sigue sin ser su propia tarjeta (sin borde,
+    fondo ni margen propios). «Mis creaciones» queda debajo de la tarjeta, del
+    mismo ancho, solo con la caja a la vista.
+  - **Nada se ve elegido hasta que se elige (15-oct-2026, segunda ronda).**
+    Ninguna ficha del mapa lleva «Estás aquí», tono de seleccionada ni
+    `aria-current` (la insignia y el tono salieron; `EstasAqui` se quedó solo en
+    las tres opciones). Marketing y Central, las dos que se abren, se ven con el
+    mismo tono de «Central» de antes (`bg-superficie`, borde de línea); el hover y
+    el foco se conservan; Producto, Ventas y Automatizaciones siguen apagadas.
+    Las tres opciones marcan «Estás aquí» solo en el grupo que ya elegiste (o de
+    donde llegaste desde una hoja).
+  - **Migas, sin «Volver a …» y Esc (15-oct-2026, segunda ronda).** *Sustituye a
+    «Migas, «Volver a …» y Esc».* La ruta elegida son chips («Marketing ›
+    Distrito») y cada uno reabre su nivel: son la manera de subir de nivel.
+    **Ya no existe «Volver a Imagen / Video / Edición» ni «Volver a <el grupo>»**
+    (el estado perdió la acción `volver`, y `Caja` el aviso `alCambiarFamilia` que
+    solo servía para rotularlo). **Única excepción:** la página aparte de donde se
+    llegó (`hoja`, p. ej. Agenda → miga «Marketing»): no se alcanza con las migas,
+    así que se conserva «Volver a Agenda…» (un enlace, centrado bajo el título) y
+    Esc regresa a ella. **Esc:** con esa página de por medio, regresa a ella desde
+    el mapa y desde las opciones; sin ella, en las opciones sube al mapa, y en el
+    mapa y en la caja o la lista de un grupo no hace nada (`alEscape`). Sigue
+    siendo de la región y no de la página (con un diálogo, el menú del «+» o la
+    lista de «Editar ▾» abiertos, Esc es de ellos). Mirar otra área NO te saca de
+    donde estabas. El foco: abrir el inicio sin más ya no está «en la caja», así
+    que lo que antes era «aterrizar en la caja no lo mueve» es ahora «abrir el
+    inicio en el mapa, sin nada elegido, no lo mueve» (ahí Esc no hace nada); llegar
+    por la miga de otra página sí lo lleva al `h2`.
   - **La caja siempre montada (15-oct-2026).** Con el mapa, las opciones o una
     lista a la vista, la caja y lo que cuelga de ella («Mis creaciones», los
     caminos de quien empieza, los archivados) se esconden con `hidden`, no se
@@ -527,7 +559,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     «Marketing › Blotato» (o «Avanzado») como **enlaces** al inicio con
     `?desde=<lugar>&ver=mapa|grupos`. El inicio lee esos dos parámetros UNA vez,
     al abrir, con las claves validadas contra `menu.ts` (una clave que no existe
-    se ignora y se aterriza en la caja) y limpia solo lo suyo de la URL (deja
+    se ignora y se aterriza en el mapa) y limpia solo lo suyo de la URL (deja
     `?blotato=conectar` y el ancla). Las pantallas que el mapa no tiene (Admin,
     Crear, Subir, Clip, Imágenes y Shorts) no llevan migas. Las migas son
     `<ol><li>`: las pruebas de Agenda, Métricas y MIX que cuentan `listitem`
@@ -556,12 +588,28 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     compacta» (dos columnas, Central como banda de ancho completo en medio,
     trazos punteados cortos); en escritorio, una cuadrícula de 3×3 con las dos
     diagonales punteadas por detrás. Fichas de 44 px o más, letra de 13 px o más,
-    «Automatizaciones» y «Estás aquí» sin partirse a 390 ni a 320 px. El título
+    «Automatizaciones» y «Próximamente» sin partirse a 390 ni a 320 px. El título
     lleva un degradado dorado solo para él (tokens `--color-oro*` y la clase
     `texto-oro`; `docs/DISENO.md` §3). Al cambiar de paso el foco nunca cae a
-    `<body>`: va al `h2` del paso nuevo (aterrizar en la caja no lo mueve: se
+    `<body>`: va al `h2` del paso nuevo (abrir el inicio sin más no lo mueve: se
     queda en `<body>`, a propósito), y el segundo clic de un doble clic en una
     ficha del mapa (menos de 500 ms) no elige un grupo por accidente.
+  - **Edición: sin la frase de ayuda y «Iniciar» del ancho del selector de modelo
+    (15-oct-2026, segunda ronda).** (a) «Escribe qué quieres hacer con tu video.»
+    ya no se ve. No se borró porque cumple una función: es la descripción de
+    «Iniciar» (`aria-describedby`) mientras no hay texto, así que queda solo para
+    el lector de pantalla (`sr-only`, en la misma región de estado: se anuncia como
+    antes) y la región ya no deja su margen vacío. `AYUDA_TEXTO` y su texto no se
+    tocaron. (b) «Iniciar» mide **lo mismo de ancho que el selector «Modelo Veo 3.1
+    Lite · 8 s ▾»** de Video en escritorio: los dos usan UNA medida, `ANCHO_DE_ACCION`
+    (`medidas.ts`: `min-[640px]:min-w-[13.5rem]`, 216 px; el selector mide 209,5 px
+    por su rótulo y «Iniciar» medía 85, ahora los dos 216). Es un mínimo: con un
+    modelo de rótulo más largo el selector crece (se recorta el nombre con «…» solo
+    si ni así cabe) y «Iniciar» se queda en 216 px; por debajo de 640 px los dos
+    ocupan todo el ancho, como antes. El selector pasa a `justify-between` (con
+    más sitio del que pide el rótulo la flecha va al borde). «Iniciar» también toma
+    el alto de la fila (44 px, `ALTO_DE_ACCION`; antes 48), para que la fila quede
+    alineada igual que en Video.
 
   **Qué pasó con cada aserción vieja que cambió (15-oct-2026).** Ninguna se
   borró: los IDs `inicio.menu.*` e `inicio.blotato.*` se conservaron con su
@@ -594,6 +642,19 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     Irremplazables…») se reescribió para la tarjeta y se le sumó que ya no hay
     nav «Secciones»; `docs/QA-UI.md` § inicio reemplaza las filas 43 y 46,
     reescribe la 8 y la 9 y suma las 49 a 70.
+  - **Segunda ronda (15-oct-2026, «el mapa es el inicio»).** Ningún ID registrado
+    cambió de nombre ni se borró. Lo que sí cambió en las pruebas: `pintar()` de
+    `Inicio.test.tsx` llega a la caja por Marketing → Distrito antes de devolver
+    (la caja ya no es lo primero que se ve; cada prueba conserva su cuerpo), y
+    `Recorrido.test.tsx`, `estadoRecorrido.test.ts`, `Mapa.test.tsx` y los e2e
+    `inicio-recorrido`, `inicio-caja`, `inicio-edicion`, `inicio-shorts` y
+    `movimiento-reducido` se reescribieron a la realidad nueva (aterrizar en el
+    mapa, sin «Volver a …», sin «Estás aquí» en el mapa, el título fuera de la
+    tarjeta, la geometría). `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_…`
+    sigue afirmando que `AYUDA_TEXTO` dice lo mismo; que además ya no se ve lo
+    prueba una suelta de `Edicion.test.tsx` y `inicio-edicion.spec.ts`.
+    `docs/QA-UI.md` § inicio reescribe las filas 15, 43, 47, 49, 51, 52, 58, 60 a 62
+    y 64 a 66, ajusta la 46, la 59 y la 67, y suma la 71 a 73.
 
 - **Ajustes del dueño a la pestaña Edición y al menú (14-oct-2026, mirando una
   captura; el menú de la izquierda dejó de existir el 15-oct-2026, ver el

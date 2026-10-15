@@ -1,4 +1,9 @@
-// El mapa en X (paso 1 del recorrido, «Elige un área»): Central al centro y las otras cuatro áreas en las esquinas.
+// El mapa en X (paso 1 del recorrido, «Elige un área»): Central al centro y las otras cuatro áreas en las esquinas. Es el INICIO
+// (dueño, 15-oct-2026): una pantalla suelta, sin tarjeta que lo rodee, que Recorrido.tsx centra bajo el título.
+//
+// Nada se ve elegido hasta que lo eligen (dueño, 15-oct-2026: «parece que marketing está seleccionado, mientras que no debería de
+// verse de ese tono»): ninguna ficha lleva «Estás aquí», tono distinto ni `aria-current`. Marketing y Central, las dos que se abren,
+// se ven iguales; las otras tres siguen apagadas («Próximamente»).
 //
 // Escritorio: una cuadrícula de 3×3 con las dos diagonales punteadas por DETRÁS de las fichas (un SVG decorativo: se lee la X en los
 // huecos entre ellas y nunca tapa texto). Celular (≤ 560 px): «X compacta», dos columnas con Central como una banda de ancho
@@ -38,22 +43,11 @@ const ESQUINA = 'min-h-24 text-sm max-[760px]:text-xs max-[560px]:min-h-22';
 // «Central» es el centro del mapa: una letra más grande y, en el celular, la banda en una fila (ícono y nombre lado a lado).
 const CENTRO = 'min-h-24 text-md max-[760px]:text-sm max-[560px]:min-h-14 max-[560px]:flex-row max-[560px]:gap-2';
 
-/** «Estás aquí» del mapa y de las tres opciones: una etiqueta que NO se parte (a 390 y 320 px cabe en su ficha). */
-export function EstasAqui() {
-  return (
-    <span className="inline-flex min-h-6 items-center rounded-pildora bg-activa px-2 text-xs font-medium whitespace-nowrap text-texto">
-      Estás aquí
-    </span>
-  );
-}
-
 export interface PropsMapa {
-  /** El área donde estás (lleva «Estás aquí»). */
-  aqui: string;
   alElegir: (area: AreaMenu) => void;
 }
 
-export function Mapa({ aqui, alElegir }: PropsMapa) {
+export function Mapa({ alElegir }: PropsMapa) {
   return (
     <div
       role="group"
@@ -61,7 +55,7 @@ export function Mapa({ aqui, alElegir }: PropsMapa) {
       className="relative grid grid-cols-3 gap-x-3 gap-y-12 max-[560px]:grid-cols-2 max-[560px]:gap-x-2 max-[560px]:gap-y-6"
     >
       {/* las dos diagonales: la caja del SVG ES la cuadrícula (viewBox de 0 a 100, sin proporción fija), y los extremos caen
-          dentro de las fichas de las esquinas para que no asomen por los bordes de la tarjeta */}
+          dentro de las fichas de las esquinas para que no asomen por fuera de ellas */}
       <svg
         aria-hidden="true"
         focusable="false"
@@ -90,12 +84,10 @@ export function Mapa({ aqui, alElegir }: PropsMapa) {
       {EN_ORDEN.map(area => {
         const puesto = PUESTOS[area.clave]!;
         const apagada = Boolean(area.proximamente);
-        const estasAqui = aqui === area.clave;
         return (
           <button
             key={area.clave}
             type="button"
-            aria-current={estasAqui ? 'location' : undefined}
             aria-disabled={apagada || undefined}
             onClick={() => {
               if (!apagada) alElegir(area);
@@ -106,10 +98,7 @@ export function Mapa({ aqui, alElegir }: PropsMapa) {
               area.clave === 'central' ? CENTRO : ESQUINA,
               apagada
                 ? 'cursor-default border-linea bg-hundido text-secundario'
-                : unir(
-                    'cursor-pointer text-texto hover:border-campo hover:bg-elevada',
-                    estasAqui ? 'border-campo bg-elevada' : 'border-linea bg-superficie',
-                  ),
+                : 'cursor-pointer border-linea bg-superficie text-texto hover:border-campo hover:bg-elevada',
               puesto.clase,
             )}
           >
@@ -118,7 +107,6 @@ export function Mapa({ aqui, alElegir }: PropsMapa) {
                 de la página) en vez de salirse de su ficha */}
             <span className="max-w-full [hyphens:auto] [overflow-wrap:anywhere]">{area.titulo}</span>
             {apagada && <small className="text-xs font-normal">Próximamente</small>}
-            {estasAqui && <EstasAqui />}
             {puesto.trazo && (
               <span
                 aria-hidden="true"

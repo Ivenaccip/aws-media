@@ -16,10 +16,11 @@
 //    (`page.clock`), pero los fundidos de CSS corren en tiempo real: por eso se miden con muestras;
 //  · la caja entera se recorre SOLO con teclado (Tab, Shift+Tab, Enter, Espacio) y el apagado enfocable se puede activar.
 // No gasta nada: el servidor y «S3» son rutas de mentira.
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { contraste } from '../src/nucleo/contraste';
 import { animacionesVivas, pistaSePinta } from './pantallas';
+import { elegir } from './recorrido';
 
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
@@ -58,6 +59,9 @@ async function edicion(
   await page.route('**/api/editar/entrevista/costo', r => r.fulfill({ json: costo }));
   await page.route('**/api/editar/entrevista/sugerir', r => r.fulfill({ json: { lanzado: true, creditos: 8 } }));
   await page.goto('/estudio/inicio/');
+  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
+  await expect(page.getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
+  await elegir(page, 'Marketing', 'Distrito');
   if (reloj) await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await expect(campo(page)).toBeVisible();
@@ -101,6 +105,21 @@ const iniciar = (page: Page) => page.getByRole('button', { name: /^(Iniciar|Subi
 // por su `aria-haspopup`, no por su nombre: al pasar el ratón o enfocarlo, la pista (::after) se vuelve visible y Chrome la suma a su nombre
 const chip = (page: Page) => page.locator('button[aria-haspopup="listbox"]');
 
+const AYUDA = 'Escribe qué quieres hacer con tu video.';
+
+/**
+ * ¿Se ve algo de ese elemento? Playwright da por «visible» todo lo que tiene caja, y un `sr-only` mide 1 × 1 px: no sirve. Una persona no ve
+ * lo que mide 1 px o menos, o lo que está recortado del todo (`clip`), o transparente, o con `visibility: hidden`.
+ */
+function seVeAlgo(loc: Locator) {
+  return loc.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    const c = getComputedStyle(el);
+    const recortado = /^rect\(0(px)?,? 0(px)?,? 0(px)?,? 0(px)?\)$/.test(c.clip);
+    return r.width > 1 && r.height > 1 && !recortado && c.visibility !== 'hidden' && c.display !== 'none' && Number(c.opacity) > 0;
+  });
+}
+
 /** El mp4 mínimo que acepta el selector: el servidor de mentira no lo mira. */
 const VIDEO = { name: 'entrevista.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(2048, 1) };
 
@@ -124,7 +143,10 @@ test('«Iniciar» sin poder sigue enfocable con Tab y, sin texto, el clic lleva 
   await boton.click({ force: true });
   await expect(campo(page)).toBeFocused();
   await expect(page.locator('#bandeja [role="alert"]')).toHaveCount(0);
-  await expect(page.getByText('Escribe qué quieres hacer con tu video.')).toBeVisible();
+  // la frase de ayuda ya NO se ve (dueño, 15-oct-2026), pero sigue siendo la descripción de «Iniciar» para quien usa lector de pantalla
+  await expect(page.getByText(AYUDA)).toHaveCount(1);
+  expect(await seVeAlgo(page.getByText(AYUDA)), 'la frase «Escribe qué quieres hacer con tu video.» se ve').toBe(false);
+  await expect(boton).toHaveAccessibleDescription(AYUDA);
   // escribir lo enciende
   await campo(page).fill('Quítale las muletillas');
   await expect(page.getByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-disabled', 'true');
@@ -556,6 +578,55 @@ test('«Editar ▾» va junto al «+», abre su lista de dos opciones, y elegir 
   await expect(page.locator('#bandeja [role="alert"]')).toHaveCount(0);
 });
 
+// dueño, 15-oct-2026: «el botón dorado debe de tener el mismo largo como el del selector «Modelo Veo 3.1 Lite · 8 s ▾» de Video». Los dos salen de UNA
+// medida (medidas.ts: 13,5 rem = 216 px de mínimo en escritorio); el selector mide 209,5 px por su rótulo, así que sube a 216 y «Iniciar» (que
+// medía 85) también. Se mide en el navegador, con el modelo por defecto de Video, a cada ancho de escritorio.
+for (const ancho of [640, 800, 1100, 1440]) {
+  test(`a ${ancho} px «Iniciar» (Edición) mide lo mismo que el selector «Modelo …» de Video: ancho, alto y borde derecho, en la misma fila que el «+»`, async ({ page }) => {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await edicion(page);
+    const riel = page.getByRole('group', { name: 'Qué quieres crear' });
+    await riel.getByRole('button', { name: 'Video', exact: true }).click();
+    const selector = page.getByRole('button', { name: /^Modelo / });
+    await expect(selector).toContainText('Modelo Veo 3.1 Lite · 8 s');
+    const video = (await selector.boundingBox())!;
+    const masDeVideo = (await page.getByRole('button', { name: /^Agregar (imágenes|la imagen)/ }).boundingBox())!;
+    await riel.getByRole('button', { name: 'Edición', exact: true }).click();
+    const boton = (await iniciar(page).boundingBox())!;
+    const masDeEdicion = (await page.getByRole('button', { name: 'Agregar el video que quieres editar' }).boundingBox())!;
+    expect(boton.width, '«Iniciar» y el selector de modelo no miden lo mismo de ancho').toBeCloseTo(video.width, 0);
+    expect(boton.height, '«Iniciar» y el selector de modelo no miden lo mismo de alto').toBeCloseTo(video.height, 0);
+    expect(boton.x + boton.width, 'no comparten el borde derecho').toBeCloseTo(video.x + video.width, 0);
+    // la medida compartida (216 px) y el alto de la fila (44 px: el del «+»)
+    expect(boton.width).toBeCloseTo(216, 0);
+    expect(boton.height).toBeCloseTo(masDeEdicion.height, 0);
+    expect(masDeEdicion.height).toBeCloseTo(masDeVideo.height, 0);
+    // «Iniciar» está alineado con el «+» de su fila, como el selector con el suyo en Video
+    expect(Math.abs(boton.y + boton.height / 2 - (masDeEdicion.y + masDeEdicion.height / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(video.y + video.height / 2 - (masDeVideo.y + masDeVideo.height / 2))).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  });
+}
+
+test('con un modelo de rótulo más largo el selector de Video crece y «Iniciar» se queda en el mínimo compartido (no se encoge ni se desborda)', async ({ page }) => {
+  await edicion(page);
+  const riel = page.getByRole('group', { name: 'Qué quieres crear' });
+  await riel.getByRole('button', { name: 'Video', exact: true }).click();
+  const selector = page.getByRole('button', { name: /^Modelo / });
+  await selector.click();
+  await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('radio', { name: /Grok Imagine Video 1\.5 Lite/ }).click();
+  await expect(selector).toContainText('Modelo Grok Imagine Video 1.5 Lite · 8 s');
+  const largo = (await selector.boundingBox())!;
+  // más ancho que el mínimo: el selector manda con su rótulo (el nombre se recorta con «…» solo si ni así cabe)
+  expect(largo.width).toBeGreaterThan(216 + 20);
+  await riel.getByRole('button', { name: 'Edición', exact: true }).click();
+  const boton = (await iniciar(page).boundingBox())!;
+  expect(boton.width).toBeCloseTo(216, 0);
+  // y los dos siguen pegados al mismo borde derecho
+  expect(boton.x + boton.width).toBeCloseTo(largo.x + largo.width, 0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
 test.describe('en el teléfono, «Editar ▾» e «Iniciar»', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
@@ -567,7 +638,7 @@ test.describe('en el teléfono, «Editar ▾» e «Iniciar»', () => {
     const cuadro = (await campo(page).evaluate(e => e.parentElement!.getBoundingClientRect().toJSON())) as { x: number; width: number };
     expect(Math.abs(selector.y + selector.height / 2 - (mas.y + mas.height / 2))).toBeLessThanOrEqual(2);
     expect(inicio.y).toBeGreaterThanOrEqual(mas.y + mas.height);
-    // «Iniciar» ocupa el ancho del cuadro (la fila de Video hace lo mismo con «Crear»)
+    // «Iniciar» ocupa el ancho del cuadro (la fila de Video hace lo mismo con «Crear» y con el selector de modelo)
     expect(Math.abs(inicio.width - cuadro.width)).toBeLessThanOrEqual(2);
     for (const caja of [mas, selector, inicio]) {
       expect(caja.x).toBeGreaterThanOrEqual(0);

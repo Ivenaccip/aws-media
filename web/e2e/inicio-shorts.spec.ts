@@ -9,6 +9,8 @@
 // No gasta nada: el servidor y «S3» son rutas de mentira, y las de dinero de Shorts, de las que se vigila que NO se llamen.
 import { expect, test, type Page } from '@playwright/test';
 
+import { abrirLaCaja } from './recorrido';
+
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
   '**/api/slots': { slots: null, activos: 0 },
@@ -34,7 +36,8 @@ async function enShorts(page: Page) {
     dinero.push(`${r.request().method()} ${new URL(r.request().url()).pathname}`);
     return r.fulfill({ status: 500, json: { detail: 'no debía llamarse' } });
   });
-  await page.goto('/estudio/inicio/');
+  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
+  await abrirLaCaja(page);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await chip(page).click();
   await page.getByRole('option', { name: /De videos a Shorts/ }).click();

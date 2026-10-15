@@ -1,5 +1,6 @@
-// El mapa en X (paso 1 del recorrido) y las tres opciones (paso 2), cada uno solo: su orden, sus fichas inertes, «Estás aquí» y lo
-// que le avisan a quien los pinta. El recorrido entero, con la tarjeta, el foco y Esc, está en Recorrido.test.tsx.
+// El mapa en X (paso 1 del recorrido) y las tres opciones (paso 2), cada uno solo: su orden, sus fichas inertes, que NADA se ve elegido
+// en el mapa («Estás aquí» solo en las opciones, y solo si ya elegiste) y lo que le avisan a quien los pinta. El recorrido entero, con el
+// título, el foco y Esc, está en Recorrido.test.tsx.
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -15,13 +16,13 @@ describe('Mapa · las cinco áreas en su X', () => {
   });
 
   it('el orden del DOM es el de lectura, fila a fila: Marketing, Producto, Central, Ventas, Automatizaciones (así Tab recorre la X como se ve)', () => {
-    render(<Mapa aqui="mkt" alElegir={() => undefined} />);
+    render(<Mapa alElegir={() => undefined} />);
     const fichas = within(screen.getByRole('group', { name: 'Áreas' })).getAllByRole('button');
     expect(fichas.map(f => f.querySelector('span')?.textContent)).toEqual(['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
   });
 
   it('cada ficha va a su lugar de la cuadrícula: esquinas para cuatro y el centro para Central (y la banda de ancho completo en el celular)', () => {
-    render(<Mapa aqui="mkt" alElegir={() => undefined} />);
+    render(<Mapa alElegir={() => undefined} />);
     const clases = (nombre: string) => screen.getByRole('button', { name: new RegExp(`^${nombre}`) }).className.split(/\s+/);
     expect(clases('Marketing')).toEqual(expect.arrayContaining(['col-start-1', 'row-start-1']));
     expect(clases('Producto')).toEqual(expect.arrayContaining(['col-start-3', 'row-start-1', 'max-[560px]:col-start-2']));
@@ -34,7 +35,7 @@ describe('Mapa · las cinco áreas en su X', () => {
 
   it('Producto, Ventas y Automatizaciones se ven apagadas («Próximamente», aria-disabled) y no avisan al pulsarlas; Marketing y Central sí', async () => {
     const alElegir = vi.fn();
-    render(<Mapa aqui="mkt" alElegir={alElegir} />);
+    render(<Mapa alElegir={alElegir} />);
     for (const nombre of ['Producto', 'Ventas', 'Automatizaciones']) {
       const ficha = screen.getByRole('button', { name: new RegExp(`^${nombre}`) });
       expect(ficha).toHaveAttribute('aria-disabled', 'true');
@@ -50,7 +51,7 @@ describe('Mapa · las cinco áreas en su X', () => {
   });
 
   it('las apagadas siguen en el orden de Tab (con teclado se llega a ellas y el lector las lee), sin tabindex que las saque', async () => {
-    render(<Mapa aqui="mkt" alElegir={() => undefined} />);
+    render(<Mapa alElegir={() => undefined} />);
     await userEvent.tab();
     const vistas: string[] = [];
     for (let i = 0; i < 5; i++) {
@@ -60,24 +61,40 @@ describe('Mapa · las cinco áreas en su X', () => {
     expect(vistas).toEqual(['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
   });
 
-  it('«Estás aquí» marca el área donde estás (y solo esa), con aria-current', () => {
-    const { rerender } = render(<Mapa aqui="central" alElegir={() => undefined} />);
-    const aqui = screen.getAllByText('Estás aquí');
-    expect(aqui).toHaveLength(1);
-    expect(screen.getByRole('button', { name: /^Central/ })).toHaveAttribute('aria-current', 'location');
-    expect(screen.getByRole('button', { name: /^Marketing/ })).not.toHaveAttribute('aria-current');
-    rerender(<Mapa aqui="mkt" alElegir={() => undefined} />);
-    expect(screen.getByRole('button', { name: /^Marketing/ })).toHaveTextContent('Estás aquí');
-    expect(screen.getByRole('button', { name: /^Central/ })).not.toHaveTextContent('Estás aquí');
+  it('ninguna ficha se ve elegida: sin «Estás aquí», sin aria-current y sin el tono de seleccionada (dueño, 15-oct-2026)', () => {
+    render(<Mapa alElegir={() => undefined} />);
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    for (const ficha of screen.getAllByRole('button')) {
+      expect(ficha).not.toHaveAttribute('aria-current');
+      // el tono de «elegida» era `border-campo bg-elevada` a secas; ahora esas dos solo aparecen con `hover:`
+      const clases = ficha.className.split(/\s+/);
+      expect(clases).not.toContain('bg-elevada');
+      expect(clases).not.toContain('border-campo');
+    }
   });
 
-  it('«Estás aquí» no se parte en dos renglones (whitespace-nowrap) ni se corta: así cabe a 390 y a 320', () => {
-    render(<Mapa aqui="mkt" alElegir={() => undefined} />);
-    expect(screen.getByText('Estás aquí').className).toContain('whitespace-nowrap');
+  it('Marketing y Central, las dos que se abren, se ven EXACTAMENTE igual (mismo borde, mismo fondo, mismo texto); el hover se conserva', () => {
+    render(<Mapa alElegir={() => undefined} />);
+    // todo menos lo que las distingue de sitio y de tamaño (la cuadrícula, el centro más grande): el aspecto
+    const aspecto = (nombre: string) =>
+      screen
+        .getByRole('button', { name: new RegExp(`^${nombre}`) })
+        .className.split(/\s+/)
+        .filter(c => /^(border|bg|text-texto|hover:|cursor|font)/.test(c) && !/^(text-(xs|sm|md))$/.test(c))
+        .sort();
+    expect(aspecto('Marketing')).toEqual(aspecto('Central'));
+    expect(aspecto('Marketing')).toEqual(expect.arrayContaining(['border-linea', 'bg-superficie', 'hover:border-campo', 'hover:bg-elevada']));
+  });
+
+  it('las apagadas se distinguen de las que se abren: fondo hundido y texto secundario, sin hover', () => {
+    render(<Mapa alElegir={() => undefined} />);
+    const apagada = screen.getByRole('button', { name: /^Producto/ }).className.split(/\s+/);
+    expect(apagada).toEqual(expect.arrayContaining(['border-linea', 'bg-hundido', 'text-secundario']));
+    expect(apagada).not.toContain('hover:bg-elevada');
   });
 
   it('las dos diagonales y los trazos cortos del celular son decoración: ocultos al lector y sin recibir clics', () => {
-    const { container } = render(<Mapa aqui="mkt" alElegir={() => undefined} />);
+    const { container } = render(<Mapa alElegir={() => undefined} />);
     const svg = container.querySelector('svg[viewBox="0 0 100 100"]')!;
     expect(svg).toHaveAttribute('aria-hidden', 'true');
     expect(svg.querySelectorAll('line')).toHaveLength(2);
@@ -93,7 +110,7 @@ describe('Mapa · las cinco áreas en su X', () => {
   });
 
   it('«Automatizaciones» (la palabra más larga) puede partirse como último recurso en vez de salirse de su ficha', () => {
-    render(<Mapa aqui="mkt" alElegir={() => undefined} />);
+    render(<Mapa alElegir={() => undefined} />);
     expect(screen.getByText('Automatizaciones').className).toContain('[overflow-wrap:anywhere]');
   });
 });
@@ -111,7 +128,7 @@ describe('Grupos · las tres opciones', () => {
     expect(tarjetas[2]).toHaveTextContent('Publicaciones automáticas · Copiadora de estilos');
   });
 
-  it('«Estás aquí» va solo en el grupo donde estás, y sin grupo (otra área) en ninguno', () => {
+  it('«Estás aquí» va solo en el grupo donde estás (si ya elegiste uno), y sin grupo (otra área, o nada elegido) en ninguno', () => {
     const { rerender } = render(<Grupos area={marketing} aqui="blotato" alElegir={() => undefined} />);
     expect(screen.getAllByText('Estás aquí')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /^Blotato/ })).toHaveAttribute('aria-current', 'location');

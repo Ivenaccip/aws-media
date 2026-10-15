@@ -1,7 +1,9 @@
-// El recorrido del inicio como COMPORTAMIENTO (dueño, 15-oct-2026: «Mapa con Irremplazables»): una tarjeta con tres pasos, las migas,
-// «Volver a …», Esc, el foco, la caja que no se desmonta, lo que va debajo, y la entrada por ?desde=…&ver=…. Se prueba con el Inicio
-// entero (lo que ve la persona), con el servidor simulado. La lógica sola está en estadoRecorrido.test.ts; el mapa, las opciones y la
-// lista, cada uno solo, en Mapa.test.tsx y Pantallas.test.tsx.
+// El recorrido del inicio como COMPORTAMIENTO (dueño, 15-oct-2026: «Mapa con Irremplazables», y en la segunda ronda «el mapa es el
+// inicio»): se aterriza en el mapa, el título va arriba y fuera de cualquier tarjeta, solo la caja lleva tarjeta, no hay «Volver a …» (las
+// migas suben de nivel; la única excepción es la página aparte de donde se llegó), Esc, el foco, la caja que no se desmonta, lo que va
+// debajo, y la entrada por ?desde=…&ver=…. Se prueba con el Inicio entero (lo que ve la persona), con el servidor simulado. La lógica sola
+// está en estadoRecorrido.test.ts; el mapa, las opciones y la lista, cada uno solo, en Mapa.test.tsx y Pantallas.test.tsx; la geometría
+// (centrado, posición del título, ancho de la tarjeta) NO se puede medir en jsdom: la miden las pruebas de navegador (e2e/inicio-recorrido).
 import { createRef, StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -45,6 +47,7 @@ function montar({ proyectos = [] as Proyecto[], blotato = CONECTADO as EstadoBlo
 }
 
 let ir: ReturnType<typeof vi.fn<(url: string) => void>>;
+/** El inicio recién abierto: el mapa, con la caja montada y escondida. */
 const pintar = () => render(<Inicio ir={ir} />);
 
 beforeEach(() => {
@@ -59,62 +62,208 @@ beforeEach(() => {
 const campo = () => screen.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' });
 const hayCaja = () => screen.queryByRole('textbox', { name: '¿Qué vamos a crear hoy?' }) !== null;
 const h2 = (nombre: string) => screen.getByRole('heading', { level: 2, name: nombre });
-const tarjeta = () => screen.getByRole('region', { name: 'Irremplazables' });
+/** La región del inicio: el título, las migas y el paso de ahora (no es la tarjeta: esa es `[data-limite-lista]`). */
+const region = () => screen.getByRole('region', { name: 'Irremplazables' });
+/** La tarjeta de la caja (borde, fondo y relleno) o, en los demás pasos, el mismo contenedor sin nada de eso. */
+const cuerpo = () => region().querySelector<HTMLElement>('[data-limite-lista]')!;
 const migaArea = (area = 'Marketing') => screen.getByRole('button', { name: `Volver al mapa para cambiar de área (ahora: ${area})` });
 const migaGrupo = (area: string, grupo: string) => screen.getByRole('button', { name: `Volver a las opciones de ${area} (ahora: ${grupo})` });
-const volverA = (donde: string) => screen.getByRole('button', { name: `Volver a ${donde}` });
+/** Todo «Volver a …» que haya: un botón o un enlace. Las migas se llaman «Volver al mapa…» y «Volver a las opciones…» (no cuentan). */
+const volveres = () => {
+  const nombre = { name: /^Volver a (?!las opciones)/ };
+  return [...screen.queryAllByRole('button', nombre), ...screen.queryAllByRole('link', nombre)];
+};
 const ficha = (nombre: RegExp | string) => within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: nombre });
 // la lista de pantallas de un grupo (las migas son otra lista, dentro de su <nav>)
 const lista = () => screen.getAllByRole('list').find(l => !l.closest('nav'))!;
 const tarjetaDeGrupo = (area: string, grupo: string) => within(screen.getByRole('group', { name: area })).getByRole('button', { name: new RegExp(`^${grupo}`) });
+const riel = () => within(screen.getByRole('group', { name: 'Qué quieres crear' }));
 
 async function alMapa() {
   await userEvent.click(migaArea());
 }
+/** Desde el mapa: el área elegida. */
 async function alasOpciones(area = 'Marketing') {
-  await alMapa();
   await userEvent.click(ficha(new RegExp(`^${area}`)));
 }
+/** Desde el mapa: el área y el grupo. */
 async function aLaLista(area: string, grupo: string) {
   await alasOpciones(area);
   await userEvent.click(tarjetaDeGrupo(area, grupo));
 }
+/** Desde el mapa, el camino a la caja: Marketing → Distrito. */
+async function alaCaja() {
+  await aLaLista('Marketing', 'Distrito');
+}
+/** El inicio ya en la caja (lo que antes era aterrizar). */
+async function pintarEnLaCaja() {
+  const r = pintar();
+  await alaCaja();
+  return r;
+}
 
-describe('la tarjeta · se aterriza en la caja', () => {
-  it('UNA tarjeta con «Irremplazables» (el único h1), las migas Marketing › Distrito y la caja; sin menú a la izquierda ni «Volver a …»', async () => {
+describe('el inicio · se aterriza en el mapa', () => {
+  it('lo primero que se ve es «Elige un área» con las cinco áreas: sin migas, sin «Volver a …», y la caja escondida', async () => {
+    pintar();
+    expect(h2('Elige un área')).toBeInTheDocument();
+    const nombres = within(screen.getByRole('group', { name: 'Áreas' })).getAllByRole('button').map(b => b.querySelector('span')?.textContent);
+    expect(nombres).toEqual(['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
+    expect(screen.queryByRole('navigation', { name: 'Dónde estás' })).toBeNull();
+    expect(volveres()).toHaveLength(0);
+    expect(hayCaja()).toBe(false);
+    expect(screen.queryByRole('heading', { name: '¿Qué vamos a crear hoy?' })).toBeNull();
+  });
+
+  it('la caja está MONTADA aunque no se vea (el estado vive en ella): su campo está en el árbol, escondido', () => {
     const { container } = pintar();
-    expect(screen.getAllByRole('heading', { level: 1 }).map(h => h.textContent)).toEqual(['Irremplazables']);
-    // la tarjeta es el único bloque con el título, las migas y la caja juntos
-    expect(within(tarjeta()).getByRole('heading', { level: 1 })).toBeInTheDocument();
-    expect(within(tarjeta()).getByRole('navigation', { name: 'Dónde estás' })).toBeInTheDocument();
-    expect(within(tarjeta()).getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeInTheDocument();
-    expect(migaArea()).toHaveTextContent('Marketing');
-    expect(migaGrupo('Marketing', 'Distrito')).toHaveAttribute('aria-current', 'step');
-    expect(screen.queryByRole('button', { name: /^Volver a (Imagen|Video|Edición)$/ })).toBeNull();
-    // lo de la izquierda ya no existe: ni el menú, ni el aside, ni sus grupos
+    const montado = container.querySelector('textarea');
+    expect(montado).not.toBeNull();
+    expect(montado?.closest('[hidden]')).not.toBeNull();
+  });
+
+  it('nada se ve elegido: ninguna ficha lleva «Estás aquí» ni aria-current (dueño: «no debería de verse de ese tono, hasta que lo seleccionen»)', () => {
+    pintar();
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    for (const f of within(screen.getByRole('group', { name: 'Áreas' })).getAllByRole('button')) expect(f).not.toHaveAttribute('aria-current');
+  });
+
+  it('…y tampoco después de haber estado en la caja de Marketing: el mapa sigue sin marcar nada', async () => {
+    await pintarEnLaCaja();
+    await alMapa();
+    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    for (const f of within(screen.getByRole('group', { name: 'Áreas' })).getAllByRole('button')) expect(f).not.toHaveAttribute('aria-current');
+  });
+
+  it('Marketing y Central, las dos que se abren, se ven iguales: el mismo borde y el mismo fondo (el tono de hoy de «Central»)', () => {
+    pintar();
+    const tono = (nombre: RegExp) => ficha(nombre).className.split(/\s+/).filter(c => /^(border-linea|bg-superficie|bg-elevada|border-campo)$/.test(c));
+    expect(tono(/^Marketing/)).toEqual(['border-linea', 'bg-superficie']);
+    expect(tono(/^Central/)).toEqual(['border-linea', 'bg-superficie']);
+  });
+
+  it('Producto, Ventas y Automatizaciones no abren nada: el mapa se queda como estaba', async () => {
+    pintar();
+    for (const nombre of ['Producto', 'Ventas', 'Automatizaciones']) {
+      await userEvent.click(ficha(new RegExp(`^${nombre}`)));
+      expect(h2('Elige un área')).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('heading', { name: 'Elige un grupo' })).toBeNull();
+  });
+
+  it('sin menú a la izquierda: ni navegación de secciones, ni aside', () => {
+    const { container } = pintar();
     expect(screen.queryByRole('navigation', { name: 'Secciones' })).toBeNull();
     expect(container.querySelector('aside')).toBeNull();
     expect(screen.queryByText('Estudio de Contenido')).toBeNull();
+  });
+});
+
+describe('el título «Irremplazables» · fuera y arriba de cualquier tarjeta, en todos los pasos', () => {
+  const sinTarjeta = (el: HTMLElement) => !/(^|\s)(border|bg-superficie|p-6)(\s|$)/.test(el.className);
+
+  it('es el único h1, en dorado, y NO está dentro del contenedor de la tarjeta: va antes que él', async () => {
+    pintar();
+    expect(screen.getAllByRole('heading', { level: 1 }).map(h => h.textContent)).toEqual(['Irremplazables']);
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1.querySelector('.texto-oro')).not.toBeNull();
+    expect(h1).toHaveClass('[overflow-wrap:anywhere]');
+    expect(cuerpo().contains(h1)).toBe(false);
+    expect(h1.compareDocumentPosition(cuerpo()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // y es lo primero de la región, que lo toma como su nombre
+    expect(region().firstElementChild).toBe(h1);
+  });
+
+  it('en la caja el h1 sigue fuera: la tarjeta lleva las migas y la caja, y el título queda arriba de ella', async () => {
+    await pintarEnLaCaja();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(cuerpo().contains(h1)).toBe(false);
+    expect(region().firstElementChild).toBe(h1);
+    expect(within(cuerpo()).getByRole('navigation', { name: 'Dónde estás' })).toBeInTheDocument();
+    expect(within(cuerpo()).getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeInTheDocument();
+  });
+
+  it('en TODOS los pasos (mapa, opciones, lista, caja) hay un solo h1, es lo primero de la región y no está en la tarjeta', async () => {
+    pintar();
+    const comprobar = () => {
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(region().firstElementChild).toBe(screen.getByRole('heading', { level: 1 }));
+      expect(cuerpo().contains(screen.getByRole('heading', { level: 1 }))).toBe(false);
+    };
+    comprobar();
+    await alasOpciones();
+    comprobar();
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
+    comprobar();
+    await userEvent.click(migaGrupo('Marketing', 'Blotato'));
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+    comprobar();
+  });
+
+  it('SOLO la caja lleva tarjeta (borde, fondo y relleno): el mapa, las opciones y la lista de un grupo son pantallas sueltas', async () => {
+    pintar();
+    expect(sinTarjeta(cuerpo())).toBe(true); // el mapa
+    await alasOpciones();
+    expect(sinTarjeta(cuerpo())).toBe(true); // las opciones
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
+    expect(sinTarjeta(cuerpo())).toBe(true); // la lista
+    await userEvent.click(migaGrupo('Marketing', 'Blotato'));
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+    expect(cuerpo()).toHaveClass('border', 'border-linea', 'bg-superficie', 'p-6'); // la caja
+    // y al salir de la caja la tarjeta se va: el MISMO contenedor, sin nada de tarjeta
+    await alMapa();
+    expect(sinTarjeta(cuerpo())).toBe(true);
+  });
+
+  it('las migas van DENTRO de la tarjeta (a la izquierda) con la caja, y centradas bajo el título en los pasos sin tarjeta', async () => {
+    pintar();
+    await alasOpciones();
+    const filaDelMapa = screen.getByRole('navigation', { name: 'Dónde estás' }).parentElement!;
+    expect(filaDelMapa).toHaveClass('justify-center');
+    expect(cuerpo().contains(filaDelMapa)).toBe(true); // el contenedor es el mismo, solo que sin tarjeta
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+    const filaDeLaCaja = screen.getByRole('navigation', { name: 'Dónde estás' }).parentElement!;
+    expect(filaDeLaCaja).not.toHaveClass('justify-center');
+    expect(cuerpo()).toHaveClass('border');
+  });
+
+  it('el título no pierde nada de lo suyo al salir de la tarjeta: texto dorado en un <span> en línea, y partible para no salirse a 320 px', () => {
+    pintar();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toHaveClass('text-center', 'font-titulo', 'text-titulo-lg', 'font-extrabold');
+    expect(h1.firstElementChild?.tagName).toBe('SPAN');
+    expect(h1.firstElementChild).toHaveClass('texto-oro');
+  });
+});
+
+describe('la caja, al llegar a ella · Marketing › Distrito', () => {
+  it('elegir Marketing y Distrito la muestra, con sus migas, y NO hay «Volver a Imagen/Video/Edición»', async () => {
+    await pintarEnLaCaja();
+    expect(campo()).toBeInTheDocument();
+    expect(migaArea()).toHaveTextContent('Marketing');
+    expect(migaGrupo('Marketing', 'Distrito')).toHaveAttribute('aria-current', 'step');
+    expect(volveres()).toHaveLength(0);
     await screen.findByRole('button', { name: /^Imagen$/ });
   });
 
-  it('la tarjeta es el límite de las listas de la caja: lleva data-limite-lista, que SelectorOpcion busca para no sobresalir de ella', () => {
-    pintar();
-    expect(tarjeta()).toHaveAttribute('data-limite-lista');
+  it('la tarjeta es el límite de las listas de la caja: lleva data-limite-lista, que SelectorOpcion busca para no sobresalir de ella', async () => {
+    await pintarEnLaCaja();
+    expect(cuerpo()).toHaveAttribute('data-limite-lista');
     // y el chip de la caja está dentro de ella (si no, no la encontraría con `closest`)
-    expect(document.querySelector('button[aria-haspopup="listbox"]')!.closest('[data-limite-lista]')).toBe(tarjeta());
+    expect(document.querySelector('button[aria-haspopup="listbox"]')!.closest('[data-limite-lista]')).toBe(cuerpo());
   });
 
-  it('un h2 por paso dentro de la tarjeta: «¿Qué vamos a crear hoy?» en la caja, y el de cada paso al abrirlo', async () => {
+  it('un h2 por paso: «Elige un área» al abrir, el de cada paso al abrirlo, y «¿Qué vamos a crear hoy?» en la caja', async () => {
     pintar();
-    const titulos = () => within(tarjeta()).getAllByRole('heading', { level: 2 }).map(h => h.textContent);
-    expect(titulos()).toEqual(['¿Qué vamos a crear hoy?']);
-    await alMapa();
+    const titulos = () => within(region()).getAllByRole('heading', { level: 2 }).map(h => h.textContent);
     expect(titulos()).toEqual(['Elige un área']);
     await userEvent.click(ficha(/^Marketing/));
     expect(titulos()).toEqual(['Elige un grupo']);
     await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
     expect(titulos()).toEqual(['Blotato']);
+    await userEvent.click(migaGrupo('Marketing', 'Blotato'));
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+    expect(titulos()).toEqual(['¿Qué vamos a crear hoy?']);
     // y siempre el mismo y único h1
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
@@ -122,7 +271,7 @@ describe('la tarjeta · se aterriza en la caja', () => {
 
 describe('lo que la caja le dice a quien no escribió nada', () => {
   it('ya no lo manda a un menú de la izquierda que no existe: dice solo lo que falta', async () => {
-    pintar();
+    await pintarEnLaCaja();
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
     const aviso = await screen.findByRole('alert');
     expect(aviso).toHaveTextContent('Cuéntanos qué quieres primero.');
@@ -135,7 +284,7 @@ describe('lo que la caja le dice a quien no escribió nada', () => {
 describe('un error de la caja no se queda en el cuadro de avisos mientras la caja está escondida', () => {
   it('«Crear» sin texto y abrir el mapa: el error de la caja sale del cuadro; con otro paso a la vista no vuelve a quitarse nada', async () => {
     const avisos = ponerAvisos();
-    pintar();
+    await pintarEnLaCaja();
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
     expect(avisos.mostrar).toHaveBeenCalledExactlyOnceWith('Cuéntanos qué quieres primero.', { tipo: 'mal', clave: 'caja' });
     // con la caja a la vista el error se queda (hasta que se corrija o se cierre)
@@ -150,11 +299,12 @@ describe('un error de la caja no se queda en el cuadro de avisos mientras la caj
 
   it('también el de Edición («Primero agrega el video…») y también cuando se esconde por la lista de un grupo', async () => {
     const avisos = ponerAvisos();
-    pintar();
-    await userEvent.click(within(screen.getByRole('group', { name: 'Qué quieres crear' })).getByRole('button', { name: 'Edición' }));
+    await pintarEnLaCaja();
+    await userEvent.click(riel().getByRole('button', { name: 'Edición' }));
     await userEvent.click(screen.getByRole('button', { name: /^Iniciar/ }));
     expect(avisos.mostrar).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Primero agrega el video'), { tipo: 'mal', clave: 'caja' });
-    await aLaLista('Marketing', 'Blotato');
+    await userEvent.click(migaGrupo('Marketing', 'Distrito'));
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
     expect(avisos.quitar).toHaveBeenCalledExactlyOnceWith('caja');
   });
 
@@ -171,7 +321,7 @@ describe('un error de la caja no se queda en el cuadro de avisos mientras la caj
       '/api/moderar': () => json({ permitido: true }),
       '/api/clip/generar': () => new Promise<Response>(() => undefined),
     });
-    pintar();
+    await pintarEnLaCaja();
     await userEvent.type(campo(), 'un gato en la luna');
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(avisos.mostrar).toHaveBeenCalledWith(expect.stringContaining('Ya estamos creando'), { tipo: 'ok', clave: 'caja' }));
@@ -180,31 +330,17 @@ describe('un error de la caja no se queda en el cuadro de avisos mientras la caj
   });
 });
 
-describe('el mapa', () => {
-  it('la miga del área lo abre: «Elige un área», las cinco áreas y «Estás aquí» en Marketing', async () => {
-    pintar();
+describe('el mapa, desde la caja', () => {
+  it('la miga del área lo abre; en el mapa se está eligiendo el primer nivel: sin migas y sin «Volver a …»', async () => {
+    await pintarEnLaCaja();
     await alMapa();
     expect(h2('Elige un área')).toBeInTheDocument();
-    const nombres = within(screen.getByRole('group', { name: 'Áreas' })).getAllByRole('button').map(b => b.querySelector('span')?.textContent);
-    expect(nombres).toEqual(['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
-    expect(ficha(/^Marketing/)).toHaveTextContent('Estás aquí');
-    // en el mapa se está eligiendo el primer nivel: sin migas, y «Volver a …» a la derecha
     expect(screen.queryByRole('navigation', { name: 'Dónde estás' })).toBeNull();
-    expect(volverA('Video')).toBeInTheDocument();
+    expect(volveres()).toHaveLength(0);
   });
 
-  it('Producto, Ventas y Automatizaciones no abren nada: el mapa se queda como estaba', async () => {
-    pintar();
-    await alMapa();
-    for (const nombre of ['Producto', 'Ventas', 'Automatizaciones']) {
-      await userEvent.click(ficha(new RegExp(`^${nombre}`)));
-      expect(h2('Elige un área')).toBeInTheDocument();
-    }
-    expect(screen.queryByRole('heading', { name: 'Elige un grupo' })).toBeNull();
-  });
-
-  it('la caja se esconde pero SIGUE MONTADA: lo escrito está ahí al volver, y «Volver a …» dice a qué pestaña regresas', async () => {
-    const { container } = pintar();
+  it('la caja se esconde pero SIGUE MONTADA: lo escrito y la pestaña están ahí al volver a ella por Marketing › Distrito', async () => {
+    const { container } = await pintarEnLaCaja();
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     await userEvent.type(campo(), 'un faro de noche');
     await alMapa();
@@ -213,64 +349,87 @@ describe('el mapa', () => {
     const montado = container.querySelector('textarea');
     expect(montado).toHaveValue('un faro de noche');
     expect(montado?.closest('[hidden]')).not.toBeNull();
-    await userEvent.click(volverA('Imagen'));
+    await alaCaja();
     expect(campo()).toHaveValue('un faro de noche');
     expect(screen.getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('«Volver a …» lleva el nombre de la pestaña de ahora: Imagen, Video o Edición (y de la que cambies con el riel)', async () => {
-    pintar();
-    for (const [pestana, rotulo] of [['Imagen', 'Imagen'], ['Edición', 'Edición'], ['Video', 'Video']] as const) {
+  it('no hay «Volver a Imagen», «Volver a Video» ni «Volver a Edición»: ni con el mapa ni con las opciones abiertas, en ninguna pestaña', async () => {
+    await pintarEnLaCaja();
+    for (const pestana of ['Imagen', 'Edición', 'Video']) {
       await userEvent.click(screen.getByRole('button', { name: pestana }));
       await alMapa();
-      await userEvent.click(volverA(rotulo));
+      expect(volveres()).toHaveLength(0);
+      await alasOpciones();
+      expect(volveres()).toHaveLength(0);
+      await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+      // al volver a la caja, la pestaña que dejaste sigue siendo la que elegiste
       expect(screen.getByRole('button', { name: pestana })).toHaveAttribute('aria-pressed', 'true');
     }
   });
 });
 
 describe('las tres opciones', () => {
-  it('elegir Marketing en el mapa abre Distrito · Blotato · Avanzado, con lo que trae cada uno y «Estás aquí» en Distrito', async () => {
+  it('elegir Marketing en el mapa abre Distrito · Blotato · Avanzado, con lo que trae cada uno y SIN «Estás aquí»: nadie ha elegido nada', async () => {
     pintar();
     await alasOpciones();
     expect(h2('Elige un grupo')).toBeInTheDocument();
     const grupos = within(screen.getByRole('group', { name: 'Marketing' })).getAllByRole('button');
     expect(grupos.map(g => g.querySelector('b')?.textContent)).toEqual(['Distrito', 'Blotato', 'Avanzado']);
     expect(grupos[0]).toHaveTextContent('Imagen · Video · Edición');
-    expect(grupos[0]).toHaveTextContent('Estás aquí');
+    // el grupo de la caja escondida no se marca: sería el mismo «parece seleccionado» que se quitó del mapa
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    for (const g of grupos) expect(g).not.toHaveAttribute('aria-current');
     // la miga del área está (y es donde estás); la del grupo todavía no
     expect(migaArea()).toHaveAttribute('aria-current', 'step');
     expect(screen.queryByRole('button', { name: /^Volver a las opciones de/ })).toBeNull();
+    expect(volveres()).toHaveLength(0);
   });
 
-  it('elegir Distrito vuelve a la caja, tal como estaba', async () => {
+  it('después de elegir un grupo SÍ se sabe dónde estás: al reabrir las opciones, «Estás aquí» está en ese grupo', async () => {
     pintar();
+    await aLaLista('Marketing', 'Blotato');
+    await userEvent.click(migaGrupo('Marketing', 'Blotato'));
+    const grupos = within(screen.getByRole('group', { name: 'Marketing' })).getAllByRole('button');
+    expect(grupos.filter(g => g.textContent?.includes('Estás aquí')).map(g => g.querySelector('b')?.textContent)).toEqual(['Blotato']);
+    expect(tarjetaDeGrupo('Marketing', 'Blotato')).toHaveAttribute('aria-current', 'location');
+    expect(tarjetaDeGrupo('Marketing', 'Distrito')).not.toHaveAttribute('aria-current');
+  });
+
+  it('elegir Distrito muestra la caja, tal como estaba', async () => {
+    await pintarEnLaCaja();
     await userEvent.type(campo(), 'mi perro en la playa');
+    await alMapa();
     await alasOpciones();
     await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
     expect(campo()).toHaveValue('mi perro en la playa');
-    expect(screen.queryByRole('button', { name: /^Volver a Video$/ })).toBeNull();
+    expect(volveres()).toHaveLength(0);
   });
 
-  it('mirar otra área NO te saca de donde estabas: «Volver» regresa a Marketing › Distrito, no a Central', async () => {
-    pintar();
+  it('mirar otra área NO te saca de donde estabas: en Central ninguna tarjeta dice «Estás aquí», y al volver a Marketing sigue en Distrito', async () => {
+    await pintarEnLaCaja();
+    await alMapa();
     await alasOpciones('Central');
     expect(within(screen.getByRole('group', { name: 'Central' })).getAllByRole('button').map(g => g.querySelector('b')?.textContent)).toEqual([
       'Distrito',
       'Deepseek',
     ]);
-    // en Central no estás en ninguno: ninguna tarjeta dice «Estás aquí»
+    // en Central no estás en ninguno
     expect(screen.queryByText('Estás aquí')).toBeNull();
-    await userEvent.click(volverA('Video'));
+    await userEvent.click(migaArea('Central'));
+    await alasOpciones('Marketing');
+    expect(tarjetaDeGrupo('Marketing', 'Distrito')).toHaveTextContent('Estás aquí');
+    // y la caja de Marketing › Distrito sigue siendo la caja: no se movió
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
     expect(campo()).toBeInTheDocument();
     expect(migaGrupo('Marketing', 'Distrito')).toBeInTheDocument();
   });
 
-  it('la miga del grupo reabre las opciones de SU área, y la del área el mapa', async () => {
-    pintar();
+  it('la miga del grupo reabre las opciones de SU área, y la del área el mapa; sin «Volver a …» en ninguna', async () => {
+    await pintarEnLaCaja();
     await userEvent.click(migaGrupo('Marketing', 'Distrito'));
     expect(h2('Elige un grupo')).toBeInTheDocument();
-    expect(volverA('Video')).toBeInTheDocument();
+    expect(volveres()).toHaveLength(0);
     await userEvent.click(migaArea());
     expect(h2('Elige un área')).toBeInTheDocument();
   });
@@ -280,7 +439,6 @@ describe('la lista de un grupo', () => {
   it('Marketing › Blotato: su nombre, el botón de conectar y sus tres pantallas; la caja y lo de debajo se esconden', async () => {
     montar({ proyectos: [P1] });
     pintar();
-    await screen.findByRole('heading', { name: 'Mis creaciones' });
     await aLaLista('Marketing', 'Blotato');
     expect(h2('Blotato')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ })).toBeInTheDocument();
@@ -291,18 +449,19 @@ describe('la lista de un grupo', () => {
     ]);
     expect(hayCaja()).toBe(false);
     expect(screen.queryByRole('heading', { name: 'Mis creaciones' })).toBeNull();
-    // migas: Marketing › Blotato, con el grupo como el lugar de ahora; y «Volver a …» dice Blotato porque ahí estás
+    // migas: Marketing › Blotato, con el grupo como el lugar de ahora; y ningún «Volver a …»
     expect(migaGrupo('Marketing', 'Blotato')).toHaveAttribute('aria-current', 'step');
-    expect(screen.queryByRole('button', { name: /^Volver a Blotato$/ })).toBeNull();
+    expect(volveres()).toHaveLength(0);
   });
 
-  it('desde la lista, el mapa dice «Volver a Blotato» (la lista es donde estás) y «Estás aquí» en Marketing', async () => {
+  it('desde la lista, el mapa no dice «Volver a Blotato» ni marca Marketing; las opciones marcan Blotato como donde estás', async () => {
     pintar();
     await aLaLista('Marketing', 'Blotato');
     await userEvent.click(migaArea());
-    expect(ficha(/^Marketing/)).toHaveTextContent('Estás aquí');
-    await userEvent.click(volverA('Blotato'));
-    expect(h2('Blotato')).toBeInTheDocument();
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    expect(volveres()).toHaveLength(0);
+    await alasOpciones();
+    expect(tarjetaDeGrupo('Marketing', 'Blotato')).toHaveTextContent('Estás aquí');
   });
 
   it('Central › Distrito: las cuatro pantallas salen «Próximamente» y ninguna es un enlace; Deepseek dice que no está disponible', async () => {
@@ -332,53 +491,68 @@ describe('debajo de la tarjeta', () => {
   it('«Mis creaciones» se ve solo con la caja a la vista: con el mapa o una lista se esconde, y SIGUE montada (no pierde su filtro)', async () => {
     montar({ proyectos: [P1] });
     const { container } = pintar();
-    await screen.findByRole('heading', { name: 'Mis creaciones' });
+    // al abrir se ve el mapa: lo de debajo está montado pero escondido
+    await waitFor(() => expect(container.querySelector('#creaciones-titulo')).not.toBeNull());
+    expect(screen.queryByRole('heading', { name: 'Mis creaciones' })).toBeNull();
+    await alaCaja();
+    expect(await screen.findByRole('heading', { name: 'Mis creaciones' })).toBeInTheDocument();
     await alMapa();
     expect(screen.queryByRole('heading', { name: 'Mis creaciones' })).toBeNull();
     expect(container.querySelector('#creaciones-titulo')).not.toBeNull();
-    await userEvent.click(volverA('Video'));
+    await alaCaja();
     expect(screen.getByRole('heading', { name: 'Mis creaciones' })).toBeInTheDocument();
     // con una lista (no la caja) también se esconde
-    await aLaLista('Marketing', 'Avanzado');
+    await userEvent.click(migaGrupo('Marketing', 'Distrito'));
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Avanzado'));
     expect(screen.queryByRole('heading', { name: 'Mis creaciones' })).toBeNull();
   });
 
   it('en una cuenta nueva, los «tres caminos» tampoco salen sino con la caja', async () => {
     pintar();
-    await screen.findByRole('heading', { name: 'Tu primer video, en tres caminos' });
+    expect(screen.queryByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeNull();
     await alasOpciones();
     expect(screen.queryByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeNull();
     await userEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
-    expect(screen.getByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Tu primer video, en tres caminos' })).toBeInTheDocument();
   });
 
-  it('va del mismo ancho que la tarjeta (820 px como mucho, centrada)', async () => {
+  it('va del mismo ancho que la región (820 px como mucho, centrada)', async () => {
     montar({ proyectos: [P1] });
-    pintar();
-    const titulo = await screen.findByRole('heading', { name: 'Mis creaciones' });
-    expect(tarjeta().className).toContain('max-w-[820px]');
-    expect(tarjeta().className).toContain('mx-auto');
-    const envoltura = titulo.closest('[hidden], div.mx-auto')!;
+    const { container } = pintar();
+    await waitFor(() => expect(container.querySelector('#creaciones-titulo')).not.toBeNull());
+    expect(region().className).toContain('max-w-[820px]');
+    expect(region().className).toContain('mx-auto');
+    const envoltura = container.querySelector('#creaciones-titulo')!.closest('[hidden], div.mx-auto')!;
     expect(envoltura.className).toContain('max-w-[820px]');
   });
 });
 
 describe('Esc', () => {
-  it('con el mapa abierto equivale a «Volver a …»', async () => {
+  it('en el mapa (lo primero que se ve) no hace nada: no hay a dónde subir', async () => {
     pintar();
-    await userEvent.type(campo(), 'sigo aquí');
-    await alMapa();
+    ficha(/^Marketing/).focus();
     await userEvent.keyboard('{Escape}');
-    expect(campo()).toHaveValue('sigo aquí');
-    expect(screen.queryByRole('heading', { name: 'Elige un área' })).toBeNull();
+    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(ir).not.toHaveBeenCalled();
   });
 
-  it('con las tres opciones abiertas también, y regresa a donde estabas aunque mirases otra área', async () => {
+  it('en las opciones sube un nivel: abre el mapa (y de ahí, otra vez Esc no hace nada)', async () => {
     pintar();
     await alasOpciones('Central');
     await userEvent.keyboard('{Escape}');
-    expect(campo()).toBeInTheDocument();
-    expect(migaGrupo('Marketing', 'Distrito')).toBeInTheDocument();
+    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Elige un grupo' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(hayCaja()).toBe(false);
+  });
+
+  it('en las opciones, viniendo de la caja, también sube al MAPA (no «regresa a la caja»: ya no hay a dónde regresar)', async () => {
+    await pintarEnLaCaja();
+    await userEvent.click(migaGrupo('Marketing', 'Distrito'));
+    await userEvent.keyboard('{Escape}');
+    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(hayCaja()).toBe(false);
   });
 
   it('solo Esc: cualquier otra tecla (Enter, flechas, letras) en el mapa o en las opciones no cambia de paso', async () => {
@@ -392,7 +566,7 @@ describe('Esc', () => {
   });
 
   it('en la caja no hace nada: ni cambia de paso ni borra lo escrito', async () => {
-    pintar();
+    await pintarEnLaCaja();
     await userEvent.type(campo(), 'hola');
     await userEvent.keyboard('{Escape}');
     expect(campo()).toHaveValue('hola');
@@ -407,29 +581,30 @@ describe('Esc', () => {
     expect(h2('Blotato')).toBeInTheDocument();
   });
 
-  it('con el foco FUERA de la tarjeta no hace nada (el oyente es de la tarjeta, no de toda la página)', async () => {
+  it('con el foco FUERA de la región no hace nada (el oyente es de la región, no de toda la página)', async () => {
     pintar();
-    await alMapa();
+    await alasOpciones();
     (document.activeElement as HTMLElement).blur();
     expect(document.body).toHaveFocus();
     await userEvent.keyboard('{Escape}');
-    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(h2('Elige un grupo')).toBeInTheDocument();
   });
 
-  it('si lo que tenía el foco ya atendió Esc (lo cancela con preventDefault), no se repite como «Volver»', async () => {
+  it('si lo que tenía el foco ya atendió Esc (lo cancela con preventDefault), no se repite como «subir»', async () => {
     pintar();
-    await alMapa();
-    const ficha1 = ficha(/^Marketing/);
-    ficha1.addEventListener('keydown', e => e.key === 'Escape' && e.preventDefault());
-    ficha1.focus();
+    await alasOpciones();
+    const tarjeta1 = tarjetaDeGrupo('Marketing', 'Distrito');
+    tarjeta1.addEventListener('keydown', e => e.key === 'Escape' && e.preventDefault());
+    tarjeta1.focus();
     await userEvent.keyboard('{Escape}');
-    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(h2('Elige un grupo')).toBeInTheDocument();
   });
 });
 
 describe('el foco no cae a <body>', () => {
-  it('al montar no roba el foco de la página', () => {
+  it('al abrir el inicio (el mapa, sin nada elegido) no roba el foco de la página', () => {
     pintar();
+    expect(h2('Elige un área')).toBeInTheDocument();
     expect(document.body).toHaveFocus();
   });
 
@@ -455,10 +630,17 @@ describe('el foco no cae a <body>', () => {
     expect(h2('Elige un área')).toHaveFocus();
   });
 
-  it('una tarjeta que se monta en la lista de un grupo (sin haber llegado por un enlace) tampoco roba el foco: es solo de la llegada', () => {
+  it('una región que se monta en la lista de un grupo (sin haber llegado por un enlace) tampoco roba el foco: es solo de la llegada', () => {
     // la lista tiene su título enfocable igual que el mapa: lo que decide es cómo se llegó, no que haya título
     render(
-      <Recorrido estado={{ ...REPOSO, grupo: 'blotato' }} despachar={vi.fn()} familia="videos" conectado alConectar={vi.fn()} ir={ir} tituloCaja={createRef()}>
+      <Recorrido
+        estado={{ ...REPOSO, paso: 'contenido', grupo: 'blotato', elegido: true }}
+        despachar={vi.fn()}
+        conectado
+        alConectar={vi.fn()}
+        ir={ir}
+        tituloCaja={createRef()}
+      >
         <p>caja</p>
       </Recorrido>,
     );
@@ -477,58 +659,57 @@ describe('el foco no cae a <body>', () => {
     expect(h2('Elige un área')).not.toHaveFocus();
   });
 
-  it('cada paso lleva el foco a su h2: el mapa, las opciones, la lista, y «Elige un grupo» al reabrirlas', async () => {
+  it('cada paso lleva el foco a su h2: las opciones, la lista, «Elige un grupo» al reabrirlas, y el mapa', async () => {
     pintar();
-    await userEvent.click(migaArea());
-    expect(h2('Elige un área')).toHaveFocus();
     await userEvent.click(ficha(/^Marketing/));
     expect(h2('Elige un grupo')).toHaveFocus();
     await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
     expect(h2('Blotato')).toHaveFocus();
     await userEvent.click(migaGrupo('Marketing', 'Blotato'));
     expect(h2('Elige un grupo')).toHaveFocus();
+    await userEvent.click(migaArea());
+    expect(h2('Elige un área')).toHaveFocus();
   });
 
-  it('«Volver a …» lleva el foco al título de la caja, que sigue siendo enfocable por el teclado después', async () => {
+  it('elegir Distrito lleva el foco al título de la caja, que sigue siendo enfocable solo por código (sin entrar en Tab)', async () => {
     pintar();
-    await alMapa();
-    await userEvent.click(volverA('Video'));
+    await alaCaja();
     expect(h2('¿Qué vamos a crear hoy?')).toHaveFocus();
     // un título que se enfoca con código no entra en el orden de Tab (tabindex -1)
     expect(h2('¿Qué vamos a crear hoy?')).toHaveAttribute('tabindex', '-1');
   });
 
-  it('un foco que sigue dentro de la tarjeta (la miga del área, que no se desmonta al volver a la caja) NO se mueve al título', async () => {
-    pintar();
-    await alasOpciones();
+  it('un foco que sigue dentro de la región (la miga del área, que no se desmonta al pasar de la caja a las opciones) NO se mueve al título', async () => {
+    await pintarEnLaCaja();
     migaArea().focus();
-    await userEvent.keyboard('{Escape}');
-    expect(campo()).toBeInTheDocument();
+    // `.click()` no mueve el foco: la miga del grupo desaparece, la del área sigue ahí y con el foco
+    act(() => migaGrupo('Marketing', 'Distrito').click());
+    expect(h2('Elige un grupo')).toBeInTheDocument();
     expect(migaArea()).toHaveFocus();
+    expect(h2('Elige un grupo')).not.toHaveFocus();
   });
 
   it('un foco DENTRO de la caja que se esconde cuenta como perdido: una activación que no mueve el foco (.click(), la acción «hacer clic» de un lector) lo lleva al título del paso, no a <body>', async () => {
-    pintar();
+    await pintarEnLaCaja();
     // el foco está en el cuadro de texto de la caja; abrir el mapa con `.click()` no se lo quita a nadie (un clic de ratón sí enfoca la miga)
     campo().focus();
     act(() => migaArea().click());
     expect(h2('Elige un área')).toBeInTheDocument();
     expect(hayCaja()).toBe(false);
     expect(h2('Elige un área')).toHaveFocus();
-    // y con el foco en el chip «Un video corto ▾» (otro control de la caja), igual
-    await userEvent.keyboard('{Escape}');
+    // otra vez a la caja, y con el foco en el chip «Un video corto ▾» (otro control de la caja), igual
+    await alaCaja();
     expect(h2('¿Qué vamos a crear hoy?')).toHaveFocus();
     document.querySelector<HTMLElement>('button[aria-haspopup="listbox"]')!.focus();
-    act(() => migaArea().click());
-    expect(h2('Elige un área')).toHaveFocus();
-    // Esc sigue llegando a la tarjeta desde ahí: vuelve a la caja
+    act(() => migaGrupo('Marketing', 'Distrito').click());
+    expect(h2('Elige un grupo')).toHaveFocus();
+    // Esc sigue llegando a la región desde ahí: sube un nivel, al mapa
     await userEvent.keyboard('{Escape}');
-    expect(h2('¿Qué vamos a crear hoy?')).toHaveFocus();
+    expect(h2('Elige un área')).toHaveFocus();
   });
 
   it('con teclado: Enter en una ficha y Enter en una tarjeta de grupo llevan el foco al título del paso nuevo, no a <body>', async () => {
     pintar();
-    await alMapa();
     ficha(/^Marketing/).focus();
     await userEvent.keyboard('{Enter}');
     expect(h2('Elige un grupo')).toHaveFocus();
@@ -538,32 +719,38 @@ describe('el foco no cae a <body>', () => {
     expect(document.body).not.toHaveFocus();
   });
 
-  it('Esc deja el foco en el título de la caja y deja de hacer falta volver a hacer clic para que Esc siga valiendo', async () => {
+  it('Esc sube y deja el foco en el título del paso: no hace falta volver a hacer clic para que Esc siga valiendo', async () => {
     pintar();
     await alasOpciones();
     await userEvent.keyboard('{Escape}');
-    expect(h2('¿Qué vamos a crear hoy?')).toHaveFocus();
-    await userEvent.click(migaArea());
+    expect(h2('Elige un área')).toHaveFocus();
+    // sin hacer clic en nada: Esc en el mapa no hace nada, pero otra ronda sigue funcionando
     await userEvent.keyboard('{Escape}');
-    expect(campo()).toBeInTheDocument();
+    expect(h2('Elige un área')).toHaveFocus();
+    await userEvent.click(ficha(/^Marketing/));
+    await userEvent.keyboard('{Escape}');
+    expect(h2('Elige un área')).toHaveFocus();
   });
 
-  it('el orden de Tab es el de lectura: «Volver a …» antes del paso, y las fichas en orden después', async () => {
+  it('el orden de Tab es el de lectura: en el mapa, solo las cinco fichas (ni migas ni «Volver a …»)', async () => {
     pintar();
-    await alMapa();
-    // todo lo que se enfoca con Tab dentro de la tarjeta, en el orden del DOM (que es el que sigue Tab)
-    const enOrden = Array.from(tarjeta().querySelectorAll<HTMLElement>('button, a[href], input, textarea, [tabindex="0"]'))
-      .filter(el => !el.closest('[hidden]'))
-      .map(el => el.querySelector('span')?.textContent ?? el.textContent);
-    expect(enOrden).toEqual(['Volver a Video', 'Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
+    // todo lo que se enfoca con Tab dentro de la región, en el orden del DOM (que es el que sigue Tab)
+    const enOrden = () =>
+      Array.from(region().querySelectorAll<HTMLElement>('button, a[href], input, textarea, [tabindex="0"]'))
+        .filter(el => !el.closest('[hidden]'))
+        .map(el => el.querySelector('b')?.textContent ?? el.querySelector('span')?.textContent ?? el.textContent);
+    expect(enOrden()).toEqual(['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
+    // en las opciones: primero la miga, luego las tres tarjetas
+    await alasOpciones();
+    expect(enOrden()).toEqual(['Marketing', 'Distrito', 'Blotato', 'Avanzado']);
   });
 });
 
-// A11Y-11 del prototipo, con la tarjeta entera: la caja se queda montada y escondida (`hidden`) mientras se ve el mapa, las opciones o una
+// A11Y-11 del prototipo, con la región entera: la caja se queda montada y escondida (`hidden`) mientras se ve el mapa, las opciones o una
 // lista, así que la pista rotatoria del campo de Edición no puede seguir rotando sin que se vea ni volver donde iba. El reloj es de verdad
 // pero falso (vi.useFakeTimers): cada prueba mueve el tiempo y cuenta los temporizadores vivos. Los nombres no llevan el prefijo `inicio.`
 // (el de los invariantes del registro anti-pérdida): es una función nueva.
-describe('la pista de Edición con la caja escondida por la tarjeta', () => {
+describe('la pista de Edición con la caja escondida por el recorrido', () => {
   const ANTES_DE_SALIR = PISTA_CADA_MS - PISTA_FUNDIDO_MS;
   // el campo de Edición, escondido o no (escondido no sale por rol)
   const area = () => document.getElementById('texto-edicion') as HTMLTextAreaElement;
@@ -571,7 +758,6 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
   // la caja entera está escondida con `hidden` (por rol no se ve, pero el campo sigue en el árbol)
   const escondida = () => area().closest('[hidden]') !== null;
   const saliendo = () => area().className.split(/\s+/).includes('placeholder:opacity-0');
-  const riel = () => within(screen.getByRole('group', { name: 'Qué quieres crear' }));
   /** Un tramo del reloj falso. El temporizador de cada paso lo arma un efecto, que corre al salir del act: de a `paso` por act. */
   const avanzar = (ms: number, paso = ms) => {
     for (let t = 0; t < ms; t += paso) {
@@ -580,6 +766,11 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
       });
     }
   };
+  /** De la caja al mapa y de vuelta a ella, sin esperar nada (con el reloj falso `userEvent` se cuelga). */
+  const irALaCaja = () => {
+    fireEvent.click(ficha(/^Marketing/));
+    fireEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+  };
 
   /** Una idea de la rotación: sale (a los 3.75 s) y entra la siguiente (a los 4). */
   const unaIdea = () => {
@@ -587,7 +778,7 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
     avanzar(PISTA_FUNDIDO_MS);
   };
 
-  /** El inicio con el reloj falso, ya en la pestaña Edición. */
+  /** El inicio con el reloj falso, ya en la caja y en la pestaña Edición. */
   async function enEdicion() {
     vi.useFakeTimers();
     onTestFinished(() => {
@@ -595,6 +786,7 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
     });
     pintar();
     await act(async () => {}); // llegan las listas del servidor simulado
+    irALaCaja();
     fireEvent.click(riel().getByRole('button', { name: 'Edición' }));
     avanzar(1); // los temporizadores de 0 ms del propio React al pintar el cambio no son de la pista
     expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
@@ -604,7 +796,7 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
     vi.useRealTimers();
   });
 
-  it('con el mapa abierto no corre ningún temporizador de la pista, y «Volver a Edición» la deja en la primera idea, sin fundido', async () => {
+  it('con el mapa abierto no corre ningún temporizador de la pista, y volver a la caja la deja en la primera idea, sin fundido', async () => {
     await enEdicion();
     const rodando = vi.getTimerCount();
     unaIdea();
@@ -618,8 +810,8 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
     expect(vi.getTimerCount()).toBe(rodando - 1);
     avanzar(PISTA_CADA_MS * 40, 100);
     expect(vi.getTimerCount()).toBe(rodando - 1);
-    // «Volver a Edición»: la caja se ve de nuevo, en la primera idea y sin salir (sin fundido), y de ahí rota
-    fireEvent.click(volverA('Edición'));
+    // Marketing › Distrito: la caja se ve de nuevo, en la primera idea y sin salir (sin fundido), y de ahí rota
+    irALaCaja();
     avanzar(1);
     expect(escondida()).toBe(false);
     expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
@@ -658,16 +850,15 @@ describe('la pista de Edición con la caja escondida por la tarjeta', () => {
     // escribir en el campo, esconder la caja y volver: el texto no se pierde (por eso la caja no se desmonta)
     fireEvent.change(area(), { target: { value: 'Quita los silencios' } });
     fireEvent.click(migaArea());
-    fireEvent.click(volverA('Edición'));
+    irALaCaja();
     avanzar(1);
     expect(area()).toHaveValue('Quita los silencios');
   });
 });
 
 describe('el doble clic en una ficha del mapa', () => {
-  it('el segundo clic de un doble clic no elige un grupo por accidente: se queda en «Elige un grupo»', async () => {
+  it('el segundo clic de un doble clic no elige un grupo por accidente: se queda en «Elige un grupo»', () => {
     pintar();
-    await alMapa();
     fireEvent.click(ficha(/^Marketing/), { detail: 1 });
     expect(h2('Elige un grupo')).toBeInTheDocument();
     // el segundo clic cae donde apareció la primera tarjeta (Distrito)
@@ -678,7 +869,6 @@ describe('el doble clic en una ficha del mapa', () => {
 
   it('una elección deliberada pasa: un clic normal enseguida, el teclado, o un doble clic pasado el medio segundo', async () => {
     pintar();
-    await alMapa();
     fireEvent.click(ficha(/^Marketing/), { detail: 1 });
     fireEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'), { detail: 1 });
     expect(h2('Blotato')).toBeInTheDocument();
@@ -694,7 +884,7 @@ describe('el doble clic en una ficha del mapa', () => {
 
 // Un nivel más abajo pasa lo mismo: el segundo clic de un doble clic en la tarjeta de «Blotato» cae sobre lo que aparece donde estaba
 // (el botón de conectar o la primera pantalla de la lista, que es un enlace) y navegaba fuera del inicio, o abría el diálogo sin que
-// nadie lo pidiera. La guardia es de la tarjeta entera: cualquier segundo clic (`detail > 1`) a menos de medio segundo de CAMBIAR de
+// nadie lo pidiera. La guardia es de la región entera: cualquier segundo clic (`detail > 1`) a menos de medio segundo de CAMBIAR de
 // paso se ignora. El reloj se congela: con el de verdad la prueba dependería de lo rápido que corra la máquina.
 describe('el doble clic en la tarjeta de un grupo', () => {
   const T0 = 1_000_000;
@@ -737,7 +927,7 @@ describe('el doble clic en la tarjeta de un grupo', () => {
     fireEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'), { detail: 1 });
     await screen.findByRole('button', { name: 'Blotato conectado: ver o cambiar' });
     const primera = within(lista()).getAllByRole('link')[0]!;
-    // el segundo clic se cancela en la tarjeta (preventDefault: el enlace no navega). `fireEvent` devuelve false si alguien lo canceló
+    // el segundo clic se cancela en la región (preventDefault: el enlace no navega). `fireEvent` devuelve false si alguien lo canceló
     expect(fireEvent.click(primera, { detail: 2 })).toBe(false);
     // un clic normal (detail 1) enseguida, o uno con el teclado (detail 0), siguen su camino: nadie los cancela antes de que el
     // navegador decida navegar (este oyente los cancela después, solo para que jsdom no lo intente)
@@ -752,28 +942,30 @@ describe('el doble clic en la tarjeta de un grupo', () => {
   });
 
   it('el mismo cuidado al llegar a la caja: el segundo clic de un doble clic en «Distrito» no pulsa lo que quedó debajo', async () => {
-    pintar();
+    await pintarEnLaCaja();
     await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
     vi.spyOn(Date, 'now').mockReturnValue(T0);
+    await alMapa();
     await alasOpciones();
     fireEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'), { detail: 1 });
     expect(hayCaja()).toBe(true);
     // el segundo clic cae en el riel de la caja (Video): Imagen se queda
-    fireEvent.click(within(screen.getByRole('group', { name: 'Qué quieres crear' })).getByRole('button', { name: 'Video' }), { detail: 2 });
-    expect(within(screen.getByRole('group', { name: 'Qué quieres crear' })).getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(riel().getByRole('button', { name: 'Video' }), { detail: 2 });
+    expect(riel().getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 
 describe('la entrada por ?desde=…&ver=…', () => {
   const con = (busqueda: string) => history.replaceState(null, '', `/estudio/inicio/${busqueda}`);
 
-  it('desde una pantalla hoja con ver=mapa: abre el mapa, ahí estás, y «Volver a …» es un ENLACE a esa página', async () => {
+  it('desde una pantalla hoja con ver=mapa: abre el mapa, sin nada marcado, y «Volver a …» es un ENLACE a esa página, centrado bajo el título', async () => {
     con('?desde=mkt.blotato.agenda&ver=mapa');
     pintar();
     expect(h2('Elige un área')).toBeInTheDocument();
-    expect(ficha(/^Marketing/)).toHaveTextContent('Estás aquí');
+    expect(screen.queryByText('Estás aquí')).toBeNull();
     const volver = screen.getByRole('link', { name: 'Volver a Agenda tus publicaciones' });
     expect(volver).toHaveAttribute('href', '/agenda.html');
+    expect(volver.parentElement).toHaveClass('justify-center');
     expect(screen.queryByRole('button', { name: /^Volver a / })).toBeNull();
     // la caja no se ve, pero está montada: elegir Distrito la enseña
     expect(hayCaja()).toBe(false);
@@ -782,54 +974,70 @@ describe('la entrada por ?desde=…&ver=…', () => {
     expect(campo()).toBeInTheDocument();
   });
 
+  it('con la página de por medio, el orden de Tab es «Volver a …» y luego las fichas', () => {
+    con('?desde=mkt.blotato.agenda&ver=mapa');
+    pintar();
+    const enOrden = Array.from(region().querySelectorAll<HTMLElement>('button, a[href], input, textarea, [tabindex="0"]'))
+      .filter(el => !el.closest('[hidden]'))
+      .map(el => el.querySelector('span')?.textContent ?? el.textContent);
+    expect(enOrden).toEqual(['Volver a Agenda tus publicaciones', 'Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
+  });
+
   it('la URL queda limpia (/estudio/inicio/): se lee una vez y recargar no repite el recorrido', () => {
     con('?desde=mkt.blotato.agenda&ver=mapa');
     pintar();
     expect(location.pathname + location.search).toBe('/estudio/inicio/');
   });
 
-  it('desde otra pantalla con ver=grupos: abre las tres opciones de su área, con «Estás aquí» en su grupo', () => {
+  it('desde otra pantalla con ver=grupos: abre las tres opciones de su área, con «Estás aquí» en su grupo (venías de él)', () => {
     con('?desde=mkt.avanzado.automaticas&ver=grupos');
     pintar();
     expect(h2('Elige un grupo')).toBeInTheDocument();
     expect(tarjetaDeGrupo('Marketing', 'Avanzado')).toHaveTextContent('Estás aquí');
+    expect(tarjetaDeGrupo('Marketing', 'Distrito')).not.toHaveTextContent('Estás aquí');
     expect(screen.getByRole('link', { name: 'Volver a Publicaciones automáticas' })).toHaveAttribute('href', '/mix.html');
   });
 
   it('Esc con una página aparte de por medio NAVEGA a ella (y no cambia de paso)', async () => {
     con('?desde=mkt.blotato.metricas&ver=mapa');
     pintar();
-    // sin tabular ni hacer clic antes: el foco ya está en el título del paso, dentro de la tarjeta
+    // sin tabular ni hacer clic antes: el foco ya está en el título del paso, dentro de la región
     await userEvent.keyboard('{Escape}');
     expect(ir).toHaveBeenCalledExactlyOnceWith('/metricas.html');
     expect(h2('Elige un área')).toBeInTheDocument();
   });
 
-  it('Esc nada más llegar a las tres opciones también vuelve a la página de origen', async () => {
+  it('Esc nada más llegar a las tres opciones también vuelve a la página de origen (y no sube al mapa)', async () => {
     con('?desde=mkt.avanzado.automaticas&ver=grupos');
     pintar();
     await userEvent.keyboard('{Escape}');
     expect(ir).toHaveBeenCalledExactlyOnceWith('/mix.html');
+    expect(h2('Elige un grupo')).toBeInTheDocument();
   });
 
-  it('elegir un grupo olvida la página de la que venías: a partir de ahí «Volver a …» es de la caja o del grupo, un botón', async () => {
+  it('elegir un grupo olvida la página de la que venías: a partir de ahí no queda ningún «Volver a …», ni enlace ni botón', async () => {
     con('?desde=mkt.blotato.agenda&ver=mapa');
     pintar();
     await userEvent.click(ficha(/^Marketing/));
     await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
     await userEvent.click(migaArea());
-    expect(screen.queryByRole('link', { name: /^Volver a / })).toBeNull();
-    expect(volverA('Blotato')).toBeInTheDocument();
+    expect(volveres()).toHaveLength(0);
+    // y Esc en las opciones sube al mapa, como en cualquier otra entrada
+    await userEvent.click(ficha(/^Marketing/));
+    await userEvent.keyboard('{Escape}');
+    expect(ir).not.toHaveBeenCalled();
+    expect(h2('Elige un área')).toBeInTheDocument();
   });
 
-  it('una pantalla o una vista que no existe se ignora: se aterriza en la caja, y la URL igual se limpia', () => {
+  it('una pantalla o una vista que no existe se ignora: se aterriza en el mapa, y la URL igual se limpia', () => {
     for (const q of ['?desde=mkt.blotato.nada&ver=mapa', '?desde=mkt.blotato.agenda&ver=otra', '?desde=basura&ver=mapa', '?ver=mapa']) {
       con(q);
       const { unmount } = pintar();
-      expect(campo(), q).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: /^Elige un/ }), q).toBeNull();
+      expect(h2('Elige un área'), q).toBeInTheDocument();
+      expect(hayCaja(), q).toBe(false);
+      expect(volveres(), q).toHaveLength(0);
       expect(location.search, q).toBe('');
-      // aterrizar en la caja no toca el foco de la página, aunque la URL traiga una entrada que no sirve
+      // aterrizar en el mapa sin nada elegido no toca el foco de la página, aunque la URL traiga una entrada que no sirve
       expect(document.body, q).toHaveFocus();
       unmount();
     }

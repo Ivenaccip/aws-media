@@ -66,6 +66,7 @@ import {
   tamano,
 } from './edicion';
 import { DESCRIPCION_VIDEOS, EXTS_VIDEO } from './envio';
+import { ALTO_DE_ACCION, ANCHO_DE_ACCION } from './medidas';
 import { SelectorOpcion } from './SelectorOpcion';
 import type { ManejoEdicion, RefsEdicion, VideoDeEdicion } from './useEdicion';
 import { usePistaRotatoria } from './usePistaRotatoria';
@@ -257,14 +258,16 @@ export function CajaEdicion({
             {...(esperando ? { 'aria-busy': true } : {})}
             {...(describe ? { 'aria-describedby': describe } : {})}
             onClick={ed.tocarIniciar}
-            className={unir('w-full min-[640px]:w-auto', esperando && 'cursor-progress')}
+            // en escritorio mide lo que el selector de modelo de Video (medidas.ts): mismo ancho mínimo y mismo alto que el resto de la fila
+            className={unir('w-full min-[640px]:w-auto', ANCHO_DE_ACCION, ALTO_DE_ACCION, esperando && 'cursor-progress')}
           >
             {etiqueta}
           </Boton>
         </div>
       </div>
 
-      <div role="status" className="mt-2.5 flex flex-col gap-1">
+      {/* `has-`: la ayuda de abajo es solo para el lector de pantalla (`sr-only`); sin ninguna nota a la vista no deja el margen vacío */}
+      <div role="status" className="flex flex-col gap-1 has-[>:not(.sr-only)]:mt-2.5">
         {enShorts ? (
           <p id={idNota} className={NOTA}>
             {notaShorts}
@@ -291,8 +294,12 @@ export function CajaEdicion({
                 {boton.aviso}
               </p>
             )}
+            {/* «Escribe qué quieres hacer con tu video.» ya no se ve (dueño, 15-oct-2026: «quita el texto»), pero cumple una función: es la
+                descripción de «Iniciar» (`aria-describedby`) mientras no hay texto, y quitarla del todo dejaría a quien usa lector de
+                pantalla sin saber por qué no avanza. Queda solo para él (`sr-only`), en la misma región de estado, así que se anuncia igual
+                que antes */}
             {!hayTexto && (
-              <p id={idAyudaTexto} className={NOTA}>
+              <p id={idAyudaTexto} className="sr-only">
                 {AYUDA_TEXTO}
               </p>
             )}

@@ -40,6 +40,7 @@ import {
 } from './edicion';
 import { rechazoVideo, soloVideos, type CostoEdicion } from './envio';
 import { Inicio } from './Inicio';
+import { ALTO_DE_ACCION, ANCHO_DE_ACCION } from './medidas';
 
 // los tokens de la carta, tal cual (un `?raw` de un .css lo procesa el plugin de Tailwind y llega vacío; como en Confirmar.test)
 const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../estilos/tokens.css'), 'utf8');
@@ -287,6 +288,49 @@ describe('la caja de Edición', () => {
     expect(screen.getByText('Agrega el video con el «+» o arrástralo a la caja.')).toBeInTheDocument();
     expect(screen.queryByText('Escribe qué quieres hacer con tu video.')).toBeNull();
     expect(botonIniciar()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  // dueño, 15-oct-2026: «quita el texto "Escribe qué quieres hacer con tu video."». Sin ID del registro: es un ajuste de diseño, no algo que la
+  // pantalla vieja garantizara. Lo que se quita es lo que se VE: la frase es la descripción de «Iniciar» (`aria-describedby`) y no se pierde.
+  it('la ayuda «Escribe qué quieres hacer con tu video.» ya no se ve: queda solo para el lector de pantalla, como descripción de «Iniciar»', async () => {
+    montar();
+    pintar();
+    await irAEdicion();
+    const ayuda = screen.getByText(AYUDA_TEXTO);
+    // `sr-only` es lo que la saca de la vista y la deja en el árbol de accesibilidad; y no lleva las clases de una nota a la vista
+    expect(ayuda).toHaveClass('sr-only');
+    expect(ayuda.className.split(/\s+/)).not.toContain('text-secundario');
+    // sigue siendo lo que el lector dice al enfocar «Iniciar»
+    expect(botonIniciar()).toHaveAccessibleDescription(AYUDA_TEXTO);
+    // sin ninguna nota a la vista la región de estado no deja su margen vacío (`has-[>:not(.sr-only)]:mt-2.5`, no un `mt-2.5` a secas)
+    const estado = ayuda.closest('[role="status"]')!;
+    expect(estado.className.split(/\s+/)).not.toContain('mt-2.5');
+    expect(estado.className).toContain('has-[>:not(.sr-only)]:mt-2.5');
+    // con texto la ayuda se va, y la nota que sí hay (falta el video) SÍ se ve
+    await userEvent.type(campo(), TEXTO);
+    expect(screen.queryByText(AYUDA_TEXTO)).toBeNull();
+    expect(screen.getByText(AYUDA_VIDEO)).not.toHaveClass('sr-only');
+  });
+
+  // dueño, 15-oct-2026: «el botón dorado debe de tener el mismo largo» que el selector «Modelo Veo 3.1 Lite · 8 s ▾» de Video. Cuánto mide de
+  // verdad (209,5 px el selector; 216 px los dos) lo mide e2e/inicio-edicion.spec.ts en Chromium: jsdom no calcula estilos. Aquí, que los dos
+  // salen de la MISMA constante (medidas.ts) y no de dos números que se desfasen.
+  it('«Iniciar» y el selector de modelo de Video usan la misma medida (medidas.ts): el mismo ancho mínimo en escritorio', async () => {
+    montar();
+    pintar();
+    const selector = screen.getByRole('button', { name: /^Modelo / });
+    await irAEdicion();
+    const iniciar = botonIniciar();
+    // la medida es un mínimo de escritorio (por debajo de 640 px los dos ocupan todo el ancho de la caja)
+    expect(ANCHO_DE_ACCION).toMatch(/^min-\[640px\]:min-w-\[[\d.]+rem\]$/);
+    expect(selector).toHaveClass(ANCHO_DE_ACCION);
+    expect(iniciar).toHaveClass(ANCHO_DE_ACCION);
+    // y «Iniciar» mide el alto de la fila (el del «+», «Editar ▾» y el selector: 44 px), no 4 px más
+    expect(iniciar).toHaveClass(ALTO_DE_ACCION);
+    expect(selector).toHaveClass('min-[640px]:min-h-11');
+    // por debajo de 640 px los dos siguen a todo el ancho
+    expect(iniciar).toHaveClass('w-full', 'min-[640px]:w-auto');
+    expect(selector).toHaveClass('w-full', 'min-[640px]:w-auto');
   });
 
   it('inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar', async () => {
@@ -875,6 +919,9 @@ describe('la caja de Edición', () => {
       '/api/blotato': () => json({ conectado: false, origen: null, cuentas: [], error: null, plan: null }),
     });
     render(<Inicio ir={ir} />);
+    // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por Marketing → Distrito
+    await userEvent.click(within(await screen.findByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
+    await userEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
     await screen.findByRole('group', { name: 'Qué quieres crear' });
     await userEvent.click(riel().getByRole('button', { name: 'Edición' }));
     expect(campo()).toBeInTheDocument();

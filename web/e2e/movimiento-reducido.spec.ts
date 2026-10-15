@@ -13,13 +13,13 @@
 // reloj tiene que preguntar por la preferencia, y la prueba de abajo lo vigila.
 //
 // El recorrido del inicio (15-oct-2026, «Mapa con Irremplazables»): el bucle de las pantallas de
-// abajo ya cubre `inicio` (en la caja) y las cinco páginas hoja con sus migas; los pasos del
-// recorrido (el mapa, las tres opciones, las listas) y la pista de Edición al abrir el mapa y
-// volver tienen sus pruebas más abajo.
+// abajo ya cubre `inicio` (que abre en el MAPA) y las cinco páginas hoja con sus migas; los demás
+// pasos del recorrido (las tres opciones, las listas) y la pista de Edición al abrir el mapa y
+// volver a la caja tienen sus pruebas más abajo.
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { animacionesVivas, arranques, oirArranques, PANTALLAS } from './pantallas';
-import { abrirInicio, irA, irAlMapa, simular, tarjeta, volverA } from './recorrido';
+import { abrirInicio, elegir, irA, irAlMapa, region, simular } from './recorrido';
 
 // una sonda que gira para siempre, con la clase de Tailwind que ya usa la app
 async function sonda(page: Page) {
@@ -73,8 +73,8 @@ test('sin «reducir movimiento», la sonda gira (el guardián sí ve)', async ({
 });
 
 // ---- la pista que rota en el campo de Edición del inicio (14-oct-2026) ----
-// La pantalla «inicio» arranca en Video: la rotación vive en la pestaña Edición, que las pruebas de arriba no abren. El
-// reloj de la pantalla es el falso de Playwright (quieto hasta que se mueve) para no esperar los segundos de verdad.
+// La pantalla «inicio» arranca en el mapa y su caja en Video: la rotación vive en la pestaña Edición de la caja, que las pruebas de arriba no
+// abren. El reloj de la pantalla es el falso de Playwright (quieto hasta que se mueve) para no esperar los segundos de verdad.
 const IDEA_PRIMERA = 'Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»';
 const IDEA_SEGUNDA = 'Cuéntale a la IA qué quieres. Ejemplo: «Un short vertical para Reels»';
 const IDEA_TERCERA = 'Cuéntale a la IA qué quieres. Ejemplo: «Resumen de 60 segundos»';
@@ -91,6 +91,8 @@ async function abrirEdicion(page: Page) {
   await page.clock.install({ time: 0 });
   for (const [ruta, json] of Object.entries(vacias)) await page.route(ruta, r => r.fulfill({ json }));
   await page.goto('/estudio/inicio/');
+  // el inicio abre en el mapa: la caja se alcanza por Marketing → Distrito
+  await elegir(page, 'Marketing', 'Distrito');
   await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   const campo = page.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' });
@@ -207,7 +209,7 @@ test('si se enciende y se apaga «reducir movimiento» con el campo enfocado, la
 });
 
 // ---- el recorrido del inicio (15-oct-2026): el mapa, las tres opciones y las listas de pantallas ----
-// Los pasos del recorrido no los ve el bucle de arriba (que abre el inicio en la caja). Se recorre cada uno con «reducir movimiento»
+// Las opciones y las listas no las ve el bucle de arriba (que abre el inicio en el mapa). Se recorre cada paso con «reducir movimiento»
 // encendido y se pasa el ratón por TODO lo que se puede tocar: una ficha, una tarjeta o una miga que se animara al pasar el ratón
 // aparecería aquí. Aparte, todo lo que ARRANCÓ en la página (animaciones y transiciones, con su duración) debe ser de 1 ms o menos.
 const duracionDe = (arranque: string) => Number(arranque.split(' ').at(-1));
@@ -222,7 +224,7 @@ test.describe('el recorrido del inicio con «reducir movimiento»', () => {
     const quieto = async (donde: string) => {
       await page.waitForTimeout(300);
       expect(await page.evaluate(animacionesVivas), `${donde}: algo se mueve`).toEqual([]);
-      const tocables = tarjeta(page).locator('button:visible, a:visible');
+      const tocables = region(page).locator('button:visible, a:visible');
       const cuantos = await tocables.count();
       expect(cuantos, `${donde}: no hay nada que tocar`).toBeGreaterThan(0);
       for (let i = 0; i < cuantos; i++) {
@@ -231,11 +233,11 @@ test.describe('el recorrido del inicio con «reducir movimiento»', () => {
         expect(await page.evaluate(animacionesVivas), `${donde}: algo se mueve al pasar el ratón por el elemento ${i + 1}`).toEqual([]);
       }
     };
-    await irAlMapa(page);
+    // se abre en el mapa: ese es el primer paso
     await quieto('el mapa');
-    await tarjeta(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: /^Marketing/ }).click();
+    await region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: /^Marketing/ }).click();
     await quieto('las opciones de Marketing');
-    await tarjeta(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('button', { name: /^Blotato/ }).click();
+    await region(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('button', { name: /^Blotato/ }).click();
     await quieto('la lista de Blotato');
     await irA(page, 'Central', 'Distrito');
     await quieto('la lista de Central');
@@ -251,8 +253,8 @@ test('sin «reducir movimiento», pasar el ratón por una tarjeta de la lista ar
   await simular(page, { blotato: 'conectado' });
   await oirArranques(page, /^transición de /);
   await abrirInicio(page);
-  await irA(page, 'Marketing', 'Blotato');
-  await tarjeta(page).getByRole('link').first().hover();
+  await elegir(page, 'Marketing', 'Blotato');
+  await region(page).getByRole('link').first().hover();
   await expect.poll(async () => (await arranques(page)).some(a => duracionDe(a) >= 100)).toBe(true);
 });
 
@@ -273,7 +275,7 @@ test.describe('la pista de Edición al abrir el mapa y volver, con «reducir mov
       await page.waitForTimeout(40);
       expect(await pista(escondido), `con el mapa abierto, a los ${(i + 1) * 10} s`).toEqual(quieta);
     }
-    await volverA(page, 'Edición').click();
+    await elegir(page, 'Marketing', 'Distrito');
     expect(await pista(campo)).toEqual(quieta);
     await page.clock.runFor(10_000);
     await page.waitForTimeout(40);
@@ -293,7 +295,7 @@ test('sin «reducir movimiento», la pista deja de rotar con el mapa abierto y, 
   await page.clock.runFor(30_000);
   await page.waitForTimeout(40);
   expect(await pista(page.locator('textarea'))).toMatchObject({ texto: IDEA_PRIMERA, opacidad: '1' });
-  await volverA(page, 'Edición').click();
+  await elegir(page, 'Marketing', 'Distrito');
   expect(await pista(campo)).toMatchObject({ texto: IDEA_PRIMERA, opacidad: '1' });
   // y rota desde ahí con su intervalo completo: a los 3.7 s sigue la primera, entera, y a los 4 s ya es la segunda
   await page.clock.runFor(3700);
