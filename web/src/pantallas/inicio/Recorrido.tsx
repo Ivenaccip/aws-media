@@ -10,15 +10,19 @@
 //   · Esc dentro de la tarjeta = «Volver a …» con el mapa o las tres opciones abiertos; en la caja no hace nada. El oyente va en la
 //     tarjeta y NO en la página: con un diálogo, un menú de la caja o la lista de «Editar ▾» abiertos, Esc es de ellos;
 //   · el foco nunca cae a `<body>` (desde ahí Esc dejaría de llegar a la tarjeta): al cambiar de paso el botón pulsado desaparece, y
-//     si el foco se perdió pasa al `h2` del paso nuevo (`tabIndex=-1`, solo programático). Si el foco sigue dentro, no se mueve.
+//     si el foco se perdió pasa al `h2` del paso nuevo (`tabIndex=-1`, solo programático). Si el foco sigue dentro, no se mueve; el
+//     que está dentro de la caja que ese mismo cambio esconde cuenta como perdido (el navegador lo suelta a `<body>` un instante después).
 //     Llegar por la miga de otra página (?desde=&ver=) es abrir el inicio ya en el mapa o las opciones, con el foco en `<body>`:
 //     ahí también va al `h2` al montar, para que Esc vuelva a esa página sin tener que tabular antes. Aterrizar en la caja NO;
-//   · el orden de Tab es el de lectura: migas, «Volver a …», y el paso (Marketing, Producto, Central, Ventas, Automatizaciones);
-//   · un doble clic en una ficha del mapa no elige un grupo por accidente (esDobleClicAccidental).
-import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+//   · el orden de Tab es el de lectura: las migas (solo hay en las opciones y en las listas), «Volver a …» y el paso (en el mapa:
+//     Marketing, Producto, Central, Ventas, Automatizaciones; con el mapa recién abierto el foco está en su título, así que «Volver a …»
+//     queda atrás);
+//   · un doble clic no activa por accidente lo que aparece donde estaba lo pulsado: el segundo clic cae en la primera tarjeta de las
+//     opciones, en el botón de conectar o en la primera pantalla de una lista (esDobleClicAccidental, para toda la tarjeta).
+import { useId, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 
 import { Migas, type Miga } from '../../marca/Migas';
-import type { AreaMenu, GrupoMenu, PestanaCaja } from '../../marca/menu';
+import type { PestanaCaja } from '../../marca/menu';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import { Grupos } from './Grupos';
@@ -63,8 +67,8 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
   const idTitulo = useId();
   const marco = useRef<HTMLElement>(null);
   const titulo = useRef<HTMLHeadingElement>(null);
-  // cuándo se abrieron las tres opciones desde el mapa (para el doble clic)
-  const abiertoEn = useRef(0);
+  // cuándo cambió el paso por última vez (para el doble clic)
+  const cambioEn = useRef(0);
   const verCaja = cajaVisible(estado);
 
   // al cambiar de paso (o de grupo) el botón pulsado desaparece y el foco se iría a <body>: si se perdió, va al título del paso nuevo.
@@ -74,8 +78,12 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
     const antes = visto.current;
     if (antes.paso === estado.paso && antes.area === estado.area && antes.grupo === estado.grupo) return;
     visto.current = { paso: estado.paso, area: estado.area, grupo: estado.grupo };
+    cambioEn.current = ahora();
     const activo = document.activeElement;
-    const perdido = !activo || activo === document.body || !marco.current?.contains(activo);
+    // El foco dentro de la caja que este cambio acaba de esconder (`hidden`) también está perdido: sigue siendo `activeElement` hasta que
+    // el navegador lo suelta, y lo hace un instante después, a `<body>`. Pasa cuando lo pulsado no mueve el foco (la acción «hacer clic» de
+    // un lector, el control por voz, un `.click()`): con el ratón o el teclado la miga lo toma y el foco ya viene de ella
+    const perdido = !activo || activo === document.body || !marco.current?.contains(activo) || activo.closest('[hidden]') !== null;
     if (perdido) (verCaja ? tituloCaja : titulo).current?.focus({ preventScroll: true });
   }, [estado.paso, estado.area, estado.grupo, verCaja, tituloCaja]);
 
@@ -92,14 +100,14 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
 
   const destino = destinoDeVolver(estado, familia);
 
-  function abrir(accion: Accion) {
-    if (accion.tipo === 'elegir-area') abiertoEn.current = ahora();
-    despachar(accion);
-  }
-
-  function elegirGrupo(area: AreaMenu, grupo: GrupoMenu, detail: number) {
-    if (esDobleClicAccidental(detail, ahora() - abiertoEn.current)) return;
-    despachar({ tipo: 'elegir-grupo', area: area.clave, grupo: grupo.clave });
+  // Un doble clic cambia de paso con el primero, y el segundo (`detail` 2) cae sobre lo que apareció donde estaba lo pulsado: elegiría
+  // un grupo, navegaría a la primera pantalla de una lista o abriría el diálogo de conectar sin que nadie lo pidiera. Se atiende en la
+  // captura, antes de que llegue a lo de adentro, y se cancela también (si no, un enlace navegaría igual). El mapa, las opciones y las
+  // listas no tienen que saber de esto, y una elección deliberada (otro clic pasado el medio segundo) o el teclado (`detail` 0) pasan
+  function alPulsarAntes(e: MouseEvent<HTMLElement>) {
+    if (!esDobleClicAccidental(e.detail, ahora() - cambioEn.current)) return;
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   // Esc dentro de la tarjeta = «Volver a …». Lo que ya atendió Esc (un menú, una lista) lo marcó con preventDefault: no se repite
@@ -116,23 +124,32 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
     icono: m.icono,
     rotulo: m.rotulo,
     actual: m.actual,
-    alPulsar: () => abrir({ tipo: m.clave === 'area' ? 'abrir-mapa' : 'abrir-grupos' }),
+    alPulsar: () => despachar({ tipo: m.clave === 'area' ? 'abrir-mapa' : 'abrir-grupos' }),
   }));
 
   const areaExplorada = estado.paso === 'grupos' ? areaDe(estado.explora) : undefined;
   const grupo = estado.paso === 'contenido' ? grupoActual(estado) : undefined;
 
   return (
-    // Esc se atiende aquí y no en toda la página (ver arriba); el elemento no es interactivo: solo recoge el teclado de lo de adentro
+    // Esc se atiende aquí y no en toda la página (ver arriba); el elemento no es interactivo: solo recoge el teclado y el ratón de lo de adentro.
+    // `data-limite-lista`: la lista de «Editar ▾» (SelectorOpcion) busca este marcador con `closest` para no sobresalir de la tarjeta
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <section
       ref={marco}
       aria-labelledby={idTitulo}
+      data-limite-lista=""
       onKeyDown={alTeclear}
+      onClickCapture={alPulsarAntes}
       className="mx-auto max-w-[820px] rounded-grande border border-linea bg-superficie p-6 max-[560px]:px-4 max-[380px]:px-2 max-[380px]:pt-4 max-[380px]:pb-6"
     >
-      <h1 id={idTitulo} className="m-0 mb-2 text-center font-titulo text-titulo-lg font-extrabold tracking-[-0.02em] texto-oro">
-        Irremplazables
+      {/* El degradado dorado es un FONDO recortado a la letra: puesto en el h1 solo cubriría la caja del h1, y la letra que se saliera de
+          ella (espaciado de texto de WCAG 1.4.12 a 320 px, letra más grande) quedaría transparente y desaparecería. En un <span> en línea
+          su caja mide lo que el texto, y el h1 parte la palabra en vez de dejarla salirse de la tarjeta */}
+      <h1
+        id={idTitulo}
+        className="m-0 mb-2 text-center font-titulo text-titulo-lg font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere]"
+      >
+        <span className="texto-oro">Irremplazables</span>
       </h1>
 
       <div className="mb-2 flex min-h-11 flex-wrap items-center gap-2">
@@ -156,7 +173,7 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
           <h2 ref={titulo} tabIndex={-1} className={unir(TITULO_DE_PASO, 'mx-auto text-center')}>
             Elige un área
           </h2>
-          <Mapa aqui={estado.area} alElegir={a => abrir({ tipo: 'elegir-area', area: a.clave })} />
+          <Mapa aqui={estado.area} alElegir={a => despachar({ tipo: 'elegir-area', area: a.clave })} />
         </>
       )}
 
@@ -168,7 +185,7 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
           <Grupos
             area={areaExplorada}
             aqui={estado.area === areaExplorada.clave ? estado.grupo : null}
-            alElegir={(g, detail) => elegirGrupo(areaExplorada, g, detail)}
+            alElegir={g => despachar({ tipo: 'elegir-grupo', area: areaExplorada.clave, grupo: g.clave })}
           />
         </>
       )}

@@ -200,14 +200,20 @@
 }
 
 /* El título «Irremplazables» (pantallas/inicio/Recorrido.tsx): letras con un degradado de arriba abajo, del dorado claro al hondo
-   (el 55 % es el dorado de en medio). Es una de dos cosas: un degradado recortado a la letra, o, en un navegador que no sabe
-   recortar un fondo a la letra, el dorado liso: sin esa salida, `text-transparent` dejaría el título invisible. El contraste
-   en su parte más oscura (#b98d2f sobre la superficie) es de 5.45:1. */
+   (el 55 % es el dorado de en medio). Un degradado recortado a la letra, con dos salidas, porque sin ellas `text-transparent`
+   dejaría el título invisible: en un navegador que no sabe recortar un fondo a la letra, el dorado liso; y al imprimir, el
+   dorado hondo liso (el degradado es un fondo y el navegador no imprime fondos de fábrica: en el papel quedaría un hueco en
+   blanco). Es el hondo por ser el más oscuro: sobre papel blanco da 3.0:1, el mínimo de un texto de 32 px, y sobre la
+   superficie, si la persona sí imprime los fondos, 5.45:1. */
 @utility texto-oro {
   @apply bg-linear-to-b from-oro-claro via-oro via-55% to-oro-hondo bg-clip-text text-transparent;
   @supports not (background-clip: text) {
     background-image: none;
     color: var(--color-oro);
+  }
+  @media print {
+    background-image: none;
+    color: var(--color-oro-hondo);
   }
 }
 

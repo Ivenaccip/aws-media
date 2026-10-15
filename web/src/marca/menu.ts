@@ -33,9 +33,8 @@ export interface GrupoMenu {
   clave: string;
   titulo: string;
   icono: NombreIcono;
+  /** Vacía = un grupo que todavía no existe (Deepseek): su tarjeta dice «Próximamente» y, al abrirla, que no está disponible. */
   pantallas: readonly PantallaMenu[];
-  /** Un grupo sin nada que enseñar todavía. */
-  proximamente?: boolean;
 }
 
 export interface AreaMenu {
@@ -150,7 +149,7 @@ export const MENU: readonly AreaMenu[] = [
           { clave: 'glosario', titulo: 'Glosario IA', icono: 'glosario', proximamente: true },
         ],
       },
-      { clave: 'deepseek', titulo: 'Deepseek', icono: 'buscar', pantallas: [], proximamente: true },
+      { clave: 'deepseek', titulo: 'Deepseek', icono: 'buscar', pantallas: [] },
     ],
   },
   { clave: 'producto', titulo: 'Producto', icono: 'producto', grupos: [], proximamente: true },
@@ -158,12 +157,12 @@ export const MENU: readonly AreaMenu[] = [
   { clave: 'automatizaciones', titulo: 'Automatizaciones', icono: 'rapido', grupos: [], proximamente: true },
 ];
 
-/** Donde se cae al abrir el inicio: la caja, en Imagen (el mismo punto de partida de siempre). */
-export const LUGAR_INICIAL: Lugar = { area: 'mkt', grupo: 'distrito', pantalla: 'imagen' };
+/** Donde se cae al abrir el inicio: la caja, en Video (la pestaña en la que arranca desde siempre: es lo que ya se usaba). */
+export const LUGAR_INICIAL: Lugar = { area: 'mkt', grupo: 'distrito', pantalla: 'video' };
 
-/** Lo que el texto de una tarjeta de grupo dice: sus pantallas, en orden. */
+/** Lo que el texto de una tarjeta de grupo dice: sus pantallas, en orden; un grupo que todavía no trae ninguna, «Próximamente». */
 export function detalleDeGrupo(g: GrupoMenu): string {
-  return g.pantallas.length ? g.pantallas.map(p => p.titulo).join(' · ') : 'Una sola pantalla';
+  return g.pantallas.length ? g.pantallas.map(p => p.titulo).join(' · ') : 'Próximamente';
 }
 
 export interface Hallazgo {

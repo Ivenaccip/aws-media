@@ -303,8 +303,9 @@ publicación no salió:
 - Los rechazos de Blotato (422: falta la página, la privacidad, límite diario
   de la red…) llegan a la pantalla con el mensaje de Blotato.
 
-Desde C3 hay además una **Agenda** (`/agenda.html`, en el menú del inicio) con
-todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
+Desde C3 hay además una **Agenda** (`/agenda.html`; en el inicio, Marketing ›
+Blotato) con todo lo que Blotato todavía no ha publicado. Si alguien pregunta
+por ella:
 
 - Lo que enseña sale de Blotato, no de nosotros: también aparece lo que el
   usuario haya programado desde blotato.com. Solo se ve lo **futuro** — en
@@ -325,8 +326,8 @@ todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
   estaba y avisa. La pantalla no consulta sola: solo al abrirla, al pulsar
   «Actualizar» y después de cada cambio.
 
-Y desde C4, **Métricas** (`/metricas.html`, también en el menú) con lo que ya
-salió y lo que no pudo salir. Las preguntas que van a llegar:
+Y desde C4, **Métricas** (`/metricas.html`, también en Marketing › Blotato) con
+lo que ya salió y lo que no pudo salir. Las preguntas que van a llegar:
 
 - **«No me aparecen los números».** Casi siempre es que Blotato todavía no los
   ha recogido: los junta por tandas, desde un par de horas después de publicar

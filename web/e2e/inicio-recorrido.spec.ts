@@ -197,6 +197,40 @@ test('un doble clic en una ficha del mapa abre las opciones y no elige un grupo 
   await expect(page.getByRole('textbox', { name: CAJA })).toBeHidden();
 });
 
+// El mismo doble clic un nivel más abajo: el segundo clic cae sobre lo que aparece donde estaba la tarjeta del grupo (el botón de conectar o la
+// primera pantalla de la lista, que es un enlace). Navegaba fuera del inicio —y lo escrito en la caja se perdía— o abría el diálogo de conectar
+// sin que nadie lo pidiera. Playwright hace el doble clic de verdad (clickCount 1 y 2, el segundo con `detail` 2).
+for (const [ancho, grupo, blotato] of [
+  [1100, 'Blotato', 'conectado'],
+  [1100, 'Blotato', 'sin-conectar'],
+  [390, 'Blotato', 'conectado'],
+  [390, 'Blotato', 'sin-conectar'],
+  [1100, 'Avanzado', 'conectado'],
+] as const) {
+  test(`un doble clic en la tarjeta «${grupo}» (${blotato}, ${ancho} px) abre su lista y no activa lo que cae debajo`, async ({ page }) => {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await simular(page, { blotato });
+    await abrirInicio(page);
+    await page.getByRole('textbox', { name: CAJA }).fill('un gato jugando en la nieve');
+    await irAlMapa(page);
+    await ficha(page, 'Marketing').click();
+    await expect(paso(page)).toHaveText('Elige un grupo');
+    await opcion(page, 'Marketing', grupo).dblclick();
+    await expect(paso(page)).toHaveText(grupo);
+    // ni salió del inicio (lo escrito en la caja sigue ahí) ni se abrió el diálogo de conectar
+    await page.waitForTimeout(400);
+    expect(rutaDe(page)).toBe(URL_DEL_INICIO);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(paso(page)).toHaveText(grupo);
+    if (blotato === 'sin-conectar') {
+      // una pulsación deliberada pasa: la guardia dura medio segundo, no para siempre
+      await page.waitForTimeout(600);
+      await tarjeta(page).getByRole('button', { name: 'Conecta tu cuenta de Blotato' }).dblclick();
+      await expect(page.getByRole('dialog', { name: 'Conecta tu Blotato' })).toBeVisible();
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // las tres opciones
 
@@ -536,6 +570,30 @@ test('el foco no se pierde en <body> al cambiar de paso con el ratón: va al tí
   await alTitulo('Elige un grupo');
   await opcion(page, 'Marketing', 'Distrito').click();
   await alTitulo(CAJA);
+});
+
+// Lo pulsado puede no mover el foco (la acción «hacer clic» de un lector en modo exploración, el control por voz, un `.click()`): el campo de
+// la caja sigue siendo `activeElement` en el instante en que la caja se esconde, y Chromium lo suelta a <body> un momento después. Sin cuidado,
+// el foco acababa en <body>, Esc no llegaba a la tarjeta y el lector no oía «Elige un área».
+test('el foco que estaba DENTRO de la caja al abrir el mapa sin mover el foco (.click()) no cae a <body>: va al título, y Esc sigue valiendo', async ({ page }) => {
+  await simular(page);
+  await abrirInicio(page);
+  const abrirElMapaSinMoverElFoco = () => migas(page).getByRole('button', { name: /^Volver al mapa/ }).evaluate(b => (b as HTMLButtonElement).click());
+  for (const [desde, alcanzar] of [
+    ['el cuadro de texto', () => page.getByRole('textbox', { name: CAJA }).focus()],
+    ['el chip «Un video corto ▾»', () => page.locator('button[aria-haspopup="listbox"]').focus()],
+  ] as const) {
+    await alcanzar();
+    await abrirElMapaSinMoverElFoco();
+    await expect(paso(page), `desde ${desde}`).toHaveText('Elige un área');
+    await expect(paso(page), `desde ${desde}: el foco se perdió`).toBeFocused();
+    // un instante después (cuando el navegador suelta lo que quedó escondido) sigue ahí, y Esc vuelve a la caja
+    await page.waitForTimeout(300);
+    expect((await enfocado(page)).etiqueta, `desde ${desde}: el foco cayó a <body>`).toBe('h2');
+    await page.keyboard.press('Escape');
+    await expect(paso(page), `desde ${desde}: Esc no volvió`).toHaveText(CAJA);
+    await expect(paso(page)).toBeFocused();
+  }
 });
 
 test('Tab recorre el mapa en orden de lectura; el único tope en <body> es la salida de la página, tras el último', async ({ page }) => {

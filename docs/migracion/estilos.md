@@ -84,7 +84,7 @@ En `web/src/pantallas/estilos/Estilos.test.tsx`, con ese nombre exacto.
 |---|---|
 | `test_m4_recarga_cerrada.py` (`estilos.html` en `CON_BOTON`) | `test_web_solo_ofrece_recargar_desde_recarga_tsx` (nuevo, mismo módulo). Al retirar, `estilos.html` sale de `CON_BOTON` |
 | `test_m19_orbe.py` (estilos en `PAGINAS_FASE3`: sobrevive a un poll fallido) | `estilos.lista.sin_red_con_un_analisis_vivo_sigue_reintentando` |
-| `test_m21_botones.py`, `test_ui_escapar.py`, `test_m23_blotato_clave_ui.py`, `test_m25_entrada.py` | se quita `estilos.html` de sus listas al retirar; su intención la cubren `<BotonCobro>` (M21), React (escape) y el menú del inicio, que sigue enlazando `/estilos.html` y el 302 hace el resto |
+| `test_m21_botones.py`, `test_ui_escapar.py`, `test_m23_blotato_clave_ui.py`, `test_m25_entrada.py` | se quita `estilos.html` de sus listas al retirar; su intención la cubren `<BotonCobro>` (M21), React (escape) y Marketing › Avanzado (donde la Copiadora de estilos está por ahora), que sigue enlazando `/estilos.html` y el 302 hace el resto |
 
 ## Diferencias a propósito
 

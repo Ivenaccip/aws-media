@@ -136,7 +136,7 @@ y `test_m23_agenda_registro.py` prueban el server y **se quedan**.
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | al retirar, `static/agenda.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `agenda` sale de las listas |
 | `test_m20_paleta.py` (`rgba(4,9,17,0.72)`) | lo usa también `ui/Dialogo.tsx` (`VELO`) |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (el menú enlaza `/agenda.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Blotato enlaza `/agenda.html`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

@@ -27,6 +27,7 @@ import {
   MODOS_EDICION,
   NOTA_SHORTS_SIGUE,
   NOTA_SHORTS_VACIA,
+  notaDeShorts,
 } from './edicion';
 import type { CostoEdicion } from './envio';
 
@@ -391,6 +392,9 @@ describe('«Iniciar» en Shorts con una liga', () => {
     pintar();
     await enShorts();
     await pegarLiga('https://vimeo.com/123456789');
+    // aún sin pulsar «Iniciar»: lo escrito no es de YouTube, así que la nota no promete llevar a Shorts
+    expect(screen.queryByText(NOTA_SHORTS_SIGUE)).toBeNull();
+    expect(botonIniciar()).toHaveAttribute('aria-describedby', screen.getByText(NOTA_SHORTS_VACIA).id);
     await userEvent.click(botonIniciar());
     expect(ir).not.toHaveBeenCalled();
     expect(f).not.toHaveBeenCalled();
@@ -401,12 +405,17 @@ describe('«Iniciar» en Shorts con una liga', () => {
     expect(campoLiga()).toHaveAccessibleDescription(LIGA_INVALIDA);
     expect(campoLiga()).toHaveFocus();
     expect(dicho(avisos)).toEqual([]);
+    // y la nota de debajo no promete lo contrario de lo que «Iniciar» acaba de hacer (no navegar)
+    expect(screen.queryByText(NOTA_SHORTS_SIGUE)).toBeNull();
+    expect(botonIniciar()).toHaveAttribute('aria-describedby', screen.getByText(NOTA_SHORTS_VACIA).id);
     // corregirla (o seguir escribiendo) quita el error y deja navegar
     await userEvent.type(campoLiga(), '{Backspace}');
     expect(screen.queryByText(LIGA_INVALIDA)).toBeNull();
     expect(campoLiga()).not.toHaveAttribute('aria-invalid');
     await userEvent.clear(campoLiga());
     await userEvent.paste(LIGA);
+    // con una liga de YouTube sí: ahora la nota dice que lleva a Shorts
+    expect(screen.getByText(NOTA_SHORTS_SIGUE)).toBeInTheDocument();
     await userEvent.click(botonIniciar());
     expect(ir).toHaveBeenCalledTimes(1);
   });
@@ -623,6 +632,19 @@ describe('las reglas de Shorts sin pantalla', () => {
     for (const fase of ['calculando', 'listo', 'sin_precio'] as const) {
       expect(estadoDeShorts({ video: { fase }, liga: '' })).toEqual({ tipo: 'listo' });
     }
+  });
+
+  it('la nota promete llevar a Shorts solo si «Iniciar» navega: con un video subido o con una liga de YouTube, no con otra cosa', () => {
+    for (const liga of ['', '   ', 'hola', 'https://vimeo.com/123456789', 'https://www.youtube.com/watch?v=corto']) {
+      expect(notaDeShorts({ video: null, liga })).toBe(NOTA_SHORTS_VACIA);
+    }
+    expect(notaDeShorts({ video: null, liga: LIGA })).toBe(NOTA_SHORTS_SIGUE);
+    // la misma liga que «Iniciar» manda: sin los espacios de los extremos
+    expect(notaDeShorts({ video: null, liga: `  ${LIGA}  ` })).toBe(NOTA_SHORTS_SIGUE);
+    // con un video manda él, tenga lo que tenga escrito la liga; mientras sube, solo se promete que subir es gratis
+    expect(notaDeShorts({ video: { fase: 'listo' }, liga: 'hola' })).toBe(NOTA_SHORTS_SIGUE);
+    expect(notaDeShorts({ video: { fase: 'calculando' }, liga: '' })).toBe(NOTA_SHORTS_SIGUE);
+    expect(notaDeShorts({ video: { fase: 'subiendo' }, liga: LIGA })).toBe(NOTA_SHORTS_VACIA);
   });
 
   it('destinoShorts codifica la liga y el proyecto para que lleguen enteros a la pantalla de Shorts', () => {

@@ -76,7 +76,7 @@ Líneas de lectura de 45 a 75 caracteres (`max-width: 65ch`). Hoy la app usa
 | `#a96716` | ámbar hondo | bordes y detalles | fondo con texto (4.19:1 con la tinta) |
 | `#f3dc92` | dorado claro | solo el título «Irremplazables»: arriba de su degradado (12.2:1 sobre la superficie) | texto largo, otros títulos |
 | `#e6c35c` | dorado | solo el título «Irremplazables»: en medio del degradado, y su color liso si el navegador no recorta el fondo a la letra (9.7:1) | texto largo, otros títulos |
-| `#b98d2f` | dorado hondo | solo el título «Irremplazables»: abajo del degradado, su parte más oscura (5.45:1 sobre la superficie) | texto largo, otros títulos |
+| `#b98d2f` | dorado hondo | solo el título «Irremplazables»: abajo del degradado, su parte más oscura (5.45:1 sobre la superficie), y su color liso al imprimir (3.0:1 sobre papel blanco, el mínimo de un texto de 32 px) | texto largo, otros títulos |
 | `#14100a` | tinta | el **único** texto sobre ámbar (7.0:1) | — |
 | `#a9c6ee` | azul claro | **solo enlaces** (8.4:1 o más sobre cualquier fondo) | botones |
 | `#5b8dd6` | azul | gráficas, relleno azul de datos | texto sobre `#18293f` |
@@ -109,7 +109,9 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
   como degradado de arriba abajo, con los tokens `--color-oro-claro`,
   `--color-oro` y `--color-oro-hondo` de `tokens.css` y la clase `texto-oro`
   (`bg-clip-text text-transparent`). Un navegador que no recorte el fondo a la
-  letra pinta el título en `#e6c35c` liso, nunca invisible.
+  letra pinta el título en `#e6c35c` liso, y al imprimir lo pinta en `#b98d2f`
+  liso (el degradado es un fondo y el navegador no imprime fondos de fábrica):
+  nunca invisible.
 - Todo lo demás es gris: botón secundario con borde `#55708f`.
 
 ## 4. Espacio, forma y movimiento
@@ -275,10 +277,13 @@ de ella, así no se desincronizan.
   «Automatizaciones» y «Estás aquí» no se parten a 390 ni a 320 px, y nada se
   desborda. El riel de la caja pasa a horizontal.
 - **Teclado y foco:** el orden de Tab es el de lectura (Marketing, Producto,
-  Central, Ventas, Automatizaciones). El foco nunca cae a `<body>`: al cambiar de
-  paso va al `h2` del paso nuevo, y solo si se había perdido. Un doble clic en
-  una ficha del mapa no elige además un grupo por accidente (se ignora el
-  segundo clic si llega en menos de 500 ms).
+  Central, Ventas, Automatizaciones). Al cambiar de paso el foco nunca cae a
+  `<body>`: va al `h2` del paso nuevo, y solo si se había perdido. Aterrizar en
+  la caja (abrir `/estudio/inicio/` sin más) no lo mueve: se queda en `<body>`, a
+  propósito, porque llegar a una página no le quita el foco a quien la lee;
+  llegar por la miga de otra página (`?desde=`) sí lo lleva al `h2`, porque abre
+  ya el mapa o las opciones. Un doble clic en una ficha del mapa no elige además
+  un grupo por accidente (se ignora el segundo clic si llega en menos de 500 ms).
 - El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
   con su «＋» para recargar. Se probó al pie del menú lateral (UI·10, hoy
   retirado) y el dueño prefirió la píldora (25-sep). Al cambiar de pantalla

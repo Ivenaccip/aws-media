@@ -119,16 +119,14 @@ describe('Grupos · las tres opciones', () => {
     expect(screen.queryByText('Estás aquí')).toBeNull();
   });
 
-  it('avisa qué grupo se eligió y con cuántos clics (`detail`: 1 un clic, 2 un doble clic, 0 el teclado)', async () => {
+  it('avisa qué grupo se eligió, con el ratón y con el teclado', async () => {
     const alElegir = vi.fn();
     render(<Grupos area={marketing} aqui={null} alElegir={alElegir} />);
     await userEvent.click(screen.getByRole('button', { name: /^Avanzado/ }));
-    expect(alElegir).toHaveBeenLastCalledWith(marketing.grupos[2], 1);
-    await userEvent.dblClick(screen.getByRole('button', { name: /^Blotato/ }));
-    expect(alElegir.mock.calls.at(-1)).toEqual([marketing.grupos[1], 2]);
+    expect(alElegir).toHaveBeenLastCalledWith(marketing.grupos[2]);
     screen.getByRole('button', { name: /^Distrito/ }).focus();
     await userEvent.keyboard('{Enter}');
-    expect(alElegir.mock.calls.at(-1)).toEqual([marketing.grupos[0], 0]);
+    expect(alElegir).toHaveBeenLastCalledWith(marketing.grupos[0]);
   });
 
   it('en el celular apilan en una columna; en pantalla ancha se reparten (auto-fit de 140 px)', () => {
@@ -143,8 +141,7 @@ describe('Grupos · las tres opciones', () => {
     const tarjetas = within(screen.getByRole('group', { name: 'Central' })).getAllByRole('button');
     expect(tarjetas.map(t => t.querySelector('b')?.textContent)).toEqual(['Distrito', 'Deepseek']);
     expect(tarjetas[0]).toHaveTextContent('COI · Biblioteca de prompts · Preguntas sobre la clase · Glosario IA');
-    // Deepseek todavía no existe: lo dice la tarjeta (no «Una sola pantalla»), igual que su contenido dirá que no está disponible
+    // Deepseek todavía no existe: lo dice la tarjeta, igual que su contenido dirá que no está disponible
     expect(tarjetas[1]).toHaveTextContent('Próximamente');
-    expect(tarjetas[1]).not.toHaveTextContent('Una sola pantalla');
   });
 });

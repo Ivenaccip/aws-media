@@ -13,9 +13,9 @@ const OPCIONES = [
   { id: 'c', rotulo: 'Tres', nota: 'nota tres' },
 ] as const;
 
-function montar(elegidaId: 'a' | 'b' | 'c' = 'b') {
+function montar(elegidaId: 'a' | 'b' | 'c' = 'b', { enTarjeta = false } = {}) {
   const alElegir = vi.fn();
-  render(
+  const selector = (
     <>
       <button type="button">antes</button>
       <SelectorOpcion
@@ -25,8 +25,10 @@ function montar(elegidaId: 'a' | 'b' | 'c' = 'b') {
         alElegir={alElegir}
       />
       <button type="button">después</button>
-    </>,
+    </>
   );
+  // la tarjeta del inicio (Recorrido) lleva `data-limite-lista`: la lista no debe sobresalir de ella
+  render(enTarjeta ? <section data-limite-lista="">{selector}</section> : selector);
   return alElegir;
 }
 // el nombre accesible del chip es solo el rótulo (la ▾ es decoración), así que se busca por su rol y su pista
@@ -150,5 +152,37 @@ describe('SelectorOpcion (con 3 opciones, que es donde se distinguen)', () => {
     Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 1000 });
     fireEvent(window, new Event('resize'));
     expect(abierta.style.left).toBe('0px'); // cabe: 1000 - 12 - 400 = 588 ≥ 300 → izq - izq = 0
+  });
+
+  it('se sujeta también al borde derecho de la tarjeta que la contiene (data-limite-lista): la ventana deja 12 px, la tarjeta 16', async () => {
+    montar('a', { enTarjeta: true });
+    await userEvent.click(chip());
+    const abierta = screen.getByRole('listbox');
+    const tarjeta = document.querySelector('[data-limite-lista]')!;
+    vi.spyOn(chip(), 'getBoundingClientRect').mockReturnValue({ left: 100, width: 100 } as DOMRect);
+    vi.spyOn(abierta, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 290 } as DOMRect);
+    // un teléfono de 390 px: la tarjeta va de 16 a 374 y la ventana solo pide 12 de margen
+    vi.spyOn(tarjeta, 'getBoundingClientRect').mockReturnValue({ left: 16, right: 374 } as DOMRect);
+    Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 390 });
+    fireEvent(window, new Event('resize'));
+    // solo con la ventana: tope = 390 - 12 - 290 = 88 → -12 px (la lista terminaría en 378, 4 px fuera de la tarjeta);
+    // con la tarjeta: tope = 374 - 290 = 84 → 84 - 100 = -16 px, y la lista termina en 374, en su borde
+    expect(abierta.style.left).toBe('-16px');
+    // en una pantalla ancha manda lo que quede más cerca: la ventana ya no es el límite, la tarjeta tampoco (cabe)
+    vi.spyOn(tarjeta, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 920 } as DOMRect);
+    Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 1100 });
+    fireEvent(window, new Event('resize'));
+    expect(abierta.style.left).toBe('0px');
+  });
+
+  it('sin tarjeta alrededor (el chip suelto) solo la ventana la sujeta, como siempre', async () => {
+    montar('a');
+    await userEvent.click(chip());
+    const abierta = screen.getByRole('listbox');
+    vi.spyOn(chip(), 'getBoundingClientRect').mockReturnValue({ left: 100, width: 100 } as DOMRect);
+    vi.spyOn(abierta, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 290 } as DOMRect);
+    Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 390 });
+    fireEvent(window, new Event('resize'));
+    expect(abierta.style.left).toBe('-12px');
   });
 });

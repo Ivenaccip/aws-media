@@ -970,6 +970,21 @@ describe('la caja', () => {
     expect(botonOpcion()).toHaveTextContent('Editar una imagen');
   });
 
+  it('en modo de alto contraste la caja incrustada no pinta un segundo marco dentro de la tarjeta; al arrastrar archivos sí (discontinuo)', async () => {
+    montar();
+    pintar();
+    const seccion = caja().closest('section')!;
+    // el borde transparente existe para que nada se mueva al arrastrar; con `forced-colors` el navegador lo pinta del color del sistema
+    // aunque sea transparente, y se vería un marco dentro del marco de la tarjeta
+    expect(seccion).toHaveClass('border', 'border-transparent', 'forced-colors:border-0');
+    expect(seccion).not.toHaveClass('border-dashed');
+    // el «suelta aquí» SÍ es un marco que hay que ver, también en alto contraste
+    fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['Files'] } });
+    expect(seccion).toHaveClass('border-dashed', 'border-ambar');
+    expect(seccion).not.toHaveClass('border-transparent');
+    expect(seccion).not.toHaveClass('forced-colors:border-0');
+  });
+
   it('inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita', async () => {
     nb2EditaEnLaPrueba(); // para ver que el modelo de crear se lleva cuando también edita
     const f = montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
@@ -1110,6 +1125,27 @@ describe('la caja', () => {
     container.removeAttribute('aria-hidden');
     expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
     // y con la caja a la vista, sí
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(false);
+    expect(await screen.findByRole('list', { name: 'Imágenes de referencia' })).toBeInTheDocument();
+  });
+
+  it('pegar con la caja escondida por la tarjeta (el mapa, las opciones o una lista a la vista) no agrega nada ni corta el pegado', async () => {
+    montar();
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    // el mapa (y las tres opciones, y la lista de un grupo) esconden la caja con `hidden`, sin aria-hidden: sigue montada, pero no se ve
+    await userEvent.click(screen.getByRole('button', { name: /^Volver al mapa para cambiar de área/ }));
+    expect(screen.queryByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeNull();
+    // nadie corta el pegado (no hay otro campo que lo reciba, pero tampoco es de la caja) y no se le agrega nada sin que se vea
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(true);
+    await irALaLista('Blotato');
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(true);
+    await irALaLista('Distrito');
+    // la caja está como la dejó: ni una referencia que no vio entrar, ni el cambio a «Editar una imagen»
+    expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
+    expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    expect(screen.queryByRole('status')).toBeNull();
+    // y con la caja de nuevo a la vista, pegar vuelve a funcionar
     expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(false);
     expect(await screen.findByRole('list', { name: 'Imágenes de referencia' })).toBeInTheDocument();
   });
@@ -3059,12 +3095,22 @@ describe('el menú', () => {
     expect(h1).toHaveTextContent(/^Irremplazables$/);
     // el dorado del título (dueño, 15-oct-2026): un degradado que solo usa este título, de la clase `texto-oro` de tokens.css; mismo
     // tamaño de pantalla y peso de título que las demás pantallas (`text-titulo-lg`, extrabold, Bricolage por `h1`)
-    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['texto-oro', 'text-titulo-lg', 'font-extrabold']));
+    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-titulo-lg', 'font-extrabold']));
+    // el degradado es un FONDO recortado a la letra (`texto-oro`): en el h1, solo cubriría la caja del h1, y la letra que se desbordara
+    // (espaciado de texto de WCAG 1.4.12 a 320 px, letra más grande) quedaría transparente y desaparecería. Va en un <span> en línea, cuya
+    // caja mide lo que el texto; y el h1 parte la palabra en vez de dejarla salirse de la tarjeta
+    expect(h1.className.split(/\s+/)).not.toContain('texto-oro');
+    expect(h1.className.split(/\s+/)).toContain('[overflow-wrap:anywhere]');
+    expect(h1.children).toHaveLength(1);
+    const marca = h1.children[0]!;
+    expect(marca.tagName).toBe('SPAN');
+    expect(marca).toHaveClass('texto-oro');
+    expect(marca).toHaveTextContent(/^Irremplazables$/);
     // el ámbar claro de antes ya no pinta el nombre
     expect(h1.className.split(/\s+/)).not.toContain('text-ambar-claro');
+    expect(marca.className.split(/\s+/)).not.toContain('text-ambar-claro');
     // sin icono: ni un dibujo dentro del título
     expect(h1.querySelector('svg, img, i')).toBeNull();
-    expect(h1.children).toHaveLength(0);
     // el nombre de antes ya no sale en la pantalla, y es el único h1
     expect(screen.queryByText(/Estudio de video/)).toBeNull();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);

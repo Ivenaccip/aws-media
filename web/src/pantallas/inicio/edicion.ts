@@ -8,7 +8,7 @@
 // El precio NO se calcula aquí: sale de GET /api/editar/<p>/costo (el servidor mide la
 // duración con ffprobe y sabe si ya hay transcripción). Esta pantalla solo lo enseña.
 import { nombreDesde } from '../../nucleo/subida';
-import { conLiga, conP, RUTA_SHORTS } from '../shorts/logica';
+import { conLiga, conP, esLigaDeYoutube, RUTA_SHORTS } from '../shorts/logica';
 import type { CostoEdicion } from './envio';
 
 /** El nombre del campo, para el lector de pantalla (el h2 de la caja sigue diciendo «¿Qué vamos a crear hoy?»). */
@@ -111,9 +111,9 @@ export const ETIQUETA_LIGA = 'Liga de YouTube';
 export const HUECO_LIGA = 'Pega la liga de YouTube';
 export const APOYO_SHORTS = 'Sube un video largo o pega la liga de YouTube y te proponemos los mejores momentos como shorts.';
 export const AVISO_SIN_FUENTE = 'Primero pega la liga de YouTube o agrega el video con el «+».';
-/** Con la caja vacía (o con el video subiendo): lo único que se puede prometer es que subir es gratis. */
+/** Sin nada a donde ir (la caja vacía, el video subiendo o una liga que no es de YouTube): lo único que se puede prometer es que subir es gratis. */
 export const NOTA_SHORTS_VACIA = 'Subirlo no cuesta nada: el precio aparece cuando termina de subir.';
-/** Con una fuente puesta: «Iniciar» no cobra, y quien lo pulsa tiene que saber que cambia de pantalla. */
+/** Con una fuente que sirve: «Iniciar» no cobra, y quien lo pulsa tiene que saber que cambia de pantalla. */
 export const NOTA_SHORTS_SIGUE = 'Te llevamos a Shorts: ahí ves el precio antes de que se cobre algo.';
 
 /** Qué muestra y qué hace el botón principal en Shorts. Es el mismo botón que en Editar: aquí solo cambia lo que dice. */
@@ -132,6 +132,16 @@ export type EstadoBotonShorts =
 export function estadoDeShorts({ video, liga }: { video: { fase: FaseVideo } | null; liga: string }): EstadoBotonShorts {
   if (video) return video.fase === 'subiendo' ? { tipo: 'subiendo' } : { tipo: 'listo' };
   return liga.trim() ? { tipo: 'listo' } : { tipo: 'sin_fuente' };
+}
+
+/**
+ * La nota de debajo de la caja de Shorts. «Te llevamos a Shorts» es una promesa y solo se cumple si «Iniciar» navega: con un video
+ * subido (manda él) o con una liga que de verdad es de YouTube. Una liga que no lo es (la que aún se escribe, o la que «Iniciar» acaba
+ * de rechazar junto al campo) no lleva a ningún lado, y ahí la nota no puede decir lo contrario de lo que el campo dice.
+ */
+export function notaDeShorts({ video, liga }: { video: { fase: FaseVideo } | null; liga: string }): string {
+  const navega = estadoDeShorts({ video, liga }).tipo === 'listo' && (video !== null || esLigaDeYoutube(liga.trim()));
+  return navega ? NOTA_SHORTS_SIGUE : NOTA_SHORTS_VACIA;
 }
 
 /**

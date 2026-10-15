@@ -265,7 +265,7 @@ menú, la regla de Blotato, el título) conservó sus IDs `inicio.menu.*` e
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
 | `inicio.menu.entradas_y_grupos_en_orden` | **15-oct-2026: ya no hay menú** (ni la nav «Secciones», ni «Estudio de Contenido», ni «Publicidad Automática»); las puertas de siempre siguen, ahora por mapa → opciones → lista. Marketing › Blotato: `/agenda.html`, `/competencia.html`, `/metricas.html`, en ese orden; Marketing › Avanzado: `/mix.html` (MIX, con su requisito Blotato) y `/estilos.html` (la Copiadora de estilos, provisional hasta «Marcas»). «De videos a Shorts» no sale en ninguna lista: vive en «Editar ▾» (ver `inicio.edicion.el_chip_editar_…`). Nada de Marketing dice «próximamente»; Central › Distrito sí, y ninguna de sus pantallas es un enlace. Eran 6 puertas (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió) y siguen siendo 6: cinco en las listas y la de Shorts en el chip. El ID conserva «menú» por historia |
 | `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`). **15-oct-2026:** sin menú, la prueba recorre las listas de Blotato, Avanzado y Central › Distrito y exige lo mismo (ni «Editor de videos», ni su texto, ni un `a[href^="/e1.html"]`); la Copiadora de estilos se queda en Avanzado con su texto tal cual, y «De videos a Shorts» ya no es un enlace de ninguna lista (`/shorts.html` no aparece): pasó al chip «Editar ▾». El nombre del ID habla de «las otras dos de su grupo» por historia |
-| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** de la tarjeta del inicio, centrado, en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige esas tres clases, que **no** lleve `text-ambar-claro`, que no tenga icono ni hijos (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
+| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** de la tarjeta del inicio, centrado, en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige el tamaño y el peso en el `<h1>`, `[overflow-wrap:anywhere]` (la palabra se parte dentro de la tarjeta en vez de salirse), que el dorado vaya en un único `<span class="texto-oro">` dentro del `<h1>` (el fondo recortado a la letra mide lo que el texto: puesto en el `<h1>` mismo, con el espaciado de texto de WCAG 1.4.12 o con letra más grande, las letras que sobresalían de su caja quedaban transparentes), que **no** lleve `text-ambar-claro`, que no tenga icono (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
 | `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar. **15-oct-2026:** la misma regla, en las listas del recorrido: en Marketing › Blotato las tres tarjetas (agenda, competencia, métricas) quedan `aria-disabled` y dicen «Conecta tu Blotato para usarlo», y el clic NO navega (`preventDefault`) sino que abre el diálogo «Conecta tu Blotato»; la cuarta, MIX, se apaga igual en Marketing › Avanzado, mientras la Copiadora de estilos (que no depende de Blotato) no. El ID dice «cuatro» por las cuatro entradas del menú de antes |
 | `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga (en el recorrido: ninguna tarjeta de Blotato ni de Avanzado lleva `aria-disabled`) |
 | `inicio.menu.pregunta_ligero` | el inicio pregunta con `?redes=0`, UNA vez al montar (aunque no se abra ninguna lista), sin gastar una llamada a Blotato: el `GET /api/blotato` a secas no sale hasta abrir el diálogo |
@@ -542,8 +542,11 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     con su propio botón): con liga de YouTube, a `/estudio/shorts/?url=<liga>`,
     donde queda escrita en «Importar» sin cotizar ni importar; con un video
     subido desde el «+», a `?p=<proyecto>`; sin nada, avisa qué falta; con una
-    liga que no es de YouTube, error junto al campo. No se inventó ningún
-    endpoint ni se tocó el servidor. Editar no cambió: lo siguen cubriendo,
+    liga que no es de YouTube, error junto al campo. La nota de debajo solo
+    dice «Te llevamos a Shorts…» cuando «Iniciar» de verdad navega (un video
+    subido o una liga de YouTube); con otra cosa escrita sigue la de «Subirlo no
+    cuesta nada…». El contrato de `?p=` y `?url=` está en `shorts.md`. No se
+    inventó ningún endpoint ni se tocó el servidor. Editar no cambió: lo siguen cubriendo,
     tal cual, los `inicio.edicion.*` de más arriba.
   - **Copiadora de estilos, provisional en Avanzado (15-oct-2026).** No estaba
     en el prototipo: va a ser parte de «Marcas», que todavía no existe. Se queda
@@ -555,8 +558,9 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     diagonales punteadas por detrás. Fichas de 44 px o más, letra de 13 px o más,
     «Automatizaciones» y «Estás aquí» sin partirse a 390 ni a 320 px. El título
     lleva un degradado dorado solo para él (tokens `--color-oro*` y la clase
-    `texto-oro`; `docs/DISENO.md` §3). El foco nunca cae a `<body>`: al cambiar de
-    paso va al `h2` del paso nuevo, y el segundo clic de un doble clic en una
+    `texto-oro`; `docs/DISENO.md` §3). Al cambiar de paso el foco nunca cae a
+    `<body>`: va al `h2` del paso nuevo (aterrizar en la caja no lo mueve: se
+    queda en `<body>`, a propósito), y el segundo clic de un doble clic en una
     ficha del mapa (menos de 500 ms) no elige un grupo por accidente.
 
   **Qué pasó con cada aserción vieja que cambió (15-oct-2026).** Ninguna se
@@ -571,8 +575,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     «De videos a Shorts» deja de ser una de «las otras dos»: está en el chip; la
     Copiadora de estilos sigue con su texto tal cual.
   - `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono`: de
-    `text-ambar-claro` y `text-titulo-sm font-bold` a `texto-oro`,
-    `text-titulo-lg` y `font-extrabold`; y es el único `h1`.
+    `text-ambar-claro` y `text-titulo-sm font-bold` a `text-titulo-lg` y
+    `font-extrabold` con `texto-oro` en un `<span>` dentro del `h1`; y es el único `h1`.
   - `inicio.menu.sin_clave_…`, `…si_no_se_sabe_…` y `…pregunta_ligero`: la misma
     regla, en las listas.
   - `inicio.blotato.*`: las 11 se conservaron; su `abrir` ya no pulsa el «+» del

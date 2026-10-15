@@ -324,15 +324,27 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
     }
   }
 
+  /** Quita del cuadro el error de la caja, si hay uno. Un aviso verde de «ya lo estamos creando» no es un error y se queda. */
+  function quitarErrorDelCuadro() {
+    if (!errorEnElCuadro.current) return;
+    errorEnElCuadro.current = false;
+    quitarAviso(CLAVE_AVISO);
+  }
+
   /** Lo que estaba mal ya se corrigió (se agregó la imagen, se vuelve a pedir): se quita el error, esté junto a la caja
-   *  o en el cuadro. Un aviso verde de «ya lo estamos creando» no es un error y se queda. */
+   *  o en el cuadro. */
   function limpiarError() {
     setError('');
-    if (errorEnElCuadro.current) {
-      errorEnElCuadro.current = false;
-      quitarAviso(CLAVE_AVISO);
-    }
+    quitarErrorDelCuadro();
   }
+
+  // NAV-05 del prototipo (el «aviso fantasma»): el cuadro de abajo a la derecha es de toda la página, no de la caja. Con la caja
+  // escondida (el mapa, las tres opciones o una lista a la vista) su error no tiene formulario que lo explique y se quedaría flotando
+  // sobre otro paso: se quita. No se guarda para volver a ponerlo; «Crear» o «Iniciar» lo repiten si sigue faltando algo
+  const alEsconderse = useEffectEvent(quitarErrorDelCuadro);
+  useEffect(() => {
+    if (!enVista) alEsconderse();
+  }, [enVista]);
 
   function agregar(nuevos: File[]) {
     // con una imagen en «Crear una imagen» la tarea que rige es la de editar: sus topes y sus extensiones
@@ -442,8 +454,9 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
     const destino = e.target instanceof HTMLElement ? e.target : null;
     // en otro campo (la clave de Blotato…) lo pegado es de ese campo; el único que es de la caja es su texto
     if (destino && destino !== area.current && (destino.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(destino.tagName))) return;
-    // con un diálogo abierto (el visor, Blotato) la caja queda detrás: no se le agrega nada sin que se vea
-    if (seccion.current?.closest('[aria-hidden="true"]')) return;
+    // con un diálogo abierto (el visor, Blotato) la caja queda detrás, y con el mapa o una lista a la vista la tarjeta la esconde
+    // (`hidden`, sin aria-hidden): no se le agrega nada sin que se vea, ni se corta un pegado que no es suyo
+    if (!enVista || seccion.current?.closest('[aria-hidden="true"]')) return;
     const imagenes = imagenesPegadas(e.clipboardData);
     if (!imagenes.length) return;
     e.preventDefault();
@@ -578,10 +591,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
         }}
         onDrop={alSoltar}
         // la caja va DENTRO de la tarjeta del inicio (Recorrido): sin fondo, relleno ni margen propios. El borde se queda,
-        // transparente, para pintar el «suelta aquí» (discontinuo, ámbar) al arrastrar archivos sin que nada se mueva
+        // transparente, para pintar el «suelta aquí» (discontinuo, ámbar) al arrastrar archivos sin que nada se mueva. En alto contraste
+        // (`forced-colors`) el navegador pinta hasta un borde transparente con el color del sistema y saldría un segundo marco dentro
+        // del de la tarjeta: ahí el borde en reposo se quita (el «suelta aquí» sí es un marco que hay que ver, y se queda)
         className={unir(
           'flex flex-col gap-4 rounded-grande border min-[640px]:flex-row',
-          arrastrando ? 'border-dashed border-ambar' : 'border-transparent',
+          arrastrando ? 'border-dashed border-ambar' : 'border-transparent forced-colors:border-0',
         )}
       >
         <div

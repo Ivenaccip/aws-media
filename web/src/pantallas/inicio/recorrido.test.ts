@@ -332,8 +332,8 @@ describe('urlSinEntrada · la URL limpia una vez leída la entrada', () => {
   });
 });
 
-describe('esDobleClicAccidental · el segundo clic de un doble clic en una ficha del mapa', () => {
-  it('se ignora un segundo clic (detail > 1) a menos de medio segundo de abrir las opciones', () => {
+describe('esDobleClicAccidental · el segundo clic de un doble clic que cambió de paso (una ficha del mapa, la tarjeta de un grupo)', () => {
+  it('se ignora un segundo clic (detail > 1) a menos de medio segundo del cambio de paso', () => {
     expect(esDobleClicAccidental(2, 0)).toBe(true);
     expect(esDobleClicAccidental(2, VENTANA_DOBLE_CLIC_MS - 1)).toBe(true);
     expect(esDobleClicAccidental(3, 120)).toBe(true);

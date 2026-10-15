@@ -327,3 +327,17 @@ def test_el_titulo_dorado_no_queda_invisible_sin_recorte_de_fondo():
     assert reserva, "`texto-oro` no tiene salida para un navegador sin background-clip: text"
     assert "color: var(--color-oro)" in reserva.group(1), "la salida no pinta el dorado liso"
     assert "background-image: none" in reserva.group(1), "la salida deja el degradado detrás de la letra"
+
+
+def test_el_titulo_dorado_se_imprime_sin_graficos_de_fondo():
+    """El degradado es un fondo, y con «Gráficos de fondo» apagado (lo de fábrica al
+    imprimir) no se pinta: `text-transparent` dejaría un hueco en blanco donde va
+    el título. Al imprimir, la utilidad tiene que pasar al dorado hondo liso, el
+    único de los tres que se lee sobre papel blanco."""
+    css = (RAIZ / "web" / "src" / "estilos" / "tokens.css").read_text(encoding="utf-8")
+    utilidad = re.search(r"@utility texto-oro\s*\{(.*?)\n\}", css, re.S)
+    assert utilidad, "tokens.css perdió la utilidad `texto-oro`"
+    impresion = re.search(r"@media print\s*\{(.*?)\}", utilidad.group(1), re.S)
+    assert impresion, "`texto-oro` no tiene salida para imprimir sin gráficos de fondo"
+    assert "color: var(--color-oro-hondo)" in impresion.group(1), "al imprimir no pinta el dorado hondo liso"
+    assert "background-image: none" in impresion.group(1), "al imprimir deja el degradado detrás de la letra"

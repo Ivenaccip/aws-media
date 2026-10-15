@@ -59,10 +59,9 @@ import {
   MODOS_EDICION,
   NOTA_CALCULANDO,
   NOTA_COPIA,
-  NOTA_SHORTS_SIGUE,
-  NOTA_SHORTS_VACIA,
   NOTA_SIN_PRECIO,
   NOTA_SUBIENDO,
+  notaDeShorts,
   reloj,
   tamano,
 } from './edicion';
@@ -106,9 +105,9 @@ export function CajaEdicion({
   const idEjemplo = useId();
   const { video, boton, hayTexto } = ed;
   const enShorts = ed.modo === 'shorts';
-  // la nota de Shorts: con una fuente puesta «Iniciar» lleva a otra pantalla (y eso se dice); sin ella, lo único que se promete es
-  // que subir es gratis. Va en el mismo lugar y con el mismo id que la nota que explica el apagado en Editar
-  const notaShorts = ed.botonShorts.tipo === 'listo' ? NOTA_SHORTS_SIGUE : NOTA_SHORTS_VACIA;
+  // la nota de Shorts: si «Iniciar» va a llevar a otra pantalla se dice; si no (nada puesto, o una liga que no es de YouTube), lo
+  // único que se promete es que subir es gratis. Va en el mismo lugar y con el mismo id que la nota que explica el apagado en Editar
+  const notaShorts = notaDeShorts({ video, liga: ed.liga });
 
   // la pista rota solo con el campo vacío y sin el foco: con texto no se ve, y quien va a escribir no la debe ver cambiar
   // bajo el cursor (se congela en la que estaba; al soltar el foco con el campo vacío, retoma)

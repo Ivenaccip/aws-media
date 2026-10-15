@@ -124,7 +124,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | `mix.textos.del_servidor_como_texto` (React escapa); al retirar, `static/mix.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `mix` sale de las listas |
 | `test_m4_recarga_cerrada.py` (`CON_BOTON`) | `mix.cobro.si_no_alcanza_no_se_enciende_y_dice_a_quien_escribir` con `<Recarga>`; `test_web_solo_ofrece_recargar_desde_recarga_tsx` ya vigila `web/` |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (el menú enlaza `/mix.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Avanzado enlaza `/mix.html`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

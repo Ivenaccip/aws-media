@@ -261,6 +261,24 @@ describe('la caja de Edición', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
+  // NAV-05 del prototipo: el cuadro de avisos es de toda la página. La tarjeta del inicio esconde la caja (`enVista` falso) al abrir el
+  // mapa o una lista, y un error de ella no puede quedarse flotando ahí. No se esconde para volver a ponerlo: se quita (al volver, «Iniciar»
+  // lo repite). Los avisos verdes del trabajo en marcha no son errores de la caja y se quedan (Recorrido.test.tsx lo prueba entero).
+  it('el error de «Iniciar» sin video sale del cuadro de avisos cuando la caja se esconde, y no vuelve solo al verse otra vez', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    const { rerender } = render(<Caja ir={ir} enVista />);
+    await irAEdicion();
+    await userEvent.click(botonIniciar());
+    expect(dicho(avisos)).toEqual([{ texto: AVISO_SIN_VIDEO, tipo: 'mal', clave: 'caja' }]);
+    expect(avisos.quitar).not.toHaveBeenCalled();
+    rerender(<Caja ir={ir} enVista={false} />);
+    expect(avisos.quitar).toHaveBeenCalledExactlyOnceWith('caja');
+    rerender(<Caja ir={ir} enVista />);
+    expect(dicho(avisos)).toHaveLength(1);
+    expect(avisos.quitar).toHaveBeenCalledTimes(1);
+  });
+
   it('inicio.edicion.con_texto_y_sin_video_la_ayuda_dice_donde_agregarlo', async () => {
     montar();
     pintar();

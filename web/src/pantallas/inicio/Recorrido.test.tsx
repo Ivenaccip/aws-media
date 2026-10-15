@@ -7,7 +7,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
-import { json, servidor, sinRed } from '../../prueba/servidor';
+import { json, ponerAvisos, servidor, sinRed } from '../../prueba/servidor';
 import { huecoDe, IDEAS_EDICION, PISTA_CADA_MS, PISTA_FUNDIDO_MS } from './edicion';
 import { Inicio } from './Inicio';
 import type { EstadoBlotato, Proyecto } from './logica';
@@ -98,6 +98,13 @@ describe('la tarjeta · se aterriza en la caja', () => {
     await screen.findByRole('button', { name: /^Imagen$/ });
   });
 
+  it('la tarjeta es el límite de las listas de la caja: lleva data-limite-lista, que SelectorOpcion busca para no sobresalir de ella', () => {
+    pintar();
+    expect(tarjeta()).toHaveAttribute('data-limite-lista');
+    // y el chip de la caja está dentro de ella (si no, no la encontraría con `closest`)
+    expect(document.querySelector('button[aria-haspopup="listbox"]')!.closest('[data-limite-lista]')).toBe(tarjeta());
+  });
+
   it('un h2 por paso dentro de la tarjeta: «¿Qué vamos a crear hoy?» en la caja, y el de cada paso al abrirlo', async () => {
     pintar();
     const titulos = () => within(tarjeta()).getAllByRole('heading', { level: 2 }).map(h => h.textContent);
@@ -120,6 +127,56 @@ describe('lo que la caja le dice a quien no escribió nada', () => {
     const aviso = await screen.findByRole('alert');
     expect(aviso).toHaveTextContent('Cuéntanos qué quieres primero.');
     expect(aviso.textContent).not.toMatch(/menú|izquierda/i);
+  });
+});
+
+// NAV-05 del prototipo (el «aviso fantasma»): el cuadro de avisos de abajo a la derecha es de toda la página, no de la caja. Un error de la
+// caja («Cuéntanos qué quieres primero.») no puede quedarse flotando sobre el mapa o una lista, donde ya no hay formulario que lo explique.
+describe('un error de la caja no se queda en el cuadro de avisos mientras la caja está escondida', () => {
+  it('«Crear» sin texto y abrir el mapa: el error de la caja sale del cuadro; con otro paso a la vista no vuelve a quitarse nada', async () => {
+    const avisos = ponerAvisos();
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    expect(avisos.mostrar).toHaveBeenCalledExactlyOnceWith('Cuéntanos qué quieres primero.', { tipo: 'mal', clave: 'caja' });
+    // con la caja a la vista el error se queda (hasta que se corrija o se cierre)
+    expect(avisos.quitar).not.toHaveBeenCalled();
+    await alMapa();
+    expect(avisos.quitar).toHaveBeenCalledExactlyOnceWith('caja');
+    // cambiar de paso entre pasos que tampoco son la caja no repite el quitar: ya no hay nada que quitar
+    await userEvent.click(ficha(/^Marketing/));
+    await userEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
+    expect(avisos.quitar).toHaveBeenCalledTimes(1);
+  });
+
+  it('también el de Edición («Primero agrega el video…») y también cuando se esconde por la lista de un grupo', async () => {
+    const avisos = ponerAvisos();
+    pintar();
+    await userEvent.click(within(screen.getByRole('group', { name: 'Qué quieres crear' })).getByRole('button', { name: 'Edición' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Iniciar/ }));
+    expect(avisos.mostrar).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Primero agrega el video'), { tipo: 'mal', clave: 'caja' });
+    await aLaLista('Marketing', 'Blotato');
+    expect(avisos.quitar).toHaveBeenCalledExactlyOnceWith('caja');
+  });
+
+  it('«Ya estamos creando…» NO es un error: con el pedido en marcha, abrir el mapa lo deja en el cuadro', async () => {
+    const avisos = ponerAvisos();
+    // el servidor tarda: el pedido sigue en vuelo y su aviso verde en el cuadro
+    servidor({
+      '/api/proyectos': () => json([]),
+      '/api/slots': () => json({ slots: null, activos: 0 }),
+      '/api/imagenes': () => json({ total: 0, imagenes: [] }),
+      '/api/edicion/proyectos': () => json([]),
+      '/api/clip': () => json({ clips: [] }),
+      '/api/blotato': () => json(CONECTADO),
+      '/api/moderar': () => json({ permitido: true }),
+      '/api/clip/generar': () => new Promise<Response>(() => undefined),
+    });
+    pintar();
+    await userEvent.type(campo(), 'un gato en la luna');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(avisos.mostrar).toHaveBeenCalledWith(expect.stringContaining('Ya estamos creando'), { tipo: 'ok', clave: 'caja' }));
+    await alMapa();
+    expect(avisos.quitar).not.toHaveBeenCalled();
   });
 });
 
@@ -450,6 +507,25 @@ describe('el foco no cae a <body>', () => {
     expect(migaArea()).toHaveFocus();
   });
 
+  it('un foco DENTRO de la caja que se esconde cuenta como perdido: una activación que no mueve el foco (.click(), la acción «hacer clic» de un lector) lo lleva al título del paso, no a <body>', async () => {
+    pintar();
+    // el foco está en el cuadro de texto de la caja; abrir el mapa con `.click()` no se lo quita a nadie (un clic de ratón sí enfoca la miga)
+    campo().focus();
+    act(() => migaArea().click());
+    expect(h2('Elige un área')).toBeInTheDocument();
+    expect(hayCaja()).toBe(false);
+    expect(h2('Elige un área')).toHaveFocus();
+    // y con el foco en el chip «Un video corto ▾» (otro control de la caja), igual
+    await userEvent.keyboard('{Escape}');
+    expect(h2('¿Qué vamos a crear hoy?')).toHaveFocus();
+    document.querySelector<HTMLElement>('button[aria-haspopup="listbox"]')!.focus();
+    act(() => migaArea().click());
+    expect(h2('Elige un área')).toHaveFocus();
+    // Esc sigue llegando a la tarjeta desde ahí: vuelve a la caja
+    await userEvent.keyboard('{Escape}');
+    expect(h2('¿Qué vamos a crear hoy?')).toHaveFocus();
+  });
+
   it('con teclado: Enter en una ficha y Enter en una tarjeta de grupo llevan el foco al título del paso nuevo, no a <body>', async () => {
     pintar();
     await alMapa();
@@ -613,6 +689,78 @@ describe('el doble clic en una ficha del mapa', () => {
     vi.spyOn(Date, 'now').mockReturnValue(ahora + 600);
     fireEvent.click(tarjetaDeGrupo('Marketing', 'Avanzado'), { detail: 2 });
     expect(h2('Avanzado')).toBeInTheDocument();
+  });
+});
+
+// Un nivel más abajo pasa lo mismo: el segundo clic de un doble clic en la tarjeta de «Blotato» cae sobre lo que aparece donde estaba
+// (el botón de conectar o la primera pantalla de la lista, que es un enlace) y navegaba fuera del inicio, o abría el diálogo sin que
+// nadie lo pidiera. La guardia es de la tarjeta entera: cualquier segundo clic (`detail > 1`) a menos de medio segundo de CAMBIAR de
+// paso se ignora. El reloj se congela: con el de verdad la prueba dependería de lo rápido que corra la máquina.
+describe('el doble clic en la tarjeta de un grupo', () => {
+  const T0 = 1_000_000;
+  /** Los clics que LLEGAN hasta el documento, y si alguien ya los había cancelado; luego los cancela para que jsdom no intente navegar. */
+  function clicsQueLlegan() {
+    const llegaron: boolean[] = [];
+    const oir = (e: Event) => {
+      llegaron.push(e.defaultPrevented);
+      e.preventDefault();
+    };
+    document.addEventListener('click', oir);
+    onTestFinished(() => document.removeEventListener('click', oir));
+    return llegaron;
+  }
+
+  it('sin la clave de Blotato, el segundo clic no abre el diálogo de conectar: ni el botón ni la primera pantalla de la lista lo reciben', async () => {
+    montar({ blotato: SIN_CLAVE });
+    pintar();
+    const reloj = vi.spyOn(Date, 'now').mockReturnValue(T0);
+    await alasOpciones();
+    fireEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'), { detail: 1 });
+    expect(h2('Blotato')).toBeInTheDocument();
+    const conectar = await screen.findByRole('button', { name: 'Conecta tu cuenta de Blotato' });
+    const primera = within(lista()).getAllByRole('link')[0]!;
+    // el segundo clic (detail 2) de un doble clic sobre la tarjeta: cae en uno de los dos
+    fireEvent.click(conectar, { detail: 2 });
+    fireEvent.click(primera, { detail: 2 });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(ir).not.toHaveBeenCalled();
+    // una pulsación deliberada pasa: la misma, pasado el medio segundo
+    reloj.mockReturnValue(T0 + 600);
+    fireEvent.click(conectar, { detail: 2 });
+    expect(await screen.findByRole('dialog', { name: 'Conecta tu Blotato' })).toBeInTheDocument();
+  });
+
+  it('con Blotato conectado, el segundo clic no activa la primera pantalla de la lista: no navega; un clic normal sí', async () => {
+    pintar();
+    const reloj = vi.spyOn(Date, 'now').mockReturnValue(T0);
+    await alasOpciones();
+    fireEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'), { detail: 1 });
+    await screen.findByRole('button', { name: 'Blotato conectado: ver o cambiar' });
+    const primera = within(lista()).getAllByRole('link')[0]!;
+    // el segundo clic se cancela en la tarjeta (preventDefault: el enlace no navega). `fireEvent` devuelve false si alguien lo canceló
+    expect(fireEvent.click(primera, { detail: 2 })).toBe(false);
+    // un clic normal (detail 1) enseguida, o uno con el teclado (detail 0), siguen su camino: nadie los cancela antes de que el
+    // navegador decida navegar (este oyente los cancela después, solo para que jsdom no lo intente)
+    const llegaron = clicsQueLlegan();
+    fireEvent.click(primera, { detail: 1 });
+    fireEvent.click(primera, { detail: 0 });
+    expect(llegaron).toEqual([false, false]);
+    // y un doble clic pasado el medio segundo también
+    reloj.mockReturnValue(T0 + 600);
+    fireEvent.click(primera, { detail: 2 });
+    expect(llegaron).toEqual([false, false, false]);
+  });
+
+  it('el mismo cuidado al llegar a la caja: el segundo clic de un doble clic en «Distrito» no pulsa lo que quedó debajo', async () => {
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    vi.spyOn(Date, 'now').mockReturnValue(T0);
+    await alasOpciones();
+    fireEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'), { detail: 1 });
+    expect(hayCaja()).toBe(true);
+    // el segundo clic cae en el riel de la caja (Video): Imagen se queda
+    fireEvent.click(within(screen.getByRole('group', { name: 'Qué quieres crear' })).getByRole('button', { name: 'Video' }), { detail: 2 });
+    expect(within(screen.getByRole('group', { name: 'Qué quieres crear' })).getByRole('button', { name: 'Imagen' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 
