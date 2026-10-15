@@ -22,7 +22,8 @@
 // escribir y no hay nada que desalinear. Chromium transiciona `::placeholder` (se midió; ver docs/migracion/inicio.md). No
 // se anuncia (sin aria-live) y no es el nombre del campo (ese es su aria-label): quien usa lector de pantalla recibe un
 // ejemplo fijo como descripción del campo (EJEMPLO_FIJO, en un <p hidden>: solo lo lee `aria-describedby`, no queda suelto
-// en el árbol de accesibilidad).
+// en el árbol de accesibilidad). La pista solo corre mientras la caja se ve (`enVista`): la tarjeta del inicio la esconde sin
+// desmontarla, y escondida no tiene por qué rotar; al volver, empieza otra vez en la primera idea.
 //
 // Lo que la revisión visual y de accesibilidad exige aquí (cada cosa tiene su prueba en Edicion.test.tsx):
 //   · el campo está en un cuadro bien definido (ui/CuadroDeTexto: borde de campo y fondo elevada) y ese cuadro lleva el aro
@@ -88,7 +89,16 @@ const PISTA_SALE = 'placeholder:opacity-0 placeholder:ease-(--ease-entrada)';
 // por dentro (como el lienzo en sus avisos): por fuera taparía la línea de arriba
 const RECARGA = 'text-xs min-h-11 min-w-11 px-2 -mx-2 -my-3 focus-visible:-outline-offset-3';
 
-export function CajaEdicion({ ed, refs: { area, liga, mas, archivos, principal } }: { ed: ManejoEdicion; refs: RefsEdicion }) {
+export function CajaEdicion({
+  ed,
+  refs: { area, liga, mas, archivos, principal },
+  enVista,
+}: {
+  ed: ManejoEdicion;
+  refs: RefsEdicion;
+  /** La tarjeta del inicio tiene la caja a la vista. Falso = sigue montada pero escondida (mapa, opciones o lista): la pista no corre. */
+  enVista: boolean;
+}) {
   const idAyudaTexto = useId();
   const idAviso = useId();
   // la nota que explica el apagado cuando no es el aviso del servidor ni «escribe qué quieres» (solo hay una a la vez)
@@ -103,8 +113,14 @@ export function CajaEdicion({ ed, refs: { area, liga, mas, archivos, principal }
   // la pista rota solo con el campo vacío y sin el foco: con texto no se ve, y quien va a escribir no la debe ver cambiar
   // bajo el cursor (se congela en la que estaba; al soltar el foco con el campo vacío, retoma)
   const [enfocado, setEnfocado] = useState(false);
-  // (en Shorts no hay campo de texto ni pista: no corre ningún reloj)
-  const pista = usePistaRotatoria(IDEAS_EDICION, enfocado || ed.texto !== '' || enShorts);
+  // y solo con el campo a la vista: la caja escondida por el mapa, las opciones o una lista sigue montada (con su texto y su
+  // video), y en Shorts el campo es otro. Sin campo a la vista no corre ningún reloj, y al volver (a la caja, o de Shorts a
+  // Editar) la pista arranca otra vez en la primera idea
+  const campoAlaVista = enVista && !enShorts;
+  // un campo que se esconde pierde el foco, y Chromium lo avisa con blur (se midió), pero no se da por hecho que todos los navegadores
+  // lo hagan. Con un `enfocado` viejo la pista volvería congelada y sin nadie escribiendo, así que se suelta aquí y no se espera el aviso
+  if (!campoAlaVista && enfocado) setEnfocado(false);
+  const pista = usePistaRotatoria(IDEAS_EDICION, enfocado || ed.texto !== '', campoAlaVista);
 
   // lo que el botón principal dice (los lectores de pantalla lo leen al enfocarlo, con su descripción)
   const etiqueta = enShorts

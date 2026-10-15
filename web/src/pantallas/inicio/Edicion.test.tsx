@@ -2160,6 +2160,119 @@ describe('la pista que rota en el campo de Edición', () => {
     fireEvent.change(campo(), { target: { value: TEXTO } });
     expect(campo()).toHaveAccessibleDescription(EJEMPLO_FIJO);
   });
+
+  // A11Y-11 del prototipo: la tarjeta del inicio esconde la caja con `hidden` mientras se ve el mapa, las opciones o una lista, pero
+  // NO la desmonta (perdería el texto, el video o una subida). Escondida, la pista no se ve: no debe correr nada, y al volver debe
+  // empezar otra vez en la primera idea. `enVista` es lo que la tarjeta le avisa a la caja. Los nombres de estas pruebas no llevan
+  // el prefijo `inicio.` (el de los invariantes del registro anti-pérdida): es una función nueva.
+  describe('con la caja escondida por la tarjeta del inicio', () => {
+    const escondida = <Caja ir={vi.fn()} enVista={false} />;
+    const aLaVista = <Caja ir={vi.fn()} />;
+
+    it('la_pista_no_arma_ningun_temporizador_y_al_volver_arranca_en_la_primera_idea_sin_fundido_y_rota_desde_ahi', () => {
+      montar();
+      const { rerender } = pintar();
+      aEdicion();
+      const { rodando, parada } = cuentas();
+      expect(rodando - parada).toBe(1);
+      avanzar(PISTA_CADA_MS * 2);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+      // se esconde: la caja sigue montada, pero la pista ya no corre
+      rerender(escondida);
+      expect(vi.getTimerCount()).toBe(parada);
+      avanzar(PISTA_CADA_MS * 40, 50);
+      expect(vi.getTimerCount()).toBe(parada);
+      // vuelve a la vista: la primera idea, entera y sin salir; el reloj arma su intervalo completo y de ahí rota
+      rerender(aLaVista);
+      expect(vi.getTimerCount()).toBe(rodando);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+      expect(saliendo()).toBe(false);
+      expect(campo().className.split(/\s+/)).toContain('placeholder:opacity-100');
+      avanzar(ANTES_DE_SALIR - 1);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+      expect(saliendo()).toBe(false);
+      avanzar(1);
+      expect(saliendo()).toBe(true);
+      avanzar(PISTA_FUNDIDO_MS);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    });
+
+    it('escondida_a_mitad_del_fundido_de_salida_vuelve_entera_en_la_primera_idea', () => {
+      montar();
+      const { rerender } = pintar();
+      aEdicion();
+      avanzar(PISTA_CADA_MS);
+      avanzar(ANTES_DE_SALIR);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+      expect(saliendo()).toBe(true);
+      rerender(escondida);
+      rerender(aLaVista);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+      expect(saliendo()).toBe(false);
+    });
+
+    it('si_el_campo_tenia_el_foco_la_pista_no_vuelve_congelada_aunque_el_navegador_no_avise_con_blur', () => {
+      montar();
+      const { rerender } = pintar();
+      aEdicion();
+      const { rodando, parada } = cuentas();
+      fireEvent.focus(campo());
+      expect(vi.getTimerCount()).toBe(parada);
+      // esconder un campo enfocado le quita el foco; Chromium lo avisa con blur, pero no se da por hecho en todos los navegadores
+      // (aquí no hay aviso). Con el `enfocado` viejo la pista volvería parada, sin nadie escribiendo
+      rerender(escondida);
+      rerender(aLaVista);
+      expect(vi.getTimerCount()).toBe(rodando);
+      avanzar(PISTA_CADA_MS);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    });
+
+    it('lo_escrito_sobrevive_y_al_vaciarlo_ya_a_la_vista_la_pista_rota_desde_la_primera_idea', () => {
+      montar();
+      const { rerender } = pintar();
+      aEdicion();
+      avanzar(PISTA_CADA_MS);
+      fireEvent.change(campo(), { target: { value: TEXTO } });
+      rerender(escondida);
+      rerender(aLaVista);
+      // el texto no se pierde (la caja no se desmontó) y, con él, la pista sigue sin correr
+      expect(campo()).toHaveValue(TEXTO);
+      const conTexto = vi.getTimerCount();
+      avanzar(PISTA_CADA_MS * 10, 50);
+      expect(vi.getTimerCount()).toBe(conTexto);
+      fireEvent.change(campo(), { target: { value: '' } });
+      expect(vi.getTimerCount()).toBe(conTexto + 1);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+      avanzar(PISTA_CADA_MS);
+      expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    });
+  });
+
+  it('el_modo_shorts_no_corre_ningun_reloj_y_al_volver_a_editar_la_pista_arranca_en_la_primera_idea', () => {
+    montar();
+    pintar();
+    aEdicion();
+    const { rodando, parada } = cuentas();
+    avanzar(PISTA_CADA_MS * 2);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+    fireEvent.click(chipModo());
+    fireEvent.click(screen.getByRole('option', { name: /De videos a Shorts/ }));
+    // (el milisegundo deja pasar los temporizadores de 0 ms del propio React al pintar el cambio: no son de la pista)
+    avanzar(1);
+    expect(screen.queryByRole('textbox', { name: 'Cuéntale a la IA qué quieres' })).toBeNull();
+    expect(vi.getTimerCount()).toBe(parada);
+    avanzar(PISTA_CADA_MS * 10, 50);
+    expect(vi.getTimerCount()).toBe(parada);
+    // de vuelta a Editar el campo se monta de nuevo: la pista empieza en la primera, no donde iba cuando se fue
+    fireEvent.click(screen.getByRole('button', { name: 'De videos a Shorts' }));
+    fireEvent.click(screen.getByRole('option', { name: /Editar/ }));
+    avanzar(1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(rodando);
+    avanzar(PISTA_CADA_MS - 1);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+  });
 });
 
 // Lo que la revisión visual y de accesibilidad (lienzo Recorrido-2, DISENO.md §4 y §5) encontró en un navegador de verdad

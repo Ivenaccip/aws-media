@@ -10,7 +10,9 @@ Además, por etapa (server/migracion.py):
   · `nueva` y `todos`: el HTML viejo sigue en static/;
   · `retirada`: el HTML viejo ya no existe.
 Y cada pantalla registrada tiene su docs/migracion/<pantalla>.md, con cada
-aserción vieja y su destino.
+aserción vieja y su destino. Ese doc también nombra las pruebas SUELTAS (sin ID,
+función nueva que la pantalla vieja no garantizaba): los archivos que cita tienen
+que existir, porque el registro no las protege.
 """
 import re
 from pathlib import Path
@@ -288,6 +290,11 @@ INVARIANTES = {
         "inicio.imagenes.si_falla_la_lista_no_se_rompe",
         "inicio.ediciones.estado_y_enlace_a_e1",
         "inicio.listas.textos_del_server_como_texto",
+        # 15-oct-2026 (dueño, «Mapa con Irremplazables»): el menú de la izquierda ya no existe. Estos `inicio.menu.*` y los
+        # `inicio.blotato.*` de más abajo se conservaron CON SU NOMBRE y los cumple la ruta nueva (mapa → opciones → lista de
+        # pantallas): docs/migracion/inicio.md dice qué afirma ahora cada uno. El recorrido mismo y el modo «De videos a Shorts» de
+        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (recorrido.test.ts, Recorrido.test.tsx,
+        # Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no se registran aquí
         "inicio.menu.entradas_y_grupos_en_orden",
         # 14-oct-2026 (dueño): «Editor de videos» sale del menú y el título pasa a «Irremplazables» en dorado
         "inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan",
@@ -380,6 +387,8 @@ INVARIANTES = {
         "inicio.edicion.el_aviso_de_trabajo_en_curso_se_quita_solo_cuando_ese_trabajo_termina",
         "inicio.edicion.si_otro_aviso_reemplazo_al_de_trabajo_en_curso_no_se_quita_nada",
         # 14-oct-2026 (dueño): cuadro de escritura, «Editar ▾» junto al «+» e «Iniciar» dorado en todos los estados
+        # (los dos IDs del chip conservan el nombre de cuando la lista tenía UNA opción; desde el 15-oct-2026 tiene dos, «Editar» y
+        # «De videos a Shorts», y sus pruebas lo afirman: renombrarlos exige tocar Edicion.test.tsx, este archivo y el doc a la vez)
         "inicio.edicion.el_campo_vive_en_un_cuadro_con_borde_de_campo_y_fondo_elevada_y_un_clic_en_el_cuadro_enfoca_el_texto",
         "inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion",
         "inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra",
@@ -746,6 +755,20 @@ def test_cada_pantalla_tiene_su_mapa_de_aserciones(pantalla):
     texto = doc.read_text(encoding="utf-8")
     for i in INVARIANTES[pantalla]:
         assert f"`{i}`" in texto, f"{doc.name} no dice dónde quedó {i}"
+
+
+_ARCHIVO_DE_PRUEBA = re.compile(r"`(?:[\w./-]*/)?([A-Za-z0-9_.-]+\.(?:test\.tsx?|spec\.ts))`")
+
+
+@pytest.mark.parametrize("pantalla", sorted(INVARIANTES))
+def test_el_mapa_de_aserciones_solo_cita_archivos_de_prueba_que_existen(pantalla):
+    # Una prueba SUELTA (sin ID, como las del recorrido del inicio) no la protege el registro: lo único que dice dónde vive es el
+    # doc. Si el archivo se renombra o se borra y el doc lo sigue citando, esa cobertura se pierde sin que nada lo note.
+    web = RAIZ / "web"
+    existentes = {p.name for patron in ("src/**/*.test.ts*", "e2e/**/*.spec.ts") for p in web.glob(patron)}
+    texto = (RAIZ / "docs" / "migracion" / f"{pantalla}.md").read_text(encoding="utf-8")
+    faltan = set(_ARCHIVO_DE_PRUEBA.findall(texto)) - existentes
+    assert not faltan, f"docs/migracion/{pantalla}.md cita archivos de prueba que ya no existen: {sorted(faltan)}"
 
 
 @pytest.mark.parametrize("pantalla", sorted(INVARIANTES))

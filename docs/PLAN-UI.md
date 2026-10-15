@@ -188,6 +188,18 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
    - Con sesión, «/» **salta directo** a `/estudio/`.
    - Lo público que viene: **`/automatiza`**, con el RAG público (antes
      llamado `/automatizacion` en este plan).
+7. **Nota del 15-oct-2026 — el menú lateral se retira (sustituye lo del punto 2
+   y la fila 3 de §8, que se quedan como historia del 25-sep):** ✅ el dueño
+   aprobó el prototipo «Mapa con Irremplazables» y en `/estudio/inicio/` ya no
+   hay menú lateral, en ningún ancho. El inicio es un recorrido de tres pasos
+   (mapa en X → tres opciones → pantalla) dentro de una sola tarjeta, y se
+   aterriza en la caja: lo que el 25-sep se decidió como «el centro del inicio
+   sigue siendo el bloque de crear imagen/video» sigue valiendo. De lo demás del
+   punto 2 nada cambia (paleta M20, solo modo oscuro, «Verbo ✦ N», el orbe). La
+   lista de adónde se puede ir es `web/src/marca/menu.ts`; la carta lo recoge en
+   `docs/DISENO.md` §7, el inventario de lo que cambió está en
+   `docs/migracion/inicio.md` y el QA manual en `docs/QA-UI.md` § inicio
+   (pasos 43 a 70).
 
 **Ramas:** los PRs van a `dev`, nunca a `main`. Cada commit de una tarjeta
 empieza con `UI·N:` para poder correlacionar los cambios de la interfaz

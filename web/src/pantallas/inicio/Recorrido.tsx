@@ -10,7 +10,9 @@
 //   · Esc dentro de la tarjeta = «Volver a …» con el mapa o las tres opciones abiertos; en la caja no hace nada. El oyente va en la
 //     tarjeta y NO en la página: con un diálogo, un menú de la caja o la lista de «Editar ▾» abiertos, Esc es de ellos;
 //   · el foco nunca cae a `<body>` (desde ahí Esc dejaría de llegar a la tarjeta): al cambiar de paso el botón pulsado desaparece, y
-//     si el foco se perdió pasa al `h2` del paso nuevo (`tabIndex=-1`, solo programático). Si el foco sigue dentro, no se mueve;
+//     si el foco se perdió pasa al `h2` del paso nuevo (`tabIndex=-1`, solo programático). Si el foco sigue dentro, no se mueve.
+//     Llegar por la miga de otra página (?desde=&ver=) es abrir el inicio ya en el mapa o las opciones, con el foco en `<body>`:
+//     ahí también va al `h2` al montar, para que Esc vuelva a esa página sin tener que tabular antes. Aterrizar en la caja NO;
 //   · el orden de Tab es el de lectura: migas, «Volver a …», y el paso (Marketing, Producto, Central, Ventas, Automatizaciones);
 //   · un doble clic en una ficha del mapa no elige un grupo por accidente (esDobleClicAccidental).
 import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
@@ -76,6 +78,17 @@ export function Recorrido({ estado, despachar, familia, conectado, alConectar, i
     const perdido = !activo || activo === document.body || !marco.current?.contains(activo);
     if (perdido) (verCaja ? tituloCaja : titulo).current?.focus({ preventScroll: true });
   }, [estado.paso, estado.area, estado.grupo, verCaja, tituloCaja]);
+
+  // Llegar por la miga de una página hoja (?desde=&ver=) es lo único que abre el inicio fuera de la caja (recorrido.ts: estadoInicial).
+  // El navegador acaba de cargar una página nueva y el foco está en <body>, donde Esc no llega a la tarjeta (su oyente es de ella):
+  // sin esto hay que tabular o hacer clic antes de que «Volver» valga. Aterrizar en la caja no toca el foco de la página. Y como
+  // al cambiar de paso, no se le roba a quien ya lo tiene (un diálogo, un campo con autofoco): solo se llena un foco vacío
+  const llegoPorEnlace = useRef(estado.paso !== 'contenido');
+  useLayoutEffect(() => {
+    if (!llegoPorEnlace.current) return;
+    const activo = document.activeElement;
+    if (!activo || activo === document.body) titulo.current?.focus({ preventScroll: true });
+  }, []);
 
   const destino = destinoDeVolver(estado, familia);
 

@@ -8,7 +8,11 @@ El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b 
 - **La caja** «¿Qué vamos a crear hoy?» lleva a la pantalla que cobra con el
   texto ya puesto, pide aquí lo que elige modelo y, en su tercera familia
   (**Edición**), sube un video y lanza la edición.
-- **El menú** lleva a las herramientas.
+- **El recorrido** lleva a las herramientas: un mapa en X con las áreas, tres
+  opciones por área y la pantalla (la caja, o la lista de las pantallas de un
+  grupo). Es la tarjeta única del 15-oct-2026 y reemplazó al **menú de la
+  izquierda** (ver «Diferencias a propósito»; los IDs `inicio.menu.*` conservan
+  su nombre por historia).
 - **Las listas** llevan a lo que ya hiciste.
 - **El diálogo de Blotato** guarda la clave del usuario.
 
@@ -54,11 +58,32 @@ sigue en `nueva` y cobra el guion). Nano Banana 2 sale de «Editar» en el mismo
 cambio (`docs/OPERACION.md`). No hay enlace visible a la clásica: a quien lo
 necesite se le manda `/ui/clasica?pantalla=inicio`.
 
+**15-oct-2026 — el recorrido reemplaza al menú de la izquierda (solo en la
+nueva):** `static/index.html`, la clásica, **no se tocó**: conserva su menú, y
+sus guardianes (`test_ui10_inicio.py`, `test_m25_entrada.py`…) siguen leyéndola
+hasta `retirada`. Lo que se pierde al pasar del menú al recorrido está
+inventariado abajo («Diferencias a propósito» y las filas `inicio.menu.*`). Esto
+cambia lo que ve **toda** la gente que entra a `/estudio/inicio/`, así que antes
+de que llegue a `main` el dueño corre en `docs/QA-UI.md` § inicio los pasos 43 a 70.
+
 ## Los invariantes (tests/test_migracion_ui.py)
 
 Cada uno es un test de vitest con ese nombre exacto: los de `inicio.edicion.*`
 en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 (y sus hermanos de la carpeta).
+
+**Pruebas sueltas (15-oct-2026).** El recorrido nuevo (mapa, opciones, migas,
+Esc, foco) y el modo «De videos a Shorts» son función **nueva**, no algo que la
+pantalla vieja garantizara, así que sus pruebas no llevan el prefijo `inicio.` y
+el guardián no exige registrarlas: `recorrido.test.ts` (el estado y la entrada
+por URL, sin React), `Recorrido.test.tsx` (la tarjeta), `Mapa.test.tsx` (el mapa
+y las tres opciones), `Pantallas.test.tsx` (la lista de un grupo),
+`EdicionShorts.test.tsx` (el modo Shorts de la caja) y, fuera de esta carpeta,
+`src/marca/Marco.test.tsx` (las migas de las hojas y su guardián de deriva con
+`menu.ts`), más los e2e `inicio-recorrido.spec.ts`, `inicio-shorts.spec.ts` e
+`inicio-caja.spec.ts`. Lo que **sí** viene de la pantalla vieja (las puertas del
+menú, la regla de Blotato, el título) conservó sus IDs `inicio.menu.*` e
+`inicio.blotato.*`: la tabla de abajo dice cómo cambió lo que cada uno afirma.
 
 | ID | Qué garantiza |
 |---|---|
@@ -238,23 +263,23 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.galeria.si_falla_la_lista_de_imagenes_a_media_espera_no_se_pierde_el_pedido` | si una relectura de `/api/imagenes` falla, el pedido sigue a la vista y se sigue preguntando |
 | `inicio.galeria.una_lectura_con_los_pedidos_sin_leer_a_media_espera_no_borra_el_pedido_ni_apaga_el_sondeo` | lo mismo con un 200 que no pudo leer los pedidos (`pendientes_ok: false`): el pedido sigue a la vista, las imágenes que sí vinieron se enseñan y se sigue preguntando; solo una lectura buena que ya no lo trae lo quita y para el sondeo |
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
-| `inicio.menu.entradas_y_grupos_en_orden` | las 6 entradas y sus destinos (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió); Estudio de Contenido → Blotato → Publicidad Automática (MIX debajo de su requisito); nada dice «próximamente» |
-| `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`) |
-| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño) |
-| `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar |
-| `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga |
-| `inicio.menu.pregunta_ligero` | el menú pregunta con `?redes=0`, sin gastar una llamada a Blotato |
-| `inicio.blotato.mas_abre_el_dialogo_con_las_redes` | el «+» (o ✓) abre el diálogo, no un alert, con las redes conectadas |
+| `inicio.menu.entradas_y_grupos_en_orden` | **15-oct-2026: ya no hay menú** (ni la nav «Secciones», ni «Estudio de Contenido», ni «Publicidad Automática»); las puertas de siempre siguen, ahora por mapa → opciones → lista. Marketing › Blotato: `/agenda.html`, `/competencia.html`, `/metricas.html`, en ese orden; Marketing › Avanzado: `/mix.html` (MIX, con su requisito Blotato) y `/estilos.html` (la Copiadora de estilos, provisional hasta «Marcas»). «De videos a Shorts» no sale en ninguna lista: vive en «Editar ▾» (ver `inicio.edicion.el_chip_editar_…`). Nada de Marketing dice «próximamente»; Central › Distrito sí, y ninguna de sus pantallas es un enlace. Eran 6 puertas (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió) y siguen siendo 6: cinco en las listas y la de Shorts en el chip. El ID conserva «menú» por historia |
+| `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`). **15-oct-2026:** sin menú, la prueba recorre las listas de Blotato, Avanzado y Central › Distrito y exige lo mismo (ni «Editor de videos», ni su texto, ni un `a[href^="/e1.html"]`); la Copiadora de estilos se queda en Avanzado con su texto tal cual, y «De videos a Shorts» ya no es un enlace de ninguna lista (`/shorts.html` no aparece): pasó al chip «Editar ▾». El nombre del ID habla de «las otras dos de su grupo» por historia |
+| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** de la tarjeta del inicio, centrado, en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige esas tres clases, que **no** lleve `text-ambar-claro`, que no tenga icono ni hijos (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
+| `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar. **15-oct-2026:** la misma regla, en las listas del recorrido: en Marketing › Blotato las tres tarjetas (agenda, competencia, métricas) quedan `aria-disabled` y dicen «Conecta tu Blotato para usarlo», y el clic NO navega (`preventDefault`) sino que abre el diálogo «Conecta tu Blotato»; la cuarta, MIX, se apaga igual en Marketing › Avanzado, mientras la Copiadora de estilos (que no depende de Blotato) no. El ID dice «cuatro» por las cuatro entradas del menú de antes |
+| `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga (en el recorrido: ninguna tarjeta de Blotato ni de Avanzado lleva `aria-disabled`) |
+| `inicio.menu.pregunta_ligero` | el inicio pregunta con `?redes=0`, UNA vez al montar (aunque no se abra ninguna lista), sin gastar una llamada a Blotato: el `GET /api/blotato` a secas no sale hasta abrir el diálogo |
+| `inicio.blotato.mas_abre_el_dialogo_con_las_redes` | el «+» (o ✓) abre el diálogo, no un alert, con las redes conectadas. **15-oct-2026:** ese «+»/✓ del encabezado del grupo en el menú de la izquierda pasó a ser un botón con texto, «Conecta tu cuenta de Blotato» o «Blotato conectado: ver o cambiar» (`aria-haspopup="dialog"`), arriba de las tarjetas de Marketing › Blotato; abre el mismo diálogo, con el mismo `DialogoBlotato`. Solo sale en un grupo cuyas pantallas dependen TODAS de Blotato (en Avanzado, que trae la Copiadora, no) |
 | `inicio.blotato.aviso_del_cobro_con_el_precio_del_server_antes_del_campo` | el cobro de Blotato se avisa ANTES del campo, con el precio que manda el server (`pricing.json` nunca entra al cliente) |
 | `inicio.blotato.clave_password_sin_autocompletar` | `type=password`, sin autocompletar, corrector ni mayúsculas |
 | `inicio.blotato.la_clave_se_borra_al_conectar_cancelar_y_cerrar` | la clave se manda una vez, sin espacios, y se vacía al conectar, al cancelar y al cerrar; nunca queda escrita en la página |
 | `inicio.blotato.sin_clave_no_manda_nada` | «Pega tu clave de Blotato primero.» y ningún POST |
 | `inicio.blotato.error_del_server_se_dice_en_el_dialogo` | el error del server en el diálogo y Conectar vuelve a servir |
 | `inicio.blotato.clave_del_env_no_se_ofrece_desconectar` | con la clave del `.env` lo dice y no ofrece Desconectar |
-| `inicio.blotato.desconectar_pide_confirmar` | Desconectar pide confirmación; al desconectar, el menú se apaga |
+| `inicio.blotato.desconectar_pide_confirmar` | Desconectar pide confirmación; al desconectar, el menú se apaga (15-oct-2026: las tres tarjetas de la lista de Blotato pasan a `aria-disabled`) |
 | `inicio.blotato.viene_del_editor_con_blotato_conectar` | `?blotato=conectar` abre el diálogo al llegar |
 | `inicio.blotato.enlace_a_la_api_con_noopener` | «Blotato → Settings → API» en otra pestaña con `noopener noreferrer` |
-| `inicio.blotato.conectar_enciende_el_menu` | al conectar, las cuatro entradas se encienden |
+| `inicio.blotato.conectar_enciende_el_menu` | al conectar, las cuatro entradas se encienden (15-oct-2026: las tres tarjetas de Blotato dejan de decir «Conecta tu Blotato» y el botón de arriba pasa a «Blotato conectado: ver o cambiar»; el ID dice «menú» por historia) |
 | `inicio.marco.sin_version_anterior` | Sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 | `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video` | el riel dice Imagen · Video · Edición (icono `cortar`) con `aria-pressed`; la caja sigue ARRANCANDO en Video; Edición trae el campo «Cuéntale a la IA qué quieres» (`aria-required`, la pista de la primera idea —`huecoDe`—, 2000 caracteres) y el título sigue siendo «¿Qué vamos a crear hoy?» |
 | `inicio.edicion.sin_video_el_boton_es_iniciar_sin_precio_dorado_enfocable_y_avisa` | sin video: «Iniciar» (antes «Editar») sin precio, DORADO (14-oct-2026; antes gris discontinuo), `aria-disabled` (no `disabled`: se puede enfocar) y, al tocarlo, avisa «Primero agrega el video: pulsa el «+» o arrástralo a la caja.» en el cuadro; sin ninguna petición |
@@ -338,8 +363,8 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.subiendo_y_calculando_se_ven_trabajando_en_ambar_con_cursor_de_espera_y_el_clic_avisa` | «Subiendo…» y «Calculando…» son el «Trabajando» de la carta (§5) y del lienzo (`.btn.p.trab`): ámbar, `cursor-progress`, `aria-busy` y `aria-disabled`, sin el borde discontinuo del apagado, descritos por su nota; el clic sigue llegando y avisa «Ya hay un trabajo en curso…»; con el precio sigue dorado (desde el 14-oct-2026 ya no vuelve el gris discontinuo), con `aria-disabled` mientras falte el texto, sin `aria-busy` y sin cursor de espera |
 | `inicio.edicion.cada_apagado_se_explica_con_su_propia_linea` | `aria-describedby` en cada estado en que «Iniciar» tiene `aria-disabled`: sin video y con texto → «Agrega el video con el «+»…»; sin precio → «No pudimos calcular el precio…»; sin saldo → «Tienes ✦ S: no alcanza…» (antes solo «sin texto» y «fuera de rango» tenían su línea) |
 | `inicio.edicion.el_recargar_mide_44_px_aunque_su_letra_sea_chica` | con la recarga abierta, «Recargar» (un enlace de una línea de letra de 13 px) trae `min-h-11 min-w-11` y márgenes negativos que lo devuelven al renglón, y su aro de foco va por dentro; medido en un navegador de verdad: 44 × 44 y la nota no crece |
-| `inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion` | 14-oct-2026 (dueño: «el botón de editar lo vamos a poner a lado del +, como los otros casos; más adelante vamos a poner aquí también lo de videos a shorts»): «Editar ▾» es el MISMO `SelectorOpcion` que «Un video corto ▾», justo después del «+» y antes de «Iniciar» (el orden del foco); `aria-haspopup="listbox"`, `aria-expanded`, `aria-controls`, y `data-pista` = la nota de la opción («Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.»). Su lista tiene UNA opción (`MODOS_EDICION`, en `edicion.ts`), seleccionada, con «según el video» a la derecha. Edición no trae chip de modelo ni de duración. «De videos a Shorts» sigue en el menú de la izquierda: no se movió |
-| `inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra` | ↓ abre con el foco en la opción; con una sola opción, ↑ ↓ Inicio y Fin no se salen de ella; Esc cierra y devuelve el foco al chip; Enter, Espacio y el clic la eligen: cierra, devuelve el foco al chip y no cambia nada (ninguna petición, el texto se conserva); el clic fuera y Tab cierran; irse a otra familia con la lista abierta la deja cerrada al volver |
+| `inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion` | 14-oct-2026 (dueño: «el botón de editar lo vamos a poner a lado del +, como los otros casos; más adelante vamos a poner aquí también lo de videos a shorts»): «Editar ▾» es el MISMO `SelectorOpcion` que «Un video corto ▾», justo después del «+» y antes de «Iniciar» (el orden del foco); `aria-haspopup="listbox"`, `aria-expanded`, `aria-controls`, y `data-pista` = la nota de la opción («Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.»). Su lista tenía UNA opción (`MODOS_EDICION`, en `edicion.ts`), seleccionada, con «según el video» a la derecha. Edición no trae chip de modelo ni de duración. «De videos a Shorts» seguía en el menú de la izquierda. **15-oct-2026:** la lista tiene DOS opciones, que la prueba afirma (`MODOS_EDICION.map(id)` = `editar`, `shorts`): «Editar» (la de ahora, seleccionada al abrir y con el foco) y «De videos a Shorts» (nota «Sube un video largo y te daremos los mejores momentos.»), las dos con «según el video». Ya no hay menú de la izquierda: «De videos a Shorts» solo se alcanza por aquí (cumplido el «más adelante irá aquí» del dueño). El ID conserva «de_una_opcion» porque era la única |
+| `inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra` | ↓ abre con el foco en la opción; con una sola opción, ↑ ↓ Inicio y Fin no se salen de ella; Esc cierra y devuelve el foco al chip; Enter, Espacio y el clic la eligen: cierra, devuelve el foco al chip y no cambia nada (ninguna petición, el texto se conserva); el clic fuera y Tab cierran; irse a otra familia con la lista abierta la deja cerrada al volver. **15-oct-2026:** con DOS opciones, ↓ y Fin van a «De videos a Shorts», ↑ e Inicio vuelven a «Editar» y ninguna sale de la lista; Enter, Espacio y el clic en la opción de AHORA («Editar») siguen siendo solo cerrar. Elegir la otra cambia de modo, y eso lo prueba `EdicionShorts.test.tsx`. El ID dice «la única» por historia |
 | `inicio.edicion.iniciar_es_dorado_en_todos_los_estados_y_solo_cambian_lo_que_dice_y_su_semantica` | 14-oct-2026 (dueño: «donde está ahora el botón de Editar, va a decir «Iniciar» con el botón dorado como el de Generar»): sin video, con texto sin video, subiendo, con precio y con precio sin texto, el botón es ámbar (`bg-ambar`, nada de borde discontinuo ni gris) como «Crear» de Imagen y Video, que tampoco se pinta apagado sino que avisa al pulsarlo. Lo que cambia entre estados es lo que dice y su semántica: `aria-disabled` mientras no se pueda (nunca `disabled`: retiene el foco y explica), `aria-busy` solo subiendo/calculando, y NADA de `aria-disabled` cuando cobra. «Editar ✦ N» y «Editando…» ya no existen |
 | `inicio.edicion.el_aviso_de_trabajo_en_curso_se_quita_solo_cuando_ese_trabajo_termina` | como el lienzo (`aviso === 'ocupada' → ''`): «Ya hay un trabajo en curso…» se quita solo cuando la subida termina y llega el precio, y cuando el servidor dice que la corrida terminó; no antes, y no dos veces |
 | `inicio.edicion.si_otro_aviso_reemplazo_al_de_trabajo_en_curso_no_se_quita_nada` | si otro mensaje tomó el lugar de ese aviso (misma clave), p. ej. el error de una subida que falló, no se quita nada: es lo que la persona tiene que leer |
@@ -359,7 +384,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_titulos_en_bricolage_y_texto_en_geist` | `tokens.css` (`h1, h2` en `font-titulo`) y `font-titulo` en los `h3` de los caminos |
 | `test_sin_tamanos_de_letra_fuera_de_la_escala` | `tokens.css` borra la escala de Tailwind: fuera de los seis tamaños no compila |
 | `test_sin_emojis_como_iconos` | guardianes M19/M21 sobre `web/` e `<Icono>` |
-| `test_cada_entrada_del_menu_lleva_icono` | `GRUPOS` en `Inicio.tsx`: cada `Entrada` exige `icono`; `inicio.menu.entradas_y_grupos_en_orden` cuenta las 6 (eran 7 hasta el 14-oct-2026) |
+| `test_cada_entrada_del_menu_lleva_icono` | `GRUPOS` en `Inicio.tsx`: cada `Entrada` exige `icono`; `inicio.menu.entradas_y_grupos_en_orden` cuenta las 6 (eran 7 hasta el 14-oct-2026). **15-oct-2026:** `GRUPOS` y `EntradaMenu` ya no existen; el registro es `marca/menu.ts`, donde `AreaMenu`, `GrupoMenu` y `PantallaMenu` exigen `icono: NombreIcono` (sin él no compila) y `Mapa`, `Grupos` y `Pantallas` lo pintan. `Marco.test.tsx` vigila que cada `pagina` de `menu.ts` sea el `pantalla` de un `<Marco>` real |
 | `test_los_iconos_que_usa_el_inicio_existen` | TypeScript: `NombreIcono` |
 | `test_el_saldo_se_queda_en_la_pildora_de_arriba` | el inicio nuevo no pinta saldo: lo hace la píldora de `monedero.js` |
 | `test_los_tres_caminos` | `inicio.caminos.enlaces_a_shorts_y_metraje`; los botones son `secundario` |
@@ -395,7 +420,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_la_agenda_es_un_enlace_y_ya_no_dice_proximamente` | `inicio.menu.entradas_y_grupos_en_orden` |
 | `test_el_modal_ya_no_dice_que_programar_llega_pronto` | `inicio.blotato.aviso_del_cobro_con_el_precio_del_server_antes_del_campo` |
 | `test_arrastrar_desde_el_campo_no_cierra_el_modal` | Radix cierra con `pointerdown` fuera: arrastrar desde el campo y soltar fuera no cierra |
-| `test_en_el_telefono_el_inicio_no_se_desplaza_de_lado` | Playwright a 390 px (sin scroll horizontal); el menú se desplaza en su fila y las pistas tienen `max-w` contra la ventana |
+| `test_en_el_telefono_el_inicio_no_se_desplaza_de_lado` | Playwright a 390 px (sin scroll horizontal); el menú se desplaza en su fila y las pistas tienen `max-w` contra la ventana. **15-oct-2026:** ya no hay fila de menú que se desplace: la tarjeta es de una columna y el mapa pasa a la «X compacta» (≤ 560 px); lo mide `web/e2e/inicio-recorrido.spec.ts` en cada paso a 320, 390 y 1100 px (sin desborde horizontal, lo tocable de 44 px y letra de 13 px o más). Las pistas con `max-w` contra la ventana son las del chip de la caja (`inicio-caja.spec.ts`, 320–359 px) |
 | `test_el_modal_se_centra_pese_al_reset_de_margenes` | `<Dialogo>` (Radix) se centra con `translate`, no con `margin` |
 
 ### tests/test_m25_entrada.py (lo que mira el inicio)
@@ -419,8 +444,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_el_triangulo_es_contenido_del_boton_y_va_a_la_derecha` | el ▾ va dentro del botón, al final (`Caja.tsx`), con `whitespace-nowrap` |
 | `test_el_menu_se_sujeta_dentro_de_la_ventana` | el `useLayoutEffect` de `Caja.tsx` mide y sujeta el menú, también al redimensionar; Playwright a 390 px |
 | `test_cada_opcion_cambia_el_ejemplo_del_hueco` | `inicio.caja.cada_opcion_cambia_el_ejemplo` |
-| `test_mix_tiene_su_propio_grupo_en_el_menu` | `inicio.menu.entradas_y_grupos_en_orden` |
-| `test_mix_va_debajo_de_blotato_porque_blotato_es_su_requisito` | `inicio.menu.entradas_y_grupos_en_orden` |
+| `test_mix_tiene_su_propio_grupo_en_el_menu` | `inicio.menu.entradas_y_grupos_en_orden` (15-oct-2026: ya no tiene grupo propio, «Publicidad Automática»: MIX está en Marketing › Avanzado, junto a la Copiadora de estilos) |
+| `test_mix_va_debajo_de_blotato_porque_blotato_es_su_requisito` | `inicio.menu.entradas_y_grupos_en_orden` (el orden ya no es «debajo»; el requisito sigue: MIX se apaga sin la clave de Blotato, `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar`) |
 
 ### Otros módulos que miran el inicio
 
@@ -443,12 +468,138 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 
 ## Diferencias a propósito
 
+- **Mapa con Irremplazables (dueño, 15-oct-2026: «Me gusta, ahora empecemos a
+  tocar el código»):** el inicio deja de tener menú a la izquierda, en cualquier
+  ancho, y pasa a ser un **recorrido de tres pasos dentro de una sola tarjeta**.
+  Cómo quedó cada decisión:
+  - **Mapa en X → tres opciones → pantalla (15-oct-2026).** El mapa tiene las
+    cinco áreas (Marketing, Producto, Central, Ventas y Automatizaciones);
+    elegir una abre sus tres opciones (las de Marketing: Distrito · Blotato ·
+    Avanzado); elegir una abre la pantalla: la caja (Distrito) o la lista de las
+    pantallas del grupo. Producto, Ventas y Automatizaciones son fichas inertes
+    («Próximamente»: se enfocan, no se abren). Hay **una sola lista de adónde
+    ir**, `web/src/marca/menu.ts` (áreas → grupos → pantallas); de ella salen el
+    recorrido (`recorrido.ts`, todo su estado sin React), el mapa, las opciones,
+    la lista y las migas de las hojas, así que no se desincronizan. Lo que hacían
+    `GRUPOS`, `Menu` y `EntradaMenu` de `Inicio.tsx` (y la columna `<aside>`) ya
+    no existe como tal.
+  - **Se aterriza en la caja (15-oct-2026).** Al abrir `/estudio/inicio/` se ve
+    la caja, como siempre, con las migas «Marketing › Distrito»: el mapa se abre
+    desde las migas y «Estás aquí» marca el lugar actual. La caja sigue
+    ARRANCANDO en Video, donde arrancaba
+    (`inicio.caja.arranca_en_el_clip_lo_mas_barato`,
+    `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video`):
+    por eso el primer «Volver a …» que se ve dice «Volver a Video».
+  - **Tarjeta única (15-oct-2026).** 820 px como mucho, centrada y pegada arriba
+    (`pt-16`, no se centra en vertical para que no salte de un paso a otro). Adentro, el
+    `h1` «Irremplazables» (dorado, único `h1`, sin icono), las migas y el paso con
+    su `h2` («Elige un área», «Elige un grupo», «¿Qué vamos a crear hoy?», el
+    nombre del grupo en la lista). La `<section>` de la caja deja de ser su
+    propia tarjeta (sin borde, fondo ni margen propios; pierde el
+    `min-[861px]:mt-[82px]` que la alineaba con el menú) y «Mis creaciones» queda
+    debajo, del mismo ancho.
+  - **Migas, «Volver a …» y Esc (15-oct-2026).** La ruta elegida son chips
+    («Marketing › Distrito») y cada uno reabre su nivel. Con el mapa o las
+    opciones abiertos aparece «Volver a Imagen» (o Video, o Edición: la pestaña
+    de ahora; o la pantalla de la que vienes; o el grupo). **Esc** hace lo mismo,
+    pero solo cuando el foco está dentro de la tarjeta (el `onKeyDown` es de
+    ella, no de la página: con un diálogo, el menú del «+» o la lista de «Editar
+    ▾» abiertos, Esc es de ellos). Mirar otra área NO te saca de donde estabas:
+    «Volver» regresa a Marketing › Distrito, no a Central.
+  - **La caja siempre montada (15-oct-2026).** Con el mapa, las opciones o una
+    lista a la vista, la caja y lo que cuelga de ella («Mis creaciones», los
+    caminos de quien empieza, los archivados) se esconden con `hidden`, no se
+    desmontan: así no se pierden el texto escrito, el video subido, una subida
+    en curso ni el filtro de la galería. Se esconde de la vista, del foco y del
+    lector de pantalla.
+  - **La lista de pantallas de un grupo (15-oct-2026).** Lo que enseña un
+    grupo que no es la caja: tarjetas-enlace con título, línea de apoyo e icono.
+    Las de Blotato se apagan (`aria-disabled`, «Conecta tu Blotato para usarlo»)
+    solo cuando se sabe que no está conectado, y su clic abre el diálogo en
+    vez de navegar: es la regla M23 · C de siempre, sin cambios (ver las filas
+    `inicio.menu.*`). El botón de conectar o ver la cuenta (antes el «+»/✓ del
+    encabezado del grupo en el menú) pasó arriba de esa lista y ahora dice lo que
+    hace. Todo Central sale «Próximamente» y no navega (fondo hundido y texto
+    secundario, no media opacidad: a media opacidad no pasaba el contraste); un
+    grupo sin pantallas (Deepseek) dice «Todavía no está disponible.».
+  - **Las hojas llevan migas (15-oct-2026).** Agenda, Competencia, Métricas, MIX
+    y la Copiadora de estilos siguen siendo páginas, con «← Estudio» y, al lado,
+    «Marketing › Blotato» (o «Avanzado») como **enlaces** al inicio con
+    `?desde=<lugar>&ver=mapa|grupos`. El inicio lee esos dos parámetros UNA vez,
+    al abrir, con las claves validadas contra `menu.ts` (una clave que no existe
+    se ignora y se aterriza en la caja) y limpia solo lo suyo de la URL (deja
+    `?blotato=conectar` y el ancla). Las pantallas que el mapa no tiene (Admin,
+    Crear, Subir, Clip, Imágenes y Shorts) no llevan migas. Las migas son
+    `<ol><li>`: las pruebas de Agenda, Métricas y MIX que cuentan `listitem`
+    lo hacen ahora dentro de `<main>`.
+  - **«De videos a Shorts» dentro de «Editar ▾» (15-oct-2026).** Es la segunda
+    opción del chip y ya no tiene entrada propia (en el menú tenía el enlace a
+    `/shorts.html`, que sigue valiendo en la clásica). El modo vive en
+    `useEdicion`, así que cambiar de pestaña, abrir el mapa o dejar rotar la
+    pista no lo pierde, ni la liga escrita. Su cuerpo: texto de apoyo, el campo
+    «Liga de YouTube», el «+» y «Iniciar» dorado **sin precio**. **«Iniciar» no
+    cobra: navega** a la pantalla de Shorts (la que muestra cada precio y cobra
+    con su propio botón): con liga de YouTube, a `/estudio/shorts/?url=<liga>`,
+    donde queda escrita en «Importar» sin cotizar ni importar; con un video
+    subido desde el «+», a `?p=<proyecto>`; sin nada, avisa qué falta; con una
+    liga que no es de YouTube, error junto al campo. No se inventó ningún
+    endpoint ni se tocó el servidor. Editar no cambió: lo siguen cubriendo,
+    tal cual, los `inicio.edicion.*` de más arriba.
+  - **Copiadora de estilos, provisional en Avanzado (15-oct-2026).** No estaba
+    en el prototipo: va a ser parte de «Marcas», que todavía no existe. Se queda
+    en Marketing › Avanzado (con MIX) para no dejar sin puerta una pantalla que
+    funciona, y se quita cuando Marcas exista.
+  - **Celular, dorado y foco (15-oct-2026).** Hasta 560 px el mapa es la «X
+    compacta» (dos columnas, Central como banda de ancho completo en medio,
+    trazos punteados cortos); en escritorio, una cuadrícula de 3×3 con las dos
+    diagonales punteadas por detrás. Fichas de 44 px o más, letra de 13 px o más,
+    «Automatizaciones» y «Estás aquí» sin partirse a 390 ni a 320 px. El título
+    lleva un degradado dorado solo para él (tokens `--color-oro*` y la clase
+    `texto-oro`; `docs/DISENO.md` §3). El foco nunca cae a `<body>`: al cambiar de
+    paso va al `h2` del paso nuevo, y el segundo clic de un doble clic en una
+    ficha del mapa (menos de 500 ms) no elige un grupo por accidente.
+
+  **Qué pasó con cada aserción vieja que cambió (15-oct-2026).** Ninguna se
+  borró: los IDs `inicio.menu.*` e `inicio.blotato.*` se conservaron con su
+  nombre y se adaptó el cuerpo de cada prueba a la ruta nueva (la tabla de
+  arriba dice qué afirma ahora cada una).
+  - `inicio.menu.entradas_y_grupos_en_orden`: ya no cuenta entradas de un menú:
+    recorre mapa → Marketing → Blotato y Avanzado, y Central › Distrito, y
+    comprueba las mismas puertas y el mismo orden; exige que no haya nav
+    «Secciones» ni «De videos a Shorts» en las listas.
+  - `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan`:
+    «De videos a Shorts» deja de ser una de «las otras dos»: está en el chip; la
+    Copiadora de estilos sigue con su texto tal cual.
+  - `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono`: de
+    `text-ambar-claro` y `text-titulo-sm font-bold` a `texto-oro`,
+    `text-titulo-lg` y `font-extrabold`; y es el único `h1`.
+  - `inicio.menu.sin_clave_…`, `…si_no_se_sabe_…` y `…pregunta_ligero`: la misma
+    regla, en las listas.
+  - `inicio.blotato.*`: las 11 se conservaron; su `abrir` ya no pulsa el «+» del
+    menú sino que entra a la lista de Blotato por el mapa y pulsa el botón de
+    conectar; `desconectar_pide_confirmar` y `conectar_enciende_el_menu` miran
+    ahora las tres tarjetas.
+  - `inicio.edicion.el_chip_editar_…` y `…el_chip_se_porta_como_el_de_video_…`:
+    de una a dos opciones (ver sus filas).
+  - `inicio.caja.sin_texto_no_navega`: el aviso ya no manda «a entrar por el
+    menú de la izquierda» (no hay): dice solo «Cuéntanos qué quieres primero.».
+  - Lo que NO se registró: ninguna de las pruebas nuevas del recorrido ni del modo
+    Shorts lleva `inicio.` (ver «Pruebas sueltas»), porque no son algo que la
+    pantalla vieja garantizara.
+  - El e2e que miraba el menú (`inicio-caja.spec.ts`: «el título del menú dice
+    Irremplazables…») se reescribió para la tarjeta y se le sumó que ya no hay
+    nav «Secciones»; `docs/QA-UI.md` § inicio reemplaza las filas 43 y 46,
+    reescribe la 8 y la 9 y suma las 49 a 70.
+
 - **Ajustes del dueño a la pestaña Edición y al menú (14-oct-2026, mirando una
-  captura):** (1) «Editor de videos» salió del menú de la izquierda (quedan «De
+  captura; el menú de la izquierda dejó de existir el 15-oct-2026, ver el
+  bullet de arriba, y lo que sigue se lee como historia de ese día):** (1)
+  «Editor de videos» salió del menú de la izquierda (quedan «De
   videos a Shorts» y «Copiadora de estilos»); `static/index.html`, la página
   vieja, no se tocó, y la tarjeta «Desde tu metraje → Subir metraje» del primer
   uso sigue llevando a `/e1.html`. (2) El título de la columna izquierda dice
-  **«Irremplazables»** en dorado (`text-ambar-claro`), sin icono; los `<title>`
+  **«Irremplazables»** en dorado (`text-ambar-claro`; desde el 15-oct-2026 es
+  el dorado con degradado de la tarjeta), sin icono; los `<title>`
   de las páginas y el título de las otras pantallas siguen diciendo «Estudio de
   video · …» (pendiente de decidir). (3) El texto de las TRES familias está en un
   cuadro bien definido (`ui/CuadroDeTexto`): borde de campo, fondo `elevada`,
@@ -456,7 +607,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   (4) «Editar ▾» junto al «+», como el chip de las otras familias: se extrajo
   `SelectorOpcion.tsx` de `Caja.tsx` y lo usan las dos cajas, así que hay un solo
   teclado, un solo foco y una sola posición (la revisión del mismo día corrigió en las tres familias que la pista del chip no se pintaba y que Tab con la lista abierta tiraba el foco a `<body>`: ver `inicio.caja.selector_*`).
-  Hoy tiene una opción; ahí mismo irá «De videos a Shorts». (5) *No se hizo en
+  Ese día tenía una opción; desde el 15-oct-2026 tiene dos, y «De videos a
+  Shorts» quedó ahí mismo (ver el bullet de arriba). (5) *No se hizo en
   esta pasada:* que las ideas («Quita muletillas y silencios»…) aparezcan y
   desaparezcan donde dice «Cuéntale a la IA». La fila de ideas, `usarIdea` y su
   `role="group"` quedaron como estaban, debajo del cuadro. *(Se hizo después, en
@@ -717,7 +869,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 - **El desplegable:** es un `listbox` con teclado completo (↑ ↓ Inicio Fin
   Enter Esc).
 - **Teléfono:** los grupos del menú y el «+» de Blotato siguen en la fila
-  que se desplaza.
+  que se desplaza. *(Hasta el 15-oct-2026: ya no hay menú ni fila; el botón de
+  Blotato está en la lista del grupo y el mapa del celular es la «X compacta».)*
 - **«Mis videos» (UI·26, dueño 28-sep):** «Mis proyectos» pasa a «Mis
   videos» y junta películas, clips de 8 s y shorts, lo más nuevo primero.
   Abajo de cada una va su tipo (Video largo, Video corto, Shorts, Cuento) en

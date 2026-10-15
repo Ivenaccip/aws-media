@@ -17,7 +17,7 @@ import { PREDETERMINADO, type Tarea } from './modelos';
  *  propio texto, su video y su precio; por eso no está en OPCIONES. */
 export type Familia = 'videos' | 'imagenes' | 'edicion';
 
-/** Las familias que sí se reparten en tareas (el menú de la izquierda del chip): Imagen y Video. */
+/** Las familias del riel de la caja que sí se reparten en tareas (las del chip de tarea): Imagen y Video. */
 export type FamiliaCrea = Exclude<Familia, 'edicion'>;
 
 /** Cómo llama una opción a lo que se agrega con el «+». Sin esto, la caja habla de «imágenes de referencia»; las

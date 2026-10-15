@@ -11,12 +11,16 @@
 //   · «saliendo»: se apaga (opacidad 0, con --ease-entrada: lo que se va acelera). Al terminar el fundido se cambia el texto,
 //     que ya no se ve, y la idea nueva entra (opacidad 1, con --ease-salida: lo que llega frena).
 //
-// Cuándo NO corre (`quieta` de afuera, y lo que el hook sabe solo):
+// Cuándo NO corre (`quieta` y `enVista` de afuera, y lo que el hook sabe solo):
 //   · `quieta`: el campo tiene el foco (quien va a escribir no debe ver la pista cambiar bajo el cursor) o tiene texto (la pista
-//     no se ve). No corre NADA: ni temporizador ni fundidos;
+//     no se ve). No corre NADA: ni temporizador ni fundidos. Al soltarse retoma en la MISMA idea;
+//   · `enVista` falso: el campo no se puede ver aunque siga montado. La tarjeta del inicio esconde la caja con `hidden` mientras
+//     enseña el mapa, las opciones o una lista (desmontarla perdería lo escrito), y el modo Shorts cambia el campo por otro. Nadie
+//     ve la pista: no corre NADA, y lo que había avanzado se olvida, así que al volver arranca otra vez en la primera idea, sin
+//     fundido. (Volver a la pestaña Edición ya lo hacía solo: cambiar de pestaña desmonta esta caja y su estado);
 //   · «reducir movimiento»: se queda fija en la primera idea, sin fundido ni rotación, y reacciona si la preferencia cambia
 //     (al encenderla vuelve a la primera; al apagarla sigue en la primera y rota desde ahí, sin saltar a la idea que iba);
-//   · la pestaña está oculta: no se acumulan ni se disparan ciclos que nadie ve.
+//   · la pestaña del navegador está oculta: no se acumulan ni se disparan ciclos que nadie ve.
 // Al parar, una idea que iba saliendo vuelve a verse entera: congelada a medio apagar, el campo se quedaría sin pista. Al
 // retomar, la cuenta empieza de cero (no se descuenta el tiempo que se llevaba).
 //
@@ -43,12 +47,13 @@ const AL_ABRIR: Paso = { indice: 0, saliendo: false };
 
 /**
  * @param ideas lo que rota, en orden; la primera es la que se ve al abrir.
- * @param quieta la pista no se está viendo o alguien va a escribir (foco, texto): no corre nada.
+ * @param quieta la pista no se está viendo o alguien va a escribir (foco, texto): no corre nada y retoma donde iba.
+ * @param enVista el campo se puede ver ahora. Falso = no corre nada Y se olvida lo avanzado: al volver arranca en la primera.
  */
-export function usePistaRotatoria(ideas: readonly [string, ...string[]], quieta: boolean): PistaRotatoria {
+export function usePistaRotatoria(ideas: readonly [string, ...string[]], quieta: boolean, enVista: boolean): PistaRotatoria {
   const reducido = useMovimientoReducido();
   const oculta = usePestanaOculta();
-  const rota = !quieta && !reducido && !oculta;
+  const rota = enVista && !quieta && !reducido && !oculta;
   const [paso, setPaso] = useState<Paso>(AL_ABRIR);
 
   // al dejar de rotar, la idea que iba saliendo vuelve a verse entera (ajustar el estado al renderizar, no en un efecto:
@@ -61,10 +66,12 @@ export function usePistaRotatoria(ideas: readonly [string, ...string[]], quieta:
 
   // con «reducir movimiento» manda la primera idea, entera, y lo que la rotación había avanzado se olvida: así, al apagar la
   // preferencia con la pantalla abierta, la pista sigue en la primera y rota desde ahí con su fundido, y no salta de golpe a la
-  // idea que traía guardada. Va atado a `reducido` y NO al bloque de arriba: `rota` también cambia por foco, texto y pestaña
-  // oculta (ahí SÍ se retoma en la misma idea), y con el campo enfocado `rota` ya era falso al encender y apagar la
-  // preferencia, así que ese bloque no correría. Es idempotente: tras un render con `paso` en AL_ABRIR la condición es falsa
-  if (reducido && (paso.indice !== 0 || paso.saliendo)) setPaso(AL_ABRIR);
+  // idea que traía guardada. Fuera de la vista pasa lo mismo, y se olvida ahí mismo (con el campo apagado, sin que se note) y no
+  // al volver, cuando el cambio de idea se vería. Va atado a `reducido` y a `enVista` y NO al bloque de arriba: `rota` también
+  // cambia por foco, texto y pestaña oculta (ahí SÍ se retoma en la misma idea), y con el campo enfocado `rota` ya era falso al
+  // encender y apagar la preferencia, así que ese bloque no correría. Es idempotente: tras un render con `paso` en AL_ABRIR la
+  // condición es falsa
+  if ((reducido || !enVista) && (paso.indice !== 0 || paso.saliendo)) setPaso(AL_ABRIR);
 
   const total = ideas.length;
   useEffect(() => {

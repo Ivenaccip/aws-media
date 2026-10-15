@@ -2,13 +2,17 @@
 // «Volver a …», Esc, el foco, la caja que no se desmonta, lo que va debajo, y la entrada por ?desde=…&ver=…. Se prueba con el Inicio
 // entero (lo que ve la persona), con el servidor simulado. La lógica sola está en recorrido.test.ts; el mapa, las opciones y la
 // lista, cada uno solo, en Mapa.test.tsx y Pantallas.test.tsx.
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createRef, StrictMode } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { json, servidor, sinRed } from '../../prueba/servidor';
+import { huecoDe, IDEAS_EDICION, PISTA_CADA_MS, PISTA_FUNDIDO_MS } from './edicion';
 import { Inicio } from './Inicio';
 import type { EstadoBlotato, Proyecto } from './logica';
+import { Recorrido } from './Recorrido';
+import { REPOSO } from './recorrido';
 
 const CONECTADO: EstadoBlotato = {
   conectado: true,
@@ -372,6 +376,50 @@ describe('el foco no cae a <body>', () => {
     expect(document.body).toHaveFocus();
   });
 
+  it('llegar por ?desde=…&ver=… SÍ lleva el foco al título del paso abierto: «Elige un área» o «Elige un grupo»', () => {
+    history.replaceState(null, '', '/estudio/inicio/?desde=mkt.blotato.agenda&ver=mapa');
+    const { unmount } = pintar();
+    expect(h2('Elige un área')).toHaveFocus();
+    unmount();
+    history.replaceState(null, '', '/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos');
+    pintar();
+    expect(h2('Elige un grupo')).toHaveFocus();
+    // enfocable solo por código: no entra en el orden de Tab
+    expect(h2('Elige un grupo')).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('bajo StrictMode (el efecto corre dos veces) el foco de llegada queda en el título del paso, una sola vez', () => {
+    history.replaceState(null, '', '/estudio/inicio/?desde=mkt.blotato.agenda&ver=mapa');
+    render(
+      <StrictMode>
+        <Inicio ir={ir} />
+      </StrictMode>,
+    );
+    expect(h2('Elige un área')).toHaveFocus();
+  });
+
+  it('una tarjeta que se monta en la lista de un grupo (sin haber llegado por un enlace) tampoco roba el foco: es solo de la llegada', () => {
+    // la lista tiene su título enfocable igual que el mapa: lo que decide es cómo se llegó, no que haya título
+    render(
+      <Recorrido estado={{ ...REPOSO, grupo: 'blotato' }} despachar={vi.fn()} familia="videos" conectado alConectar={vi.fn()} ir={ir} tituloCaja={createRef()}>
+        <p>caja</p>
+      </Recorrido>,
+    );
+    expect(h2('Blotato')).toBeInTheDocument();
+    expect(document.body).toHaveFocus();
+  });
+
+  it('…pero no se lo roba a quien ya lo tenía (un campo con autofoco, un diálogo): solo llena un foco vacío', () => {
+    const otro = document.createElement('button');
+    document.body.append(otro);
+    onTestFinished(() => otro.remove());
+    otro.focus();
+    history.replaceState(null, '', '/estudio/inicio/?desde=mkt.blotato.agenda&ver=mapa');
+    pintar();
+    expect(otro).toHaveFocus();
+    expect(h2('Elige un área')).not.toHaveFocus();
+  });
+
   it('cada paso lleva el foco a su h2: el mapa, las opciones, la lista, y «Elige un grupo» al reabrirlas', async () => {
     pintar();
     await userEvent.click(migaArea());
@@ -432,6 +480,111 @@ describe('el foco no cae a <body>', () => {
       .filter(el => !el.closest('[hidden]'))
       .map(el => el.querySelector('span')?.textContent ?? el.textContent);
     expect(enOrden).toEqual(['Volver a Video', 'Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones']);
+  });
+});
+
+// A11Y-11 del prototipo, con la tarjeta entera: la caja se queda montada y escondida (`hidden`) mientras se ve el mapa, las opciones o una
+// lista, así que la pista rotatoria del campo de Edición no puede seguir rotando sin que se vea ni volver donde iba. El reloj es de verdad
+// pero falso (vi.useFakeTimers): cada prueba mueve el tiempo y cuenta los temporizadores vivos. Los nombres no llevan el prefijo `inicio.`
+// (el de los invariantes del registro anti-pérdida): es una función nueva.
+describe('la pista de Edición con la caja escondida por la tarjeta', () => {
+  const ANTES_DE_SALIR = PISTA_CADA_MS - PISTA_FUNDIDO_MS;
+  // el campo de Edición, escondido o no (escondido no sale por rol)
+  const area = () => document.getElementById('texto-edicion') as HTMLTextAreaElement;
+  const pista = () => area().getAttribute('placeholder');
+  // la caja entera está escondida con `hidden` (por rol no se ve, pero el campo sigue en el árbol)
+  const escondida = () => area().closest('[hidden]') !== null;
+  const saliendo = () => area().className.split(/\s+/).includes('placeholder:opacity-0');
+  const riel = () => within(screen.getByRole('group', { name: 'Qué quieres crear' }));
+  /** Un tramo del reloj falso. El temporizador de cada paso lo arma un efecto, que corre al salir del act: de a `paso` por act. */
+  const avanzar = (ms: number, paso = ms) => {
+    for (let t = 0; t < ms; t += paso) {
+      act(() => {
+        vi.advanceTimersByTime(Math.min(paso, ms - t));
+      });
+    }
+  };
+
+  /** Una idea de la rotación: sale (a los 3.75 s) y entra la siguiente (a los 4). */
+  const unaIdea = () => {
+    avanzar(ANTES_DE_SALIR);
+    avanzar(PISTA_FUNDIDO_MS);
+  };
+
+  /** El inicio con el reloj falso, ya en la pestaña Edición. */
+  async function enEdicion() {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    pintar();
+    await act(async () => {}); // llegan las listas del servidor simulado
+    fireEvent.click(riel().getByRole('button', { name: 'Edición' }));
+    avanzar(1); // los temporizadores de 0 ms del propio React al pintar el cambio no son de la pista
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('con el mapa abierto no corre ningún temporizador de la pista, y «Volver a Edición» la deja en la primera idea, sin fundido', async () => {
+    await enEdicion();
+    const rodando = vi.getTimerCount();
+    unaIdea();
+    unaIdea();
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[2]));
+    fireEvent.click(migaArea());
+    avanzar(1);
+    expect(escondida()).toBe(true);
+    // la caja sigue montada pero escondida: el campo está en el árbol y la pista no corre (es el temporizador de menos)
+    expect(area()).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(rodando - 1);
+    avanzar(PISTA_CADA_MS * 40, 100);
+    expect(vi.getTimerCount()).toBe(rodando - 1);
+    // «Volver a Edición»: la caja se ve de nuevo, en la primera idea y sin salir (sin fundido), y de ahí rota
+    fireEvent.click(volverA('Edición'));
+    avanzar(1);
+    expect(escondida()).toBe(false);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(rodando);
+    // (ya pasó 1 ms desde que volvió: el primer intervalo se cumple a los 3.75 s justos)
+    avanzar(ANTES_DE_SALIR - 2);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    avanzar(1);
+    expect(saliendo()).toBe(true);
+    avanzar(PISTA_FUNDIDO_MS);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+  });
+
+  it('con la lista de otro grupo a la vista tampoco corre, y volver a Distrito por el mapa la deja en la primera idea; lo escrito se queda', async () => {
+    await enEdicion();
+    const rodando = vi.getTimerCount();
+    unaIdea();
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[1]));
+    fireEvent.click(migaArea());
+    fireEvent.click(ficha(/^Marketing/));
+    fireEvent.click(tarjetaDeGrupo('Marketing', 'Blotato'));
+    avanzar(1);
+    expect(h2('Blotato')).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(rodando - 1);
+    avanzar(PISTA_CADA_MS * 40, 100);
+    expect(vi.getTimerCount()).toBe(rodando - 1);
+    fireEvent.click(migaGrupo('Marketing', 'Blotato'));
+    fireEvent.click(tarjetaDeGrupo('Marketing', 'Distrito'));
+    avanzar(1);
+    expect(escondida()).toBe(false);
+    expect(pista()).toBe(huecoDe(IDEAS_EDICION[0]));
+    expect(saliendo()).toBe(false);
+    expect(vi.getTimerCount()).toBe(rodando);
+    // escribir en el campo, esconder la caja y volver: el texto no se pierde (por eso la caja no se desmonta)
+    fireEvent.change(area(), { target: { value: 'Quita los silencios' } });
+    fireEvent.click(migaArea());
+    fireEvent.click(volverA('Edición'));
+    avanzar(1);
+    expect(area()).toHaveValue('Quita los silencios');
   });
 });
 
@@ -498,13 +651,17 @@ describe('la entrada por ?desde=…&ver=…', () => {
   it('Esc con una página aparte de por medio NAVEGA a ella (y no cambia de paso)', async () => {
     con('?desde=mkt.blotato.metricas&ver=mapa');
     pintar();
-    await userEvent.keyboard('{Escape}');
-    // el foco no está dentro de la tarjeta al montar: se lo damos con un clic en el título del paso
-    expect(ir).not.toHaveBeenCalled();
-    await userEvent.click(h2('Elige un área'));
+    // sin tabular ni hacer clic antes: el foco ya está en el título del paso, dentro de la tarjeta
     await userEvent.keyboard('{Escape}');
     expect(ir).toHaveBeenCalledExactlyOnceWith('/metricas.html');
     expect(h2('Elige un área')).toBeInTheDocument();
+  });
+
+  it('Esc nada más llegar a las tres opciones también vuelve a la página de origen', async () => {
+    con('?desde=mkt.avanzado.automaticas&ver=grupos');
+    pintar();
+    await userEvent.keyboard('{Escape}');
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/mix.html');
   });
 
   it('elegir un grupo olvida la página de la que venías: a partir de ahí «Volver a …» es de la caja o del grupo, un botón', async () => {
@@ -524,6 +681,8 @@ describe('la entrada por ?desde=…&ver=…', () => {
       expect(campo(), q).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: /^Elige un/ }), q).toBeNull();
       expect(location.search, q).toBe('');
+      // aterrizar en la caja no toca el foco de la página, aunque la URL traiga una entrada que no sirve
+      expect(document.body, q).toHaveFocus();
       unmount();
     }
   });

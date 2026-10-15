@@ -31,7 +31,8 @@
 //
 // Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») la caja va DENTRO de la tarjeta del inicio (Recorrido.tsx): no pinta su
 // propia tarjeta (sin fondo, borde, relleno ni margen) y avisa de cada cambio de pestaña (`alCambiarFamilia`) para que «Volver a …»
-// diga a cuál vuelves. La tarjeta la esconde con `hidden` mientras se ve el mapa o una lista, SIN desmontarla.
+// diga a cuál vuelves. La tarjeta la esconde con `hidden` mientras se ve el mapa o una lista, SIN desmontarla, y le avisa con
+// `enVista` para que lo que corre solo para ser visto (la pista rotatoria de Edición) no siga corriendo en lo escondido.
 import {
   forwardRef,
   useEffect,
@@ -122,6 +123,9 @@ export interface PropsCaja {
   alCambiarFamilia?: (familia: Familia) => void;
   /** El `h2` «¿Qué vamos a crear hoy?»: el recorrido le lleva el foco al volver a la caja (lleva `tabIndex={-1}`). */
   tituloRef?: Ref<HTMLHeadingElement>;
+  /** La tarjeta del inicio la tiene a la vista. Falso = sigue montada (con lo escrito, el video, la subida) pero escondida con
+   *  `hidden` mientras se ve el mapa, las opciones o una lista: lo que corre solo para ser visto (la pista de Edición) se para. */
+  enVista?: boolean;
 }
 
 const SIN_IMAGENES: Imagen[] = [];
@@ -144,7 +148,7 @@ const RIEL = [
 ] as const;
 
 export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
-  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, alCambiarFamilia, tituloRef },
+  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, alCambiarFamilia, tituloRef, enVista = true },
   ref,
 ) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
@@ -614,7 +618,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
             ¿Qué vamos a crear hoy?
           </h2>
           {enEdicion ? (
-            <CajaEdicion ed={edicion} refs={refsEdicion} />
+            <CajaEdicion ed={edicion} refs={refsEdicion} enVista={enVista} />
           ) : (
             <>
               {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} etiqueta={textosMas?.lista ?? 'Imágenes de referencia'} />}

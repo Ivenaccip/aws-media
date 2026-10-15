@@ -35,8 +35,9 @@ VERBOS = {
     # aquí la persona escribe lo que quiere y la IA lo aplica
     "Editar",
     # 14-oct-2026 (dueño): ese botón pasa a decir «Iniciar ✦ N» — «Editar» es ahora
-    # el chip de modo junto al «+» (y más adelante «De videos a Shorts» irá ahí
-    # también), así que el botón principal tiene un verbo que sirve para todos
+    # el chip de modo junto al «+» (y desde el 15-oct-2026 «De videos a Shorts» es su
+    # segunda opción, donde «Iniciar» navega sin precio), así que el botón principal
+    # tiene un verbo que sirve para todos
     "Iniciar",
 }
 

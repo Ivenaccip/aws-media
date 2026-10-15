@@ -247,6 +247,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }
   }
 
+  // lo mismo que decide Recorrido para esconder la caja: con ella a la vista se ven también las listas de debajo, y la pista corre
+  const verCaja = cajaVisible(recorrido);
   const activos = listas?.proyectos.filter(p => !p.archivado) ?? [];
   const archivados = listas?.proyectos.filter(p => p.archivado) ?? [];
   // Los tres caminos, solo si todas las listas respondieron y todas vienen
@@ -282,6 +284,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             imagenes={listas?.imagenes ?? undefined}
             alCambiarFamilia={setFamilia}
             tituloRef={tituloCaja}
+            enVista={verCaja}
             alPedir={p => setPendientes(l => [p, ...l])}
             alTerminar={(clave, esperarLista) => {
               // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
@@ -302,7 +305,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
 
         {/* Debajo de la tarjeta, del mismo ancho, y SOLO con la caja a la vista: con el mapa, las tres opciones o la lista de un
             grupo no pintan nada (y siguen montadas: una galería que se desmonta pierde su filtro y su visor) */}
-        <div hidden={!cajaVisible(recorrido)} className="mx-auto mt-8 max-w-[820px]">
+        <div hidden={!verCaja} className="mx-auto mt-8 max-w-[820px]">
           {(falloCarga || sinConfirmar) && (
             <div className="mb-6">
               <Aviso tipo="error">

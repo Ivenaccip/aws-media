@@ -1,14 +1,18 @@
 // La caja del inicio en un navegador de verdad, con el static/trabajos.js real (lo sirve e2e/servidor.mjs):
 //  · Ctrl+V con una imagen copiada la agrega (un DataTransfer y un ClipboardEvent reales, no los de jsdom);
 //  · «Crear una imagen» tiene su «+» y, con una imagen, la caja pasa a «Editar una imagen»;
-//  · «Ya estamos creando…» y los errores salen en el cuadro de abajo a la derecha, no junto a la caja.
+//  · «Ya estamos creando…» y los errores salen en el cuadro de abajo a la derecha, no junto a la caja;
+//  · el título «Irremplazables» (el h1 de la tarjeta, ya sin menú a la izquierda): su degradado dorado se pinta de verdad, y lo
+//    que el menú traía («De videos a Shorts», «Copiadora de estilos») se alcanza por el chip «Editar ▾» y por el mapa.
 // Lo que vitest no puede ver: que window.avisos exista cuando la caja lo llama y dónde cae el cuadro en pantalla.
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
+import { contraste } from '../src/nucleo/contraste';
 import { pistaSePinta } from './pantallas';
+import { irA, tarjeta } from './recorrido';
 
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
@@ -306,22 +310,116 @@ test('en el celular el aviso de la foto que no llegó queda a la vista, junto al
   expect(mas!.y + mas!.height).toBeLessThanOrEqual(844);
 });
 
-// ---- los ajustes del dueño del 14-oct-2026 al menú y al área de escritura (lo que jsdom no ve: el color y el aro de verdad) ----
+// ---- el título de la tarjeta (dueño, 15-oct-2026) y los ajustes del 14-oct-2026 al área de escritura (lo que jsdom no ve: el color, el degradado y el aro de verdad) ----
 
-test('el título del menú dice «Irremplazables» en dorado y en negritas, sin icono, y el menú ya no trae «Editor de videos»', async ({ page }) => {
+// El título «Irremplazables» ya no es el del menú de la izquierda (que se fue): es el h1 de la tarjeta del inicio, en dorado con degradado
+// (dueño, 15-oct-2026). El degradado se pinta recortando el fondo a la letra, y eso solo lo prueba un navegador: con `text-transparent`
+// y sin recorte el título desaparecería. Por eso se mira (1) el estilo calculado, (2) que el texto es transparente SOLO si el navegador
+// sabe recortar, y (3) los píxeles de verdad: que hay letra pintada, dorada, y más clara arriba que abajo.
+const aHex = (rgb: string) => '#' + (rgb.match(/\d+/g) ?? []).slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('');
+
+/** Los píxeles de la letra del título: cuántos, su color medio y qué tan claro es arriba y abajo (0 a 255). */
+async function tintaDelTitulo(page: Page, titulo: Locator) {
+  const png = (await titulo.screenshot()).toString('base64');
+  return page.evaluate(async base64 => {
+    const imagen = await createImageBitmap(await (await fetch('data:image/png;base64,' + base64)).blob());
+    const lienzo = new OffscreenCanvas(imagen.width, imagen.height);
+    const g = lienzo.getContext('2d')!;
+    g.drawImage(imagen, 0, 0);
+    const { data, width, height } = g.getImageData(0, 0, imagen.width, imagen.height);
+    // el fondo es lo que hay en la esquina; «tinta» es todo lo que se aleja claramente de él
+    const [fr, fg, fb] = [data[0]!, data[1]!, data[2]!];
+    const tinta: Array<{ y: number; r: number; g: number; b: number }> = [];
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const [r, gg, b] = [data[i]!, data[i + 1]!, data[i + 2]!];
+        if (Math.abs(r - fr) + Math.abs(gg - fg) + Math.abs(b - fb) > 200) tinta.push({ y, r, g: gg, b });
+      }
+    if (!tinta.length) return { pixeles: 0, media: [0, 0, 0], arriba: 0, abajo: 0 };
+    const luz = (p: { r: number; g: number; b: number }) => 0.2126 * p.r + 0.7152 * p.g + 0.0722 * p.b;
+    const [primero, ultimo] = [Math.min(...tinta.map(p => p.y)), Math.max(...tinta.map(p => p.y))];
+    const mitad = (primero + ultimo) / 2;
+    const promedio = (ps: typeof tinta) => ps.reduce((t, p) => t + luz(p), 0) / Math.max(1, ps.length);
+    const n = tinta.length;
+    return {
+      pixeles: n,
+      media: [tinta.reduce((t, p) => t + p.r, 0) / n, tinta.reduce((t, p) => t + p.g, 0) / n, tinta.reduce((t, p) => t + p.b, 0) / n],
+      arriba: promedio(tinta.filter(p => p.y <= mitad)),
+      abajo: promedio(tinta.filter(p => p.y > mitad)),
+    };
+  }, png);
+}
+
+test('el título «Irremplazables» es el h1 de la tarjeta: dorado con degradado, 32 px y negritas, sin icono', async ({ page }) => {
   await inicio(page, { estado: 200, cuerpo: {} });
   const titulo = page.getByRole('heading', { level: 1 });
+  // el único h1 de la página, y es el que da nombre a la tarjeta
+  await expect(titulo).toHaveCount(1);
   await expect(titulo).toHaveText('Irremplazables');
-  // el ámbar claro de la paleta (#f0a94a), con el peso y el tamaño de título que ya tenía
-  await expect(titulo).toHaveCSS('color', 'rgb(240, 169, 74)');
-  await expect(titulo).toHaveCSS('font-weight', '700');
-  await expect(titulo).toHaveCSS('font-size', '20px');
-  expect(await titulo.locator('svg, img').count()).toBe(0);
-  const menu = page.getByRole('navigation', { name: 'Secciones' });
-  await expect(menu.getByText('Editor de videos')).toHaveCount(0);
-  await expect(menu.getByText('De videos a Shorts')).toBeVisible();
-  await expect(menu.getByText('Copiadora de estilos')).toBeVisible();
-  expect(await menu.locator('a[href^="/e1.html"]').count()).toBe(0);
+  await expect(page.getByRole('region', { name: 'Irremplazables' }).getByRole('heading', { level: 1 })).toHaveCount(1);
+  expect(await titulo.locator('svg, img').count(), 'el título no lleva icono').toBe(0);
+  await expect(titulo).toHaveCSS('font-size', '32px');
+  await expect(titulo).toHaveCSS('font-weight', '800');
+  await expect(titulo).toHaveCSS('text-align', 'center');
+
+  const e = await titulo.evaluate(el => {
+    const c = getComputedStyle(el);
+    return {
+      imagen: c.backgroundImage,
+      recorte: c.backgroundClip,
+      color: c.color,
+      superficie: getComputedStyle(el.closest('section')!).backgroundColor,
+      sabeRecortar: CSS.supports('background-clip', 'text') || CSS.supports('-webkit-background-clip', 'text'),
+    };
+  });
+  const TRANSPARENTE = 'rgba(0, 0, 0, 0)';
+  // el texto es transparente solo si el navegador recorta el fondo a la letra; si no sabe, el dorado liso (nunca un título invisible)
+  expect(e.color === TRANSPARENTE, `color ${e.color} con recorte ${e.sabeRecortar ? 'soportado' : 'no soportado'}`).toBe(e.sabeRecortar);
+  if (e.sabeRecortar) {
+    expect(e.recorte).toBe('text');
+    // el degradado dorado de la carta, de arriba abajo: claro, dorado, hondo
+    expect(e.imagen).toMatch(/^linear-gradient\(.*rgb\(243, 220, 146\).*rgb\(230, 195, 92\).*rgb\(185, 141, 47\)/);
+    // y de verdad se ve: hay letra pintada, es dorada y más clara arriba que abajo
+    const tinta = await tintaDelTitulo(page, titulo);
+    expect(tinta.pixeles, 'no hay letra pintada: el título es invisible').toBeGreaterThan(300);
+    const [r, g, b] = tinta.media as [number, number, number];
+    expect(r, 'la letra no es dorada').toBeGreaterThan(g);
+    expect(g, 'la letra no es dorada').toBeGreaterThan(b + 40);
+    expect(tinta.arriba, 'el degradado no va de claro arriba a hondo abajo').toBeGreaterThan(tinta.abajo + 10);
+  } else {
+    expect(e.imagen).toBe('none');
+    expect(aHex(e.color)).toBe('#e6c35c');
+  }
+  // lo más oscuro del degradado (#b98d2f) sobre la superficie de la tarjeta se lee: 5.45:1 medido en la carta (AA de texto normal, 4.5)
+  expect(contraste('#b98d2f', aHex(e.superficie)), 'el dorado hondo no se lee sobre la tarjeta').toBeGreaterThanOrEqual(4.5);
+});
+
+test('ya no hay menú «Secciones» ni «Editor de videos», y lo que traía el menú se alcanza por el mapa', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  await expect(page.getByRole('navigation', { name: 'Secciones' })).toHaveCount(0);
+  await expect(page.locator('aside')).toHaveCount(0);
+  await expect(page.getByText('Editor de videos')).toHaveCount(0);
+
+  // «De videos a Shorts» vive en el chip «Editar ▾» de la caja (Edición), no en una lista de pantallas
+  await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición', exact: true }).click();
+  await page.locator('button[aria-haspopup="listbox"]').click();
+  await expect(page.getByRole('listbox', { name: 'Opciones' }).getByRole('option', { name: /De videos a Shorts/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // por el mapa: Marketing → sus grupos. Cada lista trae SUS pantallas (así «no hay» de abajo no pasa por vacía) y ninguna trae
+  // «Editor de videos» ni «De videos a Shorts»
+  const area = tarjeta(page);
+  for (const [grupo, pantallas] of [['Blotato', 3], ['Avanzado', 2]] as const) {
+    await irA(page, 'Marketing', grupo);
+    await expect(area.getByRole('link'), `las pantallas de ${grupo}`).toHaveCount(pantallas);
+    await expect(area.getByRole('link', { name: /De videos a Shorts|Editor de videos/ }), `en ${grupo}`).toHaveCount(0);
+    await expect(area.locator('a[href^="/e1.html"], a[href^="/shorts.html"]'), `en ${grupo}`).toHaveCount(0);
+  }
+  // «Copiadora de estilos» (provisional, hasta que exista Marcas): Marketing → Avanzado → Copiadora
+  await expect(area.getByRole('link', { name: /Copiadora de estilos/ })).toBeVisible();
+  await Promise.all([page.waitForURL(/\/estudio\/estilos\//), area.getByRole('link', { name: /Copiadora de estilos/ }).click()]);
+  await expect(page.getByRole('heading', { level: 1, name: 'Copiadora de estilos' })).toBeVisible();
 });
 
 for (const [familia, nombre] of [

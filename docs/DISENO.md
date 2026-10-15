@@ -225,8 +225,8 @@ de ella, así no se desincronizan.
   elegida; los de Marketing son Distrito, Blotato y Avanzado) → **la pantalla**
   (la caja del inicio, o la lista de las pantallas del grupo).
 - **Se aterriza en la caja, no en el mapa:** al abrir `/estudio/inicio/` se ve
-  Marketing › Distrito › Imagen, como siempre. El mapa se abre desde las migas;
-  «Estás aquí» marca el lugar actual.
+  la caja (Marketing › Distrito), en Video como siempre. El mapa se abre desde
+  las migas; «Estás aquí» marca el lugar actual.
 - **Una tarjeta única:** 820 px de ancho como mucho, centrada en horizontal y
   pegada arriba (64 px; no se centra en vertical para que no salte de un paso a
   otro), en la superficie `#111f33` con borde `#22354f` y radio 16. Adentro, de
