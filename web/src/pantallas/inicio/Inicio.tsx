@@ -11,7 +11,8 @@
 // lleva tarjeta. La caja se queda montada (y escondida) aunque se vea otro paso:
 // no pierde lo escrito ni una subida. Lo que va debajo de ella (Mis creaciones,
 // los caminos…) se ve solo cuando la caja se ve. Las pantallas hoja (agenda,
-// métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts).
+// métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts), y la Biblioteca de prompts con `?prompt=` o `?brief=`
+// para dejar un texto ya puesto en la caja (pestaña Imagen o Video).
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
 // con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
@@ -47,7 +48,7 @@ import {
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
-import { cajaVisible, estadoInicial, reducir, urlSinEntrada } from './estadoRecorrido';
+import { cajaVisible, estadoInicial, leerLlegadaDeTexto, reducir, urlSinEntrada } from './estadoRecorrido';
 import { Recorrido } from './Recorrido';
 
 interface Listas {
@@ -116,6 +117,9 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   // el recorrido: en qué paso va (el mapa al abrir), y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez)
   const [recorrido, despachar] = useReducer(reducir, undefined, () => estadoInicial(location.search));
   const tituloCaja = useRef<HTMLHeadingElement>(null);
+  // el texto con el que se llegó a la caja (?prompt= o ?brief=, de «Llevar a la caja» de la Biblioteca de prompts): se lee UNA vez, junto con
+  // el recorrido, y la caja lo pone en su cuadro al montarse. Llegar así no crea ni cobra nada
+  const [llegada] = useState(() => leerLlegadaDeTexto(location.search));
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
   // las copias de E2 que estaban editándose en la última lista: si una pasa a error, el servidor devolvió los créditos; si pasa a «lista»
@@ -321,6 +325,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             ir={ir}
             imagenes={listas?.imagenes ?? undefined}
             tituloRef={tituloCaja}
+            llegada={llegada}
             enVista={verCaja}
             alEditar={() => void cargar()}
             alPedir={p => setPendientes(l => [p, ...l])}

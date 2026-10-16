@@ -22,6 +22,10 @@
 // Desde una pantalla hoja (agenda, métricas…) las migas son enlaces al inicio con `?desde=<lugar>&ver=<mapa|grupos>` (marca/menu.ts,
 // `urlDeInicio`). Aquí se lee esa entrada UNA vez (`estadoInicial`), con las claves validadas contra el mapa: una clave que no existe
 // (un enlace viejo, escrito a mano) se ignora y se aterriza en el mapa, como siempre.
+//
+// Y hay otra entrada, la de «Llevar a la caja» de la Biblioteca de prompts (Ajustes 3, 16-oct-2026): `?prompt=<texto>` abre DIRECTO la caja en la
+// pestaña Imagen con el texto puesto, y `?brief=<texto>` en la pestaña Video (`leerLlegadaDeTexto`). Llegar así nunca crea ni cobra nada:
+// solo deja la caja lista. Se lee una vez y la URL se limpia, igual que `?desde=`.
 import { buscar, LUGAR_INICIAL, lugarDeTexto, MENU, PARAM_DESDE, PARAM_VER, type AreaMenu, type GrupoMenu } from '../../marca/menu';
 import type { NombreIcono } from '../../ui/iconos';
 
@@ -179,6 +183,8 @@ export function alEscape(e: EstadoRecorrido): AlEscape | null {
 
 /** El estado con el que abre el inicio: el de `?desde=<lugar>&ver=<mapa|grupos>` si ambos son válidos, y si no, el reposo (el mapa). */
 export function estadoInicial(busqueda: string): EstadoRecorrido {
+  // un texto que llega a la caja (de la Biblioteca): se abre la caja, la de Marketing › Distrito, con algo ya elegido
+  if (leerLlegadaDeTexto(busqueda)) return { ...REPOSO, paso: 'contenido', elegido: true };
   const params = new URLSearchParams(busqueda);
   const lugar = lugarDeTexto(params.get(PARAM_DESDE));
   const ver = params.get(PARAM_VER);
@@ -200,10 +206,41 @@ export function estadoInicial(busqueda: string): EstadoRecorrido {
  *  Se pone con `history.replaceState`: la entrada se lee una vez y recargar o compartir el enlace no repite el recorrido. */
 export function urlSinEntrada(href: string): string | null {
   const url = new URL(href);
-  if (!url.searchParams.has(PARAM_DESDE) && !url.searchParams.has(PARAM_VER)) return null;
-  url.searchParams.delete(PARAM_DESDE);
-  url.searchParams.delete(PARAM_VER);
+  if (!ENTRADAS.some(p => url.searchParams.has(p))) return null;
+  for (const p of ENTRADAS) url.searchParams.delete(p);
   return url.pathname + url.search + url.hash;
+}
+
+// ---------------------------------------------------------------------------
+// el texto que llega a la caja
+
+/** Los parámetros de la dirección que el inicio lee UNA vez y limpia: `desde` y `ver` (de las pantallas hoja) y `prompt` y `brief` (de la Biblioteca). */
+const PARAM_PROMPT = 'prompt';
+const PARAM_BRIEF = 'brief';
+const ENTRADAS = [PARAM_DESDE, PARAM_VER, PARAM_PROMPT, PARAM_BRIEF] as const;
+
+/** Lo más que cabe en el cuadro de la caja (su `maxLength`): un texto más largo se corta, no se pierde la llegada. */
+const MAX_TEXTO_DE_LLEGADA = 5000;
+
+export interface LlegadaDeTexto {
+  /** La pestaña de la caja que se abre: `?prompt=` es una imagen, `?brief=` un video. */
+  familia: 'imagenes' | 'videos';
+  texto: string;
+}
+
+/** El texto con el que se llega a la caja (`?prompt=` o `?brief=`), o null si no hay o viene vacío. Con los dos, gana `prompt`. El texto se
+ *  toma tal cual, sin recortarle los espacios de en medio: es un prompt, y su forma importa. Solo es TEXTO: la caja lo pone en su cuadro y
+ *  React lo escapa. */
+export function leerLlegadaDeTexto(busqueda: string): LlegadaDeTexto | null {
+  const params = new URLSearchParams(busqueda);
+  for (const [param, familia] of [
+    [PARAM_PROMPT, 'imagenes'],
+    [PARAM_BRIEF, 'videos'],
+  ] as const) {
+    const texto = params.get(param);
+    if (texto !== null && texto.trim()) return { familia, texto: texto.slice(0, MAX_TEXTO_DE_LLEGADA) };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

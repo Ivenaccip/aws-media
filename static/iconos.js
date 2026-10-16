@@ -66,6 +66,10 @@
     arriba: 'M12 19V5M6 11l6-6 6 6',
     abajo: 'M12 5v14M6 13l6 6 6-6',
     prohibido: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM5.6 5.6l12.8 12.8',
+  copiar: 'M9 9h11v11H9zM15 9V4H4v11h5',
+    fijar: 'M15 3H9l1 6-3 3v2h10v-2l-3-3zM12 14v7',
+    llevar: 'M10 17l5-5-5-5M15 12H3M21 3v18',
+    investiga: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM15.5 8.5l-2 5-5 2 2-5z',
   };
 
   function icono(nombre, clase) {

@@ -148,7 +148,7 @@ corren con el «sí» del dueño; el resto no cobra.
 | 50 | En el mapa, tocar Producto, Ventas y Automatizaciones | No pasa nada: el mapa se queda como estaba. Se ven apagadas con «Próximamente» (fondo más hundido, texto gris legible), pero sí reciben el foco con Tab y el lector de pantalla las anuncia como no disponibles |
 | 51 | En el mapa, tocar Marketing | Se abre **«Elige un grupo»** con tres tarjetas: **Distrito** (Imagen · Video · Edición), **Blotato** (Agenda tus publicaciones · Investiga tu competencia · Ver mis métricas) y **Avanzado** (Publicaciones automáticas · Copiadora de estilos), sin cuadro alrededor y centradas; debajo del título, centrada, la miga «Marketing». **Recién abierto el inicio, ninguna dice «Estás aquí»** (nadie ha elegido nada); si ya habías estado en la caja o en una lista, esa tarjeta sí lo dice. Tocar Distrito muestra la caja tal cual la dejaste |
 | 52 | Con la caja abierta: miga «Marketing» → mapa → Central → mirar sus opciones → Esc → Marketing → Distrito | Mirar otra área no te saca de donde estabas: en Central la miga dice «Central» y «Estás aquí» no aparece en ninguna de sus tarjetas; Esc sube al mapa (no hay «Volver a …»); y Marketing › Distrito muestra la misma caja de antes, con su texto |
-| 53 | Central → Distrito, y luego Central → Deepseek | Distrito: la lista COI, Biblioteca de prompts, Preguntas sobre la clase y Glosario IA, las cuatro apagadas con «Próximamente»; ninguna es un enlace ni lleva a ningún lado (el clic no hace nada). Deepseek dice «Próximamente» en su tarjeta y, al abrirla, «Todavía no está disponible.» bajo su título |
+| 53 | Central → Distrito, y luego Central → Deepseek | Distrito: la lista COI, Biblioteca de prompts, Preguntas sobre la clase y Glosario IA. **COI y Biblioteca de prompts son enlaces** a su pantalla (16-oct-2026); Preguntas y Glosario siguen apagadas con «Próximamente», sin enlace ni nada que hacer (el clic no hace nada). Deepseek dice «Próximamente» en su tarjeta y, al abrirla, «Todavía no está disponible.» bajo su título |
 | 54 | Cuenta SIN Blotato: mapa → Marketing → Blotato | Arriba, el botón **«Conecta tu cuenta de Blotato»**; debajo las tres tarjetas en gris (menos opacidad) con «Conecta tu Blotato para usarlo». El clic en cualquiera NO navega: abre el diálogo «Conecta tu Blotato» con el aviso del cobro antes del campo. Pegar una clave buena enciende las tres y el botón pasa a verde, «Blotato conectado: ver o cambiar»; el recorrido no se movió |
 | 55 | Cuenta CON Blotato: mapa → Marketing → Blotato | El botón dice **«Blotato conectado: ver o cambiar»** (verde) y abre el diálogo «Tu Blotato» con las redes. Las tres tarjetas están encendidas y cada una lleva a su pantalla (Agenda, Competencia, Métricas) |
 | 56 | Con el estado de Blotato sin poder saberse: en las herramientas del navegador, bloquear la petición `/api/blotato` y recargar el inicio; abrir Blotato y Avanzado | **Nada se apaga**: ninguna tarjeta está en gris ni dice «Conecta tu Blotato», y un clic navega. (Dejar sin sus herramientas a quien sí paga porque una consulta no respondió es peor que dejar entrar a quien no) |
@@ -183,6 +183,8 @@ corren con el «sí» del dueño; el resto no cobra.
 | 85 | Con «reducir movimiento» activo en el sistema: abrir el menú, la hoja, marcar, reordenar y subir un archivo | Nada se queda moviéndose (ni barras, ni fundidos de la hoja, ni la barra de subida infinita); la información se entiende igual |
 | 86 | 💳 Una copia que falló: cerrar su aviso en «Tus trabajos» (o esperar a que pasen 24 h) y mirar «Mis creaciones»; pulsar «Reintentar ✦ N» de la tarjeta; repetirlo con el saldo corto y con un 409 | La tarjeta roja «Edición · No se pudo editar» **ya no se queda sin salida**: trae «Reintentar ✦ N» (N = lo cobrado; objetivo de 48 px, cabe en 320 px aunque el texto pase a dos líneas; su descripción para el lector de pantalla es el título de la copia). Aceptado: vuela el «−N», la píldora se pone al día y la tarjeta pasa a «Editando…». Sin saldo: «Te faltan ✦ N ·» dentro de la tarjeta; con un 409 o un 502/503: el texto del servidor, tal cual. Un doble clic es UN reintento. Con créditos devolviéndose («Estamos devolviendo tus ✦ N.») no hay botón |
 | 87 | Una copia cuya tarea murió sin cerrarse (figura «corriendo» hace más de 2 h; se simula con un `inicio` viejo en `proyectos_editor`), con «Mis creaciones» abierto | Si el servidor ya la soltó al listar (D-15) la tarjeta dice «No se pudo editar» con «Reintentar». Si no, dice **«Edición · Sin respuesta»**, sin `aria-busy` y sin botón, y la pantalla **no relee cinco listas cada 5 s** (en las herramientas de red: sin ráfagas de `/api/proyectos`, `/api/slots`, `/api/imagenes`, `/api/edicion/proyectos` y `/api/clip`). Una copia que corre de verdad sigue «Editando…» y sondeando. Cuando una copia que veías correr termina —también con «Listo» sin cortes y devolución de créditos— la píldora se pone al día sola |
+| 88 | Desde la Biblioteca de prompts (pantalla `/estudio/biblioteca/`): elegir un prompt de Imagen con `[huecos]` y pulsar «Llevar a la caja» (1100 px y 390 px) | El inicio abre **directo la caja** (sin pasar por el mapa) en **Imagen › Crear una imagen**, con el prompt puesto, el foco en su cuadro y, sobre él, **«Te trajimos el prompt. Cambia lo que va entre [corchetes] y pulsa Crear.»** Las migas dicen «Marketing › Distrito». La dirección queda en `/estudio/inicio/` (sin `?prompt=`). **No se creó ni cobró nada**: la píldora del saldo no se mueve y «Tus trabajos» no tiene nada nuevo. Recargar la página abre el **mapa** de siempre, con el cuadro vacío |
+| 89 | Lo mismo con un prompt de Video (sin huecos) y luego con uno de Guion | Video: la caja abre en **Video › Un video corto** con el texto y el aviso dice «Te trajimos el prompt. Revísalo y pulsa Crear.». Guion no tiene «Llevar a la caja» (solo se copia). Al teclear en el cuadro el aviso se queda; al vaciar el cuadro o cambiar de pestaña, se va. 💳 «Crear» con ese texto cobra y se porta **igual que con un texto escrito a mano** (modera primero) |
 
 ## shorts · `/estudio/shorts/`
 
@@ -308,3 +310,64 @@ Hazla en el teléfono (390 px) y en el escritorio.
 | 14 | Con la película lista | Video con portada; «Descargar» baja el mp4; «Editor» abre el editor de cortes |
 | 15 | «Rehacer» | Vuelve a revisión; no cobra |
 | 16 | «Usar la versión anterior» | Llega a `/crear.html`; en `todos`, `/crear.html` ya no redirige para ti durante 7 días |
+
+## COI · `/estudio/coi/`
+
+COI = Contexto · Objetivo · Instrucciones, en **Central › Distrito › COI**. Es **gratis** (0 créditos): la píldora del saldo no se mueve nunca.
+Tope de **3 por persona por día**, día de México (se renueva a las 12:00 a. m. de México); solo cuentan las respuestas terminadas. Es una
+pantalla nueva: no hay «versión anterior». Cada «Armar COI» de verdad es una llamada al modelo (su costo queda en el log del servidor, en
+dólares): pruébala con calma y no más de 3 veces por persona. Hazla en el teléfono (390 px) y en el escritorio.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar por Central › Distrito › COI | «Irremplazables» dorado arriba, migas «Central › Distrito › COI» centradas (COI es un chip quieto, no un botón), cuadro grande, «Te quedan 3 de 3 hoy» y **un solo** botón ámbar: «Armar COI» (sin ✦) |
+| 2 | Pulsar un ejemplo | Llena el cuadro y el foco queda en él; los ejemplos se esconden al escribir |
+| 3 | «Armar COI» con el cuadro vacío | «Escribe primero qué necesitas…» junto al cuadro; no se manda nada |
+| 4 | Escribir y pulsar Ctrl+Intro (o Cmd+Intro) | Lo mismo que el botón |
+| 5 | Mientras arma | «Armando tu COI…» sin pasos falsos; el botón dice «Armando…»; el contador **no** baja todavía |
+| 6 | Al terminar | El foco va a «Tu COI»; tres tarjetas abiertas (#CONTEXTO, #OBJETIVO, #INSTRUCCIONES con sus siete partes); el contador baja a «Te quedan 2 de 3 hoy» |
+| 7 | «Plegar todo», «Abrir todo» y plegar una tarjeta | El botón cambia de nombre según lo que haya; el foco no se mueve |
+| 8 | «Copiar» en un bloque y pegar en otro lado | Pega `#OBJETIVO` y su texto; el botón dice «Copiado» un momento |
+| 9 | «Copiar todo» | Pega los tres bloques con su encabezado, en orden |
+| 10 | «Guardar» | Hoja chica: título con la primera frase del objetivo (editable, 80 como máximo) y categoría; «Guardar» → «Guardado en tu Biblioteca» con enlace «Ver en Míos»; **no** baja el contador |
+| 11 | Guardar con el internet cortado y reintentar con internet | El error sale en la hoja; el reintento guarda **un** solo prompt (no dos) en «Míos» |
+| 12 | Recargar la página | La caja y el resultado vuelven vacíos (no se guardó nada en el navegador); lo guardado sigue en «Míos» |
+| 13 | Armar hasta el tercero | Tras el tercero: «Ya usaste tus 3 de hoy», el cuadro y el botón apagados (no es un error), «Se renuevan a la medianoche, hora de México… Faltan X h Y min» y el último COI sigue a la vista para copiarlo |
+| 14 | Con los 3 usados, Tab hasta el botón apagado y Enter | No manda nada y el lector de pantalla dice por qué (el cuadro de «Ya usaste tus 3 COI de hoy») |
+| 15 | Mismo usuario en dos pestañas: armar en una y, a media espera, armar en la otra | La segunda dice «Ya hay un COI en camino» sin ser error y se desbloquea sola en unos segundos |
+| 16 | Escribir algo que la moderación rechace | «No pudimos usar ese texto», con el motivo, junto al cuadro; el foco al cuadro; **no** gasta ninguno |
+| 17 | Cortar el internet y «Armar COI» | «No hay conexión»; el texto sigue en el cuadro; el contador se vuelve a leer del servidor |
+| 18 | Entrar sin poder leer el contador (servidor caído) | «COI no está disponible ahora» con «Reintentar»; el botón apagado hasta que vuelva |
+| 19 | Pegar más de 2000 caracteres | «Es muy largo: el máximo es de 2000 caracteres y llevas N»; el botón se apaga |
+| 20 | Lector de pantalla: armar y terminar | Anuncia «Armando tu COI…», luego «Tu COI está listo…»; el contador se anuncia al cambiar |
+| 21 | «Reducir movimiento» del sistema | El giro de «Armando…» no gira y nada se mueve |
+| 22 | Al día siguiente (pasada la medianoche de México) con la pestaña abierta | Sola, tras unos segundos, vuelve «Te quedan 3 de 3 hoy» y el cuadro se enciende |
+| 23 | Central › Distrito desde el mapa | COI es un enlace (y también la Biblioteca de prompts); Preguntas y Glosario siguen «Próximamente» |
+| 24 | Pantalla a 390 px | Sin desplazamiento horizontal; todo lo que se toca mide 44 px o más; «Copiar» de cada bloque queda en su sitio |
+
+## biblioteca · `/estudio/biblioteca/`
+
+(pantalla nueva, Ajustes 3: **Central › Distrito › Biblioteca de prompts**; sin versión anterior). No cobra: copiar, fijar, borrar uno
+propio y «Llevar a la caja» son gratis. Hazla en el teléfono (390 px) y en el escritorio (1100 px o más), con tu usuario de verdad y
+cada paso con el servidor de verdad (la web se probó con un API de mentira: `web/e2e/biblioteca.ts`).
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Entrar por el mapa: Central › Distrito › «Biblioteca de prompts» | «Irremplazables» arriba (dorado, sin ícono, fuera de tarjeta) y las migas **Central › Distrito › Biblioteca de prompts** centradas. «Central» y «Distrito» vuelven al mapa y a las opciones (con «Volver a Biblioteca de prompts») |
+| 2 | Mirar la pantalla a 1100 px | Dos paneles: a la izquierda conmutador «De la casa / Míos», la franja **«Tus 3 fijados»**, buscador, categorías con su número y la lista (se desplaza por dentro); a la derecha el prompt completo con **un solo botón ámbar** («Llevar a la caja» si lo hay; «Copiar» si no). Nada se arrastra de lado |
+| 3 | Mirar la pantalla a 390 px | Dos pasos, «1 Elige» y «2 Úsalo». Tocar un prompt pasa al 2 y deja el foco en su título; «Volver a la lista» regresa a esa fila. Todo mide al menos 44 px; las migas caben en una línea (sin íconos) |
+| 4 | Buscar «ilustracion» (sin tilde) y «ILUSTRACIÓN» | Los dos traen «Ilustración plana…». Buscar una etiqueta, una palabra del «para qué sirve» o «investigacion» también encuentra. Sin coincidencias: «No encontramos ese prompt» con «Diseñar uno con COI» y «Quitar filtros» |
+| 5 | Pulsar una categoría y luego buscar | Los números de las categorías siguen a la búsqueda; el resumen dice «N resultados para «…» en Video» |
+| 6 | Tab desde el buscador | **Una sola parada** en toda la lista; ↑ ↓ Inicio y Fin mueven el foco, Enter elige; Tab sigue a «Ir a COI». Cada parada se ve con su aro ámbar |
+| 7 | «Copiar» y pegar en otro lado (con el lector de pantalla encendido, si puedes) | Pega el prompt completo; el botón dice «Copiado» un momento, el foco no se mueve y el lector anuncia «Copiado: …». En un navegador que niega el portapapeles, el prompt queda **seleccionado** y lo dice |
+| 8 | «Llevar a la caja» con un prompt de Imagen y otro de Video | Ver los pasos 88 y 89 de § inicio. Un prompt de más de 1800 caracteres no trae «Llevar a la caja» y dice que lo copies |
+| 9 | **Fijar** tres prompts (uno de cada categoría) | El botón pasa a «Quitar de fijados» (`aria-pressed`) y la franja los muestra en 1, 2 y 3. Recargar la página los trae igual y en el mismo orden |
+| 10 | Intentar fijar un cuarto | **No sustituye a ninguno**: dice «Ya tienes 3 fijados. Quita uno para fijar este.» y el foco se queda en el botón |
+| 11 | Subir, bajar y quitar con el teclado | El orden cambia y se guarda (recargar lo confirma); el foco se queda en el mismo botón aunque la casilla se mueva; «Subir» en la primera y «Bajar» en la última no hacen nada pero se pueden enfocar. Al quitar uno el foco no cae al principio de la página |
+| 12 | Cortar la conexión (modo avión) y fijar uno | Se ve fijado al instante y, al fallar, **vuelve atrás** y dice «No hay conexión… Tus fijados quedaron como estaban.» |
+| 13 | Entrar a «Míos» sin haber guardado nada | «Todavía no guardas ninguno. Arma uno con COI y pulsa «Guardar».» y un enlace a COI; la franja de fijados sigue ahí |
+| 14 | Guardar uno desde COI y volver a «Míos» | Aparece, se puede copiar y fijar; no trae «Llevar a la caja». **Otra persona con su cuenta no lo ve ni puede fijarlo** |
+| 15 | «Borrar» un «mío» fijado | Pregunta («¿Borrar este prompt?», con el foco en «Cancelar»); al confirmar desaparece de la lista **y de la franja** y el foco no cae a `<body>`. Borrar siempre se puede |
+| 16 | Tumbar el servidor y recargar | «No pudimos cargar la Biblioteca» con «Reintentar» (el único ámbar); al volver el servidor, reintenta y carga. Nunca se queda en «Cargando…» |
+| 17 | Con «reducir movimiento» activo | Nada se mueve (ni el cargando ni el esqueleto) |
+| 18 | Revisar con el lector de pantalla | Una región `aria-live` anuncia copiar, fijar, borrar y elegir; cada botón de la franja y el interruptor dicen el título del prompt sobre el que actúan |

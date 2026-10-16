@@ -322,7 +322,12 @@ describe('estadoInicial · la entrada por ?desde=…&ver=…', () => {
 
   it('una pestaña de la caja o una pantalla apagada no son otra página: no hay a dónde «volver» fuera del inicio (pero sí vienes de ese grupo)', () => {
     expect(estadoInicial('?desde=mkt.distrito.edicion&ver=mapa')).toMatchObject({ paso: 'mapa', area: 'mkt', grupo: 'distrito', elegido: true, hoja: null });
-    expect(estadoInicial('?desde=central.distrito.coi&ver=grupos')).toMatchObject({ paso: 'grupos', explora: 'central', area: 'central', hoja: null });
+    // «Preguntas sobre la clase» sigue «Próximamente» (COI ya es una página: llegar desde ella deja «Volver a COI», ver abajo)
+    expect(estadoInicial('?desde=central.distrito.preguntas&ver=grupos')).toMatchObject({ paso: 'grupos', explora: 'central', area: 'central', hoja: null });
+  });
+
+  it('llegar desde COI (central.distrito.coi) es llegar desde una página aparte: queda su `hoja` para el «Volver a COI»', () => {
+    expect(estadoInicial('?desde=central.distrito.coi&ver=grupos')).toMatchObject({ paso: 'grupos', explora: 'central', area: 'central', hoja: 'coi' });
   });
 
   it('lo demás de la URL no estorba (?blotato=conectar viaja aparte)', () => {

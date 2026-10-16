@@ -214,6 +214,18 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   (`aria-describedby`), «Subiendo…» y «Calculando…» se leen ocupados, y el precio
   se ve en el botón («Iniciar ✦ N») antes de cobrar. Abajo sigue el «Te faltan
   ✦ N · Recargar».
+- **Interruptor** (Biblioteca de prompts, Ajustes 3, 16-oct-2026: el «pin» de los
+  3 favoritos). Es un botón de nivel secundario que se queda **encendido**:
+  `aria-pressed`, alto 44 px, «Fijar» ↔ «Quitar de fijados» (el nombre accesible
+  lleva el título: «Fijar «Retrato…»», y repite el texto visible, WCAG 2.5.3).
+  Encendido NO es ámbar de botón (el principal es uno por pantalla): borde
+  `#a96716` y fondo `#2e2110` —el mismo tono de «elegido» que lleva un chip— con el
+  ícono relleno. Cambia al instante y se guarda después; si falla, vuelve atrás y
+  lo dice junto a él. Con el tope lleno (3) **no sustituye en silencio**: avisa
+  («Ya tienes 3 fijados. Quita uno para fijar este.») y deja el foco donde estaba.
+  Lo que acompaña a un favorito (subir, bajar, quitar) son botones solo-icono de
+  44 px con el título en su nombre; el extremo que no puede moverse queda
+  `aria-disabled` (apagado pero enfocable), para que el foco no se pierda.
 
 ## 6. Iconos (en lugar de emojis)
 
@@ -231,6 +243,8 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   Ajustes, Central, Producto, Ventas, COI, Biblioteca, Pregunta, Glosario y
   Buscar. Viven en `ui/iconos.ts` y `static/iconos.js` (idénticos; los compara
   `tests/test_web_tuberia.py`).
+- La Biblioteca de prompts (Ajustes 3) suma Copiar, Fijar (una chincheta), Llevar
+  (una flecha contra una barra: «a la caja») e Investiga (una brújula).
 
 ## 7. Navegación
 
