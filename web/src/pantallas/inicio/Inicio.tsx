@@ -34,6 +34,7 @@ import {
   cargarImagenes,
   cargarProyectos,
   cargarSlots,
+  corriendoVivo,
   desarchivar,
   leerBlotato,
   creaciones,
@@ -64,6 +65,10 @@ interface Listas {
 /** Cuánto se espera a que una relectura de la lista de imágenes salga bien antes de soltar la tarjeta local: si el
  *  servidor no contesta o no puede leer los pedidos, la tarjeta no puede girar para siempre. */
 const ESPERA_MAXIMA_MS = 2 * 60 * 1000;
+
+/** Cuánto se espera para volver a pedir el saldo cuando una copia termina: el worker devuelve los créditos (un video sin nada que cortar)
+ *  un instante DESPUÉS de marcarla «lista», y la lista ya no volverá a leerse para verlo. */
+export const SALDO_TRAS_COPIA_MS = 4000;
 
 /** Una imagen que el servidor aceptó y cuya relectura de la lista aún no salió bien: su tarjeta local, y desde cuándo se espera. */
 interface Espera {
@@ -113,8 +118,18 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const tituloCaja = useRef<HTMLHeadingElement>(null);
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
-  // las copias de E2 que estaban editándose en la última lista: si una pasa a error, el servidor devolvió los créditos
+  // las copias de E2 que estaban editándose en la última lista: si una pasa a error, el servidor devolvió los créditos; si pasa a «lista»
+  // sin nada que cortar (un solo video), también (la píldora no sondea el saldo: sin esto se quedaba vieja hasta recargar)
   const editandoCopias = useRef<Set<string>>(new Set());
+  // el segundo vistazo al saldo de una copia que terminó (SALDO_TRAS_COPIA_MS): se cancela si la pantalla se va
+  const saldoPendiente = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    const pendientes = saldoPendiente;
+    return () => {
+      pendientes.current.forEach(clearTimeout);
+      pendientes.current = [];
+    };
+  }, []);
   // lo que se pidió desde la caja y todavía no llega a la lista
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   // las imágenes que el servidor aceptó desde la caja y cuya relectura de la lista aún no salió bien: su tarjeta
@@ -145,8 +160,12 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }
     setFalloCarga(false);
     if (ed.status === 'fulfilled') {
-      // una copia que editaba y ahora falló: el servidor devolvió lo cobrado, el saldo se pone al día
-      if (ed.value.some(e => e.editar?.estado === 'error' && editandoCopias.current.has(e.nombre))) refrescarSaldo();
+      // una copia que editaba y ya no (falló, o terminó): el servidor pudo devolver lo cobrado —al fallar, o al no haber nada que
+      // cortar—, así que el saldo se pone al día ya y otra vez un momento después, cuando el worker haya terminado de devolver
+      if (ed.value.some(e => (e.editar?.estado === 'error' || e.editar?.estado === 'listo') && editandoCopias.current.has(e.nombre))) {
+        refrescarSaldo();
+        saldoPendiente.current.push(setTimeout(refrescarSaldo, SALDO_TRAS_COPIA_MS));
+      }
       editandoCopias.current = new Set(ed.value.filter(e => e.editar?.estado === 'corriendo').map(e => e.nombre));
     }
     const pedidos = im.status === 'fulfilled' && im.value.pendientesOk ? im.value.pendientes : null;
@@ -214,10 +233,11 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   // como la pantalla del clip). También mientras una imagen recién pedida espera que
   // una relectura salga bien: sin ella, ni la tarjeta ni el sondeo tendrían de dónde seguir.
   // E2: una copia que se está editando también (su tarjeta «Editando…» pasa a «Listo» o «No se pudo editar» sin recargar)
+  // (solo una que corre DE VERDAD: una tarea muerta que el servidor aún dice «corriendo» no puede mantener la pantalla sondeando para siempre)
   const hayGenerando =
     (listas?.clips?.some(c => c.estado === 'generando') ?? false) ||
     (listas?.pedidos.some(p => p.estado === 'generando') ?? false) ||
-    (listas?.ediciones?.some(e => e.editar?.estado === 'corriendo') ?? false);
+    (listas?.ediciones?.some(e => corriendoVivo(e)) ?? false);
   useEffect(() => {
     if (!hayGenerando && !esperandoLista.length) return;
     const t = setInterval(() => {
@@ -235,6 +255,15 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }, 5000);
     return () => clearInterval(t);
   }, [hayGenerando, esperandoLista, cargar, quitarPendientes]);
+
+  // La bandeja «Tus trabajos» (static/trabajos.js) acaba de lanzar algo por su cuenta —un «Reintentar» que el servidor aceptó—: la copia ya
+  // corre, pero aquí su tarjeta decía «No se pudo editar» y, sin nada corriendo en esta lista, nada la volvía a leer. Se relee ya; con la
+  // copia «corriendo» el sondeo de arriba la lleva hasta «Listo».
+  useEffect(() => {
+    const releer = () => void cargar();
+    window.addEventListener('trabajos:lanzado', releer);
+    return () => window.removeEventListener('trabajos:lanzado', releer);
+  }, [cargar]);
 
   // «Usar como referencia» del visor: la imagen vuelve a la caja, lista para animarla
   async function usarComoReferencia(im: Imagen) {
@@ -346,6 +375,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
               slots={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}
               alArchivar={setAArchivar}
               alUsarReferencia={usarComoReferencia}
+              alReintentar={cargar}
             />
           )}
           {listas && !nuevo && listas.clips === null && (

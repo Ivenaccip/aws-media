@@ -13,6 +13,7 @@ Lo que se defiende (contrato E2, §3.6.1 y §6.7):
 - las fichas de siempre no cambian (la línea «Te devolvimos ✦ N.» de una película que falló sigue ahí).
 """
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -119,6 +120,12 @@ const out = {};
   // otra lectura con lo mismo NO repinta (no suelta el foco ni vuelve a anunciar)
   await traer([corriendo()]);
   out.sinRepintar = raiz.querySelector('ul.pasos') === ul && raiz.querySelector('[data-llevas]') === span;
+  // y repintar por OTRA ficha (cambia el avance de un clip) no deja el reloj en blanco hasta el siguiente segundo: el texto se vuelve a poner
+  // en la misma pasada, con el mismo span
+  await traer([corriendo(), clip(10)]);
+  const spanTrasOtraFicha = raiz.querySelector('[data-llevas]');
+  await traer([corriendo(), clip(60)]);
+  out.llevasTrasOtraFicha = {mismoSpan: raiz.querySelector('[data-llevas]') === spanTrasOtraFicha, texto: raiz.querySelector('[data-llevas]').textContent};
 
   // el paso avanza: cambian los estados de los tres pasos
   await traer([corriendo({detalle: 'La IA está uniendo tus videos…', edicion: {...corriendo().edicion, paso: 'editar'}})]);
@@ -352,6 +359,13 @@ def test_el_paso_avanza_y_cada_estado_se_dice_con_texto_y_no_solo_con_color(vist
     assert vista["pasosEditar"] == ["hecho", "actual!", "pendiente"]
     assert vista["pasosVista"] == ["hecho", "hecho", "actual!"]
     assert vista["srPasos"] == [" (hecho)", " (hecho)", " (en curso)"]
+
+
+def test_el_reloj_llevas_no_se_queda_en_blanco_cuando_otra_ficha_repinta(vista):
+    # H2: repintar por el avance de OTRA ficha pone al día la bandeja en su sitio; el «Llevas m:ss» no puede quedar vacío hasta el tic siguiente
+    r = vista["llevasTrasOtraFicha"]
+    assert r["mismoSpan"] is True
+    assert re.fullmatch(r"\d+(:\d\d){1,2}", r["texto"]), r["texto"]
 
 
 def test_llevas_lo_mueve_un_reloj_de_un_segundo_con_textcontent_sin_repintar(vista):

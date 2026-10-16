@@ -47,8 +47,9 @@ const iniciar = (page: Page) => page.getByRole('button', { name: /^(Iniciar|Subi
 const tarjeta = (page: Page, titulo: string) => hoja(page).getByRole('button', { name: new RegExp('^' + titulo) });
 const orden = (page: Page) => filas(page).locator('b').allInnerTexts();
 
-async function abrir(page: Page, o: OpcionesDeEdicion = {}): Promise<Visto> {
+async function abrir(page: Page, o: OpcionesDeEdicion = {}, antes?: (visto: Visto) => Promise<void>): Promise<Visto> {
   const visto = await simularEdicion(page, { elegibles: ELEGIBLES, cotizar: barato, ...o });
+  await antes?.(visto); // sus rutas se registran DESPUÉS de las de simularEdicion: ganan
   await page.goto('/estudio/inicio/');
   await expect(page.getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
   await elegir(page, 'Marketing', 'Distrito');
@@ -379,6 +380,27 @@ async function ponerTrabajos(page: Page, visto: Visto, lista: unknown[]) {
 
 const bandeja = (page: Page) => page.locator('#bandeja');
 
+/** Una copia en «Mis creaciones» (GET /api/edicion/proyectos): fallida, con lo cobrado ya devuelto, o corriendo desde hace un minuto. */
+const filaDeCopia = (corriendo: boolean) => ({
+  nombre: COPIA,
+  generado: false,
+  canonico: false,
+  cuts: false,
+  editor_listo: false,
+  subidas: [],
+  creado: '2026-10-14T10:00:00Z',
+  titulo: 'Entrevista final + 2 más',
+  copia_de: [
+    { ref: 'proyecto:entrevista-final', titulo: 'Entrevista final' },
+    { ref: 'proyecto:gen-1a2b3c4d', titulo: 'El tren de papel' },
+    { ref: 'clip:clip-20261008-101500-ab12cd', titulo: 'Perro en la playa' },
+  ],
+  n_videos: 3,
+  duracion_s: 900,
+  formato: 'horizontal',
+  editar: corriendo ? { estado: 'corriendo', inicio: new Date(Date.now() - 60_000).toISOString(), creditos: 2 } : { estado: 'error', creditos: 2, devueltos: 2 },
+});
+
 async function abrirLaBandeja(page: Page) {
   const item = bandeja(page).locator('.bj-item');
   if ((await item.count()) === 0) await bandeja(page).locator('[data-abrir]').click();
@@ -499,6 +521,81 @@ test('la bandeja de verdad: pasos, «Pediste», «Llevas» que corre solo, el li
   expect(visto.reintentar).toHaveLength(1);
 });
 
+test('la bandeja de verdad: el avance de un clip no repinta la ficha de error de al lado (conserva su nodo, su foco y no se vuelve a anunciar)', async ({ page }) => {
+  // H2: antes cada cambio de otra ficha reemplazaba TODA la bandeja con innerHTML: el `role="alert"` del error se insertaba de nuevo (el
+  // lector de pantalla lo repetía) y quien llegó con Tab a «Reintentar» caía al <body> en cada sondeo
+  const visto = await abrir(page);
+  const error = fichaError();
+  const clip = (p: number) => ({ id: 'clip:c9', tipo: 'clip', estado: 'corriendo', titulo: 'Generando tu clip de 8 segundos', detalle: 'En camino', progreso: p, url: '' });
+  await ponerTrabajos(page, visto, [error, clip(10)]);
+  await abrirLaBandeja(page);
+  const reintentar = bandeja(page).getByRole('button', { name: 'Reintentar' });
+  await reintentar.focus();
+  const ficha = await bandeja(page).locator('.bj-item.error').elementHandle();
+  await page.evaluate(() => {
+    const w = window as unknown as { __alertas: number };
+    w.__alertas = 0;
+    new MutationObserver(ms => {
+      for (const m of ms) for (const n of m.addedNodes) if (n instanceof Element && (n.getAttribute('role') === 'alert' || n.querySelector('[role="alert"]'))) w.__alertas++;
+    }).observe(document.querySelector('#bandeja')!, { childList: true, subtree: true });
+  });
+  for (const p of [30, 55, 90]) await ponerTrabajos(page, visto, [error, clip(p)]);
+  // lo que SÍ cambió (la barra del clip) se puso al día...
+  await expect(bandeja(page).locator('.bj-item.corriendo .bj-barra i')).toHaveAttribute('style', /width:\s*90%/);
+  // ...y lo que no, no se tocó
+  expect(await ficha!.evaluate(e => e.isConnected), 'la ficha de error se reemplazó').toBe(true);
+  expect(await page.evaluate(() => document.activeElement?.hasAttribute('data-reintentar')), 'el foco cayó de «Reintentar»').toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __alertas: number }).__alertas), 'el role=alert se insertó otra vez').toBe(0);
+});
+
+test('una copia que falló: «Reintentar» de la bandeja de verdad pone al día la píldora del saldo y la tarjeta de Mis creaciones, sin recargar', async ({ page }) => {
+  // INT-02: antes, tras un «Reintentar» aceptado la píldora seguía en 120 y la tarjeta en «No se pudo editar» hasta recargar la página
+  let corriendo = false;
+  let saldo = 120;
+  const visto = await abrir(page, {}, async () => {
+    await page.route('**/api/edicion/proyectos', r => r.fulfill({ json: [filaDeCopia(corriendo)] }));
+    await page.route('**/api/creditos', r => r.fulfill({ json: { activo: true, saldo, tarifas: {}, packs: [] } }));
+    await page.route(`**/api/edicion/${COPIA}/reintentar`, r => {
+      corriendo = true;
+      saldo = 118; // el servidor cobró ✦ 2
+      return r.fulfill({ json: { lanzado: true, nombre: COPIA, creditos: 2 } });
+    });
+  });
+  await expect(page.getByText('Edición · No se pudo editar')).toBeVisible();
+  await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
+  await ponerTrabajos(page, visto, [fichaError()]);
+  await abrirLaBandeja(page);
+  await bandeja(page).locator('.bj-item.error').getByRole('button', { name: 'Reintentar' }).click();
+  // sin tocar nada más: la tarjeta pasa a «Editando…» (Inicio releyó sus listas) y la píldora a 118
+  await expect(page.getByText('Edición · Editando…')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Edición · No se pudo editar')).toHaveCount(0);
+  await expect(page.locator('#mon-real')).toHaveText('118 créditos ✦', { timeout: 8000 });
+  // y la tarjeta ya no ofrece reintentar lo que corre
+  await expect(page.getByRole('button', { name: 'Reintentar ✦ 2', exact: true })).toHaveCount(0);
+});
+
+test('una copia que falló: «Reintentar ✦ 2» de la tarjeta cobra, vuela el «−2» y la tarjeta pasa a «Editando…»', async ({ page }) => {
+  let corriendo = false;
+  const visto = await abrir(page, {}, async v => {
+    await page.route('**/api/edicion/proyectos', r => r.fulfill({ json: [filaDeCopia(corriendo)] }));
+    await page.route(`**/api/edicion/${COPIA}/reintentar`, r => {
+      v.reintentar.push(r.request().url());
+      corriendo = true;
+      return r.fulfill({ json: { lanzado: true, nombre: COPIA, creditos: 2 } });
+    });
+  });
+  const boton = page.getByRole('button', { name: 'Reintentar ✦ 2', exact: true });
+  await expect(boton).toBeVisible();
+  // no es un enlace: una tarjeta que falló no lleva a ningún lado
+  await expect(page.getByRole('link', { name: /Entrevista final \+ 2 más/ })).toHaveCount(0);
+  await boton.focus();
+  await page.keyboard.press('Enter'); // con el teclado, como todo lo demás
+  await expect.poll(() => visto.reintentar.length).toBe(1);
+  await expect(page.getByText('Edición · Editando…')).toBeVisible();
+  // el foco no se pierde en el aire: el botón se va con la tarjeta que ya corre, y la página sigue usable
+  await expect(page.getByRole('button', { name: 'Reintentar ✦ 2', exact: true })).toHaveCount(0);
+});
+
 // ---------------------------------------------------------------------------------------------------- teléfono
 
 for (const ancho of [390, 320]) {
@@ -534,6 +631,35 @@ for (const ancho of [390, 320]) {
       expect(m.y).toBeGreaterThanOrEqual(0);
       for (const item of await menu(page).getByRole('menuitem').all()) expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       expect(await sobraAncho(page)).toBeLessThanOrEqual(0);
+    });
+
+    test('la tarjeta de una copia que falló: «Reintentar ✦ 2» se lee entero, mide al menos 44 px y no se sale de la tarjeta ni de la pantalla', async ({ page }) => {
+      await abrir(page, {}, async () => {
+        await page.route('**/api/edicion/proyectos', r => r.fulfill({ json: [filaDeCopia(false)] }));
+      });
+      const tarjeta = page.getByText('Edición · No se pudo editar').locator('xpath=ancestor::div[contains(@class,"overflow-hidden")][1]');
+      const boton = tarjeta.getByRole('button', { name: 'Reintentar ✦ 2', exact: true });
+      await expect(boton).toBeVisible();
+      await tocable(boton, ancho, 'Reintentar ✦ 2');
+      // dentro de SU tarjeta (que corta lo que se le sale): ni un píxel de más a los lados
+      const t = (await tarjeta.boundingBox())!;
+      const b = (await boton.boundingBox())!;
+      expect(b.x, 'el botón se sale por la izquierda de la tarjeta').toBeGreaterThanOrEqual(t.x);
+      expect(b.x + b.width, 'el botón se sale por la derecha de la tarjeta').toBeLessThanOrEqual(t.x + t.width);
+      // el texto cabe en el botón: ni se corta ni lo empuja (sin desplazamiento propio)
+      expect(await boton.evaluate(e => e.scrollWidth - e.clientWidth), 'el texto del botón se corta').toBeLessThanOrEqual(0);
+      expect(await sobraAncho(page), 'la página se desplaza de lado').toBeLessThanOrEqual(0);
+      // y el error de un rechazo cabe igual (402 con «Recargar», que también mide 44 px)
+      await page.route(`**/api/edicion/${COPIA}/reintentar`, r =>
+        r.fulfill({ status: 402, json: { detail: 'Créditos insuficientes: esta acción cuesta 2 créditos y tu saldo es 1.' } }),
+      );
+      await boton.click();
+      const falta = tarjeta.getByRole('alert');
+      await expect(falta).toContainText('Te faltan ✦ 1 ·');
+      // (con la recarga cerrada, como aquí, en lugar de «Recargar» va la nota del monedero: también cabe)
+      const f = (await falta.boundingBox())!;
+      expect(f.x + f.width, 'el aviso se sale de la tarjeta').toBeLessThanOrEqual(t.x + t.width + 0.5);
+      expect(await sobraAncho(page), 'la página se desplaza de lado').toBeLessThanOrEqual(0);
     });
 
     test('la hoja «Agregar videos» cabe: sin desplazamiento de lado, tarjetas y botones de 44 px, «Usar» a la vista', async ({ page }) => {

@@ -320,7 +320,7 @@ describe('subir varios archivos: la cola de uno en uno', () => {
     // termina la primera: se confirma y EMPIEZA la segunda (nunca dos a la vez, nunca un precio a medias)
     await terminarSubida();
     await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
-    expect(cuerpoDe(f, '/api/media/confirmar')).toEqual({ proyecto: 'uno', key: 'videos/uno/subidas/uno.mp4' });
+    expect(cuerpoDe(f, '/api/media/confirmar')).toEqual({ proyecto: 'uno', key: 'videos/uno/subidas/uno.mp4', nombre: 'uno.mp4' });
     expect(screen.getAllByText('En cola')).toHaveLength(1);
     expect(pedidosA(f, '/api/edicion/cotizar')).toBe(0);
     await terminarSubida();
@@ -335,6 +335,21 @@ describe('subir varios archivos: la cola de uno en uno', () => {
     expect(llamadas(f, '/api/media/presign').map(c => (JSON.parse(String(c[1]!.body)) as { proyecto: string }).proyecto)).toEqual(['uno', 'dos', 'tres']);
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect(screen.queryByText('En cola')).toBeNull();
+  });
+
+  it('inicio.union.al_confirmar_cada_subida_manda_el_nombre_del_archivo_tal_como_la_persona_lo_vio', async () => {
+    // INT-05: el nombre de la key va saneado («Mi Entrevista (1).mp4» → «Mi_Entrevista_1.mp4», «Reunión de Año» → «Reuni_n_de_A_o») y de
+    // él salía el título de la copia en la bandeja, la tarjeta y el editor. El servidor guarda aparte el que la persona vio
+    const f = montar();
+    pintar();
+    await irAEdicion();
+    await subirVarios([video('Mi Entrevista (1).mp4'), video('Reunión de Año.mov', 'video/quicktime')]);
+    await terminarCola(2);
+    await waitFor(() => expect(pedidosA(f, '/api/media/confirmar')).toBe(2));
+    expect(cuerpoDe(f, '/api/media/confirmar', 0)).toMatchObject({ nombre: 'Mi Entrevista (1).mp4' });
+    expect(cuerpoDe(f, '/api/media/confirmar', 1)).toMatchObject({ nombre: 'Reunión de Año.mov' });
+    // y NADA más: ni créditos, ni una duración, ni un formato
+    expect(Object.keys(cuerpoDe(f, '/api/media/confirmar', 0)).sort()).toEqual(['key', 'nombre', 'proyecto']);
   });
 
   it('inicio.union.cada_subida_confirmada_pasa_a_ser_el_proyecto_con_su_nombre_y_los_repetidos_estrenan_nombre', async () => {

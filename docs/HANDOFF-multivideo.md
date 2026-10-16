@@ -45,6 +45,21 @@ conserva porque explica por qué el motor es como es.
     del evento con `editar.inicio` (que el API escribe antes de lanzar): si la corrida vigente empezó
     más de `HOLGURA_RELOJ_S` (5 s) DESPUÉS de esa ejecución, el evento es de otra y no se toca nada. Con
     `cobrado: false` (el reintento aún no confirma su cobro) manda el libro mayor, no el monto del doc.
+  - **El cierre no pisa un reintento ni una corrida cerrada (D-05, D-06).** Todo lo que el worker y el
+    barredor escriben en `doc.editar` mientras la corrida está viva o recién reclamada va en UN UPDATE
+    condicionado, nunca en leer y luego escribir: `db.fijar_editar_si_corriendo` (solo si sigue
+    `corriendo`; si no escribió, `Cerrada`: ya la cerró otra pieza y devolvió) y `db.fijar_paso_editor`
+    (solo el paso). El cierre de una corrida ya reclamada (`error` + `devueltos`, la reapertura para el
+    barredor, la anotación del barredor) usa `db.cerrar_editor_si_error`: solo escribe si la copia SIGUE en
+    `error` y con el mismo `inicio`, porque devolver puede tardar segundos y si la persona pulsó Reintentar
+    en ese lapso esa copia ya es otra corrida. Una copia `listo` con deuda (cero sugerencias) se anota sin
+    esa condición: `reintentar` solo toca un `error`.
+  - **Lo cotizado manda sobre lo que haya en S3 (D-13).** El API cobra por lo que midió; el worker vuelve a
+    medir y, si no cuadra, falla y devuelve TODO antes de pagar la ASR, el LLM o el proxy: la duración
+    medida contra `fuentes[].duracion_s` (el mayor de 1 s o 2 %), la orientación contra `ancho`/`alto`, el
+    tope de 90 min para cada video y para la suma, y el peso (un archivo que pesa MÁS de `fuentes[].bytes`
+    más 1 MiB o 2 % ni se copia). `media_sync.copiar` acepta el ETag medido (`fuentes[].etag`, hoy el API
+    no lo anota) y lo fija con `CopySourceIfMatch` en vez del que haya al arrancar.
   - **Una deuda nunca se queda sin lector.** Si el monedero falla y el worker no puede reabrir la corrida
     (el índice único de «una copia en curso» lo rechaza porque la persona ya lanzó otra), o si la copia se
     entregó con CERO sugerencias y el abono falló, el worker deja la deuda en `editar.devolucion_pendiente`
@@ -71,17 +86,22 @@ antes de E2:
 
 Arreglo: `make_proxy.py` normaliza siempre cada parte a 1280×720 (720×1280 si el primer clip es
 vertical, con barras si el aspecto no coincide), 30 fps y AAC 48 kHz estéreo (silencio de la duración
-del video si no hay pista); `render_cuts.py --mode preview` usa el MISMO filtro, rellena con silencio
-un clip sin audio y rellena (`apad`) un audio corto hasta las muestras exactas de su segmento. **El
-modo `final` no cambia**: sin filtro de video, mismo encoder (el flujo local de video-stack). La
-orientación del primer clip manda; las herramientas no vuelven a juzgar lo que el servidor ya rechazó.
+del video si no hay pista); `render_cuts.py --mode preview` usa el MISMO filtro de video. El relleno de
+audio —silencio para un clip sin pista, `apad` para un audio corto hasta las muestras exactas de su
+segmento— corre en los DOS modos. **El video del modo `final` no cambia**: sin filtro de video, mismo
+encoder (el flujo local de video-stack); con audio completo su master sale idéntico al de antes, y con
+audio corto o ausente ahora trae audio de la duración exacta del video (antes: audio corto, sin pista,
+o exit 234 si el clip no traía audio). La orientación del primer clip manda; las herramientas no
+vuelven a juzgar lo que el servidor ya rechazó.
 
 **Dónde se corta el audio de cada parte (ffmpeg 5.1 contra 6.1).** `make_proxy.py` rellena el audio
 (`apad`, o `anullsrc` si no hay pista) y lo corta con `-t <duración del video de la parte>` —la del
 flujo de video de la fuente, en cuadros enteros a 30 fps (`duracion_de_parte`)—, no con `-shortest`: con
 ffmpeg 5.1 `-shortest` deja pasar el relleno. Con 6.1 las dos formas daban lo mismo, y por eso la prueba
-solo se puso roja en la CI. Un contenedor que no declara la duración del flujo (Matroska/WebM) conserva
-`-shortest`. El manifiesto sale de `ffprobe` de cada parte, no se calcula.
+solo se puso roja en la CI. Un contenedor que no declara la duración del flujo (Matroska/WebM dan `N/A`)
+usa la del contenedor (`probar` la lee de `format=duration`): con 5.1 la parte queda a ~3 ms, y con
+`-shortest` quedaba ~77 ms más larga. `-shortest` es solo el último recurso, si no hay ninguna duración.
+El manifiesto sale de `ffprobe` de cada parte, no se calcula.
 
 ## Lo que YA existe (no reconstruir)
 

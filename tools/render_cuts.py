@@ -10,9 +10,14 @@ autodetecta por modo con la cadena NVENC → Quick Sync → AMF → CPU (tools/h
 E2 (unir videos): el preview NORMALIZA cada segmento al tamaño del primer clip
 (1280x720, o 720x1280 si es vertical; con barras si el aspecto no coincide) y a
 30 fps — `concat -c copy` de segmentos de tamaños o fps distintos descuadra el
-video y deja `non monotonically increasing dts`. Un clip sin pista de audio
-aporta silencio de la duración exacta de su segmento. `final` NO cambia: sin
-filtro de video, con su encoder de siempre (el flujo local de video-stack).
+video y deja `non monotonically increasing dts`. Eso del VIDEO es solo del preview:
+`final` no lleva filtro de video y usa su encoder de siempre (el flujo local de
+video-stack). El relleno de AUDIO corre en los DOS modos: un clip sin pista de
+audio aporta silencio de la duración exacta de su segmento, y uno cuyo audio es
+más corto que su video se rellena con silencio hasta esa duración (`apad`). Con
+audio completo el master `final` sale idéntico al de antes; con audio corto o
+ausente ahora trae audio de la duración exacta del video (antes: audio corto,
+sin pista, o exit 234 si el clip no traía audio).
 
 Segments come from cutlib.plan_clip: keeps are split into speech runs at pauses
 >= internal_gap, each run's tail is snapped to the audio floor (words finish

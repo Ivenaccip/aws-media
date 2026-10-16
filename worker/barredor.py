@@ -248,18 +248,38 @@ def _cobrar_deuda_editar(user_id: str, nombre: str) -> dict | None:
     return {"accion": "nada", "motivo": "la deuda ya estaba abonada; se anotó"}
 
 
+def _escribir_editar(user_id: str, nombre: str, editar: dict, *, en_error: bool) -> bool:
+    """Escribe `doc.editar` de una corrida que YA se reclamó. True si escribió.
+
+    Con el doc en `error` (el estado en que `reclamar_fallo_editor` lo deja, y el de una deuda que el
+    worker no pudo reabrir) el UPDATE va condicionado a que SIGA en `error` y con el mismo `inicio`
+    (`db.cerrar_editor_si_error`): el reclamo lo deja visible y reintentable ANTES de devolver, y si
+    en ese lapso la persona pulsó Reintentar esa copia ya es otra corrida; un `fijar_campo_editor`
+    incondicional la pisaba con el `error` + `devueltos` de la VIEJA y el segundo cobro se quedaba sin
+    devolver. En cualquier otro estado (`listo`: la copia se entregó con cero sugerencias y el abono
+    falló) nadie más escribe `editar` —`reintentar` solo toca un `error`— y se escribe como siempre."""
+    from pipeline import db
+    valor = json.dumps(editar, ensure_ascii=False)
+    if en_error:
+        return db.cerrar_editor_si_error(user_id, nombre, editar.get("inicio"), valor)
+    db.fijar_campo_editor(user_id, nombre, "editar", valor)
+    return True
+
+
 def _anotar_devueltos(user_id: str, nombre: str, trabajo: dict, n: int) -> None:
     """E2: la bandeja «Tus trabajos» dice «Te devolvimos ✦ N» leyendo
     `doc.editar.devueltos`, y el barredor es quien cierra la edición cuando la tarea
     ni arrancó. `reclamar_fallo_editor` devuelve el objeto `editar` ya en `error`: se
-    le agrega lo devuelto y se guarda. Va DESPUÉS del abono y sin levantar nada: si
-    la anotación falla, el dinero ya volvió y reintentar el evento no devolvería
-    de nuevo (el reclamo ya perdió), así que solo se avisa en el log."""
-    from pipeline import db
+    le agrega lo devuelto y se guarda (condicionado: ver `_escribir_editar`). Va DESPUÉS
+    del abono y sin levantar nada: si la anotación falla, el dinero ya volvió y
+    reintentar el evento no devolvería de nuevo (el reclamo ya perdió), así que solo
+    se avisa en el log."""
     try:
         trabajo["devueltos"] = n
         trabajo.pop("devolucion_pendiente", None)      # el que dejó un abono fallido, ya saldado
-        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+        if not _escribir_editar(user_id, nombre, trabajo, en_error=trabajo.get("estado") == "error"):
+            log.warning("barredor: %s devuelto (%d créditos), pero otra pieza tomó la copia (un "
+                        "reintento) y no se pisa su estado", nombre, n)
     except Exception:  # noqa: BLE001
         log.exception("barredor: %s devuelto (%d créditos) pero no se pudo anotar", nombre, n)
 
@@ -273,18 +293,23 @@ def _reabrir_editar(user_id: str, nombre: str, trabajo: dict, n: int) -> None:
     Si reabrir no se puede (el índice único de una copia en curso: la persona ya lanzó otra), el
     doc se queda en `error` pero CON la deuda anotada (`devolucion_pendiente`): el reintento del
     evento no puede reclamarlo, y `_cobrar_deuda_editar` la cobra desde ahí. Si ni eso se puede
-    escribir, queda dicho en el log."""
-    from pipeline import db
+    escribir, o si en el lapso otra pieza tomó la copia (un reintento), queda dicho en el log.
+    Las dos escrituras van condicionadas a que el doc siga en `error` con el mismo `inicio`."""
     try:
         trabajo.update(estado="corriendo", devolucion_pendiente=n)
-        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+        if _escribir_editar(user_id, nombre, trabajo, en_error=True):
+            return
+        log.error("barredor: %s NO se devolvieron %d créditos y otra pieza tomó la copia (un "
+                  "reintento): revisar el libro mayor", nombre, n)
         return
     except Exception:  # noqa: BLE001
         log.exception("barredor: %s no se pudo reabrir (¿otra copia corriendo?); queda la deuda "
                       "anotada en el doc", nombre)
     try:
         trabajo.update(estado="error", devolucion_pendiente=n)
-        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+        if not _escribir_editar(user_id, nombre, trabajo, en_error=True):
+            log.error("barredor: %s NO se devolvieron %d créditos y otra pieza tomó la copia (un "
+                      "reintento): revisar el libro mayor", nombre, n)
     except Exception:  # noqa: BLE001
         log.exception("barredor: %s NO se devolvieron %d créditos y el doc no se pudo marcar", nombre, n)
 

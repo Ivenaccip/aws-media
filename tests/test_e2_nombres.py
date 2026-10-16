@@ -80,10 +80,6 @@ def test_un_nombre_que_no_pasa_la_regla_no_se_ofrece(cliente, mundo):
     assert "proyecto:bueno" in refs and "proyecto:con espacio" not in refs
 
 
-@pytest.mark.xfail(strict=False, raises=RuntimeError,
-                   reason="PENDIENTE S2: worker/editar_copia._verificar_duenos solo acepta [A-Za-z0-9_-]+ en el "
-                          "nombre del proyecto de origen; con un nombre acentuado la corrida falla DESPUÉS de cobrar "
-                          "(y se devuelve). Debe aceptar lo mismo que la API.")
 def test_el_worker_acepta_los_mismos_nombres_que_la_api(monkeypatch):
     from pipeline import db
     from worker import editar_copia

@@ -171,6 +171,22 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
   fondo (el área de escritura de la caja del inicio: `ui/CuadroDeTexto`), el aro
   lo dibuja el cuadro cuando algo de adentro tiene foco visible y el campo no
   dibuja otro: dos aros, uno dentro del otro, se verían como un error.
+- **Un diálogo nunca mide más que la ventana.** El ancho (`CAJA_ANCHA` de
+  `ui/Dialogo`) limita su alto a `100dvh − 1rem` y se desplaza por dentro: centrado y
+  sin tope, un teléfono de 568 px de alto le cortaba arriba el título y la ✕ y abajo el
+  botón principal, y de lado (320 px de alto) dejaba «Usar» fuera de la pantalla, sin
+  forma de tocarlo. Las hojas con lista (`HojaVideos`) ceden primero alto en la LISTA
+  (`dvh`, no `vh`: la altura que de verdad se ve, sin las barras del navegador) y dejan su
+  pie —«Cancelar» y el botón principal— pegado abajo (`sticky bottom-0`), así que se
+  alcanzan siempre. Se prueba a alturas de teléfono (320 × 568, 375 × 553, 360 × 640,
+  390 × 664 y 568 × 320), no con una ventana a la que la hoja le quepa (800 px lo esconde).
+- **La bandeja «Tus trabajos» repinta solo lo que cambió.** Cada ficha, aviso y la
+  caja entera llevan una clave (`data-k`) y `static/trabajos.js` pone al día el DOM en su
+  sitio en vez de reemplazarlo con `innerHTML`: el avance de una ficha que corre no repinta
+  la ficha de error de al lado (que lleva `role="alert"`, así que el lector de pantalla no
+  la vuelve a leer, y conserva el foco de quien llegó con Tab a «Reintentar»). Los atributos
+  que pone la bandeja misma mientras algo está en el aire (`aria-busy`, `aria-disabled`
+  de «Reintentar») no los borra un repintado.
 
 ## 5. Botones: tres niveles, cinco estados
 

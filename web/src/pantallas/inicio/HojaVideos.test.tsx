@@ -321,7 +321,7 @@ describe('la hoja «Agregar videos»: marcar, numerar y apagar', () => {
     const marcado = video(h, 'Cómo edito mis videos');
     expect(marcado).toHaveAttribute('aria-pressed', 'true');
     expect(marcado).toHaveClass('border-ambar-claro');
-    expect(marcado.className.split(/\s+/).filter(c => c.startsWith('hover:'))).toEqual([]);
+    expect(marcado.className.split(/\s+/).filter((c: string) => c.startsWith('hover:'))).toEqual([]);
     // desmarcar lo devuelve a su borde de siempre
     await userEvent.click(marcado);
     expect(video(h, 'Cómo edito mis videos')).toHaveClass('border-linea', 'hover:border-campo');

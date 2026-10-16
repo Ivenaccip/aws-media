@@ -92,6 +92,32 @@ def test_copiar_fija_el_etag_del_original(s3):
     assert [c[3] for c in s3.llamadas if c[0] == "copy"] == [{"CopySourceIfMatch": '"e1"'}]
 
 
+def test_copiar_con_el_etag_medido_fija_ese_y_no_el_de_ahora(s3):
+    """Ajustes 2 · D-13: el ETag que vio quien midió y cobró (`fuentes[].etag`) manda sobre el que
+    tenga el objeto cuando el worker arranca."""
+    media_sync.copiar("videos/gen-a/pelicula.mp4", "videos/ed-1/clips/c01.mp4", etag='"e1"')
+    assert [c[3] for c in s3.llamadas if c[0] == "copy"] == [{"CopySourceIfMatch": '"e1"'}]
+
+
+def test_si_el_original_ya_no_es_el_que_se_midio_la_copia_falla_aunque_el_head_vea_el_nuevo(s3):
+    """Alguien reemplazó el objeto DESPUÉS de cotizar y ANTES de que el worker arrancara: el HEAD de
+    `copiar` ya ve el ETag nuevo, que sin `etag` se fijaría y la copia saldría 'bien' con otro archivo."""
+    s3.objetos["videos/gen-a/pelicula.mp4"] = (b"otro" * 100, '"e2"')
+    with pytest.raises(ClientError) as e:
+        media_sync.copiar("videos/gen-a/pelicula.mp4", "videos/ed-1/clips/c01.mp4", etag='"e1"')
+    assert e.value.response["Error"]["Code"] == "PreconditionFailed"
+    assert "videos/ed-1/clips/c01.mp4" not in s3.objetos
+    # y sin el ETag medido, el comportamiento de siempre: se fija el de ahora y la copia sale
+    media_sync.copiar("videos/gen-a/pelicula.mp4", "videos/ed-1/clips/c01.mp4")
+    assert s3.objetos["videos/ed-1/clips/c01.mp4"][0] == b"otro" * 100
+
+
+def test_copiar_con_etag_sigue_levantando_si_el_origen_no_existe(s3):
+    with pytest.raises(ClientError):
+        media_sync.copiar("videos/gen-a/no-existe.mp4", "videos/ed-1/clips/c01.mp4", etag='"e1"')
+    assert "videos/ed-1/clips/c01.mp4" not in s3.objetos
+
+
 def test_si_reemplazan_el_original_a_media_copia_falla(s3):
     """El HEAD lee el ETag "e1"; antes de copiar alguien sube otro archivo con la misma key."""
     s3.al_leer_cabecera = lambda este: este.objetos.update(

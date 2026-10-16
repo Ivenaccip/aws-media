@@ -49,9 +49,15 @@ from pipeline import costes_infra, creditos, db, media_sync, storage
 
 log = logging.getLogger("editar_copia")
 
-MAX_VIDEOS = 12                       # los mismos topes de server/edicion_api.py (R10, R14)
-MAX_BYTES_TOTAL = 15 * 1024 ** 3
+MAX_VIDEOS = 12                       # los mismos topes de server/edicion_api.py (R4, R10, R14):
+MAX_BYTES_TOTAL = 15 * 1024 ** 3      # un guardián (tests/test_e2_worker_copia.py) los compara
+MAX_S = 90 * 60                       # lo que dura la SUMA de los videos (tope R4)
+MAX_NOMBRE = 255                      # largo de un nombre de proyecto
 HOLGURA_DISCO = 1024 ** 3             # lo que se deja libre además de los clips
+# cuánto puede separarse lo medido AQUÍ de lo que el API midió al cotizar antes de dejar de fiarse:
+DUR_TOLERANCIA_S = 1.0                # segundos...
+DUR_TOLERANCIA_REL = 0.02             # ...o 2 % de la duración, lo que sea mayor (como `_canonico`)
+PESO_TOLERANCIA_B = 1024 ** 2         # el peso solo preocupa si SUBE: 1 MiB o 2 %, lo que sea mayor
 EXTS = re.compile(r"\.[a-z0-9]{2,5}")
 CLIP_ID = re.compile(r"c\d{2}")
 PASOS = ("entender", "editar", "vista")
@@ -88,10 +94,16 @@ class _Corrida:
         return st
 
     def escribir(self, **campos) -> dict:
+        """Escribe `doc.editar` en UN solo UPDATE condicionado a que la corrida siga `corriendo`
+        (`db.fijar_editar_si_corriendo`). El `vivo()` de antes solo relee el doc: leer y luego escribir
+        sin condición dejaba una ventana en la que el API, la caducidad o el barredor cerraban y
+        devolvían, y esta escritura volvía a poner `corriendo` (la copia reaparecía, terminaba `listo`
+        y la persona tenía la edición Y el reembolso). Si no escribió, ya la cerró otra pieza."""
         st = self.vivo()
         st.update(campos)
-        db.fijar_campo_editor(self.user_id, self.nombre, "editar",
-                              json.dumps(st, ensure_ascii=False))
+        if not db.fijar_editar_si_corriendo(self.user_id, self.nombre,
+                                            json.dumps(st, ensure_ascii=False)):
+            raise Cerrada(self.nombre)
         return st
 
     def paso(self, paso: str) -> dict:
@@ -137,6 +149,16 @@ def _fuentes(st: dict) -> list[dict]:
     return fuentes
 
 
+def _nombre_proyecto_valido(nombre: object) -> bool:
+    """LA regla de nombre de proyecto del producto, la misma que usa el API (`edicion_api.
+    _nombre_proyecto_valido`, `storage.ruta_proyecto`, `media_api._validar_nombre`): letras y cifras
+    de cualquier alfabeto, `-` y `_`, hasta `MAX_NOMBRE`. Con otra más estricta aquí, un proyecto
+    «presentación-final» pasaba cotizar e iniciar, se cobraba, y el worker lo rechazaba DESPUÉS
+    (con devolución, pero tras cobrar)."""
+    return (isinstance(nombre, str) and 0 < len(nombre) <= MAX_NOMBRE
+            and nombre.replace("-", "").replace("_", "").isalnum())
+
+
 def _verificar_duenos(user_id: str, nombre: str, fuentes: list[dict]) -> None:
     """Cada `origen_key` empieza por `usuarios/<user_id>/` o es de un proyecto de
     ESTA cuenta (`db.cargar_proyecto_editor(user_id, n)`), y `canonico_key`/`wav_key`
@@ -148,9 +170,9 @@ def _verificar_duenos(user_id: str, nombre: str, fuentes: list[dict]) -> None:
         if origen.startswith(propio):
             prefijo = propio
         else:
-            m = re.match(r"^(videos/([A-Za-z0-9_-]+)/)", origen)
-            if not m or m.group(2) == nombre:       # ni de nadie ni de la propia copia
-                raise RuntimeError(AJENO)
+            m = re.match(r"^(videos/([^/]+)/)", origen)
+            if not m or m.group(2) == nombre or not _nombre_proyecto_valido(m.group(2)):
+                raise RuntimeError(AJENO)           # ni de nadie, ni de la propia copia, ni un nombre raro
             if m.group(2) not in proyectos:
                 proyectos[m.group(2)] = db.cargar_proyecto_editor(user_id, m.group(2)) is not None
             if not proyectos[m.group(2)]:
@@ -276,6 +298,54 @@ def _canonico(c: dict, f: dict, destino: Path, prefijo: str) -> dict | None:
     return doc
 
 
+def _minutos(segundos: float) -> str:
+    return f"{segundos / 60:.1f}".removesuffix(".0")
+
+
+def _etag_medido(f: dict) -> str | None:
+    """El ETag que el API vio al medir/cotizar este video, si lo dejó en la fuente (`fuentes[].etag`):
+    con él `copiar` falla si el objeto cambió DESPUÉS de cotizar, en vez de fijar el que haya cuando el
+    worker arranca. Sin él (hoy el API no lo anota) se fija el de ese momento, como siempre."""
+    etag = f.get("etag")
+    return etag if isinstance(etag, str) and etag.strip() else None
+
+
+def _revisar_peso(titulo: str, esperado: object, real: int | None) -> None:
+    """Un archivo que pesa MÁS de lo que se cotizó ya no es el que se cobró (la caché de medición y la
+    ventana entre `iniciar` y el arranque del worker dejan reemplazar el objeto). Solo se mira el
+    exceso: `doc.bytes` de un clip puede no ser exacto y pesar menos no encarece nada (si cambió de
+    verdad, la duración lo dice después). Sin tope exacto: 1 MiB o 2 %, lo que sea mayor."""
+    if not real or isinstance(esperado, bool) or not isinstance(esperado, int) or esperado <= 0:
+        return
+    if real > esperado + max(PESO_TOLERANCIA_B, esperado * 0.02):
+        raise RuntimeError(f"«{titulo}» pesa más de lo que se cotizó: ya no es el mismo archivo")
+
+
+def _revisar_medida(titulo: str, f: dict, m: dict, antes_s: float) -> float:
+    """Lo MEDIDO aquí contra lo que el API midió al cotizar (`fuentes[]`) y contra los topes. Si no
+    cuadra, la corrida falla y se devuelve TODO antes de pagar la ASR, el LLM o el proxy: se cobró por
+    otro video. Devuelve la duración medida para ir sumando (tope R4 sobre la SUMA, 90 min).
+
+    Una duración o un formato cotizados que no estén (no deberían faltar: el API no cobra sin medir)
+    no se inventan: solo se aplican los topes."""
+    dur = float(m["dur"])
+    cotizada = f.get("duracion_s")
+    if (isinstance(cotizada, (int, float)) and not isinstance(cotizada, bool) and cotizada > 0
+            and abs(dur - cotizada) > max(DUR_TOLERANCIA_S, DUR_TOLERANCIA_REL * cotizada)):
+        raise RuntimeError(f"«{titulo}» dura {_minutos(dur)} min y se cotizó de {_minutos(cotizada)} min: "
+                           "ya no es el mismo video")
+    ancho, alto = f.get("ancho"), f.get("alto")
+    if (all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in (ancho, alto))
+            and (alto > ancho) != (m["h"] > m["w"])):
+        raise RuntimeError(f"«{titulo}» cambió de formato después de cotizar: ya no es el mismo video")
+    # el tope de 90 min (R4) con la tolerancia de un ffprobe a otro (1 s), igual para uno solo y para la suma
+    if dur > MAX_S + DUR_TOLERANCIA_S:
+        raise RuntimeError(f"«{titulo}» dura {_minutos(dur)} min y el máximo es {_minutos(MAX_S)} min")
+    if antes_s + dur > MAX_S + DUR_TOLERANCIA_S:
+        raise RuntimeError(f"Entre todos los videos suman más de {_minutos(MAX_S)} min")
+    return dur
+
+
 def _entender(corrida: _Corrida, destino: Path) -> list[dict]:
     st = corrida.paso("entender")
     nombre, user_id = corrida.nombre, corrida.user_id
@@ -289,13 +359,18 @@ def _entender(corrida: _Corrida, destino: Path) -> list[dict]:
     for f in fuentes:
         titulo = f.get("titulo") or f["clip_id"]
         destino_key = f"{prefijo}clips/{f['clip_id']}{f['ext']}"
+        origen = _limpia(f["origen_key"])
         esperado = f.get("bytes")
         actual = media_sync.tamano(destino_key)
         if not (isinstance(esperado, int) and esperado > 0 and actual == esperado):
-            media_sync.copiar(_limpia(f["origen_key"]), destino_key)
+            # lo que hay en S3 manda, no lo que dice el doc: se mira ANTES de copiar (una copia de
+            # varios GB de un archivo cambiado no se paga dos veces) y de nuevo con lo copiado
+            _revisar_peso(titulo, esperado, media_sync.tamano(origen))
+            media_sync.copiar(origen, destino_key, etag=_etag_medido(f))
             actual = media_sync.tamano(destino_key)
         if not actual:
             raise RuntimeError(f"La copia de «{titulo}» no quedó guardada")
+        _revisar_peso(titulo, esperado, actual)
         total += actual
         if total > MAX_BYTES_TOTAL:
             raise RuntimeError("Los videos pesan más de lo que cabe en una edición")
@@ -305,6 +380,7 @@ def _entender(corrida: _Corrida, destino: Path) -> list[dict]:
 
     # 2) clips de a UNO a destino/clips/ y se miden: lo medido aquí manda para los cortes
     clips: list[dict] = []
+    suma_s = 0.0
     for f in fuentes:
         cid, ext = f["clip_id"], f["ext"]
         local = destino / "clips" / f"{cid}{ext}"
@@ -312,6 +388,7 @@ def _entender(corrida: _Corrida, destino: Path) -> list[dict]:
         if not media_sync.bajar_archivo(f"{prefijo}clips/{cid}{ext}", local):
             raise RuntimeError(f"No pude bajar «{titulo}»")
         m = _medir_clip(local)
+        suma_s += _revisar_medida(titulo, f, m, suma_s)
         clips.append({"id": cid, "titulo": titulo, "rel": f"clips/{cid}{ext}", "local": local,
                       "dur": round(m["dur"], 3), "audio": m["audio"], "vertical": m["h"] > m["w"],
                       "fuente": f, "canonico": None})
@@ -481,6 +558,18 @@ def _devolver(user_id: str, nombre: str, n: int) -> bool:
     return False
 
 
+def _cerrar(user_id: str, nombre: str, trabajo: dict) -> bool:
+    """El CIERRE de una corrida que ya se reclamó: escribe `trabajo` solo si la copia SIGUE en `error`
+    y con el mismo `inicio` con el que se reclamó (`db.cerrar_editor_si_error`). `reclamar_fallo_editor`
+    deja el doc en `error` (visible y reintentable) ANTES de devolver, y devolver puede tardar hasta
+    ~4 s si el monedero titubea: un `fijar_campo_editor` incondicional pisaba con la corrida VIEJA a un
+    reintento que arrancó en medio. La reapertura para el barredor (`corriendo` + `devolucion_pendiente`)
+    se escribe con el doc aún en `error` y el mismo `inicio`, así que la condición la deja pasar.
+    True si escribió."""
+    return db.cerrar_editor_si_error(user_id, nombre, trabajo.get("inicio"),
+                                     json.dumps(trabajo, ensure_ascii=False))
+
+
 def _fallar(user_id: str, nombre: str, err: Exception) -> int:
     """El `except` de la corrida. Primero RECLAMA (UPDATE condicionado a `corriendo`:
     lo gana esta tarea o el barredor, nunca los dos) y SOLO si ganó devuelve lo
@@ -504,7 +593,7 @@ def _fallar(user_id: str, nombre: str, err: Exception) -> int:
             trabajo["estado"] = "corriendo"
             trabajo["devolucion_pendiente"] = n
     try:
-        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+        escrito = _cerrar(user_id, nombre, trabajo)
     except Exception:  # noqa: BLE001
         if trabajo.get("estado") != "corriendo":
             raise
@@ -516,10 +605,19 @@ def _fallar(user_id: str, nombre: str, err: Exception) -> int:
                       "anotada con el doc en «error»", nombre, n)
         trabajo["estado"] = "error"
         try:
-            db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+            escrito = _cerrar(user_id, nombre, trabajo)
         except Exception:  # noqa: BLE001
+            escrito = True              # ya se dijo qué pasó; no se repite como «otra pieza»
             log.exception("%s: NO se devolvieron %d créditos y el doc no se pudo marcar: revisar el "
                           "libro mayor de %s", nombre, n, user_id)
+    if not escrito:
+        # Otra pieza tomó el doc mientras se devolvía (la persona pulsó Reintentar en esos segundos):
+        # esa copia ya es OTRA corrida. Escribirle encima el `error` + `devueltos` de la vieja la
+        # mataba y dejaba su cobro sin devolver. El abono de ESTA corrida ya salió: solo se avisa.
+        log.warning("%s: otra pieza tomó la copia mientras se devolvía; no se pisa su estado", nombre)
+        if trabajo.get("devolucion_pendiente"):
+            log.error("%s: quedó debiendo %d créditos de la corrida anterior y el doc ya es otro: "
+                      "revisar el libro mayor de %s", nombre, n, user_id)
     return 1
 
 

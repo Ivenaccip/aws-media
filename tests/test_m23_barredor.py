@@ -244,6 +244,14 @@ def editor(monkeypatch):
         fijar.escritos.append((user_id, nombre, campo, json.loads(valor)))
     fijar.escritos = []
     monkeypatch.setattr(db, "fijar_campo_editor", fijar)
+
+    # Ajustes 2 · D-05: la anotación de una corrida RECLAMADA (el doc en `error`) va condicionada a que
+    # siga en `error` y con el mismo `inicio` (`db.cerrar_editor_si_error`); aquí siempre se cumple y
+    # queda en el mismo registro (user, nombre, campo, valor)
+    def cerrar(user_id, nombre, inicio, valor):
+        fijar.escritos.append((user_id, nombre, "editar", json.loads(valor)))
+        return True
+    monkeypatch.setattr(db, "cerrar_editor_si_error", cerrar)
     return barredor, devueltos, trabajo, reclamos
 
 
@@ -445,6 +453,7 @@ def test_si_la_anotacion_falla_el_dinero_ya_volvio_y_no_se_levanta_nada(editor, 
     def truena(*a):
         raise RuntimeError("Postgres no responde")
     monkeypatch.setattr(db, "fijar_campo_editor", truena)
+    monkeypatch.setattr(db, "cerrar_editor_si_error", truena)
 
     r = barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
     assert r["accion"] == "devuelto" and len(devueltos) == 1
@@ -472,11 +481,15 @@ def test_si_el_monedero_falla_el_doc_se_reabre_y_el_reintento_devuelve(monkeypat
             raise RuntimeError("el monedero no respondió")
         abonos.append((n, ref, u))
 
-    def fijar(user_id, nombre, campo, valor):
+    def cerrar(user_id, nombre, inicio, valor):
+        assert doc["estado"] == "error" and (doc.get("inicio") or "") == (inicio or "")
         doc.clear()
         doc.update(json.loads(valor))
+        return True
     monkeypatch.setattr(db, "reclamar_fallo_editor", reclamar)
-    monkeypatch.setattr(db, "fijar_campo_editor", fijar)
+    monkeypatch.setattr(db, "cerrar_editor_si_error", cerrar)
+    monkeypatch.setattr(db, "fijar_campo_editor",
+                        lambda *a: pytest.fail("una corrida reclamada se escribe con cerrar_editor_si_error"))
     # Ajustes 2 · D-08: cuando el reclamo se pierde, el barredor mira el doc por si el worker dejó una
     # deuda anotada (`devolucion_pendiente`); aquí ya está saldada y no hay nada que cobrar
     monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: {"editar": dict(doc)})
@@ -529,11 +542,14 @@ class Copia:
         self.abonos, self.lecturas, self.reclamos = [], 0, 0
         self.devolver_falla = 0
         self.escritura_falla = None                  # callable(editar_nuevo) -> Exception | None
+        self.al_devolver = None                      # gancho: pasa mientras el monedero responde
+        self.cierres_perdidos = 0                    # cuántas veces el cierre condicionado no escribió
         monkeypatch.setattr(creditos, "activo", lambda: True)
         monkeypatch.setattr(creditos, "devolver", self._devolver)
         monkeypatch.setattr(db, "reclamar_fallo_editor", self._reclamar)
         monkeypatch.setattr(db, "cargar_proyecto_editor", self._cargar)
         monkeypatch.setattr(db, "fijar_campo_editor", self._fijar)
+        monkeypatch.setattr(db, "cerrar_editor_si_error", self._cerrar_si_error)
         monkeypatch.setattr(db, "movimientos_creditos", lambda u, limite=20: list(self.libro)[:limite])
 
     def _reclamar(self, user, nombre, campo, mensaje):
@@ -548,17 +564,38 @@ class Copia:
         return {"editar": deepcopy(self.editar)}
 
     def _fijar(self, user, nombre, campo, valor):
+        """`db.fijar_campo_editor`: SIN condición. Solo cabe sobre una copia ya `listo`: sobre un
+        `error` reclamado el barredor debe usar `cerrar_editor_si_error` (D-05)."""
+        assert self.editar.get("estado") == "listo", "una corrida reclamada se escribe con cerrar_editor_si_error"
         nuevo = json.loads(valor)
         if self.escritura_falla and (err := self.escritura_falla(nuevo)):
             raise err
         self.editar = nuevo
 
+    def _cerrar_si_error(self, user, nombre, inicio, valor):
+        """`db.cerrar_editor_si_error`: escribe solo si la copia SIGUE en `error` y con el mismo `inicio`."""
+        nuevo = json.loads(valor)
+        if self.editar.get("estado") != "error" or (self.editar.get("inicio") or "") != (inicio or ""):
+            self.cierres_perdidos += 1
+            return False
+        if self.escritura_falla and (err := self.escritura_falla(nuevo)):
+            raise err
+        self.editar = nuevo
+        return True
+
     def _devolver(self, n, ref, user=None):
+        if self.al_devolver:
+            self.al_devolver(self)                    # lo que pasa MIENTRAS el monedero tarda
         if self.devolver_falla:
             self.devolver_falla -= 1
             raise RuntimeError("el monedero no respondió")
         self.abonos.append((n, ref, user))
         self.libro.insert(0, {"creditos": n, "tipo": "devolucion", "referencia": ref})
+
+    def reintento_en_medio(self):
+        """La persona pulsó Reintentar: la MISMA copia vuelve a `corriendo`, con otro `inicio`."""
+        self.editar = {"copia": True, "estado": "corriendo", "paso": "entender", "cobrado": True,
+                       "creditos": 2, "inicio": _iso(INICIO + timedelta(minutes=5)), "reintentos": 1}
 
 
 @pytest.fixture
@@ -797,3 +834,53 @@ def test_si_reabrir_choca_con_el_indice_el_barredor_deja_la_deuda_anotada_en_err
     # EventBridge reintenta: ya no se puede reclamar, pero la deuda se cobra
     assert _barrer() == {"accion": "devuelto", "creditos": 8, "proyecto": COPIA}
     assert c.abonos == [(8, REF, "u1")] and c.editar["devueltos"] == 8 and "devolucion_pendiente" not in c.editar
+
+
+# --- D-05: el cierre del barredor no pisa un reintento que arrancó en medio ----
+
+def test_si_la_persona_reintenta_mientras_el_barredor_devuelve_no_se_pisa_el_reintento(copia):
+    """`reclamar_fallo_editor` deja la copia en `error` (visible y reintentable) ANTES de devolver. Si
+    el monedero tarda y la persona pulsa Reintentar, esa copia ya es OTRA corrida: la anotación de
+    `devueltos` de la corrida vieja, sin condición, la pisaba con `error` + `devueltos` y el segundo
+    cobro se quedaba sin devolver."""
+    c = copia(creditos=8)
+    c.al_devolver = lambda este: este.reintento_en_medio()
+    r = _barrer(INICIO + timedelta(seconds=2))
+    assert r == {"accion": "devuelto", "creditos": 8, "proyecto": COPIA}
+    assert c.abonos == [(8, REF, "u1")]                       # lo de la corrida vieja sí se devolvió
+    assert c.editar["estado"] == "corriendo" and c.editar["reintentos"] == 1      # y el reintento sigue vivo
+    assert "devueltos" not in c.editar and "error" not in c.editar
+    assert c.cierres_perdidos == 1
+
+
+def test_si_el_monedero_falla_y_en_medio_hay_un_reintento_la_reapertura_tampoco_lo_pisa(copia):
+    """El monedero falla DESPUÉS de reclamar y, mientras, la persona reintenta: reabrir la corrida
+    vieja (`corriendo` + `devolucion_pendiente`) sobre la nueva la borraría. El error del monedero
+    sigue subiendo para que EventBridge reintente el evento."""
+    c = copia(creditos=8)
+    c.devolver_falla = 1
+    c.al_devolver = lambda este: este.reintento_en_medio()
+    with pytest.raises(RuntimeError, match="el monedero"):
+        _barrer(INICIO + timedelta(seconds=2))
+    assert c.editar["estado"] == "corriendo" and c.editar["reintentos"] == 1
+    assert "devolucion_pendiente" not in c.editar and c.abonos == []
+    assert c.cierres_perdidos == 1
+
+
+def test_la_deuda_anotada_en_error_tampoco_se_anota_sobre_un_reintento(copia):
+    """La deuda del worker (`error` + `devolucion_pendiente`) se cobra y se anota condicionada: si entre
+    el abono y la anotación la copia se reintentó, el reintento queda como está."""
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    c.al_devolver = lambda este: este.reintento_en_medio()
+    assert _barrer()["accion"] == "devuelto"
+    assert c.abonos == [(8, REF, "u1")]
+    assert c.editar["estado"] == "corriendo" and c.editar["reintentos"] == 1 and "devueltos" not in c.editar
+    assert c.cierres_perdidos == 1
+
+
+def test_una_copia_entregada_con_deuda_se_anota_sin_condicion_de_error(copia):
+    """`listo` + deuda (cero sugerencias, el abono del worker falló): nadie más escribe `editar` de una
+    copia entregada (`reintentar` solo toca un `error`), así que se anota como siempre."""
+    c = copia(estado="listo", creditos=8, devolucion_pendiente=2)
+    assert _barrer()["creditos"] == 2
+    assert c.editar["estado"] == "listo" and c.editar["devueltos"] == 2 and c.cierres_perdidos == 0

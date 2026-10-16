@@ -43,17 +43,22 @@ def duracion_de_parte(dur: float) -> float:
 
 def probar(src: Path) -> dict:
     """Ancho/alto de lo que SE VE (con la rotación del teléfono aplicada), si trae pista de audio y
-    la duración del FLUJO de video (`dur`; None si el contenedor no la declara, como Matroska/WebM)."""
+    la duración del video (`dur`): la del FLUJO de video y, si el contenedor no la declara (Matroska/WebM
+    dan `N/A`), la del contenedor. None solo si no hay ninguna."""
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries",
-         "stream=codec_type,width,height,duration:stream_side_data=rotation", "-of", "json", str(src)],
+         "format=duration:stream=codec_type,width,height,duration:stream_side_data=rotation",
+         "-of", "json", str(src)],
         capture_output=True, text=True, check=True)
-    ss = json.loads(r.stdout)["streams"]
+    j = json.loads(r.stdout)
+    ss = j["streams"]
     v = next(s for s in ss if s["codec_type"] == "video")
     gira = abs(int((v.get("side_data_list") or [{}])[0].get("rotation", 0))) % 180 == 90
     w, h = (v["height"], v["width"]) if gira else (v["width"], v["height"])
-    return {"w": w, "h": h, "audio": any(s["codec_type"] == "audio" for s in ss),
-            "dur": _segundos(v.get("duration"))}
+    dur = _segundos(v.get("duration"))
+    if dur is None:
+        dur = _segundos((j.get("format") or {}).get("duration"))
+    return {"w": w, "h": h, "audio": any(s["codec_type"] == "audio" for s in ss), "dur": dur}
 
 
 def tamano_objetivo(primero: dict) -> tuple[int, int]:
@@ -75,8 +80,9 @@ def encode_part(src: Path, out: Path, enc: list[str], hwaccel: list[str], w: int
     video de la parte, en cuadros enteros a 30 fps>`. `-shortest` no sirve para eso con ffmpeg 5.1 (la
     imagen de producción y de la CI): deja que el relleno sobrepase al video de cada parte entre 16 y
     100 ms, y `concat -c copy` suma ese sobrante a cada empalme (aire muerto, empalmes fuera de la
-    cuadrícula de 30 fps, manifiesto más largo que el video). `-shortest` queda solo para el contenedor
-    que no declara la duración del flujo (Matroska/WebM)."""
+    cuadrícula de 30 fps, manifiesto más largo que el video). Un contenedor que no declara la duración
+    del flujo (Matroska/WebM) usa la del contenedor, que con 5.1 también deja la parte a ~3 ms (con
+    `-shortest` quedaban ~77 ms de más); `-shortest` es solo el último recurso, sin ninguna duración."""
     info = probar(src)
     limite = ["-t", f"{duracion_de_parte(info['dur']):.6f}"] if info.get("dur") else ["-shortest"]
     cmd = ["ffmpeg", "-y", "-loglevel", "error", *hwaccel, "-i", str(src)]

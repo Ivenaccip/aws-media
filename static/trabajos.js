@@ -321,7 +321,6 @@
   function igualar(vivo, nuevo) {
     if (vivo.nodeType !== 1) { if (vivo.data !== nuevo.data) vivo.data = nuevo.data; return; }
     igualarAtributos(vivo, nuevo);
-    if (vivo.hasAttribute('data-llevas')) return;    // su texto es de un reloj aparte (afinarReloj): lo que viene aquí va vacío
     igualarHijos(vivo, nuevo);
   }
   function igualarHijos(destino, fuente) {

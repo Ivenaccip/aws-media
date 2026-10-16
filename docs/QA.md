@@ -52,10 +52,14 @@ verifica, con ffmpeg real y metraje sintético (`tests/test_e2_ffmpeg_union.py`,
       `tests/test_e2_ffmpeg_union.py` también con un ffmpeg 5.1 (la CI lo hace dentro del contenedor).
       Con la imagen de producción: cada `part-*.mp4` debe tener `|a:0 − v:0| ≤ 0,03 s` y la suma de los
       offsets del manifiesto debe dar la duración del video del proxy (±0,05 s).
-- [ ] **`render_cuts.py --mode preview` usa el mismo filtro** (tamaño del primer clip, 30 fps), rellena
-      con silencio un clip sin audio y rellena con silencio un audio más corto que su video (si no, la
-      deriva se suma clip tras clip). **`--mode final` no cambia**: sin filtro de video y con su
-      encoder de siempre.
+- [ ] **Qué cambia por modo en `render_cuts.py`, y qué no.** El filtro de VIDEO es solo de
+      `--mode preview` (tamaño del primer clip, 30 fps). **`--mode final`**: sin filtro de video y con su
+      encoder de siempre. El relleno con SILENCIO corre en AMBOS modos (`render_audio_segment`: un clip
+      con el audio más corto que su video, o sin pista de audio; si no, la deriva se suma clip tras
+      clip). Con el audio completo el master `final` es idéntico al de antes; con audio corto o ausente
+      ahora trae audio de la duración exacta del video (antes: audio corto, sin pista, o `exit 234` si
+      el clip no traía audio), así que cumple mejor la compuerta `v:0 == a:0`. Quien compare masters de
+      antes y después de E2 verá esa diferencia solo en esos clips.
 - [ ] **`loudnorm` sigue prohibido en el master.** La unión no nivela el sonido ni lo promete; el
       `grep -rn "loudnorm" tools/ remotion/` del checklist de arriba debe seguir mostrando SOLO
       `tools/shorts/export.sh`.
@@ -65,7 +69,10 @@ verifica, con ffmpeg real y metraje sintético (`tests/test_e2_ffmpeg_union.py`,
       (`tests/test_e2_worker_copia.py`, `tests/test_m23_barredor.py`). El evento FAILED de una ejecución
       VIEJA no cierra el reintento (se compara su `startDate` con `editar.inicio`), y una deuda anotada
       por el worker (`editar.devolucion_pendiente`) la cobra el barredor aunque el doc ya no esté
-      `corriendo`, una sola vez.
+      `corriendo`, una sola vez. Ni el worker ni el barredor pisan un reintento que arrancó mientras
+      devolvían (`db.cerrar_editor_si_error`) ni reviven una corrida que otra pieza ya cerró
+      (`db.fijar_editar_si_corriendo`). Y si lo medido en el worker no cuadra con lo cotizado (duración,
+      orientación, peso, tope de 90 min / 15 GB), falla y devuelve todo antes de gastar nada.
 
 ## QA de shorts (herencia S1)
 

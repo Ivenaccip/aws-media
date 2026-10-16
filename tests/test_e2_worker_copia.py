@@ -9,7 +9,12 @@ Lo que defiende (CONTRATO E2 §4.3, §5, §7.3):
     (cuatro consumidores la tomarían por una película SIN editar);
   * el worker verifica el dueño, no escribe fuera de `videos/<copia>/` y no toca el original;
   * DINERO: cada camino de fallo devuelve el monto COMPLETO una vez, reclamando antes;
-    una unión no se regala por «cero sugerencias»; si alguien ya la cerró, no se devuelve de nuevo.
+    una unión no se regala por «cero sugerencias»; si alguien ya la cerró, no se devuelve de nuevo;
+    ni el cierre ni las escrituras pisan a otra pieza: un reintento que arrancó mientras se devolvía
+    sigue vivo (`cerrar_editor_si_error`) y una corrida cerrada no revive (`fijar_editar_si_corriendo`);
+  * lo MEDIDO aquí manda sobre lo que haya en S3: si la duración, la orientación o el peso no son los
+    cotizados, o se pasa del tope de 90 min / 15 GB, falla y devuelve todo antes de gastar nada;
+  * el worker acepta los mismos nombres de proyecto que el API (letras de cualquier alfabeto).
 
 S3, Postgres, monedero, LLM y AssemblyAI son dobles; ffmpeg es falso salvo en el bloque
 del final, que corre la cadena entera con clips sintéticos. Sin red, sin dinero."""
@@ -87,6 +92,10 @@ class Mundo:
         self.reabrir_choca = False                   # reabrir un doc en `error` choca con el índice único
         self.cierra_antes_del_paso: str | None = None   # alguien cierra la corrida justo antes de este paso
         self.disco_libre = 1 << 40                   # lo que "queda libre" en el disco del worker
+        self.cierra_antes_del_listo = False          # alguien cierra la corrida justo antes de escribir `listo`
+        self.al_esperar = None                       # gancho: lo que pasa mientras el worker espera al monedero
+        self.etags: dict[str, str | None] = {}       # destino -> el ETag que se pidió fijar al copiar
+        self.pesa_al_copiar: dict[str, int] = {}     # destino -> lo que mide la copia DESPUÉS de hacerla
         self.esperas: list[float] = []
         self.proxys: list[Path] = []
         mp = monkeypatch
@@ -104,12 +113,14 @@ class Mundo:
         mp.setattr(db, "fijar_campo_editor", self._fijar)
         mp.setattr(db, "reclamar_fallo_editor", self._reclamar)
         mp.setattr(db, "fijar_paso_editor", self._fijar_paso)
+        mp.setattr(db, "fijar_editar_si_corriendo", self._fijar_si_corriendo)
+        mp.setattr(db, "cerrar_editor_si_error", self._cerrar_si_error)
         mp.setattr(db, "movimientos_creditos", lambda user, limite=20: list(self.libro)[:limite])
         # monedero
         mp.setattr(creditos, "activo", lambda: self.monedero)
         mp.setattr(creditos, "devolver", self._devolver)
         mp.setattr(costes_infra, "registrar", lambda *a, **k: self.eventos.append(("infra", a[2])))
-        mp.setattr(editar_copia.time, "sleep", self.esperas.append)
+        mp.setattr(editar_copia.time, "sleep", self._dormir)
         # el disco del worker es de mentira: `_entender` exige los clips + 1 GiB libres, y esa
         # comprobación no puede depender de cuánto disco le quede a la máquina que corre las pruebas
         mp.setattr(editar_copia.shutil, "disk_usage",
@@ -206,10 +217,15 @@ class Mundo:
         o = self.objetos.get(key)
         return len(o["cuerpo"]) if o else None
 
-    def _copiar(self, origen, destino):
+    def _copiar(self, origen, destino, etag=None):
         self._chequear("copiar", destino.rsplit("/", 1)[-1].split(".")[0])
         if origen not in self.objetos:
             raise RuntimeError(f"NoSuchKey: {origen}")
+        if etag is not None and etag != self.objetos[origen]["etag"]:
+            raise RuntimeError("PreconditionFailed: el original cambió después de cotizar")
+        self.etags[destino] = etag
+        if destino in self.pesa_al_copiar:
+            self.tamanos[destino] = self.pesa_al_copiar[destino]
         self.eventos.append(("copiar", origen, destino))
         self.escrituras.append(destino)
         self.objetos[destino] = {**self.objetos[origen], "etag": f'"copia-{destino}"'}
@@ -236,16 +252,57 @@ class Mundo:
         return deepcopy(doc) if doc is not None else None
 
     def _fijar(self, user, nombre, campo, valor):
+        """`db.fijar_campo_editor`: el UPDATE SIN condición. Sobre `editar` el worker ya no lo usa mientras
+        la corrida está viva (D-05, D-06): hacerlo es la ventana que revivía una corrida cerrada."""
         v = json.loads(valor)
-        if (campo == "editar" and self.reabrir_choca and v.get("estado") == "corriendo"
-                and self.docs[(user, nombre)]["editar"].get("estado") == "error"):
-            # el índice parcial `proyectos_editor_copia_en_curso`: la persona ya lanzó otra copia
-            raise RuntimeError('duplicate key value violates unique constraint '
-                               '"proyectos_editor_copia_en_curso"')
+        actual = self.docs[(user, nombre)].get("editar") or {}
+        if campo == "editar" and actual.get("copia") is True:         # el camino de E1 no es de esta capa
+            assert actual.get("estado") != "error" or v.get("estado") == "listo", \
+                "escritura incondicional de `editar` sobre un doc en `error` (usa cerrar_editor_si_error)"
+            assert actual.get("estado") != "corriendo", \
+                "escritura incondicional de `editar` sobre una corrida viva (usa fijar_editar_si_corriendo)"
         self.docs[(user, nombre)][campo] = v
         self.eventos.append((campo, deepcopy(v)))
         if campo == "editar" and self.al_escribir_editar:
             self.al_escribir_editar(v)
+
+    def _fijar_si_corriendo(self, user, nombre, valor):
+        """`db.fijar_editar_si_corriendo`: escribe `editar` SOLO si la corrida sigue `corriendo`."""
+        v = json.loads(valor)
+        editar = self.docs[(user, nombre)]["editar"]
+        if self.cierra_antes_del_listo and v.get("estado") == "listo":
+            editar.update(estado="error", devueltos=editar.get("creditos"), error="caducada")
+        if editar.get("estado") != "corriendo":
+            self.eventos.append(("escritura", "perdida", v.get("estado")))
+            return False
+        self.docs[(user, nombre)]["editar"] = v
+        self.eventos.append(("editar", deepcopy(v)))
+        if self.al_escribir_editar:
+            self.al_escribir_editar(v)
+        return True
+
+    def _cerrar_si_error(self, user, nombre, inicio, valor):
+        """`db.cerrar_editor_si_error`: escribe `editar` SOLO si la copia sigue en `error` y con el mismo
+        `inicio` con el que se reclamó (un reintento cambia las dos cosas)."""
+        v = json.loads(valor)
+        editar = self.docs[(user, nombre)]["editar"]
+        if editar.get("estado") != "error" or (editar.get("inicio") or "") != (inicio or ""):
+            self.eventos.append(("cierre", "perdido", v.get("estado")))
+            return False
+        if self.reabrir_choca and v.get("estado") == "corriendo":
+            # el índice parcial `proyectos_editor_copia_en_curso`: la persona ya lanzó otra copia
+            raise RuntimeError('duplicate key value violates unique constraint '
+                               '"proyectos_editor_copia_en_curso"')
+        self.docs[(user, nombre)]["editar"] = v
+        self.eventos.append(("editar", deepcopy(v)))
+        if self.al_escribir_editar:
+            self.al_escribir_editar(v)
+        return True
+
+    def _dormir(self, segundos):
+        self.esperas.append(segundos)
+        if self.al_esperar:
+            self.al_esperar()
 
     def _fijar_paso(self, user, nombre, paso):
         """`db.fijar_paso_editor`: cambia SOLO `editar.paso` y solo si la corrida sigue `corriendo`."""
@@ -796,10 +853,18 @@ def test_una_transcripcion_vieja_de_otro_archivo_no_se_reutiliza(mundo):
 # ---------------------------------------------------------------------------
 # topes
 
+def _pesan(m: Mundo, peso: int) -> None:
+    """Que cada clip de la copia pese `peso`: el original en S3, la copia que se haga de él y lo
+    cotizado (`fuentes[].bytes`). El worker ya no se fía de un archivo que pesa MÁS de lo cotizado (D-13)."""
+    for f in m.doc["editar"]["fuentes"]:
+        f["bytes"] = peso
+        m.tamanos[f["origen_key"]] = peso
+        m.pesa_al_copiar[PREFIJO + f"clips/{f['clip_id']}{f['ext']}"] = peso
+
+
 def test_los_videos_que_pesan_mas_de_15_gb_en_total_no_se_bajan(mundo):
     mundo.iniciar(_tres(mundo))
-    for c in ("c01", "c02", "c03"):
-        mundo.tamanos[PREFIJO + f"clips/{c}.mp4"] = 6 * 1024 ** 3        # 18 GB entre los tres
+    _pesan(mundo, 6 * 1024 ** 3)                                          # 18 GB entre los tres
     assert mundo.correr() == 1
     assert "pesan más" in mundo.doc["editar"]["error"]
     assert mundo.de("bajar") == [] and mundo.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
@@ -818,8 +883,7 @@ def test_el_umbral_del_disco_es_el_peso_de_los_clips_mas_la_holgura(mundo, sobra
     de bajar nada; con justo eso, trabaja."""
     mundo.iniciar(_tres(mundo))
     peso = 3 * 1024 ** 2
-    for c in ("c01", "c02", "c03"):
-        mundo.tamanos[PREFIJO + f"clips/{c}.mp4"] = peso
+    _pesan(mundo, peso)
     mundo.disco_libre = 3 * peso + editar_copia.HOLGURA_DISCO + sobra
     assert mundo.correr() == sale
     if sale:
@@ -833,6 +897,16 @@ def test_el_disco_que_ve_el_worker_es_el_del_mundo_y_no_el_de_la_maquina(mundo, 
     pruebas, y con menos de ~1 GiB libre fallaban 41 de este archivo sin que el código tuviera nada."""
     libre = editar_copia.shutil.disk_usage(tmp_path).free
     assert libre == mundo.disco_libre == 1 << 40
+
+
+def test_horizontales_con_verticales_se_rechazan_aunque_el_api_no_lo_notara(mundo):
+    m = mundo
+    m.proyecto_ajeno_o_propio("entrevista")
+    m.iniciar([m.fuente(1, "h", "videos/entrevista/subidas/a.mp4", w=1280, h=720),
+               m.fuente(2, "v", "videos/entrevista/subidas/b.mp4", w=720, h=1280)])
+    assert m.correr() == 1
+    assert "no se mezclan" in m.doc["editar"]["error"]
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)] and m.de("llm") == []
 
 
 # ---------------------------------------------------------------------------
@@ -983,10 +1057,10 @@ def test_si_ni_la_marca_se_puede_escribir_no_se_revienta_ni_se_inventa_una_devol
     m.devolver_falla = 99
     escritos = []
 
-    def fijar(user, nombre, campo, valor):
+    def cerrar(user, nombre, inicio, valor):
         escritos.append(json.loads(valor)["estado"])
         raise RuntimeError("Postgres no responde")
-    monkeypatch.setattr(db, "fijar_campo_editor", fijar)
+    monkeypatch.setattr(db, "cerrar_editor_si_error", cerrar)
     assert m.correr() == 1
     assert escritos == ["corriendo", "error"] and m.abonos == []
 
@@ -1157,6 +1231,288 @@ def test_cero_sugerencias_con_el_abono_hecho_sale_con_0(mundo):
     _copia_vacia_de_un_video(m)
     assert m.correr() == 0
     assert m.doc["editar"]["devueltos"] == 2 and "devolucion_pendiente" not in m.doc["editar"]
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 2 · D-05 y D-06 — el cierre y las escrituras del worker no pisan a otra pieza
+
+def _reintento_en_medio(m: Mundo) -> None:
+    """La persona pulsa Reintentar: la MISMA copia vuelve a `corriendo`, con otro `inicio`."""
+    editar = m.docs[(USER, COPIA)]["editar"]
+    for k in ("error", "devueltos", "devolucion_pendiente", "fin"):         # lo que una corrida nueva no hereda
+        editar.pop(k, None)
+    editar.update(estado="corriendo", paso="entender", cobrado=False,
+                  inicio="2026-10-15T18:09:00+00:00", reintentos=1)
+
+
+def test_si_la_cierran_justo_antes_de_escribir_listo_no_se_revive_ni_se_devuelve_otra_vez(mundo):
+    """D-06. El worker leyó `corriendo` y, antes de su UPDATE final, el API (o la caducidad, o el
+    barredor) cerró y devolvió. `fijar_editar_si_corriendo` es UN UPDATE condicionado: no escribe, y la
+    copia no reaparece como `listo` (con la edición Y el reembolso)."""
+    m = mundo
+    m.iniciar(_tres(m), creditos_=8)
+    m.cierra_antes_del_listo = True
+    assert m.correr() == 0
+    final = m.doc["editar"]
+    assert final["estado"] == "error" and final["error"] == "caducada" and final["devueltos"] == 8
+    assert m.abonos == [] and m.de("reclamo") == []                   # ni reclama ni devuelve otra vez
+    assert ("escritura", "perdida", "listo") in m.eventos
+
+
+def test_si_la_cierran_antes_del_listo_de_una_copia_sin_sugerencias_no_se_devuelve_la_parte_del_llm(mundo):
+    """D-06, el lado del dinero: con UN video y cero sugerencias, después de `listo` el worker devuelve
+    la parte del LLM. Si quien cerró ya devolvió TODO (la escritura de `listo` no ocurrió), seguir
+    adelante y devolver esa parte otra vez sería un segundo reembolso por un solo cobro."""
+    m = mundo
+    _copia_vacia_de_un_video(m)
+    m.cierra_antes_del_listo = True
+    assert m.correr() == 0
+    assert m.abonos == [] and m.doc["editar"]["estado"] == "error"
+    assert m.doc["editar"]["devueltos"] == 8                 # lo devolvió quien cerró, completo
+
+
+def test_si_la_persona_reintenta_mientras_se_devuelve_el_cierre_viejo_no_pisa_el_reintento(mundo):
+    """D-05. `reclamar_fallo_editor` deja la copia en `error` (reintentable) ANTES de devolver, y el
+    monedero titubea 1 s: la persona pulsa Reintentar. El cierre de la corrida vieja
+    (`cerrar_editor_si_error`) ve otro `inicio` y no escribe: el reintento sigue vivo y su cobro no se
+    queda sin devolver."""
+    m = mundo
+    m.iniciar(_tres(m), creditos_=8)
+    m.romper("proxy")
+    m.devolver_falla = 1                                              # el 1.er intento falla → espera 1 s
+    m.al_esperar = lambda: _reintento_en_medio(m)
+    assert m.correr() == 1
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]         # lo de la corrida vieja sí volvió
+    final = m.doc["editar"]
+    assert final["estado"] == "corriendo" and final["reintentos"] == 1
+    assert "devueltos" not in final and "error" not in final
+    assert ("cierre", "perdido", "error") in m.eventos
+
+
+def test_si_reintentan_mientras_el_monedero_no_responde_la_reapertura_no_pisa_el_reintento(mundo, caplog):
+    """D-05 + D-08: el monedero no responde y, durante las esperas, la persona reintenta. Reabrir la
+    corrida vieja (`corriendo` + `devolucion_pendiente`) borraría la nueva: no se escribe, y la deuda
+    que queda sin cobrar se dice a gritos en el log para revisarla en el libro mayor."""
+    m = mundo
+    m.iniciar(_tres(m), creditos_=8)
+    m.romper("proxy")
+    m.devolver_falla = 99
+    m.al_esperar = lambda: _reintento_en_medio(m)
+    assert m.correr() == 1
+    final = m.doc["editar"]
+    assert final["estado"] == "corriendo" and final["reintentos"] == 1 and "devolucion_pendiente" not in final
+    assert m.abonos == []
+    assert "revisar el libro mayor" in caplog.text
+
+
+def test_el_worker_nunca_escribe_editar_sin_condicion_sobre_una_corrida_viva(mundo):
+    """El doble `fijar_campo_editor` del Mundo rechaza (assert) una escritura incondicional de `editar`
+    sobre una copia `corriendo` o en `error`: corre el camino feliz y uno de fallo con él puesto."""
+    m = mundo
+    m.iniciar(_tres(m))
+    assert m.correr() == 0
+    m.docs.clear()
+    m.libro.clear()
+    m.iniciar(_tres(m))
+    m.romper("proxy")
+    assert m.correr() == 1
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 2 · INT-03 — el worker acepta los mismos nombres de proyecto que el API
+
+def _id_de_nombre(n: str) -> str:
+    return repr(n) if len(n) <= 24 else f"largo_{len(n)}"
+
+
+NOMBRES_VALIDOS = ["presentación-final", "a" * 70, "a" * 255, "reunión_año-2026", "日本語", "video-1"]
+NOMBRES_INVALIDOS = ["", "a" * 256, "con espacio", "a/b", "..", "a.b", "a\\b", "a\x00b", "-/-", "a%2Fb"]
+
+
+@pytest.mark.parametrize("nombre", NOMBRES_VALIDOS + NOMBRES_INVALIDOS, ids=_id_de_nombre)
+def test_la_regla_de_nombres_del_worker_es_la_del_api(nombre):
+    from pipeline import storage
+    from server import edicion_api
+    esperado = nombre in NOMBRES_VALIDOS
+    assert editar_copia._nombre_proyecto_valido(nombre) is edicion_api._nombre_proyecto_valido(nombre) is esperado
+    if len(nombre) <= editar_copia.MAX_NOMBRE:          # `storage.ruta_proyecto` no pone tope de largo
+        try:
+            storage.ruta_proyecto(nombre)
+            valido_en_storage = True
+        except ValueError:
+            valido_en_storage = False
+        assert valido_en_storage is esperado
+
+
+def test_los_topes_del_worker_son_los_del_api():
+    """Las constantes que el worker repite (no importa `server/` en Fargate) no pueden separarse."""
+    from server import edicion_api
+    assert (editar_copia.MAX_VIDEOS, editar_copia.MAX_BYTES_TOTAL, editar_copia.MAX_S,
+            editar_copia.MAX_NOMBRE) == (edicion_api.MAX_VIDEOS, edicion_api.MAX_BYTES_TOTAL,
+                                         edicion_api.MAX_S, edicion_api.MAX_NOMBRE)
+
+
+@pytest.mark.parametrize("nombre", [n for n in NOMBRES_VALIDOS if n != "video-1"], ids=_id_de_nombre)
+def test_un_proyecto_de_nombre_acentuado_o_largo_se_edita_de_punta_a_punta(mundo, nombre):
+    """Antes el worker pedía `[A-Za-z0-9_-]+`: «presentación-final» pasaba cotizar e iniciar, se cobraba
+    y la corrida fallaba DESPUÉS con «no es de esta cuenta» (y se devolvía)."""
+    m = mundo
+    m.proyecto_ajeno_o_propio(nombre)
+    m.iniciar([m.fuente(1, "mi entrevista", f"videos/{nombre}/subidas/a.mp4", dur=90.0, transcribir=True)])
+    assert m.correr() == 0, m.doc["editar"].get("error")
+    assert m.doc["editar"]["estado"] == "listo" and m.abonos == []
+
+
+@pytest.mark.parametrize("nombre", ["con espacio", "a" * 256, "a.b"], ids=_id_de_nombre)
+def test_un_nombre_de_proyecto_que_no_es_valido_se_rechaza_y_se_devuelve(mundo, nombre):
+    m = mundo
+    m.proyecto_ajeno_o_propio(nombre)                    # aunque "exista" en el doble: el nombre no sirve
+    _cae_con_ajeno(m, [m.fuente(1, "x", f"videos/{nombre}/subidas/a.mp4"),
+                       m.fuente(2, "mío", f"usuarios/{USER}/clips/otro.mp4", tipo="clip")])
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 2 · D-13 — lo medido aquí contra lo cotizado, y los topes
+
+def _un_video(m: Mundo, *, dur=120.0, **kw) -> list[dict]:
+    """Un video a transcribir: el LLM (doble) le encuentra un corte, así que no hay «cero sugerencias»."""
+    m.proyecto_ajeno_o_propio("entrevista")
+    return [m.fuente(1, "mi entrevista", "videos/entrevista/subidas/a.mp4", dur=dur, transcribir=True, **kw)]
+
+
+def _cae_sin_gastar(m: Mundo, texto: str) -> None:
+    """Falló ANTES de pagar la ASR, el LLM o el proxy, y se devolvió TODO una vez."""
+    assert m.correr() == 1
+    assert texto in m.doc["editar"]["error"], m.doc["editar"]["error"]
+    assert m.de("wav") == [] and m.de("asr") == [] and m.de("llm") == [] and m.de("proxy") == []
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)] and m.doc["editar"]["devueltos"] == 8
+
+
+@pytest.mark.parametrize("medida,sale", [(120.0, 0), (122.3, 0), (117.7, 0), (122.6, 1), (117.4, 1),
+                                         (5700.0, 1), (60.0, 1)],
+                         ids=["justa", "mas_dentro", "menos_dentro", "mas_fuera", "menos_fuera",
+                              "95_min", "un_minuto"])
+def test_la_duracion_medida_debe_ser_la_cotizada(mundo, medida, sale):
+    """Se cotizó un video de 2 min (✦ 4); alguien puso otro de 95 min a la misma key. Tolerancia: el
+    mayor de 1 s o 2 %, la de `_canonico`."""
+    m = mundo
+    m.iniciar(_un_video(m, dur=120.0))
+    m.medidas["c01"]["dur"] = medida
+    if sale:
+        _cae_sin_gastar(m, "ya no es el mismo video")
+    else:
+        assert m.correr() == 0 and m.abonos == []
+
+
+@pytest.mark.parametrize("dur,sale", [(5400.0, 0), (5400.9, 0), (5401.5, 1), (5460.0, 1)],
+                         ids=["90_min", "90_min_y_un_ruido", "pasado", "91_min"])
+def test_ningun_video_pasa_de_90_minutos_aunque_la_cotizacion_lo_diga(mundo, dur, sale):
+    """R4 sobre lo MEDIDO: la cotización ya coincide (se cotizó igual) y aun así el tope manda."""
+    m = mundo
+    m.iniciar(_un_video(m, dur=dur))
+    if sale:
+        _cae_sin_gastar(m, "el máximo es 90 min")
+    else:
+        assert m.correr() == 0
+
+
+def test_la_suma_de_los_videos_no_pasa_de_90_minutos(mundo):
+    m = mundo
+    m.proyecto_ajeno_o_propio("entrevista")
+    m.iniciar([m.fuente(i, f"v{i}", f"videos/entrevista/subidas/v{i}.mp4", dur=2000.0) for i in (1, 2, 3)])
+    assert m.correr() == 1
+    assert "suman más de 90 min" in m.doc["editar"]["error"]
+    assert m.de("asr") == [] and m.de("llm") == [] and m.de("proxy") == []
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
+
+
+def test_un_video_que_cambio_de_orientacion_despues_de_cotizar_se_rechaza(mundo):
+    m = mundo
+    m.iniciar(_un_video(m, dur=120.0, w=1280, h=720))
+    m.medidas["c01"].update(w=720, h=1280)                    # ahora es vertical
+    _cae_sin_gastar(m, "cambió de formato")
+
+
+def test_sin_duracion_ni_formato_cotizados_solo_mandan_los_topes(mundo):
+    """No se inventa una comparación que no se puede hacer: el API no cobra sin medir, pero un doc
+    sin esos campos no tumba la corrida por eso."""
+    m = mundo
+    (f,) = _un_video(m, dur=120.0)
+    f.update(duracion_s=None, ancho=None, alto=None)
+    m.iniciar([f])
+    assert m.correr() == 0
+
+
+def test_un_archivo_que_pesa_mas_de_lo_cotizado_no_se_copia_siquiera(mundo):
+    """El original en S3 pesa 5 MiB más que `fuentes[].bytes`: no es el archivo cotizado. Se mira con
+    un HEAD ANTES de copiar (una copia de varios GB de otro archivo no se paga dos veces)."""
+    m = mundo
+    (f,) = _un_video(m)
+    m.iniciar([f])
+    m.tamanos[f["origen_key"]] = f["bytes"] + 5 * 1024 ** 2
+    assert m.correr() == 1
+    assert "pesa más de lo que se cotizó" in m.doc["editar"]["error"]
+    assert m.de("copiar") == [] and m.de("bajar") == [] and m.de("asr") == []
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
+
+
+def test_si_lo_copiado_pesa_mas_de_lo_cotizado_tampoco_se_baja(mundo):
+    """El original cambió ENTRE el HEAD de arriba y la copia: la copia ya pesa de más."""
+    m = mundo
+    (f,) = _un_video(m)
+    m.iniciar([f])
+    m.pesa_al_copiar[PREFIJO + "clips/c01.mp4"] = f["bytes"] + 5 * 1024 ** 2
+    assert m.correr() == 1
+    assert "pesa más de lo que se cotizó" in m.doc["editar"]["error"]
+    assert len(m.de("copiar")) == 1 and m.de("bajar") == []
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
+
+
+@pytest.mark.parametrize("cotizado,sobra,sale", [
+    (10 * 1024 ** 2, 0, 0), (10 * 1024 ** 2, 1024 ** 2, 0), (10 * 1024 ** 2, 1024 ** 2 + 1, 1),
+    (10 * 1024 ** 2, -9 * 1024 ** 2, 0),
+    (1024 ** 3, 20 * 1024 ** 2, 0), (1024 ** 3, 22 * 1024 ** 2, 1)],
+    ids=["igual", "un_mib_de_mas", "un_mib_y_un_byte", "pesa_mucho_menos", "2_por_ciento_de_1_gib", "pasa_del_2_por_ciento"])
+def test_el_peso_tiene_una_tolerancia_pero_solo_hacia_arriba(mundo, cotizado, sobra, sale):
+    """Tolerancia: el mayor de 1 MiB o 2 % de lo cotizado, y solo si SUBE (pesar menos no encarece)."""
+    m = mundo
+    (f,) = _un_video(m)
+    m.iniciar([f])
+    _pesan(m, cotizado)
+    m.tamanos[f["origen_key"]] = cotizado + sobra
+    m.pesa_al_copiar[PREFIJO + "clips/c01.mp4"] = cotizado + sobra
+    assert m.correr() == sale
+
+
+def test_con_un_etag_medido_la_copia_lo_fija(mundo):
+    """Cierra la ventana entre cotizar y copiar: sin esto `copiar` fijaba el ETag que hubiera cuando el
+    worker arranca. Hoy el API no anota `fuentes[].etag`; con él, un objeto reemplazado falla."""
+    m = mundo
+    (f,) = _un_video(m)
+    f["etag"] = '"e-videos/entrevista/subidas/a.mp4"'          # el que el doble de S3 le puso al original
+    m.iniciar([f])
+    assert m.correr() == 0
+    assert m.etags == {PREFIJO + "clips/c01.mp4": '"e-videos/entrevista/subidas/a.mp4"'}
+
+
+def test_un_etag_que_ya_no_es_el_del_original_falla_antes_de_bajar_y_se_devuelve_todo(mundo):
+    m = mundo
+    (f,) = _un_video(m)
+    f["etag"] = '"el-que-se-midio"'
+    m.iniciar([f])
+    assert m.correr() == 1
+    assert "PreconditionFailed" in m.doc["editar"]["error"]
+    assert m.de("bajar") == [] and m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
+
+
+@pytest.mark.parametrize("etag", [None, "", "  ", 123, ["x"]], ids=repr)
+def test_sin_un_etag_valido_se_fija_el_que_tenga_el_original_como_siempre(mundo, etag):
+    m = mundo
+    (f,) = _un_video(m)
+    f["etag"] = etag
+    m.iniciar([f])
+    assert m.correr() == 0
+    assert m.etags == {PREFIJO + "clips/c01.mp4": None}
 
 
 # ---------------------------------------------------------------------------

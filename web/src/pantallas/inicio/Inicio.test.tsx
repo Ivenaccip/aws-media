@@ -9,9 +9,9 @@ import { clip, modelos, video } from '../../nucleo/tarifas';
 import { guardarArchivos } from '../../nucleo/traspaso';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
 import { cotizacion, TEXTO } from '../../prueba/edicion';
-import { json, llamadas, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { json, llamadas, oirCobros, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Biblioteca } from './Biblioteca';
-import { Inicio } from './Inicio';
+import { Inicio, SALDO_TRAS_COPIA_MS } from './Inicio';
 import { destinoDe, OPCIONES, type ClipCorto, type Edicion, type EstadoBlotato, type Imagen, type PedidoImagen, type Proyecto } from './logica';
 import { CATALOGO, PRECIOS } from './modelos';
 
@@ -64,6 +64,13 @@ const COPIA: Edicion = {
   duracion_s: 762,
   formato: 'horizontal',
 };
+/** La corrida de una copia que empezó hace un minuto. Un «corriendo» sin `inicio` legible no cuenta como vivo (el servidor tampoco lo cree:
+ *  `_caducada`), así que las pruebas de «Editando…» le ponen el suyo. */
+const editarEn = (estado: string, extra: NonNullable<Edicion['editar']> = {}): NonNullable<Edicion['editar']> => ({
+  estado,
+  inicio: new Date(Date.now() - 60_000).toISOString(),
+  ...extra,
+});
 const S1: Edicion = {
   nombre: 'yt-charla',
   generado: false,
@@ -2677,7 +2684,7 @@ describe('las listas', () => {
     montar({
       ediciones: [
         COPIA,
-        { ...COPIA, nombre: 'ed-aaaa1111', titulo: 'Entrevista + 1 más', editar: { estado: 'corriendo' }, editor_listo: false, creado: '2026-10-13T10:00:00Z' },
+        { ...COPIA, nombre: 'ed-aaaa1111', titulo: 'Entrevista + 1 más', editar: editarEn('corriendo'), editor_listo: false, creado: '2026-10-13T10:00:00Z' },
         { ...COPIA, nombre: 'ed-bbbb2222', titulo: 'Otra unión', editar: { estado: 'error' }, editor_listo: false, creado: '2026-10-12T10:00:00Z' },
       ],
     });
@@ -2724,7 +2731,7 @@ describe('las listas', () => {
       '/api/proyectos': () => json([P1]),
       '/api/slots': () => json({ slots: null, activos: 0 }),
       '/api/imagenes': () => json({ total: 0, imagenes: [] }),
-      '/api/edicion/proyectos': () => json([{ ...COPIA, editar: { estado }, editor_listo: false }]),
+      '/api/edicion/proyectos': () => json([{ ...COPIA, editar: editarEn(estado), editor_listo: false }]),
       '/api/clip': () => json({ clips: [] }),
       '/api/blotato': () => json(CONECTADO),
     });
@@ -2754,26 +2761,296 @@ describe('las listas', () => {
     expect(lecturas()).toBe(despues);
   });
 
-  it('inicio.ediciones.una_copia_que_termina_bien_no_toca_el_saldo', async () => {
+  it('inicio.ediciones.una_copia_que_termina_pone_al_dia_el_saldo_ya_y_otra_vez_despues_y_una_que_ya_estaba_lista_no', async () => {
+    // H7: con UN video y nada que cortar el worker devuelve los créditos de la edición y deja la copia «lista» con `devueltos`. La píldora no
+    // sondea el saldo y esta lista deja de leerse cuando nada corre: sin esto la píldora se quedaba vieja hasta recargar. El worker devuelve un
+    // instante DESPUÉS de marcarla «lista»: por eso el saldo se pide otra vez pasados SALDO_TRAS_COPIA_MS
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const monedero = ponerMonedero(100);
-    let estado = 'corriendo';
+    let editar: NonNullable<Edicion['editar']> = editarEn('corriendo');
     servidor({
       '/api/proyectos': () => json([P1]),
       '/api/slots': () => json({ slots: null, activos: 0 }),
       '/api/imagenes': () => json({ total: 0, imagenes: [] }),
-      '/api/edicion/proyectos': () => json([{ ...COPIA, editar: { estado } }]),
+      '/api/edicion/proyectos': () => json([{ ...COPIA, editar }, { ...COPIA, nombre: 'ed-ya-lista', titulo: 'Ya estaba lista', editar: { estado: 'listo' } }]),
       '/api/clip': () => json({ clips: [] }),
       '/api/blotato': () => json(CONECTADO),
     });
     pintar();
     expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    // la que ya estaba lista al abrir no pide nada: no corría aquí
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    editar = { estado: 'listo', devueltos: 8 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findAllByText('Edición · Listo')).toHaveLength(2);
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SALDO_TRAS_COPIA_MS);
+    });
+    expect(monedero.refrescar).toHaveBeenCalledTimes(2);
+    // ya no corre nada: no se vuelve a pedir
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12000);
+    });
+    expect(monedero.refrescar).toHaveBeenCalledTimes(2);
+  });
+
+  it('inicio.ediciones.al_irse_la_pantalla_el_segundo_vistazo_al_saldo_de_una_copia_terminada_no_sale', async () => {
+    // el segundo vistazo (a los 4 s) no sobrevive a la pantalla: un temporizador suelto pediría el saldo de quien ya se fue
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let editar: NonNullable<Edicion['editar']> = editarEn('corriendo');
+    montar({ rutas: { '/api/edicion/proyectos': () => json([{ ...COPIA, editar }]) } });
+    const { unmount } = pintar();
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    editar = { estado: 'listo', devueltos: 8 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findByText('Edición · Listo')).toBeInTheDocument();
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SALDO_TRAS_COPIA_MS + 1000);
+    });
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1); // el de los 4 s no salió: la pantalla ya no está
+  });
+
+  it('inicio.ediciones.si_la_bandeja_reintenta_la_copia_la_tarjeta_se_relee_y_pasa_a_editando', async () => {
+    // INT-02: «Reintentar» de «Tus trabajos» (static/trabajos.js) lo acepta el servidor y avisa con `trabajos:lanzado`. La tarjeta de esta
+    // lista decía «No se pudo editar» y, sin nada corriendo en ella, nada la volvía a leer: se quedaba así hasta recargar
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let estado = 'error';
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json([{ ...COPIA, editor_listo: false, editar: estado === 'error' ? { estado, creditos: 2, devueltos: 2 } : editarEn(estado, { creditos: 2 }) }]),
+      },
+    });
+    const { unmount } = pintar();
+    expect(await screen.findByText('Edición · No se pudo editar')).toBeInTheDocument();
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    // mientras nada corre en la lista, nada la vuelve a leer sola
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturas()).toBe(antes);
+    // la bandeja reintentó y el servidor aceptó: la copia ya corre
+    estado = 'corriendo';
+    act(() => {
+      window.dispatchEvent(new CustomEvent('trabajos:lanzado', { detail: { ruta: '/api/edicion/ed-9f1c0a7b/reintentar' } }));
+    });
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    expect(lecturas()).toBe(antes + 1);
+    // desde ahí el sondeo de siempre la lleva hasta el final
     estado = 'listo';
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5100);
     });
     expect(await screen.findByText('Edición · Listo')).toBeInTheDocument();
+    // y al irse la pantalla ya no escucha
+    unmount();
+    const despues = lecturas();
+    window.dispatchEvent(new CustomEvent('trabajos:lanzado'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(lecturas()).toBe(despues);
+  });
+
+  it('inicio.ediciones.una_copia_que_fallo_ofrece_reintentar_con_su_precio_y_al_aceptarlo_cobra_vuela_el_menos_n_y_pasa_a_editando', async () => {
+    // H6: la ficha de la bandeja desaparece al cerrarla (o a las 24 h) y la tarjeta se queda: sin esto era una tarjeta roja sin salida
+    const monedero = ponerMonedero(100);
+    const cobros = oirCobros();
+    let lanzada = false;
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () =>
+          json([{ ...COPIA, editor_listo: false, editar: lanzada ? editarEn('corriendo', { creditos: 2 }) : { estado: 'error', creditos: 2, devueltos: 2 } }]),
+        '/api/edicion/ed-9f1c0a7b/reintentar': () => {
+          lanzada = true;
+          return json({ lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 3 });
+        },
+      },
+    });
+    pintar();
+    const boton = await screen.findByRole('button', { name: 'Reintentar ✦ 2' });
+    // dice de CUÁL copia habla (hay una por tarjeta) y no es un enlace: la tarjeta de un fallo no lleva a ningún lado
+    expect(boton).toHaveAccessibleDescription('El tren de papel + 2 más');
+    expect(boton.closest('a')).toBeNull();
+    expect(boton).toHaveClass('min-h-12'); // objetivo de 48 px, no el denso de 40
     expect(monedero.refrescar).not.toHaveBeenCalled();
+    await userEvent.click(boton);
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    expect(llamadas(f, '/api/edicion/ed-9f1c0a7b/reintentar')).toHaveLength(1);
+    // el «−N» es lo que cobró el servidor (3), no lo que cobró la vez anterior (2), y el saldo se pone al día
+    expect(cobros.map(c => c.costo)).toEqual([3]);
+    expect(monedero.refrescar).toHaveBeenCalled();
+    // y ya no hay nada que reintentar
+    expect(screen.queryByRole('button', { name: /^Reintentar/ })).toBeNull();
+  });
+
+  it('inicio.ediciones.un_doble_clic_en_reintentar_es_un_solo_pedido_y_un_reintento_sin_precio_conocido_no_vuela_ningun_menos_n', async () => {
+    ponerMonedero(100);
+    const cobros = oirCobros();
+    let soltar!: (r: Response) => void;
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json([{ ...COPIA, editor_listo: false, editar: { estado: 'error' } }]),
+        '/api/edicion/ed-9f1c0a7b/reintentar': () => new Promise<Response>(r => (soltar = r)),
+      },
+    });
+    pintar();
+    // sin `creditos` (créditos apagados) el botón no inventa un precio
+    const boton = await screen.findByRole('button', { name: 'Reintentar' });
+    // dos clics en la MISMA pasada, antes de que React pinte el botón ocupado: solo el candado (no el aspecto) lo impide
+    act(() => {
+      boton.click();
+      boton.click();
+    });
+    await userEvent.dblClick(boton); // y con el botón ya ocupado, otros dos clics tampoco mandan nada
+    expect(llamadas(f, '/api/edicion/ed-9f1c0a7b/reintentar')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Reintentando…' })).toHaveAttribute('aria-busy', 'true');
+    await act(async () => {
+      soltar(json({ lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 0 }));
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Reintentando…' })).toBeNull());
+    expect(cobros).toEqual([]);
+  });
+
+  it('inicio.ediciones.si_el_servidor_niega_el_reintento_la_tarjeta_lo_dice_con_sus_palabras_y_sin_saldo_dice_cuanto_falta', async () => {
+    const monedero = ponerMonedero(1);
+    const cobros = oirCobros();
+    let respuesta: () => Response | Promise<Response> = () => json({ detail: 'Créditos insuficientes: esta acción cuesta 4 créditos y tu saldo es 1.' }, 402);
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json([{ ...COPIA, editor_listo: false, editar: { estado: 'error', creditos: 4, devueltos: 4 } }]),
+        '/api/edicion/ed-9f1c0a7b/reintentar': () => respuesta(),
+      },
+    });
+    pintar();
+    const reintentar = () => screen.getByRole('button', { name: 'Reintentar ✦ 4' });
+    // 402: «Te faltan ✦ N · Recargar», como en la caja (N sale del texto del servidor: 4 − 1)
+    await userEvent.click(await screen.findByRole('button', { name: 'Reintentar ✦ 4' }));
+    const falta = await screen.findByRole('alert');
+    expect(falta).toHaveTextContent('Te faltan ✦ 3 · Recargar');
+    await userEvent.click(within(falta).getByRole('button', { name: 'Recargar' }));
+    expect(monedero.recargar).toHaveBeenCalledTimes(1);
+    // 409 (todavía se devuelve, o ya se reintenta) y 502/503: el texto del servidor, TAL CUAL; la tarjeta no cree que algo corra
+    for (const [estado, detail] of [
+      [409, 'Todavía estamos devolviendo los créditos de esta edición. Inténtalo en unos minutos.'],
+      [409, 'Esta edición ya se está reintentando.'],
+      [502, 'No se pudo lanzar la edición: sin capacidad. Estamos devolviendo lo cobrado.'],
+      [503, 'Ahorita hay mucha gente produciendo. Estamos devolviendo lo cobrado; vuelve a intentarlo en unos minutos.'],
+    ] as const) {
+      respuesta = () => json({ detail }, estado);
+      await userEvent.click(reintentar());
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(detail));
+      expect(screen.queryByText('Edición · Editando…')).toBeNull();
+      expect(screen.getByText('Edición · No se pudo editar')).toBeInTheDocument();
+      expect(reintentar()).not.toHaveAttribute('aria-busy'); // vuelve a servir
+    }
+    // sin red: también se dice, y el saldo se pone al día (el servidor pudo cobrar sin que lo supiéramos)
+    const refrescos = monedero.refrescar.mock.calls.length;
+    respuesta = () => sinRed();
+    await userEvent.click(reintentar());
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No hay conexión'));
+    expect(monedero.refrescar.mock.calls.length).toBeGreaterThan(refrescos);
+    // ni un «−N» ni una relectura de la lista por algo que no se cobró
+    expect(cobros).toEqual([]);
+    expect(llamadas(f, '/api/edicion/proyectos', 'GET')).toHaveLength(1);
+  });
+
+  it('inicio.ediciones.mientras_se_devuelven_los_creditos_la_tarjeta_lo_dice_y_no_ofrece_reintentar', async () => {
+    // el API no pudo abonar (o el worker dejó la deuda al barredor): `devolucion_pendiente`. Reintentar cobraría otra vez sin haber devuelto
+    // (el servidor lo niega con 409); la corrida puede seguir figurando «corriendo» hasta que el barredor la cierre
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let reabierta: NonNullable<Edicion['editar']> = editarEn('corriendo', { creditos: 2, devolucion_pendiente: 2 });
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () =>
+          json([
+            { ...COPIA, nombre: 'ed-aaaa1111', titulo: 'Con deuda', editor_listo: false, editar: { estado: 'error', creditos: 2, devolucion_pendiente: 2 } },
+            { ...COPIA, nombre: 'ed-bbbb2222', titulo: 'Reabierta', editor_listo: false, editar: reabierta },
+            // una marca residual de algo que YA se devolvió no cuenta: se puede reintentar
+            { ...COPIA, nombre: 'ed-cccc3333', titulo: 'Ya devuelta', editor_listo: false, editar: { estado: 'error', creditos: 2, devolucion_pendiente: 2, devueltos: 2 } },
+          ]),
+      },
+    });
+    pintar();
+    expect(await screen.findAllByText('Edición · No se pudo editar')).toHaveLength(3);
+    expect(screen.getAllByText('Estamos devolviendo tus ✦ 2.')).toHaveLength(2);
+    expect(screen.queryByText('Edición · Editando…')).toBeNull();
+    // una sola tarjeta se puede reintentar: la que ya se devolvió
+    const botones = screen.getAllByRole('button', { name: /^Reintentar/ });
+    expect(botones).toHaveLength(1);
+    expect(botones[0]).toHaveAccessibleDescription('Ya devuelta');
+    // la «reabierta» sigue figurando corriendo en el servidor: la pantalla la sigue leyendo hasta que se cierre (y entonces pone al día el saldo)
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturas()).toBeGreaterThan(antes);
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    reabierta = { estado: 'error', creditos: 2, devueltos: 2 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    await waitFor(() => expect(monedero.refrescar).toHaveBeenCalled());
+    expect(screen.getAllByRole('button', { name: /^Reintentar/ })).toHaveLength(2);
+  });
+
+  it('inicio.ediciones.una_copia_corriendo_de_hace_mas_de_2_horas_se_lee_sin_respuesta_y_no_mantiene_el_sondeo', async () => {
+    // INT-04: una tarea que murió sin cerrar su copia seguía diciendo «Editando…» para siempre, y la pantalla releía cinco listas cada 5 s
+    // mientras la pestaña estuviera abierta. Igual que el servidor (`_caducada`): pasadas 2 h, o sin un `inicio` legible, ya no cuenta
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const hace = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
+    const f = montar({
+      ediciones: [
+        { ...COPIA, nombre: 'ed-a', titulo: 'Colgada', editor_listo: false, editar: { estado: 'corriendo', inicio: hace(5 * 60) } },
+        { ...COPIA, nombre: 'ed-b', titulo: 'Justo pasada', editor_listo: false, editar: { estado: 'corriendo', inicio: hace(121) } },
+        { ...COPIA, nombre: 'ed-c', titulo: 'Sin inicio', editor_listo: false, editar: { estado: 'corriendo' } },
+        { ...COPIA, nombre: 'ed-d', titulo: 'Inicio roto', editor_listo: false, editar: { estado: 'corriendo', inicio: 'ayer' } },
+      ],
+    });
+    pintar();
+    expect(await screen.findAllByText('Edición · Sin respuesta')).toHaveLength(4);
+    expect(screen.queryByText('Edición · Editando…')).toBeNull();
+    // ninguna está ocupada para el lector de pantalla, y no hay «Reintentar» (el servidor no reintenta lo que figura corriendo)
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Reintentar/ })).toBeNull();
+    // y la pantalla no relee las listas cada 5 s por ellas
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16000);
+    });
+    expect(lecturas()).toBe(antes);
+  });
+
+  it('inicio.ediciones.una_copia_corriendo_de_hace_poco_sigue_editando_y_mantiene_el_sondeo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const hace = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
+    const f = montar({
+      ediciones: [{ ...COPIA, nombre: 'ed-a', titulo: 'Viva', editor_listo: false, editar: { estado: 'corriendo', inicio: hace(119) } }],
+    });
+    pintar();
+    expect((await screen.findByText('Edición · Editando…')).closest('[aria-busy]')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('Edición · Sin respuesta')).toBeNull();
+    const antes = llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(llamadas(f, '/api/edicion/proyectos', 'GET').length).toBeGreaterThan(antes);
+    // al cumplir las 2 h (con el reloj de la pantalla) deja de contar como viva
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+    });
+    expect(await screen.findByText('Edición · Sin respuesta')).toBeInTheDocument();
   });
 
   it('inicio.ediciones.al_lanzar_desde_la_caja_las_listas_se_releen_y_la_copia_sale_editando', async () => {
@@ -2782,7 +3059,7 @@ describe('las listas', () => {
     let lanzada = false;
     const f = montar({
       rutas: {
-        '/api/edicion/proyectos': () => json(lanzada ? [{ ...COPIA, editar: { estado: 'corriendo' }, editor_listo: false }] : []),
+        '/api/edicion/proyectos': () => json(lanzada ? [{ ...COPIA, editar: editarEn('corriendo'), editor_listo: false }] : []),
         '/api/edicion/elegibles': () => json({ videos: [lista], limites: { max_s: 5400, min_solo_s: 60, max_videos: 12, max_bytes: 16106127360 } }),
         '/api/edicion/cotizar': () => json(cotizacion(['proyecto:gen-1a2b3c4d'], { creditos: 2, desglose: { edicion: 2, transcripcion: 0 } })),
         '/api/edicion/iniciar': () => {

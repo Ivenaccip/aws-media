@@ -279,7 +279,8 @@ describe('la caja de Edición', () => {
     // ya subió: se confirma y se pregunta el precio al servidor, con la REFERENCIA del proyecto y nada más (el 17 de la prueba no está en
     // ninguna tarifa: el botón dice lo que el servidor dijo)
     await screen.findByRole('button', { name: 'Iniciar ✦ 17' });
-    expect(cuerpoDe(f, '/api/media/confirmar')).toEqual({ proyecto: 'entrevista', key: 'videos/entrevista/subidas/entrevista.mp4' });
+    // (y el nombre del archivo tal como la persona lo vio: el de la key va saneado y de él saldría el título de la copia, INT-05)
+    expect(cuerpoDe(f, '/api/media/confirmar')).toEqual({ proyecto: 'entrevista', key: 'videos/entrevista/subidas/entrevista.mp4', nombre: 'entrevista.mp4' });
     expect(pedidosA(f, '/api/edicion/cotizar')).toBe(1);
     expect(cuerpoDe(f, '/api/edicion/cotizar')).toEqual({ videos: ['proyecto:entrevista'] });
     expect(screen.queryByRole('progressbar')).toBeNull();
@@ -594,6 +595,74 @@ describe('la caja de Edición', () => {
     // la pantalla también lo sabe: nada empieza hasta que termine
     await userEvent.click(botonMas());
     expect(dicho(avisos).at(-1)).toEqual({ texto: AVISO_OCUPADO, tipo: 'mal', clave: 'caja' });
+  });
+
+  it('inicio.edicion.un_409_que_no_es_de_tarea_en_curso_se_lee_tal_cual_y_no_deja_la_caja_ocupada', async () => {
+    // S1: «Todavía estamos devolviendo los créditos de esta edición…» (hay una deuda, no una tarea) y los 502/503 «Estamos devolviendo lo
+    // cobrado» son textos del servidor que se muestran tal cual; solo el 409 «Ya hay un trabajo en curso» pasa a «tarea en curso»
+    const avisos = ponerAvisos();
+    const monedero = ponerMonedero(100);
+    const alEditar = vi.fn();
+    const respuestas: Array<[number, string]> = [
+      [409, 'Todavía estamos devolviendo los créditos de esta edición. Inténtalo en unos minutos.'],
+      [502, 'No se pudo lanzar la edición: sin capacidad. Estamos devolviendo lo cobrado.'],
+      [503, 'Ahorita hay mucha gente produciendo. Estamos devolviendo lo cobrado; vuelve a intentarlo en unos minutos.'],
+    ];
+    const f = montar({ iniciar: () => json({ detail: respuestas[pedidosA(f, '/api/edicion/iniciar') - 1]![1] }, respuestas[pedidosA(f, '/api/edicion/iniciar') - 1]![0]) });
+    render(<Caja ir={ir} alEditar={alEditar} />);
+    await irAEdicion();
+    await conVideoListo();
+    await userEvent.type(campo(), TEXTO);
+    for (const [, texto] of respuestas) {
+      await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
+      await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto, tipo: 'mal', clave: 'caja' }));
+      await waitFor(() => expect(botonIniciar()).not.toHaveAttribute('aria-busy'));
+      // la pantalla NO cree que haya una tarea en curso: el «+» abre su menú en vez de avisar «Ya hay un trabajo en curso…», «Iniciar» sigue
+      // ahí con su precio, la caja conserva el video y el texto, y «Mis creaciones» no se relee (no hay copia que mostrar)
+      expect(botonMas()).not.toHaveAttribute('aria-disabled');
+      expect(screen.getByRole('button', { name: 'Iniciar ✦ 8' })).toBeInTheDocument();
+      expect(campo()).toHaveValue(TEXTO);
+      expect(alEditar).not.toHaveBeenCalled();
+    }
+    // el saldo se pone al día después de cada uno (el servidor pudo cobrar o devolver)
+    expect(monedero.refrescar.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(pedidosA(f, '/api/edicion/iniciar')).toBe(3);
+    // y cada intento fue un pedido NUEVO: una respuesta del servidor, aunque sea un error, renueva la clave
+    const claves = llamadas(f, '/api/edicion/iniciar').map(c => (JSON.parse(String(c[1]!.body)) as { pedido: string }).pedido);
+    expect(new Set(claves).size).toBe(3);
+  });
+
+  it('inicio.edicion.si_la_puerta_de_enlace_se_rinde_la_lista_se_relee_para_ver_si_la_edicion_si_salio', async () => {
+    // H8: un 5xx de la puerta (cuerpo `{message}`, sin el `detail` del servidor) pudo llegar DESPUÉS de cobrar y lanzar. Sin esto la persona
+    // se enteraba al volver a pulsar «Iniciar» y recibir un 409; ahora «Mis creaciones» se relee en seguida y, si la copia salió, su tarjeta
+    // «Editando…» aparece. Un 5xx con el `detail` del servidor (502 no se pudo lanzar, 503 sin capacidad) no es ambiguo: ahí no se relee nada
+    ponerMonedero(100);
+    const alEditar = vi.fn();
+    const respuestas = [
+      () => json({ message: 'Service Unavailable' }, 503),
+      () => json({ message: 'Internal Server Error' }, 500),
+      () => json({ detail: 'Ahorita hay mucha gente produciendo y no se te cobró. Vuelve a intentarlo en unos minutos.' }, 503),
+      // un 4xx tampoco es ambiguo, aunque su `detail` no sea un texto (la validación de FastAPI trae una lista): nada pudo lanzarse
+      () => json({ detail: [{ type: 'missing', msg: 'Field required' }] }, 422),
+    ];
+    const f = montar({ iniciar: () => respuestas[pedidosA(f, '/api/edicion/iniciar') - 1]!() });
+    render(<Caja ir={ir} alEditar={alEditar} />);
+    await irAEdicion();
+    await conVideoListo();
+    await userEvent.type(campo(), TEXTO);
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
+    await waitFor(() => expect(alEditar).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(botonIniciar()).not.toHaveAttribute('aria-busy'));
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
+    await waitFor(() => expect(alEditar).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(botonIniciar()).not.toHaveAttribute('aria-busy'));
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
+    await waitFor(() => expect(pedidosA(f, '/api/edicion/iniciar')).toBe(3));
+    await waitFor(() => expect(botonIniciar()).not.toHaveAttribute('aria-busy'));
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 8' }));
+    await waitFor(() => expect(pedidosA(f, '/api/edicion/iniciar')).toBe(4));
+    await waitFor(() => expect(botonIniciar()).not.toHaveAttribute('aria-busy'));
+    expect(alEditar).toHaveBeenCalledTimes(2); // ni el 5xx con `detail` del servidor ni el 4xx lo disparan
   });
 
   it('inicio.edicion.el_aviso_de_trabajo_en_curso_se_quita_solo_cuando_ese_trabajo_termina', async () => {

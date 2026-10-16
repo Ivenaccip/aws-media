@@ -67,13 +67,12 @@ import {
   type TipoVideo,
   type VideoElegible,
 } from './envio';
-import { cargarEdiciones } from './logica';
+// CORRIDA_MAX_MS: el servidor da por caducada una corrida a las 2 h (server/edicion_api.py) y la pantalla también deja de esperarla
+import { CORRIDA_MAX_MS, cargarEdiciones } from './logica';
 import { claveDeSubida, mover as moverEnLista, MAX_VIDEOS, quitarDe } from './reglasVideos';
 
 /** Cada cuánto se pregunta si la corrida sigue, una vez lanzada. */
 const SONDEO_MS = 5000;
-/** El servidor da por caducada una corrida a las 2 h (server/edicion_api.py): la pantalla también deja de esperarla. */
-const CORRIDA_MAX_MS = 2 * 60 * 60 * 1000;
 
 /** Lo que dice nucleo/subida cuando se cae la red a mitad del PUT: aquí se completa con cuánto había subido (lienzo: «Se perdió la
  *  conexión a los 41 %»). Una prueba comprueba que siga siendo ese texto. */
@@ -188,8 +187,15 @@ function nuevoPedido(): string {
  */
 const respuestaDudosa = (e: unknown) => !(e instanceof ErrorApi) || e.estado === 0 || e.estado === 504;
 
-/** El servidor dijo que ya hay una edición en curso (409), no que ESTA ya falló: ese 409 sí deja volver a pulsar «Iniciar». */
-const YA_FALLO = /ya fall/i;
+/** El 409 que dice que algo YA está en curso —«Ya hay un trabajo en curso…» (el `ocupado` de E2) o «La corrida ya está en curso…» (el de
+ *  E1)—: el único 409 tras el cual la pantalla sabe que corre otra edición. Los demás se leen tal cual y no cambian lo que la pantalla
+ *  cree: «Esta edición ya falló y se te devolvió…» (deja volver a pulsar «Iniciar») y «Todavía estamos devolviendo los créditos de esta
+ *  edición…» (hay una deuda, no una tarea en curso). */
+const YA_HAY_TAREA = /en curso/i;
+
+/** Una respuesta de error que NO es de la aplicación sino de la puerta de enlace (un 5xx cuyo cuerpo es `{"message": …}`, sin el `detail`
+ *  del servidor): el pedido pudo haber llegado, cobrado y lanzado antes de que la puerta se rindiera. */
+const deLaPuerta = (e: unknown) => e instanceof ErrorApi && e.estado >= 500 && typeof e.detalle !== 'string';
 
 /** `ir` es el de Caja: a dónde navegar (location.assign en la página, un espía en los tests). Solo lo usa «Iniciar» en Shorts.
  *  `alEditar`: el servidor aceptó una edición (la lista de «Mis creaciones» ya tiene su tarjeta «Editando…»). */
@@ -467,7 +473,9 @@ export function useEdicion(
         cancelarSubida.current = null;
       }
       if (!sigue(id)) return;
-      await confirmar(proyecto, firma.key);
+      // el nombre del archivo tal como la persona lo vio: el de la key va saneado («Mi Entrevista (1).mp4» → «Mi_Entrevista_1.mp4») y
+      // de él saldría el título de la copia
+      await confirmar(proyecto, firma.key, archivo.name);
       if (!sigue(id)) return;
     } catch (e) {
       // quitar el video cancela el PUT y eso rechaza la promesa: no es un error de nadie
@@ -703,9 +711,13 @@ export function useEdicion(
         refrescarSaldo();
       } else {
         decir('mal', mensaje(e));
-        if (e instanceof ErrorApi && e.estado === 409 && !YA_FALLO.test(e.message)) {
+        if (e instanceof ErrorApi && e.estado === 409 && YA_HAY_TAREA.test(e.message)) {
           // el servidor dice que ya corre otra edición: la pantalla también lo sabe desde ahora (y «Mis creaciones» se pone al día)
           setEnCurso({ copia: null, desde: Date.now() });
+          alEditar?.();
+        } else if (deLaPuerta(e)) {
+          // la puerta de enlace se rindió sin decir si el pedido llegó: «Mis creaciones» se relee ya, y si el servidor sí lo lanzó la
+          // tarjeta «Editando…» sale sola en vez de que la persona lo descubra al volver a pulsar «Iniciar» y recibir un 409
           alEditar?.();
         }
         // 413/422/404: una regla del servidor que la caja no sabía (o que cambió): se vuelve a pedir el precio, que trae su aviso

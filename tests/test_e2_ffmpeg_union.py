@@ -12,8 +12,10 @@ unión de «Mis creaciones» y subidas:
 Antes del arreglo `make_proxy.py` reventaba con exit 234 (`-map 0:1`), dejaba el
 proxy con video 8,77 s y audio 7,67 s, y agrandaba los verticales a 1280×2276;
 `render_cuts.py` reventaba sin audio y dejaba un 4:3 con `non monotonically
-increasing dts`. El master local NO cambia: el modo `final` de `render_cuts.py`
-sigue sin filtro de video y con su encoder de siempre (flujo de video-stack).
+increasing dts`. El VIDEO del master local NO cambia: el modo `final` de `render_cuts.py`
+sigue sin filtro de video y con su encoder de siempre (flujo de video-stack). El relleno de AUDIO
+(silencio para un clip sin pista, `apad` para un audio corto) corre en los dos modos: con audio
+completo el master sale idéntico, con audio corto o ausente ahora trae audio de la duración exacta.
 
 Sin red, sin dinero. Se salta solo si la máquina no tiene ffmpeg; en CI corre
 dentro del contenedor, que sí lo trae."""
@@ -277,28 +279,90 @@ def test_el_proxy_de_muchos_clips_dura_lo_que_el_corte(tmp_path, metraje):
         suma += _sonda(parte)["formato"]
 
 
-def test_un_video_sin_duracion_en_el_flujo_sigue_cortando_con_shortest(tmp_path):
-    """Matroska no escribe `duration` en el flujo (`N/A`): sin ese dato no hay con qué fijar `-t`, y
-    el proxy se arma como antes (`-shortest`) en vez de fallar o dejar el audio infinito."""
-    mkv = tmp_path / "fuente.mkv"
-    entradas = ["-f", "lavfi", "-i", "testsrc=size=320x180:rate=30:duration=1.2",
-                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1.2"]
-    _ffmpeg(*entradas, "-ac", 2, "-c:a", "aac", "-c:v", "libx264", "-pix_fmt", "yuv420p", mkv)
-    assert "duration" not in json.loads(subprocess.run(
+def _fuente_sin_duracion_en_el_flujo(tmp_path: Path, contenedor: str, sr: int, dur: float) -> Path:
+    """Matroska y WebM no escriben `duration` en el flujo de video (`N/A`): solo el contenedor la dice."""
+    video, audio = (["-c:v", "libvpx", "-b:v", "200k"], ["-c:a", "libvorbis"]) if contenedor == "webm" else \
+        (["-c:v", "libx264", "-pix_fmt", "yuv420p"], ["-c:a", "aac"])
+    if contenedor == "webm":
+        codificadores = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True,
+                                       text=True, encoding="utf-8").stdout
+        if "libvpx " not in codificadores or "libvorbis" not in codificadores:
+            pytest.skip("este ffmpeg no trae libvpx/libvorbis")
+    fuente = tmp_path / f"fuente.{contenedor}"
+    _ffmpeg("-f", "lavfi", "-i", f"testsrc=size=320x180:rate=30:duration={dur}",
+            "-f", "lavfi", "-i", f"sine=frequency=440:sample_rate={sr}:duration={dur}",
+            "-ac", 2, *audio, *video, fuente)
+    flujo = json.loads(subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
-         "-of", "json", str(mkv)], capture_output=True, text=True, check=True).stdout)["streams"][0]
+         "-of", "json", str(fuente)], capture_output=True, text=True, encoding="utf-8",
+        check=True).stdout)["streams"][0]
+    assert "duration" not in flujo, flujo
+    return fuente
+
+
+FUENTES_SIN_DURACION = [("mkv", 48000, 2.817), ("mkv", 44100, 1.5), ("webm", 48000, 2.4)]
+
+
+def _duracion_del_contenedor(path: Path) -> float:
+    return float(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip())
+
+
+@pytest.mark.parametrize("contenedor,sr,dur", FUENTES_SIN_DURACION, ids=lambda v: str(v))
+def test_probar_cae_a_la_duracion_del_contenedor_si_el_flujo_no_la_declara(tmp_path, contenedor, sr, dur):
+    mp = _importar_make_proxy()
+    fuente = _fuente_sin_duracion_en_el_flujo(tmp_path, contenedor, sr, dur)
+    assert mp.probar(fuente)["dur"] == pytest.approx(_duracion_del_contenedor(fuente), abs=1e-6)
+
+
+@pytest.mark.parametrize("contenedor,sr,dur", FUENTES_SIN_DURACION, ids=lambda v: str(v))
+def test_un_video_sin_duracion_en_el_flujo_se_corta_con_la_del_contenedor(tmp_path, contenedor, sr, dur):
+    """Con `-shortest` (lo que había para este caso) ffmpeg 5.1 deja el audio de la parte ~77 ms más
+    largo que su video, igual que el relleno de MV-01/MV-03; con `-t <duración del contenedor>` queda a ~3 ms."""
+    fuente = _fuente_sin_duracion_en_el_flujo(tmp_path, contenedor, sr, dur)
     proyecto = tmp_path / "copia"
     (proyecto / "clips").mkdir(parents=True)
     (proyecto / "work" / "analysis").mkdir(parents=True)
-    shutil.copy(mkv, proyecto / "clips" / "c01.mkv")
+    shutil.copy(fuente, proyecto / "clips" / f"c01.{contenedor}")
+    largo = _duracion_del_contenedor(fuente)
     (proyecto / "work" / "analysis" / "cuts.json").write_text(json.dumps({
         "project": "x", "clip_order": ["c01"], "flags": [], "styles": {},
-        "clips": [{"id": "c01", "file": "clips/c01.mkv", "duration": 1.2,
-                   "keeps": [{"s": 0.0, "e": 1.2, "text": ""}], "cuts": [], "fluff_suggestions": []}]}))
+        "clips": [{"id": "c01", "file": f"clips/c01.{contenedor}", "duration": largo,
+                   "keeps": [{"s": 0.0, "e": largo, "text": ""}], "cuts": [], "fluff_suggestions": []}]}))
     r = _correr("make_proxy.py", proyecto)
     assert r.returncode == 0, r.stderr[-800:]
-    s = _sonda(proyecto / "work" / "editor" / "proxy.mp4")
-    assert s["dur_a"] is not None and abs(s["dur_v"] - s["dur_a"]) <= DRIFT_TOL_S, s
+    (parte,) = _partes(proyecto)
+    s = _sonda(parte)
+    assert s["dur_a"] is not None and abs(s["dur_a"] - s["dur_v"]) <= 0.03, s
+    assert abs(s["formato"] - s["dur_v"]) <= 0.01, s
+    manifiesto = json.loads((proyecto / "work" / "editor" / "manifest.json").read_text())
+    assert abs(manifiesto["total"] - s["dur_v"]) <= 0.01, (manifiesto["total"], s)
+
+
+def test_el_audio_mas_corto_que_su_video_se_rellena_con_silencio_en_cada_parte(tmp_path):
+    """Una parte cuyo audio dura 0,5 s MENOS que su video (los clips de IA suelen traerlo así): sin el
+    relleno (`apad`) el audio de la parte quedaba corto y cada empalme se descuadraba. Con `-t` ya no
+    se pasa, y con `apad` tampoco se queda corto: audio y video terminan juntos (±un cuadro de AAC)."""
+    clip = tmp_path / "audio_corto.mp4"
+    _ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x180:rate=30:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1.5",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", clip)
+    proyecto = _proyecto(tmp_path / "copia", [("c01", clip)])
+    assert _correr("make_proxy.py", proyecto).returncode == 0
+    (parte,) = _partes(proyecto)
+    s = _sonda(parte)
+    assert abs(s["dur_v"] - 2.0) <= 0.05 and abs(s["dur_a"] - s["dur_v"]) <= 0.03, s
+
+
+@pytest.mark.parametrize("valor,esperado", [
+    ("2.5", 2.5), (2.5, 2.5), ("N/A", None), (None, None), ("", None), ("0", None), (0, None),
+    ("-1", None), ("inf", None), ("nan", None), ("basura", None)],
+    ids=["texto", "numero", "na", "ninguno", "vacio", "cero_texto", "cero", "negativo", "inf", "nan", "basura"])
+def test_una_duracion_que_no_sirve_se_trata_como_ausente(valor, esperado):
+    """ffprobe dice `N/A` cuando no sabe; ni eso, ni cero, ni infinito, ni un número roto pueden acabar en
+    `-t` (un `-t inf` deja el audio sin fin)."""
+    assert _importar_make_proxy()._segundos(valor) == esperado
 
 
 @pytest.mark.parametrize("dur,esperado", [
@@ -434,6 +498,22 @@ def test_el_master_final_conserva_el_tamano_de_la_fuente(tmp_path, metraje):
          "stream=codec_name,pix_fmt", "-of", "csv=p=0", str(salida)],
         capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
     assert codec == "hevc,yuv420p10le"
+
+
+@pytest.mark.skipif(not _tiene_encoder("libx265"), reason="este ffmpeg no trae libx265")
+def test_el_master_final_tambien_rellena_el_audio_corto_y_el_clip_sin_audio(tmp_path, metraje):
+    """MV-04: el modo `final` no cambia en VIDEO (sin filtro, su encoder), pero el relleno de AUDIO
+    (`apad` para un audio más corto que su video, silencio exacto para un clip sin pista) corre en los
+    DOS modos. Con un clip de audio 150 ms corto, otro sin pista y otro corto, el master `final` sale con
+    audio de la duración exacta del video (antes: audio corto, sin pista, o exit 234)."""
+    proyecto = _proyecto(tmp_path / "copia", [("c01", metraje["audio_corto"]), ("c02", metraje["sin_audio"]),
+                                              ("c03", metraje["audio_corto"])])
+    r = _correr("render_cuts.py", proyecto, "--style", "tight", "--mode", "final")
+    assert r.returncode == 0, r.stderr[-800:]
+    s = _sonda(proyecto / "output" / "master-tight.mp4")
+    assert (s["w"], s["h"]) == (320, 180)                       # el video sigue sin normalizarse
+    assert s["dur_a"] is not None and abs(s["dur_v"] - s["dur_a"]) <= 0.05, s
+    assert abs(s["dur_v"] - 5.0) <= 0.1, s
 
 
 # ---------------------------------------------------------------------------

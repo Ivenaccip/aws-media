@@ -236,7 +236,7 @@ def tamano(key: str) -> int | None:
     return int(r["ContentLength"])
 
 
-def copiar(origen: str, destino: str) -> None:
+def copiar(origen: str, destino: str, etag: str | None = None) -> None:
     """Copia `origen` → `destino` DENTRO del bucket, de servidor a servidor: no
     baja nada al ejecutor. Usa la copia gestionada del cliente (`s3.copy`):
     una sola pieza hasta el umbral y multiparte por encima, así que un video de
@@ -245,15 +245,18 @@ def copiar(origen: str, destino: str) -> None:
     Levanta si el origen no existe (el HEAD previo da 404) y, de paso, FIJA el
     ETag del original: la copia se pide con `CopySourceIfMatch`, así que si
     alguien reemplazó el objeto entre que se midió y se copió, falla en vez de
-    entregar una mezcla. Nunca escribe en `origen`; el tipo de contenido se
-    conserva (la copia multiparte lo preserva). Sin bucket no hay dónde copiar."""
+    entregar una mezcla. Por defecto se fija el ETag que tiene el objeto AHORA;
+    con `etag` (el que vio quien midió y cobró) se fija ese, y la ventana entre
+    cotizar y copiar también queda cerrada. Nunca escribe en `origen`; el tipo
+    de contenido se conserva (la copia multiparte lo preserva). Sin bucket no
+    hay dónde copiar."""
     bucket = _bucket()
     if not bucket:
         raise RuntimeError("no hay MEDIA_BUCKET: no hay dónde copiar")
     s3 = _s3()
-    cabecera = s3.head_object(Bucket=bucket, Key=origen)
+    cabecera = s3.head_object(Bucket=bucket, Key=origen)     # también levanta si el origen no existe
     s3.copy({"Bucket": bucket, "Key": origen}, bucket, destino,
-            ExtraArgs={"CopySourceIfMatch": cabecera["ETag"]})
+            ExtraArgs={"CopySourceIfMatch": etag or cabecera["ETag"]})
 
 
 def bajar_archivo(key: str, destino: Path) -> bool:

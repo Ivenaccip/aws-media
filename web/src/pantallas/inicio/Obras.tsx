@@ -4,9 +4,15 @@
 //
 // UI·26: en «Mis videos» la leyenda de abajo dice QUÉ es (Video largo, Video
 // corto, Shorts, Cuento); el estado solo se agrega si todavía no está listo.
-import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
+import { avisarCobro, refrescarSaldo, useSaldo } from '../../marca/useSaldo';
+import { Recarga } from '../../marca/Recarga';
+import { ErrorApi } from '../../nucleo/api';
+import { ESTRELLA } from '../../nucleo/estrella';
+import { entero } from '../../nucleo/formato';
 import { tocarMiniatura } from '../../nucleo/transiciones';
+import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import type { NombreIcono } from '../../ui/iconos';
 import { unir } from '../../ui/unir';
@@ -27,6 +33,8 @@ import {
   type Proyecto,
   type Video,
 } from './logica';
+import { faltanTras402 } from './edicion';
+import { reintentarEdicion } from './envio';
 
 const TARJETA =
   'relative flex flex-col overflow-hidden rounded-boton border border-linea bg-superficie text-texto transition-colors hover:border-campo';
@@ -239,8 +247,9 @@ export function TarjetaImagen({ im, alAbrir }: { im: Imagen; alAbrir: (im: Image
   );
 }
 
-export function TarjetaEdicion({ e }: { e: Edicion }) {
-  if (esCopia(e)) return <TarjetaCopia e={e} />;
+/** `alReintentar`: el servidor aceptó el «Reintentar» de una copia que falló; devuelve cuando la lista de Mis creaciones ya se releyó. */
+export function TarjetaEdicion({ e, alReintentar }: { e: Edicion; alReintentar?: (() => Promise<unknown> | void) | undefined }) {
+  if (esCopia(e)) return <TarjetaCopia e={e} alReintentar={alReintentar} />;
   const st = estadoEdicion(e);
   return (
     <a href={'/e1.html?p=' + encodeURIComponent(e.nombre)} className={unir(TARJETA, 'no-underline')}>
@@ -258,20 +267,63 @@ export function TarjetaEdicion({ e }: { e: Edicion }) {
   );
 }
 
+/** El objetivo de «Recargar» dentro de una tarjeta de 172 px: como el de la caja, de 44 px y sin empujar a nadie. */
+const RECARGA = 'text-xs min-h-11 min-w-11 px-2 -mx-2 -my-3 focus-visible:-outline-offset-3';
+
 /**
  * E2 — una COPIA editada (uno o varios videos unidos): el título que la persona leyó al lanzarla («El tren de papel + 2 más»), su
  * estado y de dónde viene. Editando… no lleva a ningún lado (aún no hay nada que abrir) y se lee ocupada; Listo abre el editor de
- * cortes de ESA copia; si no se pudo, queda dicho y no hay a dónde ir (la bandeja es la que ofrece «Reintentar»). La tarjeta no
- * caduca: sale de /api/edicion/proyectos, no de «Tus trabajos». Sin título (un servidor viejo) cae al nombre técnico.
+ * cortes de ESA copia. Si no se pudo (de nuestro lado), lo dice y ofrece «Reintentar ✦ N» —el mismo que la ficha de «Tus trabajos»,
+ * que desaparece al cerrarla o a las 24 h mientras esta tarjeta se queda—, salvo mientras se están devolviendo los créditos (cobraría
+ * otra vez sin haber devuelto). La tarjeta no caduca: sale de /api/edicion/proyectos, no de «Tus trabajos». Sin título (un servidor
+ * viejo) cae al nombre técnico.
  */
-function TarjetaCopia({ e }: { e: Edicion }) {
+function TarjetaCopia({ e, alReintentar }: { e: Edicion; alReintentar?: (() => Promise<unknown> | void) | undefined }) {
   const st = estadoDeCopia(e);
   const titulo = e.titulo || e.nombre;
+  const idTitulo = useId();
+  const saldo = useSaldo();
+  const boton = useRef<HTMLButtonElement>(null);
+  const enElAire = useRef(false); // un doble clic es UN reintento: se cierra antes del primer await
+  const [trabajando, setTrabajando] = useState(false);
+  // lo que el servidor dijo al negar el reintento: sus palabras, tal cual (`faltan` si fue el 402)
+  const [problema, setProblema] = useState<{ texto: string; faltan?: number } | null>(null);
+  // lo que se cobró la vez anterior es lo que costará esta (el servidor lo vuelve a decidir y lo dice al aceptar)
+  const cobrado = typeof e.editar?.creditos === 'number' && e.editar.creditos > 0 ? e.editar.creditos : null;
+
+  async function reintentar() {
+    if (enElAire.current) return;
+    enElAire.current = true;
+    setTrabajando(true);
+    setProblema(null);
+    try {
+      const r = await reintentarEdicion(e.nombre);
+      // el servidor aceptó y cobró: el «−N» vuela con lo que cobró ÉL, el saldo se pone al día y la lista se relee (la tarjeta pasa a «Editando…»)
+      const costo = typeof r.creditos === 'number' && r.creditos > 0 ? r.creditos : (cobrado ?? 0);
+      if (costo > 0) avisarCobro(costo, boton.current?.getBoundingClientRect() ?? null);
+      refrescarSaldo();
+      await alReintentar?.();
+    } catch (err) {
+      if (err instanceof ErrorApi && err.sinSaldo) {
+        setProblema({ texto: '', faltan: faltanTras402(err.detalle, cobrado ?? 1, saldo) });
+        refrescarSaldo();
+      } else {
+        // 409 (ya se reintenta, todavía se devuelve…), 502/503 (se devuelve lo cobrado): el texto del servidor, tal cual
+        setProblema({ texto: err instanceof Error ? err.message : String(err) });
+        // sin respuesta o 5xx: el servidor pudo cobrar o devolver sin que lo supiéramos
+        if (err instanceof ErrorApi && (err.estado === 0 || err.estado >= 500)) refrescarSaldo();
+      }
+    } finally {
+      enElAire.current = false;
+      setTrabajando(false);
+    }
+  }
+
   const contenido = (
     <>
       <Hueco icono="cortar" />
       <span className="px-3 py-2.5">
-        <span className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap" title={titulo}>
+        <span id={idTitulo} className="block overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap" title={titulo}>
           {titulo}
         </span>
         <span className="block text-xs text-secundario">
@@ -280,18 +332,46 @@ function TarjetaCopia({ e }: { e: Edicion }) {
             {st.texto}
           </Tono>
         </span>
+        {st.nota && <span className="block text-xs text-secundario">{st.nota}</span>}
         <span className="block overflow-hidden text-xs text-secundario text-ellipsis whitespace-nowrap">Copia de {titulo}</span>
       </span>
     </>
   );
   // enlace solo cuando hay a dónde ir: una tarjeta que dice «Editando…» y lleva a ningún lado sería un enlace roto
-  return st.listo ? (
-    <a href={'/editor/' + encodeURIComponent(e.nombre) + '/'} className={unir(TARJETA, 'no-underline')}>
-      {contenido}
-    </a>
-  ) : (
+  if (st.listo) {
+    return (
+      <a href={'/editor/' + encodeURIComponent(e.nombre) + '/'} className={unir(TARJETA, 'no-underline')}>
+        {contenido}
+      </a>
+    );
+  }
+  return (
     <div className={TARJETA} {...(st.busy ? { 'aria-busy': true } : {})}>
       {contenido}
+      {st.reintentable && (
+        <div className="px-3 pb-3">
+          <Boton
+            ref={boton}
+            nivel="secundario"
+            aria-describedby={idTitulo}
+            trabajando={trabajando && 'Reintentando…'}
+            onClick={() => void reintentar()}
+          >
+            {cobrado ? `Reintentar ${ESTRELLA} ${entero(cobrado)}` : 'Reintentar'}
+          </Boton>
+          {problema && (
+            <p role="alert" className="m-0 mt-2 text-xs text-error tabular-nums">
+              {problema.faltan !== undefined ? (
+                <>
+                  Te faltan {ESTRELLA} {entero(problema.faltan)} · <Recarga className={RECARGA} />
+                </>
+              ) : (
+                problema.texto
+              )}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
