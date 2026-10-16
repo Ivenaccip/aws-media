@@ -378,7 +378,8 @@ describe('subir varios archivos: la cola de uno en uno', () => {
     await act(async () => {
       ultimoXhr().terminar(403);
     });
-    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: 'La subida a la nube falló (403) — intenta de nuevo.', tipo: 'mal', clave: 'caja' }));
+    // el aviso dice CUÁL se perdió: con varios archivos en la cola, «La subida falló» a secas no dice de quién
+    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: '“uno.mp4”: La subida a la nube falló (403) — intenta de nuevo.', tipo: 'mal', clave: 'caja' }));
     await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
     expect(nombresEnOrden()).toEqual(['dos.mp4', 'tres.mp4']);
     expect(pedidosA(f, '/api/media/confirmar')).toBe(0);
@@ -405,7 +406,7 @@ describe('subir varios archivos: la cola de uno en uno', () => {
     expect(ERROR_DE_RED_AL_SUBIR).toBe('La subida falló — revisa tu conexión e intenta de nuevo.');
     await waitFor(() =>
       expect(dicho(avisos).at(-1)).toEqual({
-        texto: 'Se perdió la conexión a los 41 %. No se cobró nada. Vuelve a subirlo con el «+».',
+        texto: 'Se perdió la conexión con “uno.mp4” a los 41 %. No se cobró nada. Vuelve a subirlo con el «+».',
         tipo: 'mal',
         clave: 'caja',
       }),
@@ -415,6 +416,54 @@ describe('subir varios archivos: la cola de uno en uno', () => {
     // queda UNO: su tarjeta, no la lista de la unión
     expect(screen.queryByRole('list', { name: 'Orden de los videos' })).toBeNull();
     expect(screen.getByText('dos.mp4')).toBeInTheDocument();
+  });
+
+  it('inicio.union.si_fallan_dos_archivos_el_aviso_dice_cuales_y_el_segundo_no_pisa_al_primero', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    pintar();
+    await irAEdicion();
+    await subirVarios([video('uno.mp4'), video('dos.mp4'), video('tres.mp4')]);
+    // «uno» falla con un 500 del almacenamiento
+    await act(async () => {
+      ultimoXhr().terminar(500);
+    });
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
+    expect(dicho(avisos).at(-1)!.texto).toBe('“uno.mp4”: La subida a la nube falló (500) — intenta de nuevo.');
+    // «dos» pierde la conexión al 41 %: el aviso suma el suyo en vez de pisar el de «uno» (la caja tiene UN solo canal de avisos)
+    act(() => ultimoXhr().avanzar(338_000_000, 824_000_000));
+    await act(async () => {
+      ultimoXhr().fallar();
+    });
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(3));
+    expect(dicho(avisos).at(-1)).toEqual({
+      texto: '“uno.mp4”: La subida a la nube falló (500) — intenta de nuevo. Se perdió la conexión con “dos.mp4” a los 41 %. No se cobró nada. Vuelve a subirlo con el «+».',
+      tipo: 'mal',
+      clave: 'caja',
+    });
+    // «tres» sí sube: lo que falló se queda dicho
+    await terminarSubida();
+    await screen.findByRole('button', { name: 'Iniciar ✦ 8' });
+    expect(dicho(avisos).at(-1)!.texto).toContain('“uno.mp4”');
+    // quitar lo que quedó limpia el aviso Y la cuenta: el próximo fallo habla solo de sí mismo (no arrastra los de antes)
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar este video' }));
+    await subirVarios([video('cuatro.mp4')]);
+    await act(async () => {
+      ultimoXhr().terminar(403);
+    });
+    await waitFor(() => expect(dicho(avisos).at(-1)!.texto).toBe('“cuatro.mp4”: La subida a la nube falló (403) — intenta de nuevo.'));
+  });
+
+  it('si la instalación no sube videos, con varios archivos se dice UNA vez y sin el nombre de ninguno', async () => {
+    const avisos = ponerAvisos();
+    montar({ config: false });
+    pintar();
+    await irAEdicion();
+    await userEvent.upload(entrada(), [video('uno.mp4'), video('dos.mp4'), video('tres.mp4')]);
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Orden de los videos' })).toBeNull());
+    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: 'Subir videos no está disponible en esta instalación.', tipo: 'mal', clave: 'caja' }));
+    expect(screen.queryByText('uno.mp4')).toBeNull();
+    expect(XhrFalso.todos).toHaveLength(0);
   });
 
   it('inicio.union.quitar_la_que_sube_la_cancela_sin_error_ni_precio_y_la_cola_sigue_con_la_siguiente', async () => {
@@ -595,6 +644,34 @@ describe('la caja con varios videos: la lista de la unión', () => {
       instruccion: TEXTO,
     });
     await waitFor(() => expect(cobros.map(c => c.costo)).toEqual([8]));
+  });
+
+  it('inicio.union.reordenar_no_hace_ninguna_peticion_ni_apaga_el_precio_ni_siquiera_un_instante', async () => {
+    // el contrato dice que el orden NO cambia ni el precio ni la validez: Subir/Bajar nunca vuelven a cotizar. No basta con contar el
+    // `cotizar` justo después del clic: uno que se pidiera tarde, o por otra ruta, pasaría. Se cuentan TODAS las peticiones, de cualquier
+    // ruta, y se mira que el botón no pase por «Calculando…» (un `cotizar` nuevo lo apaga hasta que contesta)
+    const f = montar();
+    pintar();
+    await irAEdicion();
+    await conVideosSubidos(['a.mp4', 'b.mp4', 'c.mp4']);
+    const peticiones = () => f.mock.calls.length;
+    const antes = peticiones();
+    const cotizaciones = pedidosA(f, '/api/edicion/cotizar');
+    expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 8');
+    for (const [accion, nombre] of [['Bajar', 'a.mp4'], ['Subir', 'c.mp4'], ['Bajar', 'b.mp4'], ['Subir', 'a.mp4']] as const) {
+      await userEvent.click(screen.getByRole('button', { name: `${accion} “${nombre}”` }));
+      // en cuanto se mueve, SIN esperar nada: el precio sigue ahí, no «Calculando…»
+      expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 8');
+      expect(screen.queryByRole('button', { name: /^Calculando/ })).toBeNull();
+    }
+    expect(nombresEnOrden()).toEqual(['c.mp4', 'a.mp4', 'b.mp4']);
+    // y nada llega después: una petición que saliera con retraso caería aquí
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 80));
+    });
+    expect(peticiones()).toBe(antes);
+    expect(pedidosA(f, '/api/edicion/cotizar')).toBe(cotizaciones);
+    expect(botonIniciar()).toHaveTextContent('Iniciar ✦ 8');
   });
 
   it('inicio.union.quitar_recorre_los_numeros_vuelve_a_cotizar_manda_el_foco_al_mas_y_con_uno_queda_su_tarjeta', async () => {

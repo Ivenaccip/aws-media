@@ -36,7 +36,8 @@ def _a_sqlite(sql: str) -> str:
                  lambda m: f"json_extract(doc, '{_ruta(m.group(1))}') = {1 if m.group(2) == 'true' else 0}", sql)
     sql = re.sub(r"doc #>> '\{([\w,]+)\}'", lambda m: f"json_extract(doc, '{_ruta(m.group(1))}')", sql)
     sql = re.sub(r"\(doc #> '\{([\w,]+)\}'\)", lambda m: f"json_extract(doc, '{_ruta(m.group(1))}')", sql)
-    return re.sub(r"jsonb_set\((\w+), '\{(\w+)\}', (:\w+)\)", r"json_set(\1, '$.\2', json(\3))", sql)
+    return re.sub(r"jsonb_set\((\w+), '\{([\w,]+)\}', (:\w+)\)",
+                  lambda m: f"json_set({m.group(1)}, '{_ruta(m.group(2))}', json({m.group(3)}))", sql)
 
 
 @pytest.fixture
@@ -291,3 +292,142 @@ def test_fijar_meta_usa_jsonb_set_de_una_sola_llave(base):
     db.fijar_meta_editor("u1", "charla", "{}")
     sql = " ".join(base.sentencias[-1].split())
     assert "jsonb_set(doc, '{meta}', :v::jsonb)" in sql and "WHERE user_id = :u AND nombre = :n" in sql
+
+
+# ---------------------------------------------------------------------------
+# AJUSTES 2 · lo que la revisión adversarial pidió a la capa de datos
+
+def test_subidas_esta_en_la_lista_cerrada_para_no_reescribir_el_doc_entero_al_confirmar(base):
+    """D-02 (defensa en profundidad): `/api/media/confirmar` hacía cargar → agregar → upsert del doc
+    ENTERO, y un upsert viejo pisaba el cierre `listo` de una copia. Con `subidas` en la lista solo se
+    toca esa llave."""
+    assert db._CAMPOS_EDITOR["subidas"] == "{subidas}"
+    db.crear_copia_editor("u1", NOMBRE, copia(estado="listo", fin="2026-10-15T18:30:00+00:00"))
+    db.fijar_campo_editor("u1", NOMBRE, "subidas", json.dumps([{"key": "k"}]))
+    d = estado_de(base, "u1", NOMBRE)
+    assert d["subidas"] == [{"key": "k"}]
+    assert d["editar"]["estado"] == "listo" and d["editar"]["fin"] == "2026-10-15T18:30:00+00:00"
+
+
+# -- cerrar_editor_si_error (D-05): el cierre no pisa a un reintento que arrancó en medio
+
+def test_el_cierre_condicionado_escribe_si_la_copia_sigue_en_error_con_el_mismo_inicio(base):
+    db.crear_copia_editor("u1", NOMBRE, copia(estado="error", inicio="2026-10-15T18:00:00+00:00"))
+    cierre = json.dumps({"copia": True, "estado": "error", "inicio": "2026-10-15T18:00:00+00:00", "devueltos": 2})
+    assert db.cerrar_editor_si_error("u1", NOMBRE, "2026-10-15T18:00:00+00:00", cierre) is True
+    assert estado_de(base, "u1", NOMBRE)["editar"]["devueltos"] == 2
+
+
+def test_el_cierre_condicionado_no_pisa_un_reintento_que_ya_arranco(base):
+    """La persona vio el error (el reclamo lo deja en `error` ANTES de devolver) y pulsó Reintentar mientras
+    el abono tardaba: la copia ya está `corriendo` con otro `inicio`. El cierre viejo NO debe escribir."""
+    db.crear_copia_editor("u1", NOMBRE, copia(estado="corriendo", inicio="2026-10-15T18:05:00+00:00",
+                                                  reintentos=1, cobrado=True))
+    viejo = json.dumps({"copia": True, "estado": "error", "inicio": "2026-10-15T18:00:00+00:00", "devueltos": 2})
+    assert db.cerrar_editor_si_error("u1", NOMBRE, "2026-10-15T18:00:00+00:00", viejo) is False
+    d = estado_de(base, "u1", NOMBRE)["editar"]
+    assert d["estado"] == "corriendo" and d["reintentos"] == 1 and "devueltos" not in d
+
+
+def test_el_cierre_condicionado_tampoco_escribe_si_el_inicio_es_otro_aunque_siga_en_error(base):
+    """Un reintento que ya falló de nuevo: el `error` es de OTRA corrida; el cierre viejo no es suyo."""
+    db.crear_copia_editor("u1", NOMBRE, copia(estado="error", inicio="2026-10-15T18:09:00+00:00"))
+    assert db.cerrar_editor_si_error("u1", NOMBRE, "2026-10-15T18:00:00+00:00", "{}") is False
+    assert "devueltos" not in estado_de(base, "u1", NOMBRE)["editar"]
+
+
+def test_el_cierre_condicionado_sin_inicio_solo_cierra_a_quien_tampoco_lo_tiene(base):
+    db.crear_copia_editor("u1", NOMBRE, json.dumps({"subidas": [], "editar": {"copia": True, "estado": "error"}}))
+    assert db.cerrar_editor_si_error("u1", NOMBRE, None, json.dumps({"copia": True, "estado": "error", "devueltos": 2})) is True
+    assert estado_de(base, "u1", NOMBRE)["editar"]["devueltos"] == 2
+
+
+def test_el_cierre_condicionado_deja_pasar_la_reapertura_para_el_barredor(base):
+    """`_fallar` del worker reabre el doc (`corriendo` + `devolucion_pendiente`) con el doc AÚN en error y el
+    mismo `inicio`: la condición lo deja pasar."""
+    db.crear_copia_editor("u1", NOMBRE, copia(estado="error", inicio="2026-10-15T18:00:00+00:00"))
+    reabierto = json.dumps({"copia": True, "estado": "corriendo", "inicio": "2026-10-15T18:00:00+00:00",
+                            "devolucion_pendiente": 2})
+    assert db.cerrar_editor_si_error("u1", NOMBRE, "2026-10-15T18:00:00+00:00", reabierto) is True
+    assert estado_de(base, "u1", NOMBRE)["editar"]["estado"] == "corriendo"
+
+
+def test_el_cierre_condicionado_no_toca_lo_de_otra_persona_ni_un_proyecto_sin_corrida(base):
+    db.crear_copia_editor("u1", NOMBRE, copia(estado="error", inicio="x"))
+    assert db.cerrar_editor_si_error("u2", NOMBRE, "x", "{}") is False
+    assert db.cerrar_editor_si_error("u1", "no_existe", "x", "{}") is False
+
+
+def test_el_sql_del_cierre_condicionado_pide_error_e_inicio(base):
+    db.cerrar_editor_si_error("u1", NOMBRE, "x", "{}")
+    sql = " ".join(base.sentencias[-1].split())
+    assert "doc #>> '{editar,estado}' = 'error'" in sql and "doc #>> '{editar,inicio}'" in sql
+    assert sql.endswith("RETURNING nombre")
+
+
+# -- fijar_editar_si_corriendo y fijar_paso_editor (D-06): ni revivir ni pisar un cierre
+
+def test_fijar_editar_si_corriendo_escribe_mientras_la_corrida_siga_viva(base):
+    db.crear_copia_editor("u1", NOMBRE, copia(paso="entender"))
+    nuevo = json.dumps({"copia": True, "estado": "corriendo", "paso": "editar", "creditos": 2})
+    assert db.fijar_editar_si_corriendo("u1", NOMBRE, nuevo) is True
+    assert estado_de(base, "u1", NOMBRE)["editar"]["paso"] == "editar"
+
+
+@pytest.mark.parametrize("estado", ["error", "listo"])
+def test_fijar_editar_si_corriendo_no_revive_una_corrida_cerrada(base, estado):
+    """El API (o el barredor) cerró y devolvió entre el `vivo()` del worker y su UPDATE: la escritura vieja,
+    que decía `corriendo`, no puede volver a abrir la copia."""
+    db.crear_copia_editor("u1", NOMBRE, copia(estado=estado, devueltos=2))
+    viejo = json.dumps({"copia": True, "estado": "corriendo", "paso": "editar"})
+    assert db.fijar_editar_si_corriendo("u1", NOMBRE, viejo) is False
+    d = estado_de(base, "u1", NOMBRE)["editar"]
+    assert d["estado"] == estado and d["devueltos"] == 2
+
+
+def test_fijar_editar_si_corriendo_dice_false_si_el_proyecto_no_existe_o_es_de_otro(base):
+    db.crear_copia_editor("u1", NOMBRE, copia())
+    assert db.fijar_editar_si_corriendo("u2", NOMBRE, "{}") is False
+    assert db.fijar_editar_si_corriendo("u1", "no_existe", "{}") is False
+
+
+def test_fijar_paso_cambia_solo_el_paso(base):
+    db.crear_copia_editor("u1", NOMBRE, copia(paso="entender", instruccion="Quita silencios", creditos=8))
+    assert db.fijar_paso_editor("u1", NOMBRE, "vista") is True
+    d = estado_de(base, "u1", NOMBRE)["editar"]
+    assert d["paso"] == "vista" and d["instruccion"] == "Quita silencios" and d["creditos"] == 8
+    assert d["estado"] == "corriendo"
+
+
+@pytest.mark.parametrize("estado", ["error", "listo"])
+def test_fijar_paso_no_toca_una_corrida_cerrada(base, estado):
+    db.crear_copia_editor("u1", NOMBRE, copia(estado=estado, paso="editar"))
+    assert db.fijar_paso_editor("u1", NOMBRE, "vista") is False
+    assert estado_de(base, "u1", NOMBRE)["editar"]["paso"] == "editar"
+
+
+def test_fijar_paso_solo_acepta_los_tres_pasos_de_verdad(base):
+    db.crear_copia_editor("u1", NOMBRE, copia())
+    for malo in ("", "render", "ENTENDER", None, "entender'); DROP TABLE x;--"):
+        with pytest.raises(ValueError):
+            db.fijar_paso_editor("u1", NOMBRE, malo)
+    assert not any("DROP" in s for s in base.sentencias)
+
+
+def test_el_sql_de_fijar_paso_esta_condicionado_a_corriendo(base):
+    db.fijar_paso_editor("u1", NOMBRE, "editar")
+    sql = " ".join(base.sentencias[-1].split())
+    assert "doc #>> '{editar,estado}' = 'corriendo'" in sql and "jsonb_set(doc, '{editar,paso}'" in sql
+    assert sql.endswith("RETURNING nombre")
+
+
+# -- devoluciones_pendientes (D-04): el abono que el API no pudo hacer
+
+def test_devoluciones_pendientes_trae_solo_lo_que_el_api_quedo_debiendo(base):
+    db.crear_copia_editor("u1", "ed-debe", copia(estado="error", devolucion_pendiente=2, devolucion_api=True))
+    db.crear_copia_editor("u1", "ed-barredor", copia(estado="corriendo", devolucion_pendiente=2))     # lo cierra el barredor
+    db.crear_copia_editor("u1", "ed-saldado", copia(estado="error", devueltos=2))
+    db.crear_copia_editor("u2", "ed-ajena", copia(estado="error", devolucion_pendiente=2, devolucion_api=True))
+    filas = db.devoluciones_pendientes("u1")
+    assert [f["nombre"] for f in filas] == ["ed-debe"]
+    assert filas[0]["editar"]["devolucion_pendiente"] == 2

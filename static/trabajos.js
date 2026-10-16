@@ -212,7 +212,7 @@
         `<li class="${p.estado}"${p.estado === 'actual' ? ' aria-current="step"' : ''}>` +
         `<span class="pn" aria-hidden="true">${p.estado === 'hecho' ? '✓' : i + 1}</span>${esc(p.texto)}` +
         `<span class="sr-only"> (${p.estado === 'hecho' ? 'hecho' : p.estado === 'actual' ? 'en curso' : 'pendiente'})</span></li>`).join('');
-      return `<div class="bj-item corriendo ed">${ico(icon)}${cabeza}` +
+      return `<div class="bj-item corriendo ed" data-k="${esc(t.id)}">${ico(icon)}${cabeza}` +
         (t.detalle ? `<div class="bj-sub">${esc(t.detalle)}</div>` : '') +
         (ed.pedido ? `<div class="bj-sub bj-pedido">Pediste: ${esc(ed.pedido)}</div>` : '') +
         `<ul class="pasos" aria-label="Pasos">${pasos}</ul>` +
@@ -220,7 +220,7 @@
     }
     if (t.estado === 'listo') {
       const verEditor = ed.enlace && ed.enlace.url ? `<a class="bj-ver" href="${esc(ed.enlace.url)}">${esc(ed.enlace.texto || 'Abrir el editor')}</a>` : '';
-      return `<div class="bj-item listo ed">${ico(icon)}${cabeza}` +
+      return `<div class="bj-item listo ed" data-k="${esc(t.id)}">${ico(icon)}${cabeza}` +
         ((ed.resumen || t.detalle) ? `<div class="bj-sub">${esc(ed.resumen || t.detalle)}</div>` : '') +
         `<div class="bj-sub">${LINEA_LISTO}</div><div class="bj-acc">${verEditor}${cerrar}</div></div>`;
     }
@@ -231,7 +231,7 @@
     const r = e.reintentar;
     const reintentar = r && r.ruta
       ? `<button class="bj-bt" type="button" data-reintentar="${esc(r.ruta)}"${r.creditos ? ` data-creditos="${esc(r.creditos)}"` : ''}>${esc(r.texto || 'Reintentar')}</button>` : '';
-    return `<div class="bj-item error ed" role="alert">${ico(icon)}${cabeza}<dl class="bj-tres">${partes}</dl><div class="bj-acc">${reintentar}${cerrar}</div></div>`;
+    return `<div class="bj-item error ed" data-k="${esc(t.id)}" role="alert">${ico(icon)}${cabeza}<dl class="bj-tres">${partes}</dl><div class="bj-acc">${reintentar}${cerrar}</div></div>`;
   }
 
   // «Llevas m:ss»: un reloj de 1 s con textContent, sin repintar nada. Vive solo mientras haya una copia corriendo a la vista
@@ -247,6 +247,21 @@
     else if (!hay && relojLlevas) { clearInterval(relojLlevas); relojLlevas = null; }
   }
 
+  // El servidor aceptó el reintento y COBRÓ (INT-02). La bandeja no es la única que lo tiene que saber: la píldora del saldo no sondea y
+  // Mis creaciones solo vuelve a leer sus listas mientras algo corra en la SUYA (que decía «No se pudo editar»), así que las dos se
+  // quedaban viejas hasta recargar. El saldo se pone al día aquí; la pantalla se entera por `trabajos:lanzado` (Inicio relee sus listas);
+  // y el «−N» vuela del botón a la píldora con lo que cobró el servidor (monedero.js lo escucha como el de «Iniciar»).
+  async function reintentoAceptado(boton, ruta, r) {
+    let costo = Number(boton.dataset.creditos) || 0;
+    try { const d = await r.json(); if (d && Number(d.creditos) > 0) costo = Number(d.creditos); } catch (err) { /* sin cuerpo legible: el precio de la ficha */ }
+    try { if (window.monedero && typeof window.monedero.refrescar === 'function') window.monedero.refrescar(); } catch (err) { /* sin monedero */ }
+    try { window.dispatchEvent(new CustomEvent('trabajos:lanzado', { detail: { ruta } })); } catch (err) { /* nunca romper la bandeja */ }
+    try {
+      const c = boton.getBoundingClientRect();
+      if (costo > 0) window.dispatchEvent(new CustomEvent('cobro', { detail: { costo, rect: { x: c.left, y: c.top, ancho: c.width, alto: c.height } } }));
+    } catch (err) { /* sin animación: el saldo ya se actualiza */ }
+  }
+
   // «Reintentar»: misma copia, cobra otra vez (el servidor decide el precio y devuelve si no puede lanzar). El fetch envuelto de abajo
   // ya vuelve a preguntar por los trabajos 2 s después de un POST que sale bien. Sin saldo (402): «Te faltan ✦ N ·» con su «Recargar»
   async function reintentar(boton) {
@@ -256,7 +271,7 @@
     boton.setAttribute('aria-disabled', 'true');
     try {
       const r = await fetch(ruta, { method: 'POST' });
-      if (r.ok) { refrescar(); return; }
+      if (r.ok) { reintentoAceptado(boton, ruta, r); refrescar(); return; }
       let detalle = '';
       try { const d = await r.json(); detalle = d && typeof d.detail === 'string' ? d.detail : ''; } catch (err) { /* sin cuerpo legible */ }
       if (r.status === 402) {
@@ -290,32 +305,69 @@
       : `<div class="bj-barra"><i style="width:${Math.max(3, Math.min(100, +t.progreso || 0))}%"></i></div>`;
     const ver = !t.url ? '' : `<a class="bj-ver" href="${esc(t.url)}">${t.estado === 'error' ? 'Ver qué pasó' : 'Ver'}</a>`;
     const cerrar = t.estado === 'corriendo' ? '' : `<button class="bj-ic" type="button" data-cerrar="${esc(t.id)}" aria-label="Cerrar este aviso">${ico('cerrar')}</button>`;
-    return `<div class="bj-item ${cls}">${ico(icon)}<div class="bj-tit">${esc(t.titulo)}</div>${sub ? `<div class="bj-sub">${sub}</div>` : ''}${barra}${ver}${cerrar}</div>`;
+    return `<div class="bj-item ${cls}" data-k="${esc(t.id)}">${ico(icon)}<div class="bj-tit">${esc(t.titulo)}</div>${sub ? `<div class="bj-sub">${sub}</div>` : ''}${barra}${ver}${cerrar}</div>`;
+  }
+
+  // --- repintar sin tirar lo que no cambió ---
+  // Deja el DOM de `destino` igual al de `fuente` tocando solo lo que difiere. Los nodos con la misma clave (`data-k`: cada ficha, cada aviso,
+  // la caja abierta o la píldora) se conservan y se acomodan; los demás se comparan por posición y tipo. Un nodo que se conserva mantiene su
+  // foco, su selección y, si es un `role="alert"`, no se vuelve a anunciar.
+  const CONSERVAR = ['aria-busy', 'aria-disabled'];   // los pone «Reintentar» mientras su POST está en el aire: no vienen en el HTML
+  const claveDe = n => (n.nodeType === 1 ? n.getAttribute('data-k') : null);
+  function igualarAtributos(vivo, nuevo) {
+    for (const a of Array.from(vivo.attributes)) if (!nuevo.hasAttribute(a.name) && !CONSERVAR.includes(a.name)) vivo.removeAttribute(a.name);
+    for (const a of Array.from(nuevo.attributes)) if (vivo.getAttribute(a.name) !== a.value) vivo.setAttribute(a.name, a.value);
+  }
+  function igualar(vivo, nuevo) {
+    if (vivo.nodeType !== 1) { if (vivo.data !== nuevo.data) vivo.data = nuevo.data; return; }
+    igualarAtributos(vivo, nuevo);
+    if (vivo.hasAttribute('data-llevas')) return;    // su texto es de un reloj aparte (afinarReloj): lo que viene aquí va vacío
+    igualarHijos(vivo, nuevo);
+  }
+  function igualarHijos(destino, fuente) {
+    const nuevos = Array.from(fuente.childNodes);
+    const vivosPorClave = new Map();
+    for (const h of Array.from(destino.childNodes)) { const k = claveDe(h); if (k) vivosPorClave.set(k, h); }
+    nuevos.forEach((nuevo, i) => {
+      const k = claveDe(nuevo);
+      const enSuLugar = destino.childNodes[i] || null;
+      // el nodo vivo que le toca: el de su misma clave; sin clave, el que ya está en su lugar si es del mismo tipo y tampoco la tiene
+      const vivo = k ? vivosPorClave.get(k)
+        : enSuLugar && !claveDe(enSuLugar) && enSuLugar.nodeType === nuevo.nodeType && enSuLugar.nodeName === nuevo.nodeName ? enSuLugar : null;
+      if (!vivo) { destino.insertBefore(nuevo, enSuLugar); return; }
+      if (vivo !== enSuLugar) destino.insertBefore(vivo, enSuLugar);
+      igualar(vivo, nuevo);
+    });
+    while (destino.childNodes.length > nuevos.length) destino.lastChild.remove();
   }
 
   function pintar() {
     const lista = todos();
     const r = resumen(lista);
     let html = avisos.map(a =>
-      `<div class="bj-caja bj-aviso ${a.tipo}" role="${a.tipo === 'mal' ? 'alert' : 'status'}">` +
+      `<div class="bj-caja bj-aviso ${a.tipo}" data-k="a${a.id}" role="${a.tipo === 'mal' ? 'alert' : 'status'}">` +
       `${ico(a.tipo === 'mal' ? 'aviso' : a.tipo === 'info' ? 'sinred' : 'listo')}<span>${esc(a.texto)}</span>` +
       (a.accion ? `<button class="btn btn-sec" type="button" data-accion="${a.id}">${esc(a.accion.texto)}</button>` : '') +
       `<button class="bj-ic" type="button" data-quitar="${a.id}" aria-label="Cerrar aviso">${ico('cerrar')}</button></div>`).join('');
     if (lista.length && abierto) {
-      html += `<div class="bj-caja" role="region" aria-label="Tus trabajos"><div class="bj-cab"><b>Tus trabajos</b>` +
+      html += `<div class="bj-caja" data-k="region" role="region" aria-label="Tus trabajos"><div class="bj-cab"><b>Tus trabajos</b>` +
         `<span class="n">${esc(r.texto)}</span><button class="bj-ic" type="button" data-plegar aria-expanded="true" aria-label="Plegar tus trabajos">${ico('menos')}</button></div>` +
         `<div class="bj-lista">${lista.map(item).join('')}</div></div>`;
     } else if (lista.length) {
       const tono = r.curso ? '' : r.fallos ? 'error' : 'listo';
       const icon = r.curso ? 'espera' : r.fallos ? 'aviso' : 'listo';
-      html += `<button class="bj-caja bj-pildora ${tono}" type="button" data-abrir aria-expanded="false" aria-label="${esc(r.pildora)}: abrir tus trabajos">` +
+      html += `<button class="bj-caja bj-pildora ${tono}" data-k="pildora" type="button" data-abrir aria-expanded="false" aria-label="${esc(r.pildora)}: abrir tus trabajos">` +
         `${ico(icon)}<span>${esc(r.pildora)}</span>` +
         (r.avance != null ? `<span class="mini" aria-hidden="true"><i style="width:${r.avance}%"></i></span>` : '') +
         `<span class="flecha" aria-hidden="true">${ico('enviar')}</span></button>`;
     }
-    // lo mismo de antes no se vuelve a pintar: repintar suelta el foco de quien esté en el cuadro y un `role="alert"` se volvería a anunciar
+    // lo mismo de antes no se vuelve a pintar; y lo que cambia se pone al día EN SU SITIO (igualarHijos), sin reemplazar lo que no cambió:
+    // repintar todo con `innerHTML` soltaba el foco de quien estuviera en «Reintentar» y volvía a insertar el `role="alert"` de un error
+    // que no cambió (el lector de pantalla lo repetía) cada vez que OTRA ficha cambiaba de progreso
     if (html !== ultimoHtml) {
-      raiz.innerHTML = html;
+      const plantilla = document.createElement('template');
+      plantilla.innerHTML = html;
+      igualarHijos(raiz, plantilla.content);
       ultimoHtml = html;
     }
     raiz.hidden = !html;

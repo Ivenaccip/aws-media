@@ -318,11 +318,13 @@ export function HojaVideos({ abierto, alCambiar, enCaja, alUsar, alElegirArchivo
         etiqueta="De dónde vienen"
         alCambiar={id => setPestana(id === 'computadora' ? 'computadora' : 'creaciones')}
         pestanas={[
-          { id: 'creaciones', titulo: 'Mis creaciones', contenido: <div className="max-h-[min(56vh,500px)] overflow-y-auto pr-1">{cuerpoCreaciones}</div> },
+          { id: 'creaciones', titulo: 'Mis creaciones', contenido: <div className="max-h-[clamp(120px,calc(100dvh-392px),500px)] overflow-y-auto pr-1 min-[640px]:max-h-[clamp(120px,calc(100dvh-290px),500px)]">{cuerpoCreaciones}</div> },
           { id: 'computadora', titulo: 'Mi computadora', contenido: cuerpoComputadora },
         ]}
       />
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-linea pt-3">
+      {/* El pie se queda a la vista: la lista cede alto antes que nadie (ver arriba) y, si aun así la hoja no cabe en la ventana —un teléfono de
+          lado—, la hoja se desplaza por dentro y «Usar» sigue pegado abajo. `-mx-6 -mb-6` y `px-6 pb-6` lo estiran sobre el margen de la hoja */}
+      <div className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-linea bg-superficie px-6 pt-3 pb-6">
         <div id={idPie} role="status" className="min-w-0 flex-1 basis-56 text-xs text-secundario tabular-nums">
           <span>{pie.texto}</span>
           {pie.alerta && (
@@ -332,7 +334,7 @@ export function HojaVideos({ abierto, alCambiar, enCaja, alUsar, alElegirArchivo
             </span>
           )}
         </div>
-        <span className="flex w-full flex-col gap-3 min-[640px]:w-auto min-[640px]:flex-row">
+        <span className="ml-auto flex w-full flex-col gap-3 min-[640px]:w-auto min-[640px]:flex-row [@media(max-height:480px)]:w-auto [@media(max-height:480px)]:flex-row">
           <Boton nivel="secundario" onClick={() => cerrar(false)}>
             Cancelar
           </Boton>
@@ -381,7 +383,9 @@ function Tarjeta({
         className={unir(
           'relative block aspect-video w-full overflow-hidden rounded-medio border-2 bg-elevada p-0',
           marcado ? 'border-ambar-claro' : 'border-linea',
-          apagado ? 'cursor-default' : 'cursor-pointer hover:border-campo',
+          // lo marcado NO cambia de borde al pasar el ratón: `hover:border-campo` le ganaba al ámbar mientras el puntero seguía encima
+          // (justo después de pulsar) y la selección parecía no haber ocurrido. Como en Biblioteca
+          apagado ? 'cursor-default' : unir('cursor-pointer', !marcado && 'hover:border-campo'),
         )}
       >
         <span className={unir('grid size-full place-items-center text-secundario', apagado && 'opacity-40')}>

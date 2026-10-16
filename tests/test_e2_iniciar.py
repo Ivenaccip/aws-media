@@ -68,6 +68,7 @@ def test_el_orden_es_el_contrato(cliente, mundo):
         ("corriendo",),                                 # 6 · ¿hay otra corrida?
         ("reservar", "ed-9f1c0a7b", True),              # 8 · ahora sí se aparta
         ("crear", "ed-9f1c0a7b"),                       # 9 · el candado: el INSERT, ANTES de cobrar
+        ("corriendo",),                                 # 9b · insertar y LUEGO mirar: ¿entró otra pestaña también?
         ("cobrar", tarifa("edicion"), REF_DINERO),      # 10 · cobrar
         ("fijar", "ed-9f1c0a7b", "editar", "corriendo", True),    # 11 · anotar el cobro
         ("lanzar", "ed-9f1c0a7b"),                      # 12 · lanzar
@@ -706,8 +707,11 @@ def test_el_catalogo_es_el_de_la_seccion_3_8_del_contrato_tal_cual():
     for codigo, esperado in CATALOGO.items():
         assert edicion_api.ERRORES[codigo] == esperado, codigo
         assert edicion_api.status_de(codigo) == esperado[0]
-    # y lo único que el contrato no lista son las tres de apoyo
-    assert set(edicion_api.ERRORES) - set(CATALOGO) == {"ref_mal", "sin_nombre", "no_es_copia"}
+    # y lo único que el contrato no lista son las de apoyo
+    assert set(edicion_api.ERRORES) - set(CATALOGO) == {
+        "ref_mal", "sin_nombre", "no_es_copia",
+        # Ajustes 2: cuando el abono no se pudo hacer ahora, el texto no dice «se devolvió»
+        "no_se_pudo_lanzar_pendiente", "sin_capacidad_pendiente", "devolucion_en_curso"}
 
 
 def test_el_saldo_usa_el_texto_de_siempre_de_creditos():

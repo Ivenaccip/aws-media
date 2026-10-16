@@ -69,7 +69,12 @@ describe('por qué un video no se puede elegir', () => {
     expect(motivoHoja(larga, [], [])).toEqual({ codigo: 'larga', texto: 'Dura 130 min · máximo 90 min', aparte: true });
     // justo 90 min sí cabe
     expect(texto(elegible({ duracion_s: 5400 }))).toBeNull();
-    expect(texto(elegible({ duracion_s: 5401 }))).toBe('Dura 90 min · máximo 90 min');
+    // un poco más de 90 min redondea a 90: «Dura 90 min · máximo 90 min» no se entiende. Se dice 91, como el servidor (`larga`)
+    expect(texto(elegible({ duracion_s: 5401 }))).toBe('Dura 91 min · máximo 90 min');
+    expect(texto(elegible({ duracion_s: 5429 }))).toBe('Dura 91 min · máximo 90 min');
+    expect(texto(elegible({ duracion_s: 5431 }))).toBe('Dura 91 min · máximo 90 min');
+    expect(texto(elegible({ duracion_s: 5490 }))).toBe('Dura 92 min · máximo 90 min'); // 91,5 → 92
+    expect(texto(elegible({ duracion_s: 7800 }))).toBe('Dura 130 min · máximo 90 min'); // lo de siempre no cambia
     // 2. copia > 3. en curso > 4. sin metraje > 5. midiendo: los cuatro del servidor, también aparte
     expect(motivoHoja(elegible({ es_copia: true, motivo: 'es_copia' }), [], [])).toEqual({ codigo: 'es_copia', texto: 'Ya es una edición · ábrela en su editor', aparte: true });
     expect(motivoHoja(elegible({ motivo: 'en_curso' }), [], [])).toEqual({ codigo: 'en_curso', texto: 'Se está editando ahora', aparte: true });
@@ -118,6 +123,8 @@ describe('por qué un video no se puede elegir', () => {
   it('usa los límites que manda el servidor, no los de respaldo', () => {
     const lim = { max_s: 3600, min_solo_s: 30, max_videos: 3, max_bytes: 2 * 1024 ** 3 };
     expect(motivoHoja(elegible({ duracion_s: 3700 }), [], [], lim)?.texto).toBe('Dura 62 min · máximo 60 min');
+    // el piso sigue al TOPE que manda el servidor, no a un 90 fijo: 3601 s redondea a 60 y se dice 61
+    expect(motivoHoja(elegible({ duracion_s: 3601 }), [], [], lim)?.texto).toBe('Dura 61 min · máximo 60 min');
     expect(motivoHoja(elegible({ duracion_s: 1900 }), [ficha({ duracion_s: 1900 })], [], lim)?.texto).toBe('Se pasa de 60 min');
     expect(motivoHoja(elegible({ duracion_s: 10 }), [ficha(), ficha(), ficha()], [], lim)?.texto).toBe('Ya son 3 videos · es el máximo');
     expect(motivoHoja(elegible({ bytes: 2 * 1024 ** 3 }), [ficha({ bytes: 1 })], [], lim)?.texto).toBe('Pesan demasiado juntos · máximo 2 GB');

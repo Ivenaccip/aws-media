@@ -83,6 +83,10 @@ class Mundo:
         self.reclamo_pierde = False
         self.devolver_falla = 0                      # cuántos intentos de devolver fallan antes de pasar
         self.monedero = True
+        self.libro: list[dict] = []                  # libro mayor del monedero, el más reciente primero
+        self.reabrir_choca = False                   # reabrir un doc en `error` choca con el índice único
+        self.cierra_antes_del_paso: str | None = None   # alguien cierra la corrida justo antes de este paso
+        self.disco_libre = 1 << 40                   # lo que "queda libre" en el disco del worker
         self.esperas: list[float] = []
         self.proxys: list[Path] = []
         mp = monkeypatch
@@ -99,11 +103,17 @@ class Mundo:
         mp.setattr(db, "cargar_proyecto_editor", self._cargar)
         mp.setattr(db, "fijar_campo_editor", self._fijar)
         mp.setattr(db, "reclamar_fallo_editor", self._reclamar)
+        mp.setattr(db, "fijar_paso_editor", self._fijar_paso)
+        mp.setattr(db, "movimientos_creditos", lambda user, limite=20: list(self.libro)[:limite])
         # monedero
         mp.setattr(creditos, "activo", lambda: self.monedero)
         mp.setattr(creditos, "devolver", self._devolver)
         mp.setattr(costes_infra, "registrar", lambda *a, **k: self.eventos.append(("infra", a[2])))
         mp.setattr(editar_copia.time, "sleep", self.esperas.append)
+        # el disco del worker es de mentira: `_entender` exige los clips + 1 GiB libres, y esa
+        # comprobación no puede depender de cuánto disco le quede a la máquina que corre las pruebas
+        mp.setattr(editar_copia.shutil, "disk_usage",
+                   lambda p: SimpleNamespace(total=1 << 41, used=1 << 40, free=self.disco_libre))
         # ffmpeg, ASR y LLM
         mp.setattr(editar_copia, "_medir_clip", self._medir)
         mp.setattr(editar_copia, "_extraer_wav", self._extraer_wav)
@@ -155,6 +165,7 @@ class Mundo:
                        "n_videos": n, "formato": "horizontal", "duracion_entrada_s": 0,
                        "fuentes": fuentes}}
         self.docs[(USER, COPIA)] = doc
+        self.libro.insert(0, {"creditos": -creditos_, "tipo": "cargo", "referencia": f"editar-sugerir:{COPIA}"})
         return doc
 
     def romper(self, fase: str, clave=None, exc: Exception | None = None) -> None:
@@ -226,10 +237,30 @@ class Mundo:
 
     def _fijar(self, user, nombre, campo, valor):
         v = json.loads(valor)
+        if (campo == "editar" and self.reabrir_choca and v.get("estado") == "corriendo"
+                and self.docs[(user, nombre)]["editar"].get("estado") == "error"):
+            # el índice parcial `proyectos_editor_copia_en_curso`: la persona ya lanzó otra copia
+            raise RuntimeError('duplicate key value violates unique constraint '
+                               '"proyectos_editor_copia_en_curso"')
         self.docs[(user, nombre)][campo] = v
         self.eventos.append((campo, deepcopy(v)))
         if campo == "editar" and self.al_escribir_editar:
             self.al_escribir_editar(v)
+
+    def _fijar_paso(self, user, nombre, paso):
+        """`db.fijar_paso_editor`: cambia SOLO `editar.paso` y solo si la corrida sigue `corriendo`."""
+        editar = self.docs[(user, nombre)]["editar"]
+        if self.cierra_antes_del_paso == paso:       # entre la lectura y la escritura la cierran
+            editar.update(estado="error", devueltos=editar.get("creditos"), error="caducada")
+        if editar.get("estado") != "corriendo":
+            self.eventos.append(("paso", paso, "perdido"))
+            return False
+        editar["paso"] = paso
+        self.eventos.append(("paso", paso))
+        self.eventos.append(("editar", deepcopy(editar)))      # lo que la bandeja vería
+        if self.al_escribir_editar:
+            self.al_escribir_editar(deepcopy(editar))
+        return True
 
     def _reclamar(self, user, nombre, campo, mensaje):
         doc = self.docs[(user, nombre)]
@@ -245,6 +276,7 @@ class Mundo:
             self.devolver_falla -= 1
             raise RuntimeError("el monedero no respondió")
         self.abonos.append((n, ref, user))
+        self.libro.insert(0, {"creditos": n, "tipo": "devolucion", "referencia": ref})
         self.eventos.append(("devolver", n, ref))
 
     # -- ffmpeg / ASR / LLM --------------------------------------------------
@@ -773,22 +805,34 @@ def test_los_videos_que_pesan_mas_de_15_gb_en_total_no_se_bajan(mundo):
     assert mundo.de("bajar") == [] and mundo.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
 
 
-def test_si_no_cabe_en_el_disco_se_dice_antes_de_bajar(mundo, monkeypatch):
+def test_si_no_cabe_en_el_disco_se_dice_antes_de_bajar(mundo):
     mundo.iniciar(_tres(mundo))
-    monkeypatch.setattr(editar_copia.shutil, "disk_usage",
-                        lambda p: SimpleNamespace(total=10, used=10, free=0))
+    mundo.disco_libre = 0
     assert mundo.correr() == 1
     assert "disco" in mundo.doc["editar"]["error"] and mundo.de("bajar") == []
 
 
-def test_horizontales_con_verticales_se_rechazan_aunque_el_api_no_lo_notara(mundo):
-    m = mundo
-    m.proyecto_ajeno_o_propio("entrevista")
-    m.iniciar([m.fuente(1, "h", "videos/entrevista/subidas/a.mp4", w=1280, h=720),
-               m.fuente(2, "v", "videos/entrevista/subidas/b.mp4", w=720, h=1280)])
-    assert m.correr() == 1
-    assert "no se mezclan" in m.doc["editar"]["error"]
-    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)] and m.de("llm") == []
+@pytest.mark.parametrize("sobra,sale", [(-1, 1), (0, 0)], ids=["un_byte_menos", "justo"])
+def test_el_umbral_del_disco_es_el_peso_de_los_clips_mas_la_holgura(mundo, sobra, sale):
+    """Fija el umbral sin depender de la máquina: con un byte menos de (clips + 1 GiB) falla antes
+    de bajar nada; con justo eso, trabaja."""
+    mundo.iniciar(_tres(mundo))
+    peso = 3 * 1024 ** 2
+    for c in ("c01", "c02", "c03"):
+        mundo.tamanos[PREFIJO + f"clips/{c}.mp4"] = peso
+    mundo.disco_libre = 3 * peso + editar_copia.HOLGURA_DISCO + sobra
+    assert mundo.correr() == sale
+    if sale:
+        assert "disco" in mundo.doc["editar"]["error"] and mundo.de("bajar") == []
+    else:
+        assert mundo.doc["editar"]["estado"] == "listo"
+
+
+def test_el_disco_que_ve_el_worker_es_el_del_mundo_y_no_el_de_la_maquina(mundo, tmp_path):
+    """MV-05: la comprobación de espacio de `_entender` miraba el disco REAL de quien corre las
+    pruebas, y con menos de ~1 GiB libre fallaban 41 de este archivo sin que el código tuviera nada."""
+    libre = editar_copia.shutil.disk_usage(tmp_path).free
+    assert libre == mundo.disco_libre == 1 << 40
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +950,73 @@ def test_si_el_monedero_no_responde_nunca_la_corrida_se_reabre_para_el_barredor(
     assert mundo.doc["editar"]["devueltos"] == 8 and "devolucion_pendiente" not in mundo.doc["editar"]
 
 
+def test_si_reabrir_choca_con_el_indice_la_deuda_queda_anotada_y_el_barredor_la_cobra(mundo):
+    """D-08 (a). Mientras el monedero falla (≈4 s de esperas) la persona lanza OTRA copia; el índice
+    único `proyectos_editor_copia_en_curso` rechaza reabrir esta. Antes el UPDATE levantaba sin try:
+    el doc quedaba en `error` SIN `devueltos` y SIN marca, y el barredor ya no podía reclamarlo. Ahora
+    el doc se queda en `error` con la deuda anotada y el evento FAILED del worker la cobra."""
+    from worker import barredor
+    m = mundo
+    m.iniciar(_tres(m), creditos_=8)
+    m.romper("proxy")
+    m.devolver_falla = 99
+    m.reabrir_choca = True
+    assert m.correr() == 1                                  # ya no revienta con la excepción del índice
+    final = m.doc["editar"]
+    assert final["estado"] == "error" and final["devolucion_pendiente"] == 8
+    assert "devueltos" not in final and m.abonos == []
+    # el evento FAILED: el reclamo ya no es posible (no está corriendo), pero la deuda se cobra
+    m.devolver_falla = 0
+    r = barredor.barrer(_evento_del_worker())
+    assert r == {"accion": "devuelto", "creditos": 8, "proyecto": COPIA}
+    assert m.abonos == [(8, f"editar-sugerir:{COPIA}", USER)]
+    final = m.doc["editar"]
+    assert final["estado"] == "error" and final["devueltos"] == 8 and "devolucion_pendiente" not in final
+    assert barredor.barrer(_evento_del_worker())["accion"] == "nada" and len(m.abonos) == 1
+
+
+def test_si_ni_la_marca_se_puede_escribir_no_se_revienta_ni_se_inventa_una_devolucion(mundo, monkeypatch):
+    """Doble fallo sobre el doble fallo (Postgres caído): se avisa en el log y se sale con 1."""
+    m = mundo
+    m.iniciar(_tres(m), creditos_=8)
+    m.romper("proxy")
+    m.devolver_falla = 99
+    escritos = []
+
+    def fijar(user, nombre, campo, valor):
+        escritos.append(json.loads(valor)["estado"])
+        raise RuntimeError("Postgres no responde")
+    monkeypatch.setattr(db, "fijar_campo_editor", fijar)
+    assert m.correr() == 1
+    assert escritos == ["corriendo", "error"] and m.abonos == []
+
+
+def test_cada_paso_se_escribe_con_fijar_paso_editor_y_no_reescribiendo_el_doc(mundo):
+    """Cambia SOLO `editar.paso` y solo si la corrida sigue `corriendo` (UPDATE condicionado)."""
+    mundo.iniciar(_tres(mundo))
+    assert mundo.correr() == 0
+    assert [e[1] for e in mundo.de("paso")] == ["entender", "editar", "vista"]
+
+
+@pytest.mark.parametrize("paso", ["entender", "editar", "vista"])
+def test_si_la_cierran_justo_antes_de_escribir_un_paso_no_se_revive_ni_se_devuelve(mundo, paso):
+    """La ventana entre leer `corriendo` y escribir: la caducidad (o el barredor) cierra y devuelve
+    ella. Con `fijar_paso_editor` condicionado la escritura NO ocurre: la corrida se detiene sin
+    revivir el doc, sin reclamar y sin devolver otra vez."""
+    m = mundo
+    m.iniciar(_tres(m), creditos_=8)
+    m.cierra_antes_del_paso = paso
+    assert m.correr() == 0
+    final = m.doc["editar"]
+    assert final["estado"] == "error" and final["error"] == "caducada" and final["devueltos"] == 8
+    assert m.abonos == [] and m.de("reclamo") == []
+    assert ("paso", paso, "perdido") in m.eventos
+    if paso == "entender":
+        assert m.de("copiar") == [] and m.de("proxy") == []
+    if paso != "vista":
+        assert m.de("proxy") == [] and "flags" not in m.doc
+
+
 def test_sin_monedero_no_se_devuelve_ni_se_promete(mundo):
     mundo.monedero = False
     mundo.iniciar(_tres(mundo))
@@ -987,10 +1098,8 @@ def test_una_sola_sugerencia_basta_para_no_devolver_con_un_video(mundo):
     assert m.correr() == 0 and m.abonos == []
 
 
-def test_si_el_abono_de_cero_sugerencias_falla_la_copia_sigue_entregada_y_no_se_reclama(mundo):
-    """Ya quedó `listo` ANTES de tocar el monedero: el `except` no puede reclamar ni devolver el
-    monto completo después de que el abono parcial salió (doble devolución)."""
-    m = mundo
+def _copia_vacia_de_un_video(m: Mundo) -> None:
+    """Un video con transcript al que el LLM no le encuentra nada que cortar."""
     m.original("videos/entrevista/subidas/a.mp4")
     m.objetos["videos/entrevista/work/transcripts/a.canonical.json"] = {
         "cuerpo": json.dumps(_canonico("a", 90.0)).encode(), "etag": '"c"', "mod": "x"}
@@ -998,11 +1107,56 @@ def test_si_el_abono_de_cero_sugerencias_falla_la_copia_sigue_entregada_y_no_se_
     m.iniciar([m.fuente(1, "a", "videos/entrevista/subidas/a.mp4", dur=90.0,
                         canonico_key="videos/entrevista/work/transcripts/a.canonical.json")])
     m.llm_por_defecto = deepcopy(SIN_SUGERENCIAS)
+
+
+def _evento_del_worker(startDate=None) -> dict:
+    """El evento FAILED de EventBridge de la ejecución de esta copia."""
+    e = {"status": "FAILED", "input": json.dumps({
+        "user_id": USER, "proyecto_id": COPIA, "command": ["python", "-m", "worker.editar_task", USER, COPIA]})}
+    if startDate is not None:
+        e["startDate"] = startDate
+    return e
+
+
+def test_si_el_abono_de_cero_sugerencias_falla_la_copia_sigue_entregada_y_no_se_reclama(mundo):
+    """Ya quedó `listo` ANTES de tocar el monedero: el `except` no puede reclamar ni devolver el
+    monto completo después de que el abono parcial salió (doble devolución)."""
+    m = mundo
+    _copia_vacia_de_un_video(m)
     m.devolver_falla = 99
-    assert m.correr() == 0
+    # D-08 (b): sale con 1 PORQUE quedó una deuda sin cobrar. La ejecución muere FAILED y su evento
+    # llega al barredor, que la cobra: sin esto nadie leía `devolucion_pendiente` (la copia ya está
+    # `listo` y no hay otra ejecución caída que la cierre).
+    assert m.correr() == 1
     final = m.doc["editar"]
     assert final["estado"] == "listo" and final["devolucion_pendiente"] == 2 and "devueltos" not in final
     assert m.abonos == [] and m.de("reclamo") == []
+
+
+def test_la_deuda_de_cero_sugerencias_la_cobra_el_barredor_con_el_evento_del_worker(mundo):
+    """D-08 (b), de punta a punta con los dobles del Mundo: el worker deja la deuda anotada, sale
+    con 1, y el barredor — con su propio monedero, que sí responde — abona UNA vez y la copia sigue
+    entregada (`listo`) con `devueltos` y sin la marca."""
+    from worker import barredor
+    m = mundo
+    _copia_vacia_de_un_video(m)
+    m.devolver_falla = 99
+    assert m.correr() == 1
+    m.devolver_falla = 0
+    r = barredor.barrer(_evento_del_worker())
+    assert r == {"accion": "devuelto", "creditos": 2, "proyecto": COPIA}
+    assert m.abonos == [(2, f"editar-sugerir:{COPIA}", USER)]
+    final = m.doc["editar"]
+    assert final["estado"] == "listo" and final["devueltos"] == 2 and "devolucion_pendiente" not in final
+    assert barredor.barrer(_evento_del_worker())["accion"] == "nada" and len(m.abonos) == 1
+
+
+def test_cero_sugerencias_con_el_abono_hecho_sale_con_0(mundo):
+    """El camino feliz no cambia: si el abono sale, la ejecución termina bien."""
+    m = mundo
+    _copia_vacia_de_un_video(m)
+    assert m.correr() == 0
+    assert m.doc["editar"]["devueltos"] == 2 and "devolucion_pendiente" not in m.doc["editar"]
 
 
 # ---------------------------------------------------------------------------

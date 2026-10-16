@@ -307,6 +307,26 @@ describe('la hoja «Agregar videos»: marcar, numerar y apagar', () => {
     expect(h.getByRole('button', { name: 'Usar 2 videos' })).not.toHaveAttribute('aria-disabled');
   });
 
+  it('inicio.hojavideos.un_video_marcado_conserva_su_borde_ambar_al_pasar_el_raton', async () => {
+    montar();
+    render(<Montaje />);
+    const h = await abierta();
+    const sinMarcar = video(h, 'Cómo edito mis videos');
+    // lo que se puede marcar cambia de borde al pasar el ratón...
+    expect(sinMarcar).toHaveClass('hover:border-campo');
+    expect(sinMarcar).toHaveClass('border-linea');
+    await userEvent.click(sinMarcar);
+    // ...pero lo MARCADO no: `hover:border-campo` ganaba al ámbar mientras el puntero seguía encima (justo después de pulsar), y la
+    // selección parecía no haber ocurrido. Se queda en ámbar claro con o sin ratón encima
+    const marcado = video(h, 'Cómo edito mis videos');
+    expect(marcado).toHaveAttribute('aria-pressed', 'true');
+    expect(marcado).toHaveClass('border-ambar-claro');
+    expect(marcado.className.split(/\s+/).filter(c => c.startsWith('hover:'))).toEqual([]);
+    // desmarcar lo devuelve a su borde de siempre
+    await userEvent.click(marcado);
+    expect(video(h, 'Cómo edito mis videos')).toHaveClass('border-linea', 'hover:border-campo');
+  });
+
   it('inicio.hojavideos.el_orden_numerico_continua_la_cuenta_de_la_caja_y_lo_que_esta_en_ella_se_apaga', async () => {
     montar();
     const enCaja: FichaDeVideo[] = [

@@ -561,6 +561,88 @@ for (const ancho of [390, 320]) {
   });
 }
 
+test('un video marcado conserva su borde ámbar con el ratón encima (justo después de pulsar el puntero sigue ahí)', async ({ page }) => {
+  await abrir(page);
+  await abrirLaHoja(page);
+  const borde = (l: Locator) => l.evaluate(e => getComputedStyle(e).borderTopColor);
+  const sinMarcar = tarjeta(page, 'Entrevista final');
+  const reposo = await borde(sinMarcar);
+  await sinMarcar.hover();
+  const alPasarElRaton = await borde(sinMarcar);
+  expect(alPasarElRaton, 'lo que NO está marcado cambia de borde al pasar el ratón').not.toBe(reposo);
+  await sinMarcar.click(); // el puntero se queda encima, como en la vida real
+  const marcado = tarjeta(page, 'Entrevista final');
+  await expect(marcado).toHaveAttribute('aria-pressed', 'true');
+  const conRaton = await borde(marcado);
+  await page.mouse.move(0, 0);
+  const sinRaton = await borde(marcado);
+  expect(sinRaton, 'el ámbar de «elegido» no es el borde de reposo ni el de pasar el ratón').not.toBe(reposo);
+  expect(sinRaton).not.toBe(alPasarElRaton);
+  expect(conRaton, 'con el ratón encima sigue siendo el ámbar de «elegido»').toBe(sinRaton);
+});
+
+// La hoja en teléfonos de altura de verdad (H1): con 800 px de alto todo cabía, pero en un iPhone SE o con las barras de Safari la hoja
+// medía más que la ventana y, centrada y sin desplazamiento, perdía arriba el título y la ✕ y abajo «Usar». Aquí NO se acomoda la
+// ventana a la hoja: se mide con las alturas que traen los teléfonos.
+const TELEFONOS: Array<[string, number, number]> = [
+  ['un iPhone SE', 320, 568],
+  ['Safari con sus barras', 375, 553],
+  ['un Android común', 360, 640],
+  ['un iPhone con barras', 390, 664],
+];
+
+/** ¿Se ve ENTERO dentro de la ventana, sin desplazar nada? */
+async function seVeEntero(l: Locator, ancho: number, alto: number, nombre: string) {
+  const c = (await l.boundingBox())!;
+  expect(c, nombre).not.toBeNull();
+  expect(c.y, `${nombre}: se corta por arriba`).toBeGreaterThanOrEqual(0);
+  expect(c.y + c.height, `${nombre}: se corta por abajo`).toBeLessThanOrEqual(alto);
+  expect(c.x, `${nombre}: se corta por la izquierda`).toBeGreaterThanOrEqual(0);
+  expect(c.x + c.width, `${nombre}: se corta por la derecha`).toBeLessThanOrEqual(ancho);
+}
+
+for (const [telefono, ancho, alto] of TELEFONOS) {
+  test.describe(`en ${telefono} (${ancho} × ${alto})`, () => {
+    test.use({ viewport: { width: ancho, height: alto } });
+
+    test('la hoja «Agregar videos» entra entera: el título, la ✕, la lista y «Usar» se ven sin desplazar la ventana', async ({ page }) => {
+      await abrir(page);
+      await abrirLaHoja(page);
+      await tarjeta(page, 'El tren de papel').click();
+      await tarjeta(page, 'Entrevista final').click();
+      await seVeEntero(hoja(page), ancho, alto, 'la hoja');
+      await seVeEntero(hoja(page).getByRole('heading', { name: 'Agregar videos' }), ancho, alto, 'el título');
+      await seVeEntero(hoja(page).getByRole('button', { name: 'Cerrar' }), ancho, alto, 'la ✕');
+      await seVeEntero(hoja(page).getByRole('button', { name: 'Usar 2 videos' }), ancho, alto, 'Usar 2 videos');
+      await seVeEntero(hoja(page).getByRole('button', { name: 'Cancelar' }), ancho, alto, 'Cancelar');
+      // y lo que cede es la LISTA (se desplaza por dentro), no la hoja
+      expect(await hoja(page).evaluate(e => e.scrollHeight - e.clientHeight), 'la hoja se desplaza: tuvo que ceder la lista').toBeLessThanOrEqual(0);
+    });
+  });
+}
+
+test.describe('en un teléfono de lado (568 × 320)', () => {
+  test.use({ viewport: { width: 568, height: 320 } });
+
+  test('la hoja no cabe entera, pero se desplaza: el título, la ✕ y «Usar» se alcanzan y «Usar» agrega lo marcado', async ({ page }) => {
+    await abrir(page);
+    await abrirLaHoja(page);
+    await tarjeta(page, 'El tren de papel').click();
+    await tarjeta(page, 'Entrevista final').click();
+    const d = (await hoja(page).boundingBox())!;
+    expect(d.y, 'la hoja se corta por arriba').toBeGreaterThanOrEqual(0);
+    expect(d.y + d.height, 'la hoja se corta por abajo').toBeLessThanOrEqual(320);
+    // el pie se queda pegado abajo: «Usar» se ve sin desplazar nada, y sigue a la vista aunque la hoja se desplace hasta el título
+    await seVeEntero(hoja(page).getByRole('button', { name: 'Usar 2 videos' }), 568, 320, 'Usar 2 videos');
+    await hoja(page).getByRole('heading', { name: 'Agregar videos' }).scrollIntoViewIfNeeded({ timeout: 3000 });
+    await seVeEntero(hoja(page).getByRole('heading', { name: 'Agregar videos' }), 568, 320, 'el título');
+    await seVeEntero(hoja(page).getByRole('button', { name: 'Usar 2 videos' }), 568, 320, 'Usar 2 videos, con la hoja desplazada hasta arriba');
+    await hoja(page).getByRole('button', { name: 'Usar 2 videos' }).click({ timeout: 3000 });
+    await expect(hoja(page)).toHaveCount(0);
+    await expect(filas(page)).toHaveCount(2);
+  });
+});
+
 test('el menú del «+» y la hoja en un escritorio de 1100 px: cabe, y la unión no pasa de su ancho', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await abrir(page);

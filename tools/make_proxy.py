@@ -24,17 +24,36 @@ FPS = 30   # el proxy es solo para auditar: todas las partes a la misma cadencia
 SR = 48000
 
 
+def _segundos(valor: object) -> float | None:
+    """Una duración de ffprobe como número, o None si no hay ("N/A" llega como ausente) o no sirve."""
+    try:
+        n = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return n if 0 < n < float("inf") else None
+
+
+def duracion_de_parte(dur: float) -> float:
+    """Lo que dura el video de una parte DESPUÉS de `fps=30`: un número entero de cuadros. La duración
+    del flujo de la fuente rara vez cae en la cuadrícula (un teléfono a 29,97 fps da 10,010 s y salen
+    300 cuadros = 10,000 s): cortar el audio en la duración cruda lo deja hasta un cuadro más largo
+    que el video y ese sobrante se suma al empalme."""
+    return max(1, round(dur * FPS)) / FPS
+
+
 def probar(src: Path) -> dict:
-    """Ancho/alto de lo que SE VE (con la rotación del teléfono aplicada) y si trae pista de audio."""
+    """Ancho/alto de lo que SE VE (con la rotación del teléfono aplicada), si trae pista de audio y
+    la duración del FLUJO de video (`dur`; None si el contenedor no la declara, como Matroska/WebM)."""
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries",
-         "stream=codec_type,width,height:stream_side_data=rotation", "-of", "json", str(src)],
+         "stream=codec_type,width,height,duration:stream_side_data=rotation", "-of", "json", str(src)],
         capture_output=True, text=True, check=True)
     ss = json.loads(r.stdout)["streams"]
     v = next(s for s in ss if s["codec_type"] == "video")
     gira = abs(int((v.get("side_data_list") or [{}])[0].get("rotation", 0))) % 180 == 90
     w, h = (v["height"], v["width"]) if gira else (v["width"], v["height"])
-    return {"w": w, "h": h, "audio": any(s["codec_type"] == "audio" for s in ss)}
+    return {"w": w, "h": h, "audio": any(s["codec_type"] == "audio" for s in ss),
+            "dur": _segundos(v.get("duration"))}
 
 
 def tamano_objetivo(primero: dict) -> tuple[int, int]:
@@ -50,12 +69,21 @@ def filtro_normalizado(w: int, h: int) -> str:
 
 def encode_part(src: Path, out: Path, enc: list[str], hwaccel: list[str], w: int, h: int) -> None:
     """Una parte normalizada: mismo tamaño (con barras si el aspecto no coincide), mismos fps y audio 48 kHz estéreo.
-    Sin pista de audio se mete silencio de la duración del video (antes `-map 0:1` reventaba con exit 234)."""
+    Sin pista de audio se mete silencio de la duración del video (antes `-map 0:1` reventaba con exit 234).
+
+    El audio se rellena (`apad`, o `anullsrc`) y se CORTA donde termina el video con `-t <duración del
+    video de la parte, en cuadros enteros a 30 fps>`. `-shortest` no sirve para eso con ffmpeg 5.1 (la
+    imagen de producción y de la CI): deja que el relleno sobrepase al video de cada parte entre 16 y
+    100 ms, y `concat -c copy` suma ese sobrante a cada empalme (aire muerto, empalmes fuera de la
+    cuadrícula de 30 fps, manifiesto más largo que el video). `-shortest` queda solo para el contenedor
+    que no declara la duración del flujo (Matroska/WebM)."""
+    info = probar(src)
+    limite = ["-t", f"{duracion_de_parte(info['dur']):.6f}"] if info.get("dur") else ["-shortest"]
     cmd = ["ffmpeg", "-y", "-loglevel", "error", *hwaccel, "-i", str(src)]
-    if probar(src)["audio"]:
-        cmd += ["-map", "0:v:0", "-map", "0:a:0", "-af", f"aresample={SR}:async=1,apad", "-shortest"]
+    if info["audio"]:
+        cmd += ["-map", "0:v:0", "-map", "0:a:0", "-af", f"aresample={SR}:async=1,apad", *limite]
     else:
-        cmd += ["-f", "lavfi", "-i", f"anullsrc=r={SR}:cl=stereo", "-map", "0:v:0", "-map", "1:a:0", "-shortest"]
+        cmd += ["-f", "lavfi", "-i", f"anullsrc=r={SR}:cl=stereo", "-map", "0:v:0", "-map", "1:a:0", *limite]
     cmd += ["-vf", filtro_normalizado(w, h), *enc, "-c:a", "aac", "-b:a", "160k",
             "-ar", str(SR), "-ac", "2", str(out)]
     subprocess.run(cmd, check=True)

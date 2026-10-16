@@ -78,6 +78,8 @@ const CORRIDA_MAX_MS = 2 * 60 * 60 * 1000;
 /** Lo que dice nucleo/subida cuando se cae la red a mitad del PUT: aquí se completa con cuánto había subido (lienzo: «Se perdió la
  *  conexión a los 41 %»). Una prueba comprueba que siga siendo ese texto. */
 export const ERROR_DE_RED_AL_SUBIR = 'La subida falló — revisa tu conexión e intenta de nuevo.';
+/** Esta instalación no sube videos (`/api/media/config`: `activo` en falso): no es de ningún archivo y no se dice con el nombre de uno. */
+const SIN_SUBIDAS = 'Subir videos no está disponible en esta instalación.';
 
 /** Un video de la caja: uno que se subió de la computadora, o una creación elegida de «Mis creaciones». */
 export interface VideoDeEdicion {
@@ -204,8 +206,12 @@ export function useEdicion(
     avisoOcupado.current = texto === AVISO_OCUPADO;
     decirAfuera(tipo, texto);
   };
+  // lo que falló al subir en ESTA cola, ya dicho con el nombre de su archivo: la caja tiene UN solo canal de avisos y cada fallo lo pisaba, así
+  // que con dos archivos perdidos solo se leía el último (y ninguno decía cuál era). Quitar el error de la caja (limpiarError) la vacía
+  const fallosDeSubida = useRef<string[]>([]);
   const limpiarError = () => {
     avisoOcupado.current = false;
+    fallosDeSubida.current = [];
     limpiarAfuera();
   };
   const [modo, setModo] = useState<IdModo>('editar');
@@ -430,7 +436,7 @@ export function useEdicion(
     try {
       const cfg = await cargarConfig();
       if (!sigue(id)) return;
-      if (!cfg.activo) throw new Error('Subir videos no está disponible en esta instalación.');
+      if (!cfg.activo) throw new Error(SIN_SUBIDAS);
       // «video.mp4», «final.mp4»… se repiten: si ese nombre ya es un proyecto tuyo con video, reusarlo mezclaría el nuevo con la
       // transcripción y los cortes del viejo. Se estrena un nombre (el 409 de abajo sigue cubriendo el de otra cuenta). Y si OTRO video de
       // esta misma caja ya lo lleva, también: dos archivos del mismo nombre no son el mismo proyecto
@@ -468,7 +474,16 @@ export function useEdicion(
       if (!sigue(id)) return;
       const pct = lista.current.find(v => v.id === id)?.pct ?? 0;
       guardarLista(quitarDe(lista.current, lista.current.findIndex(v => v.id === id)));
-      decir('mal', mensaje(e) === ERROR_DE_RED_AL_SUBIR ? textoDeRedCortada(pct) : mensaje(e));
+      // con varios archivos en la cola, «La subida falló» a secas no dice de quién: cada fallo lleva el nombre del suyo, como los rechazos
+      // (lo de la instalación entera —no hay subidas— no es de ningún archivo: se dice una vez, sin nombre)
+      const motivo =
+        mensaje(e) === ERROR_DE_RED_AL_SUBIR
+          ? textoDeRedCortada(pct, archivo.name)
+          : mensaje(e) === SIN_SUBIDAS
+            ? SIN_SUBIDAS
+            : `“${archivo.name}”: ${mensaje(e)}`;
+      if (!fallosDeSubida.current.includes(motivo)) fallosDeSubida.current = [...fallosDeSubida.current, motivo];
+      decir('mal', fallosDeSubida.current.join(' '));
       return;
     } finally {
       if (subiendoAhora.current === id) subiendoAhora.current = null;
@@ -798,8 +813,8 @@ export function useEdicion(
   ];
 }
 
-/** «Se perdió la conexión a los 41 %. No se cobró nada. Vuelve a subirlo con el «+».» (nada se había subido aún: «…al empezar a subir»). */
-function textoDeRedCortada(pct: number): string {
+/** «Se perdió la conexión con “dos.mp4” a los 41 %. No se cobró nada. Vuelve a subirlo con el «+».» (nada se había subido aún: «…al empezar a subir»). */
+function textoDeRedCortada(pct: number, nombre: string): string {
   const donde = pct > 0 ? `a los ${pct} %` : 'al empezar a subir';
-  return `Se perdió la conexión ${donde}. No se cobró nada. Vuelve a subirlo con el «+».`;
+  return `Se perdió la conexión con “${nombre}” ${donde}. No se cobró nada. Vuelve a subirlo con el «+».`;
 }

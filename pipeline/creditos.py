@@ -249,8 +249,10 @@ def costo_editar(duraciones_a_transcribir_s: list[float]) -> int:
     video es exactamente la fórmula de `costo_editar_sugerencias`."""
     costo = EDITAR_SUGERENCIAS_CR
     if duraciones_a_transcribir_s:
+        # `round(…, 6)`: las duraciones medidas traen 3 decimales y su suma binaria puede quedar 1e-13
+        # por encima de un múltiplo exacto de 300 s; sin redondear, `ceil` cobraba un bloque (✦ 2) de más
         costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(
-            sum(float(d) for d in duraciones_a_transcribir_s) / 300)
+            round(sum(float(d) for d in duraciones_a_transcribir_s), 6) / 300)
     return costo
 
 
@@ -384,3 +386,15 @@ def devolver_unica(creditos: int, referencia: str, user_id: str | None = None) -
     if int(creditos) <= 0:
         raise ValueError(f"una devolución debe ser de al menos 1 crédito, no {creditos!r}")
     return db.abonar_devolucion(user_id or db.usuario_actual(), int(creditos), referencia)
+
+
+def devolver_cargo(creditos: int, referencia: str, user_id: str | None = None) -> int | None:
+    """Devuelve lo cobrado con `referencia` UNA vez por cobro: repetirlo (el reintento de un abono que sí
+    entró pero cuya respuesta se perdió) no abona de nuevo y devuelve None, y la devolución de un cobro
+    POSTERIOR con la misma referencia (la de un «Reintentar» de E2) sí entra. Para las referencias que
+    se repiten legítimamente, donde `devolver_unica` bloquearía la segunda devolución.
+
+    Rechaza cantidades de cero o menos, igual que `devolver_unica`."""
+    if int(creditos) <= 0:
+        raise ValueError(f"una devolución debe ser de al menos 1 crédito, no {creditos!r}")
+    return db.abonar_devolucion_de_cargo(user_id or db.usuario_actual(), int(creditos), referencia)

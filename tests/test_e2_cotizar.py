@@ -18,7 +18,7 @@ import pytest
 
 from pipeline import creditos
 from server import edicion_api
-from test_e2_mundo import cliente, mundo, tarifa  # noqa: F401  (las fixtures se importan por nombre)
+from test_e2_mundo import cliente, con_rotacion, mundo, tarifa  # noqa: F401  (las fixtures se importan por nombre)
 
 CLIP = "clip-20261008-101500-ab12cd"
 
@@ -334,7 +334,7 @@ def test_si_uno_de_varios_es_ajeno_no_se_cotiza_nada(cliente, mundo):
 
 
 @pytest.mark.parametrize("ref", [
-    "proyecto:../x", "proyecto:a/b", "proyecto:", "proyecto:" + "a" * 65, "clip:clip-1", "clip:x",
+    "proyecto:../x", "proyecto:a/b", "proyecto:", "proyecto:" + "a" * (edicion_api.MAX_NOMBRE + 1), "clip:clip-1", "clip:x",
     "videos/gen-1/subidas/x.mp4", "usuarios/u2/clips/clip-20261008-101500-ab12cd.mp4",
     "https://s3.amazonaws.com/b/k.mp4", "gen-1a2b3c4d", "", "PROYECTO:a"])
 def test_una_ref_mal_formada_o_una_key_de_s3_es_422_y_no_toca_nada(cliente, mundo, ref):
@@ -511,12 +511,21 @@ def clips(tmp_path, monkeypatch):
     ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x180:rate=24:duration=1.5",
            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=1.5",
            "-ac", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(base))
-    rot = tmp_path / "a_rot.mp4"
-    ffmpeg("-display_rotation", "90", "-i", str(base), "-c", "copy", str(rot))
+    # None si este ffmpeg no sabe marcar la rotación: solo las pruebas que la necesitan se saltan
+    # (fixture `girado`), las demás no dependen de ella
+    rot = con_rotacion(base, tmp_path / "a_rot.mp4")
     muda = tmp_path / "sin_audio.mp4"
     ffmpeg("-f", "lavfi", "-i", "testsrc=size=240x320:rate=25:duration=1", "-c:v", "libx264",
            "-pix_fmt", "yuv420p", str(muda))
     return {"base": base, "rot": rot, "muda": muda, "falso": tmp_path / "no_es_video.mp4"}
+
+
+@pytest.fixture
+def girado(clips):
+    """El clip marcado con rotación de 90°, o SKIP (con su motivo) si este ffmpeg no sabe marcarla."""
+    if clips["rot"] is None:
+        pytest.skip("este ffmpeg no sabe marcar la rotación (ni -display_rotation ni rotate=90)")
+    return clips["rot"]
 
 
 @sin_ffmpeg
@@ -531,9 +540,9 @@ def test__medir_lee_duracion_formato_y_audio(clips):
 
 
 @sin_ffmpeg
-def test__medir_aplica_la_rotacion_del_telefono(clips):
+def test__medir_aplica_la_rotacion_del_telefono(girado):
     """Un 320×180 con `rotation: 90` se ve vertical (180×320): así lo recodifica ffmpeg."""
-    r = edicion_api._medir(str(clips["rot"]))
+    r = edicion_api._medir(str(girado))
     assert (r["ancho"], r["alto"]) == (180, 320)
     assert edicion_api._formato_de(r["ancho"], r["alto"]) == "vertical"
 
@@ -584,10 +593,10 @@ def con_ffprobe_real(clips, mundo, monkeypatch):
 
 
 @sin_ffmpeg
-def test_un_video_grabado_de_lado_no_se_une_con_uno_horizontal(cliente, con_ffprobe_real, clips):
+def test_un_video_grabado_de_lado_no_se_une_con_uno_horizontal(cliente, con_ffprobe_real, clips, girado):
     m = con_ffprobe_real
     m.subir_real("horizontal", clips["base"], bytes_=10_000)
-    m.subir_real("de_lado", clips["rot"], bytes_=10_000)
+    m.subir_real("de_lado", girado, bytes_=10_000)
     r = cotizar(cliente, "proyecto:horizontal", "proyecto:de_lado").json()
     assert r["bloqueo"]["codigo"] == "formatos_distintos"
     assert [v["formato"] for v in r["videos"]] == ["horizontal", "vertical"]

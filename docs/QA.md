@@ -47,6 +47,11 @@ verifica, con ffmpeg real y metraje sintético (`tests/test_e2_ffmpeg_union.py`,
       (720×1280 si el primer clip es vertical), 30 fps y AAC 48 kHz estéreo — con silencio si un clip no
       trae audio — para que `concat -c copy` no descuadre. El manifiesto (`manifest.json`) cuenta lo
       mismo que el video. El proxy es solo para auditar: no cambia lo que se corta.
+- [ ] **Se prueba con el ffmpeg de la imagen (5.1), no solo con el de la máquina (6.x).** El audio de cada
+      parte se corta con `-t` (no `-shortest`, que con 5.1 deja pasar el relleno): corre
+      `tests/test_e2_ffmpeg_union.py` también con un ffmpeg 5.1 (la CI lo hace dentro del contenedor).
+      Con la imagen de producción: cada `part-*.mp4` debe tener `|a:0 − v:0| ≤ 0,03 s` y la suma de los
+      offsets del manifiesto debe dar la duración del video del proxy (±0,05 s).
 - [ ] **`render_cuts.py --mode preview` usa el mismo filtro** (tamaño del primer clip, 30 fps), rellena
       con silencio un clip sin audio y rellena con silencio un audio más corto que su video (si no, la
       deriva se suma clip tras clip). **`--mode final` no cambia**: sin filtro de video y con su
@@ -57,7 +62,10 @@ verifica, con ffmpeg real y metraje sintético (`tests/test_e2_ffmpeg_union.py`,
 - [ ] Un clip marcado `sin_transcript` no tiene canónico y `tools/edited_transcript.py` lo trata como
       sin palabras (docs/SCHEMA.md); un canónico que falta sin esa marca sigue siendo error.
 - [ ] Dinero: cada camino de fallo devuelve el monto cobrado una vez
-      (`tests/test_e2_worker_copia.py`, `tests/test_m23_barredor.py`).
+      (`tests/test_e2_worker_copia.py`, `tests/test_m23_barredor.py`). El evento FAILED de una ejecución
+      VIEJA no cierra el reintento (se compara su `startDate` con `editar.inicio`), y una deuda anotada
+      por el worker (`editar.devolucion_pendiente`) la cobra el barredor aunque el doc ya no esté
+      `corriendo`, una sola vez.
 
 ## QA de shorts (herencia S1)
 

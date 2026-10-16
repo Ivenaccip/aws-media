@@ -40,8 +40,8 @@ from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
 from server.blotato_api import router as blotato_router
 from server.broll_api import router as broll_router
-from server.edicion_api import copia_de_doc, router as edicion_router
-from server.editar_api import router as editar_router
+from server.edicion_api import copia_de_doc, liberar_huerfanas, router as edicion_router
+from server.editar_api import editar_publico, router as editar_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
 from server.media_api import router as media_router
@@ -189,9 +189,24 @@ def proyectos_edicion():
                     "cuts": cuts, "editor_listo": cuts and proxy, "subidas": []})
     if db.backend() == "postgres":
         en_fs = {p["nombre"] for p in out}
-        for fila in db.listar_proyectos_editor(db.usuario_actual()):
+        user = db.usuario_actual()
+        filas = db.listar_proyectos_editor(user)
+        # D-15: al abrir la app se sueltan (y se devuelven) las copias huérfanas y se saldan las
+        # devoluciones que el API dejó debiendo. Antes solo pasaba cuando la persona volvía a pulsar
+        # Iniciar o Reintentar. Es una ayuda: si falla, la lista sale igual.
+        try:
+            for nombre in liberar_huerfanas(user, filas):
+                doc = db.cargar_proyecto_editor(user, nombre)
+                for fila in filas:
+                    if fila["nombre"] == nombre and isinstance(doc, dict):
+                        fila["doc"] = doc
+        except Exception:  # noqa: BLE001
+            logging.getLogger("edicion").exception("no se pudieron liberar las copias huérfanas")
+        for fila in filas:
             if fila["nombre"] in en_fs:
                 continue
+            if (fila["doc"].get("editar") or {}).get("no_lanzada") is True:
+                continue          # una copia que nunca llegó a correr (falló al lanzar) no es una «creación»
             flags = fila["doc"].get("flags", {})   # los pone el puente (C4)
             meta = fila["doc"].get("meta") if isinstance(fila["doc"].get("meta"), dict) else {}
             copia_de = copia_de_doc(fila["doc"])
@@ -203,7 +218,7 @@ def proyectos_edicion():
                         # puente genera proxy+manifest junto con los cortes)
                         "editor_listo": flags.get("cuts", False),
                         # M14: estado de la corrida de sugerencias (poll de e1)
-                        "editar": fila["doc"].get("editar"),
+                        "editar": editar_publico(fila["doc"].get("editar")),
                         "subidas": fila["doc"].get("subidas", []),
                         # UI·26: «Mis videos» del inicio enseña los shorts
                         "creado": fila.get("creado"),

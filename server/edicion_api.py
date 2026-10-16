@@ -19,10 +19,15 @@ Reglas que no se negocian (contrato E2, §1):
   - **Todo lo validable se valida ANTES de cobrar.** Dinero: cobrar dos veces,
     cobrar y no devolver, cobrar sin lanzar, cobrar lo que no se cotizó. Cada
     camino de fallo devuelve los créditos.
-  - **El orden de `iniciar` es el contrato**: reservar nombre → resolver →
-    ocupado → reservar → candado (INSERT de la copia) → cobrar → anotar el
-    cobro → lanzar. El candado va ANTES del cobro; el cobro, antes del
-    lanzamiento.
+  - **El orden de `iniciar` es el contrato**: reservar nombre → resolver (con un
+    HEAD a S3 por video) → ocupado (saldar lo que se debía, soltar las caducadas) →
+    sitio en Fargate → reservar → candado (INSERT de la copia) → releer «¿entró otra
+    pestaña?» → cobrar → anotar el cobro → lanzar. El candado va ANTES del cobro; el
+    cobro, antes del lanzamiento.
+  - **Después de cobrar todo se devuelve** (R16), con la referencia de siempre
+    (`editar-sugerir:<copia>`) y una sola vez por cobro. Si el monedero no responde, la
+    deuda queda anotada en el doc (`devolucion_pendiente` + `devolucion_api`) y se salda en
+    la siguiente llamada de la persona.
   - **El original NUNCA se escribe.** La copia es un proyecto nuevo
     (`ed-<8 hex del pedido>`); el worker copia de servidor a servidor.
   - **Repetir el mismo pedido no cobra dos veces** (R20): el `pedido` fija el
@@ -40,6 +45,7 @@ import os
 import posixpath
 import re
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -68,6 +74,7 @@ MEDIR_PLAZO_S = 18                           # todas las mediciones juntas (la L
 MEDIR_HILOS = 8
 CADUCA_H = 2                                 # una corrida «corriendo» de más de esto ya no cuenta
 CADUCA_SIN_COBRAR_MIN = 5                    # ...y de más de esto si aún no se anotó el cobro
+ESPERA_ABONO = (0.4, 1.2)                    # segundos entre los 3 intentos de devolver (la Lambda corta a 29 s)
 
 TIPOS = ("pelicula", "cuento", "clip", "edicion")
 PASOS = ("entender", "editar", "vista")
@@ -108,6 +115,13 @@ ERRORES: dict[str, tuple[int, str]] = {
     "reintento_en_curso": (409, "Esta edición ya se está reintentando."),
     "no_nube": (503, "El flujo web de edición corre en el servicio — "
                      "en local usa /clean-cut desde Claude Code"),
+    # Ajustes 2 · el abono no se pudo hacer ahora: los créditos se están devolviendo, no «se devolvieron»
+    "no_se_pudo_lanzar_pendiente": (502, "No se pudo lanzar la edición: {detalle}. "
+                                         "Estamos devolviendo lo cobrado."),
+    "sin_capacidad_pendiente": (503, "Ahorita hay mucha gente produciendo. Estamos devolviendo lo cobrado; "
+                                     "vuelve a intentarlo en unos minutos."),
+    "devolucion_en_curso": (409, "Todavía estamos devolviendo los créditos de esta edición. "
+                                 "Inténtalo en unos minutos."),
     # los que el contrato no lista pero las rutas necesitan
     "ref_mal": (422, "No entendimos uno de los videos. Recarga la lista e inténtalo de nuevo."),
     "sin_nombre": (503, "No pudimos preparar tu copia ahora. Inténtalo otra vez."),
@@ -142,9 +156,17 @@ def _nube() -> None:
 # ---------------------------------------------------------------------------
 # referencias, textos y fechas
 
-_REF_PROYECTO = re.compile(r"^proyecto:[A-Za-z0-9_-]{1,64}$")
 _REF_CLIP = re.compile(r"^clip:clip-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 _PEDIDO = re.compile(r"^[0-9a-f]{32}$")
+MAX_NOMBRE = 255          # un proyecto vive en `videos/<nombre>/subidas/<archivo>` y una key de S3 pasa de 1024 bytes
+
+
+def _nombre_proyecto_valido(nombre: Any) -> bool:
+    """La MISMA regla que el resto del producto (`storage.ruta_proyecto`, `media_api._validar_nombre`,
+    /estudio/subir/): letras y cifras de cualquier alfabeto, `-` y `_`. Antes la `ref` pedía
+    `[A-Za-z0-9_-]{1,64}`, así que la hoja ofrecía «presentación-final» y `cotizar` lo rechazaba."""
+    return (isinstance(nombre, str) and 0 < len(nombre) <= MAX_NOMBRE
+            and nombre.replace("-", "").replace("_", "").isalnum())
 
 
 def _refs_de(cuerpo: Any) -> list[str]:
@@ -158,7 +180,9 @@ def _refs_de(cuerpo: Any) -> list[str]:
     if not isinstance(refs, list):
         raise _falla("ref_mal")
     for ref in refs:
-        if not (isinstance(ref, str) and (_REF_PROYECTO.match(ref) or _REF_CLIP.match(ref))):
+        if not (isinstance(ref, str) and (
+                (ref.startswith("proyecto:") and _nombre_proyecto_valido(ref[len("proyecto:"):]))
+                or _REF_CLIP.match(ref))):
             raise _falla("ref_mal")
     return list(refs)
 
@@ -332,8 +356,22 @@ def _tipo_y_titulo_proyecto(doc: dict, nombre: str, key: str | None, peliculas: 
     importar = doc.get("importar")
     titulo = importar.get("titulo") if isinstance(importar, dict) else None
     if not titulo and key:
-        titulo = posixpath.splitext(posixpath.basename(key))[0]
+        titulo = _nombre_de_la_subida(doc, key)
     return "edicion", _recortar(titulo or nombre, 80)
+
+
+def _nombre_de_la_subida(doc: dict, key: str) -> str:
+    """Cómo se llamaba el archivo para la persona. `/api/media/presign` sanea el nombre
+    («Mi Entrevista (1).mp4» → «Mi_Entrevista_1.mp4») y la key solo guarda el saneado; `confirmar` deja
+    el original en `nombre_original`. Sin él (subidas anteriores) se devuelven los espacios que el
+    saneado volvió «_»: «Mi_Entrevista_1» → «Mi Entrevista 1»."""
+    for sub in reversed(doc.get("subidas") or []):
+        if isinstance(sub, dict) and sub.get("key") == key:
+            original = sub.get("nombre_original")
+            if isinstance(original, str) and original.strip():
+                return posixpath.splitext(original.strip())[0]
+            break
+    return re.sub(r"_+", " ", posixpath.splitext(posixpath.basename(key))[0]).strip()
 
 
 def _identificar(user: str, refs: list[str]) -> list[Origen]:
@@ -430,16 +468,26 @@ def _transcript_de(o: Origen, dur_medida: float) -> tuple[str | None, bool]:
     return ck, True
 
 
-def _inspeccionar(o: Origen, claves: bool, transcript: bool) -> dict:
+def _inspeccionar(o: Origen, claves: bool, transcript: bool, verificar: bool = False) -> dict:
     """Mide un video (con la caché de `doc.meta`) y, si es un proyecto, busca su
     transcript y (si `claves`) su audio ya extraído. Corre en un hilo del pool y
     NO toca `o` ni la base: devuelve el resultado y el hilo principal lo aplica
-    solo si llegó a tiempo."""
+    solo si llegó a tiempo.
+
+    `verificar` (solo `iniciar`, que es el que cobra): la caché vale mientras `key` y `bytes` coincidan
+    con la subida del DOC, y un PUT presignado a la misma key sin pasar por `/confirmar` cambia el
+    objeto de S3 sin cambiar el doc. Un HEAD (barato) compara el peso REAL: si no coincide —o el
+    objeto ya no está— la medición vieja no vale, se mide de nuevo, y se cobra lo que de verdad hay."""
     med = _meta_valida(o)
+    peso_real = None
+    if verificar:
+        peso_real = media_sync.tamano(o.key)
+        if med is not None and peso_real != o.bytes:
+            med = None
     nueva = med is None
     if nueva:
         med = _medir(o.key)
-    r = {"medicion": med, "medido_ahora": nueva and med is not None,
+    r = {"medicion": med, "medido_ahora": nueva and med is not None, "peso_real": peso_real,
          "canonico_key": None, "con_transcript": False, "wav_key": None}
     if med is not None and o.nombre is not None:
         if transcript:
@@ -453,7 +501,7 @@ def _inspeccionar(o: Origen, claves: bool, transcript: bool) -> dict:
 
 
 def _inspeccionar_todos(user: str, origenes: list[Origen], *, claves: bool = False,
-                        transcript: bool = True) -> None:
+                        transcript: bool = True, verificar: bool = False) -> None:
     """Inspecciona en paralelo, con un plazo TOTAL (`MEDIR_PLAZO_S`): lo que no
     llegue a tiempo queda sin medición y se trata como «no se pudo leer». Las
     mediciones nuevas de proyectos se guardan en `doc.meta` (el hilo principal
@@ -464,7 +512,7 @@ def _inspeccionar_todos(user: str, origenes: list[Origen], *, claves: bool = Fal
         return
     pool = ThreadPoolExecutor(max_workers=MEDIR_HILOS)
     try:
-        futuros = [pool.submit(contextvars.copy_context().run, _inspeccionar, o, claves, transcript)
+        futuros = [pool.submit(contextvars.copy_context().run, _inspeccionar, o, claves, transcript, verificar)
                    for o in pendientes]
         wait(futuros, timeout=MEDIR_PLAZO_S)
     finally:
@@ -478,6 +526,8 @@ def _inspeccionar_todos(user: str, origenes: list[Origen], *, claves: bool = Fal
             log.warning("inspeccionar %s falló: %r", o.ref, f.exception() if not f.cancelled() else "cancelado")
             continue
         r = f.result()
+        if r["peso_real"]:
+            o.bytes = int(r["peso_real"])         # lo que hay en S3 manda para el tope de peso y para la caché
         o.medicion, o.medido_ahora = r["medicion"], r["medido_ahora"]
         o.canonico_key, o.con_transcript, o.wav_key = r["canonico_key"], r["con_transcript"], r["wav_key"]
         if o.medido_ahora and o.medicion and o.nombre and o.bytes:
@@ -527,14 +577,19 @@ def _fuente_de(i: int, o: Origen) -> dict:
         "bytes": int(o.bytes or 0),
         "duracion_s": m.get("duracion_s"), "ancho": m.get("ancho"), "alto": m.get("alto"),
         "audio": m.get("audio"), "con_transcript": o.con_transcript,
-        "transcribir": bool(o.medicion) and not o.con_transcript and o.tipo != "clip",
+        # un video SIN pista de audio no se transcribe (el worker no llama a la ASR sin sonido): cobrarlo
+        # como transcripción era pagar un servicio que nunca ocurre. Lo desconocido (None) cuenta como
+        # que sí trae audio, igual que la caché.
+        "transcribir": (bool(o.medicion) and not o.con_transcript and o.tipo != "clip"
+                        and m.get("audio") is not False),
     }
 
 
-def _resolver(user: str, refs: list[str], *, claves: bool = False) -> Resolucion:
+def _resolver(user: str, refs: list[str], *, claves: bool = False, verificar: bool = False) -> Resolucion:
     """De las `ref` al plan de la edición. Los bloqueos salen en el orden de
     prioridad de §3.3; el primero que aplique se queda. `claves=True` (iniciar)
-    también busca el audio ya extraído de cada proyecto.
+    también busca el audio ya extraído de cada proyecto; `verificar=True` (iniciar)
+    comprueba con un HEAD que el objeto de S3 sigue siendo el que se midió.
 
     Dos tiempos: primero se identifica (dueño → 404, título) y se revisan
     `repetido`, `es_copia` y `sin_metraje` SIN medir nada; solo si pasan se
@@ -564,7 +619,7 @@ def _resolver(user: str, refs: list[str], *, claves: bool = False) -> Resolucion
         if o.key is None:
             return parcial(_bloqueo("sin_metraje", titulo=o.titulo))
 
-    _inspeccionar_todos(user, origenes, claves=claves)
+    _inspeccionar_todos(user, origenes, claves=claves, verificar=verificar)
     fuentes = [_fuente_de(i, o) for i, o in enumerate(origenes)]
     medidos = [o for o in origenes if o.medicion]
     total = round(sum(o.medicion["duracion_s"] for o in medidos), 3) if medidos else None
@@ -630,6 +685,12 @@ def _ref_dinero(nombre: str) -> str:
     return f"editar-sugerir:{nombre}"
 
 
+# las marcas de «se debe una devolución»: `devolucion_pendiente` (cuánto) la escriben el worker y el
+# barredor (para que el barredor la cierre) y el API; `devolucion_api` solo el API, y significa «yo no pude
+# abonar y la siguiente llamada de la persona lo reintenta» (el barredor no la ve: no hay ejecución)
+_MARCAS_DEUDA = ("devolucion_pendiente", "devolucion_api")
+
+
 def _neto_cobrado(user: str, nombre: str) -> int:
     """Créditos que la persona tiene cobrados y sin devolver por esta copia,
     según el libro mayor (los cargos son negativos y las devoluciones positivas)."""
@@ -637,6 +698,76 @@ def _neto_cobrado(user: str, nombre: str) -> int:
     neto = sum(int(m.get("creditos") or 0) for m in db.movimientos_creditos(user, 200)
                if m.get("referencia") == ref)
     return max(0, -neto)
+
+
+def _abonar(user: str, nombre: str, n: int, *, intentos: int = len(ESPERA_ABONO) + 1) -> bool:
+    """Devuelve `n` créditos de ESTE cobro, con la referencia de siempre (`editar-sugerir:<copia>`).
+    Hasta `intentos` veces ante CUALQUIER fallo del monedero: `devolver_cargo` es una sola sentencia que
+    solo abona si lo último del libro para esa referencia es un cargo, así que repetir un abono que sí
+    entró (su respuesta se perdió) no abona dos veces, y la devolución de un cobro posterior (un
+    «Reintentar») no queda bloqueada por la del primero. Un `None` es «ya estaba devuelto»: también es
+    éxito. False si no se pudo."""
+    for i in range(intentos):
+        try:
+            creditos.devolver_cargo(n, _ref_dinero(nombre), user)
+            return True
+        except Exception:  # noqa: BLE001 — el monedero puede fallar de mil formas
+            log.exception("copia %s: no se pudieron devolver %d créditos (intento %d de %d)",
+                          nombre, n, i + 1, intentos)
+            if i < intentos - 1 and i < len(ESPERA_ABONO):
+                time.sleep(ESPERA_ABONO[i])
+    return False
+
+
+def _cerrar(user: str, nombre: str, cierre: dict, *, condicionado: bool = True) -> None:
+    """Escribe el cierre de una corrida que YA se reclamó. Condicionado (`cerrar_editor_si_error`): solo
+    si la copia sigue en `error` y con el mismo `inicio`. `reclamar_fallo_editor` la deja visible y
+    reintentable ANTES de que se devuelva, y devolver puede tardar: si la persona pulsó Reintentar en
+    medio, esa copia ya es otra corrida y un cierre incondicional la pisaba con `error` + `devueltos`
+    (el segundo cobro se quedaba sin devolver). Nunca levanta: el dinero ya se movió."""
+    try:
+        valor = json.dumps(cierre, ensure_ascii=False)
+        if not condicionado:
+            db.fijar_campo_editor(user, nombre, "editar", valor)
+        elif not db.cerrar_editor_si_error(user, nombre, cierre.get("inicio"), valor):
+            log.warning("copia %s: otra pieza la tomó mientras se devolvía; no se pisa", nombre)
+    except Exception:  # noqa: BLE001 — la caducidad y el barrido la arreglan solos
+        log.exception("copia %s: movido el dinero, pero no se pudo anotar", nombre)
+
+
+def _saldar(user: str, nombre: str, editar: dict) -> bool:
+    """Intenta de nuevo UNA devolución que el API dejó debiendo (`devolucion_api`). Un solo intento y sin
+    esperas: quien llega a Iniciar o abre la app no paga las esperas de un monedero caído. True si salió."""
+    n = editar.get("devolucion_pendiente")
+    if not (isinstance(n, int) and not isinstance(n, bool) and n > 0):
+        n = 0
+    if n and not _abonar(user, nombre, n, intentos=1):
+        return False
+    cierre = {k: v for k, v in editar.items() if k not in _MARCAS_DEUDA}
+    if n:
+        cierre["devueltos"] = n
+    _cerrar(user, nombre, cierre)
+    return True
+
+
+def _saldar_pendientes(user: str, filas: list[dict] | None = None) -> set[str]:
+    """Salda las devoluciones que el API dejó debiendo a esta persona. `filas` son `{nombre, editar}`
+    (si no vienen, se leen). Los nombres de las que quedaron saldadas."""
+    if not creditos.activo():
+        return set()
+    try:
+        filas = db.devoluciones_pendientes(user) if filas is None else filas
+    except Exception:  # noqa: BLE001 — es una ayuda: nunca tumba al que llama
+        log.exception("no se pudieron leer las devoluciones pendientes")
+        return set()
+    hechas = set()
+    for f in filas:
+        try:
+            if _saldar(user, f["nombre"], f["editar"]):
+                hechas.add(f["nombre"])
+        except Exception:  # noqa: BLE001
+            log.exception("copia %s: no se pudo saldar la devolución pendiente", f.get("nombre"))
+    return hechas
 
 
 def _soltar(user: str, nombre: str, editar: dict) -> None:
@@ -648,21 +779,32 @@ def _soltar(user: str, nombre: str, editar: dict) -> None:
     Con el cobro anotado (`cobrado` verdadero) se devuelve `editar.creditos`.
     Sin anotar NO se asume que no se cobró: la Lambda pudo morir entre `cobrar`
     y la nota. El libro mayor lo dice (`_neto_cobrado`): si hay un cargo sin su
-    devolución se devuelve esa diferencia, y si no, solo se suelta."""
+    devolución se devuelve esa diferencia, y si no, solo se suelta.
+
+    Si el abono falla, el reclamo ya está puesto y nadie más devolvería: la deuda queda ANOTADA en
+    el doc (`devolucion_pendiente` + `devolucion_api`) y la siguiente llamada de la persona la salda."""
     trabajo = db.reclamar_fallo_editor(user, nombre, "editar", _ERROR_NO_EMPEZO)
     if trabajo is None:
         return          # otro ya la cerró (y devolvió)
+    tenia_marca = any(k in trabajo for k in _MARCAS_DEUDA)      # la que dejó el worker para el barredor
+    for k in _MARCAS_DEUDA:
+        trabajo.pop(k, None)
     n = 0
     if creditos.activo():
         n = (int(trabajo.get("creditos") or 0) if editar.get("cobrado") is True
              else _neto_cobrado(user, nombre))
-        if n > 0:
-            creditos.devolver(n, _ref_dinero(nombre), user)
     if n > 0:
         # con dinero de por medio la bandeja tiene que poder contarlo
-        trabajo.update(cobrado=True, devueltos=n, error=_ERROR_CADUCADA)
-        db.fijar_campo_editor(user, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
-        log.warning("copia %s soltada: %d créditos devueltos", nombre, n)
+        trabajo.update(cobrado=True, error=_ERROR_CADUCADA)
+        if _abonar(user, nombre, n):
+            trabajo["devueltos"] = n
+            log.warning("copia %s soltada: %d créditos devueltos", nombre, n)
+        else:
+            trabajo.update(devolucion_pendiente=n, devolucion_api=True)
+            log.error("copia %s soltada, pero NO se pudieron devolver %d créditos: quedan pendientes", nombre, n)
+    elif not tenia_marca:
+        return
+    _cerrar(user, nombre, trabajo)
 
 
 def _liberar_caducadas(user: str, corriendo: list[dict]) -> list[dict]:
@@ -677,6 +819,27 @@ def _liberar_caducadas(user: str, corriendo: list[dict]) -> list[dict]:
         elif editar.get("copia") is True:
             _soltar(user, fila["nombre"], editar)
     return vivas
+
+
+def liberar_huerfanas(user: str, filas: list[dict]) -> set[str]:
+    """Lo que `GET /api/edicion/proyectos` hace al abrir la app (D-15): sin esto el reembolso de una
+    copia huérfana solo llegaba cuando la persona volvía a pulsar Iniciar o Reintentar, y quien no
+    vuelve en semanas seguía sin sus créditos. `filas` son las de `db.listar_proyectos_editor` (no
+    se hace otra consulta). Suelta las copias caducadas (devolviendo) y salda las devoluciones
+    que el API dejó debiendo. Devuelve los nombres cuyo doc cambió, para que quien llama los relea."""
+    corriendo = [{"nombre": f["nombre"], "editar": f["doc"]["editar"]} for f in filas
+                 if isinstance(f["doc"].get("editar"), dict) and f["doc"]["editar"].get("estado") == "corriendo"]
+    pendientes = [{"nombre": f["nombre"], "editar": f["doc"]["editar"]} for f in filas
+                  if isinstance(f["doc"].get("editar"), dict) and f["doc"]["editar"].get("devolucion_api") is True]
+    saldadas = _saldar_pendientes(user, pendientes) if pendientes else set()
+    vivas = {x["nombre"] for x in _liberar_caducadas(user, corriendo)}
+    return saldadas | ({x["nombre"] for x in corriendo} - vivas)
+
+
+def _otra_corriendo(user: str, nombre: str) -> bool:
+    """¿Hay OTRA corrida viva (no caducada) de esta persona, además de la copia `nombre`?"""
+    return any(f["nombre"] != nombre and not _caducada(f.get("editar") or {})
+               for f in db.ediciones_corriendo(user))
 
 
 def _vivas_sin_tocar(user: str) -> list[dict]:
@@ -741,6 +904,7 @@ def elegibles():
     except Exception:  # noqa: BLE001 — el resto de las fuentes sigue
         log.exception("elegibles: no se pudieron leer los proyectos del editor")
         filas = []
+    filas = [f for f in filas if _nombre_proyecto_valido(f["nombre"])]       # lo que `cotizar` no aceptaría no se ofrece
     por_nombre = {f["nombre"]: f for f in filas}
     por_generador = {}
     for f in filas:
@@ -781,6 +945,8 @@ def elegibles():
             continue
         if _es_gen(doc):
             continue          # un gen-* ya sale como película o cuento
+        if (doc.get("editar") or {}).get("no_lanzada") is True:
+            continue          # una copia que falló al lanzar nunca corrió: no es una edición que ofrecer
         key, _ = _subida_de(doc, f["nombre"])
         tipo, titulo = _tipo_y_titulo_proyecto(doc, f["nombre"], key, {})
         if isinstance(doc.get("copia"), dict):
@@ -912,34 +1078,47 @@ def _ya_hecho(doc: dict, nombre: str, pedido: str) -> dict:
         return {"lanzado": True, "nombre": nombre, "titulo": doc.get("titulo") or "",
                 "creditos": int(st.get("creditos") or 0), "n_videos": int(st.get("n_videos") or 0),
                 "repetido": True}
+    if st.get("devolucion_api") is True:
+        raise _falla("devolucion_en_curso")          # «se te devolvió» todavía no es verdad
     raise _falla("ya_fallo")
 
 
-def _devolver_por_fallo(user: str, nombre: str, editar: dict, n: int, mensaje: str) -> None:
-    """Se cobró y no se pudo lanzar: el dinero vuelve y el doc lo cuenta.
+def _devolver_por_fallo(user: str, nombre: str, editar: dict, n: int, mensaje: str, *,
+                        no_lanzada: bool = False) -> bool:
+    """Se cobró y no se pudo lanzar: el dinero vuelve y el doc lo cuenta. True si los créditos volvieron
+    (o si otra pieza ya los había devuelto); False si el abono no se pudo hacer y quedó anotado como deuda.
 
     Reclama primero (`reclamar_fallo_editor`): si el worker ya arrancó y cerró
     la corrida por su cuenta, él devolvió y aquí NO se devuelve otra vez. Si el
     reclamo mismo falla (la base se cae) se devuelve igual: cobrar sin entregar
-    es lo peor, y el abono es una sola sentencia."""
+    es lo peor, y el abono es idempotente por cobro (`devolver_cargo`), así que si la caducidad
+    suelta después esa copia y vuelve a devolver, la segunda vez no abona.
+
+    `no_lanzada` marca la copia para que ni la bandeja ni «Mis creaciones» la enseñen: nada llegó
+    a correr y no hay nada que reintentar de ella (la persona vuelve a pulsar Iniciar)."""
+    reclamado = True
     try:
         trabajo = db.reclamar_fallo_editor(user, nombre, "editar", mensaje[:300])
     except Exception:  # noqa: BLE001
         log.exception("copia %s: no se pudo reclamar el fallo; se devuelve de todos modos", nombre)
-        trabajo = dict(editar)
+        trabajo, reclamado = dict(editar), False
     if trabajo is None:
-        return
-    devueltos = 0
-    if creditos.activo() and n > 0:
-        creditos.devolver(n, _ref_dinero(nombre), user)
-        devueltos = n
+        return True
     cierre = {**editar, **trabajo, "estado": "error", "error": mensaje[:300]}
-    if devueltos:
-        cierre["devueltos"] = devueltos
-    try:
-        db.fijar_campo_editor(user, nombre, "editar", json.dumps(cierre, ensure_ascii=False))
-    except Exception:  # noqa: BLE001 — el dinero ya volvió; el doc se arregla solo con la caducidad
-        log.exception("copia %s: devuelto, pero no se pudo anotar", nombre)
+    for k in _MARCAS_DEUDA:
+        cierre.pop(k, None)
+    if no_lanzada:
+        cierre["no_lanzada"] = True
+    devuelto = True
+    if creditos.activo() and n > 0:
+        devuelto = _abonar(user, nombre, n)
+        if devuelto:
+            cierre["devueltos"] = n          # la bandeja lo lee; sin monedero no se habla de créditos
+        else:
+            cierre.update(devolucion_pendiente=n, devolucion_api=True)
+            log.error("copia %s: NO se pudieron devolver %d créditos; quedan pendientes", nombre, n)
+    _cerrar(user, nombre, cierre, condicionado=reclamado)
+    return devuelto
 
 
 def _soltar_si_dudoso(user: str, nombre: str, editar: dict) -> None:
@@ -953,7 +1132,7 @@ def _soltar_si_dudoso(user: str, nombre: str, editar: dict) -> None:
 
 
 def _cobrar_y_lanzar(user: str, nombre: str, editar: dict, n: int, *,
-                     al_faltar_saldo) -> dict:
+                     al_faltar_saldo, no_lanzada: bool = False) -> dict:
     """La secuencia que mueve dinero, igual para `iniciar` y `reintentar`:
     cobrar → anotar el cobro → lanzar. `al_faltar_saldo` deshace el candado (la
     copia sin cobrar se borra, o la que reintenta vuelve a `error`) y el 402 sale
@@ -972,14 +1151,20 @@ def _cobrar_y_lanzar(user: str, nombre: str, editar: dict, n: int, *,
         db.fijar_campo_editor(user, nombre, "editar", json.dumps(editar, ensure_ascii=False))
         jobs.lanzar_editar(user, nombre)
     except jobs.SinCapacidad as err:
-        _devolver_por_fallo(user, nombre, editar, n, str(err))
-        raise
+        if _devolver_por_fallo(user, nombre, editar, n, str(err), no_lanzada=no_lanzada):
+            raise
+        raise jobs.SinCapacidad(_texto("sin_capacidad_pendiente")) from None
     except Exception as err:  # noqa: BLE001 — cobrado y sin job = lo peor: revertir
-        _devolver_por_fallo(user, nombre, editar, n, f"no se pudo lanzar: {err}")
-        detalle = str(err)[:200]
-        texto = _texto("no_se_pudo_lanzar", detalle=detalle)
+        # el texto de la excepción de boto3 suele traer el ARN del rol y de la máquina de estados: se
+        # tacha antes de recortar (para que un corte no deje medio ARN a la vista) y antes de guardarse
+        crudo = editar_api.tachar_infra(err)
+        devuelto = _devolver_por_fallo(user, nombre, editar, n, f"no se pudo lanzar: {crudo}",
+                                       no_lanzada=no_lanzada)
+        detalle = crudo[:200]
         if not creditos.activo():
-            texto = texto.removesuffix(" Se te devolvió lo cobrado.")
+            texto = _texto("no_se_pudo_lanzar", detalle=detalle).removesuffix(" Se te devolvió lo cobrado.")
+        else:
+            texto = _texto("no_se_pudo_lanzar" if devuelto else "no_se_pudo_lanzar_pendiente", detalle=detalle)
         raise HTTPException(status_de("no_se_pudo_lanzar"), texto) from None
     return editar
 
@@ -1000,10 +1185,13 @@ def iniciar(cuerpo: Annotated[Any, Body()] = None):
     # 4 · idempotencia
     previa = db.cargar_proyecto_editor(user, nombre)
     if previa is not None:
+        if (previa.get("editar") or {}).get("devolucion_api") is True:
+            _saldar_pendientes(user)          # si ya se pudo devolver, el texto de «ya falló» es verdad
+            previa = db.cargar_proyecto_editor(user, nombre) or previa
         return _ya_hecho(previa, nombre, pedido)
 
     # 5 · resolver y validar TODO antes de mover dinero
-    res = _resolver(user, refs, claves=True)
+    res = _resolver(user, refs, claves=True, verificar=True)
     if res.bloqueo:
         raise HTTPException(res.bloqueo["status"], res.bloqueo["texto"])
 
@@ -1016,8 +1204,12 @@ def iniciar(cuerpo: Annotated[Any, Body()] = None):
         gemela = db.cargar_proyecto_editor(user, nombre)
         if gemela is not None:
             return _ya_hecho(gemela, nombre, pedido)
+    _saldar_pendientes(user)          # lo que el API quedó debiendo antes: primero eso
     if _liberar_caducadas(user, corriendo):
         raise _falla("ocupado")
+    # sitio en Fargate ANTES de mover dinero: si no, cada saturación era cobrar, devolver y dejar una copia fantasma
+    if not jobs.hay_sitio():
+        raise _falla("sin_capacidad")
 
     # 7 · el precio lo calcula el servidor, con lo que ÉL midió
     n, desglose = _precio(res.fuentes)
@@ -1051,8 +1243,17 @@ def iniciar(cuerpo: Annotated[Any, Body()] = None):
             return _ya_hecho(otra, nombre, pedido)
         raise _falla("ocupado")
 
+    # 9b · insertar y LUEGO mirar: sin el índice parcial (la base aún no corrió db_migrate) dos
+    # pestañas podían leer «nada corriendo» en el paso 6, insertar las dos, cobrar las dos y
+    # lanzar las dos. Cada una mira DESPUÉS de su propio INSERT, así que la que mira más tarde ve
+    # a la otra y se retira sin haber cobrado (en el peor caso se retiran las dos y se reintenta).
+    # Con el índice esta lectura nunca encuentra nada.
+    if _otra_corriendo(user, nombre):
+        db.borrar_copia_sin_cobrar(user, nombre)
+        raise _falla("ocupado")
+
     # 10-12 · cobrar → anotar → lanzar
-    _cobrar_y_lanzar(user, nombre, editar, n,
+    _cobrar_y_lanzar(user, nombre, editar, n, no_lanzada=True,
                      al_faltar_saldo=lambda: db.borrar_copia_sin_cobrar(user, nombre))
     return {"lanzado": True, "nombre": nombre, "titulo": res.titulo, "creditos": n,
             "n_videos": res.n_videos, "repetido": False}
@@ -1062,7 +1263,8 @@ def iniciar(cuerpo: Annotated[Any, Body()] = None):
 # POST /{nombre}/reintentar
 
 # lo que una corrida nueva NO hereda de la anterior
-_RESULTADO = ("cortes", "fluff", "flags", "resultado", "no_aplicado", "error", "devueltos", "fin")
+_RESULTADO = ("cortes", "fluff", "flags", "resultado", "no_aplicado", "error", "devueltos", "fin",
+              "devolucion_pendiente", "devolucion_api", "no_lanzada")
 
 
 @router.post("/{nombre}/reintentar")
@@ -1087,8 +1289,21 @@ def reintentar(nombre: str):
     if st.get("estado") != "error" or not isinstance(st.get("fuentes"), list) or not st["fuentes"]:
         raise _falla("reintento_no_aplica")
 
+    # Reintentar cobra otra vez y limpia las marcas de la corrida anterior: si esta copia quedó DEBIENDO
+    # una devolución, primero se salda (o no se reintenta) o la deuda se perdería con la marca.
+    if st.get("devolucion_api") is True:
+        _saldar_pendientes(user)
+        doc = db.cargar_proyecto_editor(user, nombre) or {}
+        st = doc.get("editar") if isinstance(doc.get("editar"), dict) else {}
+        if st.get("devolucion_api") is True:
+            raise _falla("devolucion_en_curso")
+        if st.get("estado") != "error":
+            raise _falla("reintento_no_aplica")
+
     if _liberar_caducadas(user, db.ediciones_corriendo(user)):
         raise _falla("ocupado")
+    if not jobs.hay_sitio():
+        raise _falla("sin_capacidad")
 
     n = st.get("creditos")
     if not (isinstance(n, int) and not isinstance(n, bool) and n > 0):
@@ -1103,8 +1318,14 @@ def reintentar(nombre: str):
         actual = (db.cargar_proyecto_editor(user, nombre) or {}).get("editar") or {}
         raise _falla("reintento_en_curso" if actual.get("estado") == "corriendo" else "ocupado")
 
-    _cobrar_y_lanzar(
-        user, nombre, nuevo, n,
-        al_faltar_saldo=lambda: db.fijar_campo_editor(user, nombre, "editar",
-                                                      json.dumps(st, ensure_ascii=False)))
+    def deshacer() -> None:
+        db.fijar_campo_editor(user, nombre, "editar", json.dumps(st, ensure_ascii=False))
+
+    # insertar y luego mirar (como `iniciar`, 9b): sin el índice, dos reintentos de copias distintas
+    # podían reclamar a la vez; la que mira después de su propio claim ve a la otra y se echa atrás
+    if _otra_corriendo(user, nombre):
+        deshacer()
+        raise _falla("ocupado")
+
+    _cobrar_y_lanzar(user, nombre, nuevo, n, al_faltar_saldo=deshacer)
     return {"lanzado": True, "nombre": nombre, "creditos": n}

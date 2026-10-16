@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -225,6 +226,117 @@ def test_el_proxy_de_un_solo_clip_sigue_funcionando(tmp_path, metraje):
     s = _sonda(proyecto / "work" / "editor" / "proxy.mp4")
     assert (s["w"], s["h"]) == (1280, 720) and s["dur_a"] is not None
     assert abs(s["dur_v"] - 1.5) <= 0.1
+
+
+def _partes(proyecto: Path) -> list[Path]:
+    return sorted((proyecto / "work" / "editor").glob("part-*.mp4"))
+
+
+# El hueco que dejó pasar la CI roja (MV-01/MV-03): con ffmpeg 5.1 (la imagen de producción y
+# de la CI, Debian bookworm) `-shortest` + `apad` dejaba el audio de CADA parte hasta ~0,1 s más
+# largo que su video. `concat -c copy` suma esa diferencia a cada empalme: aire muerto entre clip
+# y clip, empalmes fuera de la cuadrícula de 30 fps (ffprobe estima 60/1, 30000/1001…) y un
+# `manifest.total` por encima del video. Con ffmpeg 6.1 `-shortest` sí corta justo y todo pasaba.
+# (frecuencia de muestreo, duración, fps) — los de la matriz medida (16, 101 y 24 ms de sobra con 5.1) y un
+# teléfono a 29,97 fps, cuyo video (10,010 s) no cae en la cuadrícula de 30 fps (300 cuadros = 10,000 s).
+FORMATOS_DE_PARTE = [(44100, 1.5, 24), (48000, 1.2, 30), (8000, 1.0, 25), (48000, 2.817, 30),
+                     (44100, 9.99, 29.97)]
+
+
+@pytest.mark.parametrize("sr,dur,fps", FORMATOS_DE_PARTE, ids=lambda v: str(v))
+def test_cada_parte_del_proxy_termina_con_su_audio_y_su_video_juntos(tmp_path, sr, dur, fps):
+    """La parte aislada: el audio no sobrepasa al video (con 5.1: 1,301 s contra 1,200 s)."""
+    clip = tmp_path / "fuente.mp4"
+    _clip(clip, size="320x180", rate=fps, dur=dur, tono=(440, sr, 2))
+    proyecto = _proyecto(tmp_path / "copia", [("c01", clip)])
+    assert _correr("make_proxy.py", proyecto).returncode == 0
+    (parte,) = _partes(proyecto)
+    s = _sonda(parte)
+    # lo más fino que cabe: un cuadro de AAC (1024 muestras a 48 kHz = 21 ms)
+    assert abs(s["dur_a"] - s["dur_v"]) <= 0.03, s
+    assert abs(s["formato"] - s["dur_v"]) <= 0.003, s         # y la parte dura lo que dura su video (el redondeo del contenedor)
+    assert abs(s["dur_v"] * 30 - round(s["dur_v"] * 30)) < 0.01   # sobre la cuadrícula de 30 fps
+
+
+def test_el_proxy_de_muchos_clips_dura_lo_que_el_corte(tmp_path, metraje):
+    """Lo que el editor audita dura lo que se renderiza (MV-03: 12 clips de 10 s a 48 kHz daban
+    un manifiesto de 121,09 s contra un corte de 120 s). Cuatro clips estéreo a 48 kHz."""
+    clips = [(f"c{i + 1:02d}", metraje["estereo"]) for i in range(4)]
+    proyecto = _proyecto(tmp_path / "copia", clips)
+    esperado = sum(e["duration"] for e in
+                   json.loads((proyecto / "work" / "analysis" / "cuts.json").read_text())["clips"])
+    assert _correr("make_proxy.py", proyecto).returncode == 0
+    manifiesto = json.loads((proyecto / "work" / "editor" / "manifest.json").read_text())
+    s = _sonda(proyecto / "work" / "editor" / "proxy.mp4")
+    assert abs(manifiesto["total"] - esperado) <= 0.05, (manifiesto["total"], esperado)
+    assert abs(s["dur_v"] - esperado) <= 0.05 and abs(s["dur_a"] - esperado) <= 0.05, (s, esperado)
+    # cada parte arranca donde el manifiesto dice: los offsets son la suma de las duraciones reales
+    suma = 0.0
+    for p, parte in zip(manifiesto["parts"], _partes(proyecto)):
+        assert abs(p["offset"] - suma) <= 0.002
+        suma += _sonda(parte)["formato"]
+
+
+def test_un_video_sin_duracion_en_el_flujo_sigue_cortando_con_shortest(tmp_path):
+    """Matroska no escribe `duration` en el flujo (`N/A`): sin ese dato no hay con qué fijar `-t`, y
+    el proxy se arma como antes (`-shortest`) en vez de fallar o dejar el audio infinito."""
+    mkv = tmp_path / "fuente.mkv"
+    entradas = ["-f", "lavfi", "-i", "testsrc=size=320x180:rate=30:duration=1.2",
+                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1.2"]
+    _ffmpeg(*entradas, "-ac", 2, "-c:a", "aac", "-c:v", "libx264", "-pix_fmt", "yuv420p", mkv)
+    assert "duration" not in json.loads(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
+         "-of", "json", str(mkv)], capture_output=True, text=True, check=True).stdout)["streams"][0]
+    proyecto = tmp_path / "copia"
+    (proyecto / "clips").mkdir(parents=True)
+    (proyecto / "work" / "analysis").mkdir(parents=True)
+    shutil.copy(mkv, proyecto / "clips" / "c01.mkv")
+    (proyecto / "work" / "analysis" / "cuts.json").write_text(json.dumps({
+        "project": "x", "clip_order": ["c01"], "flags": [], "styles": {},
+        "clips": [{"id": "c01", "file": "clips/c01.mkv", "duration": 1.2,
+                   "keeps": [{"s": 0.0, "e": 1.2, "text": ""}], "cuts": [], "fluff_suggestions": []}]}))
+    r = _correr("make_proxy.py", proyecto)
+    assert r.returncode == 0, r.stderr[-800:]
+    s = _sonda(proyecto / "work" / "editor" / "proxy.mp4")
+    assert s["dur_a"] is not None and abs(s["dur_v"] - s["dur_a"]) <= DRIFT_TOL_S, s
+
+
+@pytest.mark.parametrize("dur,esperado", [
+    (10.010, 10.0),             # teléfono a 29,97 fps: 300 cuadros
+    (8.008, 8.0), (2.8333, 85 / 30), (3.12, 94 / 30), (1.2, 1.2), (0.001, 1 / 30)],
+    ids=["29_97fps", "59_94fps", "no_entera", "25fps", "justa", "minima_un_cuadro"])
+def test_la_duracion_de_una_parte_son_cuadros_enteros_a_30_fps(dur, esperado):
+    mp = _importar_make_proxy()
+    assert mp.duracion_de_parte(dur) == pytest.approx(esperado, abs=1e-9)
+    assert mp.duracion_de_parte(dur) * mp.FPS == pytest.approx(round(mp.duracion_de_parte(dur) * mp.FPS))
+
+
+def _importar_make_proxy():
+    sys.path.insert(0, str(TOOLS))
+    try:
+        sys.modules.pop("make_proxy", None)
+        return importlib.import_module("make_proxy")
+    finally:
+        sys.path.remove(str(TOOLS))
+
+
+@pytest.mark.parametrize("con_audio", [True, False], ids=["con_audio", "sin_audio"])
+def test_una_parte_se_corta_con_t_y_no_con_shortest(monkeypatch, tmp_path, con_audio):
+    """La forma del comando, sin ffmpeg: con la duración del video conocida la parte se corta con
+    `-t <esa duración>` (con 5.1 `-shortest` deja pasar el relleno del audio); `-shortest` solo
+    queda para cuando el flujo no declara duración. Vale con cualquier versión de ffmpeg."""
+    mp = _importar_make_proxy()
+    vistos = []
+    monkeypatch.setattr(mp, "subprocess", SimpleNamespace(run=lambda cmd, **k: vistos.append(list(cmd))))
+    for dur in (8.008, None):      # 8,008 s de flujo = 240 cuadros a 30 fps = 8,000 s de video
+        monkeypatch.setattr(mp, "probar", lambda src, d=dur: {"w": 320, "h": 180, "audio": con_audio, "dur": d})
+        mp.encode_part(tmp_path / "a.mp4", tmp_path / "p.mp4", ["-c:v", "libx264"], [], 1280, 720)
+    con_t, sin_t = vistos
+    assert con_t[con_t.index("-t") + 1] == "8.000000" and "-shortest" not in con_t
+    assert "-shortest" in sin_t and "-t" not in sin_t
+    for cmd in (con_t, sin_t):
+        assert cmd.index("-t" if "-t" in cmd else "-shortest") > cmd.index("-i")   # opción de SALIDA
+        assert ("anullsrc" in " ".join(cmd)) is (not con_audio)
 
 
 # ---------------------------------------------------------------------------

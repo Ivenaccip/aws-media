@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
@@ -119,12 +120,39 @@ def instruccion_de(cuerpo: Any) -> str:
     return texto
 
 
+# Lo que una copia de E2 guarda en `doc.editar` para el worker y la idempotencia, y que la web nunca lee:
+# `fuentes` (las keys de S3 de los originales, sus `wav_key`/`canonico_key`) y `pedido` (la clave de
+# idempotencia). Salen del sondeo de la caja (cada 5 s) y de la lista de «Mis creaciones».
+_SOLO_DEL_SERVIDOR = ("fuentes", "pedido")
+
+_INFRA = re.compile(r"arn:aws[A-Za-z-]*:[^\s,;'\")\]]*|\b\d{12}\b")
+
+
+def tachar_infra(texto) -> str:
+    """El texto sin ARN de AWS ni números de cuenta: un `ClientError` de boto3 suele traer el rol y la
+    máquina de estados. No es un secreto, pero tampoco hay por qué enseñárselo a quien usa la caja."""
+    return _INFRA.sub("[…]", str(texto))
+
+
+def editar_publico(editar):
+    """El `doc.editar` que sale al navegador. Una copia de E2 (`copia: true`) pierde lo que solo
+    necesita el servidor (`fuentes`, `pedido`) y su `error` crudo —el `Tipo: texto` de la excepción del
+    worker— sale sin ARN ni números de cuenta. El doc guardado no cambia: `reintentar` y el worker lo
+    necesitan. Lo que no es una copia (E1) conserva el contrato de siempre."""
+    if not isinstance(editar, dict) or editar.get("copia") is not True:
+        return editar
+    publico = {k: v for k, v in editar.items() if k not in _SOLO_DEL_SERVIDOR}
+    if isinstance(publico.get("error"), str):
+        publico["error"] = tachar_infra(publico["error"])
+    return publico
+
+
 @router.get("/{nombre}")
 def estado(nombre: str):
     """Poll barato de la UI: solo lo que ya está en Postgres."""
     _nube()
     doc = _proyecto(nombre)
-    return {"editar": doc.get("editar"), "fuente": _fuente(doc, nombre),
+    return {"editar": editar_publico(doc.get("editar")), "fuente": _fuente(doc, nombre),
             "editor_listo": bool(doc.get("flags", {}).get("cuts"))}
 
 

@@ -21,8 +21,10 @@ para que corra el `pipeline/creditos.py` de verdad: la tarifa sale de
 `tools/tarifas.json` y el `SinSaldo` real.
 """
 import json
+import subprocess
 import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,6 +36,32 @@ from server import edicion_api
 PEDIDO = "9f1c0a7b4d2e4f6a8b3c1d5e7f9a0b2c"
 PEDIDO_2 = "aaaaaaaa11112222333344445555666b"
 INSTRUCCION = "Quita muletillas y silencios. Es para YouTube."
+
+
+def gira(path: Path) -> bool:
+    """¿El archivo se ve girado 90° (display matrix)? Lo mismo que mira `edicion_api._medir`."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream_side_data=rotation",
+                        "-of", "json", str(path)], capture_output=True, text=True, encoding="utf-8")
+    try:
+        lado = [d for s in json.loads(r.stdout).get("streams", []) for d in s.get("side_data_list", [])]
+    except ValueError:
+        return False
+    return any(abs(int(d.get("rotation", 0))) % 180 == 90 for d in lado)
+
+
+def con_rotacion(src: Path, dst: Path) -> Path | None:
+    """`src` SIN recodificar y con rotación de 90° (se ve vertical), o None si este ffmpeg no sabe
+    marcarla. `-display_rotation` es de ffmpeg 6; la imagen del CI (Debian bookworm) trae la 5.1,
+    que lo hace con el tag `rotate`. Se prueban las dos maneras y se COMPRUEBA con ffprobe que la
+    rotación quedó marcada: un `returncode == 0` solo no basta, un ffmpeg puede aceptar la opción
+    y no dejar nada escrito."""
+    for args in (["-display_rotation", "90", "-i", str(src), "-c", "copy"],
+                 ["-i", str(src), "-c", "copy", "-metadata:s:v:0", "rotate=90"]):
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *args, str(dst)], capture_output=True)
+        if r.returncode == 0 and gira(dst):
+            return dst
+        dst.unlink(missing_ok=True)
+    return None
 
 
 def ahora_iso(delta_s: float = 0) -> str:
@@ -58,6 +86,12 @@ class Mundo:
         self.cobrar_falla_despues: Exception | None = None     # cobra y luego se cae la respuesta
         self.candado = threading.RLock()                        # cada sentencia de Postgres es atómica
         self.mediciones_hechas: list[str] = []
+        self.tamanos: dict[str, int | None] = {}           # key -> bytes en S3 (si no está, los de la subida del doc)
+        self.hay_sitio = True                               # Fargate tiene lugar
+        self.abonar_fallas = 0                              # cuántos abonos siguientes truenan (el monedero titubea)
+        self.abono_pierde_respuesta = 0                     # el abono entra pero la respuesta se pierde (N veces)
+        self.al_abonar = None                               # callable, una vez: algo pasa MIENTRAS se devuelve
+        self.tras_crear = None                              # callable, una vez: otra pestaña inserta justo después de mi INSERT
         self._parchar()
 
     # -- la parte de Postgres -------------------------------------------------
@@ -83,6 +117,11 @@ class Mundo:
         mp.setattr(db, "saldo_creditos", lambda u: self.saldos.get(u, 0))
         mp.setattr(db, "cobrar_creditos", self._cobrar)
         mp.setattr(db, "abonar_creditos", self._abonar)
+        mp.setattr(db, "abonar_devolucion_de_cargo", self._abonar_de_cargo)
+        mp.setattr(db, "cerrar_editor_si_error", self._cerrar_si_error)
+        mp.setattr(db, "devoluciones_pendientes", self._pendientes)
+        mp.setattr(media_sync, "tamano", self._tamano)
+        mp.setattr(jobs, "_hay_sitio", lambda: self.hay_sitio)
         mp.setattr(jobs, "lanzar_editar", self._lanzar)
         mp.setattr(media_sync, "listar_prefijo",
                    lambda pre: sorted(k for k in self.s3 if k.startswith(pre)))
@@ -139,6 +178,9 @@ class Mundo:
             return False                       # el índice parcial único
         self.docs(u)[n] = d
         self.creados[(u, n)] = ahora_iso()
+        if self.tras_crear is not None:
+            gancho, self.tras_crear = self.tras_crear, None
+            gancho()                           # la otra pestaña inserta después de mí (sin índice no hay quien la frene)
         return True
 
     def _corriendo(self, u):
@@ -198,6 +240,38 @@ class Mundo:
         if d and d.get("editar", {}).get("copia") is True and d["editar"].get("cobrado") is False:
             del self.docs(u)[n]
 
+    def _cerrar_si_error(self, u, n, inicio, valor) -> bool:
+        """`db.cerrar_editor_si_error`: escribe solo si la copia SIGUE en `error` con el mismo `inicio`."""
+        with self.candado:
+            d = self.docs(u).get(n)
+            e = (d or {}).get("editar") or {}
+            if d is None or e.get("estado") != "error" or (e.get("inicio") or "") != ("" if inicio is None else inicio):
+                self.eventos.append(("cerrar", n, False))
+                return False
+            v = json.loads(valor)
+            if (self.indice and v.get("estado") == "corriendo" and v.get("copia") is True
+                    and self._en_curso(u, excepto=n)):
+                raise RuntimeError("duplicate key value violates unique constraint proyectos_editor_copia_en_curso")
+            d["editar"] = v
+            self.eventos.append(("cerrar", n, True))
+            return True
+
+    def _pendientes(self, u):
+        return [{"nombre": n, "editar": json.loads(json.dumps(d["editar"]))}
+                for n, d in self.docs(u).items()
+                if isinstance(d.get("editar"), dict) and d["editar"].get("devolucion_api") is True]
+
+    def _tamano(self, key):
+        """ContentLength del objeto en S3: lo que diga `self.tamanos` y, si no, lo que registró la subida."""
+        if key in self.tamanos:
+            return self.tamanos[key]
+        for docs in self.proyectos.values():
+            for d in docs.values():
+                for s in d.get("subidas", []):
+                    if s.get("key") == key:
+                        return s.get("bytes")
+        return None
+
     # -- el monedero ----------------------------------------------------------
     def _cobrar(self, u, n, ref):
         with self.candado:
@@ -210,7 +284,34 @@ class Mundo:
             raise self.cobrar_falla_despues
         return self.saldos[u]
 
-    def _abonar(self, u, n, tipo, ref):
+    def _titubea(self) -> None:
+        if self.al_abonar is not None:
+            gancho, self.al_abonar = self.al_abonar, None
+            gancho()                           # p. ej.: la persona pulsa «Reintentar» mientras se devuelve
+        if self.abonar_fallas > 0:
+            self.abonar_fallas -= 1
+            self.eventos.append(("abono_fallo",))
+            raise RuntimeError("el monedero titubea (Data API)")
+
+    def _abonar_de_cargo(self, u, n, ref):
+        """`db.abonar_devolucion_de_cargo`: UNA sentencia; abona solo si el ÚLTIMO movimiento de esa
+        referencia es un cargo (hay algo cobrado sin devolver); si ya era una devolución, no toca nada."""
+        self._titubea()                        # fuera del candado: el gancho puede hacer otra petición
+        with self.candado:
+            propios = [m for m in self.libro if m["user"] == u and m["referencia"] == ref]
+            if not propios or propios[-1]["tipo"] != "cargo":
+                self.eventos.append(("devolver_repetida", n, ref))
+                return None
+            saldo = self._abonar(u, n, "devolucion", ref, _sin_fallo=True)
+            if self.abono_pierde_respuesta > 0:
+                self.abono_pierde_respuesta -= 1
+                self.eventos.append(("abono_sin_respuesta",))
+                raise TimeoutError("la respuesta del Data API se perdió (el abono SÍ entró)")
+            return saldo
+
+    def _abonar(self, u, n, tipo, ref, _sin_fallo=False):
+        if not _sin_fallo and tipo == "devolucion":
+            self._titubea()
         self.saldos[u] = self.saldos.get(u, 0) + n
         self.libro.append({"user": u, "creditos": n, "tipo": tipo, "referencia": ref})
         self.eventos.append(("devolver" if tipo == "devolucion" else tipo, n, ref))

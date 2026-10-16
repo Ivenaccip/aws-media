@@ -48,14 +48,21 @@ const avanzar = ms => { AHORA += ms; for (const {f} of [...intervalos.values()])
 // --- el servidor de mentira
 const estado = {trabajos: [], llamadas: []};
 let respuestaReintento = {ok: true, status: 200, cuerpo: {lanzado: true}};
+let soltarReintento = null;
 w.fetch = async (url, op) => {
   estado.llamadas.push({url: String(url), metodo: (op && op.method) || 'GET'});
   if (String(url).startsWith('/api/trabajos')) return {ok: true, status: 200, json: async () => ({trabajos: estado.trabajos, sondeo_s: 15})};
   if (respuestaReintento === 'red') throw new TypeError('Failed to fetch');
+  if (respuestaReintento === 'pendiente') return new Promise(r => { soltarReintento = () => r({ok: true, status: 200, json: async () => ({lanzado: true})}); });
   return {ok: respuestaReintento.ok, status: respuestaReintento.status, json: async () => respuestaReintento.cuerpo};
 };
 w.icono = n => '<svg data-i="' + n + '"></svg>';
-w.monedero = {get: () => ({saldo: 5}), recarga: true, recargar() { w.__recargado = (w.__recargado || 0) + 1; }, cta: 'Escríbenos por el canal de la comunidad para conseguir más.'};
+w.monedero = {get: () => ({saldo: 5}), recarga: true, recargar() { w.__recargado = (w.__recargado || 0) + 1; }, refrescar() { w.__refrescos = (w.__refrescos || 0) + 1; },
+              cta: 'Escríbenos por el canal de la comunidad para conseguir más.'};
+// lo que la bandeja le dice a la pantalla (a Inicio) y al monedero cuando un «Reintentar» salió bien
+w.__lanzados = []; w.__cobros = [];
+w.addEventListener('trabajos:lanzado', e => w.__lanzados.push(e.detail));
+w.addEventListener('cobro', e => w.__cobros.push(e.detail));
 
 w.eval(codigo);
 const cargada = new Promise(r => (doc.readyState === 'complete' ? r() : w.addEventListener('load', () => r())));
@@ -74,6 +81,7 @@ const corriendo = (extra = {}) => ({
             inicio: INICIO, resumen: null, enlace: null, error: null},
   ...extra,
 });
+const clip = p => ({id: 'clip:c9', tipo: 'clip', estado: 'corriendo', titulo: 'Generando tu clip de 8 segundos', detalle: 'En camino', progreso: p, url: ''});
 const out = {};
 
 // ---------------------------------------------------------------- corriendo
@@ -207,19 +215,83 @@ const out = {};
   respuestaReintento = 'red';
   reint().click(); await esperar(); await esperar();
   out.rRed = avisosAhora().at(-1);
-  // salió bien: no dice nada y vuelve a preguntar por los trabajos
+  // un reintento que NO salió (402, 409, sin red) no cobró nada: ni refresca el saldo, ni le avisa a la pantalla, ni vuela un «−N»
+  out.fallosNoAvisan = {refrescos: w.__refrescos || 0, lanzados: w.__lanzados.length, cobros: w.__cobros.length};
+  // salió bien: no dice nada, vuelve a preguntar por los trabajos y SE ENTERAN el saldo (la píldora), la pantalla (la tarjeta de Mis
+  // creaciones pasa de «No se pudo editar» a «Editando…») y el «−N» (INT-02)
   respuestaReintento = {ok: true, status: 200, cuerpo: {lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 2}};
   estado.llamadas = [];
   const avisosAntes = avisosAhora().length;
   reint().click(); await esperar(); await esperar();
   out.rOk = {post: estado.llamadas.filter(l => l.metodo === 'POST').map(l => l.url), preguntoTrabajos: estado.llamadas.some(l => l.url.startsWith('/api/trabajos')),
-             avisosNuevos: avisosAhora().length - avisosAntes};
+             avisosNuevos: avisosAhora().length - avisosAntes, refrescos: w.__refrescos || 0, lanzados: [...w.__lanzados], cobros: w.__cobros.map(c => c.costo)};
+  // el «−N» es lo que cobró el servidor (su respuesta), y sin respuesta legible el precio que traía la ficha
+  respuestaReintento = {ok: true, status: 200, cuerpo: {lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 3}};
+  reint().click(); await esperar(); await esperar();
+  respuestaReintento = {ok: true, status: 200, cuerpo: {}};
+  reint().click(); await esperar(); await esperar();
+  out.cobrosSeguidos = w.__cobros.map(c => c.costo);
+  // mientras el POST de «Reintentar» está en el aire, una lectura de los trabajos NO le quita su estado ocupado al botón (un segundo clic
+  // volvería a pedir el cobro): el repintado no borra lo que puso la bandeja misma
+  respuestaReintento = 'pendiente';
+  estado.llamadas = [];
+  const enElAire = reint();
+  enElAire.click(); await esperar();
+  const ocupadoAntes = enElAire.getAttribute('aria-busy');
+  await traer([error(), clip(70)]);
+  out.enElAire = {antes: ocupadoAntes, despues: reint().getAttribute('aria-busy'), deshabilitado: reint().getAttribute('aria-disabled'), mismoBoton: reint() === enElAire,
+                  posts: estado.llamadas.filter(l => l.metodo === 'POST').length};
+  reint().click(); await esperar();                      // un segundo clic con el primero en el aire no manda otro POST
+  out.enElAire.postsTras2Clics = estado.llamadas.filter(l => l.metodo === 'POST').length;
+  soltarReintento(); await esperar(); await esperar();
+  out.enElAire.libre = !enElAire.hasAttribute('aria-busy') && !enElAire.hasAttribute('aria-disabled');
+  // el orden de las fichas sigue al del servidor y las que se conservan siguen siendo las mismas
+  const fe = raiz.querySelector('.bj-item.error'), fc = raiz.querySelector('.bj-item.corriendo');
+  await traer([clip(80), error()]);
+  out.orden = {claves: [...raiz.querySelectorAll('.bj-lista > .bj-item')].map(e => e.dataset.k), mismas: raiz.querySelector('.bj-item.error') === fe && raiz.querySelector('.bj-item.corriendo') === fc};
+  await traer([error(), clip(80)]);
+  out.orden.vuelve = [...raiz.querySelectorAll('.bj-lista > .bj-item')].map(e => e.dataset.k);
   // una ruta que no es /api/ no se llama
   const mala = error({}, {reintentar: {texto: 'Reintentar', ruta: 'https://ajeno.example/x'}});
   await traer([mala]);
   estado.llamadas = [];
   reint().click(); await esperar(); await esperar();
   out.rajena = estado.llamadas.filter(l => l.metodo === 'POST').length;
+
+  // ------------------------------------------------------------ H2: repintar solo lo que cambió
+  // Una copia que falló (con su role="alert" y su «Reintentar») y, junto a ella, un clip que corre: cada lectura que cambia el progreso del clip
+  // NO debe repintar la ficha de error. Si la repinta, el lector de pantalla repite las tres partes del error y quien llegó con Tab a
+  // «Reintentar» pierde el foco (cae al body).
+  await traer([error(), clip(10)]);
+  if (!raiz.querySelector('[role="region"]')) abrir();
+  const fichaError = raiz.querySelector('.bj-item.error');
+  const botonReint = raiz.querySelector('[data-reintentar]');
+  const fichaClip = raiz.querySelector('.bj-item.corriendo');
+  botonReint.focus();
+  const alertasNuevas = [];
+  const vigia = new w.MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.getAttribute('role') === 'alert' || n.querySelector('[role="alert"]'))) alertasNuevas.push(n.className); });
+  vigia.observe(raiz, {childList: true, subtree: true});
+  const ancho = () => raiz.querySelector('.bj-barra i').style.width;
+  out.h2 = {focoAntes: doc.activeElement === botonReint, barraAntes: ancho(), barras: []};
+  for (const p of [30, 55, 90]) { await traer([error(), clip(p)]); await esperar(); out.h2.barras.push(ancho()); }
+  vigia.disconnect();
+  Object.assign(out.h2, {
+    mismaFichaDeError: raiz.querySelector('.bj-item.error') === fichaError, mismoBoton: raiz.querySelector('[data-reintentar]') === botonReint,
+    focoDespues: doc.activeElement === botonReint, alertasInsertadas: alertasNuevas.length, mismaFichaDelClip: raiz.querySelector('.bj-item.corriendo') === fichaClip,
+  });
+  // lo que SÍ cambia se pone al día en su sitio (el clip pasa a listo y el error ya no está si el servidor ya no lo manda)
+  await traer([clip(100)]);
+  out.h2.sinErrores = raiz.querySelectorAll('.bj-item.error').length;
+  // un aviso que aparece y se va tampoco repinta las fichas: «Te faltan ✦ …» con la ficha de error a la vista
+  await traer([error(), clip(100)]);
+  const botonDeNuevo = raiz.querySelector('[data-reintentar]');
+  botonDeNuevo.focus();
+  const avisosEnPantalla = () => raiz.querySelectorAll('.bj-aviso').length;
+  const avisosPrevios = avisosEnPantalla();   // los de «Reintentar» de más arriba siguen ahí (un fallo se queda hasta cerrarlo)
+  w.avisos.mostrar('Guardado', {tipo: 'ok'});
+  out.h2.conAviso = {nuevos: avisosEnPantalla() - avisosPrevios, mismoBoton: raiz.querySelector('[data-reintentar]') === botonDeNuevo, foco: doc.activeElement === botonDeNuevo};
+  w.avisos.quitar(w.avisos.mostrar('otro', {tipo: 'info'}));
+  out.h2.conAviso.sigueElBoton = raiz.querySelector('[data-reintentar]') === botonDeNuevo;
 
   // ------------------------------------------------------------ las fichas de siempre no cambian
   await traer([{id: 'pelicula:p1:1', tipo: 'pelicula', estado: 'error', titulo: 'No se pudo producir', detalle: 'En «Animando las escenas».', devueltos: 90, url: '/crear.html?p=p1'},
@@ -350,6 +422,54 @@ def test_otros_fallos_de_reintentar_se_dicen_tal_cual_y_uno_que_sale_bien_solo_v
     assert vista["rRed"]["texto"] == "Sin conexión. Inténtalo de nuevo."
     ok = vista["rOk"]
     assert ok["post"] == ["/api/edicion/ed-9f1c0a7b/reintentar"] and ok["preguntoTrabajos"] and ok["avisosNuevos"] == 0
+
+
+def test_un_reintento_que_sale_bien_pone_al_dia_el_saldo_avisa_a_la_pantalla_y_vuela_el_menos_n(vista):
+    # INT-02: el servidor cobró al aceptar. La píldora no sondea el saldo y Mis creaciones solo sondea mientras algo corre en SU lista (que
+    # decía «error»): sin este aviso las dos se quedaban viejas hasta recargar la página
+    ok = vista["rOk"]
+    assert ok["refrescos"] == 1, "el saldo se pone al día UNA vez (monedero.refrescar)"
+    assert ok["lanzados"] == [{"ruta": "/api/edicion/ed-9f1c0a7b/reintentar"}], "Inicio se entera por el evento trabajos:lanzado"
+    assert ok["cobros"] == [2], "el «−2» vuela con lo que dijo el servidor"
+    # y si el servidor cobra otra cifra, manda la suya; sin cuerpo legible, el precio que traía la ficha
+    assert vista["cobrosSeguidos"] == [2, 3, 2]
+
+
+def test_un_reintento_que_no_salio_no_cobro_nada_y_no_avisa_a_nadie(vista):
+    # 402, 409 y sin red: ni saldo, ni evento, ni «−N» (un «−N» que no se cobró sería mentir sobre dinero)
+    assert vista["fallosNoAvisan"] == {"refrescos": 0, "lanzados": 0, "cobros": 0}
+
+
+def test_repintar_no_toca_lo_que_no_cambio_el_error_conserva_su_nodo_su_foco_y_no_se_vuelve_a_anunciar(vista):
+    # H2: un clip que corre cambia de progreso en cada lectura; la ficha de error de al lado NO se repinta
+    h = vista["h2"]
+    assert h["focoAntes"] is True
+    assert h["barras"] == ["30%", "55%", "90%"], "lo que SÍ cambia (la barra del clip) se pone al día"
+    assert h["mismaFichaDeError"] and h["mismoBoton"], "el nodo de la ficha de error es el mismo"
+    assert h["focoDespues"] is True, "el foco sigue en «Reintentar» (antes caía al body)"
+    assert h["alertasInsertadas"] == 0, "el role=alert no se vuelve a insertar: el lector de pantalla no lo repite"
+    assert h["mismaFichaDelClip"], "la ficha que corre también se actualiza en su sitio"
+
+
+def test_repintar_no_le_quita_su_estado_ocupado_a_un_reintentar_que_esta_en_el_aire(vista):
+    a = vista["enElAire"]
+    assert a["antes"] == "true" and a["despues"] == "true" and a["deshabilitado"] == "true" and a["mismoBoton"]
+    assert a["posts"] == 1 and a["postsTras2Clics"] == 1, "un segundo clic con el primero en el aire no pide otro cobro"
+    assert a["libre"], "al contestar el servidor el botón queda libre"
+
+
+def test_repintar_acomoda_las_fichas_en_el_orden_del_servidor_conservando_sus_nodos(vista):
+    o = vista["orden"]
+    assert o["claves"] == ["clip:c9", "edicion:ed-9f1c0a7b:1792088000"] and o["mismas"]
+    assert o["vuelve"] == ["edicion:ed-9f1c0a7b:1792088000", "clip:c9"]
+
+
+def test_repintar_quita_lo_que_ya_no_viene_y_un_aviso_no_repinta_las_fichas(vista):
+    h = vista["h2"]
+    assert h["sinErrores"] == 0
+    assert h["conAviso"]["nuevos"] == 1
+    assert h["conAviso"]["mismoBoton"] and h["conAviso"]["foco"], "mostrar un aviso no le quita el foco a «Reintentar»"
+    assert h["conAviso"]["sigueElBoton"]
 
 
 def test_reintentar_solo_llama_a_rutas_de_la_api_del_propio_sitio(vista):

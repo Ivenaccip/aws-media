@@ -231,27 +231,44 @@ def _resumen_edicion(editar: dict, n: int) -> tuple[str | None, str | None]:
     return None, f"Quitamos {reloj(entrada - salida)} · {rango}"
 
 
+def _entero_positivo(valor) -> int | None:
+    return valor if isinstance(valor, int) and not isinstance(valor, bool) and valor > 0 else None
+
+
+def _se_debe(editar: dict) -> int | None:
+    """Los créditos que se están devolviendo AHORA: `devolucion_pendiente` (la dejan el worker, para que
+    la cierre el barredor, y el API, que la salda en la siguiente llamada de la persona) mientras
+    todavía no conste `devueltos`. Una marca residual de algo ya devuelto no cuenta."""
+    if _entero_positivo(editar.get("devueltos")):
+        return None
+    return _entero_positivo(editar.get("devolucion_pendiente"))
+
+
 def _error_edicion(nombre: str, editar: dict, n: int) -> dict:
     """El fallo en tres partes: qué pasó, qué pasó con los créditos, qué sigue.
-    `creditos` solo existe si de verdad se devolvió algo (sin monedero no se
-    habla de créditos)."""
+    `creditos` solo existe si de verdad se devolvió algo, o si se está devolviendo (sin monedero no se
+    habla de créditos). Mientras se debe una devolución NO se ofrece «Reintentar»: cobraría otra vez
+    sin haber devuelto."""
     paso = _PASO_NOMBRE.get(editar.get("paso"), "Editar")
-    cr = editar.get("creditos")
-    cr = cr if isinstance(cr, int) and not isinstance(cr, bool) and cr > 0 else None
+    cr = _entero_positivo(editar.get("creditos"))
     monedero = creditos.activo() and cr is not None
     dev = editar.get("devueltos")
+    debe = _se_debe(editar) if creditos.activo() else None
+    solo = "Tu original no se tocó." if n == 1 else "Tus videos originales no se tocaron."
     out = {
         "que_paso": (f"Falló el paso «{paso}», de nuestro lado." if n == 1
                      else f"Falló el paso «{paso}» al unir tus {n} videos, de nuestro lado."),
-        "que_sigue": ("Tu original no se tocó." if n == 1 else "Tus videos originales no se tocaron.")
-                     + (f" Reintentar vuelve a cobrar ✦ {cr}." if monedero else ""),
+        "que_sigue": solo + (f" Reintentar vuelve a cobrar ✦ {cr}." if monedero else ""),
         "reintentar": {"texto": "Reintentar", "ruta": f"/api/edicion/{nombre}/reintentar"},
     }
     if monedero:
         out["reintentar"]["creditos"] = cr
-    if isinstance(dev, int) and not isinstance(dev, bool) and dev > 0:
+    if _entero_positivo(dev):
         out = {"que_paso": out["que_paso"], "creditos": f"Te devolvimos ✦ {dev}.",
                "que_sigue": out["que_sigue"], "reintentar": out["reintentar"]}
+    elif debe:
+        out = {"que_paso": out["que_paso"], "creditos": f"Estamos devolviendo tus ✦ {debe}.",
+               "que_sigue": solo}
     return out
 
 
@@ -268,9 +285,14 @@ def ficha_edicion(nombre: str, doc: dict, desde: float, ahora: float) -> dict | 
         return None
     if editar.get("cobrado") is False:
         return None
+    if editar.get("no_lanzada") is True:
+        # falló al LANZAR (502/503): los créditos volvieron y nada llegó a correr, así que no hay un
+        # «paso que falló» que contar ni nada que reintentar de esta copia
+        return None
     inicio = _epoch(editar.get("inicio"))
     fin = _epoch(editar.get("fin") or editar.get("listo")) or inicio
     estado = editar["estado"]
+    debe = estado in ("corriendo", "error") and _se_debe(editar) is not None
     n = editar.get("n_videos")
     if not isinstance(n, int) or isinstance(n, bool) or n < 1:
         n = len(editar.get("fuentes") or []) or 1
@@ -279,7 +301,7 @@ def ficha_edicion(nombre: str, doc: dict, desde: float, ahora: float) -> dict | 
     pedido = _corto(editar.get("instruccion") or "", MAX_PEDIDO)
     edicion = {"nombre": nombre, "paso": paso, "pasos": list(PASOS_EDICION), "pedido": pedido,
                "inicio": editar.get("inicio"), "resumen": None, "enlace": None, "error": None}
-    if estado == "corriendo":
+    if estado == "corriendo" and not debe:
         if inicio is None or ahora - inicio > HORAS_COLGADO * 3600:
             return None
         f = _ficha("edicion", nombre, "corriendo", f"La IA edita {titulo}", "", inicio,
@@ -292,7 +314,9 @@ def ficha_edicion(nombre: str, doc: dict, desde: float, ahora: float) -> dict | 
         edicion.update(resumen=detalle, enlace={"texto": "Abrir el editor", "url": url})
         f = _ficha("edicion", nombre, "listo", titulo_listo or "Tu video editado está listo", url, fin,
                    detalle=detalle or "")
-    elif estado == "error":
+    elif estado == "error" or debe:
+        # `debe` con la corrida aún `corriendo`: la reabrió el worker para que la cierre el barredor;
+        # ya falló, así que no se anuncia como viva
         edicion["error"] = _error_edicion(nombre, editar, n)
         dev = editar.get("devueltos")
         f = _ficha("edicion", nombre, "error",

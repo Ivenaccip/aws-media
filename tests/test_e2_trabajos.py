@@ -303,3 +303,54 @@ def test_la_consulta_trae_el_titulo_del_doc():
     import inspect
     src = inspect.getsource(db.corridas_editor)
     assert "'titulo', doc->'titulo'" in src and "doc->'editar'" in src
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 2 · una devolución pendiente se cuenta como lo que es; lo que nunca corrió no se anuncia
+
+@pytest.mark.parametrize("estado,extra", [
+    ("corriendo", {}),                          # la reabrió el worker para que la cierre el barredor
+    ("error", {"devolucion_api": True}),        # el API no pudo abonar y la salda en la siguiente llamada
+])
+def test_con_una_devolucion_pendiente_la_bandeja_dice_que_se_esta_devolviendo(monkeypatch, estado, extra):
+    """Un doc `corriendo` con `devolucion_pendiente` NO es «La IA edita…»: ya falló y está devolviendo. Y
+    mientras se debe, «Reintentar» no se ofrece (reintentar cobraría otra vez sin haber devuelto)."""
+    monkeypatch.setattr(tj.creditos, "activo", lambda: True)
+    f = una(copia(estado=estado, paso="editar", n_videos=3, creditos=2, devolucion_pendiente=2,
+                  error="RuntimeError: ffmpeg", **extra))
+    assert f["estado"] == "error" and f["titulo"] == "No se pudo editar la unión de tus videos"
+    assert f["devueltos"] is None and f["url"] == ""
+    assert f["edicion"]["error"] == {
+        "que_paso": "Falló el paso «Editar» al unir tus 3 videos, de nuestro lado.",
+        "creditos": "Estamos devolviendo tus ✦ 2.",
+        "que_sigue": "Tus videos originales no se tocaron."}
+    assert "reintentar" not in f["edicion"]["error"]
+
+
+def test_una_vez_devuelto_la_ficha_vuelve_a_ser_la_de_siempre(monkeypatch):
+    f = con_error(monkeypatch, devueltos=2, devolucion_pendiente=None)
+    assert f["edicion"]["error"]["creditos"] == "Te devolvimos ✦ 2." and "reintentar" in f["edicion"]["error"]
+    f = con_error(monkeypatch, devueltos=2, devolucion_pendiente=2)          # la marca residual no manda sobre lo devuelto
+    assert f["edicion"]["error"]["creditos"] == "Te devolvimos ✦ 2."
+
+
+def test_una_copia_reabierta_que_lleva_horas_sigue_sin_anunciarse_como_viva(monkeypatch):
+    monkeypatch.setattr(tj.creditos, "activo", lambda: True)
+    assert fichas(copia(estado="corriendo", devolucion_pendiente=2, inicio=iso(AHORA - 30 * 3600))) == []
+
+
+def test_sin_monedero_una_marca_de_devolucion_no_habla_de_creditos(monkeypatch):
+    monkeypatch.setattr(tj.creditos, "activo", lambda: False)
+    f = una(copia(estado="corriendo", devolucion_pendiente=2))
+    assert "creditos" not in f["edicion"]["error"]
+
+
+def test_una_copia_que_nunca_llego_a_correr_no_tiene_ficha():
+    """Falló el lanzamiento (502/503): los créditos volvieron y NADA corrió. La ficha de error con
+    «Falló el paso Entender… de nuestro lado» y un «Reintentar» era una copia fantasma por cada intento."""
+    assert fichas(copia(estado="error", no_lanzada=True, devueltos=2, fin=iso(AHORA - 20))) == []
+    assert fichas(copia(estado="error", no_lanzada=True, devolucion_pendiente=2, devolucion_api=True)) == []
+
+
+def test_una_copia_que_si_corrio_y_fallo_sigue_con_su_ficha():
+    assert len(fichas(copia(estado="error", devueltos=2, fin=iso(AHORA - 20)))) == 1

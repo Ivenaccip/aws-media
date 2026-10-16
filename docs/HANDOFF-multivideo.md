@@ -39,6 +39,18 @@ conserva porque explica por qué el motor es como es.
   `editar-sugerir:<copia>`, reclamando antes con `db.reclamar_fallo_editor` (lo gana el worker o el
   barredor, nunca los dos). Una unión de 2+ videos no se devuelve por «cero sugerencias»: la unión ES
   el entregable. Ver `docs/OPERACION.md`.
+  - **Un evento tardío no cierra el reintento.** «Reintentar» reutiliza el MISMO doc, así que el evento
+    FAILED de la ejecución vieja llegaba cuando la corrida nueva ya estaba `corriendo` y la reclamaba
+    (devolviéndole lo recién cobrado, o lo que aún no se cobraba). El barredor compara el `startDate`
+    del evento con `editar.inicio` (que el API escribe antes de lanzar): si la corrida vigente empezó
+    más de `HOLGURA_RELOJ_S` (5 s) DESPUÉS de esa ejecución, el evento es de otra y no se toca nada. Con
+    `cobrado: false` (el reintento aún no confirma su cobro) manda el libro mayor, no el monto del doc.
+  - **Una deuda nunca se queda sin lector.** Si el monedero falla y el worker no puede reabrir la corrida
+    (el índice único de «una copia en curso» lo rechaza porque la persona ya lanzó otra), o si la copia se
+    entregó con CERO sugerencias y el abono falló, el worker deja la deuda en `editar.devolucion_pendiente`
+    y **sale con 1**: la ejecución muere FAILED y su evento llega al barredor, que (sin poder reclamar,
+    porque no está `corriendo`) cobra la deuda (`barredor._cobrar_deuda_editar`). El libro mayor decide si
+    falta: si su último movimiento de esa copia ya es una devolución, solo se anota.
 - **Lo que el motor NO hace todavía:** fundidos, música, títulos, nivelar el sonido (`loudnorm` está
   prohibido en el master) ni cambiar de vertical a horizontal. Los cortes son directos. Lo que la
   instrucción pida y no se pueda sale como duda «No aplicado:».
@@ -55,6 +67,7 @@ antes de E2:
 | 16:9 junto a 4:3 | partes de alto distinto pegadas con `-c copy` | `non monotonically increasing dts` al decodificar |
 | dos verticales (720×1280) | se agrandaban a 1280×2276 | ídem en preview |
 | audio 150 ms más corto que su video, 4 clips | — | el audio del master quedaba 0,58 s corto: cada clip acortaba el suyo y la deriva se SUMABA |
+| cualquier unión con **ffmpeg 5.1** (la imagen de producción y de la CI, Debian bookworm) | el audio de CADA parte sobrepasaba a su video entre 16 y 101 ms (`-shortest` + `apad`): aire muerto en cada empalme, `r_frame_rate` 60/1 o 30000/1001 y un `manifest.total` 0,1 s por parte más largo que el video | no le pasaba |
 
 Arreglo: `make_proxy.py` normaliza siempre cada parte a 1280×720 (720×1280 si el primer clip es
 vertical, con barras si el aspecto no coincide), 30 fps y AAC 48 kHz estéreo (silencio de la duración
@@ -62,6 +75,13 @@ del video si no hay pista); `render_cuts.py --mode preview` usa el MISMO filtro,
 un clip sin audio y rellena (`apad`) un audio corto hasta las muestras exactas de su segmento. **El
 modo `final` no cambia**: sin filtro de video, mismo encoder (el flujo local de video-stack). La
 orientación del primer clip manda; las herramientas no vuelven a juzgar lo que el servidor ya rechazó.
+
+**Dónde se corta el audio de cada parte (ffmpeg 5.1 contra 6.1).** `make_proxy.py` rellena el audio
+(`apad`, o `anullsrc` si no hay pista) y lo corta con `-t <duración del video de la parte>` —la del
+flujo de video de la fuente, en cuadros enteros a 30 fps (`duracion_de_parte`)—, no con `-shortest`: con
+ffmpeg 5.1 `-shortest` deja pasar el relleno. Con 6.1 las dos formas daban lo mismo, y por eso la prueba
+solo se puso roja en la CI. Un contenedor que no declara la duración del flujo (Matroska/WebM) conserva
+`-shortest`. El manifiesto sale de `ffprobe` de cada parte, no se calcula.
 
 ## Lo que YA existe (no reconstruir)
 

@@ -95,9 +95,17 @@ class _Corrida:
         return st
 
     def paso(self, paso: str) -> dict:
-        """Cada fase escribe su `paso` al EMPEZAR (la bandeja lo sondea cada 15 s)."""
+        """Cada fase escribe su `paso` al EMPEZAR (la bandeja lo sondea cada 15 s).
+
+        Cambia SOLO `editar.paso` y solo si la corrida sigue `corriendo` (`db.fijar_paso_editor`, un
+        UPDATE condicionado): en vez de leer el `editar` entero y volver a escribirlo, que pisaba
+        lo que otro hubiera escrito en medio y podía revivir una corrida cerrada."""
         log.info("%s: paso %s", self.nombre, paso)
-        return self.escribir(paso=paso)
+        st = self.vivo()
+        if not db.fijar_paso_editor(self.user_id, self.nombre, paso):
+            raise Cerrada(self.nombre)           # la cerraron entre la lectura y la escritura
+        st["paso"] = paso
+        return st
 
 
 # ---------------------------------------------------------------------------
@@ -489,41 +497,65 @@ def _fallar(user_id: str, nombre: str, err: Exception) -> int:
             trabajo["devueltos"] = n
             log.info("%s: %d créditos devueltos", nombre, n)
         else:
-            # Lo último que queda: volver a abrir el doc y salir con 1. La ejecución
-            # muere FAILED, el barredor reclama (el doc vuelve a estar `corriendo`) y lo
+            # Lo último que queda: volver a abrir el doc y salir con 1. La ejecución muere
+            # FAILED, el barredor reclama (el doc vuelve a estar `corriendo`) y lo
             # intenta con su propia conexión. Mejor eso que un `error` sin devolver.
             log.error("%s: NO se devolvieron %d créditos; se deja para el barredor", nombre, n)
             trabajo["estado"] = "corriendo"
             trabajo["devolucion_pendiente"] = n
-    db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+    try:
+        db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        if trabajo.get("estado") != "corriendo":
+            raise
+        # No se pudo reabrir: el índice único de una copia en curso lo rechaza si la persona
+        # lanzó OTRA mientras el monedero fallaba (el doc ya estaba en `error`, y se pueden
+        # lanzar). El doc se queda en `error` pero CON la deuda anotada: el evento FAILED de esta
+        # ejecución llega al barredor y `_cobrar_deuda_editar` la cobra desde ahí.
+        log.exception("%s: no se pudo reabrir para el barredor; la deuda de %d créditos queda "
+                      "anotada con el doc en «error»", nombre, n)
+        trabajo["estado"] = "error"
+        try:
+            db.fijar_campo_editor(user_id, nombre, "editar", json.dumps(trabajo, ensure_ascii=False))
+        except Exception:  # noqa: BLE001
+            log.exception("%s: NO se devolvieron %d créditos y el doc no se pudo marcar: revisar el "
+                          "libro mayor de %s", nombre, n, user_id)
     return 1
 
 
-def _devolver_si_vacia(corrida: _Corrida, st: dict, n_videos: int) -> None:
+def _devolver_si_vacia(corrida: _Corrida, st: dict, n_videos: int) -> bool:
     """Terminó bien pero con CERO sugerencias: con UN video se devuelve la parte del LLM
     como en E1 (`creditos_a_devolver`). Con 2+ NUNCA (R17): la unión es el entregable.
     La corrida ya quedó `listo` ANTES de tocar el monedero: si el abono sale y la
     anotación falla, el `except` no puede reclamar (ya no está `corriendo`) y no hay
-    doble devolución."""
+    doble devolución.
+
+    Devuelve True si el abono FALLÓ y quedó anotado en `devolucion_pendiente`: la copia se
+    entregó, pero no hay ninguna ejecución caída que lo cobre. Quien llama sale entonces con 1 para
+    que la ejecución termine FAILED y su evento llegue al barredor, que cobra la deuda
+    (`barredor._cobrar_deuda_editar`)."""
     n = et.creditos_a_devolver(st) if n_videos == 1 else 0
     if not n or not creditos.activo():
-        return
-    if _devolver(corrida.user_id, corrida.nombre, n):
+        return False
+    pendiente = not _devolver(corrida.user_id, corrida.nombre, n)
+    if pendiente:
+        campos = {"devolucion_pendiente": n}
+        log.error("%s: NO se devolvieron %d créditos por cero sugerencias; se deja para el barredor",
+                  corrida.nombre, n)
+    else:
         campos = {"devueltos": n}
         log.info("%s: sin sugerencias — %d créditos devueltos", corrida.nombre, n)
-    else:
-        campos = {"devolucion_pendiente": n}
-        log.error("%s: NO se devolvieron %d créditos por cero sugerencias", corrida.nombre, n)
     st.update(campos)
     db.fijar_campo_editor(corrida.user_id, corrida.nombre, "editar",
                           json.dumps(st, ensure_ascii=False))
+    return pendiente
 
 
 # ---------------------------------------------------------------------------
 # la corrida
 
 def correr(user_id: str, nombre: str, doc: dict) -> int:
-    """0 si terminó (o ya no era suya), 1 si falló (y ya devolvió)."""
+    """0 si terminó (o ya no era suya), 1 si falló (y ya devolvió) o si quedó una deuda sin cobrar."""
     t0 = time.monotonic()
     estado = (doc.get("editar") or {}).get("estado")
     if estado != "corriendo":
@@ -537,10 +569,12 @@ def correr(user_id: str, nombre: str, doc: dict) -> int:
         clips = _entender(corrida, destino)
         cuts, no_aplicado = _editar(corrida, destino, clips)
         st = _vista(corrida, destino, clips, cuts, no_aplicado)
-        _devolver_si_vacia(corrida, st, len(clips))
+        pendiente = _devolver_si_vacia(corrida, st, len(clips))
         log.info("%s: %d videos unidos — %d cortes, %d fluff, %d flags", nombre, len(clips),
                  st["cortes"], st["fluff"], st["flags"])
-        return 0
+        # la copia ya está entregada; salir con 1 solo cuando quedó una deuda sin cobrar, para que
+        # el evento FAILED de la ejecución llegue al barredor (no hay otro lector de la deuda)
+        return 1 if pendiente else 0
     except Cerrada:
         log.warning("%s: la cerró otra pieza mientras corría: no se escribe ni se devuelve más", nombre)
         return 0

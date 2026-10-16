@@ -89,7 +89,10 @@ export function motivoHoja(
   lim: LimitesDeEdicion = LIMITES_DE_RESPALDO,
 ): Motivo | null {
   if (v.duracion_s !== null && v.duracion_s > lim.max_s) {
-    return { codigo: 'larga', texto: `Dura ${minutos(v.duracion_s)} min · máximo ${minutos(lim.max_s)} min`, aparte: true };
+    // 5401 s redondea a 90: «Dura 90 min · máximo 90 min» no dice por qué se apaga. Pasarse del tope nunca se dice con su misma cifra
+    // (el servidor hace lo mismo en `larga`: max(round(seg / 60), tope + 1))
+    const tope = minutos(lim.max_s);
+    return { codigo: 'larga', texto: `Dura ${Math.max(minutos(v.duracion_s), tope + 1)} min · máximo ${tope} min`, aparte: true };
   }
   if (v.es_copia || v.motivo === 'es_copia') {
     return { codigo: 'es_copia', texto: 'Ya es una edición · ábrela en su editor', aparte: true };

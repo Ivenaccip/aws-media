@@ -521,7 +521,7 @@ describe('la caja de Edición', () => {
     pintar();
     await irAEdicion();
     await userEvent.upload(entrada(), video());
-    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: 'El nombre ya lo usa otra cuenta.', tipo: 'mal', clave: 'caja' }));
+    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: '“entrevista.mp4”: El nombre ya lo usa otra cuenta.', tipo: 'mal', clave: 'caja' }));
     expect(llamadas(f, '/api/media/presign')).toHaveLength(2); // una vez y UN reintento
     expect(XhrFalso.todos).toHaveLength(0);
     expect(screen.queryByText('entrevista.mp4')).toBeNull();
@@ -653,7 +653,7 @@ describe('la caja de Edición', () => {
     await act(async () => {
       xhr.terminar(403);
     });
-    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: 'La subida a la nube falló (403) — intenta de nuevo.', tipo: 'mal', clave: 'caja' }));
+    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: '“entrevista.mp4”: La subida a la nube falló (403) — intenta de nuevo.', tipo: 'mal', clave: 'caja' }));
     await new Promise(r => setTimeout(r, 30));
     expect(avisos.quitar).not.toHaveBeenCalled();
   });
@@ -891,7 +891,7 @@ describe('la caja de Edición', () => {
     await act(async () => {
       xhr.terminar(403);
     });
-    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: 'La subida a la nube falló (403) — intenta de nuevo.', tipo: 'mal', clave: 'caja' }));
+    await waitFor(() => expect(dicho(avisos).at(-1)).toEqual({ texto: '“entrevista.mp4”: La subida a la nube falló (403) — intenta de nuevo.', tipo: 'mal', clave: 'caja' }));
     expect(screen.queryByText('entrevista.mp4')).toBeNull();
     expect(botonIniciar()).toHaveTextContent(/^Iniciar$/);
     // y sin red desde el principio también
