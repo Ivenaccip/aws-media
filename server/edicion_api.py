@@ -242,23 +242,38 @@ def _medir(key: str, *, timeout: float = MEDIR_TIMEOUT_S) -> dict | None:
     ancho y el alto salen **con la rotación aplicada**: un 1280×720 con
     `rotation: 90` (video grabado de lado) se ve vertical, 720×1280, y así lo
     pinta ffmpeg al recodificar. None si no se pudo (sin URL, sin video, sin
-    duración, plazo vencido): quien llama decide qué hacer."""
-    url = media_sync.url_media(key)
+    duración, plazo vencido): quien llama decide qué hacer.
+
+    La URL es SIEMPRE una firmada de S3 (`url_firmada`), no la del CDN: un clip de IA
+    vive en `usuarios/…`, que `url_media` sirve por el CDN, y en dev ffprobe no
+    lograba leerlo por ahí («No pudimos leer «Quiero que este león…»»). Con la firmada
+    un clip se mide igual que una subida. Cada fallo deja su razón en el log (sin la
+    firma): antes se perdía en silencio y no había por dónde empezar a buscar."""
+    url = media_sync.url_firmada(key)
     if not url:
+        log.warning("medir %s: no hay bucket con que firmar la URL", key)
         return None
     try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries",
-             "stream=codec_type,width,height:stream_side_data=rotation:format=duration",
-             "-of", "json", "-i", url],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=timeout)
-        if r.returncode != 0:
+        for intento in (1, 2):
+            r = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries",
+                 "stream=codec_type,width,height:stream_side_data=rotation:format=duration",
+                 "-of", "json", "-i", url],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout)
+            if r.returncode == 0:
+                break
+            # un fallo de red de un solo golpe se arregla con un segundo intento; el mensaje de
+            # ffprobe trae la URL y su firma, así que se corta lo que sigue al «?»
+            log.warning("medir %s: ffprobe salió con %s (intento %d de 2): %s", key, r.returncode,
+                        intento, re.sub(r"\?\S*", "?…", (r.stderr or "").strip())[:300])
+        else:
             return None
         datos = json.loads(r.stdout or "{}")
         streams = datos.get("streams") or []
         video = next((s for s in streams if s.get("codec_type") == "video"), None)
         if video is None:
+            log.warning("medir %s: el archivo no trae pista de video", key)
             return None
         ancho, alto = int(video.get("width") or 0), int(video.get("height") or 0)
         rotacion = 0
@@ -269,10 +284,15 @@ def _medir(key: str, *, timeout: float = MEDIR_TIMEOUT_S) -> dict | None:
             ancho, alto = alto, ancho
         dur = float((datos.get("format") or {}).get("duration"))
         if ancho <= 0 or alto <= 0 or not math.isfinite(dur) or dur <= 0:
+            log.warning("medir %s: medidas que no valen (%sx%s, %s s)", key, ancho, alto, dur)
             return None
         return {"duracion_s": round(dur, 3), "ancho": ancho, "alto": alto,
                 "audio": any(s.get("codec_type") == "audio" for s in streams)}
-    except (subprocess.TimeoutExpired, OSError, ValueError, TypeError):
+    except subprocess.TimeoutExpired:
+        log.warning("medir %s: ffprobe pasó de %s s", key, timeout)
+        return None
+    except (OSError, ValueError, TypeError) as err:
+        log.warning("medir %s: no se pudo leer (%s: %s)", key, type(err).__name__, err)
         return None
 
 

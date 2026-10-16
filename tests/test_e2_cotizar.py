@@ -503,7 +503,7 @@ sin_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("
 def clips(tmp_path, monkeypatch):
     """Tres videos diminutos hechos con ffmpeg (gratis): normal, grabado de lado y sin audio."""
     from pipeline import media_sync
-    monkeypatch.setattr(media_sync, "url_media", lambda k: k)   # ffprobe lee la ruta tal cual
+    monkeypatch.setattr(media_sync, "url_firmada", lambda k: k)   # ffprobe lee la ruta tal cual
 
     def ffmpeg(*a):
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *a], check=True)
@@ -558,8 +558,60 @@ def test__medir_lo_que_no_es_video_o_no_existe_es_none_nunca_una_excepcion(clips
 def test__medir_con_plazo_vencido_o_sin_url_es_none(clips, monkeypatch):
     from pipeline import media_sync
     assert edicion_api._medir(str(clips["base"]), timeout=0.0001) is None
-    monkeypatch.setattr(media_sync, "url_media", lambda k: None)
+    monkeypatch.setattr(media_sync, "url_firmada", lambda k: None)
     assert edicion_api._medir("videos/x/subidas/y.mp4") is None
+
+
+def test__medir_firma_siempre_la_url_de_s3_y_nunca_usa_la_del_cdn(clips, monkeypatch):
+    """Ajustes 3: un clip de IA vive en `usuarios/…`, que `url_media` sirve por el CDN, y en dev ffprobe no
+    lo leía por ahí. El servidor mide SIEMPRE con la URL firmada de S3, también la de un clip."""
+    from pipeline import media_sync
+    pedidas = []
+
+    def firmada(k):
+        pedidas.append(k)
+        return str(clips["base"])
+    monkeypatch.setattr(media_sync, "url_firmada", firmada)
+
+    def cdn(k, *a, **kw):
+        raise AssertionError("el servidor no debe medir por la URL del CDN")
+    monkeypatch.setattr(media_sync, "url_media", cdn)
+    assert edicion_api._medir("usuarios/u1/clips/clip-20261013-101010-abcdef.mp4")["ancho"] == 320
+    assert pedidas == ["usuarios/u1/clips/clip-20261013-101010-abcdef.mp4"]
+
+
+def test__medir_reintenta_una_vez_un_fallo_de_ffprobe_y_deja_la_razon_sin_la_firma(clips, monkeypatch, caplog):
+    """Un fallo de red de un solo golpe no debe bloquear al usuario, y el log trae la razón (antes
+    se perdía en silencio) sin la firma de la URL (ahí viaja la credencial)."""
+    import logging
+    from pipeline import media_sync
+    firmada = "https://bucket.s3.amazonaws.com/usuarios/u/clips/x.mp4?X-Amz-Signature=SECRETO"
+    monkeypatch.setattr(media_sync, "url_firmada", lambda k: firmada)
+    real = subprocess.run
+    llamadas = []
+
+    def falso(cmd, **kw):
+        llamadas.append(cmd)
+        if len(llamadas) == 1:
+            return subprocess.CompletedProcess(cmd, 1, "", f"{firmada}: Server returned 403 Forbidden")
+        return real([c if c != firmada else str(clips["base"]) for c in cmd], **kw)
+    monkeypatch.setattr(edicion_api.subprocess, "run", falso)
+    with caplog.at_level(logging.WARNING, logger="edicion_api"):
+        m = edicion_api._medir("usuarios/u/clips/x.mp4")
+    assert m is not None and m["ancho"] == 320 and len(llamadas) == 2
+    texto = "\n".join(r.getMessage() for r in caplog.records)
+    assert "403 Forbidden" in texto and "SECRETO" not in texto and "X-Amz-Signature" not in texto
+
+
+def test__medir_si_los_dos_intentos_fallan_es_none_y_se_loguea(clips, monkeypatch, caplog):
+    import logging
+    from pipeline import media_sync
+    monkeypatch.setattr(media_sync, "url_firmada", lambda k: "https://b/x.mp4?firma=1")
+    monkeypatch.setattr(edicion_api.subprocess, "run",
+                        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "Connection refused"))
+    with caplog.at_level(logging.WARNING, logger="edicion_api"):
+        assert edicion_api._medir("usuarios/u/clips/y.mp4") is None
+    assert sum("Connection refused" in r.getMessage() for r in caplog.records) == 2
 
 
 def test_un_cuadrado_o_un_vertical_se_clasifican_por_sus_lados():
@@ -582,7 +634,7 @@ def con_ffprobe_real(clips, mundo, monkeypatch):
     from pipeline import media_sync
     monkeypatch.setattr(edicion_api, "_medir", _MEDIR_REAL)
     archivos = {}
-    monkeypatch.setattr(media_sync, "url_media", lambda k: str(archivos[k]))
+    monkeypatch.setattr(media_sync, "url_firmada", lambda k: str(archivos[k]))
 
     def subir(nombre, ruta, **kw):
         key = mundo.subida(nombre, **kw)

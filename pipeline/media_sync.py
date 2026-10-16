@@ -52,11 +52,22 @@ def url_media(key: str, expira: int = 3600) -> str | None:
     base = os.getenv("CDN_BASE", "").rstrip("/")
     if base and media_rutas.servible_por_cdn(key):
         return f"{base}/{key}"
+    return url_firmada(key, expira)
+
+
+def url_firmada(key: str, expira: int = 3600) -> str | None:
+    """Una URL firmada de S3 para `key`, SIEMPRE: nunca la del CDN.
+
+    Es lo que debe usar quien lee el archivo DESDE EL SERVIDOR (ffprobe en la
+    Lambda del API): ahí hay credenciales de S3 y no hay por qué depender de que
+    el CDN conteste a un cliente que no es un navegador. `url_media` es para
+    quien está de fuera (el navegador, Blotato). None sin bucket (instalación
+    local)."""
     bucket = _bucket()
     if not bucket:
         return None
     return _s3().generate_presigned_url(
-        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expira)
+        "get_object", Params={"Bucket": bucket, "Key": key.lstrip("/")}, ExpiresIn=expira)
 
 
 # Los campos donde los ejecutores dejaban una URL absoluta del CDN dentro del
