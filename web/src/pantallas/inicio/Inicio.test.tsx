@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clip, modelos, video } from '../../nucleo/tarifas';
 import { guardarArchivos } from '../../nucleo/traspaso';
 import { miniaturaQueLlega, olvidarMiniatura } from '../../nucleo/transiciones';
-import { json, llamadas, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
+import { cotizacion, TEXTO } from '../../prueba/edicion';
+import { json, llamadas, oirCobros, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Biblioteca } from './Biblioteca';
-import { Inicio } from './Inicio';
+import { Inicio, SALDO_TRAS_COPIA_MS } from './Inicio';
 import { destinoDe, OPCIONES, type ClipCorto, type Edicion, type EstadoBlotato, type Imagen, type PedidoImagen, type Proyecto } from './logica';
 import { CATALOGO, PRECIOS } from './modelos';
 
@@ -44,6 +45,32 @@ const C1: ClipCorto = {
   video: '/api/clip/clip-20260925-100000-ab/video',
   inicio: '2026-09-25T10:00:00Z',
 };
+// E2: una copia editada (varios videos unidos): el servidor le da un título que la gente lee y de dónde viene
+const COPIA_DE = [
+  { ref: 'proyecto:gen-1a2b3c4d', titulo: 'El tren de papel' },
+  { ref: 'clip:clip-20261008-101500-ab12cd', titulo: 'Perro en la playa' },
+  { ref: 'proyecto:entrevista-final', titulo: 'entrevista-final' },
+];
+const COPIA: Edicion = {
+  nombre: 'ed-9f1c0a7b',
+  generado: false,
+  editor_listo: true,
+  editar: { estado: 'listo' },
+  subidas: [],
+  creado: '2026-10-14T10:00:00Z',
+  titulo: 'El tren de papel + 2 más',
+  copia_de: COPIA_DE,
+  n_videos: 3,
+  duracion_s: 762,
+  formato: 'horizontal',
+};
+/** La corrida de una copia que empezó hace un minuto. Un «corriendo» sin `inicio` legible no cuenta como vivo (el servidor tampoco lo cree:
+ *  `_caducada`), así que las pruebas de «Editando…» le ponen el suyo. */
+const editarEn = (estado: string, extra: NonNullable<Edicion['editar']> = {}): NonNullable<Edicion['editar']> => ({
+  estado,
+  inicio: new Date(Date.now() - 60_000).toISOString(),
+  ...extra,
+});
 const S1: Edicion = {
   nombre: 'yt-charla',
   generado: false,
@@ -115,8 +142,15 @@ function montar({
 
 let ir: ReturnType<typeof vi.fn<(url: string) => void>>;
 
+// El inicio abre en el MAPA (dueño, 15-oct-2026: «el mapa es el inicio»), pero casi todo lo de este archivo es de la caja, así que `pintar`
+// llega a ella por el camino de siempre —Marketing → Distrito— antes de devolver. Con `fireEvent` y no con `userEvent`: es síncrono, y
+// algunas pruebas lo llaman con el reloj falso puesto (con él `userEvent` se cuelga). El mapa, las opciones y lo que pasa antes de
+// llegar a la caja están en Recorrido.test.tsx.
 function pintar() {
-  return render(<Inicio ir={ir} />);
+  const r = render(<Inicio ir={ir} />);
+  fireEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
+  return r;
 }
 
 beforeEach(() => {
@@ -970,6 +1004,21 @@ describe('la caja', () => {
     expect(botonOpcion()).toHaveTextContent('Editar una imagen');
   });
 
+  it('en modo de alto contraste la caja incrustada no pinta un segundo marco dentro de la tarjeta; al arrastrar archivos sí (discontinuo)', async () => {
+    montar();
+    pintar();
+    const seccion = caja().closest('section')!;
+    // el borde transparente existe para que nada se mueva al arrastrar; con `forced-colors` el navegador lo pinta del color del sistema
+    // aunque sea transparente, y se vería un marco dentro del marco de la tarjeta
+    expect(seccion).toHaveClass('border', 'border-transparent', 'forced-colors:border-0');
+    expect(seccion).not.toHaveClass('border-dashed');
+    // el «suelta aquí» SÍ es un marco que hay que ver, también en alto contraste
+    fireEvent.dragOver(seccion, { dataTransfer: { files: [], types: ['Files'] } });
+    expect(seccion).toHaveClass('border-dashed', 'border-ambar');
+    expect(seccion).not.toHaveClass('border-transparent');
+    expect(seccion).not.toHaveClass('forced-colors:border-0');
+  });
+
   it('inicio.caja.crear_una_imagen_tambien_tiene_el_mas_y_con_una_imagen_la_caja_edita', async () => {
     nb2EditaEnLaPrueba(); // para ver que el modelo de crear se lleva cuando también edita
     const f = montar({ rutas: { '/api/imagenes/editar': () => json({ nombre: 'e.jpg', url: '/api/imagenes/e.jpg' }) } });
@@ -1110,6 +1159,27 @@ describe('la caja', () => {
     container.removeAttribute('aria-hidden');
     expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
     // y con la caja a la vista, sí
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(false);
+    expect(await screen.findByRole('list', { name: 'Imágenes de referencia' })).toBeInTheDocument();
+  });
+
+  it('pegar con la caja escondida por la tarjeta (el mapa, las opciones o una lista a la vista) no agrega nada ni corta el pegado', async () => {
+    montar();
+    pintar();
+    await userEvent.click(screen.getByRole('button', { name: 'Imagen' }));
+    // el mapa (y las tres opciones, y la lista de un grupo) esconden la caja con `hidden`, sin aria-hidden: sigue montada, pero no se ve
+    await userEvent.click(screen.getByRole('button', { name: /^Volver al mapa para cambiar de área/ }));
+    expect(screen.queryByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeNull();
+    // nadie corta el pegado (no hay otro campo que lo reciba, pero tampoco es de la caja) y no se le agrega nada sin que se vea
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(true);
+    await irALaLista('Blotato');
+    expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(true);
+    await irALaLista('Distrito');
+    // la caja está como la dejó: ni una referencia que no vio entrar, ni el cambio a «Editar una imagen»
+    expect(screen.queryByRole('list', { name: 'Imágenes de referencia' })).toBeNull();
+    expect(botonOpcion()).toHaveTextContent('Crear una imagen');
+    expect(screen.queryByRole('status')).toBeNull();
+    // y con la caja de nuevo a la vista, pegar vuelve a funcionar
     expect(pegar(document.body, { archivos: [foto('image.png')] })).toBe(false);
     expect(await screen.findByRole('list', { name: 'Imágenes de referencia' })).toBeInTheDocument();
   });
@@ -2610,6 +2680,414 @@ describe('las listas', () => {
     expect(screen.getByText('sugerencias en curso…')).toBeInTheDocument();
   });
 
+  it('inicio.ediciones.una_copia_dice_su_titulo_su_estado_y_de_donde_viene', async () => {
+    montar({
+      ediciones: [
+        COPIA,
+        { ...COPIA, nombre: 'ed-aaaa1111', titulo: 'Entrevista + 1 más', editar: editarEn('corriendo'), editor_listo: false, creado: '2026-10-13T10:00:00Z' },
+        { ...COPIA, nombre: 'ed-bbbb2222', titulo: 'Otra unión', editar: { estado: 'error' }, editor_listo: false, creado: '2026-10-12T10:00:00Z' },
+      ],
+    });
+    pintar();
+    // Listo: el título que la persona leyó al lanzarla (no el nombre técnico), su estado, de dónde viene y un enlace al editor de ESA copia
+    const lista = await screen.findByRole('link', { name: /El tren de papel \+ 2 más/ });
+    expect(lista).toHaveAttribute('href', '/editor/ed-9f1c0a7b/');
+    expect(lista).toHaveTextContent('Edición · Listo');
+    expect(lista).toHaveTextContent('Copia de El tren de papel + 2 más');
+    expect(screen.queryByText('ed-9f1c0a7b')).toBeNull();
+    // Editando…: ocupada para el lector de pantalla y SIN enlace (aún no hay nada que abrir)
+    const editando = screen.getByText('Edición · Editando…').closest('[aria-busy]')!;
+    expect(editando).toHaveAttribute('aria-busy', 'true');
+    expect(editando).toHaveTextContent('Entrevista + 1 más');
+    expect(editando).toHaveTextContent('Copia de Entrevista + 1 más');
+    expect(editando.closest('a')).toBeNull();
+    expect(screen.queryByRole('link', { name: /Entrevista \+ 1 más/ })).toBeNull();
+    // No se pudo editar: se dice, en rojo de error, y tampoco lleva a ningún lado
+    const fallo = screen.getByText('Edición · No se pudo editar');
+    expect(fallo.closest('a')).toBeNull();
+    expect(fallo.closest('article, div')!).toHaveTextContent('Otra unión');
+    // ninguna de las tres sigue a /e1.html: ese es de las ediciones de siempre
+    expect(document.querySelector('a[href^="/e1.html?p=ed-"]')).toBeNull();
+  });
+
+  it('una copia sin título (un servidor viejo) cae a su nombre y una edición de siempre no cambia', async () => {
+    montar({ ediciones: [{ ...COPIA, titulo: null }, ED] });
+    pintar();
+    expect(await screen.findByRole('link', { name: /ed-9f1c0a7b/ })).toHaveAttribute('href', '/editor/ed-9f1c0a7b/');
+    // la de siempre: su nombre, su estado de siempre y su enlace a e1
+    expect(screen.getByRole('link', { name: /podcast/ })).toHaveAttribute('href', '/e1.html?p=podcast');
+    expect(screen.getByText('corte listo — ábrelo en el editor')).toBeInTheDocument();
+    // la de siempre no dice «Copia de» (no trae `copia_de`: no es una copia)
+    expect(screen.getByRole('link', { name: /podcast/ })).not.toHaveTextContent(/Copia de/);
+  });
+
+  it('inicio.ediciones.una_copia_corriendo_mantiene_vivo_el_sondeo_de_las_listas_y_su_paso_a_error_pone_al_dia_el_saldo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let estado = 'corriendo';
+    const f = montar({ ediciones: [] });
+    // la lista de ediciones cambia con el tiempo: primero corre, luego falla (el servidor devolvió lo cobrado)
+    servidor({
+      '/api/proyectos': () => json([P1]),
+      '/api/slots': () => json({ slots: null, activos: 0 }),
+      '/api/imagenes': () => json({ total: 0, imagenes: [] }),
+      '/api/edicion/proyectos': () => json([{ ...COPIA, editar: editarEn(estado), editor_listo: false }]),
+      '/api/clip': () => json({ clips: [] }),
+      '/api/blotato': () => json(CONECTADO),
+    });
+    expect(f).toBeDefined();
+    pintar();
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    const g = vi.mocked(fetch);
+    const lecturas = () => g.mock.calls.filter(c => c[0] === '/api/edicion/proyectos').length;
+    const antes = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    // sigue corriendo: la lista se vuelve a leer sola cada 5 s, y el saldo no se toca
+    expect(lecturas()).toBeGreaterThan(antes);
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    estado = 'error';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findByText('Edición · No se pudo editar')).toBeInTheDocument();
+    expect(monedero.refrescar).toHaveBeenCalled();
+    // ya no corre nada: el sondeo se apaga
+    const despues = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturas()).toBe(despues);
+  });
+
+  it('inicio.ediciones.una_copia_que_termina_pone_al_dia_el_saldo_ya_y_otra_vez_despues_y_una_que_ya_estaba_lista_no', async () => {
+    // H7: con UN video y nada que cortar el worker devuelve los créditos de la edición y deja la copia «lista» con `devueltos`. La píldora no
+    // sondea el saldo y esta lista deja de leerse cuando nada corre: sin esto la píldora se quedaba vieja hasta recargar. El worker devuelve un
+    // instante DESPUÉS de marcarla «lista»: por eso el saldo se pide otra vez pasados SALDO_TRAS_COPIA_MS
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let editar: NonNullable<Edicion['editar']> = editarEn('corriendo');
+    servidor({
+      '/api/proyectos': () => json([P1]),
+      '/api/slots': () => json({ slots: null, activos: 0 }),
+      '/api/imagenes': () => json({ total: 0, imagenes: [] }),
+      '/api/edicion/proyectos': () => json([{ ...COPIA, editar }, { ...COPIA, nombre: 'ed-ya-lista', titulo: 'Ya estaba lista', editar: { estado: 'listo' } }]),
+      '/api/clip': () => json({ clips: [] }),
+      '/api/blotato': () => json(CONECTADO),
+    });
+    pintar();
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    // la que ya estaba lista al abrir no pide nada: no corría aquí
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    editar = { estado: 'listo', devueltos: 8 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findAllByText('Edición · Listo')).toHaveLength(2);
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SALDO_TRAS_COPIA_MS);
+    });
+    expect(monedero.refrescar).toHaveBeenCalledTimes(2);
+    // ya no corre nada: no se vuelve a pedir
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12000);
+    });
+    expect(monedero.refrescar).toHaveBeenCalledTimes(2);
+  });
+
+  it('inicio.ediciones.al_irse_la_pantalla_el_segundo_vistazo_al_saldo_de_una_copia_terminada_no_sale', async () => {
+    // el segundo vistazo (a los 4 s) no sobrevive a la pantalla: un temporizador suelto pediría el saldo de quien ya se fue
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let editar: NonNullable<Edicion['editar']> = editarEn('corriendo');
+    montar({ rutas: { '/api/edicion/proyectos': () => json([{ ...COPIA, editar }]) } });
+    const { unmount } = pintar();
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    editar = { estado: 'listo', devueltos: 8 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findByText('Edición · Listo')).toBeInTheDocument();
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SALDO_TRAS_COPIA_MS + 1000);
+    });
+    expect(monedero.refrescar).toHaveBeenCalledTimes(1); // el de los 4 s no salió: la pantalla ya no está
+  });
+
+  it('inicio.ediciones.si_la_bandeja_reintenta_la_copia_la_tarjeta_se_relee_y_pasa_a_editando', async () => {
+    // INT-02: «Reintentar» de «Tus trabajos» (static/trabajos.js) lo acepta el servidor y avisa con `trabajos:lanzado`. La tarjeta de esta
+    // lista decía «No se pudo editar» y, sin nada corriendo en ella, nada la volvía a leer: se quedaba así hasta recargar
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let estado = 'error';
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json([{ ...COPIA, editor_listo: false, editar: estado === 'error' ? { estado, creditos: 2, devueltos: 2 } : editarEn(estado, { creditos: 2 }) }]),
+      },
+    });
+    const { unmount } = pintar();
+    expect(await screen.findByText('Edición · No se pudo editar')).toBeInTheDocument();
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    // mientras nada corre en la lista, nada la vuelve a leer sola
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000);
+    });
+    expect(lecturas()).toBe(antes);
+    // la bandeja reintentó y el servidor aceptó: la copia ya corre
+    estado = 'corriendo';
+    act(() => {
+      window.dispatchEvent(new CustomEvent('trabajos:lanzado', { detail: { ruta: '/api/edicion/ed-9f1c0a7b/reintentar' } }));
+    });
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    expect(lecturas()).toBe(antes + 1);
+    // desde ahí el sondeo de siempre la lleva hasta el final
+    estado = 'listo';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(await screen.findByText('Edición · Listo')).toBeInTheDocument();
+    // y al irse la pantalla ya no escucha
+    unmount();
+    const despues = lecturas();
+    window.dispatchEvent(new CustomEvent('trabajos:lanzado'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(lecturas()).toBe(despues);
+  });
+
+  it('inicio.ediciones.una_copia_que_fallo_ofrece_reintentar_con_su_precio_y_al_aceptarlo_cobra_vuela_el_menos_n_y_pasa_a_editando', async () => {
+    // H6: la ficha de la bandeja desaparece al cerrarla (o a las 24 h) y la tarjeta se queda: sin esto era una tarjeta roja sin salida
+    const monedero = ponerMonedero(100);
+    const cobros = oirCobros();
+    let lanzada = false;
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () =>
+          json([{ ...COPIA, editor_listo: false, editar: lanzada ? editarEn('corriendo', { creditos: 2 }) : { estado: 'error', creditos: 2, devueltos: 2 } }]),
+        '/api/edicion/ed-9f1c0a7b/reintentar': () => {
+          lanzada = true;
+          return json({ lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 3 });
+        },
+      },
+    });
+    pintar();
+    const boton = await screen.findByRole('button', { name: 'Reintentar ✦ 2' });
+    // dice de CUÁL copia habla (hay una por tarjeta) y no es un enlace: la tarjeta de un fallo no lleva a ningún lado
+    expect(boton).toHaveAccessibleDescription('El tren de papel + 2 más');
+    expect(boton.closest('a')).toBeNull();
+    expect(boton).toHaveClass('min-h-12'); // objetivo de 48 px, no el denso de 40
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    await userEvent.click(boton);
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+    expect(llamadas(f, '/api/edicion/ed-9f1c0a7b/reintentar')).toHaveLength(1);
+    // el «−N» es lo que cobró el servidor (3), no lo que cobró la vez anterior (2), y el saldo se pone al día
+    expect(cobros.map(c => c.costo)).toEqual([3]);
+    expect(monedero.refrescar).toHaveBeenCalled();
+    // y ya no hay nada que reintentar
+    expect(screen.queryByRole('button', { name: /^Reintentar/ })).toBeNull();
+  });
+
+  it('inicio.ediciones.un_doble_clic_en_reintentar_es_un_solo_pedido_y_un_reintento_sin_precio_conocido_no_vuela_ningun_menos_n', async () => {
+    ponerMonedero(100);
+    const cobros = oirCobros();
+    let soltar!: (r: Response) => void;
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json([{ ...COPIA, editor_listo: false, editar: { estado: 'error' } }]),
+        '/api/edicion/ed-9f1c0a7b/reintentar': () => new Promise<Response>(r => (soltar = r)),
+      },
+    });
+    pintar();
+    // sin `creditos` (créditos apagados) el botón no inventa un precio
+    const boton = await screen.findByRole('button', { name: 'Reintentar' });
+    // dos clics en la MISMA pasada, antes de que React pinte el botón ocupado: solo el candado (no el aspecto) lo impide
+    act(() => {
+      boton.click();
+      boton.click();
+    });
+    await userEvent.dblClick(boton); // y con el botón ya ocupado, otros dos clics tampoco mandan nada
+    expect(llamadas(f, '/api/edicion/ed-9f1c0a7b/reintentar')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Reintentando…' })).toHaveAttribute('aria-busy', 'true');
+    await act(async () => {
+      soltar(json({ lanzado: true, nombre: 'ed-9f1c0a7b', creditos: 0 }));
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Reintentando…' })).toBeNull());
+    expect(cobros).toEqual([]);
+  });
+
+  it('inicio.ediciones.si_el_servidor_niega_el_reintento_la_tarjeta_lo_dice_con_sus_palabras_y_sin_saldo_dice_cuanto_falta', async () => {
+    const monedero = ponerMonedero(1);
+    const cobros = oirCobros();
+    let respuesta: () => Response | Promise<Response> = () => json({ detail: 'Créditos insuficientes: esta acción cuesta 4 créditos y tu saldo es 1.' }, 402);
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json([{ ...COPIA, editor_listo: false, editar: { estado: 'error', creditos: 4, devueltos: 4 } }]),
+        '/api/edicion/ed-9f1c0a7b/reintentar': () => respuesta(),
+      },
+    });
+    pintar();
+    const reintentar = () => screen.getByRole('button', { name: 'Reintentar ✦ 4' });
+    // 402: «Te faltan ✦ N · Recargar», como en la caja (N sale del texto del servidor: 4 − 1)
+    await userEvent.click(await screen.findByRole('button', { name: 'Reintentar ✦ 4' }));
+    const falta = await screen.findByRole('alert');
+    expect(falta).toHaveTextContent('Te faltan ✦ 3 · Recargar');
+    await userEvent.click(within(falta).getByRole('button', { name: 'Recargar' }));
+    expect(monedero.recargar).toHaveBeenCalledTimes(1);
+    // 409 (todavía se devuelve, o ya se reintenta) y 502/503: el texto del servidor, TAL CUAL; la tarjeta no cree que algo corra
+    for (const [estado, detail] of [
+      [409, 'Todavía estamos devolviendo los créditos de esta edición. Inténtalo en unos minutos.'],
+      [409, 'Esta edición ya se está reintentando.'],
+      [502, 'No se pudo lanzar la edición: sin capacidad. Estamos devolviendo lo cobrado.'],
+      [503, 'Ahorita hay mucha gente produciendo. Estamos devolviendo lo cobrado; vuelve a intentarlo en unos minutos.'],
+    ] as const) {
+      respuesta = () => json({ detail }, estado);
+      await userEvent.click(reintentar());
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(detail));
+      expect(screen.queryByText('Edición · Editando…')).toBeNull();
+      expect(screen.getByText('Edición · No se pudo editar')).toBeInTheDocument();
+      expect(reintentar()).not.toHaveAttribute('aria-busy'); // vuelve a servir
+    }
+    // sin red: también se dice, y el saldo se pone al día (el servidor pudo cobrar sin que lo supiéramos)
+    const refrescos = monedero.refrescar.mock.calls.length;
+    respuesta = () => sinRed();
+    await userEvent.click(reintentar());
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No hay conexión'));
+    expect(monedero.refrescar.mock.calls.length).toBeGreaterThan(refrescos);
+    // ni un «−N» ni una relectura de la lista por algo que no se cobró
+    expect(cobros).toEqual([]);
+    expect(llamadas(f, '/api/edicion/proyectos', 'GET')).toHaveLength(1);
+  });
+
+  it('inicio.ediciones.mientras_se_devuelven_los_creditos_la_tarjeta_lo_dice_y_no_ofrece_reintentar', async () => {
+    // el API no pudo abonar (o el worker dejó la deuda al barredor): `devolucion_pendiente`. Reintentar cobraría otra vez sin haber devuelto
+    // (el servidor lo niega con 409); la corrida puede seguir figurando «corriendo» hasta que el barredor la cierre
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const monedero = ponerMonedero(100);
+    let reabierta: NonNullable<Edicion['editar']> = editarEn('corriendo', { creditos: 2, devolucion_pendiente: 2 });
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () =>
+          json([
+            { ...COPIA, nombre: 'ed-aaaa1111', titulo: 'Con deuda', editor_listo: false, editar: { estado: 'error', creditos: 2, devolucion_pendiente: 2 } },
+            { ...COPIA, nombre: 'ed-bbbb2222', titulo: 'Reabierta', editor_listo: false, editar: reabierta },
+            // una marca residual de algo que YA se devolvió no cuenta: se puede reintentar
+            { ...COPIA, nombre: 'ed-cccc3333', titulo: 'Ya devuelta', editor_listo: false, editar: { estado: 'error', creditos: 2, devolucion_pendiente: 2, devueltos: 2 } },
+          ]),
+      },
+    });
+    pintar();
+    expect(await screen.findAllByText('Edición · No se pudo editar')).toHaveLength(3);
+    expect(screen.getAllByText('Estamos devolviendo tus ✦ 2.')).toHaveLength(2);
+    expect(screen.queryByText('Edición · Editando…')).toBeNull();
+    // una sola tarjeta se puede reintentar: la que ya se devolvió
+    const botones = screen.getAllByRole('button', { name: /^Reintentar/ });
+    expect(botones).toHaveLength(1);
+    expect(botones[0]).toHaveAccessibleDescription('Ya devuelta');
+    // la «reabierta» sigue figurando corriendo en el servidor: la pantalla la sigue leyendo hasta que se cierre (y entonces pone al día el saldo)
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(lecturas()).toBeGreaterThan(antes);
+    expect(monedero.refrescar).not.toHaveBeenCalled();
+    reabierta = { estado: 'error', creditos: 2, devueltos: 2 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    await waitFor(() => expect(monedero.refrescar).toHaveBeenCalled());
+    expect(screen.getAllByRole('button', { name: /^Reintentar/ })).toHaveLength(2);
+  });
+
+  it('inicio.ediciones.una_copia_corriendo_de_hace_mas_de_2_horas_se_lee_sin_respuesta_y_no_mantiene_el_sondeo', async () => {
+    // INT-04: una tarea que murió sin cerrar su copia seguía diciendo «Editando…» para siempre, y la pantalla releía cinco listas cada 5 s
+    // mientras la pestaña estuviera abierta. Igual que el servidor (`_caducada`): pasadas 2 h, o sin un `inicio` legible, ya no cuenta
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const hace = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
+    const f = montar({
+      ediciones: [
+        { ...COPIA, nombre: 'ed-a', titulo: 'Colgada', editor_listo: false, editar: { estado: 'corriendo', inicio: hace(5 * 60) } },
+        { ...COPIA, nombre: 'ed-b', titulo: 'Justo pasada', editor_listo: false, editar: { estado: 'corriendo', inicio: hace(121) } },
+        { ...COPIA, nombre: 'ed-c', titulo: 'Sin inicio', editor_listo: false, editar: { estado: 'corriendo' } },
+        { ...COPIA, nombre: 'ed-d', titulo: 'Inicio roto', editor_listo: false, editar: { estado: 'corriendo', inicio: 'ayer' } },
+      ],
+    });
+    pintar();
+    expect(await screen.findAllByText('Edición · Sin respuesta')).toHaveLength(4);
+    expect(screen.queryByText('Edición · Editando…')).toBeNull();
+    // ninguna está ocupada para el lector de pantalla, y no hay «Reintentar» (el servidor no reintenta lo que figura corriendo)
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Reintentar/ })).toBeNull();
+    // y la pantalla no relee las listas cada 5 s por ellas
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16000);
+    });
+    expect(lecturas()).toBe(antes);
+  });
+
+  it('inicio.ediciones.una_copia_corriendo_de_hace_poco_sigue_editando_y_mantiene_el_sondeo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const hace = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
+    const f = montar({
+      ediciones: [{ ...COPIA, nombre: 'ed-a', titulo: 'Viva', editor_listo: false, editar: { estado: 'corriendo', inicio: hace(119) } }],
+    });
+    pintar();
+    expect((await screen.findByText('Edición · Editando…')).closest('[aria-busy]')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('Edición · Sin respuesta')).toBeNull();
+    const antes = llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(llamadas(f, '/api/edicion/proyectos', 'GET').length).toBeGreaterThan(antes);
+    // al cumplir las 2 h (con el reloj de la pantalla) deja de contar como viva
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+    });
+    expect(await screen.findByText('Edición · Sin respuesta')).toBeInTheDocument();
+  });
+
+  it('inicio.ediciones.al_lanzar_desde_la_caja_las_listas_se_releen_y_la_copia_sale_editando', async () => {
+    ponerMonedero(100);
+    const lista = { ref: 'proyecto:gen-1a2b3c4d', tipo: 'pelicula', titulo: 'El tren de papel', duracion_s: 300, formato: 'horizontal', fecha: '2026-10-02T15:04:05+00:00', miniatura: null, video: null, con_transcript: true, audio: true, bytes: 1, es_copia: false, copia_de: [], motivo: null };
+    let lanzada = false;
+    const f = montar({
+      rutas: {
+        '/api/edicion/proyectos': () => json(lanzada ? [{ ...COPIA, editar: editarEn('corriendo'), editor_listo: false }] : []),
+        '/api/edicion/elegibles': () => json({ videos: [lista], limites: { max_s: 5400, min_solo_s: 60, max_videos: 12, max_bytes: 16106127360 } }),
+        '/api/edicion/cotizar': () => json(cotizacion(['proyecto:gen-1a2b3c4d'], { creditos: 2, desglose: { edicion: 2, transcripcion: 0 } })),
+        '/api/edicion/iniciar': () => {
+          lanzada = true;
+          return json({ lanzado: true, nombre: 'ed-9f1c0a7b', titulo: 'El tren de papel', creditos: 2, n_videos: 1, repetido: false });
+        },
+        '/api/editar': () => json({ editar: { estado: 'corriendo' } }),
+      },
+    });
+    pintar();
+    await screen.findByText('La historia del café');
+    await userEvent.click(screen.getByRole('button', { name: 'Edición' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar el video que quieres editar' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Elegir de Mis creaciones/ }));
+    const hoja = within(await screen.findByRole('dialog', { name: 'Agregar videos' }));
+    await userEvent.click(await hoja.findByRole('button', { name: /^El tren de papel,/ }));
+    await userEvent.click(hoja.getByRole('button', { name: 'Usar este video' }));
+    await screen.findByRole('button', { name: 'Iniciar ✦ 2' });
+    await userEvent.type(screen.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' }), TEXTO);
+    const lecturas = () => llamadas(f, '/api/edicion/proyectos', 'GET').length;
+    const antes = lecturas();
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar ✦ 2' }));
+    await waitFor(() => expect(llamadas(f, '/api/edicion/iniciar')).toHaveLength(1));
+    // el servidor aceptó: «Mis creaciones» se relee y ya muestra la copia, sin esperar al sondeo
+    await waitFor(() => expect(lecturas()).toBe(antes + 1));
+    expect(await screen.findByText('Edición · Editando…')).toBeInTheDocument();
+  });
+
   it('inicio.galeria.una_sola_galeria_lo_mas_nuevo_primero', async () => {
     montar({ proyectos: [P1], clips: [C1], ediciones: [S1, ED], imagenes: [img(1)] });
     pintar();
@@ -2995,45 +3473,61 @@ describe('Mis creaciones: los videos', () => {
   });
 });
 
+// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») no hay menú a la izquierda: las pantallas de cada grupo salen en la tarjeta,
+// después de abrir el mapa (la miga del área) y las tres opciones (la ficha del área). El recorrido sin la caja está en
+// Recorrido.test.tsx, y la lista de pantallas sola en Pantallas.test.tsx; aquí, lo que el menú de la izquierda ya cubría, por la ruta nueva.
+async function irALaLista(grupo: string, area = 'Marketing') {
+  // desde la caja la miga del área abre el mapa; si ya se está en una lista (otra vuelta) también sirve
+  if (!screen.queryByRole('group', { name: 'Áreas' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Volver al mapa para cambiar de área/ }));
+  await userEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: new RegExp(`^${area}`) }));
+  await userEvent.click(within(screen.getByRole('group', { name: area })).getByRole('button', { name: new RegExp(`^${grupo}`) }));
+}
+// la lista de pantallas del grupo (las migas son otra lista, dentro de su <nav>)
+const listaDePantallas = (opciones: { hidden?: boolean } = {}) =>
+  screen.getAllByRole('list', opciones).find(l => !l.closest('nav'))!;
+const enlacesDeLaLista = (opciones: { hidden?: boolean } = {}) => within(listaDePantallas(opciones)).getAllByRole('link', opciones);
+
 describe('el menú', () => {
   it('inicio.menu.entradas_y_grupos_en_orden', async () => {
     montar();
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    // «Editor de videos» (/e1.html) salió el 14-oct-2026 (dueño): editar metraje es la pestaña «Edición» de la caja
-    expect(within(menu).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual([
-      '/shorts.html',
-      '/estilos.html',
-      '/agenda.html',
-      '/competencia.html',
-      '/metricas.html',
-      '/mix.html',
-    ]);
-    const texto = menu.textContent ?? '';
-    // MIX tiene grupo propio, debajo de Blotato (su requisito)
-    expect(texto.indexOf('Estudio de Contenido')).toBeLessThan(texto.indexOf('Blotato'));
-    expect(texto.indexOf('Blotato')).toBeLessThan(texto.indexOf('Publicidad Automática'));
-    expect(texto).not.toMatch(/próximamente/);
-    await screen.findByText('La historia del café');
+    // ya no hay menú: ni «Secciones», ni sus grupos (MIX tuvo el suyo debajo de Blotato; ahora vive en Avanzado)
+    expect(screen.queryByRole('navigation', { name: 'Secciones' })).toBeNull();
+    expect(screen.queryByText('Estudio de Contenido')).toBeNull();
+    expect(screen.queryByText('Publicidad Automática')).toBeNull();
+    // las pantallas de cada grupo, en su orden y con sus destinos
+    await irALaLista('Blotato');
+    expect(enlacesDeLaLista().map(a => a.getAttribute('href'))).toEqual(['/agenda.html', '/competencia.html', '/metricas.html']);
+    await irALaLista('Avanzado');
+    // MIX, con Blotato como requisito (se apaga sin su clave), y la Copiadora de estilos, que se queda aquí hasta que exista «Marcas»
+    expect(enlacesDeLaLista().map(a => a.getAttribute('href'))).toEqual(['/mix.html', '/estilos.html']);
+    // «De videos a Shorts» salió de las listas: vive en «Editar ▾»
+    expect(screen.queryByText('De videos a Shorts')).toBeNull();
+    // nada de Marketing dice «próximamente»; lo de Central, sí
+    expect(listaDePantallas().textContent).not.toMatch(/próximamente/i);
+    await irALaLista('Distrito', 'Central');
+    expect(listaDePantallas().textContent).toMatch(/próximamente/i);
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 
   it('inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan', async () => {
     montar();
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    expect(within(menu).queryByText('Editor de videos')).toBeNull();
-    expect(within(menu).queryByText('Sube tu metraje y la IA te propone el corte.')).toBeNull();
-    expect(menu.querySelector('a[href^="/e1.html"]')).toBeNull();
-    // el grupo «Estudio de Contenido» sigue con «De videos a Shorts» y «Copiadora de estilos», tal cual estaban
-    const grupo = within(within(menu).getByText('Estudio de Contenido').parentElement!);
-    const enlaces = grupo.getAllByRole('link');
-    expect(enlaces.map(a => [a.getAttribute('href'), a.querySelector('b')?.textContent])).toEqual([
-      ['/shorts.html', 'De videos a Shorts'],
-      ['/estilos.html', 'Copiadora de estilos'],
-    ]);
-    expect(enlaces[0]).toHaveTextContent('Sube un video largo y te daremos los mejores momentos.');
-    expect(enlaces[1]).toHaveTextContent('Recrea el estilo visual de un contenido que te guste');
-    await screen.findByText('La historia del café');
+    // «Editor de videos» (/e1.html) salió el 14-oct-2026 (dueño): editar metraje es la pestaña «Edición» de la caja. Sigue sin salir
+    // en ninguna lista del recorrido, ni su texto, ni un enlace a /e1.html
+    for (const [area, grupo] of [['Marketing', 'Blotato'], ['Marketing', 'Avanzado'], ['Central', 'Distrito']] as const) {
+      await irALaLista(grupo, area);
+      expect(screen.queryByText('Editor de videos')).toBeNull();
+      expect(screen.queryByText('Sube tu metraje y la IA te propone el corte.')).toBeNull();
+      expect(document.querySelector('a[href^="/e1.html"]')).toBeNull();
+    }
+    // la Copiadora de estilos se queda donde estaba su puerta (Avanzado), con su texto tal cual; «De videos a Shorts» pasó a «Editar ▾»
+    await irALaLista('Avanzado');
+    const estilos = enlacesDeLaLista().find(a => a.getAttribute('href') === '/estilos.html')!;
+    expect(estilos.querySelector('b')?.textContent).toBe('Copiadora de estilos');
+    expect(estilos).toHaveTextContent('Recrea el estilo visual de un contenido que te guste');
+    expect(enlacesDeLaLista().some(a => a.getAttribute('href') === '/shorts.html')).toBe(false);
   });
 
   it('inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono', async () => {
@@ -3041,23 +3535,37 @@ describe('el menú', () => {
     pintar();
     const h1 = screen.getByRole('heading', { level: 1 });
     expect(h1).toHaveTextContent(/^Irremplazables$/);
-    // el ámbar claro de la paleta: el de los «títulos-marca» de la carta (§3), no un color nuevo; mismo tamaño y peso de título
-    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-ambar-claro', 'text-titulo-sm', 'font-bold']));
+    // el dorado del título (dueño, 15-oct-2026): un degradado que solo usa este título, de la clase `texto-oro` de tokens.css; mismo
+    // tamaño de pantalla y peso de título que las demás pantallas (`text-titulo-lg`, extrabold, Bricolage por `h1`)
+    expect(h1.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-titulo-lg', 'font-extrabold']));
+    // el degradado es un FONDO recortado a la letra (`texto-oro`): en el h1, solo cubriría la caja del h1, y la letra que se desbordara
+    // (espaciado de texto de WCAG 1.4.12 a 320 px, letra más grande) quedaría transparente y desaparecería. Va en un <span> en línea, cuya
+    // caja mide lo que el texto; y el h1 parte la palabra en vez de dejarla salirse de la región
+    expect(h1.className.split(/\s+/)).not.toContain('texto-oro');
+    expect(h1.className.split(/\s+/)).toContain('[overflow-wrap:anywhere]');
+    expect(h1.children).toHaveLength(1);
+    const marca = h1.children[0]!;
+    expect(marca.tagName).toBe('SPAN');
+    expect(marca).toHaveClass('texto-oro');
+    expect(marca).toHaveTextContent(/^Irremplazables$/);
+    // el ámbar claro de antes ya no pinta el nombre
+    expect(h1.className.split(/\s+/)).not.toContain('text-ambar-claro');
+    expect(marca.className.split(/\s+/)).not.toContain('text-ambar-claro');
     // sin icono: ni un dibujo dentro del título
     expect(h1.querySelector('svg, img, i')).toBeNull();
-    expect(h1.children).toHaveLength(0);
-    // el nombre de antes ya no sale en la pantalla
+    // el nombre de antes ya no sale en la pantalla, y es el único h1
     expect(screen.queryByText(/Estudio de video/)).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     await screen.findByText('La historia del café');
   });
 
   it('inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar', async () => {
     montar({ blotato: SIN_CLAVE });
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    await waitFor(() => expect(within(menu).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(4));
-    const apagadas = within(menu).getAllByRole('link').filter(a => a.getAttribute('aria-disabled') === 'true');
-    expect(apagadas.map(a => a.getAttribute('href'))).toEqual(['/agenda.html', '/competencia.html', '/metricas.html', '/mix.html']);
+    await irALaLista('Blotato');
+    await waitFor(() => expect(within(listaDePantallas()).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(3));
+    const apagadas = enlacesDeLaLista().filter(a => a.getAttribute('aria-disabled') === 'true');
+    expect(apagadas.map(a => a.getAttribute('href'))).toEqual(['/agenda.html', '/competencia.html', '/metricas.html']);
     // el clic no lleva a un callejón: abre conectar
     const clic = new MouseEvent('click', { bubbles: true, cancelable: true });
     act(() => {
@@ -3065,14 +3573,24 @@ describe('el menú', () => {
     });
     expect(clic.defaultPrevented).toBe(true);
     expect(await screen.findByRole('dialog', { name: 'Conecta tu Blotato' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    // la cuarta es MIX (en Avanzado); la Copiadora de estilos, que no depende de Blotato, no se apaga
+    await irALaLista('Avanzado');
+    const avanzadas = enlacesDeLaLista();
+    expect(avanzadas.map(a => [a.getAttribute('href'), a.getAttribute('aria-disabled')])).toEqual([
+      ['/mix.html', 'true'],
+      ['/estilos.html', null],
+    ]);
   });
 
   it('inicio.menu.si_no_se_sabe_no_se_apaga_nada', async () => {
     montar({ blotato: null });
     pintar();
     await screen.findByText('La historia del café');
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    expect(within(menu).getAllByRole('link').filter(a => a.hasAttribute('aria-disabled'))).toHaveLength(0);
+    for (const grupo of ['Blotato', 'Avanzado']) {
+      await irALaLista(grupo);
+      expect(enlacesDeLaLista().filter(a => a.hasAttribute('aria-disabled'))).toHaveLength(0);
+    }
   });
 
   it('inicio.menu.pregunta_ligero', async () => {
@@ -3084,7 +3602,9 @@ describe('el menú', () => {
 });
 
 describe('Blotato', () => {
+  // el botón vive en la lista de Blotato (antes, el «+» del menú de la izquierda): si no se está ahí, se va
   const abrir = async () => {
+    if (!screen.queryByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ })) await irALaLista('Blotato');
     await userEvent.click(await screen.findByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ }));
   };
 
@@ -3203,10 +3723,9 @@ describe('Blotato', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Desconectar' }));
     await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desconectar' }));
     await waitFor(() => expect(llamadas(f, '/api/blotato', 'DELETE')).toHaveLength(1));
-    // y el menú se apaga
-    const menu = screen.getByRole('navigation', { name: 'Secciones', hidden: true });
+    // y las pantallas de Blotato se apagan (el diálogo todavía las tapa: por eso `hidden`)
     await waitFor(() =>
-      expect(within(menu).getAllByRole('link', { hidden: true }).filter(a => a.getAttribute('aria-disabled') === 'true')).toHaveLength(4),
+      expect(enlacesDeLaLista({ hidden: true }).filter(a => a.getAttribute('aria-disabled') === 'true')).toHaveLength(3),
     );
   });
 
@@ -3230,6 +3749,7 @@ describe('Blotato', () => {
   });
 
   it('inicio.blotato.conectar_enciende_el_menu', async () => {
+    // (el «menú» son ahora las pantallas de la lista de Blotato)
     let estado = SIN_CLAVE;
     montar({
       rutas: {
@@ -3240,14 +3760,15 @@ describe('Blotato', () => {
       },
     });
     pintar();
-    const menu = screen.getByRole('navigation', { name: 'Secciones' });
-    await waitFor(() => expect(within(menu).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(4));
+    await irALaLista('Blotato');
+    await waitFor(() => expect(within(listaDePantallas()).getAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(3));
     await abrir();
     await userEvent.type(await screen.findByLabelText('Tu clave de API de Blotato'), 'buena');
     await userEvent.click(screen.getByRole('button', { name: 'Conectar' }));
     await screen.findByText('Tu Blotato está conectado');
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
-    expect(within(menu).queryAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(0);
+    expect(within(listaDePantallas()).queryAllByRole('link', { name: /Conecta tu Blotato/ })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Blotato conectado: ver o cambiar' })).toBeInTheDocument();
   });
 });
 
@@ -3300,7 +3821,9 @@ describe('UI·18 · la miniatura se agranda hasta su película', () => {
 });
 
 describe('UI·24 · conectar Blotato dice «listo» con la palomita', () => {
+  // el botón vive en la lista de Blotato (antes, el «+» del menú de la izquierda): si no se está ahí, se va
   const abrir = async () => {
+    if (!screen.queryByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ })) await irALaLista('Blotato');
     await userEvent.click(await screen.findByRole('button', { name: /Blotato conectado|Conecta tu cuenta de Blotato/ }));
   };
   const palomita = (texto: HTMLElement) => texto.parentElement!.querySelector('svg path')!;

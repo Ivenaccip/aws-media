@@ -51,7 +51,7 @@ En `web/src/pantallas/competencia/Competencia.test.tsx`, con ese nombre exacto.
 | Test viejo | Destino |
 |---|---|
 | `test_la_pantalla_arranca_despues_de_auth` | `estudio/competencia/index.html` carga `/auth.js` antes del módulo (`test_migracion_ui.py::test_la_pantalla_nueva_tiene_su_pagina`) |
-| `test_el_menu_del_estudio_enlaza_la_pantalla` | se queda: el menú sigue enlazando `/competencia.html` y el 302 hace el resto |
+| `test_el_menu_del_estudio_enlaza_la_pantalla` | se queda: Marketing › Blotato sigue enlazando `/competencia.html` y el 302 hace el resto |
 | `test_no_hay_sondeo_ciego` | `competencia.lista.sondea_mientras_revisa_y_para_al_terminar` + `sondeo.ts` (se duerme con la pestaña oculta) |
 | `test_el_boton_dice_el_precio_antes_de_cobrar` | `competencia.cobro.precio_por_cuenta_del_servidor` |
 | `test_esc_escapa_los_cinco` | React; `competencia.informe.textos_y_ligas_de_terceros_seguros` |

@@ -80,8 +80,8 @@ y el QA manual de `docs/QA-UI.md` § imágenes. Son tres envíos: crear,
 cambiar una zona y transformar. Cada uno cuesta `video.imagen` = 2 créditos
 (6 en total) 💳, y la corrida necesita su «sí» al gasto.
 
-Los enlaces que llevan a `/imagenes.html` no se tocan: el inicio (el menú,
-la caja con `?prompt=` y «Mis imágenes» con `?img=`) y los 302 viejos de
+Los enlaces que llevan a `/imagenes.html` no se tocan: el inicio (la caja
+con `?prompt=` y «Mis imágenes» con `?img=`) y los 302 viejos de
 `/crear-imagenes.html` y `/editor-imagenes.html`. En `todos` los lleva el 302.
 
 ## Los invariantes (tests/test_migracion_ui.py)
@@ -225,7 +225,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 ## Diferencias a propósito
 
 - **El precio sale de `tarifas.json`** (`video.imagen`), como en el resto de
-  `web/` y en el menú del inicio. La vieja lo leía del evento de
+  `web/` y en la caja del inicio. La vieja lo leía del evento de
   `monedero.js` y, con los créditos apagados, enseñaba solo el verbo. El
   número es el mismo: el server lee la misma línea.
 - **Se revisa lo que devuelve el server** (`nombre` con forma `<12 hex>.jpg`,

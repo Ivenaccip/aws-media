@@ -18,9 +18,9 @@
 // «Crear una imagen» también tiene «+»: con una imagen la tarea es editarla, así
 // que la caja pasa sola a «Editar una imagen».
 //
-// La tercera familia, Edición (E1), es otra caja: un video subido + lo que quieres que le
-// haga la IA (CajaEdicion). Su estado vive en useEdicion, que se llama AQUÍ y no en
-// CajaEdicion: cambiar de familia no pierde el texto, el video ni una subida a medias.
+// La tercera familia, Edición (E1 y E2), es otra caja: uno o varios videos —subidos o elegidos de Mis creaciones— + lo que quieres que
+// les haga la IA (CajaEdicion). Su estado vive en useEdicion, que se llama AQUÍ y no en
+// CajaEdicion: cambiar de familia no pierde el texto, los videos ni una subida a medias.
 //
 // Dos piezas se comparten con Edición (dueño, 14-oct-2026): el cuadro bien definido donde se escribe (ui/CuadroDeTexto)
 // y el chip de tarea con su lista (SelectorOpcion: «Un video corto ▾», «Crear una imagen ▾», «Editar ▾»). La caja solo le
@@ -28,6 +28,11 @@
 //
 // Lo que la caja dice —que ya está creando, o por qué no pudo— sale en el cuadro de
 // abajo a la derecha (nucleo/avisos); donde esa página no lo trae, junto a la caja.
+//
+// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») la caja va DENTRO de la tarjeta del inicio (Recorrido.tsx): no pinta su
+// propia tarjeta (sin fondo, borde, relleno ni margen). El inicio la esconde con `hidden` mientras se ve el mapa o una lista (al abrir,
+// se ve el mapa: la caja arranca escondida), SIN desmontarla, y le avisa con `enVista` para que lo que corre solo para ser visto
+// (la pista rotatoria de Edición) no siga corriendo en lo escondido.
 import {
   forwardRef,
   useEffect,
@@ -37,6 +42,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type Ref,
 } from 'react';
 
 import { ErrorApi } from '../../nucleo/api';
@@ -66,6 +72,7 @@ import {
 } from './envio';
 import { Biblioteca } from './Biblioteca';
 import { CajaEdicion } from './CajaEdicion';
+import { HojaVideos } from './HojaVideos';
 import type { Pendiente } from './Galeria';
 import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
@@ -112,6 +119,13 @@ export interface PropsCaja {
   /** Las imágenes de «Mis creaciones»: con ellas, el «+» ofrece también «Elegir de Mis creaciones». Sin ninguna, el
    *  «+» abre el selector de archivos, como siempre. */
   imagenes?: Imagen[] | undefined;
+  /** El `h2` «¿Qué vamos a crear hoy?»: el recorrido le lleva el foco al volver a la caja (lleva `tabIndex={-1}`). */
+  tituloRef?: Ref<HTMLHeadingElement>;
+  /** La tarjeta del inicio la tiene a la vista. Falso = sigue montada (con lo escrito, el video, la subida) pero escondida con
+   *  `hidden` mientras se ve el mapa, las opciones o una lista: lo que corre solo para ser visto (la pista de Edición) se para. */
+  enVista?: boolean;
+  /** El servidor aceptó una edición (E2): «Mis creaciones» ya tiene la tarjeta «Editando…» de su copia, y el inicio relee sus listas. */
+  alEditar?: () => void;
 }
 
 const SIN_IMAGENES: Imagen[] = [];
@@ -133,7 +147,10 @@ const RIEL = [
   { familia: 'edicion', rotulo: 'Edición', icono: 'cortar' },
 ] as const;
 
-export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir, alTerminar, imagenes = SIN_IMAGENES }, ref) {
+export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
+  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true, alEditar },
+  ref,
+) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
   // menos sorprende a quien no abra el menú de modelo (M25 · B).
   const [familia, setFamilia] = useState<Familia>('videos');
@@ -156,6 +173,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   // el menú del «+» (con imágenes en Mis creaciones) y la hoja «Elegir de Mis creaciones»
   const [menuMas, setMenuMas] = useState(false);
   const [biblioteca, setBiblioteca] = useState(false);
+  // la hoja «Agregar videos» del «+» de Edición (E2): vive aquí, fuera de la sección que recibe lo que se arrastra, igual que la de imágenes
+  const [hojaVideos, setHojaVideos] = useState(false);
   const mas = useRef<HTMLDivElement>(null);
   const botonMas = useRef<HTMLButtonElement>(null);
   const pedidos = useRef(0);
@@ -167,21 +186,23 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   const selector = useRef<MandoSelector>(null);
   const idTitulo = useId();
   // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
-  const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') });
+  const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') }, ir, alEditar);
   const enEdicion = familia === 'edicion';
   // elegir('edicion') desde fuera: el campo de esa caja se monta en el render que sigue, así que el foco se le da ahí
   const enfocarAlMontar = useRef(false);
   useEffect(() => {
     if (!enEdicion || !enfocarAlMontar.current) return;
     enfocarAlMontar.current = false;
-    refsEdicion.area.current?.focus();
-  }, [enEdicion, refsEdicion.area]);
+    // el campo de Edición es el del texto o, en el modo Shorts, el de la liga
+    (refsEdicion.area.current ?? refsEdicion.liga.current)?.focus();
+  }, [enEdicion, refsEdicion.area, refsEdicion.liga]);
 
   useImperativeHandle(ref, () => ({
     elegir(f, id) {
       setFamilia(f);
       if (f === 'edicion') {
-        if (refsEdicion.area.current) refsEdicion.area.current.focus();
+        const campo = refsEdicion.area.current ?? refsEdicion.liga.current;
+        if (campo) campo.focus();
         else enfocarAlMontar.current = true;
       } else {
         setOpcion(OPCIONES[f].find(o => o.id === id) ?? OPCIONES[f][0]!);
@@ -300,15 +321,27 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     }
   }
 
+  /** Quita del cuadro el error de la caja, si hay uno. Un aviso verde de «ya lo estamos creando» no es un error y se queda. */
+  function quitarErrorDelCuadro() {
+    if (!errorEnElCuadro.current) return;
+    errorEnElCuadro.current = false;
+    quitarAviso(CLAVE_AVISO);
+  }
+
   /** Lo que estaba mal ya se corrigió (se agregó la imagen, se vuelve a pedir): se quita el error, esté junto a la caja
-   *  o en el cuadro. Un aviso verde de «ya lo estamos creando» no es un error y se queda. */
+   *  o en el cuadro. */
   function limpiarError() {
     setError('');
-    if (errorEnElCuadro.current) {
-      errorEnElCuadro.current = false;
-      quitarAviso(CLAVE_AVISO);
-    }
+    quitarErrorDelCuadro();
   }
+
+  // NAV-05 del prototipo (el «aviso fantasma»): el cuadro de abajo a la derecha es de toda la página, no de la caja. Con la caja
+  // escondida (el mapa, las tres opciones o una lista a la vista) su error no tiene formulario que lo explique y se quedaría flotando
+  // sobre otro paso: se quita. No se guarda para volver a ponerlo; «Crear» o «Iniciar» lo repiten si sigue faltando algo
+  const alEsconderse = useEffectEvent(quitarErrorDelCuadro);
+  useEffect(() => {
+    if (!enVista) alEsconderse();
+  }, [enVista]);
 
   function agregar(nuevos: File[]) {
     // con una imagen en «Crear una imagen» la tarea que rige es la de editar: sus topes y sus extensiones
@@ -406,7 +439,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     if (!(admiteImagenes || enEdicion) || !traeArchivos(e)) return;
     e.preventDefault();
     setArrastrando(false);
-    // en Edición lo que se suelta es el video a editar (y se sube); pegar, en cambio, se ignora
+    // en Edición lo que se suelta son los videos a editar (VARIOS, y se suben en cola); pegar, en cambio, se ignora
     if (enEdicion) edicion.recibir(Array.from(e.dataTransfer.files));
     else agregar(soloImagenes(Array.from(e.dataTransfer.files)));
   }
@@ -418,8 +451,9 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
     const destino = e.target instanceof HTMLElement ? e.target : null;
     // en otro campo (la clave de Blotato…) lo pegado es de ese campo; el único que es de la caja es su texto
     if (destino && destino !== area.current && (destino.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(destino.tagName))) return;
-    // con un diálogo abierto (el visor, Blotato) la caja queda detrás: no se le agrega nada sin que se vea
-    if (seccion.current?.closest('[aria-hidden="true"]')) return;
+    // con un diálogo abierto (el visor, Blotato) la caja queda detrás, y con el mapa o una lista a la vista la tarjeta la esconde
+    // (`hidden`, sin aria-hidden): no se le agrega nada sin que se vea, ni se corta un pegado que no es suyo
+    if (!enVista || seccion.current?.closest('[aria-hidden="true"]')) return;
     const imagenes = imagenesPegadas(e.clipboardData);
     if (!imagenes.length) return;
     e.preventDefault();
@@ -436,7 +470,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
   function enviar(): boolean {
     const limpio = texto.trim();
     if (!limpio) {
-      decir('mal', 'Cuéntanos qué quieres primero — o entra por el menú de la izquierda para ver el formulario completo.');
+      decir('mal', 'Cuéntanos qué quieres primero.');
       area.current?.focus();
       return true;
     }
@@ -553,9 +587,13 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastrando(false);
         }}
         onDrop={alSoltar}
+        // la caja va DENTRO de la tarjeta del inicio (Recorrido): sin fondo, relleno ni margen propios. El borde se queda,
+        // transparente, para pintar el «suelta aquí» (discontinuo, ámbar) al arrastrar archivos sin que nada se mueva. En alto contraste
+        // (`forced-colors`) el navegador pinta hasta un borde transparente con el color del sistema y saldría un segundo marco dentro
+        // del de la tarjeta: ahí el borde en reposo se quita (el «suelta aquí» sí es un marco que hay que ver, y se queda)
         className={unir(
-          'mb-8 flex flex-col gap-4 rounded-grande border bg-superficie p-4 min-[640px]:flex-row min-[640px]:p-5 min-[861px]:mt-[82px]',
-          arrastrando ? 'border-dashed border-ambar' : 'border-linea',
+          'flex flex-col gap-4 rounded-grande border min-[640px]:flex-row',
+          arrastrando ? 'border-dashed border-ambar' : 'border-transparent forced-colors:border-0',
         )}
       >
         <div
@@ -570,8 +608,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
               aria-pressed={familia === r.familia}
               onClick={() => {
                 setFamilia(r.familia);
-                // Imagen y Video eligen su primera opción, como siempre; Edición no está en OPCIONES (su chip usa MODOS_EDICION, con
-                // una sola opción) y conserva todo lo suyo
+                // Imagen y Video eligen su primera opción, como siempre; Edición no está en OPCIONES (su chip usa MODOS_EDICION) y
+                // conserva todo lo suyo, también su modo (Editar o De videos a Shorts)
                 if (r.familia !== 'edicion') setOpcion(OPCIONES[r.familia][0]!);
                 selector.current?.cerrar();
               }}
@@ -588,11 +626,11 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 id={idTitulo} className="m-0 mb-2 font-titulo text-titulo-md font-bold">
+          <h2 id={idTitulo} ref={tituloRef} tabIndex={-1} className="m-0 mb-2 w-fit max-w-full font-titulo text-titulo-md font-bold">
             ¿Qué vamos a crear hoy?
           </h2>
           {enEdicion ? (
-            <CajaEdicion ed={edicion} refs={refsEdicion} />
+            <CajaEdicion ed={edicion} refs={refsEdicion} enVista={enVista} alElegirDeCreaciones={() => setHojaVideos(true)} />
           ) : (
             <>
               {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} etiqueta={textosMas?.lista ?? 'Imágenes de referencia'} />}
@@ -757,6 +795,23 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja({ ir, alPedir
       </section>
 
       {/* fuera del <section>: lo que se suelta o se hace en la hoja no sube hasta el arrastre de la caja */}
+      <HojaVideos
+        abierto={hojaVideos && enEdicion}
+        alCambiar={setHojaVideos}
+        enCaja={edicion.videos.map(v => ({ ref: v.ref, duracion_s: v.duracion_s, formato: v.formato, bytes: v.bytes }))}
+        alUsar={edicion.agregarElegidos}
+        // lo marcado se agrega primero: elegir archivos después no deshace la selección (decisión del lienzo)
+        alElegirArchivos={marcados => {
+          edicion.agregarElegidos(marcados);
+          edicion.abrirSelector();
+        }}
+        alSoltarArchivos={(soltados, marcados) => {
+          edicion.agregarElegidos(marcados);
+          edicion.recibir(soltados);
+        }}
+        focoAlCerrar={refsEdicion.mas}
+        ocupado={edicion.ocupado}
+      />
       <Biblioteca
         abierto={biblioteca}
         alCambiar={setBiblioteca}

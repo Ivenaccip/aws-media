@@ -12,7 +12,7 @@
 //   · la lista abre con clic o con ↓; recorre con ↑ ↓ Inicio Fin; Enter o Espacio eligen; Esc cierra y devuelve el foco al
 //     chip; Tab o Shift+Tab cierran, ponen el foco en el chip y siguen desde ahí (nunca a <body>); un clic fuera cierra;
 //   · elegir cierra la lista y devuelve el foco al chip (elegir la que ya estaba es solo eso: cerrar y volver);
-//   · la lista es más ancha que el chip y el chip está a media fila: se mide y se sujeta dentro de la ventana.
+//   · la lista es más ancha que el chip y el chip está a media fila: se mide y se sujeta dentro de la ventana (y de la tarjeta, si la hay).
 // Cerrar desde fuera (cambiar de familia, `elegir()` del mando de la caja) es `ref.current.cerrar()`.
 import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react';
 
@@ -80,7 +80,9 @@ export function SelectorOpcion<T extends OpcionDeSelector>({ opciones, elegida, 
   }, [abierto, marcada]);
 
   // El menú es más ancho que su botón, y el botón está a media fila: anclado a
-  // un lado se salía por el otro. Se mide y se sujeta dentro de la ventana.
+  // un lado se salía por el otro. Se mide y se sujeta dentro de la ventana y, si el chip va dentro de una tarjeta que se lo pide
+  // (`data-limite-lista`, la del inicio), de su borde derecho: la ventana deja 12 px de margen y la tarjeta 16, y sin esto la lista
+  // cruzaba el borde de la tarjeta hasta 4 px.
   useLayoutEffect(() => {
     if (!abierto) return;
     const ubicar = () => {
@@ -90,7 +92,11 @@ export function SelectorOpcion<T extends OpcionDeSelector>({ opciones, elegida, 
       l.style.left = '0px';
       const margen = 12;
       const izq = b.getBoundingClientRect().left;
-      const tope = document.documentElement.clientWidth - margen - l.getBoundingClientRect().width;
+      const derecha = Math.min(
+        document.documentElement.clientWidth - margen,
+        b.closest('[data-limite-lista]')?.getBoundingClientRect().right ?? Infinity,
+      );
+      const tope = derecha - l.getBoundingClientRect().width;
       l.style.left = Math.max(margen, Math.min(izq, tope)) - izq + 'px';
     };
     ubicar();

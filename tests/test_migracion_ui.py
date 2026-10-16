@@ -10,7 +10,9 @@ Además, por etapa (server/migracion.py):
   · `nueva` y `todos`: el HTML viejo sigue en static/;
   · `retirada`: el HTML viejo ya no existe.
 Y cada pantalla registrada tiene su docs/migracion/<pantalla>.md, con cada
-aserción vieja y su destino.
+aserción vieja y su destino. Ese doc también nombra las pruebas SUELTAS (sin ID,
+función nueva que la pantalla vieja no garantizaba): los archivos que cita tienen
+que existir, porque el registro no las protege.
 """
 import re
 from pathlib import Path
@@ -287,7 +289,24 @@ INVARIANTES = {
         "inicio.galeria.las_ediciones_van_en_su_filtro_y_los_shorts_en_el_suyo",
         "inicio.imagenes.si_falla_la_lista_no_se_rompe",
         "inicio.ediciones.estado_y_enlace_a_e1",
+        "inicio.ediciones.una_copia_dice_su_titulo_su_estado_y_de_donde_viene",
+        "inicio.ediciones.una_copia_corriendo_mantiene_vivo_el_sondeo_de_las_listas_y_su_paso_a_error_pone_al_dia_el_saldo",
+        "inicio.ediciones.una_copia_que_termina_pone_al_dia_el_saldo_ya_y_otra_vez_despues_y_una_que_ya_estaba_lista_no",
+        "inicio.ediciones.al_irse_la_pantalla_el_segundo_vistazo_al_saldo_de_una_copia_terminada_no_sale",
+        "inicio.ediciones.si_la_bandeja_reintenta_la_copia_la_tarjeta_se_relee_y_pasa_a_editando",
+        "inicio.ediciones.una_copia_que_fallo_ofrece_reintentar_con_su_precio_y_al_aceptarlo_cobra_vuela_el_menos_n_y_pasa_a_editando",
+        "inicio.ediciones.un_doble_clic_en_reintentar_es_un_solo_pedido_y_un_reintento_sin_precio_conocido_no_vuela_ningun_menos_n",
+        "inicio.ediciones.si_el_servidor_niega_el_reintento_la_tarjeta_lo_dice_con_sus_palabras_y_sin_saldo_dice_cuanto_falta",
+        "inicio.ediciones.mientras_se_devuelven_los_creditos_la_tarjeta_lo_dice_y_no_ofrece_reintentar",
+        "inicio.ediciones.una_copia_corriendo_de_hace_mas_de_2_horas_se_lee_sin_respuesta_y_no_mantiene_el_sondeo",
+        "inicio.ediciones.una_copia_corriendo_de_hace_poco_sigue_editando_y_mantiene_el_sondeo",
+        "inicio.ediciones.al_lanzar_desde_la_caja_las_listas_se_releen_y_la_copia_sale_editando",
         "inicio.listas.textos_del_server_como_texto",
+        # 15-oct-2026 (dueño, «Mapa con Irremplazables»): el menú de la izquierda ya no existe. Estos `inicio.menu.*` y los
+        # `inicio.blotato.*` de más abajo se conservaron CON SU NOMBRE y los cumple la ruta nueva (mapa → opciones → lista de
+        # pantallas): docs/migracion/inicio.md dice qué afirma ahora cada uno. El recorrido mismo y el modo «De videos a Shorts» de
+        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (estadoRecorrido.test.ts, Recorrido.test.tsx,
+        # Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no se registran aquí
         "inicio.menu.entradas_y_grupos_en_orden",
         # 14-oct-2026 (dueño): «Editor de videos» sale del menú y el título pasa a «Irremplazables» en dorado
         "inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan",
@@ -349,7 +368,6 @@ INVARIANTES = {
         "inicio.edicion.cambiar_de_familia_a_mitad_del_cobro_lo_termina_y_al_volver_la_caja_esta_vacia",
         "inicio.edicion.un_402_que_llega_en_otra_familia_se_ve_al_volver_y_no_pierde_nada",
         "inicio.edicion.quitar_con_el_precio_en_camino_y_subir_otro_ignora_la_respuesta_vieja",
-        "inicio.edicion.un_archivo_nuevo_sobre_un_video_listo_lo_reemplaza_y_el_pedido_va_al_proyecto_nuevo",
         "inicio.edicion.otro_archivo_durante_la_subida_avisa_y_no_empieza_otra_subida",
         "inicio.edicion.los_nombres_raros_de_archivo_dan_un_proyecto_que_el_servidor_acepta_o_se_rechazan_con_motivo",
         "inicio.edicion.un_nombre_que_ya_es_un_proyecto_tuyo_con_video_se_estrena_con_nombre_nuevo",
@@ -380,6 +398,8 @@ INVARIANTES = {
         "inicio.edicion.el_aviso_de_trabajo_en_curso_se_quita_solo_cuando_ese_trabajo_termina",
         "inicio.edicion.si_otro_aviso_reemplazo_al_de_trabajo_en_curso_no_se_quita_nada",
         # 14-oct-2026 (dueño): cuadro de escritura, «Editar ▾» junto al «+» e «Iniciar» dorado en todos los estados
+        # (los dos IDs del chip conservan el nombre de cuando la lista tenía UNA opción; desde el 15-oct-2026 tiene dos, «Editar» y
+        # «De videos a Shorts», y sus pruebas lo afirman: renombrarlos exige tocar Edicion.test.tsx, este archivo y el doc a la vez)
         "inicio.edicion.el_campo_vive_en_un_cuadro_con_borde_de_campo_y_fondo_elevada_y_un_clic_en_el_cuadro_enfoca_el_texto",
         "inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion",
         "inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra",
@@ -403,6 +423,74 @@ INVARIANTES = {
         # 14-oct-2026 (revisión de la pista rotatoria): apagar «reducir movimiento» con la pantalla abierta, y el guardia del hook
         "inicio.edicion.apagar_reducir_movimiento_sigue_en_la_primera_idea_tambien_con_el_foco_o_con_texto",
         "inicio.edicion.un_temporizador_viejo_que_vence_al_parar_la_rotacion_no_deja_la_pista_a_medio_apagar",
+        "inicio.edicion.el_precio_solo_sale_de_cotizar_y_el_cliente_no_lo_calcula",
+        "inicio.edicion.el_pedido_se_conserva_tras_una_red_caida_y_se_renueva_tras_cualquier_respuesta_del_servidor",
+        "inicio.edicion.otra_lista_otro_orden_u_otro_texto_es_otro_pedido",
+        "inicio.edicion.un_repetido_del_servidor_vacia_la_caja_sin_dibujar_otro_menos_n_y_pone_al_dia_el_saldo",
+        "inicio.edicion.un_413_o_422_del_servidor_se_dice_tal_cual_no_cobra_y_se_vuelve_a_cotizar",
+        "inicio.edicion.si_otra_edicion_ya_corre_el_409_bloquea_hasta_que_la_lista_diga_que_termino",
+        "inicio.edicion.una_pregunta_de_la_copia_sondea_por_su_nombre_cada_5_s_y_se_libera_al_terminar",
+        "inicio.edicion.avisa_a_la_pantalla_cuando_el_servidor_acepto_para_que_mis_creaciones_muestre_la_copia",
+        "inicio.edicion.el_aviso_de_exito_dice_si_se_edita_un_video_o_se_unen_varios",
+        "inicio.edicion.un_409_que_no_es_de_tarea_en_curso_se_lee_tal_cual_y_no_deja_la_caja_ocupada",
+        "inicio.edicion.si_la_puerta_de_enlace_se_rinde_la_lista_se_relee_para_ver_si_la_edicion_si_salio",
+        "inicio.hojavideos.pide_la_lista_al_abrir_dice_que_carga_y_la_pinta",
+        "inicio.hojavideos.si_la_lista_no_llega_lo_dice_adentro_y_reintentar_la_vuelve_a_pedir",
+        "inicio.hojavideos.sin_videos_hechos_con_ia_ofrece_subir_de_la_computadora_y_no_ofrece_usar",
+        "inicio.hojavideos.la_lista_es_la_de_esta_apertura_y_se_vuelve_a_pedir_en_cada_una",
+        "inicio.hojavideos.cerrar_aborta_la_peticion_y_una_lista_que_llega_tarde_no_se_pinta",
+        "inicio.hojavideos.cada_video_dice_su_nombre_con_duracion_formato_y_lo_que_aplica_exacto",
+        "inicio.hojavideos.los_cinco_filtros_traen_su_cuenta_y_un_filtro_en_cero_lo_dice",
+        "inicio.hojavideos.marcar_numera_en_el_orden_de_marcado_y_desmarcar_recorre_los_numeros",
+        "inicio.hojavideos.el_orden_numerico_continua_la_cuenta_de_la_caja_y_lo_que_esta_en_ella_se_apaga",
+        "inicio.hojavideos.con_un_horizontal_marcado_los_verticales_se_apagan_con_su_texto_y_al_reves",
+        "inicio.hojavideos.el_formato_de_lo_que_ya_esta_en_la_caja_tambien_apaga",
+        "inicio.hojavideos.se_pasa_de_90_min_apaga_lo_que_no_cabe_y_el_curso_solo_se_apaga_por_la_suma",
+        "inicio.hojavideos.lo_que_dura_mas_de_90_min_y_las_copias_van_aparte_en_no_se_pueden_editar",
+        "inicio.hojavideos.los_motivos_del_servidor_se_leen_tal_cual_y_un_video_midiendose_dice_que_calcula",
+        "inicio.hojavideos.el_tope_de_12_videos_y_de_15_gb_apagan_lo_que_ya_no_cabe",
+        "inicio.hojavideos.los_limites_que_manda_el_servidor_ganan_a_los_de_respaldo",
+        "inicio.hojavideos.un_solo_video_corto_apaga_usar_este_video_y_dice_que_hace_falta_otro",
+        "inicio.hojavideos.usar_n_videos_los_entrega_en_el_orden_de_marcado_cierra_y_devuelve_el_foco_al_mas",
+        "inicio.hojavideos.cerrar_por_donde_sea_olvida_lo_marcado_y_devuelve_el_foco_al_mas",
+        "inicio.hojavideos.mi_computadora_agrega_primero_lo_marcado_y_luego_los_archivos",
+        "inicio.hojavideos.soltar_algo_que_no_es_video_no_cierra_la_hoja_y_lo_dice_adentro",
+        "inicio.hojavideos.el_pie_cambia_con_la_pestana_y_la_zona_se_marca_al_arrastrar",
+        "inicio.hojavideos.los_motivos_de_apagado_siguen_su_orden_y_solo_los_del_video_van_aparte",
+        "inicio.hojavideos.un_solo_video_de_menos_de_1_min_no_se_edita_solo_y_uno_de_60_s_si",
+        "inicio.hojavideos.el_pie_dice_lo_que_pasa_en_sus_seis_casos",
+        "inicio.hojavideos.los_numeros_de_orden_continuan_la_cuenta_de_la_caja",
+        "inicio.hojavideos.un_video_marcado_conserva_su_borde_ambar_al_pasar_el_raton",
+        "inicio.union.el_mas_abre_un_menu_con_dos_opciones_y_se_porta_como_el_de_imagen",
+        "inicio.union.el_mas_ocupado_avisa_y_no_abre_el_menu",
+        "inicio.union.con_dos_o_mas_videos_el_menu_se_abre_hacia_arriba_y_el_mas_dice_agregar_otro_video",
+        "inicio.union.subir_de_tu_computadora_se_apaga_con_12_videos_o_90_minutos_y_dice_por_que",
+        "inicio.union.subir_de_tu_computadora_se_apaga_al_sumar_90_minutos",
+        "inicio.union.subir_varios_archivos_van_en_cola_de_uno_en_uno_con_su_progreso_y_cotiza_al_terminar_la_cola",
+        "inicio.union.cada_subida_confirmada_pasa_a_ser_el_proyecto_con_su_nombre_y_los_repetidos_estrenan_nombre",
+        "inicio.union.al_confirmar_cada_subida_manda_el_nombre_del_archivo_tal_como_la_persona_lo_vio",
+        "inicio.union.dos_archivos_con_el_mismo_nombre_en_la_misma_tanda_no_son_el_mismo_proyecto",
+        "inicio.union.un_archivo_que_falla_sale_y_la_cola_sigue",
+        "inicio.union.si_fallan_dos_archivos_el_aviso_dice_cuales_y_el_segundo_no_pisa_al_primero",
+        "inicio.union.si_se_corta_la_conexion_dice_a_que_porcentaje_que_no_se_cobro_nada_y_como_seguir",
+        "inicio.union.quitar_la_que_sube_la_cancela_sin_error_ni_precio_y_la_cola_sigue_con_la_siguiente",
+        "inicio.union.mas_de_12_archivos_se_recortan_a_12_y_se_dice",
+        "inicio.union.los_archivos_que_no_sirven_se_rechazan_uno_por_uno_con_su_motivo_y_los_demas_siguen",
+        "inicio.union.cambiar_de_familia_y_volver_no_pierde_la_lista_ni_la_cola",
+        "inicio.union.la_union_dice_cuantos_videos_y_cuanto_duran_con_una_fila_por_video_y_la_nota_en_plural",
+        "inicio.union.subir_y_bajar_cambian_el_orden_con_nombres_exactos_extremos_apagados_foco_en_su_boton_y_anuncio",
+        "inicio.union.lo_que_se_manda_es_el_orden_nuevo_y_mover_no_cobro_nada",
+        "inicio.union.reordenar_no_hace_ninguna_peticion_ni_apaga_el_precio_ni_siquiera_un_instante",
+        "inicio.union.quitar_recorre_los_numeros_vuelve_a_cotizar_manda_el_foco_al_mas_y_con_uno_queda_su_tarjeta",
+        "inicio.union.desde_la_quinta_fila_la_lista_se_desplaza_por_dentro_con_alto_de_cuatro",
+        "inicio.union.con_dos_o_mas_videos_la_pista_suma_la_idea_de_unir_como_primera",
+        "inicio.union.las_creaciones_elegidas_se_agregan_al_final_sin_repetir_y_el_precio_sale_del_servidor",
+        "inicio.union.la_hoja_mezcla_lo_elegido_con_lo_subido_y_manda_las_referencias_en_el_orden_de_la_caja",
+        "inicio.union.mi_computadora_de_la_hoja_agrega_primero_lo_marcado_y_luego_sube_los_archivos",
+        "inicio.union.un_bloqueo_del_servidor_apaga_iniciar_con_su_texto_y_se_quita_al_agregar_otro_video",
+        "inicio.union.formatos_distintos_lo_dice_el_servidor_tal_cual_y_la_caja_no_lo_repite",
+        "inicio.union.sin_saldo_dice_estos_videos_en_plural_y_cuanto_falta",
+        "inicio.union.el_modo_shorts_sigue_con_un_solo_video_sin_menu_ni_hoja_y_el_mas_abre_el_selector_directo",
     ],
     "shorts": [
         "shorts.cobro.analizar_con_el_precio_del_servidor",
@@ -746,6 +834,20 @@ def test_cada_pantalla_tiene_su_mapa_de_aserciones(pantalla):
     texto = doc.read_text(encoding="utf-8")
     for i in INVARIANTES[pantalla]:
         assert f"`{i}`" in texto, f"{doc.name} no dice dónde quedó {i}"
+
+
+_ARCHIVO_DE_PRUEBA = re.compile(r"`(?:[\w./-]*/)?([A-Za-z0-9_.-]+\.(?:test\.tsx?|spec\.ts))`")
+
+
+@pytest.mark.parametrize("pantalla", sorted(INVARIANTES))
+def test_el_mapa_de_aserciones_solo_cita_archivos_de_prueba_que_existen(pantalla):
+    # Una prueba SUELTA (sin ID, como las del recorrido del inicio) no la protege el registro: lo único que dice dónde vive es el
+    # doc. Si el archivo se renombra o se borra y el doc lo sigue citando, esa cobertura se pierde sin que nada lo note.
+    web = RAIZ / "web"
+    existentes = {p.name for patron in ("src/**/*.test.ts*", "e2e/**/*.spec.ts") for p in web.glob(patron)}
+    texto = (RAIZ / "docs" / "migracion" / f"{pantalla}.md").read_text(encoding="utf-8")
+    faltan = set(_ARCHIVO_DE_PRUEBA.findall(texto)) - existentes
+    assert not faltan, f"docs/migracion/{pantalla}.md cita archivos de prueba que ya no existen: {sorted(faltan)}"
 
 
 @pytest.mark.parametrize("pantalla", sorted(INVARIANTES))

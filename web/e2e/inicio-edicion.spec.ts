@@ -15,52 +15,38 @@
 //    del cuadro (320, 390 y 1100 px) y no tapa clics (no hay capa encima). El reloj de la pantalla es el falso de Playwright
 //    (`page.clock`), pero los fundidos de CSS corren en tiempo real: por eso se miden con muestras;
 //  · la caja entera se recorre SOLO con teclado (Tab, Shift+Tab, Enter, Espacio) y el apagado enfocable se puede activar.
-// No gasta nada: el servidor y «S3» son rutas de mentira.
-import { expect, test, type Page } from '@playwright/test';
+//  · E2: el precio sale de POST /api/edicion/cotizar y «Iniciar» manda POST /api/edicion/iniciar con SOLO la clave del pedido, las referencias
+//    y la instrucción; el «+» abre un menú (Subir de tu computadora / Elegir de Mis creaciones) que se maneja con el teclado.
+//    Lo de varios videos y la hoja está en inicio-edicion-union.spec.ts.
+// No gasta nada: el servidor y «S3» son rutas de mentira (e2e/edicion.ts).
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { contraste } from '../src/nucleo/contraste';
+import type { Cotizacion } from '../src/pantallas/inicio/envio';
+import { cotizacion, simularEdicion, type Visto } from './edicion';
 import { animacionesVivas, pistaSePinta } from './pantallas';
+import { elegir } from './recorrido';
 
-const RESPUESTAS_VACIAS: Record<string, unknown> = {
-  '**/api/proyectos': [],
-  '**/api/slots': { slots: null, activos: 0 },
-  '**/api/imagenes': { total: 0, imagenes: [] },
-  '**/api/edicion/proyectos': [],
-  '**/api/clip': { clips: [] },
-  '**/api/trabajos': { trabajos: [], sondeo_s: 15 },
-  '**/api/moderar': { permitido: true },
-};
-
-const COSTO = { fuente: 'videos/entrevista/subidas/entrevista.mp4', duracion_s: 724, con_transcript: false, creditos: 8, backend_listo: true, aviso: null };
+// E2: el precio ya no sale de /api/editar/<p>/costo sino de POST /api/edicion/cotizar (con las referencias de la caja) y «Iniciar» es
+// POST /api/edicion/iniciar. `costo` es lo que contesta el servidor de mentira para cualquier conjunto.
+const COSTO = cotizacion(['proyecto:entrevista']);
 
 async function edicion(
   page: Page,
-  costo: unknown = COSTO,
+  costo: Cotizacion = COSTO,
   { saldo, subidaMs = 600, reloj = false }: { saldo?: number; subidaMs?: number; reloj?: boolean } = {},
-) {
+): Promise<Visto> {
   // `reloj`: el de la pantalla (setTimeout, Date…) pasa a ser el falso de Playwright, quieto hasta que la prueba lo mueva
   if (reloj) await page.clock.install({ time: 0 });
-  for (const [ruta, json] of Object.entries(RESPUESTAS_VACIAS)) await page.route(ruta, r => r.fulfill({ json }));
-  if (saldo !== undefined) await page.route('**/api/creditos', r => r.fulfill({ json: { activo: true, saldo, tarifas: {}, packs: [] } }));
-  await page.route('**/api/blotato', r => r.fulfill({ status: 404, json: { detail: 'no' } }));
-  await page.route('**/api/media/config', r => r.fulfill({ json: { activo: true, cdn: '' } }));
-  // lo ya subido con ese nombre: nada (si lo hubiera, la caja estrenaría un nombre nuevo para no mezclar proyectos)
-  await page.route('**/api/media/entrevista', r => r.fulfill({ json: { subidas: [] } }));
-  // el PUT a «S3» es del mismo origen para no depender de CORS; tarda un poco para poder ver la barra
-  await page.route('**/api/media/presign', r =>
-    r.fulfill({ json: { url: '/s3-falso/subida', key: 'videos/entrevista/subidas/entrevista.mp4', content_type: 'video/mp4' } }),
-  );
-  await page.route('**/s3-falso/subida', async r => {
-    await new Promise(f => setTimeout(f, subidaMs));
-    await r.fulfill({ status: 200, body: '' });
-  });
-  await page.route('**/api/media/confirmar', r => r.fulfill({ json: { archivo: 'entrevista.mp4', cdn: '' } }));
-  await page.route('**/api/editar/entrevista/costo', r => r.fulfill({ json: costo }));
-  await page.route('**/api/editar/entrevista/sugerir', r => r.fulfill({ json: { lanzado: true, creditos: 8 } }));
+  const visto = await simularEdicion(page, { cotizar: () => costo, subidaMs, ...(saldo !== undefined ? { saldo } : {}) });
   await page.goto('/estudio/inicio/');
+  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
+  await expect(page.getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
+  await elegir(page, 'Marketing', 'Distrito');
   if (reloj) await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await expect(campo(page)).toBeVisible();
+  return visto;
 }
 
 // las ideas de la pista, tal como las lee el dueño (a propósito NO se importan de edicion.ts: si alguien cambia el texto, esta
@@ -101,6 +87,21 @@ const iniciar = (page: Page) => page.getByRole('button', { name: /^(Iniciar|Subi
 // por su `aria-haspopup`, no por su nombre: al pasar el ratón o enfocarlo, la pista (::after) se vuelve visible y Chrome la suma a su nombre
 const chip = (page: Page) => page.locator('button[aria-haspopup="listbox"]');
 
+const AYUDA = 'Escribe qué quieres hacer con tu video.';
+
+/**
+ * ¿Se ve algo de ese elemento? Playwright da por «visible» todo lo que tiene caja, y un `sr-only` mide 1 × 1 px: no sirve. Una persona no ve
+ * lo que mide 1 px o menos, o lo que está recortado del todo (`clip`), o transparente, o con `visibility: hidden`.
+ */
+function seVeAlgo(loc: Locator) {
+  return loc.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    const c = getComputedStyle(el);
+    const recortado = /^rect\(0(px)?,? 0(px)?,? 0(px)?,? 0(px)?\)$/.test(c.clip);
+    return r.width > 1 && r.height > 1 && !recortado && c.visibility !== 'hidden' && c.display !== 'none' && Number(c.opacity) > 0;
+  });
+}
+
 /** El mp4 mínimo que acepta el selector: el servidor de mentira no lo mira. */
 const VIDEO = { name: 'entrevista.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(2048, 1) };
 
@@ -124,7 +125,10 @@ test('«Iniciar» sin poder sigue enfocable con Tab y, sin texto, el clic lleva 
   await boton.click({ force: true });
   await expect(campo(page)).toBeFocused();
   await expect(page.locator('#bandeja [role="alert"]')).toHaveCount(0);
-  await expect(page.getByText('Escribe qué quieres hacer con tu video.')).toBeVisible();
+  // la frase de ayuda ya NO se ve (dueño, 15-oct-2026), pero sigue siendo la descripción de «Iniciar» para quien usa lector de pantalla
+  await expect(page.getByText(AYUDA)).toHaveCount(1);
+  expect(await seVeAlgo(page.getByText(AYUDA)), 'la frase «Escribe qué quieres hacer con tu video.» se ve').toBe(false);
+  await expect(boton).toHaveAccessibleDescription(AYUDA);
   // escribir lo enciende
   await campo(page).fill('Quítale las muletillas');
   await expect(page.getByRole('button', { name: 'Iniciar ✦ 8' })).not.toHaveAttribute('aria-disabled', 'true');
@@ -199,7 +203,7 @@ test.describe('en el teléfono', () => {
     expect(sobra).toBeLessThanOrEqual(0);
     const tocables = [
       ...(await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button').all()),
-      page.getByRole('button', { name: 'Cambiar el video' }),
+      page.getByRole('button', { name: 'Agregar otro video' }),
       chip(page),
       page.getByRole('button', { name: 'Quitar este video' }),
       page.getByRole('button', { name: 'Iniciar ✦ 8' }),
@@ -433,12 +437,7 @@ test('el ejemplo fijo describe al campo y no queda como párrafo suelto en el á
 });
 
 test('toda la caja se recorre solo con el teclado: Tab, Shift+Tab, Enter y Espacio', async ({ page }) => {
-  const sugerir: string[] = [];
-  await edicion(page);
-  await page.route('**/api/editar/entrevista/sugerir', r => {
-    sugerir.push(r.request().postData() ?? '');
-    return r.fulfill({ json: { lanzado: true, creditos: 8 } });
-  });
+  const visto = await edicion(page);
   const enfocado = () => page.evaluate(() => (document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent || '').trim());
   // el recorrido empieza en el riel: Tab desde «Video» llega a «Edición»
   await riel(page).getByRole('button', { name: 'Video', exact: true }).focus();
@@ -459,19 +458,28 @@ test('toda la caja se recorre solo con el teclado: Tab, Shift+Tab, Enter y Espac
   expect(await enfocado()).toBe('Editar ▾');
   await page.keyboard.press('Shift+Tab');
   expect(await enfocado()).toBe('Agregar el video que quieres editar');
-  // Espacio en el «+» abre el selector de archivos
-  const [selector] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Space')]);
+  // Espacio en el «+» abre su menú (E2), con el foco en la primera opción; Enter en «Subir de tu computadora» abre el selector de archivos
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('menu', { name: 'Agregar videos' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Subir de tu computadora/ })).toBeFocused();
+  const [selector] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Enter')]);
   await selector.setFiles(VIDEO);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Iniciar ✦ 8' })).toBeVisible();
   // «Iniciar ✦ 8» ya está encendido: Tab hasta él (pasando por el chip) y Enter lanza UNA vez, con la instrucción y nada más
-  await page.getByRole('button', { name: 'Cambiar el video' }).focus();
+  await page.getByRole('button', { name: 'Agregar otro video' }).focus();
   await page.keyboard.press('Tab');
   expect(await enfocado()).toBe('Editar ▾');
   await page.keyboard.press('Tab');
   expect(await enfocado()).toBe('Iniciar ✦ 8');
   await page.keyboard.press('Enter');
   await expect(campo(page)).toHaveValue('');
-  expect(sugerir).toEqual(['{"instruccion":"Quítale las muletillas"}']);
+  // el cuerpo: la clave del pedido (32 hex), las referencias y la instrucción; NUNCA créditos, keys de S3 ni duraciones
+  expect(visto.iniciar).toHaveLength(1);
+  expect(Object.keys(visto.iniciar[0]!).sort()).toEqual(['instruccion', 'pedido', 'videos']);
+  expect(visto.iniciar[0]!.pedido).toMatch(/^[0-9a-f]{32}$/);
+  expect(visto.iniciar[0]!.videos).toEqual(['proyecto:entrevista']);
+  expect(visto.iniciar[0]!.instruccion).toBe('Quítale las muletillas');
 });
 
 test('«Iniciar» con aria-disabled se activa con Enter y con Espacio: lleva el foco al campo', async ({ page }) => {
@@ -514,7 +522,7 @@ test('«Iniciar» es dorado en TODOS los estados (sin video, sin texto, con todo
   await expect(boton).toHaveAttribute('aria-disabled', 'true');
 });
 
-test('«Editar ▾» va junto al «+», abre su lista de una opción, y elegirla solo cierra', async ({ page }) => {
+test('«Editar ▾» va junto al «+», abre su lista de dos opciones, y elegir la de ahora solo cierra', async ({ page }) => {
   await edicion(page);
   const mas = page.getByRole('button', { name: 'Agregar el video que quieres editar' });
   const cajaMas = (await mas.boundingBox())!;
@@ -535,24 +543,74 @@ test('«Editar ▾» va junto al «+», abre su lista de una opción, y elegirla
   expect(await pistaSePinta(page, chip(page)), 'al pasar el ratón por «Editar ▾» no se pinta ninguna pista').toBe(true);
   const pista = await chip(page).evaluate(e => getComputedStyle(e, '::after').content);
   expect(pista).toContain('Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.');
-  // la lista: una opción, con «según el video»
+  // la lista: Editar (la de ahora) y De videos a Shorts, cada una con «según el video»
   await chip(page).click();
   const lista = page.getByRole('listbox', { name: 'Opciones' });
   await expect(lista).toBeVisible();
   // con la lista abierta el globo de la pista se quita (la misma nota sale en la fila de la lista), aunque el ratón siga encima
   expect(await chip(page).evaluate(e => getComputedStyle(e, '::after').display)).toBe('none');
-  await expect(lista.getByRole('option')).toHaveCount(1);
-  await expect(lista.getByRole('option')).toContainText('según el video');
-  await expect(lista.getByRole('option')).toBeFocused();
+  await expect(lista.getByRole('option')).toHaveCount(2);
+  await expect(lista.getByRole('option').nth(0)).toContainText('según el video');
+  await expect(lista.getByRole('option').nth(0)).toBeFocused();
+  await expect(lista.getByRole('option').nth(1)).toContainText('De videos a Shorts');
   await page.keyboard.press('Escape');
   await expect(lista).toHaveCount(0);
   await expect(chip(page)).toBeFocused();
-  // Enter la elige: cierra y vuelve al chip; sin ninguna petición de editar
+  // Enter elige la de ahora (la lista abre en ella): cierra y vuelve al chip; sin ninguna petición de editar
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(lista).toHaveCount(0);
   await expect(chip(page)).toBeFocused();
   await expect(page.locator('#bandeja [role="alert"]')).toHaveCount(0);
+});
+
+// dueño, 15-oct-2026: «el botón dorado debe de tener el mismo largo como el del selector «Modelo Veo 3.1 Lite · 8 s ▾» de Video». Los dos salen de UNA
+// medida (medidas.ts: 13,5 rem = 216 px de mínimo en escritorio); el selector mide 209,5 px por su rótulo, así que sube a 216 y «Iniciar» (que
+// medía 85) también. Se mide en el navegador, con el modelo por defecto de Video, a cada ancho de escritorio.
+for (const ancho of [640, 800, 1100, 1440]) {
+  test(`a ${ancho} px «Iniciar» (Edición) mide lo mismo que el selector «Modelo …» de Video: ancho, alto y borde derecho, en la misma fila que el «+»`, async ({ page }) => {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await edicion(page);
+    const riel = page.getByRole('group', { name: 'Qué quieres crear' });
+    await riel.getByRole('button', { name: 'Video', exact: true }).click();
+    const selector = page.getByRole('button', { name: /^Modelo / });
+    await expect(selector).toContainText('Modelo Veo 3.1 Lite · 8 s');
+    const video = (await selector.boundingBox())!;
+    const masDeVideo = (await page.getByRole('button', { name: /^Agregar (imágenes|la imagen)/ }).boundingBox())!;
+    await riel.getByRole('button', { name: 'Edición', exact: true }).click();
+    const boton = (await iniciar(page).boundingBox())!;
+    const masDeEdicion = (await page.getByRole('button', { name: 'Agregar el video que quieres editar' }).boundingBox())!;
+    expect(boton.width, '«Iniciar» y el selector de modelo no miden lo mismo de ancho').toBeCloseTo(video.width, 0);
+    expect(boton.height, '«Iniciar» y el selector de modelo no miden lo mismo de alto').toBeCloseTo(video.height, 0);
+    expect(boton.x + boton.width, 'no comparten el borde derecho').toBeCloseTo(video.x + video.width, 0);
+    // la medida compartida (216 px) y el alto de la fila (44 px: el del «+»)
+    expect(boton.width).toBeCloseTo(216, 0);
+    expect(boton.height).toBeCloseTo(masDeEdicion.height, 0);
+    expect(masDeEdicion.height).toBeCloseTo(masDeVideo.height, 0);
+    // «Iniciar» está alineado con el «+» de su fila, como el selector con el suyo en Video
+    expect(Math.abs(boton.y + boton.height / 2 - (masDeEdicion.y + masDeEdicion.height / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(video.y + video.height / 2 - (masDeVideo.y + masDeVideo.height / 2))).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  });
+}
+
+test('con un modelo de rótulo más largo el selector de Video crece y «Iniciar» se queda en el mínimo compartido (no se encoge ni se desborda)', async ({ page }) => {
+  await edicion(page);
+  const riel = page.getByRole('group', { name: 'Qué quieres crear' });
+  await riel.getByRole('button', { name: 'Video', exact: true }).click();
+  const selector = page.getByRole('button', { name: /^Modelo / });
+  await selector.click();
+  await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('radio', { name: /Grok Imagine Video 1\.5 Lite/ }).click();
+  await expect(selector).toContainText('Modelo Grok Imagine Video 1.5 Lite · 8 s');
+  const largo = (await selector.boundingBox())!;
+  // más ancho que el mínimo: el selector manda con su rótulo (el nombre se recorta con «…» solo si ni así cabe)
+  expect(largo.width).toBeGreaterThan(216 + 20);
+  await riel.getByRole('button', { name: 'Edición', exact: true }).click();
+  const boton = (await iniciar(page).boundingBox())!;
+  expect(boton.width).toBeCloseTo(216, 0);
+  // y los dos siguen pegados al mismo borde derecho
+  expect(boton.x + boton.width).toBeCloseTo(largo.x + largo.width, 0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 });
 
 test.describe('en el teléfono, «Editar ▾» e «Iniciar»', () => {
@@ -566,7 +624,7 @@ test.describe('en el teléfono, «Editar ▾» e «Iniciar»', () => {
     const cuadro = (await campo(page).evaluate(e => e.parentElement!.getBoundingClientRect().toJSON())) as { x: number; width: number };
     expect(Math.abs(selector.y + selector.height / 2 - (mas.y + mas.height / 2))).toBeLessThanOrEqual(2);
     expect(inicio.y).toBeGreaterThanOrEqual(mas.y + mas.height);
-    // «Iniciar» ocupa el ancho del cuadro (la fila de Video hace lo mismo con «Crear»)
+    // «Iniciar» ocupa el ancho del cuadro (la fila de Video hace lo mismo con «Crear» y con el selector de modelo)
     expect(Math.abs(inicio.width - cuadro.width)).toBeLessThanOrEqual(2);
     for (const caja of [mas, selector, inicio]) {
       expect(caja.x).toBeGreaterThanOrEqual(0);

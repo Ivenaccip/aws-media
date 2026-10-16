@@ -6,6 +6,7 @@
 // la vieja los tenía ESCRITOS («30», «55–190», «2») y un test comprobaba que
 // coincidieran. Aquí no hay número que pueda desfasarse.
 import { ErrorApi, pedir } from '../../nucleo/api';
+import { creditos } from '../../nucleo/formato';
 import { video } from '../../nucleo/tarifas';
 import { PARAM_TRASPASO } from '../../nucleo/traspaso';
 import { PREDETERMINADO, type Tarea } from './modelos';
@@ -17,7 +18,7 @@ import { PREDETERMINADO, type Tarea } from './modelos';
  *  propio texto, su video y su precio; por eso no está en OPCIONES. */
 export type Familia = 'videos' | 'imagenes' | 'edicion';
 
-/** Las familias que sí se reparten en tareas (el menú de la izquierda del chip): Imagen y Video. */
+/** Las familias del riel de la caja que sí se reparten en tareas (las del chip de tarea): Imagen y Video. */
 export type FamiliaCrea = Exclude<Familia, 'edicion'>;
 
 /** Cómo llama una opción a lo que se agrega con el «+». Sin esto, la caja habla de «imágenes de referencia»; las
@@ -177,15 +178,63 @@ export interface ResumenShorts {
   cuantos: number;
 }
 
+/** Lo que `GET /api/edicion/proyectos` dice de la corrida de una edición (`doc.editar` sin lo que solo necesita el servidor). Solo
+ *  se declara lo que esta pantalla lee. */
+export interface CorridaDeEdicion {
+  estado?: string;
+  /** Cuándo empezó (ISO, hora del servidor): con ella se sabe si un «corriendo» sigue vivo (`corriendoVivo`). */
+  inicio?: string | null;
+  /** Lo que se cobró: también lo que costaría «Reintentar». Solo existe con créditos. */
+  creditos?: number | null;
+  /** Lo que ya volvió al monedero. */
+  devueltos?: number | null;
+  /** Lo que se está devolviendo ahora mismo: el abono no se pudo hacer todavía. Mientras se debe, no hay «Reintentar». */
+  devolucion_pendiente?: number | null;
+}
+
 export interface Edicion {
   nombre: string;
   generado: boolean;
   editor_listo: boolean;
-  editar?: { estado?: string } | null;
+  editar?: CorridaDeEdicion | null;
   subidas?: unknown[];
   creado?: string | null;
   /** null o ausente: el proyecto nunca pasó por shorts. */
   shorts?: ResumenShorts | null;
+  // E2: lo que el servidor sabe de una COPIA (varios videos unidos, o uno editado sin tocar el original). Un proyecto que no es una
+  // copia no trae nada de esto, o lo trae vacío: `titulo` null, `copia_de` [], `n_videos` null.
+  /** El título de la copia («El tren de papel + 2 más»): lo que la gente lee; el nombre técnico no lo ve nadie. */
+  titulo?: string | null;
+  copia_de?: Array<{ ref: string; titulo: string }>;
+  n_videos?: number | null;
+  duracion_s?: number | null;
+  formato?: 'horizontal' | 'vertical' | null;
+}
+
+/** ¿Es una copia de E2 (editada desde otros videos, con el original intacto)? */
+export const esCopia = (e: Edicion): boolean => (e.copia_de?.length ?? 0) > 0;
+
+/** El servidor da por muerta una corrida que lleva 2 h «corriendo» (`CADUCA_H` en server/edicion_api.py): la pantalla también deja de esperarla. */
+export const CORRIDA_MAX_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * ¿Esta edición corre DE VERDAD? Una tarea puede morir sin cerrar su copia, y `/api/edicion/proyectos` la seguiría diciendo «corriendo»
+ * hasta que el servidor la suelte: la tarjeta decía «Editando…» para siempre y la pantalla releía cinco listas cada 5 s. Igual que el
+ * servidor (`_caducada`), un «corriendo» de más de 2 h —o sin un `inicio` legible— ya no cuenta.
+ */
+export function corriendoVivo(e: Edicion, ahora: number = Date.now()): boolean {
+  if (e.editar?.estado !== 'corriendo') return false;
+  const inicio = e.editar.inicio ? Date.parse(e.editar.inicio) : NaN;
+  return !Number.isNaN(inicio) && ahora - inicio < CORRIDA_MAX_MS;
+}
+
+/** Los créditos que se están devolviendo AHORA (el abono no se pudo hacer todavía y aún no constan `devueltos`), o null. */
+export function deudaDeEdicion(e: Edicion): number | null {
+  const st = e.editar;
+  if (!st) return null;
+  const natural = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0;
+  if (natural(st.devueltos)) return null;
+  return natural(st.devolucion_pendiente) ? st.devolucion_pendiente : null;
 }
 
 /** Un clip de 8 s tal como lo lista /api/clip (solo lo que usa el inicio). */
@@ -389,6 +438,48 @@ export function fechaCorta(creado: string): string {
 export function textoSlots(activos: number, slots: number | null): string {
   if (slots === null) return activos ? `${activos} activos · slots ilimitados` : '';
   return `${activos} de ${slots} slots`;
+}
+
+/** Lo que dice la tarjeta de una copia en Mis creaciones. */
+export interface EstadoCopia {
+  texto: string;
+  tono?: 'ok' | 'mal';
+  icono: 'reloj' | 'aviso' | 'listo';
+  /** Sigue en marcha (aria-busy). */
+  busy: boolean;
+  /** Hay un editor al que ir. */
+  listo: boolean;
+  /** Una línea más bajo el estado: lo que pasa con los créditos mientras se devuelven. */
+  nota?: string;
+  /** El servidor aceptaría «Reintentar» (falló por nuestro lado, y no se debe una devolución). */
+  reintentable: boolean;
+}
+
+/** El estado de una copia en su tarjeta de Mis creaciones: «Edición · Editando…», «Edición · Listo», «Edición · No se pudo editar» o, si
+ *  la corrida murió sin cerrarse, «Edición · Sin respuesta». Una copia con estado que no se entiende se lee como lista solo si el
+ *  servidor así lo dice. Mientras se devuelven los créditos de un fallo (aunque la corrida aún figure «corriendo», porque la cierra el
+ *  barredor) se dice como fallo, con lo que se devuelve, y sin «Reintentar»: cobraría otra vez sin haber devuelto. */
+export function estadoDeCopia(e: Edicion, ahora: number = Date.now()): EstadoCopia {
+  const estado = e.editar?.estado;
+  const deuda = estado === 'corriendo' || estado === 'error' ? deudaDeEdicion(e) : null;
+  if (deuda !== null) {
+    return {
+      texto: 'Edición · No se pudo editar',
+      tono: 'mal',
+      icono: 'aviso',
+      busy: false,
+      listo: false,
+      nota: 'Estamos devolviendo tus ' + creditos(deuda) + '.',
+      reintentable: false,
+    };
+  }
+  if (estado === 'corriendo') {
+    if (!corriendoVivo(e, ahora)) return { texto: 'Edición · Sin respuesta', tono: 'mal', icono: 'aviso', busy: false, listo: false, reintentable: false };
+    return { texto: 'Edición · Editando…', icono: 'reloj', busy: true, listo: false, reintentable: false };
+  }
+  if (estado === 'error') return { texto: 'Edición · No se pudo editar', tono: 'mal', icono: 'aviso', busy: false, listo: false, reintentable: true };
+  if (estado === 'listo') return { texto: 'Edición · Listo', tono: 'ok', icono: 'listo', busy: false, listo: true, reintentable: false };
+  return { texto: 'Edición', icono: 'reloj', busy: false, listo: false, reintentable: false };
 }
 
 export function estadoEdicion(e: Edicion): { icono?: 'reloj' | 'aviso' | 'cortar'; texto: string; tono?: 'ok' | 'mal' } {

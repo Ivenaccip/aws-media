@@ -213,7 +213,8 @@ venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 2
 - `--tipo` ∈ `cortesia | compra | ajuste` (ajuste acepta negativos).
 - Tarifa (de `tools/tarifas.json`, única fuente): preparar película 10 cr,
   producir 3 cr/s, imagen 2 cr (pro 10), shorts transcripción 2 cr/5 min +
-  análisis 2 + render 2 por short, Editar sugerencias 2 cr.
+  análisis 2 + render 2 por short, Editar sugerencias 2 cr (la regla de cuando se
+  juntan varios videos está en «Edición con copia y unión», más abajo).
   Packs Stripe: 100/$1.99 · 550/$9.99 · 1200/$18.00 dólares — los Payment
   Links DEBEN costar el monto exacto (el webhook mapea por monto).
 
@@ -257,10 +258,151 @@ así que no hay nada que sincronizar con Langfuse. Y le recuerda que este motor 
 (vertical, subtítulos, música, títulos, fundidos) NO se aplica y sale como duda
 en el editor, con un texto que empieza por «No aplicado:» — es lo esperado, no
 un fallo. Pendientes: hoy, si lo único que devuelve la IA son esas dudas, cuenta
-como entrega (hay `flags`) y no se devuelve nada; y el servidor aún no tiene
-candado global por cuenta (`sugerir` solo bloquea por proyecto, con 409), así
-que dos proyectos distintos pueden correr a la vez y por ahora la caja lo evita
-del lado de la web.
+como entrega (hay `flags`) y no se devuelve nada. Y el candado por cuenta ya
+existe, pero solo para las copias de E2 (ver «Edición con copia y unión», más
+abajo): la ruta vieja `sugerir` sigue bloqueando únicamente por proyecto, con 409,
+así que `static/e1.html` y `/estudio/subir/` pueden correr dos proyectos a la
+vez. La caja del inicio ya no usa esa ruta.
+
+### Edición con copia y unión (E2)
+
+Desde la etapa E2 la pestaña Edición de la caja del inicio puede **elegir videos
+de Mis creaciones, subir varios y unirlos**, y siempre trabaja sobre una **copia**.
+Cuatro rutas nuevas, todas en `server/edicion_api.py` y todas solo de nube:
+
+| ruta | qué hace | cobra |
+|---|---|---|
+| `GET /api/edicion/elegibles` | la lista de la hoja «Agregar videos»: películas, cuentos, clips y ediciones, con duración y formato medidos | no |
+| `POST /api/edicion/cotizar` | el precio de varios videos y, si algo no cuadra, el `bloqueo` con su texto | no |
+| `POST /api/edicion/iniciar` | hace la copia, cobra y lanza | sí |
+| `POST /api/edicion/<copia>/reintentar` | la misma copia otra vez | sí |
+
+**Qué se copia y qué no.** La copia es un proyecto nuevo (`ed-<8 hex del pedido>`,
+por ejemplo `ed-9f1c0a7b`) con su título («El tren de papel + 2 más»). El worker
+copia cada original de servidor a servidor, dentro del bucket, a
+`videos/<copia>/clips/c01.mp4`, `c02…`; **el original no se toca ni se escribe jamás**
+(solo se lee), y la copia no lleva `pelicula.mp4`, ni `flags.generado`, ni
+`origen.generador`, ni subidas: de lo contrario subtítulos, publicar y render la
+confundirían con una película sin editar. La copia duplica los bytes de los
+originales; el ciclo de vida del bucket la enfría a los 10 días como todo lo demás y
+no se borra nada. Las copias **no se vuelven a unir** en E2 (salen apagadas en la
+hoja con «Ya es una edición»).
+
+**Qué acepta el servidor.** Un video se nombra con una referencia,
+`proyecto:<nombre>` o `clip:<id>`, y el servidor averigua todo lo demás. Jamás se
+acepta una `key` de S3, un precio ni unas duraciones del navegador; un video que no
+es de la persona responde 404 igual que uno que no existe.
+
+**Reglas de negocio** (todas del lado del servidor y ANTES de cobrar):
+
+- Un video SOLO: de **1 a 90 min** (la regla de siempre; `MIN/MAX_DURACION_S` de
+  `server/shorts_api.py` no se tocaron). Al **unir 2 o más** no hay mínimo por clip.
+- El total de lo elegido no pasa de **90 min**, ni de **15 GB**, ni de **12 videos**.
+- Horizontales y verticales **no se mezclan**; el formato se mide con ffprobe con la
+  rotación del teléfono aplicada. El mismo video no entra dos veces.
+- El precio es **la edición UNA vez** (`editar.sugerencias` de `tools/tarifas.json`)
+  **más la transcripción** (`shorts.transcripcion_por_5min`) por la **suma de
+  minutos** de lo que no trae transcript, en bloques de 5 min empezados:
+  100 s + 100 s sin transcript son un solo bloque (la suma se redondea a
+  milisegundos antes de contar bloques: una suma que cae justo en 300 s no cobra
+  uno de más). Los clips de IA no se transcriben (se unen tal cual) **ni los videos
+  sin pista de audio** (el worker no llama a la transcripción sin sonido, así que
+  cobrarlos sería pagar un servicio que no ocurre). Con un video es la fórmula de
+  siempre (`creditos.costo_editar_sugerencias`, ahora un envoltorio de `creditos.costo_editar`).
+- Los nombres de proyecto que acepta una `ref` son los del resto del producto
+  (`storage.ruta_proyecto`: letras y cifras de cualquier alfabeto, `-` y `_`, hasta
+  255 caracteres): «presentación-final» se lista, se cotiza y se inicia.
+- El transcript de un proyecto se acepta solo si su duración coincide con la del
+  video (margen de 1 s o 2 %): uno que se quedó de otro archivo con el mismo nombre
+  no abarata el precio.
+
+**El dinero.** La referencia del cobro y de toda devolución es **siempre
+`editar-sugerir:<copia>`** (la lee `worker/barredor.py`). `iniciar` toma el candado
+(INSERT de la copia) **antes** de cobrar y cobra **antes** de lanzar; cada camino de
+fallo devuelve lo cobrado y lo deja escrito en `doc.editar.devueltos` (que es lo que
+lee la bandeja para decir «Te devolvimos ✦ N»):
+
+| fallo | quién devuelve |
+|---|---|
+| sin saldo | nadie: no se cobró; la copia sin cobrar se borra |
+| no hay capacidad en Fargate | nadie: `iniciar` y `reintentar` lo preguntan **antes** de cobrar (`jobs.hay_sitio`, falla abierto) y responden 503 sin copia ni cargo |
+| no se pudo lanzar (o la capacidad se agotó entre la pregunta y `start_execution`) | el API, en la misma petición (502 / 503); la copia queda marcada `no_lanzada` y ni la bandeja ni «Mis creaciones» ni la hoja la enseñan |
+| el worker truena | el worker, tras ganar el claim |
+| la tarea muere antes de correr | el barredor |
+| la petición murió entre cobrar y anotar el cobro | `_liberar_caducadas` (ver abajo) |
+
+El **claim** (`db.reclamar_fallo_editor`, un UPDATE condicionado a `corriendo`) es
+lo que impide devolver dos veces: gana uno solo.
+
+**El abono es idempotente por cobro.** `db.abonar_creditos` y `db.cobrar_creditos` son cada
+uno UNA sentencia (el saldo y el libro mayor entran los dos o ninguno). El API devuelve con
+`creditos.devolver_cargo`, que solo abona si lo ÚLTIMO del libro para `editar-sugerir:<copia>`
+es un cargo: repetir un abono que sí entró (su respuesta se perdió) no abona dos veces, y la
+devolución del cobro de un «Reintentar» (misma referencia) sí entra. Se intenta hasta 3 veces.
+**Si el monedero no responde en ninguna**, el reclamo ya está puesto y nadie más devolvería: la
+deuda queda ANOTADA en el doc (`editar.devolucion_pendiente` = cuántos ✦ y `editar.devolucion_api = true`)
+y se salda en la siguiente llamada de la persona: `iniciar`, `reintentar` (que se niega con 409
+hasta saldarla, para no cobrar de nuevo sin haber devuelto) o `GET /api/edicion/proyectos` (lo primero
+que se pide al abrir la app; ahí también se sueltan las copias huérfanas caducadas, sin esperar a que la
+persona vuelva a editar). Mientras se debe, la bandeja dice «Estamos devolviendo tus ✦ N» y no
+ofrece «Reintentar». Para ver lo que se debe:
+
+```sql
+SELECT user_id, nombre, doc #>> '{editar,devolucion_pendiente}' AS debe
+FROM proyectos_editor WHERE doc #>> '{editar,devolucion_api}' = 'true';
+```
+
+El cierre de una corrida que ya se reclamó (`db.cerrar_editor_si_error`) solo escribe si la copia
+sigue en `error` y con el mismo `inicio`: si la persona pulsó «Reintentar» mientras se devolvía, el
+cierre viejo no pisa la corrida nueva. Una unión **nunca** se devuelve por
+«cero sugerencias» (solo un video sin nada que cortar devuelve la parte de la edición).
+Repetir el mismo `pedido` (red caída, doble clic, dos pestañas) devuelve la primera
+respuesta sin cobrar otra vez. «Reintentar» cobra de nuevo `editar.creditos`, lo que
+costó la primera vez, y solo una llamada gana el claim.
+
+**El candado.** Una sola tarea de edición a la vez por persona: la lectura
+(`db.ediciones_corriendo`) responde 409 y un **índice parcial único**
+(`proyectos_editor_copia_en_curso`, sobre las copias con `editar.estado = 'corriendo'`)
+lo garantiza en la base. Una corrida «corriendo» deja de contar a las **2 horas** (a
+los **5 minutos** si todavía no se anotó el cobro) y `_liberar_caducadas` la suelta
+antes de tomar el candado, devolviendo lo que corresponda: con el cobro anotado,
+`editar.creditos`; sin anotar, lo que diga el libro mayor
+(`tools/creditos.py movimientos`: un cargo `editar-sugerir:<copia>` sin su
+devolución). Sin esto, una petición que muriera entre reservar y cobrar dejaría a
+esa persona bloqueada por el índice hasta que alguien lo arreglara a mano.
+
+**Migración: SÍ, un índice.** Es un solo `CREATE UNIQUE INDEX IF NOT EXISTS`, sin tabla
+ni columna nueva, idempotente y vacío al crearse. **Correr `python tools/db_migrate.py`
+ANTES de desplegar la API** (paso 4 del checklist de Deploy), en dev primero. No es
+bloqueante: sin el índice el API funciona igual: lee antes de insertar y **vuelve a leer
+después de su propio INSERT** (la copia que mira más tarde ve a la otra y se retira sin haber
+cobrado), así que dos pestañas simultáneas no cobran dos veces; sin pérdida de dinero (cada
+cobro tiene su copia y su devolución). Para comprobar que quedó:
+
+```sql
+SELECT indexname FROM pg_indexes WHERE tablename = 'proyectos_editor';
+```
+
+**Lo que `iniciar` comprueba contra S3 antes de cobrar.** La medición de un proyecto se guarda
+en `doc.meta` y vale mientras `key` y `bytes` coincidan con la subida del doc. Un PUT presignado
+a la misma key sin pasar por `/api/media/confirmar` cambia el objeto sin cambiar el doc, así que
+`iniciar` (no `cotizar`) hace un HEAD, compara el peso real y, si cambió, vuelve a medir y cobra
+lo que de verdad hay (con los topes de 90 min y 15 GB sobre lo nuevo). El worker debería repetir
+esa comprobación contra lo que `iniciar` midió (pendiente de S2).
+
+**Lo que no admite una copia.** `/api/media/presign` y `/api/media/confirmar` responden 409 sobre una
+copia («Esa es una edición: no se le pueden agregar videos.»), y `confirmar` ya no reescribe el doc
+entero: solo la llave `subidas`.
+
+**Cómo comprobarlo sin gastar** (cuenta de prueba, en dev): `GET /api/edicion/elegibles`
+→ 200 con `limites`; `POST /api/edicion/cotizar` con 2 o 3 creaciones → un precio y
+`bloqueo: null`, con una vertical y una horizontal → `formatos_distintos`, y el
+monedero no se mueve; dos `POST /api/edicion/iniciar` casi simultáneos con `pedido`
+distinto → uno 200 y el otro 409, y **un solo** cargo en `tools/creditos.py movimientos`.
+
+**Lo que NO hace.** El motor solo quita tramos y junta clips con cortes directos: no
+hace fundidos, música, títulos, ni nivela el sonido, ni cambia a vertical. Lo que la
+instrucción pida y no se pueda sale como «No aplicado:» en el editor.
 
 ### «Quiero mi video en vertical»
 
@@ -303,8 +445,9 @@ publicación no salió:
 - Los rechazos de Blotato (422: falta la página, la privacidad, límite diario
   de la red…) llegan a la pantalla con el mensaje de Blotato.
 
-Desde C3 hay además una **Agenda** (`/agenda.html`, en el menú del inicio) con
-todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
+Desde C3 hay además una **Agenda** (`/agenda.html`; en el inicio, Marketing ›
+Blotato) con todo lo que Blotato todavía no ha publicado. Si alguien pregunta
+por ella:
 
 - Lo que enseña sale de Blotato, no de nosotros: también aparece lo que el
   usuario haya programado desde blotato.com. Solo se ve lo **futuro** — en
@@ -325,8 +468,8 @@ todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
   estaba y avisa. La pantalla no consulta sola: solo al abrirla, al pulsar
   «Actualizar» y después de cada cambio.
 
-Y desde C4, **Métricas** (`/metricas.html`, también en el menú) con lo que ya
-salió y lo que no pudo salir. Las preguntas que van a llegar:
+Y desde C4, **Métricas** (`/metricas.html`, también en Marketing › Blotato) con
+lo que ya salió y lo que no pudo salir. Las preguntas que van a llegar:
 
 - **«No me aparecen los números».** Casi siempre es que Blotato todavía no los
   ha recogido: los junta por tandas, desde un par de horas después de publicar

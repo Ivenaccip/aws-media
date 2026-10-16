@@ -119,7 +119,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 |---|---|
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | al retirar, `static/metricas.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `metricas` sale de las listas |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (el menú enlaza `/metricas.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Blotato enlaza `/metricas.html`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

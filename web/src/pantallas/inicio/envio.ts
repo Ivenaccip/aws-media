@@ -6,8 +6,8 @@
 // El servidor es quien cobra y quien decide el precio: aquí solo viajan el id
 // del modelo y los segundos del clip, nunca un número de créditos.
 //
-// E1 suma al final lo de la caja de «Edición»: qué videos sirven, y las tres
-// peticiones de /api/editar (precio, lanzar, estado). Igual: sin créditos en el cuerpo.
+// E1 suma al final lo de la caja de «Edición»: qué videos sirven. E2 (varios videos, copia y unión) suma las
+// peticiones de /api/edicion (elegibles, cotizar, iniciar, reintentar) y el sondeo de la copia. Igual: sin créditos en el cuerpo.
 import { ErrorApi, pedir } from '../../nucleo/api';
 
 /** Las extensiones que acepta el clip (server/clip_api.py) y cuántas fotos. */
@@ -230,18 +230,93 @@ export async function pedirEdicion(texto: string, modelo: string, foto: File): P
 }
 
 // ---------------------------------------------------------------------------
-// «Edición» (E1): las tres peticiones de /api/editar. El proyecto ya existe en el servidor
-// (lo creó la subida); ni el precio ni el cobro se calculan aquí.
+// «Edición» (E2): las peticiones de /api/edicion. Los videos viajan como REFERENCIAS —«proyecto:<nombre>» o «clip:<id>»—, nunca
+// con una key de S3, una duración, un formato ni un número de créditos: el servidor averigua todo, decide el precio y cobra. Los
+// textos de error del servidor (`detail` y `bloqueo.texto`) se enseñan tal cual: aquí no se duplica ninguno.
 
-/** Lo que contesta GET /api/editar/<p>/costo. Si viene `aviso` (el video no está en el rango de 1 a 90 min, falta la
- *  transcripción en la nube…) `backend_listo` es false y el aviso se enseña tal cual. */
-export interface CostoEdicion {
-  fuente: string;
-  duracion_s: number;
+/** Qué es cada video elegible: lo que el servidor sabe de él (GET /api/edicion/elegibles). */
+export type TipoVideo = 'pelicula' | 'cuento' | 'clip' | 'edicion';
+export type FormatoVideo = 'horizontal' | 'vertical';
+
+/** Lo que el propio video dice de por qué no se puede usar (la hoja suma los motivos de la selección). */
+export type MotivoDelServidor = 'es_copia' | 'en_curso' | 'sin_metraje' | 'midiendo';
+
+export interface VideoElegible {
+  /** «proyecto:<nombre>» o «clip:<id>». */
+  ref: string;
+  tipo: TipoVideo;
+  titulo: string;
+  /** null = aún no se midió (motivo «midiendo»). */
+  duracion_s: number | null;
+  formato: FormatoVideo | null;
+  fecha: string | null;
+  miniatura: string | null;
+  /** El video mismo (un clip lo puede usar de póster). */
+  video: string | null;
   con_transcript: boolean;
+  audio: boolean | null;
+  bytes: number | null;
+  es_copia: boolean;
+  copia_de: Array<{ ref: string; titulo: string }>;
+  motivo: MotivoDelServidor | null;
+}
+
+export interface LimitesDeEdicion {
+  max_s: number;
+  min_solo_s: number;
+  max_videos: number;
+  max_bytes: number;
+}
+
+export interface Elegibles {
+  videos: VideoElegible[];
+  limites: LimitesDeEdicion;
+}
+
+/** Una regla rota: el `texto` es el mismo `detail` que daría `iniciar`, y se enseña tal cual. */
+export interface Bloqueo {
+  codigo: string;
+  texto: string;
+}
+
+/** Un video tal como lo midió el servidor al cotizar. */
+export interface VideoCotizado {
+  ref: string;
+  tipo: TipoVideo;
+  titulo: string;
+  duracion_s: number | null;
+  formato: FormatoVideo | null;
+  ancho: number | null;
+  alto: number | null;
+  audio: boolean | null;
+  bytes: number | null;
+  con_transcript: boolean;
+  se_transcribe: boolean;
+}
+
+/** Lo que contesta POST /api/edicion/cotizar. Con una regla rota `creditos` es null y viene el `bloqueo`. */
+export interface Cotizacion {
+  titulo: string;
+  n_videos: number;
+  duracion_total_s: number | null;
+  bytes_total?: number | null;
+  formato?: FormatoVideo | null;
+  creditos: number | null;
+  desglose: { edicion: number; transcripcion: number } | null;
+  ocupado: boolean;
+  bloqueo: Bloqueo | null;
+  videos: VideoCotizado[];
+}
+
+/** Lo que contesta POST /api/edicion/iniciar. `repetido`: el servidor ya tenía ese pedido y no cobró de nuevo. */
+export interface Lanzamiento {
+  lanzado: boolean;
+  /** El nombre de la copia: el sondeo le pregunta por ella. */
+  nombre: string;
+  titulo?: string;
   creditos: number;
-  backend_listo: boolean;
-  aviso: string | null;
+  n_videos?: number;
+  repetido?: boolean;
 }
 
 /** Lo que la caja necesita del estado de una corrida: GET /api/editar/<p>. */
@@ -249,18 +324,23 @@ export interface EstadoCorrida {
   editar: { estado?: 'corriendo' | 'listo' | 'error' | string } | null;
 }
 
-const rutaEditar = (proyecto: string) => '/api/editar/' + encodeURIComponent(proyecto);
+/** Los videos de «Mis creaciones» que se pueden editar o unir (y los que no, con su motivo). La hoja la pide al abrirse. */
+export const pedirElegibles = (senal?: AbortSignal) => pedir<Elegibles>('/api/edicion/elegibles', senal ? { senal } : {});
 
-/** El precio ANTES del botón: el servidor lo calcula (duración medida con ffprobe y si ya hay transcripción). */
-export const pedirCostoEdicion = (proyecto: string) => pedir<CostoEdicion>(rutaEditar(proyecto) + '/costo');
+/** El precio ANTES del botón, y si el conjunto se puede editar. Solo viajan las referencias, en el orden de la caja. */
+export const cotizarEdicion = (videos: string[]) => pedir<Cotizacion>('/api/edicion/cotizar', { cuerpo: { videos } });
 
-/** Lo que cobra y lanza: el servidor decide el precio, cobra antes de lanzar y devuelve si no pudo lanzar. SOLO viaja
- *  la instrucción (entrada de la persona): nunca un número de créditos. */
-export const lanzarEdicion = (proyecto: string, instruccion: string) =>
-  pedir<{ lanzado: boolean; creditos: number }>(rutaEditar(proyecto) + '/sugerir', { cuerpo: { instruccion } });
+/** Copia, cobra y lanza. SOLO viaja la clave del pedido (la misma mientras la respuesta sea dudosa: repetir no cobra dos veces), las
+ *  referencias en su orden y la instrucción: nunca un número de créditos. */
+export const iniciarEdicion = (pedido: { pedido: string; videos: string[]; instruccion: string }) =>
+  pedir<Lanzamiento>('/api/edicion/iniciar', { cuerpo: pedido });
+
+/** «Reintentar» de una edición que falló por nuestro lado: misma copia, cobra otra vez. */
+export const reintentarEdicion = (nombre: string) =>
+  pedir<{ lanzado: boolean; nombre: string; creditos: number }>('/api/edicion/' + encodeURIComponent(nombre) + '/reintentar', { metodo: 'POST' });
 
 /** ¿Sigue corriendo? Solo se pregunta después de lanzar: nunca al montar la pantalla. */
-export const pedirEstadoEdicion = (proyecto: string) => pedir<EstadoCorrida>(rutaEditar(proyecto));
+export const pedirEstadoEdicion = (copia: string) => pedir<EstadoCorrida>('/api/editar/' + encodeURIComponent(copia));
 
 /**
  * ¿Este nombre ya es un proyecto TUYO con un video subido? (GET /api/media/<p>: vacío si no existe o es de otra cuenta.)

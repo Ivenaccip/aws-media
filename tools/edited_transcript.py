@@ -14,6 +14,11 @@ canónico (editor de cortes) llegan aquí intactas.
 
 Salida: {words:[{text,start,end}]} en MILISEGUNDOS sobre el timeline del master —
 el contrato que consumen make_subs.py y /broll-ai.
+
+E2 (unir videos): un clip que `cuts.json` marca con `"sin_transcript": true` (los
+clips de IA de 8 s, que no se transcriben) no tiene canónico y aporta CERO
+palabras; su duración sí cuenta en el offset de los clips que vienen después.
+Cualquier OTRO canónico que falte sigue deteniendo la herramienta (docs/SCHEMA.md).
 """
 
 import argparse
@@ -36,6 +41,20 @@ def canonical_words(project: Path, clip: str) -> list[dict]:
     return data["words"]
 
 
+def clips_sin_transcript(project: Path) -> set[str]:
+    """Ids de los clips que `work/analysis/cuts.json` marca `sin_transcript: true`.
+    Sin cuts.json (o ilegible) no hay nadie exento: el canónico sigue siendo obligatorio."""
+    path = project / "work" / "analysis" / "cuts.json"
+    if not path.is_file():
+        return set()
+    try:
+        clips = json.loads(path.read_text(encoding="utf-8")).get("clips") or []
+    except ValueError:
+        return set()
+    return {c["id"] for c in clips
+            if isinstance(c, dict) and c.get("sin_transcript") is True and c.get("id")}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project")
@@ -49,6 +68,7 @@ def main() -> None:
         sys.exit(f"no existe {seg_path} — renderiza primero con render_cuts.py "
                  "(las corridas viejas no lo traen: re-renderiza)")
     meta = json.loads(seg_path.read_text(encoding="utf-8"))
+    sin_tx = clips_sin_transcript(project)
 
     words_cache: dict[str, list[dict]] = {}
     out_words: list[dict] = []
@@ -56,7 +76,7 @@ def main() -> None:
     for seg in meta["segments"]:
         cid, s, e, dur = seg["clip"], seg["s"], seg["e"], seg["dur"]
         if cid not in words_cache:
-            words_cache[cid] = canonical_words(project, cid)
+            words_cache[cid] = [] if cid in sin_tx else canonical_words(project, cid)
         for w in words_cache[cid]:
             if w["start"] >= s - TOL and w["end"] <= e + TOL:
                 start = offset + max(w["start"] - s, 0.0)
@@ -66,6 +86,9 @@ def main() -> None:
         offset += dur
     total_ms = round(offset * 1000)
 
+    if not out_words and sin_tx and all(c in sin_tx for c in words_cache):
+        sys.exit("ningún clip de este corte trae transcript (todos son sin_transcript): "
+                 "no hay palabras que mapear")
     if not out_words:
         sys.exit("0 palabras mapeadas — ¿cuts.json y el render corresponden al mismo corte?")
     for a, b in zip(out_words, out_words[1:]):

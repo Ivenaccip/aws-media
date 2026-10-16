@@ -14,12 +14,15 @@ export interface PropsPestanas {
   /** Nombre del grupo para el lector de pantalla. */
   etiqueta: string;
   inicial?: string;
+  /** Se llama con el id de la pestaña a la que se pasó (con el ratón o con el teclado). Quien lo pide la sigue por fuera —el pie de
+   *  la hoja de videos cambia con la pestaña— y las pestañas siguen siendo suyas: no es un componente controlado. */
+  alCambiar?: (id: string) => void;
 }
 
-export function Pestanas({ pestanas, etiqueta, inicial }: PropsPestanas) {
+export function Pestanas({ pestanas, etiqueta, inicial, alCambiar }: PropsPestanas) {
   const primera = inicial ?? pestanas[0]?.id;
   return (
-    <T.Root {...(primera ? { defaultValue: primera } : {})}>
+    <T.Root {...(primera ? { defaultValue: primera } : {})} {...(alCambiar ? { onValueChange: alCambiar } : {})}>
       <T.List aria-label={etiqueta} className="flex gap-1 border-b border-linea">
         {pestanas.map(p => (
           <T.Trigger

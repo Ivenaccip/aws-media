@@ -4,6 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { MINIATURA_SVG, PELICULA } from './datos';
+import { elegir } from './recorrido';
 
 // Lo que vio cada documento al revelarse: si hubo transición y qué grupos
 // armó el navegador (::view-transition-old/new(<nombre>)).
@@ -44,6 +45,8 @@ test('inicio → película: la miniatura viaja y la píldora se queda quieta', a
   await inicioConUnaPelicula(page);
   await page.goto('/estudio/inicio/');
   await expect(page.locator('#mon-saldo')).toHaveText('120 créditos ✦');
+  // el inicio abre en el mapa (dueño, 15-oct-2026): «Mis creaciones» se ve con la caja, a la que se llega por Marketing → Distrito
+  await elegir(page, 'Marketing', 'Distrito');
   await page.getByRole('link', { name: PELICULA.brief }).click();
   await page.waitForURL(`**/estudio/crear/?p=${PELICULA.id}`);
   await expect.poll(() => page.evaluate(() => window.__vt?.grupos.length ?? 0)).toBeGreaterThan(0);
@@ -88,6 +91,8 @@ test('una película que no está lista no se agranda (no tiene reproductor)', as
   await page.route(/\/api\/proyectos\/[^/]+\/archivo\/.*\.jpg$/, r =>
     r.fulfill({ contentType: 'image/svg+xml', body: MINIATURA_SVG }));
   await page.goto('/estudio/inicio/');
+  // «Mis creaciones» se ve con la caja a la vista (el inicio abre en el mapa)
+  await elegir(page, 'Marketing', 'Distrito');
   await page.getByRole('link', { name: 'Un gato en revisión' }).click();
   await page.waitForURL('**/estudio/crear/?p=p2');
   await expect.poll(() => page.evaluate(() => window.__vt?.grupos.length ?? 0)).toBeGreaterThan(0);

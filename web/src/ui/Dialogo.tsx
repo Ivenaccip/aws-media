@@ -18,8 +18,10 @@ export const CAJA =
   'data-[state=open]:animate-caja-entra data-[state=closed]:animate-caja-sale ' +
   'data-[state=closed]:pointer-events-none';
 
-// El mismo diálogo, más ancho: para lo que lleva una cuadrícula (la hoja de «Elegir de Mis creaciones»).
-export const CAJA_ANCHA = CAJA.replace('w-[min(92vw,480px)]', 'w-[min(92vw,760px)]');
+// El mismo diálogo, más ancho: para lo que lleva una cuadrícula (la hoja de «Elegir de Mis creaciones»). Una hoja así nunca mide más
+// que la ventana: en un teléfono de 568 px de alto, o de lado (320), centrada y sin desplazamiento perdía arriba el título y la ✕ y abajo
+// el botón principal. Si no cabe, se desplaza POR DENTRO. `dvh` es la altura que de verdad se ve (sin las barras del navegador).
+export const CAJA_ANCHA = CAJA.replace('w-[min(92vw,480px)]', 'w-[min(92vw,760px)] max-h-[calc(100dvh-1rem)] overflow-y-auto');
 
 // UI·20: la caja tarda 100 ms en irse, y quien la cierra suele vaciar su
 // estado en el mismo clic (setVeredicto(null), setEditando(null)…). Mientras

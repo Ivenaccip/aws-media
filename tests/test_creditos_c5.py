@@ -44,18 +44,24 @@ def test_pelicula_de_30s_cuesta_100_creditos():
 # repos db: cobrar es un UPDATE condicionado (atómico) + movimiento en el mayor
 
 def test_cobrar_creditos_atomico(monkeypatch):
+    """El débito y el cargo del libro mayor van en UNA sentencia (un CTE): si el libro falla, el saldo no
+    baja; y si el saldo baja, el libro lo sabe. En dos sentencias sueltas un fallo en medio dejaba el saldo
+    debitado y el libro sin cargo, y `_soltar_si_dudoso` (que decide por el libro) concluía «nada que
+    devolver»."""
     llamadas = []
 
     def falso_ejecutar(sql, params=None):
-        llamadas.append((sql, params))
-        return [{"saldo": 90}] if sql.strip().startswith("UPDATE") else []
+        llamadas.append((" ".join(sql.split()), params))
+        return [{"saldo": 90}]
     monkeypatch.setattr(db, "ejecutar", falso_ejecutar)
     assert db.cobrar_creditos("piloto", 10, "preparar:abc") == 90
-    sql_update, params = llamadas[0]
-    assert "saldo >= :n" in sql_update and "RETURNING saldo" in sql_update
-    assert params == {"u": "piloto", "n": 10}
-    sql_mov, params_mov = llamadas[1]
-    assert "monedero_movimientos" in sql_mov and params_mov["n"] == -10
+    assert len(llamadas) == 1, "el cobro debe ser UNA sola sentencia"
+    sql, params = llamadas[0]
+    assert sql.startswith("WITH deb AS ( UPDATE monedero SET saldo = saldo - :n")
+    assert "saldo >= :n" in sql and "RETURNING saldo" in sql
+    assert "INSERT INTO monedero_movimientos" in sql and "'cargo'" in sql and "FROM deb" in sql
+    assert sql.endswith("SELECT saldo FROM deb")
+    assert params == {"u": "piloto", "n": 10, "neg": -10, "r": "preparar:abc"}
 
 
 def test_cobrar_sin_saldo_no_registra_movimiento(monkeypatch):
@@ -63,19 +69,27 @@ def test_cobrar_sin_saldo_no_registra_movimiento(monkeypatch):
     monkeypatch.setattr(db, "ejecutar",
                         lambda sql, params=None: llamadas.append(sql) or [])
     assert db.cobrar_creditos("piloto", 10) is None
-    assert len(llamadas) == 1   # solo el UPDATE fallido; el mayor queda intacto
+    assert len(llamadas) == 1   # una sola sentencia: sin saldo el CTE no inserta nada
 
 
 def test_abonar_asegura_usuario_y_registra(monkeypatch):
+    """El saldo y el libro entran en UNA sentencia (después de asegurar al usuario): `devolver` se reintenta
+    desde el worker, y con tres sentencias sueltas un fallo entre el saldo y el libro abonaba otra vez."""
     llamadas = []
 
     def falso_ejecutar(sql, params=None):
-        llamadas.append(sql)
+        llamadas.append((" ".join(sql.split()), params))
         return [{"saldo": 100}] if "RETURNING" in sql else []
     monkeypatch.setattr(db, "ejecutar", falso_ejecutar)
     assert db.abonar_creditos("piloto", 100, "cortesia") == 100
-    assert "ON CONFLICT (id) DO NOTHING" in llamadas[0]
-    assert "monedero_movimientos" in llamadas[2]
+    assert len(llamadas) == 2, "asegurar al usuario + UNA sentencia del monedero y el libro"
+    assert "ON CONFLICT (id) DO NOTHING" in llamadas[0][0]
+    sql, params = llamadas[1]
+    assert sql.startswith("WITH sal AS ( INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))")
+    assert "saldo = monedero.saldo + :n" in sql and "RETURNING saldo" in sql
+    assert "INSERT INTO monedero_movimientos" in sql and "FROM sal" in sql
+    assert sql.endswith("SELECT saldo FROM sal")
+    assert params == {"u": "piloto", "n": 100, "t": "cortesia", "r": None}
 
 
 def test_abonar_devolucion_es_una_sola_sentencia_atomica_despues_de_asegurar_al_usuario(monkeypatch):
@@ -253,3 +267,48 @@ def test_cargar_env_usuario_sin_prefijo_es_noop(monkeypatch):
     from worker import env_ssm
     monkeypatch.delenv("SSM_USUARIOS_PREFIX", raising=False)
     assert env_ssm.cargar_env_usuario("piloto") == 0
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 2 · devolver UNA vez por cobro con una referencia que SÍ se repite (E2: editar-sugerir:<copia>)
+
+def test_abonar_devolucion_de_cargo_es_una_sentencia_que_mira_el_ultimo_movimiento(monkeypatch):
+    llamadas = []
+
+    def falso_ejecutar(sql, params=None):
+        llamadas.append((" ".join(sql.split()), params))
+        return [{"saldo": 102}] if sql.lstrip().startswith("WITH") else []
+    monkeypatch.setattr(db, "ejecutar", falso_ejecutar)
+    assert db.abonar_devolucion_de_cargo("ana", 2, "editar-sugerir:ed-1") == 102
+    assert len(llamadas) == 2                                    # asegurar al usuario + UNA del monedero y el libro
+    assert "ON CONFLICT (id) DO NOTHING" in llamadas[0][0]
+    sql, params = llamadas[1]
+    assert params == {"u": "ana", "n": 2, "r": "editar-sugerir:ed-1"}
+    # solo entra si lo ÚLTIMO del libro para esa referencia es un cargo...
+    assert ("WHERE (SELECT tipo FROM monedero_movimientos WHERE user_id = :u AND referencia = :r "
+            "ORDER BY id DESC LIMIT 1) = 'cargo'") in sql
+    assert "'devolucion'" in sql and "FROM mov" in sql and "RETURNING id)" in sql
+    # ...y el saldo sale de lo que ese INSERT devolvió (sin movimiento nuevo no se toca)
+    assert "saldo = monedero.saldo + :n" in sql and sql.endswith("RETURNING saldo")
+
+
+def test_abonar_devolucion_de_cargo_ya_devuelto_devuelve_none(monkeypatch):
+    respuestas = iter([[], []])                       # usuarios, y la sentencia sin filas
+    monkeypatch.setattr(db, "ejecutar", lambda sql, params=None: next(respuestas))
+    assert db.abonar_devolucion_de_cargo("ana", 2, "editar-sugerir:ed-1") is None
+
+
+def test_devolver_cargo_usa_esa_sentencia_y_el_usuario_de_siempre(monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(db, "abonar_devolucion_de_cargo", lambda u, n, r: llamadas.append((u, n, r)) or 50)
+    monkeypatch.setattr(db, "usuario_actual", lambda: "piloto")
+    assert creditos.devolver_cargo(2, "editar-sugerir:ed-1", "ana") == 50
+    assert creditos.devolver_cargo("4", "editar-sugerir:ed-2") == 50
+    assert llamadas == [("ana", 2, "editar-sugerir:ed-1"), ("piloto", 4, "editar-sugerir:ed-2")]
+
+
+@pytest.mark.parametrize("n", [0, -3, "0", "-1"])
+def test_devolver_cargo_rechaza_cero_y_negativos_sin_tocar_la_base(monkeypatch, n):
+    monkeypatch.setattr(db, "abonar_devolucion_de_cargo", lambda *a: pytest.fail("no debe llegar a la base"))
+    with pytest.raises(ValueError):
+        creditos.devolver_cargo(n, "editar-sugerir:ed-1", "ana")

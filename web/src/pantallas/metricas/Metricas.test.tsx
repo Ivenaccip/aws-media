@@ -250,7 +250,7 @@ describe('metricas', () => {
     expect(screen.getByRole('button', { name: 'Recientes' })).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(top);
     expect(top).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('listitem').map(li => li.textContent!.slice(0, 2))).toEqual(['1.', '2.']);
+    expect(within(screen.getByRole('main')).getAllByRole('listitem').map(li => li.textContent!.slice(0, 2))).toEqual(['1.', '2.']);
     expect(screen.getByText(/^Ordenadas por vistas/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ver más|Ver 30 días/ })).toBeNull();
     expect(f).toHaveBeenCalledTimes(1);

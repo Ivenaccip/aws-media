@@ -8,7 +8,11 @@ El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b 
 - **La caja** «¿Qué vamos a crear hoy?» lleva a la pantalla que cobra con el
   texto ya puesto, pide aquí lo que elige modelo y, en su tercera familia
   (**Edición**), sube un video y lanza la edición.
-- **El menú** lleva a las herramientas.
+- **El recorrido** lleva a las herramientas: un mapa en X con las áreas (lo
+  primero que se ve al abrir el inicio), tres opciones por área y la pantalla (la
+  caja, o la lista de las pantallas de un grupo). Es del 15-oct-2026 y reemplazó
+  al **menú de la izquierda** (ver «Diferencias a propósito»; los IDs
+  `inicio.menu.*` conservan su nombre por historia).
 - **Las listas** llevan a lo que ya hiciste.
 - **El diálogo de Blotato** guarda la clave del usuario.
 
@@ -54,11 +58,36 @@ sigue en `nueva` y cobra el guion). Nano Banana 2 sale de «Editar» en el mismo
 cambio (`docs/OPERACION.md`). No hay enlace visible a la clásica: a quien lo
 necesite se le manda `/ui/clasica?pantalla=inicio`.
 
+**15-oct-2026 — el recorrido reemplaza al menú de la izquierda (solo en la
+nueva):** `static/index.html`, la clásica, **no se tocó**: conserva su menú, y
+sus guardianes (`test_ui10_inicio.py`, `test_m25_entrada.py`…) siguen leyéndola
+hasta `retirada`. Lo que se pierde al pasar del menú al recorrido está
+inventariado abajo («Diferencias a propósito» y las filas `inicio.menu.*`). Esto
+cambia lo que ve **toda** la gente que entra a `/estudio/inicio/`, así que antes
+de que llegue a `main` el dueño corre en `docs/QA-UI.md` § inicio los pasos 43 a 73.
+
 ## Los invariantes (tests/test_migracion_ui.py)
 
 Cada uno es un test de vitest con ese nombre exacto: los de `inicio.edicion.*`
-en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
-(y sus hermanos de la carpeta).
+en `web/src/pantallas/inicio/Edicion.test.tsx` (y, los de E2, en `EdicionUnion.test.tsx`); los de
+`inicio.hojavideos.*` en `HojaVideos.test.tsx` y `reglasVideos.test.ts`; los de `inicio.union.*` en
+`EdicionUnion.test.tsx`; el resto, en `Inicio.test.tsx` (y sus hermanos de la carpeta).
+
+**Pruebas sueltas (15-oct-2026).** El recorrido nuevo (mapa, opciones, migas,
+Esc, foco) y el modo «De videos a Shorts» son función **nueva**, no algo que la
+pantalla vieja garantizara, así que sus pruebas no llevan el prefijo `inicio.` y
+el guardián no exige registrarlas: `estadoRecorrido.test.ts` (el estado y la entrada
+por URL, sin React), `Recorrido.test.tsx` (el recorrido entero), `Mapa.test.tsx` (el mapa
+y las tres opciones), `Pantallas.test.tsx` (la lista de un grupo),
+`EdicionShorts.test.tsx` (el modo Shorts de la caja), más, en `Edicion.test.tsx` y
+`MenuModelo.test.tsx`, las dos pruebas sueltas de la segunda ronda (la frase de
+ayuda que ya no se ve y la medida que comparten «Iniciar» y el selector de modelo,
+`medidas.ts`) y, fuera de esta carpeta,
+`src/marca/Marco.test.tsx` (las migas de las hojas y su guardián de deriva con
+`menu.ts`), más los e2e `inicio-recorrido.spec.ts`, `inicio-shorts.spec.ts` e
+`inicio-caja.spec.ts`. Lo que **sí** viene de la pantalla vieja (las puertas del
+menú, la regla de Blotato, el título) conservó sus IDs `inicio.menu.*` e
+`inicio.blotato.*`: la tabla de abajo dice cómo cambió lo que cada uno afirma.
 
 | ID | Qué garantiza |
 |---|---|
@@ -238,28 +267,28 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.galeria.si_falla_la_lista_de_imagenes_a_media_espera_no_se_pierde_el_pedido` | si una relectura de `/api/imagenes` falla, el pedido sigue a la vista y se sigue preguntando |
 | `inicio.galeria.una_lectura_con_los_pedidos_sin_leer_a_media_espera_no_borra_el_pedido_ni_apaga_el_sondeo` | lo mismo con un 200 que no pudo leer los pedidos (`pendientes_ok: false`): el pedido sigue a la vista, las imágenes que sí vinieron se enseñan y se sigue preguntando; solo una lectura buena que ya no lo trae lo quita y para el sondeo |
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
-| `inicio.menu.entradas_y_grupos_en_orden` | las 6 entradas y sus destinos (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió); Estudio de Contenido → Blotato → Publicidad Automática (MIX debajo de su requisito); nada dice «próximamente» |
-| `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`) |
-| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño) |
-| `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar |
-| `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga |
-| `inicio.menu.pregunta_ligero` | el menú pregunta con `?redes=0`, sin gastar una llamada a Blotato |
-| `inicio.blotato.mas_abre_el_dialogo_con_las_redes` | el «+» (o ✓) abre el diálogo, no un alert, con las redes conectadas |
+| `inicio.menu.entradas_y_grupos_en_orden` | **15-oct-2026: ya no hay menú** (ni la nav «Secciones», ni «Estudio de Contenido», ni «Publicidad Automática»); las puertas de siempre siguen, ahora por mapa → opciones → lista. Marketing › Blotato: `/agenda.html`, `/competencia.html`, `/metricas.html`, en ese orden; Marketing › Avanzado: `/mix.html` (MIX, con su requisito Blotato) y `/estilos.html` (la Copiadora de estilos, provisional hasta «Marcas»). «De videos a Shorts» no sale en ninguna lista: vive en «Editar ▾» (ver `inicio.edicion.el_chip_editar_…`). Nada de Marketing dice «próximamente»; Central › Distrito sí, y ninguna de sus pantallas es un enlace. Eran 6 puertas (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió) y siguen siendo 6: cinco en las listas y la de Shorts en el chip. El ID conserva «menú» por historia |
+| `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`). **15-oct-2026:** sin menú, la prueba recorre las listas de Blotato, Avanzado y Central › Distrito y exige lo mismo (ni «Editor de videos», ni su texto, ni un `a[href^="/e1.html"]`); la Copiadora de estilos se queda en Avanzado con su texto tal cual, y «De videos a Shorts» ya no es un enlace de ninguna lista (`/shorts.html` no aparece): pasó al chip «Editar ▾». El nombre del ID habla de «las otras dos de su grupo» por historia |
+| `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** del inicio, centrado, FUERA y ARRIBA de cualquier tarjeta (dueño, 15-oct-2026, segunda ronda), en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige el tamaño y el peso en el `<h1>`, `[overflow-wrap:anywhere]` (la palabra se parte dentro de la región en vez de salirse), que el dorado vaya en un único `<span class="texto-oro">` dentro del `<h1>` (el fondo recortado a la letra mide lo que el texto: puesto en el `<h1>` mismo, con el espaciado de texto de WCAG 1.4.12 o con letra más grande, las letras que sobresalían de su caja quedaban transparentes), que **no** lleve `text-ambar-claro`, que no tenga icono (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
+| `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar. **15-oct-2026:** la misma regla, en las listas del recorrido: en Marketing › Blotato las tres tarjetas (agenda, competencia, métricas) quedan `aria-disabled` y dicen «Conecta tu Blotato para usarlo», y el clic NO navega (`preventDefault`) sino que abre el diálogo «Conecta tu Blotato»; la cuarta, MIX, se apaga igual en Marketing › Avanzado, mientras la Copiadora de estilos (que no depende de Blotato) no. El ID dice «cuatro» por las cuatro entradas del menú de antes |
+| `inicio.menu.si_no_se_sabe_no_se_apaga_nada` | si `/api/blotato` falla, nada se apaga (en el recorrido: ninguna tarjeta de Blotato ni de Avanzado lleva `aria-disabled`) |
+| `inicio.menu.pregunta_ligero` | el inicio pregunta con `?redes=0`, UNA vez al montar (aunque no se abra ninguna lista), sin gastar una llamada a Blotato: el `GET /api/blotato` a secas no sale hasta abrir el diálogo |
+| `inicio.blotato.mas_abre_el_dialogo_con_las_redes` | el «+» (o ✓) abre el diálogo, no un alert, con las redes conectadas. **15-oct-2026:** ese «+»/✓ del encabezado del grupo en el menú de la izquierda pasó a ser un botón con texto, «Conecta tu cuenta de Blotato» o «Blotato conectado: ver o cambiar» (`aria-haspopup="dialog"`), arriba de las tarjetas de Marketing › Blotato; abre el mismo diálogo, con el mismo `DialogoBlotato`. Solo sale en un grupo cuyas pantallas dependen TODAS de Blotato (en Avanzado, que trae la Copiadora, no) |
 | `inicio.blotato.aviso_del_cobro_con_el_precio_del_server_antes_del_campo` | el cobro de Blotato se avisa ANTES del campo, con el precio que manda el server (`pricing.json` nunca entra al cliente) |
 | `inicio.blotato.clave_password_sin_autocompletar` | `type=password`, sin autocompletar, corrector ni mayúsculas |
 | `inicio.blotato.la_clave_se_borra_al_conectar_cancelar_y_cerrar` | la clave se manda una vez, sin espacios, y se vacía al conectar, al cancelar y al cerrar; nunca queda escrita en la página |
 | `inicio.blotato.sin_clave_no_manda_nada` | «Pega tu clave de Blotato primero.» y ningún POST |
 | `inicio.blotato.error_del_server_se_dice_en_el_dialogo` | el error del server en el diálogo y Conectar vuelve a servir |
 | `inicio.blotato.clave_del_env_no_se_ofrece_desconectar` | con la clave del `.env` lo dice y no ofrece Desconectar |
-| `inicio.blotato.desconectar_pide_confirmar` | Desconectar pide confirmación; al desconectar, el menú se apaga |
+| `inicio.blotato.desconectar_pide_confirmar` | Desconectar pide confirmación; al desconectar, el menú se apaga (15-oct-2026: las tres tarjetas de la lista de Blotato pasan a `aria-disabled`) |
 | `inicio.blotato.viene_del_editor_con_blotato_conectar` | `?blotato=conectar` abre el diálogo al llegar |
 | `inicio.blotato.enlace_a_la_api_con_noopener` | «Blotato → Settings → API» en otra pestaña con `noopener noreferrer` |
-| `inicio.blotato.conectar_enciende_el_menu` | al conectar, las cuatro entradas se encienden |
+| `inicio.blotato.conectar_enciende_el_menu` | al conectar, las cuatro entradas se encienden (15-oct-2026: las tres tarjetas de Blotato dejan de decir «Conecta tu Blotato» y el botón de arriba pasa a «Blotato conectado: ver o cambiar»; el ID dice «menú» por historia) |
 | `inicio.marco.sin_version_anterior` | Sin «Usar la versión anterior» (se quitó el 28-sep; `/ui/clasica` sigue a mano) |
 | `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video` | el riel dice Imagen · Video · Edición (icono `cortar`) con `aria-pressed`; la caja sigue ARRANCANDO en Video; Edición trae el campo «Cuéntale a la IA qué quieres» (`aria-required`, la pista de la primera idea —`huecoDe`—, 2000 caracteres) y el título sigue siendo «¿Qué vamos a crear hoy?» |
 | `inicio.edicion.sin_video_el_boton_es_iniciar_sin_precio_dorado_enfocable_y_avisa` | sin video: «Iniciar» (antes «Editar») sin precio, DORADO (14-oct-2026; antes gris discontinuo), `aria-disabled` (no `disabled`: se puede enfocar) y, al tocarlo, avisa «Primero agrega el video: pulsa el «+» o arrástralo a la caja.» en el cuadro; sin ninguna petición |
 | `inicio.edicion.con_texto_y_sin_video_la_ayuda_dice_donde_agregarlo` | con texto y sin video, la línea «Agrega el video con el «+» o arrástralo a la caja.» reemplaza a «Escribe qué quieres hacer…» |
-| `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea` | 14-oct-2026 (**sustituye a** `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco`): ya no hay `role="group"` «Ideas para escribir» ni ningún botón con el texto de las 4 ideas, el riel sigue con sus 3 botones, el campo sigue vacío (la pista no es su valor) y `AYUDA_TEXTO` dice «Escribe qué quieres hacer con tu video.», sin «toca una idea» |
+| `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_y_la_ayuda_no_dice_toca_una_idea` | 14-oct-2026 (**sustituye a** `inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco`): ya no hay `role="group"` «Ideas para escribir» ni ningún botón con el texto de las 4 ideas, el riel sigue con sus 3 botones, el campo sigue vacío (la pista no es su valor) y `AYUDA_TEXTO` dice «Escribe qué quieres hacer con tu video.», sin «toca una idea». **15-oct-2026 (dueño: «quita el texto»):** esa frase ya no se ve —queda solo para el lector de pantalla (`sr-only`), como descripción de «Iniciar»—; esta prueba sigue leyendo el texto de `AYUDA_TEXTO` y que está en el árbol, y que no se ve lo prueban una suelta de `Edicion.test.tsx` y `inicio-edicion.spec.ts` |
 | `inicio.edicion.la_pista_arranca_en_la_primera_idea_sin_fundido_y_las_cuatro_leen_igual` | la pista (el `placeholder` del campo) arranca SIEMPRE en «Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»», con la opacidad en 1 y sin salir ni entrar (la carta §4: lo que ya estaba al abrir no anima); la rotación no empieza hasta cumplido el primer intervalo; `huecoDe` da la misma frase con las 4 ideas (en ese orden, sin punto final: la idea 1 y la 4 son verbo y nombre y las 4 leen igual); cambiar de familia y volver reabre en la primera |
 | `inicio.edicion.la_pista_rota_cada_4_s_con_fundido_de_salida_y_de_entrada_y_da_la_vuelta` | con el reloj falso, dos vueltas completas: a los 3.75 s la idea empieza a salir (opacidad 0, `ease-entrada`, MISMO texto todavía), a los 4 s justos cambia el texto y entra la siguiente (opacidad 1, `ease-salida`); da la vuelta a la primera y nunca salta una idea. El reloj es un solo `setTimeout` que se re-arma en cada paso |
 | `inicio.edicion.la_pista_no_rota_con_el_foco_se_congela_entera_y_retoma_al_soltarlo_vacio` | con el foco en el campo no queda ningún temporizador (`vi.getTimerCount()`) y la pista se queda en la que estaba, ENTERA aunque el foco llegue a mitad del fundido de salida (congelada a media luz sería un campo sin pista); al soltar el foco con el campo vacío retoma desde esa idea con su intervalo completo |
@@ -274,10 +303,10 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.la_pista_es_el_placeholder_nativo_con_el_token_de_duracion_el_gris_secundario_y_sin_aria_live` | el fundido va en el `::placeholder` del propio `<textarea>` (`placeholder:transition-opacity`, `placeholder:duration-(--dur-media)`, `ease-salida`/`ease-entrada`, `motion-reduce:placeholder:transition-none` porque `::placeholder` no es `*` y la regla global de `tokens.css` no lo alcanza), sin capa encima; `PISTA_FUNDIDO_MS` = `--dur-media` de `tokens.css` (250 ms); gris secundario; ni el campo ni su cuadro son región viva (sin `aria-live`) y su nombre accesible sigue siendo «Cuéntale a la IA qué quieres», no la pista |
 | `inicio.edicion.el_lector_de_pantalla_recibe_un_ejemplo_fijo_como_descripcion_del_campo_sin_repetirlo_a_la_vista` | las ideas ya no se alcanzan con Tab y la pista no se anuncia: el campo se describe con un ejemplo FIJO («Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.», `aria-describedby`) en un `<p hidden>` (14-oct-2026, revisión: antes `sr-only`, que lo dejaba además como párrafo suelto en el árbol de accesibilidad y se oía dos veces, como párrafo en modo lectura y como descripción al enfocar el campo): no se repite a la vista ni queda suelto, `aria-describedby` lo sigue leyendo, y la descripción sigue ahí con texto escrito y a lo largo de la rotación. Un e2e (`inicio-edicion.spec.ts`) lo mira en el árbol de accesibilidad de Chromium |
 | `inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar` | la subida usa `nucleo/subida` (config, presign, PUT con progreso, confirmar): el nombre del proyecto sale del archivo, la tarjeta dice nombre, formato y tamaño, `role=progressbar` con el avance real, el botón dice «Subiendo…» y «Cuando termine de subir calculamos el precio…»; el precio SOLO se pide al terminar y es el del servidor (la prueba usa un número que no está en ninguna tarifa); la tarjeta gana la duración medida («12:04 · MP4 · 824 MB») |
-| `inicio.edicion.el_precio_del_servidor_8_sin_transcript_y_2_con_transcript` | ✦ 8 para 724 s sin transcripción y ✦ 2 con ella: los muestra tal cual los manda el servidor, y la prueba comprueba que coinciden con `tarifas.json` (`editar.sugerencias` + `shorts.transcripcion_por_5min` × bloques de 5 min) |
+| `inicio.edicion.el_precio_del_servidor_8_sin_transcript_y_2_con_transcript` | E2: ✦ 8 para 724 s sin transcripción y ✦ 2 con ella: los muestra tal cual los manda `POST /api/edicion/cotizar` (`creditos`, con su `desglose` edición + transcripción), y la prueba comprueba que coinciden con `tarifas.json` (`editar.sugerencias` + `shorts.transcripcion_por_5min` × bloques de 5 min) |
 | `inicio.edicion.sin_texto_el_boton_con_precio_sigue_enfocable_lleva_el_foco_al_campo_y_no_avisa` | con video y sin texto: «Iniciar ✦ N», dorado y con `aria-disabled` (sigue enfocable), descrito por «Escribe qué quieres hacer con tu video.» (hasta el 14-oct-2026 terminaba en «, o toca una idea»); tocarlo lleva el foco al campo y NO abre aviso; escribir lo enciende |
-| `inicio.edicion.un_aviso_del_servidor_apaga_el_boton_sin_precio_y_lleva_el_foco_al_mas` | si `/costo` trae `aviso` (fuera de 1–90 min, falta la transcripción en nube…) se enseña tal cual, «Iniciar» queda sin precio, dorado y con `aria-disabled` aunque haya texto, y tocarlo lleva el foco al «+» (cambiar el video), sin aviso |
-| `inicio.edicion.lanzar_manda_solo_la_instruccion_y_vacia_la_caja_y_refresca_el_saldo` | `POST /api/editar/<p>/sugerir` con SOLO `{instruccion}` (recortada): nunca créditos en el cuerpo; se modera ANTES; la línea «Tienes ✦ 269; después te quedan ✦ 261.» antes de pulsar; tras lanzar la caja se vacía (texto y video), el saldo se refresca, vuela el «−N» con lo que cobró el servidor y el foco no se pierde (es el mismo botón) |
+| `inicio.edicion.un_aviso_del_servidor_apaga_el_boton_sin_precio_y_lleva_el_foco_al_mas` | E2: si `cotizar` trae un `bloqueo` (`{codigo, texto}`: fuera de 1–90 min, un video solo de menos de 1 min, formatos mezclados…) su `texto` se enseña TAL CUAL (el mismo `detail` que daría `iniciar`), «Iniciar» queda sin precio, dorado y con `aria-disabled` aunque haya texto, y tocarlo lleva el foco al «+» (cambiar los videos), sin aviso |
+| `inicio.edicion.lanzar_manda_solo_la_instruccion_y_vacia_la_caja_y_refresca_el_saldo` | E2: `POST /api/edicion/iniciar` con SOLO `{pedido, videos, instruccion}` (la clave de idempotencia de 32 hex, las referencias en el orden de la caja y la instrucción recortada): nunca créditos en el cuerpo; se modera ANTES; la línea «Tienes ✦ 269; después te quedan ✦ 261.» antes de pulsar; tras lanzar la caja se vacía (texto y videos), el saldo se refresca, vuela el «−N» con lo que cobró el servidor y el foco no se pierde (es el mismo botón) |
 | `inicio.edicion.doble_clic_en_iniciar_es_una_sola_peticion` | dos clics en el mismo tic = UN moderar y UN sugerir (el candado se cierra antes del primer `await`); mientras espera el botón dice «Iniciando…» (antes «Editando…») y no acepta otro |
 | `inicio.edicion.sin_saldo_el_boton_se_apaga_y_dice_cuanto_falta_con_recargar` | si el saldo conocido no alcanza: «Iniciar ✦ N» dorado pero con `aria-disabled`, «Tienes ✦ S: no alcanza para editar este video.» y «Te faltan ✦ N · Recargar» (el componente `Recarga`); tocarlo no pide nada |
 | `inicio.edicion.402_del_servidor_dice_te_faltan_y_no_cobra_ni_vacia_la_caja` | si el servidor contesta 402 (el saldo de la píldora estaba atrasado): «Te faltan ✦ N · Recargar» (N sale del detalle del 402), el saldo se refresca, ningún «−N», y el video y el texto se quedan para reintentar |
@@ -286,7 +315,7 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.un_gate_del_servidor_se_dice_tal_cual_y_no_se_empieza_otra_cosa` | 413/422 (gate de duración, ANTES de cobrar) y demás errores: el mensaje del servidor tal cual al cuadro; el texto se conserva |
 | `inicio.edicion.si_otra_cuenta_tiene_el_nombre_se_reintenta_una_vez_con_nombre_alterno` | 409 al firmar = el nombre del proyecto es de otra cuenta: se reintenta UNA vez con `nombreAlterno` y el precio se pide por el proyecto que sí se reservó |
 | `inicio.edicion.un_409_que_se_repite_no_reintenta_otra_vez_y_lo_dice` | si el reintento también da 409: dos firmas en total, ninguna subida, el error al cuadro y la caja sin video |
-| `inicio.edicion.una_tarea_a_la_vez_avisa_durante_la_subida_y_durante_la_corrida` | durante la subida y mientras la corrida lanzada siga `corriendo`, «+» e «Iniciar» avisan «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» (el «+» queda `aria-disabled`); el sondeo de `GET /api/editar/<p>` es PEREZOSO (solo tras lanzar, cada 5 s), al terminar refresca el saldo y se detiene. El servidor aún no tiene candado por cuenta: este aviso es de la pantalla |
+| `inicio.edicion.una_tarea_a_la_vez_avisa_durante_la_subida_y_durante_la_corrida` | durante la subida y mientras la corrida lanzada siga `corriendo`, «+» e «Iniciar» avisan «Ya hay un trabajo en curso. Cuando termine puedes empezar otro.» (el «+» queda `aria-disabled`); el sondeo de `GET /api/editar/<copia>` (con el nombre que devolvió `iniciar`) es PEREZOSO (solo tras lanzar, cada 5 s), al terminar refresca el saldo y se detiene. El servidor aún no tiene candado por cuenta más allá del 409: este aviso es de la pantalla |
 | `inicio.edicion.un_409_de_ya_corre_pasa_a_una_tarea_en_curso` | si el servidor dice 409 («ya está en curso») la pantalla también lo sabe desde ahí: nada empieza hasta que termine |
 | `inicio.edicion.cambiar_de_familia_y_volver_conserva_texto_y_video_y_no_cancela_la_subida` | el estado vive en `useEdicion` (llamado desde `Caja`): cambiar a Video o Imagen y volver conserva el texto y el video, y una subida a medias sigue (no se aborta) y termina con su precio |
 | `inicio.edicion.quitar_durante_la_subida_la_cancela_sin_error_y_no_pide_precio` | «Cancelar la subida» aborta el PUT, no es un error de nadie (ningún aviso), no confirma ni pide precio, y el foco vuelve al «+» |
@@ -295,10 +324,10 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.un_archivo_que_no_sirve_se_rechaza_con_su_motivo_antes_de_subir` | solo .mp4, .mov y .m4v, hasta 5 GB (los mismos límites que `/api/media/presign`); lo demás se rechaza con su motivo ANTES de pedir permiso de subida |
 | `inicio.edicion.si_no_hay_subidas_en_esta_instalacion_lo_dice_sin_intentar` | si `/api/media/config` dice que no hay subidas, se dice y no se firma nada |
 | `inicio.edicion.si_el_precio_no_llega_el_video_se_queda_e_iniciar_lo_vuelve_a_pedir` | si el precio falla el video subido se queda, el error va al cuadro y tocar «Iniciar» (la nota dice «Toca «Iniciar» para intentarlo otra vez.») vuelve a pedir SOLO el precio (no se sube otra vez) |
-| `inicio.edicion.una_instruccion_que_la_moderacion_frena_no_llega_al_servidor` | M13: una instrucción vetada por la moderación no llega a `/sugerir` ni cobra, y el texto se conserva |
+| `inicio.edicion.una_instruccion_que_la_moderacion_frena_no_llega_al_servidor` | M13: una instrucción vetada por la moderación no llega a `iniciar` ni cobra, y el texto se conserva |
 | `inicio.edicion.sin_el_cuadro_de_avisos_lo_que_se_dice_sale_junto_a_la_caja` | en una página sin `window.avisos` (tests, vitrina) lo que dice la caja de Edición sale junto a ella (`role=alert`), y se quita al corregirlo |
 | `inicio.edicion.todo_lo_tocable_mide_al_menos_44_px` | el riel, el «+», el chip «Editar ▾», «Iniciar» y la ✕ de la tarjeta miden al menos 44 px (las 4 ideas, que eran botones de `min-h-11`, salieron el 14-oct-2026) (clases `min-h-11`/`min-h-12`/`size-11`/`size-12`) |
-| `inicio.edicion.ninguna_peticion_al_montar_ni_al_abrir_la_familia` | el Inicio entero: montar y abrir la familia Edición no piden NADA de `/api/editar`, `/api/media` ni `/api/moderar`; las peticiones de Edición son perezosas (`servidor()` de las pruebas y el e2e fijan las rutas del montaje) |
+| `inicio.edicion.ninguna_peticion_al_montar_ni_al_abrir_la_familia` | el Inicio entero: montar y abrir la familia Edición no piden NADA de `/api/edicion`, `/api/editar`, `/api/media` ni `/api/moderar` (ni la hoja pide sus elegibles hasta abrirse); las peticiones de Edición son perezosas (`servidor()` de las pruebas y el e2e fijan las rutas del montaje) |
 | `inicio.edicion.el_boton_apagado_enfocable_no_usa_disabled_ni_opacidad_y_si_recibe_el_clic` | `<Boton apagado>`: `aria-disabled`, sin `disabled`, el apagado de la carta (borde discontinuo, gris; DISENO §5), sin ámbar a media opacidad, sin hover, y el clic SÍ llega a `onClick`. Desde el 14-oct-2026 es solo la prueba de la pieza de `ui/Boton`: «Iniciar» ya no la usa (ver `inicio.edicion.iniciar_es_dorado_en_todos_los_estados_y_solo_cambian_lo_que_dice_y_su_semantica`) |
 | `inicio.edicion.si_la_subida_falla_se_dice_y_la_caja_queda_lista_para_elegir_otro` | si el PUT falla o no hay red, se dice y la caja queda sin video, lista para elegir otro |
 | `inicio.edicion.el_boton_sigue_el_orden_sin_video_subiendo_sin_precio_aviso_sin_texto_sin_saldo_listo` | `estadoDelBoton`: sin video → subiendo → calculando → sin precio → aviso del servidor → sin texto → sin saldo → listo; un aviso manda sobre el texto y el saldo; un saldo que no se sabe no bloquea |
@@ -310,20 +339,20 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.cambiar_de_familia_a_mitad_del_cobro_lo_termina_y_al_volver_la_caja_esta_vacia` | irse a Video con el pedido en vuelo no lo cancela: el cobro termina, vuela el «−N», la caja vuelve vacía y «+»/«Iniciar» avisan que hay una corrida en curso |
 | `inicio.edicion.un_402_que_llega_en_otra_familia_se_ve_al_volver_y_no_pierde_nada` | un 402 que llega con la persona en otra familia se ve al volver («Te faltan ✦ N · Recargar»), conserva texto y video, no cobra, y cuando monedero.js trae el saldo de verdad la línea no se repite ni se contradice |
 | `inicio.edicion.quitar_con_el_precio_en_camino_y_subir_otro_ignora_la_respuesta_vieja` | quitar un video mientras se calcula su precio y subir otro: el precio tardío del primero no se lo queda el segundo |
-| `inicio.edicion.un_archivo_nuevo_sobre_un_video_listo_lo_reemplaza_y_el_pedido_va_al_proyecto_nuevo` | un video nuevo sobre uno listo lo reemplaza (precio nuevo, texto conservado) e «Iniciar» pide el proyecto nuevo, nunca el viejo |
+| `inicio.edicion.un_archivo_nuevo_sobre_un_video_listo_lo_reemplaza_y_el_pedido_va_al_proyecto_nuevo` | **RETIRADO en E2 (15-oct-2026)**: ese comportamiento ya no existe. En E1 un archivo nuevo sobre un video listo lo REEMPLAZABA; en E2 «Agregar otro video» y los archivos elegidos se suman AL FINAL de la unión y nada se reemplaza (lo quitas con su ✕). Lo cubren `inicio.union.las_creaciones_elegidas_se_agregan_al_final_sin_repetir_y_el_precio_sale_del_servidor`, `inicio.union.subir_varios_archivos_van_en_cola_de_uno_en_uno_con_su_progreso_y_cotiza_al_terminar_la_cola` y `inicio.union.quitar_recorre_los_numeros_vuelve_a_cotizar_manda_el_foco_al_mas_y_con_uno_queda_su_tarjeta` |
 | `inicio.edicion.otro_archivo_durante_la_subida_avisa_y_no_empieza_otra_subida` | soltar o elegir otro archivo mientras sube avisa «Ya hay un trabajo en curso…» y no abre una segunda subida |
 | `inicio.edicion.los_nombres_raros_de_archivo_dan_un_proyecto_que_el_servidor_acepta_o_se_rechazan_con_motivo` | acentos, espacios, mayúsculas, 200 caracteres, solo símbolos o solo guiones bajos (`_.mp4`): el nombre del proyecto siempre es válido para el servidor (≤ 40, letras o cifras, `mi-video` si no queda nada); un archivo llamado solo «.mp4» o de 0 bytes se rechaza con su motivo ANTES de pedir permiso |
 | `inicio.edicion.un_nombre_que_ya_es_un_proyecto_tuyo_con_video_se_estrena_con_nombre_nuevo` | antes de firmar se pregunta `GET /api/media/<p>`: si ese nombre ya es un proyecto tuyo con video (otro «final.mp4») se estrena un nombre con `nombreAlterno`, para no mezclar el video nuevo con la transcripción y los cortes del viejo; el 409 de otra cuenta sigue reintentando UNA vez |
 | `inicio.edicion.si_no_se_puede_saber_si_el_nombre_ya_existe_se_sube_con_el_nombre_del_archivo` | si esa pregunta falla (5xx, sin red) la subida sigue con el nombre del archivo: preguntar no frena |
 | `inicio.edicion.un_precio_que_no_es_un_numero_no_se_ensena_ni_se_deja_cobrar` | un `creditos` que no es un entero ≥ 0 (null, texto, NaN, negativo, con decimales) cuenta como «sin precio»: «Iniciar» sin ✦, con `aria-disabled` (nunca «✦ 0» ni «✦ NaN»), tocarlo vuelve a pedir el precio y no modera ni cobra; una duración que no es número no rompe la tarjeta |
-| `inicio.edicion.si_el_precio_nunca_llega_se_puede_quitar_el_video_y_empezar_de_nuevo` | si `/costo` no contesta nunca, «Calculando…» no cobra y la ✕ sigue quitando el video para empezar de nuevo (el texto se conserva) |
+| `inicio.edicion.si_el_precio_nunca_llega_se_puede_quitar_el_video_y_empezar_de_nuevo` | si `cotizar` no contesta nunca, «Calculando…» no cobra y la ✕ sigue quitando el video para empezar de nuevo (el texto se conserva) |
 | `inicio.edicion.un_campo_con_solo_espacios_saltos_o_invisibles_esta_vacio_y_no_enciende_el_boton` | un campo con solo espacios, saltos, NBSP, ancho cero, marcas bidi o «etiquetas» U+E00xx está vacío: el botón sigue con `aria-disabled`, la ayuda sigue pidiendo texto y no se pide nada (`limpiarInstruccion` copia la limpieza del servidor, `limpiar_instruccion`) |
-| `inicio.edicion.la_instruccion_que_viaja_es_la_limpia_y_es_la_misma_que_se_modera` | lo que se manda a `/sugerir` y a `/api/moderar` es la instrucción limpia (sin invisibles, tabuladores a espacio, `\r\n` a salto), la misma que verá la IA |
+| `inicio.edicion.la_instruccion_que_viaja_es_la_limpia_y_es_la_misma_que_se_modera` | lo que se manda a `iniciar` y a `/api/moderar` es la instrucción limpia (sin invisibles, tabuladores a espacio, `\r\n` a salto), la misma que verá la IA |
 | `inicio.edicion.el_campo_limita_a_2000_y_si_algo_pasa_el_servidor_es_la_autoridad` | pegar 2500 caracteres deja 2000; si uno de más se cuela, NO se recorta en silencio: el 422 del servidor (antes de cobrar) se dice tal cual, sin «−N», y texto y video se conservan |
 | `inicio.edicion.si_el_saldo_cambia_despues_del_precio_el_boton_lo_sigue_antes_de_cobrar` | si el saldo baja (o sube) después de mostrar el precio, el botón pasa a `aria-disabled` con «Te faltan» (o lo pierde) sin pedir nada; el servidor sigue siendo quien decide |
 | `inicio.edicion.si_la_respuesta_del_cobro_se_pierde_el_saldo_se_pone_al_dia_y_el_reintento_cae_en_ya_corre` | si se cae la red con el pedido en el aire (o hay un 409/5xx) el servidor pudo haber cobrado: el saldo de la píldora se refresca, no vuela ningún «−N» ni se vacía la caja (no se sabe), y el reintento recibe el 409 «ya corre» que pasa a corrida en curso |
 | `inicio.edicion.el_menos_n_sale_de_lo_que_cobro_el_servidor_no_del_precio_de_la_pantalla` | el «−N» que vuela es el `creditos` de la respuesta del servidor aunque el precio de la pantalla fuera otro |
-| `inicio.edicion.ningun_cuerpo_de_ninguna_peticion_lleva_creditos_ni_precio` | en todo el flujo (permiso de subida, confirmar, moderar, sugerir) ningún cuerpo habla de créditos, precio, costo ni saldo; el de `/sugerir` es solo `{instruccion}` |
+| `inicio.edicion.ningun_cuerpo_de_ninguna_peticion_lleva_creditos_ni_precio` | en todo el flujo (permiso de subida, confirmar, moderar, cotizar, iniciar) ningún cuerpo habla de créditos, precio, costo ni saldo; el de `cotizar` es solo `{videos}` y el de `iniciar`, `{pedido, videos, instruccion}` |
 | `inicio.edicion.si_la_moderacion_se_cae_el_pedido_sigue` | M13: un filtro caído (5xx) no frena el pedido |
 | `inicio.edicion.lo_que_se_escribe_mientras_sale_el_pedido_no_se_borra` | lo que la persona escribe mientras sale el pedido no es lo que se mandó y no se borra al vaciar la caja |
 | `inicio.edicion.quitar_mientras_se_confirma_la_subida_no_pide_precio_ni_dice_nada` | cancelar con el PUT ya terminado y el «confirmar» en camino: no se pide precio ni se dice nada cuando la respuesta tarda en llegar |
@@ -338,11 +367,97 @@ en `web/src/pantallas/inicio/Edicion.test.tsx`; el resto, en `Inicio.test.tsx`
 | `inicio.edicion.subiendo_y_calculando_se_ven_trabajando_en_ambar_con_cursor_de_espera_y_el_clic_avisa` | «Subiendo…» y «Calculando…» son el «Trabajando» de la carta (§5) y del lienzo (`.btn.p.trab`): ámbar, `cursor-progress`, `aria-busy` y `aria-disabled`, sin el borde discontinuo del apagado, descritos por su nota; el clic sigue llegando y avisa «Ya hay un trabajo en curso…»; con el precio sigue dorado (desde el 14-oct-2026 ya no vuelve el gris discontinuo), con `aria-disabled` mientras falte el texto, sin `aria-busy` y sin cursor de espera |
 | `inicio.edicion.cada_apagado_se_explica_con_su_propia_linea` | `aria-describedby` en cada estado en que «Iniciar» tiene `aria-disabled`: sin video y con texto → «Agrega el video con el «+»…»; sin precio → «No pudimos calcular el precio…»; sin saldo → «Tienes ✦ S: no alcanza…» (antes solo «sin texto» y «fuera de rango» tenían su línea) |
 | `inicio.edicion.el_recargar_mide_44_px_aunque_su_letra_sea_chica` | con la recarga abierta, «Recargar» (un enlace de una línea de letra de 13 px) trae `min-h-11 min-w-11` y márgenes negativos que lo devuelven al renglón, y su aro de foco va por dentro; medido en un navegador de verdad: 44 × 44 y la nota no crece |
-| `inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion` | 14-oct-2026 (dueño: «el botón de editar lo vamos a poner a lado del +, como los otros casos; más adelante vamos a poner aquí también lo de videos a shorts»): «Editar ▾» es el MISMO `SelectorOpcion` que «Un video corto ▾», justo después del «+» y antes de «Iniciar» (el orden del foco); `aria-haspopup="listbox"`, `aria-expanded`, `aria-controls`, y `data-pista` = la nota de la opción («Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.»). Su lista tiene UNA opción (`MODOS_EDICION`, en `edicion.ts`), seleccionada, con «según el video» a la derecha. Edición no trae chip de modelo ni de duración. «De videos a Shorts» sigue en el menú de la izquierda: no se movió |
-| `inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra` | ↓ abre con el foco en la opción; con una sola opción, ↑ ↓ Inicio y Fin no se salen de ella; Esc cierra y devuelve el foco al chip; Enter, Espacio y el clic la eligen: cierra, devuelve el foco al chip y no cambia nada (ninguna petición, el texto se conserva); el clic fuera y Tab cierran; irse a otra familia con la lista abierta la deja cerrada al volver |
+| `inicio.edicion.el_chip_editar_va_junto_al_mas_antes_del_boton_principal_con_su_lista_de_una_opcion` | 14-oct-2026 (dueño: «el botón de editar lo vamos a poner a lado del +, como los otros casos; más adelante vamos a poner aquí también lo de videos a shorts»): «Editar ▾» es el MISMO `SelectorOpcion` que «Un video corto ▾», justo después del «+» y antes de «Iniciar» (el orden del foco); `aria-haspopup="listbox"`, `aria-expanded`, `aria-controls`, y `data-pista` = la nota de la opción («Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.»). Su lista tenía UNA opción (`MODOS_EDICION`, en `edicion.ts`), seleccionada, con «según el video» a la derecha. Edición no trae chip de modelo ni de duración. «De videos a Shorts» seguía en el menú de la izquierda. **15-oct-2026:** la lista tiene DOS opciones, que la prueba afirma (`MODOS_EDICION.map(id)` = `editar`, `shorts`): «Editar» (la de ahora, seleccionada al abrir y con el foco) y «De videos a Shorts» (nota «Sube un video largo y te daremos los mejores momentos.»), las dos con «según el video». Ya no hay menú de la izquierda: «De videos a Shorts» solo se alcanza por aquí (cumplido el «más adelante irá aquí» del dueño). El ID conserva «de_una_opcion» porque era la única |
+| `inicio.edicion.el_chip_se_porta_como_el_de_video_flechas_esc_clic_fuera_y_elegir_la_unica_solo_cierra` | ↓ abre con el foco en la opción; con una sola opción, ↑ ↓ Inicio y Fin no se salen de ella; Esc cierra y devuelve el foco al chip; Enter, Espacio y el clic la eligen: cierra, devuelve el foco al chip y no cambia nada (ninguna petición, el texto se conserva); el clic fuera y Tab cierran; irse a otra familia con la lista abierta la deja cerrada al volver. **15-oct-2026:** con DOS opciones, ↓ y Fin van a «De videos a Shorts», ↑ e Inicio vuelven a «Editar» y ninguna sale de la lista; Enter, Espacio y el clic en la opción de AHORA («Editar») siguen siendo solo cerrar. Elegir la otra cambia de modo, y eso lo prueba `EdicionShorts.test.tsx`. El ID dice «la única» por historia |
 | `inicio.edicion.iniciar_es_dorado_en_todos_los_estados_y_solo_cambian_lo_que_dice_y_su_semantica` | 14-oct-2026 (dueño: «donde está ahora el botón de Editar, va a decir «Iniciar» con el botón dorado como el de Generar»): sin video, con texto sin video, subiendo, con precio y con precio sin texto, el botón es ámbar (`bg-ambar`, nada de borde discontinuo ni gris) como «Crear» de Imagen y Video, que tampoco se pinta apagado sino que avisa al pulsarlo. Lo que cambia entre estados es lo que dice y su semántica: `aria-disabled` mientras no se pueda (nunca `disabled`: retiene el foco y explica), `aria-busy` solo subiendo/calculando, y NADA de `aria-disabled` cuando cobra. «Editar ✦ N» y «Editando…» ya no existen |
 | `inicio.edicion.el_aviso_de_trabajo_en_curso_se_quita_solo_cuando_ese_trabajo_termina` | como el lienzo (`aviso === 'ocupada' → ''`): «Ya hay un trabajo en curso…» se quita solo cuando la subida termina y llega el precio, y cuando el servidor dice que la corrida terminó; no antes, y no dos veces |
 | `inicio.edicion.si_otro_aviso_reemplazo_al_de_trabajo_en_curso_no_se_quita_nada` | si otro mensaje tomó el lugar de ese aviso (misma clave), p. ej. el error de una subida que falló, no se quita nada: es lo que la persona tiene que leer |
+
+**E2 (15-oct-2026): varios videos, «Elegir de Mis creaciones», copia y unión.** Los `inicio.edicion.*` de arriba se CONSERVARON y se reescribió su cuerpo contra `/api/edicion/{cotizar,iniciar}` (ya no `/api/editar/<p>/costo` ni `/sugerir`); el único retirado es el de «un archivo nuevo reemplaza al listo» (arriba, con dónde quedó). Lo nuevo vive en `EdicionUnion.test.tsx` (`inicio.edicion.*` del cobro, `inicio.union.*` de la caja con varios y su cola de subida), `HojaVideos.test.tsx` y `reglasVideos.test.ts` (`inicio.hojavideos.*`: la hoja «Agregar videos» y sus reglas sin React) e `Inicio.test.tsx` (`inicio.ediciones.*`: la tarjeta de la copia). El navegador de verdad (teclado, foco, 320/390/1100 px, 44 px, XHR real, la bandeja con `static/trabajos.js`) lo mira `inicio-edicion-union.spec.ts`, y la bandeja en un DOM de jsdom `tests/test_e2_bandeja_js.py`; el encabezado «Copia de …» del editor, `tests/test_e2_editor_banner.py`.
+
+| Invariante | Qué garantiza |
+|---|---|
+| `inicio.edicion.el_precio_solo_sale_de_cotizar_y_el_cliente_no_lo_calcula` | el botón dice «Iniciar ✦ N» con el `creditos` que contesta `POST /api/edicion/cotizar` (la prueba usa cifras que no están en ninguna tarifa): la caja no suma, no multiplica ni lee `tarifas.json` |
+| `inicio.edicion.el_pedido_se_conserva_tras_una_red_caida_y_se_renueva_tras_cualquier_respuesta_del_servidor` | `pedido` (32 hex) es la clave de idempotencia de `POST /api/edicion/iniciar`: tras una respuesta DUDOSA (sin red, estado 0, o un 504) el reintento manda la MISMA, para que el servidor no cobre dos veces; tras cualquier otra respuesta (200, 402, 409, 413, 422, 5xx) se renueva |
+| `inicio.edicion.otra_lista_otro_orden_u_otro_texto_es_otro_pedido` | la clave solo se conserva mientras no cambie lo que se pide: otra lista de videos, otro ORDEN o otra instrucción es otro pedido y estrena clave |
+| `inicio.edicion.un_repetido_del_servidor_vacia_la_caja_sin_dibujar_otro_menos_n_y_pone_al_dia_el_saldo` | si el servidor contesta `repetido: true` (ya tenía ese pedido) la caja se vacía igual, no dibuja otro «−N» (esta petición no cobró), refresca el saldo y la copia sigue contando como en curso |
+| `inicio.edicion.un_413_o_422_del_servidor_se_dice_tal_cual_no_cobra_y_se_vuelve_a_cotizar` | 413/422 de `iniciar` (una regla que la caja no conocía): el `detail` del servidor tal cual al cuadro de avisos, la caja se queda como estaba y se vuelve a pedir el precio, que trae el bloqueo |
+| `inicio.edicion.si_otra_edicion_ya_corre_el_409_bloquea_hasta_que_la_lista_diga_que_termino` | un 409 que dice que algo YA está en curso («Ya hay un trabajo en curso…», otra edición corre en la cuenta) pasa la pantalla a «tarea en curso» sin saber cuál (los demás 409 NO: ver `inicio.edicion.un_409_que_no_es_de_tarea_en_curso_se_lee_tal_cual_y_no_deja_la_caja_ocupada`): se sondea `GET /api/edicion/proyectos` y se libera cuando la lista dice que ya no hay una corriendo |
+| `inicio.edicion.una_pregunta_de_la_copia_sondea_por_su_nombre_cada_5_s_y_se_libera_al_terminar` | tras lanzar, `GET /api/editar/<copia>` cada 5 s con el nombre que devolvió `iniciar` (tope de 2 h); al terminar libera el «+» y el botón y refresca el saldo |
+| `inicio.edicion.avisa_a_la_pantalla_cuando_el_servidor_acepto_para_que_mis_creaciones_muestre_la_copia` | `useEdicion(…, alEditar)` avisa a `Inicio` en cuanto el servidor acepta (y al detectar un 409 de «ya corre») para que «Mis creaciones» vuelva a leer las listas y pinte la copia «Editando…» |
+| `inicio.edicion.el_aviso_de_exito_dice_si_se_edita_un_video_o_se_unen_varios` | tras lanzar, el aviso del cuadro dice «Ya estamos editando tu video…» con uno y «Ya estamos uniendo y editando tus N videos…» con varios (los dos con «Sigue el avance en «Tus trabajos».»); la caja queda vacía (ni lista ni nota de copia) |
+| `inicio.edicion.un_409_que_no_es_de_tarea_en_curso_se_lee_tal_cual_y_no_deja_la_caja_ocupada` | (revisión E2, S1) el 409 «Todavía estamos devolviendo los créditos de esta edición…» y los 502/503 «Estamos devolviendo lo cobrado» se dicen TAL CUAL del servidor, renuevan la clave del pedido, ponen al día el saldo y NO pasan la pantalla a «tarea en curso» (el «+» sigue abriendo su menú, la caja conserva texto y video, «Mis creaciones» no se relee); solo el 409 «…en curso» lo hace |
+| `inicio.edicion.si_la_puerta_de_enlace_se_rinde_la_lista_se_relee_para_ver_si_la_edicion_si_salio` | (H8) un 5xx de la puerta de enlace (cuerpo `{message}`, sin el `detail` del servidor) pudo llegar DESPUÉS de cobrar y lanzar: «Mis creaciones» se relee ya y, si la copia salió, su tarjeta «Editando…» aparece sin que la persona tenga que volver a pulsar «Iniciar» y recibir un 409. Un 5xx con `detail` (502 «no se pudo lanzar», 503 «sin capacidad») no es ambiguo y no relee. Conservar la clave del pedido en estos 5xx NO se hizo: exige que el servidor responda otra cosa a un pedido repetido cuyo cobro no llegó a anotarse (pendiente de S1) |
+| `inicio.ediciones.una_copia_dice_su_titulo_su_estado_y_de_donde_viene` | la tarjeta de una copia (`copia_de` del servidor) dice su `titulo` (no el nombre técnico `ed-…`), «Edición · Listo / Editando… / No se pudo editar» y «Copia de {título}»; Listo lleva a `/editor/<copia>/`, Editando… es `aria-busy` y NO es un enlace, No se pudo editar tampoco; ninguna copia lleva a `/e1.html` |
+| `inicio.ediciones.una_copia_corriendo_mantiene_vivo_el_sondeo_de_las_listas_y_su_paso_a_error_pone_al_dia_el_saldo` | una copia `corriendo` cuenta como algo generándose (el sondeo de las listas sigue); si pasa a error el servidor devolvió lo cobrado y la píldora de saldo se refresca |
+| `inicio.ediciones.una_copia_que_termina_bien_no_toca_el_saldo` | **RETIRADO (revisión de E2, H7)**: ese comportamiento era el defecto. Con UN video y nada que cortar el worker devuelve los créditos y deja la copia «lista»; la píldora no sondea el saldo, así que se quedaba vieja hasta recargar. Lo cubre `inicio.ediciones.una_copia_que_termina_pone_al_dia_el_saldo_ya_y_otra_vez_despues_y_una_que_ya_estaba_lista_no` |
+| `inicio.ediciones.una_copia_que_termina_pone_al_dia_el_saldo_ya_y_otra_vez_despues_y_una_que_ya_estaba_lista_no` | (H7) una copia que corría aquí y termina (`listo` o `error`) pide el saldo ya y otra vez a los 4 s (el worker devuelve un instante DESPUÉS de marcarla «lista»); una que ya estaba lista al abrir no pide nada; con la lista sin nada corriendo no se repite |
+| `inicio.ediciones.al_irse_la_pantalla_el_segundo_vistazo_al_saldo_de_una_copia_terminada_no_sale` | el segundo vistazo al saldo (a los 4 s) se cancela si la pantalla se va: un temporizador suelto pediría el saldo de quien ya no está |
+| `inicio.ediciones.si_la_bandeja_reintenta_la_copia_la_tarjeta_se_relee_y_pasa_a_editando` | (INT-02) el «Reintentar» de «Tus trabajos» que el servidor acepta avisa con `trabajos:lanzado`: `Inicio` relee las listas y la tarjeta pasa de «No se pudo editar» a «Editando…» y luego a «Listo» sin recargar; al irse la pantalla ya no escucha |
+| `inicio.ediciones.una_copia_que_fallo_ofrece_reintentar_con_su_precio_y_al_aceptarlo_cobra_vuela_el_menos_n_y_pasa_a_editando` | (H6) la tarjeta «No se pudo editar» ofrece «Reintentar ✦ N» (N = lo cobrado; sin créditos, «Reintentar» a secas), con la copia como descripción y objetivo de 48 px; al aceptarlo el «−N» vuela con lo que cobró el SERVIDOR, el saldo se pone al día y la lista se relee |
+| `inicio.ediciones.un_doble_clic_en_reintentar_es_un_solo_pedido_y_un_reintento_sin_precio_conocido_no_vuela_ningun_menos_n` | un doble clic en «Reintentar» es UN pedido (el botón dice «Reintentando…» y se traga los clics); un reintento cuyo precio no se conoce no dibuja ningún «−N» |
+| `inicio.ediciones.si_el_servidor_niega_el_reintento_la_tarjeta_lo_dice_con_sus_palabras_y_sin_saldo_dice_cuanto_falta` | 402: «Te faltan ✦ N · Recargar» en la tarjeta; 409 («todavía estamos devolviendo…», «ya se está reintentando») y 502/503: el texto del servidor TAL CUAL; sin red lo dice y pone al día el saldo; ninguno dibuja un «−N», relee la lista ni hace creer que algo corre |
+| `inicio.ediciones.mientras_se_devuelven_los_creditos_la_tarjeta_lo_dice_y_no_ofrece_reintentar` | con `devolucion_pendiente` (y sin `devueltos`) la tarjeta dice «No se pudo editar» + «Estamos devolviendo tus ✦ N.» y NO ofrece «Reintentar» (cobraría otra vez sin haber devuelto) aunque la corrida aún figure `corriendo` (la cierra el barredor; mientras tanto la lista se sigue leyendo); una marca residual de algo ya devuelto no cuenta |
+| `inicio.ediciones.una_copia_corriendo_de_hace_mas_de_2_horas_se_lee_sin_respuesta_y_no_mantiene_el_sondeo` | (INT-04) un «corriendo» de más de 2 h, sin `inicio` o con un `inicio` ilegible (igual que `_caducada` del servidor) se lee «Edición · Sin respuesta», sin `aria-busy` ni «Reintentar», y ya no mantiene a `Inicio` releyendo cinco listas cada 5 s |
+| `inicio.ediciones.una_copia_corriendo_de_hace_poco_sigue_editando_y_mantiene_el_sondeo` | lo contrario: a 119 min sigue «Editando…» (`aria-busy`) y la lista se sigue leyendo; al cumplirse las 2 h con el reloj de la pantalla pasa a «Sin respuesta» |
+| `inicio.ediciones.al_lanzar_desde_la_caja_las_listas_se_releen_y_la_copia_sale_editando` | al aceptar `iniciar`, `Inicio` relee las listas y la copia aparece «Editando…» sin esperar el sondeo |
+| `inicio.hojavideos.pide_la_lista_al_abrir_dice_que_carga_y_la_pinta` | la hoja «Agregar videos» pide `GET /api/edicion/elegibles` SOLO al abrirse (abrir la caja de Edición no pide nada), dice que carga y pinta la lista; sin lista no hay nada que usar ni que contar |
+| `inicio.hojavideos.si_la_lista_no_llega_lo_dice_adentro_y_reintentar_la_vuelve_a_pedir` | si la lista falla (o la respuesta no es una lista) se dice DENTRO de la hoja (el cuadro de avisos queda tapado por el diálogo) con un «Reintentar» que la vuelve a pedir |
+| `inicio.hojavideos.sin_videos_hechos_con_ia_ofrece_subir_de_la_computadora_y_no_ofrece_usar` | con la lista vacía: «Todavía no tienes videos hechos con IA.», sin filtros ni «Usar», y el único ámbar es «Subir de mi computadora» |
+| `inicio.hojavideos.la_lista_es_la_de_esta_apertura_y_se_vuelve_a_pedir_en_cada_una` | cada apertura es una foto nueva: se vuelve a pedir la lista y no se queda con lo de la vez anterior |
+| `inicio.hojavideos.cerrar_aborta_la_peticion_y_una_lista_que_llega_tarde_no_se_pinta` | cerrar la hoja aborta la petición (`AbortController`): una lista que llega tarde no se pinta ni abre nada |
+| `inicio.hojavideos.cada_video_dice_su_nombre_con_duracion_formato_y_lo_que_aplica_exacto` | nombre accesible EXACTO de cada tarjeta: «{título}, {m:ss}, {16:9}» y solo si aplica «, solo para unir», «, elegido, número N», «, no disponible: {motivo}»; lo apagado por la selección lo dice en su nombre |
+| `inicio.hojavideos.los_cinco_filtros_traen_su_cuenta_y_un_filtro_en_cero_lo_dice` | Todo · Películas · Cuentos · Clips · Ediciones, cada uno con su cuenta (incluye lo que no se puede editar); un filtro en cero dice «Aquí no hay videos de este tipo todavía.»; el filtro también aplica a «No se pueden editar» |
+| `inicio.hojavideos.marcar_numera_en_el_orden_de_marcado_y_desmarcar_recorre_los_numeros` | marcar numera en el orden en que se marca (`aria-pressed`, insignia con el número) y desmarcar recorre los números de los demás |
+| `inicio.hojavideos.el_orden_numerico_continua_la_cuenta_de_la_caja_y_lo_que_esta_en_ella_se_apaga` | lo que ya está en la caja sale «En la caja» (apagado, con palomita, no se marca) y los números siguen la cuenta de la caja |
+| `inicio.hojavideos.con_un_horizontal_marcado_los_verticales_se_apagan_con_su_texto_y_al_reves` | con un horizontal marcado los verticales se apagan con «Vertical · no se une con horizontales» y viceversa; al desmarcar vuelven (apagado = `aria-disabled`, enfocable, el clic no hace nada) |
+| `inicio.hojavideos.el_formato_de_lo_que_ya_esta_en_la_caja_tambien_apaga` | el formato de lo que ya está en la caja también cuenta: con horizontales en la caja los verticales de la hoja nacen apagados |
+| `inicio.hojavideos.se_pasa_de_90_min_apaga_lo_que_no_cabe_y_el_curso_solo_se_apaga_por_la_suma` | «Se pasa de 90 min» apaga lo que ya no cabe en la suma (un curso de 78 min se puede marcar solo; no sumarle 12 min más); quitar lo marcado lo vuelve a encender |
+| `inicio.hojavideos.lo_que_dura_mas_de_90_min_y_las_copias_van_aparte_en_no_se_pueden_editar` | los de más de 90 min y las ediciones (copias) van aparte, bajo «No se pueden editar» (`aria-label="Videos que no se pueden editar"`), cada uno con su motivo; marcarlos no hace nada y no hay botón |
+| `inicio.hojavideos.los_motivos_del_servidor_se_leen_tal_cual_y_un_video_midiendose_dice_que_calcula` | `es_copia`, `en_curso`, `sin_metraje` y `midiendo` (de `elegibles`) se leen con su texto; un video aún sin medir dice «Calculando su duración…» |
+| `inicio.hojavideos.el_tope_de_12_videos_y_de_15_gb_apagan_lo_que_ya_no_cabe` | 12 videos (el 13.º dice «Ya son 12 videos · es el máximo») y 15 GB juntos (10 GB + 6 GB pasan) apagan lo que ya no cabe |
+| `inicio.hojavideos.los_limites_que_manda_el_servidor_ganan_a_los_de_respaldo` | los `limites` de `elegibles` mandan sobre las constantes de respaldo de `reglasVideos.ts` (que solo valen mientras la respuesta no llega; `tests/test_e2_limites.py` las compara con las del servidor) |
+| `inicio.hojavideos.un_solo_video_corto_apaga_usar_este_video_y_dice_que_hace_falta_otro` | UN solo video de menos de 1 min apaga «Usar este video» (`aria-disabled`) y el pie dice «Un video de menos de 1 min no se puede editar solo. Marca otro para unirlos.» |
+| `inicio.hojavideos.usar_n_videos_los_entrega_en_el_orden_de_marcado_cierra_y_devuelve_el_foco_al_mas` | «Usar N videos» entrega los elegidos en el orden de marcado (con sus datos del servidor), cierra y el foco vuelve al «+» |
+| `inicio.hojavideos.cerrar_por_donde_sea_olvida_lo_marcado_y_devuelve_el_foco_al_mas` | Cancelar, Esc, la ✕ y el velo cierran, olvidan lo marcado, el filtro y la pestaña, y devuelven el foco al «+» (el velo tiene 300 ms de gracia al abrir) |
+| `inicio.hojavideos.mi_computadora_agrega_primero_lo_marcado_y_luego_los_archivos` | pestaña «Mi computadora»: «Elegir archivos…» entrega primero lo marcado (en su orden), cierra y deja que la caja abra el selector |
+| `inicio.hojavideos.soltar_algo_que_no_es_video_no_cierra_la_hoja_y_lo_dice_adentro` | soltar algo que no es video en la zona no cierra la hoja y lo dice adentro («Solo sirven videos: MP4, MOV o M4V · hasta 5 GB.»); un video después quita el aviso |
+| `inicio.hojavideos.el_pie_cambia_con_la_pestana_y_la_zona_se_marca_al_arrastrar` | el pie cambia con la pestaña («Se sube de tu computadora y no cuesta créditos…», sin «Usar», solo Cancelar) y la zona se marca (borde ámbar) al arrastrar archivos encima |
+| `inicio.hojavideos.los_motivos_de_apagado_siguen_su_orden_y_solo_los_del_video_van_aparte` | `motivoHoja`: más de 90 min › es copia › en curso › sin metraje › midiendo › en la caja › formato › se pasa › máximo › peso; solo los cinco primeros son del video y van aparte (justo 90 min sí cabe) |
+| `inicio.hojavideos.un_solo_video_de_menos_de_1_min_no_se_edita_solo_y_uno_de_60_s_si` | `unicoCorto`: UN video de menos de 60 s no se edita solo y uno de 60,0 s sí; dos o más cortos sí se unen (sin mínimo); una duración aún desconocida no se juzga |
+| `inicio.hojavideos.el_pie_dice_lo_que_pasa_en_sus_seis_casos` | `cuentaDeLaHoja`: los seis textos del pie (Mi computadora, lista vacía, nada marcado, N marcados con la nota de la copia, «con los de la caja serán N», y el único corto con su alerta) |
+| `inicio.hojavideos.los_numeros_de_orden_continuan_la_cuenta_de_la_caja` | `ordenEnLaHoja`: con 3 videos en la caja el primero que se marca en la hoja es el 4 |
+| `inicio.hojavideos.un_video_marcado_conserva_su_borde_ambar_al_pasar_el_raton` | (H5) lo marcado no lleva `hover:border-campo`: justo después de pulsar el puntero sigue encima y el borde gris le ganaba al ámbar de «elegido»; lo que se puede marcar sí cambia al pasar el ratón y al desmarcar vuelve a su borde |
+| `inicio.union.el_mas_abre_un_menu_con_dos_opciones_y_se_porta_como_el_de_imagen` | el «+» de Editar abre un `role=menu` «Agregar videos» con «Subir de tu computadora» y «Elegir de Mis creaciones»: foco en la primera, flechas/Inicio/Fin dan la vuelta, Esc devuelve el foco al «+», Tab lo cierra, un clic fuera lo cierra; abrirlo no pide nada a la red |
+| `inicio.union.el_mas_ocupado_avisa_y_no_abre_el_menu` | con una subida o una corrida en marcha el «+» avisa «Ya hay un trabajo en curso…» y no abre el menú |
+| `inicio.union.con_dos_o_mas_videos_el_menu_se_abre_hacia_arriba_y_el_mas_dice_agregar_otro_video` | con UN video el menú se abre hacia abajo; con dos o más (la caja ya es alta) hacia arriba; el «+» dice «Agregar otro video» desde el primero |
+| `inicio.union.subir_de_tu_computadora_se_apaga_con_12_videos_o_90_minutos_y_dice_por_que` | con 12 videos o 90 min en la caja «Subir de tu computadora» queda `aria-disabled` y su subtítulo dice por qué («Ya tienes 12 videos: es el máximo.») |
+| `inicio.union.subir_de_tu_computadora_se_apaga_al_sumar_90_minutos` | lo mismo al llegar a los 90 min medidos («Ya llegaste a 90 minutos en total: no caben más videos.») |
+| `inicio.union.subir_varios_archivos_van_en_cola_de_uno_en_uno_con_su_progreso_y_cotiza_al_terminar_la_cola` | varios archivos elegidos juntos suben de uno en uno: el primero con su `progressbar`, los demás «En cola» sin permiso pedido; al terminar el último se pide UN solo precio con todas las referencias |
+| `inicio.union.cada_subida_confirmada_pasa_a_ser_el_proyecto_con_su_nombre_y_los_repetidos_estrenan_nombre` | cada subida confirmada es el proyecto `proyecto:<nombre>` (el del archivo) y un nombre que ya es un proyecto tuyo con video estrena un nombre alterno |
+| `inicio.union.al_confirmar_cada_subida_manda_el_nombre_del_archivo_tal_como_la_persona_lo_vio` | (INT-05) `POST /api/media/confirmar` lleva `nombre` = el archivo tal como la persona lo vio («Mi Entrevista (1).mp4», «Reunión de Año.mov»): el de la key va saneado y de él salía el título de la copia; el cuerpo no lleva nada más que `proyecto`, `key` y `nombre` |
+| `inicio.union.dos_archivos_con_el_mismo_nombre_en_la_misma_tanda_no_son_el_mismo_proyecto` | dos archivos que se llaman igual en la misma tanda: el segundo se sube con su nombre alterno (la caja ya sabe del primero aunque el servidor aún no) |
+| `inicio.union.un_archivo_que_falla_sale_y_la_cola_sigue` | un archivo que falla a mitad sale de la caja, se dice por qué, y el siguiente de la cola empieza |
+| `inicio.union.si_fallan_dos_archivos_el_aviso_dice_cuales_y_el_segundo_no_pisa_al_primero` | (H3) cada fallo de subida lleva el nombre de SU archivo («“uno.mp4”: La subida a la nube falló (500)…», «Se perdió la conexión con “dos.mp4” a los 41 %…») y los de una misma cola se suman en el único aviso de la caja en vez de pisarse; quitar lo que quedó vacía la cuenta; si la instalación no sube videos se dice una vez y sin nombre |
+| `inicio.union.si_se_corta_la_conexion_dice_a_que_porcentaje_que_no_se_cobro_nada_y_como_seguir` | una conexión cortada con el PUT en el aire dice a qué porcentaje iba, que no se cobró nada y cómo seguir (reutiliza el texto de `nucleo/subida`) |
+| `inicio.union.quitar_la_que_sube_la_cancela_sin_error_ni_precio_y_la_cola_sigue_con_la_siguiente` | «Cancelar la subida de «x»» aborta SU PUT (no es un error de nadie, no confirma nada) y la cola sigue con la siguiente |
+| `inicio.union.mas_de_12_archivos_se_recortan_a_12_y_se_dice` | más de 12 archivos se recortan a 12 y se dice («Como mucho 12 videos.») |
+| `inicio.union.los_archivos_que_no_sirven_se_rechazan_uno_por_uno_con_su_motivo_y_los_demas_siguen` | los archivos que no sirven se rechazan UNO por uno con su motivo (en un solo aviso) y no frenan a los demás |
+| `inicio.union.cambiar_de_familia_y_volver_no_pierde_la_lista_ni_la_cola` | cambiar de familia y volver no pierde la lista ni la cola: la cola sigue sola mientras la persona está en otra familia |
+| `inicio.union.la_union_dice_cuantos_videos_y_cuanto_duran_con_una_fila_por_video_y_la_nota_en_plural` | con dos o más: «N videos · m:ss · se unen en este orden» (la suma medida por el servidor), una fila por video con su número, nombre y meta en una línea, y «Se edita una copia. Tus originales se quedan como están.» |
+| `inicio.union.subir_y_bajar_cambian_el_orden_con_nombres_exactos_extremos_apagados_foco_en_su_boton_y_anuncio` | «Subir “x”» y «Bajar “x”» (nombres exactos) cambian el orden; la primera no sube y la última no baja (`aria-disabled`, enfocables, sin `disabled`); el foco se queda en el mismo botón y un `role=status` dice «“x” ahora es el número N de M.» |
+| `inicio.union.lo_que_se_manda_es_el_orden_nuevo_y_mover_no_cobro_nada` | reordenar no vuelve a cotizar ni cobra, y lo que se manda en `iniciar` es el orden nuevo |
+| `inicio.union.reordenar_no_hace_ninguna_peticion_ni_apaga_el_precio_ni_siquiera_un_instante` | reordenar no manda NINGUNA petición (se cuentan todas, de cualquier ruta, también las que salieran tarde) ni pasa por «Calculando…»: el precio sigue ahí en cuanto se mueve |
+| `inicio.union.quitar_recorre_los_numeros_vuelve_a_cotizar_manda_el_foco_al_mas_y_con_uno_queda_su_tarjeta` | quitar cambia QUÉ hay: recorre los números, vuelve a pedir el precio con los que quedan, manda el foco al «+» y con UNO queda su tarjeta de siempre con la nota en singular |
+| `inicio.union.desde_la_quinta_fila_la_lista_se_desplaza_por_dentro_con_alto_de_cuatro` | desde la 5.ª fila la lista tiene alto máximo de cuatro filas y se desplaza por dentro: la caja no crece sin límite |
+| `inicio.union.con_dos_o_mas_videos_la_pista_suma_la_idea_de_unir_como_primera` | con dos o más videos la pista rotatoria suma «Únelos en este orden y quita los silencios» como primera idea |
+| `inicio.union.las_creaciones_elegidas_se_agregan_al_final_sin_repetir_y_el_precio_sale_del_servidor` | las creaciones elegidas entran al FINAL, en el orden en que se marcaron, sin repetir lo que ya está (no reemplazan nada), y el precio sale del servidor |
+| `inicio.union.la_hoja_mezcla_lo_elegido_con_lo_subido_y_manda_las_referencias_en_el_orden_de_la_caja` | creaciones elegidas y archivos subidos conviven en la misma unión y `cotizar`/`iniciar` mandan las referencias (`proyecto:…`, `clip:…`) en el orden de la caja |
+| `inicio.union.mi_computadora_de_la_hoja_agrega_primero_lo_marcado_y_luego_sube_los_archivos` | «Elegir archivos…» de la hoja no pierde lo marcado: se agrega primero y luego se abre el selector |
+| `inicio.union.un_bloqueo_del_servidor_apaga_iniciar_con_su_texto_y_se_quita_al_agregar_otro_video` | un `bloqueo` de `cotizar` (p. ej. UN video de 8 s no se edita solo) sale TAL CUAL bajo el botón, «Iniciar» queda dorado, `aria-disabled` y sin precio, y se quita al agregar otro video |
+| `inicio.union.formatos_distintos_lo_dice_el_servidor_tal_cual_y_la_caja_no_lo_repite` | la hoja no apaga lo que no conoce (un archivo subido): los formatos mezclados los dice el servidor al cotizar, con su texto, y la caja no lo duplica |
+| `inicio.union.sin_saldo_dice_estos_videos_en_plural_y_cuanto_falta` | sin saldo con varios videos: «Tienes ✦ S: no alcanza para editar estos videos.» y «Te faltan ✦ N · Recargar» |
+| `inicio.union.el_modo_shorts_sigue_con_un_solo_video_sin_menu_ni_hoja_y_el_mas_abre_el_selector_directo` | «De videos a Shorts» no cambia: UN video, el «+» abre el selector directo, sin menú ni hoja |
 
 ## Cada aserción vieja y su destino
 
@@ -359,7 +474,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_titulos_en_bricolage_y_texto_en_geist` | `tokens.css` (`h1, h2` en `font-titulo`) y `font-titulo` en los `h3` de los caminos |
 | `test_sin_tamanos_de_letra_fuera_de_la_escala` | `tokens.css` borra la escala de Tailwind: fuera de los seis tamaños no compila |
 | `test_sin_emojis_como_iconos` | guardianes M19/M21 sobre `web/` e `<Icono>` |
-| `test_cada_entrada_del_menu_lleva_icono` | `GRUPOS` en `Inicio.tsx`: cada `Entrada` exige `icono`; `inicio.menu.entradas_y_grupos_en_orden` cuenta las 6 (eran 7 hasta el 14-oct-2026) |
+| `test_cada_entrada_del_menu_lleva_icono` | `GRUPOS` en `Inicio.tsx`: cada `Entrada` exige `icono`; `inicio.menu.entradas_y_grupos_en_orden` cuenta las 6 (eran 7 hasta el 14-oct-2026). **15-oct-2026:** `GRUPOS` y `EntradaMenu` ya no existen; el registro es `marca/menu.ts`, donde `AreaMenu`, `GrupoMenu` y `PantallaMenu` exigen `icono: NombreIcono` (sin él no compila) y `Mapa`, `Grupos` y `Pantallas` lo pintan. `Marco.test.tsx` vigila que cada `pagina` de `menu.ts` sea el `pantalla` de un `<Marco>` real |
 | `test_los_iconos_que_usa_el_inicio_existen` | TypeScript: `NombreIcono` |
 | `test_el_saldo_se_queda_en_la_pildora_de_arriba` | el inicio nuevo no pinta saldo: lo hace la píldora de `monedero.js` |
 | `test_los_tres_caminos` | `inicio.caminos.enlaces_a_shorts_y_metraje`; los botones son `secundario` |
@@ -395,7 +510,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_la_agenda_es_un_enlace_y_ya_no_dice_proximamente` | `inicio.menu.entradas_y_grupos_en_orden` |
 | `test_el_modal_ya_no_dice_que_programar_llega_pronto` | `inicio.blotato.aviso_del_cobro_con_el_precio_del_server_antes_del_campo` |
 | `test_arrastrar_desde_el_campo_no_cierra_el_modal` | Radix cierra con `pointerdown` fuera: arrastrar desde el campo y soltar fuera no cierra |
-| `test_en_el_telefono_el_inicio_no_se_desplaza_de_lado` | Playwright a 390 px (sin scroll horizontal); el menú se desplaza en su fila y las pistas tienen `max-w` contra la ventana |
+| `test_en_el_telefono_el_inicio_no_se_desplaza_de_lado` | Playwright a 390 px (sin scroll horizontal); el menú se desplaza en su fila y las pistas tienen `max-w` contra la ventana. **15-oct-2026:** ya no hay fila de menú que se desplace: la tarjeta es de una columna y el mapa pasa a la «X compacta» (≤ 560 px); lo mide `web/e2e/inicio-recorrido.spec.ts` en cada paso a 320, 390 y 1100 px (sin desborde horizontal, lo tocable de 44 px y letra de 13 px o más). Las pistas con `max-w` contra la ventana son las del chip de la caja (`inicio-caja.spec.ts`, 320–359 px) |
 | `test_el_modal_se_centra_pese_al_reset_de_margenes` | `<Dialogo>` (Radix) se centra con `translate`, no con `margin` |
 
 ### tests/test_m25_entrada.py (lo que mira el inicio)
@@ -419,8 +534,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_el_triangulo_es_contenido_del_boton_y_va_a_la_derecha` | el ▾ va dentro del botón, al final (`Caja.tsx`), con `whitespace-nowrap` |
 | `test_el_menu_se_sujeta_dentro_de_la_ventana` | el `useLayoutEffect` de `Caja.tsx` mide y sujeta el menú, también al redimensionar; Playwright a 390 px |
 | `test_cada_opcion_cambia_el_ejemplo_del_hueco` | `inicio.caja.cada_opcion_cambia_el_ejemplo` |
-| `test_mix_tiene_su_propio_grupo_en_el_menu` | `inicio.menu.entradas_y_grupos_en_orden` |
-| `test_mix_va_debajo_de_blotato_porque_blotato_es_su_requisito` | `inicio.menu.entradas_y_grupos_en_orden` |
+| `test_mix_tiene_su_propio_grupo_en_el_menu` | `inicio.menu.entradas_y_grupos_en_orden` (15-oct-2026: ya no tiene grupo propio, «Publicidad Automática»: MIX está en Marketing › Avanzado, junto a la Copiadora de estilos) |
+| `test_mix_va_debajo_de_blotato_porque_blotato_es_su_requisito` | `inicio.menu.entradas_y_grupos_en_orden` (el orden ya no es «debajo»; el requisito sigue: MIX se apaga sin la clave de Blotato, `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar`) |
 
 ### Otros módulos que miran el inicio
 
@@ -443,12 +558,200 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 
 ## Diferencias a propósito
 
+- **Mapa con Irremplazables (dueño, 15-oct-2026: «Me gusta, ahora empecemos a
+  tocar el código»):** el inicio deja de tener menú a la izquierda, en cualquier
+  ancho, y pasa a ser un **recorrido de tres pasos dentro de una sola tarjeta**.
+  Cómo quedó cada decisión:
+  - **Mapa en X → tres opciones → pantalla (15-oct-2026).** El mapa tiene las
+    cinco áreas (Marketing, Producto, Central, Ventas y Automatizaciones);
+    elegir una abre sus tres opciones (las de Marketing: Distrito · Blotato ·
+    Avanzado); elegir una abre la pantalla: la caja (Distrito) o la lista de las
+    pantallas del grupo. Producto, Ventas y Automatizaciones son fichas inertes
+    («Próximamente»: se enfocan, no se abren). Hay **una sola lista de adónde
+    ir**, `web/src/marca/menu.ts` (áreas → grupos → pantallas); de ella salen el
+    recorrido (`estadoRecorrido.ts`, todo su estado sin React), el mapa, las opciones,
+    la lista y las migas de las hojas, así que no se desincronizan. Lo que hacían
+    `GRUPOS`, `Menu` y `EntradaMenu` de `Inicio.tsx` (y la columna `<aside>`) ya
+    no existe como tal.
+  - **Se aterriza en el mapa (15-oct-2026, segunda ronda del dueño: «el mapa
+    es el inicio»).** *Sustituye a «Se aterriza en la caja».* Al abrir
+    `/estudio/inicio/` se ve «Elige un área» con la X de las cinco áreas, con
+    **nada elegido**: la caja (Marketing › Distrito) está montada y escondida y
+    se llega a ella con Marketing → Distrito. Las entradas `?desde=…&ver=…` de las
+    hojas siguen igual; una entrada que no vale ahora aterriza en el mapa (antes
+    en la caja). La caja sigue ARRANCANDO en Video, donde arrancaba
+    (`inicio.caja.arranca_en_el_clip_lo_mas_barato`,
+    `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video`).
+    En el estado hay un campo nuevo, `elegido` (falso solo en el reposo): sin él las
+    opciones marcarían «Estás aquí» en Distrito, el grupo de la caja escondida, y
+    sería el mismo «parece seleccionado» que el dueño pidió quitar del mapa.
+  - **El título arriba, la tarjeta solo para la caja (15-oct-2026, segunda
+    ronda).** *Sustituye a «Tarjeta única».* «Irremplazables» (dorado, único `h1`,
+    sin icono) va FUERA y ARRIBA de cualquier tarjeta y no se mueve de un paso a
+    otro (a 88 px del borde de la ventana). La tarjeta (borde, fondo y relleno) es
+    solo de la caja: 820 px como mucho, centrada, con 32 px de aire bajo el título
+    (su borde cae a 155 px a 1100×800; antes caía a 64, pegado al saldo) y sin
+    centrarse en vertical. El mapa, las opciones y la lista de un grupo son
+    pantallas sueltas, **sin cuadro alrededor**, centradas en horizontal y en el
+    alto que sobra bajo el título (`main` mide `min-h-dvh`, la sección llena el
+    resto y el paso se centra en ella; sin la caja `main` no lleva `pb`, para que
+    el hueco de abajo sea el mismo que el de arriba). Las migas van dentro de la
+    tarjeta (a la izquierda) con la caja, y centradas bajo el título en los demás
+    pasos. La `<section>` de la caja sigue sin ser su propia tarjeta (sin borde,
+    fondo ni margen propios). «Mis creaciones» queda debajo de la tarjeta, del
+    mismo ancho, solo con la caja a la vista.
+  - **Nada se ve elegido hasta que se elige (15-oct-2026, segunda ronda).**
+    Ninguna ficha del mapa lleva «Estás aquí», tono de seleccionada ni
+    `aria-current` (la insignia y el tono salieron; `EstasAqui` se quedó solo en
+    las tres opciones). Marketing y Central, las dos que se abren, se ven con el
+    mismo tono de «Central» de antes (`bg-superficie`, borde de línea); el hover y
+    el foco se conservan; Producto, Ventas y Automatizaciones siguen apagadas.
+    Las tres opciones marcan «Estás aquí» solo en el grupo que ya elegiste (o de
+    donde llegaste desde una hoja).
+  - **Migas, sin «Volver a …» y Esc (15-oct-2026, segunda ronda).** *Sustituye a
+    «Migas, «Volver a …» y Esc».* La ruta elegida son chips («Marketing ›
+    Distrito») y cada uno reabre su nivel: son la manera de subir de nivel.
+    **Ya no existe «Volver a Imagen / Video / Edición» ni «Volver a <el grupo>»**
+    (el estado perdió la acción `volver`, y `Caja` el aviso `alCambiarFamilia` que
+    solo servía para rotularlo). **Única excepción:** la página aparte de donde se
+    llegó (`hoja`, p. ej. Agenda → miga «Marketing»): no se alcanza con las migas,
+    así que se conserva «Volver a Agenda…» (un enlace, centrado bajo el título) y
+    Esc regresa a ella. **Esc:** con esa página de por medio, regresa a ella desde
+    el mapa y desde las opciones; sin ella, en las opciones sube al mapa, y en el
+    mapa y en la caja o la lista de un grupo no hace nada (`alEscape`). Sigue
+    siendo de la región y no de la página (con un diálogo, el menú del «+» o la
+    lista de «Editar ▾» abiertos, Esc es de ellos). Mirar otra área NO te saca de
+    donde estabas. El foco: abrir el inicio sin más ya no está «en la caja», así
+    que lo que antes era «aterrizar en la caja no lo mueve» es ahora «abrir el
+    inicio en el mapa, sin nada elegido, no lo mueve» (ahí Esc no hace nada); llegar
+    por la miga de otra página sí lo lleva al `h2`.
+  - **La caja siempre montada (15-oct-2026).** Con el mapa, las opciones o una
+    lista a la vista, la caja y lo que cuelga de ella («Mis creaciones», los
+    caminos de quien empieza, los archivados) se esconden con `hidden`, no se
+    desmontan: así no se pierden el texto escrito, el video subido, una subida
+    en curso ni el filtro de la galería. Se esconde de la vista, del foco y del
+    lector de pantalla.
+  - **La lista de pantallas de un grupo (15-oct-2026).** Lo que enseña un
+    grupo que no es la caja: tarjetas-enlace con título, línea de apoyo e icono.
+    Las de Blotato se apagan (`aria-disabled`, «Conecta tu Blotato para usarlo»)
+    solo cuando se sabe que no está conectado, y su clic abre el diálogo en
+    vez de navegar: es la regla M23 · C de siempre, sin cambios (ver las filas
+    `inicio.menu.*`). El botón de conectar o ver la cuenta (antes el «+»/✓ del
+    encabezado del grupo en el menú) pasó arriba de esa lista y ahora dice lo que
+    hace. Todo Central sale «Próximamente» y no navega (fondo hundido y texto
+    secundario, no media opacidad: a media opacidad no pasaba el contraste); un
+    grupo sin pantallas (Deepseek) dice «Todavía no está disponible.».
+  - **Las hojas llevan migas (15-oct-2026).** Agenda, Competencia, Métricas, MIX
+    y la Copiadora de estilos siguen siendo páginas, con «← Estudio» y, al lado,
+    «Marketing › Blotato» (o «Avanzado») como **enlaces** al inicio con
+    `?desde=<lugar>&ver=mapa|grupos`. El inicio lee esos dos parámetros UNA vez,
+    al abrir, con las claves validadas contra `menu.ts` (una clave que no existe
+    se ignora y se aterriza en el mapa) y limpia solo lo suyo de la URL (deja
+    `?blotato=conectar` y el ancla). Las pantallas que el mapa no tiene (Admin,
+    Crear, Subir, Clip, Imágenes y Shorts) no llevan migas. Las migas son
+    `<ol><li>`: las pruebas de Agenda, Métricas y MIX que cuentan `listitem`
+    lo hacen ahora dentro de `<main>`.
+  - **«De videos a Shorts» dentro de «Editar ▾» (15-oct-2026).** Es la segunda
+    opción del chip y ya no tiene entrada propia (en el menú tenía el enlace a
+    `/shorts.html`, que sigue valiendo en la clásica). El modo vive en
+    `useEdicion`, así que cambiar de pestaña, abrir el mapa o dejar rotar la
+    pista no lo pierde, ni la liga escrita. Su cuerpo: texto de apoyo, el campo
+    «Liga de YouTube», el «+» y «Iniciar» dorado **sin precio**. **«Iniciar» no
+    cobra: navega** a la pantalla de Shorts (la que muestra cada precio y cobra
+    con su propio botón): con liga de YouTube, a `/estudio/shorts/?url=<liga>`,
+    donde queda escrita en «Importar» sin cotizar ni importar; con un video
+    subido desde el «+», a `?p=<proyecto>`; sin nada, avisa qué falta; con una
+    liga que no es de YouTube, error junto al campo. La nota de debajo solo
+    dice «Te llevamos a Shorts…» cuando «Iniciar» de verdad navega (un video
+    subido o una liga de YouTube); con otra cosa escrita sigue la de «Subirlo no
+    cuesta nada…». El contrato de `?p=` y `?url=` está en `shorts.md`. No se
+    inventó ningún endpoint ni se tocó el servidor. Editar no cambió: lo siguen cubriendo,
+    tal cual, los `inicio.edicion.*` de más arriba.
+  - **Copiadora de estilos, provisional en Avanzado (15-oct-2026).** No estaba
+    en el prototipo: va a ser parte de «Marcas», que todavía no existe. Se queda
+    en Marketing › Avanzado (con MIX) para no dejar sin puerta una pantalla que
+    funciona, y se quita cuando Marcas exista.
+  - **Celular, dorado y foco (15-oct-2026).** Hasta 560 px el mapa es la «X
+    compacta» (dos columnas, Central como banda de ancho completo en medio,
+    trazos punteados cortos); en escritorio, una cuadrícula de 3×3 con las dos
+    diagonales punteadas por detrás. Fichas de 44 px o más, letra de 13 px o más,
+    «Automatizaciones» y «Próximamente» sin partirse a 390 ni a 320 px. El título
+    lleva un degradado dorado solo para él (tokens `--color-oro*` y la clase
+    `texto-oro`; `docs/DISENO.md` §3). Al cambiar de paso el foco nunca cae a
+    `<body>`: va al `h2` del paso nuevo (abrir el inicio sin más no lo mueve: se
+    queda en `<body>`, a propósito), y el segundo clic de un doble clic en una
+    ficha del mapa (menos de 500 ms) no elige un grupo por accidente.
+  - **Edición: sin la frase de ayuda y «Iniciar» del ancho del selector de modelo
+    (15-oct-2026, segunda ronda).** (a) «Escribe qué quieres hacer con tu video.»
+    ya no se ve. No se borró porque cumple una función: es la descripción de
+    «Iniciar» (`aria-describedby`) mientras no hay texto, así que queda solo para
+    el lector de pantalla (`sr-only`, en la misma región de estado: se anuncia como
+    antes) y la región ya no deja su margen vacío. `AYUDA_TEXTO` y su texto no se
+    tocaron. (b) «Iniciar» mide **lo mismo de ancho que el selector «Modelo Veo 3.1
+    Lite · 8 s ▾»** de Video en escritorio: los dos usan UNA medida, `ANCHO_DE_ACCION`
+    (`medidas.ts`: `min-[640px]:min-w-[13.5rem]`, 216 px; el selector mide 209,5 px
+    por su rótulo y «Iniciar» medía 85, ahora los dos 216). Es un mínimo: con un
+    modelo de rótulo más largo el selector crece (se recorta el nombre con «…» solo
+    si ni así cabe) y «Iniciar» se queda en 216 px; por debajo de 640 px los dos
+    ocupan todo el ancho, como antes. El selector pasa a `justify-between` (con
+    más sitio del que pide el rótulo la flecha va al borde). «Iniciar» también toma
+    el alto de la fila (44 px, `ALTO_DE_ACCION`; antes 48), para que la fila quede
+    alineada igual que en Video.
+
+  **Qué pasó con cada aserción vieja que cambió (15-oct-2026).** Ninguna se
+  borró: los IDs `inicio.menu.*` e `inicio.blotato.*` se conservaron con su
+  nombre y se adaptó el cuerpo de cada prueba a la ruta nueva (la tabla de
+  arriba dice qué afirma ahora cada una).
+  - `inicio.menu.entradas_y_grupos_en_orden`: ya no cuenta entradas de un menú:
+    recorre mapa → Marketing → Blotato y Avanzado, y Central › Distrito, y
+    comprueba las mismas puertas y el mismo orden; exige que no haya nav
+    «Secciones» ni «De videos a Shorts» en las listas.
+  - `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan`:
+    «De videos a Shorts» deja de ser una de «las otras dos»: está en el chip; la
+    Copiadora de estilos sigue con su texto tal cual.
+  - `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono`: de
+    `text-ambar-claro` y `text-titulo-sm font-bold` a `text-titulo-lg` y
+    `font-extrabold` con `texto-oro` en un `<span>` dentro del `h1`; y es el único `h1`.
+  - `inicio.menu.sin_clave_…`, `…si_no_se_sabe_…` y `…pregunta_ligero`: la misma
+    regla, en las listas.
+  - `inicio.blotato.*`: las 11 se conservaron; su `abrir` ya no pulsa el «+» del
+    menú sino que entra a la lista de Blotato por el mapa y pulsa el botón de
+    conectar; `desconectar_pide_confirmar` y `conectar_enciende_el_menu` miran
+    ahora las tres tarjetas.
+  - `inicio.edicion.el_chip_editar_…` y `…el_chip_se_porta_como_el_de_video_…`:
+    de una a dos opciones (ver sus filas).
+  - `inicio.caja.sin_texto_no_navega`: el aviso ya no manda «a entrar por el
+    menú de la izquierda» (no hay): dice solo «Cuéntanos qué quieres primero.».
+  - Lo que NO se registró: ninguna de las pruebas nuevas del recorrido ni del modo
+    Shorts lleva `inicio.` (ver «Pruebas sueltas»), porque no son algo que la
+    pantalla vieja garantizara.
+  - El e2e que miraba el menú (`inicio-caja.spec.ts`: «el título del menú dice
+    Irremplazables…») se reescribió para la tarjeta y se le sumó que ya no hay
+    nav «Secciones»; `docs/QA-UI.md` § inicio reemplaza las filas 43 y 46,
+    reescribe la 8 y la 9 y suma las 49 a 70.
+  - **Segunda ronda (15-oct-2026, «el mapa es el inicio»).** Ningún ID registrado
+    cambió de nombre ni se borró. Lo que sí cambió en las pruebas: `pintar()` de
+    `Inicio.test.tsx` llega a la caja por Marketing → Distrito antes de devolver
+    (la caja ya no es lo primero que se ve; cada prueba conserva su cuerpo), y
+    `Recorrido.test.tsx`, `estadoRecorrido.test.ts`, `Mapa.test.tsx` y los e2e
+    `inicio-recorrido`, `inicio-caja`, `inicio-edicion`, `inicio-shorts` y
+    `movimiento-reducido` se reescribieron a la realidad nueva (aterrizar en el
+    mapa, sin «Volver a …», sin «Estás aquí» en el mapa, el título fuera de la
+    tarjeta, la geometría). `inicio.edicion.la_fila_de_botones_de_ideas_ya_no_existe_…`
+    sigue afirmando que `AYUDA_TEXTO` dice lo mismo; que además ya no se ve lo
+    prueba una suelta de `Edicion.test.tsx` y `inicio-edicion.spec.ts`.
+    `docs/QA-UI.md` § inicio reescribe las filas 15, 43, 47, 49, 51, 52, 58, 60 a 62
+    y 64 a 66, ajusta la 46, la 59 y la 67, y suma la 71 a 73.
+
 - **Ajustes del dueño a la pestaña Edición y al menú (14-oct-2026, mirando una
-  captura):** (1) «Editor de videos» salió del menú de la izquierda (quedan «De
+  captura; el menú de la izquierda dejó de existir el 15-oct-2026, ver el
+  bullet de arriba, y lo que sigue se lee como historia de ese día):** (1)
+  «Editor de videos» salió del menú de la izquierda (quedan «De
   videos a Shorts» y «Copiadora de estilos»); `static/index.html`, la página
   vieja, no se tocó, y la tarjeta «Desde tu metraje → Subir metraje» del primer
   uso sigue llevando a `/e1.html`. (2) El título de la columna izquierda dice
-  **«Irremplazables»** en dorado (`text-ambar-claro`), sin icono; los `<title>`
+  **«Irremplazables»** en dorado (`text-ambar-claro`; desde el 15-oct-2026 es
+  el dorado con degradado de la tarjeta), sin icono; los `<title>`
   de las páginas y el título de las otras pantallas siguen diciendo «Estudio de
   video · …» (pendiente de decidir). (3) El texto de las TRES familias está en un
   cuadro bien definido (`ui/CuadroDeTexto`): borde de campo, fondo `elevada`,
@@ -456,7 +759,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   (4) «Editar ▾» junto al «+», como el chip de las otras familias: se extrajo
   `SelectorOpcion.tsx` de `Caja.tsx` y lo usan las dos cajas, así que hay un solo
   teclado, un solo foco y una sola posición (la revisión del mismo día corrigió en las tres familias que la pista del chip no se pintaba y que Tab con la lista abierta tiraba el foco a `<body>`: ver `inicio.caja.selector_*`).
-  Hoy tiene una opción; ahí mismo irá «De videos a Shorts». (5) *No se hizo en
+  Ese día tenía una opción; desde el 15-oct-2026 tiene dos, y «De videos a
+  Shorts» quedó ahí mismo (ver el bullet de arriba). (5) *No se hizo en
   esta pasada:* que las ideas («Quita muletillas y silencios»…) aparezcan y
   desaparezcan donde dice «Cuéntale a la IA». La fila de ideas, `usarIdea` y su
   `role="group"` quedaron como estaban, debajo del cuadro. *(Se hizo después, en
@@ -648,10 +952,10 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   pierde ni cancela la subida. Peticiones solo perezosas (al subir, al lanzar y
   el sondeo de después): nada al montar. Una tarea a la vez es un aviso de la
   pantalla (subida o corrida en curso): **pendiente en el servidor** un candado
-  por cuenta, hoy solo hay 409 por proyecto. Lo que NO entra todavía (piezas
-  posteriores): unir varios videos, elegir de Mis creaciones, copiar una
-  creación, fundidos, título, música, Marcas, el editor conversacional y la
-  bandeja de tres pasos. Lo que la instrucción pida y el motor de hoy (que solo
+  por cuenta, hoy solo hay 409 por proyecto. Lo que NO entraba en E1
+  (unir varios videos, elegir de Mis creaciones, copiar una creación y la bandeja de tres pasos
+  entraron en E2, abajo): fundidos, título, música, Marcas y el editor conversacional.
+  Lo que la instrucción pida y el motor de hoy (que solo
   QUITA tramos) no sepa hacer —formato vertical, subtítulos, música— no se
   aplica y llega como duda en el editor, no se calla; por eso conviene leer las
   ideas de la pista con ese límite en mente. El botón principal se apaga con
@@ -705,6 +1009,44 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   (formatos y 5 GB) viven en el `title` del «+» y en el aviso del servidor, no en
   un menú.
 
+  **E2 (15-oct-2026): varios videos, «Elegir de Mis creaciones», copia y unión.**
+  El «+» de Editar abre un MENÚ (`role=menu`: «Subir de tu computadora» y «Elegir de
+  Mis creaciones») y la caja pasa de «un video» a una LISTA ORDENADA de referencias
+  (`proyecto:<nombre>` o `clip:<id>`; el orden de la lista ES el orden en que se unen).
+  Con uno, su tarjeta de siempre; con dos o más, «N videos · m:ss · se unen en este
+  orden» con una fila por video y Subir / Bajar / Quitar. La caja no sabe de precios ni
+  de reglas: `POST /api/edicion/cotizar` (solo `{videos}`) trae el precio global del
+  conjunto, su `desglose` y un `bloqueo {codigo, texto}` que se enseña TAL CUAL; se vuelve
+  a pedir al agregar o quitar y NO al reordenar. «Iniciar» es `POST /api/edicion/iniciar`
+  con `{pedido, videos, instruccion}` (`pedido` = clave de idempotencia de 32 hex que se
+  conserva solo si la respuesta fue dudosa —sin red o 504— y se renueva con cualquier otra,
+  o si cambia la lista, su orden o el texto). Siempre se edita una COPIA: el original no se
+  toca (lo dicen la nota bajo la lista, el pie de la hoja y el encabezado del editor).
+  Los archivos que se suben van en COLA, de uno en uno (un solo PUT a la vez), y el precio
+  se pide cuando el último está en el servidor. La hoja «Agregar videos» (`HojaVideos.tsx`
+  + `reglasVideos.ts`, las reglas sin React) es el patrón de la Biblioteca (foto al abrir,
+  olvidar al cerrar, `AbortController`, foco de vuelta al «+») pero vive en `Caja`, FUERA de
+  la sección que recibe lo que se arrastra (si no, soltar un archivo dentro de la hoja lo
+  subía dos veces: por el árbol de React el evento sube aunque el diálogo sea un portal).
+  Los límites (90 min, 1 min para editar solo, 12 videos, 15 GB) son del servidor
+  (`limites` de `GET /api/edicion/elegibles`); `reglasVideos.ts` trae cuatro constantes de
+  RESPALDO que `tests/test_e2_limites.py` compara con las del servidor. La tarjeta de la
+  copia en «Mis creaciones» dice su título y «Copia de …», y no es un enlace hasta que está
+  lista; la bandeja (`static/trabajos.js`) pinta `ficha.edicion` (tres pasos, «Pediste»,
+  «Llevas m:ss» con reloj propio sin repintar, listo con «Abrir el editor», error en tres
+  partes con «Reintentar») y no arma ninguna frase de esa ficha salvo dos fijas.
+  Decisiones propias de la implementación (no del lienzo): un 504 o cualquier error que no
+  sea del servidor cuenta como respuesta DUDOSA; un 409 que no es «ya falló» deja la
+  pantalla en «tarea en curso» sondeando `GET /api/edicion/proyectos`; «No se pueden
+  editar» son botones `aria-disabled` (enfocables) con su motivo; todos los motivos
+  propios del video van «aparte»; el icono `prohibido` es nuevo (`web/src/ui/iconos.ts` y
+  `static/iconos.js`, iguales); los rechazos de varios archivos juntos se dicen en UN solo
+  aviso; la miniatura de la fila se oculta bajo 400 px y a 320 px los tres botones pasan a
+  la línea de abajo (el nombre no se aplasta). El encabezado del editor (`tools/editor/index.html`)
+  dice «Copia de …» en su PROPIA fila (medido: a 1100 px la fila de arriba solo deja ~170 px
+  libres y el aviso en esa fila mandaba los botones a otra), con el título largo cortado con
+  puntos suspensivos.
+
 - **Confirmaciones:** archivar y desconectar Blotato usan `<Confirmar>`
   (Radix, con el foco en Cancelar) en lugar de `confirm()`.
 - **Avisos:** los de cargar y archivar van dentro de la pantalla (`<Aviso>`),
@@ -717,7 +1059,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 - **El desplegable:** es un `listbox` con teclado completo (↑ ↓ Inicio Fin
   Enter Esc).
 - **Teléfono:** los grupos del menú y el «+» de Blotato siguen en la fila
-  que se desplaza.
+  que se desplaza. *(Hasta el 15-oct-2026: ya no hay menú ni fila; el botón de
+  Blotato está en la lista del grupo y el mapa del celular es la «X compacta».)*
 - **«Mis videos» (UI·26, dueño 28-sep):** «Mis proyectos» pasa a «Mis
   videos» y junta películas, clips de 8 s y shorts, lo más nuevo primero.
   Abajo de cada una va su tipo (Video largo, Video corto, Shorts, Cuento) en

@@ -218,6 +218,47 @@ def respaldar(key: str, key_respaldo: str) -> None:
                       CopySource={"Bucket": bucket, "Key": key})
 
 
+def tamano(key: str) -> int | None:
+    """ContentLength de un objeto (`head_object`), o None si no existe / no hay
+    bucket. E2: el worker lo usa para no recopiar lo que ya está en la copia
+    (un reintento reutiliza `videos/<copia>/clips/`). Solo es una optimización:
+    si S3 contesta cualquier error del cliente (404, o un 403 sin permiso de
+    listar), se trata como «no está» y el `copiar` que sigue dirá el error de
+    verdad. Los fallos de red SÍ se propagan."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    s3 = _s3()
+    try:
+        r = s3.head_object(Bucket=bucket, Key=key)
+    except s3.exceptions.ClientError:
+        return None
+    return int(r["ContentLength"])
+
+
+def copiar(origen: str, destino: str, etag: str | None = None) -> None:
+    """Copia `origen` → `destino` DENTRO del bucket, de servidor a servidor: no
+    baja nada al ejecutor. Usa la copia gestionada del cliente (`s3.copy`):
+    una sola pieza hasta el umbral y multiparte por encima, así que un video de
+    más de 5 GB también pasa (`copy_object` de una pieza no lo admite).
+
+    Levanta si el origen no existe (el HEAD previo da 404) y, de paso, FIJA el
+    ETag del original: la copia se pide con `CopySourceIfMatch`, así que si
+    alguien reemplazó el objeto entre que se midió y se copió, falla en vez de
+    entregar una mezcla. Por defecto se fija el ETag que tiene el objeto AHORA;
+    con `etag` (el que vio quien midió y cobró) se fija ese, y la ventana entre
+    cotizar y copiar también queda cerrada. Nunca escribe en `origen`; el tipo
+    de contenido se conserva (la copia multiparte lo preserva). Sin bucket no
+    hay dónde copiar."""
+    bucket = _bucket()
+    if not bucket:
+        raise RuntimeError("no hay MEDIA_BUCKET: no hay dónde copiar")
+    s3 = _s3()
+    cabecera = s3.head_object(Bucket=bucket, Key=origen)     # también levanta si el origen no existe
+    s3.copy({"Bucket": bucket, "Key": origen}, bucket, destino,
+            ExtraArgs={"CopySourceIfMatch": etag or cabecera["ETag"]})
+
+
 def bajar_archivo(key: str, destino: Path) -> bool:
     """Baja UN objeto a un archivo local (para jobs que no necesitan el
     prefijo completo, p.ej. la muestra de subtítulos en la Lambda).

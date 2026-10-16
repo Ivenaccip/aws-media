@@ -43,6 +43,10 @@
   --color-ambar: #da8c28;
   --color-ambar-claro: #f0a94a;
   --color-ambar-hondo: #a96716;
+  /* el dorado del título «Irremplazables» (dueño, 15-oct-2026) y de nada más: se usa solo por la clase `texto-oro` de abajo */
+  --color-oro-claro: #f3dc92;
+  --color-oro: #e6c35c;
+  --color-oro-hondo: #b98d2f;
   --color-tinta: #14100a;
   --color-enlace: #a9c6ee;
   --color-azul: #5b8dd6;
@@ -193,6 +197,24 @@
   a { color: var(--color-enlace); }
   /* el mismo foco en todas partes (§4) */
   :focus-visible { outline: 2px solid var(--color-ambar-claro); outline-offset: 3px; }
+}
+
+/* El título «Irremplazables» (pantallas/inicio/Recorrido.tsx): letras con un degradado de arriba abajo, del dorado claro al hondo
+   (el 55 % es el dorado de en medio). Un degradado recortado a la letra, con dos salidas, porque sin ellas `text-transparent`
+   dejaría el título invisible: en un navegador que no sabe recortar un fondo a la letra, el dorado liso; y al imprimir, el
+   dorado hondo liso (el degradado es un fondo y el navegador no imprime fondos de fábrica: en el papel quedaría un hueco en
+   blanco). Es el hondo por ser el más oscuro: sobre papel blanco da 3.0:1, el mínimo de un texto de 32 px, y sobre la
+   superficie, si la persona sí imprime los fondos, 5.45:1. */
+@utility texto-oro {
+  @apply bg-linear-to-b from-oro-claro via-oro via-55% to-oro-hondo bg-clip-text text-transparent;
+  @supports not (background-clip: text) {
+    background-image: none;
+    color: var(--color-oro);
+  }
+  @media print {
+    background-image: none;
+    color: var(--color-oro-hondo);
+  }
 }
 
 /* «reducir movimiento» del sistema: todo quieto (§4) */

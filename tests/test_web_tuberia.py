@@ -135,6 +135,21 @@ def test_ningun_fuente_de_web_importa_pricing_json():
                 pytest.fail(f"{f.relative_to(RAIZ)} importa pricing.json → {linea.strip()}")
 
 
+def test_ningun_modulo_de_web_choca_con_otro_por_las_mayusculas():
+    """Windows y macOS no distinguen mayúsculas: con `Recorrido.tsx` y `recorrido.ts` en la misma carpeta, `import … from
+    './Recorrido'` se resuelve a `recorrido.ts` (la extensión `.ts` se prueba antes que `.tsx`) y el build revienta con
+    «Recorrido is not exported». En Linux (la imagen, el CI) funciona, así que solo un guardián lo ve: dos módulos de una
+    carpeta no pueden llamarse igual salvo por las mayúsculas."""
+    modulos = [p for p in _fuentes_web()
+               if p.suffix in {".ts", ".tsx", ".js"}
+               and not re.search(r"\.(test|spec|d)\.[jt]sx?$", p.name)]
+    por_nombre: dict[tuple[Path, str], set[str]] = {}
+    for p in modulos:
+        por_nombre.setdefault((p.parent, p.stem.lower()), set()).add(p.stem)
+    choques = sorted(f"{d.relative_to(RAIZ)}: {' vs '.join(sorted(n))}" for (d, _), n in por_nombre.items() if len(n) > 1)
+    assert not choques, "módulos que solo difieren por mayúsculas (rompen en Windows): " + "; ".join(choques)
+
+
 def test_eslint_tambien_lo_prohibe():
     cfg = (WEB / "eslint.config.js").read_text(encoding="utf-8")
     assert "**/pricing.json" in cfg and "dangerouslySetInnerHTML" in cfg and "axios" in cfg

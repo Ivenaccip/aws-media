@@ -1,10 +1,20 @@
 // /estudio/inicio/ — el inicio del estudio (UI·8.4). La caja cobra ahí mismo
 // el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
-// (desde E1); las demás opciones llevan a la pantalla que cobra con el texto
-// puesto. El menú lleva a las herramientas; las listas, a lo que ya hiciste.
+// (desde E1; desde E2 con varios videos unidos); las demás opciones llevan a la pantalla que cobra con el texto
+// puesto. Las listas, debajo, llevan a lo que ya hiciste.
+//
+// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») ya no hay menú a la
+// izquierda: el inicio (Recorrido) enseña un paso a la vez —el mapa de áreas,
+// las tres opciones de un grupo, o su contenido: la caja o la lista de sus
+// pantallas—, bajo el título «Irremplazables». Se aterriza en el MAPA (segunda
+// ronda del mismo día: «el mapa es el inicio»), sin nada elegido; solo la caja
+// lleva tarjeta. La caja se queda montada (y escondida) aunque se vea otro paso:
+// no pierde lo escrito ni una subida. Lo que va debajo de ella (Mis creaciones,
+// los caminos…) se ve solo cuando la caja se ve. Las pantallas hoja (agenda,
+// métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts).
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
 // con cada aserción vieja: docs/migracion/inicio.md.
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 
 import { refrescarSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
@@ -24,6 +34,7 @@ import {
   cargarImagenes,
   cargarProyectos,
   cargarSlots,
+  corriendoVivo,
   desarchivar,
   leerBlotato,
   creaciones,
@@ -36,6 +47,8 @@ import {
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
+import { cajaVisible, estadoInicial, reducir, urlSinEntrada } from './estadoRecorrido';
+import { Recorrido } from './Recorrido';
 
 interface Listas {
   proyectos: Proyecto[];
@@ -52,6 +65,10 @@ interface Listas {
 /** Cuánto se espera a que una relectura de la lista de imágenes salga bien antes de soltar la tarjeta local: si el
  *  servidor no contesta o no puede leer los pedidos, la tarjeta no puede girar para siempre. */
 const ESPERA_MAXIMA_MS = 2 * 60 * 1000;
+
+/** Cuánto se espera para volver a pedir el saldo cuando una copia termina: el worker devuelve los créditos (un video sin nada que cortar)
+ *  un instante DESPUÉS de marcarla «lista», y la lista ya no volverá a leerse para verlo. */
+export const SALDO_TRAS_COPIA_MS = 4000;
 
 /** Una imagen que el servidor aceptó y cuya relectura de la lista aún no salió bien: su tarjeta local, y desde cuándo se espera. */
 interface Espera {
@@ -87,17 +104,32 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [aviso, setAviso] = useState('');
   const [aArchivar, setAArchivar] = useState<Proyecto | null>(null);
 
-  // null = no se sabe: el menú se queda encendido. Dejar sin sus herramientas
-  // a quien sí pagó, porque un fetch no respondió, es peor que dejar entrar a
-  // quien no (M23 · C).
+  // null = no se sabe: las pantallas de Blotato se quedan encendidas. Dejar sin
+  // sus herramientas a quien sí pagó, porque un fetch no respondió, es peor que
+  // dejar entrar a quien no (M23 · C).
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [dlgBlotato, setDlgBlotato] = useState(false);
   const [estadoBlotato, setEstadoBlotato] = useState<EstadoBlotato | null>(null);
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
+  // el recorrido: en qué paso va (el mapa al abrir), y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez)
+  const [recorrido, despachar] = useReducer(reducir, undefined, () => estadoInicial(location.search));
+  const tituloCaja = useRef<HTMLHeadingElement>(null);
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
+  // las copias de E2 que estaban editándose en la última lista: si una pasa a error, el servidor devolvió los créditos; si pasa a «lista»
+  // sin nada que cortar (un solo video), también (la píldora no sondea el saldo: sin esto se quedaba vieja hasta recargar)
+  const editandoCopias = useRef<Set<string>>(new Set());
+  // el segundo vistazo al saldo de una copia que terminó (SALDO_TRAS_COPIA_MS): se cancela si la pantalla se va
+  const saldoPendiente = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    const pendientes = saldoPendiente;
+    return () => {
+      pendientes.current.forEach(clearTimeout);
+      pendientes.current = [];
+    };
+  }, []);
   // lo que se pidió desde la caja y todavía no llega a la lista
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   // las imágenes que el servidor aceptó desde la caja y cuya relectura de la lista aún no salió bien: su tarjeta
@@ -127,6 +159,15 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
       return false;
     }
     setFalloCarga(false);
+    if (ed.status === 'fulfilled') {
+      // una copia que editaba y ya no (falló, o terminó): el servidor pudo devolver lo cobrado —al fallar, o al no haber nada que
+      // cortar—, así que el saldo se pone al día ya y otra vez un momento después, cuando el worker haya terminado de devolver
+      if (ed.value.some(e => (e.editar?.estado === 'error' || e.editar?.estado === 'listo') && editandoCopias.current.has(e.nombre))) {
+        refrescarSaldo();
+        saldoPendiente.current.push(setTimeout(refrescarSaldo, SALDO_TRAS_COPIA_MS));
+      }
+      editandoCopias.current = new Set(ed.value.filter(e => e.editar?.estado === 'corriendo').map(e => e.nombre));
+    }
     const pedidos = im.status === 'fulfilled' && im.value.pendientesOk ? im.value.pendientes : null;
     if (pedidos) {
       // una que generaba y ahora falló: ya se devolvió lo cobrado, el saldo se pone al día
@@ -166,6 +207,13 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     );
   }, []);
 
+  // la entrada ya se leyó: la URL vuelve a /estudio/inicio/ (sin tocar lo demás, como ?blotato=conectar) para que recargar o compartir
+  // el enlace no repita el recorrido, y «atrás» siga llevando a la pantalla de donde se vino
+  useEffect(() => {
+    const limpia = urlSinEntrada(location.href);
+    if (limpia) history.replaceState(history.state, '', limpia);
+  }, []);
+
   useEffect(() => {
     // cargar() y abrirBlotato() ponen estado: van en un callback, no en el cuerpo del efecto
     Promise.resolve().then(cargar).catch(() => undefined);
@@ -184,9 +232,12 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   // minuto: mientras alguno se genera, la galería se vuelve a pedir sola (cada 5 s,
   // como la pantalla del clip). También mientras una imagen recién pedida espera que
   // una relectura salga bien: sin ella, ni la tarjeta ni el sondeo tendrían de dónde seguir.
+  // E2: una copia que se está editando también (su tarjeta «Editando…» pasa a «Listo» o «No se pudo editar» sin recargar)
+  // (solo una que corre DE VERDAD: una tarea muerta que el servidor aún dice «corriendo» no puede mantener la pantalla sondeando para siempre)
   const hayGenerando =
     (listas?.clips?.some(c => c.estado === 'generando') ?? false) ||
-    (listas?.pedidos.some(p => p.estado === 'generando') ?? false);
+    (listas?.pedidos.some(p => p.estado === 'generando') ?? false) ||
+    (listas?.ediciones?.some(e => corriendoVivo(e)) ?? false);
   useEffect(() => {
     if (!hayGenerando && !esperandoLista.length) return;
     const t = setInterval(() => {
@@ -204,6 +255,15 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }, 5000);
     return () => clearInterval(t);
   }, [hayGenerando, esperandoLista, cargar, quitarPendientes]);
+
+  // La bandeja «Tus trabajos» (static/trabajos.js) acaba de lanzar algo por su cuenta —un «Reintentar» que el servidor aceptó—: la copia ya
+  // corre, pero aquí su tarjeta decía «No se pudo editar» y, sin nada corriendo en esta lista, nada la volvía a leer. Se relee ya; con la
+  // copia «corriendo» el sondeo de arriba la lleva hasta «Listo».
+  useEffect(() => {
+    const releer = () => void cargar();
+    window.addEventListener('trabajos:lanzado', releer);
+    return () => window.removeEventListener('trabajos:lanzado', releer);
+  }, [cargar]);
 
   // «Usar como referencia» del visor: la imagen vuelve a la caja, lista para animarla
   async function usarComoReferencia(im: Imagen) {
@@ -224,6 +284,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     }
   }
 
+  // lo mismo que decide Recorrido para esconder la caja: con ella a la vista se ven también las listas de debajo, y la pista corre
+  const verCaja = cajaVisible(recorrido);
   const activos = listas?.proyectos.filter(p => !p.archivado) ?? [];
   const archivados = listas?.proyectos.filter(p => p.archivado) ?? [];
   // Los tres caminos, solo si todas las listas respondieron y todas vienen
@@ -242,20 +304,25 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
     !listas.pedidos.length;
 
   return (
-    <div className="mx-auto max-w-[1100px] px-5 pt-16 pb-14">
-      <div className="grid gap-7 min-[861px]:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="min-w-0">
-          {/* el nombre del producto, en dorado y sin icono (dueño, 14-oct-2026): el ámbar claro es el de los «títulos-marca»
-              de la carta (docs/DISENO.md §3). Los <title> de las páginas y de las otras pantallas siguen como estaban */}
-          <h1 className="m-0 px-3 pt-2.5 pb-4 text-titulo-sm font-bold text-ambar-claro">Irremplazables</h1>
-          <Menu conectado={conectado} alConectar={abrirBlotato} />
-        </aside>
-
-        <main className="min-w-0">
+    <>
+      {/* La altura de la ventana (`min-h-dvh`) es lo que deja a Recorrido centrar el mapa, las opciones y las listas en el alto que
+          sobra; con ellos no hay nada debajo que separar (sin `pb`), y con la caja sí (sus listas terminan ahí) */}
+      <main className={unir('mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 pt-16 max-[380px]:px-3', verCaja ? 'pb-8' : 'pb-0')}>
+        <Recorrido
+          estado={recorrido}
+          despachar={despachar}
+          conectado={conectado}
+          alConectar={abrirBlotato}
+          ir={ir}
+          tituloCaja={tituloCaja}
+        >
           <Caja
             ref={caja}
             ir={ir}
             imagenes={listas?.imagenes ?? undefined}
+            tituloRef={tituloCaja}
+            enVista={verCaja}
+            alEditar={() => void cargar()}
             alPedir={p => setPendientes(l => [p, ...l])}
             alTerminar={(clave, esperarLista) => {
               // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
@@ -272,7 +339,11 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
               });
             }}
           />
+        </Recorrido>
 
+        {/* Debajo de la tarjeta, del mismo ancho, y SOLO con la caja a la vista: con el mapa, las tres opciones o la lista de un
+            grupo no pintan nada (y siguen montadas: una galería que se desmonta pierde su filtro y su visor) */}
+        <div hidden={!verCaja} className="mx-auto mt-8 w-full max-w-[820px]">
           {(falloCarga || sinConfirmar) && (
             <div className="mb-6">
               <Aviso tipo="error">
@@ -304,6 +375,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
               slots={<span className="text-xs text-secundario">{textoSlots(activos.length, listas.slots)}</span>}
               alArchivar={setAArchivar}
               alUsarReferencia={usarComoReferencia}
+              alReintentar={cargar}
             />
           )}
           {listas && !nuevo && listas.clips === null && (
@@ -337,8 +409,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
               </ul>
             </details>
           )}
-        </main>
-      </div>
+        </div>
+      </main>
 
       <Confirmar
         abierto={aArchivar !== null}
@@ -361,7 +433,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           setConectado(d.conectado);
         }}
       />
-    </div>
+    </>
   );
 }
 
@@ -409,116 +481,5 @@ function Caminos({ alIdea }: { alIdea: () => void }) {
         )}
       </div>
     </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// el menú de la izquierda
-
-interface Entrada {
-  href: string;
-  icono: NombreIcono;
-  titulo: string;
-  texto: string;
-  /** Se apaga sin la clave de Blotato del usuario (M23 · C). */
-  blotato?: boolean;
-}
-
-// «Crear imágenes» y «Crear contenido» no están aquí: su puerta es la caja
-// (M25 · B). El menú se queda con lo que empieza con algo tuyo (un archivo,
-// una liga) más lo de publicar. «Editor de videos» (/e1.html) salió el 14-oct-2026
-// (dueño): editar metraje ya es la pestaña «Edición» de la caja; «De videos a
-// Shorts» se queda aquí hasta que entre al chip de esa pestaña.
-const GRUPOS: Array<{ titulo: string; blotato?: boolean; entradas: Entrada[] }> = [
-  {
-    titulo: 'Estudio de Contenido',
-    entradas: [
-      { href: '/shorts.html', icono: 'shorts', titulo: 'De videos a Shorts', texto: 'Sube un video largo y te daremos los mejores momentos.' },
-      { href: '/estilos.html', icono: 'estilo', titulo: 'Copiadora de estilos', texto: 'Recrea el estilo visual de un contenido que te guste' },
-    ],
-  },
-  {
-    titulo: 'Blotato',
-    blotato: true,
-    // «Investiga tu competencia» se apaga A PROPÓSITO aunque corre con Apify:
-    // el grupo se comporta como un bloque (decisión del dueño, 18-sep).
-    entradas: [
-      { href: '/agenda.html', icono: 'agenda', titulo: 'Agenda tus publicaciones', texto: 'Programa tus posts en todas tus redes', blotato: true },
-      { href: '/competencia.html', icono: 'competencia', titulo: 'Investiga tu competencia', texto: 'Qué le está funcionando a quien vigilas', blotato: true },
-      { href: '/metricas.html', icono: 'metricas', titulo: 'Ver mis métricas', texto: 'Cómo rinden tus publicaciones', blotato: true },
-    ],
-  },
-  {
-    // MIX va DEBAJO de Blotato (dueño, 19-sep): Blotato es su requisito.
-    titulo: 'Publicidad Automática',
-    entradas: [
-      { href: '/mix.html', icono: 'automatico', titulo: 'MIX', texto: 'Una publicación al día, sola, desde una foto tuya', blotato: true },
-    ],
-  },
-];
-
-function Menu({ conectado, alConectar }: { conectado: boolean | null; alConectar: () => void }) {
-  const etiqueta = conectado ? 'Blotato conectado: ver o cambiar' : 'Conecta tu cuenta de Blotato';
-  return (
-    <nav aria-label="Secciones" className="flex gap-2 overflow-x-auto pb-1.5 min-[861px]:block min-[861px]:overflow-visible">
-      {GRUPOS.map(g => (
-        <div key={g.titulo} className="contents min-[861px]:block">
-          {/* en el teléfono el grupo es una pieza más de la fila: el «+» de Blotato no se pierde */}
-          <div className="flex flex-none items-center justify-between gap-2 px-0.5 text-xs font-semibold tracking-[0.4px] text-secundario uppercase whitespace-nowrap min-[861px]:pt-4 min-[861px]:pb-2 min-[861px]:first:pt-0">
-            {g.titulo}
-            {g.blotato && (
-              <button
-                type="button"
-                aria-haspopup="dialog"
-                aria-label={etiqueta}
-                title={etiqueta}
-                onClick={alConectar}
-                className={unir(
-                  'relative grid size-8 cursor-pointer place-items-center rounded-medio border p-0 before:absolute before:-inset-1.5 before:content-[""]',
-                  conectado
-                    ? 'border-exito bg-exito-fondo text-exito'
-                    : 'border-campo bg-transparent text-secundario hover:border-secundario hover:bg-elevada hover:text-texto',
-                )}
-              >
-                <Icono nombre={conectado ? 'listo' : 'mas'} />
-              </button>
-            )}
-          </div>
-          {g.entradas.map(e => (
-            <EntradaMenu key={e.href} e={e} apagada={Boolean(e.blotato) && conectado === false} alConectar={alConectar} />
-          ))}
-        </div>
-      ))}
-    </nav>
-  );
-}
-
-function EntradaMenu({ e, apagada, alConectar }: { e: Entrada; apagada: boolean; alConectar: () => void }) {
-  // Apagada a la vista en vez de escondida: escondida, nadie descubre que el
-  // producto sabe hacerlo. El clic ofrece conectar en vez de llevar a una
-  // pantalla que solo sabe decir «conéctala».
-  const alPulsar = (ev: MouseEvent) => {
-    if (!apagada) return;
-    ev.preventDefault();
-    alConectar();
-  };
-  return (
-    <a
-      href={e.href}
-      aria-disabled={apagada || undefined}
-      onClick={alPulsar}
-      className={unir(
-        'group mb-1.5 grid flex-none grid-cols-[auto_1fr] items-start gap-x-2.5 rounded-medio border border-linea bg-superficie px-3 py-2.5 text-texto no-underline transition-colors hover:border-campo hover:bg-elevada',
-        apagada && 'opacity-60',
-      )}
-    >
-      <Icono nombre={e.icono} className="mt-px text-secundario group-hover:text-texto" />
-      <span>
-        <b className="block text-sm leading-snug font-semibold">{e.titulo}</b>
-        <small className="hidden text-xs leading-snug text-secundario min-[861px]:block">
-          {apagada ? <span className="text-ambar-claro">Conecta tu Blotato para usarlo</span> : e.texto}
-        </small>
-      </span>
-    </a>
   );
 }

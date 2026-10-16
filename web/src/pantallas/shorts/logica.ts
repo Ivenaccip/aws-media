@@ -166,6 +166,14 @@ export const urlDescarga = (key: string, nombre: string) =>
 
 export const conP = (p: string) => '?p=' + encodeURIComponent(p);
 
+// A esta pantalla se llega desde la caja del inicio («Editar ▾ › De videos a Shorts») con lo que la persona ya puso allá:
+// `?p=<proyecto>` abre el video que subió, y `?url=<liga>` deja su liga escrita en «Importar de YouTube». Solo la deja
+// escrita: cotizar y cobrar siguen siendo de esta pantalla, con su precio a la vista.
+export const RUTA_SHORTS = '/estudio/shorts/';
+export const conLiga = (url: string) => '?url=' + encodeURIComponent(url);
+/** La liga que trae la URL (sin espacios en los extremos); '' si no trae. */
+export const ligaDeLaUrl = (busqueda: string) => (new URLSearchParams(busqueda).get('url') ?? '').trim();
+
 // UI·27 — el camino entero de un short, con la misma espera que crear. Son
 // pasos de verdad: el servidor dice en cuál va (descargando, analizando, el
 // render) y «tú eliges» es la pausa en la que manda la persona. Dentro de cada

@@ -73,6 +73,15 @@ def _hay_sitio() -> bool:
         return True
 
 
+def hay_sitio() -> bool:
+    """¿Cabe otra tarea de Fargate ahora mismo? Lo mismo que comprueba `_arrancar`, pero
+    público, para que un endpoint que COBRA pregunte ANTES de mover dinero (E2: `iniciar` y
+    `reintentar`) y no cobre, devuelva y deje una copia fantasma cada vez que Fargate está lleno.
+    Falla ABIERTO como `_hay_sitio`; la carrera entre esta pregunta y `start_execution` sigue
+    existiendo y la sigue cubriendo `SinCapacidad` de `_arrancar`."""
+    return _hay_sitio()
+
+
 def _arrancar(nombre: str, user_id: str, proyecto_id: str,
               command: list[str]) -> str:
     """Todo lo que va a Fargate pasa por aquí: una sola máquina de estados, un

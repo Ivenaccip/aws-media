@@ -458,6 +458,19 @@ ESQUEMA: list[str] = [
         creado       timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (campana, correo)
     )""",
+    # E2 — «una sola tarea de edición a la vez por persona», y eso lo impone el
+    # índice parcial de abajo y no el código: dos pestañas pueden mandar su
+    # «Iniciar» al mismo tiempo, las dos leen «nada corriendo» y las dos
+    # cobrarían. Es parcial para que las copias terminadas (listo o error) se
+    # conserven sin estorbar: solo cuenta la que está corriendo. `editar.copia`
+    # lo escribe únicamente el API de E2 (server/edicion_api.py), así que las
+    # corridas viejas de /api/editar/<p>/sugerir quedan fuera. Sin este índice
+    # el API funciona igual con la lectura de `ediciones_corriendo`; solo queda
+    # una ventana de carrera de unos 100 ms entre dos pestañas, y nunca se
+    # pierde dinero (cada cobro tiene su copia y su devolución).
+    """CREATE UNIQUE INDEX IF NOT EXISTS proyectos_editor_copia_en_curso
+       ON proyectos_editor (user_id)
+       WHERE doc #>> '{editar,estado}' = 'corriendo' AND doc #>> '{editar,copia}' = 'true'""",
 ]
 
 
@@ -604,9 +617,11 @@ def _iso(valor) -> str | None:
 def corridas_editor(user_id: str) -> list[dict]:
     """El cuadro de «tus trabajos» sondea mientras algo corre: solo trae las tres
     corridas que enseña, no el doc entero (cortes, chat, subtítulos…)."""
+    # E2: `titulo` viaja también: la ficha de una copia dice «La IA edita {titulo}»
+    # y el nombre técnico (ed-9f1c0a7b) no lo lee nadie.
     filas = ejecutar(
         "SELECT nombre, jsonb_build_object('editar', doc->'editar', 'importar', doc->'importar', "
-        "'shorts', doc->'shorts')::text AS doc FROM proyectos_editor "
+        "'shorts', doc->'shorts', 'titulo', doc->'titulo')::text AS doc FROM proyectos_editor "
         "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
 
@@ -616,7 +631,13 @@ def corridas_editor(user_id: str) -> list[dict]:
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
                   "editar": "{editar}", "flags": "{flags}",
                   "subtitulos": "{subtitulos}", "overlay_job": "{overlay_job}",
-                  "chat": "{chat}", "importar": "{importar}"}
+                  "chat": "{chat}", "importar": "{importar}",
+                  # E2: caché de la medición (duración, ancho, alto, audio) del
+                  # video de origen; la escribe server/edicion_api.py
+                  "meta": "{meta}",
+                  # Ajustes 2 (D-02): /api/media/confirmar agrega una subida sin reescribir
+                  # el doc ENTERO (un upsert viejo pisaba el `listo` de una copia)
+                  "subidas": "{subidas}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:
@@ -628,6 +649,169 @@ def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> Non
             WHERE user_id = :u AND nombre = :n""",
         {"u": user_id, "n": nombre, "v": valor},
     )
+
+
+def fijar_meta_editor(user_id: str, nombre: str, meta: str) -> None:
+    """E2: guarda la medición del video de origen (doc.meta, §4.4 del contrato).
+    Solo toca esa llave: no pisa las subidas, los flags ni la corrida."""
+    fijar_campo_editor(user_id, nombre, "meta", meta)
+
+
+# ---------------------------------------------------------------------------
+# E2 — copias editables: el candado, el reintento y el borrado seguro
+
+def crear_copia_editor(user_id: str, nombre: str, doc: str) -> bool:
+    """Crea el proyecto de la copia SIN pisar nada. True si se insertó.
+
+    NO es `guardar_proyecto_editor`: aquel es un upsert y pisaría el doc entero
+    de una copia que otra llamada ya creó y cobró. Este es un INSERT que, si
+    algo lo impide, simplemente no inserta:
+
+      - ya existía ese `nombre` para esta persona (otra llamada con el mismo
+        `pedido` ganó la carrera), o
+      - el índice parcial `proyectos_editor_copia_en_curso` vio otra copia
+        corriendo de la misma persona.
+
+    `ON CONFLICT DO NOTHING` sin objetivo cubre las dos. Quien llama NO sabe
+    cuál fue: relee el nombre (si existe con su `pedido`, es el mismo pedido; si
+    no, es el candado) y responde sin haber cobrado nada.
+
+    El nombre ya debe estar reservado (`reservar_nombre_derivado`): esta
+    función no lo reserva."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """INSERT INTO proyectos_editor (user_id, nombre, doc)
+           VALUES (:u, :n, :doc::jsonb)
+           ON CONFLICT DO NOTHING
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "doc": doc})
+    return bool(filas)
+
+
+def ediciones_corriendo(user_id: str) -> list[dict]:
+    """Los proyectos de la persona con una corrida de edición `corriendo`,
+    copias y corridas viejas por igual: [{"nombre", "editar"}].
+
+    La caducidad NO se filtra aquí sino en Python (`inicio` ausente o ilegible =
+    caducado): un cast de fecha roto dentro del SQL tumbaría la consulta entera
+    y con ella el botón «Iniciar» de todos."""
+    filas = ejecutar(
+        """SELECT nombre, (doc #> '{editar}')::text AS editar FROM proyectos_editor
+           WHERE user_id = :u AND doc #>> '{editar,estado}' = 'corriendo'""",
+        {"u": user_id})
+    return [{"nombre": f["nombre"], "editar": json.loads(f["editar"])} for f in filas]
+
+
+def reclamar_reintento_editor(user_id: str, nombre: str, editar: str) -> bool:
+    """El claim del reintento: una copia en 'error' vuelve a 'corriendo' con el
+    `editar` nuevo (`editar` llega ya serializado). Solo gana UNA llamada: el
+    UPDATE está condicionado a `estado = 'error'`, así que un doble clic o dos
+    pestañas no cobran dos veces. False si ya no estaba en 'error'.
+
+    Si el índice parcial rechaza el UPDATE (la persona ya tiene otra copia
+    corriendo) el Data API levanta un error cuyo texto dice «duplicate key»: se
+    atrapa y también es False. Quien llama relee para distinguir un caso del
+    otro."""
+    try:
+        filas = ejecutar(
+            """UPDATE proyectos_editor
+               SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+               WHERE user_id = :u AND nombre = :n
+                 AND doc #>> '{editar,estado}' = 'error'
+                 AND doc #>> '{editar,copia}' = 'true'
+               RETURNING nombre""",
+            {"u": user_id, "n": nombre, "v": editar})
+    except Exception as err:  # noqa: BLE001 — el Data API no tipa el error de unicidad
+        if "duplicate key" in f"{err}".lower():
+            return False
+        raise
+    return bool(filas)
+
+
+def borrar_copia_sin_cobrar(user_id: str, nombre: str) -> None:
+    """Suelta el candado de una copia a la que NO se le cobró (402 por saldo).
+    Jamás borra una copia ya cobrada, ni un proyecto que no sea copia: el filtro
+    va en el SQL y no en quien llama. El nombre sigue reservado para la persona,
+    así que volver a pedir da el mismo."""
+    ejecutar(
+        """DELETE FROM proyectos_editor
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,copia}' = 'true'
+             AND doc #>> '{editar,cobrado}' = 'false'""",
+        {"u": user_id, "n": nombre})
+
+
+def cerrar_editor_si_error(user_id: str, nombre: str, inicio: str | None, editar: str) -> bool:
+    """El CIERRE de una corrida que ya se reclamó: escribe `editar` solo si la copia SIGUE en
+    `error` y con el mismo `inicio` que tenía al reclamarla. True si escribió.
+
+    `reclamar_fallo_editor` deja el doc en `error` (visible y reintentable) ANTES de que el que
+    reclamó devuelva los créditos, y devolver puede tardar segundos si el monedero titubea. Si en
+    ese lapso la persona pulsa Reintentar, la copia ya es otra corrida (`corriendo`, otro `inicio`):
+    un `fijar_campo_editor` incondicional la pisaba con el `error` + `devueltos` de la corrida
+    VIEJA y el segundo cobro se quedaba sin devolver. Con la condición, el cierre viejo no escribe.
+
+    Una reapertura para que el barredor devuelva (`estado: corriendo` + `devolucion_pendiente`) se
+    escribe con el doc aún en `error` y el mismo `inicio`: la condición la deja pasar."""
+    filas = ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,estado}' = 'error'
+             AND COALESCE(doc #>> '{editar,inicio}', '') = :i
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "v": editar, "i": "" if inicio is None else str(inicio)})
+    return bool(filas)
+
+
+def fijar_editar_si_corriendo(user_id: str, nombre: str, editar: str) -> bool:
+    """Escribe `doc.editar` SOLO si la corrida sigue `corriendo`. True si escribió.
+
+    El worker de la copia leía (`vivo()`) y luego escribía con un UPDATE incondicional: si entre
+    las dos el API, la caducidad o el barredor cerraban y devolvían, su escritura volvía a poner
+    `corriendo` (la copia reaparecía, terminaba `listo` y la persona tenía la edición Y el
+    reembolso). Con la condición en el mismo UPDATE no hay ventana: si no escribió, la corrida ya
+    estaba cerrada y quien llama debe soltarla sin devolver nada."""
+    filas = ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,estado}' = 'corriendo'
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "v": editar})
+    return bool(filas)
+
+
+PASOS_EDITOR = ("entender", "editar", "vista")
+
+
+def fijar_paso_editor(user_id: str, nombre: str, paso: str) -> bool:
+    """Cambia SOLO `editar.paso` y solo si la corrida sigue `corriendo`: lo que la bandeja
+    «Tus trabajos» enseña al empezar cada fase. True si escribió. Los tres pasos son de verdad
+    (lista cerrada); cualquier otro valor levanta ValueError antes de tocar la base."""
+    if paso not in PASOS_EDITOR:
+        raise ValueError(f"paso inválido: {paso!r}")
+    filas = ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{editar,paso}', :v::jsonb)
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,estado}' = 'corriendo'
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "v": json.dumps(paso)})
+    return bool(filas)
+
+
+def devoluciones_pendientes(user_id: str) -> list[dict]:
+    """[{"nombre", "editar"}] de las copias a las que el API cobró, falló y NO pudo devolver los
+    créditos (`editar.devolucion_api`): el abono se reintenta en la siguiente llamada de la
+    persona. No incluye las que dejó el worker para el barredor (`devolucion_pendiente` sin
+    `devolucion_api`): esas las cierra el evento de la máquina de estados."""
+    filas = ejecutar(
+        """SELECT nombre, (doc #> '{editar}')::text AS editar FROM proyectos_editor
+           WHERE user_id = :u AND doc #>> '{editar,devolucion_api}' = 'true'""",
+        {"u": user_id})
+    return [{"nombre": f["nombre"], "editar": json.loads(f["editar"])} for f in filas]
 
 
 # M23 · D (prerrequisito) — dónde vive el estado de cada trabajo de Fargate
@@ -727,21 +911,28 @@ def saldo_creditos(user_id: str) -> int:
 def abonar_creditos(user_id: str, creditos: int, tipo: str,
                     referencia: str | None = None) -> int:
     """Suma créditos (cortesía, compra, devolución o ajuste admin — puede ser
-    negativo en ajustes). Devuelve el saldo resultante."""
+    negativo en ajustes). Devuelve el saldo resultante.
+
+    El saldo y el movimiento del libro mayor entran en UNA sola sentencia (un CTE): o entran los
+    dos o ninguno. Eran tres sentencias sueltas del Data API, y si fallaba la última el saldo ya
+    había sumado: quien reintentaba (`worker/editar_copia._devolver` repite hasta 3 veces ante
+    CUALQUIER excepción) abonaba dos veces y el libro solo lo sabía una."""
     ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
              {"u": user_id})
     # GREATEST: el CHECK (saldo >= 0) se evalúa sobre la fila PROPUESTA antes
     # de resolver ON CONFLICT — un abono negativo (ajuste admin) tronaría aunque
     # la fila exista. Sin monedero previo, un ajuste negativo deja saldo 0.
     filas = ejecutar(
-        """INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))
-           ON CONFLICT (user_id) DO UPDATE
-             SET saldo = monedero.saldo + :n, actualizado = now()
-           RETURNING saldo""",
-        {"u": user_id, "n": creditos})
-    ejecutar(
-        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
-           VALUES (:u, :n, :t, :r)""",
+        """WITH sal AS (
+               INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))
+               ON CONFLICT (user_id) DO UPDATE
+                 SET saldo = monedero.saldo + :n, actualizado = now()
+               RETURNING saldo),
+           mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :n, :t, :r FROM sal
+               RETURNING id)
+           SELECT saldo FROM sal""",
         {"u": user_id, "n": creditos, "t": tipo, "r": referencia})
     return int(filas[0]["saldo"])
 
@@ -807,20 +998,59 @@ def abonar_devolucion(user_id: str, creditos: int, referencia: str) -> int | Non
     return int(filas[0]["saldo"]) if filas else None     # sin filas: esa referencia ya se devolvió
 
 
+def abonar_devolucion_de_cargo(user_id: str, creditos: int, referencia: str) -> int | None:
+    """Devuelve un cobro UNA sola vez aunque se reintente, con la referencia de siempre.
+
+    `abonar_devolucion` bloquea la segunda devolución con la MISMA referencia, y la de una copia de E2
+    (`editar-sugerir:<copia>`) se repite legítimamente en cada reintento: cobrar → devolver → Reintentar
+    → cobrar → devolver. Aquí la regla es la del libro mayor: se abona solo si el ÚLTIMO movimiento de
+    esa referencia es un cargo (hay algo cobrado sin devolver). Un reintento del MISMO abono —un intento
+    que sí entró pero cuya respuesta se perdió— ve que lo último ya es una devolución y no toca nada;
+    la devolución de un cobro posterior, en cambio, vuelve a ver un cargo y sí entra.
+
+    UNA sentencia (el movimiento y el saldo entran los dos o ninguno) y devuelve el saldo, o None si ya
+    estaba devuelto (o si nunca se cobró). Sin índice único detrás: dos sentencias EXACTAMENTE simultáneas
+    podrían abonar las dos; quien llama las serializa con el reclamo del doc (`reclamar_fallo_editor`)."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """WITH mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :n, 'devolucion', :r
+               WHERE (SELECT tipo FROM monedero_movimientos
+                      WHERE user_id = :u AND referencia = :r
+                      ORDER BY id DESC LIMIT 1) = 'cargo'
+               RETURNING id)
+           INSERT INTO monedero (user_id, saldo)
+           SELECT :u, GREATEST(:n, 0) FROM mov
+           ON CONFLICT (user_id) DO UPDATE
+             SET saldo = monedero.saldo + :n, actualizado = now()
+           RETURNING saldo""",
+        {"u": user_id, "n": int(creditos), "r": referencia})
+    return int(filas[0]["saldo"]) if filas else None     # sin filas: lo último ya era una devolución
+
+
 def cobrar_creditos(user_id: str, creditos: int,
                     referencia: str | None = None) -> int | None:
     """EL gate duro: UPDATE condicionado — si el saldo no alcanza (o no hay
-    monedero) no toca nada y devuelve None. Atómico aunque haya concurrencia."""
+    monedero) no toca nada y devuelve None. Atómico aunque haya concurrencia.
+
+    El débito y el cargo del libro mayor van en UNA sentencia (un CTE). En dos sueltas, si fallaba
+    la segunda el saldo ya había bajado y el libro no tenía el cargo; `server/edicion_api._soltar`
+    decide cuánto devolver leyendo el libro y concluía «nada que devolver»."""
     filas = ejecutar(
-        """UPDATE monedero SET saldo = saldo - :n, actualizado = now()
-           WHERE user_id = :u AND saldo >= :n RETURNING saldo""",
-        {"u": user_id, "n": creditos})
+        """WITH deb AS (
+               UPDATE monedero SET saldo = saldo - :n, actualizado = now()
+               WHERE user_id = :u AND saldo >= :n
+               RETURNING saldo),
+           mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :neg, 'cargo', :r FROM deb
+               RETURNING id)
+           SELECT saldo FROM deb""",
+        {"u": user_id, "n": creditos, "neg": -creditos, "r": referencia})
     if not filas:
         return None
-    ejecutar(
-        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
-           VALUES (:u, :n, 'cargo', :r)""",
-        {"u": user_id, "n": -creditos, "r": referencia})
     return int(filas[0]["saldo"])
 
 

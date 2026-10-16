@@ -34,6 +34,46 @@ Política verificada leyendo el código final (2026-08-03):
 - [ ] fps NTSC fraccional (60000/1001): el transcode de entrega re-estampa con
       `-r <fps_fuente>` ANTES de `-i` (ver nota en `render_cuts.py:145-152`)
 
+## QA de la unión de videos (E2)
+
+La caja «Edición» del inicio une varios videos en una COPIA (`worker/editar_copia.py`). Lo que se
+verifica, con ffmpeg real y metraje sintético (`tests/test_e2_ffmpeg_union.py`, `-f lavfi`):
+
+- [ ] **El render de la nube corre la compuerta `v:0 == a:0`.** `worker/render_task.py` mide el
+      `preview-<estilo>.mp4` con `ffprobe` y, si video y audio difieren más de `DRIFT_TOL_S` (0,15 s,
+      la de `make_subs.py` e `insert_broll.py`), deja el render en `error` y NO lo sube como listo.
+      Antes solo el render local la corría. (`tests/test_e2_render_gate.py`)
+- [ ] **El proxy de la unión es normalizado**: `tools/make_proxy.py` deja TODAS las partes en 1280×720
+      (720×1280 si el primer clip es vertical), 30 fps y AAC 48 kHz estéreo — con silencio si un clip no
+      trae audio — para que `concat -c copy` no descuadre. El manifiesto (`manifest.json`) cuenta lo
+      mismo que el video. El proxy es solo para auditar: no cambia lo que se corta.
+- [ ] **Se prueba con el ffmpeg de la imagen (5.1), no solo con el de la máquina (6.x).** El audio de cada
+      parte se corta con `-t` (no `-shortest`, que con 5.1 deja pasar el relleno): corre
+      `tests/test_e2_ffmpeg_union.py` también con un ffmpeg 5.1 (la CI lo hace dentro del contenedor).
+      Con la imagen de producción: cada `part-*.mp4` debe tener `|a:0 − v:0| ≤ 0,03 s` y la suma de los
+      offsets del manifiesto debe dar la duración del video del proxy (±0,05 s).
+- [ ] **Qué cambia por modo en `render_cuts.py`, y qué no.** El filtro de VIDEO es solo de
+      `--mode preview` (tamaño del primer clip, 30 fps). **`--mode final`**: sin filtro de video y con su
+      encoder de siempre. El relleno con SILENCIO corre en AMBOS modos (`render_audio_segment`: un clip
+      con el audio más corto que su video, o sin pista de audio; si no, la deriva se suma clip tras
+      clip). Con el audio completo el master `final` es idéntico al de antes; con audio corto o ausente
+      ahora trae audio de la duración exacta del video (antes: audio corto, sin pista, o `exit 234` si
+      el clip no traía audio), así que cumple mejor la compuerta `v:0 == a:0`. Quien compare masters de
+      antes y después de E2 verá esa diferencia solo en esos clips.
+- [ ] **`loudnorm` sigue prohibido en el master.** La unión no nivela el sonido ni lo promete; el
+      `grep -rn "loudnorm" tools/ remotion/` del checklist de arriba debe seguir mostrando SOLO
+      `tools/shorts/export.sh`.
+- [ ] Un clip marcado `sin_transcript` no tiene canónico y `tools/edited_transcript.py` lo trata como
+      sin palabras (docs/SCHEMA.md); un canónico que falta sin esa marca sigue siendo error.
+- [ ] Dinero: cada camino de fallo devuelve el monto cobrado una vez
+      (`tests/test_e2_worker_copia.py`, `tests/test_m23_barredor.py`). El evento FAILED de una ejecución
+      VIEJA no cierra el reintento (se compara su `startDate` con `editar.inicio`), y una deuda anotada
+      por el worker (`editar.devolucion_pendiente`) la cobra el barredor aunque el doc ya no esté
+      `corriendo`, una sola vez. Ni el worker ni el barredor pisan un reintento que arrancó mientras
+      devolvían (`db.cerrar_editor_si_error`) ni reviven una corrida que otra pieza ya cerró
+      (`db.fijar_editar_si_corriendo`). Y si lo medido en el worker no cuadra con lo cotizado (duración,
+      orientación, peso, tope de 90 min / 15 GB), falla y devuelve todo antes de gastar nada.
+
 ## QA de shorts (herencia S1)
 
 - [ ] Snapping por word boundaries + silencedetect antes de extraer (`snap_boundaries.py`)

@@ -1,14 +1,18 @@
 // La caja del inicio en un navegador de verdad, con el static/trabajos.js real (lo sirve e2e/servidor.mjs):
 //  · Ctrl+V con una imagen copiada la agrega (un DataTransfer y un ClipboardEvent reales, no los de jsdom);
 //  · «Crear una imagen» tiene su «+» y, con una imagen, la caja pasa a «Editar una imagen»;
-//  · «Ya estamos creando…» y los errores salen en el cuadro de abajo a la derecha, no junto a la caja.
+//  · «Ya estamos creando…» y los errores salen en el cuadro de abajo a la derecha, no junto a la caja;
+//  · el título «Irremplazables» (el h1 de la tarjeta, ya sin menú a la izquierda): su degradado dorado se pinta de verdad, y lo
+//    que el menú traía («De videos a Shorts», «Copiadora de estilos») se alcanza por el chip «Editar ▾» y por el mapa.
 // Lo que vitest no puede ver: que window.avisos exista cuando la caja lo llama y dónde cae el cuadro en pantalla.
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
+import { contraste } from '../src/nucleo/contraste';
 import { pistaSePinta } from './pantallas';
+import { abrirLaCaja, elegir, irA, region, tarjeta } from './recorrido';
 
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
@@ -60,7 +64,8 @@ async function inicio(
     if (generar.demoraMs) await new Promise(f => setTimeout(f, generar.demoraMs));
     await r.fulfill({ status: generar.estado, json: generar.cuerpo });
   });
-  await page.goto('/estudio/inicio/');
+  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
+  await abrirLaCaja(page);
   await expect(page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeVisible();
 }
 
@@ -158,6 +163,47 @@ test('sin texto, el error también sale en el cuadro', async ({ page }) => {
   await page.getByRole('button', { name: /^Modelo / }).click();
   await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
   await expect(page.locator('#bandeja').getByRole('alert')).toContainText('Cuéntanos qué quieres primero');
+});
+
+// NAV-05 del prototipo (el «aviso fantasma»): el cuadro de abajo a la derecha es de toda la página, con el static/trabajos.js real. Un error de la
+// caja no puede quedarse flotando sobre el mapa o una lista, donde la caja ya no se ve; el «Ya estamos creando…» del pedido en marcha sí se queda.
+test('el error de la caja sale del cuadro al abrir el mapa; el «Ya estamos creando…» de un pedido en marcha, no', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: { lanzado: true, id: 'clip-1', creditos: 36 }, demoraMs: 2500 });
+  const cuadro = page.locator('#bandeja');
+  const miga = region(page).getByRole('navigation', { name: 'Dónde estás' }).getByRole('button', { name: /^Volver al mapa/ });
+  // un error de formulario: «Crear» sin texto
+  await page.getByRole('button', { name: /^Modelo / }).click();
+  await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
+  await expect(cuadro.getByRole('alert')).toContainText('Cuéntanos qué quieres primero');
+  await miga.click();
+  await expect(region(page).getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
+  await expect(cuadro.getByRole('alert'), 'el error de la caja quedó flotando sobre el mapa').toHaveCount(0);
+  // un pedido en marcha: su aviso verde es del trabajo, no de la caja (a la caja se vuelve por Marketing → Distrito: ya no hay «Volver a …»)
+  await elegir(page, 'Marketing', 'Distrito');
+  await caja(page).fill('un gato jugando en la nieve');
+  await page.getByRole('button', { name: /^Modelo / }).click();
+  await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
+  await expect(cuadro).toContainText('Ya estamos creando tu clip');
+  await miga.click();
+  await expect(region(page).getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
+  await expect(cuadro).toContainText('Ya estamos creando tu clip');
+});
+
+// Ctrl+V es del documento: con el mapa o una lista a la vista la caja está montada pero escondida (`hidden`), y no puede agregarse nada ni
+// cortarse un pegado que no es suyo.
+test('pegar una imagen con el mapa a la vista no la agrega a la caja escondida ni corta el pegado', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  await page.getByRole('button', { name: 'Imagen' }).click();
+  await region(page).getByRole('navigation', { name: 'Dónde estás' }).getByRole('button', { name: /^Volver al mapa/ }).click();
+  await expect(region(page).getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
+  expect(await pegarImagen(page, 'image.png'), 'se cortó un pegado que no es de la caja').toBe(true);
+  await elegir(page, 'Marketing', 'Distrito');
+  await expect(caja(page)).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Imágenes de referencia' }), 'la caja escondida se llevó la imagen').toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Crear una imagen' })).toBeVisible();
+  // a la vista otra vez, pegar funciona
+  expect(await pegarImagen(page, 'image.png')).toBe(false);
+  await expect(page.getByRole('button', { name: 'Quitar «imagen-pegada.png»' })).toBeVisible();
 });
 
 test('el «+» ofrece Mis creaciones: se eligen imágenes en la hoja y llegan a la caja', async ({ page }) => {
@@ -306,22 +352,253 @@ test('en el celular el aviso de la foto que no llegó queda a la vista, junto al
   expect(mas!.y + mas!.height).toBeLessThanOrEqual(844);
 });
 
-// ---- los ajustes del dueño del 14-oct-2026 al menú y al área de escritura (lo que jsdom no ve: el color y el aro de verdad) ----
+// ---- el título de la tarjeta (dueño, 15-oct-2026) y los ajustes del 14-oct-2026 al área de escritura (lo que jsdom no ve: el color, el degradado y el aro de verdad) ----
 
-test('el título del menú dice «Irremplazables» en dorado y en negritas, sin icono, y el menú ya no trae «Editor de videos»', async ({ page }) => {
+// El título «Irremplazables» ya no es el del menú de la izquierda (que se fue): es el h1 del inicio (fuera y arriba de la tarjeta), en dorado con degradado
+// (dueño, 15-oct-2026). El degradado se pinta recortando el fondo a la letra, y eso solo lo prueba un navegador: con `text-transparent`
+// y sin recorte el título desaparecería. Por eso se mira (1) el estilo calculado, (2) que el texto es transparente SOLO si el navegador
+// sabe recortar, y (3) los píxeles de verdad: que hay letra pintada, dorada, y más clara arriba que abajo.
+const aHex = (rgb: string) => '#' + (rgb.match(/\d+/g) ?? []).slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('');
+
+/** Los píxeles de la letra del título: cuántos, su color medio y qué tan claro es arriba y abajo (0 a 255). */
+async function tintaDelTitulo(page: Page, titulo: Locator) {
+  const png = (await titulo.screenshot()).toString('base64');
+  return page.evaluate(async base64 => {
+    const imagen = await createImageBitmap(await (await fetch('data:image/png;base64,' + base64)).blob());
+    const lienzo = new OffscreenCanvas(imagen.width, imagen.height);
+    const g = lienzo.getContext('2d')!;
+    g.drawImage(imagen, 0, 0);
+    const { data, width, height } = g.getImageData(0, 0, imagen.width, imagen.height);
+    // el fondo es lo que hay en la esquina; «tinta» es todo lo que se aleja claramente de él
+    const [fr, fg, fb] = [data[0]!, data[1]!, data[2]!];
+    const tinta: Array<{ y: number; r: number; g: number; b: number }> = [];
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const [r, gg, b] = [data[i]!, data[i + 1]!, data[i + 2]!];
+        if (Math.abs(r - fr) + Math.abs(gg - fg) + Math.abs(b - fb) > 200) tinta.push({ y, r, g: gg, b });
+      }
+    if (!tinta.length) return { pixeles: 0, media: [0, 0, 0], arriba: 0, abajo: 0 };
+    const luz = (p: { r: number; g: number; b: number }) => 0.2126 * p.r + 0.7152 * p.g + 0.0722 * p.b;
+    const [primero, ultimo] = [Math.min(...tinta.map(p => p.y)), Math.max(...tinta.map(p => p.y))];
+    const mitad = (primero + ultimo) / 2;
+    const promedio = (ps: typeof tinta) => ps.reduce((t, p) => t + luz(p), 0) / Math.max(1, ps.length);
+    const n = tinta.length;
+    return {
+      pixeles: n,
+      media: [tinta.reduce((t, p) => t + p.r, 0) / n, tinta.reduce((t, p) => t + p.g, 0) / n, tinta.reduce((t, p) => t + p.b, 0) / n],
+      arriba: promedio(tinta.filter(p => p.y <= mitad)),
+      abajo: promedio(tinta.filter(p => p.y > mitad)),
+    };
+  }, png);
+}
+
+test('el título «Irremplazables» es el h1 del inicio, FUERA y ARRIBA de la tarjeta: dorado con degradado, 32 px y negritas, sin icono', async ({ page }) => {
   await inicio(page, { estado: 200, cuerpo: {} });
   const titulo = page.getByRole('heading', { level: 1 });
+  // el único h1 de la página, y es el que da nombre a la región
+  await expect(titulo).toHaveCount(1);
   await expect(titulo).toHaveText('Irremplazables');
-  // el ámbar claro de la paleta (#f0a94a), con el peso y el tamaño de título que ya tenía
-  await expect(titulo).toHaveCSS('color', 'rgb(240, 169, 74)');
-  await expect(titulo).toHaveCSS('font-weight', '700');
-  await expect(titulo).toHaveCSS('font-size', '20px');
-  expect(await titulo.locator('svg, img').count()).toBe(0);
-  const menu = page.getByRole('navigation', { name: 'Secciones' });
-  await expect(menu.getByText('Editor de videos')).toHaveCount(0);
-  await expect(menu.getByText('De videos a Shorts')).toBeVisible();
-  await expect(menu.getByText('Copiadora de estilos')).toBeVisible();
-  expect(await menu.locator('a[href^="/e1.html"]').count()).toBe(0);
+  await expect(region(page).getByRole('heading', { level: 1 })).toHaveCount(1);
+  // dueño, 15-oct-2026: «Irremplazables no debería de estar dentro del cuadro, sino arriba de él»: ni dentro de la tarjeta, ni pegado a ella
+  const arriba = await titulo.evaluate(h => {
+    const t = h.getBoundingClientRect();
+    const c = document.querySelector('[data-limite-lista]')!.getBoundingClientRect();
+    return { dentro: h.closest('[data-limite-lista]') !== null, tituloBajaA: t.bottom, tarjetaSubeA: c.top };
+  });
+  expect(arriba.dentro, 'el título está dentro de la tarjeta').toBe(false);
+  expect(arriba.tarjetaSubeA - arriba.tituloBajaA, 'el título no queda arriba de la tarjeta con aire entre los dos').toBeGreaterThanOrEqual(24);
+  expect(await titulo.locator('svg, img').count(), 'el título no lleva icono').toBe(0);
+  await expect(titulo).toHaveCSS('font-size', '32px');
+  await expect(titulo).toHaveCSS('font-weight', '800');
+  await expect(titulo).toHaveCSS('text-align', 'center');
+
+  // el degradado va en un <span> en línea DENTRO del h1, no en el h1: su fondo mide lo que el texto (ver el título a 320 px, abajo)
+  const marca = titulo.locator('span.texto-oro');
+  await expect(marca).toHaveCount(1);
+  await expect(marca).toHaveText('Irremplazables');
+  await expect(titulo).toHaveCSS('background-image', 'none');
+  const e = await marca.evaluate(el => {
+    const c = getComputedStyle(el);
+    return {
+      imagen: c.backgroundImage,
+      recorte: c.backgroundClip,
+      color: c.color,
+      // el título ya no está sobre la tarjeta sino sobre el fondo de la página
+      superficie: getComputedStyle(document.body).backgroundColor,
+      sabeRecortar: CSS.supports('background-clip', 'text') || CSS.supports('-webkit-background-clip', 'text'),
+    };
+  });
+  const TRANSPARENTE = 'rgba(0, 0, 0, 0)';
+  // el texto es transparente solo si el navegador recorta el fondo a la letra; si no sabe, el dorado liso (nunca un título invisible)
+  expect(e.color === TRANSPARENTE, `color ${e.color} con recorte ${e.sabeRecortar ? 'soportado' : 'no soportado'}`).toBe(e.sabeRecortar);
+  if (e.sabeRecortar) {
+    expect(e.recorte).toBe('text');
+    // el degradado dorado de la carta, de arriba abajo: claro, dorado, hondo
+    expect(e.imagen).toMatch(/^linear-gradient\(.*rgb\(243, 220, 146\).*rgb\(230, 195, 92\).*rgb\(185, 141, 47\)/);
+    // y de verdad se ve: hay letra pintada, es dorada y más clara arriba que abajo
+    const tinta = await tintaDelTitulo(page, titulo);
+    expect(tinta.pixeles, 'no hay letra pintada: el título es invisible').toBeGreaterThan(300);
+    const [r, g, b] = tinta.media as [number, number, number];
+    expect(r, 'la letra no es dorada').toBeGreaterThan(g);
+    expect(g, 'la letra no es dorada').toBeGreaterThan(b + 40);
+    expect(tinta.arriba, 'el degradado no va de claro arriba a hondo abajo').toBeGreaterThan(tinta.abajo + 10);
+  } else {
+    expect(e.imagen).toBe('none');
+    expect(aHex(e.color)).toBe('#e6c35c');
+  }
+  // lo más oscuro del degradado (#b98d2f) sobre el fondo de la página (donde está ahora el título, ya fuera de la tarjeta) se lee: AA de texto normal, 4.5
+  expect(contraste('#b98d2f', aHex(e.superficie)), 'el dorado hondo no se lee sobre el fondo').toBeGreaterThanOrEqual(4.5);
+});
+
+// El degradado dorado es un FONDO recortado a la letra. Puesto en el h1, solo cubría la caja del h1: la letra que se salía de ella
+// (el espaciado de texto de WCAG 1.4.12 a 320 px, una letra más grande por el zoom solo de texto o la escala de texto del sistema) quedaba
+// transparente y desaparecía («Irremplazable», «Irremplaza»). Ahora el degradado va en un <span> en línea y el h1 parte la palabra dentro de
+// la tarjeta. Se mide en píxeles, letra por letra: dentro del rectángulo de CADA letra tiene que haber tinta dorada.
+const ESPACIADO_WCAG_1_4_12 = 'h1, h1 * { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important }';
+const TITULO_A_64_PX = 'h1 { font-size: 64px !important }';
+
+/** Para cada letra del título, cuántos píxeles de su propio rectángulo se alejan claramente del fondo de la página. */
+async function tintaPorLetra(page: Page, titulo: Locator) {
+  const h = (await titulo.boundingBox())!;
+  const franja = { x: 0, y: Math.max(0, Math.floor(h.y) - 4), width: page.viewportSize()!.width, height: Math.ceil(h.height) + 8 };
+  const png = (await page.screenshot({ clip: franja })).toString('base64');
+  return titulo.evaluate(
+    async (el, [base64, origenY]) => {
+      const imagen = await createImageBitmap(await (await fetch('data:image/png;base64,' + base64)).blob());
+      const lienzo = new OffscreenCanvas(imagen.width, imagen.height);
+      const g = lienzo.getContext('2d')!;
+      g.drawImage(imagen, 0, 0);
+      const { data, width, height } = g.getImageData(0, 0, imagen.width, imagen.height);
+      // el fondo es el de la página, arriba y al centro de la franja
+      const f = (Math.floor(width / 2) + 1 * width) * 4;
+      const fondo = [data[f]!, data[f + 1]!, data[f + 2]!];
+      const letras: Array<{ letra: string; tinta: number }> = [];
+      const arbol = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let nodo = arbol.nextNode(); nodo; nodo = arbol.nextNode()) {
+        const texto = nodo.textContent ?? '';
+        for (let i = 0; i < texto.length; i++) {
+          if (!texto[i]!.trim()) continue;
+          const rango = document.createRange();
+          rango.setStart(nodo, i);
+          rango.setEnd(nodo, i + 1);
+          const r = rango.getBoundingClientRect();
+          let tinta = 0;
+          for (let y = Math.max(0, Math.floor(r.top - Number(origenY))); y < Math.min(height, Math.ceil(r.bottom - Number(origenY))); y++)
+            for (let x = Math.max(0, Math.floor(r.left)); x < Math.min(width, Math.ceil(r.right)); x++) {
+              const k = (y * width + x) * 4;
+              if (Math.abs(data[k]! - fondo[0]!) + Math.abs(data[k + 1]! - fondo[1]!) + Math.abs(data[k + 2]! - fondo[2]!) > 90) tinta++;
+            }
+          letras.push({ letra: texto[i]!, tinta });
+        }
+      }
+      return letras;
+    },
+    [png, franja.y] as const,
+  );
+}
+
+for (const [cuando, ancho, css] of [
+  ['con el espaciado de texto de WCAG 1.4.12 a 320 px', 320, ESPACIADO_WCAG_1_4_12],
+  ['con la letra a 64 px a 390 px', 390, TITULO_A_64_PX],
+  ['con la letra a 64 px a 320 px', 320, TITULO_A_64_PX],
+] as const) {
+  test(`el título «Irremplazables» no pierde letras ${cuando}: se parte dentro de la región y cada letra lleva su dorado`, async ({ page }) => {
+    await page.setViewportSize({ width: ancho, height: 844 });
+    await inicio(page, { estado: 200, cuerpo: {} });
+    await page.addStyleTag({ content: css });
+    const titulo = page.getByRole('heading', { level: 1 });
+    // 1) la palabra no se sale de la región (se parte con `overflow-wrap: anywhere`)
+    const caja = await titulo.evaluate(h => {
+      const rango = document.createRange();
+      rango.selectNodeContents(h);
+      const texto = rango.getBoundingClientRect();
+      const region = h.closest('section')!.getBoundingClientRect();
+      return { izq: texto.left - region.left, der: region.right - texto.right };
+    });
+    expect(caja.der, `el título se sale por la derecha de la región (${cuando})`).toBeGreaterThanOrEqual(-0.5);
+    expect(caja.izq, `el título se sale por la izquierda de la región (${cuando})`).toBeGreaterThanOrEqual(-0.5);
+    // 2) y dentro del rectángulo de cada una de las 14 letras hay dorado: ninguna queda transparente
+    const letras = await tintaPorLetra(page, titulo);
+    expect(letras.map(l => l.letra).join('')).toBe('Irremplazables');
+    for (const l of letras) expect(l.tinta, `${cuando}: la «${l.letra}» no tiene tinta (${JSON.stringify(letras)})`).toBeGreaterThan(20);
+  });
+}
+
+// En alto contraste (`forced-colors: active`) el navegador pinta de un color del sistema hasta el borde `transparent`: la caja, que va dentro de
+// la tarjeta y lleva ese borde para pintar el «suelta aquí» sin que nada se mueva, mostraba un segundo marco dentro del marco de la tarjeta.
+test('en alto contraste la caja no pinta un segundo marco dentro de la tarjeta, y el «suelta aquí» sí se ve', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await inicio(page, { estado: 200, cuerpo: {} });
+  expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches), 'el navegador no emuló el alto contraste').toBe(true);
+  const seccion = caja(page).locator('xpath=ancestor::section[1]');
+  const marco = (el: Locator) => el.evaluate(e => ({ ancho: getComputedStyle(e).borderTopWidth, estilo: getComputedStyle(e).borderTopStyle }));
+  // la tarjeta SÍ tiene su marco (es el único); la caja de adentro, no
+  expect(await marco(tarjeta(page))).toEqual({ ancho: '1px', estilo: 'solid' });
+  expect(await marco(seccion), 'la caja trae un segundo marco dentro de la tarjeta').toEqual({ ancho: '0px', estilo: 'solid' });
+  // arrastrar un archivo la enmarca (discontinuo, y a la vista también en alto contraste)
+  const archivo = await page.evaluateHandle(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['x'], 'a.png', { type: 'image/png' }));
+    return dt;
+  });
+  await seccion.dispatchEvent('dragover', { dataTransfer: archivo });
+  await expect.poll(() => marco(seccion)).toEqual({ ancho: '1px', estilo: 'dashed' });
+  // sin alto contraste, como siempre: un borde de 1 px transparente que no mueve nada al arrastrar
+  await page.emulateMedia({ forcedColors: 'none' });
+  await seccion.dispatchEvent('dragleave', { relatedTarget: null });
+  await expect.poll(() => seccion.evaluate(e => getComputedStyle(e).borderTopColor)).toBe('rgba(0, 0, 0, 0)');
+  expect(await marco(seccion)).toEqual({ ancho: '1px', estilo: 'solid' });
+});
+
+// La lista de «Editar ▾» (y la de «Un video corto ▾», «Crear una imagen ▾») es más ancha que su chip y se sujeta a la ventana con 12 px de
+// margen; la tarjeta, que va a 16 px del borde, quedaba 4 px más adentro y la lista cruzaba su línea. Ahora se sujeta también a la tarjeta.
+test('la lista del chip no sobresale de la tarjeta de 320 a 640 px, en Imagen, Video y Edición', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  const chip = page.locator('button[aria-haspopup="listbox"]');
+  const lista = page.getByRole('listbox', { name: 'Opciones' });
+  for (const ancho of [320, 340, 360, 375, 380, 390, 414, 480, 500, 560, 600, 640]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    for (const familia of ['Imagen', 'Video', 'Edición']) {
+      await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true }).click();
+      await chip.click();
+      await expect(lista).toBeVisible();
+      const l = (await lista.boundingBox())!;
+      const t = (await tarjeta(page).boundingBox())!;
+      const donde = `${familia} a ${ancho} px`;
+      expect(l.x + l.width, `${donde}: la lista sobresale por la derecha de la tarjeta`).toBeLessThanOrEqual(t.x + t.width + 0.5);
+      expect(l.x, `${donde}: la lista sobresale por la izquierda de la tarjeta`).toBeGreaterThanOrEqual(t.x - 0.5);
+      await page.keyboard.press('Escape');
+      await expect(lista).toHaveCount(0);
+    }
+  }
+});
+
+test('ya no hay menú «Secciones» ni «Editor de videos», y lo que traía el menú se alcanza por el mapa', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: {} });
+  await expect(page.getByRole('navigation', { name: 'Secciones' })).toHaveCount(0);
+  await expect(page.locator('aside')).toHaveCount(0);
+  await expect(page.getByText('Editor de videos')).toHaveCount(0);
+
+  // «De videos a Shorts» vive en el chip «Editar ▾» de la caja (Edición), no en una lista de pantallas
+  await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición', exact: true }).click();
+  await page.locator('button[aria-haspopup="listbox"]').click();
+  await expect(page.getByRole('listbox', { name: 'Opciones' }).getByRole('option', { name: /De videos a Shorts/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // por el mapa: Marketing → sus grupos. Cada lista trae SUS pantallas (así «no hay» de abajo no pasa por vacía) y ninguna trae
+  // «Editor de videos» ni «De videos a Shorts»
+  const area = region(page);
+  for (const [grupo, pantallas] of [['Blotato', 3], ['Avanzado', 2]] as const) {
+    await irA(page, 'Marketing', grupo);
+    await expect(area.getByRole('link'), `las pantallas de ${grupo}`).toHaveCount(pantallas);
+    await expect(area.getByRole('link', { name: /De videos a Shorts|Editor de videos/ }), `en ${grupo}`).toHaveCount(0);
+    await expect(area.locator('a[href^="/e1.html"], a[href^="/shorts.html"]'), `en ${grupo}`).toHaveCount(0);
+  }
+  // «Copiadora de estilos» (provisional, hasta que exista Marcas): Marketing → Avanzado → Copiadora
+  await expect(area.getByRole('link', { name: /Copiadora de estilos/ })).toBeVisible();
+  await Promise.all([page.waitForURL(/\/estudio\/estilos\//), area.getByRole('link', { name: /Copiadora de estilos/ }).click()]);
+  await expect(page.getByRole('heading', { level: 1, name: 'Copiadora de estilos' })).toBeVisible();
 });
 
 for (const [familia, nombre] of [
