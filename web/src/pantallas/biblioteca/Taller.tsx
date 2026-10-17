@@ -95,8 +95,13 @@ export function Taller({ datos }: { datos: Listado }) {
   // dónde se hizo lo último con los fijados: ahí se dice si no se pudo guardar
   const dondeFijo = useRef<Nota['donde']>('detalle');
 
-  const fijados = useFijados(datos.fijados, texto =>
-    setNota({ donde: dondeFijo.current, tipo: 'error', texto: `${texto} Tus fijados quedaron como estaban.` }),
+  // un fallo deja los fijados como estaban (y lo dice); un conflicto (409) los pone al día con los del servidor: es un aviso, y no mueve el foco
+  const fijados = useFijados(datos.fijados, (texto, alDia) =>
+    setNota(
+      alDia
+        ? { donde: dondeFijo.current, tipo: 'aviso', texto }
+        : { donde: dondeFijo.current, tipo: 'error', texto: `${texto} Tus fijados quedaron como estaban.` },
+    ),
   );
 
   useEffect(() => {
@@ -161,6 +166,12 @@ export function Taller({ datos }: { datos: Listado }) {
     setFoco('');
     setCopiado('');
     setPaso(1);
+  }
+
+  // «Quitar filtros» y «Quitar la etiqueta» desaparecen con el foco puesto (solo existen mientras hay filtro): el foco pasa al buscador, no a <body>
+  function quitarFiltros(nuevo: Filtro) {
+    filtrarPor(nuevo);
+    porEnfocar.current = () => enElDom('input[type="search"]');
   }
 
   function abrirFijado(p: Prompt) {
@@ -429,7 +440,7 @@ export function Taller({ datos }: { datos: Listado }) {
                   <button
                     type="button"
                     aria-label={`Quitar la etiqueta ${filtro.etiqueta}`}
-                    onClick={() => filtrarPor({ ...filtro, etiqueta: '' })}
+                    onClick={() => quitarFiltros({ ...filtro, etiqueta: '' })}
                     className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-medio border border-campo bg-elevada px-3.5 text-sm text-texto"
                   >
                     #{filtro.etiqueta}
@@ -443,7 +454,7 @@ export function Taller({ datos }: { datos: Listado }) {
                   {resumenDeLista(visibles.length, filtro, categorias)}
                 </p>
                 {hayFiltro(filtro) && (
-                  <button type="button" className={BOTON_TEXTO} onClick={() => filtrarPor(SIN_FILTRO)}>
+                  <button type="button" className={BOTON_TEXTO} onClick={() => quitarFiltros(SIN_FILTRO)}>
                     Quitar filtros
                   </button>
                 )}
@@ -483,7 +494,7 @@ export function Taller({ datos }: { datos: Listado }) {
                         <Icono nombre={iconoDe(p.categoria)} />
                       </span>
                       <span className="block min-w-0 flex-1">
-                        <b className="block text-sm leading-snug font-semibold">{p.titulo}</b>
+                        <b className="block text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{p.titulo}</b>
                         <small className="line-clamp-2 block text-xs leading-snug text-secundario">{p.para_que || p.prompt}</small>
                       </span>
                       {fijados.ids.includes(p.id) && (
@@ -541,6 +552,8 @@ export function Taller({ datos }: { datos: Listado }) {
               alEtiquetar={t => {
                 filtrarPor({ q: '', categoria: TODAS, etiqueta: t });
                 decir(`Mostrando los prompts con la etiqueta ${t}.`);
+                // en un celular la etiqueta que se tocó (en el detalle) se esconde al pasar a la lista: el foco va a la que la quita, no a <body>
+                if (esCelular()) porEnfocar.current = () => enElDom('button[aria-label^="Quitar la etiqueta"]');
               }}
             />
           ) : sinMios ? (
@@ -578,7 +591,7 @@ export function Taller({ datos }: { datos: Listado }) {
                     Diseñar uno con COI
                     <Icono nombre="derecha" />
                   </a>
-                  <Boton nivel="secundario" onClick={() => filtrarPor(SIN_FILTRO)}>
+                  <Boton nivel="secundario" onClick={() => quitarFiltros(SIN_FILTRO)}>
                     Quitar filtros
                   </Boton>
                 </div>
@@ -706,7 +719,7 @@ function Detalle({ p, categoria, fijado, copiado, nota, alVolver, alAlternarPin,
       {p.para_que && (
         <div className="mb-4.5">
           <h4 className={TITULO_DE_SECCION}>Para qué sirve</h4>
-          <p className="m-0 max-w-[64ch] text-sm leading-relaxed">{p.para_que}</p>
+          <p className="m-0 max-w-[64ch] text-sm leading-relaxed [overflow-wrap:anywhere]">{p.para_que}</p>
         </div>
       )}
 

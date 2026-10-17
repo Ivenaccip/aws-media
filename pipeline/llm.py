@@ -132,6 +132,19 @@ def _rechaza_razonamiento(err: Exception) -> bool:
             or "reasoning_effort" in str(err).lower())
 
 
+async def _crear_con_razonamiento(create, kw: dict, modelo: str):
+    """`create(**kw)`. Si `kw` pide `reasoning_effort` y la API lo rechaza (400), se reintenta UNA
+    vez sin ese parámetro y queda un `warning` (sin texto de la persona)."""
+    try:
+        return await create(**kw)
+    except Exception as err:  # noqa: BLE001 — se mira si es el 400 del razonamiento
+        if "reasoning_effort" in kw and _rechaza_razonamiento(err):
+            log.warning("llm: %s no acepta reasoning_effort; se reintenta sin él", modelo)
+            kw.pop("reasoning_effort")
+            return await create(**kw)
+        raise
+
+
 async def chat_texto(system: str, user: str, *, razonamiento: str | None = "minimal",
                      max_tokens: int = 4000, timeout: float = 24,
                      modelo: str | None = None) -> tuple[str, dict]:
@@ -151,16 +164,7 @@ async def chat_texto(system: str, user: str, *, razonamiento: str | None = "mini
     }
     if razonamiento:
         kw["reasoning_effort"] = razonamiento
-    create = _create_sin_envoltorio(client_sin_trazas())
-    try:
-        resp = await create(**kw)
-    except Exception as err:  # noqa: BLE001 — se mira si es el 400 del razonamiento
-        if "reasoning_effort" in kw and _rechaza_razonamiento(err):
-            log.warning("chat_texto: %s no acepta reasoning_effort; se reintenta sin él", modelo)
-            kw.pop("reasoning_effort")
-            resp = await create(**kw)
-        else:
-            raise
+    resp = await _crear_con_razonamiento(_create_sin_envoltorio(client_sin_trazas()), kw, modelo)
     escogida = resp.choices[0]
     entrada, salida, en_cache = _tokens(resp)
     uso = {"modelo": modelo, "entrada": entrada, "salida": salida, "cache_leida": en_cache,
@@ -169,16 +173,21 @@ async def chat_texto(system: str, user: str, *, razonamiento: str | None = "mini
 
 
 async def chat_json(name: str, system: str, user: str, *, publico: bool = False,
-                    sin_trazas: bool = False) -> dict:
+                    sin_trazas: bool = False, razonamiento: str | None = None) -> dict:
     """Ejecuta un prompt que debe responder JSON puro y lo parsea. Con
     `publico` va con la clave de lo público (capa 1), no con la de plataforma.
     Con `sin_trazas` va con la clave de plataforma pero SIN Langfuse (ni la
     generation ni el enlace al prompt): para lo que lleva texto de una persona
-    que no debe quedar en ningún lado (la moderación de COI)."""
+    que no debe quedar en ningún lado (la moderación de COI). Solo en ese modo
+    `razonamiento` se manda como `reasoning_effort` (con el mismo respaldo de
+    reintento sin él que `chat_texto`): una clasificación corta no necesita razonar."""
     mensajes = [{"role": "system", "content": str(system)}, {"role": "user", "content": user}]
     if sin_trazas:
-        resp = await _create_sin_envoltorio(client_sin_trazas())(
-            model=settings.openai_model, messages=mensajes)
+        kw: dict = {"model": settings.openai_model, "messages": mensajes}
+        if razonamiento:
+            kw["reasoning_effort"] = razonamiento
+        resp = await _crear_con_razonamiento(
+            _create_sin_envoltorio(client_sin_trazas()), kw, settings.openai_model)
         entrada, salida, _ = _tokens(resp)
         log.info("%s (sin trazas): %s · entrada %s · salida %s", name, settings.openai_model,
                  entrada, salida)

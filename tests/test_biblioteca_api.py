@@ -10,9 +10,13 @@ import re
 import pytest
 
 from server import biblioteca_api as api
-from test_coi_mundo import Mundo, cliente, mundo  # noqa: F401
+from test_coi_mundo import CASA_DE_PRUEBA, Mundo, casa_de_prueba, cliente, mundo  # noqa: F401
 
-CASA = [p["id"] for p in api.casa()]
+# «De la casa» es la lista de prueba de test_coi_mundo.py, no el archivo del dueño (que él reemplaza
+# cuando quiere): aquí no se fija cuántos prompts trae ni cuáles.
+pytestmark = pytest.mark.usefixtures("casa_de_prueba")
+
+CASA = [p["id"] for p in CASA_DE_PRUEBA["prompts"]]
 UNO, DOS, TRES, CUATRO = CASA[:4]
 CLAVE = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
@@ -44,9 +48,9 @@ def test_get_trae_todo_en_una_carga(cliente, mundo):
     assert d["categorias"] == [{"clave": "imagen", "nombre": "Imagen"}, {"clave": "video", "nombre": "Video"},
                                {"clave": "guion", "nombre": "Guion y texto"},
                                {"clave": "investigacion", "nombre": "Investigación"}]
-    assert d["limites"] == {"fijados": 3, "mios": 100, "titulo": 80, "prompt": 12000}
+    assert d["limites"] == {"fijados": 3, "mios": 100, "titulo": 80, "prompt": 16000}
     assert d["mios"] == [] and d["fijados"] == []
-    assert len(d["casa"]) == 14
+    assert len(d["casa"]) == len(CASA)
     assert set(d["casa"][0]) == {"id", "titulo", "para_que", "prompt", "categoria", "etiquetas", "lleva_a"}
     assert r.headers["cache-control"] == "no-store"
 
@@ -84,7 +88,7 @@ def test_en_local_sin_postgres_se_ve_la_casa_y_nada_se_guarda(cliente, mundo, mo
     from pipeline import db
     monkeypatch.setattr(db, "backend", lambda: "json")
     d = cliente.get("/api/biblioteca").json()
-    assert len(d["casa"]) == 14 and d["mios"] == [] and d["fijados"] == []
+    assert len(d["casa"]) == len(CASA) and d["mios"] == [] and d["fijados"] == []
     for r in (fijar(cliente, [UNO]), guardar(cliente), cliente.delete("/api/biblioteca/mios/mio-0123456789ab")):
         assert r.status_code == 503 and detalle(r)["codigo"] == "no_nube"
     assert mundo.eventos == []
@@ -159,6 +163,93 @@ def test_json_roto_en_fijados(cliente, mundo):
     assert r.status_code == 422 and detalle(r)["codigo"] == "cuerpo"
 
 
+# ---- compare-and-set: `esperada` es la lista que la pantalla cree vigente -----------------------------------
+
+def fijar_esperando(cliente, ids, esperada):
+    return cliente.put("/api/biblioteca/fijados", json={"ids": ids, "esperada": esperada})
+
+
+def test_fijar_con_la_lista_esperada_que_coincide_escribe(cliente, mundo):
+    assert fijar_esperando(cliente, [UNO], []).json() == {"fijados": [UNO]}
+    assert fijar_esperando(cliente, [DOS, UNO], [UNO]).json() == {"fijados": [DOS, UNO]}
+    assert cliente.get("/api/biblioteca").json()["fijados"] == [DOS, UNO]
+    assert fijar_esperando(cliente, [], [DOS, UNO]).json() == {"fijados": []}
+
+
+def test_fijar_desde_una_pantalla_vieja_no_pisa_los_fijados_de_otro_aparato(cliente, mundo):
+    """El teléfono fijó UNO; la computadora, que seguía viendo la lista vacía, fija DOS. En vez de
+    reemplazar en silencio, el servidor dice 409 con la lista vigente y no escribe nada."""
+    assert fijar(cliente, [UNO]).status_code == 200                 # el teléfono
+    r = fijar_esperando(cliente, [DOS], [])                         # la computadora
+    d = detalle(r)
+    assert r.status_code == 409 and d["codigo"] == "cambiaron"
+    assert d["texto"] == "Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos."
+    assert d["fijados"] == [UNO]
+    assert mundo.fijados["u1"] == [UNO]                             # nada se escribió
+    # con la lista vigente a la mano, el siguiente intento sí pasa
+    assert fijar_esperando(cliente, [DOS, UNO], d["fijados"]).status_code == 200
+
+
+def test_el_orden_de_la_lista_esperada_cuenta(cliente, mundo):
+    fijar(cliente, [UNO, DOS])
+    r = fijar_esperando(cliente, [TRES], [DOS, UNO])
+    assert r.status_code == 409 and detalle(r)["fijados"] == [UNO, DOS]
+
+
+def test_la_esperada_se_compara_con_lo_que_ve_la_pantalla_no_con_los_huerfanos(cliente, mundo):
+    """La base trae un pin huérfano (lo quitó el dueño de la casa): el GET lo omite, así que la pantalla
+    cree vigente la lista SIN él. Compararla con la lista cruda la dejaría en 409 para siempre."""
+    mundo.fijados["u1"] = [TRES, "casa-ya-no-existe", UNO]
+    assert cliente.get("/api/biblioteca").json()["fijados"] == [TRES, UNO]
+    assert fijar_esperando(cliente, [UNO, TRES], [TRES, UNO]).status_code == 200
+    assert mundo.fijados["u1"] == [UNO, TRES]                        # y el huérfano se limpió
+
+
+def test_otra_pestana_escribe_entre_mi_lectura_y_mi_escritura_tambien_es_409_con_lo_que_quedo(cliente, mundo):
+    """El compare-and-set de la base: la comparación previa pasó, pero otro aparato escribió justo después."""
+    mundo.tras_leer_fijados = lambda: mundo.fijados.__setitem__("u1", [TRES])
+    r = fijar_esperando(cliente, [UNO], [])
+    d = detalle(r)
+    assert r.status_code == 409 and d["codigo"] == "cambiaron" and d["fijados"] == [TRES]
+    assert mundo.fijados["u1"] == [TRES]
+
+
+def test_el_409_solo_trae_ids_propios_o_de_la_casa(cliente, mundo):
+    ajeno = guardar(cliente).json()["prompt"]["id"]
+    mundo.user = "u2"
+    mundo.fijados["u2"] = [ajeno, UNO]                                # un id de otra persona que alguien logró escribir
+    r = fijar_esperando(cliente, [DOS], [])
+    assert r.status_code == 409 and detalle(r)["fijados"] == [UNO]
+
+
+def test_sin_esperada_se_comporta_como_siempre(cliente, mundo):
+    fijar(cliente, [UNO])
+    assert fijar(cliente, [DOS]).status_code == 200                  # reemplaza sin comparar
+    assert mundo.fijados["u1"] == [DOS]
+
+
+@pytest.mark.parametrize("esperada", ["x", 5, {"a": 1}, [1, 2], [None], [UNO, 3]])
+def test_esperada_mal_formada_es_422_cuerpo(cliente, mundo, esperada):
+    r = cliente.put("/api/biblioteca/fijados", json={"ids": [UNO], "esperada": esperada})
+    assert r.status_code == 422 and detalle(r)["codigo"] == "cuerpo"
+    assert mundo.fijados.get("u1", []) == []
+
+
+def test_las_validaciones_de_los_ids_siguen_valiendo_con_esperada(cliente, mundo):
+    assert detalle(fijar_esperando(cliente, [UNO, DOS, TRES, CUATRO], []))["codigo"] == "demasiados"
+    assert detalle(fijar_esperando(cliente, [UNO, UNO], []))["codigo"] == "repetido"
+    assert detalle(fijar_esperando(cliente, ["casa-no-existe"], []))["codigo"] == "desconocido"
+    ajeno = guardar(cliente).json()["prompt"]["id"]
+    mundo.user = "u2"
+    assert detalle(fijar_esperando(cliente, [ajeno], []))["codigo"] == "desconocido"
+
+
+def test_si_la_base_no_responde_al_comparar(cliente, mundo):
+    mundo.fallas["biblioteca_fijados"] = RuntimeError("Aurora: secreto-interno")
+    r = fijar_esperando(cliente, [UNO], [])
+    assert r.status_code == 503 and detalle(r)["codigo"] == "no_disponible" and "secreto-interno" not in r.text
+
+
 def test_fijar_no_toca_a_la_otra_persona(cliente, mundo):
     fijar(cliente, [UNO, DOS])
     mundo.user = "u2"
@@ -204,7 +295,7 @@ def test_guardar_no_llama_al_modelo_ni_gasta_un_uso_de_coi(cliente, mundo):
     ({"prompt": ""}, "prompt_vacio"),
     ({"prompt": "  \n "}, "prompt_vacio"),
     ({"titulo": "t" * 81}, "muy_largo"),
-    ({"prompt": "p" * 12001}, "muy_largo"),
+    ({"prompt": "p" * 16001}, "muy_largo"),
     ({"para_que": "x" * 161}, "muy_largo"),
     ({"categoria": "musica"}, "categoria"),
     ({"categoria": 5}, "categoria"),
@@ -227,11 +318,80 @@ def test_validaciones_con_su_codigo(cliente, mundo, campos, codigo):
 def test_muy_largo_dice_cual_campo(cliente, mundo):
     d = detalle(guardar(cliente, titulo="t" * 81))
     assert d["campo"] == "titulo" and d["max"] == 80 and "titulo" in d["texto"]
-    assert detalle(guardar(cliente, prompt="p" * 12001))["campo"] == "prompt"
+    d = detalle(guardar(cliente, prompt="p" * 16001))
+    assert (d["campo"], d["max"]) == ("prompt", 16000)
 
 
-def test_el_prompt_de_12000_caracteres_si_cabe(cliente, mundo):
-    assert guardar(cliente, prompt="p" * 12000).status_code == 201
+def test_el_prompt_de_16000_caracteres_si_cabe(cliente, mundo):
+    """COI limita lo que contesta el modelo a ≈ 15 000 caracteres: un COI largo cabe en «Míos»."""
+    assert api.MAX_PROMPT == 16000
+    assert guardar(cliente, prompt="p" * 16000).status_code == 201
+
+
+def _cuerpo_crudo(cliente, crudo):
+    return cliente.post("/api/biblioteca/mios", content=crudo, headers={"content-type": "application/json"})
+
+
+@pytest.mark.parametrize("campo,crudo,codigo", [
+    ("titulo", b'{"titulo": "a\\u0000b", "prompt": "p"}', "titulo_invalido"),
+    ("titulo", b'{"titulo": "a\\ud800b", "prompt": "p"}', "titulo_invalido"),
+    ("prompt", b'{"titulo": "t", "prompt": "p\\u0000q"}', "prompt_invalido"),
+    ("prompt", b'{"titulo": "t", "prompt": "p\\udfffq"}', "prompt_invalido"),
+    ("para_que", b'{"titulo": "t", "prompt": "p", "para_que": "\\u0000"}', "para_que_invalido"),
+    ("para_que", b'{"titulo": "t", "prompt": "p", "para_que": "x\\ud83dy"}', "para_que_invalido"),
+    ("etiquetas", b'{"titulo": "t", "prompt": "p", "etiquetas": ["a\\u0000"]}', "etiquetas_invalido"),
+    ("etiquetas", b'{"titulo": "t", "prompt": "p", "etiquetas": ["ok", "\\ude00"]}', "etiquetas_invalido"),
+])
+def test_nul_y_sustitutos_sueltos_son_422_del_campo_nunca_503(cliente, mundo, campo, crudo, codigo):
+    """Postgres no guarda el NUL y un sustituto suelto no se puede escribir como UTF-8: eso es un dato
+    inválido (422, con el campo), no una base caída (503 «inténtalo en unos minutos»)."""
+    r = _cuerpo_crudo(cliente, crudo)
+    d = detalle(r)
+    assert r.status_code == 422 and d["codigo"] == codigo and d["campo"] == campo
+    assert "carácter" in d["texto"] and "para_que" not in d["texto"] and "etiquetas" not in d["texto"]
+    assert mundo.mios.get("u1", []) == [] and mundo.eventos == []      # ni se tocó la base
+
+
+def test_un_emoji_escrito_como_par_de_sustitutos_si_se_guarda(cliente, mundo):
+    r = _cuerpo_crudo(cliente, b'{"titulo": "hola \\ud83d\\ude00", "prompt": "p", "etiquetas": ["\\ud83d\\ude00"]}')
+    assert r.status_code == 201 and r.json()["prompt"]["titulo"] == "hola \U0001F600"
+    assert r.json()["prompt"]["etiquetas"] == ["\U0001F600"]
+
+
+def test_el_texto_largo_con_un_nul_dice_muy_largo_primero(cliente, mundo):
+    d = detalle(guardar(cliente, prompt="\u0000" + "p" * 16000))
+    assert d["codigo"] == "muy_largo"
+
+
+def test_un_cuerpo_de_mas_de_256_kb_es_422_muy_largo_aunque_sus_campos_quepan(cliente, mundo):
+    """El tope del cuerpo (antes de parsear) tiene su propia prueba: el relleno son espacios, que es JSON
+    válido con campos chicos, para que no lo cace el tope por campo."""
+    cuerpo = ('{"titulo": "t", "prompt": "p"}' + " " * (300 * 1024)).encode()
+    r = _cuerpo_crudo(cliente, cuerpo)
+    assert r.status_code == 422 and detalle(r)["codigo"] == "muy_largo"
+    assert mundo.mios.get("u1", []) == []
+    assert guardar(cliente).status_code == 201
+
+
+@pytest.mark.parametrize("ruta,metodo", [("/api/biblioteca/mios", "post"), ("/api/biblioteca/fijados", "put")])
+def test_un_cuerpo_chunked_sin_content_length_tambien_se_corta_al_pasar_el_tope(cliente, mundo, ruta, metodo):
+    """Con `Transfer-Encoding: chunked` no hay `Content-Length`: el tope cuenta los bytes que llegan."""
+    def trozos():
+        yield b'{"titulo": "t", "prompt": "p", "ids": []}'
+        for _ in range(300):
+            yield b" " * 1024
+    r = getattr(cliente, metodo)(ruta, content=trozos(), headers={"content-type": "application/json"})
+    assert "content-length" not in {k.lower() for k in r.request.headers}
+    assert r.status_code == 422 and detalle(r)["codigo"] == "muy_largo"
+    assert mundo.mios.get("u1", []) == [] and mundo.fijados.get("u1", []) == []
+
+
+def test_un_cuerpo_chunked_chico_funciona(cliente, mundo):
+    def trozos():
+        yield b'{"titulo": "t", '
+        yield b'"prompt": "p"}'
+    r = cliente.post("/api/biblioteca/mios", content=trozos(), headers={"content-type": "application/json"})
+    assert r.status_code == 201
 
 
 def test_etiquetas_se_limpian_y_sin_repetir(cliente, mundo):

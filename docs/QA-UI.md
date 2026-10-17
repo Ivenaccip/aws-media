@@ -324,7 +324,7 @@ dólares): pruébala con calma y no más de 3 veces por persona. Hazla en el tel
 | 2 | Pulsar un ejemplo | Llena el cuadro y el foco queda en él; los ejemplos se esconden al escribir |
 | 3 | «Armar COI» con el cuadro vacío | «Escribe primero qué necesitas…» junto al cuadro; no se manda nada |
 | 4 | Escribir y pulsar Ctrl+Intro (o Cmd+Intro) | Lo mismo que el botón |
-| 5 | Mientras arma | «Armando tu COI…» sin pasos falsos; el botón dice «Armando…»; el contador **no** baja todavía |
+| 5 | Mientras arma | «Armando tu COI…» sin pasos falsos; el botón dice «Armando…»; el contador **no** baja todavía. La caja avisa que si sales antes de que termine, el uso se cuenta igual |
 | 6 | Al terminar | El foco va a «Tu COI»; tres tarjetas abiertas (#CONTEXTO, #OBJETIVO, #INSTRUCCIONES con sus siete partes); el contador baja a «Te quedan 2 de 3 hoy» |
 | 7 | «Plegar todo», «Abrir todo» y plegar una tarjeta | El botón cambia de nombre según lo que haya; el foco no se mueve |
 | 8 | «Copiar» en un bloque y pegar en otro lado | Pega `#OBJETIVO` y su texto; el botón dice «Copiado» un momento |
@@ -337,13 +337,19 @@ dólares): pruébala con calma y no más de 3 veces por persona. Hazla en el tel
 | 15 | Mismo usuario en dos pestañas: armar en una y, a media espera, armar en la otra | La segunda dice «Ya hay un COI en camino» sin ser error y se desbloquea sola en unos segundos |
 | 16 | Escribir algo que la moderación rechace | «No pudimos usar ese texto», con el motivo, junto al cuadro; el foco al cuadro; **no** gasta ninguno |
 | 17 | Cortar el internet y «Armar COI» | «No hay conexión»; el texto sigue en el cuadro; el contador se vuelve a leer del servidor |
-| 18 | Entrar sin poder leer el contador (servidor caído) | «COI no está disponible ahora» con «Reintentar»; el botón apagado hasta que vuelva |
+| 18 | Entrar sin poder leer el contador (servidor caído) y pulsar «Reintentar» con el servicio aún caído | «COI no está disponible ahora» con «Reintentar»; el botón apagado hasta que vuelva. Al pulsar dice «Reintentando…» (y el lector de pantalla lo anuncia); si sigue caído, vuelve «Reintentar». **«No se gastó ninguno de tus usos» sale una sola vez** (o ninguna: aquí nadie intentó armar nada) |
 | 19 | Pegar más de 2000 caracteres | «Es muy largo: el máximo es de 2000 caracteres y llevas N»; el botón se apaga |
 | 20 | Lector de pantalla: armar y terminar | Anuncia «Armando tu COI…», luego «Tu COI está listo…»; el contador se anuncia al cambiar |
 | 21 | «Reducir movimiento» del sistema | El giro de «Armando…» no gira y nada se mueve |
 | 22 | Al día siguiente (pasada la medianoche de México) con la pestaña abierta | Sola, tras unos segundos, vuelve «Te quedan 3 de 3 hoy» y el cuadro se enciende |
 | 23 | Central › Distrito desde el mapa | COI es un enlace (y también la Biblioteca de prompts); Preguntas y Glosario siguen «Próximamente» |
-| 24 | Pantalla a 390 px | Sin desplazamiento horizontal; todo lo que se toca mide 44 px o más; «Copiar» de cada bloque queda en su sitio |
+| 24 | Pantalla a 390 px y a 320 px | Sin desplazamiento horizontal; todo lo que se toca mide 44 px o más (también la ✕ de la hoja de «Guardar» a 320); «Copiar» de cada bloque queda en su sitio |
+| 25 | Armar un COI y, **mientras llega otro** («Armar otro COI»), pulsar «Guardar» del viejo | «Guardar» está apagado (se puede enfocar y dice por qué); no abre la hoja. Al llegar el nuevo vuelve a funcionar y guarda **el nuevo** |
+| 26 | Armar y, a media espera, recargar o cerrar la pestaña | El navegador pregunta antes de salir (en iOS Safari no pregunta). Si sales igual, al volver el contador bajó y no hay resultado: no se guardó nada |
+| 27 | Tener la Biblioteca llena (100 «Míos») y pulsar «Guardar» | Dice que está llena y «Abre tu Biblioteca en otra pestaña para borrar alguno»: el enlace abre OTRA pestaña y el COI sigue en esta |
+| 28 | Que el servidor conteste «demasiados intentos» (muchos intentos seguidos que no salieron) | «Por hoy ya no podemos intentarlo más» con el texto del servidor y «Faltan X h Y min»; la entrada y el botón apagados; el contador sigue en «Te quedan 3 de 3» (no se gastó ninguno) y NO dice «Ya usaste tus 3»; no es un error. Pasada la medianoche de México, vuelve sola |
+| 29 | Escribir algo con un carácter que el servidor no acepta | El texto del servidor, tal cual, junto al cuadro y con el foco en él; escribir lo quita |
+| 30 | Un COI tan largo que la Biblioteca no lo guarda | «Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «Copiar todo» para llevártelo.» (sin nombres de campos ni cifras) |
 
 ## biblioteca · `/estudio/biblioteca/`
 
@@ -371,3 +377,6 @@ cada paso con el servidor de verdad (la web se probó con un API de mentira: `we
 | 16 | Tumbar el servidor y recargar | «No pudimos cargar la Biblioteca» con «Reintentar» (el único ámbar); al volver el servidor, reintenta y carga. Nunca se queda en «Cargando…» |
 | 17 | Con «reducir movimiento» activo | Nada se mueve (ni el cargando ni el esqueleto) |
 | 18 | Revisar con el lector de pantalla | Una región `aria-live` anuncia copiar, fijar, borrar y elegir; cada botón de la franja y el interruptor dicen el título del prompt sobre el que actúan |
+| 19 | La misma cuenta en dos aparatos (o dos pestañas), las dos abiertas con los fijados vacíos: fijar un prompt en una y OTRO en la otra | La segunda **no pisa** a la primera: se pone al día con lo que el servidor tiene (el fijado de la primera), dice «Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos.» (sin mover el foco) y volver a fijar SUMA. Recargar muestra los dos |
+| 20 | Escribir algo en el buscador, ir con Tab a «Quitar filtros» y pulsar Enter (y lo mismo con «Quitar la etiqueta»; a 390 px, con una etiqueta del detalle) | El foco pasa al buscador (o a «Quitar la etiqueta»); nunca cae al principio de la página |
+| 21 | «Míos» con un título de 80 letras sin espacios y otro con una dirección larga (a 1100, 390 y 320 px) | El texto se parte dentro de su fila; la página no se arrastra de lado ni la lista se desplaza |

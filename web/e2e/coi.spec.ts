@@ -258,7 +258,9 @@ for (const [ancho, alto] of [
         page.getByText('No guardamos lo que escribes ni lo que te responde. Solo se guarda el COI que tú decidas guardar, y solo en tu Biblioteca.'),
       ).toBeVisible();
       await expect(page.getByRole('link', { name: 'Mira la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
-      // un solo botón ámbar: el principal lo lleva solo «Armar COI»
+      // un solo botón ámbar: el principal lo lleva solo «Armar COI». El botón pasa de apagado a ámbar con una transición de 120 ms:
+      // se espera (con reintento) a que llegue al color final antes de leerlo, no un tiempo fijo
+      await expect(armar(page)).toHaveCSS('background-color', 'rgb(218, 140, 40)');
       const ambar = await page.locator('button').evaluateAll(bs => bs.filter(b => getComputedStyle(b).backgroundColor === 'rgb(218, 140, 40)').map(b => b.textContent));
       expect(ambar).toEqual(['Armar COI']);
       // el cuadro mide de verdad «grande»
@@ -351,6 +353,11 @@ for (const [ancho, alto] of [
       await page.getByRole('button', { name: 'Guardar', exact: true }).click();
       const hoja = page.getByRole('dialog', { name: 'Guardar en tu Biblioteca' });
       await expect(hoja).toBeVisible();
+      // el botón «Cerrar» mide 44 × 44 a cualquier ancho: a 320 px el título se parte en dos líneas y antes lo encogía a 38 px
+      // (offsetWidth y no el rectángulo: la caja entra con una animación de escala que no cambia su medida de verdad)
+      const cerrar = await hoja.getByRole('button', { name: 'Cerrar' }).evaluate(b => ({ ancho: (b as HTMLElement).offsetWidth, alto: (b as HTMLElement).offsetHeight }));
+      expect(cerrar.ancho, 'Cerrar: ancho').toBeGreaterThanOrEqual(44);
+      expect(cerrar.alto, 'Cerrar: alto').toBeGreaterThanOrEqual(44);
       await expect(hoja.getByLabel('Título')).toHaveValue('Escribir un guion de unas 75 palabras, que se lea en 30 segundos, y que haga…');
       await expect(hoja.getByLabel('Título')).toBeFocused();
       expect((await hoja.getByLabel('Título').inputValue()).length).toBeLessThanOrEqual(80);
@@ -596,6 +603,100 @@ for (const [ancho, alto] of [
       expect(sim.pedidos.armar).toHaveLength(0);
       await cuadro(page).fill('a'.repeat(2000));
       await expect(page.locator('#coi-largo')).toHaveCount(0);
+    });
+
+    test('demasiados intentos (429): la entrada se apaga hasta la medianoche, sin decir que se usaron los 3 y sin ser un error', async ({ page }) => {
+      const sim = await simular(page, {
+        renueva: 3660,
+        armar: [
+          detalle(429, 'demasiados_intentos', 'Hoy ya intentaste armar tu COI muchas veces sin lograrlo. Vuelve mañana; no se gastó ninguno de tus usos.', {
+            tope: 3,
+            usos: 0,
+            quedan: 3,
+            renueva_en_s: 3660,
+            se_renueva: SE_RENUEVA,
+          }),
+        ],
+      });
+      await abrir(page);
+      await cuadro(page).fill(TEXTO_DE_LA_PERSONA);
+      await armar(page).click();
+      const bloque = page.locator('#coi-intentos');
+      await expect(bloque).toContainText('Por hoy ya no podemos intentarlo más');
+      await expect(bloque).toContainText('Hoy ya intentaste armar tu COI muchas veces sin lograrlo.');
+      await expect(bloque).toContainText('Faltan 1 h 1 min.');
+      // no se gastó ninguno: el contador lo sigue diciendo, y nada habla de «los 3»
+      await expect(contador(page)).toHaveText('Te quedan 3 de 3 hoy');
+      await expect(page.getByText(/Ya usaste tus 3/)).toHaveCount(0);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(armar(page)).toHaveAttribute('aria-disabled', 'true');
+      await expect(armar(page)).toHaveAttribute('aria-describedby', 'coi-intentos');
+      await expect(cuadro(page)).toHaveAttribute('readonly', '');
+      await expect(cuadro(page)).toHaveValue(TEXTO_DE_LA_PERSONA);
+      const antes = sim.pedidos.armar.length;
+      await armar(page).click({ force: true });
+      expect(sim.pedidos.armar.length).toBe(antes);
+      await revisar(page, 'coi-demasiados-intentos');
+    });
+
+    test('Biblioteca llena: «Abre tu Biblioteca» se abre en otra pestaña y el COI se queda en pantalla', async ({ page, context }) => {
+      await simular(page, { guardar: [detalle(409, 'lleno', 'Ya tienes 100 prompts guardados. Borra alguno para guardar otro.')] });
+      await abrir(page);
+      await cuadro(page).fill(TEXTO_DE_LA_PERSONA);
+      await armar(page).click();
+      await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeFocused();
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      const hoja = page.getByRole('dialog', { name: 'Guardar en tu Biblioteca' });
+      await hoja.getByRole('button', { name: 'Guardar' }).click();
+      const enlace = hoja.getByRole('link', { name: /Abre tu Biblioteca/ });
+      await expect(enlace).toBeVisible();
+      if (CAPTURAS) await page.screenshot({ path: `${CAPTURAS}/coi-biblioteca-llena-${ancho}.png` });
+      const [otra] = await Promise.all([context.waitForEvent('page'), enlace.click()]);
+      await otra.waitForLoadState('domcontentloaded');
+      const url = new URL(otra.url());
+      expect(url.pathname + url.search).toBe('/estudio/biblioteca/?ver=mios');
+      // la pestaña de COI sigue donde estaba, con su resultado y su hoja: no se perdió nada
+      await expect(page).toHaveURL(/\/estudio\/coi\/$/);
+      await expect(page.locator('#coi-res')).toBeVisible();
+      await expect(hoja).toBeVisible();
+      await otra.close();
+    });
+
+    test('palabras largas sin espacios (80 letras, una dirección) no ensanchan la página ni se salen de su tarjeta', async ({ page }) => {
+      const larga = 'W'.repeat(80);
+      const enlace = 'https://ejemplo.com/' + 'abcdefghij'.repeat(6);
+      const coi = {
+        contexto: `Necesito ${larga} para mi tienda.\nSuposición: ${enlace}`,
+        objetivo: `${larga}.`,
+        instrucciones: [`1. ${larga}`, `   * ${enlace}`, '2. Datos', `   * ${larga}`, '   * Devuelve este JSON:', '     ```json', `     {"direccion": "${enlace}", "w": "${larga}"}`, '     ```', '3. B', '   * b', '4. C', '   * c', '5. D', '   * d', '6. E', '   * e', '7. F', '   * f'].join('\n'),
+      };
+      await simular(page, {
+        armar: [
+          {
+            status: 200,
+            body: {
+              coi: { ...coi, completo: `#CONTEXTO\n${coi.contexto}\n#OBJETIVO\n${coi.objetivo}\n#INSTRUCCIONES\n${coi.instrucciones}`, estructura_ok: true },
+              idioma: 'es',
+              tope: 3,
+              usos: 1,
+              quedan: 2,
+              renueva_en_s: RENUEVA_EN_S,
+              se_renueva: SE_RENUEVA,
+            },
+          },
+        ],
+      });
+      await abrir(page);
+      await cuadro(page).fill(TEXTO_DE_LA_PERSONA);
+      await armar(page).click();
+      await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeFocused();
+      await revisar(page, 'coi-palabras-largas');
+      // y la hoja de «Guardar», con ese título de 80 letras seguidas
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Guardar en tu Biblioteca' }).getByLabel('Título')).toHaveValue(larga);
+      const m = await medir(page);
+      expect(m.scrollW, 'con la hoja abierta: desborde horizontal').toBeLessThanOrEqual(m.vw);
+      if (CAPTURAS) await page.screenshot({ path: `${CAPTURAS}/coi-palabras-largas-hoja-${ancho}.png` });
     });
 
     test('lo que la persona escribe y lo que responde la IA no queda en el navegador', async ({ page, context }) => {

@@ -14,14 +14,18 @@ import {
   auditar,
   buscador,
   CASA,
+  CASA_HOSTIL,
   casillas,
   categoria,
   fila,
   filas,
   franja,
+  HOSTILES,
   interruptor,
+  LARGA,
   lista,
   MIOS,
+  nuevoServidor,
   principales,
   simular,
   sobraAlLado,
@@ -29,10 +33,25 @@ import {
 } from './biblioteca';
 import { riel, simular as simularInicio } from './recorrido';
 
+// 1100 (escritorio), 390 (celular) y 320 (el celular más angosto que se mide en el repo)
 const ANCHOS = [
   { ancho: 1100, alto: 800 },
   { ancho: 390, alto: 844 },
+  { ancho: 320, alto: 700 },
 ] as const;
+
+/** La lista no se desplaza de lado: a 1100 px una palabra larguísima se salía de su botón y la lista se arrastraba (scrollWidth 1273 frente a 406). */
+async function sinDesplazarseDeLado(page: Page, que: string) {
+  const sobra = await lista(page).evaluate(ul => ul.scrollWidth - ul.clientWidth);
+  expect(sobra, `${que} se desplaza de lado`).toBeLessThanOrEqual(0);
+  const filasQueSeSalen = await lista(page).evaluate(ul =>
+    Array.from(ul.querySelectorAll('button[data-id] b')).filter(b => b.scrollWidth > b.clientWidth + 0.5).map(b => (b.textContent ?? '').slice(0, 20)),
+  );
+  expect(filasQueSeSalen, `${que}: títulos que se salen de su fila`).toEqual([]);
+}
+
+/** El aviso que sale en el panel del prompt (junto al interruptor de fijar). */
+const panelNota = (page: Page) => page.locator('section[aria-labelledby="bib-detalle"] [role="status"]');
 
 const CAPTURAS = process.env.PW_CAPTURAS;
 async function capturar(page: Page, nombre: string, ancho: number) {
@@ -280,6 +299,111 @@ for (const { ancho, alto } of ANCHOS) {
       await page.getByRole('button', { name: 'Reintentar' }).click();
       await expect(filas(page)).toHaveCount(14);
       expect(llamadas.cargas).toBe(2);
+    });
+
+    test('palabras largas sin espacios (80 letras, una dirección) no ensanchan la página: lista, detalle y franja de fijados', async ({ page }) => {
+      await abrir(page, { casa: [CASA_HOSTIL, ...CASA], mios: HOSTILES, fijados: ['casa-hostil', 'mio-aaaaaaaaaaaa', 'mio-bbbbbbbbbbbb'] });
+      await expect(franja(page).getByRole('button', { name: LARGA }).first()).toBeVisible();
+      // De la casa: la franja de fijados y la fila con un título de 80 letras seguidas
+      await auditar(page, `casa con palabras largas a ${ancho}`);
+      await sinDesplazarseDeLado(page, 'la lista de la casa');
+      await capturar(page, 'palabras-largas-casa', ancho);
+      if (ancho < 960) {
+        await fila(page, LARGA).click();
+        await expect(tituloDelDetalle(page)).toBeFocused();
+        await auditar(page, `detalle con palabras largas a ${ancho}`);
+        await capturar(page, 'palabras-largas-detalle', ancho);
+        await page.getByRole('button', { name: 'Volver a la lista' }).click();
+      }
+      // Míos: dos títulos así (80 letras; una dirección) y un prompt de 400 letras seguidas
+      await ambito(page, 'Míos').click();
+      await expect(filas(page)).toHaveCount(2);
+      await auditar(page, `Míos con palabras largas a ${ancho}`);
+      await sinDesplazarseDeLado(page, 'la lista de Míos');
+      await capturar(page, 'palabras-largas-mios', ancho);
+      if (ancho < 960) {
+        await fila(page, 'Con enlace').click();
+        await auditar(page, `un mío con prompt largo a ${ancho}`);
+        await capturar(page, 'palabras-largas-mio-detalle', ancho);
+      } else {
+        await fila(page, 'Con enlace').click();
+        await auditar(page, `un mío con prompt largo a ${ancho}`);
+      }
+    });
+
+    test('el foco no cae al body al quitar los filtros, la etiqueta o elegir una etiqueta del detalle', async ({ page }) => {
+      await abrir(page);
+      // «Quitar filtros» de arriba de la lista
+      await buscador(page).fill('retrato');
+      await page.getByRole('button', { name: 'Quitar filtros' }).first().focus();
+      await page.keyboard.press('Enter');
+      await expect(buscador(page)).toBeFocused();
+      // «Quitar filtros» del panel «No encontramos ese prompt» (en un celular, el de la lista: el del panel está escondido)
+      await buscador(page).fill('zapatos de baile');
+      await page.getByRole('button', { name: 'Quitar filtros' }).last().focus();
+      await page.keyboard.press('Enter');
+      await expect(buscador(page)).toBeFocused();
+      // una etiqueta del detalle: en un celular el detalle es otro paso, y el botón que se pulsó se esconde con el foco puesto
+      if (ancho < 960) await fila(page, 'Retrato de estudio con luz suave').click();
+      const etiqueta = page.getByRole('button', { name: '#retrato: ver los prompts con esa etiqueta' });
+      await etiqueta.focus();
+      await page.keyboard.press('Enter');
+      const quitar = page.getByRole('button', { name: 'Quitar la etiqueta retrato' });
+      if (ancho < 960) await expect(quitar).toBeFocused();
+      else await expect(etiqueta).toBeFocused();
+      // quitar la etiqueta: el foco va al buscador
+      await quitar.focus();
+      await page.keyboard.press('Enter');
+      await expect(buscador(page)).toBeFocused();
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+    });
+
+    test('fijar desde una pantalla vieja no pisa lo que se fijó en otro aparato: adopta lo vigente y lo dice, sin mover el foco', async ({ browser }) => {
+      // la misma persona en dos aparatos: los dos abren con la lista vacía, y comparten el mismo servidor de mentira
+      const servidor = nuevoServidor();
+      const viewport = { width: ancho, height: alto };
+      const aparato1 = await browser.newContext({ viewport });
+      const aparato2 = await browser.newContext({ viewport });
+      try {
+        const p1 = await aparato1.newPage();
+        const p2 = await aparato2.newPage();
+        const l1 = await abrir(p1, {}, servidor);
+        const l2 = await abrir(p2, {}, servidor);
+        const fijarEn = async (p: Page, titulo: string) => {
+          await fila(p, titulo).click();
+          const pin = interruptor(p);
+          await pin.focus();
+          await pin.click();
+          return pin;
+        };
+        // el teléfono fija «Retrato»
+        await fijarEn(p2, 'Retrato de estudio con luz suave');
+        await expect.poll(() => l2.puts.at(-1)).toEqual(['casa-retrato']);
+        expect(servidor.fijados).toEqual(['casa-retrato']);
+        // la computadora, que no se enteró, fija «Café»: el servidor NO pisa, y la pantalla adopta lo vigente
+        const pin = await fijarEn(p1, 'Café con vapor en cámara lenta');
+        await expect.poll(() => l1.esperadas.at(-1)).toEqual([]); // dijo sobre qué lista se basaba
+        const nota = panelNota(p1);
+        await expect(nota).toContainText('Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos.');
+        await expect(nota).not.toContainText('quedaron como estaban');
+        expect(servidor.fijados).toEqual(['casa-retrato']);
+        await expect(pin).toHaveAttribute('aria-pressed', 'false');
+        // el aviso no se roba el foco: sigue en el botón que se pulsó
+        await expect(pin).toBeFocused();
+        await capturar(p1, 'fijados-cambiaron', ancho);
+        // en un celular la franja de fijados vive en el paso 1 (la lista)
+        if (ancho < 960) await p1.getByRole('button', { name: 'Volver a la lista' }).click();
+        await expect(casillas(p1).nth(0)).toContainText('Retrato de estudio con luz suave');
+        if (ancho < 960) await fila(p1, 'Café con vapor en cámara lenta').click();
+        // y volver a fijar SUMA a lo vigente: nada se pierde
+        await interruptor(p1).click();
+        await expect.poll(() => l1.puts.at(-1)).toEqual(['casa-retrato', 'casa-cafe']);
+        await expect.poll(() => servidor.fijados).toEqual(['casa-retrato', 'casa-cafe']);
+        expect(l1.esperadas.at(-1)).toEqual(['casa-retrato']);
+      } finally {
+        await aparato1.close();
+        await aparato2.close();
+      }
     });
 
     test('cargando: el esqueleto se dice y no se arrastra de lado', async ({ page }) => {

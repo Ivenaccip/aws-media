@@ -3,9 +3,13 @@
 //
 //   · al abrir;
 //   · mientras haya «otra en curso»: cada 4 s (el candado del servidor caduca solo, a los 60 s);
-//   · ya usaste los 3: cada minuto con la pestaña a la vista, para que «Faltan X h Y min» lo siga diciendo el servidor;
+//   · ya usaste los 3 (o la entrada apagada por demasiados intentos): cada minuto con la pestaña a la vista, para que «Faltan X h Y min»
+//     lo siga diciendo el servidor;
 //   · cuando se cumplen los `renueva_en_s` que dijo el servidor (es una DURACIÓN, no una hora del reloj): ahí cambia el día;
 //   · al volver a la pestaña o recuperar la conexión, si hace rato que no se pregunta.
+//
+// Una respuesta vieja no pisa una nueva: cada pregunta lleva su número, y un `poner` (lo que dijo el POST) también cuenta como una
+// novedad. Si el GET salió ANTES y llega DESPUÉS, trae un estado más viejo que lo que ya se sabe y se descarta.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { cargarEstado, falloDe, type EstadoUso, type Fallo } from './logica';
@@ -28,11 +32,14 @@ export interface EstadoDeUso {
   poner: (cambio: Partial<EstadoUso>) => void;
 }
 
-export function useEstadoUso(): EstadoDeUso {
+/** `vigilarRenovacion`: la entrada está apagada hasta la medianoche aunque queden usos (demasiados intentos): se sigue preguntando
+ *  cada minuto, como con los 3 usados, para que «Faltan…» lo diga el servidor. */
+export function useEstadoUso(vigilarRenovacion = false): EstadoDeUso {
   const [estado, setEstado] = useState<EstadoUso | null>(null);
   const [error, setError] = useState<Fallo | null>(null);
   const [cargando, setCargando] = useState(true);
   const ultima = useRef<number>(0);
+  const orden = useRef(0);
   const vivo = useRef(true);
 
   useEffect(() => {
@@ -43,16 +50,19 @@ export function useEstadoUso(): EstadoDeUso {
   }, []);
 
   const recargar = useCallback(async (): Promise<EstadoUso | null> => {
+    const mia = ++orden.current;
     try {
       const e = await cargarEstado();
       if (!vivo.current) return null;
+      // salió antes de una pregunta o de un `poner` más nuevos: lo que trae ya es viejo y no pisa lo reciente (se devuelve, no se aplica)
+      if (mia !== orden.current) return e;
       ultima.current = performance.now();
       setEstado(e);
       setError(null);
       setCargando(false);
       return e;
     } catch (err) {
-      if (!vivo.current) return null;
+      if (!vivo.current || mia !== orden.current) return null;
       // si ya se sabía algo, se sigue mostrando lo último que dijo el servidor; el error solo se dice cuando no hay nada
       setError(falloDe(err));
       setCargando(false);
@@ -78,14 +88,15 @@ export function useEstadoUso(): EstadoDeUso {
     return () => clearInterval(t);
   }, [enCurso, recargar]);
 
-  // ya usaste los 3: el «Faltan…» lo calcula el servidor; se le pregunta cada minuto, con la pestaña a la vista
+  // ya usaste los 3 (o apagada hasta la medianoche): el «Faltan…» lo calcula el servidor; se le pregunta cada minuto, con la pestaña a la vista
+  const sinEntrada = agotado || vigilarRenovacion;
   useEffect(() => {
-    if (!agotado) return;
+    if (!sinEntrada) return;
     const t = setInterval(() => {
       if (!document.hidden) void recargar();
     }, CADA_AGOTADO_MS);
     return () => clearInterval(t);
-  }, [agotado, recargar]);
+  }, [sinEntrada, recargar]);
 
   // se cumplió lo que dijo el servidor: puede haber cambiado el día. `estado` (el objeto) cambia con cada respuesta: el plazo se rearma
   useEffect(() => {
@@ -111,6 +122,8 @@ export function useEstadoUso(): EstadoDeUso {
 
   const poner = useCallback((cambio: Partial<EstadoUso>) => {
     ultima.current = performance.now();
+    // lo que dijo el POST es lo más nuevo: un GET que ya iba en camino no lo pisa
+    orden.current += 1;
     setEstado(antes => (antes ? { ...antes, ...cambio } : antes));
   }, []);
 

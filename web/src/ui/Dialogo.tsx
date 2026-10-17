@@ -13,15 +13,17 @@ export const VELO =
   'fixed inset-0 z-40 bg-[rgba(4,9,17,0.72)] ' +
   'data-[state=open]:animate-velo-entra data-[state=closed]:animate-velo-sale';
 export const CAJA =
-  'fixed left-1/2 top-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 ' +
+  'fixed left-1/2 top-1/2 z-50 w-[min(92vw,480px)] max-h-[calc(100dvh-1rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2 ' +
   'rounded-grande border border-linea bg-superficie p-6 text-texto ' +
   'data-[state=open]:animate-caja-entra data-[state=closed]:animate-caja-sale ' +
   'data-[state=closed]:pointer-events-none';
 
-// El mismo diálogo, más ancho: para lo que lleva una cuadrícula (la hoja de «Elegir de Mis creaciones»). Una hoja así nunca mide más
-// que la ventana: en un teléfono de 568 px de alto, o de lado (320), centrada y sin desplazamiento perdía arriba el título y la ✕ y abajo
-// el botón principal. Si no cabe, se desplaza POR DENTRO. `dvh` es la altura que de verdad se ve (sin las barras del navegador).
-export const CAJA_ANCHA = CAJA.replace('w-[min(92vw,480px)]', 'w-[min(92vw,760px)] max-h-[calc(100dvh-1rem)] overflow-y-auto');
+// Una caja nunca mide más que la ventana: en un teléfono de 568 px de alto, o de lado (320), centrada y sin desplazamiento perdía arriba
+// el título y la ✕ y abajo el botón principal (le pasaba a la hoja de «Elegir de Mis creaciones» y a la de «Guardar» de COI con el aviso
+// de «Biblioteca llena»: 707 px en una ventana de 568). Si no cabe, se desplaza POR DENTRO. `dvh` es la altura que de verdad se ve (sin
+// las barras del navegador).
+// El mismo diálogo, más ancho: para lo que lleva una cuadrícula (la hoja de «Elegir de Mis creaciones»).
+export const CAJA_ANCHA = CAJA.replace('w-[min(92vw,480px)]', 'w-[min(92vw,760px)]');
 
 // UI·20: la caja tarda 100 ms en irse, y quien la cierra suele vaciar su
 // estado en el mismo clic (setVeredicto(null), setEditando(null)…). Mientras
@@ -136,7 +138,7 @@ export function Dialogo({
           <div className="flex items-start justify-between gap-4">
             <D.Title className="m-0 font-titulo text-titulo-sm font-bold">{titulo}</D.Title>
             <D.Close
-              className="-m-2 inline-flex size-11 items-center justify-center rounded-medio text-secundario hover:bg-elevada hover:text-texto"
+              className="-m-2 inline-flex size-11 min-w-11 items-center justify-center rounded-medio text-secundario hover:bg-elevada hover:text-texto"
               aria-label="Cerrar"
             >
               <Icono nombre="cerrar" />

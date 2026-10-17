@@ -1,6 +1,6 @@
 // COI, como COMPORTAMIENTO, con el API de mentira: el modelo, la moderación y la Biblioteca NO se llaman de verdad (no cuesta nada).
 // Cada test empieza por el ID de su invariante (tests/test_migracion_ui.py).
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,6 +33,12 @@ const MUESTRA: CoiRespuesta = {
   ].join('\n'),
   completo: 'texto completo del modelo',
   estructura_ok: true,
+};
+
+const OTRO: CoiRespuesta = {
+  ...MUESTRA,
+  objetivo: 'Redactar otro guion, de otro tema. Con un tono más serio.',
+  completo: 'otro texto completo',
 };
 
 const estado = (usos = 0, extra: Record<string, unknown> = {}) => ({
@@ -176,7 +182,8 @@ describe('coi', () => {
     const alerta = await screen.findByRole('alert');
     expect(alerta).toHaveTextContent('COI no está disponible ahora');
     expect(alerta).toHaveTextContent('COI no está disponible en este momento.');
-    expect(alerta).toHaveTextContent('No se gastó ninguno de tus usos.');
+    // aquí nadie intentó armar nada: la caja no habla de usos gastados (solo lo dice el servidor, si quiere)
+    expect(alerta).not.toHaveTextContent('No se gastó ninguno');
     // sin contador no se arma nada: apagado y sin mandar
     expect(boton()).toHaveAttribute('aria-disabled', 'true');
     bien = true;
@@ -185,6 +192,108 @@ describe('coi', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     // el foco no cae al body: el aviso se fue y el foco pasa al cuadro
     expect(cuadro()).toHaveFocus();
+    expect(boton()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('coi.contador.no_disponible_no_repite_que_no_se_gasto_ninguno', async () => {
+    // el texto REAL del 503 (server/coi_api.py) ya trae la frase: la caja la deja una sola vez, la del servidor
+    coi({
+      estado: () => fallo(503, 'no_disponible', 'COI no está disponible por ahora. No se gastó ninguno de tus usos. Inténtalo en unos minutos.'),
+    });
+    render(<Coi />);
+    const alerta = await screen.findByRole('alert');
+    expect(alerta.textContent?.match(/No se gastó ninguno de tus usos/g)).toHaveLength(1);
+  });
+
+  it('coi.contador.reintentar_con_el_servicio_caido_dice_que_esta_reintentando', async () => {
+    const u = userEvent.setup();
+    let soltar!: (r: Response) => void;
+    let n = 0;
+    const f = coi({
+      estado: () => (++n === 1 ? fallo(503, 'no_disponible', 'COI no está disponible por ahora.') : new Promise<Response>(r => (soltar = r))),
+    });
+    render(<Coi />);
+    const alerta = await screen.findByRole('alert');
+    await u.click(within(alerta).getByRole('button', { name: 'Reintentar' }));
+    // mientras pregunta: el botón lo dice (sigue enfocado), no acepta otro clic y el lector de pantalla lo oye
+    const ocupado = await within(screen.getByRole('alert')).findByRole('button', { name: 'Reintentando…' });
+    expect(ocupado).toHaveAttribute('aria-busy', 'true');
+    expect(ocupado).toHaveFocus();
+    expect(screen.getByRole('status')).toHaveTextContent('Reintentando…');
+    await u.click(ocupado);
+    expect(llamadas(f, '/api/coi/estado', 'GET')).toHaveLength(2);
+    // sigue caído: vuelve «Reintentar», la caja sigue ahí y el lector de pantalla oye que no cambió nada
+    await act(async () => {
+      soltar(fallo(503, 'no_disponible', 'COI no está disponible por ahora.'));
+    });
+    const otra = await within(screen.getByRole('alert')).findByRole('button', { name: 'Reintentar' });
+    expect(otra).not.toHaveAttribute('aria-busy');
+    expect(screen.getByRole('status')).toHaveTextContent('Sigue sin estar disponible');
+  });
+
+  it('coi.contador.una_respuesta_del_estado_que_llega_despues_del_post_no_pisa_el_contador', async () => {
+    // con la pestaña abierta más de 30 s llega `online` a media espera: el GET sale con el candado puesto (en_curso, quedan 3), pero su
+    // respuesta tarda más que el POST. Lo que dijo el POST (ya contó 1) es lo más nuevo: la vieja no puede volver a «3 de 3».
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    let soltarPost!: (r: Response) => void;
+    const retenidas: Array<(r: Response) => void> = [];
+    let gets = 0;
+    coi({
+      estado: () => (gets++ === 0 ? json(estado(0)) : new Promise<Response>(r => retenidas.push(r))),
+      armar: () => new Promise<Response>(r => (soltarPost = r)),
+    });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    await armarConTexto(u);
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(retenidas).toHaveLength(1);
+    soltarPost(json(respuesta(1)));
+    await esperarContador('Te quedan 2 de 3 hoy');
+    // el GET viejo (candado puesto, quedan 3) llega al fin
+    await act(async () => {
+      retenidas[0]!(json(estado(0, { en_curso: true })));
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(contador()).toHaveTextContent('Te quedan 2 de 3 hoy');
+    expect(screen.queryByText('Ya hay un COI en camino')).toBeNull();
+    expect(boton()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('coi.contador.tras_un_fallo_la_lectura_mas_nueva_gana_sobre_una_vieja', async () => {
+    // el POST falla (no llama a `poner`): su relectura es la pregunta más nueva, y un GET que salió antes no la pisa cuando llega después
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const retenidas: Array<(r: Response) => void> = [];
+    let gets = 0;
+    coi({
+      estado: () => (gets++ === 1 ? new Promise<Response>(r => retenidas.push(r)) : json(estado(0))),
+      armar: () => fallo(502, 'modelo', 'No pudimos armar tu COI ahora. No se gastó ninguno de tus usos.'),
+    });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    await u.click(cuadro());
+    await u.paste(TEXTO);
+    await act(async () => {
+      window.dispatchEvent(new Event('online')); // el GET más viejo: se queda en el aire
+    });
+    expect(retenidas).toHaveLength(1);
+    await u.click(boton()); // el POST falla y su relectura (el GET más nuevo) trae el estado al día
+    await screen.findByRole('alert');
+    await waitFor(() => expect(gets).toBe(3));
+    await act(async () => {
+      retenidas[0]!(json(estado(0, { en_curso: true })));
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.queryByText('Ya hay un COI en camino')).toBeNull();
     expect(boton()).not.toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -268,7 +377,9 @@ describe('coi', () => {
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     expect(screen.getByRole('heading', { name: 'Armando tu COI…' })).toBeInTheDocument();
-    expect(screen.getByText(/No se gasta ninguno hasta que termine bien/)).toBeInTheDocument();
+    expect(screen.getByText(/No se gasta ninguno si algo falla/)).toBeInTheDocument();
+    // salir a media espera NO es "no pasó nada": el servidor termina y el uso se cuenta; la caja lo dice
+    expect(screen.getByText(/si sales antes de que termine, el uso se cuenta igual/)).toBeInTheDocument();
     // sin pasos falsos: ni lista, ni «paso 1 de 3», ni barra de progreso
     expect(screen.queryByRole('list', { name: /paso/i })).toBeNull();
     expect(screen.queryByRole('progressbar')).toBeNull();
@@ -284,6 +395,33 @@ describe('coi', () => {
     await esperarContador('Te quedan 2 de 3 hoy');
     expect(document.title).toBe('Estudio de video · COI');
     expect(cuadro()).not.toHaveAttribute('readonly');
+  });
+
+  it('coi.armar.salir_con_la_respuesta_en_camino_pregunta_antes_de_irse', async () => {
+    const u = userEvent.setup();
+    let soltar!: (r: Response) => void;
+    coi({ armar: () => new Promise<Response>(r => (soltar = r)) });
+    const { unmount } = render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    const intentarIrse = () => {
+      const e = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    // en reposo, irse es libre
+    expect(intentarIrse()).toBe(false);
+    await armarConTexto(u);
+    expect(screen.getByRole('heading', { name: 'Armando tu COI…' })).toBeInTheDocument();
+    // con el COI armándose, recargar o cerrar la pestaña lo deja correr en el servidor (cuenta) sin que nadie lo vea: el navegador pregunta
+    expect(intentarIrse()).toBe(true);
+    soltar(json(respuesta(1)));
+    await esperarContador('Te quedan 2 de 3 hoy');
+    expect(intentarIrse()).toBe(false);
+    // y si la pantalla se va con la respuesta en camino, el aviso se va con ella
+    await u.click(boton());
+    expect(intentarIrse()).toBe(true);
+    unmount();
+    expect(intentarIrse()).toBe(false);
   });
 
   it('coi.armar.el_foco_va_al_encabezado_del_resultado_y_lo_anuncia', async () => {
@@ -329,6 +467,71 @@ describe('coi', () => {
     // la suposición va marcada, sin el «Suposición:» repetido
     expect(screen.getByText('Suposición', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('no dijiste cuál es el producto; uso [PRODUCTO].')).toBeInTheDocument();
+  });
+
+  it('coi.resultado.los_pasos_numerados_dentro_de_una_parte_no_se_vuelven_partes_en_pantalla', async () => {
+    const u = userEvent.setup();
+    const anidada = [
+      '1. Definición',
+      '   * Actúa como guionista.',
+      '2. Datos',
+      '   * Nombre del producto.',
+      '3. Estrategia',
+      '   1. Investiga el tema.',
+      '   2. Elige tres ángulos.',
+      '   3. Redacta el borrador.',
+      '4. Criterios',
+      '   * Máximo 80 palabras.',
+      '5. Reglas',
+      '   * Elige la más corta.',
+      '6. Formato',
+      '   * Dos columnas.',
+      '7. Restricciones',
+      '   * Sin inventar datos.',
+    ].join('\n');
+    coi({ armar: () => json(respuesta(1, { ...MUESTRA, instrucciones: anidada })) });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    const partes = within(document.querySelector('[data-bloque="ins"]') as HTMLElement).getAllByRole('listitem');
+    // siete partes, como dice la tarjeta; los tres pasos de la tercera se quedan dentro de ella
+    expect(partes).toHaveLength(7);
+    expect(partes.map(p => p.querySelector('h5 span')?.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+    expect(partes[2]).toHaveTextContent('3Estrategia1. Investiga el tema.2. Elige tres ángulos.3. Redacta el borrador.');
+    // y lo que se copia es el texto tal cual salió
+    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #INSTRUCCIONES' }));
+    expect(await navigator.clipboard.readText()).toBe(`#INSTRUCCIONES\n${anidada}`);
+  });
+
+  it('coi.resultado.un_bloque_de_codigo_de_las_instrucciones_se_pinta_con_su_forma_y_se_copia_crudo', async () => {
+    const u = userEvent.setup();
+    const conJson = [
+      '1. Definición', '   * Actúa como guionista.', '2. Datos', '   * Nombre.', '3. Estrategia', '   * Gancho.', '4. Criterios', '   * Corto.',
+      '5. Reglas', '   * La más corta.',
+      '6. Formato de salida',
+      '   * Devuelve este JSON:',
+      '     ```json',
+      '     {',
+      '       "titulo": "x"',
+      '     }',
+      '     ```',
+      '7. Restricciones', '   * Sin inventar datos.',
+    ].join('\n');
+    coi({ armar: () => json(respuesta(1, { ...MUESTRA, instrucciones: conJson })) });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    const ins = document.querySelector('[data-bloque="ins"]') as HTMLElement;
+    expect(within(ins).getAllByRole('listitem')).toHaveLength(7);
+    // el JSON sale en un <pre> con su sangría (y como texto), no como cuatro párrafos sueltos
+    const codigo = ins.querySelector('pre code') as HTMLElement;
+    expect(codigo.textContent).toBe('{\n  "titulo": "x"\n}');
+    expect(ins.querySelectorAll('pre')).toHaveLength(1);
+    // y lo que se copia es el texto tal cual salió
+    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #INSTRUCCIONES' }));
+    expect(await navigator.clipboard.readText()).toBe(`#INSTRUCCIONES\n${conJson}`);
   });
 
   it('coi.resultado.lo_que_dice_el_modelo_se_pinta_como_texto_nunca_como_html', async () => {
@@ -560,7 +763,11 @@ describe('coi', () => {
     await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
     const alerta = await within(hoja).findByRole('alert');
     expect(alerta).toHaveTextContent('Tu Biblioteca ya tiene 100 prompts. Borra alguno para guardar otro.');
-    expect(within(alerta).getByRole('link', { name: 'Abre tu Biblioteca para borrar alguno' })).toHaveAttribute('href', '/estudio/biblioteca/?ver=mios');
+    // el enlace abre OTRA pestaña: seguirlo en esta perdería el COI que está en pantalla (no se guarda en ningún lado)
+    const enlace = within(alerta).getByRole('link', { name: 'Abre tu Biblioteca en otra pestaña para borrar alguno' });
+    expect(enlace).toHaveAttribute('href', '/estudio/biblioteca/?ver=mios');
+    expect(enlace).toHaveAttribute('target', '_blank');
+    expect(enlace.getAttribute('rel')).toContain('noopener');
     lleno = false;
     await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
     expect(await within(hoja).findByRole('alert')).toHaveTextContent('Esa categoría no existe.');
@@ -569,6 +776,153 @@ describe('coi', () => {
     await u.click(within(hoja).getByRole('button', { name: 'Cancelar' }));
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
     expect(screen.queryByText(/Guardado en tu Biblioteca/)).toBeNull();
+  });
+
+  /** Dos COI seguidos: el primero llega al instante, el segundo queda en el aire hasta que se suelte (`soltar`). */
+  function conOtroEnCamino(g: Guion = {}) {
+    let n = 0;
+    const pendiente: { soltar: (r: Response) => void } = { soltar: () => undefined };
+    const f = coi({
+      armar: () => (++n === 1 ? json(respuesta(1)) : new Promise<Response>(r => (pendiente.soltar = r))),
+      ...g,
+    });
+    return { f, pendiente };
+  }
+  /** Ctrl+Intro directo al cuadro: con la hoja abierta (modal) nadie llega ahí a mano, pero el arreglo no debe depender de eso. */
+  const armarOtroDesdeElCuadro = () => fireEvent.keyDown(document.getElementById('coi-ta')!, { key: 'Enter', ctrlKey: true });
+
+  it('coi.guardar.mientras_llega_otro_coi_guardar_queda_apagado_y_dice_por_que', async () => {
+    const u = userEvent.setup();
+    const { pendiente } = conOtroEnCamino();
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    expect(screen.getByRole('button', { name: 'Guardar' })).not.toHaveAttribute('aria-disabled');
+    await u.click(boton()); // «Armar otro COI»: el nuevo viene en camino
+    const guardar = screen.getByRole('button', { name: 'Guardar' });
+    // apagado pero enfocable (`aria-disabled`, no `disabled`) y con su motivo; el clic no abre nada
+    expect(guardar).toHaveAttribute('aria-disabled', 'true');
+    expect(guardar).not.toBeDisabled();
+    expect(guardar).toHaveAccessibleDescription(/mientras llega no se puede guardar este/);
+    await u.click(guardar);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    pendiente.soltar(json(respuesta(2, OTRO)));
+    await esperarContador('Te queda 1 de 3 hoy');
+    expect(screen.getByRole('button', { name: 'Guardar' })).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('coi.guardar.si_se_arma_otro_con_la_hoja_abierta_la_hoja_se_cierra', async () => {
+    const u = userEvent.setup();
+    const { f, pendiente } = conOtroEnCamino();
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.clear(within(hoja).getByRole('textbox', { name: 'Título' }));
+    await u.type(within(hoja).getByRole('textbox', { name: 'Título' }), 'Lo que escribí para el primero');
+    armarOtroDesdeElCuadro();
+    // la hoja era del COI que se va: se cierra al empezar, no se queda esperando a que llegue el otro
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    pendiente.soltar(json(respuesta(2, OTRO)));
+    await esperarContador('Te queda 1 de 3 hoy');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(llamadas(f, '/api/biblioteca/mios')).toHaveLength(0);
+  });
+
+  it('coi.guardar.el_guardado_de_un_coi_que_ya_no_esta_no_marca_al_nuevo_como_guardado', async () => {
+    const u = userEvent.setup();
+    let soltarGuardado!: (r: Response) => void;
+    const { f, pendiente } = conOtroEnCamino({ guardar: () => new Promise<Response>(r => (soltarGuardado = r)) });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(llamadas(f, '/api/biblioteca/mios')).toHaveLength(1)); // el POST del primero, en el aire
+    armarOtroDesdeElCuadro();
+    pendiente.soltar(json(respuesta(2, OTRO)));
+    await esperarContador('Te queda 1 de 3 hoy');
+    // el POST del primero termina cuando el segundo ya está en pantalla
+    await act(async () => {
+      soltarGuardado(json({ prompt: { id: 'mio-0123456789ab', titulo: 'Escribir un guion de 75 palabras', categoria: 'guion' } }, 201));
+    });
+    // el segundo NO se guardó: no dice «Guardado», sigue ofreciendo «Guardar» y nada anuncia un guardado que no fue
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardado' })).toBeNull();
+    expect(screen.queryAllByText(/Guardado en tu Biblioteca/)).toHaveLength(0);
+    expect(llamadas(f, '/api/biblioteca/mios')).toHaveLength(1);
+  });
+
+  it('coi.guardar.un_coi_demasiado_largo_para_la_biblioteca_se_dice_sin_jerga_y_manda_a_copiar', async () => {
+    const u = userEvent.setup();
+    coi({ guardar: () => fallo(422, 'muy_largo', 'El campo «prompt» pasa de 16000 caracteres.', { campo: 'prompt', max: 16000 }) });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
+    const alerta = await within(hoja).findByRole('alert');
+    expect(alerta).toHaveTextContent('Este COI es demasiado largo para guardarlo en tu Biblioteca.');
+    expect(alerta).toHaveTextContent('Cierra esta hoja y usa «Copiar todo» para llevártelo.');
+    // sin el nombre del campo interno ni el tope
+    expect(alerta.textContent).not.toMatch(/campo|«prompt»|16000/);
+    // y lo que dice existe: el botón que menciona está en la pantalla
+    await u.click(within(hoja).getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByRole('button', { name: 'Copiar todo el COI' })).toBeInTheDocument();
+    expect(screen.queryByText(/Guardado en tu Biblioteca/)).toBeNull();
+  });
+
+  it('coi.guardar.sin_tres_bloques_el_texto_de_demasiado_largo_manda_a_copiar_a_secas', async () => {
+    const u = userEvent.setup();
+    coi({
+      armar: () => json(respuesta(1, { contexto: null, objetivo: null, instrucciones: null, completo: 'Aquí va tu prompt.', estructura_ok: false })),
+      guardar: () => fallo(422, 'muy_largo', 'El campo «prompt» pasa de 16000 caracteres.', { campo: 'prompt', max: 16000 }),
+    });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
+    // en esta respuesta el botón no es «Copiar todo» sino «Copiar»: el aviso no manda a uno que no existe
+    expect(await within(hoja).findByRole('alert')).toHaveTextContent('usa «Copiar» para llevártelo.');
+  });
+
+  it('coi.guardar.los_invalido_del_servidor_se_dicen_tal_cual_el_del_titulo_junto_al_campo', async () => {
+    const u = userEvent.setup();
+    let codigo = 'titulo_invalido';
+    coi({
+      guardar: () =>
+        codigo === 'titulo_invalido'
+          ? fallo(422, 'titulo_invalido', 'El título trae un carácter que no se puede guardar. Quítalo e inténtalo otra vez.')
+          : fallo(422, 'prompt_invalido', 'El COI trae un carácter que no se puede guardar. Copia el texto y guárdalo a mano.'),
+    });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    await screen.findByRole('heading', { name: 'Tu COI' });
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
+    // el del título va junto al campo, con el foco en él, y corregirlo lo quita
+    const titulo = within(hoja).getByRole('textbox', { name: 'Título' });
+    expect(await within(hoja).findByText('El título trae un carácter que no se puede guardar. Quítalo e inténtalo otra vez.')).toBeInTheDocument();
+    expect(titulo).toHaveAttribute('aria-invalid', 'true');
+    expect(titulo).toHaveFocus();
+    expect(within(hoja).queryByRole('alert')).toBeNull();
+    await u.type(titulo, '!');
+    expect(titulo).not.toHaveAttribute('aria-invalid');
+    // el del COI no se arregla en la hoja: se dice en su alerta, con el texto del servidor
+    codigo = 'prompt_invalido';
+    await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
+    expect(await within(hoja).findByRole('alert')).toHaveTextContent('El COI trae un carácter que no se puede guardar. Copia el texto y guárdalo a mano.');
   });
 
   // ---------------------------------------------------------------- errores y estados
@@ -715,6 +1069,79 @@ describe('coi', () => {
     expect(await screen.findByRole('heading', { name: 'Ya usaste tus 3 COI de hoy' })).toBeInTheDocument();
     expect(cuadroAgotado()).toHaveTextContent('Faltan 1 h 1 min.');
     expect(cuadro()).toHaveValue(TEXTO);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('coi.errores.demasiados_intentos_apaga_la_entrada_sin_decir_que_se_usaron_los_3_y_vuelve_con_el_dia_nuevo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const SIGUIENTE = '2026-10-18T00:00:00-06:00';
+    let manana = false;
+    const f = coi({
+      estado: () => json(manana ? estado(0, { renueva_en_s: 86400, se_renueva: SIGUIENTE }) : estado(0, { renueva_en_s: 3660 })),
+      armar: () =>
+        fallo(429, 'demasiados_intentos', 'Hoy ya intentaste armar tu COI muchas veces sin lograrlo. Vuelve mañana; no se gastó ninguno de tus usos.', {
+          tope: 3,
+          usos: 0,
+          quedan: 3,
+          renueva_en_s: 3660,
+          se_renueva: SE_RENUEVA,
+        }),
+    });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    // «agotado» a su manera: entrada apagada hasta la medianoche, con el texto propio del servidor…
+    const caja = await screen.findByText('Por hoy ya no podemos intentarlo más');
+    const bloque = document.getElementById('coi-intentos')!;
+    expect(bloque).toContainElement(caja);
+    expect(bloque).toHaveTextContent('Hoy ya intentaste armar tu COI muchas veces sin lograrlo. Vuelve mañana; no se gastó ninguno de tus usos.');
+    expect(bloque).toHaveTextContent('Se renueva a la medianoche, hora de México (12:00 a. m.). Faltan 1 h 1 min.');
+    expect(cuadro()).toHaveAttribute('readonly');
+    expect(cuadro()).toHaveAttribute('aria-disabled', 'true');
+    expect(cuadro()).toHaveValue(TEXTO);
+    expect(boton()).toHaveAttribute('aria-disabled', 'true');
+    expect(boton()).toHaveAttribute('aria-describedby', 'coi-intentos');
+    expect(cuadro().getAttribute('aria-describedby')).toContain('coi-intentos');
+    // …pero NO dice «ya usaste tus 3»: no se gastó ninguno, y el contador lo sigue diciendo
+    expect(contador()).toHaveTextContent('Te quedan 3 de 3 hoy');
+    expect(screen.queryByText(/Ya usaste tus 3/)).toBeNull();
+    expect(document.getElementById('coi-agota')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    // apagada de verdad: otro clic no manda nada
+    const posts = llamadas(f, '/api/coi').length;
+    await u.click(boton());
+    expect(llamadas(f, '/api/coi')).toHaveLength(posts);
+    // pasó la medianoche de México (el servidor ya habla de otro día): la entrada vuelve sola, con lo escrito
+    manana = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000);
+    });
+    await waitFor(() => expect(document.getElementById('coi-intentos')).toBeNull());
+    expect(cuadro()).not.toHaveAttribute('readonly');
+    expect(cuadro()).toHaveValue(TEXTO);
+    expect(boton()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('coi.errores.texto_invalido_se_dice_tal_cual_junto_al_cuadro_lleva_el_foco_y_se_quita_al_escribir', async () => {
+    const u = userEvent.setup();
+    const TEXTO_DEL_SERVIDOR = 'Tu texto trae un carácter que no podemos usar. Quítalo e inténtalo otra vez.';
+    coi({ armar: () => fallo(422, 'texto_invalido', TEXTO_DEL_SERVIDOR) });
+    render(<Coi />);
+    await esperarContador('Te quedan 3 de 3 hoy');
+    await armarConTexto(u);
+    const aviso = await screen.findByRole('alert');
+    expect(aviso).toHaveTextContent(TEXTO_DEL_SERVIDOR);
+    // el texto del servidor, tal cual: sin el «No pudimos usar ese texto» de la moderación
+    expect(aviso).not.toHaveTextContent('No pudimos usar ese texto');
+    expect(aviso.id).toBe('coi-mod');
+    expect(cuadro()).toHaveFocus();
+    expect(cuadro()).toHaveAttribute('aria-invalid', 'true');
+    expect(cuadro().getAttribute('aria-describedby')).toContain('coi-mod');
+    // junto al cuadro y no en el cuadro de «falló»: nada de «No pudimos armar tu COI» ni de «Tu texto sigue en el cuadro» duplicado
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(contador()).toHaveTextContent('Te quedan 3 de 3 hoy');
+    await u.type(cuadro(), ' otra vez');
     expect(screen.queryByRole('alert')).toBeNull();
   });
 

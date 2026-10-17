@@ -211,3 +211,160 @@ def test_las_instrucciones_no_traen_llaves_que_format_se_comeria():
     """load_prompt devuelve un str que algunos sitios formatean; las de COI van tal cual."""
     texto = (RAIZ / "prompts" / "coi_system.md").read_text(encoding="utf-8")
     assert "{" not in texto and "}" not in texto
+
+
+# ---------------------------------------------------------------------------
+# los encabezados se reconocen en tiempo lineal y sin tropezar con letras que se parecen
+
+@pytest.mark.parametrize("linea,palabra,resto", [
+    ("#CONTEXTO", "contexto", ""),
+    ("# Contexto", "contexto", ""),
+    ("  ## OBJETIVO  ", "objetivo", ""),
+    ("**#CONTEXTO**", "contexto", ""),
+    ("#**CONTEXTO**", "contexto", ""),
+    ("__# OBJETIVO__", "objetivo", ""),
+    ("## OBJECTIVE:", "objective", ""),
+    ("**#INSTRUCCIONES:**", "instrucciones", ""),
+    ("#CONTEXTO: Eres un asesor.", "contexto", "Eres un asesor."),
+    ("#contexto :  **Eres**", "contexto", "Eres**"),
+    ("#INSTRUCTIONS", "instructions", ""),
+])
+def test_encabezado_reconoce_estas_formas(linea, palabra, resto):
+    assert coi.encabezado(linea) == (palabra, resto)
+
+
+@pytest.mark.parametrize("linea", [
+    "# Contexto histórico", "#CONTEXTOS", "#CONTEXTO x", "####### Contexto", "CONTEXTO", "", "   ",
+    "**** #CONTEXTO", "#", "# ", "#CONTEXTO**x", "- #CONTEXTO", "#OBJETIVOS:", "Texto #CONTEXTO",
+    # letras que `re.IGNORECASE` casaba con las de las palabras y que no son esas letras
+    "#INſTRUCCIONES", "#İNSTRUCCIONES", "#ınstrucciones", "#OBJETİVO", "#OBJECTİVE", "#INſTRUCTIONS",
+    "#CONTEXTOK",
+])
+def test_encabezado_no_reconoce_estas(linea):
+    assert coi.encabezado(linea) is None
+
+
+@pytest.mark.parametrize("rara", ["#INſTRUCCIONES", "#İNSTRUCCIONES", "#OBJETİVO", "#OBJECTİVE", "#ınstrucciones"])
+def test_un_encabezado_con_una_letra_que_se_parece_no_revienta(rara):
+    """«ſ» (U+017F) e «İ» (U+0130) casaban con «s» e «i» y el diccionario de nombres lanzaba KeyError."""
+    antes = "#CONTEXTO\nA\n"
+    r = coi.separar_bloques(f"{antes}{rara}\nB\n#OBJETIVO\nC\n#INSTRUCCIONES\nD")
+    assert r["estructura_ok"] is True and r["contexto"] == f"A\n{rara}\nB"
+    sin = coi.separar_bloques(f"#CONTEXTO\nA\n#OBJETIVO\nB\n{rara}\nC")
+    assert sin["estructura_ok"] is False and sin["completo"].endswith("C")
+
+
+def _tarda_poco(texto, maximo_ms=100):
+    import time
+    t0 = time.perf_counter()
+    r = coi.separar_bloques(texto)
+    ms = (time.perf_counter() - t0) * 1000
+    assert ms < maximo_ms, f"separar_bloques tardó {ms:.0f} ms con {len(texto)} caracteres"
+    return r
+
+
+def test_una_linea_enorme_de_espacios_no_congela_el_servidor():
+    """La respuesta de un modelo puede traer una racha larguísima de espacios. Con la expresión regular de
+    antes (`\\s*[*_]{0,3}\\s*…`) esto era cuadrático o peor (cúbico con espacios a los dos lados del
+    encabezado): segundos de CPU DESPUÉS de contar el uso. Se prueba por tamaños crecientes para que, si
+    alguien reintroduce el retroceso, la prueba caiga rápido en vez de colgarse."""
+    for n in (200, 2_000, 200_000):
+        espacios = " " * n
+        for texto in (
+            "#CONTEXTO\nA\n" + espacios + "x\n#OBJETIVO\nB\n#INSTRUCCIONES\nC",
+            espacios + "x",
+            espacios,
+            "#" + espacios + "x",
+            "**" + espacios + "x",
+            "#CONTEXTO" + espacios + "x",
+            "#CONTEXTO" + espacios,
+            "#CONTEXTO:" + espacios + "x",
+            "**#" + espacios + "**" + espacios + "CONTEXTO" + espacios + "x",
+            espacios + "#CONTEXTO" + espacios + "x",
+            "#" * n,
+            "*" * n,
+            "- " * (n // 2) + "x",
+            "\t" * n + "\n#OBJETIVO",
+        ):
+            _tarda_poco(texto)
+
+
+def test_el_cuerpo_largo_en_la_misma_linea_del_encabezado_sigue_funcionando():
+    largo = "palabra " * 5000
+    r = _tarda_poco(f"#CONTEXTO: {largo}\n#OBJETIVO: B\n#INSTRUCCIONES: C")
+    assert r["estructura_ok"] and r["contexto"] == largo.strip()
+
+
+# ---------------------------------------------------------------------------
+# el idioma sale de los encabezados que usó el modelo
+
+@pytest.mark.parametrize("respuesta,entrada,esperado", [
+    ("#CONTEXTO\na\n#OBJETIVO\nb\n#INSTRUCCIONES\nc", "Write a prompt for my podcast", "es"),
+    ("#CONTEXT\na\n#OBJECTIVE\nb\n#INSTRUCTIONS\nc", "Quiero un plan de contenido para mi canal", "en"),
+    ("**#CONTEXT:**\na", "Quiero un plan de contenido para mi canal", "en"),
+    ("Claro, aquí tienes:\n\n# Contexto\na", "Write a prompt", "es"),
+    ("```\n#OBJECTIVE\nb\n```", "podcast", "en"),
+    ("#CONTEXTO\na\n#OBJECTIVE\nb", "podcast", "es"),          # mezclados: gana el primero
+    # sin encabezados reconocibles: la heurística de lo que escribió la persona
+    ("Sin estructura.", "Write a prompt for my podcast about travel", "en"),
+    ("Sin estructura.", "Quiero un plan de contenido para mi canal", "es"),
+    ("", "podcast", "es"),
+    ("# Contexto histórico", "Write a prompt for my podcast about travel", "en"),
+    (None, "Write a prompt for my podcast about travel", "en"),
+    ("#INſTRUCCIONES\nx", "Write a prompt for my podcast about travel", "en"),
+])
+def test_idioma_respuesta(respuesta, entrada, esperado):
+    assert coi.idioma_respuesta(respuesta, entrada) == esperado
+
+
+def test_idioma_respuesta_tambien_es_lineal():
+    import time
+    t0 = time.perf_counter()
+    assert coi.idioma_respuesta(" " * 20_000 + "\n#CONTEXT\nx", "hola") == "en"
+    assert time.perf_counter() - t0 < 0.1
+
+
+# ---------------------------------------------------------------------------
+# el motivo de la moderación no devuelve lo que escribió la persona
+
+ENTRADA = "Quiero una escena donde alguien destroza un auto a golpes con un bate de béisbol"
+
+
+def test_un_motivo_que_cita_20_caracteres_o_mas_de_la_entrada_se_descarta():
+    assert coi.motivo_corto(f'No puedo con "{ENTRADA[:20]}" porque es violento.', entrada=ENTRADA) == ""
+    assert coi.motivo_corto(f"El texto «{ENTRADA}» pide violencia.", entrada=ENTRADA) == ""
+    # espacios y mayúsculas no cuentan
+    assert coi.motivo_corto("destroza   UN auto\na golpes con un bate", entrada=ENTRADA) == ""
+
+
+def test_un_motivo_que_comparte_menos_de_20_caracteres_se_conserva():
+    assert coi.ECO_MIN == 20
+    motivo = f"Eso pide «{ENTRADA[24:24 + 19]}» y no pasa."        # 19 caracteres seguidos de la entrada
+    assert coi.motivo_corto(motivo, entrada=ENTRADA) == motivo
+    motivo = f"Eso pide «{ENTRADA[24:24 + 20]}» y no pasa."        # 20: ya es una cita
+    assert coi.motivo_corto(motivo, entrada=ENTRADA) == ""
+
+
+def test_un_motivo_propio_pasa_igual_y_sin_entrada_no_se_filtra_nada():
+    motivo = "Eso pide violencia explícita; cámbialo por una escena sin sangre."
+    assert coi.motivo_corto(motivo, entrada=ENTRADA) == motivo
+    assert coi.motivo_corto(f"cita: {ENTRADA}") == f"cita: {ENTRADA}"          # sin `entrada` no hay con qué comparar
+    assert coi.motivo_corto(f"cita: {ENTRADA}", entrada="") == f"cita: {ENTRADA}"
+    assert coi.motivo_corto("", entrada=ENTRADA) == "" and coi.motivo_corto(None, entrada=ENTRADA) == ""
+
+
+def test_el_motivo_se_compara_ya_recortado_a_su_tope():
+    """Si la cita queda más allá del tope, no sale en el texto y no hay nada que esconder."""
+    motivo = "x" * 240 + ENTRADA
+    assert coi.motivo_corto(motivo, entrada=ENTRADA) == "x" * 240 + "…"
+
+
+# ---------------------------------------------------------------------------
+# los topes del contrato cambiado
+
+def test_los_topes_nuevos():
+    assert coi.MAX_SALIDA_TOKENS == 3500
+    assert coi.MAX_FALLOS_DIARIOS == 20
+    assert coi.MARGEN_SUMAR_S == 3
+    # lo que sobra del presupuesto de la Lambda tras el plazo del modelo y el margen para sumar
+    assert coi.PLAZO_MODELO_S + coi.MARGEN_SUMAR_S <= coi.PRESUPUESTO_S <= 29 - 2

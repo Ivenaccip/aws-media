@@ -144,7 +144,9 @@ def test_lo_que_sale_hacia_openai_es_lo_que_el_contrato_dice(cliente_sdk, red, l
     assert sistema == {"role": "system", "content": coi.instrucciones()}
     assert usuario == {"role": "user", "content": TEXTO}
     assert resp["auth"] == "Bearer sk-de-mentira"
-    assert mod["cuerpo"]["messages"][1]["content"] == TEXTO and "reasoning_effort" not in mod["cuerpo"]
+    # la moderación es una clasificación corta: pide el mismo esfuerzo mínimo (si no, el razonamiento por
+    # defecto del modelo puede pasar de sus 8 s y dar un 504 que no era)
+    assert mod["cuerpo"]["messages"][1]["content"] == TEXTO and mod["cuerpo"]["reasoning_effort"] == "minimal"
     assert resp["url"].endswith("/chat/completions")
 
 
@@ -174,6 +176,53 @@ def test_chat_json_sin_trazas_tampoco_pasa_por_langfuse(red, langfuse_openai):
     assert r == {"permitido": True, "motivo": ""} and langfuse_openai.llamadas == []
     (p,) = red.peticiones
     assert "name" not in p["cuerpo"] and "langfuse_prompt" not in p["cuerpo"]
+
+
+def test_la_moderacion_de_coi_pide_razonamiento_minimo_y_lo_que_diga_coi_razonamiento(red, monkeypatch):
+    import asyncio
+    v = asyncio.run(moderacion.revisar(TEXTO, falla_cerrado=True, sin_trazas=True))
+    assert v.permitido is True and red.de_moderacion()[0]["cuerpo"]["reasoning_effort"] == "minimal"
+    red.peticiones.clear()
+    monkeypatch.setenv("COI_RAZONAMIENTO", "low")
+    asyncio.run(moderacion.revisar(TEXTO, falla_cerrado=True, sin_trazas=True))
+    assert red.de_moderacion()[0]["cuerpo"]["reasoning_effort"] == "low"
+    red.peticiones.clear()
+    monkeypatch.setenv("COI_RAZONAMIENTO", "ninguno")
+    asyncio.run(moderacion.revisar(TEXTO, falla_cerrado=True, sin_trazas=True))
+    assert "reasoning_effort" not in red.de_moderacion()[0]["cuerpo"]
+
+
+def test_si_la_api_rechaza_reasoning_effort_en_la_moderacion_se_reintenta_una_vez_sin_el(red, caplog):
+    import asyncio
+    red.rechazar_razonamiento = True
+    caplog.set_level("INFO")
+    v = asyncio.run(moderacion.revisar(f"{SECRETO} " + TEXTO, falla_cerrado=True, sin_trazas=True))
+    assert v.permitido is True and len(red.peticiones) == 2
+    assert "reasoning_effort" in red.peticiones[0]["cuerpo"] and "reasoning_effort" not in red.peticiones[1]["cuerpo"]
+    avisos = [r for r in caplog.records if r.levelno == logging.WARNING and r.name == "pipeline.llm"]
+    assert len(avisos) == 1 and "reasoning_effort" in avisos[0].getMessage()
+    assert SECRETO not in caplog.text
+
+
+def test_la_moderacion_de_siempre_y_la_publica_no_mandan_razonamiento(monkeypatch):
+    """Solo el modo `sin_trazas` (COI) lo pide: la moderación del brief y la pública no cambian."""
+    import asyncio
+    vistos = []
+
+    class Completions:
+        async def create(self, **kw):
+            vistos.append(kw)
+            return type("R", (), {"choices": [type("C", (), {"message": type("M", (), {"content": "{\"permitido\": true}"})})],
+                                  "usage": None})()
+
+    class Falso:
+        class chat:
+            completions = Completions()
+    monkeypatch.setattr(llm, "client", lambda: Falso)
+    monkeypatch.setattr(llm, "client_publico", lambda: Falso)
+    asyncio.run(llm.chat_json("moderar", "s", "u"))
+    asyncio.run(llm.chat_json("moderar", "s", "u", publico=True))
+    assert len(vistos) == 2 and all("reasoning_effort" not in kw for kw in vistos)
 
 
 def test_la_moderacion_sin_trazas_no_pasa_por_observe_ni_por_langfuse(red, langfuse_openai, monkeypatch):
@@ -287,7 +336,7 @@ def test_el_log_con_el_sdk_real_no_lleva_texto_ni_respuesta(cliente_sdk, red, la
     assert r.status_code == 200
     todo = " ".join(rec.getMessage() for rec in caplog.records)
     assert SECRETO not in todo and "estratega de contenido" not in todo
-    assert "Prompt Architect" not in todo
+    assert _hay_filtracion(todo) is None, "el log repite una frase de las instrucciones"
     assert "respuesta terminada" in todo
 
 
@@ -319,8 +368,10 @@ def _frases_propias() -> list[str]:
 
 
 def test_hay_frases_propias_que_buscar():
+    """Las frases salen del archivo que haya: el dueño lo reescribe a su gusto. Basta con que el archivo
+    no esté vacío para que los guardianes de abajo tengan algo que buscar."""
     frases = _frases_propias()
-    assert len(frases) >= 5 and any("Prompt Architect AI" in f for f in frases)
+    assert len(frases) >= 1 and all(f.strip() for f in frases)
 
 
 def _hay_filtracion(texto: str) -> str | None:

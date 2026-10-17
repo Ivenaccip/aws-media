@@ -13,8 +13,10 @@ import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import { IconoCoi } from './IconosCoi';
 import {
+  codigoDelBloque,
   cuerpoDe,
   encabezado,
+  esBloqueDeCodigo,
   lineasDe,
   ORDEN,
   partesDe,
@@ -48,6 +50,8 @@ export interface PropsResultado {
   alCopiar: (clave: ClaveBloque | 'todo') => void;
   /** Guardó en la Biblioteca: título con el que quedó. */
   guardado: string | null;
+  /** Se está armando otro COI: «Guardar» se apaga (lo que se guardaría es el de ahora, que está por irse de la pantalla). */
+  armando?: boolean;
   alGuardar: () => void;
   /** El encabezado «Tu COI»: a donde va el foco cuando llega un resultado nuevo. */
   refTitulo: Ref<HTMLHeadingElement>;
@@ -90,11 +94,21 @@ function Instrucciones({ texto }: { texto: string }) {
             <span className="min-w-[1.2em] shrink-0 text-secundario">{p.n}</span>
             <span className="[overflow-wrap:anywhere]">{p.titulo}</span>
           </h5>
-          {p.lineas.map((l, i) => (
-            <p key={i} className="m-0 mt-0.5 pl-[calc(1.2em+8px)] [overflow-wrap:anywhere]">
-              {l}
-            </p>
-          ))}
+          {p.lineas.map((l, i) =>
+            esBloqueDeCodigo(l) ? (
+              // un bloque de código conserva su forma (saltos y sangría) y se parte por dentro: nunca ensancha la página
+              <pre
+                key={i}
+                className="m-0 mt-1.5 ml-[calc(1.2em+8px)] rounded-chico border border-linea bg-hundido px-3 py-2 text-xs leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]"
+              >
+                <code>{codigoDelBloque(l)}</code>
+              </pre>
+            ) : (
+              <p key={i} className="m-0 mt-0.5 pl-[calc(1.2em+8px)] [overflow-wrap:anywhere]">
+                {l}
+              </p>
+            ),
+          )}
         </li>
       ))}
     </ol>
@@ -139,6 +153,7 @@ export function Resultado({
   copiado,
   alCopiar,
   guardado,
+  armando = false,
   alGuardar,
   refTitulo,
 }: PropsResultado) {
@@ -158,9 +173,10 @@ export function Resultado({
           )}
           <Boton
             aria-pressed={guardado !== null}
-            aria-disabled={guardado !== null || undefined}
-            onClick={guardado === null ? alGuardar : undefined}
-            className={unir(guardado !== null && 'cursor-default border-exito! text-exito!')}
+            aria-disabled={guardado !== null || armando || undefined}
+            aria-describedby={armando && guardado === null ? 'coi-res-nota' : undefined}
+            onClick={guardado === null && !armando ? alGuardar : undefined}
+            className={unir(guardado !== null && 'cursor-default border-exito! text-exito!', armando && guardado === null && 'cursor-default text-secundario!')}
           >
             {guardado !== null ? <Icono nombre="listo" className="size-5!" /> : <IconoCoi nombre="marcador" />}
             {guardado !== null ? 'Guardado' : 'Guardar'}
@@ -185,12 +201,14 @@ export function Resultado({
         </div>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-x-3">
-        <p className="m-0 text-xs text-secundario">
+        <p id="coi-res-nota" className="m-0 text-xs text-secundario">
           {guardado !== null
             ? 'Guardado en tu Biblioteca. Solo tú lo ves.'
-            : tres
-              ? 'Tres bloques, listos para pegar donde los uses. Las suposiciones que hicimos van marcadas.'
-              : 'La respuesta no llegó separada en tres bloques, así que te la dejamos completa, lista para copiar.'}
+            : armando
+              ? 'Estamos armando otro COI: mientras llega no se puede guardar este. Puedes copiarlo.'
+              : tres
+                ? 'Tres bloques, listos para pegar donde los uses. Las suposiciones que hicimos van marcadas.'
+                : 'La respuesta no llegó separada en tres bloques, así que te la dejamos completa, lista para copiar.'}
         </p>
         {guardado !== null && (
           <a href="/estudio/biblioteca/?ver=mios" className={unir(ENLACE_BOTON, 'no-underline -ml-2')}>

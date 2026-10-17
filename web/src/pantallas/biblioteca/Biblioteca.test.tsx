@@ -58,7 +58,7 @@ function montar({ casa: c = CASA, mios = [], fijados = [], rutas = {} }: Mundo =
   const estado = { fijados: [...fijados] };
   return servidor({
     '/api/biblioteca': () =>
-      json({ categorias: CATEGORIAS, casa: c, mios, fijados: estado.fijados, limites: { fijados: 3, mios: 100, titulo: 80, prompt: 12000 } }),
+      json({ categorias: CATEGORIAS, casa: c, mios, fijados: estado.fijados, limites: { fijados: 3, mios: 100, titulo: 80, prompt: 16000 } }),
     '/api/biblioteca/fijados': (_u, init) => {
       const { ids } = JSON.parse(String(init?.body)) as { ids: string[] };
       estado.fijados = ids;
@@ -140,7 +140,7 @@ describe('biblioteca', () => {
           intento += 1;
           return intento === 1
             ? json({ detail: { codigo: 'no_disponible', texto: 'No se pudo leer la Biblioteca.' } }, 503)
-            : json({ categorias: CATEGORIAS, casa: CASA, mios: [], fijados: [], limites: { fijados: 3, mios: 100, titulo: 80, prompt: 12000 } });
+            : json({ categorias: CATEGORIAS, casa: CASA, mios: [], fijados: [], limites: { fijados: 3, mios: 100, titulo: 80, prompt: 16000 } });
         },
       },
     });
@@ -256,6 +256,29 @@ describe('biblioteca', () => {
     await userEvent.click(fila('Guion de 30 segundos'));
     await userEvent.click(screen.getByRole('button', { name: '#ventas: ver los prompts con esa etiqueta' }));
     expect(titulosDeFilas()).toEqual(['Guion de 30 segundos', 'Mapa de la competencia']);
+  });
+
+  it('biblioteca.buscar.quitar_filtros_y_quitar_la_etiqueta_dejan_el_foco_en_el_buscador', async () => {
+    montar();
+    render(<Biblioteca />);
+    await esperarLista();
+    // estos botones solo existen mientras hay filtro: al pulsarlos se desmontan con el foco puesto, y debe pasar al buscador, no a <body>
+    // 1 · «Quitar filtros» de arriba de la lista
+    await userEvent.type(buscador(), 'retrato');
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar filtros' }));
+    expect(buscador()).toHaveValue('');
+    expect(buscador()).toHaveFocus();
+    // 2 · «Quitar filtros» del panel «No encontramos ese prompt»
+    await userEvent.type(buscador(), 'zapatos de baile');
+    await userEvent.click(within(panelDetalle()).getByRole('button', { name: 'Quitar filtros' }));
+    expect(titulosDeFilas()).toHaveLength(5);
+    expect(buscador()).toHaveFocus();
+    // 3 · «Quitar la etiqueta»
+    await userEvent.click(screen.getByRole('button', { name: '#retrato: ver los prompts con esa etiqueta' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar la etiqueta retrato' }));
+    expect(titulosDeFilas()).toHaveLength(5);
+    expect(buscador()).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
   });
 
   // ---- la lista: una parada de Tab ----
@@ -475,6 +498,47 @@ describe('biblioteca', () => {
     await waitFor(() => expect(alternador()).toHaveAttribute('aria-pressed', 'false'));
     expect(within(casillas()[0]!).queryByRole('button', { name: 'Retrato de estudio' })).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent('No se pudo guardar tus fijados ahora. Tus fijados quedaron como estaban.');
+  });
+
+  it('biblioteca.fijar.desde_una_pantalla_vieja_no_pisa_lo_fijado_en_otro_aparato', async () => {
+    // otro aparato ya fijó «Café con vapor»; esta pantalla se abrió con la lista vacía y fija «Retrato de estudio»
+    let otroYaFijo = true;
+    const f = montar({
+      rutas: {
+        '/api/biblioteca/fijados': (_u, init) => {
+          const { ids, esperada } = JSON.parse(String(init?.body)) as { ids: string[]; esperada?: string[] };
+          if (otroYaFijo && esperada?.length === 0) {
+            otroYaFijo = false;
+            return json(
+              { detail: { codigo: 'cambiaron', texto: 'Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos.', fijados: ['casa-cafe'] } },
+              409,
+            );
+          }
+          return json({ fijados: ids });
+        },
+      },
+    });
+    render(<Biblioteca />);
+    await esperarLista();
+    const pin = alternador();
+    pin.focus();
+    await userEvent.click(pin);
+    const cuerpo = (n: number) => JSON.parse(String(llamadas(f, '/api/biblioteca/fijados', 'PUT')[n]![1]!.body)) as { ids: string[]; esperada: string[] };
+    // cada PUT dice sobre qué lista se basa
+    expect(cuerpo(0)).toEqual({ ids: ['casa-retrato'], esperada: [] });
+    // el servidor no deja pisar: la pantalla adopta lo vigente (el fijado del otro aparato) y lo dice, sin mover el foco
+    await waitFor(() => expect(within(casillas()[0]!).getByRole('button', { name: 'Café con vapor' })).toBeInTheDocument());
+    expect(alternador()).toHaveAttribute('aria-pressed', 'false');
+    const nota = within(panelDetalle()).getByRole('status');
+    expect(nota).toHaveTextContent('Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos.');
+    // no es "tus fijados quedaron como estaban": quedaron como están en el servidor
+    expect(nota).not.toHaveTextContent('quedaron como estaban');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(alternador()).toHaveFocus();
+    // al volver a fijar parte de lo vigente: suma, no reemplaza
+    await userEvent.click(alternador());
+    await waitFor(() => expect(puts(f)).toHaveLength(2));
+    expect(cuerpo(1)).toEqual({ ids: ['casa-cafe', 'casa-retrato'], esperada: ['casa-cafe'] });
   });
 
   it('biblioteca.fijar.sin_red_tambien_vuelve_atras', async () => {
@@ -740,6 +804,20 @@ describe('biblioteca', () => {
     // los pasos también se pulsan
     await userEvent.click(pasos.getByRole('button', { name: /Úsalo/ }));
     expect(pasos.getByRole('button', { name: /Úsalo/ })).toHaveAttribute('aria-current', 'step');
+  });
+
+  it('biblioteca.celular.elegir_una_etiqueta_del_detalle_lleva_el_foco_a_quitarla_y_no_a_body', async () => {
+    window.matchMedia = vi.fn((q: string) => ({ matches: q === '(max-width: 959px)', media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() })) as unknown as typeof window.matchMedia;
+    montar();
+    render(<Biblioteca />);
+    await esperarLista();
+    await userEvent.click(fila('Retrato de estudio'));
+    expect(detalle()).toHaveFocus();
+    // en un celular la etiqueta está en el paso 2 y filtrar vuelve al paso 1: el botón que se pulsó se esconde con el foco puesto
+    await userEvent.click(screen.getByRole('button', { name: '#retrato: ver los prompts con esa etiqueta' }));
+    expect(titulosDeFilas()).toEqual(['Retrato de estudio']);
+    expect(screen.getByRole('button', { name: 'Quitar la etiqueta retrato' })).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
   });
 
   // ---- el marco ----

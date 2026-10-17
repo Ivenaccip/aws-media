@@ -49,7 +49,7 @@ export interface Listado {
 }
 
 /** Lo que dice el contrato si la respuesta no trae los límites. */
-const LIMITES: Limites = { fijados: 3, mios: 100, titulo: 80, prompt: 12000 };
+const LIMITES: Limites = { fijados: 3, mios: 100, titulo: 80, prompt: 16000 };
 
 // ---------------------------------------------------------------------------
 // leer lo que llega: el servidor manda, pero un campo que falta no tira la pantalla
@@ -116,9 +116,17 @@ export function leerListado(crudo: unknown): Listado {
 
 export const cargar = async (): Promise<Listado> => leerListado(await pedir<unknown>('/api/biblioteca'));
 
-/** REEMPLAZA la lista de fijados; el orden importa (es el orden del top 3). */
-export const guardarFijados = (ids: string[]) =>
-  pedir<{ fijados: string[] }>('/api/biblioteca/fijados', { metodo: 'PUT', cuerpo: { ids } });
+/** REEMPLAZA la lista de fijados; el orden importa (es el orden del top 3). `esperada` es la lista que esta pantalla cree vigente: si
+ *  otra pestaña o aparato la cambió, el servidor no escribe y contesta 409 `cambiaron` con la lista vigente (ver `vigentesDe`). */
+export const guardarFijados = (ids: string[], esperada: string[]) =>
+  pedir<{ fijados: string[] }>('/api/biblioteca/fijados', { metodo: 'PUT', cuerpo: { ids, esperada } });
+
+/** La lista vigente que trae un 409 `cambiaron`, o null si el error es de otra cosa (o no trae una lista legible). */
+export function vigentesDe(e: unknown): string[] | null {
+  if (codigoDe(e) !== 'cambiaron') return null;
+  const f = ((e as ErrorApi).detalle as { fijados?: unknown }).fijados;
+  return Array.isArray(f) && f.every(i => typeof i === 'string') ? (f as string[]) : null;
+}
 
 export const borrarMio = (id: string) =>
   pedir<{ ok: boolean }>(`/api/biblioteca/mios/${encodeURIComponent(id)}`, { metodo: 'DELETE' });

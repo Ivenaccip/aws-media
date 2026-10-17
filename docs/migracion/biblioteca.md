@@ -16,8 +16,10 @@ No cobra nada: copiar, fijar, borrar uno propio y «Llevar a la caja» son grati
 | Llamada | Para qué |
 |---|---|
 | `GET /api/biblioteca` | UNA carga: `categorias`, `casa`, `mios`, `fijados` (ids que siguen existiendo, en orden) y `limites`. La búsqueda se hace en el navegador. |
-| `PUT /api/biblioteca/fijados` `{ids}` | REEMPLAZA la lista; el orden importa. 422 `demasiados` · `repetido` · `desconocido`. |
+| `PUT /api/biblioteca/fijados` `{ids, esperada}` | REEMPLAZA la lista; el orden importa. `esperada` es la lista que la pantalla cree vigente (lo último que el servidor confirmó): si otra pestaña o aparato la cambió, el servidor no escribe y contesta **409 `cambiaron`** con `fijados` = la lista vigente. 422 `demasiados` · `repetido` · `desconocido`. |
 | `DELETE /api/biblioteca/mios/{id}` | Borra un «mío» y lo quita de los fijados. 404 `no_es_tuyo` si no existe o es de otra persona. |
+
+`limites.prompt` es **16000** desde la revisión del 17-oct-2026 (era 12000); la web solo lo usa como valor por omisión si la respuesta no trae los límites.
 
 Los errores traen `detail` como OBJETO `{codigo, texto}` y el `texto` ya está listo para mostrarse: `web/src/nucleo/api.ts` lo lee
 (antes solo conocía `detail.mensaje`), y su prueba está en `api.test.ts`. La pantalla nunca habla de `POST /api/biblioteca/mios`
@@ -44,6 +46,7 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.buscar.sin_resultados_ofrece_coi_y_quitar_filtros` | sin resultados: «No encontramos ese prompt», con «Diseñar uno con COI» (el único ámbar) y «Quitar filtros» |
 | `biblioteca.buscar.chips_con_conteo_que_siguen_a_la_busqueda_y_filtran_por_categoria` | los números de los chips siguen a la búsqueda (no a la categoría elegida); un chip filtra y el resumen lo dice |
 | `biblioteca.buscar.una_etiqueta_del_detalle_filtra_y_se_quita` | tocar `#etiqueta` en el detalle filtra por ella; su chip la quita |
+| `biblioteca.buscar.quitar_filtros_y_quitar_la_etiqueta_dejan_el_foco_en_el_buscador` | «Quitar filtros» (arriba y en el panel «No encontramos ese prompt») y «Quitar la etiqueta» solo existen mientras hay filtro: al pulsarlos se desmontan con el foco puesto, y el foco pasa al buscador, no a `<body>` |
 | `biblioteca.lista.una_parada_de_tab_con_flechas_inicio_y_fin` | la lista es UNA parada de Tab (`tabindex` 0 en una fila); ↑ ↓ Inicio y Fin mueven el foco sin elegir; Enter elige; Tab sale de la lista |
 | `biblioteca.copiar.usa_el_portapapeles_y_confirma_sin_mover_el_foco` | `navigator.clipboard.writeText` con el prompt entero; el botón confirma («Copiado»), la región viva lo anuncia, el foco no se mueve y el botón vuelve solo |
 | `biblioteca.copiar.reserva_con_el_metodo_viejo_si_el_navegador_niega_la_api` | si el navegador niega la API moderna, `execCommand('copy')` |
@@ -56,6 +59,7 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.fijar.interruptor_con_aria_pressed_que_se_guarda_en_el_servidor` | «Fijar» ↔ «Quitar de fijados» con `aria-pressed` y el título en su nombre; cada cambio manda la lista entera por `PUT` |
 | `biblioteca.fijar.el_estado_viene_del_servidor_y_lo_que_ya_no_existe_no_se_ensena` | los fijados salen del servidor, en su orden; un id huérfano no ocupa casilla |
 | `biblioteca.fijar.es_optimista_y_vuelve_atras_si_el_servidor_falla` | se ve al instante, con la petición en vuelo; si falla, vuelve a lo confirmado y dice el texto del servidor |
+| `biblioteca.fijar.desde_una_pantalla_vieja_no_pisa_lo_fijado_en_otro_aparato` | cada PUT manda `esperada`; ante un 409 `cambiaron` la pantalla adopta la lista vigente del servidor y lo dice (un aviso, no «quedaron como estaban»), sin mover el foco; el siguiente fijar SUMA a lo vigente |
 | `biblioteca.fijar.sin_red_tambien_vuelve_atras` | lo mismo sin conexión: «No hay conexión…» y todo como estaba |
 | `biblioteca.fijar.con_tres_ya_fijados_no_sustituye_en_silencio_y_no_mueve_el_foco` | con 3 fijados, el cuarto avisa «Ya tienes 3 fijados. Quita uno para fijar este.», no pide nada, no cambia nada y deja el foco en el botón |
 | `biblioteca.fijar.la_franja_siempre_tiene_tres_casillas_numeradas_y_las_vacias_dicen_como_llenarse` | «Tus 3 fijados»: tres casillas 1·2·3; las vacías dicen «Fija aquí un prompt que quieras recordar»; cada llena abre su prompt |
@@ -68,6 +72,7 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.mios.si_no_se_pudo_borrar_lo_dice_y_el_prompt_se_queda` | un fallo al borrar lo dice junto al prompt y el prompt se queda |
 | `biblioteca.mios.un_404_no_es_tuyo_es_que_ya_no_estaba_y_se_quita_igual` | `no_es_tuyo` = ya no existe: se quita sin alarmar |
 | `biblioteca.celular.dos_pasos_elegir_pasa_al_segundo_con_el_foco_en_el_titulo_y_volver_regresa_a_la_fila` | en celular: «1 Elige» → «2 Úsalo»; elegir pasa al segundo con el foco en el título del prompt y «Volver a la lista» regresa a su fila |
+| `biblioteca.celular.elegir_una_etiqueta_del_detalle_lleva_el_foco_a_quitarla_y_no_a_body` | en un celular la etiqueta del detalle (paso 2) se esconde al filtrar (paso 1): el foco va a «Quitar la etiqueta», no a `<body>` |
 | `biblioteca.marco.irremplazables_arriba_y_migas_de_tres_niveles_que_reabren_su_nivel` | un solo `h1` («Irremplazables»), sin ícono ni tarjeta; migas «Central › Distrito › Biblioteca de prompts»: las dos primeras reabren el mapa y las opciones (`?desde=…&ver=…`) |
 | `biblioteca.marco.los_enlaces_a_coi_son_enlaces_a_su_pantalla` | «Ir a COI» es un enlace a `/estudio/coi/` (la pantalla es de otro rol: aquí no se importa nada de ella) |
 | `biblioteca.seguridad.no_guarda_nada_en_el_navegador` | ni `localStorage` ni `sessionStorage`: ni prompts, ni búsquedas, ni fijados |
@@ -76,12 +81,19 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 
 ### Pruebas sueltas (sin ID)
 
-- `logica.test.ts`: los bordes de `logica.ts` (leer una respuesta rara, buscar, fijar y mover, la dirección de «Llevar a la caja»).
-- `web/e2e/biblioteca.spec.ts`: lo que jsdom no ve, a 1100 y a 390 px: que no se arrastre de lado, objetivos de 44 px, letra de 13,
+- `logica.test.ts`: los bordes de `logica.ts` (leer una respuesta rara, buscar, fijar y mover, la dirección de «Llevar a la caja», y
+  `vigentesDe`: la lista que trae un 409 `cambiaron`, o null si no se puede leer).
+- `web/e2e/biblioteca.spec.ts`: lo que jsdom no ve, a 1100, 390 y 320 px: que no se arrastre de lado, objetivos de 44 px, letra de 13,
   el aro de foco en cada parada, un solo ámbar, el portapapeles de verdad, el orden de Tab, **axe** sin violaciones en cada estado y
-  el viaje completo «Llevar a la caja» → inicio real. (El guardián de «reducir movimiento», `movimiento-reducido.spec.ts`, la
+  el viaje completo «Llevar a la caja» → inicio real. Revisión del 17-oct-2026: títulos de 80 letras sin espacios (y una dirección, y una
+  etiqueta de 24) no ensanchan la página ni sacan el texto de su fila, en la lista, el detalle y «Míos» (`[overflow-wrap:anywhere]` en el
+  título de la fila y en «Para qué sirve»; la franja de fijados ya queda contenida por su `line-clamp-2`); el foco no cae al body al
+  quitar filtros o etiqueta; y **dos aparatos** de la misma persona (dos contextos de navegador con el mismo servidor de mentira, que ahora
+  hace compare-and-set como el de verdad): el viejo no pisa lo que fijó el otro. (El guardián de «reducir movimiento», `movimiento-reducido.spec.ts`, la
   recoge sola: lee `web/estudio/`.)
-- `Llegada.test.tsx` (en `web/src/pantallas/inicio/`): llegar al inicio con `?prompt=` o `?brief=` (ver abajo).
+- `Llegada.test.tsx` (en `web/src/pantallas/inicio/`): llegar al inicio con `?prompt=` o `?brief=` (ver abajo). Desde el 17-oct-2026 también
+  cubre que elegir otra tarjeta desde fuera («Crear un video») quita el aviso y que `?prompt=…&desde=…&ver=…` juntos abren la caja con el texto;
+  cada una cae si se rompe lo que dice (`setTrajeron(false)` de `elegir` en `Caja.tsx`; el orden de `estadoInicial` en `estadoRecorrido.ts`).
 
 ## «Llevar a la caja» y el inicio
 
@@ -109,7 +121,8 @@ Editar un «mío», sugerir un prompt, votar y crear uno a mano. Se guarda desde
 
 ## Lo que se tocó fuera de la carpeta
 
-`web/src/marca/menu.ts` (la fila de la Biblioteca: `href` y su texto, sin `proximamente`; sin `pagina` a propósito, porque esa clave exige un
+`web/src/ui/Dialogo.tsx` (el botón «Cerrar» no se encoge: `min-w-11`; a 320 px el título de la hoja de «Guardar» se parte en dos líneas y lo
+dejaba en 38 px de ancho), `web/src/marca/menu.ts` (la fila de la Biblioteca: `href` y su texto, sin `proximamente`; sin `pagina` a propósito, porque esa clave exige un
 `<Marco pantalla="…">` y esta pantalla lleva su propio encabezado), `web/src/nucleo/api.ts` (`detail.texto`), `web/src/ui/iconos.ts` +
 `static/iconos.js` (Copiar, Fijar, Llevar, Investiga), `server/migracion.py`, `docs/DISENO.md` (el interruptor), `docs/QA-UI.md` (§
 biblioteca), y las pruebas del inicio que contaban cuatro «Próximamente» en Central › Distrito (`Pantallas.test.tsx`,

@@ -165,7 +165,9 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     cada barra asoma al final. Una sola vez; sin JS, al volver o con «reducir
     movimiento» ya están completas. Las barras son del azul de datos.
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
-  sea más chico.
+  sea más chico. Un botón dentro de una fila flexible no cede: lleva `min-w-11`
+  (la ✕ de los diálogos a 320 px: con el título en dos líneas, el flex la dejaba
+  en 38).
 - **Foco:** `outline: 2px solid #f0a94a; outline-offset: 3px` en todo lo
   que se enfoca, sin excepción. Si el campo vive dentro de un cuadro con borde y
   fondo (el área de escritura de la caja del inicio: `ui/CuadroDeTexto`), el aro
@@ -307,7 +309,7 @@ salen de ella, así no se desincronizan.
   conectado (si no se sabe, no se apaga nada) y su clic abre el diálogo de
   conectar en vez de navegar; el botón «Conecta tu cuenta de Blotato» (o
   «Blotato conectado: ver o cambiar») vive arriba de esa lista. Lo que aún no
-  existe (todo Central) sale apagado con la etiqueta «Próximamente» y no navega;
+  existe (Preguntas y Glosario, en Central) sale apagado con la etiqueta «Próximamente» y no navega;
   un grupo sin pantallas dice «Todavía no está disponible.». Producto, Ventas y
   Automatizaciones son fichas inertes en el mapa.
 - **Las páginas hoja siguen siendo páginas** (Agenda, Competencia, Métricas, MIX,

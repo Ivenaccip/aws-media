@@ -24,7 +24,15 @@ PLAZO_MODELO_S = 24          # la Lambda corta a 29 s y la puerta a 30 s
 PLAZO_MODERACION_S = 8       # tope propio de la moderación (una llamada corta)
 PRESUPUESTO_S = 27           # moderación + modelo caben aquí; lo que sobre le toca al modelo
 MIN_MODELO_S = 4             # con menos que esto no vale la pena llamar al modelo
-MAX_SALIDA_TOKENS = 4000     # un COI de siete partes cabe de sobra
+MARGEN_SUMAR_S = 3           # lo que se le guarda al final: sumar el uso y responder antes de los 29 s
+# Lo que contesta el modelo se limita a 3500 tokens (≈ 15 000 caracteres en español): cabe en lo que la
+# Biblioteca deja guardar (`MAX_PROMPT` de server/biblioteca_api.py, 16 000). Un COI normal mide una
+# décima parte de eso.
+MAX_SALIDA_TOKENS = 3500
+# Intentos que NO cuentan (el modelo falló, se pasó de plazo, la respuesta vino cortada o la moderación
+# rechazó) y que sí costaron una llamada: por persona y día de México. Sin este tope, repetirlos no
+# gasta ninguno de los 3 usos y el dueño paga cada vuelta (ver `coi_soltar(fallo=True)` en pipeline/db.py).
+MAX_FALLOS_DIARIOS = 20
 
 RAZONAMIENTO_DEFECTO = "minimal"
 SIN_RAZONAMIENTO = ("", "ninguno", "no", "off", "none")
@@ -55,21 +63,66 @@ def instrucciones() -> str:
 # ---------------------------------------------------------------------------
 # separar la respuesta en sus tres bloques
 
+# Las palabras que valen como encabezado, en minúsculas ASCII. Se comparan con la palabra tal como
+# se lee (solo letras ASCII, pasadas a minúsculas ASCII): ni `.lower()` ni `.casefold()` sobre texto
+# libre, que con «ſ» o «İ» producen letras que ninguna clave contiene.
 _NOMBRE = {"contexto": "contexto", "context": "contexto",
            "objetivo": "objetivo", "objective": "objetivo",
            "instrucciones": "instrucciones", "instructions": "instrucciones"}
+_EN_ESPANOL = frozenset({"contexto", "objetivo", "instrucciones"})
 ORDEN = ("contexto", "objetivo", "instrucciones")
 
-# «#CONTEXTO», «# Contexto», «**#CONTEXTO**», «#**CONTEXTO**», «## OBJECTIVE:»,
-# «**#INSTRUCCIONES:**», «#CONTEXTO: Eres…» (lo que sigue a «:» es ya el cuerpo).
-# Tras el nombre solo cabe cerrar negritas, «:» o el fin de la línea: «# Contexto
-# histórico» NO es un encabezado.
-_ENCABEZADO = re.compile(
-    r"^\s*[*_]{0,3}\s*#{1,4}\s*[*_]{0,3}\s*(contexto|context|objetivo|objective|instrucciones|instructions)"
-    r"\s*[*_]{0,3}\s*(?::\s*[*_]{0,3}\s*(?P<resto>.*))?$",
-    re.IGNORECASE)
 _REGLA = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")      # ---, ***, ___
 _CERCA = re.compile(r"^\s*```")
+
+
+def _saltar_adornos(linea: str, i: int) -> int:
+    """Salta espacios, hasta tres marcas de negrita (`*` o `_`) y más espacios: el relleno que puede
+    rodear a un encabezado. Un solo recorrido, sin retroceso."""
+    n = len(linea)
+    while i < n and linea[i].isspace():
+        i += 1
+    marcas = 0
+    while marcas < 3 and i < n and linea[i] in "*_":
+        i += 1
+        marcas += 1
+    while i < n and linea[i].isspace():
+        i += 1
+    return i
+
+
+def encabezado(linea: str) -> tuple[str, str] | None:
+    """Si la línea es el encabezado de un bloque, `(palabra, resto)`: la palabra en minúsculas
+    («contexto», «context»…) y lo que sigue a «:» en la misma línea (ya es cuerpo). Si no, None.
+
+    Reconoce «#CONTEXTO», «# Contexto», «**#CONTEXTO**», «#**CONTEXTO**», «## OBJECTIVE:»,
+    «**#INSTRUCCIONES:**» y «#CONTEXTO: Eres…». Tras el nombre solo cabe cerrar negritas, «:» o el fin
+    de la línea: «# Contexto histórico» NO es un encabezado.
+
+    Es un recorrido de izquierda a derecha, de tiempo lineal: una expresión regular con varios
+    `\\s*` seguidos retrocede de forma cuadrática (o peor) con una línea de miles de espacios, y esto
+    corre en el servidor con la respuesta de un modelo."""
+    n = len(linea)
+    i = _saltar_adornos(linea, 0)
+    almohadillas = 0
+    while i < n and linea[i] == "#":
+        i += 1
+        almohadillas += 1
+    if not 1 <= almohadillas <= 4:
+        return None
+    i = _saltar_adornos(linea, i)
+    j = i
+    while j < n and linea[j].isascii() and linea[j].isalpha():
+        j += 1
+    palabra = linea[i:j].lower()          # solo letras ASCII: el `.lower()` no puede inventar otras
+    if palabra not in _NOMBRE:
+        return None
+    i = _saltar_adornos(linea, j)
+    if i >= n:
+        return palabra, ""
+    if linea[i] != ":":
+        return None
+    return palabra, linea[_saltar_adornos(linea, i + 1):]
 
 
 def _recortar_lineas(lineas: list[str]) -> str:
@@ -87,6 +140,10 @@ def _recortar_lineas(lineas: list[str]) -> str:
     return "\n".join(lineas).strip()
 
 
+def _lineas(texto: str) -> list[str]:
+    return texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+
 def separar_bloques(texto: str) -> dict:
     """Lo que el API devuelve en `coi`: {contexto, objetivo, instrucciones,
     completo, estructura_ok}. Cada bloque va SIN su encabezado. `completo` es lo
@@ -96,7 +153,7 @@ def separar_bloques(texto: str) -> dict:
     completo = texto if isinstance(texto, str) else ""
     malo = {"contexto": None, "objetivo": None, "instrucciones": None,
             "completo": completo, "estructura_ok": False}
-    lineas = completo.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    lineas = _lineas(completo)
 
     # la respuesta entera envuelta en una cerca de código: se desenvuelve
     vivas = [i for i, x in enumerate(lineas) if x.strip()]
@@ -110,9 +167,9 @@ def separar_bloques(texto: str) -> dict:
     for i, linea in enumerate(lineas):
         if quiero >= len(ORDEN):
             break
-        m = _ENCABEZADO.match(linea)
-        if m and _NOMBRE[m.group(1).lower()] == ORDEN[quiero]:
-            marcas.append((ORDEN[quiero], i, (m.group("resto") or "").strip()))
+        hallado = encabezado(linea)
+        if hallado and _NOMBRE[hallado[0]] == ORDEN[quiero]:
+            marcas.append((ORDEN[quiero], i, hallado[1].strip()))
             quiero += 1
     if quiero < len(ORDEN):
         return malo
@@ -157,6 +214,18 @@ def idioma(texto: str) -> str:
     return "en" if en > es else "es"
 
 
+def idioma_respuesta(respuesta: str, entrada: str) -> str:
+    """El idioma que va en la respuesta del API: el de los ENCABEZADOS que escribió el modelo
+    («#CONTEXTO…» es «es», «#CONTEXT…» es «en»), porque la web los vuelve a pegar al copiar y al
+    guardar y deben coincidir con los que el modelo usó. Gana el primero que se reconozca. Si la
+    respuesta no trae ninguno, la heurística de lo que escribió la persona (`idioma`)."""
+    for linea in _lineas(respuesta if isinstance(respuesta, str) else ""):
+        hallado = encabezado(linea)
+        if hallado:
+            return "es" if hallado[0] in _EN_ESPANOL else "en"
+    return idioma(entrada)
+
+
 # ---------------------------------------------------------------------------
 # costo (dólares) con la tarifa de tools/pricing.json — nunca un número inventado
 
@@ -187,8 +256,30 @@ def costo_usd(uso: dict | None) -> float | None:
     return round(total, 6)
 
 
-def motivo_corto(motivo: str | None, limite: int = 240) -> str:
+ECO_MIN = 20       # caracteres seguidos que el motivo comparte con lo que escribió la persona
+
+
+def _normal(texto) -> str:
+    return " ".join(str(texto or "").split()).lower()
+
+
+def _repite_la_entrada(motivo: str, entrada: str) -> bool:
+    """¿El motivo trae un pedazo de ECO_MIN caracteres o más tal cual de la entrada? (espacios y
+    mayúsculas no cuentan). Una ventana de ECO_MIN caracteres del motivo que aparezca dentro de la
+    entrada basta: cualquier pedazo más largo contiene una."""
+    m, e = _normal(motivo), _normal(entrada)
+    if len(m) < ECO_MIN or len(e) < ECO_MIN:
+        return False
+    return any(m[i:i + ECO_MIN] in e for i in range(len(m) - ECO_MIN + 1))
+
+
+def motivo_corto(motivo: str | None, limite: int = 240, entrada: str | None = None) -> str:
     """El motivo de la moderación en una línea y con tope: viene de un modelo,
-    así que no se confía en su largo."""
+    así que no se confía en su largo ni en lo que cita. Si se pasa `entrada` (lo que escribió la
+    persona) y el motivo la repite (ECO_MIN caracteres o más seguidos), devuelve "": quien llama usa
+    entonces el mensaje general, y el texto de la persona nunca vuelve en el 422."""
     t = " ".join(str(motivo or "").split())
-    return t if len(t) <= limite else t[:limite].rstrip() + "…"
+    t = t if len(t) <= limite else t[:limite].rstrip() + "…"
+    if entrada and _repite_la_entrada(t, entrada):
+        return ""
+    return t

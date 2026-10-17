@@ -4,6 +4,9 @@
      compilado (`web/dist/`). Viven solo en el servidor (`prompts/coi_system.md`).
   2. Lo que la persona escribe no se guarda en el navegador: la pantalla de COI no toca `localStorage`, `sessionStorage`,
      IndexedDB ni las cookies, ni usa `apartar` de nucleo/api.ts (que deja el cuerpo de la petición en `sessionStorage` mientras vuela).
+  3. COI nunca tuvo pantalla vieja: su registro en `server/migracion.py` no manda a nadie a un HTML que no existe.
+  4. Los docs de la migración no dicen lo contrario del mapa (`web/src/marca/menu.ts`): COI sin `pagina`, y Central › Distrito con dos
+     enlaces (COI y la Biblioteca) y dos apagadas (Preguntas y Glosario).
 
 Cada guardián trae su prueba de que CAE si lo que vigila entra (`test_el_guardian_..._cae_...`): un guardián que nunca falla no vigila nada.
 
@@ -237,3 +240,68 @@ def test_coi_html_solo_redirige_a_la_pantalla_nueva_y_no_hay_version_anterior():
     # con o sin la cookie de «versión anterior» (que ya no existe para COI), se queda en la nueva
     r = c.get("/ui/clasica?pantalla=coi")
     assert r.status_code == 302 and r.headers["location"] == "/estudio/coi/"
+
+
+# ---------------------------------------------------------------------------
+# 4 · los docs no dicen lo contrario del mapa de Central (revisión del 17-oct-2026)
+#
+# Quien decide qué se puede tocar lee `docs/migracion/*.md` y `docs/DISENO.md`. Cuatro frases decían lo contrario del código:
+# que COI lleva `pagina: 'coi'` (y quien las siga rompe el guardián de Marco.test.tsx), que la Biblioteca era «el único enlace de
+# Central» y que «todo Central» sale «Próximamente» y no navega.
+
+MENU = WEB / "src" / "marca" / "menu.ts"
+DOC_COI = RAIZ / "docs" / "migracion" / "coi.md"
+DOC_INICIO = RAIZ / "docs" / "migracion" / "inicio.md"
+DOC_DISENO = RAIZ / "docs" / "DISENO.md"
+
+# (regex de lo que ya no se puede decir, por qué)
+FRASES_QUE_YA_NO_SON_VERDAD = (
+    (re.compile(r"pagina:\s*'coi'"), "COI no lleva `pagina` en el mapa (esa clave exige un <Marco pantalla=\"coi\">)"),
+    (re.compile(r"único enlace de Central"), "COI y la Biblioteca son, juntas, los dos enlaces de Central"),
+    (re.compile(r"[Tt]odo Central"), "en Central › Distrito solo Preguntas y Glosario siguen en «Próximamente»"),
+)
+
+
+def _frases_viejas(texto: str) -> list[str]:
+    return [porque for patron, porque in FRASES_QUE_YA_NO_SON_VERDAD if patron.search(texto)]
+
+
+def _entrada_del_mapa(clave: str) -> str:
+    """El texto de la fila `clave: '…'` de Central › Distrito en menu.ts, hasta el cierre de su objeto."""
+    codigo = MENU.read_text(encoding="utf-8")
+    m = re.search(r"\{[^{}]*?clave: '%s'[^{}]*?\}" % re.escape(clave), codigo, re.S)
+    assert m, f"no encontré la fila «{clave}» en {MENU.relative_to(RAIZ)}"
+    return _sin_comentarios(m.group(0))
+
+
+def test_el_mapa_dice_lo_que_los_docs_afirman_de_central():
+    """Lo que los docs dicen de Central es verdad en el código: si esto cambia, hay que cambiar los docs (y viceversa)."""
+    coi, biblioteca = _entrada_del_mapa("coi"), _entrada_del_mapa("biblioteca")
+    assert "href: '/estudio/coi/'" in coi and "href: '/estudio/biblioteca/'" in biblioteca
+    assert "pagina:" not in coi, "COI lleva `pagina` en el mapa: docs/migracion/coi.md dice que no"
+    assert "pagina:" not in biblioteca
+    for apagada in ("preguntas", "glosario"):
+        assert "proximamente: true" in _entrada_del_mapa(apagada)
+        assert "href:" not in _entrada_del_mapa(apagada)
+
+
+@pytest.mark.parametrize("doc", [DOC_COI, DOC_INICIO, DOC_DISENO], ids=lambda d: d.name)
+def test_los_docs_no_repiten_lo_que_el_mapa_ya_contradice(doc):
+    assert not _frases_viejas(doc.read_text(encoding="utf-8")), f"{doc.relative_to(RAIZ)} dice algo que el mapa de Central ya no cumple"
+
+
+def test_los_docs_dicen_hoy_lo_que_es_verdad_de_central():
+    assert "sin `pagina`" in DOC_COI.read_text(encoding="utf-8")
+    inicio = DOC_INICIO.read_text(encoding="utf-8")
+    assert "los dos enlaces de Central" in inicio and "Preguntas y Glosario" in inicio
+    assert "Preguntas y Glosario, en Central" in DOC_DISENO.read_text(encoding="utf-8")
+
+
+def test_el_guardian_de_los_docs_cae_con_cada_frase_vieja():
+    # con teeth: cada una de las frases que ya no son verdad tiene que ser detectada
+    assert _frases_viejas("la fila de COI lleva `pagina: 'coi'` y las pruebas se leen del mapa")
+    assert _frases_viejas("la Biblioteca es el único enlace de Central, a `/estudio/biblioteca/`")
+    assert _frases_viejas("Todo Central sale «Próximamente» y no navega")
+    assert _frases_viejas("Lo que aún no existe (todo Central) sale apagado")
+    # y lo que se dice hoy no se marca
+    assert not _frases_viejas("COI queda sin `pagina`; Central › Distrito tiene dos enlaces y Preguntas y Glosario siguen apagadas")

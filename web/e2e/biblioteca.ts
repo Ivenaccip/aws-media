@@ -89,6 +89,54 @@ export const MIOS: PromptDePrueba[] = [
   },
 ];
 
+/** Títulos y textos con palabras larguísimas sin espacios (80 letras, una dirección): lo que alguien puede escribir en la hoja de «Guardar». */
+export const LARGA = 'W'.repeat(80);
+export const ENLACE_LARGO = 'https://ejemplo.com/' + 'abcdefghij'.repeat(4);
+export const HOSTILES: PromptDePrueba[] = [
+  {
+    id: 'mio-aaaaaaaaaaaa',
+    titulo: LARGA,
+    para_que: '',
+    prompt: 'Escribe un guion corto para [TEMA].',
+    categoria: 'guion',
+    etiquetas: [],
+    lleva_a: null,
+    origen: 'coi',
+    creado: '2026-10-16T18:20:00Z',
+  },
+  {
+    id: 'mio-bbbbbbbbbbbb',
+    titulo: `Con enlace ${ENLACE_LARGO}`.slice(0, 80),
+    para_que: '',
+    prompt: 'x'.repeat(400),
+    categoria: 'guion',
+    etiquetas: ['E'.repeat(24)],
+    lleva_a: null,
+    origen: 'coi',
+    creado: '2026-10-16T19:05:00Z',
+  },
+];
+/** Un prompt de la casa cuyo «para qué sirve» y etiqueta no traen espacios (el dueño lo edita a mano). */
+export const CASA_HOSTIL: PromptDePrueba = {
+  id: 'casa-hostil',
+  titulo: LARGA,
+  para_que: ENLACE_LARGO + 'z'.repeat(40),
+  prompt: 'Un prompt cualquiera.',
+  categoria: 'imagen',
+  etiquetas: ['E'.repeat(24)],
+  lleva_a: 'imagen',
+};
+
+/** Lo que el servidor de mentira guarda: se puede compartir entre dos páginas (dos pestañas o dos aparatos de la misma persona). */
+export interface EstadoDelServidor {
+  fijados: string[];
+  mios: PromptDePrueba[];
+}
+export const nuevoServidor = (s: Pick<Simulacion, 'fijados' | 'mios'> = {}): EstadoDelServidor => ({
+  fijados: [...(s.fijados ?? [])],
+  mios: [...(s.mios ?? MIOS)],
+});
+
 export interface Simulacion {
   casa?: PromptDePrueba[];
   mios?: PromptDePrueba[];
@@ -102,6 +150,8 @@ export interface Simulacion {
 export interface Llamadas {
   /** Cada PUT de los fijados, con la lista que mandó. */
   puts: string[][];
+  /** Y la lista que cada PUT decía tener por vigente (`esperada`). */
+  esperadas: Array<string[] | undefined>;
   /** Cada DELETE de un «mío», con su id. */
   borrados: string[];
   /** Cuántas veces se pidió la lista. */
@@ -111,11 +161,11 @@ export interface Llamadas {
 const json = (route: Route, status: number, cuerpo: unknown) => route.fulfill({ status, json: cuerpo });
 
 /** El estudio de mentira de la Biblioteca. Devuelve lo que se le pidió, en orden. Las rutas de /api/biblioteca ganan a las de abajo. */
-export async function simular(page: Page, s: Simulacion = {}): Promise<Llamadas> {
-  const llamadas: Llamadas = { puts: [], borrados: [], cargas: 0 };
-  let mios = [...(s.mios ?? MIOS)];
-  let fijados = [...(s.fijados ?? [])];
+export async function simular(page: Page, s: Simulacion = {}, servidor: EstadoDelServidor = nuevoServidor(s)): Promise<Llamadas> {
+  const llamadas: Llamadas = { puts: [], esperadas: [], borrados: [], cargas: 0 };
   const casa = s.casa ?? CASA;
+  // lo vigente: los fijados que siguen existiendo, como los cuenta el servidor de verdad
+  const vigentes = () => servidor.fijados.filter(id => [...casa, ...servidor.mios].some(p => p.id === id));
 
   await page.route(/\/api\/biblioteca(\?.*)?$/, async route => {
     llamadas.cargas += 1;
@@ -127,35 +177,42 @@ export async function simular(page: Page, s: Simulacion = {}): Promise<Llamadas>
     return json(route, 200, {
       categorias: CATEGORIAS,
       casa,
-      mios,
-      fijados: fijados.filter(id => [...casa, ...mios].some(p => p.id === id)),
-      limites: { fijados: 3, mios: 100, titulo: 80, prompt: 12000 },
+      mios: servidor.mios,
+      fijados: vigentes(),
+      limites: { fijados: 3, mios: 100, titulo: 80, prompt: 16000 },
     });
   });
 
   await page.route('**/api/biblioteca/fijados', async route => {
-    const { ids } = route.request().postDataJSON() as { ids: string[] };
+    const { ids, esperada } = route.request().postDataJSON() as { ids: string[]; esperada?: string[] };
     llamadas.puts.push(ids);
+    llamadas.esperadas.push(esperada);
     if (s.guardado?.demora) await new Promise(r => setTimeout(r, s.guardado!.demora));
     if (s.guardado?.falla) return json(route, 503, { detail: { codigo: 'no_disponible', texto: 'No se pudo guardar tus fijados ahora.' } });
     if (ids.length > 3) return json(route, 422, { detail: { codigo: 'demasiados', texto: 'Ya tienes 3 fijados. Quita uno para fijar otro.' } });
-    fijados = ids;
-    return json(route, 200, { fijados });
+    // compare-and-set: si la pantalla creía otra cosa, no se escribe nada y se le dice cuál es la lista vigente
+    if (esperada && JSON.stringify(esperada) !== JSON.stringify(vigentes())) {
+      return json(route, 409, {
+        detail: { codigo: 'cambiaron', texto: 'Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos.', fijados: vigentes() },
+      });
+    }
+    servidor.fijados = ids;
+    return json(route, 200, { fijados: vigentes() });
   });
 
   await page.route('**/api/biblioteca/mios/*', async route => {
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!);
     llamadas.borrados.push(id);
-    mios = mios.filter(p => p.id !== id);
-    fijados = fijados.filter(i => i !== id);
+    servidor.mios = servidor.mios.filter(p => p.id !== id);
+    servidor.fijados = servidor.fijados.filter(i => i !== id);
     return json(route, 200, { ok: true });
   });
 
   return llamadas;
 }
 
-export async function abrir(page: Page, s: Simulacion = {}): Promise<Llamadas> {
-  const llamadas = await simular(page, s);
+export async function abrir(page: Page, s: Simulacion = {}, servidor?: EstadoDelServidor): Promise<Llamadas> {
+  const llamadas = await simular(page, s, servidor);
   await page.goto('/estudio/biblioteca/');
   await page.getByRole('heading', { level: 2, name: 'Biblioteca de prompts' }).waitFor();
   return llamadas;

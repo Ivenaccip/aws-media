@@ -2,6 +2,7 @@
 // Biblioteca.test.tsx; aquí, los bordes de cada función.
 import { describe, expect, it } from 'vitest';
 
+import { ErrorApi } from '../../nucleo/api';
 import {
   ambitoDeLaDireccion,
   filtrar,
@@ -18,6 +19,7 @@ import {
   textoTope,
   TODAS,
   urlDeLlevar,
+  vigentesDe,
   type Categoria,
   type Prompt,
 } from './logica';
@@ -41,7 +43,7 @@ describe('leerListado · un campo que falta no tira la pantalla', () => {
   it('con una respuesta vacía o rara devuelve listas vacías y los límites del contrato', () => {
     for (const crudo of [null, undefined, 'x', 3, {}, { casa: 'no es lista', mios: {}, fijados: 5 }]) {
       const l = leerListado(crudo);
-      expect(l).toMatchObject({ categorias: [], casa: [], mios: [], fijados: [], limites: { fijados: 3, mios: 100, titulo: 80, prompt: 12000 } });
+      expect(l).toMatchObject({ categorias: [], casa: [], mios: [], fijados: [], limites: { fijados: 3, mios: 100, titulo: 80, prompt: 16000 } });
     }
   });
 
@@ -66,7 +68,7 @@ describe('leerListado · un campo que falta no tira la pantalla', () => {
     expect(l.mios[0]).toMatchObject({ lleva_a: null, origen: 'coi', creado: '2026-10-16T18:20:00Z' });
     // sin repetidos y sin ids que no existen
     expect(l.fijados).toEqual(['casa-a', 'mio-1']);
-    expect(l.limites).toEqual({ fijados: 2, mios: 100, titulo: 80, prompt: 12000 });
+    expect(l.limites).toEqual({ fijados: 2, mios: 100, titulo: 80, prompt: 16000 });
   });
 });
 
@@ -164,5 +166,22 @@ describe('ambitoDeLaDireccion · con qué lista abre', () => {
     expect(ambitoDeLaDireccion('?ver=casa')).toBe('casa');
     expect(ambitoDeLaDireccion('?ver=MIOS')).toBe('casa');
     expect(ambitoDeLaDireccion('?ver=')).toBe('casa');
+  });
+});
+
+describe('vigentesDe · la lista que trae un 409 «cambiaron»', () => {
+  const api = (estado: number, detalle: unknown) => new ErrorApi(estado, 'texto', detalle);
+
+  it('devuelve la lista vigente del servidor, en su orden, y null si el error es de otra cosa o la lista no se puede leer', () => {
+    expect(vigentesDe(api(409, { codigo: 'cambiaron', texto: 'x', fijados: ['casa-cafe', 'mio-0123456789ab'] }))).toEqual(['casa-cafe', 'mio-0123456789ab']);
+    expect(vigentesDe(api(409, { codigo: 'cambiaron', texto: 'x', fijados: [] }))).toEqual([]);
+    // sin lista, o con algo que no es una lista de textos: no se inventa una (se trata como cualquier otro fallo)
+    expect(vigentesDe(api(409, { codigo: 'cambiaron', texto: 'x' }))).toBeNull();
+    expect(vigentesDe(api(409, { codigo: 'cambiaron', texto: 'x', fijados: 'casa-cafe' }))).toBeNull();
+    expect(vigentesDe(api(409, { codigo: 'cambiaron', texto: 'x', fijados: ['a', 3] }))).toBeNull();
+    // otros errores del mismo PUT no traen nada que adoptar
+    expect(vigentesDe(api(422, { codigo: 'demasiados', texto: 'x', fijados: ['a'] }))).toBeNull();
+    expect(vigentesDe(new Error('boom'))).toBeNull();
+    expect(vigentesDe(null)).toBeNull();
   });
 });

@@ -37,6 +37,11 @@ export interface PropsGuardarHoja {
   tope: number;
 }
 
+/** Un COI que pasa del tope de la Biblioteca se entregó bien (y contó): solo no cabe guardado. Sin nombrar el campo interno ni el tope.
+ *  El botón que lo lleva es «Copiar todo», o «Copiar» si la respuesta no vino en tres bloques. */
+const textoCoiLargo = (tresBloques: boolean) =>
+  `Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «${tresBloques ? 'Copiar todo' : 'Copiar'}» para llevártelo.`;
+
 const CHIP =
   'inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-pildora border border-linea px-4 text-sm text-texto ' +
   'hover:border-campo hover:bg-elevada has-checked:border-campo has-checked:bg-activa has-checked:font-semibold ' +
@@ -66,9 +71,15 @@ export function GuardarHoja({ coi, idioma, abierto, alCerrar, clave, alGuardado,
       const r = await guardarEnMios({ titulo: limpio, prompt: textoTodo(coi, idioma), categoria, clave });
       alGuardado(r.prompt.titulo || limpio);
     } catch (err) {
-      const lleno = err instanceof ErrorApi && typeof err.detalle === 'object' && err.detalle !== null &&
-        (err.detalle as { codigo?: unknown }).codigo === 'lleno';
-      setError({ texto: err instanceof Error ? err.message : String(err), lleno });
+      const d = err instanceof ErrorApi && typeof err.detalle === 'object' && err.detalle !== null ? (err.detalle as { codigo?: unknown; campo?: unknown }) : {};
+      const texto = err instanceof Error ? err.message : String(err);
+      if (d.codigo === 'titulo_invalido') {
+        // el texto del servidor, tal cual, junto al campo que hay que corregir
+        setErrTitulo(texto);
+        campo.current?.focus();
+      } else {
+        setError({ texto: d.codigo === 'muy_largo' && d.campo === 'prompt' ? textoCoiLargo(coi.estructura_ok) : texto, lleno: d.codigo === 'lleno' });
+      }
     } finally {
       setEnviando(false);
     }
@@ -133,9 +144,11 @@ export function GuardarHoja({ coi, idioma, abierto, alCerrar, clave, alGuardado,
             {error.lleno && (
               <a
                 href="/estudio/biblioteca/?ver=mios"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex min-h-11 items-center text-enlace underline underline-offset-4 hover:text-texto"
               >
-                Abre tu Biblioteca para borrar alguno
+                Abre tu Biblioteca en otra pestaña para borrar alguno
               </a>
             )}
           </Aviso>

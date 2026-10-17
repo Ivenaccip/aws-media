@@ -16,7 +16,7 @@ import { Boton } from '../../ui/Boton';
 import { CuadroDeTexto } from '../../ui/CuadroDeTexto';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
-import { BloqueAgotado, BloqueArmando, BloqueEnCurso, BloqueFalla, BloqueNoDisponible } from './Avisos';
+import { BloqueAgotado, BloqueArmando, BloqueEnCurso, BloqueFalla, BloqueNoDisponible, BloqueSinIntentos } from './Avisos';
 import { GuardarHoja } from './GuardarHoja';
 import { IconoCoi } from './IconosCoi';
 import { Resultado, ENLACE_BOTON, type Plegados } from './Resultado';
@@ -28,6 +28,7 @@ import {
   falloDe,
   largo,
   MAX_TEXTO,
+  mismaRenovacion,
   puntitos,
   textoDeBloque,
   textoTodo,
@@ -49,6 +50,7 @@ const LUGAR: Lugar = { area: 'central', grupo: 'distrito', pantalla: 'coi' };
 
 const PLACEHOLDER = 'Escribe aquí. Por ejemplo: «un guion para presentar un producto en 30 segundos».';
 const PLACEHOLDER_AGOTADO = 'Vuelve cuando se renueven tus usos para armar otro COI.';
+const PLACEHOLDER_SIN_INTENTOS = 'Vuelve después de la medianoche de México para intentarlo otra vez.';
 
 /** Si el servidor no contesta en este tiempo (él mismo corta a los 24 s, la Lambda a los 29 y la puerta a los 30), se deja de esperar. */
 const ESPERA_MAX_MS = 45_000;
@@ -66,7 +68,10 @@ interface Resultado1 {
 const esAbortada = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 
 export function Coi() {
-  const { estado, error: errorEstado, recargar, poner } = useEstadoUso();
+  // demasiados intentos que no salieron: la entrada se apaga hasta la medianoche aunque queden usos (nada se gastó). Guarda de qué
+  // medianoche habla el servidor: cuando cambia el día, su `se_renueva` es otra y la entrada vuelve sola
+  const [bloqueo, setBloqueo] = useState<{ texto: string; se_renueva: string } | null>(null);
+  const { estado, error: errorEstado, recargar, poner } = useEstadoUso(bloqueo !== null);
   // el texto vive SOLO aquí: ningún efecto lo guarda en el navegador
   const [texto, setTexto] = useState('');
   const [pidiendo, setPidiendo] = useState(false);
@@ -78,6 +83,7 @@ export function Coi() {
   const [hojaAbierta, setHojaAbierta] = useState(false);
   const [guardado, setGuardado] = useState<string | null>(null);
   const [anuncio, setAnuncio] = useState('');
+  const [reintentando, setReintentando] = useState(false);
 
   const area = useRef<HTMLTextAreaElement>(null);
   const entrada = useRef<HTMLElement>(null);
@@ -101,6 +107,14 @@ export function Coi() {
     };
   }, []);
 
+  // cerrar o recargar con el COI armándose lo deja correr en el servidor (cuenta como uno de los usos) sin que nadie lo vea: el navegador pregunta
+  useEffect(() => {
+    if (!pidiendo) return;
+    const avisar = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [pidiendo]);
+
   // lo que se dice al lector de pantalla (un texto igual al anterior se vuelve a decir: el espacio final lo hace «nuevo»)
   const decir = (mensaje: string) => {
     aviso.current += 1;
@@ -122,11 +136,18 @@ export function Coi() {
   const largoTexto = largo(texto.trim());
   const demasiado = largoTexto > MAX_TEXTO;
   const moderacion = fallo?.codigo === 'moderacion';
-  // lo que sale en el cuadro de «falló»: todo menos lo que ya tiene su sitio (la moderación junto al cuadro, «otra en curso» y «ya usaste los 3»,
-  // que salen del estado del servidor). Un `muy_largo` o `vacio` del servidor, que el cliente ya evita, se dice aquí por si se cuelan
-  const falloDeArmar = fallo && !['moderacion', 'en_curso', 'agotado'].includes(fallo.codigo) ? fallo : null;
-  const apagado = estado === null || agotado || enCurso || demasiado;
-  const verEjemplos = !texto.trim() && !agotado && !pidiendo;
+  // los errores que viven junto al cuadro (la moderación y un texto con caracteres que el servidor no acepta)
+  const juntoAlCuadro = moderacion || fallo?.codigo === 'texto_invalido';
+  const sinIntentos = bloqueo !== null && estado !== null && mismaRenovacion(estado.se_renueva, bloqueo.se_renueva);
+  // cambió el día (el servidor ya habla de otra medianoche): el bloqueo se acabó y se deja de vigilar la renovación cada minuto
+  if (bloqueo !== null && estado !== null && !sinIntentos) setBloqueo(null);
+  // lo que sale en el cuadro de «falló»: todo menos lo que ya tiene su sitio (la moderación y el texto inválido junto al cuadro; «otra en curso»,
+  // «ya usaste los 3» y «demasiados intentos», que salen del estado del servidor). Un `muy_largo` o `vacio` del servidor, que el cliente ya
+  // evita, se dice aquí por si se cuelan
+  const falloDeArmar =
+    fallo && !['moderacion', 'texto_invalido', 'en_curso', 'agotado', 'demasiados_intentos'].includes(fallo.codigo) ? fallo : null;
+  const apagado = estado === null || agotado || sinIntentos || enCurso || demasiado;
+  const verEjemplos = !texto.trim() && !agotado && !sinIntentos && !pidiendo;
   const sinCargar = estado === null;
 
   const migas = useMemo<Miga[]>(() => {
@@ -156,17 +177,20 @@ export function Coi() {
     ? 'coi-largo'
     : agotado
       ? 'coi-agota'
-      : enCurso
-        ? 'coi-curso'
-        : sinCargar
-          ? 'coi-cont'
-          : undefined;
+      : sinIntentos
+        ? 'coi-intentos'
+        : enCurso
+          ? 'coi-curso'
+          : sinCargar
+            ? 'coi-cont'
+            : undefined;
   const describeCampo =
     [
       errCampo && 'coi-err',
       demasiado && 'coi-largo',
-      moderacion && 'coi-mod',
+      juntoAlCuadro && 'coi-mod',
       agotado && 'coi-agota',
+      sinIntentos && 'coi-intentos',
       enCurso && 'coi-curso',
       'coi-priv',
     ]
@@ -197,7 +221,7 @@ export function Coi() {
 
   async function armar() {
     // apagado no actúa (el propio botón dice por qué); `enVuelo` cierra el doble clic antes de que React pinte «Armando…»
-    if (enVuelo.current || pidiendo || estado === null || agotado || enCurso) return;
+    if (enVuelo.current || pidiendo || estado === null || agotado || sinIntentos || enCurso) return;
     const limpio = texto.trim();
     if (!limpio) {
       setErrCampo('Escribe primero qué necesitas, aunque sea en una frase.');
@@ -207,6 +231,7 @@ export function Coi() {
     if (largo(limpio) > MAX_TEXTO) return;
     enVuelo.current = true;
     setPidiendo(true);
+    setHojaAbierta(false);
     setFallo(null);
     setErrCampo(null);
     decir('Armando tu COI…');
@@ -234,13 +259,18 @@ export function Coi() {
       setFallo(f);
       if (f.codigo === 'agotado') {
         poner({ quedan: 0, en_curso: false, ...(f.renueva_en_s !== undefined ? { renueva_en_s: f.renueva_en_s } : {}), ...(f.se_renueva ? { se_renueva: f.se_renueva } : {}) });
+      } else if (f.codigo === 'demasiados_intentos') {
+        // no se gastó ninguno: no baja el contador, pero la entrada se apaga hasta que el servidor cambie de día
+        poner({ ...(f.renueva_en_s !== undefined ? { renueva_en_s: f.renueva_en_s } : {}), ...(f.se_renueva ? { se_renueva: f.se_renueva } : {}) });
+        setBloqueo({ texto: f.texto, se_renueva: f.se_renueva ?? estado.se_renueva });
+        setFallo(null);
       } else if (f.codigo === 'en_curso') {
         poner({ en_curso: true });
       }
       // el contador es del servidor: tras cualquier fallo se le vuelve a preguntar cuántos quedan
       void recargar();
       // los cuadros de error se anuncian solos (role="alert"); a la moderación se le lleva el foco al cuadro, que es lo que hay que corregir
-      if (f.codigo === 'moderacion') area.current?.focus();
+      if (f.codigo === 'moderacion' || f.codigo === 'texto_invalido') area.current?.focus();
     } finally {
       clearTimeout(plazo);
       enVuelo.current = false;
@@ -269,12 +299,17 @@ export function Coi() {
 
   async function reintentar() {
     setFallo(null);
+    setReintentando(true);
+    decir('Reintentando…');
     const e = await recargar();
+    if (!vivo.current) return;
+    setReintentando(false);
     if (e) area.current?.focus();
+    else decir('Sigue sin estar disponible. Inténtalo en unos minutos.');
   }
 
-  const soloLectura = pidiendo || agotado;
-  const bordeError = Boolean(errCampo) || demasiado || moderacion;
+  const soloLectura = pidiendo || agotado || sinIntentos;
+  const bordeError = Boolean(errCampo) || demasiado || juntoAlCuadro;
 
   return (
     <div className="mx-auto w-full max-w-[1080px] px-4 pt-16 pb-14 sm:px-6">
@@ -302,17 +337,21 @@ export function Coi() {
             id="coi-ta"
             rows={5}
             value={texto}
-            placeholder={agotado ? PLACEHOLDER_AGOTADO : PLACEHOLDER}
+            placeholder={agotado ? PLACEHOLDER_AGOTADO : sinIntentos ? PLACEHOLDER_SIN_INTENTOS : PLACEHOLDER}
             readOnly={soloLectura}
-            aria-disabled={agotado || undefined}
+            aria-disabled={agotado || sinIntentos || undefined}
             aria-busy={pidiendo || undefined}
             aria-invalid={bordeError || undefined}
             aria-describedby={describeCampo}
             aria-keyshortcuts="Control+Enter Meta+Enter"
             onChange={e => alEscribir(e.target.value)}
             onKeyDown={alTeclear}
-            claseCuadro={unir(agotado && 'border-dashed border-linea! bg-hundido!', bordeError && !agotado && 'border-error!')}
-            className={unir('min-h-32 sm:min-h-[152px]', agotado && 'cursor-default text-apagado placeholder:text-apagado', pidiendo && 'text-secundario')}
+            claseCuadro={unir((agotado || sinIntentos) && 'border-dashed border-linea! bg-hundido!', bordeError && !agotado && !sinIntentos && 'border-error!')}
+            className={unir(
+              'min-h-32 sm:min-h-[152px]',
+              (agotado || sinIntentos) && 'cursor-default text-apagado placeholder:text-apagado',
+              pidiendo && 'text-secundario',
+            )}
           />
 
           {errCampo && (
@@ -327,11 +366,17 @@ export function Coi() {
               Es muy largo: el máximo es de {MAX_TEXTO} caracteres y llevas {largoTexto}. Acórtalo para armar tu COI.
             </p>
           )}
-          {moderacion && fallo && (
+          {juntoAlCuadro && fallo && (
             <p id="coi-mod" role="alert" className="m-0 flex items-start gap-2 text-sm text-error">
               <Icono nombre="aviso" className="mt-px size-5! shrink-0" />
-              <span className="text-texto">
-                <b className="font-semibold">No pudimos usar ese texto.</b> {fallo.texto} Cuéntalo con otras palabras e inténtalo otra vez.
+              <span className="text-texto [overflow-wrap:anywhere]">
+                {moderacion ? (
+                  <>
+                    <b className="font-semibold">No pudimos usar ese texto.</b> {fallo.texto} Cuéntalo con otras palabras e inténtalo otra vez.
+                  </>
+                ) : (
+                  fallo.texto
+                )}
               </span>
             </p>
           )}
@@ -396,11 +441,14 @@ export function Coi() {
             </Boton>
           </div>
 
-          {errorEstado && sinCargar && <BloqueNoDisponible fallo={errorEstado} alReintentar={() => void reintentar()} />}
+          {errorEstado && sinCargar && (
+            <BloqueNoDisponible fallo={errorEstado} reintentando={reintentando} alReintentar={() => void reintentar()} />
+          )}
           {enCurso && !pidiendo && <BloqueEnCurso texto={fallo?.codigo === 'en_curso' ? fallo.texto : undefined} />}
           {pidiendo && <BloqueArmando />}
           {falloDeArmar && !pidiendo && <BloqueFalla fallo={falloDeArmar} />}
           {agotado && estado && !pidiendo && <BloqueAgotado tope={tope} renuevaEnS={estado.renueva_en_s} />}
+          {sinIntentos && !agotado && estado && bloqueo && !pidiendo && <BloqueSinIntentos texto={bloqueo.texto} renuevaEnS={estado.renueva_en_s} />}
 
           <p id="coi-priv" className="m-0 flex items-start gap-2 text-xs text-secundario">
             <Icono nombre="candado" className="mt-px size-[18px]! shrink-0" />
@@ -420,6 +468,7 @@ export function Coi() {
             copiado={copiado}
             alCopiar={c => void copiar(c)}
             guardado={guardado}
+            armando={pidiendo}
             alGuardar={() => setHojaAbierta(true)}
             refTitulo={tituloRes}
           />
@@ -448,6 +497,8 @@ export function Coi() {
           clave={resultado.clave}
           tope={tope}
           alGuardado={titulo => {
+            // el guardado de un COI que ya no es el de la pantalla (llegó otro mientras volaba) no marca nada como guardado
+            if (contados.current !== resultado.n) return;
             setGuardado(titulo);
             setHojaAbierta(false);
             decir('Guardado en tu Biblioteca.');

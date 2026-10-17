@@ -155,6 +155,26 @@ describe('el inicio, al llegar con un texto', () => {
     expect(textoCaja().value).toBe(PROMPT_CON_HUECOS);
   });
 
+  it('elegir otra tarea desde fuera (la tarjeta «Crear un video» de quien empieza) también quita el aviso, y el texto se queda', async () => {
+    history.replaceState(null, '', con('prompt', PROMPT_CON_HUECOS));
+    render(<Inicio ir={ir} />);
+    expect(aviso(AVISO_CON_HUECOS)).toBeInTheDocument();
+    // las listas vienen vacías: salen los tres caminos de quien empieza, y el primero llama a caja.elegir('videos', 'investigacion')
+    await userEvent.click(await screen.findByRole('button', { name: 'Crear un video' }));
+    expect(aviso(AVISO_CON_HUECOS)).toBeNull();
+    expect(riel('Video')).toHaveAttribute('aria-pressed', 'true');
+    expect(textoCaja().value).toBe(PROMPT_CON_HUECOS);
+  });
+
+  it('con ?prompt= Y ?desde=&ver= a la vez gana el texto: la caja abierta con el texto, no el mapa ni las opciones', () => {
+    history.replaceState(null, '', `/estudio/inicio/?prompt=${encodeURIComponent(PROMPT_CON_HUECOS)}&desde=mkt.blotato.agenda&ver=mapa`);
+    render(<Inicio ir={ir} />);
+    expect(screen.queryByText('Elige un área')).toBeNull();
+    expect(textoCaja().value).toBe(PROMPT_CON_HUECOS);
+    expect(aviso(AVISO_CON_HUECOS)).toBeInTheDocument();
+    expect(location.search).toBe('');
+  });
+
   it('el texto llega como TEXTO: nada de lo que trae se vuelve HTML', () => {
     const malo = '<img src=x onerror="window.__roto=1"> y <b>negritas</b> [X]';
     history.replaceState(null, '', con('prompt', malo));

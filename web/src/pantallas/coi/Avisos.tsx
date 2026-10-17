@@ -61,8 +61,8 @@ export function BloqueArmando() {
       <div className="min-w-0">
         <h3 className={TITULO}>Armando tu COI…</h3>
         <p className="m-0 mt-0.5 text-xs text-secundario">
-          Puede tardar un momento. No se gasta ninguno hasta que termine bien. No cierres esta pantalla: no guardamos nada, así que si sales
-          no podrás ver la respuesta.
+          Puede tardar un momento. No se gasta ninguno si algo falla. No cierres ni recargues esta pantalla: no guardamos nada, así que si
+          sales antes de que termine, el uso se cuenta igual y no podrás ver la respuesta.
         </p>
       </div>
     </div>
@@ -87,16 +87,46 @@ export function BloqueFalla({ fallo }: { fallo: Fallo }) {
   );
 }
 
-/** No se pudo ni leer cuántos te quedan: sin eso no se arma nada (falla cerrado). «Reintentar» vuelve a preguntar. */
-export function BloqueNoDisponible({ fallo, alReintentar }: { fallo: Fallo; alReintentar: () => void }) {
+/** No se pudo ni leer cuántos te quedan: sin eso no se arma nada (falla cerrado). «Reintentar» vuelve a preguntar y, mientras
+ *  pregunta, lo dice («Reintentando…»). Aquí nunca hubo un intento de armar nada, así que no se habla de usos gastados: si el texto
+ *  del servidor ya trae esa frase, sale una sola vez, la suya. */
+export function BloqueNoDisponible({
+  fallo,
+  reintentando = false,
+  alReintentar,
+}: {
+  fallo: Fallo;
+  reintentando?: boolean;
+  alReintentar: () => void;
+}) {
   return (
     <Caja role="alert" icono={fallo.codigo === 'sin_conexion' ? 'sinred' : 'aviso'} colorIcono="text-error" clase="border-linea bg-hundido">
       <h3 className={TITULO}>{TITULO_FALLO[fallo.codigo] ?? 'COI no está disponible ahora'}</h3>
       <p className="m-0 mt-1">{fallo.texto}</p>
-      <p className="m-0 mt-1">No se gastó ninguno de tus usos.</p>
       <div className="mt-3">
-        <Boton onClick={alReintentar}>Reintentar</Boton>
+        <Boton trabajando={reintentando && 'Reintentando…'} onClick={alReintentar}>
+          Reintentar
+        </Boton>
       </div>
+    </Caja>
+  );
+}
+
+/** Demasiados intentos que no salieron (429 `demasiados_intentos`): NO es «ya usaste los 3» —no se gastó ninguno—, es que por hoy no se
+ *  intenta más. La entrada se apaga hasta la medianoche de México; el `texto` es el del servidor, tal cual. */
+export function BloqueSinIntentos({ texto, renuevaEnS }: { texto: string; renuevaEnS: number }) {
+  return (
+    <Caja id="coi-intentos" role="status" icono="reloj" colorIcono="text-secundario" clase="border-linea bg-superficie">
+      <h3 className="m-0 font-titulo text-titulo-sm font-bold leading-snug">Por hoy ya no podemos intentarlo más</h3>
+      <p className="m-0 mt-1">{texto}</p>
+      <p className="m-0 mt-1">
+        Se renueva a la medianoche, hora de México (12:00 a. m.). <span className="tabular-nums">{faltanTexto(renuevaEnS)}</span>.
+      </p>
+      <p className="m-0 mt-1.5 text-secundario">Mientras tanto, puedes usar los prompts que ya están hechos.</p>
+      <a href="/estudio/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline -ml-2 mt-1')}>
+        Ir a la Biblioteca de prompts
+        <IconoCoi nombre="flecha" />
+      </a>
     </Caja>
   );
 }

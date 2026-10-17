@@ -11,18 +11,31 @@ from pathlib import Path
 import pytest
 
 from server import biblioteca_api as api
+from test_coi_mundo import CASA_DE_PRUEBA
 
 RUTA = Path(__file__).resolve().parent.parent / "server" / "biblioteca_casa.json"
 
 
+def _leer(ruta=RUTA):
+    """Como lo lee el API: `utf-8-sig`, porque los editores de Windows guardan «UTF-8 con BOM»."""
+    return json.loads(ruta.read_text(encoding="utf-8-sig"))
+
+
 @pytest.fixture(scope="module")
 def doc():
-    return json.loads(RUTA.read_text(encoding="utf-8"))
+    return _leer()
 
 
 @pytest.fixture
 def prompts(doc):
     return doc["prompts"]
+
+
+@pytest.fixture
+def muestra():
+    """Un archivo de la casa de prueba, siempre válido: sobre él se prueban el validador y el API.
+    Solo las pruebas de arriba miran el archivo del dueño, y solo para ver que sea válido."""
+    return copy.deepcopy(CASA_DE_PRUEBA)
 
 
 def test_el_archivo_es_valido_de_principio_a_fin(doc):
@@ -31,10 +44,10 @@ def test_el_archivo_es_valido_de_principio_a_fin(doc):
     assert len(validos) == len(doc["prompts"])
 
 
-def test_trae_los_14_de_muestra_repartidos_en_las_cuatro_categorias(prompts):
-    assert len(prompts) == 14
+def test_cada_prompt_cae_en_una_de_las_cuatro_categorias(prompts):
+    """No se fija cuántos prompts trae el archivo ni cómo se reparten: el dueño lo reemplaza a su gusto."""
     por_categoria = {c: sum(p["categoria"] == c for p in prompts) for c in api.CLAVES_CATEGORIA}
-    assert por_categoria == {"imagen": 4, "video": 3, "guion": 4, "investigacion": 3}
+    assert sum(por_categoria.values()) == len(prompts)
 
 
 def test_ids_unicos_y_con_forma_estable(prompts):
@@ -42,7 +55,7 @@ def test_ids_unicos_y_con_forma_estable(prompts):
     assert len(set(ids)) == len(ids)
     for i in ids:
         assert re.fullmatch(r"casa-[a-z0-9]+(-[a-z0-9]+)*", i), i      # un slug legible: sin fechas ni azar
-    otra_lectura = [p["id"] for p in json.loads(RUTA.read_text(encoding="utf-8"))["prompts"]]
+    otra_lectura = [p["id"] for p in _leer()["prompts"]]
     assert otra_lectura == ids
 
 
@@ -110,7 +123,7 @@ def _doc_con(doc, **cambios):
     ({"titulo": "x" * 81}, "título"),
     ({"para_que": "x" * 161}, "para_que"),
     ({"prompt": ""}, "prompt"),
-    ({"prompt": "x" * 12001}, "prompt"),
+    ({"prompt": "x" * (api.MAX_PROMPT + 1)}, "prompt"),
     ({"categoria": "musica"}, "categoría"),
     ({"etiquetas": ["a", "b", "c", "d"]}, "etiquetas"),
     ({"etiquetas": ["x" * 25]}, "etiquetas"),
@@ -119,17 +132,17 @@ def _doc_con(doc, **cambios):
     ({"lleva_a": "video"}, "lleva_a"),                    # imagen que se lleva a video
     ({"categoria": "guion"}, "lleva_a"),                  # guion que dice llevarse a imagen
 ])
-def test_el_validador_caza_cada_descuido(doc, cambios, pista):
-    validos, problemas = api.validar_casa(_doc_con(doc, **cambios))
-    assert len(validos) == len(doc["prompts"]) - 1
+def test_el_validador_caza_cada_descuido(muestra, cambios, pista):
+    validos, problemas = api.validar_casa(_doc_con(muestra, **cambios))
+    assert len(validos) == len(muestra["prompts"]) - 1
     assert len(problemas) == 1 and pista in problemas[0]
 
 
-def test_el_validador_caza_ids_repetidos(doc):
-    d = copy.deepcopy(doc)
+def test_el_validador_caza_ids_repetidos(muestra):
+    d = copy.deepcopy(muestra)
     d["prompts"][1]["id"] = d["prompts"][0]["id"]
     validos, problemas = api.validar_casa(d)
-    assert len(validos) == len(doc["prompts"]) - 1 and "repetido" in problemas[0]
+    assert len(validos) == len(muestra["prompts"]) - 1 and "repetido" in problemas[0]
 
 
 @pytest.mark.parametrize("roto", [None, [], {}, {"prompts": "no es lista"}, {"prompts": [1, "x"]}])
@@ -141,29 +154,90 @@ def test_un_archivo_que_no_es_el_esperado_no_revienta(roto):
 # ---------------------------------------------------------------------------
 # el API con un archivo descompuesto: se queda con lo válido y lo avisa en el log
 
-def test_el_api_se_queda_con_lo_valido_y_avisa(monkeypatch, tmp_path, caplog, doc):
-    roto = _doc_con(doc, categoria="musica")
+def test_el_api_se_queda_con_lo_valido_y_avisa(monkeypatch, tmp_path, caplog, muestra):
+    roto = _doc_con(muestra, categoria="musica")
     ruta = tmp_path / "casa.json"
     ruta.write_text(json.dumps(roto, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(api, "CASA_RUTA", ruta)
     api._casa.cache_clear()
     try:
         caplog.set_level("ERROR")
-        assert len(api.casa()) == 13
+        assert len(api.casa()) == len(muestra["prompts"]) - 1
         assert any("categoría desconocida" in r.getMessage() for r in caplog.records)
     finally:
         api._casa.cache_clear()
 
 
+def _con_archivo(monkeypatch, ruta):
+    monkeypatch.setattr(api, "CASA_RUTA", ruta)
+    api._casa.cache_clear()
+
+
 def test_el_api_con_json_roto_devuelve_casa_vacia(monkeypatch, tmp_path):
     ruta = tmp_path / "casa.json"
     ruta.write_text("{ esto no es json", encoding="utf-8")
-    monkeypatch.setattr(api, "CASA_RUTA", ruta)
-    api._casa.cache_clear()
+    _con_archivo(monkeypatch, ruta)
     try:
         assert api.casa() == []
     finally:
         api._casa.cache_clear()
+
+
+def test_el_log_de_un_json_roto_dice_el_motivo_y_la_linea(monkeypatch, tmp_path, caplog, muestra):
+    """Un tabulador literal dentro de un texto, una coma de más…: el log dice qué y dónde, no solo el nombre de la clase."""
+    ruta = tmp_path / "casa.json"
+    crudo = json.dumps(muestra, ensure_ascii=False, indent=2).replace('"titulo": "', '"titulo": "\t', 1)
+    ruta.write_text(crudo, encoding="utf-8")
+    _con_archivo(monkeypatch, ruta)
+    try:
+        caplog.set_level("ERROR")
+        assert api.casa() == []
+        (linea,) = [r.getMessage() for r in caplog.records if "casa.json" in r.getMessage()]
+        assert "no es un JSON válido" in linea and "Invalid control character" in linea
+        assert re.search(r"línea \d+, columna \d+", linea)
+        numero = int(re.search(r"línea (\d+)", linea).group(1))
+        assert '"titulo": "\t' in crudo.splitlines()[numero - 1]            # y es la línea del tabulador
+    finally:
+        api._casa.cache_clear()
+
+
+def test_el_api_lee_un_archivo_guardado_con_bom(monkeypatch, tmp_path, muestra):
+    """Los editores de Windows guardan «UTF-8 con BOM»: con `utf-8` pelón ese primer carácter invisible
+    rompía el JSON y «De la casa» salía vacía, sin avisar por qué."""
+    ruta = tmp_path / "casa.json"
+    ruta.write_bytes(b"\xef\xbb\xbf" + json.dumps(muestra, ensure_ascii=False).encode("utf-8"))
+    _con_archivo(monkeypatch, ruta)
+    try:
+        assert len(api.casa()) == len(muestra["prompts"])
+    finally:
+        api._casa.cache_clear()
+
+
+def test_el_api_con_un_archivo_que_no_es_utf8_avisa_y_devuelve_casa_vacia(monkeypatch, tmp_path, caplog):
+    ruta = tmp_path / "casa.json"
+    ruta.write_bytes('{"prompts": [{"titulo": "canción"}]}'.encode("latin-1"))
+    _con_archivo(monkeypatch, ruta)
+    try:
+        caplog.set_level("ERROR")
+        assert api.casa() == []
+        assert any("UTF-8" in r.getMessage() for r in caplog.records)
+    finally:
+        api._casa.cache_clear()
+
+
+def test_el_dueno_puede_agregar_o_quitar_prompts_y_el_api_los_sirve_todos(monkeypatch, tmp_path, muestra):
+    """Un 15.º prompt (o uno menos, o muchos más) no rompe nada: el API sirve los que haya, en su orden."""
+    base = muestra["prompts"]
+    for cuantos in (len(base) + 1, len(base) - 1, 1, 40, 0):
+        prompts = [dict(base[n % len(base)], id=f"casa-prueba-{n}") for n in range(cuantos)]
+        ruta = tmp_path / f"casa-{cuantos}.json"
+        ruta.write_text(json.dumps({"prompts": prompts}, ensure_ascii=False), encoding="utf-8")
+        _con_archivo(monkeypatch, ruta)
+        try:
+            assert [p["id"] for p in api.casa()] == [p["id"] for p in prompts]
+            assert api.validar_casa({"prompts": prompts})[1] == []
+        finally:
+            api._casa.cache_clear()
 
 
 def test_el_api_con_archivo_ausente_devuelve_casa_vacia(monkeypatch, tmp_path):

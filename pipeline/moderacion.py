@@ -44,7 +44,13 @@ async def _veredicto(texto: str, *, prompt: str, falla_cerrado: bool, publico: b
         # lo público con SU clave (capa 1); lo de plataforma, como siempre
         extra = {"publico": True} if publico else {}
         if sin_trazas:
+            # Es una clasificación corta: con el razonamiento por defecto del modelo puede pasar de los
+            # 8 s que COI le da a la moderación y dar un 504 que no era. Se pide el mismo esfuerzo bajo
+            # que a COI (`COI_RAZONAMIENTO`, «minimal» por defecto); si el modelo no lo acepta, llm lo
+            # reintenta sin él.
+            from . import coi
             extra["sin_trazas"] = True
+            extra["razonamiento"] = coi.razonamiento()
         r = await chat_json("moderar", load_prompt(prompt), texto[:4000], **extra)
     except Exception as err:  # noqa: BLE001
         # sin trazas el error se nombra por su clase y nada más: su texto podría

@@ -4,8 +4,9 @@ No es una prueba de producto: es el doble compartido de `test_coi_*.py` y
 `test_biblioteca_*.py`. Finge, sin gastar nada, todo lo que tocan los dos APIs:
 
   - Postgres: las funciones `db.coi_*` y `db.biblioteca_*`, con la MISMA semántica
-    que su SQL (candado atómico con tope, suma que suelta el candado, el día de
-    México, borrar un «mío» lo saca de los fijados, aislamiento por persona). El SQL
+    que su SQL (candado atómico con tope de usos y de intentos que no cuentan, suma que
+    suelta el candado, el día de México, borrar un «mío» lo saca de los fijados, los
+    fijados con compare-and-set, aislamiento por persona). El SQL
     de verdad se prueba contra un Postgres 16 real en `test_coi_postgres.py`;
     aquí se prueba la lógica del API;
   - el modelo (`llm.chat_texto`) y la moderación (`moderacion.revisar`), con retraso
@@ -53,6 +54,27 @@ Diseñar un plan de contenido de cuatro semanas para un canal de cocina.
 TEXTO = "Quiero un plan de contenido para mi canal de cocina"
 SECRETO = "ZORRO-VIOLETA-731"     # una palabra que ningún log ni respuesta debe repetir
 
+# «De la casa» de las pruebas del API: UNA lista propia, fija, en vez del archivo del dueño
+# (server/biblioteca_casa.json), que él reemplaza cuando quiere. Así agregar, quitar o reordenar sus
+# prompts no pone en rojo estas pruebas; que ese archivo sea válido lo vigila test_biblioteca_casa.py.
+CASA_DE_PRUEBA = {"prompts": [
+    {"id": "casa-prueba-uno", "titulo": "Retrato de prueba", "para_que": "Para probar el API.",
+     "prompt": "Retrato de [persona] con luz suave de estudio y fondo liso.", "categoria": "imagen",
+     "etiquetas": ["retrato"], "lleva_a": "imagen"},
+    {"id": "casa-prueba-dos", "titulo": "Plano lento de prueba", "para_que": "Para probar el API.",
+     "prompt": "Plano lento de [lugar] al amanecer, cámara estable, 8 segundos.", "categoria": "video",
+     "etiquetas": ["plano", "lento"], "lleva_a": "video"},
+    {"id": "casa-prueba-tres", "titulo": "Guion corto de prueba", "para_que": "Para probar el API.",
+     "prompt": "Escribe un guion de 30 segundos sobre [tema] con un gancho en la primera frase.",
+     "categoria": "guion", "etiquetas": [], "lleva_a": None},
+    {"id": "casa-prueba-cuatro", "titulo": "Investigación de prueba", "para_que": "Para probar el API.",
+     "prompt": "Investiga los tres competidores principales de [producto] y compáralos en una tabla.",
+     "categoria": "investigacion", "etiquetas": ["mercado"], "lleva_a": None},
+    {"id": "casa-prueba-cinco", "titulo": "Producto de prueba", "para_que": "Para probar el API.",
+     "prompt": "Producto [objeto] flotando sobre un fondo de color liso, sombra suave.",
+     "categoria": "imagen", "etiquetas": ["producto"], "lleva_a": "imagen"},
+]}
+
 
 def ahora_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -65,8 +87,9 @@ class Mundo:
         self.user = "u1"
         self.eventos: list[tuple] = []
         self.tope_visto: list[int] = []
+        self.tope_fallos_visto: list = []
         self.ahora = ahora_utc()                       # el reloj de la base
-        self.coi: dict[str, dict] = {}                 # usuario -> {dia, usos, hasta, candado}
+        self.coi: dict[str, dict] = {}                 # usuario -> {dia, usos, fallos, hasta, candado}
         self.mios: dict[str, list[dict]] = {}          # usuario -> [mío…] (el más nuevo al final)
         self.fijados: dict[str, list[str]] = {}
         self.cerrojo = threading.RLock()               # cada sentencia de Postgres es atómica
@@ -83,6 +106,8 @@ class Mundo:
         self.moderacion_error: Exception | None = None
         self.antes_de_sumar = None                     # callable, una vez: pasa algo justo antes de sumar
         self.tras_tomar_fallido = None                 # callable, una vez: pasa algo justo después de un tomar que perdió
+        self.antes_de_tomar = None                     # callable, una vez: pasa algo justo antes de tomar el candado
+        self.tras_leer_fijados = None                  # callable, una vez: otro aparato escribe justo después de que leí los fijados
         self._parchar()
 
     # -- el reloj de México (UTC-6 fijo desde 2022) ------------------------------
@@ -134,17 +159,23 @@ class Mundo:
     def _coi_estado(self, u):
         self.eventos.append(("estado",))
         f = self._fila(u)
-        usos = f["usos"] if f and f["dia"] == self.dia() else 0
+        hoy = bool(f and f["dia"] == self.dia())
         en_curso = bool(f and f["hasta"] is not None and f["hasta"] > self.ahora)
-        return {"usos": usos, "en_curso": en_curso, **self._renueva()}
+        return {"usos": f["usos"] if hoy else 0, "fallos": f["fallos"] if hoy else 0,
+                "en_curso": en_curso, **self._renueva()}
 
-    def _coi_tomar(self, u, candado, tope, caduca_s):
+    def _coi_tomar(self, u, candado, tope, caduca_s, tope_fallos=None):
+        if self.antes_de_tomar is not None:
+            gancho, self.antes_de_tomar = self.antes_de_tomar, None
+            gancho()
         self.tope_visto.append(tope)
+        self.tope_fallos_visto.append(tope_fallos)
         f = self._fila(u)
         libre = f is None or f["hasta"] is None or f["hasta"] <= self.ahora
-        con_cupo = f is None or f["dia"] != self.dia() or f["usos"] < tope
+        con_cupo = (f is None or f["dia"] != self.dia()
+                    or (f["usos"] < tope and (tope_fallos is None or f["fallos"] < tope_fallos)))
         if f is None:
-            self.coi[u] = {"dia": self.dia(), "usos": 0, "hasta": None, "candado": None}
+            self.coi[u] = {"dia": self.dia(), "usos": 0, "fallos": 0, "hasta": None, "candado": None}
             f = self.coi[u]
         if not (libre and con_cupo):
             self.eventos.append(("tomar", False))
@@ -164,14 +195,20 @@ class Mundo:
         if not f or f["candado"] != candado or (f["dia"] == self.dia() and f["usos"] >= tope):
             self.eventos.append(("sumar", None))
             return None
+        f["fallos"] = f["fallos"] if f["dia"] == self.dia() else 0
         f["usos"] = f["usos"] + 1 if f["dia"] == self.dia() else 1
         f["dia"], f["hasta"], f["candado"] = self.dia(), None, None
         self.eventos.append(("sumar", f["usos"]))
         return {"usos": f["usos"], **self._renueva()}
 
-    def _coi_soltar(self, u, candado):
+    def _coi_soltar(self, u, candado, fallo=False):
         f = self._fila(u)
         if f and f["candado"] == candado:
+            if fallo:       # el intento costó una llamada y no contó: queda anotado en el día de México
+                hoy = f["dia"] == self.dia()
+                f["fallos"] = (f["fallos"] if hoy else 0) + 1
+                f["usos"] = f["usos"] if hoy else 0
+                f["dia"] = self.dia()
             f["hasta"], f["candado"] = None, None
             self.eventos.append(("soltar", True))
             return True
@@ -186,8 +223,13 @@ class Mundo:
         f = self.coi.get(u or self.user)
         return bool(f and f["hasta"] is not None and f["hasta"] > self.ahora)
 
-    def poner_usos(self, n, u=None, *, dia=None):
-        self.coi[u or self.user] = {"dia": dia or self.dia(), "usos": n, "hasta": None, "candado": None}
+    def poner_usos(self, n, u=None, *, dia=None, fallos=0):
+        self.coi[u or self.user] = {"dia": dia or self.dia(), "usos": n, "fallos": fallos,
+                                    "hasta": None, "candado": None}
+
+    def fallos(self, u=None) -> int:
+        f = self.coi.get(u or self.user)
+        return f["fallos"] if f and f["dia"] == self.dia() else 0
 
     # -- biblioteca_* -----------------------------------------------------------
     def _biblioteca_mios(self, u):
@@ -229,11 +271,20 @@ class Mundo:
         return {m["id"] for m in self.mios.get(u, []) if m["id"] in ids}
 
     def _biblioteca_fijados(self, u):
-        return list(self.fijados.get(u, []))
+        leidos = list(self.fijados.get(u, []))
+        if self.tras_leer_fijados is not None:
+            gancho, self.tras_leer_fijados = self.tras_leer_fijados, None
+            gancho()
+        return leidos
 
-    def _biblioteca_fijar(self, u, ids):
+    def _biblioteca_fijar(self, u, ids, antes=None):
+        """Con `antes`, compare-and-set: solo escribe si lo guardado sigue siendo `antes`."""
+        if antes is not None and self.fijados.get(u, []) != list(antes):
+            self.eventos.append(("fijar", "cambiaron"))
+            return False
         self.eventos.append(("fijar", list(ids)))
         self.fijados[u] = list(ids)
+        return True
 
     # -- el modelo y la moderación ----------------------------------------------
     async def _revisar(self, texto, *, prompt="moderar_system", falla_cerrado=False,
@@ -263,6 +314,18 @@ class Mundo:
 @pytest.fixture
 def mundo(monkeypatch):
     return Mundo(monkeypatch)
+
+
+@pytest.fixture
+def casa_de_prueba(monkeypatch, tmp_path):
+    """El API sirve `CASA_DE_PRUEBA` como «De la casa» durante la prueba."""
+    from server import biblioteca_api
+    ruta = tmp_path / "biblioteca_casa.json"
+    ruta.write_text(json.dumps(CASA_DE_PRUEBA, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(biblioteca_api, "CASA_RUTA", ruta)
+    biblioteca_api._casa.cache_clear()
+    yield CASA_DE_PRUEBA
+    biblioteca_api._casa.cache_clear()
 
 
 @pytest.fixture

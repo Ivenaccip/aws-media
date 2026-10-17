@@ -104,6 +104,14 @@ export function faltanTexto(segundos: number): string {
   return m === 0 ? `Faltan ${h} h` : `Faltan ${h} h ${m} min`;
 }
 
+/** ¿Dos `se_renueva` del servidor hablan de la misma medianoche? Se comparan como instantes, no como texto («-06:00» y «Z» pueden decir lo
+ *  mismo); si alguno no se puede leer, como texto. No consulta el reloj del navegador. */
+export function mismaRenovacion(a: string, b: string): boolean {
+  const x = Date.parse(a);
+  const y = Date.parse(b);
+  return Number.isNaN(x) || Number.isNaN(y) ? a === b : x === y;
+}
+
 /** Cuántos «usos» se pintan llenos en los puntitos del contador. */
 export const puntitos = (quedan: number, tope: number): boolean[] =>
   Array.from({ length: tope }, (_, i) => i < Math.max(0, quedan));
@@ -117,7 +125,9 @@ export const largo = (t: string): number => Array.from(t).length;
 export type CodigoFallo =
   | 'en_curso'
   | 'agotado'
+  | 'demasiados_intentos'
   | 'moderacion'
+  | 'texto_invalido'
   | 'modelo'
   | 'tardo'
   | 'no_disponible'
@@ -126,13 +136,24 @@ export type CodigoFallo =
   | 'sin_conexion'
   | 'otro';
 
-const CODIGOS: readonly CodigoFallo[] = ['en_curso', 'agotado', 'moderacion', 'modelo', 'tardo', 'no_disponible', 'muy_largo', 'vacio'];
+const CODIGOS: readonly CodigoFallo[] = [
+  'en_curso',
+  'agotado',
+  'demasiados_intentos',
+  'moderacion',
+  'texto_invalido',
+  'modelo',
+  'tardo',
+  'no_disponible',
+  'muy_largo',
+  'vacio',
+];
 
 export interface Fallo {
   codigo: CodigoFallo;
   /** Listo para mostrarse tal cual. */
   texto: string;
-  /** Lo que el 429 trae: cuántos quedan y cuándo se renuevan. */
+  /** Lo que el 429 (`agotado` y `demasiados_intentos`) trae: cuándo se renuevan. */
   renueva_en_s?: number;
   se_renueva?: string;
 }
@@ -207,6 +228,7 @@ export type Linea = { tipo: 'parrafo'; texto: string } | { tipo: 'suposicion'; t
 export interface Parte {
   n: number;
   titulo: string;
+  /** Una entrada por línea. Un bloque de código (```…```) va como UNA sola entrada, con sus saltos y su sangría: ver `esBloqueDeCodigo`. */
   lineas: string[];
 }
 
@@ -232,22 +254,73 @@ export function lineasDe(texto: string): Linea[] {
   return salida;
 }
 
-/** Instrucciones: «1. Título» seguido de sus líneas. Si el texto no trae al menos dos partes numeradas, null (se lee como párrafos). */
+/** Las partes de #INSTRUCCIONES son siete (lo dice el subtítulo de la tarjeta): una octava «parte» ya es otra cosa. */
+const MAX_PARTES = 7;
+
+const sangria = (linea: string): number => linea.length - linea.trimStart().length;
+
+/** La cerca que abre o cierra un bloque de código (```, con o sin lenguaje). */
+const CERCA = /^\s*```/;
+
+/** ¿Esta entrada de `Parte.lineas` es un bloque de código? Ninguna línea de texto empieza con ```: esa línea sería una cerca. */
+export const esBloqueDeCodigo = (entrada: string): boolean => entrada.startsWith('```');
+
+/** El código de un bloque, sin sus cercas y con su sangría (la que tiene dentro del bloque). */
+export function codigoDelBloque(entrada: string): string {
+  const filas = entrada.split('\n').slice(1);
+  if (filas.length && CERCA.test(filas[filas.length - 1]!)) filas.pop();
+  return filas.join('\n');
+}
+
+/** Junta las líneas de un bloque (la cerca de apertura primero) en una sola entrada: sin la sangría que le dio el modelo para meterlo en su
+ *  parte, y cerrado aunque la respuesta se haya cortado antes de la cerca final. */
+function juntarBloque(filas: string[]): string {
+  const [apertura = '```', ...resto] = filas;
+  if (resto.length && CERCA.test(resto[resto.length - 1]!)) resto.pop();
+  const margen = Math.min(...resto.filter(l => l.trim()).map(sangria));
+  const cuerpo = resto.map(l => l.slice(Number.isFinite(margen) ? margen : 0).trimEnd());
+  return [apertura.trim(), ...cuerpo, '```'].join('\n');
+}
+
+/** Instrucciones: «1. Título» seguido de sus líneas. Si el texto no trae al menos dos partes numeradas, null (se lee como párrafos).
+ *
+ *  Una parte nueva es la que SIGUE a la anterior (1, luego 2…, hasta 7) y empieza en la primera columna. Los pasos numerados que el
+ *  modelo mete DENTRO de una parte —sangrados, o numerados desde 1 otra vez— no son partes: se quedan en la suya, con su número. */
 export function partesDe(texto: string): Parte[] | null {
   const partes: Parte[] = [];
   let sueltas = 0;
-  for (const cruda of texto.split('\n')) {
+  const crudas = texto.split('\n');
+  // la primera columna es la de la línea menos sangrada: un bloque entero sangrado por el modelo no pierde sus partes
+  const base = Math.min(...crudas.filter(l => l.trim()).map(sangria));
+  let bloque: string[] | null = null;
+  const poner = (entrada: string) => {
+    if (partes.length) partes[partes.length - 1]!.lineas.push(entrada);
+    else sueltas++;
+  };
+  for (const cruda of crudas) {
+    // dentro de un bloque de código nada se interpreta: ni números de parte, ni viñetas, ni negritas (un `**kwargs` es código)
+    if (bloque) {
+      bloque.push(cruda);
+      if (CERCA.test(cruda)) {
+        poner(juntarBloque(bloque));
+        bloque = null;
+      }
+      continue;
+    }
+    if (CERCA.test(cruda)) {
+      bloque = [cruda];
+      continue;
+    }
     const sinNegritas = cruda.replace(/\*\*/g, '').trim();
     if (!sinNegritas) continue;
     const m = /^(\d{1,2})[.)]\s+(.+)$/u.exec(sinNegritas);
-    if (m) {
+    if (m && partes.length < MAX_PARTES && sangria(cruda) === base && Number(m[1]) === partes.length + 1) {
       partes.push({ n: Number(m[1]), titulo: m[2]!.replace(/:\s*$/, '').trim(), lineas: [] });
     } else {
       const l = limpia(cruda);
-      if (!l) continue;
-      if (partes.length) partes[partes.length - 1]!.lineas.push(l);
-      else sueltas++;
+      if (l) poner(l);
     }
   }
+  if (bloque) poner(juntarBloque(bloque));
   return partes.length >= 2 && sueltas === 0 ? partes : null;
 }
