@@ -33,6 +33,24 @@ describe('api', () => {
     expect(e.message).toBe('Revisa lo que escribiste: hay un dato que no es válido.');
   });
 
+  it('un detail que es objeto {codigo, texto} dice su texto (COI y Biblioteca), y uno con «mensaje» sigue diciendo el suyo', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      json({ detail: { codigo: 'demasiados', texto: 'Ya tienes 3 fijados. Quita uno para fijar otro.' } }, 422),
+    );
+    const a = (await pedir('/api/x', { cuerpo: {} }).catch(x => x)) as ErrorApi;
+    expect(a.message).toBe('Ya tienes 3 fijados. Quita uno para fijar otro.');
+    // el objeto completo sigue a la mano: quien necesite el código lo lee
+    expect(a.detalle).toEqual({ codigo: 'demasiados', texto: 'Ya tienes 3 fijados. Quita uno para fijar otro.' });
+    expect(a.estado).toBe(422);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json({ detail: { mensaje: 'Algo de siempre' } }, 409));
+    const b = (await pedir('/api/x', { cuerpo: {} }).catch(x => x)) as ErrorApi;
+    expect(b.message).toBe('Algo de siempre');
+    // un objeto sin texto utilizable cae a lo de siempre
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json({ detail: { codigo: 'x', texto: '  ' } }, 503));
+    const c = (await pedir('/api/x').catch(x => x)) as ErrorApi;
+    expect(c.message).toBe('Algo salió mal (HTTP 503).');
+  });
+
   it('sin red dice qué hacer, no «TypeError: Failed to fetch»', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
     const e = (await pedir('/api/x').catch(x => x)) as ErrorApi;

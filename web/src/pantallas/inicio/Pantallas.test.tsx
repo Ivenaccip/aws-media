@@ -118,19 +118,29 @@ describe('Pantallas · Avanzado', () => {
 });
 
 describe('Pantallas · lo que todavía no existe', () => {
-  it('todo Central › Distrito sale apagado con «Próximamente» y ninguna tarjeta es un enlace (no navegan)', () => {
+  // Lo de Central › Distrito que ya existe (se enciende pantalla por pantalla): COI y la Biblioteca de prompts (16-oct-2026).
+  const ENCENDIDAS: Record<string, string> = { COI: '/estudio/coi/', 'Biblioteca de prompts': '/estudio/biblioteca/' };
+
+  it('Central › Distrito: lo que todavía no existe sale apagado con «Próximamente» y no es un enlace; COI y la Biblioteca de prompts, encendidas, llevan a su pantalla', () => {
     render(<Pantallas grupo={distritoCentral} conectado alConectar={() => undefined} />);
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
     const filas = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(filas.map(f => f.querySelector('b')?.textContent)).toEqual(['COI', 'Biblioteca de prompts', 'Preguntas sobre la clase', 'Glosario IA']);
+    // solo las encendidas son enlaces
+    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(Object.values(ENCENDIDAS));
     for (const f of filas) {
+      const titulo = f.querySelector('b')!.textContent!;
+      if (titulo in ENCENDIDAS) {
+        expect(f).not.toHaveTextContent('Próximamente');
+        expect(within(f).getByRole('link')).toHaveAttribute('href', ENCENDIDAS[titulo]);
+        continue;
+      }
       expect(f).toHaveTextContent('Próximamente');
       // apagadas como las fichas del mapa (fondo hundido, texto secundario), sin opacidad: «Próximamente» es información y se lee a 7:1
       const clases = f.firstElementChild!.className.split(/\s+/);
       expect(clases).toEqual(expect.arrayContaining(['bg-hundido', 'text-secundario']));
       expect(clases).not.toContain('opacity-60');
     }
-    // pulsar una no abre el diálogo de Blotato ni nada: no hay nada que pulsar
+    // pulsar una apagada no abre el diálogo de Blotato ni nada: no hay nada que pulsar
     expect(screen.queryByRole('button')).toBeNull();
   });
 

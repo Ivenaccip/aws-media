@@ -57,6 +57,8 @@ from server.trabajos_api import router as trabajos_router
 from server.clip_api import router as clip_router
 from server.imagen_cola import router as imagen_cola_router
 from server.shorts_api import router as shorts_router
+from server.coi_api import router as coi_router
+from server.biblioteca_api import router as biblioteca_router
 
 
 def _configurar_logging() -> None:
@@ -149,6 +151,9 @@ app.include_router(editar_router)
 app.include_router(edicion_router)
 app.include_router(mix_router)
 app.include_router(trabajos_router)
+# Ajustes 3: COI (gratis, 3 al día, sin trazas del texto) y la Biblioteca de prompts
+app.include_router(coi_router)
+app.include_router(biblioteca_router)
 
 
 # Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto

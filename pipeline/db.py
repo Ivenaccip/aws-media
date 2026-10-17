@@ -471,6 +471,53 @@ ESQUEMA: list[str] = [
     """CREATE UNIQUE INDEX IF NOT EXISTS proyectos_editor_copia_en_curso
        ON proyectos_editor (user_id)
        WHERE doc #>> '{editar,estado}' = 'corriendo' AND doc #>> '{editar,copia}' = 'true'""",
+    # Ajustes 3 — COI y la Biblioteca de prompts (server/coi_api.py, server/biblioteca_api.py).
+    #
+    #   coi_estado         UNA fila por persona: los usos que lleva en el día de MÉXICO (`dia`), los
+    #                      intentos que NO contaron ese mismo día (`fallos`: el modelo falló, se pasó
+    #                      del plazo, la respuesta vino cortada o la moderación rechazó; tienen tope
+    #                      propio porque cada uno costó una llamada), y
+    #                      el candado de «una sola respuesta en curso» (`en_curso_hasta` caduca solo,
+    #                      por si la Lambda muere; `candado` es la contraseña de quien lo tomó, para
+    #                      que otro no lo suelte ni lo cuente por él). El día se calcula SIEMPRE en la
+    #                      base (una sola fuente de tiempo). NO guarda texto: ni lo que la persona
+    #                      escribe ni lo que responde el modelo.
+    #   biblioteca_mios    los prompts que la persona guardó desde COI. Privados: toda consulta lleva
+    #                      `usuario`. `clave` (opcional) hace idempotente el guardado: el índice único
+    #                      parcial cierra el doble clic aunque lleguen dos peticiones a la vez.
+    #   biblioteca_fijados el top 3 que quiere recordar, EN ORDEN (la lista de ids es el orden).
+    #
+    # Tablas nuevas: `tools/db_migrate.py` en CADA entorno antes de desplegar (docs/OPERACION.md).
+    """CREATE TABLE IF NOT EXISTS coi_estado (
+        usuario         text PRIMARY KEY,
+        dia             date,
+        usos            int NOT NULL DEFAULT 0,
+        fallos          int NOT NULL DEFAULT 0,
+        en_curso_hasta  timestamptz,
+        candado         text
+    )""",
+    # entornos donde la tabla ya existía sin la columna (IF EXISTS: nunca falla por una tabla ausente)
+    "ALTER TABLE IF EXISTS coi_estado ADD COLUMN IF NOT EXISTS fallos int NOT NULL DEFAULT 0",
+    """CREATE TABLE IF NOT EXISTS biblioteca_mios (
+        usuario    text NOT NULL,
+        id         text NOT NULL,
+        clave      text,
+        titulo     text NOT NULL,
+        para_que   text NOT NULL DEFAULT '',
+        prompt     text NOT NULL,
+        categoria  text NOT NULL,
+        etiquetas  jsonb NOT NULL DEFAULT '[]',
+        origen     text NOT NULL DEFAULT 'coi',
+        creado     timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (usuario, id)
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS biblioteca_mios_clave
+       ON biblioteca_mios (usuario, clave) WHERE clave IS NOT NULL""",
+    """CREATE TABLE IF NOT EXISTS biblioteca_fijados (
+        usuario      text PRIMARY KEY,
+        ids          jsonb NOT NULL DEFAULT '[]',
+        actualizado  timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
@@ -2036,3 +2083,308 @@ def automatiza_corridas_de_ip_hoy(ip_hash: str) -> int:
                AND creado >= date_trunc('day', now() AT TIME ZONE '{ZONA_AUTOMATIZA}')
                              AT TIME ZONE '{ZONA_AUTOMATIZA}'""", {"h": ip_hash})
     return int(filas[0]["n"]) if filas else 0
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 3 — COI: usos por día de México y la «una sola en curso»
+#
+# El orden del contrato lo lleva server/coi_api.py; aquí viven las cuatro
+# sentencias, cada una ATÓMICA (el Data API es autocommit: una sentencia = una
+# transacción). Todas las fechas salen de now() de la base: ni el navegador ni la
+# Lambda aportan reloj.
+
+# Un renglón con el día de hoy y la próxima medianoche de México, en el mismo
+# instante que usa el resto de la sentencia (now() es el de la transacción):
+#   hoy        el día de México (date)
+#   sig_local  la próxima medianoche, hora de pared de México (timestamp)
+#   sig_utc    esa misma medianoche como instante (timestamptz)
+#   desfase    segundos de México respecto a UTC en esa medianoche (-21600)
+_RELOJ_COI = f"""
+    reloj AS (
+        SELECT (now() AT TIME ZONE '{ZONA_AUTOMATIZA}')::date AS hoy,
+               date_trunc('day', now() AT TIME ZONE '{ZONA_AUTOMATIZA}') + interval '1 day' AS sig_local
+    ), r AS (
+        SELECT hoy, sig_local, sig_local AT TIME ZONE '{ZONA_AUTOMATIZA}' AS sig_utc,
+               EXTRACT(EPOCH FROM (sig_local - (sig_local AT TIME ZONE '{ZONA_AUTOMATIZA}'
+                                                AT TIME ZONE 'UTC')))::int AS desfase
+          FROM reloj
+    )"""
+
+# renueva_en_s, y con qué armar se_renueva («2026-10-17T00:00:00-06:00») a partir de `r`. La base solo
+# devuelve números y el `::text` del servidor; el formato se arma en Python (`_renueva`). Nada de
+# `to_char(… 'HH24:MI:SS')` en estas sentencias: un literal con «:» seguido de letra se parece a un
+# parámetro nombrado, y el analizador del Data API de Aurora no se pudo probar contra eso.
+_RENUEVA_COI = """
+    ceil(EXTRACT(EPOCH FROM (r.sig_utc - now())))::bigint AS renueva_en_s,
+    r.sig_local::text AS sig_local,
+    r.desfase AS desfase"""
+
+_HOY_COI = f"(now() AT TIME ZONE '{ZONA_AUTOMATIZA}')::date"
+
+
+def _se_renueva(sig_local: str, desfase: int) -> str:
+    """`sig_local` («2026-10-17 00:00:00», la medianoche en hora de pared de México) y `desfase` (los
+    segundos de México respecto a UTC en ese instante: -21600) → «2026-10-17T00:00:00-06:00»."""
+    signo = "-" if int(desfase) < 0 else "+"
+    d = abs(int(desfase))
+    return f"{sig_local[:10]}T{sig_local[11:19]}{signo}{d // 3600:02d}:{d % 3600 // 60:02d}"
+
+
+def _renueva(fila: dict) -> dict:
+    return {"renueva_en_s": int(fila["renueva_en_s"]),
+            "se_renueva": _se_renueva(fila["sig_local"], fila["desfase"])}
+
+
+def coi_estado(usuario: str) -> dict:
+    """Lo que la persona lleva HOY (día de México): {usos, fallos, en_curso, renueva_en_s,
+    se_renueva}. Una fila de un día anterior cuenta como 0 usos y 0 fallos. Sin fila, 0.
+    Si la base no responde la excepción SALE: COI falla cerrado."""
+    filas = ejecutar(
+        f"""WITH {_RELOJ_COI}
+            SELECT CASE WHEN e.dia = r.hoy THEN e.usos ELSE 0 END AS usos,
+                   CASE WHEN e.dia = r.hoy THEN e.fallos ELSE 0 END AS fallos,
+                   COALESCE(e.en_curso_hasta > now(), false) AS en_curso,
+                   {_RENUEVA_COI}
+              FROM r LEFT JOIN coi_estado e ON e.usuario = :u""", {"u": usuario})
+    f = filas[0]
+    return {"usos": int(f["usos"]), "fallos": int(f["fallos"]), "en_curso": bool(f["en_curso"]),
+            **_renueva(f)}
+
+
+_SIN_TOPE = 2**31 - 1
+
+
+def coi_tomar(usuario: str, candado: str, tope: int, caduca_s: int,
+              tope_fallos: int | None = None) -> bool:
+    """Toma el candado de «una sola respuesta en curso». True si es tuyo.
+
+    UN solo INSERT … ON CONFLICT DO UPDATE … WHERE: gana únicamente si no hay un
+    candado vigente (`en_curso_hasta` nulo o ya vencido) Y a la persona todavía le
+    quedan usos hoy Y no ha llegado hoy al tope de intentos que no cuentan
+    (`tope_fallos`; None = sin tope). Dos peticiones simultáneas se serializan en el índice de la
+    llave primaria: la segunda, al reevaluar el WHERE con la fila que dejó la
+    primera, no actualiza nada y no devuelve fila. Meter el tope aquí cierra el
+    hueco entre «leí 2 usos» y «tomé el candado» (otra respuesta pudo terminar en
+    medio); lo mismo con el tope de intentos que no cuentan. No toca `usos`, `fallos`
+    ni `dia`: eso lo hacen `coi_sumar` y `coi_soltar` al terminar."""
+    filas = ejecutar(
+        f"""INSERT INTO coi_estado AS e (usuario, dia, usos, en_curso_hasta, candado)
+            VALUES (:u, {_HOY_COI}, 0, now() + (:s::int * interval '1 second'), :c)
+            ON CONFLICT (usuario) DO UPDATE
+               SET en_curso_hasta = now() + (:s::int * interval '1 second'), candado = :c
+             WHERE (e.en_curso_hasta IS NULL OR e.en_curso_hasta <= now())
+               AND (e.dia IS DISTINCT FROM {_HOY_COI} OR (e.usos < :tope AND e.fallos < :tope_f))
+            RETURNING usuario""",
+        {"u": usuario, "c": candado, "s": int(caduca_s), "tope": int(tope),
+         "tope_f": _SIN_TOPE if tope_fallos is None else int(tope_fallos)})
+    return bool(filas)
+
+
+def coi_sumar(usuario: str, candado: str, tope: int) -> dict | None:
+    """La respuesta TERMINÓ: suma 1 al uso del día y suelta el candado, en UNA
+    sentencia. Si el día de México cambió desde el último uso, el contador
+    arranca en 1 (y los intentos que no contaron, en 0; el mismo día se conservan).
+    Devuelve {usos, renueva_en_s, se_renueva}, o None si no pudo
+    (el candado ya no es tuyo —caducó y lo tomó otra respuesta— o sumar pasaría
+    del tope): quien llama NO entrega la respuesta. Solo afecta la fila cuyo
+    `candado` es el tuyo."""
+    filas = ejecutar(
+        f"""WITH {_RELOJ_COI},
+            u AS (
+                UPDATE coi_estado
+                   SET usos = CASE WHEN dia = {_HOY_COI} THEN usos + 1 ELSE 1 END,
+                       fallos = CASE WHEN dia = {_HOY_COI} THEN fallos ELSE 0 END,
+                       dia = {_HOY_COI}, en_curso_hasta = NULL, candado = NULL
+                 WHERE usuario = :u AND candado = :c
+                   AND (dia IS DISTINCT FROM {_HOY_COI} OR usos < :tope)
+                RETURNING usos
+            )
+            SELECT u.usos, {_RENUEVA_COI} FROM u, r""",
+        {"u": usuario, "c": candado, "tope": int(tope)})
+    if not filas:
+        return None
+    f = filas[0]
+    return {"usos": int(f["usos"]), **_renueva(f)}
+
+
+def coi_soltar(usuario: str, candado: str, fallo: bool = False) -> bool:
+    """Suelta el candado SIN sumar un uso (la respuesta falló, tardó o la moderación la
+    rechazó). Solo si sigue siendo el tuyo. Con `fallo=True` el intento queda anotado en
+    `fallos` del día de México (si el día cambió, el contador arranca en 1 y `usos` en 0): ese
+    intento costó una llamada y no contó, y `coi_tomar` lo cuenta contra su tope diario."""
+    if not fallo:
+        filas = ejecutar(
+            """UPDATE coi_estado SET en_curso_hasta = NULL, candado = NULL
+                WHERE usuario = :u AND candado = :c RETURNING usuario""",
+            {"u": usuario, "c": candado})
+        return bool(filas)
+    filas = ejecutar(
+        f"""UPDATE coi_estado
+               SET fallos = CASE WHEN dia = {_HOY_COI} THEN fallos ELSE 0 END + 1,
+                   usos = CASE WHEN dia = {_HOY_COI} THEN usos ELSE 0 END,
+                   dia = {_HOY_COI}, en_curso_hasta = NULL, candado = NULL
+             WHERE usuario = :u AND candado = :c RETURNING usuario""",
+        {"u": usuario, "c": candado})
+    return bool(filas)
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 3 — Biblioteca de prompts: los «Míos» y los fijados
+
+# `creado` sale como el `::text` del servidor (en UTC, con microsegundos: «2026-10-16 18:20:00.123456»)
+# y se formatea en Python. Nada de `to_char(… 'HH24:MI:SS')`: ver la nota de `_RENUEVA_COI`.
+_COLS_MIO = """id, titulo, para_que, prompt, categoria, etiquetas::text AS etiquetas, origen,
+               (creado AT TIME ZONE 'UTC')::text AS creado"""
+
+
+def _creado_iso(texto: str) -> str:
+    """«2026-10-16 18:20:00.123456» (UTC) → «2026-10-16T18:20:00Z», como lo ha dado siempre la API."""
+    return f"{texto[:10]}T{texto[11:19]}Z"
+
+
+def _mio(fila: dict) -> dict:
+    fila = dict(fila)
+    fila["etiquetas"] = json.loads(fila.get("etiquetas") or "[]")
+    fila["creado"] = _creado_iso(fila["creado"])
+    return fila
+
+
+PAGINA_MIOS = 8      # filas por consulta: ver biblioteca_mios
+
+
+def biblioteca_mios(usuario: str) -> list[dict]:
+    """Los prompts guardados de ESTA persona, el más nuevo primero.
+
+    Se lee de PAGINA_MIOS en PAGINA_MIOS: el Data API de Aurora corta una respuesta a 1 MiB, y 100
+    «míos» de hasta 16 000 caracteres (con el JSON escapado) pasarían de ahí. Con una sola consulta,
+    quien llenara su lista se quedaría sin poder abrir la Biblioteca. Ocho filas de ese tamaño caben
+    con margen, y lo normal (un COI mide 2-5 KB) es una consulta o dos.
+
+    La página siguiente se pide POR CLAVE —«lo que viene después de (creado, id) de la última fila
+    leída»—, no por posición: cada página es una sentencia aparte y, si otra pestaña de la misma
+    persona guarda o borra entre dos, un OFFSET corre las filas y alguna sale dos veces, otra se
+    salta o un borrado sigue apareciendo. Con la clave, lo que ya se leyó no se mueve."""
+    salida: list[dict] = []
+    ultima: dict | None = None
+    while True:
+        params: dict = {"u": usuario, "n": PAGINA_MIOS}
+        despues = ""
+        if ultima is not None:
+            # `creado` viaja como texto completo (microsegundos incluidos) y vuelve a timestamp
+            params.update(c=ultima["creado"], i=ultima["id"])
+            despues = ("AND (biblioteca_mios.creado < (:c::timestamp AT TIME ZONE 'UTC') "
+                       "OR (biblioteca_mios.creado = (:c::timestamp AT TIME ZONE 'UTC') "
+                       "AND biblioteca_mios.id > :i)) ")
+        filas = ejecutar(
+            # ORDER BY con la columna CALIFICADA: sin el nombre de la tabla, `creado` se resolvería contra la
+            # columna de salida (el texto del `::text`) y el orden saldría por el texto, no por la fecha.
+            # Lo cazó el Postgres real, no los dobles.
+            f"SELECT {_COLS_MIO} FROM biblioteca_mios WHERE usuario = :u {despues}"
+            "ORDER BY biblioteca_mios.creado DESC, biblioteca_mios.id LIMIT :n", params)
+        if filas:
+            ultima = filas[-1]
+        salida += [_mio(f) for f in filas]
+        if len(filas) < PAGINA_MIOS:
+            return salida
+
+
+def biblioteca_contar_mios(usuario: str) -> int:
+    filas = ejecutar("SELECT count(*) AS n FROM biblioteca_mios WHERE usuario = :u", {"u": usuario})
+    return int(filas[0]["n"]) if filas else 0
+
+
+def biblioteca_crear_mio(usuario: str, *, id_: str, clave: str | None, titulo: str,
+                         para_que: str, prompt: str, categoria: str, etiquetas: list[str],
+                         origen: str, tope: int) -> tuple[dict, bool] | None:
+    """Guarda un «mío». Devuelve (registro, creado) o None.
+
+    - Un INSERT que no inserta si la persona ya tiene `tope` (`ON CONFLICT DO
+      NOTHING` cubre también el id repetido y la clave repetida). El tope se mide
+      al empezar la sentencia: dos guardados simultáneos justo en el límite pueden
+      pasarse por uno; no es dinero ni seguridad, y borrar siempre se puede.
+    - `clave` repetida (doble clic): devuelve el registro que ya existía con
+      `creado=False`. Es de ESTA persona: el índice es (usuario, clave).
+    - None = lleno, o el id al azar chocó: quien llama distingue contando."""
+    filas = ejecutar(
+        f"""INSERT INTO biblioteca_mios (usuario, id, clave, titulo, para_que, prompt,
+                                         categoria, etiquetas, origen)
+            SELECT :u::text, :id::text, :clave::text, :t::text, :pq::text, :p::text,
+                   :cat::text, :et::jsonb, :o::text
+             WHERE (SELECT count(*) FROM biblioteca_mios WHERE usuario = :u) < :tope
+            ON CONFLICT DO NOTHING
+            RETURNING {_COLS_MIO}""",
+        {"u": usuario, "id": id_, "clave": clave, "t": titulo, "pq": para_que, "p": prompt,
+         "cat": categoria, "et": etiquetas, "o": origen, "tope": int(tope)})
+    if filas:
+        return _mio(filas[0]), True
+    if clave:
+        previo = ejecutar(
+            f"SELECT {_COLS_MIO} FROM biblioteca_mios WHERE usuario = :u AND clave = :c",
+            {"u": usuario, "c": clave})
+        if previo:
+            return _mio(previo[0]), False
+    return None
+
+
+def biblioteca_borrar_mio(usuario: str, id_: str) -> bool:
+    """Borra un «mío» de ESTA persona y lo saca de sus fijados, en UNA sentencia.
+    False si no existe o es de otra persona (no se distingue)."""
+    filas = ejecutar(
+        """WITH borrado AS (
+               DELETE FROM biblioteca_mios WHERE usuario = :u AND id = :id RETURNING id
+           ), limpio AS (
+               UPDATE biblioteca_fijados
+                  SET ids = COALESCE((SELECT jsonb_agg(e.v ORDER BY e.ord)
+                                        FROM jsonb_array_elements(ids) WITH ORDINALITY AS e(v, ord)
+                                       WHERE e.v #>> '{}' <> :id), '[]'::jsonb),
+                      actualizado = now()
+                WHERE usuario = :u AND EXISTS (SELECT 1 FROM borrado)
+               RETURNING usuario
+           )
+           SELECT id FROM borrado""",
+        {"u": usuario, "id": id_})
+    return bool(filas)
+
+
+def biblioteca_ids_mios(usuario: str, ids: list[str]) -> set[str]:
+    """Cuáles de estos ids son «míos» de ESTA persona (jamás los de otra)."""
+    if not ids:
+        return set()
+    filas = ejecutar(
+        """SELECT id FROM biblioteca_mios
+            WHERE usuario = :u AND id IN (SELECT jsonb_array_elements_text(:ids::jsonb))""",
+        {"u": usuario, "ids": list(ids)})
+    return {f["id"] for f in filas}
+
+
+def biblioteca_fijados(usuario: str) -> list[str]:
+    """Los ids fijados, en el orden del top 3 (puede traer huérfanos: quien lee
+    los cruza con lo que existe)."""
+    filas = ejecutar("SELECT ids::text AS ids FROM biblioteca_fijados WHERE usuario = :u",
+                     {"u": usuario})
+    return list(json.loads(filas[0]["ids"])) if filas else []
+
+
+def biblioteca_fijar(usuario: str, ids: list[str], antes: list[str] | None = None) -> bool:
+    """REEMPLAZA la lista de fijados (el orden importa).
+
+    Sin `antes`, escribe siempre (y devuelve True). Con `antes` —la lista tal como se guardó cuando
+    quien escribe la leyó— solo escribe si NADIE la cambió desde entonces: compara y escribe en UNA
+    sentencia (compare-and-set), y devuelve False si ya no coincide. Así una pantalla vieja no pisa
+    en silencio lo que se fijó desde otro aparato. Sin fila todavía, `antes` es la lista vacía."""
+    if antes is None:
+        ejecutar(
+            """INSERT INTO biblioteca_fijados (usuario, ids, actualizado) VALUES (:u, :ids::jsonb, now())
+               ON CONFLICT (usuario) DO UPDATE SET ids = EXCLUDED.ids, actualizado = now()""",
+            {"u": usuario, "ids": list(ids)})
+        return True
+    filas = ejecutar(
+        """INSERT INTO biblioteca_fijados AS f (usuario, ids, actualizado)
+           SELECT :u::text, :ids::jsonb, now()
+            WHERE :antes::jsonb = '[]'::jsonb
+               OR EXISTS (SELECT 1 FROM biblioteca_fijados WHERE usuario = :u)
+           ON CONFLICT (usuario) DO UPDATE SET ids = EXCLUDED.ids, actualizado = now()
+            WHERE f.ids = :antes::jsonb
+           RETURNING f.usuario""",
+        {"u": usuario, "ids": list(ids), "antes": list(antes)})
+    return bool(filas)

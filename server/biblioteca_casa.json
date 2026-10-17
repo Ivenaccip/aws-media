@@ -1,0 +1,131 @@
+{
+  "_comentario": "Prompts «De la casa» de la Biblioteca. Este archivo lo edita el dueño: los 14 de abajo son de MUESTRA, escritos por quien coordina, para que la pantalla tenga contenido. Reemplázalos o agrega los tuyos y despliega (docs/OPERACION.md, «COI y la Biblioteca de prompts»). Reglas: id único y estable que empiece con «casa-» (si lo cambias, quien lo tenía fijado lo pierde); titulo de hasta 80 caracteres; para_que de hasta 160; prompt de hasta 16000; categoria: imagen, video, guion o investigacion; hasta 3 etiquetas de hasta 24 caracteres; lleva_a: «imagen» si la categoria es imagen, «video» si es video, y null en guion e investigacion (esas solo se copian). Lo que va entre [corchetes] es lo que la persona cambia. El orden de la lista es el orden en pantalla. tests/test_biblioteca_casa.py revisa todo esto.",
+  "prompts": [
+    {
+      "id": "casa-retrato-estudio-luz-suave",
+      "titulo": "Retrato de estudio con luz suave",
+      "para_que": "Fotos de perfil o de equipo con aspecto profesional",
+      "prompt": "Retrato de estudio de [PERSONA] sonriendo con naturalidad y mirando a la cámara. Luz suave de ventana desde la izquierda, fondo [COLOR] cálido liso, lente de 85 mm, poca profundidad de campo, piel con textura natural, colores sobrios. Encuadre del pecho hacia arriba, formato vertical 4:5.",
+      "categoria": "imagen",
+      "etiquetas": ["retrato", "perfil", "equipo"],
+      "lleva_a": "imagen"
+    },
+    {
+      "id": "casa-producto-flotando-sobre-un-color",
+      "titulo": "Producto flotando sobre un color",
+      "para_que": "Anuncios y portadas de tienda con espacio para texto",
+      "prompt": "Fotografía de producto de [PRODUCTO] flotando sobre un fondo [COLOR] liso. Sombra suave debajo, reflejos limpios, iluminación de estudio con luz lateral, estilo minimalista y mucho espacio vacío arriba para poner texto. Formato cuadrado 1:1.",
+      "categoria": "imagen",
+      "etiquetas": ["producto", "anuncio", "tienda"],
+      "lleva_a": "imagen"
+    },
+    {
+      "id": "casa-paisaje-al-amanecer-en-acuarela",
+      "titulo": "Paisaje al amanecer en acuarela",
+      "para_que": "Fondos y portadas con una sensación de calma",
+      "prompt": "Paisaje de [LUGAR: montañas, costa o bosque] con niebla al amanecer, en acuarela. Pinceladas visibles, paleta de azules fríos con un toque de naranja en el horizonte, papel con textura, sensación de calma. Formato horizontal 16:9.",
+      "categoria": "imagen",
+      "etiquetas": ["paisaje", "acuarela", "fondo"],
+      "lleva_a": "imagen"
+    },
+    {
+      "id": "casa-ilustracion-plana-para-explicar-una-idea",
+      "titulo": "Ilustración plana para explicar una idea",
+      "para_que": "Ilustrar un artículo o una presentación sin fotos",
+      "prompt": "Ilustración plana y colorida que explica la idea de [IDEA], con personas pequeñas frente a un objeto grande que la represente. Formas simples, sin texto, paleta de cuatro colores, fondo claro. Formato horizontal 16:9.",
+      "categoria": "imagen",
+      "etiquetas": ["ilustración", "educación", "blog"],
+      "lleva_a": "imagen"
+    },
+    {
+      "id": "casa-cafe-con-vapor-en-camara-lenta",
+      "titulo": "Café con vapor en cámara lenta",
+      "para_que": "Tomas de ambiente para abrir un video de comida",
+      "prompt": "Plano cerrado de una taza de [BEBIDA] sobre una mesa de madera, con vapor subiendo despacio. Luz cálida de mañana entrando por la derecha, la cámara avanza lento hacia la taza, estilo cine realista, sin personas. Duración: 5 segundos.",
+      "categoria": "video",
+      "etiquetas": ["comida", "ambiente", "cámara lenta"],
+      "lleva_a": "video"
+    },
+    {
+      "id": "casa-calle-de-noche-bajo-la-lluvia",
+      "titulo": "Calle de noche bajo la lluvia",
+      "para_que": "Un plano de ciudad con aire de cine para un video corto",
+      "prompt": "Una persona con [paraguas o impermeable] camina por una calle de [CIUDAD] de noche, vista desde atrás a la altura del hombro. Lluvia fina, luces de neón reflejadas en el piso mojado, movimiento de cámara suave y estable, tono cinematográfico. Duración: 8 segundos.",
+      "categoria": "video",
+      "etiquetas": ["ciudad", "noche", "ambiente"],
+      "lleva_a": "video"
+    },
+    {
+      "id": "casa-giro-lento-alrededor-de-un-producto",
+      "titulo": "Giro lento alrededor de un producto",
+      "para_que": "Mostrar un objeto desde todos los ángulos",
+      "prompt": "Giro lento de 360 grados alrededor de [PRODUCTO] sobre un pedestal [COLOR]. Luz de estudio con reflejos suaves, fondo oscuro desenfocado, movimiento continuo y estable. Duración: 6 segundos.",
+      "categoria": "video",
+      "etiquetas": ["producto", "anuncio", "giro"],
+      "lleva_a": "video"
+    },
+    {
+      "id": "casa-guion-de-30-segundos-para-un-producto",
+      "titulo": "Guion de 30 segundos para un producto",
+      "para_que": "Videos cortos de venta: lo que se dice y lo que se ve",
+      "prompt": "Escribe un guion de 30 segundos para presentar [PRODUCTO] a [PÚBLICO]. Estructura: un gancho de 3 segundos con un problema real, la solución en una frase, tres beneficios concretos y un cierre con una invitación clara. Frases cortas, tono cercano, sin tecnicismos. Entrégalo en dos columnas: «Lo que se dice» y «Lo que se ve».",
+      "categoria": "guion",
+      "etiquetas": ["ventas", "guion", "redes"],
+      "lleva_a": null
+    },
+    {
+      "id": "casa-diez-ganchos-para-los-primeros-3-segundos",
+      "titulo": "Diez ganchos para los primeros 3 segundos",
+      "para_que": "Abrir un video con algo que haga quedarse a mirar",
+      "prompt": "Dame 10 ganchos para abrir un video sobre [TEMA]. Cada uno debe despertar curiosidad o nombrar un problema concreto, en menos de 12 palabras y sin exagerar. Ordénalos del más directo al más creativo y explica en una línea por qué funciona cada uno.",
+      "categoria": "guion",
+      "etiquetas": ["redes", "gancho", "video"],
+      "lleva_a": null
+    },
+    {
+      "id": "casa-correo-de-seguimiento-amable",
+      "titulo": "Correo de seguimiento amable",
+      "para_que": "Retomar una conversación sin sonar insistente",
+      "prompt": "Redacta un correo breve para dar seguimiento a [PERSONA] después de [REUNIÓN]. Máximo 90 palabras, tono cordial y directo, un solo pedido claro y una última frase que facilite responder con un sí o un no.",
+      "categoria": "guion",
+      "etiquetas": ["correo", "trabajo", "ventas"],
+      "lleva_a": null
+    },
+    {
+      "id": "casa-resumen-de-un-texto-largo-para-tu-equipo",
+      "titulo": "Resumen de un texto largo para tu equipo",
+      "para_que": "Convertir un documento extenso en cinco puntos útiles",
+      "prompt": "Resume el siguiente texto en cinco puntos para un equipo que no tiene tiempo. Cada punto, en una frase y, si aplica, con una acción sugerida. Cierra con una línea que diga qué decisión hay que tomar. Texto: [PEGA AQUÍ EL TEXTO]",
+      "categoria": "guion",
+      "etiquetas": ["resumen", "trabajo", "equipo"],
+      "lleva_a": null
+    },
+    {
+      "id": "casa-mapa-rapido-de-la-competencia",
+      "titulo": "Mapa rápido de la competencia",
+      "para_que": "Comparar a cinco competidores sin inventar cifras",
+      "prompt": "Actúa como analista de mercado. Haz un cuadro comparativo de cinco competidores de [RUBRO] en [PAÍS]: qué ofrecen, a quién le hablan, su rango de precios y qué los diferencia. Marca como «No verificado» cualquier dato del que no estés seguro y no inventes cifras.",
+      "categoria": "investigacion",
+      "etiquetas": ["mercado", "competencia", "ventas"],
+      "lleva_a": null
+    },
+    {
+      "id": "casa-guia-para-entrevistar-clientes",
+      "titulo": "Guía para entrevistar clientes",
+      "para_que": "Descubrir qué necesitan tus clientes en 20 minutos",
+      "prompt": "Diseña una guía de entrevista de 20 minutos para clientes de [PRODUCTO]. Incluye 8 preguntas abiertas que no sugieran la respuesta, de lo general a lo específico, y 2 preguntas de cierre. Explica en una línea qué aprenderás con cada una.",
+      "categoria": "investigacion",
+      "etiquetas": ["clientes", "entrevistas", "mercado"],
+      "lleva_a": null
+    },
+    {
+      "id": "casa-explicamelo-desde-cero",
+      "titulo": "Explícamelo desde cero",
+      "para_que": "Entender un tema nuevo con analogías y una prueba",
+      "prompt": "Explícame [TEMA] como si fuera la primera vez que lo escucho. Usa una analogía de la vida diaria, define cada término nuevo la primera vez que aparezca y cierra con tres preguntas para comprobar si entendí.",
+      "categoria": "investigacion",
+      "etiquetas": ["aprender", "explicar", "estudio"],
+      "lleva_a": null
+    }
+  ]
+}

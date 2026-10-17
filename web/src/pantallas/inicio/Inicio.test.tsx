@@ -3508,7 +3508,8 @@ describe('el menú', () => {
     expect(listaDePantallas().textContent).not.toMatch(/próximamente/i);
     await irALaLista('Distrito', 'Central');
     expect(listaDePantallas().textContent).toMatch(/próximamente/i);
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    // lo que ya existe de Central › Distrito (COI y la Biblioteca de prompts, 16-oct-2026) son enlaces a su pantalla; lo demás sigue apagado y no navega
+    expect(enlacesDeLaLista().map(a => a.getAttribute('href'))).toEqual(['/estudio/coi/', '/estudio/biblioteca/']);
   });
 
   it('inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan', async () => {

@@ -464,12 +464,13 @@ describe('la lista de un grupo', () => {
     expect(tarjetaDeGrupo('Marketing', 'Blotato')).toHaveTextContent('Estás aquí');
   });
 
-  it('Central › Distrito: las cuatro pantallas salen «Próximamente» y ninguna es un enlace; Deepseek dice que no está disponible', async () => {
+  it('Central › Distrito: lo que no existe sale «Próximamente» y no es un enlace; COI y la Biblioteca de prompts (encendidas) llevan a su pantalla; Deepseek dice que no está disponible', async () => {
     pintar();
     await aLaLista('Central', 'Distrito');
     const filas = within(lista()).getAllByRole('listitem');
     expect(filas.map(f => f.querySelector('b')?.textContent)).toEqual(['COI', 'Biblioteca de prompts', 'Preguntas sobre la clase', 'Glosario IA']);
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/coi/', '/estudio/biblioteca/']);
+    expect(filas.filter(f => /próximamente/i.test(f.textContent ?? ''))).toHaveLength(2);
     await userEvent.click(migaGrupo('Central', 'Distrito'));
     await userEvent.click(tarjetaDeGrupo('Central', 'Deepseek'));
     expect(h2('Deepseek')).toBeInTheDocument();

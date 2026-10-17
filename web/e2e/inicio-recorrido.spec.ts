@@ -671,7 +671,7 @@ test('Avanzado: «Publicaciones automáticas» se apaga sin Blotato y abre el di
 // ---------------------------------------------------------------------------
 // Central
 
-test('Central: el grupo Distrito trae cuatro pantallas «Próximamente» que no navegan, y Deepseek dice que todavía no está disponible', async ({ page }) => {
+test('Central: el grupo Distrito trae dos pantallas «Próximamente» que no navegan y COI y la Biblioteca de prompts (encendidas) que sí, y Deepseek dice que todavía no está disponible', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
   await ficha(page, 'Central').click();
@@ -684,14 +684,18 @@ test('Central: el grupo Distrito trae cuatro pantallas «Próximamente» que no 
   await opcion(page, 'Central', 'Distrito').click();
   await expect(paso(page)).toHaveText('Distrito');
   await expect(migas(page).getByRole('button')).toHaveText(['Central', 'Distrito']);
-  for (const titulo of ['COI', 'Biblioteca de prompts', 'Preguntas sobre la clase', 'Glosario IA']) {
+  // COI y la Biblioteca (16-oct-2026) ya existen y son enlaces (su navegación la prueban e2e/coi.spec.ts y e2e/biblioteca.spec.ts); las otras dos siguen apagadas y no navegan
+  for (const titulo of ['COI', 'Biblioteca de prompts']) await expect(region(page).getByText(titulo, { exact: true })).toBeVisible();
+  for (const titulo of ['Preguntas sobre la clase', 'Glosario IA']) {
     const fila = region(page).getByText(titulo, { exact: true });
     await expect(fila).toBeVisible();
     await fila.click();
     await expect(paso(page), `«${titulo}» navegó`).toHaveText('Distrito');
   }
-  await expect(region(page).getByText('Próximamente')).toHaveCount(4);
-  await expect(region(page).getByRole('link')).toHaveCount(0);
+  await expect(region(page).getByText('Próximamente')).toHaveCount(2);
+  await expect(region(page).getByRole('link')).toHaveText([/^COI/, /^Biblioteca de prompts/]);
+  await expect(region(page).getByRole('link', { name: /^COI/ })).toHaveAttribute('href', '/estudio/coi/');
+  await expect(region(page).getByRole('link', { name: /^Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/biblioteca/');
   expect(rutaDe(page)).toBe(URL_DEL_INICIO);
 
   // ahora SÍ se eligió Central › Distrito: el mapa no marca nada (nunca marca), pero las opciones de Central dicen dónde estás

@@ -36,6 +36,21 @@ for (const caso of [
   });
 }
 
+// Ajustes 3: una caja nunca mide más que la ventana. La hoja de «Guardar» de COI con el aviso de «Biblioteca llena» medía 707 px en una
+// ventana de 568 y perdía arriba el título y la ✕ y abajo los botones. Con una ventana más baja que la caja, se desplaza POR DENTRO.
+test('el diálogo nunca es más alto que la ventana: si no cabe, se desplaza por dentro', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 200 });
+  await page.goto('/estudio/_vitrina/');
+  await page.getByRole('button', { name: 'Abrir diálogo' }).click();
+  const d = page.getByRole('dialog');
+  await expect(d).toBeVisible();
+  await expect.poll(() => nombres(page)).toEqual([]);
+  const caja = await d.boundingBox();
+  expect(caja!.y).toBeGreaterThanOrEqual(0);
+  expect(caja!.y + caja!.height).toBeLessThanOrEqual(200);
+  expect(await d.evaluate(e => e.scrollHeight > e.clientHeight)).toBe(true);
+});
+
 test('el Confirmar con «Cancelar» también devuelve el foco', async ({ page }) => {
   await page.goto('/estudio/_vitrina/');
   const abrir = page.getByRole('button', { name: 'Borrar el proyecto…' });

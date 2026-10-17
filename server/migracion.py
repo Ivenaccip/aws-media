@@ -111,6 +111,14 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.9: crear una película. Cobra el guion al empezar, el resto al
     # producir y cada imagen que se cambia; el 302 conserva ?p=, ?brief= y ?modo=
     "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="nueva"),
+    # Ajustes 3 (16-oct-2026): la Biblioteca de prompts NACE sin versión anterior (no hay nada que migrar ni a lo que volver). Se registra
+    # directo en `retirada` —302 siempre a la nueva, sin HTML viejo ni cookie— para entrar al guardián de invariantes y al mapa
+    # docs/migracion/biblioteca.md igual que las demás; `/biblioteca.html` queda de dirección corta. No cobra.
+    "biblioteca": Pantalla(vieja="/biblioteca.html", nueva="/estudio/biblioteca/", etapa="retirada"),
+    # 16-oct-2026: COI (Contexto · Objetivo · Instrucciones) nace en la UI nueva: NO tuvo pantalla vieja. Se registra `retirada` desde
+    # el primer día para que el registro anti-pérdida cubra sus invariantes (docs/migracion/coi.md); `/coi.html` solo es un atajo que
+    # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado
+    "coi": Pantalla(vieja="/coi.html", nueva="/estudio/coi/", etapa="retirada"),
 }
 
 

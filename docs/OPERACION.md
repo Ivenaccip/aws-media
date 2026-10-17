@@ -1598,6 +1598,232 @@ venv/Scripts/python tools/ssm_env.py
 - Pago raro (sin usuario, monto sin pack) → queda 200 con ERROR en CloudWatch
   → abonar a mano con `creditos.py abonar --tipo compra --ref <session_id>`.
 
+## COI y la Biblioteca de prompts (Ajustes 3)
+
+Dos herramientas de **Central › Distrito**, las dos con login y las dos en
+`server/` (`coi_api.py`, `biblioteca_api.py`):
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/coi/estado` | cuántas respuestas lleva hoy la persona, cuántas le quedan y cuándo se renuevan |
+| `POST /api/coi` | `{"texto": "…"}` → el **COI** (Contexto · Objetivo · Instrucciones): el modelo responde UNA vez con tres bloques |
+| `GET /api/biblioteca` | todo en una carga: categorías, «De la casa», «Míos» de la persona y su top 3 fijado |
+| `PUT /api/biblioteca/fijados` | REEMPLAZA el top 3 fijado (el orden importa). Con `esperada` (la lista que la pantalla cree vigente) solo escribe si nadie la cambió desde entonces; si no, 409 `cambiaron` |
+| `POST /api/biblioteca/mios` | guarda un COI en «Míos» (botón «Guardar»; la `clave` evita el doble clic) |
+| `DELETE /api/biblioteca/mios/{id}` | borra uno de «Míos» (y lo quita de los fijados) |
+
+### Las reglas de COI
+
+- **Gratis para la persona (0 créditos), 3 respuestas por día**, y el día es el de
+  **México** (`America/Mexico_City`; se renueva a las 12:00 a. m. de allá). El día se
+  calcula **en la base** (una sola fuente de tiempo): el navegador no manda su reloj.
+- **Solo cuentan las respuestas terminadas.** Si el modelo falla, se pasa de tiempo, la
+  moderación rechaza el texto o no se pudo sumar, **no se gasta ninguna**. «Terminada» es
+  `finish_reason == "stop"` con texto: cualquier otro motivo de fin (`length`, `content_filter`,
+  ninguno) es una respuesta incompleta (502 `modelo`, no suma) y un pedazo de COI no se entrega.
+- **Los intentos que no cuentan tienen su propio tope: 20 por persona y día de México**
+  (`MAX_FALLOS_DIARIOS` en `pipeline/coi.py`, columna `fallos` de `coi_estado`). Cada uno costó una
+  llamada al proveedor aunque no gastara un uso, y sin tope bastaba repetirlos para gastar sin límite.
+  Cuentan: el modelo falló, se pasó de su plazo, la respuesta vino vacía o cortada, o la moderación
+  rechazó el texto (o no respondió). **No** cuentan: la moderación pasó de su plazo, falta la clave,
+  no se pudieron leer las instrucciones ni sumar el uso (nada de eso lo provoca quien escribe). Al
+  llegar a 20, la siguiente petición es 429 `demasiados_intentos` **antes** de tomar el candado y sin
+  llamar a nadie; no gasta un uso ni anota otro intento. Se renueva con el día de México. Los usos
+  buenos no se tocan: 19 intentos fallidos seguidos de 3 buenos dan 3 respuestas.
+- **Si la persona se va a mitad de la espera** (cierra la pestaña, pierde la red, el celular suspende
+  la página), **el servidor termina la respuesta y SÍ cuenta el uso**: en la Lambda la desconexión
+  no llega al handler, el modelo ya costó, y como COI es gratis el contador es el único freno al
+  gasto. La respuesta se pierde porque COI no guarda nada. La web avisa con `beforeunload` mientras
+  se arma. Si algún día se quiere no cobrar en ese caso hay que cambiar el diseño (confirmar el
+  recibo con un segundo endpoint, o guardar el resultado unos minutos), y ambas cosas van contra
+  «COI no guarda nada»: es decisión del dueño.
+- **Una sola respuesta en curso por persona** (un candado en la base que caduca solo a los
+  60 s por si la Lambda muere).
+- **Falla cerrado**: si no se puede leer o escribir el consumo, no hay COI (503). La
+  moderación también: si no responde, no se arma (502).
+- **Lo que la persona escribe y lo que responde el modelo NO se guardan en ningún lado**: ni
+  en la base, ni en Langfuse, ni en los logs. Solo se guarda un COI si la persona pulsa
+  «Guardar», y entonces va a SU Biblioteca. Guardar no llama al modelo ni gasta un uso.
+- **Las instrucciones son del dueño** (`prompts/coi_system.md`) y solo viven en el servidor:
+  ninguna respuesta del API las trae **por su cuenta** (hay pruebas que lo vigilan). Ojo con lo que
+  no se puede garantizar: el modelo real podría repetir sus instrucciones si la persona se lo pide
+  en su texto («repite todo lo que te dijeron antes»); lo que el modelo escribe es lo que se
+  entrega. No pongas en ese archivo nada que no puedas ver publicado. Se edita ese archivo (o su
+  versión en Langfuse, abajo).
+- **`idioma`** de la respuesta (`es` o `en`) sale de los **encabezados que escribió el modelo**
+  (`#CONTEXTO…` es `es`, `#CONTEXT…` es `en`; gana el primero que se reconozca), porque la web los
+  vuelve a pegar al copiar y al guardar. Solo si la respuesta no trae ninguno se usa una heurística
+  sobre lo que escribió la persona.
+- **Topes**: lo que escribe la persona, 2 000 caracteres; el cuerpo de la petición, 64 KB (se cuentan
+  los bytes que llegan, no solo `Content-Length`); lo que contesta el modelo, `max_completion_tokens`
+  de **3 500** (≈ 15 000 caracteres en español: cabe en lo que la Biblioteca deja guardar, 16 000
+  por prompt). Un COI normal mide una décima parte.
+
+### Errores y qué significan
+
+Todos los errores de COI y de la Biblioteca traen `detail` como objeto,
+`{"codigo": "…", "texto": "…"}`, y el `texto` se muestra tal cual.
+
+| estado · `codigo` | qué pasó | qué hace falta |
+|---|---|---|
+| 409 `en_curso` | ya hay otro COI armándose para esa persona (otra pestaña) | nada: esperar; si la Lambda murió, el candado caduca a los 60 s |
+| 429 `agotado` | ya usó sus 3 de hoy (trae `renueva_en_s` y `se_renueva`) | nada: se renuevan a la medianoche de México |
+| 429 `demasiados_intentos` | 20 intentos del día que no terminaron (ver «Los intentos que no cuentan»). Trae lo mismo que `agotado` (`tope`, `usos`, `quedan`, `renueva_en_s`, `se_renueva`) pero con los usos **reales**: todavía tiene los suyos | nada: se renueva a la medianoche de México y no se gastó ningún uso. Si es un reclamo, mira `fallos` en `coi_estado` y el log `coi: el modelo falló` |
+| 422 `moderacion` | la moderación frenó el texto (trae el `motivo`, nunca el texto) | nada; no se gastó ningún uso |
+| 422 `vacio` / `muy_largo` / `cuerpo` | el texto va vacío, pasa de 2 000 caracteres (o el cuerpo de 64 KB) o el cuerpo no es un JSON válido | nada |
+| 422 `texto_invalido` | el texto trae un NUL (`\u0000`) o un sustituto UTF-16 suelto (`\ud800` a `\udfff`), que no son texto | nada: suele venir de pegar desde otro programa; el `texto` se muestra tal cual |
+| 502 `modelo` | el modelo falló, la respuesta vino vacía o cortada por el tope de tokens, o la moderación no respondió | mirar el log (`coi: el modelo falló (clase, estado)`): clave, saldo o cuota del proveedor |
+| 504 `tardo` | el modelo (o la moderación) pasó de su plazo | ver «El límite conocido» |
+| 503 `no_disponible` | no se pudo leer o escribir el consumo, falta `OPENAI_API_KEY`, o no se pudieron leer las instrucciones | **lo primero: ¿corriste la migración?** Luego el log `coi: …` |
+| 503 `no_nube` | se llamó en local sin Postgres (`STATE_BACKEND` ≠ `postgres`). Aplica a COI y a `PUT`, `POST` y `DELETE` de la Biblioteca; **`GET /api/biblioteca` en local responde 200** con «De la casa» y «Míos» y fijados vacíos | usar el servicio |
+| 422 `demasiados` / `repetido` / `desconocido` | fijados: más de 3, un id repetido, o un id que no es de la casa ni un «mío» de esa persona | nada |
+| 409 `cambiaron` | `PUT /api/biblioteca/fijados` con `esperada` (la lista que la pantalla creía vigente) que ya no coincide con lo guardado: otra pestaña o aparato cambió los fijados. Trae `fijados` (la lista vigente) y **no escribe nada** | nada: la pantalla adopta esa lista y lo dice. Sin `esperada` el `PUT` reemplaza como siempre |
+| 422 `titulo_vacio` / `prompt_vacio` / `categoria` / `etiquetas` / `origen` / `clave` / `muy_largo` | `POST /api/biblioteca/mios` («Guardar»): título o prompt vacíos; categoría fuera de las cuatro; más de 3 etiquetas o de más de 24 caracteres; `origen` distinto de `coi`; `clave` que no son 32 caracteres hexadecimales; o un campo sobre su tope (`muy_largo` trae `campo` y `max`: título 80, descripción 160, prompt 16 000) | nada: el `texto` ya dice qué corregir. La web los evita, así que verlos apunta a otro cliente o a una web desactualizada |
+| 422 `titulo_invalido` / `prompt_invalido` / `para_que_invalido` / `etiquetas_invalido` | «Guardar» con un NUL o un sustituto suelto en ese campo (trae `campo`). Antes salía como 503 «no disponible» | nada: el `texto` se muestra tal cual |
+| 409 `lleno` | 100 prompts en «Míos» | borrar alguno (borrar siempre se puede) |
+| 404 `no_es_tuyo` | borrar un «mío» que no existe o es de otra persona (no se distingue) | nada |
+
+Un error 5xx de COI **nunca** descuenta un uso. Si alguien reclama «me gastó uno», se
+comprueba en la base sin ver texto alguno:
+`SELECT usuario, dia, usos, fallos, en_curso_hasta FROM coi_estado WHERE usuario = '<sub>';`
+
+### Antes de desplegar: la migración es OBLIGATORIA en cada entorno
+
+Hay tres tablas nuevas (`coi_estado`, `biblioteca_mios`, `biblioteca_fijados`, más el índice
+único parcial `biblioteca_mios_clave`). El código nuevo falla sin ellas: **COI responde 503
+`no_disponible` y la Biblioteca 503 completa** (ni «De la casa» sale). Corre, en **dev y en
+prod, cada uno con sus ARNs**, ANTES del `cdk deploy` (paso 4 del checklist de «Deploy»):
+
+```bash
+venv/Scripts/python tools/db_migrate.py
+```
+
+Es idempotente (`IF NOT EXISTS`). Desde esta entrega `db_migrate` termina con error si, tras
+correr, falta alguna tabla del esquema. No se borra ni se toca ninguna fila existente.
+
+`coi_estado` lleva además la columna `fallos` (los intentos del día que no contaron). En un entorno
+donde la tabla ya existía la agrega el mismo `db_migrate`
+(`ALTER TABLE IF EXISTS coi_estado ADD COLUMN IF NOT EXISTS fallos …`): **sin esa migración el código
+nuevo no puede leer el estado y COI responde 503**.
+
+### Los prompts: `prompts/coi_system.md` y Langfuse
+
+El archivo cae en la regla de siempre (paso 3 del checklist): `tools/prompts_sync.py` lo
+siembra en Langfuse con el nombre `coi_system`. En **producción** (`LANGFUSE_PROMPTS=1`) se
+lee la versión `production` de Langfuse y, si Langfuse no responde o el prompt no existe
+allá, **se usa el archivo** (así que COI funciona aunque nadie haya sembrado). En **dev**
+local no hay claves de Langfuse y siempre se lee el archivo. Sembrar copia las instrucciones
+a TU proyecto de Langfuse (privado); lo que no hace nadie es mandarlas al navegador.
+
+### Los 14 de muestra y cómo los cambia el dueño: `server/biblioteca_casa.json`
+
+«De la casa» sale de ese archivo, que es **estático y solo de lectura** (su almacén es
+propio: nada que ver con `prompts/`). Los 14 que trae son **de muestra**; se reemplazan
+editando el archivo y desplegando (viaja dentro de la imagen y se lee una vez por proceso).
+Reglas (están también en el comentario del propio archivo):
+
+- `id` único y **estable**, con forma `casa-<palabras-con-guiones>`. Si cambias un `id`, a
+  quien lo tenía fijado se le cae el pin (los fijados que ya no existen se omiten solos).
+- `titulo` de 1 a 80 caracteres, `para_que` de hasta 160, `prompt` de 1 a 16 000.
+- `categoria`: `imagen`, `video`, `guion` o `investigacion`. Hasta **3 etiquetas** de hasta
+  24 caracteres.
+- `lleva_a`: `"imagen"` si la categoría es imagen, `"video"` si es video y `null` en guion e
+  investigación (esos dos solo se copian). Los de imagen y video llevan sus `[corchetes]`
+  para lo que la persona cambia, y miden hasta 1 800 caracteres (más largos no se pueden
+  llevar a la caja por la dirección).
+- El orden de la lista es el orden en pantalla.
+
+Antes de desplegar: `venv/Scripts/python -m pytest tests/test_biblioteca_casa.py`. Las pruebas
+solo revisan la **forma** (ids únicos, categorías, largos, `lleva_a`, etiquetas): no fijan cuántos
+prompts hay ni cuáles, así que agregar, quitar o reemplazar no obliga a tocarlas. Si aun así se cuela
+un error, el API se queda con los prompts válidos y deja el motivo en el log
+(`biblioteca: biblioteca_casa.json: #3 (…): …`); un JSON roto deja «De la casa» vacía y el log dice
+el motivo y el lugar (`no es un JSON válido: Invalid control character … (línea 41, columna 18)`).
+El archivo puede estar guardado con o sin BOM (los editores de Windows lo agregan): se lee como
+`utf-8-sig`. Lo que sí rompe es otra codificación (el log lo dice: «no está guardado como UTF-8»).
+
+### Variables de entorno
+
+| variable | por defecto | qué hace |
+|---|---|---|
+| `COI_MODELO` | el modelo del producto (`OPENAI_MODEL`) | qué modelo arma el COI. Si no está en `tools/pricing.json` el costo del log sale `None` |
+| `COI_RAZONAMIENTO` | `minimal` | el esfuerzo de razonamiento (lo más bajo que acepta el modelo). `ninguno` o vacío = no se manda el parámetro (modelos que no lo aceptan). Si la API lo rechaza con un 400, se reintenta UNA vez sin él y queda un `warning` en el log |
+| `OPENAI_API_KEY` | — | la clave de plataforma (SSM `/env`). Sin ella: 503 `no_disponible` |
+
+### Cuánto cuesta cada uso (con tokens reales)
+
+COI es gratis para la persona pero **no para el dueño**. Cada respuesta terminada deja UNA
+línea en el log (CloudWatch, busca `coi: respuesta terminada`) con el modelo, los tokens
+de entrada y de salida, los que vinieron de caché, los milisegundos y el costo:
+
+```
+coi: respuesta terminada · modelo=… · entrada=1500 · salida=700 · en_cache=1000 · ms=9800 · costo_usd=0.00155
+```
+
+El costo sale de los tokens que devolvió la API y de la tarifa de `tools/pricing.json`
+(§`rag.modelos`, dólares por millón de tokens: entrada 0.25, entrada en caché 0.025, salida
+2.00; la dio el dueño el 15-oct-2026). Los tokens en caché se cobran con su precio y no con
+el de entrada. En el ejemplo de arriba: 500 × 0.25 + 1 000 × 0.025 + 700 × 2.00, entre un
+millón = 0.00155 dólares. Con el tope de 3 al día, una respuesta terminada típica como la de
+arriba deja unos 0.005 dólares diarios por persona. Si el modelo no está en la tarifa, `costo_usd`
+sale `None`: se agrega la fila, nunca se inventa un precio. El log **no lleva** el texto de
+entrada ni el de salida, y los errores se loguean por su clase y su estado, nunca por su mensaje.
+
+**El techo de verdad** incluye los intentos que no cuentan. Un intento que se corta por el tope de
+3 500 tokens de salida cuesta, como máximo, 3 500 × 2.00 + 1 500 × 0.25 (los 1 500 tokens de
+entrada del ejemplo), entre un millón = 0.007375 dólares con la tarifa de arriba. Con 20 de esos al día más las 3 respuestas terminadas
+son 23 llamadas: unos **0.17 dólares diarios por persona** como techo absoluto. Sin el tope de
+intentos no había techo: con el candado y el plazo de 24 s, una sola cuenta podía pasar de 1
+dólar por hora.
+
+La moderación de COI (`moderar (sin trazas)` en el log, con sus tokens de entrada y de salida) pide
+el mismo esfuerzo mínimo de razonamiento que COI (`COI_RAZONAMIENTO`): es una clasificación corta y,
+con el razonamiento por defecto del modelo, podía pasar de sus 8 s y dar un 504 que no era. Su costo
+no se suma al `costo_usd` de COI (son unos cientos de tokens); si algún día importa, sale de esas
+líneas del log.
+
+> No subas el nivel de log a `DEBUG` ni exportes `OPENAI_LOG=debug` en producción: el SDK de
+> OpenAI escribe el cuerpo completo de cada petición a ese nivel, y ahí viaja lo que la
+> persona escribió. El API arranca en `INFO` (`server/app.py`) y hay una prueba que lo vigila.
+
+### Por qué COI no usa el cliente de siempre
+
+El cliente de OpenAI del producto pasa por Langfuse, y **Langfuse parchea el método
+`create` del SDK de TODO el proceso en cuanto se importa** (no solo el de su cliente): en una
+Lambda tibia, hasta un cliente «pelón» de OpenAI quedaría trazado, con el texto entero de
+entrada y de salida. Por eso `llm.chat_texto` y `moderacion.revisar(sin_trazas=True)` llaman
+a la función original que ese parche guarda. `tests/test_coi_guardianes.py` lo vigila con el
+parche de Langfuse activo y su `get_client` convertido en espía.
+
+### El límite conocido: la Lambda corta a 29 s
+
+API Gateway corta a los 30 s y la Lambda a los 29. Por eso: la moderación tiene tope de 8 s,
+el modelo de **24 s** y el total de **27 s** (lo que gaste la moderación se le resta al
+modelo), y al modelo se le **guardan 3 s** (`MARGEN_SUMAR_S`) para sumar el uso y responder: su
+plazo es `min(24, 27 − 3 − lo ya gastado)`, así que con una moderación lenta de 5 s vence en el
+segundo 24 como mucho y quedan 5 s. Si el modelo tarda más: 504 `tardo`, no se gasta ningún uso y
+el candado se suelta.
+Una respuesta larga que de verdad necesite más de 24 s no se puede dar hoy; la salida es
+pasar a una cola (como las demás herramientas) y no se hizo en esta versión.
+
+### Lo que NO está en esta versión
+
+Editar un «mío», sugerir prompts, votar, crear uno a mano o compartirlos: no existen. Lo
+único que escribe un prompt en «Míos» es el botón «Guardar» de COI.
+
+### Pruebas
+
+`pytest tests/test_coi_*.py tests/test_biblioteca_*.py` corre con dobles. El SQL nuevo (la
+carrera del candado, el día de México, los fijados) se prueba contra un **Postgres 16 real**:
+`COI_PG_SOCK=<directorio del socket> pytest tests/test_coi_postgres.py` (sin esa variable se
+omite). Los dobles no cazan un error de sintaxis ni una carrera; esa prueba ya cazó un
+`ORDER BY` ambiguo que los dobles dejaban pasar. Ahí viven también las carreras reales (16 hilos
+por el candado, 12 por un compare-and-set de fijados, 8 pestañas con intentos que fallan), la lectura
+de «Míos» con otra pestaña escribiendo entre página y página, y una prueba que revisa que ninguna
+sentencia de COI ni de la Biblioteca lleve un `:` seguido de letra fuera de un parámetro (el
+analizador del Data API de Aurora no se pudo probar contra literales como `'HH24:MI:SS'`: las
+fechas se devuelven como números o `::text` y se formatean en Python).
+
 ## Reglas que no se negocian
 
 - `.env` jamás se comitea ni se pega en el chat; claves de Stripe las pone el

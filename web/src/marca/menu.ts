@@ -143,8 +143,24 @@ export const MENU: readonly AreaMenu[] = [
         titulo: 'Distrito',
         icono: 'ubicacion',
         pantallas: [
-          { clave: 'coi', titulo: 'COI', icono: 'coi', proximamente: true },
-          { clave: 'biblioteca', titulo: 'Biblioteca de prompts', icono: 'biblioteca', proximamente: true },
+          {
+            // 16-oct-2026 (dueño): COI se enciende. Contexto · Objetivo · Instrucciones, gratis (3 al día)
+            clave: 'coi',
+            titulo: 'COI',
+            icono: 'coi',
+            texto: 'Diseña un prompt: Contexto, Objetivo e Instrucciones',
+            // sin `pagina`: COI no se pinta con <Marco> (lleva su propio marco, con «Irremplazables» arriba); sus migas las arma ella con `buscar`
+            href: '/estudio/coi/',
+          },
+          {
+            // Ajustes 3 (16-oct-2026): encendida. Sin `pagina` a propósito: su encabezado («Irremplazables» + migas de tres niveles)
+            // no es el `<Marco>` de las hojas, y esa clave exige un <Marco pantalla="…"> (Marco.test.tsx)
+            clave: 'biblioteca',
+            titulo: 'Biblioteca de prompts',
+            icono: 'biblioteca',
+            texto: 'Prompts listos para copiar, usar y fijar',
+            href: '/estudio/biblioteca/',
+          },
           { clave: 'preguntas', titulo: 'Preguntas sobre la clase', icono: 'pregunta', proximamente: true },
           { clave: 'glosario', titulo: 'Glosario IA', icono: 'glosario', proximamente: true },
         ],

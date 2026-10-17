@@ -53,6 +53,7 @@ import { guardarPreferencia, leerPreferencia } from '../../nucleo/preferencia';
 import { clip as tarifaClip } from '../../nucleo/tarifas';
 import { guardarArchivos, TRASPASO_PERDIDO } from '../../nucleo/traspaso';
 import { refrescarSaldo } from '../../marca/useSaldo';
+import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
 import { CuadroDeTexto } from '../../ui/CuadroDeTexto';
 import { Icono } from '../../ui/Icono';
@@ -74,6 +75,7 @@ import { Biblioteca } from './Biblioteca';
 import { CajaEdicion } from './CajaEdicion';
 import { HojaVideos } from './HojaVideos';
 import type { Pendiente } from './Galeria';
+import type { LlegadaDeTexto } from './estadoRecorrido';
 import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
 import {
@@ -126,6 +128,9 @@ export interface PropsCaja {
   enVista?: boolean;
   /** El servidor aceptó una edición (E2): «Mis creaciones» ya tiene la tarjeta «Editando…» de su copia, y el inicio relee sus listas. */
   alEditar?: () => void;
+  /** Se llegó con un texto ya escrito (`?prompt=` o `?brief=`, de «Llevar a la caja» en la Biblioteca de prompts): la caja arranca en esa
+   *  pestaña con el texto puesto, lo dice y lleva el foco a su cuadro. Solo se lee al montarse: no crea ni cobra nada. */
+  llegada?: LlegadaDeTexto | null;
 }
 
 const SIN_IMAGENES: Imagen[] = [];
@@ -136,6 +141,12 @@ const CLAVE_AVISO = 'caja';
 
 /** ¿Lo que se arrastra trae archivos? Un texto seleccionado que se mueve dentro del cuadro no los trae. */
 const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
+/** Lo que va entre [corchetes] en un prompt es un hueco por llenar (así vienen los de la Biblioteca). */
+const HUECO = /\[[^\]\n]+\]/;
+// «Te trajimos el prompt…» (contrato de Ajustes 3): el primero es el texto de siempre; el segundo, para un prompt que no trae huecos
+const AVISO_CON_HUECOS = 'Te trajimos el prompt. Cambia lo que va entre [corchetes] y pulsa Crear.';
+const AVISO_SIN_HUECOS = 'Te trajimos el prompt. Revísalo y pulsa Crear.';
 
 /** La clave del navegador donde se recuerda si el clip va con sonido o sin él. */
 const CLAVE_SONIDO = 'caja.sonido';
@@ -148,13 +159,14 @@ const RIEL = [
 ] as const;
 
 export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
-  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true, alEditar },
+  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true, alEditar, llegada = null },
   ref,
 ) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
-  // menos sorprende a quien no abra el menú de modelo (M25 · B).
-  const [familia, setFamilia] = useState<Familia>('videos');
-  const [opcion, setOpcion] = useState<Opcion>(OPCIONES.videos[0]!);
+  // menos sorprende a quien no abra el menú de modelo (M25 · B). Con un texto que llega de la Biblioteca de prompts, en la pestaña de ese
+  // texto (Imagen: «Crear una imagen»; Video: «Un video corto») y con él puesto.
+  const [familia, setFamilia] = useState<Familia>(llegada?.familia ?? 'videos');
+  const [opcion, setOpcion] = useState<Opcion>(OPCIONES[llegada?.familia ?? 'videos'][0]!);
   // cada tarea recuerda su propio modelo
   const [elegidos, setElegidos] = useState<Partial<Record<Tarea, Eleccion>>>({});
   // la duración que se pidió para el clip; la que rige sale de abajo (puede ser otra si esa ya no se ofrece)
@@ -162,7 +174,9 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   // lo que la persona prefiere para el sonido del clip, y el navegador recuerda («con sonido» si nunca eligió). Lo que se
   // pide sale de abajo: solo vale en los modelos que se pueden apagar, y en los demás el clip siempre lleva sonido
   const [prefSonido, setPrefSonido] = useState(() => leerPreferencia(CLAVE_SONIDO) !== 'sin');
-  const [texto, setTexto] = useState('');
+  const [texto, setTexto] = useState(llegada?.texto ?? '');
+  // «Te trajimos el prompt…»: se queda mientras el texto sea el que llegó; se va al crear, al cambiar de pestaña o al vaciar el cuadro
+  const [trajeron, setTrajeron] = useState(llegada !== null);
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   // las imágenes de referencia: se suben al pedir, no al agregarlas
@@ -185,6 +199,15 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   // el chip de la tarea (SelectorOpcion): la caja solo le pide cerrar la lista cuando cambia de familia
   const selector = useRef<MandoSelector>(null);
   const idTitulo = useId();
+  const idLlegada = useId();
+  // llegar con un texto (de la Biblioteca de prompts) es una acción deliberada: el foco va al cuadro, con el cursor listo para cambiar lo
+  // que va entre [corchetes]. Solo al montarse y solo si se llegó así; sin texto, la caja no toca el foco de la página
+  const alLlegar = useEffectEvent(() => {
+    if (llegada) area.current?.focus({ preventScroll: true });
+  });
+  useEffect(() => {
+    alLlegar();
+  }, []);
   // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
   const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') }, ir, alEditar);
   const enEdicion = familia === 'edicion';
@@ -200,6 +223,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   useImperativeHandle(ref, () => ({
     elegir(f, id) {
       setFamilia(f);
+      setTrajeron(false);
       if (f === 'edicion') {
         const campo = refsEdicion.area.current ?? refsEdicion.liga.current;
         if (campo) campo.focus();
@@ -546,6 +570,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
       else if (opcion.id === 'imagen') lanzada = esLanzada(await pedirImagen(limpio, modelo));
       else await pedirEdicion(limpio, modelo, adjuntas[0]!);
       setTexto('');
+      setTrajeron(false);
       setRefs([]);
       // sin el cuadro (esta página no lo trae) se dice aquí, junto a la caja
       if (!enElCuadro) setAviso('Listo, ya va. Míralo abajo, en «Mis creaciones».');
@@ -608,6 +633,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
               aria-pressed={familia === r.familia}
               onClick={() => {
                 setFamilia(r.familia);
+                setTrajeron(false);
                 // Imagen y Video eligen su primera opción, como siempre; Edición no está en OPCIONES (su chip usa MODOS_EDICION) y
                 // conserva todo lo suyo, también su modo (Editar o De videos a Shorts)
                 if (r.familia !== 'edicion') setOpcion(OPCIONES[r.familia][0]!);
@@ -633,15 +659,24 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
             <CajaEdicion ed={edicion} refs={refsEdicion} enVista={enVista} alElegirDeCreaciones={() => setHojaVideos(true)} />
           ) : (
             <>
+              {trajeron && llegada && (
+                <div id={idLlegada} className="mb-2">
+                  <Aviso>
+                    {HUECO.test(llegada.texto) ? AVISO_CON_HUECOS : AVISO_SIN_HUECOS}
+                  </Aviso>
+                </div>
+              )}
               {fotos.length > 0 && <Referencias fotos={fotos} alQuitar={quitar} etiqueta={textosMas?.lista ?? 'Imágenes de referencia'} />}
               <CuadroDeTexto
                 ref={area}
                 aria-labelledby={idTitulo}
+                aria-describedby={trajeron ? idLlegada : undefined}
                 maxLength={5000}
                 value={texto}
                 onChange={e => {
                   setTexto(e.target.value);
                   setAviso('');
+                  if (!e.target.value) setTrajeron(false);
                 }}
                 placeholder={opcion.hueco}
                 // piso de 112 px bajo 360 px (88 desde ahí): con el relleno del cuadro el texto pierde 26 px de ancho y, en un
