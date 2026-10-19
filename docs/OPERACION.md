@@ -1824,6 +1824,93 @@ sentencia de COI ni de la Biblioteca lleve un `:` seguido de letra fuera de un p
 analizador del Data API de Aurora no se pudo probar contra literales como `'HH24:MI:SS'`: las
 fechas se devuelven como números o `::text` y se formatean en Python).
 
+## Guía de clases · admin (S1)
+
+Primera rebanada de la Guía de clases (diseño en `DISENO-GUIA.md`, sección 9): el dueño crea las clases y
+sube el video de cada una desde `/estudio/admin/` (pestaña «4 · Clases»). **No gasta dinero**: ninguna ruta
+de aquí llama a AssemblyAI, Gemini ni OpenAI, y el servidor no escribe en S3 (el video lo sube el navegador
+con una URL firmada). Código: `server/clases_admin_api.py`, `pipeline/clases.py` (límites y validación) y
+`db.clases_*` en `pipeline/db.py`.
+
+### Antes de desplegar: la migración es OBLIGATORIA en cada entorno
+
+Hay dos tablas nuevas, `clases` y `clases_config`, y dos índices únicos parciales (`clases_clave` y
+`clases_vivas`). Sin ellas **todas las rutas de `/api/admin/clases` responden 503 `no_disponible`** (el
+resto de la app no se entera). Corre, en **dev y en prod, cada uno con sus ARNs**, ANTES del `cdk deploy`
+(paso 4 del checklist de «Deploy»):
+
+```bash
+venv/Scripts/python tools/db_migrate.py
+```
+
+Es idempotente. `db_migrate` detecta las tablas nuevas solo (cada una es una entrada de `ESQUEMA` que
+empieza con `CREATE TABLE IF NOT EXISTS <nombre>`) y termina con error si tras correr falta alguna.
+`clases_config` no la usa nadie todavía (S4 guardará ahí las palabras clave de la transcripción).
+
+### Las rutas (solo el grupo `admin`; las demás cuentas reciben 403, sin token 401)
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/admin/clases?archivadas=0\|1` | `{clases, limites}`: las clases vivas por número, o las archivadas. Sin precios (llegan con S4) |
+| `POST /api/admin/clases` | crea una clase en `borrador`. Idempotente por `clave` (el doble clic no duplica). El `numero` es único entre las clases vivas: 409 `numero_repetido` |
+| `PATCH /api/admin/clases/{id}` | cambia `numero`, `titulo`, `resumen`, `grabada_en` o `liga`; `null` borra resumen y fecha |
+| `POST …/{id}/subida` | `{archivo, content_type, bytes}` → `{url, content_type, expira_s}`. Pasa a `subiendo`. **La clave de S3 la decide el servidor** (`clases/<id>/video.<ext>`); la URL vale 15 min |
+| `POST …/{id}/confirmar` | HEAD a S3: que exista, que no esté vacío, que sea de un tipo permitido y que pese lo declarado. Pasa a `subido` |
+| `POST …/{id}/medir` | ffprobe sobre una URL firmada (8 s, un reintento) → `duracion_s` |
+| `POST …/{id}/cancelar` | `subiendo` → `borrador` |
+| `GET …/{id}/video` | `{url, expira_s}`: vista previa del dueño, URL firmada de 2 h (nunca la del CDN) |
+| `DELETE …/{id}` | **archiva** (borrado suave: pone `archivada_en`). No toca S3 ni cambia el estado |
+| `POST …/{id}/restaurar` | deshace el archivado; 409 si otra clase viva ya tomó su número |
+
+Estados: `borrador` → `subiendo` → `subido` (`procesando`, `lista` y `error` los escribirá S4). Cada cambio es
+un comparar-y-cambiar en UNA sentencia: de dos subidas a la vez gana una y la otra recibe 409
+`estado_no_permite`. Una clase archivada solo se puede ver, restaurar o archivar otra vez.
+Los errores son `{codigo, texto}`; nunca llevan URLs firmadas, ARNs ni texto de nadie, y los logs solo
+llevan el id de la clase y la transición.
+
+### Límites (los entrega el servidor en `limites`; la web no copia ninguno)
+
+| | |
+|---|---|
+| Video | `.mp4`, `.mov`, `.m4v` y `video/mp4`, `video/quicktime`, `video/x-m4v` (lista cerrada, las dos) |
+| Tamaño | 1 byte a 5 GiB (un PUT de una sola parte). El tamaño NO queda firmado en la URL: `confirmar` lo compara con el HEAD |
+| Duración | 60 s a 2 h: lo recalibra S5 y lo aplicará el costo de S4; `medir` guarda lo que mide |
+| Título / resumen | 120 / 140 caracteres. Número: 1 a 999 |
+| Liga | `https`, 500 caracteres o menos, sin usuario ni IP ni `localhost`. **Solo se guarda como referencia**: ningún código la descarga. `HOSTS_PERMITIDOS` (en `pipeline/clases.py`) está vacío: el dueño decide si se limita a ciertas plataformas |
+| La lista | hasta 400 clases (`db.LIMITE_CLASES`) |
+
+### Lo que NO hace S1, a propósito
+
+- **No procesa ni cobra**: nada de transcripción, costo, trabajo, texto, publicar, palabras clave, cola, worker,
+  embeddings ni la pantalla del alumno. Eso es S2 a S4.
+- **No borra nada en S3.** El rol de la Lambda no tiene `s3:DeleteObject` a propósito y el bucket está versionado:
+  archivar solo escribe `archivada_en`. Los objetos huérfanos (una subida cancelada que sí terminó) se quedan.
+  Un test falla si cualquier código del servidor pide `delete_object`. La purga real, si algún día hace falta, es
+  una CLI del dueño.
+- **No hay «reemplazar video»**: se archiva la clase y se crea otra.
+- **Los videos de `clases/` no los sirve el CDN, nunca.** `clases/` no está en `media_rutas.SERVIBLES_CDN` y
+  `tests/test_cdn_lista_blanca.py` lo fija (la política del bucket y la lista de Python dicen lo mismo). Si
+  `https://<cdn>/clases/<id>/video.mp4` no da 403, hay un error grave: avísale al dueño.
+- **Ciclo de vida del bucket**: la regla de Glacier Instant Retrieval a los 10 días no tiene filtro de prefijo, así
+  que `clases/` también pasa. Releer un video cuesta recuperación: **sin precio confirmado** (no está en
+  `tools/pricing.json`). Decisión pendiente antes de S7; hoy no se cambia.
+- **ffprobe** lee un archivo que sube un admin, no cualquiera. Limitar los protocolos que ffmpeg puede abrir
+  (`-protocol_whitelist`) queda para S5, con el primer video real.
+
+### Prueba manual del dueño en dev
+
+Crear una clase de ejemplo, subir un `.mp4` pequeño (y uno grande si tienes), «Medir», verlo con «Ver video»,
+comprobar que `https://<cdn>/clases/<id>/video.mp4` da **403**, archivar y restaurar. Gasto: solo almacenamiento
+de S3 (sin precio confirmado).
+
+### Pruebas
+
+`pytest tests/test_clases_admin.py tests/test_cdn_lista_blanca.py` corre con dobles (S3, ffprobe). Las pruebas de la
+API corren dos veces con la misma batería: contra un doble de la base en memoria y, si hay Postgres, contra el SQL
+real: `COI_PG_SOCK=<directorio del socket> pytest tests/test_clases_admin.py` (sin esa variable se omite la mitad
+de Postgres; ver «COI y la Biblioteca de prompts» para levantar uno). Ahí viven también las carreras reales (16
+hilos pidiendo la misma subida, 8 creando la misma clave, un número que otra transacción está tomando).
+
 ## Reglas que no se negocian
 
 - `.env` jamás se comitea ni se pega en el chat; claves de Stripe las pone el

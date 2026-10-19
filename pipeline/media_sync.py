@@ -9,12 +9,15 @@ donde deben. Nunca se borra nada de S3 desde aquí (las versiones no se borran).
 """
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 from functools import lru_cache
 from pathlib import Path
 
 from pipeline import media_rutas
+
+log = logging.getLogger("media_sync")
 
 
 def _bucket() -> str | None:
@@ -68,6 +71,43 @@ def url_firmada(key: str, expira: int = 3600) -> str | None:
         return None
     return _s3().generate_presigned_url(
         "get_object", Params={"Bucket": bucket, "Key": key.lstrip("/")}, ExpiresIn=expira)
+
+
+def url_subida(key: str, content_type: str, expira: int = 900) -> str | None:
+    """Una URL firmada de S3 para SUBIR (`PUT`) un objeto a `key`. El `Content-Type` va dentro de la
+    firma: el navegador tiene que mandar ese mismo. La `key` la decide quien llama (el servidor); esta
+    función no la toca. None sin bucket (instalación local)."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    return _s3().generate_presigned_url(
+        "put_object", Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
+        ExpiresIn=expira)
+
+
+# lo que S3 contesta a un HEAD cuando el objeto no está (o 403, si el rol no puede listar el bucket)
+_NO_ESTA = ("404", "NoSuchKey", "NotFound", "403", "Forbidden")
+
+
+def cabecera(key: str) -> dict | None:
+    """El `head_object` de `key` como `{"bytes", "content_type", "etag"}`, o None si el objeto no está
+    (404, o el 403 que S3 da en su lugar cuando no se puede listar) o no hay bucket. Cualquier otro
+    error —la red, las credenciales— SE PROPAGA: «no pude mirar» no es «no existe». A diferencia de
+    `tamano`, devuelve también el tipo y la etiqueta, que es lo que un «confirmar» necesita."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    s3 = _s3()
+    try:
+        r = s3.head_object(Bucket=bucket, Key=key)
+    except s3.exceptions.ClientError as err:
+        codigo = str(err.response.get("Error", {}).get("Code", ""))
+        if codigo in _NO_ESTA:
+            log.warning("cabecera %s: S3 contestó %s", key, codigo)
+            return None
+        raise
+    return {"bytes": int(r["ContentLength"]), "content_type": r.get("ContentType") or "",
+            "etag": r.get("ETag")}
 
 
 # Los campos donde los ejecutores dejaban una URL absoluta del CDN dentro del

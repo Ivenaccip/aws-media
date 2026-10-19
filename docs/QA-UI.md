@@ -380,3 +380,38 @@ cada paso con el servidor de verdad (la web se probó con un API de mentira: `we
 | 19 | La misma cuenta en dos aparatos (o dos pestañas), las dos abiertas con los fijados vacíos: fijar un prompt en una y OTRO en la otra | La segunda **no pisa** a la primera: se pone al día con lo que el servidor tiene (el fijado de la primera), dice «Tus fijados cambiaron en otra pestaña o aparato. Ya los actualizamos.» (sin mover el foco) y volver a fijar SUMA. Recargar muestra los dos |
 | 20 | Escribir algo en el buscador, ir con Tab a «Quitar filtros» y pulsar Enter (y lo mismo con «Quitar la etiqueta»; a 390 px, con una etiqueta del detalle) | El foco pasa al buscador (o a «Quitar la etiqueta»); nunca cae al principio de la página |
 | 21 | «Míos» con un título de 80 letras sin espacios y otro con una dirección larga (a 1100, 390 y 320 px) | El texto se parte dentro de su fila; la página no se arrastra de lado ni la lista se desplaza |
+
+## admin · Clases · `/estudio/admin/` (pestaña «4 · Clases»)
+
+(Guía de clases, rebanada S1; la pestaña es nueva y no tiene versión anterior). Aquí el dueño da de alta las clases de la Guía y sube el
+video de cada una. **No cobra nada ni llama a ningún proveedor de pago** (ni AssemblyAI, ni Gemini, ni OpenAI): subir, confirmar y medir
+no gastan en servicios de IA. Lo único que ocupa es almacenamiento de S3, y de S3 **no hay precio confirmado** (no está en
+`tools/pricing.json`). Procesar la clase es de la rebanada S4: aquí no se ofrece ni se promete. Pruébala con tu usuario del grupo `admin`
+en dev, en el escritorio (1100 px) y en el teléfono (390 px), con un `.mp4` chico (unos MB) y, si tienes, uno grande. La web se probó con
+un servidor de mentira (`web/e2e/admin-clases.spec.ts`; con `GUIA_CAPTURAS=<carpeta>` guarda capturas): este recorrido es con el servidor
+y S3 de verdad.
+
+| # | Paso | Qué tiene que pasar |
+|---|---|---|
+| 1 | Abrir `/estudio/admin/` y mirar las pestañas | Son cuatro: «1 · Ingresos», «2 · Costos», «3 · Flujo» y «4 · Clases» (la última). La bajada dice «Cuatro vistas…». Con la pestaña de Clases cerrada, en la pestaña Red del navegador **no** hay ninguna llamada a `/api/admin/clases` |
+| 2 | Pulsar «4 · Clases» | Sale una sola petición (`?archivadas=0`); la ayuda «Aquí subes los videos de las clases que usará la Guía. Subir no cuesta nada.»; **un solo** botón ámbar, «Nueva clase»; sin clases, «Todavía no hay clases» (sin un segundo botón) |
+| 3 | Entrar con un usuario que no es admin | Como siempre: «solo para administradores», sin pestañas (ni la de Clases) |
+| 4 | «Nueva clase» | Se abre el formulario con el foco en «Número de clase»; «Nueva clase» desaparece y el único ámbar es «Guardar clase». «Cancelar» lo cierra y el foco vuelve a «Nueva clase» |
+| 5 | «Guardar clase» con todo vacío | «Escribe el número de la clase…» y «Escribe el título de la clase.» junto a cada campo, foco en el primero y **ninguna** petición |
+| 6 | Número 1, título «Clase de prueba», una fecha y un «Para qué sirve»; doble clic rápido en «Guardar clase» | Una **sola** clase en la lista (chip «Borrador») y el foco en su título; el formulario se cierra |
+| 7 | Crear otra con el mismo número | El texto del servidor («Ya hay otra clase con ese número…») junto al número, con el foco ahí; lo escrito se queda |
+| 8 | Escribir una liga `https://…` y guardar | La clase queda como **solo una referencia** (sin «Subir video»): «Es solo una referencia: no lleva video que subir.» y «Abrir la liga de referencia» abre en otra pestaña. Una liga `http://` o con un puerto raro la rechaza el servidor, con su texto |
+| 9 | «Editar» y cambiar solo el título | «Guardar clase» actualiza la tarjeta; sin cambiar nada, «Guardar clase» solo cierra. Una clase con archivo no muestra el campo de liga |
+| 10 | «Subir video de la clase» con un `.mp4` chico | «Subiendo… N %» con la barra y «Cancelar»; al terminar el chip pasa a «Subido» y sale «Listo: 1 min · 12.3 MB» (la duración la mide el servidor); aparecen «Ver video», «Editar» y «Archivar» |
+| 11 | Subir uno grande y pulsar «Cancelar» a la mitad | «Subida cancelada. Puedes elegir el video otra vez.», el chip vuelve a «Borrador» y se puede elegir otro. En S3 no queda confirmado nada |
+| 12 | Subir y cerrar o recargar la pestaña a media subida | El navegador pregunta antes de salir (en iOS Safari no pregunta). Si sales igual, la clase se queda en «Subiendo» y la tarjeta dice «Hay una subida en curso o que quedó a medias…» y ofrece «Cancelar subida». Cambiar a otra pestaña del panel **no** detiene la subida: al volver, la tarjeta dice lo mismo hasta que termine (recarga para verla «Subida») |
+| 13 | Elegir un `.pdf` o un `.exe` | «Ese archivo no es de un tipo que se pueda subir. Elige un video .mp4, .mov, .m4v.» antes de pedir nada al servidor |
+| 14 | Cortar la conexión (modo avión) a media subida | «No se pudo subir el video. Revisa tu conexión e inténtalo otra vez.»; la clase vuelve a «Borrador» (o, si la red no deja ni eso, queda «Subiendo» con «Cancelar subida») |
+| 15 | «Ver video» en una clase subida | El reproductor sale dentro de la tarjeta (16:9, sin reproducir solo); la liga firmada **no** se ve como texto. «Ocultar video» lo quita. **Aparte, en el navegador:** `https://<cdn>/clases/<id>/video.mp4` da 403 (el CDN no sirve las clases) |
+| 16 | «Archivar la clase» | Diálogo «¿Archivar la clase N?» con el foco en «Cancelar» y la acción en rojo (no ámbar). Esc y «Cancelar» no archivan; confirmar la quita de la lista y el foco queda en el título «Clases». **En S3 el archivo sigue ahí** (nada borra) |
+| 17 | «Ver clases archivadas» | La lista de archivadas (chip «Archivada») con solo «Restaurar». Apagar el interruptor las esconde. En la pestaña Red, `?archivadas=1` solo sale al prenderlo |
+| 18 | «Restaurar» una archivada | Vuelve a la lista, en su lugar por número, con el foco en su título. Si otra clase viva ya tiene su número, el servidor lo dice y la archivada se queda |
+| 19 | Recargar la página | Todo vuelve del servidor; nada de las clases ni de la subida quedó en el navegador (Aplicación → almacenamiento: vacío) |
+| 20 | Pantalla a 390 px y a 320 px | Sin desplazamiento horizontal; las pestañas pasan a dos filas; todo lo que se toca mide 44 px o más; un título de 120 letras sin espacios se parte dentro de su tarjeta |
+| 21 | Lector de pantalla: subir un video | Anuncia «Subiendo el video.», luego «Confirmando…», «Midiendo…» y «Listo: …»; el porcentaje no se lee a cada rato (la barra es un `progressbar`) |
+| 22 | «Reducir movimiento» del sistema | La barra de progreso crece sin animación y nada más se mueve |
