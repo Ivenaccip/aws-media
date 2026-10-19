@@ -432,7 +432,7 @@ describe('coi', () => {
     await armarConTexto(u);
     const h = await screen.findByRole('heading', { name: 'Tu COI' });
     await waitFor(() => expect(h).toHaveFocus());
-    expect(screen.getByText('Tu COI está listo, en tres bloques: contexto, objetivo e instrucciones.')).toBeInTheDocument();
+    expect(screen.getByText('Tu COI está listo, en un solo texto: contexto, objetivo e instrucciones.')).toBeInTheDocument();
     expect(boton()).toHaveTextContent('Armar otro COI');
   });
 
@@ -450,88 +450,51 @@ describe('coi', () => {
   });
 
   // ---------------------------------------------------------------- resultado
-  it('coi.resultado.tres_tarjetas_con_sus_encabezados_y_las_siete_partes_de_las_instrucciones', async () => {
+  const regionCoi = () => screen.getByRole('region', { name: 'Texto de tu COI' });
+
+  it('coi.resultado.un_solo_texto_con_los_tres_encabezados_en_orden_y_un_solo_copiar', async () => {
     const u = userEvent.setup();
     coi();
     render(<Coi />);
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     await screen.findByRole('heading', { name: 'Tu COI' });
-    for (const n of ['#CONTEXTO', '#OBJETIVO', '#INSTRUCCIONES'])
-      expect(screen.getByRole('button', { name: new RegExp(`^${n}`) })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Escribir un guion de 75 palabras. Que se lea en 30 segundos.')).toBeInTheDocument();
-    const partes = within(document.querySelector('[data-bloque="ins"]') as HTMLElement).getAllByRole('listitem');
-    expect(partes).toHaveLength(7);
-    expect(partes[0]).toHaveTextContent('1Definición del objetivo primarioActúa como guionista.');
-    expect(partes[6]).toHaveTextContent('7RestriccionesSin inventar datos.');
-    // la suposición va marcada, sin el «Suposición:» repetido
-    expect(screen.getByText('Suposición', { exact: true })).toBeInTheDocument();
-    expect(screen.getByText('no dijiste cuál es el producto; uso [PRODUCTO].')).toBeInTheDocument();
+    // UN cuadro, no tres tarjetas: nada que plegar y ningún «Copiar» por bloque
+    const caja = regionCoi();
+    expect(document.querySelectorAll('article')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Plegar todo|Abrir todo|Copiar el bloque|Copiar todo/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /^Copiar/ })).toHaveLength(1);
+    // los tres encabezados, en orden, y el texto de cada bloque dentro del mismo cuadro
+    const t = caja.textContent!;
+    expect(t.indexOf('#CONTEXTO')).toBeGreaterThanOrEqual(0);
+    expect(t.indexOf('#CONTEXTO')).toBeLessThan(t.indexOf('#OBJETIVO'));
+    expect(t.indexOf('#OBJETIVO')).toBeLessThan(t.indexOf('#INSTRUCCIONES'));
+    expect(t).toContain('Escribir un guion de 75 palabras. Que se lea en 30 segundos.');
+    expect(t).toContain('Suposición: no dijiste cuál es el producto; uso [PRODUCTO].');
+    expect(t).toContain('7. Restricciones');
+    // los saltos y la sangría se respetan (es UN texto con `white-space: pre-wrap`) y los encabezados van en negritas
+    expect(caja.querySelector('p')).toHaveClass('whitespace-pre-wrap');
+    expect([...caja.querySelectorAll('b')].map(b => b.textContent)).toEqual(['#CONTEXTO', '#OBJETIVO', '#INSTRUCCIONES']);
+    // el aviso ya no habla de tres bloques
+    expect(screen.getByText(/Un solo texto, listo para pegar donde lo uses/)).toBeInTheDocument();
+    expect(screen.queryByText(/tres bloques|tres tarjetas/i)).toBeNull();
   });
 
-  it('coi.resultado.los_pasos_numerados_dentro_de_una_parte_no_se_vuelven_partes_en_pantalla', async () => {
+  it('coi.resultado.el_cuadro_se_desplaza_por_dentro_y_se_alcanza_con_el_teclado', async () => {
     const u = userEvent.setup();
-    const anidada = [
-      '1. Definición',
-      '   * Actúa como guionista.',
-      '2. Datos',
-      '   * Nombre del producto.',
-      '3. Estrategia',
-      '   1. Investiga el tema.',
-      '   2. Elige tres ángulos.',
-      '   3. Redacta el borrador.',
-      '4. Criterios',
-      '   * Máximo 80 palabras.',
-      '5. Reglas',
-      '   * Elige la más corta.',
-      '6. Formato',
-      '   * Dos columnas.',
-      '7. Restricciones',
-      '   * Sin inventar datos.',
-    ].join('\n');
-    coi({ armar: () => json(respuesta(1, { ...MUESTRA, instrucciones: anidada })) });
+    const largo = Array.from({ length: 120 }, (_, i) => `${i + 1}. Un paso largo de las instrucciones.`).join('\n');
+    coi({ armar: () => json(respuesta(1, { ...MUESTRA, instrucciones: largo })) });
     render(<Coi />);
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     await screen.findByRole('heading', { name: 'Tu COI' });
-    const partes = within(document.querySelector('[data-bloque="ins"]') as HTMLElement).getAllByRole('listitem');
-    // siete partes, como dice la tarjeta; los tres pasos de la tercera se quedan dentro de ella
-    expect(partes).toHaveLength(7);
-    expect(partes.map(p => p.querySelector('h5 span')?.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
-    expect(partes[2]).toHaveTextContent('3Estrategia1. Investiga el tema.2. Elige tres ángulos.3. Redacta el borrador.');
-    // y lo que se copia es el texto tal cual salió
-    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #INSTRUCCIONES' }));
-    expect(await navigator.clipboard.readText()).toBe(`#INSTRUCCIONES\n${anidada}`);
-  });
-
-  it('coi.resultado.un_bloque_de_codigo_de_las_instrucciones_se_pinta_con_su_forma_y_se_copia_crudo', async () => {
-    const u = userEvent.setup();
-    const conJson = [
-      '1. Definición', '   * Actúa como guionista.', '2. Datos', '   * Nombre.', '3. Estrategia', '   * Gancho.', '4. Criterios', '   * Corto.',
-      '5. Reglas', '   * La más corta.',
-      '6. Formato de salida',
-      '   * Devuelve este JSON:',
-      '     ```json',
-      '     {',
-      '       "titulo": "x"',
-      '     }',
-      '     ```',
-      '7. Restricciones', '   * Sin inventar datos.',
-    ].join('\n');
-    coi({ armar: () => json(respuesta(1, { ...MUESTRA, instrucciones: conJson })) });
-    render(<Coi />);
-    await esperarContador('Te quedan 3 de 3 hoy');
-    await armarConTexto(u);
-    await screen.findByRole('heading', { name: 'Tu COI' });
-    const ins = document.querySelector('[data-bloque="ins"]') as HTMLElement;
-    expect(within(ins).getAllByRole('listitem')).toHaveLength(7);
-    // el JSON sale en un <pre> con su sangría (y como texto), no como cuatro párrafos sueltos
-    const codigo = ins.querySelector('pre code') as HTMLElement;
-    expect(codigo.textContent).toBe('{\n  "titulo": "x"\n}');
-    expect(ins.querySelectorAll('pre')).toHaveLength(1);
-    // y lo que se copia es el texto tal cual salió
-    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #INSTRUCCIONES' }));
-    expect(await navigator.clipboard.readText()).toBe(`#INSTRUCCIONES\n${conJson}`);
+    const caja = regionCoi();
+    // alto máximo y scroll propio: un COI largo no alarga la página
+    expect(caja).toHaveClass('overflow-y-auto');
+    expect(caja.className).toMatch(/max-h-/);
+    // el teclado llega a él (tabindex 0) y lo desplaza con las flechas
+    expect(caja).toHaveAttribute('tabindex', '0');
+    expect(caja.textContent).toContain('120. Un paso largo de las instrucciones.');
   });
 
   it('coi.resultado.lo_que_dice_el_modelo_se_pinta_como_texto_nunca_como_html', async () => {
@@ -544,51 +507,40 @@ describe('coi', () => {
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     await screen.findByRole('heading', { name: 'Tu COI' });
-    expect(screen.getByText(malo, { exact: false, selector: 'p' })).toBeInTheDocument();
+    expect(regionCoi().textContent).toContain(malo);
     expect(document.querySelector('img')).toBeNull();
     expect(document.querySelector('script')).toBeNull();
     expect([...document.querySelectorAll('main b')].some(b => b.textContent === 'negrita')).toBe(false);
   });
 
-  it('coi.resultado.plegar_una_tarjeta_plegar_todo_y_abrir_todo', async () => {
+  it('coi.resultado.las_negritas_de_markdown_no_se_ven_con_asteriscos_pero_se_copian_tal_cual', async () => {
     const u = userEvent.setup();
-    coi();
+    coi({ armar: () => json(respuesta(1, { ...MUESTRA, objetivo: '**Escribir** un guion de 75 palabras.' })) });
     render(<Coi />);
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     await screen.findByRole('heading', { name: 'Tu COI' });
-    const cuerpo = (c: string) => document.getElementById(`coi-bq-${c}`)!;
-    await u.click(screen.getByRole('button', { name: /^#OBJETIVO/ }));
-    expect(cuerpo('obj')).not.toBeVisible();
-    expect(screen.getByRole('button', { name: /^#OBJETIVO/ })).toHaveAttribute('aria-expanded', 'false');
-    expect(cuerpo('ctx')).toBeVisible();
-    // con uno plegado, el botón de arriba ofrece abrir todo; con todo abierto, plegar todo
-    await u.click(screen.getByRole('button', { name: 'Abrir todo' }));
-    for (const c of ['ctx', 'obj', 'ins']) expect(cuerpo(c)).toBeVisible();
-    await u.click(screen.getByRole('button', { name: 'Plegar todo' }));
-    for (const c of ['ctx', 'obj', 'ins']) expect(cuerpo(c)).not.toBeVisible();
-    // el foco se queda en el botón (que ahora dice «Abrir todo»), nunca cae al body
-    expect(screen.getByRole('button', { name: 'Abrir todo' })).toHaveFocus();
+    expect(regionCoi().textContent).toContain('Escribir un guion de 75 palabras.');
+    expect(regionCoi().textContent).not.toContain('**');
+    await u.click(screen.getByRole('button', { name: 'Copiar el COI' }));
+    expect(await navigator.clipboard.readText()).toContain('**Escribir** un guion de 75 palabras.');
   });
 
-  it('coi.resultado.copiar_un_bloque_y_copiar_todo_copian_el_texto_tal_cual_sin_mover_el_foco', async () => {
+  it('coi.resultado.copiar_copia_el_texto_tal_cual_sin_mover_el_foco', async () => {
     const u = userEvent.setup();
     coi();
     render(<Coi />);
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     await screen.findByRole('heading', { name: 'Tu COI' });
-    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #OBJETIVO' }));
-    const b = await screen.findByRole('button', { name: 'Copiado: el bloque #OBJETIVO' });
+    await u.click(screen.getByRole('button', { name: 'Copiar el COI' }));
+    const b = await screen.findByRole('button', { name: 'Copiado: el COI' });
     expect(b).toHaveFocus();
     expect(b).toHaveTextContent('Copiado');
-    expect(await navigator.clipboard.readText()).toBe(`#OBJETIVO\n${MUESTRA.objetivo}`);
-    await u.click(screen.getByRole('button', { name: 'Copiar todo el COI' }));
     expect(await navigator.clipboard.readText()).toBe(
       `#CONTEXTO\n${MUESTRA.contexto}\n\n#OBJETIVO\n${MUESTRA.objetivo}\n\n#INSTRUCCIONES\n${MUESTRA.instrucciones}`,
     );
-    expect(await screen.findByRole('button', { name: 'Copiado: todo el COI' })).toHaveFocus();
-    expect(screen.getByText('Copiado: el COI completo.', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByText('Copiado: el COI.', { selector: 'p' })).toBeInTheDocument();
   });
 
   it('coi.resultado.si_el_navegador_no_deja_copiar_deja_el_texto_seleccionado_y_lo_dice', async () => {
@@ -600,13 +552,13 @@ describe('coi', () => {
     await screen.findByRole('heading', { name: 'Tu COI' });
     vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('negado'));
     document.execCommand = vi.fn(() => false);
-    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #CONTEXTO' }));
+    await u.click(screen.getByRole('button', { name: 'Copiar el COI' }));
     expect(await screen.findByText('No pudimos copiar solos. Dejamos el texto seleccionado: cópialo con Ctrl+C.')).toBeInTheDocument();
     expect(window.getSelection()?.toString()).toContain('Necesito un guion para presentar un producto en video.');
     expect(screen.queryByRole('button', { name: /Copiado/ })).toBeNull();
   });
 
-  it('coi.resultado.sin_estructura_sale_una_sola_tarjeta_con_el_texto_completo_y_copiar', async () => {
+  it('coi.resultado.sin_estructura_el_cuadro_lleva_la_respuesta_completa_y_copiar', async () => {
     const u = userEvent.setup();
     const completo = 'Aquí va tu prompt.\n\nUsa un tono cercano.';
     coi({ armar: () => json(respuesta(1, { contexto: null, objetivo: null, instrucciones: null, completo, estructura_ok: false })) });
@@ -614,10 +566,9 @@ describe('coi', () => {
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u);
     await screen.findByRole('heading', { name: 'Tu COI' });
-    expect(document.querySelectorAll('article')).toHaveLength(1);
-    expect(screen.getByText('Aquí va tu prompt.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Plegar todo|Abrir todo/ })).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Copiar el COI completo' }));
+    expect(regionCoi().textContent).toBe(completo);
+    expect(screen.getByText(/no llegó separada en Contexto, Objetivo e Instrucciones/)).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Copiar el COI' }));
     expect(await navigator.clipboard.readText()).toBe(completo);
     // esa respuesta SÍ cuenta
     expect(contador()).toHaveTextContent('Te quedan 2 de 3 hoy');
@@ -630,9 +581,11 @@ describe('coi', () => {
     await esperarContador('Te quedan 3 de 3 hoy');
     await armarConTexto(u, 'I need a script to present a product');
     await screen.findByRole('heading', { name: 'Tu COI' });
-    for (const n of ['#CONTEXT', '#OBJECTIVE', '#INSTRUCTIONS']) expect(screen.getByRole('button', { name: new RegExp(`^${n}`) })).toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Copiar el bloque #OBJECTIVE' }));
-    expect(await navigator.clipboard.readText()).toBe(`#OBJECTIVE\n${MUESTRA.objetivo}`);
+    expect([...regionCoi().querySelectorAll('b')].map(b => b.textContent)).toEqual(['#CONTEXT', '#OBJECTIVE', '#INSTRUCTIONS']);
+    await u.click(screen.getByRole('button', { name: 'Copiar el COI' }));
+    expect(await navigator.clipboard.readText()).toBe(
+      `#CONTEXT\n${MUESTRA.contexto}\n\n#OBJECTIVE\n${MUESTRA.objetivo}\n\n#INSTRUCTIONS\n${MUESTRA.instrucciones}`,
+    );
   });
 
   // ---------------------------------------------------------------- guardar
@@ -869,12 +822,12 @@ describe('coi', () => {
     await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
     const alerta = await within(hoja).findByRole('alert');
     expect(alerta).toHaveTextContent('Este COI es demasiado largo para guardarlo en tu Biblioteca.');
-    expect(alerta).toHaveTextContent('Cierra esta hoja y usa «Copiar todo» para llevártelo.');
+    expect(alerta).toHaveTextContent('Cierra esta hoja y usa «Copiar» para llevártelo.');
     // sin el nombre del campo interno ni el tope
     expect(alerta.textContent).not.toMatch(/campo|«prompt»|16000/);
     // y lo que dice existe: el botón que menciona está en la pantalla
     await u.click(within(hoja).getByRole('button', { name: 'Cancelar' }));
-    expect(screen.getByRole('button', { name: 'Copiar todo el COI' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copiar el COI' })).toBeInTheDocument();
     expect(screen.queryByText(/Guardado en tu Biblioteca/)).toBeNull();
   });
 
@@ -891,7 +844,7 @@ describe('coi', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
     const hoja = await screen.findByRole('dialog');
     await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
-    // en esta respuesta el botón no es «Copiar todo» sino «Copiar»: el aviso no manda a uno que no existe
+    // con o sin los tres bloques, el botón es «Copiar»: el aviso manda a uno que existe
     expect(await within(hoja).findByRole('alert')).toHaveTextContent('usa «Copiar» para llevártelo.');
   });
 
@@ -1045,7 +998,7 @@ describe('coi', () => {
     // NO es un error
     expect(screen.queryByRole('alert')).toBeNull();
     // el último resultado sigue a la vista, con su Copiar
-    expect(screen.getByRole('button', { name: 'Copiar todo el COI' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copiar el COI' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir a la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
     // pulsar el botón apagado no manda nada
     const antes = llamadas(f, '/api/coi').length;

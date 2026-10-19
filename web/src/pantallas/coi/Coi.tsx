@@ -19,7 +19,7 @@ import { unir } from '../../ui/unir';
 import { BloqueAgotado, BloqueArmando, BloqueEnCurso, BloqueFalla, BloqueNoDisponible, BloqueSinIntentos } from './Avisos';
 import { GuardarHoja } from './GuardarHoja';
 import { IconoCoi } from './IconosCoi';
-import { Resultado, ENLACE_BOTON, type Plegados } from './Resultado';
+import { Resultado, ENLACE_BOTON, ID_TEXTO } from './Resultado';
 import { copiarTexto, seleccionar } from './copiar';
 import {
   armarCoi,
@@ -30,9 +30,7 @@ import {
   MAX_TEXTO,
   mismaRenovacion,
   puntitos,
-  textoDeBloque,
   textoTodo,
-  type ClaveBloque,
   type Coi as CoiRespuesta,
   type Fallo,
 } from './logica';
@@ -55,7 +53,6 @@ const PLACEHOLDER_SIN_INTENTOS = 'Vuelve después de la medianoche de México pa
 /** Si el servidor no contesta en este tiempo (él mismo corta a los 24 s, la Lambda a los 29 y la puerta a los 30), se deja de esperar. */
 const ESPERA_MAX_MS = 45_000;
 const COPIADO_MS = 2200;
-const TODOS_ABIERTOS: Plegados = { ctx: true, obj: true, ins: true };
 
 interface Resultado1 {
   coi: CoiRespuesta;
@@ -78,8 +75,7 @@ export function Coi() {
   const [resultado, setResultado] = useState<Resultado1 | null>(null);
   const [fallo, setFallo] = useState<Fallo | null>(null);
   const [errCampo, setErrCampo] = useState<string | null>(null);
-  const [abiertos, setAbiertos] = useState<Plegados>(TODOS_ABIERTOS);
-  const [copiado, setCopiado] = useState('');
+  const [copiado, setCopiado] = useState(false);
   const [hojaAbierta, setHojaAbierta] = useState(false);
   const [guardado, setGuardado] = useState<string | null>(null);
   const [anuncio, setAnuncio] = useState('');
@@ -242,14 +238,13 @@ export function Coi() {
       const r = await armarCoi(limpio, control.signal);
       contados.current += 1;
       setResultado({ coi: r.coi, idioma: r.idioma, n: contados.current, clave: claveAleatoria() });
-      setAbiertos(TODOS_ABIERTOS);
       setGuardado(null);
-      setCopiado('');
+      setCopiado(false);
       poner({ tope: r.tope, usos: r.usos, quedan: r.quedan, renueva_en_s: r.renueva_en_s, se_renueva: r.se_renueva, en_curso: false });
       decir(
         r.coi.estructura_ok
-          ? 'Tu COI está listo, en tres bloques: contexto, objetivo e instrucciones.'
-          : 'Tu COI está listo. Te lo dejamos completo, en un solo bloque.',
+          ? 'Tu COI está listo, en un solo texto: contexto, objetivo e instrucciones.'
+          : 'Tu COI está listo. Te lo dejamos completo, en un solo texto.',
       );
     } catch (e) {
       if (!vivo.current) return; // la pantalla se fue
@@ -278,21 +273,19 @@ export function Coi() {
     }
   }
 
-  async function copiar(clave: ClaveBloque | 'todo') {
+  async function copiar() {
     if (!resultado) return;
     const { coi, idioma } = resultado;
-    const t = clave === 'todo' ? textoTodo(coi, idioma) : textoDeBloque(coi, clave, idioma);
-    const cual = clave === 'todo' ? (coi.estructura_ok ? 'el COI completo' : 'tu COI') : `el bloque ${textoDeBloque(coi, clave, idioma).split('\n')[0]}`;
-    if (await copiarTexto(t)) {
-      setCopiado(clave);
-      decir(`Copiado: ${cual}.`);
+    if (await copiarTexto(textoTodo(coi, idioma))) {
+      setCopiado(true);
+      decir('Copiado: el COI.');
       if (temporizadorCopia.current) clearTimeout(temporizadorCopia.current);
       temporizadorCopia.current = setTimeout(() => {
         temporizadorCopia.current = null;
-        setCopiado('');
+        setCopiado(false);
       }, COPIADO_MS);
     } else {
-      seleccionar(document.getElementById(clave === 'todo' ? 'coi-res' : `coi-bq-${clave}`)?.closest('section, article') ?? null);
+      seleccionar(document.getElementById(ID_TEXTO));
       decir('No pudimos copiar solos. Dejamos el texto seleccionado: cópialo con Ctrl+C.');
     }
   }
@@ -324,7 +317,7 @@ export function Coi() {
         <header className="mb-6">
           <h2 className="m-0 mb-2 font-titulo text-titulo-md font-bold">Diseña un prompt con COI</h2>
           <p className="m-0 max-w-[65ch] text-sm text-secundario sm:text-md">
-            Describe con tus palabras lo que necesitas y te devolvemos un prompt bien armado, en tres bloques: Contexto, Objetivo e Instrucciones.
+            Describe con tus palabras lo que necesitas y te devolvemos un prompt bien armado, en un solo texto: Contexto, Objetivo e Instrucciones.
           </p>
         </header>
 
@@ -460,13 +453,8 @@ export function Coi() {
           <Resultado
             coi={resultado.coi}
             idioma={resultado.idioma}
-            abiertos={abiertos}
-            alAlternar={c => setAbiertos(a => ({ ...a, [c]: !a[c] }))}
-            alPlegarTodo={() =>
-              setAbiertos(a => (a.ctx && a.obj && a.ins ? { ctx: false, obj: false, ins: false } : TODOS_ABIERTOS))
-            }
             copiado={copiado}
-            alCopiar={c => void copiar(c)}
+            alCopiar={() => void copiar()}
             guardado={guardado}
             armando={pidiendo}
             alGuardar={() => setHojaAbierta(true)}

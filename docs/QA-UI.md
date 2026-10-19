@@ -325,10 +325,10 @@ dólares): pruébala con calma y no más de 3 veces por persona. Hazla en el tel
 | 3 | «Armar COI» con el cuadro vacío | «Escribe primero qué necesitas…» junto al cuadro; no se manda nada |
 | 4 | Escribir y pulsar Ctrl+Intro (o Cmd+Intro) | Lo mismo que el botón |
 | 5 | Mientras arma | «Armando tu COI…» sin pasos falsos; el botón dice «Armando…»; el contador **no** baja todavía. La caja avisa que si sales antes de que termine, el uso se cuenta igual |
-| 6 | Al terminar | El foco va a «Tu COI»; tres tarjetas abiertas (#CONTEXTO, #OBJETIVO, #INSTRUCCIONES con sus siete partes); el contador baja a «Te quedan 2 de 3 hoy» |
-| 7 | «Plegar todo», «Abrir todo» y plegar una tarjeta | El botón cambia de nombre según lo que haya; el foco no se mueve |
-| 8 | «Copiar» en un bloque y pegar en otro lado | Pega `#OBJETIVO` y su texto; el botón dice «Copiado» un momento |
-| 9 | «Copiar todo» | Pega los tres bloques con su encabezado, en orden |
+| 6 | Al terminar | El foco va a «Tu COI»; **un solo texto** en un cuadro: #CONTEXTO, #OBJETIVO y #INSTRUCCIONES (con sus siete partes), uno tras otro y con sus encabezados en negritas; el contador baja a «Te quedan 2 de 3 hoy» |
+| 7 | Un COI largo (o achicar la ventana) | El cuadro no pasa de un alto máximo y se desplaza **por dentro** (rueda, dedo, o flechas y Re Pág con el cuadro enfocado con Tab); la página no se alarga |
+| 8 | «Copiar» y pegar en otro lado | Pega todo el COI con los tres encabezados, en orden; el botón dice «Copiado» un momento y el foco no se mueve |
+| 9 | Mirar el texto | No salen asteriscos de negrita (`**`); lo que se pega es el texto de la respuesta tal cual |
 | 10 | «Guardar» | Hoja chica: título con la primera frase del objetivo (editable, 80 como máximo) y categoría; «Guardar» → «Guardado en tu Biblioteca» con enlace «Ver en Míos»; **no** baja el contador |
 | 11 | Guardar con el internet cortado y reintentar con internet | El error sale en la hoja; el reintento guarda **un** solo prompt (no dos) en «Míos» |
 | 12 | Recargar la página | La caja y el resultado vuelven vacíos (no se guardó nada en el navegador); lo guardado sigue en «Míos» |
@@ -349,7 +349,7 @@ dólares): pruébala con calma y no más de 3 veces por persona. Hazla en el tel
 | 27 | Tener la Biblioteca llena (100 «Míos») y pulsar «Guardar» | Dice que está llena y «Abre tu Biblioteca en otra pestaña para borrar alguno»: el enlace abre OTRA pestaña y el COI sigue en esta |
 | 28 | Que el servidor conteste «demasiados intentos» (muchos intentos seguidos que no salieron) | «Por hoy ya no podemos intentarlo más» con el texto del servidor y «Faltan X h Y min»; la entrada y el botón apagados; el contador sigue en «Te quedan 3 de 3» (no se gastó ninguno) y NO dice «Ya usaste tus 3»; no es un error. Pasada la medianoche de México, vuelve sola |
 | 29 | Escribir algo con un carácter que el servidor no acepta | El texto del servidor, tal cual, junto al cuadro y con el foco en él; escribir lo quita |
-| 30 | Un COI tan largo que la Biblioteca no lo guarda | «Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «Copiar todo» para llevártelo.» (sin nombres de campos ni cifras) |
+| 30 | Un COI tan largo que la Biblioteca no lo guarda | «Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «Copiar» para llevártelo.» (sin nombres de campos ni cifras) |
 
 ## biblioteca · `/estudio/biblioteca/`
 
