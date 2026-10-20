@@ -20,10 +20,15 @@
 // instantánea (cuadros, conexiones, nombre del flujo y cuadro elegido): quitar un cuadro, quitar una
 // conexión, cambiar el tipo de una conexión, poner un cuadro en medio, conectar con uno que ya está,
 // agregar un cuadro o el disparador, limpiar, cargar el ejemplo o un flujo de afuera. NO la guardan las
-// acciones continuas: mover un cuadro, teclear en Ajustes o renombrar el flujo. Y esas acciones
-// INVALIDAN la pila entera: si se pudiera deshacer después de ellas, restaurar una instantánea más
-// vieja borraría lo que la persona acaba de escribir o de mover (el defecto 9.2-a del mockup). Mover un
-// cuadro a donde ya estaba, o editar un campo con el mismo valor, no cambia nada y no invalida.
+// acciones continuas: mover un cuadro, teclear en Ajustes o renombrar el flujo. Esas acciones tampoco
+// tiran la pila (revisión de la interfaz: acomodar un cuadro después de quitar otro no puede borrar la red de
+// seguridad): anotan en CADA instantánea de la pila qué cuadro se movió o se escribió después de ella
+// (`tocados`) y si se renombró el flujo (`nombreTocado`). Al deshacer, la instantánea devuelve lo ESTRUCTURAL
+// (qué cuadros y qué conexiones hay) y los cuadros tocados que siguen existiendo conservan su posición y su
+// texto de ahora, igual que el nombre del flujo: nunca se pisa lo que la persona acaba de mover o escribir
+// (el defecto 9.2-a del mockup). Una instantánea de clase `cargar` (reemplazar todo el flujo) se deshace
+// entera: sus ids pueden repetirse en el flujo nuevo y no tienen nada que ver con los de antes. Mover un
+// cuadro a donde ya estaba, o editar un campo con el mismo valor, no cambia nada y no marca nada.
 // Seleccionar, abrir y cerrar menús y empezar o cancelar una conexión tampoco tocan la pila. «Deshacer»
 // desde un aviso manda el `id` de ese aviso: solo vale si es el de la instantánea de arriba (si no, lo dice
 // y no hace nada). El aviso de una acción ofrece «Deshacer» (`aviso.conDeshacer`) cuando QUITA o REACOMODA
@@ -183,13 +188,26 @@ function apilar(antes: E, despues: E, clase: ClaseCambio): E {
 }
 
 /**
- * Tira la pila: algo que no se guarda (un texto, una posición, el nombre) cambió el flujo, y restaurar
- * una instantánea más vieja lo borraría. El aviso que ofrecía «Deshacer» deja de ofrecerlo (conserva su `id`).
+ * Anota en CADA instantánea de la pila que la persona movió o escribió en estos cuadros después de ella. Así «Deshacer» no
+ * los pisa (ver «Deshacer» arriba). No toca el aviso: sigue ofreciendo «Deshacer» y el `id` de la instantánea de arriba
+ * sigue siendo el suyo. Si todas las fotos ya los sabían (arrastrar muchas veces el mismo cuadro), devuelve el mismo estado.
  */
-function invalidar(e: E): E {
-  const aviso = e.aviso !== null && e.aviso.conDeshacer ? { ...e.aviso, conDeshacer: false } : e.aviso;
-  if (e.historial.length === 0 && aviso === e.aviso) return e;
-  return { ...e, historial: [], aviso };
+function tocar(e: E, ids: readonly string[]): E {
+  let cambio = false;
+  const historial = e.historial.map(i => {
+    const ya = i.tocados ?? [];
+    const faltan = ids.filter(id => !ya.includes(id));
+    if (faltan.length === 0) return i;
+    cambio = true;
+    return { ...i, tocados: [...ya, ...faltan] };
+  });
+  return cambio ? { ...e, historial } : e;
+}
+
+/** Anota en cada instantánea que el nombre del flujo se cambió después de ella. */
+function tocarNombre(e: E): E {
+  if (e.historial.every(i => i.nombreTocado === true)) return e;
+  return { ...e, historial: e.historial.map(i => (i.nombreTocado === true ? i : { ...i, nombreTocado: true })) };
 }
 
 /**
@@ -322,14 +340,17 @@ function abrirMenu(e: E, ancla: string, tipo: Arista['tipo'], insertarEn: string
     if (!e.flujo.edges.some(x => x.id === insertarEn && x.tipo === 'seq' && x.de === ancla)) return e;
   }
   const m = e.menu;
-  if (m && m.ancla === ancla && m.tipo === tipo && m.insertarEn === insertarEn) {
-    return conAviso({ ...e, menu: null }, T.menuCerrado());
-  }
+  // volver a pulsar el «+» que lo abrió lo cierra, y el foco vuelve a ese «+» como al cerrarlo con Esc: en los navegadores que no enfocan
+  // un botón al hacerle clic (Safari, Firefox en macOS, iOS) el foco, que estaba dentro del menú, caería a <body>
+  if (m && m.ancla === ancla && m.tipo === tipo && m.insertarEn === insertarEn) return cerrarMenu(e);
   if (tipo === 'tool' && A.kind !== 'agent') return conAviso(e, T.soloAgentesTienenHerramientas());
   const nombre = tituloDe(A);
   const aviso = insertarEn !== null ? T.menuEnMedio() : tipo === 'tool' ? T.menuHerramienta(nombre) : T.menuDespues(nombre);
+  // «Poner un cuadro en medio» sale del editor de la flecha: la flecha SIGUE elegida mientras el menú está abierto, para que su panel
+  // (y el botón al que vuelve el foco al cerrar) sigan en pantalla; en los demás casos el cuadro ancla es el elegido
+  const elegido = insertarEn === null ? { sel: ancla, selEdge: null } : { sel: null, selEdge: insertarEn };
   const s = conAviso(
-    { ...e, menu: { ancla, tipo, paso: tipo === 'tool' ? 'app' : 'inicio', insertarEn }, sel: ancla, selEdge: null, conectando: null },
+    { ...e, menu: { ancla, tipo, paso: tipo === 'tool' ? 'app' : 'inicio', insertarEn }, ...elegido, conectando: null },
     aviso,
   );
   return conFoco(s, { k: 'primeraOpcionMenu' });
@@ -590,8 +611,9 @@ function quitarNodo(e: E, id: string): E {
     aviso,
     true,
   );
-  // el foco va al cuadro de donde venía el flujo; si no hay, al primero; si el lienzo quedó vacío, a elegir disparador
-  const previo = antes[0]?.de;
+  // el foco va al cuadro de donde venía el flujo; si no hay, al agente del que colgaba (una herramienta o una IA que conversaba);
+  // si tampoco, al primero; si el lienzo quedó vacío, a elegir disparador
+  const previo = antes[0]?.de ?? padre;
   const foco: Foco = previo !== undefined && quedan.some(x => x.id === previo) ? { k: 'nodo', id: previo } : focoDeRespaldo(s);
   return apilar(e, conFoco(s, foco), 'quitar');
 }
@@ -637,16 +659,35 @@ function cargarFlujo(e: E, flujo: Flujo): E {
   return reemplazarFlujo(e, abierto.flujo, T.flujoAbierto());
 }
 
+/**
+ * Los cuadros que devuelve una instantánea: los suyos, salvo los que la persona movió o escribió DESPUÉS de apilarla y que siguen en pie
+ * (esos conservan lo de ahora). Una de clase `cargar` se devuelve entera. Si nada cambia, la misma lista de la instantánea.
+ */
+function nodosRestaurados(inst: Instantanea, actuales: readonly Nodo[]): Nodo[] {
+  const tocados = inst.clase === 'cargar' ? [] : (inst.tocados ?? []);
+  if (tocados.length === 0) return inst.nodes;
+  let cambio = false;
+  const nodes = inst.nodes.map(n => {
+    if (!tocados.includes(n.id)) return n;
+    const ahora = actuales.find(x => x.id === n.id);
+    if (!ahora || ahora.kind !== n.kind || ahora === n) return n;
+    cambio = true;
+    return ahora;
+  });
+  return cambio ? nodes : inst.nodes;
+}
+
 function deshacer(e: E, avisoId: number | undefined): E {
   const inst = e.historial[e.historial.length - 1];
   // desde un aviso solo vale si ese aviso es el de la instantánea de arriba
   if (avisoId !== undefined && inst?.avisoId !== avisoId) return conAviso(e, T.yaNoSePuedeDeshacer());
   if (!inst) return conAviso(e, T.nadaQueDeshacer());
   const sel = inst.sel !== null && inst.nodes.some(n => n.id === inst.sel) ? inst.sel : null;
+  const nombreFlujo = inst.clase !== 'cargar' && inst.nombreTocado === true ? e.flujo.nombreFlujo : (inst.nombreFlujo ?? e.flujo.nombreFlujo);
   const s = conAviso(
     {
       ...e,
-      flujo: { nodes: inst.nodes, edges: inst.edges, nombreFlujo: inst.nombreFlujo ?? e.flujo.nombreFlujo },
+      flujo: { nodes: nodosRestaurados(inst, e.flujo.nodes), edges: inst.edges, nombreFlujo },
       sel,
       selEdge: null,
       menu: null,
@@ -655,18 +696,21 @@ function deshacer(e: E, avisoId: number | undefined): E {
     },
     T.deshecho(inst.clase ?? 'cambiar'),
   );
-  // el botón «Deshacer» del aviso desapareció: el foco va al cuadro restaurado
-  return conFoco(s, sel !== null ? { k: 'nodo', id: sel } : focoDeRespaldo(s));
+  // el botón «Deshacer» del aviso desapareció: el foco va al cuadro que volvió (el elegido, si volvió; si no, el primero que volvió); si lo
+  // que volvió no fue un cuadro (una conexión), al elegido
+  const volvieron = inst.nodes.filter(n => !e.flujo.nodes.some(x => x.id === n.id));
+  const destino = sel !== null && volvieron.some(n => n.id === sel) ? sel : (volvieron[0]?.id ?? sel);
+  return conFoco(s, destino !== null ? { k: 'nodo', id: destino } : focoDeRespaldo(s));
 }
 
-// ================================================================ mover y editar (no entran en la pila: la tiran)
+// ================================================================ mover y editar (no entran en la pila: anotan qué se tocó)
 
 /** Pone un cuadro en `p`. Si ya estaba ahí devuelve el mismo estado. */
 function ponerEn(e: E, id: string, p: Punto): E {
   const n = nodoPor(e, id);
   if (!n || (n.x === p.x && n.y === p.y)) return e;
   const nodes = e.flujo.nodes.map<Nodo>(x => (x.id === id ? { ...x, x: p.x, y: p.y } : x));
-  return invalidar({ ...e, flujo: { ...e.flujo, nodes } });
+  return tocar({ ...e, flujo: { ...e.flujo, nodes } }, [id]);
 }
 
 function moverNodo(e: E, id: string, x: number, y: number): E {
@@ -682,9 +726,12 @@ function moverConTeclado(e: E, id: string, direccion: string, grande: boolean): 
   const dy = direccion === 'arriba' ? -paso : direccion === 'abajo' ? paso : 0;
   if (dx === 0 && dy === 0) return e;
   const movido = ponerEn(e, id, enRango(n.x + dx, n.y + dy));
+  // el teclado no arrastra con el puntero: el cuadro se aleja del foco y puede salirse del marco del lienzo, así que se pide traerlo a la
+  // vista (contra el borde, donde no se mueve nada, no hay nada que pedir)
+  const visto = movido === e ? movido : conVer(movido, id);
   // mover con el teclado también elige el cuadro
-  if (movido.sel === id && movido.selEdge === null) return movido;
-  return { ...movido, sel: id, selEdge: null };
+  if (visto.sel === id && visto.selEdge === null) return visto;
+  return { ...visto, sel: id, selEdge: null };
 }
 
 const esTipoDisparador = (v: unknown): v is NodoDisparador['tipo'] => TIPOS_DISPARADOR.some(x => x.id === v);
@@ -719,7 +766,7 @@ function editarNodo(e: E, id: string, parche: ParcheNodo): E {
   if (!n || typeof parche !== 'object' || parche === null) return e;
   const nuevo = aplicarParche(n, parche as Readonly<Record<string, unknown>>);
   if (nuevo === n) return e;
-  return invalidar({ ...e, flujo: { ...e.flujo, nodes: e.flujo.nodes.map(x => (x.id === id ? nuevo : x)) } });
+  return tocar({ ...e, flujo: { ...e.flujo, nodes: e.flujo.nodes.map(x => (x.id === id ? nuevo : x)) } }, [id]);
 }
 
 function renombrarFlujo(e: E, nombre: string): E {
@@ -727,7 +774,7 @@ function renombrarFlujo(e: E, nombre: string): E {
   // sin recortar espacios: quien teclea necesita poder escribir «Mi flujo»; el exportador ya los recorta
   const recortado = recortar(nombre, LARGO_NOMBRE_FLUJO);
   if (recortado === e.flujo.nombreFlujo) return e;
-  return invalidar({ ...e, flujo: { ...e.flujo, nombreFlujo: recortado } });
+  return tocarNombre({ ...e, flujo: { ...e.flujo, nombreFlujo: recortado } });
 }
 
 // ================================================================ foco

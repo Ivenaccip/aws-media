@@ -170,8 +170,16 @@ export interface VistaNodo {
   /** La línea de abajo: la frecuencia, la ruta, el proveedor de IA, «Lista para n8n»… */
   detalle: string;
   icono: IconoNodo;
-  /** `tipo + ': ' + titulo`: el `aria-label` y el `title` del cuadro. */
+  /**
+   * El nombre accesible del cuadro (su `aria-label`): `tipoCorto: titulo. detalle`, o sea las tres líneas que se VEN, en el mismo orden
+   * (WCAG 2.5.3, «la etiqueta contiene el texto visible»: quien dicta «clic OpenAI GPT» tiene que poder elegirlo).
+   */
   etiqueta: string;
+  /**
+   * La relación con el agente del que cuelga, para la descripción accesible: «App · herramienta de «Agente 1»» o «Agente de IA que
+   * conversa con «Agente 1»». Null en un cuadro que no cuelga de nadie (su tipo ya está completo en `tipoCorto`).
+   */
+  rol: string | null;
   /** Solo en modo «conectando»: el papel de este cuadro. */
   modoConexion: ModoConexion | null;
   /** Solo si `modoConexion === 'nulo'`: por qué no se puede llegar a este cuadro (para `aria-disabled` y el lector de pantalla). */
@@ -282,7 +290,8 @@ function vistaDeNodo(estado: EstadoVista, c: Contexto, n: Nodo): VistaNodo {
     titulo: txt.titulo,
     detalle: txt.detalle,
     icono: txt.icono,
-    etiqueta: `${txt.tipo}: ${txt.titulo}`,
+    etiqueta: `${txt.tipoCorto}: ${txt.titulo}. ${txt.detalle}`,
+    rol: txt.tipo === txt.tipoCorto ? null : txt.tipo,
     modoConexion,
     motivoNulo,
     resaltado,
@@ -766,6 +775,8 @@ export interface VistaEnlace {
   textoDoble: string;
   /** ¿Se ofrece «Poner un cuadro en medio»? (solo en un solo sentido) */
   puedeMedio: boolean;
+  /** ¿Está abierto el menú de «Poner un cuadro en medio» de ESTA conexión? (el botón que lo abre dice `aria-expanded`) */
+  medioAbierto: boolean;
 }
 
 /**
@@ -805,6 +816,7 @@ export function vistaEnlace(estado: EstadoVista): VistaEnlace | null {
         ? `«${nA}» y «${nB}» conversan: «${nA}» le pide algo a «${nB}» cuantas veces haga falta (por ejemplo, un borrador y su revisión) y «${nB}» le responde, hasta quedar conformes. Lo que siga después recibe la respuesta final de «${nA}».`
         : `«${nA}» (un agente) le pide algo a «${nB}» solo cuando lo necesita, y «${nB}» le regresa el resultado. Es como preguntarle algo a un compañero. Queda colgada de su patita como herramienta.`,
     puedeMedio: esUno,
+    medioAbierto: estado.menu !== null && estado.menu.insertarEn === e.id,
   };
 }
 

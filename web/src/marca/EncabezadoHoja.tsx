@@ -44,8 +44,9 @@ export function EncabezadoHoja({ lugar }: PropsEncabezadoHoja) {
       <h1 className="m-0 mt-6 text-center font-titulo text-titulo-lg font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere]">
         <span className="texto-oro">Irremplazables</span>
       </h1>
-      {/* en un celular las tres migas no caben con sus íconos en una fila (la flecha quedaría sola al principio de la segunda): sin ellos sí */}
-      <Migas migas={migas} className="mt-2 flex justify-center max-[480px]:[&_svg]:hidden" />
+      {/* en un celular las tres migas no caben en una fila: sin sus íconos sí caben a 390 px, y a 320 se parten en dos renglones. Los «›» entre
+          ellas tampoco se pintan ahí: el de la segunda línea quedaba SOLO, pegado al borde izquierdo (cada «›» va con la miga que le sigue). */}
+      <Migas migas={migas} className="mt-2 flex justify-center max-[480px]:[&_svg]:hidden max-[480px]:[&_li>span[aria-hidden=true]]:hidden" />
     </header>
   );
 }

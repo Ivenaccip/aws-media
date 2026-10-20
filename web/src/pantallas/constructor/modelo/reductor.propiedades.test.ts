@@ -64,7 +64,7 @@ function campanas(n: number): Campana[] {
     { nombre: 'mixto', modo: 'mixto', n, largo: [5, 60] },
     { nombre: 'grande', modo: 'grande', n: Math.max(2, Math.ceil(n / 4)), largo: [60, 150] },
     { nombre: 'claves', modo: 'mixto', conClaves: true, n: Math.max(2, Math.ceil(n / 2)), largo: [10, 50] },
-    // sesiones largas sin mover ni teclear (eso tira la pila): la pila de Deshacer llega a sus 20 instantáneas
+    // sesiones largas sin mover ni teclear: la pila de Deshacer llega a sus 20 instantáneas
     { nombre: 'larga', modo: 'larga', n: Math.max(2, Math.ceil(n / 6)), largo: [150, 300] },
   ];
 }
@@ -176,7 +176,8 @@ describe('propiedades · secuencias de acciones al azar con semilla', () => {
       ['cargarFlujo rechazado', 3],
       ['modo conectando abierto', 20],
       ['menú de poner en medio abierto', 5],
-      ['una edición tiró la pila', 10],
+      ['una edición dejó la pila intacta', 10],
+      ['Deshacer conservó lo movido o escrito después', 3],
       ['pila llena (20)', 1],
       ['recargar la página (el estado nace del borrador)', 20],
       ['exportación sin errores', 100],
@@ -451,9 +452,27 @@ const MUTANTES: Mutante[] = [
     delata: h => h.codigo === 'varios-disparadores',
   },
   {
-    nombre: 'mover un cuadro no tira la pila de Deshacer',
+    nombre: 'mover un cuadro no anota qué se tocó para que Deshacer no lo pise',
     deps: conDefecto((r, e, a) => (a.k === 'moverNodo' && r.flujo !== e.flujo ? { ...r, historial: e.historial } : r)),
-    delata: h => h.codigo === 'edicion-no-tira-la-pila',
+    delata: h => h.codigo === 'edicion-no-marca-lo-tocado',
+  },
+  {
+    nombre: 'mover un cuadro tira la pila de Deshacer (el defecto de antes)',
+    deps: conDefecto((r, e, a) => (a.k === 'moverNodo' && r.flujo !== e.flujo ? { ...r, historial: [] } : r)),
+    delata: h => h.codigo === 'edicion-cambia-el-tamano-de-la-pila',
+  },
+  {
+    nombre: 'arrastrar un cuadro apaga el «Deshacer» del aviso',
+    deps: conDefecto((r, e, a) => (a.k === 'moverNodo' && r.flujo !== e.flujo && r.aviso?.conDeshacer ? { ...r, aviso: { ...r.aviso, conDeshacer: false } } : r)),
+    delata: h => h.codigo === 'edicion-cambia-el-deshacer-del-aviso',
+  },
+  {
+    nombre: 'Deshacer pisa lo que se movió o se escribió después con la posición y el texto de la foto',
+    deps: conDefecto((r, e, a) => {
+      const foto = e.historial[e.historial.length - 1];
+      return a.k === 'deshacer' && r.flujo !== e.flujo && foto && (foto.tocados?.length ?? 0) > 0 && foto.clase !== 'cargar' ? { ...r, flujo: { ...r.flujo, nodes: foto.nodes } } : r;
+    }),
+    delata: h => h.codigo === 'deshacer-no-restaura',
   },
   {
     nombre: 'quitar un cuadro que no existe igual cambia el estado',
@@ -577,9 +596,9 @@ const MUTANTES: Mutante[] = [
 
 /** Las campañas cortas con las que se busca cada mutante: parar en el primero que lo delata. */
 const CAMPANAS_DE_MUTANTE: Campana[] = [
-  { nombre: 'ui', modo: 'ui', n: 12, largo: [5, 50] },
+  { nombre: 'ui', modo: 'ui', n: 30, largo: [5, 50] },
   { nombre: 'api', modo: 'api', n: 12, largo: [5, 50] },
-  { nombre: 'mixto', modo: 'mixto', n: 12, largo: [5, 50] },
+  { nombre: 'mixto', modo: 'mixto', n: 30, largo: [5, 50] },
 ];
 
 describe('propiedades · los ojos de la prueba ven los defectos', () => {

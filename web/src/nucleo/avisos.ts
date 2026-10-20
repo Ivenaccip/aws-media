@@ -8,7 +8,7 @@
 // Todo lo que lleva la misma `clave` se reemplaza: un pedido nuevo quita el aviso
 // anterior de ese pedido.
 
-export type TipoAvisoRapido = 'ok' | 'mal' | 'info';
+type TipoAvisoRapido = 'ok' | 'mal' | 'info';
 
 export interface OpcionesAvisoRapido {
   /** `ok` (verde, se va solo a los 5 s), `mal` (rojo, se queda hasta cerrarlo) o `info`. */
@@ -21,7 +21,7 @@ export interface OpcionesAvisoRapido {
   accion?: AccionAvisoRapido;
 }
 
-export interface AccionAvisoRapido {
+interface AccionAvisoRapido {
   texto: string;
   al: () => void;
 }

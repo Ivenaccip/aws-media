@@ -242,7 +242,7 @@ export interface OpcionesGesto {
   grande: boolean;
   /** Entre los textos que se teclean salen claves pegadas por error. */
   conClaves: boolean;
-  /** Sin mover cuadros, ni teclear en Ajustes, ni renombrar el flujo: así la pila de Deshacer (que esas acciones tiran) puede llenarse hasta 20. */
+  /** Sin mover cuadros, ni teclear en Ajustes, ni renombrar el flujo: sesiones de pura estructura, para llenar la pila de Deshacer hasta 20 sin que nada se marque como tocado. */
   sinEdiciones?: boolean;
 }
 
@@ -262,7 +262,7 @@ const BAJA_EN_GRANDE: Readonly<Record<string, number>> = {
   deshacerAviso: 0.1,
 };
 const SUBE_EN_GRANDE: ReadonlySet<string> = new Set(['menuOpcion', 'menuApp', 'masDer']);
-/** Los gestos de edición continua (mover, teclear, renombrar): tiran la pila de Deshacer. */
+/** Los gestos de edición continua (mover, teclear, renombrar): no entran en la pila de Deshacer, pero marcan en ella lo que tocan. */
 const EDICIONES: ReadonlySet<string> = new Set(['drag', 'trigTipo', 'trigCampo', 'ia', 'textoAg', 'textoApp', 'sugerencia', 'nombreFlujo']);
 /** Gestos que, con un menú abierto o una conexión en curso, la persona deja para después. */
 const DISTRACCIONES: ReadonlySet<string> = new Set(['masDer', 'masTool', 'insignia', 'abrir', 'drag', 'tecla', 'selSig', 'selHerr', 'selQuitar', 'conQuitar', 'conEditar', 'trigTipo', 'trigCampo', 'ia', 'textoAg', 'textoApp', 'sugerencia', 'limpiar']);

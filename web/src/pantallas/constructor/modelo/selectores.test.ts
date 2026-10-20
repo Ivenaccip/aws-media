@@ -130,7 +130,9 @@ describe('vistaNodo', () => {
       titulo: 'Chat',
       detalle: 'Mensaje en el chat',
       icono: 'chat',
-      etiqueta: 'Disparador: Chat',
+      // el nombre accesible trae las tres líneas que se ven (WCAG 2.5.3); la relación con un agente va aparte, en `rol`
+      etiqueta: 'Disparador: Chat. Mensaje en el chat',
+      rol: null,
       esHerramienta: false,
       x: 8,
       y: 180,
@@ -142,7 +144,8 @@ describe('vistaNodo', () => {
       titulo: 'Atención a clientes',
       detalle: 'OpenAI (GPT)',
       icono: 'magia',
-      etiqueta: 'Agente de IA: Atención a clientes',
+      etiqueta: 'Agente de IA: Atención a clientes. OpenAI (GPT)',
+      rol: null,
       esHerramienta: false,
     });
     expect(vn(e, 'a2')).toMatchObject({ titulo: 'Revisor', detalle: 'Claude (Anthropic)' });
@@ -153,7 +156,8 @@ describe('vistaNodo', () => {
       titulo: 'Google Sheets',
       detalle: 'Lista para n8n',
       icono: 'app',
-      etiqueta: 'App · herramienta de «Atención a clientes»: Google Sheets',
+      etiqueta: 'App · herramienta: Google Sheets. Lista para n8n',
+      rol: 'App · herramienta de «Atención a clientes»',
       esHerramienta: true,
     });
     // en el orden del flujo, y la vista de uno solo es la misma
@@ -210,7 +214,8 @@ describe('vistaNodo', () => {
       tipoCorto: 'Agente · conversa',
       esHerramienta: true,
       clase: 'nodo-ag nodo-tool',
-      etiqueta: 'Agente de IA que conversa con «Atención a clientes»: Revisor',
+      etiqueta: 'Agente · conversa: Revisor. Claude (Anthropic)',
+      rol: 'Agente de IA que conversa con «Atención a clientes»',
     });
     // a1 conversa con a2: lo que sigue se agrega desde a2
     expect(vn(e, 'a1')).toMatchObject({ puedeDer: false, stubDer: false, asaDer: false, patita: true });

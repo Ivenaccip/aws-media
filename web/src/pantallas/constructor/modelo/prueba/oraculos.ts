@@ -137,6 +137,19 @@ export function huellaDeEstado(nodes: readonly Nodo[], edges: readonly Arista[],
   return jsonDe([nodes, edges, nombreFlujo, sel]);
 }
 
+/**
+ * Lo que Deshacer debe dejar al aplicar una instantánea sobre el flujo de AHORA: la foto, salvo los cuadros que la persona movió o escribió
+ * después de apilarla (y que siguen en pie, del mismo tipo), que conservan lo de ahora, y el nombre del flujo si se renombró. Una foto de
+ * clase `cargar` se devuelve entera. Es la especificación escrita aparte del reductor.
+ */
+export function huellaEsperadaAlDeshacer(inst: Instantanea, actual: { nodes: readonly Nodo[]; nombreFlujo: string }): string {
+  const entera = inst.clase === 'cargar';
+  const tocados = entera ? [] : (inst.tocados ?? []);
+  const nodes = inst.nodes.map(n => (tocados.includes(n.id) ? (actual.nodes.find(x => x.id === n.id && x.kind === n.kind) ?? n) : n));
+  const nombre = !entera && inst.nombreTocado === true ? actual.nombreFlujo : (inst.nombreFlujo ?? actual.nombreFlujo);
+  return huellaDeEstado(nodes, inst.edges, nombre, inst.sel);
+}
+
 function recorrer(v: unknown, ruta: string, cb: (ruta: string, v: unknown) => void, vistos: WeakSet<object>): void {
   if (typeof v === 'function') return;
   if (v !== null && typeof v === 'object') {
@@ -773,8 +786,21 @@ export function revisarTransicion(antes: E, a: A, despues: E, ctx: Contexto): Vi
     else if (despues.historial.slice(0, -1).some((x, i) => x !== antes.historial[antes.historial.length - (esperado - 1) + i])) m('pila-se-reescribe', 'las instantáneas viejas cambiaron');
     if (despues.historial[despues.historial.length - 1]?.avisoId !== despues.aviso?.id) m('instantanea-con-otro-aviso', 'el avisoId no es el del aviso de esta acción');
   } else if (CONTINUAS.has(efectiva)) {
-    if (despues.historial.length !== 0) m('edicion-no-tira-la-pila', `quedaron ${despues.historial.length} instantáneas`);
-    if (despues.aviso?.conDeshacer) m('edicion-deja-el-deshacer-del-aviso', 'el aviso sigue ofreciendo Deshacer');
+    // mover, teclear y renombrar NO tiran la pila: queda del mismo tamaño, con las mismas fotos, y el aviso conserva su «Deshacer»
+    if (despues.historial.length !== antes.historial.length) m('edicion-cambia-el-tamano-de-la-pila', `${antes.historial.length} → ${despues.historial.length} instantáneas`);
+    if (despues.aviso?.conDeshacer !== antes.aviso?.conDeshacer) m('edicion-cambia-el-deshacer-del-aviso', `conDeshacer ${antes.aviso?.conDeshacer} → ${despues.aviso?.conDeshacer}`);
+    antes.historial.forEach((foto, i) => {
+      const f2 = despues.historial[i];
+      if (!f2 || f2.nodes !== foto.nodes || f2.edges !== foto.edges || f2.nombreFlujo !== foto.nombreFlujo || f2.sel !== foto.sel || f2.avisoId !== foto.avisoId || f2.clase !== foto.clase) {
+        m('edicion-reescribe-una-foto', `la foto ${i} de la pila ya no es la que se apiló`);
+      }
+    });
+    // y cada foto aprende qué se tocó después de ella: así Deshacer no lo pisa
+    const tocados = dn.cambiados.map(c => c.id);
+    if (tocados.length > 0 && despues.historial.some(foto => tocados.some(id => !(foto.tocados ?? []).includes(id)))) {
+      m('edicion-no-marca-lo-tocado', `se tocó ${tocados.join(', ')} y alguna foto no lo sabe`);
+    }
+    if (fa.nombreFlujo !== fd.nombreFlujo && despues.historial.some(foto => foto.nombreTocado !== true)) m('edicion-no-marca-el-nombre', 'se renombró el flujo y alguna foto no lo sabe');
   } else {
     m('accion-de-interfaz-toca-el-flujo', 'cambió el flujo y no es una acción que lo cambie');
   }
@@ -1032,9 +1058,8 @@ export function revisarTransicion(antes: E, a: A, despues: E, ctx: Contexto): Vi
         if (!mismoFlujo || despues.historial !== antes.historial) m('deshacer-rechazado-cambia-algo', hist === undefined ? 'sin pila' : 'aviso viejo');
         break;
       }
-      const esperado = ctx.instantaneas.get(hist);
       const sel = hist.sel !== null && hist.nodes.some(n => n.id === hist.sel) ? hist.sel : null;
-      if (esperado !== undefined && huellaDeEstado(fd.nodes, fd.edges, fd.nombreFlujo, hist.sel) !== esperado) m('deshacer-no-restaura', 'el flujo restaurado no es el de la instantánea');
+      if (huellaDeEstado(fd.nodes, fd.edges, fd.nombreFlujo, hist.sel) !== huellaEsperadaAlDeshacer(hist, fa)) m('deshacer-no-restaura', 'el flujo restaurado no es el de la instantánea (con lo movido o escrito después)');
       if (despues.sel !== sel || despues.selEdge !== null || despues.menu !== null || despues.conectando !== null) m('deshacer-deja-punteros', `sel=${despues.sel} esperaba ${sel}`);
       if (despues.historial.length !== antes.historial.length - 1 || despues.historial.some((x, i) => x !== antes.historial[i])) m('deshacer-gasta-mal-la-pila', `${antes.historial.length} → ${despues.historial.length}`);
       if (despues.siguiente !== antes.siguiente) m('deshacer-toca-el-contador', `${antes.siguiente} → ${despues.siguiente}`);
@@ -1069,7 +1094,7 @@ export function sondearDeshacer(e: E, ctx: Contexto): Violacion[] {
   if (esperado !== undefined && huellaDeEstado(cima.nodes, cima.edges, cima.nombreFlujo ?? '', cima.sel) !== esperado) add('instantanea-mutada', 'la foto de la cima cambió con el tiempo');
   const s = r(e, { k: 'deshacer' });
   const sel = cima.sel !== null && cima.nodes.some(n => n.id === cima.sel) ? cima.sel : null;
-  if (esperado !== undefined && huellaDeEstado(s.flujo.nodes, s.flujo.edges, s.flujo.nombreFlujo, cima.sel) !== esperado) add('deshacer-no-restaura', 'el flujo restaurado no es el de la instantánea');
+  if (huellaDeEstado(s.flujo.nodes, s.flujo.edges, s.flujo.nombreFlujo, cima.sel) !== huellaEsperadaAlDeshacer(cima, e.flujo)) add('deshacer-no-restaura', 'el flujo restaurado no es el de la instantánea (con lo movido o escrito después)');
   if (s.sel !== sel) add('deshacer-no-restaura', `sel ${s.sel} y esperaba ${sel}`);
   if (s.historial.length !== e.historial.length - 1 || s.historial.some((x, i) => x !== e.historial[i])) add('deshacer-gasta-mal-la-pila', `${e.historial.length} → ${s.historial.length}`);
   if (s.siguiente !== e.siguiente) add('deshacer-toca-el-contador', `${e.siguiente} → ${s.siguiente}`);
@@ -1274,7 +1299,8 @@ export function contarCasos(antes: E, a: A, despues: E, ctx: Contexto): void {
   if (a.k === 'deshacer' && a.avisoId !== undefined && cambio === false && antes.historial.length > 0) cuenta(c, 'Deshacer desde un aviso viejo (rechazado)');
   if (a.k === 'cargarFlujo') cuenta(c, cambio ? 'cargarFlujo aceptado' : 'cargarFlujo rechazado');
   if (despues.historial.length === MAX_HISTORIAL) cuenta(c, 'pila llena (20)');
-  if (antes.historial.length > 0 && cambio && CONTINUAS.has(a.k) && despues.historial.length === 0) cuenta(c, 'una edición tiró la pila');
+  if (antes.historial.length > 0 && cambio && CONTINUAS.has(a.k) && despues.historial.length === antes.historial.length) cuenta(c, 'una edición dejó la pila intacta');
+  if (a.k === 'deshacer' && despues.historial.length < antes.historial.length && (antes.historial[antes.historial.length - 1]?.tocados?.length ?? 0) > 0) cuenta(c, 'Deshacer conservó lo movido o escrito después');
   const ag = fd.nodes.filter(n => n.kind === 'agent').length;
   const ap = fd.nodes.filter(n => n.kind === 'app').length;
   if (ag >= TOPE_AGENTES) cuenta(c, 'estado con 4 agentes (tope)');

@@ -497,6 +497,27 @@ describe('las correcciones al mockup', () => {
     expect(nodoN8n(g, 'Revisor').position).toEqual([616, 0]);
     expect(violacionesDelFlujo(g)).toEqual([]);
   });
+
+  it('constructor.exportar.un_nombre_con_caracteres_de_control_o_de_direccion_sale_limpio_en_el_archivo_de_n8n', () => {
+    // un NUL en un `name` se escribe \u0000 y la base de datos de n8n (Postgres/jsonb) rechaza el flujo al importarlo; un U+202E voltea el resto de la línea
+    const NUL = String.fromCharCode(0);
+    const st = base();
+    ag(st, 'a1').nombre = `a${NUL}b\u202ec`;
+    nodoApp(st, 'p9', `Hoja${String.fromCharCode(27)} 2\u2066`);
+    arista(st, 'a1', 'p9', 'tool');
+    const r = construirFlujo(st, { zona: 'UTC' });
+    expect(r.errores).toEqual([]);
+    const f = r.flujo as FlujoN8n;
+    expect(f.nodes.map(n => n.name)).toContain('abc');
+    expect(f.nodes.some(n => n.name.startsWith('Hoja 2'))).toBe(true);
+    // nada de control ni de dirección en ningún nombre, ni en todo el JSON que se baja
+    // eslint-disable-next-line no-control-regex -- justo lo que se quiere que no haya
+    const raro = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
+    for (const n of f.nodes) expect(n.name, n.name).not.toMatch(raro);
+    const hallazgos = [...r.json.matchAll(/[^]{0,40}(\\u0000|\\u001b|\\u202e|\\u2066)[^]{0,10}/gi)].map(x => x[0]);
+    expect(hallazgos).toEqual([]);
+    expect(violacionesDelFlujo(f)).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------- seguridad

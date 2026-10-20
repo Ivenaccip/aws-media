@@ -303,8 +303,8 @@ export interface AvisoConstructor {
   tipo: TipoAviso;
   /**
    * Si trae el botón «Deshacer»: solo tras quitar o reacomodar (quitar un cuadro o una conexión, limpiar, cambiar el
-   * tipo de una conexión, poner un cuadro en medio, cargar un flujo). Solo vale mientras nada más haya cambiado el
-   * flujo: el reductor lo apaga (el `id` del aviso se queda) si después se edita, se mueve o se renombra algo.
+   * tipo de una conexión, poner un cuadro en medio, cargar un flujo). Sigue valiendo mientras ninguna otra acción
+   * estructural lo reemplace: mover un cuadro o teclear después NO lo apaga (Deshacer conserva lo movido y lo escrito).
    */
   conDeshacer: boolean;
 }
@@ -330,6 +330,15 @@ export interface Instantanea {
   avisoId?: number;
   /** Qué tipo de cambio fue (decide el texto de «Listo: …» al deshacer). Si falta, es `cambiar`. */
   clase?: ClaseCambio;
+  /**
+   * Los cuadros que la persona movió o editó DESPUÉS de apilar esta foto (el reductor los va sumando). Al deshacer, esos
+   * cuadros —si siguen existiendo— conservan su posición y su texto actuales: lo que Deshacer devuelve es lo estructural
+   * (qué cuadros y qué conexiones hay), no una posición ni un texto más viejos que lo que la persona acaba de hacer.
+   * Una foto de clase `cargar` no los usa: reemplazar todo el flujo se deshace entero.
+   */
+  tocados?: readonly string[];
+  /** ¿Se renombró el flujo después de apilar esta foto? Entonces Deshacer deja el nombre actual (salvo en una de clase `cargar`). */
+  nombreTocado?: boolean;
 }
 
 /**

@@ -332,32 +332,27 @@ describe('deshacer · lo que la invalida y lo que no', () => {
   /** Quitó p2 (con aviso y Deshacer) y deja el estado listo para probar lo que viene después. */
   const tras = (): E => ir(conEjemplo(), { k: 'quitarNodo', id: 'p2' });
 
-  it('constructor.deshacer.tras_editar_un_texto_el_deshacer_del_aviso_ya_no_aplica_y_no_borra_lo_escrito', () => {
+  it('constructor.deshacer.tras_editar_un_texto_el_deshacer_del_aviso_sigue_valiendo_y_no_borra_lo_escrito', () => {
     const q = tras();
     expect(q.aviso?.conDeshacer).toBe(true);
     const avisoId = q.aviso?.id ?? 0;
     const editado = ir(q, { k: 'editarNodo', id: 'a1', parche: { nombre: 'Mi agente' } });
-    // el aviso es el mismo (mismo id, mismo texto: no se vuelve a anunciar) pero ya no ofrece Deshacer
+    // el aviso es el mismo (mismo id, mismo texto: no se vuelve a anunciar) y SIGUE ofreciendo Deshacer: teclear no tira la red de seguridad
     expect(editado.aviso?.id).toBe(avisoId);
     expect(editado.aviso?.texto).toBe(q.aviso?.texto);
-    expect(editado.aviso?.conDeshacer).toBe(false);
-    expect(editado.historial).toEqual([]);
-    expect(puedeDeshacer(editado)).toBe(false);
-    // el Deshacer que quedó en un aviso viejo no hace nada y lo dice
-    const viejo = ir(editado, { k: 'deshacer', avisoId });
-    expect(viejo.flujo).toBe(editado.flujo);
-    avisoEs(viejo, T.yaNoSePuedeDeshacer());
-    expect(viejo.aviso?.texto).toBe('Eso ya no se puede deshacer: cambiaste algo después.');
-    // el del botón de la barra ni siquiera tiene qué deshacer
-    const barra = ir(editado, { k: 'deshacer' });
-    expect(barra.flujo).toBe(editado.flujo);
-    avisoEs(barra, T.nadaQueDeshacer());
-    // y lo escrito sigue ahí
-    expect((nodo(barra, 'a1') as NodoAgente).nombre).toBe('Mi agente');
-    expect(barra.flujo.nodes.some(n => n.id === 'p2')).toBe(false);
+    expect(editado.aviso?.conDeshacer).toBe(true);
+    expect(editado.historial).toHaveLength(1);
+    expect(puedeDeshacer(editado)).toBe(true);
+    // el Deshacer del aviso (y el del botón de la barra) devuelve el cuadro quitado SIN pisar lo escrito
+    for (const accion of [{ k: 'deshacer', avisoId } as const, { k: 'deshacer' } as const]) {
+      const vuelto = ir(editado, accion);
+      expect(vuelto.flujo.nodes.some(n => n.id === 'p2')).toBe(true);
+      expect((nodo(vuelto, 'a1') as NodoAgente).nombre).toBe('Mi agente');
+      avisoEs(vuelto, T.deshecho('quitar'));
+    }
   });
 
-  it('constructor.deshacer.mover_con_el_raton_o_el_teclado_o_renombrar_tambien_tiran_la_pila', () => {
+  it('constructor.deshacer.mover_o_teclear_o_renombrar_despues_de_quitar_no_tiran_la_pila_y_deshacer_conserva_lo_movido_y_lo_escrito', () => {
     const casos: [string, A][] = [
       ['moverNodo', { k: 'moverNodo', id: 'a1', x: 400, y: 300 }],
       ['moverConTeclado', { k: 'moverConTeclado', id: 'a1', direccion: 'derecha' }],
@@ -371,22 +366,94 @@ describe('deshacer · lo que la invalida y lo que no', () => {
       const q = tras();
       expect(q.historial, nombre).toHaveLength(1);
       const e = ir(q, accion);
-      expect(e.historial, nombre).toEqual([]);
-      expect(e.aviso?.conDeshacer, nombre).toBe(false);
-      expect(puedeDeshacer(e), nombre).toBe(false);
-      // y la pila entera: con dos quitar antes, también se va todo
+      // la pila se queda y el aviso sigue ofreciendo Deshacer
+      expect(e.historial, nombre).toHaveLength(1);
+      expect(e.aviso?.conDeshacer, nombre).toBe(true);
+      expect(puedeDeshacer(e), nombre).toBe(true);
+      // y con dos quitar antes, también se quedan las dos
       const doble = ir(q, { k: 'quitarEnlace', id: 'e2' }, accion);
-      expect(ir(q, { k: 'quitarEnlace', id: 'e2' }).historial, nombre).toHaveLength(2);
-      expect(doble.historial, nombre).toEqual([]);
+      expect(doble.historial, nombre).toHaveLength(2);
+      // Deshacer devuelve lo quitado y deja lo que la persona acababa de hacer
+      const vuelto = ir(e, { k: 'deshacer' });
+      expect(vuelto.flujo.nodes.some(n => n.id === 'p2'), nombre).toBe(true);
+      avisoEs(vuelto, T.deshecho('quitar'));
+      if (accion.k === 'moverNodo') expect(nodo(vuelto, 'a1')).toMatchObject({ x: 400, y: 304 });
+      if (accion.k === 'moverConTeclado') expect(nodo(vuelto, accion.id)).toMatchObject({ x: nodo(e, accion.id).x, y: nodo(e, accion.id).y });
+      if (accion.k === 'renombrarFlujo') expect(vuelto.flujo.nombreFlujo).toBe('Otro nombre');
+      if (accion.k === 'editarNodo') expect(nodo(vuelto, accion.id)).toBe(nodo(e, accion.id));
     }
-    // el arrastre del mockup (arrastre + Deshacer = la x vuelve de 392 a 312) ya no pasa
+    // el arrastre del mockup (arrastre + Deshacer = la x vuelve de 392 a 312) tampoco pasa: el cuadro se queda donde la persona lo dejó
     const q = tras();
     const movido = ir(q, { k: 'moverNodo', id: 'a1', x: 392, y: 180 });
     const intento = ir(movido, { k: 'deshacer' });
     expect(nodo(intento, 'a1').x).toBe(392);
+    expect(intento.flujo.nodes.some(n => n.id === 'p2')).toBe(true);
   });
 
-  it('constructor.deshacer.lo_que_no_cambia_nada_no_tira_la_pila', () => {
+  it('constructor.deshacer.lo_movido_o_escrito_se_conserva_en_cada_paso_de_una_pila_de_varias_fotos', () => {
+    // quitar p2, mover a1, quitar p1, escribir en a2: deshacer dos veces devuelve los dos cuadros y deja a1 y a2 como están
+    const e = ir(
+      conEjemplo(),
+      { k: 'quitarNodo', id: 'p2' },
+      { k: 'moverNodo', id: 'a1', x: 400, y: 300 },
+      { k: 'quitarNodo', id: 'p1' },
+      { k: 'editarNodo', id: 'a2', parche: { tarea: 'Mi tarea' } },
+    );
+    expect(e.historial).toHaveLength(2);
+    const uno = ir(e, { k: 'deshacer' });
+    expect(uno.flujo.nodes.some(n => n.id === 'p1')).toBe(true);
+    expect(uno.flujo.nodes.some(n => n.id === 'p2')).toBe(false);
+    const dos = ir(uno, { k: 'deshacer' });
+    expect(dos.flujo.nodes.map(n => n.id).sort()).toEqual(['a1', 'a2', 'p1', 'p2', 't1']);
+    expect(nodo(dos, 'a1')).toMatchObject({ x: 400, y: 304 });
+    expect((nodo(dos, 'a2') as NodoAgente).tarea).toBe('Mi tarea');
+    expect(dos.historial).toEqual([]);
+  });
+
+  it('constructor.deshacer.una_foto_nueva_empieza_sin_cuadros_tocados_y_lo_que_se_toca_se_suma_a_todas_las_de_la_pila', () => {
+    const e0 = ir(conEjemplo(), { k: 'quitarNodo', id: 'p2' });
+    expect(e0.historial.map(i => i.tocados ?? [])).toEqual([[]]);
+    const e1 = ir(e0, { k: 'moverNodo', id: 'a1', x: 400, y: 300 }, { k: 'quitarNodo', id: 'p1' });
+    // la foto vieja sabe que a1 se movió después de ella; la nueva, que nació con a1 ya movido, no
+    expect(e1.historial.map(i => i.tocados ?? [])).toEqual([['a1'], []]);
+    const e2 = ir(e1, { k: 'editarNodo', id: 'a2', parche: { tarea: 'x' } }, { k: 'renombrarFlujo', nombre: 'Otro' });
+    expect(e2.historial.map(i => [...(i.tocados ?? [])].sort())).toEqual([['a1', 'a2'], ['a2']]);
+    expect(e2.historial.map(i => i.nombreTocado === true)).toEqual([true, true]);
+    // lo que no cambia nada no marca nada: ni la pila ni sus fotos se reescriben
+    expect(ir(e2, { k: 'moverNodo', id: 'a2', x: nodo(e2, 'a2').x, y: nodo(e2, 'a2').y }).historial).toBe(e2.historial);
+    expect(ir(e2, { k: 'editarNodo', id: 'a2', parche: { tarea: 'x' } }).historial).toBe(e2.historial);
+    expect(ir(e2, { k: 'renombrarFlujo', nombre: 'Otro' }).historial).toBe(e2.historial);
+    // y la foto misma (cuadros, conexiones, nombre, selección) no se toca nunca
+    expect(e2.historial[0]?.nodes).toBe(e0.historial[0]?.nodes);
+    expect(e2.historial[0]?.edges).toBe(e0.historial[0]?.edges);
+  });
+
+  it('constructor.deshacer.cambiar_el_tipo_y_luego_mover_ese_cuadro_lo_deja_donde_lo_puso_la_persona', () => {
+    const e0 = conEjemplo();
+    const tipo = ir(e0, { k: 'cambiarTipoEnlace', id: 'e4', tipo: 'seq' });
+    const reacomodado = nodo(tipo, 'p2');
+    expect(reacomodado.x).not.toBe(480); // el cambio lo mueve
+    const movido = ir(tipo, { k: 'moverNodo', id: 'p2', x: 700, y: 520 });
+    const igual = ir(movido, { k: 'deshacer' });
+    // la conexión vuelve a ser lo que era y el cuadro sigue donde la persona lo puso
+    expect(igual.flujo.edges.find(x => x.id === 'e4')?.tipo).toBe('tool');
+    expect(nodo(igual, 'p2')).toMatchObject({ x: 704, y: 520 }); // la rejilla de 8 lo acomoda
+    // si nadie lo movió, vuelve a su lugar de antes (lo cubre otra prueba) y los demás cuadros siempre vuelven a los suyos
+    for (const n of e0.flujo.nodes) if (n.id !== 'p2') expect(nodo(igual, n.id)).toBe(n);
+  });
+
+  it('constructor.deshacer.reemplazar_todo_el_flujo_se_deshace_entero_aunque_se_haya_movido_o_escrito_algo_despues', () => {
+    // cargar el ejemplo sobre otro flujo reutiliza ids (t1, a1…): lo movido en el flujo NUEVO no se mezcla con el viejo
+    const viejo = ir(conEjemplo(), { k: 'editarNodo', id: 'a1', parche: { nombre: 'Mi viejo agente' } }, { k: 'moverNodo', id: 'a1', x: 24, y: 24 }, { k: 'renombrarFlujo', nombre: 'Mi flujo viejo' });
+    const nuevo = ir(viejo, { k: 'cargarEjemplo' }, { k: 'moverNodo', id: 'a1', x: 800, y: 600 }, { k: 'editarNodo', id: 'a1', parche: { nombre: 'Del ejemplo' } }, { k: 'renombrarFlujo', nombre: 'Del ejemplo' });
+    expect(cima(nuevo).clase).toBe('cargar');
+    const vuelto = ir(nuevo, { k: 'deshacer' });
+    expect(vuelto.flujo.nodes).toBe(viejo.flujo.nodes);
+    expect(vuelto.flujo.nombreFlujo).toBe('Mi flujo viejo');
+    expect((nodo(vuelto, 'a1') as NodoAgente).nombre).toBe('Mi viejo agente');
+  });
+
+  it('constructor.deshacer.lo_que_no_cambia_nada_no_toca_la_pila', () => {
     // con a1 ya en la rejilla (el ejemplo trae y=180, que la rejilla de 8 acomoda a 184 al primer movimiento)
     const enRejilla = ir(conEjemplo(), { k: 'moverNodo', id: 'a1', x: 312, y: 184 });
     const base = ir(enRejilla, { k: 'quitarNodo', id: 'p1' });
@@ -406,10 +473,13 @@ describe('deshacer · lo que la invalida y lo que no', () => {
     for (const [nombre, accion] of sinCambio) {
       const e = ir(base, accion);
       expect(e.historial, nombre).toBe(base.historial);
-      expect(e.aviso?.conDeshacer, nombre).toBe(true);
+      expect(e.aviso, nombre).toBe(base.aviso);
     }
-    // en cambio un movimiento de verdad, aunque sea de 8 px, sí la tira
-    expect(ir(base, { k: 'moverNodo', id: 'a1', x: 320, y: 184 }).historial).toEqual([]);
+    // en cambio un movimiento de verdad, aunque sea de 8 px, deja la pila (con a1 marcado como tocado) y el aviso con su Deshacer
+    const movido = ir(base, { k: 'moverNodo', id: 'a1', x: 320, y: 184 });
+    expect(movido.historial).toHaveLength(1);
+    expect(movido.historial[0]?.tocados).toEqual(['a1']);
+    expect(movido.aviso?.conDeshacer).toBe(true);
   });
 
   it('constructor.deshacer.moverse_contra_el_borde_no_cambia_nada_y_la_pila_se_queda', () => {
@@ -551,14 +621,14 @@ describe('deshacer · lo que la invalida y lo que no', () => {
 // ---------------------------------------------------------------- foco
 
 describe('deshacer · foco', () => {
-  it('constructor.deshacer.el_foco_va_al_cuadro_restaurado_y_si_no_hay_al_primero_o_a_elegir_disparador', () => {
+  it('constructor.deshacer.el_foco_va_al_cuadro_restaurado_y_si_no_volvio_ninguno_al_elegido_o_a_elegir_disparador', () => {
     // con un cuadro elegido: ese cuadro
     const conSel = ir(conEjemplo(), { k: 'quitarNodo', id: 'a1' }, { k: 'deshacer' });
     expect(foco(conSel)).toEqual({ k: 'nodo', id: 'a1' });
-    // sin cuadro elegido: el primero
+    // sin cuadro elegido: el que volvió (antes era el primero del lienzo, que no tiene nada que ver con lo que se deshizo)
     const sinSel = ir(congelar(estadoInicial(ejemplo())), { k: 'quitarNodo', id: 'p2' }, { k: 'deshacer' });
     expect(sinSel.sel).toBeNull();
-    expect(foco(sinSel)).toEqual({ k: 'primerNodo' });
+    expect(foco(sinSel)).toEqual({ k: 'nodo', id: 'p2' });
     // volver a un lienzo vacío: la primera opción de «Elige cómo arranca tu flujo»
     const vaciado = ir(vacio(), { k: 'cargarEjemplo' }, { k: 'deshacer' });
     expect(vaciado.flujo.nodes).toEqual([]);

@@ -26,7 +26,20 @@
 import { appDe, AGENTE_N8N, AYUDANTE_N8N, disparadorN8n, iaDe, OTRA_APP, pendienteDe } from './catalogo';
 import { LARGO_NOMBRE_N8N, NOMBRE_FLUJO_INICIAL, VUELTAS_MAX } from './datos/constantes';
 import { conClave } from './secretos';
-import { copiaJson, deIA, expr, literalExpr, nombreHerramientaSeguro, recortar, rutaLimpia, SALIDA, sinIgual, tituloDe, uuidDeterminista } from './texto';
+import {
+  copiaJson,
+  deIA,
+  expr,
+  literalExpr,
+  nombreHerramientaSeguro,
+  recortar,
+  rutaLimpia,
+  SALIDA,
+  sinCaracteresRaros,
+  sinIgual,
+  tituloDe,
+  uuidDeterminista,
+} from './texto';
 import type { Arista, Flujo, Nodo, NodoAgente, NodoApp, NodoDisparador, ParametrosN8n } from './tipos';
 
 // ---------------------------------------------------------------- tipos de lo que sale
@@ -226,9 +239,27 @@ function formasDeTexto(n: Nodo): string[] {
   return formas;
 }
 
+/**
+ * El cuadro con sus textos sin caracteres de control ni de dirección. Lo que sale del reductor y del borrador ya viene limpio (`recortar`):
+ * esta es la última barrera, por si el exportador recibe un flujo armado por otro camino. Un NUL en un `name` del archivo lo rechaza la base
+ * de datos de n8n al importarlo. Si nada cambia, el mismo cuadro.
+ */
+function limpiarTextos(n: Nodo): Nodo {
+  let copia: Record<string, unknown> | null = null;
+  for (const [k, v] of Object.entries(n)) {
+    if (k === 'id' || k === 'kind' || typeof v !== 'string') continue;
+    const limpio = sinCaracteresRaros(v);
+    if (limpio === v) continue;
+    copia ??= { ...n };
+    copia[k] = limpio;
+  }
+  return copia === null ? n : (copia as unknown as Nodo);
+}
+
 function analizar(est: EstadoExportable): Analisis {
-  const nodes = est.nodes;
+  const nodes = est.nodes.map(limpiarTextos);
   const edges = est.edges;
+  const nombreDelFlujo = typeof est.nombreFlujo === 'string' ? sinCaracteresRaros(est.nombreFlujo) : est.nombreFlujo;
   const porId = new Map<string, Nodo>();
   for (const n of nodes) porId.set(n.id, n);
   const padre = new Map<string, string>();
@@ -286,7 +317,7 @@ function analizar(est: EstadoExportable): Analisis {
   for (const n of nodes) {
     if (formasDeTexto(n).some(conClave)) pon(errores, `Parece que pegaste una clave en «${tituloDe(n)}». ${MSG_CLAVE}`);
   }
-  if (conClave(est.nombreFlujo)) pon(errores, 'Parece que pegaste una clave en el nombre del flujo. Quítala.');
+  if (conClave(nombreDelFlujo)) pon(errores, 'Parece que pegaste una clave en el nombre del flujo. Quítala.');
 
   // ---- avisos (no bloquean)
   if (agentes.length === 0) pon(avisos, 'Tu flujo no tiene agente de IA: solo hará lo que digan las apps.');
@@ -310,7 +341,7 @@ function analizar(est: EstadoExportable): Analisis {
   }
   if (trig && trig.tipo === 'chat') pon(avisos, 'El chat quedará público: cualquiera con el enlace podrá escribirle (y gastar tu llave de IA).');
 
-  return { nodes, edges, nombreFlujo: est.nombreFlujo, porId, padre, seqs, trig, raiz, antes, despues, errores, avisos };
+  return { nodes, edges, nombreFlujo: nombreDelFlujo, porId, padre, seqs, trig, raiz, antes, despues, errores, avisos };
 }
 
 // ---------------------------------------------------------------- el flujo en el formato de n8n

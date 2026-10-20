@@ -278,7 +278,7 @@ describe('reductor · el menú del «+» de la derecha', () => {
     expect((ultimoNodo(e) as NodoApp).nombre).toBe('x'.repeat(LARGO_NOMBRE_APP));
   });
 
-  it('constructor.reductor.tocar_el_mismo_mas_otra_vez_cierra_el_menu_y_cerrar_devuelve_el_foco_al_mas', () => {
+  it('constructor.reductor.tocar_el_mismo_mas_otra_vez_cierra_el_menu_y_devuelve_el_foco_al_mas_igual_que_cerrar', () => {
     let e = conEjemplo();
     e = ir(e, { k: 'abrirMenu', ancla: 'a1', tipo: 'tool' });
     expect(e.menu).not.toBeNull();
@@ -286,8 +286,10 @@ describe('reductor · el menú del «+» de la derecha', () => {
     e = ir(e, { k: 'abrirMenu', ancla: 'a1', tipo: 'tool' }); // el mismo «+»: cierra
     expect(e.menu).toBeNull();
     avisoEs(e, T.menuCerrado());
-    // no pide foco: ya está en el «+». Y la petición vieja (la primera opción de un menú que ya se cerró) se apaga
-    expect(e.foco).toBeNull();
+    // pide el foco del «+» (revisión: el foco estaba dentro del menú y, donde un clic no enfoca el botón —Safari, Firefox en macOS—, caía a
+    // <body>); y la petición vieja (la primera opción de un menú que ya se cerró) se reemplaza por esta
+    expect(foco(e)).toEqual({ k: 'mas', clave: 'tool-a1' });
+    expect(e.foco?.n).toBeGreaterThan(n);
     expect(n).toBeGreaterThan(0);
     // la X, Esc o el clic en el fondo: cerrarMenu devuelve el foco al «+» que lo abrió
     const casos: [A, string][] = [
@@ -1328,7 +1330,10 @@ describe('reductor · peticiones de foco', () => {
       ['quitarNodo de lo ultimo', conFlujo({ nodes: [ejemplo().nodes[0] as Nodo], edges: [], nombreFlujo: 'x' }), { k: 'quitarNodo', id: 't1' }, { k: 'primeraOpcionDisparador' }],
       ['limpiar', conEjemplo(), { k: 'limpiar' }, { k: 'primeraOpcionDisparador' }],
       ['cargarEjemplo', vacio(), { k: 'cargarEjemplo' }, { k: 'nodo', id: 'a1' }],
-      ['deshacer', sinDisparador, { k: 'deshacer' }, { k: 'nodo', id: 'a1' }],
+      // Deshacer lleva el foco al cuadro que volvió (el disparador), no al que estaba elegido
+      ['deshacer', sinDisparador, { k: 'deshacer' }, { k: 'nodo', id: 't1' }],
+      // quitar una herramienta o una IA que conversa: el foco va al agente del que colgaba (antes caía al primer cuadro del lienzo)
+      ['quitarNodo de una herramienta', conEjemplo(), { k: 'quitarNodo', id: 'p2' }, { k: 'nodo', id: 'a2' }],
       ['volverDeAjustes al cuadro', conEjemplo(), { k: 'volverDeAjustes' }, { k: 'nodo', id: 'a1' }],
     ];
     for (const [nombre, estado, accion, esperado] of casos) {
@@ -1629,9 +1634,14 @@ describe('reductor · recorridos al azar', () => {
           expect(despues.siguiente).toBeGreaterThanOrEqual(antes.siguiente);
           expect(despues.eventos).toBeGreaterThanOrEqual(antes.eventos);
           expect(despues.scrollAjustes).toBeGreaterThanOrEqual(antes.scrollAjustes);
-          // lo que no se guarda tira la pila: nunca queda una instantánea más vieja que un cambio sin guardar
+          // lo que no se guarda (mover, teclear, renombrar) NO tira la pila: la deja del mismo tamaño, con las mismas fotos, y el aviso sigue
+          // ofreciendo Deshacer si lo ofrecía
           if (accion.k === 'moverNodo' || accion.k === 'editarNodo' || accion.k === 'renombrarFlujo' || accion.k === 'moverConTeclado') {
-            if (despues.flujo !== antes.flujo) expect(despues.historial).toEqual([]);
+            if (despues.flujo !== antes.flujo) {
+              expect(despues.historial.length).toBe(antes.historial.length);
+              expect(despues.aviso?.conDeshacer).toBe(antes.aviso?.conDeshacer);
+              despues.historial.forEach((foto, i) => expect(foto.nodes).toBe(antes.historial[i]?.nodes));
+            }
           }
           // lo que sí se guarda crece de uno en uno (hasta 20) y Deshacer lo gasta de uno en uno
           if (despues.historial.length > antes.historial.length) {

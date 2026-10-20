@@ -12,13 +12,26 @@ import type { Frecuencia, Nodo, ParametrosN8n, ValorJson } from './tipos';
 export const esObjeto = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
- * El texto cortado a `max` unidades SIN dejar la mitad de un emoji: un sustituto alto al final (porque el corte cayó en
- * medio de un par, o porque el texto ya venía así) no es texto válido y en el archivo saldría como un `\ud83d` huérfano.
- * Es la ÚNICA función de recorte del motor (reductor, borrador y exportador). Un texto que cabe y está bien formado
- * se devuelve tal cual.
+ * Lo que NO es texto y no debe llegar a un nombre, a un aviso ni al archivo de n8n: los caracteres de control (los de C0 menos el
+ * tabulador y los saltos de línea, el borrado y los de C1: un NUL en un `name` del archivo lo rechaza la base de datos de n8n), los
+ * controles de dirección que invierten el resto de la línea (U+202A–202E y U+2066–2069: con U+202E un nombre volteaba el resto del aviso) y los sustitutos
+ * sueltos (un emoji partido por la mitad).
+ */
+// eslint-disable-next-line no-control-regex -- justo lo que se quiere quitar
+const NO_ES_TEXTO = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+/** El texto sin caracteres de control, de dirección ni sustitutos sueltos (ver arriba), sin cortarlo. */
+export const sinCaracteresRaros = (texto: string): string => texto.replace(NO_ES_TEXTO, '');
+
+/**
+ * El texto limpio (sin caracteres de control, de dirección ni sustitutos sueltos) y cortado a `max` unidades SIN dejar la mitad de un
+ * emoji: un sustituto alto al final (porque el corte cayó en medio de un par) no es texto válido y en el archivo saldría como un
+ * `\ud83d` huérfano. Lo que se quita no gasta el tope. Es la ÚNICA función de recorte del motor (reductor, borrador y exportador). Un
+ * texto que cabe y está bien formado se devuelve tal cual.
  */
 export function recortar(texto: string, max: number): string {
-  const t = texto.length > max ? texto.slice(0, max) : texto;
+  const limpio = sinCaracteresRaros(texto);
+  const t = limpio.length > max ? limpio.slice(0, max) : limpio;
   const ultimo = t.charCodeAt(t.length - 1);
   return ultimo >= 0xd800 && ultimo <= 0xdbff ? t.slice(0, -1) : t;
 }
