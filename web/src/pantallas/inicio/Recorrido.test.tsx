@@ -142,9 +142,9 @@ describe('el inicio · se aterriza en el mapa', () => {
     expect(tono(/^Central/)).toEqual(['border-linea', 'bg-superficie']);
   });
 
-  it('Producto, Ventas y Automatizaciones no abren nada: el mapa se queda como estaba', async () => {
+  it('Producto y Ventas no abren nada: el mapa se queda como estaba (Automatizaciones sí, desde el 20-oct-2026)', async () => {
     pintar();
-    for (const nombre of ['Producto', 'Ventas', 'Automatizaciones']) {
+    for (const nombre of ['Producto', 'Ventas']) {
       await userEvent.click(ficha(new RegExp(`^${nombre}`)));
       expect(h2('Elige un área')).toBeInTheDocument();
     }

@@ -71,8 +71,8 @@ describe('reducir · los pasos', () => {
     expect(e).toMatchObject({ paso: 'grupos', explora: 'central', area: 'mkt', grupo: 'distrito', elegido: false });
   });
 
-  it('Producto, Ventas y Automatizaciones están apagadas: elegirlas no cambia nada (el mismo objeto)', () => {
-    for (const clave of ['producto', 'ventas', 'automatizaciones']) {
+  it('Producto y Ventas están apagadas: elegirlas no cambia nada (el mismo objeto)', () => {
+    for (const clave of ['producto', 'ventas']) {
       expect(areaDe(clave)?.proximamente).toBe(true);
       expect(reducir(REPOSO, { tipo: 'elegir-area', area: clave })).toBe(REPOSO);
     }

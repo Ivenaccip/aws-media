@@ -170,7 +170,36 @@ export const MENU: readonly AreaMenu[] = [
   },
   { clave: 'producto', titulo: 'Producto', icono: 'producto', grupos: [], proximamente: true },
   { clave: 'ventas', titulo: 'Ventas', icono: 'ventas', grupos: [], proximamente: true },
-  { clave: 'automatizaciones', titulo: 'Automatizaciones', icono: 'rapido', grupos: [], proximamente: true },
+  {
+    clave: 'automatizaciones',
+    titulo: 'Automatizaciones',
+    icono: 'rapido',
+    grupos: [
+      {
+        clave: 'distrito',
+        titulo: 'Distrito',
+        icono: 'ubicacion',
+        pantallas: [
+          {
+            clave: 'constructor',
+            titulo: 'Constructor',
+            icono: 'flujo',
+            texto: 'Arma tu flujo cuadro por cuadro y descárgalo para n8n.',
+            href: '/estudio/constructor/',
+          },
+          {
+            clave: 'asistente',
+            titulo: 'Asistente',
+            icono: 'magia',
+            texto: 'Cuéntanos qué quieres automatizar y te armamos el flujo.',
+            href: '/estudio/asistente/',
+          },
+          { clave: 'actualizar', titulo: 'Actualizar flujos', icono: 'automatico', proximamente: true },
+        ],
+      },
+      { clave: 'tus', titulo: 'Tus automatizaciones', icono: 'biblioteca', pantallas: [] },
+    ],
+  },
 ];
 
 /** Donde se cae al abrir el inicio: la caja, en Video (la pestaña en la que arranca desde siempre: es lo que ya se usaba). */

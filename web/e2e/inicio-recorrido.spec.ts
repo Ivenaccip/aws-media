@@ -125,6 +125,7 @@ test('nada se ve elegido en el mapa: ninguna ficha lleva «Estás aquí» ni ari
   const tono = (area: string) => ficha(page, area).evaluate(b => ({ fondo: getComputedStyle(b).backgroundColor, borde: getComputedStyle(b).borderTopColor }));
   const marketing = await tono('Marketing');
   expect(marketing).toEqual(await tono('Central'));
+  expect(marketing).toEqual(await tono('Automatizaciones'));
   const apagada = await tono('Producto');
   expect(apagada.fondo, 'las apagadas se distinguen de las que se abren').not.toBe(marketing.fondo);
   // y después de haber estado en la caja de Marketing, el mapa tampoco la marca
@@ -357,10 +358,10 @@ for (const ancho of [1100, 600]) {
   });
 }
 
-test('Producto, Ventas y Automatizaciones son fichas inertes: se ven, se enfocan y no se abren', async ({ page }) => {
+test('Producto y Ventas son fichas inertes: se ven, se enfocan y no se abren', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
-  for (const area of ['Producto', 'Ventas', 'Automatizaciones']) {
+  for (const area of ['Producto', 'Ventas']) {
     const f = ficha(page, area);
     await expect(f).toHaveAttribute('aria-disabled', 'true');
     await expect(f).toContainText('Próximamente');
@@ -371,8 +372,72 @@ test('Producto, Ventas y Automatizaciones son fichas inertes: se ven, se enfocan
     await page.keyboard.press('Enter');
     await expect(paso(page), `${area}: se abrió con Enter`).toHaveText('Elige un área');
   }
-  for (const area of ['Marketing', 'Central']) await expect(ficha(page, area)).not.toHaveAttribute('aria-disabled', 'true');
+  for (const area of ['Marketing', 'Central', 'Automatizaciones']) {
+    await expect(ficha(page, area)).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(ficha(page, area)).not.toContainText('Próximamente');
+  }
   expect(rutaDe(page)).toBe(URL_DEL_INICIO);
+});
+
+// ---------------------------------------------------------------------------
+// Automatizaciones (20-oct-2026): el área se enciende con dos grupos
+
+test('Automatizaciones: Distrito trae Constructor y Asistente (enlaces) y «Actualizar flujos» («Próximamente», quieta); «Tus automatizaciones» dice que todavía no está disponible', async ({ page }) => {
+  await simular(page, { blotato: 'sin-conectar' });
+  await abrirInicio(page);
+  await ficha(page, 'Automatizaciones').click();
+  await expect(paso(page)).toHaveText('Elige un grupo');
+  await expect(region(page).getByRole('group', { name: 'Automatizaciones', exact: true }).getByRole('button')).toHaveText([/^Distrito/, /^Tus automatizaciones/]);
+  await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Constructor · Asistente · Actualizar flujos');
+  await expect(opcion(page, 'Automatizaciones', 'Tus automatizaciones')).toContainText('Próximamente');
+  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+
+  await opcion(page, 'Automatizaciones', 'Distrito').click();
+  await expect(paso(page)).toHaveText('Distrito');
+  await expect(migas(page).getByRole('button')).toHaveText(['Automatizaciones', 'Distrito']);
+  await expect(region(page).getByRole('link')).toHaveText([/^Constructor/, /^Asistente/]);
+  await expect(region(page).getByRole('link', { name: /^Constructor/ })).toHaveAttribute('href', '/estudio/constructor/');
+  await expect(region(page).getByRole('link', { name: /^Asistente/ })).toHaveAttribute('href', '/estudio/asistente/');
+  // no depende de Blotato: aun sin clave no se apaga nada ni hay botón de conectar
+  await expect(region(page).getByRole('link', { name: /Constructor/ })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(region(page).getByRole('button', { name: /Blotato/ })).toHaveCount(0);
+  const apagada = region(page).getByText('Actualizar flujos', { exact: true });
+  await expect(apagada).toBeVisible();
+  await apagada.click();
+  await expect(paso(page), '«Actualizar flujos» navegó').toHaveText('Distrito');
+  await expect(region(page).getByText('Próximamente')).toHaveCount(1);
+  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
+
+  // el otro grupo, sin pantallas
+  await migas(page).getByRole('button', { name: /^Volver a las opciones de Automatizaciones/ }).click();
+  await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Estás aquí');
+  await opcion(page, 'Automatizaciones', 'Tus automatizaciones').click();
+  await expect(paso(page)).toHaveText('Tus automatizaciones');
+  await expect(region(page).getByText('Todavía no está disponible.')).toBeVisible();
+  await expect(paso(page)).toBeFocused();
+  // Esc en el contenido no hace nada; las migas suben de nivel
+  await page.keyboard.press('Escape');
+  await expect(paso(page)).toHaveText('Tus automatizaciones');
+  await irAlMapa(page);
+  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+  // mirar Marketing no marca su «Distrito»: estás en el de Automatizaciones
+  await ficha(page, 'Marketing').click();
+  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+});
+
+test('Automatizaciones: Esc en sus opciones sube al mapa, y un doble clic en la ficha no elige un grupo por accidente', async ({ page }) => {
+  await simular(page);
+  await abrirInicio(page);
+  await ficha(page, 'Automatizaciones').click();
+  await expect(paso(page)).toHaveText('Elige un grupo');
+  await expect(paso(page)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(paso(page)).toHaveText('Elige un área');
+  await expect(paso(page)).toBeFocused();
+  // el segundo clic de un doble clic cae donde apareció una tarjeta (o en un hueco): no elige nada
+  await ficha(page, 'Automatizaciones').dblclick();
+  await expect(paso(page)).toHaveText('Elige un grupo');
+  await expect(region(page).getByRole('link')).toHaveCount(0);
 });
 
 test('un doble clic en una ficha del mapa abre las opciones y no elige un grupo por accidente', async ({ page }) => {
@@ -946,6 +1011,13 @@ for (const ancho of [390, 320]) {
       await auditar(page, 'Central › Distrito');
       await irA(page, 'Central', 'Deepseek');
       await auditar(page, 'Central › Deepseek');
+      await irA(page, 'Automatizaciones', 'Distrito');
+      await auditar(page, 'Automatizaciones › Distrito');
+      await irA(page, 'Automatizaciones', 'Tus automatizaciones');
+      await auditar(page, 'Automatizaciones › Tus automatizaciones');
+      await irAlMapa(page);
+      await ficha(page, 'Automatizaciones').click();
+      await auditar(page, 'las opciones de Automatizaciones');
       await irA(page, 'Marketing', 'Distrito');
       await auditar(page, 'la caja');
     });
@@ -962,6 +1034,8 @@ test('a 1100 px cada paso cumple lo mismo: sin desborde, lo tocable de 44 px y l
   await auditar(page, 'la lista de Blotato');
   await irA(page, 'Central', 'Distrito');
   await auditar(page, 'Central › Distrito');
+  await irA(page, 'Automatizaciones', 'Distrito');
+  await auditar(page, 'Automatizaciones › Distrito');
   await irA(page, 'Marketing', 'Distrito');
   await auditar(page, 'la caja');
 });
@@ -1030,6 +1104,39 @@ for (const hoja of HOJAS) {
     await expect(volverA(page, hoja.titulo)).toBeVisible();
   });
 }
+
+const HOJAS_DE_AUTOMATIZACIONES = [
+  { lugar: 'automatizaciones.distrito.constructor', titulo: 'Constructor', href: '/estudio/constructor/' },
+  { lugar: 'automatizaciones.distrito.asistente', titulo: 'Asistente', href: '/estudio/asistente/' },
+] as const;
+
+for (const hoja of HOJAS_DE_AUTOMATIZACIONES) {
+  test(`?desde=${hoja.lugar}: con ver=mapa abre «Elige un área» y «Volver a ${hoja.titulo}» es un enlace a ${hoja.href}; con ver=grupos, las opciones de Automatizaciones con «Estás aquí» en Distrito`, async ({ page }) => {
+    await simular(page);
+    await abrirInicio(page, `${URL_DEL_INICIO}?desde=${hoja.lugar}&ver=mapa`);
+    await expect(paso(page)).toHaveText('Elige un área');
+    await urlLimpia(page);
+    await expect(paso(page)).toBeFocused();
+    await expect(volverA(page, hoja.titulo)).toHaveAttribute('href', hoja.href);
+    await expect(algunVolver(page)).toHaveCount(1);
+    await abrirInicio(page, `${URL_DEL_INICIO}?desde=${hoja.lugar}&ver=grupos`);
+    await expect(paso(page)).toHaveText('Elige un grupo');
+    await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Estás aquí');
+    await expect(region(page).getByText('Estás aquí')).toHaveCount(1);
+    await expect(volverA(page, hoja.titulo)).toBeVisible();
+  });
+}
+
+test('?desde=automatizaciones.distrito.actualizar (una pantalla apagada) abre las opciones sin «Volver a …»; y un grupo vacío no es un origen válido', async ({ page }) => {
+  await simular(page);
+  await abrirInicio(page, `${URL_DEL_INICIO}?desde=automatizaciones.distrito.actualizar&ver=grupos`);
+  await expect(paso(page)).toHaveText('Elige un grupo');
+  await expect(algunVolver(page)).toHaveCount(0);
+  await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Estás aquí');
+  await abrirInicio(page, `${URL_DEL_INICIO}?desde=automatizaciones.tus.algo&ver=grupos`);
+  await expect(paso(page)).toHaveText('Elige un área');
+  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+});
 
 test('desde la agenda: «Volver a Agenda…» va centrado bajo el título, junto al lugar de las migas', async ({ page }) => {
   await simular(page);
