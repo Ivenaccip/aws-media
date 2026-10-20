@@ -17,6 +17,13 @@ export interface OpcionesAvisoRapido {
   segundos?: number;
   /** Lo que comparte clave se reemplaza. */
   clave?: string;
+  /** Un botón en el propio aviso (p. ej. «Deshacer»): al pulsarlo se quita el aviso y corre `al`. Lo soporta static/trabajos.js. */
+  accion?: AccionAvisoRapido;
+}
+
+export interface AccionAvisoRapido {
+  texto: string;
+  al: () => void;
 }
 
 /** Pone el aviso en el cuadro. false si el cuadro no existe en esta página. */

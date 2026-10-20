@@ -247,6 +247,9 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   `tests/test_web_tuberia.py`).
 - La Biblioteca de prompts (Ajustes 3) suma Copiar, Fijar (una chincheta), Llevar
   (una flecha contra una barra: «a la caja») e Investiga (una brújula).
+- Automatizaciones suma Flujo (dos cuadros unidos por un codo: el Constructor),
+  Chat, Web (un globo), App (cuatro cuadros), Enlace (dos eslabones), Un sentido
+  (una flecha), Ida y vuelta (dos flechas opuestas), Papelera y Código (el JSON).
 
 ## 7. Navegación
 
