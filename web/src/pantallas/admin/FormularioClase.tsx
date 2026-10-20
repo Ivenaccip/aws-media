@@ -7,9 +7,8 @@
 // MISMA clave y el servidor devuelve la misma clase en vez de crear otra. Los límites (largo del título y del resumen) los
 // dice el servidor en la lista; aquí solo se revisa lo mínimo (que haya número y título) y el servidor manda en lo demás: su
 // texto de error se enseña tal cual, junto al campo que corresponde.
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 
-import { ErrorApi } from '../../nucleo/api';
 import { Aviso } from '../../ui/Aviso';
 import { Boton } from '../../ui/Boton';
 import { Campo } from '../../ui/Campo';
@@ -19,6 +18,7 @@ import {
   CAMPO_DEL_ERROR,
   camposDe,
   claveNueva,
+  codigoDe,
   crearClase,
   cuerpoCambios,
   cuerpoNuevo,
@@ -39,9 +39,13 @@ export interface PropsFormularioClase {
   /** Salió bien: la clase como la devolvió el servidor. */
   alGuardar: (c: Clase) => void;
   alCancelar: () => void;
+  /** Dice si hay algo escrito que se perdería (distinto de lo que el formulario trajo). Se avisa al cambiar y al irse (`false`). */
+  alCambiarSucio?: (sucio: boolean) => void;
+  /** Se llena con el campo del número (el que recibe el foco al abrir): quien abre el formulario desde un diálogo lo usa para devolverle el foco. */
+  refNumero?: Ref<HTMLInputElement>;
 }
 
-export function FormularioClase({ limites, clase, alGuardar, alCancelar }: PropsFormularioClase) {
+export function FormularioClase({ limites, clase, alGuardar, alCancelar, alCambiarSucio, refNumero }: PropsFormularioClase) {
   const idTitulo = useId();
   const [campos, setCampos] = useState<Campos>(() => (clase ? camposDe(clase) : CAMPOS_VACIOS));
   const [errores, setErrores] = useState<ErroresCampos>({});
@@ -59,6 +63,15 @@ export function FormularioClase({ limites, clase, alGuardar, alCancelar }: Props
   useEffect(() => {
     numero.current?.focus();
   }, []);
+  useImperativeHandle(refNumero, () => numero.current as HTMLInputElement, []);
+
+  // lo escrito que se perdería si el formulario se cierra o se cambia por el de otra clase
+  const base = clase ? camposDe(clase) : CAMPOS_VACIOS;
+  const sucio = (Object.keys(base) as Array<keyof Campos>).some(k => campos[k] !== base[k]);
+  useEffect(() => {
+    alCambiarSucio?.(sucio);
+  }, [sucio, alCambiarSucio]);
+  useEffect(() => () => alCambiarSucio?.(false), [alCambiarSucio]);
 
   function poner(campo: keyof Campos, valor: string) {
     setCampos(c => ({ ...c, [campo]: valor }));
@@ -102,9 +115,8 @@ export function FormularioClase({ limites, clase, alGuardar, alCancelar }: Props
       alGuardar(guardada);
     } catch (e) {
       const texto = e instanceof Error ? e.message : String(e);
-      const codigo =
-        e instanceof ErrorApi && typeof e.detalle === 'object' && e.detalle !== null ? (e.detalle as { codigo?: unknown }).codigo : undefined;
-      const campo = typeof codigo === 'string' ? CAMPO_DEL_ERROR[codigo] : undefined;
+      const codigo = codigoDe(e);
+      const campo = codigo ? CAMPO_DEL_ERROR[codigo] : undefined;
       if (campo) {
         // el texto del servidor, tal cual, junto al campo que hay que corregir
         const e2: ErroresCampos = { [campo]: texto };

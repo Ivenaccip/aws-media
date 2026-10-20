@@ -53,4 +53,24 @@ describe('Interruptor', () => {
     expect(onClick).toHaveBeenCalledOnce();
     expect(alCambiar).not.toHaveBeenCalled();
   });
+
+  it('encendido NO es el ámbar del botón principal: lleva el tono de «elegido» (borde #a96716, fondo #2e2110) y la bolita en ámbar claro', () => {
+    const { sw } = pintar({ activo: true });
+    const pista = sw.firstElementChild!;
+    expect(pista).toHaveClass('border-ambar-hondo', 'bg-aviso-fondo');
+    expect(pista).not.toHaveClass('bg-ambar');
+    expect(pista).not.toHaveClass('border-ambar');
+    const bolita = pista.firstElementChild!;
+    expect(bolita).toHaveClass('bg-ambar-claro', 'translate-x-[18px]');
+    expect(bolita).not.toHaveClass('bg-ambar');
+    // ni el sw ni nada de adentro usa el fondo exacto del botón principal
+    expect([sw, ...sw.querySelectorAll('*')].filter(e => e.classList.contains('bg-ambar'))).toEqual([]);
+  });
+
+  it('apagado se queda en gris y la bolita, a la izquierda', () => {
+    const { sw } = pintar({ activo: false });
+    const pista = sw.firstElementChild!;
+    expect(pista).toHaveClass('border-campo', 'bg-elevada');
+    expect(pista.firstElementChild).toHaveClass('bg-secundario', 'translate-x-0');
+  });
 });

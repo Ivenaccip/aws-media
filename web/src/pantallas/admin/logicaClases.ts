@@ -5,7 +5,7 @@
 // Los LÍMITES (extensiones, tamaño, largo del título…) los dice el servidor en cada lista: la web no los inventa. La subida
 // NO usa /api/media/presign (reserva nombres de proyecto del editor y metería la clase en «Mis creaciones»): el servidor
 // elige la clave del video (clases/<id>/video.<ext>) y aquí nunca se ve.
-import { pedir } from '../../nucleo/api';
+import { ErrorApi, pedir } from '../../nucleo/api';
 import { mb } from '../../nucleo/subida';
 
 export type OrigenClase = 'archivo' | 'liga';
@@ -60,6 +60,8 @@ export interface Subida {
   url: string;
   content_type: string;
   expira_s: number;
+  /** Identifica ESTA subida (32 hex, lo genera el servidor): confirmar y cancelar lo devuelven para que una subida vieja no toque la nueva. */
+  token?: string;
 }
 
 const BASE = '/api/admin/clases';
@@ -98,14 +100,38 @@ export const pedirSubida = (id: string, archivo: File) =>
     cuerpo: { archivo: archivo.name, content_type: archivo.type || 'video/mp4', bytes: archivo.size },
   });
 
-export const confirmarSubida = (id: string, nombre: string) =>
-  pedir<{ clase: Clase }>(ruta(id, '/confirmar'), { cuerpo: { nombre } }).then(r => r.clase);
+/** `token`: el de la subida que se confirma. Sin él (una subida que quedó a medias y de la que aquí no se sabe nada) el servidor confirma como siempre. */
+export const confirmarSubida = (id: string, nombre?: string, token?: string) =>
+  pedir<{ clase: Clase }>(ruta(id, '/confirmar'), { cuerpo: { ...(nombre ? { nombre } : {}), ...(token ? { token } : {}) } }).then(r => r.clase);
 
 export const medirClase = (id: string) =>
   pedir<{ clase: Clase }>(ruta(id, '/medir'), { metodo: 'POST' }).then(r => r.clase);
 
-export const cancelarSubida = (id: string) =>
-  pedir<{ clase: Clase }>(ruta(id, '/cancelar'), { metodo: 'POST' }).then(r => r.clase);
+/** `token`: el de la subida propia. Una subida que quedó a medias (se cerró la pestaña) no lo conoce y se cancela sin él: el servidor lo acepta. */
+export const cancelarSubida = (id: string, token?: string) =>
+  pedir<{ clase: Clase }>(ruta(id, '/cancelar'), token ? { cuerpo: { token } } : { metodo: 'POST' }).then(r => r.clase);
+
+// ---------------------------------------------------------------------------
+// Por qué falló una llamada
+
+/** El `codigo` del error del servidor (`{codigo, texto}`), si lo trae. */
+export function codigoDe(e: unknown): string | undefined {
+  if (!(e instanceof ErrorApi) || typeof e.detalle !== 'object' || e.detalle === null) return undefined;
+  const codigo = (e.detalle as { codigo?: unknown }).codigo;
+  return typeof codigo === 'string' ? codigo : undefined;
+}
+
+/** Confirmar dice que el video que llegó NO sirve: reintentar no lo arregla, hay que soltar la subida y subir otro. Todo lo demás
+ *  (red, 5xx, `s3_fallo`, una base dormida) es pasajero: el video ya está en la nube y basta con volver a confirmar. */
+const RECHAZOS_DE_CONFIRMAR = new Set(['archivo_no_esta', 'video_vacio', 'tamano_invalido', 'tipo_no_soportado']);
+
+export const esRechazoDefinitivo = (e: unknown) => RECHAZOS_DE_CONFIRMAR.has(codigoDe(e) ?? '');
+
+/** 409: esta subida ya no es la vigente (se empezó otra o se canceló). El servidor no tocó nada. */
+export const esSubidaCambio = (e: unknown) => codigoDe(e) === 'subida_cambio';
+
+/** Una respuesta que no dice si el servidor llegó a cambiar algo: sin red o un 5xx. */
+export const esFalloAmbiguo = (e: unknown) => e instanceof ErrorApi && (e.estado === 0 || e.estado >= 500);
 
 /** La vista previa del dueño: una URL firmada que caduca. No se guarda en ningún lado ni se muestra como texto. */
 export const urlDeVideo = (id: string) => pedir<{ url: string; expira_s: number }>(ruta(id, '/video'));

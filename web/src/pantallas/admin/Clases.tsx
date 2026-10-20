@@ -2,7 +2,8 @@
 // nada: crear, listar y editar clases; subir el video a S3 con una URL firmada, confirmar que llegó y medir cuánto dura;
 // cancelar; la vista previa; archivar (borrado suave: no se borra nada) y restaurar. No llama a ningún proveedor de pago.
 //
-// La pestaña vive en un <Tabs> de Radix que desmonta lo que no se ve: este componente pide su lista cuando se abre, no antes.
+// La pestaña vive en un <Tabs> de Radix: pide su lista cuando se abre por primera vez, no antes, y desde entonces se queda montada
+// (oculta) al cambiar de vista —`conservar` en Admin—: así la subida en curso, los avisos y el formulario a medias no se pierden.
 // Un solo botón ámbar a la vez: «Nueva clase»; con el formulario abierto, el ámbar es «Guardar clase» y «Nueva clase» se esconde.
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
@@ -36,10 +37,13 @@ type Formulario = { modo: 'nueva' } | { modo: 'editar'; id: string };
 const ID_NUEVA = 'clases-nueva';
 const ID_TITULO = 'clases-titulo';
 
-function mensajeDe(e: unknown): string {
+function mensajeDe(e: unknown, respaldo = 'No se pudo cargar — recarga la página.'): string {
   if (e instanceof ErrorApi) return e.message;
-  return 'No se pudo cargar — recarga la página.';
+  return respaldo;
 }
+
+/** El mismo mapa sin la llave `id` (los avisos por tarjeta se van uno por uno). */
+const sinLlave = (m: Record<string, string>, id: string) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== id));
 
 export function Clases() {
   const idArchivadas = useId();
@@ -51,8 +55,14 @@ export function Clases() {
   const [pedirArchivadas, setPedirArchivadas] = useState(0);
   const [paraArchivar, setParaArchivar] = useState<Clase | null>(null);
   const [restaurando, setRestaurando] = useState<string | null>(null);
-  const [fallo, setFallo] = useState<string | null>(null);
+  // por qué falló archivar o restaurar, en la tarjeta que se tocó (una alerta arriba de toda la lista quedaba fuera de la pantalla)
+  const [fallos, setFallos] = useState<Record<string, string>>({});
   const [anuncio, setAnuncio] = useState('');
+  // «Editar» sobre un formulario con cambios sin guardar: la clase que se quiere editar, esperando el sí de la persona
+  const [paraEditar, setParaEditar] = useState<Clase | null>(null);
+  const sucio = useRef(false);
+  const refNumero = useRef<HTMLInputElement>(null);
+  const refrescando = useRef<AbortController | null>(null);
   // a dónde va el foco tras el próximo pintado (un id del DOM): nunca se queda en <body> al cerrar el formulario o el diálogo
   const foco = useRef<string | null>(null);
   const refTitulo = useRef<HTMLHeadingElement>(null);
@@ -70,6 +80,21 @@ export function Clases() {
     );
     return () => c.abort();
   }, [intento]);
+
+  // volver a pedir la lista SIN pasar por «Cargando…» ni perderla si falla: una respuesta no dejó claro cómo quedó una clase en el
+  // servidor (sin internet, una subida que ya no es la vigente…) y la tarjeta tiene que decir lo que el servidor tiene
+  const refrescar = useCallback(() => {
+    refrescando.current?.abort();
+    const c = new AbortController();
+    refrescando.current = c;
+    cargarClases(false, c.signal).then(
+      l => setCarga({ tipo: 'listo', clases: ordenar(l.clases.filter(x => !estaArchivada(x))), limites: l.limites }),
+      () => {
+        /* sin lista nueva se queda la que había */
+      },
+    );
+  }, []);
+  useEffect(() => () => refrescando.current?.abort(), []);
 
   // las archivadas solo se piden cuando se prenden (o al archivar con ellas a la vista)
   useEffect(() => {
@@ -128,7 +153,7 @@ export function Clases() {
   async function archivar(c: Clase) {
     if (trabajando.current) return;
     trabajando.current = true;
-    setFallo(null);
+    setFallos(f => sinLlave(f, c.id));
     try {
       await archivarClase(c.id);
       setCarga(prev => (prev.tipo === 'listo' ? { ...prev, clases: prev.clases.filter(x => x.id !== c.id) } : prev));
@@ -138,7 +163,7 @@ export function Clases() {
       setAnuncio(`Clase ${c.numero} archivada. No se borró nada: puedes restaurarla.`);
       foco.current = ID_TITULO;
     } catch (e) {
-      setFallo(mensajeDe(e));
+      setFallos(f => ({ ...f, [c.id]: mensajeDe(e, 'No se pudo archivar la clase. Inténtalo otra vez.') }));
     } finally {
       trabajando.current = false;
     }
@@ -147,7 +172,7 @@ export function Clases() {
   async function restaurar(c: Clase) {
     if (trabajando.current) return;
     trabajando.current = true;
-    setFallo(null);
+    setFallos(f => sinLlave(f, c.id));
     setRestaurando(c.id);
     try {
       const vuelta = await restaurarClase(c.id);
@@ -156,15 +181,30 @@ export function Clases() {
       setAnuncio(`Clase ${c.numero} restaurada.`);
       foco.current = idTituloDe(vuelta);
     } catch (e) {
-      setFallo(mensajeDe(e));
+      setFallos(f => ({ ...f, [c.id]: mensajeDe(e, 'No se pudo restaurar la clase. Inténtalo otra vez.') }));
     } finally {
       trabajando.current = false;
       setRestaurando(null);
     }
   }
 
+  const marcarSucio = useCallback((si: boolean) => {
+    sucio.current = si;
+  }, []);
+
+  /** «Editar» de una tarjeta. Con otro formulario abierto y cambios sin guardar, primero se pregunta: cambiar de formulario los tira. */
+  function pedirEditar(c: Clase) {
+    if (formulario?.modo === 'editar' && formulario.id === c.id) return;
+    if (formulario && sucio.current) {
+      setParaEditar(c);
+      return;
+    }
+    setFormulario({ modo: 'editar', id: c.id });
+  }
+
   const listo = carga.tipo === 'listo' ? carga : null;
   const aEditar = formulario?.modo === 'editar' && listo ? (listo.clases.find(c => c.id === formulario.id) ?? null) : null;
+  const enElFormulario = aEditar ? `Editar la clase ${aEditar.numero}` : 'Nueva clase';
   const vivas = new Set(listo?.clases.map(c => c.id));
   // lo archivado es lo que `?archivadas=1` trae y la lista de las vivas no tiene (sirve igual si trae solo archivadas o todas);
   // en el orden del servidor: la archivada más reciente primero
@@ -210,13 +250,9 @@ export function Clases() {
               clase={aEditar}
               alGuardar={alGuardar}
               alCancelar={() => cerrarFormulario(aEditar ? idEditarDe(aEditar) : ID_NUEVA)}
+              alCambiarSucio={marcarSucio}
+              refNumero={refNumero}
             />
-          )}
-
-          {fallo && (
-            <div className="mb-4">
-              <Aviso tipo="error">{fallo}</Aviso>
-            </div>
           )}
 
           {listo.clases.length === 0 ? (
@@ -235,8 +271,10 @@ export function Clases() {
                     clase={c}
                     limites={listo.limites}
                     alClase={reemplazar}
-                    alEditar={() => setFormulario({ modo: 'editar', id: c.id })}
+                    alRecargar={refrescar}
+                    alEditar={() => pedirEditar(c)}
                     alArchivar={() => setParaArchivar(c)}
+                    aviso={fallos[c.id] ?? null}
                   />
                 </li>
               ))}
@@ -267,7 +305,12 @@ export function Clases() {
                   <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-label="Clases archivadas">
                     {archivadasAMostrar.map(c => (
                       <li key={c.id}>
-                        <TarjetaArchivada clase={c} restaurando={restaurando === c.id} alRestaurar={() => void restaurar(c)} />
+                        <TarjetaArchivada
+                          clase={c}
+                          restaurando={restaurando === c.id}
+                          alRestaurar={() => void restaurar(c)}
+                          aviso={fallos[c.id] ?? null}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -288,6 +331,22 @@ export function Clases() {
         alConfirmar={() => {
           const c = paraArchivar;
           if (c) void archivar(c);
+        }}
+      />
+
+      <Confirmar
+        abierto={paraEditar !== null}
+        alCambiar={a => !a && setParaEditar(null)}
+        titulo="¿Dejar lo que estás escribiendo?"
+        descripcion={`Tienes cambios sin guardar en «${enElFormulario}». Si sigues, se pierden.`}
+        confirmar={`Editar la clase ${paraEditar?.numero ?? ''}`}
+        cancelar="Seguir escribiendo"
+        peligro
+        focoAlCerrar={refNumero}
+        focoDeRespaldo={refTitulo}
+        alConfirmar={() => {
+          const c = paraEditar;
+          if (c) setFormulario({ modo: 'editar', id: c.id });
         }}
       />
 

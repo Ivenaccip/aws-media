@@ -78,6 +78,8 @@ const clase = (sobre: Partial<ClaseSim> = {}): ClaseSim => ({
   ...sobre,
 });
 
+const SUBIDA_SIN_MEDIR = clase({ id: 'cl-cc33dd44', numero: 3, titulo: 'Un video sin medir', estado: 'subido', bytes: 1_400_000_000, duracion_s: null, nombre_original: 'clase3.mp4' });
+
 const SUBIDA = clase({ id: 'cl-aa11bb22', numero: 2, titulo: 'Cómo hablarle a la IA', estado: 'subido', bytes: 1_400_000_000, duracion_s: 3720.4, nombre_original: 'clase2.mp4', grabada_en: '2026-02-10' });
 
 interface Sim {
@@ -89,10 +91,20 @@ interface Sim {
   /** Cuánto tarda el PUT a «S3» (ms). */
   subidaMs: number;
   clasesPedidas: number;
+  /** El token de la subida vigente de cada clase (lo da /subida; confirmar y cancelar lo traen de vuelta). */
+  tokens: Map<string, string>;
+  /** Cuántas veces más responde 502 `s3_fallo` a «confirmar» (un fallo pasajero). */
+  confirmarFalla: number;
+  /** Los ids de clase cuyo DELETE o cuyo restaurar responden con error. */
+  archivarFalla: Set<string>;
+  restaurarFalla: Set<string>;
 }
 
 
-async function simular(page: Page, o: { vivas?: ClaseSim[]; archivadas?: ClaseSim[]; subidaMs?: number } = {}): Promise<Sim> {
+async function simular(
+  page: Page,
+  o: { vivas?: ClaseSim[]; archivadas?: ClaseSim[]; subidaMs?: number; confirmarFalla?: number; archivarFalla?: string[]; restaurarFalla?: string[] } = {},
+): Promise<Sim> {
   const sim: Sim = {
     vivas: new Map((o.vivas ?? []).map(c => [c.id, c])),
     archivadas: new Map((o.archivadas ?? []).map(c => [c.id, c])),
@@ -100,8 +112,13 @@ async function simular(page: Page, o: { vivas?: ClaseSim[]; archivadas?: ClaseSi
     cuerpos: [],
     subidaMs: o.subidaMs ?? 900,
     clasesPedidas: 0,
+    tokens: new Map(),
+    confirmarFalla: o.confirmarFalla ?? 0,
+    archivarFalla: new Set(o.archivarFalla ?? []),
+    restaurarFalla: new Set(o.restaurarFalla ?? []),
   };
   let n = 0;
+  let nToken = 0;
   await page.route('**/api/admin/resumen', r => r.fulfill({ json: RESUMEN }));
   await page.route(/\/api\/admin\/clases(\/|\?|$)/, async route => {
     const req = route.request();
@@ -140,19 +157,35 @@ async function simular(page: Page, o: { vivas?: ClaseSim[]; archivadas?: ClaseSi
     };
     if (metodo === 'PATCH') return json({ clase: poner(cuerpo as Partial<ClaseSim>) });
     if (metodo === 'DELETE') {
+      if (sim.archivarFalla.has(id)) return falla(503, 'no_disponible', 'No pudimos archivar la clase ahora. Inténtalo en un momento.');
       sim.archivadas.set(id, { ...actual, archivada_en: '2026-10-20T10:00:00Z' });
       sim.vivas.delete(id);
       return json({ ok: true });
     }
     if (accion === 'subida') {
       poner({ estado: 'subiendo' });
-      return json({ url: `/s3-falso/subida?clase=${id}`, content_type: cuerpo?.content_type, expira_s: 900 });
+      const token = (++nToken).toString(16).padStart(32, 'c');
+      sim.tokens.set(id, token);
+      return json({ url: `/s3-falso/subida?clase=${id}`, content_type: cuerpo?.content_type, expira_s: 900, token });
     }
-    if (accion === 'confirmar') return json({ clase: poner({ estado: 'subido', bytes: 1_400_000_000, nombre_original: String(cuerpo?.nombre) }) });
+    // como el servidor de verdad: solo se confirma o se cancela desde «subiendo», y un token que no es el vigente no toca nada
+    if (accion === 'confirmar' || accion === 'cancelar') {
+      if (actual.estado !== 'subiendo') return falla(409, 'estado_no_permite', 'Eso no se puede hacer con la clase tal como está ahora.');
+      if (cuerpo?.token !== undefined && cuerpo.token !== sim.tokens.get(id)) {
+        return falla(409, 'subida_cambio', 'Esa subida ya no es la vigente: se empezó otra o se canceló. No se cambió nada.');
+      }
+      if (accion === 'confirmar' && sim.confirmarFalla > 0) {
+        sim.confirmarFalla -= 1;
+        return falla(502, 's3_fallo', 'No pudimos hablar con S3 ahora. Inténtalo de nuevo en unos minutos.');
+      }
+      sim.tokens.delete(id);
+      if (accion === 'cancelar') return json({ clase: poner({ estado: 'borrador' }) });
+      return json({ clase: poner({ estado: 'subido', bytes: 1_400_000_000, nombre_original: cuerpo?.nombre ? String(cuerpo.nombre) : null }) });
+    }
     if (accion === 'medir') return json({ clase: poner({ duracion_s: 3720.4 }) });
-    if (accion === 'cancelar') return json({ clase: poner({ estado: 'borrador' }) });
     if (accion === 'video') return json({ url: `/s3-falso/video.mp4?clase=${id}`, expira_s: 7200 });
     if (accion === 'restaurar') {
+      if (sim.restaurarFalla.has(id)) return falla(409, 'numero_repetido', `Ya hay una clase ${actual.numero}. Cámbiale el número a una de las dos.`);
       const vuelta = { ...actual, archivada_en: null };
       sim.archivadas.delete(id);
       sim.vivas.set(id, vuelta);
@@ -253,8 +286,24 @@ async function revisar(page: Page, nombre: string, opciones: { foco?: boolean } 
   if (CAPTURAS) await page.screenshot({ path: `${CAPTURAS}/admin-clases-${nombre}-${m.vw}.png`, fullPage: true });
 }
 
+// lo que se ve ámbar de botón: los botones con el fondo del principal Y los interruptores, cuya pista o bolita también pueden pintarse
+// con él (encendido NO debe: DISENO.md §5)
 const ambares = (page: Page) =>
-  page.locator('button').evaluateAll(bs => bs.filter(b => getComputedStyle(b).backgroundColor === 'rgb(218, 140, 40)').map(b => b.textContent));
+  page.locator('button').evaluateAll(bs => {
+    const AMBAR = 'rgb(218, 140, 40)';
+    const esAmbar = (e: Element) => getComputedStyle(e).backgroundColor === AMBAR;
+    return bs
+      .filter(b => esAmbar(b) || (b.getAttribute('role') === 'switch' && [...b.querySelectorAll('*')].some(esAmbar)))
+      .map(b => b.textContent || b.getAttribute('role'));
+  });
+
+/** Lo que tiene el foco ahora, para el mensaje de la prueba: «H3: Clase 5 · …», «BODY». */
+const dondeEstaElFoco = (page: Page) =>
+  page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body) return 'BODY';
+    return `${a.tagName}: ${(a.getAttribute('aria-label') ?? a.textContent ?? '').trim().slice(0, 40)}`;
+  });
 
 async function abrirPestana(page: Page) {
   await page.goto('/estudio/admin/');
@@ -265,6 +314,14 @@ async function abrirPestana(page: Page) {
 }
 
 const VIDEO = { name: 'clase5.mp4', mimeType: 'video/mp4', buffer: Buffer.from('no es un video de verdad: el PUT es de mentira') };
+
+/** Elige el video como lo haría quien usa el teclado: primero llega con Tab al selector (el foco queda ahí) y luego elige. `setInputFiles`
+ *  no mueve el foco por sí solo, así que sin esto la prueba no vería lo que pasa cuando el selector, con el foco, desaparece. */
+async function elegirConTeclado(page: Page, n: number, archivo: typeof VIDEO | { name: string; mimeType: string; buffer: Buffer }) {
+  const selector = page.getByLabel(`Subir video de la clase ${n}`);
+  await selector.focus();
+  await selector.setInputFiles(archivo);
+}
 const tarjeta = (page: Page, n: number) => page.getByRole('article', { name: new RegExp(`^Clase ${n} ·`) });
 
 // 1100 (escritorio), 390 (celular) y 320 (el celular más angosto que se mide en el repo)
@@ -294,7 +351,6 @@ for (const [ancho, alto] of [
       // un solo ámbar. El botón pasa de apagado a ámbar con una transición de 120 ms: se espera a que llegue al color final
       await expect(page.getByRole('button', { name: 'Nueva clase' })).toHaveCSS('background-color', 'rgb(218, 140, 40)');
       expect(await ambares(page)).toEqual(['Nueva clase']);
-      await page.getByRole('tab', { name: '4 · Clases' }).focus();
       await revisar(page, 'reposo');
     });
 
@@ -304,7 +360,6 @@ for (const [ancho, alto] of [
       await expect(page.getByText('Todavía no hay clases')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Nueva clase' })).toHaveCount(1);
       expect(await ambares(page)).toEqual(['Nueva clase']);
-      await page.getByRole('button', { name: 'Nueva clase' }).focus();
       await revisar(page, 'vacia');
     });
 
@@ -361,14 +416,15 @@ for (const [ancho, alto] of [
     test('subir: permiso → PUT con progreso → confirmar → medir, y «Listo: 1 h 02 min · 1.4 GB»', async ({ page }) => {
       const sim = await simular(page, { vivas: [clase()], subidaMs: 1500 });
       await abrirPestana(page);
-      await page.getByLabel('Subir video de la clase 5').setInputFiles(VIDEO);
+      await elegirConTeclado(page, 5, VIDEO);
       const t = tarjeta(page, 5);
       await expect(t.getByRole('progressbar')).toBeVisible();
       await expect(t.getByText(/^Subiendo… \d+ %$/)).toBeVisible();
       await expect(t.getByText('Subiendo', { exact: true })).toBeVisible(); // el chip
       await expect(t.getByRole('button', { name: 'Cancelar' })).toBeVisible();
       expect(await ambares(page)).toEqual(['Nueva clase']);
-      await t.getByRole('button', { name: 'Cancelar' }).focus();
+      // el selector tenía el foco y desapareció al empezar: el foco se fue al título de la tarjeta, no al body
+      await expect(t.getByRole('heading', { level: 3 })).toBeFocused();
       await revisar(page, 'subiendo');
       await expect(t.getByText('Listo: 1 h 02 min · 1.4 GB')).toBeVisible();
       expect(sim.pedidos.filter(p => p.startsWith('POST'))).toEqual([
@@ -378,31 +434,34 @@ for (const [ancho, alto] of [
       ]);
       await expect(t.getByText('Archivo: clase5.mp4')).toBeVisible();
       await expect(t.getByText('Subido', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Ver video de la clase 5' }).focus();
+      // terminó y el foco no se perdió por el camino
+      await expect(t.getByRole('heading', { level: 3 })).toBeFocused();
       await revisar(page, 'subido');
     });
 
     test('cancelar la subida corta el PUT, no confirma y deja elegir otro video', async ({ page }) => {
       const sim = await simular(page, { vivas: [clase()], subidaMs: 4000 });
       await abrirPestana(page);
-      await page.getByLabel('Subir video de la clase 5').setInputFiles(VIDEO);
+      await elegirConTeclado(page, 5, VIDEO);
       const t = tarjeta(page, 5);
       await t.getByRole('button', { name: 'Cancelar' }).click();
       await expect(t.getByText('Subida cancelada. Puedes elegir el video otra vez.')).toBeVisible();
       await expect(t.getByText('Borrador')).toBeVisible();
       await expect(page.getByLabel('Subir video de la clase 5')).toBeAttached();
       expect(sim.pedidos.filter(p => p.startsWith('POST'))).toEqual(['POST /api/admin/clases/cl-3f9a21bc/subida', 'POST /api/admin/clases/cl-3f9a21bc/cancelar']);
-      await page.getByRole('button', { name: 'Editar la clase 5' }).focus();
+      // «Cancelar» (con el foco, por el clic) desapareció: el foco quedó en el título de la tarjeta
+      await expect(t.getByRole('heading', { level: 3 })).toBeFocused();
       await revisar(page, 'subida-cancelada');
     });
 
     test('un archivo que no es video no pide permiso y lo dice', async ({ page }) => {
       const sim = await simular(page, { vivas: [clase()] });
       await abrirPestana(page);
-      await page.getByLabel('Subir video de la clase 5').setInputFiles({ name: 'virus.exe', mimeType: 'application/x-msdownload', buffer: Buffer.from('MZ') });
+      await elegirConTeclado(page, 5, { name: 'virus.exe', mimeType: 'application/x-msdownload', buffer: Buffer.from('MZ') });
       await expect(page.getByRole('alert')).toContainText('Ese archivo no es de un tipo que se pueda subir. Elige un video .mp4, .mov, .m4v.');
       expect(sim.pedidos.filter(p => p.startsWith('POST'))).toEqual([]);
-      await page.getByRole('button', { name: 'Editar la clase 5' }).focus();
+      // nada se desmontó: el selector sigue ahí con el foco
+      await expect(page.getByLabel('Subir video de la clase 5')).toBeFocused();
       await revisar(page, 'archivo-no-valido');
     });
 
@@ -461,7 +520,13 @@ for (const [ancho, alto] of [
       const archivada = page.getByRole('article', { name: 'Clase 5 · Respuestas automáticas con tus datos' });
       await expect(archivada).toBeVisible();
       await expect(archivada.getByText('Archivada')).toBeVisible();
-      await page.getByRole('switch', { name: 'Ver clases archivadas' }).focus();
+      // con el interruptor ENCENDIDO sigue habiendo un solo ámbar: la pista no es del color del botón principal sino el tono de «elegido»
+      // (borde #a96716 sobre fondo #2e2110, DISENO.md §5). Se espera a que termine la transición de 120 ms antes de contar
+      const interruptor = page.getByRole('switch', { name: 'Ver clases archivadas' });
+      await expect(interruptor).toHaveAttribute('aria-checked', 'true');
+      await expect(interruptor.locator(':scope > span')).toHaveCSS('background-color', 'rgb(46, 33, 16)');
+      await expect(interruptor.locator(':scope > span')).toHaveCSS('border-top-color', 'rgb(169, 103, 22)');
+      expect(await ambares(page)).toEqual(['Nueva clase']);
       await revisar(page, 'archivadas');
       await archivada.getByRole('button', { name: 'Restaurar la clase 5' }).click();
       await expect(page.getByRole('heading', { level: 3, name: 'Clase 5 · Respuestas automáticas con tus datos' })).toBeFocused();
@@ -489,8 +554,135 @@ for (const [ancho, alto] of [
       await expect(page.getByText(/<img src=x onerror=alert\(1\)>/)).toBeVisible();
       await expect(page.locator('img, svg[onload]')).toHaveCount(0);
       await expect(page.getByRole('link', { name: /Abrir la liga de referencia/ })).toHaveAttribute('target', '_blank');
-      await page.getByRole('button', { name: 'Editar la clase 5' }).focus();
       await revisar(page, 'textos-largos');
+    });
+
+    test('el foco nunca cae al body: empezar, cancelar con el teclado, terminar y medir la duración', async ({ page }) => {
+      await simular(page, { vivas: [clase(), SUBIDA_SIN_MEDIR], subidaMs: 1200 });
+      await abrirPestana(page);
+      const t = tarjeta(page, 5);
+      const titulo = t.getByRole('heading', { level: 3 });
+      // empezar: el selector con el foco desaparece y el foco va al título de la tarjeta
+      await elegirConTeclado(page, 5, VIDEO);
+      await expect(titulo, `foco al empezar: ${await dondeEstaElFoco(page)}`).toBeFocused();
+      // cancelar con Enter: «Cancelar» tenía el foco y desaparece
+      await t.getByRole('button', { name: 'Cancelar' }).focus();
+      await page.keyboard.press('Enter');
+      await expect(t.getByText('Subida cancelada. Puedes elegir el video otra vez.')).toBeVisible();
+      expect(await dondeEstaElFoco(page), 'foco al cancelar').toMatch(/^H3/);
+      // terminar: la persona se fue a «Cancelar» con Tab y el PUT acaba; el botón se va y el foco se queda en la tarjeta
+      await elegirConTeclado(page, 5, VIDEO);
+      await t.getByRole('button', { name: 'Cancelar' }).focus();
+      await expect(t.getByText('Listo: 1 h 02 min · 1.4 GB')).toBeVisible();
+      expect(await dondeEstaElFoco(page), 'foco al terminar').toMatch(/^H3/);
+      // «Medir duración» con Enter: el botón se va al llenarse la duración
+      const sinMedir = tarjeta(page, 3);
+      await sinMedir.getByRole('button', { name: 'Medir duración de la clase 3' }).focus();
+      await page.keyboard.press('Enter');
+      await expect(sinMedir.getByText('Listo: 1 h 02 min · 1.4 GB')).toBeVisible();
+      expect(await dondeEstaElFoco(page), 'foco al medir').toMatch(/^H3/);
+      await revisar(page, 'foco-tras-medir');
+    });
+
+    test('confirmar falla un momento: el video no se tira, se puede reintentar sin subir otra vez y todo cabe', async ({ page }) => {
+      const sim = await simular(page, { vivas: [clase()], subidaMs: 500, confirmarFalla: 1 });
+      await abrirPestana(page);
+      await elegirConTeclado(page, 5, VIDEO);
+      const t = tarjeta(page, 5);
+      await expect(t.getByRole('alert')).toContainText('Tu video ya llegó a la nube, pero no pudimos confirmarlo.');
+      await expect(t.getByRole('alert')).toContainText('No pudimos hablar con S3 ahora.');
+      await expect(t.getByRole('button', { name: 'Reintentar la confirmación' })).toBeVisible();
+      await expect(t.getByRole('button', { name: 'Cancelar subida' })).toBeVisible();
+      await expect(t.getByText('Subiendo', { exact: true })).toBeVisible(); // el chip: la clase sigue «subiendo»
+      await expect(page.getByLabel('Subir video de la clase 5')).toHaveCount(0);
+      // NO se canceló nada
+      expect(sim.pedidos.filter(p => p.includes('/cancelar'))).toEqual([]);
+      expect(await ambares(page)).toEqual(['Nueva clase']);
+      await revisar(page, 'sin-confirmar');
+      await t.getByRole('button', { name: 'Reintentar la confirmación' }).click();
+      await expect(t.getByText('Listo: 1 h 02 min · 1.4 GB')).toBeVisible();
+      const confirmaciones = sim.cuerpos.filter(c => c.ruta.endsWith('/confirmar'));
+      expect(confirmaciones).toHaveLength(2);
+      expect(confirmaciones[1]!.cuerpo).toEqual(confirmaciones[0]!.cuerpo);
+      expect(confirmaciones[0]!.cuerpo!.token).toMatch(/^[0-9a-f]{32}$/);
+      expect(sim.pedidos.filter(p => p.endsWith('/subida'))).toHaveLength(1);
+      expect(await dondeEstaElFoco(page), 'foco al terminar').toMatch(/^H3/);
+    });
+
+    test('si falla archivar o restaurar, el aviso sale dentro de la tarjeta que se tocó y a la vista', async ({ page }) => {
+      const vivas = Array.from({ length: 8 }, (_, i) => clase({ id: `cl-v${i + 1}`, numero: i + 1, titulo: `Clase de prueba ${i + 1}` }));
+      await simular(page, {
+        vivas,
+        archivadas: [clase({ id: 'cl-viejo', numero: 20, titulo: 'Vieja' })],
+        archivarFalla: ['cl-v8'],
+        restaurarFalla: ['cl-viejo'],
+      });
+      await abrirPestana(page);
+      const octava = tarjeta(page, 8);
+      await octava.getByRole('button', { name: 'Archivar la clase 8' }).click();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Archivar' }).click();
+      const alerta = octava.getByRole('alert');
+      await expect(alerta).toContainText('No pudimos archivar la clase ahora.');
+      await expect(alerta).toBeInViewport();
+      await expect(page.getByRole('alert')).toHaveCount(1);
+      await revisar(page, 'archivar-fallo');
+      // restaurar con un número repetido: el aviso está en la tarjeta archivada, que queda a la vista
+      await page.getByRole('switch', { name: 'Ver clases archivadas' }).click();
+      const vieja = page.getByRole('article', { name: 'Clase 20 · Vieja' });
+      await vieja.getByRole('button', { name: 'Restaurar la clase 20' }).click();
+      await expect(vieja.getByRole('alert')).toContainText('Ya hay una clase 20. Cámbiale el número a una de las dos.');
+      await expect(vieja.getByRole('alert')).toBeInViewport();
+      // cada aviso vive en SU tarjeta: el de archivar sigue en la 8 (nadie lo quitó) y el de restaurar, en la archivada
+      await expect(page.getByRole('alert')).toHaveCount(2);
+      await expect(octava.getByRole('alert')).toHaveCount(1);
+      await revisar(page, 'restaurar-fallo');
+    });
+
+    test('«Editar» de otra clase con cambios sin guardar pregunta antes, y el foco no se pierde', async ({ page }) => {
+      const sim = await simular(page, { vivas: [clase(), clase({ id: 'cl-2', numero: 6, titulo: 'Seis' })] });
+      await abrirPestana(page);
+      await page.getByRole('button', { name: 'Nueva clase' }).click();
+      await page.getByLabel('Título').fill('Lo que estaba escribiendo');
+      await page.getByRole('button', { name: 'Editar la clase 6' }).click();
+      const dialogo = page.getByRole('alertdialog', { name: '¿Dejar lo que estás escribiendo?' });
+      await expect(dialogo).toBeVisible();
+      await expect(dialogo).toContainText('Tienes cambios sin guardar en «Nueva clase». Si sigues, se pierden.');
+      await expect(dialogo.getByRole('button', { name: 'Seguir escribiendo' })).toBeFocused();
+      await expect(dialogo.getByRole('button', { name: 'Editar la clase 6' })).not.toHaveCSS('background-color', 'rgb(218, 140, 40)');
+      await revisar(page, 'editar-pregunta');
+      // «Seguir escribiendo» no toca nada y devuelve el foco al formulario
+      await dialogo.getByRole('button', { name: 'Seguir escribiendo' }).click();
+      await expect(dialogo).toBeHidden();
+      await expect(page.getByLabel('Número de clase')).toBeFocused();
+      await expect(page.getByLabel('Título')).toHaveValue('Lo que estaba escribiendo');
+      // «Editar la clase 6» cambia de formulario y el foco va al primer campo del nuevo
+      await page.getByRole('button', { name: 'Editar la clase 6' }).click();
+      await dialogo.getByRole('button', { name: 'Editar la clase 6' }).click();
+      await expect(dialogo).toBeHidden();
+      await expect(page.getByRole('region', { name: 'Editar la clase 6' })).toBeVisible();
+      await expect(page.getByLabel('Título')).toHaveValue('Seis');
+      await expect(page.getByLabel('Número de clase')).toBeFocused();
+      expect(sim.pedidos.filter(p => p.startsWith('POST') || p.startsWith('PATCH'))).toEqual([]);
+      await revisar(page, 'editar-otra');
+    });
+
+    test('cambiar de pestaña del panel no pierde el formulario a medias ni la subida en curso', async ({ page }) => {
+      const sim = await simular(page, { vivas: [clase(), clase({ id: 'cl-2', numero: 6, titulo: 'Seis' })], subidaMs: 2500 });
+      await abrirPestana(page);
+      await page.getByRole('button', { name: 'Nueva clase' }).click();
+      await page.getByLabel('Título').fill('Borrador a medias');
+      await elegirConTeclado(page, 5, VIDEO);
+      await expect(tarjeta(page, 5).getByRole('progressbar')).toBeVisible();
+      await page.getByRole('tab', { name: '1 · Ingresos' }).click();
+      await expect(page.getByLabel('Título')).toBeHidden();
+      await page.getByRole('tab', { name: '4 · Clases' }).click();
+      // el formulario conserva lo escrito y la subida sigue contándose como suya (barra y «Cancelar», no «Cancelar subida»)
+      await expect(page.getByLabel('Título')).toHaveValue('Borrador a medias');
+      await expect(tarjeta(page, 5).getByRole('progressbar').or(tarjeta(page, 5).getByText(/^Listo: /))).toBeVisible();
+      await expect(tarjeta(page, 5).getByRole('button', { name: 'Cancelar subida' })).toHaveCount(0);
+      await expect(tarjeta(page, 5).getByText('Listo: 1 h 02 min · 1.4 GB')).toBeVisible();
+      expect(sim.clasesPedidas).toBe(1);
+      await revisar(page, 'tras-cambiar-de-pestana', { foco: false });
     });
 
     test('nada de la pantalla se guarda en el almacenamiento del navegador', async ({ page }) => {

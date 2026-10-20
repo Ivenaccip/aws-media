@@ -3,7 +3,7 @@
 //
 // Todo lo que viene del servidor (título, resumen, nombre del archivo, error, liga) se pinta como TEXTO: nada de HTML crudo.
 // La liga solo se vuelve enlace si es https; la URL firmada del video se usa para el <video> y no se enseña ni se guarda.
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from 'react';
 
 import { Aviso } from '../../ui/Aviso';
 import { Boton, claseBoton } from '../../ui/Boton';
@@ -21,6 +21,7 @@ import {
   type Clase,
   type LimitesClases,
 } from './logicaClases';
+import { useSalvarFoco } from './useSalvarFoco';
 import { useSubidaClase, type Progreso } from './useSubidaClase';
 
 const CARTA = 'rounded-grande border border-linea bg-superficie p-4 sm:p-6';
@@ -49,10 +50,10 @@ function Chip({ texto, tono }: { texto: string; tono: Tono }) {
 export const idTituloDe = (c: Clase) => `clase-${c.id}-titulo`;
 export const idEditarDe = (c: Clase) => `clase-${c.id}-editar`;
 
-function Encabezado({ clase, chip }: { clase: Clase; chip: ReactNode }) {
+function Encabezado({ clase, chip, refTitulo }: { clase: Clase; chip: ReactNode; refTitulo?: Ref<HTMLHeadingElement> }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-      <h3 id={idTituloDe(clase)} tabIndex={-1} className="m-0 min-w-0 flex-1 basis-48 text-md font-semibold [overflow-wrap:anywhere]">
+      <h3 ref={refTitulo} id={idTituloDe(clase)} tabIndex={-1} className="m-0 min-w-0 flex-1 basis-48 text-md font-semibold [overflow-wrap:anywhere]">
         Clase {clase.numero} · {clase.titulo}
       </h3>
       {chip}
@@ -125,16 +126,24 @@ export interface PropsTarjetaClase {
   limites: LimitesClases;
   /** Una respuesta del servidor con la clase al día. */
   alClase: (c: Clase) => void;
+  /** Volver a pedir la lista: una respuesta no dejó claro cómo quedó la clase en el servidor. */
+  alRecargar: () => void;
   alEditar: () => void;
   alArchivar: () => void;
+  /** Por qué falló archivar esta clase: se lee AQUÍ, junto al botón que se pulsó, y no arriba de toda la lista. */
+  aviso?: string | null;
 }
 
-export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: PropsTarjetaClase) {
+export function TarjetaClase({ clase, limites, alClase, alRecargar, alEditar, alArchivar, aviso }: PropsTarjetaClase) {
   const idEstado = useId();
-  const s = useSubidaClase(clase.id, limites, alClase);
+  const s = useSubidaClase(clase, limites, alClase, alRecargar);
   const [video, setVideo] = useState<Video>({ tipo: 'cerrado' });
   const pidiendoVideo = useRef(false);
   const reproductor = useRef<HTMLVideoElement>(null);
+  // el título no se desmonta nunca: ahí cae el foco si el control que lo tenía (el selector del video, «Cancelar», «Medir
+  // duración»…) desaparece porque la subida empezó, terminó o se canceló
+  const refTitulo = useRef<HTMLHeadingElement>(null);
+  const guardarFoco = useSalvarFoco(refTitulo);
 
   // al abrirse la vista previa, el foco se va al reproductor (sus controles son del navegador)
   const hayVideoListo = video.tipo === 'listo';
@@ -164,9 +173,11 @@ export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: 
   const hayVideo = tieneVideo(clase);
   const sinMedir = hayVideo && clase.duracion_s == null;
   const puedeSubir = clase.origen === 'archivo' && clase.estado === 'borrador' && !subiendo;
-  // el servidor la tiene «subiendo» y aquí no hay ninguna en curso: quedó a medias (se cerró la pestaña, se cortó la red…) o sigue
-  // corriendo desde otra vista del panel (cambiar de pestaña desmonta esta, pero el PUT no se detiene)
-  const subidaVieja = clase.estado === 'subiendo' && !subiendo;
+  // el servidor la tiene «subiendo» y aquí no hay ninguna en curso: quedó a medias (se cerró la pestaña, se cortó la red y no se
+  // pudo soltar…). Con el video ya en la nube y la confirmación pendiente (`s.sinConfirmar`) es otra cosa y tiene su aviso
+  const subidaVieja = clase.estado === 'subiendo' && !subiendo && !s.sinConfirmar;
+  // en cualquiera de los dos casos la clase está «subiendo» en el servidor y se puede confirmar o soltar
+  const subidaAbierta = subidaVieja || (s.sinConfirmar && !subiendo);
   const linea = lineaDelVideo(clase);
   const n = clase.numero;
 
@@ -174,6 +185,7 @@ export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: 
     <article aria-labelledby={idTituloDe(clase)} className={CARTA}>
       <Encabezado
         clase={clase}
+        refTitulo={refTitulo}
         chip={<Chip texto={subiendo ? 'Subiendo' : etiquetaEstado(clase)} tono={subiendo ? 'subiendo' : tonoDe(clase.estado)} />}
       />
       <Datos clase={clase} />
@@ -185,7 +197,9 @@ export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: 
       </p>
       {clase.error && <p className="m-0 mt-2 text-sm text-error [overflow-wrap:anywhere]">Falló: {clase.error}</p>}
       {subidaVieja && (
-        <p className="m-0 mt-2 text-sm text-secundario">Hay una subida en curso o que quedó a medias. Si no avanza, cancélala para empezar de nuevo.</p>
+        <p className="m-0 mt-2 text-sm text-secundario">
+          Hay una subida en curso o que quedó a medias. Si el video ya terminó de subir, confirma que llegó; si no avanza, cancélala para empezar de nuevo.
+        </p>
       )}
 
       {s.progreso && (
@@ -206,7 +220,7 @@ export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: 
             </div>
           )}
           {s.puedeCancelar && (
-            <Boton className="mt-3" onClick={s.cancelar}>
+            <Boton ref={guardarFoco} className="mt-3" onClick={s.cancelar}>
               Cancelar
             </Boton>
           )}
@@ -221,12 +235,18 @@ export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: 
           <Aviso tipo={s.nota.tipo === 'error' ? 'error' : 'aviso'}>{s.nota.texto}</Aviso>
         </div>
       )}
+      {aviso && (
+        <div className="mt-3">
+          <Aviso tipo="error">{aviso}</Aviso>
+        </div>
+      )}
 
       {!subiendo && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {puedeSubir && (
             <label className={unir(claseBoton('secundario'), 'has-focus-visible:outline-2 has-focus-visible:outline-offset-3 has-focus-visible:outline-ambar-claro')}>
               <input
+                ref={guardarFoco}
                 type="file"
                 accept={aceptar(limites)}
                 className="sr-only"
@@ -241,11 +261,19 @@ export function TarjetaClase({ clase, limites, alClase, alEditar, alArchivar }: 
               Subir video de la clase
             </label>
           )}
-          {subidaVieja && (
-            <Boton onClick={() => void s.soltarSubidaVieja()}>Cancelar subida</Boton>
+          {subidaAbierta && (
+            <Boton ref={guardarFoco} onClick={() => void s.reintentarConfirmacion()}>
+              Reintentar la confirmación
+            </Boton>
+          )}
+          {subidaAbierta && (
+            <Boton ref={guardarFoco} onClick={() => void s.soltarSubidaVieja()}>
+              Cancelar subida
+            </Boton>
           )}
           {sinMedir && (
-            <Boton onClick={() => void s.medirOtraVez()} aria-label={`Medir la duración de la clase ${n}`}>
+            // el nombre accesible repite el texto visible (WCAG 2.5.3): quien maneja con la voz dice «clic en Medir duración»
+            <Boton ref={guardarFoco} onClick={() => void s.medirOtraVez()} aria-label={`Medir duración de la clase ${n}`}>
               Medir duración
             </Boton>
           )}
@@ -295,15 +323,22 @@ export interface PropsTarjetaArchivada {
   alRestaurar: () => void;
   /** Mientras se restaura, el botón dice «Restaurando…» y no acepta otro clic. */
   restaurando: boolean;
+  /** Por qué falló restaurar esta clase: se lee AQUÍ, junto al botón, y no arriba de toda la lista. */
+  aviso?: string | null;
 }
 
-export function TarjetaArchivada({ clase, alRestaurar, restaurando }: PropsTarjetaArchivada) {
+export function TarjetaArchivada({ clase, alRestaurar, restaurando, aviso }: PropsTarjetaArchivada) {
   const linea = lineaDelVideo(clase);
   return (
     <article aria-labelledby={idTituloDe(clase)} className={CARTA}>
       <Encabezado clase={clase} chip={<Chip texto="Archivada" tono="neutro" />} />
       <Datos clase={clase} />
       {linea && <Linea>{linea}</Linea>}
+      {aviso && (
+        <div className="mt-3">
+          <Aviso tipo="error">{aviso}</Aviso>
+        </div>
+      )}
       <div className="mt-4">
         <Boton
           aria-label={`Restaurar la clase ${clase.numero}`}

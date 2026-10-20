@@ -235,7 +235,18 @@ def _min_de(seg: float, piso: int = 0) -> int:
 # ---------------------------------------------------------------------------
 # medir: ffprobe sobre la URL, con la rotación del teléfono aplicada
 
-def _medir(key: str, *, timeout: float = MEDIR_TIMEOUT_S) -> dict | None:
+# Lo que ffprobe recibe, ANTES de `-i`, cuando el archivo lo subió una persona y no lo fabricó el
+# servidor (las clases de la Guía). Sin esto ffprobe elige el lector por el CONTENIDO, y un «.mp4» que en
+# realidad es un MPD de DASH le haría pedir otras URLs (http, https, de la red interna) desde la Lambda.
+#   `-f mov,mp4`           le dice qué lector usar: el MPD ni se analiza. ES LO QUE FRENA A DASH (comprobado
+#                          con ffmpeg 6.1.1: la lista de protocolos sola NO frena las URLs que abre el
+#                          lector de DASH por su cuenta).
+#   `-protocol_whitelist`  la segunda capa: lo único que se abre es una URL https (nada de file:, http:,
+#                          ftp:…), también si algún día cambia el lector.
+FFPROBE_SEGURO: tuple[str, ...] = ("-protocol_whitelist", "https,tls,tcp,crypto", "-f", "mov,mp4")
+
+
+def _medir(key: str, *, timeout: float = MEDIR_TIMEOUT_S, seguro: bool = False) -> dict | None:
     """`{"duracion_s", "ancho", "alto", "audio"}` del archivo de `key`, o None.
 
     UN `ffprobe` sobre la URL firmada (lee el moov, no baja el archivo). El
@@ -248,7 +259,10 @@ def _medir(key: str, *, timeout: float = MEDIR_TIMEOUT_S) -> dict | None:
     vive en `usuarios/…`, que `url_media` sirve por el CDN, y en dev ffprobe no
     lograba leerlo por ahí («No pudimos leer «Quiero que este león…»»). Con la firmada
     un clip se mide igual que una subida. Cada fallo deja su razón en el log (sin la
-    firma): antes se perdía en silencio y no había por dónde empezar a buscar."""
+    firma): antes se perdía en silencio y no había por dónde empezar a buscar.
+
+    `seguro=True` (solo lo pide la Guía de clases, que mide el archivo que subió un admin) agrega
+    `FFPROBE_SEGURO` antes de `-i`: con el valor de fábrica el comando es EXACTAMENTE el de siempre."""
     url = media_sync.url_firmada(key)
     if not url:
         log.warning("medir %s: no hay bucket con que firmar la URL", key)
@@ -258,7 +272,7 @@ def _medir(key: str, *, timeout: float = MEDIR_TIMEOUT_S) -> dict | None:
             r = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries",
                  "stream=codec_type,width,height:stream_side_data=rotation:format=duration",
-                 "-of", "json", "-i", url],
+                 "-of", "json", *(FFPROBE_SEGURO if seguro else ()), "-i", url],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=timeout)
             if r.returncode == 0:

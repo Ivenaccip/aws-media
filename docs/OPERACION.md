@@ -1826,17 +1826,21 @@ fechas se devuelven como números o `::text` y se formatean en Python).
 
 ## Guía de clases · admin (S1)
 
-Primera rebanada de la Guía de clases (diseño en `DISENO-GUIA.md`, sección 9): el dueño crea las clases y
+Primera rebanada de la Guía de clases (diseño en `docs/DISENO-GUIA.md`, sección 9; el resto de la guía es plan): el dueño crea las clases y
 sube el video de cada una desde `/estudio/admin/` (pestaña «4 · Clases»). **No gasta dinero**: ninguna ruta
 de aquí llama a AssemblyAI, Gemini ni OpenAI, y el servidor no escribe en S3 (el video lo sube el navegador
 con una URL firmada). Código: `server/clases_admin_api.py`, `pipeline/clases.py` (límites y validación) y
 `db.clases_*` en `pipeline/db.py`.
 
-### Antes de desplegar: la migración es OBLIGATORIA en cada entorno
+### Guía de clases: la migración es OBLIGATORIA en cada entorno
 
 Hay dos tablas nuevas, `clases` y `clases_config`, y dos índices únicos parciales (`clases_clave` y
 `clases_vivas`). Sin ellas **todas las rutas de `/api/admin/clases` responden 503 `no_disponible`** (el
-resto de la app no se entera). Corre, en **dev y en prod, cada uno con sus ARNs**, ANTES del `cdk deploy`
+resto de la app no se entera). La columna `clases.subida_token` (el token de cada subida, ver abajo) va en
+el `CREATE TABLE` y, además, en un `ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text`:
+un entorno que ya creó la tabla con la primera versión de S1 recibe la columna al volver a correr la
+migración (sin ella, la tabla existe pero **todas las rutas dan 503**: el `SELECT` pide una columna que no
+hay). Corre, en **dev y en prod, cada uno con sus ARNs**, ANTES del `cdk deploy`
 (paso 4 del checklist de «Deploy»):
 
 ```bash
@@ -1854,10 +1858,10 @@ empieza con `CREATE TABLE IF NOT EXISTS <nombre>`) y termina con error si tras c
 | `GET /api/admin/clases?archivadas=0\|1` | `{clases, limites}`: las clases vivas por número, o las archivadas. Sin precios (llegan con S4) |
 | `POST /api/admin/clases` | crea una clase en `borrador`. Idempotente por `clave` (el doble clic no duplica). El `numero` es único entre las clases vivas: 409 `numero_repetido` |
 | `PATCH /api/admin/clases/{id}` | cambia `numero`, `titulo`, `resumen`, `grabada_en` o `liga`; `null` borra resumen y fecha |
-| `POST …/{id}/subida` | `{archivo, content_type, bytes}` → `{url, content_type, expira_s}`. Pasa a `subiendo`. **La clave de S3 la decide el servidor** (`clases/<id>/video.<ext>`); la URL vale 15 min |
-| `POST …/{id}/confirmar` | HEAD a S3: que exista, que no esté vacío, que sea de un tipo permitido y que pese lo declarado. Pasa a `subido` |
-| `POST …/{id}/medir` | ffprobe sobre una URL firmada (8 s, un reintento) → `duracion_s` |
-| `POST …/{id}/cancelar` | `subiendo` → `borrador` |
+| `POST …/{id}/subida` | `{archivo, content_type, bytes}` → `{url, content_type, expira_s, token}`. Pasa a `subiendo`. **La clave de S3 la decide el servidor** (`clases/<id>/video.<ext>`); la URL vale 15 min. El `token` (32 hex) identifica ESTA subida. El nombre del archivo acepta los espacios Unicode (el U+202F de las grabaciones de pantalla de macOS) y se guarda con un espacio normal; los controles, las barras y los invisibles se rechazan |
+| `POST …/{id}/confirmar` | cuerpo opcional `{nombre?, token?}`. HEAD a S3: que exista, que no esté vacío, que sea de un tipo permitido y que pese lo declarado. Pasa a `subido`. Con `token` que no es el de la subida vigente: 409 `subida_cambio`, sin mirar S3 |
+| `POST …/{id}/medir` | ffprobe sobre una URL firmada (8 s, un reintento) → `duracion_s`. Con `-protocol_whitelist https,tls,tcp,crypto -f mov,mp4` (ver «Lo que NO hace S1») |
+| `POST …/{id}/cancelar` | cuerpo opcional `{token?}`. `subiendo` → `borrador`. Con `token` que no es el vigente: 409 `subida_cambio` y no se toca la clase |
 | `GET …/{id}/video` | `{url, expira_s}`: vista previa del dueño, URL firmada de 2 h (nunca la del CDN) |
 | `DELETE …/{id}` | **archiva** (borrado suave: pone `archivada_en`). No toca S3 ni cambia el estado |
 | `POST …/{id}/restaurar` | deshace el archivado; 409 si otra clase viva ya tomó su número |
@@ -1867,6 +1871,17 @@ un comparar-y-cambiar en UNA sentencia: de dos subidas a la vez gana una y la ot
 `estado_no_permite`. Una clase archivada solo se puede ver, restaurar o archivar otra vez.
 Los errores son `{codigo, texto}`; nunca llevan URLs firmadas, ARNs ni texto de nadie, y los logs solo
 llevan el id de la clase y la transición.
+
+**El token de la subida.** La clave de S3 es la misma para todas las subidas de una clase
+(`clases/<id>/video.<ext>`), así que `confirmar` solo distingue una subida de otra por los bytes declarados. Para
+que la subida huérfana de otra pestaña (el PUT sigue aunque el panel cambie de pestaña) no cancele ni confirme la
+subida nueva, cada `POST …/subida` devuelve un `token` de 32 hex que el servidor guarda en `clases.subida_token`
+(en la misma sentencia que pasa `borrador` → `subiendo`) y olvida al cancelar y al confirmar. La web lo manda en
+`confirmar` y `cancelar` de SU subida; si no coincide con el guardado: 409 `subida_cambio` («Esa subida ya no es la
+vigente: se empezó otra o se canceló. No se cambió nada.») y la clase no se toca. **Sin token** las dos rutas
+siguen como siempre (la tarjeta que perdió su subida puede cancelarla); `confirmar` sobre una clase ya `subido`
+devuelve la clase aunque traiga un token (doble clic). Un token que no tiene 32 hex es 422 `clave_invalida`. El
+token nunca sale en la lista, en un log ni en un error.
 
 ### Límites (los entrega el servidor en `limites`; la web no copia ninguno)
 
@@ -1894,8 +1909,14 @@ llevan el id de la clase y la transición.
 - **Ciclo de vida del bucket**: la regla de Glacier Instant Retrieval a los 10 días no tiene filtro de prefijo, así
   que `clases/` también pasa. Releer un video cuesta recuperación: **sin precio confirmado** (no está en
   `tools/pricing.json`). Decisión pendiente antes de S7; hoy no se cambia.
-- **ffprobe** lee un archivo que sube un admin, no cualquiera. Limitar los protocolos que ffmpeg puede abrir
-  (`-protocol_whitelist`) queda para S5, con el primer video real.
+- **ffprobe** lee un archivo que sube un admin, no cualquiera, y elige el lector por el CONTENIDO: un «.mp4» que es
+  un MPD de DASH le haría pedir otras URLs desde la Lambda (una petición ciega, también a la red interna). Por eso
+  `medir` lo llama con `-protocol_whitelist https,tls,tcp,crypto -f mov,mp4` antes de `-i` (el parámetro `seguro`
+  de `edicion_api._medir`, solo para las clases; el editor mide como siempre). `-f mov,mp4` es lo que frena a
+  DASH (con ffmpeg 6.1.1 la lista de protocolos sola NO lo frena); la lista es la segunda capa (nada de `file:` ni
+  `http:`). Un test corre el ffprobe de verdad contra servidores locales y exige 0 peticiones al señuelo;
+  **lo que falta (S5) es repetirlo con el ffmpeg de la imagen (Debian bookworm, 5.1) y con el primer video real**:
+  aquí se probó con ffmpeg 6.1.1.
 
 ### Prueba manual del dueño en dev
 
@@ -1903,13 +1924,19 @@ Crear una clase de ejemplo, subir un `.mp4` pequeño (y uno grande si tienes), �
 comprobar que `https://<cdn>/clases/<id>/video.mp4` da **403**, archivar y restaurar. Gasto: solo almacenamiento
 de S3 (sin precio confirmado).
 
-### Pruebas
+### Pruebas de las clases (S1)
 
 `pytest tests/test_clases_admin.py tests/test_cdn_lista_blanca.py` corre con dobles (S3, ffprobe). Las pruebas de la
 API corren dos veces con la misma batería: contra un doble de la base en memoria y, si hay Postgres, contra el SQL
 real: `COI_PG_SOCK=<directorio del socket> pytest tests/test_clases_admin.py` (sin esa variable se omite la mitad
 de Postgres; ver «COI y la Biblioteca de prompts» para levantar uno). Ahí viven también las carreras reales (16
-hilos pidiendo la misma subida, 8 creando la misma clave, un número que otra transacción está tomando).
+hilos pidiendo la misma subida, 8 creando la misma clave, un número que otra transacción está tomando) y la
+migración de una tabla `clases` que no tenía `subida_token`.
+
+La variante Postgres necesita `psycopg`, que está fijado en la sección «# --- tests» de `requirements.txt`
+(`psycopg[binary]`). En un venv que no lo tenga (armado antes de este cambio) solo se omite esa variante: las demás
+pruebas (autorización, no-borrar-en-S3, validadores, ligas, CDN) corren igual, no se omite el archivo entero. La sección «ffprobe de verdad» del mismo archivo levanta servidores HTTPS
+locales (necesita `ffprobe`, `ffmpeg` y `openssl` en el PATH; sin ellos se omite).
 
 ## Reglas que no se negocian
 

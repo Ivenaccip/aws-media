@@ -21,11 +21,12 @@ from __future__ import annotations
 import ipaddress
 import re
 import secrets
+import unicodedata
 from datetime import date, timedelta
 from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
-# límites (sección 5.4 del diseño). Los lee el servidor y los entrega en `limites()`.
+# límites (sección 5.4 de docs/DISENO-GUIA.md). Los lee el servidor y los entrega en `limites()`.
 
 MAX_BYTES = 5 * 1024**3        # tope del PUT prefirmado de UNA parte (el de S3; el mismo de media_api)
 PRESIGN_S = 15 * 60            # cuánto vale la URL de subida
@@ -52,7 +53,7 @@ HOSTS_PERMITIDOS: tuple[str, ...] = ()
 
 PREFIJO = "clases/"
 
-# estados (sección 3.3). S1 solo usa los tres primeros; el resto los escribe S4.
+# estados (sección 3.3 de docs/DISENO-GUIA.md). S1 solo usa los tres primeros; el resto los escribe S4.
 BORRADOR, SUBIENDO, SUBIDO, PROCESANDO, LISTA, ERROR = (
     "borrador", "subiendo", "subido", "procesando", "lista", "error")
 ESTADOS = (BORRADOR, SUBIENDO, SUBIDO, PROCESANDO, LISTA, ERROR)
@@ -173,6 +174,24 @@ def validar_fecha(valor, hoy: date | None = None) -> str | None:
 _CLAVE = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
+_TOKEN = re.compile(r"[0-9a-f]{32}")
+
+
+def token_nuevo() -> str:
+    """El TOKEN de una subida: 32 hex que fabrica el servidor al pasar la clase a `subiendo` y que la web
+    devuelve en `confirmar` y `cancelar` para que una subida que ya no es la vigente (la huérfana de otra
+    pestaña, la que se canceló) no toque la nueva. No es un permiso —quien puede confirmar es el admin—,
+    es la identidad de UNA subida; nunca llega a una clave de S3 ni a un log."""
+    return secrets.token_hex(16)
+
+
+def validar_token(valor) -> str:
+    """El `token` que manda la web: tiene que ser una cadena de 32 hex (lo único que `token_nuevo` fabrica)."""
+    if not isinstance(valor, str) or not _TOKEN.fullmatch(valor):
+        raise ValorInvalido("clave_invalida")
+    return valor
+
+
 def validar_clave(valor) -> str:
     """La `clave` de idempotencia que manda el navegador (un UUID): solo se usa para reconocer el
     doble clic; nunca llega a una clave de S3."""
@@ -194,15 +213,26 @@ def nombre_para_mostrar(nombre) -> str | None:
     return limpiar_texto(base)[:NOMBRE_MAX] or None
 
 
+def _caracter_de_nombre_ok(c: str) -> bool:
+    """¿Cabe en el nombre de un archivo que eligió una persona? Todo lo imprimible y, además, los
+    espacios SEPARADORES de Unicode (categoría Zs: U+00A0, U+202F, U+2009, U+3000…), que `isprintable()`
+    rechaza aunque son espacios de verdad: el espacio fino (U+202F) antes de «PM» es justo como macOS 13
+    o posterior nombra una grabación de pantalla. Los controles (`\\t`, `\\n`, `\\x85`, categoría Cc), los
+    separadores de línea y de párrafo (U+2028 y U+2029, Zl y Zp) y los invisibles (U+200B, U+202E…,
+    Cf) siguen fuera."""
+    return c.isprintable() or unicodedata.category(c) == "Zs"
+
+
 def validar_archivo(archivo) -> tuple[str, str | None]:
     """(extensión en minúsculas, nombre para mostrar) de lo que dice el navegador que sube.
 
     Un nombre con barras (`../../x.mp4`, `a/b.mp4`, `..\\x.mp4`) o con caracteres de control NO es el
-    nombre de un archivo que eligió una persona: se rechaza. La extensión tiene que estar en la lista
+    nombre de un archivo que eligió una persona: se rechaza. Los espacios Unicode (Zs) sí pasan, y
+    `nombre_para_mostrar` los vuelve un espacio normal. La extensión tiene que estar en la lista
     cerrada. El nombre nunca llega a la clave de S3."""
     if not isinstance(archivo, str) or not archivo or len(archivo) > ARCHIVO_MAX:
         raise ValorInvalido("nombre_invalido")
-    if "/" in archivo or "\\" in archivo or not all(c.isprintable() for c in archivo):
+    if "/" in archivo or "\\" in archivo or not all(_caracter_de_nombre_ok(c) for c in archivo):
         raise ValorInvalido("nombre_invalido")
     punto = archivo.rfind(".")
     ext = archivo[punto:].lower() if punto > 0 else ""

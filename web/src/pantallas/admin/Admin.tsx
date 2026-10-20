@@ -153,8 +153,9 @@ function Panel({ datos, recargar }: { datos: Resumen; recargar: () => Promise<vo
           { id: 'ingresos', titulo: '1 · Ingresos', contenido: <VistaIngresos d={datos} /> },
           { id: 'costos', titulo: '2 · Costos', contenido: <VistaCostos d={datos} recargar={recargar} /> },
           { id: 'flujo', titulo: '3 · Flujo', contenido: <VistaFlujo d={datos} /> },
-          // la última, para no mover las otras tres; pide sus datos al abrirse (Radix desmonta lo que no se ve)
-          { id: 'clases', titulo: '4 · Clases', contenido: <Clases /> },
+          // la última, para no mover las otras tres; pide sus datos al abrirse por primera vez, y desde entonces se queda montada
+          // (oculta): una subida en curso o un formulario a medias no se pierden por mirar otra vista
+          { id: 'clases', titulo: '4 · Clases', contenido: <Clases />, conservar: true },
         ]}
       />
     </div>

@@ -531,6 +531,10 @@ ESQUEMA: list[str] = [
     #                  el HEAD de S3 desde `subido`. Las columnas de `publicada` a `indexada_en` las
     #                  escribe la ingesta (S4); en S1 quedan en su valor de fábrica. Sin llaves
     #                  foráneas (igual que coi_estado y biblioteca_mios). NUNCA guarda el transcript.
+    #                  `subida_token` (32 hex) identifica UNA subida: lo fija `clases_a_subiendo` en la
+    #                  misma sentencia que pasa borrador→subiendo y se limpia al cancelar y al
+    #                  confirmar; `confirmar` y `cancelar` lo comparan si la web lo manda, y así la
+    #                  subida huérfana de otra pestaña no toca la nueva.
     #   clases_config  una fila por clave (S4 guarda ahí las palabras clave de la transcripción).
     #
     # Los cambios de `estado` son comparar-y-cambiar en UNA sentencia (`UPDATE … WHERE estado = …
@@ -560,8 +564,12 @@ ESQUEMA: list[str] = [
         creado_por       text NOT NULL,
         creado           timestamptz NOT NULL DEFAULT now(),
         actualizado      timestamptz NOT NULL DEFAULT now(),
-        archivada_en     timestamptz
+        archivada_en     timestamptz,
+        subida_token     text
     )""",
+    # Un entorno que ya creó `clases` antes del token no la vuelve a crear (IF NOT EXISTS): esta
+    # sentencia le agrega la columna cuando `tools/db_migrate.py` vuelve a correr (como `fallos` de COI).
+    "ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text",
     """CREATE UNIQUE INDEX IF NOT EXISTS clases_clave
        ON clases (clave) WHERE clave IS NOT NULL""",
     """CREATE UNIQUE INDEX IF NOT EXISTS clases_vivas
@@ -2474,7 +2482,7 @@ _COLS_CLASE = """clases.id AS id, clases.numero AS numero, clases.titulo AS titu
     (clases.indexada_en AT TIME ZONE 'UTC')::text AS indexada_en,
     (clases.creado AT TIME ZONE 'UTC')::text AS creado,
     (clases.actualizado AT TIME ZONE 'UTC')::text AS actualizado,
-    (clases.archivada_en AT TIME ZONE 'UTC')::text AS archivada_en"""
+    (clases.archivada_en AT TIME ZONE 'UTC')::text AS archivada_en, clases.subida_token AS subida_token"""
 
 
 def _es_duplicado(err: Exception) -> bool:
@@ -2579,44 +2587,50 @@ def clases_editar(id_: str, cambios: dict) -> dict | None:
 
 
 def clases_a_subiendo(id_: str, video_key: str, nombre_original: str | None,
-                      bytes_declarados: int) -> dict | None:
+                      bytes_declarados: int, token: str) -> dict | None:
     """borrador → subiendo, al darse la URL de subida. Solo una clase VIVA, de origen `archivo` y en
     `borrador`: de dos subidas a la vez gana una y la otra recibe None. Guarda la clave que decidió el
-    servidor y los bytes que el navegador declaró (`confirmar` los compara con el HEAD de S3)."""
+    servidor, los bytes que el navegador declaró (`confirmar` los compara con el HEAD de S3) y el
+    `token` que identifica ESTA subida (lo fija la misma sentencia que cambia el estado)."""
     return _una_clase(ejecutar(
         f"""UPDATE clases
                SET estado = 'subiendo', video_key = :k, nombre_original = :n, bytes = :b,
-                   duracion_s = NULL, error = NULL, actualizado = now()
+                   subida_token = :t, duracion_s = NULL, error = NULL, actualizado = now()
              WHERE id = :id AND archivada_en IS NULL AND origen = 'archivo' AND estado = 'borrador'
             RETURNING {_COLS_CLASE}""",
-        {"id": id_, "k": video_key, "n": nombre_original, "b": int(bytes_declarados)}))
+        {"id": id_, "k": video_key, "n": nombre_original, "b": int(bytes_declarados), "t": token}))
 
 
-def clases_cancelar(id_: str) -> dict | None:
-    """subiendo → borrador. Olvida la clave, los bytes declarados y el nombre; NO toca S3 (un PUT
-    sin terminar no deja objeto, y uno terminado no se borra: el rol no puede)."""
+def clases_cancelar(id_: str, token: str | None = None) -> dict | None:
+    """subiendo → borrador. Olvida la clave, los bytes declarados, el nombre y el token; NO toca S3 (un
+    PUT sin terminar no deja objeto, y uno terminado no se borra: el rol no puede). Con `token`, solo
+    cancela si es el de la subida vigente (comparar-y-cambiar en la misma sentencia: la subida nueva
+    de otra pestaña no se cancela desde la vieja); sin él, cancela cualquiera."""
     return _una_clase(ejecutar(
         f"""UPDATE clases
                SET estado = 'borrador', video_key = NULL, nombre_original = NULL, bytes = NULL,
-                   duracion_s = NULL, error = NULL, actualizado = now()
+                   subida_token = NULL, duracion_s = NULL, error = NULL, actualizado = now()
              WHERE id = :id AND archivada_en IS NULL AND estado = 'subiendo'
-            RETURNING {_COLS_CLASE}""", {"id": id_}))
+               AND (:t::text IS NULL OR subida_token = :t::text)
+            RETURNING {_COLS_CLASE}""", {"id": id_, "t": token}))
 
 
 def clases_confirmar(id_: str, video_key: str, bytes_declarados: int, bytes_reales: int,
-                     nombre_original: str | None) -> dict | None:
+                     nombre_original: str | None, token: str | None = None) -> dict | None:
     """subiendo → subido, tras el HEAD. Solo si la clase sigue en `subiendo` con la MISMA clave y los
     mismos bytes declarados que se compararon (si alguien canceló y volvió a pedir una subida en el
-    medio, no hay fila). `bytes` pasa a ser el real de S3."""
+    medio, no hay fila) y —si viene `token`— con el de la subida vigente. `bytes` pasa a ser el real
+    de S3 y el token se olvida."""
     return _una_clase(ejecutar(
         f"""UPDATE clases
                SET estado = 'subido', bytes = :real, nombre_original = COALESCE(:n, nombre_original),
-                   error = NULL, actualizado = now()
+                   subida_token = NULL, error = NULL, actualizado = now()
              WHERE id = :id AND archivada_en IS NULL AND origen = 'archivo' AND estado = 'subiendo'
                AND video_key = :k AND bytes = :declarados
+               AND (:t::text IS NULL OR subida_token = :t::text)
             RETURNING {_COLS_CLASE}""",
         {"id": id_, "k": video_key, "declarados": int(bytes_declarados), "real": int(bytes_reales),
-         "n": nombre_original}))
+         "n": nombre_original, "t": token}))
 
 
 def clases_medida(id_: str, video_key: str, duracion_s: float) -> dict | None:

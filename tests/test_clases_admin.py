@@ -5,12 +5,16 @@ pipeline/clases.py, db.clases_*).
 Todo con dobles, ninguna llamada de pago ni de red:
   - S3 es `S3Falso`: solo sabe firmar y hacer HEAD; cualquier otra operación (y, con mensaje propio,
     cualquier `delete_*`) REVIENTA. El rol de la Lambda no tiene s3:DeleteObject a propósito.
-  - ffprobe es un doble de `_medir` (y, aparte, el `_medir` real con `subprocess.run` falso).
+  - ffprobe es un doble de `_medir` (y, aparte, el `_medir` real con `subprocess.run` falso; la
+    sección 13 corre el ffprobe de verdad contra servidores locales, y se omite sin ffprobe/openssl).
   - La base corre en DOS variantes con las MISMAS pruebas (fixture `bd`): `memoria` (un doble de las
     `db.clases_*`, siempre) y `postgres` (el SQL real de `pipeline/db.py` contra un Postgres 16 por el
-    mismo shim que `test_coi_postgres.py`; se omite sin `COI_PG_SOCK`):
+    mismo shim que `test_coi_postgres.py`; se omite sin `COI_PG_SOCK` o sin `psycopg`):
 
         COI_PG_SOCK=/tmp/pgint-servidor/sock pytest tests/test_clases_admin.py
+
+    `psycopg[binary]` está fijado en la sección «# --- tests» de requirements.txt. En un venv que no
+    lo tenga solo se omite la variante Postgres (no el archivo entero): las demás ~300 pruebas corren.
 
 Las pruebas que importan están escritas para FALLAR si se rompe el código: quitar la dependencia del
 router, meter el nombre del archivo en la clave, llamar `delete_object` al archivar, agregar `clases/`
@@ -19,11 +23,15 @@ a la lista del CDN o quitar el `estado = 'borrador'` de la sentencia de subida h
 from __future__ import annotations
 
 import ast
+import http.server
 import json
 import logging
 import os
 import re
+import shutil
+import ssl
 import subprocess
+import sys
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -42,6 +50,8 @@ BUCKET = "bucket-de-prueba"
 GIB = 1024**3
 FIRMA = "FIRMA-SECRETA-9f3a"          # va dentro de TODA URL firmada del doble: no debe salir de ahí
 ARN = "arn:aws:rds:us-east-1:191241816158:cluster:aws-media-db"
+MEDIR_REAL = clases_admin_api._medir      # el de verdad: la fixture `mundo` lo cambia por un doble
+TOKEN = "0123456789abcdef0123456789abcdef"      # un token de subida con el formato (32 hex)
 
 
 # ===========================================================================
@@ -150,7 +160,7 @@ class ClasesEnMemoria:
                     "nombre_original": None, "liga": liga, "bytes": None, "duracion_s": None,
                     "estado": "borrador", "error": None, "publicada": False, "indice_version": 0,
                     "indice_modelo": None, "trozos_n": None, "indexada_en": None, "creado": ahora,
-                    "actualizado": ahora, "archivada_en": None}
+                    "actualizado": ahora, "archivada_en": None, "subida_token": None}
                 self.claves[clave] = id_
                 return dict(self.filas[id_]), True
             if clave in self.claves:
@@ -174,32 +184,33 @@ class ClasesEnMemoria:
             f["actualizado"] = self._ahora()
             return dict(f)
 
-    def clases_a_subiendo(self, id_, video_key, nombre_original, bytes_declarados):
+    def clases_a_subiendo(self, id_, video_key, nombre_original, bytes_declarados, token):
         with self.lock:
             f = self._viva(id_, origen="archivo", estado="borrador")
             if f is None:
                 return None
             f.update(estado="subiendo", video_key=video_key, nombre_original=nombre_original,
-                     bytes=bytes_declarados, duracion_s=None, error=None, actualizado=self._ahora())
+                     bytes=bytes_declarados, subida_token=token, duracion_s=None, error=None,
+                     actualizado=self._ahora())
             return dict(f)
 
-    def clases_cancelar(self, id_):
+    def clases_cancelar(self, id_, token=None):
         with self.lock:
             f = self._viva(id_, estado="subiendo")
-            if f is None:
+            if f is None or (token is not None and f["subida_token"] != token):
                 return None
             f.update(estado="borrador", video_key=None, nombre_original=None, bytes=None,
-                     duracion_s=None, error=None, actualizado=self._ahora())
+                     subida_token=None, duracion_s=None, error=None, actualizado=self._ahora())
             return dict(f)
 
-    def clases_confirmar(self, id_, video_key, bytes_declarados, bytes_reales, nombre_original):
+    def clases_confirmar(self, id_, video_key, bytes_declarados, bytes_reales, nombre_original, token=None):
         with self.lock:
             f = self._viva(id_, origen="archivo", estado="subiendo", video_key=video_key,
                            bytes=bytes_declarados)
-            if f is None:
+            if f is None or (token is not None and f["subida_token"] != token):
                 return None
-            f.update(estado="subido", bytes=bytes_reales, error=None, actualizado=self._ahora(),
-                     nombre_original=nombre_original or f["nombre_original"])
+            f.update(estado="subido", bytes=bytes_reales, subida_token=None, error=None,
+                     actualizado=self._ahora(), nombre_original=nombre_original or f["nombre_original"])
             return dict(f)
 
     def clases_medida(self, id_, video_key, duracion_s):
@@ -238,11 +249,17 @@ class ClasesEnMemoria:
 
 # --- Postgres real (el mismo shim que test_coi_postgres.py, con su propia base) ----------------------
 
-psycopg = pytest.importorskip("psycopg")
-from psycopg.rows import dict_row  # noqa: E402
+# `psycopg` NO se exige a nivel de módulo (un `importorskip` aquí omitía el archivo ENTERO, también las
+# pruebas de autorización y de no-borrar-en-S3, que no usan Postgres): sin él solo se omite la variante
+# `postgres`, en la fixture `pg`.
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:
+    psycopg = dict_row = None
 
 SOCK = os.environ.get("COI_PG_SOCK", "")
-HAY_PG = bool(SOCK and os.path.exists(SOCK))
+HAY_PG = psycopg is not None and bool(SOCK and os.path.exists(SOCK))
 BASE_PG = "clases_prueba"
 _PARAM = re.compile(r"(?<![:\w]):([A-Za-z_][A-Za-z0-9_]*)")
 
@@ -290,6 +307,8 @@ def base_pg():
 
 @pytest.fixture
 def pg(request, monkeypatch):
+    if psycopg is None:
+        pytest.skip("sin psycopg: pip install 'psycopg[binary]' para la variante Postgres")
     if not HAY_PG:
         pytest.skip("sin Postgres: define COI_PG_SOCK con el directorio del socket")
     request.getfixturevalue("base_pg")
@@ -557,6 +576,57 @@ def test_archivo_malo(nombre, cod):
     assert e.value.codigo == cod
 
 
+# Los espacios de categoría Zs (U+00A0, U+202F, U+2009, U+3000) son espacios de verdad que `isprintable()`
+# rechaza. macOS 13 o posterior pone un U+202F antes de «AM/PM» en «Screen Recording … at 3.45.12 PM.mov».
+ESPACIOS_ZS = ("\u00a0", "\u202f", "\u2009", "\u3000", "\u2003", "\u1680")
+
+
+@pytest.mark.parametrize("espacio", ESPACIOS_ZS)
+def test_los_espacios_unicode_Zs_caben_en_el_nombre_del_archivo_y_se_muestran_con_un_espacio_normal(espacio):
+    for plantilla, ext in (("Screen Recording 2026-03-12 at 3.45.12{}PM.mov", ".mov"),
+                           ("Clase{}5.mp4", ".mp4"), ("Clase{}5 final.m4v", ".m4v")):
+        archivo = plantilla.format(espacio)
+        assert espacio in archivo
+        got_ext, nombre = clases.validar_archivo(archivo)
+        assert got_ext == ext
+        assert nombre == plantilla.format(" "), "el nombre que se muestra lleva un espacio NORMAL"
+        assert espacio not in nombre
+    assert clases.nombre_para_mostrar(f"a{espacio}{espacio}b.mp4") == "a b.mp4"
+
+
+@pytest.mark.parametrize("raro", [
+    "\u200b",      # Cf: ancho cero
+    "\u202e",      # Cf: inversión de texto (el truco de «clase‮4pm.exe»)
+    "\ufeff",      # Cf: BOM
+    "\u00ad",      # Cf: guion blando
+    "\t", "\n", "\r", "\x0b", "\x0c",    # controles
+    "\x85",        # Cc: NEL
+    "\u2028", "\u2029",    # Zl y Zp: separadores de línea y de párrafo
+    "\x00", "\x7f", "\ud800",
+])
+def test_siguen_rechazados_los_controles_los_separadores_de_linea_y_los_invisibles(raro):
+    with pytest.raises(clases.ValorInvalido) as e:
+        clases.validar_archivo(f"cla{raro}se.mp4")
+    assert e.value.codigo == "nombre_invalido"
+
+
+def test_la_subida_de_una_grabacion_de_pantalla_de_macos_es_200_y_guarda_el_nombre_con_espacio_normal(mundo):
+    id_ = nueva(mundo)
+    r = pedir_subida(mundo, id_, archivo="Screen Recording 2026-03-12 at 3.45.12\u202fPM.mov",
+                     tipo="video/quicktime", bytes_=4096)
+    assert r.status_code == 200, r.text
+    assert clave_pedida(mundo) == f"clases/{id_}/video.mov", "el nombre no entra a la clave"
+    c = clase(mundo, id_)
+    assert c["nombre_original"] == "Screen Recording 2026-03-12 at 3.45.12 PM.mov"
+    assert "\u202f" not in json.dumps(c, ensure_ascii=False)
+    # y el nombre con un invisible o un control sigue siendo 422 nombre_invalido
+    for malo in ("Clase\u200b5.mp4", "Clase\n5.mp4"):
+        otra = nueva(mundo)
+        r = pedir_subida(mundo, otra, archivo=malo)
+        assert (r.status_code, codigo(r)) == (422, "nombre_invalido")
+        assert clase(mundo, otra)["estado"] == "borrador"
+
+
 def test_content_type_lista_cerrada():
     assert clases.validar_content_type("Video/MP4") == "video/mp4"
     assert clases.validar_content_type(" video/quicktime\n") == "video/quicktime"
@@ -581,7 +651,7 @@ def test_clases_no_importa_nada_pesado_ni_de_pago():
     arbol = ast.parse((RAIZ / "pipeline" / "clases.py").read_text(encoding="utf-8"))
     importados = {n.module.split(".")[0] if isinstance(n, ast.ImportFrom) else n.names[0].name.split(".")[0]
                   for n in ast.walk(arbol) if isinstance(n, (ast.Import, ast.ImportFrom))}
-    assert importados <= {"__future__", "ipaddress", "re", "secrets", "datetime", "urllib"}, importados
+    assert importados <= {"__future__", "ipaddress", "re", "secrets", "unicodedata", "datetime", "urllib"}, importados
 
 
 # ===========================================================================
@@ -616,10 +686,21 @@ def test_la_tabla_clases_tiene_las_columnas_de_la_seccion_4_1():
                 "indice_version int NOT NULL DEFAULT 0", "indice_modelo text", "trozos_n int",
                 "indexada_en timestamptz", "creado_por text NOT NULL",
                 "creado timestamptz NOT NULL DEFAULT now()",
-                "actualizado timestamptz NOT NULL DEFAULT now()", "archivada_en timestamptz"):
+                "actualizado timestamptz NOT NULL DEFAULT now()", "archivada_en timestamptz",
+                "subida_token text"):
         assert col in sql, col
     cfg = " ".join(_entradas("clases_config")[0].split())
     assert "clave text PRIMARY KEY" in cfg and "valor text NOT NULL" in cfg and "actualizado timestamptz" in cfg
+
+
+def test_la_columna_subida_token_tambien_se_agrega_a_una_tabla_que_ya_existia():
+    """Un entorno que ya creó `clases` antes del token no vuelve a ejecutar el CREATE TABLE (IF NOT EXISTS):
+    el ALTER es lo que `tools/db_migrate.py` le corre (el molde de `fallos` de COI)."""
+    altas = [s for s in db.ESQUEMA
+             if re.fullmatch(r"ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text", s.strip())]
+    assert len(altas) == 1
+    assert db.ESQUEMA.index(altas[0]) > db.ESQUEMA.index(_entradas("clases")[0]), "después de crear la tabla"
+    assert ";" not in altas[0]
 
 
 def test_db_migrate_ve_las_tablas_nuevas_y_se_niega_a_terminar_si_falta_una(monkeypatch, capsys):
@@ -666,14 +747,16 @@ def test_cada_sentencia_de_clases_es_una_sola_y_usa_solo_parametros_que_recibe(m
                         grabada_en="2026-03-12", origen="archivo", liga=None, creado_por="u")
     db.clases_editar("cl-00000000", {"numero": 1, "titulo": "t", "resumen": None, "grabada_en": None,
                                      "liga": None})
-    db.clases_a_subiendo("cl-00000000", "clases/cl-00000000/video.mp4", "n.mp4", 10)
+    db.clases_a_subiendo("cl-00000000", "clases/cl-00000000/video.mp4", "n.mp4", 10, TOKEN)
     db.clases_cancelar("cl-00000000")
+    db.clases_cancelar("cl-00000000", TOKEN)
     db.clases_confirmar("cl-00000000", "clases/cl-00000000/video.mp4", 10, 10, None)
+    db.clases_confirmar("cl-00000000", "clases/cl-00000000/video.mp4", 10, 10, None, TOKEN)
     db.clases_medida("cl-00000000", "clases/cl-00000000/video.mp4", 12.5)
     db.clases_medida_fallo("cl-00000000", "clases/cl-00000000/video.mp4", "x")
     db.clases_archivar("cl-00000000")
     db.clases_restaurar("cl-00000000")
-    assert len(vistas) >= 12
+    assert len(vistas) >= 14
     for sql, params in vistas:
         assert ";" not in sql.strip().rstrip(";"), sql
         usados = set(_PARAM.findall(sql))
@@ -1008,8 +1091,9 @@ def test_la_subida_firma_una_clave_que_decide_el_servidor_sin_el_nombre_del_arch
     assert r.status_code == 200
     assert r.headers["cache-control"] == "no-store"
     cuerpo = r.json()
-    assert set(cuerpo) == {"url", "content_type", "expira_s"}, "la clave de S3 no sale del servidor"
+    assert set(cuerpo) == {"url", "content_type", "expira_s", "token"}, "la clave de S3 no sale del servidor"
     assert (cuerpo["content_type"], cuerpo["expira_s"]) == ("video/quicktime", 900)
+    assert re.fullmatch(r"[0-9a-f]{32}", cuerpo["token"])
     (op, p), = mundo.s3.firmadas
     assert op == "put_object"
     assert p == {"Bucket": BUCKET, "Key": f"clases/{id_}/video.mov", "ContentType": "video/quicktime",
@@ -1279,7 +1363,7 @@ def test_cancelar_despues_de_pedir_otra_subida_invalida_la_confirmacion(mundo):
     key = clave_pedida(mundo)
     c = db.clases_obtener(id_)
     assert db.clases_cancelar(id_)["estado"] == "borrador"
-    assert db.clases_a_subiendo(id_, key, "otra.mp4", 2000)["bytes"] == 2000
+    assert db.clases_a_subiendo(id_, key, "otra.mp4", 2000, TOKEN)["bytes"] == 2000
     assert db.clases_confirmar(id_, key, c["bytes"], 1000, None) is None, "los bytes declarados ya no son 1000"
     assert db.clases_obtener(id_)["estado"] == "subiendo"
 
@@ -1333,7 +1417,7 @@ def test_medir_fuera_de_estado_origen_o_archivada(mundo):
 
 def test_el_medir_real_usa_la_url_firmada_8_s_y_un_reintento_sin_filtrar_la_firma(mundo, monkeypatch, caplog):
     """Sin el doble de `_medir`: el de la edición, con `subprocess.run` falso."""
-    monkeypatch.setattr(clases_admin_api, "_medir", lambda key: edicion_api._medir(key))
+    monkeypatch.setattr(clases_admin_api, "_medir", MEDIR_REAL)
     monkeypatch.setattr(media_rutas, "SERVIBLES_CDN", media_rutas.SERVIBLES_CDN + ("clases/",))   # el peor caso
     id_ = subido(mundo)
     llamadas = []
@@ -1356,6 +1440,65 @@ def test_el_medir_real_usa_la_url_firmada_8_s_y_un_reintento_sin_filtrar_la_firm
         "la URL es la firmada de S3, jamás la del CDN"
     assert "cdn.example" not in cmd[-1]
     assert FIRMA not in caplog.text, "ffprobe falló con la firma en su mensaje y el log la dejó salir"
+    assert "-protocol_whitelist" in cmd and "-f" in cmd, "es el ffprobe seguro de las clases"
+
+
+FFPROBE_BASE = ["ffprobe", "-v", "error", "-show_entries",
+                "stream=codec_type,width,height:stream_side_data=rotation:format=duration", "-of", "json"]
+
+
+def _ffprobe_falso(monkeypatch):
+    """`subprocess.run` de la edición, que anota el comando y contesta que midió 12 s."""
+    comandos: list[list[str]] = []
+
+    def run(cmd, **kw):
+        comandos.append(list(cmd))
+        datos = {"streams": [{"codec_type": "video", "width": 640, "height": 360}],
+                 "format": {"duration": "12.0"}}
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(datos), "")
+    monkeypatch.setattr(edicion_api.subprocess, "run", run)
+    monkeypatch.setattr(media_sync, "url_firmada",
+                        lambda key, *a, **k: f"https://{BUCKET}.s3.amazonaws.com/{key}?X-Amz-Signature={FIRMA}")
+    return comandos
+
+
+def test_medir_de_clases_le_pasa_a_ffprobe_la_lista_de_protocolos_y_el_lector_antes_de_i(monkeypatch):
+    """Los argumentos EXACTOS: sin esto ffprobe elige el lector por el contenido del archivo (un «.mp4» que
+    es un MPD de DASH le haría pedir otras URLs desde la Lambda) y abre cualquier protocolo."""
+    comandos = _ffprobe_falso(monkeypatch)
+    med = MEDIR_REAL("clases/cl-3f9a21bc/video.mp4")
+    assert med == {"duracion_s": 12.0, "ancho": 640, "alto": 360, "audio": False}
+    url = f"https://{BUCKET}.s3.amazonaws.com/clases/cl-3f9a21bc/video.mp4?X-Amz-Signature={FIRMA}"
+    assert comandos == [FFPROBE_BASE + ["-protocol_whitelist", "https,tls,tcp,crypto", "-f", "mov,mp4",
+                                        "-i", url]]
+    cmd = comandos[0]
+    assert cmd.index("-protocol_whitelist") < cmd.index("-i") and cmd.index("-f") < cmd.index("-i"), \
+        "son opciones de ENTRADA: solo valen antes de -i"
+
+
+def test_el_editor_sigue_midiendo_con_el_comando_de_siempre(monkeypatch):
+    """El parámetro es solo para las clases: el `_medir` del editor no cambia ni un argumento."""
+    comandos = _ffprobe_falso(monkeypatch)
+    assert edicion_api._medir("usuarios/u/clip.mp4")["duracion_s"] == 12.0
+    url = f"https://{BUCKET}.s3.amazonaws.com/usuarios/u/clip.mp4?X-Amz-Signature={FIRMA}"
+    assert comandos == [FFPROBE_BASE + ["-i", url]]
+    assert edicion_api._medir("usuarios/u/clip.mp4", seguro=False)["duracion_s"] == 12.0
+    assert comandos[1] == comandos[0]
+    assert edicion_api._medir("clases/cl-3f9a21bc/video.mp4", seguro=True)["duracion_s"] == 12.0
+    assert comandos[2] == FFPROBE_BASE + [
+        "-protocol_whitelist", "https,tls,tcp,crypto", "-f", "mov,mp4", "-i",
+        f"https://{BUCKET}.s3.amazonaws.com/clases/cl-3f9a21bc/video.mp4?X-Amz-Signature={FIRMA}"]
+
+
+def test_ninguna_ruta_de_clases_llama_al_medir_de_la_edicion_sin_seguro():
+    """Guardián estático: el único uso de `edicion_api._medir` en el módulo de las clases pasa `seguro=True`."""
+    arbol = ast.parse((RAIZ / "server" / "clases_admin_api.py").read_text(encoding="utf-8"))
+    usos = [n for n in ast.walk(arbol) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "_medir" and isinstance(n.func.value, ast.Name) and n.func.value.id == "edicion_api"]
+    assert usos, "clases_admin_api._medir tiene que delegar en edicion_api._medir"
+    for u in usos:
+        assert any(k.arg == "seguro" and isinstance(k.value, ast.Constant) and k.value.value is True
+                   for k in u.keywords), "medir un archivo que subió una persona exige seguro=True"
 
 
 # ===========================================================================
@@ -1409,6 +1552,212 @@ def test_confirmar_y_cancelar_a_la_vez_dejan_la_clase_en_un_estado_coherente(mun
     else:                                # ganó cancelar
         assert c["estado"] == "borrador" and rx.status_code == 200
         assert rc.status_code == 409 and c["bytes"] is None
+
+
+# ===========================================================================
+# 8b. el TOKEN de la subida: la subida huérfana no toca la nueva
+
+TEXTO_SUBIDA_CAMBIO = "Esa subida ya no es la vigente: se empezó otra o se canceló. No se cambió nada."
+
+
+def token_de(r) -> str:
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+def confirmar_con(m, id_, **cuerpo):
+    return m.cliente.post(f"{PREFIJO}/{id_}/confirmar", json=cuerpo)
+
+
+def cancelar_con(m, id_, **cuerpo):
+    return m.cliente.post(f"{PREFIJO}/{id_}/cancelar", json=cuerpo)
+
+
+def test_cada_subida_trae_su_propio_token_y_la_clase_no_lo_muestra(mundo):
+    id_ = nueva(mundo)
+    t1 = token_de(pedir_subida(mundo, id_))
+    assert re.fullmatch(r"[0-9a-f]{32}", t1)
+    assert t1 not in clave_pedida(mundo) and t1 not in json.dumps(clase(mundo, id_))
+    assert "subida_token" not in clase(mundo, id_)
+    assert mundo.cliente.get(PREFIJO).json()["clases"][0].keys().isdisjoint({"subida_token", "token"})
+    assert cancelar_con(mundo, id_, token=t1).status_code == 200
+    t2 = token_de(pedir_subida(mundo, id_))
+    assert re.fullmatch(r"[0-9a-f]{32}", t2) and t2 != t1
+
+
+def test_la_subida_huerfana_no_confirma_ni_cancela_la_nueva(mundo):
+    """El escenario de la revisión: se cambió de pestaña a media subida (el PUT sigue), la tarjeta nueva
+    cancela y empieza otra subida con otro peso, y el PUT huérfano termina y llama a confirmar y a cancelar."""
+    id_ = nueva(mundo)
+    ta = token_de(pedir_subida(mundo, id_, bytes_=1000))          # subida A, en la pestaña vieja
+    assert mundo.cliente.post(f"{PREFIJO}/{id_}/cancelar").status_code == 200   # sin token: no conoce el de A
+    tb = token_de(pedir_subida(mundo, id_, bytes_=2000))          # subida B
+    assert tb != ta
+    mundo.s3.poner(clave_pedida(mundo), 1000)                     # lo que dejó el PUT huérfano (misma clave)
+    n = len(mundo.s3.llamadas)
+    r = confirmar_con(mundo, id_, token=ta)
+    assert (r.status_code, codigo(r)) == (409, "subida_cambio")
+    assert r.json()["detail"]["texto"] == TEXTO_SUBIDA_CAMBIO
+    r = cancelar_con(mundo, id_, token=ta)
+    assert (r.status_code, codigo(r)) == (409, "subida_cambio")
+    assert r.json()["detail"]["texto"] == TEXTO_SUBIDA_CAMBIO
+    assert len(mundo.s3.llamadas) == n, "el confirmar huérfano ni miró S3"
+    c = clase(mundo, id_)
+    assert (c["estado"], c["bytes"], c["nombre_original"]) == ("subiendo", 2000, "clase.mp4"), "no se tocó la clase"
+    # la subida B sigue siendo suya
+    mundo.s3.poner(clave_pedida(mundo), 2000)
+    r = confirmar_con(mundo, id_, token=tb)
+    assert r.status_code == 200 and r.json()["clase"]["estado"] == "subido"
+
+
+def test_confirmar_y_cancelar_con_el_token_vigente_funcionan(mundo):
+    id_ = nueva(mundo)
+    to = token_de(pedir_subida(mundo, id_))
+    r = cancelar_con(mundo, id_, token=to)
+    assert r.status_code == 200 and r.json()["clase"]["estado"] == "borrador"
+    tk = token_de(pedir_subida(mundo, id_, bytes_=700))
+    mundo.s3.poner(clave_pedida(mundo), 700)
+    r = confirmar_con(mundo, id_, token=tk, nombre="Clase final.mp4")
+    c = r.json()["clase"]
+    assert r.status_code == 200 and (c["estado"], c["bytes"], c["nombre_original"]) == ("subido", 700, "Clase final.mp4")
+
+
+def test_sin_token_confirmar_y_cancelar_siguen_como_siempre_y_el_cuerpo_puede_faltar(mundo):
+    """La tarjeta que perdió su subida (no conoce el token) tiene que poder cancelarla."""
+    variantes = ({}, {"json": {}}, {"json": {"token": None}},
+                 {"content": b"", "headers": {"content-type": "application/json"}})
+    for kw in variantes:
+        id_ = subiendo(mundo)
+        r = mundo.cliente.post(f"{PREFIJO}/{id_}/cancelar", **kw)
+        assert r.status_code == 200 and r.json()["clase"]["estado"] == "borrador", (kw, r.text)
+    for kw in variantes:
+        id_ = subiendo(mundo, bytes_=1000)
+        mundo.s3.poner(clave_pedida(mundo), 1000)
+        r = mundo.cliente.post(f"{PREFIJO}/{id_}/confirmar", **kw)
+        assert r.status_code == 200 and r.json()["clase"]["estado"] == "subido", (kw, r.text)
+
+
+@pytest.mark.parametrize("token", ["", "x", "A" * 32, "0123456789abcdef0123456789abcde",
+                                   "0123456789abcdef0123456789abcdef0", "0123456789abcdef0123456789abcde\n",
+                                   5, True, ["a"], {"a": 1}])
+def test_un_token_mal_formado_es_422_y_no_toca_la_clase(mundo, token):
+    id_ = subiendo(mundo)
+    for ruta in ("confirmar", "cancelar"):
+        r = mundo.cliente.post(f"{PREFIJO}/{id_}/{ruta}", json={"token": token})
+        assert r.status_code == 422, (ruta, token, r.text)
+    assert clase(mundo, id_)["estado"] == "subiendo"
+    assert not [l for l in mundo.s3.llamadas if l[0] == "head_object"]
+
+
+def test_confirmar_y_cancelar_siguen_rechazando_campos_de_mas(mundo):
+    id_ = subiendo(mundo)
+    for extra in ({"key": "clases/otra/video.mp4"}, {"bytes": 5}, {"duracion_s": 10}, {"subida_token": TOKEN}):
+        for ruta in ("confirmar", "cancelar"):
+            r = mundo.cliente.post(f"{PREFIJO}/{id_}/{ruta}", json=extra)
+            assert r.status_code == 422, (ruta, extra)
+    assert clase(mundo, id_)["estado"] == "subiendo"
+
+
+def test_un_token_viejo_sobre_una_clase_cancelada_dice_subida_cambio_y_no_toca_nada(mundo):
+    id_ = nueva(mundo)
+    t = token_de(pedir_subida(mundo, id_))
+    assert cancelar_con(mundo, id_, token=t).status_code == 200
+    for fn in (confirmar_con, cancelar_con):
+        r = fn(mundo, id_, token=t)
+        assert (r.status_code, codigo(r)) == (409, "subida_cambio"), fn.__name__
+    c = clase(mundo, id_)
+    assert (c["estado"], c["bytes"], c["nombre_original"]) == ("borrador", None, None)
+
+
+def test_ya_confirmada_confirmar_con_el_token_de_esa_subida_sigue_siendo_idempotente(mundo):
+    """El doble clic o el reintento tras una respuesta perdida: el token ya se olvidó, pero la clase quedó
+    `subido` y confirmar devuelve la clase (como siempre), sin volver a mirar S3."""
+    id_ = nueva(mundo)
+    t = token_de(pedir_subida(mundo, id_, bytes_=900))
+    mundo.s3.poner(clave_pedida(mundo), 900)
+    assert confirmar_con(mundo, id_, token=t).status_code == 200
+    n = len(mundo.s3.llamadas)
+    r = confirmar_con(mundo, id_, token=t)
+    assert r.status_code == 200 and r.json()["clase"]["estado"] == "subido"
+    assert len(mundo.s3.llamadas) == n
+    # cancelar ya no se puede: la clase está `subido` (no es «otra subida»)
+    r = cancelar_con(mundo, id_, token=t)
+    assert (r.status_code, codigo(r)) == (409, "estado_no_permite")
+    assert r.json()["detail"]["estado"] == "subido"
+
+
+def test_el_token_se_olvida_al_cancelar_y_al_confirmar(mundo):
+    id_ = nueva(mundo)
+    t = token_de(pedir_subida(mundo, id_, bytes_=100))
+    assert db.clases_obtener(id_)["subida_token"] == t
+    cancelar_con(mundo, id_, token=t)
+    assert db.clases_obtener(id_)["subida_token"] is None
+    token_de(pedir_subida(mundo, id_, bytes_=100))
+    mundo.s3.poner(clave_pedida(mundo), 100)
+    assert confirmar_con(mundo, id_).status_code == 200
+    assert db.clases_obtener(id_)["subida_token"] is None
+
+
+def test_si_no_se_pudo_firmar_se_cancela_solo_esa_subida_con_su_token(mundo, monkeypatch):
+    llamadas = []
+    original = db.clases_cancelar
+    monkeypatch.setattr(db, "clases_cancelar", lambda *a, **k: llamadas.append(a) or original(*a, **k))
+    mundo.s3.error_firma = RuntimeError(f"https://x/y?X-Amz-Signature={FIRMA}")
+    id_ = nueva(mundo)
+    r = pedir_subida(mundo, id_)
+    assert r.status_code == 502 and codigo(r) == "s3_fallo"
+    assert clase(mundo, id_)["estado"] == "borrador"
+    (args,) = llamadas
+    assert args[0] == id_ and re.fullmatch(r"[0-9a-f]{32}", args[1]), "cancela con el token de esa subida"
+
+
+def test_confirmar_la_subida_vieja_a_la_vez_que_se_cancela_y_se_empieza_otra_deja_una_clase_coherente(mundo):
+    """Confirmar la subida vieja a la vez que se cancela y se empieza otra: la vieja nunca confirma la nueva."""
+    id_ = nueva(mundo)
+    ta = token_de(pedir_subida(mundo, id_, bytes_=1000))
+    mundo.s3.poner(clave_pedida(mundo), 1000)
+    tope = threading.Barrier(2)
+
+    def vieja():
+        tope.wait(10)
+        return confirmar_con(mundo, id_, token=ta)
+
+    def nueva_subida():
+        tope.wait(10)
+        r = cancelar_con(mundo, id_, token=ta)
+        return r, (token_de(pedir_subida(mundo, id_, bytes_=2000)) if r.status_code == 200 else None)
+    with ThreadPoolExecutor(2) as pool:
+        f1, f2 = pool.submit(vieja), pool.submit(nueva_subida)
+        rv, (rc, tb) = f1.result(), f2.result()
+    c = clase(mundo, id_)
+    if c["estado"] == "subido":          # ganó la vieja: la cancelación ya no era posible
+        assert rv.status_code == 200 and rc.status_code == 409 and tb is None
+        assert c["bytes"] == 1000
+    else:                                # ganó la cancelación: la vieja se rechazó y la subida nueva sigue viva
+        assert (rv.status_code, codigo(rv)) == (409, "subida_cambio")
+        assert (c["estado"], c["bytes"]) == ("subiendo", 2000) and db.clases_obtener(id_)["subida_token"] == tb
+
+
+def test_la_base_compara_el_token_dentro_de_la_misma_sentencia(bd):
+    """`db.clases_cancelar` y `db.clases_confirmar` con un token que no es el vigente no cambian nada (en
+    el SQL real es parte del UPDATE, no un chequeo aparte), y al terminar el token se olvida."""
+    a, _ = db.clases_crear(id_="cl-0000000b", clave="clave-de-prueba-tok", numero=1, titulo="t", resumen=None,
+                           grabada_en=None, origen="archivo", liga=None, creado_por="u")
+    k = f"clases/{a['id']}/video.mp4"
+    t1, t2 = clases.token_nuevo(), clases.token_nuevo()
+    assert t1 != t2
+    assert db.clases_a_subiendo(a["id"], k, "n.mp4", 10, t1)["subida_token"] == t1
+    assert db.clases_cancelar(a["id"], t2) is None
+    assert db.clases_confirmar(a["id"], k, 10, 10, None, t2) is None
+    ahora = db.clases_obtener(a["id"])
+    assert (ahora["estado"], ahora["subida_token"], ahora["bytes"]) == ("subiendo", t1, 10)
+    assert db.clases_cancelar(a["id"], t1)["subida_token"] is None
+    assert db.clases_a_subiendo(a["id"], k, "n.mp4", 10, t2)["subida_token"] == t2
+    assert db.clases_confirmar(a["id"], k, 10, 10, None, t1) is None, "el token viejo ya no sirve"
+    assert db.clases_cancelar(a["id"])["estado"] == "borrador", "sin token cancela la que haya"
+    assert db.clases_a_subiendo(a["id"], k, "n.mp4", 10, t1)["subida_token"] == t1
+    hecha = db.clases_confirmar(a["id"], k, 10, 10, None)
+    assert (hecha["estado"], hecha["subida_token"]) == ("subido", None)
 
 
 # ===========================================================================
@@ -1591,8 +1940,10 @@ def test_ningun_error_ni_log_lleva_firmas_arns_ni_el_texto_de_nadie(mundo, caplo
     def ok(r):
         textos.append(r.text)
         return r
-    ok(pedir_subida(mundo, id_, archivo=f"{secretos[2]}.mp4"))
+    token = ok(pedir_subida(mundo, id_, archivo=f"{secretos[2]}.mp4")).json()["token"]
     mundo.s3.poner(clave_pedida(mundo), 1000)
+    ok(mundo.cliente.post(f"{PREFIJO}/{id_}/confirmar", json={"token": "f" * 32}))      # subida_cambio
+    ok(mundo.cliente.post(f"{PREFIJO}/{id_}/cancelar", json={"token": "e" * 32}))       # subida_cambio
     # cada fallo posible de S3, con un mensaje que trae la firma, un ARN y el nombre del bucket
     for error in (RuntimeError(f"https://x/y?X-Amz-Signature={FIRMA} {ARN}"),
                   ClientError({"Error": {"Code": "AccessDenied", "Message": f"{ARN} {FIRMA}"}}, "HeadObject"),
@@ -1620,6 +1971,9 @@ def test_ningun_error_ni_log_lleva_firmas_arns_ni_el_texto_de_nadie(mundo, caplo
     for s in secretos + ("resumen secreto",):
         assert s not in log_total, s
     assert id_ in log_total, "el log sí lleva el id de la clase y la transición"
+    # el token de la subida solo sale en la respuesta de /subida: ni en otra respuesta, ni en un error, ni en un log
+    assert token not in log_total and "f" * 32 not in log_total and "e" * 32 not in log_total
+    assert [t for t in textos if token in t] == [textos[0]]
 
 
 def test_si_la_base_falla_es_503_limpio_sin_el_mensaje_de_la_excepcion(mundo, monkeypatch, caplog):
@@ -1695,6 +2049,31 @@ def test_pg_db_migrate_real_crea_las_tablas_nuevas(pg, monkeypatch, capsys):
     assert "clases_config" in salida and re.search(r"Las \d+ tablas del esquema existen", salida)
 
 
+def test_pg_db_migrate_agrega_subida_token_a_una_tabla_clases_que_se_creo_sin_ella(pg, monkeypatch, capsys):
+    """El entorno que ya corrió la primera versión de S1: la tabla existe, sin la columna."""
+    import sys
+    from tools import db_migrate
+
+    def columnas():
+        return {f["column_name"] for f in db.ejecutar(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'clases'")}
+    assert "subida_token" in columnas()
+    db.ejecutar("ALTER TABLE clases DROP COLUMN subida_token")
+    assert "subida_token" not in columnas()
+    with pytest.raises(Exception):                # sin la columna, ni siquiera se puede leer la lista
+        db.clases_listar(False)
+    monkeypatch.setattr(sys, "argv", ["db_migrate.py", "--cluster-arn", "x", "--secret-arn", "y"])
+    db_migrate.main()
+    capsys.readouterr()
+    assert "subida_token" in columnas()
+    assert db.clases_listar(False) == []
+    c, _ = db.clases_crear(id_="cl-0000000c", clave="clave-de-prueba-mig", numero=1, titulo="t", resumen=None,
+                           grabada_en=None, origen="archivo", liga=None, creado_por="u")
+    assert db.clases_a_subiendo(c["id"], f"clases/{c['id']}/video.mp4", "n.mp4", 10, TOKEN)["subida_token"] == TOKEN
+    assert db.ejecutar("SELECT data_type FROM information_schema.columns WHERE table_name = 'clases' "
+                       "AND column_name = 'subida_token'")[0]["data_type"] == "text"
+
+
 def test_pg_el_check_de_la_tabla_cierra_el_origen_y_el_numero(pg):
     base = ("INSERT INTO clases (id, numero, titulo, origen, creado_por) "
             "VALUES ('cl-00000001', {n}, 't', '{o}', 'u')")
@@ -1711,7 +2090,8 @@ def test_pg_una_sola_gana_por_cada_comparar_y_cambiar_de_estado(pg):
 
     def pedir(i):
         tope.wait(10)
-        return db.clases_a_subiendo("cl-0000000a", f"clases/cl-0000000a/video.mp4", f"n{i}.mp4", 100 + i)
+        return db.clases_a_subiendo("cl-0000000a", f"clases/cl-0000000a/video.mp4", f"n{i}.mp4", 100 + i,
+                                    clases.token_nuevo())
     with ThreadPoolExecutor(16) as pool:
         resultados = list(pool.map(pedir, range(16)))
     assert len([r for r in resultados if r is not None]) == 1
@@ -1730,15 +2110,15 @@ def test_pg_cada_transicion_exige_su_estado_de_origen(pg):
     assert db.clases_cancelar(a) is None
     assert db.clases_confirmar(a, k, 10, 10, None) is None
     assert db.clases_medida(a, k, 5.0) is None and db.clases_medida_fallo(a, k, "x") is False
-    assert db.clases_a_subiendo(a, k, "n.mp4", 10)["estado"] == "subiendo"
+    assert db.clases_a_subiendo(a, k, "n.mp4", 10, TOKEN)["estado"] == "subiendo"
     # nada sale de `subiendo` salvo confirmar y cancelar
-    assert db.clases_a_subiendo(a, k, "n.mp4", 10) is None
+    assert db.clases_a_subiendo(a, k, "n.mp4", 10, TOKEN) is None
     assert db.clases_medida(a, k, 5.0) is None
     assert db.clases_confirmar(a, "clases/otra/video.mp4", 10, 10, None) is None
     assert db.clases_confirmar(a, k, 11, 10, None) is None, "bytes declarados distintos"
     assert db.clases_confirmar(a, k, 10, 10, None)["estado"] == "subido"
     # nada sale de `subido` salvo medir y archivar
-    assert db.clases_cancelar(a) is None and db.clases_a_subiendo(a, k, "n.mp4", 10) is None
+    assert db.clases_cancelar(a) is None and db.clases_a_subiendo(a, k, "n.mp4", 10, TOKEN) is None
     assert db.clases_confirmar(a, k, 10, 10, None) is None
     assert db.clases_medida(a, "otra-clave", 5.0) is None
     assert db.clases_medida(a, k, 5.0)["duracion_s"] == 5.0
@@ -1842,3 +2222,235 @@ def test_pg_la_lista_va_por_numero_y_las_archivadas_por_fecha(pg):
     db.clases_archivar(ids[10])
     assert [c["numero"] for c in db.clases_listar(True)] == [10, 30], "la archivada más reciente primero"
     assert [c["numero"] for c in db.clases_listar(False)] == [20]
+
+
+# ===========================================================================
+# 13. sin psycopg solo se omite la variante Postgres
+
+def test_sin_psycopg_el_archivo_no_se_omite_entero_solo_la_variante_postgres(tmp_path):
+    """requirements.txt no trae `psycopg`: un venv armado solo con él NO puede perder las pruebas de
+    autorización, de no-borrar-en-S3 y de validación. Se corre este mismo archivo en otro pytest con el
+    import de `psycopg` bloqueado: pasan las de la variante en memoria y solo se omite la de Postgres."""
+    (tmp_path / "sin_psycopg.py").write_text(
+        "import importlib.abc\nimport sys\n\n"
+        "class _Bloqueo(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, nombre, ruta=None, destino=None):\n"
+        "        if nombre == 'psycopg' or nombre.startswith('psycopg.'):\n"
+        "            raise ModuleNotFoundError('psycopg bloqueado por la prueba', name=nombre)\n\n"
+        "sys.meta_path.insert(0, _Bloqueo())\n", encoding="utf-8")
+    entorno = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path), os.environ.get("PYTHONPATH", "")]),
+               "COI_PG_SOCK": ""}
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", str(Path(__file__)), "-p", "sin_psycopg", "-p", "no:cacheprovider",
+         "-q", "-rs", "-k", "test_la_clave_de_s3_sale_del_id or test_un_no_admin_recibe_403_en_TODAS "
+                            "or test_crear_y_listar_sin_precios"],
+        cwd=RAIZ, env=entorno, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    salida = r.stdout + r.stderr
+    assert r.returncode == 0, salida[-2000:]
+    assert re.search(r"\b3 passed\b", salida), salida[-2000:]
+    assert re.search(r"\b1 skipped\b", salida), salida[-2000:]
+    assert "sin psycopg" in salida, "la variante postgres se omite con su motivo"
+    assert "could not import 'psycopg'" not in salida, "el archivo NO se omite entero"
+
+
+# ===========================================================================
+# 14. ffprobe de verdad contra servidores locales (sin red real)
+
+class ServidoresLocales:
+    """Un «S3» y dos «hosts internos» (uno por http y otro por https) en 127.0.0.1, con un certificado
+    autofirmado: ffprobe (como el de la Lambda) no verifica certificados. `visitas` anota cada petición que
+    llegue a un señuelo. Los objetos del «S3» se piden por la ruta `/clases/<id>/video.mp4`."""
+
+    def __init__(self, carpeta: Path):
+        self.carpeta = carpeta
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout",
+                        str(carpeta / "k.pem"), "-out", str(carpeta / "c.pem"), "-days", "1",
+                        "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"],
+                       check=True, capture_output=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=2:size=64x64:rate=10",
+                        "-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart", str(carpeta / "ok.mp4")], check=True, capture_output=True)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(carpeta / "c.pem"), str(carpeta / "k.pem"))
+        self.visitas: list[tuple[str, str]] = []
+        self.objetos: dict[str, bytes] = {}
+        self._servidores = []
+        senuelo_http = self._servidor(self._senuelo("http"))
+        senuelo_https = self._servidor(self._senuelo("https"), ctx)
+        s3 = self._servidor(self._s3(), ctx)
+        self.puerto_http, self.puerto_https = senuelo_http.server_address[1], senuelo_https.server_address[1]
+        self.puerto_s3 = s3.server_address[1]
+        self.objetos["clases/cl-aaaaaaaa/video.mp4"] = (carpeta / "ok.mp4").read_bytes()
+        self.objetos["clases/cl-bbbbbbbb/video.mp4"] = self._mpd(f"http://127.0.0.1:{self.puerto_http}/interno-http")
+        self.objetos["clases/cl-cccccccc/video.mp4"] = self._mpd(f"https://127.0.0.1:{self.puerto_https}/interno-https")
+
+    @staticmethod
+    def _mpd(base: str) -> bytes:
+        return ('<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" '
+                'profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" type="static" '
+                'mediaPresentationDuration="PT10S" minBufferTime="PT1S"><Period><AdaptationSet mimeType="video/mp4">'
+                '<Representation id="1" bandwidth="1000" width="320" height="240" codecs="avc1.42c01e">'
+                f'<BaseURL>{base}</BaseURL><SegmentBase indexRange="0-100"><Initialization range="0-50"/>'
+                '</SegmentBase></Representation></AdaptationSet></Period></MPD>').encode()
+
+    def _servidor(self, handler, ctx=None):
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        if ctx is not None:
+            srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self._servidores.append(srv)
+        return srv
+
+    def _senuelo(self, etiqueta):
+        visitas = self.visitas
+
+        class Senuelo(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                visitas.append((etiqueta, self.path))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"\0" * 64)
+            do_HEAD = do_GET
+
+            def log_message(self, *_a):
+                pass
+        return Senuelo
+
+    def _s3(self):
+        objetos = self.objetos
+
+        class S3(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                cuerpo = objetos[self.path.split("?")[0].lstrip("/")]
+                ini, fin, estado = 0, len(cuerpo) - 1, 200
+                m = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range") or "")
+                if m:
+                    a, b = m.groups()
+                    ini, fin, estado = int(a or 0), (min(int(b), len(cuerpo) - 1) if b else len(cuerpo) - 1), 206
+                parte = cuerpo[ini:fin + 1]
+                self.send_response(estado)
+                self.send_header("Content-Type", "video/mp4")      # miente: el contenido puede ser otra cosa
+                self.send_header("Content-Length", str(len(parte)))
+                self.send_header("Accept-Ranges", "bytes")
+                if estado == 206:
+                    self.send_header("Content-Range", f"bytes {ini}-{fin}/{len(cuerpo)}")
+                self.end_headers()
+                if self.command == "GET":
+                    self.wfile.write(parte)
+            do_HEAD = do_GET
+
+            def log_message(self, *_a):
+                pass
+        return S3
+
+    def url(self, key: str) -> str:
+        return f"https://127.0.0.1:{self.puerto_s3}/{key}?X-Amz-Signature={FIRMA}"
+
+    def cerrar(self):
+        for srv in self._servidores:
+            srv.shutdown()
+            srv.server_close()
+
+
+@pytest.fixture(scope="module")
+def locales(tmp_path_factory):
+    for herramienta in ("ffprobe", "ffmpeg", "openssl"):
+        if not shutil.which(herramienta):
+            pytest.skip(f"hace falta {herramienta} en el PATH")
+    soporte = subprocess.run(["ffprobe", "-hide_banner", "-protocols"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace").stdout
+    if not re.search(r"^\s*https\s*$", soporte, re.M):
+        pytest.skip("este ffprobe no sabe abrir https")
+    srv = ServidoresLocales(tmp_path_factory.mktemp("ffprobe_local"))
+    yield srv
+    srv.cerrar()
+
+
+@pytest.fixture
+def firmadas_locales(locales, monkeypatch):
+    """`url_firmada` apunta al «S3» local; sin proxy de por medio; la lista de visitas, vacía."""
+    for var in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    monkeypatch.setattr(media_sync, "url_firmada", lambda key, *a, **k: locales.url(key))
+    locales.visitas.clear()
+    return locales
+
+
+def test_ffprobe_de_verdad_mide_un_mp4_normal_con_la_lista_de_protocolos(firmadas_locales):
+    med = MEDIR_REAL("clases/cl-aaaaaaaa/video.mp4")
+    assert med == {"duracion_s": 2.0, "ancho": 64, "alto": 64, "audio": True}
+    assert firmadas_locales.visitas == []
+
+
+@pytest.mark.parametrize("senuelo,key", [("http", "clases/cl-bbbbbbbb/video.mp4"),
+                                         ("https", "clases/cl-cccccccc/video.mp4")])
+def test_ffprobe_de_verdad_no_sigue_un_mpd_que_dice_ser_mp4_ni_pide_nada_al_senuelo(firmadas_locales, senuelo, key):
+    """Un «.mp4» (Content-Type video/mp4) que en realidad es un MPD de DASH con la BaseURL en otro host:
+    sin defensa ffprobe lo analiza y pide esa URL (por http o por https). Primero el CONTROL: el `_medir`
+    de la edición, sin defensa, sí llega al señuelo; si no llegara, esta prueba no distinguiría nada.
+    Lo que lo frena es `-f mov,mp4` (con ffmpeg 6.1.1 la lista de protocolos sola no frena a DASH)."""
+    edicion_api._medir(key)
+    if not [v for v in firmadas_locales.visitas if v[0] == senuelo]:
+        pytest.skip("este ffprobe no sigue un MPD ni sin defensa: la prueba no puede distinguir")
+    firmadas_locales.visitas.clear()
+    assert MEDIR_REAL(key) is None, "no es un MP4: no hay duración que dar"
+    assert firmadas_locales.visitas == [], "el ffprobe seguro pidió algo al señuelo"
+
+
+def test_ffprobe_de_verdad_con_la_lista_de_protocolos_solo_abre_https(firmadas_locales, tmp_path):
+    """La segunda capa: `-protocol_whitelist` (en `edicion_api.FFPROBE_SEGURO`). Sin ella ffprobe lee un
+    archivo local o pide un `http://`; con ella no abre nada que no sea https."""
+    local = tmp_path / "local.mp4"
+    shutil.copy(firmadas_locales.carpeta / "ok.mp4", local)
+
+    def ffprobe(entrada, *flags):
+        return subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json",
+                               *flags, "-i", entrada], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=30)
+    senuelo = f"http://127.0.0.1:{firmadas_locales.puerto_http}/solo-http.mp4"
+    # CONTROL: sin la defensa, las dos cosas se abren
+    assert ffprobe(str(local)).returncode == 0
+    ffprobe(senuelo)
+    assert [v for v in firmadas_locales.visitas if v[0] == "http"], "el control no llegó al señuelo http"
+    firmadas_locales.visitas.clear()
+    # con la defensa (la del código, no una copia): ni el archivo local ni el http
+    local_seguro = ffprobe(str(local), *edicion_api.FFPROBE_SEGURO)
+    assert local_seguro.returncode != 0 and "not on whitelist" in local_seguro.stderr
+    http_seguro = ffprobe(senuelo, *edicion_api.FFPROBE_SEGURO)
+    assert http_seguro.returncode != 0 and "not on whitelist" in http_seguro.stderr
+    assert firmadas_locales.visitas == []
+
+
+# ===========================================================================
+# 15. la documentación cita un diseño que existe y sus encabezados no chocan
+
+NOTA_DISENO = ("Diseño del 19-oct-2026. La rebanada S1 ya está construida; lo demás es plan. "
+               "Las marcas [V]/[I]/[POR MEDIR] son las del autor del diseño.")
+
+
+def test_docs_diseno_guia_existe_con_su_nota_inicial_y_las_secciones_que_se_citan():
+    texto = (RAIZ / "docs" / "DISENO-GUIA.md").read_text(encoding="utf-8")
+    assert NOTA_DISENO in "\n".join(texto.splitlines()[:6]), "la nota va al principio"
+    for seccion in ("### 3.3 Estados de la clase", "### 4.1 Tablas nuevas", "### 5.1 Admin", "### 5.4 Límites",
+                    "## 8. Seguridad y privacidad", "## 9. Plan de entrega en rebanadas"):
+        assert seccion in texto, seccion
+    assert "/tmp/" not in texto and "scratchpad" not in texto, "ninguna ruta de la máquina de quien lo escribió"
+
+
+def test_operacion_cita_el_diseno_por_su_ruta_real_y_no_repite_encabezados_de_la_guia_de_clases():
+    operacion = (RAIZ / "docs" / "OPERACION.md").read_text(encoding="utf-8")
+    citas = [m.start() for m in re.finditer(r"DISENO-GUIA\.md", operacion)]
+    assert citas, "la sección de S1 cita el diseño"
+    for i in citas:
+        assert operacion[max(0, i - 5):i] == "docs/", operacion[max(0, i - 40):i + 20]
+        assert (RAIZ / "docs" / "DISENO-GUIA.md").is_file()
+    encabezados = [l.strip() for l in operacion.splitlines() if re.match(r"#{2,4} ", l)]
+    inicio = encabezados.index("## Guía de clases · admin (S1)")
+    fin = next((i for i in range(inicio + 1, len(encabezados)) if encabezados[i].startswith("## ")), len(encabezados))
+    propios = encabezados[inicio + 1:fin]
+    assert propios, "la sección de S1 tiene subsecciones"
+    resto = encabezados[:inicio] + encabezados[fin:]
+    assert not set(propios) & set(resto), f"encabezados repetidos: {sorted(set(propios) & set(resto))}"
+    assert len(propios) == len(set(propios))

@@ -7,10 +7,10 @@ ni OpenAI): procesar, el costo, el trabajo, el texto, publicar y las palabras cl
     GET    /api/admin/clases?archivadas=0|1   las clases + los límites (la web no copia ninguno)
     POST   /api/admin/clases                  crear (idempotente por `clave`; número único entre vivas)
     PATCH  /api/admin/clases/{id}             editar número, título, resumen, fecha o liga
-    POST   /api/admin/clases/{id}/subida      URL de subida (PUT a S3); borrador → subiendo
-    POST   /api/admin/clases/{id}/confirmar   HEAD a S3; subiendo → subido
+    POST   /api/admin/clases/{id}/subida      URL de subida (PUT a S3) + `token` de la subida; borrador → subiendo
+    POST   /api/admin/clases/{id}/confirmar   HEAD a S3; subiendo → subido        (cuerpo opcional: `token`)
     POST   /api/admin/clases/{id}/medir       ffprobe sobre una URL firmada (8 s) → duración
-    POST   /api/admin/clases/{id}/cancelar    subiendo → borrador
+    POST   /api/admin/clases/{id}/cancelar    subiendo → borrador                 (cuerpo opcional: `token`)
     GET    /api/admin/clases/{id}/video       vista previa del dueño: URL firmada de 2 h
     DELETE /api/admin/clases/{id}             ARCHIVA (borrado suave); no toca S3
     POST   /api/admin/clases/{id}/restaurar   deshace el archivado
@@ -29,6 +29,10 @@ Reglas que no se negocian:
     no se borran); archivar solo escribe `archivada_en`. Un test revienta si algo llama `delete_*`.
   - **Los cambios de estado son comparar-y-cambiar en UNA sentencia** (`db.clases_*`): de dos subidas
     a la vez gana una. El que pierde recibe `estado_no_permite` (409).
+  - **Cada subida lleva un TOKEN** (32 hex que fabrica el servidor, columna `subida_token`). `confirmar` y
+    `cancelar` lo aceptan en el cuerpo: si viene y no es el de la subida vigente, 409 `subida_cambio` y no
+    se toca la clase (la subida huérfana de otra pestaña no cancela ni confirma la nueva). Sin token
+    siguen como siempre: la tarjeta que perdió su subida sí puede cancelarla.
   - **Ni URLs firmadas, ni ARNs, ni texto de nadie en logs ni en errores.** El log lleva el id de la
     clase y la transición; los errores, el catálogo de abajo (el `error` de la clase, un texto fijo).
 
@@ -77,6 +81,7 @@ ERRORES: dict[str, tuple[int, str]] = {
     "tamano_invalido": (422, "El tamaño del video no sirve: tiene que pesar entre 1 byte y 5 GB."),
     "video_vacio": (422, "El archivo que llegó a S3 está vacío. Cancela y vuelve a subir el video."),
     "estado_no_permite": (409, "Eso no se puede hacer con la clase tal como está ahora."),
+    "subida_cambio": (409, "Esa subida ya no es la vigente: se empezó otra o se canceló. No se cambió nada."),
     "origen_liga": (409, "Esta clase es una liga: no lleva video que subir."),
     "archivo_no_esta": (404, "El video no llegó a S3. Cancela y vuelve a subirlo; si se cortó la "
                              "conexión, el PUT no terminó."),
@@ -156,13 +161,32 @@ def _estado_no_permite(fila: dict) -> HTTPException:
     return falla("estado_no_permite", estado=fila["estado"])
 
 
-def _tras_cas_fallido(id_: str) -> HTTPException:
+def _subida_ajena(fila: dict, token: str | None) -> bool:
+    """¿El `token` que mandó la web NO es el de la subida vigente? Solo cuenta mientras la clase está en
+    `borrador` (la subida se canceló) o `subiendo` (se empezó otra): una vez `subido` el token ya no
+    existe, y ahí `confirmar` sigue siendo idempotente y `cancelar` dice `estado_no_permite`. Sin token
+    no hay nada que comparar."""
+    return (token is not None and fila["estado"] in (clases.BORRADOR, clases.SUBIENDO)
+            and fila.get("subida_token") != token)
+
+
+def _tras_cas_fallido(id_: str, token: str | None = None) -> HTTPException:
     """El comparar-y-cambiar no devolvió fila. ¿Por qué? Se vuelve a leer SOLO para escoger el error:
     quien decidió fue la base."""
     fila = _bd(db.clases_obtener, id_)
     if fila is None or fila["archivada_en"]:
         return falla("no_existe")
+    if _subida_ajena(fila, token):
+        return falla("subida_cambio")
     return _estado_no_permite(fila)
+
+
+def _token_de(body: "ConfirmarIn | CancelarIn | None") -> str | None:
+    """El `token` opcional del cuerpo de confirmar/cancelar: ausente = None (como siempre); presente,
+    tiene que ser una cadena de 32 hex."""
+    if body is None or body.token is None:
+        return None
+    return _validar(clases.validar_token, body.token)
 
 
 def _bucket() -> None:
@@ -292,14 +316,16 @@ class SubidaIn(_Cuerpo):
 @router.post("/{clase_id}/subida")
 def subida(clase_id: str, body: SubidaIn):
     """Da la URL del PUT. La clave de S3 la decide el servidor: `clases/<id>/video.<ext>` con la
-    extensión de una lista cerrada; el nombre del archivo solo se guarda para mostrarlo."""
+    extensión de una lista cerrada; el nombre del archivo solo se guarda para mostrarlo. Responde
+    además el `token` de ESTA subida (32 hex): la web lo devuelve en `confirmar` y `cancelar`."""
     id_ = _id(clase_id)
     ext, nombre = _validar(clases.validar_archivo, body.archivo)
     tipo = _validar(clases.validar_content_type, body.content_type)
     _validar(clases.validar_tamano_declarado, body.bytes)
     _bucket()
     key = clases.clave_video(id_, ext)
-    if _bd(db.clases_a_subiendo, id_, key, nombre, body.bytes) is None:
+    token = clases.token_nuevo()
+    if _bd(db.clases_a_subiendo, id_, key, nombre, body.bytes, token) is None:
         fila = _bd(db.clases_obtener, id_)
         if fila is None or fila["archivada_en"]:
             raise falla("no_existe")
@@ -312,15 +338,20 @@ def subida(clase_id: str, body: SubidaIn):
         log.warning("clase %s: no se pudo firmar la subida (%s)", id_, type(err).__name__)
         url = None
     if not url:
-        _bd(db.clases_cancelar, id_)          # la clase no se queda en `subiendo` sin URL
+        _bd(db.clases_cancelar, id_, token)   # la clase no se queda en `subiendo` sin URL (y solo esta subida)
         raise falla("s3_fallo")
     log.info("clase %s: borrador → subiendo", id_)
-    return JSONResponse({"url": url, "content_type": tipo, "expira_s": clases.PRESIGN_S},
+    return JSONResponse({"url": url, "content_type": tipo, "expira_s": clases.PRESIGN_S, "token": token},
                         headers=_SIN_CACHE)
 
 
 class ConfirmarIn(_Cuerpo):
     nombre: StrictStr | None = None
+    token: StrictStr | None = None
+
+
+class CancelarIn(_Cuerpo):
+    token: StrictStr | None = None
 
 
 def _cabecera(key: str) -> dict:
@@ -339,14 +370,21 @@ def _cabecera(key: str) -> dict:
 def confirmar(clase_id: str, body: ConfirmarIn | None = None):
     """subiendo → subido, tras mirar el objeto en S3 (HEAD): que exista, que no esté vacío, que sea
     de un tipo de la lista y que pese lo mismo que se declaró al pedir la subida. No mide, no procesa
-    y no llama a ningún proveedor. Confirmar una clase ya `subido` devuelve la clase (doble clic)."""
+    y no llama a ningún proveedor. Confirmar una clase ya `subido` devuelve la clase (doble clic).
+
+    Con `token` (el que dio `/subida`), solo confirma la subida vigente: si no lo es, 409 `subida_cambio`
+    ANTES de mirar S3 (la clave del objeto es la misma para todas las subidas de la clase, así que el
+    HEAD de una subida vieja no dice nada de la nueva)."""
     id_ = _id(clase_id)
+    token = _token_de(body)
     _bucket()
     fila = _viva(id_)
     if fila["origen"] != "archivo":
         raise falla("origen_liga")
     if fila["estado"] == clases.SUBIDO:
         return _clase(fila)
+    if _subida_ajena(fila, token):
+        raise falla("subida_cambio")
     if fila["estado"] != clases.SUBIENDO or not fila["video_key"] or fila["bytes"] is None:
         raise _estado_no_permite(fila)
     cab = _cabecera(fila["video_key"])
@@ -358,11 +396,13 @@ def confirmar(clase_id: str, body: ConfirmarIn | None = None):
         raise falla("tamano_invalido", "El video que llegó a S3 no pesa lo que dijiste al subirlo. "
                                        "Cancela y vuelve a subirlo.")
     nombre = clases.nombre_para_mostrar(body.nombre) if body else None
-    nueva = _bd(db.clases_confirmar, id_, fila["video_key"], fila["bytes"], cab["bytes"], nombre)
+    nueva = _bd(db.clases_confirmar, id_, fila["video_key"], fila["bytes"], cab["bytes"], nombre, token)
     if nueva is None:
         otra = _viva(id_)                    # otra pestaña llegó antes: si ya quedó `subido`, es lo mismo
         if otra["estado"] == clases.SUBIDO and otra["video_key"] == fila["video_key"]:
             return _clase(otra)
+        if _subida_ajena(otra, token):
+            raise falla("subida_cambio")
         raise _estado_no_permite(otra)
     log.info("clase %s: subiendo → subido", id_)
     return _clase(nueva)
@@ -370,8 +410,13 @@ def confirmar(clase_id: str, body: ConfirmarIn | None = None):
 
 def _medir(key: str) -> dict | None:
     """ffprobe sobre una URL firmada de S3 (8 s, un reintento): el `_medir` de la edición, que ya
-    redacta la firma antes de loguear. Devuelve `{"duracion_s", …}` o None."""
-    return edicion_api._medir(key)
+    redacta la firma antes de loguear. Devuelve `{"duracion_s", …}` o None.
+
+    `seguro=True`: este archivo lo subió una persona, y ffprobe elige el lector por el CONTENIDO (un
+    «.mp4» que es un MPD de DASH le haría pedir URLs a la red interna desde la Lambda). Se le dice qué
+    lector usar (`-f mov,mp4`, lo que frena a DASH) y qué protocolos puede abrir (`-protocol_whitelist
+    https,tls,tcp,crypto`, la segunda capa); el editor, que mide otras cosas, sigue como estaba."""
+    return edicion_api._medir(key, seguro=True)
 
 
 @router.post("/{clase_id}/medir")
@@ -396,11 +441,14 @@ def medir(clase_id: str):
 
 
 @router.post("/{clase_id}/cancelar")
-def cancelar(clase_id: str):
+def cancelar(clase_id: str, body: CancelarIn | None = None):
+    """subiendo → borrador. Con `token`, solo cancela la subida vigente (409 `subida_cambio` si no lo
+    es y no toca nada); sin él, cancela la que haya: así la tarjeta que perdió su subida puede soltarla."""
     id_ = _id(clase_id)
-    nueva = _bd(db.clases_cancelar, id_)
+    token = _token_de(body)
+    nueva = _bd(db.clases_cancelar, id_, token)
     if nueva is None:
-        raise _tras_cas_fallido(id_)
+        raise _tras_cas_fallido(id_, token)
     log.info("clase %s: subiendo → borrador", id_)
     return _clase(nueva)
 

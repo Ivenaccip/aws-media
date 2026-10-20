@@ -1,7 +1,7 @@
 // «4 · Clases» del panel como COMPORTAMIENTO (docs/PLAN-UI.md §5). Cada test empieza por el ID de su invariante: tests/test_migracion_ui.py
 // exige que cada ID del registro exista aquí. El servidor es de mentira (un mundo en memoria con las rutas del contrato, sección 5.1 del
 // diseño de la Guía de clases), el PUT a S3 es un XHR que la prueba mueve a mano, y NADA sale a la red ni llama a un proveedor de pago.
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,7 +11,7 @@ import { Admin } from './Admin';
 import { Clases } from './Clases';
 import type { Resumen } from './logica';
 import type { Clase, LimitesClases } from './logicaClases';
-import { TEXTO_FALLO_SUBIDA, TEXTO_SUBIDA_CANCELADA } from './useSubidaClase';
+import { reiniciarAvisoDeSalida, TEXTO_FALLO_SUBIDA, TEXTO_SUBIDA_AJENA, TEXTO_SUBIDA_CANCELADA, useSubidaClase } from './useSubidaClase';
 
 const LIMITES: LimitesClases = {
   max_bytes: 5368709120,
@@ -87,6 +87,9 @@ function mundo(o: Opciones = {}) {
   const pedidos: Pedido[] = [];
   const limites = o.limites ?? LIMITES;
   let n = 0;
+  // el token de la subida vigente de cada clase (lo da /subida; confirmar y cancelar lo traen de vuelta)
+  const tokens = new Map<string, string>();
+  let nToken = 0;
   const poner = (id: string, cambios: Partial<Clase>) => {
     const c = { ...vivas.get(id)!, ...cambios };
     vivas.set(id, c);
@@ -134,14 +137,20 @@ function mundo(o: Opciones = {}) {
     }
     if (accion === 'subida') {
       poner(id, { estado: 'subiendo' });
-      return json({ url: 'https://s3.ejemplo/subida?firma=1', content_type: cuerpo?.content_type, expira_s: 900 });
+      const token = (++nToken).toString(16).padStart(32, 'a');
+      tokens.set(id, token);
+      return json({ url: 'https://s3.ejemplo/subida?firma=1', content_type: cuerpo?.content_type, expira_s: 900, token });
     }
-    if (accion === 'confirmar') {
-      const bytes = pedidos.findLast(p => p.ruta.endsWith(`/${id}/subida`))?.cuerpo?.bytes as number;
-      return json({ clase: poner(id, { estado: 'subido', bytes, nombre_original: String(cuerpo?.nombre) }) });
+    // como el servidor de verdad: solo se confirma o se cancela desde «subiendo», y un token que no es el vigente no toca nada
+    if (accion === 'confirmar' || accion === 'cancelar') {
+      if (vivas.get(id)?.estado !== 'subiendo') return detalle(409, 'estado_no_permite', 'Eso no se puede hacer con la clase tal como está ahora.');
+      if (cuerpo?.token !== undefined && cuerpo.token !== tokens.get(id)) return detalle(409, 'subida_cambio', TEXTO_SUBIDA_AJENA);
+      tokens.delete(id);
+      if (accion === 'cancelar') return json({ clase: poner(id, { estado: 'borrador' }) });
+      const bytes = (pedidos.findLast(p => p.ruta.endsWith(`/${id}/subida`))?.cuerpo?.bytes as number | undefined) ?? 1_400_000_000;
+      return json({ clase: poner(id, { estado: 'subido', bytes, nombre_original: cuerpo?.nombre ? String(cuerpo.nombre) : null }) });
     }
     if (accion === 'medir') return json({ clase: poner(id, { duracion_s: 3720.4 }) });
-    if (accion === 'cancelar') return json({ clase: poner(id, { estado: 'borrador' }) });
     if (accion === 'video') return json({ url: `https://s3.ejemplo/clases/${id}/video.mp4?firma=2`, expira_s: 7200 });
     if (accion === 'restaurar') {
       const vuelta = { ...archivadas.get(id)! };
@@ -155,12 +164,27 @@ function mundo(o: Opciones = {}) {
   vi.stubGlobal('fetch', f);
   const rutas = () => pedidos.map(p => `${p.metodo} ${p.ruta}`);
   const llamadas = (metodo: string, ruta: string) => pedidos.filter(p => p.metodo === metodo && p.ruta === ruta);
-  return { f, pedidos, rutas, llamadas, vivas, archivadas };
+  return { f, pedidos, rutas, llamadas, vivas, archivadas, tokens };
 }
 
-const detalle = (status: number, codigo: string, texto: string) => json({ detail: { codigo, texto } }, status);
+function detalle(status: number, codigo: string, texto: string) {
+  return json({ detail: { codigo, texto } }, status);
+}
 
-const ambares = () => [...document.querySelectorAll('button')].filter(b => b.classList.contains('bg-ambar')).map(b => b.textContent);
+// lo que se ve ámbar de botón: los botones con el fondo del principal Y los interruptores, cuya pista o bolita también pueden pintarse
+// con él (encendido NO debe: DISENO.md §5). `bg-ambar` exacto: `bg-ambar-claro` (la bolita) y `border-ambar-hondo` son otros tonos
+const esAmbar = (e: Element) => e.classList.contains('bg-ambar');
+const ambares = () =>
+  [...document.querySelectorAll('button')]
+    .filter(b => esAmbar(b) || (b.getAttribute('role') === 'switch' && [...b.querySelectorAll('*')].some(esAmbar)))
+    .map(b => b.textContent || b.getAttribute('aria-labelledby'));
+
+/** El navegador pregunta si de verdad se quiere salir: true = avisaría (hay una subida que se perdería). */
+function avisaAlSalir() {
+  const ev = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(ev);
+  return ev.defaultPrevented;
+}
 
 async function abrir() {
   render(<Clases />);
@@ -183,6 +207,7 @@ async function elegir(archivo: File, n = 5) {
 beforeEach(() => {
   vi.unstubAllGlobals();
   ponerXhrFalso();
+  reiniciarAvisoDeSalida();
 });
 
 describe('admin · Clases', () => {
@@ -292,7 +317,9 @@ describe('admin · Clases', () => {
     expect(within(tarjeta(3)).getByText('Grabada el 12 de marzo de 2026')).toBeInTheDocument();
     expect(within(tarjeta(4)).getByText('Subido: 824.0 MB. Falta medir cuánto dura.')).toBeInTheDocument();
     // una subida que quedó a medias en el servidor se puede cancelar para empezar de nuevo
-    expect(within(tarjeta(2)).getByText('Hay una subida en curso o que quedó a medias. Si no avanza, cancélala para empezar de nuevo.')).toBeInTheDocument();
+    expect(
+      within(tarjeta(2)).getByText('Hay una subida en curso o que quedó a medias. Si el video ya terminó de subir, confirma que llegó; si no avanza, cancélala para empezar de nuevo.'),
+    ).toBeInTheDocument();
     expect(within(tarjeta(2)).getByRole('button', { name: 'Cancelar subida' })).toBeInTheDocument();
     // en orden por número
     expect(screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent)).toEqual(['Clase 1 · Uno', 'Clase 2 · Dos', 'Clase 3 · Tres', 'Clase 4 · Cuatro']);
@@ -558,8 +585,8 @@ describe('admin · Clases', () => {
       `POST ${RUTA}/${ID}/confirmar`,
       `POST ${RUTA}/${ID}/medir`,
     ]);
-    // el nombre que se manda es el que vio la persona
-    expect(m.llamadas('POST', `${RUTA}/${ID}/confirmar`)[0]!.cuerpo).toEqual({ nombre: 'clase5.mp4' });
+    // el nombre que se manda es el que vio la persona, y el token es el que dio el permiso
+    expect(m.llamadas('POST', `${RUTA}/${ID}/confirmar`)[0]!.cuerpo).toEqual({ nombre: 'clase5.mp4', token: 'a'.repeat(31) + '1' });
     expect(within(tarjeta(5)).getByText('Subido')).toBeInTheDocument();
     expect(within(tarjeta(5)).getByText('Archivo: clase5.mp4')).toBeInTheDocument();
     // ya no se ofrece subir otro video a la misma clase, pero sí verlo
@@ -586,7 +613,8 @@ describe('admin · Clases', () => {
   });
 
   it('admin.clases.cambiar_de_pestana_a_media_subida_no_la_detiene', async () => {
-    // Radix desmonta lo que no se ve: la subida de una clase no puede morir porque la persona mire otra vista del panel
+    // la subida de una clase no puede morir porque la persona mire otra vista del panel. «4 · Clases» ya no se desmonta al irse
+    // (`conservar`): la subida, su barra y su aviso siguen siendo de la misma tarjeta
     const m = mundo({ vivas: [clase()] });
     render(<Admin />);
     await userEvent.click(await screen.findByRole('tab', { name: '4 · Clases' }));
@@ -594,21 +622,17 @@ describe('admin · Clases', () => {
     await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
     await userEvent.click(screen.getByRole('tab', { name: '2 · Costos' }));
     expect(screen.queryByRole('article')).toBeNull();
-    const intento = () => {
-      const ev = new Event('beforeunload', { cancelable: true });
-      window.dispatchEvent(ev);
-      return ev.defaultPrevented;
-    };
     // el aviso de cerrar la pestaña sigue mientras el PUT sigue
-    expect(intento()).toBe(true);
+    expect(avisaAlSalir()).toBe(true);
     expect(ultimoXhr().abortado).toBe(false);
     act(() => ultimoXhr().terminar(200));
     await waitFor(() => expect(m.llamadas('POST', `${RUTA}/${ID}/medir`)).toHaveLength(1));
     expect(m.rutas().filter(r => r.startsWith('POST'))).toEqual([`POST ${RUTA}/${ID}/subida`, `POST ${RUTA}/${ID}/confirmar`, `POST ${RUTA}/${ID}/medir`]);
-    expect(intento()).toBe(false);
-    // al volver, la lista ya trae la clase subida y medida
+    await waitFor(() => expect(avisaAlSalir()).toBe(false));
+    // al volver, la tarjeta ya cuenta la clase subida y medida: lo supo por su propia subida, sin pedir la lista otra vez
     await userEvent.click(screen.getByRole('tab', { name: '4 · Clases' }));
     expect(await screen.findByText('Listo: 1 h 02 min · 1.4 GB')).toBeInTheDocument();
+    expect(m.rutas().filter(r => r.startsWith('GET /api/admin/clases'))).toHaveLength(1);
   });
 
   it('admin.clases.cancelar_la_subida_no_confirma', async () => {
@@ -638,11 +662,17 @@ describe('admin · Clases', () => {
     await elegir(archivoDeVideo());
     expect(await screen.findByText('Pidiendo permiso de subida…')).toBeInTheDocument();
     await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }));
-    await act(async () => permiso.resolver(json({ url: 'https://s3.ejemplo/subida?firma=1', content_type: 'video/mp4', expira_s: 900 })));
+    // el servidor ya tiene la clase «subiendo» cuando contesta el permiso
+    const TOKEN = 'b'.repeat(32);
+    m.vivas.set(ID, { ...m.vivas.get(ID)!, estado: 'subiendo' });
+    m.tokens.set(ID, TOKEN);
+    await act(async () => permiso.resolver(json({ url: 'https://s3.ejemplo/subida?firma=1', content_type: 'video/mp4', expira_s: 900, token: TOKEN })));
     expect(await screen.findByText(TEXTO_SUBIDA_CANCELADA)).toBeInTheDocument();
-    // llegó el permiso y ya no hay PUT: ni XHR ni confirmar
+    // llegó el permiso y ya no hay PUT: ni XHR ni confirmar. Y se cancela con el token de ESA subida
     expect(XhrFalso.todos).toHaveLength(0);
     expect(m.rutas().filter(r => r.startsWith('POST'))).toEqual([`POST ${RUTA}/${ID}/subida`, `POST ${RUTA}/${ID}/cancelar`]);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)[0]!.cuerpo).toEqual({ token: TOKEN });
+    expect(within(tarjeta(5)).getByText('Borrador')).toBeInTheDocument();
   });
 
   it('admin.clases.si_falla_el_put_dice_que_revises_la_conexion_y_no_confirma', async () => {
@@ -705,7 +735,7 @@ describe('admin · Clases', () => {
     // el video NO se vuelve a subir ni se cancela: sigue «Subido», con su botón para medir
     expect(within(tarjeta(5)).getByText('Subido')).toBeInTheDocument();
     expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)).toHaveLength(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Medir la duración de la clase 5' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Medir duración de la clase 5' }));
     expect(await screen.findByText('Listo: 1 h 02 min · 1.4 GB')).toBeInTheDocument();
     expect(m.llamadas('POST', `${RUTA}/${ID}/medir`)).toHaveLength(2);
     expect(m.llamadas('POST', `${RUTA}/${ID}/subida`)).toHaveLength(1);
@@ -942,5 +972,559 @@ describe('admin · Clases', () => {
     expect(poner).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
+  });
+
+  // ---- arreglos de la revisión adversarial (S1) ----
+
+  // 5 · las dos guardas de la subida: el candado (doble clic) y «cancelar no confirma» cuando el PUT acaba a la vez que el clic
+  it('admin.clases.doble_clic_en_subir_pide_un_solo_permiso', async () => {
+    const m = mundo({ vivas: [clase()] });
+    // el hook solo: en la tarjeta el selector se desmonta con la primera elección, así que el segundo «elegir video» tiene que llegar
+    // ANTES de que React repinte (el candado va antes del primer await)
+    const { result } = renderHook(() => useSubidaClase(clase(), LIMITES, vi.fn(), vi.fn()));
+    await act(async () => {
+      void result.current.subir(archivoDeVideo('a.mp4'));
+      void result.current.subir(archivoDeVideo('b.mp4'));
+    });
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    expect(m.llamadas('POST', `${RUTA}/${ID}/subida`)).toHaveLength(1);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/subida`)[0]!.cuerpo).toMatchObject({ archivo: 'a.mp4' });
+    // y mientras esa subida corre, otro intento tampoco pide nada
+    await act(async () => {
+      void result.current.subir(archivoDeVideo('c.mp4'));
+    });
+    expect(m.llamadas('POST', `${RUTA}/${ID}/subida`)).toHaveLength(1);
+    act(() => ultimoXhr().terminar(200));
+    await waitFor(() => expect(m.llamadas('POST', `${RUTA}/${ID}/medir`)).toHaveLength(1));
+    await waitFor(() => expect(result.current.progreso).toBeNull());
+    // una sola subida de punta a punta: un PUT, una confirmación y una medida
+    expect(XhrFalso.todos).toHaveLength(1);
+    expect(m.rutas().filter(r => r.startsWith('POST'))).toEqual([`POST ${RUTA}/${ID}/subida`, `POST ${RUTA}/${ID}/confirmar`, `POST ${RUTA}/${ID}/medir`]);
+  });
+
+  it('admin.clases.cancelar_justo_cuando_termina_el_put_no_confirma', async () => {
+    const m = mundo({ vivas: [clase()] });
+    await abrir();
+    await elegir(archivoDeVideo());
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    act(() => ultimoXhr().avanzar(999, 1000));
+    // el PUT termina y, en el mismo instante, la persona pulsa «Cancelar»: antes de que el hook siga, el clic ya pasó
+    act(() => {
+      ultimoXhr().terminar(200);
+      fireEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }));
+    });
+    expect(await screen.findByText(TEXTO_SUBIDA_CANCELADA)).toBeInTheDocument();
+    expect(m.llamadas('POST', `${RUTA}/${ID}/confirmar`)).toHaveLength(0);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/medir`)).toHaveLength(0);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)).toHaveLength(1);
+    expect(within(tarjeta(5)).getByText('Borrador')).toBeInTheDocument();
+    expect(m.vivas.get(ID)!.estado).toBe('borrador');
+  });
+
+  // 2 y 11 · un fallo pasajero de «confirmar» no tira a la basura un video que ya llegó a la nube
+  it('admin.clases.un_fallo_pasajero_de_confirmar_no_cancela_la_subida_y_se_reintenta', async () => {
+    const fallos: Array<[string, () => Response | Promise<Response>]> = [
+      ['la base despertando (503)', () => detalle(503, 'despertando', 'El servicio está despertando. Inténtalo en unos segundos.')],
+      ['un fallo puntual de S3 (502)', () => detalle(502, 's3_fallo', 'No pudimos hablar con S3 ahora. Inténtalo de nuevo en unos minutos.')],
+      ['el tiempo de la pasarela (504, sin JSON)', () => new Response('Gateway Time-out', { status: 504 })],
+      ['la red cortada un momento', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ];
+    for (const [cual, falla] of fallos) {
+      cleanup();
+      ponerXhrFalso();
+      reiniciarAvisoDeSalida();
+      let intentos = 0;
+      const m = mundo({
+        vivas: [clase()],
+        pisa: { [`POST ${RUTA}/${ID}/confirmar`]: () => (++intentos === 1 ? falla() : undefined) },
+      });
+      await abrir();
+      await elegir(archivoDeVideo('clase5.mp4', 'video/mp4', 1_400_000_000));
+      await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+      act(() => ultimoXhr().terminar(200));
+      const alerta = await screen.findByRole('alert');
+      expect(alerta, cual).toHaveTextContent('Tu video ya llegó a la nube, pero no pudimos confirmarlo.');
+      expect(alerta, cual).toHaveTextContent('No hace falta subirlo otra vez: pulsa «Reintentar la confirmación».');
+      // NO se canceló: la clase sigue «subiendo» en el servidor, el video no se tira y no se midió
+      await act(async () => {});
+      expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`), cual).toHaveLength(0);
+      expect(m.llamadas('POST', `${RUTA}/${ID}/medir`), cual).toHaveLength(0);
+      expect(m.vivas.get(ID)!.estado, cual).toBe('subiendo');
+      const t = tarjeta(5);
+      expect(within(t).getByText('Subiendo'), cual).toBeInTheDocument();
+      expect(screen.queryByLabelText('Subir video de la clase 5'), cual).toBeNull();
+      expect(within(t).getByRole('button', { name: 'Reintentar la confirmación' }), cual).toBeInTheDocument();
+      expect(within(t).getByRole('button', { name: 'Cancelar subida' }), cual).toBeInTheDocument();
+      // cerrar la pestaña todavía perdería el video: el aviso se queda
+      expect(avisaAlSalir(), cual).toBe(true);
+      // reintentar confirma con el MISMO token: sin permiso nuevo ni PUT nuevo
+      await userEvent.click(within(t).getByRole('button', { name: 'Reintentar la confirmación' }));
+      expect(await screen.findByText('Listo: 1 h 02 min · 1.4 GB'), cual).toBeInTheDocument();
+      const confirmaciones = m.llamadas('POST', `${RUTA}/${ID}/confirmar`);
+      expect(confirmaciones, cual).toHaveLength(2);
+      expect(confirmaciones[1]!.cuerpo, cual).toEqual(confirmaciones[0]!.cuerpo);
+      expect(confirmaciones[0]!.cuerpo!.token, cual).toMatch(/^[0-9a-f]{32}$/);
+      expect(m.llamadas('POST', `${RUTA}/${ID}/subida`), cual).toHaveLength(1);
+      expect(XhrFalso.todos, cual).toHaveLength(1);
+      expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`), cual).toHaveLength(0);
+      expect(screen.queryByRole('alert'), cual).toBeNull();
+      expect(avisaAlSalir(), cual).toBe(false);
+    }
+  });
+
+  it('admin.clases.tras_un_fallo_pasajero_de_confirmar_cancelar_subida_la_suelta_con_su_token', async () => {
+    const m = mundo({
+      vivas: [clase()],
+      pisa: { [`POST ${RUTA}/${ID}/confirmar`]: () => detalle(502, 's3_fallo', 'No pudimos hablar con S3 ahora. Inténtalo de nuevo en unos minutos.') },
+    });
+    await abrir();
+    await elegir(archivoDeVideo());
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    act(() => ultimoXhr().terminar(200));
+    await userEvent.click(await within(await screen.findByRole('article')).findByRole('button', { name: 'Cancelar subida' }));
+    expect(await screen.findByText(TEXTO_SUBIDA_CANCELADA)).toBeInTheDocument();
+    // se cancela con el token de ESA subida, la clase vuelve a «borrador» y se puede elegir otro video
+    const cancelaciones = m.llamadas('POST', `${RUTA}/${ID}/cancelar`);
+    expect(cancelaciones).toHaveLength(1);
+    expect(cancelaciones[0]!.cuerpo!.token).toMatch(/^[0-9a-f]{32}$/);
+    expect(m.vivas.get(ID)!.estado).toBe('borrador');
+    expect(within(tarjeta(5)).getByText('Borrador')).toBeInTheDocument();
+    expect(screen.getByLabelText('Subir video de la clase 5')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reintentar la confirmación' })).toBeNull();
+    expect(avisaAlSalir()).toBe(false);
+  });
+
+  it('admin.clases.cada_rechazo_definitivo_de_confirmar_suelta_la_subida', async () => {
+    const rechazos: Array<[number, string, string]> = [
+      [404, 'archivo_no_esta', 'El video no llegó a la nube. Vuelve a subirlo.'],
+      [422, 'video_vacio', 'El video llegó vacío. Elige otro.'],
+      [422, 'tamano_invalido', 'El video pesa distinto de lo que dijiste. Cancela y vuelve a subirlo.'],
+      [422, 'tipo_no_soportado', 'Ese archivo no es un video que se pueda usar.'],
+    ];
+    for (const [estado, codigo, texto] of rechazos) {
+      cleanup();
+      ponerXhrFalso();
+      reiniciarAvisoDeSalida();
+      const m = mundo({ vivas: [clase()], pisa: { [`POST ${RUTA}/${ID}/confirmar`]: () => detalle(estado, codigo, texto) } });
+      await abrir();
+      await elegir(archivoDeVideo());
+      await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+      act(() => ultimoXhr().terminar(200));
+      // el texto del servidor, tal cual, y la subida soltada con su token
+      expect(await screen.findByRole('alert'), codigo).toHaveTextContent(texto);
+      await waitFor(() => expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`), codigo).toHaveLength(1));
+      expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)[0]!.cuerpo!.token, codigo).toMatch(/^[0-9a-f]{32}$/);
+      expect(m.llamadas('POST', `${RUTA}/${ID}/medir`), codigo).toHaveLength(0);
+      expect(m.vivas.get(ID)!.estado, codigo).toBe('borrador');
+      expect(await screen.findByLabelText('Subir video de la clase 5'), codigo).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reintentar la confirmación' }), codigo).toBeNull();
+      expect(avisaAlSalir(), codigo).toBe(false);
+    }
+  });
+
+  it('admin.clases.una_subida_que_quedo_a_medias_se_confirma_sin_volver_a_subir', async () => {
+    // se cerró la pestaña con el video ya en la nube: la tarjeta no sabe ni el token ni el nombre, pero el servidor confirma desde «subiendo»
+    const m = mundo({ vivas: [clase({ estado: 'subiendo' })] });
+    await abrir();
+    expect(screen.queryByLabelText('Subir video de la clase 5')).toBeNull();
+    await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Reintentar la confirmación' }));
+    expect(await screen.findByText(/^Listo: /)).toBeInTheDocument();
+    expect(m.llamadas('POST', `${RUTA}/${ID}/confirmar`)[0]!.cuerpo).toEqual({});
+    expect(m.llamadas('POST', `${RUTA}/${ID}/subida`)).toHaveLength(0);
+    expect(XhrFalso.todos).toHaveLength(0);
+    expect(within(tarjeta(5)).getByText('Subido')).toBeInTheDocument();
+  });
+
+  it('admin.clases.una_subida_a_medias_a_la_que_el_servidor_no_le_halla_el_video_no_se_cancela_sola', async () => {
+    // si otra pestaña la sigue subiendo, confirmar sin token da `archivo_no_esta`: se dice, y NO se cancela lo que no es de esta tarjeta
+    const m = mundo({
+      vivas: [clase({ estado: 'subiendo' })],
+      pisa: { [`POST ${RUTA}/${ID}/confirmar`]: () => detalle(404, 'archivo_no_esta', 'El video no llegó a la nube. Vuelve a subirlo.') },
+    });
+    await abrir();
+    await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Reintentar la confirmación' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('El video no llegó a la nube. Vuelve a subirlo.');
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)).toHaveLength(0);
+    expect(m.vivas.get(ID)!.estado).toBe('subiendo');
+    expect(within(tarjeta(5)).getByRole('button', { name: 'Cancelar subida' })).toBeInTheDocument();
+  });
+
+  // 6 · el token: cada subida lleva el suyo y una vieja no puede tocar la nueva
+  it('admin.clases.la_subida_lleva_su_token_en_confirmar_y_cancelar', async () => {
+    const m = mundo({ vivas: [clase()] });
+    await abrir();
+    // la primera subida se cancela con SU token
+    await elegir(archivoDeVideo('uno.mp4'));
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    const primero = m.tokens.get(ID)!;
+    expect(primero).toMatch(/^[0-9a-f]{32}$/);
+    await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }));
+    await screen.findByText(TEXTO_SUBIDA_CANCELADA);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)[0]!.cuerpo).toEqual({ token: primero });
+    // la segunda, con otro token, se confirma con ese otro
+    await elegir(archivoDeVideo('dos.mp4'));
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
+    const segundo = m.tokens.get(ID)!;
+    expect(segundo).not.toBe(primero);
+    act(() => ultimoXhr().terminar(200));
+    await screen.findByText(/^Listo: /);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/confirmar`)[0]!.cuerpo).toEqual({ nombre: 'dos.mp4', token: segundo });
+  });
+
+  it('admin.clases.subida_cambio_no_cancela_nada_ni_se_trata_como_fallo_de_red', async () => {
+    // el PUT de esta tarjeta termina, pero mientras tanto otra pestaña canceló esa subida y empezó otra: confirmar dice 409 subida_cambio
+    const TEXTO = 'Esa subida ya no es la vigente: se empezó otra o se canceló. No se cambió nada.';
+    const m: ReturnType<typeof mundo> = mundo({
+      vivas: [clase()],
+      pisa: {
+        [`POST ${RUTA}/${ID}/confirmar`]: () => {
+          m.vivas.set(ID, { ...m.vivas.get(ID)!, estado: 'borrador' }); // lo que dejó la otra pestaña
+          return detalle(409, 'subida_cambio', TEXTO);
+        },
+      },
+    });
+    await abrir();
+    await elegir(archivoDeVideo());
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    act(() => ultimoXhr().terminar(200));
+    // se dice con el texto del servidor, como aviso (no como falla de red ni de subida)
+    expect(await screen.findByText(TEXTO)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(TEXTO_FALLO_SUBIDA)).toBeNull();
+    // NO se cancela (sería tirar la subida de la otra pestaña), no se mide y no se ofrece reintentar lo que ya no es de esta tarjeta
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)).toHaveLength(0);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/medir`)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Reintentar la confirmación' })).toBeNull();
+    // y se vuelve a pedir la clase: la tarjeta cuenta lo que el servidor tiene ahora
+    await waitFor(() => expect(m.rutas().filter(r => r === 'GET /api/admin/clases?archivadas=0')).toHaveLength(2));
+    expect(await screen.findByLabelText('Subir video de la clase 5')).toBeInTheDocument();
+    expect(within(tarjeta(5)).getByText('Borrador')).toBeInTheDocument();
+    expect(avisaAlSalir()).toBe(false);
+  });
+
+  it('admin.clases.cancelar_con_una_subida_que_ya_no_es_la_vigente_dice_el_texto_y_no_cambia_nada', async () => {
+    const TEXTO = 'Esa subida ya no es la vigente: se empezó otra o se canceló. No se cambió nada.';
+    const m = mundo({ vivas: [clase()], pisa: { [`POST ${RUTA}/${ID}/cancelar`]: () => detalle(409, 'subida_cambio', TEXTO) } });
+    await abrir();
+    await elegir(archivoDeVideo());
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }));
+    expect(await screen.findByText(TEXTO)).toBeInTheDocument();
+    // no es «Subida cancelada» (no se canceló nada) ni un error de conexión
+    expect(screen.queryByText(TEXTO_SUBIDA_CANCELADA)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)).toHaveLength(1);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/confirmar`)).toHaveLength(0);
+  });
+
+  // 9 · sin internet a media subida
+  it('admin.clases.sin_internet_a_media_subida_la_tarjeta_sigue_subiendo_y_ofrece_cancelar_subida', async () => {
+    let intentos = 0;
+    const m = mundo({
+      vivas: [clase()],
+      // el PUT se cae y el aviso al servidor también: la primera vez no hay red, la segunda sí
+      pisa: { [`POST ${RUTA}/${ID}/cancelar`]: () => (++intentos === 1 ? Promise.reject(new TypeError('Failed to fetch')) : undefined) },
+    });
+    await abrir();
+    await elegir(archivoDeVideo());
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    act(() => ultimoXhr().fallar());
+    const alerta = await screen.findByRole('alert');
+    expect(alerta).toHaveTextContent(TEXTO_FALLO_SUBIDA);
+    expect(alerta).toHaveTextContent('La subida quedó abierta en el servidor: pulsa «Cancelar subida» para volver a elegir el video.');
+    // el servidor la tiene «subiendo» y la tarjeta lo dice: ya no dice «Borrador» ni ofrece subir otra vez (daría 409)
+    expect(m.vivas.get(ID)!.estado).toBe('subiendo');
+    const t = tarjeta(5);
+    expect(within(t).getByText('Subiendo')).toBeInTheDocument();
+    expect(within(t).queryByText('Borrador')).toBeNull();
+    expect(screen.queryByLabelText('Subir video de la clase 5')).toBeNull();
+    // vuelve la red: «Cancelar subida» la suelta con el token de esa subida
+    await userEvent.click(within(t).getByRole('button', { name: 'Cancelar subida' }));
+    expect(await screen.findByLabelText('Subir video de la clase 5')).toBeInTheDocument();
+    expect(within(tarjeta(5)).getByText('Borrador')).toBeInTheDocument();
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)).toHaveLength(2);
+    expect(m.llamadas('POST', `${RUTA}/${ID}/cancelar`)[1]!.cuerpo).toEqual({ token: 'a'.repeat(31) + '1' });
+    expect(avisaAlSalir()).toBe(false);
+  });
+
+  it('admin.clases.cancelar_sin_internet_dice_que_la_subida_quedo_abierta', async () => {
+    const m = mundo({ vivas: [clase()], pisa: { [`POST ${RUTA}/${ID}/cancelar`]: () => Promise.reject(new TypeError('Failed to fetch')) } });
+    await abrir();
+    await elegir(archivoDeVideo());
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cortamos la subida, pero no pudimos avisarle al servidor.');
+    // no dice «Subida cancelada» (el servidor sigue con ella) y ofrece volver a intentarlo
+    expect(screen.queryByText(TEXTO_SUBIDA_CANCELADA)).toBeNull();
+    expect(within(tarjeta(5)).getByRole('button', { name: 'Cancelar subida' })).toBeInTheDocument();
+    expect(m.vivas.get(ID)!.estado).toBe('subiendo');
+  });
+
+  it('admin.clases.si_el_permiso_no_contesta_se_vuelve_a_pedir_la_clase', async () => {
+    // sin red al pedir el permiso: el servidor pudo dejar la clase «subiendo» sin que aquí se sepa
+    let intentos = 0;
+    const m = mundo({
+      vivas: [clase()],
+      pisa: {
+        [`POST ${RUTA}/${ID}/subida`]: () => {
+          if (++intentos > 1) return undefined;
+          m.vivas.set(ID, { ...m.vivas.get(ID)!, estado: 'subiendo' }); // el servidor sí lo recibió; la respuesta se perdió
+          return Promise.reject(new TypeError('Failed to fetch'));
+        },
+      },
+    });
+    await abrir();
+    await elegir(archivoDeVideo());
+    expect(await screen.findByRole('alert')).toHaveTextContent('No hay conexión');
+    await waitFor(() => expect(m.rutas().filter(r => r === 'GET /api/admin/clases?archivadas=0')).toHaveLength(2));
+    // la tarjeta ya cuenta la verdad: «subiendo», con «Cancelar subida» para empezar de nuevo
+    expect(await within(tarjeta(5)).findByRole('button', { name: 'Cancelar subida' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Subir video de la clase 5')).toBeNull();
+  });
+
+  // 10 · cambiar de pestaña a media subida
+  it('admin.clases.al_volver_a_la_pestana_a_media_subida_sigue_la_barra_y_no_ofrece_cancelar_subida', async () => {
+    const m = mundo({ vivas: [clase()] });
+    render(<Admin />);
+    await userEvent.click(await screen.findByRole('tab', { name: '4 · Clases' }));
+    await elegir(archivoDeVideo('clase5.mp4', 'video/mp4', 1_400_000_000));
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    act(() => ultimoXhr().avanzar(588_000_000, 1_400_000_000));
+    await screen.findByText('Subiendo… 42 %');
+    // mirar otra vista y volver ANTES de que termine el PUT
+    await userEvent.click(screen.getByRole('tab', { name: '2 · Costos' }));
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    await userEvent.click(screen.getByRole('tab', { name: '4 · Clases' }));
+    // la tarjeta sigue contando la subida de verdad: su barra y su «Cancelar» (que corta el PUT), no «Hay una subida en curso…»
+    expect(screen.getByRole('progressbar', { name: 'Subiendo… 42 %' })).toHaveAttribute('aria-valuenow', '42');
+    expect(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancelar subida' })).toBeNull();
+    expect(screen.queryByText(/Hay una subida en curso/)).toBeNull();
+    // la lista no se pidió otra vez (no hay nada que "restablecer"): la pestaña nunca se desmontó
+    expect(m.rutas().filter(r => r.startsWith('GET /api/admin/clases'))).toHaveLength(1);
+    // y «Cancelar» sigue sirviendo: corta el PUT
+    await userEvent.click(within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }));
+    expect(ultimoXhr().abortado).toBe(true);
+    expect(await screen.findByText(TEXTO_SUBIDA_CANCELADA)).toBeInTheDocument();
+  });
+
+  // 12 · el foco nunca cae al <body>
+  it('admin.clases.el_foco_nunca_cae_al_body_al_empezar_cancelar_terminar_ni_medir', async () => {
+    const titulo = () => within(tarjeta(5)).getByRole('heading', { level: 3 });
+    const enBody = () => document.activeElement === document.body || document.activeElement === null;
+    mundo({ vivas: [clase()] });
+    await abrir();
+    // empezar con el teclado: el selector tenía el foco y desaparece; el foco va al título de la tarjeta
+    const selector = await subirA();
+    selector.focus();
+    expect(selector).toHaveFocus();
+    fireEvent.change(selector, { target: { files: [archivoDeVideo()] } });
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    expect(enBody()).toBe(false);
+    expect(titulo()).toHaveFocus();
+    // «Cancelar» con Enter: el botón desaparece y el foco no se pierde
+    within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }).focus();
+    await userEvent.keyboard('{Enter}');
+    await screen.findByText(TEXTO_SUBIDA_CANCELADA);
+    expect(enBody()).toBe(false);
+    expect(titulo()).toHaveFocus();
+    // terminar: la persona se fue a «Cancelar» con Tab y el PUT acaba; el botón se va y el foco se queda en la tarjeta
+    const otro = await subirA();
+    otro.focus();
+    fireEvent.change(otro, { target: { files: [archivoDeVideo()] } });
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
+    within(tarjeta(5)).getByRole('button', { name: 'Cancelar' }).focus();
+    act(() => ultimoXhr().terminar(200));
+    await screen.findByText(/^Listo: /);
+    expect(enBody()).toBe(false);
+    expect(titulo()).toHaveFocus();
+  });
+
+  it('admin.clases.el_foco_no_cae_al_body_tras_medir_duracion', async () => {
+    mundo({ vivas: [clase({ estado: 'subido', bytes: 1_400_000_000, duracion_s: null, nombre_original: 'c.mp4' })] });
+    await abrir();
+    const medirBoton = screen.getByRole('button', { name: 'Medir duración de la clase 5' });
+    medirBoton.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(await screen.findByText('Listo: 1 h 02 min · 1.4 GB')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Medir duración/ })).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(within(tarjeta(5)).getByRole('heading', { level: 3 })).toHaveFocus();
+  });
+
+  it('admin.clases.no_se_le_roba_el_foco_a_quien_ya_se_fue_a_otra_parte', async () => {
+    mundo({ vivas: [clase(), clase({ id: 'cl-2', numero: 6 })] });
+    await abrir();
+    const selector = await subirA();
+    selector.focus();
+    fireEvent.change(selector, { target: { files: [archivoDeVideo()] } });
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(1));
+    // mientras sube, la persona se va a «Editar» de la otra clase: cuando la subida termine, el foco sigue ahí
+    const editar = screen.getByRole('button', { name: 'Editar la clase 6' });
+    editar.focus();
+    act(() => ultimoXhr().terminar(200));
+    await screen.findByText(/^Listo: /);
+    expect(editar).toHaveFocus();
+  });
+
+  // 13 · el aviso de archivar o restaurar sale dentro de la tarjeta que se tocó
+  it('admin.clases.si_falla_archivar_o_restaurar_el_aviso_sale_dentro_de_la_tarjeta', async () => {
+    const vivas = Array.from({ length: 9 }, (_, i) => clase({ id: `cl-${i + 1}`, numero: i + 1, titulo: `Clase número ${i + 1}` }));
+    let archivados = 0;
+    mundo({
+      vivas,
+      archivadas: [clase({ id: 'cl-viejo', numero: 20, titulo: 'Vieja' })],
+      pisa: {
+        'DELETE /api/admin/clases/cl-7': () => (++archivados === 1 ? detalle(503, 'no_disponible', 'No pudimos archivar la clase ahora.') : undefined),
+        'POST /api/admin/clases/cl-viejo/restaurar': () => detalle(409, 'numero_repetido', 'Ya hay una clase 20. Cámbiale el número a una de las dos.'),
+      },
+    });
+    await abrir();
+    // archivar la 7 de 9 falla: el aviso está DENTRO de la tarjeta 7 y no arriba de toda la lista
+    await userEvent.click(screen.getByRole('button', { name: 'Archivar la clase 7' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Archivar' }));
+    const alerta = await screen.findByRole('alert');
+    expect(alerta).toHaveTextContent('No pudimos archivar la clase ahora.');
+    expect(tarjeta(7)).toContainElement(alerta);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('list', { name: 'Clases' })).toContainElement(alerta);
+    expect(tarjeta(7)).toBeInTheDocument();
+    // el segundo intento sale bien: el aviso se va con él
+    await userEvent.click(screen.getByRole('button', { name: 'Archivar la clase 7' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Archivar' }));
+    await waitFor(() => expect(screen.queryByRole('article', { name: /^Clase 7 ·/ })).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+    // restaurar con un número repetido: el aviso está DENTRO de la tarjeta archivada
+    await userEvent.click(screen.getByRole('switch', { name: 'Ver clases archivadas' }));
+    const vieja = (await screen.findAllByRole('article', { name: /^Clase 20 ·/ }))[0]!;
+    await userEvent.click(within(vieja).getByRole('button', { name: 'Restaurar la clase 20' }));
+    const otra = await within(vieja).findByRole('alert');
+    expect(otra).toHaveTextContent('Ya hay una clase 20. Cámbiale el número a una de las dos.');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('list', { name: 'Clases archivadas' })).toContainElement(otra);
+  });
+
+  // 14 · dos subidas a la vez
+  it('admin.clases.dos_subidas_a_la_vez_mantienen_el_aviso_de_cerrar_hasta_que_terminen_las_dos', async () => {
+    mundo({ vivas: [clase(), clase({ id: 'cl-2', numero: 6 })] });
+    await abrir();
+    expect(avisaAlSalir()).toBe(false);
+    await elegir(archivoDeVideo('c5.mp4'), 5);
+    await elegir(archivoDeVideo('c6.mp4'), 6);
+    await waitFor(() => expect(XhrFalso.todos).toHaveLength(2));
+    expect(avisaAlSalir()).toBe(true);
+    // termina la primera: la segunda sigue subiendo y cerrar la pestaña todavía la perdería
+    act(() => XhrFalso.todos[0]!.terminar(200));
+    await within(tarjeta(5)).findByText(/^Listo: /);
+    expect(within(tarjeta(6)).getByRole('progressbar')).toBeInTheDocument();
+    expect(avisaAlSalir()).toBe(true);
+    // termina la segunda: ahora sí ya no hay nada que perder
+    act(() => XhrFalso.todos[1]!.terminar(200));
+    await within(tarjeta(6)).findByText(/^Listo: /);
+    expect(avisaAlSalir()).toBe(false);
+  });
+
+  // 15 · el nombre accesible repite el texto visible (WCAG 2.5.3)
+  it('admin.clases.medir_duracion_repite_su_texto_visible_en_su_nombre_accesible', async () => {
+    mundo({
+      vivas: [
+        clase({ estado: 'subido', bytes: 1_400_000_000, duracion_s: null, nombre_original: 'c.mp4' }),
+        clase({ id: 'cl-2', numero: 6, estado: 'subido', bytes: 900_000_000, duracion_s: 600 }),
+        clase({ id: 'cl-3', numero: 7, estado: 'subiendo' }),
+        clase({ id: 'cl-4', numero: 8 }),
+      ],
+    });
+    await abrir();
+    const medirBoton = screen.getByRole('button', { name: 'Medir duración de la clase 5' });
+    expect(medirBoton).toHaveTextContent('Medir duración');
+    // cada botón de cada tarjeta: lo que se lee en pantalla está contenido en lo que dice el nombre accesible
+    const sinRepetir: string[] = [];
+    for (const boton of within(screen.getByRole('list', { name: 'Clases' })).getAllByRole('button')) {
+      const visible = (boton.textContent ?? '').trim();
+      const nombre = boton.getAttribute('aria-label') ?? visible;
+      if (visible && !nombre.includes(visible)) sinRepetir.push(`${visible} → ${nombre}`);
+    }
+    expect(sinRepetir).toEqual([]);
+  });
+
+  // 16 · el interruptor encendido no es el ámbar del botón
+  it('admin.clases.el_interruptor_encendido_no_es_ambar_de_boton', async () => {
+    mundo({ vivas: [clase()], archivadas: [clase({ id: 'cl-viejo', numero: 2, titulo: 'Vieja' })] });
+    await abrir();
+    const interruptor = screen.getByRole('switch', { name: 'Ver clases archivadas' });
+    await userEvent.click(interruptor);
+    await screen.findByRole('button', { name: 'Restaurar la clase 2' });
+    expect(interruptor).toHaveAttribute('aria-checked', 'true');
+    // el único ámbar de la pantalla sigue siendo «Nueva clase» (la cuenta ve también la pista y la bolita del interruptor)
+    expect(ambares()).toEqual(['Nueva clase']);
+    // encendido lleva el tono de «elegido» (borde #a96716 sobre fondo #2e2110), con la bolita en ámbar claro
+    const pista = interruptor.firstElementChild!;
+    expect(pista).toHaveClass('border-ambar-hondo', 'bg-aviso-fondo');
+    expect(pista).not.toHaveClass('bg-ambar');
+    expect(pista.firstElementChild).toHaveClass('bg-ambar-claro');
+    // con el formulario abierto el ámbar es «Guardar clase» y el interruptor sigue sin sumar otro
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva clase' }));
+    expect(ambares()).toEqual(['Guardar clase']);
+  });
+
+  // 17 · lo escrito en un formulario no se descarta en silencio
+  it('admin.clases.editar_otra_clase_con_cambios_sin_guardar_pide_confirmar', async () => {
+    const m = mundo({ vivas: [clase(), clase({ id: 'cl-2', numero: 6, titulo: 'Seis' })] });
+    await abrir();
+    // sin nada escrito, cambiar de formulario es libre
+    await abrirFormulario();
+    await userEvent.click(screen.getByRole('button', { name: 'Editar la clase 6' }));
+    expect(await screen.findByRole('region', { name: 'Editar la clase 6' })).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    // con una «Nueva clase» a medias, «Editar» de otra tarjeta pregunta antes
+    await userEvent.click(within(screen.getByRole('region', { name: 'Editar la clase 6' })).getByRole('button', { name: 'Cancelar' }));
+    await abrirFormulario();
+    await userEvent.type(screen.getByLabelText('Título'), 'Lo que estaba escribiendo');
+    await userEvent.click(screen.getByRole('button', { name: 'Editar la clase 6' }));
+    const dialogo = await screen.findByRole('alertdialog', { name: '¿Dejar lo que estás escribiendo?' });
+    expect(dialogo).toHaveTextContent('Tienes cambios sin guardar en «Nueva clase». Si sigues, se pierden.');
+    // el foco arranca en lo que NO pierde nada
+    expect(within(dialogo).getByRole('button', { name: 'Seguir escribiendo' })).toHaveFocus();
+    // Esc y «Seguir escribiendo» no tocan nada: lo escrito sigue ahí y el foco vuelve al formulario
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByLabelText('Título')).toHaveValue('Lo que estaba escribiendo');
+    await waitFor(() => expect(screen.getByLabelText('Número de clase')).toHaveFocus());
+    expect(screen.queryByRole('region', { name: 'Editar la clase 6' })).toBeNull();
+    // confirmar sí cambia: el formulario es el de la clase 6 y el foco va a su primer campo
+    await userEvent.click(screen.getByRole('button', { name: 'Editar la clase 6' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Editar la clase 6' }));
+    const form = await screen.findByRole('region', { name: 'Editar la clase 6' });
+    expect(within(form).getByLabelText('Título')).toHaveValue('Seis');
+    expect(screen.queryByRole('region', { name: 'Nueva clase' })).toBeNull();
+    await waitFor(() => expect(within(form).getByLabelText('Número de clase')).toHaveFocus());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    // el diálogo no manda nada al servidor
+    expect(m.llamadas('POST', RUTA)).toHaveLength(0);
+    expect(m.llamadas('PATCH', `${RUTA}/cl-2`)).toHaveLength(0);
+    // y pulsar «Editar» de la clase que YA se está editando no pregunta nada
+    await userEvent.type(within(form).getByLabelText('Título'), ' y más');
+    await userEvent.click(screen.getByRole('button', { name: 'Editar la clase 6' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(within(form).getByLabelText('Título')).toHaveValue('Seis y más');
+  });
+
+  it('admin.clases.cambiar_de_pestana_conserva_el_formulario_abierto', async () => {
+    const m = mundo({ vivas: [clase()] });
+    render(<Admin />);
+    // Clases no se monta (ni pide nada) hasta que se abre por primera vez
+    await screen.findByRole('tablist', { name: 'Vistas' });
+    expect(m.rutas().filter(r => r.startsWith('GET /api/admin/clases'))).toHaveLength(0);
+    await userEvent.click(screen.getByRole('tab', { name: '4 · Clases' }));
+    await abrirFormulario();
+    await userEvent.type(screen.getByLabelText('Título'), 'Borrador a medias');
+    // mirar otra vista y volver: lo escrito sigue ahí
+    await userEvent.click(screen.getByRole('tab', { name: '1 · Ingresos' }));
+    expect(screen.queryByRole('textbox', { name: 'Título' })).toBeNull(); // oculta: ni se ve ni se lee (sigue en el DOM, con `hidden`)
+    expect(screen.getByLabelText('Título').closest('[role="tabpanel"]')).toHaveAttribute('hidden');
+    await userEvent.click(screen.getByRole('tab', { name: '4 · Clases' }));
+    expect(screen.getByLabelText('Título')).toHaveValue('Borrador a medias');
+    expect(m.rutas().filter(r => r.startsWith('GET /api/admin/clases'))).toHaveLength(1);
   });
 });
