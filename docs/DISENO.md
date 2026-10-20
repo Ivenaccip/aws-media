@@ -9,6 +9,12 @@ Irremplazables»: el menú lateral se retira (el mapa lo reemplaza, §7) y el t�
 mapa **es** el inicio (se aterriza en él), el título va arriba y fuera de cualquier
 tarjeta, solo la caja lleva tarjeta, y ya no hay «Volver a …» (§7).
 
+Revisada el 2026-10-20 al encender Automatizaciones (Constructor y Asistente, §7):
+el área abre dos grupos, suma nueve íconos (§6), el aviso rápido gana un botón de
+acción y «Deshacer» sale de la pausa como patrón adoptado (§8 y §9). Además
+queda anotada una excepción a la escala de formas: el radio de 48 px del
+disparador del Constructor (§4).
+
 Esta carta manda sobre cualquier gusto de agente. Si algo no está aquí, se
 decide con el dueño y se agrega aquí antes de usarlo.
 
@@ -105,7 +111,10 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - **El principal cambia con el estado.** En editar metraje, sin metraje el
   ámbar es «Subir»; con metraje pasa a «Proponer ✦ N» (o «Editar») y Subir
   queda secundario. En el panel del negocio, «Sincronizar costes» es el ámbar
-  aunque la pantalla sea de consulta (dueño, 25-sep).
+  aunque la pantalla sea de consulta (dueño, 25-sep). En el Asistente de
+  Automatizaciones, «Armar flujo» es el ámbar hasta que hay un flujo listo; entonces
+  pasa a secundario («Armar otro flujo») y el ámbar es «Descargar .json» del resultado.
+  En el Constructor el único ámbar es «Descargar .json».
 - El **dorado** (`#f3dc92` → `#e6c35c` → `#b98d2f`) no es un segundo acento: es
   la firma del título «Irremplazables» y de nada más (dueño, 15-oct-2026). Va
   como degradado de arriba abajo, con los tokens `--color-oro-claro`,
@@ -121,6 +130,15 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
 - **Espaciado:** múltiplos de 4 (4, 8, 12, 16, 24, 32, 48, 64).
 - **Radios:** 6 (chips, etiquetas) · 10 (campos, botones chicos) ·
   12 (botones de 48 px) · 16 (tarjetas, diálogos).
+  - **Una excepción, dicha tal cual: el disparador del Constructor** (Automatizaciones,
+    20-oct-2026). Su cuadro es redondo a la izquierda, con un radio de **48 px** en las
+    dos esquinas de ese lado (la mitad de su alto de 96 px) y de 12 px (`rounded-boton`)
+    en las de la derecha: la firma visual de n8n. 48 px **no está en la escala** de arriba
+    (6/10/12/16/píldora). Se usó la forma del prototipo que el dueño vio y aprobó («casi
+    perfecto»); no salió de la escala. Vive SOLO en la regla `.cn-nodo-trig` de
+    `web/src/pantallas/constructor/constructor.css` y no se copia a ninguna otra pantalla. Si el
+    dueño prefiere quedarse dentro de la escala, el cambio es una línea: el `border-radius` de
+    esa regla pasa a `var(--radius-boton, 12px)`, el mismo de los demás cuadros del lienzo.
 - **Sombras:** casi ninguna. La profundidad se da con la superficie
   (`#0b1626` → `#111f33` → `#18293f`) y la línea `#22354f`.
 - **Movimiento:** 120 ms (hover, apretar) y 200 ms (abrir, cerrar), con
@@ -164,6 +182,11 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
     pantalla: 500 ms cada barra, 50 ms entre una y la siguiente, y la cifra de
     cada barra asoma al final. Una sola vez; sin JS, al volver o con «reducir
     movimiento» ya están completas. Las barras son del azul de datos.
+  - El lienzo del Constructor (Automatizaciones, 20-oct-2026) no anima posiciones: un
+    cuadro sigue al puntero sin retraso, las flechas son geometría que se recalcula, y lo
+    único que transiciona es el color, el borde y el fondo en `--dur-rapida` (120 ms). Ninguna
+    transición toca `left`, `top` ni `transform`, no hay `@keyframes`, y traer un cuadro o el
+    panel de Ajustes a la vista no usa desplazamiento suave.
 - **Área táctil:** lo que se toca mide al menos 44 × 44 px, aunque el dibujo
   sea más chico. Un botón dentro de una fila flexible no cede: lleva `min-w-11`
   (la ✕ de los diálogos a 320 px: con el título en dos líneas, el flex la dejaba
@@ -189,6 +212,25 @@ El resto de la paleta M20 (`#2e2110`, `#102e22`, `#2e1b1b`, `#8f4a4a`,
   la vuelve a leer, y conserva el foco de quien llegó con Tab a «Reintentar»). Los atributos
   que pone la bandeja misma mientras algo está en el aire (`aria-busy`, `aria-disabled`
   de «Reintentar») no los borra un repintado.
+- **Una hoja `.css` por pantalla, solo para lo que Tailwind no dice bien** (molde:
+  `web/src/pantallas/subir/subir.css`). El CSS de una hoja es global, así que lleva tres
+  reglas, que el Constructor cumple en `web/src/pantallas/constructor/constructor.css`:
+  todo color sale de un token (`var(--color-…)`; el guardián de paleta lee también las
+  hojas `.css`, comentarios incluidos), toda clase lleva el prefijo de la pantalla (`cn-`
+  en el Constructor: otras hojas usan `.anim`, `.clip`, `.seg`) y todo va dentro de
+  `@layer components`, para que las utilidades de Tailwind sigan ganando. Una prueba de
+  `Nodo.test.tsx` las fija. En `constructor.css` viven el fondo de puntos del lienzo, la
+  forma del disparador, los botones de 44 px con su dibujo de 24 o 28 px adentro y los
+  estados de un cuadro.
+  - **`avisos.css` es la excepción, y va fuera de `@layer` a propósito.** Pinta el botón de
+    acción del cuadro de avisos de abajo a la derecha (`#bandeja`, de `static/trabajos.js`),
+    cuyo CSS no tiene capa; una regla con capa siempre pierde contra una sin capa. Ese cuadro
+    escribe el botón con las clases `btn btn-sec` de `carta.css`, que las pantallas de `web/`
+    no cargan: sin esta hoja el «Deshacer» salía como texto suelto de 36 px. La regla
+    (`#bandeja .bj-aviso .btn.btn-sec`) lo pinta como un botón secundario de §5: 44 px de
+    alto, borde `#55708f` y texto `#ece8e1`; al pasar el ratón, fondo `#18293f` y borde `#93a3b8`.
+    No va en `constructor.css` porque esa hoja exige capa y prefijo. Si la regla sube a
+    `tokens.css` (como ya está `#bandeja .ico`), esta hoja se borra.
 
 ## 5. Botones: tres niveles, cinco estados
 
@@ -247,9 +289,14 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
   `tests/test_web_tuberia.py`).
 - La Biblioteca de prompts (Ajustes 3) suma Copiar, Fijar (una chincheta), Llevar
   (una flecha contra una barra: «a la caja») e Investiga (una brújula).
-- Automatizaciones suma Flujo (dos cuadros unidos por un codo: el Constructor),
-  Chat, Web (un globo), App (cuatro cuadros), Enlace (dos eslabones), Un sentido
-  (una flecha), Ida y vuelta (dos flechas opuestas), Papelera y Código (el JSON).
+- Automatizaciones suma nueve: Flujo (dos cuadros unidos por un codo: el Constructor),
+  Chat (un globo de diálogo), Web (un globo terráqueo), App (cuatro cuadros), Enlace (dos
+  eslabones), Un sentido (una flecha), Ida y vuelta (dos flechas opuestas), Papelera y Código
+  (los signos `<` `>`, para «Ver el JSON»). Sus nombres, idénticos en `ui/iconos.ts` y
+  `static/iconos.js`: `flujo`, `chat`, `web`, `app`, `enlace`, `unSentido`, `idaYVuelta`,
+  `papelera`, `codigo`. Los demás íconos de ese mapa ya existían: Rápido (el área), Ubicación
+  (Distrito), Magia (Asistente), Automático (Actualizar flujos) y Biblioteca (Tus
+  automatizaciones).
 
 ## 7. Navegación
 
@@ -261,8 +308,10 @@ salen de ella, así no se desincronizan.
 
 - **Tres pasos:** el **mapa en X** (las áreas: Marketing, Producto, Central,
   Ventas y Automatizaciones) → las **tres opciones** (los grupos del área
-  elegida; los de Marketing son Distrito, Blotato y Avanzado) → **la pantalla**
-  (la caja del inicio, o la lista de las pantallas del grupo).
+  elegida: los de Marketing son Distrito, Blotato y Avanzado; Central y
+  Automatizaciones tienen dos, Distrito y Deepseek, y Distrito y Tus
+  automatizaciones) → **la pantalla** (la caja del inicio, o la lista de las
+  pantallas del grupo).
 - **Se aterriza en el mapa** (dueño, 15-oct-2026, segunda ronda: «el mapa es el
   inicio»): al abrir `/estudio/inicio/` se ve «Elige un área» y la X, con **nada
   elegido**. La caja (Marketing › Distrito, en Video como siempre) está montada y
@@ -286,10 +335,11 @@ salen de ella, así no se desincronizan.
 - **Nada se ve elegido hasta que se elige** (dueño: «parece que marketing está
   seleccionado, mientras que no debería de verse de ese tono, hasta que lo
   seleccionen»): ninguna ficha del mapa lleva «Estás aquí», tono distinto ni
-  `aria-current`; Marketing y Central, las dos que se abren, se ven iguales
-  (`#111f33` con borde `#22354f`; el hover y el foco se conservan) y las otras
-  tres siguen apagadas («Próximamente»). Las tres opciones solo marcan «Estás
-  aquí» en el grupo que ya elegiste (o de donde llegaste desde otra página); con el
+  `aria-current`; Marketing, Central y Automatizaciones, las tres que se abren, se
+  ven iguales (`#111f33` con borde `#22354f`; el hover y el foco se conservan) y las
+  otras dos, Producto y Ventas, siguen apagadas («Próximamente»). Las tres opciones
+  solo marcan «Estás aquí» en el grupo que ya elegiste (o de donde llegaste desde otra
+  página); con el
   inicio recién abierto, ninguna.
 - **Migas que reabren cada nivel:** la ruta elegida son chips («Marketing ›
   Distrito») y cada chip reabre su nivel: el área vuelve al mapa; el grupo, a las
@@ -313,8 +363,22 @@ salen de ella, así no se desincronizan.
   conectar en vez de navegar; el botón «Conecta tu cuenta de Blotato» (o
   «Blotato conectado: ver o cambiar») vive arriba de esa lista. Lo que aún no
   existe (Preguntas y Glosario, en Central) sale apagado con la etiqueta «Próximamente» y no navega;
-  un grupo sin pantallas dice «Todavía no está disponible.». Producto, Ventas y
-  Automatizaciones son fichas inertes en el mapa.
+  un grupo sin pantallas dice «Todavía no está disponible.». Hoy son dos: Deepseek
+  (Central) y «Tus automatizaciones» (Automatizaciones); los dos dicen «Próximamente» en
+  su tarjeta. Producto y Ventas son fichas inertes en el mapa. Automatizaciones se
+  abre: su grupo Distrito lista el Constructor y el Asistente (enlaces a
+  `/estudio/constructor/` y `/estudio/asistente/`) y «Actualizar flujos», apagada con
+  «Próximamente» y sin enlace.
+- **Las hojas con encabezado propio** (COI, la Biblioteca de prompts, el Constructor y el
+  Asistente) no llevan «← Estudio» ni `<Marco>`: su único `h1` es «Irremplazables»
+  (dorado, sin ícono, fuera de toda tarjeta, como en el inicio) y debajo, centradas, las
+  migas de tres niveles «Área › Grupo › Pantalla» sacadas de `menu.ts`. El área y el grupo
+  son enlaces que reabren su nivel en el inicio (`?desde=<lugar>&ver=mapa|grupos`); la última
+  miga es la pantalla donde estás, un chip quieto. El nombre de la pantalla va como `h2`. El
+  Constructor y el Asistente arman ese encabezado con `web/src/marca/EncabezadoHoja.tsx`;
+  COI y la Biblioteca lo arman en su carpeta. En el encabezado compartido, a 480 px o
+  menos las migas pierden sus íconos y los «›» (así caben en una línea a 390 px y en dos
+  a 320).
 - **Las páginas hoja siguen siendo páginas** (Agenda, Competencia, Métricas, MIX,
   Copiadora de estilos): llevan «← Estudio» y, a su lado, sus migas, «Marketing ›
   Blotato», como **enlaces** al inicio con `?desde=<lugar>&ver=mapa|grupos`.
@@ -363,11 +427,100 @@ salen de ella, así no se desincronizan.
 | **Error** | Tres partes: **qué pasó** (sin culpar), **qué pasó con tus créditos** («Te devolvimos ✦ 90») y **qué sigue** (un botón). Lo técnico va plegado en «Detalles técnicos». |
 | **Error de campo** | Junto al campo, antes de mandar y sin gastar créditos. Dice cómo arreglarlo. Al aparecer, el campo tiembla una vez (`ui/Campo.tsx`, UI·24). |
 | **Tus trabajos** (`static/trabajos.js`) | Cuadro abajo a la derecha en todas las pantallas: lo que corre (paso, avance, «Ver»), lo que terminó en las últimas **24 h** con su enlace y lo que falló con «Te devolvimos ✦ N». Va **plegado**; se abre solo cuando algo termina o falla y no lo habías visto. Lo cerrado no vuelve en ese navegador. En celular, abajo a todo lo ancho (dueño, 25-sep). |
-| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo; en las pantallas de `web/` el «Guardado» va donde se guardó, con su palomita: `ui/Guardado.tsx`, UI·24), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
+| **Aviso rápido** (`window.avisos.mostrar`) | En el mismo cuadro, encima: guardado o copiado (se va solo; en las pantallas de `web/` el «Guardado» va donde se guardó, con su palomita: `ui/Guardado.tsx`, UI·24), sin conexión y un fallo que no pertenece a ningún campo (se queda hasta cerrarlo). Un error de campo va junto al campo y el aviso de una tarjeta, en su tarjeta. Cada fallo lleva `clave` (`<pantalla>-carga`, `<pantalla>-error`…) y se quita cuando lo mismo sale bien; una lista que no cargó ofrece «Reintentar» en el aviso. La clave `red` es compartida con trabajos.js: una pantalla solo la quita si ella la puso. Puede llevar **un botón de acción** (`accion {texto, al}` en `nucleo/avisos.ts` y `nucleo/globales.ts`; `trabajos.js` lo pinta bajo el texto): al pulsarlo se quita el aviso y corre `al`. Hoy lo usan «Deshacer» (abajo) y el «Recargar» del 402. Se quedan en su sitio: validación, el error o 402 junto al botón que cobra, los estados vacíos de lista y los `confirm()`. |
+
+### Deshacer (adoptado el 20-oct-2026, solo en el Constructor de Automatizaciones)
+
+Antes de este día la carta lo tenía «en pausa» (§9). La auditoría ya lo pedía para borrar
+(«Escena 3 eliminada · Deshacer», `docs/UX-REVIEW.md`) y el prototipo del Constructor ya lo
+traía para quitar un cuadro. El patrón adoptado, tal como lo hace el código
+(`web/src/pantallas/constructor/modelo/reductor.ts`, `Constructor.tsx` y `Barra.tsx`):
+
+- **Una pila real de hasta 20 instantáneas** (`MAX_HISTORIAL` en `modelo/datos/constantes.ts`).
+  Cada instantánea guarda cuadros, conexiones, nombre del flujo y cuadro elegido. Al pasar de
+  20 se descarta la más vieja.
+- **Qué entra** (cualquier acción que cambia la estructura del flujo): quitar un cuadro (la ×
+  o Supr), quitar una conexión, cambiar el tipo de una conexión, poner un cuadro en medio de
+  una conexión, conectar con un cuadro que ya está, agregar un cuadro o elegir el disparador,
+  «Limpiar» y «Cargar el ejemplo». (El reductor también tiene `cargarFlujo`, la puerta para
+  un flujo de afuera, y la apila igual; hoy ningún botón la usa, porque el Asistente pasa el
+  flujo por el borrador al abrir la página.)
+- **Qué NO entra:** mover un cuadro (con el puntero o con las flechas del teclado), teclear en
+  Ajustes, renombrar el flujo, elegir un cuadro o una flecha, abrir o cerrar menús, empezar o
+  cancelar una conexión. Esas acciones **tampoco tiran la pila**: acomodar un cuadro después
+  de quitar otro no puede borrar la red de seguridad. Anotan en cada instantánea qué cuadros
+  se movieron o se escribieron después de ella y si se renombró el flujo. Al deshacer, vuelve
+  lo estructural (qué cuadros y qué conexiones hay), pero los cuadros tocados que siguen
+  existiendo conservan su posición y su texto de ahora, igual que el nombre del flujo: Deshacer
+  nunca pisa lo que la persona acaba de mover o escribir. La excepción es la instantánea de
+  «Cargar el ejemplo» (o de un flujo de afuera): se deshace entera, porque sus ids pueden
+  repetirse en el flujo nuevo y no tienen nada que ver con los de antes.
+- **Qué la tira:** nada a propósito. Ninguna acción vacía la pila. Salen de ella el tope de 20
+  (la más vieja primero), deshacer (la de arriba sale) y recargar o cerrar la página: la pila
+  vive en memoria y el borrador guarda solo cuadros, conexiones y nombre.
+- **Tres puertas, una misma pila:**
+  1. **El aviso con acción** en el cuadro de abajo a la derecha: «Deshacer» (`tipo: 'ok'`, clave
+     `constructor`, 10 s en vez de los 5 s de un aviso `ok`; el aviso siguiente lo reemplaza,
+     y su botón con él). Lo ofrecen los avisos de lo que **quita o reacomoda**: quitar un cuadro
+     o una conexión, cambiar el tipo de una conexión, poner un cuadro en medio, «Limpiar» y
+     cargar un flujo. Agregar y conectar entran en la pila, pero su aviso no lo ofrece. Desde el
+     aviso solo vale la instantánea de arriba: si la persona cambió otra cosa después, dice «Eso
+     ya no se puede deshacer: cambiaste algo después.» y no hace nada.
+  2. **El botón «Deshacer» de la barra** (nivel secundario). El aviso queda al final del
+     documento y un usuario de teclado llegaría a él después de recorrer todo el lienzo; por eso
+     el botón existe siempre. Sin nada que deshacer se apaga con `aria-disabled` (no `disabled`:
+     conserva el foco), su descripción dice «Todavía no hay nada que deshacer.» y pulsarlo
+     contesta «Ya no hay nada que deshacer.».
+  3. **Ctrl+Z (Cmd+Z)** en todo el documento, sin Alt ni Mayús. **No** actúa con el foco en un
+     campo de texto (`input`, `textarea`, `select`, `contenteditable`) ni dentro de un diálogo de
+     confirmación (`role="alertdialog"`): ahí es del navegador y deshace lo escrito.
+- Tras deshacer, el foco va al cuadro que volvió (el elegido, si volvió; si no, el primero que
+  volvió) o, si lo que volvió fue una conexión, al cuadro elegido: nunca cae a `<body>`.
+- **«Limpiar» pregunta antes** con `ui/Confirmar` (peligro, foco inicial en «Cancelar»), no con
+  un «Sí, borrar todo» en línea; la pregunta dice que se puede volver atrás con «Deshacer» o con
+  Ctrl+Z, y es verdad porque «Limpiar» entra en la pila. Quitar un cuadro con la × no pregunta
+  (es deshacible).
+- Sin el cuadro de avisos en la página (las pruebas, la vitrina) el aviso se dice en una
+  región `role="status"` de la propia pantalla, con su botón «Deshacer»: un solo mecanismo
+  activo a la vez, para que ningún lector de pantalla anuncie el aviso dos veces.
+
+### La voz de las pantallas de Automatizaciones
+
+Sin normas nuevas: anota lo que el Constructor y el Asistente ya cumplen y lo que la carta ya dice
+en §1 (todo en español, con tuteo), §5 («Verbo ✦ N») y §8 (errores en tres partes, solo pasos de verdad).
+
+- **Español de LATAM con tuteo** («Escribe», «Elige», «Cuéntale»). El sistema habla en plural
+  cuando se refiere a sí mismo («Quitamos «x»», «No pudimos recuperar tu borrador»), sin culpar
+  a la persona.
+- **Los nombres de la interfaz** son cuadro, flujo, disparador, agente de IA, herramienta y
+  conexión. Lo único en inglés es lo que la persona verá en n8n con ese nombre, citado
+  literal entre «»: «Import from File».
+- **Tipografía del texto:** comillas angulares «…» para nombres y citas, el punto suspensivo `…`
+  (U+2026) y no tres puntos, frases en minúscula salvo la primera (también en botones y
+  títulos: «Descargar .json», «Armar flujo») y sin el signo `¡`.
+- **Dinero:** el contenido de estas dos pantallas (letreros, botones, resultados) no muestra precios, ni ✦, ni la palabra «créditos»; la
+  píldora global del saldo en la cabecera (`monedero.js`, «N créditos ✦») sí aparece cuando el monedero está activo, porque es de la página y no de la
+  pantalla. El Constructor no cobra. El Asistente solo ofrece escribir cuando el servidor dice que está
+  activo **y** que es gratis; si algún día cobra, aplica §5 («Verbo ✦ N», con el precio de la
+  API) y exige un verbo nuevo en `tests/test_m21_botones.py` y en `web/src/marca/verbos.ts`.
+- **Errores:** lo que no se puede arreglar en un campo se dice en tres partes con
+  `ErrorTresPartes` («Qué pasó» y «Qué sigue»; sin «Tus créditos» porque nada se cobró) y lo
+  técnico va plegado en «Detalles técnicos». Un error de lo que se escribió va junto al campo,
+  con el foco en él.
+- **Lo que la persona necesitará después** no vive solo en un aviso que se apaga: la
+  instrucción de importar en n8n («en el menú «⋯» de arriba a la derecha, elige «Import from
+  File»») está también escrita en la página (en el Asistente, dentro del resultado), y el
+  aviso de «Listo: <archivo>.json…» del Constructor se queda hasta cerrarlo.
+- **Privacidad dicha en voz alta:** el Constructor siempre muestra, con un candado, «Tu
+  borrador se guarda solo en este navegador.» El Asistente, mientras corre en prueba, dice «No
+  guardamos lo que escribes.» y que el flujo es un ejemplo elegido por las palabras del pedido.
 
 ## 9. Fuera de alcance por ahora
 
-- Propuesta 8 (confirmaciones propias y «deshacer»): en pausa.
+- Propuesta 8 (confirmaciones propias y «deshacer»): en pausa para el resto de la
+  app. «Deshacer» salió de la pausa el 20-oct-2026 solo para el Constructor de
+  Automatizaciones (§8, «Deshacer»); otra pantalla que lo quiera se decide con el
+  dueño.
 - Propuesta 9 (el costo en un solo lugar): rechazada; la pantalla de crear
   se queda como está. El problema de conteo quedó en Trello.
 - Propuesta 10 (accesibilidad): para después. §4 ya fija foco, área táctil
