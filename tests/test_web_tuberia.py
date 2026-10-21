@@ -204,16 +204,24 @@ def test_cada_pantalla_se_pinta_con_su_modulo():
     `blocking="render"` la View Transition entre pantallas se cancelaba en
     1 de cada 3 navegaciones (la página nueva se fotografiaba vacía). Vite
     tira el atributo del index.html fuente: lo pone el plugin
-    pintarConElModulo de vite.config.ts, y aquí se mira en el HTML final."""
+    pintarConElModulo de vite.config.ts, y aquí se mira en el HTML final.
+
+    Se recorre TODO el árbol (`rglob`): las páginas por nivel viven a cualquier
+    profundidad (/estudio/marketing/distrito/imagen/) y la principal es
+    estudio/index.html; con `glob("*/index.html")` lo anidado se quedaba sin
+    vigilar. Los assets con hash (estudio/assets/) no son pantallas."""
     if not DIST.is_dir():
         pytest.skip("web/dist no está compilado (npm run build); en la imagen siempre está")
-    paginas = sorted((DIST / "estudio").glob("*/index.html"))
+    estudio = DIST / "estudio"
+    paginas = sorted(p for p in estudio.rglob("index.html")
+                     if p.is_file() and p.relative_to(estudio).parts[0] != "assets")
     assert paginas, "dist sin pantallas"
     for html in paginas:
+        donde = html.parent.relative_to(DIST).as_posix()
         modulos = re.findall(r"<script type=\"module\"[^>]*>", html.read_text(encoding="utf-8"))
-        assert modulos, f"{html.parent.name}: sin módulo"
+        assert modulos, f"{donde}: sin módulo"
         for m in modulos:
-            assert 'blocking="render"' in m, f"{html.parent.name}: {m}"
+            assert 'blocking="render"' in m, f"{donde}: {m}"
 
 
 # ---------------------------------------------------------------------------
