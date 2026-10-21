@@ -24,9 +24,11 @@ export interface PropsGrupos {
   /** El grupo donde estás, si ya elegiste uno y es de esta área (lleva «Estás aquí»). */
   aqui: string | null;
   alElegir: (grupo: GrupoMenu) => void;
+  /** Con ella, la tarjeta es un ENLACE a la página del grupo (una dirección por nivel). Sin ella, un botón que llama a `alElegir`, como siempre. */
+  hrefDe?: (grupo: GrupoMenu) => string;
 }
 
-export function Grupos({ area, aqui, alElegir }: PropsGrupos) {
+export function Grupos({ area, aqui, alElegir, hrefDe }: PropsGrupos) {
   return (
     <div
       role="group"
@@ -35,21 +37,31 @@ export function Grupos({ area, aqui, alElegir }: PropsGrupos) {
     >
       {area.grupos.map(grupo => {
         const estasAqui = aqui === grupo.clave;
-        return (
+        const clase = unir(
+          'flex min-h-35 cursor-pointer flex-col items-start gap-2 rounded-grande border p-4 text-left text-texto no-underline hover:border-campo hover:bg-elevada',
+          estasAqui ? 'border-campo bg-elevada' : 'border-linea bg-superficie',
+        );
+        const dentro = (
+          <>
+            <Icono nombre={grupo.icono} className="size-6! text-secundario" />
+            <b className="font-titulo text-titulo-sm leading-[1.3] font-bold">{grupo.titulo}</b>
+            <small className="text-xs text-secundario [overflow-wrap:anywhere]">{detalleDeGrupo(grupo)}</small>
+            {estasAqui && <EstasAqui />}
+          </>
+        );
+        return hrefDe ? (
+          <a key={grupo.clave} href={hrefDe(grupo)} aria-current={estasAqui ? 'location' : undefined} className={clase}>
+            {dentro}
+          </a>
+        ) : (
           <button
             key={grupo.clave}
             type="button"
             aria-current={estasAqui ? 'location' : undefined}
             onClick={() => alElegir(grupo)}
-            className={unir(
-              'flex min-h-35 cursor-pointer flex-col items-start gap-2 rounded-grande border p-4 text-left text-texto hover:border-campo hover:bg-elevada',
-              estasAqui ? 'border-campo bg-elevada' : 'border-linea bg-superficie',
-            )}
+            className={clase}
           >
-            <Icono nombre={grupo.icono} className="size-6! text-secundario" />
-            <b className="font-titulo text-titulo-sm leading-[1.3] font-bold">{grupo.titulo}</b>
-            <small className="text-xs text-secundario [overflow-wrap:anywhere]">{detalleDeGrupo(grupo)}</small>
-            {estasAqui && <EstasAqui />}
+            {dentro}
           </button>
         );
       })}

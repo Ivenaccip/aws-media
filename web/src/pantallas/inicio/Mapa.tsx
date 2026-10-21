@@ -45,9 +45,12 @@ const CENTRO = 'min-h-24 text-md max-[760px]:text-sm max-[560px]:min-h-14 max-[5
 
 export interface PropsMapa {
   alElegir: (area: AreaMenu) => void;
+  /** Con ella, la ficha de un área que se abre es un ENLACE a su página (una dirección por nivel: se abre en otra pestaña, se comparte).
+   *  Las apagadas nunca la llevan. Sin ella, un botón que llama a `alElegir`, como siempre. */
+  hrefDe?: (area: AreaMenu) => string;
 }
 
-export function Mapa({ alElegir }: PropsMapa) {
+export function Mapa({ alElegir, hrefDe }: PropsMapa) {
   return (
     <div
       role="group"
@@ -84,24 +87,17 @@ export function Mapa({ alElegir }: PropsMapa) {
       {EN_ORDEN.map(area => {
         const puesto = PUESTOS[area.clave]!;
         const apagada = Boolean(area.proximamente);
-        return (
-          <button
-            key={area.clave}
-            type="button"
-            aria-disabled={apagada || undefined}
-            onClick={() => {
-              if (!apagada) alElegir(area);
-            }}
-            className={unir(
-              'relative z-10 flex flex-col items-center justify-center gap-1 rounded-grande border px-2 py-3 text-center leading-[1.3] font-semibold',
-              'max-[560px]:px-1 max-[560px]:py-2',
-              area.clave === 'central' ? CENTRO : ESQUINA,
-              apagada
-                ? 'cursor-default border-linea bg-hundido text-secundario'
-                : 'cursor-pointer border-linea bg-superficie text-texto hover:border-campo hover:bg-elevada',
-              puesto.clase,
-            )}
-          >
+        const clase = unir(
+          'relative z-10 flex flex-col items-center justify-center gap-1 rounded-grande border px-2 py-3 text-center leading-[1.3] font-semibold',
+          'max-[560px]:px-1 max-[560px]:py-2',
+          area.clave === 'central' ? CENTRO : ESQUINA,
+          apagada
+            ? 'cursor-default border-linea bg-hundido text-secundario'
+            : 'cursor-pointer border-linea bg-superficie text-texto no-underline hover:border-campo hover:bg-elevada',
+          puesto.clase,
+        );
+        const dentro = (
+          <>
             <Icono nombre={area.icono} className="size-6! text-secundario" />
             {/* overflow-wrap: «Automatizaciones» cabe a 390 y a 320 px; si una letra más ancha no cupiera, se parte (hyphens, lang="es"
                 de la página) en vez de salirse de su ficha */}
@@ -116,6 +112,26 @@ export function Mapa({ alElegir }: PropsMapa) {
                 )}
               />
             )}
+          </>
+        );
+        if (hrefDe && !apagada) {
+          return (
+            <a key={area.clave} href={hrefDe(area)} className={clase}>
+              {dentro}
+            </a>
+          );
+        }
+        return (
+          <button
+            key={area.clave}
+            type="button"
+            aria-disabled={apagada || undefined}
+            onClick={() => {
+              if (!apagada) alElegir(area);
+            }}
+            className={clase}
+          >
+            {dentro}
           </button>
         );
       })}

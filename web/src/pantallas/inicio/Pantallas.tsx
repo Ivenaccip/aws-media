@@ -21,12 +21,15 @@ export interface PropsPantallas {
   /** null = no se sabe si Blotato está conectado. */
   conectado: boolean | null;
   alConectar: () => void;
+  /** La dirección de una herramienta que no trae `href` (las tres pestañas de la caja: una página por herramienta). Sin ella, esas tarjetas
+   *  quedan quietas, como siempre. */
+  hrefDe?: (pantalla: PantallaMenu) => string | undefined;
 }
 
 /** ¿El grupo entero depende de Blotato? Entonces lleva el botón de conectar (Avanzado trae MIX y la Copiadora: ahí no). */
 const dependeDeBlotato = (g: GrupoMenu): boolean => g.pantallas.length > 0 && g.pantallas.every(p => p.blotato);
 
-export function Pantallas({ grupo, conectado, alConectar }: PropsPantallas) {
+export function Pantallas({ grupo, conectado, alConectar, hrefDe }: PropsPantallas) {
   if (!grupo.pantallas.length) {
     return <p className="m-0 text-sm text-secundario">Todavía no está disponible.</p>;
   }
@@ -52,7 +55,7 @@ export function Pantallas({ grupo, conectado, alConectar }: PropsPantallas) {
       <ul className="m-0 grid list-none gap-3 p-0">
         {grupo.pantallas.map(p => (
           <li key={p.clave}>
-            <Tarjeta p={p} apagada={Boolean(p.blotato) && conectado === false} alConectar={alConectar} />
+            <Tarjeta p={p} href={p.href ?? hrefDe?.(p)} apagada={Boolean(p.blotato) && conectado === false} alConectar={alConectar} />
           </li>
         ))}
       </ul>
@@ -62,7 +65,7 @@ export function Pantallas({ grupo, conectado, alConectar }: PropsPantallas) {
 
 const TARJETA = 'flex min-h-14 items-start gap-3 rounded-grande border border-linea p-4 no-underline';
 
-function Tarjeta({ p, apagada, alConectar }: { p: PantallaMenu; apagada: boolean; alConectar: () => void }) {
+function Tarjeta({ p, href, apagada, alConectar }: { p: PantallaMenu; href: string | undefined; apagada: boolean; alConectar: () => void }) {
   const dentro = (
     <>
       <Icono nombre={p.icono} className="size-6! text-secundario" />
@@ -85,7 +88,7 @@ function Tarjeta({ p, apagada, alConectar }: { p: PantallaMenu; apagada: boolean
   // sin dirección (o apagada para siempre) no hay a dónde ir: una tarjeta quieta, sin ser un enlace que no lleva a nada. Se apaga como
   // las fichas «Próximamente» del mapa (fondo hundido y texto secundario), NO con opacidad: «Próximamente» es información, y a media
   // opacidad se leía a 3.19:1 (axe); así queda a 7:1
-  if (!p.href || p.proximamente) return <div className={unir(TARJETA, 'bg-hundido text-secundario')}>{dentro}</div>;
+  if (!href || p.proximamente) return <div className={unir(TARJETA, 'bg-hundido text-secundario')}>{dentro}</div>;
   // el clic de una apagada ofrece conectar en vez de navegar
   const alPulsar = (ev: MouseEvent) => {
     if (!apagada) return;
@@ -94,7 +97,7 @@ function Tarjeta({ p, apagada, alConectar }: { p: PantallaMenu; apagada: boolean
   };
   return (
     <a
-      href={p.href}
+      href={href}
       aria-disabled={apagada || undefined}
       onClick={alPulsar}
       className={unir(TARJETA, 'bg-superficie text-texto transition-colors hover:border-campo hover:bg-elevada', apagada && 'opacity-60')}
