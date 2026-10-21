@@ -131,6 +131,13 @@ export interface PropsCaja {
   /** Se llegó con un texto ya escrito (`?prompt=` o `?brief=`, de «Llevar a la caja» en la Biblioteca de prompts): la caja arranca en esa
    *  pestaña con el texto puesto, lo dice y lleva el foco a su cuadro. Solo se lee al montarse: no crea ni cobra nada. */
   llegada?: LlegadaDeTexto | null;
+  /** La pestaña con la que arranca cuando NO se llegó con un texto: la de la página de esa herramienta (…/distrito/edicion/). Sin ella, Video.
+   *  Un texto que llega (`llegada`) manda sobre ella: `…/video/?prompt=x` abre Imagen. Solo se lee al montarse. */
+  familiaInicial?: Familia | undefined;
+  /** Se llama con la pestaña de ahora al montarse y cada vez que cambia (el riel, `elegir`, `referencia`): la página de una herramienta
+   *  usa esto para que su dirección y su título sigan a la pestaña. En el montaje también, porque un texto que llega puede abrir otra
+   *  pestaña que la de la dirección. Sin ella, la caja no avisa a nadie. */
+  alCambiarFamilia?: ((familia: Familia) => void) | undefined;
 }
 
 const SIN_IMAGENES: Imagen[] = [];
@@ -159,14 +166,16 @@ const RIEL = [
 ] as const;
 
 export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
-  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true, alEditar, llegada = null },
+  { ir, alPedir, alTerminar, imagenes = SIN_IMAGENES, tituloRef, enVista = true, alEditar, llegada = null, familiaInicial, alCambiarFamilia },
   ref,
 ) {
   // Arranca en el clip a propósito: es lo que ya se usaba, así que es lo que
   // menos sorprende a quien no abra el menú de modelo (M25 · B). Con un texto que llega de la Biblioteca de prompts, en la pestaña de ese
-  // texto (Imagen: «Crear una imagen»; Video: «Un video corto») y con él puesto.
-  const [familia, setFamilia] = useState<Familia>(llegada?.familia ?? 'videos');
-  const [opcion, setOpcion] = useState<Opcion>(OPCIONES[llegada?.familia ?? 'videos'][0]!);
+  // texto (Imagen: «Crear una imagen»; Video: «Un video corto») y con él puesto; y sin texto, en la de la página (`familiaInicial`).
+  // Edición no está en OPCIONES (su chip usa MODOS_EDICION): ahí la opción de Imagen/Video que se conserva es la del clip.
+  const inicial: Familia = llegada?.familia ?? familiaInicial ?? 'videos';
+  const [familia, setFamilia] = useState<Familia>(inicial);
+  const [opcion, setOpcion] = useState<Opcion>(OPCIONES[inicial === 'edicion' ? 'videos' : inicial][0]!);
   // cada tarea recuerda su propio modelo
   const [elegidos, setElegidos] = useState<Partial<Record<Tarea, Eleccion>>>({});
   // la duración que se pidió para el clip; la que rige sale de abajo (puede ser otra si esa ya no se ofrece)
@@ -208,6 +217,12 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   useEffect(() => {
     alLlegar();
   }, []);
+  // La pestaña de ahora se avisa al montarse y en cada cambio, venga de donde venga (el riel, `elegir` o `referencia`: los tres `setFamilia`).
+  // `alCambiarFamilia` se lee como evento de efecto: que quien la pasa la cree de nuevo en cada render no vuelve a avisar.
+  const avisarFamilia = useEffectEvent((f: Familia) => alCambiarFamilia?.(f));
+  useEffect(() => {
+    avisarFamilia(familia);
+  }, [familia]);
   // el estado de Edición (texto, video, subida, precio, corrida) vive aquí, no en CajaEdicion: ver la cabecera
   const [edicion, refsEdicion] = useEdicion({ decir, limpiarError, olvidarAviso: () => setAviso('') }, ir, alEditar);
   const enEdicion = familia === 'edicion';
