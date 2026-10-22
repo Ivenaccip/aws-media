@@ -1,28 +1,37 @@
-// El inicio en un navegador de verdad (dueño, 15-oct-2026: «Mapa con Irremplazables», y en la segunda ronda «el mapa es el inicio»). Se
-// aterriza en el MAPA en X; de ahí, tres opciones por área y, por último, la caja (Marketing › Distrito) o la lista de pantallas de un grupo.
-// Solo la caja lleva tarjeta; «Irremplazables» va arriba de todo, fuera de ella y en el mismo lugar en todos los pasos. Lo que jsdom no ve y
-// aquí sí:
-//  · la geometría: el título no se mueve entre pasos; el mapa (y las opciones, y las listas) están centrados sin un cuadro alrededor, en
+// El recorrido del inicio en un navegador de verdad (dueño, 15-oct-2026: «Mapa con Irremplazables»; 21-oct-2026: «por cada pestaña, una ruta»).
+// Cada nivel es su propia página, con su dirección y su `<title>`: el mapa en X (/estudio/), las opciones de un área (/estudio/marketing/), la
+// lista de un grupo (…/distrito/) y la caja (…/distrito/video/). Este archivo comprobaba el inicio de UNA página que cambiaba de paso por dentro;
+// ahora entra a cada nivel por su dirección y pasa de uno a otro con un clic en un enlace (las fichas, las tarjetas y las migas son enlaces; las
+// que no se abren, botones quietos). Lo que jsdom no ve y aquí sí:
+//  · la geometría: el título no se mueve de una página a otra; el mapa (y las opciones, y las listas) están centrados sin un cuadro alrededor, en
 //    horizontal y en el alto que sobra; la tarjeta de la caja baja respecto de antes (a 64 px, pegada al saldo) y no se centra en vertical;
 //  · las dos diagonales del mapa unen de verdad las cuatro esquinas por detrás de las fichas, y en un celular (por debajo de 560 px) la X se
 //    vuelve compacta, centrada, sin desborde, con todo tocable de 44 px y «Automatizaciones» en una sola línea;
 //  · nada se ve elegido: ni «Estás aquí» ni el tono de seleccionada en el mapa, y no hay «Volver a …» (las migas suben de nivel);
-//  · la caja se queda montada con el mapa abierto: el texto escrito, el video subido y una subida en curso no se pierden;
-//  · Blotato conectado, sin conectar y sin saberlo (con /api/blotato de mentira): apagado o encendido, y un clic en lo apagado
-//    abre el diálogo de conectar en vez de navegar;
-//  · el foco nunca cae a <body> al cambiar de paso, Tab recorre el mapa en orden de lectura, y Esc es de la región;
-//  · desde una página aparte (la agenda…) la miga «Marketing» llega al mapa con la URL limpia, de punta a punta, y ahí SÍ hay un
-//    «Volver a Agenda» (esa página no se alcanza con las migas).
-// No gasta nada: el servidor y los servicios son rutas de mentira (e2e/recorrido.ts).
-import { expect, test, type Page } from '@playwright/test';
+//  · la caja es una página aparte con tres pestañas: cambiar de pestaña conserva el texto, la liga y una subida en curso; salir de ella lo descarta;
+//  · Blotato conectado, sin conectar y sin saberlo (con /api/blotato de mentira): apagado o encendido, y un clic en lo apagado abre el diálogo
+//    de conectar en vez de navegar;
+//  · el teclado y el foco: cada página empieza arriba y Tab entra por su contenido, Tab recorre el mapa en orden de lectura y Esc sube al mapa
+//    desde las opciones (también con el foco en <body>);
+//  · el doble clic lento no salta dos niveles;
+//  · desde una página aparte (la agenda…) las migas llevan al mapa y a las opciones del área con la dirección limpia, y las entradas de antes
+//    (?desde=&ver=) ya no cambian nada.
+// Lo que dejó de existir al pasar a páginas (la caja montada bajo el mapa, «Estás aquí», «Volver a …», el foco programático al título) está retirado
+// o reescrito, y cada bloque lo explica donde estaba. El recorrido completo con sus títulos, Atrás y las entradas viejas del servidor lo prueba
+// niveles.spec.ts; aquí queda lo que ya probaba este archivo.
+// No gasta nada: el servidor y los servicios son rutas de mentira (e2e/recorrido.ts, e2e/servidor.mjs).
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   abrirInicio,
   abrirLaCaja,
   algunVolver,
   elegir,
+  elegirHerramienta,
   enfocado,
+  esperarRuta,
   ficha,
+  fichaApagada,
   irA,
   irAlMapa,
   lineasDe,
@@ -31,30 +40,44 @@ import {
   paso,
   region,
   riel,
+  rutaDe,
   simular,
   simularSubida,
   sobraAlLado,
   tarjeta,
+  TITULO_MAPA,
+  URL_BLOTATO,
+  URL_CAJA,
+  URL_DISTRITO,
+  URL_MAPA,
+  URL_MARKETING,
   VIDEO,
   volverA,
 } from './recorrido';
 
 const AREAS = ['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones'] as const;
+
 const CAJA = '¿Qué vamos a crear hoy?';
+
 const URL_DEL_INICIO = '/estudio/inicio/';
+
+/** Las opciones del área Automatizaciones (Distrito · Tus automatizaciones). */
+const URL_AUTOMATIZACIONES = '/estudio/automatizaciones/';
+
 /** Donde caía el borde de la tarjeta antes de esta ronda (el saldo es fijo arriba a la derecha y acaba a 52 px). */
 const TARJETA_ANTES = 64;
 
-const rutaDe = (page: Page) => new URL(page.url()).pathname;
+/** Una ficha del mapa, se abra o no: el ENLACE de las que se abren (`ficha`) o el botón quieto de las apagadas (`fichaApagada`). */
+const cualquierFicha = (page: Page, area: string): Locator => ficha(page, area).or(fichaApagada(page, area));
 
-/** Lo que se le pide a cada paso a cualquier ancho: nada se sale de la pantalla, todo lo tocable mide 44 px y la letra no baja de 13. */
+/** Lo que se le pide a cada página a cualquier ancho: nada se sale de la pantalla, todo lo tocable mide 44 px y la letra no baja de 13. */
 async function auditar(page: Page, donde: string) {
   expect(await sobraAlLado(page), `${donde}: la página se arrastra de lado`).toBeLessThanOrEqual(0);
   const problemas = await region(page).evaluate(seccion => {
     const hay: string[] = [];
     for (const e of Array.from(seccion.querySelectorAll('*'))) {
       const r = e.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue; // escondido (la caja, con otro paso a la vista)
+      if (r.width === 0 || r.height === 0) continue; // sin caja (escondido)
       const nombre = `${e.tagName.toLowerCase()} «${(e.textContent ?? '').trim().slice(0, 30)}»`;
       if (r.right > innerWidth + 0.5 || r.left < -0.5) hay.push(`${nombre} se sale de la pantalla`);
       if (e.matches('button, a') && (r.height < 43.5 || r.width < 43.5)) hay.push(`${nombre} mide ${Math.round(r.width)}×${Math.round(r.height)}`);
@@ -66,7 +89,7 @@ async function auditar(page: Page, donde: string) {
   expect(problemas, donde).toEqual([]);
 }
 
-/** La geometría del paso de ahora: el título, el bloque (el `h2` y lo que le sigue) y la tarjeta, ya con las tipografías cargadas. */
+/** La geometría de la página de ahora: el título, el bloque (el `h2` y lo que le sigue) y la tarjeta, ya con las tipografías cargadas. */
 async function medir(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   return page.evaluate(() => {
@@ -96,23 +119,24 @@ async function medir(page: Page) {
 // ---------------------------------------------------------------------------
 // aterrizar: el mapa es el inicio
 
-test('se aterriza en el MAPA: «Elige un área», las cinco áreas, sin migas, sin «Volver a …» y con la caja escondida (montada)', async ({ page }) => {
+test('se aterriza en el MAPA: «Elige un área», las cinco áreas, sin migas, sin «Volver a …» y SIN la caja (ya no se monta bajo el mapa)', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
+  expect(rutaDe(page)).toBe(URL_MAPA);
+  await expect(page).toHaveTitle(TITULO_MAPA);
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(paso(page)).toHaveText('Elige un área');
-  const nombres = (await region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button').allTextContents()).map(t =>
+  const nombres = (await region(page).getByRole('group', { name: 'Áreas', exact: true }).locator('a, button').allTextContents()).map(t =>
     t.replace(/Próximamente/g, ''),
   );
   expect(nombres).toEqual([...AREAS]);
   await expect(migas(page)).toHaveCount(0);
   await expect(algunVolver(page)).toHaveCount(0);
-  // la caja no se ve, pero está montada: su campo sigue en el árbol (escondido) esperando a que la elijan
-  await expect(page.getByRole('textbox', { name: CAJA })).toBeHidden();
-  await expect(page.locator('textarea')).toHaveCount(1);
+  // la caja no está en la página, ni escondida (la de antes seguía montada bajo el mapa, a la espera de que la eligieran): ni su campo
+  await expect(page.locator('textarea')).toHaveCount(0);
+  await expect(page.getByRole('textbox')).toHaveCount(0);
   await expect(page.getByText('Elige un grupo')).toHaveCount(0);
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
-  // aterrizar no le quita el foco a la página (solo entrar por la miga de otra pantalla lo pone en el título del paso)
+  // aterrizar no le quita el foco a la página: cada página nueva empieza con el foco en <body>
   expect((await enfocado(page)).etiqueta).toBe('body');
 });
 
@@ -120,20 +144,22 @@ test('nada se ve elegido en el mapa: ninguna ficha lleva «Estás aquí» ni ari
   await simular(page);
   await abrirInicio(page);
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
-  for (const area of AREAS) await expect(ficha(page, area), area).not.toHaveAttribute('aria-current', /./);
-  // el tono de las dos que se abren: el mismo borde y el mismo fondo (el de hoy de «Central»); las apagadas, distintas (más hondas)
-  const tono = (area: string) => ficha(page, area).evaluate(b => ({ fondo: getComputedStyle(b).backgroundColor, borde: getComputedStyle(b).borderTopColor }));
+  for (const area of AREAS) await expect(cualquierFicha(page, area), area).not.toHaveAttribute('aria-current', /./);
+  // el tono de las tres que se abren: el mismo borde y el mismo fondo; las apagadas, distintas (más hondas)
+  const tono = (area: string) =>
+    cualquierFicha(page, area).evaluate(b => ({ fondo: getComputedStyle(b).backgroundColor, borde: getComputedStyle(b).borderTopColor }));
   const marketing = await tono('Marketing');
   expect(marketing).toEqual(await tono('Central'));
   expect(marketing).toEqual(await tono('Automatizaciones'));
   const apagada = await tono('Producto');
   expect(apagada.fondo, 'las apagadas se distinguen de las que se abren').not.toBe(marketing.fondo);
-  // y después de haber estado en la caja de Marketing, el mapa tampoco la marca
+  // y después de haber estado en la caja de Marketing, el mapa tampoco la marca: es otra página, con el mismo mapa de siempre
   await elegir(page, 'Marketing', 'Distrito');
+  await elegirHerramienta(page, 'Video');
   await irAlMapa(page);
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
   expect(await tono('Marketing')).toEqual(marketing);
-  for (const area of AREAS) await expect(ficha(page, area), area).not.toHaveAttribute('aria-current', /./);
+  for (const area of AREAS) await expect(cualquierFicha(page, area), area).not.toHaveAttribute('aria-current', /./);
 });
 
 test('con el ratón encima una ficha que se abre sí cambia de tono (el hover se conserva) y se enfoca con aro visible', async ({ page }) => {
@@ -145,15 +171,14 @@ test('con el ratón encima una ficha que se abre sí cambia de tono (el hover se
   await expect.poll(fondo).not.toBe(reposo);
   await page.mouse.move(0, 0);
   await expect.poll(fondo).toBe(reposo);
-  // con el teclado (el aro de foco es `:focus-visible`): desde el título del paso, Tab llega a Marketing y se ve su aro
-  await paso(page).focus();
+  // con el teclado (el aro de foco es `:focus-visible`): recién cargada la página el foco está en <body> y el primer Tab llega a Marketing
   await page.keyboard.press('Tab');
   await expect(ficha(page, 'Marketing')).toBeFocused();
   expect(await ficha(page, 'Marketing').evaluate(b => getComputedStyle(b).outlineStyle), 'sin aro de foco').not.toBe('none');
 });
 
 // ---------------------------------------------------------------------------
-// el título arriba y la geometría de cada paso
+// el título arriba y la geometría de cada página
 
 const VENTANAS = [
   { ancho: 1100, alto: 800 },
@@ -163,17 +188,21 @@ const VENTANAS = [
 ] as const;
 
 for (const { ancho, alto } of VENTANAS) {
-  test(`a ${ancho}×${alto} «Irremplazables» está arriba, fuera de la tarjeta, y NO se mueve entre el mapa, las opciones, la lista y la caja`, async ({ page }) => {
+  test(`a ${ancho}×${alto} «Irremplazables» está arriba, fuera de la tarjeta, y NO se mueve de una página a otra: mapa, opciones, listas y caja`, async ({ page }) => {
     await page.setViewportSize({ width: ancho, height: alto });
     await simular(page);
     await abrirInicio(page);
     const pasos: Array<[string, Awaited<ReturnType<typeof medir>>]> = [];
     pasos.push(['el mapa', await medir(page)]);
     await ficha(page, 'Marketing').click();
+    await esperarRuta(page, URL_MARKETING);
     pasos.push(['las opciones', await medir(page)]);
     await opcion(page, 'Marketing', 'Blotato').click();
+    await esperarRuta(page, URL_BLOTATO);
     pasos.push(['la lista de Blotato', await medir(page)]);
     await irA(page, 'Marketing', 'Distrito');
+    pasos.push(['la lista de Distrito', await medir(page)]);
+    await elegirHerramienta(page, 'Video');
     pasos.push(['la caja', await medir(page)]);
 
     const [, primero] = pasos[0]!;
@@ -186,7 +215,7 @@ for (const { ancho, alto } of VENTANAS) {
       expect(m.titulo.bottom, `${donde}: el título no está arriba`).toBeLessThan(m.alto / 4);
     }
     // el mismo título, dentro de la región, y la tarjeta (con la caja) empieza DEBAJO de él: no lo rodea
-    const [, caja] = pasos[3]!;
+    const [, caja] = pasos[4]!;
     expect(caja.tarjeta.top, 'la tarjeta de la caja no empieza debajo del título').toBeGreaterThanOrEqual(caja.titulo.bottom + 24);
     expect(await sobraAlLado(page)).toBeLessThanOrEqual(0);
   });
@@ -233,10 +262,14 @@ test('el mapa, las opciones y la lista de un grupo no tienen ningún cuadro alre
   const SIN = { borde: '0px', fondo: 'rgba(0, 0, 0, 0)', relleno: '0px', sombra: 'none' };
   expect(await estilo(), 'el mapa tiene un cuadro').toEqual(SIN);
   await ficha(page, 'Marketing').click();
+  await esperarRuta(page, URL_MARKETING);
   expect(await estilo(), 'las opciones tienen un cuadro').toEqual(SIN);
   await opcion(page, 'Marketing', 'Blotato').click();
-  expect(await estilo(), 'la lista tiene un cuadro').toEqual(SIN);
+  await esperarRuta(page, URL_BLOTATO);
+  expect(await estilo(), 'la lista de Blotato tiene un cuadro').toEqual(SIN);
   await irA(page, 'Marketing', 'Distrito');
+  expect(await estilo(), 'la lista de Distrito tiene un cuadro').toEqual(SIN);
+  await elegirHerramienta(page, 'Video');
   const conCaja = await estilo();
   expect(conCaja.borde).toBe('1px');
   expect(conCaja.fondo).not.toBe('rgba(0, 0, 0, 0)');
@@ -272,8 +305,7 @@ for (const { ancho, alto } of VENTANAS) {
 
 test('las opciones también quedan centradas en horizontal y en el alto que sobra bajo las migas (a 1100×800 y 1440×900)', async ({ page }) => {
   await simular(page);
-  await abrirInicio(page);
-  await ficha(page, 'Marketing').click();
+  await abrirInicio(page, URL_MARKETING);
   for (const { ancho, alto } of [VENTANAS[0], VENTANAS[1]]) {
     await page.setViewportSize({ width: ancho, height: alto });
     const m = await medir(page);
@@ -281,14 +313,14 @@ test('las opciones también quedan centradas en horizontal y en el alto que sobr
     const arriba = m.bloque.top - (filaDeMigas.y + filaDeMigas.height);
     const abajo = m.alto - m.bloque.bottom;
     expect(Math.abs(arriba - abajo), `a ${ancho}×${alto}: ${arriba.toFixed(1)} px arriba y ${abajo.toFixed(1)} px abajo`).toBeLessThanOrEqual(8);
-    // las migas, centradas bajo el título (en los pasos sin tarjeta); no a la izquierda
+    // las migas, centradas bajo el título (en las páginas sin tarjeta); no a la izquierda
     expect(Math.abs(filaDeMigas.x + filaDeMigas.width / 2 - m.ancho / 2), 'las migas no están centradas').toBeLessThanOrEqual(1);
     expect(filaDeMigas.y).toBeGreaterThanOrEqual(m.titulo.bottom);
     expect(m.bloque.top, 'las opciones quedaron arriba de las migas').toBeGreaterThan(filaDeMigas.y + filaDeMigas.height);
   }
 });
 
-test('las migas van DENTRO de la tarjeta, arriba y a la izquierda, mientras se ve la caja', async ({ page }) => {
+test('las migas van DENTRO de la tarjeta, arriba y a la izquierda, mientras se ve la caja; son enlaces a las páginas de arriba', async ({ page }) => {
   await simular(page);
   await abrirLaCaja(page);
   const t = (await tarjeta(page).boundingBox())!;
@@ -297,13 +329,16 @@ test('las migas van DENTRO de la tarjeta, arriba y a la izquierda, mientras se v
   expect(m.x + m.width).toBeLessThanOrEqual(t.x + t.width);
   expect(m.y).toBeGreaterThanOrEqual(t.y);
   expect(m.x - t.x, 'las migas van centradas en vez de a la izquierda').toBeLessThanOrEqual(40);
-  await expect(migas(page).getByRole('button')).toHaveText(['Marketing', 'Distrito']);
-  await expect(migas(page).getByRole('button').nth(1)).toHaveAttribute('aria-current', 'step');
+  await expect(migas(page).getByRole('link')).toHaveText(['Marketing', 'Distrito']);
+  await expect(migas(page).getByRole('link').first()).toHaveAttribute('href', URL_MAPA);
+  await expect(migas(page).getByRole('link').nth(1)).toHaveAttribute('href', URL_MARKETING);
+  await expect(migas(page).getByRole('link').nth(1)).toHaveAttribute('aria-current', 'step');
+  await expect(migas(page).getByRole('button')).toHaveCount(0);
   await expect(algunVolver(page)).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------
-// el mapa
+// el mapa en X (las fichas que se abren son enlaces; las apagadas, botones quietos: la X las une igual)
 
 for (const ancho of [1100, 600]) {
   test(`a ${ancho} px la X une las cuatro esquinas pasando por Central, por detrás de las fichas`, async ({ page }) => {
@@ -312,7 +347,7 @@ for (const ancho of [1100, 600]) {
     await abrirInicio(page);
     await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
 
-    const caja = async (area: string) => (await ficha(page, area).boundingBox())!;
+    const caja = async (area: string) => (await cualquierFicha(page, area).boundingBox())!;
     const [marketing, producto, central, ventas, automatizaciones] = await Promise.all(AREAS.map(caja));
     type Caja = NonNullable<typeof marketing>;
     const dentro = (p: { x: number; y: number }, c: Caja) => p.x >= c.x && p.x <= c.x + c.width && p.y >= c.y && p.y <= c.y + c.height;
@@ -329,7 +364,7 @@ for (const ancho of [1100, 600]) {
           };
           const a = punto('x1', 'y1');
           const b = punto('x2', 'y2');
-          const encima = (p: { x: number; y: number }) => document.elementFromPoint(p.x, p.y)?.closest('button')?.textContent ?? '';
+          const encima = (p: { x: number; y: number }) => document.elementFromPoint(p.x, p.y)?.closest('a, button')?.textContent ?? '';
           return { a, b, medio: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, encimaDeA: encima(a), encimaDeB: encima(b), trazo: getComputedStyle(l).strokeDasharray };
         }),
       );
@@ -349,7 +384,7 @@ for (const ancho of [1100, 600]) {
       .locator('svg[viewBox="0 0 100 100"]')
       .evaluate(svg => {
         const capa = (e: Element) => Number.parseInt(getComputedStyle(e).zIndex, 10) || 0;
-        return { svg: capa(svg), puntero: getComputedStyle(svg).pointerEvents, fichas: Array.from(svg.parentElement!.querySelectorAll('button')).map(capa) };
+        return { svg: capa(svg), puntero: getComputedStyle(svg).pointerEvents, fichas: Array.from(svg.parentElement!.querySelectorAll('a, button')).map(capa) };
       });
     expect(capas.puntero, 'las diagonales reciben el puntero').toBe('none');
     expect(capas.fichas).toHaveLength(5);
@@ -929,6 +964,24 @@ test('con solo el teclado: Enter en una ficha y en una tarjeta cambian de paso, 
 // ---------------------------------------------------------------------------
 // el celular: la X compacta y lo demás
 
+/** Una página de cada clase del recorrido (y las que dicen «Todavía no está disponible.»), para auditar a cada ancho. */
+const PAGINAS: ReadonlyArray<readonly [string, string]> = [
+  ['el mapa', URL_MAPA],
+  ['las opciones de Marketing', URL_MARKETING],
+  ['la lista de Distrito', URL_DISTRITO],
+  ['la lista de Blotato', URL_BLOTATO],
+  ['la lista de Avanzado', '/estudio/marketing/avanzado/'],
+  ['las opciones de Central', '/estudio/central/'],
+  ['Central › Distrito', '/estudio/central/distrito/'],
+  ['Central › Deepseek', '/estudio/central/deepseek/'],
+  ['las opciones de Automatizaciones', URL_AUTOMATIZACIONES],
+  ['Automatizaciones › Distrito', '/estudio/automatizaciones/distrito/'],
+  ['Automatizaciones › Tus automatizaciones', '/estudio/automatizaciones/tus/'],
+  ['Producto', '/estudio/producto/'],
+  ['Ventas', '/estudio/ventas/'],
+  ['la caja', URL_CAJA.video],
+];
+
 for (const ancho of [390, 320]) {
   test.describe(`a ${ancho} px`, () => {
     test.use({ viewport: { width: ancho, height: 800 } });
@@ -937,7 +990,7 @@ for (const ancho of [390, 320]) {
       await simular(page);
       await abrirInicio(page);
       const c = {} as Record<(typeof AREAS)[number], { x: number; y: number; width: number; height: number }>;
-      for (const a of AREAS) c[a] = (await ficha(page, a).boundingBox())!;
+      for (const a of AREAS) c[a] = (await cualquierFicha(page, a).boundingBox())!;
 
       // dos columnas: Marketing y Producto en una fila; Central, una banda de la orilla de la una a la de la otra; las otras dos abajo
       expect(c.Producto.y).toBeCloseTo(c.Marketing.y, 0);
@@ -960,7 +1013,7 @@ for (const ancho of [390, 320]) {
       // la X grande no se pinta; en su lugar, un trazo corto de cada esquina a la banda
       await expect(region(page).locator('svg[viewBox="0 0 100 100"]')).toBeHidden();
       const trazo = (area: (typeof AREAS)[number]) =>
-        ficha(page, area).evaluate(boton => {
+        cualquierFicha(page, area).evaluate(boton => {
           const s = Array.from(boton.querySelectorAll('span[aria-hidden="true"]')).find(x => getComputedStyle(x).borderLeftStyle === 'dotted');
           const r = s?.getBoundingClientRect();
           return r && r.height > 0 ? { arriba: r.top, abajo: r.bottom } : null;
@@ -981,63 +1034,40 @@ for (const ancho of [390, 320]) {
       expect(await trazo('Central'), 'Central es la banda: no lleva trazo').toBeNull();
 
       // «Automatizaciones» y «Próximamente» no se parten y caben en su ficha
-      const nombre = ficha(page, 'Automatizaciones').getByText('Automatizaciones', { exact: true });
+      const nombre = cualquierFicha(page, 'Automatizaciones').getByText('Automatizaciones', { exact: true });
       expect(await lineasDe(nombre), '«Automatizaciones» se parte en dos líneas').toBe(1);
       const sobra = await nombre.evaluate(el => {
         const t = el.getBoundingClientRect();
-        const f = (el.closest('button') as HTMLElement).getBoundingClientRect();
+        const f = (el.closest('a, button') as HTMLElement).getBoundingClientRect();
         return { derecha: t.right - f.right, izquierda: f.left - t.left };
       });
       expect(sobra.derecha, '«Automatizaciones» se sale de su ficha').toBeLessThanOrEqual(0);
       expect(sobra.izquierda, '«Automatizaciones» se sale de su ficha').toBeLessThanOrEqual(0);
-      expect(await lineasDe(ficha(page, 'Producto').getByText('Próximamente')), '«Próximamente» se parte').toBe(1);
+      expect(await lineasDe(cualquierFicha(page, 'Producto').getByText('Próximamente')), '«Próximamente» se parte').toBe(1);
       expect(await sobraAlLado(page)).toBeLessThanOrEqual(0);
     });
 
-    test('cada paso (mapa, opciones, listas) cabe: sin desborde, lo tocable de 44 px y letra de 13 px o más', async ({ page }) => {
+    test('cada página (mapa, opciones, listas y caja) cabe: sin desborde, lo tocable de 44 px y letra de 13 px o más', async ({ page }) => {
       await simular(page, { blotato: 'sin-conectar' });
-      await abrirInicio(page);
-      await auditar(page, 'el mapa');
-      await ficha(page, 'Marketing').click();
-      await auditar(page, 'las opciones de Marketing');
-      // en una sola columna: cada tarjeta ocupa el ancho y no hay dos en una fila
-      const columnas = await region(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('button').evaluateAll(bs => bs.map(b => b.getBoundingClientRect().x));
-      expect(new Set(columnas.map(x => Math.round(x))).size, 'las opciones no se apilan en una columna').toBe(1);
-      await opcion(page, 'Marketing', 'Blotato').click();
-      await auditar(page, 'la lista de Blotato');
-      await irA(page, 'Marketing', 'Avanzado');
-      await auditar(page, 'la lista de Avanzado');
-      await irA(page, 'Central', 'Distrito');
-      await auditar(page, 'Central › Distrito');
-      await irA(page, 'Central', 'Deepseek');
-      await auditar(page, 'Central › Deepseek');
-      await irA(page, 'Automatizaciones', 'Distrito');
-      await auditar(page, 'Automatizaciones › Distrito');
-      await irA(page, 'Automatizaciones', 'Tus automatizaciones');
-      await auditar(page, 'Automatizaciones › Tus automatizaciones');
-      await irAlMapa(page);
-      await ficha(page, 'Automatizaciones').click();
-      await auditar(page, 'las opciones de Automatizaciones');
-      await irA(page, 'Marketing', 'Distrito');
-      await auditar(page, 'la caja');
+      for (const [donde, url] of PAGINAS) {
+        await abrirInicio(page, url);
+        await auditar(page, donde);
+        // en una sola columna: cada tarjeta de las opciones ocupa el ancho y no hay dos en una fila
+        if (url === URL_MARKETING) {
+          const columnas = await region(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('link').evaluateAll(bs => bs.map(b => b.getBoundingClientRect().x));
+          expect(new Set(columnas.map(x => Math.round(x))).size, 'las opciones no se apilan en una columna').toBe(1);
+        }
+      }
     });
   });
 }
 
-test('a 1100 px cada paso cumple lo mismo: sin desborde, lo tocable de 44 px y letra de 13 px o más', async ({ page }) => {
+test('a 1100 px cada página cumple lo mismo: sin desborde, lo tocable de 44 px y letra de 13 px o más', async ({ page }) => {
   await simular(page, { blotato: 'sin-conectar' });
-  await abrirInicio(page);
-  await auditar(page, 'el mapa');
-  await ficha(page, 'Marketing').click();
-  await auditar(page, 'las opciones de Marketing');
-  await opcion(page, 'Marketing', 'Blotato').click();
-  await auditar(page, 'la lista de Blotato');
-  await irA(page, 'Central', 'Distrito');
-  await auditar(page, 'Central › Distrito');
-  await irA(page, 'Automatizaciones', 'Distrito');
-  await auditar(page, 'Automatizaciones › Distrito');
-  await irA(page, 'Marketing', 'Distrito');
-  await auditar(page, 'la caja');
+  for (const [donde, url] of PAGINAS) {
+    await abrirInicio(page, url);
+    await auditar(page, donde);
+  }
 });
 
 test('el mapa pasa de la X compacta a la X grande en el corte de 560 px, y a ningún ancho se desborda ni se parte «Automatizaciones»', async ({ page }) => {
@@ -1048,8 +1078,8 @@ test('el mapa pasa de la X compacta a la X grande en el corte de 560 px, y a nin
   for (const ancho of [320, 360, 390, 414, 480, 540, 559, 560, 561, 600, 640, 700, 760, 761, 860, 861, 1000]) {
     await page.setViewportSize({ width: ancho, height: 800 });
     expect(await sobraAlLado(page), `a ${ancho} px la página se arrastra de lado`).toBeLessThanOrEqual(0);
-    expect(await lineasDe(ficha(page, 'Automatizaciones').getByText('Automatizaciones', { exact: true })), `a ${ancho} px «Automatizaciones» se parte`).toBe(1);
-    const cajas = await Promise.all(AREAS.map(a => ficha(page, a).boundingBox()));
+    expect(await lineasDe(cualquierFicha(page, 'Automatizaciones').getByText('Automatizaciones', { exact: true })), `a ${ancho} px «Automatizaciones» se parte`).toBe(1);
+    const cajas = await Promise.all(AREAS.map(a => cualquierFicha(page, a).boundingBox()));
     for (const [i, c] of cajas.entries()) {
       expect(c!.height, `a ${ancho} px ${AREAS[i]} mide ${c!.height} de alto`).toBeGreaterThanOrEqual(44);
       expect(c!.x + c!.width, `a ${ancho} px ${AREAS[i]} se sale por la derecha`).toBeLessThanOrEqual(ancho);
