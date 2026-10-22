@@ -5,19 +5,17 @@ import { describe, expect, it } from 'vitest';
 import { ErrorApi } from '../../nucleo/api';
 import {
   claveAleatoria,
-  codigoDelBloque,
   contadorTexto,
   encabezado,
-  esBloqueDeCodigo,
+  esEncabezado,
   faltanTexto,
   falloDe,
   largo,
-  lineasDe,
   mismaRenovacion,
-  partesDe,
   primeraFrase,
   puntitos,
   textoDeBloque,
+  textoMostrado,
   textoTodo,
   type Coi,
 } from './logica';
@@ -132,89 +130,37 @@ describe('coi · cómo se lee un error del API', () => {
   });
 });
 
-describe('coi · cómo se lee un bloque', () => {
-  it('coi.resultado.las_partes_numeradas_de_las_instrucciones_se_separan', () => {
-    const partes = partesDe(COI.instrucciones!);
-    expect(partes).toEqual([
-      { n: 1, titulo: 'Rol', lineas: ['Actúa como guionista.'] },
-      { n: 2, titulo: 'Datos', lineas: ['Nombre del producto.'] },
-    ]);
-    // con negritas y viñetas de guion
-    expect(partesDe('**1. Rol:**\n- Una cosa\n**2. Datos**\n- Otra')).toEqual([
-      { n: 1, titulo: 'Rol', lineas: ['Una cosa'] },
-      { n: 2, titulo: 'Datos', lineas: ['Otra'] },
-    ]);
+describe('coi · cómo se ve el texto', () => {
+  it('coi.resultado.el_texto_que_se_ve_no_lleva_asteriscos_de_negrita_y_el_codigo_queda_intacto', () => {
+    const t: Coi = {
+      ...COI,
+      contexto: '**Suposición:** no dijiste el producto.',
+      instrucciones: [
+        '1. **Rol**',
+        '   * Actúa como guionista.',
+        '2. Formato',
+        '   ```python',
+        '   def f(**kwargs): ...',
+        '   ```',
+        '   * **Nada** más.',
+      ].join('\n'),
+    };
+    const visto = textoMostrado(t, 'es');
+    expect(visto).toContain('Suposición: no dijiste el producto.');
+    expect(visto).toContain('1. Rol');
+    expect(visto).toContain('   * Nada más.');
+    // dentro de un bloque de código no se toca nada: un `**kwargs` es código
+    expect(visto).toContain('   def f(**kwargs): ...');
+    expect(visto).not.toContain('**Rol**');
+    // lo demás queda igual que lo que se copia: encabezados, orden, saltos y sangría
+    expect(visto.replace(/\*\*/g, '')).toBe(textoTodo(t, 'es').replace(/\*\*/g, ''));
+    expect(visto.startsWith('#CONTEXTO\n')).toBe(true);
+    // sin estructura, lo que respondió el modelo (también sin sus negritas)
+    expect(textoMostrado({ ...t, contexto: null, objetivo: null, instrucciones: null, completo: 'Hola **mundo**', estructura_ok: false }, 'es')).toBe('Hola mundo');
   });
 
-  it('coi.resultado.los_pasos_numerados_de_una_parte_no_abren_partes_nuevas', () => {
-    // la parte 3 trae sus propios pasos «1. 2. 3. 4.», sangrados: no son partes de primer nivel (antes salían 1,2,3,1,2,3,4,4,5,6,7)
-    const t = '1. A\n   * a\n2. B\n   * b\n3. Estrategia\n   1. p1\n   2. p2\n   3. p3\n   4. p4\n4. D\n   * d\n5. E\n   * e\n6. F\n   * f\n7. G\n   * g';
-    const p = partesDe(t)!;
-    expect(p.map(x => x.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(p[2]!.lineas).toEqual(['1. p1', '2. p2', '3. p3', '4. p4']);
-    // sin sangría pero volviendo a empezar en 1: tampoco es una parte (no es la que sigue)
-    expect(partesDe('1. A\n2. B\n3. C\n1. paso\n2. paso\n4. D')!.map(x => x.n)).toEqual([1, 2, 3, 4]);
-    // y un «4.» sangrado dentro de la parte 3 tampoco abre una cuarta antes de tiempo
-    expect(partesDe('1. A\n2. B\n3. C\n   4. paso\n4. D')!.map(x => x.titulo)).toEqual(['A', 'B', 'C', 'D']);
-    // las partes son siete: lo que siga contando ya no es una parte
-    const ocho = Array.from({ length: 8 }, (_, i) => `${i + 1}. P${i + 1}`).join('\n');
-    expect(partesDe(ocho)!.map(x => x.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(partesDe(ocho)![6]!.lineas).toEqual(['8. P8']);
-    // un bloque entero sangrado por el modelo sigue siendo una lista de partes
-    expect(partesDe('  1. A\n  2. B')!.map(x => x.n)).toEqual([1, 2]);
-  });
-
-  it('coi.resultado.un_bloque_de_codigo_dentro_de_una_parte_conserva_su_forma', () => {
-    // la parte 6 pide un JSON: llega con su sangría de viñeta, una línea en blanco, un `**kwargs` y hasta un «2.» que NO es una parte
-    const t = [
-      '1. A', '   * a', '2. B', '   * b', '3. C', '   * c', '4. D', '   * d', '5. E', '   * e',
-      '6. Formato de salida',
-      '   * Devuelve este JSON:',
-      '     ```json',
-      '     {',
-      '       "titulo": "x",',
-      '',
-      '       "args": "**kwargs",',
-      '       "pasos": "2. no soy una parte"',
-      '     }',
-      '     ```',
-      '   * Y nada más.',
-      '7. G', '   * g',
-    ].join('\n');
-    const p = partesDe(t)!;
-    expect(p.map(x => x.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    const [intro, bloque, cierre] = p[5]!.lineas;
-    expect(intro).toBe('Devuelve este JSON:');
-    expect(cierre).toBe('Y nada más.');
-    // el bloque es UNA entrada, sin la sangría que le dio el modelo y con la suya; no pierde negritas ni líneas en blanco
-    expect(p[5]!.lineas).toHaveLength(3);
-    expect(esBloqueDeCodigo(bloque!)).toBe(true);
-    expect(esBloqueDeCodigo(intro!)).toBe(false);
-    expect(codigoDelBloque(bloque!)).toBe('{\n  "titulo": "x",\n\n  "args": "**kwargs",\n  "pasos": "2. no soy una parte"\n}');
-    // una respuesta cortada antes de la cerca final: el bloque se cierra solo y lo que había se enseña
-    const cortada = partesDe('1. A\n2. B\n   ```\n   x = 1\n   y = 2')!;
-    expect(cortada.map(x => x.n)).toEqual([1, 2]);
-    expect(codigoDelBloque(cortada[1]!.lineas[0]!)).toBe('x = 1\ny = 2');
-  });
-
-  it('coi.resultado.un_texto_que_no_trae_partes_se_lee_como_parrafos_sin_perder_nada', () => {
-    expect(partesDe('Haz esto.\nLuego esto.')).toBeNull();
-    // una sola parte numerada no alcanza para una lista
-    expect(partesDe('1. Rol\n   * Algo')).toBeNull();
-    // texto antes de la primera parte: se queda en párrafos, para no perderlo
-    expect(partesDe('Intro\n1. Rol\n2. Datos')).toBeNull();
-  });
-
-  it('coi.resultado.las_suposiciones_se_marcan_y_el_resto_son_parrafos', () => {
-    expect(lineasDe('Primero.\n\n**Suposición:** no dijiste el producto.\nSuposiciones - el tono es cercano\nAssumption: audience is new')).toEqual([
-      { tipo: 'parrafo', texto: 'Primero.' },
-      { tipo: 'suposicion', texto: 'no dijiste el producto.' },
-      { tipo: 'suposicion', texto: 'el tono es cercano' },
-      { tipo: 'suposicion', texto: 'audience is new' },
-    ]);
-    expect(lineasDe('* una viñeta\n• otra')).toEqual([
-      { tipo: 'parrafo', texto: 'una viñeta' },
-      { tipo: 'parrafo', texto: 'otra' },
-    ]);
+  it('coi.resultado.los_encabezados_de_bloque_se_reconocen_en_los_dos_idiomas', () => {
+    for (const l of ['#CONTEXTO', '#OBJETIVO', '#INSTRUCCIONES', '#CONTEXT', '#OBJECTIVE', '#INSTRUCTIONS', '  #OBJETIVO  ']) expect(esEncabezado(l)).toBe(true);
+    for (const l of ['#CONTEXTOS', 'CONTEXTO', '# Contexto', 'Mi #OBJETIVO', '']) expect(esEncabezado(l)).toBe(false);
   });
 });

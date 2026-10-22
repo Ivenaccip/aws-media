@@ -1,0 +1,733 @@
+{
+  "nota": "Muestras ENLATADAS del Asistente en modo «prueba» (Fase A, gasto 0): lo único que devuelve pipeline/asistente.py mientras no esté encendido el armado real. Ningún modelo, base ni cola las toca. Se elige por palabras clave del pedido (subcadena, sin acentos ni mayúsculas); gana la primera de la lista cuyo `claves` case, y si ninguna casa, la que lleva `por_omision`. El orden importa: «sin_cobertura» va primero. Cada muestra «listo» trae `flujo` (JSON de n8n que pasa pipeline/validador.validar) y, opcional, `grafo` (nodes/edges/nombreFlujo del Constructor, idéntico al de web/src/pantallas/constructor/modelo/ejemplos.ts) para «Abrir en el constructor» sin importador. El `flujo` NO se escribe a mano: es la exportación del Constructor de su propio `grafo` (golden/flujos.json, casos muestra_0..2, sin settings.timezone), y tests/test_automatiza_asistente.py exige que sean idénticos, que el `grafo` cumpla los invariantes del Constructor y que no haya cambiado sin regenerar el flujo (huella). Si cambia el `grafo` (o ejemplos.ts): corre `ACTUALIZAR_DORADO=1 npx vitest run src/pantallas/constructor/modelo/exportar.golden.test.ts` en web/, copia muestra_N de golden/flujos.json a `flujo` (sin `settings.timezone`) y actualiza la huella en la prueba.",
+  "procedencia": "flujos: exportación de producción del Constructor (construirFlujo de los grafos de ejemplos.ts, golden/flujos.json muestra_0..2) sin settings.timezone; no fijan el modelo de Claude (n8n usa el suyo) y cada flujo con chat trae su propio webhookId; grafos: muestras() de ejemplos.ts (los del mockup, Main.dc.html:1551-1573); resúmenes y claves: escritos a mano; «sin_cobertura»: claves sacadas de los casos sin_cobertura de media/library/n8n/prueba_borrador.json",
+  "muestras": [
+    {
+      "id": "sin_cobertura",
+      "estado": "sin_cobertura",
+      "claves": [
+        "hubspot",
+        "github",
+        "instagram",
+        "rss",
+        "calendar"
+      ],
+      "faltan": [
+        "En esta prueba, apps como HubSpot, GitHub, Instagram, lectores de RSS y Google Calendar todavía no se pueden conectar."
+      ]
+    },
+    {
+      "id": "correos",
+      "estado": "listo",
+      "claves": [
+        "correo",
+        "gmail",
+        "email",
+        "mail"
+      ],
+      "resumen": "Cuando llega un correo nuevo, una IA redacta la respuesta —consultando tu hoja de Google Sheets si lo necesita— y te la envía por Gmail.",
+      "flujo": {
+        "name": "Responder correos de clientes",
+        "nodes": [
+          {
+            "parameters": {
+              "pollTimes": {
+                "item": [
+                  {
+                    "mode": "everyMinute"
+                  }
+                ]
+              },
+              "simple": false,
+              "filters": {},
+              "options": {}
+            },
+            "id": "6a99b44c-8a80-442b-8e6d-5c49206bc530",
+            "name": "Gmail Trigger",
+            "type": "n8n-nodes-base.gmailTrigger",
+            "typeVersion": 1.4,
+            "position": [
+              8,
+              180
+            ],
+            "credentials": {
+              "gmailOAuth2": {
+                "id": "",
+                "name": "Gmail"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "promptType": "define",
+              "text": "=Lee el correo nuevo y redacta una respuesta amable con la información que tengas. Si no sabes algo, dilo.\n\n{{ JSON.stringify({ de: $json.from?.text, asunto: $json.subject, mensaje: $json.text }) }}",
+              "options": {
+                "systemMessage": "Eres el asistente de atención al cliente. Responde en español, breve y amable."
+              }
+            },
+            "id": "08d12dfd-de04-4969-8efa-6f28f886b67c",
+            "name": "Atención por correo",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 3.1,
+            "position": [
+              312,
+              180
+            ]
+          },
+          {
+            "parameters": {
+              "model": {
+                "__rl": true,
+                "mode": "id",
+                "value": "gpt-5.4-mini"
+              },
+              "options": {}
+            },
+            "id": "a708a7ae-3188-4ea6-8f87-8208c0a1a7c8",
+            "name": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1.3,
+            "position": [
+              432,
+              370
+            ],
+            "credentials": {
+              "openAiApi": {
+                "id": "",
+                "name": "OpenAI"
+              }
+            }
+          },
+          {
+            "parameters": {},
+            "id": "4540215f-850d-43e4-8014-94e898bc9914",
+            "name": "Google Sheets",
+            "type": "n8n-nodes-base.googleSheetsTool",
+            "typeVersion": 4.7,
+            "position": [
+              176,
+              380
+            ],
+            "credentials": {
+              "googleSheetsOAuth2Api": {
+                "id": "",
+                "name": "Google Sheets"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "resource": "message",
+              "operation": "send",
+              "sendTo": "={{ $('Gmail Trigger').item.json.from.value[0].address }}",
+              "subject": "={{ 'Re: ' + $('Gmail Trigger').item.json.subject }}",
+              "emailType": "text",
+              "message": "={{ $json.output }}",
+              "options": {
+                "appendAttribution": false
+              }
+            },
+            "id": "e3779b10-d891-4921-80a1-a7c860d78a60",
+            "name": "Gmail",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2.2,
+            "position": [
+              616,
+              180
+            ],
+            "credentials": {
+              "gmailOAuth2": {
+                "id": "",
+                "name": "Gmail"
+              }
+            }
+          }
+        ],
+        "connections": {
+          "OpenAI Chat Model": {
+            "ai_languageModel": [
+              [
+                {
+                  "node": "Atención por correo",
+                  "type": "ai_languageModel",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Gmail Trigger": {
+            "main": [
+              [
+                {
+                  "node": "Atención por correo",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Atención por correo": {
+            "main": [
+              [
+                {
+                  "node": "Gmail",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Google Sheets": {
+            "ai_tool": [
+              [
+                {
+                  "node": "Atención por correo",
+                  "type": "ai_tool",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "pinData": {}
+      },
+      "grafo": {
+        "nombreFlujo": "Responder correos de clientes",
+        "nodes": [
+          {
+            "id": "t1",
+            "kind": "trigger",
+            "x": 8,
+            "y": 180,
+            "tipo": "app",
+            "frec": "dia",
+            "ruta": "mi-flujo",
+            "app": "gmail"
+          },
+          {
+            "id": "a1",
+            "kind": "agent",
+            "x": 312,
+            "y": 180,
+            "nombre": "Atención por correo",
+            "ia": "openai",
+            "tarea": "Lee el correo nuevo y redacta una respuesta amable con la información que tengas. Si no sabes algo, dilo.",
+            "instrucciones": "Eres el asistente de atención al cliente. Responde en español, breve y amable."
+          },
+          {
+            "id": "p1",
+            "kind": "app",
+            "x": 176,
+            "y": 380,
+            "nombre": "Google Sheets"
+          },
+          {
+            "id": "p2",
+            "kind": "app",
+            "x": 616,
+            "y": 180,
+            "nombre": "Gmail"
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "de": "t1",
+            "a": "a1",
+            "tipo": "seq"
+          },
+          {
+            "id": "e2",
+            "de": "a1",
+            "a": "p2",
+            "tipo": "seq"
+          },
+          {
+            "id": "e3",
+            "de": "a1",
+            "a": "p1",
+            "tipo": "tool"
+          }
+        ]
+      }
+    },
+    {
+      "id": "preguntas",
+      "estado": "listo",
+      "claves": [
+        "chat",
+        "preguntas",
+        "whatsapp",
+        "telegram",
+        "investig"
+      ],
+      "resumen": "Un chat público donde una IA responde las preguntas frecuentes y otra IA revisa la respuesta antes de entregarla.",
+      "flujo": {
+        "name": "Asistente de preguntas frecuentes",
+        "nodes": [
+          {
+            "parameters": {
+              "public": true,
+              "options": {
+                "responseMode": "streaming"
+              }
+            },
+            "id": "08d12dfd-de04-4969-8efa-6f28f886b67c",
+            "name": "When chat message received",
+            "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+            "typeVersion": 1.5,
+            "position": [
+              8,
+              180
+            ],
+            "webhookId": "a1c5c157-4f18-40be-bee1-5eea76f9b9a1"
+          },
+          {
+            "parameters": {
+              "options": {
+                "systemMessage": "Responde las preguntas frecuentes con claridad. Si necesitas datos de la base de conocimiento, búscalos en Notion."
+              }
+            },
+            "id": "a708a7ae-3188-4ea6-8f87-8208c0a1a7c8",
+            "name": "Atención",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 3.1,
+            "position": [
+              312,
+              180
+            ]
+          },
+          {
+            "parameters": {
+              "options": {}
+            },
+            "id": "4540215f-850d-43e4-8014-94e898bc9914",
+            "name": "Anthropic Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+            "typeVersion": 1.6,
+            "position": [
+              432,
+              370
+            ],
+            "credentials": {
+              "anthropicApi": {
+                "id": "",
+                "name": "Anthropic"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "promptType": "define",
+              "text": "={{ $json.output }}",
+              "options": {
+                "systemMessage": "Revisa la respuesta: que sea clara, amable y corta, y déjala lista para enviar."
+              }
+            },
+            "id": "e3779b10-d891-4921-80a1-a7c860d78a60",
+            "name": "Revisor",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 3.1,
+            "position": [
+              616,
+              180
+            ]
+          },
+          {
+            "parameters": {
+              "model": {
+                "__rl": true,
+                "mode": "id",
+                "value": "gpt-5.4-mini"
+              },
+              "options": {}
+            },
+            "id": "81af14c1-2c15-4e5f-812e-baa838f27bac",
+            "name": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1.3,
+            "position": [
+              736,
+              370
+            ],
+            "credentials": {
+              "openAiApi": {
+                "id": "",
+                "name": "OpenAI"
+              }
+            }
+          },
+          {
+            "parameters": {},
+            "id": "1fe68e72-7f9a-439c-81bb-cd88010d6cf8",
+            "name": "Notion",
+            "type": "n8n-nodes-base.notionTool",
+            "typeVersion": 3,
+            "position": [
+              176,
+              380
+            ],
+            "credentials": {
+              "notionApi": {
+                "id": "",
+                "name": "Notion"
+              }
+            }
+          }
+        ],
+        "connections": {
+          "Anthropic Chat Model": {
+            "ai_languageModel": [
+              [
+                {
+                  "node": "Atención",
+                  "type": "ai_languageModel",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "OpenAI Chat Model": {
+            "ai_languageModel": [
+              [
+                {
+                  "node": "Revisor",
+                  "type": "ai_languageModel",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "When chat message received": {
+            "main": [
+              [
+                {
+                  "node": "Atención",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Atención": {
+            "main": [
+              [
+                {
+                  "node": "Revisor",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Notion": {
+            "ai_tool": [
+              [
+                {
+                  "node": "Atención",
+                  "type": "ai_tool",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "pinData": {}
+      },
+      "grafo": {
+        "nombreFlujo": "Asistente de preguntas frecuentes",
+        "nodes": [
+          {
+            "id": "t1",
+            "kind": "trigger",
+            "x": 8,
+            "y": 180,
+            "tipo": "chat",
+            "frec": "dia",
+            "ruta": "mi-flujo",
+            "app": "gmail"
+          },
+          {
+            "id": "a1",
+            "kind": "agent",
+            "x": 312,
+            "y": 180,
+            "nombre": "Atención",
+            "ia": "anthropic",
+            "tarea": "",
+            "instrucciones": "Responde las preguntas frecuentes con claridad. Si necesitas datos de la base de conocimiento, búscalos en Notion."
+          },
+          {
+            "id": "a2",
+            "kind": "agent",
+            "x": 616,
+            "y": 180,
+            "nombre": "Revisor",
+            "ia": "openai",
+            "tarea": "",
+            "instrucciones": "Revisa la respuesta: que sea clara, amable y corta, y déjala lista para enviar."
+          },
+          {
+            "id": "p1",
+            "kind": "app",
+            "x": 176,
+            "y": 380,
+            "nombre": "Notion"
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "de": "t1",
+            "a": "a1",
+            "tipo": "seq"
+          },
+          {
+            "id": "e2",
+            "de": "a1",
+            "a": "a2",
+            "tipo": "seq"
+          },
+          {
+            "id": "e3",
+            "de": "a1",
+            "a": "p1",
+            "tipo": "tool"
+          }
+        ]
+      }
+    },
+    {
+      "id": "resumen_diario",
+      "estado": "listo",
+      "claves": [],
+      "por_omision": true,
+      "resumen": "Cada día una IA prepara un resumen de lo importante y lo manda por Gmail y por Slack.",
+      "flujo": {
+        "name": "Resumen diario",
+        "nodes": [
+          {
+            "parameters": {
+              "rule": {
+                "interval": [
+                  {
+                    "field": "days",
+                    "triggerAtHour": 9
+                  }
+                ]
+              }
+            },
+            "id": "6a99b44c-8a80-442b-8e6d-5c49206bc530",
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.4,
+            "position": [
+              8,
+              180
+            ]
+          },
+          {
+            "parameters": {
+              "promptType": "define",
+              "text": "Prepara un resumen de lo importante del día.",
+              "options": {
+                "systemMessage": "Escribe en español, en viñetas cortas."
+              }
+            },
+            "id": "08d12dfd-de04-4969-8efa-6f28f886b67c",
+            "name": "Resumidor",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 3.1,
+            "position": [
+              312,
+              180
+            ]
+          },
+          {
+            "parameters": {
+              "model": {
+                "__rl": true,
+                "mode": "id",
+                "value": "gpt-5.4-mini"
+              },
+              "options": {}
+            },
+            "id": "a708a7ae-3188-4ea6-8f87-8208c0a1a7c8",
+            "name": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1.3,
+            "position": [
+              192,
+              370
+            ],
+            "credentials": {
+              "openAiApi": {
+                "id": "",
+                "name": "OpenAI"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "resource": "message",
+              "operation": "send",
+              "sendTo": "",
+              "subject": "Respuesta del asistente",
+              "emailType": "text",
+              "message": "={{ $json.output }}",
+              "options": {
+                "appendAttribution": false
+              }
+            },
+            "id": "4540215f-850d-43e4-8014-94e898bc9914",
+            "name": "Gmail",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2.2,
+            "position": [
+              616,
+              80
+            ],
+            "credentials": {
+              "gmailOAuth2": {
+                "id": "",
+                "name": "Gmail"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "select": "channel",
+              "text": "={{ $json.output }}",
+              "otherOptions": {
+                "includeLinkToWorkflow": false
+              }
+            },
+            "id": "e3779b10-d891-4921-80a1-a7c860d78a60",
+            "name": "Slack",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.7,
+            "position": [
+              616,
+              288
+            ],
+            "credentials": {
+              "slackApi": {
+                "id": "",
+                "name": "Slack"
+              }
+            }
+          }
+        ],
+        "connections": {
+          "OpenAI Chat Model": {
+            "ai_languageModel": [
+              [
+                {
+                  "node": "Resumidor",
+                  "type": "ai_languageModel",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Schedule Trigger": {
+            "main": [
+              [
+                {
+                  "node": "Resumidor",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "Resumidor": {
+            "main": [
+              [
+                {
+                  "node": "Gmail",
+                  "type": "main",
+                  "index": 0
+                },
+                {
+                  "node": "Slack",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "pinData": {}
+      },
+      "grafo": {
+        "nombreFlujo": "Resumen diario",
+        "nodes": [
+          {
+            "id": "t1",
+            "kind": "trigger",
+            "x": 8,
+            "y": 180,
+            "tipo": "tiempo",
+            "frec": "dia",
+            "ruta": "mi-flujo",
+            "app": "gmail"
+          },
+          {
+            "id": "a1",
+            "kind": "agent",
+            "x": 312,
+            "y": 180,
+            "nombre": "Resumidor",
+            "ia": "openai",
+            "tarea": "Prepara un resumen de lo importante del día.",
+            "instrucciones": "Escribe en español, en viñetas cortas."
+          },
+          {
+            "id": "p1",
+            "kind": "app",
+            "x": 616,
+            "y": 80,
+            "nombre": "Gmail"
+          },
+          {
+            "id": "p2",
+            "kind": "app",
+            "x": 616,
+            "y": 288,
+            "nombre": "Slack"
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "de": "t1",
+            "a": "a1",
+            "tipo": "seq"
+          },
+          {
+            "id": "e2",
+            "de": "a1",
+            "a": "p1",
+            "tipo": "seq"
+          },
+          {
+            "id": "e3",
+            "de": "a1",
+            "a": "p2",
+            "tipo": "seq"
+          }
+        ]
+      }
+    }
+  ]
+}

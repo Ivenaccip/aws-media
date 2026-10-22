@@ -4,6 +4,9 @@
 // `bloqueado` no cambia nada, pero el botón sigue en el orden del teclado y puede apuntar a su motivo con
 // `aria-describedby`. Un `disabled` no recibe el foco y su motivo no se lee: por eso se usa `aria-disabled`.
 //
+// Encendido NO se pinta del ámbar del botón principal (que es uno por pantalla): lleva el tono de «elegido» de docs/DISENO.md §5
+// —borde #a96716 sobre fondo #2e2110— con la bolita en ámbar claro. Además del color, el estado se lee en la posición de la bolita.
+//
 // El botón mide 44 px de alto (el área que se toca); la pista dibujada es más baja y no empuja el diseño.
 import type { ButtonHTMLAttributes } from 'react';
 
@@ -38,14 +41,15 @@ export function Interruptor({ activo, alCambiar, bloqueado = false, className, o
         aria-hidden="true"
         className={unir(
           'flex h-6.5 w-11 items-center rounded-pildora border p-0.5 transition-colors duration-[120ms] motion-reduce:transition-none',
-          activo ? 'border-ambar bg-ambar' : 'border-campo bg-elevada',
+          // encendido es el tono de «elegido» (DISENO.md §5), NO el ámbar de botón: el principal es uno por pantalla
+          activo ? 'border-ambar-hondo bg-aviso-fondo' : 'border-campo bg-elevada',
           bloqueado && 'opacity-45',
         )}
       >
         <span
           className={unir(
             'block size-5 rounded-pildora transition-transform duration-[120ms] motion-reduce:transition-none',
-            activo ? 'translate-x-[18px] bg-tinta' : 'translate-x-0 bg-secundario',
+            activo ? 'translate-x-[18px] bg-ambar-claro' : 'translate-x-0 bg-secundario',
           )}
         />
       </span>

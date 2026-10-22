@@ -119,6 +119,14 @@ PANTALLAS: dict[str, Pantalla] = {
     # el primer día para que el registro anti-pérdida cubra sus invariantes (docs/migracion/coi.md); `/coi.html` solo es un atajo que
     # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado
     "coi": Pantalla(vieja="/coi.html", nueva="/estudio/coi/", etapa="retirada"),
+    # 20-oct-2026: Automatizaciones › Distrito. El Constructor y el Asistente NACEN en la UI nueva, como COI y la Biblioteca: no tuvieron
+    # pantalla vieja. Se registran `retirada` desde el primer día (302 siempre a la nueva, sin HTML viejo ni cookie) para que el registro
+    # anti-pérdida cubra sus invariantes (docs/migracion/constructor.md y asistente.md); `/constructor.html` y `/asistente.html` solo son
+    # atajos. No chocan con `/automatiza*` (la página pública del RAG, otra cosa). El Constructor no cobra ni llama a ningún servicio (todo
+    # se arma en el navegador); el Asistente corre en modo prueba: muestras enlatadas, sin base, sin cola, sin proveedor y sin créditos
+    # (gasto 0). Su modo real exige el «sí» del dueño con el costo a la vista y NO está implementado.
+    "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/constructor/", etapa="retirada"),
+    "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/asistente/", etapa="retirada"),
 }
 
 

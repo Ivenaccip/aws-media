@@ -1,0 +1,857 @@
+{
+  "formato": 1,
+  "generadoPor": "web/src/pantallas/constructor/modelo/catalogo.paridad.test.ts (ACTUALIZAR_DORADO=1). No se edita a mano.",
+  "apps": [
+    {
+      "nombre": "Gmail",
+      "tipo": "n8n-nodes-base.gmail",
+      "tipoHerramienta": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "credencial": {
+        "clave": "gmailOAuth2",
+        "nombre": "Gmail"
+      }
+    },
+    {
+      "nombre": "Google Sheets",
+      "tipo": "n8n-nodes-base.googleSheets",
+      "tipoHerramienta": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "credencial": {
+        "clave": "googleSheetsOAuth2Api",
+        "nombre": "Google Sheets"
+      }
+    },
+    {
+      "nombre": "Slack",
+      "tipo": "n8n-nodes-base.slack",
+      "tipoHerramienta": "n8n-nodes-base.slackTool",
+      "typeVersion": 2.7,
+      "credencial": {
+        "clave": "slackApi",
+        "nombre": "Slack"
+      }
+    },
+    {
+      "nombre": "Telegram",
+      "tipo": "n8n-nodes-base.telegram",
+      "tipoHerramienta": "n8n-nodes-base.telegramTool",
+      "typeVersion": 1.2,
+      "credencial": {
+        "clave": "telegramApi",
+        "nombre": "Telegram"
+      }
+    },
+    {
+      "nombre": "Notion",
+      "tipo": "n8n-nodes-base.notion",
+      "tipoHerramienta": "n8n-nodes-base.notionTool",
+      "typeVersion": 3,
+      "credencial": {
+        "clave": "notionApi",
+        "nombre": "Notion"
+      }
+    },
+    {
+      "nombre": "Airtable",
+      "tipo": "n8n-nodes-base.airtable",
+      "tipoHerramienta": "n8n-nodes-base.airtableTool",
+      "typeVersion": 2.2,
+      "credencial": {
+        "clave": "airtableTokenApi",
+        "nombre": "Airtable"
+      }
+    },
+    {
+      "nombre": "WhatsApp",
+      "tipo": "n8n-nodes-base.whatsApp",
+      "tipoHerramienta": "n8n-nodes-base.whatsAppTool",
+      "typeVersion": 1.1,
+      "credencial": {
+        "clave": "whatsAppApi",
+        "nombre": "WhatsApp"
+      }
+    },
+    {
+      "nombre": "Google Drive",
+      "tipo": "n8n-nodes-base.googleDrive",
+      "tipoHerramienta": "n8n-nodes-base.googleDriveTool",
+      "typeVersion": 3,
+      "credencial": {
+        "clave": "googleDriveOAuth2Api",
+        "nombre": "Google Drive"
+      }
+    },
+    {
+      "nombre": "Google Docs",
+      "tipo": "n8n-nodes-base.googleDocs",
+      "tipoHerramienta": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "credencial": {
+        "clave": "googleDocsOAuth2Api",
+        "nombre": "Google Docs"
+      }
+    },
+    {
+      "nombre": "Correo (SMTP)",
+      "tipo": "n8n-nodes-base.emailSend",
+      "tipoHerramienta": "n8n-nodes-base.emailSendTool",
+      "typeVersion": 2.1,
+      "credencial": {
+        "clave": "smtp",
+        "nombre": "SMTP"
+      }
+    }
+  ],
+  "ias": [
+    {
+      "id": "openai",
+      "nodo": "OpenAI Chat Model",
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "credencial": {
+        "clave": "openAiApi",
+        "nombre": "OpenAI"
+      },
+      "modelo": "gpt-5.4-mini"
+    },
+    {
+      "id": "anthropic",
+      "nodo": "Anthropic Chat Model",
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "credencial": {
+        "clave": "anthropicApi",
+        "nombre": "Anthropic"
+      },
+      "modelo": null
+    },
+    {
+      "id": "gemini",
+      "nodo": "Google Gemini Chat Model",
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "credencial": {
+        "clave": "googlePalmApi",
+        "nombre": "Google Gemini"
+      },
+      "modelo": null
+    },
+    {
+      "id": "openrouter",
+      "nodo": "OpenRouter Chat Model",
+      "tipo": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "credencial": {
+        "clave": "openRouterApi",
+        "nombre": "OpenRouter"
+      },
+      "modelo": null
+    }
+  ],
+  "disparadores": [
+    {
+      "nombreBase": "Schedule Trigger",
+      "tipo": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "credencial": null
+    },
+    {
+      "nombreBase": "When chat message received",
+      "tipo": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "credencial": null
+    },
+    {
+      "nombreBase": "Webhook",
+      "tipo": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "credencial": null
+    },
+    {
+      "nombreBase": "Telegram Trigger",
+      "tipo": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "credencial": {
+        "clave": "telegramApi",
+        "nombre": "Telegram"
+      }
+    },
+    {
+      "nombreBase": "Gmail Trigger",
+      "tipo": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "credencial": {
+        "clave": "gmailOAuth2",
+        "nombre": "Gmail"
+      }
+    }
+  ],
+  "agente": {
+    "tipo": "@n8n/n8n-nodes-langchain.agent",
+    "typeVersion": 3.1
+  },
+  "ayudante": {
+    "tipo": "@n8n/n8n-nodes-langchain.agentTool",
+    "typeVersion": 3
+  },
+  "otraApp": {
+    "tipo": "n8n-nodes-base.httpRequest",
+    "tipoHerramienta": "n8n-nodes-base.httpRequestTool",
+    "typeVersion": 4.5
+  },
+  "secretos": {
+    "patrones": [
+      {
+        "fuente": "\\bsk-[A-Za-z0-9_-]{20,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "AIza[0-9A-Za-z_-]{35}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "xox[baprs]-[0-9A-Za-z-]{10,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bgh[pousr]_[A-Za-z0-9]{30,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\b\\d{8,10}:[A-Za-z0-9_-]{35}\\b",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "bearer\\s+[A-Za-z0-9._~+/-]{20,}",
+        "ignoraMayusculas": true
+      },
+      {
+        "fuente": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bAKIA[0-9A-Z]{16}\\b",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bntn_[A-Za-z0-9]{30,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bsecret_[A-Za-z0-9]{40,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bpat[A-Za-z0-9]{14}\\.[0-9a-f]{64}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bEAA[A-Za-z0-9]{40,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bxapp-\\d-[A-Za-z0-9-]{20,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bgithub_pat_[A-Za-z0-9_]{50,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}",
+        "ignoraMayusculas": false
+      },
+      {
+        "fuente": "\\bSG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}",
+        "ignoraMayusculas": false
+      }
+    ],
+    "sondas": [
+      {
+        "id": "openai_anthropic_openrouter",
+        "partes": [
+          [
+            "sk-",
+            1
+          ],
+          [
+            "a",
+            20
+          ]
+        ],
+        "coincide": [
+          0
+        ]
+      },
+      {
+        "id": "google",
+        "partes": [
+          [
+            "AIza",
+            1
+          ],
+          [
+            "b",
+            35
+          ]
+        ],
+        "coincide": [
+          1
+        ]
+      },
+      {
+        "id": "slack",
+        "partes": [
+          [
+            "xoxb-",
+            1
+          ],
+          [
+            "1",
+            10
+          ]
+        ],
+        "coincide": [
+          2
+        ]
+      },
+      {
+        "id": "github",
+        "partes": [
+          [
+            "ghp_",
+            1
+          ],
+          [
+            "c",
+            30
+          ]
+        ],
+        "coincide": [
+          3
+        ]
+      },
+      {
+        "id": "bot_de_telegram",
+        "partes": [
+          [
+            "1",
+            9
+          ],
+          [
+            ":",
+            1
+          ],
+          [
+            "d",
+            35
+          ]
+        ],
+        "coincide": [
+          4
+        ]
+      },
+      {
+        "id": "bearer",
+        "partes": [
+          [
+            "bearer ",
+            1
+          ],
+          [
+            "e",
+            20
+          ]
+        ],
+        "coincide": [
+          5
+        ]
+      },
+      {
+        "id": "llave_privada",
+        "partes": [
+          [
+            "-----BEGIN RSA PRIV",
+            1
+          ],
+          [
+            "ATE KEY-----",
+            1
+          ]
+        ],
+        "coincide": [
+          6
+        ]
+      },
+      {
+        "id": "aws",
+        "partes": [
+          [
+            "AKIA",
+            1
+          ],
+          [
+            "F",
+            16
+          ]
+        ],
+        "coincide": [
+          7
+        ]
+      },
+      {
+        "id": "sk_con_un_caracter_menos",
+        "partes": [
+          [
+            "sk-",
+            1
+          ],
+          [
+            "a",
+            19
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "google_con_un_caracter_menos",
+        "partes": [
+          [
+            "AIza",
+            1
+          ],
+          [
+            "b",
+            34
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "telegram_con_siete_digitos",
+        "partes": [
+          [
+            "1",
+            7
+          ],
+          [
+            ":",
+            1
+          ],
+          [
+            "d",
+            35
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "telegram_con_once_digitos",
+        "partes": [
+          [
+            "1",
+            11
+          ],
+          [
+            ":",
+            1
+          ],
+          [
+            "d",
+            35
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "aws_pegada_a_una_letra",
+        "partes": [
+          [
+            "x",
+            1
+          ],
+          [
+            "AKIA",
+            1
+          ],
+          [
+            "F",
+            16
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "sk_en_mayusculas",
+        "partes": [
+          [
+            "SK-",
+            1
+          ],
+          [
+            "A",
+            20
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "bearer_en_mayusculas",
+        "partes": [
+          [
+            "BEARER ",
+            1
+          ],
+          [
+            "e",
+            20
+          ]
+        ],
+        "coincide": [
+          5
+        ]
+      },
+      {
+        "id": "bearer_con_espacio_duro",
+        "partes": [
+          [
+            "bearer ",
+            1
+          ],
+          [
+            "e",
+            20
+          ]
+        ],
+        "coincide": [
+          5
+        ]
+      },
+      {
+        "id": "telegram_con_digitos_arabes",
+        "partes": [
+          [
+            "١",
+            9
+          ],
+          [
+            ":",
+            1
+          ],
+          [
+            "d",
+            35
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "aws_junto_a_una_letra_acentuada",
+        "partes": [
+          [
+            "ñ",
+            1
+          ],
+          [
+            "AKIA",
+            1
+          ],
+          [
+            "F",
+            16
+          ]
+        ],
+        "coincide": [
+          7
+        ]
+      },
+      {
+        "id": "aws_seguida_de_una_letra_acentuada",
+        "partes": [
+          [
+            "AKIA",
+            1
+          ],
+          [
+            "F",
+            16
+          ],
+          [
+            "ñ",
+            1
+          ]
+        ],
+        "coincide": [
+          7
+        ]
+      },
+      {
+        "id": "sk_dentro_de_una_palabra_task",
+        "partes": [
+          [
+            "task-",
+            1
+          ],
+          [
+            "management-system-webhook",
+            1
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "sk_dentro_de_una_palabra_risk",
+        "partes": [
+          [
+            "risk-",
+            1
+          ],
+          [
+            "assessment-for-the-quarter",
+            1
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "sk_dentro_de_una_url_de_notion",
+        "partes": [
+          [
+            "https://www.notion.so/Task-",
+            1
+          ],
+          [
+            "Tracker-Weekly-Plan-0123456789abcdef",
+            1
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "sk_con_etiqueta",
+        "partes": [
+          [
+            "OPENAI_API_KEY=sk-proj-",
+            1
+          ],
+          [
+            "a",
+            24
+          ]
+        ],
+        "coincide": [
+          0
+        ]
+      },
+      {
+        "id": "github_pegada_a_una_letra",
+        "partes": [
+          [
+            "highp_",
+            1
+          ],
+          [
+            "c",
+            30
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "notion",
+        "partes": [
+          [
+            "ntn_",
+            1
+          ],
+          [
+            "N",
+            30
+          ]
+        ],
+        "coincide": [
+          8
+        ]
+      },
+      {
+        "id": "notion_viejo",
+        "partes": [
+          [
+            "secret_",
+            1
+          ],
+          [
+            "V",
+            40
+          ]
+        ],
+        "coincide": [
+          9
+        ]
+      },
+      {
+        "id": "airtable",
+        "partes": [
+          [
+            "pat",
+            1
+          ],
+          [
+            "A",
+            14
+          ],
+          [
+            ".",
+            1
+          ],
+          [
+            "0",
+            64
+          ]
+        ],
+        "coincide": [
+          10
+        ]
+      },
+      {
+        "id": "whatsapp_meta",
+        "partes": [
+          [
+            "EAA",
+            1
+          ],
+          [
+            "M",
+            40
+          ]
+        ],
+        "coincide": [
+          11
+        ]
+      },
+      {
+        "id": "slack_aplicacion",
+        "partes": [
+          [
+            "xapp-1-",
+            1
+          ],
+          [
+            "S",
+            24
+          ]
+        ],
+        "coincide": [
+          12
+        ]
+      },
+      {
+        "id": "github_grano_fino",
+        "partes": [
+          [
+            "github_pat_",
+            1
+          ],
+          [
+            "G",
+            50
+          ]
+        ],
+        "coincide": [
+          13
+        ]
+      },
+      {
+        "id": "stripe",
+        "partes": [
+          [
+            "sk_live_",
+            1
+          ],
+          [
+            "T",
+            24
+          ]
+        ],
+        "coincide": [
+          14
+        ]
+      },
+      {
+        "id": "sendgrid",
+        "partes": [
+          [
+            "SG.",
+            1
+          ],
+          [
+            "W",
+            22
+          ],
+          [
+            ".",
+            1
+          ],
+          [
+            "W",
+            43
+          ]
+        ],
+        "coincide": [
+          15
+        ]
+      },
+      {
+        "id": "notion_con_un_caracter_menos",
+        "partes": [
+          [
+            "ntn_",
+            1
+          ],
+          [
+            "N",
+            29
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "airtable_con_la_segunda_parte_no_hexadecimal",
+        "partes": [
+          [
+            "pat",
+            1
+          ],
+          [
+            "A",
+            14
+          ],
+          [
+            ".",
+            1
+          ],
+          [
+            "Z",
+            64
+          ]
+        ],
+        "coincide": []
+      },
+      {
+        "id": "stripe_publicable_no_es_secreta",
+        "partes": [
+          [
+            "pk_live_",
+            1
+          ],
+          [
+            "T",
+            24
+          ]
+        ],
+        "coincide": []
+      }
+    ]
+  }
+}

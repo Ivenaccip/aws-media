@@ -1824,6 +1824,332 @@ sentencia de COI ni de la Biblioteca lleve un `:` seguido de letra fuera de un p
 analizador del Data API de Aurora no se pudo probar contra literales como `'HH24:MI:SS'`: las
 fechas se devuelven como números o `::text` y se formatean en Python).
 
+## Guía de clases · admin (S1)
+
+Primera rebanada de la Guía de clases (diseño en `docs/DISENO-GUIA.md`, sección 9; el resto de la guía es plan): el dueño crea las clases y
+sube el video de cada una desde `/estudio/admin/` (pestaña «4 · Clases»). **No gasta dinero**: ninguna ruta
+de aquí llama a AssemblyAI, Gemini ni OpenAI, y el servidor no escribe en S3 (el video lo sube el navegador
+con una URL firmada). Código: `server/clases_admin_api.py`, `pipeline/clases.py` (límites y validación) y
+`db.clases_*` en `pipeline/db.py`.
+
+### Guía de clases: la migración es OBLIGATORIA en cada entorno
+
+Hay dos tablas nuevas, `clases` y `clases_config`, y dos índices únicos parciales (`clases_clave` y
+`clases_vivas`). Sin ellas **todas las rutas de `/api/admin/clases` responden 503 `no_disponible`** (el
+resto de la app no se entera). La columna `clases.subida_token` (el token de cada subida, ver abajo) va en
+el `CREATE TABLE` y, además, en un `ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text`:
+un entorno que ya creó la tabla con la primera versión de S1 recibe la columna al volver a correr la
+migración (sin ella, la tabla existe pero **todas las rutas dan 503**: el `SELECT` pide una columna que no
+hay). Corre, en **dev y en prod, cada uno con sus ARNs**, ANTES del `cdk deploy`
+(paso 4 del checklist de «Deploy»):
+
+```bash
+venv/Scripts/python tools/db_migrate.py
+```
+
+Es idempotente. `db_migrate` detecta las tablas nuevas solo (cada una es una entrada de `ESQUEMA` que
+empieza con `CREATE TABLE IF NOT EXISTS <nombre>`) y termina con error si tras correr falta alguna.
+`clases_config` no la usa nadie todavía (S4 guardará ahí las palabras clave de la transcripción).
+
+### Las rutas (solo el grupo `admin`; las demás cuentas reciben 403, sin token 401)
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/admin/clases?archivadas=0\|1` | `{clases, limites}`: las clases vivas por número, o las archivadas. Sin precios (llegan con S4) |
+| `POST /api/admin/clases` | crea una clase en `borrador`. Idempotente por `clave` (el doble clic no duplica). El `numero` es único entre las clases vivas: 409 `numero_repetido` |
+| `PATCH /api/admin/clases/{id}` | cambia `numero`, `titulo`, `resumen`, `grabada_en` o `liga`; `null` borra resumen y fecha |
+| `POST …/{id}/subida` | `{archivo, content_type, bytes}` → `{url, content_type, expira_s, token}`. Pasa a `subiendo`. **La clave de S3 la decide el servidor** (`clases/<id>/video.<ext>`); la URL vale 15 min. El `token` (32 hex) identifica ESTA subida. El nombre del archivo acepta los espacios Unicode (el U+202F de las grabaciones de pantalla de macOS) y se guarda con un espacio normal; los controles, las barras y los invisibles se rechazan |
+| `POST …/{id}/confirmar` | cuerpo opcional `{nombre?, token?}`. HEAD a S3: que exista, que no esté vacío, que sea de un tipo permitido y que pese lo declarado. Pasa a `subido`. Con `token` que no es el de la subida vigente: 409 `subida_cambio`, sin mirar S3 |
+| `POST …/{id}/medir` | ffprobe sobre una URL firmada (8 s, un reintento) → `duracion_s`. Con `-protocol_whitelist https,tls,tcp,crypto -f mov,mp4` (ver «Lo que NO hace S1») |
+| `POST …/{id}/cancelar` | cuerpo opcional `{token?}`. `subiendo` → `borrador`. Con `token` que no es el vigente: 409 `subida_cambio` y no se toca la clase |
+| `GET …/{id}/video` | `{url, expira_s}`: vista previa del dueño, URL firmada de 2 h (nunca la del CDN) |
+| `DELETE …/{id}` | **archiva** (borrado suave: pone `archivada_en`). No toca S3 ni cambia el estado |
+| `POST …/{id}/restaurar` | deshace el archivado; 409 si otra clase viva ya tomó su número |
+
+Estados: `borrador` → `subiendo` → `subido` (`procesando`, `lista` y `error` los escribirá S4). Cada cambio es
+un comparar-y-cambiar en UNA sentencia: de dos subidas a la vez gana una y la otra recibe 409
+`estado_no_permite`. Una clase archivada solo se puede ver, restaurar o archivar otra vez.
+Los errores son `{codigo, texto}`; nunca llevan URLs firmadas, ARNs ni texto de nadie, y los logs solo
+llevan el id de la clase y la transición.
+
+**El token de la subida.** La clave de S3 es la misma para todas las subidas de una clase
+(`clases/<id>/video.<ext>`), así que `confirmar` solo distingue una subida de otra por los bytes declarados. Para
+que la subida huérfana de otra pestaña (el PUT sigue aunque el panel cambie de pestaña) no cancele ni confirme la
+subida nueva, cada `POST …/subida` devuelve un `token` de 32 hex que el servidor guarda en `clases.subida_token`
+(en la misma sentencia que pasa `borrador` → `subiendo`) y olvida al cancelar y al confirmar. La web lo manda en
+`confirmar` y `cancelar` de SU subida; si no coincide con el guardado: 409 `subida_cambio` («Esa subida ya no es la
+vigente: se empezó otra o se canceló. No se cambió nada.») y la clase no se toca. **Sin token** las dos rutas
+siguen como siempre (la tarjeta que perdió su subida puede cancelarla); `confirmar` sobre una clase ya `subido`
+devuelve la clase aunque traiga un token (doble clic). Un token que no tiene 32 hex es 422 `clave_invalida`. El
+token nunca sale en la lista, en un log ni en un error.
+
+### Límites (los entrega el servidor en `limites`; la web no copia ninguno)
+
+| | |
+|---|---|
+| Video | `.mp4`, `.mov`, `.m4v` y `video/mp4`, `video/quicktime`, `video/x-m4v` (lista cerrada, las dos) |
+| Tamaño | 1 byte a 5 GiB (un PUT de una sola parte). El tamaño NO queda firmado en la URL: `confirmar` lo compara con el HEAD |
+| Duración | 60 s a 2 h: lo recalibra S5 y lo aplicará el costo de S4; `medir` guarda lo que mide |
+| Título / resumen | 120 / 140 caracteres. Número: 1 a 999 |
+| Liga | `https`, 500 caracteres o menos, sin usuario ni IP ni `localhost`. **Solo se guarda como referencia**: ningún código la descarga. `HOSTS_PERMITIDOS` (en `pipeline/clases.py`) está vacío: el dueño decide si se limita a ciertas plataformas |
+| La lista | hasta 400 clases (`db.LIMITE_CLASES`) |
+
+### Lo que NO hace S1, a propósito
+
+- **No procesa ni cobra**: nada de transcripción, costo, trabajo, texto, publicar, palabras clave, cola, worker,
+  embeddings ni la pantalla del alumno. Eso es S2 a S4.
+- **No borra nada en S3.** El rol de la Lambda no tiene `s3:DeleteObject` a propósito y el bucket está versionado:
+  archivar solo escribe `archivada_en`. Los objetos huérfanos (una subida cancelada que sí terminó) se quedan.
+  Un test falla si cualquier código del servidor pide `delete_object`. La purga real, si algún día hace falta, es
+  una CLI del dueño.
+- **No hay «reemplazar video»**: se archiva la clase y se crea otra.
+- **Los videos de `clases/` no los sirve el CDN, nunca.** `clases/` no está en `media_rutas.SERVIBLES_CDN` y
+  `tests/test_cdn_lista_blanca.py` lo fija (la política del bucket y la lista de Python dicen lo mismo). Si
+  `https://<cdn>/clases/<id>/video.mp4` no da 403, hay un error grave: avísale al dueño.
+- **Ciclo de vida del bucket**: la regla de Glacier Instant Retrieval a los 10 días no tiene filtro de prefijo, así
+  que `clases/` también pasa. Releer un video cuesta recuperación: **sin precio confirmado** (no está en
+  `tools/pricing.json`). Decisión pendiente antes de S7; hoy no se cambia.
+- **ffprobe** lee un archivo que sube un admin, no cualquiera, y elige el lector por el CONTENIDO: un «.mp4» que es
+  un MPD de DASH le haría pedir otras URLs desde la Lambda (una petición ciega, también a la red interna). Por eso
+  `medir` lo llama con `-protocol_whitelist https,tls,tcp,crypto -f mov,mp4` antes de `-i` (el parámetro `seguro`
+  de `edicion_api._medir`, solo para las clases; el editor mide como siempre). `-f mov,mp4` es lo que frena a
+  DASH (con ffmpeg 6.1.1 la lista de protocolos sola NO lo frena); la lista es la segunda capa (nada de `file:` ni
+  `http:`). Un test corre el ffprobe de verdad contra servidores locales y exige 0 peticiones al señuelo;
+  **lo que falta (S5) es repetirlo con el ffmpeg de la imagen (Debian bookworm, 5.1) y con el primer video real**:
+  aquí se probó con ffmpeg 6.1.1.
+
+### Prueba manual del dueño en dev
+
+Crear una clase de ejemplo, subir un `.mp4` pequeño (y uno grande si tienes), «Medir», verlo con «Ver video»,
+comprobar que `https://<cdn>/clases/<id>/video.mp4` da **403**, archivar y restaurar. Gasto: solo almacenamiento
+de S3 (sin precio confirmado).
+
+### Pruebas de las clases (S1)
+
+`pytest tests/test_clases_admin.py tests/test_cdn_lista_blanca.py` corre con dobles (S3, ffprobe). Las pruebas de la
+API corren dos veces con la misma batería: contra un doble de la base en memoria y, si hay Postgres, contra el SQL
+real: `COI_PG_SOCK=<directorio del socket> pytest tests/test_clases_admin.py` (sin esa variable se omite la mitad
+de Postgres; ver «COI y la Biblioteca de prompts» para levantar uno). Ahí viven también las carreras reales (16
+hilos pidiendo la misma subida, 8 creando la misma clave, un número que otra transacción está tomando) y la
+migración de una tabla `clases` que no tenía `subida_token`.
+
+La variante Postgres necesita `psycopg`, que está fijado en la sección «# --- tests» de `requirements.txt`
+(`psycopg[binary]`). En un venv que no lo tenga (armado antes de este cambio) solo se omite esa variante: las demás
+pruebas (autorización, no-borrar-en-S3, validadores, ligas, CDN) corren igual, no se omite el archivo entero. La sección «ffprobe de verdad» del mismo archivo levanta servidores HTTPS
+locales (necesita `ffprobe`, `ffmpeg` y `openssl` en el PATH; sin ellos se omite).
+
+## El Asistente de Automatizaciones (modo prueba)
+
+**Automatizaciones › Distrito › Asistente** (`/estudio/asistente/`): la persona cuenta qué quiere automatizar y la pantalla le
+devuelve un flujo de n8n para descargarlo o abrirlo en el Constructor (`/estudio/constructor/`, cuyo código no hace pedidos al servidor: los scripts de la página, `auth.js`, `monedero.js` y `trabajos.js`, sí piden `/api/auth/config`, `/api/creditos` y `/api/trabajos`). Esta es la
+**Fase A: el modo «prueba», que no gasta dinero**. El servidor no arma nada de verdad: devuelve un flujo de **ejemplo enlatado**, elegido por
+las palabras del pedido. No hay modelo, base de datos, cola ni monedero en ese camino, y lo que la persona escribe no se guarda ni se
+registra. El armado real (el RAG con Claude, que sí cuesta y sí guardaría texto de la gente) **no está construido**: es la Fase B, y todo
+lo que exige está en «Para ir en serio (Fase B)», abajo. Código: `server/automatiza_api.py` (las rutas), `pipeline/asistente.py` (la
+lógica pura: el modo, las muestras, el id y el reloj) y `media/library/n8n/muestras_prueba.json` (las muestras).
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/automatiza/config` | `{activo, modo, gratis, costo_creditos, largo_minimo, largo_maximo, cupo}`; con `activo: false` trae además `texto` (la frase para mostrar). En prueba: `activo: true`, `modo: "prueba"`, `gratis: true`, `costo_creditos: 0`, `cupo: null`. Los límites del pedido salen de `pipeline/publico.py` (hoy 20 a 1 500 caracteres): la pantalla no lleva los suyos |
+| `POST /api/automatiza/armar` | `{"texto": "…"}` → **202** `{id, estado: "armando", modo, paso: "entender", costo_creditos}`. Lo que se escribió se descarta ahí mismo |
+| `GET /api/automatiza/armar/{id}` | cómo va ese pedido; terminado, el flujo de n8n |
+
+Las tres llevan sesión: `/api/automatiza/*` cae en `PREFIJOS_PROTEGIDOS` de `server/auth.py` (401 sin token) y la identidad es
+`db.usuario_actual()` (el `sub`), que aquí solo sirve para saber QUIÉN pregunta. Están a propósito **fuera de `/api/publico/`**: esa es la
+página pública `/automatiza`, sin sesión, con otro camino.
+
+### El contrato de `GET /api/automatiza/armar/{id}`
+
+Siempre: `id`, `estado`, `listo`, `modo` y `lleva_seg`. Y según el estado:
+
+| `estado` | llaves de más |
+|---|---|
+| `armando` | `paso`: `entender`, `buscar`, `armar` o `revisar` |
+| `listo` | `nombre` (el del flujo), `resumen`, `nodos` (`[{tipo, nombre, etiqueta, nombre_en_flujo}]`: `nombre` es el de n8n, en inglés; `etiqueta` es el chip en español que ve la persona), `pendientes` («Conecta tu cuenta de X en n8n y elige el destinatario.»), `advertencias`, `flujo` (el JSON de n8n, listo para descargar) y la llave opcional `grafo` |
+| `sin_cobertura` | `mensaje` y `faltan` |
+| reservados para la Fase B | `en_fila` (con `lugar`), `no_salio` y `rechazada` (con `mensaje`) |
+
+- **La llave opcional `grafo`.** Es `{nombreFlujo, nodes, edges}`, el mismo grafo del Constructor, y viaja **solo** en las muestras de
+  prueba que lo traen (hoy las tres de tipo «listo»). Es lo que permite el botón «Abrir en el constructor» sin un importador de n8n a
+  grafo: si la respuesta no trae `grafo` (la muestra de «sin cobertura», o un modo real que no lo mande), la pantalla no ofrece ese botón y
+  deja solo «Descargar .json». Al cargar el archivo de muestras, cada `grafo` se revisa con los mismos invariantes del Constructor (ids
+  únicos, 1 disparador, 4 agentes y 8 apps como máximo, sin círculos, posiciones dentro del lienzo, que se llame igual que el flujo y que
+  no lleve nada que parezca una clave); si no pasa, el archivo se da por roto (503, ver abajo).
+- **Lo que nunca viaja:** `uso`, `modelo`, `fuentes`, `intentos`, `costo_usd`, el texto del pedido ni la IP. Los textos libres (`resumen`,
+  `faltan`, `advertencias`) pasan por `validador.SECRETOS` antes de salir: si alguno parece una clave, ese campo se omite.
+- Las respuestas del módulo (éxitos y errores propios: 422, 404 `no_encontrada`, 503) llevan `Cache-Control: no-store`. El 401 de la
+  sesión y el 404 o 405 del enrutado los contesta otra capa y no lo llevan; son JSON sin datos.
+
+### Errores y qué significan
+
+Todos traen `detail` como objeto, `{"codigo": "…", "texto": "…"}` (más extras como `minimo` o `maximo`), y el `texto` se muestra tal cual.
+
+| estado · `codigo` | qué pasó | qué hace falta |
+|---|---|---|
+| 422 `vacio` / `corto` / `largo` | el pedido va vacío, con menos de 20 caracteres (`minimo`) o con más de 1 500 (`maximo`); `largo` es también el cuerpo de más de 64 KiB (se cuentan los bytes que llegan, no solo `Content-Length`) | nada: la web lo dice junto al cuadro antes de mandar |
+| 422 `cuerpo` / `texto_invalido` | el cuerpo no es un JSON con `texto` de tipo texto; o el texto trae un NUL o un sustituto UTF-16 suelto (suele venir de pegar desde otro programa) | nada |
+| 404 `no_encontrada` | un id mal formado, de otra persona, caducado, del futuro o de una muestra que no existe (nunca 403: no se distingue) | nada: la persona vuelve a escribir su pedido |
+| 503 `no_disponible` | el modo no se puede servir (ver la matriz), el archivo de muestras está roto, o falló algo que ningún caso previó | mirar el log `automatiza_api` (ver «Qué queda en el log»). **Nunca** degrada a un ejemplo en silencio |
+| reservados para la Fase B: 422 `moderacion`, 409 `en_curso`, 429 `agotado`, 402 `sin_saldo`, 503 `no_nube` | el catálogo de errores ya los trae para que la pantalla los conozca, pero hoy **nada los emite** | — |
+
+### El id de prueba: se deriva del reloj y caduca a la hora
+
+En prueba no hay fila en ninguna parte: el estado de un pedido se calcula con el reloj. El `id` es opaco y autocontenido,
+`p1.<base64url(json)>`, con tres llaves: `u` (los 12 primeros hex de sha256 del `sub`: de quién es), `t` (el instante de inicio, en
+milisegundos) y `m` (la clave de la muestra que salió). **Sin firma ni secreto:** lo único que logra quien fabrique uno a mano es ver una
+muestra enlatada de su propio usuario.
+
+- **Validación estricta:** prefijo `p1.`, alfabeto base64url, largo de 120 o menos, JSON canónico con exactamente esas tres llaves, `u`
+  igual al de quien pregunta, `-60 s ≤ ahora − t ≤ 3 600 s` y `m` existente. Todo lo demás es 404 `no_encontrada`. La forma `p1.…` lleva un
+  punto, que los ids reales (`[A-Za-z0-9_-]{16}`) no tienen: nunca se confunden.
+- **La espera son 4 pasos de 1.2 s (4.8 s en total)**; después el pedido queda «listo» (o «sin_cobertura») hasta que el id **caduca, a la
+  hora** (3 600 s). Esos 4.8 s caben antes del primer sondeo de la web (a los 5 s: `ESCALERA` de `web/src/nucleo/sondeo.ts`, y una prueba
+  lo fija): con 6 s la pantalla veía el último paso y el resultado, ya listo, no aparecía hasta los 10 s.
+- Como no hay estado, funciona igual en cualquier instancia de la Lambda y no deja nada que limpiar.
+
+### Las muestras y cómo se elige una
+
+`media/library/n8n/muestras_prueba.json` trae cuatro. Se elige **la primera** cuya lista de palabras clave tenga una subcadena del pedido
+(sin acentos ni mayúsculas); si ninguna, la que lleva `por_omision`. El orden del archivo es el de prioridad:
+
+| clave | palabras | nombre del flujo |
+|---|---|---|
+| `sin_cobertura` | `hubspot`, `github`, `instagram`, `rss`, `calendar` | — (no es un flujo: `mensaje` y `faltan`) |
+| `correos` | `correo`, `gmail`, `email`, `mail` | Responder correos de clientes |
+| `preguntas` | `chat`, `preguntas`, `whatsapp`, `telegram`, `investig` | Asistente de preguntas frecuentes |
+| `resumen_diario` | — (por omisión) | Resumen diario |
+
+Cada muestra «listo» pasa por `validador.validar` al cargarse (el mismo que revisa lo que entrega el generador real). El archivo **falla
+cerrado**: cualquier problema es `MuestrasInvalidas`, el API contesta 503 `no_disponible` sin detalles y el log dice cuál muestra y por qué.
+Para cambiar una muestra se edita el archivo y se despliega (viaja dentro de la imagen y se lee una vez por proceso); sus flujos son la
+exportación del Constructor de los grafos de `web/src/pantallas/constructor/modelo/ejemplos.ts`.
+
+### Qué queda en el log: el texto NO se guarda ni se registra
+
+La rama de prueba no lee ni escribe la base, no usa la cola, no llama a ningún modelo ni sale a la red. El texto se descarta al elegir la
+muestra. Del pedido solo queda una línea en el log del API:
+
+```
+INFO automatiza_api: automatiza: armar · modo=prueba · muestra=correos · chars=87
+```
+
+(con la fecha por delante; solo la clave de la muestra y el largo, nada de lo escrito). Un error inesperado loguea solo el **tipo** de la excepción, porque su mensaje
+podría traer el texto de la persona. Si alguien reclama «¿qué escribí?», no hay dónde verlo: no existe en ningún lado.
+
+El log de acceso del servidor (el logger `peticiones`, una línea por petición: método, ruta, estado y milisegundos) es otro registro y **sí** anota la ruta completa, y la del sondeo
+lleva el `id` (`GET /api/automatiza/armar/p1.…`). Ese `id` codifica la clave de la muestra que salió y el hash corto del usuario (ver «El id de prueba»), así que el log de acceso sabe
+**qué ejemplo** salió y de quién es el hash, nunca el texto. Por eso la promesa es sobre el texto: no se guarda ni se registra; la muestra elegida sí deja rastro en el log de acceso.
+
+### La matriz de `pipeline/asistente.py::modo()` y `AUTOMATIZA_ASISTENTE_REAL`
+
+`modo()` es una función pura sobre el entorno y devuelve `prueba`, `real` o `no_disponible`. La única rama que se activa sola es «prueba».
+`AUTOMATIZA_ASISTENTE_REAL` es el interruptor propio del Asistente: **ausente = apagada** (default invertido) y **independiente de
+`ARMADO_REAL`**. Solo el valor exacto `1` cuenta, en las dos variables.
+
+| `ARMADO_REAL` | `AUTOMATIZA_ASISTENTE_REAL` | fila del asistente en la base | `cobro_por_uso` | `CREDITOS_BACKEND` + `STATE_BACKEND` | resultado |
+|---|---|---|---|---|---|
+| ausente | cualquiera | cualquiera | cualquiera | cualquiera | **prueba** |
+| `1` | ausente | — | — | — | **prueba** |
+| `1` | `1` | sin fila, apagada o sin topes | — | — | `no_disponible` |
+| `1` | `1` | encendida con topes | falta | — | `no_disponible` |
+| `1` | `1` | encendida con topes | un entero mayor que 0 | alguno no es `postgres` | `no_disponible` (el real **nunca** corre sin monedero) |
+| `1` | `1` | encendida con topes | un entero mayor que 0 | `postgres` y `postgres` | **real** |
+
+- **DEV ya tiene `ARMADO_REAL=1`** (`armado_real=True` en `infra/entornos.py`: lo pone en la Lambda del API y en el worker público para que
+  la página pública `/automatiza` arme de verdad, con su tope de corridas) y **este endpoint NO gasta por eso**: con solo `ARMADO_REAL=1`
+  el Asistente sigue en prueba. En prueba tampoco se encola nada, porque el worker público decide «de mentira» o «real» por el entorno
+  donde corre y no por la corrida: una corrida del Asistente metida en esa cola se armaría de verdad en DEV.
+- **En la Fase A la fila de la base y `cobro_por_uso` no se leen** (no hay base en esa rama): `modo()` se llama con sus valores por
+  omisión, así que el real es inalcanzable. Si alguien pusiera las dos variables en `1`, el resultado es `no_disponible`: `GET /config`
+  contesta `activo: false`, `modo: "no_disponible"` y `texto`, y las otras dos rutas 503. Nunca un ejemplo enlatado haciéndose pasar por el
+  flujo de la persona, ni «real» sin que exista.
+- **Hoy ningún entorno enciende la variable.** `tests/test_automatiza_guardianes.py` (`test_ningun_entorno_de_la_infra_enciende_el_modo_real`)
+  revisa que no aparezca en `infra/`, `worker/`, el `Dockerfile`, `.env.example`, `tools/ssm_env.py` ni `.github/`. Cuando se construya la
+  Fase B, esa prueba se cambia a sabiendas.
+
+### Lo que NO hace el modo prueba, a propósito
+
+- **No arma nada a medida:** el flujo es la muestra más parecida por palabras. La pantalla lo dice («Prueba: por ahora armamos flujos de
+  ejemplo.») mientras `config.modo` sea `prueba`.
+- **No cobra ni muestra un precio:** la pantalla solo ofrece escribir si el servidor dice `activo` **y** `gratis`; si algún día el servidor
+  cobra, la pantalla no ofrece nada hasta que alguien le enseñe a mostrar el costo.
+- **No importa ningún SDK ni los módulos que gastan.** `pipeline/asistente.py` y `server/automatiza_api.py` no importan (ni arriba ni dentro
+  de una función) `anthropic`, `openai`, `google`, `boto3`, `langfuse` ni `pipeline.claude_rag`, `armado`, `embeddings`, `vectores`, `jobs`,
+  `moderacion`, `creditos` o `llm`; lo fijan las pruebas de abajo.
+- **No guarda la corrida:** si el servidor se reinicia no se pierde nada porque no había nada. Tampoco hay historial ni «Tus automatizaciones»
+  (ese grupo del mapa dice «Todavía no está disponible.»).
+
+### Para ir en serio (Fase B): lo que tiene que hacer el dueño
+
+Nada de esto está construido ni encendido. Es la lista de lo que hay que decidir y poner antes de que el Asistente arme flujos de verdad, y
+**cada punto es decisión del dueño, con su sí y el costo a la vista**. Las banderas se prenden en este orden y todas nacen cerradas:
+`ARMADO_REAL=1` (ya está en DEV, no en PROD) → `AUTOMATIZA_ASISTENTE_REAL=1` (variable que hoy ninguna infraestructura pone) → la fila
+del asistente con topes → un `cobro_por_uso` → `CREDITOS_BACKEND=postgres` y `STATE_BACKEND=postgres` (ya así en el API de AWS).
+
+1. **Un interruptor propio con topes.** La fila de la base que maneja `tools/automatiza.py` (`estado`, `encender`, `tope`) es la de la página
+   pública `/automatiza`. El Asistente necesita la suya, con un tope diario global y uno por persona y día (día de México), y que **sin
+   topes quede apagado**, como hace `pipeline/publico.py` (`permiso`) con la de `/automatiza`: sin fila o sin ningún tope es «apagado», y
+   cualquier fallo al leerla también. Hoy no existe: `modo()` solo espera saber si esa fila está «encendida con topes». *(Decisión del dueño, con su sí y el costo a la vista.)*
+2. **El precio en créditos.** `tools/tarifas.json`, §`rag`, no tiene `cobro_por_uso`: solo `abono_tester_por_uso`,
+   `abono_tester_max_por_dia` y una nota. Sin un entero mayor que 0 ahí, `modo()` no llega a `real`. El número lo decide el dueño con los
+   datos de la prueba de testers (`docs/RAG_TESTERS.md`, «Al terminar la prueba»: el abono de 20 era un incentivo, no la tarifa) y **sale de
+   `tools/tarifas.json`, nunca de una constante en el código ni de la pantalla**. La pantalla tampoco sabe mostrarlo todavía: cobrar pide
+   un botón «Armar ✦ N» (un verbo nuevo en `tests/test_m21_botones.py` y en `web/src/marca/verbos.ts`) y el costo a la vista antes de
+   gastar. En dólares, siempre «$X.XX dólares», nunca «centavos». *(Decisión del dueño, con su sí y el costo a la vista.)*
+3. **La política de devolución.** La regla de la plataforma es cobrar antes de lanzar y devolver lo cobrado si falla algo nuestro
+   (`pipeline/creditos.py`, `docs/ECONOMIA.md`). Falta decidir qué cuenta como fallo nuestro en el Asistente: `no_salio` y `rechazada` son
+   candidatas claras; `sin_cobertura` («todavía no sabemos armar esto») es la pregunta abierta, porque no hay entrega. Además, el worker
+   público no toca el monedero a propósito (`infra/stacks/jobs.py`): la devolución la tendría que hacer el API. *(Decisión del dueño, con su
+   sí y el costo a la vista.)*
+4. **El aviso de privacidad al guardar textos.** En prueba no se guarda nada. El modo real tendría que guardar lo que la persona
+   escribe para armar y devolver el flujo, y el aviso vigente (`server/aviso.py`, `AVISO_VERSION` = `2026-10-04`, y
+   `docs/automatiza/aviso-privacidad.md`) describe solo las peticiones públicas de `/automatiza`. Antes de guardar texto de personas
+   con sesión: decidir el plazo de borrado (`plazo_peticion` sigue en `SIN_DECIDIR`), cambiar el aviso, subir `AVISO_VERSION`, decidir qué
+   clave de OpenAI paga la moderación y moderar sin dejar el texto en Langfuse (`sin_trazas=True`, como COI). *(Decisión del dueño, con
+   su sí y el costo a la vista.)*
+5. **Cola y worker de producción.** PROD no publica `/automatiza` ni su worker: `pipeline/publico.py::publicado()` se deriva de
+   `PUBLICO_QUEUE_URL`, que solo se pone donde `publico` es verdadero en `infra/entornos.py`. Darle a PROD una cola pública «solo para el
+   Asistente» publicaría además `/automatiza` y `/api/publico/*`, así que `publicado()` hay que desacoplarlo antes. Y solo DEV tiene
+   límite de peticiones en API Gateway (`throttle_etapa` y `throttle_publico` en `infra/entornos.py`); PROD no tiene ninguno. *(Decisión del
+   dueño, con su sí y el costo a la vista.)*
+6. **Completar `tools/pricing.json`, §`rag`.** Su nota `pendiente` dice que faltan `cache_leida` (lectura de caché) de Opus 5.5 y de
+   Sonnet 5.5 y `s3vectors.consultas_por_millon` (el precio de las consultas, no el del almacenamiento). Mientras falten, la corrida queda
+   «sin precio confirmado»: no hay `costo_usd`, el tope en dólares de la base suma 0 y no frena nada (hasta entonces solo frena el tope de
+   corridas) y `tools/automatiza.py corridas` no puede decir cuánto costó. Se agregan los precios que da el dueño; jamás se inventa uno.
+   *(Decisión del dueño, con su sí y el costo a la vista.)*
+7. **Qué modelo y qué camino.** `RAG_MODELO` es `claude-opus-5-5` por defecto (`pipeline/claude_rag.py`); DEV lo fija igual en
+   `infra/entornos.py`, marcado «PROVISIONAL hasta el eval de 50 corridas (RAG·26)». `RAG_CAMINO` es `directo` (por defecto, cero
+   llamadas) o `reescrita` (un modelo reescribe la petición antes de buscar: una llamada más, `pipeline/puente.py`). Elegir entre Opus 5.5 y Sonnet 5.5 pide correr `tools/eval_rag.py`: `python tools/eval_rag.py ensayo` imprime
+   qué correría **sin llamar a nadie**; `correr --confirmar` sí gasta. *(Decisión del dueño, con su sí y el costo a la vista.)*
+8. **Los flujos que el Constructor dibuja y el generador real no.** El Constructor exporta `@n8n/n8n-nodes-langchain.agentTool` cuando dos
+   IA conversan, y ese nodo existe en `media/library/n8n/catalog.json` pero **no** en `permitidos.json`: el validador del repo rechaza esos
+   flujos hoy (decisión pendiente, `web/src/pantallas/constructor/modelo/golden/LEEME.md`). Y al revés: el modo real devuelve el flujo de
+   n8n y no un `grafo`, así que «Abrir en el constructor» no se ofrece hasta que exista un importador de n8n a grafo. *(Decisión del
+   dueño, con su sí y el costo a la vista.)*
+
+Antes de encender nada: `python tools/automatiza.py estado` (el interruptor y los topes de hoy), `python tools/eval_rag.py ensayo` y un
+tope diario chico.
+
+### Pruebas del Asistente (modo prueba)
+
+`venv/Scripts/python -m pytest tests/test_automatiza_*.py` (528 pruebas el 20-oct-2026) corre sin red, sin base y sin gasto: el reloj se
+inyecta. Las 92 pruebas de `test_automatiza_api.py` terminan, una por una, comprobando que nadie tocó la base, la cola, un modelo, la
+moderación ni los créditos (una fixture automática lo exige); las de `test_automatiza_guardianes.py` lo comprueban en recorridos completos
+y las de `test_automatiza_asistente.py` y `test_automatiza_idioma.py` son lógica y texto puros, sin nada que espiar.
+
+- `tests/test_automatiza_api.py`: el contrato HTTP (las llaves de cada estado, los errores, `no-store`, que el texto no aparece en la
+  respuesta, las cabeceras ni el log, que el log del pedido lleva solo la muestra y el largo).
+- `tests/test_automatiza_asistente.py`: la lógica pura y las muestras (cada una pasa el validador, la selección por palabras, el id y su
+  caducidad, el reloj, que el `grafo` es el de `ejemplos.ts` y cumple los invariantes del Constructor).
+- `tests/test_automatiza_guardianes.py`: que nada importe proveedores ni módulos de gasto (con la prueba de que el guardián **cae**), que un
+  recorrido completo no toque ninguna frontera, la matriz de `modo()`, el inventario de las tres rutas y que la infraestructura no
+  encienda el modo real.
+- `tests/test_automatiza_idioma.py`: el español de LATAM con tuteo en todos los textos que ve la persona.
+
+La paridad del Constructor con el catálogo y el validador de Python es otra batería: `tests/test_constructor_paridad.py` (134 pruebas).
+La web se prueba con vitest, y con Playwright (`web/e2e/asistente.spec.ts`, `web/e2e/constructor.spec.ts`; no corren en el CI de Docker,
+ver `docs/QA-UI.md`).
+
 ## Reglas que no se negocian
 
 - `.env` jamás se comitea ni se pega en el chat; claves de Stripe las pone el

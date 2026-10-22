@@ -13,10 +13,16 @@
 // los caminos…) se ve solo cuando la caja se ve. Las pantallas hoja (agenda,
 // métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts), y la Biblioteca de prompts con `?prompt=` o `?brief=`
 // para dejar un texto ya puesto en la caja (pestaña Imagen o Video).
+// Las tres herramientas de la caja también son páginas con su dirección (…/marketing/distrito/imagen/, …/video/, …/edicion/; marca/rutas.ts): es
+// este mismo inicio con `lugar` (herramienta.tsx), con la caja ya a la vista en la pestaña de la dirección y las migas como enlaces. Al cambiar de
+// pestaña con el riel la página NO se recarga (la caja conserva lo escrito, el video y la subida): la dirección y el título la siguen con
+// `history.replaceState`, nunca con `pushState`, para que «atrás» siga subiendo al grupo y no recorra pestañas.
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
 // con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 
+import { buscar, type Lugar } from '../../marca/menu';
+import { rutasDelRecorrido, urlDeCaja } from '../../marca/rutas';
 import { refrescarSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { Aviso } from '../../ui/Aviso';
@@ -43,12 +49,14 @@ import {
   type ClipCorto,
   type Edicion,
   type EstadoBlotato,
+  type Familia,
   type Imagen,
   type PedidoImagen,
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
 import { cajaVisible, estadoInicial, leerLlegadaDeTexto, reducir, urlSinEntrada } from './estadoRecorrido';
+import { estadoDeNivel, urlDeAccion } from './niveles/navegar';
 import { Recorrido } from './Recorrido';
 
 interface Listas {
@@ -96,8 +104,45 @@ const mensaje = (e: unknown) => {
 
 const navegar = (url: string) => location.assign(url);
 
-/** `ir` solo lo cambian los tests (jsdom no navega). */
-export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
+/**
+ * Cambia la dirección SIN agregar historia y sin poder tumbar la página: sincronizarla es solo cosmético. `history.replaceState` puede
+ * lanzar (Safari: `SecurityError` al pasar de 100 llamadas en 30 s; un iframe o una política que la bloquee) y, llamado desde un efecto, un
+ * error así desmonta todo el árbol: la página en blanco y lo escrito o la subida de Edición perdidos. Si falla, la dirección queda
+ * desfasada y la caja sigue viva.
+ */
+function reemplazarDireccion(url: string): void {
+  try {
+    history.replaceState(history.state, '', url);
+  } catch {
+    /* la dirección queda como estaba */
+  }
+}
+
+/**
+ * La dirección y el título siguen a la pestaña de la caja (solo en la página de una herramienta). Sale de la caja al montarse y en cada
+ * cambio, así que también corrige la dirección cuando la que se abrió no es la de la pestaña: un texto que llega (`?prompt=` es una imagen,
+ * `?brief=` un video) abre otra, o la dirección venía escrita de otra manera (`…/imagen/index.html`, con «%XX»). Si la dirección ya es la de
+ * la pestaña no hace nada (el `<title>` de la página ya es el suyo): por eso un efecto que corre dos veces (StrictMode) no repite el
+ * `replaceState`.
+ * Solo cambia el camino. Del query se va lo que Inicio ya leyó una vez al montar (`urlSinEntrada`: prompt, brief, desde, ver); todo lo
+ * demás se queda, y el ancla también: `?blotato=conectar` (lo lee el efecto de carga de Inicio, que corre DESPUÉS de este: si se perdiera
+ * aquí, el diálogo de conectar no se abriría), `utm_*`. Es una función de módulo, no del componente: su identidad no cambia entre renders.
+ */
+function seguirLaPestana(f: Familia): void {
+  const url = urlDeCaja(f);
+  if (!url || location.pathname === url) return;
+  const resto = new URL(urlSinEntrada(location.href) ?? location.href, location.href);
+  reemplazarDireccion(url + resto.search + resto.hash);
+  // el título sigue a la pestaña que se ve aunque la dirección no haya podido moverse
+  const ruta = rutasDelRecorrido().find(r => r.url === url);
+  if (ruta) document.title = ruta.titulo;
+}
+
+/** `ir` solo lo cambian los tests (jsdom no navega).
+ *  `lugar`: la página de una herramienta de la caja (…/distrito/imagen/): la caja ya en esa pestaña, las migas de arriba son enlaces a otras
+ *  PÁGINAS en vez de cambiar de paso aquí, y la dirección sigue a la pestaña. Sin él, el inicio de siempre, con su recorrido en página. Un
+ *  `lugar` que no es una pestaña de la caja (una hoja, una clave que no existe) no es una herramienta: se ignora y sale el inicio de siempre. */
+export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lugar?: Lugar }) {
   const [listas, setListas] = useState<Listas | null>(null);
   const [falloCarga, setFalloCarga] = useState(false);
   // se soltó la tarjeta de una imagen pedida sin poder confirmarla: el mismo aviso, hasta una lectura buena
@@ -114,8 +159,13 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
-  // el recorrido: en qué paso va (el mapa al abrir), y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez)
-  const [recorrido, despachar] = useReducer(reducir, undefined, () => estadoInicial(location.search));
+  // la pestaña de la caja que nombra `lugar`; undefined = no hay `lugar` o no es una herramienta de la caja (el inicio de siempre)
+  const pestanaDeLugar = lugar ? buscar(lugar)?.pantalla.caja : undefined;
+  // el recorrido: en qué paso va (el mapa al abrir), y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez).
+  // La página de una herramienta arranca en el contenido del grupo, con la caja a la vista
+  const [recorrido, despachar] = useReducer(reducir, undefined, () =>
+    lugar && pestanaDeLugar ? estadoDeNivel({ tipo: 'herramienta', lugar }) : estadoInicial(location.search),
+  );
   const tituloCaja = useRef<HTMLHeadingElement>(null);
   // el texto con el que se llegó a la caja (?prompt= o ?brief=, de «Llevar a la caja» de la Biblioteca de prompts): se lee UNA vez, junto con
   // el recorrido, y la caja lo pone en su cuadro al montarse. Llegar así no crea ni cobra nada
@@ -212,10 +262,13 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
   }, []);
 
   // la entrada ya se leyó: la URL vuelve a /estudio/inicio/ (sin tocar lo demás, como ?blotato=conectar) para que recargar o compartir
-  // el enlace no repita el recorrido, y «atrás» siga llevando a la pantalla de donde se vino
+  // el enlace no repita el recorrido, y «atrás» siga llevando a la pantalla de donde se vino.
+  // En la página de una herramienta la caja (hija: sus efectos corren antes) ya pudo cambiar el camino a la dirección de su pestaña
+  // (`seguirLaPestana`, que también quita lo que se leyó); entonces aquí no queda nada que limpiar. Si la pestaña ya era la de la dirección,
+  // esto quita el `?prompt=`
   useEffect(() => {
     const limpia = urlSinEntrada(location.href);
-    if (limpia) history.replaceState(history.state, '', limpia);
+    if (limpia) reemplazarDireccion(limpia);
   }, []);
 
   useEffect(() => {
@@ -319,6 +372,7 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
           alConectar={abrirBlotato}
           ir={ir}
           tituloCaja={tituloCaja}
+          hrefDeMiga={pestanaDeLugar ? a => urlDeAccion(a, recorrido) : undefined}
         >
           <Caja
             ref={caja}
@@ -326,6 +380,8 @@ export function Inicio({ ir = navegar }: { ir?: (url: string) => void }) {
             imagenes={listas?.imagenes ?? undefined}
             tituloRef={tituloCaja}
             llegada={llegada}
+            familiaInicial={pestanaDeLugar}
+            alCambiarFamilia={pestanaDeLugar ? seguirLaPestana : undefined}
             enVista={verCaja}
             alEditar={() => void cargar()}
             alPedir={p => setPendientes(l => [p, ...l])}

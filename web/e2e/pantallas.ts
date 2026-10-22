@@ -1,14 +1,32 @@
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { Locator, Page } from '@playwright/test';
 
-// Las pantallas del estudio en React (UI·8), leídas de web/estudio/: una
-// pantalla nueva entra sola al guardián de «reducir movimiento». La vitrina
-// (_vitrina) no cuenta: es interna.
-export const PANTALLAS: readonly string[] = readdirSync(new URL('../estudio/', import.meta.url), { withFileTypes: true })
-  .filter(d => d.isDirectory() && !d.name.startsWith('_'))
-  .map(d => d.name)
-  .sort();
+// Las carpetas de web/estudio/ con página, a cualquier profundidad y no solo en el primer nivel, como rutas relativas con «/»:
+// «inicio», «agenda», «marketing/distrito/imagen» (lo que va entre `/estudio/` y la barra final de la dirección).
+// Una carpeta sin index.html no es pantalla (solo agrupa a otras); las que empiezan por «_» (la vitrina, cualquier `_borrador`) son
+// internas y no cuentan, ni ellas ni lo que cuelga de ellas (server/web.py las marca igual, tramo por tramo).
+function carpetasConPagina(raiz: string, rel: string[] = []): string[] {
+  const aqui = join(raiz, ...rel);
+  const propia = rel.length > 0 && existsSync(join(aqui, 'index.html')) ? [rel.join('/')] : [];
+  return propia.concat(
+    readdirSync(aqui, { withFileTypes: true })
+      .filter(d => d.isDirectory() && !d.name.startsWith('_'))
+      .flatMap(d => carpetasConPagina(raiz, [...rel, d.name])),
+  );
+}
+
+// Las pantallas del estudio en React (UI·8), leídas de web/estudio/: una pantalla nueva —o una página de nivel (rutas por nivel:
+// /estudio/marketing/, /estudio/marketing/distrito/imagen/…)— entra sola al guardián de «reducir movimiento»; una hoja que se muda a su
+// dirección anidada (E7 de las rutas por nivel) tampoco se pierde de vista. `movimiento-reducido.spec.ts` las abre en `/estudio/${pantalla}/`.
+//
+// La PRINCIPAL (web/estudio/index.html, el mapa en /estudio/) NO está aquí a propósito: no es una carpeta hija (su ruta relativa sería
+// la cadena vacía y `/estudio/${''}/` da «//»), y hoy no se sirve —/estudio/ redirige a /estudio/inicio/, que sí está—. Su código es el de
+// cualquier otra página de nivel (`niveles/nivel.tsx`), que ya recorren «marketing», «central»… Cuando el servidor la sirva (E5.2), esa
+// etapa decide si la suma con su propia prueba, porque ahí `/estudio/` deja de ser un salto.
+export const PANTALLAS: readonly string[] = carpetasConPagina(fileURLToPath(new URL('../estudio/', import.meta.url))).sort();
 
 // Lo que el navegador todavía está moviendo: animaciones CSS, transiciones y
 // las de Element.animate(). Las de JS NO obedecen la regla global de

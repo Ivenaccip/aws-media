@@ -33,21 +33,26 @@ describe('Mapa · las cinco áreas en su X', () => {
     expect(clases('Automatizaciones')).toEqual(expect.arrayContaining(['col-start-3', 'row-start-3', 'max-[560px]:col-start-2']));
   });
 
-  it('Producto, Ventas y Automatizaciones se ven apagadas («Próximamente», aria-disabled) y no avisan al pulsarlas; Marketing y Central sí', async () => {
+  it('Producto y Ventas se ven apagadas («Próximamente», aria-disabled) y no avisan al pulsarlas; Marketing, Central y Automatizaciones sí', async () => {
     const alElegir = vi.fn();
     render(<Mapa alElegir={alElegir} />);
-    for (const nombre of ['Producto', 'Ventas', 'Automatizaciones']) {
+    for (const nombre of ['Producto', 'Ventas']) {
       const ficha = screen.getByRole('button', { name: new RegExp(`^${nombre}`) });
       expect(ficha).toHaveAttribute('aria-disabled', 'true');
       expect(ficha).toHaveTextContent('Próximamente');
       await userEvent.click(ficha);
     }
     expect(alElegir).not.toHaveBeenCalled();
-    for (const nombre of ['Marketing', 'Central']) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${nombre}`) })).not.toHaveAttribute('aria-disabled');
+    for (const nombre of ['Marketing', 'Central', 'Automatizaciones']) {
+      const ficha = screen.getByRole('button', { name: new RegExp(`^${nombre}`) });
+      expect(ficha).not.toHaveAttribute('aria-disabled');
+      expect(ficha).not.toHaveTextContent('Próximamente');
     }
     await userEvent.click(screen.getByRole('button', { name: /^Central/ }));
-    expect(alElegir).toHaveBeenCalledExactlyOnceWith(areaDe('central'));
+    expect(alElegir).toHaveBeenLastCalledWith(areaDe('central'));
+    await userEvent.click(screen.getByRole('button', { name: /^Automatizaciones/ }));
+    expect(alElegir).toHaveBeenLastCalledWith(areaDe('automatizaciones'));
+    expect(alElegir).toHaveBeenCalledTimes(2);
   });
 
   it('las apagadas siguen en el orden de Tab (con teclado se llega a ellas y el lector las lee), sin tabindex que las saque', async () => {
@@ -73,7 +78,7 @@ describe('Mapa · las cinco áreas en su X', () => {
     }
   });
 
-  it('Marketing y Central, las dos que se abren, se ven EXACTAMENTE igual (mismo borde, mismo fondo, mismo texto); el hover se conserva', () => {
+  it('Marketing, Central y Automatizaciones, las que se abren, se ven EXACTAMENTE igual (mismo borde, mismo fondo, mismo texto); el hover se conserva', () => {
     render(<Mapa alElegir={() => undefined} />);
     // todo menos lo que las distingue de sitio y de tamaño (la cuadrícula, el centro más grande): el aspecto
     const aspecto = (nombre: string) =>
@@ -83,6 +88,7 @@ describe('Mapa · las cinco áreas en su X', () => {
         .filter(c => /^(border|bg|text-texto|hover:|cursor|font)/.test(c) && !/^(text-(xs|sm|md))$/.test(c))
         .sort();
     expect(aspecto('Marketing')).toEqual(aspecto('Central'));
+    expect(aspecto('Marketing')).toEqual(aspecto('Automatizaciones'));
     expect(aspecto('Marketing')).toEqual(expect.arrayContaining(['border-linea', 'bg-superficie', 'hover:border-campo', 'hover:bg-elevada']));
   });
 
@@ -159,6 +165,14 @@ describe('Grupos · las tres opciones', () => {
     expect(tarjetas.map(t => t.querySelector('b')?.textContent)).toEqual(['Distrito', 'Deepseek']);
     expect(tarjetas[0]).toHaveTextContent('COI · Biblioteca de prompts · Preguntas sobre la clase · Glosario IA');
     // Deepseek todavía no existe: lo dice la tarjeta, igual que su contenido dirá que no está disponible
+    expect(tarjetas[1]).toHaveTextContent('Próximamente');
+  });
+
+  it('el área de Automatizaciones trae Distrito y Tus automatizaciones; la segunda todavía no trae pantallas y lo dice', () => {
+    render(<Grupos area={areaDe('automatizaciones')!} aqui={null} alElegir={() => undefined} />);
+    const tarjetas = within(screen.getByRole('group', { name: 'Automatizaciones' })).getAllByRole('button');
+    expect(tarjetas.map(t => t.querySelector('b')?.textContent)).toEqual(['Distrito', 'Tus automatizaciones']);
+    expect(tarjetas[0]).toHaveTextContent('Constructor · Asistente · Actualizar flujos');
     expect(tarjetas[1]).toHaveTextContent('Próximamente');
   });
 });

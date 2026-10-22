@@ -1,0 +1,249 @@
+"""Rutas por nivel · el `web/dist` compilado (docs/migracion/inicio.md · «Rutas por nivel»).
+
+Cada nivel del recorrido (la principal, las áreas, los grupos) es una página aparte y la Caja (Imagen, Video, Edición) es una sola
+página con tres direcciones. Esta mitad mira el dist: lo que de verdad le llega al navegador. La mitad del servidor (barra final,
+mayúsculas, 404 con página…, con un dist falso) está en tests/test_web_rutas.py.
+
+  · las páginas de NAVEGACIÓN (entrada `nivel-*`) no traen la Caja y pesan lo suyo: React y el recorrido, nada más;
+  · las tres de HERRAMIENTA (entrada `herramienta-*`) SÍ traen la Caja, y pesan lo que pesa la Caja;
+  · todo `<script type="module">` de todo nivel bloquea el primer pintado (UI·18; test_web_tuberia.py revisa lo mismo, aquí se
+    exige además que existan los niveles que el código fuente declara);
+  · la app real (server/app.py) sirve cada nivel y corrige la barra final.
+
+Las páginas que se esperan salen de web/estudio/ (el código fuente), no de una lista aquí: una página nueva entra sola. Un dist de
+ANTES de las rutas por nivel falla con el aviso de recompilar (`cd web && npm run build`) en vez de saltarse: en la imagen siempre
+está al día.
+
+Lo que E4 le hizo al peso de las pantallas que YA existían (medido con `git archive HEAD` contra el árbol de trabajo): ninguna pierde
+comportamiento, pero el build reparte distinto los módulos que ahora comparten con las páginas nuevas.
+  · las 16 de siempre (agenda, métricas, clip, COI, Mix…) piden UN archivo de JS más (`Boton-*.js`, módulo que dejó de ser de una sola
+    pantalla) y +0,2 a 0,3 kB gzip: es el costo del chunk compartido, no una fuga; no se vigila pantalla por pantalla;
+  · /estudio/inicio/ (la página única de antes, que sigue sirviéndose hasta E5.3) pasa de 23 a 28 archivos y de 139,3 a 143,4 kB gzip:
+    `Inicio` ahora es un chunk compartido con las tres páginas de herramienta, y con él `Blotato`, `logica` y `navegar` (menu.ts + rutas.ts).
+    Se acepta porque esa página se retira en E5.3; mientras exista, `test_la_pagina_unica_de_antes_no_pesa_mas_que_una_herramienta`
+    le pone el mismo tope que a la Caja. Si el costo importara antes, `manualChunks` en vite.config.ts (E9) los junta.
+"""
+from __future__ import annotations
+
+import gzip
+import random
+import re
+import string
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from server import web
+
+RAIZ = Path(__file__).resolve().parent.parent
+DIST = web.DIST
+ESTUDIO = DIST / "estudio"
+FUENTE = RAIZ / "web" / "estudio"
+
+en_dist = pytest.mark.skipif(
+    not (ESTUDIO / "assets").is_dir(), reason="web/dist no está compilado (npm run build); en la imagen siempre está",
+)
+
+# Las entradas que declara el HTML fuente (web/src/marca/paginas.ts las pone): una por tipo de página.
+ENTRADA_NIVEL = "/src/pantallas/inicio/niveles/nivel.tsx"
+ENTRADA_HERRAMIENTA = "/src/pantallas/inicio/herramienta.tsx"
+
+# Textos que SOLO trae la Caja (Caja.tsx, CajaEdicion, Galería): si aparecen en una página de navegación, esa página cargó la Caja.
+MARCAS_DE_LA_CAJA = ("¿Qué vamos a crear hoy?", "Qué quieres crear", "Elegir de Mis creaciones")
+
+# Lo que pesa el JS (comprimido con gzip) que una página pide al cargar, sin contar los `import()` (esos se piden al usarlos).
+# Navegación: React (~72 kB) + el recorrido. Medido al construir las rutas por nivel: ~80 000 B en 6 archivos (con la Caja, la página
+# única de antes, 143 400 B). Herramienta: la Caja; medido 144 000 B.
+TOPE_GZIP_DE_NIVEL = 90_000
+TOPE_GZIP_DE_HERRAMIENTA = 150_000
+# Lo que protege a una página de navegación son los BYTES y la AUSENCIA de la Caja. La cuenta de archivos no la decide el código de las
+# páginas de nivel sino el partidor de chunks del build: una pantalla ajena que importe un módulo de los de nivel (o una reubicación en
+# E5/E7/E8) le suma un archivo a las 13 páginas sin que pese un byte más ni se cuele la Caja. Por eso el tope NO es lo medido: deja
+# holgura y solo atrapa un partidor desbocado (decenas de archivos pequeños, uno por viaje).
+ARCHIVOS_DE_NIVEL_MEDIDOS = 6   # Icono, Aviso, Migas, NoEncontrada, navegar y nivel; si cambia, es información, no un fallo
+TOPE_ARCHIVOS_DE_NIVEL = 10
+
+
+def _carpetas_fuente(entrada: str) -> set[str]:
+    """Las carpetas de web/estudio/ (fuente) cuyo index.html monta esa entrada; «» es la principal (web/estudio/index.html)."""
+    carpetas = set()
+    for html in FUENTE.rglob("index.html"):
+        if entrada in html.read_text(encoding="utf-8"):
+            rel = html.parent.relative_to(FUENTE).as_posix()
+            carpetas.add("" if rel == "." else rel)
+    return carpetas
+
+
+def _html_de(carpeta: str):
+    return ESTUDIO / carpeta / "index.html" if carpeta else ESTUDIO / "index.html"
+
+
+def _url_de(carpeta: str) -> str:
+    return f"/estudio/{carpeta}/" if carpeta else "/estudio/"
+
+
+def _entradas(html: str) -> list[str]:
+    """Los módulos que la página pide: con varias páginas sobre una misma entrada, el build lista cada archivo compartido como
+    `<script type="module">` (y de ahí sale el nombre de la entrada: `nivel-<hash>.js`, `herramienta-<hash>.js`)."""
+    return re.findall(r'<script type="module"[^>]*src="/estudio/assets/([^"]+)"', html)
+
+
+def _cierre(entradas: list[str]) -> dict[str, str]:
+    """Las entradas y todo lo que importan de forma ESTÁTICA (un `import()` se pide al usarlo y no cuenta)."""
+    visto: dict[str, str] = {}
+    pendientes = list(entradas)
+    while pendientes:
+        nombre = pendientes.pop()
+        if nombre in visto:
+            continue
+        texto = (ESTUDIO / "assets" / nombre).read_text(encoding="utf-8")
+        visto[nombre] = texto
+        pendientes += [m[2:] for m in re.findall(r'(?:from|import)\s*["\'](\./[^"\']+\.js)["\']', texto)]
+    return visto
+
+
+def _paginas_de(prefijo: str) -> dict[str, dict[str, str]]:
+    """{carpeta: cierre estático de sus módulos} de las páginas del dist cuya entrada empieza por `prefijo` (a cualquier profundidad)."""
+    out = {}
+    for html in sorted(ESTUDIO.rglob("index.html")):
+        rel = html.parent.relative_to(ESTUDIO).as_posix()
+        if rel.split("/")[0] == "assets":
+            continue
+        entradas = _entradas(html.read_text(encoding="utf-8"))
+        if any(e.startswith(prefijo) for e in entradas):
+            out["" if rel == "." else rel] = _cierre(entradas)
+    return out
+
+
+def _gzip(cierre: dict[str, str]) -> int:
+    return sum(len(gzip.compress(t.encode("utf-8"))) for t in cierre.values())
+
+
+@en_dist
+def test_el_dist_trae_cada_pagina_de_nivel_que_declara_el_codigo_con_su_entrada():
+    """Sin esto, las pruebas de abajo pasarían sin mirar nada con un dist que no trae las páginas (uno de antes de las rutas por nivel)."""
+    nivel, herramienta = _carpetas_fuente(ENTRADA_NIVEL), _carpetas_fuente(ENTRADA_HERRAMIENTA)
+    # el código fuente: la principal, un área y un grupo; y las tres herramientas de la Caja
+    assert {"", "marketing", "marketing/distrito"} <= nivel, nivel
+    assert herramienta == {f"marketing/distrito/{h}" for h in ("imagen", "video", "edicion")}, herramienta
+    construidas_nivel, construidas_herramienta = _paginas_de("nivel-"), _paginas_de("herramienta-")
+    faltan = {c for c in nivel if not _html_de(c).is_file()} | {c for c in herramienta if not _html_de(c).is_file()}
+    assert not faltan, f"el dist no trae {sorted(faltan)}: ¿es de antes de las rutas por nivel? Compila con «cd web && npm run build»"
+    assert set(construidas_nivel) == nivel, (sorted(construidas_nivel), sorted(nivel))
+    assert set(construidas_herramienta) == herramienta, (sorted(construidas_herramienta), sorted(herramienta))
+    # una página es de navegación o de herramienta, nunca las dos
+    assert not set(construidas_nivel) & set(construidas_herramienta)
+
+
+def _revisar_pagina_de_navegacion(carpeta: str, cierre: dict[str, str]) -> None:
+    """Lo que se le exige a una página de navegación (cierre = {archivo: texto} de sus módulos estáticos): sin la Caja, bajo el tope de
+    bytes y bajo el tope (holgado) de archivos."""
+    todo = "".join(cierre.values())
+    for marca in MARCAS_DE_LA_CAJA:
+        assert marca not in todo, f"{_url_de(carpeta)}: trae la Caja ({marca!r})"
+    gz = _gzip(cierre)
+    assert gz <= TOPE_GZIP_DE_NIVEL, f"{_url_de(carpeta)}: {gz} B de JS comprimido (tope {TOPE_GZIP_DE_NIVEL})"
+    assert len(cierre) <= TOPE_ARCHIVOS_DE_NIVEL, (
+        f"{_url_de(carpeta)}: {len(cierre)} archivos de JS (tope {TOPE_ARCHIVOS_DE_NIVEL}, medidos {ARCHIVOS_DE_NIVEL_MEDIDOS}): {sorted(cierre)}"
+    )
+
+
+@en_dist
+def test_una_pagina_de_navegacion_no_trae_la_caja_y_pesa_lo_suyo():
+    paginas = _paginas_de("nivel-")
+    assert len(paginas) >= 13, sorted(paginas)
+    for carpeta, cierre in paginas.items():
+        _revisar_pagina_de_navegacion(carpeta, cierre)
+
+
+def _cierre_falso(archivos: int, gz_total: int = 20_000, extra: str = "") -> dict[str, str]:
+    """Un cierre inventado de `archivos` módulos que comprimen a ~`gz_total` B (texto casi incompresible, repetible)."""
+    azar = random.Random(7)
+    por_archivo = int(gz_total / max(archivos, 1) / 0.75)
+    return {
+        f"m{i}.js": "".join(azar.choices(string.ascii_letters + string.digits, k=por_archivo)) + (extra if i == 0 else "")
+        for i in range(archivos)
+    }
+
+
+def test_el_tope_de_archivos_deja_holgura_y_los_bytes_y_la_caja_siguen_mordiendo():
+    """Regresión de «el tope era exacto (6 = lo medido)»: un chunk compartido nuevo, que el partidor de chunks del build puede crear por
+    una pantalla ajena, rompía las 13 páginas con el peso intacto. No necesita el dist: revisa cierres inventados."""
+    assert TOPE_ARCHIVOS_DE_NIVEL >= ARCHIVOS_DE_NIVEL_MEDIDOS + 2
+    # lo medido, y dos archivos de más: pasan
+    for n in (ARCHIVOS_DE_NIVEL_MEDIDOS, ARCHIVOS_DE_NIVEL_MEDIDOS + 1, ARCHIVOS_DE_NIVEL_MEDIDOS + 2):
+        _revisar_pagina_de_navegacion("marketing", _cierre_falso(n))
+    # un partidor desbocado sí se atrapa, aunque pese poco
+    with pytest.raises(AssertionError, match="archivos de JS"):
+        _revisar_pagina_de_navegacion("marketing", _cierre_falso(TOPE_ARCHIVOS_DE_NIVEL + 1))
+    # y lo que de verdad protege sigue mordiendo con pocos archivos: el peso…
+    pesado = _cierre_falso(ARCHIVOS_DE_NIVEL_MEDIDOS, gz_total=TOPE_GZIP_DE_NIVEL + 15_000)
+    assert _gzip(pesado) > TOPE_GZIP_DE_NIVEL, "el cierre inventado debía pesar de más (ajusta _cierre_falso)"
+    with pytest.raises(AssertionError, match="JS comprimido"):
+        _revisar_pagina_de_navegacion("marketing", pesado)
+    # …y la Caja
+    for marca in MARCAS_DE_LA_CAJA:
+        with pytest.raises(AssertionError, match="trae la Caja"):
+            _revisar_pagina_de_navegacion("marketing", _cierre_falso(ARCHIVOS_DE_NIVEL_MEDIDOS, extra=f"x('{marca}')"))
+
+
+@en_dist
+def test_las_paginas_de_herramienta_si_traen_la_caja_y_pesan_lo_que_pesa_la_caja():
+    """El control de la prueba de arriba: sin él, «no trae la Caja» pasaría también si esos textos ya no existieran."""
+    paginas = _paginas_de("herramienta-")
+    assert sorted(paginas) == ["marketing/distrito/edicion", "marketing/distrito/imagen", "marketing/distrito/video"]
+    for carpeta, cierre in paginas.items():
+        todo = "".join(cierre.values())
+        for marca in MARCAS_DE_LA_CAJA:
+            assert marca in todo, f"{_url_de(carpeta)}: no trae {marca!r} (la prueba de las páginas de navegación ya no distingue nada)"
+        gz = _gzip(cierre)
+        assert gz <= TOPE_GZIP_DE_HERRAMIENTA, f"{_url_de(carpeta)}: {gz} B de JS comprimido (tope {TOPE_GZIP_DE_HERRAMIENTA})"
+
+
+@en_dist
+def test_la_pagina_unica_de_antes_no_pesa_mas_que_una_herramienta():
+    """/estudio/inicio/ lleva la misma Caja que las tres páginas de herramienta (es el mismo `Inicio`): pasó de 139,3 a 143,4 kB gzip al
+    compartir chunks con ellas (ver el docstring del módulo). Mientras exista, no puede engordar más que lo que pesa una herramienta.
+    En E5.3 se retira la página y esta prueba se salta sola."""
+    if not (ESTUDIO / "inicio" / "index.html").is_file():
+        pytest.skip("la página única /estudio/inicio/ ya no existe (E5.3)")
+    cierre = _cierre(_entradas(_html_de("inicio").read_text(encoding="utf-8")))
+    assert any(marca in "".join(cierre.values()) for marca in MARCAS_DE_LA_CAJA), "ya no trae la Caja: esta prueba ya no mide lo que dice"
+    gz = _gzip(cierre)
+    assert gz <= TOPE_GZIP_DE_HERRAMIENTA, f"/estudio/inicio/: {gz} B de JS comprimido (tope {TOPE_GZIP_DE_HERRAMIENTA})"
+
+
+@en_dist
+def test_todo_modulo_de_todo_nivel_bloquea_el_primer_pintado():
+    """test_web_tuberia.py mira todas las pantallas del dist; este exige además que estén las de nivel (a cualquier profundidad)."""
+    paginas = _carpetas_fuente(ENTRADA_NIVEL) | _carpetas_fuente(ENTRADA_HERRAMIENTA)
+    assert len(paginas) >= 16, sorted(paginas)
+    for carpeta in sorted(paginas):
+        html = _html_de(carpeta)
+        assert html.is_file(), f"el dist no trae {_url_de(carpeta)} (compila con «cd web && npm run build»)"
+        modulos = re.findall(r'<script type="module"[^>]*>', html.read_text(encoding="utf-8"))
+        assert modulos, f"{_url_de(carpeta)}: sin módulo"
+        for m in modulos:
+            assert 'blocking="render"' in m, f"{_url_de(carpeta)}: {m}"
+
+
+@en_dist
+def test_la_app_real_sirve_los_niveles_y_redirige_sin_barra(monkeypatch):
+    """Todas las páginas de nivel MENOS la principal: `/estudio/` todavía no la sirve web.py (la decide server/migracion.py, que la manda a
+    `/estudio/inicio/`; llega en E5.2, y ahí se suma a esta prueba)."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    carpetas = sorted((_carpetas_fuente(ENTRADA_NIVEL) | _carpetas_fuente(ENTRADA_HERRAMIENTA)) - {""})
+    assert len(carpetas) >= 15, carpetas
+    for carpeta in carpetas:
+        ruta = f"/estudio/{carpeta}"
+        r = c.get(ruta + "/")
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"], ruta
+        assert r.headers["cache-control"] == "no-cache", ruta
+        # y es SU página, no la de otra carpeta
+        assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), ruta
+        r = c.get(ruta + "?x=1")
+        assert r.status_code == 302 and r.headers["location"] == ruta + "/?x=1", ruta
+        assert r.headers["cache-control"] == "no-store", ruta

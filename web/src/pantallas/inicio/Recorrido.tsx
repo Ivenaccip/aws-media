@@ -59,6 +59,9 @@ export interface PropsRecorrido {
   ir: (url: string) => void;
   /** El `h2` de la caja («¿Qué vamos a crear hoy?»), que vive dentro de ella: a él pasa el foco cuando el paso es la caja. */
   tituloCaja: RefObject<HTMLHeadingElement | null>;
+  /** Con ella, las migas son ENLACES (la dirección de cada acción, o null si no lleva a ningún lado) y no botones que cambian de paso: la
+   *  página de una herramienta (…/distrito/video/) sube de nivel navegando. Sin ella, las migas de siempre. */
+  hrefDeMiga?: ((accion: Accion) => string | null) | undefined;
   /** La caja, ya montada. */
   children: ReactNode;
 }
@@ -73,7 +76,7 @@ const TARJETA =
 const VOLVER =
   'inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-pildora border border-linea bg-transparent px-3 py-1 text-left text-xs font-medium text-texto no-underline hover:border-campo hover:bg-elevada';
 
-export function Recorrido({ estado, despachar, conectado, alConectar, ir, tituloCaja, children }: PropsRecorrido) {
+export function Recorrido({ estado, despachar, conectado, alConectar, ir, tituloCaja, hrefDeMiga, children }: PropsRecorrido) {
   const idTitulo = useId();
   const marco = useRef<HTMLElement>(null);
   const titulo = useRef<HTMLHeadingElement>(null);
@@ -131,14 +134,18 @@ export function Recorrido({ estado, despachar, conectado, alConectar, ir, titulo
     else despachar(hacer.accion);
   }
 
-  const migas: Miga[] = migasDe(estado).map(m => ({
-    clave: m.clave,
-    titulo: m.titulo,
-    icono: m.icono,
-    rotulo: m.rotulo,
-    actual: m.actual,
-    alPulsar: () => despachar({ tipo: m.clave === 'area' ? 'abrir-mapa' : 'abrir-grupos' }),
-  }));
+  const migas: Miga[] = migasDe(estado).map(m => {
+    const accion: Accion = { tipo: m.clave === 'area' ? 'abrir-mapa' : 'abrir-grupos' };
+    const href = hrefDeMiga?.(accion);
+    return {
+      clave: m.clave,
+      titulo: m.titulo,
+      icono: m.icono,
+      rotulo: m.rotulo,
+      actual: m.actual,
+      ...(href ? { href } : { alPulsar: () => despachar(accion) }),
+    };
+  });
 
   const areaExplorada = estado.paso === 'grupos' ? areaDe(estado.explora) : undefined;
   const grupo = estado.paso === 'contenido' ? grupoActual(estado) : undefined;
