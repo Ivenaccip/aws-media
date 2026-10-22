@@ -741,11 +741,24 @@ imágenes de dev cuentan para las 30 que conserva la regla del ECR.
 
 **En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
 lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
-`/estudio/`…) responde 302 a su `/estudio/<p>/`, aunque `server/migracion.py`
-la tenga en `nueva`. Producción no tiene la variable (lo fija
-`tests/test_entornos.py`), así que sus etapas siguen siendo las de
-`PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»; para volver
-a una clásica se teclea `/ui/clasica?pantalla=<p>`.
+`/index.html`…) responde 302 a su pantalla nueva (`/estudio/<p>/`; la del inicio,
+a `/estudio/`), aunque `server/migracion.py` la tenga en `nueva`. Producción no
+tiene la variable (lo fija `tests/test_entornos.py`), así que sus etapas siguen
+siendo las de `PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»;
+para volver a una clásica se teclea `/ui/clasica?pantalla=<p>`. Dev no tiene
+dominio propio: su liga es su `execute-api`, el output `ApiUrl` de
+`aws-media-api-dev` que imprime el `cdk deploy` (las comprobaciones de las rutas
+por nivel están en «La UI nueva» › «Rutas por nivel»).
+
+**Aurora de dev se duerme.** `aws-media-db-dev` tiene suelo de 0 ACU y se
+auto-pausa a los 5 min sin uso (`infra/stacks/db.py`). Despertarla puede tardar
+más que los ~24 s que `pipeline/db.py` reintenta por su cuenta, así que
+`tools/db_migrate.py` con los `--cluster-arn/--secret-arn` de dev (nunca los de
+prod) puede terminar con `DatabaseResumingException` (en el traceback, también
+`DespertandoError: la base de datos sigue despertando`). No es un error de la
+migración: espera 1–2 min y vuelve a correrla, las veces que haga falta; es
+idempotente. La primera llamada de la app tras la pausa también tarda: la API
+contesta 503 con `Retry-After` y la pantalla reintenta sola.
 
 ## Deploy (checklist)
 
@@ -1192,10 +1205,10 @@ hacia los 35) o una muerte más una espera larga.
 
 **«Tus trabajos»** (`GET /api/trabajos`, el cuadro de abajo a la derecha) también enseña las imágenes en segundo plano, como los
 clips: en curso, lista o con error, y los créditos devueltos solo si el doc no dice `devuelto: false`. El enlace de su ficha lleva
-a **`/estudio/inicio/`** —el inicio nuevo, donde «Mis creaciones» enseña el pedido, la imagen terminada o su error—, no a
-`/imagenes.html` ni a `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`: desde el 14-oct-2026 el
-inicio está en `todos` (`server/migracion.py`) y esa URL redirige ahí, pero con la cookie `ui=clasica` sirve el inicio viejo, que no
-lista pedidos. `static/trabajos.js` oculta la ficha en la
+a **`/estudio/marketing/distrito/imagen/`** —la caja en Imagen, donde «Mis creaciones» enseña el pedido, la imagen terminada o su
+error (`URL_IMAGEN` de `server/trabajos_api.py`; del 14 al 22-oct-2026 era `/estudio/inicio/`)—, no a `/imagenes.html` ni a
+`/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`, que desde las rutas por nivel es el mapa y no trae
+la caja. `static/trabajos.js` oculta la ficha en la
 pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis creaciones» ya dice. Para las imágenes lee los
 pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
 `.json` y un `.reclamo` por pedido, para siempre.
@@ -1362,11 +1375,95 @@ Piloto: **admin** (solo lo usa el dueño), hoy en `nueva`. Su mapa está en
 `docs/migracion/admin.md`.
 
 La primera en `todos` es **inicio**, desde el 14-oct-2026 (decisión del
-dueño): `/estudio/` responde 302 a `/estudio/inicio/`. Las demás siguen en
+dueño). Del 14 al 22-oct-2026 `/estudio/` respondía 302 a `/estudio/inicio/`;
+desde las rutas por nivel `/estudio/` ES el inicio (el mapa), su URL vieja es
+`/index.html` y esa responde 302 a `/estudio/`. Las demás siguen en
 `nueva`, así que los enlaces del inicio nuevo llevan a sus pantallas viejas,
 salvo la foto del personaje de cuentos e historias, que lleva a la Crear
 nueva (`/estudio/crear/`). Para devolver a alguien a la clásica:
-`https://irremplazables.xyz/ui/clasica?pantalla=inicio`.
+`https://irremplazables.xyz/ui/clasica?pantalla=inicio` (deja la cookie y lo
+lleva a `/index.html`, la clásica).
+
+### Rutas por nivel: las direcciones del estudio
+
+Desde el 22-oct-2026 el inicio es **una página por nivel** (detalle en
+`docs/migracion/inicio.md` § «Rutas por nivel»). Las que existen:
+
+| Dirección | Qué es |
+|---|---|
+| `/estudio/` | la principal: el mapa «Elige un área» |
+| `/estudio/marketing/`, `/estudio/central/`, `/estudio/automatizaciones/` | las opciones de cada área |
+| `/estudio/producto/`, `/estudio/ventas/` | «Todavía no está disponible.» (200) |
+| `/estudio/marketing/distrito/`, `…/blotato/`, `…/avanzado/` | las listas de Marketing |
+| `/estudio/central/distrito/`, `/estudio/central/deepseek/` | las de Central (Deepseek: «Todavía no está disponible.») |
+| `/estudio/automatizaciones/distrito/`, `/estudio/automatizaciones/tus/` | las de Automatizaciones (Tus automatizaciones: «Todavía no está disponible.») |
+| `/estudio/marketing/distrito/imagen/`, `…/video/`, `…/edicion/` | la caja, en cada pestaña |
+
+Las hojas (Agenda, COI, el Constructor…) siguen en `/estudio/<p>/`. El HTML de
+todas se sirve **sin sesión** (lo que pide entrar es la primera llamada a
+`/api/`), así que un `curl` sin cookie basta para comprobarlas.
+
+**Lo que redirige**, siempre con un **302 relativo** (el `location` va sin
+dominio, así que sirve igual detrás de API Gateway y de Cloudflare: la app nunca
+arma una URL absoluta con un Host que no es el de afuera), con
+`cache-control: no-store` y el query intacto. 302 y no 301: un 301 se queda para
+siempre en la caché del navegador.
+
+| Lo que llega | A dónde va |
+|---|---|
+| `/estudio/inicio/` y `/estudio/inicio` (la página única de antes), con o sin query | `/estudio/` con el mismo query |
+| `/estudio/?prompt=…` | `/estudio/marketing/distrito/imagen/?prompt=…` |
+| `/estudio/?brief=…` | `/estudio/marketing/distrito/video/?brief=…` |
+| `/estudio/?blotato=conectar` (lo mandan el editor de cortes y Agenda, Métricas y MIX clásicas) | `/estudio/marketing/blotato/?blotato=conectar` |
+| `/estudio/` con otro query (`?p=`, `?desde=…&ver=…`) | no redirige: 200, el mapa |
+| una dirección sin barra o en mayúsculas (`/estudio/marketing`, `/estudio/Marketing/`) | su forma normal (`/estudio/marketing/`) |
+| `/index.html` | `/estudio/`, salvo la cookie `ui=clasica` (la clásica) |
+
+Una dirección que no existe bajo `/estudio/` da **404**: con `Accept: text/html`
+(un navegador), una página mínima «No encontramos esa página» con «Subir un
+nivel» e «Ir al inicio»; sin él, el 404 JSON de siempre. Detrás de API Gateway
+una dirección escrita con `%XX` no se corrige (Mangum no pasa la ruta cruda): se
+sirve tal cual y la página la entiende igual.
+
+**Comprobarlo contra dev** después de cada deploy que toque `server/web.py`,
+`server/migracion.py` o `web/estudio/` (`<ApiUrl de dev>` es el output `ApiUrl`
+de `aws-media-api-dev`, con su `https://`). La principal:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/" | grep -iE "^HTTP|cache-control"
+```
+
+Lo esperado: `200` y `cache-control: no-cache`. La página única de antes:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/inicio/?x=1" | grep -iE "^HTTP|^location|cache-control"
+```
+
+Lo esperado: `302`, `location: /estudio/?x=1` (relativa: si sale con
+`https://…` delante, algo cambió) y `cache-control: no-store`. Las entradas de
+antes:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/?prompt=hola" | grep -iE "^HTTP|^location"
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/?blotato=conectar" | grep -iE "^HTTP|^location"
+```
+
+Lo esperado: `302` con `location: /estudio/marketing/distrito/imagen/?prompt=hola`
+y `location: /estudio/marketing/blotato/?blotato=conectar`. Sin barra:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/marketing" | grep -iE "^HTTP|^location"
+```
+
+Lo esperado: `302` y `location: /estudio/marketing/`. El 404 con página:
+
+```bash
+curl -s -D - -o /dev/null -H "Accept: text/html" "<ApiUrl de dev>/estudio/nada/" | grep -iE "^HTTP|content-type|^vary"
+```
+
+Lo esperado: `404`, `content-type: text/html; charset=utf-8` y `vary: Accept`
+(sin el `-H`, el mismo 404 en `application/json`). Lo mismo vale contra
+`https://irremplazables.xyz` cuando el corte llegue a `main`.
 
 ## La imagen (Node, y por qué está fijado)
 
@@ -1517,9 +1614,11 @@ Los cuatro tools (`db_migrate`, `usuarios`, `creditos`, `costes`) cargan el
 `.env` del repo — con `DB_CLUSTER_ARN`/`DB_SECRET_ARN` ahí (ya están en el
 del dueño), los flags `--cluster-arn/--secret-arn` sobran.
 Gotcha: desde el 21-sep el clúster de producción tiene suelo de 0.5 ACU y NO se
-auto-pausa (infra/stacks/db.py). Si algún día vuelve a 0 ACU —o en un clúster de
-dev, que irá con auto-pausa—, la primera llamada tras un rato puede tardar ~25 s
-o dar 503/timeout; reintenta.
+auto-pausa (infra/stacks/db.py). El de dev (`aws-media-db-dev`) sí: suelo de 0 ACU
+y auto-pausa a los 5 min sin uso. Ahí (o en prod, si algún día vuelve a 0 ACU) la
+primera llamada tras un rato puede tardar ~25 s o dar 503/timeout; reintenta. Con
+`db_migrate` el despertar de dev puede pedir **1–2 min entre reintentos**
+(`DatabaseResumingException`): ver «Deploy del entorno dev».
 
 ### Que los datos sobrevivan
 
