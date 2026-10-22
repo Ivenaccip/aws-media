@@ -12,7 +12,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { contraste } from '../src/nucleo/contraste';
 import { pistaSePinta } from './pantallas';
-import { abrirLaCaja, elegir, irA, region, tarjeta } from './recorrido';
+import { abrirLaCaja, elegir, elegirHerramienta, irA, irAlMapa, region, tarjeta } from './recorrido';
 
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
@@ -64,7 +64,7 @@ async function inicio(
     if (generar.demoraMs) await new Promise(f => setTimeout(f, generar.demoraMs));
     await r.fulfill({ status: generar.estado, json: generar.cuerpo });
   });
-  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
+  // la caja es una página con su dirección (…/distrito/video/): se abre yendo a ella, no por el mapa
   await abrirLaCaja(page);
   await expect(page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeVisible();
 }
@@ -80,7 +80,8 @@ function pegarImagen(page: Page, nombre: string, texto = '') {
       dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], n!, { type: 'image/png' }));
       if (t) dt.setData('text/plain', t);
       const evento = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
-      return (document.querySelector('textarea') as HTMLElement).dispatchEvent(evento);
+      // en la caja, desde su cuadro; en una página sin caja (el mapa, una lista), desde el cuerpo: el oyente de pegar es del documento
+      return (document.querySelector('textarea') ?? document.body).dispatchEvent(evento);
     },
     [nombre, texto],
   );
@@ -165,12 +166,14 @@ test('sin texto, el error también sale en el cuadro', async ({ page }) => {
   await expect(page.locator('#bandeja').getByRole('alert')).toContainText('Cuéntanos qué quieres primero');
 });
 
-// NAV-05 del prototipo (el «aviso fantasma»): el cuadro de abajo a la derecha es de toda la página, con el static/trabajos.js real. Un error de la
-// caja no puede quedarse flotando sobre el mapa o una lista, donde la caja ya no se ve; el «Ya estamos creando…» del pedido en marcha sí se queda.
-test('el error de la caja sale del cuadro al abrir el mapa; el «Ya estamos creando…» de un pedido en marcha, no', async ({ page }) => {
-  await inicio(page, { estado: 200, cuerpo: { lanzado: true, id: 'clip-1', creditos: 36 }, demoraMs: 2500 });
+// NAV-05 del prototipo (el «aviso fantasma»), ahora ENTRE PÁGINAS: el cuadro de abajo a la derecha es de cada página (el static/trabajos.js real).
+// Un error de la caja nace en la página de la caja y no viaja con la persona: el mapa llega limpio. Un pedido en marcha sí la sigue, pero
+// porque lo lista el servidor (GET /api/trabajos): su ficha «corriendo» sale en el cuadro de la página nueva. El aviso verde «Ya estamos
+// creando…» era de la caja (window.avisos) y se queda con ella.
+test('el error de la caja no viaja al mapa; el pedido en marcha sí aparece allí, porque lo lista el servidor', async ({ page }) => {
+  await inicio(page, { estado: 200, cuerpo: { lanzado: true, id: 'clip-1', creditos: 36 } });
   const cuadro = page.locator('#bandeja');
-  const miga = region(page).getByRole('navigation', { name: 'Dónde estás' }).getByRole('button', { name: /^Volver al mapa/ });
+  const miga = region(page).getByRole('navigation', { name: 'Dónde estás' }).getByRole('link', { name: /^Volver al mapa/ });
   // un error de formulario: «Crear» sin texto
   await page.getByRole('button', { name: /^Modelo / }).click();
   await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
@@ -178,30 +181,37 @@ test('el error de la caja sale del cuadro al abrir el mapa; el «Ya estamos crea
   await miga.click();
   await expect(region(page).getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
   await expect(cuadro.getByRole('alert'), 'el error de la caja quedó flotando sobre el mapa').toHaveCount(0);
-  // un pedido en marcha: su aviso verde es del trabajo, no de la caja (a la caja se vuelve por Marketing → Distrito: ya no hay «Volver a …»)
-  await elegir(page, 'Marketing', 'Distrito');
+
+  // un pedido en marcha: en la caja sale «Ya estamos creando…»; el servidor ya lo lista como trabajo en curso
+  const TRABAJO = { id: 'clip:clip-1:1', tipo: 'clip', estado: 'corriendo', titulo: 'Tu clip se está creando', detalle: 'Un gato jugando en la nieve', progreso: null, url: '' };
+  await page.route('**/api/trabajos', r => r.fulfill({ json: { trabajos: [TRABAJO], sondeo_s: 15 } }));
+  await abrirLaCaja(page);
   await caja(page).fill('un gato jugando en la nieve');
   await page.getByRole('button', { name: /^Modelo / }).click();
   await page.getByRole('dialog', { name: 'Elegir modelo' }).getByRole('button', { name: 'Crear' }).click();
   await expect(cuadro).toContainText('Ya estamos creando tu clip');
   await miga.click();
   await expect(region(page).getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
-  await expect(cuadro).toContainText('Ya estamos creando tu clip');
+  // el mapa es otra página: el aviso verde de la caja no la sigue, el trabajo que lista el servidor sí (el cuadro llega plegado: dice «1 trabajo en curso»)
+  await expect(cuadro).toContainText('1 trabajo en curso');
+  await expect(cuadro).not.toContainText('Ya estamos creando');
 });
 
-// Ctrl+V es del documento: con el mapa o una lista a la vista la caja está montada pero escondida (`hidden`), y no puede agregarse nada ni
-// cortarse un pegado que no es suyo.
-test('pegar una imagen con el mapa a la vista no la agrega a la caja escondida ni corta el pegado', async ({ page }) => {
+// Ctrl+V es del documento: con el mapa a la vista (otra página, sin caja) un pegado no es de nadie, no se corta y no se lleva nada a la caja
+// que se abre después; en la caja, pegar funciona.
+test('pegar una imagen con el mapa a la vista no corta el pegado ni se lleva nada a la caja; en la caja sí se agrega', async ({ page }) => {
   await inicio(page, { estado: 200, cuerpo: {} });
   await page.getByRole('button', { name: 'Imagen' }).click();
-  await region(page).getByRole('navigation', { name: 'Dónde estás' }).getByRole('button', { name: /^Volver al mapa/ }).click();
+  await irAlMapa(page);
   await expect(region(page).getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
   expect(await pegarImagen(page, 'image.png'), 'se cortó un pegado que no es de la caja').toBe(true);
   await elegir(page, 'Marketing', 'Distrito');
+  expect(await pegarImagen(page, 'image.png'), 'se cortó un pegado en la lista de un grupo').toBe(true);
+  await elegirHerramienta(page, 'Imagen');
   await expect(caja(page)).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Imágenes de referencia' }), 'la caja escondida se llevó la imagen').toHaveCount(0);
+  await expect(page.getByRole('list', { name: 'Imágenes de referencia' }), 'la caja se llevó la imagen pegada en otra página').toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Crear una imagen' })).toBeVisible();
-  // a la vista otra vez, pegar funciona
+  // en la caja, pegar funciona
   expect(await pegarImagen(page, 'image.png')).toBe(false);
   await expect(page.getByRole('button', { name: 'Quitar «imagen-pegada.png»' })).toBeVisible();
 });
@@ -591,7 +601,8 @@ test('ya no hay menú «Secciones» ni «Editor de videos», y lo que traía el 
   const area = region(page);
   for (const [grupo, pantallas] of [['Blotato', 3], ['Avanzado', 2]] as const) {
     await irA(page, 'Marketing', grupo);
-    await expect(area.getByRole('link'), `las pantallas de ${grupo}`).toHaveCount(pantallas);
+    // las tarjetas de la lista (<ul>), no las migas (<ol>), que también son enlaces
+    await expect(area.locator('ul').getByRole('link'), `las pantallas de ${grupo}`).toHaveCount(pantallas);
     await expect(area.getByRole('link', { name: /De videos a Shorts|Editor de videos/ }), `en ${grupo}`).toHaveCount(0);
     await expect(area.locator('a[href^="/e1.html"], a[href^="/shorts.html"]'), `en ${grupo}`).toHaveCount(0);
   }
