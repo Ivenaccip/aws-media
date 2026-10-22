@@ -56,30 +56,47 @@ def test_la_revalidacion_con_etag_da_304(cliente):
 
 @pytest.mark.parametrize("ruta", HTML)
 def test_el_html_revalida_y_no_se_cachea_en_el_borde(cliente, ruta):
-    r = cliente.get(ruta)
+    # /index.html (el inicio clásico) redirige a la principal sin la cookie de la clásica (abajo); con ella se sirve el HTML
+    cookie = {"Cookie": "ui=clasica"} if ruta == "/index.html" else {}
+    r = cliente.get(ruta, headers=cookie, follow_redirects=False)
     assert r.status_code == 200, ruta
     assert r.headers["cache-control"] == "no-cache", ruta
     assert "cloudflare-cdn-cache-control" not in r.headers, ruta
 
 
-@pytest.mark.parametrize("ruta", ["/", "/entrar", "/estudio/"])
+@pytest.mark.parametrize("ruta", ["/", "/entrar"])
 def test_las_rutas_de_entrada_siguen_en_no_cache(cliente, ruta):
-    # /estudio/ con la cookie de la clásica: el inicio está en `todos` y sin
-    # ella responde 302 (el test de abajo)
-    cookie = {"Cookie": "ui=clasica"} if ruta == "/estudio/" else {}
-    r = cliente.get(ruta, headers=cookie, follow_redirects=False)
+    r = cliente.get(ruta, follow_redirects=False)
     assert r.status_code == 200, ruta
     assert r.headers["cache-control"] == "no-cache", ruta
 
 
-def test_el_302_del_estudio_no_se_queda_en_cache(cliente):
-    """Cuando /estudio/ redirige al inicio nuevo, el 302 no se guarda: volver
-    a `nueva` llega en la siguiente carga (server/migracion.py)."""
-    if not any(getattr(r, "path", "") == "/estudio/inicio" for r in cliente.app.routes):
-        pytest.skip("web/dist no está compilado: sin la pantalla nueva no hay 302")
-    r = cliente.get("/estudio/", follow_redirects=False)
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
+def _con_la_principal(cliente):
+    if not any(getattr(r, "path", "") == "/estudio/" for r in cliente.app.routes):
+        pytest.skip("web/dist no está compilado: sin la principal no hay /estudio/")
+
+
+@pytest.mark.parametrize("ruta", ["/estudio/", "/estudio/marketing/", "/estudio/marketing/distrito/imagen/"])
+def test_la_principal_y_las_paginas_por_nivel_siguen_en_no_cache(cliente, ruta):
+    """/estudio/ ya no redirige: es la página (server/web.py). Esa y las anidadas revalidan con ETag, nunca se quedan en el borde."""
+    _con_la_principal(cliente)
+    r = cliente.get(ruta, follow_redirects=False)
+    assert r.status_code == 200, ruta
+    assert r.headers["cache-control"] == "no-cache", ruta
+    assert "cloudflare-cdn-cache-control" not in r.headers, ruta
+    assert r.headers.get("etag"), ruta
+    assert cliente.get(ruta, headers={"If-None-Match": r.headers["etag"]}).status_code == 304, ruta
+
+
+def test_el_302_del_index_viejo_a_la_principal_no_se_queda_en_cache(cliente):
+    """Cuando /index.html (el inicio clásico, URL vieja del inicio) redirige a la principal, el 302 no se guarda: volver a `nueva`
+    llega en la siguiente carga (server/migracion.py). Con la cookie de la clásica sigue sirviendo el HTML, con `no-cache`."""
+    _con_la_principal(cliente)
+    r = cliente.get("/index.html", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/"
     assert r.headers["cache-control"] == "no-store"
+    r = cliente.get("/index.html", headers={"Cookie": "ui=clasica"}, follow_redirects=False)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
 
 
 def test_los_versionados_siguen_inmutables(cliente):

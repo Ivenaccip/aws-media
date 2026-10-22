@@ -8,15 +8,15 @@ Las apps de prueba llevan, DETRÁS, el mismo montaje «/» de static/ que la app
 ese montaje casa con TODO lo que no encontró un montaje antes, así que `/estudio/coi` (sin barra) cae en static/ y da 404.
 Sin él Starlette redirige la barra por su cuenta (307, URL absoluta) y la prueba no vería el defecto que sí existe.
 
-La raíz «/estudio/» todavía NO la sirve web.py (la sigue decidiendo server/migracion.py; llega en E5.2): ver
-`test_la_raiz_del_dist_aun_no_se_sirve`. Las pruebas de la raíz y de las entradas viejas (?prompt, ?brief, ?blotato)
-se agregan en esa etapa.
+La raíz «/estudio/» (el mapa) la sirve web.py desde E5.2, junto con las entradas de antes (?prompt, ?brief,
+?blotato=conectar → la página que hoy hace eso) y el alias de lo que cambió de sitio (migracion.alias_del_estudio):
+ver las secciones «la raíz», «entradas viejas» y «alias» más abajo.
 """
+import re
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 
@@ -32,7 +32,7 @@ RUTAS = [
     "central", "central/distrito", "central/distrito/coi", "clip", "_vitrina", "huerfano/hijo",
 ]
 SERVIBLES = [
-    "/estudio/marketing/", "/estudio/marketing/distrito/", "/estudio/marketing/distrito/imagen/",
+    "/estudio/", "/estudio/marketing/", "/estudio/marketing/distrito/", "/estudio/marketing/distrito/imagen/",
     "/estudio/marketing/distrito/video/", "/estudio/marketing/blotato/", "/estudio/marketing/blotato/agenda/",
     "/estudio/central/", "/estudio/central/distrito/", "/estudio/central/distrito/coi/", "/estudio/clip/",
     "/estudio/_vitrina/", "/estudio/huerfano/hijo/",
@@ -109,10 +109,10 @@ def test_la_app_de_prueba_imita_a_la_real():
 # ---------------------------------------------------------------------------
 # el registro
 
-def test_el_registro_cuenta_cada_nivel_a_cualquier_profundidad_pero_no_la_raiz_ni_los_assets(dist):
+def test_el_registro_cuenta_la_raiz_y_cada_nivel_a_cualquier_profundidad_pero_no_los_assets(dist):
     r = web.rutas(dist / "estudio")
     assert r == frozenset(SERVIBLES)
-    assert "/estudio/" not in r, "la raíz se sirve en E5.2, no antes"
+    assert "/estudio/" in r, "la raíz es la página principal"
     assert not any("assets" in x for x in r)
     assert "/estudio/sin-index/" not in r and "/estudio/huerfano/" not in r
 
@@ -121,6 +121,8 @@ def test_montar_devuelve_las_rutas_servibles_sin_barra_final_con_las_anidadas(di
     montadas = _app(dist)[1]
     assert montadas == [
         "/estudio/assets",
+        # la raíz: la principal
+        "/estudio",
         # primer nivel con página propia (huerfano no la tiene)
         "/estudio/_vitrina", "/estudio/central", "/estudio/clip", "/estudio/marketing",
         # anidados, en orden: es lo que mira migracion.montar (`p.nueva.rstrip("/") in montadas`)
@@ -128,7 +130,7 @@ def test_montar_devuelve_las_rutas_servibles_sin_barra_final_con_las_anidadas(di
         "/estudio/marketing/blotato", "/estudio/marketing/blotato/agenda", "/estudio/marketing/distrito",
         "/estudio/marketing/distrito/imagen", "/estudio/marketing/distrito/video",
     ]
-    assert not any(m.endswith("/") for m in montadas) and "/estudio" not in montadas
+    assert not any(m.endswith("/") for m in montadas)
 
 
 def test_lo_que_devuelve_montar_es_lo_que_la_app_sirve(dist):
@@ -160,9 +162,9 @@ def test_un_nivel_sin_pagina_no_deja_ciegos_a_sus_hijos_y_el_mismo_da_404(dist):
     assert c.get("/estudio/huerfano").status_code == 404, "no hay página a la que mandarlo"
 
 
-def test_los_anidados_contestan_304_con_etag(dist):
+def test_la_raiz_y_los_anidados_contestan_304_con_etag(dist):
     c = _c(dist)
-    for ruta in ("/estudio/marketing/", "/estudio/marketing/distrito/imagen/"):
+    for ruta in ("/estudio/", "/estudio/marketing/", "/estudio/marketing/distrito/imagen/"):
         et = c.get(ruta).headers["etag"]
         r = c.get(ruta, headers={"If-None-Match": et})
         assert r.status_code == 304 and r.headers["cache-control"] == "no-cache"
@@ -196,29 +198,110 @@ def test_una_carpeta_interna_anidada_bajo_un_area_publica_tambien_es_noindex(dis
 
 
 # ---------------------------------------------------------------------------
-# la raíz todavía no
+# la raíz (E5.2): la página principal
 
-def test_la_raiz_del_dist_aun_no_se_sirve(dist):
-    """dist/estudio/index.html (la raíz, que E4 commitea) NO se sirve hasta E5.2: ni la ruta ni el archivo ni el registro."""
-    assert (dist / "estudio" / "index.html").is_file()
-    app, montadas = _app(dist)
-    c = TestClient(app, follow_redirects=False)
-    assert "/estudio" not in montadas
-    for pedido in ("/estudio/", "/estudio/?prompt=x", "/estudio/?blotato=conectar", "/estudio/index.html"):
+def test_la_raiz_se_sirve_con_html_que_revalida_y_en_head(dist):
+    c = _c(dist)
+    for metodo in (c.get, c.head):
+        r = metodo("/estudio/")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html"), metodo.__name__
+        assert r.headers["cache-control"] == "no-cache" and "x-robots-tag" not in r.headers
+    assert "<title>/estudio/</title>" in c.get("/estudio/").text
+    assert c.get("/estudio/?p=1&x=2").status_code == 200, "el query de siempre no estorba"
+    # solo GET y HEAD: un POST a la raíz no se redirige ni se sirve
+    r = c.post("/estudio/")
+    assert r.status_code == 405 and "location" not in r.headers
+
+
+def test_la_raiz_no_sirve_el_archivo_por_su_nombre(dist):
+    """La principal es «/estudio/»; «/estudio/index.html» no es una dirección (ni las del montaje de static/)."""
+    c = _c(dist)
+    for pedido in ("/estudio/index.html", "/estudio/rutas.json"):
         r = c.get(pedido)
-        assert r.status_code == 404 and r.json() == {"detail": "Not Found"}, pedido
-        assert "location" not in r.headers, pedido
+        assert r.status_code == 404 and r.json() == {"detail": "Not Found"} and "location" not in r.headers, pedido
         assert "<title>/estudio/</title>" not in c.get(pedido, headers=HTML).text, pedido
-    assert c.head("/estudio/").status_code == 404
 
 
-def test_la_raiz_la_sigue_decidiendo_quien_la_tenia(dist):
-    """Como en la app real, donde server/migracion.py registra `/estudio/`: web.montar no se la pisa."""
-    def migracion(app):
-        app.add_api_route("/estudio/", lambda: RedirectResponse("/estudio/inicio/", status_code=302), methods=["GET"])
+def test_sin_estudio_index_html_no_se_sirve_la_raiz_ni_se_redirige_a_la_nada(tmp_path):
+    """Un dist sin la raíz (un build viejo): `/estudio/` da 404 y `montar` no anuncia «/estudio» (migracion.decidir lo lee: sin
+    ella `/index.html` sigue sirviendo el clásico en vez de mandar a un 404). Las entradas de antes tampoco redirigen."""
+    estudio = tmp_path / "dist" / "estudio"
+    for rel in ("marketing/distrito/imagen", "marketing/blotato"):
+        (estudio / rel).mkdir(parents=True)
+        (estudio / rel / "index.html").write_text("<title>x</title>", encoding="utf-8")
+    app, montadas = _app(tmp_path / "dist")
+    assert "/estudio" not in montadas and "/estudio/marketing/blotato" in montadas
+    c = TestClient(app, follow_redirects=False)
+    for pedido in ("/estudio/", "/estudio/?prompt=x", "/estudio/?blotato=conectar"):
+        r = c.get(pedido)
+        assert r.status_code == 404 and "location" not in r.headers, pedido
 
-    r = _c(dist, antes=migracion).get("/estudio/?x=1")
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
+
+# ---------------------------------------------------------------------------
+# entradas viejas (E5.2): lo que el inicio de una sola página leía de la barra de direcciones
+
+@pytest.mark.parametrize("pedido, destino", [
+    ("/estudio/?blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar"),
+    ("/estudio/?prompt=un%20faro&modelo=x", "/estudio/marketing/distrito/imagen/?prompt=un%20faro&modelo=x"),
+    ("/estudio/?prompt=hola%20mundo", "/estudio/marketing/distrito/imagen/?prompt=hola%20mundo"),
+    ("/estudio/?brief=hola", "/estudio/marketing/distrito/video/?brief=hola"),
+    ("/estudio/?x=1&brief=a%26b&y=2", "/estudio/marketing/distrito/video/?x=1&brief=a%26b&y=2"),
+    ("/estudio/?blotato=conectar&x=1", "/estudio/marketing/blotato/?blotato=conectar&x=1"),
+    # sin parámetro, el destino sigue siendo el mismo
+    ("/estudio/?prompt=", "/estudio/marketing/distrito/imagen/?prompt="),
+])
+def test_la_raiz_con_un_parametro_de_antes_manda_a_la_herramienta_con_el_query_intacto(dist, pedido, destino):
+    c = _c(dist)
+    for metodo in (c.get, c.head):
+        r = metodo(pedido)
+        assert r.status_code == 302 and r.headers["location"] == destino, (metodo.__name__, pedido)
+        assert r.headers["cache-control"] == "no-store"
+    # el destino se sirve de verdad: ni un segundo salto ni un bucle
+    seguido = TestClient(_app(dist)[0], follow_redirects=True).get(pedido)
+    assert seguido.status_code == 200 and len(seguido.history) == 1
+
+
+@pytest.mark.parametrize("pedido", ["/estudio/", "/estudio/?p=abc", "/estudio/?blotato=otra", "/estudio/?blotato=",
+                                    "/estudio/?desde=mkt.x.y&ver=mapa", "/estudio/?Prompt=x", "/estudio/?promptx=1", "/estudio/?x=prompt"])
+def test_la_raiz_con_cualquier_otro_query_se_sirve_tal_cual(dist, pedido):
+    r = _c(dist).get(pedido)
+    assert r.status_code == 200 and "<title>/estudio/</title>" in r.text, pedido
+
+
+def test_la_entrada_vieja_sin_su_destino_compilado_sirve_la_raiz_y_no_redirige_a_la_nada(dist):
+    """El destino sale de la tabla y solo se usa si está en el registro: sin la Caja en Imagen, `?prompt=` no manda a un 404."""
+    import shutil
+    shutil.rmtree(dist / "estudio" / "marketing" / "distrito" / "imagen")
+    c = _c(dist)
+    assert c.get("/estudio/?prompt=x").status_code == 200
+    assert c.get("/estudio/?brief=x").status_code == 302, "las demás entradas no se afectan"
+
+
+def test_la_entrada_vieja_manda_a_una_pagina_que_existe_y_es_la_de_la_caja_o_la_de_blotato():
+    """Cada destino de ENTRADAS_VIEJAS está en el registro de las páginas de web/estudio (lo que web/dist compila) y es la página
+    que de verdad hace eso: la Caja preseleccionada en su pestaña, o el grupo Blotato. Si alguien mueve una carpeta, esto avisa
+    antes que el 404 (lee las fuentes: no necesita web/dist)."""
+    fuente = RAIZ / "web" / "estudio"
+    registro = web.rutas(fuente)
+    assert "/estudio/" in registro
+    esperado = {"prompt": ("herramienta.tsx", "· Imagen"), "brief": ("herramienta.tsx", "· Video"),
+                "blotato": ("nivel.tsx", "Blotato")}
+    assert {p for p, _, _ in web.ENTRADAS_VIEJAS} == set(esperado)
+    for param, valor, destino in web.ENTRADAS_VIEJAS:
+        assert destino in registro, (param, destino)
+        html = (fuente / destino.removeprefix("/estudio/") / "index.html").read_text(encoding="utf-8")
+        modulo, titulo = esperado[param]
+        assert f'src="/src/pantallas/inicio/{"niveles/" if modulo == "nivel.tsx" else ""}{modulo}"' in html, (param, destino)
+        assert re.search(rf"<title>[^<]*{re.escape(titulo)}</title>", html), (param, destino, titulo)
+        if param == "blotato":
+            assert valor == "conectar"
+
+
+def test_ninguna_entrada_vieja_apunta_a_la_raiz_ni_a_otra_entrada():
+    """Cada destino es una página DISTINTA de la raíz: si no, `?prompt=` daría 302 a `/estudio/?prompt=` sin fin."""
+    for param, _, destino in web.ENTRADAS_VIEJAS:
+        assert destino.startswith("/estudio/") and destino != "/estudio/", param
+        assert destino.endswith("/") and "?" not in destino
 
 
 # ---------------------------------------------------------------------------
@@ -654,7 +737,8 @@ def test_head_de_un_404_con_pagina_lleva_las_mismas_cabeceras(dist):
 
 
 # ---------------------------------------------------------------------------
-# alias (el parámetro existe desde E1; hoy `web.montar` no recibe ninguno. La tabla real llega en E5.2)
+# alias (E5.2): las direcciones de pantallas que cambiaron de sitio.
+# `_c(dist, alias)` con `alias=None` usa el REAL (migracion.alias_del_estudio); estas pruebas pasan el suyo.
 
 ALIAS = {"/estudio/coi/": "/estudio/central/distrito/coi/", "/estudio/agenda/": "/estudio/marketing/blotato/agenda/"}
 
@@ -671,7 +755,7 @@ def test_las_urls_viejas_van_a_la_nueva_con_302_sin_cache_y_con_el_query(dist, p
 
 
 def test_sin_alias_las_urls_viejas_son_404(dist):
-    assert _c(dist).get("/estudio/coi/").status_code == 404
+    assert _c(dist, {}).get("/estudio/coi/").status_code == 404
     assert _c(dist, {}).get("/estudio/coi").status_code == 404
 
 
@@ -693,6 +777,49 @@ def test_un_alias_a_un_destino_que_no_esta_compilado_da_404_y_no_redirige_a_la_n
         assert r.status_code == 404 and "location" not in r.headers, pedido
 
 
+def test_sin_pasar_alias_montar_usa_el_de_migracion(dist):
+    """`web.montar(app, dist)` (como lo llama server/app.py) trae `migracion.alias_del_estudio()`: el inicio de una sola página
+    (/estudio/inicio/) va a la principal en cuanto su carpeta ya no está en dist. `{}` es «ninguno» y no se confunde con `None`."""
+    from server import migracion
+    assert migracion.alias_del_estudio().get("/estudio/inicio/") == "/estudio/"
+    c = _c(dist)                                  # dist sin carpeta `inicio`
+    for pedido, destino in (("/estudio/inicio/", "/estudio/"), ("/estudio/inicio", "/estudio/"),
+                            ("/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos", "/estudio/?desde=mkt.blotato.agenda&ver=grupos"),
+                            ("/estudio/Inicio/?x=1", "/estudio/?x=1")):
+        r = c.get(pedido)
+        assert r.status_code == 302 and r.headers["location"] == destino and r.headers["cache-control"] == "no-store", pedido
+    assert _c(dist, {}).get("/estudio/inicio/").status_code == 404
+
+
+def test_mientras_la_pagina_unica_siga_en_dist_el_alias_del_inicio_no_la_pisa(dist):
+    """E5.2 deja /estudio/inicio/ como la página de siempre (200): el alias es inerte hasta que su carpeta desaparezca (E5.3)."""
+    d = dist / "estudio" / "inicio"
+    d.mkdir()
+    (d / "index.html").write_text("<title>PAGINA UNICA</title>", encoding="utf-8")
+    c = _c(dist)
+    for pedido in ("/estudio/inicio/", "/estudio/inicio/?prompt=x", "/estudio/inicio/?blotato=conectar"):
+        r = c.get(pedido)
+        assert r.status_code == 200 and "PAGINA UNICA" in r.text, pedido
+    r = c.get("/estudio/inicio?x=1")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/?x=1"
+
+
+def test_ningun_alias_apunta_a_otro_alias_ni_a_si_mismo():
+    from server import migracion
+    a = migracion.alias_del_estudio()
+    assert a and not (set(a) & set(a.values())), "cadena de alias"
+    assert all(k != v for k, v in a.items())
+    assert all(k.startswith("/estudio/") and k.endswith("/") and v.startswith("/estudio/") and v.endswith("/") for k, v in a.items())
+
+
+def test_los_destinos_de_los_alias_son_paginas_que_existen():
+    """Cada destino del alias real está en las páginas de web/estudio (lee las fuentes: no necesita web/dist)."""
+    from server import migracion
+    registro = web.rutas(RAIZ / "web" / "estudio")
+    for viejo, nuevo in migracion.alias_del_estudio().items():
+        assert nuevo in registro, (viejo, nuevo)
+
+
 # ---------------------------------------------------------------------------
 # sin dist
 
@@ -704,10 +831,13 @@ def test_sin_dist_no_se_registra_nada_ni_se_toca_el_404(tmp_path):
     assert web.montar(app, tmp_path / "vacio") == [] and 404 not in app.exception_handlers
 
 
-def test_con_dist_pero_sin_pantallas_solo_se_montan_los_assets_y_el_404(tmp_path):
+def test_con_dist_pero_sin_pantallas_solo_se_montan_los_assets_la_raiz_y_el_404(tmp_path):
     (tmp_path / "estudio" / "assets").mkdir(parents=True)
     (tmp_path / "estudio" / "index.html").write_text("<title>raiz</title>", encoding="utf-8")
     app = FastAPI()
-    assert web.montar(app, tmp_path) == ["/estudio/assets"]
+    assert web.montar(app, tmp_path) == ["/estudio/assets", "/estudio"]
     assert 404 in app.exception_handlers
+    # y sin siquiera la raíz, solo los assets
+    (tmp_path / "estudio" / "index.html").unlink()
+    assert web.montar(FastAPI(), tmp_path) == ["/estudio/assets"]
     assert web.rutas(tmp_path / "estudio") == frozenset()

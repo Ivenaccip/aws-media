@@ -8,6 +8,8 @@ def _prod(**cambios):
     r = {
         "/estudio/_vitrina/": (200, {"content-type": "text/html; charset=utf-8", "cache-control": "no-cache",
                                      "x-robots-tag": "noindex, nofollow"}, VITRINA),
+        "/estudio/": (200, {"content-type": "text/html; charset=utf-8", "cache-control": "no-cache"}, "<title>mapa</title>"),
+        "/estudio/marketing": (200, {"content-type": "text/html; charset=utf-8", "cache-control": "no-cache"}, "<title>m</title>"),
         "/estudio/assets/v-Ab12.css": (200, {"cache-control": "public, max-age=31536000, immutable",
                                              "cf-cache-status": "HIT"}, "body{}"),
         "/estudio/assets/v-Cd34.js": (200, {"cache-control": "public, max-age=31536000, immutable",
@@ -52,6 +54,21 @@ def test_clave_de_pricing_colada_falla():
 def test_el_asset_inexistente_no_puede_ser_html():
     res = verificar("https://x", _prod(**{"/estudio/assets/no-existe.js": (200, {"content-type": "text/html"}, "")}), set())
     assert len(_fallas(res)) == 1
+
+
+def test_la_principal_tiene_que_ser_una_pagina_que_revalida():
+    """/estudio/ ya no es un 302 al inicio: se sirve (200, HTML, no-cache). Una que devuelve JSON, un 404 o se queda en la caché falla."""
+    res = verificar("https://x", _prod(**{"/estudio/": (404, {"content-type": "application/json"}, "{}")}), set())
+    assert _fallas(res) == ["principal /estudio/ 200 y HTML (salió 404, application/json)", "principal no-cache (salió —)"]
+    en_cache = (200, {"content-type": "text/html", "cache-control": "public, max-age=14400"}, "")
+    res = verificar("https://x", _prod(**{"/estudio/": en_cache}), set())
+    assert _fallas(res) == ["principal no-cache (salió public, max-age=14400)"]
+
+
+def test_una_direccion_sin_barra_tiene_que_llegar_a_una_pagina():
+    """/estudio/marketing da 404 JSON hasta que el servidor la corrige (server/web.py); urllib sigue el 302 y mira el destino."""
+    res = verificar("https://x", _prod(**{"/estudio/marketing": (404, {"content-type": "application/json"}, "{}")}), set())
+    assert _fallas(res) == ["/estudio/marketing (sin barra) llega a una página 200 y HTML (salió 404, application/json)"]
 
 
 def test_las_claves_prohibidas_salen_de_pricing_json():

@@ -7,6 +7,7 @@ vive en tests/test_migracion_ui.py.
 import base64
 import json
 import logging
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -163,51 +164,99 @@ def test_en_la_app_real_la_migracion_va_antes_que_la_raiz():
 
 
 def test_las_pantallas_reales_estan_bien_escritas():
+    raiz = Path(__file__).resolve().parent.parent
     for nombre, p in migracion.PANTALLAS.items():
         assert p.etapa in migracion.ETAPAS
-        assert p.nueva == f"/estudio/{nombre}/"
-        assert p.vieja.startswith("/")
-        # la única URL vieja que no es un .html es el inicio: /estudio/
-        assert p.vieja.endswith(".html") or (nombre == "inicio" and p.vieja == "/estudio/")
+        # la URL nueva es una página de /estudio/ a CUALQUIER profundidad (la principal es /estudio/ misma) y su
+        # carpeta existe en web/ (las fuentes: el dist las repite tal cual)
+        assert p.nueva.startswith("/estudio/") and p.nueva.endswith("/"), nombre
+        assert (raiz / "web" / p.nueva.strip("/") / "index.html").is_file(), nombre
+        assert p.vieja.startswith("/") and p.vieja != p.nueva, nombre
+        # la vieja siempre es un .html: la que fue /estudio/ misma (el inicio) vive ahora en /index.html
+        assert p.vieja.endswith(".html"), nombre
         assert p.archivo.endswith(".html")
+    inicio = migracion.PANTALLAS["inicio"]
+    assert (inicio.vieja, inicio.nueva, inicio.etapa) == ("/index.html", "/estudio/", "todos")
+    assert inicio.archivo == "index.html" and (raiz / "static" / inicio.archivo).is_file()
 
 
-# ---------- el inicio: su URL vieja es un directorio ----------
+# ---------- el inicio: la principal es /estudio/ y el clásico queda en /index.html ----------
 
-def _app_inicio(tmp_path, monkeypatch, etapa):
+def _app_inicio(tmp_path, monkeypatch, etapa, montada=True):
     static = tmp_path / "static"
     static.mkdir(exist_ok=True)
     (static / "index.html").write_text("<!doctype html><title>inicio viejo</title>", encoding="utf-8")
-    pantallas = {"inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa=etapa,
-                                    fichero="index.html")}
+    pantallas = {"inicio": Pantalla(vieja="/index.html", nueva="/estudio/", etapa=etapa)}
     monkeypatch.setattr(migracion, "PANTALLAS", pantallas)
     app = FastAPI()
-    migracion.montar(app, ["/estudio/assets", "/estudio/inicio"], static)
+    # lo que web.montar anuncia cuando dist trae estudio/index.html (la principal)
+    migracion.montar(app, ["/estudio/assets", "/estudio"] if montada else [], static)
     return TestClient(app, follow_redirects=False)
 
 
 def test_el_inicio_en_nueva_sirve_su_index_sin_cache(tmp_path, monkeypatch):
-    r = _app_inicio(tmp_path, monkeypatch, "nueva").get("/estudio/")
+    r = _app_inicio(tmp_path, monkeypatch, "nueva").get("/index.html")
     assert r.status_code == 200 and "inicio viejo" in r.text
     assert r.headers["cache-control"] == "no-cache"
 
 
-def test_el_inicio_en_todos_lleva_el_query_a_la_nueva(tmp_path, monkeypatch):
-    # ?blotato=conectar (lo manda el editor) no se puede perder en el 302
+def test_el_inicio_en_todos_lleva_el_query_a_la_principal(tmp_path, monkeypatch):
+    # el query viaja en el 302; es server/web.py quien manda ?blotato=conectar (lo manda el editor) al grupo Blotato
     c = _app_inicio(tmp_path, monkeypatch, "todos")
-    r = c.get("/estudio/?blotato=conectar")
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/?blotato=conectar"
+    r = c.get("/index.html?blotato=conectar")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?blotato=conectar"
+    assert r.headers["cache-control"] == "no-store"
     c.cookies.set("ui", "clasica")
-    assert c.get("/estudio/").status_code == 200
+    r = c.get("/index.html")
+    assert r.status_code == 200 and "inicio viejo" in r.text
 
 
-def test_la_version_anterior_del_inicio_vuelve_a_estudio(tmp_path, monkeypatch):
-    r = _app_inicio(tmp_path, monkeypatch, "todos").get("/ui/clasica?pantalla=inicio")
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/"
+def test_la_version_anterior_del_inicio_vuelve_a_index_html_y_ahi_se_queda(tmp_path, monkeypatch):
+    """/ui/clasica?pantalla=inicio deja la cookie y lleva a /index.html (ya no a /estudio/: ahí vive la principal); con la cookie
+    esa URL sirve el clásico en vez de volver a redirigir. Sin bucle."""
+    c = _app_inicio(tmp_path, monkeypatch, "todos")
+    r = c.get("/ui/clasica?pantalla=inicio")
+    assert r.status_code == 302 and r.headers["location"] == "/index.html"
     assert "ui=clasica" in r.headers["set-cookie"]
+    seguido = c.get("/index.html")                       # el TestClient guarda la cookie de la respuesta anterior
+    assert seguido.status_code == 200 and "inicio viejo" in seguido.text
+
+
+def test_volver_a_la_nueva_del_inicio_lleva_a_la_principal_y_borra_la_cookie(tmp_path, monkeypatch):
+    c = _app_inicio(tmp_path, monkeypatch, "todos")
+    c.get("/ui/clasica?pantalla=inicio")
+    r = c.get("/ui/nueva?pantalla=inicio")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/"
+    assert 'ui=""' in r.headers["set-cookie"] and "Max-Age=0" in r.headers["set-cookie"]
+    assert c.get("/index.html").status_code == 302
+
+
+def test_el_inicio_sin_la_principal_compilada_sirve_el_clasico_y_no_redirige_a_un_404(tmp_path, monkeypatch):
+    """Sin web/dist (o con uno sin estudio/index.html) `todos` no redirige: mandaría a un 404."""
+    r = _app_inicio(tmp_path, monkeypatch, "todos", montada=False).get("/index.html")
+    assert r.status_code == 200 and "inicio viejo" in r.text
+
+
+def test_el_inicio_en_retirada_redirige_siempre_y_no_hace_bucle(tmp_path, monkeypatch):
+    """Con vieja == nueva (el modelo de antes, /estudio/) `retirada` daba un 302 a sí misma. Ahora la vieja es otra URL."""
+    c = _app_inicio(tmp_path, monkeypatch, "retirada")
+    c.cookies.set("ui", "clasica")
+    r = c.get("/index.html")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/"
+    r = c.get("/ui/clasica?pantalla=inicio")
+    assert r.headers["location"] == "/estudio/" and "set-cookie" not in r.headers
 
 
 # ---------- UI_ETAPA_MINIMA: dev navega por las nuevas sin tocar PANTALLAS ----------
+
+def test_con_la_minima_todos_el_inicio_en_nueva_tambien_va_a_la_principal(tmp_path, monkeypatch):
+    monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")
+    c = _app_inicio(tmp_path, monkeypatch, "nueva")
+    r = c.get("/index.html?x=1")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?x=1"
+    c.cookies.set("ui", "clasica")
+    assert c.get("/index.html").status_code == 200, "y la salida de emergencia sigue en pie"
+
 
 def test_la_minima_todos_redirige_una_pantalla_en_nueva(cliente, monkeypatch):
     monkeypatch.setenv("UI_ETAPA_MINIMA", "todos")

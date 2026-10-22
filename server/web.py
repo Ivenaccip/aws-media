@@ -42,9 +42,23 @@ llega detrás, así que `/estudio/coi` (sin barra) no encuentra su montaje
 montaje detrás (tests/test_web_rutas.py): sin él Starlette redirige la barra por
 su cuenta y la prueba no vería el defecto.
 
-La raíz /estudio/ NO la sirve este módulo todavía (la sigue decidiendo
-server/migracion.py): `rutas()` la ignora a propósito, así que
-web/estudio/index.html puede compilarse sin que nadie lo vea. Llega en E5.2.
+La raíz /estudio/ ES la página principal (el mapa «Elige un área»): `rutas()` la
+cuenta y `montar` registra una ruta explícita GET/HEAD con el mismo `no-cache`, ETag
+y 304 que las demás. Antes la decidía server/migracion.py (un 302 a /estudio/inicio/);
+ahora esa pantalla vive en /index.html (el inicio clásico, salida de emergencia con
+la cookie `ui=clasica`) y migracion.py solo redirige a /estudio/. Si dist no trae
+estudio/index.html, la raíz no se sirve (da 404) y `/index.html` sirve el clásico.
+
+Las direcciones de ANTES siguen funcionando:
+  · `ENTRADAS_VIEJAS`: /estudio/?prompt=… (la Caja en Imagen), ?brief=… (en Video) y
+    ?blotato=conectar (el grupo Blotato) redirigen con un 302 a la página que hoy hace
+    eso, con el query intacto. Quien las manda: el editor de cortes, tres pantallas
+    clásicas, tres `logica.ts` y la Biblioteca de prompts. El destino sale de la tabla
+    y solo se usa si está compilado (`rutas`); cualquier otro query se sirve tal cual;
+  · `alias`: las direcciones de pantallas que cambiaron de sitio (`/estudio/inicio/`
+    → `/estudio/`). Salen de `migracion.alias_del_estudio()`, que `montar` importa AL
+    LLAMARLO (así `server/app.py` no cambia y no hay ciclo). Un alias es inerte
+    mientras la carpeta vieja siga existiendo en dist: una pantalla que existe manda.
 
 El manejador de 404 es ÚNICO por app (Starlette guarda uno por código): `montar`
 conserva el que hubiera y le delega todo lo que no es de /estudio/. Un `montar`
@@ -79,6 +93,16 @@ NO_INDEXAR = {"X-Robots-Tag": "noindex, nofollow"}
 # El 404 de un nivel tiene dos caras (JSON o página) según el Accept: que ninguna caché sirva una por la otra.
 VARIA_CON_ACCEPT = {"Vary": "Accept"}
 
+# Lo que el inicio de una sola página leía de la barra de direcciones y a qué herramienta mandarlo ahora:
+# (parámetro, valor exigido o None, destino). El destino sale de AQUÍ, nunca de la petición, y solo se usa si está en `rutas`.
+# El editor de cortes (tools/editor/index.html), agenda/métricas/mix clásicas y la Biblioteca de prompts siguen mandando aquí.
+ENTRADAS_VIEJAS = (
+    ("prompt", None, "/estudio/marketing/distrito/imagen/"),
+    ("brief", None, "/estudio/marketing/distrito/video/"),
+    ("blotato", "conectar", "/estudio/marketing/blotato/"),
+)
+RAIZ = "/estudio/"
+
 # Lo único que de un query se deja pasar sin codificar. Igual que RedirectResponse, salvo «#»: un «#» crudo en el query
 # (una petición hecha a mano) se codifica en vez de volverse un fragmento.
 _QUERY_SEGURO = ":/%?=@[]!$&'()*+,;"
@@ -111,13 +135,21 @@ class _Assets(StaticFiles):
 def rutas(estudio: Path) -> frozenset[str]:
     """Todas las URLs de pantalla (con barra final) que hay bajo dist/estudio, a cualquier profundidad.
 
-    Es una carpeta con `index.html`; `assets` no cuenta. La raíz «/estudio/» tampoco (ver el docstring del módulo)."""
+    Es una carpeta con `index.html`; `assets` no cuenta. La raíz «/estudio/» (estudio/index.html) sí."""
     out: set[str] = set()
     for p in estudio.rglob("index.html"):
         rel = p.parent.relative_to(estudio).parts
-        if rel and rel[0] != "assets" and p.is_file():
-            out.add("/estudio/" + "/".join(rel) + "/")
+        if p.is_file() and (not rel or rel[0] != "assets"):
+            out.add(RAIZ + "/".join(rel) + "/" if rel else RAIZ)
     return frozenset(out)
+
+
+def entrada_vieja(query_params, rutas_: frozenset[str]) -> str | None:
+    """Si la raíz recibe un parámetro de los de antes, a qué página mandarlo (sin query: lo agrega quien redirige)."""
+    for param, valor, destino in ENTRADAS_VIEJAS:
+        if param in query_params and (valor is None or query_params[param] == valor) and destino in rutas_:
+            return destino
+    return None
 
 
 def _limpia(ruta: str) -> str:
@@ -160,7 +192,7 @@ def _niveles_sin_pagina(rutas_: frozenset[str]) -> list[str]:
     """Los niveles que no son una pantalla pero tienen una debajo (`/estudio/huerfano/` con `/estudio/huerfano/hijo/`), de arriba abajo.
 
     No dejan ciegos a sus hijos (el montaje es por la carpeta de primer nivel), pero ellos mismos dan 404: casi siempre un `vite build`
-    a medias o una carpeta movida sin su `index.html`. La raíz «/estudio/» no cuenta (la decide otro módulo)."""
+    a medias o una carpeta movida sin su `index.html`. La raíz «/estudio/» no cuenta como nivel."""
     sin_pagina: set[str] = set()
     for r in rutas_:
         partes = r.strip("/").split("/")
@@ -251,22 +283,37 @@ class _Pantalla(StaticFiles):
 def montar(app, dist: Path = DIST, alias: dict[str, str] | None = None) -> list[str]:
     """Monta lo que haya en dist/estudio y devuelve las rutas servibles, sin barra final y con las anidadas.
 
-    `alias` = {URL vieja con barra: URL nueva con barra}; hoy va vacío (llega en E5.2). Tiene que llamarse ANTES de
-    `app.mount("/", …)`: ese montaje se queda con todo lo que llegue después. Orden de lo devuelto: los assets, las
-    pantallas de primer nivel y después las anidadas (que sirve el montaje de su carpeta de primer nivel)."""
+    `alias` = {URL vieja con barra: URL nueva con barra}. Sin pasarlo (`None`) sale de `migracion.alias_del_estudio()`,
+    importado aquí y no arriba: así `server/app.py` no tiene que cambiar y los dos módulos no se importan en ciclo; `{}`
+    es «ninguno». Tiene que llamarse ANTES de `app.mount("/", …)`: ese montaje se queda con todo lo que llegue después.
+    Orden de lo devuelto: los assets, la raíz «/estudio» (si dist trae estudio/index.html), las pantallas de primer nivel
+    y después las anidadas (que sirve el montaje de su carpeta de primer nivel)."""
     estudio = dist / "estudio"
     if not estudio.is_dir():
         return []
-    alias = {} if alias is None else alias
+    if alias is None:
+        from server import migracion
+        alias = migracion.alias_del_estudio()
     todas = rutas(estudio)
     montadas = []
     assets = estudio / "assets"
     if assets.is_dir():
         app.mount("/estudio/assets", _Assets(directory=assets), name="web-assets")
         montadas.append("/estudio/assets")
+    if RAIZ in todas:
+        sirve_raiz = _Pantalla(directory=estudio, rutas_=todas, alias=alias)   # sin montar: solo index.html (con su ETag y 304)
+
+        async def raiz(request: Request):
+            antes = entrada_vieja(request.query_params, todas)
+            if antes:
+                return RedirectResponse(_con_query(antes, request.scope), status_code=302, headers=NO_STORE)
+            return await sirve_raiz.get_response("index.html", request.scope)
+
+        app.add_api_route(RAIZ, raiz, methods=["GET", "HEAD"], include_in_schema=False, name="web-raiz")
+        montadas.append("/estudio")
     # Se monta cada carpeta de primer nivel que tenga una pantalla en cualquier profundidad (no solo las que traen su
     # propio index.html): así un nivel sin index.html no deja ciegos a sus hijos. Ese nivel no es una ruta y da 404.
-    for nombre in sorted({r.split("/")[2] for r in todas}):
+    for nombre in sorted({r.split("/")[2] for r in todas if r != RAIZ}):
         ruta = f"/estudio/{nombre}"
         app.mount(ruta, _Pantalla(directory=estudio / nombre, html=True, rutas_=todas, alias=alias), name=f"web-{nombre}")
         if f"{ruta}/" in todas:

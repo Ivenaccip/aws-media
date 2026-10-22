@@ -67,10 +67,9 @@ SIN_CACHE = {"Cache-Control": "no-cache"}
 @dataclass(frozen=True)
 class Pantalla:
     vieja: str       # la URL de siempre, p. ej. /admin.html
-    nueva: str       # /estudio/<p>/
+    nueva: str       # /estudio/<p>/ (o más hondo: /estudio/<área>/<grupo>/<p>/); la principal es /estudio/
     etapa: str
-    # el HTML viejo en static/, si no se llama como la URL (el inicio vive en
-    # /estudio/ y su archivo es index.html)
+    # el HTML viejo en static/, si no se llama como la URL
     fichero: str = ""
 
     @property
@@ -90,12 +89,18 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.3: editar metraje (e1). Sube con progreso real y cobra una cosa,
     # «Proponer ✦ N»; la URL nueva dice lo que se hace en ella
     "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),
-    # UI·8.4: el inicio. Su URL vieja es /estudio/ misma (tarjetas 37 y 38):
-    # la nueva vive al lado, en /estudio/inicio/, y en `todos` /estudio/
-    # redirige ahí. Cobra en su caja (el clip, la imagen, editar una imagen y
-    # la edición de un video); lo demás lo reparte a las pantallas que cobran.
+    # UI·8.4: el inicio. Cobra en su caja (el clip, la imagen, editar una imagen
+    # y la edición de un video); lo demás lo reparte a las pantallas que cobran.
     # 14-oct-2026: la primera en `todos`, por decisión del dueño.
-    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="todos", fichero="index.html"),
+    # Rutas por nivel (22-oct-2026): la principal ES /estudio/ (el mapa), así que
+    # la URL vieja ya no puede ser /estudio/ misma: con vieja == nueva, `retirada`
+    # y «sin dist» darían un bucle de redirecciones, y /ui/clasica?pantalla=inicio
+    # dejaría de llevar al clásico. La versión anterior (static/index.html) queda
+    # en /index.html: en `todos` redirige a /estudio/, y con la cookie `ui=clasica`
+    # (la deja /ui/clasica?pantalla=inicio) sirve el clásico. /estudio/inicio/ sigue
+    # siendo la página única hasta que se retire (ahí el alias de más abajo la
+    # manda a /estudio/).
+    "inicio": Pantalla(vieja="/index.html", nueva="/estudio/", etapa="todos"),
     # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
     # subida es la misma de editar metraje (marca/SubirVideo)
     "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
@@ -128,6 +133,16 @@ PANTALLAS: dict[str, Pantalla] = {
     "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/constructor/", etapa="retirada"),
     "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/asistente/", etapa="retirada"),
 }
+
+
+def alias_del_estudio() -> dict[str, str]:
+    """Las URLs viejas bajo /estudio/ → su canónica nueva, para server/web.py.
+
+    La clave de PANTALLAS ES el nombre de la carpeta de siempre (/estudio/<p>/), así que el alias se deduce: lo que
+    cambió de sitio. Hoy solo el inicio (/estudio/inicio/ → /estudio/). Es inerte mientras la carpeta vieja siga
+    existiendo en web/dist: una pantalla que existe manda sobre cualquier alias (web.destino_de). Ningún alias apunta
+    a otro alias ni a sí mismo (tests/test_web_rutas.py)."""
+    return {f"/estudio/{n}/": p.nueva for n, p in PANTALLAS.items() if p.nueva != f"/estudio/{n}/"}
 
 
 def etapa_minima() -> str:

@@ -12,6 +12,9 @@ Solo hace GET; no toca AWS ni Cloudflare. Comprueba:
      cabecera: docs/OPERACION.md, «Browser Cache TTL»).
   5. Ninguna clave propia de tools/pricing.json viaja en los assets
      (la misma regla que tests/test_web_tuberia.py aplica al dist).
+  6. Las rutas por nivel: la principal /estudio/ responde 200, HTML y `no-cache`
+     (ya no redirige), y /estudio/marketing —sin barra— termina, tras el 302 de
+     server/web.py, en una página 200 de HTML.
 
 Lo único que queda fuera es lo que no mide una máquina: que el dueño abra la
 vitrina en su teléfono y la apruebe. Sale 0 si todo pasó y 1 si algo falló.
@@ -78,6 +81,15 @@ def verificar(base: str, pedir=pedir, prohibidas: set[str] | None = None) -> lis
         return res  # sin vitrina no hay assets que revisar: UI·6 no está desplegada
     anota(h.get("cache-control") == "no-cache", f"vitrina no-cache (salió {h.get('cache-control', '—')})")
     anota(h.get("x-robots-tag") == "noindex, nofollow", f"vitrina noindex (salió {h.get('x-robots-tag', '—')})")
+
+    # Rutas por nivel: la principal se sirve (no es un 302) y una dirección sin barra se corrige y llega a una página
+    st, h, _ = pedir(base + "/estudio/")
+    anota(st == 200 and "text/html" in h.get("content-type", ""),
+          f"principal /estudio/ 200 y HTML (salió {st}, {h.get('content-type', '—')})")
+    anota(h.get("cache-control") == "no-cache", f"principal no-cache (salió {h.get('cache-control', '—')})")
+    st, h, _ = pedir(base + "/estudio/marketing")   # urllib sigue el 302 a /estudio/marketing/
+    anota(st == 200 and "text/html" in h.get("content-type", ""),
+          f"/estudio/marketing (sin barra) llega a una página 200 y HTML (salió {st}, {h.get('content-type', '—')})")
 
     assets = sorted(set(re.findall(r'(/estudio/assets/[^"\']+\.(?:js|css))', html)))
     if anota(bool(assets), f"la vitrina enlaza {len(assets)} assets"):

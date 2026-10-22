@@ -230,20 +230,22 @@ def test_todo_modulo_de_todo_nivel_bloquea_el_primer_pintado():
 
 @en_dist
 def test_la_app_real_sirve_los_niveles_y_redirige_sin_barra(monkeypatch):
-    """Todas las páginas de nivel MENOS la principal: `/estudio/` todavía no la sirve web.py (la decide server/migracion.py, que la manda a
-    `/estudio/inicio/`; llega en E5.2, y ahí se suma a esta prueba)."""
+    """TODAS las páginas de nivel, la principal incluida (`/estudio/`: la sirve web.py desde E5.2), con la app de verdad."""
     monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
     from server.app import app
     c = TestClient(app, follow_redirects=False)
-    carpetas = sorted((_carpetas_fuente(ENTRADA_NIVEL) | _carpetas_fuente(ENTRADA_HERRAMIENTA)) - {""})
-    assert len(carpetas) >= 15, carpetas
+    carpetas = sorted(_carpetas_fuente(ENTRADA_NIVEL) | _carpetas_fuente(ENTRADA_HERRAMIENTA))
+    assert "" in carpetas and len(carpetas) >= 16, carpetas
     for carpeta in carpetas:
-        ruta = f"/estudio/{carpeta}"
-        r = c.get(ruta + "/")
-        assert r.status_code == 200 and "text/html" in r.headers["content-type"], ruta
-        assert r.headers["cache-control"] == "no-cache", ruta
+        con_barra = _url_de(carpeta)
+        r = c.get(con_barra)
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"], con_barra
+        assert r.headers["cache-control"] == "no-cache", con_barra
         # y es SU página, no la de otra carpeta
-        assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), ruta
-        r = c.get(ruta + "?x=1")
-        assert r.status_code == 302 and r.headers["location"] == ruta + "/?x=1", ruta
-        assert r.headers["cache-control"] == "no-store", ruta
+        assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), con_barra
+        sin_barra = con_barra.rstrip("/")
+        r = c.get(sin_barra + "?x=1")
+        assert r.status_code == 302 and r.headers["location"] == con_barra + "?x=1", sin_barra
+        # el 302 de un nivel anidado lo da web.py (`no-store`); el de `/estudio` es la ruta de server/app.py
+        if carpeta:
+            assert r.headers["cache-control"] == "no-store", sin_barra
