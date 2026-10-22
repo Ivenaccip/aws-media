@@ -354,7 +354,7 @@ describe('metricas', () => {
     const { unmount } = render(<Metricas />);
     expect(within(await screen.findByRole('alert')).getByRole('link', { name: 'Conectar Blotato' })).toHaveAttribute(
       'href',
-      '/estudio/?blotato=conectar',
+      '/estudio/marketing/blotato/?blotato=conectar',
     );
     unmount();
     montar({

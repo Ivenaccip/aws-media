@@ -21,7 +21,7 @@ flujo a ninguna parte.** Lo único que guarda es un borrador en el propio navega
   lleva su propio encabezado.
 - **Migas:** «Automatizaciones › Distrito › Constructor», dibujadas por `marca/EncabezadoHoja.tsx` con `LUGAR = { area: 'automatizaciones', grupo:
   'distrito', pantalla: 'constructor' }` (título e ícono salen del mapa; si el lugar no existe lanza). El área abre el mapa y el grupo las opciones del
-  área, estando «desde» esta pantalla (`/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=mapa` o `ver=grupos`, `urlDeInicio`); la última
+  área, directo a sus páginas (`/estudio/` y `/estudio/automatizaciones/`, `urlDeInicio`; antes iban a `/estudio/inicio/?desde=…&ver=…`); la última
   miga es un chip quieto con `aria-current="step"`. El único `h1` es «Irremplazables» (dorado, `texto-oro`); «Arma tu automatización» es un `h2` con
   `tabindex=-1` y es adonde cae el foco si lo que pidió el reductor no existe.
 - **La página** (`web/estudio/constructor/index.html`): privada, con `auth.js` clásico ANTES del módulo, `monedero.js` (la píldora del saldo), `iconos.js` y

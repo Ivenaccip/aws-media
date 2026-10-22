@@ -19,9 +19,10 @@
 // excepción es la página aparte de donde se llegó (`hoja`): esa no se alcanza con las migas, así que ahí sí hay «Volver a Agenda» y Esc
 // regresa a ella.
 //
-// Desde una pantalla hoja (agenda, métricas…) las migas son enlaces al inicio con `?desde=<lugar>&ver=<mapa|grupos>` (marca/menu.ts,
-// `urlDeInicio`). Aquí se lee esa entrada UNA vez (`estadoInicial`), con las claves validadas contra el mapa: una clave que no existe
-// (un enlace viejo, escrito a mano) se ignora y se aterriza en el mapa, como siempre.
+// Desde una pantalla hoja (agenda, métricas…) las migas eran enlaces al inicio con `?desde=<lugar>&ver=<mapa|grupos>`. Ya no: ahora van
+// directo a la página del nivel (marca/menu.ts, `urlDeInicio`), pero un marcador viejo con esa entrada todavía llega aquí. Se lee UNA vez
+// (`estadoInicial`), con las claves validadas contra el mapa: una clave que no existe (un enlace viejo, escrito a mano) se ignora y se
+// aterriza en el mapa, como siempre.
 //
 // Y hay otra entrada, la de «Llevar a la caja» de la Biblioteca de prompts (Ajustes 3, 16-oct-2026): `?prompt=<texto>` abre DIRECTO la caja en la
 // pestaña Imagen con el texto puesto, y `?brief=<texto>` en la pestaña Video (`leerLlegadaDeTexto`). Llegar así nunca crea ni cobra nada:

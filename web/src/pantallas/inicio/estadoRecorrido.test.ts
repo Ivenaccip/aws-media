@@ -3,7 +3,7 @@
 // la regla cambiada).
 import { describe, expect, it } from 'vitest';
 
-import { LUGAR_INICIAL, MENU, buscar, lugarATexto, urlDeInicio, type Lugar } from '../../marca/menu';
+import { LUGAR_INICIAL, MENU, PARAM_DESDE, PARAM_VER, buscar, lugarATexto, type Lugar } from '../../marca/menu';
 import {
   REPOSO,
   VENTANA_DOBLE_CLIC_MS,
@@ -27,7 +27,9 @@ import {
 const LUGARES: Lugar[] = MENU.flatMap(a => a.grupos.flatMap(g => g.pantallas.map(p => ({ area: a.clave, grupo: g.clave, pantalla: p.clave }))));
 
 const en = (paso: EstadoRecorrido['paso'], resto: Partial<EstadoRecorrido> = {}): EstadoRecorrido => ({ ...REPOSO, paso, ...resto });
-const desdeUrl = (l: Lugar, ver: 'mapa' | 'grupos') => estadoInicial(new URL(urlDeInicio(l, ver), 'http://x').search);
+// El enlace VIEJO de las migas (`?desde=<lugar>&ver=<mapa|grupos>`): hoy ya no lo emite nadie (urlDeInicio va directo a las páginas del
+// nivel), pero el inicio de una sola página todavía lo LEE de un marcador guardado, y aquí se prueba que lo lee bien para cada pantalla.
+const desdeUrl = (l: Lugar, ver: 'mapa' | 'grupos') => estadoInicial(`?${PARAM_DESDE}=${lugarATexto(l)}&${PARAM_VER}=${ver}`);
 
 describe('REPOSO · se aterriza en el mapa, con nada elegido', () => {
   it('abre el paso del mapa; los pies de la caja escondida son el lugar inicial de menu.ts (Marketing › Distrito) y no hay nada elegido', () => {
@@ -334,7 +336,7 @@ describe('estadoInicial · la entrada por ?desde=…&ver=…', () => {
     expect(estadoInicial('?blotato=conectar&desde=mkt.blotato.metricas&ver=grupos')).toMatchObject({ paso: 'grupos', hoja: 'metricas' });
   });
 
-  it('lo que arma urlDeInicio (el enlace de las migas de las hojas) es justo lo que se lee aquí, para cada pantalla del mapa', () => {
+  it('el enlace viejo de las migas de las hojas (?desde=<lugar>&ver=…) se lee de vuelta tal cual, para cada pantalla del mapa', () => {
     for (const l of LUGARES) {
       for (const ver of ['mapa', 'grupos'] as const) {
         const e = desdeUrl(l, ver);

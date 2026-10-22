@@ -1229,8 +1229,9 @@ describe('coi', () => {
     const migas = within(screen.getByRole('navigation', { name: 'Dónde estás' }));
     const central = migas.getByRole('link', { name: 'Ir al mapa para cambiar de área (ahora: Central)' });
     const distrito = migas.getByRole('link', { name: 'Ir a las opciones de Central (ahora: Distrito)' });
-    expect(central.getAttribute('href')).toBe('/estudio/inicio/?desde=central.distrito.coi&ver=mapa');
-    expect(distrito.getAttribute('href')).toBe('/estudio/inicio/?desde=central.distrito.coi&ver=grupos');
+    // directo al mapa y a las opciones de Central (las páginas del recorrido), sin pasar por el inicio de una sola página
+    expect(central.getAttribute('href')).toBe('/estudio/');
+    expect(distrito.getAttribute('href')).toBe('/estudio/central/');
     // COI es donde estás: un chip quieto, no un botón que no hace nada
     expect(migas.queryByRole('link', { name: 'COI' })).toBeNull();
     expect(migas.queryByRole('button')).toBeNull();

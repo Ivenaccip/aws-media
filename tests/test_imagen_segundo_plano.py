@@ -2236,29 +2236,46 @@ def _ficha_trabajo(doc, ref="img-1", ahora=None):
 
 
 def test_trabajos_una_imagen_generandose_es_un_trabajo_en_curso():
+    from server import trabajos_api
     f = _ficha_trabajo(_doc(edad_s=60, texto="un faro de noche"))
     assert (f["tipo"], f["estado"], f["titulo"], f["detalle"], f["url"]) == (
-        "imagen", "corriendo", "Generando tu imagen", "un faro de noche", "/estudio/inicio/")
+        "imagen", "corriendo", "Generando tu imagen", "un faro de noche", trabajos_api.URL_IMAGEN)
 
 
 @pytest.mark.parametrize("doc", [
     _doc(edad_s=60), _doc("listo", edad_s=120, listo=_iso(30)),
     _doc("error", edad_s=120, listo=_iso(30), error="x"), _doc(edad_s=50 * 60)],
     ids=["corriendo", "listo", "error", "caducado"])
-def test_trabajos_la_ficha_de_una_imagen_lleva_al_inicio_nuevo_donde_mis_creaciones_la_ensena(doc):
+def test_trabajos_la_ficha_de_una_imagen_lleva_a_la_pagina_de_la_caja_en_imagen_donde_mis_creaciones_la_ensena(doc):
     """El «Ver» llevaba a /imagenes.html, que es el formulario de crear, vacío: ni la imagen ni el error. «Mis
-    creaciones» solo existe en el inicio nuevo, y esa URL sale de la tabla de migración (no es /estudio/: con la
-    cookie `ui=clasica` sirve el viejo, que no lista pedidos)."""
+    creaciones» solo existe en la Caja, y la Caja vive en una página por pestaña (una dirección por herramienta):
+    la de Imagen. No es /estudio/ (la principal, «Elige un área», sin Caja) ni la página única de antes."""
     from server import migracion, trabajos_api
     f = _ficha_trabajo(doc)
-    assert f["url"] == migracion.PANTALLAS["inicio"].nueva == trabajos_api.URL_IMAGEN == "/estudio/inicio/"
-    assert f["url"] not in ("/imagenes.html", migracion.PANTALLAS["imagenes"].nueva)
+    assert f["url"] == trabajos_api.URL_IMAGEN == "/estudio/marketing/distrito/imagen/"
+    assert f["url"] not in ("/imagenes.html", migracion.PANTALLAS["imagenes"].nueva, "/estudio/", "/estudio/inicio/")
+
+
+def test_trabajos_url_imagen_es_una_pagina_que_existe_y_es_la_de_la_caja_en_imagen():
+    """Si `URL_IMAGEN` se desfasara de las páginas que genera web/src/marca/paginas.ts (se renombra el grupo, se
+    mueve la herramienta, se confunde con la de Video), el «Ver» de una imagen terminada llevaría a un 404 o a una
+    Caja en otra pestaña, y ninguna otra prueba lo vería: las fichas solo comparan contra la constante. Aquí se ata
+    a la página compilada de verdad: el index.html de esa carpeta existe, monta la Caja y su título dice Imagen."""
+    from server import trabajos_api
+    url = trabajos_api.URL_IMAGEN
+    assert url.startswith("/estudio/") and url.endswith("/")
+    pagina = RAIZ / "web" / url.strip("/") / "index.html"
+    assert pagina.is_file(), f"URL_IMAGEN = {url}, y no existe {pagina.relative_to(RAIZ)}"
+    html = pagina.read_text(encoding="utf-8")
+    assert '<script type="module" src="/src/pantallas/inicio/herramienta.tsx"></script>' in html, \
+        "esa página no monta la Caja (herramienta.tsx): ahí «Mis creaciones» no enseñaría el pedido"
+    assert re.search(r"<title>[^<]*· Imagen</title>", html), "esa página no es la de la pestaña Imagen"
 
 
 def test_trabajos_js_enlaza_a_esa_ruta_y_no_la_repite_en_la_pantalla_que_ya_la_ensena():
     """static/trabajos.js pinta la URL de la ficha tal cual en un <a href> y oculta la ficha en la pantalla a la
-    que apunta (`deEstaPantalla`): en el inicio no repite lo que «Mis creaciones» ya dice; en cualquier otra
-    pantalla (estilos, clip…) el «Ver» lleva al inicio."""
+    que apunta (`deEstaPantalla`, pathname exacto): en la página de la Caja en Imagen no repite lo que «Mis
+    creaciones» ya dice; en cualquier otra (estilos, clip, el mapa…) el «Ver» lleva a esa página."""
     node = shutil.which("node")
     if not node:
         pytest.skip("node no está instalado")
@@ -2266,15 +2283,15 @@ def test_trabajos_js_enlaza_a_esa_ruta_y_no_la_repite_en_la_pantalla_que_ya_la_e
     assert 'href="${esc(t.url)}"' in codigo
     guion = codigo + """
 const P = globalThis.trabajosPuro;
-const L = [{id: 'imagen:img-1', estado: 'listo', url: '/estudio/inicio/'},
+const L = [{id: 'imagen:img-1', estado: 'listo', url: '/estudio/marketing/distrito/imagen/'},
            {id: 'clip:1', estado: 'listo', url: '/clip.html'}];
 const en = p => P.visibles(L, {}, {origin: 'http://x', pathname: p, search: ''}).map(t => t.id);
-console.log(JSON.stringify({estilos: en('/estilos.html'), inicio: en('/estudio/inicio/'), viejo: en('/estudio/')}));
+console.log(JSON.stringify({estilos: en('/estilos.html'), caja: en('/estudio/marketing/distrito/imagen/'), mapa: en('/estudio/')}));
 """
     r = subprocess.run([node, "-e", guion], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout) == {"estilos": ["imagen:img-1", "clip:1"], "inicio": ["clip:1"],
-                                    "viejo": ["imagen:img-1", "clip:1"]}
+    assert json.loads(r.stdout) == {"estilos": ["imagen:img-1", "clip:1"], "caja": ["clip:1"],
+                                    "mapa": ["imagen:img-1", "clip:1"]}
 
 
 def test_trabajos_no_lista_el_historial_de_imagenes_ni_lee_los_reclamos(cliente, nube, s3, monkeypatch):

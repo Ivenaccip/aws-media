@@ -7,7 +7,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MENU, buscar, detalleDeGrupo, lugarDePagina, urlDeInicio } from '../../marca/menu';
+import { MENU, buscar, detalleDeGrupo, lugarATexto, lugarDePagina, urlDeInicio } from '../../marca/menu';
+import { nivelDeRuta } from '../../marca/rutas';
 import { json, servidor, sinRed } from '../../prueba/servidor';
 import { REPOSO, alEscape, areaDe, destinoDeVolver, estadoInicial, grupoDe, migasDe, reducir } from './estadoRecorrido';
 import { Inicio } from './Inicio';
@@ -70,9 +71,10 @@ describe('menu · Automatizaciones', () => {
     // la clave de un grupo vacío no es un lugar: `buscar` exige una pantalla
     expect(buscar({ area: 'automatizaciones', grupo: 'tus', pantalla: 'x' })).toBeNull();
   });
-  it('las migas de una hoja de Automatizaciones: el enlace del área abre el mapa y el del grupo las opciones, "desde" la hoja', () => {
+  it('las migas de una hoja de Automatizaciones: el enlace del área abre el mapa y el del grupo las opciones de Automatizaciones, directo a sus páginas', () => {
     const l = { area: 'automatizaciones', grupo: 'distrito', pantalla: 'constructor' };
-    expect(urlDeInicio(l, 'mapa')).toBe('/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=mapa');
+    expect(urlDeInicio(l, 'mapa')).toBe('/estudio/');
+    expect(urlDeInicio(l, 'grupos')).toBe('/estudio/automatizaciones/');
   });
 });
 
@@ -226,12 +228,12 @@ describe('Recorrido · Automatizaciones', () => {
 });
 
 describe('exhaustivo · todos los lugares con pantalla (incluye Automatizaciones)', () => {
-  it('cada urlDeInicio de cada pantalla de menu.ts se lee de vuelta', () => {
+  it('cada urlDeInicio de cada pantalla de menu.ts lleva a la página de su nivel: el mapa, o las opciones de SU área', () => {
     const LUGARES = MENU.flatMap(a => a.grupos.flatMap(g => g.pantallas.map(p => ({ area: a.clave, grupo: g.clave, pantalla: p.clave }))));
     expect(LUGARES.filter(l => l.area === 'automatizaciones')).toHaveLength(3);
-    for (const l of LUGARES) for (const ver of ['mapa', 'grupos'] as const) {
-      const e = estadoInicial(new URL(urlDeInicio(l, ver), 'http://x').search);
-      expect(e).toMatchObject({ paso: ver, explora: l.area, area: l.area, grupo: l.grupo });
+    for (const l of LUGARES) {
+      expect(nivelDeRuta(urlDeInicio(l, 'mapa')), lugarATexto(l)).toEqual({ tipo: 'mapa' });
+      expect(nivelDeRuta(urlDeInicio(l, 'grupos')), lugarATexto(l)).toEqual({ tipo: 'area', area: l.area });
     }
   });
 });

@@ -42,7 +42,7 @@ Cada ID es un test de vitest con ese nombre exacto, en
 | `agenda.tarjeta.destino_en_la_tarjeta_el_dialogo_y_la_confirmacion` | «red · cuenta · destino» en los tres sitios; sin destino no queda un « · » colgando |
 | `agenda.tarjeta.puntos_suspensivos_los_decide_cortado` | el «…» solo con `cortado`; «Sin texto» si no trae |
 | `agenda.tarjeta.adjuntos_se_llaman_archivos_y_cero_no_se_pinta` | «1 archivo» / «3 archivos», 0 no se pinta y nunca dice «video» |
-| `agenda.errores.solo_el_409_ofrece_conectar_blotato` | con 409, el aviso ofrece «Conectar Blotato» (`/estudio/?blotato=conectar`); con 502, Reintentar |
+| `agenda.errores.solo_el_409_ofrece_conectar_blotato` | con 409, el aviso ofrece «Conectar Blotato» (`/estudio/marketing/blotato/?blotato=conectar`, la página del grupo Blotato); con 502, Reintentar |
 | `agenda.errores.clave_rechazada_al_listar_ofrece_conectar` | un 200 con `reconectar: true` también ofrece conectar |
 | `agenda.errores.sin_red_en_espanol_y_reintentar_recarga` | sin red, «No pudimos hablar con el servidor» (nunca «Failed to fetch»); Reintentar recarga y quita el aviso |
 | `agenda.hora.solo_manda_id_y_cuando_en_utc` | reprogramar manda **solo** `{id, cuando}`, sin `draft`, con la hora en UTC terminada en Z |

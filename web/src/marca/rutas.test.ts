@@ -2,8 +2,11 @@
 // carpetas de web/estudio/ es estudio.test.ts). Sin el prefijo `inicio.`: no son invariantes del registro de migración.
 import { describe, expect, it } from 'vitest';
 
+import { CONECTAR as CONECTAR_AGENDA } from '../pantallas/agenda/logica';
+import { CONECTAR as CONECTAR_METRICAS } from '../pantallas/metricas/logica';
+import { CONECTAR as CONECTAR_MIX } from '../pantallas/mix/logica';
 import * as menu from './menu';
-import { MENU, buscar } from './menu';
+import { MENU, buscar, urlDeInicio } from './menu';
 import {
   PREFIJO,
   RUTA_MAPA,
@@ -273,5 +276,49 @@ describe('rutas · la carpeta de web/estudio/ que sirve cada dirección', () => 
     const carpetas = rutasDelRecorrido().map(r => carpetaDe(r.url));
     expect(new Set(carpetas).size).toBe(carpetas.length);
     for (const c of carpetas) expect(c.startsWith('_'), c).toBe(false);
+  });
+});
+
+describe('rutas · los enlaces directos: de las hojas a la página del nivel', () => {
+  const rutas = rutasDelRecorrido();
+  const lugares = MENU.flatMap(a => a.grupos.flatMap(g => g.pantallas.map(p => ({ area: a.clave, grupo: g.clave, pantalla: p.clave }))));
+
+  it('rutas.enlaces.las_migas_van_directo_a_una_pagina_del_recorrido_sin_parametros: el mapa y las opciones del área, nunca /estudio/inicio/', () => {
+    expect(lugares.length, 'MENU dejó de traer pantallas: esta prueba ya no muerde').toBeGreaterThan(5);
+    const urls = new Set(rutas.map(r => r.url));
+    for (const l of lugares) {
+      for (const ver of ['mapa', 'grupos'] as const) {
+        const url = urlDeInicio(l, ver);
+        expect(urls.has(url), `${l.area}.${l.grupo}.${l.pantalla} (${ver}) → ${url}`).toBe(true);
+        expect(url, 'ya no viaja ni ?desde= ni ?ver=').not.toMatch(/[?#]/);
+        expect(url).not.toContain('inicio');
+      }
+    }
+  });
+
+  it('rutas.enlaces.una_miga_de_mkt_va_a_marketing_y_no_a_mkt: la dirección del área, no su clave', () => {
+    const agenda = { area: 'mkt', grupo: 'blotato', pantalla: 'agenda' };
+    expect(urlDeInicio(agenda, 'mapa')).toBe('/estudio/');
+    expect(urlDeInicio(agenda, 'grupos')).toBe('/estudio/marketing/');
+    expect(urlDeInicio({ area: 'central', grupo: 'distrito', pantalla: 'coi' }, 'grupos')).toBe('/estudio/central/');
+  });
+
+  it('rutas.enlaces.un_area_que_el_mapa_no_conoce_cae_en_la_principal: no inventa una dirección', () => {
+    const rara = { area: 'nada', grupo: 'x', pantalla: 'y' };
+    expect(urlDeInicio(rara, 'grupos')).toBe('/estudio/');
+    expect(urlDeInicio(rara, 'mapa')).toBe('/estudio/');
+    // la clave de Object.prototype tampoco es un área (el menú se busca con find, no con un objeto indexado)
+    expect(urlDeInicio({ area: 'constructor', grupo: 'x', pantalla: 'y' }, 'grupos')).toBe('/estudio/');
+    expect(urlDeInicio({ area: '__proto__', grupo: 'x', pantalla: 'y' }, 'grupos')).toBe('/estudio/');
+  });
+
+  it('rutas.enlaces.conectar_blotato_de_agenda_metricas_y_mix_abre_el_dialogo_en_la_pagina_del_grupo_Blotato', () => {
+    const mkt = area('mkt');
+    const blotato = mkt.grupos.find(g => g.clave === 'blotato');
+    if (!blotato) throw new Error('MENU no trae el grupo Blotato de Marketing');
+    const pagina = urlDeGrupo(mkt, blotato);
+    expect(pagina).toBe('/estudio/marketing/blotato/');
+    expect(nivelDeRuta(pagina)).toEqual({ tipo: 'grupo', area: 'mkt', grupo: 'blotato' });
+    for (const conectar of [CONECTAR_AGENDA, CONECTAR_METRICAS, CONECTAR_MIX]) expect(conectar).toBe(`${pagina}?blotato=conectar`);
   });
 });

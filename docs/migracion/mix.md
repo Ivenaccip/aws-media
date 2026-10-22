@@ -46,7 +46,7 @@ Cada ID es el nombre exacto de un test de vitest en
 | ID | Qué garantiza |
 |---|---|
 | `mix.carga.una_llamada_al_abrir_y_restaura_el_borrador` | Una llamada a `/api/mix` y una a `/cuentas`, aunque StrictMode monte dos veces. Restaura el borrador: motivo, tono, hora, cuenta y foto. El ejemplo ya visto sigue valiendo y no se vuelve a pedir |
-| `mix.blotato.sin_clave_el_formulario_no_se_usa_y_lleva_a_conectar` | Sin Blotato, el aviso y el formulario `inert`. Un clic lleva a `/estudio/?blotato=conectar` y no se piden cuentas |
+| `mix.blotato.sin_clave_el_formulario_no_se_usa_y_lleva_a_conectar` | Sin Blotato, el aviso y el formulario `inert`. Un clic lleva a `/estudio/marketing/blotato/?blotato=conectar` y no se piden cuentas |
 | `mix.cuentas.sin_clave_ofrece_conectar_y_otro_fallo_reintentar` | Un 409 al traer las cuentas ofrece conectar; cualquier otro fallo, Reintentar |
 | `mix.cuentas.la_que_ya_no_esta_conectada_se_dice` | La cuenta guardada que ya no está se dice, y el selector queda vacío |
 | `mix.foto.tipo_y_tamano_antes_de_subir` | Solo JPG, PNG o WebP de hasta 12 MB, sin llamar a nadie |

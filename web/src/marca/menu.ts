@@ -262,12 +262,22 @@ export function lugarDeTexto(t: string | null | undefined): Lugar | null {
   return buscar(l) ? l : null;
 }
 
-/** Los parámetros con los que una pantalla hoja manda de vuelta al inicio: `desde` (dónde estaba) y `ver` (qué abrir). */
+/**
+ * Los parámetros con los que una pantalla hoja mandaba de vuelta al inicio: `desde` (dónde estaba) y `ver` (qué abrir). Ya no los emite
+ * nadie (las migas van directo a la página del nivel, `urlDeInicio`), pero el inicio de una sola página todavía los LEE de un enlace viejo
+ * guardado como marcador, y por eso siguen aquí.
+ */
 export const PARAM_DESDE = 'desde';
 export const PARAM_VER = 'ver';
 export type VerInicio = 'mapa' | 'grupos';
 
-/** La URL del inicio que abre el mapa (`ver=mapa`) o las tres opciones del área (`ver=grupos`) estando "desde" una pantalla. */
+/**
+ * A dónde llevan las migas de una pantalla hoja, estando "desde" ella: `mapa` es la principal (`/estudio/`) y `grupos` son las opciones de
+ * SU área (`/estudio/marketing/`). Directo a la página del nivel, sin pasar por el inicio de una sola página ni llevar parámetros.
+ * Un área que el mapa no conoce (una clave escrita a mano) cae en la principal en vez de inventar una dirección.
+ */
 export function urlDeInicio(desde: Lugar, ver: VerInicio): string {
-  return `/estudio/inicio/?${PARAM_DESDE}=${lugarATexto(desde)}&${PARAM_VER}=${ver}`;
+  if (ver === 'mapa') return RUTA_MAPA;
+  const area = MENU.find(a => a.clave === desde.area);
+  return area ? urlDeArea(area) : RUTA_MAPA;
 }

@@ -98,7 +98,7 @@ En `web/src/pantallas/coi/Coi.test.tsx` y `web/src/pantallas/coi/logica.test.ts`
 | `coi.privacidad.lo_que_se_escribe_y_lo_que_responde_la_ia_no_toca_el_almacenamiento_del_navegador` | escribir, armar y guardar no escriben nada en localStorage ni sessionStorage |
 | `coi.privacidad.ninguna_llamada_aparta_el_cuerpo_mientras_vuela` | ninguna llamada usa `apartar` (que deja el cuerpo en sessionStorage mientras vuela la petición) |
 | `coi.privacidad.la_linea_de_privacidad_esta_siempre_a_la_vista` | «No guardamos lo que escribes ni lo que te responde. Solo se guarda el COI que tú decidas guardar, y solo en tu Biblioteca.» en reposo, sin poder leer el contador y con resultado |
-| `coi.marco.irremplazables_en_dorado_y_las_migas_central_distrito_coi_con_la_ultima_quieta` | «Irremplazables» dorado y sin ícono arriba; migas Central › Distrito › COI (las dos primeras llevan al inicio, COI es un chip quieto con `aria-current`) |
+| `coi.marco.irremplazables_en_dorado_y_las_migas_central_distrito_coi_con_la_ultima_quieta` | «Irremplazables» dorado y sin ícono arriba; migas Central › Distrito › COI (las dos primeras llevan directo al mapa y a las opciones de Central, COI es un chip quieto con `aria-current`) |
 | `coi.marco.el_mapa_enciende_coi_y_enlaza_la_biblioteca_desde_la_pantalla` | `marca/menu.ts` enciende COI (`/estudio/coi/`, sin «Próximamente») y la pantalla enlaza la Biblioteca |
 | `coi.marco.un_solo_boton_ambar_y_es_armar_coi` | un solo botón ámbar por pantalla: «Armar COI» (sin ✦: es gratis); «Guardar» y «Copiar» son secundarios |
 | `coi.logica.el_texto_copiado_lleva_encabezado_y_los_tres_bloques_en_orden` | lo que se copia y se guarda: encabezado y texto de cada bloque, en orden; sin estructura, lo que respondió el modelo |

@@ -51,7 +51,7 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.copiar.usa_el_portapapeles_y_confirma_sin_mover_el_foco` | `navigator.clipboard.writeText` con el prompt entero; el botón confirma («Copiado»), la región viva lo anuncia, el foco no se mueve y el botón vuelve solo |
 | `biblioteca.copiar.reserva_con_el_metodo_viejo_si_el_navegador_niega_la_api` | si el navegador niega la API moderna, `execCommand('copy')` |
 | `biblioteca.copiar.ultima_reserva_deja_el_prompt_seleccionado_y_lo_dice` | si tampoco eso: el prompt queda SELECCIONADO, se dice cómo copiarlo y no se miente con «Copiado» |
-| `biblioteca.llevar.imagen_y_video_van_al_inicio_con_el_texto_codificado` | Imagen → `/estudio/inicio/?prompt=`, Video → `?brief=`, con `encodeURIComponent`; el texto vuelve idéntico al leer la dirección |
+| `biblioteca.llevar.imagen_y_video_van_al_inicio_con_el_texto_codificado` | Imagen → `/estudio/marketing/distrito/imagen/?prompt=`, Video → `/estudio/marketing/distrito/video/?brief=` (la página de la Caja en esa pestaña), con `encodeURIComponent`; el texto vuelve idéntico al leer la dirección |
 | `biblioteca.llevar.guion_e_investigacion_y_los_mios_solo_se_copian` | Guion, Investigación y todo «mío» no tienen «Llevar a la caja» |
 | `biblioteca.llevar.el_ambar_es_llevar_si_existe_y_copiar_si_no_y_nunca_hay_dos` | un solo botón ámbar: «Llevar a la caja» si existe y «Copiar» si no; el interruptor del pin no es ámbar |
 | `biblioteca.llevar.mas_de_1800_caracteres_solo_se_copian` | 1800 se lleva; 1801 solo se copia, y lo dice |
@@ -73,7 +73,7 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.mios.un_404_no_es_tuyo_es_que_ya_no_estaba_y_se_quita_igual` | `no_es_tuyo` = ya no existe: se quita sin alarmar |
 | `biblioteca.celular.dos_pasos_elegir_pasa_al_segundo_con_el_foco_en_el_titulo_y_volver_regresa_a_la_fila` | en celular: «1 Elige» → «2 Úsalo»; elegir pasa al segundo con el foco en el título del prompt y «Volver a la lista» regresa a su fila |
 | `biblioteca.celular.elegir_una_etiqueta_del_detalle_lleva_el_foco_a_quitarla_y_no_a_body` | en un celular la etiqueta del detalle (paso 2) se esconde al filtrar (paso 1): el foco va a «Quitar la etiqueta», no a `<body>` |
-| `biblioteca.marco.irremplazables_arriba_y_migas_de_tres_niveles_que_reabren_su_nivel` | un solo `h1` («Irremplazables»), sin ícono ni tarjeta; migas «Central › Distrito › Biblioteca de prompts»: las dos primeras reabren el mapa y las opciones (`?desde=…&ver=…`) |
+| `biblioteca.marco.irremplazables_arriba_y_migas_de_tres_niveles_que_reabren_su_nivel` | un solo `h1` («Irremplazables»), sin ícono ni tarjeta; migas «Central › Distrito › Biblioteca de prompts»: las dos primeras reabren el mapa (`/estudio/`) y las opciones de Central (`/estudio/central/`), directo a esas páginas |
 | `biblioteca.marco.los_enlaces_a_coi_son_enlaces_a_su_pantalla` | «Ir a COI» es un enlace a `/estudio/coi/` (la pantalla es de otro rol: aquí no se importa nada de ella) |
 | `biblioteca.seguridad.no_guarda_nada_en_el_navegador` | ni `localStorage` ni `sessionStorage`: ni prompts, ni búsquedas, ni fijados |
 | `biblioteca.dinero.nada_cobra_ni_crea_solo_lecturas_el_put_de_fijados_y_el_delete_de_un_mio` | las únicas escrituras son `PUT /fijados` y `DELETE /mios/{id}`; el saldo no se toca |
@@ -97,7 +97,8 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 
 ## «Llevar a la caja» y el inicio
 
-Imagen → `/estudio/inicio/?prompt=<texto>`; Video → `/estudio/inicio/?brief=<texto>`. Solo prompts de hasta **1800** caracteres (y, con
+Imagen → `/estudio/marketing/distrito/imagen/?prompt=<texto>`; Video → `/estudio/marketing/distrito/video/?brief=<texto>` (la página de la Caja en esa
+pestaña; antes era la página única `/estudio/inicio/`). Solo prompts de hasta **1800** caracteres (y, con
 tildes, de dirección de hasta 6000: más largos solo se copian), siempre con `encodeURIComponent`. **Nunca crea ni cobra**: es un enlace.
 
 El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos:
@@ -112,7 +113,7 @@ El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos:
 - Sin parámetros no cambia nada: el mismo mapa, la misma caja en Video, el foco donde estaba.
 
 **Plan B** (si el inicio diera problemas): en `logica.ts` la tabla `DESTINO` es la ÚNICA que sabe a dónde lleva cada caja; cambiar
-`ruta` de `/estudio/inicio/` a `/estudio/imagenes/` (parámetro `prompt`) y `/estudio/clip/` (parámetro `brief`) lleva directo a las
+`ruta` de `/estudio/marketing/distrito/imagen/` a `/estudio/imagenes/` (parámetro `prompt`) y `/estudio/clip/` (parámetro `brief`) lleva directo a las
 pantallas que ya leían esos parámetros. No hace falta tocar nada más (la prueba de la dirección lo dirá).
 
 ## Lo que NO está (v1, a propósito)
