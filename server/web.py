@@ -59,6 +59,9 @@ Las direcciones de ANTES siguen funcionando:
     → `/estudio/`). Salen de `migracion.alias_del_estudio()`, que `montar` importa AL
     LLAMARLO (así `server/app.py` no cambia y no hay ciclo). Un alias es inerte
     mientras la carpeta vieja siga existiendo en dist: una pantalla que existe manda.
+    La de `/estudio/inicio/` (la página única de antes) se retiró en E5.3, así que su
+    alias contesta: 302 a la principal, y de ahí, si trae `?prompt=`/`?brief=`/
+    `?blotato=conectar`, un segundo 302 a la herramienta.
 
 El manejador de 404 es ÚNICO por app (Starlette guarda uno por código): `montar`
 conserva el que hubiera y le delega todo lo que no es de /estudio/. Un `montar`

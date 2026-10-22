@@ -779,7 +779,7 @@ def test_un_alias_a_un_destino_que_no_esta_compilado_da_404_y_no_redirige_a_la_n
 
 def test_sin_pasar_alias_montar_usa_el_de_migracion(dist):
     """`web.montar(app, dist)` (como lo llama server/app.py) trae `migracion.alias_del_estudio()`: el inicio de una sola página
-    (/estudio/inicio/) va a la principal en cuanto su carpeta ya no está en dist. `{}` es «ninguno» y no se confunde con `None`."""
+    (/estudio/inicio/, retirada en E5.3) va a la principal. `{}` es «ninguno» y no se confunde con `None`."""
     from server import migracion
     assert migracion.alias_del_estudio().get("/estudio/inicio/") == "/estudio/"
     c = _c(dist)                                  # dist sin carpeta `inicio`
@@ -791,17 +791,59 @@ def test_sin_pasar_alias_montar_usa_el_de_migracion(dist):
     assert _c(dist, {}).get("/estudio/inicio/").status_code == 404
 
 
-def test_mientras_la_pagina_unica_siga_en_dist_el_alias_del_inicio_no_la_pisa(dist):
-    """E5.2 deja /estudio/inicio/ como la página de siempre (200): el alias es inerte hasta que su carpeta desaparezca (E5.3)."""
-    d = dist / "estudio" / "inicio"
-    d.mkdir()
-    (d / "index.html").write_text("<title>PAGINA UNICA</title>", encoding="utf-8")
-    c = _c(dist)
-    for pedido in ("/estudio/inicio/", "/estudio/inicio/?prompt=x", "/estudio/inicio/?blotato=conectar"):
-        r = c.get(pedido)
-        assert r.status_code == 200 and "PAGINA UNICA" in r.text, pedido
-    r = c.get("/estudio/inicio?x=1")
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/?x=1"
+def _dist_de_las_fuentes(tmp_path):
+    """Un dist falso con una página (con su ruta de título) por cada ruta que registran las FUENTES reales de web/estudio:
+    lo que `npm run build` compila, sin necesitar el build."""
+    estudio = tmp_path / "dist" / "estudio"
+    for ruta in web.rutas(RAIZ / "web" / "estudio"):
+        d = estudio / ruta.removeprefix("/estudio/")
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "index.html").write_text(f"<!doctype html><title>{ruta}</title>", encoding="utf-8")
+    (estudio / "assets").mkdir()
+    return tmp_path / "dist"
+
+
+def test_la_pagina_unica_del_inicio_ya_no_esta_en_las_fuentes_y_su_alias_manda(tmp_path):
+    """E5.3 retiró web/estudio/inicio/: el registro de las fuentes ya no la cuenta, así que el alias del inicio (inerte mientras la
+    carpeta existía) es el que contesta. Con un dist hecho de las fuentes reales, /estudio/inicio/ es un 302 a la principal, con el
+    query intacto y sin guardarse en caché, con o sin barra y en cualquier método de lectura."""
+    registro = web.rutas(RAIZ / "web" / "estudio")
+    assert "/estudio/" in registro and "/estudio/inicio/" not in registro
+    c = _c(_dist_de_las_fuentes(tmp_path))
+    for pedido, destino in (("/estudio/inicio/", "/estudio/"), ("/estudio/inicio", "/estudio/"),
+                            ("/estudio/inicio/?x=1&y=a%20b", "/estudio/?x=1&y=a%20b"), ("/estudio/Inicio/", "/estudio/"),
+                            ("/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos", "/estudio/?desde=mkt.blotato.agenda&ver=grupos")):
+        for metodo in (c.get, c.head):
+            r = metodo(pedido)
+            assert r.status_code == 302 and r.headers["location"] == destino, (metodo.__name__, pedido)
+            assert r.headers["cache-control"] == "no-store", pedido
+    # y la principal a la que llegan sí se sirve (no es un 302 a la nada)
+    r = c.get("/estudio/")
+    assert r.status_code == 200 and "<title>/estudio/</title>" in r.text
+
+
+@pytest.mark.parametrize("pedido, saltos", [
+    ("/estudio/inicio/?prompt=x",
+     ["/estudio/?prompt=x", "/estudio/marketing/distrito/imagen/?prompt=x"]),
+    ("/estudio/inicio?prompt=un%20faro",                              # sin barra: el alias también la cubre, sigue siendo un salto
+     ["/estudio/?prompt=un%20faro", "/estudio/marketing/distrito/imagen/?prompt=un%20faro"]),
+    ("/estudio/inicio/?brief=hola",
+     ["/estudio/?brief=hola", "/estudio/marketing/distrito/video/?brief=hola"]),
+    ("/estudio/inicio/?blotato=conectar",
+     ["/estudio/?blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar"]),
+    ("/estudio/inicio/?x=1", ["/estudio/?x=1"]),                  # sin entrada vieja termina en la principal, en un solo salto
+])
+def test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_sin_bucles(tmp_path, pedido, saltos):
+    """Un marcador de /estudio/inicio/?prompt=x (la Caja abierta con un texto) hace dos 302 —uno de alias, otro de entrada vieja— y
+    termina en la Caja en Imagen con el texto puesto (con o sin barra final); sin parámetro de antes, uno solo, a la principal. `saltos`
+    son los `Location` de cada 302, en orden. Nunca un 404 ni un bucle, y ningún salto se guarda en caché."""
+    c = TestClient(_app(_dist_de_las_fuentes(tmp_path))[0], follow_redirects=True)
+    r = c.get(pedido)
+    assert r.status_code == 200, pedido
+    assert [h.headers["location"] for h in r.history] == saltos, pedido
+    assert all(h.status_code == 302 and h.headers["cache-control"] == "no-store" for h in r.history)
+    assert r.url.raw_path.decode() == saltos[-1]
+    assert f"<title>{saltos[-1].split('?')[0]}</title>" in r.text
 
 
 def test_ningun_alias_apunta_a_otro_alias_ni_a_si_mismo():

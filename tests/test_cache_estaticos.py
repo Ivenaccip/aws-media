@@ -99,6 +99,26 @@ def test_el_302_del_index_viejo_a_la_principal_no_se_queda_en_cache(cliente):
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
 
 
+@pytest.mark.parametrize("pedido, destino", [
+    ("/estudio/inicio/", "/estudio/"),
+    ("/estudio/inicio", "/estudio/"),
+    ("/estudio/inicio/?x=1", "/estudio/?x=1"),
+    ("/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos", "/estudio/?desde=mkt.blotato.agenda&ver=grupos"),
+])
+def test_el_302_de_la_pagina_unica_a_la_principal_no_se_queda_en_cache(cliente, pedido, destino):
+    """/estudio/inicio/ (la página única de antes, retirada en E5.3) ya no es una página: redirige a la principal con el query intacto,
+    y ese 302 no se guarda (un marcador viejo llega a lo que haya hoy; `no-store` y no `no-cache`: nunca se queda en una caché).
+    Con `?prompt=`/`?brief=`/`?blotato=conectar` el segundo salto (la entrada vieja) lo cubre tests/test_web_niveles.py."""
+    _con_la_principal(cliente)
+    r = cliente.get(pedido, follow_redirects=False)
+    assert r.status_code == 302, (
+        f"{pedido} dio {r.status_code}: ¿web/dist es de antes de retirar la página única? Compila con «cd web && npm run build»"
+    )
+    assert r.headers["location"] == destino
+    assert r.headers["cache-control"] == "no-store"
+    assert "cloudflare-cdn-cache-control" not in r.headers
+
+
 def test_los_versionados_siguen_inmutables(cliente):
     for ruta in ("/orbe-gpu.v1.js", "/orbe.v1.wgsl", "/fuentes/geist-latin.v1.woff2"):
         r = cliente.get(ruta)

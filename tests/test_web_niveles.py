@@ -18,10 +18,9 @@ Lo que E4 le hizo al peso de las pantallas que YA existían (medido con `git arc
 comportamiento, pero el build reparte distinto los módulos que ahora comparten con las páginas nuevas.
   · las 16 de siempre (agenda, métricas, clip, COI, Mix…) piden UN archivo de JS más (`Boton-*.js`, módulo que dejó de ser de una sola
     pantalla) y +0,2 a 0,3 kB gzip: es el costo del chunk compartido, no una fuga; no se vigila pantalla por pantalla;
-  · /estudio/inicio/ (la página única de antes, que sigue sirviéndose hasta E5.3) pasa de 23 a 28 archivos y de 139,3 a 143,4 kB gzip:
-    `Inicio` ahora es un chunk compartido con las tres páginas de herramienta, y con él `Blotato`, `logica` y `navegar` (menu.ts + rutas.ts).
-    Se acepta porque esa página se retira en E5.3; mientras exista, `test_la_pagina_unica_de_antes_no_pesa_mas_que_una_herramienta`
-    le pone el mismo tope que a la Caja. Si el costo importara antes, `manualChunks` en vite.config.ts (E9) los junta.
+  · /estudio/inicio/ (la página única de antes) pasó de 23 a 28 archivos y de 139,3 a 143,4 kB gzip al compartir chunks con ellas. Esa
+    página se retiró en E5.3: ya no existe en el dist y /estudio/inicio/ es un 302 a la principal
+    (`test_la_pagina_unica_de_antes_ya_no_esta_en_el_dist`, `test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_con_la_app_real`).
 """
 from __future__ import annotations
 
@@ -202,16 +201,16 @@ def test_las_paginas_de_herramienta_si_traen_la_caja_y_pesan_lo_que_pesa_la_caja
 
 
 @en_dist
-def test_la_pagina_unica_de_antes_no_pesa_mas_que_una_herramienta():
-    """/estudio/inicio/ lleva la misma Caja que las tres páginas de herramienta (es el mismo `Inicio`): pasó de 139,3 a 143,4 kB gzip al
-    compartir chunks con ellas (ver el docstring del módulo). Mientras exista, no puede engordar más que lo que pesa una herramienta.
-    En E5.3 se retira la página y esta prueba se salta sola."""
-    if not (ESTUDIO / "inicio" / "index.html").is_file():
-        pytest.skip("la página única /estudio/inicio/ ya no existe (E5.3)")
-    cierre = _cierre(_entradas(_html_de("inicio").read_text(encoding="utf-8")))
-    assert any(marca in "".join(cierre.values()) for marca in MARCAS_DE_LA_CAJA), "ya no trae la Caja: esta prueba ya no mide lo que dice"
-    gz = _gzip(cierre)
-    assert gz <= TOPE_GZIP_DE_HERRAMIENTA, f"/estudio/inicio/: {gz} B de JS comprimido (tope {TOPE_GZIP_DE_HERRAMIENTA})"
+def test_la_pagina_unica_de_antes_ya_no_esta_en_el_dist():
+    """E5.3 retiró la página única (web/estudio/inicio/): ni las fuentes ni el dist la traen, ni su entrada (`principal.tsx`) sobrevive
+    como módulo de ninguna página. Antes esta prueba le ponía a /estudio/inicio/ el mismo tope de peso que a la Caja y se SALTABA
+    cuando la página se retiraba; ahora exige lo contrario, y un dist de antes falla con el aviso de recompilar en vez de saltarse."""
+    assert not (FUENTE / "inicio").exists(), "web/estudio/inicio/ no vuelve: /estudio/inicio/ es un 302 a la principal"
+    assert not (ESTUDIO / "inicio" / "index.html").exists(), (
+        "el dist trae /estudio/inicio/: es de antes de retirar la página única. Compila con «cd web && npm run build»"
+    )
+    # y su chunk de entrada tampoco (el build nombra la entrada de cada página por su carpeta: `inicio-<hash>.js`, vite.config.ts::nombreDe)
+    assert not [a.name for a in (ESTUDIO / "assets").glob("*.js") if a.name.startswith("inicio-")], "chunk de entrada de la página única"
 
 
 @en_dist
@@ -249,3 +248,34 @@ def test_la_app_real_sirve_los_niveles_y_redirige_sin_barra(monkeypatch):
         # el 302 de un nivel anidado lo da web.py (`no-store`); el de `/estudio` es la ruta de server/app.py
         if carpeta:
             assert r.headers["cache-control"] == "no-store", sin_barra
+
+
+@en_dist
+@pytest.mark.parametrize("pedido, saltos", [
+    ("/estudio/inicio/?prompt=x", ["/estudio/?prompt=x", "/estudio/marketing/distrito/imagen/?prompt=x"]),
+    ("/estudio/inicio/?prompt=un%20faro%20azul", ["/estudio/?prompt=un%20faro%20azul", "/estudio/marketing/distrito/imagen/?prompt=un%20faro%20azul"]),
+    ("/estudio/inicio/?brief=hola", ["/estudio/?brief=hola", "/estudio/marketing/distrito/video/?brief=hola"]),
+    ("/estudio/inicio/?blotato=conectar", ["/estudio/?blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar"]),
+    ("/estudio/inicio/", ["/estudio/"]),
+    ("/estudio/inicio", ["/estudio/"]),
+    ("/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos", ["/estudio/?desde=mkt.blotato.agenda&ver=grupos"]),
+])
+def test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_con_la_app_real(monkeypatch, pedido, saltos):
+    """Con la app de verdad y el dist de verdad: GET /estudio/inicio/?prompt=x → 302 → 302 → …/imagen/?prompt=x (la Caja en Imagen, con el
+    texto en la dirección). `saltos` son los `Location` de cada 302, en orden; todos `no-store`; el último destino es una página compilada.
+    Sin parámetro de antes, un solo salto a la principal (que se sirve, 200)."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    visto, url = [], pedido
+    for _ in range(len(saltos)):
+        r = c.get(url)
+        assert r.status_code == 302 and r.headers["cache-control"] == "no-store", (url, r.status_code)
+        url = r.headers["location"]
+        assert url.startswith("/") and not url.startswith("//"), url          # relativo y del propio sitio
+        visto.append(url)
+    assert visto == saltos, pedido
+    r = c.get(url)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], url
+    carpeta = url.split("?")[0].removeprefix("/estudio/").rstrip("/")
+    assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), url

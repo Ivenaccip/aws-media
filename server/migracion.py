@@ -97,9 +97,9 @@ PANTALLAS: dict[str, Pantalla] = {
     # y «sin dist» darían un bucle de redirecciones, y /ui/clasica?pantalla=inicio
     # dejaría de llevar al clásico. La versión anterior (static/index.html) queda
     # en /index.html: en `todos` redirige a /estudio/, y con la cookie `ui=clasica`
-    # (la deja /ui/clasica?pantalla=inicio) sirve el clásico. /estudio/inicio/ sigue
-    # siendo la página única hasta que se retire (ahí el alias de más abajo la
-    # manda a /estudio/).
+    # (la deja /ui/clasica?pantalla=inicio) sirve el clásico. /estudio/inicio/ (la
+    # página única de antes) se retiró: ya no es una carpeta de web/estudio/ y el
+    # alias de más abajo la manda a /estudio/ con un 302.
     "inicio": Pantalla(vieja="/index.html", nueva="/estudio/", etapa="todos"),
     # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
     # subida es la misma de editar metraje (marca/SubirVideo)
@@ -139,9 +139,9 @@ def alias_del_estudio() -> dict[str, str]:
     """Las URLs viejas bajo /estudio/ → su canónica nueva, para server/web.py.
 
     La clave de PANTALLAS ES el nombre de la carpeta de siempre (/estudio/<p>/), así que el alias se deduce: lo que
-    cambió de sitio. Hoy solo el inicio (/estudio/inicio/ → /estudio/). Es inerte mientras la carpeta vieja siga
-    existiendo en web/dist: una pantalla que existe manda sobre cualquier alias (web.destino_de). Ningún alias apunta
-    a otro alias ni a sí mismo (tests/test_web_rutas.py)."""
+    cambió de sitio. Hoy solo el inicio (/estudio/inicio/ → /estudio/): su carpeta se retiró en E5.3, así que el alias
+    está activo. Un alias es inerte mientras su carpeta vieja siga existiendo en web/dist: una pantalla que existe manda
+    sobre cualquier alias (web.destino_de). Ningún alias apunta a otro alias ni a sí mismo (tests/test_web_rutas.py)."""
     return {f"/estudio/{n}/": p.nueva for n, p in PANTALLAS.items() if p.nueva != f"/estudio/{n}/"}
 
 

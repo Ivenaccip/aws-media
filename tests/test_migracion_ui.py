@@ -1714,9 +1714,24 @@ def test_el_mapa_de_aserciones_solo_cita_archivos_de_prueba_que_existen(pantalla
 
 @pytest.mark.parametrize("pantalla", sorted(INVARIANTES))
 def test_la_pantalla_nueva_tiene_su_pagina(pantalla):
-    html = RAIZ / "web" / "estudio" / pantalla / "index.html"
+    # La página sale de la URL canónica de la pantalla (`nueva`), no de su CLAVE: la clave `inicio` ya no es una carpeta —el inicio es
+    # la principal, /estudio/ → web/estudio/index.html— y /estudio/inicio/ es un 302 (rutas por nivel, E5.3). Para las hojas que
+    # todavía no se mudan, `nueva` es /estudio/<clave>/ y la página es la de siempre.
+    nueva = migracion.PANTALLAS[pantalla].nueva
+    html = RAIZ / "web" / nueva.strip("/") / "index.html"
     if migracion.PANTALLAS[pantalla].etapa != "nueva" or (PANTALLAS_WEB / pantalla).is_dir():
-        assert html.is_file(), f"falta {html.relative_to(RAIZ)}"
-        texto = html.read_text(encoding="utf-8")
+        assert html.is_file(), f"falta {html.relative_to(RAIZ)} (la página de {nueva})"
+        # sin los comentarios: una mención de auth.js en el comentario de la plantilla no cuenta como cargarlo
+        texto = re.sub(r"<!--.*?-->", "", html.read_text(encoding="utf-8"), flags=re.S)
         # privada: auth.js clásico antes del módulo (docs/PLAN-UI.md §3)
+        assert '<script src="/auth.js">' in texto, f"{html.relative_to(RAIZ)} no carga /auth.js"
         assert texto.index('<script src="/auth.js">') < texto.index('type="module"')
+
+
+def test_el_inicio_ya_no_es_una_carpeta_y_su_pagina_es_la_principal():
+    """El inicio de una sola página se retiró: su carpeta no vuelve, la pantalla `inicio` ES la principal y esa página es la que el guardián
+    de arriba exige privada. Si alguien devuelve web/estudio/inicio/, la clave deja de ser el nombre de una carpeta por accidente."""
+    assert migracion.PANTALLAS["inicio"].nueva == "/estudio/"
+    assert (RAIZ / "web" / "estudio" / "index.html").is_file()
+    assert not (RAIZ / "web" / "estudio" / "inicio").exists(), "web/estudio/inicio/ se retiró: /estudio/inicio/ es un 302 a /estudio/"
+    assert not (PANTALLAS_WEB / "inicio" / "principal.tsx").exists(), "su entrada (principal.tsx) se retiró con la página"

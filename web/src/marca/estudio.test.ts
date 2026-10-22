@@ -29,12 +29,13 @@ const GENERAR = import.meta.env.MODE === 'generar';
 const INDICE = 'index.html';
 
 /**
- * Las carpetas de web/estudio/ que no están en el menú y no son de una ruta generada: pantallas que MENU no nombra, la vitrina interna y
- * `inicio` (la página única de hoy; sale de aquí en E5.3, cuando el servidor la mande a la principal y se retire su carpeta).
+ * Las carpetas de web/estudio/ que no están en el menú y no son de una ruta generada: pantallas que MENU no nombra y la vitrina interna.
  * Es una lista CERRADA: agregar una carpeta nueva a web/estudio/ sin que MENU la nombre es justo lo que esta prueba quiere que
- * alguien decida a propósito, editando esta línea.
+ * alguien decida a propósito, editando esta línea. `inicio` (la página única de antes) salió de aquí al retirarse su carpeta: la
+ * dirección /estudio/inicio/ ya no es una página sino un 302 a la principal (server/web.py, alias de server/migracion.py), así que
+ * si alguien la vuelve a crear esta prueba la señala como «carpeta huérfana».
  */
-const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina', 'inicio'];
+const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina'];
 
 /**
  * TRANSITORIA. Las hojas del menú (agenda, COI…) todavía no se mudaron a su dirección por nivel (/estudio/marketing/blotato/agenda/):
@@ -221,7 +222,8 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
   it('rutas.toda_carpeta_es_del_menu.una_carpeta_que_nadie_nombra_se_detecta: la prueba sí muerde', () => {
     // la anidada de una hoja que TODAVÍA está en la tabla transitoria es una carpeta de más: su casa es la plana
     const anidadasDeMas = HOJAS.filter(h => HOJAS_AUN_PLANAS.has(h.clave)).map(h => h.anidada);
-    const intrusas = ['marketing/distrito/musica', 'marketing/distrito/imagen/otra', 'nueva', 'mkt', 'coi/viejo', 'marketing/assets', ...anidadasDeMas];
+    // `inicio` es la página única de antes: su carpeta se retiró (E5.3) y /estudio/inicio/ es un 302, así que volver a crearla también es de más
+    const intrusas = ['marketing/distrito/musica', 'marketing/distrito/imagen/otra', 'nueva', 'mkt', 'coi/viejo', 'marketing/assets', 'inicio', ...anidadasDeMas];
     // el control NO mira el disco (`carpetas()`): si hubiera una huérfana de verdad, la de arriba falla con su mensaje y esta seguiría
     // diciendo que la prueba muerde, en vez de fallar también con un diff de dos listas de 14 elementos que sugiere lo contrario
     expect(huerfanas(intrusas)).toEqual(intrusas);
