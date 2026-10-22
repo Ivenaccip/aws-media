@@ -4,7 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { MINIATURA_SVG, PELICULA } from './datos';
-import { elegir } from './recorrido';
+import { abrirInicio, abrirLaCaja, ficha, paso, URL_MAPA, URL_MARKETING } from './recorrido';
 
 // Lo que vio cada documento al revelarse: si hubo transición y qué grupos
 // armó el navegador (::view-transition-old/new(<nombre>)).
@@ -43,10 +43,9 @@ async function inicioConUnaPelicula(page: Page) {
 test('inicio → película: la miniatura viaja y la píldora se queda quieta', async ({ page }) => {
   await espiarTransiciones(page);
   await inicioConUnaPelicula(page);
-  await page.goto('/estudio/inicio/');
+  // «Mis creaciones» se ve con la caja, que es una página con su dirección (…/distrito/video/)
+  await abrirLaCaja(page);
   await expect(page.locator('#mon-saldo')).toHaveText('120 créditos ✦');
-  // el inicio abre en el mapa (dueño, 15-oct-2026): «Mis creaciones» se ve con la caja, a la que se llega por Marketing → Distrito
-  await elegir(page, 'Marketing', 'Distrito');
   await page.getByRole('link', { name: PELICULA.brief }).click();
   await page.waitForURL(`**/estudio/crear/?p=${PELICULA.id}`);
   await expect.poll(() => page.evaluate(() => window.__vt?.grupos.length ?? 0)).toBeGreaterThan(0);
@@ -69,7 +68,7 @@ test('sin «reducir movimiento» hay transición; con él, no', async ({ browser
     const ctx = await browser.newContext({ reducedMotion: preferencia });
     const page = await ctx.newPage();
     await espiarTransiciones(page);
-    await page.goto('/estudio/inicio/');
+    await page.goto(URL_MAPA);
     await page.locator('#raiz > *').first().waitFor();
     await page.waitForTimeout(300);
     // la navegación la hace la página, como un clic: las que teclea el
@@ -82,6 +81,22 @@ test('sin «reducir movimiento» hay transición; con él, no', async ({ browser
   }
 });
 
+test('entre dos niveles del recorrido también se funde: un clic en la ficha del mapa lleva transición (y con «reducir movimiento», no)', async ({ browser }) => {
+  for (const [preferencia, esperado] of [['no-preference', true], ['reduce', false]] as const) {
+    const ctx = await browser.newContext({ reducedMotion: preferencia });
+    const page = await ctx.newPage();
+    await espiarTransiciones(page);
+    await abrirInicio(page);
+    // como una persona: la página ya pintó antes del clic
+    await page.waitForTimeout(300);
+    await ficha(page, 'Marketing').click();
+    await page.waitForURL(`**${URL_MARKETING}`);
+    await expect(paso(page)).toHaveText('Elige un grupo');
+    expect(await page.evaluate(() => window.__vt?.hubo), `a ${preferencia}`).toBe(esperado);
+    await ctx.close();
+  }
+});
+
 test('una película que no está lista no se agranda (no tiene reproductor)', async ({ page }) => {
   await espiarTransiciones(page);
   await page.route('**/api/proyectos', r => r.fulfill({ json: [
@@ -90,9 +105,8 @@ test('una película que no está lista no se agranda (no tiene reproductor)', as
   ] }));
   await page.route(/\/api\/proyectos\/[^/]+\/archivo\/.*\.jpg$/, r =>
     r.fulfill({ contentType: 'image/svg+xml', body: MINIATURA_SVG }));
-  await page.goto('/estudio/inicio/');
-  // «Mis creaciones» se ve con la caja a la vista (el inicio abre en el mapa)
-  await elegir(page, 'Marketing', 'Distrito');
+  // «Mis creaciones» se ve con la caja a la vista
+  await abrirLaCaja(page);
   await page.getByRole('link', { name: 'Un gato en revisión' }).click();
   await page.waitForURL('**/estudio/crear/?p=p2');
   await expect.poll(() => page.evaluate(() => window.__vt?.grupos.length ?? 0)).toBeGreaterThan(0);
@@ -102,13 +116,15 @@ test('una película que no está lista no se agranda (no tiene reproductor)', as
 
 test('entre una pantalla nueva y una vieja también se funde (carta.css pide lo mismo)', async ({ page }) => {
   await espiarTransiciones(page);
-  await page.goto('/estudio/inicio/');
+  // el inicio viejo (static/index.html) solo se sirve con la cookie `ui=clasica`: sin ella el servidor lo manda a /estudio/ (etapa `todos`),
+  // como las demás viejas mandan a las nuevas
+  await page.goto(URL_MAPA);
+  await page.context().addCookies([{ name: 'ui', value: 'clasica', domain: new URL(page.url()).hostname, path: '/' }]);
   await page.locator('#raiz > *').first().waitFor();
   // como una persona: la página ya pintó antes del clic. Navegar en el
   // mismo instante en que carga no deja nada que fotografiar
   await page.waitForTimeout(300);
-  // el inicio viejo (static/index.html): este servidor no lo redirige, las
-  // demás viejas mandan a las nuevas (etapa `todos`). Ojo: una vieja que
+  // Ojo: una vieja que
   // corra un <script> ANTES de carta.css (hoy solo la portada pública) a
   // veces se fotografía antes de saber que pide el fundido
   await page.evaluate(() => { location.href = '/index.html'; });
