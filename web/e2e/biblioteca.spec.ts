@@ -1,6 +1,6 @@
 // La Biblioteca de prompts en un navegador de verdad (Ajustes 3, 16-oct-2026): lo que jsdom no ve y aquí sí —el diseño a 1100 y a 390 px,
 // que no se arrastre de lado, que todo lo tocable mida 44 px y la letra no baje de 13, el aro de foco, un solo botón ámbar, el portapapeles
-// de verdad, y el viaje completo de «Llevar a la caja» hasta el inicio real—, más axe sobre cada estado.
+// de verdad, y el viaje completo de «Llevar a la caja» hasta la página real de la caja—, más axe sobre cada estado.
 // El API es de mentira (e2e/biblioteca.ts): no gasta nada. PW_CAPTURAS=<carpeta> guarda una captura de cada estado para mirarla.
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -31,7 +31,7 @@ import {
   sobraAlLado,
   tituloDelDetalle,
 } from './biblioteca';
-import { riel, simular as simularInicio } from './recorrido';
+import { abrirInicio, abrirLaCaja, esperarRuta, ficha, opcion, paso, riel, simular as simularInicio, URL_CAJA, URL_MAPA } from './recorrido';
 
 // 1100 (escritorio), 390 (celular) y 320 (el celular más angosto que se mide en el repo)
 const ANCHOS = [
@@ -492,22 +492,24 @@ test.describe('en celular, dos pasos', () => {
 });
 
 // ---------------------------------------------------------------------------
-// «Llevar a la caja»: el viaje completo, con el inicio de verdad
+// «Llevar a la caja»: el viaje completo, con la página de la caja de verdad
 
 test.describe('llevar a la caja', () => {
   for (const { ancho, alto } of ANCHOS) {
     test.describe(`a ${ancho} px`, () => {
       test.use({ viewport: { width: ancho, height: alto } });
 
-      test('Imagen: de la Biblioteca al inicio con la caja abierta en Imagen, el texto puesto, el aviso dicho y la dirección limpia', async ({ page }) => {
+      test('Imagen: de la Biblioteca a la caja abierta en Imagen, el texto puesto, el aviso dicho y la dirección limpia', async ({ page }) => {
         await simularInicio(page);
         await abrir(page);
         await fila(page, 'Producto flotando sobre un color').click();
         const llevar = page.getByRole('link', { name: 'Llevar a la caja' });
         const prompt = CASA[1]!.prompt;
-        await expect(llevar).toHaveAttribute('href', '/estudio/inicio/?prompt=' + encodeURIComponent(prompt));
+        // el enlace va directo a la página de la caja en Imagen (ya no pasa por el inicio)
+        await expect(llevar).toHaveAttribute('href', URL_CAJA.imagen + '?prompt=' + encodeURIComponent(prompt));
         await llevar.click();
-        await expect(page).toHaveURL(/\/estudio\/inicio\/$/);
+        // la caja lee el texto una vez y deja la dirección limpia, en la de su pestaña
+        await expect(page).toHaveURL(new RegExp(URL_CAJA.imagen + '$'));
         // la caja abierta DIRECTO, en Imagen, con el texto puesto y el foco en su cuadro
         const caja = page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' });
         await expect(caja).toBeVisible();
@@ -517,10 +519,12 @@ test.describe('llevar a la caja', () => {
         await expect(page.getByText('Te trajimos el prompt. Cambia lo que va entre [corchetes] y pulsa Crear.')).toBeVisible();
         expect(await sobraAlLado(page)).toBeLessThanOrEqual(0);
         await capturar(page, 'llegada-imagen', ancho);
-        // llegar no crea ni cobra nada, y recargar NO vuelve a llenar la caja: el mapa de siempre
+        // llegar no crea ni cobra nada, y recargar NO vuelve a llenar la caja: la misma página, vacía y en la misma pestaña
         await page.reload();
-        await expect(page.getByRole('heading', { name: 'Elige un área' })).toBeVisible();
-        await expect(page.locator('textarea')).toHaveValue('');
+        await expect(caja).toBeVisible();
+        await expect(caja).toHaveValue('');
+        await expect(riel(page, 'Imagen')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.getByText(/Te trajimos el prompt/)).toHaveCount(0);
       });
 
       test('Video: ?brief= abre la caja en Video con el texto puesto', async ({ page }) => {
@@ -531,7 +535,7 @@ test.describe('llevar a la caja', () => {
         const caja = page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' });
         await expect(caja).toHaveValue(CASA[4]!.prompt);
         await expect(riel(page, 'Video')).toHaveAttribute('aria-pressed', 'true');
-        await expect(page).toHaveURL(/\/estudio\/inicio\/$/);
+        await expect(page).toHaveURL(new RegExp(URL_CAJA.video + '$'));
         // sin huecos en el prompt: el aviso no manda cambiar lo que va entre corchetes
         await expect(page.getByText('Te trajimos el prompt. Revísalo y pulsa Crear.')).toBeVisible();
         await capturar(page, 'llegada-video', ancho);
@@ -539,28 +543,42 @@ test.describe('llevar a la caja', () => {
     });
   }
 
-  test('sin parámetros el inicio abre en el mapa, igual que siempre', async ({ page }) => {
+  test('sin parámetros el mapa y la caja abren como siempre: sin el aviso del prompt y con la caja vacía', async ({ page }) => {
     await simularInicio(page);
-    await page.goto('/estudio/inicio/');
-    await expect(page.getByRole('heading', { name: 'Elige un área' })).toBeVisible();
+    await abrirInicio(page);
+    await expect(paso(page)).toHaveText('Elige un área');
     await expect(page.getByText(/Te trajimos el prompt/)).toHaveCount(0);
-    await expect(page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeHidden();
+    await expect(page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toHaveCount(0);
+    await abrirLaCaja(page);
+    await expect(page.getByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toHaveValue('');
+    await expect(page.getByText(/Te trajimos el prompt/)).toHaveCount(0);
   });
 
-  test('«Central › Distrito › Biblioteca de prompts» está en el inicio y lleva a la pantalla; sus migas vuelven al mapa y a las opciones', async ({ page }) => {
+  test('«Central › Distrito › Biblioteca de prompts» está en el recorrido y lleva a la pantalla; sus migas llevan al mapa y a las opciones de Central', async ({ page }) => {
     await simularInicio(page);
     await simular(page);
-    await page.goto('/estudio/inicio/');
-    await page.getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: /^Central/ }).click();
-    await page.getByRole('group', { name: 'Central', exact: true }).getByRole('button', { name: /^Distrito/ }).click();
+    await abrirInicio(page);
+    await ficha(page, 'Central').click();
+    await esperarRuta(page, '/estudio/central/');
+    await opcion(page, 'Central', 'Distrito').click();
+    await esperarRuta(page, '/estudio/central/distrito/');
     const entrada = page.getByRole('link', { name: /^Biblioteca de prompts/ });
     await expect(entrada).toHaveAttribute('href', '/estudio/biblioteca/');
     await entrada.click();
     await expect(page.getByRole('heading', { level: 2, name: 'Biblioteca de prompts' })).toBeVisible();
-    // «Distrito» vuelve a las opciones de Central, con «Volver a Biblioteca de prompts»; «Central» al mapa
-    await page.getByRole('navigation', { name: 'Dónde estás' }).getByRole('link', { name: /^Ir a las opciones de Central/ }).click();
+    // «Distrito» sube a las opciones de Central (la página de ese nivel, con su dirección); «Central» al mapa. Ya no hay «Volver a Biblioteca
+    // de prompts»: volver a donde se estaba es el «atrás» del navegador
+    const migas = page.getByRole('navigation', { name: 'Dónde estás' });
+    await expect(migas.getByRole('link', { name: /^Ir al mapa para cambiar de área/ })).toHaveAttribute('href', URL_MAPA);
+    await migas.getByRole('link', { name: /^Ir a las opciones de Central/ }).click();
+    await esperarRuta(page, '/estudio/central/');
     await expect(page.getByRole('heading', { name: 'Elige un grupo' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Volver a Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
-    await expect(page).toHaveURL(/\/estudio\/inicio\/$/);
+    await expect(page.getByRole('link', { name: 'Volver a Biblioteca de prompts' })).toHaveCount(0);
+    // y «atrás» vuelve a la Biblioteca
+    await page.goBack();
+    await expect(page.getByRole('heading', { level: 2, name: 'Biblioteca de prompts' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Dónde estás' }).getByRole('link', { name: /^Ir al mapa para cambiar de área/ }).click();
+    await esperarRuta(page, URL_MAPA);
+    await expect(paso(page)).toHaveText('Elige un área');
   });
 });
