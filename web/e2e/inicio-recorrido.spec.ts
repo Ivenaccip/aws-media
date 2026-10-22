@@ -634,105 +634,138 @@ test('después de elegir un grupo, volver a las opciones por la miga no marca na
 });
 
 // ---------------------------------------------------------------------------
-// la caja se queda montada
+// la caja: una página aparte, con tres pestañas que SÍ conservan lo escrito
+//
+// RETIRADO: «la caja se queda montada con el mapa abierto». El inicio de antes era UNA página: la caja seguía montada (y escondida) bajo el mapa,
+// y por eso el texto escrito, el video subido y una subida en curso sobrevivían a abrir el mapa y volver. Ahora el mapa, las opciones y las listas
+// son otras páginas y la caja no se monta en ellas (el mapa ni siquiera trae su código: niveles.spec.ts lo vigila), así que lo escrito se va al salir
+// de la caja, sin aviso del navegador (D11 del plan de rutas, decidido así). Ya no hay nada que probar de «la caja escondida». Quedan vigentes, y
+// cubiertas abajo, las mismas garantías DENTRO de la caja: cambiar de pestaña (Imagen · Video · Edición) conserva el texto, la liga y la
+// subida en curso, porque las tres pestañas son tres direcciones de una sola página. En jsdom lo fija el vitest
+// `inicio.edicion.cambiar_de_familia_y_volver_conserva_texto_y_video_y_no_cancela_la_subida` (src/pantallas/inicio/Edicion.test.tsx), que sigue
+// vigente tal cual. Las pruebas retiradas, una por una:
+//  · «abrir el mapa y volver a la caja por Marketing › Distrito deja el texto y la pestaña» (×3) → reescrita abajo como cambiar de pestaña;
+//  · «mapa → Marketing → Distrito lleva a la caja con el texto, y el foco va a su título» → ya no hay texto que llevar ni foco programático al
+//    título (la página nueva empieza arriba y su <title> dice dónde cae); lo que sí se conserva está en «salir de la caja descarta lo escrito»;
+//  · «De videos a Shorts y la liga escrita se conservan al abrir el mapa» y «una subida en curso sigue con el mapa abierto» → reescritas abajo
+//    como cambiar de pestaña;
+//  · «Mis creaciones» y «Tu primer video, en tres caminos» «se esconden fuera de la caja» → ahora ni existen fuera de ella.
 
-for (const [familia, campo] of [
-  ['Imagen', CAJA],
-  ['Video', CAJA],
-  ['Edición', 'Cuéntale a la IA qué quieres'],
+// Imagen y Video comparten UN cuadro de texto (cambiar entre ellas lo conserva y lo prueba niveles.spec.ts); Edición tiene el suyo. Por eso la
+// pestaña con la que se sale y se vuelve es Edición para las dos primeras, y Video para Edición: así el cuadro de la familia SÍ se esconde.
+for (const [familia, clave, otra, claveOtra, campo] of [
+  ['Imagen', 'imagen', 'Edición', 'edicion', CAJA],
+  ['Video', 'video', 'Edición', 'edicion', CAJA],
+  ['Edición', 'edicion', 'Video', 'video', 'Cuéntale a la IA qué quieres'],
 ] as const) {
-  test(`«${familia}»: abrir el mapa y volver a la caja por Marketing › Distrito deja el texto escrito y la pestaña como estaban`, async ({ page }) => {
+  test(`«${familia}»: cambiar de pestaña y volver deja el texto escrito y la pestaña como estaban, y la dirección sigue a la pestaña`, async ({ page }) => {
     await simular(page);
-    await abrirLaCaja(page);
-    await riel(page, familia).click();
+    await abrirLaCaja(page, URL_CAJA[clave]);
     const cuadro = page.getByRole('textbox', { name: campo });
     await cuadro.fill('un gato jugando en la nieve');
-    await irAlMapa(page);
-    // escondida, no desmontada: no se ve ni se enfoca, pero sigue ahí con lo suyo
+    await riel(page, otra).click();
+    await esperarRuta(page, URL_CAJA[claveOtra]);
+    // la otra pestaña tiene su propio cuadro: el de esta se esconde, no se desmonta
     await expect(cuadro).toBeHidden();
-    await expect(page.locator('textarea')).toHaveCount(1);
-    await expect(algunVolver(page)).toHaveCount(0);
-    await elegir(page, 'Marketing', 'Distrito');
-    await expect(paso(page)).toHaveText(CAJA);
+    await riel(page, familia).click();
+    await esperarRuta(page, URL_CAJA[clave]);
     await expect(cuadro).toHaveValue('un gato jugando en la nieve');
     await expect(riel(page, familia)).toHaveAttribute('aria-pressed', 'true');
+    await expect(paso(page)).toHaveText(CAJA);
   });
 }
 
-test('mapa → Marketing → Distrito lleva a la caja con el texto, y el foco va a su título', async ({ page }) => {
+test('«De videos a Shorts» y la liga escrita se conservan al cambiar de pestaña y volver a Edición', async ({ page }) => {
   await simular(page);
-  await abrirLaCaja(page);
-  const cuadro = page.getByRole('textbox', { name: CAJA });
-  await cuadro.fill('un perro surfeando');
-  await irA(page, 'Marketing', 'Distrito');
-  await expect(paso(page)).toHaveText(CAJA);
-  await expect(cuadro).toHaveValue('un perro surfeando');
-  // el botón que se pulsó desapareció: el foco no se pierde, pasa al título de la caja
-  await expect(paso(page)).toBeFocused();
-});
-
-test('«De videos a Shorts» y la liga escrita se conservan al abrir el mapa y volver a Edición', async ({ page }) => {
-  await simular(page);
-  await abrirLaCaja(page);
-  await riel(page, 'Edición').click();
+  await abrirLaCaja(page, URL_CAJA.edicion);
   await page.locator('button[aria-haspopup="listbox"]').click();
   await page.getByRole('option', { name: /De videos a Shorts/ }).click();
   const liga = page.getByRole('textbox', { name: 'Liga de YouTube' });
   await liga.fill('https://www.youtube.com/watch?v=abc123DEF45');
-  await irAlMapa(page);
+  await riel(page, 'Imagen').click();
+  await esperarRuta(page, URL_CAJA.imagen);
   await expect(liga).toBeHidden();
-  await elegir(page, 'Marketing', 'Distrito');
+  await riel(page, 'Edición').click();
+  await esperarRuta(page, URL_CAJA.edicion);
   await expect(liga).toHaveValue('https://www.youtube.com/watch?v=abc123DEF45');
   await expect(page.locator('button[aria-haspopup="listbox"]')).toContainText('De videos a Shorts');
 });
 
-test('una subida en curso sigue con el mapa abierto, y el video listo y su precio están al volver', async ({ page }) => {
+test('una subida en curso sigue al cambiar de pestaña, y el video listo y su precio están al volver a Edición', async ({ page }) => {
   let soltar!: () => void;
   const puerta = new Promise<void>(resolver => (soltar = resolver));
   await simular(page);
   await simularSubida(page, puerta);
-  await abrirLaCaja(page);
-  await riel(page, 'Edición').click();
+  await abrirLaCaja(page, URL_CAJA.edicion);
   const subida = page.waitForRequest('**/s3-falso/subida');
   await page.locator('input[type="file"]').setInputFiles(VIDEO);
   await subida;
-  // sube (el PUT está esperando) y se abre el mapa: la caja se esconde con la subida adentro
-  await irAlMapa(page);
-  // la subida termina (y pide el precio) con el mapa abierto, sin que la caja se vea
+  // sube (el PUT está esperando) y se cambia de pestaña: la caja es la misma página, la subida no se cancela
+  await riel(page, 'Imagen').click();
+  await esperarRuta(page, URL_CAJA.imagen);
+  // la subida termina (y pide el precio) con otra pestaña a la vista
   const precio = page.waitForResponse('**/api/edicion/cotizar');
   soltar();
   await precio;
-  await elegir(page, 'Marketing', 'Distrito');
+  await riel(page, 'Edición').click();
+  await esperarRuta(page, URL_CAJA.edicion);
   await expect(page.getByRole('button', { name: 'Iniciar ✦ 8' })).toBeVisible();
   await expect(page.getByText('entrevista.mp4')).toBeVisible();
 });
 
-test('«Mis creaciones» se ve solo con la caja a la vista (al abrir, en el mapa, las opciones y las listas se esconde; con la caja, aparece)', async ({ page }) => {
+test('salir de la caja a otra página descarta lo escrito, sin aviso del navegador: la caja que se abre de nuevo está vacía', async ({ page }) => {
+  await simular(page);
+  const avisos: string[] = [];
+  page.on('dialog', d => {
+    avisos.push(d.type());
+    void d.dismiss();
+  });
+  await abrirLaCaja(page, URL_CAJA.imagen);
+  const cuadro = page.getByRole('textbox', { name: CAJA });
+  await cuadro.fill('un perro surfeando');
+  await irAlMapa(page);
+  await elegir(page, 'Marketing', 'Distrito');
+  await elegirHerramienta(page, 'Imagen');
+  await expect(page.getByRole('textbox', { name: CAJA })).toHaveValue('');
+  expect(avisos, 'el navegador no avisó al salir (D11: sin aviso por ahora)').toEqual([]);
+  // y «atrás» tampoco la trae de vuelta: es una página nueva
+  await page.goBack();
+  await esperarRuta(page, URL_DISTRITO);
+});
+
+// «Mis creaciones» y «Tu primer video, en tres caminos» van debajo de la caja: salen con ella y no existen en las páginas de navegación (antes
+// seguían montadas y escondidas).
+test('«Mis creaciones» solo existe en la página de la caja (en el mapa, las opciones y las listas no está; con la caja, aparece)', async ({ page }) => {
   await simular(page, { imagenes: 2 });
   await abrirInicio(page);
   const creaciones = page.getByRole('region', { name: 'Mis creaciones' });
-  await expect(creaciones, 'al abrir, en el mapa').toBeHidden();
+  await expect(creaciones, 'al abrir, en el mapa').toHaveCount(0);
   await ficha(page, 'Marketing').click();
-  await expect(creaciones, 'en las opciones').toBeHidden();
+  await esperarRuta(page, URL_MARKETING);
+  await expect(creaciones, 'en las opciones').toHaveCount(0);
   await opcion(page, 'Marketing', 'Blotato').click();
-  await expect(creaciones, 'en la lista de Blotato').toBeHidden();
-  // sigue montada: la galería no pierde su filtro ni su visor
-  await expect(page.locator('#creaciones-titulo')).toHaveCount(1);
+  await esperarRuta(page, URL_BLOTATO);
+  await expect(creaciones, 'en la lista de Blotato').toHaveCount(0);
+  await expect(page.locator('#creaciones-titulo')).toHaveCount(0);
   await irA(page, 'Marketing', 'Distrito');
+  await expect(creaciones, 'en la lista de Distrito').toHaveCount(0);
+  await elegirHerramienta(page, 'Video');
   await expect(creaciones).toBeVisible();
   await irAlMapa(page);
-  await expect(creaciones, 'de vuelta en el mapa').toBeHidden();
+  await expect(creaciones, 'de vuelta en el mapa').toHaveCount(0);
 });
 
-test('«Tu primer video, en tres caminos» (quien empieza) también se esconde fuera de la caja', async ({ page }) => {
+test('«Tu primer video, en tres caminos» (quien empieza) solo existe en la página de la caja', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
   const caminos = page.getByRole('region', { name: 'Tu primer video, en tres caminos' });
-  await expect(caminos).toBeHidden();
+  await expect(caminos).toHaveCount(0);
   await elegir(page, 'Marketing', 'Distrito');
+  await expect(caminos).toHaveCount(0);
+  await elegirHerramienta(page, 'Video');
   await expect(caminos).toBeVisible();
   await irAlMapa(page);
-  await expect(caminos).toBeHidden();
+  await expect(caminos).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------
