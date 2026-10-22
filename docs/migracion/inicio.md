@@ -1,7 +1,14 @@
 # Migración del inicio (UI·8.4)
 
-`static/index.html` (servido en `/estudio/`) → `/estudio/inicio/`
-(`web/src/pantallas/inicio/`).
+`static/index.html` (el inicio clásico, hoy en `/index.html`) → la principal
+`/estudio/` y las páginas por nivel que cuelgan de ella (`web/estudio/`); la Caja y lo
+que la rodea viven en `web/src/pantallas/inicio/`. **Desde el 22-oct-2026 el inicio ya
+no es una sola página en `/estudio/inicio/`:** cada nivel del recorrido es su propia
+dirección (apartado «Rutas por nivel», justo después de «Una pantalla distinta»). Las
+tablas de los invariantes y «Diferencias a propósito» conservan la historia del 14 y
+15-oct-2026: lo que digan de `/estudio/inicio/`, del recorrido «en una sola página»
+o de las migas con `?desde=…&ver=…` ya no describe lo que se sirve, y cada vez que
+cambia lo dice una nota fechada el 22-oct-2026.
 
 El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b también pide lo que elige modelo (un video corto, crear o editar una imagen); desde E1 también lanza la **edición** de un video subido (`POST /api/editar/<p>/sugerir`), con el precio que da `GET /api/editar/<p>/costo`. Tiene cuatro partes:
 
@@ -12,7 +19,9 @@ El inicio **no decide ningún precio**: el servidor cobra. Reparte, y desde R4b 
   primero que se ve al abrir el inicio), tres opciones por área y la pantalla (la
   caja, o la lista de las pantallas de un grupo). Es del 15-oct-2026 y reemplazó
   al **menú de la izquierda** (ver «Diferencias a propósito»; los IDs
-  `inicio.menu.*` conservan su nombre por historia).
+  `inicio.menu.*` conservan su nombre por historia). **Desde el 22-oct-2026 cada
+  paso es su propia página** (`/estudio/`, `/estudio/marketing/`,
+  `/estudio/marketing/distrito/`…): ver «Rutas por nivel».
 - **Las listas** llevan a lo que ya hiciste.
 - **El diálogo de Blotato** guarda la clave del usuario.
 
@@ -20,28 +29,39 @@ Los precios del desplegable salen de `tools/tarifas.json`, vía
 `nucleo/tarifas`. La vieja los tenía escritos y un test comprobaba que
 coincidieran.
 
-## Una pantalla distinta: su URL vieja es `/estudio/`
+## Una pantalla distinta: su URL nueva es la raíz `/estudio/`
 
-Las otras pantallas tienen un `.html` propio. El inicio no: vive en
-`/estudio/` (tarjetas 37 y 38), que también es a donde llevan
-«← Estudio» del `Marco`, el callback de Cognito y la portada con sesión. Por
-eso:
+Las otras pantallas tienen un `.html` propio y su nueva vive en `/estudio/<p>/`. El
+inicio no: su URL de siempre era `/estudio/` (tarjetas 37 y 38), que también es a donde
+llevan «← Estudio» del `Marco`, el callback de Cognito y la portada con sesión. Cómo
+quedó, tras las rutas por nivel (22-oct-2026):
 
-- **La nueva va al lado**, en `/estudio/inicio/`, igual que las demás
-  (`dist/estudio/<p>/`).
-- **`Pantalla` ganó `fichero`:** el HTML viejo se llama `index.html`, no como
-  su URL.
-- **`/estudio/` lo sirve ahora `server/migracion.py`,** no una ruta propia en
-  `server/app.py`. En `nueva` sigue sirviendo el mismo `index.html` con
-  `no-cache`. En `todos` responde 302 a `/estudio/inicio/` y conserva el
-  query, así que `?blotato=conectar` (del editor) no se pierde.
-- **Todo lo que apunta a `/estudio/` sigue funcionando** sin tocar nada: en
-  `todos` y `retirada` da un salto más.
+- **La nueva ES `/estudio/`:** el mapa «Elige un área», `web/estudio/index.html`
+  (`PANTALLAS["inicio"].nueva == "/estudio/"` en `server/migracion.py`). Ya no hay una
+  carpeta `web/estudio/inicio/`: la página única de antes se retiró (E5.3).
+- **La vieja pasó a `/index.html`** (`PANTALLAS["inicio"].vieja == "/index.html"`).
+  Si la vieja siguiera siendo `/estudio/`, en `retirada` y «sin `dist`» la redirección
+  daría un bucle (`vieja == nueva`) y `/ui/clasica?pantalla=inicio` dejaría de llevar a
+  la clásica. `static/index.html` ya respondía en `/index.html`, así que no se movió ni
+  se tocó. **`Pantalla.fichero` ya no lo usa ninguna pantalla** (el único que lo
+  necesitaba era el inicio); el mecanismo se dejó y se puede quitar en E8.
+- **`/estudio/` lo sirve `server/web.py`** (ruta explícita GET/HEAD, `no-cache`, ETag
+  y 304, igual que cualquier otra página de nivel), no `server/migracion.py` ni una ruta
+  de `server/app.py`. Sin `web/dist` (o con un `dist` sin `estudio/index.html`)
+  `/estudio/` da 404 y `/index.html` sirve la clásica.
+- **`/index.html`** en `todos` responde 302 a `/estudio/` y conserva el query; con la
+  cookie `ui=clasica` sirve `static/index.html`. `/ui/clasica?pantalla=inicio` deja la
+  cookie y lleva a `/index.html`; `/ui/nueva?pantalla=inicio` la borra y lleva a
+  `/estudio/`.
+- **Todo lo que apunta a `/estudio/` sigue funcionando** y ahora aterriza en el mapa
+  (el `Marco`, el callback de Cognito, `/?algo` → `/estudio/?algo`). Lo que traía un
+  texto o un parámetro (`?prompt=`, `?brief=`, `?blotato=conectar`) lo reenvía el
+  servidor a la página que hoy lo atiende (ver «Rutas por nivel»).
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/inicio/` existe; `/estudio/` sigue igual | el PR de la pantalla | ✅ en producción; la caja que cobra (R4 y Edición) llegó con el PR #160 (14-oct-2026) |
-| `todos` | `/estudio/?q` → 302 a `/estudio/inicio/?q`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | 14-oct-2026, decisión del dueño (con Nano Banana 2 fuera de «Editar») |
+| `nueva` | `/estudio/inicio/` existía; `/estudio/` servía el inicio clásico | el PR de la pantalla | ✅ en producción; la caja que cobra (R4 y Edición) llegó con el PR #160 (14-oct-2026) |
+| `todos` | `/index.html?q` → 302 a `/estudio/?q`, salvo la cookie `ui=clasica`, que sirve la clásica. (Hasta el 21-oct-2026 era `/estudio/?q` → 302 a `/estudio/inicio/?q`.) | `etapa="todos"` + deploy | 14-oct-2026, decisión del dueño (con Nano Banana 2 fuera de «Editar»); la URL vieja cambió con las rutas por nivel (22-oct-2026) |
 | `retirada` | 302 siempre; se borran `static/index.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
 
 Antes de `todos`, el dueño corre el QA manual de `docs/QA-UI.md` § inicio.
@@ -63,8 +83,242 @@ nueva):** `static/index.html`, la clásica, **no se tocó**: conserva su menú, 
 sus guardianes (`test_ui10_inicio.py`, `test_m25_entrada.py`…) siguen leyéndola
 hasta `retirada`. Lo que se pierde al pasar del menú al recorrido está
 inventariado abajo («Diferencias a propósito» y las filas `inicio.menu.*`). Esto
-cambia lo que ve **toda** la gente que entra a `/estudio/inicio/`, así que antes
-de que llegue a `main` el dueño corre en `docs/QA-UI.md` § inicio los pasos 43 a 73.
+cambia lo que ve **toda** la gente que entra al inicio (entonces `/estudio/inicio/`,
+hoy `/estudio/`), así que antes de que llegue a `main` el dueño corre en
+`docs/QA-UI.md` § inicio los pasos 43 a 73 (reescritos el 22-oct-2026 para las páginas
+por nivel).
+
+## Rutas por nivel
+
+**22-oct-2026** (dueño: «por cada pestaña, una ruta»; el plan son las etapas E1 a E9
+de las rutas por nivel y este apartado es su documentación, E6). Sustituye, donde se
+contradigan, a lo que dicen los invariantes y «Diferencias a propósito» (más abajo) sobre el
+recorrido «en una sola página».
+
+### Qué es
+
+El inicio dejó de ser UNA página que cambiaba de paso por dentro. Cada nivel es ahora
+su propio documento HTML, con su dirección y su `<title>`, **sin router ni catch-all**:
+Vite compila un `index.html` por carpeta de `web/estudio/` y `server/web.py` lo sirve
+tal cual. Son **16 páginas** (1 principal + 5 áreas + 7 grupos + 3 herramientas), todas
+generadas:
+
+| Dirección | Qué es | Entrada |
+|---|---|---|
+| `/estudio/` | **La principal**: el mapa «Elige un área» | `niveles/nivel.tsx` |
+| `/estudio/marketing/` · `/estudio/central/` · `/estudio/automatizaciones/` | «Elige un grupo» | `nivel.tsx` |
+| `/estudio/producto/` · `/estudio/ventas/` | «Todavía no está disponible.» (200). En el mapa siguen apagadas («Próximamente») | `nivel.tsx` |
+| `/estudio/marketing/distrito/` | La lista **Imagen · Video · Edición**, como enlaces | `nivel.tsx` |
+| `/estudio/marketing/blotato/` · `/estudio/marketing/avanzado/` | Las listas de Blotato y de Avanzado: con Blotato sin conectar sus tarjetas se apagan y sale el botón de conectar | `nivel.tsx` + `GrupoConBlotato` |
+| `/estudio/central/distrito/` | COI y la Biblioteca de prompts (los dos enlaces de Central) · Preguntas y Glosario, apagadas con «Próximamente» | `nivel.tsx` |
+| `/estudio/central/deepseek/` · `/estudio/automatizaciones/tus/` | Grupos sin pantallas: «Todavía no está disponible.» | `nivel.tsx` |
+| `/estudio/automatizaciones/distrito/` | Constructor · Asistente (enlaces) · Actualizar flujos («Próximamente») | `nivel.tsx` |
+| `/estudio/marketing/distrito/imagen/` · `…/video/` · `…/edicion/` | **La Caja**: UNA sola página con tres direcciones, abierta en la pestaña de la dirección | `herramienta.tsx` → `<Inicio lugar>` |
+
+- El área Marketing es `mkt` en `menu.ts` y **`marketing` en la dirección** (campo
+  opcional `ruta` de `AreaMenu`): la clave no cambia, solo cómo se escribe.
+- Las direcciones salen todas de `web/src/marca/menu.ts`: `marca/rutas.ts` las calcula
+  (`rutasDelRecorrido()`, `nivelDeRuta`, `urlDeCaja`) y es una función pura. Nunca se
+  busca un nivel con un objeto indexado por su clave: hay una pantalla llamada
+  `constructor` y chocaría con `Object.prototype`.
+- **Imagen, Video y Edición son tres direcciones de una sola Caja, no tres páginas**
+  (decisión del dueño): tres documentos perderían el texto, las fotos y la subida al
+  cambiar de pestaña y contradecirían los invariantes `inicio.edicion.cambiar_de_familia_*`,
+  `inicio.union.cambiar_de_familia_y_volver_no_pierde_la_lista_ni_la_cola` e
+  `inicio.caja.cambiar_de_familia_elige_la_primera`. Cambiar de pestaña con el riel no
+  recarga: la dirección y el `<title>` siguen a la pestaña con `history.replaceState`
+  (nunca `pushState`, para que «Atrás» suba al grupo y no recorra pestañas), conservando
+  los demás parámetros y el ancla. Una dirección que trae `?prompt=` en `…/video/` abre
+  Imagen y la dirección pasa a `…/imagen/` (y `?brief=` en `…/imagen/`, Video).
+- **Marketing › Distrito ya no es la Caja: es la lista Imagen · Video · Edición** (un clic
+  más). La Caja es lo que hay al elegir una de las tres.
+- Las **hojas** (Agenda, Competencia, Métricas, MIX, la Copiadora de estilos, COI, la
+  Biblioteca, el Constructor y el Asistente) **siguen planas** en `/estudio/<hoja>/`: se
+  mudarán a `/estudio/<área>/<grupo>/<hoja>/` al final y una por commit (etapa E7, decisión
+  del dueño; pendiente). `web/src/marca/estudio.test.ts` lleva la tabla transitoria
+  (`HOJAS_AUN_PLANAS`) y cada commit de E7 la acorta en una fila.
+
+### Qué decidió el dueño y qué se dejó por omisión
+
+- **Decisiones del dueño:** el prefijo es `/estudio/` (no `/marketing` en la raíz); la
+  principal es `/estudio/` (la barra deja de decir `/estudio/inicio/`); Imagen, Video y
+  Edición son tres direcciones de UNA Caja; Marketing › Distrito muestra la lista; y las
+  hojas se mudan al final, una por commit.
+- **Por omisión** (se ejecutó la recomendación del plan; se cambian editando una constante
+  o una plantilla): Producto, Ventas, Deepseek y «Tus automatizaciones» tienen página con
+  «Todavía no está disponible.» (200); las migas son las de hoy (el área vuelve al mapa; el
+  grupo, a las opciones del área); la bandeja «Tus trabajos» sale también en las páginas
+  de navegación (`CON_BANDEJA` en `paginas.ts`); la lista Imagen · Video · Edición no lleva
+  texto de apoyo (no se inventó copy); salir de la Caja con algo escrito no avisa; Esc
+  como hoy; las redirecciones son 302, no 301; el texto de la página 404 es el de
+  `_PAGINA_404` en `server/web.py`.
+
+### Las etapas
+
+El plan tiene nueve (E1 a E9). E1 a E4 ya estaban fusionadas (PR #203); E5 y E6 van juntas en el PR siguiente.
+
+| Etapa | Qué | Estado |
+|---|---|---|
+| E1 | Servidor: direcciones sin barra o en mayúsculas redirigen (302) y un 404 de `/estudio/` trae página | hecha |
+| E2 | Direcciones puras (`marca/rutas.ts`) y generador del HTML (`marca/paginas.ts`) | hecha |
+| E3 | Componentes de nivel (`PaginaNivel`, `GrupoConBlotato`, `navegar.ts`, `nivel.tsx`) | hecha |
+| E4 | Las 16 páginas generadas y la Caja en sus tres direcciones (la URL sigue a la pestaña) | hecha |
+| E5 | El corte: enlaces directos y `URL_IMAGEN` (5.1); `/estudio/` es el mapa y las entradas viejas redirigen (5.2); se retira `/estudio/inicio/` (5.3) | hecha |
+| E6 | e2e (`recorrido.ts`, `niveles.spec.ts`, `inicio-recorrido.spec.ts` y los demás) y documentación (este apartado) | hecha en este PR |
+| E7 | Mover las hojas a su ruta por nivel, una por commit | **pendiente** |
+| E8 | Retirar el recorrido en página (la deuda de abajo) | **pendiente** |
+| E9 | Afinado medible, opcional: cada punto entra solo si su número mejora (`manualChunks` de React, `Cache-Control` de `/api/auth/config`, Speculation Rules, atajos como `/marketing`, 301 en vez de 302…) | opcional |
+
+**E5 y E6 son un solo PR y no se despliegan por separado:** E5 cambia las direcciones y E6 deja al
+día los e2e y los docs.
+
+### Cómo se sirve (`server/web.py` y `server/migracion.py`)
+
+- `rutas(dist/estudio)` es el registro de todas las carpetas con `index.html`, a cualquier
+  profundidad; de ahí salen las rutas que se montan. Las HTML llevan `no-cache`, ETag y
+  304; los assets con hash, `immutable`.
+- Una dirección **sin barra, en mayúsculas, con `//` o escrita con `%XX`** se corrige con un
+  **302 relativo** (nunca el 307 con URL absoluta de Starlette), con el query intacto y
+  `Cache-Control: no-store`. El destino sale SIEMPRE del registro, nunca de la petición
+  (sin redirección abierta).
+- Una dirección que no existe da el 404 JSON de siempre y, solo si quien la pide acepta
+  HTML, una página mínima «No encontramos esa página» con un enlace al nivel de arriba
+  (`noindex`, `Vary: Accept`; no refleja la dirección pedida). Un asset inexistente da
+  404 JSON aun con `Accept: text/html`.
+- **Las direcciones de antes redirigen con un 302** (`no-store`, query intacto):
+
+  | Antes | Ahora |
+  |---|---|
+  | `/estudio/inicio/` (con o sin barra, con cualquier query) | 302 a `/estudio/` (alias de `migracion.alias_del_estudio()`, activo porque la carpeta ya no existe) |
+  | `/estudio/?prompt=…` | 302 a `/estudio/marketing/distrito/imagen/?prompt=…` |
+  | `/estudio/?brief=…` | 302 a `/estudio/marketing/distrito/video/?brief=…` |
+  | `/estudio/?blotato=conectar` | 302 a `/estudio/marketing/blotato/?blotato=conectar` |
+  | `/estudio/inicio/?prompt=…` | dos saltos: `/estudio/?prompt=…` y de ahí a la Caja en Imagen |
+  | `/estudio/?desde=…&ver=…`, `?p=…`, otro valor de `blotato` | 200, el mapa tal cual (ver abajo qué se hace con `desde` y `ver`) |
+  | `/estudio/marketing`, `/estudio/Marketing/`, `/estudio//marketing/` | 302 a `/estudio/marketing/` |
+  | `/index.html` | 302 a `/estudio/`; con la cookie `ui=clasica`, 200 la clásica |
+
+  Quien manda esas entradas viejas: el editor de cortes (`tools/editor/index.html`), las
+  pantallas clásicas de Agenda, Métricas y MIX, y tres `logica.ts` de web (que ya apuntan
+  directo); la tabla es `ENTRADAS_VIEJAS` en `server/web.py`. Es el servidor quien las
+  reenvía, no un salto de JavaScript, y el destino solo se usa si está compilado.
+- Las páginas son públicas con Cognito (como el resto del HTML): lo protegido es la API.
+  El login sobrevive en una URL profunda porque cada página carga `/auth.js` antes del
+  módulo y `/monedero.js`, cuyo `fetch('/api/creditos')` dispara el inicio de sesión.
+
+### Cuánto pesa cada página
+
+Medido el 22-oct-2026 con el build de esta rama (JS comprimido con gzip: los scripts de módulo de
+la página y sus imports estáticos; los `import()` se piden aparte):
+
+| Página | Archivos JS | JS crudo | JS gzip | ¿Trae la Caja? |
+|---|---:|---:|---:|---|
+| La página única de antes, `/estudio/inicio/` (commit `af168b0`, el anterior a las rutas por nivel) | 23 | 428,6 kB | **139,2 kB** | sí |
+| Mapa, 5 áreas y 7 grupos (13 páginas, todas iguales) | 5 | 248,1 kB | **79,7 kB** | no |
+| `…/distrito/imagen/`, `…/video/` y `…/edicion/` (3 páginas) | 27 | 434,8 kB | **143,5 kB** | sí |
+
+Las páginas de navegación cargan ≈ 43 % menos JavaScript y no piden ninguna de las listas de la Caja
+(`/api/proyectos`, `/api/slots`, `/api/imagenes`, `/api/edicion/proyectos`, `/api/clip`); Blotato (25,3 kB gzip)
+solo se pide en `/estudio/marketing/blotato/` y `/estudio/marketing/avanzado/`. La Caja pesa lo que pesaba
+(+4,3 kB por los módulos de rutas): la ganancia está en las páginas por las que se pasa siempre. Los topes que
+vigila `tests/test_web_niveles.py` (90 000 B y 150 000 B) dejan holgura sobre estas cifras.
+
+### Cómo se generan y qué las vigila
+
+- `web/src/marca/paginas.ts::htmlDeNivel(ruta)` es la plantilla (lo único que cambia es el
+  `<title>` y el módulo de entrada). Los 16 `index.html` están **commiteados** y
+  `web/src/marca/estudio.test.ts` exige que cada uno sea idéntico a lo que esa función
+  genera; con `cd web && npm run niveles` (la misma prueba con `--mode generar`) los
+  escribe. Cambiar la cabecera de todas es editar la plantilla y regenerar.
+- La misma prueba compara `menu.ts` con las carpetas en las dos direcciones: toda carpeta
+  con `index.html` es una ruta generada, una hoja del menú o una de la lista cerrada de
+  planas (si no, «carpeta huérfana»), y toda hoja del menú tiene su carpeta.
+  `paginas.test.ts` fija la plantilla (título, favicon literal, `noindex`, `/auth.js`
+  antes del módulo, `/monedero.js`, la bandeja de «Tus trabajos», ninguna dirección
+  relativa); `rutas.test.ts` fija las direcciones y su inversa.
+- pytest: `tests/test_web_rutas.py` (el servidor: barra, mayúsculas, entradas viejas, alias,
+  404) y `tests/test_web_niveles.py` (con `web/dist` compilado: las páginas de navegación
+  **no traen la Caja** y pesan ≤ 90 000 B de JS comprimido, las de herramienta **sí** la
+  traen y pesan ≤ 150 000 B, todo módulo lleva `blocking="render"`, y la app real sirve
+  cada nivel). Sin `web/dist` esas pruebas se saltan: hay que compilar con
+  `cd web && npm run build`.
+- Los vitest nuevos llevan el prefijo `rutas.` o `niveles.` (no `inicio.`, para no entrar
+  al registro de este doc): `PaginaNivel.test.tsx`, `Herramienta.test.tsx`,
+  `GrupoConBlotato.falla.test.tsx`, `navegar.test.ts`, `rutas.test.ts`, `paginas.test.ts`
+  y `estudio.test.ts`.
+- Playwright (no corre en CI): `niveles.spec.ts` (el recorrido entero con direcciones y
+  títulos, Atrás, Esc, las entradas viejas, el doble clic lento a 390 px, sin desborde a
+  320 y 390 px, movimiento reducido) e `inicio-recorrido.spec.ts` (reescrito para las
+  páginas). `web/e2e/recorrido.ts` documenta su API al principio; `web/e2e/servidor.mjs`
+  repite en Node lo que hacen `web.py` y `migracion.py`, y si aquellos cambian, ese
+  también (las pruebas de pytest fijan el comportamiento real).
+
+### El destino de lo que ya no ocurre en una página
+
+El recorrido en una sola página tenía un estado (`estadoRecorrido.ts`) y comportamientos
+que dependían de seguir en el mismo documento. Ninguno se borró en silencio: o tiene un
+equivalente por páginas, o se retiró con su motivo.
+
+| Antes (una sola página) | Ahora | Dónde se prueba |
+|---|---|---|
+| **Esc** en las tres opciones de un área subía al mapa; las migas reabrían el nivel | **Migas y «Atrás»**: cada miga es un enlace a la página del nivel (el área, al mapa; el grupo, a las opciones del área) y «Atrás» sube un nivel (antes salía del inicio entero). Esc en las opciones **sigue subiendo al mapa** (se dejó «como hoy»), pero ahora es una navegación a otra página y el oyente es del documento, porque la página recién cargada tiene el foco en `<body>`; en el mapa, en la lista de un grupo y en la Caja no hace nada | `niveles.area.esc_sube_al_mapa` y hermanas, `niveles.grupo.las_migas_son_enlaces_con_la_semantica_de_hoy…` (`PaginaNivel.test.tsx`); `niveles.spec.ts` |
+| **«Volver a Agenda…»** (enlace bajo el título cuando se llegaba desde una hoja) y Esc de regreso a la hoja | **«Atrás» del navegador**: la hoja se queda en el historial porque las migas son enlaces normales. **RETIRADO**: no hay origen que recordar | `inicio-recorrido.spec.ts` (bloque «desde una página hoja», con `goBack()`); las pruebas retiradas están explicadas ahí una por una |
+| **`?desde=<lugar>&ver=mapa\|grupos`** de las migas de las hojas | **Ignorado.** Las migas de las hojas van directo a `/estudio/` y a `/estudio/<área>/` (`urlDeInicio` de `marca/menu.ts`) y no llevan parámetros; un marcador viejo con `?desde=&ver=` aterriza en el mapa y `nivel.tsx` le quita esos dos parámetros a la dirección (deja `?blotato=conectar` y el ancla) | `niveles.entrada.el_mapa_lee_y_limpia_desde_y_ver…` (`PaginaNivel.test.tsx`); `inicio-recorrido.spec.ts` (12 variantes, válidas o no) |
+| **Foco programático al `h2`** del paso nuevo | **El `<title>` de cada URL** («Estudio de video · Marketing · Distrito…»): en un documento nuevo el lector de pantalla anuncia el título y el foco empieza arriba (en `<body>`); el primer Tab entra al contenido en orden de lectura. Es una diferencia a propósito | `rutas.pagina.el_titulo_es_el_de_la_ruta_y_esta_una_sola_vez` (`paginas.test.ts`); `inicio-recorrido.spec.ts` (bloque de teclado y foco) |
+| **«Estás aquí»** en la tarjeta del grupo donde estabas | **No hay**: la dirección y el título dicen dónde estás, y no existe un grupo «elegido» | `niveles.area.ninguna_tarjeta_dice_estas_aqui…` (`PaginaNivel.test.tsx`) |
+| **La Caja se queda montada** (escondida) bajo el mapa, las opciones o una lista | **Ya no, al salir de ella.** La Caja solo existe en sus tres páginas; salir a un nivel superior (una miga) **descarta lo escrito, las fotos y el video elegido**, sin aviso del navegador (se decidió así por ahora). Cambiar de pestaña DENTRO de la Caja sigue conservándolo todo. Una subida en curso sigue avisando con el aviso nativo del navegador (ya existía). «Mis creaciones» y «Tu primer video, en tres caminos» ya no existen fuera de la Caja. **RETIRADO** el e2e «la caja queda montada al abrir el mapa» | `inicio.edicion.cambiar_de_familia_y_volver_conserva_texto_y_video_y_no_cancela_la_subida` sigue vigente tal cual (`Edicion.test.tsx`); `inicio-recorrido.spec.ts` («salir de la caja descarta lo escrito» y cambiar de pestaña) |
+| **Elegir un grupo olvidaba la página de origen** y **recargar el inicio limpio** | No hay origen que olvidar; recargar una página recarga ESA página. **RETIRADOS** | explicado en `inicio-recorrido.spec.ts` |
+| **`?prompt=`, `?brief=` y `?blotato=conectar`** los leía el inicio de una sola página | Los reenvía el servidor con un 302 (tabla de arriba). La Caja sigue leyendo `?prompt=`/`?brief=` UNA vez al llegar (y luego los quita de la dirección); `?blotato=conectar` abre el diálogo en el grupo Blotato y, en la Caja, también | `tests/test_web_rutas.py`; `Llegada.test.tsx`; `niveles.herramienta.*` (`Herramienta.test.tsx`) |
+| **El doble clic accidental** (el segundo clic de un doble clic en una ficha del mapa elegía un grupo) | La guarda se conserva en cada página de navegación, contada desde que ESA página se cargó (a 390 px la ficha «Marketing» y la tarjeta «Distrito» de la página siguiente coinciden) | `niveles.doble_clic.*` (`PaginaNivel.test.tsx`); `niveles.spec.ts` |
+| **El diálogo y la lectura de Blotato** estaban en el inicio, siempre | Solo los dos grupos que lo usan (Blotato y Avanzado) lo piden, con `import()`; los demás niveles no preguntan nada a Blotato | `niveles.blotato.*` (`PaginaNivel.test.tsx`), `GrupoConBlotato.falla.test.tsx` |
+
+Lo que **no** cambia: la Caja es el mismo código (`Inicio` con `lugar`), así que sus
+invariantes `inicio.caja.*`, `inicio.edicion.*`, `inicio.union.*`, `inicio.hojavideos.*`,
+`inicio.audio.*`, `inicio.galeria.*`, `inicio.modelos.*`… valen tal cual; la lista de
+IDs registrados (360) sigue entre acentos graves en este doc y como `it()` en
+`web/src/pantallas/inicio/`. Las migas de la Caja son enlaces a otras páginas
+(`niveles.herramienta.las_migas_son_enlaces_el_area_al_mapa_y_el_grupo_a_las_opciones_del_area…`).
+
+### Deuda declarada para E8: el recorrido en página queda sin página que lo monte
+
+`herramienta.tsx` es lo único que monta `<Inicio>` y siempre con `lugar`; `nivel.tsx` monta
+`PaginaNivel`. Tras retirar `web/estudio/inicio/index.html` y `principal.tsx` (E5.3),
+**nada monta ya el inicio de una sola página** (`Inicio` sin `lugar`: el reductor de
+`Recorrido`, el mapa y las opciones dentro de la tarjeta, la Caja escondida, la lectura de
+`?desde=&ver=`). Su código sigue en el repo, **con todas sus pruebas en verde**, pero ya
+no muerden el camino que sigue la gente:
+
+- **288 pruebas sin ID**: `Recorrido.test.tsx` (73), `estadoRecorrido.test.ts` (149),
+  `AutomatizacionesRecorrido.test.tsx` (23), `Llegada.test.tsx` (15), `Mapa.test.tsx` (16) y
+  `Pantallas.test.tsx` (12).
+- **167 pruebas con ID** en `Inicio.test.tsx` (de sus 174). De ellas, las que hablan del
+  recorrido y no de la Caja son `inicio.menu.*` (6), `inicio.blotato.*` (11) e
+  `inicio.edicion.ninguna_peticion_al_montar_ni_al_abrir_la_familia`: su cobertura real hoy
+  es `niveles.*` de `PaginaNivel.test.tsx` y de `GrupoConBlotato.falla.test.tsx`, más
+  `niveles.spec.ts` e `inicio-recorrido.spec.ts` en el navegador. Además hay una suelta
+  («pegar con la caja escondida por la tarjeta…») que cuida un estado que ya no existe.
+- Varias de esas pruebas fijan `/estudio/inicio/` con `history.replaceState` como arnés para
+  la lectura de la dirección (`Inicio.test.tsx`, `Recorrido.test.tsx`, `Llegada.test.tsx`,
+  `Edicion.test.tsx`, `EdicionShorts.test.tsx`, `EdicionUnion.test.tsx`, `AutomatizacionesRecorrido.test.tsx`, `estadoRecorrido.test.ts`,
+  `Herramienta.test.tsx`): esa dirección ya es un 302, pero es solo un valor de prueba.
+
+**Cómo se salda (E8, el plan lo marca como limpieza recomendada, no urgente):** retirar
+`Recorrido.tsx`; reducir `estadoRecorrido.ts` a lo que sigue en uso (`areaDe`, `grupoDe`,
+`leerLlegadaDeTexto`, `urlSinEntrada`, la guarda de doble clic); sacar de `Inicio.tsx` el
+reductor, el reposo, `elegido`, `hoja` y la Caja escondida (`Inicio` con `lugar` **sigue
+siendo la página de la Caja**: se quita lo que solo servía sin `lugar`); `Mapa`,
+`Grupos` y `Pantallas` quedan solo con enlaces. Cada prueba que se retire o se reescriba
+deja aquí su fila «RETIRADO / destino» (precedente: la fila de
+`inicio.edicion.una_idea_pone_su_texto_en_el_campo_y_le_da_el_foco` en «Las ideas de Edición
+pasan de botones a pista que rota», más abajo), y los 360 IDs siguen como `it()` en
+`web/src/pantallas/inicio/` y entre acentos graves en este doc (`tests/test_migracion_ui.py`).
+Si se borra o renombra un archivo de prueba, cada doc que lo cite se edita en el mismo
+commit (`docs/migracion/{inicio,coi,biblioteca,constructor,asistente}.md`).
+
+### Qué cambia para la persona
+
+Las notas de versión (lenguaje de quien usa el estudio) están en `docs/OPERACION.md`,
+«Notas de versión: rutas por nivel (22-oct-2026)».
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
@@ -507,7 +761,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_el_modal_lleva_a_la_pagina_de_la_api_de_blotato` | `inicio.blotato.enlace_a_la_api_con_noopener` |
 | `test_el_menu_pregunta_sin_gastar_llamadas_a_blotato` | `inicio.menu.pregunta_ligero` |
 | `test_la_clave_del_env_no_se_ofrece_desconectar` | `inicio.blotato.clave_del_env_no_se_ofrece_desconectar` |
-| `test_el_inicio_abre_el_modal_si_viene_del_editor` | `inicio.blotato.viene_del_editor_con_blotato_conectar` y `test_migracion.py::test_el_inicio_en_todos_lleva_el_query_a_la_nueva` |
+| `test_el_inicio_abre_el_modal_si_viene_del_editor` | `inicio.blotato.viene_del_editor_con_blotato_conectar` y `test_migracion.py::test_el_inicio_en_todos_lleva_el_query_a_la_principal` |
 | `test_ya_no_queda_ninguna_seccion_proximamente` | `inicio.menu.entradas_y_grupos_en_orden` |
 | `test_la_competencia_es_un_enlace_y_ya_no_dice_proximamente` | `inicio.menu.entradas_y_grupos_en_orden` |
 | `test_la_agenda_es_un_enlace_y_ya_no_dice_proximamente` | `inicio.menu.entradas_y_grupos_en_orden` |
@@ -550,16 +804,23 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_m23_agenda_ui.py`, `test_m23_competencia_ui.py`, `test_m23_metricas_ui.py` (el hub los enlaza) | `inicio.menu.entradas_y_grupos_en_orden` |
 | `test_ui12_pildora.py::test_el_inicio_en_celular_baja_el_titulo` | `pt-16` (64 px) en el contenedor, como el `Marco`: la píldora acaba a 52 |
 | `test_ui14_todas.py[index]` | `tokens.css`; al retirar, `index` sale de la lista |
-| `test_ui15_trabajos.py[index]` | se queda: la nueva **sí** carga `trabajos.js` después de `monedero.js` (`web/estudio/inicio/index.html`) |
+| `test_ui15_trabajos.py[index]` | se queda (lee `static/index.html`, la clásica). La nueva **sí** carga `trabajos.js` después de `monedero.js`, y desde las rutas por nivel lo hace en las 16 páginas generadas (`web/estudio/inicio/index.html` ya no existe): lo fijan `rutas.pagina.monedero_js_esta_presente_y_va_despues_de_auth_js` y `rutas.pagina.la_bandeja_de_trabajos_va_en_todas_con_iconos_antes_que_trabajos` (`paginas.test.ts`) |
 | `test_ui_escapar.py` (la `esc` del inicio y sus plantillas) | `inicio.listas.textos_del_server_como_texto` (React escapa). Al retirar, `static/index.html` sale de la lista de `esc` esperadas |
-| `test_m19_orbe.py` (favicon, sin motor GPU, sin `/monedero.html`, `check_js`) | favicon en `web/estudio/inicio/index.html` (ya lo mira `test_todas_las_paginas_tienen_favicon`); el inicio nuevo no carga el orbe |
+| `test_m19_orbe.py` (favicon, sin motor GPU, sin `/monedero.html`, `check_js`) | favicon en cada página de `web/estudio/` (la plantilla de `paginas.ts` lo trae literal y `test_todas_las_paginas_tienen_favicon` recorre todo `web/**/*.html`); el inicio nuevo no carga el orbe |
 | `test_m20_paleta.py` | ya mira `web/`. **Al retirar:** `rgba(0,0,0,0.533)` y `rgba(20,22,26,0.72/0.95)` solo viven en `static/index.html`: salen de `TRANSLUCIDOS` en el mismo PR |
 | `test_m21_botones.py[index.html]` | el precio del desplegable es `{ESTRELLA} {precio}` en JSX, no una plantilla: no es un botón que cobre |
-| `test_entrar_portada.py::test_estudio_sirve_el_mismo_index` | desde `todos` (14-oct-2026) pide la vieja con la cookie `ui=clasica`; `test_estudio_lleva_al_inicio_nuevo` espera el 302 que conserva el query, y `test_las_tres_son_publicas_con_cognito` sigue el 302 hasta `/estudio/inicio/` sin pasar por `/entrar`. Las dos que esperan el 302 (`test_estudio_lleva_al_inicio_nuevo` y `test_las_tres_son_publicas_con_cognito`) solo lo esperan si la pantalla nueva está compilada (en el contenedor del CI); sin `web/dist` dan 200 |
-| `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | se queda con la cookie `ui=clasica`: `server/migracion.py` sirve la vieja con `no-cache`. `test_el_302_del_estudio_no_se_queda_en_cache` fija el `no-store` del 302 |
-| `test_web_tuberia.py::test_la_app_real_sirve_la_vitrina_si_esta_compilada` | con `web/dist`, `/estudio/` da el 302 y con la cookie `ui=clasica` el 200 |
+| `test_entrar_portada.py::test_estudio_sirve_el_mismo_index` | desde `todos` (14-oct-2026) pedía la vieja con la cookie `ui=clasica`; con las rutas por nivel (22-oct-2026) la clásica vive en `/index.html` y se reescribió como `test_el_index_viejo_sirve_el_clasico_con_su_cookie`. `test_estudio_lleva_al_inicio_nuevo` es ahora `test_estudio_es_la_principal_y_el_index_viejo_lleva_a_ella` (`/estudio/?p=1` es 200, `/index.html?p=1` es el 302 que conserva el query), y `test_las_tres_son_publicas_con_cognito` quedó en las tres públicas de siempre: lo de `/estudio/` pasó a `test_la_principal_y_las_paginas_por_nivel_son_publicas_con_cognito` (200 sin sesión, sin `/entrar`). Las que piden `/estudio/` se saltan sin `web/dist`, con un mensaje que lo dice |
+| `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | `/index.html` se queda con la cookie `ui=clasica` (`server/migracion.py` sirve la vieja con `no-cache`); `/estudio/` y las páginas anidadas son páginas compiladas, no `static/` (`test_la_principal_y_las_paginas_por_nivel_siguen_en_no_cache`). El `no-store` del 302 lo fijan `test_el_302_del_index_viejo_a_la_principal_no_se_queda_en_cache` y `test_el_302_de_la_pagina_unica_a_la_principal_no_se_queda_en_cache` (`/estudio/inicio/`) |
+| `test_web_tuberia.py::test_la_app_real_sirve_la_vitrina_si_esta_compilada` | con `web/dist`, `/estudio/` da el 200 de la página compilada (`no-cache`), `/index.html` el 302 a `/estudio/` y con la cookie `ui=clasica` el 200 de `static/index.html` |
 
 ## Diferencias a propósito
+
+> **Nota del 22-oct-2026 (rutas por nivel).** Las viñetas del 15 y 20-oct-2026 de este
+> apartado describen el recorrido «en una sola página». Hoy cada paso es su propia
+> dirección y varias cosas de abajo ya no ocurren (la Caja escondida bajo el mapa,
+> «Estás aquí», «Volver a …», el foco al `h2`, el `?desde=&ver=` de las migas). Qué
+> pasó con cada una está en «Rutas por nivel», arriba; abajo solo quedan notas cortas
+> donde la viñeta dice lo contrario.
 
 - **Mapa con Irremplazables (dueño, 15-oct-2026: «Me gusta, ahora empecemos a
   tocar el código»):** el inicio deja de tener menú a la izquierda, en cualquier
@@ -588,7 +849,9 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     `inicio.edicion.el_riel_tiene_tres_familias_con_aria_pressed_y_arranca_en_video`).
     En el estado hay un campo nuevo, `elegido` (falso solo en el reposo): sin él las
     opciones marcarían «Estás aquí» en Distrito, el grupo de la caja escondida, y
-    sería el mismo «parece seleccionado» que el dueño pidió quitar del mapa.
+    sería el mismo «parece seleccionado» que el dueño pidió quitar del mapa. *(22-oct-2026: el mapa es la
+    principal, `/estudio/`; la caja ya no está montada bajo él —solo existe en
+    `…/distrito/imagen|video|edicion/`— y las entradas `?desde=&ver=` se ignoran.)*
   - **El título arriba, la tarjeta solo para la caja (15-oct-2026, segunda
     ronda).** *Sustituye a «Tarjeta única».* «Irremplazables» (dorado, único `h1`,
     sin icono) va FUERA y ARRIBA de cualquier tarjeta y no se mueve de un paso a
@@ -613,7 +876,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     Automatizaciones, la tercera que se abre, se ve EXACTAMENTE igual que ellas
     (sin «Próximamente» ni `aria-disabled`).
     Las tres opciones marcan «Estás aquí» solo en el grupo que ya elegiste (o de
-    donde llegaste desde una hoja).
+    donde llegaste desde una hoja). *(22-oct-2026: «Estás aquí» ya no
+    existe; la dirección y el título dicen dónde estás.)*
   - **Migas, sin «Volver a …» y Esc (15-oct-2026, segunda ronda).** *Sustituye a
     «Migas, «Volver a …» y Esc».* La ruta elegida son chips («Marketing ›
     Distrito») y cada uno reabre su nivel: son la manera de subir de nivel.
@@ -630,13 +894,17 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     donde estabas. El foco: abrir el inicio sin más ya no está «en la caja», así
     que lo que antes era «aterrizar en la caja no lo mueve» es ahora «abrir el
     inicio en el mapa, sin nada elegido, no lo mueve» (ahí Esc no hace nada); llegar
-    por la miga de otra página sí lo lleva al `h2`.
+    por la miga de otra página sí lo lleva al `h2`. *(22-oct-2026: las migas son enlaces a la página del
+    nivel, «Atrás» sube un nivel, «Volver a …» ya no existe y el foco al `h2` lo reemplaza el
+    `<title>` de cada página; Esc en las opciones sigue subiendo al mapa.)*
   - **La caja siempre montada (15-oct-2026).** Con el mapa, las opciones o una
     lista a la vista, la caja y lo que cuelga de ella («Mis creaciones», los
     caminos de quien empieza, los archivados) se esconden con `hidden`, no se
     desmontan: así no se pierden el texto escrito, el video subido, una subida
     en curso ni el filtro de la galería. Se esconde de la vista, del foco y del
-    lector de pantalla.
+    lector de pantalla. *(22-oct-2026: ya no. La
+    caja solo existe en sus tres páginas y salir de ella descarta lo escrito; cambiar de
+    pestaña DENTRO de la caja sí lo conserva.)*
   - **La lista de pantallas de un grupo (15-oct-2026).** Lo que enseña un
     grupo que no es la caja: tarjetas-enlace con título, línea de apoyo e icono.
     Las de Blotato se apagan (`aria-disabled`, «Conecta tu Blotato para usarlo»)
@@ -663,7 +931,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
       última quieta), **sin `pagina`** en el mapa, como COI y la Biblioteca. Sus migas entran al Inicio con
       `?desde=automatizaciones.distrito.constructor|asistente&ver=mapa|grupos`: la hoja queda como `hoja` (con `href`), se enseña «Volver a Constructor»
       (o «…Asistente») como enlace y Esc navega a ella. Desde «Actualizar flujos» (sin `href`) no hay a dónde volver y Esc sube al mapa; un
-      grupo vacío (`tus`) no es un origen válido y cae al mapa.
+      grupo vacío (`tus`) no es un origen válido y cae al mapa. *(22-oct-2026: ya sin `?desde=` ni «Volver a Constructor»;
+      sus migas van directo a `/estudio/` y a `/estudio/automatizaciones/`.)*
     - Esc en las opciones de Automatizaciones sube al mapa; en «Tus automatizaciones» no hace nada; el segundo clic de un doble clic en «Distrito» no activa «Constructor».
     - Producto y Ventas siguen inertes: `Mapa.test.tsx`, `Recorrido.test.tsx` y `estadoRecorrido.test.ts` dejaron de dar por apagada a Automatizaciones.
     Pruebas: `AutomatizacionesRecorrido.test.tsx` (nuevo, sin el prefijo `inicio.`: no necesita registro), `menu.test.ts` (los grupos sin pantallas ya no son solo Deepseek:
@@ -678,7 +947,9 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     `?blotato=conectar` y el ancla). Las pantallas que el mapa no tiene (Admin,
     Crear, Subir, Clip, Imágenes y Shorts) no llevan migas. Las migas son
     `<ol><li>`: las pruebas de Agenda, Métricas y MIX que cuentan `listitem`
-    lo hacen ahora dentro de `<main>`.
+    lo hacen ahora dentro de `<main>`. *(22-oct-2026: las migas de las hojas son
+    enlaces directos a `/estudio/` y a `/estudio/<área>/` (`urlDeInicio`), sin `?desde=&ver=`;
+    el inicio de una sola página que las leía ya no se sirve.)*
   - **«De videos a Shorts» dentro de «Editar ▾» (15-oct-2026).** Es la segunda
     opción del chip y ya no tiene entrada propia (en el menú tenía el enlace a
     `/shorts.html`, que sigue valiendo en la clásica). El modo vive en
@@ -708,7 +979,8 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     `texto-oro`; `docs/DISENO.md` §3). Al cambiar de paso el foco nunca cae a
     `<body>`: va al `h2` del paso nuevo (abrir el inicio sin más no lo mueve: se
     queda en `<body>`, a propósito), y el segundo clic de un doble clic en una
-    ficha del mapa (menos de 500 ms) no elige un grupo por accidente.
+    ficha del mapa (menos de 500 ms) no elige un grupo por accidente. *(22-oct-2026: el foco al `h2` ya no existe; la guarda del
+    doble clic sigue, en cada página de navegación.)*
   - **Edición: sin la frase de ayuda y «Iniciar» del ancho del selector de modelo
     (15-oct-2026, segunda ronda).** (a) «Escribe qué quieres hacer con tu video.»
     ya no se ve. No se borró porque cumple una función: es la descripción de

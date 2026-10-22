@@ -70,8 +70,10 @@ quiere cubrir iPhones viejos.
 ```
 web/                       package.json · .npmrc (engine-strict, save-exact) · .nvmrc 20.20.2
   index.html               → /              portada (HTML + Tailwind, sin React)
+  estudio/index.html       → /estudio/                 la principal: el mapa (rutas por nivel, 22-oct-2026)
   estudio/_vitrina/        → catálogo de componentes (noindex)
   estudio/<pantalla>/      → /estudio/<pantalla>/
+  estudio/<área>/…/        → /estudio/marketing/distrito/video/   una página por nivel (rutas por nivel)
   src/estilos/tokens.css   ÚNICA fuente de tokens (⊂ PALETA de M20)
   src/nucleo/              api.ts · sondeo.ts · moderar.ts · formato.ts (formato.dolares → "$0.21 dólares")
   src/ui/                  Boton, Dialogo, Confirmar, Campo, Pestanas, Tarjeta, Aviso, Esqueleto, Vacio, TablaDatos…
@@ -190,8 +192,8 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
      llamado `/automatizacion` en este plan).
 7. **Nota del 15-oct-2026 — el menú lateral se retira (sustituye lo del punto 2
    y la fila 3 de §8, que se quedan como historia del 25-sep):** ✅ el dueño
-   aprobó el prototipo «Mapa con Irremplazables» y en `/estudio/inicio/` ya no
-   hay menú lateral, en ningún ancho. El inicio es un recorrido de tres pasos
+   aprobó el prototipo «Mapa con Irremplazables» y en el inicio (entonces
+   `/estudio/inicio/`, hoy `/estudio/`) ya no hay menú lateral, en ningún ancho. El inicio es un recorrido de tres pasos
    (mapa en X → tres opciones → pantalla) y, en la segunda ronda del dueño del
    mismo día, **el mapa es el inicio**: se aterriza en él, el título «Irremplazables»
    va arriba y fuera de cualquier tarjeta, solo la caja (Marketing › Distrito)
@@ -203,6 +205,18 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
    `docs/DISENO.md` §7, el inventario de lo que cambió está en
    `docs/migracion/inicio.md` y el QA manual en `docs/QA-UI.md` § inicio
    (pasos 43 a 73).
+8. **Nota del 22-oct-2026 — una ruta por nivel (sustituye lo que el punto 7 dice del
+   recorrido «en una sola página»):** ✅ el dueño pidió «por cada pestaña, una ruta». El
+   recorrido deja de ser una página que cambia de paso por dentro: `/estudio/` es el mapa
+   (la principal; `/estudio/inicio/` redirige a ella), y cada área, grupo y herramienta de
+   la caja tiene su dirección (`/estudio/marketing/distrito/video/`) y su `<title>`. Sigue
+   siendo multipágina, sin router. Imagen, Video y Edición son tres direcciones de UNA
+   caja; Marketing › Distrito muestra primero la lista; las hojas (Agenda, COI…) se mudarán a
+   su ruta por nivel al final, una por commit (pendiente: hoy siguen en `/estudio/<hoja>/`). Ya no existen «Volver a …», «Estás aquí», el
+   `?desde=` de las migas ni la caja escondida bajo el mapa. El detalle y el destino de cada
+   comportamiento están en `docs/migracion/inicio.md` § «Rutas por nivel»; el QA manual,
+   en `docs/QA-UI.md` § inicio; la carta, en `docs/DISENO.md` §7; y las URLs, cómo
+   recorrerlas y las notas de versión, en `docs/OPERACION.md`.
 
 **Ramas:** los PRs van a `dev`, nunca a `main`. Cada commit de una tarjeta
 empieza con `UI·N:` para poder correlacionar los cambios de la interfaz

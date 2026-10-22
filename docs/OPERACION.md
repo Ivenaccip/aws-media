@@ -741,11 +741,18 @@ imágenes de dev cuentan para las 30 que conserva la regla del ECR.
 
 **En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
 lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
-`/estudio/`…) responde 302 a su `/estudio/<p>/`, aunque `server/migracion.py`
-la tenga en `nueva`. Producción no tiene la variable (lo fija
-`tests/test_entornos.py`), así que sus etapas siguen siendo las de
+`/index.html`…) responde 302 a su pantalla nueva (`/estudio/<p>/`; la del inicio es
+`/estudio/`), aunque `server/migracion.py` la tenga en `nueva`. Producción no tiene la
+variable (lo fija `tests/test_entornos.py`), así que sus etapas siguen siendo las de
 `PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»; para volver
 a una clásica se teclea `/ui/clasica?pantalla=<p>`.
+
+`/estudio/` **ya no es una URL vieja ni un 302**: desde las rutas por nivel
+(22-oct-2026) es la página principal, el mapa, y responde 200 en prod y en dev. Tras un
+deploy a dev, recorre las direcciones de «Las rutas por nivel: direcciones y cómo
+recorrerlas» (más abajo, en «La UI nueva»). El corte (E5: enlaces, la raíz `/estudio/` y las
+entradas viejas) y la puesta al día de e2e y docs (E6) van en **un solo PR y no se despliegan por
+separado** (las etapas están en `docs/migracion/inicio.md` § «Rutas por nivel»).
 
 ## Deploy (checklist)
 
@@ -1192,11 +1199,13 @@ hacia los 35) o una muerte más una espera larga.
 
 **«Tus trabajos»** (`GET /api/trabajos`, el cuadro de abajo a la derecha) también enseña las imágenes en segundo plano, como los
 clips: en curso, lista o con error, y los créditos devueltos solo si el doc no dice `devuelto: false`. El enlace de su ficha lleva
-a **`/estudio/inicio/`** —el inicio nuevo, donde «Mis creaciones» enseña el pedido, la imagen terminada o su error—, no a
-`/imagenes.html` ni a `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`: desde el 14-oct-2026 el
-inicio está en `todos` (`server/migracion.py`) y esa URL redirige ahí, pero con la cookie `ui=clasica` sirve el inicio viejo, que no
-lista pedidos. `static/trabajos.js` oculta la ficha en la
-pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis creaciones» ya dice. Para las imágenes lee los
+a **`/estudio/marketing/distrito/imagen/`** —la Caja del inicio en su pestaña Imagen (`URL_IMAGEN` de `server/trabajos_api.py`), donde
+«Mis creaciones» enseña el pedido, la imagen terminada o su error—, no a `/imagenes.html` ni a `/estudio/imagenes/`, que son el
+formulario de crear, vacío; y no a `/estudio/`, que desde las rutas por nivel (22-oct-2026) es el mapa y no lista pedidos (hasta
+entonces la ficha llevaba a `/estudio/inicio/`, la página única de antes, que hoy es un 302 a `/estudio/`). `static/trabajos.js` oculta
+la ficha en la pantalla a la que apunta (compara el `pathname` exacto), así que en la pestaña Imagen no se repite lo que «Mis creaciones»
+ya dice. **Límite conocido y aceptado:** en las pestañas Video y Edición (`…/distrito/video/` y `…/distrito/edicion/`: la misma Caja,
+que también enseña «Mis creaciones») la ficha de una imagen sigue a la vista. Para las imágenes lee los
 pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
 `.json` y un `.reclamo` por pedido, para siempre.
 
@@ -1276,9 +1285,15 @@ llamadas concurrentes, así que es latente. El arreglo sería el mismo patrón (
 ## La UI nueva (`web/`, UI·6)
 
 Vite 8 + React 19 + TS estricto + Tailwind v4 + Radix, multipágina
-(docs/PLAN-UI.md §3). Cada carpeta `web/estudio/<p>/index.html` es una
-pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
-(noindex): todos los componentes en todos sus estados.
+(docs/PLAN-UI.md §3). Cada carpeta de `web/estudio/` con un `index.html` es una
+página en la misma dirección, a cualquier profundidad: `web/estudio/index.html` es
+`/estudio/` (el mapa), `web/estudio/admin/index.html` es `/estudio/admin/` y
+`web/estudio/marketing/distrito/video/index.html` es `/estudio/marketing/distrito/video/`. Las
+16 páginas del recorrido (el mapa, 5 áreas, 7 grupos y las 3 pestañas de la Caja) **las
+genera** `web/src/marca/paginas.ts` y están commiteadas (`cd web && npm run niveles` las
+regenera; `npm run verificar` falla si alguna no es idéntica a lo generado). Una pantalla
+nueva solo aparece al compilar su carpeta. La primera de todas es la vitrina,
+`/estudio/_vitrina/` (noindex): todos los componentes en todos sus estados.
 
 **Del código a producción:**
 1. La etapa `web` del Dockerfile corre `npm run verificar`, que hace tipos,
@@ -1298,8 +1313,11 @@ python tools/verificar_web.py
 
 Solo hace GET. Revisa que la vitrina salga `noindex`, que sus assets sean
 `immutable` y salgan con HIT, que un asset inexistente dé 404, que `/auth.js`
-siga `no-cache` y que ninguna clave de `pricing.json` viaje en el JS. Lo que
-queda es tuyo: abrir `/estudio/_vitrina/` en el teléfono y aprobarla.
+siga `no-cache`, que ninguna clave de `pricing.json` viaje en el JS y, desde las rutas por
+nivel, que la principal `/estudio/` responda 200 de HTML con `no-cache` (ya no redirige) y
+que `/estudio/marketing` —sin barra— termine, tras el 302, en una página 200 de HTML. Lo que
+queda es tuyo: abrir `/estudio/_vitrina/` en el teléfono y aprobarla. Con otro origen (dev):
+`python tools/verificar_web.py --base https://…`.
 
 **Local:**
 
@@ -1328,6 +1346,80 @@ of null (reading 'edgesOut')» al resolver los peers opcionales de vitest
 4.1. `npm ci` con el lockfile sí funciona en npm 10, que es lo que corre el
 build. `engine-strict` rechaza cualquier paquete que pida Node 22; ya pasó
 con `@testing-library/jest-dom@6.10`, y por eso está fijado a 6.9.1.
+
+### Las rutas por nivel: direcciones y cómo recorrerlas
+
+Desde el 22-oct-2026 cada paso del inicio es su propia página, con su dirección y su `<title>`
+(el diseño y el destino de lo que cambió están en `docs/migracion/inicio.md` § «Rutas por
+nivel»). El árbol de direcciones:
+
+```text
+/estudio/                                  el mapa «Elige un área» (la principal)
+├── marketing/                             «Elige un grupo»
+│   ├── distrito/                          la lista Imagen · Video · Edición
+│   │   └── imagen/ · video/ · edicion/    la Caja (UNA página, tres direcciones)
+│   ├── blotato/                           Agenda · Competencia · Métricas (apagadas sin Blotato)
+│   └── avanzado/                          Publicaciones automáticas · Copiadora de estilos
+├── central/                               distrito/ (COI · Biblioteca · Preguntas y Glosario)
+│                                          deepseek/ (sin pantallas)
+├── automatizaciones/                      distrito/ (Constructor · Asistente · Actualizar flujos)
+│                                          tus/ (sin pantallas)
+├── producto/ · ventas/                    «Todavía no está disponible.» (200)
+└── las hojas, TODAVÍA planas: agenda/ competencia/ metricas/ mix/ estilos/ coi/
+    biblioteca/ constructor/ asistente/   (se mudan al final, una por commit)
+```
+
+Qué hace el servidor con las direcciones tecleadas a mano (`server/web.py`; todo 302 lleva
+`Cache-Control: no-store`, `Location` relativo y el query intacto):
+
+| Petición | Respuesta |
+|---|---|
+| `/estudio/` y toda página de arriba, con barra | 200, `text/html`, `no-cache`, con ETag (304 si no cambió) |
+| `/estudio/marketing` (sin barra), `/estudio/Marketing/`, `/estudio//marketing/` | 302 a `/estudio/marketing/` |
+| `/estudio/inicio/` (la página única de antes), con o sin barra | 302 a `/estudio/` |
+| `/estudio/?prompt=…` · `?brief=…` · `?blotato=conectar` | 302 a la Caja en Imagen · la Caja en Video · el grupo Blotato (con el mismo query) |
+| `/estudio/?desde=…&ver=…` · `?p=…` | 200, el mapa tal cual |
+| `/index.html` | 302 a `/estudio/`; con la cookie `ui=clasica`, 200 el inicio clásico |
+| `/estudio/nada/` | 404 JSON; con `Accept: text/html`, 404 con la página «No encontramos esa página» (sin reflejar la dirección) |
+| `/estudio/assets/no-existe.js` | 404 JSON siempre |
+
+(`/estudio` sin barra y `/?algo` no los redirige `server/web.py` sino `server/app.py` —a `/estudio/` y a
+`/estudio/?algo`—, y esos dos 302 no llevan `Cache-Control`: sin él un 302 no se guarda, pero si se
+quiere `no-store` explícito hay que tocar `app.py`.)
+
+**Cómo recorrerlas después de un deploy (prod o dev):**
+
+```bash
+python tools/verificar_web.py                       # prod; con --base https://… para dev
+curl -sI https://irremplazables.xyz/estudio/                          # 200, cache-control: no-cache
+curl -sI https://irremplazables.xyz/estudio/marketing                 # 302, location: /estudio/marketing/
+curl -sI https://irremplazables.xyz/estudio/inicio/                   # 302, location: /estudio/
+curl -sI 'https://irremplazables.xyz/estudio/?prompt=hola'            # 302, location: /estudio/marketing/distrito/imagen/?prompt=hola
+curl -sI 'https://irremplazables.xyz/estudio/?blotato=conectar'       # 302, location: /estudio/marketing/blotato/?blotato=conectar
+```
+
+y a ojo, en el navegador (con sesión): `/estudio/` → Marketing → Distrito → Video, después
+`/estudio/central/`, `/estudio/ventas/` y una dirección que no existe (`/estudio/nada/`). Cada
+paso debe cambiar la barra de direcciones y el título de la pestaña, «Atrás» debe subir un
+nivel y cambiar de pestaña en la Caja (Imagen · Video · Edición) debe mover la dirección sin
+recargar. El QA completo con el dinero de por medio está en `docs/QA-UI.md` § inicio.
+
+Lo que ninguna prueba del repo mide y hay que mirar **la primera vez tras el deploy** (no se ha corrido
+contra producción): que el `Location` de los 302 llegue igual detrás de Cloudflare y API Gateway (es
+relativo y no depende del `Host`), y cuánto tarda la primera página tras un rato sin uso (cada salto
+de nivel es una invocación de la Lambda para el HTML, más las llamadas a la API de esa página).
+
+**En local**, con lo compilado (sin Vite): `cd web && npm run build`, y desde la raíz
+`./venv/bin/python -m uvicorn server.app:app --port 8012` → http://localhost:8012/estudio/. Sin `web/dist`
+`/estudio/` da 404 y `/index.html` sirve el clásico (en la imagen de producción `dist` siempre existe).
+
+**Pruebas de navegador (Playwright; no corren en CI):** `cd web && npm run e2e` (compila y corre
+todas) o, para una sola, `npm run build && npx playwright test e2e/niveles.spec.ts --workers=2`.
+`e2e/servidor.mjs` repite en Node lo que hacen `server/web.py` y `server/migracion.py`; si aquellos
+cambian, ése también. Según las etapas E6a y E6b (no las reproduje), dos grupos de pruebas de
+`inicio-edicion.spec.ts` fallan a veces bajo carga: las de la pista rotatoria (reloj falso:
+«Cannot fast-forward to the past») y «toda la caja se recorre solo con el teclado» (se agota
+`waitForEvent('filechooser')`). Si una cae, repítela sola o con `--workers=1` antes de darla por rota.
 
 ### El interruptor de migración (UI·7)
 
@@ -1362,11 +1454,46 @@ Piloto: **admin** (solo lo usa el dueño), hoy en `nueva`. Su mapa está en
 `docs/migracion/admin.md`.
 
 La primera en `todos` es **inicio**, desde el 14-oct-2026 (decisión del
-dueño): `/estudio/` responde 302 a `/estudio/inicio/`. Las demás siguen en
+dueño). Desde las rutas por nivel (22-oct-2026) su URL vieja es `/index.html` y la nueva es
+`/estudio/` (la principal): `/index.html` responde 302 a `/estudio/` y, con la cookie
+`ui=clasica`, sirve la clásica (hasta el 21-oct-2026 era `/estudio/` el que respondía 302 a
+`/estudio/inicio/`). Las demás siguen en
 `nueva`, así que los enlaces del inicio nuevo llevan a sus pantallas viejas,
 salvo la foto del personaje de cuentos e historias, que lleva a la Crear
 nueva (`/estudio/crear/`). Para devolver a alguien a la clásica:
-`https://irremplazables.xyz/ui/clasica?pantalla=inicio`.
+`https://irremplazables.xyz/ui/clasica?pantalla=inicio` (lo lleva a `/index.html` y deja la
+cookie; `/ui/nueva?pantalla=inicio` la borra y lo regresa a `/estudio/`).
+
+### Notas de versión: rutas por nivel (22-oct-2026)
+
+Para quien usa el estudio. El repo no tiene un CHANGELOG (`/actualizar` arma su «qué hay de
+nuevo» con los asuntos de los commits), así que esto es lo que va en la descripción del PR y en el
+aviso de versión, en lenguaje de quien lo usa:
+
+1. **Cada clic de navegación es una página nueva** (con la transición de siempre). La barra de
+   direcciones dice dónde estás: se puede marcar, compartir y recargar un nivel.
+2. **«Atrás» sube un nivel** (antes salía del inicio entero).
+3. **Marketing › Distrito muestra primero la lista Imagen · Video · Edición** (un clic más), y
+   cada herramienta tiene su dirección. Cambiar de pestaña dentro de la caja también cambia la
+   dirección y el título de la pestaña del navegador.
+4. **Al salir de la caja a un nivel superior (con una miga) se pierde lo escrito, las fotos puestas
+   y el video elegido** (antes el mapa guardaba la caja escondida). Cambiar de pestaña dentro de la
+   caja sigue conservándolo todo. Una subida en curso sigue avisando con el aviso del navegador antes
+   de dejar la página. Los avisos de la caja («Ya estamos creando…», un error de formulario) ya no te
+   siguen a otra página; lo que sí te sigue es «Tus trabajos», porque lo lista el servidor.
+5. **Desaparecen «Volver a Agenda»** (lo hace «Atrás»), **«Estás aquí»** y el foco que iba solo al
+   título de cada paso (el lector de pantalla anuncia el título de cada página, que dice dónde estás).
+6. **Quien tenga la cookie `ui=clasica` ya no ve el inicio clásico en `/estudio/`** sino en
+   `/index.html` (o con `/ui/clasica?pantalla=inicio`).
+7. **El mapa, las áreas y los grupos cargan ≈ 43 % menos JavaScript** (79,7 kB contra 139,2 kB
+   comprimidos) y no piden las listas de datos que solo usa la caja. La caja pesa lo que pesaba
+   (143,5 kB).
+8. Los enlaces y marcadores de antes siguen funcionando: `/estudio/inicio/`, `/estudio/?prompt=…`,
+   `/estudio/?brief=…`, `/estudio/?blotato=conectar` y las direcciones sin barra o en mayúsculas
+   redirigen a la página de hoy.
+
+Lo que **no** cambia: los precios y los cobros, las pantallas de cada herramienta y las hojas
+(Agenda, COI, Constructor…), que siguen en su dirección de siempre hasta que se muden.
 
 ## La imagen (Node, y por qué está fijado)
 
