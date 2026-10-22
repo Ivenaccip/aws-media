@@ -23,9 +23,8 @@ function carpetasConPagina(raiz: string, rel: string[] = []): string[] {
 // dirección anidada (E7 de las rutas por nivel) tampoco se pierde de vista. `movimiento-reducido.spec.ts` las abre en `/estudio/${pantalla}/`.
 //
 // La PRINCIPAL (web/estudio/index.html, el mapa en /estudio/) NO está aquí a propósito: no es una carpeta hija (su ruta relativa sería
-// la cadena vacía y `/estudio/${''}/` da «//»), y hoy no se sirve —/estudio/ redirige a /estudio/inicio/, que sí está—. Su código es el de
-// cualquier otra página de nivel (`niveles/nivel.tsx`), que ya recorren «marketing», «central»… Cuando el servidor la sirva (E5.2), esa
-// etapa decide si la suma con su propia prueba, porque ahí `/estudio/` deja de ser un salto.
+// la cadena vacía y `/estudio/${''}/` da «//»). Su código es el de cualquier otra página de nivel (`niveles/nivel.tsx`), que ya recorren
+// «marketing», «central»…; la prueba de «reducir movimiento» del mapa mismo vive en niveles.spec.ts, que la abre por `URL_MAPA`.
 export const PANTALLAS: readonly string[] = carpetasConPagina(fileURLToPath(new URL('../estudio/', import.meta.url))).sort();
 
 // Lo que el navegador todavía está moviendo: animaciones CSS, transiciones y

@@ -1,10 +1,30 @@
-// Lo que comparten las pruebas de navegador del recorrido del inicio («Irremplazables»: mapa en X → tres opciones → la caja o la
-// lista de pantallas de un grupo; pantallas/inicio/estadoRecorrido.ts): el estudio de mentira y las maneras de señalar cada cosa,
-// por su rol y su nombre —lo que ve y oye una persona—, no por clases. El inicio ABRE en el mapa (dueño, 15-oct-2026: «el mapa es el
-// inicio»): `abrirInicio` deja ahí, y `abrirLaCaja` sigue hasta la caja por el camino de siempre (Marketing → Distrito).
+// Lo que comparten las pruebas de navegador del recorrido del inicio («Irremplazables»): el estudio de mentira y las maneras de señalar
+// cada cosa, por su rol y su nombre —lo que ve y oye una persona—, no por clases.
 //
-// Los textos están escritos a mano a propósito (no se importan de marca/menu.ts): si alguien cambia un rótulo del mapa, las
-// pruebas lo notan en vez de seguirlo en silencio.
+// RUTAS POR NIVEL (dueño, 21-oct-2026: «por cada pestaña, una ruta»). Antes el recorrido era UNA página (/estudio/inicio/) que cambiaba de
+// paso por dentro; ahora cada nivel es su propia página, con su dirección y su `<title>`:
+//
+//   /estudio/                              el mapa («Elige un área»)           ← la principal; aquí empieza todo
+//   /estudio/marketing/                    las opciones del área («Elige un grupo»)
+//   /estudio/marketing/distrito/           la lista del grupo: Imagen · Video · Edición, como enlaces
+//   /estudio/marketing/distrito/video/     la caja («¿Qué vamos a crear hoy?»), con su pestaña (imagen · video · edicion)
+//
+// Qué cambia para quien escribe una prueba (la API de este archivo es la misma; los nombres que importan y lo que hacen, también):
+//   · pasar de un nivel a otro es NAVEGAR: las fichas, las tarjetas de grupo, las tarjetas de la lista y las migas son ENLACES (rol `link`,
+//     no `button`); las que no se abren (Producto, Ventas) siguen siendo botones quietos con `aria-disabled` (`fichaApagada`). Un clic en
+//     un enlace carga otra página: los `Locator` se vuelven a buscar solos en la nueva, pero lo que se guardó de la vieja (un
+//     `evaluate`, un `boundingBox`) ya no vale;
+//   · ABRIR el inicio es ir a `/estudio/` (`abrirInicio`) y llegar a la caja es ir directo a su dirección (`abrirLaCaja`). Marketing ›
+//     Distrito ya NO es la caja: es la lista Imagen · Video · Edición (`elegirHerramienta` da el último clic);
+//   · ya no existe «Volver a …», «Estás aquí», ni el `?desde=&ver=` de las pantallas hoja (sus migas son enlaces directos al mapa y a las
+//     opciones del área); `volverA` y `algunVolver` se conservan para afirmar justo que NO están;
+//   · salir de la caja a un nivel superior descarta lo que estaba escrito (cambiar de pestaña DENTRO de la caja sigue conservándolo).
+//
+// Lo que el servidor reenvía (server/web.py, ENTRADAS_VIEJAS; e2e/servidor.mjs lo repite): `/estudio/inicio/` → `/estudio/`, y `?prompt=` /
+// `?brief=` / `?blotato=conectar` a la caja en Imagen, a la caja en Video y al grupo Blotato.
+//
+// Los textos y las direcciones están escritos a mano a propósito (no se importan de marca/menu.ts ni de marca/rutas.ts): si alguien cambia
+// un rótulo o una dirección, las pruebas lo notan en vez de seguirlo en silencio.
 import { expect, type Locator, type Page } from '@playwright/test';
 
 import { cotizacion } from './edicion';
@@ -69,24 +89,73 @@ export async function simular(page: Page, { blotato = 'caido', imagenes = 0 }: S
   return { pedidos, claves };
 }
 
-/** Abre el inicio (con `?desde=…` si se quiere entrar como lo hacen las migas de otra pantalla) y espera a que aparezca su región.
- *  Sin entrada en la URL aterriza en el MAPA. */
-export async function abrirInicio(page: Page, url = '/estudio/inicio/') {
+// ---------------------------------------------------------------------------
+// las direcciones del recorrido (escritas a mano, ver arriba)
+
+/** Las tres herramientas de la caja: una misma página con tres direcciones, la pestaña la dice la dirección. */
+export type Herramienta = 'imagen' | 'video' | 'edicion';
+
+/** La principal: el mapa («Elige un área»). */
+export const URL_MAPA = '/estudio/';
+/** Las opciones del área Marketing («Elige un grupo»): Distrito · Blotato · Avanzado. */
+export const URL_MARKETING = '/estudio/marketing/';
+/** El grupo Distrito de Marketing: la LISTA Imagen · Video · Edición (no la caja). */
+export const URL_DISTRITO = '/estudio/marketing/distrito/';
+/** El grupo Blotato de Marketing (a donde el servidor manda `?blotato=conectar`). */
+export const URL_BLOTATO = '/estudio/marketing/blotato/';
+/** La caja, en la pestaña de cada herramienta. */
+export const URL_CAJA: Readonly<Record<Herramienta, string>> = {
+  imagen: '/estudio/marketing/distrito/imagen/',
+  video: '/estudio/marketing/distrito/video/',
+  edicion: '/estudio/marketing/distrito/edicion/',
+};
+/** El título de la pestaña del navegador del mapa; el de cada nivel le añade « · Área · Grupo · Herramienta» (marca/rutas.ts). */
+export const TITULO_MAPA = 'Estudio de video';
+
+/** Dónde está la página: solo el camino, sin query ni ancla (`/estudio/marketing/`). */
+export const rutaDe = (page: Page): string => new URL(page.url()).pathname;
+
+/** Dónde está la página, con su query (`/estudio/marketing/blotato/?blotato=conectar`): lo que dejó el servidor tras un 302. */
+export const direccionDe = (page: Page): string => {
+  const u = new URL(page.url());
+  return u.pathname + u.search;
+};
+
+/** Espera a que la página sea la de ese camino (ya cargada). Un clic en un enlace carga otro documento: esto es lo que lo espera. */
+export const esperarRuta = (page: Page, ruta: string) => page.waitForURL(u => u.pathname === ruta);
+
+/** Pulsa un enlace y espera a la página a la que lleva (la que dice su `href`). Un enlace sin `href` (un botón) hace fallar la prueba aquí. */
+async function irPorEnlace(page: Page, enlace: Locator) {
+  const href = await enlace.getAttribute('href');
+  expect(href, 'el enlace no tiene href: ¿es un botón?').not.toBeNull();
+  const destino = new URL(href!, page.url()).pathname;
+  await enlace.click();
+  await esperarRuta(page, destino);
+}
+
+// ---------------------------------------------------------------------------
+// abrir el inicio y la caja
+
+/** Abre el inicio y espera a que aparezca su región. Sin dirección aterriza en el MAPA (`/estudio/`, la principal). Las direcciones de antes
+ *  (`/estudio/inicio/`, `/estudio/?prompt=…`) las reenvía el servidor, y aquí se termina en la página a la que llegan: la que se pide no
+ *  tiene por qué ser la que se ve (`direccionDe`). */
+export async function abrirInicio(page: Page, url = URL_MAPA) {
   await page.goto(url);
   await expect(region(page)).toBeVisible();
 }
 
-/** Abre el inicio y llega a la caja por el camino de siempre: mapa → Marketing → Distrito. */
-export async function abrirLaCaja(page: Page, url = '/estudio/inicio/') {
+/** Abre la caja yendo DIRECTO a su dirección (por omisión, la pestaña Video) y espera a su título. `url` puede ser otra herramienta
+ *  (`URL_CAJA.imagen`) o traer un query (`?prompt=hola`, `?brief=…`, `?blotato=conectar`). Para llegar CLICANDO por el recorrido, `irA` +
+ *  `elegirHerramienta`. */
+export async function abrirLaCaja(page: Page, url = URL_CAJA.video) {
   await abrirInicio(page, url);
-  await elegir(page, 'Marketing', 'Distrito');
   await expect(paso(page)).toHaveText('¿Qué vamos a crear hoy?');
 }
 
 // ---------------------------------------------------------------------------
 // la región, la tarjeta y sus partes
 
-/** El inicio entero: el título (h1), las migas y el paso de ahora. La región toma su nombre del h1. */
+/** La página entera de un nivel: el título (h1), las migas y el paso de ahora. La región toma su nombre del h1. */
 export const region = (page: Page): Locator => page.getByRole('region', { name: 'Irremplazables' });
 
 /** La TARJETA (borde, fondo y relleno), que solo existe con la caja a la vista; en los demás pasos es el mismo contenedor, sin nada de eso.
@@ -98,44 +167,63 @@ export const paso = (page: Page): Locator => region(page).getByRole('heading', {
 
 export const migas = (page: Page): Locator => region(page).getByRole('navigation', { name: 'Dónde estás' });
 
-/** Una ficha del mapa. El nombre accesible es el del área, sin nada más: ninguna lleva «Estás aquí» (solo «Próximamente» en las apagadas). */
+/** Una ficha del mapa que SE ABRE: un ENLACE a la página del área. El nombre accesible es el del área, sin nada más: ninguna lleva «Estás aquí».
+ *  Producto y Ventas no se abren: son `fichaApagada`. */
 export const ficha = (page: Page, area: string): Locator =>
+  region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('link', { name: new RegExp(`^${area}`) });
+
+/** Una ficha del mapa que NO se abre («Próximamente»): un botón quieto, con `aria-disabled`, que sigue en el orden de Tab y no lleva a ningún lado. */
+export const fichaApagada = (page: Page, area: string): Locator =>
   region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: new RegExp(`^${area}`) });
 
-/** Una de las tres opciones de un área. */
+/** Una de las opciones de un área: un ENLACE a la página del grupo. */
 export const opcion = (page: Page, area: string, grupo: string): Locator =>
-  region(page).getByRole('group', { name: area, exact: true }).getByRole('button', { name: new RegExp(`^${grupo}`) });
+  region(page).getByRole('group', { name: area, exact: true }).getByRole('link', { name: new RegExp(`^${grupo}`) });
 
-/** «Volver a Agenda tus publicaciones»: el ENLACE a la página de donde se llegó (con `?desde=…`). Es el único «Volver a …» que queda. */
+/** Una herramienta de la lista de un grupo (Imagen · Video · Edición en Marketing › Distrito): un ENLACE a su página. */
+// la lista es un <ul>: las migas son un <ol> y también traen enlaces
+export const herramienta = (page: Page, nombre: string): Locator => region(page).locator('ul').getByRole('link', { name: new RegExp(`^${nombre}`) });
+
+/** «Volver a Agenda tus publicaciones»: ya NO existe (las migas de las pantallas hoja van directo al mapa y a las opciones del área, y volver
+ *  a donde se estaba es el «atrás» del navegador). Se conserva para afirmar que no está: `await expect(volverA(page, '…')).toHaveCount(0)`. */
 export const volverA = (page: Page, destino: string): Locator =>
   region(page).getByRole('link', { name: `Volver a ${destino}`, exact: true });
 
-/** Cualquier «Volver a …» (botón o enlace) que se vea. Las migas («Volver al mapa…», «Volver a las opciones…») no cuentan: su texto es el
- *  del lugar, no «Volver a …». */
+/** Cualquier «Volver a …» (botón o enlace) que se vea: no debe haber ninguno. Las migas («Volver al mapa…», «Volver a las opciones…») no
+ *  cuentan: su texto es el del lugar, no «Volver a …». */
 export const algunVolver = (page: Page): Locator => region(page).locator('button, a').filter({ hasText: /^Volver a / });
 
-/** Los botones del riel de la caja (Imagen, Video, Edición). */
+/** Los botones del riel de la caja (Imagen, Video, Edición). Cambiar de pestaña aquí NO navega: la dirección y el título la siguen
+ *  (`history.replaceState`), sin agregar historia. */
 export const riel = (page: Page, familia: string): Locator =>
   page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true });
 
 // ---------------------------------------------------------------------------
-// moverse por el recorrido
+// moverse por el recorrido (cada paso es una página: se espera a que cargue)
 
 /** La miga del área abre el mapa. Sirve desde la caja, desde las opciones y desde la lista de un grupo. */
 export async function irAlMapa(page: Page) {
-  await migas(page).getByRole('button', { name: /^Volver al mapa/ }).click();
+  await irPorEnlace(page, migas(page).getByRole('link', { name: /^Volver al mapa/ }));
   await expect(paso(page)).toHaveText('Elige un área');
 }
 
-/** Del mapa al contenido de un grupo: la ficha del área y la tarjeta del grupo. */
+/** Del mapa a la página de un grupo: la ficha del área y la tarjeta del grupo (dos páginas). Marketing › Distrito es la LISTA de herramientas,
+ *  no la caja: `elegirHerramienta` da el último paso. */
 export async function elegir(page: Page, area: string, grupo: string) {
-  await ficha(page, area).click();
+  await irPorEnlace(page, ficha(page, area));
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await opcion(page, area, grupo).click();
+  await irPorEnlace(page, opcion(page, area, grupo));
 }
 
-/** Desde donde estés (el mapa, la caja, las opciones o una lista) hasta el contenido de un grupo, pasando por el mapa. */
+/** De la lista de Marketing › Distrito a la caja de una herramienta («Imagen», «Video» o «Edición»), con el clic en su enlace. */
+export async function elegirHerramienta(page: Page, nombre: string) {
+  await irPorEnlace(page, herramienta(page, nombre));
+  await expect(paso(page)).toHaveText('¿Qué vamos a crear hoy?');
+}
+
+/** Desde donde estés (el mapa, la caja, las opciones o una lista) hasta la página de un grupo, pasando por el mapa. */
 export async function irA(page: Page, area: string, grupo: string) {
+  await expect(paso(page)).toBeVisible();
   if ((await paso(page).textContent()) !== 'Elige un área') await irAlMapa(page);
   await elegir(page, area, grupo);
 }
