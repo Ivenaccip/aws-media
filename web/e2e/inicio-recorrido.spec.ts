@@ -393,25 +393,35 @@ for (const ancho of [1100, 600]) {
   });
 }
 
-test('Producto y Ventas son fichas inertes: se ven, se enfocan y no se abren', async ({ page }) => {
+test('Producto y Ventas son fichas inertes: se ven, se enfocan y no se abren; las otras tres son enlaces a la página de su área', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
   for (const area of ['Producto', 'Ventas']) {
-    const f = ficha(page, area);
+    // un botón quieto, no un enlace: no tiene a dónde ir
+    await expect(ficha(page, area)).toHaveCount(0);
+    const f = fichaApagada(page, area);
     await expect(f).toHaveAttribute('aria-disabled', 'true');
     await expect(f).toContainText('Próximamente');
     // Playwright no hace clic en lo `aria-disabled` si no se le fuerza: una persona sí lo pulsa
     await f.click({ force: true });
-    await expect(paso(page), `${area}: se abrió`).toHaveText('Elige un área');
+    await page.waitForTimeout(300);
+    expect(rutaDe(page), `${area}: se abrió`).toBe(URL_MAPA);
     await f.focus();
     await page.keyboard.press('Enter');
-    await expect(paso(page), `${area}: se abrió con Enter`).toHaveText('Elige un área');
+    await page.waitForTimeout(300);
+    expect(rutaDe(page), `${area}: se abrió con Enter`).toBe(URL_MAPA);
+    await expect(paso(page)).toHaveText('Elige un área');
   }
-  for (const area of ['Marketing', 'Central', 'Automatizaciones']) {
+  for (const [area, href] of [
+    ['Marketing', URL_MARKETING],
+    ['Central', '/estudio/central/'],
+    ['Automatizaciones', '/estudio/automatizaciones/'],
+  ] as const) {
+    await expect(ficha(page, area)).toHaveAttribute('href', href);
     await expect(ficha(page, area)).not.toHaveAttribute('aria-disabled', 'true');
     await expect(ficha(page, area)).not.toContainText('Próximamente');
   }
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
+  expect(rutaDe(page)).toBe(URL_MAPA);
 });
 
 // ---------------------------------------------------------------------------
@@ -421,134 +431,206 @@ test('Automatizaciones: Distrito trae Constructor y Asistente (enlaces) y «Actu
   await simular(page, { blotato: 'sin-conectar' });
   await abrirInicio(page);
   await ficha(page, 'Automatizaciones').click();
+  await esperarRuta(page, URL_AUTOMATIZACIONES);
+  await expect(page).toHaveTitle('Estudio de video · Automatizaciones');
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(region(page).getByRole('group', { name: 'Automatizaciones', exact: true }).getByRole('button')).toHaveText([/^Distrito/, /^Tus automatizaciones/]);
+  await expect(region(page).getByRole('group', { name: 'Automatizaciones', exact: true }).getByRole('link')).toHaveText([/^Distrito/, /^Tus automatizaciones/]);
   await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Constructor · Asistente · Actualizar flujos');
   await expect(opcion(page, 'Automatizaciones', 'Tus automatizaciones')).toContainText('Próximamente');
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
 
   await opcion(page, 'Automatizaciones', 'Distrito').click();
+  await esperarRuta(page, '/estudio/automatizaciones/distrito/');
+  await expect(page).toHaveTitle('Estudio de video · Automatizaciones · Distrito');
   await expect(paso(page)).toHaveText('Distrito');
-  await expect(migas(page).getByRole('button')).toHaveText(['Automatizaciones', 'Distrito']);
-  await expect(region(page).getByRole('link')).toHaveText([/^Constructor/, /^Asistente/]);
-  await expect(region(page).getByRole('link', { name: /^Constructor/ })).toHaveAttribute('href', '/estudio/constructor/');
-  await expect(region(page).getByRole('link', { name: /^Asistente/ })).toHaveAttribute('href', '/estudio/asistente/');
+  await expect(migas(page).getByRole('link')).toHaveText(['Automatizaciones', 'Distrito']);
+  // las tarjetas de la lista (<ul>), no las migas (<ol>)
+  const tarjetas = region(page).locator('ul').getByRole('link');
+  await expect(tarjetas).toHaveText([/^Constructor/, /^Asistente/]);
+  await expect(tarjetas.first()).toHaveAttribute('href', '/estudio/constructor/');
+  await expect(tarjetas.last()).toHaveAttribute('href', '/estudio/asistente/');
   // no depende de Blotato: aun sin clave no se apaga nada ni hay botón de conectar
-  await expect(region(page).getByRole('link', { name: /Constructor/ })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(tarjetas.first()).not.toHaveAttribute('aria-disabled', 'true');
   await expect(region(page).getByRole('button', { name: /Blotato/ })).toHaveCount(0);
   const apagada = region(page).getByText('Actualizar flujos', { exact: true });
   await expect(apagada).toBeVisible();
   await apagada.click();
-  await expect(paso(page), '«Actualizar flujos» navegó').toHaveText('Distrito');
+  await page.waitForTimeout(300);
+  expect(rutaDe(page), '«Actualizar flujos» navegó').toBe('/estudio/automatizaciones/distrito/');
   await expect(region(page).getByText('Próximamente')).toHaveCount(1);
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
 
-  // el otro grupo, sin pantallas
-  await migas(page).getByRole('button', { name: /^Volver a las opciones de Automatizaciones/ }).click();
-  await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Estás aquí');
+  // el otro grupo, sin pantallas: su propia página, que lo dice. La miga del grupo sube a las opciones
+  await migas(page).getByRole('link', { name: /^Volver a las opciones de Automatizaciones/ }).click();
+  await esperarRuta(page, URL_AUTOMATIZACIONES);
+  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
   await opcion(page, 'Automatizaciones', 'Tus automatizaciones').click();
+  await esperarRuta(page, '/estudio/automatizaciones/tus/');
+  await expect(page).toHaveTitle('Estudio de video · Automatizaciones · Tus automatizaciones');
   await expect(paso(page)).toHaveText('Tus automatizaciones');
   await expect(region(page).getByText('Todavía no está disponible.')).toBeVisible();
-  await expect(paso(page)).toBeFocused();
   // Esc en el contenido no hace nada; las migas suben de nivel
   await page.keyboard.press('Escape');
-  await expect(paso(page)).toHaveText('Tus automatizaciones');
+  await page.waitForTimeout(400);
+  expect(rutaDe(page)).toBe('/estudio/automatizaciones/tus/');
   await irAlMapa(page);
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
-  // mirar Marketing no marca su «Distrito»: estás en el de Automatizaciones
+  // mirar Marketing no marca nada: no hay un grupo «elegido»
   await ficha(page, 'Marketing').click();
+  await esperarRuta(page, URL_MARKETING);
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
 });
 
-test('Automatizaciones: Esc en sus opciones sube al mapa, y un doble clic en la ficha no elige un grupo por accidente', async ({ page }) => {
+test('Automatizaciones: Esc en sus opciones sube al mapa', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
   await ficha(page, 'Automatizaciones').click();
+  await esperarRuta(page, URL_AUTOMATIZACIONES);
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(paso(page)).toBeFocused();
   await page.keyboard.press('Escape');
+  await esperarRuta(page, URL_MAPA);
   await expect(paso(page)).toHaveText('Elige un área');
-  await expect(paso(page)).toBeFocused();
-  // el segundo clic de un doble clic cae donde apareció una tarjeta (o en un hueco): no elige nada
-  await ficha(page, 'Automatizaciones').dblclick();
-  await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(region(page).getByRole('link')).toHaveCount(0);
+  await expect(page).toHaveTitle(TITULO_MAPA);
 });
 
-test('un doble clic en una ficha del mapa abre las opciones y no elige un grupo por accidente', async ({ page }) => {
-  await simular(page);
-  await abrirInicio(page);
-  // el segundo clic cae sobre la primera tarjeta, que aparece justo donde estaba la ficha
-  await ficha(page, 'Marketing').dblclick();
-  await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(page.getByRole('textbox', { name: CAJA })).toBeHidden();
-});
+// El doble clic, ahora entre páginas. Antes el primer clic cambiaba el paso en la misma página y el segundo caía sobre lo que apareció donde
+// estaba la ficha. Ahora el primer clic CARGA otra página y el segundo (clickCount 2, a unos 80 ms) llega ya sobre ella: `dblclick()` de
+// Playwright manda los dos clics de seguido, antes de que la página nueva exista, así que no sirve; el clic lento se hace a mano.
+//
+// Qué lo detiene: (1) mientras corre la View Transition entre páginas (180–300 ms) el navegador entrega todo clic al <html>, y (2) la guarda de
+// PaginaNivel (esDobleClicAccidental: `detail` > 1 a menos de medio segundo de cargada la página) descarta el que cae pasada la transición.
+// Sin «reducir movimiento» solo se prueba lo primero; con él no hay transición y SOLO la guarda lo detiene (quitarla hace fallar los casos que
+// dicen «la guarda»). Para que la prueba no pase sin mirar nada, se comprueba que bajo el punto del primer clic hay, en la página nueva, algo
+// que se podría pulsar (un enlace o un botón): si no lo hubiera, el caso no mide nada y se queda fuera.
 
-// El mismo doble clic un nivel más abajo: el segundo clic cae sobre lo que aparece donde estaba la tarjeta del grupo (el botón de conectar o la
-// primera pantalla de la lista, que es un enlace). Navegaba fuera del inicio —y lo escrito en la caja se perdía— o abría el diálogo de conectar
-// sin que nadie lo pidiera. Playwright hace el doble clic de verdad (clickCount 1 y 2, el segundo con `detail` 2).
-for (const [ancho, grupo, blotato] of [
-  [1100, 'Blotato', 'conectado'],
-  [1100, 'Blotato', 'sin-conectar'],
-  [390, 'Blotato', 'conectado'],
-  [390, 'Blotato', 'sin-conectar'],
-  [1100, 'Avanzado', 'conectado'],
-] as const) {
-  test(`un doble clic en la tarjeta «${grupo}» (${blotato}, ${ancho} px) abre su lista y no activa lo que cae debajo`, async ({ page }) => {
-    await page.setViewportSize({ width: ancho, height: 900 });
-    await simular(page, { blotato });
-    await abrirLaCaja(page);
-    await page.getByRole('textbox', { name: CAJA }).fill('un gato jugando en la nieve');
-    await irAlMapa(page);
-    await ficha(page, 'Marketing').click();
-    await expect(paso(page)).toHaveText('Elige un grupo');
-    await opcion(page, 'Marketing', grupo).dblclick();
-    await expect(paso(page)).toHaveText(grupo);
-    // ni salió del inicio (lo escrito en la caja sigue ahí) ni se abrió el diálogo de conectar
-    await page.waitForTimeout(400);
-    expect(rutaDe(page)).toBe(URL_DEL_INICIO);
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(paso(page)).toHaveText(grupo);
-    if (blotato === 'sin-conectar') {
-      // una pulsación deliberada pasa: la guardia dura medio segundo, no para siempre
-      await page.waitForTimeout(600);
-      await region(page).getByRole('button', { name: 'Conecta tu cuenta de Blotato' }).dblclick();
-      await expect(page.getByRole('dialog', { name: 'Conecta tu Blotato' })).toBeVisible();
+/** El doble clic lento sobre `enlace`: el primer clic carga `destino`; el segundo (detail 2) llega 80 ms después, en el mismo punto, sobre la página
+ *  nueva. Devuelve qué había ahí (el `href` del enlace o el texto del botón; null = nada pulsable). */
+async function dobleClicLento(page: Page, enlace: Locator, destino: string): Promise<string | null> {
+  const caja = (await enlace.boundingBox())!;
+  const x = caja.x + caja.width / 2;
+  const y = caja.y + caja.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down({ clickCount: 1 });
+  await page.mouse.up({ clickCount: 1 });
+  await esperarRuta(page, destino);
+  await expect(paso(page)).toBeVisible();
+  await page.waitForTimeout(80);
+  const debajo = await page.evaluate(([px, py]) => {
+    const e = document.elementFromPoint(px!, py!)?.closest('a, button');
+    return e ? (e.getAttribute('href') ?? (e.textContent ?? '').trim()) : null;
+  }, [x, y]);
+  await page.mouse.move(x, y);
+  await page.mouse.down({ clickCount: 2 });
+  await page.mouse.up({ clickCount: 2 });
+  await page.waitForTimeout(900);
+  return debajo;
+}
+
+for (const movimiento of ['no-preference', 'reduce'] as const) {
+  test.describe(`doble clic en una ficha del mapa (${movimiento === 'reduce' ? 'con «reducir movimiento»: solo la guarda lo detiene' : 'con movimiento: la transición lo detiene'})`, () => {
+    test.use({ contextOptions: { reducedMotion: movimiento } });
+
+    // [área, página a la que lleva, ancho, ¿cae algo pulsable en la página nueva bajo el primer clic?]. Solo a 390 px la ficha «Marketing» y la
+    // tarjeta «Distrito» coinciden: sin movimiento la guarda es lo único que separa una página de dos; en los demás casos el segundo clic cae en el
+    // vacío y la prueba es una red de seguridad (si el diseño cambiara y algo cayera debajo, `muerde` lo avisa y hay que decidir si el caso importa)
+    for (const [area, ruta, ancho, muerde] of [
+      ['Marketing', URL_MARKETING, 390, true],
+      ['Marketing', URL_MARKETING, 1100, false],
+      ['Automatizaciones', URL_AUTOMATIZACIONES, 1100, false],
+    ] as const) {
+      test(`${area} a ${ancho} px: abre las opciones y no elige un grupo por accidente`, async ({ page }) => {
+        await page.setViewportSize({ width: ancho, height: 900 });
+        await simular(page);
+        await abrirInicio(page);
+        const debajo = await dobleClicLento(page, ficha(page, area), ruta);
+        expect(rutaDe(page), 'el doble clic saltó dos niveles').toBe(ruta);
+        await expect(paso(page)).toHaveText('Elige un grupo');
+        await expect(page.getByRole('textbox')).toHaveCount(0);
+        // (con movimiento, a los 80 ms la View Transition todavía cubre la página: el navegador entrega el clic al <html> y no cae nada pulsable)
+        const debeCaer = muerde && movimiento === 'reduce';
+        expect(Boolean(debajo), debajo ? `bajo el primer clic cayó «${debajo}»` : 'bajo el primer clic no cae nada pulsable').toBe(debeCaer);
+      });
     }
   });
 }
 
+// El mismo doble clic un nivel más abajo: el segundo clic cae sobre lo que aparece donde estaba la tarjeta del grupo (el botón de conectar o la
+// primera pantalla de la lista, que es un enlace). Navegaba fuera del inicio —y lo escrito en la caja se perdía— o abría el diálogo de conectar
+// sin que nadie lo pidiera. Ahora es la guarda de la página nueva, así que va con «reducir movimiento» (ver arriba). Con Blotato, bajo el punto cae
+// el segundo enlace de la lista (apagado o no): el segundo clic navegaría a esa pantalla, o abriría el diálogo de conectar.
+test.describe('doble clic en la tarjeta de un grupo, con «reducir movimiento» (solo la guarda lo detiene)', () => {
+  test.use({ contextOptions: { reducedMotion: 'reduce' } });
+
+  for (const [ancho, grupo, blotato, muerde] of [
+    [1100, 'Blotato', 'conectado', true],
+    [1100, 'Blotato', 'sin-conectar', true],
+    [390, 'Blotato', 'conectado', true],
+    [390, 'Blotato', 'sin-conectar', true],
+    [1100, 'Avanzado', 'conectado', false],
+  ] as const) {
+    test(`«${grupo}» (${blotato}, ${ancho} px): abre su lista y no activa lo que cae debajo`, async ({ page }) => {
+      await page.setViewportSize({ width: ancho, height: 900 });
+      await simular(page, { blotato });
+      await abrirInicio(page, URL_MARKETING);
+      const destino = grupo === 'Blotato' ? URL_BLOTATO : '/estudio/marketing/avanzado/';
+      const debajo = await dobleClicLento(page, opcion(page, 'Marketing', grupo), destino);
+      expect(Boolean(debajo), debajo ? `bajo el primer clic cayó «${debajo}»` : 'bajo el primer clic no cae nada: la prueba no mide la guarda').toBe(muerde);
+      // ni salió de la lista (no navegó a la pantalla que cayó debajo) ni se abrió el diálogo de conectar
+      expect(rutaDe(page), 'el doble clic navegó a lo que cayó debajo').toBe(destino);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(paso(page)).toHaveText(grupo);
+      if (blotato === 'sin-conectar') {
+        // una pulsación deliberada pasa: la guarda dura medio segundo, no para siempre
+        await region(page).getByRole('button', { name: 'Conecta tu cuenta de Blotato' }).dblclick();
+        await expect(page.getByRole('dialog', { name: 'Conecta tu Blotato' })).toBeVisible();
+      }
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // las tres opciones
 
-test('elegir Marketing da tres opciones, con las pantallas de cada una y SIN «Estás aquí»: nadie ha elegido nada', async ({ page }) => {
+test('las opciones de Marketing son tres enlaces, con las pantallas de cada una y SIN «Estás aquí»: nadie ha elegido nada', async ({ page }) => {
   await simular(page);
-  await abrirInicio(page);
-  await ficha(page, 'Marketing').click();
+  await abrirInicio(page, URL_MARKETING);
+  await expect(page).toHaveTitle('Estudio de video · Marketing');
   await expect(paso(page)).toHaveText('Elige un grupo');
-  const tres = region(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('button');
+  const tres = region(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('link');
   await expect(tres).toHaveCount(3);
   await expect(opcion(page, 'Marketing', 'Distrito')).toContainText('Imagen · Video · Edición');
   await expect(opcion(page, 'Marketing', 'Blotato')).toContainText('Agenda tus publicaciones · Investiga tu competencia · Ver mis métricas');
   await expect(opcion(page, 'Marketing', 'Avanzado')).toContainText('Publicaciones automáticas · Copiadora de estilos');
-  // el grupo de la caja escondida no se marca: sería el mismo «parece seleccionado» que se quitó del mapa
+  // cada una lleva a la página de su grupo
+  await expect(opcion(page, 'Marketing', 'Distrito')).toHaveAttribute('href', URL_DISTRITO);
+  await expect(opcion(page, 'Marketing', 'Blotato')).toHaveAttribute('href', URL_BLOTATO);
+  await expect(opcion(page, 'Marketing', 'Avanzado')).toHaveAttribute('href', '/estudio/marketing/avanzado/');
+  // ningún grupo se marca: sería el mismo «parece seleccionado» que se quitó del mapa
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
   for (const g of ['Distrito', 'Blotato', 'Avanzado']) await expect(opcion(page, 'Marketing', g), g).not.toHaveAttribute('aria-current', /./);
-  // la miga del área es donde estás en este paso; no hay «Volver a …»
-  await expect(migas(page).getByRole('button')).toHaveText(['Marketing']);
-  await expect(migas(page).getByRole('button')).toHaveAttribute('aria-current', 'step');
+  // la miga del área es donde estás en esta página (y sube al mapa); no hay «Volver a …»
+  await expect(migas(page).getByRole('link')).toHaveText(['Marketing']);
+  await expect(migas(page).getByRole('link')).toHaveAttribute('aria-current', 'step');
+  await expect(migas(page).getByRole('link')).toHaveAttribute('href', URL_MAPA);
   await expect(algunVolver(page)).toHaveCount(0);
 });
 
-test('después de elegir un grupo, las opciones sí dicen dónde estás: «Estás aquí» en ESE grupo', async ({ page }) => {
+// «Estás aquí» ya no existe: la dirección y el <title> dicen dónde estás, y no hay un grupo «elegido» que marcar. Lo que esta prueba cuidaba —al
+// volver a las opciones desde un grupo se sabe de dónde se viene— lo hace ahora el «atrás» del navegador, que regresa al grupo, y la miga, que sube a
+// las opciones sin marcar nada.
+test('después de elegir un grupo, volver a las opciones por la miga no marca nada, y «atrás» regresa al grupo', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
   await elegir(page, 'Marketing', 'Blotato');
-  await migas(page).getByRole('button', { name: /^Volver a las opciones/ }).click();
+  await expect(page).toHaveTitle('Estudio de video · Marketing · Blotato');
+  await migas(page).getByRole('link', { name: /^Volver a las opciones/ }).click();
+  await esperarRuta(page, URL_MARKETING);
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(opcion(page, 'Marketing', 'Blotato')).toContainText('Estás aquí');
-  await expect(opcion(page, 'Marketing', 'Blotato')).toHaveAttribute('aria-current', 'location');
-  await expect(region(page).getByText('Estás aquí')).toHaveCount(1);
+  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+  await expect(region(page).locator('[aria-current="location"]')).toHaveCount(0);
+  await page.goBack();
+  await esperarRuta(page, URL_BLOTATO);
+  await expect(page).toHaveTitle('Estudio de video · Marketing · Blotato');
+  await expect(paso(page)).toHaveText('Blotato');
 });
 
 // ---------------------------------------------------------------------------
@@ -775,41 +857,45 @@ test('Central: el grupo Distrito trae dos pantallas «Próximamente» que no nav
   await simular(page);
   await abrirInicio(page);
   await ficha(page, 'Central').click();
+  await esperarRuta(page, '/estudio/central/');
+  await expect(page).toHaveTitle('Estudio de video · Central');
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(region(page).getByRole('group', { name: 'Central', exact: true }).getByRole('button')).toHaveText([/^Distrito/, /^Deepseek/]);
+  await expect(region(page).getByRole('group', { name: 'Central', exact: true }).getByRole('link')).toHaveText([/^Distrito/, /^Deepseek/]);
   await expect(opcion(page, 'Central', 'Deepseek')).toContainText('Próximamente');
   // nadie ha elegido nada: «Estás aquí» no está en ninguna de sus opciones
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
 
   await opcion(page, 'Central', 'Distrito').click();
+  await esperarRuta(page, '/estudio/central/distrito/');
+  await expect(page).toHaveTitle('Estudio de video · Central · Distrito');
   await expect(paso(page)).toHaveText('Distrito');
-  await expect(migas(page).getByRole('button')).toHaveText(['Central', 'Distrito']);
+  await expect(migas(page).getByRole('link')).toHaveText(['Central', 'Distrito']);
   // COI y la Biblioteca (16-oct-2026) ya existen y son enlaces (su navegación la prueban e2e/coi.spec.ts y e2e/biblioteca.spec.ts); las otras dos siguen apagadas y no navegan
   for (const titulo of ['COI', 'Biblioteca de prompts']) await expect(region(page).getByText(titulo, { exact: true })).toBeVisible();
   for (const titulo of ['Preguntas sobre la clase', 'Glosario IA']) {
     const fila = region(page).getByText(titulo, { exact: true });
     await expect(fila).toBeVisible();
     await fila.click();
-    await expect(paso(page), `«${titulo}» navegó`).toHaveText('Distrito');
+    await page.waitForTimeout(300);
+    expect(rutaDe(page), `«${titulo}» navegó`).toBe('/estudio/central/distrito/');
   }
   await expect(region(page).getByText('Próximamente')).toHaveCount(2);
-  await expect(region(page).getByRole('link')).toHaveText([/^COI/, /^Biblioteca de prompts/]);
-  await expect(region(page).getByRole('link', { name: /^COI/ })).toHaveAttribute('href', '/estudio/coi/');
-  await expect(region(page).getByRole('link', { name: /^Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/biblioteca/');
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
+  // las tarjetas de la lista (<ul>), no las migas (<ol>)
+  const tarjetas = region(page).locator('ul').getByRole('link');
+  await expect(tarjetas).toHaveText([/^COI/, /^Biblioteca de prompts/]);
+  await expect(tarjetas.first()).toHaveAttribute('href', '/estudio/coi/');
+  await expect(tarjetas.last()).toHaveAttribute('href', '/estudio/biblioteca/');
 
-  // ahora SÍ se eligió Central › Distrito: el mapa no marca nada (nunca marca), pero las opciones de Central dicen dónde estás
+  // el mapa y las opciones de Central no marcan nada tras haber estado en su Distrito: «Estás aquí» no existe, la dirección dice dónde estás
   await irAlMapa(page);
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
   await ficha(page, 'Central').click();
-  await expect(opcion(page, 'Central', 'Distrito')).toContainText('Estás aquí');
-  await expect(region(page).getByText('Estás aquí')).toHaveCount(1);
-  // y mirar Marketing, que no es donde estás, no marca nada
-  await irAlMapa(page);
-  await ficha(page, 'Marketing').click();
+  await esperarRuta(page, '/estudio/central/');
   await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
-  await irAlMapa(page);
-  await elegir(page, 'Central', 'Deepseek');
+  // y el otro grupo: su propia página, que dice que todavía no está disponible
+  await opcion(page, 'Central', 'Deepseek').click();
+  await esperarRuta(page, '/estudio/central/deepseek/');
+  await expect(page).toHaveTitle('Estudio de video · Central · Deepseek');
   await expect(paso(page)).toHaveText('Deepseek');
   await expect(region(page).getByText('Todavía no está disponible.')).toBeVisible();
 });
