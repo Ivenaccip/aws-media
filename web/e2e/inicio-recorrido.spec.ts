@@ -26,6 +26,7 @@ import {
   abrirInicio,
   abrirLaCaja,
   algunVolver,
+  direccionDe,
   elegir,
   elegirHerramienta,
   enfocado,
@@ -59,8 +60,6 @@ import {
 const AREAS = ['Marketing', 'Producto', 'Central', 'Ventas', 'Automatizaciones'] as const;
 
 const CAJA = '¿Qué vamos a crear hoy?';
-
-const URL_DEL_INICIO = '/estudio/inicio/';
 
 /** Las opciones del área Automatizaciones (Distrito · Tus automatizaciones). */
 const URL_AUTOMATIZACIONES = '/estudio/automatizaciones/';
@@ -1296,7 +1295,15 @@ test('el mapa pasa de la X compacta a la X grande en el corte de 560 px, y a nin
 });
 
 // ---------------------------------------------------------------------------
-// desde una página hoja: la miga lleva al inicio, de punta a punta
+// desde una página hoja: las migas llevan al mapa y a las opciones del área, de punta a punta
+//
+// Antes la miga de una hoja (la agenda…) era un enlace a `/estudio/inicio/?desde=<lugar>&ver=<mapa|grupos>`: el inicio lo leía una vez, limpiaba la
+// dirección, ponía el foco en el título, marcaba «Estás aquí» y enseñaba «Volver a Agenda» (con Esc de regreso). Ahora la miga es un enlace directo a
+// la página del nivel (`/estudio/` o `/estudio/marketing/`, `urlDeInicio` de marca/menu.ts) y no lleva nada en la dirección. Cada cosa que hacía
+// el inicio tiene su equivalente por páginas, o se retira (explicado en cada prueba):
+//  · «la URL se limpia» → la dirección ya llega limpia;
+//  · «Estás aquí» → no existe; «Volver a …» y su Esc de regreso → los hace «atrás» del navegador (la hoja quedó en el historial);
+//  · el foco al título → el <title> de la página nueva y el primer Tab (bloque de teclado y foco).
 
 const HOJAS = [
   { ruta: 'agenda', titulo: 'Agenda tus publicaciones', grupo: 'Blotato' },
@@ -1308,197 +1315,126 @@ const HOJAS = [
 
 const migaDeHoja = (page: Page, nombre: RegExp) => page.getByRole('navigation', { name: 'Dónde estás' }).getByRole('link', { name: nombre });
 
-/** Espera a que el inicio haya leído `?desde=…&ver=…` y dejado la URL limpia. */
-const urlLimpia = (page: Page) => expect.poll(() => new URL(page.url()).pathname + new URL(page.url()).search).toBe(URL_DEL_INICIO);
-
 for (const hoja of HOJAS) {
-  test(`desde /estudio/${hoja.ruta}/: la miga «Marketing» cae en «Elige un área», con la URL limpia, y «Volver a ${hoja.titulo}» regresa`, async ({ page }) => {
+  test(`desde /estudio/${hoja.ruta}/: la miga «Marketing» cae en el mapa, con la dirección limpia, sin «Volver a ${hoja.titulo}», y «atrás» regresa a la hoja`, async ({ page }) => {
     await simular(page);
     await page.goto(`/estudio/${hoja.ruta}/`);
     await migaDeHoja(page, /^Ir al mapa/).click();
+    await esperarRuta(page, URL_MAPA);
+    // limpia desde el primer momento, sin ?desde=&ver= que el inicio tenga que leer y quitar
+    expect(direccionDe(page)).toBe(URL_MAPA);
+    await expect(page).toHaveTitle(TITULO_MAPA);
     await expect(paso(page)).toHaveText('Elige un área');
-    await urlLimpia(page);
-    // se llega con el foco ya en el título del paso, no en <body>: de ahí Esc y Tab valen desde el primer toque
-    await expect(paso(page)).toBeFocused();
     await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
-    // el único «Volver a …» que queda: el de la página de donde se llegó, que no se alcanza con las migas
-    const volver = volverA(page, hoja.titulo);
-    await expect(volver).toBeVisible();
-    await expect(algunVolver(page)).toHaveCount(1);
-    await Promise.all([page.waitForURL(new RegExp(`/estudio/${hoja.ruta}/`)), volver.click()]);
+    // ya no hay «Volver a …»: volver a donde se estaba es el «atrás» del navegador
+    await expect(volverA(page, hoja.titulo)).toHaveCount(0);
+    await expect(algunVolver(page)).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/estudio/${hoja.ruta}/`));
   });
 
-  test(`desde /estudio/${hoja.ruta}/: la miga «${hoja.grupo}» cae en «Elige un grupo» y marca ${hoja.grupo} como «Estás aquí» (venías de él)`, async ({ page }) => {
+  test(`desde /estudio/${hoja.ruta}/: la miga «${hoja.grupo}» cae en las opciones de Marketing, sin marcar ${hoja.grupo}, y «atrás» regresa a la hoja`, async ({ page }) => {
     await simular(page);
     await page.goto(`/estudio/${hoja.ruta}/`);
     await migaDeHoja(page, new RegExp(`^Ir a las opciones de Marketing \\(ahora: ${hoja.grupo}\\)`)).click();
+    await esperarRuta(page, URL_MARKETING);
+    expect(direccionDe(page)).toBe(URL_MARKETING);
+    await expect(page).toHaveTitle('Estudio de video · Marketing');
     await expect(paso(page)).toHaveText('Elige un grupo');
-    await urlLimpia(page);
-    await expect(paso(page)).toBeFocused();
-    await expect(region(page).getByText('Estás aquí')).toHaveCount(1);
-    await expect(opcion(page, 'Marketing', hoja.grupo)).toContainText('Estás aquí');
-    await expect(volverA(page, hoja.titulo)).toBeVisible();
+    // «Estás aquí» ya no marca el grupo del que se venía: está en la hoja de la que se salió, y es el historial quien la recuerda
+    await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+    await expect(opcion(page, 'Marketing', hoja.grupo)).not.toHaveAttribute('aria-current', /./);
+    await expect(volverA(page, hoja.titulo)).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/estudio/${hoja.ruta}/`));
   });
 }
 
 const HOJAS_DE_AUTOMATIZACIONES = [
-  { lugar: 'automatizaciones.distrito.constructor', titulo: 'Constructor', href: '/estudio/constructor/' },
-  { lugar: 'automatizaciones.distrito.asistente', titulo: 'Asistente', href: '/estudio/asistente/' },
+  { ruta: 'constructor', titulo: 'Constructor' },
+  { ruta: 'asistente', titulo: 'Asistente' },
 ] as const;
 
 for (const hoja of HOJAS_DE_AUTOMATIZACIONES) {
-  test(`?desde=${hoja.lugar}: con ver=mapa abre «Elige un área» y «Volver a ${hoja.titulo}» es un enlace a ${hoja.href}; con ver=grupos, las opciones de Automatizaciones con «Estás aquí» en Distrito`, async ({ page }) => {
+  test(`desde /estudio/${hoja.ruta}/: la miga del área cae en el mapa y la del grupo en las opciones de Automatizaciones, ambas sin nada en la dirección y sin «Volver a ${hoja.titulo}»`, async ({ page }) => {
     await simular(page);
-    await abrirInicio(page, `${URL_DEL_INICIO}?desde=${hoja.lugar}&ver=mapa`);
+    await page.goto(`/estudio/${hoja.ruta}/`);
+    await migaDeHoja(page, /^Ir al mapa/).click();
+    await esperarRuta(page, URL_MAPA);
+    expect(direccionDe(page)).toBe(URL_MAPA);
     await expect(paso(page)).toHaveText('Elige un área');
-    await urlLimpia(page);
-    await expect(paso(page)).toBeFocused();
-    await expect(volverA(page, hoja.titulo)).toHaveAttribute('href', hoja.href);
-    await expect(algunVolver(page)).toHaveCount(1);
-    await abrirInicio(page, `${URL_DEL_INICIO}?desde=${hoja.lugar}&ver=grupos`);
+    await expect(algunVolver(page)).toHaveCount(0);
+
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/estudio/${hoja.ruta}/`));
+    await migaDeHoja(page, /^Ir a las opciones de Automatizaciones \(ahora: Distrito\)/).click();
+    await esperarRuta(page, URL_AUTOMATIZACIONES);
+    expect(direccionDe(page)).toBe(URL_AUTOMATIZACIONES);
     await expect(paso(page)).toHaveText('Elige un grupo');
-    await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Estás aquí');
-    await expect(region(page).getByText('Estás aquí')).toHaveCount(1);
-    await expect(volverA(page, hoja.titulo)).toBeVisible();
+    await expect(opcion(page, 'Automatizaciones', 'Distrito')).not.toContainText('Estás aquí');
+    await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
+    await expect(volverA(page, hoja.titulo)).toHaveCount(0);
   });
 }
 
-test('?desde=automatizaciones.distrito.actualizar (una pantalla apagada) abre las opciones sin «Volver a …»; y un grupo vacío no es un origen válido', async ({ page }) => {
-  await simular(page);
-  await abrirInicio(page, `${URL_DEL_INICIO}?desde=automatizaciones.distrito.actualizar&ver=grupos`);
-  await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(algunVolver(page)).toHaveCount(0);
-  await expect(opcion(page, 'Automatizaciones', 'Distrito')).toContainText('Estás aquí');
-  await abrirInicio(page, `${URL_DEL_INICIO}?desde=automatizaciones.tus.algo&ver=grupos`);
-  await expect(paso(page)).toHaveText('Elige un área');
-  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
-});
+// RETIRADAS, porque lo que cubrían ya no ocurre en la página (la hoja se queda en el historial y nadie tiene que acordarse de ella):
+//  · «desde la agenda: “Volver a Agenda…” va centrado bajo el título, junto al lugar de las migas» (la posición de un enlace que ya no existe);
+//  · «desde la agenda: Esc, sin tocar nada más, navega de regreso a la agenda; y Tab sigue desde el título» y «…Esc llega a la región de entrada, con
+//    las opciones abiertas, y navega de regreso» (el regreso con Esc era el de la hoja; ahora Esc en las opciones sube al mapa, y volver a la hoja es
+//    «atrás»: cubierto arriba y en el bloque de teclado);
+//  · «elegir un grupo olvida la página de origen: ya no hay “Volver a Agenda”, y Esc sube al mapa en vez de navegar» (no hay origen que olvidar);
+//  · «“atrás” regresa a la agenda (la URL limpia reemplaza la entrada, no suma otra)» → es lo que prueba cada caso de arriba con `goBack()`: la
+//    página del mapa se carga limpia, así que no hay entrada que reemplazar y «atrás» va directo a la hoja;
+//  · «recargar el inicio ya limpio aterriza en el mapa, sin repetir el recorrido ni “Volver a Agenda”» (recargar una página recarga ESA página).
 
-test('desde la agenda: «Volver a Agenda…» va centrado bajo el título, junto al lugar de las migas', async ({ page }) => {
-  await simular(page);
-  await page.goto('/estudio/agenda/');
-  await migaDeHoja(page, /^Ir al mapa/).click();
-  await expect(paso(page)).toHaveText('Elige un área');
-  const m = await medir(page);
-  const volver = (await volverA(page, 'Agenda tus publicaciones').boundingBox())!;
-  expect(Math.abs(volver.x + volver.width / 2 - m.ancho / 2), '«Volver a Agenda» no está centrado').toBeLessThanOrEqual(1);
-  expect(volver.y, '«Volver a Agenda» no está bajo el título').toBeGreaterThanOrEqual(m.titulo.bottom);
-  expect(m.bloque.top, 'el mapa quedó arriba de «Volver a Agenda»').toBeGreaterThan(volver.y + volver.height);
-  expect(volver.height).toBeGreaterThanOrEqual(44);
-});
-
-test('desde la agenda: Esc, sin tocar nada más, navega de regreso a la agenda; y Tab sigue desde el título', async ({ page }) => {
-  await simular(page);
-  await page.goto('/estudio/agenda/');
-  await migaDeHoja(page, /^Ir al mapa/).click();
-  await expect(paso(page)).toHaveText('Elige un área');
-  await expect(paso(page)).toBeFocused();
-  // Tab sigue desde el título (que no es tabulable): la primera ficha; y Shift+Tab, el «Volver a …» de antes
-  await page.keyboard.press('Tab');
-  expect((await enfocado(page)).texto).toMatch(/^Marketing/);
-  await page.keyboard.press('Shift+Tab');
-  expect((await enfocado(page)).texto).toBe('Volver a Agenda tus publicaciones');
-  await Promise.all([page.waitForURL(/\/estudio\/agenda\//), page.keyboard.press('Escape')]);
-});
-
-test('desde la agenda: Esc llega a la región de entrada, con las opciones abiertas, y navega de regreso', async ({ page }) => {
-  await simular(page);
-  await page.goto('/estudio/agenda/');
-  await migaDeHoja(page, /^Ir a las opciones/).click();
-  await expect(paso(page)).toHaveText('Elige un grupo');
-  await Promise.all([page.waitForURL(/\/estudio\/agenda\//), page.keyboard.press('Escape')]);
-});
-
-test('desde la agenda: elegir un grupo olvida la página de origen: ya no hay «Volver a Agenda», y Esc sube al mapa en vez de navegar', async ({ page }) => {
-  await simular(page);
-  await page.goto('/estudio/agenda/');
-  await migaDeHoja(page, /^Ir al mapa/).click();
-  await expect(paso(page)).toHaveText('Elige un área');
-  await elegir(page, 'Marketing', 'Blotato');
-  await irAlMapa(page);
-  await expect(algunVolver(page)).toHaveCount(0);
-  await ficha(page, 'Marketing').click();
-  await page.keyboard.press('Escape');
-  await expect(paso(page)).toHaveText('Elige un área');
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
-});
-
-test('desde la agenda: «atrás» del navegador regresa a la agenda (la URL limpia reemplaza la entrada, no suma otra)', async ({ page }) => {
-  await simular(page);
-  await page.goto('/estudio/agenda/');
-  await migaDeHoja(page, /^Ir al mapa/).click();
-  await expect(paso(page)).toHaveText('Elige un área');
-  await urlLimpia(page);
-  await page.goBack();
-  await expect(page).toHaveURL(/\/estudio\/agenda\//);
-});
-
-test('desde la agenda: recargar el inicio ya limpio aterriza en el mapa, sin repetir el recorrido ni «Volver a Agenda»', async ({ page }) => {
-  await simular(page);
-  await page.goto('/estudio/agenda/');
-  await migaDeHoja(page, /^Ir a las opciones/).click();
-  await expect(paso(page)).toHaveText('Elige un grupo');
-  await urlLimpia(page);
-  await page.reload();
-  await expect(paso(page)).toHaveText('Elige un área');
-  await expect(algunVolver(page)).toHaveCount(0);
-  await expect(region(page).getByText('Estás aquí')).toHaveCount(0);
-});
-
-test('las entradas por la URL que no valen se ignoran: se aterriza en el mapa y la URL se limpia', async ({ page }) => {
+// Las entradas de antes por la dirección (?desde=&ver= de las migas de las pantallas hoja) ya no cambian nada: el servidor sirve el mapa tal cual y
+// nivel.tsx le quita lo del recorrido a la dirección (un marcador viejo no repite nada al recargar). Antes cada una abría un paso o un «Volver a …»;
+// una clave inventada o a medias se ignoraba. Ahora todas, válidas o no, aterrizan igual.
+test('las entradas de antes por la URL (?desde=&ver=), válidas o no, aterrizan en el mapa con la dirección limpia, sin «Volver a …» ni «Estás aquí»', async ({ page }) => {
   await simular(page);
   for (const consulta of [
+    '?desde=mkt.blotato.agenda&ver=mapa',
+    '?desde=mkt.blotato.agenda&ver=grupos',
+    '?desde=automatizaciones.distrito.constructor&ver=mapa',
+    '?desde=automatizaciones.distrito.constructor&ver=grupos',
+    '?desde=automatizaciones.distrito.actualizar&ver=grupos', // una pantalla apagada
+    '?desde=mkt.distrito.video&ver=mapa', // una pantalla de la caja
     '?desde=mkt.blotato.nada&ver=mapa', // el lugar no existe
     '?desde=mkt.blotato&ver=mapa', // le falta una clave
+    '?desde=automatizaciones.tus.algo&ver=grupos', // un grupo vacío
     '?desde=mkt.blotato.agenda&ver=otra', // qué abrir no es mapa ni grupos
     '?desde=mkt.blotato.agenda', // sin «ver»
     '?ver=mapa', // sin «desde»
   ]) {
-    await abrirInicio(page, URL_DEL_INICIO + consulta);
+    await abrirInicio(page, URL_MAPA + consulta);
     await expect(paso(page), consulta).toHaveText('Elige un área');
+    await expect.poll(() => direccionDe(page), consulta).toBe(URL_MAPA);
     await expect(algunVolver(page), consulta).toHaveCount(0);
-    await urlLimpia(page);
+    await expect(region(page).getByText('Estás aquí'), consulta).toHaveCount(0);
   }
 });
 
-test('una pantalla de la caja como origen (?desde=mkt.distrito.video): abre el mapa y NO hay «Volver a Video»; Marketing › Distrito lleva a la caja', async ({ page }) => {
-  await simular(page);
-  await abrirInicio(page, `${URL_DEL_INICIO}?desde=mkt.distrito.video&ver=mapa`);
-  await expect(paso(page)).toHaveText('Elige un área');
-  await urlLimpia(page);
-  // la caja no es otra página: no hay a dónde «volver» fuera del inicio
-  await expect(algunVolver(page)).toHaveCount(0);
-  await elegir(page, 'Marketing', 'Distrito');
-  await expect(paso(page)).toHaveText(CAJA);
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
-});
-
-test('?blotato=conectar sigue abriendo el diálogo aunque llegue con ?desde=…&ver=…, y la URL solo pierde lo del recorrido', async ({ page }) => {
+test('?blotato=conectar sigue abriendo el diálogo aunque llegue con ?desde=…&ver=…: el servidor lo manda al grupo Blotato y la página lo abre', async ({ page }) => {
   await simular(page, { blotato: 'sin-conectar' });
-  await page.goto(`${URL_DEL_INICIO}?desde=mkt.blotato.agenda&ver=grupos&blotato=conectar`);
+  await page.goto(`${URL_MAPA}?desde=mkt.blotato.agenda&ver=grupos&blotato=conectar`);
+  await esperarRuta(page, URL_BLOTATO);
   const dialogo = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
   await expect(dialogo).toBeVisible();
-  await expect.poll(() => new URL(page.url()).search).toBe('?blotato=conectar');
-  // el diálogo es modal: tiene el foco (no se lo lleva el título del paso) y deja a la región fuera del árbol de accesibilidad
+  expect(new URL(page.url()).searchParams.get('blotato')).toBe('conectar');
+  // el diálogo es modal: tiene el foco y deja a la región fuera del árbol de accesibilidad
   await expect(dialogo.getByLabel('Tu clave de API de Blotato')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialogo).toBeHidden();
-  await expect(paso(page)).toHaveText('Elige un grupo');
+  await expect(paso(page)).toHaveText('Blotato');
 });
 
-// el helper `volverA` solo existe para el enlace de otra página: una prueba que lo busque como botón de la caja no encontraría nada
-test('«Volver a Video» no existe en ningún paso de ningún recorrido normal (mapa, opciones, lista y caja)', async ({ page }) => {
+// el helper `volverA` solo existe para afirmar que ya no hay un enlace de otra página: una prueba que lo busque no encontraría nada
+test('«Volver a Video» no existe en ninguna página del recorrido normal (mapa, opciones, listas y caja)', async ({ page }) => {
   await simular(page);
-  await abrirInicio(page);
-  await expect(algunVolver(page)).toHaveCount(0);
-  await ficha(page, 'Marketing').click();
-  await expect(algunVolver(page)).toHaveCount(0);
-  await opcion(page, 'Marketing', 'Blotato').click();
-  await expect(algunVolver(page)).toHaveCount(0);
-  await irA(page, 'Marketing', 'Distrito');
-  await expect(algunVolver(page)).toHaveCount(0);
-  await irAlMapa(page);
-  await expect(algunVolver(page)).toHaveCount(0);
+  for (const url of [URL_MAPA, URL_MARKETING, URL_BLOTATO, URL_DISTRITO, URL_CAJA.video]) {
+    await abrirInicio(page, url);
+    await expect(algunVolver(page), url).toHaveCount(0);
+  }
   await expect(page.getByRole('button', { name: /^Volver a (Imagen|Video|Edición)$/ })).toHaveCount(0);
   await expect(volverA(page, 'Video')).toHaveCount(0);
 });
