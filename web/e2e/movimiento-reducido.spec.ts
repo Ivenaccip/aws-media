@@ -12,14 +12,14 @@
 // `animacionesVivas` —que no ve las transiciones del `::placeholder`—: quien corre el
 // reloj tiene que preguntar por la preferencia, y la prueba de abajo lo vigila.
 //
-// El recorrido del inicio (15-oct-2026, «Mapa con Irremplazables»): el bucle de las pantallas de
-// abajo ya cubre `inicio` (que abre en el MAPA) y las cinco páginas hoja con sus migas; los demás
-// pasos del recorrido (las tres opciones, las listas) y la pista de Edición al abrir el mapa y
-// volver a la caja tienen sus pruebas más abajo.
+// El recorrido del inicio (15-oct-2026, «Mapa con Irremplazables»; 21-oct-2026, una página por nivel): el bucle de las
+// pantallas de abajo ya cubre las páginas de nivel de web/estudio/ (las áreas, los grupos y la caja en sus tres direcciones;
+// la principal, el mapa, no es una carpeta hija: la abre `niveles.spec.ts`) y las páginas hoja con sus migas. Los pasos del
+// recorrido con el ratón encima de cada ficha y la pista de Edición al salir de la caja y volver tienen sus pruebas más abajo.
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { animacionesVivas, arranques, oirArranques, PANTALLAS } from './pantallas';
-import { abrirInicio, elegir, irA, irAlMapa, region, simular } from './recorrido';
+import { abrirInicio, abrirLaCaja, elegir, elegirHerramienta, esperarRuta, ficha, irA, irAlMapa, opcion, paso, region, simular, URL_BLOTATO, URL_DISTRITO, URL_MAPA, URL_MARKETING } from './recorrido';
 
 // una sonda que gira para siempre, con la clase de Tailwind que ya usa la app
 async function sonda(page: Page) {
@@ -66,15 +66,14 @@ test.describe('con «reducir movimiento»', () => {
 // fallara, el guardián de arriba estaría pasando sin mirar nada.
 test('sin «reducir movimiento», la sonda gira (el guardián sí ve)', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto('/estudio/inicio/');
+  await page.goto(URL_MAPA);
   await page.locator('#raiz > *').first().waitFor();
   await sonda(page);
   expect((await page.evaluate(animacionesVivas)).map(a => a.objetivo)).toContain('div#sonda.animate-spin');
 });
 
 // ---- la pista que rota en el campo de Edición del inicio (14-oct-2026) ----
-// La pantalla «inicio» arranca en el mapa y su caja en Video: la rotación vive en la pestaña Edición de la caja, que las pruebas de arriba no
-// abren. El reloj de la pantalla es el falso de Playwright (quieto hasta que se mueve) para no esperar los segundos de verdad.
+// La caja abre en Video (…/distrito/video/): la rotación vive en la pestaña Edición, que las pruebas de arriba no abren. El reloj de la pantalla es el falso de Playwright (quieto hasta que se mueve) para no esperar los segundos de verdad.
 const IDEA_PRIMERA = 'Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»';
 const IDEA_SEGUNDA = 'Cuéntale a la IA qué quieres. Ejemplo: «Un short vertical para Reels»';
 const IDEA_TERCERA = 'Cuéntale a la IA qué quieres. Ejemplo: «Resumen de 60 segundos»';
@@ -90,9 +89,8 @@ async function abrirEdicion(page: Page) {
   };
   await page.clock.install({ time: 0 });
   for (const [ruta, json] of Object.entries(vacias)) await page.route(ruta, r => r.fulfill({ json }));
-  await page.goto('/estudio/inicio/');
-  // el inicio abre en el mapa: la caja se alcanza por Marketing → Distrito
-  await elegir(page, 'Marketing', 'Distrito');
+  // la caja es una página con su dirección: se abre yendo a ella, y la pestaña Edición se elige en el riel
+  await abrirLaCaja(page);
   await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   const campo = page.getByRole('textbox', { name: 'Cuéntale a la IA qué quieres' });
@@ -208,20 +206,22 @@ test('si se enciende y se apaga «reducir movimiento» con el campo enfocado, la
   expect((await pista(campo)).texto).toBe(IDEA_SEGUNDA);
 });
 
-// ---- el recorrido del inicio (15-oct-2026): el mapa, las tres opciones y las listas de pantallas ----
-// Las opciones y las listas no las ve el bucle de arriba (que abre el inicio en el mapa). Se recorre cada paso con «reducir movimiento»
-// encendido y se pasa el ratón por TODO lo que se puede tocar: una ficha, una tarjeta o una miga que se animara al pasar el ratón
-// aparecería aquí. Aparte, todo lo que ARRANCÓ en la página (animaciones y transiciones, con su duración) debe ser de 1 ms o menos.
+// ---- el recorrido del inicio: el mapa, las opciones, las listas y la caja, cada uno su página ----
+// Las opciones y las listas no las ve el bucle de arriba con el ratón encima. Se recorre cada paso con «reducir movimiento» encendido y se
+// pasa el ratón por TODO lo que se puede tocar: una ficha, una tarjeta o una miga que se animara al pasar el ratón aparecería aquí. Aparte,
+// todo lo que ARRANCÓ en la página (animaciones y transiciones, con su duración) debe ser de 1 ms o menos. Cada nivel es un documento
+// nuevo: lo que arrancó se lee y se revisa en cada página, antes de salir de ella.
 const duracionDe = (arranque: string) => Number(arranque.split(' ').at(-1));
 
 test.describe('el recorrido del inicio con «reducir movimiento»', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-  test('el mapa, las opciones y las listas no dejan nada moviéndose, ni al pasar el ratón por cada ficha, tarjeta y miga', async ({ page }) => {
+  test('el mapa, las opciones, las listas y la caja no dejan nada moviéndose, ni al pasar el ratón por cada ficha, tarjeta y miga', async ({ page }) => {
     await simular(page, { blotato: 'conectado' });
     await oirArranques(page, /./);
     await abrirInicio(page);
     const quieto = async (donde: string) => {
+      await expect(paso(page)).toBeVisible();
       await page.waitForTimeout(300);
       expect(await page.evaluate(animacionesVivas), `${donde}: algo se mueve`).toEqual([]);
       const tocables = region(page).locator('button:visible, a:visible');
@@ -232,17 +232,24 @@ test.describe('el recorrido del inicio con «reducir movimiento»', () => {
         await page.waitForTimeout(60);
         expect(await page.evaluate(animacionesVivas), `${donde}: algo se mueve al pasar el ratón por el elemento ${i + 1}`).toEqual([]);
       }
+      const largos = (await arranques(page)).filter(a => duracionDe(a) > 1);
+      expect(largos, `${donde}: algo arrancó con duración real`).toEqual([]);
     };
     // se abre en el mapa: ese es el primer paso
     await quieto('el mapa');
-    await region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: /^Marketing/ }).click();
+    await ficha(page, 'Marketing').click();
+    await esperarRuta(page, URL_MARKETING);
     await quieto('las opciones de Marketing');
-    await region(page).getByRole('group', { name: 'Marketing', exact: true }).getByRole('button', { name: /^Blotato/ }).click();
+    await opcion(page, 'Marketing', 'Blotato').click();
+    await esperarRuta(page, URL_BLOTATO);
     await quieto('la lista de Blotato');
+    await irA(page, 'Marketing', 'Distrito');
+    await esperarRuta(page, URL_DISTRITO);
+    await quieto('la lista de Distrito');
+    await elegirHerramienta(page, 'Imagen');
+    await quieto('la caja');
     await irA(page, 'Central', 'Distrito');
     await quieto('la lista de Central');
-    const largos = (await arranques(page)).filter(a => duracionDe(a) > 1);
-    expect(largos, 'algo arrancó con duración real').toEqual([]);
   });
 });
 
@@ -254,48 +261,43 @@ test('sin «reducir movimiento», pasar el ratón por una tarjeta de la lista ar
   await oirArranques(page, /^transición de /);
   await abrirInicio(page);
   await elegir(page, 'Marketing', 'Blotato');
-  await region(page).getByRole('link').first().hover();
+  // las tarjetas de la lista (<ul>), no las migas (<ol>)
+  await region(page).locator('ul').getByRole('link').first().hover();
   await expect.poll(async () => (await arranques(page)).some(a => duracionDe(a) >= 100)).toBe(true);
 });
 
-// ---- la pista de Edición y el mapa (la caja se esconde, no se desmonta) ----
-// Escondida, la caja no tiene por qué seguir rotando su pista, y al volver arranca otra vez en la primera idea.
-test.describe('la pista de Edición al abrir el mapa y volver, con «reducir movimiento»', () => {
+// ---- la pista de Edición al salir de la caja y volver (cada página es un documento: la caja no queda escondida, se va con la página) ----
+// Salir de la caja a otra página acaba con su reloj; al volver arranca otra vez en la primera idea.
+test.describe('la pista de Edición al salir de la caja y volver, con «reducir movimiento»', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-  test('queda fija en la primera idea antes, durante y después: abrir el mapa no la pone a rotar', async ({ page }) => {
+  test('queda fija en la primera idea antes y después: pasar por el mapa y volver no la pone a rotar', async ({ page }) => {
     const campo = await abrirEdicion(page);
-    // escondido (con el mapa abierto) el campo ya no sale por su rol: se le sigue la pista por ser el único <textarea>, que no depende de verlo
-    const escondido = page.locator('textarea');
     const quieta = { texto: IDEA_PRIMERA, opacidad: '1', transicion: 'none' };
     expect(await pista(campo)).toEqual(quieta);
     await irAlMapa(page);
+    await elegir(page, 'Marketing', 'Distrito');
+    await elegirHerramienta(page, 'Edición');
+    await campo.waitFor();
+    expect(await pista(campo)).toEqual(quieta);
     for (let i = 0; i < 3; i++) {
       await page.clock.runFor(10_000);
       await page.waitForTimeout(40);
-      expect(await pista(escondido), `con el mapa abierto, a los ${(i + 1) * 10} s`).toEqual(quieta);
+      expect(await pista(campo), `al volver, a los ${(i + 1) * 10} s`).toEqual(quieta);
     }
-    await elegir(page, 'Marketing', 'Distrito');
-    expect(await pista(campo)).toEqual(quieta);
-    await page.clock.runFor(10_000);
-    await page.waitForTimeout(40);
-    expect(await pista(campo)).toEqual(quieta);
   });
 });
 
-test('sin «reducir movimiento», la pista deja de rotar con el mapa abierto y, al volver, arranca otra vez en la primera idea (el guardián sí ve)', async ({ page }) => {
+test('sin «reducir movimiento», la pista que iba por la tercera idea arranca otra vez en la primera al salir de la caja y volver (el guardián sí ve)', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const campo = await abrirEdicion(page);
   await unaIdeaMas(page);
   await unaIdeaMas(page);
   expect((await pista(campo)).texto).toBe(IDEA_TERCERA);
   await irAlMapa(page);
-  // con el mapa abierto nadie la ve: por mucho que pase el tiempo no avanza (con un reloj vivo estaría en otra idea). El campo
-  // escondido ya no sale por su rol, así que se le lee la pista por ser el único <textarea>
-  await page.clock.runFor(30_000);
-  await page.waitForTimeout(40);
-  expect(await pista(page.locator('textarea'))).toMatchObject({ texto: IDEA_PRIMERA, opacidad: '1' });
   await elegir(page, 'Marketing', 'Distrito');
+  await elegirHerramienta(page, 'Edición');
+  await campo.waitFor();
   expect(await pista(campo)).toMatchObject({ texto: IDEA_PRIMERA, opacidad: '1' });
   // y rota desde ahí con su intervalo completo: a los 3.7 s sigue la primera, entera, y a los 4 s ya es la segunda
   await page.clock.runFor(3700);
