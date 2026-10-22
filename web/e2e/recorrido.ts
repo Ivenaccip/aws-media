@@ -23,6 +23,15 @@
 // Lo que el servidor reenvía (server/web.py, ENTRADAS_VIEJAS; e2e/servidor.mjs lo repite): `/estudio/inicio/` → `/estudio/`, y `?prompt=` /
 // `?brief=` / `?blotato=conectar` a la caja en Imagen, a la caja en Video y al grupo Blotato.
 //
+// API (todo lo de abajo es lo que importan los specs; inicio-recorrido.spec.ts usa lo mismo que antes):
+//   · el estudio de mentira:   simular, simularSubida, VIDEO, tipos EstadoDeBlotato y Simulacion
+//   · las direcciones:         URL_MAPA, URL_MARKETING, URL_DISTRITO, URL_BLOTATO, URL_CAJA[imagen|video|edicion], TITULO_MAPA
+//   · dónde está la página:    rutaDe (camino), direccionDe (camino + query), esperarRuta (espera a un camino, ya cargado)
+//   · abrir:                   abrirInicio(page, url = URL_MAPA), abrirLaCaja(page, url = URL_CAJA.video)
+//   · señalar:                 region, tarjeta, paso, migas, ficha, fichaApagada, opcion, herramienta, riel, volverA, algunVolver
+//   · moverse (clic + espera): irAlMapa, elegir(área, grupo), elegirHerramienta(nombre), irA(área, grupo)
+//   · foco y medidas:          enfocado, sobraAlLado, lineasDe
+//
 // Los textos y las direcciones están escritos a mano a propósito (no se importan de marca/menu.ts ni de marca/rutas.ts): si alguien cambia
 // un rótulo o una dirección, las pruebas lo notan en vez de seguirlo en silencio.
 import { expect, type Locator, type Page } from '@playwright/test';
