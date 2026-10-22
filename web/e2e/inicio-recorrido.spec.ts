@@ -32,6 +32,7 @@ import {
   esperarRuta,
   ficha,
   fichaApagada,
+  herramienta,
   irA,
   irAlMapa,
   lineasDe,
@@ -983,149 +984,187 @@ test('Central: el grupo Distrito trae dos pantallas «Próximamente» que no nav
 
 // ---------------------------------------------------------------------------
 // teclado y foco
+//
+// El foco ya no lo lleva la página al título de un paso (antes un clic cambiaba el paso en la misma página y el botón pulsado desaparecía: sin
+// cuidado el foco caía a <body>). Ahora cada paso es un documento nuevo: el navegador lo deja al principio de la página, el lector de pantalla
+// anuncia su <title> y Tab entra por el primer elemento de LA PÁGINA NUEVA. Lo que se probaba —que el foco no se pierde— se prueba como eso:
+// la página nueva empieza en <body> (no hereda un elemento que ya no existe) y el primer Tab cae en su contenido, en orden de lectura.
 
-test('Esc: en el mapa no hace nada, en las opciones sube al mapa, en la caja y en una lista no hace nada', async ({ page }) => {
+test('Esc: en el mapa no hace nada, en las opciones sube al mapa, y en una lista y en la caja no hace nada (ni borra lo escrito)', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
 
   // en el mapa (lo primero que se ve): nada, aunque el foco esté en una ficha
   await ficha(page, 'Marketing').focus();
   await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  expect(rutaDe(page)).toBe(URL_MAPA);
   await expect(paso(page)).toHaveText('Elige un área');
   await expect(ficha(page, 'Marketing')).toBeFocused();
 
-  // en las opciones sube un nivel: al mapa, con el foco en su título (no a <body>)
+  // en las opciones sube un nivel: al mapa
   await ficha(page, 'Central').click();
+  await esperarRuta(page, '/estudio/central/');
   await expect(paso(page)).toHaveText('Elige un grupo');
   await page.keyboard.press('Escape');
+  await esperarRuta(page, URL_MAPA);
   await expect(paso(page)).toHaveText('Elige un área');
-  await expect(paso(page)).toBeFocused();
 
-  // en la caja: nada (ni cambia de paso ni borra lo escrito)
+  // en la caja: nada (ni cambia de página ni borra lo escrito)
   await elegir(page, 'Marketing', 'Distrito');
+  await elegirHerramienta(page, 'Video');
   const cuadro = page.getByRole('textbox', { name: CAJA });
   await cuadro.fill('texto que no se pierde');
   await cuadro.focus();
   await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  expect(rutaDe(page)).toBe(URL_CAJA.video);
   await expect(paso(page)).toHaveText(CAJA);
   await expect(cuadro).toBeFocused();
   await expect(cuadro).toHaveValue('texto que no se pierde');
 
-  // en las opciones, venidas de la caja, también al MAPA (no «regresa a la caja»: ya no hay a dónde regresar)
-  await migas(page).getByRole('button', { name: /^Volver a las opciones/ }).click();
+  // en las opciones, venidas de la caja, también al MAPA (no «regresa a la caja»: la miga es la que sube, y Esc sube al mapa)
+  await migas(page).getByRole('link', { name: /^Volver a las opciones/ }).click();
+  await esperarRuta(page, URL_MARKETING);
   await expect(paso(page)).toHaveText('Elige un grupo');
   await page.keyboard.press('Escape');
-  await expect(paso(page)).toHaveText('Elige un área');
-  expect(rutaDe(page)).toBe(URL_DEL_INICIO);
+  await esperarRuta(page, URL_MAPA);
 
   // en la lista de un grupo: nada
   await elegir(page, 'Marketing', 'Blotato');
   await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  expect(rutaDe(page)).toBe(URL_BLOTATO);
   await expect(paso(page)).toHaveText('Blotato');
 });
 
-test('Esc es de la región y no de la página: con el foco fuera de ella no mueve el recorrido', async ({ page }) => {
+// Antes Esc era «de la región, no de la página»: con el foco fuera de ella no movía el recorrido. Ya no puede serlo: recién cargada una página el
+// foco está en <body> y Esc tiene que valer desde el primer toque, así que el oyente es del DOCUMENTO. Lo que ya atendió Esc (un menú, un diálogo)
+// lo marca con preventDefault y no se repite (PaginaNivel.test.tsx lo cubre en jsdom; el diálogo de Blotato, arriba, en un navegador).
+test('Esc en las opciones vale con el foco en <body> (recién cargada la página) y con el foco dentro de ella', async ({ page }) => {
   await simular(page);
-  await abrirInicio(page);
-  await ficha(page, 'Marketing').click();
+  await abrirInicio(page, URL_MARKETING);
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
   expect((await enfocado(page)).etiqueta).toBe('body');
   await page.keyboard.press('Escape');
-  await expect(paso(page)).toHaveText('Elige un grupo');
+  await esperarRuta(page, URL_MAPA);
+
+  await abrirInicio(page, URL_MARKETING);
+  await opcion(page, 'Marketing', 'Distrito').focus();
+  expect((await enfocado(page)).etiqueta).toBe('a');
+  await page.keyboard.press('Escape');
+  await esperarRuta(page, URL_MAPA);
 });
 
-test('el foco no se pierde en <body> al cambiar de paso con el ratón: va al título del paso nuevo', async ({ page }) => {
+test('al cambiar de página con el ratón el foco no se queda en algo que ya no existe: la página nueva empieza arriba, dice dónde cae con su <title> y el primer Tab entra a su contenido', async ({ page }) => {
   await simular(page);
-  await abrirInicio(page);
-  const alTitulo = async (texto: string) => {
-    await expect(paso(page)).toHaveText(texto);
-    await expect(paso(page)).toBeFocused();
+  // [clic hacia la página, su camino, su título, el texto de lo primero que se tabula en ella]
+  const aterrizar = async (camino: string, titulo: string, primerTab: string | RegExp) => {
+    await esperarRuta(page, camino);
+    await expect(page).toHaveTitle(titulo);
+    expect((await enfocado(page)).etiqueta, `${camino}: la página nueva debe empezar sin foco, no con el de la anterior`).toBe('body');
+    await page.keyboard.press('Tab');
+    expect((await enfocado(page)).texto, `${camino}: lo primero que se tabula`).toMatch(
+      typeof primerTab === 'string' ? new RegExp(`^${primerTab}$`) : primerTab,
+    );
   };
+  await abrirInicio(page);
+  await aterrizar(URL_MAPA, TITULO_MAPA, 'Marketing');
+
   await ficha(page, 'Marketing').click();
-  await alTitulo('Elige un grupo');
+  await aterrizar(URL_MARKETING, 'Estudio de video · Marketing', 'Marketing'); // la miga del área, antes que las tarjetas
   await opcion(page, 'Marketing', 'Blotato').click();
-  await alTitulo('Blotato');
-  await migas(page).getByRole('button', { name: /^Volver al mapa/ }).click();
-  await alTitulo('Elige un área');
+  await aterrizar(URL_BLOTATO, 'Estudio de video · Marketing · Blotato', 'Marketing');
+  await migas(page).getByRole('link', { name: /^Volver al mapa/ }).click();
+  await aterrizar(URL_MAPA, TITULO_MAPA, 'Marketing');
+
   await ficha(page, 'Marketing').click();
-  await alTitulo('Elige un grupo');
-  await opcion(page, 'Marketing', 'Blotato').click();
-  await alTitulo('Blotato');
-  await migas(page).getByRole('button', { name: /^Volver a las opciones/ }).click();
-  await alTitulo('Elige un grupo');
+  await esperarRuta(page, URL_MARKETING);
   await opcion(page, 'Marketing', 'Distrito').click();
-  await alTitulo(CAJA);
-  await migas(page).getByRole('button', { name: /^Volver al mapa/ }).click();
-  await alTitulo('Elige un área');
+  await aterrizar(URL_DISTRITO, 'Estudio de video · Marketing · Distrito', 'Marketing');
+  await herramienta(page, 'Video').click();
+  await aterrizar(URL_CAJA.video, 'Estudio de video · Marketing · Distrito · Video', 'Marketing');
 });
 
 // Lo pulsado puede no mover el foco (la acción «hacer clic» de un lector en modo exploración, el control por voz, un `.click()`): el campo de
-// la caja sigue siendo `activeElement` en el instante en que la caja se esconde, y Chromium lo suelta a <body> un momento después. Sin cuidado,
-// el foco acababa en <body>, Esc no llegaba a la región y el lector no oía «Elige un área».
-test('el foco que estaba DENTRO de la caja al abrir el mapa sin mover el foco (.click()) no cae a <body>: va al título, y Esc sigue valiendo', async ({ page }) => {
+// la caja sigue siendo `activeElement` en el instante en que se sale de ella. En la página nueva no hay nada de eso: empieza en <body>, el primer
+// Tab entra a su contenido y Esc sigue valiendo.
+test('el foco que estaba DENTRO de la caja al salir de ella sin mover el foco (.click()) no pasa a la página nueva: empieza arriba, y Tab y Esc siguen valiendo', async ({ page }) => {
   await simular(page);
-  await abrirLaCaja(page);
-  const abrirElMapaSinMoverElFoco = () => migas(page).getByRole('button', { name: /^Volver al mapa/ }).evaluate(b => (b as HTMLButtonElement).click());
   for (const [desde, alcanzar] of [
     ['el cuadro de texto', () => page.getByRole('textbox', { name: CAJA }).focus()],
     ['el chip «Un video corto ▾»', () => page.locator('button[aria-haspopup="listbox"]').focus()],
   ] as const) {
+    await abrirLaCaja(page);
     await alcanzar();
-    await abrirElMapaSinMoverElFoco();
+    await migas(page).getByRole('link', { name: /^Volver al mapa/ }).evaluate(a => (a as HTMLAnchorElement).click());
+    await esperarRuta(page, URL_MAPA);
     await expect(paso(page), `desde ${desde}`).toHaveText('Elige un área');
-    await expect(paso(page), `desde ${desde}: el foco se perdió`).toBeFocused();
-    // un instante después (cuando el navegador suelta lo que quedó escondido) sigue ahí
+    // un instante después (cuando el navegador suelta lo que quedó escondido) sigue sin foco prestado
     await page.waitForTimeout(300);
-    expect((await enfocado(page)).etiqueta, `desde ${desde}: el foco cayó a <body>`).toBe('h2');
-    // y Esc sigue llegando a la región: desde las opciones sube al mapa (en el mapa no hay a dónde subir)
-    await ficha(page, 'Marketing').click();
+    expect((await enfocado(page)).etiqueta, `desde ${desde}: la página nueva heredó un foco`).toBe('body');
+    await page.keyboard.press('Tab');
+    await expect(ficha(page, 'Marketing'), `desde ${desde}: Tab no entró al mapa`).toBeFocused();
+    // y Esc sigue llegando: desde las opciones sube al mapa
+    await page.keyboard.press('Enter');
+    await esperarRuta(page, URL_MARKETING);
     await page.keyboard.press('Escape');
-    await expect(paso(page), `desde ${desde}: Esc no subió`).toHaveText('Elige un área');
-    await expect(paso(page)).toBeFocused();
-    await elegir(page, 'Marketing', 'Distrito');
-    await expect(paso(page)).toHaveText(CAJA);
-    // la caja de nuevo: se vuelve a empezar por la otra
+    await esperarRuta(page, URL_MAPA);
   }
 });
 
-test('Tab recorre el mapa en orden de lectura: solo las cinco fichas, y la sexta salida es de la región', async ({ page }) => {
+test('Tab recorre el mapa en orden de lectura: solo las cinco fichas, y la sexta salida es de la página', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
-  // el título del mapa se enfoca con código (tabindex -1): de ahí, Tab va a la primera ficha
-  await paso(page).focus();
+  // recién cargada la página el foco está en <body>: el primer Tab va a la primera ficha
   const paradas = [];
   for (let i = 0; i < AREAS.length; i++) {
     await page.keyboard.press('Tab');
     paradas.push(await enfocado(page));
   }
-  const nombre = (p: { texto: string }) => p.texto.replace(/(Estás aquí|Próximamente)$/, '');
+  const nombre = (p: { texto: string }) => p.texto.replace(/Próximamente$/, '');
   expect(paradas.map(nombre)).toEqual([...AREAS]);
   // ni migas ni «Volver a …» que tabular: la siguiente parada ya no es de la región
   await page.keyboard.press('Tab');
   expect(await region(page).evaluate(r => r.contains(document.activeElement))).toBe(false);
 });
 
-test('con solo el teclado: Enter en una ficha y en una tarjeta cambian de paso, y Tab sigue desde el título nuevo', async ({ page }) => {
+test('con solo el teclado: Enter en una ficha, en una tarjeta y en una herramienta llevan hasta la caja, y Tab sigue desde el principio de cada página', async ({ page }) => {
   await simular(page);
   await abrirInicio(page);
   await ficha(page, 'Marketing').focus();
   await page.keyboard.press('Enter');
+  await esperarRuta(page, URL_MARKETING);
   await expect(paso(page)).toHaveText('Elige un grupo');
-  await expect(paso(page)).toBeFocused();
-  // Tab sigue desde el título (que no es tabulable): la primera tarjeta; la miga del área, que está antes en la página, queda atrás
+  // página nueva: sin foco. Tab entra por la miga del área, que está antes que las tarjetas en la página, y sigue por ellas
+  expect((await enfocado(page)).etiqueta).toBe('body');
+  await page.keyboard.press('Tab');
+  expect((await enfocado(page)).texto).toBe('Marketing');
   await page.keyboard.press('Tab');
   expect((await enfocado(page)).texto).toMatch(/^Distrito/);
   await page.keyboard.press('Shift+Tab');
   expect((await enfocado(page)).texto).toBe('Marketing');
   await page.keyboard.press('Tab');
-  expect((await enfocado(page)).texto).toMatch(/^Distrito/);
   await page.keyboard.press('Enter');
-  await expect(paso(page)).toHaveText(CAJA);
-  await expect(paso(page)).toBeFocused();
-  // la caja ya está a la vista y se escribe en ella: Tab desde su título llega al cuadro
+  await esperarRuta(page, URL_DISTRITO);
+  await expect(paso(page)).toHaveText('Distrito');
+  // la lista de herramientas: dos migas y luego Imagen · Video · Edición
   await page.keyboard.press('Tab');
-  expect((await enfocado(page)).etiqueta).toBe('textarea');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  expect((await enfocado(page)).texto).toMatch(/^Imagen/);
+  await page.keyboard.press('Tab');
+  expect((await enfocado(page)).texto).toMatch(/^Video/);
+  await page.keyboard.press('Enter');
+  await esperarRuta(page, URL_CAJA.video);
+  await expect(paso(page)).toHaveText(CAJA);
+  // la caja: las dos migas, las tres pestañas del riel y el cuadro de texto
+  const paradas = [];
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press('Tab');
+    paradas.push((await enfocado(page)).etiqueta);
+  }
+  expect(paradas).toEqual(['a', 'a', 'button', 'button', 'button', 'textarea']);
 });
 
 // ---------------------------------------------------------------------------
