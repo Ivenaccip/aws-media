@@ -245,9 +245,8 @@ def test_la_app_real_sirve_los_niveles_y_redirige_sin_barra(monkeypatch):
         sin_barra = con_barra.rstrip("/")
         r = c.get(sin_barra + "?x=1")
         assert r.status_code == 302 and r.headers["location"] == con_barra + "?x=1", sin_barra
-        # el 302 de un nivel anidado lo da web.py (`no-store`); el de `/estudio` es la ruta de server/app.py
-        if carpeta:
-            assert r.headers["cache-control"] == "no-store", sin_barra
+        # el 302 de un nivel anidado lo da web.py y el de `/estudio`, la ruta de server/app.py: los dos `no-store`
+        assert r.headers["cache-control"] == "no-store", sin_barra
 
 
 @en_dist

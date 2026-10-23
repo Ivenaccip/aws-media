@@ -237,6 +237,62 @@ def test_el_inicio_sin_la_principal_compilada_sirve_el_clasico_y_no_redirige_a_u
     assert r.status_code == 200 and "inicio viejo" in r.text
 
 
+def test_sin_la_principal_compilada_el_estudio_lleva_al_clasico_y_no_a_un_404(tmp_path, monkeypatch):
+    """Un clon sin `npm run build`: el login, la portada y cada «← Estudio» llevan a /estudio/, que sin web/dist no tiene nada que servir.
+    Lleva al clásico (/index.html, que ahí no redirige), con el query: el clásico abre su diálogo con ?blotato=conectar."""
+    c = _app_inicio(tmp_path, monkeypatch, "todos", montada=False)
+    for metodo in (c.get, c.head):
+        r = metodo("/estudio/?blotato=conectar")
+        assert r.status_code == 302 and r.headers["location"] == "/index.html?blotato=conectar", metodo.__name__
+        assert r.headers["cache-control"] == "no-store"
+    assert c.get("/estudio/").headers["location"] == "/index.html"
+    assert c.get("/index.html").status_code == 200, "y ahí se queda: sin bucle"
+    # en `retirada` ya no hay clásico (y /index.html manda a /estudio/): nada que servir, sin bucle
+    r = _app_inicio(tmp_path, monkeypatch, "retirada", montada=False).get("/estudio/")
+    assert r.status_code == 404 and "location" not in r.headers
+
+
+def test_con_la_principal_compilada_esta_ruta_no_se_registra(tmp_path, monkeypatch):
+    """Con web/dist la principal la sirve web.py (que le pregunta a principal_a_la_clasica por la cookie): migracion no la pisa."""
+    c = _app_inicio(tmp_path, monkeypatch, "todos")
+    assert not any(getattr(r, "path", "") == "/estudio/" for r in c.app.routes)
+
+
+@pytest.mark.parametrize("etapa, cookie, montada, destino", [
+    ("todos", "clasica", True, "/index.html?x=1"),
+    ("nueva", "clasica", True, "/index.html?x=1"),
+    ("todos", None, True, None),
+    ("todos", "nueva", True, None),
+    ("todos", None, False, "/index.html?x=1"),
+    ("retirada", "clasica", True, None),
+    ("retirada", None, False, None),
+])
+def test_quien_eligio_la_clasica_se_queda_en_ella_mientras_exista(monkeypatch, etapa, cookie, montada, destino):
+    """La salida de emergencia del inicio dura lo que la cookie (7 días), no una carga: /estudio/ la manda al clásico."""
+    from starlette.requests import Request
+    monkeypatch.setattr(migracion, "PANTALLAS", {"inicio": Pantalla(vieja="/index.html", nueva="/estudio/", etapa=etapa)})
+    cabeceras = [(b"cookie", f"ui={cookie}".encode())] if cookie else []
+    pedido = Request({"type": "http", "method": "GET", "path": "/estudio/", "query_string": b"x=1", "headers": cabeceras,
+                      "scheme": "http", "server": ("x", 80), "root_path": ""})
+    assert migracion.principal_a_la_clasica(pedido, principal_montada=montada) == destino
+
+
+def test_sin_pantalla_en_la_principal_no_hay_nada_que_decidir(cliente):
+    """Las apps de juguete sin inicio (solo `demo`) no registran /estudio/ ni redirigen nada."""
+    c = cliente("todos", montada=False)
+    assert c.get("/estudio/").status_code == 404
+
+
+def test_head_de_una_url_vieja_contesta_lo_mismo_que_get(tmp_path, monkeypatch):
+    """`curl -I` y los verificadores de enlaces preguntan con HEAD: tienen que ver el mismo 302 (antes caían en el montaje de static/ y
+    veían un 200 del clásico)."""
+    c = _app_inicio(tmp_path, monkeypatch, "todos")
+    r = c.head("/index.html?x=1")
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?x=1" and r.headers["cache-control"] == "no-store"
+    c.cookies.set("ui", "clasica")
+    assert c.head("/index.html").status_code == 200
+
+
 def test_el_inicio_en_retirada_redirige_siempre_y_no_hace_bucle(tmp_path, monkeypatch):
     """Con vieja == nueva (el modelo de antes, /estudio/) `retirada` daba un 302 a sí misma. Ahora la vieja es otra URL."""
     c = _app_inicio(tmp_path, monkeypatch, "retirada")

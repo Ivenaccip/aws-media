@@ -6,8 +6,9 @@ montan carpetas; una pantalla nueva aparece sola al compilarla.
 
 El montaje es CONDICIONAL. Sin dist (pytest en Windows, un clon recién hecho,
 cualquier máquina que no haya corrido `npm run build`) no se monta nada y el
-resto del server sigue igual. En la imagen, dist siempre existe: la etapa
-`web` del Dockerfile lo construye y, si algo falla, falla el build.
+resto del server sigue igual: /estudio/ lleva al inicio clásico (/index.html;
+esa ruta la registra server/migracion.py). En la imagen, dist siempre existe:
+la etapa `web` del Dockerfile lo construye y, si algo falla, falla el build.
 
 Caché (misma lógica que UI·3 en server/app.py):
   · assets con hash: un año e `immutable` — cambiar el contenido cambia el
@@ -23,11 +24,12 @@ Rutas por nivel: una pantalla puede vivir a cualquier profundidad bajo /estudio/
 (/estudio/marketing/distrito/imagen/) y `rutas()` es el registro de todas las que
 hay compiladas. Con él:
   · una dirección tecleada a mano a la que le falta la barra, o que viene en
-    mayúsculas (también «/Estudio/»), con «//» o escrita con «%XX»
-    (`/estudio/%6Darketing/`: uvicorn la decodifica y la serviría, pero la página
-    lee la dirección cruda y no reconocería su nivel), se corrige con un 302
-    RELATIVO (nunca el 307 con URL absoluta de StaticFiles), con el query intacto
-    y `Cache-Control: no-store`;
+    mayúsculas (también «/Estudio/» y «/ESTUDIO»), con «//» o escrita con «%XX»
+    (`/estudio/%6Darketing/`: uvicorn la decodifica y la sirve, y la página la
+    reconoce igual porque también decodifica, `nivelDeDireccion`; se corrige para
+    que la barra de direcciones quede limpia), se corrige con un 302 RELATIVO
+    (nunca el 307 con URL absoluta de StaticFiles), con el query intacto y
+    `Cache-Control: no-store`;
   · una dirección que no existe da el 404 JSON de siempre y, SOLO si quien la
     pide acepta HTML (el tipo `text/html` con q > 0), una página mínima con un
     enlace al nivel de arriba. Las dos caras llevan `Vary: Accept`.
@@ -45,15 +47,18 @@ su cuenta y la prueba no vería el defecto.
 La raíz /estudio/ ES la página principal (el mapa «Elige un área»): `rutas()` la
 cuenta y `montar` registra una ruta explícita GET/HEAD con el mismo `no-cache`, ETag
 y 304 que las demás. Antes la decidía server/migracion.py (un 302 a /estudio/inicio/);
-ahora esa pantalla vive en /index.html (el inicio clásico, salida de emergencia con
-la cookie `ui=clasica`) y migracion.py solo redirige a /estudio/. Si dist no trae
-estudio/index.html, la raíz no se sirve (da 404) y `/index.html` sirve el clásico.
+ahora el inicio clásico vive en /index.html y migracion.py lo redirige a /estudio/.
+Con la cookie `ui=clasica` (la salida de emergencia) la raíz manda a /index.html:
+lo decide `migracion.principal_a_la_clasica`, que se pregunta ANTES que las entradas
+de antes (el clásico lee su ?blotato=conectar). Si dist no trae estudio/index.html,
+esta ruta no se registra: la de migracion.py lleva al clásico.
 
 Las direcciones de ANTES siguen funcionando:
   · `ENTRADAS_VIEJAS`: /estudio/?prompt=… (la Caja en Imagen), ?brief=… (en Video) y
     ?blotato=conectar (el grupo Blotato) redirigen con un 302 a la página que hoy hace
-    eso, con el query intacto. Quien las manda: el editor de cortes, tres pantallas
-    clásicas, tres `logica.ts` y la Biblioteca de prompts. El destino sale de la tabla
+    eso, con el query intacto. Quien las manda: el editor de cortes, las pantallas
+    clásicas (Agenda, Métricas y MIX) y los marcadores viejos; las pantallas nuevas y la
+    Biblioteca de prompts ya enlazan directo a su página (E5.1). El destino sale de la tabla
     y solo se usa si está compilado (`rutas`); cualquier otro query se sirve tal cual;
   · `alias`: las direcciones de pantallas que cambiaron de sitio (`/estudio/inicio/`
     → `/estudio/`). Salen de `migracion.alias_del_estudio()`, que `montar` importa AL
@@ -98,7 +103,8 @@ VARIA_CON_ACCEPT = {"Vary": "Accept"}
 
 # Lo que el inicio de una sola página leía de la barra de direcciones y a qué herramienta mandarlo ahora:
 # (parámetro, valor exigido o None, destino). El destino sale de AQUÍ, nunca de la petición, y solo se usa si está en `rutas`.
-# El editor de cortes (tools/editor/index.html), agenda/métricas/mix clásicas y la Biblioteca de prompts siguen mandando aquí.
+# Siguen mandando aquí el editor de cortes (tools/editor/index.html), agenda/métricas/mix clásicas y los marcadores viejos; las pantallas
+# nuevas y la Biblioteca de prompts ya enlazan directo a la página del nivel.
 ENTRADAS_VIEJAS = (
     ("prompt", None, "/estudio/marketing/distrito/imagen/"),
     ("brief", None, "/estudio/marketing/distrito/video/"),
@@ -148,9 +154,12 @@ def rutas(estudio: Path) -> frozenset[str]:
 
 
 def entrada_vieja(query_params, rutas_: frozenset[str]) -> str | None:
-    """Si la raíz recibe un parámetro de los de antes, a qué página mandarlo (sin query: lo agrega quien redirige)."""
+    """Si la raíz recibe un parámetro de los de antes, a qué página mandarlo (sin query: lo agrega quien redirige).
+
+    Con un parámetro repetido cuenta el PRIMERO, como en el navegador (`URLSearchParams.get`, que es lo que lee la página): con el último
+    (el `query_params[p]` de Starlette) `?blotato=conectar&blotato=otra` y la página que lo recibe dirían cosas distintas."""
     for param, valor, destino in ENTRADAS_VIEJAS:
-        if param in query_params and (valor is None or query_params[param] == valor) and destino in rutas_:
+        if param in query_params and (valor is None or query_params.getlist(param)[0] == valor) and destino in rutas_:
             return destino
     return None
 
@@ -213,12 +222,16 @@ def _con_query(destino: str, scope) -> str:
 
 
 def _bajo_estudio(ruta: str) -> bool:
-    """/estudio/… menos /estudio/assets y lo que cuelga de ahí: un asset que falta siempre es 404 JSON, aun escrito «Assets».
+    """/estudio/… (y «/estudio» sin barra) menos /estudio/assets y lo que cuelga de ahí: un asset que falta siempre es 404 JSON, aun escrito
+    «Assets».
 
-    Sin distinguir mayúsculas («/Estudio/» es lo mismo que escribirlo bien) y, para lo de assets, sobre la ruta NORMALIZADA (`_limpia`), la
-    misma con la que `destino_de` busca el destino: «//assets/», «./assets/» o «x/../assets/» son assets aunque se escriban así."""
+    Sin distinguir mayúsculas («/Estudio/» o «/ESTUDIO» son lo mismo que escribirlo bien: «/estudio» en minúsculas lo atiende antes la ruta de
+    server/app.py) y, para lo de assets, sobre la ruta NORMALIZADA (`_limpia`), la misma con la que `destino_de` busca el destino: «//assets/»,
+    «./assets/» o «x/../assets/» son assets aunque se escriban así."""
     baja = ruta.lower()
     limpia = _limpia(ruta).lower()
+    if limpia == "/estudio":
+        return True
     return baja.startswith("/estudio/") and limpia != "/estudio/assets" and not limpia.startswith("/estudio/assets/")
 
 
@@ -241,8 +254,9 @@ def _pide_html(accept: str) -> bool:
 def _escrita_con_porcentajes(scope) -> bool:
     """¿La pantalla llegó escrita con «%XX» (`/estudio/%6Darketing/`, `/estudio/marketing%2Fdistrito/`)?
 
-    uvicorn pone en `path` la dirección ya DECODIFICADA y en `raw_path` la que llegó por el cable. La página lee `location.pathname`
-    (cruda) y no reconoce su nivel: se manda a la forma normal. Solo cuando la normal es una ruta simple (sin nada que escapar): con un
+    uvicorn pone en `path` la dirección ya DECODIFICADA y en `raw_path` la que llegó por el cable. La página reconoce su nivel igual (lee
+    `location.pathname` y lo decodifica, `nivelDeDireccion`), pero la barra de direcciones se quedaría con los «%XX» y así se compartiría:
+    se manda a la forma normal. Solo cuando la normal es una ruta simple (sin nada que escapar): con un
     nombre que lleva espacio o «&» cada cliente lo escribe a su manera y un bucle de redirecciones sería peor que servirlo. Sin `raw_path`
     (Mangum, detrás de API Gateway, lo manda en None) no hay con qué comparar y se sirve como siempre."""
     raw = scope.get("raw_path")
@@ -307,6 +321,10 @@ def montar(app, dist: Path = DIST, alias: dict[str, str] | None = None) -> list[
         sirve_raiz = _Pantalla(directory=estudio, rutas_=todas, alias=alias)   # sin montar: solo index.html (con su ETag y 304)
 
         async def raiz(request: Request):
+            from server import migracion                  # al llamar, como alias_del_estudio: sin ciclo y sin tocar server/app.py
+            clasica = migracion.principal_a_la_clasica(request)   # la cookie `ui=clasica`: el inicio clásico, con su query
+            if clasica:
+                return RedirectResponse(clasica, status_code=302, headers=NO_STORE)
             antes = entrada_vieja(request.query_params, todas)
             if antes:
                 return RedirectResponse(_con_query(antes, request.scope), status_code=302, headers=NO_STORE)

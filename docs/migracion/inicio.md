@@ -114,11 +114,15 @@ la caché del navegador y un nivel que cambie ya no llegaría. El destino sale s
 | `/estudio/?blotato=conectar` | 302 → `/estudio/marketing/blotato/?blotato=conectar` (el diálogo de conectar se abre al llegar) |
 | `/estudio/inicio/?prompt=…` (o `?brief=`, `?blotato=conectar`) | dos 302: a `/estudio/?prompt=…` y de ahí a la caja (o al grupo Blotato) |
 | `/estudio/` con cualquier otro query (`?p=…`, `?blotato=otra`, `?desde=…&ver=…`) | 200: el mapa, servido tal cual |
-| una dirección sin barra final, en mayúsculas, con `//` o con `%XX` (`/estudio/marketing`, `/estudio/Marketing/`) | 302 → su forma normal (`/estudio/marketing/`) |
-| `/estudio` (sin barra) | 302 → `/estudio/` con el query; este lo da `server/app.py`, sin `no-store` |
+| un parámetro de antes repetido (`?blotato=otra&blotato=conectar`) | cuenta el primero, como en el navegador (lo que lee la página) |
+| una dirección sin barra final, en mayúsculas, con `//` o con `%XX` (`/estudio/marketing`, `/estudio/Marketing/`, `/ESTUDIO`) | 302 → su forma normal (`/estudio/marketing/`) |
+| `/estudio` (sin barra) | 302 → `/estudio/` con el query; este lo da `server/app.py`, también con `no-store` (y a HEAD, como a GET) |
 | `/index.html` (el inicio clásico) | 302 → `/estudio/` (el inicio está en `todos`); con la cookie `ui=clasica`, `static/index.html` |
+| `/estudio/` con la cookie `ui=clasica`, con cualquier query | 302 → `/index.html` con el query: quien eligió la clásica se queda en ella (la decide `migracion.principal_a_la_clasica`, antes que las entradas de antes) |
+| `/estudio/` sin `web/dist` compilado | 302 → `/index.html` (la clásica): un clon sin `npm run build` sigue entrando |
 
 Las tres entradas de `ENTRADAS_VIEJAS` (`?prompt=`, `?brief=`, `?blotato=conectar`) solo redirigen si su destino está compilado.
+Las URLs viejas (`/index.html` y las demás `.html` de `PANTALLAS`) contestan a HEAD lo mismo que a GET.
 Hoy las siguen mandando las pantallas clásicas de Agenda, Métricas y MIX y el editor de cortes (`/estudio/?blotato=conectar`), y
 cualquier marcador viejo. Detrás de API Gateway una dirección escrita con `%XX` no se corrige (Mangum no pasa la ruta cruda): se
 sirve tal cual y la página la entiende igual.
@@ -135,7 +139,8 @@ se abre en una dirección que no reconoce, enseña lo mismo (`NoEncontrada`, con
 
 - **`?desde=…&ver=…`:** las migas de las hojas ya no lo mandan (van directo, E5.1). Un marcador viejo con él cae en el mapa: el
   servidor lo sirve tal cual y la página quita esos dos parámetros de la dirección sin hacer nada más (no abre las opciones de un
-  área ni marca nada).
+  área ni marca nada). Salvo que traiga también `?blotato=conectar`: entonces el servidor lo manda al grupo Blotato, que abre el
+  diálogo y deja `desde` y `ver` en la dirección (solo el mapa los limpia).
 - **«Volver a …»**, tampoco el de la hoja de donde se llegaba («Volver a Agenda…»): lo hace «Atrás».
 - **«Estás aquí»:** ninguna tarjeta lo dice; la dirección y el título dicen dónde estás.
 - **La caja montada y escondida detrás del mapa:** las páginas de navegación no traen la caja. Por eso salir de ella descarta lo
@@ -203,8 +208,10 @@ eso:
 **Desde el 22-oct-2026 (rutas por nivel)** la etapa sigue en `todos`, pero de otra URL a otra: `PANTALLAS["inicio"]` es
 `vieja="/index.html"`, `nueva="/estudio/"`. Con `vieja == nueva`, `retirada` y «sin dist» habrían dado un bucle de redirecciones, y
 `/ui/clasica?pantalla=inicio` ya no habría llevado a la clásica. Hoy `/index.html?q` → 302 a `/estudio/?q`, salvo la cookie
-`ui=clasica`, con la que `/index.html` sirve `static/index.html`; sin la principal compilada, `/index.html` sirve la clásica y
-`/estudio/` da 404. `/estudio/inicio/` ya no es una página: es el alias que responde 302 a `/estudio/`. `retirada` sigue pendiente.
+`ui=clasica`, con la que `/index.html` sirve `static/index.html` y `/estudio/` (a donde llevan el login, los «← Estudio» de las
+pantallas clásicas y el editor de cortes) responde 302 a `/index.html` con su query: la salida de emergencia dura lo que la cookie,
+no una carga. Sin la principal compilada, `/index.html` sirve la clásica y `/estudio/` lleva a ella. `/estudio/inicio/` ya no es una
+página: es el alias que responde 302 a `/estudio/`. `retirada` sigue pendiente.
 
 Antes de `todos`, el dueño corre el QA manual de `docs/QA-UI.md` § inicio.
 **El inicio cobra** (desde R4b el clip y la imagen; desde E1 la edición de un
@@ -717,7 +724,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_m19_orbe.py` (favicon, sin motor GPU, sin `/monedero.html`, `check_js`) | favicon en `web/estudio/index.html` y en cada página de nivel (hasta el 22-oct-2026, `web/estudio/inicio/index.html`; ya lo mira `test_todas_las_paginas_tienen_favicon`, que recorre todo `web/**/*.html`); el inicio nuevo no carga el orbe |
 | `test_m20_paleta.py` | ya mira `web/`. **Al retirar:** `rgba(0,0,0,0.533)` y `rgba(20,22,26,0.72/0.95)` solo viven en `static/index.html`: salen de `TRANSLUCIDOS` en el mismo PR |
 | `test_m21_botones.py[index.html]` | el precio del desplegable es `{ESTRELLA} {precio}` en JSX, no una plantilla: no es un botón que cobre |
-| `test_entrar_portada.py::test_estudio_sirve_el_mismo_index` | del 14 al 22-oct-2026 pedía la vieja en `/estudio/` con la cookie `ui=clasica` y esperaba el 302 a `/estudio/inicio/`. **Desde las rutas por nivel:** `test_el_index_viejo_sirve_el_clasico_con_su_cookie` (la clásica, en `/index.html` con la cookie), `test_estudio_es_la_principal_y_el_index_viejo_lleva_a_ella` (`/estudio/` da 200 con la página compilada y `/index.html?p=1` → 302 a `/estudio/?p=1`, `no-store`) y `test_la_principal_y_las_paginas_por_nivel_son_publicas_con_cognito` (el mapa, Marketing, Distrito y la caja se sirven sin sesión y sin pasar por `/entrar`). Las que necesitan la principal compilada se saltan sin `web/dist`; en el contenedor del CI corren |
+| `test_entrar_portada.py::test_estudio_sirve_el_mismo_index` | del 14 al 22-oct-2026 pedía la vieja en `/estudio/` con la cookie `ui=clasica` y esperaba el 302 a `/estudio/inicio/`. **Desde las rutas por nivel:** `test_el_index_viejo_sirve_el_clasico_con_su_cookie` (la clásica, en `/index.html` con la cookie), `test_quien_eligio_la_clasica_vuelve_a_ella_desde_el_estudio` (con la cookie, `/estudio/` → 302 a `/index.html` con el query: la salida de emergencia no dura una carga), `test_estudio_es_la_principal_y_el_index_viejo_lleva_a_ella` (`/estudio/` da 200 con la página compilada y `/index.html?p=1` → 302 a `/estudio/?p=1`, `no-store`) y `test_la_principal_y_las_paginas_por_nivel_son_publicas_con_cognito` (el mapa, Marketing, Distrito y la caja se sirven sin sesión y sin pasar por `/entrar`). Las que necesitan la principal compilada se saltan sin `web/dist`; en el contenedor del CI corren |
 | `test_cache_estaticos.py` (`/estudio/` y `/index.html` en `no-cache`) | se queda con la cookie `ui=clasica`: `server/migracion.py` sirve la vieja con `no-cache` en `/index.html`. `test_el_302_del_index_viejo_a_la_principal_no_se_queda_en_cache` y `test_el_302_de_la_pagina_unica_a_la_principal_no_se_queda_en_cache` fijan el `no-store` de los dos 302 (`/index.html` → `/estudio/` y `/estudio/inicio/` → `/estudio/`, con el query) |
 | `test_web_tuberia.py::test_la_app_real_sirve_la_vitrina_si_esta_compilada` | con `web/dist`, `/estudio/` es la página compilada (200, `no-cache`) y `/index.html` da el 302 a ella; con la cookie `ui=clasica`, el 200 de la clásica |
 

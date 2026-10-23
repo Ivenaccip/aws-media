@@ -1298,7 +1298,7 @@ pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
    lint, vitest y build. Si algo falla, **falla el build** y no sale imagen.
 2. `web/dist` se copia a la imagen.
 3. `server/web.py` lo monta si existe. Sin `dist` no se monta nada y el resto
-   sigue igual.
+   sigue igual: `/estudio/` lleva al inicio clásico (`/index.html`).
 
 **Caché:** los assets de `/estudio/assets/` llevan hash y son `immutable`
 por un año. El HTML va con `no-cache`.
@@ -1382,7 +1382,10 @@ desde las rutas por nivel `/estudio/` ES el inicio (el mapa), su URL vieja es
 salvo la foto del personaje de cuentos e historias, que lleva a la Crear
 nueva (`/estudio/crear/`). Para devolver a alguien a la clásica:
 `https://irremplazables.xyz/ui/clasica?pantalla=inicio` (deja la cookie y lo
-lleva a `/index.html`, la clásica).
+lleva a `/index.html`, la clásica). Mientras tenga la cookie (7 días),
+`/estudio/` también lo lleva ahí: el login, los «← Estudio» de las pantallas
+clásicas y el editor de cortes apuntan a `/estudio/`. `/ui/nueva?pantalla=inicio`
+la borra.
 
 ### Rutas por nivel: las direcciones del estudio
 
@@ -1416,8 +1419,9 @@ siempre en la caché del navegador.
 | `/estudio/?brief=…` | `/estudio/marketing/distrito/video/?brief=…` |
 | `/estudio/?blotato=conectar` (lo mandan el editor de cortes y Agenda, Métricas y MIX clásicas) | `/estudio/marketing/blotato/?blotato=conectar` |
 | `/estudio/` con otro query (`?p=`, `?desde=…&ver=…`) | no redirige: 200, el mapa |
-| una dirección sin barra o en mayúsculas (`/estudio/marketing`, `/estudio/Marketing/`) | su forma normal (`/estudio/marketing/`) |
+| una dirección sin barra o en mayúsculas (`/estudio/marketing`, `/estudio/Marketing/`, `/ESTUDIO`) | su forma normal (`/estudio/marketing/`) |
 | `/index.html` | `/estudio/`, salvo la cookie `ui=clasica` (la clásica) |
+| `/estudio/` con la cookie `ui=clasica` (o sin `web/dist`) | `/index.html` con el mismo query: la clásica |
 
 Una dirección que no existe bajo `/estudio/` da **404**: con `Accept: text/html`
 (un navegador), una página mínima «No encontramos esa página» con «Subir un

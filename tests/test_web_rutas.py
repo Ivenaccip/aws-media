@@ -232,8 +232,9 @@ def test_la_raiz_no_sirve_el_archivo_por_su_nombre(dist):
 
 
 def test_sin_estudio_index_html_no_se_sirve_la_raiz_ni_se_redirige_a_la_nada(tmp_path):
-    """Un dist sin la raíz (un build viejo): `/estudio/` da 404 y `montar` no anuncia «/estudio» (migracion.decidir lo lee: sin
-    ella `/index.html` sigue sirviendo el clásico en vez de mandar a un 404). Las entradas de antes tampoco redirigen."""
+    """Un dist sin la raíz (un build viejo): web.py no sirve `/estudio/` y `montar` no anuncia «/estudio» (migracion.decidir lo lee: sin
+    ella `/index.html` sigue sirviendo el clásico en vez de mandar a un 404). Las entradas de antes tampoco redirigen. En la app real,
+    esa dirección la registra entonces server/migracion.py y lleva al clásico (tests/test_migracion.py)."""
     estudio = tmp_path / "dist" / "estudio"
     for rel in ("marketing/distrito/imagen", "marketing/blotato"):
         (estudio / rel).mkdir(parents=True)
@@ -275,6 +276,40 @@ def test_la_raiz_con_un_parametro_de_antes_manda_a_la_herramienta_con_el_query_i
 def test_la_raiz_con_cualquier_otro_query_se_sirve_tal_cual(dist, pedido):
     r = _c(dist).get(pedido)
     assert r.status_code == 200 and "<title>/estudio/</title>" in r.text, pedido
+
+
+@pytest.mark.parametrize("pedido, destino", [
+    ("/estudio/?blotato=conectar&blotato=otra", "/estudio/marketing/blotato/?blotato=conectar&blotato=otra"),
+    ("/estudio/?blotato=otra&blotato=conectar", None),
+    ("/estudio/?blotato=conectar&blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar&blotato=conectar"),
+])
+def test_con_un_parametro_de_antes_repetido_cuenta_el_primero_como_en_el_navegador(dist, pedido, destino):
+    """La página que lo recibe lee `URLSearchParams.get` (el PRIMER valor; GrupoConBlotato abre el diálogo con él): si el servidor mirara
+    el último, `?blotato=otra&blotato=conectar` llevaría al grupo Blotato sin abrir nada, y al revés serviría el mapa sin el diálogo."""
+    r = _c(dist).get(pedido)
+    if destino is None:
+        assert r.status_code == 200 and "<title>/estudio/</title>" in r.text, pedido
+    else:
+        assert r.status_code == 302 and r.headers["location"] == destino, pedido
+
+
+def test_con_la_cookie_de_la_clasica_la_raiz_lleva_al_inicio_clasico_con_su_query(dist):
+    """La salida de emergencia del inicio (la cookie `ui=clasica` que deja /ui/clasica?pantalla=inicio) dura más de una carga: el login,
+    los «← Estudio» de las pantallas clásicas y el editor de cortes llevan a /estudio/, y con la cookie eso es el clásico (/index.html),
+    con el query (el clásico lee su ?blotato=conectar). Lo decide migracion.principal_a_la_clasica, ANTES que las entradas de antes."""
+    c = _c(dist)
+    c.cookies.set("ui", "clasica")
+    for pedido, destino in (("/estudio/", "/index.html"), ("/estudio/?blotato=conectar", "/index.html?blotato=conectar"),
+                            ("/estudio/?prompt=x", "/index.html?prompt=x"), ("/estudio/?p=1", "/index.html?p=1")):
+        for metodo in (c.get, c.head):
+            r = metodo(pedido)
+            assert r.status_code == 302 and r.headers["location"] == destino, (metodo.__name__, pedido)
+            assert r.headers["cache-control"] == "no-store", pedido
+    # las demás páginas de nivel no se tocan: la cookie es del inicio, y desde el clásico solo se llega a la principal
+    assert c.get("/estudio/marketing/").status_code == 200
+    # otra cookie `ui` no es la de la clásica
+    c.cookies.set("ui", "nueva")
+    assert c.get("/estudio/").status_code == 200
 
 
 def test_la_entrada_vieja_sin_su_destino_compilado_sirve_la_raiz_y_no_redirige_a_la_nada(dist):
@@ -337,6 +372,10 @@ def test_ninguna_entrada_vieja_apunta_a_la_raiz_ni_a_otra_entrada():
     ("/Estudio/Marketing", "/estudio/marketing/"),
     ("/ESTUDIO/marketing/distrito?x=1", "/estudio/marketing/distrito/?x=1"),
     ("/ESTUDIO//Marketing//Distrito/Imagen", "/estudio/marketing/distrito/imagen/"),
+    # la raíz misma, sin barra y en mayúsculas («/estudio» en minúsculas lo atiende antes la ruta de server/app.py)
+    ("/ESTUDIO", "/estudio/"),
+    ("/Estudio", "/estudio/"),
+    ("/Estudio?p=1", "/estudio/?p=1"),
 ])
 def test_la_barra_las_mayusculas_y_las_barras_dobles_se_arreglan_con_302_y_el_query_intacto(dist, pedido, destino):
     c = _c(dist)
@@ -347,6 +386,17 @@ def test_la_barra_las_mayusculas_y_las_barras_dobles_se_arreglan_con_302_y_el_qu
         assert not r.headers["location"].startswith(("http:", "https:", "//")), "el destino es relativo a este sitio"
     # y el destino se sirve de verdad: no hay un segundo salto
     assert c.get(destino).status_code == 200
+
+
+def test_la_raiz_en_mayusculas_con_un_parametro_de_antes_llega_a_la_herramienta(dist):
+    """«/Estudio?prompt=x», tecleado o de un marcador: primero la forma normal de la raíz y, de ahí, la entrada de antes a la Caja. También
+    para un navegador (con `Accept: text/html` la raíz sin barra no es una página «No encontramos esa página»)."""
+    c = _c(dist)
+    r = c.get("/Estudio?prompt=x", headers=HTML)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?prompt=x" and r.headers["cache-control"] == "no-store"
+    r = c.get(r.headers["location"], headers=HTML)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/marketing/distrito/imagen/?prompt=x"
+    assert c.get(r.headers["location"]).status_code == 200
 
 
 def test_una_carpeta_con_puntos_en_el_nombre_se_sirve_y_se_corrige_como_las_demas(dist):
@@ -892,3 +942,4 @@ def test_con_dist_pero_sin_pantallas_solo_se_montan_los_assets_la_raiz_y_el_404(
     (tmp_path / "estudio" / "index.html").unlink()
     assert web.montar(FastAPI(), tmp_path) == ["/estudio/assets"]
     assert web.rutas(tmp_path / "estudio") == frozenset()
+

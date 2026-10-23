@@ -25,6 +25,13 @@ Si web/dist no trae la pantalla nueva (pytest en Windows, un clon sin
 `npm run build`), `todos` no redirige: mandaría a un 404. `retirada` sí,
 porque ya no hay nada viejo que servir.
 
+La principal (/estudio/) es la NUEVA del inicio y no una URL vieja, así que
+lo de arriba no la cubre. `principal_a_la_clasica` hace lo mismo para ella:
+con la cookie `ui=clasica` (o sin la principal compilada) lleva a la
+versión anterior, /index.html. Todo lo que trae a alguien de vuelta al
+estudio apunta a /estudio/; sin esto la salida de emergencia del inicio
+duraba una carga.
+
 Cambiar de etapa = editar PANTALLAS y desplegar (lo corre el dueño).
 tests/test_migracion_ui.py exige, antes de `todos`, que cada invariante de la
 pantalla exista como test en web/.
@@ -62,6 +69,9 @@ MINIMAS = ("todos",)
 
 NO_STORE = {"Cache-Control": "no-store"}
 SIN_CACHE = {"Cache-Control": "no-cache"}
+
+# La página principal del estudio (el mapa, server/web.py): la `nueva` del inicio.
+PRINCIPAL = "/estudio/"
 
 
 @dataclass(frozen=True)
@@ -195,6 +205,28 @@ def decidir(nombre: str, request: Request, nueva_montada: bool) -> str | None:
     return None
 
 
+def _de_la_principal() -> Pantalla | None:
+    """La pantalla cuya nueva es la principal (hoy, el inicio); None si no hay. Se busca por su `nueva`, no por su clave."""
+    return next((p for p in PANTALLAS.values() if p.nueva == PRINCIPAL), None)
+
+
+def principal_a_la_clasica(request: Request, principal_montada: bool = True) -> str | None:
+    """A dónde manda /estudio/ a quien no debe ver la principal: la URL vieja del inicio (/index.html), con el query. None = servirla.
+
+    Dos casos, los dos solo mientras la clásica exista (en `retirada` ya no hay, y /index.html manda aquí: sería un bucle):
+      · la cookie `ui=clasica`. Todo lo que trae a alguien de vuelta al estudio —el login (callback.html, entrar.html), los «← Estudio»
+        de las pantallas clásicas, el editor de cortes, «Conectar Blotato»— apunta a /estudio/: sin esto quien volvió a la clásica
+        salía de ella al primer clic. Va con el query: la clásica lee ?blotato=conectar;
+      · sin la principal compilada (un clon sin `npm run build`, pytest en Windows) /estudio/ no tiene nada que servir: el login
+        terminaría en un 404. Así se sigue entrando, al clásico, como antes de las rutas por nivel."""
+    p = _de_la_principal()
+    if p is None or etapa(p) == "retirada":
+        return None
+    if principal_montada and request.cookies.get(COOKIE) != CLASICA:
+        return None
+    return _con_query(p.vieja, request)
+
+
 def montar(app, montadas: list[str], static: Path) -> None:
     """Registra la URL vieja de cada pantalla y las rutas /ui/clasica y /ui/nueva.
 
@@ -208,8 +240,15 @@ def montar(app, montadas: list[str], static: Path) -> None:
         if p.etapa not in ETAPAS:
             raise ValueError(f"migracion: etapa desconocida {p.etapa!r} en {nombre}")
         montada = p.nueva.rstrip("/") in montadas
+        # HEAD como GET: `curl -I` y los verificadores de enlaces tienen que ver lo mismo que el navegador (sin él, HEAD /index.html
+        # caía en el montaje de static/ y daba 200 mientras GET daba el 302)
         app.add_api_route(p.vieja, _vista_vieja(nombre, montada, static),
-                          methods=["GET"], include_in_schema=False)
+                          methods=["GET", "HEAD"], include_in_schema=False)
+    # Sin la principal compilada web.montar no registra /estudio/: aquí se registra para que lleve a la clásica
+    # (principal_a_la_clasica). Con ella, es la ruta de web.montar la que pregunta.
+    if PRINCIPAL.rstrip("/") not in montadas and _de_la_principal() is not None:
+        app.add_api_route(PRINCIPAL, _principal_sin_compilar, methods=["GET", "HEAD"],
+                          include_in_schema=False, name="migracion-principal-sin-compilar")
 
     @app.get("/ui/clasica", include_in_schema=False)
     def _usar_clasica(request: Request, pantalla: str = ""):
@@ -237,6 +276,13 @@ def montar(app, montadas: list[str], static: Path) -> None:
         resp = RedirectResponse(destino, status_code=302, headers=NO_STORE)
         resp.delete_cookie(COOKIE, path="/")
         return resp
+
+
+def _principal_sin_compilar(request: Request):
+    destino = principal_a_la_clasica(request, principal_montada=False)
+    if destino:
+        return RedirectResponse(destino, status_code=302, headers=NO_STORE)
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 
 def _vista_vieja(nombre: str, montada: bool, static: Path):

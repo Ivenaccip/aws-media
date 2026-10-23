@@ -77,13 +77,16 @@ def test_raiz_con_query_es_un_enlace_viejo_al_estudio(local):
     for q in ("p=abc123", "blotato=conectar"):
         r = local.get(f"/?{q}", follow_redirects=False)
         assert r.status_code == 302 and r.headers["location"] == f"/estudio/?{q}"
+        # como todos los 302 hacia el estudio: que ninguna caché lo guarde
+        assert r.headers["cache-control"] == "no-store"
 
 
 def _raiz_montada(cliente) -> bool:
     """¿Está compilada la principal (web/dist/estudio/index.html)? Sin web/dist
-    (pytest en Windows) `todos` no redirige a un 404 y /estudio/ no se sirve.
-    En el contenedor del CI sí está."""
-    return any(getattr(r, "path", "") == "/estudio/" for r in cliente.app.routes)
+    (pytest en Windows) `todos` no redirige a un 404 y /estudio/ lleva al
+    clásico (server/migracion.py registra esa otra ruta: se busca la de
+    server/web.py por su nombre). En el contenedor del CI sí está."""
+    return any(getattr(r, "name", "") == "web-raiz" for r in cliente.app.routes)
 
 
 CLASICA = {"Cookie": "ui=clasica"}
@@ -96,6 +99,48 @@ def test_el_index_viejo_sirve_el_clasico_con_su_cookie(local):
     assert r.text == (STATIC / "index.html").read_text(encoding="utf-8")
     r = local.get("/estudio?p=1", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"] == "/estudio/?p=1"
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_quien_eligio_la_clasica_vuelve_a_ella_desde_el_estudio(local):
+    """La salida de emergencia dura lo que la cookie, no una carga: el login (callback.html, entrar.html), los «← Estudio» de las
+    pantallas clásicas y el editor de cortes llevan a /estudio/, y con la cookie eso es el clásico, con su query. Con o sin web/dist."""
+    for pedido, destino in (("/estudio/", "/index.html"), ("/estudio/?blotato=conectar", "/index.html?blotato=conectar")):
+        r = local.get(pedido, headers=CLASICA, follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"] == destino, pedido
+        assert r.headers["cache-control"] == "no-store", pedido
+    local.cookies.set("ui", "clasica")              # la del navegador: viaja también en el salto
+    r = local.get("/estudio/", follow_redirects=True)
+    assert r.status_code == 200 and r.text == (STATIC / "index.html").read_text(encoding="utf-8")
+    assert len(r.history) == 1, "sin bucle: /index.html con la cookie se sirve"
+
+
+def test_sin_la_principal_compilada_el_estudio_lleva_al_clasico(local):
+    """Un clon sin `npm run build`: /estudio/ no tiene página, y el login y la portada llevan ahí. Lleva al clásico en vez de un 404."""
+    if _raiz_montada(local):
+        pytest.skip("web/dist está compilado: /estudio/ es la principal (lo prueba la de abajo)")
+    r = local.get("/estudio/?blotato=conectar", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/index.html?blotato=conectar"
+
+
+def test_head_contesta_como_get_en_las_entradas_del_estudio(local):
+    """`curl -I` y los verificadores de enlaces: HEAD /estudio da el mismo 302 que GET (antes, 404) y HEAD /index.html el mismo que GET
+    (antes, el 200 del clásico aunque GET redirigía)."""
+    r = local.head("/estudio?p=1", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?p=1" and r.headers["cache-control"] == "no-store"
+    get, head = (m("/index.html?p=1", follow_redirects=False) for m in (local.get, local.head))
+    assert head.status_code == get.status_code and head.headers.get("location") == get.headers.get("location")
+
+
+def test_la_raiz_del_estudio_escrita_en_mayusculas_tambien_llega(local):
+    """«/ESTUDIO» o «/Estudio» (sin barra) no son la ruta de «/estudio»: las corrige el 404 de server/web.py, como «/Estudio/marketing»."""
+    if not _raiz_montada(local):
+        pytest.skip("web/dist no está compilado: sin la principal web.py no corrige nada")
+    for pedido, destino in (("/ESTUDIO", "/estudio/"), ("/Estudio?prompt=x", "/estudio/?prompt=x")):
+        r = local.get(pedido, headers={"Accept": "text/html"}, follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"] == destino, pedido
+    r = local.get("/Estudio?prompt=x", follow_redirects=True)
+    assert r.status_code == 200 and str(r.url).endswith("/estudio/marketing/distrito/imagen/?prompt=x")
 
 
 def test_estudio_es_la_principal_y_el_index_viejo_lleva_a_ella(local):

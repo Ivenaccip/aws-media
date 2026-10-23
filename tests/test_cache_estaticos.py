@@ -72,7 +72,8 @@ def test_las_rutas_de_entrada_siguen_en_no_cache(cliente, ruta):
 
 
 def _con_la_principal(cliente):
-    if not any(getattr(r, "path", "") == "/estudio/" for r in cliente.app.routes):
+    # la ruta de web.py (por su nombre): sin la principal compilada, server/migracion.py registra otra /estudio/ que lleva al clásico
+    if not any(getattr(r, "name", "") == "web-raiz" for r in cliente.app.routes):
         pytest.skip("web/dist no está compilado: sin la principal no hay /estudio/")
 
 
