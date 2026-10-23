@@ -30,9 +30,11 @@ import {
   opcion,
   paso,
   region,
+  relojFijo,
   riel,
   rutaDe,
   simular,
+  sinNavegar,
   sobraAlLado,
   TITULO_MAPA,
   URL_BLOTATO,
@@ -40,6 +42,7 @@ import {
   URL_DISTRITO,
   URL_MAPA,
   URL_MARKETING,
+  vigilarNavegaciones,
   type EstadoDeBlotato,
   type Herramienta,
 } from './recorrido';
@@ -548,35 +551,71 @@ test.describe('el celular', () => {
   test.describe('doble clic', () => {
     test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
+    // El `Date.now()` de la página está quieto (`relojFijo`): cuánto tiempo pasó entre la página nueva y el segundo clic es lo que la prueba dice,
+    // no lo que tarde la máquina en llegar (con un reloj de verdad, la prueba medía la velocidad de la CPU y no la guarda).
     test('un doble clic lento sobre «Marketing» no salta dos niveles', async ({ page }) => {
       await simular(page);
+      await vigilarNavegaciones(page);
       await abrirInicio(page);
       const caja = (await ficha(page, 'Marketing').boundingBox())!;
       const x = caja.x + caja.width / 2;
       const y = caja.y + caja.height / 2;
 
+      await relojFijo(page);
       await page.mouse.move(x, y);
       await page.mouse.down({ clickCount: 1 });
       await page.mouse.up({ clickCount: 1 });
       await esperarRuta(page, URL_MARKETING);
       await expect(paso(page)).toHaveText('Elige un grupo');
-      await page.waitForTimeout(80);
+      await relojFijo(page, 80);
 
       // el punto del primer clic cae ahora sobre la tarjeta «Distrito» (y nada lo tapa): si no, esta prueba no mide nada
       const enElPunto = await page.evaluate(([px, py]) => document.elementFromPoint(px!, py!)?.closest('a')?.getAttribute('href') ?? null, [x, y]);
       expect(enElPunto, 'la tarjeta «Distrito» no está bajo la ficha «Marketing»').toBe(URL_DISTRITO);
 
-      // el segundo clic del doble clic llega ya sobre la página nueva (detail 2, a menos de 500 ms de cargada)
-      await page.mouse.move(x, y);
-      await page.mouse.down({ clickCount: 2 });
-      await page.mouse.up({ clickCount: 2 });
-      await page.waitForTimeout(900);
-      expect(rutaDe(page), 'el doble clic saltó dos niveles').toBe(URL_MARKETING);
+      // el segundo clic del doble clic llega ya sobre la página nueva (detail 2, 80 ms después de cargada)
+      await sinNavegar(
+        page,
+        async () => {
+          await page.mouse.move(x, y);
+          await page.mouse.down({ clickCount: 2 });
+          await page.mouse.up({ clickCount: 2 });
+        },
+        URL_MARKETING,
+        'el doble clic saltó dos niveles',
+      );
 
       // el control: un clic deliberado en el mismo punto, pasado el medio segundo, sí abre la tarjeta
+      await relojFijo(page, 600);
       await page.mouse.move(x, y);
       await page.mouse.down({ clickCount: 1 });
       await page.mouse.up({ clickCount: 1 });
+      await esperarRuta(page, URL_DISTRITO);
+    });
+
+    test('la guarda dura exactamente medio segundo: a los 499 ms el segundo clic se descarta y a los 500 ya pasa', async ({ page }) => {
+      await simular(page);
+      await vigilarNavegaciones(page);
+      await abrirInicio(page);
+      const caja = (await ficha(page, 'Marketing').boundingBox())!;
+      const x = caja.x + caja.width / 2;
+      const y = caja.y + caja.height / 2;
+      const segundoClic = async () => {
+        await page.mouse.move(x, y);
+        await page.mouse.down({ clickCount: 2 });
+        await page.mouse.up({ clickCount: 2 });
+      };
+
+      await relojFijo(page);
+      await page.mouse.click(x, y);
+      await esperarRuta(page, URL_MARKETING);
+      await expect(paso(page)).toHaveText('Elige un grupo');
+      // VENTANA_DOBLE_CLIC_MS (src/pantallas/inicio/estadoRecorrido.ts): 499 ms después todavía es «el segundo clic de un doble clic»…
+      await relojFijo(page, 499);
+      await sinNavegar(page, segundoClic, URL_MARKETING, 'a los 499 ms');
+      // …y a los 500 ya es una elección: abre la tarjeta que cae bajo el punto
+      await relojFijo(page, 500);
+      await segundoClic();
       await esperarRuta(page, URL_DISTRITO);
     });
   });

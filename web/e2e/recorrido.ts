@@ -32,6 +32,7 @@
 //                              volverA, algunVolver, migaDeHoja (las migas de una pantalla hoja, fuera de la región)
 //   · moverse (clic + espera): irAlMapa, elegir(área, grupo), elegirHerramienta(nombre), irA(área, grupo)
 //   · lo que NO navega:        vigilarNavegaciones (antes de abrir), sinNavegar(page, acción, ruta) — sin esperar un rato fijo
+//   · el reloj de la guarda:   relojFijo(page, ms) — `Date.now()` quieto en «ms después de cargar la página» (el doble clic no depende de la máquina)
 //   · foco y medidas:          enfocado, sobraAlLado, lineasDe
 //
 // Los textos y las direcciones están escritos a mano a propósito (no se importan de marca/menu.ts ni de marca/rutas.ts): si alguien cambia
@@ -295,6 +296,23 @@ export async function sinNavegar(page: Page, accion: () => Promise<unknown>, rut
   expect(despues?.anotadas, `${donde}: la acción empezó a navegar`).toEqual(antes!.anotadas);
   expect(rutaDe(page), donde).toBe(ruta);
 }
+
+// ---------------------------------------------------------------------------
+// el reloj de la guarda del doble clic
+//
+// La guarda de PaginaNivel (esDobleClicAccidental) descarta un segundo clic (`detail` > 1) que llega a menos de VENTANA_DOBLE_CLIC_MS (500) de
+// que la página se montó, y mide con `Date.now()`. Si la prueba lo mide con el reloj de verdad, lo que decide el resultado es cuánto tarda la
+// máquina entre el primer clic y el segundo (esperar la página, mirar qué cae debajo, mover el ratón: cada paso es un viaje al navegador), y
+// con la máquina cargada el segundo clic cae pasados los 500 ms y «la guarda no funciona». Con el `Date.now()` de la página QUIETO, el tiempo
+// transcurrido es el que la prueba dice y nada más: los temporizadores siguen corriendo, solo `Date.now()` y `new Date()` dejan de avanzar.
+
+/** Una hora cualquiera: solo cuenta la diferencia entre lo que la página leyó al montarse y lo que lee después. */
+const HORA_FIJA = Date.UTC(2026, 9, 22, 12, 0, 0);
+
+/** Fija `Date.now()` en `HORA_FIJA + ms`. Se llama ANTES del clic que carga la página (esa página nace a la hora de entonces: `ms` = 0, el
+ *  valor por omisión) y de nuevo, ya cargada, con «cuánto pasó desde que cargó»: `relojFijo(page, 80)` es «pasaron 80 ms». Vale para las páginas
+ *  que se abran después (el cambio de documento no lo reinicia) y se puede mover cuantas veces haga falta. */
+export const relojFijo = (page: Page, ms = 0) => page.clock.setFixedTime(HORA_FIJA + ms);
 
 // ---------------------------------------------------------------------------
 // lo que el foco y la pantalla dicen

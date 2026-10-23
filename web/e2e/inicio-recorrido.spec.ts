@@ -50,6 +50,7 @@ import {
   opcion,
   paso,
   region,
+  relojFijo,
   riel,
   rutaDe,
   simular,
@@ -530,19 +531,22 @@ test('Automatizaciones: Distrito trae Constructor y Asistente (enlaces) y «Actu
 // entrega todo clic al <html>, y el segundo clic no llegaría a nada, con guarda o sin ella. Cada caso fija QUÉ cae bajo el punto en la página
 // nueva (si no cayera nada, la prueba no mediría la guarda) y termina con el control: un clic deliberado en el mismo punto sí lo activa.
 
-/** Lo que tarda una persona entre los dos clics de un doble clic. Es fijo a propósito: es lo que se simula (la guarda cuenta 500 ms). */
+/** Lo que tarda una persona entre los dos clics de un doble clic: es lo que se simula (la guarda cuenta 500 ms). */
 const ENTRE_CLICS_MS = 80;
 
 /** El doble clic lento en `punto`: el primer clic carga `destino`; el segundo (detail 2) llega `ENTRE_CLICS_MS` después, en el mismo punto,
- *  sobre la página nueva, y NO navega (`sinNavegar`). Devuelve qué había ahí: el `href` del enlace o el texto del botón (null = nada). */
+ *  sobre la página nueva, y NO navega (`sinNavegar`). Devuelve qué había ahí: el `href` del enlace o el texto del botón (null = nada).
+ *  El `Date.now()` de la página está quieto (`relojFijo`): «ENTRE_CLICS_MS después» es exacto, pase lo que pase en la máquina. Al salir, el
+ *  reloj queda en esa hora; un clic deliberado (el control) tiene que moverlo antes (`relojFijo(page, PASADA_LA_VENTANA_MS)`). */
 async function dobleClicLento(page: Page, punto: { x: number; y: number }, destino: string): Promise<string | null> {
+  await relojFijo(page);
   await page.mouse.move(punto.x, punto.y);
   await page.mouse.down({ clickCount: 1 });
   await page.mouse.up({ clickCount: 1 });
   // en cuanto la página nueva está montada (su `load` puede tardar más: la guarda cuenta desde que se montó)
   await page.waitForURL(u => u.pathname === destino, { waitUntil: 'commit' });
   await expect(paso(page)).toBeVisible();
-  await page.waitForTimeout(ENTRE_CLICS_MS);
+  await relojFijo(page, ENTRE_CLICS_MS);
   const debajo = await page.evaluate(([x, y]) => {
     const e = document.elementFromPoint(x!, y!)?.closest('a, button');
     return e ? (e.getAttribute('href') ?? (e.textContent ?? '').trim()) : null;
@@ -559,6 +563,9 @@ async function dobleClicLento(page: Page, punto: { x: number; y: number }, desti
   );
   return debajo;
 }
+
+/** Más de lo que dura la guarda (VENTANA_DOBLE_CLIC_MS, 500): un clic deliberado, a partir de aquí, sí pasa. */
+const PASADA_LA_VENTANA_MS = 600;
 
 const centroDe = async (loc: Locator, fraccionDelAlto = 0.5) => {
   const c = (await loc.boundingBox())!;
@@ -589,7 +596,8 @@ test.describe('a 390 px, con «reducir movimiento» (solo la guarda detiene el d
     const debajo = await dobleClicLento(page, punto, URL_AUTOMATIZACIONES);
     expect(debajo, 'la tarjeta «Tus automatizaciones» no está bajo la ficha: la prueba no mide la guarda').toBe('/estudio/automatizaciones/tus/');
     await expect(paso(page)).toHaveText('Elige un grupo');
-    // el control: un clic deliberado en el mismo punto sí abre la tarjeta
+    // el control: un clic deliberado en el mismo punto, pasada la ventana de la guarda, sí abre la tarjeta
+    await relojFijo(page, PASADA_LA_VENTANA_MS);
     await page.mouse.click(punto.x, punto.y);
     await esperarRuta(page, '/estudio/automatizaciones/tus/');
   });
@@ -627,11 +635,13 @@ test.describe('doble clic en la tarjeta de un grupo, con «reducir movimiento» 
         await page.waitForTimeout(900);
         await expect(page.getByRole('dialog'), 'el doble clic abrió el diálogo de conectar').toHaveCount(0);
         // el control: una pulsación deliberada pasa (la guarda dura medio segundo, no para siempre)
+        await relojFijo(page, PASADA_LA_VENTANA_MS);
         await region(page).getByRole('button', { name: 'Conecta tu cuenta de Blotato' }).dblclick();
         await expect(page.getByRole('dialog', { name: 'Conecta tu Blotato' })).toBeVisible();
       } else {
         await expect(page.getByRole('dialog')).toHaveCount(0);
         // el control: un clic deliberado en el mismo punto activa lo de debajo
+        await relojFijo(page, PASADA_LA_VENTANA_MS);
         await page.mouse.click(punto.x, punto.y);
         await page.waitForURL(u => u.pathname !== destino);
       }
