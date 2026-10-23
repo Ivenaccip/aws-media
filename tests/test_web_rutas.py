@@ -71,14 +71,16 @@ def _c(dist, alias=None, antes=None):
 _IGUAL = object()
 
 
-def _crudo(app, ruta, query=b"", metodo="GET", accept=None, raw=_IGUAL):
+def _crudo(app, ruta, query=b"", metodo="GET", accept=None, raw=_IGUAL, cabeceras=None):
     """Una petición con el path y el query EXACTOS. TestClient (httpx) normaliza «./» y «..» y codifica el query, así que no
     sirve para lo que un cliente a mano o un servidor sin normalizar sí pueden mandar. Devuelve (estado, cabeceras, cuerpo).
 
     `ruta` es el `path` del scope (ya decodificado, como lo entrega uvicorn); `raw` es el `raw_path` (lo que llegó por el cable,
-    con sus «%XX»): por omisión el mismo texto; `None` imita a Mangum (API Gateway), que no lo trae."""
+    con sus «%XX»): por omisión el mismo texto; `None` imita a Mangum (API Gateway), que no lo trae. `cabeceras`, otras más
+    ({"Cookie": …})."""
     import asyncio
-    cabeceras = [(b"host", b"testserver")] + ([(b"accept", accept.encode())] if accept else [])
+    extra = [(k.lower().encode(), v.encode()) for k, v in (cabeceras or {}).items()]
+    cabeceras = [(b"host", b"testserver")] + ([(b"accept", accept.encode())] if accept else []) + extra
     if raw is _IGUAL:
         raw = ruta.encode("utf-8", "surrogatepass")
     scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": metodo, "scheme": "http",
@@ -594,6 +596,22 @@ def test_una_ruta_que_no_existe_da_404_con_pagina_si_se_pide_html_y_lleva_un_niv
     assert c.get("/estudio/nada/", headers=HTML).headers["vary"] == "Accept"
 
 
+def test_el_404_con_pagina_dice_lo_que_eligio_el_dueno_y_lo_mismo_que_la_pagina(dist):
+    """D14: el texto del 404 es el que eligió el dueño —«No encontramos esa página», «La dirección no existe o cambió de lugar.», «Subir un
+    nivel» · «Ir al inicio»— y se cambia en `web._PAGINA_404` y en ningún otro lado del servidor. La página que no reconoce su dirección
+    (NoEncontrada.tsx) dice el mismo título y la misma frase; el servidor de las pruebas de navegador, la misma página (más abajo)."""
+    r = _c(dist).get("/estudio/marketing/distrito/nada/", headers=HTML)
+    assert r.status_code == 404
+    assert "<title>No encontramos esa página</title>" in r.text and r.text.count("<h1>") == 1
+    assert "<h1>No encontramos esa página</h1>" in r.text
+    assert "<p>La dirección no existe o cambió de lugar.</p>" in r.text
+    assert re.findall(r'<a href="([^"]*)">([^<]*)</a>', r.text) == [
+        ("/estudio/marketing/distrito/", "Subir un nivel"), ("/estudio/", "Ir al inicio")]
+    pagina = (RAIZ / "web" / "src" / "pantallas" / "inicio" / "niveles" / "NoEncontrada.tsx").read_text(encoding="utf-8")
+    assert "TITULO_NO_ENCONTRADA = 'No encontramos esa página'" in pagina
+    assert ">La dirección no existe o cambió de lugar.</p>" in pagina and ">Ir al inicio</a>" in pagina
+
+
 def test_el_404_json_de_un_nivel_tambien_dice_que_varia_con_el_accept(dist):
     """Las dos caras del mismo 404 (R4): la de JSON también lleva `Vary: Accept`; un asset que falta (siempre JSON) o un 404 de fuera del
     estudio no varían con nada y no lo llevan."""
@@ -943,3 +961,111 @@ def test_con_dist_pero_sin_pantallas_solo_se_montan_los_assets_la_raiz_y_el_404(
     assert web.montar(FastAPI(), tmp_path) == ["/estudio/assets"]
     assert web.rutas(tmp_path / "estudio") == frozenset()
 
+
+# ---------------------------------------------------------------------------
+# el servidor de las pruebas de navegador (web/e2e/servidor.mjs)
+#
+# Reimplementa en Node lo que decide este servidor, para que los e2e corran sin Python. Si se desvía, los e2e prueban algo que producción
+# no hace (un 404 que en el navegador es `{"detail":"Not Found"}`, un 302 que aquí es un 200). Lo que se puede comparar sin Node (las
+# tablas y el texto del 404) se compara siempre; lo demás, con Node, pasando las mismas peticiones por los dos.
+
+SERVIDOR_E2E = RAIZ / "web" / "e2e" / "servidor.mjs"
+
+
+def test_el_servidor_de_las_pruebas_de_navegador_dice_el_mismo_404():
+    """El HTML del 404 de servidor.mjs es la MISMA cadena que `web._PAGINA_404`: se juntan los trozos de entre sus dos marcas."""
+    fuente = SERVIDOR_E2E.read_text(encoding="utf-8")
+    bloque = fuente.split("// <pagina-404>", 1)[1].split("// </pagina-404>", 1)[0]
+    assert "".join(re.findall(r"'([^'\\]*)'", bloque)) == web._PAGINA_404
+
+
+def test_el_servidor_de_las_pruebas_de_navegador_tiene_las_mismas_tablas():
+    """Las pantallas (vieja, nueva, ¿retirada?), las entradas de antes y el alias de servidor.mjs son los de server/migracion.py y web.py."""
+    from server import migracion
+    fuente = SERVIDOR_E2E.read_text(encoding="utf-8")
+    filas = re.findall(r"\['(\w+)', '([^']+)', '([^']+)', (true|false)\]", fuente)
+    assert filas == [(n, p.vieja, p.nueva, "true" if p.etapa == "retirada" else "false") for n, p in migracion.PANTALLAS.items()]
+    entradas = re.findall(r"\['(\w+)', (null|'\w+'), '([^']+)'\]", fuente)
+    assert entradas == [(param, "null" if v is None else f"'{v}'", d) for param, v, d in web.ENTRADAS_VIEJAS]
+    alias = re.findall(r"\['(/estudio/[^']*)', '(/estudio/[^']*)'\]", fuente.split("const ALIAS", 1)[1].split(";", 1)[0])
+    assert dict(alias) == migracion.alias_del_estudio()
+
+
+def _servidor_e2e(dist):
+    """Arranca servidor.mjs sobre `dist` (PW_DIST) en un puerto libre; devuelve (proceso, puerto)."""
+    import os
+    import shutil
+    import socket
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node no está instalado")
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        puerto = s.getsockname()[1]
+    proc = subprocess.Popen([node, str(SERVIDOR_E2E), str(puerto)], env={**os.environ, "PW_DIST": str(dist)},
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    linea = proc.stdout.readline()
+    assert f":{puerto}" in linea, (linea, proc.stderr.read() if proc.poll() is not None else "")
+    return proc, puerto
+
+
+def _pedir_crudo(puerto, metodo, ruta, cabeceras):
+    import http.client
+    c = http.client.HTTPConnection("127.0.0.1", puerto, timeout=10)
+    try:
+        c.request(metodo, ruta, headers=cabeceras)
+        r = c.getresponse()
+        return r.status, {k.lower(): v for k, v in r.getheaders()}, r.read().decode("utf-8", "replace")
+    finally:
+        c.close()
+
+
+# (método, dirección tal cual va por el cable, cabeceras). Solo lo que decide web.py (y la cookie de la clásica en la raíz, que web.py
+# le pregunta a migracion.py): lo de server/app.py y las URLs viejas no están en la app de prueba.
+_FILAS_E2E = [
+    ("GET", "/estudio/", {}), ("HEAD", "/estudio/", {}),
+    ("GET", "/estudio/?prompt=x", {}), ("GET", "/estudio/?brief=hola", {}), ("GET", "/estudio/?blotato=conectar", {}),
+    ("GET", "/estudio/?blotato=conectar&blotato=otra", {}), ("GET", "/estudio/?blotato=otra&blotato=conectar", {}),
+    ("GET", "/estudio/?p=1&desde=mkt.x.y&ver=mapa", {}),
+    ("GET", "/estudio/marketing", {}), ("GET", "/estudio/marketing?x=1", {}), ("GET", "/estudio/Marketing/Distrito", {}),
+    ("GET", "/Estudio/marketing/", {}), ("GET", "/ESTUDIO", {}), ("GET", "/Estudio?prompt=x", {}),
+    ("GET", "/estudio//", {}), ("GET", "/estudio//marketing/", {}), ("GET", "/%65studio/", {}), ("GET", "/estudio/%6Darketing/", {}),
+    ("GET", "/estudio/marketing/distrito/%69magen/?prompt=a", {}),
+    ("GET", "/estudio/inicio/", {}), ("GET", "/estudio/inicio?x=1", {}), ("GET", "/estudio/inicio/?prompt=x", {}),
+    ("GET", "/estudio/marketing/", {}), ("HEAD", "/estudio/marketing/distrito/imagen/", {}), ("GET", "/estudio/huerfano/hijo/", {}),
+    ("GET", "/estudio/marketing/index.html", {}), ("GET", "/estudio/index.html", {}),
+    ("GET", "/estudio/nada/", {}), ("GET", "/estudio/nada/", HTML), ("GET", "/estudio/marketing/distrito/nada/", HTML),
+    ("GET", "/Estudio/Marketing/nada/x/", HTML), ("GET", "/estudio/huerfano/", HTML), ("GET", "/estudio/nada/", {"Accept": "text/html;q=0"}),
+    ("GET", "/estudio/assets/no-existe.js", HTML), ("GET", "/estudio/Assets/no-existe.js", HTML),
+    ("POST", "/estudio/", {}), ("POST", "/estudio/?prompt=x", {}), ("POST", "/estudio/marketing/", {}), ("POST", "/estudio/inicio/", {}),
+    ("GET", "/estudio/", {"Cookie": "ui=clasica"}), ("GET", "/estudio/?blotato=conectar", {"Cookie": "ui=clasica"}),
+    ("GET", "/estudio/", {"Cookie": "ui=nueva"}),
+]
+
+
+def test_el_servidor_de_las_pruebas_de_navegador_contesta_lo_mismo_que_web_py(dist):
+    """Las mismas peticiones por la app de prueba (web.montar + el montaje de static/) y por servidor.mjs: el mismo estado, el mismo
+    `Location`, el mismo `Cache-Control` en cada 302, la misma cara del 404 (HTML o JSON, con `Vary: Accept`) y, si es la página, el mismo
+    HTML byte por byte. (Lo servido lleva `no-cache` aquí y `no-store` allá a propósito: los e2e no deben ver una página guardada.)"""
+    from urllib.parse import unquote
+    app = _app(dist)[0]
+    proc, puerto = _servidor_e2e(dist)
+    try:
+        for metodo, ruta, cabeceras in _FILAS_E2E:
+            camino, _, query = ruta.partition("?")
+            real = _crudo(app, unquote(camino), query.encode(), metodo, raw=camino.encode(), cabeceras=cabeceras)
+            nodo = _pedir_crudo(puerto, metodo, ruta, cabeceras)
+            fila = (metodo, ruta, cabeceras)
+            assert nodo[0] == real[0], (fila, real[0], nodo[0])
+            assert nodo[1].get("location") == real[1].get("location"), fila
+            if real[0] == 302:
+                assert nodo[1].get("cache-control") == real[1].get("cache-control") == "no-store", fila
+            if real[0] == 404:
+                assert nodo[1].get("vary") == real[1].get("vary"), fila
+                assert nodo[1]["content-type"].split(";")[0] == real[1]["content-type"].split(";")[0], fila
+                if real[1]["content-type"].startswith("text/html"):
+                    assert nodo[2] == real[2], fila
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)

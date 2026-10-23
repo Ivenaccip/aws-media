@@ -369,11 +369,26 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     await expect(algunVolver(page)).toHaveCount(0);
   });
 
-  test('una dirección que no existe es un 404, no una página en blanco', async ({ page }) => {
-    for (const url of ['/estudio/nada/', '/estudio/marketing/nada/', '/estudio/marketing/distrito/nada/']) {
+  // El texto lo eligió el dueño (D14) y vive en server/web.py; e2e/servidor.mjs sirve la misma página (tests/test_web_rutas.py compara las dos)
+  test('una dirección que no existe es un 404, no una página en blanco: dice qué pasó y lleva un nivel arriba y al inicio', async ({ page }) => {
+    for (const [url, arriba] of [
+      ['/estudio/nada/', URL_MAPA],
+      ['/estudio/marketing/nada/', URL_MARKETING],
+      ['/estudio/marketing/distrito/nada/', URL_DISTRITO],
+    ] as const) {
       const respuesta = await page.goto(url);
       expect(respuesta?.status(), url).toBe(404);
+      await expect(page).toHaveTitle('No encontramos esa página');
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('No encontramos esa página');
+      await expect(page.getByText('La dirección no existe o cambió de lugar.')).toBeVisible();
+      const enlaces = page.getByRole('link');
+      await expect(enlaces).toHaveText(['Subir un nivel', 'Ir al inicio']);
+      expect(await enlaces.evaluateAll(es => es.map(e => e.getAttribute('href'))), url).toEqual([arriba, URL_MAPA]);
     }
+    // y «Subir un nivel» lleva de verdad a una página
+    await page.getByRole('link', { name: 'Subir un nivel' }).click();
+    await esperarRuta(page, URL_DISTRITO);
+    await expect(paso(page)).toHaveText('Distrito');
   });
 });
 
