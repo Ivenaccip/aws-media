@@ -983,18 +983,21 @@ test.describe('Blotato SIN conectar', () => {
     const dialogo = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
     await expect(dialogo).toBeVisible();
     await expect.poll(() => pedidos.at(-1)).toBe('GET');
-    // Esc es del diálogo: lo cierra y la página se queda donde estaba (a dónde cae el foco, en las dos pruebas de abajo)
+    // Esc es del diálogo: lo cierra, la página se queda donde estaba y el foco vuelve a la tarjeta que lo abrió (no a <body>). Es la
+    // primera apertura, sin nada retenido: el orden natural (abajo, las dos maneras de llegar a ese instante)
     await sinNavegar(page, () => page.keyboard.press('Escape'), URL_BLOTATO, 'Esc en el diálogo');
     await expect(dialogo).toBeHidden();
     await expect(paso(page)).toHaveText('Blotato');
+    await expect(enlaces.first()).toBeFocused();
   });
 
   // Antes: «Esc cierra el diálogo, y el foco queda en algo (no en <body>)». Al cerrar, el diálogo devuelve el foco a lo que lo tenía al abrirse
   // (`useFocoDeVuelta`, ui/Dialogo.tsx), y lo anota en el instante en que el diálogo se monta. Dos maneras de llegar a ese instante:
-  //  · la lectura completa del estado (`GET /api/blotato`) tarda más que el código del diálogo: se monta «revisando», con el botón aún enfocado,
-  //    y el campo de la clave (autoFocus) aparece después → el foco vuelve al botón;
-  //  · la lectura llega ANTES que el código del diálogo (que ahora se pide con import(), página aparte): el diálogo se monta ya con el campo, y su
-  //    autoFocus le quita el foco al botón antes de anotarlo → al cerrar no hay a dónde volver y cae a <body>.
+  //  · la lectura llega ANTES que el código del diálogo (que se pide con import(), página aparte). Es el orden de siempre en la primera
+  //    apertura: el diálogo se monta ya con el campo, y su autoFocus le quita el foco al botón antes de que el diálogo lo anote. Antes el
+  //    foco caía a <body>; ahora GrupoConBlotato anota quién lo abrió y se lo pasa de respaldo (`focoDeRespaldo`) → vuelve al botón;
+  //  · la lectura completa del estado (`GET /api/blotato`) tarda más que el código del diálogo: se monta «revisando», con el botón aún
+  //    enfocado, y el campo de la clave (autoFocus) aparece después → el foco vuelve al botón. Ese orden hay que forzarlo (la puerta).
   test('Esc cierra el diálogo y el foco vuelve al botón que lo abrió: la lectura del estado llega DESPUÉS de que el diálogo se monta', async ({ page }) => {
     await simular(page, { blotato: 'sin-conectar' });
     let soltar!: () => void;
@@ -1016,12 +1019,9 @@ test.describe('Blotato SIN conectar', () => {
     await expect(boton).toBeFocused();
   });
 
-  // DEFECTO CONOCIDO, anotado con test.fail: lo encontró esta prueba al pasar el inicio a páginas (la etapa que cargó el diálogo con import()).
-  // Mientras exista, esta prueba falla A PROPÓSITO y por eso pasa; el día que se arregle (por ejemplo, guardando el origen del foco en
-  // `GrupoConBlotato` antes de abrir, o en `Dialogo` al pedirse abrir y no al montarse), Playwright la marcará como «se esperaba que fallara» y
-  // hay que quitarle el test.fail. Retrasar el código del diálogo hace el orden determinista (la lectura, de mentira, llega en milisegundos).
+  // Era un defecto conocido (con test.fail hasta el arreglo de GrupoConBlotato): el foco caía a <body>. El orden ya es el natural de la
+  // primera apertura; retrasar el código del diálogo solo lo vuelve seguro bajo carga (la lectura, de mentira, llega en milisegundos).
   test('Esc cierra el diálogo y el foco vuelve al botón que lo abrió: la lectura del estado llega ANTES de que el diálogo se monte', async ({ page }) => {
-    test.fail(true, 'el diálogo de Blotato se monta con el campo de la clave ya enfocado y no recuerda el botón: al cerrarse el foco cae a <body>');
     await simular(page, { blotato: 'sin-conectar' });
     await page.route(/\/estudio\/assets\/Blotato-[^/]*\.js$/, async r => {
       await new Promise(resolver => setTimeout(resolver, 700));

@@ -13,7 +13,12 @@
 //   · el diálogo (Blotato.tsx: Radix, Confirmar, Guardado…) va con import() y solo se pide la primera vez que se abre. Avanzado, que no
 //     ofrece el botón, no lo trae hasta que alguien pulsa una herramienta apagada.
 // Si el diálogo no llega, `LimiteDeCarga` lo dice donde se pulsó; la lista sigue ahí.
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+//
+// El foco al cerrar: el diálogo lo devuelve a lo que lo tenía cuando SE MONTÓ (ui/Dialogo.tsx). Con su código pedido con import(), la
+// lectura del estado suele llegar antes (es lo que pasa la primera vez que se abre): se monta ya con el campo de la clave enfocado
+// (autoFocus) y no sabía a quién volver, así que al cerrar el foco caía a <body>. Por eso aquí se anota quién lo abrió (el botón o la
+// tarjeta apagada que se pulsó, aunque el navegador no la haya enfocado) y se le pasa de respaldo.
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { GrupoMenu, PantallaMenu } from '../../../marca/menu';
 import { Aviso } from '../../../ui/Aviso';
@@ -42,8 +47,11 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
   const [pedido, setPedido] = useState(false);
   const [estado, setEstado] = useState<EstadoBlotato | null>(null);
   const [error, setError] = useState('');
+  // quién lo abrió (null si lo abrió la dirección, ?blotato=conectar): a él vuelve el foco al cerrar
+  const quienAbrio = useRef<HTMLElement | null>(null);
 
-  const abrir = useCallback(() => {
+  const abrir = useCallback((desde?: HTMLElement) => {
+    quienAbrio.current = desde ?? null;
     setEstado(null);
     setError('');
     setAbierto(true);
@@ -60,7 +68,7 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
   useEffect(() => {
     // abrir() y el setConectado de la lectura ponen estado: van en un callback, no en el cuerpo del efecto
     if (new URLSearchParams(location.search).get('blotato') === 'conectar') {
-      Promise.resolve().then(abrir);
+      Promise.resolve().then(() => abrir());
     } else {
       leer(true).then(
         d => setConectado(d.conectado),
@@ -90,6 +98,7 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
                 setEstado(d);
                 setConectado(d.conectado);
               }}
+              focoDeRespaldo={quienAbrio}
             />
           </Suspense>
         </LimiteDeCarga>

@@ -308,6 +308,30 @@ describe('niveles · Blotato solo donde se usa', () => {
     await waitFor(() => expect(llamadas(f, '/api/blotato', 'GET')).toHaveLength(1));
   });
 
+  // El diálogo devuelve el foco a lo que lo tenía al MONTARSE (ui/Dialogo.tsx). Su código llega con import() y la lectura del estado suele
+  // llegar antes: se monta ya con el campo de la clave enfocado (autoFocus) y no sabía a quién volver (el foco caía a <body>). Aquí el clic
+  // es el de jsdom, que no enfoca lo pulsado (como Safari con un botón): lo que se le pasa es lo que se pulsó, no `document.activeElement`.
+  it('niveles.blotato.al_cerrar_el_dialogo_el_foco_vuelve_a_lo_que_lo_abrio_aunque_el_campo_se_enfocara_al_montarse', async () => {
+    servidor({ '/api/blotato': () => json(SIN_CLAVE) });
+    // la primera apertura de cada página, con el botón y con una tarjeta apagada
+    for (const queAbre of [
+      () => screen.getByRole('button', { name: 'Conecta tu cuenta de Blotato' }),
+      () => screen.getByRole('link', { name: /Agenda tus publicaciones/ }),
+    ]) {
+      const { unmount } = await pintarComoLaPrimeraVez({ tipo: 'grupo', area: 'mkt', grupo: 'blotato' });
+      await waitFor(() => expect(screen.getByRole('link', { name: /Agenda tus publicaciones/ })).toHaveAttribute('aria-disabled', 'true'));
+      const abre = queAbre();
+      expect(document.activeElement).toBe(document.body);
+      clic(abre);
+      const campo = await screen.findByLabelText('Tu clave de API de Blotato');
+      await waitFor(() => expect(campo).toHaveFocus());
+      fireEvent.keyDown(campo, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() => expect(abre).toHaveFocus());
+      unmount();
+    }
+  });
+
   it('niveles.blotato.con_blotato_conectar_en_la_direccion_abre_el_dialogo_y_no_limpia_el_parametro', async () => {
     history.replaceState(null, '', '/estudio/marketing/blotato/?blotato=conectar');
     const f = servidor({ '/api/blotato': () => json(SIN_CLAVE) });
