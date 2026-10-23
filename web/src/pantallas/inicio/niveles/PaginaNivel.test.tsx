@@ -5,7 +5,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import * as ruta from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MENU } from '../../../marca/menu';
@@ -54,22 +54,26 @@ const migasDeLaPagina = () => screen.getByRole('navigation', { name: 'Dónde est
 const SIN_CLAVE = { conectado: false, origen: null, cuentas: [], error: null, plan: null };
 
 /**
- * Un clic, y si SIGUIÓ SU CAMINO (llegó hasta el documento sin que nadie lo cancelara: un enlace habría navegado). La guarda del doble clic
- * lo cancela y lo detiene en la captura, así que no llega. Cancelarlo aquí, al final, también evita el «Not implemented: navigation» de jsdom.
+ * Un clic, y si el enlace habría NAVEGADO: nadie lo canceló (`preventDefault`). Lo que cuenta es la cancelación, no hasta dónde llegó: la
+ * guarda del doble clic además lo detiene en la captura, y un clic detenido pero no cancelado navega igual (por eso no basta con mirar si
+ * llegó al documento: así la prueba seguía en verde con una guarda que solo lo detenía). Si llega al documento, se cancela ahí, al final,
+ * después de anotar si alguien lo canceló antes: evita el «Not implemented: navigation» de jsdom.
  */
 function clic(el: Element, init?: MouseEventInit): boolean {
-  let llego = false;
+  const ev = createEvent.click(el, init);
+  let canceladoAntes: boolean | null = null;
   const alLlegar = (e: Event) => {
-    llego = !e.defaultPrevented;
+    canceladoAntes = e.defaultPrevented;
     e.preventDefault();
   };
   window.addEventListener('click', alLlegar);
   try {
-    fireEvent.click(el, init);
+    fireEvent(el, ev);
   } finally {
     window.removeEventListener('click', alLlegar);
   }
-  return llego;
+  // no llegó al documento (lo detuvieron): lo que dice es si, además, lo cancelaron
+  return !(canceladoAntes ?? ev.defaultPrevented);
 }
 
 describe('niveles · el mapa', () => {
