@@ -85,9 +85,18 @@ def _crudo(app, ruta, query=b"", metodo="GET", accept=None, raw=_IGUAL):
              "path": ruta, "raw_path": raw, "root_path": "", "query_string": query,
              "headers": cabeceras, "client": ("testclient", 50000), "server": ("testserver", 80), "state": {}}
     visto: dict = {"cuerpo": []}
+    pedido = {"leido": False}
 
     async def recibir():
-        return {"type": "http.request", "body": b"", "more_body": False}
+        # Como un servidor de verdad: el cuerpo (vacío) una vez y, después, nada hasta que el cliente se vaya. FileResponse (Starlette con
+        # spec_version < 2.4, la de uvicorn) escucha `http.disconnect` mientras manda el archivo: si `recibir` contestara al instante
+        # para siempre, sin ceder el turno, ese bucle no terminaría nunca (se colgaba el archivo entero con starlette 1.9). Aquí espera
+        # sin fin y Starlette lo cancela al terminar de mandar.
+        if not pedido["leido"]:
+            pedido["leido"] = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await asyncio.Event().wait()
+        return {"type": "http.disconnect"}
 
     async def enviar(m):
         if m["type"] == "http.response.start":
