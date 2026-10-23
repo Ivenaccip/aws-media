@@ -1209,7 +1209,8 @@ a **`/estudio/marketing/distrito/imagen/`** —la caja en Imagen, donde «Mis cr
 error (`URL_IMAGEN` de `server/trabajos_api.py`; del 14 al 22-oct-2026 era `/estudio/inicio/`)—, no a `/imagenes.html` ni a
 `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`, que desde las rutas por nivel es el mapa y no trae
 la caja. `static/trabajos.js` oculta la ficha en la
-pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis creaciones» ya dice. Para las imágenes lee los
+pantalla a la que apunta, y la caja es una sola pantalla con tres direcciones: en Imagen, Video y Edición no se repite lo que «Mis
+creaciones» ya dice (ni su «Ver» carga otra página, que descartaría lo escrito en la caja). Para las imágenes lee los
 pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
 `.json` y un `.reclamo` por pedido, para siempre.
 

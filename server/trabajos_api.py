@@ -44,8 +44,8 @@ MAX_POR_TIPO = 10
 # página que exista de verdad (web/estudio/marketing/distrito/imagen/index.html, generada desde
 # web/src/marca/menu.ts): lo ata tests/test_imagen_segundo_plano.py, porque si no el «Ver» de
 # una imagen terminada llevaría a una dirección que da 404. static/trabajos.js oculta la ficha
-# en la pantalla a la que apunta, así que en esa página no se repite lo que «Mis creaciones» ya
-# dice.
+# en la pantalla a la que apunta, y la Caja es UNA pantalla con tres direcciones (Imagen, Video,
+# Edición): en ninguna de las tres se repite lo que «Mis creaciones» ya dice.
 URL_IMAGEN = "/estudio/marketing/distrito/imagen/"
 
 # Los mismos nombres que enseña crear (static/crear.html, PASOS_PREP y PASOS_PROD)

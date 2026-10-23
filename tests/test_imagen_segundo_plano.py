@@ -2274,8 +2274,10 @@ def test_trabajos_url_imagen_es_una_pagina_que_existe_y_es_la_de_la_caja_en_imag
 
 def test_trabajos_js_enlaza_a_esa_ruta_y_no_la_repite_en_la_pantalla_que_ya_la_ensena():
     """static/trabajos.js pinta la URL de la ficha tal cual en un <a href> y oculta la ficha en la pantalla a la
-    que apunta (`deEstaPantalla`, pathname exacto): en la página de la Caja en Imagen no repite lo que «Mis
-    creaciones» ya dice; en cualquier otra (estilos, clip, el mapa…) el «Ver» lleva a esa página."""
+    que apunta (`deEstaPantalla`): en la Caja, en CUALQUIERA de sus tres pestañas (Imagen, Video y Edición son la
+    misma pantalla con tres direcciones, y «Mis creaciones» se ve en las tres), no repite lo que «Mis creaciones» ya
+    dice, ni su «Ver» carga otra página que descartaría lo escrito; en cualquier otra (estilos, clip, el mapa, la
+    lista de Distrito…) el «Ver» lleva a esa página."""
     node = shutil.which("node")
     if not node:
         pytest.skip("node no está instalado")
@@ -2286,12 +2288,15 @@ const P = globalThis.trabajosPuro;
 const L = [{id: 'imagen:img-1', estado: 'listo', url: '/estudio/marketing/distrito/imagen/'},
            {id: 'clip:1', estado: 'listo', url: '/clip.html'}];
 const en = p => P.visibles(L, {}, {origin: 'http://x', pathname: p, search: ''}).map(t => t.id);
-console.log(JSON.stringify({estilos: en('/estilos.html'), caja: en('/estudio/marketing/distrito/imagen/'), mapa: en('/estudio/')}));
+const c = '/estudio/marketing/distrito/';
+console.log(JSON.stringify({estilos: en('/estilos.html'), caja: en(c + 'imagen/'), video: en(c + 'video/'),
+                            edicion: en(c + 'edicion/'), lista: en(c), otra: en(c + 'imagenx/'), mapa: en('/estudio/')}));
 """
     r = subprocess.run([node, "-e", guion], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout) == {"estilos": ["imagen:img-1", "clip:1"], "caja": ["clip:1"],
-                                    "mapa": ["imagen:img-1", "clip:1"]}
+    assert json.loads(r.stdout) == {"estilos": ["imagen:img-1", "clip:1"], "caja": ["clip:1"], "video": ["clip:1"],
+                                    "edicion": ["clip:1"], "lista": ["imagen:img-1", "clip:1"],
+                                    "otra": ["imagen:img-1", "clip:1"], "mapa": ["imagen:img-1", "clip:1"]}
 
 
 def test_trabajos_no_lista_el_historial_de_imagenes_ni_lee_los_reclamos(cliente, nube, s3, monkeypatch):
