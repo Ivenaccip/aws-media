@@ -1470,6 +1470,25 @@ Lo esperado: `404`, `content-type: text/html; charset=utf-8` y `vary: Accept`
 (sin el `-H`, el mismo 404 en `application/json`). Lo mismo vale contra
 `https://irremplazables.xyz` cuando el corte llegue a `main`.
 
+**Pruebas de navegador (Playwright; no corren en CI):** `cd web && npm run e2e` compila y las corre todas; para una sola,
+`npm run build && npx playwright test e2e/niveles.spec.ts --workers=2`.
+`web/e2e/servidor.mjs` repite en Node lo que deciden `server/web.py` (las páginas por nivel, la barra, las mayúsculas, el
+`//` y el `%XX`, las entradas de antes, el 404 con página para quien pide HTML) y `server/migracion.py` (`/index.html`, la
+cookie `ui=clasica` también en `/estudio/`, `/ui/clasica` y `/ui/nueva`, las pantallas `retirada`): una página se sirve solo si su
+dirección es una del registro de `dist`. `tests/test_web_rutas.py` exige que sus tablas y el texto del 404 sean los de Python y,
+con Node, pasa las mismas peticiones por los dos y compara estado, `Location` y la cara del 404. Lo único que NO repite son las
+cabeceras de lo servido (todo sale `no-store`, no `no-cache` con ETag). Si `web.py` o `migracion.py` cambian, ése también.
+La guarda del doble clic se prueba con `Date.now()` de la página quieto (`relojFijo`, `web/e2e/recorrido.ts`): con el reloj de
+verdad el resultado dependía de la velocidad de la máquina. Hay dos pruebas intermitentes que vienen de antes de las rutas por
+nivel (se repiten igual con el `servidor.mjs` anterior): `inicio-edicion.spec.ts` «toda la caja se recorre solo con el teclado» a
+veces agota `page.waitForEvent('filechooser')` (1 de 16 con 4 trabajadores; una revisión la vio también en `29344bb`, 1 de 12), y
+las de `asistente.spec.ts` que usan `page.clock.install()` más `fastForward(5000)` a veces no encuentran el título del resultado
+para enfocarlo (1 de 64, en pruebas distintas cada vez). Una tercera, también de antes: `biblioteca.spec.ts` «axe, estado por
+estado › a 1100 px › sin resultados, «Míos» vacío…» a veces ve `color-contrast` en `.bg-ambar` justo después de pasar a «Míos»
+(4 de 5 con el `dist` y el `servidor.mjs` de `9666380`; a 390 y 320 px pasa). En esta máquina la del teclado de
+`inicio-edicion.spec.ts` falló más (2 de 4 solas, también en `9666380`). Antes de darlas por rotas, repetirlas solas con
+`--workers=1` y compararlas con un worktree de la base.
+
 ## La imagen (Node, y por qué está fijado)
 
 Node entra en la imagen **copiado de la imagen oficial** y con la versión exacta
