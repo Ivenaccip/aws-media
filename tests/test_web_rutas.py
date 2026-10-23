@@ -268,6 +268,23 @@ def test_la_raiz_con_cualquier_otro_query_se_sirve_tal_cual(dist, pedido):
     assert r.status_code == 200 and "<title>/estudio/</title>" in r.text, pedido
 
 
+@pytest.mark.parametrize("pedido, destino", [
+    # el cliente (URLSearchParams.get) y web/e2e/servidor.mjs leen el PRIMER valor de un parámetro repetido; Starlette, con
+    # query_params[param], devolvía el ÚLTIMO y el servidor decidía al revés que la página
+    ("/estudio/?blotato=conectar&blotato=otra", "/estudio/marketing/blotato/?blotato=conectar&blotato=otra"),
+    ("/estudio/?blotato=conectar&blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar&blotato=conectar"),
+    ("/estudio/?blotato=otra&blotato=conectar", None),
+    ("/estudio/?blotato=&blotato=conectar", None),
+    ("/estudio/?prompt=a&prompt=b", "/estudio/marketing/distrito/imagen/?prompt=a&prompt=b"),
+])
+def test_con_un_parametro_repetido_el_servidor_decide_con_el_primero_como_la_pagina(dist, pedido, destino):
+    r = _c(dist).get(pedido)
+    if destino is None:
+        assert r.status_code == 200 and "<title>/estudio/</title>" in r.text, pedido
+    else:
+        assert r.status_code == 302 and r.headers["location"] == destino, pedido
+
+
 def test_la_entrada_vieja_sin_su_destino_compilado_sirve_la_raiz_y_no_redirige_a_la_nada(dist):
     """El destino sale de la tabla y solo se usa si está en el registro: sin la Caja en Imagen, `?prompt=` no manda a un 404."""
     import shutil
