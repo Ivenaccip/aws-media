@@ -109,6 +109,30 @@ describe('niveles · la página de una herramienta de la caja', () => {
     await cargada();
   });
 
+  // La página de una herramienta es NUEVA en cada carga, como las de nivel: el primer clic de un doble clic en la tarjeta «Imagen» o
+  // «Video» de Distrito la cargó, y el segundo (detail 2) cae sobre lo que la caja pinta en ese punto (a 390 px, el chip de la tarea o el
+  // selector de modelo). Se descarta durante el medio segundo que sigue a montarse; pasado ese rato, la misma pulsación vale.
+  it('niveles.herramienta.el_segundo_clic_recien_cargada_la_pagina_se_descarta: no abre lo que la caja pinta donde estaba la tarjeta', async () => {
+    abrirEn(IMAGEN);
+    render(<Inicio lugar={lugar('imagen')} ir={ir} />);
+    const chip = () => screen.getAllByRole('button').find(b => b.getAttribute('aria-haspopup') === 'listbox')!;
+    expect(chip()).toHaveTextContent('Crear una imagen');
+    // cancelado (y detenido en la captura): la lista no se abre
+    expect(fireEvent.click(chip(), { detail: 2 })).toBe(false);
+    expect(chip()).toHaveAttribute('aria-expanded', 'false');
+    // un clic suelto (detail 1) es deliberado aunque llegue enseguida
+    expect(fireEvent.click(chip(), { detail: 1 })).toBe(true);
+    expect(chip()).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(chip(), { detail: 1 });
+    expect(chip()).toHaveAttribute('aria-expanded', 'false');
+    // el control: pasado el medio segundo, el mismo doble clic sí la abre
+    const ahora = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(ahora + 600);
+    expect(fireEvent.click(chip(), { detail: 2 })).toBe(true);
+    expect(chip()).toHaveAttribute('aria-expanded', 'true');
+    await cargada();
+  });
+
   it('niveles.herramienta.cambiar_de_pestana_con_el_riel_es_de_la_pagina_y_conserva_lo_escrito: no navega ni recarga', async () => {
     abrirEn(IMAGEN);
     render(<Inicio lugar={lugar('imagen')} ir={ir} />);

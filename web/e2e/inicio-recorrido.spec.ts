@@ -639,6 +639,36 @@ test.describe('doble clic en la tarjeta de un grupo, con «reducir movimiento» 
   }
 });
 
+// Y un nivel más: la tarjeta «Imagen» o «Video» de Distrito carga la caja, que también es una página nueva. A 390 px el segundo clic cae
+// sobre el chip de la tarea («Crear una imagen ▾») o sobre el selector de modelo, que se abrirían sin que nadie lo pidiera. Lo detiene la
+// guarda de Recorrido, que en la página de una herramienta cuenta desde que la página se montó (como PaginaNivel). En el escritorio no
+// cae nada debajo, y en Edición tampoco: no hay qué medir.
+test.describe('doble clic en una herramienta de Distrito, a 390 px y con «reducir movimiento» (solo la guarda lo detiene)', () => {
+  test.use({ viewport: { width: 390, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
+
+  for (const [nombre, destino, debajoEsperado] of [
+    ['Imagen', URL_CAJA.imagen, /^Crear una imagen/],
+    ['Video', URL_CAJA.video, /^Modelo/],
+  ] as const) {
+    test(`«${nombre}»: abre la caja y no abre lo que cae debajo`, async ({ page }) => {
+      await simular(page);
+      await vigilarNavegaciones(page);
+      await abrirInicio(page, URL_DISTRITO);
+      await page.evaluate(() => document.fonts.ready);
+      const punto = await centroDe(herramienta(page, nombre));
+      const debajo = await dobleClicLento(page, punto, destino);
+      expect(debajo, 'bajo el primer clic no cae un menú de la caja: la prueba no mide la guarda').toMatch(debajoEsperado);
+      await expect(paso(page)).toHaveText('¿Qué vamos a crear hoy?');
+      const abiertos = page.locator('[aria-expanded="true"]');
+      await expect(abiertos).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      // el control: un clic deliberado en el mismo punto sí lo abre
+      await page.mouse.click(punto.x, punto.y);
+      await expect(abiertos).toHaveCount(1);
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // las tres opciones
 

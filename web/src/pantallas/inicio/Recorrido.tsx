@@ -27,7 +27,7 @@
 //     aparte) y el paso (en el mapa: Marketing, Producto, Central, Ventas, Automatizaciones);
 //   · un doble clic no activa por accidente lo que aparece donde estaba lo pulsado: el segundo clic cae en la primera tarjeta de las
 //     opciones, en el botón de conectar o en la primera pantalla de una lista (esDobleClicAccidental, para toda la sección).
-import { useId, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 
 import { Migas, type Miga } from '../../marca/Migas';
 import { Icono } from '../../ui/Icono';
@@ -82,6 +82,10 @@ export function Recorrido({ estado, despachar, conectado, alConectar, ir, titulo
   const titulo = useRef<HTMLHeadingElement>(null);
   // cuándo cambió el paso por última vez (para el doble clic)
   const cambioEn = useRef(0);
+  // cuándo se montó (se lee una vez). En la página de una herramienta de la caja (`hrefDeMiga`) el paso no cambia nunca: la página entera
+  // es nueva, así que el doble clic se cuenta desde que ESTA se cargó, como en PaginaNivel. Sin ella, la tarjeta «Imagen» o «Video» de
+  // Distrito cae a 390 px justo sobre «Crear una imagen ▾» o el selector de modelo, y el segundo clic los abría
+  const [montada] = useState(ahora);
   const verCaja = cajaVisible(estado);
 
   // al cambiar de paso (o de grupo) el botón pulsado desaparece y el foco se iría a <body>: si se perdió, va al título del paso nuevo.
@@ -118,7 +122,8 @@ export function Recorrido({ estado, despachar, conectado, alConectar, ir, titulo
   // captura, antes de que llegue a lo de adentro, y se cancela también (si no, un enlace navegaría igual). El mapa, las opciones y las
   // listas no tienen que saber de esto, y una elección deliberada (otro clic pasado el medio segundo) o el teclado (`detail` 0) pasan
   function alPulsarAntes(e: MouseEvent<HTMLElement>) {
-    if (!esDobleClicAccidental(e.detail, ahora() - cambioEn.current)) return;
+    const desde = Math.max(cambioEn.current, hrefDeMiga ? montada : 0);
+    if (!esDobleClicAccidental(e.detail, ahora() - desde)) return;
     e.preventDefault();
     e.stopPropagation();
   }
