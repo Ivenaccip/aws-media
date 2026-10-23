@@ -1473,9 +1473,11 @@ del registro de `dist`, y `niveles.spec.ts` compara los casos con la app real. L
 el 404 con página para quien pide HTML, y las cabeceras (todo sale `no-store`, no `no-cache` con ETag). Si `web.py` o
 `migracion.py` cambian, ése también.
 La guarda del doble clic se prueba con `Date.now()` de la página quieto (`relojFijo`, `web/e2e/recorrido.ts`): con el reloj de
-verdad el resultado dependía de la velocidad de la máquina. Una prueba es intermitente y viene de antes de las rutas por nivel:
-`inicio-edicion.spec.ts` «toda la caja se recorre solo con el teclado» a veces agota `page.waitForEvent('filechooser')` (1 de 16
-con 4 trabajadores; una revisión la vio también en `29344bb`, 1 de 12). Antes de darla por rota, repetirla sola con `--workers=1`.
+verdad el resultado dependía de la velocidad de la máquina. Hay dos pruebas intermitentes que vienen de antes de las rutas por
+nivel (se repiten igual con el `servidor.mjs` anterior): `inicio-edicion.spec.ts` «toda la caja se recorre solo con el teclado» a
+veces agota `page.waitForEvent('filechooser')` (1 de 16 con 4 trabajadores; una revisión la vio también en `29344bb`, 1 de 12), y
+las de `asistente.spec.ts` que usan `page.clock.install()` más `fastForward(5000)` a veces no encuentran el título del resultado
+para enfocarlo (1 de 64, en pruebas distintas cada vez). Antes de darlas por rotas, repetirlas solas con `--workers=1`.
 
 ## La imagen (Node, y por qué está fijado)
 
