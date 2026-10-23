@@ -336,6 +336,13 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     ['/estudio/marketing', URL_MARKETING, 'Estudio de video · Marketing'],
     ['/estudio/Marketing/', URL_MARKETING, 'Estudio de video · Marketing'],
     ['/estudio//marketing//distrito', URL_DISTRITO, 'Estudio de video · Marketing · Distrito'],
+    // «//» con barra final y las escritas con «%XX»: la página lee location.pathname tal cual y no reconocería su nivel (el servidor las corrige)
+    ['/estudio//marketing/', URL_MARKETING, 'Estudio de video · Marketing'],
+    ['/estudio/%6Darketing/', URL_MARKETING, 'Estudio de video · Marketing'],
+    ['/estudio/marketing%2Fdistrito/', URL_DISTRITO, 'Estudio de video · Marketing · Distrito'],
+    // un parámetro repetido: el servidor decide con el PRIMERO, como la página (URLSearchParams.get)
+    ['/estudio/?blotato=conectar&blotato=otra', `${URL_BLOTATO}?blotato=conectar&blotato=otra`, 'Estudio de video · Marketing · Blotato'],
+    ['/estudio/?blotato=otra&blotato=conectar', `${URL_MAPA}?blotato=otra&blotato=conectar`, TITULO_MAPA],
     ['/estudio/marketing/distrito/Video', URL_CAJA.video, 'Estudio de video · Marketing · Distrito · Video'],
     ['/estudio/central?x=1', '/estudio/central/?x=1', 'Estudio de video · Central'],
     ['/estudio', URL_MAPA, TITULO_MAPA],
@@ -373,6 +380,31 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     for (const url of ['/estudio/nada/', '/estudio/marketing/nada/', '/estudio/marketing/distrito/nada/']) {
       const respuesta = await page.goto(url);
       expect(respuesta?.status(), url).toBe(404);
+    }
+  });
+
+  // El servidor de estas pruebas (e2e/servidor.mjs) repite el de verdad: sirve una página solo si su dirección es una del registro de dist.
+  // Con `request` la dirección llega TAL CUAL (el navegador normalizaría los «..»).
+  test('una dirección con «..%2f» no se sale de dist: es un 404 y no el index.html de otra carpeta', async ({ request }) => {
+    // desde web/dist/estudio, tres niveles arriba es la raíz del repo, y static/index.html (el inicio clásico) existe
+    for (const url of ['/estudio/..%2f..%2f..%2fstatic%2f', '/estudio/..%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2ftmp%2f']) {
+      const respuesta = await request.get(url, { maxRedirects: 0 });
+      expect(respuesta.status(), url).toBe(404);
+      expect(await respuesta.text(), url).not.toContain('<html');
+    }
+  });
+
+  test('un «%» mal formado es un 404 y el servidor sigue en pie', async ({ request }) => {
+    expect((await request.get('/estudio/%E0%A4%A/', { maxRedirects: 0 })).status()).toBe(404);
+    expect((await request.get('/api/%E0%A4%A', { maxRedirects: 0 })).status()).toBe(404);
+    expect((await request.get('/__e2e')).ok()).toBe(true);
+  });
+
+  test('un asset que falta o escrito de lado es un 404 JSON, nunca HTML', async ({ request }) => {
+    for (const url of ['/estudio/assets/no-existe.js', '/estudio//assets/x.js', '/estudio/assets/../marketing/index.html']) {
+      const respuesta = await request.get(url, { maxRedirects: 0, headers: { Accept: 'text/html' } });
+      expect(respuesta.status(), url).toBe(404);
+      expect(respuesta.headers()['content-type'], url).toContain('application/json');
     }
   });
 });
