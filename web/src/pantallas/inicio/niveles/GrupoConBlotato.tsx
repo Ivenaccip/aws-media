@@ -12,8 +12,10 @@
 //   · la lectura del estado (`logica`: api, tarifas, modelos…) va con import() y se pide al montar;
 //   · el diálogo (Blotato.tsx: Radix, Confirmar, Guardado…) va con import() y solo se pide la primera vez que se abre. Avanzado, que no
 //     ofrece el botón, no lo trae hasta que alguien pulsa una herramienta apagada.
+//   · el foco: lo que lo tenía se anota al PEDIR abrir (`abrir`), no cuando el diálogo se monta. Si la lectura llega antes que el código,
+//     el diálogo se monta ya con el campo de la clave enfocado (su autoFocus) y ya no hay botón que recordar: al cerrar el foco caía a <body>.
 // Si el diálogo no llega, `LimiteDeCarga` lo dice donde se pulsó; la lista sigue ahí.
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { GrupoMenu, PantallaMenu } from '../../../marca/menu';
 import { Aviso } from '../../../ui/Aviso';
@@ -42,8 +44,12 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
   const [pedido, setPedido] = useState(false);
   const [estado, setEstado] = useState<EstadoBlotato | null>(null);
   const [error, setError] = useState('');
+  // lo que tenía el foco al pedir abrir (el botón de conectar, una tarjeta apagada): a donde vuelve al cerrar. null = nada (abierto por la dirección)
+  const origenDelFoco = useRef<HTMLElement | null>(null);
 
   const abrir = useCallback(() => {
+    const activo = document.activeElement;
+    origenDelFoco.current = activo instanceof HTMLElement && activo !== document.body ? activo : null;
     setEstado(null);
     setError('');
     setAbierto(true);
@@ -84,6 +90,7 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
             <DialogoBlotato
               abierto={abierto}
               alCambiar={setAbierto}
+              focoAlCerrar={origenDelFoco}
               estado={estado}
               errorCarga={error}
               alSaber={d => {

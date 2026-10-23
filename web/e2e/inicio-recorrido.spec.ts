@@ -959,12 +959,12 @@ test.describe('Blotato SIN conectar', () => {
     await expect(paso(page)).toHaveText('Blotato');
   });
 
-  // Antes: «Esc cierra el diálogo, y el foco queda en algo (no en <body>)». Al cerrar, el diálogo devuelve el foco a lo que lo tenía al abrirse
-  // (`useFocoDeVuelta`, ui/Dialogo.tsx), y lo anota en el instante en que el diálogo se monta. Dos maneras de llegar a ese instante:
+  // Esc cierra el diálogo y el foco vuelve a lo que lo tenía al pedir abrir (el botón de conectar). `GrupoConBlotato` lo anota en `abrir()`, ANTES
+  // de que el diálogo exista: así no importa quién llegue primero. Dos órdenes de llegada, una prueba para cada uno:
   //  · la lectura completa del estado (`GET /api/blotato`) tarda más que el código del diálogo: se monta «revisando», con el botón aún enfocado,
-  //    y el campo de la clave (autoFocus) aparece después → el foco vuelve al botón;
-  //  · la lectura llega ANTES que el código del diálogo (que ahora se pide con import(), página aparte): el diálogo se monta ya con el campo, y su
-  //    autoFocus le quita el foco al botón antes de anotarlo → al cerrar no hay a dónde volver y cae a <body>.
+  //    y el campo de la clave (autoFocus) aparece después;
+  //  · la lectura llega ANTES que el código del diálogo (que se pide con import(), página aparte): el diálogo se monta ya con el campo, y su
+  //    autoFocus le quita el foco al botón. Antes de anotar el origen al pedir abrir, aquí el foco caía a <body>.
   test('Esc cierra el diálogo y el foco vuelve al botón que lo abrió: la lectura del estado llega DESPUÉS de que el diálogo se monta', async ({ page }) => {
     await simular(page, { blotato: 'sin-conectar' });
     let soltar!: () => void;
@@ -986,12 +986,8 @@ test.describe('Blotato SIN conectar', () => {
     await expect(boton).toBeFocused();
   });
 
-  // DEFECTO CONOCIDO, anotado con test.fail: lo encontró esta prueba al pasar el inicio a páginas (la etapa que cargó el diálogo con import()).
-  // Mientras exista, esta prueba falla A PROPÓSITO y por eso pasa; el día que se arregle (por ejemplo, guardando el origen del foco en
-  // `GrupoConBlotato` antes de abrir, o en `Dialogo` al pedirse abrir y no al montarse), Playwright la marcará como «se esperaba que fallara» y
-  // hay que quitarle el test.fail. Retrasar el código del diálogo hace el orden determinista (la lectura, de mentira, llega en milisegundos).
   test('Esc cierra el diálogo y el foco vuelve al botón que lo abrió: la lectura del estado llega ANTES de que el diálogo se monte', async ({ page }) => {
-    test.fail(true, 'el diálogo de Blotato se monta con el campo de la clave ya enfocado y no recuerda el botón: al cerrarse el foco cae a <body>');
+    // retrasar el código del diálogo hace el orden determinista: la lectura (de mentira) llega en milisegundos
     await simular(page, { blotato: 'sin-conectar' });
     await page.route(/\/estudio\/assets\/Blotato-[^/]*\.js$/, async r => {
       await new Promise(resolver => setTimeout(resolver, 700));
@@ -1005,6 +1001,24 @@ test.describe('Blotato SIN conectar', () => {
     await page.keyboard.press('Escape');
     await expect(dialogo).toBeHidden();
     await expect(boton).toBeFocused();
+  });
+
+  test('con el teclado: Enter en una tarjeta apagada abre el diálogo y Esc devuelve el foco a esa tarjeta, aunque el código del diálogo llegue tarde', async ({ page }) => {
+    await simular(page, { blotato: 'sin-conectar' });
+    await page.route(/\/estudio\/assets\/Blotato-[^/]*\.js$/, async r => {
+      await new Promise(resolver => setTimeout(resolver, 700));
+      await r.continue();
+    });
+    await abrirInicio(page, URL_BLOTATO);
+    const enlaces = tarjetasDeLaLista(page);
+    await expect(enlaces.first()).toHaveAttribute('aria-disabled', 'true');
+    await enlaces.first().focus();
+    await page.keyboard.press('Enter');
+    const dialogo = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
+    await expect(dialogo.getByLabel('Tu clave de API de Blotato')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialogo).toBeHidden();
+    await expect(enlaces.first()).toBeFocused();
   });
 
   test('el botón «Conecta tu cuenta de Blotato» abre el diálogo, y al conectar se encienden las tres pantallas', async ({ page }) => {

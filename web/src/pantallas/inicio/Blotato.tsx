@@ -4,7 +4,7 @@
 // Conectar tiene un costo que NO es nuestro: la API de Blotato no viene en su
 // prueba gratis y generar la clave la termina. El aviso va ANTES del campo,
 // con el precio que manda el server.
-import { useId, useState } from 'react';
+import { useId, useState, type RefObject } from 'react';
 
 import { Boton } from '../../ui/Boton';
 import { Confirmar } from '../../ui/Confirmar';
@@ -23,9 +23,14 @@ export interface PropsBlotato {
   errorCarga?: string;
   /** Cada respuesta del server (el menú se enciende o apaga con ella). */
   alSaber: (e: EstadoBlotato) => void;
+  /**
+   * A dónde vuelve el foco al cerrar. Sin él, a lo que lo tenía cuando el diálogo se montó: si ya se monta con el campo de la clave enfocado
+   * (la lectura llegó antes que el código), eso es el campo y al cerrar no hay a dónde volver. Quien abre lo anota ANTES de abrir.
+   */
+  focoAlCerrar?: RefObject<HTMLElement | null>;
 }
 
-export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', alSaber }: PropsBlotato) {
+export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', alSaber, focoAlCerrar }: PropsBlotato) {
   const [formulario, setFormulario] = useState(false);
   const [clave, setClave] = useState('');
   const [error, setError] = useState('');
@@ -94,6 +99,7 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
         alCambiar={cerrar}
         titulo={titulo}
         descripcion="Con tu cuenta de Blotato conectada podrás programar tus videos y ver cómo rinden en tus redes."
+        focoAlCerrar={focoAlCerrar}
       >
         {cargando && <p className="mt-4 mb-0 text-sm text-secundario">Revisando tu conexión…</p>}
 
