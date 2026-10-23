@@ -1465,6 +1465,18 @@ Lo esperado: `404`, `content-type: text/html; charset=utf-8` y `vary: Accept`
 (sin el `-H`, el mismo 404 en `application/json`). Lo mismo vale contra
 `https://irremplazables.xyz` cuando el corte llegue a `main`.
 
+**Pruebas de navegador (Playwright; no corren en CI):** `cd web && npm run e2e` compila y las corre todas; para una sola,
+`npm run build && npx playwright test e2e/niveles.spec.ts --workers=2`.
+`web/e2e/servidor.mjs` repite en Node lo que deciden `server/web.py` (las páginas por nivel, la barra, las mayúsculas, el
+`//` y el `%XX`, las entradas de antes) y `server/migracion.py` (`/index.html`): una página se sirve solo si su dirección es una
+del registro de `dist`, y `niveles.spec.ts` compara los casos con la app real. Lo que NO repite: `/ui/clasica` y `/ui/nueva`,
+el 404 con página para quien pide HTML, y las cabeceras (todo sale `no-store`, no `no-cache` con ETag). Si `web.py` o
+`migracion.py` cambian, ése también.
+La guarda del doble clic se prueba con `Date.now()` de la página quieto (`relojFijo`, `web/e2e/recorrido.ts`): con el reloj de
+verdad el resultado dependía de la velocidad de la máquina. Una prueba es intermitente y viene de antes de las rutas por nivel:
+`inicio-edicion.spec.ts` «toda la caja se recorre solo con el teclado» a veces agota `page.waitForEvent('filechooser')` (1 de 16
+con 4 trabajadores; una revisión la vio también en `29344bb`, 1 de 12). Antes de darla por rota, repetirla sola con `--workers=1`.
+
 ## La imagen (Node, y por qué está fijado)
 
 Node entra en la imagen **copiado de la imagen oficial** y con la versión exacta
