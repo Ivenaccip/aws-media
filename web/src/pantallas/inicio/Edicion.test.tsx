@@ -253,6 +253,38 @@ describe('la caja de Edición', () => {
     expect(selector).toHaveClass('w-full', 'min-[640px]:w-auto');
   });
 
+  // Salir de la caja ya no la conserva (cada nivel es otra página): lo único que avisa es el navegador, cuando hay una subida a medias
+  // (beforeunload). Nada más lo vigilaba en vitest: quitar el aviso dejaba todo en verde (el e2e de inicio-recorrido.spec.ts lo ve, pero no gatea CI).
+  // Sin el prefijo `inicio.`: es del recorrido por páginas y no un invariante del registro de migración.
+  /** Lo que hace el navegador al cerrar o salir: dispara `beforeunload`; si alguien lo cancela, pregunta. */
+  const preguntaAlSalir = () => {
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+
+  it('niveles.edicion.con_una_subida_a_medias_cerrar_o_salir_de_la_pagina_pide_confirmar_y_sin_ella_no', async () => {
+    montar();
+    pintar();
+    await irAEdicion();
+    expect(preguntaAlSalir(), 'sin nada a medias no hay nada que perder').toBe(false);
+    await empezarSubida();
+    expect(preguntaAlSalir(), 'con la subida a medias el navegador pregunta').toBe(true);
+    await terminarSubida();
+    await waitFor(() => expect(botonIniciar().textContent).toMatch(/^Iniciar/));
+    expect(preguntaAlSalir(), 'ya subido, salir no pregunta').toBe(false);
+  });
+
+  it('niveles.edicion.la_caja_que_se_va_no_deja_el_aviso_puesto', async () => {
+    montar();
+    const { unmount } = pintar();
+    await irAEdicion();
+    await empezarSubida();
+    expect(preguntaAlSalir()).toBe(true);
+    unmount();
+    expect(preguntaAlSalir(), 'la caja se fue: el aviso se quitó con ella').toBe(false);
+  });
+
   it('inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar', async () => {
     const f = montar({ cotizar: refs => cotizacion(refs, { creditos: 17 }) });
     pintar();
