@@ -15,11 +15,10 @@ acción y «Deshacer» sale de la pausa como patrón adoptado (§8 y §9). Adem�
 queda anotada una excepción a la escala de formas: el radio de 48 px del
 disparador del Constructor (§4).
 
-Revisada el 2026-10-22 con las rutas por nivel (decisión del dueño: «por cada pestaña,
-una ruta»): cada paso del recorrido es su propia página, con su dirección y su
-`<title>`; el mapa es `/estudio/` y ya no existen «Estás aquí», «Volver a …» ni la caja
-escondida bajo el mapa (§7). El diseño de lo que se ve (tipografía, color, forma, botones)
-no cambia.
+Revisada el 2026-10-22 con las rutas por nivel (§7): cada nivel del recorrido es
+una página con su dirección y su `<title>`, las fichas, tarjetas y migas son
+enlaces, «Atrás» del navegador sube un nivel y la caja es una página con tres
+direcciones. El aspecto de cada paso no cambió.
 
 Esta carta manda sobre cualquier gusto de agente. Si algo no está aquí, se
 decide con el dueño y se agrega aquí antes de usarlo.
@@ -35,9 +34,9 @@ decide con el dueño y se agrega aquí antes de usarlo.
   de §3. Lo vigila `tests/test_m20_paleta.py`.
 - **Solo modo oscuro.** No hay modo claro ni interruptor.
 - Botones de cobro **«Verbo ✦ N»**: la acción y lo que cuesta, nada más (M21).
-- El **orbe** de espera y el **mapa** del inicio (mapa en X → tres opciones →
-  pantalla, §7), que es lo primero que se ve al abrir el inicio. El menú lateral
-  ya no existe: lo reemplazó el mapa (dueño, 15-oct-2026).
+- El **orbe** de espera y el **mapa** del inicio (mapa en X → opciones del área →
+  lista del grupo, una página por nivel, §7), que es la principal, `/estudio/`. El
+  menú lateral ya no existe: lo reemplazó el mapa (dueño, 15-oct-2026).
 - **Sin gasto sin ver el costo antes.** Precios solo de `tools/tarifas.json`
   o de la API; nunca inventados.
 - **Todo en español**, con tuteo.
@@ -307,34 +306,45 @@ Alto 48 px (40 px en barras densas) · radio 12 · Geist 15 px.
 ## 7. Navegación
 
 Desde el 15-oct-2026 no hay menú lateral, en ningún ancho: el inicio es un
-recorrido de tres pasos («Mapa con Irremplazables», decisión del dueño), y su
-primer paso, el **mapa**, es el inicio mismo. Desde el 22-oct-2026 **cada paso es su
-propia página** («por cada pestaña, una ruta»): el mapa es `/estudio/` y de ahí se baja
-por direcciones, sin router. La lista de adónde se puede ir es una sola,
-`web/src/marca/menu.ts`; el recorrido, las direcciones (`web/src/marca/rutas.ts`) y las
-migas de las pantallas salen de ella, así no se desincronizan.
+recorrido de tres niveles («Mapa con Irremplazables», decisión del dueño), y su
+primer nivel, el **mapa**, es la página principal. Desde el 22-oct-2026 (dueño,
+21-oct-2026: «por cada pestaña, una ruta») **cada nivel es su propia página**. La
+lista de adónde se puede ir es una sola, `web/src/marca/menu.ts`; las direcciones,
+los títulos, el recorrido y las migas de las pantallas salen de ella, así no se
+desincronizan. El detalle (cada dirección, lo que redirige el servidor, las
+pruebas) está en `docs/migracion/inicio.md` § «Rutas por nivel»; las decisiones
+del dueño que lo rigen (D5 a D14) están en `docs/PLAN-UI.md` §9.
 
-- **Una dirección por nivel:** `/estudio/` (el mapa) → `/estudio/marketing/` (las
-  opciones del área) → `/estudio/marketing/distrito/` (la lista del grupo, que en
-  Marketing › Distrito es Imagen · Video · Edición) → `/estudio/marketing/distrito/video/`
-  (la caja). Imagen, Video y Edición son tres direcciones de UNA caja: cambiar de pestaña
-  con el riel no recarga la página y mueve la dirección y el título (sin sumar historia).
-  Cada página trae su `<title>` («Estudio de video · Marketing · Distrito»). El servidor y
-  el detalle están en `docs/migracion/inicio.md` § «Rutas por nivel».
-- **Tres pasos:** el **mapa en X** (las áreas: Marketing, Producto, Central,
-  Ventas y Automatizaciones) → las **tres opciones** (los grupos del área
-  elegida: los de Marketing son Distrito, Blotato y Avanzado; Central y
+- **La regla: una página por nivel, con su dirección y su `<title>`.** El mapa es
+  `/estudio/` («Estudio de video»); cada área, `/estudio/<área>/` («Estudio de
+  video · Marketing»); cada grupo, `/estudio/<área>/<grupo>/` («Estudio de video ·
+  Marketing · Distrito»); y cada herramienta de la caja,
+  `/estudio/marketing/distrito/imagen/` (o `video/`, `edicion/`), con su nombre al
+  final del título. Las direcciones van en minúsculas, sin acentos y con barra
+  final (Marketing se escribe `marketing`). No hay router: cada nivel es un
+  `index.html` generado desde `menu.ts`.
+- **Tres niveles hasta la herramienta:** el **mapa en X** (las áreas: Marketing,
+  Producto, Central, Ventas y Automatizaciones) → las **opciones del área** (sus
+  grupos: los de Marketing son Distrito, Blotato y Avanzado; Central y
   Automatizaciones tienen dos, Distrito y Deepseek, y Distrito y Tus
-  automatizaciones) → **la pantalla** (la caja del inicio, o la lista de las
-  pantallas del grupo).
+  automatizaciones) → **la lista del grupo** (sus pantallas). La caja es una
+  herramienta más: Marketing › Distrito lista Imagen, Video y Edición, y cada una
+  abre la caja en esa pestaña.
+- **Fichas, tarjetas y migas son enlaces** (`<a href>`, no botones): se pueden
+  abrir en otra pestaña o copiar, y cada clic carga otra página con el fundido
+  entre pantallas de §4 (sin él con «reducir movimiento»). Lo que no lleva a
+  ningún lado no es un enlace: **Producto y Ventas son fichas apagadas** (botones
+  con `aria-disabled` y «Próximamente», que siguen en el orden de Tab y el lector
+  anuncia como no disponibles), las tarjetas «Próximamente» son quietas, y una
+  tarjeta de Blotato apagada es un enlace con `aria-disabled` cuyo clic abre el
+  diálogo de conectar en vez de navegar.
 - **Se aterriza en el mapa** (dueño, 15-oct-2026, segunda ronda: «el mapa es el
-  inicio»): al abrir `/estudio/` se ve «Elige un área» y la X, con **nada
-  elegido**. La caja es otra página (`/estudio/marketing/distrito/video/`, en Video como
-  siempre); se llega a ella eligiendo Marketing, Distrito y Video. Antes se
-  aterrizaba en la caja.
+  inicio»): `/estudio/` enseña «Elige un área» y la X, con **nada elegido**. La
+  página del mapa no trae la caja: para llegar a ella, Marketing → Distrito → la
+  herramienta.
 - **El título va arriba y fuera de cualquier tarjeta:** el `h1` «Irremplazables»
-  (dorado, 32 px, centrado, sin icono; es el único `h1` de la pantalla) va en
-  el mismo lugar en todos los pasos (a 88 px del borde de la ventana: debajo del
+  (dorado, 32 px, centrado, sin icono; es el único `h1` de la página) va en
+  el mismo lugar en todos los niveles (a 88 px del borde de la ventana: debajo del
   saldo, que es fijo y acaba a 52) y nunca dentro de una tarjeta.
 - **Solo la caja lleva tarjeta:** 820 px de ancho como mucho, centrada en
   horizontal, en la superficie `#111f33` con borde `#22354f` y radio 16, con
@@ -347,66 +357,77 @@ migas de las pantallas salen de ella, así no se desincronizan.
   alto que sobra bajo el título (huecos arriba y abajo parecidos: lo medido es
   una diferencia de 0,1 px a 1100×800), con su `h2` («Elige un área», «Elige un
   grupo», el nombre del grupo) y, si hay, las migas centradas bajo el título.
-- **Nada se ve elegido hasta que se elige** (dueño: «parece que marketing está
-  seleccionado, mientras que no debería de verse de ese tono, hasta que lo
-  seleccionen»): ninguna ficha del mapa lleva «Estás aquí», tono distinto ni
-  `aria-current`; Marketing, Central y Automatizaciones, las tres que se abren, se
-  ven iguales (`#111f33` con borde `#22354f`; el hover y el foco se conservan) y las
-  otras dos, Producto y Ventas, siguen apagadas («Próximamente»; son botones quietos, no
-  enlaces). Desde el 22-oct-2026 **«Estás aquí» ya no existe** en ninguna tarjeta: la
-  dirección y el título dicen dónde estás.
-- **Migas que llevan a cada nivel:** la ruta elegida son chips («Marketing ›
-  Distrito») y cada chip es un **enlace a la página de su nivel**: el área, al mapa
-  (`/estudio/`); el grupo, a las tres opciones (`/estudio/marketing/`). Con la caja a la
-  vista van dentro de la tarjeta, arriba; en los demás pasos, centradas bajo el título.
-  Son la manera de subir de nivel, junto con «Atrás» del navegador (que sube un nivel si
-  bajaste por los enlaces).
-- **Sin «Volver a …», y Esc:** no hay botón de volver (dueño, 15-oct-2026: «no podemos
-  poner el botón de "Volver a video"»): las migas y «Atrás» suben de nivel. **Esc** en
-  las tres opciones sube al mapa (navega a `/estudio/`); en el mapa y en la pantalla
-  (la caja o la lista) no hace nada. El oyente es del documento y no de la región: la
-  página recién cargada tiene el foco en `<body>`; lo que ya atendió un diálogo o un
-  menú abierto (lo marca con `preventDefault`) no se repite. Desde el 22-oct-2026
-  desaparece la **única excepción** que había: «Volver a Agenda» (y su Esc de regreso)
-  era para una hoja a la que las migas no llegaban; ahora la hoja se queda en el
-  historial y «Atrás» regresa a ella.
-- **La caja solo existe en sus tres páginas** (antes estaba siempre montada, escondida
-  bajo el mapa): cambiar de pestaña DENTRO de la caja conserva el texto escrito, el
-  video subido y una subida en curso; **salir de la caja a un nivel superior los
-  descarta**, sin aviso del navegador (con una subida en curso el navegador sí avisa).
-  La galería «Mis creaciones» y lo que cuelga de la caja viven solo en las páginas de la
-  caja.
-- **Lo que enseña un grupo que no es la caja:** la lista de sus pantallas como
-  tarjetas-enlace (icono, título y una línea de apoyo). Las que dependen de
+- **Nada se ve elegido** (dueño: «parece que marketing está seleccionado,
+  mientras que no debería de verse de ese tono, hasta que lo seleccionen»):
+  ninguna ficha ni tarjeta lleva «Estás aquí», tono distinto ni `aria-current`;
+  la dirección y el `<title>` dicen dónde estás. Marketing, Central y
+  Automatizaciones, las tres que se abren, se ven iguales (`#111f33` con borde
+  `#22354f`; el hover y el foco se conservan) y las otras dos, Producto y Ventas,
+  siguen apagadas («Próximamente»).
+- **Migas, las de hoy (D6):** la ruta son chips («Marketing › Distrito») y cada chip
+  es un enlace a su nivel: el área lleva al mapa (`/estudio/`) y el grupo, a las
+  opciones del área (`/estudio/<área>/`), también desde la caja. En el mapa no
+  hay migas; con la caja van dentro de la tarjeta, arriba; en los demás niveles,
+  centradas bajo el título. La miga del nivel donde estás lleva
+  `aria-current="step"` y su nombre accesible dice a dónde lleva («Volver al
+  mapa para cambiar de área (ahora: Marketing)»).
+- **Subir de nivel: las migas o «Atrás».** Cada página es una entrada del
+  historial, así que el **«Atrás» del navegador sube un nivel** (caja → grupo →
+  área → mapa) y «Adelante» baja otra vez. No hay botón «Volver a …» en ningún
+  nivel (dueño, 15-oct-2026: «no podemos poner el botón de "Volver a video"»),
+  tampoco hacia la hoja de donde llegaste: eso lo hace «Atrás».
+- **Esc (D12):** en las opciones de un área sube al mapa; en el mapa, en la lista de
+  un grupo y en la caja no hace nada. Vale con la página recién cargada, sin
+  haber tocado nada (lo escucha el documento); con un diálogo o una lista
+  abiertos, Esc es de ellos y solo los cierra.
+- **La caja: una página, tres direcciones.** Cambiar de pestaña con el riel
+  mueve la dirección y el título sin recargar ni agregar historia, y conserva lo
+  escrito, el video y la subida. Salir de la caja a un nivel superior (una miga,
+  «Atrás», cualquier enlace) es ir a otra página: lo escrito se descarta, sin
+  aviso (D11). Solo una subida a medias hace que el navegador pregunte antes de salir.
+  La galería «Mis creaciones» y lo que cuelga de la caja viven en esa página.
+- **Lo que enseña un grupo:** la lista de sus pantallas como
+  tarjetas-enlace (icono, título y, si la trae, una línea de apoyo; las tres de
+  la caja van solo con su icono y su nombre). Las que dependen de
   Blotato se apagan con `aria-disabled` cuando se sabe que la persona no lo ha
   conectado (si no se sabe, no se apaga nada) y su clic abre el diálogo de
   conectar en vez de navegar; el botón «Conecta tu cuenta de Blotato» (o
   «Blotato conectado: ver o cambiar») vive arriba de esa lista. Lo que aún no
-  existe (Preguntas y Glosario, en Central) sale apagado con la etiqueta «Próximamente» y no navega;
-  un grupo sin pantallas dice «Todavía no está disponible.». Hoy son dos: Deepseek
-  (Central) y «Tus automatizaciones» (Automatizaciones); los dos dicen «Próximamente» en
-  su tarjeta. Producto y Ventas son fichas inertes en el mapa. Automatizaciones se
-  abre: su grupo Distrito lista el Constructor y el Asistente (enlaces a
-  `/estudio/constructor/` y `/estudio/asistente/`) y «Actualizar flujos», apagada con
-  «Próximamente» y sin enlace.
+  existe (Preguntas y Glosario, en Central) sale apagado con la etiqueta «Próximamente» y no navega.
+  Automatizaciones se abre: su grupo Distrito lista el Constructor y el
+  Asistente (enlaces a `/estudio/constructor/` y `/estudio/asistente/`) y
+  «Actualizar flujos», apagada con «Próximamente» y sin enlace.
+- **Lo que todavía no trae nada tiene su página igual (D5):** un área o un grupo
+  vacío responde con su página, no con un error, y dice «Todavía no está
+  disponible.» bajo su título. Hoy son Producto y Ventas (solo tecleando su
+  dirección: en el mapa son fichas apagadas), Deepseek (Central) y «Tus
+  automatizaciones» (Automatizaciones); los dos grupos dicen «Próximamente» en su
+  tarjeta.
 - **Las hojas con encabezado propio** (COI, la Biblioteca de prompts, el Constructor y el
   Asistente) no llevan «← Estudio» ni `<Marco>`: su único `h1` es «Irremplazables»
-  (dorado, sin ícono, fuera de toda tarjeta, como en el inicio) y debajo, centradas, las
+  (dorado, sin ícono, fuera de toda tarjeta, como en el mapa) y debajo, centradas, las
   migas de tres niveles «Área › Grupo › Pantalla» sacadas de `menu.ts`. El área y el grupo
-  son enlaces directos a la página de su nivel (`/estudio/` y `/estudio/<área>/`); la última
+  son enlaces directos a su página (el mapa y las opciones del área); la última
   miga es la pantalla donde estás, un chip quieto. El nombre de la pantalla va como `h2`. El
   Constructor y el Asistente arman ese encabezado con `web/src/marca/EncabezadoHoja.tsx`;
   COI y la Biblioteca lo arman en su carpeta. En el encabezado compartido, a 480 px o
   menos las migas pierden sus íconos y los «›» (así caben en una línea a 390 px y en dos
   a 320).
 - **Las páginas hoja siguen siendo páginas** (Agenda, Competencia, Métricas, MIX,
-  Copiadora de estilos): llevan «← Estudio» y, a su lado, sus migas, «Marketing ›
-  Blotato», como **enlaces directos** a la página del nivel, sin parámetros:
-  «Marketing» lleva al mapa (`/estudio/`) y «Blotato» a las tres opciones
-  (`/estudio/marketing/`). «Atrás» del navegador regresa a la hoja. (Hasta el 21-oct-2026
-  eran enlaces al inicio con `?desde=<lugar>&ver=mapa|grupos`; hoy ese parámetro se
-  ignora y se quita de la dirección.) Las pantallas que el mapa no tiene (Admin, Crear,
-  Subir, Clip, Imágenes y Shorts) no llevan migas.
+  Copiadora de estilos): llevan «← Estudio» (a `/estudio/`) y, a su lado, sus migas,
+  «Marketing › Blotato», como **enlaces directos**: «Marketing» abre el mapa y
+  «Blotato» las opciones de Marketing. Sin parámetros, sin «Estás aquí» y sin
+  «Volver a …»: para regresar a la hoja, «Atrás». Las pantallas que el mapa no
+  tiene (Admin, Crear, Subir, Clip, Imágenes y Shorts) no llevan migas.
+- **Las direcciones de antes redirigen con un 302, nunca un 301 (D13):** `/estudio/inicio/`
+  (la página única de antes), `/estudio/?prompt=…`, `?brief=…` y
+  `?blotato=conectar`, y lo tecleado sin barra o en mayúsculas, llevan a la página
+  que hoy hace eso. Un 301 se queda para siempre en la caché del navegador: un
+  nivel que cambie de sitio ya no llegaría.
+- **El 404 (D14):** una dirección que no existe contesta con una página mínima, en el
+  oscuro de siempre y con las fichas de `static/carta.css` (sin colores sueltos):
+  «No encontramos esa página», «La dirección no existe o cambió de lugar.» y dos
+  enlaces, «Subir un nivel» e «Ir al inicio». Nunca una página en blanco.
 - **Dónde quedó cada cosa:** «De videos a Shorts» es el segundo modo del chip
   «Editar ▾» de la pestaña Edición y ya no tiene entrada propia. La Copiadora de
   estilos está en Marketing › Avanzado **de forma provisional**: irá a «Marcas»,
@@ -420,13 +441,12 @@ migas de las pantallas salen de ella, así no se desincronizan.
   o más; «Automatizaciones» y «Próximamente» no se parten a 390 ni a 320 px, y
   nada se desborda. El riel de la caja pasa a horizontal.
 - **Teclado y foco:** el orden de Tab es el de lectura (Marketing, Producto,
-  Central, Ventas, Automatizaciones). Cada página es un documento nuevo: empieza
-  arriba, **sin foco programático** (antes, al cambiar de paso el foco iba al `h2`), y
-  quien usa lector de pantalla oye el `<title>` de la página, que dice dónde cae; el
-  primer Tab entra al contenido. Un doble clic en una ficha del mapa no elige además
-  un grupo por accidente: se ignora el segundo clic si llega en menos de 500 ms desde que
-  se cargó la página (a 390 px la tarjeta «Distrito» de la página siguiente cae justo
-  donde estaba la ficha).
+  Central, Ventas, Automatizaciones). Cada página empieza con el foco arriba, como
+  cualquier página: no se le mueve a nadie y el `<title>` dice dónde estás. Un
+  doble clic no salta dos niveles: el segundo clic que llega antes de medio
+  segundo desde que cargó la página se descarta (a 390 px la ficha de una página
+  y la tarjeta de la siguiente caen en el mismo lugar); Enter no cuenta como
+  doble clic.
 - El **saldo** se queda en la **píldora de arriba a la derecha** (`monedero.js`),
   con su «＋» para recargar. Se probó al pie del menú lateral (UI·10, hoy
   retirado) y el dueño prefirió la píldora (25-sep). Al cambiar de pantalla

@@ -70,10 +70,10 @@ quiere cubrir iPhones viejos.
 ```
 web/                       package.json · .npmrc (engine-strict, save-exact) · .nvmrc 20.20.2
   index.html               → /              portada (HTML + Tailwind, sin React)
-  estudio/index.html       → /estudio/                 la principal: el mapa (rutas por nivel, 22-oct-2026)
   estudio/_vitrina/        → catálogo de componentes (noindex)
   estudio/<pantalla>/      → /estudio/<pantalla>/
-  estudio/<área>/…/        → /estudio/marketing/distrito/video/   una página por nivel (rutas por nivel)
+  estudio/index.html       → /estudio/        la principal: el mapa (desde el 22-oct-2026, §9)
+  estudio/<área>/<grupo>/… → una página por nivel del recorrido, generada desde marca/menu.ts (§9)
   src/estilos/tokens.css   ÚNICA fuente de tokens (⊂ PALETA de M20)
   src/nucleo/              api.ts · sondeo.ts · moderar.ts · formato.ts (formato.dolares → "$0.21 dólares")
   src/ui/                  Boton, Dialogo, Confirmar, Campo, Pestanas, Tarjeta, Aviso, Esqueleto, Vacio, TablaDatos…
@@ -192,8 +192,8 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
      llamado `/automatizacion` en este plan).
 7. **Nota del 15-oct-2026 — el menú lateral se retira (sustituye lo del punto 2
    y la fila 3 de §8, que se quedan como historia del 25-sep):** ✅ el dueño
-   aprobó el prototipo «Mapa con Irremplazables» y en el inicio (entonces
-   `/estudio/inicio/`, hoy `/estudio/`) ya no hay menú lateral, en ningún ancho. El inicio es un recorrido de tres pasos
+   aprobó el prototipo «Mapa con Irremplazables» y en `/estudio/inicio/` ya no
+   hay menú lateral, en ningún ancho. El inicio es un recorrido de tres pasos
    (mapa en X → tres opciones → pantalla) y, en la segunda ronda del dueño del
    mismo día, **el mapa es el inicio**: se aterriza en él, el título «Irremplazables»
    va arriba y fuera de cualquier tarjeta, solo la caja (Marketing › Distrito)
@@ -204,19 +204,15 @@ meses. Alternativa si no alcanza el ritmo: imágenes, MIX y crear se
    lista de adónde se puede ir es `web/src/marca/menu.ts`; la carta lo recoge en
    `docs/DISENO.md` §7, el inventario de lo que cambió está en
    `docs/migracion/inicio.md` y el QA manual en `docs/QA-UI.md` § inicio
-   (pasos 43 a 73).
-8. **Nota del 22-oct-2026 — una ruta por nivel (sustituye lo que el punto 7 dice del
-   recorrido «en una sola página»):** ✅ el dueño pidió «por cada pestaña, una ruta». El
-   recorrido deja de ser una página que cambia de paso por dentro: `/estudio/` es el mapa
-   (la principal; `/estudio/inicio/` redirige a ella), y cada área, grupo y herramienta de
-   la caja tiene su dirección (`/estudio/marketing/distrito/video/`) y su `<title>`. Sigue
-   siendo multipágina, sin router. Imagen, Video y Edición son tres direcciones de UNA
-   caja; Marketing › Distrito muestra primero la lista; las hojas (Agenda, COI…) se mudarán a
-   su ruta por nivel al final, una por commit (pendiente: hoy siguen en `/estudio/<hoja>/`). Ya no existen «Volver a …», «Estás aquí», el
-   `?desde=` de las migas ni la caja escondida bajo el mapa. El detalle y el destino de cada
-   comportamiento están en `docs/migracion/inicio.md` § «Rutas por nivel»; el QA manual,
-   en `docs/QA-UI.md` § inicio; la carta, en `docs/DISENO.md` §7; y las URLs, cómo
-   recorrerlas y las notas de versión, en `docs/OPERACION.md`.
+   (pasos 43 a 73). *Desde el 22-oct-2026 el inicio ya no vive en
+   `/estudio/inicio/`: cada nivel es una página (punto 8 y §9).*
+8. **Nota del 22-oct-2026 — rutas por nivel (dueño, 21-oct-2026: «por cada
+   pestaña, una ruta»):** ✅ el recorrido deja de ser una sola página que cambia de
+   paso por dentro. El mapa es `/estudio/`, cada área y cada grupo tienen su
+   página y la caja es una página con tres direcciones
+   (`/estudio/marketing/distrito/imagen|video|edicion/`). Las fichas, tarjetas y
+   migas son enlaces y «Atrás» sube un nivel. `/estudio/inicio/` responde 302 a
+   `/estudio/`. Dónde quedó y lo que sigue: §9.
 
 **Ramas:** los PRs van a `dev`, nunca a `main`. Cada commit de una tarjeta
 empieza con `UI·N:` para poder correlacionar los cambios de la interfaz
@@ -238,3 +234,49 @@ Lienzo: https://claude.ai/artifact/AHYpxmhtur9e528hAjgHmv
 | 8 | Confirmar vs deshacer | ⏸ en pausa, se platica después |
 | 9 | Costo en un solo lugar | ❌ rechazada: la pantalla se queda como está. El problema de conteo («Generar ✦ 100» cuando el primer cobro es ✦ 10) quedó anotado en Trello |
 | 10 | Accesibilidad | ❓ por explicar al dueño |
+
+## 9. Rutas por nivel: dónde quedó el inicio y lo que sigue
+
+Fecha: 2026-10-22. E1–E4 ya están en `dev` (PR #203); E5 y E6, en la rama de
+trabajo hacia `dev`. Lo que sigue es **plan**, todavía sin código.
+
+### Dónde quedó (E1 a E5; E6, las pruebas de navegador y los docs)
+
+El inicio es **una página por nivel**, sin router. El mapa es la principal,
+`/estudio/` (`web/estudio/index.html`); cada área es `/estudio/<área>/`, cada
+grupo `/estudio/<área>/<grupo>/` y la caja, una página con tres direcciones
+(`/estudio/marketing/distrito/imagen/`, `video/` y `edicion/`). Son 16 páginas,
+todas generadas desde `web/src/marca/menu.ts` (`rutas.ts` las enumera,
+`paginas.ts` escribe su HTML con `npm run niveles` y `estudio.test.ts` exige que
+no se desvíen). `server/web.py` sirve la raíz, corrige con un 302 relativo lo
+tecleado sin barra o en mayúsculas, manda `/estudio/inicio/` a `/estudio/` y las
+entradas de antes (`?prompt=`, `?brief=`, `?blotato=conectar`) a la caja o al
+grupo Blotato, y contesta un 404 con página. Por etapas: E1–E4 (servidor,
+direcciones, componentes y las 16 páginas), E5.1 (los enlaces van directo a cada
+nivel), E5.2 (la raíz se sirve y lo viejo redirige), E5.3 (se retira la página
+única) y E6 (los e2e por páginas de nivel, `web/e2e/niveles.spec.ts` y
+`web/e2e/recorrido.ts`, y estos docs). El detalle:
+`docs/migracion/inicio.md` § «Rutas por nivel»; la carta: `docs/DISENO.md` §7; el
+QA manual: `docs/QA-UI.md` § inicio; la operación: `docs/OPERACION.md`.
+
+**Decisiones del dueño que rigen el corte** (así se citan en estos docs; D9
+también en `paginas.ts`):
+
+| # | Decisión |
+|---|---|
+| D5 | Un área o un grupo vacío tiene su página, «Todavía no está disponible.», con 200 (no un 404) |
+| D6 | Las migas de hoy: la del área lleva al mapa y la del grupo, a las opciones del área |
+| D9 | La bandeja «Tus trabajos» va en todas las páginas de nivel (`CON_BANDEJA` en `paginas.ts`) |
+| D10 | Sin texto de apoyo: las páginas de nivel no suman párrafos de ayuda, y Imagen, Video y Edición salen en su lista sin línea de apoyo |
+| D11 | Sin aviso al salir de la caja: salir a un nivel superior descarta lo escrito; cambiar de pestaña dentro de la caja lo conserva |
+| D12 | Esc como hoy: en las opciones de un área sube al mapa; en el mapa, en un grupo y en la caja no hace nada |
+| D13 | Redirecciones con 302, no 301 |
+| D14 | El 404 con el texto que eligió el dueño: «No encontramos esa página», «La dirección no existe o cambió de lugar.», «Subir un nivel» · «Ir al inicio» |
+
+### Lo que sigue (plan)
+
+| Etapa | Qué | Cómo |
+|---|---|---|
+| **E7 · las hojas a su ruta anidada** | Las 9 hojas del mapa dejan su carpeta plana (`/estudio/agenda/`…) por la de su lugar (`/estudio/marketing/blotato/agenda/`…) | **Una hoja por commit**, en este orden: primero las cuatro que nacieron en la UI nueva, **COI** (`central/distrito/coi`), **Biblioteca** (`central/distrito/biblioteca`), **Constructor** y **Asistente** (`automatizaciones/distrito/…`); después **Agenda**, **Competencia** y **Métricas** (`marketing/blotato/…`), **MIX** (`marketing/avanzado/automaticas`: en el menú se llama `automaticas`) y la **Copiadora de estilos** (`marketing/avanzado/estilos`). Cada commit quita su fila de `HOJAS_AUN_PLANAS` (`web/src/marca/estudio.test.ts`, que ya lo exige) y la dirección plana de antes tendría que seguir llevando a la nueva con un 302, como hoy `/estudio/inicio/` (`alias_del_estudio()` lo deduce de `PANTALLAS[p].nueva`). Las pantallas que el mapa no tiene (admin, clip, crear, imágenes, shorts, subir) se quedan planas (`PLANAS`) |
+| **E8 · retirar la deuda de E5.3** | `Inicio.tsx`, `Recorrido.tsx` y `estadoRecorrido.ts`: el inicio de una sola página que ya ninguna página monta (el recorrido en página, `?desde=&ver=`, la `hoja` y su «Volver a …») | Antes de borrar, llevar a su lugar lo que la caja y las páginas de nivel todavía les toman (la caja se pinta con `Recorrido`; las migas, Esc y la guarda del doble clic salen de `estadoRecorrido.ts`) y mudar a la página del grupo las pruebas `inicio.menu.*` e `inicio.blotato.*` sin cambiar su ID (`tests/test_migracion_ui.py` las exige) |
+| **E9 · afinado (opcional)** | Lo que el dueño pida después de recorrer E7 y E8 en dev | Sin alcance fijado |

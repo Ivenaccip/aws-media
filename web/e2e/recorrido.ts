@@ -28,8 +28,10 @@
 //   · las direcciones:         URL_MAPA, URL_MARKETING, URL_DISTRITO, URL_BLOTATO, URL_CAJA[imagen|video|edicion], TITULO_MAPA
 //   · dónde está la página:    rutaDe (camino), direccionDe (camino + query), esperarRuta (espera a un camino, ya cargado)
 //   · abrir:                   abrirInicio(page, url = URL_MAPA), abrirLaCaja(page, url = URL_CAJA.video)
-//   · señalar:                 region, tarjeta, paso, migas, ficha, fichaApagada, opcion, herramienta, riel, volverA, algunVolver
+//   · señalar:                 region, tarjeta, paso, migas, ficha, fichaApagada, cualquierFicha, opcion, herramienta, tarjetasDeLaLista, riel,
+//                              volverA, algunVolver, migaDeHoja (las migas de una pantalla hoja, fuera de la región)
 //   · moverse (clic + espera): irAlMapa, elegir(área, grupo), elegirHerramienta(nombre), irA(área, grupo)
+//   · lo que NO navega:        vigilarNavegaciones (antes de abrir), sinNavegar(page, acción, ruta) — sin esperar un rato fijo
 //   · foco y medidas:          enfocado, sobraAlLado, lineasDe
 //
 // Los textos y las direcciones están escritos a mano a propósito (no se importan de marca/menu.ts ni de marca/rutas.ts): si alguien cambia
@@ -185,6 +187,10 @@ export const ficha = (page: Page, area: string): Locator =>
 export const fichaApagada = (page: Page, area: string): Locator =>
   region(page).getByRole('group', { name: 'Áreas', exact: true }).getByRole('button', { name: new RegExp(`^${area}`) });
 
+/** Una ficha del mapa, se abra o no: el enlace de las que se abren (`ficha`) o el botón quieto de las apagadas (`fichaApagada`). Para lo
+ *  que se mide igual en las cinco (dónde caen, cuánto miden, su tono). */
+export const cualquierFicha = (page: Page, area: string): Locator => ficha(page, area).or(fichaApagada(page, area));
+
 /** Una de las opciones de un área: un ENLACE a la página del grupo. */
 export const opcion = (page: Page, area: string, grupo: string): Locator =>
   region(page).getByRole('group', { name: area, exact: true }).getByRole('link', { name: new RegExp(`^${grupo}`) });
@@ -192,6 +198,10 @@ export const opcion = (page: Page, area: string, grupo: string): Locator =>
 /** Una herramienta de la lista de un grupo (Imagen · Video · Edición en Marketing › Distrito): un ENLACE a su página. */
 // la lista es un <ul>: las migas son un <ol> y también traen enlaces
 export const herramienta = (page: Page, nombre: string): Locator => region(page).locator('ul').getByRole('link', { name: new RegExp(`^${nombre}`) });
+
+/** Todas las tarjetas-enlace de la lista de un grupo, en orden (las de Blotato, apagadas o no; COI y la Biblioteca…). Lo «Próximamente» no
+ *  es un enlace y no cuenta; las migas tampoco: son de otra lista. */
+export const tarjetasDeLaLista = (page: Page): Locator => region(page).locator('ul').getByRole('link');
 
 /** «Volver a Agenda tus publicaciones»: ya NO existe (las migas de las pantallas hoja van directo al mapa y a las opciones del área, y volver
  *  a donde se estaba es el «atrás» del navegador). Se conserva para afirmar que no está: `await expect(volverA(page, '…')).toHaveCount(0)`. */
@@ -206,6 +216,11 @@ export const algunVolver = (page: Page): Locator => region(page).locator('button
  *  (`history.replaceState`), sin agregar historia. */
 export const riel = (page: Page, familia: string): Locator =>
   page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: familia, exact: true });
+
+/** Una miga de una pantalla HOJA (la agenda, la Copiadora, el Constructor…), que no tiene la región del recorrido: «Ir al mapa para cambiar
+ *  de área (ahora: Marketing)» o «Ir a las opciones de Marketing (ahora: Blotato)». Son enlaces directos a `/estudio/` y a `/estudio/<área>/`. */
+export const migaDeHoja = (page: Page, nombre: RegExp): Locator =>
+  page.getByRole('navigation', { name: 'Dónde estás' }).getByRole('link', { name: nombre });
 
 // ---------------------------------------------------------------------------
 // moverse por el recorrido (cada paso es una página: se espera a que cargue)
@@ -235,6 +250,50 @@ export async function irA(page: Page, area: string, grupo: string) {
   await expect(paso(page)).toBeVisible();
   if ((await paso(page).textContent()) !== 'Elige un área') await irAlMapa(page);
   await elegir(page, area, grupo);
+}
+
+// ---------------------------------------------------------------------------
+// lo que NO navega (Esc en el mapa, un clic en lo apagado, el segundo clic de un doble clic)
+//
+// Para afirmar que algo NO pasó no hay evento que esperar, y esperar un rato fijo «a ver si navega» es lento y no prueba nada si la máquina va
+// lenta. Lo que haría navegar a estas páginas (un enlace, Esc → `location.assign`) EMPIEZA la navegación dentro del mismo clic o de la misma
+// tecla, y la Navigation API lo anuncia en ese instante con su evento `navigate`, antes de pedir nada al servidor. Así que: cada documento se
+// marca al nacer y anota las navegaciones que empieza; tras la acción, el documento tiene que ser el mismo y no haber anotado ninguna.
+
+interface Vigia {
+  documento: number;
+  anotadas: string[];
+}
+
+/** Desde aquí, cada documento que abra `page` se marca y anota las navegaciones que empieza. Va ANTES de abrir la primera página; lo lee
+ *  `sinNavegar`. Sin la Navigation API no se marca nada, y `sinNavegar` lo dice en vez de pasar sin mirar. */
+export async function vigilarNavegaciones(page: Page) {
+  await page.addInitScript(() => {
+    const nav = (window as unknown as { navigation?: EventTarget }).navigation;
+    if (!nav) return;
+    const vigia: Vigia = { documento: Math.random(), anotadas: [] };
+    Object.defineProperty(window, '__vigia', { value: vigia });
+    nav.addEventListener('navigate', e => vigia.anotadas.push((e as unknown as { destination: { url: string } }).destination.url));
+  });
+}
+
+const leerVigia = (page: Page) => page.evaluate(() => (window as unknown as { __vigia?: Vigia }).__vigia ?? null);
+
+/** Hace `accion` (un clic, una tecla) y afirma que NO navegó: la página es el mismo documento, no empezó ninguna navegación y sigue en
+ *  `ruta`. Necesita `vigilarNavegaciones` antes de abrir la página. Se compara con lo anotado ANTES de la acción (lo que el documento hizo al
+ *  cargar no cuenta); un `history.replaceState` DURANTE la acción sí cuenta (la Navigation API también lo anuncia): un cambio de pestaña de la
+ *  caja no va aquí. */
+export async function sinNavegar(page: Page, accion: () => Promise<unknown>, ruta: string, donde = '') {
+  const antes = await leerVigia(page);
+  expect(antes, 'falta vigilarNavegaciones(page) antes de abrir la página (o el navegador no tiene la Navigation API)').not.toBeNull();
+  await accion();
+  // si la acción navegó, el documento de antes se está yendo (`Execution context was destroyed`) o ya es otro
+  const despues = await leerVigia(page).catch((e: unknown) => {
+    throw new Error(`${donde}: la acción navegó (${String(e).split('\n')[0]})`);
+  });
+  expect(despues?.documento, `${donde}: la página se recargó o cambió`).toBe(antes!.documento);
+  expect(despues?.anotadas, `${donde}: la acción empezó a navegar`).toEqual(antes!.anotadas);
+  expect(rutaDe(page), donde).toBe(ruta);
 }
 
 // ---------------------------------------------------------------------------
