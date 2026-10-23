@@ -23,12 +23,14 @@ export interface PropsBlotato {
   errorCarga?: string;
   /** Cada respuesta del server (el menú se enciende o apaga con ella). */
   alSaber: (e: EstadoBlotato) => void;
-  /** A dónde vuelve el foco al cerrar si lo que lo tenía al montarse el diálogo ya no se deja enfocar (el campo de la clave, que se
-   *  enfoca solo): el botón o la tarjeta que lo abrió. */
-  focoDeRespaldo?: RefObject<HTMLElement | null>;
+  /**
+   * A dónde vuelve el foco al cerrar. Sin él, a lo que lo tenía cuando el diálogo se montó: si ya se monta con el campo de la clave enfocado
+   * (la lectura llegó antes que el código), eso es el campo y al cerrar no hay a dónde volver. Quien abre lo anota ANTES de abrir.
+   */
+  focoAlCerrar?: RefObject<HTMLElement | null>;
 }
 
-export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', alSaber, focoDeRespaldo }: PropsBlotato) {
+export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', alSaber, focoAlCerrar }: PropsBlotato) {
   const [formulario, setFormulario] = useState(false);
   const [clave, setClave] = useState('');
   const [error, setError] = useState('');
@@ -97,7 +99,7 @@ export function DialogoBlotato({ abierto, alCambiar, estado, errorCarga = '', al
         alCambiar={cerrar}
         titulo={titulo}
         descripcion="Con tu cuenta de Blotato conectada podrás programar tus videos y ver cómo rinden en tus redes."
-        {...(focoDeRespaldo ? { focoDeRespaldo } : {})}
+        focoAlCerrar={focoAlCerrar}
       >
         {cargando && <p className="mt-4 mb-0 text-sm text-secundario">Revisando tu conexión…</p>}
 

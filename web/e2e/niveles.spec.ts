@@ -30,9 +30,11 @@ import {
   opcion,
   paso,
   region,
+  relojFijo,
   riel,
   rutaDe,
   simular,
+  sinNavegar,
   sobraAlLado,
   TITULO_MAPA,
   URL_BLOTATO,
@@ -40,6 +42,7 @@ import {
   URL_DISTRITO,
   URL_MAPA,
   URL_MARKETING,
+  vigilarNavegaciones,
   type EstadoDeBlotato,
   type Herramienta,
 } from './recorrido';
@@ -336,6 +339,13 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     ['/estudio/marketing', URL_MARKETING, 'Estudio de video · Marketing'],
     ['/estudio/Marketing/', URL_MARKETING, 'Estudio de video · Marketing'],
     ['/estudio//marketing//distrito', URL_DISTRITO, 'Estudio de video · Marketing · Distrito'],
+    // «//» con barra final y las escritas con «%XX»: la página las reconocería igual (decodifica), pero el servidor las corrige para que la barra quede limpia
+    ['/estudio//marketing/', URL_MARKETING, 'Estudio de video · Marketing'],
+    ['/estudio/%6Darketing/', URL_MARKETING, 'Estudio de video · Marketing'],
+    ['/estudio/marketing%2Fdistrito/', URL_DISTRITO, 'Estudio de video · Marketing · Distrito'],
+    // un parámetro repetido: el servidor decide con el PRIMERO, como la página (URLSearchParams.get)
+    ['/estudio/?blotato=conectar&blotato=otra', `${URL_BLOTATO}?blotato=conectar&blotato=otra`, 'Estudio de video · Marketing · Blotato'],
+    ['/estudio/?blotato=otra&blotato=conectar', `${URL_MAPA}?blotato=otra&blotato=conectar`, TITULO_MAPA],
     ['/estudio/marketing/distrito/Video', URL_CAJA.video, 'Estudio de video · Marketing · Distrito · Video'],
     ['/estudio/central?x=1', '/estudio/central/?x=1', 'Estudio de video · Central'],
     ['/estudio', URL_MAPA, TITULO_MAPA],
@@ -389,6 +399,35 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     await page.getByRole('link', { name: 'Subir un nivel' }).click();
     await esperarRuta(page, URL_DISTRITO);
     await expect(paso(page)).toHaveText('Distrito');
+  });
+
+  // El servidor de estas pruebas (e2e/servidor.mjs) repite el de verdad: sirve una página solo si su dirección es una del registro de dist.
+  // Con `request` la dirección llega TAL CUAL (el navegador normalizaría los «..»).
+  test('una dirección con «..%2f» no se sale de dist: es un 404 y no el index.html de otra carpeta', async ({ request }) => {
+    // desde web/dist/estudio, tres niveles arriba es la raíz del repo, y static/index.html (el inicio clásico) existe
+    for (const url of ['/estudio/..%2f..%2f..%2fstatic%2f', '/estudio/..%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2ftmp%2f']) {
+      const respuesta = await request.get(url, { maxRedirects: 0 });
+      expect(respuesta.status(), url).toBe(404);
+      expect(await respuesta.text(), url).not.toContain('<html');
+    }
+  });
+
+  test('un «%» mal formado es un 404 y el servidor sigue en pie', async ({ request }) => {
+    expect((await request.get('/estudio/%E0%A4%A/', { maxRedirects: 0 })).status()).toBe(404);
+    expect((await request.get('/api/%E0%A4%A', { maxRedirects: 0 })).status()).toBe(404);
+    expect((await request.get('/__e2e')).ok()).toBe(true);
+  });
+
+  test('un asset que falta o escrito de lado es un 404 JSON, nunca HTML', async ({ request }) => {
+    for (const url of ['/estudio/assets/no-existe.js', '/estudio//assets/x.js', '/estudio/x/../assets/y.js']) {
+      const respuesta = await request.get(url, { maxRedirects: 0, headers: { Accept: 'text/html' } });
+      expect(respuesta.status(), url).toBe(404);
+      expect(respuesta.headers()['content-type'], url).toContain('application/json');
+    }
+    // lo que con «..» sale de assets ya no es un asset: es un nivel que no existe y, a quien pide HTML, la página del 404 (como la app real)
+    const fuera = await request.get('/estudio/assets/../marketing/nada/', { maxRedirects: 0, headers: { Accept: 'text/html' } });
+    expect(fuera.status()).toBe(404);
+    expect(await fuera.text()).toContain('<h1>No encontramos esa página</h1>');
   });
 });
 
@@ -531,35 +570,71 @@ test.describe('el celular', () => {
   test.describe('doble clic', () => {
     test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
+    // El `Date.now()` de la página está quieto (`relojFijo`): cuánto tiempo pasó entre la página nueva y el segundo clic es lo que la prueba dice,
+    // no lo que tarde la máquina en llegar (con un reloj de verdad, la prueba medía la velocidad de la CPU y no la guarda).
     test('un doble clic lento sobre «Marketing» no salta dos niveles', async ({ page }) => {
       await simular(page);
+      await vigilarNavegaciones(page);
       await abrirInicio(page);
       const caja = (await ficha(page, 'Marketing').boundingBox())!;
       const x = caja.x + caja.width / 2;
       const y = caja.y + caja.height / 2;
 
+      await relojFijo(page);
       await page.mouse.move(x, y);
       await page.mouse.down({ clickCount: 1 });
       await page.mouse.up({ clickCount: 1 });
       await esperarRuta(page, URL_MARKETING);
       await expect(paso(page)).toHaveText('Elige un grupo');
-      await page.waitForTimeout(80);
+      await relojFijo(page, 80);
 
       // el punto del primer clic cae ahora sobre la tarjeta «Distrito» (y nada lo tapa): si no, esta prueba no mide nada
       const enElPunto = await page.evaluate(([px, py]) => document.elementFromPoint(px!, py!)?.closest('a')?.getAttribute('href') ?? null, [x, y]);
       expect(enElPunto, 'la tarjeta «Distrito» no está bajo la ficha «Marketing»').toBe(URL_DISTRITO);
 
-      // el segundo clic del doble clic llega ya sobre la página nueva (detail 2, a menos de 500 ms de cargada)
-      await page.mouse.move(x, y);
-      await page.mouse.down({ clickCount: 2 });
-      await page.mouse.up({ clickCount: 2 });
-      await page.waitForTimeout(900);
-      expect(rutaDe(page), 'el doble clic saltó dos niveles').toBe(URL_MARKETING);
+      // el segundo clic del doble clic llega ya sobre la página nueva (detail 2, 80 ms después de cargada)
+      await sinNavegar(
+        page,
+        async () => {
+          await page.mouse.move(x, y);
+          await page.mouse.down({ clickCount: 2 });
+          await page.mouse.up({ clickCount: 2 });
+        },
+        URL_MARKETING,
+        'el doble clic saltó dos niveles',
+      );
 
       // el control: un clic deliberado en el mismo punto, pasado el medio segundo, sí abre la tarjeta
+      await relojFijo(page, 600);
       await page.mouse.move(x, y);
       await page.mouse.down({ clickCount: 1 });
       await page.mouse.up({ clickCount: 1 });
+      await esperarRuta(page, URL_DISTRITO);
+    });
+
+    test('la guarda dura exactamente medio segundo: a los 499 ms el segundo clic se descarta y a los 500 ya pasa', async ({ page }) => {
+      await simular(page);
+      await vigilarNavegaciones(page);
+      await abrirInicio(page);
+      const caja = (await ficha(page, 'Marketing').boundingBox())!;
+      const x = caja.x + caja.width / 2;
+      const y = caja.y + caja.height / 2;
+      const segundoClic = async () => {
+        await page.mouse.move(x, y);
+        await page.mouse.down({ clickCount: 2 });
+        await page.mouse.up({ clickCount: 2 });
+      };
+
+      await relojFijo(page);
+      await page.mouse.click(x, y);
+      await esperarRuta(page, URL_MARKETING);
+      await expect(paso(page)).toHaveText('Elige un grupo');
+      // VENTANA_DOBLE_CLIC_MS (src/pantallas/inicio/estadoRecorrido.ts): 499 ms después todavía es «el segundo clic de un doble clic»…
+      await relojFijo(page, 499);
+      await sinNavegar(page, segundoClic, URL_MARKETING, 'a los 499 ms');
+      // …y a los 500 ya es una elección: abre la tarjeta que cae bajo el punto
+      await relojFijo(page, 500);
+      await segundoClic();
       await esperarRuta(page, URL_DISTRITO);
     });
   });

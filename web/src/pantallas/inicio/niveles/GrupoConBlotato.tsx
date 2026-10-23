@@ -12,12 +12,11 @@
 //   · la lectura del estado (`logica`: api, tarifas, modelos…) va con import() y se pide al montar;
 //   · el diálogo (Blotato.tsx: Radix, Confirmar, Guardado…) va con import() y solo se pide la primera vez que se abre. Avanzado, que no
 //     ofrece el botón, no lo trae hasta que alguien pulsa una herramienta apagada.
+//   · el foco: lo que lo tenía se anota al PEDIR abrir (`abrir`), no cuando el diálogo se monta. Si la lectura llega antes que el código,
+//     el diálogo se monta ya con el campo de la clave enfocado (su autoFocus) y ya no hay botón que recordar: al cerrar el foco caía a <body>.
+//     Lo que se pulsó llega de `Pantallas` (`desde`): un navegador que no enfoca lo que se pulsa con el ratón (Safari, con un botón) no lo
+//     deja en `document.activeElement`.
 // Si el diálogo no llega, `LimiteDeCarga` lo dice donde se pulsó; la lista sigue ahí.
-//
-// El foco al cerrar: el diálogo lo devuelve a lo que lo tenía cuando SE MONTÓ (ui/Dialogo.tsx). Con su código pedido con import(), la
-// lectura del estado suele llegar antes (es lo que pasa la primera vez que se abre): se monta ya con el campo de la clave enfocado
-// (autoFocus) y no sabía a quién volver, así que al cerrar el foco caía a <body>. Por eso aquí se anota quién lo abrió (el botón o la
-// tarjeta apagada que se pulsó, aunque el navegador no la haya enfocado) y se le pasa de respaldo.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { GrupoMenu, PantallaMenu } from '../../../marca/menu';
@@ -47,11 +46,13 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
   const [pedido, setPedido] = useState(false);
   const [estado, setEstado] = useState<EstadoBlotato | null>(null);
   const [error, setError] = useState('');
-  // quién lo abrió (null si lo abrió la dirección, ?blotato=conectar): a él vuelve el foco al cerrar
-  const quienAbrio = useRef<HTMLElement | null>(null);
+  // lo que se pulsó para abrir (el botón de conectar, una tarjeta apagada) o, sin eso, lo que tenía el foco: a donde vuelve al cerrar.
+  // null = nada (abierto por la dirección)
+  const origenDelFoco = useRef<HTMLElement | null>(null);
 
   const abrir = useCallback((desde?: HTMLElement) => {
-    quienAbrio.current = desde ?? null;
+    const activo = desde ?? document.activeElement;
+    origenDelFoco.current = activo instanceof HTMLElement && activo !== document.body ? activo : null;
     setEstado(null);
     setError('');
     setAbierto(true);
@@ -92,13 +93,13 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
             <DialogoBlotato
               abierto={abierto}
               alCambiar={setAbierto}
+              focoAlCerrar={origenDelFoco}
               estado={estado}
               errorCarga={error}
               alSaber={d => {
                 setEstado(d);
                 setConectado(d.conectado);
               }}
-              focoDeRespaldo={quienAbrio}
             />
           </Suspense>
         </LimiteDeCarga>

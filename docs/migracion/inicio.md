@@ -64,6 +64,23 @@ montan `herramienta.tsx` (`Inicio` con `lugar`). La lectura del estado de Blotat
 `import()`), y su diálogo, la primera vez que se abre. Las hojas (Agenda, COI, el Constructor…) siguen en su carpeta plana de siempre
 (`/estudio/agenda/`, `/estudio/coi/`…): mudarlas a su dirección anidada es E7, que todavía no se hizo.
 
+### Cuánto pesa cada página
+
+Medido el 22-oct-2026 con el build de esta rama (JS comprimido con gzip: los scripts de módulo de
+la página y sus imports estáticos; los `import()` se piden aparte):
+
+| Página | Archivos JS | JS crudo | JS gzip | ¿Trae la Caja? |
+|---|---:|---:|---:|---|
+| La página única de antes, `/estudio/inicio/` (commit `af168b0`, el anterior a las rutas por nivel) | 23 | 428,6 kB | **139,2 kB** | sí |
+| Mapa, 5 áreas y 7 grupos (13 páginas, todas iguales) | 5 | 248,1 kB | **79,7 kB** | no |
+| `…/distrito/imagen/`, `…/video/` y `…/edicion/` (3 páginas) | 27 | 434,8 kB | **143,5 kB** | sí |
+
+Las páginas de navegación cargan ≈ 43 % menos JavaScript y no piden ninguna de las listas de la Caja
+(`/api/proyectos`, `/api/slots`, `/api/imagenes`, `/api/edicion/proyectos`, `/api/clip`); Blotato (25,3 kB gzip)
+solo se pide en `/estudio/marketing/blotato/` y `/estudio/marketing/avanzado/`. La Caja pesa lo que pesaba
+(+4,3 kB por los módulos de rutas): la ganancia está en las páginas por las que se pasa siempre. Los topes que
+vigila `tests/test_web_niveles.py` (90 000 B y 150 000 B) dejan holgura sobre estas cifras.
+
 ### Cómo se mueve uno
 
 - **Todo lo que lleva a otro nivel es un enlace** (`<a href>`): las fichas del mapa, las tarjetas de grupo, las tarjetas de la lista

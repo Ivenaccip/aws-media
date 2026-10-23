@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { urlDeCaja } from '../../marca/rutas';
 import { oirCobros } from '../../prueba/servidor';
 import { Clip } from './Clip';
 import type { Clip as FichaClip, Config } from './logica';
@@ -366,7 +367,10 @@ describe('clip', () => {
     // UI·26: los clips ya hechos viven en «Mis videos» del inicio, no aquí
     const f = servidor({ '/api/clip': () => json({ clips: [LISTO] }) });
     render(<Clip />);
-    expect(screen.getByRole('link', { name: '«Mis videos»' })).toHaveAttribute('href', '/estudio/');
+    // «Mis videos» ya no está en el mapa (/estudio/, «Elige un área»): el enlace lleva a la caja, en la pestaña Video
+    const enlace = screen.getByRole('link', { name: '«Mis videos»' });
+    expect(enlace).toHaveAttribute('href', urlDeCaja('videos'));
+    expect(enlace).toHaveAttribute('href', '/estudio/marketing/distrito/video/');
     await waitFor(() => expect(f.mock.calls.some(c => c[0] === '/api/clip')).toBe(true));
     await screen.findByRole('button', { name: /Generar ✦/ });
     expect(screen.queryByText('Un perro en la playa')).toBeNull();

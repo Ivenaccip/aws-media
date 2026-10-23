@@ -156,10 +156,11 @@ def rutas(estudio: Path) -> frozenset[str]:
 def entrada_vieja(query_params, rutas_: frozenset[str]) -> str | None:
     """Si la raíz recibe un parámetro de los de antes, a qué página mandarlo (sin query: lo agrega quien redirige).
 
-    Con un parámetro repetido cuenta el PRIMERO, como en el navegador (`URLSearchParams.get`, que es lo que lee la página): con el último
-    (el `query_params[p]` de Starlette) `?blotato=conectar&blotato=otra` y la página que lo recibe dirían cosas distintas."""
+    Con un parámetro repetido manda el PRIMER valor, como `URLSearchParams.get` en la página y `params.get` en
+    web/e2e/servidor.mjs. `query_params[param]` de Starlette devuelve el último y el servidor decidía al revés que el cliente."""
     for param, valor, destino in ENTRADAS_VIEJAS:
-        if param in query_params and (valor is None or query_params.getlist(param)[0] == valor) and destino in rutas_:
+        valores = query_params.getlist(param)
+        if valores and (valor is None or valores[0] == valor) and destino in rutas_:
             return destino
     return None
 

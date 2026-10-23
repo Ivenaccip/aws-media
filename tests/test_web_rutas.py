@@ -281,13 +281,15 @@ def test_la_raiz_con_cualquier_otro_query_se_sirve_tal_cual(dist, pedido):
 
 
 @pytest.mark.parametrize("pedido, destino", [
+    # el cliente (URLSearchParams.get) y web/e2e/servidor.mjs leen el PRIMER valor de un parámetro repetido; Starlette, con
+    # query_params[param], devolvía el ÚLTIMO y el servidor decidía al revés que la página
     ("/estudio/?blotato=conectar&blotato=otra", "/estudio/marketing/blotato/?blotato=conectar&blotato=otra"),
-    ("/estudio/?blotato=otra&blotato=conectar", None),
     ("/estudio/?blotato=conectar&blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar&blotato=conectar"),
+    ("/estudio/?blotato=otra&blotato=conectar", None),
+    ("/estudio/?blotato=&blotato=conectar", None),
+    ("/estudio/?prompt=a&prompt=b", "/estudio/marketing/distrito/imagen/?prompt=a&prompt=b"),
 ])
-def test_con_un_parametro_de_antes_repetido_cuenta_el_primero_como_en_el_navegador(dist, pedido, destino):
-    """La página que lo recibe lee `URLSearchParams.get` (el PRIMER valor; GrupoConBlotato abre el diálogo con él): si el servidor mirara
-    el último, `?blotato=otra&blotato=conectar` llevaría al grupo Blotato sin abrir nada, y al revés serviría el mapa sin el diálogo."""
+def test_con_un_parametro_repetido_el_servidor_decide_con_el_primero_como_la_pagina(dist, pedido, destino):
     r = _c(dist).get(pedido)
     if destino is None:
         assert r.status_code == 200 and "<title>/estudio/</title>" in r.text, pedido
@@ -1037,7 +1039,10 @@ _FILAS_E2E = [
     ("GET", "/estudio/marketing/index.html", {}), ("GET", "/estudio/index.html", {}),
     ("GET", "/estudio/nada/", {}), ("GET", "/estudio/nada/", HTML), ("GET", "/estudio/marketing/distrito/nada/", HTML),
     ("GET", "/Estudio/Marketing/nada/x/", HTML), ("GET", "/estudio/huerfano/", HTML), ("GET", "/estudio/nada/", {"Accept": "text/html;q=0"}),
-    ("GET", "/estudio/assets/no-existe.js", HTML), ("GET", "/estudio/Assets/no-existe.js", HTML),
+    ("GET", "/estudio/assets/no-existe.js", HTML), ("GET", "/estudio/Assets/no-existe.js", HTML), ("GET", "/estudio//assets/x.js", HTML),
+    ("GET", "/estudio/x/../assets/y.js", HTML), ("GET", "/estudio/assets/../marketing/nada/", HTML), ("GET", "/estudio/assets/../marketing/", {}),
+    ("GET", "/estudio/..%2f..%2f..%2fstatic%2f", {}), ("GET", "/estudio/..%2f..%2f..%2fstatic%2f", HTML), ("GET", "/estudio/%E0%A4%A/", HTML),
+    ("GET", "/estudio/marketing%2Fdistrito/", {}),
     ("POST", "/estudio/", {}), ("POST", "/estudio/?prompt=x", {}), ("POST", "/estudio/marketing/", {}), ("POST", "/estudio/inicio/", {}),
     ("GET", "/estudio/", {"Cookie": "ui=clasica"}), ("GET", "/estudio/?blotato=conectar", {"Cookie": "ui=clasica"}),
     ("GET", "/estudio/", {"Cookie": "ui=nueva"}),

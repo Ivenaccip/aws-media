@@ -112,6 +112,11 @@ El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos:
   vaciar el cuadro; el cuadro queda `aria-describedby` de él.
 - Sin parámetros no cambia nada: el mismo mapa, la misma caja en Video, el foco donde estaba.
 
+*(22-oct-2026, rutas por nivel.)* La Biblioteca ya no pasa por el mapa: su enlace es la página de la Caja en esa pestaña, y el texto lo
+lee `Inicio` con `lugar` (la Caja); `estadoInicial`, que con texto abría la caja «en lugar del mapa», solo lo usa el inicio de una sola
+página, que ya no se sirve. Si alguien manda el enlace de antes (`/estudio/?prompt=…` o `/estudio/inicio/?prompt=…`), el servidor lo
+reenvía a la misma Caja (`docs/migracion/inicio.md` § «Rutas por nivel»).
+
 **Plan B** (si el inicio diera problemas): en `logica.ts` la tabla `DESTINO` es la ÚNICA que sabe a dónde lleva cada caja; cambiar
 `ruta` de `/estudio/marketing/distrito/imagen/` a `/estudio/imagenes/` (parámetro `prompt`) y `/estudio/clip/` (parámetro `brief`) lleva directo a las
 pantallas que ya leían esos parámetros. No hace falta tocar nada más (la prueba de la dirección lo dirá).
