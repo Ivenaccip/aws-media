@@ -18,7 +18,14 @@ def _prod(**cambios):
         "/auth.js": (200, {"cache-control": "no-cache"}, ""),
     }
     r.update(cambios)
-    return lambda url: r[url.removeprefix("https://x")]
+
+    def pedir(url, seguir=True):
+        # como urllib: con `seguir` (lo de siempre) un 302 se sigue hasta su destino; sin él, se entrega el 302
+        st, h, cuerpo = r[url.removeprefix("https://x")]
+        if seguir and st in (301, 302, 303, 307, 308):
+            return pedir("https://x" + h["location"])
+        return st, h, cuerpo
+    return pedir
 
 
 def _fallas(res):
@@ -63,6 +70,49 @@ def test_la_principal_tiene_que_ser_una_pagina_que_revalida():
     en_cache = (200, {"content-type": "text/html", "cache-control": "public, max-age=14400"}, "")
     res = verificar("https://x", _prod(**{"/estudio/": en_cache}), set())
     assert _fallas(res) == ["principal no-cache (salió public, max-age=14400)"]
+
+
+def test_la_principal_no_puede_ser_un_302_aunque_su_destino_de_200():
+    """Como estaba main antes de las rutas por nivel: /estudio/ → 302 → /estudio/inicio/ (200, HTML, no-cache). Seguir el 302 lo daría
+    por bueno; la principal se pide sin seguirlo y falla."""
+    pagina = (200, {"content-type": "text/html; charset=utf-8", "cache-control": "no-cache"}, "<title>inicio</title>")
+    res = verificar("https://x", _prod(**{"/estudio/": (302, {"location": "/estudio/inicio/"}, ""), "/estudio/inicio/": pagina}), set())
+    assert _fallas(res) == ["principal /estudio/ 200 y HTML (salió 302, —)", "principal no-cache (salió —)"]
+
+
+def test_el_pedido_sin_seguir_entrega_el_302_de_verdad():
+    """`pedir(..., seguir=False)` contra un servidor local que redirige: el estado es 302 y su Location, no el 200 del destino."""
+    import http.server
+    import threading
+
+    from tools.verificar_web import pedir
+
+    class Manejador(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/estudio/":
+                self.send_response(302)
+                self.send_header("Location", "/estudio/inicio/")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"<title>inicio</title>")
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Manejador)
+    hilo = threading.Thread(target=srv.serve_forever, daemon=True)
+    hilo.start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}"
+        st, h, _ = pedir(base + "/estudio/", seguir=False)
+        assert st == 302 and h["location"] == "/estudio/inicio/"
+        assert pedir(base + "/estudio/")[0] == 200, "lo de siempre sigue el 302"
+    finally:
+        srv.shutdown()
+        srv.server_close()
 
 
 def test_una_direccion_sin_barra_tiene_que_llegar_a_una_pagina():

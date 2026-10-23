@@ -13,7 +13,8 @@ Solo hace GET; no toca AWS ni Cloudflare. Comprueba:
   5. Ninguna clave propia de tools/pricing.json viaja en los assets
      (la misma regla que tests/test_web_tuberia.py aplica al dist).
   6. Las rutas por nivel: la principal /estudio/ responde 200, HTML y `no-cache`
-     (ya no redirige), y /estudio/marketing —sin barra— termina, tras el 302 de
+     ella misma (ya no redirige: esa petición NO sigue redirecciones, así que un
+     302 falla), y /estudio/marketing —sin barra— termina, tras el 302 de
      server/web.py, en una página 200 de HTML.
 
 Lo único que queda fuera es lo que no mide una máquina: que el dueño abra la
@@ -35,10 +36,19 @@ BASE = "https://irremplazables.xyz"
 AGENTE = "Mozilla/5.0 (verificar_web; Irremplazables)"
 
 
-def pedir(url: str) -> tuple[int, dict[str, str], str]:
+class _SinSeguir(urllib.request.HTTPRedirectHandler):
+    """Un 302 se entrega tal cual (como HTTPError con su código) en vez de seguirlo."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def pedir(url: str, seguir: bool = True) -> tuple[int, dict[str, str], str]:
+    """GET a `url`: (estado, cabeceras en minúsculas, cuerpo). Con `seguir=False` no sigue redirecciones: el estado es el de esa URL."""
     req = urllib.request.Request(url, headers={"User-Agent": AGENTE})
+    abrir = urllib.request.urlopen if seguir else urllib.request.build_opener(_SinSeguir).open
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with abrir(req, timeout=20) as r:
             return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read().decode("utf-8", "replace")
@@ -82,8 +92,9 @@ def verificar(base: str, pedir=pedir, prohibidas: set[str] | None = None) -> lis
     anota(h.get("cache-control") == "no-cache", f"vitrina no-cache (salió {h.get('cache-control', '—')})")
     anota(h.get("x-robots-tag") == "noindex, nofollow", f"vitrina noindex (salió {h.get('x-robots-tag', '—')})")
 
-    # Rutas por nivel: la principal se sirve (no es un 302) y una dirección sin barra se corrige y llega a una página
-    st, h, _ = pedir(base + "/estudio/")
+    # Rutas por nivel: la principal se sirve (no es un 302: sin seguir redirecciones, un 302 a otra página daría el 200 de esa) y una
+    # dirección sin barra se corrige y llega a una página
+    st, h, _ = pedir(base + "/estudio/", seguir=False)
     anota(st == 200 and "text/html" in h.get("content-type", ""),
           f"principal /estudio/ 200 y HTML (salió {st}, {h.get('content-type', '—')})")
     anota(h.get("cache-control") == "no-cache", f"principal no-cache (salió {h.get('cache-control', '—')})")
