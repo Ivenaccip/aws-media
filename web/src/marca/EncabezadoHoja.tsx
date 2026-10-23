@@ -3,9 +3,9 @@
 // «Área › Grupo › Pantalla» sacadas de marca/menu.ts. Es el de COI y la Biblioteca, sin copiarlo: el Constructor y el Asistente de
 // Automatizaciones lo usan.
 //
-// Cada miga reabre su nivel en el inicio, como en las demás hojas: el área abre el mapa y el grupo, las opciones del área, estando
-// «desde» esta pantalla (`?desde=area.grupo.pantalla&ver=…`, urlDeInicio). La última miga es la pantalla donde estás: un chip quieto
-// (como en COI), no un enlace que no lleva a ningún lado.
+// Cada miga lleva a la página de su nivel, como en las demás hojas: el área, al mapa (/estudio/), y el grupo, a las opciones del área
+// (/estudio/<área>/), sin parámetros (urlDeInicio). La última miga es la pantalla donde estás: un chip quieto (como en COI), no un enlace
+// que no lleva a ningún lado.
 //
 // No es el `<Marco>` de las hojas con «← Estudio»: aquí el único `h1` es «Irremplazables» y el nombre de la pantalla lo pone quien
 // usa este encabezado, como `h2`.

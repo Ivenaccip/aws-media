@@ -94,7 +94,8 @@ cobra, y con el «sí» del dueño, «Importar ✦ N» de la pantalla de Shorts)
 43, 46, 47 y 49 a 66 se reescribieron en la segunda ronda del dueño (15-oct-2026,
 «el mapa es el inicio»):** se aterriza en el mapa, sin nada elegido; «Irremplazables»
 va arriba y fuera de cualquier tarjeta; solo la caja lleva tarjeta; ya no hay
-«Volver a …» (salvo el de la página de donde se llegó); y el 71 a 73 son lo nuevo de
+«Volver a …» (desde las rutas por nivel, tampoco el de la página de donde se
+llegó: los pasos N1 a N24 de abajo); y el 71 a 73 son lo nuevo de
 esa ronda (el botón «Iniciar» de Edición con el ancho del selector de modelo, y la
 frase de ayuda que ya no se ve). **El 53b (20-oct-2026)** es el área Automatizaciones ya
 encendida: Distrito con el Constructor y el Asistente, y «Tus automatizaciones» todavía sin
@@ -157,7 +158,7 @@ reescribieron (11, 14, 15, 43, 49, 51, 58 a 63, 66, 67, 88 y 89) o se retiraron
 | 11 | Desde el editor, «conectar Blotato» | Llega a Marketing › Blotato (`/estudio/marketing/blotato/`) con el diálogo abierto (ver N20) |
 | 12 | Modo avión y recargar la caja | «No pudimos traer tus proyectos» con Reintentar; no aparecen los tres caminos |
 | 13 | «Tus trabajos» con un render en curso | El cuadro de siempre, abajo a la derecha |
-| 14 | Teclear `/ui/clasica?pantalla=inicio` (el enlace «Usar la versión anterior» se quitó el 28-sep) | Llega a `/index.html`, el inicio clásico; durante 7 días `/index.html` ya no te redirige (sin la cookie va a `/estudio/`). `/estudio/` sigue siendo el mapa nuevo. `/ui/nueva?pantalla=inicio` borra la cookie y te lleva a `/estudio/` |
+| 14 | Teclear `/ui/clasica?pantalla=inicio` (el enlace «Usar la versión anterior» se quitó el 28-sep); luego, en el clásico, ir a otra pantalla y volver con «← Estudio»; cerrar sesión y entrar de nuevo | Llega a `/index.html`, el inicio clásico; durante 7 días `/index.html` ya no te redirige (sin la cookie va a `/estudio/`) y **`/estudio/` te lleva al clásico** (`/index.html`, con lo que traiga la dirección): «← Estudio» y el login te dejan en el clásico, no en el mapa nuevo. `/ui/nueva?pantalla=inicio` borra la cookie y te lleva a `/estudio/`, el mapa |
 | 15 | En la caja (mapa → Marketing → Distrito → Video, o directo `/estudio/marketing/distrito/video/`), tocar «Edición» del riel; mirar la barra | Tres botones: Imagen · Video · Edición (la caja sigue arrancando en Video); la barra pasa a `…/distrito/edicion/`. Aparecen el campo «Cuéntale a la IA qué quieres» (en su cuadro con borde, con la pista gris «Cuéntale a la IA qué quieres. Ejemplo: «Quita muletillas y silencios»»; **ya no hay una fila de ideas debajo**), el «+», el chip «Editar ▾» junto al «+» e «Iniciar» sin precio y **dorado**. **Debajo ya no hay ninguna frase** (antes, «Escribe qué quieres hacer con tu video.»): solo la oye quien usa lector de pantalla, como la descripción de «Iniciar» mientras no hay texto |
 | 16 | Tocar «Iniciar» sin video | Aviso abajo a la derecha: «Primero agrega el video: pulsa el «+» o arrástralo a la caja.»; no cobra |
 | 17 | «+» → «Subir de tu computadora» y elegir un MP4 de unos 12 min (o arrastrarlo a la caja; pegar con Ctrl+V no hace nada) | La tarjeta con nombre, formato y tamaño; barra de progreso que avanza de verdad; el botón dice «Subiendo…» y la nota «Cuando termine de subir calculamos el precio. Hasta entonces no se cobra nada.»; no cobra |

@@ -1,8 +1,9 @@
 // Del recorrido en página al recorrido por direcciones: el MISMO estado y las MISMAS acciones de estadoRecorrido.ts, pero el paso lo
 // da la dirección (una página por nivel) y cada acción es ir a otra dirección. Todo puro, para probarlo sin React ni DOM.
 //
-// Las entradas de ANTES al inicio (`?prompt=`, `?brief=`, `?blotato=conectar`, `?desde=&ver=`) NO se atienden aquí: las manda a su
-// página el servidor, con un 302 (server/web.py, tabla ENTRADAS_VIEJAS). Aquí no hay salto de JavaScript que las reinterprete.
+// Las entradas de ANTES al inicio (`?prompt=`, `?brief=`, `?blotato=conectar`) NO se atienden aquí: las manda a su página el servidor,
+// con un 302 (server/web.py, tabla ENTRADAS_VIEJAS). `?desde=&ver=` no se reenvía: el mapa se sirve tal cual y nivel.tsx lo quita de la
+// dirección. Aquí no hay salto de JavaScript que las reinterprete.
 import { MENU } from '../../../marca/menu';
 import { RUTA_MAPA, urlDeArea, urlDeGrupo, type Nivel } from '../../../marca/rutas';
 import { REPOSO, areaDe, grupoDe, type Accion, type EstadoRecorrido } from '../estadoRecorrido';

@@ -3,8 +3,8 @@
 // «Central › Distrito › Biblioteca de prompts». Son el mismo componente de migas de las pantallas hoja (marca/Migas), con una
 // diferencia: aquí la ruta llega hasta la propia pantalla (la última, la de «estás aquí»).
 //
-// Cada miga reabre su nivel en el inicio, como en las pantallas hoja: «Central» abre el mapa y «Distrito» las opciones de Central,
-// estando «desde» esta pantalla (`?desde=central.distrito.biblioteca&ver=…`, marca/menu.ts).
+// Cada miga lleva a la página de su nivel, como en las pantallas hoja: «Central», al mapa (/estudio/), y «Distrito», a las opciones de
+// Central (/estudio/central/), sin parámetros (urlDeInicio, marca/menu.ts).
 //
 // No es el `<Marco>` de las hojas: aquel lleva «← Estudio» y las migas a la izquierda, y el título de la pantalla como `h1`. Aquí el
 // único `h1` es «Irremplazables» y el nombre de la pantalla es un `h2` (como en el inicio).

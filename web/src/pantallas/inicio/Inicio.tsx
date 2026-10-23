@@ -1,5 +1,6 @@
-// /estudio/inicio/ — el inicio del estudio (UI·8.4). La caja cobra ahí mismo
-// el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
+// La caja del estudio, en sus tres direcciones (…/marketing/distrito/imagen/, video/ y edicion/: con `lugar`, herramienta.tsx). Nació
+// como /estudio/inicio/, el inicio de una sola página (UI·8.4), que se retiró en E5.3: sin `lugar` ya no lo monta ninguna página (deuda
+// declarada, la salda E8). La caja cobra ahí mismo el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
 // (desde E1; desde E2 con varios videos unidos); las demás opciones llevan a la pantalla que cobra con el texto
 // puesto. Las listas, debajo, llevan a lo que ya hiciste.
 //
@@ -10,9 +11,8 @@
 // ronda del mismo día: «el mapa es el inicio»), sin nada elegido; solo la caja
 // lleva tarjeta. La caja se queda montada (y escondida) aunque se vea otro paso:
 // no pierde lo escrito ni una subida. Lo que va debajo de ella (Mis creaciones,
-// los caminos…) se ve solo cuando la caja se ve. Las pantallas hoja (agenda,
-// métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts), y la Biblioteca de prompts con `?prompt=` o `?brief=`
-// para dejar un texto ya puesto en la caja (pestaña Imagen o Video).
+// los caminos…) se ve solo cuando la caja se ve. Las migas de las pantallas hoja ya no mandan aquí (van directo a la página de su nivel);
+// la Biblioteca de prompts manda a …/imagen/?prompt= o …/video/?brief= para dejar un texto ya puesto en la caja.
 // Las tres herramientas de la caja también son páginas con su dirección (…/marketing/distrito/imagen/, …/video/, …/edicion/; marca/rutas.ts): es
 // este mismo inicio con `lugar` (herramienta.tsx), con la caja ya a la vista en la pestaña de la dirección y las migas como enlaces. Al cambiar de
 // pestaña con el riel la página NO se recarga (la caja conserva lo escrito, el video y la subida): la dirección y el título la siguen con
