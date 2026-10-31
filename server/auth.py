@@ -41,7 +41,9 @@ def es_admin() -> bool:
 # de tener token para saber a dónde ir a loguearse.
 PREFIJOS_PROTEGIDOS = ("/api/", "/editor/")
 # /api/pagos/stripe: Stripe no trae JWT — su gate es la firma HMAC del webhook
-RUTAS_PUBLICAS = {"/api/auth/config", "/api/pagos/stripe"}
+# /api/acceso/nueva-clave: quien la pide es justo quien no puede entrar (server/acceso.py).
+# Es esa ruta exacta: cualquier otra bajo /api/acceso/ sigue pidiendo sesión.
+RUTAS_PUBLICAS = {"/api/auth/config", "/api/pagos/stripe", "/api/acceso/nueva-clave"}
 # RAG·2 — secciones públicas enteras (/automatiza). Una ruta exacta no alcanza:
 # /api/publico/corrida/{id} lleva parámetro. Todo lo que cae aquí corre SIN
 # token y dentro del candado de identidad (db.camino_publico): usuario_actual()

@@ -359,7 +359,8 @@ def test_las_pantallas_vuelven_al_estudio_no_a_la_portada():
     # igual que en portada y entrar
     for f in STATIC.glob("*.html"):
         if f.name in ("portada.html", "entrar.html", "automatiza.html",
-                      "privacidad.html", "terminos.html", "baja.html", "baja-hecha.html"):
+                      "privacidad.html", "terminos.html", "baja.html", "baja-hecha.html",
+                      "acceso.html"):
             continue
         t = f.read_text(encoding="utf-8")
         assert 'href="/"' not in t, f.name

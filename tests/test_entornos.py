@@ -307,6 +307,7 @@ def test_la_invitacion_y_los_callbacks_de_prod_usan_el_nombre_propio(prod):
     assert '<a href="https://irremplazables.xyz">' in cuerpo
     asunto = pool["AdminCreateUserConfig"]["InviteMessageTemplate"]["EmailSubject"]
     assert not asunto.startswith("[")
+    assert asunto == "Tu acceso a Irremplazables"
     cliente = _uno(api, "AWS::Cognito::UserPoolClient")
     assert cliente["CallbackURLs"][0] == "https://irremplazables.xyz/callback.html"
     assert "http://localhost:8011/callback.html" in cliente["CallbackURLs"]
@@ -752,12 +753,13 @@ def _etapas(template):
 
 
 def test_prod_sin_throttling_ni_ruta_publica(prod):
+    """Lo único con ruta y límite propios en prod es la página /acceso (Fase 2)."""
     api = prod["aws-media-api"]
     for etapa in _etapas(api):
         assert "DefaultRouteSettings" not in etapa["Properties"]
-        assert "RouteSettings" not in etapa["Properties"]
+        assert list(etapa["Properties"]["RouteSettings"]) == ["POST /api/acceso/{proxy+}"]
     claves = [r["Properties"]["RouteKey"] for r in _de_tipo(api, "AWS::ApiGatewayV2::Route").values()]
-    assert claves == ["$default"]
+    assert sorted(claves) == ["$default", "POST /api/acceso/{proxy+}"]
 
 
 def test_dev_throttling_de_etapa_y_ruta_publica_estrecha(dev):
@@ -774,7 +776,233 @@ def test_dev_throttling_de_etapa_y_ruta_publica_estrecha(dev):
     assert etapa["Properties"]["DefaultRouteSettings"] == {
         "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}
     tasa, rafaga = DEV.throttle_publico
-    assert etapa["Properties"]["RouteSettings"] == {"ANY /api/publico/{proxy+}": {
-        "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}}
+    assert etapa["Properties"]["RouteSettings"]["ANY /api/publico/{proxy+}"] == {
+        "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}
     # la etapa nombra la ruta por su clave: tiene que crearse después
     assert id_ruta in etapa.get("DependsOn", [])
+
+
+# --- Fase 2: el invitador (worker/invitador.py) ------------------------------
+
+def _invitador(template):
+    fns = [(k, r) for k, r in _de_tipo(template, "AWS::Lambda::Function").items()
+           if r["Properties"].get("ImageConfig", {}).get("Command") == ["worker.invitador.handler"]]
+    assert len(fns) == 1, f"se esperaba una Lambda del invitador, hay {len(fns)}"
+    return fns[0]
+
+
+def _sentencias_de(template, id_fn):
+    rol = template["Resources"][id_fn]["Properties"]["Role"]["Fn::GetAtt"][0]
+    return [st for pol in _de_tipo(template, "AWS::IAM::Policy").values()
+            if {"Ref": rol} in pol["Properties"]["Roles"]
+            for st in pol["Properties"]["PolicyDocument"]["Statement"]]
+
+
+def _acciones(st):
+    return st["Action"] if isinstance(st["Action"], list) else [st["Action"]]
+
+
+def test_el_reloj_del_invitador_solo_existe_en_prod(prod, dev):
+    """16:00 UTC (10:00 hora centro), con el Input literal que el handler
+    entiende, y SIN reintento de EventBridge: un segundo disparo a media corrida
+    recorrería la lista otra vez. En dev no hay reloj: se dispara a mano."""
+    api = prod["aws-media-api"]
+    id_fn, _ = _invitador(api)
+    reglas = [r["Properties"] for r in _de_tipo(api, "AWS::Events::Rule").values()]
+    (regla,) = [r for r in reglas
+                if r["Targets"][0]["Arn"] == {"Fn::GetAtt": [id_fn, "Arn"]}]
+    assert regla["ScheduleExpression"] == "cron(0 16 * * ? *)"
+    (objetivo,) = regla["Targets"]
+    assert objetivo["Input"] == '{"tipo":"invitador"}'
+    assert objetivo["RetryPolicy"]["MaximumRetryAttempts"] == 0
+    assert not _de_tipo(dev["aws-media-api-dev"], "AWS::Events::Rule"), (
+        "el invitador de dev se dispara a mano: un reloj ahí despertaría el Aurora de dev")
+
+
+@pytest.mark.parametrize("cual", ["prod", "dev"])
+def test_el_invitador_no_reintenta_y_corre_de_uno_en_uno(prod, dev, cual):
+    api = prod["aws-media-api"] if cual == "prod" else dev["aws-media-api-dev"]
+    id_fn, fn = _invitador(api)
+    assert fn["Properties"]["ReservedConcurrentExecutions"] == 1, (
+        "dos corridas a la vez leerían el mismo cupo libre")
+    assert fn["Properties"]["Timeout"] == 300
+    configs = [r["Properties"] for r in _de_tipo(api, "AWS::Lambda::EventInvokeConfig").values()
+               if r["Properties"]["FunctionName"] == {"Ref": id_fn}]
+    assert len(configs) == 1 and configs[0]["MaximumRetryAttempts"] == 0, (
+        "un reintento asíncrono de la Lambda mandaría la tanda otra vez")
+    # si la corrida truena, el evento llega al buzón de alertas: un día sin
+    # resumen no puede confundirse con un día en «apagado»
+    assert configs[0]["DestinationConfig"]["OnFailure"]["Destination"] == (
+        "arn:aws:sns:us-east-1:191241816158:aws-media-alertas")
+
+
+def test_los_permisos_del_invitador_son_los_justos(prod, dev):
+    """Crear y leer usuarios de SU pool; del pool hermano (solo prod cuenta el de
+    dev) nada más listar; publicar en el tópico de alertas; la base por Data API.
+    Nada de SSM: el invitador no necesita ninguna clave de API."""
+    import json
+    for nombre, api in (("prod", prod["aws-media-api"]), ("dev", dev["aws-media-api-dev"])):
+        id_fn, fn = _invitador(api)
+        sentencias = _sentencias_de(api, id_fn)
+        texto = json.dumps(sentencias)
+        assert "ssm:" not in texto and "s3:" not in texto and "sqs:" not in texto, nombre
+        cognito_ = [s for s in sentencias if any(a.startswith("cognito-idp:") for a in _acciones(s))]
+        propio = [s for s in cognito_ if s["Resource"] == {"Fn::GetAtt": ["Users0A0EEA89", "Arn"]}]
+        assert len(propio) == 1 and sorted(_acciones(propio[0])) == [
+            "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:ListUsers"]
+        hermano = [s for s in cognito_ if s not in propio]
+        if nombre == "prod":
+            (s,) = hermano
+            assert _acciones(s) == ["cognito-idp:ListUsers"]
+            assert s["Resource"].endswith(f":userpool/{PROD.pool_cuota_compartida}")
+        else:
+            assert not hermano, "dev no lee la lista de usuarios de producción"
+        # una sola: la del resumen y la que pide el destino de fallo son la misma
+        (sns,) = [s for s in sentencias if any(a.startswith("sns:") for a in _acciones(s))]
+        assert _acciones(sns) == ["sns:Publish"]
+        assert sns["Resource"] == "arn:aws:sns:us-east-1:191241816158:aws-media-alertas"
+        assert any("rds-data:ExecuteStatement" in _acciones(s) for s in sentencias)
+        env = fn["Properties"]["Environment"]["Variables"]
+        assert "SSM_ENV_PREFIX" not in env and "COGNITO_DOMINIO" not in env
+        assert env["INVITADOR_TOPICO"] == sns["Resource"]
+        assert env["COGNITO_POOL_ID"] == {"Ref": "Users0A0EEA89"}
+
+
+def test_fuera_de_prod_el_invitador_solo_escribe_a_la_lista_blanca(prod, dev):
+    (_, fn_p), (_, fn_d) = _invitador(prod["aws-media-api"]), _invitador(dev["aws-media-api-dev"])
+    env_p = fn_p["Properties"]["Environment"]["Variables"]
+    env_d = fn_d["Properties"]["Environment"]["Variables"]
+    assert env_p["INVITADOR_ES_PROD"] == "1" and env_p["INVITADOR_PERMITIDOS"] == ""
+    assert env_p["INVITADOR_POOL_HERMANO"] == PROD.pool_cuota_compartida
+    assert env_d["INVITADOR_ES_PROD"] == "0"
+    assert env_d["INVITADOR_PERMITIDOS"] == ",".join(DEV.invitador_permitidos)
+    assert DEV.invitador_permitidos, "sin lista blanca, el modo activo de dev no prueba nada"
+    assert "INVITADOR_POOL_HERMANO" not in env_d
+    assert PROD.pool_cuota_compartida and PROD.pool_cuota_compartida.startswith("us-east-1_")
+    assert DEV.pool_cuota_compartida is None
+
+
+@pytest.mark.parametrize("cual", ["prod", "dev"])
+def test_la_invitacion_sirve_tambien_de_recordatorio(prod, dev, cual):
+    """Con COGNITO_DEFAULT no hay texto por paso: el recordatorio es un RESEND
+    con la MISMA plantilla. Tiene que decir que la clave dura 7 días y que la de
+    este correo reemplaza a la anterior, o quien recibe el R2 intenta con la
+    del R1 y no entra."""
+    api = prod["aws-media-api"] if cual == "prod" else dev["aws-media-api-dev"]
+    plantilla = _uno(api, "AWS::Cognito::UserPool")["AdminCreateUserConfig"]["InviteMessageTemplate"]
+    prefijo = "" if cual == "prod" else "[dev] "
+    assert plantilla["EmailSubject"] == prefijo + "Tu acceso a Irremplazables"
+    cuerpo = plantilla["EmailMessage"]
+    if isinstance(cuerpo, dict):   # dev: la liga es el execute-api de su stack (Fn::Join)
+        cuerpo = "".join(p if isinstance(p, str) else "<ref>" for p in cuerpo["Fn::Join"][1])
+    for pedazo in ("{username}", "{####}", "cambiar la contraseña", "dura 7 días",
+                   "reemplaza a la anterior", "primera carga", "Si se te vence, pide otra aquí:",
+                   "/acceso</a>"):
+        assert pedazo in cuerpo, pedazo
+    assert "demo" not in cuerpo.lower()
+    if cual == "prod":
+        assert '<a href="https://irremplazables.xyz/acceso">' in cuerpo
+
+
+@pytest.mark.parametrize("cual", ["prod", "dev"])
+def test_el_codigo_para_resetear_sale_en_espanol(prod, dev, cual):
+    """«¿Olvidaste tu contraseña?» usa la plantilla de código de verificación; la
+    de fábrica dice, en inglés, que el código es de una cuenta nueva."""
+    api = prod["aws-media-api"] if cual == "prod" else dev["aws-media-api-dev"]
+    plantilla = _uno(api, "AWS::Cognito::UserPool")["VerificationMessageTemplate"]
+    prefijo = "" if cual == "prod" else "[dev] "
+    assert plantilla["DefaultEmailOption"] == "CONFIRM_WITH_CODE"
+    assert plantilla["EmailSubject"] == prefijo + "Tu código de Irremplazables"
+    assert "{####}" in plantilla["EmailMessage"]
+    assert "contraseña sigue igual" in plantilla["EmailMessage"]
+    assert "new account" not in plantilla["EmailMessage"]
+
+
+# --- Fase 2: la página /acceso (server/acceso.py) ----------------------------
+
+def _la_api(template):
+    fns = [(k, r) for k, r in _de_tipo(template, "AWS::Lambda::Function").items()
+           if r["Properties"].get("ImageConfig", {}).get("Command") == ["server.lambda_handler.handler"]]
+    assert len(fns) == 1
+    return fns[0]
+
+
+@pytest.mark.parametrize("cual", ["prod", "dev"])
+def test_la_api_solo_toca_cognito_en_su_pool_y_solo_para_el_resend(prod, dev, cual):
+    api = prod["aws-media-api"] if cual == "prod" else dev["aws-media-api-dev"]
+    id_fn, _ = _la_api(api)
+    (st,) = [s for s in _sentencias_de(api, id_fn)
+             if any(a.startswith("cognito-idp:") for a in _acciones(s))]
+    assert sorted(_acciones(st)) == ["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"]
+    assert st["Resource"] == {"Fn::GetAtt": ["Users0A0EEA89", "Arn"]}, (
+        "solo SU pool; un cambio de id lógico aquí sería un reemplazo del pool")
+
+
+def _referencias(valor):
+    """Los ids lógicos que nombra un trozo de plantilla (Ref y Fn::GetAtt)."""
+    if isinstance(valor, dict):
+        for k, v in valor.items():
+            if k == "Ref" and isinstance(v, str):
+                yield v
+            elif k == "Fn::GetAtt":
+                yield v[0] if isinstance(v, list) else v.split(".")[0]
+            else:
+                yield from _referencias(v)
+    elif isinstance(valor, list):
+        for v in valor:
+            yield from _referencias(v)
+
+
+@pytest.mark.parametrize("cual", ["prod", "dev"])
+def test_el_permiso_de_la_api_no_arma_un_ciclo(prod, dev, cual):
+    """El pool se crea DESPUÉS de la Lambda en el código y la Lambda lleva su id en
+    el entorno: el permiso va después y sobre el ARN. CloudFormation rechaza un ciclo
+    hasta el deploy; aquí se ve antes."""
+    api = prod["aws-media-api"] if cual == "prod" else dev["aws-media-api-dev"]
+    recursos = api["Resources"]
+    grafo = {k: {d for d in set(_referencias(r)) | set(r.get("DependsOn", [])) if d in recursos}
+             for k, r in recursos.items()}
+    visto, en_curso = set(), set()
+
+    def recorre(n):
+        assert n not in en_curso, f"ciclo en la plantilla, pasa por {n}"
+        if n in visto:
+            return
+        en_curso.add(n)
+        for d in grafo[n]:
+            recorre(d)
+        en_curso.discard(n)
+        visto.add(n)
+    for n in grafo:
+        recorre(n)
+    # y el pool no depende de nada de la API: nada de esto lo reemplaza
+    id_fn, _ = _la_api(api)
+    assert id_fn not in grafo["Users0A0EEA89"]
+
+
+@pytest.mark.parametrize("cual", ["prod", "dev"])
+def test_acceso_tiene_su_throttling_tambien_en_prod(prod, dev, cual):
+    """route_settings solo se asignaba con e.publico, y en prod e.publico es falso.
+    Lo que pase del límite recibe 429 de API Gateway sin tocar la Lambda ni la base."""
+    api, entorno = (prod["aws-media-api"], PROD) if cual == "prod" else (dev["aws-media-api-dev"], DEV)
+    assert entorno.throttle_acceso == (1, 3)
+    clave = "POST /api/acceso/{proxy+}"
+    rutas = _de_tipo(api, "AWS::ApiGatewayV2::Route")
+    (id_ruta, ruta), = {k: r for k, r in rutas.items() if r["Properties"]["RouteKey"] == clave}.items()
+    default = next(r for r in rutas.values() if r["Properties"]["RouteKey"] == "$default")
+    assert ruta["Properties"]["Target"] == default["Properties"]["Target"], "misma Lambda"
+    (etapa,) = _etapas(api)
+    assert etapa["Properties"]["RouteSettings"][clave] == {
+        "ThrottlingRateLimit": 1, "ThrottlingBurstLimit": 3}
+    assert id_ruta in etapa["DependsOn"], "la etapa nombra la ruta por su clave"
+
+
+def test_acceso_no_pisa_el_throttling_publico_de_dev(dev):
+    api = dev["aws-media-api-dev"]
+    (etapa,) = _etapas(api)
+    assert set(etapa["Properties"]["RouteSettings"]) == {
+        "ANY /api/publico/{proxy+}", "POST /api/acceso/{proxy+}"}
+    rutas = _de_tipo(api, "AWS::ApiGatewayV2::Route")
+    for k, r in rutas.items():
+        if r["Properties"]["RouteKey"] != "$default":
+            assert k in etapa["DependsOn"], r["Properties"]["RouteKey"]

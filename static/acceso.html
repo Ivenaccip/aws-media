@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<!-- «¿No puedes entrar?» (server/acceso.py). Para quien nunca entró y dejó vencer
+     su clave provisional: ahí Cognito no deja usar «¿Olvidaste tu contraseña?».
+     Se ve como /entrar. La sirve server/app.py con la CSP de lo público, así que
+     aquí no va nada en línea: el JS y el CSS son sus propios archivos. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>¿No puedes entrar? · Irremplazables</title>
+<meta name="description" content="Pide una contraseña nueva para entrar a tu estudio de Irremplazables.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/carta.css">
+<link rel="stylesheet" href="/acceso.css">
+</head>
+<body>
+<header><a class="marca" href="/">Irremplazables</a></header>
+<main>
+  <div class="puerta">
+    <h1>¿No puedes entrar?</h1>
+    <p class="lead" id="lead">Escribe el correo con el que te dieron de alta en la comunidad.</p>
+    <form id="pedir" class="pedir">
+      <label for="correo">Tu correo</label>
+      <input id="correo" name="correo" type="email" autocomplete="email" inputmode="email"
+             maxlength="254" required>
+      <button class="btn btn-pri" id="enviar" type="submit">Enviarme una contraseña nueva</button>
+    </form>
+    <p class="aviso-caja" id="mensaje" role="status" hidden></p>
+    <p class="volver" id="volver" hidden><a href="/entrar">Volver a entrar</a></p>
+  </div>
+</main>
+<footer class="pie">
+  <a href="mailto:hola@irremplazables.xyz">hola@irremplazables.xyz</a>
+  <span class="pie-legales">
+    <a href="/privacidad">Aviso de privacidad</a>
+    <a href="/terminos">Términos</a>
+  </span>
+</footer>
+<script src="/acceso.js"></script>
+</body>
+</html>
