@@ -45,7 +45,7 @@ export async function simular(page: Page, permitidos: readonly string[] = []): P
   return { ajenos };
 }
 
-export const URL_CONSTRUCTOR = '/estudio/constructor/';
+export const URL_CONSTRUCTOR = '/estudio/automatizaciones/distrito/constructor/';
 
 export async function abrir(page: Page) {
   await page.goto(URL_CONSTRUCTOR);

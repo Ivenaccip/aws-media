@@ -56,7 +56,7 @@ describe('menu · Automatizaciones', () => {
       ['tus', 'Tus automatizaciones', 0],
     ]);
     const [constructor, asistente, actualizar] = area.grupos[0]!.pantallas;
-    expect([constructor?.href, asistente?.href]).toEqual(['/estudio/constructor/', '/estudio/asistente/']);
+    expect([constructor?.href, asistente?.href]).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/asistente/']);
     expect(constructor?.texto).toBe('Arma tu flujo cuadro por cuadro y descárgalo para n8n.');
     expect(asistente?.texto).toBe('Cuéntanos qué quieres automatizar y te armamos el flujo.');
     expect(actualizar).toMatchObject({ titulo: 'Actualizar flujos', proximamente: true });
@@ -132,7 +132,7 @@ describe('Pantallas · Automatizaciones', () => {
     render(<Pantallas grupo={distrito} conectado={false} alConectar={() => undefined} />);
     const filas = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(filas.map(f => f.querySelector('b')?.textContent)).toEqual(['Constructor', 'Asistente', 'Actualizar flujos']);
-    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/constructor/', '/estudio/asistente/']);
+    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/asistente/']);
     for (const a of screen.getAllByRole('link')) expect(a).not.toHaveAttribute('aria-disabled');
     expect(filas[2]).toHaveTextContent('Próximamente');
     expect(filas[2]!.firstElementChild!.className.split(/\s+/)).toEqual(expect.arrayContaining(['bg-hundido', 'text-secundario']));
@@ -163,7 +163,7 @@ describe('Recorrido · Automatizaciones', () => {
     await userEvent.click(ficha(/^Automatizaciones/));
     await userEvent.click(tarjetaDeGrupo('Automatizaciones', 'Distrito'));
     expect(h2('Distrito')).toHaveFocus();
-    expect(within(lista()).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/constructor/', '/estudio/asistente/']);
+    expect(within(lista()).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/asistente/']);
     expect(screen.queryByText('Todavía no está disponible.')).toBeNull();
     expect(migaGrupo('Automatizaciones', 'Distrito')).toHaveAttribute('aria-current', 'step');
     expect(volveres()).toHaveLength(0);
@@ -208,7 +208,7 @@ describe('Recorrido · Automatizaciones', () => {
     history.replaceState(null, '', '/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=mapa');
     pintar();
     expect(h2('Elige un área')).toHaveFocus();
-    expect(screen.getByRole('link', { name: 'Volver a Constructor' })).toHaveAttribute('href', '/estudio/constructor/');
+    expect(screen.getByRole('link', { name: 'Volver a Constructor' })).toHaveAttribute('href', '/estudio/automatizaciones/distrito/constructor/');
     expect(ficha(/^Automatizaciones/)).not.toHaveAttribute('aria-disabled');
   });
   it('llegar desde Asistente con ver=grupos: abre las opciones de Automatizaciones con «Estás aquí» en Distrito', () => {
@@ -248,11 +248,11 @@ describe('Recorrido · Automatizaciones · doble clic y Esc con la hoja de por m
     expect(fireEvent.click(primera, { detail: 2 })).toBe(false); // cancelado en la captura de la región
     expect(ir).not.toHaveBeenCalled();
   });
-  it('Esc con Constructor de por medio (ver=grupos) navega a /estudio/constructor/', async () => {
+  it('Esc con Constructor de por medio (ver=grupos) navega a su lugar, /estudio/automatizaciones/distrito/constructor/', async () => {
     history.replaceState(null, '', '/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=grupos');
     pintar();
     await userEvent.keyboard('{Escape}');
-    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/constructor/');
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/automatizaciones/distrito/constructor/');
   });
   it('elegir otro grupo olvida la hoja: ya no hay «Volver a Constructor»', async () => {
     history.replaceState(null, '', '/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=grupos');

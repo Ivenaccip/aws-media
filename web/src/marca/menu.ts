@@ -190,7 +190,8 @@ export const MENU: readonly AreaMenu[] = [
             titulo: 'Constructor',
             icono: 'flujo',
             texto: 'Arma tu flujo cuadro por cuadro y descárgalo para n8n.',
-            href: '/estudio/constructor/',
+            // E7.3: vive en su lugar del mapa; /estudio/constructor/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
+            href: '/estudio/automatizaciones/distrito/constructor/',
           },
           {
             clave: 'asistente',

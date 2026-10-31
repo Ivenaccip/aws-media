@@ -141,8 +141,10 @@ PANTALLAS: dict[str, Pantalla] = {
     # anti-pérdida cubra sus invariantes (docs/migracion/constructor.md y asistente.md); `/constructor.html` y `/asistente.html` solo son
     # atajos. No chocan con `/automatiza*` (la página pública del RAG, otra cosa). El Constructor no cobra ni llama a ningún servicio (todo
     # se arma en el navegador); el Asistente corre en modo prueba: muestras enlatadas, sin base, sin cola, sin proveedor y sin créditos
-    # (gasto 0). Su modo real exige el «sí» del dueño con el costo a la vista y NO está implementado.
-    "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/constructor/", etapa="retirada"),
+    # (gasto 0). Su modo real exige el «sí» del dueño con el costo a la vista y NO está implementado. E7.3 (31-oct-2026): el Constructor
+    # vive en su lugar del mapa, Automatizaciones › Distrito; /estudio/constructor/ (la carpeta plana de antes, que da nombre a la clave)
+    # es un alias con 302
+    "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/automatizaciones/distrito/constructor/", etapa="retirada"),
     "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/asistente/", etapa="retirada"),
 }
 

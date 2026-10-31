@@ -395,7 +395,7 @@ del dueño que lo rigen (D5 a D14) están en `docs/PLAN-UI.md` §9.
   «Blotato conectado: ver o cambiar») vive arriba de esa lista. Lo que aún no
   existe (Preguntas y Glosario, en Central) sale apagado con la etiqueta «Próximamente» y no navega.
   Automatizaciones se abre: su grupo Distrito lista el Constructor y el
-  Asistente (enlaces a `/estudio/constructor/` y `/estudio/asistente/`) y
+  Asistente (enlaces a `/estudio/automatizaciones/distrito/constructor/` y `/estudio/asistente/`) y
   «Actualizar flujos», apagada con «Próximamente» y sin enlace.
 - **Lo que todavía no trae nada tiene su página igual (D5):** un área o un grupo
   vacío responde con su página, no con un error, y dice «Todavía no está

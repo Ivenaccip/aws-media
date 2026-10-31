@@ -358,6 +358,9 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     // el «Ver en Míos» de COI de antes: el query llega intacto y la Biblioteca abre en «Míos»
     ['/estudio/biblioteca/?ver=mios', '/estudio/central/distrito/biblioteca/?ver=mios', 'Estudio de video · Biblioteca de prompts'],
     ['/biblioteca.html', '/estudio/central/distrito/biblioteca/', 'Estudio de video · Biblioteca de prompts'],
+    ['/estudio/constructor/', '/estudio/automatizaciones/distrito/constructor/', 'Estudio de video · Constructor'],
+    ['/estudio/constructor?x=1', '/estudio/automatizaciones/distrito/constructor/?x=1', 'Estudio de video · Constructor'],
+    ['/constructor.html', '/estudio/automatizaciones/distrito/constructor/', 'Estudio de video · Constructor'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {
