@@ -518,6 +518,118 @@ ESQUEMA: list[str] = [
         ids          jsonb NOT NULL DEFAULT '[]',
         actualizado  timestamptz NOT NULL DEFAULT now()
     )""",
+    # Fase 2 — el invitador (worker/invitador.py, tools/invitaciones.py).
+    #
+    #   invitaciones_miembros     el export de Skool, una fila por correo. Cada carga
+    #                             le pone el MISMO `visto_en` a todas sus filas, así
+    #                             que «el export vigente» son las filas con el
+    #                             max(visto_en): quien no venía en el último ya no
+    #                             está (baja) y no se le escribe. `estado` lo pone la
+    #                             carga ('revisar' si parece un dedazo o la misma
+    #                             persona con otro correo) y lo cambia el dueño; una
+    #                             carga nueva NO lo pisa. `categoria` (anual, mensual,
+    #                             fai) es el orden de prioridad, que el plan solo no da.
+    #   invitaciones_envios       una fila por correo mandado o intentado. paso 0 =
+    #                             invitación, 1..3 = recordatorios. `origen`: el bot,
+    #                             el dueño a mano (tools/usuarios.py), el historial
+    #                             de antes del bot o la página /acceso, que lo pide la
+    #                             propia persona (su `paso` es el más alto que ya
+    #                             tenía: no avanza la serie, pero cuenta como último
+    #                             contacto y en el cupo). Solo se AGREGAN filas (se
+    #                             cambia 'enviando' → 'enviado'/'fallo:<código>').
+    #   invitaciones_interruptor  apagado / ensayo / activo, el tope del día y cada
+    #                             cuántos días corre el bot. Mismo patrón que
+    #                             automatiza_interruptor: vale la última fila y sin
+    #                             filas está APAGADO.
+    #   invitaciones_cargas       una fila por carga del export que TERMINÓ. La carga
+    #                             va en lotes sin transacción; si un lote truena, las
+    #                             filas que alcanzaron a entrar ya traen el visto_en
+    #                             nuevo. «Vigente» es lo visto desde la última carga
+    #                             COMPLETA, así que una carga a medias no deja un
+    #                             export recortado (ni declara baja a medio Skool).
+    #   invitaciones_solicitudes  el límite por IP de la página /acceso: una fila por
+    #                             solicitud, con el HASH de la IP (la IP nunca). Lo de
+    #                             antes del corte de las 09:00 UTC lo borra la siguiente
+    #                             solicitud o la corrida diaria del invitador, lo que
+    #                             llegue primero (en dev no hay corrida programada).
+    #
+    # El índice único parcial es lo que impide mandar dos veces el mismo paso a la
+    # misma persona: el bot reclama el paso con un INSERT ... ON CONFLICT DO NOTHING
+    # ANTES de llamar a Cognito, y si no gana, no manda. Solo cubre al bot: lo manual,
+    # el historial y la página pueden repetir paso (el dueño reenvió dos veces), y un
+    # 'ensayo' o un 'fallo' no bloquean nada. La página tiene el suyo, por correo y día
+    # UTC: dos clics a la vez no se ven entre sí en READ COMMITTED, y sin índice las dos
+    # mandarían clave (la segunda invalida la primera). Nunca frena a alguien legítimo:
+    # la regla de 24 horas ya no deja pedir dos veces el mismo día.
+    #
+    # Tablas nuevas: `tools/db_migrate.py` en CADA entorno antes de desplegar.
+    """CREATE TABLE IF NOT EXISTS invitaciones_miembros (
+        correo     text PRIMARY KEY,
+        nombre     text,
+        plan       text,
+        categoria  text,
+        precio     text,
+        ingreso    timestamptz,
+        estado     text NOT NULL DEFAULT 'ok' CHECK (estado IN ('ok', 'revisar', 'excluido')),
+        visto_en   timestamptz NOT NULL,
+        creado     timestamptz NOT NULL DEFAULT now()
+    )""",
+    """CREATE INDEX IF NOT EXISTS invitaciones_miembros_visto
+       ON invitaciones_miembros (visto_en)""",
+    """CREATE TABLE IF NOT EXISTS invitaciones_envios (
+        id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        correo     text NOT NULL,
+        paso       smallint NOT NULL CHECK (paso BETWEEN 0 AND 3),
+        origen     text NOT NULL CHECK (origen IN ('bot', 'manual', 'historial', 'pagina')),
+        resultado  text NOT NULL,
+        detalle    text,
+        creado     timestamptz NOT NULL DEFAULT now()
+    )""",
+    # Por si la tabla ya existía con el CHECK de tres orígenes: CREATE IF NOT EXISTS
+    # no lo toca, y sin 'pagina' cada solicitud de /acceso reventaría al anotarse.
+    "ALTER TABLE invitaciones_envios DROP CONSTRAINT IF EXISTS invitaciones_envios_origen_check",
+    """ALTER TABLE invitaciones_envios ADD CONSTRAINT invitaciones_envios_origen_check
+       CHECK (origen IN ('bot', 'manual', 'historial', 'pagina'))""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS invitaciones_envios_bot_paso
+       ON invitaciones_envios (correo, paso)
+       WHERE origen = 'bot' AND resultado IN ('enviando', 'enviado')""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS invitaciones_envios_pagina_dia
+       ON invitaciones_envios (correo, (CAST(creado AT TIME ZONE 'UTC' AS date)))
+       WHERE origen = 'pagina' AND resultado IN ('enviando', 'enviado')""",
+    """CREATE INDEX IF NOT EXISTS invitaciones_envios_correo
+       ON invitaciones_envios (correo, paso)""",
+    # gastado de hoy y último contacto: la página los pregunta en cada solicitud
+    """CREATE INDEX IF NOT EXISTS invitaciones_envios_creado
+       ON invitaciones_envios (creado)""",
+    """CREATE TABLE IF NOT EXISTS invitaciones_solicitudes (
+        id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        ip_hash  text NOT NULL,
+        creado   timestamptz NOT NULL DEFAULT now()
+    )""",
+    """CREATE INDEX IF NOT EXISTS invitaciones_solicitudes_ip
+       ON invitaciones_solicitudes (ip_hash, creado)""",
+    """CREATE TABLE IF NOT EXISTS invitaciones_interruptor (
+        id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        modo       text NOT NULL CHECK (modo IN ('apagado', 'ensayo', 'activo')),
+        tope       int NOT NULL DEFAULT 40 CHECK (tope BETWEEN 0 AND 50),
+        cada_dias  int NOT NULL DEFAULT 1 CHECK (cada_dias BETWEEN 1 AND 14),
+        nota       text,
+        creado     timestamptz NOT NULL DEFAULT now()
+    )""",
+    # Por si la tabla ya existía sin la frecuencia: CREATE IF NOT EXISTS no la toca,
+    # y las filas de antes valen a diario, que es lo que hacían. El CHECK va aparte:
+    # dentro del ADD COLUMN IF NOT EXISTS, Postgres agrega uno nuevo en CADA migración
+    # aunque la columna ya exista (comprobado en un Postgres 12: _check, _check1…).
+    """ALTER TABLE invitaciones_interruptor
+       ADD COLUMN IF NOT EXISTS cada_dias int NOT NULL DEFAULT 1""",
+    "ALTER TABLE invitaciones_interruptor DROP CONSTRAINT IF EXISTS invitaciones_interruptor_cada_dias_check",
+    """ALTER TABLE invitaciones_interruptor ADD CONSTRAINT invitaciones_interruptor_cada_dias_check
+       CHECK (cada_dias BETWEEN 1 AND 14)""",
+    """CREATE TABLE IF NOT EXISTS invitaciones_cargas (
+        visto_en  timestamptz PRIMARY KEY,
+        filas     int NOT NULL,
+        creado    timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
@@ -1106,6 +1218,18 @@ def movimientos_creditos(user_id: str, limite: int = 20) -> list[dict]:
         "SELECT creditos, tipo, referencia, creado FROM monedero_movimientos "
         "WHERE user_id = :u ORDER BY id DESC LIMIT :l",
         {"u": user_id, "l": limite})
+
+
+def invitaciones_cortesia_abonada(user_id: str, plan: str) -> bool:
+    """¿Ya entró la cortesía de `alta()` para este usuario? (el movimiento que
+    escribe `abonar_creditos(sub, …, "cortesia", f"alta-{plan}")`). Para el alta
+    a medias del invitador: decir «abónala» sin mirar aquí la abonaría dos veces.
+    Vive aquí, con el monedero, y no con el resto de `invitaciones_*`: del bloque
+    RAG·3 en adelante no puede aparecer `user_id` (test_rag_corridas)."""
+    filas = ejecutar("SELECT 1 AS si FROM monedero_movimientos WHERE user_id = :u "
+                     "AND tipo = 'cortesia' AND referencia = :r LIMIT 1",
+                     {"u": user_id, "r": f"alta-{plan}"})
+    return bool(filas)
 
 
 def reclamar_produccion(user_id: str, id_: str,
@@ -2388,3 +2512,284 @@ def biblioteca_fijar(usuario: str, ids: list[str], antes: list[str] | None = Non
            RETURNING f.usuario""",
         {"u": usuario, "ids": list(ids), "antes": list(antes)})
     return bool(filas)
+
+
+# ---------------------------------------------------------------------------
+# Fase 2 — el invitador: export de Skool, envíos y el interruptor
+#
+# Las fechas salen como `(… AT TIME ZONE 'UTC')::text` y se leen en Python
+# (pipeline/invitaciones.py `fecha`): ver la nota de `_RENUEVA_COI` sobre los
+# literales con «:» en el Data API.
+
+_VIVOS_INV = "('enviando', 'enviado')"
+
+
+def invitaciones_interruptor() -> dict | None:
+    """La fila vigente (la última), o None si nunca se puso: APAGADO."""
+    filas = ejecutar(
+        "SELECT modo, tope, cada_dias, nota, (creado AT TIME ZONE 'UTC')::text AS creado "
+        "FROM invitaciones_interruptor ORDER BY id DESC LIMIT 1")
+    return filas[0] if filas else None
+
+
+def invitaciones_ajustar(modo: str, *, tope: int | None = None, cada_dias: int | None = None,
+                         nota: str | None = None) -> dict:
+    """Agrega una fila: el tope y la frecuencia que no se pasan se heredan de la
+    vigente (40 y a diario sin fila previa). Más de 50 no es un tope: es el límite
+    de Cognito, y pasarlo crea usuarios que no reciben su clave."""
+    if modo not in ("apagado", "ensayo", "activo"):
+        raise ValueError(f"modo desconocido: {modo!r}")
+    vigente = invitaciones_interruptor() or {"tope": 40, "cada_dias": 1}
+    tope = int(vigente["tope"] if tope is None else tope)
+    if not 0 <= tope <= 50:
+        raise ValueError(f"tope {tope} fuera de 0..50 (Cognito manda 50 al día por cuenta)")
+    cada_dias = int((vigente.get("cada_dias") or 1) if cada_dias is None else cada_dias)
+    if not 1 <= cada_dias <= 14:
+        raise ValueError(f"cada_dias {cada_dias} fuera de 1..14")
+    ejecutar("INSERT INTO invitaciones_interruptor (modo, tope, cada_dias, nota) "
+             "VALUES (:m, :t, :k, :n)", {"m": modo, "t": tope, "k": cada_dias, "n": nota})
+    return invitaciones_interruptor()
+
+
+_COLS_MIEMBRO = """correo, nombre, plan, categoria, precio,
+                   (ingreso AT TIME ZONE 'UTC')::text AS ingreso, estado,
+                   (visto_en AT TIME ZONE 'UTC')::text AS visto_en"""
+
+
+def invitaciones_miembros_vigentes() -> list[dict]:
+    """El export vigente: lo visto desde la última carga COMPLETA.
+
+    `>=` y no `=`: si una carga posterior se quedó a medias, las filas que
+    alcanzó a escribir ya traen su visto_en (mayor) y siguen siendo del export
+    bueno; las que no alcanzó conservan el de la carga completa. Sin ninguna
+    carga terminada, no hay export (max de nada es NULL y no sale nada)."""
+    return ejecutar(
+        f"""SELECT {_COLS_MIEMBRO} FROM invitaciones_miembros
+             WHERE visto_en >= (SELECT max(visto_en) FROM invitaciones_cargas)""")
+
+
+def invitaciones_miembros_todos() -> list[dict]:
+    return ejecutar(f"SELECT {_COLS_MIEMBRO} FROM invitaciones_miembros")
+
+
+def invitaciones_guardar_miembros(filas: list[dict], visto_en: str, *, lote: int = 25) -> int:
+    """Upsert del export entero con UN mismo `visto_en`. El `estado` de las filas
+    nuevas es el que trae la carga; el de las que ya existían NO se toca (lo que
+    el dueño aprobó o excluyó sobrevive a la siguiente carga). Va en lotes de
+    `lote` filas por sentencia: el Data API corre una sentencia por llamada, y
+    trescientas llamadas son medio minuto. La carga solo vale (pasa a ser el
+    export vigente) cuando entró el último lote y quedó su fila en
+    invitaciones_cargas: si algo truena antes, sigue valiendo la anterior."""
+    n = 0
+    for i in range(0, len(filas), lote):
+        parte = filas[i:i + lote]
+        valores, params = [], {"v": visto_en}
+        for j, f in enumerate(parte):
+            valores.append(f"(:c{j}, :n{j}, :p{j}, :k{j}, :r{j}, CAST(:i{j} AS timestamptz), "
+                           f":e{j}, CAST(:v AS timestamptz))")
+            params.update({f"c{j}": f["correo"], f"n{j}": f.get("nombre"),
+                           f"p{j}": f.get("plan"), f"k{j}": f.get("categoria"),
+                           f"r{j}": f.get("precio"), f"i{j}": f.get("ingreso"),
+                           f"e{j}": f.get("estado") or "ok"})
+        ejecutar(
+            f"""INSERT INTO invitaciones_miembros
+                       (correo, nombre, plan, categoria, precio, ingreso, estado, visto_en)
+                VALUES {", ".join(valores)}
+                ON CONFLICT (correo) DO UPDATE
+                   SET nombre = EXCLUDED.nombre, plan = EXCLUDED.plan,
+                       categoria = EXCLUDED.categoria, precio = EXCLUDED.precio,
+                       ingreso = EXCLUDED.ingreso, visto_en = EXCLUDED.visto_en""",
+            params)
+        n += len(parte)
+    ejecutar("INSERT INTO invitaciones_cargas (visto_en, filas) "
+             "VALUES (CAST(:v AS timestamptz), :n) ON CONFLICT (visto_en) DO NOTHING",
+             {"v": visto_en, "n": n})
+    return n
+
+
+def invitaciones_fijar_estado(correo: str, estado: str) -> bool:
+    """aprobar / excluir. False si ese correo no está en ningún export."""
+    if estado not in ("ok", "revisar", "excluido"):
+        raise ValueError(f"estado desconocido: {estado!r}")
+    filas = ejecutar("UPDATE invitaciones_miembros SET estado = :e WHERE correo = :c "
+                     "RETURNING correo", {"e": estado, "c": correo_normal(correo)})
+    return bool(filas)
+
+
+def invitaciones_envios(resultados: tuple[str, ...] = ("enviando", "enviado")) -> list[dict]:
+    """Las filas con esos resultados (por defecto, lo que cuenta como mandado)."""
+    marcas = ", ".join(f":r{i}" for i in range(len(resultados)))
+    return ejecutar(
+        f"""SELECT id, correo, paso, origen, resultado, detalle,
+                   (creado AT TIME ZONE 'UTC')::text AS creado
+              FROM invitaciones_envios WHERE resultado IN ({marcas}) ORDER BY id""",
+        {f"r{i}": r for i, r in enumerate(resultados)})
+
+
+def invitaciones_reclamar(correo: str, paso: int, detalle: str | None = None, *, corte: str,
+                          tope: int, desde: str) -> tuple[int | None, str | None]:
+    """El bot reclama un paso ANTES de llamar a Cognito. → (id de la fila, None), o
+    (None, por qué no) y en ese caso NO se manda:
+
+      'contacto_reciente'  a esa persona le salió otro correo desde `desde` (la foto
+                           de la corrida): pidió clave en /acceso mientras el bot
+                           corría, y otro RESEND invalidaría la que acaba de recibir;
+      'sin_cupo'           ya hay `tope` filas vivas desde `corte`: la página gastó
+                           mientras el bot corría, y la foto ya no vale;
+      'ya_mandado'         ese paso ya está enviado o enviándose (índice único parcial
+                           `invitaciones_envios_bot_paso`).
+
+    Una sola sentencia, como en la página. Dos sentencias que se solapen no se ven
+    entre sí, así que el cupo se puede pasar por una o dos en un empate exacto; lo
+    acota el límite de API Gateway de la página."""
+    filas = ejecutar(
+        f"""WITH estado AS (
+                SELECT (SELECT count(*) FROM invitaciones_envios
+                         WHERE resultado IN {_VIVOS_INV}
+                           AND creado >= CAST(:corte AS timestamptz)) AS vivas,
+                       EXISTS (SELECT 1 FROM invitaciones_envios
+                                WHERE correo = :c AND resultado IN {_VIVOS_INV}
+                                  AND creado >= CAST(:desde AS timestamptz)) AS reciente),
+            nueva AS (
+                INSERT INTO invitaciones_envios (correo, paso, origen, resultado, detalle)
+                SELECT :c, CAST(:p AS smallint), 'bot', 'enviando', CAST(:d AS text) FROM estado
+                 WHERE vivas < :t AND NOT reciente
+                ON CONFLICT DO NOTHING RETURNING id)
+            SELECT (SELECT id FROM nueva) AS id, vivas, reciente FROM estado""",
+        {"c": correo_normal(correo), "p": int(paso), "d": detalle, "corte": corte,
+         "desde": desde, "t": int(tope)})
+    fila = filas[0]
+    if fila.get("id") is not None:
+        return int(fila["id"]), None
+    if fila.get("reciente"):
+        return None, "contacto_reciente"
+    return None, "sin_cupo" if int(fila["vivas"]) >= int(tope) else "ya_mandado"
+
+
+def invitaciones_marcar(id_: int, resultado: str, detalle: str | None = None) -> None:
+    """'enviando' → 'enviado' o 'fallo:<código>'. Sin detalle conserva el que había."""
+    ejecutar("UPDATE invitaciones_envios SET resultado = :r, detalle = COALESCE(:d, detalle) "
+             "WHERE id = :i", {"r": resultado, "d": detalle, "i": int(id_)})
+
+
+def invitaciones_anotar(correo: str, paso: int, origen: str, resultado: str,
+                        detalle: str | None = None) -> None:
+    """Una fila suelta (el ensayo del bot, por ejemplo)."""
+    ejecutar("INSERT INTO invitaciones_envios (correo, paso, origen, resultado, detalle) "
+             "VALUES (:c, :p, :o, :r, :d)",
+             {"c": correo_normal(correo), "p": int(paso), "o": origen, "r": resultado,
+              "d": detalle})
+
+
+def invitaciones_anotar_manual(correo: str, reenviar: bool, detalle: str | None = None) -> int:
+    """Lo que el dueño mandó con tools/usuarios.py. → el paso anotado.
+
+    Alta nueva = paso 0. Reenvío = el siguiente al más alto ya mandado, sin pasar
+    de 3 (una cuenta sin filas cuenta como paso 0, así que el primer reenvío es
+    R1). Una sola sentencia: el agregado sin GROUP BY devuelve una fila aunque no
+    haya ninguna."""
+    filas = ejecutar(
+        f"""INSERT INTO invitaciones_envios (correo, paso, origen, resultado, detalle)
+            SELECT :c, CASE WHEN :r THEN LEAST(3, COALESCE(max(paso), 0) + 1) ELSE 0 END,
+                   'manual', 'enviado', :d
+              FROM invitaciones_envios
+             WHERE correo = :c AND resultado IN {_VIVOS_INV}
+            RETURNING paso""",
+        {"c": correo_normal(correo), "r": bool(reenviar), "d": detalle})
+    return int(filas[0]["paso"]) if filas else 0
+
+
+def invitaciones_anotar_historial(correo: str, paso: int, creado: str, detalle: str) -> bool:
+    """El backfill de antes del bot. Idempotente: el paso 0 una sola vez por
+    correo; los reenvíos, una vez por archivo (`detalle`), así que correr el
+    historial dos veces no duplica nada. → True si escribió."""
+    filas = ejecutar(
+        """INSERT INTO invitaciones_envios (correo, paso, origen, resultado, detalle, creado)
+           SELECT :c, :p, 'historial', 'enviado', :d, CAST(:t AS timestamptz)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM invitaciones_envios
+                 WHERE correo = :c AND paso = :p AND origen = 'historial'
+                   AND (:p = 0 OR detalle = :d))
+           RETURNING id""",
+        {"c": correo_normal(correo), "p": int(paso), "d": detalle, "t": creado})
+    return bool(filas)
+
+
+# La página /acceso (server/acceso.py): la pide la propia persona, sin sesión.
+
+def invitaciones_contar_solicitud(ip_hash: str, corte: str, tope: int) -> int:
+    """Cuántas solicitudes llevaba esta IP hoy ANTES de esta, y anota esta si aún
+    cabe. Pasado el tope ya no se anota nada, y lo de antes del corte se borra de
+    paso: de esta tabla no se usa más que lo de hoy. Dos sentencias que se solapen
+    ven el mismo conteo, así que en un empate se cuela alguna de más: se acepta,
+    porque el límite de API Gateway (1 por segundo, ráfaga 3) lo acota."""
+    filas = ejecutar(
+        """WITH previas AS (
+               SELECT count(*) AS n FROM invitaciones_solicitudes
+                WHERE ip_hash = :h AND creado >= CAST(:corte AS timestamptz)),
+           viejas AS (
+               DELETE FROM invitaciones_solicitudes WHERE creado < CAST(:corte AS timestamptz)),
+           nueva AS (
+               INSERT INTO invitaciones_solicitudes (ip_hash)
+               SELECT :h FROM previas WHERE n < :t)
+           SELECT n FROM previas""",
+        {"h": ip_hash, "corte": corte, "t": int(tope)})
+    return int(filas[0]["n"])
+
+
+def invitaciones_limpiar_solicitudes(corte: str) -> None:
+    """Los hashes de IP de antes del corte, aunque nadie vuelva a pedir nada: sin
+    esto, la última solicitud de una racha se quedaría guardada semanas."""
+    ejecutar("DELETE FROM invitaciones_solicitudes WHERE creado < CAST(:corte AS timestamptz)",
+             {"corte": corte})
+
+
+def invitaciones_gastado_desde(corte: str) -> int:
+    """Lo que salió desde el corte, de cualquier origen (lo mismo que cuenta la
+    tabla en `gastado_hoy`; la página no lee los pools: es una por visitante)."""
+    filas = ejecutar(
+        f"""SELECT count(*) AS n FROM invitaciones_envios
+             WHERE resultado IN {_VIVOS_INV} AND creado >= CAST(:corte AS timestamptz)""",
+        {"corte": corte})
+    return int(filas[0]["n"])
+
+
+def invitaciones_envios_de(correo: str) -> list[dict]:
+    """Las filas vivas de una persona, de cualquier origen."""
+    return ejecutar(
+        f"""SELECT id, correo, paso, origen, resultado,
+                   (creado AT TIME ZONE 'UTC')::text AS creado
+              FROM invitaciones_envios
+             WHERE correo = :c AND resultado IN {_VIVOS_INV} ORDER BY id""",
+        {"c": correo_normal(correo)})
+
+
+def invitaciones_estado_miembro(correo: str) -> str | None:
+    """Su estado en cualquier export, no solo en el vigente. None si no aparece."""
+    filas = ejecutar("SELECT estado FROM invitaciones_miembros WHERE correo = :c",
+                     {"c": correo_normal(correo)})
+    return filas[0]["estado"] if filas else None
+
+
+def invitaciones_reclamar_pagina(correo: str, paso: int, *, corte: str, tope: int,
+                                 desde: str) -> int | None:
+    """Anota 'enviando' ANTES de llamar a Cognito. → id de la fila, o None si en lo
+    que se decidía se acabó el cupo o ya salió otro correo a esa persona. Las dos
+    cosas se vuelven a mirar aquí, pero dos sentencias que se solapen no se ven
+    entre sí: lo que impide de verdad que dos clics a la vez manden dos claves es el
+    índice único `invitaciones_envios_pagina_dia`. El cupo sí se puede pasar por una
+    o dos en un empate exacto. El índice del bot no estorba: solo mira origen = 'bot'."""
+    filas = ejecutar(
+        f"""INSERT INTO invitaciones_envios (correo, paso, origen, resultado)
+            SELECT :c, CAST(:p AS smallint), 'pagina', 'enviando'
+             WHERE (SELECT count(*) FROM invitaciones_envios
+                     WHERE resultado IN {_VIVOS_INV}
+                       AND creado >= CAST(:corte AS timestamptz)) < :t
+               AND NOT EXISTS (
+                   SELECT 1 FROM invitaciones_envios
+                    WHERE correo = :c AND resultado IN {_VIVOS_INV}
+                      AND creado >= CAST(:desde AS timestamptz))
+            ON CONFLICT DO NOTHING RETURNING id""",
+        {"c": correo_normal(correo), "p": int(paso), "corte": corte, "t": int(tope),
+         "desde": desde})
+    return int(filas[0]["id"]) if filas else None

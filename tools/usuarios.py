@@ -18,6 +18,10 @@ comando. La cortesía sale de tools/tarifas.json. `suspender` deshabilita al
 usuario Y revoca sus sesiones (global sign-out) — el VPS de la comunidad
 llamará esto mismo cuando detecte churn.
 
+Desde la Fase 2 cada `alta` y cada `--reenviar` que salen de aquí quedan
+anotados en `invitaciones_envios` (origen 'manual') para que el invitador
+(worker/invitador.py) no repita el paso ni cuente mal el cupo del día.
+
 `alta --desde <archivo>` es el camino para las tandas de apertura: revisa la
 lista entera ANTES de tocar Cognito y, sin `--ejecutar`, no da de alta a nadie.
 Ver el bloque «altas en tanda» más abajo para por qué el ensayo es el default.
@@ -66,17 +70,29 @@ def _sub(respuesta_usuario: dict) -> str:
     raise RuntimeError("Cognito no devolvió el sub del usuario")
 
 
+def _kwargs_alta(pool: str, correo: str) -> dict:
+    return dict(UserPoolId=pool, Username=correo,
+                UserAttributes=[{"Name": "email", "Value": correo},
+                                {"Name": "email_verified", "Value": "true"}],
+                DesiredDeliveryMediums=["EMAIL"])
+
+
+def reenviar_provisional(pool: str, correo: str) -> None:
+    """Reenvía la contraseña provisional a un invitado que la dejó vencer; NO
+    vuelve a abonar cortesía. Una sola llamada a Cognito: el invitador la usa
+    tal cual para sus recordatorios, porque lo que venga DESPUÉS del RESEND (el
+    sub que devuelve `alta`) ya no puede deshacer el correo que salió. Y no imprime
+    nada: la llama también la página /acceso (server/acceso.py), en la Lambda del
+    API, y ese log no puede llevar correos."""
+    _cognito(pool).admin_create_user(MessageAction="RESEND", **_kwargs_alta(pool, correo))
+
+
 def alta(pool: str, correo: str, plan: str, reenviar: bool = False) -> str:
     from pipeline import db
     c = _cognito(pool)
-    kwargs = dict(UserPoolId=pool, Username=correo,
-                  UserAttributes=[{"Name": "email", "Value": correo},
-                                  {"Name": "email_verified", "Value": "true"}],
-                  DesiredDeliveryMediums=["EMAIL"])
+    kwargs = _kwargs_alta(pool, correo)
     if reenviar:
-        # reenvía la contraseña provisional a un invitado que la dejó vencer;
-        # NO vuelve a abonar cortesía
-        c.admin_create_user(MessageAction="RESEND", **kwargs)
+        reenviar_provisional(pool, correo)
         print(f"{correo}: contraseña provisional reenviada")
         return _sub(c.admin_get_user(UserPoolId=pool, Username=correo))
     r = c.admin_create_user(**kwargs)
@@ -94,6 +110,29 @@ def alta(pool: str, correo: str, plan: str, reenviar: bool = False) -> str:
           f"saldo {saldo}, slots de proyectos: {tope}")
     print("Cognito le envió la contraseña provisional por email; el primer login fuerza el cambio.")
     return sub
+
+
+def anotar_envio_manual(correo: str, reenviar: bool) -> None:
+    """Fase 2: deja constancia para el invitador de lo que el dueño mandó a mano
+    (invitaciones_envios, origen 'manual'). Sin eso el bot no sabría que esa
+    persona ya recibió su paso y le mandaría otro el mismo día, o contaría mal el
+    cupo de correo.
+
+    Va AQUÍ y no dentro de `alta()` porque el bot también llama a `alta()` y
+    anota lo suyo: anotarlo en los dos lados duplicaría la fila. Y nunca rompe:
+    si no hay base, la tabla aún no existe (antes del db_migrate) o el registro
+    falla, se avisa y se sigue — el correo ya salió y el loop diario del dueño no
+    se puede caer por una bitácora."""
+    if not (os.getenv("DB_CLUSTER_ARN") and os.getenv("DB_SECRET_ARN")):
+        return
+    try:
+        from pipeline import db
+        paso = db.invitaciones_anotar_manual(correo, reenviar)
+        print(f"{correo}: anotado para el invitador (paso {paso})")
+    except Exception as e:                          # noqa: BLE001 — avisar y seguir
+        print(f"AVISO {correo}: el correo salió pero NO quedó anotado para el invitador "
+              f"({_codigo(e)}). Si la tabla no existe aún, corre tools/db_migrate.py; "
+              "el bot contará el cupo por el pool.")
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +325,7 @@ def alta_lote(pool: str, ruta: Path, plan_default: str, *, ejecutar: bool = Fals
                 sub = alta(pool, correo, plan)
                 hechas, seguidos = hechas + 1, 0
                 bitacora.write(f"{cuando}\t{correo}\t{plan}\talta\t{sub}\n")
+                anotar_envio_manual(correo, reenviar=False)
             except Exception as e:                      # noqa: BLE001 — ver abajo
                 codigo = _codigo(e)
                 # Una corrida de 50 no se puede morir por una dirección: se
@@ -446,6 +486,7 @@ def main() -> None:
                   con_sospechosos=args.con_sospechosos, registro=args.registro)
     elif args.accion == "alta":
         alta(args.pool, args.correo, args.plan, reenviar=args.reenviar)
+        anotar_envio_manual(args.correo, reenviar=args.reenviar)
     elif args.accion == "suspender":
         suspender(args.pool, args.correo)
     elif args.accion == "reactivar":
