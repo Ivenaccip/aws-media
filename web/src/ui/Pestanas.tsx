@@ -1,12 +1,16 @@
 // Pestañas con flechas, Inicio/Fin y ARIA de Radix. La elegida se marca en
 // blanco, no en ámbar: el ámbar solo dice «haz algo» (docs/DISENO.md §3).
 import * as T from '@radix-ui/react-tabs';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 export interface Pestana {
   id: string;
   titulo: string;
   contenido: ReactNode;
+  /** Una vez abierta, sigue montada (oculta) al pasar a otra pestaña, en vez de desmontarse. Para lo que tiene algo en curso o a
+   *  medias —una subida, un formulario escrito— que no debe perderse por mirar otra vista. Antes de la primera visita no se monta
+   *  (lo que pide datos al abrirse sigue pidiéndolos hasta entonces). Sin esto, la pestaña de ahora es la única montada, como siempre. */
+  conservar?: boolean;
 }
 
 export interface PropsPestanas {
@@ -21,8 +25,16 @@ export interface PropsPestanas {
 
 export function Pestanas({ pestanas, etiqueta, inicial, alCambiar }: PropsPestanas) {
   const primera = inicial ?? pestanas[0]?.id;
+  // la pestaña de ahora y las que ya se abrieron: las dos cosas hacen falta para `conservar`
+  const [activa, setActiva] = useState(primera);
+  const [vistas, setVistas] = useState<ReadonlySet<string>>(() => new Set(primera ? [primera] : []));
+  function cambiar(id: string) {
+    setActiva(id);
+    setVistas(v => (v.has(id) ? v : new Set(v).add(id)));
+    alCambiar?.(id);
+  }
   return (
-    <T.Root {...(primera ? { defaultValue: primera } : {})} {...(alCambiar ? { onValueChange: alCambiar } : {})}>
+    <T.Root {...(activa ? { value: activa } : {})} onValueChange={cambiar}>
       <T.List aria-label={etiqueta} className="flex gap-1 border-b border-linea">
         {pestanas.map(p => (
           <T.Trigger
@@ -38,11 +50,19 @@ export function Pestanas({ pestanas, etiqueta, inicial, alCambiar }: PropsPestan
           </T.Trigger>
         ))}
       </T.List>
-      {pestanas.map(p => (
-        <T.Content key={p.id} value={p.id} className="pt-4">
-          {p.contenido}
-        </T.Content>
-      ))}
+      {pestanas.map(p => {
+        // la conservada, ya visitada: Radix no la desmonta (forceMount) y aquí se oculta mientras no es la de ahora
+        const conservada = p.conservar === true && vistas.has(p.id);
+        return (
+          <T.Content
+            key={p.id}
+            value={p.id}
+            className="pt-4 data-[state=inactive]:hidden"
+            {...(conservada ? { forceMount: true as const, hidden: p.id !== activa } : {})}>
+            {p.contenido}
+          </T.Content>
+        );
+      })}
     </T.Root>
   );
 }

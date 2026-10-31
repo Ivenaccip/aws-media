@@ -5,8 +5,9 @@ que mapear. Se registra en `server/migracion.py` como `retirada` desde el primer
 atajo que redirige) para que el registro anti-pérdida (`tests/test_migracion_ui.py`) cubra sus invariantes como a las demás.
 
 COI = **C**ontexto · **O**bjetivo · **I**nstrucciones: un chat de UNA sola entrada. La persona escribe una vez y la IA responde una vez
-con el COI en tres bloques. Dirección A del lienzo («Conversación»: una columna, un cuadro grande, tres tarjetas plegables; tablero
-`COI-A.dc.html`). **Gratis por ahora (0 créditos), 3 usos por persona por día** (día de México). Solo cuentan las respuestas terminadas.
+con el COI en UN solo texto (Contexto, Objetivo e Instrucciones, con sus encabezados) dentro de un cuadro con scroll. Dirección A del
+lienzo («Conversación»: una columna, un cuadro grande; tablero `COI-A.dc.html`). Hasta el 17-oct-2026 el resultado eran tres tarjetas plegables;
+el dueño pidió un solo texto. **Gratis por ahora (0 créditos), 3 usos por persona por día** (día de México). Solo cuentan las respuestas terminadas.
 Lo cuenta el SERVIDOR (`GET /api/coi/estado`): la web solo lo enseña.
 
 ## Lo que esta pantalla NO hace (a propósito)
@@ -54,19 +55,15 @@ En `web/src/pantallas/coi/Coi.test.tsx` y `web/src/pantallas/coi/logica.test.ts`
 | `coi.armar.salir_con_la_respuesta_en_camino_pregunta_antes_de_irse` | `beforeunload` SOLO mientras se arma (el servidor termina y cuenta el uso aunque nadie lo vea): en reposo irse es libre, con la respuesta en camino el navegador pregunta, y se quita al terminar y al desmontar; sin guardar nada |
 | `coi.armar.el_foco_va_al_encabezado_del_resultado_y_lo_anuncia` | al llegar el COI el foco va a «Tu COI» y la región viva lo anuncia |
 | `coi.armar.un_ejemplo_llena_el_cuadro_deja_el_foco_en_el_y_esconde_los_ejemplos` | los 4 ejemplos llenan el cuadro, el foco se queda en él y la lista se esconde al escribir |
-| `coi.resultado.las_partes_numeradas_de_las_instrucciones_se_separan` | «1. Título» con sus líneas se vuelve una lista de partes (con negritas y viñetas del modelo) |
-| `coi.resultado.los_pasos_numerados_de_una_parte_no_abren_partes_nuevas` | una parte nueva es la que SIGUE a la anterior (1, luego 2…, hasta 7) y empieza en la primera columna: los pasos «1. 2. 3.» que el modelo mete dentro de la parte 3 se quedan en ella, con su número |
-| `coi.resultado.los_pasos_numerados_dentro_de_una_parte_no_se_vuelven_partes_en_pantalla` | en pantalla salen siete partes (no 10) y lo que se copia es el texto crudo |
-| `coi.resultado.un_bloque_de_codigo_dentro_de_una_parte_conserva_su_forma` | un bloque ```…``` dentro de una parte (el JSON de «Formato de salida») es UNA entrada con sus saltos y su sangría, sin la que le dio el modelo; ni un «2.» ni un `**kwargs` de adentro se interpretan; una respuesta cortada antes de la cerca final lo cierra sola |
-| `coi.resultado.un_bloque_de_codigo_de_las_instrucciones_se_pinta_con_su_forma_y_se_copia_crudo` | en pantalla el bloque sale en un `<pre>` (se parte por dentro, nunca ensancha la página) y siguen siendo siete partes; «Copiar» da el texto crudo |
-| `coi.resultado.un_texto_que_no_trae_partes_se_lee_como_parrafos_sin_perder_nada` | si no hay al menos dos partes numeradas (o hay texto antes de la primera) se lee como párrafos, sin perder nada |
-| `coi.resultado.las_suposiciones_se_marcan_y_el_resto_son_parrafos` | la línea «Suposición:» (o «Assumption:») lleva su etiqueta; el resto son párrafos |
-| `coi.resultado.tres_tarjetas_con_sus_encabezados_y_las_siete_partes_de_las_instrucciones` | #CONTEXTO, #OBJETIVO y #INSTRUCCIONES (con sus siete partes) como tarjetas abiertas con `aria-expanded` |
+| `coi.resultado.un_solo_texto_con_los_tres_encabezados_en_orden_y_un_solo_copiar` | el COI sale como UN texto (no tres tarjetas) en un solo cuadro: #CONTEXTO, #OBJETIVO e #INSTRUCCIONES en orden y en negritas, con sus saltos y su sangría (`pre-wrap`); un solo «Copiar» y nada que plegar |
+| `coi.resultado.el_cuadro_se_desplaza_por_dentro_y_se_alcanza_con_el_teclado` | el cuadro tiene alto máximo y `overflow-y-auto`: un COI largo no alarga la página; `tabindex=0` para desplazarlo con el teclado |
 | `coi.resultado.lo_que_dice_el_modelo_se_pinta_como_texto_nunca_como_html` | HTML o scripts en la respuesta salen como texto; no hay `dangerouslySetInnerHTML` |
-| `coi.resultado.plegar_una_tarjeta_plegar_todo_y_abrir_todo` | plegar una, «Plegar todo» y «Abrir todo» según lo que haya; el foco se queda en el botón |
-| `coi.resultado.copiar_un_bloque_y_copiar_todo_copian_el_texto_tal_cual_sin_mover_el_foco` | «Copiar» por bloque (con su encabezado) y «Copiar todo»; el botón dice «Copiado» sin mover el foco |
-| `coi.resultado.si_el_navegador_no_deja_copiar_deja_el_texto_seleccionado_y_lo_dice` | sin permiso para copiar, deja el bloque seleccionado y dice «cópialo con Ctrl+C» |
-| `coi.resultado.sin_estructura_sale_una_sola_tarjeta_con_el_texto_completo_y_copiar` | `estructura_ok=false`: una sola tarjeta con el texto completo y «Copiar»; esa respuesta SÍ cuenta |
+| `coi.resultado.el_texto_que_se_ve_no_lleva_asteriscos_de_negrita_y_el_codigo_queda_intacto` | `textoMostrado`: quita los `**` fuera de los bloques de código y no toca el código (`**kwargs`); sin estructura, la respuesta completa |
+| `coi.resultado.los_encabezados_de_bloque_se_reconocen_en_los_dos_idiomas` | `esEncabezado` reconoce #CONTEXTO/#OBJETIVO/#INSTRUCCIONES y #CONTEXT/#OBJECTIVE/#INSTRUCTIONS, y nada más |
+| `coi.resultado.las_negritas_de_markdown_no_se_ven_con_asteriscos_pero_se_copian_tal_cual` | en pantalla no salen los `**`; «Copiar» da el texto crudo |
+| `coi.resultado.copiar_copia_el_texto_tal_cual_sin_mover_el_foco` | «Copiar» da los tres bloques con su encabezado, en orden; el botón dice «Copiado» sin mover el foco |
+| `coi.resultado.si_el_navegador_no_deja_copiar_deja_el_texto_seleccionado_y_lo_dice` | sin permiso para copiar, deja el cuadro seleccionado y dice «cópialo con Ctrl+C» |
+| `coi.resultado.sin_estructura_el_cuadro_lleva_la_respuesta_completa_y_copiar` | `estructura_ok=false`: el cuadro lleva la respuesta completa, el aviso lo dice y «Copiar» la da; esa respuesta SÍ cuenta |
 | `coi.resultado.en_ingles_los_encabezados_van_en_ingles_y_se_copian_asi` | `idioma: "en"`: #CONTEXT, #OBJECTIVE y #INSTRUCTIONS, también al copiar |
 | `coi.guardar.el_titulo_propuesto_es_la_primera_frase_del_objetivo_y_cabe_en_80` | el título propuesto es la primera frase del objetivo, sin markdown, en 80 como máximo (con «…» si se corta) |
 | `coi.guardar.la_clave_son_32_hex_y_cada_intento_trae_otra` | la clave de guardado son 32 hex aleatorios |
@@ -80,7 +77,7 @@ En `web/src/pantallas/coi/Coi.test.tsx` y `web/src/pantallas/coi/logica.test.ts`
 | `coi.guardar.si_se_arma_otro_con_la_hoja_abierta_la_hoja_se_cierra` | si se empieza a armar otro con la hoja abierta, la hoja se cierra y no se queda esperando el COI nuevo (que no es el que la persona quería guardar) |
 | `coi.guardar.el_guardado_de_un_coi_que_ya_no_esta_no_marca_al_nuevo_como_guardado` | si el POST de guardar el viejo termina cuando el nuevo ya está en pantalla, no dice «Guardado» sobre el nuevo ni anuncia un guardado que no fue |
 | `coi.guardar.un_coi_demasiado_largo_para_la_biblioteca_se_dice_sin_jerga_y_manda_a_copiar` | un `muy_largo` del `prompt` dice «Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «Copiar todo» para llevártelo.», sin nombrar el campo interno ni el tope |
-| `coi.guardar.sin_tres_bloques_el_texto_de_demasiado_largo_manda_a_copiar_a_secas` | si la respuesta no vino en tres bloques, el botón que existe es «Copiar» y el aviso manda a ése |
+| `coi.guardar.sin_tres_bloques_el_texto_de_demasiado_largo_manda_a_copiar_a_secas` | con o sin los tres bloques el botón es «Copiar», y el aviso manda a ése |
 | `coi.guardar.los_invalido_del_servidor_se_dicen_tal_cual_el_del_titulo_junto_al_campo` | `titulo_invalido` va junto al campo (con el foco en él) y `prompt_invalido` en la alerta de la hoja, con el texto del servidor |
 | `coi.errores.el_codigo_y_el_texto_salen_del_detail_objeto` | el `detail` objeto `{codigo, texto, …}` se lee por su código; el 429 trae `renueva_en_s` y `se_renueva` |
 | `coi.errores.la_misma_medianoche_se_compara_como_instante_y_no_como_texto` | dos `se_renueva` del servidor se comparan como instantes (no como texto): así sabe si ya cambió el día sin mirar el reloj del navegador |

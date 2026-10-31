@@ -44,6 +44,8 @@ export interface AreaMenu {
   grupos: readonly GrupoMenu[];
   /** Un área apagada: se ve en el mapa («Próximamente») y no se puede abrir. */
   proximamente?: boolean;
+  /** Cómo se llama el área en la dirección (/estudio/<ruta>/) si no es su `clave`: la de Marketing es `mkt` y la dirección dice `marketing`. */
+  ruta?: string;
 }
 
 /** Dónde estás: claves de un área, un grupo y una pantalla de `MENU`. */
@@ -56,6 +58,7 @@ export interface Lugar {
 export const MENU: readonly AreaMenu[] = [
   {
     clave: 'mkt',
+    ruta: 'marketing',
     titulo: 'Marketing',
     icono: 'marketing',
     grupos: [
@@ -170,11 +173,55 @@ export const MENU: readonly AreaMenu[] = [
   },
   { clave: 'producto', titulo: 'Producto', icono: 'producto', grupos: [], proximamente: true },
   { clave: 'ventas', titulo: 'Ventas', icono: 'ventas', grupos: [], proximamente: true },
-  { clave: 'automatizaciones', titulo: 'Automatizaciones', icono: 'rapido', grupos: [], proximamente: true },
+  {
+    clave: 'automatizaciones',
+    titulo: 'Automatizaciones',
+    icono: 'rapido',
+    grupos: [
+      {
+        clave: 'distrito',
+        titulo: 'Distrito',
+        icono: 'ubicacion',
+        pantallas: [
+          {
+            clave: 'constructor',
+            titulo: 'Constructor',
+            icono: 'flujo',
+            texto: 'Arma tu flujo cuadro por cuadro y descárgalo para n8n.',
+            href: '/estudio/constructor/',
+          },
+          {
+            clave: 'asistente',
+            titulo: 'Asistente',
+            icono: 'magia',
+            texto: 'Cuéntanos qué quieres automatizar y te armamos el flujo.',
+            href: '/estudio/asistente/',
+          },
+          { clave: 'actualizar', titulo: 'Actualizar flujos', icono: 'automatico', proximamente: true },
+        ],
+      },
+      { clave: 'tus', titulo: 'Tus automatizaciones', icono: 'biblioteca', pantallas: [] },
+    ],
+  },
 ];
 
 /** Donde se cae al abrir el inicio: la caja, en Video (la pestaña en la que arranca desde siempre: es lo que ya se usaba). */
 export const LUGAR_INICIAL: Lugar = { area: 'mkt', grupo: 'distrito', pantalla: 'video' };
+
+// Las direcciones del recorrido (una página por nivel; la lista completa y su inversa viven en rutas.ts). Lo mínimo va AQUÍ y no allá
+// para que `urlDeInicio` pueda apuntar a ellas sin que menu.ts y rutas.ts se importen entre sí.
+
+/** Todas las páginas del recorrido cuelgan de este prefijo: minúsculas, sin acentos y con barra final. */
+export const PREFIJO = '/estudio/';
+
+/** La principal: el mapa («Elige un área»). */
+export const RUTA_MAPA = '/estudio/';
+
+/** Cómo se llama el área en la dirección: su `ruta` si la trae (Marketing = `mkt` en el menú, «marketing» en la dirección) o, si no, su `clave`. */
+export const trozoDeArea = (a: AreaMenu): string => a.ruta ?? a.clave;
+
+/** La página de un área: «/estudio/marketing/». */
+export const urlDeArea = (a: AreaMenu): string => `${PREFIJO}${trozoDeArea(a)}/`;
 
 /** Lo que el texto de una tarjeta de grupo dice: sus pantallas, en orden; un grupo que todavía no trae ninguna, «Próximamente». */
 export function detalleDeGrupo(g: GrupoMenu): string {

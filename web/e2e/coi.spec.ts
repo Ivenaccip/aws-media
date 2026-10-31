@@ -280,7 +280,7 @@ for (const [ancho, alto] of [
       await revisar(page, 'coi-escribiendo');
     });
 
-    test('armar: «Armando tu COI…» sin pasos falsos, luego tres tarjetas, el contador baja y el foco va al resultado', async ({ page }) => {
+    test('armar: «Armando tu COI…» sin pasos falsos, luego el COI en un solo texto, el contador baja y el foco va al resultado', async ({ page }) => {
       let soltar!: () => void;
       const sim = await simular(page, { armar: [{ ...coiOk({ usos: 1 } as Sim), espera: new Promise<void>(r => (soltar = r)) }] });
       await abrir(page);
@@ -299,49 +299,70 @@ for (const [ancho, alto] of [
       await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeFocused();
       expect(sim.pedidos.armar).toEqual([{ texto: TEXTO_DE_LA_PERSONA }]); // recortado, y una sola vez
       await expect(contador(page)).toHaveText('Te quedan 2 de 3 hoy');
-      for (const titulo of ['#CONTEXTO', '#OBJETIVO', '#INSTRUCCIONES']) await expect(page.getByRole('button', { name: new RegExp(`^${titulo}`) })).toHaveAttribute('aria-expanded', 'true');
-      // las siete partes de #INSTRUCCIONES, numeradas
-      await expect(page.locator('[data-bloque="ins"] ol > li')).toHaveCount(7);
-      await expect(page.getByText('Suposición', { exact: true })).toBeVisible();
+      // UN solo texto en un cuadro (no tres tarjetas), con los tres encabezados en negritas y las siete partes de #INSTRUCCIONES
+      const caja = page.getByRole('region', { name: 'Texto de tu COI' });
+      await expect(caja).toBeVisible();
+      for (const titulo of ['#CONTEXTO', '#OBJETIVO', '#INSTRUCCIONES']) await expect(caja.locator('b', { hasText: titulo })).toBeVisible();
+      await expect(page.locator('article')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /Plegar todo|Abrir todo|Copiar el bloque/ })).toHaveCount(0);
+      await expect(caja).toContainText('7. Restricciones');
+      await expect(caja).toContainText('Suposición:');
       await expect(armar(page)).toHaveText('Armar otro COI');
       await revisar(page, 'coi-resultado');
     });
 
-    test('plegar todo, abrir todo y plegar uno; los bloques plegados no se leen', async ({ page }) => {
-      await simular(page);
+    test('un COI largo se desplaza dentro de su cuadro: la página no se alarga y el teclado lo mueve', async ({ page }) => {
+      const instrucciones = Array.from({ length: 80 }, (_, i) => `${i + 1}. Paso ${i + 1}: una instrucción con bastante texto para que ocupe varias líneas dentro del cuadro.`).join('\n');
+      const largo = { ...COI_DE_MUESTRA, instrucciones };
+      await simular(page, {
+        armar: [
+          {
+            status: 200,
+            body: {
+              coi: { ...largo, completo: `#CONTEXTO\n${largo.contexto}\n#OBJETIVO\n${largo.objetivo}\n#INSTRUCCIONES\n${instrucciones}`, estructura_ok: true },
+              idioma: 'es',
+              tope: 3,
+              usos: 1,
+              quedan: 2,
+              renueva_en_s: RENUEVA_EN_S,
+              se_renueva: SE_RENUEVA,
+            },
+          },
+        ],
+      });
       await abrir(page);
       await cuadro(page).fill(TEXTO_DE_LA_PERSONA);
       await armar(page).click();
       await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeFocused();
-      await page.getByRole('button', { name: 'Plegar todo' }).click();
-      for (const c of ['ctx', 'obj', 'ins']) await expect(page.locator(`#coi-bq-${c}`)).toBeHidden();
-      await expect(page.getByRole('button', { name: 'Abrir todo' })).toBeFocused();
-      await page.getByRole('button', { name: /^#OBJETIVO/ }).click();
-      await expect(page.locator('#coi-bq-obj')).toBeVisible();
-      await expect(page.locator('#coi-bq-ctx')).toBeHidden();
-      await page.getByRole('button', { name: 'Abrir todo' }).click();
-      await expect(page.getByRole('button', { name: 'Plegar todo' })).toBeVisible();
-      await revisar(page, 'coi-plegado');
+      const caja = page.getByRole('region', { name: 'Texto de tu COI' });
+      await expect(caja).toContainText('80. Paso 80');
+      // el cuadro no pasa del alto máximo y guarda más texto del que enseña: se desplaza por dentro
+      const m = await caja.evaluate(el => ({ alto: el.clientHeight, total: el.scrollHeight, ventana: window.innerHeight, overflowY: getComputedStyle(el).overflowY }));
+      expect(m.overflowY).toBe('auto');
+      expect(m.total).toBeGreaterThan(m.alto);
+      expect(m.alto).toBeLessThanOrEqual(Math.min(m.ventana * 0.6, 512) + 2);
+      // con el teclado: se llega al cuadro y Re Pág lo desplaza por dentro
+      await caja.focus();
+      await expect(caja).toBeFocused();
+      await page.keyboard.press('PageDown');
+      await expect.poll(() => caja.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+      await revisar(page, 'coi-largo');
     });
 
-    test('copiar: por bloque y todo, con el portapapeles de verdad, sin mover el foco', async ({ page, context }) => {
+    test('copiar: el COI entero, con el portapapeles de verdad, sin mover el foco', async ({ page, context }) => {
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       await simular(page);
       await abrir(page);
       await cuadro(page).fill(TEXTO_DE_LA_PERSONA);
       await armar(page).click();
       await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeFocused();
-      const copiarObj = page.getByRole('button', { name: 'Copiar el bloque #OBJETIVO' });
-      await copiarObj.click();
-      await expect(page.getByRole('button', { name: 'Copiado: el bloque #OBJETIVO' })).toBeFocused();
-      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`#OBJETIVO\n${COI_DE_MUESTRA.objetivo}`);
-      await page.getByRole('button', { name: 'Copiar todo el COI' }).click();
+      await page.getByRole('button', { name: 'Copiar el COI' }).click();
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
         `#CONTEXTO\n${COI_DE_MUESTRA.contexto}\n\n#OBJETIVO\n${COI_DE_MUESTRA.objetivo}\n\n#INSTRUCCIONES\n${COI_DE_MUESTRA.instrucciones}`,
       );
-      await expect(page.getByRole('button', { name: 'Copiado: todo el COI' })).toBeFocused();
+      await expect(page.getByRole('button', { name: 'Copiado: el COI' })).toBeFocused();
       // la confirmación vuelve sola
-      await expect(page.getByRole('button', { name: 'Copiar todo el COI' })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('button', { name: 'Copiar el COI' })).toBeVisible({ timeout: 5000 });
     });
 
     test('guardar: hoja chica con título prefijado y editable, categoría, y «Guardado en tu Biblioteca» con enlace a Míos', async ({ page }) => {
@@ -424,7 +445,7 @@ for (const [ancho, alto] of [
       await expect(page.getByRole('alert')).toHaveCount(0); // no es un error
       // el último COI sigue a la vista, con su «Copiar»
       await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Copiar todo el COI' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Copiar el COI' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Ir a la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
       // pulsar el botón apagado no manda nada
       const antes = sim.pedidos.armar.length;
@@ -555,7 +576,7 @@ for (const [ancho, alto] of [
       await revisar(page, 'coi-sin-conexion');
     });
 
-    test('estructura_ok = false: una sola tarjeta «Tu COI» con el texto completo y «Copiar»', async ({ page, context }) => {
+    test('estructura_ok = false: el cuadro lleva el texto completo y «Copiar»', async ({ page, context }) => {
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       const completo = 'Aquí va tu prompt.\n\nUsa un tono cercano y frases cortas.';
       await simular(page, {
@@ -570,11 +591,10 @@ for (const [ancho, alto] of [
       await cuadro(page).fill(TEXTO_DE_LA_PERSONA);
       await armar(page).click();
       await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeFocused();
-      await expect(page.locator('article')).toHaveCount(1);
-      await expect(page.locator('article')).toContainText('Aquí va tu prompt.');
+      await expect(page.getByRole('region', { name: 'Texto de tu COI' })).toContainText('Aquí va tu prompt.');
       await expect(page.getByRole('button', { name: 'Plegar todo' })).toHaveCount(0);
       await expect(contador(page)).toHaveText('Te quedan 2 de 3 hoy'); // esa respuesta SÍ cuenta
-      await page.getByRole('button', { name: 'Copiar el COI completo' }).click();
+      await page.getByRole('button', { name: 'Copiar el COI' }).click();
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(completo);
       await revisar(page, 'coi-sin-estructura');
     });
@@ -662,7 +682,7 @@ for (const [ancho, alto] of [
       await otra.close();
     });
 
-    test('palabras largas sin espacios (80 letras, una dirección) no ensanchan la página ni se salen de su tarjeta', async ({ page }) => {
+    test('palabras largas sin espacios (80 letras, una dirección) no ensanchan la página ni se salen de su cuadro', async ({ page }) => {
       const larga = 'W'.repeat(80);
       const enlace = 'https://ejemplo.com/' + 'abcdefghij'.repeat(6);
       const coi = {

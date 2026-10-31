@@ -59,7 +59,9 @@ from server.clip_api import router as clip_router
 from server.imagen_cola import router as imagen_cola_router
 from server.shorts_api import router as shorts_router
 from server.coi_api import router as coi_router
+from server.automatiza_api import router as automatiza_router
 from server.biblioteca_api import router as biblioteca_router
+from server.clases_admin_api import router as clases_admin_router
 
 
 def _configurar_logging() -> None:
@@ -155,7 +157,12 @@ app.include_router(mix_router)
 app.include_router(trabajos_router)
 # Ajustes 3: COI (gratis, 3 al día, sin trazas del texto) y la Biblioteca de prompts
 app.include_router(coi_router)
+# Asistente de Automatizaciones (Fase A, modo «prueba», gasto 0): /api/automatiza/*, con sesión
+app.include_router(automatiza_router)
 app.include_router(biblioteca_router)
+# Guía de clases · S1: /api/admin/clases (solo admin, por el router). Antes del mount de static/ de
+# más abajo: si no, cae en StaticFiles y devuelve su 404 en HTML
+app.include_router(clases_admin_router)
 
 
 # Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto

@@ -100,8 +100,13 @@ test('mientras sale, el diálogo ya no oye el teclado (Enter no manda el formula
   const clave = form.getByLabel('Tu clave de API de Blotato');
   await clave.fill('una-clave');
   await clave.focus();
-  // Escape y, en los 100 ms de la salida, Enter
+  // Escape y, en los 100 ms de la salida, Enter. Antes de pulsar Enter se espera a que el cierre ya haya llegado: React lo confirma
+  // (`data-state="closed"`, que llega en el mismo pintado que `inert`) y el navegador, al pintar, saca el foco del campo que quedó
+  // inerte. Si el Enter sale ANTES, el campo todavía tiene el foco, el formulario sigue vivo y el envío implícito dispara `conectar`:
+  // una carrera de la prueba (Playwright pulsa en microsegundos), no del diálogo
   await page.keyboard.press('Escape');
+  await expect(form).toHaveAttribute('data-state', 'closed');
+  await expect(clave).not.toBeFocused();
   await page.keyboard.press('Enter');
   await expect(form).toBeHidden();
   await page.waitForTimeout(300);

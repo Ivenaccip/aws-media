@@ -38,9 +38,8 @@ export interface PropsGuardarHoja {
 }
 
 /** Un COI que pasa del tope de la Biblioteca se entregó bien (y contó): solo no cabe guardado. Sin nombrar el campo interno ni el tope.
- *  El botón que lo lleva es «Copiar todo», o «Copiar» si la respuesta no vino en tres bloques. */
-const textoCoiLargo = (tresBloques: boolean) =>
-  `Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «${tresBloques ? 'Copiar todo' : 'Copiar'}» para llevártelo.`;
+ *  El botón que lo lleva es «Copiar». */
+const TEXTO_COI_LARGO = 'Este COI es demasiado largo para guardarlo en tu Biblioteca. Cierra esta hoja y usa «Copiar» para llevártelo.';
 
 const CHIP =
   'inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-pildora border border-linea px-4 text-sm text-texto ' +
@@ -78,7 +77,7 @@ export function GuardarHoja({ coi, idioma, abierto, alCerrar, clave, alGuardado,
         setErrTitulo(texto);
         campo.current?.focus();
       } else {
-        setError({ texto: d.codigo === 'muy_largo' && d.campo === 'prompt' ? textoCoiLargo(coi.estructura_ok) : texto, lleno: d.codigo === 'lleno' });
+        setError({ texto: d.codigo === 'muy_largo' && d.campo === 'prompt' ? TEXTO_COI_LARGO : texto, lleno: d.codigo === 'lleno' });
       }
     } finally {
       setEnviando(false);

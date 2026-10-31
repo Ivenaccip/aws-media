@@ -76,6 +76,36 @@ describe('el foco vuelve a quien abrió', () => {
   });
 });
 
+describe('Confirmar · focoAlCerrar', () => {
+  function ConDestino({ conDestino }: { conDestino: boolean }) {
+    const [abierto, setAbierto] = useState(false);
+    const destino = useRef<HTMLInputElement>(null);
+    return (
+      <>
+        <input ref={destino} aria-label="Otro lugar" />
+        <button onClick={() => setAbierto(true)}>Abrir</button>
+        <Confirmar abierto={abierto} alCambiar={setAbierto} titulo="¿Seguro?" descripcion="…" confirmar="Sí"
+          alConfirmar={() => {}} {...(conDestino ? { focoAlCerrar: destino } : {})} />
+      </>
+    );
+  }
+
+  it('el foco vuelve al destino que se pidió, en vez de al botón que abrió', async () => {
+    render(<ConDestino conDestino />);
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Sí' }));
+    await vi.waitFor(() => expect(screen.getByLabelText('Otro lugar')).toHaveFocus());
+  });
+
+  it('sin destino se porta como siempre: vuelve a quien abrió', async () => {
+    render(<ConDestino conDestino={false} />);
+    const abrir = screen.getByRole('button', { name: 'Abrir' });
+    await userEvent.click(abrir);
+    await userEvent.keyboard('{Escape}');
+    await vi.waitFor(() => expect(abrir).toHaveFocus());
+  });
+});
+
 describe('UI·20 · la salida (100 ms) no cambia nada de lo de antes', () => {
   function Harness({ tipo }: { tipo: 'dialogo' | 'confirmar' }) {
     // quien cierra vacía su estado en el mismo clic, como Agenda o Formulario

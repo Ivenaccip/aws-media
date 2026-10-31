@@ -101,7 +101,7 @@ beforeEach(() => {
 });
 
 describe('admin', () => {
-  it('admin.vistas.tres_pestanas_con_aria', async () => {
+  it('admin.vistas.las_pestanas_con_aria', async () => {
     servidor({ '/api/admin/resumen': () => json(RESUMEN) });
     render(<Admin />);
     const lista = await screen.findByRole('tablist', { name: 'Vistas' });
@@ -109,6 +109,7 @@ describe('admin', () => {
       '1 · Ingresos',
       '2 · Costos',
       '3 · Flujo',
+      '4 · Clases',
     ]);
     expect(screen.getByRole('tab', { name: '1 · Ingresos' })).toHaveAttribute('aria-selected', 'true');
   });

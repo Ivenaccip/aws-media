@@ -59,6 +59,26 @@ def test_lo_que_si_sirve_el_cdn_es_exactamente_esto():
         "imagenes/", "usuarios/", "voces/", "work/")
 
 
+# Guía de clases · S1: los videos de las clases nacen CERRADOS al CDN (se ven con una URL firmada de 2 h
+# y no hay forma de adivinar una: el id lo genera el servidor). Es la regla «denegar salvo lo listado».
+CLASES = (
+    "clases/cl-ab12cd34/video.mp4",
+    "clases/cl-ab12cd34/video.mov",
+    "clases/cl-ab12cd34/video.m4v",
+    "clases/cl-ab12cd34/transcript.canonical.json",
+    "clases/cl-ab12cd34/indice/v1/vectores.f32",
+    "clases/cl-ab12cd34/indice/v1/trozos.json",
+)
+
+
+def test_clases_no_lo_sirve_el_cdn():
+    """`clases/` NO está en la lista y no debe estarlo: ni videos, ni transcripts, ni índices."""
+    for key in CLASES:
+        assert not media_rutas.servible_por_cdn(key), key
+        assert not media_rutas.servible_por_cdn("/" + key), "ni con la barra inicial"
+    assert not any(p.startswith("clases") for p in media_rutas.SERVIBLES_CDN)
+
+
 def test_los_prefijos_servibles_lo_son():
     for p in media_rutas.SERVIBLES_CDN:
         assert media_rutas.servible_por_cdn(f"{p}loquesea/archivo.mp4")
@@ -117,6 +137,69 @@ def test_url_media_firma_lo_de_videos(nube):
 def test_url_media_deja_en_el_cdn_lo_servible(nube):
     assert media_sync.url_media("imagenes/sub-123/abc.jpg") == \
         "https://cdn.example/imagenes/sub-123/abc.jpg"
+
+
+def test_url_media_firma_lo_de_clases_aunque_haya_cdn(nube):
+    """Con CDN_BASE puesto, un video de una clase sale con la URL FIRMADA de S3, nunca como
+    `https://<cdn>/clases/…` (que contestaría 403): `url_media` no se deja engañar por el CDN."""
+    for key in CLASES:
+        url = media_sync.url_media(key)
+        assert url.startswith(f"https://s3.example/{key}?"), key
+        assert "X-Amz-Expires" in url
+        assert "cdn.example" not in url
+        assert media_sync.url_media("/" + key) == url, "la barra inicial tampoco lo abre"
+
+
+def test_url_firmada_de_clases_dura_lo_que_se_pide_y_no_pasa_por_el_cdn(nube):
+    """La vista previa del admin (2 h) va por `url_firmada`: SIEMPRE S3."""
+    url = media_sync.url_firmada("clases/cl-ab12cd34/video.mp4", 7200)
+    assert url == "https://s3.example/clases/cl-ab12cd34/video.mp4?X-Amz-Expires=7200"
+
+
+def test_url_subida_firma_un_put_con_el_tipo_dentro_de_la_firma(monkeypatch):
+    """El PUT de una clase: `put_object` con el `Content-Type` firmado y 15 min."""
+    visto = {}
+
+    class S3:
+        def generate_presigned_url(self, op, Params, ExpiresIn):  # noqa: N803
+            visto.update(op=op, params=Params, expira=ExpiresIn)
+            return "https://s3.example/subida"
+    monkeypatch.setenv("MEDIA_BUCKET", "bucket-de-prueba")
+    monkeypatch.setattr(media_sync, "_s3", lambda: S3())
+    assert media_sync.url_subida("clases/cl-ab12cd34/video.mp4", "video/mp4", 900) == "https://s3.example/subida"
+    assert visto == {"op": "put_object", "expira": 900, "params": {
+        "Bucket": "bucket-de-prueba", "Key": "clases/cl-ab12cd34/video.mp4", "ContentType": "video/mp4"}}
+    monkeypatch.delenv("MEDIA_BUCKET")
+    assert media_sync.url_subida("clases/x/video.mp4", "video/mp4") is None
+
+
+def test_cabecera_distingue_no_esta_de_no_pude_mirar(monkeypatch):
+    from botocore.exceptions import ClientError
+
+    class S3:
+        exceptions = type("E", (), {"ClientError": ClientError})
+
+        def __init__(self, error=None):
+            self.error = error
+
+        def head_object(self, Bucket, Key):  # noqa: N803
+            if self.error:
+                raise self.error
+            return {"ContentLength": 42, "ContentType": "video/mp4", "ETag": '"e"'}
+    monkeypatch.setenv("MEDIA_BUCKET", "bucket-de-prueba")
+    monkeypatch.setattr(media_sync, "_s3", lambda: S3())
+    assert media_sync.cabecera("clases/x/video.mp4") == {"bytes": 42, "content_type": "video/mp4", "etag": '"e"'}
+    for codigo in ("404", "NoSuchKey", "NotFound", "403"):
+        monkeypatch.setattr(media_sync, "_s3", lambda c=codigo: S3(ClientError({"Error": {"Code": c}}, "HeadObject")))
+        assert media_sync.cabecera("clases/x/video.mp4") is None, codigo
+    monkeypatch.setattr(media_sync, "_s3", lambda: S3(ClientError({"Error": {"Code": "InternalError"}}, "HeadObject")))
+    with pytest.raises(ClientError):
+        media_sync.cabecera("clases/x/video.mp4")
+    monkeypatch.setattr(media_sync, "_s3", lambda: S3(ConnectionError("sin red")))
+    with pytest.raises(ConnectionError):
+        media_sync.cabecera("clases/x/video.mp4")
+    monkeypatch.delenv("MEDIA_BUCKET")
+    assert media_sync.cabecera("clases/x/video.mp4") is None
 
 
 def test_url_media_sin_nada_es_none(monkeypatch):
@@ -258,6 +341,17 @@ def test_el_template_deniega_todo_salvo_la_lista(plantilla_media):
         "con Resource en vez de NotResource la regla deniega SOLO lo listado, "
         "que es exactamente al revés de lo que hace falta")
     assert tuple(_sufijos(s["NotResource"])) == media_rutas.SERVIBLES_CDN
+
+
+def test_el_template_no_deja_pasar_a_clases(plantilla_media):
+    """La política que de verdad manda: `clases/` NO está entre lo que CloudFront puede leer (el Deny
+    deja fuera todo lo que no sea imagenes/, usuarios/, voces/ o work/). Sin esto, la lista de Python
+    podría estar bien y el bucket servir los videos de las clases igual."""
+    s = _deny_de_cloudfront(plantilla_media)
+    permitidos = _sufijos(s["NotResource"])
+    assert "clases/" not in permitidos
+    for key in CLASES:
+        assert not any(key.startswith(p) for p in permitidos), key
 
 
 def test_el_bucket_no_cambia_de_id_logico(plantilla_media):

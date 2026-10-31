@@ -270,7 +270,7 @@ menú, la regla de Blotato, el título) conservó sus IDs `inicio.menu.*` e
 | `inicio.galeria.si_falla_la_lista_de_imagenes_a_media_espera_no_se_pierde_el_pedido` | si una relectura de `/api/imagenes` falla, el pedido sigue a la vista y se sigue preguntando |
 | `inicio.galeria.una_lectura_con_los_pedidos_sin_leer_a_media_espera_no_borra_el_pedido_ni_apaga_el_sondeo` | lo mismo con un 200 que no pudo leer los pedidos (`pendientes_ok: false`): el pedido sigue a la vista, las imágenes que sí vinieron se enseñan y se sigue preguntando; solo una lectura buena que ya no lo trae lo quita y para el sondeo |
 | `inicio.listas.textos_del_server_como_texto` | briefs y nombres con HTML se leen como texto (React escapa; ya no hace falta `esc`) |
-| `inicio.menu.entradas_y_grupos_en_orden` | **15-oct-2026: ya no hay menú** (ni la nav «Secciones», ni «Estudio de Contenido», ni «Publicidad Automática»); las puertas de siempre siguen, ahora por mapa → opciones → lista. Marketing › Blotato: `/agenda.html`, `/competencia.html`, `/metricas.html`, en ese orden; Marketing › Avanzado: `/mix.html` (MIX, con su requisito Blotato) y `/estilos.html` (la Copiadora de estilos, provisional hasta «Marcas»). «De videos a Shorts» no sale en ninguna lista: vive en «Editar ▾» (ver `inicio.edicion.el_chip_editar_…`). Nada de Marketing dice «próximamente»; Central › Distrito sí, y ninguna de sus pantallas apagadas es un enlace (desde Ajustes 3, 16-oct-2026, COI y la Biblioteca de prompts ya no están apagadas: son, juntas, los dos enlaces de Central, a `/estudio/coi/` y `/estudio/biblioteca/`; Preguntas y Glosario siguen apagadas). Eran 6 puertas (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió) y siguen siendo 6: cinco en las listas y la de Shorts en el chip. El ID conserva «menú» por historia |
+| `inicio.menu.entradas_y_grupos_en_orden` | **15-oct-2026: ya no hay menú** (ni la nav «Secciones», ni «Estudio de Contenido», ni «Publicidad Automática»); las puertas de siempre siguen, ahora por mapa → opciones → lista. Marketing › Blotato: `/agenda.html`, `/competencia.html`, `/metricas.html`, en ese orden; Marketing › Avanzado: `/mix.html` (MIX, con su requisito Blotato) y `/estilos.html` (la Copiadora de estilos, provisional hasta «Marcas»). «De videos a Shorts» no sale en ninguna lista: vive en «Editar ▾» (ver `inicio.edicion.el_chip_editar_…`). Nada de Marketing dice «próximamente»; Central › Distrito sí, y ninguna de sus pantallas apagadas es un enlace (desde Ajustes 3, 16-oct-2026, COI y la Biblioteca de prompts ya no están apagadas: son, juntas, los dos enlaces de Central, a `/estudio/coi/` y `/estudio/biblioteca/`; Preguntas y Glosario siguen apagadas). Eran 6 puertas (7 hasta el 14-oct-2026: «Editor de videos», `/e1.html`, salió) y siguen siendo 6: cinco en las listas y la de Shorts en el chip. **20-oct-2026:** Automatizaciones › Distrito suma otras dos puertas, `/estudio/constructor/` y `/estudio/asistente/` (enlaces; nacen sin pantalla vieja: no cuentan en esas 6, ver `constructor.md` y `asistente.md`), y una apagada, «Actualizar flujos» (sin enlace, «Próximamente»); «Tus automatizaciones» es un grupo sin pantallas («Todavía no está disponible.»). Este ID sigue recorriendo Blotato, Avanzado y Central; el área de Automatizaciones la cubren `AutomatizacionesRecorrido.test.tsx` y `inicio-recorrido.spec.ts` (ver «Automatizaciones se enciende»). El ID conserva «menú» por historia |
 | `inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan` | 14-oct-2026 (dueño: «olvidaste quitar la caja de ahora de la izquierda, donde dice editor de videos»): el menú ya no trae «Editor de videos» ni su texto ni ningún enlace a `/e1.html`; «De videos a Shorts» (`/shorts.html`) y «Copiadora de estilos» (`/estilos.html`) se quedan en «Estudio de Contenido», con sus textos tal cual. Editar metraje es la pestaña «Edición» de la caja (el camino de primer uso «Desde tu metraje → Subir metraje» sigue llevando a `/e1.html`: `inicio.caminos.enlaces_a_shorts_y_metraje`). **15-oct-2026:** sin menú, la prueba recorre las listas de Blotato, Avanzado y Central › Distrito y exige lo mismo (ni «Editor de videos», ni su texto, ni un `a[href^="/e1.html"]`); la Copiadora de estilos se queda en Avanzado con su texto tal cual, y «De videos a Shorts» ya no es un enlace de ninguna lista (`/shorts.html` no aparece): pasó al chip «Editar ▾». El nombre del ID habla de «las otras dos de su grupo» por historia |
 | `inicio.menu.el_titulo_dice_irremplazables_en_dorado_sin_icono` | 14-oct-2026 (dueño): el `<h1>` de la columna izquierda pasa de «icono + Estudio de video» a **«Irremplazables»** a secas, en `text-ambar-claro` (el ámbar claro de la paleta: el de los «títulos-marca», DISENO §3; ningún color nuevo) y con el mismo tamaño, peso y tipografía de título (`text-titulo-sm font-bold`, Bricolage por `h1`); sin icono ni hijos. Los `<title>` de las páginas y el título de las demás pantallas **no** se tocaron (decisión pendiente del dueño). **15-oct-2026 (dueño):** la columna izquierda ya no existe; «Irremplazables» es el **único `<h1>`** del inicio, centrado, FUERA y ARRIBA de cualquier tarjeta (dueño, 15-oct-2026, segunda ronda), en **dorado con degradado** (clase `texto-oro` de `tokens.css`: `#f3dc92` → `#e6c35c` → `#b98d2f`, y `#e6c35c` liso si el navegador no recorta el fondo a la letra) con el tamaño de título de pantalla (`text-titulo-lg`, 32 px, `font-extrabold`). La prueba exige el tamaño y el peso en el `<h1>`, `[overflow-wrap:anywhere]` (la palabra se parte dentro de la región en vez de salirse), que el dorado vaya en un único `<span class="texto-oro">` dentro del `<h1>` (el fondo recortado a la letra mide lo que el texto: puesto en el `<h1>` mismo, con el espaciado de texto de WCAG 1.4.12 o con letra más grande, las letras que sobresalían de su caja quedaban transparentes), que **no** lleve `text-ambar-claro`, que no tenga icono (el nombre a secas) y que «Estudio de video» no salga. El ámbar claro deja de ser el color del título-marca |
 | `inicio.menu.sin_clave_se_apagan_las_cuatro_de_blotato_y_ofrecen_conectar` | sin clave se apagan agenda, competencia (a propósito, dueño 18-sep), métricas y MIX; el clic abre conectar en vez de navegar. **15-oct-2026:** la misma regla, en las listas del recorrido: en Marketing › Blotato las tres tarjetas (agenda, competencia, métricas) quedan `aria-disabled` y dicen «Conecta tu Blotato para usarlo», y el clic NO navega (`preventDefault`) sino que abre el diálogo «Conecta tu Blotato»; la cuarta, MIX, se apaga igual en Marketing › Avanzado, mientras la Copiadora de estilos (que no depende de Blotato) no. El ID dice «cuatro» por las cuatro entradas del menú de antes |
@@ -565,12 +565,13 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   tocar el código»):** el inicio deja de tener menú a la izquierda, en cualquier
   ancho, y pasa a ser un **recorrido de tres pasos dentro de una sola tarjeta**.
   Cómo quedó cada decisión:
-  - **Mapa en X → tres opciones → pantalla (15-oct-2026).** El mapa tiene las
+  - **Mapa en X → opciones → pantalla (15-oct-2026).** El mapa tiene las
     cinco áreas (Marketing, Producto, Central, Ventas y Automatizaciones);
-    elegir una abre sus tres opciones (las de Marketing: Distrito · Blotato ·
-    Avanzado); elegir una abre la pantalla: la caja (Distrito) o la lista de las
-    pantallas del grupo. Producto, Ventas y Automatizaciones son fichas inertes
-    («Próximamente»: se enfocan, no se abren). Hay **una sola lista de adónde
+    elegir una abre sus opciones (tres en Marketing: Distrito · Blotato ·
+    Avanzado; dos en Automatizaciones: Distrito y Tus automatizaciones); elegir una abre la pantalla: la caja (Distrito) o la lista de las
+    pantallas del grupo. Producto y Ventas son fichas inertes
+    («Próximamente»: se enfocan, no se abren); **desde el 20-oct-2026 Automatizaciones
+    se abre** (ver «Automatizaciones se enciende», abajo). Hay **una sola lista de adónde
     ir**, `web/src/marca/menu.ts` (áreas → grupos → pantallas); de ella salen el
     recorrido (`estadoRecorrido.ts`, todo su estado sin React), el mapa, las opciones,
     la lista y las migas de las hojas, así que no se desincronizan. Lo que hacían
@@ -606,9 +607,11 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
   - **Nada se ve elegido hasta que se elige (15-oct-2026, segunda ronda).**
     Ninguna ficha del mapa lleva «Estás aquí», tono de seleccionada ni
     `aria-current` (la insignia y el tono salieron; `EstasAqui` se quedó solo en
-    las tres opciones). Marketing y Central, las dos que se abren, se ven con el
+    las tres opciones). Marketing y Central, las dos que se abrían, se ven con el
     mismo tono de «Central» de antes (`bg-superficie`, borde de línea); el hover y
-    el foco se conservan; Producto, Ventas y Automatizaciones siguen apagadas.
+    el foco se conservan; Producto y Ventas siguen apagadas. Desde el 20-oct-2026
+    Automatizaciones, la tercera que se abre, se ve EXACTAMENTE igual que ellas
+    (sin «Próximamente» ni `aria-disabled`).
     Las tres opciones marcan «Estás aquí» solo en el grupo que ya elegiste (o de
     donde llegaste desde una hoja).
   - **Migas, sin «Volver a …» y Esc (15-oct-2026, segunda ronda).** *Sustituye a
@@ -645,6 +648,27 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     Preguntas y Glosario salen «Próximamente» y no navegan (fondo hundido y texto
     secundario, no media opacidad: a media opacidad no pasaba el contraste); un
     grupo sin pantallas (Deepseek) dice «Todavía no está disponible.».
+  - **Automatizaciones se enciende (20-oct-2026).** *Corrige lo de arriba, que daba a Automatizaciones por ficha inerte.* El área deja de ser
+    «Próximamente» (`web/src/marca/menu.ts`: sin `proximamente`, ícono `rapido`) y trae dos grupos. **Distrito**: Constructor
+    (`/estudio/constructor/`) y Asistente (`/estudio/asistente/`), dos enlaces con su ícono y su línea de apoyo, y «Actualizar flujos»,
+    apagada (`proximamente: true`, sin `href`: «Próximamente», una tarjeta quieta con fondo hundido que no es un enlace ni el origen de un
+    «Volver a …»). **Tus automatizaciones**: un grupo sin pantallas (precedente: Deepseek); su tarjeta dice «Próximamente» y al abrirla
+    «Todavía no está disponible.». La tarjeta de Distrito lista sus tres pantallas («Constructor · Asistente · Actualizar flujos»), igual que
+    Central lista las suyas aunque dos estén apagadas. Sin tocar `Mapa.tsx`, `Grupos.tsx`, `Pantallas.tsx`, `Recorrido.tsx` ni
+    `estadoRecorrido.ts`: todo salió del mapa. Lo que cambia para el recorrido:
+    - Ni Constructor ni Asistente dependen de Blotato, así que su lista **no pinta el botón de conectar** aunque Blotato no esté conectado.
+    - La clave `distrito` existe en tres áreas: todo se resuelve con la PAREJA área + grupo (`grupoDe(area, grupo)`), así que estando en
+      Automatizaciones › Distrito, mirar Marketing no marca su Distrito con «Estás aquí».
+    - Las dos hojas llevan su propio encabezado (`marca/EncabezadoHoja.tsx`: «Irremplazables» y migas «Automatizaciones › Distrito › …» con la
+      última quieta), **sin `pagina`** en el mapa, como COI y la Biblioteca. Sus migas entran al Inicio con
+      `?desde=automatizaciones.distrito.constructor|asistente&ver=mapa|grupos`: la hoja queda como `hoja` (con `href`), se enseña «Volver a Constructor»
+      (o «…Asistente») como enlace y Esc navega a ella. Desde «Actualizar flujos» (sin `href`) no hay a dónde volver y Esc sube al mapa; un
+      grupo vacío (`tus`) no es un origen válido y cae al mapa.
+    - Esc en las opciones de Automatizaciones sube al mapa; en «Tus automatizaciones» no hace nada; el segundo clic de un doble clic en «Distrito» no activa «Constructor».
+    - Producto y Ventas siguen inertes: `Mapa.test.tsx`, `Recorrido.test.tsx` y `estadoRecorrido.test.ts` dejaron de dar por apagada a Automatizaciones.
+    Pruebas: `AutomatizacionesRecorrido.test.tsx` (nuevo, sin el prefijo `inicio.`: no necesita registro), `menu.test.ts` (los grupos sin pantallas ya no son solo Deepseek:
+    también `tus`), `Mapa.test.tsx`, `Recorrido.test.tsx`, `estadoRecorrido.test.ts` y, en `inicio-recorrido.spec.ts`, el recorrido a 1100, 390 y 320 px (hrefs, «Actualizar flujos» quieta,
+    «Tus automatizaciones», Esc, doble clic y las entradas `?desde=…` válidas e inválidas). Las dos pantallas nuevas: `constructor.md` y `asistente.md`.
   - **Las hojas llevan migas (15-oct-2026).** Agenda, Competencia, Métricas, MIX
     y la Copiadora de estilos siguen siendo páginas, con «← Estudio» y, al lado,
     «Marketing › Blotato» (o «Avanzado») como **enlaces** al inicio con
@@ -679,7 +703,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
     compacta» (dos columnas, Central como banda de ancho completo en medio,
     trazos punteados cortos); en escritorio, una cuadrícula de 3×3 con las dos
     diagonales punteadas por detrás. Fichas de 44 px o más, letra de 13 px o más,
-    «Automatizaciones» y «Próximamente» sin partirse a 390 ni a 320 px. El título
+    «Automatizaciones» (y «Próximamente», en Producto y Ventas) sin partirse a 390 ni a 320 px. El título
     lleva un degradado dorado solo para él (tokens `--color-oro*` y la clase
     `texto-oro`; `docs/DISENO.md` §3). Al cambiar de paso el foco nunca cae a
     `<body>`: va al `h2` del paso nuevo (abrir el inicio sin más no lo mueve: se

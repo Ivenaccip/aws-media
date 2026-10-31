@@ -21,8 +21,8 @@ describe('menu · el detalle de una tarjeta de grupo', () => {
   });
 
   it('menu.detalle.un_grupo_sin_pantallas_dice_proximamente: es el dato quien lo dice, no el componente', () => {
-    const sinPantallas = MENU.flatMap(a => a.grupos).filter(g => !g.pantallas.length);
-    expect(sinPantallas.map(g => g.clave)).toEqual(['deepseek']);
-    for (const g of sinPantallas) expect(detalleDeGrupo(g)).toBe('Próximamente');
+    const sinPantallas = MENU.flatMap(a => a.grupos.map(g => ({ lugar: `${a.clave}.${g.clave}`, g }))).filter(({ g }) => !g.pantallas.length);
+    expect(sinPantallas.map(({ lugar }) => lugar)).toEqual(['central.deepseek', 'automatizaciones.tus']);
+    for (const { g } of sinPantallas) expect(detalleDeGrupo(g)).toBe('Próximamente');
   });
 });

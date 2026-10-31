@@ -194,11 +194,11 @@ export function cuerpoDe(coi: Coi, clave: ClaveBloque): string {
   return (t ?? '').trim();
 }
 
-/** Lo que copia el «Copiar» de un bloque: su encabezado y su texto. */
+/** Un bloque con su encabezado (#OBJETIVO, un salto y su texto). */
 export const textoDeBloque = (coi: Coi, clave: ClaveBloque, idioma: 'es' | 'en'): string =>
   `${encabezado(clave, idioma)}\n${cuerpoDe(coi, clave)}`;
 
-/** Lo que copian «Copiar todo» y «Guardar»: los tres bloques, o lo que respondió el modelo si no trajo la estructura. */
+/** Lo que copian «Copiar» y «Guardar»: los tres bloques en un solo texto, o lo que respondió el modelo si no trajo la estructura. */
 export function textoTodo(coi: Coi, idioma: 'es' | 'en'): string {
   if (!coi.estructura_ok) return coi.completo.trim();
   return ORDEN.map(c => textoDeBloque(coi, c, idioma)).join('\n\n');
@@ -221,106 +221,25 @@ export function primeraFrase(coi: Coi, max = MAX_TITULO): string {
 }
 
 // ---------------------------------------------------------------------------
-// Cómo se lee un bloque (solo para mostrarlo: lo que se copia es el texto tal cual salió)
+// Cómo se ve el texto: lo que se COPIA y lo que se GUARDA es el texto tal cual salió; lo que se ve solo pierde las negritas de markdown
 
-export type Linea = { tipo: 'parrafo'; texto: string } | { tipo: 'suposicion'; texto: string };
-
-export interface Parte {
-  n: number;
-  titulo: string;
-  /** Una entrada por línea. Un bloque de código (```…```) va como UNA sola entrada, con sus saltos y su sangría: ver `esBloqueDeCodigo`. */
-  lineas: string[];
-}
-
-const SUPOSICION = /^(?:suposici(?:ó|o)n(?:es)?|assumptions?)\s*[:：–—-]\s*/iu;
-
-/** Quita las negritas y convierte las viñetas del modelo en un punto medio; el resto se queda igual. */
-function limpia(linea: string): string {
-  return linea
-    .replace(/\*\*/g, '')
-    .replace(/^\s*[*•-]\s+/, '')
-    .trim();
-}
-
-/** Contexto y Objetivo: un párrafo por línea; la que empieza con «Suposición:» se marca. */
-export function lineasDe(texto: string): Linea[] {
-  const salida: Linea[] = [];
-  for (const cruda of texto.split('\n')) {
-    const l = limpia(cruda);
-    if (!l) continue;
-    const m = SUPOSICION.exec(l);
-    salida.push(m ? { tipo: 'suposicion', texto: l.slice(m[0].length) } : { tipo: 'parrafo', texto: l });
-  }
-  return salida;
-}
-
-/** Las partes de #INSTRUCCIONES son siete (lo dice el subtítulo de la tarjeta): una octava «parte» ya es otra cosa. */
-const MAX_PARTES = 7;
-
-const sangria = (linea: string): number => linea.length - linea.trimStart().length;
-
-/** La cerca que abre o cierra un bloque de código (```, con o sin lenguaje). */
-const CERCA = /^\s*```/;
-
-/** ¿Esta entrada de `Parte.lineas` es un bloque de código? Ninguna línea de texto empieza con ```: esa línea sería una cerca. */
-export const esBloqueDeCodigo = (entrada: string): boolean => entrada.startsWith('```');
-
-/** El código de un bloque, sin sus cercas y con su sangría (la que tiene dentro del bloque). */
-export function codigoDelBloque(entrada: string): string {
-  const filas = entrada.split('\n').slice(1);
-  if (filas.length && CERCA.test(filas[filas.length - 1]!)) filas.pop();
-  return filas.join('\n');
-}
-
-/** Junta las líneas de un bloque (la cerca de apertura primero) en una sola entrada: sin la sangría que le dio el modelo para meterlo en su
- *  parte, y cerrado aunque la respuesta se haya cortado antes de la cerca final. */
-function juntarBloque(filas: string[]): string {
-  const [apertura = '```', ...resto] = filas;
-  if (resto.length && CERCA.test(resto[resto.length - 1]!)) resto.pop();
-  const margen = Math.min(...resto.filter(l => l.trim()).map(sangria));
-  const cuerpo = resto.map(l => l.slice(Number.isFinite(margen) ? margen : 0).trimEnd());
-  return [apertura.trim(), ...cuerpo, '```'].join('\n');
-}
-
-/** Instrucciones: «1. Título» seguido de sus líneas. Si el texto no trae al menos dos partes numeradas, null (se lee como párrafos).
- *
- *  Una parte nueva es la que SIGUE a la anterior (1, luego 2…, hasta 7) y empieza en la primera columna. Los pasos numerados que el
- *  modelo mete DENTRO de una parte —sangrados, o numerados desde 1 otra vez— no son partes: se quedan en la suya, con su número. */
-export function partesDe(texto: string): Parte[] | null {
-  const partes: Parte[] = [];
-  let sueltas = 0;
-  const crudas = texto.split('\n');
-  // la primera columna es la de la línea menos sangrada: un bloque entero sangrado por el modelo no pierde sus partes
-  const base = Math.min(...crudas.filter(l => l.trim()).map(sangria));
-  let bloque: string[] | null = null;
-  const poner = (entrada: string) => {
-    if (partes.length) partes[partes.length - 1]!.lineas.push(entrada);
-    else sueltas++;
-  };
-  for (const cruda of crudas) {
-    // dentro de un bloque de código nada se interpreta: ni números de parte, ni viñetas, ni negritas (un `**kwargs` es código)
-    if (bloque) {
-      bloque.push(cruda);
-      if (CERCA.test(cruda)) {
-        poner(juntarBloque(bloque));
-        bloque = null;
+/** Lo que se ve en el cuadro: el texto que se copia, sin los `**` de las negritas (ahí no hay markdown que las pinte). Dentro de un
+ *  bloque de código (```…```) no se toca nada: un `**kwargs` es código. */
+export function textoMostrado(coi: Coi, idioma: 'es' | 'en'): string {
+  let dentro = false;
+  return textoTodo(coi, idioma)
+    .split('\n')
+    .map(l => {
+      if (/^\s*```/.test(l)) {
+        dentro = !dentro;
+        return l;
       }
-      continue;
-    }
-    if (CERCA.test(cruda)) {
-      bloque = [cruda];
-      continue;
-    }
-    const sinNegritas = cruda.replace(/\*\*/g, '').trim();
-    if (!sinNegritas) continue;
-    const m = /^(\d{1,2})[.)]\s+(.+)$/u.exec(sinNegritas);
-    if (m && partes.length < MAX_PARTES && sangria(cruda) === base && Number(m[1]) === partes.length + 1) {
-      partes.push({ n: Number(m[1]), titulo: m[2]!.replace(/:\s*$/, '').trim(), lineas: [] });
-    } else {
-      const l = limpia(cruda);
-      if (l) poner(l);
-    }
-  }
-  if (bloque) poner(juntarBloque(bloque));
-  return partes.length >= 2 && sueltas === 0 ? partes : null;
+      return dentro ? l : l.replace(/\*\*/g, '');
+    })
+    .join('\n');
 }
+
+const ENCABEZADO = /^#(?:CONTEXTO|OBJETIVO|INSTRUCCIONES|CONTEXT|OBJECTIVE|INSTRUCTIONS)$/;
+
+/** ¿Esta línea es el encabezado de un bloque (#CONTEXTO, #OBJECTIVE…)? Esas se pintan en negritas. */
+export const esEncabezado = (linea: string): boolean => ENCABEZADO.test(linea.trim());

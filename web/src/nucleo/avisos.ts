@@ -8,7 +8,7 @@
 // Todo lo que lleva la misma `clave` se reemplaza: un pedido nuevo quita el aviso
 // anterior de ese pedido.
 
-export type TipoAvisoRapido = 'ok' | 'mal' | 'info';
+type TipoAvisoRapido = 'ok' | 'mal' | 'info';
 
 export interface OpcionesAvisoRapido {
   /** `ok` (verde, se va solo a los 5 s), `mal` (rojo, se queda hasta cerrarlo) o `info`. */
@@ -17,6 +17,13 @@ export interface OpcionesAvisoRapido {
   segundos?: number;
   /** Lo que comparte clave se reemplaza. */
   clave?: string;
+  /** Un botón en el propio aviso (p. ej. «Deshacer»): al pulsarlo se quita el aviso y corre `al`. Lo soporta static/trabajos.js. */
+  accion?: AccionAvisoRapido;
+}
+
+interface AccionAvisoRapido {
+  texto: string;
+  al: () => void;
 }
 
 /** Pone el aviso en el cuadro. false si el cuadro no existe en esta página. */

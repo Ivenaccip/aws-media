@@ -630,6 +630,67 @@ ESQUEMA: list[str] = [
         filas     int NOT NULL,
         creado    timestamptz NOT NULL DEFAULT now()
     )""",
+    # Guía de clases · S1 — el catálogo de clases que sube el dueño (server/clases_admin_api.py).
+    #
+    #   clases         una fila por clase. `id` («cl-» + 8 hex) y `video_key`
+    #                  («clases/<id>/video.<ext>») los fabrica SIEMPRE el servidor; el navegador solo
+    #                  manda la `clave` (idempotencia del «Crear»: el doble clic no duplica). El
+    #                  `numero` («Clase N» del alumno) es único entre las clases VIVAS (sin
+    #                  `archivada_en`): lo impone el índice parcial clases_vivas y no el código, para
+    #                  que dos pestañas que crean la Clase 5 a la vez no puedan las dos. Archivar es
+    #                  borrado suave (`archivada_en`): no toca S3 y no cambia `estado`. `bytes` guarda
+    #                  lo que el navegador DECLARÓ mientras la clase está en `subiendo` y lo que midió
+    #                  el HEAD de S3 desde `subido`. Las columnas de `publicada` a `indexada_en` las
+    #                  escribe la ingesta (S4); en S1 quedan en su valor de fábrica. Sin llaves
+    #                  foráneas (igual que coi_estado y biblioteca_mios). NUNCA guarda el transcript.
+    #                  `subida_token` (32 hex) identifica UNA subida: lo fija `clases_a_subiendo` en la
+    #                  misma sentencia que pasa borrador→subiendo y se limpia al cancelar y al
+    #                  confirmar; `confirmar` y `cancelar` lo comparan si la web lo manda, y así la
+    #                  subida huérfana de otra pestaña no toca la nueva.
+    #   clases_config  una fila por clave (S4 guarda ahí las palabras clave de la transcripción).
+    #
+    # Los cambios de `estado` son comparar-y-cambiar en UNA sentencia (`UPDATE … WHERE estado = …
+    # RETURNING`), el molde de coi_tomar: dos pestañas no se pisan. Tablas nuevas:
+    # `tools/db_migrate.py` en CADA entorno antes de desplegar (docs/OPERACION.md).
+    """CREATE TABLE IF NOT EXISTS clases (
+        id               text PRIMARY KEY,
+        clave            text,
+        numero           int NOT NULL CHECK (numero BETWEEN 1 AND 999),
+        titulo           text NOT NULL,
+        resumen          text,
+        grabada_en       date,
+        origen           text NOT NULL CHECK (origen IN ('archivo', 'liga')),
+        video_key        text,
+        nombre_original  text,
+        liga             text,
+        bytes            bigint,
+        duracion_s       double precision,
+        estado           text NOT NULL DEFAULT 'borrador',
+        error            text,
+        publicada        boolean NOT NULL DEFAULT false,
+        transcript_key   text,
+        indice_version   int NOT NULL DEFAULT 0,
+        indice_modelo    text,
+        trozos_n         int,
+        indexada_en      timestamptz,
+        creado_por       text NOT NULL,
+        creado           timestamptz NOT NULL DEFAULT now(),
+        actualizado      timestamptz NOT NULL DEFAULT now(),
+        archivada_en     timestamptz,
+        subida_token     text
+    )""",
+    # Un entorno que ya creó `clases` antes del token no la vuelve a crear (IF NOT EXISTS): esta
+    # sentencia le agrega la columna cuando `tools/db_migrate.py` vuelve a correr (como `fallos` de COI).
+    "ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text",
+    """CREATE UNIQUE INDEX IF NOT EXISTS clases_clave
+       ON clases (clave) WHERE clave IS NOT NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS clases_vivas
+       ON clases (numero) WHERE archivada_en IS NULL""",
+    """CREATE TABLE IF NOT EXISTS clases_config (
+        clave        text PRIMARY KEY,
+        valor        text NOT NULL,
+        actualizado  timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
@@ -2793,3 +2854,227 @@ def invitaciones_reclamar_pagina(correo: str, paso: int, *, corte: str, tope: in
         {"c": correo_normal(correo), "p": int(paso), "corte": corte, "t": int(tope),
          "desde": desde})
     return int(filas[0]["id"]) if filas else None
+
+
+# ---------------------------------------------------------------------------
+# Guía de clases · S1 — el catálogo de clases (server/clases_admin_api.py)
+#
+# Cada cambio de `estado` es comparar-y-cambiar en UNA sentencia (`UPDATE … WHERE estado = … RETURNING`),
+# el molde de coi_tomar: dos pestañas (o dos clics) no se pisan y el que llega segundo no recibe fila.
+# Quien llama distingue «no existe» de «estado que no lo permite» con `clases_obtener`. Nada aquí toca
+# S3, ni lee ni guarda el texto de ninguna transcripción. `video_key` viaja SOLO hacia el servidor: la
+# vista pública de la clase (`_publica` del API) no la lleva.
+
+class ClaseNumeroRepetido(Exception):
+    """Ya hay otra clase VIVA con ese número (lo impone el índice parcial clases_vivas)."""
+
+
+class ClaseIdRepetido(Exception):
+    """El id al azar chocó con otro (1 en 4 000 millones): quien llama genera otro y reintenta."""
+
+
+LIMITE_CLASES = 400      # filas por lista: la respuesta del Data API corta a 1 MiB (una fila pesa ~1 KB)
+
+# Las fechas salen como el `::text` del servidor (UTC) y se formatean en Python (ver `_creado_iso`).
+# ORDER BY siempre con la columna CALIFICADA (`clases.creado`): sin el nombre de la tabla se resolvería
+# contra la columna de salida (el texto) y ordenaría por el texto.
+_COLS_CLASE = """clases.id AS id, clases.numero AS numero, clases.titulo AS titulo,
+    clases.resumen AS resumen, clases.grabada_en::text AS grabada_en, clases.origen AS origen,
+    clases.video_key AS video_key, clases.nombre_original AS nombre_original, clases.liga AS liga,
+    clases.bytes AS bytes, clases.duracion_s AS duracion_s, clases.estado AS estado,
+    clases.error AS error, clases.publicada AS publicada, clases.indice_version AS indice_version,
+    clases.indice_modelo AS indice_modelo, clases.trozos_n AS trozos_n,
+    (clases.indexada_en AT TIME ZONE 'UTC')::text AS indexada_en,
+    (clases.creado AT TIME ZONE 'UTC')::text AS creado,
+    (clases.actualizado AT TIME ZONE 'UTC')::text AS actualizado,
+    (clases.archivada_en AT TIME ZONE 'UTC')::text AS archivada_en, clases.subida_token AS subida_token"""
+
+
+def _es_duplicado(err: Exception) -> bool:
+    """¿Un índice único rechazó la sentencia? El Data API lo avisa en el texto del error y psycopg
+    con su clase; en los dos casos aparece una de estas dos marcas."""
+    texto = f"{type(err).__name__} {err}".lower()
+    return "duplicate key" in texto or "uniqueviolation" in texto
+
+
+def _clase(fila: dict) -> dict:
+    f = dict(fila)
+    f["numero"] = int(f["numero"])
+    f["bytes"] = None if f.get("bytes") is None else int(f["bytes"])
+    f["duracion_s"] = None if f.get("duracion_s") is None else float(f["duracion_s"])
+    f["publicada"] = bool(f.get("publicada"))
+    f["indice_version"] = int(f.get("indice_version") or 0)
+    f["trozos_n"] = None if f.get("trozos_n") is None else int(f["trozos_n"])
+    for campo in ("indexada_en", "creado", "actualizado", "archivada_en"):
+        f[campo] = _creado_iso(f[campo]) if f.get(campo) else None
+    return f
+
+
+def _una_clase(filas: list[dict]) -> dict | None:
+    return _clase(filas[0]) if filas else None
+
+
+def clases_listar(archivadas: bool = False) -> list[dict]:
+    """Las clases vivas por número, o —con `archivadas`— las archivadas, la más reciente primero.
+    Hasta LIMITE_CLASES filas. Sin transcript ni texto de nadie."""
+    if archivadas:
+        donde, orden = "clases.archivada_en IS NOT NULL", "clases.archivada_en DESC, clases.numero, clases.id"
+    else:
+        donde, orden = "clases.archivada_en IS NULL", "clases.numero, clases.creado, clases.id"
+    filas = ejecutar(f"SELECT {_COLS_CLASE} FROM clases WHERE {donde} ORDER BY {orden} LIMIT :n",
+                     {"n": LIMITE_CLASES})
+    return [_clase(f) for f in filas]
+
+
+def clases_obtener(id_: str) -> dict | None:
+    """Una clase (viva o archivada) o None."""
+    return _una_clase(ejecutar(f"SELECT {_COLS_CLASE} FROM clases WHERE clases.id = :i", {"i": id_}))
+
+
+def clases_crear(*, id_: str, clave: str, numero: int, titulo: str, resumen: str | None,
+                 grabada_en: str | None, origen: str, liga: str | None,
+                 creado_por: str) -> tuple[dict, bool]:
+    """Crea una clase en `borrador`. Devuelve (clase, creada).
+
+    UN INSERT … ON CONFLICT DO NOTHING (sin objetivo: cubre el id, la `clave` y el número entre vivas):
+    - `clave` repetida (doble clic): devuelve la clase que ya existía con `creada=False`, aunque el
+      segundo clic trajera otro título o número;
+    - número de otra clase VIVA: ClaseNumeroRepetido;
+    - el id al azar chocó: ClaseIdRepetido."""
+    filas = ejecutar(
+        f"""INSERT INTO clases (id, clave, numero, titulo, resumen, grabada_en, origen, liga, creado_por)
+            VALUES (:id, :clave, :numero, :titulo, :resumen, :grabada::date, :origen, :liga, :por)
+            ON CONFLICT DO NOTHING
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "clave": clave, "numero": int(numero), "titulo": titulo, "resumen": resumen,
+         "grabada": grabada_en, "origen": origen, "liga": liga, "por": creado_por})
+    if filas:
+        return _clase(filas[0]), True
+    previo = ejecutar(f"SELECT {_COLS_CLASE} FROM clases WHERE clases.clave = :c", {"c": clave})
+    if previo:
+        return _clase(previo[0]), False
+    if ejecutar("SELECT 1 AS x FROM clases WHERE numero = :n AND archivada_en IS NULL", {"n": int(numero)}):
+        raise ClaseNumeroRepetido()
+    raise ClaseIdRepetido()
+
+
+_CAMPOS_EDITABLES = ("numero", "titulo", "resumen", "grabada_en", "liga")
+
+
+def clases_editar(id_: str, cambios: dict) -> dict | None:
+    """Cambia SOLO los campos que vienen en `cambios` (un valor None sí cuenta: borra el campo). Los
+    valores llegan ya validados. None = no existe, está archivada o —si cambia el número— lo tiene otra
+    clase viva (quien llama lo distingue con `clases_obtener`). ClaseNumeroRepetido si dos pestañas
+    carreraron y el índice parcial rechazó a la segunda."""
+    params: dict = {"id": id_}
+    for campo in _CAMPOS_EDITABLES:
+        params["s_" + campo] = campo in cambios
+        params[campo] = cambios.get(campo)
+    try:
+        filas = ejecutar(
+            f"""UPDATE clases SET
+                    numero = CASE WHEN :s_numero THEN :numero::int ELSE numero END,
+                    titulo = CASE WHEN :s_titulo THEN :titulo::text ELSE titulo END,
+                    resumen = CASE WHEN :s_resumen THEN :resumen::text ELSE resumen END,
+                    grabada_en = CASE WHEN :s_grabada_en THEN :grabada_en::date ELSE grabada_en END,
+                    liga = CASE WHEN :s_liga THEN :liga::text ELSE liga END,
+                    actualizado = now()
+                 WHERE id = :id AND archivada_en IS NULL
+                   AND (NOT :s_numero OR NOT EXISTS (
+                        SELECT 1 FROM clases o
+                         WHERE o.numero = :numero::int AND o.archivada_en IS NULL AND o.id <> :id))
+                RETURNING {_COLS_CLASE}""", params)
+    except Exception as err:  # noqa: BLE001 — solo el índice único es de la casa; lo demás sube
+        if _es_duplicado(err):
+            raise ClaseNumeroRepetido() from None
+        raise
+    return _una_clase(filas)
+
+
+def clases_a_subiendo(id_: str, video_key: str, nombre_original: str | None,
+                      bytes_declarados: int, token: str) -> dict | None:
+    """borrador → subiendo, al darse la URL de subida. Solo una clase VIVA, de origen `archivo` y en
+    `borrador`: de dos subidas a la vez gana una y la otra recibe None. Guarda la clave que decidió el
+    servidor, los bytes que el navegador declaró (`confirmar` los compara con el HEAD de S3) y el
+    `token` que identifica ESTA subida (lo fija la misma sentencia que cambia el estado)."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases
+               SET estado = 'subiendo', video_key = :k, nombre_original = :n, bytes = :b,
+                   subida_token = :t, duracion_s = NULL, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND origen = 'archivo' AND estado = 'borrador'
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "k": video_key, "n": nombre_original, "b": int(bytes_declarados), "t": token}))
+
+
+def clases_cancelar(id_: str, token: str | None = None) -> dict | None:
+    """subiendo → borrador. Olvida la clave, los bytes declarados, el nombre y el token; NO toca S3 (un
+    PUT sin terminar no deja objeto, y uno terminado no se borra: el rol no puede). Con `token`, solo
+    cancela si es el de la subida vigente (comparar-y-cambiar en la misma sentencia: la subida nueva
+    de otra pestaña no se cancela desde la vieja); sin él, cancela cualquiera."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases
+               SET estado = 'borrador', video_key = NULL, nombre_original = NULL, bytes = NULL,
+                   subida_token = NULL, duracion_s = NULL, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND estado = 'subiendo'
+               AND (:t::text IS NULL OR subida_token = :t::text)
+            RETURNING {_COLS_CLASE}""", {"id": id_, "t": token}))
+
+
+def clases_confirmar(id_: str, video_key: str, bytes_declarados: int, bytes_reales: int,
+                     nombre_original: str | None, token: str | None = None) -> dict | None:
+    """subiendo → subido, tras el HEAD. Solo si la clase sigue en `subiendo` con la MISMA clave y los
+    mismos bytes declarados que se compararon (si alguien canceló y volvió a pedir una subida en el
+    medio, no hay fila) y —si viene `token`— con el de la subida vigente. `bytes` pasa a ser el real
+    de S3 y el token se olvida."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases
+               SET estado = 'subido', bytes = :real, nombre_original = COALESCE(:n, nombre_original),
+                   subida_token = NULL, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND origen = 'archivo' AND estado = 'subiendo'
+               AND video_key = :k AND bytes = :declarados
+               AND (:t::text IS NULL OR subida_token = :t::text)
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "k": video_key, "declarados": int(bytes_declarados), "real": int(bytes_reales),
+         "n": nombre_original, "t": token}))
+
+
+def clases_medida(id_: str, video_key: str, duracion_s: float) -> dict | None:
+    """Guarda la duración que midió ffprobe. Solo en `subido` y con la clave que se midió."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases SET duracion_s = :d, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND estado = 'subido' AND video_key = :k
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "k": video_key, "d": float(duracion_s)}))
+
+
+def clases_medida_fallo(id_: str, video_key: str, texto: str) -> bool:
+    """ffprobe no pudo: la clase sigue en `subido` con un aviso corto (`texto` lo pone el API; nunca
+    una URL firmada ni el mensaje de un error)."""
+    return bool(ejecutar(
+        """UPDATE clases SET error = :e, actualizado = now()
+            WHERE id = :id AND archivada_en IS NULL AND estado = 'subido' AND video_key = :k
+            RETURNING id""", {"id": id_, "k": video_key, "e": texto}))
+
+
+def clases_archivar(id_: str) -> bool:
+    """Borrado SUAVE: pone `archivada_en` y nada más (no cambia `estado`, no toca S3). Idempotente:
+    archivar una archivada conserva su fecha. False si la clase no existe."""
+    return bool(ejecutar(
+        """UPDATE clases SET archivada_en = COALESCE(archivada_en, now()), actualizado = now()
+            WHERE id = :id RETURNING id""", {"id": id_}))
+
+
+def clases_restaurar(id_: str) -> dict | None:
+    """Limpia `archivada_en`; la clase vuelve con el estado que tenía. None si no existe, si no
+    estaba archivada o si otra clase viva ya tomó su número (quien llama lo distingue)."""
+    try:
+        return _una_clase(ejecutar(
+            f"""UPDATE clases SET archivada_en = NULL, actualizado = now()
+                 WHERE id = :id AND archivada_en IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM clases o
+                                    WHERE o.numero = clases.numero AND o.archivada_en IS NULL)
+                RETURNING {_COLS_CLASE}""", {"id": id_}))
+    except Exception as err:  # noqa: BLE001
+        if _es_duplicado(err):
+            raise ClaseNumeroRepetido() from None
+        raise
