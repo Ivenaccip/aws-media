@@ -128,6 +128,7 @@ describe('rutas · las direcciones salen de MENU', () => {
       '/estudio/coi/', '/estudio/biblioteca/', '/estudio/constructor/', '/estudio/clip/', '/estudio/agenda/', '/estudio/inicio/', '/estudio/_vitrina/',
       // una hoja anidada no es un nivel de este recorrido (la mueve E7 con su propia página)
       '/estudio/marketing/blotato/agenda/', '/estudio/central/distrito/coi/', '/estudio/marketing/constructor/', '/estudio/automatizaciones/distrito/constructor/',
+      '/estudio/central/distrito/biblioteca/',
       // mayúsculas, sin barra final, barras dobles, un nivel de más
       '/estudio/Marketing/', '/estudio/MARKETING/', '/estudio/marketing', '/estudio/marketing/distrito', '/estudio//', '/estudio//marketing/', '/estudio/marketing//',
       '/estudio/marketing/distrito/imagen/x/', '/estudio/marketing/distrito/imagen/index.html/',

@@ -257,7 +257,7 @@ for (const [ancho, alto] of [
       await expect(
         page.getByText('No guardamos lo que escribes ni lo que te responde. Solo se guarda el COI que tú decidas guardar, y solo en tu Biblioteca.'),
       ).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Mira la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
+      await expect(page.getByRole('link', { name: 'Mira la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
       // un solo botón ámbar: el principal lo lleva solo «Armar COI». El botón pasa de apagado a ámbar con una transición de 120 ms:
       // se espera (con reintento) a que llegue al color final antes de leerlo, no un tiempo fijo
       await expect(armar(page)).toHaveCSS('background-color', 'rgb(218, 140, 40)');
@@ -391,7 +391,7 @@ for (const [ancho, alto] of [
       await expect(hoja).toBeHidden();
       await expect(page.getByRole('button', { name: 'Guardado' })).toBeFocused();
       await expect(page.getByText('Guardado en tu Biblioteca. Solo tú lo ves.')).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Ver en Míos' })).toHaveAttribute('href', /^\/estudio\/biblioteca\//);
+      await expect(page.getByRole('link', { name: 'Ver en Míos' })).toHaveAttribute('href', /^\/estudio\/central\/distrito\/biblioteca\//);
       // guardar NO gasta un uso
       await expect(contador(page)).toHaveText('Te quedan 2 de 3 hoy');
       expect(sim.pedidos.guardar).toHaveLength(1);
@@ -446,7 +446,7 @@ for (const [ancho, alto] of [
       // el último COI sigue a la vista, con su «Copiar»
       await expect(page.getByRole('heading', { name: 'Tu COI' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Copiar el COI' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Ir a la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
+      await expect(page.getByRole('link', { name: 'Ir a la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
       // pulsar el botón apagado no manda nada
       const antes = sim.pedidos.armar.length;
       await armar(page).click({ force: true });
@@ -674,7 +674,7 @@ for (const [ancho, alto] of [
       const [otra] = await Promise.all([context.waitForEvent('page'), enlace.click()]);
       await otra.waitForLoadState('domcontentloaded');
       const url = new URL(otra.url());
-      expect(url.pathname + url.search).toBe('/estudio/biblioteca/?ver=mios');
+      expect(url.pathname + url.search).toBe('/estudio/central/distrito/biblioteca/?ver=mios');
       // la pestaña de COI sigue donde estaba, con su resultado y su hoja: no se perdió nada
       await expect(page).toHaveURL(/\/estudio\/central\/distrito\/coi\/$/);
       await expect(page.locator('#coi-res')).toBeVisible();

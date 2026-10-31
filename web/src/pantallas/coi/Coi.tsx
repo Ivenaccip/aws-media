@@ -464,7 +464,7 @@ export function Coi() {
 
         <footer className="mt-10 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-linea pt-4 text-secundario">
           <p className="m-0">¿Buscas uno que ya esté hecho?</p>
-          <a href="/estudio/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline')}>
+          <a href="/estudio/central/distrito/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline')}>
             Mira la Biblioteca de prompts
             <IconoCoi nombre="flecha" />
           </a>

@@ -128,8 +128,9 @@ PANTALLAS: dict[str, Pantalla] = {
     "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="nueva"),
     # Ajustes 3 (16-oct-2026): la Biblioteca de prompts NACE sin versión anterior (no hay nada que migrar ni a lo que volver). Se registra
     # directo en `retirada` —302 siempre a la nueva, sin HTML viejo ni cookie— para entrar al guardián de invariantes y al mapa
-    # docs/migracion/biblioteca.md igual que las demás; `/biblioteca.html` queda de dirección corta. No cobra.
-    "biblioteca": Pantalla(vieja="/biblioteca.html", nueva="/estudio/biblioteca/", etapa="retirada"),
+    # docs/migracion/biblioteca.md igual que las demás; `/biblioteca.html` queda de dirección corta. No cobra. E7.2 (31-oct-2026): vive en
+    # su lugar del mapa, Central › Distrito; /estudio/biblioteca/ (la carpeta plana de antes, que da nombre a la clave) es un alias con 302
+    "biblioteca": Pantalla(vieja="/biblioteca.html", nueva="/estudio/central/distrito/biblioteca/", etapa="retirada"),
     # 16-oct-2026: COI (Contexto · Objetivo · Instrucciones) nace en la UI nueva: NO tuvo pantalla vieja. Se registra `retirada` desde
     # el primer día para que el registro anti-pérdida cubra sus invariantes (docs/migracion/coi.md); `/coi.html` solo es un atajo que
     # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado. E7.1 (31-oct-2026): vive en su lugar del mapa,

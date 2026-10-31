@@ -291,6 +291,7 @@ QUERY = "?x=1&y=a%20b"
 def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
     """Sin esto, un alias que deja de deducirse (una `nueva` que vuelve a la plana) vaciaría la prueba de abajo y pasaría sin mirar nada."""
     assert ("/estudio/coi/", "/estudio/central/distrito/coi/") in HOJAS_MUDADAS
+    assert ("/estudio/biblioteca/", "/estudio/central/distrito/biblioteca/") in HOJAS_MUDADAS
     assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
 
 

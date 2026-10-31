@@ -1,6 +1,6 @@
-// /estudio/biblioteca/ — la Biblioteca de prompts (Ajustes 3, 16-oct-2026; Central › Distrito). Prompts listos para copiar y usar, y un
-// top 3 que cada quien fija para recordar. No cobra: copiar, fijar y llevar a la caja son gratis (crear, ya en la caja, sí cobra, como
-// siempre). Los de la casa los cura el dueño; los «Míos» son los que cada quien guardó desde COI, privados.
+// /estudio/central/distrito/biblioteca/ — la Biblioteca de prompts (Ajustes 3, 16-oct-2026; Central › Distrito). Prompts listos para
+// copiar y usar, y un top 3 que cada quien fija para recordar. No cobra: copiar, fijar y llevar a la caja son gratis (crear, ya en la
+// caja, sí cobra, como siempre). Los de la casa los cura el dueño; los «Míos» son los que cada quien guardó desde COI, privados.
 //
 // Esta pieza es el marco y los estados de la carga —cargando, error con «Reintentar», vacía—; el taller de dos paneles está en
 // Taller.tsx. Una sola carga trae todo (GET /api/biblioteca) y la búsqueda se hace en el navegador. Qué pasó con cada garantía y qué

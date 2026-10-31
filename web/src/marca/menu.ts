@@ -158,12 +158,13 @@ export const MENU: readonly AreaMenu[] = [
           },
           {
             // Ajustes 3 (16-oct-2026): encendida. Sin `pagina` a propósito: su encabezado («Irremplazables» + migas de tres niveles)
-            // no es el `<Marco>` de las hojas, y esa clave exige un <Marco pantalla="…"> (Marco.test.tsx)
+            // no es el `<Marco>` de las hojas, y esa clave exige un <Marco pantalla="…"> (Marco.test.tsx).
+            // E7.2: vive en su lugar del mapa; /estudio/biblioteca/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
             clave: 'biblioteca',
             titulo: 'Biblioteca de prompts',
             icono: 'biblioteca',
             texto: 'Prompts listos para copiar, usar y fijar',
-            href: '/estudio/biblioteca/',
+            href: '/estudio/central/distrito/biblioteca/',
           },
           { clave: 'preguntas', titulo: 'Preguntas sobre la clase', icono: 'pregunta', proximamente: true },
           { clave: 'glosario', titulo: 'Glosario IA', icono: 'glosario', proximamente: true },

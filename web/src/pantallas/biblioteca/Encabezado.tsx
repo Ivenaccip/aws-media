@@ -38,7 +38,7 @@ export function Encabezado() {
       icono: pantalla.icono,
       rotulo: `${pantalla.titulo} (estás aquí)`,
       actual: true,
-      href: pantalla.href ?? '/estudio/biblioteca/',
+      href: pantalla.href ?? '/estudio/central/distrito/biblioteca/',
     },
   ];
   return (

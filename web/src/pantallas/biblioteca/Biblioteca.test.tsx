@@ -100,7 +100,7 @@ let monedero: ReturnType<typeof ponerMonedero>;
 beforeEach(() => {
   vi.unstubAllGlobals();
   monedero = ponerMonedero(100);
-  history.replaceState(null, '', '/estudio/biblioteca/');
+  history.replaceState(null, '', '/estudio/central/distrito/biblioteca/');
 });
 afterEach(() => {
   delete window.monedero;
@@ -710,14 +710,14 @@ describe('biblioteca', () => {
   });
 
   it('con «?ver=mios» (el enlace «Ver en Míos» de COI) abre en «Míos» y sin esa dirección abre «De la casa»', async () => {
-    history.replaceState(null, '', '/estudio/biblioteca/?ver=mios');
+    history.replaceState(null, '', '/estudio/central/distrito/biblioteca/?ver=mios');
     montar({ mios: MIOS });
     const { unmount } = render(<Biblioteca />);
     await esperarLista();
     expect(ambito('Míos')).toHaveAttribute('aria-pressed', 'true');
     expect(titulosDeFilas()).toEqual(['Reel de la semana', 'Ideas de portada']);
     unmount();
-    history.replaceState(null, '', '/estudio/biblioteca/');
+    history.replaceState(null, '', '/estudio/central/distrito/biblioteca/');
     render(<Biblioteca />);
     await esperarLista();
     expect(ambito('De la casa')).toHaveAttribute('aria-pressed', 'true');
@@ -837,7 +837,7 @@ describe('biblioteca', () => {
     expect(enlaces[0]).toHaveAttribute('href', '/estudio/');
     expect(enlaces[1]).toHaveAttribute('href', '/estudio/central/');
     expect(enlaces[2]).toHaveAttribute('aria-current', 'step');
-    expect(enlaces[2]).toHaveAttribute('href', '/estudio/biblioteca/');
+    expect(enlaces[2]).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
     // el h1 no tiene ícono ni está dentro de una tarjeta
     expect(screen.getByRole('heading', { level: 1 }).querySelector('svg')).toBeNull();
     expect(screen.getByRole('heading', { level: 1 }).closest('section')).toBeNull();
@@ -884,7 +884,7 @@ describe('biblioteca', () => {
     // ningún cobro: el saldo no se pide de nuevo ni se anuncia
     expect(monedero.refrescar).not.toHaveBeenCalled();
     // y «Llevar a la caja» es un enlace, no una acción: no navegó
-    expect(location.pathname).toBe('/estudio/biblioteca/');
+    expect(location.pathname).toBe('/estudio/central/distrito/biblioteca/');
   });
 
   it('biblioteca.accesibilidad.los_avisos_van_a_una_region_viva_y_cada_boton_dice_sobre_que_actua', async () => {

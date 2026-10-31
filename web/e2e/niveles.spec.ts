@@ -149,7 +149,7 @@ test.describe('el recorrido, página por página', () => {
     await expect(paso(page)).toHaveText('Distrito');
     // COI y la Biblioteca son enlaces a su pantalla; Preguntas y Glosario, tarjetas quietas «Próximamente»
     await expect(region(page).getByRole('link', { name: /^COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
-    await expect(region(page).getByRole('link', { name: /^Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/biblioteca/');
+    await expect(region(page).getByRole('link', { name: /^Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
     for (const nombre of ['Preguntas sobre la clase', 'Glosario IA']) {
       await expect(region(page).getByRole('link', { name: new RegExp(`^${nombre}`) })).toHaveCount(0);
       await expect(region(page).getByText(nombre)).toBeVisible();
@@ -353,6 +353,11 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     ['/estudio/coi/', '/estudio/central/distrito/coi/', 'Estudio de video · COI'],
     ['/estudio/coi?x=1', '/estudio/central/distrito/coi/?x=1', 'Estudio de video · COI'],
     ['/coi.html', '/estudio/central/distrito/coi/', 'Estudio de video · COI'],
+    ['/estudio/biblioteca/', '/estudio/central/distrito/biblioteca/', 'Estudio de video · Biblioteca de prompts'],
+    ['/estudio/biblioteca?x=1', '/estudio/central/distrito/biblioteca/?x=1', 'Estudio de video · Biblioteca de prompts'],
+    // el «Ver en Míos» de COI de antes: el query llega intacto y la Biblioteca abre en «Míos»
+    ['/estudio/biblioteca/?ver=mios', '/estudio/central/distrito/biblioteca/?ver=mios', 'Estudio de video · Biblioteca de prompts'],
+    ['/biblioteca.html', '/estudio/central/distrito/biblioteca/', 'Estudio de video · Biblioteca de prompts'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

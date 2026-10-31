@@ -38,11 +38,11 @@ const INDICE = 'index.html';
 const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina'];
 
 /**
- * TRANSITORIA. Las hojas del menú (agenda, la Biblioteca…) que todavía no se mudaron a su dirección por nivel
+ * TRANSITORIA. Las hojas del menú (agenda, el Constructor…) que todavía no se mudaron a su dirección por nivel
  * (/estudio/marketing/blotato/agenda/): viven en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta plana
  * de web/estudio/ (ojo: MIX es `automaticas` en el menú y `mix` allá). Cada commit de la etapa E7 muda UNA hoja y acorta este Map en
- * una fila (COI fue la primera); una hoja que NO está aquí tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una
- * pantalla que se llama `constructor` y choca con Object.prototype.
+ * una fila (COI y la Biblioteca ya salieron); una hoja que NO está aquí tiene que existir en su carpeta anidada. Es un Map y no un
+ * objeto: hay una pantalla que se llama `constructor` y choca con Object.prototype.
  */
 const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
   ['mkt.blotato.agenda', 'agenda'],
@@ -50,7 +50,6 @@ const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
   ['mkt.blotato.metricas', 'metricas'],
   ['mkt.avanzado.automaticas', 'mix'],
   ['mkt.avanzado.estilos', 'estilos'],
-  ['central.distrito.biblioteca', 'biblioteca'],
   ['automatizaciones.distrito.constructor', 'constructor'],
   ['automatizaciones.distrito.asistente', 'asistente'],
 ]);
@@ -284,7 +283,7 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
   });
 
   it('rutas.cada_hoja_tiene_su_carpeta.si_el_href_ya_es_de_la_nueva_la_carpeta_plana_es_la_de_su_href', () => {
-    // las que nacieron en la UI nueva y siguen en la tabla (Biblioteca, Constructor, Asistente) apuntan a /estudio/<carpeta>/; las demás
+    // las que nacieron en la UI nueva y siguen en la tabla (Constructor, Asistente) apuntan a /estudio/<carpeta>/; las demás
     // (/agenda.html…) las manda server/migracion.py
     for (const h of HOJAS) {
       const plana = HOJAS_AUN_PLANAS.get(h.clave);

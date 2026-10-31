@@ -291,7 +291,7 @@ for (const { ancho, alto } of ANCHOS) {
 
     test('error al cargar con «Reintentar», y el cargando no se queda colgado', async ({ page }) => {
       const llamadas = await simular(page, { carga: { falla: 'una-vez' } });
-      await page.goto('/estudio/biblioteca/');
+      await page.goto('/estudio/central/distrito/biblioteca/');
       await expect(page.getByRole('alert')).toContainText('No pudimos cargar la Biblioteca');
       expect(await principales(page)).toEqual(['Reintentar']);
       await auditar(page, `error a ${ancho}`);
@@ -408,7 +408,7 @@ for (const { ancho, alto } of ANCHOS) {
 
     test('cargando: el esqueleto se dice y no se arrastra de lado', async ({ page }) => {
       await simular(page, { carga: { demora: 1500 } });
-      await page.goto('/estudio/biblioteca/');
+      await page.goto('/estudio/central/distrito/biblioteca/');
       await expect(page.getByText('Cargando la Biblioteca…')).toBeVisible();
       expect(await sobraAlLado(page)).toBeLessThanOrEqual(0);
       await capturar(page, 'cargando', ancho);
@@ -455,13 +455,13 @@ test.describe('axe, estado por estado', () => {
         const error = await page.context().newPage();
         await simular(error, { carga: { falla: 'servidor' } });
         await error.setViewportSize({ width: ancho, height: alto });
-        await error.goto('/estudio/biblioteca/');
+        await error.goto('/estudio/central/distrito/biblioteca/');
         await expect(error.getByRole('alert')).toBeVisible();
         expect(await axe(error), 'error').toEqual([]);
         const cargando = await page.context().newPage();
         await simular(cargando, { carga: { demora: 4000 } });
         await cargando.setViewportSize({ width: ancho, height: alto });
-        await cargando.goto('/estudio/biblioteca/');
+        await cargando.goto('/estudio/central/distrito/biblioteca/');
         await expect(cargando.getByText('Cargando la Biblioteca…')).toBeVisible();
         expect(await axe(cargando), 'cargando').toEqual([]);
       });
@@ -563,8 +563,10 @@ test.describe('llevar a la caja', () => {
     await opcion(page, 'Central', 'Distrito').click();
     await esperarRuta(page, '/estudio/central/distrito/');
     const entrada = page.getByRole('link', { name: /^Biblioteca de prompts/ });
-    await expect(entrada).toHaveAttribute('href', '/estudio/biblioteca/');
+    await expect(entrada).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
     await entrada.click();
+    // la barra dice su lugar del mapa (E7.2), no la carpeta plana de antes
+    await esperarRuta(page, '/estudio/central/distrito/biblioteca/');
     await expect(page.getByRole('heading', { level: 2, name: 'Biblioteca de prompts' })).toBeVisible();
     // «Distrito» sube a las opciones de Central (la página de ese nivel, con su dirección); «Central» al mapa. Ya no hay «Volver a Biblioteca
     // de prompts»: volver a donde se estaba es el «atrás» del navegador

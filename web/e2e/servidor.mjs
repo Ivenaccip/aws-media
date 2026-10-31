@@ -66,7 +66,7 @@ const PANTALLAS = [
   ['imagenes', '/imagenes.html', '/estudio/imagenes/', false],
   ['mix', '/mix.html', '/estudio/mix/', false],
   ['crear', '/crear.html', '/estudio/crear/', false],
-  ['biblioteca', '/biblioteca.html', '/estudio/biblioteca/', true],
+  ['biblioteca', '/biblioteca.html', '/estudio/central/distrito/biblioteca/', true],
   ['coi', '/coi.html', '/estudio/central/distrito/coi/', true],
   ['constructor', '/constructor.html', '/estudio/constructor/', true],
   ['asistente', '/asistente.html', '/estudio/asistente/', true],
@@ -90,6 +90,7 @@ const ENTRADAS_VIEJAS = [
 // prueba de las tablas lee hasta el primero
 const ALIAS = new Map([
   ['/estudio/inicio/', '/estudio/'],
+  ['/estudio/biblioteca/', '/estudio/central/distrito/biblioteca/'],
   ['/estudio/coi/', '/estudio/central/distrito/coi/'],
 ]);
 

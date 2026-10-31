@@ -142,7 +142,7 @@ export function GuardarHoja({ coi, idioma, abierto, alCerrar, clave, alGuardado,
             <p className="m-0">{error.texto}</p>
             {error.lleno && (
               <a
-                href="/estudio/biblioteca/?ver=mios"
+                href="/estudio/central/distrito/biblioteca/?ver=mios"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex min-h-11 items-center text-enlace underline underline-offset-4 hover:text-texto"

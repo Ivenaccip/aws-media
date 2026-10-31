@@ -283,7 +283,8 @@ def _entrada_del_mapa(clave: str) -> str:
 def test_el_mapa_dice_lo_que_los_docs_afirman_de_central():
     """Lo que los docs dicen de Central es verdad en el código: si esto cambia, hay que cambiar los docs (y viceversa)."""
     coi, biblioteca = _entrada_del_mapa("coi"), _entrada_del_mapa("biblioteca")
-    assert "href: '/estudio/central/distrito/coi/'" in coi and "href: '/estudio/biblioteca/'" in biblioteca
+    # cada una en su lugar del mapa desde E7 (COI en E7.1, la Biblioteca en E7.2): su carpeta plana de antes es un 302 hasta ahí
+    assert "href: '/estudio/central/distrito/coi/'" in coi and "href: '/estudio/central/distrito/biblioteca/'" in biblioteca
     assert "pagina:" not in coi, "COI lleva `pagina` en el mapa: docs/migracion/coi.md dice que no"
     assert "pagina:" not in biblioteca
     for apagada in ("preguntas", "glosario"):

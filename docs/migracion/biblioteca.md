@@ -1,6 +1,7 @@
 # Biblioteca de prompts (Ajustes 3, 16-oct-2026)
 
-`/estudio/biblioteca/` (`web/src/pantallas/biblioteca/`). **Pantalla nueva: no sustituye a ninguna.** Prompts listos para copiar y
+`/estudio/central/distrito/biblioteca/` (`web/src/pantallas/biblioteca/`; su lugar en el mapa desde E7.2, 31-oct-2026; antes, la
+carpeta plana `/estudio/biblioteca/`, que desde E7 es un 302 hasta aquí). **Pantalla nueva: no sustituye a ninguna.** Prompts listos para copiar y
 usar, y un **top 3** que cada quien fija para recordar. Es la dirección B del lienzo («Taller de dos paneles») más el pin. Vive en
 **Central › Distrito › Biblioteca de prompts** (`web/src/marca/menu.ts`: ya no es «Próximamente»).
 
@@ -30,6 +31,23 @@ Los errores traen `detail` como OBJETO `{codigo, texto}` y el `texto` ya está l
 `server/migracion.py` la registra directo en **`retirada`** (`/biblioteca.html` → 302 a la nueva, sin HTML viejo ni cookie
 `ui=clasica`): no hay nada que migrar ni a lo que volver. Se registra, y no se deja fuera, para entrar al guardián de invariantes de
 `tests/test_migracion_ui.py` y a este mapa como las demás.
+
+| Etapa | Qué pasa | Estado |
+|---|---|---|
+| `retirada` | `/estudio/central/distrito/biblioteca/` existe; `/biblioteca.html` → 302 siempre (no hubo vieja); `/estudio/biblioteca/` es un 302 desde E7 | ⏳ al desplegar |
+
+**Rutas por nivel (E7.2, 31-oct-2026).** La página dejó su carpeta plana (`web/estudio/biblioteca/`) por la de su lugar,
+`web/estudio/central/distrito/biblioteca/index.html`, sin cambiar nada por dentro (pide todo con rutas absolutas).
+`PANTALLAS["biblioteca"].nueva` dice la anidada y de ahí `migracion.alias_del_estudio()` deduce el alias: `/estudio/biblioteca/` y
+`/biblioteca.html` (con y sin barra, en mayúsculas y con el query intacto, también el `?ver=mios` de los enlaces de antes) llevan a
+`/estudio/central/distrito/biblioteca/` con UN 302 relativo y `no-store`; `/estudio/biblioteca/index.html` ya es un 404. Lo fijan
+`tests/test_web_niveles.py` (con la app y el dist de verdad) y las filas de la Biblioteca en «las direcciones de antes» de
+`niveles.spec.ts`; `tests/test_web_rutas.py` exige que `web/e2e/servidor.mjs` tenga la misma fila y el mismo alias. El menú, la tercera
+miga (la de «estás aquí», que enlaza la hoja misma por su `href`), los enlaces de COI («Mira la Biblioteca de prompts», «Ir a la
+Biblioteca de prompts», «Ver en Míos» y «Abre tu Biblioteca», los dos últimos con `?ver=mios`) y las pruebas enlazan la anidada;
+`rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada` (`estudio.test.ts`) cae si el menú vuelve
+a la plana, que el 302 escondería. Las otras dos migas no cambian: van a `/estudio/` y a `/estudio/central/` (D6) sin depender de dónde
+vive la hoja. «Míos» sale del query (`?ver=mios`), no de la dirección: la pantalla no lee la ruta.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
