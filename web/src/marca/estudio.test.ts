@@ -38,15 +38,15 @@ const INDICE = 'index.html';
 const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina'];
 
 /**
- * TRANSITORIA. Las hojas del menú (MIX y la Copiadora de estilos) que todavía no se mudaron a su dirección por nivel
- * (/estudio/marketing/avanzado/automaticas/): viven en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta
- * plana de web/estudio/ (ojo: MIX es `automaticas` en el menú y `mix` allá). Cada commit de la etapa E7 muda UNA hoja y acorta este Map
- * en una fila (COI, la Biblioteca, el Constructor, el Asistente, la Agenda, la Competencia y las Métricas ya salieron: las que quedan
- * son las dos de Marketing › Avanzado, en etapa «nueva»); una hoja que NO está aquí tiene que existir en su carpeta anidada. Es un Map
- * y no un objeto: hay una pantalla que se llama `constructor` y choca con Object.prototype.
+ * TRANSITORIA. La hoja del menú (la Copiadora de estilos) que todavía no se mudó a su dirección por nivel
+ * (/estudio/marketing/avanzado/estilos/): vive en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta plana
+ * de web/estudio/ (casi siempre el mismo nombre: MIX, que ya salió, era `automaticas` en el menú y `mix` allá). Cada commit de la etapa
+ * E7 muda UNA hoja y acorta este Map en una fila (COI, la Biblioteca, el Constructor, el Asistente, la Agenda, la Competencia, las
+ * Métricas y MIX ya salieron: la que queda es la Copiadora, de Marketing › Avanzado, en etapa «nueva»); una hoja que NO está aquí
+ * tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una pantalla que se llama `constructor` y choca con
+ * Object.prototype.
  */
 const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
-  ['mkt.avanzado.automaticas', 'mix'],
   ['mkt.avanzado.estilos', 'estilos'],
 ]);
 
@@ -279,8 +279,8 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
   });
 
   it('rutas.cada_hoja_tiene_su_carpeta.si_el_href_ya_es_de_la_nueva_la_carpeta_plana_es_la_de_su_href', () => {
-    // ya no queda en la tabla ninguna que naciera en la UI nueva (el Asistente fue la última, E7.4): las que quedan enlazan su URL vieja
-    // (/mix.html…), que manda server/migracion.py. Si alguna pasara a enlazar /estudio/<carpeta>/, tiene que ser la de su fila
+    // ya no queda en la tabla ninguna que naciera en la UI nueva (el Asistente fue la última, E7.4): la que queda enlaza su URL vieja
+    // (/estilos.html), que manda server/migracion.py. Si pasara a enlazar /estudio/<carpeta>/, tiene que ser la de su fila
     for (const h of HOJAS) {
       const plana = HOJAS_AUN_PLANAS.get(h.clave);
       const m = /^\/estudio\/([^/]+)\/$/.exec(h.href);

@@ -129,8 +129,12 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
     # y modera el texto antes de cobrar
     "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),
-    # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día
-    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/mix/", etapa="nueva"),
+    # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día.
+    # E7.8 (31-oct-2026): vive en su lugar del mapa, Marketing › Avanzado, con
+    # el nombre que le da el menú (`automaticas`); /estudio/mix/ (la carpeta
+    # plana de antes, que da nombre a la clave) es un alias con 302. /mix.html
+    # sigue en `nueva`
+    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/marketing/avanzado/automaticas/", etapa="nueva"),
     # UI·8.9: crear una película. Cobra el guion al empezar, el resto al
     # producir y cada imagen que se cambia; el 302 conserva ?p=, ?brief= y ?modo=
     "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="nueva"),

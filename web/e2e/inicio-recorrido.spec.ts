@@ -1547,7 +1547,7 @@ const HOJAS = [
   { ruta: 'marketing/blotato/agenda', titulo: 'Agenda tus publicaciones', grupo: 'Blotato' },
   { ruta: 'marketing/blotato/competencia', titulo: 'Investiga tu competencia', grupo: 'Blotato' },
   { ruta: 'marketing/blotato/metricas', titulo: 'Ver mis métricas', grupo: 'Blotato' },
-  { ruta: 'mix', titulo: 'Publicaciones automáticas', grupo: 'Avanzado' },
+  { ruta: 'marketing/avanzado/automaticas', titulo: 'Publicaciones automáticas', grupo: 'Avanzado' },
   { ruta: 'estilos', titulo: 'Copiadora de estilos', grupo: 'Avanzado' },
 ] as const;
 

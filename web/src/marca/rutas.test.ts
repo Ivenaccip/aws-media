@@ -126,11 +126,11 @@ describe('rutas · las direcciones salen de MENU', () => {
     for (const mala of [
       // las hojas y las páginas planas de siempre
       '/estudio/coi/', '/estudio/biblioteca/', '/estudio/constructor/', '/estudio/asistente/', '/estudio/clip/', '/estudio/agenda/', '/estudio/inicio/',
-      '/estudio/competencia/', '/estudio/metricas/', '/estudio/_vitrina/',
+      '/estudio/competencia/', '/estudio/metricas/', '/estudio/mix/', '/estudio/_vitrina/',
       // una hoja anidada no es un nivel de este recorrido (la mueve E7 con su propia página)
       '/estudio/marketing/blotato/agenda/', '/estudio/central/distrito/coi/', '/estudio/marketing/constructor/', '/estudio/automatizaciones/distrito/constructor/',
       '/estudio/central/distrito/biblioteca/', '/estudio/automatizaciones/distrito/asistente/', '/estudio/marketing/blotato/competencia/',
-      '/estudio/marketing/blotato/metricas/',
+      '/estudio/marketing/blotato/metricas/', '/estudio/marketing/avanzado/automaticas/',
       // mayúsculas, sin barra final, barras dobles, un nivel de más
       '/estudio/Marketing/', '/estudio/MARKETING/', '/estudio/marketing', '/estudio/marketing/distrito', '/estudio//', '/estudio//marketing/', '/estudio/marketing//',
       '/estudio/marketing/distrito/imagen/x/', '/estudio/marketing/distrito/imagen/index.html/',

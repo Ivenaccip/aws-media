@@ -374,6 +374,10 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     // las Métricas, la tercera de Marketing › Blotato: también en `nueva`, así que /metricas.html tampoco va aquí
     ['/estudio/metricas/', '/estudio/marketing/blotato/metricas/', 'Estudio de video · Métricas'],
     ['/estudio/metricas?x=1', '/estudio/marketing/blotato/metricas/?x=1', 'Estudio de video · Métricas'],
+    // MIX, de Marketing › Avanzado: su carpeta plana se llamaba `mix` y la anidada lleva el nombre del menú, `automaticas`. También en
+    // `nueva`, así que /mix.html tampoco va aquí
+    ['/estudio/mix/', '/estudio/marketing/avanzado/automaticas/', 'Estudio de video · MIX'],
+    ['/estudio/mix?x=1', '/estudio/marketing/avanzado/automaticas/?x=1', 'Estudio de video · MIX'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

@@ -1,6 +1,11 @@
 # Migración de MIX (UI·8.8)
 
-`static/mix.html` → `/estudio/mix/` (`web/src/pantallas/mix/`).
+`static/mix.html` → `/estudio/marketing/avanzado/automaticas/`
+(`web/src/pantallas/mix/`; su lugar en el mapa desde E7.8, 31-oct-2026;
+antes, la carpeta plana `/estudio/mix/`, que desde E7 es un 302 hasta
+aquí). La dirección dice `automaticas`, la clave que le da el menú
+(`mkt.avanzado.automaticas`); el registro (`PANTALLAS["mix"]`), la carpeta
+de `web/src/pantallas/` y los IDs `mix.*` la siguen llamando `mix`.
 
 MIX es publicidad automática: sale una publicación al día, sola. Es la pantalla
 con más dinero en juego, porque **cobra la campaña entera al encenderla**
@@ -29,9 +34,38 @@ costo, pero no el ejemplo.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/mix/` existe; `/mix.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/mix.html` → 302 a `/estudio/mix/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/marketing/avanzado/automaticas/` existe; `/mix.html` sigue igual; `/estudio/mix/` es un 302 desde E7 | este PR | ⏳ al desplegar |
+| `todos` | `/mix.html` → 302 a `/estudio/marketing/avanzado/automaticas/` (de un salto), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
 | `retirada` | 302 siempre; se borran `static/mix.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
+
+**Rutas por nivel (E7.8, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/mix/`) por la de su lugar,
+`web/estudio/marketing/avanzado/automaticas/index.html`, sin cambiar nada por
+dentro (pide todo con rutas absolutas). Es la única hoja cuya anidada no se
+llama como su clave del registro: `PANTALLAS["mix"].nueva` dice la anidada, y
+la clave, `/mix.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/mix/` (con y sin
+barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/avanzado/automaticas/` con UN 302 relativo y `no-store`,
+en cualquier etapa; `/estudio/mix/index.html` ya es un 404. `/mix.html` lo
+sigue decidiendo el interruptor: en `nueva` sirve la clásica; en `todos` (y
+con `UI_ETAPA_MINIMA=todos`, la de dev) lleva a la anidada de un salto, sin
+pasar por la plana, salvo con la cookie `ui=clasica`.
+`/ui/nueva?pantalla=mix` también lleva ahí.
+
+Por eso el menú **no cambia**, como el de las tres de Marketing › Blotato:
+Marketing › Avanzado sigue enlazando `/mix.html` (con `pagina: 'mix'` para
+las migas), que pasa por el interruptor; si enlazara la anidada se lo
+saltaría. Sin Blotato se sigue apagando. Las migas tampoco cambian: van a
+`/estudio/` y a `/estudio/marketing/` (D6) sin depender de dónde vive la
+hoja. Lo fijan `tests/test_web_niveles.py` (con la app y el dist de verdad:
+el 302 de la plana y `/mix.html` en cada etapa), `tests/test_web_rutas.py`
+(la tabla y el alias de `web/e2e/servidor.mjs`, iguales a los de web.py) y
+las filas de MIX en «las direcciones de antes» de `niveles.spec.ts`. Ahí no
+va `/mix.html`: `servidor.mjs` la redirige como en `todos`, y la app real, en
+`nueva`, sirve la clásica. Vite nombra el chunk de entrada por la carpeta
+(`marketing-avanzado-automaticas-*.js`); ninguna prueba dependía del nombre
+de antes.
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § MIX. El ejemplo es
 gratis. **Encender cobra días × 5 créditos** 💳: la prueba más barata es una
