@@ -439,6 +439,57 @@ alguien con acceso pagado por otro.
 **Por qué importa para el lanzamiento:** con 161 altas previstas, hacerlas a
 mano no es opción — ni por el tiempo ni porque cada alta mueve créditos.
 
+**Fase 2 (22-oct-2026): el invitador — invitaciones y recordatorios sin
+Zapier.** Skool no tiene API y las tandas y reenvíos a mano ya eran el cuello de
+botella (11 tandas, 5 reenvíos). En vez de la ruta por evento de arriba, un bot
+diario que trabaja sobre el export CSV de Skool. Runbook: docs/OPERACION.md,
+«El invitador».
+
+- [x] Lambda `worker/invitador.py` en el stack del API (donde vive el pool),
+      16:00 UTC solo en prod, sin reintentos (Lambda y EventBridge en 0),
+      concurrencia reservada 1, permisos mínimos (Data API, AdminCreateUser /
+      AdminGetUser / ListUsers del pool, ListUsers del pool de dev, sns:Publish).
+- [x] Interruptor apagado / ensayo / activo en la base (sin filas = apagado) y
+      tope del día (40 por regla del dueño; nunca más de 50).
+- [x] Invitaciones primero; con el resto del cupo R1 (día 3), R2 (día 7) y R3
+      (día 14) desde la invitación; después, se deja de escribir y el resumen de
+      los lunes enseña los «fríos». Los reenvíos manuales (reenvio1-5) cuentan
+      como R1.
+- [x] Idempotencia por correo y paso: índice único parcial en
+      `invitaciones_envios`; el paso se reclama ANTES de llamar a Cognito.
+- [x] Export de Skool como fuente (`tools/invitaciones.py cargar`): precio 0 o
+      vacío = anual; solo se escribe a quien sigue en el export más reciente
+      (bajas detectadas y reportadas, no suspendidas solas); sospechosos (dedazo
+      de dominio o mismo nombre con otro correo) esperan `aprobar`/`excluir`.
+- [x] Historial de antes del bot (`historial --dir tools`) y registro de lo
+      manual en `tools/usuarios.py`.
+- [x] Resumen diario en texto plano al tópico de alertas, también cuando la
+      corrida truena a la mitad; lo que ni el resumen alcanza (timeout, la base
+      caída antes de empezar) llega por el destino de fallo de la Lambda.
+- [x] Revisión adversarial: `--tope 0` vale 0; el recordatorio es solo el
+      RESEND; una dirección que Cognito rechaza pasa a `revisar`; el alta a
+      medias dice si la cortesía entró; una carga del export que truena no queda
+      como vigente; un repetido con otro plan espera `aprobar`/`excluir`; el
+      historial no anota un reenvío que Cognito dice que no salió.
+- [x] Página `/acceso` («¿No puedes entrar?», `server/acceso.py`): quien nunca
+      entró y dejó vencer su clave pide otra sin escribirle al dueño (RESEND, jamás
+      alta); misma respuesta y mismo tiempo exista o no la cuenta; el bot le deja 5
+      del tope del día. Cognito no deja usar «¿Olvidaste tu contraseña?» en ese estado.
+- [ ] Encenderlo: los pasos 1-11 de docs/OPERACION.md (migración y deploy en
+      dev y en prod, export real, historial, ensayo, activo).
+- [ ] Churn: el bot detecta las bajas pero no suspende a nadie; sigue siendo
+      decisión del dueño (`tools/usuarios.py suspender`).
+
+**Decisión: COGNITO_DEFAULT, una sola plantilla.** Con el correo integrado de
+Cognito el trigger «Custom message» no puede cambiar `emailMessage` ni
+`emailSubject` (Cognito responde `InvalidLambdaResponseException` y falla el
+`AdminCreateUser` entero), así que no se agrega ningún trigger: invitación y
+recordatorios salen con la plantilla de invitación del pool, que ahora dice
+«Tu acceso a Irremplazables», que la clave provisional dura 7 días y que la del
+último correo reemplaza a la anterior. Los textos distintos por paso (y subir el
+tope de 50) esperan a SES en producción (M26); el bot se enciende sin esperar
+porque trabaja dentro del tope que ya existe.
+
 ## Fase M10 — Prompts gestionados en Langfuse
 
 Objetivo: el dueño edita los prompts en la UI de Langfuse (Prompt Management,
@@ -2715,6 +2766,9 @@ M5 (proteger trabajo, tras M1)
 M7 (cortes nube, sin chat → medir → chat) y M8 (shorts web): tras el núcleo M1–M5
 M26 (entregabilidad) ──► M9 (bot membresías): el bot no se enciende con el
     correo cayendo en spam; M26 corre ya, antes del 23
+    (22-oct: el invitador de la Fase 2 sí arranca con COGNITO_DEFAULT y el
+    remitente propio, dentro del tope de 50 y primero en ensayo; lo que espera
+    a SES producción son los textos por paso y subir el tope — ver M9)
 M10 (prompts en Langfuse): independiente — puede ir en cualquier hueco tras M1
 M11 (narración primero): tras M1-AWS y M2, ANTES de los focus groups
 M12 (hub + slots + Glacier): la lifecycle puede salir sola cuando sea; el hub

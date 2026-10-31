@@ -59,6 +59,9 @@ venv/Scripts/python tools/usuarios.py reactivar correo@ejemplo.com
 - `slots correo N|ilimitado` cambia su tope de proyectos activos.
 - `adoptar correo --de piloto` migra proyectos/saldo/movimientos de un id
   viejo al usuario real (se usó una vez para el dueño; raro necesitarlo).
+- Cada `alta` y `--reenviar` queda anotado para el invitador (origen `manual`,
+  sección «El invitador»): el bot no repite ese paso y descuenta el correo del
+  cupo del día.
 
 ## El remitente de los correos (`hola@irremplazables.xyz`)
 
@@ -1823,6 +1826,451 @@ de «Míos» con otra pestaña escribiendo entre página y página, y una prueba
 sentencia de COI ni de la Biblioteca lleve un `:` seguido de letra fuera de un parámetro (el
 analizador del Data API de Aurora no se pudo probar contra literales como `'HH24:MI:SS'`: las
 fechas se devuelven como números o `::text` y se formatean en Python).
+
+## El invitador (bot de invitaciones y recordatorios)
+
+Fase 2 (22-oct-2026). Una Lambda (`worker/invitador.py`, en el stack del API)
+que despierta cada mañana a las **16:00 UTC (10:00 hora centro)** y, los días que
+le toca según su frecuencia (sección «La frecuencia»), hace lo que hasta hoy
+hacían a mano las tandas y los reenvíos: invita a los miembros nuevos de Skool y
+les recuerda su acceso a quienes nunca entraron. Solo en prod tiene reloj; en
+dev se dispara a mano. La selección vive en `pipeline/invitaciones.py` y el
+dueño la opera con `tools/invitaciones.py`.
+
+### Qué hace, y en qué orden
+
+1. **Invitaciones primero, siempre.** Miembros del export vigente de Skool sin
+   cuenta en el pool: anuales pagados → mensuales → anuales a $0 (FAI); dentro,
+   quien entró a Skool más reciente primero. Es el mismo `alta` de
+   `tools/usuarios.py` (cuenta + fila en `usuarios` + cortesía: mensual 100,
+   anual 200, de `tools/tarifas.json`).
+2. **Con el cupo que sobre, recordatorios** a las cuentas en
+   `FORCE_CHANGE_PASSWORD` que siguen en el export: R1 antes que R2 antes que R3,
+   y dentro, el mismo orden de arriba.
+
+La serie, contada desde la invitación (`UserCreateDate`):
+
+| paso | cuándo | y además, desde el último correo |
+|---|---|---|
+| R1 | día 3 | 3 días |
+| R2 | día 7 | 4 días |
+| R3 | día 14 | 7 días |
+
+Los días se cuentan en **días de Cognito enteros** (de las 09:00 UTC a las 09:00
+UTC), no en horas: quien fue invitado cualquier hora del jueves recibe su R1 en
+la corrida del domingo. Con horas exactas, unos segundos de retraso del reloj
+correrían toda la serie un día. Con corridas espaciadas cada paso sale en la primera
+corrida que cumpla las dos columnas (sección «La frecuencia»).
+
+Después del R3 **se deja de escribir**. Quien lleva 7 días con su R3 y no entró
+está «frío»: sale en el resumen semanal y lo decide el dueño. El «último
+correo» es el más reciente entre lo anotado y la última modificación de la cuenta
+en Cognito, así que un reenvío que no dejó fila también aplaza el siguiente.
+
+Un recordatorio es un `RESEND`: clave provisional **nueva**, válida 7 días, que
+reemplaza a la anterior, **sin créditos**. Va con la misma plantilla que la
+invitación («Tu acceso a Irremplazables»): con `COGNITO_DEFAULT` el trigger
+«Custom message» no puede cambiar el texto (Cognito rechaza el `AdminCreateUser`
+entero, verificado en la documentación de AWS), así que la plantilla dice que la
+clave dura 7 días y que la de ese correo reemplaza a la anterior. Textos
+distintos por paso esperan a SES en producción.
+
+**A quién NUNCA le escribe:** a quien ya no viene en el último export (baja de
+Skool), a quien está en `revisar` o `excluido`, a una cuenta deshabilitada, ni
+a quien ya entró. Las bajas salen en el resumen; suspenderlas es decisión del
+dueño (`tools/usuarios.py suspender`).
+
+### El tope
+
+**40 correos al día en total** (regla del dueño; el bot usa hasta 35 y deja 5 para
+la página `/acceso`, sección de abajo), con un techo duro de 50: es el
+límite de Cognito con `COGNITO_DEFAULT`, **de la cuenta** (prod y dev lo
+comparten) y se reinicia a las 09:00 UTC. Lo ya gastado hoy se cuenta de dos
+formas y gana la mayor: las filas de `invitaciones_envios` de hoy (lo del bot, lo
+que mandaste con `usuarios.py` y el historial) y las cuentas de los dos pools en
+`FORCE_CHANGE_PASSWORD` tocadas desde las 09:00 UTC. Por eso lo que mandes a mano
+se descuenta solo. El bot de prod cuenta también el pool de dev
+(`pool_cuota_compartida` en `infra/entornos.py`); si no lo puede leer, lo dice en
+el resumen y sigue.
+
+Si Cognito contesta con un código de tope, o hay 3 fallos seguidos (las altas a
+medias cuentan), el bot **aborta el día** y lo dice en el asunto. Nadie
+reintenta: ni la Lambda ni EventBridge (los dos en 0).
+
+Una invitación que Cognito rechaza **por la dirección** (`InvalidParameterException`,
+p. ej. `nombre.@x.com`, que pasa el filtro de dedazos) deja a ese miembro en
+`revisar`: no vuelve a salir al frente de la cola cada mañana. Corrígela en Skool
+o decide con `aprobar`/`excluir`.
+
+`--tope 0` vale cero: el bot no manda nada, y tampoco la página `/acceso`. **No se
+acaba solo a la mañana siguiente:** queda hasta que fijes otro tope, y `modo` sin
+`--tope` lo hereda (cómo volver, en la sección de la página).
+
+### El interruptor
+
+Una fila en la base, como el de `/automatiza`: vale la última y **sin filas está
+apagado**. Se mueve sin deploy:
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo ensayo --nota "primer día"
+```
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --tope 40 --cada 3 --nota "arranca el bot"
+```
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo apagado --nota "por qué"
+```
+
+- `apagado`: sale callado, ni lee el pool.
+- `ensayo`: calcula la selección, la anota como `ensayo` (no bloquea nada) y te
+  manda el resumen con «ENSAYO» en el asunto. **No llama a Cognito.**
+- `activo`: manda. Antes de cada llamada anota el paso como `enviando`; un índice
+  único impide que el mismo paso salga dos veces para la misma persona.
+
+Fuera de prod el modo activo **solo** manda a la lista blanca
+(`invitador_permitidos` de `DEV` en `infra/entornos.py`: tu correo y tus alias
+`ivenaccip+…`); lo demás lo anota como ensayo.
+
+### La frecuencia
+
+Mientras no estén los videos de cómo usar la plataforma, el bot corre **cada 3 días**;
+después, a diario. Vive en el interruptor (`cada_dias`, de 1 a 14; 1 es a diario) y se
+cambia **sin deploy**: la regla de EventBridge sigue diaria y no se toca, porque ese
+deploy arrastra tres stacks. `modo` sin `--cada` hereda la vigente, igual que el tope.
+
+Cada 3 días:
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --cada 3 --nota "prueba: cada 3 días"
+```
+
+De vuelta a diario:
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --cada 1 --nota "ya hay videos: a diario"
+```
+
+**Ese comando también fija el modo:** no hay forma de cambiar la frecuencia sin
+repetirlo. Cambia `activo` por el que tengas (`modo ensayo --cada 3 --nota "..."`,
+`modo apagado --cada 3 --nota "..."`). Copiado tal cual con el bot en ensayo o apagado,
+lo **enciende**, y en la siguiente corrida salen hasta 35 correos reales. `modo` avisa
+cuando el modo cambió.
+
+- **Cuándo toca:** con `cada_dias` 1, siempre. Si no, cuando no hay ninguna corrida
+  previa o desde la última pasaron esos días de Cognito (enteros, de corte a corte).
+  Una corrida es una fila del **bot** en `enviando` o `enviado`. Lo de la página, lo
+  manual y el historial no cuentan, ni `ensayo` ni `fallo:*`.
+- **Una corrida sin envíos se reintenta al día siguiente.** Por lo mismo, en `ensayo`
+  el bot corre y manda su resumen a diario hasta el primer envío real, sea cual sea la
+  frecuencia. Al revés: una corrida que mandó **aunque sea uno** (porque abortó, o
+  porque la página se comió el cupo) cuenta entera y la siguiente espera su plazo, igual
+  que una que dejó una fila en `enviando`. Cómo adelantarla, al final de esta sección.
+- **Los días que no toca** la Lambda sale callada, con una línea en el log: no lee el
+  pool, no manda y **no llega resumen**. Lo que debe correr a diario corre igual: la
+  limpieza de los hashes de IP de `/acceso`. La página tampoco depende de la frecuencia:
+  esos días atiende con su tope. `hoy` dice si corre la siguiente salida del reloj y
+  enseña lo que se mandaría; `estado` da la frecuencia y la próxima fecha estimada.
+- **El cupo es por día y no se acumula.** Con frecuencia 3 y tope 40 el bot manda
+  **hasta 35 por corrida** (deja 5 para la página), no 105: los días sin corrida no
+  le guardan nada.
+- **La serie sigue contando desde la invitación** y las constantes no cambian: cada paso
+  sale en la primera corrida que lo cumpla **y en la que quepa**. Con corridas que
+  siempre mandan algo (caen en 0, 3, 6, 9…) y todo dentro de los 35, invitaciones más
+  recordatorios, sale **R1 el día 3, R2 el 9 y R3 el 18**: el día 15 ya pasaron los 14
+  desde la invitación, pero solo 6 de los 7 que pide desde el R2. Sin altas nuevas y con
+  poca gente, las corridas vacías se reintentan a diario y la serie vuelve a 3/7/14.
+- **Con cola de verdad, no es 3/9/18.** Las invitaciones van siempre primero y el cupo no
+  se acumula. Días de la invitación/R1/R2/R3 de la primera persona invitada, si se cargan
+  N de golpe, sin más altas, y nadie entra:
+
+  | pendientes | a diario | cada 3 días |
+  |---|---|---|
+  | hasta 35 | 0/3/7/14 | 0/3/7/14 |
+  | 50 | 0/3/7/14 | 0/3/9/16 |
+  | 100 | 0/3/7/14 | 0/6/15/24 |
+  | 200 | 0/5/11/18 | 0/15/33/51 |
+  | 400 | 0/11/22/34 | 0/33/66/102 |
+
+  Las cuentas viejas esperan detrás de las invitaciones y de los R1 de quienes entraron
+  a Skool después: con 200 nuevos y 150 viejas, su R1 sale entre el día 33 y el 45 (a
+  diario, entre el 11 y el 15). Con altas constantes, cada 3 días aguanta unas
+  **2.9 personas al día** (35 correos cada 3 días, entre 4 correos por persona). De los
+  invitados en los primeros 100 días, en 150 días: con 4 altas al día ninguno recibe su
+  R3 (a diario, todos); con 5, solo 235 de 500 reciben R2 y nadie R3; con 12, nadie
+  recibe ni R1. **Un recordatorio puede no salir nunca mientras haya cola.** El resumen lo
+  enseña en «Esperan cupo», con los días de retraso del más atrasado; el tamaño de la cola
+  lo da `hoy` después de `cargar`. Si se atrasan, la salida es volver a diario.
+- **La clave provisional dura 7 días y puede vencer entre dos correos.** Con corridas
+  fijas cada 3 días, el R2 sale el día 9, su clave vence el 16 y el R3 llega el 18: 2 días
+  sin clave. Lo mismo con cada 2 (0/4/8/16, 1 día), cada 5 (0/5/10/20, 3 días) y de 8 en
+  adelante, donde se vence antes de **cada** correo (`modo` lo avisa). Con cola crece: 18
+  días entre R2 y R3 con 200 pendientes, 36 con 400. A diario el hueco máximo es de 7 justos
+  y no se vence. La salida es la de la plantilla: «Si se te vence, pide otra» en `/acceso`.
+  Los 7 días son el valor por defecto de Cognito (la infra no fija
+  `temp_password_validity`).
+- **Los fríos:** a diario salen los lunes; con frecuencia de más de un día, en cada
+  corrida, porque un lunes puede no tener corrida. De 8 a 14 días eso ya es menos de una
+  vez por semana, y `modo` lo avisa. Las bajas salen en todos los resúmenes.
+
+**Para adelantar una corrida** (abortó tras dos envíos y ya se arregló, por ejemplo): un
+disparo manual con `aws lambda invoke` un día que no toca termina con `toca: false`, y ni
+manda ni publica. Baja la frecuencia primero y regrésala después de la corrida. Es seguro:
+a nadie le llega un correo antes de tiempo, porque eso lo frenan las reglas de la serie y
+no la frecuencia. El resumen de una corrida que abortó y cuenta trae esta misma receta.
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --cada 1 --nota "reintento tras el aborto"
+```
+
+La siguiente salida del reloj (o un disparo manual) ya corre. Después:
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --cada 3 --nota "de vuelta a la prueba"
+```
+
+### El resumen
+
+Llega al tópico de alertas (`aws-media-alertas`, el mismo buzón de las alarmas),
+con `[prod]` o `[dev]` en el asunto: cuántos por paso y a quién, el cupo usado y
+libre, quién espera cupo para otro día (con los días de retraso del recordatorio más
+atrasado), fallos, bajas detectadas, los que esperan
+tu `aprobar`/`excluir`, los atorados en `enviando` y los fríos (los lunes; con
+frecuencia de más de un día, en cada corrida, junto con la próxima fecha estimada).
+
+**Altas a medias:** si Cognito creó la cuenta (y mandó el correo) pero la base
+falló después, el paso queda como mandado y el resumen dice, por persona, si la
+cortesía **entró o no** (busca su movimiento `alta-<plan>` en
+`monedero_movimientos`). `alta` abona la cortesía ANTES de fijar los slots del
+anual: que el alta falle no quiere decir que la cortesía falte. **Nada se
+re-abona solo**. Si dice «NO entró», abónala con `tools/creditos.py`; si dice
+«SÍ entró», no la toques (solo faltan los slots del anual:
+`tools/usuarios.py slots <correo> ilimitado`); si no se pudo comprobar, revisa
+`monedero_movimientos` ANTES de abonar.
+
+**Si la corrida truena** (la base se cae a la mitad, por ejemplo), se corta ahí y
+el resumen sale igual con lo que alcanzó a pasar y «ABORTADO» en el asunto. Si
+truena antes de empezar, o por algo que ni el resumen alcanza (un timeout), la
+Lambda manda el evento de fallo al mismo tópico (destino de fallo de la
+invocación asíncrona). Un día sin ningún correo del invitador quiere decir
+`apagado` o que ese día no tocaba corrida (`hoy` lo dice), no «se cayó». Un paso que
+quedó en `enviando` sale como atorado; si es una invitación y la persona ya tiene
+cuenta, el resumen pide revisar su fila en
+`usuarios` y su cortesía.
+
+### Los comandos del día a día
+
+Desde la raíz del repo, en Git Bash como el resto de este documento (en cmd:
+`venv\Scripts\python tools\invitaciones.py ...`). Si la ruta del CSV trae
+espacios, como la que baja el navegador (`community_members (11).csv`), va
+**entre comillas**. Primero la revisión, que no escribe nada:
+
+```bash
+venv/Scripts/python tools/invitaciones.py cargar "community_members.csv"
+```
+
+Lee lo que imprime y, solo entonces, cárgalo de verdad:
+
+```bash
+venv/Scripts/python tools/invitaciones.py cargar "community_members.csv" --ejecutar
+```
+
+```bash
+venv/Scripts/python tools/invitaciones.py aprobar correo@ejemplo.com
+```
+
+```bash
+venv/Scripts/python tools/invitaciones.py excluir correo@ejemplo.com
+```
+
+```bash
+venv/Scripts/python tools/invitaciones.py hoy
+```
+
+```bash
+venv/Scripts/python tools/invitaciones.py estado
+```
+
+- `cargar` sin `--ejecutar` solo revisa: nuevos, bajas, filas sin correo,
+  repetidos (y si un repetido trae **otro plan**, entra como `revisar`: el orden
+  de las filas no decide si la cortesía es de 100 o de 200), precios que no se
+  entienden (se reportan y no se invitan) y
+  **sospechosos**: un dominio que parece dedazo (`gmial.com`) o un nombre igual al
+  de alguien que ya tiene cuenta con otro correo (contra los exports anteriores y
+  los nombres de `tools/tanda*.txt`). Esos entran como `revisar` y el bot no los
+  toca hasta que digas `aprobar` o `excluir`. Una carga nueva no pisa lo que ya
+  aprobaste o excluiste. Una carga que truena a la mitad no cuenta: sigue
+  valiendo la anterior hasta que la repitas completa.
+- Precio 0 o vacío en Skool = **plan anual** (regla del dueño).
+- `hoy` es exactamente lo que haría el bot en este momento (misma función), sin
+  mandar ni anotar nada, y dice si corre la siguiente salida del reloj. `estado`: modo,
+  tope, frecuencia y próxima fecha estimada, cupo, cuántos van en cada paso, fríos y bajas.
+- Lo que sigas mandando con `tools/usuarios.py alta` (o `--reenviar`) queda
+  anotado como `manual` y el bot no lo repite. Si la tabla aún no existe, avisa y
+  sigue: nunca rompe tu loop.
+
+### La página `/acceso` («¿No puedes entrar?»)
+
+Cognito no deja usar «¿Olvidaste tu contraseña?» a quien está en
+`FORCE_CHANGE_PASSWORD`, o sea a quien nunca entró: la pantalla responde «Could not
+reset password for the account». Con la clave provisional vencida, esa persona no
+tenía salida sin escribirte. Ahora `/acceso` (la enlaza `/entrar` y la plantilla de
+la invitación) le manda una clave nueva: el **mismo RESEND** del bot, sin créditos.
+Esta ruta **jamás crea una cuenta**. El código vive en `server/acceso.py`.
+
+Quien ya entró alguna vez sigue por «¿Olvidaste tu contraseña?» y recibe otro correo:
+«Tu código de Irremplazables» (`user_verification` en `infra/stacks/api.py`). Esa
+pantalla es de Cognito: quien nunca entró y pulsa ahí sigue viendo el error en inglés,
+así que el aviso a la comunidad tiene que mandarlo a `/acceso`.
+
+**A quién le manda:** cuenta que existe, habilitada, en `FORCE_CHANGE_PASSWORD`, sin
+ningún correo (de cualquier origen) en las últimas 24 horas, sin tocar en Cognito en
+las últimas 24 horas y que no esté `excluido`. Quien **no aparece en el export** no se
+bloquea: varias cuentas legítimas no salen ahí con su correo.
+
+**Qué le contesta:** lo mismo a todos (exista o no la cuenta, se haya mandado o no) y
+tarda lo mismo (2 s, `DURACION_MINIMA_S`). Lo que pasó de verdad está en el log de la
+Lambda del API, con una huella del correo (`acceso: <huella> enviado`, `sin_cuenta`,
+`ya_activa`…). Ni el correo ni la IP llegan al log. Un hueco aceptado: con **un solo**
+correo libre en el día, probar un correo y luego uno inventado delata al primero (el
+inventado recibe «sin cupo» si al primero sí se le mandó). Es un positivo al día como
+mucho y solo cerca del tope; cerrarlo obligaría a contestar «listo» sin cupo.
+
+**Sus límites:**
+
+- 5 solicitudes al día de Cognito por IP. Se guarda el hash, nunca la IP. Lo de antes
+  del corte de las 09:00 UTC se borra en la siguiente solicitud o en la corrida diaria
+  del invitador (16:00 UTC, también con el bot apagado o en un día sin corrida), lo que
+  llegue primero: en prod un hash dura unas 31 horas como máximo. En dev no hay corrida programada, así que se
+  queda hasta la siguiente solicitud. Pasado el límite: «Ya hiciste varios intentos hoy».
+- API Gateway: 1 por segundo con ráfaga de 3 para todo `POST /api/acceso/*`
+  (`throttle_acceso` en `infra/entornos.py`).
+- El mismo tope del día que el bot, contado de la tabla: si ya salieron todos, «Hoy ya
+  se enviaron todos los correos disponibles». El **modo** del bot no la apaga: sigue
+  viva con el bot en `apagado` o `ensayo`.
+- **La reserva:** el bot elige hasta `tope − 5 − gastado` (`RESERVA_PAGINA`); la página
+  puede llegar hasta el tope. El límite de 40 sigue siendo el total del día, también si
+  la gente pide mientras corre el bot: al anotar cada correo el bot vuelve a contar, y
+  si ya llegó a `tope − 5` termina ahí y el resumen lo dice. En un empate exacto entre
+  dos sentencias el total se puede pasar por uno o dos; por eso el margen hasta los 50 de
+  Cognito. Lo que pide la gente temprano le quita cupo al bot de las 10:00; después de
+  las 10:00 solo quedan esos 5 hasta las 03:00 hora centro. Un día sin corrida del bot
+  la página tiene el tope entero.
+
+Pedirla **no avanza la serie**: la fila queda con origen `pagina` y el paso más alto
+que ya tenía (0 si no tenía), así que el bot le manda el mismo recordatorio que le
+tocaba. Sí cuenta como último contacto (el siguiente recordatorio se aplaza) y en el
+cupo. Si la pide justo mientras el bot corre y el bot ya la había elegido, el bot se la
+salta: otro RESEND invalidaría la clave que acaba de recibir. El resumen del bot dice
+cuántos se pidieron hoy. Una fila de la página atorada
+en `enviando` no sale como atorado (no hay cortesía que revisar) y se resuelve sola:
+a las 24 horas esa persona puede volver a pedir.
+
+**Cómo apagarla:** `--tope 0`, que apaga también al bot y **queda así hasta que fijes
+otro tope**, no solo ese día. La herramienta lo avisa al moverlo. Mientras dure, la
+página le contesta a todos «Hoy ya se enviaron todos los correos disponibles», aunque
+no se haya mandado nada. Si solo quieres cerrar la página, deja el modo que tengas (con
+`modo apagado` también cambiarías el modo del bot); este ejemplo es con el bot activo:
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --tope 0 --nota "apago la página"
+```
+
+Para volver a abrirla, con el tope explícito. Sin `--tope` se hereda el 0 y todo sigue
+cerrado:
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --tope 40 --nota "vuelvo a abrir"
+```
+
+**La sal del hash de IP es requisito.** Sin `AUTOMATIZA_SAL_IP` en SSM la página
+contesta «Ahorita no se pudo» a todos y escribe el error en el log (falla cerrada,
+como `/automatiza`). Dev ya la tiene; prod, desde el 30-oct-2026. Si hiciera falta otra, se crea una
+sola vez, con su propio valor (nunca el de dev) y con este único parámetro: no con
+`tools/ssm_env.py`, que sube el `.env` en bloque y puede pisar claves de prod. Genera
+el valor:
+
+```bash
+venv/Scripts/python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+y con él en lugar de `VALOR`:
+
+```bash
+aws ssm put-parameter --name /media-ivenaccip/env/AUTOMATIZA_SAL_IP --type SecureString --value VALOR
+```
+
+La IP real: en prod el tráfico pasa por Cloudflare y API Gateway ve la del borde. La
+página solo cree `CF-Connecting-IP` cuando la conexión viene de un rango de
+Cloudflare (`_CLOUDFLARE` en `server/acceso.py`, de cloudflare.com/ips). Si Cloudflare
+publica rangos nuevos, se agregan ahí.
+
+### El orden para encenderlo (una sola vez)
+
+1. Merge del PR a `dev`.
+2. `tools/db_migrate.py` **con los ARNs de dev** (cinco tablas nuevas:
+   `invitaciones_miembros`, `invitaciones_envios`, `invitaciones_interruptor`,
+   `invitaciones_cargas`, `invitaciones_solicitudes`; si ya existía el interruptor, le
+   agrega la columna `cada_dias`. Sin ella, el bot y `/acceso` fallan al leerlo).
+3. Deploy de dev con `IMAGE_TAG` fijo (`dev-<sha>`, sección «Deploy del entorno
+   dev»): `aws-media-api-dev aws-media-jobs-dev`.
+4. Prueba en dev **solo con tus alias**: un CSV de prueba con
+   `ivenaccip+1@gmail.com`, etc., `cargar --ejecutar --pool us-east-1_XChDzHHjw`
+   (con los ARNs de dev), `modo ensayo`, disparo a mano, `modo activo`, otro
+   disparo, y comprobar que el correo llega y el resumen dice lo que pasó. Si la fila
+   de dev trae frecuencia de más de un día, un disparo tras uno que ya mandó sale con
+   `toca: false` y no hace nada: prueba con `--cada 1`. Cada correo de prueba **come del
+   cupo de 50 de la cuenta** ese día. El nombre de la Lambda sale del output
+   `InvitadorNombre`:
+
+```bash
+aws cloudformation describe-stacks --stack-name aws-media-api-dev --query "Stacks[0].Outputs[?OutputKey=='InvitadorNombre'].OutputValue" --output text
+```
+
+   y con ese nombre en lugar de `NOMBRE_DE_LA_LAMBDA`:
+
+```bash
+aws lambda invoke --function-name NOMBRE_DE_LA_LAMBDA --payload "{\"tipo\":\"invitador\"}" --cli-binary-format raw-in-base64-out salida.json
+```
+
+5. Bajada a `main` (PR `dev` → `main`).
+6. `tools/db_migrate.py` en **prod** (ARNs de «Base de datos»), ANTES del deploy. La
+   sal de prod (`AUTOMATIZA_SAL_IP`) ya existe desde el 30-oct-2026: sin ella `/acceso`
+   contesta «Ahorita no se pudo» a todos.
+7. `cargar` el export real de Skool (primero sin `--ejecutar`). Solo necesita las
+   tablas del paso anterior: va **antes** del deploy.
+8. `historial --dir tools` (primero sin `--ejecutar`), también **antes** del deploy:
+   anota la invitación de cada cuenta del pool (con la hora de su
+   `tandaN.txt.altas.tsv`, o la de Cognito) y cada reenvío de `reenvio1-5.txt` como
+   **R1**, con la fecha del encabezado confirmada contra Cognito. Si Cognito no tocó
+   la cuenta desde antes de ese día, ese reenvío no salió (archivo preparado y no
+   corrido, o un RESEND rechazado por el tope): sale como «NO SALIÓ» y no se anota,
+   así que el bot le manda su R1. Correrlo dos veces no duplica nada. El orden importa:
+   con la página viva, un RESEND pedido ahí mueve la fecha de la cuenta en Cognito, y
+   ese reenvío que no salió se anotaría como R1 y a esa persona se le perdería el
+   recordatorio.
+9. `cdk diff` y `cdk deploy` de prod con `IMAGE_TAG` fijo (sección «Desplegar UN
+   commit concreto»): `aws-media-api aws-media-jobs`. El diff **sí** trae un
+   cambio real en el pool: el texto de la invitación (asunto y cuerpo nuevos),
+   además de la Lambda, su regla de las 16:00 UTC y sus permisos, y en la API: la
+   ruta `POST /api/acceso/{proxy+}` con su límite y `AdminGetUser`/`AdminCreateUser`
+   sobre el pool. La página vive desde este deploy, sin importar el modo del bot; sin
+   ninguna fila en el interruptor, su tope es 40.
+10. `modo ensayo` uno o dos días: lee los resúmenes y `hoy`.
+11. El primer `modo activo`, con la frecuencia de prueba: hasta 35 por corrida, cada 3
+    días. Desde aquí, **deja de mandar tandas y reenvíos a mano** (o hazlo sabiendo que
+    se descuentan del mismo cupo).
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --tope 40 --cada 3 --nota "arranca el bot: prueba cada 3 días"
+```
+
+12. Cuando estén los videos, a diario (sección «La frecuencia»). No hace falta deploy.
+
+```bash
+venv/Scripts/python tools/invitaciones.py modo activo --cada 1 --nota "ya hay videos: a diario"
+```
 
 ## Guía de clases · admin (S1)
 
