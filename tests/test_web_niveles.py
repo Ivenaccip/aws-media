@@ -304,6 +304,9 @@ def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
     # la Competencia (E7.6), su hermana de Marketing › Blotato, también sigue en `nueva`
     assert ("/estudio/competencia/", "/estudio/marketing/blotato/competencia/") in HOJAS_MUDADAS
     assert ("/estudio/competencia/", "/estudio/marketing/blotato/competencia/") in HOJAS_CON_CLASICA
+    # y las Métricas (E7.7), la tercera de Marketing › Blotato
+    assert ("/estudio/metricas/", "/estudio/marketing/blotato/metricas/") in HOJAS_MUDADAS
+    assert ("/estudio/metricas/", "/estudio/marketing/blotato/metricas/") in HOJAS_CON_CLASICA
     assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
 
 

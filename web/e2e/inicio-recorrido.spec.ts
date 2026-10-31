@@ -1546,7 +1546,7 @@ test('el mapa pasa de la X compacta a la X grande en el corte de 560 px, y a nin
 const HOJAS = [
   { ruta: 'marketing/blotato/agenda', titulo: 'Agenda tus publicaciones', grupo: 'Blotato' },
   { ruta: 'marketing/blotato/competencia', titulo: 'Investiga tu competencia', grupo: 'Blotato' },
-  { ruta: 'metricas', titulo: 'Ver mis métricas', grupo: 'Blotato' },
+  { ruta: 'marketing/blotato/metricas', titulo: 'Ver mis métricas', grupo: 'Blotato' },
   { ruta: 'mix', titulo: 'Publicaciones automáticas', grupo: 'Avanzado' },
   { ruta: 'estilos', titulo: 'Copiadora de estilos', grupo: 'Avanzado' },
 ] as const;

@@ -123,7 +123,9 @@ PANTALLAS: dict[str, Pantalla] = {
     # Blotato; /estudio/agenda/ (la carpeta plana de antes, que da nombre a la
     # clave) es un alias con 302. /agenda.html no cambia: sigue en `nueva`
     "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/marketing/blotato/agenda/", etapa="nueva"),
-    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="nueva"),
+    # E7.7 (31-oct-2026): las métricas también, Marketing › Blotato;
+    # /estudio/metricas/ es un alias con 302. /metricas.html sigue en `nueva`
+    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/marketing/blotato/metricas/", etapa="nueva"),
     # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
     # y modera el texto antes de cobrar
     "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),

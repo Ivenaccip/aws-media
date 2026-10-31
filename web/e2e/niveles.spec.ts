@@ -371,6 +371,9 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     // la Competencia, igual que la Agenda: en `nueva`, así que /competencia.html tampoco va aquí
     ['/estudio/competencia/', '/estudio/marketing/blotato/competencia/', 'Estudio de video · Investiga tu competencia'],
     ['/estudio/competencia?x=1', '/estudio/marketing/blotato/competencia/?x=1', 'Estudio de video · Investiga tu competencia'],
+    // las Métricas, la tercera de Marketing › Blotato: también en `nueva`, así que /metricas.html tampoco va aquí
+    ['/estudio/metricas/', '/estudio/marketing/blotato/metricas/', 'Estudio de video · Métricas'],
+    ['/estudio/metricas?x=1', '/estudio/marketing/blotato/metricas/?x=1', 'Estudio de video · Métricas'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

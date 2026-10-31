@@ -1,6 +1,9 @@
 # Migración de métricas (UI·8.6)
 
-`static/metricas.html` → `/estudio/metricas/` (`web/src/pantallas/metricas/`).
+`static/metricas.html` → `/estudio/marketing/blotato/metricas/`
+(`web/src/pantallas/metricas/`; su lugar en el mapa desde E7.7, 31-oct-2026;
+antes, la carpeta plana `/estudio/metricas/`, que desde E7 es un 302 hasta
+aquí).
 
 **No cobra nada.** El server lo dice así en `server/metricas_api.py`: «cero
 créditos».
@@ -18,9 +21,37 @@ números. Cuida dos cosas:
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/metricas/` existe; `/metricas.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/metricas.html` → 302 a `/estudio/metricas/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/marketing/blotato/metricas/` existe; `/metricas.html` sigue igual; `/estudio/metricas/` es un 302 desde E7 | este PR | ⏳ al desplegar |
+| `todos` | `/metricas.html` → 302 a `/estudio/marketing/blotato/metricas/` (de un salto), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
 | `retirada` | 302 siempre; se borran `static/metricas.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
+
+**Rutas por nivel (E7.7, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/metricas/`) por la de su lugar,
+`web/estudio/marketing/blotato/metricas/index.html`, sin cambiar nada por
+dentro (pide todo con rutas absolutas). `PANTALLAS["metricas"].nueva` dice la
+anidada; la clave, `/metricas.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/metricas/` (con y
+sin barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/blotato/metricas/` con UN 302 relativo y `no-store`, en
+cualquier etapa; `/estudio/metricas/index.html` ya es un 404.
+`/metricas.html` lo sigue decidiendo el interruptor: en `nueva` sirve la
+clásica; en `todos` (y con `UI_ETAPA_MINIMA=todos`, la de dev) lleva a la
+anidada de un salto, sin pasar por la plana, salvo con la cookie
+`ui=clasica`. `/ui/nueva?pantalla=metricas` también lleva ahí.
+
+Por eso el menú **no cambia**, como el de la Agenda y el de la Competencia:
+Marketing › Blotato sigue enlazando `/metricas.html` (con `pagina: 'metricas'`
+para las migas), que pasa por el interruptor; si enlazara la anidada se lo
+saltaría. Sin Blotato se sigue apagando a propósito (dueño, 18-sep). Las migas
+tampoco cambian: van a `/estudio/` y a `/estudio/marketing/` (D6) sin depender
+de dónde vive la hoja. Lo fijan `tests/test_web_niveles.py` (con la app y el
+dist de verdad: el 302 de la plana y `/metricas.html` en cada etapa),
+`tests/test_web_rutas.py` (la tabla y el alias de `web/e2e/servidor.mjs`,
+iguales a los de web.py) y las filas de las Métricas en «las direcciones de
+antes» de `niveles.spec.ts`. Ahí no va `/metricas.html`: `servidor.mjs` la
+redirige como en `todos`, y la app real, en `nueva`, sirve la clásica. Vite
+nombra el chunk de entrada por la carpeta (`marketing-blotato-metricas-*.js`);
+ninguna prueba dependía del nombre de antes.
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § métricas. Solo
 lee y no cuesta nada.
