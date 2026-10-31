@@ -57,7 +57,7 @@ const PANTALLAS = [
   ['admin', '/admin.html', '/estudio/admin/', false],
   ['clip', '/clip.html', '/estudio/clip/', false],
   ['estilos', '/estilos.html', '/estudio/estilos/', false],
-  ['competencia', '/competencia.html', '/estudio/competencia/', false],
+  ['competencia', '/competencia.html', '/estudio/marketing/blotato/competencia/', false],
   ['subir', '/e1.html', '/estudio/subir/', false],
   ['inicio', '/index.html', '/estudio/', false],
   ['shorts', '/shorts.html', '/estudio/shorts/', false],
@@ -90,6 +90,7 @@ const ENTRADAS_VIEJAS = [
 // prueba de las tablas lee hasta el primero
 const ALIAS = new Map([
   ['/estudio/inicio/', '/estudio/'],
+  ['/estudio/competencia/', '/estudio/marketing/blotato/competencia/'],
   ['/estudio/agenda/', '/estudio/marketing/blotato/agenda/'],
   ['/estudio/biblioteca/', '/estudio/central/distrito/biblioteca/'],
   ['/estudio/coi/', '/estudio/central/distrito/coi/'],

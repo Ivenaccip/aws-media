@@ -301,6 +301,9 @@ def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
     assert ("/estudio/agenda/", "/estudio/marketing/blotato/agenda/") in HOJAS_MUDADAS
     # la Agenda es la primera mudada que todavía tiene su clásica: sin ella, la prueba de su URL vieja por etapa no mira nada
     assert ("/estudio/agenda/", "/estudio/marketing/blotato/agenda/") in HOJAS_CON_CLASICA
+    # la Competencia (E7.6), su hermana de Marketing › Blotato, también sigue en `nueva`
+    assert ("/estudio/competencia/", "/estudio/marketing/blotato/competencia/") in HOJAS_MUDADAS
+    assert ("/estudio/competencia/", "/estudio/marketing/blotato/competencia/") in HOJAS_CON_CLASICA
     assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
 
 

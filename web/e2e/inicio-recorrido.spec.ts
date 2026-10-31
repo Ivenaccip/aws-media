@@ -1123,7 +1123,7 @@ test.describe('Blotato sin saber si está conectado', () => {
     await expect(enlaces).toHaveCount(3);
     for (let i = 0; i < 3; i++) await expect(enlaces.nth(i)).not.toHaveAttribute('aria-disabled', 'true');
     await expect(region(page).getByText('Conecta tu Blotato para usarlo')).toHaveCount(0);
-    await Promise.all([page.waitForURL(/\/estudio\/competencia\//), enlaces.nth(1).click()]);
+    await Promise.all([page.waitForURL(/\/estudio\/marketing\/blotato\/competencia\//), enlaces.nth(1).click()]);
   });
 });
 
@@ -1545,7 +1545,7 @@ test('el mapa pasa de la X compacta a la X grande en el corte de 560 px, y a nin
 
 const HOJAS = [
   { ruta: 'marketing/blotato/agenda', titulo: 'Agenda tus publicaciones', grupo: 'Blotato' },
-  { ruta: 'competencia', titulo: 'Investiga tu competencia', grupo: 'Blotato' },
+  { ruta: 'marketing/blotato/competencia', titulo: 'Investiga tu competencia', grupo: 'Blotato' },
   { ruta: 'metricas', titulo: 'Ver mis métricas', grupo: 'Blotato' },
   { ruta: 'mix', titulo: 'Publicaciones automáticas', grupo: 'Avanzado' },
   { ruta: 'estilos', titulo: 'Copiadora de estilos', grupo: 'Avanzado' },

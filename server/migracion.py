@@ -95,7 +95,10 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.2: las dos cobran una cosa y comparten el patrón «lista que se
     # sondea mientras la IA trabaja» (nucleo/useListaViva.ts)
     "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="nueva"),
-    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/competencia/", etapa="nueva"),
+    # E7.6 (31-oct-2026): la competencia vive en su lugar del mapa, Marketing ›
+    # Blotato; /estudio/competencia/ (la carpeta plana de antes, que da nombre
+    # a la clave) es un alias con 302. /competencia.html no cambia: sigue en `nueva`
+    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/marketing/blotato/competencia/", etapa="nueva"),
     # UI·8.3: editar metraje (e1). Sube con progreso real y cobra una cosa,
     # «Proponer ✦ N»; la URL nueva dice lo que se hace en ella
     "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),

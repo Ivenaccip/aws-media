@@ -25,7 +25,7 @@ async function competencia(page: Page) {
     agregada = true;
     return r.fulfill({ json: { cuentas: listado().cuentas } });
   });
-  await page.goto('/estudio/competencia/');
+  await page.goto('/estudio/marketing/blotato/competencia/');
   await page.getByText('@uno').waitFor();
   await page.waitForTimeout(300);
 }

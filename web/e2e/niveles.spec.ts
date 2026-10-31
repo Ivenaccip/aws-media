@@ -368,6 +368,9 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     // que esa no va en esta tabla; la prueba por etapa vive en tests/test_web_niveles.py
     ['/estudio/agenda/', '/estudio/marketing/blotato/agenda/', 'Estudio de video · Agenda'],
     ['/estudio/agenda?x=1', '/estudio/marketing/blotato/agenda/?x=1', 'Estudio de video · Agenda'],
+    // la Competencia, igual que la Agenda: en `nueva`, así que /competencia.html tampoco va aquí
+    ['/estudio/competencia/', '/estudio/marketing/blotato/competencia/', 'Estudio de video · Investiga tu competencia'],
+    ['/estudio/competencia?x=1', '/estudio/marketing/blotato/competencia/?x=1', 'Estudio de video · Investiga tu competencia'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {
