@@ -293,6 +293,7 @@ def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
     assert ("/estudio/coi/", "/estudio/central/distrito/coi/") in HOJAS_MUDADAS
     assert ("/estudio/biblioteca/", "/estudio/central/distrito/biblioteca/") in HOJAS_MUDADAS
     assert ("/estudio/constructor/", "/estudio/automatizaciones/distrito/constructor/") in HOJAS_MUDADAS
+    assert ("/estudio/asistente/", "/estudio/automatizaciones/distrito/asistente/") in HOJAS_MUDADAS
     assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
 
 

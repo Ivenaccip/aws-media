@@ -143,9 +143,9 @@ PANTALLAS: dict[str, Pantalla] = {
     # se arma en el navegador); el Asistente corre en modo prueba: muestras enlatadas, sin base, sin cola, sin proveedor y sin créditos
     # (gasto 0). Su modo real exige el «sí» del dueño con el costo a la vista y NO está implementado. E7.3 (31-oct-2026): el Constructor
     # vive en su lugar del mapa, Automatizaciones › Distrito; /estudio/constructor/ (la carpeta plana de antes, que da nombre a la clave)
-    # es un alias con 302
+    # es un alias con 302. E7.4 (31-oct-2026): el Asistente también, a su lado; /estudio/asistente/ es otro alias con 302
     "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/automatizaciones/distrito/constructor/", etapa="retirada"),
-    "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/asistente/", etapa="retirada"),
+    "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/automatizaciones/distrito/asistente/", etapa="retirada"),
 }
 
 

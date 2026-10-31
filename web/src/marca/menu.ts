@@ -198,7 +198,8 @@ export const MENU: readonly AreaMenu[] = [
             titulo: 'Asistente',
             icono: 'magia',
             texto: 'Cuéntanos qué quieres automatizar y te armamos el flujo.',
-            href: '/estudio/asistente/',
+            // E7.4: vive en su lugar del mapa; /estudio/asistente/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
+            href: '/estudio/automatizaciones/distrito/asistente/',
           },
           { clave: 'actualizar', titulo: 'Actualizar flujos', icono: 'automatico', proximamente: true },
         ],

@@ -487,7 +487,7 @@ test('Automatizaciones: Distrito trae Constructor y Asistente (enlaces) y «Actu
   const tarjetas = tarjetasDeLaLista(page);
   await expect(tarjetas).toHaveText([/^Constructor/, /^Asistente/]);
   await expect(tarjetas.first()).toHaveAttribute('href', '/estudio/automatizaciones/distrito/constructor/');
-  await expect(tarjetas.last()).toHaveAttribute('href', '/estudio/asistente/');
+  await expect(tarjetas.last()).toHaveAttribute('href', '/estudio/automatizaciones/distrito/asistente/');
   // no depende de Blotato: aun sin clave no se apaga nada ni hay botón de conectar
   await expect(region(page).locator('[aria-disabled="true"]')).toHaveCount(0);
   await expect(region(page).getByRole('button', { name: /Blotato/ })).toHaveCount(0);
@@ -1601,7 +1601,7 @@ for (const hoja of HOJAS) {
 
 const HOJAS_DE_AUTOMATIZACIONES = [
   { ruta: 'automatizaciones/distrito/constructor', lugar: 'automatizaciones.distrito.constructor', titulo: 'Constructor' },
-  { ruta: 'asistente', lugar: 'automatizaciones.distrito.asistente', titulo: 'Asistente' },
+  { ruta: 'automatizaciones/distrito/asistente', lugar: 'automatizaciones.distrito.asistente', titulo: 'Asistente' },
 ] as const;
 
 for (const hoja of HOJAS_DE_AUTOMATIZACIONES) {

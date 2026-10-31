@@ -1,8 +1,9 @@
-// El Asistente de Automatizaciones (/estudio/asistente/) en un navegador de verdad, a 1100, 390 y 320 px, con la API simulada (`page.route`):
-// el servidor lo construye otro rol y aquí NO se llama a nada (ni al modelo, ni a la base, ni al monedero). Mide lo que jsdom no ve (desborde,
-// letra, objetivos de 44 px, axe, el foco que nunca cae al body) y recorre los viajes de punta a punta: el letrero de «prueba», los límites
-// del pedido que dice el servidor, los pasos que informa el servidor (con el reloj adelantado: el sondeo pregunta cada 5 s), el resultado, la
-// descarga REAL del .json, «sin cobertura», cada error, y el traspaso al Constructor por el borrador (con la pregunta si ya había uno).
+// El Asistente de Automatizaciones (/estudio/automatizaciones/distrito/asistente/) en un navegador de verdad, a 1100, 390 y 320 px, con la
+// API simulada (`page.route`): el servidor lo construye otro rol y aquí NO se llama a nada (ni al modelo, ni a la base, ni al monedero).
+// Mide lo que jsdom no ve (desborde, letra, objetivos de 44 px, axe, el foco que nunca cae al body) y recorre los viajes de punta a punta:
+// el letrero de «prueba», los límites del pedido que dice el servidor, los pasos que informa el servidor (con el reloj adelantado: el
+// sondeo pregunta cada 5 s), el resultado, la descarga REAL del .json, «sin cobertura», cada error, y el traspaso al Constructor por el
+// borrador (con la pregunta si ya había uno).
 //
 // Capturas: con AUTOMATIZA_CAPTURAS=<carpeta> cada estado que se `revisa` se guarda como PNG. Sin la variable no se guarda nada.
 import { readFileSync } from 'node:fs';
@@ -673,14 +674,14 @@ test.describe('Asistente: abrir en el constructor', () => {
     // Esc: no navega, no toca el borrador y el foco vuelve al botón
     await page.keyboard.press('Escape');
     await expect(pregunta).toHaveCount(0);
-    expect(page.url()).toContain('/estudio/asistente/');
+    expect(page.url()).toContain('/estudio/automatizaciones/distrito/asistente/');
     expect(await leerBorrador(page)).toBe(antes);
     await expect(botonAbrirEnConstructor(page)).toBeFocused();
     // «Cancelar»: lo mismo
     await botonAbrirEnConstructor(page).click();
     await pregunta.getByRole('button', { name: 'Cancelar' }).click();
     await expect(pregunta).toHaveCount(0);
-    expect(page.url()).toContain('/estudio/asistente/');
+    expect(page.url()).toContain('/estudio/automatizaciones/distrito/asistente/');
     expect(await leerBorrador(page)).toBe(antes);
     expect(JSON.parse(antes!).nombreFlujo).toBe('Lo que ya tenía');
     // «Reemplazar y abrir»: ahora sí, y llega el del Asistente
@@ -699,7 +700,7 @@ test.describe('Asistente: abrir en el constructor', () => {
     await page.getByRole('button', { name: 'Cargar el ejemplo' }).click();
     await expect(nodos(page)).toHaveCount(5);
     await expect.poll(async () => JSON.parse((await leerBorrador(page)) ?? '{"nodes":[]}').nodes.length).toBe(5);
-    await page.goto('/estudio/asistente/');
+    await page.goto('/estudio/automatizaciones/distrito/asistente/');
     await pedir(page);
     await page.clock.fastForward(5000);
     await expect(tituloListo(page)).toBeFocused();
@@ -741,7 +742,7 @@ test.describe('Asistente: abrir en el constructor', () => {
     await conResultado(page);
     await botonAbrirEnConstructor(page).click();
     await expect(page.getByRole('alert')).toContainText('Tu navegador no tiene espacio para pasar el flujo al constructor. Descarga el .json y ábrelo en n8n.');
-    expect(page.url()).toContain('/estudio/asistente/');
+    expect(page.url()).toContain('/estudio/automatizaciones/distrito/asistente/');
     await expect(botonDescargar(page)).toBeVisible();
     expect(await focoEnElCuerpo(page)).toBe(false);
   });

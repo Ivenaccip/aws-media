@@ -49,7 +49,7 @@ El dueño no contestó las sub-decisiones; se adoptó la opción que recomendaro
 
 | # | Decisión | Por qué |
 |---|---|---|
-| D1 | Dos páginas planas, `web/estudio/constructor/` y `web/estudio/asistente/`. **Superada en E7:** `server/web.py` sirve a cualquier profundidad desde las rutas por nivel, y el Constructor vive en `web/estudio/automatizaciones/distrito/constructor/` desde E7.3 (la llave del registro sigue siendo `constructor`) | `server/web.py` solo monta las carpetas con `index.html` directo bajo `dist/estudio/`: una anidada daría 404 en producción; la llave del registro tiene que cumplir `^[a-z0-9_]+$` (sin guion); y `automatiza` choca con las rutas públicas del RAG |
+| D1 | Dos páginas planas, `web/estudio/constructor/` y `web/estudio/asistente/`. **Superada en E7:** `server/web.py` sirve a cualquier profundidad desde las rutas por nivel, y el Constructor vive en `web/estudio/automatizaciones/distrito/constructor/` desde E7.3 (la llave del registro sigue siendo `constructor`); el Asistente, a su lado, desde E7.4 | `server/web.py` solo monta las carpetas con `index.html` directo bajo `dist/estudio/`: una anidada daría 404 en producción; la llave del registro tiene que cumplir `^[a-z0-9_]+$` (sin guion); y `automatiza` choca con las rutas públicas del RAG |
 | D2 | Encabezado propio (`marca/EncabezadoHoja.tsx`): «Irremplazables» dorado, migas de tres niveles con la última quieta; sin `<Marco>` y sin `pagina` | es el molde de COI y la Biblioteca; con `<Marco>` el contenido quedaría en 1080 px (angosto para un lienzo; el Constructor usa 1280) y las migas serían de dos niveles |
 | D3 | Borrador en `localStorage`, versionado, validado contra los invariantes al cargar, sin texto que parezca una clave, guardado diferido más inmediato al salir | el lienzo es trabajo de la persona y la sesión puede caducar a media edición (`auth.js` navega a Cognito y se perdería); además es el traspaso Asistente → Constructor |
 | D4 | `agentTool` («dos IA que conversan») se exporta, pero no se toca `permitidos.json` ni el RAG | permitirlo globalmente cambia lo que el RAG público puede armar (y exigiría ingesta de documentación, que gasta): es del dueño. La paridad lo trata como «rechazado hoy; válido si se permitiera» |
@@ -282,7 +282,7 @@ ninguno de los dos registros la busca en un objeto: el de Python es un `dict` y 
 `rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada` (`estudio.test.ts`) cae si el menú vuelve a
 la plana, que el 302 escondería. Las migas no cambian: van a `/estudio/` y a `/estudio/automatizaciones/` (`urlDeInicio`) sin depender de
 dónde vive la hoja. **El borrador no se pierde:** `localStorage` es del origen y no de la dirección, así que el que se guardó en la plana
-se recupera en la anidada (el traspaso del Asistente ya lo escribía desde otra dirección, `/estudio/asistente/`). Vite nombra el chunk y
+se recupera en la anidada (el traspaso del Asistente ya lo escribía desde otra dirección, la del Asistente). Vite nombra el chunk y
 el CSS de entrada por la carpeta (`automatizaciones-distrito-constructor-*.js` y `.css`, `vite.config.ts::nombreDe`) y ninguna prueba
 depende de ese nombre.
 

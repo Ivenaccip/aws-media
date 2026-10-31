@@ -56,7 +56,7 @@ describe('menu · Automatizaciones', () => {
       ['tus', 'Tus automatizaciones', 0],
     ]);
     const [constructor, asistente, actualizar] = area.grupos[0]!.pantallas;
-    expect([constructor?.href, asistente?.href]).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/asistente/']);
+    expect([constructor?.href, asistente?.href]).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/automatizaciones/distrito/asistente/']);
     expect(constructor?.texto).toBe('Arma tu flujo cuadro por cuadro y descárgalo para n8n.');
     expect(asistente?.texto).toBe('Cuéntanos qué quieres automatizar y te armamos el flujo.');
     expect(actualizar).toMatchObject({ titulo: 'Actualizar flujos', proximamente: true });
@@ -117,7 +117,7 @@ describe('estadoRecorrido · Automatizaciones', () => {
     });
     expect(destinoDeVolver(estadoInicial('?desde=automatizaciones.distrito.asistente&ver=grupos'))).toEqual({
       rotulo: 'Volver a Asistente',
-      href: '/estudio/asistente/',
+      href: '/estudio/automatizaciones/distrito/asistente/',
     });
     expect(estadoInicial('?desde=automatizaciones.distrito.actualizar&ver=grupos')).toMatchObject({ paso: 'grupos', hoja: null });
     // el grupo vacío no tiene pantallas: ningún `desde` válido apunta a él
@@ -132,7 +132,7 @@ describe('Pantallas · Automatizaciones', () => {
     render(<Pantallas grupo={distrito} conectado={false} alConectar={() => undefined} />);
     const filas = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(filas.map(f => f.querySelector('b')?.textContent)).toEqual(['Constructor', 'Asistente', 'Actualizar flujos']);
-    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/asistente/']);
+    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/automatizaciones/distrito/asistente/']);
     for (const a of screen.getAllByRole('link')) expect(a).not.toHaveAttribute('aria-disabled');
     expect(filas[2]).toHaveTextContent('Próximamente');
     expect(filas[2]!.firstElementChild!.className.split(/\s+/)).toEqual(expect.arrayContaining(['bg-hundido', 'text-secundario']));
@@ -163,7 +163,7 @@ describe('Recorrido · Automatizaciones', () => {
     await userEvent.click(ficha(/^Automatizaciones/));
     await userEvent.click(tarjetaDeGrupo('Automatizaciones', 'Distrito'));
     expect(h2('Distrito')).toHaveFocus();
-    expect(within(lista()).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/asistente/']);
+    expect(within(lista()).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/automatizaciones/distrito/asistente/']);
     expect(screen.queryByText('Todavía no está disponible.')).toBeNull();
     expect(migaGrupo('Automatizaciones', 'Distrito')).toHaveAttribute('aria-current', 'step');
     expect(volveres()).toHaveLength(0);

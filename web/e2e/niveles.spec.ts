@@ -361,6 +361,9 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     ['/estudio/constructor/', '/estudio/automatizaciones/distrito/constructor/', 'Estudio de video · Constructor'],
     ['/estudio/constructor?x=1', '/estudio/automatizaciones/distrito/constructor/?x=1', 'Estudio de video · Constructor'],
     ['/constructor.html', '/estudio/automatizaciones/distrito/constructor/', 'Estudio de video · Constructor'],
+    ['/estudio/asistente/', '/estudio/automatizaciones/distrito/asistente/', 'Estudio de video · Asistente'],
+    ['/estudio/asistente?x=1', '/estudio/automatizaciones/distrito/asistente/?x=1', 'Estudio de video · Asistente'],
+    ['/asistente.html', '/estudio/automatizaciones/distrito/asistente/', 'Estudio de video · Asistente'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

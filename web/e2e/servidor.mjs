@@ -69,7 +69,7 @@ const PANTALLAS = [
   ['biblioteca', '/biblioteca.html', '/estudio/central/distrito/biblioteca/', true],
   ['coi', '/coi.html', '/estudio/central/distrito/coi/', true],
   ['constructor', '/constructor.html', '/estudio/automatizaciones/distrito/constructor/', true],
-  ['asistente', '/asistente.html', '/estudio/asistente/', true],
+  ['asistente', '/asistente.html', '/estudio/automatizaciones/distrito/asistente/', true],
 ];
 // Map y no un objeto: una de las pantallas se llama `constructor` (un objeto la confundiría con la de su prototipo)
 const VIEJAS = new Map(PANTALLAS.filter(([nombre]) => nombre !== 'inicio').map(([, vieja, nueva]) => [vieja, nueva]));
@@ -93,6 +93,7 @@ const ALIAS = new Map([
   ['/estudio/biblioteca/', '/estudio/central/distrito/biblioteca/'],
   ['/estudio/coi/', '/estudio/central/distrito/coi/'],
   ['/estudio/constructor/', '/estudio/automatizaciones/distrito/constructor/'],
+  ['/estudio/asistente/', '/estudio/automatizaciones/distrito/asistente/'],
 ]);
 
 // El 404 de un nivel que pide HTML (web._PAGINA_404, D14): el MISMO texto, trozo por trozo (tests/test_web_rutas.py junta los trozos de

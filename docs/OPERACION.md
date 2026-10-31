@@ -2511,7 +2511,7 @@ locales (necesita `ffprobe`, `ffmpeg` y `openssl` en el PATH; sin ellos se omite
 
 ## El Asistente de Automatizaciones (modo prueba)
 
-**Automatizaciones › Distrito › Asistente** (`/estudio/asistente/`): la persona cuenta qué quiere automatizar y la pantalla le
+**Automatizaciones › Distrito › Asistente** (`/estudio/automatizaciones/distrito/asistente/`): la persona cuenta qué quiere automatizar y la pantalla le
 devuelve un flujo de n8n para descargarlo o abrirlo en el Constructor (`/estudio/automatizaciones/distrito/constructor/`, cuyo código no hace pedidos al servidor: los scripts de la página, `auth.js`, `monedero.js` y `trabajos.js`, sí piden `/api/auth/config`, `/api/creditos` y `/api/trabajos`). Esta es la
 **Fase A: el modo «prueba», que no gasta dinero**. El servidor no arma nada de verdad: devuelve un flujo de **ejemplo enlatado**, elegido por
 las palabras del pedido. No hay modelo, base de datos, cola ni monedero en ese camino, y lo que la persona escribe no se guarda ni se
