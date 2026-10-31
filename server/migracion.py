@@ -132,8 +132,9 @@ PANTALLAS: dict[str, Pantalla] = {
     "biblioteca": Pantalla(vieja="/biblioteca.html", nueva="/estudio/biblioteca/", etapa="retirada"),
     # 16-oct-2026: COI (Contexto · Objetivo · Instrucciones) nace en la UI nueva: NO tuvo pantalla vieja. Se registra `retirada` desde
     # el primer día para que el registro anti-pérdida cubra sus invariantes (docs/migracion/coi.md); `/coi.html` solo es un atajo que
-    # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado
-    "coi": Pantalla(vieja="/coi.html", nueva="/estudio/coi/", etapa="retirada"),
+    # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado. E7.1 (31-oct-2026): vive en su lugar del mapa,
+    # Central › Distrito; /estudio/coi/ (la carpeta plana de antes, que da nombre a la clave) es un alias con 302 (alias_del_estudio)
+    "coi": Pantalla(vieja="/coi.html", nueva="/estudio/central/distrito/coi/", etapa="retirada"),
     # 20-oct-2026: Automatizaciones › Distrito. El Constructor y el Asistente NACEN en la UI nueva, como COI y la Biblioteca: no tuvieron
     # pantalla vieja. Se registran `retirada` desde el primer día (302 siempre a la nueva, sin HTML viejo ni cookie) para que el registro
     # anti-pérdida cubra sus invariantes (docs/migracion/constructor.md y asistente.md); `/constructor.html` y `/asistente.html` solo son
@@ -149,9 +150,11 @@ def alias_del_estudio() -> dict[str, str]:
     """Las URLs viejas bajo /estudio/ → su canónica nueva, para server/web.py.
 
     La clave de PANTALLAS ES el nombre de la carpeta de siempre (/estudio/<p>/), así que el alias se deduce: lo que
-    cambió de sitio. Hoy solo el inicio (/estudio/inicio/ → /estudio/): su carpeta se retiró en E5.3, así que el alias
-    está activo. Un alias es inerte mientras su carpeta vieja siga existiendo en web/dist: una pantalla que existe manda
-    sobre cualquier alias (web.destino_de). Ningún alias apunta a otro alias ni a sí mismo (tests/test_web_rutas.py)."""
+    cambió de sitio. El inicio (/estudio/inicio/ → /estudio/), cuya carpeta se retiró en E5.3, y cada hoja del mapa que
+    E7 mudó a su carpeta anidada (/estudio/coi/ → /estudio/central/distrito/coi/): sus carpetas planas ya no existen, así
+    que esos alias están activos. Un alias es inerte mientras su carpeta vieja siga existiendo en web/dist: una pantalla
+    que existe manda sobre cualquier alias (web.destino_de). Ningún alias apunta a otro alias ni a sí mismo
+    (tests/test_web_rutas.py)."""
     return {f"/estudio/{n}/": p.nueva for n, p in PANTALLAS.items() if p.nueva != f"/estudio/{n}/"}
 
 

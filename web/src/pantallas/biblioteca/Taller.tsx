@@ -47,7 +47,7 @@ import {
 } from './logica';
 import { useFijados } from './useFijados';
 
-const RUTA_COI = '/estudio/coi/';
+const RUTA_COI = '/estudio/central/distrito/coi/';
 
 /** Lo que dice una nota junto a los fijados o al pin, y dónde se ve. */
 interface Nota {

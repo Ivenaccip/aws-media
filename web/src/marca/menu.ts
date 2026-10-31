@@ -152,8 +152,9 @@ export const MENU: readonly AreaMenu[] = [
             titulo: 'COI',
             icono: 'coi',
             texto: 'Diseña un prompt: Contexto, Objetivo e Instrucciones',
-            // sin `pagina`: COI no se pinta con <Marco> (lleva su propio marco, con «Irremplazables» arriba); sus migas las arma ella con `buscar`
-            href: '/estudio/coi/',
+            // sin `pagina`: COI no se pinta con <Marco> (lleva su propio marco, con «Irremplazables» arriba); sus migas las arma ella con `buscar`.
+            // E7.1: vive en su lugar del mapa; /estudio/coi/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
+            href: '/estudio/central/distrito/coi/',
           },
           {
             // Ajustes 3 (16-oct-2026): encendida. Sin `pagina` a propósito: su encabezado («Irremplazables» + migas de tres niveles)

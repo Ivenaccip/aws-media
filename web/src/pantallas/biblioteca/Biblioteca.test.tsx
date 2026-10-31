@@ -169,7 +169,7 @@ describe('biblioteca', () => {
     montar({ casa: [] });
     render(<Biblioteca />);
     expect(await screen.findByRole('heading', { name: 'Aún no hay prompts en la Biblioteca' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Diseñar un prompt con COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    expect(screen.getByRole('link', { name: /Diseñar un prompt con COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
     expect(screen.queryByRole('list', { name: 'Prompts de la Biblioteca' })).toBeNull();
   });
 
@@ -210,7 +210,7 @@ describe('biblioteca', () => {
     expect(screen.getByText('Sin resultados para «zapatos de baile»')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'No encontramos ese prompt' })).toBeInTheDocument();
     const ofertas = screen.getAllByRole('link', { name: /COI/ });
-    expect(ofertas.every(a => a.getAttribute('href') === '/estudio/coi/')).toBe(true);
+    expect(ofertas.every(a => a.getAttribute('href') === '/estudio/central/distrito/coi/')).toBe(true);
     // el único ámbar de la pantalla es «Diseñar uno con COI»
     expect(principales().map(e => e.textContent)).toEqual(['Diseñar uno con COI']);
     await userEvent.click(within(panelDetalle()!).getByRole('button', { name: 'Quitar filtros' }));
@@ -704,7 +704,7 @@ describe('biblioteca', () => {
     expect(screen.queryByRole('list', { name: 'Prompts de la Biblioteca' })).toBeNull();
     // sin ninguno no hay con qué buscar: ni buscador ni categorías
     expect(screen.queryByRole('searchbox')).toBeNull();
-    expect(within(panelDetalle()!).getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    expect(within(panelDetalle()!).getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
     // y la franja de fijados sigue ahí: es de toda la Biblioteca
     expect(casillas()).toHaveLength(3);
   });
@@ -848,7 +848,7 @@ describe('biblioteca', () => {
     render(<Biblioteca />);
     await esperarLista();
     expect(screen.getByText('¿No encuentras el tuyo?')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    expect(screen.getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
   });
 
   // ---- lo que NO hace ----

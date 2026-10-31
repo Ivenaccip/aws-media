@@ -4,7 +4,8 @@
      compilado (`web/dist/`). Viven solo en el servidor (`prompts/coi_system.md`).
   2. Lo que la persona escribe no se guarda en el navegador: la pantalla de COI no toca `localStorage`, `sessionStorage`,
      IndexedDB ni las cookies, ni usa `apartar` de nucleo/api.ts (que deja el cuerpo de la petición en `sessionStorage` mientras vuela).
-  3. COI nunca tuvo pantalla vieja: su registro en `server/migracion.py` no manda a nadie a un HTML que no existe.
+  3. COI nunca tuvo pantalla vieja: su registro en `server/migracion.py` no manda a nadie a un HTML que no existe, y desde E7.1 (rutas por
+     nivel) vive en su lugar del mapa, `/estudio/central/distrito/coi/`: `/coi.html` y la carpeta plana de antes (`/estudio/coi/`) llevan ahí.
   4. Los docs de la migración no dicen lo contrario del mapa (`web/src/marca/menu.ts`): COI sin `pagina`, y Central › Distrito con dos
      enlaces (COI y la Biblioteca) y dos apagadas (Preguntas y Glosario).
 
@@ -95,10 +96,12 @@ def test_el_bundle_compilado_no_trae_frases_de_las_instrucciones_de_coi():
     assert not halladas, f"frases de las instrucciones de COI en el bundle: {halladas}"
 
 
-@pytest.mark.skipif(not (DIST / "estudio" / "coi" / "index.html").is_file(), reason="sin web/dist compilado con COI")
+@pytest.mark.skipif(not (DIST / "estudio" / "central" / "distrito" / "coi" / "index.html").is_file(),
+                    reason="sin web/dist compilado con COI en su lugar (central/distrito/coi)")
 def test_el_bundle_de_coi_existe_y_la_guardia_lo_esta_mirando():
-    """Sin esto, un dist sin COI haría pasar la prueba de arriba sin mirar la pantalla."""
-    modulos = list((DIST / "estudio" / "assets").glob("coi-*.js"))
+    """Sin esto, un dist sin COI haría pasar la prueba de arriba sin mirar la pantalla. Vite nombra el chunk de entrada por la carpeta
+    (vite.config.ts::nombreDe): en central/distrito/coi es `central-distrito-coi-<hash>.js`."""
+    modulos = list((DIST / "estudio" / "assets").glob("central-distrito-coi-*.js"))
     assert modulos, "el bundle compilado no trae el módulo de COI"
     # y el módulo trae texto de la pantalla (si estuviera vacío, buscar frases en él no probaría nada)
     assert "Armar COI" in modulos[0].read_text(encoding="utf-8")
@@ -230,16 +233,19 @@ def test_coi_html_solo_redirige_a_la_pantalla_nueva_y_no_hay_version_anterior():
     from server import migracion
 
     p = migracion.PANTALLAS["coi"]
-    assert (p.vieja, p.nueva, p.etapa) == ("/coi.html", "/estudio/coi/", "retirada")
+    assert (p.vieja, p.nueva, p.etapa) == ("/coi.html", "/estudio/central/distrito/coi/", "retirada")
     assert not (RAIZ / "static" / "coi.html").exists(), "COI nunca tuvo HTML viejo: `retirada` solo es verdad si no existe"
+    # la carpeta plana de antes ya no existe y su dirección es un alias a la de su lugar (lo prueba con la app real test_web_niveles.py)
+    assert not (WEB / "estudio" / "coi").exists(), "web/estudio/coi/ se mudó a central/distrito/coi/ (E7.1)"
+    assert migracion.alias_del_estudio()["/estudio/coi/"] == "/estudio/central/distrito/coi/"
     app = FastAPI()
-    migracion.montar(app, ["/estudio/coi"], RAIZ / "static")
+    migracion.montar(app, ["/estudio/central/distrito/coi"], RAIZ / "static")
     c = TestClient(app, follow_redirects=False)
     r = c.get("/coi.html?x=1")
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/coi/?x=1"
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/central/distrito/coi/?x=1"
     # con o sin la cookie de «versión anterior» (que ya no existe para COI), se queda en la nueva
     r = c.get("/ui/clasica?pantalla=coi")
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/coi/"
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/central/distrito/coi/"
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +283,7 @@ def _entrada_del_mapa(clave: str) -> str:
 def test_el_mapa_dice_lo_que_los_docs_afirman_de_central():
     """Lo que los docs dicen de Central es verdad en el código: si esto cambia, hay que cambiar los docs (y viceversa)."""
     coi, biblioteca = _entrada_del_mapa("coi"), _entrada_del_mapa("biblioteca")
-    assert "href: '/estudio/coi/'" in coi and "href: '/estudio/biblioteca/'" in biblioteca
+    assert "href: '/estudio/central/distrito/coi/'" in coi and "href: '/estudio/biblioteca/'" in biblioteca
     assert "pagina:" not in coi, "COI lleva `pagina` en el mapa: docs/migracion/coi.md dice que no"
     assert "pagina:" not in biblioteca
     for apagada in ("preguntas", "glosario"):

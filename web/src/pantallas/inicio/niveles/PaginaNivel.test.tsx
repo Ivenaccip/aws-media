@@ -621,6 +621,7 @@ describe('niveles · nivel.tsx, la entrada de las 13 páginas', () => {
     // una herramienta de la Caja tiene su propia entrada: si una página de nivel se abre en su dirección, tampoco hay nada que enseñar aquí
     for (const direccion of [
       '/estudio/coi/',
+      '/estudio/central/distrito/coi/',
       '/estudio/marketing/distrito/video/',
       '/estudio/nada/',
       '/estudio/Marketing/',

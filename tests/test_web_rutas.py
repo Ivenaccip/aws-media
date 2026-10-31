@@ -5,7 +5,7 @@ Fija lo que los tests de hoy (tests/test_web_tuberia.py) no ven: los niveles ani
 profundidad y el 404 con página (con `Vary: Accept`).
 
 Las apps de prueba llevan, DETRÁS, el mismo montaje «/» de static/ que la app real (server/app.py, `app.mount("/", …)`):
-ese montaje casa con TODO lo que no encontró un montaje antes, así que `/estudio/coi` (sin barra) cae en static/ y da 404.
+ese montaje casa con TODO lo que no encontró un montaje antes, así que `/estudio/clip` (sin barra) cae en static/ y da 404.
 Sin él Starlette redirige la barra por su cuenta (307, URL absoluta) y la prueba no vería el defecto que sí existe.
 
 La raíz «/estudio/» (el mapa) la sirve web.py desde E5.2, junto con las entradas de antes (?prompt, ?brief,
@@ -858,16 +858,21 @@ def test_un_alias_a_un_destino_que_no_esta_compilado_da_404_y_no_redirige_a_la_n
 
 def test_sin_pasar_alias_montar_usa_el_de_migracion(dist):
     """`web.montar(app, dist)` (como lo llama server/app.py) trae `migracion.alias_del_estudio()`: el inicio de una sola página
-    (/estudio/inicio/, retirada en E5.3) va a la principal. `{}` es «ninguno» y no se confunde con `None`."""
+    (/estudio/inicio/, retirada en E5.3) va a la principal y COI, la primera hoja que E7 mudó, de su carpeta plana a la de su lugar.
+    `{}` es «ninguno» y no se confunde con `None`."""
     from server import migracion
     assert migracion.alias_del_estudio().get("/estudio/inicio/") == "/estudio/"
-    c = _c(dist)                                  # dist sin carpeta `inicio`
+    assert migracion.alias_del_estudio().get("/estudio/coi/") == "/estudio/central/distrito/coi/"
+    c = _c(dist)                                  # dist sin carpeta `inicio` ni `coi` (y con central/distrito/coi)
     for pedido, destino in (("/estudio/inicio/", "/estudio/"), ("/estudio/inicio", "/estudio/"),
                             ("/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos", "/estudio/?desde=mkt.blotato.agenda&ver=grupos"),
-                            ("/estudio/Inicio/?x=1", "/estudio/?x=1")):
+                            ("/estudio/Inicio/?x=1", "/estudio/?x=1"),
+                            ("/estudio/coi/", "/estudio/central/distrito/coi/"), ("/estudio/coi", "/estudio/central/distrito/coi/"),
+                            ("/estudio/Coi/?x=1&y=a%20b", "/estudio/central/distrito/coi/?x=1&y=a%20b")):
         r = c.get(pedido)
         assert r.status_code == 302 and r.headers["location"] == destino and r.headers["cache-control"] == "no-store", pedido
     assert _c(dist, {}).get("/estudio/inicio/").status_code == 404
+    assert _c(dist, {}).get("/estudio/coi/").status_code == 404
 
 
 def _dist_de_las_fuentes(tmp_path):
@@ -1035,6 +1040,8 @@ _FILAS_E2E = [
     ("GET", "/estudio//", {}), ("GET", "/estudio//marketing/", {}), ("GET", "/%65studio/", {}), ("GET", "/estudio/%6Darketing/", {}),
     ("GET", "/estudio/marketing/distrito/%69magen/?prompt=a", {}),
     ("GET", "/estudio/inicio/", {}), ("GET", "/estudio/inicio?x=1", {}), ("GET", "/estudio/inicio/?prompt=x", {}),
+    ("GET", "/estudio/coi/?x=1", {}), ("GET", "/estudio/coi", {}), ("GET", "/estudio/Coi/", {}), ("HEAD", "/estudio/coi/", {}),
+    ("GET", "/estudio/coi/index.html", {}),
     ("GET", "/estudio/marketing/", {}), ("HEAD", "/estudio/marketing/distrito/imagen/", {}), ("GET", "/estudio/huerfano/hijo/", {}),
     ("GET", "/estudio/marketing/index.html", {}), ("GET", "/estudio/index.html", {}),
     ("GET", "/estudio/nada/", {}), ("GET", "/estudio/nada/", HTML), ("GET", "/estudio/marketing/distrito/nada/", HTML),

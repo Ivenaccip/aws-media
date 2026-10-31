@@ -38,11 +38,11 @@ const INDICE = 'index.html';
 const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina'];
 
 /**
- * TRANSITORIA. Las hojas del menú (agenda, COI…) todavía no se mudaron a su dirección por nivel (/estudio/marketing/blotato/agenda/):
- * viven en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta plana de web/estudio/ (ojo: MIX es
- * `automaticas` en el menú y `mix` allá). Cada commit de la etapa E7 muda UNA hoja y acorta este Map en una fila; una hoja que NO está
- * aquí tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una pantalla que se llama `constructor` y choca con
- * Object.prototype.
+ * TRANSITORIA. Las hojas del menú (agenda, la Biblioteca…) que todavía no se mudaron a su dirección por nivel
+ * (/estudio/marketing/blotato/agenda/): viven en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta plana
+ * de web/estudio/ (ojo: MIX es `automaticas` en el menú y `mix` allá). Cada commit de la etapa E7 muda UNA hoja y acorta este Map en
+ * una fila (COI fue la primera); una hoja que NO está aquí tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una
+ * pantalla que se llama `constructor` y choca con Object.prototype.
  */
 const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
   ['mkt.blotato.agenda', 'agenda'],
@@ -50,7 +50,6 @@ const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
   ['mkt.blotato.metricas', 'metricas'],
   ['mkt.avanzado.automaticas', 'mix'],
   ['mkt.avanzado.estilos', 'estilos'],
-  ['central.distrito.coi', 'coi'],
   ['central.distrito.biblioteca', 'biblioteca'],
   ['automatizaciones.distrito.constructor', 'constructor'],
   ['automatizaciones.distrito.asistente', 'asistente'],
@@ -80,6 +79,15 @@ const HOJAS: Hoja[] = MENU.flatMap(a =>
 
 /** Dónde vive la hoja ahora: en su carpeta plana mientras esté en la tabla transitoria y, en cuanto sale de ella, en la anidada. */
 const carpetaDeHoja = (h: Hoja): string => HOJAS_AUN_PLANAS.get(h.clave) ?? h.anidada;
+
+/**
+ * Las hojas ya mudadas (fuera de la tabla transitoria) que enlazan a la UI nueva por otra dirección que su anidada, como
+ * «clave → href (su lugar: …)». Las que enlazan su URL vieja (`/agenda.html`) no cuentan: en `nueva` esa la decide el interruptor.
+ */
+const enlacesFueraDeSuLugar = (hojas: readonly Hoja[]): string[] =>
+  hojas
+    .filter(h => !HOJAS_AUN_PLANAS.has(h.clave) && h.href.startsWith('/estudio/') && h.href !== `/estudio/${h.anidada}/`)
+    .map(h => `${h.clave} → ${h.href} (su lugar: /estudio/${h.anidada}/)`);
 
 /** Las carpetas que generan las 16 rutas del recorrido («» es la principal). */
 const GENERADAS: ReadonlySet<string> = new Set(rutasDelRecorrido().map(r => carpetaDe(r.url)));
@@ -276,12 +284,27 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
   });
 
   it('rutas.cada_hoja_tiene_su_carpeta.si_el_href_ya_es_de_la_nueva_la_carpeta_plana_es_la_de_su_href', () => {
-    // COI, Biblioteca, Constructor y Asistente ya apuntan a /estudio/<carpeta>/; las demás (/agenda.html…) las manda server/migracion.py
+    // las que nacieron en la UI nueva y siguen en la tabla (Biblioteca, Constructor, Asistente) apuntan a /estudio/<carpeta>/; las demás
+    // (/agenda.html…) las manda server/migracion.py
     for (const h of HOJAS) {
       const plana = HOJAS_AUN_PLANAS.get(h.clave);
       const m = /^\/estudio\/([^/]+)\/$/.exec(h.href);
       if (plana !== undefined && m) expect(plana, h.clave).toBe(m[1]);
     }
+  });
+
+  it('rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada', () => {
+    // la carpeta plana de antes sigue llevando a la anidada con un 302 (server/migracion.py::alias_del_estudio): un enlace que se quedó
+    // en la plana no rompe nada a la vista, cuesta un salto de más y deja la dirección vieja en los marcadores. Solo se ve aquí
+    const fuera = enlacesFueraDeSuLugar(HOJAS);
+    expect(fuera, `hojas mudadas que el menú todavía manda a otra dirección: ${fuera.join('; ')}`).toEqual([]);
+    // la prueba muerde: una hoja fuera de la tabla con su href plano se marca; con la anidada o con su URL vieja, no
+    const hoja: Hoja = { clave: 'mkt.blotato.prueba', anidada: 'marketing/blotato/prueba', href: '/estudio/prueba/' };
+    expect(enlacesFueraDeSuLugar([hoja])).toEqual(['mkt.blotato.prueba → /estudio/prueba/ (su lugar: /estudio/marketing/blotato/prueba/)']);
+    expect(enlacesFueraDeSuLugar([{ ...hoja, href: '/estudio/marketing/blotato/prueba/' }, { ...hoja, href: '/prueba.html' }])).toEqual([]);
+    // y una que sigue en la tabla, con el href de su carpeta plana, tampoco: todavía vive ahí
+    const aunPlana = HOJAS.find(h => HOJAS_AUN_PLANAS.has(h.clave));
+    if (aunPlana) expect(enlacesFueraDeSuLugar([{ ...aunPlana, href: `/estudio/${HOJAS_AUN_PLANAS.get(aunPlana.clave) ?? ''}/` }])).toEqual([]);
   });
 
   it('rutas.cada_hoja_tiene_su_carpeta.la_anidada_sale_de_las_claves_del_menu_con_marketing_en_vez_de_mkt', () => {

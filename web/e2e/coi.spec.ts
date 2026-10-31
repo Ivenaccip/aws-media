@@ -1,7 +1,7 @@
-// COI (/estudio/coi/) en un navegador de verdad, a 1100, 390 y 320 px, con la API simulada (`page.route`): el servidor de COI lo construye
-// otro rol y aquí NO se llama al modelo ni a la moderación (no cuesta nada). Mide lo que jsdom no ve: que no haya desborde horizontal,
-// que lo que se toca mida 44 px o más, que ningún texto baje de 13 px, axe sin violaciones, el foco (nunca cae al body al cambiar
-// de estado), el portapapeles real, y que lo que la persona escribe no quede en el almacenamiento del navegador.
+// COI (/estudio/central/distrito/coi/) en un navegador de verdad, a 1100, 390 y 320 px, con la API simulada (`page.route`): el servidor
+// de COI lo construye otro rol y aquí NO se llama al modelo ni a la moderación (no cuesta nada). Mide lo que jsdom no ve: que no haya
+// desborde horizontal, que lo que se toca mida 44 px o más, que ningún texto baje de 13 px, axe sin violaciones, el foco (nunca cae al
+// body al cambiar de estado), el portapapeles real, y que lo que la persona escribe no quede en el almacenamiento del navegador.
 //
 // Capturas: con COI_CAPTURAS=<carpeta> cada estado se guarda como PNG (para mirarlas). Sin la variable no se guarda nada.
 import { readFileSync } from 'node:fs';
@@ -138,7 +138,7 @@ async function simular(page: Page, parcial: Partial<Sim> = {}): Promise<Sim> {
 }
 
 const abrir = async (page: Page) => {
-  await page.goto('/estudio/coi/');
+  await page.goto('/estudio/central/distrito/coi/');
   await expect(page.getByRole('heading', { name: 'Diseña un prompt con COI' })).toBeVisible();
 };
 
@@ -676,7 +676,7 @@ for (const [ancho, alto] of [
       const url = new URL(otra.url());
       expect(url.pathname + url.search).toBe('/estudio/biblioteca/?ver=mios');
       // la pestaña de COI sigue donde estaba, con su resultado y su hoja: no se perdió nada
-      await expect(page).toHaveURL(/\/estudio\/coi\/$/);
+      await expect(page).toHaveURL(/\/estudio\/central\/distrito\/coi\/$/);
       await expect(page.locator('#coi-res')).toBeVisible();
       await expect(hoja).toBeVisible();
       await otra.close();

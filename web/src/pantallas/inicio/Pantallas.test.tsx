@@ -119,7 +119,7 @@ describe('Pantallas · Avanzado', () => {
 
 describe('Pantallas · lo que todavía no existe', () => {
   // Lo de Central › Distrito que ya existe (se enciende pantalla por pantalla): COI y la Biblioteca de prompts (16-oct-2026).
-  const ENCENDIDAS: Record<string, string> = { COI: '/estudio/coi/', 'Biblioteca de prompts': '/estudio/biblioteca/' };
+  const ENCENDIDAS: Record<string, string> = { COI: '/estudio/central/distrito/coi/', 'Biblioteca de prompts': '/estudio/biblioteca/' };
 
   it('Central › Distrito: lo que todavía no existe sale apagado con «Próximamente» y no es un enlace; COI y la Biblioteca de prompts, encendidas, llevan a su pantalla', () => {
     render(<Pantallas grupo={distritoCentral} conectado alConectar={() => undefined} />);

@@ -1180,7 +1180,7 @@ test('Central: el grupo Distrito trae dos pantallas «Próximamente» que no nav
   await expect(region(page).getByText('Próximamente')).toHaveCount(2);
   const tarjetas = tarjetasDeLaLista(page);
   await expect(tarjetas).toHaveText([/^COI/, /^Biblioteca de prompts/]);
-  await expect(tarjetas.first()).toHaveAttribute('href', '/estudio/coi/');
+  await expect(tarjetas.first()).toHaveAttribute('href', '/estudio/central/distrito/coi/');
   await expect(tarjetas.last()).toHaveAttribute('href', '/estudio/biblioteca/');
 
   // el mapa y las opciones de Central no marcan nada tras haber estado en su Distrito (antes, «Estás aquí» en Distrito)

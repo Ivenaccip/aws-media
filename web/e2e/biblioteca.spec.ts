@@ -260,7 +260,7 @@ for (const { ancho, alto } of ANCHOS) {
       const sin = await abrir(page, { mios: [] });
       await ambito(page, 'Míos').click();
       await expect(page.getByText('Todavía no guardas ninguno. Arma uno con COI y pulsa «Guardar».')).toBeVisible();
-      await expect(page.getByRole('link', { name: /Ir a COI/ }).first()).toHaveAttribute('href', '/estudio/coi/');
+      await expect(page.getByRole('link', { name: /Ir a COI/ }).first()).toHaveAttribute('href', '/estudio/central/distrito/coi/');
       await expect(page.getByRole('link', { name: /Ir a COI/ }).first()).toBeVisible();
       await auditar(page, `Míos vacío a ${ancho}`);
       await capturar(page, 'mios-vacio', ancho);

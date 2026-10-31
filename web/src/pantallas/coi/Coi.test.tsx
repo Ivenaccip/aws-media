@@ -1244,7 +1244,7 @@ describe('coi', () => {
 
   it('coi.marco.el_mapa_enciende_coi_y_enlaza_la_biblioteca_desde_la_pantalla', async () => {
     const entrada = MENU.find(a => a.clave === 'central')!.grupos.find(g => g.clave === 'distrito')!.pantallas.find(p => p.clave === 'coi')!;
-    expect(entrada.href).toBe('/estudio/coi/');
+    expect(entrada.href).toBe('/estudio/central/distrito/coi/');
     expect(entrada.proximamente).toBeUndefined();
     expect(buscar({ area: 'central', grupo: 'distrito', pantalla: 'coi' })?.pantalla).toBe(entrada);
     coi();

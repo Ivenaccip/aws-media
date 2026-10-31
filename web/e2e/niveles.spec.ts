@@ -148,7 +148,7 @@ test.describe('el recorrido, página por página', () => {
     await expect(page).toHaveTitle('Estudio de video · Central · Distrito');
     await expect(paso(page)).toHaveText('Distrito');
     // COI y la Biblioteca son enlaces a su pantalla; Preguntas y Glosario, tarjetas quietas «Próximamente»
-    await expect(region(page).getByRole('link', { name: /^COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    await expect(region(page).getByRole('link', { name: /^COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
     await expect(region(page).getByRole('link', { name: /^Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/biblioteca/');
     for (const nombre of ['Preguntas sobre la clase', 'Glosario IA']) {
       await expect(region(page).getByRole('link', { name: new RegExp(`^${nombre}`) })).toHaveCount(0);
@@ -349,6 +349,10 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     ['/estudio/marketing/distrito/Video', URL_CAJA.video, 'Estudio de video · Marketing · Distrito · Video'],
     ['/estudio/central?x=1', '/estudio/central/?x=1', 'Estudio de video · Central'],
     ['/estudio', URL_MAPA, TITULO_MAPA],
+    // E7: la carpeta plana de una hoja que se mudó a su lugar (un alias de server/migracion.py) y su URL vieja llevan a la anidada
+    ['/estudio/coi/', '/estudio/central/distrito/coi/', 'Estudio de video · COI'],
+    ['/estudio/coi?x=1', '/estudio/central/distrito/coi/?x=1', 'Estudio de video · COI'],
+    ['/coi.html', '/estudio/central/distrito/coi/', 'Estudio de video · COI'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

@@ -1,5 +1,5 @@
-// /estudio/coi/ — COI: Contexto · Objetivo · Instrucciones (dirección A del lienzo, «Conversación»: una columna, un cuadro grande y
-// tres tarjetas plegables). Un chat de UNA sola entrada: la persona escribe una vez y la IA responde una vez con el COI.
+// /estudio/central/distrito/coi/ — COI: Contexto · Objetivo · Instrucciones (dirección A del lienzo, «Conversación»: una columna, un
+// cuadro grande y tres tarjetas plegables). Un chat de UNA sola entrada: la persona escribe una vez y la IA responde una vez con el COI.
 //
 // Gratis por ahora, con un tope de 3 al día (día de México). Lo cuenta el SERVIDOR (`GET /api/coi/estado`): la web solo lo enseña, y
 // «Faltan X h Y min» sale de `renueva_en_s`, nunca del reloj del navegador. Solo cuentan las respuestas terminadas.

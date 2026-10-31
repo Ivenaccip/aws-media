@@ -67,7 +67,7 @@ const PANTALLAS = [
   ['mix', '/mix.html', '/estudio/mix/', false],
   ['crear', '/crear.html', '/estudio/crear/', false],
   ['biblioteca', '/biblioteca.html', '/estudio/biblioteca/', true],
-  ['coi', '/coi.html', '/estudio/coi/', true],
+  ['coi', '/coi.html', '/estudio/central/distrito/coi/', true],
   ['constructor', '/constructor.html', '/estudio/constructor/', true],
   ['asistente', '/asistente.html', '/estudio/asistente/', true],
 ];
@@ -85,8 +85,13 @@ const ENTRADAS_VIEJAS = [
   ['brief', null, '/estudio/marketing/distrito/video/'],
   ['blotato', 'conectar', '/estudio/marketing/blotato/'],
 ];
-// migracion.alias_del_estudio(): lo que cambió de sitio. Inerte mientras la carpeta vieja siga en dist (una pantalla que existe manda).
-const ALIAS = new Map([['/estudio/inicio/', '/estudio/']]);
+// migracion.alias_del_estudio(): lo que cambió de sitio, la página única de antes (E5.3) y cada hoja que E7 mudó de su carpeta plana a la
+// anidada, en el orden de PANTALLAS. Inerte mientras la carpeta vieja siga en dist (una pantalla que existe manda). Sin «;» adentro: la
+// prueba de las tablas lee hasta el primero
+const ALIAS = new Map([
+  ['/estudio/inicio/', '/estudio/'],
+  ['/estudio/coi/', '/estudio/central/distrito/coi/'],
+]);
 
 // El 404 de un nivel que pide HTML (web._PAGINA_404, D14): el MISMO texto, trozo por trozo (tests/test_web_rutas.py junta los trozos de
 // entre las dos marcas y exige que sean la cadena de web.py). El único hueco es {arriba}: el nivel de arriba que sí existe.

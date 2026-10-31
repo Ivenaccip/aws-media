@@ -39,8 +39,8 @@ nunca lo pedido en el cuerpo del 404.
 
 Por qué el arreglo vive en el manejador de 404 y no en una ruta: en la app real
 el montaje `app.mount("/", …)` de static/ (server/app.py) casa con TODO lo que
-llega detrás, así que `/estudio/coi` (sin barra) no encuentra su montaje
-`/estudio/coi/…`, cae en static/ y da 404. Por eso las pruebas llevan ese mismo
+llega detrás, así que `/estudio/clip` (sin barra) no encuentra su montaje
+`/estudio/clip/…`, cae en static/ y da 404. Por eso las pruebas llevan ese mismo
 montaje detrás (tests/test_web_rutas.py): sin él Starlette redirige la barra por
 su cuenta y la prueba no vería el defecto.
 
@@ -61,12 +61,15 @@ Las direcciones de ANTES siguen funcionando:
     Biblioteca de prompts ya enlazan directo a su página (E5.1). El destino sale de la tabla
     y solo se usa si está compilado (`rutas`); cualquier otro query se sirve tal cual;
   · `alias`: las direcciones de pantallas que cambiaron de sitio (`/estudio/inicio/`
-    → `/estudio/`). Salen de `migracion.alias_del_estudio()`, que `montar` importa AL
-    LLAMARLO (así `server/app.py` no cambia y no hay ciclo). Un alias es inerte
-    mientras la carpeta vieja siga existiendo en dist: una pantalla que existe manda.
-    La de `/estudio/inicio/` (la página única de antes) se retiró en E5.3, así que su
-    alias contesta: 302 a la principal, y de ahí, si trae `?prompt=`/`?brief=`/
-    `?blotato=conectar`, un segundo 302 a la herramienta.
+    → `/estudio/`, y cada hoja del mapa que E7 mudó de su carpeta plana a la de su
+    lugar: `/estudio/coi/` → `/estudio/central/distrito/coi/`). Salen de
+    `migracion.alias_del_estudio()`, que `montar` importa AL LLAMARLO (así
+    `server/app.py` no cambia y no hay ciclo). Un alias es inerte mientras la carpeta
+    vieja siga existiendo en dist: una pantalla que existe manda. La de
+    `/estudio/inicio/` (la página única de antes) se retiró en E5.3, así que su alias
+    contesta: 302 a la principal, y de ahí, si trae `?prompt=`/`?brief=`/
+    `?blotato=conectar`, un segundo 302 a la herramienta. Las de las hojas, un solo
+    302 a su carpeta anidada, con el query intacto.
 
 El manejador de 404 es ÚNICO por app (Starlette guarda uno por código): `montar`
 conserva el que hubiera y le delega todo lo que no es de /estudio/. Un `montar`

@@ -71,7 +71,7 @@ export function Biblioteca() {
               <p className="m-0 max-w-[44ch] text-md text-secundario">
                 Los estamos preparando. Mientras tanto puedes diseñar el tuyo con COI: escribes lo que necesitas y te devolvemos un prompt bien armado.
               </p>
-              <a href="/estudio/coi/" className={`${claseBoton('principal')} mt-2`}>
+              <a href="/estudio/central/distrito/coi/" className={`${claseBoton('principal')} mt-2`}>
                 Diseñar un prompt con COI
                 <Icono nombre="derecha" />
               </a>

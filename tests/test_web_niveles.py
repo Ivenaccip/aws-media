@@ -8,7 +8,9 @@ mayúsculas, 404 con página…, con un dist falso) está en tests/test_web_ruta
   · las tres de HERRAMIENTA (entrada `herramienta-*`) SÍ traen la Caja, y pesan lo que pesa la Caja;
   · todo `<script type="module">` de todo nivel bloquea el primer pintado (UI·18; test_web_tuberia.py revisa lo mismo, aquí se
     exige además que existan los niveles que el código fuente declara);
-  · la app real (server/app.py) sirve cada nivel y corrige la barra final.
+  · la app real (server/app.py) sirve cada nivel y corrige la barra final;
+  · E7: la carpeta plana de cada hoja que se mudó a la de su lugar (/estudio/coi/ → /estudio/central/distrito/coi/) lleva ahí con un 302,
+    y su URL vieja (/coi.html) también, según su etapa.
 
 Las páginas que se esperan salen de web/estudio/ (el código fuente), no de una lista aquí: una página nueva entra sola. Un dist de
 ANTES de las rutas por nivel falla con el aviso de recompilar (`cd web && npm run build`) en vez de saltarse: en la imagen siempre
@@ -33,7 +35,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server import web
+from server import migracion, web
 
 RAIZ = Path(__file__).resolve().parent.parent
 DIST = web.DIST
@@ -278,3 +280,49 @@ def test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_con_la_app_real(m
     assert r.status_code == 200 and "text/html" in r.headers["content-type"], url
     carpeta = url.split("?")[0].removeprefix("/estudio/").rstrip("/")
     assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), url
+
+
+# Las hojas que E7 mudó de su carpeta plana a la de su lugar: cada alias de migracion.alias_del_estudio() menos el de la página única de
+# antes (/estudio/inicio/ → la principal, que tiene la prueba de arriba). La lista crece sola con cada hoja que se muda.
+HOJAS_MUDADAS = sorted((plana, nueva) for plana, nueva in migracion.alias_del_estudio().items() if nueva != migracion.PRINCIPAL)
+QUERY = "?x=1&y=a%20b"
+
+
+def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
+    """Sin esto, un alias que deja de deducirse (una `nueva` que vuelve a la plana) vaciaría la prueba de abajo y pasaría sin mirar nada."""
+    assert ("/estudio/coi/", "/estudio/central/distrito/coi/") in HOJAS_MUDADAS
+    assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
+
+
+@en_dist
+@pytest.mark.parametrize("plana, anidada", HOJAS_MUDADAS, ids=[plana.strip("/") for plana, _ in HOJAS_MUDADAS])
+def test_la_carpeta_plana_de_una_hoja_mudada_lleva_a_su_lugar_con_la_app_real(monkeypatch, plana, anidada):
+    """Con la app de verdad y el dist de verdad: GET y HEAD de la dirección plana de antes (con y sin barra, en mayúsculas, con y sin query)
+    dan UN 302 RELATIVO a la anidada, con el query intacto y `no-store`; la anidada da 200 con SU index.html. Y la URL vieja (`/coi.html`)
+    lleva ahí de un salto si la pantalla está `retirada` o en `todos`; en `nueva` sirve la clásica (la decide el interruptor)."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    monkeypatch.delenv(migracion.ETAPA_MINIMA_VAR, raising=False)
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    nombre = plana.removeprefix("/estudio/").rstrip("/")
+    carpeta = anidada.removeprefix("/estudio/").rstrip("/")
+    # si la carpeta plana siguiera, el alias sería inerte (una pantalla que existe manda) y esto no probaría el 302
+    assert not (FUENTE / nombre).exists() and not (ESTUDIO / nombre).exists(), f"{plana} sigue siendo una carpeta: compila de nuevo"
+    for metodo in ("get", "head"):
+        for pedido in (plana, plana.rstrip("/"), f"/estudio/{nombre.capitalize()}/"):
+            for query in ("", QUERY):
+                r = getattr(c, metodo)(pedido + query)
+                assert r.status_code == 302, (metodo, pedido + query, r.status_code)
+                assert r.headers["location"] == anidada + query, (metodo, pedido + query)      # relativo, del propio sitio
+                assert r.headers["cache-control"] == "no-store", (metodo, pedido + query)
+    r = c.get(anidada)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], anidada
+    assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), anidada
+    # lo de adentro de la plana tampoco se sirve: /estudio/coi/index.html era un archivo de su carpeta y ya no hay carpeta
+    assert c.get(plana + "index.html").status_code == 404
+    p = migracion.PANTALLAS[nombre]
+    r = c.get(p.vieja + QUERY)
+    if migracion.etapa(p) == "nueva":
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"], p.vieja
+    else:
+        assert r.status_code == 302 and r.headers["location"] == anidada + QUERY and r.headers["cache-control"] == "no-store", p.vieja
