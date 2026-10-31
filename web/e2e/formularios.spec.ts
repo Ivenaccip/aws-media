@@ -172,7 +172,7 @@ async function agenda(page: Page) {
     r.fulfill({ json: { items: [UNA], cursor: null, total: 1, error: null, reconectar: false } }),
   );
   await page.route('**/api/agenda/reprogramar', r => r.fulfill({ json: { id: 'sch_1' } }));
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await page.getByRole('button', { name: 'Cambiar la hora' }).click();
   const dlg = page.getByRole('dialog', { name: 'Cambiar la hora' });
   await expect(dlg).toBeVisible();

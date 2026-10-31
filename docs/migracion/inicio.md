@@ -61,12 +61,14 @@ Las 16 son privadas: cargan `/auth.js` clásico antes del módulo, `monedero.js`
 (`iconos.js` + `trabajos.js`, D9), y se sirven con `no-cache`, ETag y 304 como cualquier pantalla. Hay **dos entradas**: las páginas
 de navegación (mapa, áreas y grupos) montan `niveles/nivel.tsx`, que **no trae la caja** ni pide sus listas; las tres de la caja
 montan `herramienta.tsx` (`Inicio` con `lugar`). La lectura del estado de Blotato solo la piden Marketing › Blotato y › Avanzado (con
-`import()`), y su diálogo, la primera vez que se abre. Las hojas de Marketing (Agenda, Competencia, Métricas, MIX y la Copiadora de
-estilos) siguen en su carpeta plana de siempre (`/estudio/agenda/`, `/estudio/mix/`…) hasta que E7 las muda a su dirección anidada,
-una por commit. COI, la Biblioteca, el Constructor y el Asistente ya viven en la suya, `/estudio/central/distrito/coi/` (E7.1),
-`/estudio/central/distrito/biblioteca/` (E7.2), `/estudio/automatizaciones/distrito/constructor/` (E7.3) y
-`/estudio/automatizaciones/distrito/asistente/` (E7.4), y sus carpetas planas (`/estudio/coi/`, `/estudio/biblioteca/`,
-`/estudio/constructor/`, `/estudio/asistente/`) son un 302 hasta ahí (ver «Lo que reenvía el servidor»).
+`import()`), y su diálogo, la primera vez que se abre. Las demás hojas de Marketing (Competencia, Métricas, MIX y la Copiadora de
+estilos) siguen en su carpeta plana de siempre (`/estudio/competencia/`, `/estudio/mix/`…) hasta que E7 las muda a su dirección
+anidada, una por commit. COI, la Biblioteca, el Constructor, el Asistente y la Agenda ya viven en la suya,
+`/estudio/central/distrito/coi/` (E7.1), `/estudio/central/distrito/biblioteca/` (E7.2),
+`/estudio/automatizaciones/distrito/constructor/` (E7.3), `/estudio/automatizaciones/distrito/asistente/` (E7.4) y
+`/estudio/marketing/blotato/agenda/` (E7.5), y sus carpetas planas (`/estudio/coi/`, `/estudio/biblioteca/`, `/estudio/constructor/`,
+`/estudio/asistente/`, `/estudio/agenda/`) son un 302 hasta ahí (ver «Lo que reenvía el servidor»). El menú de la Agenda sigue
+enlazando `/agenda.html`: está en `nueva`, y esa dirección la decide el interruptor de la migración.
 
 ### Cuánto pesa cada página
 
@@ -134,6 +136,7 @@ la caché del navegador y un nivel que cambie ya no llegaría. El destino sale s
 | `/estudio/biblioteca/` o `/estudio/biblioteca`, con o sin query (el `?ver=mios` de los enlaces de antes llega intacto) | 302 → `/estudio/central/distrito/biblioteca/` con el mismo query (deducido de `PANTALLAS["biblioteca"].nueva`); `/biblioteca.html` lleva ahí de un salto (`retirada`) y `/estudio/biblioteca/index.html` es un 404 |
 | `/estudio/constructor/` o `/estudio/constructor`, con o sin query | 302 → `/estudio/automatizaciones/distrito/constructor/` con el mismo query (deducido de `PANTALLAS["constructor"].nueva`); `/constructor.html` lleva ahí de un salto (`retirada`) y `/estudio/constructor/index.html` es un 404 |
 | `/estudio/asistente/` o `/estudio/asistente`, con o sin query | 302 → `/estudio/automatizaciones/distrito/asistente/` con el mismo query (deducido de `PANTALLAS["asistente"].nueva`); `/asistente.html` lleva ahí de un salto (`retirada`) y `/estudio/asistente/index.html` es un 404 |
+| `/estudio/agenda/` o `/estudio/agenda`, con o sin query | 302 → `/estudio/marketing/blotato/agenda/` con el mismo query (deducido de `PANTALLAS["agenda"].nueva`), en cualquier etapa; `/agenda.html` sigue su etapa (`nueva`: sirve la clásica; en `todos`, salvo la cookie `ui=clasica`, lleva a la anidada de un salto) y `/estudio/agenda/index.html` es un 404 |
 | `/estudio/?prompt=…` | 302 → `/estudio/marketing/distrito/imagen/?prompt=…` |
 | `/estudio/?brief=…` | 302 → `/estudio/marketing/distrito/video/?brief=…` |
 | `/estudio/?blotato=conectar` | 302 → `/estudio/marketing/blotato/?blotato=conectar` (el diálogo de conectar se abre al llegar) |

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Locator, Page } from '@playwright/test';
 
 // Las carpetas de web/estudio/ con página, a cualquier profundidad y no solo en el primer nivel, como rutas relativas con «/»:
-// «inicio», «agenda», «marketing/distrito/imagen» (lo que va entre `/estudio/` y la barra final de la dirección).
+// «clip», «marketing/blotato/agenda», «marketing/distrito/imagen» (lo que va entre `/estudio/` y la barra final de la dirección).
 // Una carpeta sin index.html no es pantalla (solo agrupa a otras); las que empiezan por «_» (la vitrina, cualquier `_borrador`) son
 // internas y no cuentan, ni ellas ni lo que cuelga de ellas (server/web.py las marca igual, tramo por tramo).
 function carpetasConPagina(raiz: string, rel: string[] = []): string[] {

@@ -1111,7 +1111,7 @@ test.describe('Blotato conectado', () => {
     await page.keyboard.press('Escape');
     await expect(dialogo).toBeHidden();
     // un clic en la pantalla navega a ella (la vieja /agenda.html la manda el servidor a la nueva)
-    await Promise.all([page.waitForURL(/\/estudio\/agenda\//), enlaces.first().click()]);
+    await Promise.all([page.waitForURL(/\/estudio\/marketing\/blotato\/agenda\//), enlaces.first().click()]);
   });
 });
 
@@ -1544,7 +1544,7 @@ test('el mapa pasa de la X compacta a la X grande en el corte de 560 px, y a nin
 // que ya no existe; que no existe lo afirman las de abajo, y el centrado del mapa al que se llega, las de geometría).
 
 const HOJAS = [
-  { ruta: 'agenda', titulo: 'Agenda tus publicaciones', grupo: 'Blotato' },
+  { ruta: 'marketing/blotato/agenda', titulo: 'Agenda tus publicaciones', grupo: 'Blotato' },
   { ruta: 'competencia', titulo: 'Investiga tu competencia', grupo: 'Blotato' },
   { ruta: 'metricas', titulo: 'Ver mis métricas', grupo: 'Blotato' },
   { ruta: 'mix', titulo: 'Publicaciones automáticas', grupo: 'Avanzado' },
@@ -1645,7 +1645,7 @@ for (const hoja of HOJAS_DE_AUTOMATIZACIONES) {
 test('desde la agenda: en el mapa, Esc ya no regresa a la agenda (no hace nada) y no hay «Volver a Agenda…» antes de la primera ficha', async ({ page }) => {
   await simular(page);
   await vigilarNavegaciones(page);
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await migaDeHoja(page, AL_MAPA).click();
   await esperarRuta(page, URL_MAPA);
   await expect(paso(page)).toHaveText('Elige un área');
@@ -1663,7 +1663,7 @@ test('desde la agenda: en el mapa, Esc ya no regresa a la agenda (no hace nada) 
 
 test('desde la agenda: Esc en las opciones sube al MAPA, ya no navega de regreso a la agenda', async ({ page }) => {
   await simular(page);
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await migaDeHoja(page, A_LAS_OPCIONES).click();
   await esperarRuta(page, URL_MARKETING);
   await expect(paso(page)).toHaveText('Elige un grupo');
@@ -1676,7 +1676,7 @@ test('desde la agenda: Esc en las opciones sube al MAPA, ya no navega de regreso
 
 test('desde la agenda: elegir un grupo y volver al mapa no deja ningún «Volver a Agenda», y Esc en las opciones sube al mapa', async ({ page }) => {
   await simular(page);
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await migaDeHoja(page, AL_MAPA).click();
   await esperarRuta(page, URL_MAPA);
   await elegir(page, 'Marketing', 'Blotato');
@@ -1692,22 +1692,22 @@ test('desde la agenda: elegir un grupo y volver al mapa no deja ningún «Volver
 
 test('desde la agenda: «atrás» del navegador regresa a la agenda, también tras un marcador viejo (los 302 y la dirección limpia no suman entradas)', async ({ page }) => {
   await simular(page);
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await migaDeHoja(page, AL_MAPA).click();
   await esperarRuta(page, URL_MAPA);
   expect(direccionDe(page)).toBe(URL_MAPA);
   await page.goBack();
-  await expect(page).toHaveURL(/\/estudio\/agenda\//);
+  await expect(page).toHaveURL(/\/estudio\/marketing\/blotato\/agenda\//);
   // el marcador de la miga de antes: /estudio/inicio/ → 302 a /estudio/ con su query, y la página la limpia con replaceState. Una sola entrada
   await abrirInicio(page, `${URL_VIEJA}?desde=mkt.blotato.agenda&ver=mapa`);
   await expect.poll(() => direccionDe(page)).toBe(URL_MAPA);
   await page.goBack();
-  await expect(page).toHaveURL(/\/estudio\/agenda\//);
+  await expect(page).toHaveURL(/\/estudio\/marketing\/blotato\/agenda\//);
 });
 
 test('desde la agenda: recargar las opciones las vuelve a abrir (la dirección ES el nivel), sin «Volver a Agenda» ni «Estás aquí»', async ({ page }) => {
   await simular(page);
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await migaDeHoja(page, A_LAS_OPCIONES).click();
   await esperarRuta(page, URL_MARKETING);
   await page.reload();

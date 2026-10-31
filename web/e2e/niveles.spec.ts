@@ -364,6 +364,10 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     ['/estudio/asistente/', '/estudio/automatizaciones/distrito/asistente/', 'Estudio de video · Asistente'],
     ['/estudio/asistente?x=1', '/estudio/automatizaciones/distrito/asistente/?x=1', 'Estudio de video · Asistente'],
     ['/asistente.html', '/estudio/automatizaciones/distrito/asistente/', 'Estudio de video · Asistente'],
+    // la Agenda sigue en `nueva`: su /agenda.html sirve la clásica en la app real (aquí servidor.mjs la redirige, como en `todos`), así
+    // que esa no va en esta tabla; la prueba por etapa vive en tests/test_web_niveles.py
+    ['/estudio/agenda/', '/estudio/marketing/blotato/agenda/', 'Estudio de video · Agenda'],
+    ['/estudio/agenda?x=1', '/estudio/marketing/blotato/agenda/?x=1', 'Estudio de video · Agenda'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

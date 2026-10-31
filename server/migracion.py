@@ -115,8 +115,11 @@ PANTALLAS: dict[str, Pantalla] = {
     # subida es la misma de editar metraje (marca/SubirVideo)
     "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
     # UI·8.6: las dos hermanas de Blotato (lo programado y lo que ya salió).
-    # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto
-    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/agenda/", etapa="nueva"),
+    # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto.
+    # E7.5 (31-oct-2026): la agenda vive en su lugar del mapa, Marketing ›
+    # Blotato; /estudio/agenda/ (la carpeta plana de antes, que da nombre a la
+    # clave) es un alias con 302. /agenda.html no cambia: sigue en `nueva`
+    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/marketing/blotato/agenda/", etapa="nueva"),
     "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="nueva"),
     # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
     # y modera el texto antes de cobrar

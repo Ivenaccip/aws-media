@@ -78,7 +78,7 @@ test('Agenda con la red de verdad: al cancelar con el teclado, el foco acaba en 
     cancelada = true;
     return r.fulfill({ json: { ok: true } });
   });
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   const cancelar = page.getByRole('button', { name: 'Cancelar', exact: true });
   await cancelar.focus();
   await page.keyboard.press('Enter');

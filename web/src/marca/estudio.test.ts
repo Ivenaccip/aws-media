@@ -38,15 +38,14 @@ const INDICE = 'index.html';
 const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina'];
 
 /**
- * TRANSITORIA. Las hojas del menú (agenda, MIX…) que todavía no se mudaron a su dirección por nivel
- * (/estudio/marketing/blotato/agenda/): viven en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta plana
- * de web/estudio/ (ojo: MIX es `automaticas` en el menú y `mix` allá). Cada commit de la etapa E7 muda UNA hoja y acorta este Map en
- * una fila (COI, la Biblioteca, el Constructor y el Asistente ya salieron: las que quedan son todas de Marketing, en etapa «nueva»); una
- * hoja que NO está aquí tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una pantalla que se llama `constructor`
- * y choca con Object.prototype.
+ * TRANSITORIA. Las hojas del menú (competencia, MIX…) que todavía no se mudaron a su dirección por nivel
+ * (/estudio/marketing/blotato/competencia/): viven en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta
+ * plana de web/estudio/ (ojo: MIX es `automaticas` en el menú y `mix` allá). Cada commit de la etapa E7 muda UNA hoja y acorta este Map
+ * en una fila (COI, la Biblioteca, el Constructor, el Asistente y la Agenda ya salieron: las que quedan son todas de Marketing, en etapa
+ * «nueva»); una hoja que NO está aquí tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una pantalla que se llama
+ * `constructor` y choca con Object.prototype.
  */
 const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
-  ['mkt.blotato.agenda', 'agenda'],
   ['mkt.blotato.competencia', 'competencia'],
   ['mkt.blotato.metricas', 'metricas'],
   ['mkt.avanzado.automaticas', 'mix'],
@@ -283,7 +282,7 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
 
   it('rutas.cada_hoja_tiene_su_carpeta.si_el_href_ya_es_de_la_nueva_la_carpeta_plana_es_la_de_su_href', () => {
     // ya no queda en la tabla ninguna que naciera en la UI nueva (el Asistente fue la última, E7.4): las que quedan enlazan su URL vieja
-    // (/agenda.html…), que manda server/migracion.py. Si alguna pasara a enlazar /estudio/<carpeta>/, tiene que ser la de su fila
+    // (/competencia.html…), que manda server/migracion.py. Si alguna pasara a enlazar /estudio/<carpeta>/, tiene que ser la de su fila
     for (const h of HOJAS) {
       const plana = HOJAS_AUN_PLANAS.get(h.clave);
       const m = /^\/estudio\/([^/]+)\/$/.exec(h.href);

@@ -285,6 +285,10 @@ def test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_con_la_app_real(m
 # Las hojas que E7 mudó de su carpeta plana a la de su lugar: cada alias de migracion.alias_del_estudio() menos el de la página única de
 # antes (/estudio/inicio/ → la principal, que tiene la prueba de arriba). La lista crece sola con cada hoja que se muda.
 HOJAS_MUDADAS = sorted((plana, nueva) for plana, nueva in migracion.alias_del_estudio().items() if nueva != migracion.PRINCIPAL)
+# De esas, las que todavía tienen su versión clásica (en `nueva` o en `todos`, no `retirada`): su URL vieja (/agenda.html) la decide el
+# interruptor de server/migracion.py y no el alias.
+HOJAS_CON_CLASICA = [(plana, nueva) for plana, nueva in HOJAS_MUDADAS
+                     if migracion.PANTALLAS[plana.removeprefix("/estudio/").rstrip("/")].etapa != "retirada"]
 QUERY = "?x=1&y=a%20b"
 
 
@@ -294,6 +298,9 @@ def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
     assert ("/estudio/biblioteca/", "/estudio/central/distrito/biblioteca/") in HOJAS_MUDADAS
     assert ("/estudio/constructor/", "/estudio/automatizaciones/distrito/constructor/") in HOJAS_MUDADAS
     assert ("/estudio/asistente/", "/estudio/automatizaciones/distrito/asistente/") in HOJAS_MUDADAS
+    assert ("/estudio/agenda/", "/estudio/marketing/blotato/agenda/") in HOJAS_MUDADAS
+    # la Agenda es la primera mudada que todavía tiene su clásica: sin ella, la prueba de su URL vieja por etapa no mira nada
+    assert ("/estudio/agenda/", "/estudio/marketing/blotato/agenda/") in HOJAS_CON_CLASICA
     assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
 
 
@@ -329,3 +336,36 @@ def test_la_carpeta_plana_de_una_hoja_mudada_lleva_a_su_lugar_con_la_app_real(mo
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], p.vieja
     else:
         assert r.status_code == 302 and r.headers["location"] == anidada + QUERY and r.headers["cache-control"] == "no-store", p.vieja
+
+
+@en_dist
+@pytest.mark.parametrize("plana, anidada", HOJAS_CON_CLASICA, ids=[plana.strip("/") for plana, _ in HOJAS_CON_CLASICA])
+def test_la_url_vieja_de_una_hoja_mudada_con_clasica_lleva_a_su_lugar_en_todos_de_un_salto(monkeypatch, plana, anidada):
+    """Con la app de verdad y el dist de verdad, una hoja mudada que todavía tiene la clásica (la Agenda, en `nueva`). En `nueva`, su URL
+    vieja sirve la clásica (lo prueba la de arriba). Con la etapa mínima `todos` (UI_ETAPA_MINIMA, la de dev), GET y HEAD de /agenda.html
+    (con y sin query) dan UN 302 RELATIVO a la ANIDADA, con el query intacto y `no-store`: no pasa por la carpeta plana (un salto, no dos)
+    y el destino ya es la página. Con la cookie `ui=clasica` sigue sirviendo la clásica, y /ui/nueva?pantalla=… también lleva a la anidada."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    monkeypatch.setenv(migracion.ETAPA_MINIMA_VAR, "todos")
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    nombre = plana.removeprefix("/estudio/").rstrip("/")
+    carpeta = anidada.removeprefix("/estudio/").rstrip("/")
+    p = migracion.PANTALLAS[nombre]
+    assert migracion.etapa(p) == "todos", (nombre, migracion.etapa(p))
+    for metodo in ("get", "head"):
+        for query in ("", QUERY):
+            r = getattr(c, metodo)(p.vieja + query)
+            assert r.status_code == 302, (metodo, p.vieja + query, r.status_code)
+            assert r.headers["location"] == anidada + query, (metodo, p.vieja + query)      # relativo, del propio sitio
+            assert r.headers["cache-control"] == "no-store", (metodo, p.vieja + query)
+    r = c.get(anidada + QUERY)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], anidada
+    assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), anidada
+    # quien eligió la clásica la sigue viendo en su URL vieja (7 días, migracion.DURACION_COOKIE)
+    c.cookies.set(migracion.COOKIE, migracion.CLASICA)
+    r = c.get(p.vieja)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], p.vieja
+    # y el camino de vuelta lleva a la anidada (borra la cookie)
+    r = c.get(f"/ui/nueva?pantalla={nombre}")
+    assert r.status_code == 302 and r.headers["location"] == anidada and r.headers["cache-control"] == "no-store"

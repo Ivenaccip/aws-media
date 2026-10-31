@@ -108,7 +108,7 @@ describe('el nombre de la miniatura', () => {
   it('si se sabe a dónde va y no es a esa película, no se nombra', () => {
     const tocada = imagen();
     tocarMiniatura('p1', '/api/a.jpg', tocada);
-    evento('pageswap', true, '/estudio/agenda/');
+    evento('pageswap', true, '/estudio/marketing/blotato/agenda/');
     expect(tocada.style.viewTransitionName).toBe('');
     tocarMiniatura('p1', '/api/a.jpg', tocada);
     evento('pageswap', true, '/crear.html?p=p2');

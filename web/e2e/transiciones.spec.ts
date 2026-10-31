@@ -73,8 +73,8 @@ test('sin «reducir movimiento» hay transición; con él, no', async ({ browser
     await page.waitForTimeout(300);
     // la navegación la hace la página, como un clic: las que teclea el
     // usuario (o page.goto) nunca llevan transición
-    await page.evaluate(() => { location.href = '/estudio/agenda/'; });
-    await page.waitForURL('**/estudio/agenda/');
+    await page.evaluate(() => { location.href = '/estudio/marketing/blotato/agenda/'; });
+    await page.waitForURL('**/estudio/marketing/blotato/agenda/');
     await page.locator('#raiz > *').first().waitFor();
     expect(await page.evaluate(() => window.__vt?.hubo)).toBe(esperado);
     await ctx.close();
