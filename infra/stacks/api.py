@@ -11,11 +11,15 @@ from aws_cdk import (
     aws_apigatewayv2_integrations as apigw_int,
     aws_cognito as cognito,
     aws_ecr as ecr,
+    aws_events as events,
+    aws_events_targets as targets,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_lambda_destinations as destinos,
     aws_logs as logs,
     aws_rds as rds,
     aws_s3 as s3,
+    aws_sns as sns,
     aws_sqs as sqs,
     aws_stepfunctions as sfn,
 )
@@ -37,6 +41,11 @@ from entornos import PROD, Entorno
 #
 # El valor vive en infra/entornos.py (PROD.dominio_publico); dev no tiene.
 DOMINIO_PUBLICO = PROD.dominio_publico
+
+# El tópico de las alarmas (stacks/alertas.py, `topic_name`). Es de la cuenta,
+# no de un entorno: el resumen del invitador de dev llega al mismo buzón con
+# «[dev]» en el asunto.
+TOPICO_ALERTAS = "aws-media-alertas"
 
 
 class ApiStack(Stack):
@@ -168,14 +177,36 @@ class ApiStack(Stack):
             deletion_protection=e.es_prod,
             self_sign_up_enabled=False,      # alta manual mientras es piloto
             sign_in_aliases=cognito.SignInAliases(email=True),
-            # M2: el email que dispara tools/usuarios.py alta — {username} y
-            # {####} los rellena Cognito (correo y contraseña provisional)
-            user_invitation=cognito.UserInvitationConfig(
+            # El correo del código de «¿Olvidaste tu contraseña?»: Cognito usa para
+            # el reseteo la plantilla de código de verificación. Sin esto sale la
+            # de fábrica, en inglés: «The verification code to your new account».
+            user_verification=cognito.UserVerificationConfig(
+                email_style=cognito.VerificationEmailStyle.CODE,
                 email_subject=("" if e.es_prod else f"[{e.nombre}] ")
-                + "Bienvenid@ a la demo de editor irremplazable",
+                + "Tu código de Irremplazables",
                 email_body=(
                     "<p>Hola:</p>"
-                    "<p>Ya tienes acceso a la demo. Entra aquí:<br>"
+                    "<p>Tu código es: <b>{####}</b></p>"
+                    "<p>Escríbelo en la pantalla donde lo pediste para crear tu "
+                    "contraseña nueva. Si no lo pediste, ignora este correo: tu "
+                    "contraseña sigue igual.</p>"
+                ),
+            ),
+            # M2: el email que dispara tools/usuarios.py alta — {username} y
+            # {####} los rellena Cognito (correo y contraseña provisional).
+            # Fase 2: este MISMO texto es la invitación y cada recordatorio del
+            # invitador (un recordatorio es un RESEND con clave nueva). Con
+            # COGNITO_DEFAULT el trigger «Custom message» no puede cambiar el
+            # texto —Cognito rechaza el AdminCreateUser entero—, así que tiene
+            # que servir para las dos cosas: por eso dice que la clave dura 7
+            # días y que, si ya le habíamos escrito, la de este correo
+            # reemplaza a la anterior. Textos por paso esperan a SES producción.
+            user_invitation=cognito.UserInvitationConfig(
+                email_subject=("" if e.es_prod else f"[{e.nombre}] ")
+                + "Tu acceso a Irremplazables",
+                email_body=(
+                    "<p>Hola:</p>"
+                    "<p>Este es tu acceso a Irremplazables. Entra aquí:<br>"
                     # La invitación manda al nombre propio, no al execute-api.
                     # ORDEN OBLIGATORIO: este texto solo cambia con un deploy, y
                     # ese deploy va DESPUÉS de que irremplazables.xyz resuelva y
@@ -185,11 +216,18 @@ class ApiStack(Stack):
                     f'<a href="{entrada}">{entrada}</a></p>'
                     "<p>Correo: <b>{username}</b><br>"
                     "Contraseña provisional: <b>{####}</b></p>"
-                    "<p>Al entrar por primera vez te pedirá cambiar la "
-                    "contraseña. Y un aviso: la primera carga puede tardar un "
-                    "poco (alrededor de un minuto) mientras despierta el "
-                    "servidor — si algo no aparece, espera unos segundos y "
-                    "recarga la página.</p>"
+                    "<p>Al entrar te pedirá cambiar la contraseña por una "
+                    "tuya. La contraseña provisional dura 7 días. Si ya te "
+                    "habíamos escrito antes, usa la de este correo: reemplaza "
+                    "a la anterior.</p>"
+                    # la página de server/acceso.py: Cognito no deja usar «¿Olvidaste
+                    # tu contraseña?» a quien nunca entró
+                    f'<p>Si se te vence, pide otra aquí: <a href="{entrada}/acceso">'
+                    f'{entrada}/acceso</a></p>'
+                    "<p>Un aviso: la primera carga puede tardar un poco "
+                    "(alrededor de un minuto) mientras despierta el servidor "
+                    "— si algo no aparece, espera unos segundos y recarga la "
+                    "página.</p>"
                 ),
             ),
             removal_policy=cdk.RemovalPolicy.RETAIN,
@@ -255,6 +293,12 @@ class ApiStack(Stack):
         # M2: con estas envs presentes, server/auth.py exige el JWT
         fn.add_environment("COGNITO_POOL_ID", pool.user_pool_id)
         fn.add_environment("COGNITO_CLIENT_ID", client.user_pool_client_id)
+        # Fase 2: la página /acceso reenvía la clave provisional (server/acceso.py).
+        # Solo ESTE pool. AdminCreateUser es lo que hay para el RESEND; quien se
+        # asegura de que nunca cree una cuenta es el código y tests/test_acceso.py.
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["cognito-idp:AdminGetUser", "cognito-idp:AdminCreateUser"],
+            resources=[pool.user_pool_arn]))
         # Cadena armada y no el recurso del dominio (así era antes y así se
         # queda: cambiarlo movería el template de prod). Sale del MISMO campo
         # que el domain_prefix de arriba: si solo se parametrizara aquel, dev
@@ -269,7 +313,11 @@ class ApiStack(Stack):
         if not e.es_prod:
             fn.add_environment("UI_ETAPA_MINIMA", "todos")
 
+        invitador = self._invitador(repo, image_ref, cluster, pool, e)
+
         cdk.CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
+        # en dev no hay reloj: se dispara a mano con este nombre (docs/OPERACION.md)
+        cdk.CfnOutput(self, "InvitadorNombre", value=invitador.function_name)
         # El nombre propio al lado del técnico, para que el output del deploy
         # diga las dos verdades: por dónde entra la gente y por dónde sigue
         # entrando quien tenga la liga vieja.
@@ -278,6 +326,85 @@ class ApiStack(Stack):
         cdk.CfnOutput(self, "UserPoolId", value=pool.user_pool_id)
         cdk.CfnOutput(self, "UserPoolClientId", value=client.user_pool_client_id)
 
+    def _invitador(self, repo, image_ref: str, cluster: rds.DatabaseCluster,
+                   pool: cognito.UserPool, e: Entorno) -> lambda_.DockerImageFunction:
+        """Fase 2 — el bot de invitaciones y recordatorios (worker/invitador.py).
+
+        Vive en ESTE stack y no en JobsStack porque aquí está el pool, y ApiStack
+        ya depende de Jobs: al revés sería un ciclo. Misma imagen y mismo patrón
+        que las demás Lambdas, con los permisos más cortos posibles: la base por
+        Data API (alta() escribe `usuarios` y abona la cortesía), crear y leer
+        usuarios de SU pool, y publicar el resumen en el tópico de alertas.
+
+        Nada reintenta. Un reintento de la Lambda o de EventBridge a media
+        corrida volvería a recorrer la lista: el índice único de
+        invitaciones_envios lo frenaría, pero el índice es la red, no el plan."""
+        fn = lambda_.DockerImageFunction(
+            self, "Invitador",
+            code=lambda_.DockerImageCode.from_ecr(
+                repo, tag_or_digest=image_ref,
+                entrypoint=["/usr/local/bin/python", "-m", "awslambdaric"],
+                cmd=["worker.invitador.handler"],
+            ),
+            memory_size=1024,
+            # 40 correos con medio segundo entre uno y otro son ~1 min; 5 de holgura
+            timeout=Duration.minutes(5),
+            # una corrida a la vez: dos en paralelo leerían el mismo cupo libre
+            reserved_concurrent_executions=1,
+            retry_attempts=0,                # invocación asíncrona: sin reintentos
+            # Si la corrida truena (la base, un timeout, un import), el evento va
+            # al tópico de alertas: sin esto, un día sin resumen no se distingue
+            # de un día en «apagado». Mismo EventInvokeConfig que el retry 0.
+            on_failure=destinos.SnsDestination(sns.Topic.from_topic_arn(
+                self, "AlertasInvitador", self._topico_alertas())),
+            log_retention=logs.RetentionDays.ONE_WEEK,
+            environment={
+                "STATE_BACKEND": "postgres",
+                "DB_CLUSTER_ARN": cluster.cluster_arn,
+                "DB_SECRET_ARN": cluster.secret.secret_arn,
+                "DB_NAME": "media",
+                "HOME": "/tmp",
+                "PYTHONIOENCODING": "utf-8",
+                "COGNITO_POOL_ID": pool.user_pool_id,
+                "INVITADOR_ES_PROD": "1" if e.es_prod else "0",
+                "INVITADOR_TOPICO": self._topico_alertas(),
+                # fuera de prod, la ÚNICA gente a la que el modo activo escribe
+                "INVITADOR_PERMITIDOS": "" if e.es_prod else ",".join(e.invitador_permitidos),
+            },
+        )
+        cluster.grant_data_api_access(fn)
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser",
+                     "cognito-idp:ListUsers"],
+            resources=[pool.user_pool_arn]))
+        if e.pool_cuota_compartida:
+            # el otro pool comparte el tope de correo de la cuenta: solo contarlo
+            fn.add_environment("INVITADOR_POOL_HERMANO", e.pool_cuota_compartida)
+            fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["cognito-idp:ListUsers"],
+                resources=[f"arn:aws:cognito-idp:{self.region}:{self.account}"
+                           f":userpool/{e.pool_cuota_compartida}"]))
+        fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["sns:Publish"], resources=[self._topico_alertas()]))
+
+        # 16:00 UTC = 10:00 hora centro: el cupo de Cognito se reinició a las
+        # 09:00 UTC y el dueño ya está despierto para leer el resumen. Solo en
+        # prod, como los relojes de JobsStack: en dev se dispara a mano.
+        if e.es_prod:
+            events.Rule(
+                self, "InvitadorReloj",
+                schedule=events.Schedule.cron(minute="0", hour="16"),
+                targets=[targets.LambdaFunction(
+                    fn, event=events.RuleTargetInput.from_object({"tipo": "invitador"}),
+                    retry_attempts=0)],
+            )
+        return fn
+
+    def _topico_alertas(self) -> str:
+        """El tópico de stacks/alertas.py, como ARN literal: importarlo
+        arrastraría ese stack aislado a cada deploy del API."""
+        return f"arn:aws:sns:{self.region}:{self.account}:{TOPICO_ALERTAS}"
+
     @staticmethod
     def _throttling(http_api: apigwv2.HttpApi, integracion, e: Entorno) -> None:
         """RAG·7 — throttling de etapa. El HttpApi manda todo a la Lambda por
@@ -285,21 +412,27 @@ class ApiStack(Stack):
         (`/api/publico/{proxy+}`, misma Lambda) y ponerle su límite en la
         etapa. Lo que pase del límite recibe 429 de API Gateway sin tocar la
         Lambda ni la base; la página lo muestra como «Ahorita no está
-        disponible» (RAG·9)."""
-        if e.throttle_etapa is None and not (e.publico and e.throttle_publico):
+        disponible» (RAG·9). Fase 2: lo mismo para POST /api/acceso/{proxy+}, que
+        existe también en prod aunque ahí no haya nada público."""
+        rutas = []
+        if e.publico and e.throttle_publico is not None:
+            rutas.append(("/api/publico/{proxy+}", apigwv2.HttpMethod.ANY, "ANY", e.throttle_publico))
+        if e.throttle_acceso is not None:
+            rutas.append(("/api/acceso/{proxy+}", apigwv2.HttpMethod.POST, "POST", e.throttle_acceso))
+        if e.throttle_etapa is None and not rutas:
             return
         etapa = http_api.default_stage.node.default_child
         if e.throttle_etapa is not None:
             tasa, rafaga = e.throttle_etapa
             etapa.default_route_settings = apigwv2.CfnStage.RouteSettingsProperty(
                 throttling_rate_limit=tasa, throttling_burst_limit=rafaga)
-        if e.publico and e.throttle_publico is not None:
-            ruta, = http_api.add_routes(
-                path="/api/publico/{proxy+}", methods=[apigwv2.HttpMethod.ANY],
-                integration=integracion)
-            tasa, rafaga = e.throttle_publico
-            etapa.route_settings = {"ANY /api/publico/{proxy+}": {
-                "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}}
+        ajustes = {}
+        for camino, metodo, nombre_metodo, (tasa, rafaga) in rutas:
+            ruta, = http_api.add_routes(path=camino, methods=[metodo], integration=integracion)
+            ajustes[f"{nombre_metodo} {camino}"] = {
+                "ThrottlingRateLimit": tasa, "ThrottlingBurstLimit": rafaga}
             # La etapa nombra la ruta por su clave: si CloudFormation la
             # actualiza antes de crear la ruta, falla con «Unable to find Route».
             etapa.add_dependency(ruta.node.default_child)
+        if ajustes:
+            etapa.route_settings = ajustes

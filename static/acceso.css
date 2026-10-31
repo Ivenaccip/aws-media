@@ -1,0 +1,35 @@
+/* «¿No puedes entrar?» (static/acceso.html): la misma puerta de /entrar, en su
+   propio archivo porque la CSP de lo público no deja nada en línea. Solo tokens
+   de /carta.css. */
+
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+html { height: 100%; }
+body { font: var(--t-sm)/1.55 var(--f-texto); background: var(--c-fondo); color: var(--c-texto);
+       display: flex; flex-direction: column; min-height: 100%; padding: 0 16px; }
+header { max-width: 440px; width: 100%; margin: 0 auto; padding: 20px 0; }
+.marca { font: 800 var(--t-titulo-sm)/1 var(--f-titulo); letter-spacing: -0.01em;
+         color: var(--c-texto); text-decoration: none; }
+main { flex: 1; display: flex; align-items: center; }
+.puerta { max-width: 440px; width: 100%; margin: 0 auto; padding: 32px 0;
+          display: flex; flex-direction: column; gap: 16px; }
+h1 { font: 800 var(--t-titulo-lg)/1.1 var(--f-titulo); letter-spacing: -0.02em; text-wrap: balance; }
+.lead { font-size: var(--t-md); color: var(--c-secundario); }
+
+.pedir { display: flex; flex-direction: column; gap: 8px; }
+.pedir label { font-weight: 600; }
+.pedir input { width: 100%; min-height: 48px; padding: 0 12px; font: inherit; color: var(--c-texto);
+               background: var(--c-superficie); border: 1px solid var(--c-campo);
+               border-radius: var(--r-medio); }
+.pedir input:focus-visible { outline: 2px solid var(--c-enlace); outline-offset: 2px; }
+.btn-pri { min-height: 48px; width: 100%; margin-top: 8px; }
+
+.volver a { min-height: 44px; display: inline-flex; align-items: center; color: var(--c-enlace); }
+.volver a:hover { color: var(--c-texto); }
+
+.pie { max-width: 440px; width: 100%; margin: 0 auto; padding: 12px 0 20px;
+       display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; overflow-wrap: anywhere;
+       border-top: 1px solid var(--c-linea); color: var(--c-secundario); font-size: var(--t-xs); }
+.pie-legales { display: flex; flex-wrap: wrap; gap: 0 24px; }
+.pie a { min-height: 44px; display: inline-flex; align-items: center; color: var(--c-enlace); }
+.pie a:hover { color: var(--c-texto); }
