@@ -49,6 +49,7 @@ from server.pagos_api import router as pagos_router
 from server import pagos_api
 from server.publicar_api import router as publicar_router
 from server.publico_api import router as publico_router
+from server.acceso import router as acceso_router
 from server.estilos_api import router as estilos_router
 from server.competencia_api import router as competencia_router
 from server.mix_api import router as mix_router
@@ -126,6 +127,7 @@ app.include_router(importar_router)
 app.include_router(overlays_router)
 app.include_router(publicar_router)
 app.include_router(publico_router)   # RAG·2: /api/publico/*, sin token
+app.include_router(acceso_router)    # Fase 2: POST /api/acceso/nueva-clave, sin token
 app.include_router(blotato_router)
 # antes del mount de static/ de más abajo: si no, /api/agenda cae en StaticFiles
 # y devuelve su 404 en HTML
@@ -1157,7 +1159,7 @@ def _es_html(resp) -> bool:
 # RAG·10/13 · páginas de static/ que son plantillas (server/aviso.py): solo se
 # sirven llenas, por su ruta limpia
 PLANTILLAS = {"automatiza.html": "/automatiza", "privacidad.html": "/privacidad",
-              "terminos.html": "/terminos",
+              "terminos.html": "/terminos", "acceso.html": "/acceso",
               # RAG·35: las de la baja solo existen con un token; crudas, a /automatiza
               "baja.html": "/automatiza", "baja-hecha.html": "/automatiza"}
 # 14-oct-2026 · donde /automatiza no se sirve (pipeline/publico.py `publicado`,
@@ -1455,6 +1457,13 @@ def _privacidad(request: Request):
 @app.api_route("/terminos", methods=["GET", "HEAD"], include_in_schema=False)
 def _terminos(request: Request):
     return _legal(request, "terminos.html")
+
+
+# Fase 2 · «¿No puedes entrar?» (server/acceso.py): también donde /automatiza no
+# se sirve, y por eso lleva su propio acceso.css y no automatiza.css (ahí es 404).
+@app.api_route("/acceso", methods=["GET", "HEAD"], include_in_schema=False)
+def _acceso(request: Request):
+    return _pagina_publica(request, "acceso.html")
 
 
 # El montaje «/» de abajo sirve cualquier archivo de static/, y estas tres son

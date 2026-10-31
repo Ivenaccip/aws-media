@@ -84,8 +84,12 @@ class Entorno:
     # sigue prod hasta RAG·30 (su template no cambia con esta tarjeta).
     # `throttle_etapa` cubre TODAS las rutas del entorno; `throttle_publico`
     # solo /api/publico/*, mucho más estrecho porque ahí entra internet abierto.
+    # `throttle_acceso` solo POST /api/acceso/*: la página de «¿No puedes
+    # entrar?» (server/acceso.py) es anónima y manda correo, y a diferencia de
+    # lo público SÍ vive en prod desde ya. Es por entorno, no por visitante.
     throttle_etapa: tuple[int, int] | None = None
     throttle_publico: tuple[int, int] | None = None
+    throttle_acceso: tuple[int, int] | None = None
     # RAG·17 — el almacén vectorial del RAG en S3 Vectors. El bucket y el
     # índice NO los crea el CDK (aws-cdk-lib 2.221 no trae el módulo): los
     # crea el dueño con `tools/vectores.py crear`, y así el índice sobrevive a
@@ -115,6 +119,19 @@ class Entorno:
     # El modelo que arma (RAG_MODELO en el worker). Explícito para no heredar
     # en silencio el default de pipeline/claude_rag.py.
     rag_modelo: str | None = None
+    # Fase 2 — el invitador (worker/invitador.py). El tope de 50 correos al día
+    # es de la CUENTA, así que el invitador cuenta también lo que salió hoy del
+    # OTRO pool: este es su id (el que Cognito le puso al crearlo; no se elige).
+    # Solo prod lo lleva: el bot de prod corre solo cada mañana y una prueba en
+    # dev le come cupo. Al revés no: dev no tiene por qué leer la lista de
+    # usuarios de producción, y sus pruebas van a mano y a una lista blanca.
+    # Si dev se tira y se recrea, su pool nace con otro id y hay que cambiarlo
+    # aquí; mientras tanto el bot avisa en su resumen que no pudo leerlo.
+    pool_cuota_compartida: str | None = None
+    # Fuera de prod, el modo activo del invitador SOLO manda a estas direcciones
+    # (exactas) o prefijos («ivenaccip+» cubre los alias del dueño). Lo demás se
+    # anota como ensayo. En prod no aplica y va vacía.
+    invitador_permitidos: tuple[str, ...] = ()
 
     @property
     def es_prod(self) -> bool:
@@ -131,6 +148,8 @@ PROD = Entorno(
     api="aws-media",
     remitente_correo="hola@irremplazables.xyz",
     dominio_publico="https://irremplazables.xyz",
+    pool_cuota_compartida="us-east-1_XChDzHHjw",   # el pool de dev
+    throttle_acceso=(1, 3),
 )
 
 # Sin dominio público a propósito: con el de prod, el correo de invitación de
@@ -152,6 +171,7 @@ DEV = Entorno(
     # gente viene.
     throttle_etapa=(50, 100),
     throttle_publico=(5, 10),
+    throttle_acceso=(1, 3),
     # «aws*» está reservado en S3 Vectors (como en SSM): el 29-sep
     # `aws-media-vectores-dev` devolvió «The requested bucket name is reserved».
     vectores_bucket="media-ivenaccip-vectores-dev",
@@ -171,4 +191,6 @@ DEV = Entorno(
     # PROVISIONAL hasta el eval de 50 corridas (RAG·26): Opus 5.5 es el default
     # de pipeline/claude_rag.py; se fija aquí para que cambiarlo sea una línea.
     rag_modelo="claude-opus-5-5",
+    # las pruebas del invitador en dev: solo el dueño y sus alias
+    invitador_permitidos=("ivenaccip@gmail.com", "ivenaccip+"),
 )
