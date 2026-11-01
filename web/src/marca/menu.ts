@@ -240,10 +240,19 @@ export interface Hallazgo {
   pantalla: PantallaMenu;
 }
 
+// Por clave, siempre con `find` y nunca con un objeto indexado: hay una pantalla que se llama `constructor`, y un `{…}[clave]` la
+// confundiría con lo que trae Object.prototype (lo mismo `toString`, `__proto__`). Una clave que no existe da undefined.
+
+/** El área de esa clave; undefined si no existe. */
+export const areaDe = (clave: string): AreaMenu | undefined => MENU.find(a => a.clave === clave);
+
+/** El grupo de esa clave DENTRO de esa área (Distrito hay en tres áreas); undefined si la pareja no existe. */
+export const grupoDe = (area: string, clave: string): GrupoMenu | undefined => areaDe(area)?.grupos.find(g => g.clave === clave);
+
 /** Busca un lugar en el mapa; null si alguna clave no existe (un enlace viejo o escrito a mano). */
 export function buscar(l: Lugar): Hallazgo | null {
-  const area = MENU.find(a => a.clave === l.area);
-  const grupo = area?.grupos.find(g => g.clave === l.grupo);
+  const area = areaDe(l.area);
+  const grupo = grupoDe(l.area, l.grupo);
   const pantalla = grupo?.pantallas.find(p => p.clave === l.pantalla);
   return area && grupo && pantalla ? { area, grupo, pantalla } : null;
 }
@@ -284,6 +293,6 @@ export type VerInicio = 'mapa' | 'grupos';
  */
 export function urlDeInicio(desde: Lugar, ver: VerInicio): string {
   if (ver === 'mapa') return RUTA_MAPA;
-  const area = MENU.find(a => a.clave === desde.area);
+  const area = areaDe(desde.area);
   return area ? urlDeArea(area) : RUTA_MAPA;
 }

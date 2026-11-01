@@ -5,7 +5,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { grupoDe } from './estadoRecorrido';
+import { grupoDe } from '../../marca/menu';
 import { Pantallas } from './Pantallas';
 
 const blotato = grupoDe('mkt', 'blotato')!;

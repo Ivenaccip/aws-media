@@ -4,9 +4,9 @@
 // Las entradas de ANTES al inicio (`?prompt=`, `?brief=`, `?blotato=conectar`) NO se atienden aquí: las manda a su página el servidor,
 // con un 302 (server/web.py, tabla ENTRADAS_VIEJAS). `?desde=&ver=` no se reenvía: el mapa se sirve tal cual y nivel.tsx lo quita de la
 // dirección. Aquí no hay salto de JavaScript que las reinterprete.
-import { MENU } from '../../../marca/menu';
+import { areaDe, grupoDe } from '../../../marca/menu';
 import { RUTA_MAPA, urlDeArea, urlDeGrupo, type Nivel } from '../../../marca/rutas';
-import { REPOSO, areaDe, grupoDe, type Accion, type EstadoRecorrido } from '../estadoRecorrido';
+import { REPOSO, type Accion, type EstadoRecorrido } from '../estadoRecorrido';
 
 /** El estado del recorrido que corresponde a una página: lo que `migasDe`, `alEscape` y `Recorrido` ya saben leer. Nada está «elegido»
  *  (no hay «Estás aquí»: la dirección ya dice dónde estás). */
@@ -38,7 +38,7 @@ export function urlDeAccion(a: Accion, e: Pick<EstadoRecorrido, 'area'>): string
       return area && !area.proximamente && area.grupos.length ? urlDeArea(area) : null;
     }
     case 'elegir-grupo': {
-      const area = MENU.find(x => x.clave === a.area);
+      const area = areaDe(a.area);
       const grupo = grupoDe(a.area, a.grupo);
       return area && grupo ? urlDeGrupo(area, grupo) : null;
     }

@@ -5,8 +5,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { MENU } from '../../marca/menu';
-import { areaDe } from './estadoRecorrido';
+import { MENU, areaDe } from '../../marca/menu';
 import { Grupos } from './Grupos';
 import { Mapa, PUESTOS } from './Mapa';
 

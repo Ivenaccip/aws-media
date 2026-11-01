@@ -30,6 +30,7 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 
 import { Migas, type Miga } from '../../marca/Migas';
+import { areaDe } from '../../marca/menu';
 import { Icono } from '../../ui/Icono';
 import { unir } from '../../ui/unir';
 import { Grupos } from './Grupos';
@@ -38,7 +39,6 @@ import { Pantallas } from './Pantallas';
 import {
   ahora,
   alEscape,
-  areaDe,
   cajaVisible,
   destinoDeVolver,
   esCaja,

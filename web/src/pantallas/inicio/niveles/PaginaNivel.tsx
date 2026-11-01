@@ -16,10 +16,10 @@
 import { useEffect, useId, useMemo, useState, type MouseEvent } from 'react';
 
 import { Migas, type Miga } from '../../../marca/Migas';
-import type { AreaMenu, GrupoMenu, PantallaMenu } from '../../../marca/menu';
+import { areaDe, grupoDe, type AreaMenu, type GrupoMenu, type PantallaMenu } from '../../../marca/menu';
 import { urlDeArea, urlDeGrupo, urlDeHerramienta, type Nivel } from '../../../marca/rutas';
 import { unir } from '../../../ui/unir';
-import { ahora, alEscape, areaDe, esDobleClicAccidental, grupoDe, migasDe } from '../estadoRecorrido';
+import { ahora, alEscape, esDobleClicAccidental, migasDe } from '../estadoRecorrido';
 import { Grupos } from '../Grupos';
 import { Mapa } from '../Mapa';
 import { Pantallas } from '../Pantallas';

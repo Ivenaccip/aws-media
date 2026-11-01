@@ -2,7 +2,7 @@
 // prueban donde viven (pantallas/inicio, Marco); aquí, los datos que nadie más leería para darse cuenta de que mienten.
 import { describe, expect, it } from 'vitest';
 
-import { LUGAR_INICIAL, MENU, buscar, detalleDeGrupo } from './menu';
+import { LUGAR_INICIAL, MENU, areaDe, buscar, detalleDeGrupo, grupoDe } from './menu';
 
 describe('menu · el lugar inicial', () => {
   it('menu.lugar_inicial.es_la_pestana_video: la caja arranca en Video (inicio.edicion.el_riel_…_arranca_en_video), no en Imagen', () => {
@@ -24,5 +24,28 @@ describe('menu · el detalle de una tarjeta de grupo', () => {
     const sinPantallas = MENU.flatMap(a => a.grupos.map(g => ({ lugar: `${a.clave}.${g.clave}`, g }))).filter(({ g }) => !g.pantallas.length);
     expect(sinPantallas.map(({ lugar }) => lugar)).toEqual(['central.deepseek', 'automatizaciones.tus']);
     for (const { g } of sinPantallas) expect(detalleDeGrupo(g)).toBe('Próximamente');
+  });
+});
+
+describe('menu · un área y un grupo por su clave', () => {
+  it('menu.por_clave.areaDe_y_grupoDe_dan_lo_del_mapa: el grupo es el de ESA área (Distrito hay en tres)', () => {
+    expect(areaDe('mkt')).toBe(MENU[0]);
+    expect(grupoDe('central', 'distrito')).toBe(MENU.find(a => a.clave === 'central')!.grupos[0]);
+    expect(grupoDe('central', 'distrito')).not.toBe(grupoDe('mkt', 'distrito'));
+    expect(grupoDe('automatizaciones', 'distrito')?.pantallas.map(p => p.clave)).toEqual(['constructor', 'asistente', 'actualizar']);
+    // una pareja que no existe: el grupo de OTRA área, o un área que no hay
+    expect(grupoDe('central', 'blotato')).toBeUndefined();
+    expect(grupoDe('nada', 'distrito')).toBeUndefined();
+    expect(areaDe('nada')).toBeUndefined();
+    expect(areaDe('')).toBeUndefined();
+  });
+
+  it('menu.por_clave.una_clave_de_Object_prototype_no_es_un_area_ni_un_grupo: constructor, __proto__ y toString', () => {
+    for (const clave of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+      expect(areaDe(clave), clave).toBeUndefined();
+      expect(grupoDe(clave, clave), clave).toBeUndefined();
+      expect(grupoDe('mkt', clave), clave).toBeUndefined();
+      expect(buscar({ area: 'mkt', grupo: 'distrito', pantalla: clave }), clave).toBeNull();
+    }
   });
 });

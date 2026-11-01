@@ -3,19 +3,17 @@
 // la regla cambiada).
 import { describe, expect, it } from 'vitest';
 
-import { LUGAR_INICIAL, MENU, PARAM_DESDE, PARAM_VER, buscar, lugarATexto, type Lugar } from '../../marca/menu';
+import { LUGAR_INICIAL, MENU, PARAM_DESDE, PARAM_VER, areaDe, buscar, grupoDe, lugarATexto, type Lugar } from '../../marca/menu';
 import {
   REPOSO,
   VENTANA_DOBLE_CLIC_MS,
   alEscape,
-  areaDe,
   cajaVisible,
   destinoDeVolver,
   esCaja,
   esDobleClicAccidental,
   estadoInicial,
   grupoActual,
-  grupoDe,
   migasDe,
   reducir,
   urlSinEntrada,

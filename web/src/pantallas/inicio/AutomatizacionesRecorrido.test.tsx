@@ -7,10 +7,10 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MENU, buscar, detalleDeGrupo, lugarATexto, lugarDePagina, urlDeInicio } from '../../marca/menu';
+import { MENU, areaDe, buscar, detalleDeGrupo, grupoDe, lugarATexto, lugarDePagina, urlDeInicio } from '../../marca/menu';
 import { nivelDeRuta } from '../../marca/rutas';
 import { json, servidor, sinRed } from '../../prueba/servidor';
-import { REPOSO, alEscape, areaDe, destinoDeVolver, estadoInicial, grupoDe, migasDe, reducir } from './estadoRecorrido';
+import { REPOSO, alEscape, destinoDeVolver, estadoInicial, migasDe, reducir } from './estadoRecorrido';
 import { Inicio } from './Inicio';
 import { Pantallas } from './Pantallas';
 

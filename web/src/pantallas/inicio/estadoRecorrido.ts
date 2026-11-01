@@ -27,7 +27,7 @@
 // Y hay otra entrada, la de «Llevar a la caja» de la Biblioteca de prompts (Ajustes 3, 16-oct-2026): `?prompt=<texto>` abre DIRECTO la caja en la
 // pestaña Imagen con el texto puesto, y `?brief=<texto>` en la pestaña Video (`leerLlegadaDeTexto`). Llegar así nunca crea ni cobra nada:
 // solo deja la caja lista. Se lee una vez y la URL se limpia, igual que `?desde=`.
-import { buscar, LUGAR_INICIAL, lugarDeTexto, MENU, PARAM_DESDE, PARAM_VER, type AreaMenu, type GrupoMenu } from '../../marca/menu';
+import { areaDe, buscar, grupoDe, LUGAR_INICIAL, lugarDeTexto, PARAM_DESDE, PARAM_VER, type GrupoMenu } from '../../marca/menu';
 import type { NombreIcono } from '../../ui/iconos';
 
 export type Paso = 'mapa' | 'grupos' | 'contenido';
@@ -58,12 +58,7 @@ export const REPOSO: EstadoRecorrido = {
 };
 
 // ---------------------------------------------------------------------------
-// el mapa de menu.ts, por clave
-
-export const areaDe = (clave: string): AreaMenu | undefined => MENU.find(a => a.clave === clave);
-
-export const grupoDe = (area: string, clave: string): GrupoMenu | undefined =>
-  areaDe(area)?.grupos.find(g => g.clave === clave);
+// el mapa de menu.ts, por clave (`areaDe` y `grupoDe` viven en menu.ts)
 
 /** El grupo con las pestañas de la caja (Imagen, Video, Edición): su contenido ES la caja, no una lista de pantallas. */
 export const esCaja = (g: GrupoMenu): boolean => g.pantallas.some(p => p.caja !== undefined);
