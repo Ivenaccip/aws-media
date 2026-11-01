@@ -96,11 +96,14 @@ def test_el_bundle_compilado_no_trae_frases_de_las_instrucciones_de_coi():
     assert not halladas, f"frases de las instrucciones de COI en el bundle: {halladas}"
 
 
-@pytest.mark.skipif(not (DIST / "estudio" / "central" / "distrito" / "coi" / "index.html").is_file(),
-                    reason="sin web/dist compilado con COI en su lugar (central/distrito/coi)")
+@pytest.mark.skipif(not (DIST / "estudio").is_dir(), reason="sin web/dist compilado (o COI_WEB_DIST)")
 def test_el_bundle_de_coi_existe_y_la_guardia_lo_esta_mirando():
-    """Sin esto, un dist sin COI haría pasar la prueba de arriba sin mirar la pantalla. Vite nombra el chunk de entrada por la carpeta
-    (vite.config.ts::nombreDe): en central/distrito/coi es `central-distrito-coi-<hash>.js`."""
+    """Sin esto, un dist sin COI haría pasar la prueba de arriba sin mirar la pantalla. Se salta solo cuando la de arriba también (no hay
+    dist): con dist, COI tiene que estar en su lugar, y si falta o se mudó, esto CAE en vez de quedarse callado. Vite nombra el chunk de
+    entrada por la carpeta (vite.config.ts::nombreDe): en central/distrito/coi es `central-distrito-coi-<hash>.js`."""
+    assert (DIST / "estudio" / "central" / "distrito" / "coi" / "index.html").is_file(), (
+        "el dist no trae COI en su lugar (central/distrito/coi): ¿se mudó, o el dist es de antes? Compila con «cd web && npm run build»"
+    )
     modulos = list((DIST / "estudio" / "assets").glob("central-distrito-coi-*.js"))
     assert modulos, "el bundle compilado no trae el módulo de COI"
     # y el módulo trae texto de la pantalla (si estuviera vacío, buscar frases en él no probaría nada)
