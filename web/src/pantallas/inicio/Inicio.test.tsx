@@ -1,6 +1,6 @@
-// El inicio del estudio, como COMPORTAMIENTO (docs/PLAN-UI.md §5). Cada test
-// empieza por el ID de su invariante: tests/test_migracion_ui.py exige que
-// cada ID del registro exista aquí.
+// El inicio del estudio, como COMPORTAMIENTO (docs/PLAN-UI.md §5): la caja y lo que va debajo, en la página de una herramienta
+// (niveles/PaginaHerramienta.tsx). Cada test empieza por el ID de su invariante: tests/test_migracion_ui.py exige que cada ID del
+// registro exista en la carpeta (los de las listas de los grupos y Blotato viven en niveles/PaginaGrupo.test.tsx).
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,9 +12,9 @@ import { cotizacion, TEXTO } from '../../prueba/edicion';
 import { json, llamadas, oirCobros, ponerAvisos, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
 import { Biblioteca } from './Biblioteca';
 import { Caja } from './Caja';
-import { Inicio, SALDO_TRAS_COPIA_MS } from './Inicio';
 import { destinoDe, OPCIONES, type ClipCorto, type Edicion, type EstadoBlotato, type Imagen, type PedidoImagen, type Proyecto } from './logica';
 import { CATALOGO, PRECIOS } from './modelos';
+import { PaginaHerramienta, SALDO_TRAS_COPIA_MS } from './niveles/PaginaHerramienta';
 
 // La caja le deja la foto del personaje a Crear por nucleo/traspaso (IndexedDB, que jsdom no trae). Aquí se envuelve la
 // real —los demás tests la siguen usando tal cual— y los de la foto del personaje le ponen la respuesta que necesiten.
@@ -142,15 +142,12 @@ function montar({
 
 let ir: ReturnType<typeof vi.fn<(url: string) => void>>;
 
-// El inicio abre en el MAPA (dueño, 15-oct-2026: «el mapa es el inicio»), pero casi todo lo de este archivo es de la caja, así que `pintar`
-// llega a ella por el camino de siempre —Marketing → Distrito— antes de devolver. Con `fireEvent` y no con `userEvent`: es síncrono, y
-// algunas pruebas lo llaman con el reloj falso puesto (con él `userEvent` se cuelga). El mapa, las opciones y lo que pasa antes de
-// llegar a la caja están en Recorrido.test.tsx.
+// La caja vive en la página de cada una de sus tres herramientas; aquí se abre la de Video (…/marketing/distrito/video/), la pestaña en la
+// que la caja arranca desde siempre. Síncrono: algunas pruebas lo llaman con el reloj falso puesto (con él `userEvent` se cuelga). Las
+// páginas del mapa, las áreas y los grupos están en niveles/PaginaNivel.test.tsx; las tres direcciones de la caja, en Herramienta.test.tsx.
+const VIDEO = { area: 'mkt', grupo: 'distrito', pantalla: 'video' };
 function pintar() {
-  const r = render(<Inicio ir={ir} />);
-  fireEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
-  fireEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
-  return r;
+  return render(<PaginaHerramienta lugar={VIDEO} ir={ir} />);
 }
 
 beforeEach(() => {
@@ -158,7 +155,7 @@ beforeEach(() => {
   vi.mocked(guardarArchivos).mockReset();
   ir = vi.fn<(url: string) => void>();
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
-  history.replaceState(null, '', '/estudio/inicio/');
+  history.replaceState(null, '', '/estudio/marketing/distrito/video/');
 });
 
 afterEach(() => {

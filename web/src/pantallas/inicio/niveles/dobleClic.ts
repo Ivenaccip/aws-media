@@ -1,8 +1,8 @@
 // La guarda del doble clic de las páginas del recorrido (el mapa, cada área, cada grupo y la caja). Un doble clic en una ficha del mapa o
 // en la tarjeta de un grupo carga otra página con el primer clic, y el segundo (`detail` 2) cae sobre lo que apareció donde estaba lo
 // pulsado (a 390 px la ficha «Marketing» y la tarjeta «Distrito» de la página siguiente coinciden; la tarjeta «Imagen» cae sobre el chip
-// de la tarea de la caja): lo activaría sin que nadie lo pidiera. Cada página cuenta desde que ELLA se cargó (PaginaNivel.tsx y, en la
-// caja, Recorrido.tsx). Sin React ni DOM, y sin nada de la caja: viaja con las páginas de nivel.
+// de la tarea de la caja): lo activaría sin que nadie lo pidiera. Cada página cuenta desde que ELLA se cargó (PaginaNivel.tsx y
+// PaginaHerramienta.tsx). Sin React ni DOM, y sin nada de la caja: viaja con las páginas de nivel.
 
 /** La hora de un clic. Aparte, y no un `Date.now()` suelto en el componente: así la lectura del reloj vive fuera del render. */
 export const ahora = (): number => Date.now();

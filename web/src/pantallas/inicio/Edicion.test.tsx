@@ -2,8 +2,8 @@
 // invariante: tests/test_migracion_ui.py exige que cada ID del registro exista aquí.
 //
 // Nada de esto gasta dinero: el servidor (con las rutas de /api/edicion que define el contrato E2), la subida a S3 (XHR) y el cobro son
-// dobles (web/src/prueba/edicion.ts). Se prueba la Caja sola (donde vive el estado) y, para lo de «ninguna petición al montar», el
-// Inicio entero. Lo de varios videos, la cola de subida, la hoja y la unión está en EdicionUnion.test.tsx.
+// dobles (web/src/prueba/edicion.ts). Se prueba la Caja sola (donde vive el estado) y, para lo de «ninguna petición al montar», la
+// página entera de la caja (niveles/PaginaHerramienta.tsx). Lo de varios videos, la cola de subida, la hoja y la unión está en EdicionUnion.test.tsx.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,8 +59,8 @@ import {
   tamano,
 } from './edicion';
 import { rechazoVideo, soloVideos, type Cotizacion } from './envio';
-import { Inicio } from './Inicio';
 import { ALTO_DE_ACCION, ANCHO_DE_ACCION } from './medidas';
+import { PaginaHerramienta } from './niveles/PaginaHerramienta';
 
 // los tokens de la carta, tal cual (un `?raw` de un .css lo procesa el plugin de Tailwind y llega vacío; como en Confirmar.test)
 const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../estilos/tokens.css'), 'utf8');
@@ -72,7 +72,7 @@ beforeEach(() => {
   ponerXhrFalso();
   ir = vi.fn<(url: string) => void>();
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
-  history.replaceState(null, '', '/estudio/inicio/');
+  history.replaceState(null, '', '/estudio/marketing/distrito/video/');
 });
 
 afterEach(() => {
@@ -936,7 +936,7 @@ describe('la caja de Edición', () => {
   });
 
   it('inicio.edicion.ninguna_peticion_al_montar_ni_al_abrir_la_familia', async () => {
-    // el Inicio entero: lo que pide al montar es lo de siempre; Edición no suma nada hasta que hay un video
+    // la página entera de la caja: lo que pide al montar es lo de siempre; Edición no suma nada hasta que hay un video
     const f = servidor({
       '/api/proyectos': () => json([]),
       '/api/slots': () => json({ slots: null, activos: 0 }),
@@ -945,10 +945,7 @@ describe('la caja de Edición', () => {
       '/api/clip': () => json({ clips: [] }),
       '/api/blotato': () => json({ conectado: false, origen: null, cuentas: [], error: null, plan: null }),
     });
-    render(<Inicio ir={ir} />);
-    // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por Marketing → Distrito
-    await userEvent.click(within(await screen.findByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
-    await userEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
+    render(<PaginaHerramienta lugar={{ area: 'mkt', grupo: 'distrito', pantalla: 'video' }} ir={ir} />);
     await screen.findByRole('group', { name: 'Qué quieres crear' });
     await userEvent.click(riel().getByRole('button', { name: 'Edición' }));
     expect(campo()).toBeInTheDocument();
