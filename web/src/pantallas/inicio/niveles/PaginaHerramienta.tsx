@@ -14,9 +14,11 @@
 //     cae a 390 px justo sobre «Crear una imagen ▾» o el selector de modelo, y el segundo clic los abría.
 //   · Al cambiar de pestaña con el riel la página NO se recarga (la caja conserva lo escrito, el video y la subida): la dirección y el
 //     título la siguen con `history.replaceState`, nunca con `pushState`, para que «atrás» siga subiendo al grupo y no recorra pestañas.
-//   · La Biblioteca de prompts manda a …/imagen/?prompt= o …/video/?brief= para dejar un texto ya puesto en la caja (../llegada.ts), y
-//     el editor de cortes manda aquí con `?blotato=conectar` cuando falta la conexión: el diálogo de Blotato se abre solo. Sin ese
-//     parámetro la página no le pregunta nada a Blotato (desde E8.6: antes pedía su estado ligero para unas listas que aquí no hay).
+//   · La Biblioteca de prompts manda a …/imagen/?prompt= o …/video/?brief= para dejar un texto ya puesto en la caja (../llegada.ts).
+//   · Con `?blotato=conectar` el diálogo de Blotato se abre solo. Quien pide conectar (el editor de cortes, la Agenda, las Métricas y
+//     MIX) no llega aquí sino a la página del grupo Blotato (GrupoConBlotato.tsx); aquí el parámetro solo llega escrito a mano o junto a
+//     un `?prompt=`/`?brief=` de antes (`/estudio/?prompt=x&blotato=conectar`: el servidor atiende primero esos). Sin él la página no le
+//     pregunta nada a Blotato (desde E8.6: antes pedía su estado ligero para unas listas que aquí no hay).
 // Un `lugar` que no es una pestaña de la caja no es esta página: se enseña NoEncontrada, como las entradas, nunca una página en blanco.
 // Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó con cada aserción vieja: docs/migracion/inicio.md.
 import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
@@ -275,8 +277,8 @@ function Herramienta({ lugar, pestana, ir }: { lugar: Lugar; pestana: PestanaCaj
   useEffect(() => {
     // cargar() y abrirBlotato() ponen estado: van en un callback, no en el cuerpo del efecto
     Promise.resolve().then(cargar).catch(() => undefined);
-    // el editor manda aquí con ?blotato=conectar cuando falta la conexión. Este efecto es del padre y corre DESPUÉS de que la caja corrigió
-    // la dirección, que conserva el parámetro
+    // ?blotato=conectar abre el diálogo (aquí llega escrito a mano: el editor y las pantallas de Blotato mandan al grupo Blotato). Este
+    // efecto es del padre y corre DESPUÉS de que la caja corrigió la dirección, que conserva el parámetro
     if (new URLSearchParams(location.search).get('blotato') === 'conectar') Promise.resolve().then(abrirBlotato);
   }, [cargar, abrirBlotato]);
 
