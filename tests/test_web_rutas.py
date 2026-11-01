@@ -992,9 +992,10 @@ def test_el_servidor_de_las_pruebas_de_navegador_dice_el_mismo_404():
 
 
 def test_el_servidor_de_las_pruebas_de_navegador_tiene_las_mismas_tablas():
-    """Las pantallas (vieja, nueva, ¿retirada?), las entradas de antes y el alias de servidor.mjs son los de server/migracion.py y web.py."""
+    """Las pantallas (vieja, nueva, ¿retirada?), las entradas de antes y el alias de servidor.mjs son los de server/migracion.py y web.py.
+    Las líneas comentadas (`//`) se quitan antes de leer: una fila comentada no la ve Node, así que tampoco cuenta aquí."""
     from server import migracion
-    fuente = SERVIDOR_E2E.read_text(encoding="utf-8")
+    fuente = re.sub(r"^\s*//.*$", "", SERVIDOR_E2E.read_text(encoding="utf-8"), flags=re.M)
     filas = re.findall(r"\['(\w+)', '([^']+)', '([^']+)', (true|false)\]", fuente)
     assert filas == [(n, p.vieja, p.nueva, "true" if p.etapa == "retirada" else "false") for n, p in migracion.PANTALLAS.items()]
     entradas = re.findall(r"\['(\w+)', (null|'\w+'), '([^']+)'\]", fuente)
@@ -1062,15 +1063,16 @@ _FILAS_E2E = [
 ]
 
 
-def test_el_servidor_de_las_pruebas_de_navegador_contesta_lo_mismo_que_web_py(dist):
-    """Las mismas peticiones por la app de prueba (web.montar + el montaje de static/) y por servidor.mjs: el mismo estado, el mismo
-    `Location`, el mismo `Cache-Control` en cada 302, la misma cara del 404 (HTML o JSON, con `Vary: Accept`) y, si es la página, el mismo
-    HTML byte por byte. (Lo servido lleva `no-cache` aquí y `no-store` allá a propósito: los e2e no deben ver una página guardada.)"""
+def _contestan_lo_mismo(dist, filas):
+    """Pasa cada fila por la app de prueba (web.montar + el montaje de static/) y por servidor.mjs, sobre el mismo `dist`, y exige lo
+    mismo de los dos: el estado, el `Location`, el `Cache-Control` en cada 302, la cara del 404 (HTML o JSON, con `Vary: Accept`) y, si
+    es la página, el HTML byte por byte. Devuelve el estado de la app real de cada fila, en orden."""
     from urllib.parse import unquote
     app = _app(dist)[0]
     proc, puerto = _servidor_e2e(dist)
+    estados = []
     try:
-        for metodo, ruta, cabeceras in _FILAS_E2E:
+        for metodo, ruta, cabeceras in filas:
             camino, _, query = ruta.partition("?")
             real = _crudo(app, unquote(camino), query.encode(), metodo, raw=camino.encode(), cabeceras=cabeceras)
             nodo = _pedir_crudo(puerto, metodo, ruta, cabeceras)
@@ -1084,6 +1086,28 @@ def test_el_servidor_de_las_pruebas_de_navegador_contesta_lo_mismo_que_web_py(di
                 assert nodo[1]["content-type"].split(";")[0] == real[1]["content-type"].split(";")[0], fila
                 if real[1]["content-type"].startswith("text/html"):
                     assert nodo[2] == real[2], fila
+            estados.append(real[0])
     finally:
         proc.terminate()
         proc.wait(timeout=10)
+    return estados
+
+
+def test_el_servidor_de_las_pruebas_de_navegador_contesta_lo_mismo_que_web_py(dist):
+    """Las mismas peticiones por la app de prueba y por servidor.mjs contestan lo mismo (`_contestan_lo_mismo`). (Lo servido lleva
+    `no-cache` aquí y `no-store` allá a propósito: los e2e no deben ver una página guardada.)"""
+    _contestan_lo_mismo(dist, _FILAS_E2E)
+
+
+def test_el_servidor_de_las_pruebas_de_navegador_lleva_cada_alias_a_donde_lo_lleva_web_py(tmp_path):
+    """Cada alias real (la página única de antes y las nueve hojas que E7 mudó), sobre un dist hecho de las fuentes, que trae todas las
+    anidadas: la plana con barra (GET y HEAD), sin barra y con query, y en mayúsculas. En la app real cada una es un 302 (si no, comparar
+    no probaría nada) y servidor.mjs contesta lo mismo, también MIX, la única cuya anidada (`automaticas`) no se llama como su clave."""
+    from server import migracion
+    filas = []
+    for viejo in migracion.alias_del_estudio():
+        nombre = viejo.removeprefix("/estudio/").rstrip("/")
+        filas += [("GET", viejo, {}), ("HEAD", viejo, {}), ("GET", f"/estudio/{nombre}?x=1", {}),
+                  ("GET", f"/estudio/{nombre.capitalize()}/", {})]
+    estados = _contestan_lo_mismo(_dist_de_las_fuentes(tmp_path), filas)
+    assert estados == [302] * len(filas), list(zip(filas, estados))
