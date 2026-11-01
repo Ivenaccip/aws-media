@@ -1,7 +1,7 @@
 // Una página del recorrido (mapa, área o grupo): lo MISMO que el inicio enseñaba en cada paso, pero con su propia dirección y SIN la caja.
-// Reusa lo que ya está —Mapa, Grupos, Pantallas, Migas y la lógica de estadoRecorrido.ts— y no importa nada de la caja (Caja, Edición,
-// Galería, Mis creaciones): por eso pesa lo suyo. El diseño es el de Recorrido.tsx (título arriba, migas centradas, el paso centrado en el
-// alto que sobra); las migas conservan lo de siempre: la del área vuelve al mapa y la del grupo, a las opciones del área.
+// Reusa lo que ya está —Mapa, Grupos, Pantallas y Migas; las migas y Esc de cada nivel salen de navegar.ts— y no importa nada de la caja
+// (Caja, Edición, Galería, Mis creaciones): por eso pesa lo suyo. El diseño es el de Recorrido.tsx (título arriba, migas centradas, el paso
+// centrado en el alto que sobra); las migas conservan lo de siempre: la del área vuelve al mapa y la del grupo, a las opciones del área.
 //
 // Lo que hacía el estado y ahora hace el navegador: «subir de nivel» es la miga (un enlace) o el «atrás» del navegador, y el foco empieza
 // arriba en cada página (el `<title>` de cada una dice dónde es: no hay foco programático al `h2`). Se conservan dos cosas:
@@ -13,19 +13,18 @@
 //
 // Quien sí pesa aparte es Blotato (la lectura de su estado, el diálogo, Radix): solo los dos grupos que lo usan lo piden, y con import()
 // (ver GrupoConBlotato.tsx: la lista es la misma desde el primer pintado, no una de espera que se cambie por otra).
-import { useEffect, useId, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useId, useState, type MouseEvent } from 'react';
 
-import { Migas, type Miga } from '../../../marca/Migas';
+import { Migas } from '../../../marca/Migas';
 import { areaDe, grupoDe, type AreaMenu, type GrupoMenu, type PantallaMenu } from '../../../marca/menu';
 import { urlDeArea, urlDeGrupo, urlDeHerramienta, type Nivel } from '../../../marca/rutas';
 import { unir } from '../../../ui/unir';
-import { alEscape, migasDe } from '../estadoRecorrido';
 import { Grupos } from '../Grupos';
 import { Mapa } from '../Mapa';
 import { Pantallas } from '../Pantallas';
 import { ahora, esDobleClicAccidental } from './dobleClic';
 import { GrupoConBlotato } from './GrupoConBlotato';
-import { estadoDeNivel, urlDeAccion } from './navegar';
+import { escapeDeNivel, migasDeNivel } from './navegar';
 
 // Igual que en Recorrido.tsx: el mapa y las opciones centran su título; el de un grupo va a la izquierda, con su lista
 const TITULO_DE_PASO = 'm-0 mb-3 w-fit max-w-full font-titulo text-titulo-md font-bold';
@@ -46,7 +45,6 @@ export interface PropsPaginaNivel {
 
 export function PaginaNivel({ nivel, ir = navegar }: PropsPaginaNivel) {
   const idTitulo = useId();
-  const estado = useMemo(() => estadoDeNivel(nivel), [nivel]);
   // cuándo se cargó la página: un segundo clic de un doble clic a menos de medio segundo cae en lo que apareció donde estaba lo pulsado
   // y se descarta, también el enlace. Se lee una vez, al montar
   const [cargada] = useState(ahora);
@@ -60,10 +58,10 @@ export function PaginaNivel({ nivel, ir = navegar }: PropsPaginaNivel) {
     e.stopPropagation();
   }
 
+  // el efecto mira la dirección de destino (un texto), no el objeto `nivel`: el oyente no se rearma en cada pintado
+  const destinoDeEsc = escapeDeNivel(nivel);
   useEffect(() => {
-    const hacer = alEscape(estado);
-    if (hacer?.tipo !== 'accion') return;
-    const url = urlDeAccion(hacer.accion, estado);
+    const url = destinoDeEsc;
     if (!url) return;
     const alTeclear = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -72,19 +70,9 @@ export function PaginaNivel({ nivel, ir = navegar }: PropsPaginaNivel) {
     };
     document.addEventListener('keydown', alTeclear);
     return () => document.removeEventListener('keydown', alTeclear);
-  }, [estado, ir]);
+  }, [destinoDeEsc, ir]);
 
-  const migas: Miga[] = migasDe(estado).map(m => {
-    const url = urlDeAccion({ tipo: m.clave === 'area' ? 'abrir-mapa' : 'abrir-grupos' }, estado);
-    return {
-      clave: m.clave,
-      titulo: m.titulo,
-      icono: m.icono,
-      rotulo: m.rotulo,
-      actual: m.actual,
-      ...(url ? { href: url } : {}),
-    };
-  });
+  const migas = migasDeNivel(nivel);
 
   const area = nivel.tipo === 'mapa' ? undefined : areaDe(nivel.area);
   const grupo = nivel.tipo === 'grupo' ? grupoDe(nivel.area, nivel.grupo) : undefined;
