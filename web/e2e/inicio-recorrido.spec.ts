@@ -652,8 +652,8 @@ test.describe('doble clic en la tarjeta de un grupo, con «reducir movimiento» 
 
 // Y un nivel más: la tarjeta «Imagen» o «Video» de Distrito carga la caja, que también es una página nueva. A 390 px el segundo clic cae
 // sobre el chip de la tarea («Crear una imagen ▾») o sobre el selector de modelo, que se abrirían sin que nadie lo pidiera. Lo detiene la
-// guarda de Recorrido, que en la página de una herramienta cuenta desde que la página se montó (como PaginaNivel). En el escritorio no
-// cae nada debajo, y en Edición tampoco: no hay qué medir.
+// guarda de PaginaHerramienta, que cuenta desde que la página se montó (como PaginaNivel). En el escritorio no cae nada debajo, y en Edición
+// tampoco: no hay qué medir.
 test.describe('doble clic en una herramienta de Distrito, a 390 px y con «reducir movimiento» (solo la guarda lo detiene)', () => {
   test.use({ viewport: { width: 390, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
 

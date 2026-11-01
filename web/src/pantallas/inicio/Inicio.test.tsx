@@ -1702,6 +1702,52 @@ describe('la caja', () => {
 
 // Cuentos e historias llevan «+» para la foto del personaje (dueño, 14-oct-2026). La foto se deja en el navegador y
 // «Crear» navega con `refs=<token>`; Crear la recoge (crear/Crear.test.tsx).
+// (suelta, de Recorrido.test.tsx, que se retiró en E8.7) el menú de la izquierda ya no existe desde el 15-oct-2026: la caja no puede
+// mandar ahí
+describe('lo que la caja le dice a quien no escribió nada', () => {
+  it('ya no lo manda a un menú de la izquierda que no existe: dice solo lo que falta', async () => {
+    montar();
+    pintar();
+    await userEvent.click(enviar());
+    const aviso = await screen.findByRole('alert');
+    expect(aviso).toHaveTextContent('Cuéntanos qué quieres primero.');
+    expect(aviso.textContent).not.toMatch(/menú|izquierda/i);
+  });
+});
+
+// (sueltas, de Recorrido.test.tsx, que se retiró en E8.7) NAV-05 del prototipo, el «aviso fantasma»: el cuadro de avisos de abajo a la
+// derecha es de toda la página, no de la caja. Con la caja fuera de la vista (`enVista` falso: el inicio de una sola página la escondía
+// detrás del mapa o de una lista; el prop sigue mientras exista) un error suyo no tiene formulario que lo explique: se quita. Lo de Edición,
+// en Edicion.test.tsx
+describe('el cuadro de avisos con la caja fuera de la vista', () => {
+  it('«Crear» sin texto y esconder la caja: el error sale del cuadro; volver a la vista no lo repite ni quita nada más', async () => {
+    const avisos = ponerAvisos();
+    montar();
+    const { rerender } = render(<Caja ir={ir} enVista />);
+    await userEvent.click(enviar());
+    expect(avisos.mostrar).toHaveBeenCalledExactlyOnceWith('Cuéntanos qué quieres primero.', { tipo: 'mal', clave: 'caja' });
+    // con la caja a la vista el error se queda (hasta que se corrija o se cierre)
+    expect(avisos.quitar).not.toHaveBeenCalled();
+    rerender(<Caja ir={ir} enVista={false} />);
+    expect(avisos.quitar).toHaveBeenCalledExactlyOnceWith('caja');
+    rerender(<Caja ir={ir} enVista />);
+    expect(avisos.mostrar).toHaveBeenCalledTimes(1);
+    expect(avisos.quitar).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Ya estamos creando…» NO es un error: con el pedido en marcha, esconder la caja lo deja en el cuadro', async () => {
+    const avisos = ponerAvisos();
+    // el servidor tarda: el pedido sigue en vuelo y su aviso verde en el cuadro
+    montar({ rutas: { '/api/clip/generar': () => new Promise<Response>(() => undefined) } });
+    const { rerender } = render(<Caja ir={ir} enVista />);
+    await userEvent.type(caja(), 'un gato en la luna');
+    await userEvent.click(enviar());
+    await waitFor(() => expect(avisos.mostrar).toHaveBeenCalledWith(expect.stringContaining('Ya estamos creando'), { tipo: 'ok', clave: 'caja' }));
+    rerender(<Caja ir={ir} enVista={false} />);
+    expect(avisos.quitar).not.toHaveBeenCalled();
+  });
+});
+
 describe('la caja · la foto del personaje en cuentos e historias', () => {
   const TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
   const diferido = <T,>() => {

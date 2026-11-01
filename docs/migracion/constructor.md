@@ -1076,7 +1076,7 @@ Las protege el registro de archivos de este doc, no el de IDs:
   uno que ya está, quitar y «Deshacer» por el aviso, el botón y Ctrl+Z, «Limpiar», el disparador web y el de tiempo, la descarga real y el borrador), el teclado, el arrastre y «reducir movimiento».
 - `EncabezadoHoja.test.tsx` (en `web/src/marca/`): el encabezado compartido de las hojas (un `h1`, tres migas, la última quieta, error claro si el lugar no está en el mapa).
 - `avisos.test.ts` (en `web/src/nucleo/`): el aviso con `accion` (el botón «Deshacer»); `descargarArchivo.test.ts` (en `web/src/nucleo/`): el `Blob`, la URL temporal y el nombre limpio del archivo.
-- `AutomatizacionesRecorrido.test.tsx` (en `web/src/pantallas/inicio/`) y `inicio-recorrido.spec.ts`: el área de Automatizaciones en el mapa y el recorrido (ver `inicio.md`).
+- `menu.test.ts` (en `web/src/marca/`), `Pantallas.test.tsx` y `PaginaNivel.test.tsx` (en `web/src/pantallas/inicio/`), e `inicio-recorrido.spec.ts`: el área de Automatizaciones en el mapa y en sus páginas (ver `inicio.md`). Hasta E8.7 tenía un archivo propio que la recorría dentro del inicio de una sola página; se retiró con él y lo vivo se mudó a esos tres.
 - `tests/test_constructor_paridad.py`: ver «El exportador a n8n».
 
 ## Extensiones a archivos compartidos
@@ -1087,4 +1087,4 @@ Las protege el registro de archivos de este doc, no el de IDs:
 - `web/src/nucleo/descargarArchivo.ts`: la primera descarga que se arma en la propia página (un `Blob`, una URL temporal y un `<a download>`); devuelve `false` donde el navegador no puede y quien llama ofrece copiar el texto.
 - `web/src/ui/iconos.ts` y `static/iconos.js`: los 9 íconos nuevos, con la misma cadena en los dos.
 - `server/migracion.py`: las entradas `constructor` y `asistente` (`retirada`). `server/app.py`: el router de `/api/automatiza/*` (es del Asistente).
-- `web/src/pantallas/inicio/` y `web/e2e/inicio-recorrido.spec.ts`: las pruebas que daban por apagada a Automatizaciones (`Mapa.test.tsx`, `Recorrido.test.tsx`, `estadoRecorrido.test.ts`) y las nuevas del área; `docs/migracion/inicio.md`.
+- `web/src/pantallas/inicio/` y `web/e2e/inicio-recorrido.spec.ts`: las pruebas que daban por apagada a Automatizaciones (`Mapa.test.tsx` y las del recorrido en página, retiradas en E8.7) y las nuevas del área; `docs/migracion/inicio.md`.

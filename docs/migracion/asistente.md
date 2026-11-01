@@ -265,7 +265,7 @@ Las protege el registro de archivos de este doc, no el de IDs:
   esta carpeta están en `Asistente.test.tsx` (11) y `useArmado.test.tsx` (8).
 - `asistente.spec.ts` (Playwright): ver «Cómo probarlo».
 - Las cuatro pruebas de Python de arriba (`tests/test_automatiza_*.py`), que no tienen ID: las vigila `pytest`, no este registro.
-- `EncabezadoHoja.test.tsx`, `descargarArchivo.test.ts` y `AutomatizacionesRecorrido.test.tsx`: las piezas compartidas con el Constructor (ver `constructor.md`) y el recorrido del Inicio.
+- `EncabezadoHoja.test.tsx` y `descargarArchivo.test.ts`: las piezas compartidas con el Constructor (ver `constructor.md`). El área de Automatizaciones en el mapa la prueban `menu.test.ts`, `Pantallas.test.tsx` y `PaginaNivel.test.tsx` (hasta E8.7, un archivo propio del recorrido en página del Inicio, que se retiró con él).
 
 ## Extensiones a archivos compartidos
 

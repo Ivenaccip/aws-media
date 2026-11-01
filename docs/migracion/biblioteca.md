@@ -109,9 +109,10 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
   quitar filtros o etiqueta; y **dos aparatos** de la misma persona (dos contextos de navegador con el mismo servidor de mentira, que ahora
   hace compare-and-set como el de verdad): el viejo no pisa lo que fijó el otro. (El guardián de «reducir movimiento», `movimiento-reducido.spec.ts`, la
   recoge sola: lee `web/estudio/`.)
-- `Llegada.test.tsx` (en `web/src/pantallas/inicio/`): llegar al inicio con `?prompt=` o `?brief=` (ver abajo). Desde el 17-oct-2026 también
+- `Llegada.test.tsx` (en `web/src/pantallas/inicio/`): llegar a la caja con `?prompt=` o `?brief=` (ver abajo). Desde el 17-oct-2026 también
   cubre que elegir otra tarjeta desde fuera («Crear un video») quita el aviso y que `?prompt=…&desde=…&ver=…` juntos abren la caja con el texto;
-  cada una cae si se rompe lo que dice (`setTrajeron(false)` de `elegir` en `Caja.tsx`; el orden de `estadoInicial` en `estadoRecorrido.ts`).
+  cada una cae si se rompe lo que dice (`setTrajeron(false)` de `elegir` en `Caja.tsx`; hasta E8, el orden de `estadoInicial` del inicio de
+  una sola página; desde E8.6 la prueba abre la página de la caja, y lo que fija es que la dirección quede sin los tres parámetros).
 
 ## «Llevar a la caja» y el inicio
 
@@ -119,7 +120,7 @@ Imagen → `/estudio/marketing/distrito/imagen/?prompt=<texto>`; Video → `/est
 pestaña; antes era la página única `/estudio/inicio/`). Solo prompts de hasta **1800** caracteres (y, con
 tildes, de dirección de hasta 6000: más largos solo se copian), siempre con `encodeURIComponent`. **Nunca crea ni cobra**: es un enlace.
 
-El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos:
+El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos *(así se hizo; hoy, ver la nota de E8 abajo)*:
 
 - `estadoRecorrido.ts`: `leerLlegadaDeTexto(busqueda)` (con los dos, gana `prompt`; vacío o solo espacios no cuenta; se corta a los 5000
   del cuadro) y `estadoInicial`, que con texto abre la caja (Marketing › Distrito) en lugar del mapa. `urlSinEntrada` quita también
@@ -136,6 +137,11 @@ lee `Inicio` con `lugar` (la Caja); `estadoInicial`, que con texto abría la caj
 página, que ya no se sirve. Si alguien manda el enlace de antes (`/estudio/?prompt=…` o `/estudio/inicio/?prompt=…`), el servidor lo
 reenvía a la misma Caja (`docs/migracion/inicio.md` § «Rutas por nivel»).
 
+*(E8, 1-nov-2026.)* El inicio de una sola página se retiró (`Inicio.tsx`, `Recorrido.tsx` y `estadoRecorrido.ts`, con `estadoInicial`).
+Hoy el texto lo lee `niveles/PaginaHerramienta.tsx`, la página de la caja, con `leerLlegadaDeTexto` de `llegada.ts`, y se lo pasa a
+`Caja`; `urlSinEntrada` (también de `llegada.ts`) quita `prompt`, `brief`, `desde` y `ver` de la dirección. La caja hace lo mismo que
+arriba.
+
 **Plan B** (si el inicio diera problemas): en `logica.ts` la tabla `DESTINO` es la ÚNICA que sabe a dónde lleva cada caja; cambiar
 `ruta` de `/estudio/marketing/distrito/imagen/` a `/estudio/imagenes/` (parámetro `prompt`) y `/estudio/clip/` (parámetro `brief`) lleva directo a las
 pantallas que ya leían esos parámetros. No hace falta tocar nada más (la prueba de la dirección lo dirá).
@@ -151,4 +157,5 @@ dejaba en 38 px de ancho), `web/src/marca/menu.ts` (la fila de la Biblioteca: `h
 `<Marco pantalla="…">` y esta pantalla lleva su propio encabezado), `web/src/nucleo/api.ts` (`detail.texto`), `web/src/ui/iconos.ts` +
 `static/iconos.js` (Copiar, Fijar, Llevar, Investiga), `server/migracion.py`, `docs/DISENO.md` (el interruptor), `docs/QA-UI.md` (§
 biblioteca), y las pruebas del inicio que contaban cuatro «Próximamente» en Central › Distrito (`Pantallas.test.tsx`,
-`Recorrido.test.tsx`, `inicio-recorrido.spec.ts`).
+`inicio-recorrido.spec.ts` y la del recorrido en página, que se retiró en E8.7; hoy lo cubren también `PaginaNivel.test.tsx` y
+`PaginaGrupo.test.tsx`).

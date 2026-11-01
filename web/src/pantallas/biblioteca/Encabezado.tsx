@@ -43,7 +43,7 @@ export function Encabezado() {
   ];
   return (
     <header className="flex flex-col items-center">
-      {/* el degradado dorado es un FONDO recortado a la letra: va en un <span> en línea, no en el h1 (ver pantallas/inicio/Recorrido.tsx) */}
+      {/* el degradado dorado es un FONDO recortado a la letra: va en un <span> en línea, no en el h1 (ver pantallas/inicio/niveles/PaginaHerramienta.tsx) */}
       <h1 className="m-0 mt-6 text-center font-titulo text-titulo-lg font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere]">
         <span className="texto-oro">Irremplazables</span>
       </h1>

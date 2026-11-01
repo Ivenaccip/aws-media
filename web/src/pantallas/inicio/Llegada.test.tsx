@@ -10,7 +10,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { json, ponerMonedero, servidor } from '../../prueba/servidor';
-import { estadoInicial } from './estadoRecorrido';
 import { MAX_TEXTO_DE_LLEGADA, leerLlegadaDeTexto, urlSinEntrada } from './llegada';
 import { PaginaHerramienta } from './niveles/PaginaHerramienta';
 
@@ -54,15 +53,6 @@ describe('la llegada con texto, sin React', () => {
     const l = leerLlegadaDeTexto('?prompt=' + 'a'.repeat(6000));
     expect(l?.texto).toHaveLength(5000);
     expect(MAX_TEXTO_DE_LLEGADA).toBe(5000);
-  });
-
-  it('llegar con texto abre la caja (Marketing › Distrito) con algo elegido; sin él, el mapa de siempre', () => {
-    const e = estadoInicial('?prompt=hola');
-    expect(e).toMatchObject({ paso: 'contenido', area: 'mkt', grupo: 'distrito', elegido: true, hoja: null });
-    expect(estadoInicial('?brief=hola').paso).toBe('contenido');
-    expect(estadoInicial('')).toMatchObject({ paso: 'mapa', elegido: false });
-    // un texto vacío no abre nada
-    expect(estadoInicial('?prompt=')).toMatchObject({ paso: 'mapa', elegido: false });
   });
 
   it('la dirección se limpia de prompt y de brief, y conserva lo demás (?blotato=conectar, el ancla); sin ellos, nada que limpiar', () => {

@@ -1,9 +1,10 @@
 // El mapa del producto: áreas → grupos → pantallas (dueño, 15-oct-2026: «Mapa con Irremplazables»). Es la ÚNICA lista de
-// adónde se puede ir: el recorrido del inicio (mapa en X, tres opciones, lista de pantallas) y las migas de las pantallas hoja
-// (agenda, métricas…) salen de aquí, así no se desincronizan.
+// adónde se puede ir: las páginas del recorrido (el mapa en X, las opciones de cada área, la lista de cada grupo: una página por nivel,
+// rutas.ts) y las migas de las pantallas hoja (agenda, métricas…) salen de aquí, así no se desincronizan.
 //
 // Una pantalla es de uno de tres tipos:
-//   · `caja`: una pestaña de la caja del inicio (Imagen, Video, Edición). No navega: cambia de pestaña.
+//   · `caja`: una pestaña de la caja (Imagen, Video, Edición). Cada una tiene su página (…/distrito/video/, rutas.ts), y dentro de la
+//     caja cambiar de pestaña no recarga: cambia de pestaña y la dirección la sigue.
 //   · `href`: una página aparte (agenda, competencia…). Navega, con la transición entre pantallas de siempre.
 //   · `proximamente`: todavía no existe. Se enseña apagada (`aria-disabled`) y no lleva a ningún lado.
 // Las URL `href` de las que tuvieron pantalla vieja son las de siempre (`/agenda.html`…): server/migracion.py las manda a la nueva
@@ -11,7 +12,7 @@
 // mapa. Desde E7 toda hoja vive ahí, bajo su grupo (/estudio/<área>/<grupo>/<pantalla>/); su carpeta plana de antes es un 302.
 import type { NombreIcono } from '../ui/iconos';
 
-/** Las tres pestañas de la caja del inicio (`Familia` de pantallas/inicio/logica.ts). */
+/** Las tres pestañas de la caja (`Familia` de pantallas/inicio/logica.ts). */
 export type PestanaCaja = 'imagenes' | 'videos' | 'edicion';
 
 export interface PantallaMenu {
@@ -20,7 +21,7 @@ export interface PantallaMenu {
   icono: NombreIcono;
   /** Una línea de apoyo (la lista de pantallas de un grupo la enseña bajo el título). */
   texto?: string;
-  /** Una pestaña de la caja del inicio. */
+  /** Una pestaña de la caja. */
   caja?: PestanaCaja;
   /** Una página aparte. */
   href?: string;
@@ -211,9 +212,6 @@ export const MENU: readonly AreaMenu[] = [
   },
 ];
 
-/** Donde se cae al abrir el inicio: la caja, en Video (la pestaña en la que arranca desde siempre: es lo que ya se usaba). */
-export const LUGAR_INICIAL: Lugar = { area: 'mkt', grupo: 'distrito', pantalla: 'video' };
-
 // Las direcciones del recorrido (una página por nivel; la lista completa y su inversa viven en rutas.ts). Lo mínimo va AQUÍ y no allá
 // para que `urlDeInicio` pueda apuntar a ellas sin que menu.ts y rutas.ts se importen entre sí.
 
@@ -267,20 +265,14 @@ export function lugarDePagina(pagina: string): (Hallazgo & { lugar: Lugar }) | n
   return null;
 }
 
-/** «mkt.blotato.agenda» ↔ { area, grupo, pantalla }. Las claves no llevan puntos. */
+/** «mkt.blotato.agenda»: un lugar como texto, para nombrarlo en una prueba o en un mensaje. Las claves no llevan puntos. */
 export const lugarATexto = (l: Lugar): string => `${l.area}.${l.grupo}.${l.pantalla}`;
-
-export function lugarDeTexto(t: string | null | undefined): Lugar | null {
-  const [area, grupo, pantalla, ...sobra] = (t ?? '').split('.');
-  if (!area || !grupo || !pantalla || sobra.length) return null;
-  const l = { area, grupo, pantalla };
-  return buscar(l) ? l : null;
-}
 
 /**
  * Los parámetros con los que una pantalla hoja mandaba de vuelta al inicio: `desde` (dónde estaba) y `ver` (qué abrir). Ya no los emite
- * nadie (las migas van directo a la página del nivel, `urlDeInicio`), pero el inicio de una sola página todavía los LEE de un enlace viejo
- * guardado como marcador, y por eso siguen aquí.
+ * nadie (las migas van directo a la página del nivel, `urlDeInicio`) y ya nadie los LEE (el inicio de una sola página que los leía se
+ * retiró en E8), pero un marcador viejo todavía puede traerlos: el mapa los quita de su dirección (pantallas/inicio/llegada.ts,
+ * `urlSinEntrada`), y por eso siguen aquí.
  */
 export const PARAM_DESDE = 'desde';
 export const PARAM_VER = 'ver';
@@ -288,7 +280,7 @@ export type VerInicio = 'mapa' | 'grupos';
 
 /**
  * A dónde llevan las migas de una pantalla hoja, estando "desde" ella: `mapa` es la principal (`/estudio/`) y `grupos` son las opciones de
- * SU área (`/estudio/marketing/`). Directo a la página del nivel, sin pasar por el inicio de una sola página ni llevar parámetros.
+ * SU área (`/estudio/marketing/`). Directo a la página del nivel, sin llevar parámetros.
  * Un área que el mapa no conoce (una clave escrita a mano) cae en la principal en vez de inventar una dirección.
  */
 export function urlDeInicio(desde: Lugar, ver: VerInicio): string {

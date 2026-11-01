@@ -1,7 +1,8 @@
 // Una página del recorrido (mapa, área o grupo): lo MISMO que el inicio enseñaba en cada paso, pero con su propia dirección y SIN la caja.
 // Reusa lo que ya está —Mapa, Grupos, Pantallas y Migas; las migas y Esc de cada nivel salen de navegar.ts— y no importa nada de la caja
-// (Caja, Edición, Galería, Mis creaciones): por eso pesa lo suyo. El diseño es el de Recorrido.tsx (título arriba, migas centradas, el paso
-// centrado en el alto que sobra); las migas conservan lo de siempre: la del área vuelve al mapa y la del grupo, a las opciones del área.
+// (Caja, Edición, Galería, Mis creaciones): por eso pesa lo suyo. El diseño es el del recorrido en página de antes (título arriba, migas
+// centradas, el paso centrado en el alto que sobra); las migas conservan lo de siempre: la del área vuelve al mapa y la del grupo, a las
+// opciones del área. La caja tiene su propia página (PaginaHerramienta.tsx), con el mismo título y la tarjeta que solo ella lleva.
 //
 // Lo que hacía el estado y ahora hace el navegador: «subir de nivel» es la miga (un enlace) o el «atrás» del navegador, y el foco empieza
 // arriba en cada página (el `<title>` de cada una dice dónde es: no hay foco programático al `h2`). Se conservan dos cosas:
@@ -26,7 +27,7 @@ import { ahora, esDobleClicAccidental } from './dobleClic';
 import { GrupoConBlotato } from './GrupoConBlotato';
 import { escapeDeNivel, migasDeNivel } from './navegar';
 
-// Igual que en Recorrido.tsx: el mapa y las opciones centran su título; el de un grupo va a la izquierda, con su lista
+// El mapa y las opciones centran su título; el de un grupo va a la izquierda, con su lista
 const TITULO_DE_PASO = 'm-0 mb-3 w-fit max-w-full font-titulo text-titulo-md font-bold';
 const CENTRADO = 'mx-auto text-center';
 
@@ -80,7 +81,7 @@ export function PaginaNivel({ nivel, ir = navegar }: PropsPaginaNivel) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 pt-16 pb-0 max-[380px]:px-3">
       <section aria-labelledby={idTitulo} onClickCapture={alPulsarAntes} className="mx-auto flex w-full max-w-[820px] flex-1 flex-col">
-        {/* El degradado dorado es un FONDO recortado a la letra: va en un <span> en línea para que su caja mida lo que el texto (ver Recorrido.tsx) */}
+        {/* El degradado dorado es un FONDO recortado a la letra: va en un <span> en línea para que su caja mida lo que el texto (ver PaginaHerramienta.tsx) */}
         <h1
           id={idTitulo}
           className="m-0 mt-6 text-center font-titulo text-titulo-lg font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere]"

@@ -61,6 +61,8 @@ describe('el menú', () => {
       expect(screen.queryByRole('navigation', { name: 'Secciones' })).toBeNull();
       expect(screen.queryByText('Estudio de Contenido')).toBeNull();
       expect(screen.queryByText('Publicidad Automática')).toBeNull();
+      // ni la columna de la izquierda donde vivía
+      expect(document.querySelector('aside')).toBeNull();
     };
     let r = pintar({ tipo: 'mapa' });
     sinMenu();

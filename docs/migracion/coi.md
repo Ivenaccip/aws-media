@@ -141,7 +141,8 @@ Las protege el registro de archivos de este doc, no el de IDs:
   y queda **sin `pagina`** (no se pinta con `<Marco>`: esa clave exige un `<Marco pantalla="…">`, y el guardián
   `marco.mapa.paginas_existen` de `Marco.test.tsx` cae si se la agregan). Las pruebas
   de `pantallas/inicio` que daban por «Próximamente» a las cuatro de Central › Distrito esperan ahora a COI y a la Biblioteca como
-  enlaces (las rutas están escritas en la prueba: `Pantallas.test.tsx`, `Recorrido.test.tsx`, `Inicio.test.tsx`).
+  enlaces (las rutas están escritas en la prueba: `Pantallas.test.tsx`, `PaginaNivel.test.tsx` y `PaginaGrupo.test.tsx`; hasta E8, también
+  en las del inicio de una sola página, que se retiraron con él).
 
 ## Revisión adversarial del 17-oct-2026: lo que cambió en la web
 

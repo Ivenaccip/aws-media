@@ -182,9 +182,10 @@ describe('la caja de Edición', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  // NAV-05 del prototipo: el cuadro de avisos es de toda la página. La tarjeta del inicio esconde la caja (`enVista` falso) al abrir el
-  // mapa o una lista, y un error de ella no puede quedarse flotando ahí. No se esconde para volver a ponerlo: se quita (al volver, «Iniciar»
-  // lo repite). Los avisos verdes del trabajo en marcha no son errores de la caja y se quedan (Recorrido.test.tsx lo prueba entero).
+  // NAV-05 del prototipo: el cuadro de avisos es de toda la página. Con la caja fuera de la vista (`enVista` falso: hasta E8 el inicio de
+  // una sola página la escondía al abrir el mapa o una lista) un error de ella no puede quedarse flotando ahí. No se esconde para volver a
+  // ponerlo: se quita (al volver, «Iniciar» lo repite). Los avisos verdes del trabajo en marcha no son errores de la caja y se quedan
+  // (Inicio.test.tsx, «el cuadro de avisos con la caja fuera de la vista»).
   it('el error de «Iniciar» sin video sale del cuadro de avisos cuando la caja se esconde, y no vuelve solo al verse otra vez', async () => {
     const avisos = ponerAvisos();
     montar();

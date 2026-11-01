@@ -367,8 +367,9 @@ INVARIANTES = {
         # `inicio.blotato.*` de más abajo se conservaron CON SU NOMBRE y los cumple la ruta nueva (mapa → opciones → lista de
         # pantallas); desde E8.5 los prueba la página de cada grupo (web/src/pantallas/inicio/niveles/PaginaGrupo.test.tsx):
         # docs/migracion/inicio.md dice qué afirma ahora cada uno. El recorrido mismo y el modo «De videos a Shorts» de
-        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (estadoRecorrido.test.ts, Recorrido.test.tsx,
-        # Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no se registran aquí
+        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (las páginas de nivel en niveles/,
+        # con prefijo `niveles.`; Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no
+        # se registran aquí. Las del recorrido en página (estadoRecorrido.test.ts, Recorrido.test.tsx) se retiraron en E8.7
         "inicio.menu.entradas_y_grupos_en_orden",
         # 14-oct-2026 (dueño): «Editor de videos» sale del menú y el título pasa a «Irremplazables» en dorado
         "inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan",

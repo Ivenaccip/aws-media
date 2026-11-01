@@ -54,8 +54,8 @@ it('inicio.edicion.un_temporizador_viejo_que_vence_al_parar_la_rotacion_no_deja_
   expect(vi.getTimerCount()).toBe(0);
 });
 
-// `enVista`: la caja de Edición sigue montada pero escondida (la tarjeta del inicio la esconde con `hidden` mientras se ve el mapa,
-// las opciones o una lista). Sin campo a la vista no corre NINGÚN temporizador, y lo que había avanzado se olvida: al volver, la
+// `enVista`: la caja de Edición sigue montada pero escondida (el inicio de una sola página, retirado en E8, la escondía con `hidden`
+// mientras se veía el mapa, las opciones o una lista). Sin campo a la vista no corre NINGÚN temporizador, y lo que había avanzado se olvida: al volver, la
 // primera idea, sin fundido, y de ahí rota. Los nombres de estas pruebas no llevan el prefijo `inicio.` (el de los invariantes del
 // registro anti-pérdida): es una función nueva, no algo que la pantalla vieja garantizara.
 function Pista({ quieta = false, enVista }: { quieta?: boolean; enVista: boolean }) {

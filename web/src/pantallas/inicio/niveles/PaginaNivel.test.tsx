@@ -256,6 +256,61 @@ describe('niveles · un grupo', () => {
   });
 });
 
+// Automatizaciones (dueño, 20-oct-2026): el área se abre como las demás, con un Distrito que trae dos hojas y una apagada, y un grupo
+// todavía vacío. Lo que antes se recorría dentro de la página (AutomatizacionesRecorrido.test.tsx), por las páginas de su nivel
+describe('niveles · Automatizaciones', () => {
+  it('niveles.automatizaciones.el_mapa_la_abre: su ficha es un enlace a su pagina, sin «Próximamente»', () => {
+    pintar({ tipo: 'mapa' });
+    const ficha = screen.getByRole('link', { name: /^Automatizaciones/ });
+    expect(ficha).toHaveAttribute('href', '/estudio/automatizaciones/');
+    expect(ficha).not.toHaveAttribute('aria-disabled');
+    expect(ficha).not.toHaveTextContent('Próximamente');
+  });
+
+  it('niveles.automatizaciones.sus_opciones_son_distrito_y_tus_automatizaciones: con lo que trae cada una, sin «Estás aquí», y Tab en el orden de lectura', () => {
+    pintar({ tipo: 'area', area: 'automatizaciones' });
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Elige un grupo');
+    const tarjetas = within(screen.getByRole('group', { name: 'Automatizaciones' })).getAllByRole('link');
+    expect(tarjetas.map(t => t.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/', '/estudio/automatizaciones/tus/']);
+    expect(tarjetas[0]).toHaveTextContent('Constructor · Asistente · Actualizar flujos');
+    expect(tarjetas[1]).toHaveTextContent('Próximamente');
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    // la miga y sus dos tarjetas, en ese orden
+    const enOrden = Array.from(screen.getByRole('main').querySelectorAll<HTMLElement>('a[href], button')).map(
+      el => el.querySelector('b')?.textContent ?? el.textContent,
+    );
+    expect(enOrden).toEqual(['Automatizaciones', 'Distrito', 'Tus automatizaciones']);
+    // Esc en sus opciones sube al mapa
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/');
+  });
+
+  it('niveles.automatizaciones.distrito_lista_dos_enlaces_y_una_apagada: las migas suben de nivel y no hay «Volver a …» ni caja', () => {
+    pintar({ tipo: 'grupo', area: 'automatizaciones', grupo: 'distrito' });
+    expect(hrefs(lista())).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/automatizaciones/distrito/asistente/']);
+    expect(screen.getByText('Actualizar flujos').closest('a')).toBeNull();
+    expect(screen.queryByText('Todavía no está disponible.')).toBeNull();
+    expect(hrefs(migasDeLaPagina())).toEqual(['/estudio/', '/estudio/automatizaciones/']);
+    expect(within(migasDeLaPagina()).getByRole('link', { name: 'Volver a las opciones de Automatizaciones (ahora: Distrito)' })).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    expect(screen.queryAllByRole('link', { name: /^Volver a (?!las opciones)/ })).toEqual([]);
+    expect(screen.queryByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeNull();
+    // el segundo clic de un doble clic en «Distrito» no activa «Constructor», la primera de la lista
+    expect(clic(screen.getByRole('link', { name: /^Constructor/ }), { detail: 2 })).toBe(false);
+    expect(ir).not.toHaveBeenCalled();
+  });
+
+  it('niveles.automatizaciones.tus_automatizaciones_todavia_no_esta_disponible: y Esc no hace nada', () => {
+    pintar({ tipo: 'grupo', area: 'automatizaciones', grupo: 'tus' });
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Tus automatizaciones');
+    expect(screen.getByText('Todavía no está disponible.')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(ir).not.toHaveBeenCalled();
+  });
+});
+
 describe('niveles · Blotato solo donde se usa', () => {
   it('niveles.blotato.sin_la_clave_sus_tres_herramientas_se_apagan_y_el_boton_ofrece_conectar', async () => {
     const f = servidor({ '/api/blotato': () => json(SIN_CLAVE) });
@@ -519,7 +574,6 @@ describe('niveles · el mapa de la dirección a la página', () => {
         'Grupos.tsx',
         'Mapa.tsx',
         'Pantallas.tsx',
-        'estadoRecorrido.ts',
         'llegada.ts',
         'niveles/GrupoConBlotato.tsx',
         'niveles/dobleClic.ts',

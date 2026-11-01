@@ -1,5 +1,5 @@
-// Lo que hay dentro de un grupo que NO es la caja (paso 3 del recorrido): la lista de sus pantallas, como tarjetas-enlace con su
-// título, su línea de apoyo y su ícono. El título del grupo (el `h2`) lo pone Recorrido.
+// Lo que hay dentro de un grupo (paso 3 del recorrido): la lista de sus pantallas, como tarjetas-enlace con su título, su línea de apoyo
+// y su ícono. El título del grupo (el `h2`) lo pone su página (niveles/PaginaNivel.tsx).
 //
 // Lo que antes hacía el menú de la izquierda (UI·8.4) vive aquí, con las mismas reglas (M23 · C):
 //   · las pantallas de Blotato se APAGAN a la vista (`aria-disabled` y opacidad) sin la clave del usuario, en vez de esconderse:

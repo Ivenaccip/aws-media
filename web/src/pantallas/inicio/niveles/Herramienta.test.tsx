@@ -17,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Lugar } from '../../../marca/menu';
 import { json, servidor } from '../../../prueba/servidor';
 import type { Proyecto } from '../logica';
-import { Inicio } from '../Inicio';
 import { NoEncontrada } from './NoEncontrada';
 import { PaginaHerramienta } from './PaginaHerramienta';
 
@@ -154,35 +153,11 @@ describe('niveles · la página de una herramienta de la caja', () => {
     expect(ir).not.toHaveBeenCalled();
     await cargada();
   });
-
-  it('niveles.herramienta.sin_lugar_el_inicio_es_el_de_siempre: abre en el mapa, con su recorrido en la página y la dirección quieta', async () => {
-    abrirEn('/estudio/inicio/');
-    document.title = 'Estudio de video';
-    const reemplazar = vi.spyOn(history, 'replaceState');
-    render(<Inicio ir={ir} />);
-    expect(screen.getByRole('group', { name: 'Áreas' })).toBeInTheDocument();
-    // la caja está montada pero escondida (`hidden`): ni se ve ni la lee un lector de pantalla
-    expect(screen.queryByRole('group', { name: 'Qué quieres crear' })).toBeNull();
-    // llega a la caja por el camino de siempre (Marketing → Distrito: botones que cambian de paso, no enlaces) y cambia de pestaña
-    fireEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
-    fireEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
-    expect(within(migas()).queryAllByRole('link')).toEqual([]);
-    expect(within(migas()).getAllByRole('button').map(b => b.textContent)).toEqual(['Marketing', 'Distrito']);
-    expect(pestana()).toBe('Video');
-    alRiel('Imagen');
-    alRiel('Edición');
-    expect(pestana()).toBe('Edición');
-    // sin `lugar` la caja no avisa a nadie: ni la dirección ni el título se mueven
-    expect(reemplazar).not.toHaveBeenCalled();
-    expect(direccion()).toBe('/estudio/inicio/');
-    expect(document.title).toBe('Estudio de video');
-    await cargada();
-  });
 });
 
-// El marco de la caja (lo que antes le ponía Recorrido.tsx, y que los e2e de la caja y del layout miden): el título fuera y arriba de la
-// tarjeta, la tarjeta con las migas y la caja, y lo de debajo del mismo ancho. La geometría (posición, centrado, ancho) no se puede medir en
-// jsdom: la miden inicio-recorrido.spec.ts y niveles.spec.ts.
+// El marco de la caja (el que le ponía el recorrido en página hasta E8, y que los e2e de la caja y del layout miden): el título fuera y
+// arriba de la tarjeta, la tarjeta con las migas y la caja, y lo de debajo del mismo ancho. La geometría (posición, centrado, ancho) no se
+// puede medir en jsdom: la miden inicio-recorrido.spec.ts y niveles.spec.ts.
 describe('niveles · el marco de la caja', () => {
   const P1: Proyecto = {
     id: 'p1',
@@ -565,14 +540,6 @@ describe('niveles · corregir la dirección no pierde lo que la página no puso'
     expect(direccion()).toBe(`${EDICION}?utm_source=correo#ancla`);
     alRiel('Video');
     expect(direccion()).toBe(`${VIDEO}?utm_source=correo#ancla`);
-  });
-
-  it('niveles.herramienta.sin_lugar_blotato_conectar_abre_el_dialogo_como_siempre', async () => {
-    sinBlotato();
-    abrirEn('/estudio/inicio/?blotato=conectar');
-    render(<Inicio ir={ir} />);
-    expect(await screen.findByRole('dialog', { name: 'Conecta tu Blotato' })).toBeInTheDocument();
-    expect(direccion()).toBe('/estudio/inicio/?blotato=conectar');
   });
 });
 
