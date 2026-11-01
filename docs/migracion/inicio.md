@@ -37,7 +37,8 @@ con `npm run niveles`) y `web/src/marca/estudio.test.ts` exige que sea idéntico
 etapas: E1–E4 (el servidor, las direcciones, los componentes y las 16 páginas, todavía sin enlazar), E5.1 (todo enlace va directo a
 la página del nivel), E5.2 (la raíz `/estudio/` se sirve y las entradas de antes redirigen), E5.3 (se retira la página única) y E6
 (las pruebas de navegador y estos docs). Después, E7 (31-oct-2026) mudó las nueve hojas del mapa a la carpeta de su lugar, una por
-commit (ver abajo). Lo que sigue (E8) es plan: `docs/PLAN-UI.md` §9.
+commit (ver abajo), y E8 (1-nov-2026) retiró el inicio de una sola página (ver «Lo que quedaba»). Lo que sigue (E9, opcional) es plan:
+`docs/PLAN-UI.md` §9.
 
 ### Las direcciones
 
@@ -221,7 +222,8 @@ se borró en el corte.
 
 Queda vivo sin uso, para E9: el prop `enVista` de `Caja` (siempre a la vista en su página; lo prueban `Edicion.test.tsx`,
 `usePistaRotatoria.test.tsx` y `Inicio.test.tsx`) y su `tituloRef`, el modo botón de `Grupos` (con su `aqui` y su «Estás aquí»), el
-`alElegir` de `Mapa` y el `alPulsar` de `Migas`.
+`alElegir` de `Mapa`, el `alPulsar` de `Migas` y el diálogo que la caja abre con `?blotato=conectar`: quien pide conectar (el editor de
+cortes, la Agenda, las Métricas y MIX) llega al grupo Blotato, y a la caja el parámetro solo llega escrito a mano.
 
 **Pruebas del corte**, sueltas (prefijo `niveles.` o `rutas.`, que el guardián no exige registrar): en
 `web/src/pantallas/inicio/niveles/`, `PaginaNivel.test.tsx` (mapa, áreas, grupos, Automatizaciones, Blotato, Esc, doble clic, la entrada
