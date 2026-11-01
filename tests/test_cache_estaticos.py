@@ -25,6 +25,8 @@ La regla que fijan estos tests:
 import pytest
 from fastapi.testclient import TestClient
 
+from server import migracion
+
 
 @pytest.fixture
 def cliente(monkeypatch):
@@ -36,6 +38,9 @@ def cliente(monkeypatch):
 REVALIDAN_EN_EL_BORDE = ["/auth.js", "/monedero.js", "/orbe.js", "/enlaces.js",
                          "/guardrail.js", "/carta.css"]
 HTML = ["/index.html", "/shorts.html", "/crear.html", "/admin.html"]
+# Las nueve hojas que E7 mudó de su carpeta plana a la anidada: los alias de server/migracion.py, menos el de la página única de antes,
+# que lleva a la principal. {plana: anidada}
+HOJAS = {plana: anidada for plana, anidada in migracion.alias_del_estudio().items() if anidada != "/estudio/"}
 
 
 @pytest.mark.parametrize("ruta", REVALIDAN_EN_EL_BORDE)
@@ -77,9 +82,10 @@ def _con_la_principal(cliente):
         pytest.skip("web/dist no está compilado: sin la principal no hay /estudio/")
 
 
-@pytest.mark.parametrize("ruta", ["/estudio/", "/estudio/marketing/", "/estudio/marketing/distrito/imagen/"])
+@pytest.mark.parametrize("ruta", ["/estudio/", "/estudio/marketing/", "/estudio/marketing/distrito/imagen/", *HOJAS.values()])
 def test_la_principal_y_las_paginas_por_nivel_siguen_en_no_cache(cliente, ruta):
-    """/estudio/ ya no redirige: es la página (server/web.py). Esa y las anidadas revalidan con ETag, nunca se quedan en el borde."""
+    """/estudio/ ya no redirige: es la página (server/web.py). Esa y las anidadas (también cada hoja en su lugar) revalidan con ETag,
+    nunca se quedan en el borde."""
     _con_la_principal(cliente)
     r = cliente.get(ruta, follow_redirects=False)
     assert r.status_code == 200, ruta
@@ -118,6 +124,22 @@ def test_el_302_de_la_pagina_unica_a_la_principal_no_se_queda_en_cache(cliente, 
     assert r.headers["location"] == destino
     assert r.headers["cache-control"] == "no-store"
     assert "cloudflare-cdn-cache-control" not in r.headers
+
+
+@pytest.mark.parametrize("plana, anidada", sorted(HOJAS.items()))
+def test_el_302_de_la_carpeta_plana_de_una_hoja_no_se_queda_en_cache(cliente, plana, anidada):
+    """La carpeta plana de cada hoja que E7 mudó (/estudio/coi/, /estudio/mix/…) ya no es una página: redirige a su anidada con el query
+    intacto, con o sin barra, y ese 302 no se guarda ni en el navegador ni en el borde. También cuando el navegador revalida con el ETag
+    que le quedó de cuando la plana se servía: un 304 ahí lo dejaría con la página vieja."""
+    _con_la_principal(cliente)
+    for pedido, cabeceras in ((f"{plana}?x=1", {"If-None-Match": '"de-antes"'}), (plana.rstrip("/"), {})):
+        r = cliente.get(pedido, headers=cabeceras, follow_redirects=False)
+        assert r.status_code == 302, (
+            f"{pedido} dio {r.status_code}: ¿web/dist es de antes de mudar las hojas? Compila con «cd web && npm run build»"
+        )
+        assert r.headers["location"] == anidada + ("?x=1" if "?" in pedido else ""), pedido
+        assert r.headers["cache-control"] == "no-store", pedido
+        assert "cloudflare-cdn-cache-control" not in r.headers, pedido
 
 
 def test_los_versionados_siguen_inmutables(cliente):
