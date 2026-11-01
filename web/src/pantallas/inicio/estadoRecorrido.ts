@@ -25,10 +25,11 @@
 // aterriza en el mapa, como siempre.
 //
 // Y hay otra entrada, la de «Llevar a la caja» de la Biblioteca de prompts (Ajustes 3, 16-oct-2026): `?prompt=<texto>` abre DIRECTO la caja en la
-// pestaña Imagen con el texto puesto, y `?brief=<texto>` en la pestaña Video (`leerLlegadaDeTexto`). Llegar así nunca crea ni cobra nada:
-// solo deja la caja lista. Se lee una vez y la URL se limpia, igual que `?desde=`.
+// pestaña Imagen con el texto puesto, y `?brief=<texto>` en la pestaña Video (`leerLlegadaDeTexto`, en llegada.ts). Llegar así nunca crea
+// ni cobra nada: solo deja la caja lista. Se lee una vez y la URL se limpia (`urlSinEntrada`, también en llegada.ts), igual que `?desde=`.
 import { areaDe, buscar, grupoDe, LUGAR_INICIAL, lugarDeTexto, PARAM_DESDE, PARAM_VER, type GrupoMenu } from '../../marca/menu';
 import type { NombreIcono } from '../../ui/iconos';
+import { leerLlegadaDeTexto } from './llegada';
 
 export type Paso = 'mapa' | 'grupos' | 'contenido';
 
@@ -196,45 +197,4 @@ export function estadoInicial(busqueda: string): EstadoRecorrido {
     // «Volver» solo puede ir a una página que existe: una pestaña de la caja o una pantalla apagada no son otra página
     hoja: pantalla?.href ? pantalla.clave : null,
   };
-}
-
-/** La dirección del inicio SIN `desde` ni `ver` (con todo lo demás: `?blotato=conectar`, el ancla), o null si no los traía.
- *  Se pone con `history.replaceState`: la entrada se lee una vez y recargar o compartir el enlace no repite el recorrido. */
-export function urlSinEntrada(href: string): string | null {
-  const url = new URL(href);
-  if (!ENTRADAS.some(p => url.searchParams.has(p))) return null;
-  for (const p of ENTRADAS) url.searchParams.delete(p);
-  return url.pathname + url.search + url.hash;
-}
-
-// ---------------------------------------------------------------------------
-// el texto que llega a la caja
-
-/** Los parámetros de la dirección que el inicio lee UNA vez y limpia: `desde` y `ver` (de las pantallas hoja) y `prompt` y `brief` (de la Biblioteca). */
-const PARAM_PROMPT = 'prompt';
-const PARAM_BRIEF = 'brief';
-const ENTRADAS = [PARAM_DESDE, PARAM_VER, PARAM_PROMPT, PARAM_BRIEF] as const;
-
-/** Lo más que cabe en el cuadro de la caja (su `maxLength`): un texto más largo se corta, no se pierde la llegada. */
-const MAX_TEXTO_DE_LLEGADA = 5000;
-
-export interface LlegadaDeTexto {
-  /** La pestaña de la caja que se abre: `?prompt=` es una imagen, `?brief=` un video. */
-  familia: 'imagenes' | 'videos';
-  texto: string;
-}
-
-/** El texto con el que se llega a la caja (`?prompt=` o `?brief=`), o null si no hay o viene vacío. Con los dos, gana `prompt`. El texto se
- *  toma tal cual, sin recortarle los espacios de en medio: es un prompt, y su forma importa. Solo es TEXTO: la caja lo pone en su cuadro y
- *  React lo escapa. */
-export function leerLlegadaDeTexto(busqueda: string): LlegadaDeTexto | null {
-  const params = new URLSearchParams(busqueda);
-  for (const [param, familia] of [
-    [PARAM_PROMPT, 'imagenes'],
-    [PARAM_BRIEF, 'videos'],
-  ] as const) {
-    const texto = params.get(param);
-    if (texto !== null && texto.trim()) return { familia, texto: texto.slice(0, MAX_TEXTO_DE_LLEGADA) };
-  }
-  return null;
 }

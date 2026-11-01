@@ -3,7 +3,8 @@
 //   · `conectado === null` (no se sabe: la consulta falló o aún no contesta) NO apaga nada: dejar sin sus herramientas a quien sí pagó,
 //     porque un fetch no respondió, es peor que dejar entrar a quien no;
 //   · `?blotato=conectar` (el editor de cortes y las pantallas de Blotato mandan aquí cuando falta la conexión) abre el diálogo de
-//     una vez. Esa entrada NO se limpia de la dirección, como en el inicio de hoy: `urlSinEntrada` solo limpia desde/ver/prompt/brief.
+//     una vez. Esa entrada NO se limpia de la dirección (recargar vuelve a ofrecer conectar), como en la caja: `urlSinEntrada`
+//     (../llegada.ts) solo limpia desde/ver/prompt/brief.
 //
 // Qué pesa y cuándo se pide (el mapa, las áreas y los demás grupos no cargan nada de esto):
 //   · ESTE archivo es chico y viaja con la página: la lista (`Pantallas`) se pinta ya, con su botón y su foco, y es SIEMPRE la misma —

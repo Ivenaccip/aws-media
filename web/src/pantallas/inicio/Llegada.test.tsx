@@ -9,7 +9,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { json, ponerMonedero, servidor } from '../../prueba/servidor';
-import { estadoInicial, leerLlegadaDeTexto, urlSinEntrada } from './estadoRecorrido';
+import { estadoInicial } from './estadoRecorrido';
+import { MAX_TEXTO_DE_LLEGADA, leerLlegadaDeTexto, urlSinEntrada } from './llegada';
 import { Inicio } from './Inicio';
 
 const PROMPT_CON_HUECOS = 'Fotografía de producto de [PRODUCTO] flotando sobre un fondo azul medianoche liso. Formato cuadrado 1:1.';
@@ -42,6 +43,7 @@ describe('la llegada con texto, sin React', () => {
   it('un texto más largo que el cuadro de la caja se corta a 5000 (la llegada no se pierde)', () => {
     const l = leerLlegadaDeTexto('?prompt=' + 'a'.repeat(6000));
     expect(l?.texto).toHaveLength(5000);
+    expect(MAX_TEXTO_DE_LLEGADA).toBe(5000);
   });
 
   it('llegar con texto abre la caja (Marketing › Distrito) con algo elegido; sin él, el mapa de siempre', () => {
@@ -61,6 +63,27 @@ describe('la llegada con texto, sin React', () => {
     expect(urlSinEntrada('http://x/estudio/inicio/')).toBeNull();
     // aunque venga vacío, el parámetro se quita
     expect(urlSinEntrada('http://x/estudio/inicio/?prompt=')).toBe('/estudio/inicio/');
+  });
+});
+
+// `desde` y `ver`: las traían las migas de las pantallas hoja de antes; un marcador viejo todavía las trae al mapa, y nivel.tsx las quita
+describe('urlSinEntrada · la URL limpia una vez leída la entrada', () => {
+  it('quita desde y ver y deja la ruta', () => {
+    expect(urlSinEntrada('http://x/estudio/?desde=mkt.blotato.agenda&ver=mapa')).toBe('/estudio/');
+  });
+
+  it('deja lo demás: otros parámetros y el ancla', () => {
+    expect(urlSinEntrada('http://x/estudio/?blotato=conectar&desde=mkt.blotato.agenda&ver=grupos#abajo')).toBe('/estudio/?blotato=conectar#abajo');
+  });
+
+  it('con uno solo de los dos también limpia (no se queda un `ver` suelto)', () => {
+    expect(urlSinEntrada('http://x/estudio/?ver=mapa')).toBe('/estudio/');
+    expect(urlSinEntrada('http://x/estudio/?desde=mkt.blotato.agenda')).toBe('/estudio/');
+  });
+
+  it('si no traía ninguno, null: no hay nada que reescribir', () => {
+    expect(urlSinEntrada('http://x/estudio/')).toBeNull();
+    expect(urlSinEntrada('http://x/estudio/?blotato=conectar')).toBeNull();
   });
 });
 

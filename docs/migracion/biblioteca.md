@@ -124,6 +124,7 @@ El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos:
 - `estadoRecorrido.ts`: `leerLlegadaDeTexto(busqueda)` (con los dos, gana `prompt`; vacío o solo espacios no cuenta; se corta a los 5000
   del cuadro) y `estadoInicial`, que con texto abre la caja (Marketing › Distrito) en lugar del mapa. `urlSinEntrada` quita también
   `prompt` y `brief`: el inicio los lee UNA vez y `history.replaceState` limpia la dirección (recargar no vuelve a llenar la caja).
+  *(E8.3: `leerLlegadaDeTexto` y `urlSinEntrada` viven en `llegada.ts`, sin nada de la caja.)*
 - `Inicio.tsx` lee el texto una vez y se lo pasa a `Caja`; `Caja.tsx` arranca en «Crear una imagen» (Imagen) o «Un video corto» (Video)
   con el texto puesto, lleva el foco a su cuadro, y dice **«Te trajimos el prompt. Cambia lo que va entre [corchetes] y pulsa Crear.»**
   (un prompt sin huecos dice «Te trajimos el prompt. Revísalo y pulsa Crear.»). El aviso se va al crear, al cambiar de pestaña o al

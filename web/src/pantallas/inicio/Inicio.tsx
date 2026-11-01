@@ -55,7 +55,8 @@ import {
   type Proyecto,
 } from './logica';
 import { Galeria, type Pendiente } from './Galeria';
-import { cajaVisible, estadoInicial, leerLlegadaDeTexto, reducir, urlSinEntrada } from './estadoRecorrido';
+import { cajaVisible, estadoInicial, reducir } from './estadoRecorrido';
+import { leerLlegadaDeTexto, urlSinEntrada } from './llegada';
 import { estadoDeNivel, urlDeAccion } from './niveles/navegar';
 import { Recorrido } from './Recorrido';
 

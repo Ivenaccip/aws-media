@@ -1,6 +1,6 @@
 // El recorrido del inicio sin React (estadoRecorrido.ts): los pasos, las migas, el «Volver a …» que queda (solo el de otra página),
-// qué hace Esc y la entrada por la URL (el doble clic vive en niveles/dobleClic.test.ts). Cada regla lleva una prueba que se rompe si
-// la regla se rompe (se vio fallar con la regla cambiada).
+// qué hace Esc y la entrada por la URL (el doble clic vive en niveles/dobleClic.test.ts, y la dirección limpia en Llegada.test.tsx).
+// Cada regla lleva una prueba que se rompe si la regla se rompe (se vio fallar con la regla cambiada).
 import { describe, expect, it } from 'vitest';
 
 import { LUGAR_INICIAL, MENU, PARAM_DESDE, PARAM_VER, areaDe, buscar, grupoDe, lugarATexto, type Lugar } from '../../marca/menu';
@@ -14,7 +14,6 @@ import {
   grupoActual,
   migasDe,
   reducir,
-  urlSinEntrada,
   type Accion,
   type EstadoRecorrido,
 } from './estadoRecorrido';
@@ -339,27 +338,5 @@ describe('estadoInicial · la entrada por ?desde=…&ver=…', () => {
         expect(e, lugarATexto(l)).toMatchObject({ paso: ver, explora: l.area, area: l.area, grupo: l.grupo });
       }
     }
-  });
-});
-
-describe('urlSinEntrada · la URL limpia una vez leída la entrada', () => {
-  it('quita desde y ver y deja la ruta', () => {
-    expect(urlSinEntrada('http://x/estudio/inicio/?desde=mkt.blotato.agenda&ver=mapa')).toBe('/estudio/inicio/');
-  });
-
-  it('deja lo demás: otros parámetros y el ancla', () => {
-    expect(urlSinEntrada('http://x/estudio/inicio/?blotato=conectar&desde=mkt.blotato.agenda&ver=grupos#abajo')).toBe(
-      '/estudio/inicio/?blotato=conectar#abajo',
-    );
-  });
-
-  it('con uno solo de los dos también limpia (no se queda un `ver` suelto)', () => {
-    expect(urlSinEntrada('http://x/estudio/inicio/?ver=mapa')).toBe('/estudio/inicio/');
-    expect(urlSinEntrada('http://x/estudio/inicio/?desde=mkt.blotato.agenda')).toBe('/estudio/inicio/');
-  });
-
-  it('si no traía ninguno, null: no hay nada que reescribir', () => {
-    expect(urlSinEntrada('http://x/estudio/inicio/')).toBeNull();
-    expect(urlSinEntrada('http://x/estudio/inicio/?blotato=conectar')).toBeNull();
   });
 });

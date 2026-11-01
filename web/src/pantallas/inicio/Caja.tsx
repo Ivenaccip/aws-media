@@ -75,7 +75,7 @@ import { Biblioteca } from './Biblioteca';
 import { CajaEdicion } from './CajaEdicion';
 import { HojaVideos } from './HojaVideos';
 import type { Pendiente } from './Galeria';
-import type { LlegadaDeTexto } from './estadoRecorrido';
+import type { LlegadaDeTexto } from './llegada';
 import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
 import {
