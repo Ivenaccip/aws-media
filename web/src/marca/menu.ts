@@ -6,7 +6,9 @@
 //   · `caja`: una pestaña de la caja del inicio (Imagen, Video, Edición). No navega: cambia de pestaña.
 //   · `href`: una página aparte (agenda, competencia…). Navega, con la transición entre pantallas de siempre.
 //   · `proximamente`: todavía no existe. Se enseña apagada (`aria-disabled`) y no lleva a ningún lado.
-// Las URL `href` son las de siempre (`/agenda.html`…): server/migracion.py las manda a la pantalla nueva.
+// Las URL `href` de las que tuvieron pantalla vieja son las de siempre (`/agenda.html`…): server/migracion.py las manda a la nueva
+// según su etapa. Las que nacieron en la UI nueva (COI, la Biblioteca, el Constructor y el Asistente) enlazan directo su lugar del
+// mapa. Desde E7 toda hoja vive ahí, bajo su grupo (/estudio/<área>/<grupo>/<pantalla>/); su carpeta plana de antes es un 302.
 import type { NombreIcono } from '../ui/iconos';
 
 /** Las tres pestañas de la caja del inicio (`Familia` de pantallas/inicio/logica.ts). */

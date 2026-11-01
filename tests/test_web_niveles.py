@@ -310,6 +310,11 @@ def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
     # MIX (E7.8), de Marketing › Avanzado: la única cuya anidada no se llama como su clave (`automaticas` en el menú, `mix` en el registro)
     assert ("/estudio/mix/", "/estudio/marketing/avanzado/automaticas/") in HOJAS_MUDADAS
     assert ("/estudio/mix/", "/estudio/marketing/avanzado/automaticas/") in HOJAS_CON_CLASICA
+    # y la Copiadora de estilos (E7.9), su hermana de Marketing › Avanzado y la última: con ella las nueve hojas del mapa viven en su lugar
+    assert ("/estudio/estilos/", "/estudio/marketing/avanzado/estilos/") in HOJAS_MUDADAS
+    assert ("/estudio/estilos/", "/estudio/marketing/avanzado/estilos/") in HOJAS_CON_CLASICA
+    assert {plana for plana, _ in HOJAS_MUDADAS} >= {f"/estudio/{p}/" for p in (
+        "coi", "biblioteca", "constructor", "asistente", "agenda", "competencia", "metricas", "mix", "estilos")}, HOJAS_MUDADAS
     assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
 
 

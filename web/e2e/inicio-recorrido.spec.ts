@@ -1145,7 +1145,7 @@ test('Avanzado: «Publicaciones automáticas» se apaga sin Blotato y abre el di
   await expect(page.getByRole('dialog', { name: 'Conecta tu Blotato' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await Promise.all([page.waitForURL(/\/estudio\/estilos\//), copiadora.click()]);
+  await Promise.all([page.waitForURL(/\/estudio\/marketing\/avanzado\/estilos\//), copiadora.click()]);
 });
 
 // ---------------------------------------------------------------------------
@@ -1548,7 +1548,7 @@ const HOJAS = [
   { ruta: 'marketing/blotato/competencia', titulo: 'Investiga tu competencia', grupo: 'Blotato' },
   { ruta: 'marketing/blotato/metricas', titulo: 'Ver mis métricas', grupo: 'Blotato' },
   { ruta: 'marketing/avanzado/automaticas', titulo: 'Publicaciones automáticas', grupo: 'Avanzado' },
-  { ruta: 'estilos', titulo: 'Copiadora de estilos', grupo: 'Avanzado' },
+  { ruta: 'marketing/avanzado/estilos', titulo: 'Copiadora de estilos', grupo: 'Avanzado' },
 ] as const;
 
 const AL_MAPA = /^Ir al mapa/;

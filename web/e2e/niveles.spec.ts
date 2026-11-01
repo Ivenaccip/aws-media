@@ -378,6 +378,10 @@ test.describe('las direcciones de antes y las tecleadas a mano', () => {
     // `nueva`, así que /mix.html tampoco va aquí
     ['/estudio/mix/', '/estudio/marketing/avanzado/automaticas/', 'Estudio de video · MIX'],
     ['/estudio/mix?x=1', '/estudio/marketing/avanzado/automaticas/?x=1', 'Estudio de video · MIX'],
+    // la Copiadora de estilos, su hermana de Marketing › Avanzado y la última que E7 mudó: también en `nueva`, así que /estilos.html
+    // tampoco va aquí
+    ['/estudio/estilos/', '/estudio/marketing/avanzado/estilos/', 'Estudio de video · Copiadora de estilos'],
+    ['/estudio/estilos?x=1', '/estudio/marketing/avanzado/estilos/?x=1', 'Estudio de video · Copiadora de estilos'],
   ];
 
   for (const [pedida, final, tituloEsperado] of VIEJAS) {

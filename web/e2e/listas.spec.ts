@@ -47,7 +47,7 @@ async function estilos(page: Page) {
     reanalizado = true;
     return r.fulfill({ json: { lanzado: true, id: 'ig-roto', creditos: 7 } });
   });
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await page.getByText('El análisis falló', { exact: false }).waitFor();
   await page.getByPlaceholder(/instagram/).fill('https://www.instagram.com/reel/roto');
   await page.waitForTimeout(300);
@@ -115,7 +115,7 @@ test('si el foco está en una tarjeta que viaja, sigue en el mismo botón al ter
       },
     });
   });
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   const copiar = page.getByRole('button', { name: 'Copiar' });
   await copiar.focus();
   await expect.poll(() => filas(page), { timeout: 15000 }).toEqual(['perfil-ig-otro', 'perfil-ig-bueno']);

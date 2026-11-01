@@ -1715,8 +1715,9 @@ def test_el_mapa_de_aserciones_solo_cita_archivos_de_prueba_que_existen(pantalla
 @pytest.mark.parametrize("pantalla", sorted(INVARIANTES))
 def test_la_pantalla_nueva_tiene_su_pagina(pantalla):
     # La página sale de la URL canónica de la pantalla (`nueva`), no de su CLAVE: la clave `inicio` ya no es una carpeta —el inicio es
-    # la principal, /estudio/ → web/estudio/index.html— y /estudio/inicio/ es un 302 (rutas por nivel, E5.3). Para las hojas que
-    # todavía no se mudan, `nueva` es /estudio/<clave>/ y la página es la de siempre.
+    # la principal, /estudio/ → web/estudio/index.html— y /estudio/inicio/ es un 302 (rutas por nivel, E5.3). Las hojas del mapa viven
+    # bajo su grupo desde E7 (/estudio/marketing/avanzado/estilos/ → web/estudio/marketing/avanzado/estilos/index.html) y su carpeta
+    # plana es un alias; las pantallas que el mapa no tiene (admin, clip…) siguen en /estudio/<clave>/.
     nueva = migracion.PANTALLAS[pantalla].nueva
     html = RAIZ / "web" / nueva.strip("/") / "index.html"
     if migracion.PANTALLAS[pantalla].etapa != "nueva" or (PANTALLAS_WEB / pantalla).is_dir():

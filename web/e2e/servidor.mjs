@@ -56,7 +56,7 @@ const TIPOS = {
 const PANTALLAS = [
   ['admin', '/admin.html', '/estudio/admin/', false],
   ['clip', '/clip.html', '/estudio/clip/', false],
-  ['estilos', '/estilos.html', '/estudio/estilos/', false],
+  ['estilos', '/estilos.html', '/estudio/marketing/avanzado/estilos/', false],
   ['competencia', '/competencia.html', '/estudio/marketing/blotato/competencia/', false],
   ['subir', '/e1.html', '/estudio/subir/', false],
   ['inicio', '/index.html', '/estudio/', false],
@@ -85,11 +85,12 @@ const ENTRADAS_VIEJAS = [
   ['brief', null, '/estudio/marketing/distrito/video/'],
   ['blotato', 'conectar', '/estudio/marketing/blotato/'],
 ];
-// migracion.alias_del_estudio(): lo que cambió de sitio, la página única de antes (E5.3) y cada hoja que E7 mudó de su carpeta plana a la
-// anidada, en el orden de PANTALLAS. Inerte mientras la carpeta vieja siga en dist (una pantalla que existe manda). Sin «;» adentro: la
-// prueba de las tablas lee hasta el primero
+// migracion.alias_del_estudio(): lo que cambió de sitio, la página única de antes (E5.3) y las nueve hojas que E7 mudó de su carpeta plana
+// a la anidada, en el orden de PANTALLAS. Inerte mientras la carpeta vieja siga en dist (una pantalla que existe manda). Sin «;» adentro:
+// la prueba de las tablas lee hasta el primero
 const ALIAS = new Map([
   ['/estudio/inicio/', '/estudio/'],
+  ['/estudio/estilos/', '/estudio/marketing/avanzado/estilos/'],
   ['/estudio/competencia/', '/estudio/marketing/blotato/competencia/'],
   ['/estudio/agenda/', '/estudio/marketing/blotato/agenda/'],
   ['/estudio/metricas/', '/estudio/marketing/blotato/metricas/'],

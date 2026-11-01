@@ -4,7 +4,9 @@ de cada pantalla ve cada quien (docs/PLAN-UI.md §3 y §4, fase 5).
 Cada pantalla que se migra a web/ pasa por tres etapas, una por deploy:
 
   · `nueva`    la pantalla nueva existe, pero solo se llega tecleando su URL
-               (/estudio/<p>/). La vieja sigue igual. Es el canario del dueño.
+               (/estudio/<p>/; las hojas del mapa, bajo su grupo:
+               /estudio/<área>/<grupo>/<p>/). La vieja sigue igual. Es el
+               canario del dueño.
   · `todos`    la URL vieja responde 302 a la nueva, SALVO que el usuario
                tenga la cookie `ui=clasica` (la deja /ui/clasica?pantalla=<p>,
                que se abre a mano: el enlace «Usar la versión anterior» del
@@ -77,7 +79,7 @@ PRINCIPAL = "/estudio/"
 @dataclass(frozen=True)
 class Pantalla:
     vieja: str       # la URL de siempre, p. ej. /admin.html
-    nueva: str       # /estudio/<p>/ (o más hondo: /estudio/<área>/<grupo>/<p>/); la principal es /estudio/
+    nueva: str       # /estudio/<p>/; las hojas del mapa, bajo su grupo (/estudio/<área>/<grupo>/<p>/, E7); la principal es /estudio/
     etapa: str
     # el HTML viejo en static/, si no se llama como la URL
     fichero: str = ""
@@ -93,8 +95,12 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.1: la primera con usuarios reales; cobra una sola cosa
     "clip": Pantalla(vieja="/clip.html", nueva="/estudio/clip/", etapa="nueva"),
     # UI·8.2: las dos cobran una cosa y comparten el patrón «lista que se
-    # sondea mientras la IA trabaja» (nucleo/useListaViva.ts)
-    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="nueva"),
+    # sondea mientras la IA trabaja» (nucleo/useListaViva.ts).
+    # E7.9 (31-oct-2026): la copiadora de estilos, la última de las nueve hojas
+    # del mapa, vive en su lugar, Marketing › Avanzado; /estudio/estilos/ (la
+    # carpeta plana de antes, que da nombre a la clave) es un alias con 302.
+    # /estilos.html sigue en `nueva`
+    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/marketing/avanzado/estilos/", etapa="nueva"),
     # E7.6 (31-oct-2026): la competencia vive en su lugar del mapa, Marketing ›
     # Blotato; /estudio/competencia/ (la carpeta plana de antes, que da nombre
     # a la clave) es un alias con 302. /competencia.html no cambia: sigue en `nueva`

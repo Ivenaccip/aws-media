@@ -8,7 +8,7 @@
 //
 // La otra mitad vigila que web/estudio/ y MENU digan lo mismo, en las dos direcciones:
 //   · toda carpeta con index.html es una ruta generada, una hoja del menú o una de la lista cerrada PLANAS (si no, «carpeta huérfana»);
-//   · toda hoja del menú (la que trae `href`) tiene su carpeta.
+//   · toda hoja del menú (la que trae `href`) tiene su carpeta, la anidada de su lugar (E7), y ninguna vive ya en una carpeta plana.
 //
 // Solo lee (o, con `--mode generar`, escribe) web/estudio/: la imagen Docker copia únicamente web/ (Dockerfile, etapa `web`).
 // Sin el prefijo `inicio.`: no son invariantes del registro de migración (tests/test_migracion_ui.py).
@@ -38,22 +38,20 @@ const INDICE = 'index.html';
 const PLANAS: readonly string[] = ['admin', 'clip', 'crear', 'imagenes', 'shorts', 'subir', '_vitrina'];
 
 /**
- * TRANSITORIA. La hoja del menú (la Copiadora de estilos) que todavía no se mudó a su dirección por nivel
- * (/estudio/marketing/avanzado/estilos/): vive en una carpeta plana. Clave = `area.grupo.pantalla` de MENU; valor = la carpeta plana
- * de web/estudio/ (casi siempre el mismo nombre: MIX, que ya salió, era `automaticas` en el menú y `mix` allá). Cada commit de la etapa
- * E7 muda UNA hoja y acorta este Map en una fila (COI, la Biblioteca, el Constructor, el Asistente, la Agenda, la Competencia, las
- * Métricas y MIX ya salieron: la que queda es la Copiadora, de Marketing › Avanzado, en etapa «nueva»); una hoja que NO está aquí
- * tiene que existir en su carpeta anidada. Es un Map y no un objeto: hay una pantalla que se llama `constructor` y choca con
- * Object.prototype.
+ * Las nueve hojas que E7 mudó de su carpeta plana (web/estudio/<p>/) a la anidada de su lugar, una por commit (E7.1 COI … E7.9 la
+ * Copiadora de estilos), por el nombre de la carpeta que dejaron. Su dirección de antes es un 302 hasta la anidada
+ * (server/migracion.py::alias_del_estudio). Solo sirve de control: «carpeta huérfana» y `ya_no_queda_ninguna_hoja_plana` las tienen que
+ * seguir marcando si alguien las vuelve a crear. La tabla transitoria de las que todavía eran planas (HOJAS_AUN_PLANAS) se acortó una
+ * fila por commit y se retiró vacía con la última.
  */
-const HOJAS_AUN_PLANAS: ReadonlyMap<string, string> = new Map([
-  ['mkt.avanzado.estilos', 'estilos'],
-]);
+const MUDADAS_EN_E7: readonly string[] = [
+  'coi', 'biblioteca', 'constructor', 'asistente', 'agenda', 'competencia', 'metricas', 'mix', 'estilos',
+];
 
 interface Hoja {
   /** `area.grupo.pantalla`, como `lugarATexto`. */
   clave: string;
-  /** La carpeta anidada que le toca: «marketing/blotato/agenda». */
+  /** Su carpeta, la anidada de su lugar: «marketing/blotato/agenda». */
   anidada: string;
   /** Su `href` en MENU: la dirección a la que el menú la manda hoy. */
   href: string;
@@ -72,24 +70,32 @@ const HOJAS: Hoja[] = MENU.flatMap(a =>
   ),
 );
 
-/** Dónde vive la hoja ahora: en su carpeta plana mientras esté en la tabla transitoria y, en cuanto sale de ella, en la anidada. */
-const carpetaDeHoja = (h: Hoja): string => HOJAS_AUN_PLANAS.get(h.clave) ?? h.anidada;
+/**
+ * Cómo puede llamarse una hoja fuera de su lugar: su clave en MENU y la de su `<Marco pantalla>` (`pagina`), que casi siempre son la
+ * misma (MIX es `automaticas` en el menú y `mix` en su página, y su carpeta plana era `mix`). Sale de MENU: una hoja nueva entra sola.
+ */
+const NOMBRES_DE_HOJA: ReadonlySet<string> = new Set(
+  MENU.flatMap(a => a.grupos.flatMap(g => g.pantallas.filter(esHoja).flatMap(p => [p.clave, p.pagina ?? p.clave]))),
+);
+
+/** De unas carpetas de web/estudio/, las que están en una carpeta plana con el nombre de una hoja (estilos), o más adentro de una. */
+const enCarpetaPlana = (carpetas: readonly string[]): string[] => carpetas.filter(c => NOMBRES_DE_HOJA.has(c.split('/')[0] ?? ''));
 
 /**
- * Las hojas ya mudadas (fuera de la tabla transitoria) que enlazan a la UI nueva por otra dirección que su anidada, como
- * «clave → href (su lugar: …)». Las que enlazan su URL vieja (`/agenda.html`) no cuentan: en `nueva` esa la decide el interruptor.
+ * Las hojas que enlazan a la UI nueva por otra dirección que su anidada, como «clave → href (su lugar: …)». Las que enlazan su URL vieja
+ * (`/agenda.html`) no cuentan: en `nueva` esa la decide el interruptor.
  */
 const enlacesFueraDeSuLugar = (hojas: readonly Hoja[]): string[] =>
   hojas
-    .filter(h => !HOJAS_AUN_PLANAS.has(h.clave) && h.href.startsWith('/estudio/') && h.href !== `/estudio/${h.anidada}/`)
+    .filter(h => h.href.startsWith('/estudio/') && h.href !== `/estudio/${h.anidada}/`)
     .map(h => `${h.clave} → ${h.href} (su lugar: /estudio/${h.anidada}/)`);
 
 /** Las carpetas que generan las 16 rutas del recorrido («» es la principal). */
 const GENERADAS: ReadonlySet<string> = new Set(rutasDelRecorrido().map(r => carpetaDe(r.url)));
 
-/** De esas carpetas, las que ni son una ruta generada, ni una hoja del menú (donde le toca hoy), ni están en la lista cerrada. */
+/** De esas carpetas, las que ni son una ruta generada, ni una hoja del menú (en su anidada), ni están en la lista cerrada. */
 function huerfanas(carpetas: readonly string[]): string[] {
-  const hojas = new Set(HOJAS.map(carpetaDeHoja));
+  const hojas = new Set(HOJAS.map(h => h.anidada));
   return carpetas.filter(c => !GENERADAS.has(c) && !hojas.has(c) && !PLANAS.includes(c));
 }
 
@@ -223,15 +229,14 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
   });
 
   it('rutas.toda_carpeta_es_del_menu.una_carpeta_que_nadie_nombra_se_detecta: la prueba sí muerde', () => {
-    // la anidada de una hoja que TODAVÍA está en la tabla transitoria es una carpeta de más: su casa es la plana
-    const anidadasDeMas = HOJAS.filter(h => HOJAS_AUN_PLANAS.has(h.clave)).map(h => h.anidada);
-    // `inicio` es la página única de antes: su carpeta se retiró (E5.3) y /estudio/inicio/ es un 302, así que volver a crearla también es de más
-    const intrusas = ['marketing/distrito/musica', 'marketing/distrito/imagen/otra', 'nueva', 'mkt', 'coi/viejo', 'marketing/assets', 'inicio', ...anidadasDeMas];
+    // `inicio` es la página única de antes: su carpeta se retiró (E5.3) y /estudio/inicio/ es un 302, así que volver a crearla también es de
+    // más. Lo mismo la carpeta plana de cada hoja que E7 mudó: su dirección es un 302 a la anidada
+    const intrusas = ['marketing/distrito/musica', 'marketing/distrito/imagen/otra', 'nueva', 'mkt', 'coi/viejo', 'marketing/assets', 'inicio', ...MUDADAS_EN_E7];
     // el control NO mira el disco (`carpetas()`): si hubiera una huérfana de verdad, la de arriba falla con su mensaje y esta seguiría
     // diciendo que la prueba muerde, en vez de fallar también con un diff de dos listas de 14 elementos que sugiere lo contrario
     expect(huerfanas(intrusas)).toEqual(intrusas);
-    // y lo que SÍ es del menú no se marca: las generadas, la lista cerrada y las hojas donde les toca hoy
-    expect(huerfanas(['', 'marketing/distrito/imagen', ...PLANAS, ...HOJAS.map(carpetaDeHoja)])).toEqual([]);
+    // y lo que SÍ es del menú no se marca: las generadas, la lista cerrada y las hojas en su anidada
+    expect(huerfanas(['', 'marketing/distrito/imagen', ...PLANAS, ...HOJAS.map(h => h.anidada)])).toEqual([]);
   });
 
   it('rutas.toda_carpeta_es_del_menu.una_carpeta_assets_o_node_modules_anidada_tambien_se_ve: solo la del primer nivel se salta', () => {
@@ -259,33 +264,43 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
     expect(claves).not.toContain('central.distrito.glosario');
     expect(claves).not.toContain('automatizaciones.distrito.actualizar');
     const hay = carpetas();
-    const sinCarpeta = HOJAS.filter(h => !hay.includes(carpetaDeHoja(h))).map(h => `${h.clave} → web/estudio/${carpetaDeHoja(h)}/index.html`);
+    const sinCarpeta = HOJAS.filter(h => !hay.includes(h.anidada)).map(h => `${h.clave} → web/estudio/${h.anidada}/index.html`);
     expect(sinCarpeta, `hojas de MENU sin su carpeta: ${sinCarpeta.join('; ')}`).toEqual([]);
   });
 
-  it('rutas.cada_hoja_tiene_su_carpeta.la_tabla_transitoria_solo_nombra_hojas_que_existen_y_cada_commit_de_E7_la_acorta', () => {
-    const claves = new Set(HOJAS.map(h => h.clave));
-    for (const [clave, plana] of HOJAS_AUN_PLANAS) {
-      expect(claves.has(clave), `la tabla transitoria nombra «${clave}», que ya no es una hoja de MENU: quita la fila`).toBe(true);
-      // la carpeta plana es una sola palabra, sin niveles: una anidada va fuera de la tabla
-      expect(plana, clave).toMatch(/^[a-z0-9]+$/);
-    }
-    // sin repetidos: dos hojas no comparten carpeta
-    expect(new Set(HOJAS_AUN_PLANAS.values()).size).toBe(HOJAS_AUN_PLANAS.size);
-    // es un Map: buscar `constructor` o `toString` (hay una pantalla que se llama así) no encuentra lo de Object.prototype
-    expect(HOJAS_AUN_PLANAS.get('constructor')).toBeUndefined();
-    expect(HOJAS_AUN_PLANAS.get('toString')).toBeUndefined();
-    expect(HOJAS_AUN_PLANAS.get('__proto__')).toBeUndefined();
+  it('rutas.cada_hoja_tiene_su_carpeta.ya_no_queda_ninguna_hoja_plana: toda hoja vive en su anidada y ninguna carpeta de primer nivel lleva su nombre', () => {
+    // E7 terminó: la Copiadora de estilos (E7.9) fue la última en dejar su carpeta plana, y la tabla transitoria se retiró vacía. Una
+    // página en web/estudio/<hoja>/ taparía el 302 de su dirección de antes (una pantalla que existe manda sobre el alias,
+    // server/web.py::destino_de) y partiría la hoja en dos direcciones. Una hoja nueva nace en su anidada
+    const planas = enCarpetaPlana(carpetas());
+    expect(planas, `web/estudio/${planas[0] ?? ''}/index.html: una hoja vive en web/estudio/<área>/<grupo>/<hoja>/, no en una plana`).toEqual([]);
+    // ni la lista cerrada le da permiso a una: PLANAS no lleva el nombre de ninguna hoja
+    expect(PLANAS.filter(c => NOMBRES_DE_HOJA.has(c))).toEqual([]);
+    // el control: los nombres salen de MENU y traen los de las nueve que E7 mudó, también `mix`, que el menú llama `automaticas`
+    expect([...NOMBRES_DE_HOJA]).toEqual(expect.arrayContaining([...MUDADAS_EN_E7, 'automaticas']));
+    // y la regla muerde: la carpeta plana de cualquiera de las nueve, o una página más adentro de ella, se marca; la anidada, no
+    const intrusas = [...MUDADAS_EN_E7, 'automaticas', 'coi/viejo', 'estilos/marketing'];
+    expect(enCarpetaPlana(intrusas)).toEqual(intrusas);
+    const enSuLugar = ['', 'marketing/avanzado/estilos', 'marketing/avanzado/automaticas', 'central/distrito/coi', ...HOJAS.map(h => h.anidada)];
+    expect(enCarpetaPlana([...enSuLugar, ...PLANAS])).toEqual([]);
+    // es un Set y no un objeto (hay una pantalla que se llama `constructor`): `toString` o `__proto__` no son nombres de hoja
+    expect(enCarpetaPlana(['toString', '__proto__', 'hasOwnProperty'])).toEqual([]);
   });
 
-  it('rutas.cada_hoja_tiene_su_carpeta.si_el_href_ya_es_de_la_nueva_la_carpeta_plana_es_la_de_su_href', () => {
-    // ya no queda en la tabla ninguna que naciera en la UI nueva (el Asistente fue la última, E7.4): la que queda enlaza su URL vieja
-    // (/estilos.html), que manda server/migracion.py. Si pasara a enlazar /estudio/<carpeta>/, tiene que ser la de su fila
-    for (const h of HOJAS) {
-      const plana = HOJAS_AUN_PLANAS.get(h.clave);
-      const m = /^\/estudio\/([^/]+)\/$/.exec(h.href);
-      if (plana !== undefined && m) expect(plana, h.clave).toBe(m[1]);
-    }
+  it('rutas.cada_hoja_tiene_su_carpeta.ya_no_queda_ninguna_hoja_plana.ningun_enlace_del_menu_va_a_una_carpeta_plana', () => {
+    // antes: una hoja de la tabla transitoria que enlazara /estudio/<carpeta>/ tenía que enlazar la de su fila. Sin tabla, ninguna enlaza una
+    // dirección de un solo tramo: o su anidada (las cuatro que nacieron en la UI nueva) o su URL vieja (/estilos.html), que manda
+    // server/migracion.py. Un enlace a la plana no rompería nada a la vista (el 302 lo esconde), pero cuesta un salto de más
+    const planos = HOJAS.filter(h => /^\/estudio\/[^/]+\/?$/i.test(h.href)).map(h => `${h.clave} → ${h.href}`);
+    expect(planos, `hojas que el menú manda a una carpeta plana: ${planos.join('; ')}`).toEqual([]);
+    // el control: las que enlazan /estudio/… existen (las cuatro que nacieron en la UI nueva) y enlazan su anidada
+    const aLaNueva = HOJAS.filter(h => h.href.startsWith('/estudio/'));
+    expect(aLaNueva.map(h => h.clave)).toEqual(
+      expect.arrayContaining([
+        'central.distrito.coi', 'central.distrito.biblioteca', 'automatizaciones.distrito.constructor', 'automatizaciones.distrito.asistente',
+      ]),
+    );
+    for (const h of aLaNueva) expect(h.href, h.clave).toBe(`/estudio/${h.anidada}/`);
   });
 
   it('rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada', () => {
@@ -293,13 +308,17 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
     // en la plana no rompe nada a la vista, cuesta un salto de más y deja la dirección vieja en los marcadores. Solo se ve aquí
     const fuera = enlacesFueraDeSuLugar(HOJAS);
     expect(fuera, `hojas mudadas que el menú todavía manda a otra dirección: ${fuera.join('; ')}`).toEqual([]);
-    // la prueba muerde: una hoja fuera de la tabla con su href plano se marca; con la anidada o con su URL vieja, no
+    // la prueba muerde: una hoja con su href plano se marca; con la anidada o con su URL vieja, no
     const hoja: Hoja = { clave: 'mkt.blotato.prueba', anidada: 'marketing/blotato/prueba', href: '/estudio/prueba/' };
     expect(enlacesFueraDeSuLugar([hoja])).toEqual(['mkt.blotato.prueba → /estudio/prueba/ (su lugar: /estudio/marketing/blotato/prueba/)']);
     expect(enlacesFueraDeSuLugar([{ ...hoja, href: '/estudio/marketing/blotato/prueba/' }, { ...hoja, href: '/prueba.html' }])).toEqual([]);
-    // y una que sigue en la tabla, con el href de su carpeta plana, tampoco: todavía vive ahí
-    const aunPlana = HOJAS.find(h => HOJAS_AUN_PLANAS.has(h.clave));
-    if (aunPlana) expect(enlacesFueraDeSuLugar([{ ...aunPlana, href: `/estudio/${HOJAS_AUN_PLANAS.get(aunPlana.clave) ?? ''}/` }])).toEqual([]);
+    // y ya no hay excepción para ninguna: la Copiadora (la última en mudarse, E7.9) con el href de su carpeta plana de antes también se marca
+    const copiadora = HOJAS.find(h => h.clave === 'mkt.avanzado.estilos');
+    expect(copiadora?.anidada).toBe('marketing/avanzado/estilos');
+    if (copiadora)
+      expect(enlacesFueraDeSuLugar([{ ...copiadora, href: '/estudio/estilos/' }])).toEqual([
+        'mkt.avanzado.estilos → /estudio/estilos/ (su lugar: /estudio/marketing/avanzado/estilos/)',
+      ]);
   });
 
   it('rutas.cada_hoja_tiene_su_carpeta.la_anidada_sale_de_las_claves_del_menu_con_marketing_en_vez_de_mkt', () => {
@@ -316,6 +335,6 @@ describe('rutas · web/estudio/ y MENU dicen lo mismo', () => {
     const sobran = PLANAS.filter(c => !hay.includes(c));
     expect(sobran, `PLANAS nombra carpetas que ya no existen: ${sobran.join(', ')}`).toEqual([]);
     // y ninguna se pisa con una ruta generada ni con una hoja
-    for (const c of PLANAS) expect(GENERADAS.has(c) || HOJAS.some(h => carpetaDeHoja(h) === c), c).toBe(false);
+    for (const c of PLANAS) expect(GENERADAS.has(c) || HOJAS.some(h => h.anidada === c), c).toBe(false);
   });
 });

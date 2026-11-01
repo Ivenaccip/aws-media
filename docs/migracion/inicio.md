@@ -36,7 +36,8 @@ vivía montada y escondida detrás de ellos. Desde E5.3 (22-oct-2026) **cada niv
 con `npm run niveles`) y `web/src/marca/estudio.test.ts` exige que sea idéntico a lo generado: no se editan a mano. Se hizo por
 etapas: E1–E4 (el servidor, las direcciones, los componentes y las 16 páginas, todavía sin enlazar), E5.1 (todo enlace va directo a
 la página del nivel), E5.2 (la raíz `/estudio/` se sirve y las entradas de antes redirigen), E5.3 (se retira la página única) y E6
-(las pruebas de navegador y estos docs). Lo que sigue (E7, E8) es plan: `docs/PLAN-UI.md` §9.
+(las pruebas de navegador y estos docs). Después, E7 (31-oct-2026) mudó las nueve hojas del mapa a la carpeta de su lugar, una por
+commit (ver abajo). Lo que sigue (E8) es plan: `docs/PLAN-UI.md` §9.
 
 ### Las direcciones
 
@@ -61,17 +62,18 @@ Las 16 son privadas: cargan `/auth.js` clásico antes del módulo, `monedero.js`
 (`iconos.js` + `trabajos.js`, D9), y se sirven con `no-cache`, ETag y 304 como cualquier pantalla. Hay **dos entradas**: las páginas
 de navegación (mapa, áreas y grupos) montan `niveles/nivel.tsx`, que **no trae la caja** ni pide sus listas; las tres de la caja
 montan `herramienta.tsx` (`Inicio` con `lugar`). La lectura del estado de Blotato solo la piden Marketing › Blotato y › Avanzado (con
-`import()`), y su diálogo, la primera vez que se abre. La Copiadora de estilos, de Marketing › Avanzado, sigue en su carpeta plana
-de siempre (`/estudio/estilos/`) hasta que E7 la muda a su dirección anidada, la última. COI, la Biblioteca, el Constructor, el
-Asistente, la Agenda, la Competencia, las Métricas y MIX ya viven en la suya, `/estudio/central/distrito/coi/` (E7.1),
-`/estudio/central/distrito/biblioteca/` (E7.2), `/estudio/automatizaciones/distrito/constructor/` (E7.3),
-`/estudio/automatizaciones/distrito/asistente/` (E7.4), `/estudio/marketing/blotato/agenda/` (E7.5),
-`/estudio/marketing/blotato/competencia/` (E7.6), `/estudio/marketing/blotato/metricas/` (E7.7) y
-`/estudio/marketing/avanzado/automaticas/` (E7.8: lleva el nombre del menú, `automaticas`, y no el de su clave, `mix`), y sus carpetas
-planas (`/estudio/coi/`, `/estudio/biblioteca/`, `/estudio/constructor/`, `/estudio/asistente/`, `/estudio/agenda/`,
-`/estudio/competencia/`, `/estudio/metricas/`, `/estudio/mix/`) son un 302 hasta ahí (ver «Lo que reenvía el servidor»). El menú de
-las tres de Marketing › Blotato y el de MIX siguen enlazando `/agenda.html`, `/competencia.html`, `/metricas.html` y `/mix.html`:
-están en `nueva`, y esa dirección la decide el interruptor de la migración.
+`import()`), y su diálogo, la primera vez que se abre. Desde E7 las nueve hojas del mapa viven en la carpeta de su lugar, bajo su
+grupo: `/estudio/central/distrito/coi/` (E7.1), `/estudio/central/distrito/biblioteca/` (E7.2),
+`/estudio/automatizaciones/distrito/constructor/` (E7.3), `/estudio/automatizaciones/distrito/asistente/` (E7.4),
+`/estudio/marketing/blotato/agenda/` (E7.5), `/estudio/marketing/blotato/competencia/` (E7.6),
+`/estudio/marketing/blotato/metricas/` (E7.7), `/estudio/marketing/avanzado/automaticas/` (E7.8: lleva el nombre del menú,
+`automaticas`, y no el de su clave, `mix`) y `/estudio/marketing/avanzado/estilos/` (E7.9, la última). Sus carpetas planas de antes
+(`/estudio/coi/`, `/estudio/biblioteca/`, `/estudio/constructor/`, `/estudio/asistente/`, `/estudio/agenda/`,
+`/estudio/competencia/`, `/estudio/metricas/`, `/estudio/mix/`, `/estudio/estilos/`) son un 302 hasta ahí (ver «Lo que reenvía el
+servidor»), y `web/src/marca/estudio.test.ts` no deja que ninguna vuelva (`rutas.cada_hoja_tiene_su_carpeta.ya_no_queda_ninguna_hoja_plana`).
+Solo siguen planas las pantallas que el mapa no tiene (admin, clip, crear, imágenes, shorts y subir). El menú de las tres de
+Marketing › Blotato y el de las dos de Marketing › Avanzado siguen enlazando `/agenda.html`, `/competencia.html`, `/metricas.html`,
+`/mix.html` y `/estilos.html`: están en `nueva`, y esa dirección la decide el interruptor de la migración.
 
 ### Cuánto pesa cada página
 
@@ -143,6 +145,7 @@ la caché del navegador y un nivel que cambie ya no llegaría. El destino sale s
 | `/estudio/competencia/` o `/estudio/competencia`, con o sin query | 302 → `/estudio/marketing/blotato/competencia/` con el mismo query (deducido de `PANTALLAS["competencia"].nueva`), en cualquier etapa; `/competencia.html` sigue su etapa (`nueva`: sirve la clásica; en `todos`, salvo la cookie `ui=clasica`, lleva a la anidada de un salto) y `/estudio/competencia/index.html` es un 404 |
 | `/estudio/metricas/` o `/estudio/metricas`, con o sin query | 302 → `/estudio/marketing/blotato/metricas/` con el mismo query (deducido de `PANTALLAS["metricas"].nueva`), en cualquier etapa; `/metricas.html` sigue su etapa (`nueva`: sirve la clásica; en `todos`, salvo la cookie `ui=clasica`, lleva a la anidada de un salto) y `/estudio/metricas/index.html` es un 404 |
 | `/estudio/mix/` o `/estudio/mix`, con o sin query | 302 → `/estudio/marketing/avanzado/automaticas/` con el mismo query (deducido de `PANTALLAS["mix"].nueva`), en cualquier etapa; `/mix.html` sigue su etapa (`nueva`: sirve la clásica; en `todos`, salvo la cookie `ui=clasica`, lleva a la anidada de un salto) y `/estudio/mix/index.html` es un 404 |
+| `/estudio/estilos/` o `/estudio/estilos`, con o sin query | 302 → `/estudio/marketing/avanzado/estilos/` con el mismo query (deducido de `PANTALLAS["estilos"].nueva`), en cualquier etapa; `/estilos.html` sigue su etapa (`nueva`: sirve la clásica; en `todos`, salvo la cookie `ui=clasica`, lleva a la anidada de un salto) y `/estudio/estilos/index.html` es un 404 |
 | `/estudio/?prompt=…` | 302 → `/estudio/marketing/distrito/imagen/?prompt=…` |
 | `/estudio/?brief=…` | 302 → `/estudio/marketing/distrito/video/?brief=…` |
 | `/estudio/?blotato=conectar` | 302 → `/estudio/marketing/blotato/?blotato=conectar` (el diálogo de conectar se abre al llegar) |

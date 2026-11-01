@@ -608,7 +608,7 @@ test('ya no hay menú «Secciones» ni «Editor de videos», y lo que traía el 
   }
   // «Copiadora de estilos» (provisional, hasta que exista Marcas): Marketing → Avanzado → Copiadora
   await expect(area.getByRole('link', { name: /Copiadora de estilos/ })).toBeVisible();
-  await Promise.all([page.waitForURL(/\/estudio\/estilos\//), area.getByRole('link', { name: /Copiadora de estilos/ }).click()]);
+  await Promise.all([page.waitForURL(/\/estudio\/marketing\/avanzado\/estilos\//), area.getByRole('link', { name: /Copiadora de estilos/ }).click()]);
   await expect(page.getByRole('heading', { level: 1, name: 'Copiadora de estilos' })).toBeVisible();
 });
 
