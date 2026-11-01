@@ -19,10 +19,11 @@ import { Migas, type Miga } from '../../../marca/Migas';
 import { areaDe, grupoDe, type AreaMenu, type GrupoMenu, type PantallaMenu } from '../../../marca/menu';
 import { urlDeArea, urlDeGrupo, urlDeHerramienta, type Nivel } from '../../../marca/rutas';
 import { unir } from '../../../ui/unir';
-import { ahora, alEscape, esDobleClicAccidental, migasDe } from '../estadoRecorrido';
+import { alEscape, migasDe } from '../estadoRecorrido';
 import { Grupos } from '../Grupos';
 import { Mapa } from '../Mapa';
 import { Pantallas } from '../Pantallas';
+import { ahora, esDobleClicAccidental } from './dobleClic';
 import { GrupoConBlotato } from './GrupoConBlotato';
 import { estadoDeNivel, urlDeAccion } from './navegar';
 

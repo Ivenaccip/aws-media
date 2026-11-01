@@ -526,10 +526,11 @@ test('Automatizaciones: Distrito trae Constructor y Asistente (enlaces) y «Actu
 //
 // Antes el primer clic cambiaba el paso en la misma página y el segundo caía sobre lo que apareció donde estaba lo pulsado. Ahora el primer clic
 // CARGA otra página y el segundo (clickCount 2) llega ya sobre ella: `dblclick()` de Playwright manda los dos de seguido, antes de que la página
-// nueva exista, y no mediría nada; el clic lento se hace a mano. Lo detiene la guarda de PaginaNivel (esDobleClicAccidental: `detail` > 1 a
-// menos de medio segundo de montada la página). Va con «reducir movimiento»: mientras corre la View Transition entre páginas el navegador
-// entrega todo clic al <html>, y el segundo clic no llegaría a nada, con guarda o sin ella. Cada caso fija QUÉ cae bajo el punto en la página
-// nueva (si no cayera nada, la prueba no mediría la guarda) y termina con el control: un clic deliberado en el mismo punto sí lo activa.
+// nueva exista, y no mediría nada; el clic lento se hace a mano. Lo detiene la guarda de PaginaNivel (esDobleClicAccidental, en
+// niveles/dobleClic.ts: `detail` > 1 a menos de medio segundo de montada la página). Va con «reducir movimiento»: mientras corre la View
+// Transition entre páginas el navegador entrega todo clic al <html>, y el segundo clic no llegaría a nada, con guarda o sin ella. Cada caso
+// fija QUÉ cae bajo el punto en la página nueva (si no cayera nada, la prueba no mediría la guarda) y termina con el control: un clic
+// deliberado en el mismo punto sí lo activa.
 
 /** Lo que tarda una persona entre los dos clics de un doble clic: es lo que se simula (la guarda cuenta 500 ms). */
 const ENTRE_CLICS_MS = 80;

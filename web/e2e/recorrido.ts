@@ -300,8 +300,8 @@ export async function sinNavegar(page: Page, accion: () => Promise<unknown>, rut
 // ---------------------------------------------------------------------------
 // el reloj de la guarda del doble clic
 //
-// La guarda de PaginaNivel (esDobleClicAccidental) descarta un segundo clic (`detail` > 1) que llega a menos de VENTANA_DOBLE_CLIC_MS (500) de
-// que la página se montó, y mide con `Date.now()`. Si la prueba lo mide con el reloj de verdad, lo que decide el resultado es cuánto tarda la
+// La guarda de PaginaNivel (esDobleClicAccidental, src/pantallas/inicio/niveles/dobleClic.ts) descarta un segundo clic (`detail` > 1) que
+// llega a menos de VENTANA_DOBLE_CLIC_MS (500) de que la página se montó, y mide con `Date.now()`. Si la prueba lo mide con el reloj de verdad, lo que decide el resultado es cuánto tarda la
 // máquina entre el primer clic y el segundo (esperar la página, mirar qué cae debajo, mover el ratón: cada paso es un viaje al navegador), y
 // con la máquina cargada el segundo clic cae pasados los 500 ms y «la guarda no funciona». Con el `Date.now()` de la página QUIETO, el tiempo
 // transcurrido es el que la prueba dice y nada más: los temporizadores siguen corriendo, solo `Date.now()` y `new Date()` dejan de avanzar.

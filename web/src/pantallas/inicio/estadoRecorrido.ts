@@ -238,19 +238,3 @@ export function leerLlegadaDeTexto(busqueda: string): LlegadaDeTexto | null {
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// el doble clic
-
-/** La hora de un clic. Aparte, y no un `Date.now()` suelto en el componente: así la lectura del reloj vive fuera del render. */
-export const ahora = (): number => Date.now();
-
-/** Cuánto después de cambiar de paso un segundo clic de un doble clic se toma por accidente. */
-export const VENTANA_DOBLE_CLIC_MS = 500;
-
-/** El doble clic en una ficha del mapa o en la tarjeta de un grupo: el primer clic cambia de paso y el segundo cae sobre lo que aparece
- *  en el mismo sitio (la primera tarjeta de las opciones, el botón de conectar o la primera pantalla de una lista), que se activaría
- *  sin que nadie lo pidiera. Un segundo clic (`detail > 1`) a menos de medio segundo del cambio no cuenta; una elección deliberada
- *  (otro clic pasado el medio segundo) y el teclado (Enter: `detail` 0) pasan. */
-export const esDobleClicAccidental = (detail: number, msDesdeElCambio: number): boolean =>
-  detail > 1 && msDesdeElCambio < VENTANA_DOBLE_CLIC_MS;

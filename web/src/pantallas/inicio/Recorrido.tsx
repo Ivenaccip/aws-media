@@ -37,17 +37,16 @@ import { Grupos } from './Grupos';
 import { Mapa } from './Mapa';
 import { Pantallas } from './Pantallas';
 import {
-  ahora,
   alEscape,
   cajaVisible,
   destinoDeVolver,
   esCaja,
-  esDobleClicAccidental,
   grupoActual,
   migasDe,
   type Accion,
   type EstadoRecorrido,
 } from './estadoRecorrido';
+import { ahora, esDobleClicAccidental } from './niveles/dobleClic';
 
 export interface PropsRecorrido {
   estado: EstadoRecorrido;

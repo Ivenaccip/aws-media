@@ -521,6 +521,7 @@ describe('niveles · el mapa de la dirección a la página', () => {
         'Pantallas.tsx',
         'estadoRecorrido.ts',
         'niveles/GrupoConBlotato.tsx',
+        'niveles/dobleClic.ts',
         'niveles/LimiteDeCarga.tsx',
         'niveles/NoEncontrada.tsx',
         'niveles/PaginaNivel.tsx',

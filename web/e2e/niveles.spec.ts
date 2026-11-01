@@ -662,7 +662,7 @@ test.describe('el celular', () => {
       await page.mouse.click(x, y);
       await esperarRuta(page, URL_MARKETING);
       await expect(paso(page)).toHaveText('Elige un grupo');
-      // VENTANA_DOBLE_CLIC_MS (src/pantallas/inicio/estadoRecorrido.ts): 499 ms después todavía es «el segundo clic de un doble clic»…
+      // VENTANA_DOBLE_CLIC_MS (src/pantallas/inicio/niveles/dobleClic.ts): 499 ms después todavía es «el segundo clic de un doble clic»…
       await relojFijo(page, 499);
       await sinNavegar(page, segundoClic, URL_MARKETING, 'a los 499 ms');
       // …y a los 500 ya es una elección: abre la tarjeta que cae bajo el punto

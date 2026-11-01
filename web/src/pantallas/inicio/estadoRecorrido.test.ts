@@ -1,17 +1,15 @@
-// El recorrido del inicio sin React (estadoRecorrido.ts): los pasos, las migas, el «Volver a …» que queda (solo el de otra página) y
-// qué hace Esc, la entrada por la URL y el doble clic. Cada regla lleva una prueba que se rompe si la regla se rompe (se vio fallar con
-// la regla cambiada).
+// El recorrido del inicio sin React (estadoRecorrido.ts): los pasos, las migas, el «Volver a …» que queda (solo el de otra página),
+// qué hace Esc y la entrada por la URL (el doble clic vive en niveles/dobleClic.test.ts). Cada regla lleva una prueba que se rompe si
+// la regla se rompe (se vio fallar con la regla cambiada).
 import { describe, expect, it } from 'vitest';
 
 import { LUGAR_INICIAL, MENU, PARAM_DESDE, PARAM_VER, areaDe, buscar, grupoDe, lugarATexto, type Lugar } from '../../marca/menu';
 import {
   REPOSO,
-  VENTANA_DOBLE_CLIC_MS,
   alEscape,
   cajaVisible,
   destinoDeVolver,
   esCaja,
-  esDobleClicAccidental,
   estadoInicial,
   grupoActual,
   migasDe,
@@ -363,20 +361,5 @@ describe('urlSinEntrada · la URL limpia una vez leída la entrada', () => {
   it('si no traía ninguno, null: no hay nada que reescribir', () => {
     expect(urlSinEntrada('http://x/estudio/inicio/')).toBeNull();
     expect(urlSinEntrada('http://x/estudio/inicio/?blotato=conectar')).toBeNull();
-  });
-});
-
-describe('esDobleClicAccidental · el segundo clic de un doble clic que cambió de paso (una ficha del mapa, la tarjeta de un grupo)', () => {
-  it('se ignora un segundo clic (detail > 1) a menos de medio segundo del cambio de paso', () => {
-    expect(esDobleClicAccidental(2, 0)).toBe(true);
-    expect(esDobleClicAccidental(2, VENTANA_DOBLE_CLIC_MS - 1)).toBe(true);
-    expect(esDobleClicAccidental(3, 120)).toBe(true);
-  });
-
-  it('una elección deliberada pasa: el primer clic, el teclado (detail 0) y un doble clic pasado el medio segundo', () => {
-    expect(esDobleClicAccidental(1, 0)).toBe(false);
-    expect(esDobleClicAccidental(0, 0)).toBe(false);
-    expect(esDobleClicAccidental(2, VENTANA_DOBLE_CLIC_MS)).toBe(false);
-    expect(esDobleClicAccidental(2, 5000)).toBe(false);
   });
 });
