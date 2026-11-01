@@ -106,7 +106,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_auth_js_va_antes_del_script_inline` | `test_migracion_ui.py::test_la_pantalla_nueva_tiene_su_pagina` |
 | `test_todo_el_arranque_va_dentro_de_domcontentloaded`, `test_la_pantalla_no_hace_poll` | `metricas.carga.una_llamada_al_abrir_y_ningun_sondeo` |
 | `test_el_boton_no_promete_actualizar_los_numeros` | `metricas.ver_numeros.solo_para_lo_que_no_sabemos_y_no_promete_actualizar` |
-| `test_el_hub_enlaza_metricas_y_ya_no_dice_proximamente` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` |
+| `test_el_hub_enlaza_metricas_y_ya_no_dice_proximamente` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` (desde E8.5, `PaginaGrupo.test.tsx`: la página de Marketing › Blotato) |
 | `test_un_contador_que_no_llego_es_un_hueco_y_no_un_cero`, `test_las_casillas_vacias_no_se_pintan` | `metricas.numeros.un_contador_que_no_llego_es_un_hueco_y_no_un_cero` |
 | `test_una_bajada_se_enseña_como_bajada` | `metricas.numeros.una_bajada_se_ensena_como_bajada` |
 | `test_los_milisegundos_no_se_enseñan_como_numero` | `metricas.numeros.los_milisegundos_no_se_ensenan_como_numero` |
@@ -150,7 +150,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 |---|---|
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | al retirar, `static/metricas.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `metricas` sale de las listas |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Blotato enlaza `/metricas.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `PaginaGrupo.test.tsx` (Marketing › Blotato enlaza `/metricas.html`; hasta E8.5, en `Inicio.test.tsx`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

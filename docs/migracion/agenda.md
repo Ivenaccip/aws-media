@@ -134,7 +134,7 @@ y `test_m23_agenda_registro.py` prueban el server y **se quedan**.
 | `test_los_puntos_suspensivos_los_decide_cortado` | `agenda.tarjeta.puntos_suspensivos_los_decide_cortado` |
 | `test_los_adjuntos_no_se_llaman_videos` | `agenda.tarjeta.adjuntos_se_llaman_archivos_y_cero_no_se_pinta` |
 | `test_b3etiqueta_cancelado_en_node`, `test_la_pildora_aviso_existe_en_el_editor` | se quedan: son del editor, no de la agenda |
-| `test_el_hub_enlaza_la_agenda` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` |
+| `test_el_hub_enlaza_la_agenda` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` (desde E8.5, `PaginaGrupo.test.tsx`: la página de Marketing › Blotato) |
 
 ### tests/test_ui14_agenda.py (la carta de diseño en la vieja)
 
@@ -165,7 +165,7 @@ y `test_m23_agenda_registro.py` prueban el server y **se quedan**.
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | al retirar, `static/agenda.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `agenda` sale de las listas |
 | `test_m20_paleta.py` (`rgba(4,9,17,0.72)`) | lo usa también `ui/Dialogo.tsx` (`VELO`) |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Blotato enlaza `/agenda.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `PaginaGrupo.test.tsx` (Marketing › Blotato enlaza `/agenda.html`; hasta E8.5, en `Inicio.test.tsx`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 
