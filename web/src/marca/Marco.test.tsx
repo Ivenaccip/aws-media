@@ -16,27 +16,28 @@ function marco(pantalla: string) {
 const migas = () => screen.queryByRole('navigation', { name: 'Dónde estás' });
 
 // Las cinco pantallas hoja que el mapa conoce, con lo que sus migas deben decir y a dónde deben llevar. Los hrefs son LITERALES
-// a propósito: la prueba es el contrato con el inicio (`?desde=<área>.<grupo>.<pantalla>&ver=mapa|grupos`, pantallas/inicio/estadoRecorrido.ts).
+// a propósito: la prueba es el contrato con las páginas del recorrido (el mapa `/estudio/` y las opciones del área `/estudio/<área>/`,
+// marca/rutas.ts): las migas van directo a ellas, sin pasar por el inicio de una sola página ni llevar `?desde=…&ver=…`.
 const EN_EL_MAPA = [
-  { pantalla: 'agenda', area: 'Marketing', grupo: 'Blotato', lugar: 'mkt.blotato.agenda' },
-  { pantalla: 'competencia', area: 'Marketing', grupo: 'Blotato', lugar: 'mkt.blotato.competencia' },
-  { pantalla: 'metricas', area: 'Marketing', grupo: 'Blotato', lugar: 'mkt.blotato.metricas' },
+  { pantalla: 'agenda', area: 'Marketing', grupo: 'Blotato', opciones: '/estudio/marketing/' },
+  { pantalla: 'competencia', area: 'Marketing', grupo: 'Blotato', opciones: '/estudio/marketing/' },
+  { pantalla: 'metricas', area: 'Marketing', grupo: 'Blotato', opciones: '/estudio/marketing/' },
   // MIX se llama «mix» en el Marco y «Publicaciones automáticas» en el mapa
-  { pantalla: 'mix', area: 'Marketing', grupo: 'Avanzado', lugar: 'mkt.avanzado.automaticas' },
-  { pantalla: 'estilos', area: 'Marketing', grupo: 'Avanzado', lugar: 'mkt.avanzado.estilos' },
+  { pantalla: 'mix', area: 'Marketing', grupo: 'Avanzado', opciones: '/estudio/marketing/' },
+  { pantalla: 'estilos', area: 'Marketing', grupo: 'Avanzado', opciones: '/estudio/marketing/' },
 ];
 
 const FUERA_DEL_MAPA = ['admin', 'crear', 'subir', 'clip', 'imagenes', 'shorts'];
 
 describe('Marco · las migas de las pantallas hoja', () => {
-  it.each(EN_EL_MAPA)('marco.migas.$pantalla: «$area › $grupo» son enlaces al inicio con la pantalla de origen', ({ pantalla, area, grupo, lugar }) => {
+  it.each(EN_EL_MAPA)('marco.migas.$pantalla: «$area › $grupo» son enlaces directos al mapa y a las opciones de su área', ({ pantalla, area, grupo, opciones }) => {
     marco(pantalla);
     const ruta = within(migas()!);
     const enlaces = ruta.getAllByRole('link');
     expect(enlaces.map(a => a.textContent)).toEqual([area, grupo]);
-    // «Marketing» abre el mapa de áreas; el grupo, las tres opciones de su área
-    expect(enlaces[0]).toHaveAttribute('href', `/estudio/inicio/?desde=${lugar}&ver=mapa`);
-    expect(enlaces[1]).toHaveAttribute('href', `/estudio/inicio/?desde=${lugar}&ver=grupos`);
+    // «Marketing» abre el mapa de áreas (la principal); el grupo, las tres opciones de su área
+    expect(enlaces[0]).toHaveAttribute('href', '/estudio/');
+    expect(enlaces[1]).toHaveAttribute('href', opciones);
   });
 
   it('marco.migas.rotulos: cada enlace dice a dónde lleva y dónde estás, con su texto visible dentro (WCAG 2.5.3)', () => {

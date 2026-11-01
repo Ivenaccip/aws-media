@@ -21,13 +21,13 @@ const cifra = (page: Page) =>
 async function estilosConCobro(page: Page, respuesta: { status: number; json: unknown }) {
   await page.route('**/api/estilo', r => r.fulfill({ json: { estilos: [], creditos: 7 } }));
   await page.route('**/api/estilo/analizar', r => r.fulfill(respuesta));
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await page.getByPlaceholder(/instagram/).fill('https://www.instagram.com/reel/abc');
 }
 
 test('la primera carga no rueda ni se tiñe', async ({ page }) => {
   await saldos(page, 120);
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
   await page.waitForTimeout(100);
   const vivas = (await page.evaluate(animacionesVivas)).map(a => a.nombre);
@@ -41,7 +41,7 @@ test('un saldo menor rueda hasta el nuevo, tiñe la píldora y lo anuncia', asyn
   // media rodada sin carreras con una máquina lenta
   await oirArranques(page, /^(transición de --mon-saldo|mon-tinte)$/);
   await saldos(page, 120, 90);
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
   await congelarArranques(page, 'transición de --mon-saldo');
   await page.evaluate(() => window.monedero!.refrescar());
@@ -115,7 +115,7 @@ test('sin CSS.registerProperty el número cambia de golpe, como antes', async ({
     Object.defineProperty(CSS, 'registerProperty', { value: undefined });
   });
   await saldos(page, 120, 90);
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
   await page.evaluate(() => window.monedero!.refrescar());
   await expect(page.locator('#mon-aviso')).toHaveText('Tu saldo: 90 créditos');
@@ -127,7 +127,7 @@ test('sin CSS.registerProperty el número cambia de golpe, como antes', async ({
 test('con sesión y sin saldo todavía, la píldora no dice «0 créditos»', async ({ page }) => {
   await page.route('**/api/auth/config', r => r.fulfill({ json: { activo: true, dominio: 'x', client_id: 'y' } }));
   await page.route('**/api/creditos', () => {}); // no contesta
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await page.locator('#raiz > *').first().waitFor();
   await page.waitForTimeout(300);
   await expect(page.locator('#mon-pill')).toBeHidden();

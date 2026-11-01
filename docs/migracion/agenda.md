@@ -1,6 +1,9 @@
 # Migración de la agenda (UI·8.6)
 
-`static/agenda.html` → `/estudio/agenda/` (`web/src/pantallas/agenda/`).
+`static/agenda.html` → `/estudio/marketing/blotato/agenda/`
+(`web/src/pantallas/agenda/`; su lugar en el mapa desde E7.5, 31-oct-2026;
+antes, la carpeta plana `/estudio/agenda/`, que desde E7 es un 302 hasta
+aquí).
 
 **No cobra nada.** Lista lo que Blotato todavía no ha publicado y deja hacer
 dos cosas: cambiar la hora y cancelar. Lo que cuida es otra cosa:
@@ -14,9 +17,35 @@ dos cosas: cambiar la hora y cancelar. Lo que cuida es otra cosa:
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/agenda/` existe; `/agenda.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/agenda.html` → 302 a `/estudio/agenda/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/marketing/blotato/agenda/` existe; `/agenda.html` sigue igual; `/estudio/agenda/` es un 302 desde E7 | este PR | ⏳ al desplegar |
+| `todos` | `/agenda.html` → 302 a `/estudio/marketing/blotato/agenda/` (de un salto), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
 | `retirada` | 302 siempre; se borran `static/agenda.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
+
+**Rutas por nivel (E7.5, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/agenda/`) por la de su lugar,
+`web/estudio/marketing/blotato/agenda/index.html`, sin cambiar nada por dentro
+(pide todo con rutas absolutas). `PANTALLAS["agenda"].nueva` dice la anidada; la
+clave, `/agenda.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/agenda/` (con y sin
+barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/blotato/agenda/` con UN 302 relativo y `no-store`, en
+cualquier etapa; `/estudio/agenda/index.html` ya es un 404. `/agenda.html` lo
+sigue decidiendo el interruptor: en `nueva` sirve la clásica; en `todos` (y con
+`UI_ETAPA_MINIMA=todos`, la de dev) lleva a la anidada de un salto, sin pasar
+por la plana, salvo con la cookie `ui=clasica`. `/ui/nueva?pantalla=agenda`
+también lleva ahí.
+
+Por eso el menú **no cambia**: Marketing › Blotato sigue enlazando
+`/agenda.html` (con `pagina: 'agenda'` para las migas), que pasa por el
+interruptor; si enlazara la anidada se lo saltaría. Las migas tampoco: van a
+`/estudio/` y a `/estudio/marketing/` (D6) sin depender de dónde vive la hoja.
+Lo fijan `tests/test_web_niveles.py` (con la app y el dist de verdad: el 302 de
+la plana y `/agenda.html` en cada etapa), `tests/test_web_rutas.py` (también
+contra `web/e2e/servidor.mjs`, que tiene la misma fila y el mismo alias) y las
+filas de la Agenda en «las direcciones de antes» de `niveles.spec.ts`. Ahí no
+va `/agenda.html`: `servidor.mjs` la redirige como en `todos`, y la app real, en
+`nueva`, sirve la clásica. Vite nombra el chunk de entrada por la carpeta
+(`marketing-blotato-agenda-*.js`); ninguna prueba dependía del nombre de antes.
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § agenda. Necesita
 una publicación programada de prueba. Cambiarle la hora y cancelarla no cuesta
@@ -42,7 +71,7 @@ Cada ID es un test de vitest con ese nombre exacto, en
 | `agenda.tarjeta.destino_en_la_tarjeta_el_dialogo_y_la_confirmacion` | «red · cuenta · destino» en los tres sitios; sin destino no queda un « · » colgando |
 | `agenda.tarjeta.puntos_suspensivos_los_decide_cortado` | el «…» solo con `cortado`; «Sin texto» si no trae |
 | `agenda.tarjeta.adjuntos_se_llaman_archivos_y_cero_no_se_pinta` | «1 archivo» / «3 archivos», 0 no se pinta y nunca dice «video» |
-| `agenda.errores.solo_el_409_ofrece_conectar_blotato` | con 409, el aviso ofrece «Conectar Blotato» (`/estudio/?blotato=conectar`); con 502, Reintentar |
+| `agenda.errores.solo_el_409_ofrece_conectar_blotato` | con 409, el aviso ofrece «Conectar Blotato» (`/estudio/marketing/blotato/?blotato=conectar`, la página del grupo Blotato); con 502, Reintentar |
 | `agenda.errores.clave_rechazada_al_listar_ofrece_conectar` | un 200 con `reconectar: true` también ofrece conectar |
 | `agenda.errores.sin_red_en_espanol_y_reintentar_recarga` | sin red, «No pudimos hablar con el servidor» (nunca «Failed to fetch»); Reintentar recarga y quita el aviso |
 | `agenda.hora.solo_manda_id_y_cuando_en_utc` | reprogramar manda **solo** `{id, cuando}`, sin `draft`, con la hora en UTC terminada en Z |
@@ -105,7 +134,7 @@ y `test_m23_agenda_registro.py` prueban el server y **se quedan**.
 | `test_los_puntos_suspensivos_los_decide_cortado` | `agenda.tarjeta.puntos_suspensivos_los_decide_cortado` |
 | `test_los_adjuntos_no_se_llaman_videos` | `agenda.tarjeta.adjuntos_se_llaman_archivos_y_cero_no_se_pinta` |
 | `test_b3etiqueta_cancelado_en_node`, `test_la_pildora_aviso_existe_en_el_editor` | se quedan: son del editor, no de la agenda |
-| `test_el_hub_enlaza_la_agenda` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` |
+| `test_el_hub_enlaza_la_agenda` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` (desde E8.5, `PaginaGrupo.test.tsx`: la página de Marketing › Blotato) |
 
 ### tests/test_ui14_agenda.py (la carta de diseño en la vieja)
 
@@ -136,7 +165,7 @@ y `test_m23_agenda_registro.py` prueban el server y **se quedan**.
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | al retirar, `static/agenda.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `agenda` sale de las listas |
 | `test_m20_paleta.py` (`rgba(4,9,17,0.72)`) | lo usa también `ui/Dialogo.tsx` (`VELO`) |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Blotato enlaza `/agenda.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `PaginaGrupo.test.tsx` (Marketing › Blotato enlaza `/agenda.html`; hasta E8.5, en `Inicio.test.tsx`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

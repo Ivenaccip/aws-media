@@ -224,10 +224,13 @@ export const MAX_LLEVAR = 1800;
 /** Y la dirección entera no pasa de esto (con tildes, cada letra pesa hasta 6 al escribirla en una URL). */
 const MAX_URL = 6000;
 
-/** A dónde lleva cada caja. Plan B del contrato, si el Inicio no pudiera leerlo: `/estudio/imagenes/` con `prompt` y `/estudio/clip/` con `brief`. */
+/**
+ * A dónde lleva cada caja: directo a la página de su pestaña (una dirección por herramienta, marca/rutas.ts), con el texto en `prompt` o
+ * `brief`. Plan B del contrato, si la Caja no pudiera leerlo: `/estudio/imagenes/` con `prompt` y `/estudio/clip/` con `brief`.
+ */
 const DESTINO: Record<Llevable, { ruta: string; param: string; pestana: string }> = {
-  imagen: { ruta: '/estudio/inicio/', param: 'prompt', pestana: 'Imagen' },
-  video: { ruta: '/estudio/inicio/', param: 'brief', pestana: 'Video' },
+  imagen: { ruta: '/estudio/marketing/distrito/imagen/', param: 'prompt', pestana: 'Imagen' },
+  video: { ruta: '/estudio/marketing/distrito/video/', param: 'brief', pestana: 'Video' },
 };
 
 export const pestanaDe = (l: Llevable): string => DESTINO[l].pestana;

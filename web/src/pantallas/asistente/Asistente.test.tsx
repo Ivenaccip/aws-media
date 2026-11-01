@@ -401,7 +401,7 @@ describe('Asistente', () => {
     const { u } = await abrir({ tiempo: true, props: { ir, almacen } });
     await hastaElResultado(u);
     await u.click(screen.getByRole('button', { name: 'Abrir en el constructor' }));
-    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/constructor/');
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/automatizaciones/distrito/constructor/');
     // lo que queda guardado es el flujo del Asistente, con su marca, y NO lo que se escribió
     const guardado = almacen.datos.get(CLAVE_BORRADOR)!;
     const leido = leerBorrador(guardado);
@@ -441,7 +441,7 @@ describe('Asistente', () => {
     // confirmar: reemplaza y navega, una sola vez
     await u.click(abrirBoton);
     await u.click(await screen.findByRole('button', { name: 'Reemplazar y abrir' }));
-    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/constructor/');
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/automatizaciones/distrito/constructor/');
     const nuevo = leerBorrador(almacen.datos.get(CLAVE_BORRADOR));
     expect(nuevo.ok && nuevo.origen).toBe('asistente');
     expect(almacen.datos.get(CLAVE_BORRADOR)).not.toBe(previo);
@@ -475,7 +475,7 @@ describe('Asistente', () => {
     const caja = titulo.closest('section')!;
     expect(within(caja).getByText('Todavía no sabemos armar esto con n8n.')).toBeInTheDocument();
     expect(within(caja).getByText(SIN_COBERTURA.faltan[0]!)).toBeInTheDocument();
-    expect(within(caja).getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/constructor/');
+    expect(within(caja).getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/automatizaciones/distrito/constructor/');
     // no es un error ni un resultado: no hay descarga, y lo escrito sigue en el cuadro
     expect(screen.queryByRole('button', { name: 'Descargar .json' })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -512,7 +512,7 @@ describe('Asistente', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /Armar/ })).toBeNull();
     expect(screen.queryByText('Ejemplos para empezar')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/constructor/');
+    expect(screen.getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/automatizaciones/distrito/constructor/');
     // sin letrero de prueba: el modo no es «prueba»
     expect(screen.queryByText(/Prueba: por ahora/)).toBeNull();
     expect(pedidos(f)).toHaveLength(0);
@@ -733,7 +733,7 @@ describe('Asistente', () => {
     expect(poner.mock.calls[0]![0]).toBe(CLAVE_BORRADOR);
     expect(String(poner.mock.calls[0]![1])).not.toContain('hoja de cálculo');
     expect(String(poner.mock.calls[0]![1])).not.toContain(TEXTO);
-    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/constructor/');
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/automatizaciones/distrito/constructor/');
   });
 
   // ---------------------------------------------------------------- la pestaña

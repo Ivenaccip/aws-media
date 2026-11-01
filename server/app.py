@@ -1189,6 +1189,8 @@ mimetypes.add_type("font/woff2", ".woff2")
 
 
 _SIN_CACHE = {"Cache-Control": "no-cache"}
+# los 302 hacia el estudio: que ninguna caché los guarde (los de server/web.py y server/migracion.py llevan lo mismo)
+_NO_GUARDAR = {"Cache-Control": "no-store"}
 _REVALIDA_BORDE = {"Cache-Control": "no-cache",
                    "Cloudflare-CDN-Cache-Control": "max-age=60"}
 
@@ -1281,29 +1283,34 @@ def _editor_imagenes_viejo():
 
 
 # Tarjetas 37 y 38 · «/» es la portada pública y el estudio vive en /estudio/.
-# /estudio/ es la URL vieja del inicio: la decide server/migracion.py (abajo).
+# /estudio/ es la principal (el mapa): la sirve server/web.py (web.montar, abajo).
 # Cualquier «/?algo» es un enlace viejo al estudio (?p=, ?blotato=conectar…):
-# 302 conservando el query. 302 y no 301, igual que arriba.
-# no-cache en los tres (_SIN_CACHE, arriba): son HTML y un cambio de portada
+# 302 conservando el query. 302 y no 301, igual que arriba; los dos 302 de aquí
+# van con `no-store`, como los de web.py y migracion.py: un 302 guardado en una
+# caché no se entera del deploy que cambia a dónde lleva.
+# no-cache en las páginas (_SIN_CACHE, arriba): son HTML y un cambio de portada
 # tiene que llegar solo.
 
 
 @app.get("/", include_in_schema=False)
 def _portada(request: Request):
     if request.url.query:
-        return RedirectResponse(f"/estudio/?{request.url.query}", status_code=302)
+        return RedirectResponse(f"/estudio/?{request.url.query}", status_code=302, headers=_NO_GUARDAR)
     return FileResponse(ROOT / "static" / "portada.html", headers=_SIN_CACHE)
 
 
-@app.get("/estudio", include_in_schema=False)
+# HEAD como GET (`curl -I`, los verificadores de enlaces): sin él, HEAD /estudio caía en static/ y daba 404
+@app.api_route("/estudio", methods=["GET", "HEAD"], include_in_schema=False)
 def _estudio_sin_barra(request: Request):
     q = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(f"/estudio/{q}", status_code=302)
+    return RedirectResponse(f"/estudio/{q}", status_code=302, headers=_NO_GUARDAR)
 
 
-# /estudio/ lo decide server/migracion.py: es la URL vieja del inicio, que se
-# migra a /estudio/inicio/ (UI·8.4). Desde el 14-oct-2026 está en `todos`:
-# 302 a la nueva, o el mismo index.html (no-cache) con la cookie de la clásica.
+# /estudio/ (la principal) la registra server/web.py (web.montar, abajo); con la
+# cookie de la clásica, o sin web/dist, lleva al inicio clásico
+# (migracion.principal_a_la_clasica). La URL vieja del inicio es /index.html:
+# la decide server/migracion.py (en `todos`, 302 a /estudio/; con la cookie
+# `ui=clasica`, el index.html de siempre con no-cache).
 
 
 @app.get("/entrar", include_in_schema=False)

@@ -1,11 +1,11 @@
 // La lista de pantallas de un grupo que no es la caja (Pantallas.tsx): lo que antes hacía el menú de la izquierda (UI·8.4), con las
-// mismas reglas (M23 · C). Aquí solo, sin el recorrido: el camino completo (mapa → opciones → lista → diálogo) está en
-// Recorrido.test.tsx e Inicio.test.tsx.
+// mismas reglas (M23 · C). Aquí sola, sin la página: la página de cada grupo (con su título, sus migas y el diálogo de Blotato) está en
+// niveles/PaginaNivel.test.tsx y niveles/PaginaGrupo.test.tsx.
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { grupoDe } from './estadoRecorrido';
+import { grupoDe } from '../../marca/menu';
 import { Pantallas } from './Pantallas';
 
 const blotato = grupoDe('mkt', 'blotato')!;
@@ -119,7 +119,7 @@ describe('Pantallas · Avanzado', () => {
 
 describe('Pantallas · lo que todavía no existe', () => {
   // Lo de Central › Distrito que ya existe (se enciende pantalla por pantalla): COI y la Biblioteca de prompts (16-oct-2026).
-  const ENCENDIDAS: Record<string, string> = { COI: '/estudio/coi/', 'Biblioteca de prompts': '/estudio/biblioteca/' };
+  const ENCENDIDAS: Record<string, string> = { COI: '/estudio/central/distrito/coi/', 'Biblioteca de prompts': '/estudio/central/distrito/biblioteca/' };
 
   it('Central › Distrito: lo que todavía no existe sale apagado con «Próximamente» y no es un enlace; COI y la Biblioteca de prompts, encendidas, llevan a su pantalla', () => {
     render(<Pantallas grupo={distritoCentral} conectado alConectar={() => undefined} />);
@@ -157,5 +157,28 @@ describe('Pantallas · lo que todavía no existe', () => {
     expect(screen.getByText('Todavía no está disponible.')).toBeInTheDocument();
     expect(screen.queryByRole('list')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+// Automatizaciones (dueño, 20-oct-2026): su Distrito trae dos hojas y una apagada, y «Tus automatizaciones» todavía no trae nada
+describe('Pantallas · Automatizaciones', () => {
+  const distrito = grupoDe('automatizaciones', 'distrito')!;
+  const tus = grupoDe('automatizaciones', 'tus')!;
+
+  it('Distrito: dos enlaces y una tarjeta «Próximamente» quieta; sin botón de conectar (no depende de Blotato) aunque Blotato no esté conectado', () => {
+    render(<Pantallas grupo={distrito} conectado={false} alConectar={() => undefined} />);
+    const filas = within(screen.getByRole('list')).getAllByRole('listitem');
+    expect(filas.map(f => f.querySelector('b')?.textContent)).toEqual(['Constructor', 'Asistente', 'Actualizar flujos']);
+    expect(screen.queryAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/automatizaciones/distrito/asistente/']);
+    for (const a of screen.getAllByRole('link')) expect(a).not.toHaveAttribute('aria-disabled');
+    expect(filas[2]).toHaveTextContent('Próximamente');
+    expect(filas[2]!.firstElementChild!.className.split(/\s+/)).toEqual(expect.arrayContaining(['bg-hundido', 'text-secundario']));
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('«Tus automatizaciones» dice que todavía no está disponible', () => {
+    render(<Pantallas grupo={tus} conectado alConectar={() => undefined} />);
+    expect(screen.getByText('Todavía no está disponible.')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).toBeNull();
   });
 });

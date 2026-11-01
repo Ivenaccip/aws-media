@@ -3,7 +3,8 @@
 //   · `conectado === null` (no se sabe: la consulta falló o aún no contesta) NO apaga nada: dejar sin sus herramientas a quien sí pagó,
 //     porque un fetch no respondió, es peor que dejar entrar a quien no;
 //   · `?blotato=conectar` (el editor de cortes y las pantallas de Blotato mandan aquí cuando falta la conexión) abre el diálogo de
-//     una vez. Esa entrada NO se limpia de la dirección, como en el inicio de hoy: `urlSinEntrada` solo limpia desde/ver/prompt/brief.
+//     una vez. Esa entrada NO se limpia de la dirección (recargar vuelve a ofrecer conectar), como en la caja: `urlSinEntrada`
+//     (../llegada.ts) solo limpia desde/ver/prompt/brief.
 //
 // Qué pesa y cuándo se pide (el mapa, las áreas y los demás grupos no cargan nada de esto):
 //   · ESTE archivo es chico y viaja con la página: la lista (`Pantallas`) se pinta ya, con su botón y su foco, y es SIEMPRE la misma —
@@ -12,8 +13,12 @@
 //   · la lectura del estado (`logica`: api, tarifas, modelos…) va con import() y se pide al montar;
 //   · el diálogo (Blotato.tsx: Radix, Confirmar, Guardado…) va con import() y solo se pide la primera vez que se abre. Avanzado, que no
 //     ofrece el botón, no lo trae hasta que alguien pulsa una herramienta apagada.
+//   · el foco: lo que lo tenía se anota al PEDIR abrir (`abrir`), no cuando el diálogo se monta. Si la lectura llega antes que el código,
+//     el diálogo se monta ya con el campo de la clave enfocado (su autoFocus) y ya no hay botón que recordar: al cerrar el foco caía a <body>.
+//     Lo que se pulsó llega de `Pantallas` (`desde`): un navegador que no enfoca lo que se pulsa con el ratón (Safari, con un botón) no lo
+//     deja en `document.activeElement`.
 // Si el diálogo no llega, `LimiteDeCarga` lo dice donde se pulsó; la lista sigue ahí.
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { GrupoMenu, PantallaMenu } from '../../../marca/menu';
 import { Aviso } from '../../../ui/Aviso';
@@ -42,8 +47,13 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
   const [pedido, setPedido] = useState(false);
   const [estado, setEstado] = useState<EstadoBlotato | null>(null);
   const [error, setError] = useState('');
+  // lo que se pulsó para abrir (el botón de conectar, una tarjeta apagada) o, sin eso, lo que tenía el foco: a donde vuelve al cerrar.
+  // null = nada (abierto por la dirección)
+  const origenDelFoco = useRef<HTMLElement | null>(null);
 
-  const abrir = useCallback(() => {
+  const abrir = useCallback((desde?: HTMLElement) => {
+    const activo = desde ?? document.activeElement;
+    origenDelFoco.current = activo instanceof HTMLElement && activo !== document.body ? activo : null;
     setEstado(null);
     setError('');
     setAbierto(true);
@@ -60,7 +70,7 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
   useEffect(() => {
     // abrir() y el setConectado de la lectura ponen estado: van en un callback, no en el cuerpo del efecto
     if (new URLSearchParams(location.search).get('blotato') === 'conectar') {
-      Promise.resolve().then(abrir);
+      Promise.resolve().then(() => abrir());
     } else {
       leer(true).then(
         d => setConectado(d.conectado),
@@ -84,6 +94,7 @@ export function GrupoConBlotato({ grupo, hrefDe }: PropsGrupoConBlotato) {
             <DialogoBlotato
               abierto={abierto}
               alCambiar={setAbierto}
+              focoAlCerrar={origenDelFoco}
               estado={estado}
               errorCarga={error}
               alSaber={d => {

@@ -1,6 +1,9 @@
 # Migración de métricas (UI·8.6)
 
-`static/metricas.html` → `/estudio/metricas/` (`web/src/pantallas/metricas/`).
+`static/metricas.html` → `/estudio/marketing/blotato/metricas/`
+(`web/src/pantallas/metricas/`; su lugar en el mapa desde E7.7, 31-oct-2026;
+antes, la carpeta plana `/estudio/metricas/`, que desde E7 es un 302 hasta
+aquí).
 
 **No cobra nada.** El server lo dice así en `server/metricas_api.py`: «cero
 créditos».
@@ -18,9 +21,37 @@ números. Cuida dos cosas:
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/metricas/` existe; `/metricas.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/metricas.html` → 302 a `/estudio/metricas/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/marketing/blotato/metricas/` existe; `/metricas.html` sigue igual; `/estudio/metricas/` es un 302 desde E7 | este PR | ⏳ al desplegar |
+| `todos` | `/metricas.html` → 302 a `/estudio/marketing/blotato/metricas/` (de un salto), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
 | `retirada` | 302 siempre; se borran `static/metricas.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
+
+**Rutas por nivel (E7.7, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/metricas/`) por la de su lugar,
+`web/estudio/marketing/blotato/metricas/index.html`, sin cambiar nada por
+dentro (pide todo con rutas absolutas). `PANTALLAS["metricas"].nueva` dice la
+anidada; la clave, `/metricas.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/metricas/` (con y
+sin barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/blotato/metricas/` con UN 302 relativo y `no-store`, en
+cualquier etapa; `/estudio/metricas/index.html` ya es un 404.
+`/metricas.html` lo sigue decidiendo el interruptor: en `nueva` sirve la
+clásica; en `todos` (y con `UI_ETAPA_MINIMA=todos`, la de dev) lleva a la
+anidada de un salto, sin pasar por la plana, salvo con la cookie
+`ui=clasica`. `/ui/nueva?pantalla=metricas` también lleva ahí.
+
+Por eso el menú **no cambia**, como el de la Agenda y el de la Competencia:
+Marketing › Blotato sigue enlazando `/metricas.html` (con `pagina: 'metricas'`
+para las migas), que pasa por el interruptor; si enlazara la anidada se lo
+saltaría. Sin Blotato se sigue apagando a propósito (dueño, 18-sep). Las migas
+tampoco cambian: van a `/estudio/` y a `/estudio/marketing/` (D6) sin depender
+de dónde vive la hoja. Lo fijan `tests/test_web_niveles.py` (con la app y el
+dist de verdad: el 302 de la plana y `/metricas.html` en cada etapa),
+`tests/test_web_rutas.py` (la tabla y el alias de `web/e2e/servidor.mjs`,
+iguales a los de web.py) y las filas de las Métricas en «las direcciones de
+antes» de `niveles.spec.ts`. Ahí no va `/metricas.html`: `servidor.mjs` la
+redirige como en `todos`, y la app real, en `nueva`, sirve la clásica. Vite
+nombra el chunk de entrada por la carpeta (`marketing-blotato-metricas-*.js`);
+ninguna prueba dependía del nombre de antes.
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § métricas. Solo
 lee y no cuesta nada.
@@ -75,7 +106,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_auth_js_va_antes_del_script_inline` | `test_migracion_ui.py::test_la_pantalla_nueva_tiene_su_pagina` |
 | `test_todo_el_arranque_va_dentro_de_domcontentloaded`, `test_la_pantalla_no_hace_poll` | `metricas.carga.una_llamada_al_abrir_y_ningun_sondeo` |
 | `test_el_boton_no_promete_actualizar_los_numeros` | `metricas.ver_numeros.solo_para_lo_que_no_sabemos_y_no_promete_actualizar` |
-| `test_el_hub_enlaza_metricas_y_ya_no_dice_proximamente` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` |
+| `test_el_hub_enlaza_metricas_y_ya_no_dice_proximamente` | se queda mientras viva `static/index.html`; en la nueva, `Inicio.test.tsx` (desde E8.5, `PaginaGrupo.test.tsx`: la página de Marketing › Blotato) |
 | `test_un_contador_que_no_llego_es_un_hueco_y_no_un_cero`, `test_las_casillas_vacias_no_se_pintan` | `metricas.numeros.un_contador_que_no_llego_es_un_hueco_y_no_un_cero` |
 | `test_una_bajada_se_enseña_como_bajada` | `metricas.numeros.una_bajada_se_ensena_como_bajada` |
 | `test_los_milisegundos_no_se_enseñan_como_numero` | `metricas.numeros.los_milisegundos_no_se_ensenan_como_numero` |
@@ -119,7 +150,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 |---|---|
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | al retirar, `static/metricas.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `metricas` sale de las listas |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Blotato enlaza `/metricas.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `PaginaGrupo.test.tsx` (Marketing › Blotato enlaza `/metricas.html`; hasta E8.5, en `Inicio.test.tsx`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

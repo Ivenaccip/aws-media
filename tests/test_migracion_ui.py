@@ -365,9 +365,11 @@ INVARIANTES = {
         "inicio.listas.textos_del_server_como_texto",
         # 15-oct-2026 (dueño, «Mapa con Irremplazables»): el menú de la izquierda ya no existe. Estos `inicio.menu.*` y los
         # `inicio.blotato.*` de más abajo se conservaron CON SU NOMBRE y los cumple la ruta nueva (mapa → opciones → lista de
-        # pantallas): docs/migracion/inicio.md dice qué afirma ahora cada uno. El recorrido mismo y el modo «De videos a Shorts» de
-        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (estadoRecorrido.test.ts, Recorrido.test.tsx,
-        # Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no se registran aquí
+        # pantallas); desde E8.5 los prueba la página de cada grupo (web/src/pantallas/inicio/niveles/PaginaGrupo.test.tsx):
+        # docs/migracion/inicio.md dice qué afirma ahora cada uno. El recorrido mismo y el modo «De videos a Shorts» de
+        # la caja son función nueva, no algo que la pantalla vieja garantizara: sus pruebas (las páginas de nivel en niveles/,
+        # con prefijo `niveles.`; Mapa.test.tsx, Pantallas.test.tsx, EdicionShorts.test.tsx) no llevan `inicio.` y por eso no
+        # se registran aquí. Las del recorrido en página (estadoRecorrido.test.ts, Recorrido.test.tsx) se retiraron en E8.7
         "inicio.menu.entradas_y_grupos_en_orden",
         # 14-oct-2026 (dueño): «Editor de videos» sale del menú y el título pasa a «Irremplazables» en dorado
         "inicio.menu.editor_de_videos_salio_y_las_otras_dos_de_su_grupo_se_quedan",
@@ -1714,9 +1716,25 @@ def test_el_mapa_de_aserciones_solo_cita_archivos_de_prueba_que_existen(pantalla
 
 @pytest.mark.parametrize("pantalla", sorted(INVARIANTES))
 def test_la_pantalla_nueva_tiene_su_pagina(pantalla):
-    html = RAIZ / "web" / "estudio" / pantalla / "index.html"
+    # La página sale de la URL canónica de la pantalla (`nueva`), no de su CLAVE: la clave `inicio` ya no es una carpeta —el inicio es
+    # la principal, /estudio/ → web/estudio/index.html— y /estudio/inicio/ es un 302 (rutas por nivel, E5.3). Las hojas del mapa viven
+    # bajo su grupo desde E7 (/estudio/marketing/avanzado/estilos/ → web/estudio/marketing/avanzado/estilos/index.html) y su carpeta
+    # plana es un alias; las pantallas que el mapa no tiene (admin, clip…) siguen en /estudio/<clave>/.
+    nueva = migracion.PANTALLAS[pantalla].nueva
+    html = RAIZ / "web" / nueva.strip("/") / "index.html"
     if migracion.PANTALLAS[pantalla].etapa != "nueva" or (PANTALLAS_WEB / pantalla).is_dir():
-        assert html.is_file(), f"falta {html.relative_to(RAIZ)}"
-        texto = html.read_text(encoding="utf-8")
+        assert html.is_file(), f"falta {html.relative_to(RAIZ)} (la página de {nueva})"
+        # sin los comentarios: una mención de auth.js en el comentario de la plantilla no cuenta como cargarlo
+        texto = re.sub(r"<!--.*?-->", "", html.read_text(encoding="utf-8"), flags=re.S)
         # privada: auth.js clásico antes del módulo (docs/PLAN-UI.md §3)
+        assert '<script src="/auth.js">' in texto, f"{html.relative_to(RAIZ)} no carga /auth.js"
         assert texto.index('<script src="/auth.js">') < texto.index('type="module"')
+
+
+def test_el_inicio_ya_no_es_una_carpeta_y_su_pagina_es_la_principal():
+    """El inicio de una sola página se retiró: su carpeta no vuelve, la pantalla `inicio` ES la principal y esa página es la que el guardián
+    de arriba exige privada. Si alguien devuelve web/estudio/inicio/, la clave deja de ser el nombre de una carpeta por accidente."""
+    assert migracion.PANTALLAS["inicio"].nueva == "/estudio/"
+    assert (RAIZ / "web" / "estudio" / "index.html").is_file()
+    assert not (RAIZ / "web" / "estudio" / "inicio").exists(), "web/estudio/inicio/ se retiró: /estudio/inicio/ es un 302 a /estudio/"
+    assert not (PANTALLAS_WEB / "inicio" / "principal.tsx").exists(), "su entrada (principal.tsx) se retiró con la página"

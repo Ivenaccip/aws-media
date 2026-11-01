@@ -1,6 +1,11 @@
 # Migración de MIX (UI·8.8)
 
-`static/mix.html` → `/estudio/mix/` (`web/src/pantallas/mix/`).
+`static/mix.html` → `/estudio/marketing/avanzado/automaticas/`
+(`web/src/pantallas/mix/`; su lugar en el mapa desde E7.8, 31-oct-2026;
+antes, la carpeta plana `/estudio/mix/`, que desde E7 es un 302 hasta
+aquí). La dirección dice `automaticas`, la clave que le da el menú
+(`mkt.avanzado.automaticas`); el registro (`PANTALLAS["mix"]`), la carpeta
+de `web/src/pantallas/` y los IDs `mix.*` la siguen llamando `mix`.
 
 MIX es publicidad automática: sale una publicación al día, sola. Es la pantalla
 con más dinero en juego, porque **cobra la campaña entera al encenderla**
@@ -29,9 +34,38 @@ costo, pero no el ejemplo.
 
 | Etapa | Qué pasa | Cómo se pasa | Estado |
 |---|---|---|---|
-| `nueva` | `/estudio/mix/` existe; `/mix.html` sigue igual | este PR | ⏳ al desplegar |
-| `todos` | `/mix.html` → 302 a `/estudio/mix/`, salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
+| `nueva` | `/estudio/marketing/avanzado/automaticas/` existe; `/mix.html` sigue igual; `/estudio/mix/` es un 302 desde E7 | este PR | ⏳ al desplegar |
+| `todos` | `/mix.html` → 302 a `/estudio/marketing/avanzado/automaticas/` (de un salto), salvo la cookie `ui=clasica` | `etapa="todos"` + deploy | pendiente |
 | `retirada` | 302 siempre; se borran `static/mix.html` y sus tests viejos | `etapa="retirada"`, `git rm` + deploy | pendiente |
+
+**Rutas por nivel (E7.8, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/mix/`) por la de su lugar,
+`web/estudio/marketing/avanzado/automaticas/index.html`, sin cambiar nada por
+dentro (pide todo con rutas absolutas). Es la única hoja cuya anidada no se
+llama como su clave del registro: `PANTALLAS["mix"].nueva` dice la anidada, y
+la clave, `/mix.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/mix/` (con y sin
+barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/avanzado/automaticas/` con UN 302 relativo y `no-store`,
+en cualquier etapa; `/estudio/mix/index.html` ya es un 404. `/mix.html` lo
+sigue decidiendo el interruptor: en `nueva` sirve la clásica; en `todos` (y
+con `UI_ETAPA_MINIMA=todos`, la de dev) lleva a la anidada de un salto, sin
+pasar por la plana, salvo con la cookie `ui=clasica`.
+`/ui/nueva?pantalla=mix` también lleva ahí.
+
+Por eso el menú **no cambia**, como el de las tres de Marketing › Blotato:
+Marketing › Avanzado sigue enlazando `/mix.html` (con `pagina: 'mix'` para
+las migas), que pasa por el interruptor; si enlazara la anidada se lo
+saltaría. Sin Blotato se sigue apagando. Las migas tampoco cambian: van a
+`/estudio/` y a `/estudio/marketing/` (D6) sin depender de dónde vive la
+hoja. Lo fijan `tests/test_web_niveles.py` (con la app y el dist de verdad:
+el 302 de la plana y `/mix.html` en cada etapa), `tests/test_web_rutas.py`
+(la tabla y el alias de `web/e2e/servidor.mjs`, iguales a los de web.py) y
+las filas de MIX en «las direcciones de antes» de `niveles.spec.ts`. Ahí no
+va `/mix.html`: `servidor.mjs` la redirige como en `todos`, y la app real, en
+`nueva`, sirve la clásica. Vite nombra el chunk de entrada por la carpeta
+(`marketing-avanzado-automaticas-*.js`); ninguna prueba dependía del nombre
+de antes.
 
 Antes de `todos`, el dueño hace el QA de `docs/QA-UI.md` § MIX. El ejemplo es
 gratis. **Encender cobra días × 5 créditos** 💳: la prueba más barata es una
@@ -46,7 +80,7 @@ Cada ID es el nombre exacto de un test de vitest en
 | ID | Qué garantiza |
 |---|---|
 | `mix.carga.una_llamada_al_abrir_y_restaura_el_borrador` | Una llamada a `/api/mix` y una a `/cuentas`, aunque StrictMode monte dos veces. Restaura el borrador: motivo, tono, hora, cuenta y foto. El ejemplo ya visto sigue valiendo y no se vuelve a pedir |
-| `mix.blotato.sin_clave_el_formulario_no_se_usa_y_lleva_a_conectar` | Sin Blotato, el aviso y el formulario `inert`. Un clic lleva a `/estudio/?blotato=conectar` y no se piden cuentas |
+| `mix.blotato.sin_clave_el_formulario_no_se_usa_y_lleva_a_conectar` | Sin Blotato, el aviso y el formulario `inert`. Un clic lleva a `/estudio/marketing/blotato/?blotato=conectar` y no se piden cuentas |
 | `mix.cuentas.sin_clave_ofrece_conectar_y_otro_fallo_reintentar` | Un 409 al traer las cuentas ofrece conectar; cualquier otro fallo, Reintentar |
 | `mix.cuentas.la_que_ya_no_esta_conectada_se_dice` | La cuenta guardada que ya no está se dice, y el selector queda vacío |
 | `mix.foto.tipo_y_tamano_antes_de_subir` | Solo JPG, PNG o WebP de hasta 12 MB, sin llamar a nadie |
@@ -124,7 +158,7 @@ Al pasar a `retirada` se borran (o se recortan) estos tests junto con
 | `test_ui_escapar.py::test_se_encontraron_las_esc` | `mix.textos.del_servidor_como_texto` (React escapa); al retirar, `static/mix.html` sale de la lista |
 | `test_ui14_todas.py`, `test_ui15_trabajos.py` (PANTALLAS) | al retirar, `mix` sale de las listas |
 | `test_m4_recarga_cerrada.py` (`CON_BOTON`) | `mix.cobro.si_no_alcanza_no_se_enciende_y_dice_a_quien_escribir` con `<Recarga>`; `test_web_solo_ofrece_recargar_desde_recarga_tsx` ya vigila `web/` |
-| `test_m25_entrada.py`, `Inicio.test.tsx` (Marketing › Avanzado enlaza `/mix.html`) | se quedan: el 302 hace el resto |
+| `test_m25_entrada.py`, `PaginaGrupo.test.tsx` (Marketing › Avanzado enlaza `/mix.html`; hasta E8.5, en `Inicio.test.tsx`) | se quedan: el 302 hace el resto |
 
 ## Diferencias a propósito
 

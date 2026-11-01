@@ -1,8 +1,9 @@
-// Lo que comparten las pruebas de navegador del Asistente de Automatizaciones (/estudio/asistente/): el servidor de mentira con la forma del
-// contrato real (server/automatiza_api.py, modo «prueba»: GET /config, POST /armar, GET /armar/{id}), con el flujo de n8n y el grafo salidos
-// de las MUESTRAS de verdad (media/library/n8n/muestras_prueba.json) para que lo que se descarga y lo que se abre en el Constructor sea
-// real, y las maneras de señalar cada cosa por su rol y su nombre. NO gasta nada ni sale de la máquina: ninguna ruta toca el servidor.
-// Los textos están escritos a mano a propósito: si alguien cambia un rótulo, las pruebas lo notan en vez de seguirlo en silencio.
+// Lo que comparten las pruebas de navegador del Asistente de Automatizaciones (/estudio/automatizaciones/distrito/asistente/): el servidor
+// de mentira con la forma del contrato real (server/automatiza_api.py, modo «prueba»: GET /config, POST /armar, GET /armar/{id}), con el
+// flujo de n8n y el grafo salidos de las MUESTRAS de verdad (media/library/n8n/muestras_prueba.json) para que lo que se descarga y lo que
+// se abre en el Constructor sea real, y las maneras de señalar cada cosa por su rol y su nombre. NO gasta nada ni sale de la máquina:
+// ninguna ruta toca el servidor. Los textos están escritos a mano a propósito: si alguien cambia un rótulo, las pruebas lo notan en vez de
+// seguirlo en silencio.
 //
 // La medición (`revisar`: desborde, letra, 44 px, axe, foco) es la del Constructor (e2e/constructor.ts): una sola para las dos pantallas.
 import { readFileSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { expect, type Page, type Route } from '@playwright/test';
 
 import { simular as simularPagina } from './constructor';
 
-export const URL_ASISTENTE = '/estudio/asistente/';
+export const URL_ASISTENTE = '/estudio/automatizaciones/distrito/asistente/';
 
 // ---------------------------------------------------------------------------
 // Las muestras de verdad (las mismas con las que responde el servidor en modo «prueba»)

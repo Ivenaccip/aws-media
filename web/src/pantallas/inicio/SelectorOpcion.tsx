@@ -1,4 +1,4 @@
-// El chip de «qué hago» de la caja del inicio, con su lista: «Un video corto ▾», «Crear una imagen ▾», «Editar ▾».
+// El chip de «qué hago» de la caja, con su lista: «Un video corto ▾», «Crear una imagen ▾», «Editar ▾».
 // Estaba escrito en línea en Caja.tsx; se extrae para que Edición use EXACTAMENTE la misma pieza (el mismo teclado, el
 // mismo foco, la misma posición) y no una copia que se vaya desfasando. Al extraerla se corrigieron, para las tres familias
 // a la vez, dos defectos que traía desde antes (revisión del 14-oct-2026): la pista no se pintaba nunca (el botón recortaba
@@ -81,7 +81,7 @@ export function SelectorOpcion<T extends OpcionDeSelector>({ opciones, elegida, 
 
   // El menú es más ancho que su botón, y el botón está a media fila: anclado a
   // un lado se salía por el otro. Se mide y se sujeta dentro de la ventana y, si el chip va dentro de una tarjeta que se lo pide
-  // (`data-limite-lista`, la del inicio), de su borde derecho: la ventana deja 12 px de margen y la tarjeta 16, y sin esto la lista
+  // (`data-limite-lista`, la de la página de la caja), de su borde derecho: la ventana deja 12 px de margen y la tarjeta 16, y sin esto la lista
   // cruzaba el borde de la tarjeta hasta 4 px.
   useLayoutEffect(() => {
     if (!abierto) return;

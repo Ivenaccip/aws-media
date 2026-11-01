@@ -117,7 +117,8 @@ export const estadoDe = (e: unknown) => (e instanceof ErrorApi ? e.estado : 0);
 /** 409 en MIX significa dos cosas y solo una se arregla conectando: lo distingue el mensaje. */
 export const pideConectar = (e: unknown) => estadoDe(e) === 409 && /Blotato/i.test(e instanceof Error ? e.message : '');
 
-export const CONECTAR = '/estudio/?blotato=conectar';
+/** Adónde lleva «Conectar Blotato»: la página del grupo Blotato, que abre el diálogo con `?blotato=conectar`. */
+export const CONECTAR = '/estudio/marketing/blotato/?blotato=conectar';
 export const TIPOS = ['image/jpeg', 'image/png', 'image/webp'];
 export const MAX_BYTES = 12 * 1024 * 1024;
 

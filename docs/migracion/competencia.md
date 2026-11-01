@@ -1,6 +1,9 @@
 # Migración de competencia (UI·8.2)
 
-`static/competencia.html` → `/estudio/competencia/` (`web/src/pantallas/competencia/`).
+`static/competencia.html` → `/estudio/marketing/blotato/competencia/`
+(`web/src/pantallas/competencia/`; su lugar en el mapa desde E7.6,
+31-oct-2026; antes, la carpeta plana `/estudio/competencia/`, que desde E7 es
+un 302 hasta aquí).
 
 Guardar y quitar cuentas es gratis. «Revisar ✦ N» cobra la tarifa por cuenta
 (`GET /api/competencia` → `credito_por_cuenta`, de `tarifas.json`
@@ -11,9 +14,37 @@ costo_competencia`, lineal).
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `nueva` | `/estudio/competencia/` existe; `/competencia.html` sigue igual | ⏳ al desplegar |
-| `todos` | `/competencia.html` → 302, salvo la cookie `ui=clasica` | pendiente |
+| `nueva` | `/estudio/marketing/blotato/competencia/` existe; `/competencia.html` sigue igual; `/estudio/competencia/` es un 302 desde E7 | ⏳ al desplegar |
+| `todos` | `/competencia.html` → 302 a `/estudio/marketing/blotato/competencia/` (de un salto), salvo la cookie `ui=clasica` | pendiente |
 | `retirada` | 302 siempre; se borran `static/competencia.html` y sus tests viejos | pendiente |
+
+**Rutas por nivel (E7.6, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/competencia/`) por la de su lugar,
+`web/estudio/marketing/blotato/competencia/index.html`, sin cambiar nada por
+dentro (pide todo con rutas absolutas). `PANTALLAS["competencia"].nueva` dice
+la anidada; la clave, `/competencia.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/competencia/` (con y
+sin barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/blotato/competencia/` con UN 302 relativo y `no-store`, en
+cualquier etapa; `/estudio/competencia/index.html` ya es un 404.
+`/competencia.html` lo sigue decidiendo el interruptor: en `nueva` sirve la
+clásica; en `todos` (y con `UI_ETAPA_MINIMA=todos`, la de dev) lleva a la
+anidada de un salto, sin pasar por la plana, salvo con la cookie
+`ui=clasica`. `/ui/nueva?pantalla=competencia` también lleva ahí.
+
+Por eso el menú **no cambia**, como el de la Agenda: Marketing › Blotato sigue
+enlazando `/competencia.html` (con `pagina: 'competencia'` para las migas), que
+pasa por el interruptor; si enlazara la anidada se lo saltaría. Sin Blotato se
+sigue apagando a propósito (dueño, 18-sep). Las migas tampoco cambian: van a
+`/estudio/` y a `/estudio/marketing/` (D6) sin depender de dónde vive la hoja.
+Lo fijan `tests/test_web_niveles.py` (con la app y el dist de verdad: el 302 de
+la plana y `/competencia.html` en cada etapa), `tests/test_web_rutas.py` (la
+tabla y el alias de `web/e2e/servidor.mjs`, iguales a los de web.py) y las
+filas de la Competencia en «las direcciones de antes» de `niveles.spec.ts`. Ahí
+no va `/competencia.html`: `servidor.mjs` la redirige como en `todos`, y la app
+real, en `nueva`, sirve la clásica. Vite nombra el chunk de entrada por la
+carpeta (`marketing-blotato-competencia-*.js`); ninguna prueba dependía del
+nombre de antes.
 
 Antes de `todos`: una revisión de verdad con una cuenta y el QA de
 `docs/QA-UI.md` § competencia. 💳 Cobra la tarifa por cuenta de `tarifas.json`.
@@ -50,7 +81,7 @@ En `web/src/pantallas/competencia/Competencia.test.tsx`, con ese nombre exacto.
 
 | Test viejo | Destino |
 |---|---|
-| `test_la_pantalla_arranca_despues_de_auth` | `estudio/competencia/index.html` carga `/auth.js` antes del módulo (`test_migracion_ui.py::test_la_pantalla_nueva_tiene_su_pagina`) |
+| `test_la_pantalla_arranca_despues_de_auth` | `estudio/marketing/blotato/competencia/index.html` carga `/auth.js` antes del módulo (`test_migracion_ui.py::test_la_pantalla_nueva_tiene_su_pagina`) |
 | `test_el_menu_del_estudio_enlaza_la_pantalla` | se queda: Marketing › Blotato sigue enlazando `/competencia.html` y el 302 hace el resto |
 | `test_no_hay_sondeo_ciego` | `competencia.lista.sondea_mientras_revisa_y_para_al_terminar` + `sondeo.ts` (se duerme con la pestaña oculta) |
 | `test_el_boton_dice_el_precio_antes_de_cobrar` | `competencia.cobro.precio_por_cuenta_del_servidor` |

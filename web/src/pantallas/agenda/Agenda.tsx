@@ -1,5 +1,6 @@
-// /estudio/agenda/ — lo que tienes programado en tus redes (UI·8.6). No cobra
-// nada. Paridad con static/agenda.html, con dos cambios de forma:
+// /estudio/marketing/blotato/agenda/ — lo que tienes programado en tus redes
+// (UI·8.6). No cobra nada. Paridad con static/agenda.html, con dos cambios de
+// forma:
 //   · «Cancelar» ya no usa confirm(): una confirmación con el foco en «No,
 //     dejarla» (lo que no se deshace nunca es la opción por defecto) y con
 //     botones que no dicen dos veces «Cancelar»;

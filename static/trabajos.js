@@ -22,10 +22,14 @@
   const CLAVE_CERRADOS = 'trabajos-cerrados', CLAVE_VISTOS = 'trabajos-vistos';
 
   // --- lo que no toca el DOM (lo prueba tests/test_ui15_trabajos.py en node) ---
+  // Las tres direcciones de la caja (Imagen, Video y Edición) son UNA pantalla: «Mis creaciones» se ve en las tres, y el «Ver» de la ficha
+  // cargaría otra página, que descarta lo escrito en la caja (cambiar de pestaña, en cambio, lo conserva).
+  const CAJA = /^\/estudio\/marketing\/distrito\/(imagen|video|edicion)\/$/;
+  const mismaPantalla = (a, b) => a === b || (CAJA.test(a) && CAJA.test(b));
   function deEstaPantalla(url, loc) {
     try {
       const u = new URL(url, loc.origin || 'http://x');
-      if (u.pathname !== loc.pathname) return false;
+      if (!mismaPantalla(u.pathname, loc.pathname)) return false;
       if (!u.search) return true;    // /clip.html: la pantalla ya enseña su lista
       return new URLSearchParams(loc.search).get('p') === u.searchParams.get('p');
     } catch (e) { return false; }

@@ -1,7 +1,8 @@
 # Migración del Constructor (Automatizaciones, 20-oct-2026)
 
-`web/src/pantallas/constructor/` → `/estudio/constructor/`. **El Constructor nace en la UI nueva: no tuvo pantalla vieja**, así que aquí no hay
-«aserciones viejas» que mapear. Se registra en `server/migracion.py` como `retirada` desde el primer día (no hay HTML viejo que servir:
+`web/src/pantallas/constructor/` → `/estudio/automatizaciones/distrito/constructor/` (su lugar en el mapa desde E7.3, 31-oct-2026; antes, la
+carpeta plana `/estudio/constructor/`, que desde E7 es un 302 hasta aquí). **El Constructor nace en la UI nueva: no tuvo pantalla vieja**,
+así que aquí no hay «aserciones viejas» que mapear. Se registra en `server/migracion.py` como `retirada` desde el primer día (no hay HTML viejo que servir:
 `/constructor.html` solo es un atajo que responde 302 a la nueva, conservando el query) para que el registro anti-pérdida
 (`tests/test_migracion_ui.py`) cubra sus invariantes como a las demás.
 
@@ -15,16 +16,16 @@ flujo a ninguna parte.** Lo único que guarda es un borrador en el propio navega
 
 ## Cómo se llega
 
-- **Menú:** `automatizaciones › distrito › constructor` en `web/src/marca/menu.ts` (ícono `flujo`, `href: '/estudio/constructor/'`, texto «Arma tu flujo
+- **Menú:** `automatizaciones › distrito › constructor` en `web/src/marca/menu.ts` (ícono `flujo`, `href: '/estudio/automatizaciones/distrito/constructor/'` desde E7.3, texto «Arma tu flujo
   cuadro por cuadro y descárgalo para n8n.»). Desde el Inicio: mapa › Automatizaciones › Distrito › Constructor (ver `inicio.md`).
 - **Sin `pagina`** en el mapa, a propósito, igual que COI y la Biblioteca: esa clave exige un `<Marco pantalla="…">` (`Marco.test.tsx`) y esta pantalla
   lleva su propio encabezado.
 - **Migas:** «Automatizaciones › Distrito › Constructor», dibujadas por `marca/EncabezadoHoja.tsx` con `LUGAR = { area: 'automatizaciones', grupo:
   'distrito', pantalla: 'constructor' }` (título e ícono salen del mapa; si el lugar no existe lanza). El área abre el mapa y el grupo las opciones del
-  área, estando «desde» esta pantalla (`/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=mapa` o `ver=grupos`, `urlDeInicio`); la última
+  área, directo a sus páginas (`/estudio/` y `/estudio/automatizaciones/`, `urlDeInicio`; antes iban a `/estudio/inicio/?desde=…&ver=…`); la última
   miga es un chip quieto con `aria-current="step"`. El único `h1` es «Irremplazables» (dorado, `texto-oro`); «Arma tu automatización» es un `h2` con
   `tabindex=-1` y es adonde cae el foco si lo que pidió el reductor no existe.
-- **La página** (`web/estudio/constructor/index.html`): privada, con `auth.js` clásico ANTES del módulo, `monedero.js` (la píldora del saldo), `iconos.js` y
+- **La página** (`web/estudio/automatizaciones/distrito/constructor/index.html`, desde E7.3): privada, con `auth.js` clásico ANTES del módulo, `monedero.js` (la píldora del saldo), `iconos.js` y
   `trabajos.js` (el cuadro de avisos de abajo a la derecha). Esos scripts piden por su cuenta `/api/auth/config`, `/api/creditos` y `/api/trabajos`
   (y `trabajos.js` pone «Sin conexión. Reintentando…» al cortarse internet aunque el lienzo siga funcionando); **el código de la pantalla no hace un solo
   pedido** (lo fija `constructor.pantalla.no_llama_a_ningun_servicio_ni_cobra_en_todo_lo_que_hace`, que sustituye `fetch` y exige cero llamadas, y el
@@ -48,7 +49,7 @@ El dueño no contestó las sub-decisiones; se adoptó la opción que recomendaro
 
 | # | Decisión | Por qué |
 |---|---|---|
-| D1 | Dos páginas planas, `web/estudio/constructor/` y `web/estudio/asistente/` | `server/web.py` solo monta las carpetas con `index.html` directo bajo `dist/estudio/`: una anidada daría 404 en producción; la llave del registro tiene que cumplir `^[a-z0-9_]+$` (sin guion); y `automatiza` choca con las rutas públicas del RAG |
+| D1 | Dos páginas planas, `web/estudio/constructor/` y `web/estudio/asistente/`. **Superada en E7:** `server/web.py` sirve a cualquier profundidad desde las rutas por nivel, y el Constructor vive en `web/estudio/automatizaciones/distrito/constructor/` desde E7.3 (la llave del registro sigue siendo `constructor`); el Asistente, a su lado, desde E7.4 | `server/web.py` solo monta las carpetas con `index.html` directo bajo `dist/estudio/`: una anidada daría 404 en producción; la llave del registro tiene que cumplir `^[a-z0-9_]+$` (sin guion); y `automatiza` choca con las rutas públicas del RAG |
 | D2 | Encabezado propio (`marca/EncabezadoHoja.tsx`): «Irremplazables» dorado, migas de tres niveles con la última quieta; sin `<Marco>` y sin `pagina` | es el molde de COI y la Biblioteca; con `<Marco>` el contenido quedaría en 1080 px (angosto para un lienzo; el Constructor usa 1280) y las migas serían de dos niveles |
 | D3 | Borrador en `localStorage`, versionado, validado contra los invariantes al cargar, sin texto que parezca una clave, guardado diferido más inmediato al salir | el lienzo es trabajo de la persona y la sesión puede caducar a media edición (`auth.js` navega a Cognito y se perdería); además es el traspaso Asistente → Constructor |
 | D4 | `agentTool` («dos IA que conversan») se exporta, pero no se toca `permitidos.json` ni el RAG | permitirlo globalmente cambia lo que el RAG público puede armar (y exigiría ingesta de documentación, que gasta): es del dueño. La paridad lo trata como «rechazado hoy; válido si se permitiera» |
@@ -264,10 +265,26 @@ cd ..
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `retirada` | `/estudio/constructor/` existe; `/constructor.html` → 302 siempre (no hubo vieja) | ⏳ al desplegar |
+| `retirada` | `/estudio/automatizaciones/distrito/constructor/` existe; `/constructor.html` → 302 siempre (no hubo vieja); `/estudio/constructor/` es un 302 desde E7 | ⏳ al desplegar |
 
 Va en el mismo cambio que el mapa (`menu.ts`), el Asistente y el registro: encender el área sin las páginas dejaría enlaces rotos. No hay interruptor para esconder una página ya compilada: en cuanto
-`dist/estudio/constructor/index.html` existe, la dirección responde; lo único que la muestra u oculta en el mapa es `menu.ts`.
+`dist/estudio/automatizaciones/distrito/constructor/index.html` existe, la dirección responde; lo único que la muestra u oculta en el mapa es `menu.ts`.
+
+**Rutas por nivel (E7.3, 31-oct-2026).** La página dejó su carpeta plana (`web/estudio/constructor/`) por la de su lugar,
+`web/estudio/automatizaciones/distrito/constructor/index.html`, sin cambiar nada por dentro (pide todo con rutas absolutas).
+`PANTALLAS["constructor"].nueva` dice la anidada y de ahí `migracion.alias_del_estudio()` deduce el alias: `/estudio/constructor/` y
+`/constructor.html` (con y sin barra, en mayúsculas y con el query intacto) llevan a `/estudio/automatizaciones/distrito/constructor/` con
+UN 302 relativo y `no-store`; `/estudio/constructor/index.html` ya es un 404. La llave `constructor` choca con `Object.prototype`, pero
+ninguno de los dos registros la busca en un objeto: el de Python es un `dict` y el de `web/e2e/servidor.mjs`, un `Map`. Lo fijan
+`tests/test_web_niveles.py` (con la app y el dist de verdad) y las filas del Constructor en «las direcciones de antes» de `niveles.spec.ts`;
+`tests/test_web_rutas.py` exige que `servidor.mjs` tenga la misma fila y el mismo alias. El menú, el Asistente (`URL_CONSTRUCTOR` de
+`asistente/traspaso.ts`: el enlace «Abrir el constructor» y la navegación de «Abrir en el constructor») y las pruebas enlazan la anidada;
+`rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada` (`estudio.test.ts`) cae si el menú vuelve a
+la plana, que el 302 escondería. Las migas no cambian: van a `/estudio/` y a `/estudio/automatizaciones/` (`urlDeInicio`) sin depender de
+dónde vive la hoja. **El borrador no se pierde:** `localStorage` es del origen y no de la dirección, así que el que se guardó en la plana
+se recupera en la anidada (el traspaso del Asistente ya lo escribía desde otra dirección, la del Asistente). Vite nombra el chunk y
+el CSS de entrada por la carpeta (`automatizaciones-distrito-constructor-*.js` y `.css`, `vite.config.ts::nombreDe`) y ninguna prueba
+depende de ese nombre.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
@@ -1059,7 +1076,7 @@ Las protege el registro de archivos de este doc, no el de IDs:
   uno que ya está, quitar y «Deshacer» por el aviso, el botón y Ctrl+Z, «Limpiar», el disparador web y el de tiempo, la descarga real y el borrador), el teclado, el arrastre y «reducir movimiento».
 - `EncabezadoHoja.test.tsx` (en `web/src/marca/`): el encabezado compartido de las hojas (un `h1`, tres migas, la última quieta, error claro si el lugar no está en el mapa).
 - `avisos.test.ts` (en `web/src/nucleo/`): el aviso con `accion` (el botón «Deshacer»); `descargarArchivo.test.ts` (en `web/src/nucleo/`): el `Blob`, la URL temporal y el nombre limpio del archivo.
-- `AutomatizacionesRecorrido.test.tsx` (en `web/src/pantallas/inicio/`) y `inicio-recorrido.spec.ts`: el área de Automatizaciones en el mapa y el recorrido (ver `inicio.md`).
+- `menu.test.ts` (en `web/src/marca/`), `Pantallas.test.tsx` y `PaginaNivel.test.tsx` (en `web/src/pantallas/inicio/`), e `inicio-recorrido.spec.ts`: el área de Automatizaciones en el mapa y en sus páginas (ver `inicio.md`). Hasta E8.7 tenía un archivo propio que la recorría dentro del inicio de una sola página; se retiró con él y lo vivo se mudó a esos tres.
 - `tests/test_constructor_paridad.py`: ver «El exportador a n8n».
 
 ## Extensiones a archivos compartidos
@@ -1070,4 +1087,4 @@ Las protege el registro de archivos de este doc, no el de IDs:
 - `web/src/nucleo/descargarArchivo.ts`: la primera descarga que se arma en la propia página (un `Blob`, una URL temporal y un `<a download>`); devuelve `false` donde el navegador no puede y quien llama ofrece copiar el texto.
 - `web/src/ui/iconos.ts` y `static/iconos.js`: los 9 íconos nuevos, con la misma cadena en los dos.
 - `server/migracion.py`: las entradas `constructor` y `asistente` (`retirada`). `server/app.py`: el router de `/api/automatiza/*` (es del Asistente).
-- `web/src/pantallas/inicio/` y `web/e2e/inicio-recorrido.spec.ts`: las pruebas que daban por apagada a Automatizaciones (`Mapa.test.tsx`, `Recorrido.test.tsx`, `estadoRecorrido.test.ts`) y las nuevas del área; `docs/migracion/inicio.md`.
+- `web/src/pantallas/inicio/` y `web/e2e/inicio-recorrido.spec.ts`: las pruebas que daban por apagada a Automatizaciones (`Mapa.test.tsx` y las del recorrido en página, retiradas en E8.7) y las nuevas del área; `docs/migracion/inicio.md`.

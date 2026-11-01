@@ -29,10 +29,11 @@
 // Lo que la caja dice —que ya está creando, o por qué no pudo— sale en el cuadro de
 // abajo a la derecha (nucleo/avisos); donde esa página no lo trae, junto a la caja.
 //
-// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») la caja va DENTRO de la tarjeta del inicio (Recorrido.tsx): no pinta su
-// propia tarjeta (sin fondo, borde, relleno ni margen). El inicio la esconde con `hidden` mientras se ve el mapa o una lista (al abrir,
-// se ve el mapa: la caja arranca escondida), SIN desmontarla, y le avisa con `enVista` para que lo que corre solo para ser visto
-// (la pista rotatoria de Edición) no siga corriendo en lo escondido.
+// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») la caja va DENTRO de una tarjeta que no es suya: hoy, la de la página de su
+// herramienta (niveles/PaginaHerramienta.tsx). No pinta su propia tarjeta (sin fondo, borde, relleno ni margen). `enVista` le dice si se
+// ve: el inicio de una sola página (retirado en E8) la escondía con `hidden` mientras se veía el mapa o una lista, SIN desmontarla, y así
+// lo que corre solo para ser visto (la pista rotatoria de Edición) no seguía corriendo en lo escondido. La página de hoy siempre la tiene
+// a la vista; el prop se queda mientras exista (E9 decide).
 import {
   forwardRef,
   useEffect,
@@ -75,7 +76,7 @@ import { Biblioteca } from './Biblioteca';
 import { CajaEdicion } from './CajaEdicion';
 import { HojaVideos } from './HojaVideos';
 import type { Pendiente } from './Galeria';
-import type { LlegadaDeTexto } from './estadoRecorrido';
+import type { LlegadaDeTexto } from './llegada';
 import { destinoDe, OPCIONES, type Familia, type Imagen, type Opcion } from './logica';
 import { MenuModelo, type Eleccion } from './MenuModelo';
 import {
@@ -121,10 +122,10 @@ export interface PropsCaja {
   /** Las imágenes de «Mis creaciones»: con ellas, el «+» ofrece también «Elegir de Mis creaciones». Sin ninguna, el
    *  «+» abre el selector de archivos, como siempre. */
   imagenes?: Imagen[] | undefined;
-  /** El `h2` «¿Qué vamos a crear hoy?»: el recorrido le lleva el foco al volver a la caja (lleva `tabIndex={-1}`). */
+  /** El `h2` «¿Qué vamos a crear hoy?» (lleva `tabIndex={-1}`: se le puede llevar el foco por código; hoy nadie lo hace). */
   tituloRef?: Ref<HTMLHeadingElement>;
-  /** La tarjeta del inicio la tiene a la vista. Falso = sigue montada (con lo escrito, el video, la subida) pero escondida con
-   *  `hidden` mientras se ve el mapa, las opciones o una lista: lo que corre solo para ser visto (la pista de Edición) se para. */
+  /** Se ve. Falso = sigue montada (con lo escrito, el video, la subida) pero escondida: lo que corre solo para ser visto (la pista de
+   *  Edición) se para, y un error suyo sale del cuadro de avisos. La página de hoy siempre la tiene a la vista. */
   enVista?: boolean;
   /** El servidor aceptó una edición (E2): «Mis creaciones» ya tiene la tarjeta «Editando…» de su copia, y el inicio relee sus listas. */
   alEditar?: () => void;
@@ -375,8 +376,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
   }
 
   // NAV-05 del prototipo (el «aviso fantasma»): el cuadro de abajo a la derecha es de toda la página, no de la caja. Con la caja
-  // escondida (el mapa, las tres opciones o una lista a la vista) su error no tiene formulario que lo explique y se quedaría flotando
-  // sobre otro paso: se quita. No se guarda para volver a ponerlo; «Crear» o «Iniciar» lo repiten si sigue faltando algo
+  // escondida (`enVista` falso) su error no tiene formulario que lo explique y se quedaría flotando sobre otra cosa: se quita. No se guarda para volver a ponerlo; «Crear» o «Iniciar» lo repiten si sigue faltando algo
   const alEsconderse = useEffectEvent(quitarErrorDelCuadro);
   useEffect(() => {
     if (!enVista) alEsconderse();
@@ -490,8 +490,8 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
     const destino = e.target instanceof HTMLElement ? e.target : null;
     // en otro campo (la clave de Blotato…) lo pegado es de ese campo; el único que es de la caja es su texto
     if (destino && destino !== area.current && (destino.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(destino.tagName))) return;
-    // con un diálogo abierto (el visor, Blotato) la caja queda detrás, y con el mapa o una lista a la vista la tarjeta la esconde
-    // (`hidden`, sin aria-hidden): no se le agrega nada sin que se vea, ni se corta un pegado que no es suyo
+    // con un diálogo abierto (el visor, Blotato) la caja queda detrás, y fuera de la vista (`enVista` falso) no se ve: no se le agrega
+    // nada sin que se vea, ni se corta un pegado que no es suyo
     if (!enVista || seccion.current?.closest('[aria-hidden="true"]')) return;
     const imagenes = imagenesPegadas(e.clipboardData);
     if (!imagenes.length) return;
@@ -627,7 +627,7 @@ export const Caja = forwardRef<MandoCaja, PropsCaja>(function Caja(
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastrando(false);
         }}
         onDrop={alSoltar}
-        // la caja va DENTRO de la tarjeta del inicio (Recorrido): sin fondo, relleno ni margen propios. El borde se queda,
+        // la caja va DENTRO de la tarjeta de su página (PaginaHerramienta): sin fondo, relleno ni margen propios. El borde se queda,
         // transparente, para pintar el «suelta aquí» (discontinuo, ámbar) al arrastrar archivos sin que nada se mueva. En alto contraste
         // (`forced-colors`) el navegador pinta hasta un borde transparente con el color del sistema y saldría un segundo marco dentro
         // del de la tarjeta: ahí el borde en reposo se quita (el «suelta aquí» sí es un marco que hay que ver, y se queda)

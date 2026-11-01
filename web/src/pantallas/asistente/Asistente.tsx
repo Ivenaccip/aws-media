@@ -1,5 +1,5 @@
-// /estudio/asistente/ — el Asistente de Automatizaciones: la persona cuenta con sus palabras qué quiere automatizar y la pantalla le
-// devuelve un flujo de n8n, listo para descargar o para abrir en el Constructor.
+// /estudio/automatizaciones/distrito/asistente/ — el Asistente de Automatizaciones: la persona cuenta con sus palabras qué quiere
+// automatizar y la pantalla le devuelve un flujo de n8n, listo para descargar o para abrir en el Constructor.
 //
 // Por ahora el servidor corre en modo «prueba»: responde con flujos de EJEMPLO elegidos por las palabras del pedido (sin modelo, sin
 // base de datos, sin costo). La pantalla lo dice, mientras `config.modo` sea «prueba». Lo que cambie cuando el servidor arme de

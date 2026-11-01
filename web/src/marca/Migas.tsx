@@ -1,6 +1,8 @@
 // Las migas: la ruta elegida (Marketing › Blotato…) como chips en una fila, y cada chip reabre su nivel (dueño, 15-oct-2026:
-// «Mapa con Irremplazables»). Sirven igual en el inicio (botones que cambian de paso) y en las pantallas hoja (enlaces al inicio
-// con `?desde=…&ver=…`, ver marca/menu.ts), así que cada miga lleva `alPulsar` O `href`.
+// «Mapa con Irremplazables»). Hoy todas son enlaces directos a la página del nivel (el mapa `/estudio/` y las opciones del área
+// `/estudio/<área>/`): las de las páginas del recorrido (pantallas/inicio/niveles/navegar.ts) y las de las pantallas hoja (`urlDeInicio` de
+// marca/menu.ts). Una miga lleva `alPulsar` O `href`: el botón que cambiaba de paso era del inicio de una sola página (retirado en E8) y
+// sigue sabiendo pintarse.
 import { Icono } from '../ui/Icono';
 import type { NombreIcono } from '../ui/iconos';
 import { unir } from '../ui/unir';

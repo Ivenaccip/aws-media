@@ -34,8 +34,8 @@ export const reprogramar = (id: string, cuando: string) =>
   pedir<unknown>('/api/agenda/reprogramar', { cuerpo: { id, cuando } });
 export const cancelar = (id: string) => pedir<unknown>('/api/agenda/cancelar', { cuerpo: { id, confirmar: true } });
 
-/** Adónde lleva «Conectar Blotato» (el diálogo del inicio). */
-export const CONECTAR = '/estudio/?blotato=conectar';
+/** Adónde lleva «Conectar Blotato»: la página del grupo Blotato, que abre el diálogo con `?blotato=conectar`. */
+export const CONECTAR = '/estudio/marketing/blotato/?blotato=conectar';
 
 // El server rechaza cualquier hora a menos de 60 s (server/publicar_api.py,
 // _cuando): aceptar 10 s aquí sería gastar una llamada para oír que no.

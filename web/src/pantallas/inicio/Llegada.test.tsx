@@ -1,24 +1,34 @@
-// Llegar al inicio con un texto ya escrito (Ajustes 3, 16-oct-2026): «Llevar a la caja» de la Biblioteca de prompts manda a
-// `/estudio/inicio/?prompt=<texto>` (Imagen) o `?brief=<texto>` (Video). El inicio abre DIRECTO la caja en esa pestaña con el texto puesto,
-// lo dice, quita el parámetro de la dirección y NO crea ni cobra nada. Sin parámetros, nada cambia.
+// Llegar a la caja con un texto ya escrito (Ajustes 3, 16-oct-2026): «Llevar a la caja» de la Biblioteca de prompts manda a
+// `/estudio/marketing/distrito/imagen/?prompt=<texto>` (Imagen) o `…/video/?brief=<texto>` (Video). La página de la caja abre en esa
+// pestaña con el texto puesto, lo dice, quita el parámetro de la dirección y NO crea ni cobra nada. Sin parámetros, nada cambia.
 //
 // Son pruebas SUELTAS (sin ID `inicio.`): es función nueva, no algo que la pantalla vieja garantizara (ver docs/migracion/inicio.md,
-// «Pruebas sueltas»). La caja se prueba en Inicio.test.tsx; aquí solo lo que tiene que ver con llegar con un texto.
+// «Pruebas sueltas»). La caja se prueba en Inicio.test.tsx y sus tres direcciones en niveles/Herramienta.test.tsx; aquí solo lo que
+// tiene que ver con llegar con un texto.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { json, ponerMonedero, servidor } from '../../prueba/servidor';
-import { estadoInicial, leerLlegadaDeTexto, urlSinEntrada } from './estadoRecorrido';
-import { Inicio } from './Inicio';
+import { MAX_TEXTO_DE_LLEGADA, leerLlegadaDeTexto, urlSinEntrada } from './llegada';
+import { PaginaHerramienta } from './niveles/PaginaHerramienta';
 
 const PROMPT_CON_HUECOS = 'Fotografía de producto de [PRODUCTO] flotando sobre un fondo azul medianoche liso. Formato cuadrado 1:1.';
 const PROMPT_SIN_HUECOS = 'Plano cerrado de una taza de café con vapor subiendo despacio. Duración: 5 segundos.';
 const AVISO_CON_HUECOS = 'Te trajimos el prompt. Cambia lo que va entre [corchetes] y pulsa Crear.';
 const AVISO_SIN_HUECOS = 'Te trajimos el prompt. Revísalo y pulsa Crear.';
 
-/** La dirección que arma «Llevar a la caja»: encodeURIComponent, como en pantallas/biblioteca/logica.ts. */
-const con = (param: 'prompt' | 'brief', texto: string) => `/estudio/inicio/?${param}=${encodeURIComponent(texto)}`;
+const IMAGEN = '/estudio/marketing/distrito/imagen/';
+const VIDEO = '/estudio/marketing/distrito/video/';
+/** La dirección que arma «Llevar a la caja» (la tabla DESTINO de logica.ts): la página de Imagen con `?prompt=` y la de Video con
+ *  `?brief=`, y el texto con encodeURIComponent, como en pantallas/biblioteca/logica.ts. */
+const con = (param: 'prompt' | 'brief', texto: string) => `${param === 'prompt' ? IMAGEN : VIDEO}?${param}=${encodeURIComponent(texto)}`;
+/** Abre la página de la caja en `url`, como la abre herramienta.tsx: con la herramienta que dice la dirección. */
+function abrir(url: string) {
+  history.replaceState(null, '', url);
+  const pantalla = new URL(url, location.href).pathname.startsWith(IMAGEN) ? 'imagen' : 'video';
+  return render(<PaginaHerramienta lugar={{ area: 'mkt', grupo: 'distrito', pantalla }} ir={ir} />);
+}
 
 describe('la llegada con texto, sin React', () => {
   it('?prompt= es una imagen y ?brief= un video; el texto sale decodificado y sin recortar por dentro', () => {
@@ -42,25 +52,38 @@ describe('la llegada con texto, sin React', () => {
   it('un texto más largo que el cuadro de la caja se corta a 5000 (la llegada no se pierde)', () => {
     const l = leerLlegadaDeTexto('?prompt=' + 'a'.repeat(6000));
     expect(l?.texto).toHaveLength(5000);
-  });
-
-  it('llegar con texto abre la caja (Marketing › Distrito) con algo elegido; sin él, el mapa de siempre', () => {
-    const e = estadoInicial('?prompt=hola');
-    expect(e).toMatchObject({ paso: 'contenido', area: 'mkt', grupo: 'distrito', elegido: true, hoja: null });
-    expect(estadoInicial('?brief=hola').paso).toBe('contenido');
-    expect(estadoInicial('')).toMatchObject({ paso: 'mapa', elegido: false });
-    // un texto vacío no abre nada
-    expect(estadoInicial('?prompt=')).toMatchObject({ paso: 'mapa', elegido: false });
+    expect(MAX_TEXTO_DE_LLEGADA).toBe(5000);
   });
 
   it('la dirección se limpia de prompt y de brief, y conserva lo demás (?blotato=conectar, el ancla); sin ellos, nada que limpiar', () => {
-    expect(urlSinEntrada('http://x/estudio/inicio/?prompt=hola&blotato=conectar#abajo')).toBe('/estudio/inicio/?blotato=conectar#abajo');
-    expect(urlSinEntrada('http://x/estudio/inicio/?brief=hola')).toBe('/estudio/inicio/');
-    expect(urlSinEntrada('http://x/estudio/inicio/?desde=mkt.blotato.agenda&ver=mapa&prompt=x')).toBe('/estudio/inicio/');
-    expect(urlSinEntrada('http://x/estudio/inicio/?blotato=conectar')).toBeNull();
-    expect(urlSinEntrada('http://x/estudio/inicio/')).toBeNull();
+    expect(urlSinEntrada('http://x/estudio/marketing/distrito/imagen/?prompt=hola&blotato=conectar#abajo')).toBe('/estudio/marketing/distrito/imagen/?blotato=conectar#abajo');
+    expect(urlSinEntrada('http://x/estudio/marketing/distrito/imagen/?brief=hola')).toBe('/estudio/marketing/distrito/imagen/');
+    expect(urlSinEntrada('http://x/estudio/marketing/distrito/imagen/?desde=mkt.blotato.agenda&ver=mapa&prompt=x')).toBe('/estudio/marketing/distrito/imagen/');
+    expect(urlSinEntrada('http://x/estudio/marketing/distrito/imagen/?blotato=conectar')).toBeNull();
+    expect(urlSinEntrada('http://x/estudio/marketing/distrito/imagen/')).toBeNull();
     // aunque venga vacío, el parámetro se quita
-    expect(urlSinEntrada('http://x/estudio/inicio/?prompt=')).toBe('/estudio/inicio/');
+    expect(urlSinEntrada('http://x/estudio/marketing/distrito/imagen/?prompt=')).toBe('/estudio/marketing/distrito/imagen/');
+  });
+});
+
+// `desde` y `ver`: las traían las migas de las pantallas hoja de antes; un marcador viejo todavía las trae al mapa, y nivel.tsx las quita
+describe('urlSinEntrada · la URL limpia una vez leída la entrada', () => {
+  it('quita desde y ver y deja la ruta', () => {
+    expect(urlSinEntrada('http://x/estudio/?desde=mkt.blotato.agenda&ver=mapa')).toBe('/estudio/');
+  });
+
+  it('deja lo demás: otros parámetros y el ancla', () => {
+    expect(urlSinEntrada('http://x/estudio/?blotato=conectar&desde=mkt.blotato.agenda&ver=grupos#abajo')).toBe('/estudio/?blotato=conectar#abajo');
+  });
+
+  it('con uno solo de los dos también limpia (no se queda un `ver` suelto)', () => {
+    expect(urlSinEntrada('http://x/estudio/?ver=mapa')).toBe('/estudio/');
+    expect(urlSinEntrada('http://x/estudio/?desde=mkt.blotato.agenda')).toBe('/estudio/');
+  });
+
+  it('si no traía ninguno, null: no hay nada que reescribir', () => {
+    expect(urlSinEntrada('http://x/estudio/')).toBeNull();
+    expect(urlSinEntrada('http://x/estudio/?blotato=conectar')).toBeNull();
   });
 });
 
@@ -95,11 +118,10 @@ afterEach(() => {
 /** Lo que el servidor recibió que NO es una lectura: crear o cobrar algo sería un POST, un PUT o un DELETE. */
 const escrituras = () => f.mock.calls.filter(c => (c[1]?.method ?? 'GET') !== 'GET').map(c => `${c[1]?.method} ${String(c[0])}`);
 
-describe('el inicio, al llegar con un texto', () => {
+describe('la página de la caja, al llegar con un texto', () => {
   it('?prompt=: la caja abierta DIRECTO en Imagen («Crear una imagen») con el texto puesto, el aviso dicho y el foco en el cuadro', async () => {
-    history.replaceState(null, '', con('prompt', PROMPT_CON_HUECOS));
-    render(<Inicio ir={ir} />);
-    // sin pasar por el mapa: lo primero que se ve es la caja
+    abrir(con('prompt', PROMPT_CON_HUECOS));
+    // lo primero que se ve es la caja, ya en su pestaña
     expect(screen.queryByText('Elige un área')).toBeNull();
     expect(textoCaja().value).toBe(PROMPT_CON_HUECOS);
     expect(riel('Imagen')).toHaveAttribute('aria-pressed', 'true');
@@ -110,9 +132,9 @@ describe('el inicio, al llegar con un texto', () => {
     expect(textoCaja()).toHaveFocus();
     expect(textoCaja().getAttribute('aria-describedby')).toBe(aviso(AVISO_CON_HUECOS)!.closest('[id]')!.id);
     // la dirección quedó limpia: recargar no vuelve a llenar la caja
-    expect(location.pathname + location.search).toBe('/estudio/inicio/');
-    // las migas dicen dónde estás: Marketing › Distrito
-    expect(within(screen.getByRole('navigation', { name: 'Dónde estás' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Marketing', 'Distrito']);
+    expect(location.pathname + location.search).toBe(IMAGEN);
+    // las migas dicen dónde estás: Marketing › Distrito (enlaces a su nivel)
+    expect(within(screen.getByRole('navigation', { name: 'Dónde estás' })).getAllByRole('link').map(b => b.textContent)).toEqual(['Marketing', 'Distrito']);
     await waitFor(() => expect(f).toHaveBeenCalled());
     // llegar no crea ni cobra nada
     expect(escrituras()).toEqual([]);
@@ -121,8 +143,7 @@ describe('el inicio, al llegar con un texto', () => {
   });
 
   it('?brief=: la caja abierta en Video («Un video corto») con el texto puesto', () => {
-    history.replaceState(null, '', con('brief', PROMPT_SIN_HUECOS));
-    render(<Inicio ir={ir} />);
+    abrir(con('brief', PROMPT_SIN_HUECOS));
     expect(textoCaja().value).toBe(PROMPT_SIN_HUECOS);
     expect(riel('Video')).toHaveAttribute('aria-pressed', 'true');
     expect(riel('Imagen')).toHaveAttribute('aria-pressed', 'false');
@@ -132,23 +153,20 @@ describe('el inicio, al llegar con un texto', () => {
   });
 
   it('un prompt sin [huecos] no manda cambiar lo que va entre corchetes: dice que lo revises', () => {
-    history.replaceState(null, '', con('brief', PROMPT_SIN_HUECOS));
-    render(<Inicio ir={ir} />);
+    abrir(con('brief', PROMPT_SIN_HUECOS));
     expect(aviso(AVISO_SIN_HUECOS)).toBeInTheDocument();
     expect(aviso(AVISO_CON_HUECOS)).toBeNull();
   });
 
   it('el aviso se queda mientras se edita, y se va al vaciar el cuadro, al cambiar de pestaña o al elegir otra desde fuera', async () => {
-    history.replaceState(null, '', con('prompt', PROMPT_CON_HUECOS));
-    const { unmount } = render(<Inicio ir={ir} />);
+    const { unmount } = abrir(con('prompt', PROMPT_CON_HUECOS));
     await userEvent.type(textoCaja(), ' Más cosas.');
     expect(aviso(AVISO_CON_HUECOS)).toBeInTheDocument();
     await userEvent.clear(textoCaja());
     expect(aviso(AVISO_CON_HUECOS)).toBeNull();
     unmount();
 
-    history.replaceState(null, '', con('prompt', PROMPT_CON_HUECOS));
-    render(<Inicio ir={ir} />);
+    abrir(con('prompt', PROMPT_CON_HUECOS));
     await userEvent.click(riel('Video'));
     expect(aviso(AVISO_CON_HUECOS)).toBeNull();
     // el texto sigue ahí: cambiar de pestaña no lo borra
@@ -156,8 +174,7 @@ describe('el inicio, al llegar con un texto', () => {
   });
 
   it('elegir otra tarea desde fuera (la tarjeta «Crear un video» de quien empieza) también quita el aviso, y el texto se queda', async () => {
-    history.replaceState(null, '', con('prompt', PROMPT_CON_HUECOS));
-    render(<Inicio ir={ir} />);
+    abrir(con('prompt', PROMPT_CON_HUECOS));
     expect(aviso(AVISO_CON_HUECOS)).toBeInTheDocument();
     // las listas vienen vacías: salen los tres caminos de quien empieza, y el primero llama a caja.elegir('videos', 'investigacion')
     await userEvent.click(await screen.findByRole('button', { name: 'Crear un video' }));
@@ -166,9 +183,8 @@ describe('el inicio, al llegar con un texto', () => {
     expect(textoCaja().value).toBe(PROMPT_CON_HUECOS);
   });
 
-  it('con ?prompt= Y ?desde=&ver= a la vez gana el texto: la caja abierta con el texto, no el mapa ni las opciones', () => {
-    history.replaceState(null, '', `/estudio/inicio/?prompt=${encodeURIComponent(PROMPT_CON_HUECOS)}&desde=mkt.blotato.agenda&ver=mapa`);
-    render(<Inicio ir={ir} />);
+  it('con ?prompt= Y un ?desde=&ver= viejo a la vez gana el texto: la caja abre con él, y la dirección queda sin los tres', () => {
+    abrir(`${IMAGEN}?prompt=${encodeURIComponent(PROMPT_CON_HUECOS)}&desde=mkt.blotato.agenda&ver=mapa`);
     expect(screen.queryByText('Elige un área')).toBeNull();
     expect(textoCaja().value).toBe(PROMPT_CON_HUECOS);
     expect(aviso(AVISO_CON_HUECOS)).toBeInTheDocument();
@@ -177,8 +193,7 @@ describe('el inicio, al llegar con un texto', () => {
 
   it('el texto llega como TEXTO: nada de lo que trae se vuelve HTML', () => {
     const malo = '<img src=x onerror="window.__roto=1"> y <b>negritas</b> [X]';
-    history.replaceState(null, '', con('prompt', malo));
-    const { container } = render(<Inicio ir={ir} />);
+    const { container } = abrir(con('prompt', malo));
     expect(textoCaja().value).toBe(malo);
     expect(container.querySelector('img[src="x"]')).toBeNull();
     expect(container.querySelector('b')).toBeNull();
@@ -186,7 +201,6 @@ describe('el inicio, al llegar con un texto', () => {
   });
 
   it('con Crear, el texto que llegó se manda por el camino de siempre (moderar primero) y el aviso se va', async () => {
-    history.replaceState(null, '', con('prompt', PROMPT_CON_HUECOS));
     const peticion = vi.fn();
     f = servidor({
       '/api/proyectos': () => json([]),
@@ -201,7 +215,7 @@ describe('el inicio, al llegar con un texto', () => {
       '/api/blotato': () => json({ conectado: false, origen: null, cuentas: [], error: null, plan: null }),
       '/api/moderar': () => json({ permitido: true }),
     });
-    render(<Inicio ir={ir} />);
+    abrir(con('prompt', PROMPT_CON_HUECOS));
     expect(escrituras()).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(peticion).toHaveBeenCalled());
@@ -210,31 +224,24 @@ describe('el inicio, al llegar con un texto', () => {
   });
 });
 
-describe('el inicio, SIN parámetros: no cambia', () => {
-  it('abre en el mapa, con la caja montada y escondida, sin aviso y sin tocar el foco ni la dirección', () => {
-    history.replaceState(null, '', '/estudio/inicio/?blotato=nada');
-    render(<Inicio ir={ir} />);
-    expect(screen.getByText('Elige un área')).toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeNull();
-    // la caja sigue montada (con su texto vacío) y arranca donde siempre: en Video
-    const escondida = document.querySelector('textarea') as HTMLTextAreaElement;
-    expect(escondida.value).toBe('');
-    expect(screen.queryByText(/Te trajimos el prompt/)).toBeNull();
-    expect(document.body).toHaveFocus();
-    // lo que no es de la entrada se queda en la dirección
-    expect(location.search).toBe('?blotato=nada');
-    // y al llegar a la caja por el mapa, es la de siempre: Video, vacía, sin aviso
-    fireEvent.click(within(screen.getByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
-    fireEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
+describe('la página de la caja, SIN parámetros: no cambia', () => {
+  it('abre en la pestaña de su dirección, vacía y sin aviso, sin tocar el foco ni lo demás de la dirección', async () => {
+    abrir(`${VIDEO}?blotato=nada`);
     expect(riel('Video')).toHaveAttribute('aria-pressed', 'true');
     expect(textoCaja().value).toBe('');
     expect(screen.queryByText(/Te trajimos el prompt/)).toBeNull();
+    expect(document.body).toHaveFocus();
+    // lo que no es de la entrada se queda en la dirección
+    expect(location.pathname + location.search).toBe(`${VIDEO}?blotato=nada`);
+    await waitFor(() => expect(f).toHaveBeenCalled());
   });
 
-  it('un ?prompt= vacío tampoco abre la caja: mapa, y la dirección igual se limpia', () => {
-    history.replaceState(null, '', '/estudio/inicio/?prompt=');
-    render(<Inicio ir={ir} />);
-    expect(screen.getByText('Elige un área')).toBeInTheDocument();
-    expect(location.search).toBe('');
+  it('un ?prompt= vacío no es una llegada: la caja abre en su pestaña sin texto ni aviso, y la dirección igual se limpia', async () => {
+    abrir(`${VIDEO}?prompt=`);
+    expect(riel('Video')).toHaveAttribute('aria-pressed', 'true');
+    expect(textoCaja().value).toBe('');
+    expect(screen.queryByText(/Te trajimos el prompt/)).toBeNull();
+    expect(location.pathname + location.search).toBe(VIDEO);
+    await waitFor(() => expect(f).toHaveBeenCalled());
   });
 });

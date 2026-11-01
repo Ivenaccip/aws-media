@@ -1,15 +1,18 @@
 // El mapa del producto: áreas → grupos → pantallas (dueño, 15-oct-2026: «Mapa con Irremplazables»). Es la ÚNICA lista de
-// adónde se puede ir: el recorrido del inicio (mapa en X, tres opciones, lista de pantallas) y las migas de las pantallas hoja
-// (agenda, métricas…) salen de aquí, así no se desincronizan.
+// adónde se puede ir: las páginas del recorrido (el mapa en X, las opciones de cada área, la lista de cada grupo: una página por nivel,
+// rutas.ts) y las migas de las pantallas hoja (agenda, métricas…) salen de aquí, así no se desincronizan.
 //
 // Una pantalla es de uno de tres tipos:
-//   · `caja`: una pestaña de la caja del inicio (Imagen, Video, Edición). No navega: cambia de pestaña.
+//   · `caja`: una pestaña de la caja (Imagen, Video, Edición). Cada una tiene su página (…/distrito/video/, rutas.ts), y dentro de la
+//     caja cambiar de pestaña no recarga: cambia de pestaña y la dirección la sigue.
 //   · `href`: una página aparte (agenda, competencia…). Navega, con la transición entre pantallas de siempre.
 //   · `proximamente`: todavía no existe. Se enseña apagada (`aria-disabled`) y no lleva a ningún lado.
-// Las URL `href` son las de siempre (`/agenda.html`…): server/migracion.py las manda a la pantalla nueva.
+// Las URL `href` de las que tuvieron pantalla vieja son las de siempre (`/agenda.html`…): server/migracion.py las manda a la nueva
+// según su etapa. Las que nacieron en la UI nueva (COI, la Biblioteca, el Constructor y el Asistente) enlazan directo su lugar del
+// mapa. Desde E7 toda hoja vive ahí, bajo su grupo (/estudio/<área>/<grupo>/<pantalla>/); su carpeta plana de antes es un 302.
 import type { NombreIcono } from '../ui/iconos';
 
-/** Las tres pestañas de la caja del inicio (`Familia` de pantallas/inicio/logica.ts). */
+/** Las tres pestañas de la caja (`Familia` de pantallas/inicio/logica.ts). */
 export type PestanaCaja = 'imagenes' | 'videos' | 'edicion';
 
 export interface PantallaMenu {
@@ -18,7 +21,7 @@ export interface PantallaMenu {
   icono: NombreIcono;
   /** Una línea de apoyo (la lista de pantallas de un grupo la enseña bajo el título). */
   texto?: string;
-  /** Una pestaña de la caja del inicio. */
+  /** Una pestaña de la caja. */
   caja?: PestanaCaja;
   /** Una página aparte. */
   href?: string;
@@ -152,17 +155,19 @@ export const MENU: readonly AreaMenu[] = [
             titulo: 'COI',
             icono: 'coi',
             texto: 'Diseña un prompt: Contexto, Objetivo e Instrucciones',
-            // sin `pagina`: COI no se pinta con <Marco> (lleva su propio marco, con «Irremplazables» arriba); sus migas las arma ella con `buscar`
-            href: '/estudio/coi/',
+            // sin `pagina`: COI no se pinta con <Marco> (lleva su propio marco, con «Irremplazables» arriba); sus migas las arma ella con `buscar`.
+            // E7.1: vive en su lugar del mapa; /estudio/coi/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
+            href: '/estudio/central/distrito/coi/',
           },
           {
             // Ajustes 3 (16-oct-2026): encendida. Sin `pagina` a propósito: su encabezado («Irremplazables» + migas de tres niveles)
-            // no es el `<Marco>` de las hojas, y esa clave exige un <Marco pantalla="…"> (Marco.test.tsx)
+            // no es el `<Marco>` de las hojas, y esa clave exige un <Marco pantalla="…"> (Marco.test.tsx).
+            // E7.2: vive en su lugar del mapa; /estudio/biblioteca/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
             clave: 'biblioteca',
             titulo: 'Biblioteca de prompts',
             icono: 'biblioteca',
             texto: 'Prompts listos para copiar, usar y fijar',
-            href: '/estudio/biblioteca/',
+            href: '/estudio/central/distrito/biblioteca/',
           },
           { clave: 'preguntas', titulo: 'Preguntas sobre la clase', icono: 'pregunta', proximamente: true },
           { clave: 'glosario', titulo: 'Glosario IA', icono: 'glosario', proximamente: true },
@@ -188,14 +193,16 @@ export const MENU: readonly AreaMenu[] = [
             titulo: 'Constructor',
             icono: 'flujo',
             texto: 'Arma tu flujo cuadro por cuadro y descárgalo para n8n.',
-            href: '/estudio/constructor/',
+            // E7.3: vive en su lugar del mapa; /estudio/constructor/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
+            href: '/estudio/automatizaciones/distrito/constructor/',
           },
           {
             clave: 'asistente',
             titulo: 'Asistente',
             icono: 'magia',
             texto: 'Cuéntanos qué quieres automatizar y te armamos el flujo.',
-            href: '/estudio/asistente/',
+            // E7.4: vive en su lugar del mapa; /estudio/asistente/, la carpeta plana de antes, es un 302 hasta aquí (server/migracion.py)
+            href: '/estudio/automatizaciones/distrito/asistente/',
           },
           { clave: 'actualizar', titulo: 'Actualizar flujos', icono: 'automatico', proximamente: true },
         ],
@@ -204,9 +211,6 @@ export const MENU: readonly AreaMenu[] = [
     ],
   },
 ];
-
-/** Donde se cae al abrir el inicio: la caja, en Video (la pestaña en la que arranca desde siempre: es lo que ya se usaba). */
-export const LUGAR_INICIAL: Lugar = { area: 'mkt', grupo: 'distrito', pantalla: 'video' };
 
 // Las direcciones del recorrido (una página por nivel; la lista completa y su inversa viven en rutas.ts). Lo mínimo va AQUÍ y no allá
 // para que `urlDeInicio` pueda apuntar a ellas sin que menu.ts y rutas.ts se importen entre sí.
@@ -234,10 +238,19 @@ export interface Hallazgo {
   pantalla: PantallaMenu;
 }
 
+// Por clave, siempre con `find` y nunca con un objeto indexado: hay una pantalla que se llama `constructor`, y un `{…}[clave]` la
+// confundiría con lo que trae Object.prototype (lo mismo `toString`, `__proto__`). Una clave que no existe da undefined.
+
+/** El área de esa clave; undefined si no existe. */
+export const areaDe = (clave: string): AreaMenu | undefined => MENU.find(a => a.clave === clave);
+
+/** El grupo de esa clave DENTRO de esa área (Distrito hay en tres áreas); undefined si la pareja no existe. */
+export const grupoDe = (area: string, clave: string): GrupoMenu | undefined => areaDe(area)?.grupos.find(g => g.clave === clave);
+
 /** Busca un lugar en el mapa; null si alguna clave no existe (un enlace viejo o escrito a mano). */
 export function buscar(l: Lugar): Hallazgo | null {
-  const area = MENU.find(a => a.clave === l.area);
-  const grupo = area?.grupos.find(g => g.clave === l.grupo);
+  const area = areaDe(l.area);
+  const grupo = grupoDe(l.area, l.grupo);
   const pantalla = grupo?.pantallas.find(p => p.clave === l.pantalla);
   return area && grupo && pantalla ? { area, grupo, pantalla } : null;
 }
@@ -252,22 +265,26 @@ export function lugarDePagina(pagina: string): (Hallazgo & { lugar: Lugar }) | n
   return null;
 }
 
-/** «mkt.blotato.agenda» ↔ { area, grupo, pantalla }. Las claves no llevan puntos. */
+/** «mkt.blotato.agenda»: un lugar como texto, para nombrarlo en una prueba o en un mensaje. Las claves no llevan puntos. */
 export const lugarATexto = (l: Lugar): string => `${l.area}.${l.grupo}.${l.pantalla}`;
 
-export function lugarDeTexto(t: string | null | undefined): Lugar | null {
-  const [area, grupo, pantalla, ...sobra] = (t ?? '').split('.');
-  if (!area || !grupo || !pantalla || sobra.length) return null;
-  const l = { area, grupo, pantalla };
-  return buscar(l) ? l : null;
-}
-
-/** Los parámetros con los que una pantalla hoja manda de vuelta al inicio: `desde` (dónde estaba) y `ver` (qué abrir). */
+/**
+ * Los parámetros con los que una pantalla hoja mandaba de vuelta al inicio: `desde` (dónde estaba) y `ver` (qué abrir). Ya no los emite
+ * nadie (las migas van directo a la página del nivel, `urlDeInicio`) y ya nadie los LEE (el inicio de una sola página que los leía se
+ * retiró en E8), pero un marcador viejo todavía puede traerlos: el mapa los quita de su dirección (pantallas/inicio/llegada.ts,
+ * `urlSinEntrada`), y por eso siguen aquí.
+ */
 export const PARAM_DESDE = 'desde';
 export const PARAM_VER = 'ver';
 export type VerInicio = 'mapa' | 'grupos';
 
-/** La URL del inicio que abre el mapa (`ver=mapa`) o las tres opciones del área (`ver=grupos`) estando "desde" una pantalla. */
+/**
+ * A dónde llevan las migas de una pantalla hoja, estando "desde" ella: `mapa` es la principal (`/estudio/`) y `grupos` son las opciones de
+ * SU área (`/estudio/marketing/`). Directo a la página del nivel, sin llevar parámetros.
+ * Un área que el mapa no conoce (una clave escrita a mano) cae en la principal en vez de inventar una dirección.
+ */
 export function urlDeInicio(desde: Lugar, ver: VerInicio): string {
-  return `/estudio/inicio/?${PARAM_DESDE}=${lugarATexto(desde)}&${PARAM_VER}=${ver}`;
+  if (ver === 'mapa') return RUTA_MAPA;
+  const area = areaDe(desde.area);
+  return area ? urlDeArea(area) : RUTA_MAPA;
 }

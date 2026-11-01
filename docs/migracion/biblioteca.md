@@ -1,6 +1,7 @@
 # Biblioteca de prompts (Ajustes 3, 16-oct-2026)
 
-`/estudio/biblioteca/` (`web/src/pantallas/biblioteca/`). **Pantalla nueva: no sustituye a ninguna.** Prompts listos para copiar y
+`/estudio/central/distrito/biblioteca/` (`web/src/pantallas/biblioteca/`; su lugar en el mapa desde E7.2, 31-oct-2026; antes, la
+carpeta plana `/estudio/biblioteca/`, que desde E7 es un 302 hasta aquí). **Pantalla nueva: no sustituye a ninguna.** Prompts listos para copiar y
 usar, y un **top 3** que cada quien fija para recordar. Es la dirección B del lienzo («Taller de dos paneles») más el pin. Vive en
 **Central › Distrito › Biblioteca de prompts** (`web/src/marca/menu.ts`: ya no es «Próximamente»).
 
@@ -31,6 +32,23 @@ Los errores traen `detail` como OBJETO `{codigo, texto}` y el `texto` ya está l
 `ui=clasica`): no hay nada que migrar ni a lo que volver. Se registra, y no se deja fuera, para entrar al guardián de invariantes de
 `tests/test_migracion_ui.py` y a este mapa como las demás.
 
+| Etapa | Qué pasa | Estado |
+|---|---|---|
+| `retirada` | `/estudio/central/distrito/biblioteca/` existe; `/biblioteca.html` → 302 siempre (no hubo vieja); `/estudio/biblioteca/` es un 302 desde E7 | ⏳ al desplegar |
+
+**Rutas por nivel (E7.2, 31-oct-2026).** La página dejó su carpeta plana (`web/estudio/biblioteca/`) por la de su lugar,
+`web/estudio/central/distrito/biblioteca/index.html`, sin cambiar nada por dentro (pide todo con rutas absolutas).
+`PANTALLAS["biblioteca"].nueva` dice la anidada y de ahí `migracion.alias_del_estudio()` deduce el alias: `/estudio/biblioteca/` y
+`/biblioteca.html` (con y sin barra, en mayúsculas y con el query intacto, también el `?ver=mios` de los enlaces de antes) llevan a
+`/estudio/central/distrito/biblioteca/` con UN 302 relativo y `no-store`; `/estudio/biblioteca/index.html` ya es un 404. Lo fijan
+`tests/test_web_niveles.py` (con la app y el dist de verdad) y las filas de la Biblioteca en «las direcciones de antes» de
+`niveles.spec.ts`; `tests/test_web_rutas.py` exige que `web/e2e/servidor.mjs` tenga la misma fila y el mismo alias. El menú, la tercera
+miga (la de «estás aquí», que enlaza la hoja misma por su `href`), los enlaces de COI («Mira la Biblioteca de prompts», «Ir a la
+Biblioteca de prompts», «Ver en Míos» y «Abre tu Biblioteca», los dos últimos con `?ver=mios`) y las pruebas enlazan la anidada;
+`rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada` (`estudio.test.ts`) cae si el menú vuelve
+a la plana, que el 302 escondería. Las otras dos migas no cambian: van a `/estudio/` y a `/estudio/central/` (D6) sin depender de dónde
+vive la hoja. «Míos» sale del query (`?ver=mios`), no de la dirección: la pantalla no lee la ruta.
+
 ## Los invariantes (tests/test_migracion_ui.py)
 
 Todos en `web/src/pantallas/biblioteca/Biblioteca.test.tsx`, con ese nombre exacto. No vienen de una pantalla vieja: son los
@@ -51,7 +69,7 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.copiar.usa_el_portapapeles_y_confirma_sin_mover_el_foco` | `navigator.clipboard.writeText` con el prompt entero; el botón confirma («Copiado»), la región viva lo anuncia, el foco no se mueve y el botón vuelve solo |
 | `biblioteca.copiar.reserva_con_el_metodo_viejo_si_el_navegador_niega_la_api` | si el navegador niega la API moderna, `execCommand('copy')` |
 | `biblioteca.copiar.ultima_reserva_deja_el_prompt_seleccionado_y_lo_dice` | si tampoco eso: el prompt queda SELECCIONADO, se dice cómo copiarlo y no se miente con «Copiado» |
-| `biblioteca.llevar.imagen_y_video_van_al_inicio_con_el_texto_codificado` | Imagen → `/estudio/inicio/?prompt=`, Video → `?brief=`, con `encodeURIComponent`; el texto vuelve idéntico al leer la dirección |
+| `biblioteca.llevar.imagen_y_video_van_al_inicio_con_el_texto_codificado` | Imagen → `/estudio/marketing/distrito/imagen/?prompt=`, Video → `/estudio/marketing/distrito/video/?brief=` (la página de la Caja en esa pestaña), con `encodeURIComponent`; el texto vuelve idéntico al leer la dirección |
 | `biblioteca.llevar.guion_e_investigacion_y_los_mios_solo_se_copian` | Guion, Investigación y todo «mío» no tienen «Llevar a la caja» |
 | `biblioteca.llevar.el_ambar_es_llevar_si_existe_y_copiar_si_no_y_nunca_hay_dos` | un solo botón ámbar: «Llevar a la caja» si existe y «Copiar» si no; el interruptor del pin no es ámbar |
 | `biblioteca.llevar.mas_de_1800_caracteres_solo_se_copian` | 1800 se lleva; 1801 solo se copia, y lo dice |
@@ -73,8 +91,8 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
 | `biblioteca.mios.un_404_no_es_tuyo_es_que_ya_no_estaba_y_se_quita_igual` | `no_es_tuyo` = ya no existe: se quita sin alarmar |
 | `biblioteca.celular.dos_pasos_elegir_pasa_al_segundo_con_el_foco_en_el_titulo_y_volver_regresa_a_la_fila` | en celular: «1 Elige» → «2 Úsalo»; elegir pasa al segundo con el foco en el título del prompt y «Volver a la lista» regresa a su fila |
 | `biblioteca.celular.elegir_una_etiqueta_del_detalle_lleva_el_foco_a_quitarla_y_no_a_body` | en un celular la etiqueta del detalle (paso 2) se esconde al filtrar (paso 1): el foco va a «Quitar la etiqueta», no a `<body>` |
-| `biblioteca.marco.irremplazables_arriba_y_migas_de_tres_niveles_que_reabren_su_nivel` | un solo `h1` («Irremplazables»), sin ícono ni tarjeta; migas «Central › Distrito › Biblioteca de prompts»: las dos primeras reabren el mapa y las opciones (`?desde=…&ver=…`) |
-| `biblioteca.marco.los_enlaces_a_coi_son_enlaces_a_su_pantalla` | «Ir a COI» es un enlace a `/estudio/coi/` (la pantalla es de otro rol: aquí no se importa nada de ella) |
+| `biblioteca.marco.irremplazables_arriba_y_migas_de_tres_niveles_que_reabren_su_nivel` | un solo `h1` («Irremplazables»), sin ícono ni tarjeta; migas «Central › Distrito › Biblioteca de prompts»: las dos primeras reabren el mapa (`/estudio/`) y las opciones de Central (`/estudio/central/`), directo a esas páginas |
+| `biblioteca.marco.los_enlaces_a_coi_son_enlaces_a_su_pantalla` | «Ir a COI» es un enlace a `/estudio/central/distrito/coi/` (su lugar desde E7.1; la pantalla es de otro rol: aquí no se importa nada de ella) |
 | `biblioteca.seguridad.no_guarda_nada_en_el_navegador` | ni `localStorage` ni `sessionStorage`: ni prompts, ni búsquedas, ni fijados |
 | `biblioteca.dinero.nada_cobra_ni_crea_solo_lecturas_el_put_de_fijados_y_el_delete_de_un_mio` | las únicas escrituras son `PUT /fijados` y `DELETE /mios/{id}`; el saldo no se toca |
 | `biblioteca.accesibilidad.los_avisos_van_a_una_region_viva_y_cada_boton_dice_sobre_que_actua` | una región `aria-live` anuncia copiar, fijar, borrar y elegir; los botones de la franja y el interruptor llevan el título en su nombre |
@@ -91,28 +109,41 @@ compromisos del contrato (dinero, aislamiento, pin, accesibilidad) con una prueb
   quitar filtros o etiqueta; y **dos aparatos** de la misma persona (dos contextos de navegador con el mismo servidor de mentira, que ahora
   hace compare-and-set como el de verdad): el viejo no pisa lo que fijó el otro. (El guardián de «reducir movimiento», `movimiento-reducido.spec.ts`, la
   recoge sola: lee `web/estudio/`.)
-- `Llegada.test.tsx` (en `web/src/pantallas/inicio/`): llegar al inicio con `?prompt=` o `?brief=` (ver abajo). Desde el 17-oct-2026 también
+- `Llegada.test.tsx` (en `web/src/pantallas/inicio/`): llegar a la caja con `?prompt=` o `?brief=` (ver abajo). Desde el 17-oct-2026 también
   cubre que elegir otra tarjeta desde fuera («Crear un video») quita el aviso y que `?prompt=…&desde=…&ver=…` juntos abren la caja con el texto;
-  cada una cae si se rompe lo que dice (`setTrajeron(false)` de `elegir` en `Caja.tsx`; el orden de `estadoInicial` en `estadoRecorrido.ts`).
+  cada una cae si se rompe lo que dice (`setTrajeron(false)` de `elegir` en `Caja.tsx`; hasta E8, el orden de `estadoInicial` del inicio de
+  una sola página; desde E8.6 la prueba abre la página de la caja, y lo que fija es que la dirección quede sin los tres parámetros).
 
 ## «Llevar a la caja» y el inicio
 
-Imagen → `/estudio/inicio/?prompt=<texto>`; Video → `/estudio/inicio/?brief=<texto>`. Solo prompts de hasta **1800** caracteres (y, con
+Imagen → `/estudio/marketing/distrito/imagen/?prompt=<texto>`; Video → `/estudio/marketing/distrito/video/?brief=<texto>` (la página de la Caja en esa
+pestaña; antes era la página única `/estudio/inicio/`). Solo prompts de hasta **1800** caracteres (y, con
 tildes, de dirección de hasta 6000: más largos solo se copian), siempre con `encodeURIComponent`. **Nunca crea ni cobra**: es un enlace.
 
-El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos:
+El inicio (`pantallas/inicio/`) aprendió a leerlos, con cambios mínimos *(así se hizo; hoy, ver la nota de E8 abajo)*:
 
 - `estadoRecorrido.ts`: `leerLlegadaDeTexto(busqueda)` (con los dos, gana `prompt`; vacío o solo espacios no cuenta; se corta a los 5000
   del cuadro) y `estadoInicial`, que con texto abre la caja (Marketing › Distrito) en lugar del mapa. `urlSinEntrada` quita también
   `prompt` y `brief`: el inicio los lee UNA vez y `history.replaceState` limpia la dirección (recargar no vuelve a llenar la caja).
+  *(E8.3: `leerLlegadaDeTexto` y `urlSinEntrada` viven en `llegada.ts`, sin nada de la caja.)*
 - `Inicio.tsx` lee el texto una vez y se lo pasa a `Caja`; `Caja.tsx` arranca en «Crear una imagen» (Imagen) o «Un video corto» (Video)
   con el texto puesto, lleva el foco a su cuadro, y dice **«Te trajimos el prompt. Cambia lo que va entre [corchetes] y pulsa Crear.»**
   (un prompt sin huecos dice «Te trajimos el prompt. Revísalo y pulsa Crear.»). El aviso se va al crear, al cambiar de pestaña o al
   vaciar el cuadro; el cuadro queda `aria-describedby` de él.
 - Sin parámetros no cambia nada: el mismo mapa, la misma caja en Video, el foco donde estaba.
 
+*(22-oct-2026, rutas por nivel.)* La Biblioteca ya no pasa por el mapa: su enlace es la página de la Caja en esa pestaña, y el texto lo
+lee `Inicio` con `lugar` (la Caja); `estadoInicial`, que con texto abría la caja «en lugar del mapa», solo lo usa el inicio de una sola
+página, que ya no se sirve. Si alguien manda el enlace de antes (`/estudio/?prompt=…` o `/estudio/inicio/?prompt=…`), el servidor lo
+reenvía a la misma Caja (`docs/migracion/inicio.md` § «Rutas por nivel»).
+
+*(E8, 1-nov-2026.)* El inicio de una sola página se retiró (`Inicio.tsx`, `Recorrido.tsx` y `estadoRecorrido.ts`, con `estadoInicial`).
+Hoy el texto lo lee `niveles/PaginaHerramienta.tsx`, la página de la caja, con `leerLlegadaDeTexto` de `llegada.ts`, y se lo pasa a
+`Caja`; `urlSinEntrada` (también de `llegada.ts`) quita `prompt`, `brief`, `desde` y `ver` de la dirección. La caja hace lo mismo que
+arriba.
+
 **Plan B** (si el inicio diera problemas): en `logica.ts` la tabla `DESTINO` es la ÚNICA que sabe a dónde lleva cada caja; cambiar
-`ruta` de `/estudio/inicio/` a `/estudio/imagenes/` (parámetro `prompt`) y `/estudio/clip/` (parámetro `brief`) lleva directo a las
+`ruta` de `/estudio/marketing/distrito/imagen/` a `/estudio/imagenes/` (parámetro `prompt`) y `/estudio/clip/` (parámetro `brief`) lleva directo a las
 pantallas que ya leían esos parámetros. No hace falta tocar nada más (la prueba de la dirección lo dirá).
 
 ## Lo que NO está (v1, a propósito)
@@ -126,4 +157,5 @@ dejaba en 38 px de ancho), `web/src/marca/menu.ts` (la fila de la Biblioteca: `h
 `<Marco pantalla="…">` y esta pantalla lleva su propio encabezado), `web/src/nucleo/api.ts` (`detail.texto`), `web/src/ui/iconos.ts` +
 `static/iconos.js` (Copiar, Fijar, Llevar, Investiga), `server/migracion.py`, `docs/DISENO.md` (el interruptor), `docs/QA-UI.md` (§
 biblioteca), y las pruebas del inicio que contaban cuatro «Próximamente» en Central › Distrito (`Pantallas.test.tsx`,
-`Recorrido.test.tsx`, `inicio-recorrido.spec.ts`).
+`inicio-recorrido.spec.ts` y la del recorrido en página, que se retiró en E8.7; hoy lo cubren también `PaginaNivel.test.tsx` y
+`PaginaGrupo.test.tsx`).

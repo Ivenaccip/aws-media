@@ -643,7 +643,7 @@ describe('coi', () => {
     await waitFor(() => expect(guardado).toHaveFocus());
     expect(guardado).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Guardado en tu Biblioteca. Solo tú lo ves.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver en Míos' })).toHaveAttribute('href', '/estudio/biblioteca/?ver=mios');
+    expect(screen.getByRole('link', { name: 'Ver en Míos' })).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/?ver=mios');
     // ya guardado: otro clic no abre la hoja
     await u.click(guardado);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -718,7 +718,7 @@ describe('coi', () => {
     expect(alerta).toHaveTextContent('Tu Biblioteca ya tiene 100 prompts. Borra alguno para guardar otro.');
     // el enlace abre OTRA pestaña: seguirlo en esta perdería el COI que está en pantalla (no se guarda en ningún lado)
     const enlace = within(alerta).getByRole('link', { name: 'Abre tu Biblioteca en otra pestaña para borrar alguno' });
-    expect(enlace).toHaveAttribute('href', '/estudio/biblioteca/?ver=mios');
+    expect(enlace).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/?ver=mios');
     expect(enlace).toHaveAttribute('target', '_blank');
     expect(enlace.getAttribute('rel')).toContain('noopener');
     lleno = false;
@@ -999,7 +999,7 @@ describe('coi', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     // el último resultado sigue a la vista, con su Copiar
     expect(screen.getByRole('button', { name: 'Copiar el COI' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ir a la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/biblioteca/');
+    expect(screen.getByRole('link', { name: 'Ir a la Biblioteca de prompts' })).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
     // pulsar el botón apagado no manda nada
     const antes = llamadas(f, '/api/coi').length;
     await u.click(boton());
@@ -1229,8 +1229,9 @@ describe('coi', () => {
     const migas = within(screen.getByRole('navigation', { name: 'Dónde estás' }));
     const central = migas.getByRole('link', { name: 'Ir al mapa para cambiar de área (ahora: Central)' });
     const distrito = migas.getByRole('link', { name: 'Ir a las opciones de Central (ahora: Distrito)' });
-    expect(central.getAttribute('href')).toBe('/estudio/inicio/?desde=central.distrito.coi&ver=mapa');
-    expect(distrito.getAttribute('href')).toBe('/estudio/inicio/?desde=central.distrito.coi&ver=grupos');
+    // directo al mapa y a las opciones de Central (las páginas del recorrido), sin pasar por el inicio de una sola página
+    expect(central.getAttribute('href')).toBe('/estudio/');
+    expect(distrito.getAttribute('href')).toBe('/estudio/central/');
     // COI es donde estás: un chip quieto, no un botón que no hace nada
     expect(migas.queryByRole('link', { name: 'COI' })).toBeNull();
     expect(migas.queryByRole('button')).toBeNull();
@@ -1243,13 +1244,13 @@ describe('coi', () => {
 
   it('coi.marco.el_mapa_enciende_coi_y_enlaza_la_biblioteca_desde_la_pantalla', async () => {
     const entrada = MENU.find(a => a.clave === 'central')!.grupos.find(g => g.clave === 'distrito')!.pantallas.find(p => p.clave === 'coi')!;
-    expect(entrada.href).toBe('/estudio/coi/');
+    expect(entrada.href).toBe('/estudio/central/distrito/coi/');
     expect(entrada.proximamente).toBeUndefined();
     expect(buscar({ area: 'central', grupo: 'distrito', pantalla: 'coi' })?.pantalla).toBe(entrada);
     coi();
     render(<Coi />);
     await esperarContador('Te quedan 3 de 3 hoy');
-    expect(screen.getByRole('link', { name: /Mira la Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/biblioteca/');
+    expect(screen.getByRole('link', { name: /Mira la Biblioteca de prompts/ })).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
     expect(screen.getByText('¿Buscas uno que ya esté hecho?')).toBeInTheDocument();
   });
 

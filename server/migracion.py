@@ -4,7 +4,9 @@ de cada pantalla ve cada quien (docs/PLAN-UI.md §3 y §4, fase 5).
 Cada pantalla que se migra a web/ pasa por tres etapas, una por deploy:
 
   · `nueva`    la pantalla nueva existe, pero solo se llega tecleando su URL
-               (/estudio/<p>/). La vieja sigue igual. Es el canario del dueño.
+               (/estudio/<p>/; las hojas del mapa, bajo su grupo:
+               /estudio/<área>/<grupo>/<p>/). La vieja sigue igual. Es el
+               canario del dueño.
   · `todos`    la URL vieja responde 302 a la nueva, SALVO que el usuario
                tenga la cookie `ui=clasica` (la deja /ui/clasica?pantalla=<p>,
                que se abre a mano: el enlace «Usar la versión anterior» del
@@ -24,6 +26,13 @@ Reglas del 302 (el precedente de /crear-imagenes.html perdía el query):
 Si web/dist no trae la pantalla nueva (pytest en Windows, un clon sin
 `npm run build`), `todos` no redirige: mandaría a un 404. `retirada` sí,
 porque ya no hay nada viejo que servir.
+
+La principal (/estudio/) es la NUEVA del inicio y no una URL vieja, así que
+lo de arriba no la cubre. `principal_a_la_clasica` hace lo mismo para ella:
+con la cookie `ui=clasica` (o sin la principal compilada) lleva a la
+versión anterior, /index.html. Todo lo que trae a alguien de vuelta al
+estudio apunta a /estudio/; sin esto la salida de emergencia del inicio
+duraba una carga.
 
 Cambiar de etapa = editar PANTALLAS y desplegar (lo corre el dueño).
 tests/test_migracion_ui.py exige, antes de `todos`, que cada invariante de la
@@ -63,14 +72,16 @@ MINIMAS = ("todos",)
 NO_STORE = {"Cache-Control": "no-store"}
 SIN_CACHE = {"Cache-Control": "no-cache"}
 
+# La página principal del estudio (el mapa, server/web.py): la `nueva` del inicio.
+PRINCIPAL = "/estudio/"
+
 
 @dataclass(frozen=True)
 class Pantalla:
     vieja: str       # la URL de siempre, p. ej. /admin.html
-    nueva: str       # /estudio/<p>/
+    nueva: str       # /estudio/<p>/; las hojas del mapa, bajo su grupo (/estudio/<área>/<grupo>/<p>/, E7); la principal es /estudio/
     etapa: str
-    # el HTML viejo en static/, si no se llama como la URL (el inicio vive en
-    # /estudio/ y su archivo es index.html)
+    # el HTML viejo en static/, si no se llama como la URL
     fichero: str = ""
 
     @property
@@ -84,50 +95,88 @@ PANTALLAS: dict[str, Pantalla] = {
     # UI·8.1: la primera con usuarios reales; cobra una sola cosa
     "clip": Pantalla(vieja="/clip.html", nueva="/estudio/clip/", etapa="nueva"),
     # UI·8.2: las dos cobran una cosa y comparten el patrón «lista que se
-    # sondea mientras la IA trabaja» (nucleo/useListaViva.ts)
-    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/estilos/", etapa="nueva"),
-    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/competencia/", etapa="nueva"),
+    # sondea mientras la IA trabaja» (nucleo/useListaViva.ts).
+    # E7.9 (31-oct-2026): la copiadora de estilos, la última de las nueve hojas
+    # del mapa, vive en su lugar, Marketing › Avanzado; /estudio/estilos/ (la
+    # carpeta plana de antes, que da nombre a la clave) es un alias con 302.
+    # /estilos.html sigue en `nueva`
+    "estilos": Pantalla(vieja="/estilos.html", nueva="/estudio/marketing/avanzado/estilos/", etapa="nueva"),
+    # E7.6 (31-oct-2026): la competencia vive en su lugar del mapa, Marketing ›
+    # Blotato; /estudio/competencia/ (la carpeta plana de antes, que da nombre
+    # a la clave) es un alias con 302. /competencia.html no cambia: sigue en `nueva`
+    "competencia": Pantalla(vieja="/competencia.html", nueva="/estudio/marketing/blotato/competencia/", etapa="nueva"),
     # UI·8.3: editar metraje (e1). Sube con progreso real y cobra una cosa,
     # «Proponer ✦ N»; la URL nueva dice lo que se hace en ella
     "subir": Pantalla(vieja="/e1.html", nueva="/estudio/subir/", etapa="nueva"),
-    # UI·8.4: el inicio. Su URL vieja es /estudio/ misma (tarjetas 37 y 38):
-    # la nueva vive al lado, en /estudio/inicio/, y en `todos` /estudio/
-    # redirige ahí. Cobra en su caja (el clip, la imagen, editar una imagen y
-    # la edición de un video); lo demás lo reparte a las pantallas que cobran.
+    # UI·8.4: el inicio. Cobra en su caja (el clip, la imagen, editar una imagen
+    # y la edición de un video); lo demás lo reparte a las pantallas que cobran.
     # 14-oct-2026: la primera en `todos`, por decisión del dueño.
-    "inicio": Pantalla(vieja="/estudio/", nueva="/estudio/inicio/", etapa="todos", fichero="index.html"),
+    # Rutas por nivel (22-oct-2026): la principal ES /estudio/ (el mapa), así que
+    # la URL vieja ya no puede ser /estudio/ misma: con vieja == nueva, `retirada`
+    # y «sin dist» darían un bucle de redirecciones, y /ui/clasica?pantalla=inicio
+    # dejaría de llevar al clásico. La versión anterior (static/index.html) queda
+    # en /index.html: en `todos` redirige a /estudio/, y con la cookie `ui=clasica`
+    # (la deja /ui/clasica?pantalla=inicio) sirve el clásico. /estudio/inicio/ (la
+    # página única de antes) se retiró: ya no es una carpeta de web/estudio/ y el
+    # alias de más abajo la manda a /estudio/ con un 302.
+    "inicio": Pantalla(vieja="/index.html", nueva="/estudio/", etapa="todos"),
     # UI·8.5: shorts cobra tres cosas (importar, analizar, renderizar). La
     # subida es la misma de editar metraje (marca/SubirVideo)
     "shorts": Pantalla(vieja="/shorts.html", nueva="/estudio/shorts/", etapa="nueva"),
     # UI·8.6: las dos hermanas de Blotato (lo programado y lo que ya salió).
-    # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto
-    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/agenda/", etapa="nueva"),
-    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/metricas/", etapa="nueva"),
+    # No cobran; leen de Blotato y cuidan su cupo de 60 llamadas por minuto.
+    # E7.5 (31-oct-2026): la agenda vive en su lugar del mapa, Marketing ›
+    # Blotato; /estudio/agenda/ (la carpeta plana de antes, que da nombre a la
+    # clave) es un alias con 302. /agenda.html no cambia: sigue en `nueva`
+    "agenda": Pantalla(vieja="/agenda.html", nueva="/estudio/marketing/blotato/agenda/", etapa="nueva"),
+    # E7.7 (31-oct-2026): las métricas también, Marketing › Blotato;
+    # /estudio/metricas/ es un alias con 302. /metricas.html sigue en `nueva`
+    "metricas": Pantalla(vieja="/metricas.html", nueva="/estudio/marketing/blotato/metricas/", etapa="nueva"),
     # UI·8.7: crear, editar con pincel o transformar. Cobra una cosa por envío
     # y modera el texto antes de cobrar
     "imagenes": Pantalla(vieja="/imagenes.html", nueva="/estudio/imagenes/", etapa="nueva"),
-    # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día
-    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/mix/", etapa="nueva"),
+    # UI·8.8: MIX cobra la campaña ENTERA al encender y devuelve por día.
+    # E7.8 (31-oct-2026): vive en su lugar del mapa, Marketing › Avanzado, con
+    # el nombre que le da el menú (`automaticas`); /estudio/mix/ (la carpeta
+    # plana de antes, que da nombre a la clave) es un alias con 302. /mix.html
+    # sigue en `nueva`
+    "mix": Pantalla(vieja="/mix.html", nueva="/estudio/marketing/avanzado/automaticas/", etapa="nueva"),
     # UI·8.9: crear una película. Cobra el guion al empezar, el resto al
     # producir y cada imagen que se cambia; el 302 conserva ?p=, ?brief= y ?modo=
     "crear": Pantalla(vieja="/crear.html", nueva="/estudio/crear/", etapa="nueva"),
     # Ajustes 3 (16-oct-2026): la Biblioteca de prompts NACE sin versión anterior (no hay nada que migrar ni a lo que volver). Se registra
     # directo en `retirada` —302 siempre a la nueva, sin HTML viejo ni cookie— para entrar al guardián de invariantes y al mapa
-    # docs/migracion/biblioteca.md igual que las demás; `/biblioteca.html` queda de dirección corta. No cobra.
-    "biblioteca": Pantalla(vieja="/biblioteca.html", nueva="/estudio/biblioteca/", etapa="retirada"),
+    # docs/migracion/biblioteca.md igual que las demás; `/biblioteca.html` queda de dirección corta. No cobra. E7.2 (31-oct-2026): vive en
+    # su lugar del mapa, Central › Distrito; /estudio/biblioteca/ (la carpeta plana de antes, que da nombre a la clave) es un alias con 302
+    "biblioteca": Pantalla(vieja="/biblioteca.html", nueva="/estudio/central/distrito/biblioteca/", etapa="retirada"),
     # 16-oct-2026: COI (Contexto · Objetivo · Instrucciones) nace en la UI nueva: NO tuvo pantalla vieja. Se registra `retirada` desde
     # el primer día para que el registro anti-pérdida cubra sus invariantes (docs/migracion/coi.md); `/coi.html` solo es un atajo que
-    # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado
-    "coi": Pantalla(vieja="/coi.html", nueva="/estudio/coi/", etapa="retirada"),
+    # redirige. Gratis (3 al día); lo que la persona escribe no se guarda en ningún lado. E7.1 (31-oct-2026): vive en su lugar del mapa,
+    # Central › Distrito; /estudio/coi/ (la carpeta plana de antes, que da nombre a la clave) es un alias con 302 (alias_del_estudio)
+    "coi": Pantalla(vieja="/coi.html", nueva="/estudio/central/distrito/coi/", etapa="retirada"),
     # 20-oct-2026: Automatizaciones › Distrito. El Constructor y el Asistente NACEN en la UI nueva, como COI y la Biblioteca: no tuvieron
     # pantalla vieja. Se registran `retirada` desde el primer día (302 siempre a la nueva, sin HTML viejo ni cookie) para que el registro
     # anti-pérdida cubra sus invariantes (docs/migracion/constructor.md y asistente.md); `/constructor.html` y `/asistente.html` solo son
     # atajos. No chocan con `/automatiza*` (la página pública del RAG, otra cosa). El Constructor no cobra ni llama a ningún servicio (todo
     # se arma en el navegador); el Asistente corre en modo prueba: muestras enlatadas, sin base, sin cola, sin proveedor y sin créditos
-    # (gasto 0). Su modo real exige el «sí» del dueño con el costo a la vista y NO está implementado.
-    "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/constructor/", etapa="retirada"),
-    "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/asistente/", etapa="retirada"),
+    # (gasto 0). Su modo real exige el «sí» del dueño con el costo a la vista y NO está implementado. E7.3 (31-oct-2026): el Constructor
+    # vive en su lugar del mapa, Automatizaciones › Distrito; /estudio/constructor/ (la carpeta plana de antes, que da nombre a la clave)
+    # es un alias con 302. E7.4 (31-oct-2026): el Asistente también, a su lado; /estudio/asistente/ es otro alias con 302
+    "constructor": Pantalla(vieja="/constructor.html", nueva="/estudio/automatizaciones/distrito/constructor/", etapa="retirada"),
+    "asistente": Pantalla(vieja="/asistente.html", nueva="/estudio/automatizaciones/distrito/asistente/", etapa="retirada"),
 }
+
+
+def alias_del_estudio() -> dict[str, str]:
+    """Las URLs viejas bajo /estudio/ → su canónica nueva, para server/web.py.
+
+    La clave de PANTALLAS ES el nombre de la carpeta de siempre (/estudio/<p>/), así que el alias se deduce: lo que
+    cambió de sitio. El inicio (/estudio/inicio/ → /estudio/), cuya carpeta se retiró en E5.3, y cada hoja del mapa que
+    E7 mudó a su carpeta anidada (/estudio/coi/ → /estudio/central/distrito/coi/): sus carpetas planas ya no existen, así
+    que esos alias están activos. Un alias es inerte mientras su carpeta vieja siga existiendo en web/dist: una pantalla
+    que existe manda sobre cualquier alias (web.destino_de). Ningún alias apunta a otro alias ni a sí mismo
+    (tests/test_web_rutas.py)."""
+    return {f"/estudio/{n}/": p.nueva for n, p in PANTALLAS.items() if p.nueva != f"/estudio/{n}/"}
 
 
 def etapa_minima() -> str:
@@ -180,6 +229,28 @@ def decidir(nombre: str, request: Request, nueva_montada: bool) -> str | None:
     return None
 
 
+def _de_la_principal() -> Pantalla | None:
+    """La pantalla cuya nueva es la principal (hoy, el inicio); None si no hay. Se busca por su `nueva`, no por su clave."""
+    return next((p for p in PANTALLAS.values() if p.nueva == PRINCIPAL), None)
+
+
+def principal_a_la_clasica(request: Request, principal_montada: bool = True) -> str | None:
+    """A dónde manda /estudio/ a quien no debe ver la principal: la URL vieja del inicio (/index.html), con el query. None = servirla.
+
+    Dos casos, los dos solo mientras la clásica exista (en `retirada` ya no hay, y /index.html manda aquí: sería un bucle):
+      · la cookie `ui=clasica`. Todo lo que trae a alguien de vuelta al estudio —el login (callback.html, entrar.html), los «← Estudio»
+        de las pantallas clásicas, el editor de cortes, «Conectar Blotato»— apunta a /estudio/: sin esto quien volvió a la clásica
+        salía de ella al primer clic. Va con el query: la clásica lee ?blotato=conectar;
+      · sin la principal compilada (un clon sin `npm run build`, pytest en Windows) /estudio/ no tiene nada que servir: el login
+        terminaría en un 404. Así se sigue entrando, al clásico, como antes de las rutas por nivel."""
+    p = _de_la_principal()
+    if p is None or etapa(p) == "retirada":
+        return None
+    if principal_montada and request.cookies.get(COOKIE) != CLASICA:
+        return None
+    return _con_query(p.vieja, request)
+
+
 def montar(app, montadas: list[str], static: Path) -> None:
     """Registra la URL vieja de cada pantalla y las rutas /ui/clasica y /ui/nueva.
 
@@ -193,8 +264,15 @@ def montar(app, montadas: list[str], static: Path) -> None:
         if p.etapa not in ETAPAS:
             raise ValueError(f"migracion: etapa desconocida {p.etapa!r} en {nombre}")
         montada = p.nueva.rstrip("/") in montadas
+        # HEAD como GET: `curl -I` y los verificadores de enlaces tienen que ver lo mismo que el navegador (sin él, HEAD /index.html
+        # caía en el montaje de static/ y daba 200 mientras GET daba el 302)
         app.add_api_route(p.vieja, _vista_vieja(nombre, montada, static),
-                          methods=["GET"], include_in_schema=False)
+                          methods=["GET", "HEAD"], include_in_schema=False)
+    # Sin la principal compilada web.montar no registra /estudio/: aquí se registra para que lleve a la clásica
+    # (principal_a_la_clasica). Con ella, es la ruta de web.montar la que pregunta.
+    if PRINCIPAL.rstrip("/") not in montadas and _de_la_principal() is not None:
+        app.add_api_route(PRINCIPAL, _principal_sin_compilar, methods=["GET", "HEAD"],
+                          include_in_schema=False, name="migracion-principal-sin-compilar")
 
     @app.get("/ui/clasica", include_in_schema=False)
     def _usar_clasica(request: Request, pantalla: str = ""):
@@ -222,6 +300,13 @@ def montar(app, montadas: list[str], static: Path) -> None:
         resp = RedirectResponse(destino, status_code=302, headers=NO_STORE)
         resp.delete_cookie(COOKIE, path="/")
         return resp
+
+
+def _principal_sin_compilar(request: Request):
+    destino = principal_a_la_clasica(request, principal_montada=False)
+    if destino:
+        return RedirectResponse(destino, status_code=302, headers=NO_STORE)
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 
 def _vista_vieja(nombre: str, montada: bool, static: Path):

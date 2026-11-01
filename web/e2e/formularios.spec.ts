@@ -7,6 +7,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { animacionesVivas } from './pantallas';
+import { URL_BLOTATO } from './recorrido';
 
 declare global {
   interface Window {
@@ -171,7 +172,7 @@ async function agenda(page: Page) {
     r.fulfill({ json: { items: [UNA], cursor: null, total: 1, error: null, reconectar: false } }),
   );
   await page.route('**/api/agenda/reprogramar', r => r.fulfill({ json: { id: 'sch_1' } }));
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   await page.getByRole('button', { name: 'Cambiar la hora' }).click();
   const dlg = page.getByRole('dialog', { name: 'Cambiar la hora' });
   await expect(dlg).toBeVisible();
@@ -197,7 +198,7 @@ test('agenda: una hora que ya pasó hace temblar el campo; la que sirve se confi
   await expect.poll(() => faltaDelTrazo(ok.locator('path'))).toBe(0);
 });
 
-// ── conectar Blotato en el inicio
+// ── conectar Blotato en su grupo (Marketing › Blotato)
 async function blotato(page: Page) {
   await oir(page);
   let conectado = false;
@@ -213,7 +214,7 @@ async function blotato(page: Page) {
       },
     });
   });
-  await page.goto('/estudio/inicio/?blotato=conectar');
+  await page.goto(`${URL_BLOTATO}?blotato=conectar`);
   const form = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
   await expect(form).toBeVisible();
   await form.getByLabel('Tu clave de API de Blotato').fill('una-clave');
@@ -222,7 +223,7 @@ async function blotato(page: Page) {
   return { dlg, listo: dlg.getByRole('status').filter({ hasText: 'Tu Blotato está conectado' }) };
 }
 
-test('inicio: la clave de Blotato recién guardada dibuja su palomita y el foco no sale del diálogo', async ({ page }) => {
+test('Blotato: la clave recién guardada dibuja su palomita y el foco no sale del diálogo', async ({ page }) => {
   const { dlg, listo } = await blotato(page);
   await expect(listo).toBeVisible();
   await expect.poll(() => arrancaron(page)).toEqual(['trazo-se-dibuja 300', 'guardado-llega 250']);
@@ -264,7 +265,7 @@ test.describe('con «reducir movimiento»', () => {
     expect(await page.evaluate(animacionesVivas)).toEqual([]);
   });
 
-  test('inicio: Blotato conectado, sin dibujar', async ({ page }) => {
+  test('Blotato: conectado, sin dibujar', async ({ page }) => {
     const { listo } = await blotato(page);
     await expect(listo).toBeVisible();
     expect(await faltaDelTrazo(listo.locator('path'))).toBe(0);

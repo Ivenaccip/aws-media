@@ -213,7 +213,7 @@ export async function simular(page: Page, s: Simulacion = {}, servidor: EstadoDe
 
 export async function abrir(page: Page, s: Simulacion = {}, servidor?: EstadoDelServidor): Promise<Llamadas> {
   const llamadas = await simular(page, s, servidor);
-  await page.goto('/estudio/biblioteca/');
+  await page.goto('/estudio/central/distrito/biblioteca/');
   await page.getByRole('heading', { level: 2, name: 'Biblioteca de prompts' }).waitFor();
   return llamadas;
 }

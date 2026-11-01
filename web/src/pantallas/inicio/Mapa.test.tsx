@@ -1,12 +1,11 @@
 // El mapa en X (paso 1 del recorrido) y las tres opciones (paso 2), cada uno solo: su orden, sus fichas inertes, que NADA se ve elegido
-// en el mapa («Estás aquí» solo en las opciones, y solo si ya elegiste) y lo que le avisan a quien los pinta. El recorrido entero, con el
-// título, el foco y Esc, está en Recorrido.test.tsx.
+// en el mapa («Estás aquí» solo en las opciones, y solo si ya elegiste) y lo que le avisan a quien los pinta. Sus páginas, con el título,
+// las migas y Esc, están en niveles/PaginaNivel.test.tsx.
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { MENU } from '../../marca/menu';
-import { areaDe } from './estadoRecorrido';
+import { MENU, areaDe } from '../../marca/menu';
 import { Grupos } from './Grupos';
 import { Mapa, PUESTOS } from './Mapa';
 

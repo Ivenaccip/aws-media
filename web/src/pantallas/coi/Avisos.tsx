@@ -123,7 +123,7 @@ export function BloqueSinIntentos({ texto, renuevaEnS }: { texto: string; renuev
         Se renueva a la medianoche, hora de México (12:00 a. m.). <span className="tabular-nums">{faltanTexto(renuevaEnS)}</span>.
       </p>
       <p className="m-0 mt-1.5 text-secundario">Mientras tanto, puedes usar los prompts que ya están hechos.</p>
-      <a href="/estudio/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline -ml-2 mt-1')}>
+      <a href="/estudio/central/distrito/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline -ml-2 mt-1')}>
         Ir a la Biblioteca de prompts
         <IconoCoi nombre="flecha" />
       </a>
@@ -140,7 +140,7 @@ export function BloqueAgotado({ tope, renuevaEnS }: { tope: number; renuevaEnS: 
         Se renuevan a la medianoche, hora de México (12:00 a. m.). <span className="tabular-nums">{faltanTexto(renuevaEnS)}</span>.
       </p>
       <p className="m-0 mt-1.5 text-secundario">Mientras tanto, puedes usar los prompts que ya están hechos.</p>
-      <a href="/estudio/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline -ml-2 mt-1')}>
+      <a href="/estudio/central/distrito/biblioteca/" className={unir(ENLACE_BOTON, 'no-underline -ml-2 mt-1')}>
         Ir a la Biblioteca de prompts
         <IconoCoi nombre="flecha" />
       </a>

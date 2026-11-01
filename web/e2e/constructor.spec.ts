@@ -1,8 +1,8 @@
-// El Constructor de automatizaciones (/estudio/constructor/) en un navegador de verdad: lo que jsdom no ve (el aro de foco, el arrastre con
-// el ratón y con el dedo, el scroll del lienzo, las medidas a 1100, 390 y 320 px, axe) y los viajes completos de punta a punta: armar un
-// flujo con el «+», la patita y la flecha, quitar y «Deshacer» (por el botón de la barra, Ctrl+Z y el aviso), «Limpiar» con su pregunta,
-// la descarga REAL del .json (con `waitForEvent('download')`, leyendo el archivo), «Ver el JSON», «Copiar», el borrador que sobrevive a
-// recargar y el teclado.
+// El Constructor de automatizaciones (/estudio/automatizaciones/distrito/constructor/) en un navegador de verdad: lo que jsdom no ve (el
+// aro de foco, el arrastre con el ratón y con el dedo, el scroll del lienzo, las medidas a 1100, 390 y 320 px, axe) y los viajes completos
+// de punta a punta: armar un flujo con el «+», la patita y la flecha, quitar y «Deshacer» (por el botón de la barra, Ctrl+Z y el aviso),
+// «Limpiar» con su pregunta, la descarga REAL del .json (con `waitForEvent('download')`, leyendo el archivo), «Ver el JSON», «Copiar», el
+// borrador que sobrevive a recargar y el teclado.
 //
 // No se llama a nada: el Constructor se arma 100 % en el navegador. Lo único que sale de la página son los pedidos de sus scripts (auth.js,
 // monedero.js y trabajos.js, con /api/trabajos simulado) y `simular` anota cualquier otro /api/: las pruebas lo exigen vacío.

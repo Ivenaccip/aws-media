@@ -31,7 +31,7 @@ async function mixVacio(page: Page) {
   await page.route('**/api/mix/cuentas', r =>
     r.fulfill({ json: { cuentas: [{ id: 'c1', platform: 'instagram', username: 'cafe.de.barrio' }], fuera: [] } }),
   );
-  await page.goto('/estudio/mix/');
+  await page.goto('/estudio/marketing/avanzado/automaticas/');
   await page.getByRole('button', { name: 'Mes siguiente' }).waitFor();
 }
 
