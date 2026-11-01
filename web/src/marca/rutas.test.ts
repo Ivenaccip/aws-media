@@ -124,10 +124,10 @@ describe('rutas · las direcciones salen de MENU', () => {
 
   it('rutas.nivel_de_ruta.lo_que_no_es_un_nivel_es_null: una hoja, mayúsculas, un nivel de más, claves de Object y lo que ya no existe', () => {
     for (const mala of [
-      // las hojas y las páginas planas de siempre
+      // las carpetas planas de antes de las hojas (desde E7, un 302 del servidor a su anidada) y las páginas planas de siempre
       '/estudio/coi/', '/estudio/biblioteca/', '/estudio/constructor/', '/estudio/asistente/', '/estudio/clip/', '/estudio/agenda/', '/estudio/inicio/',
       '/estudio/competencia/', '/estudio/metricas/', '/estudio/mix/', '/estudio/estilos/', '/estudio/_vitrina/',
-      // una hoja anidada no es un nivel de este recorrido (la mueve E7 con su propia página)
+      // una hoja en su anidada tampoco es un nivel de este recorrido: es su propia página (E7 la mudó ahí)
       '/estudio/marketing/blotato/agenda/', '/estudio/central/distrito/coi/', '/estudio/marketing/constructor/', '/estudio/automatizaciones/distrito/constructor/',
       '/estudio/central/distrito/biblioteca/', '/estudio/automatizaciones/distrito/asistente/', '/estudio/marketing/blotato/competencia/',
       '/estudio/marketing/blotato/metricas/', '/estudio/marketing/avanzado/automaticas/', '/estudio/marketing/avanzado/estilos/',
