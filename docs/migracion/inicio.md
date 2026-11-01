@@ -61,7 +61,7 @@ commit (ver abajo). Lo que sigue (E8) es plan: `docs/PLAN-UI.md` §9.
 Las 16 son privadas: cargan `/auth.js` clásico antes del módulo, `monedero.js` (la píldora del saldo) y la bandeja «Tus trabajos»
 (`iconos.js` + `trabajos.js`, D9), y se sirven con `no-cache`, ETag y 304 como cualquier pantalla. Hay **dos entradas**: las páginas
 de navegación (mapa, áreas y grupos) montan `niveles/nivel.tsx`, que **no trae la caja** ni pide sus listas; las tres de la caja
-montan `herramienta.tsx`, que monta `niveles/PaginaHerramienta.tsx` (hasta E8.6, `Inicio` con `lugar`). La lectura del estado de
+montan `herramienta.tsx`, que monta `niveles/PaginaHerramienta.tsx` (la caja con su marco; hasta E8.6, `Inicio` con `lugar`). La lectura del estado de
 Blotato solo la piden Marketing › Blotato y › Avanzado (con `import()`), y su diálogo, la primera vez que se abre. La caja no le pregunta
 nada a Blotato al cargar (hasta E8.6 pedía `GET /api/blotato?redes=0` para unas listas que en su página no hay): solo abre el diálogo,
 con su lectura completa, si llega con `?blotato=conectar`. Desde E7 las nueve hojas del mapa viven en la carpeta de su lugar, bajo su
@@ -188,22 +188,47 @@ se abre en una dirección que no reconoce, enseña lo mismo (`NoEncontrada`, con
 - **El foco que saltaba al `h2` del paso nuevo:** cada página empieza arriba.
 - **La página `/estudio/inicio/`** y su entrada (`principal.tsx`): 302 a `/estudio/`.
 
-### Lo que queda (deuda declarada en E5.3)
+### Lo que quedaba (deuda declarada en E5.3, saldada en E8)
 
-El inicio de una sola página sigue en el código sin página que lo monte: `Inicio` sin `lugar` y, en `Recorrido.tsx` y
-`estadoRecorrido.ts`, la parte del recorrido dentro de la página (el mapa y las opciones como pasos, `?desde=&ver=`, la `hoja` y su
-«Volver a …»). Esos dos archivos no sobran enteros: la caja de las tres direcciones se pinta con `Recorrido` y las páginas de nivel
-toman de `estadoRecorrido.ts` las migas, Esc y la guarda del doble clic. Retirar lo que sobra es E8 (plan). Desde E8.5 los IDs
-`inicio.menu.*` e `inicio.blotato.*` (y la suelta de UI·24) ya no prueban ese inicio de una página: viven en
-`PaginaGrupo.test.tsx` y prueban lo que de verdad ve la gente, la página de Marketing › Blotato, la de › Avanzado y la de
-Central › Distrito (más el mapa y un área en el del título), con el mismo nombre y lo mismo que afirmaban (la tabla de abajo lo dice
-fila por fila). `niveles.blotato.*` (`PaginaNivel.test.tsx`) y `niveles.spec.ts` siguen cubriendo esas páginas por su lado. Ningún ID
-`inicio.…` cambió de nombre ni se borró en el corte.
+Tras E5.3 el inicio de una sola página seguía en el código sin página que lo montara: `Inicio` sin `lugar` y, en `Recorrido.tsx` y
+`estadoRecorrido.ts`, el recorrido dentro de la página (el mapa y las opciones como pasos, `?desde=&ver=`, la `hoja` y su «Volver
+a …»), mientras la caja se pintaba con `Recorrido` y las páginas de nivel tomaban de `estadoRecorrido.ts` las migas, Esc y la guarda
+del doble clic. **E8 (1-nov-2026) lo retiró**: ya no existen `Inicio.tsx`, `Recorrido.tsx` ni `estadoRecorrido.ts`. Antes de borrar,
+cada pieza viva fue a su lugar, un commit por paso:
 
-**Pruebas del corte**, todas sueltas (prefijo `niveles.` o `rutas.`, que el guardián no exige registrar): en
-`web/src/pantallas/inicio/niveles/`, `PaginaNivel.test.tsx` (mapa, áreas, grupos, Blotato, Esc, doble clic, la entrada y
-`NoEncontrada`), `Herramienta.test.tsx` (la caja en sus tres direcciones), `navegar.test.ts` y `GrupoConBlotato.falla.test.tsx`; en
-`web/src/marca/`, `rutas.test.ts`, `paginas.test.ts` y `estudio.test.ts`; en pytest, `tests/test_web_rutas.py` (el servidor con un
+| Pieza | Dónde quedó |
+|---|---|
+| `areaDe`, `grupoDe` | `web/src/marca/menu.ts`, junto a `buscar`, con `find` (E8.1) |
+| `ahora`, `VENTANA_DOBLE_CLIC_MS`, `esDobleClicAccidental` | `niveles/dobleClic.ts` (E8.2) |
+| `leerLlegadaDeTexto`, `LlegadaDeTexto`, `MAX_TEXTO_DE_LLEGADA`, `urlSinEntrada` | `inicio/llegada.ts`, sin nada de la caja (E8.3) |
+| `migasDe`, `alEscape` | `niveles/navegar.ts`, sobre un `Nivel`: `migasDeNivel` y `escapeDeNivel` (E8.4) |
+| La caja con su marco, sus listas, la llegada y el diálogo de `?blotato=conectar` (`Inicio` con `lugar` + `Recorrido`) | `niveles/PaginaHerramienta.tsx`, con el mismo DOM (E8.6) |
+
+Lo demás se retiró sin destino porque ya no lo usaba nadie: el reductor del recorrido, el estado inicial por `?desde=&ver=`, la
+`hoja` y su «Volver a …», `cajaVisible`, el foco al `h2` al cambiar de paso, la caja montada y escondida detrás del mapa, el puente
+`estadoDeNivel`/`urlDeAccion` de `navegar.ts`, y `lugarDeTexto` y `LUGAR_INICIAL` de `menu.ts` (E8.7). El único cambio de red: la
+caja ya no pide `GET /api/blotato?redes=0` al cargar (solo lo usaban las listas de `Recorrido`); con `?blotato=conectar` abre el
+diálogo con su lectura completa, como siempre.
+
+Los IDs `inicio.menu.*` e `inicio.blotato.*` (y la suelta de UI·24) dejaron de probar ese inicio de una página en E8.5: viven en
+`PaginaGrupo.test.tsx` y prueban lo que de verdad ve la gente, la página de Marketing › Blotato, la de › Avanzado y la de Central ›
+Distrito (más el mapa y un área en el del título), con el mismo nombre y lo mismo que afirmaban (la tabla de abajo lo dice fila por
+fila). `niveles.blotato.*` (`PaginaNivel.test.tsx`) y `niveles.spec.ts` siguen cubriendo esas páginas por su lado. Las pruebas que
+solo probaban el inicio de una página se retiraron con él en E8.7, después de mudar lo vivo que afirmaban (el área de Automatizaciones
+a `menu.test.ts`, `Pantallas.test.tsx` y `PaginaNivel.test.tsx`; el marco de la caja a `Herramienta.test.tsx`; las migas y Esc a
+`navegar.test.ts`; el aviso fantasma y lo que la caja dice sin texto a `Inicio.test.tsx`). Ningún ID `inicio.…` cambió de nombre ni
+se borró en el corte.
+
+Queda vivo sin uso, para E9: el prop `enVista` de `Caja` (siempre a la vista en su página; lo prueban `Edicion.test.tsx`,
+`usePistaRotatoria.test.tsx` y `Inicio.test.tsx`) y su `tituloRef`, el modo botón de `Grupos` (con su `aqui` y su «Estás aquí»), el
+`alElegir` de `Mapa` y el `alPulsar` de `Migas`.
+
+**Pruebas del corte**, sueltas (prefijo `niveles.` o `rutas.`, que el guardián no exige registrar): en
+`web/src/pantallas/inicio/niveles/`, `PaginaNivel.test.tsx` (mapa, áreas, grupos, Automatizaciones, Blotato, Esc, doble clic, la entrada
+y `NoEncontrada`), `Herramienta.test.tsx` (la caja en sus tres direcciones y su marco), `navegar.test.ts` (migas y Esc de cada nivel),
+`dobleClic.test.ts` (la guarda del doble clic) y `GrupoConBlotato.falla.test.tsx`; en `web/src/marca/`, `rutas.test.ts`,
+`paginas.test.ts`, `estudio.test.ts` y `menu.test.ts`; con IDs `inicio.…`, `niveles/PaginaGrupo.test.tsx` (los `inicio.menu.*` e
+`inicio.blotato.*`, desde E8.5); en pytest, `tests/test_web_rutas.py` (el servidor con un
 dist falso) y `tests/test_web_niveles.py` (el dist de verdad); y el e2e `niveles.spec.ts` (con `web/e2e/recorrido.ts`), la versión
 Playwright de la verificación a mano del diseño. El QA manual está en `docs/QA-UI.md` § inicio (pasos N1 a N24).
 
