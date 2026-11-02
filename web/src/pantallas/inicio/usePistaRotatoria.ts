@@ -14,10 +14,11 @@
 // Cuándo NO corre (`quieta` y `enVista` de afuera, y lo que el hook sabe solo):
 //   · `quieta`: el campo tiene el foco (quien va a escribir no debe ver la pista cambiar bajo el cursor) o tiene texto (la pista
 //     no se ve). No corre NADA: ni temporizador ni fundidos. Al soltarse retoma en la MISMA idea;
-//   · `enVista` falso: el campo no se puede ver aunque siga montado. La tarjeta del inicio esconde la caja con `hidden` mientras
-//     enseña el mapa, las opciones o una lista (desmontarla perdería lo escrito), y el modo Shorts cambia el campo por otro. Nadie
-//     ve la pista: no corre NADA, y lo que había avanzado se olvida, así que al volver arranca otra vez en la primera idea, sin
-//     fundido. (Volver a la pestaña Edición ya lo hacía solo: cambiar de pestaña desmonta esta caja y su estado);
+//   · `enVista` falso: el campo no se puede ver aunque siga montado. El modo Shorts cambia el campo por otro, y el inicio de una sola
+//     página (retirado en E8) escondía la caja con `hidden` mientras enseñaba el mapa, las opciones o una lista (desmontarla perdía
+//     lo escrito); hoy la página de su herramienta siempre la tiene a la vista. Nadie ve la pista: no corre NADA, y lo que había
+//     avanzado se olvida, así que al volver arranca otra vez en la primera idea, sin fundido. (Volver a la pestaña Edición ya lo
+//     hacía solo: cambiar de pestaña desmonta esta caja y su estado);
 //   · «reducir movimiento»: se queda fija en la primera idea, sin fundido ni rotación, y reacciona si la preferencia cambia
 //     (al encenderla vuelve a la primera; al apagarla sigue en la primera y rota desde ahí, sin saltar a la idea que iba);
 //   · la pestaña del navegador está oculta: no se acumulan ni se disparan ciclos que nadie ve.

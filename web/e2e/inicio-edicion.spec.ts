@@ -25,7 +25,7 @@ import { contraste } from '../src/nucleo/contraste';
 import type { Cotizacion } from '../src/pantallas/inicio/envio';
 import { cotizacion, simularEdicion, type Visto } from './edicion';
 import { animacionesVivas, pistaSePinta } from './pantallas';
-import { elegir } from './recorrido';
+import { abrirLaCaja } from './recorrido';
 
 // E2: el precio ya no sale de /api/editar/<p>/costo sino de POST /api/edicion/cotizar (con las referencias de la caja) y «Iniciar» es
 // POST /api/edicion/iniciar. `costo` es lo que contesta el servidor de mentira para cualquier conjunto.
@@ -39,10 +39,8 @@ async function edicion(
   // `reloj`: el de la pantalla (setTimeout, Date…) pasa a ser el falso de Playwright, quieto hasta que la prueba lo mueva
   if (reloj) await page.clock.install({ time: 0 });
   const visto = await simularEdicion(page, { cotizar: () => costo, subidaMs, ...(saldo !== undefined ? { saldo } : {}) });
-  await page.goto('/estudio/inicio/');
-  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
-  await expect(page.getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
-  await elegir(page, 'Marketing', 'Distrito');
+  // la caja es una página con su dirección (…/distrito/video/): se abre yendo a ella, y la pestaña Edición se elige en el riel, como siempre
+  await abrirLaCaja(page);
   if (reloj) await page.clock.pauseAt(1000);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await expect(campo(page)).toBeVisible();

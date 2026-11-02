@@ -2,8 +2,8 @@
 // invariante: tests/test_migracion_ui.py exige que cada ID del registro exista aquí.
 //
 // Nada de esto gasta dinero: el servidor (con las rutas de /api/edicion que define el contrato E2), la subida a S3 (XHR) y el cobro son
-// dobles (web/src/prueba/edicion.ts). Se prueba la Caja sola (donde vive el estado) y, para lo de «ninguna petición al montar», el
-// Inicio entero. Lo de varios videos, la cola de subida, la hoja y la unión está en EdicionUnion.test.tsx.
+// dobles (web/src/prueba/edicion.ts). Se prueba la Caja sola (donde vive el estado) y, para lo de «ninguna petición al montar», la
+// página entera de la caja (niveles/PaginaHerramienta.tsx). Lo de varios videos, la cola de subida, la hoja y la unión está en EdicionUnion.test.tsx.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,8 +59,8 @@ import {
   tamano,
 } from './edicion';
 import { rechazoVideo, soloVideos, type Cotizacion } from './envio';
-import { Inicio } from './Inicio';
 import { ALTO_DE_ACCION, ANCHO_DE_ACCION } from './medidas';
+import { PaginaHerramienta } from './niveles/PaginaHerramienta';
 
 // los tokens de la carta, tal cual (un `?raw` de un .css lo procesa el plugin de Tailwind y llega vacío; como en Confirmar.test)
 const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../estilos/tokens.css'), 'utf8');
@@ -72,7 +72,7 @@ beforeEach(() => {
   ponerXhrFalso();
   ir = vi.fn<(url: string) => void>();
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
-  history.replaceState(null, '', '/estudio/inicio/');
+  history.replaceState(null, '', '/estudio/marketing/distrito/video/');
 });
 
 afterEach(() => {
@@ -182,9 +182,10 @@ describe('la caja de Edición', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  // NAV-05 del prototipo: el cuadro de avisos es de toda la página. La tarjeta del inicio esconde la caja (`enVista` falso) al abrir el
-  // mapa o una lista, y un error de ella no puede quedarse flotando ahí. No se esconde para volver a ponerlo: se quita (al volver, «Iniciar»
-  // lo repite). Los avisos verdes del trabajo en marcha no son errores de la caja y se quedan (Recorrido.test.tsx lo prueba entero).
+  // NAV-05 del prototipo: el cuadro de avisos es de toda la página. Con la caja fuera de la vista (`enVista` falso: hasta E8 el inicio de
+  // una sola página la escondía al abrir el mapa o una lista) un error de ella no puede quedarse flotando ahí. No se esconde para volver a
+  // ponerlo: se quita (al volver, «Iniciar» lo repite). Los avisos verdes del trabajo en marcha no son errores de la caja y se quedan
+  // (Inicio.test.tsx, «el cuadro de avisos con la caja fuera de la vista»).
   it('el error de «Iniciar» sin video sale del cuadro de avisos cuando la caja se esconde, y no vuelve solo al verse otra vez', async () => {
     const avisos = ponerAvisos();
     montar();
@@ -251,6 +252,38 @@ describe('la caja de Edición', () => {
     // por debajo de 640 px los dos siguen a todo el ancho
     expect(iniciar).toHaveClass('w-full', 'min-[640px]:w-auto');
     expect(selector).toHaveClass('w-full', 'min-[640px]:w-auto');
+  });
+
+  // Salir de la caja ya no la conserva (cada nivel es otra página): lo único que avisa es el navegador, cuando hay una subida a medias
+  // (beforeunload). Nada más lo vigilaba en vitest: quitar el aviso dejaba todo en verde (el e2e de inicio-recorrido.spec.ts lo ve, pero no gatea CI).
+  // Sin el prefijo `inicio.`: es del recorrido por páginas y no un invariante del registro de migración.
+  /** Lo que hace el navegador al cerrar o salir: dispara `beforeunload`; si alguien lo cancela, pregunta. */
+  const preguntaAlSalir = () => {
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+
+  it('niveles.edicion.con_una_subida_a_medias_cerrar_o_salir_de_la_pagina_pide_confirmar_y_sin_ella_no', async () => {
+    montar();
+    pintar();
+    await irAEdicion();
+    expect(preguntaAlSalir(), 'sin nada a medias no hay nada que perder').toBe(false);
+    await empezarSubida();
+    expect(preguntaAlSalir(), 'con la subida a medias el navegador pregunta').toBe(true);
+    await terminarSubida();
+    await waitFor(() => expect(botonIniciar().textContent).toMatch(/^Iniciar/));
+    expect(preguntaAlSalir(), 'ya subido, salir no pregunta').toBe(false);
+  });
+
+  it('niveles.edicion.la_caja_que_se_va_no_deja_el_aviso_puesto', async () => {
+    montar();
+    const { unmount } = pintar();
+    await irAEdicion();
+    await empezarSubida();
+    expect(preguntaAlSalir()).toBe(true);
+    unmount();
+    expect(preguntaAlSalir(), 'la caja se fue: el aviso se quitó con ella').toBe(false);
   });
 
   it('inicio.edicion.subir_muestra_progreso_real_y_el_precio_llega_del_servidor_al_terminar', async () => {
@@ -904,7 +937,7 @@ describe('la caja de Edición', () => {
   });
 
   it('inicio.edicion.ninguna_peticion_al_montar_ni_al_abrir_la_familia', async () => {
-    // el Inicio entero: lo que pide al montar es lo de siempre; Edición no suma nada hasta que hay un video
+    // la página entera de la caja: lo que pide al montar es lo de siempre; Edición no suma nada hasta que hay un video
     const f = servidor({
       '/api/proyectos': () => json([]),
       '/api/slots': () => json({ slots: null, activos: 0 }),
@@ -913,10 +946,7 @@ describe('la caja de Edición', () => {
       '/api/clip': () => json({ clips: [] }),
       '/api/blotato': () => json({ conectado: false, origen: null, cuentas: [], error: null, plan: null }),
     });
-    render(<Inicio ir={ir} />);
-    // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por Marketing → Distrito
-    await userEvent.click(within(await screen.findByRole('group', { name: 'Áreas' })).getByRole('button', { name: /^Marketing/ }));
-    await userEvent.click(within(screen.getByRole('group', { name: 'Marketing' })).getByRole('button', { name: /^Distrito/ }));
+    render(<PaginaHerramienta lugar={{ area: 'mkt', grupo: 'distrito', pantalla: 'video' }} ir={ir} />);
     await screen.findByRole('group', { name: 'Qué quieres crear' });
     await userEvent.click(riel().getByRole('button', { name: 'Edición' }));
     expect(campo()).toBeInTheDocument();

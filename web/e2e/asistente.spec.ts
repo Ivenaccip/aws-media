@@ -1,8 +1,9 @@
-// El Asistente de Automatizaciones (/estudio/asistente/) en un navegador de verdad, a 1100, 390 y 320 px, con la API simulada (`page.route`):
-// el servidor lo construye otro rol y aquí NO se llama a nada (ni al modelo, ni a la base, ni al monedero). Mide lo que jsdom no ve (desborde,
-// letra, objetivos de 44 px, axe, el foco que nunca cae al body) y recorre los viajes de punta a punta: el letrero de «prueba», los límites
-// del pedido que dice el servidor, los pasos que informa el servidor (con el reloj adelantado: el sondeo pregunta cada 5 s), el resultado, la
-// descarga REAL del .json, «sin cobertura», cada error, y el traspaso al Constructor por el borrador (con la pregunta si ya había uno).
+// El Asistente de Automatizaciones (/estudio/automatizaciones/distrito/asistente/) en un navegador de verdad, a 1100, 390 y 320 px, con la
+// API simulada (`page.route`): el servidor lo construye otro rol y aquí NO se llama a nada (ni al modelo, ni a la base, ni al monedero).
+// Mide lo que jsdom no ve (desborde, letra, objetivos de 44 px, axe, el foco que nunca cae al body) y recorre los viajes de punta a punta:
+// el letrero de «prueba», los límites del pedido que dice el servidor, los pasos que informa el servidor (con el reloj adelantado: el
+// sondeo pregunta cada 5 s), el resultado, la descarga REAL del .json, «sin cobertura», cada error, y el traspaso al Constructor por el
+// borrador (con la pregunta si ya había uno).
 //
 // Capturas: con AUTOMATIZA_CAPTURAS=<carpeta> cada estado que se `revisa` se guarda como PNG. Sin la variable no se guarda nada.
 import { readFileSync } from 'node:fs';
@@ -156,7 +157,7 @@ for (const { ancho, alto } of ANCHOS) {
       await expect(principal(page).getByRole('heading', { name: 'Lo que nos falta' })).toBeVisible();
       await expect(principal(page)).toContainText('apps como HubSpot, GitHub, Instagram, lectores de RSS y Google Calendar todavía no se pueden conectar');
       await expect(principal(page).getByRole('heading', { name: 'Qué sigue' })).toBeVisible();
-      await expect(principal(page).getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/constructor/');
+      await expect(principal(page).getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/automatizaciones/distrito/constructor/');
       await expect(page.getByRole('alert')).toHaveCount(0); // no es un error
       await expect(principal(page).getByRole('button', { name: 'Descargar .json' })).toHaveCount(0);
       await expect(cuadro(page)).toHaveValue('Cuando alguien me escriba en Instagram, que lo anote en HubSpot'); // lo escrito se queda
@@ -198,7 +199,7 @@ for (const { ancho, alto } of ANCHOS) {
       await expect(page.getByRole('heading', { name: 'No está disponible por ahora' })).toBeVisible();
       await expect(principal(page)).toContainText('El Asistente no está disponible por ahora. Inténtalo en unos minutos.');
       await expect(principal(page)).toContainText('Mientras tanto, puedes armar tu flujo a mano en el constructor.');
-      await expect(principal(page).getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/constructor/');
+      await expect(principal(page).getByRole('link', { name: 'Abrir el constructor' })).toHaveAttribute('href', '/estudio/automatizaciones/distrito/constructor/');
       await expect(cuadro(page)).toHaveCount(0);
       await expect(armar(page)).toHaveCount(0);
       await revisar(page, 'asistente-apagado', { foco: false });
@@ -621,7 +622,7 @@ test.describe('Asistente: abrir en el constructor', () => {
   test('el flujo llega al Constructor tal cual: cuadros, conexiones, nombre, el primer agente elegido, y sin pedir nada al servidor', async ({ page }) => {
     await conResultado(page);
     await botonAbrirEnConstructor(page).click();
-    await page.waitForURL('**/estudio/constructor/');
+    await page.waitForURL('**/estudio/automatizaciones/distrito/constructor/');
     await expect(page.getByRole('heading', { level: 2, name: 'Arma tu automatización' })).toBeVisible();
     await expect(nodos(page)).toHaveCount(4);
     await expect(page.getByLabel('Nombre del flujo')).toHaveValue('Responder correos de clientes');
@@ -673,20 +674,20 @@ test.describe('Asistente: abrir en el constructor', () => {
     // Esc: no navega, no toca el borrador y el foco vuelve al botón
     await page.keyboard.press('Escape');
     await expect(pregunta).toHaveCount(0);
-    expect(page.url()).toContain('/estudio/asistente/');
+    expect(page.url()).toContain('/estudio/automatizaciones/distrito/asistente/');
     expect(await leerBorrador(page)).toBe(antes);
     await expect(botonAbrirEnConstructor(page)).toBeFocused();
     // «Cancelar»: lo mismo
     await botonAbrirEnConstructor(page).click();
     await pregunta.getByRole('button', { name: 'Cancelar' }).click();
     await expect(pregunta).toHaveCount(0);
-    expect(page.url()).toContain('/estudio/asistente/');
+    expect(page.url()).toContain('/estudio/automatizaciones/distrito/asistente/');
     expect(await leerBorrador(page)).toBe(antes);
     expect(JSON.parse(antes!).nombreFlujo).toBe('Lo que ya tenía');
     // «Reemplazar y abrir»: ahora sí, y llega el del Asistente
     await botonAbrirEnConstructor(page).click();
     await pregunta.getByRole('button', { name: 'Reemplazar y abrir' }).click();
-    await page.waitForURL('**/estudio/constructor/');
+    await page.waitForURL('**/estudio/automatizaciones/distrito/constructor/');
     await expect(nodos(page)).toHaveCount(4);
     await expect(page.getByLabel('Nombre del flujo')).toHaveValue('Responder correos de clientes');
     await expect(page.getByText('Mi agente de antes')).toHaveCount(0);
@@ -695,11 +696,11 @@ test.describe('Asistente: abrir en el constructor', () => {
   test('un flujo hecho en el Constructor y luego el Asistente: el borrador se respeta hasta que se elige reemplazarlo', async ({ page }) => {
     await page.clock.install();
     await simular(page, { consultar: [ok(listo(MUESTRA_CORREOS))] });
-    await page.goto('/estudio/constructor/');
+    await page.goto('/estudio/automatizaciones/distrito/constructor/');
     await page.getByRole('button', { name: 'Cargar el ejemplo' }).click();
     await expect(nodos(page)).toHaveCount(5);
     await expect.poll(async () => JSON.parse((await leerBorrador(page)) ?? '{"nodes":[]}').nodes.length).toBe(5);
-    await page.goto('/estudio/asistente/');
+    await page.goto('/estudio/automatizaciones/distrito/asistente/');
     await pedir(page);
     await page.clock.fastForward(5000);
     await expect(tituloListo(page)).toBeFocused();
@@ -741,7 +742,7 @@ test.describe('Asistente: abrir en el constructor', () => {
     await conResultado(page);
     await botonAbrirEnConstructor(page).click();
     await expect(page.getByRole('alert')).toContainText('Tu navegador no tiene espacio para pasar el flujo al constructor. Descarga el .json y ábrelo en n8n.');
-    expect(page.url()).toContain('/estudio/asistente/');
+    expect(page.url()).toContain('/estudio/automatizaciones/distrito/asistente/');
     await expect(botonDescargar(page)).toBeVisible();
     expect(await focoEnElCuerpo(page)).toBe(false);
   });

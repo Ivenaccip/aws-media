@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Locator, Page } from '@playwright/test';
 
 // Las carpetas de web/estudio/ con página, a cualquier profundidad y no solo en el primer nivel, como rutas relativas con «/»:
-// «inicio», «agenda», «marketing/distrito/imagen» (lo que va entre `/estudio/` y la barra final de la dirección).
+// «clip», «marketing/blotato/agenda», «marketing/distrito/imagen» (lo que va entre `/estudio/` y la barra final de la dirección).
 // Una carpeta sin index.html no es pantalla (solo agrupa a otras); las que empiezan por «_» (la vitrina, cualquier `_borrador`) son
 // internas y no cuentan, ni ellas ni lo que cuelga de ellas (server/web.py las marca igual, tramo por tramo).
 function carpetasConPagina(raiz: string, rel: string[] = []): string[] {
@@ -23,9 +23,8 @@ function carpetasConPagina(raiz: string, rel: string[] = []): string[] {
 // dirección anidada (E7 de las rutas por nivel) tampoco se pierde de vista. `movimiento-reducido.spec.ts` las abre en `/estudio/${pantalla}/`.
 //
 // La PRINCIPAL (web/estudio/index.html, el mapa en /estudio/) NO está aquí a propósito: no es una carpeta hija (su ruta relativa sería
-// la cadena vacía y `/estudio/${''}/` da «//»), y hoy no se sirve —/estudio/ redirige a /estudio/inicio/, que sí está—. Su código es el de
-// cualquier otra página de nivel (`niveles/nivel.tsx`), que ya recorren «marketing», «central»… Cuando el servidor la sirva (E5.2), esa
-// etapa decide si la suma con su propia prueba, porque ahí `/estudio/` deja de ser un salto.
+// la cadena vacía y `/estudio/${''}/` da «//»). Su código es el de cualquier otra página de nivel (`niveles/nivel.tsx`), que ya recorren
+// «marketing», «central»…; la prueba de «reducir movimiento» del mapa mismo vive en niveles.spec.ts, que la abre por `URL_MAPA`.
 export const PANTALLAS: readonly string[] = carpetasConPagina(fileURLToPath(new URL('../estudio/', import.meta.url))).sort();
 
 // Lo que el navegador todavía está moviendo: animaciones CSS, transiciones y

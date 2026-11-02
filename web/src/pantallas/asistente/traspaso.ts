@@ -12,8 +12,8 @@ import {
   type MotivoNoGuardar,
 } from '../constructor/modelo/borrador';
 
-/** Dónde vive el Constructor. */
-export const URL_CONSTRUCTOR = '/estudio/constructor/';
+/** Dónde vive el Constructor: su lugar en el mapa, Automatizaciones › Distrito (desde E7.3). */
+export const URL_CONSTRUCTOR = '/estudio/automatizaciones/distrito/constructor/';
 
 export type Navegar = (url: string) => void;
 

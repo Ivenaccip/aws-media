@@ -37,14 +37,16 @@ HORAS_VISIBLE = 24        # lo terminado se ve un día (dueño, 25-sep)
 HORAS_COLGADO = 3         # algo «corriendo» más que esto no se anuncia como vivo
 SONDEO_S = 15             # cada cuánto pregunta el cuadro mientras algo corre
 MAX_POR_TIPO = 10
-# A dónde lleva la ficha de una imagen en segundo plano: el inicio nuevo, que es donde «Mis
-# creaciones» enseña el pedido (en curso, lista o con su error). Ni /imagenes.html ni
-# /estudio/imagenes/ lo enseñan: son el formulario de crear, vacío. No es /estudio/: aunque desde
-# el 14-oct-2026 el inicio está en `todos` (server/migracion.py) y esa URL redirige aquí, con la
-# cookie `ui=clasica` sirve el inicio viejo, que no lista pedidos. static/trabajos.js oculta la
-# ficha en la pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis
-# creaciones» ya dice.
-URL_IMAGEN = "/estudio/inicio/"
+# A dónde lleva la ficha de una imagen en segundo plano: la página de la Caja en la pestaña
+# Imagen, que es donde «Mis creaciones» enseña el pedido (en curso, lista o con su error). Ni
+# /imagenes.html ni /estudio/imagenes/ lo enseñan: son el formulario de crear, vacío. No es
+# /estudio/: es la principal («Elige un área») y la Caja no está en ella. Tiene que ser una
+# página que exista de verdad (web/estudio/marketing/distrito/imagen/index.html, generada desde
+# web/src/marca/menu.ts): lo ata tests/test_imagen_segundo_plano.py, porque si no el «Ver» de
+# una imagen terminada llevaría a una dirección que da 404. static/trabajos.js oculta la ficha
+# en la pantalla a la que apunta, y la Caja es UNA pantalla con tres direcciones (Imagen, Video,
+# Edición): en ninguna de las tres se repite lo que «Mis creaciones» ya dice.
+URL_IMAGEN = "/estudio/marketing/distrito/imagen/"
 
 # Los mismos nombres que enseña crear (static/crear.html, PASOS_PREP y PASOS_PROD)
 _PASOS = [
@@ -278,8 +280,9 @@ def ficha_edicion(nombre: str, doc: dict, desde: float, ahora: float) -> dict | 
     `edicion` que `static/trabajos.js` pinta tal cual (no arma frases).
 
     `url` va vacío mientras corre: la bandeja oculta la ficha cuya `url` es la
-    página actual, y la caja vive en /estudio/inicio/. Con `cobrado` falso la
-    ficha NO se emite: todavía no se cobró y puede no llegar a existir."""
+    página actual, y la caja vive en las páginas de herramienta
+    (/estudio/marketing/distrito/{imagen,video,edicion}/). Con `cobrado` falso
+    la ficha NO se emite: todavía no se cobró y puede no llegar a existir."""
     editar = doc.get("editar")
     if not isinstance(editar, dict) or editar.get("copia") is not True or not editar.get("estado"):
         return None

@@ -16,7 +16,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { conTranscripcion, COPIA, cotizacion, elegible, simularEdicion, type OpcionesDeEdicion, type Visto } from './edicion';
 import { animacionesVivas } from './pantallas';
-import { elegir } from './recorrido';
+import { abrirLaCaja } from './recorrido';
 
 const TREN = elegible('El tren de papel', { ref: 'proyecto:gen-1a2b3c4d', duracion_s: 312 });
 const PERRO = elegible('Perro en la playa', { ref: 'clip:clip-20261008-101500-ab12cd', tipo: 'clip', duracion_s: 30 });
@@ -50,9 +50,8 @@ const orden = (page: Page) => filas(page).locator('b').allInnerTexts();
 async function abrir(page: Page, o: OpcionesDeEdicion = {}, antes?: (visto: Visto) => Promise<void>): Promise<Visto> {
   const visto = await simularEdicion(page, { elegibles: ELEGIBLES, cotizar: barato, ...o });
   await antes?.(visto); // sus rutas se registran DESPUÉS de las de simularEdicion: ganan
-  await page.goto('/estudio/inicio/');
-  await expect(page.getByRole('heading', { level: 2, name: 'Elige un área' })).toBeVisible();
-  await elegir(page, 'Marketing', 'Distrito');
+  // la caja es una página con su dirección: se abre yendo a ella, y la pestaña Edición se elige en el riel, como siempre
+  await abrirLaCaja(page);
   await riel(page).getByRole('button', { name: 'Edición' }).click();
   await expect(campo(page)).toBeVisible();
   return visto;

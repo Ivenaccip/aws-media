@@ -19,7 +19,7 @@ const marcada = (page: Page, red: string) => grafica(page, red).evaluate(g => g.
 
 async function abrirMetricas(page: Page) {
   await page.route('**/api/metricas', r => r.fulfill({ json: TRAMO_METRICAS }));
-  await page.goto('/estudio/metricas/');
+  await page.goto('/estudio/marketing/blotato/metricas/');
   await tarjeta(page, 'Instagram').waitFor();
 }
 

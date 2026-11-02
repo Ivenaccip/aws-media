@@ -9,7 +9,7 @@
 // No gasta nada: el servidor y «S3» son rutas de mentira, y las de dinero de Shorts, de las que se vigila que NO se llamen.
 import { expect, test, type Page } from '@playwright/test';
 
-import { abrirLaCaja } from './recorrido';
+import { abrirLaCaja, URL_CAJA } from './recorrido';
 
 const RESPUESTAS_VACIAS: Record<string, unknown> = {
   '**/api/proyectos': [],
@@ -36,7 +36,7 @@ async function enShorts(page: Page) {
     dinero.push(`${r.request().method()} ${new URL(r.request().url()).pathname}`);
     return r.fulfill({ status: 500, json: { detail: 'no debía llamarse' } });
   });
-  // el inicio abre en el mapa (dueño, 15-oct-2026): a la caja se llega por el camino de siempre, Marketing → Distrito
+  // la caja es una página con su dirección (…/distrito/video/): se abre yendo a ella; al elegir Edición en el riel la dirección la sigue
   await abrirLaCaja(page);
   await page.getByRole('group', { name: 'Qué quieres crear' }).getByRole('button', { name: 'Edición' }).click();
   await chip(page).click();
@@ -80,14 +80,14 @@ test('«Iniciar» sin liga avisa en el cuadro de abajo a la derecha y no navega;
   await expect(iniciar(page)).toHaveAttribute('aria-disabled', 'true');
   await iniciar(page).click({ force: true });
   await expect(page.locator('#bandeja')).toContainText('Primero pega la liga de YouTube o agrega el video con el «+».');
-  expect(new URL(page.url()).pathname).toBe('/estudio/inicio/');
+  expect(new URL(page.url()).pathname).toBe(URL_CAJA.edicion);
   // una liga que no es de YouTube: el error va junto al campo y el campo lo dice; no se navega
   await campoLiga(page).fill('https://vimeo.com/123456789');
   await iniciar(page).click();
   await expect(page.getByText(/Esa no parece una liga de YouTube/)).toBeVisible();
   await expect(campoLiga(page)).toHaveAttribute('aria-invalid', 'true');
   await expect(campoLiga(page)).toBeFocused();
-  expect(new URL(page.url()).pathname).toBe('/estudio/inicio/');
+  expect(new URL(page.url()).pathname).toBe(URL_CAJA.edicion);
   // escribir quita el error
   await campoLiga(page).press('Backspace');
   await expect(page.getByText(/Esa no parece una liga de YouTube/)).toHaveCount(0);

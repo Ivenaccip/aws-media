@@ -299,13 +299,18 @@ def test_la_app_real_sirve_la_vitrina_si_esta_compilada(monkeypatch):
     for a in assets:
         ra = c.get(a)
         assert ra.status_code == 200 and "immutable" in ra.headers["cache-control"], a
-    # las rutas de siempre siguen donde estaban; el inicio está en `todos`
-    # (server/migracion.py): /estudio/ lleva a la nueva, y con la cookie de la
-    # clásica sigue sirviendo la vieja
+    # la principal ES /estudio/ (el mapa; server/web.py la sirve desde las rutas por nivel). El inicio clásico quedó en
+    # /index.html: el inicio está en `todos` (server/migracion.py), así que redirige a la principal y, con la cookie de la
+    # clásica, sigue sirviendo static/index.html
+    assert (DIST / "estudio" / "index.html").is_file(), "web/dist es de antes de las rutas por nivel: npm run build"
     r = c.get("/estudio/", follow_redirects=False)
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
-    assert c.get("/estudio/", headers={"Cookie": "ui=clasica"},
-                 follow_redirects=False).status_code == 200
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    assert r.headers["cache-control"] == "no-cache"
+    assert "/estudio/assets/" in r.text, "la raíz es la página compilada, no el index.html de static/"
+    r = c.get("/index.html", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/" and r.headers["cache-control"] == "no-store"
+    r = c.get("/index.html", headers={"Cookie": "ui=clasica"}, follow_redirects=False)
+    assert r.status_code == 200 and r.text == (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

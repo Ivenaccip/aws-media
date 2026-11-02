@@ -8,7 +8,9 @@ mayúsculas, 404 con página…, con un dist falso) está en tests/test_web_ruta
   · las tres de HERRAMIENTA (entrada `herramienta-*`) SÍ traen la Caja, y pesan lo que pesa la Caja;
   · todo `<script type="module">` de todo nivel bloquea el primer pintado (UI·18; test_web_tuberia.py revisa lo mismo, aquí se
     exige además que existan los niveles que el código fuente declara);
-  · la app real (server/app.py) sirve cada nivel y corrige la barra final.
+  · la app real (server/app.py) sirve cada nivel y corrige la barra final;
+  · E7: la carpeta plana de cada hoja que se mudó a la de su lugar (/estudio/coi/ → /estudio/central/distrito/coi/) lleva ahí con un 302,
+    y su URL vieja (/coi.html) también, según su etapa.
 
 Las páginas que se esperan salen de web/estudio/ (el código fuente), no de una lista aquí: una página nueva entra sola. Un dist de
 ANTES de las rutas por nivel falla con el aviso de recompilar (`cd web && npm run build`) en vez de saltarse: en la imagen siempre
@@ -18,10 +20,9 @@ Lo que E4 le hizo al peso de las pantallas que YA existían (medido con `git arc
 comportamiento, pero el build reparte distinto los módulos que ahora comparten con las páginas nuevas.
   · las 16 de siempre (agenda, métricas, clip, COI, Mix…) piden UN archivo de JS más (`Boton-*.js`, módulo que dejó de ser de una sola
     pantalla) y +0,2 a 0,3 kB gzip: es el costo del chunk compartido, no una fuga; no se vigila pantalla por pantalla;
-  · /estudio/inicio/ (la página única de antes, que sigue sirviéndose hasta E5.3) pasa de 23 a 28 archivos y de 139,3 a 143,4 kB gzip:
-    `Inicio` ahora es un chunk compartido con las tres páginas de herramienta, y con él `Blotato`, `logica` y `navegar` (menu.ts + rutas.ts).
-    Se acepta porque esa página se retira en E5.3; mientras exista, `test_la_pagina_unica_de_antes_no_pesa_mas_que_una_herramienta`
-    le pone el mismo tope que a la Caja. Si el costo importara antes, `manualChunks` en vite.config.ts (E9) los junta.
+  · /estudio/inicio/ (la página única de antes) pasó de 23 a 28 archivos y de 139,3 a 143,4 kB gzip al compartir chunks con ellas. Esa
+    página se retiró en E5.3: ya no existe en el dist y /estudio/inicio/ es un 302 a la principal
+    (`test_la_pagina_unica_de_antes_ya_no_esta_en_el_dist`, `test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_con_la_app_real`).
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server import web
+from server import migracion, web
 
 RAIZ = Path(__file__).resolve().parent.parent
 DIST = web.DIST
@@ -202,16 +203,16 @@ def test_las_paginas_de_herramienta_si_traen_la_caja_y_pesan_lo_que_pesa_la_caja
 
 
 @en_dist
-def test_la_pagina_unica_de_antes_no_pesa_mas_que_una_herramienta():
-    """/estudio/inicio/ lleva la misma Caja que las tres páginas de herramienta (es el mismo `Inicio`): pasó de 139,3 a 143,4 kB gzip al
-    compartir chunks con ellas (ver el docstring del módulo). Mientras exista, no puede engordar más que lo que pesa una herramienta.
-    En E5.3 se retira la página y esta prueba se salta sola."""
-    if not (ESTUDIO / "inicio" / "index.html").is_file():
-        pytest.skip("la página única /estudio/inicio/ ya no existe (E5.3)")
-    cierre = _cierre(_entradas(_html_de("inicio").read_text(encoding="utf-8")))
-    assert any(marca in "".join(cierre.values()) for marca in MARCAS_DE_LA_CAJA), "ya no trae la Caja: esta prueba ya no mide lo que dice"
-    gz = _gzip(cierre)
-    assert gz <= TOPE_GZIP_DE_HERRAMIENTA, f"/estudio/inicio/: {gz} B de JS comprimido (tope {TOPE_GZIP_DE_HERRAMIENTA})"
+def test_la_pagina_unica_de_antes_ya_no_esta_en_el_dist():
+    """E5.3 retiró la página única (web/estudio/inicio/): ni las fuentes ni el dist la traen, ni su entrada (`principal.tsx`) sobrevive
+    como módulo de ninguna página. Antes esta prueba le ponía a /estudio/inicio/ el mismo tope de peso que a la Caja y se SALTABA
+    cuando la página se retiraba; ahora exige lo contrario, y un dist de antes falla con el aviso de recompilar en vez de saltarse."""
+    assert not (FUENTE / "inicio").exists(), "web/estudio/inicio/ no vuelve: /estudio/inicio/ es un 302 a la principal"
+    assert not (ESTUDIO / "inicio" / "index.html").exists(), (
+        "el dist trae /estudio/inicio/: es de antes de retirar la página única. Compila con «cd web && npm run build»"
+    )
+    # y su chunk de entrada tampoco (el build nombra la entrada de cada página por su carpeta: `inicio-<hash>.js`, vite.config.ts::nombreDe)
+    assert not [a.name for a in (ESTUDIO / "assets").glob("*.js") if a.name.startswith("inicio-")], "chunk de entrada de la página única"
 
 
 @en_dist
@@ -230,20 +231,155 @@ def test_todo_modulo_de_todo_nivel_bloquea_el_primer_pintado():
 
 @en_dist
 def test_la_app_real_sirve_los_niveles_y_redirige_sin_barra(monkeypatch):
-    """Todas las páginas de nivel MENOS la principal: `/estudio/` todavía no la sirve web.py (la decide server/migracion.py, que la manda a
-    `/estudio/inicio/`; llega en E5.2, y ahí se suma a esta prueba)."""
+    """TODAS las páginas de nivel, la principal incluida (`/estudio/`: la sirve web.py desde E5.2), con la app de verdad."""
     monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
     from server.app import app
     c = TestClient(app, follow_redirects=False)
-    carpetas = sorted((_carpetas_fuente(ENTRADA_NIVEL) | _carpetas_fuente(ENTRADA_HERRAMIENTA)) - {""})
-    assert len(carpetas) >= 15, carpetas
+    carpetas = sorted(_carpetas_fuente(ENTRADA_NIVEL) | _carpetas_fuente(ENTRADA_HERRAMIENTA))
+    assert "" in carpetas and len(carpetas) >= 16, carpetas
     for carpeta in carpetas:
-        ruta = f"/estudio/{carpeta}"
-        r = c.get(ruta + "/")
-        assert r.status_code == 200 and "text/html" in r.headers["content-type"], ruta
-        assert r.headers["cache-control"] == "no-cache", ruta
+        con_barra = _url_de(carpeta)
+        r = c.get(con_barra)
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"], con_barra
+        assert r.headers["cache-control"] == "no-cache", con_barra
         # y es SU página, no la de otra carpeta
-        assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), ruta
-        r = c.get(ruta + "?x=1")
-        assert r.status_code == 302 and r.headers["location"] == ruta + "/?x=1", ruta
-        assert r.headers["cache-control"] == "no-store", ruta
+        assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), con_barra
+        sin_barra = con_barra.rstrip("/")
+        r = c.get(sin_barra + "?x=1")
+        assert r.status_code == 302 and r.headers["location"] == con_barra + "?x=1", sin_barra
+        # el 302 de un nivel anidado lo da web.py y el de `/estudio`, la ruta de server/app.py: los dos `no-store`
+        assert r.headers["cache-control"] == "no-store", sin_barra
+
+
+@en_dist
+@pytest.mark.parametrize("pedido, saltos", [
+    ("/estudio/inicio/?prompt=x", ["/estudio/?prompt=x", "/estudio/marketing/distrito/imagen/?prompt=x"]),
+    ("/estudio/inicio/?prompt=un%20faro%20azul", ["/estudio/?prompt=un%20faro%20azul", "/estudio/marketing/distrito/imagen/?prompt=un%20faro%20azul"]),
+    ("/estudio/inicio/?brief=hola", ["/estudio/?brief=hola", "/estudio/marketing/distrito/video/?brief=hola"]),
+    ("/estudio/inicio/?blotato=conectar", ["/estudio/?blotato=conectar", "/estudio/marketing/blotato/?blotato=conectar"]),
+    ("/estudio/inicio/", ["/estudio/"]),
+    ("/estudio/inicio", ["/estudio/"]),
+    ("/estudio/inicio/?desde=mkt.blotato.agenda&ver=grupos", ["/estudio/?desde=mkt.blotato.agenda&ver=grupos"]),
+])
+def test_un_marcador_de_la_pagina_unica_llega_a_la_herramienta_con_la_app_real(monkeypatch, pedido, saltos):
+    """Con la app de verdad y el dist de verdad: GET /estudio/inicio/?prompt=x → 302 → 302 → …/imagen/?prompt=x (la Caja en Imagen, con el
+    texto en la dirección). `saltos` son los `Location` de cada 302, en orden; todos `no-store`; el último destino es una página compilada.
+    Sin parámetro de antes, un solo salto a la principal (que se sirve, 200)."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    visto, url = [], pedido
+    for _ in range(len(saltos)):
+        r = c.get(url)
+        assert r.status_code == 302 and r.headers["cache-control"] == "no-store", (url, r.status_code)
+        url = r.headers["location"]
+        assert url.startswith("/") and not url.startswith("//"), url          # relativo y del propio sitio
+        visto.append(url)
+    assert visto == saltos, pedido
+    r = c.get(url)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], url
+    carpeta = url.split("?")[0].removeprefix("/estudio/").rstrip("/")
+    assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), url
+
+
+# Las hojas que E7 mudó de su carpeta plana a la de su lugar: cada alias de migracion.alias_del_estudio() menos el de la página única de
+# antes (/estudio/inicio/ → la principal, que tiene la prueba de arriba). La lista crece sola con cada hoja que se muda.
+HOJAS_MUDADAS = sorted((plana, nueva) for plana, nueva in migracion.alias_del_estudio().items() if nueva != migracion.PRINCIPAL)
+# De esas, las que todavía tienen su versión clásica (en `nueva` o en `todos`, no `retirada`): su URL vieja (/agenda.html) la decide el
+# interruptor de server/migracion.py y no el alias.
+HOJAS_CON_CLASICA = [(plana, nueva) for plana, nueva in HOJAS_MUDADAS
+                     if migracion.PANTALLAS[plana.removeprefix("/estudio/").rstrip("/")].etapa != "retirada"]
+QUERY = "?x=1&y=a%20b"
+
+
+def test_la_lista_de_hojas_mudadas_no_esta_vacia_y_no_trae_la_principal():
+    """Sin esto, un alias que deja de deducirse (una `nueva` que vuelve a la plana) vaciaría la prueba de abajo y pasaría sin mirar nada."""
+    assert ("/estudio/coi/", "/estudio/central/distrito/coi/") in HOJAS_MUDADAS
+    assert ("/estudio/biblioteca/", "/estudio/central/distrito/biblioteca/") in HOJAS_MUDADAS
+    assert ("/estudio/constructor/", "/estudio/automatizaciones/distrito/constructor/") in HOJAS_MUDADAS
+    assert ("/estudio/asistente/", "/estudio/automatizaciones/distrito/asistente/") in HOJAS_MUDADAS
+    assert ("/estudio/agenda/", "/estudio/marketing/blotato/agenda/") in HOJAS_MUDADAS
+    # la Agenda es la primera mudada que todavía tiene su clásica: sin ella, la prueba de su URL vieja por etapa no mira nada
+    assert ("/estudio/agenda/", "/estudio/marketing/blotato/agenda/") in HOJAS_CON_CLASICA
+    # la Competencia (E7.6), su hermana de Marketing › Blotato, también sigue en `nueva`
+    assert ("/estudio/competencia/", "/estudio/marketing/blotato/competencia/") in HOJAS_MUDADAS
+    assert ("/estudio/competencia/", "/estudio/marketing/blotato/competencia/") in HOJAS_CON_CLASICA
+    # y las Métricas (E7.7), la tercera de Marketing › Blotato
+    assert ("/estudio/metricas/", "/estudio/marketing/blotato/metricas/") in HOJAS_MUDADAS
+    assert ("/estudio/metricas/", "/estudio/marketing/blotato/metricas/") in HOJAS_CON_CLASICA
+    # MIX (E7.8), de Marketing › Avanzado: la única cuya anidada no se llama como su clave (`automaticas` en el menú, `mix` en el registro)
+    assert ("/estudio/mix/", "/estudio/marketing/avanzado/automaticas/") in HOJAS_MUDADAS
+    assert ("/estudio/mix/", "/estudio/marketing/avanzado/automaticas/") in HOJAS_CON_CLASICA
+    # y la Copiadora de estilos (E7.9), su hermana de Marketing › Avanzado y la última: con ella las nueve hojas del mapa viven en su lugar
+    assert ("/estudio/estilos/", "/estudio/marketing/avanzado/estilos/") in HOJAS_MUDADAS
+    assert ("/estudio/estilos/", "/estudio/marketing/avanzado/estilos/") in HOJAS_CON_CLASICA
+    assert {plana for plana, _ in HOJAS_MUDADAS} >= {f"/estudio/{p}/" for p in (
+        "coi", "biblioteca", "constructor", "asistente", "agenda", "competencia", "metricas", "mix", "estilos")}, HOJAS_MUDADAS
+    assert all(nueva != migracion.PRINCIPAL and nueva.count("/") > 3 for _, nueva in HOJAS_MUDADAS), HOJAS_MUDADAS
+
+
+@en_dist
+@pytest.mark.parametrize("plana, anidada", HOJAS_MUDADAS, ids=[plana.strip("/") for plana, _ in HOJAS_MUDADAS])
+def test_la_carpeta_plana_de_una_hoja_mudada_lleva_a_su_lugar_con_la_app_real(monkeypatch, plana, anidada):
+    """Con la app de verdad y el dist de verdad: GET y HEAD de la dirección plana de antes (con y sin barra, en mayúsculas, con y sin query)
+    dan UN 302 RELATIVO a la anidada, con el query intacto y `no-store`; la anidada da 200 con SU index.html. Y la URL vieja (`/coi.html`)
+    lleva ahí de un salto si la pantalla está `retirada` o en `todos`; en `nueva` sirve la clásica (la decide el interruptor)."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    monkeypatch.delenv(migracion.ETAPA_MINIMA_VAR, raising=False)
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    nombre = plana.removeprefix("/estudio/").rstrip("/")
+    carpeta = anidada.removeprefix("/estudio/").rstrip("/")
+    # si la carpeta plana siguiera, el alias sería inerte (una pantalla que existe manda) y esto no probaría el 302
+    assert not (FUENTE / nombre).exists() and not (ESTUDIO / nombre).exists(), f"{plana} sigue siendo una carpeta: compila de nuevo"
+    for metodo in ("get", "head"):
+        for pedido in (plana, plana.rstrip("/"), f"/estudio/{nombre.capitalize()}/"):
+            for query in ("", QUERY):
+                r = getattr(c, metodo)(pedido + query)
+                assert r.status_code == 302, (metodo, pedido + query, r.status_code)
+                assert r.headers["location"] == anidada + query, (metodo, pedido + query)      # relativo, del propio sitio
+                assert r.headers["cache-control"] == "no-store", (metodo, pedido + query)
+    r = c.get(anidada)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], anidada
+    assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), anidada
+    # lo de adentro de la plana tampoco se sirve: /estudio/coi/index.html era un archivo de su carpeta y ya no hay carpeta
+    assert c.get(plana + "index.html").status_code == 404
+    p = migracion.PANTALLAS[nombre]
+    r = c.get(p.vieja + QUERY)
+    if migracion.etapa(p) == "nueva":
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"], p.vieja
+    else:
+        assert r.status_code == 302 and r.headers["location"] == anidada + QUERY and r.headers["cache-control"] == "no-store", p.vieja
+
+
+@en_dist
+@pytest.mark.parametrize("plana, anidada", HOJAS_CON_CLASICA, ids=[plana.strip("/") for plana, _ in HOJAS_CON_CLASICA])
+def test_la_url_vieja_de_una_hoja_mudada_con_clasica_lleva_a_su_lugar_en_todos_de_un_salto(monkeypatch, plana, anidada):
+    """Con la app de verdad y el dist de verdad, una hoja mudada que todavía tiene la clásica (la Agenda, en `nueva`). En `nueva`, su URL
+    vieja sirve la clásica (lo prueba la de arriba). Con la etapa mínima `todos` (UI_ETAPA_MINIMA, la de dev), GET y HEAD de /agenda.html
+    (con y sin query) dan UN 302 RELATIVO a la ANIDADA, con el query intacto y `no-store`: no pasa por la carpeta plana (un salto, no dos)
+    y el destino ya es la página. Con la cookie `ui=clasica` sigue sirviendo la clásica, y /ui/nueva?pantalla=… también lleva a la anidada."""
+    monkeypatch.delenv("COGNITO_POOL_ID", raising=False)
+    monkeypatch.setenv(migracion.ETAPA_MINIMA_VAR, "todos")
+    from server.app import app
+    c = TestClient(app, follow_redirects=False)
+    nombre = plana.removeprefix("/estudio/").rstrip("/")
+    carpeta = anidada.removeprefix("/estudio/").rstrip("/")
+    p = migracion.PANTALLAS[nombre]
+    assert migracion.etapa(p) == "todos", (nombre, migracion.etapa(p))
+    for metodo in ("get", "head"):
+        for query in ("", QUERY):
+            r = getattr(c, metodo)(p.vieja + query)
+            assert r.status_code == 302, (metodo, p.vieja + query, r.status_code)
+            assert r.headers["location"] == anidada + query, (metodo, p.vieja + query)      # relativo, del propio sitio
+            assert r.headers["cache-control"] == "no-store", (metodo, p.vieja + query)
+    r = c.get(anidada + QUERY)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], anidada
+    assert r.text.replace("\r\n", "\n") == _html_de(carpeta).read_text(encoding="utf-8").replace("\r\n", "\n"), anidada
+    # quien eligió la clásica la sigue viendo en su URL vieja (7 días, migracion.DURACION_COOKIE)
+    c.cookies.set(migracion.COOKIE, migracion.CLASICA)
+    r = c.get(p.vieja)
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"], p.vieja
+    # y el camino de vuelta lleva a la anidada (borra la cookie)
+    r = c.get(f"/ui/nueva?pantalla={nombre}")
+    assert r.status_code == 302 and r.headers["location"] == anidada and r.headers["cache-control"] == "no-store"

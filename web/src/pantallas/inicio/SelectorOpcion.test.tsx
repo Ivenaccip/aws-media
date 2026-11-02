@@ -27,7 +27,7 @@ function montar(elegidaId: 'a' | 'b' | 'c' = 'b', { enTarjeta = false } = {}) {
       <button type="button">después</button>
     </>
   );
-  // la tarjeta del inicio (Recorrido) lleva `data-limite-lista`: la lista no debe sobresalir de ella
+  // la tarjeta de la página de la caja (PaginaHerramienta) lleva `data-limite-lista`: la lista no debe sobresalir de ella
   render(enTarjeta ? <section data-limite-lista="">{selector}</section> : selector);
   return alElegir;
 }

@@ -1,5 +1,5 @@
-// /estudio/mix/ — MIX, publicidad automática: una publicación al día, sola
-// (UI·8.8). Paridad con static/mix.html.
+// /estudio/marketing/avanzado/automaticas/ — MIX, publicidad automática: una
+// publicación al día, sola (UI·8.8). Paridad con static/mix.html.
 //
 // Lo que cobra es «Encender la campaña», y cobra la campaña ENTERA por
 // adelantado. Por eso la pantalla no decide ningún número:

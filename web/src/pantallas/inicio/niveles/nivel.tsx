@@ -13,7 +13,7 @@ import '../../../estilos/tokens.css';
 
 import { nivelDeDireccion } from '../../../marca/rutas';
 import { montar } from '../../../nucleo/montar';
-import { urlSinEntrada } from '../estadoRecorrido';
+import { urlSinEntrada } from '../llegada';
 import { NoEncontrada, TITULO_NO_ENCONTRADA } from './NoEncontrada';
 import { PaginaNivel } from './PaginaNivel';
 

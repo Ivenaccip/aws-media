@@ -5,7 +5,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import * as ruta from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MENU } from '../../../marca/menu';
@@ -54,22 +54,26 @@ const migasDeLaPagina = () => screen.getByRole('navigation', { name: 'Dónde est
 const SIN_CLAVE = { conectado: false, origen: null, cuentas: [], error: null, plan: null };
 
 /**
- * Un clic, y si SIGUIÓ SU CAMINO (llegó hasta el documento sin que nadie lo cancelara: un enlace habría navegado). La guarda del doble clic
- * lo cancela y lo detiene en la captura, así que no llega. Cancelarlo aquí, al final, también evita el «Not implemented: navigation» de jsdom.
+ * Un clic, y si el enlace habría NAVEGADO: nadie lo canceló (`preventDefault`). Lo que cuenta es la cancelación, no hasta dónde llegó: la
+ * guarda del doble clic además lo detiene en la captura, y un clic detenido pero no cancelado navega igual (por eso no basta con mirar si
+ * llegó al documento: así la prueba seguía en verde con una guarda que solo lo detenía). Si llega al documento, se cancela ahí, al final,
+ * después de anotar si alguien lo canceló antes: evita el «Not implemented: navigation» de jsdom.
  */
 function clic(el: Element, init?: MouseEventInit): boolean {
-  let llego = false;
+  const ev = createEvent.click(el, init);
+  let canceladoAntes: boolean | null = null;
   const alLlegar = (e: Event) => {
-    llego = !e.defaultPrevented;
+    canceladoAntes = e.defaultPrevented;
     e.preventDefault();
   };
   window.addEventListener('click', alLlegar);
   try {
-    fireEvent.click(el, init);
+    fireEvent(el, ev);
   } finally {
     window.removeEventListener('click', alLlegar);
   }
-  return llego;
+  // no llegó al documento (lo detuvieron): lo que dice es si, además, lo cancelaron
+  return !(canceladoAntes ?? ev.defaultPrevented);
 }
 
 describe('niveles · el mapa', () => {
@@ -252,6 +256,61 @@ describe('niveles · un grupo', () => {
   });
 });
 
+// Automatizaciones (dueño, 20-oct-2026): el área se abre como las demás, con un Distrito que trae dos hojas y una apagada, y un grupo
+// todavía vacío. Lo que antes se recorría dentro de la página (AutomatizacionesRecorrido.test.tsx), por las páginas de su nivel
+describe('niveles · Automatizaciones', () => {
+  it('niveles.automatizaciones.el_mapa_la_abre: su ficha es un enlace a su pagina, sin «Próximamente»', () => {
+    pintar({ tipo: 'mapa' });
+    const ficha = screen.getByRole('link', { name: /^Automatizaciones/ });
+    expect(ficha).toHaveAttribute('href', '/estudio/automatizaciones/');
+    expect(ficha).not.toHaveAttribute('aria-disabled');
+    expect(ficha).not.toHaveTextContent('Próximamente');
+  });
+
+  it('niveles.automatizaciones.sus_opciones_son_distrito_y_tus_automatizaciones: con lo que trae cada una, sin «Estás aquí», y Tab en el orden de lectura', () => {
+    pintar({ tipo: 'area', area: 'automatizaciones' });
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Elige un grupo');
+    const tarjetas = within(screen.getByRole('group', { name: 'Automatizaciones' })).getAllByRole('link');
+    expect(tarjetas.map(t => t.getAttribute('href'))).toEqual(['/estudio/automatizaciones/distrito/', '/estudio/automatizaciones/tus/']);
+    expect(tarjetas[0]).toHaveTextContent('Constructor · Asistente · Actualizar flujos');
+    expect(tarjetas[1]).toHaveTextContent('Próximamente');
+    expect(screen.queryByText('Estás aquí')).toBeNull();
+    // la miga y sus dos tarjetas, en ese orden
+    const enOrden = Array.from(screen.getByRole('main').querySelectorAll<HTMLElement>('a[href], button')).map(
+      el => el.querySelector('b')?.textContent ?? el.textContent,
+    );
+    expect(enOrden).toEqual(['Automatizaciones', 'Distrito', 'Tus automatizaciones']);
+    // Esc en sus opciones sube al mapa
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(ir).toHaveBeenCalledExactlyOnceWith('/estudio/');
+  });
+
+  it('niveles.automatizaciones.distrito_lista_dos_enlaces_y_una_apagada: las migas suben de nivel y no hay «Volver a …» ni caja', () => {
+    pintar({ tipo: 'grupo', area: 'automatizaciones', grupo: 'distrito' });
+    expect(hrefs(lista())).toEqual(['/estudio/automatizaciones/distrito/constructor/', '/estudio/automatizaciones/distrito/asistente/']);
+    expect(screen.getByText('Actualizar flujos').closest('a')).toBeNull();
+    expect(screen.queryByText('Todavía no está disponible.')).toBeNull();
+    expect(hrefs(migasDeLaPagina())).toEqual(['/estudio/', '/estudio/automatizaciones/']);
+    expect(within(migasDeLaPagina()).getByRole('link', { name: 'Volver a las opciones de Automatizaciones (ahora: Distrito)' })).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    expect(screen.queryAllByRole('link', { name: /^Volver a (?!las opciones)/ })).toEqual([]);
+    expect(screen.queryByRole('textbox', { name: '¿Qué vamos a crear hoy?' })).toBeNull();
+    // el segundo clic de un doble clic en «Distrito» no activa «Constructor», la primera de la lista
+    expect(clic(screen.getByRole('link', { name: /^Constructor/ }), { detail: 2 })).toBe(false);
+    expect(ir).not.toHaveBeenCalled();
+  });
+
+  it('niveles.automatizaciones.tus_automatizaciones_todavia_no_esta_disponible: y Esc no hace nada', () => {
+    pintar({ tipo: 'grupo', area: 'automatizaciones', grupo: 'tus' });
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Tus automatizaciones');
+    expect(screen.getByText('Todavía no está disponible.')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(ir).not.toHaveBeenCalled();
+  });
+});
+
 describe('niveles · Blotato solo donde se usa', () => {
   it('niveles.blotato.sin_la_clave_sus_tres_herramientas_se_apagan_y_el_boton_ofrece_conectar', async () => {
     const f = servidor({ '/api/blotato': () => json(SIN_CLAVE) });
@@ -302,6 +361,30 @@ describe('niveles · Blotato solo donde se usa', () => {
     expect(clic(screen.getByRole('link', { name: /Agenda tus publicaciones/ }))).toBe(false);
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     await waitFor(() => expect(llamadas(f, '/api/blotato', 'GET')).toHaveLength(1));
+  });
+
+  // El diálogo devuelve el foco a lo que lo tenía al MONTARSE (ui/Dialogo.tsx). Su código llega con import() y la lectura del estado suele
+  // llegar antes: se monta ya con el campo de la clave enfocado (autoFocus) y no sabía a quién volver (el foco caía a <body>). Aquí el clic
+  // es el de jsdom, que no enfoca lo pulsado (como Safari con un botón): lo que se le pasa es lo que se pulsó, no `document.activeElement`.
+  it('niveles.blotato.al_cerrar_el_dialogo_el_foco_vuelve_a_lo_que_lo_abrio_aunque_el_campo_se_enfocara_al_montarse', async () => {
+    servidor({ '/api/blotato': () => json(SIN_CLAVE) });
+    // la primera apertura de cada página, con el botón y con una tarjeta apagada
+    for (const queAbre of [
+      () => screen.getByRole('button', { name: 'Conecta tu cuenta de Blotato' }),
+      () => screen.getByRole('link', { name: /Agenda tus publicaciones/ }),
+    ]) {
+      const { unmount } = await pintarComoLaPrimeraVez({ tipo: 'grupo', area: 'mkt', grupo: 'blotato' });
+      await waitFor(() => expect(screen.getByRole('link', { name: /Agenda tus publicaciones/ })).toHaveAttribute('aria-disabled', 'true'));
+      const abre = queAbre();
+      expect(document.activeElement).toBe(document.body);
+      clic(abre);
+      const campo = await screen.findByLabelText('Tu clave de API de Blotato');
+      await waitFor(() => expect(campo).toHaveFocus());
+      fireEvent.keyDown(campo, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() => expect(abre).toHaveFocus());
+      unmount();
+    }
   });
 
   it('niveles.blotato.con_blotato_conectar_en_la_direccion_abre_el_dialogo_y_no_limpia_el_parametro', async () => {
@@ -491,8 +574,9 @@ describe('niveles · el mapa de la dirección a la página', () => {
         'Grupos.tsx',
         'Mapa.tsx',
         'Pantallas.tsx',
-        'estadoRecorrido.ts',
+        'llegada.ts',
         'niveles/GrupoConBlotato.tsx',
+        'niveles/dobleClic.ts',
         'niveles/LimiteDeCarga.tsx',
         'niveles/NoEncontrada.tsx',
         'niveles/PaginaNivel.tsx',
@@ -593,6 +677,7 @@ describe('niveles · nivel.tsx, la entrada de las 13 páginas', () => {
     // una herramienta de la Caja tiene su propia entrada: si una página de nivel se abre en su dirección, tampoco hay nada que enseñar aquí
     for (const direccion of [
       '/estudio/coi/',
+      '/estudio/central/distrito/coi/',
       '/estudio/marketing/distrito/video/',
       '/estudio/nada/',
       '/estudio/Marketing/',

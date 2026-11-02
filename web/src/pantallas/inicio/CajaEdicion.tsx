@@ -27,8 +27,9 @@
 // escribir y no hay nada que desalinear. Chromium transiciona `::placeholder` (se midió; ver docs/migracion/inicio.md). No
 // se anuncia (sin aria-live) y no es el nombre del campo (ese es su aria-label): quien usa lector de pantalla recibe un
 // ejemplo fijo como descripción del campo (EJEMPLO_FIJO, en un <p hidden>: solo lo lee `aria-describedby`, no queda suelto
-// en el árbol de accesibilidad). La pista solo corre mientras la caja se ve (`enVista`): la tarjeta del inicio la esconde sin
-// desmontarla, y escondida no tiene por qué rotar; al volver, empieza otra vez en la primera idea.
+// en el árbol de accesibilidad). La pista solo corre mientras la caja se ve (`enVista`): el inicio de una sola página (retirado
+// en E8) la escondía sin desmontarla, y escondida no tiene por qué rotar; al volver, empezaba otra vez en la primera idea. Hoy la
+// página de su herramienta siempre la tiene a la vista.
 //
 // Lo que la revisión visual y de accesibilidad exige aquí (cada cosa tiene su prueba en Edicion.test.tsx):
 //   · el campo está en un cuadro bien definido (ui/CuadroDeTexto: borde de campo y fondo elevada) y ese cuadro lleva el aro
@@ -105,7 +106,8 @@ export function CajaEdicion({
 }: {
   ed: ManejoEdicion;
   refs: RefsEdicion;
-  /** La tarjeta del inicio tiene la caja a la vista. Falso = sigue montada pero escondida (mapa, opciones o lista): la pista no corre. */
+  /** La caja está a la vista. Falso = sigue montada pero escondida: la pista no corre. (Así la escondía el inicio de una sola página,
+   *  retirado en E8, mientras enseñaba el mapa, las opciones o una lista; hoy la página de su herramienta siempre la tiene a la vista.) */
   enVista: boolean;
   /** «Elegir de Mis creaciones» del menú del «+»: abre la hoja «Agregar videos». La hoja vive en Caja, FUERA de la sección que recibe lo
    *  que se arrastra (como la de imágenes): lo que se suelta o se hace en ella no sube hasta el arrastre de la caja. */

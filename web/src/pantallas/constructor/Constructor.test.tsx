@@ -80,11 +80,11 @@ describe('Constructor: la pantalla', () => {
     const migas = screen.getByRole('navigation', { name: 'Dónde estás' });
     expect(within(migas).getByRole('link', { name: 'Ir al mapa para cambiar de área (ahora: Automatizaciones)' })).toHaveAttribute(
       'href',
-      '/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=mapa',
+      '/estudio/',
     );
     expect(within(migas).getByRole('link', { name: 'Ir a las opciones de Automatizaciones (ahora: Distrito)' })).toHaveAttribute(
       'href',
-      '/estudio/inicio/?desde=automatizaciones.distrito.constructor&ver=grupos',
+      '/estudio/automatizaciones/',
     );
     // la última miga es donde estás: un chip quieto
     const actual = migas.querySelector('[aria-current="step"]');

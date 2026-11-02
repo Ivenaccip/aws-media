@@ -2,6 +2,7 @@
 // Biblioteca.test.tsx; aquí, los bordes de cada función.
 import { describe, expect, it } from 'vitest';
 
+import { urlDeCaja } from '../../marca/rutas';
 import { ErrorApi } from '../../nucleo/api';
 import {
   ambitoDeLaDireccion,
@@ -130,10 +131,16 @@ describe('fijar · el top, sin sustituir en silencio', () => {
 
 describe('llevar a la caja', () => {
   it('Imagen va a ?prompt= y Video a ?brief=, con encodeURIComponent; lo demás, no', () => {
-    expect(urlDeLlevar({ lleva_a: 'imagen', prompt: 'a b & c' })).toBe('/estudio/inicio/?prompt=a%20b%20%26%20c');
-    expect(urlDeLlevar({ lleva_a: 'video', prompt: 'ñandú [X]' })).toBe('/estudio/inicio/?brief=%C3%B1and%C3%BA%20%5BX%5D');
+    expect(urlDeLlevar({ lleva_a: 'imagen', prompt: 'a b & c' })).toBe('/estudio/marketing/distrito/imagen/?prompt=a%20b%20%26%20c');
+    expect(urlDeLlevar({ lleva_a: 'video', prompt: 'ñandú [X]' })).toBe('/estudio/marketing/distrito/video/?brief=%C3%B1and%C3%BA%20%5BX%5D');
     expect(urlDeLlevar({ lleva_a: null, prompt: 'solo se copia' })).toBeNull();
     expect(urlDeLlevar({ lleva_a: 'imagen', prompt: '   ' })).toBeNull();
+  });
+
+  it('la dirección de «Llevar a la caja» es la que marca/rutas.ts da a su pestaña: Imagen a la página de Imagen y Video a la de Video', () => {
+    // la dirección escrita en logica.ts no se desfasa de la que marca/rutas.ts da a cada pestaña de la Caja
+    expect(urlDeLlevar({ lleva_a: 'imagen', prompt: 'x' })).toBe(`${urlDeCaja('imagenes')}?prompt=x`);
+    expect(urlDeLlevar({ lleva_a: 'video', prompt: 'x' })).toBe(`${urlDeCaja('videos')}?brief=x`);
   });
 
   it('el borde es 1800 caracteres; y una dirección que se hincharía de más (tildes) tampoco se lleva', () => {

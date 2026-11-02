@@ -82,7 +82,8 @@ export const cargar = (ruta: string) => pedir<Tramo>(ruta);
 export const pedirNumeros = (id: string) =>
   pedir<LosNumeros>('/api/metricas/' + encodeURIComponent(id) + '/numeros');
 
-export const CONECTAR = '/estudio/?blotato=conectar';
+/** Adónde lleva «Conectar Blotato»: la página del grupo Blotato, que abre el diálogo con `?blotato=conectar`. */
+export const CONECTAR = '/estudio/marketing/blotato/?blotato=conectar';
 export const TOPE = 'Métricas llega hasta un año atrás.';
 export const QUE_TOP = 'Ordenadas por vistas, de lo que Blotato ya midió en este tramo.';
 export const QUE_REC = 'De lo más nuevo a lo más viejo.';

@@ -14,6 +14,8 @@ import { avanceEspera, EsperaPasos, reloj, textoLlevas, useLlevas } from '../../
 import { Marco } from '../../marca/Marco';
 import { NotaSaldo } from '../../marca/NotaSaldo';
 import { Recarga } from '../../marca/Recarga';
+import { RUTA_MAPA } from '../../marca/menu';
+import { urlDeCaja } from '../../marca/rutas';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi, recuperarApartado } from '../../nucleo/api';
 import { creditos } from '../../nucleo/formato';
@@ -379,7 +381,8 @@ export function Clip() {
         )}
         <p className="m-0 text-sm text-secundario">
           Todos tus clips se guardan en{' '}
-          <a href="/estudio/" className="text-enlace underline underline-offset-4 hover:text-texto">
+          {/* «Mis videos» ya no está en el mapa (/estudio/): vive en la página de la caja, en la pestaña Video */}
+          <a href={urlDeCaja('videos') ?? RUTA_MAPA} className="text-enlace underline underline-offset-4 hover:text-texto">
             «Mis videos»
           </a>{' '}
           del inicio.

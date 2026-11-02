@@ -3,10 +3,11 @@
 //
 // Las migas (dueño, 15-oct-2026: «Mapa con Irremplazables») son «Marketing ›
 // Blotato»: el lugar de esta pantalla en el mapa de marca/menu.ts, como ENLACES
-// al inicio. «Marketing» reabre el mapa de áreas y «Blotato» las tres opciones
-// del área, estando "desde" esta pantalla (el inicio lee `?desde=…&ver=…` una
-// vez y limpia la URL). Las pantallas que el mapa no conoce (admin, crear,
-// subir, clip, imágenes, shorts) no las llevan: no hay a qué nivel reabrirlas.
+// a la página de cada nivel (urlDeInicio): «Marketing» lleva al mapa de áreas
+// (/estudio/) y «Blotato» a las opciones del área (/estudio/marketing/), sin
+// parámetros. Volver aquí es el «atrás» del navegador. Las pantallas que el mapa
+// no conoce (admin, crear, subir, clip, imágenes, shorts) no las llevan: no hay a
+// qué nivel llevarlas.
 //
 // «Usar la versión anterior» ya no se enseña (decisión del dueño, 28-sep): la
 // ruta /ui/clasica sigue en server/migracion.py por si hace falta volver a una

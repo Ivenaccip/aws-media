@@ -1,6 +1,7 @@
 # Migración del Asistente (Automatizaciones, 20-oct-2026)
 
-`web/src/pantallas/asistente/` → `/estudio/asistente/`. **El Asistente nace en la UI nueva: no tuvo pantalla vieja**, así que aquí no hay «aserciones viejas» que mapear. Se registra en
+`web/src/pantallas/asistente/` → `/estudio/automatizaciones/distrito/asistente/` (su lugar en el mapa desde E7.4, 31-oct-2026; antes, la carpeta plana `/estudio/asistente/`, que desde E7 es un
+302 hasta aquí). **El Asistente nace en la UI nueva: no tuvo pantalla vieja**, así que aquí no hay «aserciones viejas» que mapear. Se registra en
 `server/migracion.py` como `retirada` desde el primer día (no hay HTML viejo que servir: `/asistente.html` solo es un atajo que responde 302 a la nueva, conservando el query) para que
 el registro anti-pérdida (`tests/test_migracion_ui.py`) cubra sus invariantes como a las demás. Esa dirección no choca con nada: la página pública del RAG vive en `/automatiza` (y `/automatiza/…`,
 en `server/app.py`), el API de esta pantalla en `/api/automatiza/*`, y ni `/asistente.html` ni `/constructor.html` existen en `static/`.
@@ -15,11 +16,11 @@ Piezas: `web/src/pantallas/asistente/` (pantalla), `server/automatiza_api.py` (l
 
 ## Cómo se llega
 
-- **Menú:** `automatizaciones › distrito › asistente` en `web/src/marca/menu.ts` (ícono `magia`, `href: '/estudio/asistente/'`, texto «Cuéntanos qué quieres automatizar y te armamos el flujo.»), **sin `pagina`**
+- **Menú:** `automatizaciones › distrito › asistente` en `web/src/marca/menu.ts` (ícono `magia`, `href: '/estudio/automatizaciones/distrito/asistente/'` desde E7.4, texto «Cuéntanos qué quieres automatizar y te armamos el flujo.»), **sin `pagina`**
   (como COI, la Biblioteca y el Constructor: no se pinta con `<Marco>`). Desde el Inicio: mapa › Automatizaciones › Distrito › Asistente.
 - **Migas:** «Automatizaciones › Distrito › Asistente», con el mismo `marca/EncabezadoHoja.tsx` que el Constructor (`LUGAR = { area: 'automatizaciones', grupo: 'distrito', pantalla: 'asistente' }`): el área abre el mapa y el grupo
   las opciones, estando «desde» esta pantalla; la última miga es un chip quieto. El único `h1` es «Irremplazables» (dorado); «Cuéntanos qué quieres automatizar» es un `h2`.
-- **La página** (`web/estudio/asistente/index.html`): privada, con `auth.js` clásico ANTES del módulo y `monedero.js` (la píldora del saldo). **No carga `trabajos.js`**: el Asistente no pone avisos en la esquina;
+- **La página** (`web/estudio/automatizaciones/distrito/asistente/index.html`, desde E7.4): privada, con `auth.js` clásico ANTES del módulo y `monedero.js` (la píldora del saldo). **No carga `trabajos.js`**: el Asistente no pone avisos en la esquina;
   sus errores y anuncios van en la propia pantalla, con una sola región viva (`asistente.avisos.una_sola_region_viva_y_los_errores_no_se_duplican` y, en el navegador, `asistente.spec.ts`).
 
 ## Lo que esta pantalla NO hace (a propósito; plan D17)
@@ -39,7 +40,7 @@ Las que aplican al Asistente (las de página, encabezado, avisos, íconos, color
 
 | # | Decisión | Por qué |
 |---|---|---|
-| D1 | Página propia y plana, `web/estudio/asistente/` | `server/web.py` no sirve carpetas anidadas; las llaves del registro no llevan guion |
+| D1 | Página propia y plana, `web/estudio/asistente/`. **Superada en E7:** `server/web.py` sirve a cualquier profundidad desde las rutas por nivel, y el Asistente vive en `web/estudio/automatizaciones/distrito/asistente/` desde E7.4 (la llave del registro sigue siendo `asistente`) | `server/web.py` no sirve carpetas anidadas; las llaves del registro no llevan guion |
 | D2 | Encabezado de `marca/EncabezadoHoja.tsx`, sin `<Marco>` y sin `pagina` | el mismo molde de COI y la Biblioteca |
 | D3 | El traspaso Asistente → Constructor pasa por el borrador (`localStorage`) del Constructor; antes de reemplazar un borrador con cuadros se pide confirmación | el JSON de un flujo pesa kilobytes y no cabe en la URL (el `?prompt=` de la Biblioteca corta a 1800 caracteres); además así no hay un segundo mecanismo de almacenamiento |
 | D9 | Sin región viva duplicada: el Asistente no usa el cuadro de avisos de la esquina | una sola región viva (`role="status"`) y los cuadros de error se anuncian solos: así nada se anuncia doble |
@@ -127,8 +128,8 @@ No se usa un modelo de Pydantic a propósito: su 422 por omisión devuelve el cu
 - **El resultado** (`Resultado.tsx`): el nombre, los cuadros como chips en español, el resumen, «Antes de usarlo en n8n» (los pendientes), «Ten en cuenta» (las advertencias, en un `div` y no en un `Aviso`, que anunciaría cada resultado), «Descargar .json» (el **único** botón ámbar: «Armar flujo» pasa a
   secundario y dice «Armar otro flujo») y, si hay `grafo` abrible, «Abrir en el constructor». Todo lo que manda el servidor es TEXTO y se pinta como texto. Al llegar, el foco va a «Tu flujo está listo».
   Si el navegador no deja descargar (`nucleo/descargarArchivo.ts` devuelve `false`) se deja el JSON a la vista con «Copiar el JSON» (y, si tampoco se puede copiar, queda seleccionado). Un segundo clic en menos de 1 s no baja otro archivo.
-- **`sin_cobertura` no es un error:** «Todavía no podemos armar esto», con lo que falta y «Cuéntalo con otras palabras, o arma tu flujo a mano en el constructor» (un enlace a `/estudio/constructor/`).
-- **El traspaso al Constructor** (`traspaso.ts`): el Asistente escribe el flujo como borrador del Constructor (`constructor.borrador.v1`, con `origen: "asistente"`, por `prepararTraspaso`) y navega a `/estudio/constructor/` (`location.assign`);
+- **`sin_cobertura` no es un error:** «Todavía no podemos armar esto», con lo que falta y «Cuéntalo con otras palabras, o arma tu flujo a mano en el constructor» (un enlace a `/estudio/automatizaciones/distrito/constructor/`, `URL_CONSTRUCTOR`).
+- **El traspaso al Constructor** (`traspaso.ts`): el Asistente escribe el flujo como borrador del Constructor (`constructor.borrador.v1`, con `origen: "asistente"`, por `prepararTraspaso`) y navega a `/estudio/automatizaciones/distrito/constructor/` (`location.assign`; su lugar desde E7.3);
   el Constructor lo lee al abrir, dice «Abrimos tu flujo del Asistente.» y elige el primer agente. `sePuedeAbrir(grafo)` revisa forma, claves, topes e invariantes: si no se puede, el botón ni se ofrece. Si ya hay un flujo con cuadros en el Constructor se
   pregunta antes («¿Reemplazar tu flujo del constructor?», `Confirmar` de peligro, «Reemplazar y abrir»). Si el navegador no deja guardar (ventana privada, sin espacio) no navega y dice por qué, con el `.json` como salida. Un doble clic abre una sola vez
   y no pregunta si reemplazar lo que acaba de escribir.
@@ -183,9 +184,20 @@ cd ..
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `retirada` | `/estudio/asistente/` existe; `/asistente.html` → 302 siempre (no hubo vieja) | ⏳ al desplegar |
+| `retirada` | `/estudio/automatizaciones/distrito/asistente/` existe; `/asistente.html` → 302 siempre (no hubo vieja); `/estudio/asistente/` es un 302 desde E7 | ⏳ al desplegar |
 
 Antes de desplegar no hace falta migrar ninguna tabla (el modo prueba no usa base). Va en el mismo cambio que el mapa (`menu.ts`), el Constructor y el registro.
+
+**Rutas por nivel (E7.4, 31-oct-2026).** La página dejó su carpeta plana (`web/estudio/asistente/`) por la de su lugar, `web/estudio/automatizaciones/distrito/asistente/index.html`, junto a la
+del Constructor y sin cambiar nada por dentro (pide todo con rutas absolutas). `PANTALLAS["asistente"].nueva` dice la anidada y de ahí `migracion.alias_del_estudio()` deduce el alias:
+`/estudio/asistente/` y `/asistente.html` (con y sin barra, en mayúsculas y con el query intacto) llevan a `/estudio/automatizaciones/distrito/asistente/` con UN 302 relativo y `no-store`;
+`/estudio/asistente/index.html` ya es un 404. Lo fijan `tests/test_web_niveles.py` (con la app y el dist de verdad) y las filas del Asistente en «las direcciones de antes» de `niveles.spec.ts`;
+`tests/test_web_rutas.py` exige que `web/e2e/servidor.mjs` tenga la misma fila y el mismo alias. El menú y las pruebas enlazan la anidada, y
+`rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada` (`estudio.test.ts`) cae si el menú vuelve a la plana, que el 302 escondería. Las migas no
+cambian: van a `/estudio/` y a `/estudio/automatizaciones/` (`urlDeInicio`) sin depender de dónde vive la hoja. **El traspaso no cambia:** el borrador del Constructor vive en `localStorage`,
+que es del origen y no de la dirección, y el Constructor ya estaba en su anidada desde E7.3 (`URL_CONSTRUCTOR`). Lo que la persona escribe sigue sin guardarse en ningún lado. Vite nombra el
+chunk de entrada por la carpeta (`automatizaciones-distrito-asistente-*.js`, `vite.config.ts::nombreDe`; el Asistente no trae CSS propio) y ninguna prueba depende de ese nombre. Con el Asistente salieron
+de la tabla transitoria de `estudio.test.ts` todas las hojas que nacieron en la UI nueva: las que quedan son de Marketing y están en etapa `nueva`.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
@@ -253,7 +265,7 @@ Las protege el registro de archivos de este doc, no el de IDs:
   esta carpeta están en `Asistente.test.tsx` (11) y `useArmado.test.tsx` (8).
 - `asistente.spec.ts` (Playwright): ver «Cómo probarlo».
 - Las cuatro pruebas de Python de arriba (`tests/test_automatiza_*.py`), que no tienen ID: las vigila `pytest`, no este registro.
-- `EncabezadoHoja.test.tsx`, `descargarArchivo.test.ts` y `AutomatizacionesRecorrido.test.tsx`: las piezas compartidas con el Constructor (ver `constructor.md`) y el recorrido del Inicio.
+- `EncabezadoHoja.test.tsx` y `descargarArchivo.test.ts`: las piezas compartidas con el Constructor (ver `constructor.md`). El área de Automatizaciones en el mapa la prueban `menu.test.ts`, `Pantallas.test.tsx` y `PaginaNivel.test.tsx` (hasta E8.7, un archivo propio del recorrido en página del Inicio, que se retiró con él).
 
 ## Extensiones a archivos compartidos
 

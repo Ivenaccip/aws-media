@@ -1,5 +1,5 @@
 // El mapa en X (paso 1 del recorrido, «Elige un área»): Central al centro y las otras cuatro áreas en las esquinas. Es el INICIO
-// (dueño, 15-oct-2026): una pantalla suelta, sin tarjeta que lo rodee, que Recorrido.tsx centra bajo el título.
+// (dueño, 15-oct-2026): una pantalla suelta, sin tarjeta que lo rodee, que su página (niveles/PaginaNivel.tsx) centra bajo el título.
 //
 // Nada se ve elegido hasta que lo eligen (dueño, 15-oct-2026: «parece que marketing está seleccionado, mientras que no debería de
 // verse de ese tono»): ninguna ficha lleva «Estás aquí», tono distinto ni `aria-current`. Marketing y Central, las dos que se abren,

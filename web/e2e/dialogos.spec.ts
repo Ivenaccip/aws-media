@@ -4,6 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { animacionesVivas, arranques, oirArranques, olvidarArranques } from './pantallas';
+import { URL_BLOTATO } from './recorrido';
 
 // solo las del diálogo: la vitrina tiene sus propias animaciones (el orbe,
 // los esqueletos) que no vienen al caso
@@ -77,7 +78,7 @@ test('Agenda con la red de verdad: al cancelar con el teclado, el foco acaba en 
     cancelada = true;
     return r.fulfill({ json: { ok: true } });
   });
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   const cancelar = page.getByRole('button', { name: 'Cancelar', exact: true });
   await cancelar.focus();
   await page.keyboard.press('Enter');
@@ -95,7 +96,8 @@ test('mientras sale, el diálogo ya no oye el teclado (Enter no manda el formula
     if (r.request().method() === 'POST') posts++;
     return r.fulfill({ json: { conectado: false, origen: null, cuentas: [], error: null, plan: null } });
   });
-  await page.goto('/estudio/inicio/?blotato=conectar');
+  // el diálogo de conectar vive en el grupo Blotato de Marketing (el servidor manda ahí las entradas de antes, ?blotato=conectar)
+  await page.goto(`${URL_BLOTATO}?blotato=conectar`);
   const form = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
   const clave = form.getByLabel('Tu clave de API de Blotato');
   await clave.fill('una-clave');

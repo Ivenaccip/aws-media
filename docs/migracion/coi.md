@@ -1,6 +1,7 @@
 # Migración de COI (Ajustes 3, 16-oct-2026)
 
-`web/src/pantallas/coi/` → `/estudio/coi/`. **COI nace en la UI nueva: no tuvo pantalla vieja**, así que aquí no hay «aserciones viejas»
+`web/src/pantallas/coi/` → `/estudio/central/distrito/coi/` (su lugar en el mapa desde E7.1, 31-oct-2026; antes, la carpeta plana
+`/estudio/coi/`, que desde E7 es un 302 hasta aquí). **COI nace en la UI nueva: no tuvo pantalla vieja**, así que aquí no hay «aserciones viejas»
 que mapear. Se registra en `server/migracion.py` como `retirada` desde el primer día (no hay HTML viejo que servir: `/coi.html` solo es un
 atajo que redirige) para que el registro anti-pérdida (`tests/test_migracion_ui.py`) cubra sus invariantes como a las demás.
 
@@ -24,7 +25,18 @@ Lo cuenta el SERVIDOR (`GET /api/coi/estado`): la web solo lo enseña.
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `retirada` | `/estudio/coi/` existe; `/coi.html` → 302 siempre (no hubo vieja) | ⏳ al desplegar |
+| `retirada` | `/estudio/central/distrito/coi/` existe; `/coi.html` → 302 siempre (no hubo vieja); `/estudio/coi/` es un 302 desde E7 | ⏳ al desplegar |
+
+**Rutas por nivel (E7.1, 31-oct-2026).** La página dejó su carpeta plana (`web/estudio/coi/`) por la de su lugar,
+`web/estudio/central/distrito/coi/index.html`, sin cambiar nada por dentro (pide todo con rutas absolutas). `PANTALLAS["coi"].nueva` dice la
+anidada y de ahí `migracion.alias_del_estudio()` deduce el alias: `/estudio/coi/` y `/coi.html` (con y sin barra, en mayúsculas y con el
+query intacto) llevan a `/estudio/central/distrito/coi/` con UN 302 relativo y `no-store`; `/estudio/coi/index.html` ya es un 404. Lo fijan
+`tests/test_web_niveles.py` (con la app y el dist de verdad), `tests/test_web_rutas.py` (también contra `web/e2e/servidor.mjs`) y las filas
+de COI en «las direcciones de antes» de `niveles.spec.ts`. El menú, la Biblioteca («Diseñar un prompt con COI», «Ir a COI») y las pruebas
+enlazan la anidada; `rutas.cada_hoja_tiene_su_carpeta.una_hoja_mudada_que_enlaza_a_la_ui_nueva_enlaza_su_anidada` (`estudio.test.ts`)
+cae si el menú vuelve a la plana, que el 302 escondería. El chunk de entrada cambió de nombre con la carpeta (`central-distrito-coi-*.js`,
+`vite.config.ts::nombreDe`): el guardián del bundle de `tests/test_coi_web_guardianes.py` lo busca así. Las migas no cambian: van a
+`/estudio/` y a `/estudio/central/` (D6) sin depender de dónde vive la hoja.
 
 Antes de desplegar: `tools/db_migrate.py` en CADA entorno (tablas `coi_estado`, `biblioteca_mios` y `biblioteca_fijados`, del rol servidor) y las
 filas de `docs/QA-UI.md` § COI. Dónde vive: **Central › Distrito › COI** (`web/src/marca/menu.ts`).
@@ -98,8 +110,8 @@ En `web/src/pantallas/coi/Coi.test.tsx` y `web/src/pantallas/coi/logica.test.ts`
 | `coi.privacidad.lo_que_se_escribe_y_lo_que_responde_la_ia_no_toca_el_almacenamiento_del_navegador` | escribir, armar y guardar no escriben nada en localStorage ni sessionStorage |
 | `coi.privacidad.ninguna_llamada_aparta_el_cuerpo_mientras_vuela` | ninguna llamada usa `apartar` (que deja el cuerpo en sessionStorage mientras vuela la petición) |
 | `coi.privacidad.la_linea_de_privacidad_esta_siempre_a_la_vista` | «No guardamos lo que escribes ni lo que te responde. Solo se guarda el COI que tú decidas guardar, y solo en tu Biblioteca.» en reposo, sin poder leer el contador y con resultado |
-| `coi.marco.irremplazables_en_dorado_y_las_migas_central_distrito_coi_con_la_ultima_quieta` | «Irremplazables» dorado y sin ícono arriba; migas Central › Distrito › COI (las dos primeras llevan al inicio, COI es un chip quieto con `aria-current`) |
-| `coi.marco.el_mapa_enciende_coi_y_enlaza_la_biblioteca_desde_la_pantalla` | `marca/menu.ts` enciende COI (`/estudio/coi/`, sin «Próximamente») y la pantalla enlaza la Biblioteca |
+| `coi.marco.irremplazables_en_dorado_y_las_migas_central_distrito_coi_con_la_ultima_quieta` | «Irremplazables» dorado y sin ícono arriba; migas Central › Distrito › COI (las dos primeras llevan directo al mapa y a las opciones de Central, COI es un chip quieto con `aria-current`) |
+| `coi.marco.el_mapa_enciende_coi_y_enlaza_la_biblioteca_desde_la_pantalla` | `marca/menu.ts` enciende COI (`/estudio/central/distrito/coi/` desde E7.1, sin «Próximamente») y la pantalla enlaza la Biblioteca |
 | `coi.marco.un_solo_boton_ambar_y_es_armar_coi` | un solo botón ámbar por pantalla: «Armar COI» (sin ✦: es gratis); «Guardar» y «Copiar» son secundarios |
 | `coi.logica.el_texto_copiado_lleva_encabezado_y_los_tres_bloques_en_orden` | lo que se copia y se guarda: encabezado y texto de cada bloque, en orden; sin estructura, lo que respondió el modelo |
 | `coi.logica.los_encabezados_siguen_el_idioma_en_que_salio` | los encabezados siguen el idioma de la respuesta |
@@ -125,10 +137,12 @@ Las protege el registro de archivos de este doc, no el de IDs:
   `detail` objeto decía «Revisa lo que escribiste: hay un dato que no es válido.» y la moderación perdía su motivo.
 - `web/src/marca/Migas.tsx`: la miga `actual` sin `href` ni `alPulsar` se pinta como un chip quieto (`<span aria-current="step">`), no como
   un botón que no hace nada.
-- `web/src/marca/menu.ts`: COI deja de ser «Próximamente» (`href: '/estudio/coi/'`) y queda **sin `pagina`** (no se pinta con `<Marco>`: esa
-  clave exige un `<Marco pantalla="…">`, y el guardián `marco.mapa.paginas_existen` de `Marco.test.tsx` cae si se la agregan). Las pruebas
+- `web/src/marca/menu.ts`: COI deja de ser «Próximamente» (`href: '/estudio/central/distrito/coi/'`, desde E7.1; antes `/estudio/coi/`)
+  y queda **sin `pagina`** (no se pinta con `<Marco>`: esa clave exige un `<Marco pantalla="…">`, y el guardián
+  `marco.mapa.paginas_existen` de `Marco.test.tsx` cae si se la agregan). Las pruebas
   de `pantallas/inicio` que daban por «Próximamente» a las cuatro de Central › Distrito esperan ahora a COI y a la Biblioteca como
-  enlaces (las rutas están escritas en la prueba: `Pantallas.test.tsx`, `Recorrido.test.tsx`, `Inicio.test.tsx`).
+  enlaces (las rutas están escritas en la prueba: `Pantallas.test.tsx`, `PaginaNivel.test.tsx` y `PaginaGrupo.test.tsx`; hasta E8, también
+  en las del inicio de una sola página, que se retiraron con él).
 
 ## Revisión adversarial del 17-oct-2026: lo que cambió en la web
 

@@ -34,7 +34,7 @@ describe('traspaso', () => {
     const ir = vi.fn();
     expect(pasarAlConstructor(grafo(), m, ir)).toEqual({ ok: true });
     expect(ir).toHaveBeenCalledExactlyOnceWith(URL_CONSTRUCTOR);
-    expect(URL_CONSTRUCTOR).toBe('/estudio/constructor/');
+    expect(URL_CONSTRUCTOR).toBe('/estudio/automatizaciones/distrito/constructor/');
     const leido = leerBorrador(m.datos.get(CLAVE_BORRADOR));
     expect(leido.ok && leido.origen).toBe('asistente');
     expect(leido.ok && leido.flujo.nodes).toHaveLength(5);

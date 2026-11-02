@@ -1,5 +1,6 @@
-// /estudio/constructor/ — el Constructor de automatizaciones: un lienzo estilo n8n donde la persona arma su flujo cuadro por cuadro y lo
-// descarga como un .json que se importa en n8n. Todo pasa en el navegador: no llama a ningún servicio, no cobra y no manda nada.
+// /estudio/automatizaciones/distrito/constructor/ — el Constructor de automatizaciones: un lienzo estilo n8n donde la persona arma su
+// flujo cuadro por cuadro y lo descarga como un .json que se importa en n8n. Todo pasa en el navegador: no llama a ningún servicio, no
+// cobra y no manda nada.
 //
 // Esta pantalla solo ENSAMBLA. Las reglas del flujo, el menú, las flechas y el archivo de n8n viven en `modelo/` (puro y probado); los
 // componentes de esta carpeta dibujan lo que calculan los selectores y devuelven eventos; aquí:

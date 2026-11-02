@@ -111,7 +111,7 @@ describe('mix', () => {
     const f = montar({ ...BASE, tiene_blotato: false });
     render(<Mix />);
     expect(await screen.findByRole('heading', { name: 'Conecta tu Blotato para usar MIX' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Conectar Blotato para usar MIX' })).toHaveAttribute('href', '/estudio/?blotato=conectar');
+    expect(screen.getByRole('link', { name: 'Conectar Blotato para usar MIX' })).toHaveAttribute('href', '/estudio/marketing/blotato/?blotato=conectar');
     expect(screen.getByRole('heading', { name: /Los días/ }).closest('[inert]')).not.toBeNull();
     expect(f.mock.calls.some(c => c[0] === '/api/mix/cuentas')).toBe(false);
   });

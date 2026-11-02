@@ -1,39 +1,43 @@
-// /estudio/inicio/ — el inicio del estudio (UI·8.4). La caja cobra ahí mismo
-// el clip, la imagen, editar una imagen (desde R4b) y la edición de un video
-// (desde E1; desde E2 con varios videos unidos); las demás opciones llevan a la pantalla que cobra con el texto
-// puesto. Las listas, debajo, llevan a lo que ya hiciste.
+// La página de una herramienta de la caja (…/marketing/distrito/imagen/, video/ y edicion/; la entrada es ../herramienta.tsx): la caja ya
+// en la pestaña de la dirección, con su marco y lo que va debajo. La caja cobra ahí mismo el clip, la imagen, editar una imagen (desde
+// R4b) y la edición de un video (desde E1; desde E2 con varios videos unidos); las demás opciones llevan a la pantalla que cobra con el
+// texto puesto. Las listas, debajo, llevan a lo que ya hiciste.
 //
-// Desde el 15-oct-2026 (dueño, «Mapa con Irremplazables») ya no hay menú a la
-// izquierda: el inicio (Recorrido) enseña un paso a la vez —el mapa de áreas,
-// las tres opciones de un grupo, o su contenido: la caja o la lista de sus
-// pantallas—, bajo el título «Irremplazables». Se aterriza en el MAPA (segunda
-// ronda del mismo día: «el mapa es el inicio»), sin nada elegido; solo la caja
-// lleva tarjeta. La caja se queda montada (y escondida) aunque se vea otro paso:
-// no pierde lo escrito ni una subida. Lo que va debajo de ella (Mis creaciones,
-// los caminos…) se ve solo cuando la caja se ve. Las pantallas hoja (agenda,
-// métricas…) mandan aquí con `?desde=…&ver=…` desde sus migas (estadoRecorrido.ts), y la Biblioteca de prompts con `?prompt=` o `?brief=`
-// para dejar un texto ya puesto en la caja (pestaña Imagen o Video).
-// Las tres herramientas de la caja también son páginas con su dirección (…/marketing/distrito/imagen/, …/video/, …/edicion/; marca/rutas.ts): es
-// este mismo inicio con `lugar` (herramienta.tsx), con la caja ya a la vista en la pestaña de la dirección y las migas como enlaces. Al cambiar de
-// pestaña con el riel la página NO se recarga (la caja conserva lo escrito, el video y la subida): la dirección y el título la siguen con
-// `history.replaceState`, nunca con `pushState`, para que «atrás» siga subiendo al grupo y no recorra pestañas.
-// Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó
-// con cada aserción vieja: docs/migracion/inicio.md.
-import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+// Nació como /estudio/inicio/, el inicio de una sola página (UI·8.4), que en E5.3 se partió en una página por nivel (las de navegación
+// son PaginaNivel) y se retiró en E8. De arriba abajo, el DOM es el que la caja tenía dentro de ese inicio (los e2e de la caja y del
+// layout lo miden): «Irremplazables» (el único `h1`, en dorado, fuera y arriba de la tarjeta), la TARJETA (borde, fondo y relleno) con las
+// migas a la izquierda y la caja, y debajo, del mismo ancho, «Mis creaciones», los tres caminos de quien empieza y los archivados.
+//   · Las migas son enlaces (navegar.ts): la del área al mapa y la del grupo a las opciones del área (D6).
+//   · Esc no hace nada aquí (D12): no hay oyente de teclado. Con un diálogo, un menú de la caja o la lista de «Editar ▾» abiertos, Esc es
+//     de ellos.
+//   · La guarda del doble clic (niveles/dobleClic.ts), contada desde que ESTA página se cargó: la tarjeta «Imagen» o «Video» de Distrito
+//     cae a 390 px justo sobre «Crear una imagen ▾» o el selector de modelo, y el segundo clic los abría.
+//   · Al cambiar de pestaña con el riel la página NO se recarga (la caja conserva lo escrito, el video y la subida): la dirección y el
+//     título la siguen con `history.replaceState`, nunca con `pushState`, para que «atrás» siga subiendo al grupo y no recorra pestañas.
+//   · La Biblioteca de prompts manda a …/imagen/?prompt= o …/video/?brief= para dejar un texto ya puesto en la caja (../llegada.ts).
+//   · Con `?blotato=conectar` el diálogo de Blotato se abre solo. Quien pide conectar (el editor de cortes, la Agenda, las Métricas y
+//     MIX) no llega aquí sino a la página del grupo Blotato (GrupoConBlotato.tsx); aquí el parámetro solo llega escrito a mano o junto a
+//     un `?prompt=`/`?brief=` de antes (`/estudio/?prompt=x&blotato=conectar`: el servidor atiende primero esos). Sin él la página no le
+//     pregunta nada a Blotato (desde E8.6: antes pedía su estado ligero para unas listas que aquí no hay).
+// Un `lugar` que no es una pestaña de la caja no es esta página: se enseña NoEncontrada, como las entradas, nunca una página en blanco.
+// Paridad con static/index.html: mismas llamadas, mismos destinos. Qué pasó con cada aserción vieja: docs/migracion/inicio.md.
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
-import { buscar, type Lugar } from '../../marca/menu';
-import { rutasDelRecorrido, urlDeCaja } from '../../marca/rutas';
-import { refrescarSaldo } from '../../marca/useSaldo';
-import { ErrorApi } from '../../nucleo/api';
-import { Aviso } from '../../ui/Aviso';
-import { Boton, claseBoton } from '../../ui/Boton';
-import { Confirmar } from '../../ui/Confirmar';
-import { Icono } from '../../ui/Icono';
-import type { NombreIcono } from '../../ui/iconos';
-import { unir } from '../../ui/unir';
-import { DialogoBlotato } from './Blotato';
-import { Caja, type MandoCaja } from './Caja';
-import { traerImagen } from './envio';
+import { Migas } from '../../../marca/Migas';
+import { buscar, type Lugar, type PestanaCaja } from '../../../marca/menu';
+import { rutasDelRecorrido, urlDeCaja } from '../../../marca/rutas';
+import { refrescarSaldo } from '../../../marca/useSaldo';
+import { ErrorApi } from '../../../nucleo/api';
+import { Aviso } from '../../../ui/Aviso';
+import { Boton, claseBoton } from '../../../ui/Boton';
+import { Confirmar } from '../../../ui/Confirmar';
+import { Icono } from '../../../ui/Icono';
+import type { NombreIcono } from '../../../ui/iconos';
+import { DialogoBlotato } from '../Blotato';
+import { Caja, type MandoCaja } from '../Caja';
+import { traerImagen } from '../envio';
+import { Galeria, type Pendiente } from '../Galeria';
+import { leerLlegadaDeTexto, urlSinEntrada } from '../llegada';
 import {
   archivar,
   cargarClips,
@@ -53,11 +57,15 @@ import {
   type Imagen,
   type PedidoImagen,
   type Proyecto,
-} from './logica';
-import { Galeria, type Pendiente } from './Galeria';
-import { cajaVisible, estadoInicial, leerLlegadaDeTexto, reducir, urlSinEntrada } from './estadoRecorrido';
-import { estadoDeNivel, urlDeAccion } from './niveles/navegar';
-import { Recorrido } from './Recorrido';
+} from '../logica';
+import { ahora, esDobleClicAccidental } from './dobleClic';
+import { migasDeNivel } from './navegar';
+import { NoEncontrada } from './NoEncontrada';
+
+// La tarjeta va a `mt-8` (32 px) debajo del título: con él fuera de ella, el borde queda a 155 px del borde de la ventana a 1100×800, y el
+// título de la caja («¿Qué vamos a crear hoy?») a 233 px
+const TARJETA =
+  'mt-8 rounded-grande border border-linea bg-superficie p-6 max-[560px]:px-4 max-[380px]:px-2 max-[380px]:pt-4 max-[380px]:pb-6';
 
 interface Listas {
   proyectos: Proyecto[];
@@ -119,14 +127,15 @@ function reemplazarDireccion(url: string): void {
 }
 
 /**
- * La dirección y el título siguen a la pestaña de la caja (solo en la página de una herramienta). Sale de la caja al montarse y en cada
+ * La dirección y el título siguen a la pestaña de la caja. Sale de la caja al montarse y en cada
  * cambio, así que también corrige la dirección cuando la que se abrió no es la de la pestaña: un texto que llega (`?prompt=` es una imagen,
  * `?brief=` un video) abre otra, o la dirección venía escrita de otra manera (`…/imagen/index.html`, con «%XX»). Si la dirección ya es la de
  * la pestaña no hace nada (el `<title>` de la página ya es el suyo): por eso un efecto que corre dos veces (StrictMode) no repite el
  * `replaceState`.
- * Solo cambia el camino. Del query se va lo que Inicio ya leyó una vez al montar (`urlSinEntrada`: prompt, brief, desde, ver); todo lo
- * demás se queda, y el ancla también: `?blotato=conectar` (lo lee el efecto de carga de Inicio, que corre DESPUÉS de este: si se perdiera
- * aquí, el diálogo de conectar no se abriría), `utm_*`. Es una función de módulo, no del componente: su identidad no cambia entre renders.
+ * Solo cambia el camino. Del query se va lo que la página ya leyó una vez al montar (`urlSinEntrada`: prompt, brief, desde, ver); todo
+ * lo demás se queda, y el ancla también: `?blotato=conectar` (lo lee el efecto de carga de la página, que corre DESPUÉS de este: si se
+ * perdiera aquí, el diálogo de conectar no se abriría), `utm_*`. Es una función de módulo, no del componente: su identidad no cambia entre
+ * renders.
  */
 function seguirLaPestana(f: Familia): void {
   const url = urlDeCaja(f);
@@ -138,11 +147,22 @@ function seguirLaPestana(f: Familia): void {
   if (ruta) document.title = ruta.titulo;
 }
 
-/** `ir` solo lo cambian los tests (jsdom no navega).
- *  `lugar`: la página de una herramienta de la caja (…/distrito/imagen/): la caja ya en esa pestaña, las migas de arriba son enlaces a otras
- *  PÁGINAS en vez de cambiar de paso aquí, y la dirección sigue a la pestaña. Sin él, el inicio de siempre, con su recorrido en página. Un
- *  `lugar` que no es una pestaña de la caja (una hoja, una clave que no existe) no es una herramienta: se ignora y sale el inicio de siempre. */
-export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lugar?: Lugar }) {
+export interface PropsPaginaHerramienta {
+  /** El lugar de la herramienta que dice la dirección (marca/rutas.ts): Marketing › Distrito › Imagen, Video o Edición. */
+  lugar: Lugar;
+  /** A dónde ir (en la página, location.assign; en las pruebas, un espía: jsdom no navega). */
+  ir?: (url: string) => void;
+}
+
+export function PaginaHerramienta({ lugar, ir = navegar }: PropsPaginaHerramienta) {
+  // la pestaña de la caja que nombra `lugar`; sin ella (una hoja, una clave que no existe) esta no es la página de una herramienta
+  const pestana = buscar(lugar)?.pantalla.caja;
+  if (!pestana) return <NoEncontrada />;
+  return <Herramienta lugar={lugar} pestana={pestana} ir={ir} />;
+}
+
+function Herramienta({ lugar, pestana, ir }: { lugar: Lugar; pestana: PestanaCaja; ir: (url: string) => void }) {
+  const idTitulo = useId();
   const [listas, setListas] = useState<Listas | null>(null);
   const [falloCarga, setFalloCarga] = useState(false);
   // se soltó la tarjeta de una imagen pedida sin poder confirmarla: el mismo aviso, hasta una lectura buena
@@ -150,25 +170,16 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
   const [aviso, setAviso] = useState('');
   const [aArchivar, setAArchivar] = useState<Proyecto | null>(null);
 
-  // null = no se sabe: las pantallas de Blotato se quedan encendidas. Dejar sin
-  // sus herramientas a quien sí pagó, porque un fetch no respondió, es peor que
-  // dejar entrar a quien no (M23 · C).
-  const [conectado, setConectado] = useState<boolean | null>(null);
   const [dlgBlotato, setDlgBlotato] = useState(false);
   const [estadoBlotato, setEstadoBlotato] = useState<EstadoBlotato | null>(null);
   const [errorBlotato, setErrorBlotato] = useState('');
 
   const caja = useRef<MandoCaja>(null);
-  // la pestaña de la caja que nombra `lugar`; undefined = no hay `lugar` o no es una herramienta de la caja (el inicio de siempre)
-  const pestanaDeLugar = lugar ? buscar(lugar)?.pantalla.caja : undefined;
-  // el recorrido: en qué paso va (el mapa al abrir), y desde dónde llegó si venía de una pantalla hoja (?desde=…&ver=…, que se lee UNA vez).
-  // La página de una herramienta arranca en el contenido del grupo, con la caja a la vista
-  const [recorrido, despachar] = useReducer(reducir, undefined, () =>
-    lugar && pestanaDeLugar ? estadoDeNivel({ tipo: 'herramienta', lugar }) : estadoInicial(location.search),
-  );
-  const tituloCaja = useRef<HTMLHeadingElement>(null);
-  // el texto con el que se llegó a la caja (?prompt= o ?brief=, de «Llevar a la caja» de la Biblioteca de prompts): se lee UNA vez, junto con
-  // el recorrido, y la caja lo pone en su cuadro al montarse. Llegar así no crea ni cobra nada
+  // cuándo se cargó la página: un segundo clic de un doble clic a menos de medio segundo cae en lo que apareció donde estaba lo pulsado
+  // (la tarjeta de la página anterior) y se descarta. Se lee una vez, al montar
+  const [cargada] = useState(ahora);
+  // el texto con el que se llegó a la caja (?prompt= o ?brief=, de «Llevar a la caja» de la Biblioteca de prompts): se lee UNA vez, y la
+  // caja lo pone en su cuadro al montarse. Llegar así no crea ni cobra nada
   const [llegada] = useState(() => leerLlegadaDeTexto(location.search));
   // los pedidos en segundo plano que estaban generándose en la última lista: si uno pasa a error, el worker devolvió los créditos
   const generandoImagenes = useRef<Set<string>>(new Set());
@@ -207,7 +218,7 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
       cargarEdiciones(),
       cargarClips(),
     ]);
-    // sin la lista de proyectos se avisa y el inicio se queda con lo que tenía
+    // sin la lista de proyectos se avisa y la página se queda con lo que tenía
     if (ps.status === 'rejected') {
       setFalloCarga(true);
       return false;
@@ -252,20 +263,12 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
     setEstadoBlotato(null);
     setErrorBlotato('');
     setDlgBlotato(true);
-    leerBlotato().then(
-      d => {
-        setEstadoBlotato(d);
-        setConectado(d.conectado);
-      },
-      (e: unknown) => setErrorBlotato(mensaje(e)),
-    );
+    leerBlotato().then(setEstadoBlotato, (e: unknown) => setErrorBlotato(mensaje(e)));
   }, []);
 
-  // la entrada ya se leyó: la URL vuelve a /estudio/inicio/ (sin tocar lo demás, como ?blotato=conectar) para que recargar o compartir
-  // el enlace no repita el recorrido, y «atrás» siga llevando a la pantalla de donde se vino.
-  // En la página de una herramienta la caja (hija: sus efectos corren antes) ya pudo cambiar el camino a la dirección de su pestaña
-  // (`seguirLaPestana`, que también quita lo que se leyó); entonces aquí no queda nada que limpiar. Si la pestaña ya era la de la dirección,
-  // esto quita el `?prompt=`
+  // La entrada ya se leyó: se quita de la dirección (sin tocar lo demás, como ?blotato=conectar) para que recargar o compartir el enlace no
+  // la repita. La caja (hija: sus efectos corren antes) ya pudo cambiar el camino a la dirección de su pestaña (`seguirLaPestana`, que
+  // también quita lo que se leyó); entonces aquí no queda nada que limpiar. Si la pestaña ya era la de la dirección, esto quita el `?prompt=`
   useEffect(() => {
     const limpia = urlSinEntrada(location.href);
     if (limpia) reemplazarDireccion(limpia);
@@ -274,15 +277,9 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
   useEffect(() => {
     // cargar() y abrirBlotato() ponen estado: van en un callback, no en el cuerpo del efecto
     Promise.resolve().then(cargar).catch(() => undefined);
-    // el editor manda aquí con ?blotato=conectar cuando falta la conexión
-    if (new URLSearchParams(location.search).get('blotato') === 'conectar') {
-      Promise.resolve().then(abrirBlotato);
-    } else {
-      leerBlotato(true).then(
-        d => setConectado(d.conectado),
-        () => undefined,
-      );
-    }
+    // ?blotato=conectar abre el diálogo (aquí llega escrito a mano: el editor y las pantallas de Blotato mandan al grupo Blotato). Este
+    // efecto es del padre y corre DESPUÉS de que la caja corrigió la dirección, que conserva el parámetro
+    if (new URLSearchParams(location.search).get('blotato') === 'conectar') Promise.resolve().then(abrirBlotato);
   }, [cargar, abrirBlotato]);
 
   // Un video corto tarda un par de minutos y una imagen de un modelo lento, medio
@@ -341,8 +338,15 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
     }
   }
 
-  // lo mismo que decide Recorrido para esconder la caja: con ella a la vista se ven también las listas de debajo, y la pista corre
-  const verCaja = cajaVisible(recorrido);
+  // Se atiende en la captura, antes de que llegue a lo de adentro, y se cancela también (si no, un enlace navegaría igual). Lo de adentro
+  // no tiene que saber de esto; una elección deliberada (otro clic pasado el medio segundo) y el teclado (Enter: `detail` 0) pasan
+  function alPulsarAntes(e: MouseEvent<HTMLElement>) {
+    if (!esDobleClicAccidental(e.detail, ahora() - cargada)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  const migas = migasDeNivel({ tipo: 'herramienta', lugar });
   const activos = listas?.proyectos.filter(p => !p.archivado) ?? [];
   const archivados = listas?.proyectos.filter(p => p.archivado) ?? [];
   // Los tres caminos, solo si todas las listas respondieron y todas vienen
@@ -362,49 +366,58 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
 
   return (
     <>
-      {/* La altura de la ventana (`min-h-dvh`) es lo que deja a Recorrido centrar el mapa, las opciones y las listas en el alto que
-          sobra; con ellos no hay nada debajo que separar (sin `pb`), y con la caja sí (sus listas terminan ahí) */}
-      <main className={unir('mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 pt-16 max-[380px]:px-3', verCaja ? 'pb-8' : 'pb-0')}>
-        <Recorrido
-          estado={recorrido}
-          despachar={despachar}
-          conectado={conectado}
-          alConectar={abrirBlotato}
-          ir={ir}
-          tituloCaja={tituloCaja}
-          hrefDeMiga={pestanaDeLugar ? a => urlDeAccion(a, recorrido) : undefined}
-        >
-          <Caja
-            ref={caja}
-            ir={ir}
-            imagenes={listas?.imagenes ?? undefined}
-            tituloRef={tituloCaja}
-            llegada={llegada}
-            familiaInicial={pestanaDeLugar}
-            alCambiarFamilia={pestanaDeLugar ? seguirLaPestana : undefined}
-            enVista={verCaja}
-            alEditar={() => void cargar()}
-            alPedir={p => setPendientes(l => [p, ...l])}
-            alTerminar={(clave, esperarLista) => {
-              // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
-              // Una imagen que el servidor aceptó se queda hasta que la lista llegue: si esa lectura
-              // falla (o no pudo leer los pedidos), la tarjeta es lo único que dice que va en camino
-              // (se reintenta cada 5 s, hasta ESPERA_MAXIMA_MS).
-              const desde = Date.now();
-              // las que ya esperaban cuando sale esta lectura: si sale bien, las trae a ellas también
-              const previas = esperando.current.map(e => e.clave);
-              void cargar().then(llego => {
-                if (llego) quitarPendientes([clave, ...previas]);
-                else if (!esperarLista) quitarPendientes([clave]);
-                else setEsperandoLista(l => [...l, { clave, desde }]);
-              });
-            }}
-          />
-        </Recorrido>
+      <main className="mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 pt-16 max-[380px]:px-3 pb-8">
+        <section aria-labelledby={idTitulo} onClickCapture={alPulsarAntes} className="mx-auto flex w-full max-w-[820px] flex-col">
+          {/* El degradado dorado es un FONDO recortado a la letra: puesto en el h1 solo cubriría la caja del h1, y la letra que se saliera de
+              ella (espaciado de texto de WCAG 1.4.12 a 320 px, letra más grande) quedaría transparente y desaparecería. En un <span> en
+              línea su caja mide lo que el texto, y el h1 parte la palabra en vez de dejarla salirse de la sección. `mt-6` lo deja donde
+              está en las páginas de nivel */}
+          <h1
+            id={idTitulo}
+            className="m-0 mt-6 text-center font-titulo text-titulo-lg font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere]"
+          >
+            <span className="texto-oro">Irremplazables</span>
+          </h1>
 
-        {/* Debajo de la tarjeta, del mismo ancho, y SOLO con la caja a la vista: con el mapa, las tres opciones o la lista de un
-            grupo no pintan nada (y siguen montadas: una galería que se desmonta pierde su filtro y su visor) */}
-        <div hidden={!verCaja} className="mx-auto mt-8 w-full max-w-[820px]">
+          {/* `data-limite-lista`: la lista de «Editar ▾» (SelectorOpcion) busca este marcador con `closest` para no sobresalir de la tarjeta */}
+          <div data-limite-lista="" className={TARJETA}>
+            {migas.length > 0 && (
+              <div className="flex min-h-11 flex-wrap items-center gap-2 mb-2">
+                <Migas migas={migas} />
+              </div>
+            )}
+
+            <div>
+              <Caja
+                ref={caja}
+                ir={ir}
+                imagenes={listas?.imagenes ?? undefined}
+                llegada={llegada}
+                familiaInicial={pestana}
+                alCambiarFamilia={seguirLaPestana}
+                alEditar={() => void cargar()}
+                alPedir={p => setPendientes(l => [p, ...l])}
+                alTerminar={(clave, esperarLista) => {
+                  // la lista ya trae lo nuevo (o el error se ve en la caja): la tarjeta de «generando» se va.
+                  // Una imagen que el servidor aceptó se queda hasta que la lista llegue: si esa lectura
+                  // falla (o no pudo leer los pedidos), la tarjeta es lo único que dice que va en camino
+                  // (se reintenta cada 5 s, hasta ESPERA_MAXIMA_MS).
+                  const desde = Date.now();
+                  // las que ya esperaban cuando sale esta lectura: si sale bien, las trae a ellas también
+                  const previas = esperando.current.map(e => e.clave);
+                  void cargar().then(llego => {
+                    if (llego) quitarPendientes([clave, ...previas]);
+                    else if (!esperarLista) quitarPendientes([clave]);
+                    else setEsperandoLista(l => [...l, { clave, desde }]);
+                  });
+                }}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Debajo de la tarjeta, del mismo ancho */}
+        <div className="mx-auto mt-8 w-full max-w-[820px]">
           {(falloCarga || sinConfirmar) && (
             <div className="mb-6">
               <Aviso tipo="error">
@@ -484,16 +497,7 @@ export function Inicio({ ir = navegar, lugar }: { ir?: (url: string) => void; lu
         }}
       />
 
-      <DialogoBlotato
-        abierto={dlgBlotato}
-        alCambiar={setDlgBlotato}
-        estado={estadoBlotato}
-        errorCarga={errorBlotato}
-        alSaber={d => {
-          setEstadoBlotato(d);
-          setConectado(d.conectado);
-        }}
-      />
+      <DialogoBlotato abierto={dlgBlotato} alCambiar={setDlgBlotato} estado={estadoBlotato} errorCarga={errorBlotato} alSaber={setEstadoBlotato} />
     </>
   );
 }

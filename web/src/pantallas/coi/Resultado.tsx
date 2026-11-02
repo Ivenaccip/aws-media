@@ -89,7 +89,7 @@ export function Resultado({ coi, idioma, copiado, alCopiar, guardado, armando = 
                 : 'La respuesta no llegó separada en Contexto, Objetivo e Instrucciones, así que te la dejamos completa, lista para copiar.'}
         </p>
         {guardado !== null && (
-          <a href="/estudio/biblioteca/?ver=mios" className={unir(ENLACE_BOTON, 'no-underline -ml-2')}>
+          <a href="/estudio/central/distrito/biblioteca/?ver=mios" className={unir(ENLACE_BOTON, 'no-underline -ml-2')}>
             Ver en Míos
             <IconoCoi nombre="flecha" />
           </a>

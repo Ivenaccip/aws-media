@@ -100,7 +100,7 @@ let monedero: ReturnType<typeof ponerMonedero>;
 beforeEach(() => {
   vi.unstubAllGlobals();
   monedero = ponerMonedero(100);
-  history.replaceState(null, '', '/estudio/biblioteca/');
+  history.replaceState(null, '', '/estudio/central/distrito/biblioteca/');
 });
 afterEach(() => {
   delete window.monedero;
@@ -169,7 +169,7 @@ describe('biblioteca', () => {
     montar({ casa: [] });
     render(<Biblioteca />);
     expect(await screen.findByRole('heading', { name: 'Aún no hay prompts en la Biblioteca' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Diseñar un prompt con COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    expect(screen.getByRole('link', { name: /Diseñar un prompt con COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
     expect(screen.queryByRole('list', { name: 'Prompts de la Biblioteca' })).toBeNull();
   });
 
@@ -210,7 +210,7 @@ describe('biblioteca', () => {
     expect(screen.getByText('Sin resultados para «zapatos de baile»')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'No encontramos ese prompt' })).toBeInTheDocument();
     const ofertas = screen.getAllByRole('link', { name: /COI/ });
-    expect(ofertas.every(a => a.getAttribute('href') === '/estudio/coi/')).toBe(true);
+    expect(ofertas.every(a => a.getAttribute('href') === '/estudio/central/distrito/coi/')).toBe(true);
     // el único ámbar de la pantalla es «Diseñar uno con COI»
     expect(principales().map(e => e.textContent)).toEqual(['Diseñar uno con COI']);
     await userEvent.click(within(panelDetalle()!).getByRole('button', { name: 'Quitar filtros' }));
@@ -366,9 +366,9 @@ describe('biblioteca', () => {
     montar();
     render(<Biblioteca />);
     await esperarLista();
-    // Imagen → ?prompt=
+    // Imagen → la página de la Caja en Imagen, con ?prompt=
     const imagen = screen.getByRole('link', { name: 'Llevar a la caja' });
-    expect(imagen).toHaveAttribute('href', '/estudio/inicio/?prompt=' + encodeURIComponent(RETRATO.prompt));
+    expect(imagen).toHaveAttribute('href', '/estudio/marketing/distrito/imagen/?prompt=' + encodeURIComponent(RETRATO.prompt));
     expect(new URL(imagen.getAttribute('href')!, 'http://x').searchParams.get('prompt')).toBe(RETRATO.prompt);
     expect(panelDetalle()).toHaveTextContent('en la pestaña Imagen');
     // un prompt con huecos y tildes viaja entero
@@ -376,10 +376,10 @@ describe('biblioteca', () => {
     const conHuecos = screen.getByRole('link', { name: 'Llevar a la caja' });
     expect(conHuecos.getAttribute('href')).toContain('%5BIDEA%5D');
     expect(new URL(conHuecos.getAttribute('href')!, 'http://x').searchParams.get('prompt')).toBe(ILUSTRACION.prompt);
-    // Video → ?brief=
+    // Video → la página de la Caja en Video, con ?brief=
     await userEvent.click(fila('Café con vapor'));
     const video = screen.getByRole('link', { name: 'Llevar a la caja' });
-    expect(video).toHaveAttribute('href', '/estudio/inicio/?brief=' + encodeURIComponent(CAFE.prompt));
+    expect(video).toHaveAttribute('href', '/estudio/marketing/distrito/video/?brief=' + encodeURIComponent(CAFE.prompt));
     expect(panelDetalle()).toHaveTextContent('en la pestaña Video');
   });
 
@@ -426,7 +426,7 @@ describe('biblioteca', () => {
     expect(principales().map(e => e.textContent)).toEqual(['Copiar']);
     // 1800: se lleva
     await userEvent.click(fila('Un prompt justo'));
-    expect(screen.getByRole('link', { name: 'Llevar a la caja' })).toHaveAttribute('href', '/estudio/inicio/?prompt=' + 'y'.repeat(1800));
+    expect(screen.getByRole('link', { name: 'Llevar a la caja' })).toHaveAttribute('href', '/estudio/marketing/distrito/imagen/?prompt=' + 'y'.repeat(1800));
   });
 
   it('biblioteca.llevar.el_texto_es_texto_nunca_html', async () => {
@@ -442,7 +442,7 @@ describe('biblioteca', () => {
     expect((window as unknown as { __roto?: number }).__roto).toBeUndefined();
     // y en la dirección va codificado, sin romper la URL
     const href = screen.getByRole('link', { name: 'Llevar a la caja' }).getAttribute('href')!;
-    expect(href.startsWith('/estudio/inicio/?prompt=')).toBe(true);
+    expect(href.startsWith('/estudio/marketing/distrito/imagen/?prompt=')).toBe(true);
     expect(href).not.toMatch(/[<>"\s]/);
   });
 
@@ -704,20 +704,20 @@ describe('biblioteca', () => {
     expect(screen.queryByRole('list', { name: 'Prompts de la Biblioteca' })).toBeNull();
     // sin ninguno no hay con qué buscar: ni buscador ni categorías
     expect(screen.queryByRole('searchbox')).toBeNull();
-    expect(within(panelDetalle()!).getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    expect(within(panelDetalle()!).getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
     // y la franja de fijados sigue ahí: es de toda la Biblioteca
     expect(casillas()).toHaveLength(3);
   });
 
   it('con «?ver=mios» (el enlace «Ver en Míos» de COI) abre en «Míos» y sin esa dirección abre «De la casa»', async () => {
-    history.replaceState(null, '', '/estudio/biblioteca/?ver=mios');
+    history.replaceState(null, '', '/estudio/central/distrito/biblioteca/?ver=mios');
     montar({ mios: MIOS });
     const { unmount } = render(<Biblioteca />);
     await esperarLista();
     expect(ambito('Míos')).toHaveAttribute('aria-pressed', 'true');
     expect(titulosDeFilas()).toEqual(['Reel de la semana', 'Ideas de portada']);
     unmount();
-    history.replaceState(null, '', '/estudio/biblioteca/');
+    history.replaceState(null, '', '/estudio/central/distrito/biblioteca/');
     render(<Biblioteca />);
     await esperarLista();
     expect(ambito('De la casa')).toHaveAttribute('aria-pressed', 'true');
@@ -833,11 +833,11 @@ describe('biblioteca', () => {
     const migas = within(screen.getByRole('navigation', { name: 'Dónde estás' }));
     const enlaces = migas.getAllByRole('link');
     expect(enlaces.map(a => a.textContent)).toEqual(['Central', 'Distrito', 'Biblioteca de prompts']);
-    // «Central» abre el mapa y «Distrito» las opciones de Central, «desde» esta pantalla (el contrato con el inicio)
-    expect(enlaces[0]).toHaveAttribute('href', '/estudio/inicio/?desde=central.distrito.biblioteca&ver=mapa');
-    expect(enlaces[1]).toHaveAttribute('href', '/estudio/inicio/?desde=central.distrito.biblioteca&ver=grupos');
+    // «Central» abre el mapa y «Distrito» las opciones de Central: directo a esas páginas del recorrido
+    expect(enlaces[0]).toHaveAttribute('href', '/estudio/');
+    expect(enlaces[1]).toHaveAttribute('href', '/estudio/central/');
     expect(enlaces[2]).toHaveAttribute('aria-current', 'step');
-    expect(enlaces[2]).toHaveAttribute('href', '/estudio/biblioteca/');
+    expect(enlaces[2]).toHaveAttribute('href', '/estudio/central/distrito/biblioteca/');
     // el h1 no tiene ícono ni está dentro de una tarjeta
     expect(screen.getByRole('heading', { level: 1 }).querySelector('svg')).toBeNull();
     expect(screen.getByRole('heading', { level: 1 }).closest('section')).toBeNull();
@@ -848,7 +848,7 @@ describe('biblioteca', () => {
     render(<Biblioteca />);
     await esperarLista();
     expect(screen.getByText('¿No encuentras el tuyo?')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/coi/');
+    expect(screen.getByRole('link', { name: /Ir a COI/ })).toHaveAttribute('href', '/estudio/central/distrito/coi/');
   });
 
   // ---- lo que NO hace ----
@@ -884,7 +884,7 @@ describe('biblioteca', () => {
     // ningún cobro: el saldo no se pide de nuevo ni se anuncia
     expect(monedero.refrescar).not.toHaveBeenCalled();
     // y «Llevar a la caja» es un enlace, no una acción: no navegó
-    expect(location.pathname).toBe('/estudio/biblioteca/');
+    expect(location.pathname).toBe('/estudio/central/distrito/biblioteca/');
   });
 
   it('biblioteca.accesibilidad.los_avisos_van_a_una_region_viva_y_cada_boton_dice_sobre_que_actua', async () => {

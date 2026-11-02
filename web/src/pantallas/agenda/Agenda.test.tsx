@@ -241,7 +241,7 @@ describe('agenda', () => {
     const { unmount } = render(<Agenda />);
     const a = await screen.findByRole('alert');
     expect(a).toHaveTextContent('Conecta tu cuenta de Blotato para ver tu agenda.');
-    expect(within(a).getByRole('link', { name: 'Conectar Blotato' })).toHaveAttribute('href', '/estudio/?blotato=conectar');
+    expect(within(a).getByRole('link', { name: 'Conectar Blotato' })).toHaveAttribute('href', '/estudio/marketing/blotato/?blotato=conectar');
     unmount();
     montar({ '/api/agenda': () => json({ detail: 'Blotato falló.' }, 502) });
     render(<Agenda />);
