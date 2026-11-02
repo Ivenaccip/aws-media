@@ -2357,7 +2357,8 @@ aws cloudformation describe-stacks --stack-name aws-media-api-dev --query "Stack
 aws lambda invoke --function-name NOMBRE_DE_LA_LAMBDA --payload "{\"tipo\":\"invitador\"}" --cli-binary-format raw-in-base64-out salida.json
 ```
 
-5. Bajada a `main` (PR `dev` → `main`).
+5. PR gemelo a `main` (el mismo cambio, con el sí del dueño: `dev` lleva más cosas
+   que no van a prod todavía) y su merge. Después, bajada de `main` a `dev` con merge commit.
 6. `tools/db_migrate.py` en **prod** (ARNs de «Base de datos»), ANTES del deploy. La
    sal de prod (`AUTOMATIZA_SAL_IP`) ya existe desde el 30-oct-2026: sin ella `/acceso`
    contesta «Ahorita no se pudo» a todos.
