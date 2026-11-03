@@ -1,8 +1,8 @@
-// /estudio/competencia/ — investiga tu competencia (UI·8.2). Guardar cuentas
-// no cuesta; «Revisar ✦ N» cobra la tarifa por cada cuenta vigilada.
-// Paridad con static/competencia.html. Lo que escribe la red social (pies de
-// foto, ligas) llega por el actor de Apify: React lo pinta como texto y una
-// liga que no es http(s) no se enlaza.
+// /estudio/marketing/blotato/competencia/ — investiga tu competencia (UI·8.2).
+// Guardar cuentas no cuesta; «Revisar ✦ N» cobra la tarifa por cada cuenta
+// vigilada. Paridad con static/competencia.html. Lo que escribe la red
+// social (pies de foto, ligas) llega por el actor de Apify: React lo pinta
+// como texto y una liga que no es http(s) no se enlaza.
 import { useId, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';

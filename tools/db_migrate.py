@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -48,6 +49,14 @@ def main() -> None:
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema = 'public' ORDER BY table_name")
     print("Tablas en", args.database + ":", ", ".join(t["table_name"] for t in tablas))
+    # Ajustes 3: el código nuevo falla sin sus tablas, y «correr la migración» es un paso manual
+    # fácil de olvidar en uno de los dos entornos. Si tras correr falta alguna tabla del esquema,
+    # esto lo dice en voz alta en vez de dejar que se note como un 503 en producción.
+    esperadas = {m.group(1) for s in db.ESQUEMA if (m := re.match(r"\s*CREATE TABLE IF NOT EXISTS (\w+)", s))}
+    faltan = sorted(esperadas - {t["table_name"] for t in tablas})
+    if faltan:
+        sys.exit("FALTAN tablas tras la migración: " + ", ".join(faltan))
+    print(f"Las {len(esperadas)} tablas del esquema existen.")
 
 
 if __name__ == "__main__":

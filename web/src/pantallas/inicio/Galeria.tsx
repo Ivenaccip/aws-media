@@ -44,11 +44,13 @@ export interface PropsGaleria {
   alArchivar: (p: Proyecto) => void;
   /** Sin esto, el visor no ofrece «Usar como referencia». */
   alUsarReferencia?: (im: Imagen) => void;
+  /** El servidor aceptó el «Reintentar» de una copia que falló: la lista se vuelve a leer (y la tarjeta pasa a «Editando…»). */
+  alReintentar?: () => Promise<unknown> | void;
 }
 
 const FILTRO_DE_PENDIENTE = { corto: 'cortos', imagen: 'imagenes' } as const;
 
-export function Galeria({ creaciones, pendientes = [], slots, alArchivar, alUsarReferencia }: PropsGaleria) {
+export function Galeria({ creaciones, pendientes = [], slots, alArchivar, alUsarReferencia, alReintentar }: PropsGaleria) {
   const [filtro, setFiltro] = useState<Filtro>('todo');
   const [limite, setLimite] = useState(CREACIONES_A_LA_VISTA);
   const [visto, setVisto] = useState<Visto | null>(null);
@@ -67,7 +69,7 @@ export function Galeria({ creaciones, pendientes = [], slots, alArchivar, alUsar
 
   function pintar(c: Creacion) {
     if (c.tipo === 'imagen') return <TarjetaImagen key={c.clave} im={c.im} alAbrir={im => setVisto({ tipo: 'imagen', im })} />;
-    if (c.tipo === 'edicion') return <TarjetaEdicion key={c.clave} e={c.e} />;
+    if (c.tipo === 'edicion') return <TarjetaEdicion key={c.clave} e={c.e} alReintentar={alReintentar} />;
     return (
       <TarjetaVideo
         key={c.clave}

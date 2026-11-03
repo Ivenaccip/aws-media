@@ -4,6 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { animacionesVivas, arranques, oirArranques, olvidarArranques } from './pantallas';
+import { URL_BLOTATO } from './recorrido';
 
 // solo las del diálogo: la vitrina tiene sus propias animaciones (el orbe,
 // los esqueletos) que no vienen al caso
@@ -36,6 +37,21 @@ for (const caso of [
   });
 }
 
+// Ajustes 3: una caja nunca mide más que la ventana. La hoja de «Guardar» de COI con el aviso de «Biblioteca llena» medía 707 px en una
+// ventana de 568 y perdía arriba el título y la ✕ y abajo los botones. Con una ventana más baja que la caja, se desplaza POR DENTRO.
+test('el diálogo nunca es más alto que la ventana: si no cabe, se desplaza por dentro', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 200 });
+  await page.goto('/estudio/_vitrina/');
+  await page.getByRole('button', { name: 'Abrir diálogo' }).click();
+  const d = page.getByRole('dialog');
+  await expect(d).toBeVisible();
+  await expect.poll(() => nombres(page)).toEqual([]);
+  const caja = await d.boundingBox();
+  expect(caja!.y).toBeGreaterThanOrEqual(0);
+  expect(caja!.y + caja!.height).toBeLessThanOrEqual(200);
+  expect(await d.evaluate(e => e.scrollHeight > e.clientHeight)).toBe(true);
+});
+
 test('el Confirmar con «Cancelar» también devuelve el foco', async ({ page }) => {
   await page.goto('/estudio/_vitrina/');
   const abrir = page.getByRole('button', { name: 'Borrar el proyecto…' });
@@ -62,7 +78,7 @@ test('Agenda con la red de verdad: al cancelar con el teclado, el foco acaba en 
     cancelada = true;
     return r.fulfill({ json: { ok: true } });
   });
-  await page.goto('/estudio/agenda/');
+  await page.goto('/estudio/marketing/blotato/agenda/');
   const cancelar = page.getByRole('button', { name: 'Cancelar', exact: true });
   await cancelar.focus();
   await page.keyboard.press('Enter');
@@ -80,13 +96,19 @@ test('mientras sale, el diálogo ya no oye el teclado (Enter no manda el formula
     if (r.request().method() === 'POST') posts++;
     return r.fulfill({ json: { conectado: false, origen: null, cuentas: [], error: null, plan: null } });
   });
-  await page.goto('/estudio/inicio/?blotato=conectar');
+  // el diálogo de conectar vive en el grupo Blotato de Marketing (el servidor manda ahí las entradas de antes, ?blotato=conectar)
+  await page.goto(`${URL_BLOTATO}?blotato=conectar`);
   const form = page.getByRole('dialog', { name: 'Conecta tu Blotato' });
   const clave = form.getByLabel('Tu clave de API de Blotato');
   await clave.fill('una-clave');
   await clave.focus();
-  // Escape y, en los 100 ms de la salida, Enter
+  // Escape y, en los 100 ms de la salida, Enter. Antes de pulsar Enter se espera a que el cierre ya haya llegado: React lo confirma
+  // (`data-state="closed"`, que llega en el mismo pintado que `inert`) y el navegador, al pintar, saca el foco del campo que quedó
+  // inerte. Si el Enter sale ANTES, el campo todavía tiene el foco, el formulario sigue vivo y el envío implícito dispara `conectar`:
+  // una carrera de la prueba (Playwright pulsa en microsegundos), no del diálogo
   await page.keyboard.press('Escape');
+  await expect(form).toHaveAttribute('data-state', 'closed');
+  await expect(clave).not.toBeFocused();
   await page.keyboard.press('Enter');
   await expect(form).toBeHidden();
   await page.waitForTimeout(300);

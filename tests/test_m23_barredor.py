@@ -237,6 +237,21 @@ def editor(monkeypatch):
     monkeypatch.setattr(creditos, "activo", lambda: True)
     monkeypatch.setattr(creditos, "devolver",
                         lambda n, ref, u=None: devueltos.append((n, ref, u)))
+
+    # E2: el barredor anota `devueltos` en el doc de una edición; el doc es falso.
+    # Lo escrito queda en `db.fijar_campo_editor.escritos` (user, nombre, campo, valor).
+    def fijar(user_id, nombre, campo, valor):
+        fijar.escritos.append((user_id, nombre, campo, json.loads(valor)))
+    fijar.escritos = []
+    monkeypatch.setattr(db, "fijar_campo_editor", fijar)
+
+    # Ajustes 2 · D-05: la anotación de una corrida RECLAMADA (el doc en `error`) va condicionada a que
+    # siga en `error` y con el mismo `inicio` (`db.cerrar_editor_si_error`); aquí siempre se cumple y
+    # queda en el mismo registro (user, nombre, campo, valor)
+    def cerrar(user_id, nombre, inicio, valor):
+        fijar.escritos.append((user_id, nombre, "editar", json.loads(valor)))
+        return True
+    monkeypatch.setattr(db, "cerrar_editor_si_error", cerrar)
     return barredor, devueltos, trabajo, reclamos
 
 
@@ -379,3 +394,493 @@ def test_el_sync_diario_sigue_en_pie(reglas):
     comprobación del viejo. Lo que importa es que el sync diario siga ahí."""
     cron = {r["ScheduleExpression"] for r in reglas if "ScheduleExpression" in r}
     assert "cron(0 6 * * ? *)" in cron
+
+
+# ---------------------------------------------------------------------------
+# E2 — la bandeja dice «Te devolvimos ✦ N» leyendo doc.editar.devueltos
+
+def _escritos():
+    from pipeline import db
+    return db.fijar_campo_editor.escritos
+
+
+def test_el_barredor_anota_devueltos_en_una_edicion(editor):
+    """Una edición que ni arrancó la cierra el barredor, y es la única pieza que sabe
+    cuánto devolvió: sin `devueltos` la bandeja callaría el reembolso."""
+    barredor, devueltos, trabajo, _ = editor
+    trabajo.update(creditos=8, estado="error", paso="editar", copia=True)
+
+    barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "ed-1"], proyecto_id="ed-1"))
+
+    assert devueltos == [(8, "editar-sugerir:ed-1", "u1")]
+    (user, nombre, campo, doc), = _escritos()
+    assert (user, nombre, campo) == ("u1", "ed-1", "editar")
+    assert doc["devueltos"] == 8
+    # y lo que ya traía el doc (el paso en que murió, el monto cobrado) se conserva
+    assert doc["paso"] == "editar" and doc["creditos"] == 8 and doc["estado"] == "error"
+
+
+@pytest.mark.parametrize("modulo", ["shorts_task", "overlay_task"])
+def test_los_otros_trabajos_no_escriben_devueltos(editor, modulo):
+    """Solo `editar` lleva la anotación: shorts y overlay guardan su estado en otro lugar."""
+    barredor, devueltos, _, _ = editor
+    barredor.barrer(_evento(["python", "-m", f"worker.{modulo}", "u1", "v"], proyecto_id="v"))
+    assert len(devueltos) == 1 and _escritos() == []
+
+
+def test_sin_monedero_no_se_promete_una_devolucion(editor, monkeypatch):
+    """En local (`creditos.activo()` falso) no se devuelve ni se escribe `devueltos`."""
+    from pipeline import creditos
+    barredor, devueltos, _, _ = editor
+    monkeypatch.setattr(creditos, "activo", lambda: False)
+    barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
+    assert devueltos == [] and _escritos() == []
+
+
+def test_un_trabajo_sin_monto_no_anota_nada(editor):
+    barredor, devueltos, trabajo, _ = editor
+    trabajo["creditos"] = 0
+    barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
+    assert devueltos == [] and _escritos() == []
+
+
+def test_si_la_anotacion_falla_el_dinero_ya_volvio_y_no_se_levanta_nada(editor, monkeypatch):
+    """Devolver va ANTES de anotar: si Postgres se cae al anotar, el reintento del evento
+    perdería el reclamo (ya está en error) y no devolvería otra vez. Solo se queda en el log."""
+    from pipeline import db
+    barredor, devueltos, _, _ = editor
+
+    def truena(*a):
+        raise RuntimeError("Postgres no responde")
+    monkeypatch.setattr(db, "fijar_campo_editor", truena)
+    monkeypatch.setattr(db, "cerrar_editor_si_error", truena)
+
+    r = barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", "v"], proyecto_id="v"))
+    assert r["accion"] == "devuelto" and len(devueltos) == 1
+
+
+def test_si_el_monedero_falla_el_doc_se_reabre_y_el_reintento_devuelve(monkeypatch):
+    """El peor hueco del barredor: ganó el reclamo (el doc pasó a `error`) y entonces el
+    monedero falló. Sin reabrir, el reintento del evento pierde el reclamo y los créditos
+    NO vuelven nunca. Con un doc de verdad (estado que cambia): la primera pasada falla y
+    deja el doc `corriendo`; la segunda lo reclama otra vez y devuelve UNA vez."""
+    from pipeline import creditos, db
+    from worker import barredor
+    doc = {"estado": "corriendo", "creditos": 8, "copia": True, "paso": "entender"}
+    abonos, fallos = [], [1]
+
+    def reclamar(user_id, nombre, campo, mensaje):
+        if doc["estado"] != "corriendo":
+            return None
+        doc.update(estado="error", error=mensaje)
+        return dict(doc)
+
+    def devolver(n, ref, u=None):
+        if fallos:
+            fallos.pop()
+            raise RuntimeError("el monedero no respondió")
+        abonos.append((n, ref, u))
+
+    def cerrar(user_id, nombre, inicio, valor):
+        assert doc["estado"] == "error" and (doc.get("inicio") or "") == (inicio or "")
+        doc.clear()
+        doc.update(json.loads(valor))
+        return True
+    monkeypatch.setattr(db, "reclamar_fallo_editor", reclamar)
+    monkeypatch.setattr(db, "cerrar_editor_si_error", cerrar)
+    monkeypatch.setattr(db, "fijar_campo_editor",
+                        lambda *a: pytest.fail("una corrida reclamada se escribe con cerrar_editor_si_error"))
+    # Ajustes 2 · D-08: cuando el reclamo se pierde, el barredor mira el doc por si el worker dejó una
+    # deuda anotada (`devolucion_pendiente`); aquí ya está saldada y no hay nada que cobrar
+    monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: {"editar": dict(doc)})
+    monkeypatch.setattr(creditos, "activo", lambda: True)
+    monkeypatch.setattr(creditos, "devolver", devolver)
+    evento = _evento(["python", "-m", "worker.editar_task", "u1", "ed-1"], proyecto_id="ed-1")
+
+    with pytest.raises(RuntimeError):
+        barredor.barrer(evento)                      # EventBridge lo reintentará
+    assert abonos == [] and doc["estado"] == "corriendo" and doc["devolucion_pendiente"] == 8
+
+    r = barredor.barrer(evento)                      # el reintento
+    assert r == {"accion": "devuelto", "creditos": 8, "proyecto": "ed-1"}
+    assert abonos == [(8, "editar-sugerir:ed-1", "u1")]
+    assert doc["estado"] == "error" and doc["devueltos"] == 8 and "devolucion_pendiente" not in doc
+
+    assert barredor.barrer(evento)["accion"] == "nada"   # un tercer evento no devuelve de nuevo
+    assert len(abonos) == 1
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 2 · D-07 y D-08 — el evento tardío de la corrida VIEJA y las deudas sin cobrar
+#
+# Un `Copia` es el doc de una edición con su libro mayor y su monedero falsos. A diferencia del
+# fixture `editor`, el doc tiene ESTADO (el reclamo lo pasa de `corriendo` a `error`), así que se
+# ven los cierres de verdad: quién gana, qué queda escrito y cuánto se abona.
+
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+
+INICIO = datetime(2026, 10, 15, 18, 0, 0, tzinfo=timezone.utc)
+COPIA = "ed-1"
+REF = f"editar-sugerir:{COPIA}"
+
+
+def _iso(t: datetime) -> str:
+    return t.isoformat(timespec="seconds")
+
+
+def _ms(t: datetime) -> int:
+    return int(t.timestamp() * 1000)
+
+
+class Copia:
+    def __init__(self, monkeypatch, **editar):
+        from pipeline import creditos, db
+        self.editar = {"copia": True, "estado": "corriendo", "paso": "entender", "cobrado": True,
+                       "creditos": 2, "inicio": _iso(INICIO), **editar}
+        self.libro = [{"creditos": -self.editar["creditos"], "tipo": "cargo", "referencia": REF}]
+        self.abonos, self.lecturas, self.reclamos = [], 0, 0
+        self.devolver_falla = 0
+        self.escritura_falla = None                  # callable(editar_nuevo) -> Exception | None
+        self.al_devolver = None                      # gancho: pasa mientras el monedero responde
+        self.cierres_perdidos = 0                    # cuántas veces el cierre condicionado no escribió
+        monkeypatch.setattr(creditos, "activo", lambda: True)
+        monkeypatch.setattr(creditos, "devolver", self._devolver)
+        monkeypatch.setattr(db, "reclamar_fallo_editor", self._reclamar)
+        monkeypatch.setattr(db, "cargar_proyecto_editor", self._cargar)
+        monkeypatch.setattr(db, "fijar_campo_editor", self._fijar)
+        monkeypatch.setattr(db, "cerrar_editor_si_error", self._cerrar_si_error)
+        monkeypatch.setattr(db, "movimientos_creditos", lambda u, limite=20: list(self.libro)[:limite])
+
+    def _reclamar(self, user, nombre, campo, mensaje):
+        self.reclamos += 1
+        if self.editar.get("estado") != "corriendo":
+            return None
+        self.editar.update(estado="error", error=mensaje)
+        return deepcopy(self.editar)
+
+    def _cargar(self, user, nombre):
+        self.lecturas += 1
+        return {"editar": deepcopy(self.editar)}
+
+    def _fijar(self, user, nombre, campo, valor):
+        """`db.fijar_campo_editor`: SIN condición. Solo cabe sobre una copia ya `listo`: sobre un
+        `error` reclamado el barredor debe usar `cerrar_editor_si_error` (D-05)."""
+        assert self.editar.get("estado") == "listo", "una corrida reclamada se escribe con cerrar_editor_si_error"
+        nuevo = json.loads(valor)
+        if self.escritura_falla and (err := self.escritura_falla(nuevo)):
+            raise err
+        self.editar = nuevo
+
+    def _cerrar_si_error(self, user, nombre, inicio, valor):
+        """`db.cerrar_editor_si_error`: escribe solo si la copia SIGUE en `error` y con el mismo `inicio`."""
+        nuevo = json.loads(valor)
+        if self.editar.get("estado") != "error" or (self.editar.get("inicio") or "") != (inicio or ""):
+            self.cierres_perdidos += 1
+            return False
+        if self.escritura_falla and (err := self.escritura_falla(nuevo)):
+            raise err
+        self.editar = nuevo
+        return True
+
+    def _devolver(self, n, ref, user=None):
+        if self.al_devolver:
+            self.al_devolver(self)                    # lo que pasa MIENTRAS el monedero tarda
+        if self.devolver_falla:
+            self.devolver_falla -= 1
+            raise RuntimeError("el monedero no respondió")
+        self.abonos.append((n, ref, user))
+        self.libro.insert(0, {"creditos": n, "tipo": "devolucion", "referencia": ref})
+
+    def reintento_en_medio(self):
+        """La persona pulsó Reintentar: la MISMA copia vuelve a `corriendo`, con otro `inicio`."""
+        self.editar = {"copia": True, "estado": "corriendo", "paso": "entender", "cobrado": True,
+                       "creditos": 2, "inicio": _iso(INICIO + timedelta(minutes=5)), "reintentos": 1}
+
+
+@pytest.fixture
+def copia(monkeypatch):
+    return lambda **editar: Copia(monkeypatch, **editar)
+
+
+def _barrer(arranque=None, proyecto=COPIA):
+    from worker import barredor
+    extra = {} if arranque is None else {"startDate": _ms(arranque) if isinstance(arranque, datetime) else arranque}
+    return barredor.barrer(_evento(["python", "-m", "worker.editar_task", "u1", proyecto],
+                                   proyecto_id=proyecto, **extra))
+
+
+# --- D-07 ------------------------------------------------------------------
+
+def test_un_evento_tardio_de_la_corrida_vieja_no_cierra_ni_devuelve_el_reintento(copia):
+    """La ejecución 1 falló (el worker devolvió y salió 1); la persona pulsó Reintentar sobre la MISMA
+    copia, que está `corriendo` otra vez con otro `inicio`. El evento FAILED de la ejecución 1 llega
+    tarde: antes reclamaba la corrida nueva y le devolvía lo recién cobrado."""
+    c = copia(inicio=_iso(INICIO + timedelta(minutes=3)), reintentos=1)
+    r = _barrer(INICIO + timedelta(seconds=2))                 # la ejecución 1 arrancó con la copia
+    assert r["accion"] == "nada" and "anterior" in r["motivo"]
+    assert c.reclamos == 0 and c.abonos == []                  # ni siquiera intentó reclamar
+    assert c.editar["estado"] == "corriendo" and "error" not in c.editar
+
+
+def test_un_evento_duplicado_de_la_corrida_vieja_tampoco_cierra_un_tercer_reintento(copia):
+    c = copia(inicio=_iso(INICIO + timedelta(minutes=6)), reintentos=2)
+    evento_viejo = INICIO + timedelta(seconds=2)
+    assert _barrer(evento_viejo)["accion"] == "nada"
+    assert _barrer(evento_viejo)["accion"] == "nada"
+    assert c.reclamos == 0 and c.abonos == [] and c.editar["estado"] == "corriendo"
+
+
+def test_el_evento_de_la_corrida_vigente_si_devuelve(copia):
+    c = copia(creditos=8)
+    r = _barrer(INICIO + timedelta(seconds=2))                 # la ejecución arrancó DESPUÉS de `inicio`
+    assert r == {"accion": "devuelto", "creditos": 8, "proyecto": COPIA}
+    assert c.abonos == [(8, REF, "u1")] and c.editar["estado"] == "error" and c.editar["devueltos"] == 8
+
+
+@pytest.mark.parametrize("adelanto_s,esperado", [(4.9, "devuelto"), (5.1, "nada")],
+                         ids=["dentro_de_la_holgura", "fuera_de_la_holgura"])
+def test_la_holgura_cubre_el_desfase_de_relojes_y_nada_mas(copia, adelanto_s, esperado):
+    """El API escribe `inicio` y lanza después; el reloj de Step Functions no es el del API. Hasta
+    HOLGURA_RELOJ_S segundos de ventaja del `inicio` sobre el arranque se siguen contando como la
+    misma corrida; más que eso, es otra."""
+    from worker import barredor
+    assert barredor.HOLGURA_RELOJ_S == 5.0
+    c = copia(inicio=_iso(INICIO + timedelta(seconds=10)))
+    r = _barrer(INICIO + timedelta(seconds=10) - timedelta(seconds=adelanto_s))
+    assert r["accion"] == esperado
+    assert (len(c.abonos) == 1) is (esperado == "devuelto")
+
+
+@pytest.mark.parametrize("start_date", [None, "no es una fecha", True, 0, -5, float("inf"), ""],
+                         ids=["ausente", "texto", "booleano", "cero", "negativo", "infinito", "vacio"])
+def test_sin_un_startdate_legible_el_barredor_actua_como_siempre(copia, start_date):
+    c = copia(inicio=_iso(INICIO + timedelta(days=1)), creditos=6)       # un inicio MUY posterior
+    r = _barrer(start_date)
+    assert r["accion"] == "devuelto" and c.abonos == [(6, REF, "u1")]
+
+
+@pytest.mark.parametrize("inicio", [None, "", "ayer", 12345, "2026-13-45T99:00:00"],
+                         ids=["ausente", "vacio", "texto", "numero", "imposible"])
+def test_sin_un_inicio_legible_en_el_doc_tampoco_hay_con_que_comparar(copia, inicio):
+    c = copia()
+    c.editar["inicio"] = inicio
+    r = _barrer(INICIO - timedelta(days=1))
+    assert r["accion"] == "devuelto" and c.abonos == [(2, REF, "u1")]
+
+
+def test_el_startdate_puede_venir_en_milisegundos_o_en_segundos_y_el_inicio_con_zona_o_con_z(copia):
+    from worker import barredor
+    assert barredor._arranque_s({"startDate": 1_760_551_200_000}) == 1_760_551_200.0
+    assert barredor._arranque_s({"startDate": 1_760_551_200}) == 1_760_551_200.0
+    assert barredor._arranque_s({"startDate": "1760551200000"}) == 1_760_551_200.0
+    assert barredor._epoch("2026-10-15T18:00:00+00:00") == barredor._epoch("2026-10-15T18:00:00Z")
+    assert barredor._epoch("2026-10-15T18:00:00") == barredor._epoch("2026-10-15T18:00:00+00:00")  # sin zona = UTC
+
+
+def test_el_arranque_solo_se_compara_en_las_ediciones(monkeypatch):
+    """shorts y overlay no leen el doc: su claim ya distingue una corrida de otra."""
+    from pipeline import creditos, db
+    leidos = []
+    monkeypatch.setattr(db, "cargar_proyecto_editor", lambda u, n: leidos.append(n))
+    monkeypatch.setattr(db, "reclamar_fallo_editor", lambda u, n, c, m: {"estado": "error", "creditos": 3})
+    monkeypatch.setattr(creditos, "activo", lambda: True)
+    monkeypatch.setattr(creditos, "devolver", lambda n, ref, u=None: None)
+    from worker import barredor
+    r = barredor.barrer(_evento(["python", "-m", "worker.shorts_task", "u1", "v"], proyecto_id="v",
+                                startDate=_ms(INICIO)))
+    assert r["accion"] == "devuelto" and leidos == []
+
+
+def test_sin_startdate_no_se_lee_el_doc_para_nada(copia):
+    """Un evento sin fecha de arranque (los de las pruebas viejas) no cuesta una lectura de más."""
+    c = copia()
+    _barrer(None)
+    assert c.lecturas == 0
+
+
+@pytest.mark.parametrize("neto,devuelve", [(0, 0), (2, 2), (1, 1)],
+                         ids=["el_libro_dice_que_no_se_cobro", "se_cobro_y_no_se_anoto", "cobro_parcial"])
+def test_si_el_doc_no_confirma_el_cobro_manda_el_libro_mayor_y_no_el_monto_del_doc(copia, neto, devuelve):
+    """`cobrado: false` solo existe entre reservar el reintento y anotar el cobro. Aunque el evento
+    llegue sin fecha de arranque, el barredor no devuelve lo que el libro no muestra cobrado."""
+    c = copia(cobrado=False, creditos=2)
+    c.libro = [{"creditos": -neto, "tipo": "cargo", "referencia": REF}] if neto else []
+    r = _barrer(None)
+    assert r["creditos"] == devuelve
+    assert c.abonos == ([(devuelve, REF, "u1")] if devuelve else [])
+
+
+def test_con_el_cobro_confirmado_se_devuelve_el_monto_del_doc(copia):
+    c = copia(cobrado=True, creditos=8)
+    c.libro = []                                              # el libro no se consulta si el doc lo confirma
+    assert _barrer(None)["creditos"] == 8 and c.abonos == [(8, REF, "u1")]
+
+
+# --- D-08: la deuda anotada por el worker ------------------------------------
+
+@pytest.mark.parametrize("estado", ["error", "listo"])
+def test_el_barredor_cobra_la_deuda_anotada_aunque_el_doc_no_este_corriendo(copia, estado):
+    """El worker deja `devolucion_pendiente` cuando el monedero falla y no puede reabrir el doc
+    (`error`, por el índice único) o cuando la copia se entregó con cero sugerencias (`listo`)."""
+    c = copia(estado=estado, creditos=8, devolucion_pendiente=2)
+    r = _barrer(INICIO + timedelta(seconds=2))
+    assert r == {"accion": "devuelto", "creditos": 2, "proyecto": COPIA}
+    assert c.abonos == [(2, REF, "u1")]
+    assert c.editar["estado"] == estado and c.editar["devueltos"] == 2
+    assert "devolucion_pendiente" not in c.editar
+
+
+def test_la_deuda_se_cobra_una_sola_vez(copia):
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    assert _barrer()["accion"] == "devuelto"
+    assert _barrer()["accion"] == "nada"                      # el evento duplicado
+    assert c.abonos == [(8, REF, "u1")]
+
+
+def test_si_el_libro_ya_tiene_la_devolucion_solo_se_anota(copia):
+    """El abono salió y lo que falló fue la anotación: el evento se reintenta y NO debe abonar otra
+    vez (devolver de más es tan malo como no devolver)."""
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    c.libro.insert(0, {"creditos": 8, "tipo": "devolucion", "referencia": REF})
+    r = _barrer()
+    assert r["accion"] == "nada" and c.abonos == []
+    assert c.editar["devueltos"] == 8 and "devolucion_pendiente" not in c.editar
+
+
+def test_el_libro_ya_con_una_devolucion_parcial_tampoco_se_abona_de_nuevo(copia):
+    """Cero sugerencias con un video: se devuelven 2 de 8. El neto sigue siendo −6, y aun así esa
+    deuda de 2 ya está pagada (la última entrada del libro es la devolución)."""
+    c = copia(estado="listo", creditos=8, devolucion_pendiente=2)
+    c.libro.insert(0, {"creditos": 2, "tipo": "devolucion", "referencia": REF})
+    assert _barrer()["accion"] == "nada" and c.abonos == []
+
+
+def test_sin_movimientos_de_esa_copia_en_el_libro_no_se_toca_el_monedero(copia):
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    c.libro = [{"creditos": -3, "tipo": "cargo", "referencia": "editar-sugerir:otra"}]
+    assert _barrer()["accion"] == "nada" and c.abonos == []
+    assert c.editar["devolucion_pendiente"] == 8 and "devueltos" not in c.editar   # sigue anotada
+
+
+@pytest.mark.parametrize("marca", [0, -2, "2", 2.5, True, None],
+                         ids=["cero", "negativa", "texto", "decimal", "booleano", "nula"])
+def test_una_marca_de_deuda_invalida_no_se_cobra(copia, marca):
+    c = copia(estado="error", creditos=8, devolucion_pendiente=marca)
+    assert _barrer()["accion"] == "nada" and c.abonos == []
+
+
+@pytest.mark.parametrize("cambio", [{"copia": False}, {"copia": None}, {"devueltos": 2}, {"creditos": 0}],
+                         ids=["no_es_copia", "sin_marca_de_copia", "ya_devuelta", "sin_monto_cobrado"])
+def test_solo_se_cobra_la_deuda_de_una_copia_que_no_se_ha_devuelto_y_se_cobro(copia, cambio):
+    c = copia(estado="error", creditos=8, devolucion_pendiente=2)
+    c.editar.update(cambio)
+    assert _barrer()["accion"] == "nada" and c.abonos == []
+
+
+def test_la_deuda_nunca_pasa_de_lo_que_se_cobro(copia):
+    """Un doc con `devolucion_pendiente: 500` no regala 500: tope en `editar.creditos`."""
+    c = copia(estado="error", creditos=2, devolucion_pendiente=500)
+    assert _barrer()["creditos"] == 2 and c.abonos == [(2, REF, "u1")]
+
+
+def test_una_copia_corriendo_se_reclama_como_siempre_y_no_pasa_por_la_deuda(copia):
+    c = copia(estado="corriendo", creditos=8, devolucion_pendiente=8)
+    assert _barrer()["creditos"] == 8
+    assert c.reclamos == 1 and c.abonos == [(8, REF, "u1")]
+    assert c.editar["estado"] == "error" and c.editar["devueltos"] == 8 and "devolucion_pendiente" not in c.editar
+
+
+def test_si_el_abono_de_la_deuda_falla_el_error_sube_y_la_deuda_sigue_anotada(copia):
+    """Para que EventBridge/Lambda reintenten el evento; la marca no se borra."""
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    c.devolver_falla = 1
+    with pytest.raises(RuntimeError):
+        _barrer()
+    assert c.abonos == [] and c.editar["devolucion_pendiente"] == 8
+    assert _barrer()["accion"] == "devuelto" and c.abonos == [(8, REF, "u1")]    # el reintento
+
+
+def test_sin_monedero_encendido_la_deuda_no_se_toca(copia, monkeypatch):
+    from pipeline import creditos
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    monkeypatch.setattr(creditos, "activo", lambda: False)
+    assert _barrer()["accion"] == "nada" and c.abonos == [] and c.editar["devolucion_pendiente"] == 8
+
+
+def test_si_la_anotacion_de_la_deuda_falla_el_dinero_ya_volvio_y_no_se_levanta(copia):
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    c.escritura_falla = lambda nuevo: RuntimeError("Postgres no responde")
+    assert _barrer()["creditos"] == 8 and c.abonos == [(8, REF, "u1")]
+    # y el reintento del evento no abona de nuevo: el libro ya lo dice
+    c.escritura_falla = None
+    assert _barrer()["accion"] == "nada" and len(c.abonos) == 1
+    assert c.editar["devueltos"] == 8
+
+
+def test_si_reabrir_choca_con_el_indice_el_barredor_deja_la_deuda_anotada_en_error(copia):
+    """El monedero falló DESPUÉS de ganar el reclamo, y reabrir (`corriendo`) lo rechaza el índice
+    único porque la persona ya tiene otra copia en curso. Antes solo quedaba un log y el reintento
+    del evento perdía el reclamo; ahora el doc se queda `error` con la deuda anotada."""
+    c = copia(creditos=8)
+    c.devolver_falla = 1
+    c.escritura_falla = lambda nuevo: (RuntimeError('duplicate key value violates unique constraint '
+                                                     '"proyectos_editor_copia_en_curso"')
+                                       if nuevo.get("estado") == "corriendo" else None)
+    with pytest.raises(RuntimeError, match="el monedero"):
+        _barrer()                                              # el error del monedero sigue subiendo
+    assert c.editar["estado"] == "error" and c.editar["devolucion_pendiente"] == 8
+    assert "devueltos" not in c.editar and c.abonos == []
+    # EventBridge reintenta: ya no se puede reclamar, pero la deuda se cobra
+    assert _barrer() == {"accion": "devuelto", "creditos": 8, "proyecto": COPIA}
+    assert c.abonos == [(8, REF, "u1")] and c.editar["devueltos"] == 8 and "devolucion_pendiente" not in c.editar
+
+
+# --- D-05: el cierre del barredor no pisa un reintento que arrancó en medio ----
+
+def test_si_la_persona_reintenta_mientras_el_barredor_devuelve_no_se_pisa_el_reintento(copia):
+    """`reclamar_fallo_editor` deja la copia en `error` (visible y reintentable) ANTES de devolver. Si
+    el monedero tarda y la persona pulsa Reintentar, esa copia ya es OTRA corrida: la anotación de
+    `devueltos` de la corrida vieja, sin condición, la pisaba con `error` + `devueltos` y el segundo
+    cobro se quedaba sin devolver."""
+    c = copia(creditos=8)
+    c.al_devolver = lambda este: este.reintento_en_medio()
+    r = _barrer(INICIO + timedelta(seconds=2))
+    assert r == {"accion": "devuelto", "creditos": 8, "proyecto": COPIA}
+    assert c.abonos == [(8, REF, "u1")]                       # lo de la corrida vieja sí se devolvió
+    assert c.editar["estado"] == "corriendo" and c.editar["reintentos"] == 1      # y el reintento sigue vivo
+    assert "devueltos" not in c.editar and "error" not in c.editar
+    assert c.cierres_perdidos == 1
+
+
+def test_si_el_monedero_falla_y_en_medio_hay_un_reintento_la_reapertura_tampoco_lo_pisa(copia):
+    """El monedero falla DESPUÉS de reclamar y, mientras, la persona reintenta: reabrir la corrida
+    vieja (`corriendo` + `devolucion_pendiente`) sobre la nueva la borraría. El error del monedero
+    sigue subiendo para que EventBridge reintente el evento."""
+    c = copia(creditos=8)
+    c.devolver_falla = 1
+    c.al_devolver = lambda este: este.reintento_en_medio()
+    with pytest.raises(RuntimeError, match="el monedero"):
+        _barrer(INICIO + timedelta(seconds=2))
+    assert c.editar["estado"] == "corriendo" and c.editar["reintentos"] == 1
+    assert "devolucion_pendiente" not in c.editar and c.abonos == []
+    assert c.cierres_perdidos == 1
+
+
+def test_la_deuda_anotada_en_error_tampoco_se_anota_sobre_un_reintento(copia):
+    """La deuda del worker (`error` + `devolucion_pendiente`) se cobra y se anota condicionada: si entre
+    el abono y la anotación la copia se reintentó, el reintento queda como está."""
+    c = copia(estado="error", creditos=8, devolucion_pendiente=8)
+    c.al_devolver = lambda este: este.reintento_en_medio()
+    assert _barrer()["accion"] == "devuelto"
+    assert c.abonos == [(8, REF, "u1")]
+    assert c.editar["estado"] == "corriendo" and c.editar["reintentos"] == 1 and "devueltos" not in c.editar
+    assert c.cierres_perdidos == 1
+
+
+def test_una_copia_entregada_con_deuda_se_anota_sin_condicion_de_error(copia):
+    """`listo` + deuda (cero sugerencias, el abono del worker falló): nadie más escribe `editar` de una
+    copia entregada (`reintentar` solo toca un `error`), así que se anota como siempre."""
+    c = copia(estado="listo", creditos=8, devolucion_pendiente=2)
+    assert _barrer()["creditos"] == 2
+    assert c.editar["estado"] == "listo" and c.editar["devueltos"] == 2 and c.cierres_perdidos == 0

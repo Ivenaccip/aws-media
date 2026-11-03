@@ -5,7 +5,7 @@
 // Analizar en cada vuelta, también con el cobro en vuelo).
 // Paridad con static/shorts.html: mismas llamadas, mismos precios (del
 // server). Qué pasó con cada aserción vieja: docs/migracion/shorts.md.
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';
 import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
@@ -40,6 +40,7 @@ import {
   importar,
   keyDe,
   LIGA_INVALIDA,
+  ligaDeLaUrl,
   MAX_SHORTS,
   PASOS_SHORTS,
   minutos,
@@ -124,6 +125,8 @@ function EsperaShorts({
 
 export function Shorts() {
   const [p, setP] = useState(() => new URLSearchParams(location.search).get('p') ?? '');
+  // la liga que trae la URL desde la caja del inicio («De videos a Shorts»): solo se deja escrita en «Importar»
+  const [ligaInicial] = useState(() => ligaDeLaUrl(location.search));
   const [conSubida, setConSubida] = useState(false);
 
   useEffect(() => {
@@ -144,6 +147,8 @@ export function Shorts() {
     setP(nombre);
   };
 
+  const importar = <Importar principal alImportar={abrir} ligaInicial={ligaInicial} />;
+
   return (
     <Marco
       pantalla="shorts"
@@ -160,6 +165,9 @@ export function Shorts() {
           <ProyectoShorts key={p} p={p} alAbrir={abrir} />
         ) : (
           <>
+            {/* con la liga que trajo la persona desde la caja del inicio, «Importar» va primero: es lo que viene a hacer, y
+                abajo (tercera tarjeta, tras la lista y la subida, que cargan después y empujan todo) no la vería sin bajar */}
+            {ligaInicial && importar}
             <Eleccion />
             {conSubida && (
               <SubirVideo
@@ -170,7 +178,7 @@ export function Shorts() {
                 alSubir={nombre => abrir(nombre)}
               />
             )}
-            <Importar principal alImportar={abrir} />
+            {!ligaInicial && importar}
           </>
         )}
       </div>
@@ -242,8 +250,18 @@ function Eleccion() {
 // ---------------------------------------------------------------------------
 // M17: importar de YouTube. Cotizar es gratis; importar cobra lo cotizado.
 
-function Importar({ principal, alImportar }: { principal: boolean; alImportar: (nombre: string) => void }) {
-  const [url, setUrl] = useState('');
+function Importar({
+  principal,
+  alImportar,
+  ligaInicial = '',
+}: {
+  principal: boolean;
+  alImportar: (nombre: string) => void;
+  /** Una liga que ya traía la persona (de la caja del inicio): queda escrita, sin cotizar ni cobrar nada por ella. */
+  ligaInicial?: string;
+}) {
+  const [url, setUrl] = useState(ligaInicial);
+  const botonCotizar = useRef<HTMLButtonElement>(null);
   const [cotiza, setCotiza] = useState<Cotizacion | null>(null);
   const [cotizando, setCotizando] = useState(false);
   const [notaCotiza, setNotaCotiza] = useState<Nota | null>(null);
@@ -252,6 +270,12 @@ function Importar({ principal, alImportar }: { principal: boolean; alImportar: (
   const [errorLiga, setErrorLiga] = useState<string | null>(null);
   const [nota, setNota] = useState<Nota | null>(null);
   const saldo = useSaldo();
+
+  // la persona llega de la caja del inicio con su liga ya escrita: el foco va a «Cotizar» y Enter es el siguiente paso (la
+  // pantalla pone esta tarjeta arriba cuando trae liga). No cotiza solo: pedir el precio es de quien pulsa
+  useEffect(() => {
+    if (ligaInicial) botonCotizar.current?.focus();
+  }, [ligaInicial]);
 
   async function alCotizar() {
     const limpia = url.trim();
@@ -325,7 +349,7 @@ function Importar({ principal, alImportar }: { principal: boolean; alImportar: (
             placeholder="https://www.youtube.com/watch?v=…"
           />
         </div>
-        <Boton type="submit" nivel="secundario" trabajando={cotizando && 'Cotizando…'}>
+        <Boton ref={botonCotizar} type="submit" nivel="secundario" trabajando={cotizando && 'Cotizando…'}>
           Cotizar
         </Boton>
       </form>

@@ -19,7 +19,9 @@ import { BotonCobro } from '../../marca/BotonCobro';
 import { ErrorTresPartes } from '../../marca/ErrorTresPartes';
 import { avanceEspera, EsperaPasos, textoLlevas, useLlevas } from '../../marca/EsperaPasos';
 import { Marco } from '../../marca/Marco';
+import { RUTA_MAPA } from '../../marca/menu';
 import { Recarga } from '../../marca/Recarga';
+import { urlDeCaja } from '../../marca/rutas';
 import { refrescarSaldo, useSaldo } from '../../marca/useSaldo';
 import { ErrorApi } from '../../nucleo/api';
 import { creditos } from '../../nucleo/formato';
@@ -898,7 +900,8 @@ export function Imagenes() {
           // no es un error: el servidor sigue con ella y, si falla, devuelve los créditos
           <Aviso>
             {falla.texto}{' '}
-            <a className={claseBoton('enlace')} href="/estudio/">
+            {/* «Mis creaciones» ya no está en el mapa (/estudio/): vive en la página de la caja, en la pestaña Imagen */}
+            <a className={claseBoton('enlace')} href={urlDeCaja('imagenes') ?? RUTA_MAPA}>
               Ir al inicio
             </a>
           </Aviso>

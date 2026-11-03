@@ -8,6 +8,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { urlDeCaja } from '../../marca/rutas';
 import { ErrorApi } from '../../nucleo/api';
 import { video } from '../../nucleo/tarifas';
 import { json, llamadas, oirCobros, ponerMonedero, servidor, sinRed, type Ruta } from '../../prueba/servidor';
@@ -925,7 +926,10 @@ describe('imagenes en segundo plano', () => {
     await waitFor(() => expect(posts(f)).toHaveLength(1));
     await avanzar(5 * 60 * 1000 + 5000);
     expect(await screen.findByText(/sigue en camino y está tardando más de lo normal\. Aparecerá en «Mis creaciones»/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute('href', '/estudio/');
+    // «Mis creaciones» ya no está en el mapa (/estudio/): el enlace lleva a la caja, en la pestaña Imagen
+    const inicio = screen.getByRole('link', { name: 'Ir al inicio' });
+    expect(inicio).toHaveAttribute('href', urlDeCaja('imagenes'));
+    expect(inicio).toHaveAttribute('href', '/estudio/marketing/distrito/imagen/');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText(/Te devolvimos/)).toBeNull();
     expect(screen.queryByText('Creando tu imagen · ~20 s')).toBeNull();

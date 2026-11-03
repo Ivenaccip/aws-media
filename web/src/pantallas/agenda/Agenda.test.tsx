@@ -100,7 +100,7 @@ describe('agenda', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Ver más' }));
     await tarjeta('TikTok');
     expect(GETS(f).map(c => c[0])).toEqual(['/api/agenda', '/api/agenda?cursor=c%2F1']);
-    expect(screen.getAllByRole('listitem').map(li => li.querySelector('b')!.textContent)).toEqual([
+    expect(within(screen.getByRole('main')).getAllByRole('listitem').map(li => li.querySelector('b')!.textContent)).toEqual([
       'Instagram',
       'Facebook',
       'TikTok',
@@ -241,7 +241,7 @@ describe('agenda', () => {
     const { unmount } = render(<Agenda />);
     const a = await screen.findByRole('alert');
     expect(a).toHaveTextContent('Conecta tu cuenta de Blotato para ver tu agenda.');
-    expect(within(a).getByRole('link', { name: 'Conectar Blotato' })).toHaveAttribute('href', '/estudio/?blotato=conectar');
+    expect(within(a).getByRole('link', { name: 'Conectar Blotato' })).toHaveAttribute('href', '/estudio/marketing/blotato/?blotato=conectar');
     unmount();
     montar({ '/api/agenda': () => json({ detail: 'Blotato falló.' }, 502) });
     render(<Agenda />);

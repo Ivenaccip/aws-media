@@ -40,9 +40,46 @@ Cada paso cobra 💳 según `tarifas.json` §shorts, y la corrida necesita su
   5 min si no trae transcript;
 - renderizar: `render_por_short` = 2 por short.
 
-Los enlaces que apuntan a `/shorts.html` no se tocan: el menú y los caminos
-del inicio, «Cortes IA» de editar metraje y «Tus trabajos». En `todos` los
-lleva el 302, que conserva el query.
+Los enlaces que apuntan a `/shorts.html` no se tocan: los caminos del inicio,
+«Cortes IA» de editar metraje y «Tus trabajos». En `todos` los lleva el 302,
+que conserva el query. El menú ya no es uno de ellos: «De videos a Shorts» se
+fue del menú y vive en «Editar ▾» de la caja del inicio, que navega directo a
+`/estudio/shorts/` (abajo).
+
+## Lo que llega por la URL
+
+`/estudio/shorts/` entiende dos parámetros. Los dos los escribe, entre otros, la
+caja del inicio («Editar ▾ › De videos a Shorts», 15-oct-2026), cuyo «Iniciar»
+**solo navega**: no cotiza, no importa ni cobra nada. Cada precio y cada cobro
+siguen siendo de esta pantalla, con su botón y su «sí».
+
+| URL | Qué hace la pantalla |
+|---|---|
+| `/estudio/shorts/` | Lo de siempre: elegir un video, subir uno o «Importar de YouTube», con el campo vacío y esa tarjeta al final |
+| `?p=<proyecto>` | Abre ese proyecto (el video que se subió desde la caja, o el de «Tus trabajos»). Si trae también `?url=`, esa liga no se usa |
+| `?url=<liga>` | Deja la liga **escrita** en el campo «Liga de YouTube» de «Importar de YouTube», y nada más |
+
+Lo que `?url=` promete (el contrato entre `pantallas/inicio/edicion.ts`
+`destinoShorts` y `pantallas/shorts/logica.ts` `conLiga` / `ligaDeLaUrl`):
+
+- **La liga viaja codificada** (`encodeURIComponent`: `&`, `=`, `#`, `+`, acentos y
+  espacios llegan enteros) y se lee **una sola vez**, al abrir la pantalla, sin
+  los espacios de los extremos. Una liga en blanco es como no traer ninguna.
+- **No gasta nada al abrir:** ni cotiza, ni importa, ni mueve el saldo. El foco
+  espera en «Cotizar» (Enter es el siguiente paso) y la tarjeta «Importar» sube
+  arriba de «Subir un video» para que, en el teléfono, no haya que bajar a
+  buscarla. Pedir el precio es de quien pulsa «Cotizar»; cobrar, de
+  «Importar ✦ N».
+- **La caja solo manda ligas de YouTube** (la misma regla que
+  `server/shorts_api.py` `_YT_ID`): una liga de otro sitio se corrige junto al
+  campo de la caja, sin navegar. Si alguien escribe a mano `?url=` con otra
+  cosa, queda escrita igual y «Cotizar» la rechaza en el campo, sin ir al
+  servidor.
+- **Al importar,** la dirección pasa a `?p=<proyecto>` y el `?url=` se va.
+
+Lo cubren `Shorts.test.tsx` («la liga que llega de la caja del inicio») y
+`EdicionShorts.test.tsx` (el lado de la caja). Son funciones nuevas, no
+invariantes del registro de abajo: por eso no llevan ID.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 

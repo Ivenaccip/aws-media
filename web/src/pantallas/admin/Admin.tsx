@@ -15,6 +15,7 @@ import { Pestanas } from '../../ui/Pestanas';
 import { TablaDatos, type Columna } from '../../ui/TablaDatos';
 import { Tarjeta } from '../../ui/Tarjeta';
 import { unir } from '../../ui/unir';
+import { Clases } from './Clases';
 import {
   awsTotal,
   cargarDetalle,
@@ -101,8 +102,9 @@ export function Admin() {
       titulo="Panel del negocio"
       bajada={
         <p className="m-0">
-          Tres vistas: <b>1 · Ingresos</b> (lo que los usuarios gastan en créditos), <b>2 · Costos</b> (la IA
-          por un lado y AWS por el otro) y <b>3 · Flujo</b> (ingresos − costos). Aurora/CloudFront son
+          Cuatro vistas: <b>1 · Ingresos</b> (lo que los usuarios gastan en créditos), <b>2 · Costos</b> (la IA
+          por un lado y AWS por el otro), <b>3 · Flujo</b> (ingresos − costos) y <b>4 · Clases</b> (los videos
+          de la Guía de clases). Aurora/CloudFront son
           compartidos: para el total están el{' '}
           <a className="text-enlace" href="https://console.aws.amazon.com/billing/home#/budgets" target="_blank" rel="noopener noreferrer">
             presupuesto de $50/mes
@@ -143,14 +145,20 @@ export function Admin() {
 
 function Panel({ datos, recargar }: { datos: Resumen; recargar: () => Promise<void> }) {
   return (
-    <Pestanas
-      etiqueta="Vistas"
-      pestanas={[
-        { id: 'ingresos', titulo: '1 · Ingresos', contenido: <VistaIngresos d={datos} /> },
-        { id: 'costos', titulo: '2 · Costos', contenido: <VistaCostos d={datos} recargar={recargar} /> },
-        { id: 'flujo', titulo: '3 · Flujo', contenido: <VistaFlujo d={datos} /> },
-      ]}
-    />
+    // cuatro pestañas ya no caben en una fila a 320 px (y ensanchaban toda la página): la barra pasa a dos filas
+    <div className="[&_[role=tablist]]:flex-wrap">
+      <Pestanas
+        etiqueta="Vistas"
+        pestanas={[
+          { id: 'ingresos', titulo: '1 · Ingresos', contenido: <VistaIngresos d={datos} /> },
+          { id: 'costos', titulo: '2 · Costos', contenido: <VistaCostos d={datos} recargar={recargar} /> },
+          { id: 'flujo', titulo: '3 · Flujo', contenido: <VistaFlujo d={datos} /> },
+          // la última, para no mover las otras tres; pide sus datos al abrirse por primera vez, y desde entonces se queda montada
+          // (oculta): una subida en curso o un formulario a medias no se pierden por mirar otra vista
+          { id: 'clases', titulo: '4 · Clases', contenido: <Clases />, conservar: true },
+        ]}
+      />
+    </div>
   );
 }
 

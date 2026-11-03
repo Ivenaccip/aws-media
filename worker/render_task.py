@@ -9,6 +9,11 @@ viaja por proyectos_editor.doc.render (la UI hace poll de /api/render/status).
 
 Sale con 1 si el render falló → la ejecución de SFN queda FAILED y el motivo
 queda en el doc (cola del log de ffmpeg).
+
+E2: el preview pasa la compuerta del repo antes de subirse (CLAUDE.md, «QA no es
+opcional»): `ffprobe` de v:0 y a:0 y, si difieren más de `DRIFT_TOL_S` (0,15 s, la de
+make_subs.py/insert_broll.py), el render queda en `error` y NO se sube como listo. No
+cobra, así que no hay nada que devolver.
 """
 from __future__ import annotations
 
@@ -28,10 +33,29 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("render_task")
 
 ROOT = Path(__file__).resolve().parent.parent
+DRIFT_TOL_S = 0.15     # la misma tolerancia de tools/make_subs.py y tools/insert_broll.py
 
 
 def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _cuadran_av(salida: Path) -> tuple[bool, str]:
+    """Gate `ffprobe` v:0 == a:0 sobre el preview recién renderizado: (cuadra, detalle).
+    Un archivo sin audio o ilegible tampoco cuadra: el preview siempre lleva las dos pistas."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration",
+             "-of", "json", str(salida)], capture_output=True, text=True, check=True, timeout=120)
+        durs = {}
+        for st in json.loads(r.stdout).get("streams") or []:
+            durs.setdefault(st.get("codec_type"), float(st["duration"]))
+        dv, da = durs["video"], durs["audio"]
+    except Exception as err:  # noqa: BLE001 — cualquier cosa rara = no cuadra
+        return False, f"no pude medir el video y el audio ({type(err).__name__})"
+    if abs(dv - da) > DRIFT_TOL_S:
+        return False, f"video {dv:.3f} s contra audio {da:.3f} s"
+    return True, ""
 
 
 def main(user_id: str, nombre: str, estilo: str) -> int:
@@ -62,8 +86,11 @@ def main(user_id: str, nombre: str, estilo: str) -> int:
     cola = ((proc.stdout or "") + (proc.stderr or ""))[-600:]
 
     render = {"estilo": estilo, "fin": _ahora()}
+    cuadra, desajuste = (True, "")
     if proc.returncode == 0:
         salida = destino / "output" / f"preview-{estilo}.mp4"
+        cuadra, desajuste = _cuadran_av(salida)
+    if proc.returncode == 0 and cuadra:
         media_sync.subir_archivo(salida, f"{prefijo}output/preview-{estilo}.mp4")
         segmentos = destino / "work" / "render" / f"{estilo}-preview" / "segments.json"
         if segmentos.is_file():
@@ -89,6 +116,12 @@ def main(user_id: str, nombre: str, estilo: str) -> int:
         # URL firmada guardada aquí caducaría dentro de Postgres.
         render.update(estado="listo", key=key, url=None)
         log.info("%s: render %s listo → %s", nombre, estilo, render["url"])
+    elif proc.returncode == 0:
+        # el render salió pero el video y el audio no cuadran: no se sube como listo
+        render.update(estado="error",
+                      log=f"El video y el audio no cuadran ({desajuste}). Vuelve a renderizar; "
+                          "si se repite, avísanos.")
+        log.error("%s: render %s descuadrado: %s", nombre, estilo, desajuste)
     else:
         render.update(estado="error", log=cola)
         log.error("%s: render %s falló:\n%s", nombre, estilo, cola)
@@ -97,7 +130,7 @@ def main(user_id: str, nombre: str, estilo: str) -> int:
     # M6.1: la infra se gastó igual haya salido bien o mal
     costes_infra.registrar(user_id, nombre, "infra-render",
                            costes_infra.costo_fargate(time.monotonic() - t0))
-    return 0 if proc.returncode == 0 else 1
+    return 0 if proc.returncode == 0 and cuadra else 1
 
 
 if __name__ == "__main__":

@@ -9,12 +9,15 @@ donde deben. Nunca se borra nada de S3 desde aquí (las versiones no se borran).
 """
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 from functools import lru_cache
 from pathlib import Path
 
 from pipeline import media_rutas
+
+log = logging.getLogger("media_sync")
 
 
 def _bucket() -> str | None:
@@ -52,11 +55,59 @@ def url_media(key: str, expira: int = 3600) -> str | None:
     base = os.getenv("CDN_BASE", "").rstrip("/")
     if base and media_rutas.servible_por_cdn(key):
         return f"{base}/{key}"
+    return url_firmada(key, expira)
+
+
+def url_firmada(key: str, expira: int = 3600) -> str | None:
+    """Una URL firmada de S3 para `key`, SIEMPRE: nunca la del CDN.
+
+    Es lo que debe usar quien lee el archivo DESDE EL SERVIDOR (ffprobe en la
+    Lambda del API): ahí hay credenciales de S3 y no hay por qué depender de que
+    el CDN conteste a un cliente que no es un navegador. `url_media` es para
+    quien está de fuera (el navegador, Blotato). None sin bucket (instalación
+    local)."""
     bucket = _bucket()
     if not bucket:
         return None
     return _s3().generate_presigned_url(
-        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expira)
+        "get_object", Params={"Bucket": bucket, "Key": key.lstrip("/")}, ExpiresIn=expira)
+
+
+def url_subida(key: str, content_type: str, expira: int = 900) -> str | None:
+    """Una URL firmada de S3 para SUBIR (`PUT`) un objeto a `key`. El `Content-Type` va dentro de la
+    firma: el navegador tiene que mandar ese mismo. La `key` la decide quien llama (el servidor); esta
+    función no la toca. None sin bucket (instalación local)."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    return _s3().generate_presigned_url(
+        "put_object", Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
+        ExpiresIn=expira)
+
+
+# lo que S3 contesta a un HEAD cuando el objeto no está (o 403, si el rol no puede listar el bucket)
+_NO_ESTA = ("404", "NoSuchKey", "NotFound", "403", "Forbidden")
+
+
+def cabecera(key: str) -> dict | None:
+    """El `head_object` de `key` como `{"bytes", "content_type", "etag"}`, o None si el objeto no está
+    (404, o el 403 que S3 da en su lugar cuando no se puede listar) o no hay bucket. Cualquier otro
+    error —la red, las credenciales— SE PROPAGA: «no pude mirar» no es «no existe». A diferencia de
+    `tamano`, devuelve también el tipo y la etiqueta, que es lo que un «confirmar» necesita."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    s3 = _s3()
+    try:
+        r = s3.head_object(Bucket=bucket, Key=key)
+    except s3.exceptions.ClientError as err:
+        codigo = str(err.response.get("Error", {}).get("Code", ""))
+        if codigo in _NO_ESTA:
+            log.warning("cabecera %s: S3 contestó %s", key, codigo)
+            return None
+        raise
+    return {"bytes": int(r["ContentLength"]), "content_type": r.get("ContentType") or "",
+            "etag": r.get("ETag")}
 
 
 # Los campos donde los ejecutores dejaban una URL absoluta del CDN dentro del
@@ -216,6 +267,47 @@ def respaldar(key: str, key_respaldo: str) -> None:
     bucket = _bucket()
     _s3().copy_object(Bucket=bucket, Key=key_respaldo,
                       CopySource={"Bucket": bucket, "Key": key})
+
+
+def tamano(key: str) -> int | None:
+    """ContentLength de un objeto (`head_object`), o None si no existe / no hay
+    bucket. E2: el worker lo usa para no recopiar lo que ya está en la copia
+    (un reintento reutiliza `videos/<copia>/clips/`). Solo es una optimización:
+    si S3 contesta cualquier error del cliente (404, o un 403 sin permiso de
+    listar), se trata como «no está» y el `copiar` que sigue dirá el error de
+    verdad. Los fallos de red SÍ se propagan."""
+    bucket = _bucket()
+    if not bucket:
+        return None
+    s3 = _s3()
+    try:
+        r = s3.head_object(Bucket=bucket, Key=key)
+    except s3.exceptions.ClientError:
+        return None
+    return int(r["ContentLength"])
+
+
+def copiar(origen: str, destino: str, etag: str | None = None) -> None:
+    """Copia `origen` → `destino` DENTRO del bucket, de servidor a servidor: no
+    baja nada al ejecutor. Usa la copia gestionada del cliente (`s3.copy`):
+    una sola pieza hasta el umbral y multiparte por encima, así que un video de
+    más de 5 GB también pasa (`copy_object` de una pieza no lo admite).
+
+    Levanta si el origen no existe (el HEAD previo da 404) y, de paso, FIJA el
+    ETag del original: la copia se pide con `CopySourceIfMatch`, así que si
+    alguien reemplazó el objeto entre que se midió y se copió, falla en vez de
+    entregar una mezcla. Por defecto se fija el ETag que tiene el objeto AHORA;
+    con `etag` (el que vio quien midió y cobró) se fija ese, y la ventana entre
+    cotizar y copiar también queda cerrada. Nunca escribe en `origen`; el tipo
+    de contenido se conserva (la copia multiparte lo preserva). Sin bucket no
+    hay dónde copiar."""
+    bucket = _bucket()
+    if not bucket:
+        raise RuntimeError("no hay MEDIA_BUCKET: no hay dónde copiar")
+    s3 = _s3()
+    cabecera = s3.head_object(Bucket=bucket, Key=origen)     # también levanta si el origen no existe
+    s3.copy({"Bucket": bucket, "Key": origen}, bucket, destino,
+            ExtraArgs={"CopySourceIfMatch": etag or cabecera["ETag"]})
 
 
 def bajar_archivo(key: str, destino: Path) -> bool:

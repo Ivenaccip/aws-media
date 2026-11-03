@@ -1,6 +1,9 @@
 # Migración de estilos (UI·8.2)
 
-`static/estilos.html` → `/estudio/estilos/` (`web/src/pantallas/estilos/`).
+`static/estilos.html` → `/estudio/marketing/avanzado/estilos/`
+(`web/src/pantallas/estilos/`; su lugar en el mapa desde E7.9, 31-oct-2026;
+antes, la carpeta plana `/estudio/estilos/`, que desde E7 es un 302 hasta
+aquí).
 
 La copiadora de estilos cobra una cosa, «Analizar ✦ N». La tarifa llega en
 el listado (`GET /api/estilo` → `creditos`, de `tarifas.json` §estilos).
@@ -18,12 +21,45 @@ no lo toca: `estilos.cobro.el_sondeo_no_reabre_el_boton_con_el_cobro_en_vuelo`.
 
 | Etapa | Qué pasa | Estado |
 |---|---|---|
-| `nueva` | `/estudio/estilos/` existe; `/estilos.html` sigue igual | ⏳ al desplegar |
-| `todos` | `/estilos.html` → 302 a `/estudio/estilos/`, salvo la cookie `ui=clasica` | pendiente |
+| `nueva` | `/estudio/marketing/avanzado/estilos/` existe; `/estilos.html` sigue igual; `/estudio/estilos/` es un 302 desde E7 | ⏳ al desplegar |
+| `todos` | `/estilos.html` → 302 a `/estudio/marketing/avanzado/estilos/` (de un salto), salvo la cookie `ui=clasica` | pendiente |
 | `retirada` | 302 siempre; se borran `static/estilos.html` y sus tests viejos | pendiente |
 
-Antes de `todos`: un análisis de verdad en `/estudio/estilos/` y el QA de
-`docs/QA-UI.md` § estilos. 💳 Cobra la tarifa de `tarifas.json` §estilos.
+**Rutas por nivel (E7.9, 31-oct-2026).** La página dejó su carpeta plana
+(`web/estudio/estilos/`) por la de su lugar,
+`web/estudio/marketing/avanzado/estilos/index.html`, sin cambiar nada por
+dentro (pide todo con rutas absolutas). Es la última de las nueve hojas del
+mapa que E7 mudó, una por commit. `PANTALLAS["estilos"].nueva` dice la
+anidada; la clave, `/estilos.html` y la etapa no cambian. De la clave,
+`migracion.alias_del_estudio()` deduce el alias: `/estudio/estilos/` (con y
+sin barra, en mayúsculas y con el query intacto) lleva a
+`/estudio/marketing/avanzado/estilos/` con UN 302 relativo y `no-store`, en
+cualquier etapa; `/estudio/estilos/index.html` ya es un 404. `/estilos.html`
+lo sigue decidiendo el interruptor: en `nueva` sirve la clásica; en `todos`
+(y con `UI_ETAPA_MINIMA=todos`, la de dev) lleva a la anidada de un salto,
+sin pasar por la plana, salvo con la cookie `ui=clasica`.
+`/ui/nueva?pantalla=estilos` también lleva ahí.
+
+Por eso el menú **no cambia**, como el de MIX y las tres de Marketing ›
+Blotato: Marketing › Avanzado sigue enlazando `/estilos.html` (con
+`pagina: 'estilos'` para las migas), que pasa por el interruptor; si
+enlazara la anidada se lo saltaría. Las migas tampoco cambian: van a
+`/estudio/` y a `/estudio/marketing/` (D6) sin depender de dónde vive la
+hoja. Lo fijan `tests/test_web_niveles.py` (con la app y el dist de verdad:
+el 302 de la plana y `/estilos.html` en cada etapa), `tests/test_web_rutas.py`
+(la tabla y el alias de `web/e2e/servidor.mjs`, iguales a los de web.py) y
+las filas de la Copiadora en «las direcciones de antes» de
+`niveles.spec.ts`. Ahí no va `/estilos.html`: `servidor.mjs` la redirige como
+en `todos`, y la app real, en `nueva`, sirve la clásica. Con ella se retiró
+la tabla transitoria `HOJAS_AUN_PLANAS` de `web/src/marca/estudio.test.ts`,
+vacía: la reemplaza `rutas.cada_hoja_tiene_su_carpeta.ya_no_queda_ninguna_hoja_plana`,
+que exige que toda hoja viva en su anidada y que ninguna carpeta de primer
+nivel de `web/estudio/` lleve el nombre de una hoja. Vite nombra el chunk de
+entrada por la carpeta (`marketing-avanzado-estilos-*.js`); ninguna prueba
+dependía del nombre de antes.
+
+Antes de `todos`: un análisis de verdad en `/estudio/marketing/avanzado/estilos/`
+y el QA de `docs/QA-UI.md` § estilos. 💳 Cobra la tarifa de `tarifas.json` §estilos.
 
 ## Los invariantes (tests/test_migracion_ui.py)
 
@@ -84,7 +120,7 @@ En `web/src/pantallas/estilos/Estilos.test.tsx`, con ese nombre exacto.
 |---|---|
 | `test_m4_recarga_cerrada.py` (`estilos.html` en `CON_BOTON`) | `test_web_solo_ofrece_recargar_desde_recarga_tsx` (nuevo, mismo módulo). Al retirar, `estilos.html` sale de `CON_BOTON` |
 | `test_m19_orbe.py` (estilos en `PAGINAS_FASE3`: sobrevive a un poll fallido) | `estilos.lista.sin_red_con_un_analisis_vivo_sigue_reintentando` |
-| `test_m21_botones.py`, `test_ui_escapar.py`, `test_m23_blotato_clave_ui.py`, `test_m25_entrada.py` | se quita `estilos.html` de sus listas al retirar; su intención la cubren `<BotonCobro>` (M21), React (escape) y el menú del inicio, que sigue enlazando `/estilos.html` y el 302 hace el resto |
+| `test_m21_botones.py`, `test_ui_escapar.py`, `test_m23_blotato_clave_ui.py`, `test_m25_entrada.py` | se quita `estilos.html` de sus listas al retirar; su intención la cubren `<BotonCobro>` (M21), React (escape) y Marketing › Avanzado (donde la Copiadora de estilos está por ahora), que sigue enlazando `/estilos.html` y el 302 hace el resto |
 
 ## Diferencias a propósito
 

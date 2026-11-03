@@ -34,9 +34,8 @@ class Veredicto(BaseModel):
     caido: bool = False
 
 
-@observe(name="moderar")
-async def revisar(texto: str, *, prompt: str = "moderar_system",
-                  falla_cerrado: bool = False, publico: bool = False) -> Veredicto:
+async def _veredicto(texto: str, *, prompt: str, falla_cerrado: bool, publico: bool,
+                     sin_trazas: bool) -> Veredicto:
     cerrado = falla_cerrado or db.en_camino_publico()
     texto = (texto or "").strip()
     if not texto:
@@ -44,12 +43,23 @@ async def revisar(texto: str, *, prompt: str = "moderar_system",
     try:
         # lo público con SU clave (capa 1); lo de plataforma, como siempre
         extra = {"publico": True} if publico else {}
+        if sin_trazas:
+            # Es una clasificación corta: con el razonamiento por defecto del modelo puede pasar de los
+            # 8 s que COI le da a la moderación y dar un 504 que no era. Se pide el mismo esfuerzo bajo
+            # que a COI (`COI_RAZONAMIENTO`, «minimal» por defecto); si el modelo no lo acepta, llm lo
+            # reintenta sin él.
+            from . import coi
+            extra["sin_trazas"] = True
+            extra["razonamiento"] = coi.razonamiento()
         r = await chat_json("moderar", load_prompt(prompt), texto[:4000], **extra)
     except Exception as err:  # noqa: BLE001
+        # sin trazas el error se nombra por su clase y nada más: su texto podría
+        # arrastrar pedazos de lo que la persona escribió
+        causa = type(err).__name__ if sin_trazas else err
         if cerrado:
-            log.error("moderación no disponible (%s) — se rechaza (falla cerrado)", err)
+            log.error("moderación no disponible (%s) — se rechaza (falla cerrado)", causa)
             return Veredicto(permitido=False, caido=True)
-        log.warning("moderación no disponible (%s) — se permite", err)
+        log.warning("moderación no disponible (%s) — se permite", causa)
         return Veredicto(permitido=True)
     r = r if isinstance(r, dict) else {}
     if cerrado:
@@ -63,3 +73,25 @@ async def revisar(texto: str, *, prompt: str = "moderar_system",
     else:
         permitido = bool(r.get("permitido", True))
     return Veredicto(permitido=permitido, motivo=str(r.get("motivo") or ""))
+
+
+@observe(name="moderar")
+async def _revisar_con_trazas(texto: str, *, prompt: str, falla_cerrado: bool,
+                              publico: bool) -> Veredicto:
+    return await _veredicto(texto, prompt=prompt, falla_cerrado=falla_cerrado,
+                            publico=publico, sin_trazas=False)
+
+
+async def revisar(texto: str, *, prompt: str = "moderar_system",
+                  falla_cerrado: bool = False, publico: bool = False,
+                  sin_trazas: bool = False) -> Veredicto:
+    """Modera `texto`. Con `sin_trazas` la revisión NO deja nada en Langfuse:
+    ni el span `moderar` (el decorador captura el texto como entrada y el
+    veredicto como salida) ni la generation del modelo (va con el SDK pelón,
+    ver llm.client_sin_trazas). Es el modo de COI, donde lo que la persona
+    escribe no se guarda en ningún lado."""
+    if sin_trazas:
+        return await _veredicto(texto, prompt=prompt, falla_cerrado=falla_cerrado,
+                                publico=publico, sin_trazas=True)
+    return await _revisar_con_trazas(texto, prompt=prompt, falla_cerrado=falla_cerrado,
+                                     publico=publico)

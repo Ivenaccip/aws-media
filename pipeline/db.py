@@ -458,6 +458,66 @@ ESQUEMA: list[str] = [
         creado       timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (campana, correo)
     )""",
+    # E2 — «una sola tarea de edición a la vez por persona», y eso lo impone el
+    # índice parcial de abajo y no el código: dos pestañas pueden mandar su
+    # «Iniciar» al mismo tiempo, las dos leen «nada corriendo» y las dos
+    # cobrarían. Es parcial para que las copias terminadas (listo o error) se
+    # conserven sin estorbar: solo cuenta la que está corriendo. `editar.copia`
+    # lo escribe únicamente el API de E2 (server/edicion_api.py), así que las
+    # corridas viejas de /api/editar/<p>/sugerir quedan fuera. Sin este índice
+    # el API funciona igual con la lectura de `ediciones_corriendo`; solo queda
+    # una ventana de carrera de unos 100 ms entre dos pestañas, y nunca se
+    # pierde dinero (cada cobro tiene su copia y su devolución).
+    """CREATE UNIQUE INDEX IF NOT EXISTS proyectos_editor_copia_en_curso
+       ON proyectos_editor (user_id)
+       WHERE doc #>> '{editar,estado}' = 'corriendo' AND doc #>> '{editar,copia}' = 'true'""",
+    # Ajustes 3 — COI y la Biblioteca de prompts (server/coi_api.py, server/biblioteca_api.py).
+    #
+    #   coi_estado         UNA fila por persona: los usos que lleva en el día de MÉXICO (`dia`), los
+    #                      intentos que NO contaron ese mismo día (`fallos`: el modelo falló, se pasó
+    #                      del plazo, la respuesta vino cortada o la moderación rechazó; tienen tope
+    #                      propio porque cada uno costó una llamada), y
+    #                      el candado de «una sola respuesta en curso» (`en_curso_hasta` caduca solo,
+    #                      por si la Lambda muere; `candado` es la contraseña de quien lo tomó, para
+    #                      que otro no lo suelte ni lo cuente por él). El día se calcula SIEMPRE en la
+    #                      base (una sola fuente de tiempo). NO guarda texto: ni lo que la persona
+    #                      escribe ni lo que responde el modelo.
+    #   biblioteca_mios    los prompts que la persona guardó desde COI. Privados: toda consulta lleva
+    #                      `usuario`. `clave` (opcional) hace idempotente el guardado: el índice único
+    #                      parcial cierra el doble clic aunque lleguen dos peticiones a la vez.
+    #   biblioteca_fijados el top 3 que quiere recordar, EN ORDEN (la lista de ids es el orden).
+    #
+    # Tablas nuevas: `tools/db_migrate.py` en CADA entorno antes de desplegar (docs/OPERACION.md).
+    """CREATE TABLE IF NOT EXISTS coi_estado (
+        usuario         text PRIMARY KEY,
+        dia             date,
+        usos            int NOT NULL DEFAULT 0,
+        fallos          int NOT NULL DEFAULT 0,
+        en_curso_hasta  timestamptz,
+        candado         text
+    )""",
+    # entornos donde la tabla ya existía sin la columna (IF EXISTS: nunca falla por una tabla ausente)
+    "ALTER TABLE IF EXISTS coi_estado ADD COLUMN IF NOT EXISTS fallos int NOT NULL DEFAULT 0",
+    """CREATE TABLE IF NOT EXISTS biblioteca_mios (
+        usuario    text NOT NULL,
+        id         text NOT NULL,
+        clave      text,
+        titulo     text NOT NULL,
+        para_que   text NOT NULL DEFAULT '',
+        prompt     text NOT NULL,
+        categoria  text NOT NULL,
+        etiquetas  jsonb NOT NULL DEFAULT '[]',
+        origen     text NOT NULL DEFAULT 'coi',
+        creado     timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (usuario, id)
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS biblioteca_mios_clave
+       ON biblioteca_mios (usuario, clave) WHERE clave IS NOT NULL""",
+    """CREATE TABLE IF NOT EXISTS biblioteca_fijados (
+        usuario      text PRIMARY KEY,
+        ids          jsonb NOT NULL DEFAULT '[]',
+        actualizado  timestamptz NOT NULL DEFAULT now()
+    )""",
     # Fase 2 — el invitador (worker/invitador.py, tools/invitaciones.py).
     #
     #   invitaciones_miembros     el export de Skool, una fila por correo. Cada carga
@@ -569,6 +629,67 @@ ESQUEMA: list[str] = [
         visto_en  timestamptz PRIMARY KEY,
         filas     int NOT NULL,
         creado    timestamptz NOT NULL DEFAULT now()
+    )""",
+    # Guía de clases · S1 — el catálogo de clases que sube el dueño (server/clases_admin_api.py).
+    #
+    #   clases         una fila por clase. `id` («cl-» + 8 hex) y `video_key`
+    #                  («clases/<id>/video.<ext>») los fabrica SIEMPRE el servidor; el navegador solo
+    #                  manda la `clave` (idempotencia del «Crear»: el doble clic no duplica). El
+    #                  `numero` («Clase N» del alumno) es único entre las clases VIVAS (sin
+    #                  `archivada_en`): lo impone el índice parcial clases_vivas y no el código, para
+    #                  que dos pestañas que crean la Clase 5 a la vez no puedan las dos. Archivar es
+    #                  borrado suave (`archivada_en`): no toca S3 y no cambia `estado`. `bytes` guarda
+    #                  lo que el navegador DECLARÓ mientras la clase está en `subiendo` y lo que midió
+    #                  el HEAD de S3 desde `subido`. Las columnas de `publicada` a `indexada_en` las
+    #                  escribe la ingesta (S4); en S1 quedan en su valor de fábrica. Sin llaves
+    #                  foráneas (igual que coi_estado y biblioteca_mios). NUNCA guarda el transcript.
+    #                  `subida_token` (32 hex) identifica UNA subida: lo fija `clases_a_subiendo` en la
+    #                  misma sentencia que pasa borrador→subiendo y se limpia al cancelar y al
+    #                  confirmar; `confirmar` y `cancelar` lo comparan si la web lo manda, y así la
+    #                  subida huérfana de otra pestaña no toca la nueva.
+    #   clases_config  una fila por clave (S4 guarda ahí las palabras clave de la transcripción).
+    #
+    # Los cambios de `estado` son comparar-y-cambiar en UNA sentencia (`UPDATE … WHERE estado = …
+    # RETURNING`), el molde de coi_tomar: dos pestañas no se pisan. Tablas nuevas:
+    # `tools/db_migrate.py` en CADA entorno antes de desplegar (docs/OPERACION.md).
+    """CREATE TABLE IF NOT EXISTS clases (
+        id               text PRIMARY KEY,
+        clave            text,
+        numero           int NOT NULL CHECK (numero BETWEEN 1 AND 999),
+        titulo           text NOT NULL,
+        resumen          text,
+        grabada_en       date,
+        origen           text NOT NULL CHECK (origen IN ('archivo', 'liga')),
+        video_key        text,
+        nombre_original  text,
+        liga             text,
+        bytes            bigint,
+        duracion_s       double precision,
+        estado           text NOT NULL DEFAULT 'borrador',
+        error            text,
+        publicada        boolean NOT NULL DEFAULT false,
+        transcript_key   text,
+        indice_version   int NOT NULL DEFAULT 0,
+        indice_modelo    text,
+        trozos_n         int,
+        indexada_en      timestamptz,
+        creado_por       text NOT NULL,
+        creado           timestamptz NOT NULL DEFAULT now(),
+        actualizado      timestamptz NOT NULL DEFAULT now(),
+        archivada_en     timestamptz,
+        subida_token     text
+    )""",
+    # Un entorno que ya creó `clases` antes del token no la vuelve a crear (IF NOT EXISTS): esta
+    # sentencia le agrega la columna cuando `tools/db_migrate.py` vuelve a correr (como `fallos` de COI).
+    "ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text",
+    """CREATE UNIQUE INDEX IF NOT EXISTS clases_clave
+       ON clases (clave) WHERE clave IS NOT NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS clases_vivas
+       ON clases (numero) WHERE archivada_en IS NULL""",
+    """CREATE TABLE IF NOT EXISTS clases_config (
+        clave        text PRIMARY KEY,
+        valor        text NOT NULL,
+        actualizado  timestamptz NOT NULL DEFAULT now()
     )""",
 ]
 
@@ -716,9 +837,11 @@ def _iso(valor) -> str | None:
 def corridas_editor(user_id: str) -> list[dict]:
     """El cuadro de «tus trabajos» sondea mientras algo corre: solo trae las tres
     corridas que enseña, no el doc entero (cortes, chat, subtítulos…)."""
+    # E2: `titulo` viaja también: la ficha de una copia dice «La IA edita {titulo}»
+    # y el nombre técnico (ed-9f1c0a7b) no lo lee nadie.
     filas = ejecutar(
         "SELECT nombre, jsonb_build_object('editar', doc->'editar', 'importar', doc->'importar', "
-        "'shorts', doc->'shorts')::text AS doc FROM proyectos_editor "
+        "'shorts', doc->'shorts', 'titulo', doc->'titulo')::text AS doc FROM proyectos_editor "
         "WHERE user_id = :u ORDER BY creado DESC", {"u": user_id})
     return [{"nombre": f["nombre"], "doc": json.loads(f["doc"])} for f in filas]
 
@@ -728,7 +851,13 @@ def corridas_editor(user_id: str) -> list[dict]:
 _CAMPOS_EDITOR = {"render": "{render}", "shorts": "{shorts}",
                   "editar": "{editar}", "flags": "{flags}",
                   "subtitulos": "{subtitulos}", "overlay_job": "{overlay_job}",
-                  "chat": "{chat}", "importar": "{importar}"}
+                  "chat": "{chat}", "importar": "{importar}",
+                  # E2: caché de la medición (duración, ancho, alto, audio) del
+                  # video de origen; la escribe server/edicion_api.py
+                  "meta": "{meta}",
+                  # Ajustes 2 (D-02): /api/media/confirmar agrega una subida sin reescribir
+                  # el doc ENTERO (un upsert viejo pisaba el `listo` de una copia)
+                  "subidas": "{subidas}"}
 
 
 def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> None:
@@ -740,6 +869,169 @@ def fijar_campo_editor(user_id: str, nombre: str, campo: str, valor: str) -> Non
             WHERE user_id = :u AND nombre = :n""",
         {"u": user_id, "n": nombre, "v": valor},
     )
+
+
+def fijar_meta_editor(user_id: str, nombre: str, meta: str) -> None:
+    """E2: guarda la medición del video de origen (doc.meta, §4.4 del contrato).
+    Solo toca esa llave: no pisa las subidas, los flags ni la corrida."""
+    fijar_campo_editor(user_id, nombre, "meta", meta)
+
+
+# ---------------------------------------------------------------------------
+# E2 — copias editables: el candado, el reintento y el borrado seguro
+
+def crear_copia_editor(user_id: str, nombre: str, doc: str) -> bool:
+    """Crea el proyecto de la copia SIN pisar nada. True si se insertó.
+
+    NO es `guardar_proyecto_editor`: aquel es un upsert y pisaría el doc entero
+    de una copia que otra llamada ya creó y cobró. Este es un INSERT que, si
+    algo lo impide, simplemente no inserta:
+
+      - ya existía ese `nombre` para esta persona (otra llamada con el mismo
+        `pedido` ganó la carrera), o
+      - el índice parcial `proyectos_editor_copia_en_curso` vio otra copia
+        corriendo de la misma persona.
+
+    `ON CONFLICT DO NOTHING` sin objetivo cubre las dos. Quien llama NO sabe
+    cuál fue: relee el nombre (si existe con su `pedido`, es el mismo pedido; si
+    no, es el candado) y responde sin haber cobrado nada.
+
+    El nombre ya debe estar reservado (`reservar_nombre_derivado`): esta
+    función no lo reserva."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """INSERT INTO proyectos_editor (user_id, nombre, doc)
+           VALUES (:u, :n, :doc::jsonb)
+           ON CONFLICT DO NOTHING
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "doc": doc})
+    return bool(filas)
+
+
+def ediciones_corriendo(user_id: str) -> list[dict]:
+    """Los proyectos de la persona con una corrida de edición `corriendo`,
+    copias y corridas viejas por igual: [{"nombre", "editar"}].
+
+    La caducidad NO se filtra aquí sino en Python (`inicio` ausente o ilegible =
+    caducado): un cast de fecha roto dentro del SQL tumbaría la consulta entera
+    y con ella el botón «Iniciar» de todos."""
+    filas = ejecutar(
+        """SELECT nombre, (doc #> '{editar}')::text AS editar FROM proyectos_editor
+           WHERE user_id = :u AND doc #>> '{editar,estado}' = 'corriendo'""",
+        {"u": user_id})
+    return [{"nombre": f["nombre"], "editar": json.loads(f["editar"])} for f in filas]
+
+
+def reclamar_reintento_editor(user_id: str, nombre: str, editar: str) -> bool:
+    """El claim del reintento: una copia en 'error' vuelve a 'corriendo' con el
+    `editar` nuevo (`editar` llega ya serializado). Solo gana UNA llamada: el
+    UPDATE está condicionado a `estado = 'error'`, así que un doble clic o dos
+    pestañas no cobran dos veces. False si ya no estaba en 'error'.
+
+    Si el índice parcial rechaza el UPDATE (la persona ya tiene otra copia
+    corriendo) el Data API levanta un error cuyo texto dice «duplicate key»: se
+    atrapa y también es False. Quien llama relee para distinguir un caso del
+    otro."""
+    try:
+        filas = ejecutar(
+            """UPDATE proyectos_editor
+               SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+               WHERE user_id = :u AND nombre = :n
+                 AND doc #>> '{editar,estado}' = 'error'
+                 AND doc #>> '{editar,copia}' = 'true'
+               RETURNING nombre""",
+            {"u": user_id, "n": nombre, "v": editar})
+    except Exception as err:  # noqa: BLE001 — el Data API no tipa el error de unicidad
+        if "duplicate key" in f"{err}".lower():
+            return False
+        raise
+    return bool(filas)
+
+
+def borrar_copia_sin_cobrar(user_id: str, nombre: str) -> None:
+    """Suelta el candado de una copia a la que NO se le cobró (402 por saldo).
+    Jamás borra una copia ya cobrada, ni un proyecto que no sea copia: el filtro
+    va en el SQL y no en quien llama. El nombre sigue reservado para la persona,
+    así que volver a pedir da el mismo."""
+    ejecutar(
+        """DELETE FROM proyectos_editor
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,copia}' = 'true'
+             AND doc #>> '{editar,cobrado}' = 'false'""",
+        {"u": user_id, "n": nombre})
+
+
+def cerrar_editor_si_error(user_id: str, nombre: str, inicio: str | None, editar: str) -> bool:
+    """El CIERRE de una corrida que ya se reclamó: escribe `editar` solo si la copia SIGUE en
+    `error` y con el mismo `inicio` que tenía al reclamarla. True si escribió.
+
+    `reclamar_fallo_editor` deja el doc en `error` (visible y reintentable) ANTES de que el que
+    reclamó devuelva los créditos, y devolver puede tardar segundos si el monedero titubea. Si en
+    ese lapso la persona pulsa Reintentar, la copia ya es otra corrida (`corriendo`, otro `inicio`):
+    un `fijar_campo_editor` incondicional la pisaba con el `error` + `devueltos` de la corrida
+    VIEJA y el segundo cobro se quedaba sin devolver. Con la condición, el cierre viejo no escribe.
+
+    Una reapertura para que el barredor devuelva (`estado: corriendo` + `devolucion_pendiente`) se
+    escribe con el doc aún en `error` y el mismo `inicio`: la condición la deja pasar."""
+    filas = ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,estado}' = 'error'
+             AND COALESCE(doc #>> '{editar,inicio}', '') = :i
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "v": editar, "i": "" if inicio is None else str(inicio)})
+    return bool(filas)
+
+
+def fijar_editar_si_corriendo(user_id: str, nombre: str, editar: str) -> bool:
+    """Escribe `doc.editar` SOLO si la corrida sigue `corriendo`. True si escribió.
+
+    El worker de la copia leía (`vivo()`) y luego escribía con un UPDATE incondicional: si entre
+    las dos el API, la caducidad o el barredor cerraban y devolvían, su escritura volvía a poner
+    `corriendo` (la copia reaparecía, terminaba `listo` y la persona tenía la edición Y el
+    reembolso). Con la condición en el mismo UPDATE no hay ventana: si no escribió, la corrida ya
+    estaba cerrada y quien llama debe soltarla sin devolver nada."""
+    filas = ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{editar}', :v::jsonb)
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,estado}' = 'corriendo'
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "v": editar})
+    return bool(filas)
+
+
+PASOS_EDITOR = ("entender", "editar", "vista")
+
+
+def fijar_paso_editor(user_id: str, nombre: str, paso: str) -> bool:
+    """Cambia SOLO `editar.paso` y solo si la corrida sigue `corriendo`: lo que la bandeja
+    «Tus trabajos» enseña al empezar cada fase. True si escribió. Los tres pasos son de verdad
+    (lista cerrada); cualquier otro valor levanta ValueError antes de tocar la base."""
+    if paso not in PASOS_EDITOR:
+        raise ValueError(f"paso inválido: {paso!r}")
+    filas = ejecutar(
+        """UPDATE proyectos_editor
+           SET doc = jsonb_set(doc, '{editar,paso}', :v::jsonb)
+           WHERE user_id = :u AND nombre = :n
+             AND doc #>> '{editar,estado}' = 'corriendo'
+           RETURNING nombre""",
+        {"u": user_id, "n": nombre, "v": json.dumps(paso)})
+    return bool(filas)
+
+
+def devoluciones_pendientes(user_id: str) -> list[dict]:
+    """[{"nombre", "editar"}] de las copias a las que el API cobró, falló y NO pudo devolver los
+    créditos (`editar.devolucion_api`): el abono se reintenta en la siguiente llamada de la
+    persona. No incluye las que dejó el worker para el barredor (`devolucion_pendiente` sin
+    `devolucion_api`): esas las cierra el evento de la máquina de estados."""
+    filas = ejecutar(
+        """SELECT nombre, (doc #> '{editar}')::text AS editar FROM proyectos_editor
+           WHERE user_id = :u AND doc #>> '{editar,devolucion_api}' = 'true'""",
+        {"u": user_id})
+    return [{"nombre": f["nombre"], "editar": json.loads(f["editar"])} for f in filas]
 
 
 # M23 · D (prerrequisito) — dónde vive el estado de cada trabajo de Fargate
@@ -839,21 +1131,28 @@ def saldo_creditos(user_id: str) -> int:
 def abonar_creditos(user_id: str, creditos: int, tipo: str,
                     referencia: str | None = None) -> int:
     """Suma créditos (cortesía, compra, devolución o ajuste admin — puede ser
-    negativo en ajustes). Devuelve el saldo resultante."""
+    negativo en ajustes). Devuelve el saldo resultante.
+
+    El saldo y el movimiento del libro mayor entran en UNA sola sentencia (un CTE): o entran los
+    dos o ninguno. Eran tres sentencias sueltas del Data API, y si fallaba la última el saldo ya
+    había sumado: quien reintentaba (`worker/editar_copia._devolver` repite hasta 3 veces ante
+    CUALQUIER excepción) abonaba dos veces y el libro solo lo sabía una."""
     ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
              {"u": user_id})
     # GREATEST: el CHECK (saldo >= 0) se evalúa sobre la fila PROPUESTA antes
     # de resolver ON CONFLICT — un abono negativo (ajuste admin) tronaría aunque
     # la fila exista. Sin monedero previo, un ajuste negativo deja saldo 0.
     filas = ejecutar(
-        """INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))
-           ON CONFLICT (user_id) DO UPDATE
-             SET saldo = monedero.saldo + :n, actualizado = now()
-           RETURNING saldo""",
-        {"u": user_id, "n": creditos})
-    ejecutar(
-        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
-           VALUES (:u, :n, :t, :r)""",
+        """WITH sal AS (
+               INSERT INTO monedero (user_id, saldo) VALUES (:u, GREATEST(:n, 0))
+               ON CONFLICT (user_id) DO UPDATE
+                 SET saldo = monedero.saldo + :n, actualizado = now()
+               RETURNING saldo),
+           mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :n, :t, :r FROM sal
+               RETURNING id)
+           SELECT saldo FROM sal""",
         {"u": user_id, "n": creditos, "t": tipo, "r": referencia})
     return int(filas[0]["saldo"])
 
@@ -919,20 +1218,59 @@ def abonar_devolucion(user_id: str, creditos: int, referencia: str) -> int | Non
     return int(filas[0]["saldo"]) if filas else None     # sin filas: esa referencia ya se devolvió
 
 
+def abonar_devolucion_de_cargo(user_id: str, creditos: int, referencia: str) -> int | None:
+    """Devuelve un cobro UNA sola vez aunque se reintente, con la referencia de siempre.
+
+    `abonar_devolucion` bloquea la segunda devolución con la MISMA referencia, y la de una copia de E2
+    (`editar-sugerir:<copia>`) se repite legítimamente en cada reintento: cobrar → devolver → Reintentar
+    → cobrar → devolver. Aquí la regla es la del libro mayor: se abona solo si el ÚLTIMO movimiento de
+    esa referencia es un cargo (hay algo cobrado sin devolver). Un reintento del MISMO abono —un intento
+    que sí entró pero cuya respuesta se perdió— ve que lo último ya es una devolución y no toca nada;
+    la devolución de un cobro posterior, en cambio, vuelve a ver un cargo y sí entra.
+
+    UNA sentencia (el movimiento y el saldo entran los dos o ninguno) y devuelve el saldo, o None si ya
+    estaba devuelto (o si nunca se cobró). Sin índice único detrás: dos sentencias EXACTAMENTE simultáneas
+    podrían abonar las dos; quien llama las serializa con el reclamo del doc (`reclamar_fallo_editor`)."""
+    ejecutar("INSERT INTO usuarios (id) VALUES (:u) ON CONFLICT (id) DO NOTHING",
+             {"u": user_id})
+    filas = ejecutar(
+        """WITH mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :n, 'devolucion', :r
+               WHERE (SELECT tipo FROM monedero_movimientos
+                      WHERE user_id = :u AND referencia = :r
+                      ORDER BY id DESC LIMIT 1) = 'cargo'
+               RETURNING id)
+           INSERT INTO monedero (user_id, saldo)
+           SELECT :u, GREATEST(:n, 0) FROM mov
+           ON CONFLICT (user_id) DO UPDATE
+             SET saldo = monedero.saldo + :n, actualizado = now()
+           RETURNING saldo""",
+        {"u": user_id, "n": int(creditos), "r": referencia})
+    return int(filas[0]["saldo"]) if filas else None     # sin filas: lo último ya era una devolución
+
+
 def cobrar_creditos(user_id: str, creditos: int,
                     referencia: str | None = None) -> int | None:
     """EL gate duro: UPDATE condicionado — si el saldo no alcanza (o no hay
-    monedero) no toca nada y devuelve None. Atómico aunque haya concurrencia."""
+    monedero) no toca nada y devuelve None. Atómico aunque haya concurrencia.
+
+    El débito y el cargo del libro mayor van en UNA sentencia (un CTE). En dos sueltas, si fallaba
+    la segunda el saldo ya había bajado y el libro no tenía el cargo; `server/edicion_api._soltar`
+    decide cuánto devolver leyendo el libro y concluía «nada que devolver»."""
     filas = ejecutar(
-        """UPDATE monedero SET saldo = saldo - :n, actualizado = now()
-           WHERE user_id = :u AND saldo >= :n RETURNING saldo""",
-        {"u": user_id, "n": creditos})
+        """WITH deb AS (
+               UPDATE monedero SET saldo = saldo - :n, actualizado = now()
+               WHERE user_id = :u AND saldo >= :n
+               RETURNING saldo),
+           mov AS (
+               INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
+               SELECT :u, :neg, 'cargo', :r FROM deb
+               RETURNING id)
+           SELECT saldo FROM deb""",
+        {"u": user_id, "n": creditos, "neg": -creditos, "r": referencia})
     if not filas:
         return None
-    ejecutar(
-        """INSERT INTO monedero_movimientos (user_id, creditos, tipo, referencia)
-           VALUES (:u, :n, 'cargo', :r)""",
-        {"u": user_id, "n": -creditos, "r": referencia})
     return int(filas[0]["saldo"])
 
 
@@ -1933,6 +2271,311 @@ def automatiza_corridas_de_ip_hoy(ip_hash: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Ajustes 3 — COI: usos por día de México y la «una sola en curso»
+#
+# El orden del contrato lo lleva server/coi_api.py; aquí viven las cuatro
+# sentencias, cada una ATÓMICA (el Data API es autocommit: una sentencia = una
+# transacción). Todas las fechas salen de now() de la base: ni el navegador ni la
+# Lambda aportan reloj.
+
+# Un renglón con el día de hoy y la próxima medianoche de México, en el mismo
+# instante que usa el resto de la sentencia (now() es el de la transacción):
+#   hoy        el día de México (date)
+#   sig_local  la próxima medianoche, hora de pared de México (timestamp)
+#   sig_utc    esa misma medianoche como instante (timestamptz)
+#   desfase    segundos de México respecto a UTC en esa medianoche (-21600)
+_RELOJ_COI = f"""
+    reloj AS (
+        SELECT (now() AT TIME ZONE '{ZONA_AUTOMATIZA}')::date AS hoy,
+               date_trunc('day', now() AT TIME ZONE '{ZONA_AUTOMATIZA}') + interval '1 day' AS sig_local
+    ), r AS (
+        SELECT hoy, sig_local, sig_local AT TIME ZONE '{ZONA_AUTOMATIZA}' AS sig_utc,
+               EXTRACT(EPOCH FROM (sig_local - (sig_local AT TIME ZONE '{ZONA_AUTOMATIZA}'
+                                                AT TIME ZONE 'UTC')))::int AS desfase
+          FROM reloj
+    )"""
+
+# renueva_en_s, y con qué armar se_renueva («2026-10-17T00:00:00-06:00») a partir de `r`. La base solo
+# devuelve números y el `::text` del servidor; el formato se arma en Python (`_renueva`). Nada de
+# `to_char(… 'HH24:MI:SS')` en estas sentencias: un literal con «:» seguido de letra se parece a un
+# parámetro nombrado, y el analizador del Data API de Aurora no se pudo probar contra eso.
+_RENUEVA_COI = """
+    ceil(EXTRACT(EPOCH FROM (r.sig_utc - now())))::bigint AS renueva_en_s,
+    r.sig_local::text AS sig_local,
+    r.desfase AS desfase"""
+
+_HOY_COI = f"(now() AT TIME ZONE '{ZONA_AUTOMATIZA}')::date"
+
+
+def _se_renueva(sig_local: str, desfase: int) -> str:
+    """`sig_local` («2026-10-17 00:00:00», la medianoche en hora de pared de México) y `desfase` (los
+    segundos de México respecto a UTC en ese instante: -21600) → «2026-10-17T00:00:00-06:00»."""
+    signo = "-" if int(desfase) < 0 else "+"
+    d = abs(int(desfase))
+    return f"{sig_local[:10]}T{sig_local[11:19]}{signo}{d // 3600:02d}:{d % 3600 // 60:02d}"
+
+
+def _renueva(fila: dict) -> dict:
+    return {"renueva_en_s": int(fila["renueva_en_s"]),
+            "se_renueva": _se_renueva(fila["sig_local"], fila["desfase"])}
+
+
+def coi_estado(usuario: str) -> dict:
+    """Lo que la persona lleva HOY (día de México): {usos, fallos, en_curso, renueva_en_s,
+    se_renueva}. Una fila de un día anterior cuenta como 0 usos y 0 fallos. Sin fila, 0.
+    Si la base no responde la excepción SALE: COI falla cerrado."""
+    filas = ejecutar(
+        f"""WITH {_RELOJ_COI}
+            SELECT CASE WHEN e.dia = r.hoy THEN e.usos ELSE 0 END AS usos,
+                   CASE WHEN e.dia = r.hoy THEN e.fallos ELSE 0 END AS fallos,
+                   COALESCE(e.en_curso_hasta > now(), false) AS en_curso,
+                   {_RENUEVA_COI}
+              FROM r LEFT JOIN coi_estado e ON e.usuario = :u""", {"u": usuario})
+    f = filas[0]
+    return {"usos": int(f["usos"]), "fallos": int(f["fallos"]), "en_curso": bool(f["en_curso"]),
+            **_renueva(f)}
+
+
+_SIN_TOPE = 2**31 - 1
+
+
+def coi_tomar(usuario: str, candado: str, tope: int, caduca_s: int,
+              tope_fallos: int | None = None) -> bool:
+    """Toma el candado de «una sola respuesta en curso». True si es tuyo.
+
+    UN solo INSERT … ON CONFLICT DO UPDATE … WHERE: gana únicamente si no hay un
+    candado vigente (`en_curso_hasta` nulo o ya vencido) Y a la persona todavía le
+    quedan usos hoy Y no ha llegado hoy al tope de intentos que no cuentan
+    (`tope_fallos`; None = sin tope). Dos peticiones simultáneas se serializan en el índice de la
+    llave primaria: la segunda, al reevaluar el WHERE con la fila que dejó la
+    primera, no actualiza nada y no devuelve fila. Meter el tope aquí cierra el
+    hueco entre «leí 2 usos» y «tomé el candado» (otra respuesta pudo terminar en
+    medio); lo mismo con el tope de intentos que no cuentan. No toca `usos`, `fallos`
+    ni `dia`: eso lo hacen `coi_sumar` y `coi_soltar` al terminar."""
+    filas = ejecutar(
+        f"""INSERT INTO coi_estado AS e (usuario, dia, usos, en_curso_hasta, candado)
+            VALUES (:u, {_HOY_COI}, 0, now() + (:s::int * interval '1 second'), :c)
+            ON CONFLICT (usuario) DO UPDATE
+               SET en_curso_hasta = now() + (:s::int * interval '1 second'), candado = :c
+             WHERE (e.en_curso_hasta IS NULL OR e.en_curso_hasta <= now())
+               AND (e.dia IS DISTINCT FROM {_HOY_COI} OR (e.usos < :tope AND e.fallos < :tope_f))
+            RETURNING usuario""",
+        {"u": usuario, "c": candado, "s": int(caduca_s), "tope": int(tope),
+         "tope_f": _SIN_TOPE if tope_fallos is None else int(tope_fallos)})
+    return bool(filas)
+
+
+def coi_sumar(usuario: str, candado: str, tope: int) -> dict | None:
+    """La respuesta TERMINÓ: suma 1 al uso del día y suelta el candado, en UNA
+    sentencia. Si el día de México cambió desde el último uso, el contador
+    arranca en 1 (y los intentos que no contaron, en 0; el mismo día se conservan).
+    Devuelve {usos, renueva_en_s, se_renueva}, o None si no pudo
+    (el candado ya no es tuyo —caducó y lo tomó otra respuesta— o sumar pasaría
+    del tope): quien llama NO entrega la respuesta. Solo afecta la fila cuyo
+    `candado` es el tuyo."""
+    filas = ejecutar(
+        f"""WITH {_RELOJ_COI},
+            u AS (
+                UPDATE coi_estado
+                   SET usos = CASE WHEN dia = {_HOY_COI} THEN usos + 1 ELSE 1 END,
+                       fallos = CASE WHEN dia = {_HOY_COI} THEN fallos ELSE 0 END,
+                       dia = {_HOY_COI}, en_curso_hasta = NULL, candado = NULL
+                 WHERE usuario = :u AND candado = :c
+                   AND (dia IS DISTINCT FROM {_HOY_COI} OR usos < :tope)
+                RETURNING usos
+            )
+            SELECT u.usos, {_RENUEVA_COI} FROM u, r""",
+        {"u": usuario, "c": candado, "tope": int(tope)})
+    if not filas:
+        return None
+    f = filas[0]
+    return {"usos": int(f["usos"]), **_renueva(f)}
+
+
+def coi_soltar(usuario: str, candado: str, fallo: bool = False) -> bool:
+    """Suelta el candado SIN sumar un uso (la respuesta falló, tardó o la moderación la
+    rechazó). Solo si sigue siendo el tuyo. Con `fallo=True` el intento queda anotado en
+    `fallos` del día de México (si el día cambió, el contador arranca en 1 y `usos` en 0): ese
+    intento costó una llamada y no contó, y `coi_tomar` lo cuenta contra su tope diario."""
+    if not fallo:
+        filas = ejecutar(
+            """UPDATE coi_estado SET en_curso_hasta = NULL, candado = NULL
+                WHERE usuario = :u AND candado = :c RETURNING usuario""",
+            {"u": usuario, "c": candado})
+        return bool(filas)
+    filas = ejecutar(
+        f"""UPDATE coi_estado
+               SET fallos = CASE WHEN dia = {_HOY_COI} THEN fallos ELSE 0 END + 1,
+                   usos = CASE WHEN dia = {_HOY_COI} THEN usos ELSE 0 END,
+                   dia = {_HOY_COI}, en_curso_hasta = NULL, candado = NULL
+             WHERE usuario = :u AND candado = :c RETURNING usuario""",
+        {"u": usuario, "c": candado})
+    return bool(filas)
+
+
+# ---------------------------------------------------------------------------
+# Ajustes 3 — Biblioteca de prompts: los «Míos» y los fijados
+
+# `creado` sale como el `::text` del servidor (en UTC, con microsegundos: «2026-10-16 18:20:00.123456»)
+# y se formatea en Python. Nada de `to_char(… 'HH24:MI:SS')`: ver la nota de `_RENUEVA_COI`.
+_COLS_MIO = """id, titulo, para_que, prompt, categoria, etiquetas::text AS etiquetas, origen,
+               (creado AT TIME ZONE 'UTC')::text AS creado"""
+
+
+def _creado_iso(texto: str) -> str:
+    """«2026-10-16 18:20:00.123456» (UTC) → «2026-10-16T18:20:00Z», como lo ha dado siempre la API."""
+    return f"{texto[:10]}T{texto[11:19]}Z"
+
+
+def _mio(fila: dict) -> dict:
+    fila = dict(fila)
+    fila["etiquetas"] = json.loads(fila.get("etiquetas") or "[]")
+    fila["creado"] = _creado_iso(fila["creado"])
+    return fila
+
+
+PAGINA_MIOS = 8      # filas por consulta: ver biblioteca_mios
+
+
+def biblioteca_mios(usuario: str) -> list[dict]:
+    """Los prompts guardados de ESTA persona, el más nuevo primero.
+
+    Se lee de PAGINA_MIOS en PAGINA_MIOS: el Data API de Aurora corta una respuesta a 1 MiB, y 100
+    «míos» de hasta 16 000 caracteres (con el JSON escapado) pasarían de ahí. Con una sola consulta,
+    quien llenara su lista se quedaría sin poder abrir la Biblioteca. Ocho filas de ese tamaño caben
+    con margen, y lo normal (un COI mide 2-5 KB) es una consulta o dos.
+
+    La página siguiente se pide POR CLAVE —«lo que viene después de (creado, id) de la última fila
+    leída»—, no por posición: cada página es una sentencia aparte y, si otra pestaña de la misma
+    persona guarda o borra entre dos, un OFFSET corre las filas y alguna sale dos veces, otra se
+    salta o un borrado sigue apareciendo. Con la clave, lo que ya se leyó no se mueve."""
+    salida: list[dict] = []
+    ultima: dict | None = None
+    while True:
+        params: dict = {"u": usuario, "n": PAGINA_MIOS}
+        despues = ""
+        if ultima is not None:
+            # `creado` viaja como texto completo (microsegundos incluidos) y vuelve a timestamp
+            params.update(c=ultima["creado"], i=ultima["id"])
+            despues = ("AND (biblioteca_mios.creado < (:c::timestamp AT TIME ZONE 'UTC') "
+                       "OR (biblioteca_mios.creado = (:c::timestamp AT TIME ZONE 'UTC') "
+                       "AND biblioteca_mios.id > :i)) ")
+        filas = ejecutar(
+            # ORDER BY con la columna CALIFICADA: sin el nombre de la tabla, `creado` se resolvería contra la
+            # columna de salida (el texto del `::text`) y el orden saldría por el texto, no por la fecha.
+            # Lo cazó el Postgres real, no los dobles.
+            f"SELECT {_COLS_MIO} FROM biblioteca_mios WHERE usuario = :u {despues}"
+            "ORDER BY biblioteca_mios.creado DESC, biblioteca_mios.id LIMIT :n", params)
+        if filas:
+            ultima = filas[-1]
+        salida += [_mio(f) for f in filas]
+        if len(filas) < PAGINA_MIOS:
+            return salida
+
+
+def biblioteca_contar_mios(usuario: str) -> int:
+    filas = ejecutar("SELECT count(*) AS n FROM biblioteca_mios WHERE usuario = :u", {"u": usuario})
+    return int(filas[0]["n"]) if filas else 0
+
+
+def biblioteca_crear_mio(usuario: str, *, id_: str, clave: str | None, titulo: str,
+                         para_que: str, prompt: str, categoria: str, etiquetas: list[str],
+                         origen: str, tope: int) -> tuple[dict, bool] | None:
+    """Guarda un «mío». Devuelve (registro, creado) o None.
+
+    - Un INSERT que no inserta si la persona ya tiene `tope` (`ON CONFLICT DO
+      NOTHING` cubre también el id repetido y la clave repetida). El tope se mide
+      al empezar la sentencia: dos guardados simultáneos justo en el límite pueden
+      pasarse por uno; no es dinero ni seguridad, y borrar siempre se puede.
+    - `clave` repetida (doble clic): devuelve el registro que ya existía con
+      `creado=False`. Es de ESTA persona: el índice es (usuario, clave).
+    - None = lleno, o el id al azar chocó: quien llama distingue contando."""
+    filas = ejecutar(
+        f"""INSERT INTO biblioteca_mios (usuario, id, clave, titulo, para_que, prompt,
+                                         categoria, etiquetas, origen)
+            SELECT :u::text, :id::text, :clave::text, :t::text, :pq::text, :p::text,
+                   :cat::text, :et::jsonb, :o::text
+             WHERE (SELECT count(*) FROM biblioteca_mios WHERE usuario = :u) < :tope
+            ON CONFLICT DO NOTHING
+            RETURNING {_COLS_MIO}""",
+        {"u": usuario, "id": id_, "clave": clave, "t": titulo, "pq": para_que, "p": prompt,
+         "cat": categoria, "et": etiquetas, "o": origen, "tope": int(tope)})
+    if filas:
+        return _mio(filas[0]), True
+    if clave:
+        previo = ejecutar(
+            f"SELECT {_COLS_MIO} FROM biblioteca_mios WHERE usuario = :u AND clave = :c",
+            {"u": usuario, "c": clave})
+        if previo:
+            return _mio(previo[0]), False
+    return None
+
+
+def biblioteca_borrar_mio(usuario: str, id_: str) -> bool:
+    """Borra un «mío» de ESTA persona y lo saca de sus fijados, en UNA sentencia.
+    False si no existe o es de otra persona (no se distingue)."""
+    filas = ejecutar(
+        """WITH borrado AS (
+               DELETE FROM biblioteca_mios WHERE usuario = :u AND id = :id RETURNING id
+           ), limpio AS (
+               UPDATE biblioteca_fijados
+                  SET ids = COALESCE((SELECT jsonb_agg(e.v ORDER BY e.ord)
+                                        FROM jsonb_array_elements(ids) WITH ORDINALITY AS e(v, ord)
+                                       WHERE e.v #>> '{}' <> :id), '[]'::jsonb),
+                      actualizado = now()
+                WHERE usuario = :u AND EXISTS (SELECT 1 FROM borrado)
+               RETURNING usuario
+           )
+           SELECT id FROM borrado""",
+        {"u": usuario, "id": id_})
+    return bool(filas)
+
+
+def biblioteca_ids_mios(usuario: str, ids: list[str]) -> set[str]:
+    """Cuáles de estos ids son «míos» de ESTA persona (jamás los de otra)."""
+    if not ids:
+        return set()
+    filas = ejecutar(
+        """SELECT id FROM biblioteca_mios
+            WHERE usuario = :u AND id IN (SELECT jsonb_array_elements_text(:ids::jsonb))""",
+        {"u": usuario, "ids": list(ids)})
+    return {f["id"] for f in filas}
+
+
+def biblioteca_fijados(usuario: str) -> list[str]:
+    """Los ids fijados, en el orden del top 3 (puede traer huérfanos: quien lee
+    los cruza con lo que existe)."""
+    filas = ejecutar("SELECT ids::text AS ids FROM biblioteca_fijados WHERE usuario = :u",
+                     {"u": usuario})
+    return list(json.loads(filas[0]["ids"])) if filas else []
+
+
+def biblioteca_fijar(usuario: str, ids: list[str], antes: list[str] | None = None) -> bool:
+    """REEMPLAZA la lista de fijados (el orden importa).
+
+    Sin `antes`, escribe siempre (y devuelve True). Con `antes` —la lista tal como se guardó cuando
+    quien escribe la leyó— solo escribe si NADIE la cambió desde entonces: compara y escribe en UNA
+    sentencia (compare-and-set), y devuelve False si ya no coincide. Así una pantalla vieja no pisa
+    en silencio lo que se fijó desde otro aparato. Sin fila todavía, `antes` es la lista vacía."""
+    if antes is None:
+        ejecutar(
+            """INSERT INTO biblioteca_fijados (usuario, ids, actualizado) VALUES (:u, :ids::jsonb, now())
+               ON CONFLICT (usuario) DO UPDATE SET ids = EXCLUDED.ids, actualizado = now()""",
+            {"u": usuario, "ids": list(ids)})
+        return True
+    filas = ejecutar(
+        """INSERT INTO biblioteca_fijados AS f (usuario, ids, actualizado)
+           SELECT :u::text, :ids::jsonb, now()
+            WHERE :antes::jsonb = '[]'::jsonb
+               OR EXISTS (SELECT 1 FROM biblioteca_fijados WHERE usuario = :u)
+           ON CONFLICT (usuario) DO UPDATE SET ids = EXCLUDED.ids, actualizado = now()
+            WHERE f.ids = :antes::jsonb
+           RETURNING f.usuario""",
+        {"u": usuario, "ids": list(ids), "antes": list(antes)})
+    return bool(filas)
+
+
+# ---------------------------------------------------------------------------
 # Fase 2 — el invitador: export de Skool, envíos y el interruptor
 #
 # Las fechas salen como `(… AT TIME ZONE 'UTC')::text` y se leen en Python
@@ -2211,3 +2854,227 @@ def invitaciones_reclamar_pagina(correo: str, paso: int, *, corte: str, tope: in
         {"c": correo_normal(correo), "p": int(paso), "corte": corte, "t": int(tope),
          "desde": desde})
     return int(filas[0]["id"]) if filas else None
+
+
+# ---------------------------------------------------------------------------
+# Guía de clases · S1 — el catálogo de clases (server/clases_admin_api.py)
+#
+# Cada cambio de `estado` es comparar-y-cambiar en UNA sentencia (`UPDATE … WHERE estado = … RETURNING`),
+# el molde de coi_tomar: dos pestañas (o dos clics) no se pisan y el que llega segundo no recibe fila.
+# Quien llama distingue «no existe» de «estado que no lo permite» con `clases_obtener`. Nada aquí toca
+# S3, ni lee ni guarda el texto de ninguna transcripción. `video_key` viaja SOLO hacia el servidor: la
+# vista pública de la clase (`_publica` del API) no la lleva.
+
+class ClaseNumeroRepetido(Exception):
+    """Ya hay otra clase VIVA con ese número (lo impone el índice parcial clases_vivas)."""
+
+
+class ClaseIdRepetido(Exception):
+    """El id al azar chocó con otro (1 en 4 000 millones): quien llama genera otro y reintenta."""
+
+
+LIMITE_CLASES = 400      # filas por lista: la respuesta del Data API corta a 1 MiB (una fila pesa ~1 KB)
+
+# Las fechas salen como el `::text` del servidor (UTC) y se formatean en Python (ver `_creado_iso`).
+# ORDER BY siempre con la columna CALIFICADA (`clases.creado`): sin el nombre de la tabla se resolvería
+# contra la columna de salida (el texto) y ordenaría por el texto.
+_COLS_CLASE = """clases.id AS id, clases.numero AS numero, clases.titulo AS titulo,
+    clases.resumen AS resumen, clases.grabada_en::text AS grabada_en, clases.origen AS origen,
+    clases.video_key AS video_key, clases.nombre_original AS nombre_original, clases.liga AS liga,
+    clases.bytes AS bytes, clases.duracion_s AS duracion_s, clases.estado AS estado,
+    clases.error AS error, clases.publicada AS publicada, clases.indice_version AS indice_version,
+    clases.indice_modelo AS indice_modelo, clases.trozos_n AS trozos_n,
+    (clases.indexada_en AT TIME ZONE 'UTC')::text AS indexada_en,
+    (clases.creado AT TIME ZONE 'UTC')::text AS creado,
+    (clases.actualizado AT TIME ZONE 'UTC')::text AS actualizado,
+    (clases.archivada_en AT TIME ZONE 'UTC')::text AS archivada_en, clases.subida_token AS subida_token"""
+
+
+def _es_duplicado(err: Exception) -> bool:
+    """¿Un índice único rechazó la sentencia? El Data API lo avisa en el texto del error y psycopg
+    con su clase; en los dos casos aparece una de estas dos marcas."""
+    texto = f"{type(err).__name__} {err}".lower()
+    return "duplicate key" in texto or "uniqueviolation" in texto
+
+
+def _clase(fila: dict) -> dict:
+    f = dict(fila)
+    f["numero"] = int(f["numero"])
+    f["bytes"] = None if f.get("bytes") is None else int(f["bytes"])
+    f["duracion_s"] = None if f.get("duracion_s") is None else float(f["duracion_s"])
+    f["publicada"] = bool(f.get("publicada"))
+    f["indice_version"] = int(f.get("indice_version") or 0)
+    f["trozos_n"] = None if f.get("trozos_n") is None else int(f["trozos_n"])
+    for campo in ("indexada_en", "creado", "actualizado", "archivada_en"):
+        f[campo] = _creado_iso(f[campo]) if f.get(campo) else None
+    return f
+
+
+def _una_clase(filas: list[dict]) -> dict | None:
+    return _clase(filas[0]) if filas else None
+
+
+def clases_listar(archivadas: bool = False) -> list[dict]:
+    """Las clases vivas por número, o —con `archivadas`— las archivadas, la más reciente primero.
+    Hasta LIMITE_CLASES filas. Sin transcript ni texto de nadie."""
+    if archivadas:
+        donde, orden = "clases.archivada_en IS NOT NULL", "clases.archivada_en DESC, clases.numero, clases.id"
+    else:
+        donde, orden = "clases.archivada_en IS NULL", "clases.numero, clases.creado, clases.id"
+    filas = ejecutar(f"SELECT {_COLS_CLASE} FROM clases WHERE {donde} ORDER BY {orden} LIMIT :n",
+                     {"n": LIMITE_CLASES})
+    return [_clase(f) for f in filas]
+
+
+def clases_obtener(id_: str) -> dict | None:
+    """Una clase (viva o archivada) o None."""
+    return _una_clase(ejecutar(f"SELECT {_COLS_CLASE} FROM clases WHERE clases.id = :i", {"i": id_}))
+
+
+def clases_crear(*, id_: str, clave: str, numero: int, titulo: str, resumen: str | None,
+                 grabada_en: str | None, origen: str, liga: str | None,
+                 creado_por: str) -> tuple[dict, bool]:
+    """Crea una clase en `borrador`. Devuelve (clase, creada).
+
+    UN INSERT … ON CONFLICT DO NOTHING (sin objetivo: cubre el id, la `clave` y el número entre vivas):
+    - `clave` repetida (doble clic): devuelve la clase que ya existía con `creada=False`, aunque el
+      segundo clic trajera otro título o número;
+    - número de otra clase VIVA: ClaseNumeroRepetido;
+    - el id al azar chocó: ClaseIdRepetido."""
+    filas = ejecutar(
+        f"""INSERT INTO clases (id, clave, numero, titulo, resumen, grabada_en, origen, liga, creado_por)
+            VALUES (:id, :clave, :numero, :titulo, :resumen, :grabada::date, :origen, :liga, :por)
+            ON CONFLICT DO NOTHING
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "clave": clave, "numero": int(numero), "titulo": titulo, "resumen": resumen,
+         "grabada": grabada_en, "origen": origen, "liga": liga, "por": creado_por})
+    if filas:
+        return _clase(filas[0]), True
+    previo = ejecutar(f"SELECT {_COLS_CLASE} FROM clases WHERE clases.clave = :c", {"c": clave})
+    if previo:
+        return _clase(previo[0]), False
+    if ejecutar("SELECT 1 AS x FROM clases WHERE numero = :n AND archivada_en IS NULL", {"n": int(numero)}):
+        raise ClaseNumeroRepetido()
+    raise ClaseIdRepetido()
+
+
+_CAMPOS_EDITABLES = ("numero", "titulo", "resumen", "grabada_en", "liga")
+
+
+def clases_editar(id_: str, cambios: dict) -> dict | None:
+    """Cambia SOLO los campos que vienen en `cambios` (un valor None sí cuenta: borra el campo). Los
+    valores llegan ya validados. None = no existe, está archivada o —si cambia el número— lo tiene otra
+    clase viva (quien llama lo distingue con `clases_obtener`). ClaseNumeroRepetido si dos pestañas
+    carreraron y el índice parcial rechazó a la segunda."""
+    params: dict = {"id": id_}
+    for campo in _CAMPOS_EDITABLES:
+        params["s_" + campo] = campo in cambios
+        params[campo] = cambios.get(campo)
+    try:
+        filas = ejecutar(
+            f"""UPDATE clases SET
+                    numero = CASE WHEN :s_numero THEN :numero::int ELSE numero END,
+                    titulo = CASE WHEN :s_titulo THEN :titulo::text ELSE titulo END,
+                    resumen = CASE WHEN :s_resumen THEN :resumen::text ELSE resumen END,
+                    grabada_en = CASE WHEN :s_grabada_en THEN :grabada_en::date ELSE grabada_en END,
+                    liga = CASE WHEN :s_liga THEN :liga::text ELSE liga END,
+                    actualizado = now()
+                 WHERE id = :id AND archivada_en IS NULL
+                   AND (NOT :s_numero OR NOT EXISTS (
+                        SELECT 1 FROM clases o
+                         WHERE o.numero = :numero::int AND o.archivada_en IS NULL AND o.id <> :id))
+                RETURNING {_COLS_CLASE}""", params)
+    except Exception as err:  # noqa: BLE001 — solo el índice único es de la casa; lo demás sube
+        if _es_duplicado(err):
+            raise ClaseNumeroRepetido() from None
+        raise
+    return _una_clase(filas)
+
+
+def clases_a_subiendo(id_: str, video_key: str, nombre_original: str | None,
+                      bytes_declarados: int, token: str) -> dict | None:
+    """borrador → subiendo, al darse la URL de subida. Solo una clase VIVA, de origen `archivo` y en
+    `borrador`: de dos subidas a la vez gana una y la otra recibe None. Guarda la clave que decidió el
+    servidor, los bytes que el navegador declaró (`confirmar` los compara con el HEAD de S3) y el
+    `token` que identifica ESTA subida (lo fija la misma sentencia que cambia el estado)."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases
+               SET estado = 'subiendo', video_key = :k, nombre_original = :n, bytes = :b,
+                   subida_token = :t, duracion_s = NULL, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND origen = 'archivo' AND estado = 'borrador'
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "k": video_key, "n": nombre_original, "b": int(bytes_declarados), "t": token}))
+
+
+def clases_cancelar(id_: str, token: str | None = None) -> dict | None:
+    """subiendo → borrador. Olvida la clave, los bytes declarados, el nombre y el token; NO toca S3 (un
+    PUT sin terminar no deja objeto, y uno terminado no se borra: el rol no puede). Con `token`, solo
+    cancela si es el de la subida vigente (comparar-y-cambiar en la misma sentencia: la subida nueva
+    de otra pestaña no se cancela desde la vieja); sin él, cancela cualquiera."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases
+               SET estado = 'borrador', video_key = NULL, nombre_original = NULL, bytes = NULL,
+                   subida_token = NULL, duracion_s = NULL, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND estado = 'subiendo'
+               AND (:t::text IS NULL OR subida_token = :t::text)
+            RETURNING {_COLS_CLASE}""", {"id": id_, "t": token}))
+
+
+def clases_confirmar(id_: str, video_key: str, bytes_declarados: int, bytes_reales: int,
+                     nombre_original: str | None, token: str | None = None) -> dict | None:
+    """subiendo → subido, tras el HEAD. Solo si la clase sigue en `subiendo` con la MISMA clave y los
+    mismos bytes declarados que se compararon (si alguien canceló y volvió a pedir una subida en el
+    medio, no hay fila) y —si viene `token`— con el de la subida vigente. `bytes` pasa a ser el real
+    de S3 y el token se olvida."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases
+               SET estado = 'subido', bytes = :real, nombre_original = COALESCE(:n, nombre_original),
+                   subida_token = NULL, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND origen = 'archivo' AND estado = 'subiendo'
+               AND video_key = :k AND bytes = :declarados
+               AND (:t::text IS NULL OR subida_token = :t::text)
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "k": video_key, "declarados": int(bytes_declarados), "real": int(bytes_reales),
+         "n": nombre_original, "t": token}))
+
+
+def clases_medida(id_: str, video_key: str, duracion_s: float) -> dict | None:
+    """Guarda la duración que midió ffprobe. Solo en `subido` y con la clave que se midió."""
+    return _una_clase(ejecutar(
+        f"""UPDATE clases SET duracion_s = :d, error = NULL, actualizado = now()
+             WHERE id = :id AND archivada_en IS NULL AND estado = 'subido' AND video_key = :k
+            RETURNING {_COLS_CLASE}""",
+        {"id": id_, "k": video_key, "d": float(duracion_s)}))
+
+
+def clases_medida_fallo(id_: str, video_key: str, texto: str) -> bool:
+    """ffprobe no pudo: la clase sigue en `subido` con un aviso corto (`texto` lo pone el API; nunca
+    una URL firmada ni el mensaje de un error)."""
+    return bool(ejecutar(
+        """UPDATE clases SET error = :e, actualizado = now()
+            WHERE id = :id AND archivada_en IS NULL AND estado = 'subido' AND video_key = :k
+            RETURNING id""", {"id": id_, "k": video_key, "e": texto}))
+
+
+def clases_archivar(id_: str) -> bool:
+    """Borrado SUAVE: pone `archivada_en` y nada más (no cambia `estado`, no toca S3). Idempotente:
+    archivar una archivada conserva su fecha. False si la clase no existe."""
+    return bool(ejecutar(
+        """UPDATE clases SET archivada_en = COALESCE(archivada_en, now()), actualizado = now()
+            WHERE id = :id RETURNING id""", {"id": id_}))
+
+
+def clases_restaurar(id_: str) -> dict | None:
+    """Limpia `archivada_en`; la clase vuelve con el estado que tenía. None si no existe, si no
+    estaba archivada o si otra clase viva ya tomó su número (quien llama lo distingue)."""
+    try:
+        return _una_clase(ejecutar(
+            f"""UPDATE clases SET archivada_en = NULL, actualizado = now()
+                 WHERE id = :id AND archivada_en IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM clases o
+                                    WHERE o.numero = clases.numero AND o.archivada_en IS NULL)
+                RETURNING {_COLS_CLASE}""", {"id": id_}))
+    except Exception as err:  # noqa: BLE001
+        if _es_duplicado(err):
+            raise ClaseNumeroRepetido() from None
+        raise

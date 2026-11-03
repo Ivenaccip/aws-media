@@ -171,7 +171,7 @@ def data(name: str):
 
 def _data_nube(name: str) -> dict:
     user = db.usuario_actual()
-    _proyecto_nube(name)
+    proyecto = _proyecto_nube(name)
     fila = db.cortes_ultima(user, name)
     if fila is None:
         # primera apertura: sembrar la v1 con el cuts.json que subió el puente
@@ -189,8 +189,15 @@ def _data_nube(name: str) -> dict:
         doc = _leer_json_s3(f"videos/{name}/work/transcripts/{clip['id']}.canonical.json")
         ok = doc and str(doc.get("schema_version", "")).startswith("1.")
         words[clip["id"]] = doc.get("words", []) if ok else []
+    # E2: una copia (doc.copia) lo dice en el encabezado del editor: el título de la
+    # copia y de qué originales viene. Un proyecto que NO es copia trae
+    # `copia: null` y el editor se ve exactamente igual que antes.
+    copia = proyecto.get("copia")
+    de = [{"titulo": d.get("titulo"), "tipo": d.get("tipo")}
+          for d in (copia.get("de") or []) if isinstance(d, dict)] if isinstance(copia, dict) else None
     return {"cuts": cuts, "manifest": manifest, "words": words,
-            "project": name, "version": fila["version"]}
+            "project": name, "version": fila["version"],
+            "titulo": proyecto.get("titulo"), "copia": de}
 
 
 @router.get("/{name}/ver/{clave}")

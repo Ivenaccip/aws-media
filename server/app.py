@@ -40,7 +40,8 @@ from server.agenda_api import router as agenda_router
 from server.metricas_api import router as metricas_router
 from server.blotato_api import router as blotato_router
 from server.broll_api import router as broll_router
-from server.editar_api import router as editar_router
+from server.edicion_api import copia_de_doc, liberar_huerfanas, router as edicion_router
+from server.editar_api import editar_publico, router as editar_router
 from server.editor import router as editor_router
 from server.importar_api import router as importar_router
 from server.media_api import router as media_router
@@ -57,6 +58,10 @@ from server.trabajos_api import router as trabajos_router
 from server.clip_api import router as clip_router
 from server.imagen_cola import router as imagen_cola_router
 from server.shorts_api import router as shorts_router
+from server.coi_api import router as coi_router
+from server.automatiza_api import router as automatiza_router
+from server.biblioteca_api import router as biblioteca_router
+from server.clases_admin_api import router as clases_admin_router
 
 
 def _configurar_logging() -> None:
@@ -145,8 +150,19 @@ app.include_router(clip_router)
 # en segundo plano vive en /api/imagenes/pedidos/{id}
 app.include_router(imagen_cola_router)
 app.include_router(editar_router)
+# E2: /api/edicion/{elegibles,cotizar,iniciar,<n>/reintentar}. La ruta fija
+# /api/edicion/proyectos (más abajo) no choca: este router no tiene GET /{nombre}
+app.include_router(edicion_router)
 app.include_router(mix_router)
 app.include_router(trabajos_router)
+# Ajustes 3: COI (gratis, 3 al día, sin trazas del texto) y la Biblioteca de prompts
+app.include_router(coi_router)
+# Asistente de Automatizaciones (Fase A, modo «prueba», gasto 0): /api/automatiza/*, con sesión
+app.include_router(automatiza_router)
+app.include_router(biblioteca_router)
+# Guía de clases · S1: /api/admin/clases (solo admin, por el router). Antes del mount de static/ de
+# más abajo: si no, cae en StaticFiles y devuelve su 404 en HTML
+app.include_router(clases_admin_router)
 
 
 # Aurora dormida (mín 0 ACU) puede tardar más en despertar que el presupuesto
@@ -187,10 +203,27 @@ def proyectos_edicion():
                     "cuts": cuts, "editor_listo": cuts and proxy, "subidas": []})
     if db.backend() == "postgres":
         en_fs = {p["nombre"] for p in out}
-        for fila in db.listar_proyectos_editor(db.usuario_actual()):
+        user = db.usuario_actual()
+        filas = db.listar_proyectos_editor(user)
+        # D-15: al abrir la app se sueltan (y se devuelven) las copias huérfanas y se saldan las
+        # devoluciones que el API dejó debiendo. Antes solo pasaba cuando la persona volvía a pulsar
+        # Iniciar o Reintentar. Es una ayuda: si falla, la lista sale igual.
+        try:
+            for nombre in liberar_huerfanas(user, filas):
+                doc = db.cargar_proyecto_editor(user, nombre)
+                for fila in filas:
+                    if fila["nombre"] == nombre and isinstance(doc, dict):
+                        fila["doc"] = doc
+        except Exception:  # noqa: BLE001
+            logging.getLogger("edicion").exception("no se pudieron liberar las copias huérfanas")
+        for fila in filas:
             if fila["nombre"] in en_fs:
                 continue
+            if (fila["doc"].get("editar") or {}).get("no_lanzada") is True:
+                continue          # una copia que nunca llegó a correr (falló al lanzar) no es una «creación»
             flags = fila["doc"].get("flags", {})   # los pone el puente (C4)
+            meta = fila["doc"].get("meta") if isinstance(fila["doc"].get("meta"), dict) else {}
+            copia_de = copia_de_doc(fila["doc"])
             out.append({"nombre": fila["nombre"],
                         "generado": flags.get("generado", False),
                         "canonico": flags.get("canonico", False),
@@ -199,12 +232,28 @@ def proyectos_edicion():
                         # puente genera proxy+manifest junto con los cortes)
                         "editor_listo": flags.get("cuts", False),
                         # M14: estado de la corrida de sugerencias (poll de e1)
-                        "editar": fila["doc"].get("editar"),
+                        "editar": editar_publico(fila["doc"].get("editar")),
                         "subidas": fila["doc"].get("subidas", []),
                         # UI·26: «Mis videos» del inicio enseña los shorts
                         "creado": fila.get("creado"),
-                        "shorts": resumen_shorts(fila["doc"])})
+                        "shorts": resumen_shorts(fila["doc"]),
+                        # E2: la tarjeta de una copia dice «Copia de …» con el título,
+                        # no con el nombre técnico (ed-9f1c0a7b). Los campos de antes
+                        # no cambian; estos son aditivos.
+                        "titulo": fila["doc"].get("titulo"),
+                        "copia_de": copia_de,
+                        "n_videos": len(copia_de) if isinstance(fila["doc"].get("copia"), dict) else None,
+                        "duracion_s": meta.get("duracion_s"),
+                        "formato": meta.get("formato") or _formato_de_meta(meta)})
     return out
+
+
+def _formato_de_meta(meta: dict) -> str | None:
+    """El formato de una medición guardada antes de que `doc.meta` lo trajera."""
+    ancho, alto = meta.get("ancho"), meta.get("alto")
+    if isinstance(ancho, int) and isinstance(alto, int) and ancho > 0 and alto > 0:
+        return "vertical" if alto > ancho else "horizontal"
+    return None
 
 
 def resumen_shorts(doc: dict) -> dict | None:
@@ -1140,6 +1189,8 @@ mimetypes.add_type("font/woff2", ".woff2")
 
 
 _SIN_CACHE = {"Cache-Control": "no-cache"}
+# los 302 hacia el estudio: que ninguna caché los guarde (los de server/web.py y server/migracion.py llevan lo mismo)
+_NO_GUARDAR = {"Cache-Control": "no-store"}
 _REVALIDA_BORDE = {"Cache-Control": "no-cache",
                    "Cloudflare-CDN-Cache-Control": "max-age=60"}
 
@@ -1232,29 +1283,34 @@ def _editor_imagenes_viejo():
 
 
 # Tarjetas 37 y 38 · «/» es la portada pública y el estudio vive en /estudio/.
-# /estudio/ es la URL vieja del inicio: la decide server/migracion.py (abajo).
+# /estudio/ es la principal (el mapa): la sirve server/web.py (web.montar, abajo).
 # Cualquier «/?algo» es un enlace viejo al estudio (?p=, ?blotato=conectar…):
-# 302 conservando el query. 302 y no 301, igual que arriba.
-# no-cache en los tres (_SIN_CACHE, arriba): son HTML y un cambio de portada
+# 302 conservando el query. 302 y no 301, igual que arriba; los dos 302 de aquí
+# van con `no-store`, como los de web.py y migracion.py: un 302 guardado en una
+# caché no se entera del deploy que cambia a dónde lleva.
+# no-cache en las páginas (_SIN_CACHE, arriba): son HTML y un cambio de portada
 # tiene que llegar solo.
 
 
 @app.get("/", include_in_schema=False)
 def _portada(request: Request):
     if request.url.query:
-        return RedirectResponse(f"/estudio/?{request.url.query}", status_code=302)
+        return RedirectResponse(f"/estudio/?{request.url.query}", status_code=302, headers=_NO_GUARDAR)
     return FileResponse(ROOT / "static" / "portada.html", headers=_SIN_CACHE)
 
 
-@app.get("/estudio", include_in_schema=False)
+# HEAD como GET (`curl -I`, los verificadores de enlaces): sin él, HEAD /estudio caía en static/ y daba 404
+@app.api_route("/estudio", methods=["GET", "HEAD"], include_in_schema=False)
 def _estudio_sin_barra(request: Request):
     q = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(f"/estudio/{q}", status_code=302)
+    return RedirectResponse(f"/estudio/{q}", status_code=302, headers=_NO_GUARDAR)
 
 
-# /estudio/ lo decide server/migracion.py: es la URL vieja del inicio, que se
-# migra a /estudio/inicio/ (UI·8.4). Desde el 14-oct-2026 está en `todos`:
-# 302 a la nueva, o el mismo index.html (no-cache) con la cookie de la clásica.
+# /estudio/ (la principal) la registra server/web.py (web.montar, abajo); con la
+# cookie de la clásica, o sin web/dist, lleva al inicio clásico
+# (migracion.principal_a_la_clasica). La URL vieja del inicio es /index.html:
+# la decide server/migracion.py (en `todos`, 302 a /estudio/; con la cookie
+# `ui=clasica`, el index.html de siempre con no-cache).
 
 
 @app.get("/entrar", include_in_schema=False)

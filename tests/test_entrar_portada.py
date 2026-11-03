@@ -5,9 +5,10 @@ fetch daba 401 y auth.js mandaba a Cognito. Con «/» convertido en portada que
 no llama a la API, esa puerta desaparece. Estos tests fijan la nueva:
 
   · «/» sirve la portada; «/?algo» es un enlace viejo → 302 a /estudio/?algo.
-  · /estudio/ es el inicio: desde el 14-oct-2026 está en `todos`
-    (server/migracion.py) y responde 302 a /estudio/inicio/; con la cookie
-    de la clásica sigue sirviendo el index.html de siempre.
+  · /estudio/ es la principal (el mapa «Elige un área», server/web.py); el
+    inicio clásico vive en /index.html: desde el 14-oct-2026 está en `todos`
+    (server/migracion.py) y responde 302 a /estudio/; con la cookie de la
+    clásica sigue sirviendo el index.html de siempre.
   · quien abre una pantalla sin sesión va a /entrar?volver=<ruta>.
   · /entrar solo acepta `volver` del propio dominio y no rebota sin fin.
   · auth.js hace UNA ida a Cognito aunque lleguen varios 401 juntos.
@@ -76,34 +77,85 @@ def test_raiz_con_query_es_un_enlace_viejo_al_estudio(local):
     for q in ("p=abc123", "blotato=conectar"):
         r = local.get(f"/?{q}", follow_redirects=False)
         assert r.status_code == 302 and r.headers["location"] == f"/estudio/?{q}"
+        # como todos los 302 hacia el estudio: que ninguna caché lo guarde
+        assert r.headers["cache-control"] == "no-store"
 
 
-def _inicio_montado(cliente) -> bool:
-    """¿Está compilada la pantalla nueva del inicio? Sin web/dist (pytest en
-    Windows) `todos` no redirige: mandaría a un 404. En el contenedor del CI
-    sí está, y ahí /estudio/ responde 302."""
-    return any(getattr(r, "path", "") == "/estudio/inicio" for r in cliente.app.routes)
+def _raiz_montada(cliente) -> bool:
+    """¿Está compilada la principal (web/dist/estudio/index.html)? Sin web/dist
+    (pytest en Windows) `todos` no redirige a un 404 y /estudio/ lleva al
+    clásico (server/migracion.py registra esa otra ruta: se busca la de
+    server/web.py por su nombre). En el contenedor del CI sí está."""
+    return any(getattr(r, "name", "") == "web-raiz" for r in cliente.app.routes)
 
 
 CLASICA = {"Cookie": "ui=clasica"}
 
 
-def test_estudio_sirve_el_mismo_index(local):
-    # con la cookie de la clásica, el index.html de siempre, con o sin web/dist
-    r = local.get("/estudio/", headers=CLASICA, follow_redirects=False)
+def test_el_index_viejo_sirve_el_clasico_con_su_cookie(local):
+    # con la cookie de la clásica, el index.html de siempre, con o sin web/dist; ya no en /estudio/ (ahí vive la principal)
+    r = local.get("/index.html", headers=CLASICA, follow_redirects=False)
     assert r.status_code == 200
     assert r.text == (STATIC / "index.html").read_text(encoding="utf-8")
     r = local.get("/estudio?p=1", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"] == "/estudio/?p=1"
-
-
-def test_estudio_lleva_al_inicio_nuevo(local):
-    r = local.get("/estudio/?p=1", follow_redirects=False)
-    if not _inicio_montado(local):
-        assert r.status_code == 200   # sin la pantalla nueva no se manda a un 404
-        return
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/?p=1"
     assert r.headers["cache-control"] == "no-store"
+
+
+def test_quien_eligio_la_clasica_vuelve_a_ella_desde_el_estudio(local):
+    """La salida de emergencia dura lo que la cookie, no una carga: el login (callback.html, entrar.html), los «← Estudio» de las
+    pantallas clásicas y el editor de cortes llevan a /estudio/, y con la cookie eso es el clásico, con su query. Con o sin web/dist."""
+    for pedido, destino in (("/estudio/", "/index.html"), ("/estudio/?blotato=conectar", "/index.html?blotato=conectar")):
+        r = local.get(pedido, headers=CLASICA, follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"] == destino, pedido
+        assert r.headers["cache-control"] == "no-store", pedido
+    local.cookies.set("ui", "clasica")              # la del navegador: viaja también en el salto
+    r = local.get("/estudio/", follow_redirects=True)
+    assert r.status_code == 200 and r.text == (STATIC / "index.html").read_text(encoding="utf-8")
+    assert len(r.history) == 1, "sin bucle: /index.html con la cookie se sirve"
+
+
+def test_sin_la_principal_compilada_el_estudio_lleva_al_clasico(local):
+    """Un clon sin `npm run build`: /estudio/ no tiene página, y el login y la portada llevan ahí. Lleva al clásico en vez de un 404."""
+    if _raiz_montada(local):
+        pytest.skip("web/dist está compilado: /estudio/ es la principal (lo prueba la de abajo)")
+    r = local.get("/estudio/?blotato=conectar", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/index.html?blotato=conectar"
+
+
+def test_head_contesta_como_get_en_las_entradas_del_estudio(local):
+    """`curl -I` y los verificadores de enlaces: HEAD /estudio da el mismo 302 que GET (antes, 404) y HEAD /index.html el mismo que GET
+    (antes, el 200 del clásico aunque GET redirigía)."""
+    r = local.head("/estudio?p=1", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?p=1" and r.headers["cache-control"] == "no-store"
+    get, head = (m("/index.html?p=1", follow_redirects=False) for m in (local.get, local.head))
+    assert head.status_code == get.status_code and head.headers.get("location") == get.headers.get("location")
+
+
+def test_la_raiz_del_estudio_escrita_en_mayusculas_tambien_llega(local):
+    """«/ESTUDIO» o «/Estudio» (sin barra) no son la ruta de «/estudio»: las corrige el 404 de server/web.py, como «/Estudio/marketing»."""
+    if not _raiz_montada(local):
+        pytest.skip("web/dist no está compilado: sin la principal web.py no corrige nada")
+    for pedido, destino in (("/ESTUDIO", "/estudio/"), ("/Estudio?prompt=x", "/estudio/?prompt=x")):
+        r = local.get(pedido, headers={"Accept": "text/html"}, follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"] == destino, pedido
+    r = local.get("/Estudio?prompt=x", follow_redirects=True)
+    assert r.status_code == 200 and str(r.url).endswith("/estudio/marketing/distrito/imagen/?prompt=x")
+
+
+def test_estudio_es_la_principal_y_el_index_viejo_lleva_a_ella(local):
+    if not _raiz_montada(local):
+        pytest.skip("web/dist no está compilado: sin la principal /estudio/ no se sirve ni se redirige")
+    r = local.get("/estudio/?p=1", follow_redirects=False)
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    assert r.headers["cache-control"] == "no-cache"
+    assert r.text != (STATIC / "index.html").read_text(encoding="utf-8"), "la principal no es el inicio clásico"
+    r = local.get("/index.html?p=1", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/?p=1"
+    assert r.headers["cache-control"] == "no-store"
+    # la cadena de un enlace viejo termina en la principal, sin bucle: /?p=1 → /estudio/?p=1
+    r = local.get("/?p=1", follow_redirects=True)
+    assert r.status_code == 200 and str(r.url).endswith("/estudio/?p=1") and len(r.history) == 1
 
 
 def test_entrar_existe(local):
@@ -114,15 +166,24 @@ def test_entrar_existe(local):
 def test_las_tres_son_publicas_con_cognito(nube):
     # sin token: ninguna de las tres puede pedir sesión, o no habría por dónde entrar
     # (y el aviso de privacidad y los términos se leen ANTES de tener cuenta)
-    for ruta in ("/", "/estudio/", "/entrar", "/callback.html", "/enlaces.js",
-                 "/privacidad", "/terminos", "/legal.css"):
+    for ruta in ("/", "/entrar", "/callback.html", "/enlaces.js", "/privacidad", "/terminos", "/legal.css"):
         r = nube.get(ruta, follow_redirects=False)
-        if ruta == "/estudio/" and _inicio_montado(nube):
-            # el inicio en `todos`: el 302 va a la pantalla nueva, que tampoco
-            # pide sesión; nunca a /entrar
-            assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
-            r = nube.get("/estudio/inicio/", follow_redirects=False)
         assert r.status_code == 200, ruta
+
+
+def test_la_principal_y_las_paginas_por_nivel_son_publicas_con_cognito(nube):
+    """/estudio/ y lo anidado se sirven llenos y sin 302 aunque no haya sesión: el HTML nunca se protege (server/auth.py solo
+    protege /api/ y /editor/); lo que dispara el login es la primera llamada a /api/* de la página (auth.js la manda a /entrar).
+    Hasta E5.2 /estudio/ respondía 302 a /estudio/inicio/; ni eso ni un 302 a /entrar son aceptables ahora."""
+    if not _raiz_montada(nube):
+        pytest.skip("web/dist no está compilado: sin la principal no hay /estudio/ que pedir")
+    for ruta in ("/estudio/", "/estudio/marketing/", "/estudio/marketing/distrito/", "/estudio/marketing/distrito/imagen/"):
+        r = nube.get(ruta, follow_redirects=False)
+        assert r.status_code == 200 and "location" not in r.headers, ruta
+    # lo que sí pide sesión sigue pidiéndola
+    assert nube.get("/api/proyectos").status_code == 401
+    r = nube.get("/editor/mi-video/", headers={"Accept": "text/html"}, follow_redirects=False)
+    assert r.status_code in (302, 307) and r.headers["location"].startswith("/entrar?volver=")
 
 
 def test_sin_sesion_va_a_entrar_con_la_ruta_y_el_query(nube):
@@ -317,6 +378,9 @@ def _destino():
     (None, "/estudio/"),
     ("/editor/x/", "/editor/x/"),
     ("/crear.html?p=abc", "/crear.html?p=abc"),
+    # las páginas por nivel, con su query y su ancla, vuelven tal cual tras el login
+    ("/estudio/marketing/distrito/imagen/?prompt=x", "/estudio/marketing/distrito/imagen/?prompt=x"),
+    ("/estudio/central/distrito/coi/#s", "/estudio/central/distrito/coi/#s"),
     ("https://malo.example/robar", "/estudio/"),
     ("//malo.example/robar", "/estudio/"),
     ("javascript:alert(1)", "/estudio/"),

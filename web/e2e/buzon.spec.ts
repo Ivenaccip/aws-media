@@ -18,7 +18,7 @@ const delPunto = async (page: Page) =>
 
 test('sin el campo (el servidor de hoy) no hay punto', async ({ page }) => {
   await conAvisos(page, undefined);
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await expect(page.locator('#mon-real')).toHaveText('120 créditos ✦');
   await expect(page.locator('#mon-punto')).toBeHidden();
 });
@@ -27,7 +27,7 @@ test('avisos nuevos: el punto llega y suelta una onda; con el mismo número no s
   // lo que arranca: la llegada dura 300 ms y una máquina cargada llega tarde a mirarla
   await oirArranques(page, /^mon-(punto-llega|onda)$/);
   await conAvisos(page, 2, 2, 3);
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   const punto = page.locator('#mon-punto');
   await expect(punto).toBeVisible();
   await expect.poll(() => arranques(page)).toEqual(['mon-punto-llega 300', 'mon-onda 900']);
@@ -45,7 +45,7 @@ test('avisos nuevos: el punto llega y suelta una onda; con el mismo número no s
 
 test('el punto no tapa la píldora ni se encima con ella', async ({ page }) => {
   await conAvisos(page, 1);
-  await page.goto('/estudio/estilos/');
+  await page.goto('/estudio/marketing/avanzado/estilos/');
   await expect(page.locator('#mon-punto')).toBeVisible();
   const [p, pill] = await Promise.all([page.locator('#mon-punto').boundingBox(), page.locator('#mon-pill').boundingBox()]);
   expect(p!.x + p!.width).toBeLessThanOrEqual(pill!.x);
@@ -56,7 +56,7 @@ test.describe('con «reducir movimiento»', () => {
 
   test('el punto aparece quieto', async ({ page }) => {
     await conAvisos(page, 2);
-    await page.goto('/estudio/estilos/');
+    await page.goto('/estudio/marketing/avanzado/estilos/');
     await expect(page.locator('#mon-punto')).toBeVisible();
     expect(await delPunto(page)).toEqual([]);
   });

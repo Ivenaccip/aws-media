@@ -39,6 +39,17 @@ Campos:
 - `asr.*` es procedencia. Una skill que ramifique por `asr.backend` está rota por
   diseño — repórtalo como bug.
 
+## Clips sin transcript (`sin_transcript`)
+
+Una unión de videos (E2) puede traer clips que NO se transcriben, como los clips de IA de 8 s.
+`cuts.json` los marca con `"sin_transcript": true` en su entrada de `clips[]`, y de ellos **no existe
+`<id>.canonical.json`**: el esquema solo admite `asr.backend ∈ {assemblyai, faster-whisper}`, y un
+canónico vacío mentiría sobre su procedencia. `tools/edited_transcript.py` trata a un clip así como
+un clip **sin palabras** (aporta cero palabras, pero su duración sí cuenta en el offset de los clips
+que vienen después). Cualquier OTRO canónico que falte sigue deteniendo la herramienta: la
+tolerancia es solo para la marca. Cada clip de una unión lleva su propio canónico con `source.id`
+igual al id del clip y tiempos locales a su fuente — nunca un canónico «global» de la unión.
+
 ## Por qué existe
 
 - En S1 el esquema vivía en un *docstring* sin versionar

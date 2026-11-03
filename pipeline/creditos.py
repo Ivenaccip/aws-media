@@ -236,13 +236,32 @@ def costo_shorts_analizar(duracion_s: float, con_transcript: bool) -> int:
     return costo
 
 
+def costo_editar(duraciones_a_transcribir_s: list[float]) -> int:
+    """E2: lo que cuesta editar (o unir y editar) uno o varios videos. LA única
+    fuente del cálculo: la cotización, el cobro de `iniciar` y el reintento
+    salen de aquí, jamás de una cifra que venga del navegador.
+
+    La edición (el LLM propone qué quitar) se cobra UNA vez por corrida, no por
+    video. La transcripción se cobra por la SUMA de los minutos de lo que no
+    trae canónico, en bloques de 5 min empezados: 100 s + 100 s son un solo
+    bloque (2 cr), no dos. La lista trae solo las duraciones de lo que SÍ se va
+    a transcribir; vacía = nada que transcribir = solo la edición. Con un solo
+    video es exactamente la fórmula de `costo_editar_sugerencias`."""
+    costo = EDITAR_SUGERENCIAS_CR
+    if duraciones_a_transcribir_s:
+        # `round(…, 6)`: las duraciones medidas traen 3 decimales y su suma binaria puede quedar 1e-13
+        # por encima de un múltiplo exacto de 300 s; sin redondear, `ceil` cobraba un bloque (✦ 2) de más
+        costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(
+            round(sum(float(d) for d in duraciones_a_transcribir_s), 6) / 300)
+    return costo
+
+
 def costo_editar_sugerencias(duracion_s: float, con_transcript: bool) -> int:
     """M14: corrida de sugerencias de corte (LLM) + transcripción si el metraje
-    no trae canónico — misma tarifa de transcripción que shorts (mismo vendor)."""
-    costo = EDITAR_SUGERENCIAS_CR
-    if not con_transcript:
-        costo += SHORTS_TRANSCRIPCION_CR_5MIN * math.ceil(float(duracion_s) / 300)
-    return costo
+    no trae canónico — misma tarifa de transcripción que shorts (mismo vendor).
+    Un solo video: envoltorio de `costo_editar` (lo importan el barredor, el
+    worker y las rutas viejas de /api/editar)."""
+    return costo_editar([] if con_transcript else [duracion_s])
 
 
 def costo_broll_sugerencias() -> int:
@@ -367,3 +386,15 @@ def devolver_unica(creditos: int, referencia: str, user_id: str | None = None) -
     if int(creditos) <= 0:
         raise ValueError(f"una devolución debe ser de al menos 1 crédito, no {creditos!r}")
     return db.abonar_devolucion(user_id or db.usuario_actual(), int(creditos), referencia)
+
+
+def devolver_cargo(creditos: int, referencia: str, user_id: str | None = None) -> int | None:
+    """Devuelve lo cobrado con `referencia` UNA vez por cobro: repetirlo (el reintento de un abono que sí
+    entró pero cuya respuesta se perdió) no abona de nuevo y devuelve None, y la devolución de un cobro
+    POSTERIOR con la misma referencia (la de un «Reintentar» de E2) sí entra. Para las referencias que
+    se repiten legítimamente, donde `devolver_unica` bloquearía la segunda devolución.
+
+    Rechaza cantidades de cero o menos, igual que `devolver_unica`."""
+    if int(creditos) <= 0:
+        raise ValueError(f"una devolución debe ser de al menos 1 crédito, no {creditos!r}")
+    return db.abonar_devolucion_de_cargo(user_id or db.usuario_actual(), int(creditos), referencia)

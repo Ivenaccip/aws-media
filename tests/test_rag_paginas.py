@@ -543,6 +543,8 @@ def _robots_permite(url: str) -> bool:
     ("/automatiza.css", True), ("/sondeo.js", True),
     (f"/automatiza/c/{PID}", False), (f"/automatiza/c/{PID}?utm_source=x", False),
     ("/automatizacion", False), ("/estudio/", False), ("/api/publico/estado", False),
+    # las páginas por nivel del estudio piden sesión: tampoco se indexan (ni la principal ni lo anidado)
+    ("/estudio/marketing/distrito/imagen/", False), ("/estudio/marketing/", False),
 ])
 def test_robots_como_lo_lee_un_buscador(url, pasa):
     assert _robots_permite(url) is pasa

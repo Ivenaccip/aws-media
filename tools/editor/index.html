@@ -27,6 +27,13 @@
   header .tab.active { background: var(--panel2); border-color: #55708f; color: var(--text); }
   span[data-tip] { display: inline-block; }
   #status { color: var(--dim); max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* E2: «Copia de …» bajo el nombre del proyecto. Va en SU PROPIA fila del encabezado (flex: 0 0 100%): en una ventana de 1100 px
+     la fila de arriba solo deja ~170 px libres, y el aviso en la misma fila mandaba los botones a una fila nueva. Una sola línea con
+     puntos suspensivos (el texto completo va en `title`). `:not([hidden])` porque un `display` de autor le ganaría al atributo `hidden`. */
+  /* el título de una copia lo escribe la persona y puede ser largo: se corta con puntos suspensivos para no empujar los botones */
+  #projName.titulo { display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  #copiaDe:not([hidden]) { display: block; flex: 0 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                           color: var(--dim); font-size: 13px; }
   #status.ok { color: #3dd68c; } #status.err { color: #ff8080; }
 
   #main { flex: 1; display: flex; min-height: 0; }
@@ -182,6 +189,7 @@
   <button id="saveBtn" class="tipR" disabled data-tip="Guardar los cortes + correcciones de texto (con respaldo)">💾 Guardar</button>
   <button id="renderBtn" class="primary tipR" data-tip="Renderizar el preview real del corte">🎬 Render</button>
   <button id="hdrPublicar" class="tipR" data-tip="descargar la película o agendarla en tus redes vía Blotato">📤 Publicar</button>
+  <span id="copiaDe" role="note" hidden></span>
 </header>
 
 <div id="main">
@@ -363,6 +371,21 @@ async function init() {
   // aplica servido bajo /editor/{name}/; el server local vive en la raíz)
   $("projName").textContent = j.project || "";
   if (location.pathname.includes("/editor/")) $("migaVolver").style.display = "";
+  // E2: una COPIA (varios videos unidos, o uno editado aparte) lo dice bajo el nombre y de qué original viene: el original no se toca.
+  // Los títulos son texto de la persona: SIEMPRE textContent / title, nunca innerHTML. Un proyecto que no es copia trae `copia: null`.
+  if (Array.isArray(j.copia) && j.copia.length) {
+    const origenes = j.copia.map(d => (d && d.titulo) || "").filter(Boolean);
+    const primero = origenes[0] || "un video";
+    const mas = j.copia.length - 1;
+    $("projName").textContent = j.titulo || j.project || "";
+    $("projName").title = $("projName").textContent;
+    $("projName").classList.add("titulo");
+    $("copiaDe").textContent = mas === 0
+      ? "Copia de «" + primero + "». Tu original no se toca."
+      : "Copia de «" + primero + "» y " + mas + " más. Tus originales no se tocan.";
+    $("copiaDe").title = mas === 0 ? $("copiaDe").textContent : "Originales: " + (origenes.join(" · ") || primero);
+    $("copiaDe").hidden = false;
+  }
   for (const p of MANIFEST.parts) OFFSETS[p.id] = p.offset;
   events = [];
   for (const c of DATA.clips) {

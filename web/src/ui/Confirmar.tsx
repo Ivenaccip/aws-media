@@ -21,10 +21,13 @@ export interface PropsConfirmar {
   alConfirmar: () => void;
   /** Si lo que tenía el foco al abrir ya no está (o no se deja enfocar), aquí. */
   focoDeRespaldo?: RefObject<HTMLElement | null>;
+  /** Dónde vuelve el foco al cerrar, en lugar de a lo que lo tenía al abrir: cuando confirmar lleva a otra parte de la pantalla
+   *  (un formulario que se abre) y devolverlo al botón de antes lo sacaría de ahí. Si no hay nada ahí, se hace lo de siempre. */
+  focoAlCerrar?: RefObject<HTMLElement | null>;
 }
 
 export function Confirmar({
-  abierto, alCambiar, alConfirmar, focoDeRespaldo, ...props
+  abierto, alCambiar, alConfirmar, focoDeRespaldo, focoAlCerrar, ...props
 }: PropsConfirmar) {
   const foco = useFocoDeVuelta(focoDeRespaldo);
   // UI·20: la caja sigue ahí 100 ms tras el primer clic; un segundo clic (o
@@ -49,7 +52,17 @@ export function Confirmar({
     <A.Root open={abierto} onOpenChange={alCambiar}>
       <A.Portal>
         <A.Overlay className={VELO} />
-        <A.Content className={CAJA} inert={!abierto} {...foco}>
+        <A.Content
+          className={CAJA}
+          inert={!abierto}
+          {...foco}
+          onCloseAutoFocus={e => {
+            const destino = focoAlCerrar?.current;
+            if (destino?.isConnected) {
+              e.preventDefault();
+              destino.focus();
+            } else foco.onCloseAutoFocus(e);
+          }}>
           <A.Title className="m-0 font-titulo text-titulo-sm font-bold">{titulo}</A.Title>
           <A.Description className="mb-0 mt-2 text-md text-secundario">{descripcion}</A.Description>
           <div className="mt-6 flex flex-wrap justify-end gap-3">

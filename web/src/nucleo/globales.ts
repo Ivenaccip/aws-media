@@ -36,7 +36,10 @@ declare global {
   interface Window {
     /** El cuadro de avisos de static/trabajos.js (abajo a la derecha). Ver nucleo/avisos.ts. */
     avisos?: {
-      mostrar(texto: string, op?: { tipo?: 'ok' | 'mal' | 'info'; segundos?: number; clave?: string }): number;
+      mostrar(
+        texto: string,
+        op?: { tipo?: 'ok' | 'mal' | 'info'; segundos?: number; clave?: string; accion?: { texto: string; al: () => void } },
+      ): number;
       quitar(idOClave: number | string): void;
     };
     orbe?: {

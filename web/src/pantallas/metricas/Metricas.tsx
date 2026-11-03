@@ -1,6 +1,7 @@
-// /estudio/metricas/ — lo que ya salió por Blotato, lo que no salió y cómo
-// rinde (UI·8.6). No cobra nada. Paridad con static/metricas.html; los avisos
-// viven en la pantalla y no en el cuadro de trabajos.js.
+// /estudio/marketing/blotato/metricas/ — lo que ya salió por Blotato, lo que
+// no salió y cómo rinde (UI·8.6). No cobra nada. Paridad con
+// static/metricas.html; los avisos viven en la pantalla y no en el cuadro de
+// trabajos.js.
 //
 // Dos listas de UNA misma respuesta: «Recientes» (/v2/posts, la única que
 // trae las fallidas) y «Las más vistas» (/v2/analytics). Fallan por separado

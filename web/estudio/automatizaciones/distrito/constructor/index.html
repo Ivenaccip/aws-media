@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Constructor de automatizaciones (Automatizaciones › Distrito › Constructor). Pantalla nueva: no tuvo versión vieja. Privada: auth.js
+       clásico ANTES del módulo y monedero.js para la píldora del saldo, como en las demás (docs/PLAN-UI.md §3). Es gratis y se arma
+       100 % en el navegador: la PANTALLA no manda el flujo a ningún servicio (el código React no hace un solo pedido). Lo que sí piden los
+       scripts de la página, por su cuenta, son /api/auth/config (auth.js), /api/creditos (monedero.js) y /api/trabajos (trabajos.js, que
+       también pone el aviso «Sin conexión. Reintentando…» al cortarse internet aunque el lienzo siga funcionando por completo). El flujo se
+       guarda solo como borrador en este navegador y, al descargarlo, el archivo se arma aquí mismo (docs/migracion/constructor.md).
+       iconos.js y trabajos.js, como en el inicio: trabajos.js trae el cuadro de avisos de abajo a la derecha (`window.avisos`), donde la
+       pantalla dice lo que pasó («Quitamos «X»…» con su «Deshacer»); sin él los avisos caen en una línea de la propia pantalla. iconos.js va
+       antes: sin él el cuadro no tiene íconos y su botón de cerrar es invisible. -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>Estudio de video · Constructor</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/auth.js"></script>
+  <script src="/monedero.js"></script>
+  <script src="/iconos.js"></script>
+  <script src="/trabajos.js"></script>
+</head>
+<body>
+  <div id="raiz"></div>
+  <script type="module" src="/src/pantallas/constructor/principal.tsx"></script>
+</body>
+</html>

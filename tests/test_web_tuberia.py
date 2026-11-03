@@ -135,6 +135,21 @@ def test_ningun_fuente_de_web_importa_pricing_json():
                 pytest.fail(f"{f.relative_to(RAIZ)} importa pricing.json → {linea.strip()}")
 
 
+def test_ningun_modulo_de_web_choca_con_otro_por_las_mayusculas():
+    """Windows y macOS no distinguen mayúsculas: con `Recorrido.tsx` y `recorrido.ts` en la misma carpeta, `import … from
+    './Recorrido'` se resuelve a `recorrido.ts` (la extensión `.ts` se prueba antes que `.tsx`) y el build revienta con
+    «Recorrido is not exported». En Linux (la imagen, el CI) funciona, así que solo un guardián lo ve: dos módulos de una
+    carpeta no pueden llamarse igual salvo por las mayúsculas."""
+    modulos = [p for p in _fuentes_web()
+               if p.suffix in {".ts", ".tsx", ".js"}
+               and not re.search(r"\.(test|spec|d)\.[jt]sx?$", p.name)]
+    por_nombre: dict[tuple[Path, str], set[str]] = {}
+    for p in modulos:
+        por_nombre.setdefault((p.parent, p.stem.lower()), set()).add(p.stem)
+    choques = sorted(f"{d.relative_to(RAIZ)}: {' vs '.join(sorted(n))}" for (d, _), n in por_nombre.items() if len(n) > 1)
+    assert not choques, "módulos que solo difieren por mayúsculas (rompen en Windows): " + "; ".join(choques)
+
+
 def test_eslint_tambien_lo_prohibe():
     cfg = (WEB / "eslint.config.js").read_text(encoding="utf-8")
     assert "**/pricing.json" in cfg and "dangerouslySetInnerHTML" in cfg and "axios" in cfg
@@ -189,16 +204,24 @@ def test_cada_pantalla_se_pinta_con_su_modulo():
     `blocking="render"` la View Transition entre pantallas se cancelaba en
     1 de cada 3 navegaciones (la página nueva se fotografiaba vacía). Vite
     tira el atributo del index.html fuente: lo pone el plugin
-    pintarConElModulo de vite.config.ts, y aquí se mira en el HTML final."""
+    pintarConElModulo de vite.config.ts, y aquí se mira en el HTML final.
+
+    Se recorre TODO el árbol (`rglob`): las páginas por nivel viven a cualquier
+    profundidad (/estudio/marketing/distrito/imagen/) y la principal es
+    estudio/index.html; con `glob("*/index.html")` lo anidado se quedaba sin
+    vigilar. Los assets con hash (estudio/assets/) no son pantallas."""
     if not DIST.is_dir():
         pytest.skip("web/dist no está compilado (npm run build); en la imagen siempre está")
-    paginas = sorted((DIST / "estudio").glob("*/index.html"))
+    estudio = DIST / "estudio"
+    paginas = sorted(p for p in estudio.rglob("index.html")
+                     if p.is_file() and p.relative_to(estudio).parts[0] != "assets")
     assert paginas, "dist sin pantallas"
     for html in paginas:
+        donde = html.parent.relative_to(DIST).as_posix()
         modulos = re.findall(r"<script type=\"module\"[^>]*>", html.read_text(encoding="utf-8"))
-        assert modulos, f"{html.parent.name}: sin módulo"
+        assert modulos, f"{donde}: sin módulo"
         for m in modulos:
-            assert 'blocking="render"' in m, f"{html.parent.name}: {m}"
+            assert 'blocking="render"' in m, f"{donde}: {m}"
 
 
 # ---------------------------------------------------------------------------
@@ -276,13 +299,18 @@ def test_la_app_real_sirve_la_vitrina_si_esta_compilada(monkeypatch):
     for a in assets:
         ra = c.get(a)
         assert ra.status_code == 200 and "immutable" in ra.headers["cache-control"], a
-    # las rutas de siempre siguen donde estaban; el inicio está en `todos`
-    # (server/migracion.py): /estudio/ lleva a la nueva, y con la cookie de la
-    # clásica sigue sirviendo la vieja
+    # la principal ES /estudio/ (el mapa; server/web.py la sirve desde las rutas por nivel). El inicio clásico quedó en
+    # /index.html: el inicio está en `todos` (server/migracion.py), así que redirige a la principal y, con la cookie de la
+    # clásica, sigue sirviendo static/index.html
+    assert (DIST / "estudio" / "index.html").is_file(), "web/dist es de antes de las rutas por nivel: npm run build"
     r = c.get("/estudio/", follow_redirects=False)
-    assert r.status_code == 302 and r.headers["location"] == "/estudio/inicio/"
-    assert c.get("/estudio/", headers={"Cookie": "ui=clasica"},
-                 follow_redirects=False).status_code == 200
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    assert r.headers["cache-control"] == "no-cache"
+    assert "/estudio/assets/" in r.text, "la raíz es la página compilada, no el index.html de static/"
+    r = c.get("/index.html", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/estudio/" and r.headers["cache-control"] == "no-store"
+    r = c.get("/index.html", headers={"Cookie": "ui=clasica"}, follow_redirects=False)
+    assert r.status_code == 200 and r.text == (RAIZ / "static" / "index.html").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

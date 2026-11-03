@@ -1,0 +1,669 @@
+{
+  "formato": 1,
+  "generadoPor": "tests/test_constructor_paridad.py (ACTUALIZAR_DORADO=1 ... -k referencia). No se edita a mano.",
+  "n8n": "2.41.4",
+  "catalogo": {
+    "nodos": {
+      "@n8n/n8n-nodes-langchain.agent": {
+        "nombre": "AI Agent",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3,
+          1.4,
+          1.5,
+          1.6,
+          1.7,
+          1.8,
+          1.9,
+          2,
+          2.1,
+          2.2,
+          3,
+          3.1
+        ],
+        "version_por_defecto": 3.1,
+        "disparador": false,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": []
+      },
+      "@n8n/n8n-nodes-langchain.agentTool": {
+        "nombre": "AI Agent Tool",
+        "versiones": [
+          2.2,
+          3
+        ],
+        "version_por_defecto": 3,
+        "disparador": false,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": []
+      },
+      "@n8n/n8n-nodes-langchain.chatTrigger": {
+        "nombre": "Chat Trigger",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3,
+          1.4,
+          1.5
+        ],
+        "version_por_defecto": 1.5,
+        "disparador": true,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "httpBasicAuth"
+          }
+        ]
+      },
+      "@n8n/n8n-nodes-langchain.lmChatAnthropic": {
+        "nombre": "Anthropic Chat Model",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3,
+          1.4,
+          1.5,
+          1.6
+        ],
+        "version_por_defecto": 1.6,
+        "disparador": false,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "anthropicApi"
+          }
+        ]
+      },
+      "@n8n/n8n-nodes-langchain.lmChatGoogleGemini": {
+        "nombre": "Google Gemini Chat Model",
+        "versiones": [
+          1,
+          1.1,
+          1.2
+        ],
+        "version_por_defecto": 1.2,
+        "disparador": false,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "googlePalmApi"
+          }
+        ]
+      },
+      "@n8n/n8n-nodes-langchain.lmChatOpenAi": {
+        "nombre": "OpenAI Chat Model",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3
+        ],
+        "version_por_defecto": 1.3,
+        "disparador": false,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "openAiApi"
+          }
+        ]
+      },
+      "@n8n/n8n-nodes-langchain.lmChatOpenRouter": {
+        "nombre": "OpenRouter Chat Model",
+        "versiones": [
+          1
+        ],
+        "version_por_defecto": 1,
+        "disparador": false,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "openRouterApi"
+          }
+        ]
+      },
+      "n8n-nodes-base.airtable": {
+        "nombre": "Airtable",
+        "versiones": [
+          1,
+          2,
+          2.1,
+          2.2
+        ],
+        "version_por_defecto": 2.2,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "airtableTokenApi"
+          },
+          {
+            "nombre": "airtableOAuth2Api"
+          }
+        ]
+      },
+      "n8n-nodes-base.emailSend": {
+        "nombre": "Send Email",
+        "versiones": [
+          1,
+          2,
+          2.1
+        ],
+        "version_por_defecto": 2.1,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "smtp"
+          }
+        ]
+      },
+      "n8n-nodes-base.gmail": {
+        "nombre": "Gmail",
+        "versiones": [
+          1,
+          2,
+          2.1,
+          2.2
+        ],
+        "version_por_defecto": 2.2,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "googleApi"
+          },
+          {
+            "nombre": "gmailOAuth2"
+          }
+        ]
+      },
+      "n8n-nodes-base.gmailTrigger": {
+        "nombre": "Gmail Trigger",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3,
+          1.4
+        ],
+        "version_por_defecto": 1.4,
+        "disparador": true,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "googleApi"
+          },
+          {
+            "nombre": "gmailOAuth2"
+          }
+        ]
+      },
+      "n8n-nodes-base.googleDocs": {
+        "nombre": "Google Docs",
+        "versiones": [
+          1,
+          2
+        ],
+        "version_por_defecto": 2,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "googleApi"
+          },
+          {
+            "nombre": "googleDocsOAuth2Api"
+          }
+        ]
+      },
+      "n8n-nodes-base.googleDrive": {
+        "nombre": "Google Drive",
+        "versiones": [
+          1,
+          2,
+          3
+        ],
+        "version_por_defecto": 3,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "googleApi"
+          },
+          {
+            "nombre": "googleDriveOAuth2Api"
+          }
+        ]
+      },
+      "n8n-nodes-base.googleSheets": {
+        "nombre": "Google Sheets",
+        "versiones": [
+          1,
+          2,
+          3,
+          4,
+          4.1,
+          4.2,
+          4.3,
+          4.4,
+          4.5,
+          4.6,
+          4.7
+        ],
+        "version_por_defecto": 4.7,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "googleApi"
+          },
+          {
+            "nombre": "googleSheetsOAuth2Api"
+          }
+        ]
+      },
+      "n8n-nodes-base.httpRequest": {
+        "nombre": "HTTP Request",
+        "versiones": [
+          1,
+          2,
+          3,
+          4,
+          4.1,
+          4.2,
+          4.3,
+          4.4,
+          4.5
+        ],
+        "version_por_defecto": 4.5,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "httpSslAuth"
+          }
+        ]
+      },
+      "n8n-nodes-base.notion": {
+        "nombre": "Notion",
+        "versiones": [
+          1,
+          2,
+          2.1,
+          2.2,
+          3
+        ],
+        "version_por_defecto": 3,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "notionApi"
+          },
+          {
+            "nombre": "notionOAuth2Api"
+          }
+        ]
+      },
+      "n8n-nodes-base.scheduleTrigger": {
+        "nombre": "Schedule Trigger",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3,
+          1.4
+        ],
+        "version_por_defecto": 1.4,
+        "disparador": true,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": []
+      },
+      "n8n-nodes-base.slack": {
+        "nombre": "Slack",
+        "versiones": [
+          1,
+          2,
+          2.1,
+          2.2,
+          2.3,
+          2.4,
+          2.5,
+          2.6,
+          2.7
+        ],
+        "version_por_defecto": 2.7,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "slackApi"
+          },
+          {
+            "nombre": "slackOAuth2Api"
+          }
+        ]
+      },
+      "n8n-nodes-base.telegram": {
+        "nombre": "Telegram",
+        "versiones": [
+          1,
+          1.1,
+          1.2
+        ],
+        "version_por_defecto": 1.2,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "telegramApi"
+          }
+        ]
+      },
+      "n8n-nodes-base.telegramTrigger": {
+        "nombre": "Telegram Trigger",
+        "versiones": [
+          1,
+          1.1,
+          1.2,
+          1.3,
+          1.4,
+          1.5
+        ],
+        "version_por_defecto": 1.5,
+        "disparador": true,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "telegramApi"
+          }
+        ]
+      },
+      "n8n-nodes-base.webhook": {
+        "nombre": "Webhook",
+        "versiones": [
+          1,
+          1.1,
+          2,
+          2.1
+        ],
+        "version_por_defecto": 2.1,
+        "disparador": true,
+        "como_herramienta": false,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "httpBasicAuth"
+          },
+          {
+            "nombre": "httpHeaderAuth"
+          },
+          {
+            "nombre": "jwtAuth"
+          }
+        ]
+      },
+      "n8n-nodes-base.whatsApp": {
+        "nombre": "WhatsApp Business Cloud",
+        "versiones": [
+          1,
+          1.1
+        ],
+        "version_por_defecto": 1.1,
+        "disparador": false,
+        "como_herramienta": true,
+        "oculto": false,
+        "credenciales": [
+          {
+            "nombre": "whatsAppApi"
+          }
+        ]
+      }
+    },
+    "credenciales": {
+      "airtableOAuth2Api": "Airtable OAuth2 API",
+      "airtableTokenApi": "Airtable Personal Access Token API",
+      "anthropicApi": "Anthropic",
+      "gmailOAuth2": "Gmail OAuth2 API",
+      "googleApi": "Google Service Account API",
+      "googleDocsOAuth2Api": "Google Docs OAuth2 API",
+      "googleDriveOAuth2Api": "Google Drive OAuth2 API",
+      "googlePalmApi": "Google Gemini(PaLM) Api",
+      "googleSheetsOAuth2Api": "Google Sheets OAuth2 API",
+      "httpBasicAuth": "Basic Auth",
+      "httpHeaderAuth": "Header Auth",
+      "httpSslAuth": "SSL Certificates",
+      "jwtAuth": "JWT Auth",
+      "notionApi": "Notion API",
+      "notionOAuth2Api": "Notion OAuth2 API",
+      "openAiApi": "OpenAI",
+      "openRouterApi": "OpenRouter",
+      "slackApi": "Slack API",
+      "slackOAuth2Api": "Slack OAuth2 API",
+      "smtp": "SMTP",
+      "telegramApi": "Telegram API",
+      "whatsAppApi": "WhatsApp API"
+    }
+  },
+  "permitidos": {
+    "llm": {
+      "proveedor": "openai",
+      "nodo": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "modelo": "gpt-5.4-mini"
+    },
+    "nodos": [
+      {
+        "tipo": "n8n-nodes-base.manualTrigger",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.scheduleTrigger",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.webhook",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.if",
+        "funcion": "flujo"
+      },
+      {
+        "tipo": "n8n-nodes-base.switch",
+        "funcion": "flujo"
+      },
+      {
+        "tipo": "n8n-nodes-base.merge",
+        "funcion": "flujo"
+      },
+      {
+        "tipo": "n8n-nodes-base.wait",
+        "funcion": "flujo"
+      },
+      {
+        "tipo": "n8n-nodes-base.splitInBatches",
+        "funcion": "flujo"
+      },
+      {
+        "tipo": "n8n-nodes-base.set",
+        "funcion": "datos"
+      },
+      {
+        "tipo": "n8n-nodes-base.splitOut",
+        "funcion": "datos"
+      },
+      {
+        "tipo": "n8n-nodes-base.httpRequest",
+        "funcion": "http_y_codigo"
+      },
+      {
+        "tipo": "n8n-nodes-base.code",
+        "funcion": "http_y_codigo"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.agent",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.openAi",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "n8n-nodes-base.googleSheets",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.gmail",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.telegram",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.chatTrigger",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.formTrigger",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.telegramTrigger",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.gmailTrigger",
+        "funcion": "disparador"
+      },
+      {
+        "tipo": "n8n-nodes-base.noOp",
+        "funcion": "flujo"
+      },
+      {
+        "tipo": "n8n-nodes-base.aggregate",
+        "funcion": "datos"
+      },
+      {
+        "tipo": "n8n-nodes-base.filter",
+        "funcion": "datos"
+      },
+      {
+        "tipo": "n8n-nodes-base.html",
+        "funcion": "datos"
+      },
+      {
+        "tipo": "n8n-nodes-base.limit",
+        "funcion": "datos"
+      },
+      {
+        "tipo": "n8n-nodes-base.respondToWebhook",
+        "funcion": "http_y_codigo"
+      },
+      {
+        "tipo": "n8n-nodes-base.extractFromFile",
+        "funcion": "archivos"
+      },
+      {
+        "tipo": "n8n-nodes-base.convertToFile",
+        "funcion": "archivos"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.chainLlm",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+        "funcion": "ia"
+      },
+      {
+        "tipo": "n8n-nodes-base.googleDrive",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.slack",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.emailSend",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.airtable",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.whatsApp",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.notion",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "n8n-nodes-base.googleDocs",
+        "funcion": "apps"
+      },
+      {
+        "tipo": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+        "funcion": "ia"
+      }
+    ]
+  }
+}

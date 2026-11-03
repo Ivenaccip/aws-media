@@ -1,0 +1,279 @@
+/* La hoja del lienzo del Constructor (molde: pantallas/subir/subir.css). Lo que Tailwind no dice bien:
+   el fondo de puntos, la forma del disparador, los botones de 44 px con su dibujo de 24 o 28 px adentro y
+   los estados de un cuadro. Cinco reglas, las de docs/DISENO.md y del informe 03 §5.3:
+
+   · Todo color sale de un token (`var(--color-…)`): el guardián de paleta lee también esta hoja y no
+     admite ninguno suelto, ni siquiera dentro de un comentario.
+   · Todas las clases llevan el prefijo `cn-`: el CSS es global y otras hojas usan `.anim`, `.clip`, `.seg`.
+   · Todo va dentro de `@layer components`: sin capa, esta hoja le ganaría a las utilidades de Tailwind y
+     el TSX no podría ajustar nada. Con ella, las utilidades siguen ganando.
+   · Nada se mueve: ninguna transición toca `left`, `top` ni `transform` (el cuadro sigue al puntero sin
+     retraso y las flechas son geometría que se recalcula). Solo cambian de color, borde y fondo, en los
+     120 ms de --dur-rapida, y «reducir movimiento» (tokens.css) los vuelve instantáneos.
+   · Las medidas del cuadro (216 × 96) viven en modelo/datos/constantes.ts: el TSX las pone en la caja de
+     cada cuadro y aquí solo están los desplazamientos de lo que cuelga de ella (la ×, los «+», la patita),
+     que son las del mockup (Main.dc.html:279-299). */
+
+@layer components {
+  /* ---------------------------------------------------------------- el marco y el lienzo */
+
+  /* El pozo con scroll propio: la página nunca se ensancha, el lienzo se desplaza ADENTRO. Los puntos van en el
+     marco y se quedan con el contenido (`local`), así llegan hasta el borde aunque haya margen interno; ese
+     margen (8 px, y 20 arriba por la × de un cuadro pegado al borde) deja sitio al aro de foco de 2 + 3 px de lo
+     que quede en el borde, que si no se recortaría. */
+  .cn-marco {
+    background-image: radial-gradient(var(--color-linea) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-attachment: local;
+  }
+
+  .cn-lienzo {
+    position: relative;
+  }
+
+  /* ---------------------------------------------------------------- el cuadro */
+
+  /* La caja de cada cuadro: sobre ella se cuelgan la ×, los «+» y la patita. Sin z-index: no abre un apilamiento. */
+  .cn-caja-nodo {
+    position: absolute;
+  }
+
+  .cn-nodo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    border: 1px solid var(--color-campo);
+    border-radius: var(--radius-boton, 12px);
+    background: var(--color-superficie);
+    color: var(--color-texto);
+    text-align: left;
+    cursor: grab;
+    /* el dedo sobre un cuadro arrastra el cuadro y no desplaza la página; el resto del lienzo conserva su scroll táctil */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      background-color var(--dur-rapida, 120ms) ease-out,
+      border-color var(--dur-rapida, 120ms) ease-out;
+  }
+  .cn-nodo:hover {
+    background: var(--color-elevada);
+  }
+
+  /* La firma de n8n: el disparador es redondo a la izquierda (48 px = la mitad del alto). Es un radio fuera de la
+     escala de la carta (6/10/12/16/píldora): se usa SOLO aquí y está pendiente de que el dueño lo apruebe (D2). */
+  .cn-nodo-trig {
+    border-radius: 48px var(--radius-boton, 12px) var(--radius-boton, 12px) 48px;
+    padding-left: 16px;
+  }
+  .cn-nodo-ag {
+    border-color: var(--color-ambar-hondo);
+  }
+  .cn-nodo-app {
+    background: var(--color-elevada);
+  }
+  /* una herramienta o un ayudante cuelga de otro cuadro: borde discontinuo */
+  .cn-nodo-tool {
+    border-style: dashed;
+  }
+  /* el elegido (o el ancla del modo «conectando»): la forma cambia (borde más fuerte), no solo el tono */
+  .cn-nodo-sel,
+  .cn-nodo-sel:hover {
+    border-color: var(--color-ambar-claro);
+    background: var(--color-activa);
+    box-shadow: 0 0 0 1px var(--color-ambar-hondo);
+  }
+  /* modo «conectando»: a dónde se puede llegar… */
+  .cn-nodo-destino,
+  .cn-nodo-destino:hover {
+    background: var(--color-activa);
+    box-shadow: 0 0 0 2px var(--color-secundario);
+    cursor: pointer;
+  }
+  /* …y a dónde no: el aspecto de lo apagado de la carta (borde discontinuo, fondo de superficie, texto de apoyo), no un velo */
+  .cn-nodo-nulo,
+  .cn-nodo-nulo:hover {
+    border-style: dashed;
+    background: var(--color-superficie);
+    color: var(--color-secundario);
+    cursor: not-allowed;
+  }
+
+  .cn-nodo-ico {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--color-linea);
+    border-radius: var(--radius-medio, 10px);
+    background: var(--color-fondo);
+  }
+  .cn-nodo-txt {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+  .cn-nodo-tipo,
+  .cn-nodo-nom,
+  .cn-nodo-det {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cn-nodo-tipo,
+  .cn-nodo-det {
+    font-size: var(--text-xs, 13px);
+    line-height: 1.3;
+    color: var(--color-secundario);
+  }
+  .cn-nodo-nom {
+    font-size: var(--text-sm, 15px);
+    line-height: 1.4;
+    font-weight: 600;
+  }
+
+  /* ---------------------------------------------------------------- botones de 44 px con un dibujo menor */
+
+  /* El objetivo táctil mide 44 × 44 y es transparente; el dibujo (24 o 28 px) va adentro y es el que lleva el aro
+     de foco: un solo aro, nunca dos. */
+  .cn-b44 {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .cn-b44:focus-visible {
+    outline: none;
+  }
+  .cn-b44:focus-visible .cn-dibujo {
+    outline: 2px solid var(--color-ambar-claro);
+    outline-offset: 3px;
+  }
+
+  .cn-dibujo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-campo);
+    background: var(--color-superficie);
+    color: var(--color-texto);
+    transition:
+      background-color var(--dur-rapida, 120ms) ease-out,
+      border-color var(--dur-rapida, 120ms) ease-out,
+      color var(--dur-rapida, 120ms) ease-out;
+  }
+  .cn-b44:hover .cn-dibujo {
+    border-color: var(--color-secundario);
+    background: var(--color-elevada);
+  }
+  .cn-d28 {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-medio, 10px);
+  }
+  .cn-d24 {
+    width: 24px;
+    height: 24px;
+    color: var(--color-secundario);
+  }
+  .cn-b44:hover .cn-d24 {
+    color: var(--color-texto);
+  }
+  .cn-redondo {
+    border-radius: var(--radius-pildora, 999px);
+  }
+  /* el «+» o la flecha que se están usando: menú abierto, conexión elegida */
+  .cn-act .cn-dibujo {
+    border-color: var(--color-ambar-claro);
+    background: var(--color-aviso-fondo);
+  }
+  .cn-insignia-act .cn-dibujo {
+    color: var(--color-ambar-claro);
+  }
+  /* la insignia de «ida y vuelta» (y de herramienta) es discontinua, como su flecha */
+  .cn-insignia-tool .cn-dibujo {
+    border-style: dashed;
+  }
+
+  /* dónde cuelga cada uno de la caja del cuadro */
+
+  /* La × mide 44 × 44 (el objetivo táctil) pero cuelga de la esquina: 30 × 22 px de ese cuadrado caen DENTRO del cuadro, y tocar o arrastrar
+     desde ahí (a 12 px de la esquina, sobre el cuadro) quitaba el cuadro sin querer. El botón no recibe el puntero: lo reciben solo su
+     dibujo de 24 px (el círculo que se ve, que cruza la esquina) y un pedazo transparente con forma de «L» que cubre lo que queda FUERA del
+     cuadro (arriba de él y a su derecha). Lo demás del cuadrado deja pasar el toque al cuadro: se abre y se arrastra como siempre. */
+  .cn-quitar {
+    left: 186px;
+    top: -22px;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .cn-quitar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 30px 100%, 30px 22px, 0 22px);
+  }
+  .cn-quitar .cn-dibujo {
+    pointer-events: auto;
+  }
+  .cn-mas-stub {
+    left: 248px;
+    top: 26px;
+    z-index: 2;
+  }
+  .cn-mas-asa {
+    left: 216px;
+    top: 26px;
+    z-index: 2;
+  }
+  .cn-mas-tool {
+    left: 86px;
+    top: 124px;
+    z-index: 2;
+  }
+  .cn-insignia {
+    z-index: 3;
+  }
+
+  /* el tramo que une el cuadro con su «+» de la derecha, y el tallo de la patita (el «+» de las herramientas) */
+  .cn-rama {
+    position: absolute;
+    background: var(--color-secundario);
+    pointer-events: none;
+  }
+  .cn-rama-der {
+    left: 216px;
+    top: 47px;
+    width: 40px;
+    height: 2px;
+  }
+  .cn-rama-tool {
+    left: 107px;
+    top: 96px;
+    width: 2px;
+    height: 36px;
+  }
+  .cn-pata-txt {
+    position: absolute;
+    left: 66px;
+    top: 167px;
+    font-size: var(--text-xs, 13px);
+    line-height: 1.3;
+    color: var(--color-secundario);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+}

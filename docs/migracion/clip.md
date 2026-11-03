@@ -51,7 +51,7 @@ ese nombre exacto.
 | `clip.lista.textos_del_usuario_como_texto` | un texto con HTML se lee como texto, nunca se ejecuta |
 | `clip.lista.listo_con_video_detalle_y_recorte` | el clip listo: «8 s · 1 foto tuya · ✦ 30», el aviso de recorte y el video |
 | `clip.lista.error_dice_que_los_creditos_volvieron` | el clip fallido lo dice y aclara que los créditos volvieron |
-| `clip.lista.sin_historial_manda_a_mis_videos` | UI·26 (dueño, 28-sep): ya no hay historial «Tus clips». Los clips ya hechos no se ven aquí: viven en «Mis videos» del inicio, y un enlace lo dice. Reemplaza a `clip.lista.vacia_invita_al_primero` («Todavía no has hecho ninguno.»), que no tiene sentido sin historial |
+| `clip.lista.sin_historial_manda_a_mis_videos` | UI·26 (dueño, 28-sep): ya no hay historial «Tus clips». Los clips ya hechos no se ven aquí: viven en «Mis videos» del inicio, y un enlace lo dice. **22-oct-2026 (rutas por nivel):** el enlace lleva a la página de la caja en la pestaña Video (`/estudio/marketing/distrito/video/`, `urlDeCaja('videos')`) y no a `/estudio/`, que ahora es el mapa «Elige un área», donde no hay «Mis videos». Reemplaza a `clip.lista.vacia_invita_al_primero` («Todavía no has hecho ninguno.»), que no tiene sentido sin historial |
 | `clip.lista.abre_el_de_mis_videos_con_c` | `?c=<id>` (lo pone «Mis videos») abre ese clip con su video; se queda en la URL |
 | `clip.lista.el_abierto_que_ya_no_esta_en_la_lista_se_pide_solo` | si el abierto ya no viene en `/api/clip` (lista solo los más nuevos), se pide con `/api/clip/<id>` |
 | `clip.lista.el_que_termina_con_la_pantalla_abierta_se_queda` | el que se generaba con la pantalla abierta se sigue viendo al quedar listo (o fallar) |

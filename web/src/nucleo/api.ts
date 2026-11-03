@@ -46,9 +46,12 @@ export interface Apartado {
 
 function mensajeDe(estado: number, detalle: unknown): string {
   if (typeof detalle === 'string' && detalle.trim()) return detalle;
-  if (detalle && typeof detalle === 'object' && 'mensaje' in detalle) {
-    const m = (detalle as { mensaje: unknown }).mensaje;
-    if (typeof m === 'string' && m.trim()) return m;
+  if (detalle && typeof detalle === 'object') {
+    // `mensaje` (lo de siempre) o `texto` (COI y Biblioteca: `{codigo, texto, …}`, listo para mostrarse tal cual)
+    for (const llave of ['mensaje', 'texto']) {
+      const m = (detalle as Record<string, unknown>)[llave];
+      if (typeof m === 'string' && m.trim()) return m;
+    }
   }
   if (estado === 0) return 'No hay conexión. Revisa tu internet y vuelve a intentar.';
   // el 422 de validación de FastAPI trae una lista técnica en `detail`: se

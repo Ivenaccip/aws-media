@@ -1,14 +1,15 @@
-// «Edición» en la caja del inicio (E1), la parte que no es React: los textos exactos, las
+// «Edición» en la caja del inicio (E1 y E2), la parte que no es React: los textos exactos, las
 // ideas que rotan como pista del campo y la regla que decide qué dice el botón principal en cada momento.
 //
-// E1 es: UN video subido + lo que la persona quiere + la IA propone los cortes, y se abre
-// el editor de siempre. Unir videos, copiar una creación, fundidos, música y Marcas son
-// piezas posteriores: aquí no hay nada de eso a medias.
+// E1 es: UN video subido + lo que la persona quiere + la IA propone los cortes, y se abre el editor de siempre.
+// E2 suma: elegir videos de «Mis creaciones», subir varios en cola, unirlos en el orden que se elija y editar SIEMPRE una copia
+// (el original no se toca). Fundidos, música y Marcas siguen siendo piezas posteriores: aquí no hay nada de eso a medias.
 //
-// El precio NO se calcula aquí: sale de GET /api/editar/<p>/costo (el servidor mide la
-// duración con ffprobe y sabe si ya hay transcripción). Esta pantalla solo lo enseña.
+// El precio NO se calcula aquí: sale de POST /api/edicion/cotizar (el servidor mide cada video con ffprobe, sabe cuáles ya traen
+// transcripción y aplica las reglas de 1 a 90 min, 12 videos y un solo formato). Esta pantalla solo lo enseña.
 import { nombreDesde } from '../../nucleo/subida';
-import type { CostoEdicion } from './envio';
+import { conLiga, conP, esLigaDeYoutube, RUTA_SHORTS } from '../shorts/logica';
+import type { Cotizacion } from './envio';
 
 /** El nombre del campo, para el lector de pantalla (el h2 de la caja sigue diciendo «¿Qué vamos a crear hoy?»). */
 export const ETIQUETA_TEXTO = 'Cuéntale a la IA qué quieres';
@@ -30,12 +31,14 @@ export function huecoDe(idea: string): string {
 export const EJEMPLO_FIJO = 'Por ejemplo: quítale las muletillas, ponle subtítulos y hazlo vertical para Reels.';
 
 /**
- * Lo que se puede hacer con el video, el chip «Editar ▾» junto al «+» (como «Un video corto ▾» en Video). Por ahora una
- * sola: más adelante ahí mismo irá «De videos a Shorts» (hoy sigue en el menú de la izquierda). El botón principal
- * («Iniciar») es el mismo para todas.
+ * Lo que se puede hacer con el video, el chip «Editar ▾» junto al «+» (como «Un video corto ▾» en Video): editar el
+ * metraje con la IA, o sacarle shorts a un video largo. El botón principal («Iniciar») es el mismo para las dos: lo que
+ * cambia es el cuerpo de la caja y a dónde lleva el botón.
  */
+export type IdModo = 'editar' | 'shorts';
+
 export interface ModoEdicion {
-  id: string;
+  id: IdModo;
   rotulo: string;
   nota: string;
   /** Lo que va a la derecha de su fila en la lista: el precio de esta tarea sale del video, no de una tarifa fija. */
@@ -49,7 +52,16 @@ export const MODOS_EDICION: readonly [ModoEdicion, ...ModoEdicion[]] = [
     nota: 'Sube tu metraje y la IA te propone el corte. Se edita una copia: tu original se queda como está.',
     detalle: 'según el video',
   },
+  {
+    id: 'shorts',
+    rotulo: 'De videos a Shorts',
+    nota: 'Sube un video largo y te daremos los mejores momentos.',
+    detalle: 'según el video',
+  },
 ];
+
+/** El modo con ese id (si no existe, el primero: Editar). */
+export const modoDe = (id: IdModo): ModoEdicion => MODOS_EDICION.find(m => m.id === id) ?? MODOS_EDICION[0];
 
 /**
  * Las ideas que rotan solas como pista dentro del campo (dueño, 14-oct-2026: «Rotan solas como pista»). Antes eran cuatro
@@ -64,6 +76,13 @@ export const IDEAS_EDICION = [
 ] as const;
 
 /**
+ * Con DOS o más videos en la caja la pista suma una primera idea que es de unir (E2). El lienzo proponía «Únelos con fundidos
+ * suaves», pero el motor une con cortes directos y no hace fundidos (decisión D-08 de E2): una pista que promete lo que no hay es
+ * peor que una sobria. Las demás son las de siempre.
+ */
+export const IDEAS_UNION = ['Únelos en este orden y quita los silencios', ...IDEAS_EDICION] as const;
+
+/**
  * Cada cuánto cambia la idea: del momento en que una empieza a salir al momento en que empieza a salir la siguiente. Cuatro
  * segundos son los que hacen falta para leer una frase de cuatro a seis palabras sin que se sienta lenta, y a quien va a
  * escribir se le deja la pista quieta de todos modos (con el foco, con texto, con la pestaña oculta).
@@ -76,8 +95,15 @@ export const PISTA_CADA_MS = 4000;
  */
 export const PISTA_FUNDIDO_MS = 250;
 
-/** Es verdad: el archivo subido jamás se modifica, los cortes son versiones aparte. */
+/** Es verdad: el original jamás se modifica; el servidor copia los videos a un proyecto nuevo y edita ESA copia (E2, R1). */
 export const NOTA_COPIA = 'Se edita una copia. Tu original se queda como está.';
+export const NOTA_COPIA_VARIOS = 'Se edita una copia. Tus originales se quedan como están.';
+
+/** Lo que se dice al lanzar (en el cuadro de abajo a la derecha): una edición sola, o una unión. */
+export const avisoDeExito = (videos: number) =>
+  videos > 1
+    ? `Ya estamos uniendo y editando tus ${videos} videos. Sigue el avance en «Tus trabajos».`
+    : 'Ya estamos editando tu video. Sigue el avance en «Tus trabajos».';
 
 export const AVISO_SIN_VIDEO = 'Primero agrega el video: pulsa el «+» o arrástralo a la caja.';
 export const AVISO_OCUPADO = 'Ya hay un trabajo en curso. Cuando termine puedes empezar otro.';
@@ -89,6 +115,56 @@ export const NOTA_CALCULANDO = 'Estamos calculando el precio. Hasta entonces no 
 export const NOTA_SIN_PRECIO = 'No pudimos calcular el precio. Toca «Iniciar» para intentarlo otra vez.';
 /** Cuando el servidor no manda su propio aviso pero tampoco deja editar. */
 export const AVISO_NO_SE_PUEDE = 'Por ahora no podemos editar este video.';
+
+// «De videos a Shorts» (el segundo modo del chip). Aquí no se cobra nada ni se calcula ningún precio: «Iniciar» lleva a la
+// pantalla de Shorts (/estudio/shorts/), que es la que muestra cada precio y cobra con su propio botón. La caja solo junta
+// la fuente (una liga de YouTube o un video subido) y se la entrega a esa pantalla.
+
+/** El nombre del campo de la liga, para el lector de pantalla y para el rótulo que no se ve. */
+export const ETIQUETA_LIGA = 'Liga de YouTube';
+export const HUECO_LIGA = 'Pega la liga de YouTube';
+export const APOYO_SHORTS = 'Sube un video largo o pega la liga de YouTube y te proponemos los mejores momentos como shorts.';
+export const AVISO_SIN_FUENTE = 'Primero pega la liga de YouTube o agrega el video con el «+».';
+/** Sin nada a donde ir (la caja vacía, el video subiendo o una liga que no es de YouTube): lo único que se puede prometer es que subir es gratis. */
+export const NOTA_SHORTS_VACIA = 'Subirlo no cuesta nada: el precio aparece cuando termina de subir.';
+/** Con una fuente que sirve: «Iniciar» no cobra, y quien lo pulsa tiene que saber que cambia de pantalla. */
+export const NOTA_SHORTS_SIGUE = 'Te llevamos a Shorts: ahí ves el precio antes de que se cobre algo.';
+
+/** Qué muestra y qué hace el botón principal en Shorts. Es el mismo botón que en Editar: aquí solo cambia lo que dice. */
+export type EstadoBotonShorts =
+  /** Ni liga ni video: «Iniciar» sigue ámbar y explica qué falta. */
+  | { tipo: 'sin_fuente' }
+  /** El video aún sube: ocupado, y el clic avisa que hay un trabajo en curso. */
+  | { tipo: 'subiendo' }
+  /** Hay una liga o un video ya subido: «Iniciar» navega. */
+  | { tipo: 'listo' };
+
+/**
+ * Con un video en la caja manda él (es lo que se ve: su tarjeta), y la liga que hubiera se queda escrita pero no cuenta.
+ * La liga solo se mira sin espacios: no se decide aquí si es de YouTube (eso lo dice «Iniciar», junto al campo).
+ */
+export function estadoDeShorts({ video, liga }: { video: { fase: FaseVideo } | null; liga: string }): EstadoBotonShorts {
+  if (video) return video.fase === 'subiendo' || video.fase === 'en_cola' ? { tipo: 'subiendo' } : { tipo: 'listo' };
+  return liga.trim() ? { tipo: 'listo' } : { tipo: 'sin_fuente' };
+}
+
+/**
+ * La nota de debajo de la caja de Shorts. «Te llevamos a Shorts» es una promesa y solo se cumple si «Iniciar» navega: con un video
+ * subido (manda él) o con una liga que de verdad es de YouTube. Una liga que no lo es (la que aún se escribe, o la que «Iniciar» acaba
+ * de rechazar junto al campo) no lleva a ningún lado, y ahí la nota no puede decir lo contrario de lo que el campo dice.
+ */
+export function notaDeShorts({ video, liga }: { video: { fase: FaseVideo } | null; liga: string }): string {
+  const navega = estadoDeShorts({ video, liga }).tipo === 'listo' && (video !== null || esLigaDeYoutube(liga.trim()));
+  return navega ? NOTA_SHORTS_SIGUE : NOTA_SHORTS_VACIA;
+}
+
+/**
+ * A dónde lleva «Iniciar» en Shorts: el video ya subido abre su proyecto (`?p=`) y una liga queda puesta en «Importar de
+ * YouTube» (`?url=`), sin importar ni cobrar. Lo que se ponga en la URL lo lee la pantalla de Shorts (shorts/logica.ts).
+ */
+export function destinoShorts(fuente: { proyecto: string } | { liga: string }): string {
+  return RUTA_SHORTS + ('proyecto' in fuente ? conP(fuente.proyecto) : conLiga(fuente.liga));
+}
 
 /**
  * Lo que de verdad le llega a la IA: el texto como lo deja el servidor (server/editar_api.py: limpiar_instruccion). Sin
@@ -132,24 +208,33 @@ export function tamano(bytes: number): string {
   return Math.max(1, Math.round(bytes / 1e6)) + ' MB';
 }
 
-/** El video de la caja, de la subida a tener precio. */
+/** Dónde va un video de la caja: esperando su turno para subir, subiendo, o ya en el servidor. El precio no es del video sino de
+ *  todo el conjunto (EstadoCotizacion). */
 export type FaseVideo =
+  /** Elegido en el selector junto con otros: espera a que termine el de antes (se suben de uno en uno). */
+  | 'en_cola'
   /** Firmando, subiendo o confirmando: aún no existe el proyecto completo en el servidor. */
   | 'subiendo'
-  /** Ya subió: se le pregunta al servidor cuánto dura y cuánto cuesta. */
-  | 'calculando'
-  | 'listo'
+  | 'listo';
+
+/** El precio de TODO lo que hay en la caja. Lo calcula el servidor cada vez que cambia el conjunto (agregar o quitar; no reordenar). */
+export type EstadoCotizacion =
+  /** Nada que cotizar todavía (caja vacía, o aún se sube). */
+  | { fase: 'ninguna' }
+  | { fase: 'calculando' }
   /** El precio no llegó (red caída…): tocar «Iniciar» lo vuelve a pedir. */
-  | 'sin_precio';
+  | { fase: 'sin_precio' }
+  | { fase: 'lista'; datos: Cotizacion };
 
 /** Qué muestra y qué hace el botón principal. UN botón, siempre el mismo elemento: aquí solo cambia lo que dice. */
 export type EstadoBoton =
   /** Sin video: «Iniciar» sin precio. */
   | { tipo: 'sin_video' }
+  /** Algún video sube o espera su turno. */
   | { tipo: 'subiendo' }
   | { tipo: 'calculando' }
   | { tipo: 'sin_precio' }
-  /** El servidor puso un aviso (fuera de 1–90 min, falta la transcripción en nube…): sin precio, y el foco va al «+». */
+  /** El servidor puso un aviso (`bloqueo.texto`: uno solo y corto, formatos distintos, más de 90 min…): sin precio, y el foco va al «+». */
   | { tipo: 'fuera'; aviso: string }
   /** Con video y precio, pero sin texto: apagado, y el foco va al campo. */
   | { tipo: 'sin_texto'; creditos: number }
@@ -157,7 +242,11 @@ export type EstadoBoton =
   | { tipo: 'listo'; creditos: number };
 
 export interface EntradaBoton {
-  video: { fase: FaseVideo; costo: CostoEdicion | null } | null;
+  /** Cuántos videos hay en la caja (los que esperan o suben cuentan). */
+  videos: number;
+  /** Alguno sube o espera su turno. */
+  subiendo: boolean;
+  cotizacion: EstadoCotizacion;
   /** Hay algo escrito (sin contar espacios). */
   hayTexto: boolean;
   /** El saldo que conoce monedero.js; null = aún no se sabe y nadie se bloquea por él. */
@@ -165,24 +254,25 @@ export interface EntradaBoton {
 }
 
 /**
- * En este orden: sin video, subiendo, calculando, sin precio, aviso del servidor, sin texto, sin saldo, listo. El
- * orden importa: un video fuera de rango no se enciende aunque haya texto, y sin texto no se pide el saldo.
+ * En este orden: sin video, subiendo (o en cola), calculando, sin precio, aviso del servidor, sin texto, sin saldo, listo. El
+ * orden importa: un conjunto que el servidor no deja editar no se enciende aunque haya texto, y sin texto no se pide el saldo.
  */
-export function estadoDelBoton({ video, hayTexto, saldo }: EntradaBoton): EstadoBoton {
-  if (!video) return { tipo: 'sin_video' };
-  if (video.fase === 'subiendo') return { tipo: 'subiendo' };
-  if (video.fase === 'calculando') return { tipo: 'calculando' };
-  const costo = video.costo;
-  if (video.fase === 'sin_precio' || !costo) return { tipo: 'sin_precio' };
-  if (costo.aviso || !costo.backend_listo) return { tipo: 'fuera', aviso: costo.aviso || AVISO_NO_SE_PUEDE };
+export function estadoDelBoton({ videos, subiendo, cotizacion, hayTexto, saldo }: EntradaBoton): EstadoBoton {
+  if (videos === 0) return { tipo: 'sin_video' };
+  if (subiendo) return { tipo: 'subiendo' };
+  if (cotizacion.fase === 'calculando') return { tipo: 'calculando' };
+  if (cotizacion.fase !== 'lista') return { tipo: 'sin_precio' };
+  const { bloqueo, creditos } = cotizacion.datos;
+  // el aviso del servidor se enseña tal cual (es el mismo texto que daría «Iniciar» si se intentara)
+  if (bloqueo) return { tipo: 'fuera', aviso: bloqueo.texto || AVISO_NO_SE_PUEDE };
   // un precio que no es un entero (null, texto, NaN…) no se enseña ni se deja cobrar: «Iniciar ✦ 0» o «✦ NaN» mentiría
   // sobre dinero. Es como si el precio no hubiera llegado: tocar «Iniciar» lo vuelve a pedir
-  if (!Number.isInteger(costo.creditos) || costo.creditos < 0) return { tipo: 'sin_precio' };
-  if (!hayTexto) return { tipo: 'sin_texto', creditos: costo.creditos };
-  if (saldo !== null && saldo < costo.creditos) {
-    return { tipo: 'sin_saldo', creditos: costo.creditos, faltan: costo.creditos - saldo };
+  if (typeof creditos !== 'number' || !Number.isInteger(creditos) || creditos < 0) return { tipo: 'sin_precio' };
+  if (!hayTexto) return { tipo: 'sin_texto', creditos };
+  if (saldo !== null && saldo < creditos) {
+    return { tipo: 'sin_saldo', creditos, faltan: creditos - saldo };
   }
-  return { tipo: 'listo', creditos: costo.creditos };
+  return { tipo: 'listo', creditos };
 }
 
 /**

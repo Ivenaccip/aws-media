@@ -1,8 +1,8 @@
-// /estudio/estilos/ — la copiadora de estilos (UI·8.2). Cobra una cosa,
-// «Analizar ✦ N». Paridad con static/estilos.html y un arreglo de dinero: la
-// vieja volvía a encender «Analizar» en cada vuelta del sondeo, también con
-// el cobro todavía en vuelo (estilos.html:157). Aquí el candado es el de
-// <BotonCobro>, que no lo toca nadie más.
+// /estudio/marketing/avanzado/estilos/ — la copiadora de estilos (UI·8.2).
+// Cobra una cosa, «Analizar ✦ N». Paridad con static/estilos.html y un
+// arreglo de dinero: la vieja volvía a encender «Analizar» en cada vuelta del
+// sondeo, también con el cobro todavía en vuelo (estilos.html:157). Aquí el
+// candado es el de <BotonCobro>, que no lo toca nadie más.
 import { useId, useState } from 'react';
 
 import { BotonCobro } from '../../marca/BotonCobro';

@@ -25,6 +25,7 @@ import { Boton } from '../../ui/Boton';
 import { Icono } from '../../ui/Icono';
 import { Interruptor } from '../../ui/Interruptor';
 import { unir } from '../../ui/unir';
+import { ANCHO_DE_ACCION } from './medidas';
 import { PREDETERMINADO, sufijo, type Grupo, type Modelo, type Tarea } from './modelos';
 
 export interface Eleccion {
@@ -201,7 +202,11 @@ export function MenuModelo({ tarea, grupos, elegido, alElegir, precio, alCrear, 
           setAviso('');
           setAbierto(a => !a);
         }}
-        className="flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 rounded-medio border border-linea bg-transparent px-3.5 text-sm whitespace-nowrap text-texto hover:border-campo min-[640px]:min-h-11 min-[640px]:w-auto min-[640px]:justify-start"
+        // `ANCHO_DE_ACCION` es el mismo mínimo que el de «Iniciar» (Edición); con más sitio del que pide el rótulo, la flecha se va al borde
+        className={unir(
+          'flex min-h-12 w-full cursor-pointer items-center justify-between gap-2 rounded-medio border border-linea bg-transparent px-3.5 text-sm whitespace-nowrap text-texto hover:border-campo min-[640px]:min-h-11 min-[640px]:w-auto',
+          ANCHO_DE_ACCION,
+        )}
       >
         <span className="flex min-w-0">
           <span className="min-w-0 overflow-hidden text-ellipsis">

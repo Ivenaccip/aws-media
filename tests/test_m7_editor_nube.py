@@ -253,7 +253,14 @@ def test_render_task_ok_sube_y_fija_listo(tarea, monkeypatch):
     import subprocess
     class Ok:
         returncode, stdout, stderr = 0, "wrote preview\n", ""
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Ok())
+
+    class Sonda(Ok):
+        # E2: antes de subirlo, el render pasa la compuerta ffprobe v:0 == a:0 (CLAUDE.md);
+        # este preview cuadra. Lo que pasa cuando NO cuadra: tests/test_e2_render_gate.py.
+        stdout = json.dumps({"streams": [{"codec_type": "video", "duration": "10.0"},
+                                         {"codec_type": "audio", "duration": "10.0"}]})
+    monkeypatch.setattr(subprocess, "run",
+                        lambda cmd, **k: Sonda() if cmd[0] == "ffprobe" else Ok())
     assert render_task.main("u1", "gen-abc", "tight") == 0
     # la última versión de Postgres pisó el cuts.json bajado de S3
     cuts = tmp_path / "videos" / "gen-abc" / "work" / "analysis" / "cuts.json"

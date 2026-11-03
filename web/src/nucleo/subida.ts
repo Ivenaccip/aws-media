@@ -28,8 +28,10 @@ export const firmar = (proyecto: string, archivo: File) =>
     cuerpo: { proyecto, archivo: archivo.name, content_type: archivo.type || 'video/mp4', bytes: archivo.size },
   });
 
-export const confirmar = (proyecto: string, key: string) =>
-  pedir<Subida>('/api/media/confirmar', { cuerpo: { proyecto, key } });
+/** `nombre`: el archivo tal como la persona lo vio («Mi Entrevista (1).mp4»). El de la key va saneado («Mi_Entrevista_1.mp4») y de él
+ *  saldría el título de lo que se haga con el video; el servidor lo guarda aparte. Opcional: quien no lo manda, no cambia. */
+export const confirmar = (proyecto: string, key: string, nombre?: string) =>
+  pedir<Subida>('/api/media/confirmar', { cuerpo: nombre ? { proyecto, key, nombre } : { proyecto, key } });
 
 /** La misma regla que el backend (_validar_nombre): el 422 llega ANTES de subir. */
 export function nombreValido(nombre: string): boolean {

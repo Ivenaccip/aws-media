@@ -1,0 +1,28 @@
+/* El «Deshacer» del cuadro de avisos de abajo a la derecha (static/trabajos.js).
+
+   Ese cuadro pinta el botón de un aviso con las clases `btn btn-sec` de carta.css, que las pantallas nuevas no cargan: sin esto el
+   «Deshacer» sale como texto suelto de 36 px. Aquí se le da el aspecto de un botón secundario de la carta y los 44 px de alto.
+
+   Va en su propia hoja y FUERA de `@layer`: el CSS del cuadro no tiene capa y una regla con capa siempre pierde contra una sin capa; la
+   especificidad (id + tres clases) le gana a `#bandeja .bj-aviso .btn`. No va en constructor.css porque la prueba de esa hoja exige que
+   todo vaya en la capa `components` y con prefijo `cn-`. Si la regla sube a tokens.css (como `#bandeja .ico`), se puede quitar de aquí.
+   Todo color sale de un token. */
+#bandeja .bj-aviso .btn.btn-sec {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  margin-bottom: 4px;
+  border: 1px solid var(--color-campo);
+  border-radius: var(--radius-boton, 12px);
+  background: transparent;
+  color: var(--color-texto);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+#bandeja .bj-aviso .btn.btn-sec:hover {
+  border-color: var(--color-secundario);
+  background: var(--color-elevada);
+}

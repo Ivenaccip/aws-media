@@ -60,3 +60,5 @@ boto3==1.43.86          # Data API de Aurora (C2) — las imágenes de contenedo
 # --- tests
 pytest==9.1.1
 pytest-asyncio==1.4.0
+psycopg[binary]==3.3.6  # solo la variante Postgres de tests/test_clases_admin.py y test_coi_postgres.py
+                        # (COI_PG_SOCK). Sin él esas pruebas se omiten; el resto del archivo corre igual

@@ -74,14 +74,42 @@ def _sanear_archivo(archivo: str) -> str:
     return raiz + ext.lower()
 
 
+COPIA_NO = "Esa es una edición: no se le pueden agregar videos."
+
+
+def _es_copia(doc) -> bool:
+    """¿Es la COPIA editable de E2 (`ed-xxxx`)? Su doc nace con `copia` (y `editar.copia`) de forma
+    atómica, `crear_copia_editor`."""
+    return isinstance(doc, dict) and (isinstance(doc.get("copia"), dict)
+                                      or (isinstance(doc.get("editar"), dict) and doc["editar"].get("copia") is True))
+
+
 def _reservar(proyecto: str) -> None:
     """El proyecto tiene que ser del usuario o estar libre, y queda suyo.
 
     Va ANTES de firmar: si solo se comprobara al confirmar, dos cuentas que
     eligen «video-1» a la vez subirían a la misma key y una pisaría el video
-    de la otra durante la subida."""
-    if not db.reservar_nombre_editor(db.usuario_actual(), proyecto):
+    de la otra durante la subida.
+
+    Una COPIA de E2 es un proyecto propio de la persona, pero no admite subidas: su `subidas` tiene que
+    seguir vacío (regla crítica del contrato E2, §4.3: `shorts_api._fuente` la tomaría por un original) y
+    escribirle el doc dejaba revivir una copia que el worker ya había cerrado."""
+    usuario = db.usuario_actual()
+    if not db.reservar_nombre_editor(usuario, proyecto):
         raise HTTPException(409, str(db.NombreAjeno(proyecto)))
+    if db.backend() == "postgres" and _es_copia(db.cargar_proyecto_editor(usuario, proyecto)):
+        raise HTTPException(409, COPIA_NO)
+
+
+def _nombre_original(nombre) -> str | None:
+    """El nombre del archivo como la persona lo vio («Mi Entrevista (1).mp4»), limpio para guardarse: sin
+    ruta, sin caracteres de control o invisibles, espacios normales y 120 caracteres como mucho. El de la
+    key está saneado por `_sanear_archivo` y ya no se parece."""
+    if not isinstance(nombre, str):
+        return None
+    base = os.path.basename(nombre.replace("\\", "/"))
+    limpio = " ".join("".join(c for c in base if c.isprintable()).split())[:120]
+    return limpio or None
 
 
 class PresignIn(BaseModel):
@@ -94,6 +122,7 @@ class PresignIn(BaseModel):
 class ConfirmarIn(BaseModel):
     proyecto: str
     key: str
+    nombre: str | None = None        # el nombre que la persona vio; opcional (INT-05)
 
 
 @router.get("/config")
@@ -181,13 +210,21 @@ def confirmar(body: ConfirmarIn):
         raise HTTPException(404, "la subida no está en S3 (¿el PUT terminó bien?)")
 
     usuario = db.usuario_actual()
-    doc = db.cargar_proyecto_editor(usuario, proyecto) or {"subidas": []}
+    doc = db.cargar_proyecto_editor(usuario, proyecto)
     # La `cdn` NO se persiste: ahora es una URL firmada y caduca. Se guarda la
     # clave, que es lo permanente, y la URL se arma al entregar.
     subida = {"key": body.key, "archivo": body.key.rsplit("/", 1)[-1],
               "bytes": head["ContentLength"]}
-    doc["subidas"] = [s for s in doc.get("subidas", []) if s["key"] != body.key] + [subida]
-    db.guardar_proyecto_editor(usuario, proyecto, json.dumps(doc, ensure_ascii=False))
+    original = _nombre_original(body.nombre)
+    if original:
+        subida["nombre_original"] = original
+    if doc is None:
+        db.guardar_proyecto_editor(usuario, proyecto, json.dumps({"subidas": [subida]}, ensure_ascii=False))
+    else:
+        # solo la llave `subidas` (jsonb_set), no el doc entero: un upsert del doc que se leyó hace un
+        # momento pisaba lo que otro cerró entretanto (el `listo` de una corrida, sus flags)
+        subidas = [s for s in doc.get("subidas", []) if s.get("key") != body.key] + [subida]
+        db.fijar_campo_editor(usuario, proyecto, "subidas", json.dumps(subidas, ensure_ascii=False))
     return {**subida, "cdn": _cdn(body.key)}
 
 

@@ -216,7 +216,8 @@ venv/Scripts/python tools/creditos.py movimientos --user correo@ejemplo.com -n 2
 - `--tipo` ∈ `cortesia | compra | ajuste` (ajuste acepta negativos).
 - Tarifa (de `tools/tarifas.json`, única fuente): preparar película 10 cr,
   producir 3 cr/s, imagen 2 cr (pro 10), shorts transcripción 2 cr/5 min +
-  análisis 2 + render 2 por short, Editar sugerencias 2 cr.
+  análisis 2 + render 2 por short, Editar sugerencias 2 cr (la regla de cuando se
+  juntan varios videos está en «Edición con copia y unión», más abajo).
   Packs Stripe: 100/$1.99 · 550/$9.99 · 1200/$18.00 dólares — los Payment
   Links DEBEN costar el monto exacto (el webhook mapea por monto).
 
@@ -260,10 +261,151 @@ así que no hay nada que sincronizar con Langfuse. Y le recuerda que este motor 
 (vertical, subtítulos, música, títulos, fundidos) NO se aplica y sale como duda
 en el editor, con un texto que empieza por «No aplicado:» — es lo esperado, no
 un fallo. Pendientes: hoy, si lo único que devuelve la IA son esas dudas, cuenta
-como entrega (hay `flags`) y no se devuelve nada; y el servidor aún no tiene
-candado global por cuenta (`sugerir` solo bloquea por proyecto, con 409), así
-que dos proyectos distintos pueden correr a la vez y por ahora la caja lo evita
-del lado de la web.
+como entrega (hay `flags`) y no se devuelve nada. Y el candado por cuenta ya
+existe, pero solo para las copias de E2 (ver «Edición con copia y unión», más
+abajo): la ruta vieja `sugerir` sigue bloqueando únicamente por proyecto, con 409,
+así que `static/e1.html` y `/estudio/subir/` pueden correr dos proyectos a la
+vez. La caja del inicio ya no usa esa ruta.
+
+### Edición con copia y unión (E2)
+
+Desde la etapa E2 la pestaña Edición de la caja del inicio puede **elegir videos
+de Mis creaciones, subir varios y unirlos**, y siempre trabaja sobre una **copia**.
+Cuatro rutas nuevas, todas en `server/edicion_api.py` y todas solo de nube:
+
+| ruta | qué hace | cobra |
+|---|---|---|
+| `GET /api/edicion/elegibles` | la lista de la hoja «Agregar videos»: películas, cuentos, clips y ediciones, con duración y formato medidos | no |
+| `POST /api/edicion/cotizar` | el precio de varios videos y, si algo no cuadra, el `bloqueo` con su texto | no |
+| `POST /api/edicion/iniciar` | hace la copia, cobra y lanza | sí |
+| `POST /api/edicion/<copia>/reintentar` | la misma copia otra vez | sí |
+
+**Qué se copia y qué no.** La copia es un proyecto nuevo (`ed-<8 hex del pedido>`,
+por ejemplo `ed-9f1c0a7b`) con su título («El tren de papel + 2 más»). El worker
+copia cada original de servidor a servidor, dentro del bucket, a
+`videos/<copia>/clips/c01.mp4`, `c02…`; **el original no se toca ni se escribe jamás**
+(solo se lee), y la copia no lleva `pelicula.mp4`, ni `flags.generado`, ni
+`origen.generador`, ni subidas: de lo contrario subtítulos, publicar y render la
+confundirían con una película sin editar. La copia duplica los bytes de los
+originales; el ciclo de vida del bucket la enfría a los 10 días como todo lo demás y
+no se borra nada. Las copias **no se vuelven a unir** en E2 (salen apagadas en la
+hoja con «Ya es una edición»).
+
+**Qué acepta el servidor.** Un video se nombra con una referencia,
+`proyecto:<nombre>` o `clip:<id>`, y el servidor averigua todo lo demás. Jamás se
+acepta una `key` de S3, un precio ni unas duraciones del navegador; un video que no
+es de la persona responde 404 igual que uno que no existe.
+
+**Reglas de negocio** (todas del lado del servidor y ANTES de cobrar):
+
+- Un video SOLO: de **1 a 90 min** (la regla de siempre; `MIN/MAX_DURACION_S` de
+  `server/shorts_api.py` no se tocaron). Al **unir 2 o más** no hay mínimo por clip.
+- El total de lo elegido no pasa de **90 min**, ni de **15 GB**, ni de **12 videos**.
+- Horizontales y verticales **no se mezclan**; el formato se mide con ffprobe con la
+  rotación del teléfono aplicada. El mismo video no entra dos veces.
+- El precio es **la edición UNA vez** (`editar.sugerencias` de `tools/tarifas.json`)
+  **más la transcripción** (`shorts.transcripcion_por_5min`) por la **suma de
+  minutos** de lo que no trae transcript, en bloques de 5 min empezados:
+  100 s + 100 s sin transcript son un solo bloque (la suma se redondea a
+  milisegundos antes de contar bloques: una suma que cae justo en 300 s no cobra
+  uno de más). Los clips de IA no se transcriben (se unen tal cual) **ni los videos
+  sin pista de audio** (el worker no llama a la transcripción sin sonido, así que
+  cobrarlos sería pagar un servicio que no ocurre). Con un video es la fórmula de
+  siempre (`creditos.costo_editar_sugerencias`, ahora un envoltorio de `creditos.costo_editar`).
+- Los nombres de proyecto que acepta una `ref` son los del resto del producto
+  (`storage.ruta_proyecto`: letras y cifras de cualquier alfabeto, `-` y `_`, hasta
+  255 caracteres): «presentación-final» se lista, se cotiza y se inicia.
+- El transcript de un proyecto se acepta solo si su duración coincide con la del
+  video (margen de 1 s o 2 %): uno que se quedó de otro archivo con el mismo nombre
+  no abarata el precio.
+
+**El dinero.** La referencia del cobro y de toda devolución es **siempre
+`editar-sugerir:<copia>`** (la lee `worker/barredor.py`). `iniciar` toma el candado
+(INSERT de la copia) **antes** de cobrar y cobra **antes** de lanzar; cada camino de
+fallo devuelve lo cobrado y lo deja escrito en `doc.editar.devueltos` (que es lo que
+lee la bandeja para decir «Te devolvimos ✦ N»):
+
+| fallo | quién devuelve |
+|---|---|
+| sin saldo | nadie: no se cobró; la copia sin cobrar se borra |
+| no hay capacidad en Fargate | nadie: `iniciar` y `reintentar` lo preguntan **antes** de cobrar (`jobs.hay_sitio`, falla abierto) y responden 503 sin copia ni cargo |
+| no se pudo lanzar (o la capacidad se agotó entre la pregunta y `start_execution`) | el API, en la misma petición (502 / 503); la copia queda marcada `no_lanzada` y ni la bandeja ni «Mis creaciones» ni la hoja la enseñan |
+| el worker truena | el worker, tras ganar el claim |
+| la tarea muere antes de correr | el barredor |
+| la petición murió entre cobrar y anotar el cobro | `_liberar_caducadas` (ver abajo) |
+
+El **claim** (`db.reclamar_fallo_editor`, un UPDATE condicionado a `corriendo`) es
+lo que impide devolver dos veces: gana uno solo.
+
+**El abono es idempotente por cobro.** `db.abonar_creditos` y `db.cobrar_creditos` son cada
+uno UNA sentencia (el saldo y el libro mayor entran los dos o ninguno). El API devuelve con
+`creditos.devolver_cargo`, que solo abona si lo ÚLTIMO del libro para `editar-sugerir:<copia>`
+es un cargo: repetir un abono que sí entró (su respuesta se perdió) no abona dos veces, y la
+devolución del cobro de un «Reintentar» (misma referencia) sí entra. Se intenta hasta 3 veces.
+**Si el monedero no responde en ninguna**, el reclamo ya está puesto y nadie más devolvería: la
+deuda queda ANOTADA en el doc (`editar.devolucion_pendiente` = cuántos ✦ y `editar.devolucion_api = true`)
+y se salda en la siguiente llamada de la persona: `iniciar`, `reintentar` (que se niega con 409
+hasta saldarla, para no cobrar de nuevo sin haber devuelto) o `GET /api/edicion/proyectos` (lo primero
+que se pide al abrir la app; ahí también se sueltan las copias huérfanas caducadas, sin esperar a que la
+persona vuelva a editar). Mientras se debe, la bandeja dice «Estamos devolviendo tus ✦ N» y no
+ofrece «Reintentar». Para ver lo que se debe:
+
+```sql
+SELECT user_id, nombre, doc #>> '{editar,devolucion_pendiente}' AS debe
+FROM proyectos_editor WHERE doc #>> '{editar,devolucion_api}' = 'true';
+```
+
+El cierre de una corrida que ya se reclamó (`db.cerrar_editor_si_error`) solo escribe si la copia
+sigue en `error` y con el mismo `inicio`: si la persona pulsó «Reintentar» mientras se devolvía, el
+cierre viejo no pisa la corrida nueva. Una unión **nunca** se devuelve por
+«cero sugerencias» (solo un video sin nada que cortar devuelve la parte de la edición).
+Repetir el mismo `pedido` (red caída, doble clic, dos pestañas) devuelve la primera
+respuesta sin cobrar otra vez. «Reintentar» cobra de nuevo `editar.creditos`, lo que
+costó la primera vez, y solo una llamada gana el claim.
+
+**El candado.** Una sola tarea de edición a la vez por persona: la lectura
+(`db.ediciones_corriendo`) responde 409 y un **índice parcial único**
+(`proyectos_editor_copia_en_curso`, sobre las copias con `editar.estado = 'corriendo'`)
+lo garantiza en la base. Una corrida «corriendo» deja de contar a las **2 horas** (a
+los **5 minutos** si todavía no se anotó el cobro) y `_liberar_caducadas` la suelta
+antes de tomar el candado, devolviendo lo que corresponda: con el cobro anotado,
+`editar.creditos`; sin anotar, lo que diga el libro mayor
+(`tools/creditos.py movimientos`: un cargo `editar-sugerir:<copia>` sin su
+devolución). Sin esto, una petición que muriera entre reservar y cobrar dejaría a
+esa persona bloqueada por el índice hasta que alguien lo arreglara a mano.
+
+**Migración: SÍ, un índice.** Es un solo `CREATE UNIQUE INDEX IF NOT EXISTS`, sin tabla
+ni columna nueva, idempotente y vacío al crearse. **Correr `python tools/db_migrate.py`
+ANTES de desplegar la API** (paso 4 del checklist de Deploy), en dev primero. No es
+bloqueante: sin el índice el API funciona igual: lee antes de insertar y **vuelve a leer
+después de su propio INSERT** (la copia que mira más tarde ve a la otra y se retira sin haber
+cobrado), así que dos pestañas simultáneas no cobran dos veces; sin pérdida de dinero (cada
+cobro tiene su copia y su devolución). Para comprobar que quedó:
+
+```sql
+SELECT indexname FROM pg_indexes WHERE tablename = 'proyectos_editor';
+```
+
+**Lo que `iniciar` comprueba contra S3 antes de cobrar.** La medición de un proyecto se guarda
+en `doc.meta` y vale mientras `key` y `bytes` coincidan con la subida del doc. Un PUT presignado
+a la misma key sin pasar por `/api/media/confirmar` cambia el objeto sin cambiar el doc, así que
+`iniciar` (no `cotizar`) hace un HEAD, compara el peso real y, si cambió, vuelve a medir y cobra
+lo que de verdad hay (con los topes de 90 min y 15 GB sobre lo nuevo). El worker debería repetir
+esa comprobación contra lo que `iniciar` midió (pendiente de S2).
+
+**Lo que no admite una copia.** `/api/media/presign` y `/api/media/confirmar` responden 409 sobre una
+copia («Esa es una edición: no se le pueden agregar videos.»), y `confirmar` ya no reescribe el doc
+entero: solo la llave `subidas`.
+
+**Cómo comprobarlo sin gastar** (cuenta de prueba, en dev): `GET /api/edicion/elegibles`
+→ 200 con `limites`; `POST /api/edicion/cotizar` con 2 o 3 creaciones → un precio y
+`bloqueo: null`, con una vertical y una horizontal → `formatos_distintos`, y el
+monedero no se mueve; dos `POST /api/edicion/iniciar` casi simultáneos con `pedido`
+distinto → uno 200 y el otro 409, y **un solo** cargo en `tools/creditos.py movimientos`.
+
+**Lo que NO hace.** El motor solo quita tramos y junta clips con cortes directos: no
+hace fundidos, música, títulos, ni nivela el sonido, ni cambia a vertical. Lo que la
+instrucción pida y no se pueda sale como «No aplicado:» en el editor.
 
 ### «Quiero mi video en vertical»
 
@@ -306,8 +448,9 @@ publicación no salió:
 - Los rechazos de Blotato (422: falta la página, la privacidad, límite diario
   de la red…) llegan a la pantalla con el mensaje de Blotato.
 
-Desde C3 hay además una **Agenda** (`/agenda.html`, en el menú del inicio) con
-todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
+Desde C3 hay además una **Agenda** (`/agenda.html`; en el inicio, Marketing ›
+Blotato) con todo lo que Blotato todavía no ha publicado. Si alguien pregunta
+por ella:
 
 - Lo que enseña sale de Blotato, no de nosotros: también aparece lo que el
   usuario haya programado desde blotato.com. Solo se ve lo **futuro** — en
@@ -328,8 +471,8 @@ todo lo que Blotato todavía no ha publicado. Si alguien pregunta por ella:
   estaba y avisa. La pantalla no consulta sola: solo al abrirla, al pulsar
   «Actualizar» y después de cada cambio.
 
-Y desde C4, **Métricas** (`/metricas.html`, también en el menú) con lo que ya
-salió y lo que no pudo salir. Las preguntas que van a llegar:
+Y desde C4, **Métricas** (`/metricas.html`, también en Marketing › Blotato) con
+lo que ya salió y lo que no pudo salir. Las preguntas que van a llegar:
 
 - **«No me aparecen los números».** Casi siempre es que Blotato todavía no los
   ha recogido: los junta por tandas, desde un par de horas después de publicar
@@ -601,11 +744,24 @@ imágenes de dev cuentan para las 30 que conserva la regla del ECR.
 
 **En dev se navega por las pantallas nuevas.** La Lambda de `aws-media-api-dev`
 lleva `UI_ETAPA_MINIMA=todos`: cada URL vieja (`/clip.html`, `/crear.html`,
-`/estudio/`…) responde 302 a su `/estudio/<p>/`, aunque `server/migracion.py`
-la tenga en `nueva`. Producción no tiene la variable (lo fija
-`tests/test_entornos.py`), así que sus etapas siguen siendo las de
-`PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»; para volver
-a una clásica se teclea `/ui/clasica?pantalla=<p>`.
+`/index.html`…) responde 302 a su pantalla nueva (`/estudio/<p>/`; la del inicio,
+a `/estudio/`), aunque `server/migracion.py` la tenga en `nueva`. Producción no
+tiene la variable (lo fija `tests/test_entornos.py`), así que sus etapas siguen
+siendo las de `PANTALLAS`. Ninguna pantalla enseña ya «Usar la versión anterior»;
+para volver a una clásica se teclea `/ui/clasica?pantalla=<p>`. Dev no tiene
+dominio propio: su liga es su `execute-api`, el output `ApiUrl` de
+`aws-media-api-dev` que imprime el `cdk deploy` (las comprobaciones de las rutas
+por nivel están en «La UI nueva» › «Rutas por nivel»).
+
+**Aurora de dev se duerme.** `aws-media-db-dev` tiene suelo de 0 ACU y se
+auto-pausa a los 5 min sin uso (`infra/stacks/db.py`). Despertarla puede tardar
+más que los ~24 s que `pipeline/db.py` reintenta por su cuenta, así que
+`tools/db_migrate.py` con los `--cluster-arn/--secret-arn` de dev (nunca los de
+prod) puede terminar con `DatabaseResumingException` (en el traceback, también
+`DespertandoError: la base de datos sigue despertando`). No es un error de la
+migración: espera 1–2 min y vuelve a correrla, las veces que haga falta; es
+idempotente. La primera llamada de la app tras la pausa también tarda: la API
+contesta 503 con `Retry-After` y la pantalla reintenta sola.
 
 ## Deploy (checklist)
 
@@ -1052,11 +1208,12 @@ hacia los 35) o una muerte más una espera larga.
 
 **«Tus trabajos»** (`GET /api/trabajos`, el cuadro de abajo a la derecha) también enseña las imágenes en segundo plano, como los
 clips: en curso, lista o con error, y los créditos devueltos solo si el doc no dice `devuelto: false`. El enlace de su ficha lleva
-a **`/estudio/inicio/`** —el inicio nuevo, donde «Mis creaciones» enseña el pedido, la imagen terminada o su error—, no a
-`/imagenes.html` ni a `/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`: desde el 14-oct-2026 el
-inicio está en `todos` (`server/migracion.py`) y esa URL redirige ahí, pero con la cookie `ui=clasica` sirve el inicio viejo, que no
-lista pedidos. `static/trabajos.js` oculta la ficha en la
-pantalla a la que apunta, así que en el propio inicio no se repite lo que «Mis creaciones» ya dice. Para las imágenes lee los
+a **`/estudio/marketing/distrito/imagen/`** —la caja en Imagen, donde «Mis creaciones» enseña el pedido, la imagen terminada o su
+error (`URL_IMAGEN` de `server/trabajos_api.py`; del 14 al 22-oct-2026 era `/estudio/inicio/`)—, no a `/imagenes.html` ni a
+`/estudio/imagenes/`, que son el formulario de crear, vacío; y no a `/estudio/`, que desde las rutas por nivel es el mapa y no trae
+la caja. `static/trabajos.js` oculta la ficha en la
+pantalla a la que apunta, y la caja es una sola pantalla con tres direcciones: en Imagen, Video y Edición no se repite lo que «Mis
+creaciones» ya dice (ni su «Ver» carga otra página, que descartaría lo escrito en la caja). Para las imágenes lee los
 pedidos con `imagen_cola._mios` (los ids de hoy y de ayer, y solo abre los 10 más nuevos), no el prefijo entero: ese guarda un
 `.json` y un `.reclamo` por pedido, para siempre.
 
@@ -1145,7 +1302,7 @@ pantalla en `/estudio/<p>/`. La primera es la vitrina, `/estudio/_vitrina/`
    lint, vitest y build. Si algo falla, **falla el build** y no sale imagen.
 2. `web/dist` se copia a la imagen.
 3. `server/web.py` lo monta si existe. Sin `dist` no se monta nada y el resto
-   sigue igual.
+   sigue igual: `/estudio/` lleva al inicio clásico (`/index.html`).
 
 **Caché:** los assets de `/estudio/assets/` llevan hash y son `immutable`
 por un año. El HTML va con `no-cache`.
@@ -1222,11 +1379,118 @@ Piloto: **admin** (solo lo usa el dueño), hoy en `nueva`. Su mapa está en
 `docs/migracion/admin.md`.
 
 La primera en `todos` es **inicio**, desde el 14-oct-2026 (decisión del
-dueño): `/estudio/` responde 302 a `/estudio/inicio/`. Las demás siguen en
+dueño). Del 14 al 22-oct-2026 `/estudio/` respondía 302 a `/estudio/inicio/`;
+desde las rutas por nivel `/estudio/` ES el inicio (el mapa), su URL vieja es
+`/index.html` y esa responde 302 a `/estudio/`. Las demás siguen en
 `nueva`, así que los enlaces del inicio nuevo llevan a sus pantallas viejas,
 salvo la foto del personaje de cuentos e historias, que lleva a la Crear
 nueva (`/estudio/crear/`). Para devolver a alguien a la clásica:
-`https://irremplazables.xyz/ui/clasica?pantalla=inicio`.
+`https://irremplazables.xyz/ui/clasica?pantalla=inicio` (deja la cookie y lo
+lleva a `/index.html`, la clásica). Mientras tenga la cookie (7 días),
+`/estudio/` también lo lleva ahí: el login, los «← Estudio» de las pantallas
+clásicas y el editor de cortes apuntan a `/estudio/`. `/ui/nueva?pantalla=inicio`
+la borra.
+
+### Rutas por nivel: las direcciones del estudio
+
+Desde el 22-oct-2026 el inicio es **una página por nivel** (detalle en
+`docs/migracion/inicio.md` § «Rutas por nivel»). Las que existen:
+
+| Dirección | Qué es |
+|---|---|
+| `/estudio/` | la principal: el mapa «Elige un área» |
+| `/estudio/marketing/`, `/estudio/central/`, `/estudio/automatizaciones/` | las opciones de cada área |
+| `/estudio/producto/`, `/estudio/ventas/` | «Todavía no está disponible.» (200) |
+| `/estudio/marketing/distrito/`, `…/blotato/`, `…/avanzado/` | las listas de Marketing |
+| `/estudio/central/distrito/`, `/estudio/central/deepseek/` | las de Central (Deepseek: «Todavía no está disponible.») |
+| `/estudio/automatizaciones/distrito/`, `/estudio/automatizaciones/tus/` | las de Automatizaciones (Tus automatizaciones: «Todavía no está disponible.») |
+| `/estudio/marketing/distrito/imagen/`, `…/video/`, `…/edicion/` | la caja, en cada pestaña |
+
+Las hojas (Agenda, COI, el Constructor…) siguen en `/estudio/<p>/`. El HTML de
+todas se sirve **sin sesión** (lo que pide entrar es la primera llamada a
+`/api/`), así que un `curl` sin cookie basta para comprobarlas.
+
+**Lo que redirige**, siempre con un **302 relativo** (el `location` va sin
+dominio, así que sirve igual detrás de API Gateway y de Cloudflare: la app nunca
+arma una URL absoluta con un Host que no es el de afuera), con
+`cache-control: no-store` y el query intacto. 302 y no 301: un 301 se queda para
+siempre en la caché del navegador.
+
+| Lo que llega | A dónde va |
+|---|---|
+| `/estudio/inicio/` y `/estudio/inicio` (la página única de antes), con o sin query | `/estudio/` con el mismo query |
+| `/estudio/?prompt=…` | `/estudio/marketing/distrito/imagen/?prompt=…` |
+| `/estudio/?brief=…` | `/estudio/marketing/distrito/video/?brief=…` |
+| `/estudio/?blotato=conectar` (lo mandan el editor de cortes y Agenda, Métricas y MIX clásicas) | `/estudio/marketing/blotato/?blotato=conectar` |
+| `/estudio/` con otro query (`?p=`, `?desde=…&ver=…`) | no redirige: 200, el mapa |
+| una dirección sin barra o en mayúsculas (`/estudio/marketing`, `/estudio/Marketing/`, `/ESTUDIO`) | su forma normal (`/estudio/marketing/`) |
+| `/index.html` | `/estudio/`, salvo la cookie `ui=clasica` (la clásica) |
+| `/estudio/` con la cookie `ui=clasica` (o sin `web/dist`) | `/index.html` con el mismo query: la clásica |
+
+Una dirección que no existe bajo `/estudio/` da **404**: con `Accept: text/html`
+(un navegador), una página mínima «No encontramos esa página» con «Subir un
+nivel» e «Ir al inicio»; sin él, el 404 JSON de siempre. Detrás de API Gateway
+una dirección escrita con `%XX` no se corrige (Mangum no pasa la ruta cruda): se
+sirve tal cual y la página la entiende igual.
+
+**Comprobarlo contra dev** después de cada deploy que toque `server/web.py`,
+`server/migracion.py` o `web/estudio/` (`<ApiUrl de dev>` es el output `ApiUrl`
+de `aws-media-api-dev`, con su `https://`). La principal:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/" | grep -iE "^HTTP|cache-control"
+```
+
+Lo esperado: `200` y `cache-control: no-cache`. La página única de antes:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/inicio/?x=1" | grep -iE "^HTTP|^location|cache-control"
+```
+
+Lo esperado: `302`, `location: /estudio/?x=1` (relativa: si sale con
+`https://…` delante, algo cambió) y `cache-control: no-store`. Las entradas de
+antes:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/?prompt=hola" | grep -iE "^HTTP|^location"
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/?blotato=conectar" | grep -iE "^HTTP|^location"
+```
+
+Lo esperado: `302` con `location: /estudio/marketing/distrito/imagen/?prompt=hola`
+y `location: /estudio/marketing/blotato/?blotato=conectar`. Sin barra:
+
+```bash
+curl -s -D - -o /dev/null "<ApiUrl de dev>/estudio/marketing" | grep -iE "^HTTP|^location"
+```
+
+Lo esperado: `302` y `location: /estudio/marketing/`. El 404 con página:
+
+```bash
+curl -s -D - -o /dev/null -H "Accept: text/html" "<ApiUrl de dev>/estudio/nada/" | grep -iE "^HTTP|content-type|^vary"
+```
+
+Lo esperado: `404`, `content-type: text/html; charset=utf-8` y `vary: Accept`
+(sin el `-H`, el mismo 404 en `application/json`). Lo mismo vale contra
+`https://irremplazables.xyz` cuando el corte llegue a `main`.
+
+**Pruebas de navegador (Playwright; no corren en CI):** `cd web && npm run e2e` compila y las corre todas; para una sola,
+`npm run build && npx playwright test e2e/niveles.spec.ts --workers=2`.
+`web/e2e/servidor.mjs` repite en Node lo que deciden `server/web.py` (las páginas por nivel, la barra, las mayúsculas, el
+`//` y el `%XX`, las entradas de antes, el 404 con página para quien pide HTML) y `server/migracion.py` (`/index.html`, la
+cookie `ui=clasica` también en `/estudio/`, `/ui/clasica` y `/ui/nueva`, las pantallas `retirada`): una página se sirve solo si su
+dirección es una del registro de `dist`. `tests/test_web_rutas.py` exige que sus tablas y el texto del 404 sean los de Python y,
+con Node, pasa las mismas peticiones por los dos y compara estado, `Location` y la cara del 404. Lo único que NO repite son las
+cabeceras de lo servido (todo sale `no-store`, no `no-cache` con ETag). Si `web.py` o `migracion.py` cambian, ése también.
+La guarda del doble clic se prueba con `Date.now()` de la página quieto (`relojFijo`, `web/e2e/recorrido.ts`): con el reloj de
+verdad el resultado dependía de la velocidad de la máquina. Hay dos pruebas intermitentes que vienen de antes de las rutas por
+nivel (se repiten igual con el `servidor.mjs` anterior): `inicio-edicion.spec.ts` «toda la caja se recorre solo con el teclado» a
+veces agota `page.waitForEvent('filechooser')` (1 de 16 con 4 trabajadores; una revisión la vio también en `29344bb`, 1 de 12), y
+las de `asistente.spec.ts` que usan `page.clock.install()` más `fastForward(5000)` a veces no encuentran el título del resultado
+para enfocarlo (1 de 64, en pruebas distintas cada vez). Una tercera, también de antes: `biblioteca.spec.ts` «axe, estado por
+estado › a 1100 px › sin resultados, «Míos» vacío…» a veces ve `color-contrast` en `.bg-ambar` justo después de pasar a «Míos»
+(4 de 5 con el `dist` y el `servidor.mjs` de `9666380`; a 390 y 320 px pasa). En esta máquina la del teclado de
+`inicio-edicion.spec.ts` falló más (2 de 4 solas, también en `9666380`). Antes de darlas por rotas, repetirlas solas con
+`--workers=1` y compararlas con un worktree de la base.
 
 ## La imagen (Node, y por qué está fijado)
 
@@ -1377,9 +1641,11 @@ Los cuatro tools (`db_migrate`, `usuarios`, `creditos`, `costes`) cargan el
 `.env` del repo — con `DB_CLUSTER_ARN`/`DB_SECRET_ARN` ahí (ya están en el
 del dueño), los flags `--cluster-arn/--secret-arn` sobran.
 Gotcha: desde el 21-sep el clúster de producción tiene suelo de 0.5 ACU y NO se
-auto-pausa (infra/stacks/db.py). Si algún día vuelve a 0 ACU —o en un clúster de
-dev, que irá con auto-pausa—, la primera llamada tras un rato puede tardar ~25 s
-o dar 503/timeout; reintenta.
+auto-pausa (infra/stacks/db.py). El de dev (`aws-media-db-dev`) sí: suelo de 0 ACU
+y auto-pausa a los 5 min sin uso. Ahí (o en prod, si algún día vuelve a 0 ACU) la
+primera llamada tras un rato puede tardar ~25 s o dar 503/timeout; reintenta. Con
+`db_migrate` el despertar de dev puede pedir **1–2 min entre reintentos**
+(`DatabaseResumingException`): ver «Deploy del entorno dev».
 
 ### Que los datos sobrevivan
 
@@ -1457,6 +1723,232 @@ venv/Scripts/python tools/ssm_env.py
   el webhook del modo equivocado (revisar requests en CloudWatch).
 - Pago raro (sin usuario, monto sin pack) → queda 200 con ERROR en CloudWatch
   → abonar a mano con `creditos.py abonar --tipo compra --ref <session_id>`.
+
+## COI y la Biblioteca de prompts (Ajustes 3)
+
+Dos herramientas de **Central › Distrito**, las dos con login y las dos en
+`server/` (`coi_api.py`, `biblioteca_api.py`):
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/coi/estado` | cuántas respuestas lleva hoy la persona, cuántas le quedan y cuándo se renuevan |
+| `POST /api/coi` | `{"texto": "…"}` → el **COI** (Contexto · Objetivo · Instrucciones): el modelo responde UNA vez con tres bloques |
+| `GET /api/biblioteca` | todo en una carga: categorías, «De la casa», «Míos» de la persona y su top 3 fijado |
+| `PUT /api/biblioteca/fijados` | REEMPLAZA el top 3 fijado (el orden importa). Con `esperada` (la lista que la pantalla cree vigente) solo escribe si nadie la cambió desde entonces; si no, 409 `cambiaron` |
+| `POST /api/biblioteca/mios` | guarda un COI en «Míos» (botón «Guardar»; la `clave` evita el doble clic) |
+| `DELETE /api/biblioteca/mios/{id}` | borra uno de «Míos» (y lo quita de los fijados) |
+
+### Las reglas de COI
+
+- **Gratis para la persona (0 créditos), 3 respuestas por día**, y el día es el de
+  **México** (`America/Mexico_City`; se renueva a las 12:00 a. m. de allá). El día se
+  calcula **en la base** (una sola fuente de tiempo): el navegador no manda su reloj.
+- **Solo cuentan las respuestas terminadas.** Si el modelo falla, se pasa de tiempo, la
+  moderación rechaza el texto o no se pudo sumar, **no se gasta ninguna**. «Terminada» es
+  `finish_reason == "stop"` con texto: cualquier otro motivo de fin (`length`, `content_filter`,
+  ninguno) es una respuesta incompleta (502 `modelo`, no suma) y un pedazo de COI no se entrega.
+- **Los intentos que no cuentan tienen su propio tope: 20 por persona y día de México**
+  (`MAX_FALLOS_DIARIOS` en `pipeline/coi.py`, columna `fallos` de `coi_estado`). Cada uno costó una
+  llamada al proveedor aunque no gastara un uso, y sin tope bastaba repetirlos para gastar sin límite.
+  Cuentan: el modelo falló, se pasó de su plazo, la respuesta vino vacía o cortada, o la moderación
+  rechazó el texto (o no respondió). **No** cuentan: la moderación pasó de su plazo, falta la clave,
+  no se pudieron leer las instrucciones ni sumar el uso (nada de eso lo provoca quien escribe). Al
+  llegar a 20, la siguiente petición es 429 `demasiados_intentos` **antes** de tomar el candado y sin
+  llamar a nadie; no gasta un uso ni anota otro intento. Se renueva con el día de México. Los usos
+  buenos no se tocan: 19 intentos fallidos seguidos de 3 buenos dan 3 respuestas.
+- **Si la persona se va a mitad de la espera** (cierra la pestaña, pierde la red, el celular suspende
+  la página), **el servidor termina la respuesta y SÍ cuenta el uso**: en la Lambda la desconexión
+  no llega al handler, el modelo ya costó, y como COI es gratis el contador es el único freno al
+  gasto. La respuesta se pierde porque COI no guarda nada. La web avisa con `beforeunload` mientras
+  se arma. Si algún día se quiere no cobrar en ese caso hay que cambiar el diseño (confirmar el
+  recibo con un segundo endpoint, o guardar el resultado unos minutos), y ambas cosas van contra
+  «COI no guarda nada»: es decisión del dueño.
+- **Una sola respuesta en curso por persona** (un candado en la base que caduca solo a los
+  60 s por si la Lambda muere).
+- **Falla cerrado**: si no se puede leer o escribir el consumo, no hay COI (503). La
+  moderación también: si no responde, no se arma (502).
+- **Lo que la persona escribe y lo que responde el modelo NO se guardan en ningún lado**: ni
+  en la base, ni en Langfuse, ni en los logs. Solo se guarda un COI si la persona pulsa
+  «Guardar», y entonces va a SU Biblioteca. Guardar no llama al modelo ni gasta un uso.
+- **Las instrucciones son del dueño** (`prompts/coi_system.md`) y solo viven en el servidor:
+  ninguna respuesta del API las trae **por su cuenta** (hay pruebas que lo vigilan). Ojo con lo que
+  no se puede garantizar: el modelo real podría repetir sus instrucciones si la persona se lo pide
+  en su texto («repite todo lo que te dijeron antes»); lo que el modelo escribe es lo que se
+  entrega. No pongas en ese archivo nada que no puedas ver publicado. Se edita ese archivo (o su
+  versión en Langfuse, abajo).
+- **`idioma`** de la respuesta (`es` o `en`) sale de los **encabezados que escribió el modelo**
+  (`#CONTEXTO…` es `es`, `#CONTEXT…` es `en`; gana el primero que se reconozca), porque la web los
+  vuelve a pegar al copiar y al guardar. Solo si la respuesta no trae ninguno se usa una heurística
+  sobre lo que escribió la persona.
+- **Topes**: lo que escribe la persona, 2 000 caracteres; el cuerpo de la petición, 64 KB (se cuentan
+  los bytes que llegan, no solo `Content-Length`); lo que contesta el modelo, `max_completion_tokens`
+  de **3 500** (≈ 15 000 caracteres en español: cabe en lo que la Biblioteca deja guardar, 16 000
+  por prompt). Un COI normal mide una décima parte.
+
+### Errores y qué significan
+
+Todos los errores de COI y de la Biblioteca traen `detail` como objeto,
+`{"codigo": "…", "texto": "…"}`, y el `texto` se muestra tal cual.
+
+| estado · `codigo` | qué pasó | qué hace falta |
+|---|---|---|
+| 409 `en_curso` | ya hay otro COI armándose para esa persona (otra pestaña) | nada: esperar; si la Lambda murió, el candado caduca a los 60 s |
+| 429 `agotado` | ya usó sus 3 de hoy (trae `renueva_en_s` y `se_renueva`) | nada: se renuevan a la medianoche de México |
+| 429 `demasiados_intentos` | 20 intentos del día que no terminaron (ver «Los intentos que no cuentan»). Trae lo mismo que `agotado` (`tope`, `usos`, `quedan`, `renueva_en_s`, `se_renueva`) pero con los usos **reales**: todavía tiene los suyos | nada: se renueva a la medianoche de México y no se gastó ningún uso. Si es un reclamo, mira `fallos` en `coi_estado` y el log `coi: el modelo falló` |
+| 422 `moderacion` | la moderación frenó el texto (trae el `motivo`, nunca el texto) | nada; no se gastó ningún uso |
+| 422 `vacio` / `muy_largo` / `cuerpo` | el texto va vacío, pasa de 2 000 caracteres (o el cuerpo de 64 KB) o el cuerpo no es un JSON válido | nada |
+| 422 `texto_invalido` | el texto trae un NUL (`\u0000`) o un sustituto UTF-16 suelto (`\ud800` a `\udfff`), que no son texto | nada: suele venir de pegar desde otro programa; el `texto` se muestra tal cual |
+| 502 `modelo` | el modelo falló, la respuesta vino vacía o cortada por el tope de tokens, o la moderación no respondió | mirar el log (`coi: el modelo falló (clase, estado)`): clave, saldo o cuota del proveedor |
+| 504 `tardo` | el modelo (o la moderación) pasó de su plazo | ver «El límite conocido» |
+| 503 `no_disponible` | no se pudo leer o escribir el consumo, falta `OPENAI_API_KEY`, o no se pudieron leer las instrucciones | **lo primero: ¿corriste la migración?** Luego el log `coi: …` |
+| 503 `no_nube` | se llamó en local sin Postgres (`STATE_BACKEND` ≠ `postgres`). Aplica a COI y a `PUT`, `POST` y `DELETE` de la Biblioteca; **`GET /api/biblioteca` en local responde 200** con «De la casa» y «Míos» y fijados vacíos | usar el servicio |
+| 422 `demasiados` / `repetido` / `desconocido` | fijados: más de 3, un id repetido, o un id que no es de la casa ni un «mío» de esa persona | nada |
+| 409 `cambiaron` | `PUT /api/biblioteca/fijados` con `esperada` (la lista que la pantalla creía vigente) que ya no coincide con lo guardado: otra pestaña o aparato cambió los fijados. Trae `fijados` (la lista vigente) y **no escribe nada** | nada: la pantalla adopta esa lista y lo dice. Sin `esperada` el `PUT` reemplaza como siempre |
+| 422 `titulo_vacio` / `prompt_vacio` / `categoria` / `etiquetas` / `origen` / `clave` / `muy_largo` | `POST /api/biblioteca/mios` («Guardar»): título o prompt vacíos; categoría fuera de las cuatro; más de 3 etiquetas o de más de 24 caracteres; `origen` distinto de `coi`; `clave` que no son 32 caracteres hexadecimales; o un campo sobre su tope (`muy_largo` trae `campo` y `max`: título 80, descripción 160, prompt 16 000) | nada: el `texto` ya dice qué corregir. La web los evita, así que verlos apunta a otro cliente o a una web desactualizada |
+| 422 `titulo_invalido` / `prompt_invalido` / `para_que_invalido` / `etiquetas_invalido` | «Guardar» con un NUL o un sustituto suelto en ese campo (trae `campo`). Antes salía como 503 «no disponible» | nada: el `texto` se muestra tal cual |
+| 409 `lleno` | 100 prompts en «Míos» | borrar alguno (borrar siempre se puede) |
+| 404 `no_es_tuyo` | borrar un «mío» que no existe o es de otra persona (no se distingue) | nada |
+
+Un error 5xx de COI **nunca** descuenta un uso. Si alguien reclama «me gastó uno», se
+comprueba en la base sin ver texto alguno:
+`SELECT usuario, dia, usos, fallos, en_curso_hasta FROM coi_estado WHERE usuario = '<sub>';`
+
+### Antes de desplegar: la migración es OBLIGATORIA en cada entorno
+
+Hay tres tablas nuevas (`coi_estado`, `biblioteca_mios`, `biblioteca_fijados`, más el índice
+único parcial `biblioteca_mios_clave`). El código nuevo falla sin ellas: **COI responde 503
+`no_disponible` y la Biblioteca 503 completa** (ni «De la casa» sale). Corre, en **dev y en
+prod, cada uno con sus ARNs**, ANTES del `cdk deploy` (paso 4 del checklist de «Deploy»):
+
+```bash
+venv/Scripts/python tools/db_migrate.py
+```
+
+Es idempotente (`IF NOT EXISTS`). Desde esta entrega `db_migrate` termina con error si, tras
+correr, falta alguna tabla del esquema. No se borra ni se toca ninguna fila existente.
+
+`coi_estado` lleva además la columna `fallos` (los intentos del día que no contaron). En un entorno
+donde la tabla ya existía la agrega el mismo `db_migrate`
+(`ALTER TABLE IF EXISTS coi_estado ADD COLUMN IF NOT EXISTS fallos …`): **sin esa migración el código
+nuevo no puede leer el estado y COI responde 503**.
+
+### Los prompts: `prompts/coi_system.md` y Langfuse
+
+El archivo cae en la regla de siempre (paso 3 del checklist): `tools/prompts_sync.py` lo
+siembra en Langfuse con el nombre `coi_system`. En **producción** (`LANGFUSE_PROMPTS=1`) se
+lee la versión `production` de Langfuse y, si Langfuse no responde o el prompt no existe
+allá, **se usa el archivo** (así que COI funciona aunque nadie haya sembrado). En **dev**
+local no hay claves de Langfuse y siempre se lee el archivo. Sembrar copia las instrucciones
+a TU proyecto de Langfuse (privado); lo que no hace nadie es mandarlas al navegador.
+
+### Los 14 de muestra y cómo los cambia el dueño: `server/biblioteca_casa.json`
+
+«De la casa» sale de ese archivo, que es **estático y solo de lectura** (su almacén es
+propio: nada que ver con `prompts/`). Los 14 que trae son **de muestra**; se reemplazan
+editando el archivo y desplegando (viaja dentro de la imagen y se lee una vez por proceso).
+Reglas (están también en el comentario del propio archivo):
+
+- `id` único y **estable**, con forma `casa-<palabras-con-guiones>`. Si cambias un `id`, a
+  quien lo tenía fijado se le cae el pin (los fijados que ya no existen se omiten solos).
+- `titulo` de 1 a 80 caracteres, `para_que` de hasta 160, `prompt` de 1 a 16 000.
+- `categoria`: `imagen`, `video`, `guion` o `investigacion`. Hasta **3 etiquetas** de hasta
+  24 caracteres.
+- `lleva_a`: `"imagen"` si la categoría es imagen, `"video"` si es video y `null` en guion e
+  investigación (esos dos solo se copian). Los de imagen y video llevan sus `[corchetes]`
+  para lo que la persona cambia, y miden hasta 1 800 caracteres (más largos no se pueden
+  llevar a la caja por la dirección).
+- El orden de la lista es el orden en pantalla.
+
+Antes de desplegar: `venv/Scripts/python -m pytest tests/test_biblioteca_casa.py`. Las pruebas
+solo revisan la **forma** (ids únicos, categorías, largos, `lleva_a`, etiquetas): no fijan cuántos
+prompts hay ni cuáles, así que agregar, quitar o reemplazar no obliga a tocarlas. Si aun así se cuela
+un error, el API se queda con los prompts válidos y deja el motivo en el log
+(`biblioteca: biblioteca_casa.json: #3 (…): …`); un JSON roto deja «De la casa» vacía y el log dice
+el motivo y el lugar (`no es un JSON válido: Invalid control character … (línea 41, columna 18)`).
+El archivo puede estar guardado con o sin BOM (los editores de Windows lo agregan): se lee como
+`utf-8-sig`. Lo que sí rompe es otra codificación (el log lo dice: «no está guardado como UTF-8»).
+
+### Variables de entorno
+
+| variable | por defecto | qué hace |
+|---|---|---|
+| `COI_MODELO` | el modelo del producto (`OPENAI_MODEL`) | qué modelo arma el COI. Si no está en `tools/pricing.json` el costo del log sale `None` |
+| `COI_RAZONAMIENTO` | `minimal` | el esfuerzo de razonamiento (lo más bajo que acepta el modelo). `ninguno` o vacío = no se manda el parámetro (modelos que no lo aceptan). Si la API lo rechaza con un 400, se reintenta UNA vez sin él y queda un `warning` en el log |
+| `OPENAI_API_KEY` | — | la clave de plataforma (SSM `/env`). Sin ella: 503 `no_disponible` |
+
+### Cuánto cuesta cada uso (con tokens reales)
+
+COI es gratis para la persona pero **no para el dueño**. Cada respuesta terminada deja UNA
+línea en el log (CloudWatch, busca `coi: respuesta terminada`) con el modelo, los tokens
+de entrada y de salida, los que vinieron de caché, los milisegundos y el costo:
+
+```
+coi: respuesta terminada · modelo=… · entrada=1500 · salida=700 · en_cache=1000 · ms=9800 · costo_usd=0.00155
+```
+
+El costo sale de los tokens que devolvió la API y de la tarifa de `tools/pricing.json`
+(§`rag.modelos`, dólares por millón de tokens: entrada 0.25, entrada en caché 0.025, salida
+2.00; la dio el dueño el 15-oct-2026). Los tokens en caché se cobran con su precio y no con
+el de entrada. En el ejemplo de arriba: 500 × 0.25 + 1 000 × 0.025 + 700 × 2.00, entre un
+millón = 0.00155 dólares. Con el tope de 3 al día, una respuesta terminada típica como la de
+arriba deja unos 0.005 dólares diarios por persona. Si el modelo no está en la tarifa, `costo_usd`
+sale `None`: se agrega la fila, nunca se inventa un precio. El log **no lleva** el texto de
+entrada ni el de salida, y los errores se loguean por su clase y su estado, nunca por su mensaje.
+
+**El techo de verdad** incluye los intentos que no cuentan. Un intento que se corta por el tope de
+3 500 tokens de salida cuesta, como máximo, 3 500 × 2.00 + 1 500 × 0.25 (los 1 500 tokens de
+entrada del ejemplo), entre un millón = 0.007375 dólares con la tarifa de arriba. Con 20 de esos al día más las 3 respuestas terminadas
+son 23 llamadas: unos **0.17 dólares diarios por persona** como techo absoluto. Sin el tope de
+intentos no había techo: con el candado y el plazo de 24 s, una sola cuenta podía pasar de 1
+dólar por hora.
+
+La moderación de COI (`moderar (sin trazas)` en el log, con sus tokens de entrada y de salida) pide
+el mismo esfuerzo mínimo de razonamiento que COI (`COI_RAZONAMIENTO`): es una clasificación corta y,
+con el razonamiento por defecto del modelo, podía pasar de sus 8 s y dar un 504 que no era. Su costo
+no se suma al `costo_usd` de COI (son unos cientos de tokens); si algún día importa, sale de esas
+líneas del log.
+
+> No subas el nivel de log a `DEBUG` ni exportes `OPENAI_LOG=debug` en producción: el SDK de
+> OpenAI escribe el cuerpo completo de cada petición a ese nivel, y ahí viaja lo que la
+> persona escribió. El API arranca en `INFO` (`server/app.py`) y hay una prueba que lo vigila.
+
+### Por qué COI no usa el cliente de siempre
+
+El cliente de OpenAI del producto pasa por Langfuse, y **Langfuse parchea el método
+`create` del SDK de TODO el proceso en cuanto se importa** (no solo el de su cliente): en una
+Lambda tibia, hasta un cliente «pelón» de OpenAI quedaría trazado, con el texto entero de
+entrada y de salida. Por eso `llm.chat_texto` y `moderacion.revisar(sin_trazas=True)` llaman
+a la función original que ese parche guarda. `tests/test_coi_guardianes.py` lo vigila con el
+parche de Langfuse activo y su `get_client` convertido en espía.
+
+### El límite conocido: la Lambda corta a 29 s
+
+API Gateway corta a los 30 s y la Lambda a los 29. Por eso: la moderación tiene tope de 8 s,
+el modelo de **24 s** y el total de **27 s** (lo que gaste la moderación se le resta al
+modelo), y al modelo se le **guardan 3 s** (`MARGEN_SUMAR_S`) para sumar el uso y responder: su
+plazo es `min(24, 27 − 3 − lo ya gastado)`, así que con una moderación lenta de 5 s vence en el
+segundo 24 como mucho y quedan 5 s. Si el modelo tarda más: 504 `tardo`, no se gasta ningún uso y
+el candado se suelta.
+Una respuesta larga que de verdad necesite más de 24 s no se puede dar hoy; la salida es
+pasar a una cola (como las demás herramientas) y no se hizo en esta versión.
+
+### Lo que NO está en esta versión
+
+Editar un «mío», sugerir prompts, votar, crear uno a mano o compartirlos: no existen. Lo
+único que escribe un prompt en «Míos» es el botón «Guardar» de COI.
+
+### Pruebas
+
+`pytest tests/test_coi_*.py tests/test_biblioteca_*.py` corre con dobles. El SQL nuevo (la
+carrera del candado, el día de México, los fijados) se prueba contra un **Postgres 16 real**:
+`COI_PG_SOCK=<directorio del socket> pytest tests/test_coi_postgres.py` (sin esa variable se
+omite). Los dobles no cazan un error de sintaxis ni una carrera; esa prueba ya cazó un
+`ORDER BY` ambiguo que los dobles dejaban pasar. Ahí viven también las carreras reales (16 hilos
+por el candado, 12 por un compare-and-set de fijados, 8 pestañas con intentos que fallan), la lectura
+de «Míos» con otra pestaña escribiendo entre página y página, y una prueba que revisa que ninguna
+sentencia de COI ni de la Biblioteca lleve un `:` seguido de letra fuera de un parámetro (el
+analizador del Data API de Aurora no se pudo probar contra literales como `'HH24:MI:SS'`: las
+fechas se devuelven como números o `::text` y se formatean en Python).
 
 ## El invitador (bot de invitaciones y recordatorios)
 
@@ -1903,6 +2395,332 @@ venv/Scripts/python tools/invitaciones.py modo activo --tope 40 --cada 3 --nota 
 ```bash
 venv/Scripts/python tools/invitaciones.py modo activo --cada 1 --nota "ya hay videos: a diario"
 ```
+
+## Guía de clases · admin (S1)
+
+Primera rebanada de la Guía de clases (diseño en `docs/DISENO-GUIA.md`, sección 9; el resto de la guía es plan): el dueño crea las clases y
+sube el video de cada una desde `/estudio/admin/` (pestaña «4 · Clases»). **No gasta dinero**: ninguna ruta
+de aquí llama a AssemblyAI, Gemini ni OpenAI, y el servidor no escribe en S3 (el video lo sube el navegador
+con una URL firmada). Código: `server/clases_admin_api.py`, `pipeline/clases.py` (límites y validación) y
+`db.clases_*` en `pipeline/db.py`.
+
+### Guía de clases: la migración es OBLIGATORIA en cada entorno
+
+Hay dos tablas nuevas, `clases` y `clases_config`, y dos índices únicos parciales (`clases_clave` y
+`clases_vivas`). Sin ellas **todas las rutas de `/api/admin/clases` responden 503 `no_disponible`** (el
+resto de la app no se entera). La columna `clases.subida_token` (el token de cada subida, ver abajo) va en
+el `CREATE TABLE` y, además, en un `ALTER TABLE IF EXISTS clases ADD COLUMN IF NOT EXISTS subida_token text`:
+un entorno que ya creó la tabla con la primera versión de S1 recibe la columna al volver a correr la
+migración (sin ella, la tabla existe pero **todas las rutas dan 503**: el `SELECT` pide una columna que no
+hay). Corre, en **dev y en prod, cada uno con sus ARNs**, ANTES del `cdk deploy`
+(paso 4 del checklist de «Deploy»):
+
+```bash
+venv/Scripts/python tools/db_migrate.py
+```
+
+Es idempotente. `db_migrate` detecta las tablas nuevas solo (cada una es una entrada de `ESQUEMA` que
+empieza con `CREATE TABLE IF NOT EXISTS <nombre>`) y termina con error si tras correr falta alguna.
+`clases_config` no la usa nadie todavía (S4 guardará ahí las palabras clave de la transcripción).
+
+### Las rutas (solo el grupo `admin`; las demás cuentas reciben 403, sin token 401)
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/admin/clases?archivadas=0\|1` | `{clases, limites}`: las clases vivas por número, o las archivadas. Sin precios (llegan con S4) |
+| `POST /api/admin/clases` | crea una clase en `borrador`. Idempotente por `clave` (el doble clic no duplica). El `numero` es único entre las clases vivas: 409 `numero_repetido` |
+| `PATCH /api/admin/clases/{id}` | cambia `numero`, `titulo`, `resumen`, `grabada_en` o `liga`; `null` borra resumen y fecha |
+| `POST …/{id}/subida` | `{archivo, content_type, bytes}` → `{url, content_type, expira_s, token}`. Pasa a `subiendo`. **La clave de S3 la decide el servidor** (`clases/<id>/video.<ext>`); la URL vale 15 min. El `token` (32 hex) identifica ESTA subida. El nombre del archivo acepta los espacios Unicode (el U+202F de las grabaciones de pantalla de macOS) y se guarda con un espacio normal; los controles, las barras y los invisibles se rechazan |
+| `POST …/{id}/confirmar` | cuerpo opcional `{nombre?, token?}`. HEAD a S3: que exista, que no esté vacío, que sea de un tipo permitido y que pese lo declarado. Pasa a `subido`. Con `token` que no es el de la subida vigente: 409 `subida_cambio`, sin mirar S3 |
+| `POST …/{id}/medir` | ffprobe sobre una URL firmada (8 s, un reintento) → `duracion_s`. Con `-protocol_whitelist https,tls,tcp,crypto -f mov,mp4` (ver «Lo que NO hace S1») |
+| `POST …/{id}/cancelar` | cuerpo opcional `{token?}`. `subiendo` → `borrador`. Con `token` que no es el vigente: 409 `subida_cambio` y no se toca la clase |
+| `GET …/{id}/video` | `{url, expira_s}`: vista previa del dueño, URL firmada de 2 h (nunca la del CDN) |
+| `DELETE …/{id}` | **archiva** (borrado suave: pone `archivada_en`). No toca S3 ni cambia el estado |
+| `POST …/{id}/restaurar` | deshace el archivado; 409 si otra clase viva ya tomó su número |
+
+Estados: `borrador` → `subiendo` → `subido` (`procesando`, `lista` y `error` los escribirá S4). Cada cambio es
+un comparar-y-cambiar en UNA sentencia: de dos subidas a la vez gana una y la otra recibe 409
+`estado_no_permite`. Una clase archivada solo se puede ver, restaurar o archivar otra vez.
+Los errores son `{codigo, texto}`; nunca llevan URLs firmadas, ARNs ni texto de nadie, y los logs solo
+llevan el id de la clase y la transición.
+
+**El token de la subida.** La clave de S3 es la misma para todas las subidas de una clase
+(`clases/<id>/video.<ext>`), así que `confirmar` solo distingue una subida de otra por los bytes declarados. Para
+que la subida huérfana de otra pestaña (el PUT sigue aunque el panel cambie de pestaña) no cancele ni confirme la
+subida nueva, cada `POST …/subida` devuelve un `token` de 32 hex que el servidor guarda en `clases.subida_token`
+(en la misma sentencia que pasa `borrador` → `subiendo`) y olvida al cancelar y al confirmar. La web lo manda en
+`confirmar` y `cancelar` de SU subida; si no coincide con el guardado: 409 `subida_cambio` («Esa subida ya no es la
+vigente: se empezó otra o se canceló. No se cambió nada.») y la clase no se toca. **Sin token** las dos rutas
+siguen como siempre (la tarjeta que perdió su subida puede cancelarla); `confirmar` sobre una clase ya `subido`
+devuelve la clase aunque traiga un token (doble clic). Un token que no tiene 32 hex es 422 `clave_invalida`. El
+token nunca sale en la lista, en un log ni en un error.
+
+### Límites (los entrega el servidor en `limites`; la web no copia ninguno)
+
+| | |
+|---|---|
+| Video | `.mp4`, `.mov`, `.m4v` y `video/mp4`, `video/quicktime`, `video/x-m4v` (lista cerrada, las dos) |
+| Tamaño | 1 byte a 5 GiB (un PUT de una sola parte). El tamaño NO queda firmado en la URL: `confirmar` lo compara con el HEAD |
+| Duración | 60 s a 2 h: lo recalibra S5 y lo aplicará el costo de S4; `medir` guarda lo que mide |
+| Título / resumen | 120 / 140 caracteres. Número: 1 a 999 |
+| Liga | `https`, 500 caracteres o menos, sin usuario ni IP ni `localhost`. **Solo se guarda como referencia**: ningún código la descarga. `HOSTS_PERMITIDOS` (en `pipeline/clases.py`) está vacío: el dueño decide si se limita a ciertas plataformas |
+| La lista | hasta 400 clases (`db.LIMITE_CLASES`) |
+
+### Lo que NO hace S1, a propósito
+
+- **No procesa ni cobra**: nada de transcripción, costo, trabajo, texto, publicar, palabras clave, cola, worker,
+  embeddings ni la pantalla del alumno. Eso es S2 a S4.
+- **No borra nada en S3.** El rol de la Lambda no tiene `s3:DeleteObject` a propósito y el bucket está versionado:
+  archivar solo escribe `archivada_en`. Los objetos huérfanos (una subida cancelada que sí terminó) se quedan.
+  Un test falla si cualquier código del servidor pide `delete_object`. La purga real, si algún día hace falta, es
+  una CLI del dueño.
+- **No hay «reemplazar video»**: se archiva la clase y se crea otra.
+- **Los videos de `clases/` no los sirve el CDN, nunca.** `clases/` no está en `media_rutas.SERVIBLES_CDN` y
+  `tests/test_cdn_lista_blanca.py` lo fija (la política del bucket y la lista de Python dicen lo mismo). Si
+  `https://<cdn>/clases/<id>/video.mp4` no da 403, hay un error grave: avísale al dueño.
+- **Ciclo de vida del bucket**: la regla de Glacier Instant Retrieval a los 10 días no tiene filtro de prefijo, así
+  que `clases/` también pasa. Releer un video cuesta recuperación: **sin precio confirmado** (no está en
+  `tools/pricing.json`). Decisión pendiente antes de S7; hoy no se cambia.
+- **ffprobe** lee un archivo que sube un admin, no cualquiera, y elige el lector por el CONTENIDO: un «.mp4» que es
+  un MPD de DASH le haría pedir otras URLs desde la Lambda (una petición ciega, también a la red interna). Por eso
+  `medir` lo llama con `-protocol_whitelist https,tls,tcp,crypto -f mov,mp4` antes de `-i` (el parámetro `seguro`
+  de `edicion_api._medir`, solo para las clases; el editor mide como siempre). `-f mov,mp4` es lo que frena a
+  DASH (con ffmpeg 6.1.1 la lista de protocolos sola NO lo frena); la lista es la segunda capa (nada de `file:` ni
+  `http:`). Un test corre el ffprobe de verdad contra servidores locales y exige 0 peticiones al señuelo;
+  **lo que falta (S5) es repetirlo con el ffmpeg de la imagen (Debian bookworm, 5.1) y con el primer video real**:
+  aquí se probó con ffmpeg 6.1.1.
+
+### Prueba manual del dueño en dev
+
+Crear una clase de ejemplo, subir un `.mp4` pequeño (y uno grande si tienes), «Medir», verlo con «Ver video»,
+comprobar que `https://<cdn>/clases/<id>/video.mp4` da **403**, archivar y restaurar. Gasto: solo almacenamiento
+de S3 (sin precio confirmado).
+
+### Pruebas de las clases (S1)
+
+`pytest tests/test_clases_admin.py tests/test_cdn_lista_blanca.py` corre con dobles (S3, ffprobe). Las pruebas de la
+API corren dos veces con la misma batería: contra un doble de la base en memoria y, si hay Postgres, contra el SQL
+real: `COI_PG_SOCK=<directorio del socket> pytest tests/test_clases_admin.py` (sin esa variable se omite la mitad
+de Postgres; ver «COI y la Biblioteca de prompts» para levantar uno). Ahí viven también las carreras reales (16
+hilos pidiendo la misma subida, 8 creando la misma clave, un número que otra transacción está tomando) y la
+migración de una tabla `clases` que no tenía `subida_token`.
+
+La variante Postgres necesita `psycopg`, que está fijado en la sección «# --- tests» de `requirements.txt`
+(`psycopg[binary]`). En un venv que no lo tenga (armado antes de este cambio) solo se omite esa variante: las demás
+pruebas (autorización, no-borrar-en-S3, validadores, ligas, CDN) corren igual, no se omite el archivo entero. La sección «ffprobe de verdad» del mismo archivo levanta servidores HTTPS
+locales (necesita `ffprobe`, `ffmpeg` y `openssl` en el PATH; sin ellos se omite).
+
+## El Asistente de Automatizaciones (modo prueba)
+
+**Automatizaciones › Distrito › Asistente** (`/estudio/automatizaciones/distrito/asistente/`): la persona cuenta qué quiere automatizar y la pantalla le
+devuelve un flujo de n8n para descargarlo o abrirlo en el Constructor (`/estudio/automatizaciones/distrito/constructor/`, cuyo código no hace pedidos al servidor: los scripts de la página, `auth.js`, `monedero.js` y `trabajos.js`, sí piden `/api/auth/config`, `/api/creditos` y `/api/trabajos`). Esta es la
+**Fase A: el modo «prueba», que no gasta dinero**. El servidor no arma nada de verdad: devuelve un flujo de **ejemplo enlatado**, elegido por
+las palabras del pedido. No hay modelo, base de datos, cola ni monedero en ese camino, y lo que la persona escribe no se guarda ni se
+registra. El armado real (el RAG con Claude, que sí cuesta y sí guardaría texto de la gente) **no está construido**: es la Fase B, y todo
+lo que exige está en «Para ir en serio (Fase B)», abajo. Código: `server/automatiza_api.py` (las rutas), `pipeline/asistente.py` (la
+lógica pura: el modo, las muestras, el id y el reloj) y `media/library/n8n/muestras_prueba.json` (las muestras).
+
+| ruta | qué hace |
+|---|---|
+| `GET /api/automatiza/config` | `{activo, modo, gratis, costo_creditos, largo_minimo, largo_maximo, cupo}`; con `activo: false` trae además `texto` (la frase para mostrar). En prueba: `activo: true`, `modo: "prueba"`, `gratis: true`, `costo_creditos: 0`, `cupo: null`. Los límites del pedido salen de `pipeline/publico.py` (hoy 20 a 1 500 caracteres): la pantalla no lleva los suyos |
+| `POST /api/automatiza/armar` | `{"texto": "…"}` → **202** `{id, estado: "armando", modo, paso: "entender", costo_creditos}`. Lo que se escribió se descarta ahí mismo |
+| `GET /api/automatiza/armar/{id}` | cómo va ese pedido; terminado, el flujo de n8n |
+
+Las tres llevan sesión: `/api/automatiza/*` cae en `PREFIJOS_PROTEGIDOS` de `server/auth.py` (401 sin token) y la identidad es
+`db.usuario_actual()` (el `sub`), que aquí solo sirve para saber QUIÉN pregunta. Están a propósito **fuera de `/api/publico/`**: esa es la
+página pública `/automatiza`, sin sesión, con otro camino.
+
+### El contrato de `GET /api/automatiza/armar/{id}`
+
+Siempre: `id`, `estado`, `listo`, `modo` y `lleva_seg`. Y según el estado:
+
+| `estado` | llaves de más |
+|---|---|
+| `armando` | `paso`: `entender`, `buscar`, `armar` o `revisar` |
+| `listo` | `nombre` (el del flujo), `resumen`, `nodos` (`[{tipo, nombre, etiqueta, nombre_en_flujo}]`: `nombre` es el de n8n, en inglés; `etiqueta` es el chip en español que ve la persona), `pendientes` («Conecta tu cuenta de X en n8n y elige el destinatario.»), `advertencias`, `flujo` (el JSON de n8n, listo para descargar) y la llave opcional `grafo` |
+| `sin_cobertura` | `mensaje` y `faltan` |
+| reservados para la Fase B | `en_fila` (con `lugar`), `no_salio` y `rechazada` (con `mensaje`) |
+
+- **La llave opcional `grafo`.** Es `{nombreFlujo, nodes, edges}`, el mismo grafo del Constructor, y viaja **solo** en las muestras de
+  prueba que lo traen (hoy las tres de tipo «listo»). Es lo que permite el botón «Abrir en el constructor» sin un importador de n8n a
+  grafo: si la respuesta no trae `grafo` (la muestra de «sin cobertura», o un modo real que no lo mande), la pantalla no ofrece ese botón y
+  deja solo «Descargar .json». Al cargar el archivo de muestras, cada `grafo` se revisa con los mismos invariantes del Constructor (ids
+  únicos, 1 disparador, 4 agentes y 8 apps como máximo, sin círculos, posiciones dentro del lienzo, que se llame igual que el flujo y que
+  no lleve nada que parezca una clave); si no pasa, el archivo se da por roto (503, ver abajo).
+- **Lo que nunca viaja:** `uso`, `modelo`, `fuentes`, `intentos`, `costo_usd`, el texto del pedido ni la IP. Los textos libres (`resumen`,
+  `faltan`, `advertencias`) pasan por `validador.SECRETOS` antes de salir: si alguno parece una clave, ese campo se omite.
+- Las respuestas del módulo (éxitos y errores propios: 422, 404 `no_encontrada`, 503) llevan `Cache-Control: no-store`. El 401 de la
+  sesión y el 404 o 405 del enrutado los contesta otra capa y no lo llevan; son JSON sin datos.
+
+### Errores y qué significan
+
+Todos traen `detail` como objeto, `{"codigo": "…", "texto": "…"}` (más extras como `minimo` o `maximo`), y el `texto` se muestra tal cual.
+
+| estado · `codigo` | qué pasó | qué hace falta |
+|---|---|---|
+| 422 `vacio` / `corto` / `largo` | el pedido va vacío, con menos de 20 caracteres (`minimo`) o con más de 1 500 (`maximo`); `largo` es también el cuerpo de más de 64 KiB (se cuentan los bytes que llegan, no solo `Content-Length`) | nada: la web lo dice junto al cuadro antes de mandar |
+| 422 `cuerpo` / `texto_invalido` | el cuerpo no es un JSON con `texto` de tipo texto; o el texto trae un NUL o un sustituto UTF-16 suelto (suele venir de pegar desde otro programa) | nada |
+| 404 `no_encontrada` | un id mal formado, de otra persona, caducado, del futuro o de una muestra que no existe (nunca 403: no se distingue) | nada: la persona vuelve a escribir su pedido |
+| 503 `no_disponible` | el modo no se puede servir (ver la matriz), el archivo de muestras está roto, o falló algo que ningún caso previó | mirar el log `automatiza_api` (ver «Qué queda en el log»). **Nunca** degrada a un ejemplo en silencio |
+| reservados para la Fase B: 422 `moderacion`, 409 `en_curso`, 429 `agotado`, 402 `sin_saldo`, 503 `no_nube` | el catálogo de errores ya los trae para que la pantalla los conozca, pero hoy **nada los emite** | — |
+
+### El id de prueba: se deriva del reloj y caduca a la hora
+
+En prueba no hay fila en ninguna parte: el estado de un pedido se calcula con el reloj. El `id` es opaco y autocontenido,
+`p1.<base64url(json)>`, con tres llaves: `u` (los 12 primeros hex de sha256 del `sub`: de quién es), `t` (el instante de inicio, en
+milisegundos) y `m` (la clave de la muestra que salió). **Sin firma ni secreto:** lo único que logra quien fabrique uno a mano es ver una
+muestra enlatada de su propio usuario.
+
+- **Validación estricta:** prefijo `p1.`, alfabeto base64url, largo de 120 o menos, JSON canónico con exactamente esas tres llaves, `u`
+  igual al de quien pregunta, `-60 s ≤ ahora − t ≤ 3 600 s` y `m` existente. Todo lo demás es 404 `no_encontrada`. La forma `p1.…` lleva un
+  punto, que los ids reales (`[A-Za-z0-9_-]{16}`) no tienen: nunca se confunden.
+- **La espera son 4 pasos de 1.2 s (4.8 s en total)**; después el pedido queda «listo» (o «sin_cobertura») hasta que el id **caduca, a la
+  hora** (3 600 s). Esos 4.8 s caben antes del primer sondeo de la web (a los 5 s: `ESCALERA` de `web/src/nucleo/sondeo.ts`, y una prueba
+  lo fija): con 6 s la pantalla veía el último paso y el resultado, ya listo, no aparecía hasta los 10 s.
+- Como no hay estado, funciona igual en cualquier instancia de la Lambda y no deja nada que limpiar.
+
+### Las muestras y cómo se elige una
+
+`media/library/n8n/muestras_prueba.json` trae cuatro. Se elige **la primera** cuya lista de palabras clave tenga una subcadena del pedido
+(sin acentos ni mayúsculas); si ninguna, la que lleva `por_omision`. El orden del archivo es el de prioridad:
+
+| clave | palabras | nombre del flujo |
+|---|---|---|
+| `sin_cobertura` | `hubspot`, `github`, `instagram`, `rss`, `calendar` | — (no es un flujo: `mensaje` y `faltan`) |
+| `correos` | `correo`, `gmail`, `email`, `mail` | Responder correos de clientes |
+| `preguntas` | `chat`, `preguntas`, `whatsapp`, `telegram`, `investig` | Asistente de preguntas frecuentes |
+| `resumen_diario` | — (por omisión) | Resumen diario |
+
+Cada muestra «listo» pasa por `validador.validar` al cargarse (el mismo que revisa lo que entrega el generador real). El archivo **falla
+cerrado**: cualquier problema es `MuestrasInvalidas`, el API contesta 503 `no_disponible` sin detalles y el log dice cuál muestra y por qué.
+Para cambiar una muestra se edita el archivo y se despliega (viaja dentro de la imagen y se lee una vez por proceso); sus flujos son la
+exportación del Constructor de los grafos de `web/src/pantallas/constructor/modelo/ejemplos.ts`.
+
+### Qué queda en el log: el texto NO se guarda ni se registra
+
+La rama de prueba no lee ni escribe la base, no usa la cola, no llama a ningún modelo ni sale a la red. El texto se descarta al elegir la
+muestra. Del pedido solo queda una línea en el log del API:
+
+```
+INFO automatiza_api: automatiza: armar · modo=prueba · muestra=correos · chars=87
+```
+
+(con la fecha por delante; solo la clave de la muestra y el largo, nada de lo escrito). Un error inesperado loguea solo el **tipo** de la excepción, porque su mensaje
+podría traer el texto de la persona. Si alguien reclama «¿qué escribí?», no hay dónde verlo: no existe en ningún lado.
+
+El log de acceso del servidor (el logger `peticiones`, una línea por petición: método, ruta, estado y milisegundos) es otro registro y **sí** anota la ruta completa, y la del sondeo
+lleva el `id` (`GET /api/automatiza/armar/p1.…`). Ese `id` codifica la clave de la muestra que salió y el hash corto del usuario (ver «El id de prueba»), así que el log de acceso sabe
+**qué ejemplo** salió y de quién es el hash, nunca el texto. Por eso la promesa es sobre el texto: no se guarda ni se registra; la muestra elegida sí deja rastro en el log de acceso.
+
+### La matriz de `pipeline/asistente.py::modo()` y `AUTOMATIZA_ASISTENTE_REAL`
+
+`modo()` es una función pura sobre el entorno y devuelve `prueba`, `real` o `no_disponible`. La única rama que se activa sola es «prueba».
+`AUTOMATIZA_ASISTENTE_REAL` es el interruptor propio del Asistente: **ausente = apagada** (default invertido) y **independiente de
+`ARMADO_REAL`**. Solo el valor exacto `1` cuenta, en las dos variables.
+
+| `ARMADO_REAL` | `AUTOMATIZA_ASISTENTE_REAL` | fila del asistente en la base | `cobro_por_uso` | `CREDITOS_BACKEND` + `STATE_BACKEND` | resultado |
+|---|---|---|---|---|---|
+| ausente | cualquiera | cualquiera | cualquiera | cualquiera | **prueba** |
+| `1` | ausente | — | — | — | **prueba** |
+| `1` | `1` | sin fila, apagada o sin topes | — | — | `no_disponible` |
+| `1` | `1` | encendida con topes | falta | — | `no_disponible` |
+| `1` | `1` | encendida con topes | un entero mayor que 0 | alguno no es `postgres` | `no_disponible` (el real **nunca** corre sin monedero) |
+| `1` | `1` | encendida con topes | un entero mayor que 0 | `postgres` y `postgres` | **real** |
+
+- **DEV ya tiene `ARMADO_REAL=1`** (`armado_real=True` en `infra/entornos.py`: lo pone en la Lambda del API y en el worker público para que
+  la página pública `/automatiza` arme de verdad, con su tope de corridas) y **este endpoint NO gasta por eso**: con solo `ARMADO_REAL=1`
+  el Asistente sigue en prueba. En prueba tampoco se encola nada, porque el worker público decide «de mentira» o «real» por el entorno
+  donde corre y no por la corrida: una corrida del Asistente metida en esa cola se armaría de verdad en DEV.
+- **En la Fase A la fila de la base y `cobro_por_uso` no se leen** (no hay base en esa rama): `modo()` se llama con sus valores por
+  omisión, así que el real es inalcanzable. Si alguien pusiera las dos variables en `1`, el resultado es `no_disponible`: `GET /config`
+  contesta `activo: false`, `modo: "no_disponible"` y `texto`, y las otras dos rutas 503. Nunca un ejemplo enlatado haciéndose pasar por el
+  flujo de la persona, ni «real» sin que exista.
+- **Hoy ningún entorno enciende la variable.** `tests/test_automatiza_guardianes.py` (`test_ningun_entorno_de_la_infra_enciende_el_modo_real`)
+  revisa que no aparezca en `infra/`, `worker/`, el `Dockerfile`, `.env.example`, `tools/ssm_env.py` ni `.github/`. Cuando se construya la
+  Fase B, esa prueba se cambia a sabiendas.
+
+### Lo que NO hace el modo prueba, a propósito
+
+- **No arma nada a medida:** el flujo es la muestra más parecida por palabras. La pantalla lo dice («Prueba: por ahora armamos flujos de
+  ejemplo.») mientras `config.modo` sea `prueba`.
+- **No cobra ni muestra un precio:** la pantalla solo ofrece escribir si el servidor dice `activo` **y** `gratis`; si algún día el servidor
+  cobra, la pantalla no ofrece nada hasta que alguien le enseñe a mostrar el costo.
+- **No importa ningún SDK ni los módulos que gastan.** `pipeline/asistente.py` y `server/automatiza_api.py` no importan (ni arriba ni dentro
+  de una función) `anthropic`, `openai`, `google`, `boto3`, `langfuse` ni `pipeline.claude_rag`, `armado`, `embeddings`, `vectores`, `jobs`,
+  `moderacion`, `creditos` o `llm`; lo fijan las pruebas de abajo.
+- **No guarda la corrida:** si el servidor se reinicia no se pierde nada porque no había nada. Tampoco hay historial ni «Tus automatizaciones»
+  (ese grupo del mapa dice «Todavía no está disponible.»).
+
+### Para ir en serio (Fase B): lo que tiene que hacer el dueño
+
+Nada de esto está construido ni encendido. Es la lista de lo que hay que decidir y poner antes de que el Asistente arme flujos de verdad, y
+**cada punto es decisión del dueño, con su sí y el costo a la vista**. Las banderas se prenden en este orden y todas nacen cerradas:
+`ARMADO_REAL=1` (ya está en DEV, no en PROD) → `AUTOMATIZA_ASISTENTE_REAL=1` (variable que hoy ninguna infraestructura pone) → la fila
+del asistente con topes → un `cobro_por_uso` → `CREDITOS_BACKEND=postgres` y `STATE_BACKEND=postgres` (ya así en el API de AWS).
+
+1. **Un interruptor propio con topes.** La fila de la base que maneja `tools/automatiza.py` (`estado`, `encender`, `tope`) es la de la página
+   pública `/automatiza`. El Asistente necesita la suya, con un tope diario global y uno por persona y día (día de México), y que **sin
+   topes quede apagado**, como hace `pipeline/publico.py` (`permiso`) con la de `/automatiza`: sin fila o sin ningún tope es «apagado», y
+   cualquier fallo al leerla también. Hoy no existe: `modo()` solo espera saber si esa fila está «encendida con topes». *(Decisión del dueño, con su sí y el costo a la vista.)*
+2. **El precio en créditos.** `tools/tarifas.json`, §`rag`, no tiene `cobro_por_uso`: solo `abono_tester_por_uso`,
+   `abono_tester_max_por_dia` y una nota. Sin un entero mayor que 0 ahí, `modo()` no llega a `real`. El número lo decide el dueño con los
+   datos de la prueba de testers (`docs/RAG_TESTERS.md`, «Al terminar la prueba»: el abono de 20 era un incentivo, no la tarifa) y **sale de
+   `tools/tarifas.json`, nunca de una constante en el código ni de la pantalla**. La pantalla tampoco sabe mostrarlo todavía: cobrar pide
+   un botón «Armar ✦ N» (un verbo nuevo en `tests/test_m21_botones.py` y en `web/src/marca/verbos.ts`) y el costo a la vista antes de
+   gastar. En dólares, siempre «$X.XX dólares», nunca «centavos». *(Decisión del dueño, con su sí y el costo a la vista.)*
+3. **La política de devolución.** La regla de la plataforma es cobrar antes de lanzar y devolver lo cobrado si falla algo nuestro
+   (`pipeline/creditos.py`, `docs/ECONOMIA.md`). Falta decidir qué cuenta como fallo nuestro en el Asistente: `no_salio` y `rechazada` son
+   candidatas claras; `sin_cobertura` («todavía no sabemos armar esto») es la pregunta abierta, porque no hay entrega. Además, el worker
+   público no toca el monedero a propósito (`infra/stacks/jobs.py`): la devolución la tendría que hacer el API. *(Decisión del dueño, con su
+   sí y el costo a la vista.)*
+4. **El aviso de privacidad al guardar textos.** En prueba no se guarda nada. El modo real tendría que guardar lo que la persona
+   escribe para armar y devolver el flujo, y el aviso vigente (`server/aviso.py`, `AVISO_VERSION` = `2026-10-04`, y
+   `docs/automatiza/aviso-privacidad.md`) describe solo las peticiones públicas de `/automatiza`. Antes de guardar texto de personas
+   con sesión: decidir el plazo de borrado (`plazo_peticion` sigue en `SIN_DECIDIR`), cambiar el aviso, subir `AVISO_VERSION`, decidir qué
+   clave de OpenAI paga la moderación y moderar sin dejar el texto en Langfuse (`sin_trazas=True`, como COI). *(Decisión del dueño, con
+   su sí y el costo a la vista.)*
+5. **Cola y worker de producción.** PROD no publica `/automatiza` ni su worker: `pipeline/publico.py::publicado()` se deriva de
+   `PUBLICO_QUEUE_URL`, que solo se pone donde `publico` es verdadero en `infra/entornos.py`. Darle a PROD una cola pública «solo para el
+   Asistente» publicaría además `/automatiza` y `/api/publico/*`, así que `publicado()` hay que desacoplarlo antes. Y solo DEV tiene
+   límite de peticiones en API Gateway (`throttle_etapa` y `throttle_publico` en `infra/entornos.py`); PROD no tiene ninguno. *(Decisión del
+   dueño, con su sí y el costo a la vista.)*
+6. **Completar `tools/pricing.json`, §`rag`.** Su nota `pendiente` dice que faltan `cache_leida` (lectura de caché) de Opus 5.5 y de
+   Sonnet 5.5 y `s3vectors.consultas_por_millon` (el precio de las consultas, no el del almacenamiento). Mientras falten, la corrida queda
+   «sin precio confirmado»: no hay `costo_usd`, el tope en dólares de la base suma 0 y no frena nada (hasta entonces solo frena el tope de
+   corridas) y `tools/automatiza.py corridas` no puede decir cuánto costó. Se agregan los precios que da el dueño; jamás se inventa uno.
+   *(Decisión del dueño, con su sí y el costo a la vista.)*
+7. **Qué modelo y qué camino.** `RAG_MODELO` es `claude-opus-5-5` por defecto (`pipeline/claude_rag.py`); DEV lo fija igual en
+   `infra/entornos.py`, marcado «PROVISIONAL hasta el eval de 50 corridas (RAG·26)». `RAG_CAMINO` es `directo` (por defecto, cero
+   llamadas) o `reescrita` (un modelo reescribe la petición antes de buscar: una llamada más, `pipeline/puente.py`). Elegir entre Opus 5.5 y Sonnet 5.5 pide correr `tools/eval_rag.py`: `python tools/eval_rag.py ensayo` imprime
+   qué correría **sin llamar a nadie**; `correr --confirmar` sí gasta. *(Decisión del dueño, con su sí y el costo a la vista.)*
+8. **Los flujos que el Constructor dibuja y el generador real no.** El Constructor exporta `@n8n/n8n-nodes-langchain.agentTool` cuando dos
+   IA conversan, y ese nodo existe en `media/library/n8n/catalog.json` pero **no** en `permitidos.json`: el validador del repo rechaza esos
+   flujos hoy (decisión pendiente, `web/src/pantallas/constructor/modelo/golden/LEEME.md`). Y al revés: el modo real devuelve el flujo de
+   n8n y no un `grafo`, así que «Abrir en el constructor» no se ofrece hasta que exista un importador de n8n a grafo. *(Decisión del
+   dueño, con su sí y el costo a la vista.)*
+
+Antes de encender nada: `python tools/automatiza.py estado` (el interruptor y los topes de hoy), `python tools/eval_rag.py ensayo` y un
+tope diario chico.
+
+### Pruebas del Asistente (modo prueba)
+
+`venv/Scripts/python -m pytest tests/test_automatiza_*.py` (528 pruebas el 20-oct-2026) corre sin red, sin base y sin gasto: el reloj se
+inyecta. Las 92 pruebas de `test_automatiza_api.py` terminan, una por una, comprobando que nadie tocó la base, la cola, un modelo, la
+moderación ni los créditos (una fixture automática lo exige); las de `test_automatiza_guardianes.py` lo comprueban en recorridos completos
+y las de `test_automatiza_asistente.py` y `test_automatiza_idioma.py` son lógica y texto puros, sin nada que espiar.
+
+- `tests/test_automatiza_api.py`: el contrato HTTP (las llaves de cada estado, los errores, `no-store`, que el texto no aparece en la
+  respuesta, las cabeceras ni el log, que el log del pedido lleva solo la muestra y el largo).
+- `tests/test_automatiza_asistente.py`: la lógica pura y las muestras (cada una pasa el validador, la selección por palabras, el id y su
+  caducidad, el reloj, que el `grafo` es el de `ejemplos.ts` y cumple los invariantes del Constructor).
+- `tests/test_automatiza_guardianes.py`: que nada importe proveedores ni módulos de gasto (con la prueba de que el guardián **cae**), que un
+  recorrido completo no toque ninguna frontera, la matriz de `modo()`, el inventario de las tres rutas y que la infraestructura no
+  encienda el modo real.
+- `tests/test_automatiza_idioma.py`: el español de LATAM con tuteo en todos los textos que ve la persona.
+
+La paridad del Constructor con el catálogo y el validador de Python es otra batería: `tests/test_constructor_paridad.py` (134 pruebas).
+La web se prueba con vitest, y con Playwright (`web/e2e/asistente.spec.ts`, `web/e2e/constructor.spec.ts`; no corren en el CI de Docker,
+ver `docs/QA-UI.md`).
 
 ## Reglas que no se negocian
 
